@@ -24,6 +24,7 @@ from maw.postprocess import (
     LlmPostprocessRequest,
     OutputMode,
     Replacement,
+    merge_bilingual_project,
     run_fixed_process,
     run_llm_postprocess,
 )
@@ -79,7 +80,7 @@ def default_postprocess_plan() -> dict[str, object]:
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
             {"id": "ocr", "enabled": False, "videoPath": "", "regionMode": "full", "regionX1": 0, "regionY1": 0, "regionX2": 100, "regionY2": 100, "threshold": 0.5, "report": False},
-            {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "customPrompt": ""},
+            {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "customPrompt": ""},
         ],
     }
 
@@ -124,6 +125,8 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = normalize_text_conversion_mode(value).value
             elif key == "target":
                 step[key] = str(value or "zh") if str(value or "zh") in TRANSLATION_TARGETS else "zh"
+            elif key == "mergeBilingual":
+                step[key] = bool(value)
             elif key in {"regionX1", "regionY1", "regionX2", "regionY2", "threshold"}:
                 step[key] = _number_or_default(value, step[key])
             elif key == "report":
@@ -479,14 +482,24 @@ def run_postprocess_pipeline(
                 )
                 if step_id == "translate":
                     translation_target = str(step.get("target") or "zh")
-                    artifact = _attach_translation_track(
-                        source_project_path=current_project,
-                        source_srt_path=current_srt,
-                        translated_artifact=artifact,
-                        target=str(step.get("target") or "zh"),
-                        output_directory=run_directory,
-                        media_path=media_path,
-                    )
+                    if bool(step.get("mergeBilingual")):
+                        artifact = _merge_bilingual_subtitles(
+                            source_project_path=current_project,
+                            source_srt_path=current_srt,
+                            translated_artifact=artifact,
+                            target=str(step.get("target") or "zh"),
+                            output_directory=run_directory,
+                            media_path=media_path,
+                        )
+                    else:
+                        artifact = _attach_translation_track(
+                            source_project_path=current_project,
+                            source_srt_path=current_srt,
+                            translated_artifact=artifact,
+                            target=str(step.get("target") or "zh"),
+                            output_directory=run_directory,
+                            media_path=media_path,
+                        )
             except PostprocessCancelled:
                 raise
             except Exception as error:
@@ -835,6 +848,46 @@ def _attach_translation_track(
         srt_path=combined_artifact.srt_path,
         warnings=combined_artifact.warnings,
         translated_srt_path=translated_artifact.srt_path,
+    )
+
+
+def _merge_bilingual_subtitles(
+    *,
+    source_project_path: Path,
+    source_srt_path: Path,
+    translated_artifact: SubtitleArtifact,
+    target: str,
+    output_directory: Path,
+    media_path: Path | None = None,
+) -> SubtitleArtifact:
+    """Write a single-track bilingual artifact while keeping translation files intermediate."""
+
+    if translated_artifact.project_path is None or translated_artifact.srt_path is None:
+        raise ValueError("翻译步骤没有生成完整的工程和 SRT 产物。")
+    source_project = read_project(source_project_path)
+    translated_project = read_project(translated_artifact.project_path)
+    merged = merge_bilingual_project(source_project, translated_project)
+    warnings = (
+        *translated_artifact.warnings,
+        "翻译前后的独立字幕已保留为中间产物，最终输出为单条双语字幕。",
+    )
+    merged_artifact = write_artifacts(
+        merged,
+        source_project_path=source_project_path,
+        source_srt_path=source_srt_path,
+        operation=f"translate-{target}-bilingual",
+        write_project=True,
+        write_srt=True,
+        warnings=warnings,
+        output_directory=output_directory,
+        media_path=media_path,
+    )
+    return SubtitleArtifact(
+        source_project_path=merged_artifact.source_project_path,
+        source_srt_path=merged_artifact.source_srt_path,
+        project_path=merged_artifact.project_path,
+        srt_path=merged_artifact.srt_path,
+        warnings=merged_artifact.warnings,
     )
 
 

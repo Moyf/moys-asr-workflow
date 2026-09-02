@@ -1002,6 +1002,7 @@ class LauncherApi:
                     custom_prompt=custom_prompt,
                     task_prompt=(str(payload.get("taskPrompt") or "") if "taskPrompt" in payload else None),
                     media_path=_optional_path(payload.get("mediaPath")),
+                    merge_bilingual=bool(payload.get("mergeBilingual")),
                 ),
                 complete=complete,
                 on_status=self._emit_postprocess_status,

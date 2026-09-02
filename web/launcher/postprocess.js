@@ -68,6 +68,7 @@
     const display = $("postprocessTaskPrompt");
     display.textContent = prompt || t("toolbox_task_none");
     display.classList.toggle("empty", !prompt);
+    $("postprocessTranslationOptions")?.classList.toggle("hidden", !["translate_zh", "translate_en"].includes(operation));
   }
 
   function loadLlmPrompts() {
@@ -306,7 +307,7 @@
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "ocr", enabled: false, videoPath: "", regionMode: "full", regionX1: 0, regionY1: 0, regionX2: 100, regionY2: 100, threshold: 0.5, report: false },
-        { id: "translate", enabled: false, providerId: "deepseek", target: "zh", customPrompt: "" },
+        { id: "translate", enabled: false, providerId: "deepseek", target: "zh", mergeBilingual: false, customPrompt: "" },
       ],
     };
   }
@@ -1230,7 +1231,7 @@
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
         { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: $("ocrVideoPath").value.trim(), ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
-        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId, target: $("autoTranslateTarget").value || "zh", customPrompt: getLlmPrompt(autoLlmOperation("translate")) },
+        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId, target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), customPrompt: getLlmPrompt(autoLlmOperation("translate")) },
       ],
     };
   }
@@ -1301,7 +1302,9 @@
     });
     const enabled = Boolean($("autoPostprocessEnabled")?.checked);
     $("autoPostprocessOptions")?.classList.toggle("hidden", !enabled);
-    $("autoTranslateTargetField")?.classList.toggle("hidden", !$("autoStepTranslate")?.checked);
+    const translateEnabled = Boolean($("autoStepTranslate")?.checked);
+    $("autoTranslateTargetField")?.classList.toggle("hidden", !translateEnabled);
+    $("autoTranslateMergeField")?.classList.toggle("hidden", !translateEnabled);
     const summary = $("autoPostprocessSummary");
     if (!summary) return;
     if (!enabled) {
@@ -1431,7 +1434,9 @@
     $("ocrRegionY2").value = String(ocr.regionY2 ?? 100);
     $("ocrThreshold").value = String(ocr.threshold ?? 0.5);
     $("ocrReport").checked = Boolean(ocr.report);
-    $("autoTranslateTarget").value = String((byId.get("translate") || {}).target || "zh");
+    const translate = byId.get("translate") || {};
+    $("autoTranslateTarget").value = String(translate.target || "zh");
+    $("autoTranslateMergeBilingual").checked = Boolean(translate.mergeBilingual);
     const translatePrompt = byId.get("translate")?.customPrompt;
     if (typeof translatePrompt === "string") llmPrompts[autoLlmOperation("translate")] = translatePrompt;
     saveLlmPrompts();
@@ -1662,6 +1667,7 @@
         customPrompt,
         providerId: item.id,
         reasoningMode: $("llmReasoningMode").value,
+        mergeBilingual: Boolean($("postprocessMergeBilingual")?.checked),
       });
       if (result.ok) applySubtitleResult(result, { kind: "llm", operation });
       else {
@@ -1944,6 +1950,7 @@
   $("autoTranslateTarget").addEventListener("change", () => {
     if (["translate_zh", "translate_en"].includes(activeLlmOperation)) switchLlmOperation(autoLlmOperation("translate"));
   });
+  $("autoTranslateMergeBilingual").addEventListener("change", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
   AUTO_STEP_ORDER.forEach((stepId) => {
     const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
     checkbox.addEventListener("change", () => {
