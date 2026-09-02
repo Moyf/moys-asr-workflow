@@ -453,6 +453,13 @@ class PackagingContractTests(unittest.TestCase):
 
         self.assertIn("scripts/sync_launcher_version.py --check", workflow)
 
+    def test_pages_workflow_uses_node24_configure_pages(self) -> None:
+        """Given the Pages deployment workflow, When GitHub configures Pages, Then it uses the Node24 action."""
+        workflow = read_text(".github/workflows/deploy-editor-pages.yml")
+
+        self.assertIn("actions/configure-pages@v6", workflow)
+        self.assertNotIn("actions/configure-pages@v5", workflow)
+
     def test_windows_preview_workflow_downloads_bootstrap_assets_before_build(self) -> None:
         """Given a clean checkout, When the preview builds, Then bootstrap assets exist before PyInstaller runs."""
         workflow = read_text(".github/workflows/pr-release-windows.yml")
