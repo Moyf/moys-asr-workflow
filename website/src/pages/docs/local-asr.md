@@ -50,7 +50,7 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
 源码开发环境默认 `uv sync` 不会安装本地模型依赖。开发者可以手动安装：
 
 ```powershell
-uv sync --extra local
+uv sync --group local
 ```
 
 这会安装 `qwen-asr`、FunASR 1.3.29+、faster-whisper（CTranslate2 运行时）、`torchaudio` 和它们需要的推理运行时。在 Windows 上，MAW 会从 PyTorch 官方 CUDA 13.0 索引安装 GPU 版 Torch / TorchAudio；默认设备选择会优先使用 CUDA，不可用时才回退 CPU。模型权重由上游运行时按模型 ID 下载到其缓存目录，不会写入仓库，也不会由 MAW 自动管理。
@@ -151,7 +151,7 @@ MOSS 模型输出契约只有"段级"一对 start/end 时间戳（`[start][Sxx]�
 - Qwen3-ASR 0.6B 和 1.7B 都使用同一个 Forced Aligner；时间戳按秒读取并归一化为 MAW 要求的整数毫秒。FunASR 的常见句级/字词级时间戳也会归一化为同一格式。
 - Qwen3-ASR 长音频采用独立的 FFmpeg 分块识别，默认每块 30 秒，并在合并前恢复原始时间偏移，避免单次生成长度限制导致后半段字幕缺失。
 - 当模型没有可可靠映射的词级时间戳时，仍保留句级字幕，不人为伪造字词边界。
-- faster-whisper 在 Launcher「本地模型」中提供 large-v3 入口，与 Qwen/FunASR 共用同一本地运行环境；因 local extra 新增依赖（faster-whisper / CTranslate2），运行环境版本升级为 6，已有安装会提示重新安装或修复一次以补齐依赖。「下载模型」同样复用其 Hugging Face 上游加载器；Silero VAD 与分块由上游内部处理，`--batch-size-s` 对它无效。
+- faster-whisper 在 Launcher「本地模型」中提供 large-v3 入口，与 Qwen/FunASR 共用同一本地运行环境；因 local dependency group 新增依赖（faster-whisper / CTranslate2），运行环境版本升级为 6，已有安装会提示重新安装或修复一次以补齐依赖。「下载模型」同样复用其 Hugging Face 上游加载器；Silero VAD 与分块由上游内部处理，`--batch-size-s` 对它无效。
 - SenseVoice 默认启用 FSMN-VAD 和富文本后处理；Fun-ASR-Nano 默认启用 FSMN-VAD、远程模型代码和句级时间戳请求，适合 CUDA 环境；其他 FunASR 的 VAD、标点、说话人模型可以通过对应参数传入，但不同模型组合的兼容性仍需要真实环境验证。
 - 本地 CPU 推理、模型下载、实际显存/内存、长媒体速度和不同模型版本尚未在本项目中做完整验收。
 
