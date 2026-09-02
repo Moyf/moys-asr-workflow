@@ -4211,9 +4211,10 @@
   <span class="right-group">
     <button type="button" id="download-multi-srt" hidden title="导出当前副字幕轨（SRT）">导出副字幕</button>
     <span class="dropdown" id="subtitle-export-dropdown">
-      <button id="subtitle-export-btn" title="导出完整字幕或按颜色分别导出字幕" aria-expanded="false" aria-controls="subtitle-export-menu" aria-haspopup="menu">导出字幕 ▾</button>
+      <button id="subtitle-export-btn" title="导出完整字幕（SRT/ASS）或按颜色分别导出字幕" aria-expanded="false" aria-controls="subtitle-export-menu" aria-haspopup="menu">导出字幕 ▾</button>
       <div class="dropdown-menu" id="subtitle-export-menu" role="menu">
         <div class="dropdown-item" id="download-full-srt" role="menuitem" tabindex="0">完整字幕（SRT）</div>
+        <div class="dropdown-item" id="download-full-ass" role="menuitem" tabindex="0">完整字幕（ASS）</div>
         <div class="dropdown-item" id="download-color-srt" role="menuitem" tabindex="0" hidden>按颜色导出字幕</div>
       </div>
     </span>
@@ -10685,6 +10686,123 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     return parts.join('\n');
   }
 
+  const ASS_DEFAULT_FONT_FAMILY = 'Arial';
+  const ASS_DEFAULT_FONT_SIZE = 18;
+  const ASS_DEFAULT_COLOR = '#ffffff';
+  const ASS_STYLE_FORMAT = 'Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding';
+  const ASS_EVENT_FORMAT = 'Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text';
+
+  function normalizeAssFontFamily(value) {
+    const key = String(value ?? '').trim();
+    const family = ({
+      default: ASS_DEFAULT_FONT_FAMILY,
+      yahei: 'Microsoft YaHei',
+      hei: 'SimHei',
+      song: 'SimSun',
+      sans: 'Arial',
+    })[key] || key || ASS_DEFAULT_FONT_FAMILY;
+    // Fontname is a comma-delimited ASS style field. Keep custom local font
+    // names intact where possible, but do not let a malformed name shift the
+    // remaining style columns.
+    return family.replace(/[\r\n,]/g, ' ').replace(/\s+/g, ' ').trim() || ASS_DEFAULT_FONT_FAMILY;
+  }
+
+  function assColorFromHex(value, fallback = ASS_DEFAULT_COLOR) {
+    const raw = String(value ?? '').trim();
+    const fallbackColor = String(fallback ?? ASS_DEFAULT_COLOR).trim();
+    const hex = /^#[0-9a-f]{6}$/i.test(raw) ? raw
+      : (/^#[0-9a-f]{6}$/i.test(fallbackColor) ? fallbackColor : ASS_DEFAULT_COLOR);
+    // ASS stores colours as &HAABBGGRR; AA=00 is fully opaque.
+    return `&H00${hex.slice(5, 7)}${hex.slice(3, 5)}${hex.slice(1, 3)}`.toUpperCase();
+  }
+
+  function normalizeAssTimeMs(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(0, Math.round(numeric)) : 0;
+  }
+
+  function formatAssTime(ms) {
+    const numeric = Number(ms);
+    const centiseconds = Number.isFinite(numeric)
+      ? Math.max(0, Math.round(numeric / 10)) : 0;
+    const hours = Math.floor(centiseconds / 360000);
+    const minutes = Math.floor((centiseconds % 360000) / 6000);
+    const seconds = Math.floor((centiseconds % 6000) / 100);
+    const hundredths = centiseconds % 100;
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}`;
+  }
+
+  function escapeAssText(text) {
+    return String(text ?? '')
+      .replace(/\r\n?/g, '\n')
+      .replace(/\\/g, '\\\\')
+      .replace(/{/g, '\\{')
+      .replace(/}/g, '\\}')
+      .replace(/\n/g, '\\N');
+  }
+
+  function normalizeAssFontSize(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return ASS_DEFAULT_FONT_SIZE;
+    return Math.min(512, Math.max(1, Math.round(numeric)));
+  }
+
+  function buildAssPayload(segments, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    const appearance = options.appearance && typeof options.appearance === 'object'
+      ? options.appearance : {};
+    const fontFamily = normalizeAssFontFamily(
+      appearance.font_family ?? options.fontFamily,
+    );
+    const fontSize = normalizeAssFontSize(appearance.font_size ?? options.fontSize);
+    const primaryColor = assColorFromHex(appearance.color ?? options.color);
+    const numericTimeOffset = Number(options.timeOffset);
+    const timeOffset = Number.isFinite(numericTimeOffset)
+      ? Math.max(0, Math.round(numericTimeOffset)) : 0;
+    const mapTime = typeof options.mapTime === 'function'
+      ? options.mapTime
+      : (timeMs) => Math.max(0, Math.round(Number(timeMs) || 0) - timeOffset);
+    const alignFirstStart = options.alignFirstStart === true;
+    const firstEnabledIndex = Number.isInteger(options.firstEnabledIndex)
+      ? options.firstEnabledIndex
+      : getSrtExportFirstIndex(source, alignFirstStart);
+    const events = [];
+
+    source.forEach((segment, sourceIndex) => {
+      if (!segment || segment.disabled === true) return;
+      const rawStart = normalizeAssTimeMs(mapTime(segment.start));
+      const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
+      const start = alignFirstStart && sourceIndex === firstEnabledIndex ? 0 : rawStart;
+      // ASS only keeps centiseconds. Ensure a one-centisecond event even when
+      // an imported/edited cue is shorter than that precision.
+      const startCentiseconds = Math.max(0, Math.round(start / 10));
+      const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+      events.push(
+        `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Default,,0,0,0,,${escapeAssText(segment.text)}`,
+      );
+    });
+
+    return [
+      '[Script Info]',
+      '; Script generated by MAW',
+      'ScriptType: v4.00+',
+      'PlayResX: 1920',
+      'PlayResY: 1080',
+      'WrapStyle: 0',
+      'ScaledBorderAndShadow: yes',
+      'YCbCr Matrix: None',
+      '',
+      '[V4+ Styles]',
+      `Format: ${ASS_STYLE_FORMAT}`,
+      `Style: Default,${fontFamily},${fontSize},${primaryColor},${primaryColor},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`,
+      '',
+      '[Events]',
+      `Format: ${ASS_EVENT_FORMAT}`,
+      ...events,
+      '',
+    ].join('\n');
+  }
+
   function buildPlainTextPayload(segments) {
     return (Array.isArray(segments) ? segments : [])
       .filter((segment) => segment && !segment.disabled)
@@ -12236,6 +12354,11 @@ export default MawDynamicCaptions;
     shiftGroupReferenceIndices,
     repairGroupReferenceIndices,
     buildSrtPayload,
+    normalizeAssFontFamily,
+    assColorFromHex,
+    formatAssTime,
+    escapeAssText,
+    buildAssPayload,
     buildPlainTextPayload,
     fileBasename,
     normalizeGapRemoveGaps,
@@ -12313,7 +12436,8 @@ export default MawDynamicCaptions;
     '自动保存': 'Auto-save', '自动保存间隔': 'Auto-save interval', '秒': 'sec',
     '导出字幕': 'Export subtitles', '导出字幕 ▾': 'Export subtitles ▾',
     '导出完整字幕': 'Export full subtitles', '导出完整字幕（SRT）': 'Export full subtitles (SRT)',
-    '完整字幕（SRT）': 'Full subtitles (SRT)',
+    '导出完整字幕（SRT/ASS）或按颜色分别导出字幕': 'Export full subtitles (SRT/ASS) or separate files by color',
+    '完整字幕（SRT）': 'Full subtitles (SRT)', '完整字幕（ASS）': 'Full subtitles (ASS)',
     '导出副字幕': 'Export secondary subtitles', '导出当前副字幕轨（SRT）': 'Export the current secondary subtitle track (SRT)',
     '按颜色导出字幕': 'Export by color', '按颜色导出字幕（SRT）': 'Export by color (SRT)',
     '导出纯文本（TXT）': 'Export plain text (TXT)',
@@ -29854,6 +29978,18 @@ function buildSrt() {
   });
 }
 
+function buildAss() {
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    DATA.segments,
+    EDITOR_SETTINGS.exportStartAtZero,
+  );
+  return window.AsrEditorUtils.buildAssPayload(DATA.segments, {
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    appearance: getSubtitleAppearance(),
+  });
+}
+
 function buildExtensionSrt(track = getActiveExtensionTrack()) {
   return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
     formatTime: fmtSrtTime,
@@ -32078,6 +32214,12 @@ document.getElementById('download-full-srt')?.addEventListener('click', async ()
   if (editingState) finishEdit(true);
   await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
     desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
+  });
+});
+document.getElementById('download-full-ass')?.addEventListener('click', async () => {
+  if (editingState) finishEdit(true);
+  await downloadFile(buildAss(), `${FILENAME_BASE}.ass`, 'text/plain', {
+    desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
   });
 });
 document.getElementById('download-color-srt')?.addEventListener('click', () => downloadColorSrts(false));

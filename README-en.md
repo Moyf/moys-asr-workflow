@@ -16,7 +16,7 @@ MAW is an API-first subtitle generation and editing workflow. It provides Window
 1. [Download the latest release](https://github.com/Moyf/moys-asr-workflow/releases/latest). The default Windows package is `MAW-Windows-x64-v*.zip` and includes FFmpeg; if `ffmpeg` and `ffprobe` are already available, choose the smaller `MAW-lite-Windows-x64-v*.zip`. macOS users can choose the corresponding `MAW.app` or `MAW-lite.app` package.
 2. Extract the package and launch `MAW.exe` or `MAW.app`.
 3. Configure an ASR provider API key in the Launcher, choose your media, and start transcription.
-4. Review and edit the subtitles in MAWE, then export SRT or another supported format.
+4. Review and edit the subtitles in MAWE, then export SRT, ASS, or another supported format.
 
 For installation, provider setup, editing, and troubleshooting, start with the [complete workflow guide](docs/WORKFLOW.md) (currently in Chinese).
 
@@ -41,7 +41,7 @@ For installation, provider setup, editing, and troubleshooting, start with the [
 ## Data and limitations
 
 - When a cloud provider is selected, media is uploaded directly to that provider. MAW has no hosted transcription service and does not manage your API keys.
-- The `.mosp` project is the source of truth. SRT is useful for delivery but does not preserve all word-level timing, waveform, color, or project metadata.
+- The `.mosp` project is the source of truth. SRT is useful for ordinary delivery, while ASS preserves the selected main-subtitle preview font, size, and text color; neither format preserves all word-level timing, waveform, or project metadata.
 - Pricing, retention, and availability depend on each provider; see [ASR providers and configuration](docs/PROVIDERS.md).
 - [Three-minute video overview](https://www.bilibili.com/video/BV1hXum6yELT)
 

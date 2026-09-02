@@ -11076,6 +11076,18 @@ function buildSrt() {
   });
 }
 
+function buildAss() {
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    DATA.segments,
+    EDITOR_SETTINGS.exportStartAtZero,
+  );
+  return window.AsrEditorUtils.buildAssPayload(DATA.segments, {
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    appearance: getSubtitleAppearance(),
+  });
+}
+
 function buildExtensionSrt(track = getActiveExtensionTrack()) {
   return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
     formatTime: fmtSrtTime,
@@ -13300,6 +13312,12 @@ document.getElementById('download-full-srt')?.addEventListener('click', async ()
   if (editingState) finishEdit(true);
   await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
     desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
+  });
+});
+document.getElementById('download-full-ass')?.addEventListener('click', async () => {
+  if (editingState) finishEdit(true);
+  await downloadFile(buildAss(), `${FILENAME_BASE}.ass`, 'text/plain', {
+    desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
   });
 });
 document.getElementById('download-color-srt')?.addEventListener('click', () => downloadColorSrts(false));
