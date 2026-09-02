@@ -685,7 +685,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('id="toolboxUtilitiesView" class="toolbox-primary-view hidden" role="tabpanel"', html)
         for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab"):
             self.assertIn(f'id="{tab_id}"', postprocess_html)
-        for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxAlignmentTab"):
+        for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
             self.assertIn(f'id="{tab_id}"', utilities_html)
         self.assertNotIn('id="toolboxWaveformTab"', postprocess_html)
         self.assertNotIn('id="toolboxFfconcatTab"', postprocess_html)
@@ -695,6 +695,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('toolbox_group_utilities: "实用工具"', strings)
         self.assertIn('toolbox_utility_media: "媒体文件"', strings)
         self.assertIn('toolbox_utility_media: "Media file"', strings)
+        self.assertIn('toolbox_burn_subtitle: "压制字幕"', strings)
+        self.assertIn('toolbox_extract_audio: "Extract audio"', strings)
         self.assertEqual(html.count('role="tablist"'), 4)
         self.assertIn('id="toolboxPostprocessTabList"', html)
         self.assertIn('id="toolboxUtilitiesTabList"', html)
@@ -761,7 +763,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('target === "toolboxAlignmentProject"', launcher_script)
         self.assertIn('target === "toolboxAlignmentScript"', launcher_script)
         self.assertNotIn('target === "toolboxAlignmentMedia"', launcher_script)
-        self.assertIn('return ["alignment", "waveform", "ffconcat"].includes(tool)', postprocess_script)
+        self.assertIn('return ["alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool)', postprocess_script)
         self.assertIn('$("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities")', postprocess_script)
         self.assertIn('mediaPath: $("toolboxUtilityMediaPath").value.trim()', postprocess_script)
         self.assertNotIn("toolboxAlignmentMediaPath", postprocess_script)
@@ -771,7 +773,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });", postprocess_script)
         self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
         self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
-        self.assertIn('.toolbox-utility-tab-list {\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }', styles)
+        self.assertIn('.toolbox-utility-tab-list {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }', styles)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
 
     def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
@@ -1086,6 +1088,61 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(rebuild.call_args.kwargs["ffmpeg_path"], ffmpeg)
         resolve_ffmpeg.assert_called_once()
+
+    def test_burn_subtitle_bridge_uses_ffmpeg_and_returns_new_media(self) -> None:
+        media = self.root / "clip.mp4"
+        subtitle = self.root / "clip.srt"
+        ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        _ = media.write_bytes(b"media")
+        _ = subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+        _ = ffmpeg.write_bytes(b"exe")
+        output = self.root / "clip.subtitled.mp4"
+
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve())
+                result = self.api.run_burn_subtitles({"mediaPath": str(media), "subtitlePath": str(subtitle)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(burn.call_args.kwargs["ffmpeg_path"], ffmpeg)
+        self.assertIsInstance(burn.call_args.kwargs["cancel_event"], threading.Event)
+        self.assertEqual(result["mediaPath"], str(output.resolve()))
+
+    def test_probe_audio_tracks_bridge_returns_normalized_track_payload(self) -> None:
+        media = self.root / "clip.mkv"
+        ffprobe = self.root / ("ffprobe.exe" if os.name == "nt" else "ffprobe")
+        _ = media.write_bytes(b"media")
+        _ = ffprobe.write_bytes(b"exe")
+        track = SimpleNamespace(audio_index=0, stream_index=3, codec_name="aac", channels=2, sample_rate=48000, language="zh", title="中文", default=True)
+
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=None, ffprobe=ffprobe)):
+            with mock.patch("maw.gui_web.inspect_audio_tracks", return_value=(track,)) as inspect:
+                result = self.api.probe_audio_tracks({"mediaPath": str(media)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["tracks"], [{"audioIndex": 0, "streamIndex": 3, "codec": "aac", "channels": 2, "sampleRate": 48000, "language": "zh", "title": "中文", "default": True}])
+        self.assertEqual(inspect.call_args.kwargs["ffprobe_path"], ffprobe)
+
+    def test_extract_audio_bridge_uses_selected_track_and_returns_m4a(self) -> None:
+        media = self.root / "clip.mp4"
+        ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        ffprobe = self.root / ("ffprobe.exe" if os.name == "nt" else "ffprobe")
+        _ = media.write_bytes(b"media")
+        _ = ffmpeg.write_bytes(b"exe")
+        _ = ffprobe.write_bytes(b"exe")
+        output = self.root / "clip.audio.m4a"
+        track = SimpleNamespace(audio_index=1, stream_index=3, codec_name="aac", channels=2, sample_rate=48000, language="en", title="English", default=False)
+
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=ffprobe)):
+            with mock.patch("maw.gui_web.process_extract_audio") as extract:
+                extract.return_value = SimpleNamespace(source_media_path=media.resolve(), media_path=output.resolve(), audio_track=track)
+                result = self.api.run_extract_audio({"mediaPath": str(media), "audioIndex": 1})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(extract.call_args.args[0].audio_index, 1)
+        self.assertEqual(extract.call_args.kwargs["ffmpeg_path"], ffmpeg)
+        self.assertEqual(extract.call_args.kwargs["ffprobe_path"], ffprobe)
+        self.assertEqual(result["audioTrack"]["streamIndex"], 3)
 
     def test_get_config_exposes_last_language_empty_vs_absent(self) -> None:
         self.env_path.write_text("MAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n", encoding="utf-8")
@@ -2987,9 +3044,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         # 输出选择与各工具执行按钮固定在抽屉底部，不随面板滚动。
         footer_html = page[footer:drawer_end]
         self.assertIn('id="postprocessOutputMode"', footer_html)
-        for tool in ("match", "ocr", "llm", "replace", "ffconcat"):
+        for tool in ("match", "ocr", "llm", "replace", "ffconcat", "burnSubtitle", "extractAudio"):
             self.assertIn(f'data-tool-action="{tool}"', footer_html)
-        for button in ("runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild"):
+        for button in ("runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "stopToolboxMedia"):
             self.assertIn(f'id="{button}"', footer_html)
         self.assertIn('id="generateWaveform"', footer_html)
 

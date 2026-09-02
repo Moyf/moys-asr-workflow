@@ -2,9 +2,10 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel", alignment: "toolboxAlignmentPanel" };
+  const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel", alignment: "toolboxAlignmentPanel", burnSubtitle: "toolboxBurnSubtitlePanel", extractAudio: "toolboxExtractAudioPanel" };
   const TASK_PROMPT_KEYS = { proofread: "toolbox_task_proofread", resegment: "toolbox_task_resegment", translate_en: "toolbox_task_translate_en", translate_zh: "toolbox_task_translate_zh" };
   const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
+  const SUBTITLE_BURN_EXTS = new Set([".srt", ".ass", ".ssa"]);
   const ALIGNMENT_PROJECT_EXTS = new Set([".mosp", ".json"]);
   const MEDIA_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"]);
   const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
@@ -40,6 +41,7 @@
   let busy = false;
   let inputManual = false;
   let utilityMediaManual = false;
+  let subtitleBurnManual = false;
   let alignmentProjectManual = false;
   let alignmentRunning = false;
   let activeToolboxSection = "postprocess";
@@ -53,6 +55,10 @@
   let batchMode = false;
   let postprocessApiKeyRequest = 0;
   let alignmentGapRemove = null;
+  let mediaToolRunning = false;
+  let mediaToolCancelling = false;
+  let audioTracks = [];
+  let audioProbeRequest = 0;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -483,6 +489,16 @@
     name.classList.toggle("empty", !hasPath);
   }
 
+  function syncBurnSubtitleName() {
+    const path = $("toolboxBurnSubtitlePath").value.trim();
+    const name = $("toolboxBurnSubtitleName");
+    const hasPath = Boolean(path);
+    name.textContent = hasPath ? fileName(path) : t("toolbox_input_empty");
+    name.title = path;
+    name.classList.toggle("empty", !hasPath);
+    $("toolboxBurnSubtitleHint")?.classList.toggle("hidden", hasPath);
+  }
+
   function syncAlignmentName(pathId, nameId) {
     const path = $(pathId).value.trim();
     const name = $(nameId);
@@ -500,10 +516,15 @@
   function syncPaths() {
     if (!inputManual) $("toolboxInputPath").value = autoSourcePath();
     if (!utilityMediaManual) $("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();
+    if (!subtitleBurnManual) {
+      const source = $("srtPath").value.trim();
+      $("toolboxBurnSubtitlePath").value = SUBTITLE_BURN_EXTS.has(extension(source)) ? source : "";
+    }
     if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();
     syncOcrVideo();
     syncInputName();
     syncUtilityMediaName();
+    syncBurnSubtitleName();
     syncAlignmentNames();
   }
 
@@ -595,7 +616,7 @@
   }
 
   function toolboxSectionForTool(tool) {
-    return ["alignment", "waveform", "ffconcat"].includes(tool) ? "utilities" : "postprocess";
+    return ["alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool) ? "utilities" : "postprocess";
   }
 
   function activeToolboxView() {
@@ -820,12 +841,13 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
     renderOcrModel();
     applyBatchModeLocks();
     renderAlignmentAction();
+    renderMediaToolAction();
     if (busy) setModelChoicesOpen(false);
     if (busy) setResult(t(statusKey));
   }
@@ -838,6 +860,72 @@
     run.disabled = busy;
     stop.classList.toggle("hidden", !alignmentRunning);
     stop.disabled = busy;
+  }
+
+  function renderMediaToolAction() {
+    const burn = $("runBurnSubtitle");
+    const extract = $("runExtractAudio");
+    const stop = $("stopToolboxMedia");
+    if (!burn || !extract || !stop) return;
+    burn.disabled = busy;
+    extract.disabled = busy;
+    stop.classList.toggle("hidden", !mediaToolRunning);
+    stop.disabled = !mediaToolRunning || mediaToolCancelling;
+  }
+
+  function audioTrackLabel(track) {
+    const details = [track.title, track.language, track.codec]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    if (track.channels) details.push(`${track.channels}ch`);
+    if (track.sampleRate) details.push(`${Math.round(Number(track.sampleRate) / 1000)} kHz`);
+    if (track.default) details.push(t("toolbox_audio_track_default"));
+    const suffix = details.length ? ` · ${details.join(" · ")}` : "";
+    return `${t("toolbox_audio_track_item")} ${Number(track.audioIndex) + 1}${suffix}`;
+  }
+
+  function renderAudioTracks() {
+    const select = $("toolboxAudioTrack");
+    const status = $("toolboxAudioTrackStatus");
+    if (!select || !status) return;
+    select.textContent = "";
+    if (!audioTracks.length) {
+      select.add(new Option(t("toolbox_audio_tracks_none"), ""));
+      select.disabled = true;
+      status.textContent = t("toolbox_audio_tracks_none");
+      return;
+    }
+    audioTracks.forEach((track) => select.add(new Option(audioTrackLabel(track), String(track.audioIndex))));
+    const defaultTrack = audioTracks.find((track) => track.default) || audioTracks[0];
+    select.value = String(defaultTrack.audioIndex);
+    select.disabled = busy;
+    status.textContent = t("toolbox_audio_tracks_found").replace("{count}", String(audioTracks.length));
+  }
+
+  async function refreshAudioTracks() {
+    const requestId = ++audioProbeRequest;
+    const mediaPath = $("toolboxUtilityMediaPath").value.trim();
+    const status = $("toolboxAudioTrackStatus");
+    const select = $("toolboxAudioTrack");
+    audioTracks = [];
+    if (!mediaPath) {
+      status.textContent = t("toolbox_audio_track_choose");
+      renderAudioTracks();
+      return;
+    }
+    status.textContent = t("toolbox_audio_tracks_reading");
+    select.disabled = true;
+    const result = await bridge("probe_audio_tracks", { mediaPath });
+    if (requestId !== audioProbeRequest || mediaPath !== $("toolboxUtilityMediaPath").value.trim()) return;
+    if (!result.ok) {
+      status.textContent = postprocessErrorText(result);
+      setFieldError("toolboxUtilityMediaPath", postprocessErrorText(result));
+      renderAudioTracks();
+      return;
+    }
+    setFieldError("toolboxUtilityMediaPath", "");
+    audioTracks = Array.isArray(result.tracks) ? result.tracks : [];
+    renderAudioTracks();
   }
 
   function alignmentInputs() {
@@ -1731,6 +1819,115 @@
     }
   }
 
+  function mediaToolErrorMessage(result) {
+    return postprocessErrorText(result);
+  }
+
+  async function runBurnSubtitle() {
+    if (busy) return;
+    const mediaPath = $("toolboxUtilityMediaPath").value.trim();
+    const subtitlePath = $("toolboxBurnSubtitlePath").value.trim();
+    if (!mediaPath) {
+      setResult(t("toolbox_need_media"), "error");
+      return;
+    }
+    if (!VIDEO_EXTS.has(extension(mediaPath))) {
+      const message = t("toolbox_utility_video_required");
+      setFieldError("toolboxUtilityMediaPath", message);
+      setResult(message, "error");
+      return;
+    }
+    if (!SUBTITLE_BURN_EXTS.has(extension(subtitlePath))) {
+      const message = t("toolbox_burn_subtitle_invalid");
+      setFieldError("toolboxBurnSubtitlePath", message);
+      setResult(message, "error");
+      return;
+    }
+    setFieldError("toolboxUtilityMediaPath", "");
+    setFieldError("toolboxBurnSubtitlePath", "");
+    mediaToolRunning = true;
+    mediaToolCancelling = false;
+    setBusy(true, "toolbox_status_burning");
+    try {
+      const result = await bridge("run_burn_subtitles", { mediaPath, subtitlePath });
+      if (result.ok) {
+        utilityMediaManual = true;
+        $("toolboxUtilityMediaPath").value = result.mediaPath;
+        syncPaths();
+        void refreshAudioTracks();
+        setResult(`${t("toolbox_burn_done")}\n${result.mediaPath}`, "success");
+      } else {
+        const message = mediaToolErrorMessage(result);
+        if (result.field) setFieldError(result.field, message);
+        setResult(message, result.code === "media_tool_cancelled" ? "" : "error");
+      }
+    } finally {
+      mediaToolRunning = false;
+      mediaToolCancelling = false;
+      setBusy(false);
+      renderMediaToolAction();
+    }
+  }
+
+  async function runExtractAudio() {
+    if (busy) return;
+    const mediaPath = $("toolboxUtilityMediaPath").value.trim();
+    const audioIndex = Number($("toolboxAudioTrack").value);
+    if (!mediaPath) {
+      setResult(t("toolbox_need_media"), "error");
+      return;
+    }
+    if (!MEDIA_EXTS.has(extension(mediaPath))) {
+      const message = t("toolbox_utility_media_reject");
+      setFieldError("toolboxUtilityMediaPath", message);
+      setResult(message, "error");
+      return;
+    }
+    if (!Number.isInteger(audioIndex) || audioIndex < 0 || !audioTracks.some((track) => Number(track.audioIndex) === audioIndex)) {
+      const message = t("toolbox_audio_track_invalid");
+      setFieldError("toolboxAudioTrack", message);
+      setResult(message, "error");
+      return;
+    }
+    setFieldError("toolboxUtilityMediaPath", "");
+    setFieldError("toolboxAudioTrack", "");
+    mediaToolRunning = true;
+    mediaToolCancelling = false;
+    setBusy(true, "toolbox_status_extracting");
+    try {
+      const result = await bridge("run_extract_audio", { mediaPath, audioIndex });
+      if (result.ok) {
+        utilityMediaManual = true;
+        $("toolboxUtilityMediaPath").value = result.mediaPath;
+        syncPaths();
+        void refreshAudioTracks();
+        setResult(`${t("toolbox_extract_audio_done")}\n${result.mediaPath}`, "success");
+      } else {
+        const message = mediaToolErrorMessage(result);
+        if (result.field) setFieldError(result.field, message);
+        setResult(message, result.code === "media_tool_cancelled" ? "" : "error");
+      }
+    } finally {
+      mediaToolRunning = false;
+      mediaToolCancelling = false;
+      setBusy(false);
+      renderMediaToolAction();
+    }
+  }
+
+  async function stopMediaTool() {
+    if (!mediaToolRunning || mediaToolCancelling) return;
+    mediaToolCancelling = true;
+    renderMediaToolAction();
+    setResult(t("toolbox_status_cancelling"));
+    const result = await bridge("cancel_media_tool");
+    if (!result.ok) {
+      mediaToolCancelling = false;
+      renderMediaToolAction();
+      setResult(postprocessErrorText(result), "error");
+    }
+  }
+
   function initialize() {
     const config = window.MAWLauncher.config;
     if (!config?.postprocessProviders?.length) return;
@@ -1748,7 +1945,10 @@
     renderOcrModel();
     selectToolboxSection("postprocess");
     syncPaths();
+    renderAudioTracks();
+    void refreshAudioTracks();
     renderAlignmentAction();
+    renderMediaToolAction();
     initializeAutoPostprocess();
   }
 
@@ -1805,6 +2005,9 @@
   $("runLlmPostprocess").addEventListener("click", runLlm);
   $("runFixedProcess").addEventListener("click", runFixedProcess);
   $("runFfconcatRebuild").addEventListener("click", runFfconcat);
+  $("runBurnSubtitle").addEventListener("click", runBurnSubtitle);
+  $("runExtractAudio").addEventListener("click", runExtractAudio);
+  $("stopToolboxMedia").addEventListener("click", () => { void stopMediaTool(); });
   $("pickPostprocessFfconcat").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "ffconcat" });
     if (result.ok) $("postprocessFfconcatPath").value = result.path;
@@ -1835,6 +2038,16 @@
       $("toolboxUtilityMediaPath").value = result.path;
       setFieldError("toolboxUtilityMediaPath", "");
       syncUtilityMediaName();
+      void refreshAudioTracks();
+    }
+  });
+  $("pickToolboxBurnSubtitle").addEventListener("click", async () => {
+    const result = await bridge("choose_file", { kind: "subtitle-burn" });
+    if (result.ok) {
+      subtitleBurnManual = true;
+      $("toolboxBurnSubtitlePath").value = result.path;
+      setFieldError("toolboxBurnSubtitlePath", "");
+      syncBurnSubtitleName();
     }
   });
   $("pickToolboxAlignmentProject").addEventListener("click", async () => {
@@ -1877,6 +2090,12 @@
     utilityMediaManual = Boolean($("toolboxUtilityMediaPath").value.trim());
     setFieldError("toolboxUtilityMediaPath", "");
     syncPaths();
+    void refreshAudioTracks();
+  });
+  $("toolboxBurnSubtitlePath").addEventListener("input", () => {
+    subtitleBurnManual = Boolean($("toolboxBurnSubtitlePath").value.trim());
+    setFieldError("toolboxBurnSubtitlePath", "");
+    syncBurnSubtitleName();
   });
   $("toolboxAlignmentProjectPath").addEventListener("input", () => {
     alignmentProjectManual = Boolean($("toolboxAlignmentProjectPath").value.trim());
@@ -1965,7 +2184,10 @@
     });
     $(`configureAuto${stepId[0].toUpperCase()}${stepId.slice(1)}`).addEventListener("click", () => openAutoStep(stepId));
   });
-  ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", syncPaths));
+  ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", () => {
+    syncPaths();
+    if (id === "mediaPath") void refreshAudioTracks();
+  }));
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (artifactMenuTarget) {
@@ -1994,13 +2216,20 @@
     if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
     renderOcrModel();
     document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
+    syncBurnSubtitleName();
+    renderAudioTracks();
     syncAlignmentNames();
     renderAlignmentAction();
+    renderMediaToolAction();
     renderAutoPostprocessState();
   };
   window.MAWLauncher.onProjectPathChanged = () => {
     if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();
     syncAlignmentNames();
+  };
+  window.MAWLauncher.onMediaPathChanged = () => {
+    syncPaths();
+    void refreshAudioTracks();
   };
   function applyBatchModeLocks() {
     $("toolboxMatchTab").disabled = batchMode;

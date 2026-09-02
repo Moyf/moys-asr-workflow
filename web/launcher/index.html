@@ -533,6 +533,8 @@
             <button id="toolboxAlignmentTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxAlignmentPanel" data-tool="alignment" tabindex="-1" data-i18n="toolbox_alignment">口播对齐</button>
             <button id="toolboxWaveformTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxWaveformPanel" data-tool="waveform" data-i18n="toolbox_waveform">生成波形</button>
             <button id="toolboxFfconcatTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" tabindex="-1" data-i18n="toolbox_ffconcat">媒体重组</button>
+            <button id="toolboxBurnSubtitleTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxBurnSubtitlePanel" data-tool="burnSubtitle" tabindex="-1" data-i18n="toolbox_burn_subtitle">压制字幕</button>
+            <button id="toolboxExtractAudioTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxExtractAudioPanel" data-tool="extractAudio" tabindex="-1" data-i18n="toolbox_extract_audio">提取音频</button>
           </div>
         </nav>
       </section>
@@ -834,6 +836,34 @@
       <p class="toolbox-notice" data-i18n="toolbox_ffconcat_warning">先在编辑器中执行「移除静音空隙」，然后可选择导出 FFconcat 文件。只允许引用当前媒体；重组会生成新媒体，但不会改写字幕时间轴。</p>
     </section>
 
+    <section id="toolboxBurnSubtitlePanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxBurnSubtitleTab">
+      <p class="hint toolbox-panel-hint" data-i18n="toolbox_burn_subtitle_hint">将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。</p>
+      <div id="toolboxBurnSubtitleDropZone" class="field toolbox-input">
+        <div class="toolbox-input-heading">
+          <label for="toolboxBurnSubtitlePath" data-i18n="toolbox_burn_subtitle_input">字幕文件</label>
+          <span id="toolboxBurnSubtitleName" class="toolbox-input-name empty" aria-live="polite" data-i18n="toolbox_input_empty">未选择文件</span>
+        </div>
+        <div class="path-row">
+          <input id="toolboxBurnSubtitlePath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_burn_subtitle_placeholder" placeholder="选择或拖入 .srt / .ass / .ssa 字幕">
+          <button id="pickToolboxBurnSubtitle" class="ghost" type="button" data-i18n="choose">选择</button>
+        </div>
+        <p id="toolboxBurnSubtitleHint" class="hint" data-i18n="toolbox_burn_subtitle_input_hint">默认跟随当前的 SRT 输出，也支持手动选择 ASS / SSA。</p>
+        <p id="toolboxBurnSubtitlePathError" class="field-error"></p>
+      </div>
+      <p class="toolbox-notice" data-i18n="toolbox_ready">选择工具后运行；始终生成新文件，不覆盖源文件。</p>
+    </section>
+
+    <section id="toolboxExtractAudioPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxExtractAudioTab">
+      <p class="hint toolbox-panel-hint" data-i18n="toolbox_extract_audio_hint">从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。</p>
+      <div class="field">
+        <label for="toolboxAudioTrack" data-i18n="toolbox_audio_track">音轨</label>
+        <select id="toolboxAudioTrack"></select>
+        <p id="toolboxAudioTrackStatus" class="hint" aria-live="polite" data-i18n="toolbox_audio_track_choose">先选择媒体，MAW 会读取可用音轨。</p>
+        <p id="toolboxAudioTrackError" class="field-error"></p>
+      </div>
+      <p class="toolbox-notice" data-i18n="toolbox_ready">选择工具后运行；始终生成新文件，不覆盖源文件。</p>
+    </section>
+
     </div>
     <div class="toolbox-footer">
       <div id="toolboxOutputField" class="field toolbox-output-field">
@@ -869,6 +899,13 @@
         <div class="toolbox-action-slot hidden" data-tool-action="ffconcat">
           <button id="runFfconcatRebuild" class="primary" type="button" data-i18n="toolbox_run_media">生成新媒体</button>
         </div>
+        <div class="toolbox-action-slot hidden" data-tool-action="burnSubtitle">
+          <button id="runBurnSubtitle" class="primary" type="button" data-i18n="toolbox_burn_subtitle">压制字幕</button>
+        </div>
+        <div class="toolbox-action-slot hidden" data-tool-action="extractAudio">
+          <button id="runExtractAudio" class="primary" type="button" data-i18n="toolbox_extract_audio">提取音频</button>
+        </div>
+        <button id="stopToolboxMedia" class="ghost hidden" type="button" data-i18n="toolbox_status_cancelling">正在停止媒体处理……</button>
       </div>
     </div>
     <div id="toolboxResizeY" class="toolbox-resize-y" role="separator" aria-orientation="horizontal" tabindex="0" data-i18n-title="toolbox_resize_height" title="调整工具箱高度"></div>
