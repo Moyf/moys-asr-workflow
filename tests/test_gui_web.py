@@ -23,7 +23,10 @@ from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessEr
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
+from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
+from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
+from maw.runtimes import OCR  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
 
 
@@ -93,6 +96,44 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(config["models"][0]["languages"][0]["id"], "")
         self.assertFalse(config["models"][2]["supportsSpeaker"])
         self.assertEqual(config["languages"][0]["id"], "")
+
+    def test_get_ocr_runtime_recovers_a_stale_install_marker(self) -> None:
+        runtime_root = self.root / "ocr-runtime"
+        python = OCR.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=OCR.spec.runtime_version,
+            python_version=OCR.spec.python_version,
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_OCR_RUNTIME_ROOT": str(runtime_root)}):
+            result = self.api.get_ocr_runtime()
+
+        self.assertEqual(result["status"], "broken")
+
+    def test_ocr_runtime_cancel_cleans_marker_before_emitting_cancelled(self) -> None:
+        runtime_root = self.root / "ocr-runtime"
+        python = OCR.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=OCR.spec.runtime_version,
+            python_version=OCR.spec.python_version,
+        )
+        cancel_event = threading.Event()
+        cancel_event.set()
+
+        with mock.patch("maw.gui_web.install_ocr_runtime", side_effect=OcrRuntimeCancelled("cancelled")):
+            self.api._ocr_runtime_main(False, str(runtime_root), cancel_event)
+
+        manifest = json.loads((runtime_root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["status"], "broken")
+        self.assertIn("ocrRuntimeCancelled", "".join(self.window.scripts))
 
     def test_get_config_falls_back_from_hidden_tencent_provider(self) -> None:
         _ = self.env_path.write_text("MAW_GUI_LAST_MODEL=16k_zh_en_2.0\n", encoding="utf-8")
@@ -2686,6 +2727,16 @@ class OpenRuntimeFolderTests(unittest.TestCase):
         status.assert_called_once()
         opener.assert_called_once_with(self.root)
 
+    def test_open_runtime_folder_resolves_ocr_runtime_from_backend_config(self) -> None:
+        runtime = SimpleNamespace(status="ready", path=str(self.root))
+        with mock.patch("maw.gui_web.managed_ocr_runtime_status", return_value=runtime) as status:
+            with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opener:
+                result = self.api.open_runtime_folder({"kind": "ocr-runtime"})
+
+        self.assertTrue(result["ok"])
+        status.assert_called_once()
+        opener.assert_called_once_with(self.root)
+
     def test_open_runtime_folder_rejects_unknown_kind_and_missing_directories(self) -> None:
         """Given an unknown kind or non-existent directory, Then no filesystem access happens."""
         result = self.api.open_runtime_folder({"kind": "../escape"})
@@ -3460,6 +3511,16 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('event.type === "localRuntimeReady"', script)
         self.assertIn('def install_local_runtime(', backend)
         self.assertIn('def cancel_local_runtime(', backend)
+
+    def test_ocr_runtime_ready_hint_uses_a_clickable_directory_link(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="ocrRuntimeHint"', page)
+        self.assertIn("function renderOcrRuntimeHint(runtime)", script)
+        self.assertIn('bridge("open_runtime_folder", { kind: "ocr-runtime" })', script)
+        self.assertIn('elif kind == "ocr-runtime"', backend)
 
     def test_model_cache_path_saves_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

@@ -199,6 +199,9 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("requirements_key", ocr_spec)
         self.assertIn("requirements_path", runtimes_base)
         self.assertIn('"-r"', runtimes_base)
+        self.assertIn("requirements_group", runtimes_base)
+        self.assertIn('requirements_group="local"', local_spec)
+        self.assertIn('requirements_group="ocr"', ocr_spec)
 
         self.assertIn("requirements-local.txt", spec)
         self.assertIn("requirements-ocr.txt", spec)
@@ -215,14 +218,15 @@ class PackagingContractTests(unittest.TestCase):
 
     def test_cpu_requirements_variant_is_generated_natively_not_hand_edited(self) -> None:
         """Given no-GPU machines install from requirements-*-cpu.txt, Then CPU variants
-        derive from the single source (uv export / in 文件) via the freezer, and no
+        derive from the single source (dependency group export / in 文件) via the freezer, and no
         hand-edited declaration files or inline build commands remain."""
         from maw.runtimes import freezer as freezer_mod
 
         pyproject = read_text("pyproject.toml")
         spec = read_text("MAW.spec")
 
-        # 手写 CPU 声明文件已退役：声明源单一（pyproject extra / moss-requirements.in）。
+        # 手写 CPU 声明文件已退役：声明源单一（pyproject dependency group /
+        # moss-requirements.in）。
         for legacy in ("local-cpu-requirements.in", "moss-cpu-requirements.in"):
             self.assertFalse((ROOT / legacy).exists(), f"{legacy} 应已退役（生成式替代）")
 
@@ -285,11 +289,11 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("; sys_platform", cpu_in)
         self.assertNotIn("+cu130", cpu_in)
 
-    def test_ocr_dependencies_are_optional_and_runtime_worker_is_bundled_purely(self) -> None:
+    def test_ocr_dependencies_are_isolated_and_runtime_worker_is_bundled_purely(self) -> None:
         """Given optional OCR support, When metadata and the frozen spec are read, Then the main package stays OCR-free."""
         project = tomllib.loads(read_text("pyproject.toml"))
         dependencies = set(project["project"]["dependencies"])
-        ocr_dependencies = set(project["project"]["optional-dependencies"]["ocr"])
+        ocr_dependencies = set(project["dependency-groups"]["ocr"])
         self.assertNotIn("onnxruntime>=1.18", dependencies)
         self.assertNotIn("pillow>=10.0.0", dependencies)
         self.assertNotIn("rapidocr>=3.9.0", dependencies)
@@ -303,9 +307,17 @@ class PackagingContractTests(unittest.TestCase):
                 "rapidocr>=3.9.0",
             },
         )
+        self.assertNotIn("optional-dependencies", project["project"])
+        local_dependencies = set(project["dependency-groups"]["local"])
+        self.assertIn("jieba>=0.42", local_dependencies)
+        self.assertIn("requests>=2.28", local_dependencies)
+        self.assertIn("reapeaks>=0.3.1", local_dependencies)
+        self.assertFalse(any(value.startswith("pywebview") for value in local_dependencies))
+        self.assertFalse(any(value.startswith("opencc-") for value in local_dependencies))
+        self.assertFalse(any(value.startswith("fonttools") for value in local_dependencies))
         lockfile = read_text("uv.lock")
         self.assertIn('ocr = [', lockfile)
-        self.assertIn('marker = "extra == \'ocr\'"', lockfile)
+        self.assertNotIn('marker = "extra == \'ocr\'"', lockfile)
         spec = read_text("MAW.spec")
         for relative in (
             "maw/ocr_runtime_worker.py",
