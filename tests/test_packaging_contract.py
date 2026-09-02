@@ -465,6 +465,13 @@ class PackagingContractTests(unittest.TestCase):
 
         self.assertIn("scripts/sync_launcher_version.py --check", workflow)
 
+    def test_pages_workflow_uses_node24_configure_pages(self) -> None:
+        """Given the Pages deployment workflow, When GitHub configures Pages, Then it uses the Node24 action."""
+        workflow = read_text(".github/workflows/deploy-editor-pages.yml")
+
+        self.assertIn("actions/configure-pages@v6", workflow)
+        self.assertNotIn("actions/configure-pages@v5", workflow)
+
     def test_windows_preview_workflow_downloads_bootstrap_assets_before_build(self) -> None:
         """Given a clean checkout, When the preview builds, Then bootstrap assets exist before PyInstaller runs."""
         workflow = read_text(".github/workflows/pr-release-windows.yml")
@@ -514,7 +521,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("ffplay.exe", workflow)
         self.assertIn("MAW-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
         self.assertIn("MAW-lite-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
-        self.assertIn("actions/upload-artifact@v4", workflow)
+        self.assertIn("actions/upload-artifact@v6", workflow)
         self.assertIn("gh release upload", workflow)
         self.assertIn("--target '${{ github.sha }}'", workflow)
         self.assertIn("GITHUB_TOKEN: ${{ github.token }}", workflow)
@@ -608,7 +615,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("MOSE", workflow)
         self.assertIn("Verify no FFmpeg is bundled", workflow)
         self.assertIn("Compress-Archive", workflow)
-        self.assertIn("actions/upload-artifact@v4", workflow)
+        self.assertIn("actions/upload-artifact@v6", workflow)
         self.assertIn("retention-days: 14", workflow)
         self.assertIn("MAW-lite-Windows-x64-pr-", workflow)
         self.assertNotIn(".zip.sha256", workflow)
@@ -624,7 +631,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("workflows: [Preview Windows Release]", workflow)
         self.assertIn("types: [completed]", workflow)
         self.assertIn("pull-requests: write", workflow)
-        self.assertIn("actions/github-script@v7", workflow)
+        self.assertIn("actions/github-script@v8", workflow)
         self.assertIn("maw-windows-pr-release", workflow)
         self.assertIn("issues.updateComment", workflow)
         self.assertIn("issues.createComment", workflow)
