@@ -43,6 +43,7 @@ from maw.gui_platform import (
     terminate_process_tree,
 )
 from maw.runtime_manifest import (
+    STATUS_BROKEN,
     STATUS_INSTALLING,
     STATUS_READY,
     read_runtime_manifest,
@@ -82,11 +83,11 @@ class RuntimeSpec:
 
     字段按用途分组：
     - 身份：key / runtime_version / python_version
-    - 安装资产与依赖：embed_python_zip / requirements_key（frozen txt 的
-      pyproject extra 名）/ requirements_bundle_name / requirements（moss
-      迁移期的手写列表，之后删除）/ requirements_in（主清单用 uv pip
-      compile 冻结的 in 文件；None 则 uv export extra）/ requirements_in_args
-      （compile 附加参数，如 moss 的 pytorch cu130 index）/
+    - 安装资产与依赖：embed_python_zip / requirements_key（兼容旧声明） /
+      requirements_bundle_name / requirements（moss 迁移期的手写列表，之后
+      删除）/ requirements_in（主清单用 uv pip compile 冻结的 in 文件） /
+      requirements_group（主清单用 uv export --only-group 冻结的独立依赖组） /
+      requirements_in_args（compile 附加参数，如 moss 的 pytorch cu130 index） /
       extra_index_url / cuda_fallback_packages
     - 进度与文案：requirements_emit / ready_emit_done / missing_detail /
       ready_detail / message_prefix / feature_label / fix_action_label
@@ -120,11 +121,13 @@ class RuntimeSpec:
     bundle_dir: str
     # 依赖与模型（可选）
     requirements: tuple[str, ...] | None = None
-    # 主清单声明源：非 None 时用 uv pip compile <in>（moss——与 local 的
-    # Transformers 互斥而独立声明）；None 时用 uv export --extra requirements_key
-    # （依赖声明于 pyproject optional-dependencies）。CPU 变体的冻结配方
-    # 由 maw/runtimes/freezer.py 按本字段与 cuda_fallback_packages 推导。
+    # 主清单声明源：requirements_in 非 None 时用 uv pip compile <in>
+    # （moss——与 local 的 Transformers 互斥而独立声明）；否则若声明
+    # requirements_group，则用 uv export --only-group 导出该独立依赖组；最后
+    # 回退到 requirements_key 对应的旧 optional-dependencies extra。CPU 变体
+    # 的冻结配方由 maw/runtimes/freezer.py 按本字段与 cuda_fallback_packages 推导。
     requirements_in: str | None = None
+    requirements_group: str | None = None
     requirements_in_args: tuple[str, ...] = ()
     extra_index_url: str | None = None
     cuda_fallback_packages: tuple[str, ...] = ()
@@ -360,6 +363,25 @@ class ManagedRuntime:
                 model_cache=model_cache,
             )
         return self._status("ready", True, root, python, self.spec.ready_detail, model_cache=model_cache)
+
+    def mark_install_aborted(self, runtime_root: str | Path | None = None) -> bool:
+        """Mark an interrupted install as broken instead of leaving ``installing`` behind."""
+        root = self.resolve_root(runtime_root)
+        manifest = read_runtime_manifest(root)
+        if not manifest.installing:
+            return False
+        extra = {"modelId": manifest.model_id} if manifest.model_id else None
+        try:
+            write_runtime_manifest(
+                root,
+                status=STATUS_BROKEN,
+                runtime_version=manifest.runtime_version or self.spec.runtime_version,
+                python_version=manifest.python_version or self.spec.python_version,
+                extra=extra,
+            )
+        except OSError:
+            return False
+        return True
 
     def _status(
         self,

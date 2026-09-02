@@ -16,10 +16,12 @@ from maw.ocr_runtime import (
     OcrRuntimeError,
     install_ocr_runtime,
     managed_ocr_runtime_status,
+    recover_ocr_runtime_install,
     run_ocr_in_runtime,
 )
 from maw.postprocess import OutputMode
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
+from maw.runtime_manifest import STATUS_BROKEN, STATUS_INSTALLING, write_runtime_manifest
 from maw.runtimes import OCR
 
 
@@ -38,6 +40,25 @@ class OcrRuntimeTests(unittest.TestCase):
         self.assertEqual(status.status, "missing")
         self.assertEqual(status.model_id, OCR_MODEL_ID)
         self.assertEqual(status.path, str(self.root.resolve()))
+
+    def test_aborted_install_does_not_leave_an_installing_manifest(self) -> None:
+        python = OCR.python_path(self.root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            self.root,
+            status=STATUS_INSTALLING,
+            runtime_version=OCR.spec.runtime_version,
+            python_version=OCR.spec.python_version,
+            extra={"modelId": OCR_MODEL_ID},
+        )
+
+        self.assertTrue(recover_ocr_runtime_install(self.root))
+        self.assertEqual(managed_ocr_runtime_status(self.root).status, STATUS_BROKEN)
+        manifest = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["status"], STATUS_BROKEN)
+        self.assertEqual(manifest["modelId"], OCR_MODEL_ID)
+        self.assertFalse(recover_ocr_runtime_install(self.root))
 
     # 内嵌流测试固定 win32：install 分支与布局在 mac/linux CI 上一致。
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)

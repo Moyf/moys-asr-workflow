@@ -549,6 +549,9 @@
     const ready = Boolean(runtime.ready && model.installed);
     $("ocrModelStatus").textContent = ready ? t("toolbox_ocr_model_ready") : t("toolbox_ocr_model_missing");
     $("ocrModelStatus").classList.toggle("error", !ready);
+    const settingsButton = $("openOcrSettings");
+    settingsButton.dataset.i18n = ready ? "toolbox_ocr_view_settings" : "toolbox_ocr_open_settings";
+    settingsButton.textContent = t(settingsButton.dataset.i18n);
     $("runOcrDedup").disabled = busy || !ready;
   }
 
@@ -1982,6 +1985,7 @@
   window.MAWLauncher.onLanguageChanged = () => {
     syncProviderOptionLabels();
     if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
+    renderOcrModel();
     document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
     syncAlignmentNames();
     renderAlignmentAction();

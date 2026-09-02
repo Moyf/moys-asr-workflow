@@ -3,17 +3,18 @@
 构建管线（``scripts/build-windows.ps1`` / ``scripts/build-appimage.sh`` /
 release.yml 的 macOS 步骤）与源码模式自动补齐（``maw/runtimes/base.py``）
 共用同一份命令构造与编排逻辑：将来新增 GPU runtime 只需在
-``RuntimeSpec`` 声明 ``requirements_in`` / ``requirements_in_args``，不再
+``RuntimeSpec`` 声明 ``requirements_in`` 或 ``requirements_group``，不再
 需要改动任何构建脚本或分派函数。
 
 - 主清单：``spec.requirements_in`` 非 None → ``uv pip compile <in>``
-  （moss，因 Transformers 与 local 互斥而独立声明）；否则 →
-  ``uv export --extra <requirements_key>``（pyproject optional-dependencies）。
+  （moss，因 Transformers 与 local 互斥而独立声明）；否则若声明
+  ``requirements_group`` → ``uv export --only-group <group>``（独立依赖组）；
+  最后才回退到 ``uv export --extra <requirements_key>``。
 - CPU 变体（``requirements-{key}-cpu.txt``）：对声明源执行
   :func:`cpu_requirements_lines`（剥离 ``+cuNNN`` 本地版本号、丢弃 darwin
   分支、剥掉 ``!= 'darwin'`` 冗余条件），生成临时 in 文件到 ``build/`` 下，
-  再 ``uv pip compile --generate-hashes`` 冻结。local 的声明源是 uv export
-  产物中的直接依赖行（版本已锁定，唯一真源仍是 pyproject/uv.lock）；
+  再 ``uv pip compile --generate-hashes`` 冻结。local 的声明源是 dependency
+  group export 产物中的直接依赖行（版本已锁定，唯一真源仍是 pyproject/uv.lock）；
   moss 的声明源是 ``moss-requirements.in`` 本身。
 """
 
@@ -24,6 +25,8 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
@@ -81,22 +84,79 @@ def cpu_input_text(source: str, *, header: str | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def direct_pins_from_export(export_text: str) -> list[str]:
+def _canonical_package_name(name: str) -> str:
+    """Normalize a distribution name using the PEP 503 comparison form."""
+    return re.sub(r"[-_.]+", "-", name).casefold()
+
+
+def _dependency_group_package_names(project_path: Path, group: str) -> set[str]:
+    """Read direct package names from a PEP 735 dependency group.
+
+    ``uv export --only-group`` intentionally omits project ``# via`` markers,
+    so local's generated CPU input needs the direct names from the source TOML
+    to distinguish group roots from their transitive closure.
+    """
+    if not project_path.is_file():
+        return set()
+    try:
+        document = tomllib.loads(project_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return set()
+    groups = document.get("dependency-groups")
+    if not isinstance(groups, Mapping):
+        return set()
+
+    names: set[str] = set()
+    visiting: set[str] = set()
+
+    def visit(group_name: str) -> None:
+        if group_name in visiting:
+            return
+        visiting.add(group_name)
+        entries = groups.get(group_name, ())
+        if not isinstance(entries, list):
+            visiting.remove(group_name)
+            return
+        for entry in entries:
+            if isinstance(entry, str):
+                match = re.match(r"^\s*([A-Za-z0-9][A-Za-z0-9_.-]*)", entry)
+                if match:
+                    names.add(_canonical_package_name(match.group(1)))
+            elif isinstance(entry, Mapping):
+                included = entry.get("include-group")
+                if isinstance(included, str):
+                    visit(included)
+        visiting.remove(group_name)
+
+    visit(group)
+    return names
+
+
+def direct_pins_from_export(
+    export_text: str,
+    *,
+    direct_names: Collection[str] = (),
+) -> list[str]:
     """从 ``uv export`` 的 requirements-txt 产物提取直接依赖的 pin 行。
 
-    直接依赖 = ``# via`` 标注里含项目名（或 ``-r`` 的包）；返回值形如
+    直接依赖 = ``# via`` 标注里含项目名（或 ``-r`` 的包），或者命中
+    ``direct_names`` 提供的 dependency-group 根包；返回值形如
     ``["funasr==1.4.2", "torch==2.13.0 ; sys_platform != 'darwin'"]``，
     版本已按 uv.lock 锁定，剥离哈希与传递依赖，可作为 compile 输入。
     """
     pins: list[str] = []
-    current: tuple[str, list[str]] | None = None  # (pin 行, via 条目列表)
+    normalized_direct_names = {_canonical_package_name(name) for name in direct_names}
+    current: tuple[str, str, list[str]] | None = None  # (pin 行, 包名, via 条目列表)
 
     def flush() -> None:
         nonlocal current
         if current is None:
             return
-        pin, via = current
-        if any(PROJECT_NAME in item or item.startswith("-r ") for item in via):
+        pin, package_name, via = current
+        if (
+            any(PROJECT_NAME in item or item.startswith("-r ") for item in via)
+            or package_name in normalized_direct_names
+        ):
             pins.append(pin)
         current = None
 
@@ -106,22 +166,23 @@ def direct_pins_from_export(export_text: str) -> list[str]:
         if match:
             flush()
             version = match.group(2).rstrip(" \\")
-            current = [f"{match.group(1)}=={version}", []]
+            package_name = _canonical_package_name(match.group(1))
+            current = (f"{match.group(1)}=={version}", package_name, [])
             continue
         if current is None:
             continue
         if line.startswith("# via"):
             rest = line[len("# via"):].strip()
             if rest:
-                current[1].append(rest)
+                current[2].append(rest)
         elif line.startswith("#") and line.lstrip("#").strip():
-            current[1].append(line.lstrip("#").strip())
+            current[2].append(line.lstrip("#").strip())
     flush()
     return pins
 
 
 def main_freeze_command(uv: Path, spec: "RuntimeSpec", build_dir: Path) -> list[str] | None:
-    """主清单冻结命令：in 文件声明 → uv pip compile；否则 uv export extra。"""
+    """主清单冻结命令：in 文件、独立 group、旧 extra 依次选择。"""
     target = str(build_dir / spec.requirements_bundle_name)
     if spec.requirements_in is not None:
         return [
@@ -130,10 +191,14 @@ def main_freeze_command(uv: Path, spec: "RuntimeSpec", build_dir: Path) -> list[
             "--index-strategy", "unsafe-best-match",
             "-o", target,
         ]
+    if spec.requirements_group is not None:
+        return [
+            str(uv), "export", "--frozen", "--only-group", spec.requirements_group,
+            "--format", "requirements-txt", "-o", target,
+        ]
     return [
         str(uv), "export", "--frozen", "--extra", spec.requirements_key, "--no-dev",
-        "--format", "requirements-txt",
-        "-o", target,
+        "--format", "requirements-txt", "-o", target,
     ]
 
 
@@ -172,8 +237,8 @@ def ensure_frozen(
     """补足 frozen 清单（默认幂等；命令经 ``run`` 执行，可被测试注入）。
 
     - 主清单缺失 → 执行主清单冻结命令；
-    - CPU 变体缺失 → 先保证声明源就绪（local 需要主清单 export 产物提取
-      直接依赖；moss 直接读 in 文件），生成式 in 写进 ``build/`` 后 compile。
+    - CPU 变体缺失 → 先保证声明源就绪（local 需要主清单 group export 产物
+      提取直接依赖；moss 直接读 in 文件），生成式 in 写进 ``build/`` 后 compile。
     - 无 CUDA 组件的 runtime（ocr）请求 CPU 变体时直接返回，交上层
       ``requirements_path`` 给出缺失指引（实际不会被请求）。
     - ``force=True`` 时无论输出是否存在都重新生成，供发布构建避免复用旧清单；
@@ -207,11 +272,16 @@ def ensure_frozen(
             _notify(emit, spec)
             run(command)
         export_text = main_txt.read_text(encoding="utf-8")
-        pins = direct_pins_from_export(export_text)
+        direct_names = (
+            _dependency_group_package_names(build_dir.parent / "pyproject.toml", spec.requirements_group)
+            if spec.requirements_group is not None
+            else ()
+        )
+        pins = direct_pins_from_export(export_text, direct_names=direct_names)
         if not pins:
             raise RuntimeError(
                 f"{spec.key}：uv export 产物中未找到直接依赖行"
-                f"（# via {PROJECT_NAME}），无法生成 CPU 变体声明"
+                f"（# via {PROJECT_NAME} 或 dependency group），无法生成 CPU 变体声明"
             )
         source_text = "\n".join(pins) + "\n"
         source_name = main_txt.name

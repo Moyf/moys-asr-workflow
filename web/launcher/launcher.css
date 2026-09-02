@@ -654,6 +654,10 @@ label {
   margin-top: 10px;
 }
 
+#ocrSettingsSection #ocrRuntimeHint {
+  overflow-wrap: anywhere;
+}
+
 .local-model-panel > .ghost {
   justify-self: start;
 }

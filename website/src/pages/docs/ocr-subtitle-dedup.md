@@ -98,7 +98,7 @@ OCR 使用 [RapidOCR](https://github.com/RapidAI/RapidOCR) 的 PP-OCRv6 tiny 或
 开发环境如果需要在主 Python 环境直接运行 OCR，需要安装可选依赖：
 
 ```powershell
-uv sync --extra ocr
+uv sync --group ocr
 ```
 
 tiny 使用 `PP-OCRv6_det_tiny.onnx` 和 `PP-OCRv6_rec_tiny.onnx`；small 使用 `PP-OCRv6_det_small.onnx` 和 `PP-OCRv6_rec_small.onnx`。两种模型都只在独立 OCR 运行环境中按需获取，不进入冻结包。
