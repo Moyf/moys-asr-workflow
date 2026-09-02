@@ -62,7 +62,7 @@ from maw.postprocess_pipeline import (
 from maw.postprocess_pipeline import PostprocessPipelineError
 from maw.script_alignment import normalize_gap_remove_settings
 from maw.text_conversion import TextConversionUnavailable, normalize_text_conversion_mode
-from maw.ocr_runtime import OCR_MODEL_ID, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, run_ocr_in_runtime
+from maw.ocr_runtime import OCR_MODEL_ID, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, recover_ocr_runtime_install, run_ocr_in_runtime
 from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
 
@@ -566,7 +566,13 @@ class LauncherApi:
             self.pump.enqueue({"type": "emojiFontReady", "path": path.as_uri()})
 
     def _ocr_runtime_status(self):
-        return managed_ocr_runtime_status(effective_config_value(self.paths.env_path, "MAW_OCR_RUNTIME_ROOT"))
+        runtime_root = effective_config_value(self.paths.env_path, "MAW_OCR_RUNTIME_ROOT")
+        status = managed_ocr_runtime_status(runtime_root)
+        worker = self.ocr_runtime_worker
+        if getattr(status, "status", "") == "installing" and not (worker and worker.is_alive()):
+            recover_ocr_runtime_install(runtime_root)
+            status = managed_ocr_runtime_status(runtime_root)
+        return status
 
     def get_config(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         config = effective_config(self.paths.env_path)
@@ -1788,6 +1794,8 @@ class LauncherApi:
         kind = str(values.get("kind") or "").strip()
         if kind == "model-cache":
             directory = resolve_model_cache_root(effective_config(self.paths.env_path).model_cache_root)
+        elif kind == "ocr-runtime":
+            directory = Path(self._ocr_runtime_status().path)
         elif kind == "runtime":
             model_cache_root = effective_config(self.paths.env_path).model_cache_root
             requested_model = str(values.get("modelId") or "")
@@ -2263,10 +2271,12 @@ class LauncherApi:
             })
         except OcrRuntimeCancelled as error:
             if cancel_event.is_set():
+                recover_ocr_runtime_install(runtime_root)
                 self._emit({"type": "ocrRuntimeCancelled"})
             else:
                 self._emit({"type": "error", "code": "ocr_runtime_cancelled", "field": "ocrModel", "detail": str(error)})
         except (OcrRuntimeError, OSError) as error:
+            recover_ocr_runtime_install(runtime_root)
             if not cancel_event.is_set():
                 self._emit({"type": "error", "code": "ocr_runtime_install_failed", "field": "ocrModel", "detail": str(error)})
         finally:

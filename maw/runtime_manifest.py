@@ -16,6 +16,7 @@ from pathlib import Path
 
 MANIFEST_NAME = "runtime.json"
 STATUS_INSTALLING = "installing"
+STATUS_BROKEN = "broken"
 STATUS_READY = "ready"
 
 
