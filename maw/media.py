@@ -301,10 +301,13 @@ def _classify_existing(
     )
 
 
-def _same_name_candidates(project_path: Path, data: dict[str, Any]) -> tuple[Path, ...]:
-    raw_media = data.get("media")
-    source_name = Path(str(raw_media)).name if isinstance(raw_media, str) and raw_media.strip() else project_path.name
-    expected_stem = _media_stem(source_name)
+def _portable_path_name(value: str) -> str:
+    """从 POSIX 或 Windows 风格的工程路径中取得文件名。"""
+
+    return Path(value.replace("\\", "/")).name
+
+
+def _same_name_candidates(project_path: Path, expected_stem: str) -> tuple[Path, ...]:
     if not expected_stem:
         return ()
     try:
@@ -319,6 +322,32 @@ def _same_name_candidates(project_path: Path, data: dict[str, Any]) -> tuple[Pat
         and _media_stem(path.name) == expected_stem
     ]
     return tuple(sorted(candidates, key=lambda path: path.name.casefold()))
+
+
+def _classify_candidates(
+    project_path: Path,
+    candidates: tuple[Path, ...],
+    requested: Path | None,
+) -> MediaResolution | None:
+    if not candidates:
+        return None
+    if requested and requested.suffix.lower() == ".flv":
+        mp4_candidates = tuple(path for path in candidates if path.suffix.lower() == ".mp4")
+        if len(mp4_candidates) == 1:
+            return _classify_existing(project_path, mp4_candidates[0], requested_path=requested)
+    if any(path.suffix.lower() == ".flv" for path in candidates):
+        mp4_candidates = tuple(path for path in candidates if path.suffix.lower() == ".mp4")
+        if len(mp4_candidates) == 1:
+            return _classify_existing(project_path, mp4_candidates[0], requested_path=requested)
+    if len(candidates) == 1:
+        return _classify_existing(project_path, candidates[0], requested_path=requested)
+    return MediaResolution(
+        MediaStatus.CONFLICT,
+        project_path,
+        requested_path=requested,
+        candidates=candidates,
+        message="工程目录存在多个同名媒体文件，请手动指定一个",
+    )
 
 
 def resolve_project_media(
@@ -351,25 +380,23 @@ def resolve_project_media(
             paired = _paired_mp4(requested)
             return _classify_existing(project_path, paired or requested, requested_path=requested)
 
-    candidates = _same_name_candidates(project_path, data)
-    if requested and requested.suffix.lower() == ".flv":
-        mp4_candidates = tuple(path for path in candidates if path.suffix.lower() == ".mp4")
-        if len(mp4_candidates) == 1:
-            return _classify_existing(project_path, mp4_candidates[0], requested_path=requested)
-    if any(path.suffix.lower() == ".flv" for path in candidates):
-        mp4_candidates = tuple(path for path in candidates if path.suffix.lower() == ".mp4")
-        if len(mp4_candidates) == 1:
-            return _classify_existing(project_path, mp4_candidates[0], requested_path=requested)
-    if len(candidates) == 1:
-        return _classify_existing(project_path, candidates[0], requested_path=requested)
-    if len(candidates) > 1:
-        return MediaResolution(
-            MediaStatus.CONFLICT,
+    candidate_stems: list[str] = []
+    if isinstance(raw_media, str) and raw_media.strip():
+        referenced_stem = _media_stem(_portable_path_name(raw_media.strip()))
+        if referenced_stem:
+            candidate_stems.append(referenced_stem)
+    project_stem = _media_stem(project_path.name)
+    if project_stem and project_stem not in candidate_stems:
+        candidate_stems.append(project_stem)
+
+    for expected_stem in candidate_stems:
+        resolution = _classify_candidates(
             project_path,
-            requested_path=requested,
-            candidates=candidates,
-            message="工程目录存在多个同名媒体文件，请手动指定一个",
+            _same_name_candidates(project_path, expected_stem),
+            requested,
         )
+        if resolution is not None:
+            return resolution
     return MediaResolution(
         MediaStatus.MISSING,
         project_path,

@@ -58,6 +58,7 @@ from maw.project import (  # noqa: E402
 from maw.media import (  # noqa: E402
     MEDIA_EXTENSIONS,
     MediaConversionError,
+    MediaResolution,
     MediaResolutionError,
     MediaStatus,
     convert_media_for_browser,
@@ -293,6 +294,29 @@ def resolve_media_path(json_path: Path, data: dict, explicit_media: str | None) 
     return resolution.resolved_path
 
 
+def _loaded_media_reference(
+    json_path: Path,
+    media_value: object,
+    source_media_path: Path,
+    resolution: MediaResolution,
+    explicit_media: str | None,
+) -> str:
+    """保留有效的便携引用，并修复已经触发同目录兜底的引用。"""
+
+    if explicit_media is not None:
+        return str(source_media_path)
+    if (
+        isinstance(media_value, str)
+        and media_value.strip()
+        and resolution.requested_path is not None
+        and resolution.requested_path.is_file()
+    ):
+        return media_value.strip()
+    if source_media_path.parent == json_path.parent:
+        return source_media_path.name
+    return str(source_media_path)
+
+
 def load_project(
     json_path: Path,
     explicit_media: str | None,
@@ -365,8 +389,14 @@ def load_project(
         except MediaConversionError as error:
             raise MediaConversionError(f"{error}（源文件：{source_media_path}）") from error
         print(f"[media] 已为浏览器准备播放缓存: {media_path}")
-    # 保存时应沿用实际被服务器加载的媒体；这也会把 -m 覆盖的路径同步回工程。
-    data["media"] = str(source_media_path)
+    # 同目录工程保留相对引用以便整套移动；显式 -m 覆盖和目录外媒体仍记录绝对路径。
+    data["media"] = _loaded_media_reference(
+        json_path,
+        media_value,
+        source_media_path,
+        resolution,
+        explicit_media,
+    )
     # .ReaPeaks 是转写时对"工程 media 字段原始文件"生成的；转换场景下
     # resolved_path 可能已被 _paired_mp4 升级为配对的 mp4，必须用原始
     # 请求路径（requested_path）查找，否则会漏读源媒体旁的缓存。
