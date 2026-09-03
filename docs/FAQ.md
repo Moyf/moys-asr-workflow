@@ -6,7 +6,7 @@ Windows x64 推荐使用 `MAW-Setup-Windows-x64-v*.exe`。安装版在 Launcher 
 
 首个带更新器的版本只能负责后续版本；更旧、尚未包含更新器的 MAW 不会自动升级，仍需先手动安装这个 Installer。
 
-便携 ZIP、macOS 和 Linux 只能打开精确版本的 GitHub Release 页面手动下载。若希望以后使用一键更新，可安装同一 Release 的 Windows Installer；便携版已有的用户数据仍保留在 `%LOCALAPPDATA%\MAW`。
+便携 ZIP、macOS 和 Linux 只能打开精确版本的 GitHub Release 页面手动下载。若希望以后使用一键更新，可通过维护者提供的独立官方 Installer 下载链接安装对应版本；便携版已有的用户数据仍保留在 `%LOCALAPPDATA%\MAW`。
 
 ## 更新失败或没有自动更新按钮
 
@@ -14,7 +14,7 @@ Windows x64 推荐使用 `MAW-Setup-Windows-x64-v*.exe`。安装版在 Launcher 
 
 Launcher 中的更新说明会把常见 Markdown（标题、列表、粗体、代码和链接）渲染成安全的富文本；Release 原始 HTML 不会直接注入窗口，完整说明可通过「打开发布页」查看。
 
-Installer 当前未配置 Windows 代码签名证书，首次运行可能出现 SmartScreen 警告。请核对文件来自本项目 GitHub Release；不要从第三方镜像运行未知安装包。
+Installer 当前未配置 Windows 代码签名证书，首次运行可能出现 SmartScreen 警告。请核对文件来自维护者提供的官方 Installer 下载链接，并比对发布者给出的 SHA-256；不要从第三方镜像运行未知安装包。
 
 ## Windows 下载后启动时报 `Python.Runtime.Loader.Initialize` 错误
 

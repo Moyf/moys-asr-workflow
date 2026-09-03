@@ -25,13 +25,23 @@ MAW（Moy's ASR Workflow）是一个收窄的本地工作流：本地媒体经�
 
 ### 当前编辑器维护重点
 
-当前产品流程以 `server-editor/serve.py` 提供的 Server 版编辑器为主；Windows `MAW-MOSE` 套件中的 Electron MOSE 优先复用这套 Server。Launcher 主按钮优先打开 `MAW\MOSE\MOSE.exe`，不可用时回退 Server；单文件 HTML 和 `blank-editor.html` 仍保留用于兼容既有使用方式。
+当前产品流程以 `server-editor/serve.py` 提供的 Server 版编辑器为主；Windows 官方
+MAW + MOSE 套件中的 Electron MOSE 优先复用这套 Server。Launcher 主按钮优先打开
+`MAW\MOSE\MOSE.exe`，不可用时回退 Server；`.mosp` 关联先指向
+`MAW.exe --open-project`，让直接双击工程也经过更新检查。单文件 HTML 和
+`blank-editor.html` 仍保留用于兼容既有使用方式。
 
 ### MOSE Electron 开发与边界
 
 `desktop/src/main.cjs` 只负责窗口、单实例、工程参数、下载对话框、外链和它自己启动的 `MAW.exe` 生命周期；编辑器 UI 继续唯一来自 `web/`，后端继续来自 `server-editor/serve.py`。桌面模式使用 `--desktop-mode`、系统随机端口和 `MAW_DESKTOP_TOKEN`，所有内部请求必须经过桌面令牌保护。不要把 token 放入命令行或日志，也不要让 Electron 导航到本次启动 origin 之外的页面。
 
-本地验证：在 `desktop/` 执行 `npm ci`、`npm test`、`npm run build` 与 `npm run smoke`。发布套件由完整 `dist/MAW` 复制后加入 `desktop/dist/win-unpacked`，固定为 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe`；MOSE 目录不能脱离同套件的 MAW.exe 运行。Installer、签名、自动更新以及 macOS/Linux Electron 版本暂不实现。
+本地验证：在 `desktop/` 执行 `npm ci`、`npm test`、`npm run build` 与 `npm run smoke`；
+然后在仓库根目录运行 `scripts/stage-mose-bundle.ps1`，把完整 `dist/MAW` 与
+`desktop/dist/win-unpacked` 统一成 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe`，再由
+`scripts/build-installer.ps1` 调用 Inno Setup 生成官方 Installer。Installer、更新器和
+签名脚本均已接入；未配置证书时发布物会明确保持 unsigned。MOSE 目录不能脱离同套件
+的 MAW.exe 运行。Electron 固定在当前受支持的 `44.1.0`，升级时同步更新
+`desktop/package-lock.json` 与打包契约测试。
 
 从 `1.3.2` 到当前 Beta 的功能演进记录见 [版本变更回顾](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/RELEASE_REVIEW_1.3.2_TO_1.4.0.md)。
 
@@ -146,3 +156,22 @@ git diff --check
 ```
 
 交互改动还应手动启动 `uv run python server-editor\serve.py --blank`，验证拖放、播放、Seek、工作区拖动及保存。所有文本保持 UTF-8 与 LF。
+
+### 浏览器回归环境
+
+`tests/e2e/helpers.mjs` 默认通过 `uv run --frozen python` 启动 Python-backed server，并删除继承的 `PYTHONPATH`；只有明确设置 `MAW_E2E_PYTHON` 时才使用指定解释器。这样可以避免把系统 Python 与仓库 `.venv` 的 `site-packages` 混用。
+
+Windows 上建议使用项目入口运行浏览器回归：
+
+```powershell
+.\scripts\run-e2e.ps1 tests/e2e/ass-export.spec.mjs --reporter=line
+```
+
+入口会先验证仓库 `.venv` 是否能导入锁定的 `reapeaks`；若不能，则用 `py -3` 找到系统 Python，在 `%TEMP%\maw-e2e` 下按 `uv.lock` 创建隔离环境和缓存，并以 `MAW_E2E_PYTHON` 启动测试。它还把默认 Playwright 输出放到用户临时目录，避免共享工作树的 `test-results` 权限或占用影响测试。
+
+如果本机的 Playwright Chromium 被安全策略阻止启动，可显式指定已安装且可执行的 Chromium 系浏览器，不改变默认浏览器选择：
+
+```powershell
+$env:MAW_E2E_CHROMIUM_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+.\scripts\run-e2e.ps1 tests/e2e/ass-export.spec.mjs --reporter=line
+```

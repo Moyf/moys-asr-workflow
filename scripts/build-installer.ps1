@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$SourceDir = "dist\MAW",
+    [string]$SourceDir = "build\release\mose\MAW",
     [string]$Version = "",
     [string]$OutputDir = "build\installer",
     [string]$IsccPath = ""
@@ -31,7 +31,10 @@ if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$') {
     throw "Invalid MAW version: $Version"
 }
 if (-not (Test-Path -LiteralPath (Join-Path $ResolvedSource 'MAW.exe') -PathType Leaf)) {
-    throw "Missing MAW.exe in $ResolvedSource. Build the onedir bundle first."
+    throw "Missing MAW.exe in $ResolvedSource. Stage the unified MAW + MOSE suite first."
+}
+if (-not (Test-Path -LiteralPath (Join-Path $ResolvedSource 'MOSE\MOSE.exe') -PathType Leaf)) {
+    throw "Missing MOSE\MOSE.exe in $ResolvedSource. Stage the unified MAW + MOSE suite first."
 }
 foreach ($RelativePath in @('ffmpeg\bin\ffmpeg.exe', 'ffmpeg\bin\ffprobe.exe', 'assets\maw.ico')) {
     if (-not (Test-Path -LiteralPath (Join-Path $ResolvedSource $RelativePath) -PathType Leaf)) {

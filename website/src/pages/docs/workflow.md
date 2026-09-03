@@ -13,9 +13,14 @@ source: "docs/WORKFLOW.md"
 
 ## 0. 安装依赖
 
-如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python、uv、FFmpeg 与 ffprobe 已由默认 `MAW` 包打包，不需要单独安装；体积更小的 `MAW-lite` 包不包含 FFmpeg，需要系统已安装并可在 PATH 中找到 `ffmpeg` 和 `ffprobe`。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app` 或 `MAW-lite.app`。Windows 另提供 `MAW-MOSE-Windows-x64-v*.zip` 套件，内含优先使用的 Electron MOSE（`MAW\MOSE\MOSE.exe`）；Launcher 主按钮会优先打开 MOSE，缺失或启动失败时自动回退到 Server 版，右侧菜单始终可以强制启动 Server。
+如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python、uv、FFmpeg 与 ffprobe 已由默认 `MAW` 包打包，不需要单独安装；体积更小的 `MAW-lite` 包不包含 FFmpeg，需要系统已安装并可在 PATH 中找到 `ffmpeg` 和 `ffprobe`。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app` 或 `MAW-lite.app`。Windows x64 的官方 MOSE 套件与 Installer 属于单独的官方构建，不放进默认 GitHub Release；源码和打包脚本公开，具备条件的用户可以自行构建。
 
-MOSE 与 MAW 共用 `server-editor/serve.py` 和 `.mosp` 工程契约。套件目录必须保持 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe` 的相对关系，MOSE 不能从套件中单独拷出运行；Launcher 只为当前用户注册 `.mosp`，不会关联旧的 `.json` 或覆盖 Windows 的 `UserChoice`。
+MOSE 与 MAW 共用 `server-editor/serve.py` 和 `.mosp` 工程契约。套件目录必须保持
+`MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe` 的相对关系，MOSE 不能从套件中单独拷出运行；
+`.mosp` 关联会先调用 `MAW.exe --open-project`，让 Launcher 完成更新检查后再打开
+MOSE；只在当前用户范围注册，不会关联旧的 `.json` 或覆盖 Windows 的 `UserChoice`。
+
+官方 Windows Installer 按当前用户安装到 `%LOCALAPPDATA%\Programs\MAW`，不需要管理员权限。安装版 Launcher 默认开启软件更新检查，每 24 小时最多请求一次；「配置 → 软件更新」中的手动检查会立即请求并继续使用 ETag 缓存。更新说明会在设置页安全渲染常见 Markdown；如果当前构建没有可自动下载的官方 Installer，则打开发布页或官方下载页供手动更新。更新状态、下载包和失败记录保存在 `%LOCALAPPDATA%\MAW\updates`，`.env`、日志和模型缓存不会因升级或卸载删除。
 
 源码方式继续按下列步骤安装：
 
@@ -308,7 +313,15 @@ Launcher 右下角的圆形按钮会打开工具箱。工具箱的标题、一�
 
 工具箱的一级标签页默认选中「后处理」。「后处理」包含文稿匹配、OCR 字幕去重、LLM 处理和固定替换，面向现有字幕工程或 SRT；它的「处理文件」默认跟随 Launcher 当前填写的工程（或 SRT）路径，也可以手动选择或拖入其他 `.mosp` / `.json` / `.srt` 文件作为处理对象。字幕工具可以在「工程 + SRT」「仅工程」「仅 SRT」之间选择输出。每次成功处理都会生成带操作后缀的新文件，并把新路径自动填回 Launcher 和「处理文件」，供下一步继续处理；工具箱中的处理产物列表也可以点击切换输入。源文件不会被覆盖。
 
-切换到「实用工具」后，页面只显示媒体操作：生成波形和媒体重组。它自己的「媒体文件」默认跟随 Launcher 当前媒体，但允许选择、拖入或直接输入独立覆盖值；清空该输入即可恢复跟随 Launcher。生成波形提供「生成波形文件」和「生成波形并打开编辑器」两个按钮，并可单独选择是否写入 ReaPeaks 频谱数据：前者只写出媒体专用 `.mosp`，后者还会把该工程切换为 Launcher 当前工程并打开编辑器。媒体重组同样只使用此页面的媒体文件，不会改写字幕时间轴或后处理的输入链；先在编辑器中执行「移除静音空隙」，导出 FFconcat 文件后可选择或拖入该文件重组媒体。
+切换到「实用工具」后，页面只显示媒体操作：生成波形、媒体重组、压制字幕和提取音频。它自己的「媒体文件」默认跟随 Launcher 当前媒体，但允许选择、拖入或直接输入独立覆盖值；清空该输入即可恢复跟随 Launcher。生成波形提供「生成波形文件」和「生成波形并打开编辑器」两个按钮，并可单独选择是否写入 ReaPeaks 频谱数据：前者只写出媒体专用 `.mosp`，后者还会把该工程切换为 Launcher 当前工程并打开编辑器。媒体重组同样只使用此页面的媒体文件，不会改写字幕时间轴或后处理的输入链；先在编辑器中执行「移除静音空隙」，导出 FFconcat 文件后可选择或拖入该文件重组媒体。
+
+### 压制字幕
+
+「压制字幕」需要视频媒体和 `.srt`、`.ass` 或 `.ssa` 字幕文件。字幕文件默认跟随 Launcher 当前的 SRT 输出，也可以手动选择或拖入 ASS / SSA。运行后调用 FFmpeg 的 libass 字幕滤镜重新编码为新的 H.264 MP4，默认样式与 MAW 的标准 ASS 导出一致；源视频不会被覆盖，已有同名结果会自动加后缀。压制过程可以在工具箱中停止。
+
+### 提取音频
+
+「提取音频」会先用 FFprobe 读取媒体中的音轨，显示音轨序号、语言、标题、编码、声道数和采样率；多音轨时可选择需要的音轨，单音轨则默认选中它。运行后以 AAC 编码输出新的 `.m4a` 文件，不改写源媒体；没有音轨或未找到完整的 FFmpeg / FFprobe 时会给出明确提示。
 
 ### 文稿匹配
 
@@ -321,7 +334,7 @@ Launcher 右下角的圆形按钮会打开工具箱。工具箱的标题、一�
 
 ### LLM 处理
 
-LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 OpenAI-compatible 接口，可执行校对、重新断句、中英翻译或自定义文字任务。任务下拉框的顺序是「校对文本 → 翻译成中文 → 翻译成英文 → 重新断句 → 自定义」。选择输出模式后可以生成新工程、新 SRT，或同时生成两者。
+LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 OpenAI-compatible 接口，可执行校对、重新断句、中英翻译或自定义文字任务。任务下拉框的顺序是「校对文本 → 翻译成中文 → 翻译成英文 → 重新断句 → 自定义」。选择翻译任务后还可以勾选「合并双语字幕」，把每条字幕写成 `原始文本\n翻译文本` 的单轨格式。选择输出模式后可以生成新工程、新 SRT，或同时生成两者。
 
 - 选择前四项任务时，上方「预设提示词」会显示该任务的只读说明；选择「自定义」时显示「（无）」。下方「自定义提示词」始终可编辑，切换任务只更新上方预设，不会改动用户已经填写的文字；留空时只使用任务预设。
 
@@ -329,6 +342,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 - 模型只能返回 cue ID 的分组与新文字；本地程序检查 ID 是否完整、连续且顺序不变，再使用本地时间槽生成结果。
 - 合并字幕时，新段使用第一段的开始时间和最后一段的结束时间；拆分单段时，本地在原时间槽内分配正时长，模型不能指定时间。
 - 文字改变后，旧的逐词 `items` 会被移除；重新断句后，可能错位的贴纸和颜色引用也会被移除。`segments` 仍是字幕与时间的真源。
+- 「合并双语字幕」会保留原始字幕的时间范围和安全元数据，移除无法对应双行文字的逐词时间码；自动后处理中的翻译前后独立结果会作为中间产物，不再额外发布译文副轨。
 
 供应商 API Key、URL 和模型可在 Launcher 右上角的 `⚙️ 配置` →「LLM 后处理」中保存到本机 `.env`；工具箱 LLM 面板提供快捷链接跳转到这里。界面和 bridge 结果只显示掩码，不会把完整 Key 写入工程或日志。留空已经保存过的 Key 输入框并再次保存 URL/模型时，原 Key 会保留。「测试连接」只使用当前表单值发送最小请求，不会写入配置；保存成功后显示的「LLM 设置已保存。」只是短暂的状态反馈。字幕文字会发送到所选 LLM 供应商，请根据素材敏感程度和供应商的数据政策决定是否使用。完整机器协议见 [LLM_POSTPROCESS_PROTOCOL.md](../llm-postprocess/)。
 
@@ -356,7 +370,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 - 可拖动波形中的字幕块或边缘微调时间；相邻字幕共享边界时会保持连续。
 - 播放器内的字幕预览可直接拖动；悬停或聚焦后拖动八个手柄可缩放。方向键移动，`Shift` 加速移动，`Alt + 方向键` 调整尺寸。几何保存在工程 `preview.subtitle`，不会改变字幕时间。
 - “移除静音空隙”只建立可逆的压缩时间线，不修改原媒体和原字幕时间。
-- 常规 SRT 通过工具栏导出；若启用了空隙移除，可选择去空隙 SRT、OTIO、FFconcat 或保留区域 JSON。
+- 常规 SRT 或 ASS 通过工具栏导出；ASS 会把主字幕预览当前选中的字体、字号和文字颜色写入默认样式。若启用了空隙移除，可选择去空隙 SRT、OTIO、FFconcat 或保留区域 JSON。
 - 去空隙 OTIO 会把启用字幕作为保留媒体 clip 上的 marker，名称为字幕内容；字幕颜色映射为 Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE`，跨越被移除空隙的字幕按保留区间拆分，无颜色时使用白色默认标记。marker 的 `marked_range` 使用媒体源坐标，与 clip 的 `source_range` 和外部引用的 `available_range` 保持一致；带 BWF `bext.time_reference` 的 WAV 会保留非零媒体起点，避免 Resolve 导入后片段内容错位。Resolve 的可用颜色参考还包括 Blue、Cyan、Green、Yellow、Red、Pink、Purple、Fuchsia、Rose、Lavender、Sky、Mint、Lemon、Sand、Cocoa、Cream；当前 MAW 使用其中五色。
 
 完整 JSON 约束在 [JSON_SCHEMA.md](../json-schema/)。若你打算用其他 ASR 或 LLM 生成工程，至少保证顶层有 `segments`，时间全部是整数毫秒。

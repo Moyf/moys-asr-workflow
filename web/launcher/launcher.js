@@ -1059,6 +1059,7 @@
   let api = null;
   let prefsTimer = 0;
   let activeSettingsTab = "general";
+  let updateCheckWaiter = null;
 
   function mockApi() {
     let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "", postprocessApiKeys: {}, theme: null };
@@ -1895,12 +1896,24 @@
       if (detail) appendLog(`[update] ${detail}`);
     }
   }
+  function resolveUpdateCheckWaiter() {
+    const resolve = updateCheckWaiter;
+    updateCheckWaiter = null;
+    if (resolve) resolve();
+  }
   async function openUpdateRelease() {
     const result = await window.MAWLauncher.callBackend("open_url", { url: updateReleaseUrl() });
     if (!result.ok) handleUpdateFailure(result, true);
   }
-  async function checkForUpdates(force = true) {
-    if (state.updateChecking && !force) return;
+  async function checkForUpdates(force = true, waitForCompletion = false) {
+    let completion = null;
+    if (waitForCompletion) {
+      completion = new Promise((resolve) => { updateCheckWaiter = resolve; });
+    }
+    if (state.updateChecking && !force) {
+      if (completion) await completion;
+      return;
+    }
     const requestId = ++state.updateCheckGeneration;
     state.updateManualCheck = force;
     state.updateChecking = true;
@@ -1909,9 +1922,15 @@
     state.updateErrorDetail = "";
     renderUpdate();
     const result = await window.MAWLauncher.callBackend("check_update", { force, requestId });
-    if (requestId !== state.updateCheckGeneration) return;
+    if (requestId !== state.updateCheckGeneration) {
+      resolveUpdateCheckWaiter();
+      if (completion) await completion;
+      return;
+    }
     if (!result.ok) {
       handleUpdateFailure(result, force);
+      resolveUpdateCheckWaiter();
+      if (completion) await completion;
       return;
     }
     if (result.checking) {
@@ -1919,7 +1938,9 @@
       renderUpdate();
     } else {
       setUpdateResult(result, force);
+      resolveUpdateCheckWaiter();
     }
+    if (completion) await completion;
   }
   async function startOrApplyUpdate() {
     const update = state.update || {};
@@ -2463,6 +2484,7 @@
     $("demoBadge").classList.toggle("hidden", window.MAWLauncher.backend !== "mock");
     state.config = await bridge("get_config");
     state.update = state.config?.update || { currentVersion: state.config?.appVersion || "", autoCheck: true };
+    const initialProjectPath = String(state.config?.initialProjectPath || "").trim();
     const configuredServerPort = Number(state.config.serverPort);
     if (Number.isInteger(configuredServerPort) && configuredServerPort >= 1 && configuredServerPort <= 65535) {
       $("port").value = String(configuredServerPort);
@@ -2481,9 +2503,13 @@
     syncWorkspace(); syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage(); renderUpdate(); refreshFfmpeg();
     appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled."); setStatus(t("ready")); await checkExistingServer();
     if (state.update?.autoCheck !== false) {
-      void checkForUpdates(false);
+      await checkForUpdates(false, true);
     }
     window.dispatchEvent(new CustomEvent("mawlauncherready"));
+    if (initialProjectPath) {
+      setJsonPath(initialProjectPath);
+      await openPreferredEditor();
+    }
   }
 
   function handleBackendEvent(event) {
@@ -2491,6 +2517,7 @@
       state.updateManualCheck = Boolean(event.manual);
       setUpdateResult(event.result || {}, Boolean(event.manual));
       if (event.manual && event.result?.ok && !event.result?.available && !event.result?.errorCode) setStatus(t("update_up_to_date"));
+      resolveUpdateCheckWaiter();
       return;
     }
     if (event.type === "updateDownloadProgress") {
@@ -2516,6 +2543,7 @@
     if (event.type === "updateFailed") {
       const manual = event.stage !== "check" || event.manual === true;
       handleUpdateFailure(event, manual);
+      if (event.stage === "check") resolveUpdateCheckWaiter();
       return;
     }
     if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) window.MAWLauncher?.onBatchEvent?.(event);

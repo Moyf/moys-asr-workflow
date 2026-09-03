@@ -139,6 +139,12 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(config["models"][2]["supportsSpeaker"])
         self.assertEqual(config["languages"][0]["id"], "")
 
+    def test_get_config_carries_initial_project_path_for_launcher_startup(self) -> None:
+        project = self.root / "opened.mosp"
+        api = LauncherApi(paths=self.paths, window_getter=lambda: self.window, initial_project_path=str(project))
+
+        self.assertEqual(api.get_config()["initialProjectPath"], str(project))
+
     def test_get_ocr_runtime_recovers_a_stale_install_marker(self) -> None:
         runtime_root = self.root / "ocr-runtime"
         python = OCR.python_path(runtime_root)
@@ -1606,8 +1612,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["detail"], "MOSE.app")
         self.assertTrue(result["searchPaths"])
 
-    def test_register_mosp_association_points_to_mose_icon_and_command(self) -> None:
+    def test_register_mosp_association_points_to_launcher_and_mose_icon(self) -> None:
+        launcher = self.root / "MAW.exe"
         executable = self.root / "MOSE.exe"
+        launcher.write_bytes(b"exe")
         executable.write_bytes(b"exe")
 
         class FakeKey:
@@ -1648,21 +1656,24 @@ class GuiWebBridgeTests(unittest.TestCase):
         fake_winreg = FakeWinreg()
         with mock.patch.object(sys, "platform", "win32"):
             with mock.patch("maw.gui_web._bundled_mose_executable", return_value=executable):
-                with mock.patch("ctypes.windll", create=True):
-                    with mock.patch.dict(sys.modules, {"winreg": fake_winreg}):
-                        self.assertTrue(_register_mosp_association())
+                with mock.patch("maw.gui_web._bundled_launcher_executable", return_value=launcher):
+                    with mock.patch("ctypes.windll", create=True):
+                        with mock.patch.dict(sys.modules, {"winreg": fake_winreg}):
+                            self.assertTrue(_register_mosp_association())
 
         values = {path: value for path, name, value in fake_winreg.values if name is None}
-        self.assertEqual(values[r"Software\Classes\.mosp"], "Moy.MOSE.Project")
-        self.assertEqual(values[r"Software\Classes\Moy.MOSE.Project\DefaultIcon"], f'"{executable}",0')
-        self.assertEqual(values[r"Software\Classes\Moy.MOSE.Project\shell\open\command"], f'"{executable}" "%1"')
+        self.assertEqual(values[r"Software\Classes\.mosp"], "Moy.MAW.Project")
+        self.assertEqual(values[r"Software\Classes\Moy.MAW.Project\DefaultIcon"], f'"{executable}",0')
+        self.assertEqual(values[r"Software\Classes\Moy.MAW.Project\shell\open\command"], f'"{launcher}" --open-project "%1"')
         named_values = {(path, name): value for path, name, value in fake_winreg.values if name is not None}
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "InstallPath")], str(self.root))
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "ExecutablePath")], str(executable))
-        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.5.0")
+        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.5.3")
 
     def test_register_mosp_association_preserves_existing_user_choice(self) -> None:
+        launcher = self.root / "MAW.exe"
         executable = self.root / "MOSE.exe"
+        launcher.write_bytes(b"exe")
         executable.write_bytes(b"exe")
 
         class FakeKey:
@@ -1699,13 +1710,14 @@ class GuiWebBridgeTests(unittest.TestCase):
         fake_winreg = FakeWinreg()
         with mock.patch.object(sys, "platform", "win32"):
             with mock.patch("maw.gui_web._bundled_mose_executable", return_value=executable):
-                with mock.patch.dict(sys.modules, {"winreg": fake_winreg}):
-                    self.assertTrue(_register_mosp_association())
+                with mock.patch("maw.gui_web._bundled_launcher_executable", return_value=launcher):
+                    with mock.patch.dict(sys.modules, {"winreg": fake_winreg}):
+                        self.assertTrue(_register_mosp_association())
 
         paths = {path for path, _name, _value in fake_winreg.values}
         self.assertNotIn(r"Software\Classes\.mosp", paths)
-        self.assertIn(r"Software\Classes\Moy.MOSE.Project\DefaultIcon", paths)
-        self.assertIn(r"Software\Classes\Moy.MOSE.Project\shell\open\command", paths)
+        self.assertIn(r"Software\Classes\Moy.MAW.Project\DefaultIcon", paths)
+        self.assertIn(r"Software\Classes\Moy.MAW.Project\shell\open\command", paths)
 
     def test_register_mosp_association_ignores_external_mose_without_suite(self) -> None:
         executable = self.root / "legacy" / "MOSE.exe"
@@ -2921,6 +2933,27 @@ class LauncherRuntimeTests(unittest.TestCase):
             install_tee.assert_called_once_with(api_sink)
             fake_webview.reset_mock()
 
+    def test_run_app_forwards_initial_project_path_to_launcher_api(self) -> None:
+        paths = LauncherPaths(
+            root=Path("launcher-root"),
+            env_path=Path("launcher-root/.env"),
+            launcher_html=Path("launcher-root/launcher.html"),
+        )
+        fake_webview = mock.Mock()
+        fake_webview.settings = {"OPEN_DEVTOOLS_IN_DEBUG": True}
+        fake_webview.create_window.return_value = None
+        fake_webview.start.return_value = None
+        with (
+            mock.patch.dict(sys.modules, {"webview": fake_webview}),
+            mock.patch("maw.gui_web.default_paths", return_value=paths),
+            mock.patch("maw.gui_web.LauncherApi") as launcher_api_cls,
+            mock.patch("maw.gui_web.install_stdio_tee"),
+            mock.patch("maw.gui_web.asset_path", return_value=Path("missing.ico")),
+        ):
+            run_app(initial_project_path="project.mosp")
+
+        self.assertEqual(launcher_api_cls.call_args.kwargs["initial_project_path"], "project.mosp")
+
 
 @final
 class OpenRuntimeFolderTests(unittest.TestCase):
@@ -3506,6 +3539,16 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("mose_fallback", script)
         self.assertIn('function openServerEditor()', script)
         self.assertIn('bridge("start_server"', script)
+
+    def test_launcher_opens_association_project_after_startup_update_check(self) -> None:
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        check = script.index("await checkForUpdates(false, true);")
+        ready = script.index('window.dispatchEvent(new CustomEvent("mawlauncherready"));')
+        open_project = script.index("setJsonPath(initialProjectPath);")
+        self.assertLess(check, ready)
+        self.assertLess(ready, open_project)
+        self.assertIn("resolveUpdateCheckWaiter", script)
 
     def test_project_change_marks_server_editor_action_for_rebinding(self) -> None:
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")

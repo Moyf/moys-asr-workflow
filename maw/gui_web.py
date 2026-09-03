@@ -85,13 +85,15 @@ FOLDER_DIALOG = 20
 WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
 MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
-MOSE_FILE_TYPE = "Moy.MOSE.Project"
+MAW_FILE_TYPE = "Moy.MAW.Project"
 MOSE_USER_CHOICE_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.mosp\UserChoice"
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
 BUNDLED_APP_VERSION = "1.5.3"
-MOSE_VERSION = "0.1.0"
+# MOSE ships inside the same suite as MAW, so its registry marker must follow
+# the public project version rather than retaining the prototype 0.1.x value.
+MOSE_VERSION = BUNDLED_APP_VERSION
 
 
 ERROR_MESSAGES: Final[dict[str, str]] = {
@@ -302,6 +304,27 @@ def _bundled_mose_executable() -> Path | None:
     return None
 
 
+def _bundled_launcher_executable() -> Path | None:
+    """Return the MAW executable that owns the installed project association."""
+    repo_root = Path(__file__).resolve().parents[1]
+    candidates: tuple[Path, ...]
+    if getattr(sys, "frozen", False):
+        candidates = (Path(sys.executable).resolve(strict=False),)
+    else:
+        candidates = (
+            repo_root / "dist" / "MAW" / "MAW.exe",
+            repo_root / "build" / "release" / "mose" / "MAW" / "MAW.exe",
+        )
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if resolved.is_file() and resolved.suffix.casefold() == ".exe":
+            return resolved
+    return None
+
+
 def _mose_search_paths() -> list[Path]:
     """Return the optional MOSE paths that the MAW Launcher will inspect."""
     candidates: list[Path] = []
@@ -414,40 +437,37 @@ def _mosp_user_choice_exists(winreg_module: object) -> bool:
 
 
 def _register_mosp_association() -> bool:
-    """Register the portable package's .mosp association for the current Windows user."""
+    """Register .mosp with MAW so direct opens still pass through the updater."""
     if sys.platform != "win32":
         return False
+    launcher = _bundled_launcher_executable()
     bundled = _bundled_mose_executable()
-    # Associations belong to the portable MAW-MOSE suite only.  An external
-    # legacy MOSE may still be launched by the explicit editor action, but it
-    # must never be made the default handler merely because the Launcher can
-    # discover it in the registry or an old install directory.
-    if bundled is None:
+    # Associations belong to the complete MAW-MOSE suite only.  Pointing the
+    # command at MAW (instead of MOSE) is intentional: it lets a double-clicked
+    # project pass through the Launcher update check before opening MOSE.
+    if launcher is None or bundled is None:
         return False
-    executable = bundled
-    # MOSE.exe already embeds the MOSE icon.  Referencing the executable keeps
-    # the association self-contained in the portable bundle and avoids pointing
-    # Explorer at MAW's launcher icon (or at a stale _MEIPASS path).
-    icon = executable
+    executable = launcher
+    icon = bundled
     try:
         import winreg
 
         user_choice_exists = _mosp_user_choice_exists(winreg)
         version = MOSE_VERSION
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as mose_key:
-            winreg.SetValueEx(mose_key, "InstallPath", 0, winreg.REG_SZ, str(executable.parent))
-            winreg.SetValueEx(mose_key, "ExecutablePath", 0, winreg.REG_SZ, str(executable))
+            winreg.SetValueEx(mose_key, "InstallPath", 0, winreg.REG_SZ, str(bundled.parent))
+            winreg.SetValueEx(mose_key, "ExecutablePath", 0, winreg.REG_SZ, str(bundled))
             winreg.SetValueEx(mose_key, "Version", 0, winreg.REG_SZ, version)
         if not user_choice_exists:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp") as extension_key:
-                winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, MOSE_FILE_TYPE)
+                winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, MAW_FILE_TYPE)
                 winreg.SetValueEx(extension_key, "Content Type", 0, winreg.REG_SZ, "application/json")
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}") as file_type_key:
-            winreg.SetValueEx(file_type_key, None, 0, winreg.REG_SZ, "MOSE Project")
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}\DefaultIcon") as icon_key:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MAW_FILE_TYPE}") as file_type_key:
+            winreg.SetValueEx(file_type_key, None, 0, winreg.REG_SZ, "MAW Project")
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MAW_FILE_TYPE}\DefaultIcon") as icon_key:
             winreg.SetValueEx(icon_key, None, 0, winreg.REG_SZ, f'"{icon}",0')
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}\shell\open\command") as command_key:
-            winreg.SetValueEx(command_key, None, 0, winreg.REG_SZ, f'"{executable}" "%1"')
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MAW_FILE_TYPE}\shell\open\command") as command_key:
+            winreg.SetValueEx(command_key, None, 0, winreg.REG_SZ, f'"{executable}" --open-project "%1"')
     except (AttributeError, ImportError, OSError):
         return False
     try:
@@ -602,11 +622,13 @@ class LauncherApi:
         window_getter: Callable[[], object | None] | None = None,
         default_server_port: int | None = None,
         log_sink: LocalLogSink | None = None,
+        initial_project_path: str | None = None,
     ) -> None:
         self.paths = paths or default_paths()
         self.window_getter = window_getter or _active_window
         self.default_server_port = default_server_port
         self._log_sink = log_sink
+        self.initial_project_path = str(initial_project_path or "").strip()
         self.cancel_event: Event | None = None
         self.worker: threading.Thread | None = None
         self.batch_worker: threading.Thread | None = None
@@ -745,6 +767,7 @@ class LauncherApi:
             "serverPort": self.default_server_port,
             "moseAvailable": _find_mose_executable() is not None,
             "moseBundled": _bundled_mose_executable() is not None,
+            "initialProjectPath": self.initial_project_path,
             "update": self.updater.initial_status(),
         }
 
@@ -2755,13 +2778,19 @@ class LauncherApi:
                 self.pump.flush()
 
 
-def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | None = None) -> None:
+def run_app(
+    *,
+    debug: bool = False,
+    devtools: bool = False,
+    server_port: int | None = None,
+    initial_project_path: str | None = None,
+) -> None:
     import webview
 
-    # Portable MAW-MOSE bundles have no installer; keep the per-user .mosp
-    # association pointed at the current nested Electron executable.  A
-    # MAW-only package never registers an association on its own.
-    if sys.platform == "win32" and _bundled_mose_executable() is not None:
+    # Keep the per-user .mosp association pointed at MAW.  A double-clicked
+    # project therefore gets the same update check as a normal Launcher start,
+    # and the loaded Launcher then opens the preferred MOSE editor.
+    if sys.platform == "win32":
         _register_mosp_association()
 
     # pywebview opens DevTools automatically in debug mode when this setting is
@@ -2771,7 +2800,12 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     paths = default_paths()
     # 事件流与进程内 print/traceback 共用同一个 sink：单锁单文件。
     log_sink = LocalLogSink()
-    api = LauncherApi(paths=paths, default_server_port=server_port, log_sink=log_sink)
+    api = LauncherApi(
+        paths=paths,
+        default_server_port=server_port,
+        log_sink=log_sink,
+        initial_project_path=initial_project_path,
+    )
     install_stdio_tee(log_sink)
     window = webview.create_window(
         WINDOW_TITLE,

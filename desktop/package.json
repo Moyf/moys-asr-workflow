@@ -1,7 +1,7 @@
 {
   "name": "mose-desktop",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.5.3",
   "description": "MOSE — Moy's Open Subtitle Editor (Electron desktop app)",
   "main": "src/main.cjs",
   "scripts": {
@@ -12,7 +12,7 @@
     "test": "node --test tests/*.mjs"
   },
   "devDependencies": {
-    "electron": "37.2.6",
+    "electron": "44.1.0",
     "electron-builder": "26.0.12"
   },
   "build": {
@@ -30,7 +30,9 @@
       "target": [
         {
           "target": "dir",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "../assets/MOSE-icon.png"

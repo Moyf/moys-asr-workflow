@@ -16,20 +16,21 @@ moys-asr-workflow/
 └── desktop/src/runtime_helpers.cjs
 ```
 
-发布套件固定为：
+统一套件固定为：
 
 ```text
-MAW-MOSE-Windows-x64-<version>.zip
+MAW + MOSE Windows x64 Installer
 └── MAW/
     ├── MAW.exe
-    └── MOSE/
-        ├── MOSE.exe
-        └── resources/…
+    ├── MOSE/
+    │   ├── MOSE.exe
+    │   └── resources/…
+    └── ffmpeg/…
 ```
 
-`MOSE` 目录不能脱离同一套件的 `MAW.exe` 单独运行。MAW Launcher 会优先检测
-`MAW\MOSE\MOSE.exe`，并在 Windows 当前用户范围内更新 `.mosp` 的打开命令和
-MOSE 图标；不会写入管理员范围的注册表，也不会修改 Windows 已有的 `UserChoice`。
+默认 GitHub Release 不上传 MOSE 或 Installer；官方 Installer 通过单独的下载链接
+分发。源码、构建脚本和测试公开，Installer 不包含 License Key 或联网授权校验。
+`MOSE` 目录不能脱离同一套件的 `MAW.exe` 单独运行。
 
 ## 本地开发
 
@@ -46,12 +47,24 @@ npm run dev
 npm start -- "D:\Projects\clip.mosp"
 ```
 
-安全边界：窗口启用 `contextIsolation`、sandbox 且关闭 `nodeIntegration`；只允许
-导航到本次启动的精确 `127.0.0.1` 地址，外部链接交给系统浏览器。后端使用系统
-随机端口，并通过 `MAW_DESKTOP_TOKEN` 环境变量传递一次性令牌，令牌不会出现在
-命令行或日志中。
+## 构建统一套件与 Installer
 
-## 验证与构建
+在仓库根目录先构建 MAW 和 MOSE，再进行统一 staging：
+
+```powershell
+.\scripts\build-windows.ps1 -SkipTests
+cd desktop
+npm run build
+cd ..
+.\scripts\stage-mose-bundle.ps1
+.\scripts\build-installer.ps1 -Version "1.5.3"
+```
+
+`build-installer.ps1` 默认只接受 `build\release\mose\MAW`，会检查 `MAW.exe`、
+`MOSE\MOSE.exe`、FFmpeg 和 Electron `resources\app.asar`。需要 Inno Setup 6 的
+`ISCC.exe`；安装测试请显式加 `-AllowDestructive`，或只在隔离 CI（`CI=true`）运行。
+
+## 验证
 
 ```powershell
 npm test
@@ -62,10 +75,18 @@ npm run smoke       # 启动后端、加载页面、正常退出
 修改 `web/` 后先在仓库根目录重新生成便携页面：
 
 ```powershell
-..\.venv\Scripts\python.exe edit.py --blank
+uv run python edit.py --blank
 ```
 
-Installer、卸载清理、开始菜单快捷方式、代码签名、自动更新以及 macOS/Linux
-Electron 版本不在当前范围内；本轮只发布 Windows x64 套件 ZIP。
+## 工程打开、更新与安全
+
+Installer 和完整便携套件为当前用户建立 `.mosp` 关联，命令指向
+`MAW.exe --open-project "%1"`。双击工程会先进入 Launcher 完成更新检查，再自动
+打开 MOSE；因此不会绕过更新提示。更新没有可下载的官方 Installer 时会打开发布页，
+由用户使用单独的官方 Installer 链接手动更新。
+
+Electron 窗口启用 `contextIsolation`、sandbox 且关闭 `nodeIntegration`；只允许导航
+到本次启动的精确 `127.0.0.1` 地址，外部链接交给系统浏览器。后端使用系统随机端口，
+通过 `MAW_DESKTOP_TOKEN` 传递一次性令牌，令牌不会出现在命令行或日志中。
 
 License: AGPL-3.0-only（与 MAW 主仓库一致）。

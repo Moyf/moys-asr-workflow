@@ -1005,6 +1005,18 @@ class GuiWorkflowTests(unittest.TestCase):
                 self.assertEqual(maw_gui.main(argv), 0)
                 run_app.assert_called_once_with(**expected.kwargs)
 
+    def test_entrypoint_open_project_routes_through_launcher(self) -> None:
+        import maw_gui
+
+        with mock.patch("maw.gui_web.run_app") as run_app:
+            self.assertEqual(maw_gui.main(["--open-project", "project.mosp"]), 0)
+
+        run_app.assert_called_once_with(
+            debug=False,
+            devtools=False,
+            initial_project_path="project.mosp",
+        )
+
     def test_entrypoint_gui_failure_uses_friendly_startup_boundary(self) -> None:
         import maw_gui
 

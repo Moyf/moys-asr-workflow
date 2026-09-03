@@ -45,7 +45,7 @@ The official Windows Installer checks for updates at startup at most once per da
 
 - When a cloud provider is selected, media is uploaded directly to that provider. MAW has no hosted transcription service and does not manage your API keys.
 - The `.mosp` project is the source of truth. SRT is useful for ordinary delivery, while ASS preserves the selected main-subtitle preview font, size, and text color; neither format preserves all word-level timing, waveform, or project metadata.
-- Keep the suite layout as `MAW\MAW.exe` and `MAW\MOSE\MOSE.exe`; MOSE cannot run without the sibling `MAW.exe`. The Launcher registers `.mosp` only for the current user, respects an existing Windows default-app choice, and still accepts legacy `.json` files without associating that extension.
+- Keep the official suite layout as `MAW\MAW.exe` and `MAW\MOSE\MOSE.exe`; MOSE cannot run without the sibling `MAW.exe`. The `.mosp` association points to `MAW.exe --open-project`, so a double-click passes through the update check before opening MOSE. It is registered only for the current user, respects an existing Windows default-app choice, and still accepts legacy `.json` files without associating that extension.
 - Pricing, retention, and availability depend on each provider; see [ASR providers and configuration](docs/PROVIDERS.md).
 - [Three-minute video overview](https://www.bilibili.com/video/BV1hXum6yELT)
 

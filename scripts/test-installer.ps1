@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$InstallerPath,
-    [string]$Version = ""
+    [string]$Version = "",
+    [switch]$AllowDestructive
 )
 
 Set-StrictMode -Version Latest
@@ -13,12 +14,30 @@ if (-not (Test-Path -LiteralPath $Installer -PathType Leaf)) {
     throw "Installer not found: $Installer"
 }
 
+if (-not $AllowDestructive -and $env:CI -ne 'true') {
+    throw 'Installer smoke changes the per-user MAW install and must be run with -AllowDestructive (or CI=true).'
+}
+
 $AppRoot = Join-Path $env:LOCALAPPDATA 'Programs\MAW'
 $DataRoot = Join-Path $env:LOCALAPPDATA 'MAW'
 $EnvPath = Join-Path $DataRoot '.env'
 $ExpectedVersion = ($Version -replace '^v', '')
 $LogRoot = Join-Path $env:TEMP 'maw-installer-smoke'
 New-Item -ItemType Directory -Path $LogRoot -Force | Out-Null
+
+if (Test-Path -LiteralPath $AppRoot) {
+    throw "Refusing to overwrite an existing MAW installation: $AppRoot"
+}
+if (Test-Path -LiteralPath $EnvPath) {
+    throw "Refusing to overwrite existing MAW user data: $EnvPath"
+}
+$UninstallRoot = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+$ExistingUninstall = Get-ChildItem -Path $UninstallRoot -ErrorAction SilentlyContinue |
+    Where-Object { $_.GetValue('DisplayName') -eq "Moy's ASR Workflow" } |
+    Select-Object -First 1
+if ($ExistingUninstall) {
+    throw "Refusing to overwrite an existing MAW uninstall entry: $($ExistingUninstall.Name)"
+}
 
 function Invoke-Installer([string]$Path, [string]$LogPath) {
     $process = Start-Process -FilePath $Path -ArgumentList @(
@@ -34,11 +53,13 @@ Invoke-Installer $Installer (Join-Path $LogRoot 'install.log')
 if (-not (Test-Path -LiteralPath (Join-Path $AppRoot 'MAW.exe') -PathType Leaf)) {
     throw "MAW.exe was not installed under $AppRoot"
 }
+if (-not (Test-Path -LiteralPath (Join-Path $AppRoot 'MOSE\MOSE.exe') -PathType Leaf)) {
+    throw "MOSE\MOSE.exe was not installed under $AppRoot"
+}
 $StartMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Moy's ASR Workflow.lnk"
 if (-not (Test-Path -LiteralPath $StartMenuShortcut -PathType Leaf)) {
     throw "The expected Start Menu shortcut was not created: $StartMenuShortcut"
 }
-$UninstallRoot = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
 $UninstallEntry = Get-ChildItem -Path $UninstallRoot -ErrorAction SilentlyContinue |
     Where-Object { $_.GetValue('DisplayName') -eq "Moy's ASR Workflow" } |
     Select-Object -First 1

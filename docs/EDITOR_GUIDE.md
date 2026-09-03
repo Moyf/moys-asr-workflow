@@ -4,7 +4,10 @@ MAWE（Moy's ASR Workflow Editor）是 MAW 自带的字幕编辑器，提供 Ser
 
 - 推荐：`uv run python server-editor\serve.py "subtitle-project.mosp"`。它通过 `http://127.0.0.1` 提供媒体 Range 请求，适合日常编辑和大型视频 Seek。
 - 便携：双击转写生成的 `.edit.html`，或打开仓库根目录的 `blank-editor.html` 后单独选择 `.mosp` / `.json` 工程；浏览器无法自动读取关联媒体时会提示选择。它不需要启动服务，适合携带和离线检查。
-- Windows 图形版：双击 Release 压缩包中的 `MAW.exe` 生成工程；在 `MAW-MOSE` 套件中 Launcher 主按钮优先打开独立 MOSE，缺失或启动失败时回退到 Server 版，也可直接启动 `MAW\\MOSE\\MOSE.exe` 或双击 `.mosp`。便携编辑器 HTML 仅保留兼容入口。
+- Windows 图形版：双击默认 Release 压缩包中的 `MAW.exe` 生成工程；官方 MAW + MOSE
+  Installer 的 Launcher 主按钮优先打开独立 MOSE，缺失或启动失败时回退到 Server 版，
+  也可直接启动 `MAW\\MOSE\\MOSE.exe`。双击 `.mosp` 会先进入 `MAW.exe --open-project`，
+  完成更新检查后自动打开 MOSE；便携编辑器 HTML 仅保留兼容入口。
 
 无论用哪种方式，`.mosp` / `.json` 工程文件都是字幕真源；新工程优先使用 `.mosp`，旧 `.json` 工程无需迁移即可继续编辑。SRT 只能保留文本和时间，不能完整保留字/词级时间码、表情包、颜色、波形、工作区与静音空隙决定。
 

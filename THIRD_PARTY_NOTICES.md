@@ -1,6 +1,6 @@
 # Third-party notices
 
-本仓库不打包模型或云端 API 服务。默认的 `MAW-Windows` 与 `MAW-macOS-arm64` 包会附带对应平台的 `ffmpeg` 与 `ffprobe`；可选的 `MAW-lite` 包不含 FFmpeg；Linux 的 `MAW-Linux-x86_64.AppImage` 始终内置静态 `ffmpeg`/`ffprobe`（BtbN 构建）。Windows 包还会在 `bootstrap/` 携带嵌入式 Python（python-3.11.9-embed-amd64.zip）与 `get-pip.py`，供用户通过 GUI 创建本地 ASR 运行环境。Windows `MAW-MOSE` 套件额外包含 Electron 运行时和 electron-builder 生成的 `MOSE.exe`；MOSE 不重复携带 MAW 的 Python、模型或 FFmpeg。运行时可能使用下列外部组件；许可证和服务条款以各项目及服务方的最新文本为准。
+本仓库不打包模型或云端 API 服务。默认的 `MAW-Windows` 与 `MAW-macOS-arm64` 包会附带对应平台的 `ffmpeg` 与 `ffprobe`；可选的 `MAW-lite` 包不含 FFmpeg；Linux 的 `MAW-Linux-x86_64.AppImage` 始终内置静态 `ffmpeg`/`ffprobe`（BtbN 构建）。Windows 包还会在 `bootstrap/` 携带嵌入式 Python（python-3.11.9-embed-amd64.zip）与 `get-pip.py`，供用户通过 GUI 创建本地 ASR 运行环境。单独分发的 Windows MAW + MOSE Installer 额外包含 Electron 运行时和 electron-builder 生成的 `MOSE.exe`；MOSE 不重复携带 MAW 的 Python、模型或 FFmpeg。运行时可能使用下列外部组件；许可证和服务条款以各项目及服务方的最新文本为准。
 
 | Component | Purpose | License / terms |
 |---|---|---|

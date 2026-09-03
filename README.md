@@ -51,7 +51,7 @@ Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版�
 
 - 选择云端服务转写时，媒体会直接上传到对应服务商；MAW 没有自己的云端服务器，也不会代管 API Key。
 - `.mosp` 工程是字幕真源；SRT 适合普通交付，ASS 可保留主字幕预览选择的字体、字号和文字颜色，但两者都不会保留全部字级时间码、波形和其他工程数据。
-- `MAW-MOSE` 套件中的目录必须保持 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe` 的相对关系；MOSE 不能脱离同套件的 `MAW.exe` 单独运行。Launcher 只在当前用户范围关联 `.mosp`，不会强制覆盖 Windows 的已有默认应用选择；旧 `.json` 仍兼容打开但不建立系统关联。
+- 官方 MAW + MOSE 套件中的目录必须保持 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe` 的相对关系；MOSE 不能脱离同套件的 `MAW.exe` 单独运行。`.mosp` 关联指向 `MAW.exe --open-project`，双击工程会先完成更新检查再打开 MOSE；关联只在当前用户范围生效，不会强制覆盖 Windows 的已有默认应用选择。旧 `.json` 仍兼容打开但不建立系统关联。
 - 费用、数据保留和服务可用性以服务商当前政策为准，详见[ASR 服务与配置](docs/PROVIDERS.md)。
 - [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
 

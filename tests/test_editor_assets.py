@@ -237,7 +237,7 @@ class EditorAssetContractTests(unittest.TestCase):
         editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
 
         self.assertIn('"main": "src/main.cjs"', package_json)
-        self.assertIn('"electron": "37.2.6"', package_json)
+        self.assertIn('"electron": "44.1.0"', package_json)
         self.assertIn('"electron-builder": "26.0.12"', package_json)
         # The Electron source path is assembled with Node's platform-aware
         # ``path.join`` rather than a hard-coded slash-separated literal.
@@ -253,7 +253,9 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("desktopOpenProjectUrl", editor)
         self.assertIn("let suppressBeforeUnload = false;", editor)
         self.assertIn("suppressBeforeUnload = true;", editor)
-        self.assertFalse((ROOT / "desktop" / "src-tauri").exists())
+        # A developer checkout may retain ignored artifacts from an older
+        # desktop experiment; the source contract is what must stay Tauri-free.
+        self.assertNotIn("src-tauri", package_json + main_process + preload + editor)
 
 
 class StickerScanTests(unittest.TestCase):

@@ -1,4 +1,4 @@
-; Inno Setup definition for the recommended per-user MAW Windows package.
+; Inno Setup definition for the recommended per-user MAW + MOSE Windows package.
 ; The build script supplies MAW_VERSION and MAW_SOURCE_DIR with /D defines.
 
 #define AppVersion GetEnv("MAW_VERSION")
@@ -7,7 +7,7 @@
 #endif
 #define MawSourceDir GetEnv("MAW_SOURCE_DIR")
 #if MawSourceDir == ""
-  #define MawSourceDir AddBackslash(SourcePath) + "..\\dist\\MAW"
+  #define MawSourceDir AddBackslash(SourcePath) + "..\\build\\release\\mose\\MAW"
 #endif
 
 [Setup]
@@ -43,19 +43,25 @@ Source: "{#MawSourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsu
 
 [Icons]
 Name: "{autoprograms}\Moy's ASR Workflow"; Filename: "{app}\MAW.exe"; WorkingDir: "{app}"
+Name: "{autoprograms}\Moy's Open Subtitle Editor"; Filename: "{app}\MOSE\MOSE.exe"; WorkingDir: "{app}\MOSE"
 
 [Registry]
 Root: HKCU; Subkey: "Software\Moy\MAW"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekeyifempty
 Root: HKCU; Subkey: "Software\Moy\MAW"; ValueType: string; ValueName: "ExecutablePath"; ValueData: "{app}\MAW.exe"; Flags: uninsdeletekeyifempty
 Root: HKCU; Subkey: "Software\Moy\MAW"; ValueType: string; ValueName: "InstallKind"; ValueData: "installer"; Flags: uninsdeletekeyifempty
 Root: HKCU; Subkey: "Software\Moy\MAW"; ValueType: string; ValueName: "Version"; ValueData: "{#AppVersion}"; Flags: uninsdeletekeyifempty
+Root: HKCU; Subkey: "Software\Classes\.mosp"; ValueType: string; ValueName: ""; ValueData: "Moy.MAW.Project"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\Moy.MAW.Project"; ValueType: string; ValueName: ""; ValueData: "MAW Project"; Flags: uninsdeletekeyifempty
+Root: HKCU; Subkey: "Software\Classes\Moy.MAW.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\MOSE\MOSE.exe,0"; Flags: uninsdeletekeyifempty
+Root: HKCU; Subkey: "Software\Classes\Moy.MAW.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\MAW.exe"" --open-project ""%1"""; Flags: uninsdeletekeyifempty
 
 [Code]
 function InitializeSetup(): Boolean;
 begin
   Result := FileExists(ExpandConstant('{#MawSourceDir}\MAW.exe')) and
+    FileExists(ExpandConstant('{#MawSourceDir}\MOSE\MOSE.exe')) and
     FileExists(ExpandConstant('{#MawSourceDir}\ffmpeg\bin\ffmpeg.exe')) and
     FileExists(ExpandConstant('{#MawSourceDir}\ffmpeg\bin\ffprobe.exe'));
   if not Result then
-    MsgBox('The MAW standard bundle or its bundled FFmpeg files are missing.', mbError, MB_OK);
+    MsgBox('The MAW + MOSE suite or its bundled FFmpeg files are missing.', mbError, MB_OK);
 end;

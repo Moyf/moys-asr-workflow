@@ -24,6 +24,7 @@ _INTERNAL_FLAGS = frozenset(
         "--transcribe-tencent",
         "--serve",
         "--serve-alignment",
+        "--open-project",
     }
 )
 _TRANSCRIPTION_FLAGS = frozenset(
@@ -87,6 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--open-project",
+        metavar="PROJECT",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "-dbg",
         "--debug",
         action="store_true",
@@ -135,10 +141,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from maw.gui_web import run_app
 
-    if args.debug_port is None:
-        run_app(debug=args.debug or args.devtools, devtools=args.devtools)
-    else:
-        run_app(debug=args.debug or args.devtools, devtools=args.devtools, server_port=args.debug_port)
+    run_kwargs = {"debug": args.debug or args.devtools, "devtools": args.devtools}
+    if args.debug_port is not None:
+        run_kwargs["server_port"] = args.debug_port
+    if args.open_project:
+        run_kwargs["initial_project_path"] = args.open_project
+    run_app(**run_kwargs)
     return 0
 
 
@@ -168,7 +176,7 @@ def run_entrypoint(argv: Sequence[str] | None = None) -> int:
 
 
 def _is_gui_invocation(argv: Sequence[str]) -> bool:
-    return not argv or _is_gui_debug_invocation(argv)
+    return not argv or _is_gui_debug_invocation(argv) or argv[0] == "--open-project"
 
 
 def _is_transcription_invocation(argv: Sequence[str]) -> bool:

@@ -242,15 +242,10 @@ jobs:
           Compress-Archive -LiteralPath 'dist\MAW-lite' -DestinationPath "MAW-lite-Windows-x64-$Version.zip" -Force
           Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath "MAW-Windows-x64-$Version.zip" -Force
 
+          .\scripts\stage-mose-bundle.ps1
           $SuiteRoot = Join-Path $PWD 'build\release\mose'
           $SuiteMaw = Join-Path $SuiteRoot 'MAW'
           $SuiteMose = Join-Path $SuiteMaw 'MOSE'
-          New-Item -ItemType Directory -Path $SuiteMaw -Force | Out-Null
-          New-Item -ItemType Directory -Path $SuiteMose -Force | Out-Null
-          # -Path is intentional here: -LiteralPath treats the trailing `*` as
-          # a literal filename and would leave the suite empty on Windows.
-          Copy-Item -Path 'dist\MAW\*' -Destination $SuiteMaw -Recurse -Force
-          Copy-Item -Path 'desktop\dist\win-unpacked\*' -Destination $SuiteMose -Recurse -Force
           $MoseExe = Join-Path $SuiteMose 'MOSE.exe'
           if (-not (Test-Path -LiteralPath (Join-Path $SuiteMaw 'MAW.exe') -PathType Leaf)) {
             throw 'MAW-MOSE suite is missing MAW\MAW.exe.'
@@ -312,14 +307,10 @@ jobs:
             throw "Packaged MOSE smoke exited with $($Smoke.ExitCode)."
           }
 
-          Compress-Archive -LiteralPath (Join-Path $SuiteRoot 'MAW') -DestinationPath "MAW-MOSE-Windows-x64-$Version.zip" -Force
-
           $ElectronUnpackedBytes = (Get-ChildItem -LiteralPath 'desktop\dist\win-unpacked' -File -Recurse | Measure-Object -Property Length -Sum).Sum
           $MoseIncrementBytes = (Get-ChildItem -LiteralPath $SuiteMose -File -Recurse | Measure-Object -Property Length -Sum).Sum
-          $SuiteZipBytes = (Get-Item -LiteralPath "MAW-MOSE-Windows-x64-$Version.zip").Length
           Write-Host ("Electron win-unpacked size: {0:N0} bytes" -f $ElectronUnpackedBytes)
           Write-Host ("MOSE suite increment: {0:N0} bytes" -f $MoseIncrementBytes)
-          Write-Host ("MAW-MOSE ZIP size: {0:N0} bytes" -f $SuiteZipBytes)
 
       - name: Install Inno Setup
         if: startsWith(github.ref, 'refs/tags/v')
@@ -331,22 +322,18 @@ jobs:
         shell: pwsh
         run: .\scripts\build-installer.ps1 -Version "${{ steps.version.outputs.version }}"
 
-      - name: Optional code-signing hook (non-blocking)
+      - name: Sign Windows installer when certificate is configured
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
-          MAW_SIGN_CERTIFICATE: ${{ secrets.MAW_SIGN_CERTIFICATE }}
-        run: |
-          if ($env:MAW_SIGN_CERTIFICATE) {
-            Write-Warning 'MAW_SIGN_CERTIFICATE is configured, but signing is intentionally left as a maintainer hook; wire signtool here before enabling it as a release policy.'
-          } else {
-            Write-Warning 'No Windows code-signing certificate is configured. The MAW Installer may trigger SmartScreen; verify the GitHub Release source before running it.'
-          }
+          MAW_SIGN_CERTIFICATE_BASE64: ${{ secrets.MAW_SIGN_CERTIFICATE_BASE64 }}
+          MAW_SIGN_CERTIFICATE_PASSWORD: ${{ secrets.MAW_SIGN_CERTIFICATE_PASSWORD }}
+        run: .\scripts\sign-installer.ps1 -InstallerPath "build\installer\MAW-Setup-Windows-x64-${{ steps.version.outputs.version }}.exe"
 
       - name: Smoke install, in-place upgrade, launch, and uninstall
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
-        run: .\scripts\test-installer.ps1 -InstallerPath "build\installer\MAW-Setup-Windows-x64-${{ steps.version.outputs.version }}.exe" -Version "${{ steps.version.outputs.version }}"
+        run: .\scripts\test-installer.ps1 -InstallerPath "build\installer\MAW-Setup-Windows-x64-${{ steps.version.outputs.version }}.exe" -Version "${{ steps.version.outputs.version }}" -AllowDestructive
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -832,7 +819,6 @@ jobs:
               if asset["size"] != len(data) or asset["sha256"] != hashlib.sha256(data).hexdigest():
                   raise SystemExit(f"manifest hash/size mismatch: {path}")
           required = {
-              f"MAW-Setup-Windows-x64-{tag}.exe",
               f"MAW-Windows-x64-{tag}.zip",
               f"MAW-lite-Windows-x64-{tag}.zip",
           }
