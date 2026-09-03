@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import subprocess
 import sys
 from array import array
@@ -48,7 +49,12 @@ def media_signature(media_path: Path) -> dict[str, int | str]:
 
 def _is_positive_number(value: Any) -> bool:
     """True for a real int/float count. bool is rejected despite being an int."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value > 0
+    )
 
 
 def waveform_peaks_per_second(payload: Any) -> float:
@@ -65,15 +71,19 @@ def waveform_peaks_per_second(payload: Any) -> float:
         return 0.0
     sample_rate = payload.get("sample_rate")
     division = payload.get("division")
-    if (
-        isinstance(sample_rate, (int, float))
-        and not isinstance(sample_rate, bool)
-        and isinstance(division, int)
-        and not isinstance(division, bool)
-        and sample_rate > 0
-        and division > 0
-    ):
-        return sample_rate / division
+    has_sample_rate = sample_rate is not None
+    has_division = division is not None
+    if has_sample_rate != has_division:
+        return 0.0
+    if has_sample_rate:
+        if (
+            _is_positive_number(sample_rate)
+            and isinstance(division, int)
+            and not isinstance(division, bool)
+            and division > 0
+        ):
+            return sample_rate / division
+        return 0.0
     peaks_per_second = payload.get("peaks_per_second")
     return float(peaks_per_second) if _is_positive_number(peaks_per_second) else 0.0
 

@@ -391,6 +391,18 @@ class WaveformTimeBaseTests(unittest.TestCase):
             waveform.waveform_peaks_per_second(legacy), legacy["peaks_per_second"]
         )
         self.assertEqual(waveform.waveform_peaks_per_second({"peaks_per_second": 0}), 0.0)
+        self.assertEqual(
+            waveform.waveform_peaks_per_second(
+                {"peaks_per_second": 100, "sample_rate": 16000}
+            ),
+            0.0,
+        )
+        self.assertEqual(
+            waveform.waveform_peaks_per_second(
+                {"peaks_per_second": 100, "sample_rate": float("inf"), "division": 53}
+            ),
+            0.0,
+        )
         self.assertEqual(waveform.waveform_peaks_per_second({}), 0.0)
         self.assertEqual(waveform.waveform_peaks_per_second(None), 0.0)
 
