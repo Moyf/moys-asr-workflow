@@ -9,6 +9,7 @@ dependencies = [
     "fonttools>=4.55",
     "jieba>=0.42",
     "opencc-python-reimplemented>=0.1.7",
+    "packaging>=24",
     "pywebview>=6.2.1; sys_platform != 'linux'",
     "pywebview[qt]>=6.2.1; sys_platform == 'linux'",
     "requests>=2.28",

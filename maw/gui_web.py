@@ -13,6 +13,7 @@ import threading
 import tempfile
 import time
 import webbrowser
+from functools import wraps
 from urllib.error import URLError
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
@@ -21,7 +22,7 @@ from pathlib import Path
 from threading import Event, Lock
 from typing import BinaryIO, Final, final
 
-from maw.app_paths import default_emoji_font_path
+from maw.app_paths import default_app_data_root, default_emoji_font_path
 from maw.ffmpeg import FfmpegTools, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
 from maw.waveform import is_waveform_payload
@@ -75,6 +76,7 @@ from maw.text_conversion import TextConversionUnavailable, normalize_text_conver
 from maw.ocr_runtime import OCR_MODEL_ID, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, recover_ocr_runtime_install, run_ocr_in_runtime
 from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
+from maw.updater import UpdateCancelled, UpdateClient, UpdateError
 
 
 OPEN_DIALOG = 10
@@ -149,7 +151,44 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "media_tool_failed": "Media operation failed.",
     "audio_track_invalid": "The selected audio track is invalid.",
     "audio_tracks_missing": "No audio tracks were found in this media.",
+    "offline": "无法连接 GitHub，稍后再试。",
+    "rate_limited": "GitHub 请求次数已达到限制，请稍后再试。",
+    "manifest_missing": "此 Release 没有更新清单，请打开发布页手动下载。",
+    "manifest_invalid": "更新清单无效，请打开发布页手动下载。",
+    "asset_url_invalid": "更新下载地址无效。",
+    "asset_size_invalid": "更新包大小与清单不符。",
+    "checksum_mismatch": "更新包校验失败，请重新下载。",
+    "download_failed": "更新包下载失败。",
+    "update_cancelled": "更新下载已取消。",
+    "update_target_invalid": "更新目标已失效，请重新检查版本。",
+    "update_not_downloaded": "更新包尚未下载完成。",
+    "update_manual_only": "当前 MAW 副本需要手动下载更新。",
+    "disk_space_low": "磁盘空间不足，无法准备更新。",
+    "install_not_writable": "MAW 安装目录不可写，请检查权限。",
+    "installer_start_failed": "无法启动 MAW 更新安装程序。",
+    "update_busy": "请先完成当前任务，再更新 MAW。",
+    "state_write_failed": "无法保存更新状态，请检查应用数据目录权限。",
 }
+
+
+def _toolbox_operation(method: Callable[..., object]) -> Callable[..., object]:
+    """Mark synchronous toolbox work as busy for update safety.
+
+    The Launcher toolbox bridge methods run on the Python side rather than in
+    a dedicated worker thread.  Tracking them with a small decorator keeps
+    the update gate honest even when a second bridge call arrives while a
+    long OCR/LLM/media operation is still executing.
+    """
+
+    @wraps(method)
+    def wrapped(self: "LauncherApi", *args: object, **kwargs: object) -> object:
+        self._begin_toolbox_operation()
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            self._end_toolbox_operation()
+
+    return wrapped
 
 
 def _app_version(paths: object) -> str:
@@ -471,13 +510,19 @@ class LauncherPaths:
     root: Path
     env_path: Path
     launcher_html: Path
+    data_root: Path | None = None
 
 
 def default_paths() -> LauncherPaths:
     # 冻结（PyInstaller / AppImage）时资源在 sys._MEIPASS（如 dist/MAW/_internal），
     # 源码运行时在仓库根；与 maw.gui_platform.asset_path 的取法保持一致。
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
-    return LauncherPaths(root=root, env_path=DEFAULT_ENV_PATH, launcher_html=root / "web" / "launcher" / "index.html")
+    return LauncherPaths(
+        root=root,
+        env_path=DEFAULT_ENV_PATH,
+        launcher_html=root / "web" / "launcher" / "index.html",
+        data_root=default_app_data_root(),
+    )
 
 
 # ---- Linux keycap 表情字体（Noto Color Emoji）----
@@ -590,7 +635,26 @@ class LauncherApi:
         self.postprocess_workspace_directory: Path | None = None
         self.postprocess_translation_srt_path: Path | None = None
         self._last_postprocess_progress_at = 0.0
+        update_root = self.paths.data_root or (self.paths.root / ".maw-data")
+        self.updater = UpdateClient(data_root=update_root, current_version=_app_version(self.paths))
+        self.update_check_worker: threading.Thread | None = None
+        self.update_download_worker: threading.Thread | None = None
+        self.update_cancel_event: Event | None = None
+        self.update_manual_check = False
+        self.update_download_path: Path | None = None
+        self.update_apply_started = False
+        self.update_lock = threading.Lock()
+        self._toolbox_busy_count = 0
+        self._toolbox_busy_lock = threading.Lock()
         self.pump = EventPump(window_getter=self.window_getter)
+
+    def _begin_toolbox_operation(self) -> None:
+        with self._toolbox_busy_lock:
+            self._toolbox_busy_count += 1
+
+    def _end_toolbox_operation(self) -> None:
+        with self._toolbox_busy_lock:
+            self._toolbox_busy_count = max(0, self._toolbox_busy_count - 1)
 
     def get_emoji_font_path(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         """返回本地可用的 Noto Color Emoji 路径（file:// URI；未就绪或非 Linux 为空字符串）。
@@ -681,7 +745,144 @@ class LauncherApi:
             "serverPort": self.default_server_port,
             "moseAvailable": _find_mose_executable() is not None,
             "moseBundled": _bundled_mose_executable() is not None,
+            "update": self.updater.initial_status(),
         }
+
+    def check_update(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Start a non-blocking GitHub Release check.
+
+        A fresh cached result is returned immediately.  Forced/manual checks
+        and stale startup checks run in the same event-pump worker used by the
+        rest of the Launcher so a slow network never freezes the webview.
+        """
+        force = bool((payload or {}).get("force"))
+        cached = self.updater.initial_status()
+        if not self.updater.should_check(force=force):
+            return {**cached, "cached": True, "autoSkipped": True}
+        with self.update_lock:
+            if self.update_check_worker is not None and self.update_check_worker.is_alive():
+                if force:
+                    self.update_manual_check = True
+                return {**self.updater.initial_status(), "checking": True}
+            self.update_manual_check = force
+            worker = threading.Thread(target=self._check_update_worker, args=(force,), daemon=True, name="maw-update-check")
+            self.update_check_worker = worker
+            worker.start()
+        return {**self.updater.initial_status(), "checking": True}
+
+    def set_update_preferences(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Persist the startup update-check preference in the updater state."""
+        auto_check = bool((payload or {}).get("autoCheck", True))
+        try:
+            return self.updater.set_preferences(auto_check=auto_check)
+        except UpdateError as error:
+            return _error_result("", error.code, error.detail)
+
+    def _check_update_worker(self, force: bool) -> None:
+        try:
+            result = self.updater.check(force=force)
+            self._emit({"type": "updateCheckCompleted", "result": result, "manual": self.update_manual_check})
+        except UpdateError as error:
+            self._emit({"type": "updateFailed", "stage": "check", "code": error.code, "detail": error.detail, "manual": self.update_manual_check})
+        except Exception as error:  # noqa: BLE001 - keep a failed network worker recoverable in the UI.
+            self._emit({"type": "updateFailed", "stage": "check", "code": "update_http_error", "detail": str(error), "manual": self.update_manual_check})
+        finally:
+            with self.update_lock:
+                self.update_check_worker = None
+                self.update_manual_check = False
+            self.pump.flush()
+
+    def start_update(self, payload: Mapping[str, object]) -> dict[str, object]:
+        tag = str(payload.get("tag") or "").strip()
+        if not tag:
+            return _error_result("", "update_target_invalid")
+        if self._update_busy():
+            return _error_result("", "update_busy")
+        try:
+            # Prefer the in-memory result from the just-completed check while
+            # falling back to the persisted, hash-validated cache in the
+            # updater.  This keeps the bridge aligned with the "only start a
+            # freshly verified target" contract even before the next UI read.
+            result = self.updater._cached_result_for_tag(tag)
+        except UpdateError:
+            return _error_result("", "update_target_invalid")
+        asset = result.get("asset")
+        if not isinstance(asset, Mapping) or str(asset.get("kind") or "") != "installer" or not self.updater.installation.can_apply:
+            return _error_result("", "update_manual_only")
+        with self.update_lock:
+            if self.update_download_worker is not None and self.update_download_worker.is_alive():
+                return {"ok": True, "started": False, "downloading": True, "tag": tag}
+            cancel_event = Event()
+            self.update_cancel_event = cancel_event
+            worker = threading.Thread(
+                target=self._download_update_worker,
+                args=(tag, cancel_event),
+                daemon=True,
+                name="maw-update-download",
+            )
+            self.update_download_worker = worker
+            worker.start()
+        return {"ok": True, "started": True, "tag": tag}
+
+    def _download_update_worker(self, tag: str, cancel_event: Event) -> None:
+        def on_progress(received: int, total: int) -> None:
+            self._emit({"type": "updateDownloadProgress", "tag": tag, "received": received, "total": total, "percent": round(received * 100 / total) if total else 0})
+
+        try:
+            path = self.updater.download(tag, cancel_event=cancel_event, on_progress=on_progress)
+            self.update_download_path = path
+            result = self.updater.initial_status()
+            self._emit({"type": "updateReady", "tag": tag, "path": str(path), "version": result.get("latestVersion", "")})
+        except UpdateCancelled as error:
+            self._emit({"type": "updateFailed", "stage": "download", "code": error.code, "detail": error.detail})
+        except UpdateError as error:
+            self._emit({"type": "updateFailed", "stage": "download", "code": error.code, "detail": error.detail})
+        except Exception as error:  # noqa: BLE001 - report unexpected filesystem/stream failures as download errors.
+            self._emit({"type": "updateFailed", "stage": "download", "code": "download_failed", "detail": str(error)})
+        finally:
+            with self.update_lock:
+                self.update_download_worker = None
+                self.update_cancel_event = None
+            self.pump.flush()
+
+    def cancel_update(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        event = self.update_cancel_event
+        if event is None:
+            return {"ok": True, "cancelled": False}
+        event.set()
+        return {"ok": True, "cancelled": True}
+
+    def _update_busy(self) -> bool:
+        with self._toolbox_busy_lock:
+            if self._toolbox_busy_count:
+                return True
+        workers = (
+            self.worker,
+            self.batch_worker,
+            self.local_prepare_worker,
+            self.local_runtime_worker,
+            self.ocr_runtime_worker,
+        )
+        if any(worker is not None and worker.is_alive() for worker in workers):
+            return True
+        alignment = self.alignment_process
+        return alignment is not None and alignment.poll() is None
+
+    def apply_update(self, payload: Mapping[str, object]) -> dict[str, object]:
+        tag = str(payload.get("tag") or "").strip()
+        if not tag:
+            return _error_result("", "update_target_invalid")
+        if self._update_busy():
+            return _error_result("", "update_busy")
+        with self.update_lock:
+            if self.update_download_worker is not None and self.update_download_worker.is_alive():
+                return _error_result("", "update_not_downloaded")
+        try:
+            result = self.updater.apply_installer(tag)
+        except UpdateError as error:
+            return _error_result("", error.code, error.detail)
+        self.update_apply_started = True
+        return result
 
     def get_postprocess_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Return the selected provider's effective settings for the local form.
@@ -925,6 +1126,7 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessModel", "code": "postprocess_models_failed", "detail": detail, "error": detail}
         return {"ok": True, "providerId": preset.id, "models": models}
 
+    @_toolbox_operation
     def run_fixed_process(self, payload: Mapping[str, object]) -> dict[str, object]:
         self._emit_postprocess_status("toolbox_status_reading")
         try:
@@ -953,6 +1155,7 @@ class LauncherApi:
 
         return self.run_fixed_process(payload)
 
+    @_toolbox_operation
     def run_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
         script_path = _optional_path(payload.get("scriptPath"))
         if script_path is None:
@@ -977,6 +1180,7 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
+    @_toolbox_operation
     def run_ocr_dedup(self, payload: Mapping[str, object]) -> dict[str, object]:
         runtime = self._ocr_runtime_status()
         if not runtime.ready:
@@ -1018,6 +1222,7 @@ class LauncherApi:
             return {"ok": False, "field": "ocrVideoPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return {"ok": True, **result}
 
+    @_toolbox_operation
     def run_llm_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
         operation = str(payload.get("operation") or "proofread")
@@ -1072,6 +1277,7 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
+    @_toolbox_operation
     def run_ffconcat_rebuild(self, payload: Mapping[str, object]) -> dict[str, object]:
         ffmpeg = _postprocess_ffmpeg(self.paths.env_path)
         if ffmpeg is None:
@@ -1847,6 +2053,7 @@ class LauncherApi:
                 self.batch_worker = None
             self.pump.flush()
 
+    @_toolbox_operation
     def generate_waveform_project(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Create a media-only project containing embedded waveform caches."""
         media_text = str(payload.get("mediaPath") or "").strip()
@@ -2147,6 +2354,8 @@ class LauncherApi:
         return {"ok": True, "stickerDir": str(path)}
 
     def shutdown(self) -> None:
+        if not self.update_apply_started and self.update_cancel_event:
+            self.update_cancel_event.set()
         self.cancel_transcription()
         self.cancel_batch_transcription()
         self.cancel_media_tool()

@@ -1,5 +1,21 @@
 # 常见问题
 
+## Windows 安装版如何更新？
+
+Windows x64 推荐使用 `MAW-Setup-Windows-x64-v*.exe`。安装版在 Launcher 的「配置 → 软件更新」中每天自动检查一次，也可以手动检查；下载完成后会校验官方 Release 的更新清单和 SHA-256，并在确认后关闭、覆盖安装并重启。更新不会删除 `%LOCALAPPDATA%\MAW` 下的 `.env`、日志、模型缓存或更新状态。
+
+首个带更新器的版本只能负责后续版本；更旧、尚未包含更新器的 MAW 不会自动升级，仍需先手动安装这个 Installer。
+
+便携 ZIP、macOS 和 Linux 只能打开精确版本的 GitHub Release 页面手动下载。若希望以后使用一键更新，可安装同一 Release 的 Windows Installer；便携版已有的用户数据仍保留在 `%LOCALAPPDATA%\MAW`。
+
+## 更新失败或没有自动更新按钮
+
+网络离线、GitHub 限流、Release 缺少 `update-manifest.json`、当前平台没有对应资产，都会保留当前版本并提供发布页入口。安装版还需要安装目录可写、剩余磁盘空间至少为更新包大小的三倍；转写、批处理、模型/OCR Runtime 安装和自动后处理运行时必须先完成。更新下载取消后，残留的 `.part` 文件会自动清理，可重新检查并下载。
+
+Launcher 中的更新说明会把常见 Markdown（标题、列表、粗体、代码和链接）渲染成安全的富文本；Release 原始 HTML 不会直接注入窗口，完整说明可通过「打开发布页」查看。
+
+Installer 当前未配置 Windows 代码签名证书，首次运行可能出现 SmartScreen 警告。请核对文件来自本项目 GitHub Release；不要从第三方镜像运行未知安装包。
+
 ## Windows 下载后启动时报 `Python.Runtime.Loader.Initialize` 错误
 
 如果从 GitHub 下载 `MAW` 压缩包、解压后启动失败，并在错误信息中看到 `Python.Runtime.dll` 或 `Python.Runtime.Loader.Initialize`，通常是 Windows 给“来自 Internet 的文件”添加的安全标记，导致运行时 DLL 被阻止加载。这个问题的实际案例见 [Issue #40](https://github.com/Moyf/moys-asr-workflow/issues/40)。

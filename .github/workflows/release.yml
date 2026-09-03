@@ -321,6 +321,33 @@ jobs:
           Write-Host ("MOSE suite increment: {0:N0} bytes" -f $MoseIncrementBytes)
           Write-Host ("MAW-MOSE ZIP size: {0:N0} bytes" -f $SuiteZipBytes)
 
+      - name: Install Inno Setup
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: choco install innosetup --version=6.4.2 --no-progress --yes
+
+      - name: Build Windows installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: .\scripts\build-installer.ps1 -Version "${{ steps.version.outputs.version }}"
+
+      - name: Optional code-signing hook (non-blocking)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          MAW_SIGN_CERTIFICATE: ${{ secrets.MAW_SIGN_CERTIFICATE }}
+        run: |
+          if ($env:MAW_SIGN_CERTIFICATE) {
+            Write-Warning 'MAW_SIGN_CERTIFICATE is configured, but signing is intentionally left as a maintainer hook; wire signtool here before enabling it as a release policy.'
+          } else {
+            Write-Warning 'No Windows code-signing certificate is configured. The MAW Installer may trigger SmartScreen; verify the GitHub Release source before running it.'
+          }
+
+      - name: Smoke install, in-place upgrade, launch, and uninstall
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: .\scripts\test-installer.ps1 -InstallerPath "build\installer\MAW-Setup-Windows-x64-${{ steps.version.outputs.version }}.exe" -Version "${{ steps.version.outputs.version }}"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -328,7 +355,17 @@ jobs:
           path: |
             MAW-Windows-x64-${{ steps.version.outputs.version }}.zip
             MAW-lite-Windows-x64-${{ steps.version.outputs.version }}.zip
-            MAW-MOSE-Windows-x64-${{ steps.version.outputs.version }}.zip
+          if-no-files-found: error
+
+      - name: Upload Windows installer artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          # The Installer is a separately distributed official build. Keep it
+          # out of the public Release artifact namespace; maintainers can
+          # download this artifact from the workflow and publish it elsewhere.
+          name: paid-MAW-Setup-Windows-x64-${{ steps.version.outputs.version }}
+          path: build/installer/MAW-Setup-Windows-x64-${{ steps.version.outputs.version }}.exe
           if-no-files-found: error
 
   build-aux:
@@ -707,7 +744,10 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    if: ${{ startsWith(github.ref, 'refs/tags/v') && !cancelled() && needs.build-windows.result == 'success' }}
+    # build-aux is intentionally best-effort; always evaluate the condition so
+    # a macOS/Linux failure can be recorded in the notes without suppressing a
+    # verified Windows Release.
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && !cancelled() && needs.build-windows.result == 'success' }}
     needs: [build-windows, build-aux]
     runs-on: ubuntu-latest
     permissions:
@@ -746,6 +786,61 @@ jobs:
           # （launcher.jpg、maw.icns、screenshot*.jpg 等）一起传进 Release。
           path: release-artifacts
           merge-multiple: true
+
+      - name: Generate update manifest
+        run: python3 scripts/generate_update_manifest.py --root release-artifacts --tag "${{ github.ref_name }}"
+
+      - name: Verify update manifest and release asset contract
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          root = Path("release-artifacts")
+          tag = os.environ["RELEASE_TAG"]
+          manifest = json.loads((root / "update-manifest.json").read_text(encoding="utf-8"))
+          if manifest.get("schemaVersion") != 1 or manifest.get("tag") != tag:
+              raise SystemExit("update-manifest.json schema/tag mismatch")
+          expected_version = tag.removeprefix("v")
+          if manifest.get("version") != expected_version:
+              raise SystemExit("update-manifest.json version mismatch")
+          prerelease_version = expected_version.split("+", 1)[0]
+          expected_prerelease = bool(re.search(r"(?i)(?:^|[.-])(?:a(?:lpha)?|b(?:eta)?|rc|pre(?:view)?|dev)[.-]?\d*|\d(?:a(?:lpha)?|b(?:eta)?|rc|pre(?:view)?|dev)\d*", prerelease_version))
+          if manifest.get("prerelease") != expected_prerelease:
+              raise SystemExit("update-manifest.json prerelease flag mismatch")
+          if not manifest.get("assets"):
+              raise SystemExit("update-manifest.json contains no release assets")
+          seen_names = set()
+          for asset in manifest["assets"]:
+              for field in ("name", "platform", "arch", "type", "kind", "flavor", "size", "sha256"):
+                  if field not in asset:
+                      raise SystemExit(f"update manifest asset is missing {field}: {asset!r}")
+              if asset["type"] != asset["kind"]:
+                  raise SystemExit(f"update manifest asset type/kind mismatch: {asset!r}")
+              if asset["name"] in seen_names:
+                  raise SystemExit(f"update manifest contains duplicate asset: {asset['name']}")
+              seen_names.add(asset["name"])
+              path = root / asset["name"]
+              if not path.is_file():
+                  raise SystemExit(f"manifest asset is missing: {path}")
+              data = path.read_bytes()
+              if asset["size"] != len(data) or asset["sha256"] != hashlib.sha256(data).hexdigest():
+                  raise SystemExit(f"manifest hash/size mismatch: {path}")
+          required = {
+              f"MAW-Setup-Windows-x64-{tag}.exe",
+              f"MAW-Windows-x64-{tag}.zip",
+              f"MAW-lite-Windows-x64-{tag}.zip",
+          }
+          missing = sorted(name for name in required if not (root / name).is_file())
+          if missing:
+              raise SystemExit(f"release is missing required Windows assets: {', '.join(missing)}")
+          print(f"Verified update manifest v1 for {tag} with {len(manifest['assets'])} assets")
+          PY
 
       - name: Create or update GitHub Release
         env:

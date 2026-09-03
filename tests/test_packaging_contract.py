@@ -90,10 +90,60 @@ class PackagingContractTests(unittest.TestCase):
         gui = read_text("maw/gui_web.py")
         editor = read_text("edit.py")
 
-        self.assertIn(f'id="appVersion">v{version}</span>', launcher_html)
+        self.assertIn(f'id="appVersion"', launcher_html)
+        self.assertIn(f'>v{version}</button>', launcher_html)
         self.assertIn(f'appVersion: "{version}"', launcher_js)
         self.assertIn(f'BUNDLED_APP_VERSION = "{version}"', gui)
         self.assertIn(f'BUNDLED_EDITOR_VERSION = "{version}"', editor)
+
+    def test_updater_dependency_and_installer_contract_are_present(self) -> None:
+        """Given the MAW release updater, When packaging is inspected, Then the installer and manifest hooks are wired."""
+        project = tomllib.loads(read_text("pyproject.toml"))
+        self.assertIn("packaging>=24", project["project"]["dependencies"])
+        self.assertIn('name = "packaging"', read_text("uv.lock"))
+        self.assertIn('"maw.updater"', read_text("MAW.spec"))
+        installer = read_text("installer/maw.iss")
+        self.assertIn("AppId={{4E6B4A8C-0E4F-4E88-8C9F-1DF1C9BFB0F7}", installer)
+        self.assertIn("DefaultDirName={localappdata}\\Programs\\MAW", installer)
+        self.assertIn("PrivilegesRequired=lowest", installer)
+        self.assertIn('ValueName: "ExecutablePath"', installer)
+        self.assertIn('MAW-Setup-Windows-x64-v{#AppVersion}', installer)
+        self.assertIn("scripts/generate_update_manifest.py", read_text(".github/workflows/release.yml"))
+        self.assertIn("MAW-Setup-Windows-x64-", read_text(".github/workflows/release.yml"))
+
+    def test_update_manifest_generator_emits_v1_hash_metadata(self) -> None:
+        """Given release archives, When the manifest is generated, Then names, sizes, and hashes are deterministic."""
+        from scripts.generate_update_manifest import build_manifest
+
+        with self.subTest("manifest shape"):
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                payload = b"installer"
+                (root / "MAW-Setup-Windows-x64-v1.5.0.exe").write_bytes(payload)
+                (root / "MAW-Setup-Windows-x64-v1.5.0-beta.1.exe").write_bytes(b"stale")
+                manifest = build_manifest(root, "v1.5.0")
+                self.assertEqual(manifest["schemaVersion"], 1)
+                self.assertEqual(manifest["tag"], "v1.5.0")
+                self.assertEqual([asset["name"] for asset in manifest["assets"]], ["MAW-Setup-Windows-x64-v1.5.0.exe"])
+                self.assertEqual(manifest["assets"][0]["size"], len(payload))
+                self.assertEqual(manifest["assets"][0]["platform"], "windows")
+                self.assertEqual(manifest["assets"][0]["type"], "installer")
+
+    def test_update_manifest_generator_marks_dev_releases_but_not_local_builds(self) -> None:
+        from scripts.generate_update_manifest import build_manifest
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "MAW-Windows-x64-v1.5.0.dev1.zip").write_bytes(b"dev")
+            self.assertTrue(build_manifest(root, "v1.5.0.dev1")["prerelease"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "MAW-Windows-x64-v1.5.0+build.1.zip").write_bytes(b"local")
+            self.assertFalse(build_manifest(root, "v1.5.0+build.1")["prerelease"])
 
     def test_pyinstaller_build_dependency_is_locked_outside_runtime_dependencies(self) -> None:
         """Given packaging needs PyInstaller, When metadata is read, Then build deps are locked."""

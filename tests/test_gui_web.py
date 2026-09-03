@@ -53,6 +53,48 @@ class GuiWebBridgeTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_update_preferences_are_saved_in_user_data_state(self) -> None:
+        result = self.api.set_update_preferences({"autoCheck": False})
+
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["autoCheck"])
+        self.assertFalse(self.api.updater.initial_status()["autoCheck"])
+        self.assertTrue(self.api.updater.state_path.is_file())
+
+    def test_portable_update_is_manual_only(self) -> None:
+        self.api.updater.installation = self.api.updater.installation.__class__("portable", "windows", "x64")
+        self.api.updater._last_result = {
+            "latestTag": "v9.9.9",
+            "available": True,
+            "assetAvailable": True,
+            "asset": {"kind": "portable"},
+        }
+
+        result = self.api.start_update({"tag": "v9.9.9"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "update_manual_only")
+
+    def test_apply_update_rejects_busy_transcription(self) -> None:
+        busy = mock.Mock()
+        busy.is_alive.return_value = True
+        self.api.worker = busy
+
+        result = self.api.apply_update({"tag": "v9.9.9"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "update_busy")
+
+    def test_apply_update_rejects_busy_toolbox_postprocess(self) -> None:
+        self.api._begin_toolbox_operation()
+        try:
+            result = self.api.apply_update({"tag": "v9.9.9"})
+        finally:
+            self.api._end_toolbox_operation()
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "update_busy")
+
     def test_get_config_returns_registry_and_masked_key_when_env_exists(self) -> None:
         """Given local config, When JS asks for config, Then secrets are masked and registries return."""
         _ = self.env_path.write_text("DASHSCOPE_API_KEY=sk-secret-abcd\nDASHSCOPE_REGION=singapore\nMAW_GUI_LANG=en\n", encoding="utf-8")
