@@ -13,7 +13,9 @@ source: "docs/WORKFLOW.md"
 
 ## 0. 安装依赖
 
-如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python、uv、FFmpeg 与 ffprobe 已由默认 `MAW` 包打包，不需要单独安装；体积更小的 `MAW-lite` 包不包含 FFmpeg，需要系统已安装并可在 PATH 中找到 `ffmpeg` 和 `ffprobe`。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app` 或 `MAW-lite.app`。Launcher 默认启动 Server 版编辑器，右侧菜单可打开工程 HTML 编辑器或空白 HTML 编辑器；MOSE 桌面版暂不随 Release 分发。
+如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python、uv、FFmpeg 与 ffprobe 已由默认 `MAW` 包打包，不需要单独安装；体积更小的 `MAW-lite` 包不包含 FFmpeg，需要系统已安装并可在 PATH 中找到 `ffmpeg` 和 `ffprobe`。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app` 或 `MAW-lite.app`。Windows 另提供 `MAW-MOSE-Windows-x64-v*.zip` 套件，内含优先使用的 Electron MOSE（`MAW\MOSE\MOSE.exe`）；Launcher 主按钮会优先打开 MOSE，缺失或启动失败时自动回退到 Server 版，右侧菜单始终可以强制启动 Server。
+
+MOSE 与 MAW 共用 `server-editor/serve.py` 和 `.mosp` 工程契约。套件目录必须保持 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe` 的相对关系，MOSE 不能从套件中单独拷出运行；Launcher 只为当前用户注册 `.mosp`，不会关联旧的 `.json` 或覆盖 Windows 的 `UserChoice`。
 
 源码方式继续按下列步骤安装：
 
@@ -278,6 +280,8 @@ uv run python edit.py "D:\Videos\example.qwen3-asr-api.mosp" -m "D:\Videos\examp
 uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.mosp"
 ```
 
+服务器会先绑定并响应本机端口，再在后台读取工程、准备媒体和生成或读取波形；页面会显示“准备中”及当前阶段，完成后自动载入完整工程。长视频不再因为首次波形准备超过启动器的等待窗口而被误报为服务器无响应；如果工程读取失败，页面会保留并显示具体错误。
+
 服务器只监听本机 `127.0.0.1`。它会尝试按工程文件的 `media` 字段加载原媒体；媒体搬家后，显式指定：
 
 ```powershell
@@ -367,7 +371,7 @@ macOS 从 Finder 启动 `.app` 时不一定会继承终端里的 PATH。Launcher
 
 ### 提示未配置 API Key
 
-Release 版优先确认 `.env` 与应用程序同级；Windows 若同目录没有配置，再检查 `%LOCALAPPDATA%\\MAW\\.env`。源码方式确认 `.env` 位于仓库根目录。Key 行没有引号、没有额外空格，且没有把 `.env.example` 当成 `.env` 使用。环境变量若存在会覆盖 `.env`。
+Release 版优先确认 `.env` 与应用程序同级；Windows 若同目录没有配置，再检查 `%LOCALAPPDATA%\MAW\.env`。源码方式确认 `.env` 位于仓库根目录。Key 行没有引号、没有额外空格，且没有把 `.env.example` 当成 `.env` 使用。环境变量若存在会覆盖 `.env`。
 
 ### API 任务超时或上传失败
 

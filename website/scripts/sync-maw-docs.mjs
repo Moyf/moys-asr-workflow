@@ -75,8 +75,8 @@ const documents = [
   {
     source: 'docs/MOSE.md',
     slug: 'mose',
-    title: '与 MOSE 的关系',
-    description: 'MAW、MAWE 和未来 MOSE 之间的定位与工程格式边界。',
+    title: 'MOSE 独立编辑器',
+    description: 'MAW、MAWE 与 Windows Electron MOSE 之间的定位、套件布局与工程格式边界。',
   },
   {
     source: 'docs/ASR_PROVIDER_RESEARCH.md',

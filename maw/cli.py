@@ -34,9 +34,9 @@ def _port_value(value: str) -> int:
     try:
         port = int(value)
     except ValueError as error:
-        raise argparse.ArgumentTypeError("端口必须是 1 到 65535 之间的整数") from error
-    if not 1 <= port <= 65535:
-        raise argparse.ArgumentTypeError("端口必须是 1 到 65535 之间的整数")
+        raise argparse.ArgumentTypeError("端口必须是 0 到 65535 之间的整数") from error
+    if not 0 <= port <= 65535:
+        raise argparse.ArgumentTypeError("端口必须是 0 到 65535 之间的整数")
     return port
 
 
@@ -62,7 +62,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         nargs="?",
         const="",
         metavar="PORT",
-        help="启动本机 Server；可写 --server 8250，省略端口时使用 8250",
+        help="启动本机 Server；可写 --server 8250，使用 --port 0 请求系统随机端口，省略端口时使用 8250",
     )
     server_group.add_argument(
         "--stop-server",
@@ -78,6 +78,11 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--no-open", action="store_true", help="启动 Server 后不自动打开浏览器")
     parser.add_argument("--no-waveform", action="store_true", help="Server 启动时跳过波形预计算")
     parser.add_argument("--waveform-peaks-per-second", type=int, help="Server 波形峰值密度")
+    parser.add_argument(
+        "--desktop-mode",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
 
     parser.add_argument("-i", "--input", help="要转写的音频或视频路径")
     parser.add_argument(
@@ -192,7 +197,7 @@ def _open_console_stream() -> io.TextIOBase | None:
 def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if not args.input:
         parser.error("转写必须提供 -i/--input；启动 Server 请使用 --server")
-    if args.port is not None or args.server_project or args.server_media or args.no_open or args.no_waveform or args.waveform_peaks_per_second is not None:
+    if args.port is not None or args.server_project or args.server_media or args.no_open or args.no_waveform or args.waveform_peaks_per_second is not None or args.desktop_mode:
         parser.error("--port、Server 工程和 Server 专用参数只能与 --server/--stop-server 一起使用")
     if args.outputs and len(args.outputs) > 2:
         parser.error("-o/--output 最多接受两个路径：SRT 和 MOSP")
@@ -417,6 +422,8 @@ def _run_server(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
         server_args.append("--no-waveform")
     if args.waveform_peaks_per_second is not None:
         server_args.extend(["--waveform-peaks-per-second", str(args.waveform_peaks_per_second)])
+    if args.desktop_mode:
+        server_args.append("--desktop-mode")
     with _runtime_environment(""):
         return _invoke_server(server_args)
 
@@ -427,7 +434,7 @@ def _resolve_server_target(
     explicit_port: int | None,
     project: str | None,
 ) -> tuple[int, str | None]:
-    port = explicit_port or DEFAULT_SERVER_PORT
+    port = DEFAULT_SERVER_PORT if explicit_port is None else explicit_port
     if target:
         try:
             port = _port_value(target)
@@ -466,6 +473,7 @@ def _run_stop_server(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             args.no_open,
             args.no_waveform,
             args.waveform_peaks_per_second is not None,
+            args.desktop_mode,
             args.provider != "qwen",
             args.model,
             args.max_len is not None,
@@ -504,7 +512,7 @@ def _run_stop_server(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         if args.port is not None and args.port != port:
             parser.error("--stop-server 的端口与 --port 不一致")
     else:
-        port = args.port or DEFAULT_SERVER_PORT
+        port = DEFAULT_SERVER_PORT if args.port is None else args.port
     if _request_server_shutdown(port):
         print(f"已请求停止 MAW Server：127.0.0.1:{port}")
         return 0

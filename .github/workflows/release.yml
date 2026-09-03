@@ -32,6 +32,11 @@ jobs:
           python-version: '3.11'
           architecture: x64
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -85,6 +90,25 @@ jobs:
       - name: Build MAW bundle
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
+
+      - name: Install Electron dependencies
+        run: npm ci --prefix desktop
+
+      - name: Run Electron unit tests
+        run: npm test --prefix desktop
+
+      - name: Build Electron MOSE
+        run: npm run build --prefix desktop
+
+      - name: Smoke Electron source app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # ``uv sync`` installs the project into this environment; the
+          # system ``python`` provided by setup-python does not necessarily
+          # contain MAW's dependencies.
+          $env:MAW_MOSE_PYTHON = (Resolve-Path '.venv\Scripts\python.exe').Path
+          npm run smoke --prefix desktop
 
       - name: Verify bundled FAQ
         shell: pwsh
@@ -218,6 +242,85 @@ jobs:
           Compress-Archive -LiteralPath 'dist\MAW-lite' -DestinationPath "MAW-lite-Windows-x64-$Version.zip" -Force
           Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath "MAW-Windows-x64-$Version.zip" -Force
 
+          $SuiteRoot = Join-Path $PWD 'build\release\mose'
+          $SuiteMaw = Join-Path $SuiteRoot 'MAW'
+          $SuiteMose = Join-Path $SuiteMaw 'MOSE'
+          New-Item -ItemType Directory -Path $SuiteMaw -Force | Out-Null
+          New-Item -ItemType Directory -Path $SuiteMose -Force | Out-Null
+          # -Path is intentional here: -LiteralPath treats the trailing `*` as
+          # a literal filename and would leave the suite empty on Windows.
+          Copy-Item -Path 'dist\MAW\*' -Destination $SuiteMaw -Recurse -Force
+          Copy-Item -Path 'desktop\dist\win-unpacked\*' -Destination $SuiteMose -Recurse -Force
+          $MoseExe = Join-Path $SuiteMose 'MOSE.exe'
+          if (-not (Test-Path -LiteralPath (Join-Path $SuiteMaw 'MAW.exe') -PathType Leaf)) {
+            throw 'MAW-MOSE suite is missing MAW\MAW.exe.'
+          }
+          if (-not (Test-Path -LiteralPath $MoseExe -PathType Leaf)) {
+            throw 'MAW-MOSE suite is missing MAW\MOSE\MOSE.exe.'
+          }
+          $FfmpegFiles = @(Get-ChildItem -LiteralPath $SuiteRoot -Filter 'ffmpeg.exe' -File -Recurse)
+          if ($FfmpegFiles.Count -ne 1) {
+            throw "MAW-MOSE suite must contain exactly one ffmpeg.exe; found $($FfmpegFiles.Count)."
+          }
+          $FfprobeFiles = @(Get-ChildItem -LiteralPath $SuiteRoot -Filter 'ffprobe.exe' -File -Recurse)
+          if ($FfprobeFiles.Count -ne 1) {
+            throw "MAW-MOSE suite must contain exactly one ffprobe.exe; found $($FfprobeFiles.Count)."
+          }
+          $MawExecutables = @(Get-ChildItem -LiteralPath $SuiteRoot -Filter 'MAW.exe' -File -Recurse)
+          if ($MawExecutables.Count -ne 1) {
+            throw "MAW-MOSE suite must contain exactly one MAW.exe; found $($MawExecutables.Count)."
+          }
+          $SuiteMoseFfmpeg = @(Get-ChildItem -LiteralPath $SuiteMose -Filter 'ffmpeg.exe' -File -Recurse)
+          if ($SuiteMoseFfmpeg.Count -ne 0) {
+            throw "MOSE subtree must not carry a second ffmpeg.exe; found $($SuiteMoseFfmpeg.Count)."
+          }
+          $SuiteMoseFfprobe = @(Get-ChildItem -LiteralPath $SuiteMose -Filter 'ffprobe.exe' -File -Recurse)
+          if ($SuiteMoseFfprobe.Count -ne 0) {
+            throw "MOSE subtree must not carry a second ffprobe.exe; found $($SuiteMoseFfprobe.Count)."
+          }
+          $SuiteMoseMaw = @(Get-ChildItem -LiteralPath $SuiteMose -Filter 'MAW.exe' -File -Recurse)
+          if ($SuiteMoseMaw.Count -ne 0) {
+            throw "MOSE subtree must not carry a second MAW.exe; found $($SuiteMoseMaw.Count)."
+          }
+          $SuiteMosePython = @(Get-ChildItem -LiteralPath $SuiteMose -File -Recurse |
+            Where-Object { $_.Name -in @('python.exe', 'python311.dll', 'python3.dll') })
+          if ($SuiteMosePython.Count -ne 0) {
+            throw "MOSE subtree must not carry a Python runtime; found $($SuiteMosePython.Count) file(s)."
+          }
+          $ExpectedMoseVersion = (Get-Content -Raw -LiteralPath 'desktop\package.json' | ConvertFrom-Json).version
+          $MoseFileVersion = (Get-Item -LiteralPath $MoseExe).VersionInfo.FileVersion
+          if ($MoseFileVersion -ne $ExpectedMoseVersion) {
+            throw "MOSE.exe version $MoseFileVersion does not match $ExpectedMoseVersion."
+          }
+          # electron-builder derives the Windows resource from assets/MOSE-icon.png;
+          # extract it once from the finished PE so a package cannot silently
+          # ship the generic Electron icon.
+          Add-Type -AssemblyName System.Drawing
+          $MoseIcon = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path -LiteralPath $MoseExe).Path)
+          if (-not $MoseIcon) {
+            throw 'MOSE.exe does not contain an extractable Windows icon.'
+          }
+          $MoseIcon.Dispose()
+
+          Write-Host 'Running packaged MOSE smoke (backend start, page load, clean exit)...'
+          $Smoke = Start-Process -FilePath $MoseExe -ArgumentList '--mose-smoke' -WorkingDirectory $SuiteMose -PassThru -WindowStyle Hidden
+          if (-not $Smoke.WaitForExit(60000)) {
+            Stop-Process -Id $Smoke.Id -Force -ErrorAction SilentlyContinue
+            throw 'Packaged MOSE smoke timed out.'
+          }
+          if ($Smoke.ExitCode -ne 0) {
+            throw "Packaged MOSE smoke exited with $($Smoke.ExitCode)."
+          }
+
+          Compress-Archive -LiteralPath (Join-Path $SuiteRoot 'MAW') -DestinationPath "MAW-MOSE-Windows-x64-$Version.zip" -Force
+
+          $ElectronUnpackedBytes = (Get-ChildItem -LiteralPath 'desktop\dist\win-unpacked' -File -Recurse | Measure-Object -Property Length -Sum).Sum
+          $MoseIncrementBytes = (Get-ChildItem -LiteralPath $SuiteMose -File -Recurse | Measure-Object -Property Length -Sum).Sum
+          $SuiteZipBytes = (Get-Item -LiteralPath "MAW-MOSE-Windows-x64-$Version.zip").Length
+          Write-Host ("Electron win-unpacked size: {0:N0} bytes" -f $ElectronUnpackedBytes)
+          Write-Host ("MOSE suite increment: {0:N0} bytes" -f $MoseIncrementBytes)
+          Write-Host ("MAW-MOSE ZIP size: {0:N0} bytes" -f $SuiteZipBytes)
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -225,6 +328,7 @@ jobs:
           path: |
             MAW-Windows-x64-${{ steps.version.outputs.version }}.zip
             MAW-lite-Windows-x64-${{ steps.version.outputs.version }}.zip
+            MAW-MOSE-Windows-x64-${{ steps.version.outputs.version }}.zip
           if-no-files-found: error
 
   build-aux:

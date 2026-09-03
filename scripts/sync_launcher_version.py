@@ -39,6 +39,24 @@ def _targets() -> tuple[tuple[str, Path, str, str], ...]:
             r'(BUNDLED_EDITOR_VERSION\s*=\s*")[^"]+(")',
             r'BUNDLED_EDITOR_VERSION\s*=\s*"([^"]+)"',
         ),
+        (
+            "Electron package",
+            ROOT / "desktop" / "package.json",
+            r'(\A\{\s*"name"\s*:\s*"mose-desktop"\s*,\s*(?:"private"\s*:\s*true\s*,\s*)?"version"\s*:\s*")[^"]+(")',
+            r'\A\{\s*"name"\s*:\s*"mose-desktop"\s*,\s*(?:"private"\s*:\s*true\s*,\s*)?"version"\s*:\s*"([^"]+)"',
+        ),
+        (
+            "Electron lockfile root",
+            ROOT / "desktop" / "package-lock.json",
+            r'(\A\{\s*"name"\s*:\s*"mose-desktop"\s*,\s*"version"\s*:\s*")[^"]+(")',
+            r'\A\{\s*"name"\s*:\s*"mose-desktop"\s*,\s*"version"\s*:\s*"([^"]+)"',
+        ),
+        (
+            "Electron lockfile package",
+            ROOT / "desktop" / "package-lock.json",
+            r'("packages"\s*:\s*\{\s*""\s*:\s*\{\s*"name"\s*:\s*"mose-desktop"\s*,\s*"version"\s*:\s*")[^"]+(")',
+            r'"packages"\s*:\s*\{\s*""\s*:\s*\{\s*"name"\s*:\s*"mose-desktop"\s*,\s*"version"\s*:\s*"([^"]+)"',
+        ),
     )
 
 

@@ -41,6 +41,13 @@
 
 ### 🚀 全新特性
 
+- **MOSE Electron 独立编辑器与 Windows 套件 ZIP** ：恢复桌面编辑器发布路线，Windows x64 新增 `MAW-MOSE-Windows-x64-<version>.zip`；Electron 通过同套件 `MAW.exe` 启动受令牌保护的随机端口 Server，与 MAWE 共用保存、波形、媒体、最近工程和导出能力。Launcher 主按钮优先打开 `MAW\MOSE\MOSE.exe`，缺失或启动失败自动回退 Server，并仅为当前用户建立 `.mosp` 关联；Installer、代码签名、自动更新和其他平台 Electron 版本暂缓。
+- **口播对齐（实验性）** ： 新增 `server-align` 本地工具，输入 `.mosp`、文稿与媒体后可把实际录制内容分为匹配、失败片段、不完整录制、备选 take、缺失文稿与额外片段；波形默认使用多行视图，支持采用 take 点击切换人工禁用、点击空隙临时试听、Alt+点击切换空隙状态，并导出可继续交给 MAWE 编辑的工程。
+- **腾讯云录音文件识别** ： 新增腾讯云「录音文件识别」供应商：使用 TC3-HMAC-SHA256 鉴权、异步任务轮询和结构化毫秒时间戳，支持 `16k_zh_en_2.0` 引擎（PR #65）；5MB 以上媒体可通过 COS / 公网 URL 识别。
+- **Faster-Whisper 本地引擎（实验）** ： `generate_subtitle_local.py` 新增 `--engine whisper`，通过 faster-whisper（CTranslate2 运行时、CT2 权重与 Silero VAD 内置）输出词级整数毫秒时间戳，并复用统一切句、SRT 与 `.mosp` 流程；依赖随 `uv sync --extra local` 安装。默认模型 `large-v3`，可传 `--model` 切换 `turbo` 等 HF Hub 名称或本地 CTranslate2 目录；不提供说话人分离。Launcher「本地模型」同步提供 large-v3 入口，缓存发现与目录误判防护与其他引擎一致。
+- **MOSS 本地转录引擎** ： 引入 MOSS Transcribe-Diarize（Transformers 5.x）本地识别引擎，独立安装到 `local-runtime-moss` 环境，模型与其余引擎共用缓存目录；模型条目已标注仅提供段级时间戳、无字词级时间码。
+- **MAW 字幕颜色过滤与可配置拆分移除符号** ： 编辑器支持按颜色过滤字幕段落查看，并可配置在断句拆分时移除哪些符号（PR #76）。
+
 - **纯文本编辑模式** ： 新增整体 / 逐条字幕文本编辑视图，支持直接新增、删除或移动换行并预览变更；会按文本内容尽量匹配字幕和字词时间码，支持拆分、合并、边界移动、自动估算及有效覆盖率 / 原始时间码复用率提示。两种视图保持同步，可切换显示已禁用字幕，编辑结果也会正确标记 dirty 状态。
 - **动态图形字幕、文稿匹配与编辑器工作流** ： 增加 OGraf / Lottie 的预览、拖放与时间轴交互、字幕文字矢量字形导出、拆分后的列表滚动锚点保持，以及文稿匹配预览、匹配率统计、字幕句数变化提示和配置持久化。
 - **批量转写** ： 可一次加入多个音频或视频文件，按顺序执行转写，并为每个文件生成独立的 SRT 与 `.mosp`。

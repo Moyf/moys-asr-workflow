@@ -84,6 +84,7 @@ WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
 MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
 MOSE_FILE_TYPE = "Moy.MOSE.Project"
+MOSE_USER_CHOICE_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.mosp\UserChoice"
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
@@ -93,6 +94,7 @@ MOSE_VERSION = "0.1.0"
 
 ERROR_MESSAGES: Final[dict[str, str]] = {
     "json_not_found": "Project file does not exist.",
+    "json_invalid": "Project file must use the .mosp or .json extension.",
     "media_not_found": "Media file does not exist.",
     "server_media_missing": "Project media is missing, unsupported, or ambiguous. Choose media manually.",
     "api_key_missing": "API key is required.",
@@ -232,22 +234,43 @@ def _macos_mose_executable(app_path: Path) -> Path | None:
     return None
 
 
+def _bundled_mose_candidates() -> tuple[Path, ...]:
+    repo_root = Path(__file__).resolve().parents[1]
+    if getattr(sys, "frozen", False):
+        executable_dir = Path(sys.executable).resolve().parent
+        return (
+            executable_dir / "MOSE" / "MOSE.exe",
+            executable_dir / "MOSE" / "mose.exe",
+        )
+    return (
+        repo_root / "dist" / "MAW" / "MOSE" / "MOSE.exe",
+        repo_root / "dist" / "MAW" / "MOSE" / "mose.exe",
+        repo_root / "dist" / "MAW-MOSE" / "MOSE" / "MOSE.exe",
+        repo_root / "dist" / "MAW-MOSE" / "MOSE" / "mose.exe",
+        repo_root / "build" / "release" / "mose" / "MAW" / "MOSE" / "MOSE.exe",
+        repo_root / "build" / "release" / "mose" / "MAW" / "MOSE" / "mose.exe",
+    )
+
+
+def _bundled_mose_executable() -> Path | None:
+    for candidate in _bundled_mose_candidates():
+        if not candidate.is_file():
+            continue
+        try:
+            return candidate.resolve()
+        except OSError:
+            return candidate
+    return None
+
+
 def _mose_search_paths() -> list[Path]:
     """Return the optional MOSE paths that the MAW Launcher will inspect."""
     candidates: list[Path] = []
-    registered = _registered_mose_executable()
-    if registered is not None:
-        candidates.append(registered)
-
     repo_root = Path(__file__).resolve().parents[1]
     if sys.platform == "darwin":
         app_candidates: list[Path] = [
             repo_root / "MOSE.app",
             repo_root / "mose.app",
-            repo_root / "desktop" / "target" / "release" / "bundle" / "macos" / "MOSE.app",
-            repo_root / "desktop" / "target" / "release" / "bundle" / "macos" / "mose.app",
-            repo_root / "desktop" / "target" / "debug" / "bundle" / "macos" / "MOSE.app",
-            repo_root / "desktop" / "target" / "debug" / "bundle" / "macos" / "mose.app",
             asset_path("MOSE.app"),
             asset_path("mose.app"),
             Path("/Applications/MOSE.app"),
@@ -282,19 +305,17 @@ def _mose_search_paths() -> list[Path]:
             app_candidates[0:0] = frozen_app_candidates
         candidates.extend(app_candidates)
     else:
-        if getattr(sys, "frozen", False):
-            executable_dir = Path(sys.executable).resolve().parent
-            candidates.extend((executable_dir / "MOSE.exe", executable_dir / "mose.exe"))
+        candidates.extend(_bundled_mose_candidates())
         candidates.extend(
             (
-                repo_root / "MOSE.exe",
-                repo_root / "mose.exe",
-                repo_root / "desktop" / "target" / "release" / "mose.exe",
-                repo_root / "desktop" / "target" / "debug" / "mose.exe",
                 asset_path("MOSE.exe"),
                 asset_path("mose.exe"),
             )
         )
+
+    registered = _registered_mose_executable()
+    if registered is not None:
+        candidates.append(registered)
 
     return candidates
 
@@ -330,14 +351,41 @@ def _mose_environment() -> dict[str, str]:
     return environment
 
 
+def _mosp_user_choice_exists(winreg_module: object) -> bool:
+    r"""Return whether Windows has a user-selected handler for ``.mosp``.
+
+    ``UserChoice`` is protected by Windows and has precedence over the
+    portable association under ``Software\Classes``.  Treat access-denied or
+    otherwise ambiguous registry errors as present so Launcher never attempts
+    to override a choice it cannot inspect.
+    """
+    try:
+        with winreg_module.OpenKey(winreg_module.HKEY_CURRENT_USER, MOSE_USER_CHOICE_KEY):
+            return True
+    except FileNotFoundError:
+        return False
+    except OSError as error:
+        # WinError 2/3 mean the key (or one of its parents) does not exist;
+        # every other error is conservatively treated as an existing choice.
+        winerror = getattr(error, "winerror", None)
+        errno = getattr(error, "errno", None)
+        if winerror in (2, 3) or errno in (2, 3):
+            return False
+        return True
+
+
 def _register_mosp_association() -> bool:
     """Register the portable package's .mosp association for the current Windows user."""
     if sys.platform != "win32":
         return False
-    registered = _registered_mose_executable()
-    executable = registered or _find_mose_executable()
-    if executable is None:
+    bundled = _bundled_mose_executable()
+    # Associations belong to the portable MAW-MOSE suite only.  An external
+    # legacy MOSE may still be launched by the explicit editor action, but it
+    # must never be made the default handler merely because the Launcher can
+    # discover it in the registry or an old install directory.
+    if bundled is None:
         return False
+    executable = bundled
     # MOSE.exe already embeds the MOSE icon.  Referencing the executable keeps
     # the association self-contained in the portable bundle and avoids pointing
     # Explorer at MAW's launcher icon (or at a stale _MEIPASS path).
@@ -345,23 +393,16 @@ def _register_mosp_association() -> bool:
     try:
         import winreg
 
+        user_choice_exists = _mosp_user_choice_exists(winreg)
         version = MOSE_VERSION
-        if registered is not None:
-            try:
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as mose_key:
-                    existing_version = winreg.QueryValueEx(mose_key, "Version")[0]
-                if str(existing_version).strip():
-                    version = str(existing_version).strip()
-            except (AttributeError, OSError, TypeError, ValueError):
-                pass
-
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as mose_key:
             winreg.SetValueEx(mose_key, "InstallPath", 0, winreg.REG_SZ, str(executable.parent))
             winreg.SetValueEx(mose_key, "ExecutablePath", 0, winreg.REG_SZ, str(executable))
             winreg.SetValueEx(mose_key, "Version", 0, winreg.REG_SZ, version)
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp") as extension_key:
-            winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, MOSE_FILE_TYPE)
-            winreg.SetValueEx(extension_key, "Content Type", 0, winreg.REG_SZ, "application/json")
+        if not user_choice_exists:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp") as extension_key:
+                winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, MOSE_FILE_TYPE)
+                winreg.SetValueEx(extension_key, "Content Type", 0, winreg.REG_SZ, "application/json")
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}") as file_type_key:
             winreg.SetValueEx(file_type_key, None, 0, winreg.REG_SZ, "MOSE Project")
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}\DefaultIcon") as icon_key:
@@ -638,6 +679,8 @@ class LauncherApi:
             "postprocessAutoPlan": load_postprocess_plan(self.paths.env_path),
             "zoomPercent": config.zoom_percent,
             "serverPort": self.default_server_port,
+            "moseAvailable": _find_mose_executable() is not None,
+            "moseBundled": _bundled_mose_executable() is not None,
         }
 
     def get_postprocess_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1319,6 +1362,8 @@ class LauncherApi:
         project = Path(project_text).expanduser() if project_text else None
         if project is not None and not project.is_file():
             return _error_result("jsonPath", "json_not_found", str(project))
+        if project is not None and project.suffix.lower() not in {".mosp", ".json"}:
+            return _error_result("jsonPath", "json_invalid", str(project))
 
         executable = _find_mose_executable()
         if executable is None:
@@ -1341,6 +1386,18 @@ class LauncherApi:
         except OSError as error:
             return _error_result("editor", "mose_start_failed", str(error))
         return {"ok": True, "usedMose": True, "path": str(executable)}
+
+    def open_preferred_editor(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Open MOSE when available, falling back to the existing Server editor."""
+        mose_result = self.open_mose(payload)
+        if mose_result.get("ok"):
+            return mose_result
+        if mose_result.get("code") not in {"mose_not_found", "mose_start_failed"}:
+            return mose_result
+        server_result = self.start_server(payload)
+        server_result["usedMose"] = False
+        server_result["fallbackFrom"] = mose_result.get("code")
+        return server_result
 
     def start_server(self, payload: Mapping[str, object]) -> dict[str, object]:
         json_text = str(payload.get("jsonPath") or "").strip()
@@ -2491,6 +2548,12 @@ class LauncherApi:
 
 def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | None = None) -> None:
     import webview
+
+    # Portable MAW-MOSE bundles have no installer; keep the per-user .mosp
+    # association pointed at the current nested Electron executable.  A
+    # MAW-only package never registers an association on its own.
+    if sys.platform == "win32" and _bundled_mose_executable() is not None:
+        _register_mosp_association()
 
     # pywebview opens DevTools automatically in debug mode when this setting is
     # enabled. Keep debug mode and automatic DevTools opening independently

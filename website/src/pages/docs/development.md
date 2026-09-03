@@ -25,7 +25,13 @@ MAW（Moy's ASR Workflow）是一个收窄的本地工作流：本地媒体经�
 
 ### 当前编辑器维护重点
 
-当前产品流程以 `server-editor/serve.py` 提供的 Server 版编辑器为主。Launcher 暂时隐藏“同时生成单文件版网页编辑器（html）”选项；单文件 HTML 和 `blank-editor.html` 仍保留用于兼容既有使用方式，但暂不作为新功能的主要更新和验收对象，后续重新启用时再统一评估维护范围。
+当前产品流程以 `server-editor/serve.py` 提供的 Server 版编辑器为主；Windows `MAW-MOSE` 套件中的 Electron MOSE 优先复用这套 Server。Launcher 主按钮优先打开 `MAW\MOSE\MOSE.exe`，不可用时回退 Server；单文件 HTML 和 `blank-editor.html` 仍保留用于兼容既有使用方式。
+
+### MOSE Electron 开发与边界
+
+`desktop/src/main.cjs` 只负责窗口、单实例、工程参数、下载对话框、外链和它自己启动的 `MAW.exe` 生命周期；编辑器 UI 继续唯一来自 `web/`，后端继续来自 `server-editor/serve.py`。桌面模式使用 `--desktop-mode`、系统随机端口和 `MAW_DESKTOP_TOKEN`，所有内部请求必须经过桌面令牌保护。不要把 token 放入命令行或日志，也不要让 Electron 导航到本次启动 origin 之外的页面。
+
+本地验证：在 `desktop/` 执行 `npm ci`、`npm test`、`npm run build` 与 `npm run smoke`。发布套件由完整 `dist/MAW` 复制后加入 `desktop/dist/win-unpacked`，固定为 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe`；MOSE 目录不能脱离同套件的 MAW.exe 运行。Installer、签名、自动更新以及 macOS/Linux Electron 版本暂不实现。
 
 从 `1.3.2` 到当前 Beta 的功能演进记录见 [版本变更回顾](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/RELEASE_REVIEW_1.3.2_TO_1.4.0.md)。
 

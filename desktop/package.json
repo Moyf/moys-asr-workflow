@@ -1,13 +1,39 @@
 {
   "name": "mose-desktop",
   "private": true,
-  "version": "0.1.0",
-  "description": "MOSE — Moy's Open Subtitle Editor (Tauri 桌面应用开发目录)",
+  "version": "1.5.0",
+  "description": "MOSE — Moy's Open Subtitle Editor (Electron desktop app)",
+  "main": "src/main.cjs",
   "scripts": {
-    "tauri": "tauri",
-    "icons": "tauri icon ../assets/MOSE-icon.png -o src-tauri/icons"
+    "dev": "electron .",
+    "start": "electron .",
+    "build": "electron-builder --win --x64 --dir",
+    "smoke": "electron . --mose-smoke",
+    "test": "node --test tests/*.mjs"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "electron": "37.2.6",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "com.moy.mose",
+    "productName": "MOSE",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "../assets/MOSE-icon.png"
+    }
   }
 }

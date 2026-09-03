@@ -18,7 +18,7 @@ from urllib.error import URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _bundled_mose_executable, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
@@ -1353,6 +1353,34 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(popen.call_args.args[0], [str(executable), str(project.resolve())])
         self.assertEqual(popen.call_args.kwargs["cwd"], str(self.root))
 
+    def test_open_preferred_editor_falls_back_to_server_when_mose_is_missing(self) -> None:
+        with mock.patch.object(
+            self.api,
+            "open_mose",
+            return_value={"ok": False, "code": "mose_not_found", "detail": "MOSE.exe"},
+        ) as open_mose:
+            with mock.patch.object(
+                self.api,
+                "start_server",
+                return_value={"ok": True, "url": "http://127.0.0.1:9001/?lang=zh", "serverAlreadyRunning": False},
+            ) as start_server:
+                result = self.api.open_preferred_editor({"jsonPath": "project.mosp"})
+
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["usedMose"])
+        self.assertEqual(result["fallbackFrom"], "mose_not_found")
+        open_mose.assert_called_once_with({"jsonPath": "project.mosp"})
+        start_server.assert_called_once_with({"jsonPath": "project.mosp"})
+
+    def test_open_preferred_editor_does_not_fallback_for_invalid_project(self) -> None:
+        failure = {"ok": False, "code": "json_not_found", "field": "jsonPath"}
+        with mock.patch.object(self.api, "open_mose", return_value=failure):
+            with mock.patch.object(self.api, "start_server") as start_server:
+                result = self.api.open_preferred_editor({"jsonPath": "missing.mosp"})
+
+        self.assertEqual(result, failure)
+        start_server.assert_not_called()
+
     def test_open_url_uses_external_opener(self) -> None:
         with mock.patch("maw.gui_web._open_external") as open_external:
             result = self.api.open_url({"url": "https://example.com/docs"})
@@ -1489,8 +1517,9 @@ class GuiWebBridgeTests(unittest.TestCase):
 
     def test_find_mose_prefers_executable_beside_frozen_maw(self) -> None:
         maw_executable = self.root / "MAW.exe"
-        mose_executable = self.root / "MOSE.exe"
+        mose_executable = self.root / "MOSE" / "MOSE.exe"
         maw_executable.write_bytes(b"exe")
+        mose_executable.parent.mkdir()
         mose_executable.write_bytes(b"exe")
 
         with mock.patch.object(sys, "platform", "win32"):
@@ -1511,6 +1540,16 @@ class GuiWebBridgeTests(unittest.TestCase):
             with mock.patch.object(sys, "frozen", True, create=True):
                 with mock.patch.object(sys, "executable", str(maw_executable)):
                     self.assertEqual(_find_mose_executable(), mose_executable.resolve())
+
+    def test_legacy_root_mose_executable_is_not_treated_as_bundled(self) -> None:
+        legacy = self.root / "MOSE.exe"
+        legacy.write_bytes(b"exe")
+
+        with mock.patch.object(sys, "frozen", False, create=True):
+            with mock.patch("maw.gui_web.__file__", str(self.root / "maw" / "gui_web.py")):
+                # A standalone legacy executable at the repository root must
+                # never satisfy the suite-only lookup.
+                self.assertIsNone(_bundled_mose_executable())
 
     def test_open_mose_reports_macos_app_when_no_desktop_editor_exists(self) -> None:
         project = self.root / "project.mosp"
@@ -1548,6 +1587,8 @@ class GuiWebBridgeTests(unittest.TestCase):
                 self.read_values: dict[tuple[str, str], str] = {}
 
             def OpenKey(self, _root: object, path: str) -> FakeKey:
+                if path == r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.mosp\UserChoice":
+                    raise FileNotFoundError(path)
                 return FakeKey(path)
 
             def QueryValueEx(self, key: FakeKey, name: str) -> tuple[str, int]:
@@ -1564,7 +1605,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         fake_winreg = FakeWinreg()
         with mock.patch.object(sys, "platform", "win32"):
-            with mock.patch("maw.gui_web._find_mose_executable", return_value=executable):
+            with mock.patch("maw.gui_web._bundled_mose_executable", return_value=executable):
                 with mock.patch("ctypes.windll", create=True):
                     with mock.patch.dict(sys.modules, {"winreg": fake_winreg}):
                         self.assertTrue(_register_mosp_association())
@@ -1576,16 +1617,72 @@ class GuiWebBridgeTests(unittest.TestCase):
         named_values = {(path, name): value for path, name, value in fake_winreg.values if name is not None}
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "InstallPath")], str(self.root))
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "ExecutablePath")], str(executable))
-        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "0.1.0")
+        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.5.0")
 
-    def test_find_mose_prefers_valid_registered_independent_installation(self) -> None:
+    def test_register_mosp_association_preserves_existing_user_choice(self) -> None:
+        executable = self.root / "MOSE.exe"
+        executable.write_bytes(b"exe")
+
+        class FakeKey:
+            def __init__(self, path: str) -> None:
+                self.path = path
+
+            def __enter__(self) -> "FakeKey":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        class FakeWinreg:
+            HKEY_CURRENT_USER = object()
+            REG_SZ = 1
+
+            def __init__(self) -> None:
+                self.values: list[tuple[str, str | None, str]] = []
+
+            def OpenKey(self, _root: object, path: str) -> FakeKey:
+                if path == r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.mosp\UserChoice":
+                    return FakeKey(path)
+                raise FileNotFoundError(path)
+
+            def CreateKey(self, _root: object, path: str) -> FakeKey:
+                return FakeKey(path)
+
+            def SetValueEx(self, key: FakeKey, name: str | None, _reserved: int, _kind: int, value: str) -> None:
+                self.values.append((key.path, name, value))
+
+            def QueryValueEx(self, _key: FakeKey, _name: str) -> tuple[str, int]:
+                raise FileNotFoundError
+
+        fake_winreg = FakeWinreg()
+        with mock.patch.object(sys, "platform", "win32"):
+            with mock.patch("maw.gui_web._bundled_mose_executable", return_value=executable):
+                with mock.patch.dict(sys.modules, {"winreg": fake_winreg}):
+                    self.assertTrue(_register_mosp_association())
+
+        paths = {path for path, _name, _value in fake_winreg.values}
+        self.assertNotIn(r"Software\Classes\.mosp", paths)
+        self.assertIn(r"Software\Classes\Moy.MOSE.Project\DefaultIcon", paths)
+        self.assertIn(r"Software\Classes\Moy.MOSE.Project\shell\open\command", paths)
+
+    def test_register_mosp_association_ignores_external_mose_without_suite(self) -> None:
+        executable = self.root / "legacy" / "MOSE.exe"
+        executable.parent.mkdir()
+        executable.write_bytes(b"exe")
+
+        with mock.patch.object(sys, "platform", "win32"):
+            with mock.patch("maw.gui_web._bundled_mose_executable", return_value=None):
+                with mock.patch("maw.gui_web._find_mose_executable", return_value=executable):
+                    self.assertFalse(_register_mosp_association())
+
+    def test_find_mose_prefers_valid_bundled_installation_over_registered_one(self) -> None:
         registered = self.root / "installed" / "MOSE.exe"
-        bundled = self.root / "bundle" / "MOSE.exe"
+        bundled = self.root / "bundle" / "MOSE" / "MOSE.exe"
         registered.parent.mkdir()
-        bundled.parent.mkdir()
+        bundled.parent.mkdir(parents=True)
         registered.write_bytes(b"installed")
         bundled.write_bytes(b"bundled")
-        maw_executable = bundled.parent / "MAW.exe"
+        maw_executable = bundled.parent.parent / "MAW.exe"
         maw_executable.write_bytes(b"maw")
 
         class FakeKey:
@@ -1614,7 +1711,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             with mock.patch.object(sys, "frozen", True, create=True):
                 with mock.patch.object(sys, "executable", str(maw_executable)):
                     with mock.patch.dict(sys.modules, {"winreg": FakeWinreg()}):
-                        self.assertEqual(_find_mose_executable(), registered.resolve())
+                        self.assertEqual(_find_mose_executable(), bundled.resolve())
 
     def test_open_mose_reports_missing_project_before_starting(self) -> None:
         with mock.patch("maw.gui_web.subprocess.Popen") as popen:
@@ -1623,6 +1720,17 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "jsonPath")
         self.assertEqual(result["code"], "json_not_found")
+        popen.assert_not_called()
+
+    def test_open_mose_rejects_non_project_extension_before_starting(self) -> None:
+        subtitle = self.root / "subtitle.srt"
+        subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\nHello\n", encoding="utf-8")
+        with mock.patch("maw.gui_web.subprocess.Popen") as popen:
+            result = self.api.open_mose({"jsonPath": str(subtitle)})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "jsonPath")
+        self.assertEqual(result["code"], "json_invalid")
         popen.assert_not_called()
 
     def test_start_server_reports_failure_when_port_never_responds(self) -> None:
@@ -3343,16 +3451,17 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("打开空的 HTML 编辑器", page)
         self.assertIn('event.target.closest(".split-wrap")', script)
 
-    def test_launcher_uses_server_as_default_and_hides_mose_in_menu(self) -> None:
+    def test_launcher_prefers_mose_and_keeps_server_in_split_menu(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
-        self.assertIn('id="openMawe" class="ghost split-main" type="button" data-i18n="start_server_editor"', page)
-        self.assertNotIn('id="openMose"', page)
-        self.assertNotIn("在 MOSE 中打开", page)
-        self.assertIn('$("openMawe").addEventListener("click", openServerEditor)', script)
-        self.assertNotIn("openMose", script)
-        self.assertNotIn("open_mose", script)
+        self.assertIn('id="openMawe" class="ghost split-main" type="button" data-i18n="open_preferred_editor"', page)
+        self.assertIn('id="openServerEditor"', page)
+        self.assertIn("在 MOSE 中打开", page)
+        self.assertIn('$("openMawe").addEventListener("click", openPreferredEditor)', script)
+        self.assertIn('$("openServerEditor").addEventListener("click", openServerEditor)', script)
+        self.assertIn("open_preferred_editor", script)
+        self.assertIn("mose_fallback", script)
         self.assertIn('function openServerEditor()', script)
         self.assertIn('bridge("start_server"', script)
 
@@ -3523,14 +3632,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
         self.assertIn('const SERVER_STARTING_TEXT = { zh: "启动中……", en: "Starting…" };', script)
-        self.assertIn("button.disabled = state.serverStarting;", script)
+        self.assertIn("button.disabled = state.moseStarting || state.serverStarting;", script)
         self.assertIn("state.serverStarting = true;", script)
         self.assertIn("state.serverStarting = false;", script)
         self.assertIn("serverStopping: false", script)
         self.assertIn("if (state.serverStopping) return;", script)
         self.assertIn("state.serverStopping = true;", script)
         self.assertIn("state.serverStopping = false;", script)
-        self.assertIn('$("stopServer").disabled = state.serverStarting || state.serverStopping;', script)
+        self.assertIn('$("stopServer").disabled = state.serverStarting || state.serverStopping || state.moseStarting;', script)
         self.assertIn("guiLang: state.lang", script)
 
     def test_launcher_log_and_server_notice_layout(self) -> None:
