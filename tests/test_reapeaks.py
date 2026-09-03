@@ -33,6 +33,8 @@ def build_reapeaks(
     sample_rate: int = 8000,
     division: int = 80,
     peaks: int = 2,
+    channels: int = 1,
+    wave_values: list[list[tuple[int, int]]] | None = None,
 ) -> None:
     """Write a synthetic RPKN (v1.1) file with one wave + one spectral mip.
 
@@ -42,10 +44,16 @@ def build_reapeaks(
 
     ``sample_rate`` / ``division`` are free so tests can express a fractional
     bin rate (16000 / 53 = 301.8868 peaks/s), which is what REAPER actually
-    produces for most media.
+    produces for most media.  ``channels`` / ``wave_values`` (per channel, a
+    list of per-peak ``(max, min)``) let a test build the dual-mono layout where
+    only one channel carries the audio.
     """
-    channels = 1
     mipmap_count = 2
+    if wave_values is None:
+        default = [(100, -100), (200, -50)]
+        wave_values = [
+            [default[index % 2] for index in range(peaks)] for _ in range(channels)
+        ]
     src = media_path.stat()
     src_timestamp = int(src.st_mtime)
     src_filesize = src.st_size
@@ -60,14 +68,17 @@ def build_reapeaks(
     )
     # mip0 wave: div=division, `peaks` entries; mip1 spectral: -ord('s'), same count
     mip_headers = struct.pack("<iiii", division, peaks, -ord("s"), peaks)
-    wave_pattern = [(100, -100), (200, -50)]
-    wave_pairs = [wave_pattern[index % 2] for index in range(peaks)]
-    wave_data = struct.pack(
-        f"<{2 * peaks}h", *[v for pair in wave_pairs for v in pair]
-    )
+    # 文件内顺序是 peak-major / channel-minor
+    flat: list[int] = []
+    for index in range(peaks):
+        for channel in range(channels):
+            peak_max, peak_min = wave_values[channel][index]
+            flat.extend((peak_max, peak_min))
+    wave_data = struct.pack(f"<{2 * peaks * channels}h", *flat)
     spec_pattern = [((16383 << 15) | 300), ((100 << 15) | 5000)]
     spec_data = struct.pack(
-        f"<{peaks}i", *(spec_pattern[index % 2] for index in range(peaks))
+        f"<{peaks * channels}i",
+        *(spec_pattern[index % 2] for index in range(peaks * channels)),
     )
     path.write_bytes(header + mip_headers + wave_data + spec_data)
 
@@ -476,6 +487,79 @@ class GeneratedFractionalRateTests(unittest.TestCase):
         # 3 s 音频的缓存覆盖长度必须落在 [3000, 3000 + 一个 bin] 之间
         self.assertGreaterEqual(covered_ms, 3000.0)
         self.assertLess(covered_ms, 3000.0 + bin_ms + 1.0)
+
+
+class ChannelMergeTests(unittest.TestCase):
+    """wave 载荷合并全部声道，与浏览器端 decodeReapeaksFile 同一语义。"""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.media = self.root / "dual.wav"
+        self.media.write_bytes(b"RIFF" + b"\x00" * 64)
+        os.utime(self.media, (FIXED_MTIME, FIXED_MTIME))
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _pairs(self, name: str, **kwargs) -> list[tuple[int, int]]:
+        """解码成有符号的 (min, max) 峰对列表。"""
+        cache = self.root / name
+        build_reapeaks(cache, self.media, **kwargs)
+        payload = reapeaks.extract_waveform_payload(cache, self.media)
+        assert payload is not None
+        signed = memoryview(base64.b64decode(payload["data"])).cast("b")
+        return [(signed[i * 2], signed[i * 2 + 1]) for i in range(len(signed) // 2)]
+
+    def test_dual_mono_right_channel_content_is_not_dropped(self) -> None:
+        """广播/游戏里常见的双单声道：人声只在右声道，只取一路会画成直线。"""
+        pairs = self._pairs(
+            "dual.wav.ReaPeaks",
+            sample_rate=48000,
+            division=160,
+            peaks=3,
+            channels=2,
+            wave_values=[[(0, 0)] * 3, [(3000, -3000), (6000, -6000), (1500, -1500)]],
+        )
+        self.assertEqual(len(pairs), 3)
+        for peak_min, peak_max in pairs:
+            self.assertGreater(peak_max, 0, f"右声道的正向峰值必须被合并: {pairs}")
+            self.assertLess(peak_min, 0, f"右声道的负向峰值必须被合并: {pairs}")
+
+    def test_merged_envelope_spans_every_channel(self) -> None:
+        """合并 = 各声道 min 取最小、max 取最大，而不是固定取第一路。"""
+        pairs = self._pairs(
+            "wide.wav.ReaPeaks",
+            sample_rate=48000,
+            division=160,
+            peaks=1,
+            channels=2,
+            wave_values=[[(1000, -100)], [(300, -9000)]],
+        )
+        # max 来自声道 0（1000），min 来自声道 1（-9000）
+        self.assertEqual(
+            pairs,
+            [
+                (
+                    reapeaks._wave_to_int8(-9000),
+                    reapeaks._wave_to_int8(1000),
+                )
+            ],
+        )
+        self.assertGreater(pairs[0][1], reapeaks._wave_to_int8(300))
+        self.assertLess(pairs[0][0], reapeaks._wave_to_int8(-100))
+
+    def test_single_channel_is_unchanged(self) -> None:
+        mono = self._pairs("mono.wav.ReaPeaks", sample_rate=8000, division=80, peaks=2)
+        explicit = self._pairs(
+            "same.wav.ReaPeaks",
+            sample_rate=8000,
+            division=80,
+            peaks=2,
+            channels=1,
+            wave_values=[[(100, -100), (200, -50)]],
+        )
+        self.assertEqual(mono, explicit)
 
 
 def subprocess_run(command: list[str]) -> None:

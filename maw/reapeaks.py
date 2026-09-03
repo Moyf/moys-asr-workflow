@@ -235,6 +235,15 @@ def _paired_spectral_rates(ra: ReaPeaksFile) -> list[tuple[int, MipMap]]:
     Spectral mipmaps carry ``-(int)'s'`` as their division_factor token but their
     real rate mirrors the paired main-sample mipmap, so the wave mipmap's
     division factor is what aligns them on the time axis.
+
+    The spectral layer usually has *fewer* peaks than its paired wave layer
+    (7 fewer for a 44.1 kHz REAPER file, 25 for 16 kHz) because the last FFT
+    windows cannot be filled.  That deficit is at the tail, not a head offset:
+    measured with a narrow-band burst at a known instant, the spectral response
+    is centered on the same bin the wave layer reports (48 kHz: 4207.5 vs 4207;
+    16 kHz: 4234 vs 4233).  So index ``i`` on both layers means the same moment
+    and no shift may be introduced here; the uncovered tail simply draws no
+    color, which the editor already handles with a bounds check.
     """
     wave_mips = ra.wave_mipmaps()
     spectral_mips = ra.spectral_mipmaps()
@@ -301,7 +310,14 @@ def extract_waveform_payload(
 
     Lets the editor render the waveform outline from REAPER's own peaks (raw
     sample-rate, immune to the 1000 Hz re-sample aliasing of the built-in
-    waveform cache). Channel 0 is used for display.
+    waveform cache).
+
+    All channels are merged into one outline (min of mins, max of maxes), which
+    is what the browser-side ``decodeReapeaksFile`` does too, so a project
+    opened by the server and a ``.ReaPeaks`` dropped into the editor produce the
+    same shape.  Picking a single channel instead would draw a flat line for the
+    dual-mono material that is common in broadcast and game audio (voice only on
+    the right channel).  Spectral data stays channel 0 on both sides.
 
     The bin rate is ``sample_rate / division`` and is fractional for most media
     (16 kHz with ``div=53`` is 301.8868 peaks/s).  It must never be rounded to
@@ -322,9 +338,13 @@ def extract_waveform_payload(
         return None
     buffer = bytearray()
     for peak_row in finest.wave:
-        peak = peak_row[0]  # channel 0 for display
-        low = _wave_to_int8(peak.min)
-        high = _wave_to_int8(peak.max)
+        low = 127
+        high = -127
+        for peak in peak_row:
+            low = min(low, _wave_to_int8(peak.min))
+            high = max(high, _wave_to_int8(peak.max))
+        if not peak_row:  # 声道数为 0 的损坏文件：留一条中线而不是画反的包络
+            low = high = 0
         buffer += bytes((low & 0xFF, high & 0xFF))
     exact_rate = ra.sample_rate / div
     return {
