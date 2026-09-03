@@ -298,7 +298,11 @@ def run_llm_postprocess(
     if len(batches) > 1:
         warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
     if request.merge_bilingual and strict_translation:
-        processed = merge_bilingual_project(project, processed)
+        processed = merge_bilingual_project(
+            project,
+            processed,
+            translation_target="zh" if request.operation == "translate_zh" else "en",
+        )
         warnings = ("已将原始文本和翻译文本合并为单条双语字幕。", *warnings)
     _notify_status(on_status, "toolbox_status_writing")
     return _write(
@@ -313,8 +317,13 @@ def run_llm_postprocess(
     )
 
 
-def merge_bilingual_project(source_project: JsonDict, translated_project: JsonDict) -> JsonDict:
-    """Combine matching source and translated cues into one subtitle track."""
+def merge_bilingual_project(
+    source_project: JsonDict,
+    translated_project: JsonDict,
+    *,
+    translation_target: str,
+) -> JsonDict:
+    """Combine matching cues, placing the Chinese translation first for ``zh``."""
 
     source_segments = _segments(source_project)
     translated_segments = _segments(translated_project)
@@ -334,7 +343,10 @@ def merge_bilingual_project(source_project: JsonDict, translated_project: JsonDi
         if not isinstance(source_text, str) or not isinstance(translated_text, str):
             raise ValueError(f"第 {index} 条字幕缺少有效的原始文本或翻译文本。")
         merged = copy.deepcopy(source)
-        merged["text"] = f"{source_text}\n{translated_text}"
+        if translation_target == "zh":
+            merged["text"] = f"{translated_text}\n{source_text}"
+        else:
+            merged["text"] = f"{source_text}\n{translated_text}"
         _ = merged.pop("items", None)
         merged_segments.append(merged)
 

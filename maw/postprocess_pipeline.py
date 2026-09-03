@@ -866,7 +866,11 @@ def _merge_bilingual_subtitles(
         raise ValueError("翻译步骤没有生成完整的工程和 SRT 产物。")
     source_project = read_project(source_project_path)
     translated_project = read_project(translated_artifact.project_path)
-    merged = merge_bilingual_project(source_project, translated_project)
+    merged = merge_bilingual_project(
+        source_project,
+        translated_project,
+        translation_target=target,
+    )
     warnings = (
         *translated_artifact.warnings,
         "翻译前后的独立字幕已保留为中间产物，最终输出为单条双语字幕。",
