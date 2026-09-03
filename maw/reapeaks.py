@@ -66,6 +66,18 @@ DIV_SPECTROGRAM = -ord("g")  # spectrogram
 DIV_LOUDNESS = -ord("r")  # loudness (new)
 DIV_LOUDNESS_OLD = -ord("l")  # loudness (deprecated)
 
+# quapeaks 自有容器：magic 为 b'QPK' + 1 字节可打印版本号（当前 b'QPK1'）。
+# 全局头布局与 RPKN 完全相同，差别只在 magic 与允许的层集合。
+QUAPEAKS_MAGIC_PREFIX = b"QPK"
+
+# MAW 自研波形层。div 取负 ASCII 'm'，与 spectral/loudness 同一套 token 约定。
+DIV_SELF_WAVE = -ord("m")
+# 层数据段前缀：u32 自身 sample_rate + u32 division；npeak 不含前缀。
+SELF_WAVE_PREFIX_LEN = 8
+# 该层恒单声道（提取侧 ffmpeg 已 -ac 1），每峰 2 字节：int8 min, int8 max。
+SELF_WAVE_CHANNELS = 1
+SELF_WAVE_BYTES_PER_PEAK = 2
+
 
 @dataclass
 class Peak:
@@ -76,6 +88,19 @@ class Peak:
 
 
 @dataclass
+class SelfWaveLayer:
+    """MAW 自研波形层解码结果。
+
+    `sample_rate` 是**该层自己**的 PCM 采样率，与容器头的源媒体采样率无关；
+    精确刻度 = sample_rate / division，绝不能在这里取整（见 waveform_peaks_per_second）。
+    """
+
+    sample_rate: int
+    division: int
+    peaks: list[tuple[int, int]]  # 逐峰 (min, max)，int8，单声道
+
+
+@dataclass
 class MipMap:
     division_factor: int
     peak_count: int
@@ -83,6 +108,8 @@ class MipMap:
     wave: list[list[Peak]] = field(default_factory=list)
     spectral: list[list[tuple[int, int]]] = field(default_factory=list)
     loudness: list[list[tuple[float, float]]] = field(default_factory=list)
+    # 仅 kind == 'self_wave' 时有值
+    self_layer: SelfWaveLayer | None = None
 
 
 def _kind_for(div: int) -> str:
@@ -92,6 +119,8 @@ def _kind_for(div: int) -> str:
         return "spectrogram"
     if div in (DIV_LOUDNESS, DIV_LOUDNESS_OLD):
         return "loudness"
+    if div == DIV_SELF_WAVE:
+        return "self_wave"
     return "wave"
 
 
@@ -119,6 +148,9 @@ class ReaPeaksFile:
             raise ValueError("reapeaks 文件过短，无法解析头部")
         self.magic = self.data[0:4]
         self.is_v12 = self.magic == MAGIC_V12
+        # quapeaks 自有容器：magic 前缀 QPK，末字节是可打印 ASCII 版本位。
+        self.is_quapeaks = self.magic[:3] == QUAPEAKS_MAGIC_PREFIX
+        self.format_version = self.magic[3] if self.is_quapeaks else None
         self.channels = self.data[4]
         self.mipmap_count = self.data[5]
         # 官方规格：mtime/size 是 stat() 值的低 32 位（"low 32 bits"），仅作
@@ -151,6 +183,8 @@ class ReaPeaksFile:
                 off = self._read_spectrogram(mip, off)
             elif mip.kind == "loudness":
                 off = self._read_loudness(mip, off)
+            elif mip.kind == "self_wave":
+                off = self._read_self_wave(mip, off)
         self.data_end = off
 
     def _read_wave(self, mip: MipMap, off: int) -> int:
@@ -207,12 +241,52 @@ class ReaPeaksFile:
             mip.loudness.append(channels)
         return off
 
+    def _read_self_wave(self, mip: MipMap, off: int) -> int:
+        """读取 MAW 自研波形层。
+
+        两处刻意的不信任：
+
+        1. **绝不能用 ``self.channels``**。该层恒单声道，而容器头的 channels 是
+           媒体原生声道数（双声道素材上就是 2）；按 2 声道读 1 声道数据会字节
+           错位，连带把后续所有层的偏移搞坏。
+        2. **只在 quapeaks 容器里承认这个 token**。REAPER 的 RPKN 文件若哪天自己
+           用了 ``-'m'``，我们静默按自研层解就等于误读，宁可报错。
+        """
+        if not self.is_quapeaks:
+            raise ValueError(
+                f"{self.path}: 发现自研波形层 token（div={DIV_SELF_WAVE}）"
+                f"但 magic 不是 QPK*（{self.magic!r}），拒绝猜测"
+            )
+        need = SELF_WAVE_PREFIX_LEN + mip.peak_count * SELF_WAVE_BYTES_PER_PEAK
+        if off + need > len(self.data):
+            raise ValueError(
+                f"{self.path}: 自研波形层声明 npeak={mip.peak_count}，"
+                f"需 {need} 字节，但文件只剩 {len(self.data) - off} 字节"
+            )
+        sample_rate, division = struct.unpack_from("<II", self.data, off)
+        off += SELF_WAVE_PREFIX_LEN
+        if sample_rate <= 0 or division <= 0:
+            raise ValueError(
+                f"{self.path}: 自研波形层刻度无效 sample_rate={sample_rate} division={division}"
+            )
+        peaks: list[tuple[int, int]] = []
+        for _ in range(mip.peak_count):
+            low = struct.unpack_from("<b", self.data, off)[0]
+            high = struct.unpack_from("<b", self.data, off + 1)[0]
+            off += SELF_WAVE_BYTES_PER_PEAK
+            peaks.append((low, high))
+        mip.self_layer = SelfWaveLayer(sample_rate, division, peaks)
+        return off
+
     # ------------- helpers -------------
     def wave_mipmaps(self) -> list[MipMap]:
         return [m for m in self.mipmaps if m.kind == "wave"]
 
     def spectral_mipmaps(self) -> list[MipMap]:
         return [m for m in self.mipmaps if m.kind == "spectral"]
+
+    def self_wave_mipmaps(self) -> list[MipMap]:
+        return [m for m in self.mipmaps if m.kind == "self_wave"]
 
     def summary(self) -> str:
         lines = [
