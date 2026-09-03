@@ -304,6 +304,54 @@ test('unknown errors stay generic and do not expose FFmpeg actions', async ({ pa
   expect(issueUrl.searchParams.get('body')).toContain('service exploded');
 });
 
+test('issue drafts fit the GitHub URL budget and surface open failures', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    window.__copiedReports = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text) => window.__copiedReports.push(text) },
+    });
+    document.getElementById('log').textContent = Array.from(
+      { length: 1200 },
+      (_unused, index) => `[info] 2026-09-03 10:00 处理分片 ${index} / 1200，耗时 12.3 毫秒，覆盖率 0.87`,
+    ).join('\n');
+    window.MAWLauncher.onBackendEvent({ type: 'error', code: 'transcription_failed', detail: 'backend detail' });
+    window.__issueCalls = [];
+    const callBackend = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'open_url') {
+        window.__issueCalls.push(payload.url);
+        return { ok: false, detail: 'no browser available' };
+      }
+      return callBackend(method, payload);
+    };
+  });
+  await page.locator('#errorNoticeIssue').click();
+
+  // GitHub 对超长草稿有两道坎，都得守住。
+  const draftUrl = await page.evaluate(() => window.__issueCalls[0]);
+  expect(draftUrl).toBeTruthy();
+  // 1. GET URL 超 6927 字节直接被边缘拒绝（500/414/431），新建页打不开。
+  expect(Buffer.byteLength(draftUrl, 'utf8')).toBeLessThanOrEqual(6000);
+  // 2. 未登录跳 /login 时整条 URL 会再编码一次进 return_to，Location 头超 8192
+  //    就静默丢掉预填——照样 302，但用户登录后看到的是空白表单。
+  expect(draftUrl.length + 2 * (draftUrl.match(/%/g) ?? []).length).toBeLessThanOrEqual(7000);
+  const draft = new URL(draftUrl);
+  expect(draft.pathname).toBe('/Moyf/moys-asr-workflow/issues/new');
+  expect(draft.searchParams.get('title')).toContain('[bug] transcription_failed');
+  expect(draft.searchParams.get('body')).toContain('日志太长');
+  expect(draft.searchParams.get('body')).toContain('## 复现步骤');
+
+  // 打不开浏览器既不是成功也不能静默：要可见，且完整日志留在剪贴板作为出路。
+  const fullReport = await page.evaluate(() => window.__copiedReports[0] || '');
+  expect(fullReport).toContain('错误码: transcription_failed');
+  expect(fullReport).toContain('处理分片 0 / 1200');
+  await expect(page.locator('#status')).toContainText('no browser available');
+  await expect(page.locator('#log')).toContainText('open_issue: no browser available');
+});
+
 test('error reports keep one structured hint when detail matches the hint', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);

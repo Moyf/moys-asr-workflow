@@ -835,6 +835,7 @@
     error_open_faq_failed: "无法打开常见问题，请查看下方日志。",
     error_open_issue: "提交 Issue",
     error_open_issue_failed: "无法打开 Issue 提交页，请检查网络并查看下方日志。",
+    issue_draft_copied: "完整报告已复制到剪贴板，可粘贴到群里、邮件或直接贴在 Issue 里。",
     error_copy_report: "复制错误报告",
     error_copy_report_success: "已复制",
     error_copy_report_failed: "复制失败，请手动复制日志。",
@@ -849,6 +850,7 @@
     error_open_faq_failed: "Could not open the FAQ. Check the log below.",
     error_open_issue: "Report an Issue",
     error_open_issue_failed: "Could not open the Issue form. Check your connection and the log below.",
+    issue_draft_copied: "The full report is on your clipboard — paste it into the group chat, an email, or straight into the issue.",
     error_copy_report: "Copy error report",
     error_copy_report_success: "Copied",
     error_copy_report_failed: "Copy failed; please copy the log manually.",
@@ -1181,11 +1183,10 @@
     notice.classList.remove("hidden");
     revealErrorNotice(notice);
   }
-  function errorReportText() {
+  function errorReportHeadText() {
     const report = state.errorReport;
     if (!report) return "";
     const version = state.config?.appVersion || $("appVersion")?.textContent?.trim() || "unknown";
-    const log = redactSensitive($("log")?.textContent || "");
     const labels = state.lang === "zh"
       ? { title: "MAW Launcher 错误报告", version: "版本", code: "错误码", message: "提示", detail: "详细信息", log: "日志" }
       : { title: "MAW Launcher error report", version: "Version", code: "Error code", message: "Message", detail: "Detail", log: "Log" };
@@ -1198,8 +1199,12 @@
       `${labels.message}: ${redactSensitive(report.message)}`,
       ...(detail && detail !== message ? [`${labels.detail}: ${redactSensitive(report.detail)}`] : []),
       `${labels.log}:`,
-      log,
     ].join("\n");
+  }
+  function errorReportText() {
+    if (!state.errorReport) return "";
+    const log = redactSensitive($("log")?.textContent || "");
+    return `${errorReportHeadText()}\n${log}`;
   }
   function fallbackCopy(text) {
     const area = document.createElement("textarea");
@@ -1251,34 +1256,97 @@
       appendLog(`[error] open_faq: ${detail}`);
     }
   }
+  // GitHub 对 Issue 草稿有两道独立上限，实测均未登录访客可复现：
+  //   1. GET URL 本身 6927 字节起被边缘拒绝（7–8 KB 返回 500/502，9 KB 起 414，几十 KB 431），
+  //      新建页根本打不开。
+  //   2. 未登录时 GitHub 先 302 去 /login，并把整条 URL 再 percent-encode 一次塞进
+  //      return_to，于是 Location 头长度 ≈ URL 长度 + 2×百分号数；超过 8192 就把
+  //      return_to 整个丢掉 —— 照样 302，但用户登录后看到的是空白表单，预填静默消失。
+  // 第二道对中文更致命：percent-encoding 让每个汉字占 9 字节、含 3 个百分号，组合成本
+  // 15 字节/字，500 个汉字就顶满。所以两道都要满足，且日志只能带尾部。
+  const ISSUE_URL_BYTE_BUDGET = 6000;
+  const ISSUE_LOCATION_BYTE_BUDGET = 7000;
+  const ISSUE_BODY_TEMPLATE = ["", "## 复现步骤", "1. ", "", "## 预期行为", "", "## 实际行为", ""].join("\n");
+  function issueUrlPrefix(title) {
+    return `${HOME_URL}/issues/new?title=${encodeURIComponent(title)}&body=`;
+  }
+  function issueCost(title, body) {
+    const url = issueUrlPrefix(title) + encodeURIComponent(body);
+    const percent = (url.match(/%/g) || []).length;
+    return { urlBytes: url.length, locationBytes: url.length + percent * 2 };
+  }
+  function issueFits(title, body) {
+    const cost = issueCost(title, body);
+    return cost.urlBytes <= ISSUE_URL_BYTE_BUDGET && cost.locationBytes <= ISSUE_LOCATION_BYTE_BUDGET;
+  }
+  function truncatedLogNote() {
+    return state.lang === "zh"
+      ? "（日志太长，这里只带上最后一部分。完整日志在本机「打开日志文件夹」里的当日文件，请把它作为附件补充到这条 Issue。）"
+      : "(The log was too long, so only its tail is included. The full log is in today's file under the log folder on this machine — please attach it to this issue.)";
+  }
+  function issueLogTail(lines, keep) {
+    return lines.slice(Math.max(0, lines.length - keep)).join("\n");
+  }
+  // 连固定部分都装不下时（异常详情可能本身就有几 KB）按 code point 收缩。省略号直接进入
+  // 判定，不另算它的成本；按 code point 而非 UTF-16 单元切，避免切出孤立代理项让
+  // encodeURIComponent 抛 URIError。
+  function clampIssueBody(title, body) {
+    if (issueFits(title, body)) return body;
+    const chars = Array.from(body);
+    let lo = 0;
+    let hi = chars.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (issueFits(title, `${chars.slice(0, mid).join("")}…`)) lo = mid;
+      else hi = mid - 1;
+    }
+    return `${chars.slice(0, lo).join("")}…`;
+  }
   function issueDraftUrl() {
     const report = state.errorReport;
     const version = state.config?.appVersion || $("appVersion")?.textContent?.trim() || "";
     const title = report?.code ? `[bug] ${report.code} (MAW ${version})` : `[bug] MAW ${version}`;
-    const body = [
-      errorReportText(),
-      "",
-      "## 复现步骤",
-      "1. ",
-      "",
-      "## 预期行为",
-      "",
-      "## 实际行为",
-      "",
-    ].join("\n");
-    return `${HOME_URL}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+    const head = errorReportHeadText();
+    const lines = (redactSensitive($("log")?.textContent || "")).split("\n");
+    const buildBody = (logText, trimmed) =>
+      [head, trimmed ? `${logText}\n${truncatedLogNote()}` : logText, ISSUE_BODY_TEMPLATE].join("\n");
+    let keep = lines.length;
+    let body = buildBody(lines.join("\n"), false);
+    while (!issueFits(title, body) && keep > 1) {
+      keep = Math.floor(keep / 2);
+      body = buildBody(issueLogTail(lines, keep), keep < lines.length);
+    }
+    if (!issueFits(title, body)) body = clampIssueBody(title, body);
+    return `${issueUrlPrefix(title)}${encodeURIComponent(body)}`;
   }
   async function openErrorIssue() {
     try {
       const result = await window.MAWLauncher.callBackend("open_url", { url: issueDraftUrl() });
       if (result?.ok) return;
-      const detail = result?.detail || result?.error || t("error_open_issue_failed");
-      setStatus(detail);
-      appendLog(`[error] open_issue: ${detail}`);
+      await issueOpenFailed(result?.detail || result?.error || t("error_open_issue_failed"));
     } catch (error) {
-      const detail = error?.message || String(error || t("error_open_issue_failed"));
-      setStatus(detail);
-      appendLog(`[error] open_issue: ${detail}`);
+      await issueOpenFailed(error?.message || String(error || t("error_open_issue_failed")));
+    }
+  }
+  // 草稿链接要靠浏览器才带得出去；浏览器没打开时它等于没提交，所以把含完整日志的
+  // 报告塞进剪贴板，让用户还有「粘贴到群里 / 邮件 / Issue 正文」这条可用的路。
+  async function issueOpenFailed(detail) {
+    setStatus(`${detail} · ${t("issue_draft_copied")}`);
+    appendLog(`[error] open_issue: ${detail}`);
+    const text = errorReportText();
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (_error) {
+          fallbackCopy(text);
+        }
+      } else {
+        fallbackCopy(text);
+      }
+    } catch (_error) {
+      // 提示与日志已经写明失败原因，复制再失败不再叠加一层提示。
     }
   }
   function setServerStatus(url, alreadyRunning = false, prefix = "") {
