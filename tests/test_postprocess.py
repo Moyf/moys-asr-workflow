@@ -1212,6 +1212,36 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("酒很好喝\nThe wine is delicious.", result.srt_path.read_text(encoding="utf-8"))
         self.assertIn("已将原始文本和翻译文本合并", "\n".join(result.warnings))
 
+    def test_llm_chinese_translation_is_first_when_bilingual_subtitles_are_merged(self) -> None:
+        source = read_project(self.project_path)
+        source["segments"][0]["text"] = "The wine is delicious."
+        source["segments"][1]["text"] = "The next sentence."
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="translate_zh",
+                custom_prompt="",
+                merge_bilingual=True,
+            ),
+            complete=lambda _prompt, _cues: {
+                "groups": [
+                    {"id": "c0001", "text": "酒很好喝"},
+                    {"id": "c0002", "text": "下一句"},
+                ]
+            },
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        merged = project_segments(read_project(result.project_path))
+        self.assertEqual(
+            [segment["text"] for segment in merged],
+            ["酒很好喝\nThe wine is delicious.", "下一句\nThe next sentence."],
+        )
+
     def test_llm_translation_does_not_write_when_every_group_is_invalid(self) -> None:
         def complete(_system_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
             return {"groups": [{"source_ids": ["c0001", "c0002"], "text": "Merged translation"}]}
