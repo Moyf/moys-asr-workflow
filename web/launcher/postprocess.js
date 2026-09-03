@@ -12,6 +12,7 @@
   const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
   const TOOLBOX_SIZE_KEY = "maw.launcher.toolbox.size";
   const LLM_PROMPTS_KEY = "maw.launcher.llm.prompts";
+  const LLM_PROMPT_TEMPLATES_KEY = "maw.launcher.llm.prompt-templates.v1";
   const ALIGNMENT_GAP_REMOVE_KEY = "maw.launcher.alignment.gap_remove";
   const ALIGNMENT_GAP_REMOVE_DEFAULTS = Object.freeze({
     minimum_ms: 400,
@@ -50,11 +51,13 @@
   let modelChoices = [];
   let modelChoicesOpen = false;
   let llmPrompts = {};
+  let llmPromptTemplates = [];
   let activeLlmOperation = "";
   let artifactMenuTarget = null;
   let batchMode = false;
   let postprocessApiKeyRequest = 0;
   let alignmentGapRemove = null;
+  let promptTemplateStatusTimer = 0;
   let mediaToolRunning = false;
   let mediaToolCancelling = false;
   let audioTracks = [];
@@ -93,6 +96,96 @@
     } catch (error) {
       // 某些嵌入式浏览器会禁用 localStorage；内存中的提示词仍可在本次运行中使用。
     }
+  }
+
+  function loadLlmPromptTemplates() {
+    try {
+      const raw = window.localStorage?.getItem(LLM_PROMPT_TEMPLATES_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+      const names = new Set();
+      return parsed.flatMap((template) => {
+        const name = String(template?.name || "").trim().slice(0, 60);
+        const text = String(template?.text || "").trim();
+        if (!name || !text || names.has(name)) return [];
+        names.add(name);
+        return [{ name, text }];
+      });
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function saveLlmPromptTemplates() {
+    try {
+      window.localStorage?.setItem(LLM_PROMPT_TEMPLATES_KEY, JSON.stringify(llmPromptTemplates));
+    } catch (error) {
+      // 某些嵌入式浏览器会禁用 localStorage；当前运行中仍可使用模板。
+    }
+  }
+
+  function setPromptTemplateStatus(message, kind = "", timeoutMs = 2400) {
+    const status = $("llmPromptTemplateStatus");
+    window.clearTimeout(promptTemplateStatusTimer);
+    status.textContent = message;
+    status.classList.toggle("error", kind === "error");
+    status.classList.toggle("success", kind === "success");
+    if (message && timeoutMs > 0) {
+      promptTemplateStatusTimer = window.setTimeout(() => setPromptTemplateStatus(""), timeoutMs);
+    }
+  }
+
+  function renderLlmPromptTemplates(selectedName = $("llmPromptTemplate").value) {
+    const select = $("llmPromptTemplate");
+    select.replaceChildren(new Option(t("toolbox_prompt_template_choose"), ""));
+    llmPromptTemplates.forEach((template) => select.add(new Option(template.name, template.name)));
+    select.value = llmPromptTemplates.some((template) => template.name === selectedName) ? selectedName : "";
+    const selected = llmPromptTemplates.find((template) => template.name === select.value);
+    $("llmPromptTemplateName").value = selected?.name || "";
+  }
+
+  function applyLlmPromptTemplate() {
+    const selected = llmPromptTemplates.find((template) => template.name === $("llmPromptTemplate").value);
+    if (!selected) return;
+    $("postprocessPrompt").value = selected.text;
+    $("llmPromptTemplateName").value = selected.name;
+    persistLlmPrompt();
+    setFieldError("postprocessPrompt", "");
+    renderAutoPostprocessState();
+    persistAutoPlanSoon();
+  }
+
+  function saveCurrentLlmPromptTemplate() {
+    const name = $("llmPromptTemplateName").value.trim().slice(0, 60);
+    const text = $("postprocessPrompt").value.trim();
+    if (!name) {
+      setPromptTemplateStatus(t("toolbox_prompt_template_need_name"), "error", 0);
+      $("llmPromptTemplateName").focus();
+      return;
+    }
+    if (!text) {
+      setPromptTemplateStatus(t("toolbox_prompt_template_need_text"), "error", 0);
+      $("postprocessPrompt").focus();
+      return;
+    }
+    const existing = llmPromptTemplates.findIndex((template) => template.name === name);
+    if (existing >= 0) llmPromptTemplates[existing] = { name, text };
+    else llmPromptTemplates.push({ name, text });
+    saveLlmPromptTemplates();
+    renderLlmPromptTemplates(name);
+    setPromptTemplateStatus(t("toolbox_prompt_template_saved"), "success");
+  }
+
+  function deleteCurrentLlmPromptTemplate() {
+    const name = $("llmPromptTemplate").value;
+    if (!name) {
+      setPromptTemplateStatus(t("toolbox_prompt_template_select"), "error", 0);
+      return;
+    }
+    llmPromptTemplates = llmPromptTemplates.filter((template) => template.name !== name);
+    saveLlmPromptTemplates();
+    renderLlmPromptTemplates();
+    setPromptTemplateStatus(t("toolbox_prompt_template_deleted"), "success");
   }
 
   function normalizeAlignmentGapNumber(value, fallback, lower, upper, integer = false) {
@@ -193,8 +286,10 @@
 
   function initializeLlmPrompts() {
     llmPrompts = loadLlmPrompts();
+    llmPromptTemplates = loadLlmPromptTemplates();
     activeLlmOperation = $("postprocessOperation").value;
     loadLlmPrompt(activeLlmOperation);
+    renderLlmPromptTemplates();
   }
 
   function bridge(method, payload = {}) {
@@ -841,7 +936,7 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "llmPromptTemplate", "llmPromptTemplateName", "saveLlmPromptTemplate", "deleteLlmPromptTemplate", "postprocessOutputName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
     renderOcrModel();
@@ -1057,6 +1152,7 @@
       projectPath: extension(source) === ".srt" ? "" : source,
       srtPath: extension(source) === ".srt" ? source : "",
       outputMode: $("postprocessOutputMode").value,
+      outputName: $("postprocessOutputName").value.trim(),
       mediaPath: $("mediaPath").value.trim(),
     };
   }
@@ -1983,6 +2079,10 @@
   });
   $("postprocessProvider").addEventListener("change", () => { renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value));
+  $("llmPromptTemplate").addEventListener("change", applyLlmPromptTemplate);
+  $("saveLlmPromptTemplate").addEventListener("click", saveCurrentLlmPromptTemplate);
+  $("deleteLlmPromptTemplate").addEventListener("click", deleteCurrentLlmPromptTemplate);
+  $("postprocessOutputName").addEventListener("input", () => setFieldError("postprocessOutputName", ""));
   $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("saveLlmSettings").addEventListener("click", () => { void saveSettings(); });
   $("testLlmConnection").addEventListener("click", testConnection);
@@ -2213,6 +2313,7 @@
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
   window.MAWLauncher.onLanguageChanged = () => {
     syncProviderOptionLabels();
+    renderLlmPromptTemplates();
     if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
     renderOcrModel();
     document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);

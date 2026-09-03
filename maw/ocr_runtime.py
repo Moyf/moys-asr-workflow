@@ -199,6 +199,8 @@ def run_ocr_in_runtime(
     _append_path(command, "--fallback-video-path", request.fallback_video_path)
     _append_path(command, "--media-path", request.media_path)
     _append_path(command, "--output-directory", request.output_directory)
+    if request.output_name:
+        command.extend(("--output-name", request.output_name))
     if request.report:
         command.append("--report")
 

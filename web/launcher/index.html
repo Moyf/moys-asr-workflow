@@ -784,6 +784,20 @@
           <p id="postprocessPromptError" class="field-error"></p>
           <p class="hint toolbox-full-line-hint" data-i18n="toolbox_time_hint">模型只处理带 ID 的文字；本地时间槽始终是时间真源。</p>
         </div>
+        <div class="field">
+          <label for="llmPromptTemplate" data-i18n="toolbox_prompt_template">提示词模板</label>
+          <div class="toolbox-template-row">
+            <select id="llmPromptTemplate">
+              <option value="" data-i18n="toolbox_prompt_template_choose">选择已保存模板</option>
+            </select>
+            <button id="deleteLlmPromptTemplate" class="ghost" type="button" data-i18n="toolbox_prompt_template_delete">删除</button>
+          </div>
+          <div class="toolbox-template-row">
+            <input id="llmPromptTemplateName" type="text" maxlength="60" autocomplete="off" data-i18n-placeholder="toolbox_prompt_template_name_placeholder">
+            <button id="saveLlmPromptTemplate" class="ghost" type="button" data-i18n="toolbox_prompt_template_save">保存模板</button>
+          </div>
+          <p id="llmPromptTemplateStatus" class="hint toolbox-template-status" aria-live="polite"></p>
+        </div>
       </div>
     </section>
 
@@ -880,13 +894,19 @@
 
     </div>
     <div class="toolbox-footer">
-      <div id="toolboxOutputField" class="field toolbox-output-field">
-        <label for="postprocessOutputMode" data-i18n="toolbox_output">输出</label>
-        <select id="postprocessOutputMode">
-          <option value="both" data-i18n="toolbox_output_both">工程 + SRT</option>
-          <option value="json" data-i18n="toolbox_output_project">仅工程</option>
-          <option value="srt" data-i18n="toolbox_output_srt">仅 SRT</option>
-        </select>
+      <div id="toolboxOutputField" class="toolbox-output-fields">
+        <div class="field toolbox-output-field">
+          <label for="postprocessOutputMode" data-i18n="toolbox_output">输出</label>
+          <select id="postprocessOutputMode">
+            <option value="both" data-i18n="toolbox_output_both">工程 + SRT</option>
+            <option value="json" data-i18n="toolbox_output_project">仅工程</option>
+            <option value="srt" data-i18n="toolbox_output_srt">仅 SRT</option>
+          </select>
+        </div>
+        <div class="field toolbox-output-field toolbox-output-name-field">
+          <label for="postprocessOutputName" data-i18n="toolbox_output_name">输出名称</label>
+          <input id="postprocessOutputName" type="text" maxlength="120" autocomplete="off" data-i18n-placeholder="toolbox_output_name_placeholder">
+        </div>
       </div>
       <p id="toolboxConfigOnlyHint" class="toolbox-config-only-hint hidden" role="status" data-i18n="toolbox_config_only_hint">这里只配置自动后处理；生成后会自动执行。</p>
       <div class="toolbox-output-action">

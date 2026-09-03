@@ -76,6 +76,7 @@ class OcrDedupRequest:
     report: bool = False
     output_directory: Path | None = None
     media_path: Path | None = None
+    output_name: str | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.threshold <= 1.0:
@@ -220,6 +221,7 @@ def run_ocr_dedup(
         write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
         output_directory=request.output_directory,
         media_path=request.media_path or request.fallback_video_path,
+        output_name=request.output_name,
     )
 
     report_path = _write_report(rows, source_project or source_srt, request.output_directory) if request.report else None

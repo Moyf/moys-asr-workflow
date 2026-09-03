@@ -40,6 +40,7 @@ class ScriptMatchRequest:
     extra_split_punctuation: tuple[str, ...] = ()
     preserve_punctuation: tuple[str, ...] = ()
     match_mode: str = "script"
+    output_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +104,7 @@ def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
         warnings=(f"文稿来源：{script_path}", punctuation_warning, *warnings),
         output_directory=request.output_directory,
         media_path=request.media_path,
+        output_name=request.output_name,
     )
 
 
