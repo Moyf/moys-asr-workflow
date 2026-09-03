@@ -385,6 +385,8 @@ class PostprocessPipelineError(RuntimeError):
         current_project: Path,
         current_srt: Path,
         completed_steps: Sequence[str],
+        failed_step: str = "",
+        cause: BaseException | None = None,
     ) -> None:
         super().__init__(message)
         self.run_directory = run_directory
@@ -392,6 +394,11 @@ class PostprocessPipelineError(RuntimeError):
         self.current_project = current_project
         self.current_srt = current_srt
         self.completed_steps = tuple(completed_steps)
+        self.failed_step = failed_step
+        self.category = str(getattr(cause, "category", "") or "")
+        status_code = getattr(cause, "status_code", None)
+        self.status_code = status_code if isinstance(status_code, int) else None
+        self.diagnostic = str(getattr(cause, "diagnostic", "") or "")
 
 
 PipelineEvent = Callable[[Mapping[str, object]], None]
@@ -504,12 +511,14 @@ def run_postprocess_pipeline(
                 raise
             except Exception as error:
                 raise PostprocessPipelineError(
-                    str(error),
+                    f"后处理步骤 {step_id} 失败：{error}",
                     run_directory=run_directory,
                     failed_index=index - 1,
                     current_project=current_project,
                     current_srt=current_srt,
                     completed_steps=completed,
+                    failed_step=step_id,
+                    cause=error,
                 ) from error
             _check_cancel(cancel_event)
             current_project = artifact.project_path or current_project
@@ -563,6 +572,18 @@ def run_postprocess_pipeline(
         manifest["status"] = "cancelled"
         _write_manifest(run_directory, manifest)
         _emit(on_event, {"stage": "cancelled", "completed": len(completed), "total": len(steps), "runDirectory": str(run_directory)})
+        raise
+    except PostprocessPipelineError as error:
+        manifest["status"] = "failed"
+        _write_manifest(run_directory, manifest)
+        _emit(on_event, {
+            "stage": "failed",
+            "completed": len(completed),
+            "total": len(steps),
+            "runDirectory": str(run_directory),
+            "step": error.failed_step,
+            "failedIndex": error.failed_index,
+        })
         raise
     except Exception:
         manifest["status"] = "failed"
@@ -747,7 +768,11 @@ def _attach_translation_track(
             or source.get("id") != translated.get("id")
         ):
             raise ValueError(f"第 {index} 条翻译结果未保持原字幕时间范围或稳定 ID。")
-        if not isinstance(translated.get("text"), str) or not translated["text"].strip():
+        source_text = source.get("text")
+        translated_text = translated.get("text")
+        if not isinstance(source_text, str) or not isinstance(translated_text, str):
+            raise ValueError(f"第 {index} 条翻译结果为空。")
+        if not translated_text.strip() and source_text.strip():
             raise ValueError(f"第 {index} 条翻译结果为空。")
 
     combined = copy.deepcopy(source_project)
