@@ -9,6 +9,11 @@ the waveform. Loudness / spectrogram mipmaps are parsed but not exposed yet.
 The spectral payload is a *cache* derived from the media's .ReaPeaks file, so
 looking it up must never block the editor: any missing / unreadable /
 non-spectral file degrades to ``None``.
+
+Decoding is pure Python; only *generation* needs the Rust ``reapeaks``
+extension, and it is imported lazily at the call site.  Managed ASR runtimes
+are separate environments that may not ship the extension, and a cache
+generator must never take down transcription at import time.
 """
 
 from __future__ import annotations
@@ -20,9 +25,26 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import reapeaks as rust_generate
 from maw import waveform as waveform_module
 from maw.ffmpeg import resolve_ffmpeg_tool
+
+
+def _load_rust_kernel():
+    """按调用点延迟导入 Rust 生成内核，缺失时返回 None。
+
+    解析（读）路径是纯 Python 的，只有生成（写）才需要内核。托管 Runtime 是独立
+    环境（如 MOSS 的 ``local-runtime-moss``），未必装了 ``reapeaks``；放在模块顶层
+    导入会让任何 `from maw import reapeaks` 的入口在加载模型之前就崩掉。生成是
+    可重建缓存的兜底路径，必须按既有语义打日志说明原因后跳过，而不是拖垮转写。
+    """
+
+    try:
+        import reapeaks as rust_generate
+    except ImportError as exc:
+        print(f"[reapeaks] 缺少 Rust 生成内核 reapeaks（{exc}），跳过 .ReaPeaks 生成")
+        return None
+    return rust_generate
+
 
 MAGIC_V10 = b"RPKM"  # v1.0: min == -max (mirrored)
 MAGIC_V11 = b"RPKN"  # v1.1: explicit min/max
@@ -436,12 +458,16 @@ def generate_reapeaks_stream_bytes(
 
     Only the current ffmpeg chunk and the generator's bounded accumulators are
     in memory; the full PCM never materializes. Returns None when ffmpeg is
-    missing, the media has no decodable audio, or the Rust kernel fails; each
-    failure mode logs a distinct reason instead of degrading silently.
+    missing, the Rust kernel is unavailable, the media has no decodable audio,
+    or the Rust kernel fails; each failure mode logs a distinct reason instead
+    of degrading silently.
     """
     ffmpeg = resolve_ffmpeg(ffmpeg_bin)
     if not ffmpeg:
         print("[reapeaks] 缺少 ffmpeg，跳过 .ReaPeaks 生成")
+        return None
+    rust_generate = _load_rust_kernel()
+    if rust_generate is None:
         return None
     stderr_file = tempfile.TemporaryFile()
     try:
