@@ -2,7 +2,7 @@
 
 MAW 的 Release 包除了图形 Launcher，也支持直接用命令行完成转写和本机编辑器 Server 管理。本文以 Windows PowerShell 和 Release 包中的 `MAW.exe` 为例；源码运行时，把示例中的 `MAW.exe` 替换为 `uv run python maw_gui.py` 即可。
 
-> 本文介绍公开 CLI。`--transcribe`、`--transcribe-soniox`、`--transcribe-bcut` 和 `--serve` 是保留给旧 Launcher/内部调用的兼容入口，新脚本应使用本文的参数。
+> 本文介绍公开 CLI。`--transcribe`、`--transcribe-soniox`、`--transcribe-bcut`、`--transcribe-tencent`、`--transcribe-openai` 和 `--serve` 是保留给旧 Launcher/内部调用的兼容入口，新脚本应使用本文的参数。
 
 ## 1. 能做什么
 
@@ -13,7 +13,7 @@ MAW 的 Release 包除了图形 Launcher，也支持直接用命令行完成转�
 | Launcher | 不带参数 | 启动图形 Launcher，保持原来的双击行为 |
 | Launcher 调试 | `-dbg` / `--debug` | 启动 Launcher 的 pywebview 调试能力；不自动打开 DevTools |
 | Launcher DevTools | `-dt` / `--devtools` | 启动 Launcher 并自动打开 DevTools |
-| 转写 | `-i` / `--input` | 调用 Qwen/Fun-ASR、Soniox 或必剪（实验性），生成 SRT 和 `.mosp` |
+| 转写 | `-i` / `--input` | 调用 Qwen/Fun-ASR、Soniox、腾讯云、自定义 OpenAI 兼容接口或必剪（实验性），生成 SRT 和 `.mosp` |
 | Server 管理 | `--server` / `--stop-server` | 启动或停止只监听 `127.0.0.1` 的 MAW 编辑器 Server |
 
 先查看当前版本的帮助：
@@ -42,6 +42,11 @@ DASHSCOPE_API_KEY=你的百炼密钥
 
 # Soniox；只使用 Soniox 时填写这一项即可
 SONIOX_API_KEY=你的 Soniox 密钥
+
+# OpenAI 官方或兼容 ASR；只使用 OpenAI 兼容接口时填写这一组
+MAW_OPENAI_ASR_API_KEY=你的 ASR 密钥
+MAW_OPENAI_ASR_BASE_URL=https://api.openai.com/v1
+MAW_OPENAI_ASR_MODEL=whisper-1
 ```
 
 Windows Release 包会优先读取 `MAW.exe` 同目录的 `.env`；该文件不存在时回退到 `%LOCALAPPDATA%\MAW\.env`。macOS / Linux 也优先读取应用程序同目录的 `.env`，再回退到对应的 MAW 用户数据目录；源码方式继续读取仓库根 `.env`。环境变量优先于 `.env`。API Key 的申请方式见 [ASR 服务与配置](PROVIDERS.md) 和[阿里云官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)。
@@ -118,8 +123,8 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `-i PATH`, `--input PATH` | 转写模式下必填；音频或视频路径。Server 模式不能使用。 |
 | `-o PATH [PATH]`, `--output PATH [PATH]` | 第一个路径为 SRT，第二个可选路径为 `.mosp`；最多两个路径。 |
 | `--mosp PATH` | 单独指定 `.mosp` 输出路径；不能和 `-o` 的第二个路径同时使用。 |
-| `--provider qwen\|soniox\|tencent\|bcut` | 选择供应商，默认 `qwen`。`tencent` 使用腾讯云录音文件识别；`bcut` 为免 Key 的实验性非官方接口。 |
-| `--model MODEL` | 覆盖供应商的模型。Qwen 常用值为 `qwen-audio-3.0-asr-flash-filetrans`、`qwen3-asr-flash-filetrans`、`fun-asr`；Soniox 默认读取 `.env`，否则使用其内置默认模型。 |
+| `--provider qwen\|soniox\|tencent\|openai\|bcut` | 选择供应商，默认 `qwen`。`openai` 使用 OpenAI 官方或兼容的转写接口；`tencent` 使用腾讯云录音文件识别；`bcut` 为免 Key 的实验性非官方接口。 |
+| `--model MODEL` | 覆盖供应商的模型。Qwen 常用值为 `qwen-audio-3.0-asr-flash-filetrans`、`qwen3-asr-flash-filetrans`、`fun-asr`；Soniox 默认读取 `.env`，OpenAI 兼容接口默认使用 `whisper-1`。 |
 
 ### 4.2 字幕切分、说话人和工程内容
 
@@ -140,11 +145,11 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `--debug` | 输出更多 API 调试信息。调试日志仍不会输出 API Key。 |
 | `-s PATH`, `--stickers PATH` | 指定表情包目录。它会传递给转写后生成的编辑器工程，也可用于 Server。 |
 
-`--speaker-colors` 已经包含说话人分离，不必同时重复写 `--speaker`。Qwen3-ASR 不支持说话人开关；Qwen-Audio、Fun-ASR、Soniox 和腾讯云 `16k_zh_en_2.0` 支持情况以当前供应商及账户能力为准。腾讯云大于 5MB 的媒体需要 `--file-url`。
+`--speaker-colors` 已经包含说话人分离，不必同时重复写 `--speaker`。Qwen3-ASR 不支持说话人开关；Qwen-Audio、Fun-ASR、Soniox 和腾讯云 `16k_zh_en_2.0` 支持情况以当前供应商及账户能力为准。自定义 OpenAI 兼容接口需要自行保证时间戳能力，公开 CLI 不会代发说话人参数。腾讯云大于 5MB 的媒体需要 `--file-url`。
 
 ### 4.3 Qwen / 百炼专用参数
 
-以下参数只用于 `--provider qwen`。和 `--provider soniox` 或 `--provider bcut` 混用时，CLI 会直接报参数错误（`bcut` 额外还不支持 `--language`、`--model`、`--speaker` / `--speaker-colors`）：
+以下参数只用于 `--provider qwen`。和 `--provider soniox`、`--provider openai` 或 `--provider bcut` 混用时，CLI 会直接报参数错误（`bcut` 额外还不支持 `--language`、`--model`、`--speaker` / `--speaker-colors`）：
 
 | 参数 | 说明 |
 | --- | --- |
@@ -180,7 +185,17 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 
 PowerShell 中如果 context JSON 含有空格，请将整个 JSON 放在引号中。Launcher 的「高级选项」会把 `general`、`text`、`terms` 和 `translation_terms` 的文本填写转换成同一对象。
 
-### 4.5 Server 参数
+### 4.5 OpenAI 兼容 ASR 专用参数
+
+以下参数只用于 `--provider openai`：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--base-url URL` | OpenAI 官方或兼容服务的根地址、带 `/v1` 的地址，或完整的 `/audio/transcriptions` 地址；省略时读取 `MAW_OPENAI_ASR_BASE_URL`，默认 `https://api.openai.com/v1`。 |
+
+接口必须接受 `POST /audio/transcriptions` 的 multipart 请求，并返回 `segments` 或 `words` 时间戳。MAW 会请求 `verbose_json`、segment 和 word 时间戳；只有文本而没有时间戳的响应会被拒绝。API Key 使用 `MAW_OPENAI_ASR_API_KEY`，不接受命令行参数。
+
+### 4.6 Server 参数
 
 | 参数 | 说明 |
 | --- | --- |
@@ -258,6 +273,22 @@ $server = Start-Process `
     --speaker-colors
 ```
 
+### OpenAI 兼容 ASR：官方或自建服务
+
+先在 `.env` 中配置 `MAW_OPENAI_ASR_API_KEY`；兼容服务再设置 `MAW_OPENAI_ASR_BASE_URL` 和 `MAW_OPENAI_ASR_MODEL`：
+
+```powershell
+.\MAW.exe `
+    --provider openai `
+    --base-url "https://api.openai.com/v1" `
+    --model whisper-1 `
+    -i "D:\Videos\panel.mp4" `
+    -o "D:\Output\panel.srt" "D:\Output\panel.mosp" `
+    --language en
+```
+
+服务必须返回带时间戳的 `segments` 或 `words`；只返回文本的兼容接口不能生成可靠字幕。
+
 ### 必剪：免 Key 快速体验（实验性，仅中文）
 
 ```powershell
@@ -287,7 +318,7 @@ CLI 总是先生成 SRT 和 `.mosp`；如果还需要带工程数据的便携 HT
 
 1. 先确认 `MAW.exe` 的绝对路径，并在执行前调用 `MAW.exe --help`；不要假设当前目录就是 Release 包目录。
 2. 使用 PowerShell 时给每个含空格的路径加双引号；自动化任务优先使用绝对输入、SRT 和 `.mosp` 路径。
-3. 不要把 `DASHSCOPE_API_KEY` 或 `SONIOX_API_KEY` 放进命令行。要求用户在环境变量或 `.env` 中配置，日志和对话也不要回显它们。
+3. 不要把 `DASHSCOPE_API_KEY`、`SONIOX_API_KEY` 或 `MAW_OPENAI_ASR_API_KEY` 放进命令行。要求用户在环境变量或 `.env` 中配置，日志和对话也不要回显它们。
 4. 第一次处理大文件时先用 `-ll 2m` 做小样本；只有用户明确需要完整媒体时，才移除时长限制。不要默默截断用户要求的完整转写。
 5. 转写完成后同时检查进程退出码和输出文件。退出码为 `0` 且 SRT、`.mosp` 都存在，才报告成功；不要只根据终端出现了“开始”或“任务完成”字样判断成功。
 6. 如果用户要求启动 Server，使用 `--server --port PORT --no-open`；这是前台服务进程，自动化工具需要自行后台启动并等待端口可用。
@@ -332,6 +363,7 @@ if (-not (Test-Path -LiteralPath $mospPath)) {
 
 - `ffmpeg` 或 `ffprobe` 找不到：改用默认的 `MAW` 包，或把 FFmpeg 安装目录加入 PATH。
 - 报未配置 API Key：检查对应供应商的环境变量名，或检查 `.env` 是否位于 Release 的 `MAW.exe` 同目录；若未放置同目录文件，再检查 `%LOCALAPPDATA%\MAW\.env`。
+- OpenAI 兼容接口报时间戳错误：确认服务支持 `verbose_json`，并返回 `segments` 或 `words` 的 `start` / `end` 时间戳；仅有 `text` 的响应会被拒绝。
 - 输出路径包含空格但文件没有生成：检查 PowerShell 命令是否给路径加了双引号。
 - Server 打不开工程媒体：工程里的媒体路径可能已失效，使用 `PROJECT --media PATH` 指定当前媒体。
 - Server 端口被占用：选择其他 `--port`，或先对正确的端口执行 `--stop-server`。
