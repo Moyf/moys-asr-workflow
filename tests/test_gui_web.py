@@ -8,6 +8,8 @@ import sys
 import tempfile
 import threading
 import unittest
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Mapping, final
@@ -18,7 +20,7 @@ from urllib.error import URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
@@ -1233,8 +1235,18 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(
             wait_for_server.call_args_list,
             [
-                mock.call("http://127.0.0.1:9876/", timeout=0.25),
-                mock.call("http://127.0.0.1:9876/", timeout=SERVER_START_TIMEOUT),
+                mock.call(
+                    "http://127.0.0.1:9876/",
+                    timeout=0.25,
+                    probe_path=EDITOR_HEALTH_PROBE_PATH,
+                    probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+                ),
+                mock.call(
+                    "http://127.0.0.1:9876/",
+                    timeout=SERVER_START_TIMEOUT,
+                    probe_path=EDITOR_HEALTH_PROBE_PATH,
+                    probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+                ),
             ],
         )
         self.assertNotIn("serverAlreadyRunning", result)
@@ -1740,7 +1752,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             def wait(self, timeout: float | None = None) -> int:
                 return self.returncode or 0
 
-        def wait(_url: str, *, timeout: float) -> bool:
+        def wait(_url: str, *, timeout: float, probe_path: str = "/", probe_timeout: float = 0.25) -> bool:
             calls.append("wait")
             return len(calls) > 1
 
@@ -3929,6 +3941,58 @@ class EmojiFontTests(unittest.TestCase):
         self.assertGreater(len(window.scripts), 0)
         self.assertIn("emojiFontReady", window.scripts[-1])
         self.assertIn(dest.as_uri(), window.scripts[-1])
+
+
+@final
+class WaitForServerProbeTests(unittest.TestCase):
+    """健康检查必须探测配置的轻量端点，并把 5xx 视为未就绪。"""
+
+    def test_wait_for_server_probes_configured_path(self) -> None:
+        seen_paths: list[str] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                seen_paths.append(self.path)
+                self.send_response(HTTPStatus.OK)
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def log_message(self, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{server.server_address[1]}/"
+            self.assertTrue(
+                _wait_for_server(url, timeout=2.0, probe_path="/api/startup-status", probe_timeout=1.0),
+            )
+            self.assertEqual(seen_paths, ["/api/startup-status"])
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_wait_for_server_treats_5xx_as_not_ready(self) -> None:
+        attempts: list[int] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                attempts.append(1)
+                self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
+                self.end_headers()
+
+            def log_message(self, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{server.server_address[1]}/"
+            self.assertFalse(_wait_for_server(url, timeout=0.35, probe_timeout=0.2))
+            self.assertGreaterEqual(len(attempts), 1)
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 if __name__ == "__main__":

@@ -104,6 +104,12 @@ MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
 MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
+# 编辑器健康检查探测轻量 JSON 端点：首页渲染会把全量工程数据内联进页面，
+# 大工程（长媒体内嵌波形）单次渲染可达数秒，不能作为就绪判据。
+EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
+# 单次探测超时与总超时分离：后台加载工程期间 GIL 繁忙，轻量端点也可能
+# 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
+EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
 BUNDLED_APP_VERSION = "1.5.3"
 MOSE_VERSION = "0.1.0"
@@ -1375,7 +1381,12 @@ class LauncherApi:
         launch_url = f"{url}?lang={_gui_lang(payload)}"
 
         owned_server_running = self.server_process is not None and self.server_process.poll() is None
-        if _wait_for_server(url, timeout=0.25) and (not json_text or not owned_server_running):
+        if _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ) and (not json_text or not owned_server_running):
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:
             # 无工程：不带 JSON 路径启动，由服务器按「自动打开上次工程」设置恢复最近工程或回落为空白编辑器
@@ -1408,7 +1419,12 @@ class LauncherApi:
         except OSError as error:
             self._close_server_log()
             return _error_result("port", "server_start_failed", f"{url} | {error}")
-        if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
+        if not _wait_for_server(
+            url,
+            timeout=SERVER_START_TIMEOUT,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             exit_code = self.server_process.poll() if self.server_process else None
             if exit_code is not None:
                 detail = self._read_server_log()
@@ -1556,7 +1572,12 @@ class LauncherApi:
         """Report a responding MAW server on the currently selected localhost port."""
         port = _port(payload)
         url = f"http://127.0.0.1:{port}/"
-        if not _wait_for_server(url, timeout=0.25):
+        if not _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             return {"ok": True, "running": False, "url": url}
         pid = _maw_server_process_id(port)
         return {"ok": True, "running": pid is not None, "url": url, "pid": pid}
@@ -1663,7 +1684,12 @@ class LauncherApi:
             return {"ok": True, "stopped": True}
         port = _port(payload or {})
         url = f"http://127.0.0.1:{port}/"
-        if not _wait_for_server(url, timeout=0.25):
+        if not _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             return {"ok": True, "stopped": False}
         if _stop_external_maw_server(port):
             return {"ok": True, "stopped": True}
@@ -3029,11 +3055,18 @@ def _drop_paths_from_event(event: Mapping[str, object]) -> list[str]:
     return paths
 
 
-def _wait_for_server(url: str, *, timeout: float) -> bool:
+def _wait_for_server(
+    url: str,
+    *,
+    timeout: float,
+    probe_path: str = "/",
+    probe_timeout: float = 0.25,
+) -> bool:
+    probe_url = f"{url.rstrip('/')}{probe_path}"
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            with urlopen(url, timeout=0.25) as response:
+            with urlopen(probe_url, timeout=probe_timeout) as response:
                 if 200 <= response.status < 500:
                     return True
         except (OSError, URLError):
@@ -3047,7 +3080,8 @@ def _listening_process_id(port: int) -> int | None:
         return None
     try:
         result = subprocess.run(
-            ["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, check=False,
+            ["netstat", "-ano", "-p", "TCP"], capture_output=True,
+            encoding="mbcs", errors="replace", check=False,
             startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:
@@ -3068,7 +3102,8 @@ def _process_command_line(pid: int) -> str:
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
-            capture_output=True, text=True, check=False, startupinfo=startupinfo(), creationflags=creationflags(),
+            capture_output=True, encoding="mbcs", errors="replace", check=False,
+            startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:
         return ""
@@ -3097,7 +3132,8 @@ def _stop_external_maw_server(port: int) -> bool:
         return False
     try:
         result = subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True, check=False,
+            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True,
+            encoding="mbcs", errors="replace", check=False,
             startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:
