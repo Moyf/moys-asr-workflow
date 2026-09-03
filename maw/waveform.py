@@ -46,6 +46,38 @@ def media_signature(media_path: Path) -> dict[str, int | str]:
     }
 
 
+def _is_positive_number(value: Any) -> bool:
+    """True for a real int/float count. bool is rejected despite being an int."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+
+
+def waveform_peaks_per_second(payload: Any) -> float:
+    """Return the authoritative bin rate (peaks per second of audio).
+
+    ``peaks_per_second`` is a display-friendly approximation.  For caches
+    derived from ``.ReaPeaks`` the real rate is ``sample_rate / division``,
+    which is fractional for most sample rates (16 kHz with ``div=53`` is
+    301.8868, not 302).  Any geometry that maps a peak index to a timestamp
+    must use this function, otherwise the rounding error scales the whole time
+    axis and the drift grows linearly with the media length.
+    """
+    if not isinstance(payload, dict):
+        return 0.0
+    sample_rate = payload.get("sample_rate")
+    division = payload.get("division")
+    if (
+        isinstance(sample_rate, (int, float))
+        and not isinstance(sample_rate, bool)
+        and isinstance(division, int)
+        and not isinstance(division, bool)
+        and sample_rate > 0
+        and division > 0
+    ):
+        return sample_rate / division
+    peaks_per_second = payload.get("peaks_per_second")
+    return float(peaks_per_second) if _is_positive_number(peaks_per_second) else 0.0
+
+
 def is_waveform_payload(value: Any) -> bool:
     """Check the cheap structural invariants of a cached waveform payload."""
     if not isinstance(value, dict):
@@ -59,13 +91,27 @@ def is_waveform_payload(value: Any) -> bool:
     peak_count = value.get("peak_count")
     peaks_per_second = value.get("peaks_per_second")
     duration_ms = value.get("duration_ms")
-    return (
+    if not (
         isinstance(peak_count, int)
+        and not isinstance(peak_count, bool)
         and peak_count >= 0
-        and isinstance(peaks_per_second, int)
-        and peaks_per_second > 0
+        and _is_positive_number(peaks_per_second)
         and isinstance(duration_ms, int)
+        and not isinstance(duration_ms, bool)
         and duration_ms >= 0
+    ):
+        return False
+    # The exact-rate pair is optional (older payloads only carry the rounded
+    # peaks_per_second), but when present it must be usable as a ratio.
+    sample_rate = value.get("sample_rate")
+    division = value.get("division")
+    if sample_rate is None and division is None:
+        return True
+    return (
+        _is_positive_number(sample_rate)
+        and isinstance(division, int)
+        and not isinstance(division, bool)
+        and division > 0
     )
 
 
@@ -217,6 +263,10 @@ def extract_waveform(
         "schema": WAVEFORM_SCHEMA,
         "encoding": WAVEFORM_ENCODING,
         "peaks_per_second": actual_peaks_per_second,
+        # bin i covers [i * division / sample_rate, (i + 1) * ...): the exact
+        # pair, so consumers never have to rely on the rounded rate above.
+        "sample_rate": pcm_sample_rate,
+        "division": bucket_samples,
         "peak_count": peak_count,
         "duration_ms": duration_ms,
         "data": base64.b64encode(encoded).decode("ascii"),
