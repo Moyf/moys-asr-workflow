@@ -2522,12 +2522,37 @@
       return this.reapeaksPayload != null;
     }
 
-    getGapRemoveDetectionData() {
-      if (!this.payload || !this.peaks) return null;
+    /**
+     * 当前真正被绘制的那条波形形状（含缺数据时的回退）。
+     *
+     * 抽成一个方法是为了让"看到什么就按什么判断"成为结构保证，而不是两处各自
+     * 复制一遍判断。音量门限扫描尤其需要它：若固定用自研缓存，用户在 ReaPeaks
+     * 形状上调好的门限就和实际参与判断的包络不是同一条曲线，而且自研链先重采样到
+     * 1000 Hz，带限之外的瞬态会被整块削平（实测单样本满幅脉冲 8 个里一个都检不到），
+     * 拿它做静音门限会偏激进。
+     */
+    activeWaveShape() {
+      const shapeSource = this.options.getWaveShapeSource?.() || 'reapeaks';
+      const useReapeaks = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
+      const payload = useReapeaks ? this.reapeaksPayload : this.payload;
+      if (!payload) return null;
       return {
-        peaks: this.peaks,
-        peaks_per_second: peaksRateOf(this.payload),
-        duration_ms: this.payload.duration_ms,
+        payload,
+        peaks: useReapeaks ? this.reapeaksPeaks : this.peaks,
+        // 两种来源的 bin 宽度不同（自研固定 10 ms，.ReaPeaks 是 sample_rate/division
+        // 且多为分数），刻度必须随来源一起切换。
+        peaksPerSecond: peaksRateOf(payload),
+        peakCount: payload.peak_count,
+      };
+    }
+
+    getGapRemoveDetectionData() {
+      const shape = this.activeWaveShape();
+      if (!shape || !shape.peaks) return null;
+      return {
+        peaks: shape.peaks,
+        peaks_per_second: shape.peaksPerSecond,
+        duration_ms: shape.payload.duration_ms,
       };
     }
 
@@ -3463,15 +3488,12 @@
       ctx.lineTo(width, height * 0.46);
       ctx.stroke();
 
-      // 波形形状来源：默认使用 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；用户可切回自研。
-      const shapeSource = this.options.getWaveShapeSource?.() || 'reapeaks';
-      const useReapeaksShape = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
-      const activePeaks = useReapeaksShape ? this.reapeaksPeaks : this.peaks;
-      const activePayload = useReapeaksShape ? this.reapeaksPayload : this.payload;
-      // 两种形状来源的 bin 宽度不同（自研固定 10 ms，.ReaPeaks 是 sample_rate/division
-      // 且多为分数），所以绘制用的刻度必须随来源一起切换。
-      const peaksPerSecond = peaksRateOf(activePayload);
-      const activeCount = activePayload.peak_count;
+      // 形状来源开关（默认 .ReaPeaks，缺数据自动回退自研）与音量门限检测共用同一选取。
+      const waveShape = this.activeWaveShape();
+      if (!waveShape) return;
+      const activePeaks = waveShape.peaks;
+      const peaksPerSecond = waveShape.peaksPerSecond;
+      const activeCount = waveShape.peakCount;
       const useInterpolation = this.settings.mode === 'basic'
         && this.settings.visibleSeconds === ZOOM_PRESETS[0]
         && (rangeMs / 1000) * peaksPerSecond < width;
@@ -5370,6 +5392,8 @@
       decodeSpectralPayload,
       peaksRateOf,
       publishPeakRate,
+      // 只做选取逻辑的单测入口：用 stub 的 this 调用，无需构造 DOM。
+      activeWaveShape: WaveformEditor.prototype.activeWaveShape,
       syncSpectralColorToggle,
       freqColor,
       remapItems,
