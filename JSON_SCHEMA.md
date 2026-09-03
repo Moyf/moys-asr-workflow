@@ -55,6 +55,8 @@
   "schema": "moy.asr.waveform.v1",
   "encoding": "i8-minmax-base64",
   "peaks_per_second": 100,
+  "sample_rate": 1000,
+  "division": 10,
   "peak_count": 123456,
   "duration_ms": 1234560,
   "data": "base64 编码的 [min,max] int8 峰值对",
@@ -67,6 +69,8 @@
 ```
 
 - `data` 每个峰占 2 字节：有符号 int8 的最小值、最大值，整体再做 base64。
+- **时间刻度**：第 i 个峰覆盖 `[i × division / sample_rate, (i+1) × division / sample_rate)` 秒。做"峰值序号 ↔ 毫秒"换算时必须用 `sample_rate / division`；`peaks_per_second` 只是给人看的近似值。老缓存可以没有这两个字段（此时退化为 `peaks_per_second`），但只要出现一个就必须成对且合法，否则视为无效载荷。
+- `.ReaPeaks` 派生的载荷里 `sample_rate / division` 多数情况下是**分数**（16 kHz 媒体 `division=53` → 301.8868 峰/秒）。把它取整当刻度会按比例缩放整条时间轴，错位随媒体时长线性累积。
 - `source` 用于缓存失效；媒体文件名、字节大小或最后修改时间变化时会重新计算。
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
@@ -107,15 +111,18 @@
 {
   "schema": "moy.asr.waveform.v1",
   "encoding": "i8-minmax-base64",
-  "peaks_per_second": 300,
-  "peak_count": 1500,
-  "duration_ms": 5000,
+  "peaks_per_second": 301.886792,
+  "sample_rate": 16000,
+  "division": 53,
+  "peak_count": 1510,
+  "duration_ms": 5006,
   "data": "base64 的 [min,max] int8 对",
   "source": { "name": "audio.wav", "size": 441044, "modified_ms": 1786328355571 }
 }
 ```
 
-- 由服务器加载媒体时从 `find_reapeaks` 找到的 `.ReaPeaks` 解析最细 wave 层得到；`peaks_per_second = sample_rate / division`（约 300 峰/秒）。
+- 由服务器加载媒体时从 `find_reapeaks` 找到的 `.ReaPeaks` 解析最细 wave 层得到；刻度是 `sample_rate / division`（约 300 峰/秒），整除时 `peaks_per_second` 写成整数，否则写成精确比率（保留 6 位小数），**绝不取整**——取整会把整条时间轴按比例缩放，错位随媒体时长线性累积。
+- `.ReaPeaks` 永远描述"被解码的那份文件"。因此缓存生成一律优先解码工程记录的源媒体本身，不使用本地 ASR 的 16 kHz 单声道提取音频或 `--length-limit` 截断片段；头部 provenance 是源媒体的 `(mtime, size)` 双因子，任一不符即视为过期并重建。
 - 缺失 `.ReaPeaks` 或没有 wave 层时该字段不出现，编辑器回退自研波形。
 - 与 `spectral` 同源，均为 `.ReaPeaks` 派生的可丢弃缓存，非真源。
 - 没有 `spectral` 数据时，编辑器会自动取消并禁用“频谱颜色”开关；后台读到合法频谱后重新启用该开关。
