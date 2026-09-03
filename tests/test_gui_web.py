@@ -1232,11 +1232,17 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(popen.call_args.kwargs["cwd"], str(self.root))
 
     def test_open_url_uses_external_opener(self) -> None:
-        with mock.patch("maw.gui_web._open_external") as open_external:
+        with mock.patch("maw.gui_web._open_external", return_value=True) as open_external:
             result = self.api.open_url({"url": "https://example.com/docs"})
 
         self.assertEqual(result, {"ok": True})
         open_external.assert_called_once_with("https://example.com/docs")
+
+    def test_open_url_reports_failure_when_no_handler_opened(self) -> None:
+        with mock.patch("maw.gui_web._open_external", return_value=False):
+            result = self.api.open_url({"url": "https://example.com/docs"})
+
+        self.assertEqual(result, {"ok": False})
 
     def test_open_external_restores_original_library_path_for_frozen_linux(self) -> None:
         parent_env = {
@@ -1281,6 +1287,20 @@ class GuiWebBridgeTests(unittest.TestCase):
         open_browser.assert_called_once_with("https://example.com/docs")
         popen.assert_not_called()
 
+    def test_open_external_reports_webbrowser_failure_instead_of_claiming_success(self) -> None:
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", False, create=True):
+                with mock.patch("maw.gui_web.webbrowser.open", return_value=False):
+                    self.assertFalse(_open_external("https://example.com/docs"))
+                with mock.patch("maw.gui_web.webbrowser.open", return_value=True):
+                    self.assertTrue(_open_external("https://example.com/docs"))
+
+    def test_open_external_reports_missing_xdg_open_as_failure(self) -> None:
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch("maw.gui_web.subprocess.Popen", side_effect=OSError("no xdg-open")):
+                    self.assertFalse(_open_external("https://example.com/docs"))
+
     @unittest.skipIf(os.name == "nt", "Non-Windows paths use the external opener")
     def test_open_existing_path_uses_external_opener_for_file_and_folder(self) -> None:
         artifact = self.root / "clip.edit.html"
@@ -1288,7 +1308,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         artifact.write_text("<!doctype html>\n", encoding="utf-8")
         directory.mkdir()
 
-        with mock.patch("maw.gui_web._open_external") as open_external:
+        with mock.patch("maw.gui_web._open_external", return_value=True) as open_external:
             file_result = _open_existing_path(artifact)
             folder_result = _open_existing_path(directory)
 

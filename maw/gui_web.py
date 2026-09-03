@@ -1148,8 +1148,7 @@ class LauncherApi:
         url = str(payload.get("url") or "").strip()
         if not url.startswith(("https://", "http://")):
             return {"ok": False, "error": "Invalid URL."}
-        _open_external(url)
-        return {"ok": True}
+        return {"ok": _open_external(url)}
 
     def open_file(self, payload: Mapping[str, object]) -> dict[str, object]:
         path = Path(str(payload.get("path") or "").strip()).expanduser()
@@ -2907,7 +2906,9 @@ def _stop_external_maw_server(port: int) -> bool:
     return result.returncode == 0
 
 
-def _open_external(target: str) -> None:
+def _open_external(target: str) -> bool:
+    """Hand ``target`` to the OS. Returns False when no external handler could be
+    launched, so callers can tell the user the truth instead of claiming success."""
     if sys.platform == "linux" and getattr(sys, "frozen", False):
         env = os.environ.copy()
         original = env.get("LD_LIBRARY_PATH_ORIG")
@@ -2915,9 +2916,12 @@ def _open_external(target: str) -> None:
             env["LD_LIBRARY_PATH"] = original
         else:
             env.pop("LD_LIBRARY_PATH", None)
-        subprocess.Popen(["xdg-open", target], env=env)
-    else:
-        webbrowser.open(target)
+        try:
+            subprocess.Popen(["xdg-open", target], env=env)
+        except OSError:
+            return False
+        return True
+    return bool(webbrowser.open(target))
 
 
 def _open_existing_path(path: Path) -> dict[str, object]:
@@ -2926,9 +2930,8 @@ def _open_existing_path(path: Path) -> dict[str, object]:
         return {"ok": False, "error": f"Path does not exist: {target}"}
     if os.name == "nt":
         os.startfile(str(target))
-    else:
-        _open_external(target.resolve().as_uri())
-    return {"ok": True}
+        return {"ok": True}
+    return {"ok": _open_external(target.resolve().as_uri())}
 
 
 def _postprocess_ffmpeg(env_path: Path) -> Path | None:
