@@ -89,8 +89,14 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="输出路径：第一个是 SRT，第二个可选路径是 .mosp；省略时按输入自动命名",
     )
     parser.add_argument("--mosp", dest="mosp_output", help="单独指定 .mosp 工程输出路径（等价于 -o SRT MOSP 的第二个路径）")
-    parser.add_argument("--provider", choices=("qwen", "soniox", "tencent", "bcut"), default="qwen", help="ASR 供应商（默认 qwen；tencent 为腾讯云录音文件识别）")
+    parser.add_argument(
+        "--provider",
+        choices=("qwen", "soniox", "tencent", "openai", "bcut"),
+        default="qwen",
+        help="ASR 供应商（默认 qwen；openai 为 OpenAI 兼容接口）",
+    )
     parser.add_argument("--model", help="覆盖当前供应商的 ASR 模型")
+    parser.add_argument("--base-url", help="OpenAI 兼容 ASR Base URL（仅适用于 --provider openai；默认读取 .env）")
     parser.add_argument("--max-len", type=int, help="每条字幕最大字数")
     parser.add_argument("--min-len", type=int, help="句号间最短字数")
     parser.add_argument("--language", help="语言提示；Soniox 可写逗号分隔的多个语言")
@@ -200,6 +206,28 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
         parser.error("请在 -o/--output 的第二个路径和 --mosp 中选择一个工程输出路径")
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
+    if args.base_url and args.provider != "openai":
+        parser.error("--base-url 仅适用于 --provider openai")
+    if args.provider == "openai" and (
+        any(
+            value is not None
+            for value in (
+                args.region,
+                args.workspace_id,
+                args.file_url,
+                args.vocabulary_id,
+                args.hotword_file,
+                args.hotword_weight,
+                args.context,
+                args.context_file,
+                args.soniox_context_json,
+            )
+        )
+        or args.hotword
+        or args.speaker
+        or args.speaker_colors
+    ):
+        parser.error("--provider openai 仅支持 --base-url、--model、--language 和通用字幕参数")
     if args.provider == "soniox" and (
         any(
             value is not None
@@ -306,6 +334,7 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
         result.extend(["--min-len", str(args.min_len)])
     for flag, value in (
         ("--language", args.language),
+        ("--base-url", args.base_url if args.provider == "openai" else None),
         ("--gap-split", args.gap_split),
         ("--strip-tail-punct", args.strip_tail_punct),
         ("--length-limit", args.length_limit),
@@ -352,6 +381,10 @@ def _invoke_generator(provider: str, argv: Sequence[str]) -> int:
         import generate_subtitle_tencent_api as generator
 
         script_name = "generate_subtitle_tencent_api.py"
+    elif provider == "openai":
+        import generate_subtitle_openai_api as generator
+
+        script_name = "generate_subtitle_openai_api.py"
     else:
         import generate_subtitle_qwen_api as generator
 
@@ -388,6 +421,7 @@ def _run_server(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
             args.html,
             args.no_html,
             args.debug,
+            args.base_url,
             args.region,
             args.workspace_id,
             args.file_url,
@@ -482,6 +516,7 @@ def _run_stop_server(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             args.html,
             args.no_html,
             args.debug,
+            args.base_url,
             args.region,
             args.workspace_id,
             args.file_url,

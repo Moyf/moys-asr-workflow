@@ -19,6 +19,7 @@ API_PROVIDER_CLIS = (
     "generate_subtitle_qwen_api.py",
     "generate_subtitle_bcut_api.py",
     "generate_subtitle_soniox_api.py",
+    "generate_subtitle_openai_api.py",
 )
 
 

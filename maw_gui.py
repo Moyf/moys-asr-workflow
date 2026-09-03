@@ -22,6 +22,7 @@ _INTERNAL_FLAGS = frozenset(
         "--transcribe-local",
         "--transcribe-bcut",
         "--transcribe-tencent",
+        "--transcribe-openai",
         "--serve",
         "--serve-alignment",
     }
@@ -33,6 +34,7 @@ _TRANSCRIPTION_FLAGS = frozenset(
         "--transcribe-local",
         "--transcribe-bcut",
         "--transcribe-tencent",
+        "--transcribe-openai",
     }
 )
 _GUI_DEBUG_FLAGS = frozenset({"-dbg", "--debug", "-dt", "--devtools"})
@@ -76,6 +78,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument("--transcribe-tencent", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--transcribe-openai",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument(
         "--serve",
         action="store_true",
@@ -128,6 +135,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_internal_transcribe_bcut(rest)
     if args.transcribe_tencent:
         return _run_internal_transcribe_tencent(rest)
+    if args.transcribe_openai:
+        return _run_internal_transcribe_openai(rest)
     if args.serve:
         return _run_internal_serve(rest)
     if args.serve_alignment:
@@ -369,6 +378,18 @@ def _run_internal_transcribe_tencent(argv: Sequence[str]) -> int:
     try:
         sys.argv = ["generate_subtitle_tencent_api.py", *argv]
         result = generate_subtitle_tencent_api.main()
+    finally:
+        sys.argv = old_argv
+    return 0 if result is None else int(result)
+
+
+def _run_internal_transcribe_openai(argv: Sequence[str]) -> int:
+    import generate_subtitle_openai_api
+
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = ["generate_subtitle_openai_api.py", *argv]
+        result = generate_subtitle_openai_api.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)

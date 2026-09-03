@@ -147,6 +147,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("generate_subtitle_qwen_api", spec)
         self.assertIn("generate_subtitle_soniox_api", spec)
         self.assertIn("generate_subtitle_bcut_api", spec)
+        self.assertIn("generate_subtitle_openai_api", spec)
         self.assertIn("maw.soniox", spec)
         self.assertIn("local-runtime", spec)
         self.assertIn('"app_paths.py"), "local-runtime/maw"', spec)

@@ -18,6 +18,9 @@ DEFAULT_ENV_PATH: Final = default_env_path()
 EXAMPLE_ENV_PATH: Final = ROOT / ".env.example"
 QWEN_AUDIO_MODEL_ID: Final = "qwen-audio-3.0-asr-flash-filetrans"
 QWEN3_ASR_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
+OPENAI_ASR_MODEL_ID: Final = "custom-asr"
+OPENAI_ASR_DEFAULT_BASE_URL: Final = "https://api.openai.com/v1"
+OPENAI_ASR_DEFAULT_MODEL: Final = "whisper-1"
 # qwen-audio-3.0 是最新发布的模型，作为各入口默认；旧 qwen3-asr 置底保留（后续可能移除）。
 DEFAULT_MODEL_ID: Final = QWEN_AUDIO_MODEL_ID
 
@@ -281,6 +284,16 @@ QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
     ),
 )
 
+OPENAI_ASR_MODELS: Final[tuple[ModelConfig, ...]] = (
+    ModelConfig(
+        id=OPENAI_ASR_MODEL_ID,
+        label="自定义 OpenAI 兼容 ASR",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        note="默认使用 OpenAI 官方转写服务，也可填写其他兼容 /audio/transcriptions 的 ASR 地址和模型",
+        languages=LANGUAGES,
+    ),
+)
+
 SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
         id="stt-async-v5",
@@ -442,6 +455,16 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         common_languages=QWEN_COMMON_LANGUAGES,
         note="需要 TENCENT_SECRET_ID 与 TENCENT_SECRET_KEY；大于 5MB 的媒体请使用 COS URL",
         hidden=True,
+    ),
+    ProviderConfig(
+        id="openai",
+        label="自定义 OpenAI 兼容 ASR",
+        key_url="https://platform.openai.com/api-keys",
+        models=OPENAI_ASR_MODELS,
+        regions=(),
+        languages=LANGUAGES,
+        common_languages=QWEN_COMMON_LANGUAGES,
+        note="需要返回 segments 或 words 时间戳，才能生成可精确对轨的字幕。",
     ),
     ProviderConfig(
         id="local",

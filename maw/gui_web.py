@@ -24,8 +24,25 @@ from typing import BinaryIO, Final, final
 from maw.app_paths import default_emoji_font_path
 from maw.ffmpeg import FfmpegTools, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
-from maw.waveform import is_waveform_payload
-from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS, ModelConfig, ProviderConfig, _gui_theme, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
+from maw.gui_config import (
+    DEFAULT_ENV_PATH,
+    DEFAULT_MODEL_ID,
+    MODELS,
+    OPENAI_ASR_DEFAULT_BASE_URL,
+    OPENAI_ASR_DEFAULT_MODEL,
+    PROVIDERS,
+    ModelConfig,
+    ProviderConfig,
+    _gui_theme,
+    api_key_for_provider,
+    effective_config,
+    load_env,
+    masked_secret,
+    model_by_label,
+    provider_by_id,
+    provider_for_model,
+    save_env,
+)
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
@@ -73,6 +90,7 @@ from maw.postprocess_pipeline import PostprocessPipelineError
 from maw.script_alignment import normalize_gap_remove_settings
 from maw.text_conversion import TextConversionUnavailable, normalize_text_conversion_mode
 from maw.ocr_runtime import OCR_MODEL_ID, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, recover_ocr_runtime_install, run_ocr_in_runtime
+from maw.waveform import is_waveform_payload
 from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
 
@@ -96,6 +114,8 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "media_not_found": "Media file does not exist.",
     "server_media_missing": "Project media is missing, unsupported, or ambiguous. Choose media manually.",
     "api_key_missing": "API key is required.",
+    "custom_asr_model_missing": "请填写自定义 ASR 模型名。",
+    "custom_asr_base_url_missing": "请填写自定义 ASR Base URL。",
     "local_runtime_missing": "本地模型运行时未安装。",
     "local_runtime_install_failed": "本地模型运行环境安装失败。",
     "local_runtime_cancelled": "本地模型运行环境安装已取消。",
@@ -607,6 +627,7 @@ class LauncherApi:
             visible_models[0] if visible_models else MODELS[0],
         )
         selected_api_key = api_key_for_provider(provider.id, self.paths.env_path)
+        stored_env = load_env(self.paths.env_path)
         return {
             "providerId": provider.id,
             "modelId": selected_model.id,
@@ -614,6 +635,8 @@ class LauncherApi:
             "maskedApiKey": masked_secret(selected_api_key),
             "region": config.region,
             "workspaceId": config.workspace_id,
+            "openaiBaseUrl": os.environ.get("MAW_OPENAI_ASR_BASE_URL") or stored_env.get("MAW_OPENAI_ASR_BASE_URL", OPENAI_ASR_DEFAULT_BASE_URL),
+            "openaiModel": os.environ.get("MAW_OPENAI_ASR_MODEL") or stored_env.get("MAW_OPENAI_ASR_MODEL", OPENAI_ASR_DEFAULT_MODEL),
             "language": config.language,
             "guiLang": config.gui_lang,
             "appVersion": _app_version(self.paths),
@@ -698,6 +721,9 @@ class LauncherApi:
             updates["DASHSCOPE_REGION"] = str(payload.get("region") or "beijing")
             updates["DASHSCOPE_DEFAULT_LANGUAGE"] = str(payload.get("language") or "")
             updates["DASHSCOPE_WORKSPACE_ID"] = str(payload.get("workspaceId") or "").strip()
+        elif provider.id == "openai":
+            updates["MAW_OPENAI_ASR_BASE_URL"] = str(payload.get("openaiBaseUrl") or OPENAI_ASR_DEFAULT_BASE_URL).strip()
+            updates["MAW_OPENAI_ASR_MODEL"] = str(payload.get("openaiModel") or OPENAI_ASR_DEFAULT_MODEL).strip()
         try:
             save_env(self.paths.env_path, updates)
         except (OSError, UnicodeError, ValueError) as error:
@@ -2611,6 +2637,22 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         (item for item in provider.models if requested_model in (item.id, item.label)),
         provider.models[0],
     )
+    custom_model = ""
+    custom_base_url = ""
+    if provider.id == "openai":
+        stored_openai = load_env(env_path)
+        custom_model = (
+            str(payload.get("openaiModel") or "").strip()
+            or stored_openai.get("MAW_OPENAI_ASR_MODEL", OPENAI_ASR_DEFAULT_MODEL).strip()
+        )
+        custom_base_url = (
+            str(payload.get("openaiBaseUrl") or "").strip()
+            or stored_openai.get("MAW_OPENAI_ASR_BASE_URL", OPENAI_ASR_DEFAULT_BASE_URL).strip()
+        )
+        if not custom_model:
+            raise PreflightError("openaiModel", "custom_asr_model_missing", "请填写自定义 ASR 模型名。")
+        if not custom_base_url:
+            raise PreflightError("openaiBaseUrl", "custom_asr_base_url_missing", "请填写自定义 ASR Base URL。")
     api_key = str(payload.get("apiKey") or "").strip() or api_key_for_provider(provider.id, env_path)
     region = str(payload.get("region") or "beijing") if provider.id == "qwen" else ""
     workspace_id = str(payload.get("workspaceId") or "").strip()
@@ -2718,7 +2760,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     return TranscriptionRequest(
         media_path=media,
         srt_path=srt,
-        model=model.model_ref or model.id,
+        model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
         length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
@@ -2752,6 +2794,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         model_cache_root=model_cache_root,
         device=device,
         forced_aligner=str(payload.get("forcedAligner") or "").strip(),
+        base_url=custom_base_url,
         runtime_python=runtime_python,
         postprocess_plan=auto_plan,
         postprocess_llm_settings=auto_llm_settings,

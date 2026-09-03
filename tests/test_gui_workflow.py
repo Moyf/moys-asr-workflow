@@ -265,6 +265,70 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertIn("--debug-raw", command)
 
+    def test_build_transcribe_command_openai_compatible_uses_custom_endpoint(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="openai",
+            model="qwen3-asr-flash-filetrans",
+            language="zh",
+            base_url="https://relay.test/v1",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertIn("generate_subtitle_openai_api.py", command[1])
+        self.assertEqual(command[command.index("--base-url") + 1], "https://relay.test/v1")
+        self.assertEqual(command[command.index("--model") + 1], "qwen3-asr-flash-filetrans")
+        self.assertEqual(command[command.index("--language") + 1], "zh")
+        self.assertEqual(command[command.index("--strip-tail-punct") + 1], "")
+        self.assertNotIn("secret-key", " ".join(command))
+
+    def test_openai_gui_command_is_accepted_by_cli_parser(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "missing.wav",
+            srt_path=self.srt_path,
+            provider="openai",
+            model="whisper-1",
+            base_url="https://api.openai.com/v1",
+            strip_tail_punct="",
+        )
+        command = build_transcribe_command(request, executable=sys.executable, frozen=False)
+
+        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, check=False)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("文件不存在", result.stderr)
+        self.assertNotIn("unrecognized arguments", result.stderr)
+
+    def test_build_transcribe_command_frozen_openai_compatible_dispatches_flag(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="openai",
+            base_url="https://relay.test/v1",
+            model="custom-model",
+        )
+
+        command = build_transcribe_command(request, executable=Path("MAW"), frozen=True)
+
+        self.assertEqual(command[:3], ["MAW", "--transcribe-openai", str(self.media_path)])
+        import maw_gui
+
+        self.assertTrue(maw_gui._is_transcription_invocation(command[1:]))
+
+    def test_child_environment_openai_compatible_uses_custom_key_and_base_url(self) -> None:
+        env = _child_environment(
+            {},
+            "sk-custom",
+            provider="openai",
+            base_url="https://relay.test/v1",
+        )
+
+        self.assertEqual(env["MAW_OPENAI_ASR_API_KEY"], "sk-custom")
+        self.assertEqual(env["MAW_OPENAI_ASR_BASE_URL"], "https://relay.test/v1")
+        self.assertNotIn("DASHSCOPE_API_KEY", env)
+
     def test_soniox_generator_help_declares_debug_raw(self) -> None:
         result = subprocess.run(
             [sys.executable, str(ROOT / "generate_subtitle_soniox_api.py"), "--help"],

@@ -54,6 +54,7 @@ class TranscriptionRequest:
     region: str = ""
     workspace_id: str = ""
     provider: str = "qwen"
+    base_url: str = ""
     speaker_colors: bool = False
     generate_spectral: bool = False
     ui_language: str = "zh"
@@ -162,6 +163,7 @@ PROVIDER_SRT_TAGS: Final = {
     "local": ".qwen-asr-local",
     "bcut": ".bcut",
     "tencent": ".tencent-asr",
+    "openai": ".custom-asr",
 }
 
 
@@ -215,6 +217,7 @@ def build_transcribe_command(
     is_soniox = request.provider == "soniox"
     is_tencent = request.provider == "tencent"
     is_bcut = request.provider == "bcut"
+    is_openai = request.provider == "openai"
     is_local = request.provider == "local"
     if is_local:
         script_name = "generate_subtitle_local.py"
@@ -222,6 +225,8 @@ def build_transcribe_command(
         script_name = "generate_subtitle_bcut_api.py"
     elif is_tencent:
         script_name = "generate_subtitle_tencent_api.py"
+    elif is_openai:
+        script_name = "generate_subtitle_openai_api.py"
     else:
         script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
     script = Path(__file__).resolve().parents[1] / script_name
@@ -235,6 +240,8 @@ def build_transcribe_command(
             command = [exe, "--transcribe-bcut"]
         elif is_tencent:
             command = [exe, "--transcribe-tencent"]
+        elif is_openai:
+            command = [exe, "--transcribe-openai"]
         else:
             command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
     else:
@@ -272,6 +279,10 @@ def build_transcribe_command(
     elif is_bcut:
         # 必剪接口无语言/模型/说话人参数，这里一律不下发
         pass
+    elif is_openai:
+        _append_option(command, "--base-url", request.base_url)
+        _append_option(command, "--model", request.model)
+        _append_option(command, "--language", request.language)
     else:
         _append_option(command, "--model", request.model or DEFAULT_MODEL_ID)
         _append_option(command, "--region", request.region)
@@ -374,6 +385,7 @@ def run_transcription(
         request.provider,
         request.model_cache_root,
         request.engine,
+        request.base_url,
     )
     command = build_transcribe_command(request, executable=executable, frozen=frozen)
     process = popen_process_tree(
@@ -512,6 +524,7 @@ def _child_environment(
     provider: str = "qwen",
     model_cache_root: str = "",
     engine: str = "",
+    base_url: str = "",
 ) -> dict[str, str]:
     env = dict(parent)
     # The bundled local-runtime Python is not itself PyInstaller-frozen, so
@@ -548,6 +561,11 @@ def _child_environment(
         secret_key = parent.get("TENCENT_SECRET_KEY") or load_env(DEFAULT_ENV_PATH).get("TENCENT_SECRET_KEY", "")
         if secret_key:
             env["TENCENT_SECRET_KEY"] = secret_key
+    elif provider == "openai":
+        if api_key:
+            env["MAW_OPENAI_ASR_API_KEY"] = api_key
+        if base_url:
+            env["MAW_OPENAI_ASR_BASE_URL"] = base_url
     else:
         if api_key:
             env["DASHSCOPE_API_KEY"] = api_key
