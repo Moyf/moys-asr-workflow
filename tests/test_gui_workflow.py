@@ -313,6 +313,9 @@ class GuiWorkflowTests(unittest.TestCase):
         command = build_transcribe_command(request, executable=Path("MAW"), frozen=True)
 
         self.assertEqual(command[:3], ["MAW", "--transcribe-openai", str(self.media_path)])
+        import maw_gui
+
+        self.assertTrue(maw_gui._is_transcription_invocation(command[1:]))
 
     def test_child_environment_openai_compatible_uses_custom_key_and_base_url(self) -> None:
         env = _child_environment(

@@ -21,6 +21,48 @@ class CliTests(unittest.TestCase):
         self.assertIsNone(args.server)
         self.assertIsNone(args.stop_server)
 
+    def test_openai_provider_forwards_base_url_to_generator(self) -> None:
+        args = cli.build_parser("MAW.exe").parse_args(
+            [
+                "--provider",
+                "openai",
+                "--base-url",
+                "https://relay.test/v1",
+                "--model",
+                "whisper-1",
+                "-i",
+                "clip.wav",
+            ]
+        )
+
+        generated = cli._generator_args(args, Path("clip.wav"), Path("out.srt"))
+
+        self.assertEqual(generated[generated.index("--base-url") + 1], "https://relay.test/v1")
+        self.assertEqual(generated[generated.index("--model") + 1], "whisper-1")
+
+    def test_openai_provider_rejects_unrelated_provider_options(self) -> None:
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(
+                    [
+                        "--provider",
+                        "openai",
+                        "--region",
+                        "beijing",
+                        "-i",
+                        "clip.wav",
+                    ]
+                )
+
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_openai_provider_dispatches_to_openai_generator(self) -> None:
+        with mock.patch("generate_subtitle_openai_api.main", return_value=0) as generator_main:
+            result = cli._invoke_generator("openai", ["clip.wav"])
+
+        self.assertEqual(result, 0)
+        generator_main.assert_called_once_with()
+
     def test_transcription_moves_generated_mosp_to_explicit_second_output(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

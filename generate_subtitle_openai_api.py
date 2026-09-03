@@ -167,7 +167,7 @@ def _timestamp_segment(raw: Mapping[str, Any]) -> dict[str, Any] | None:
 def parse_timestamped_response(body: Mapping[str, Any]) -> dict[str, Any]:
     """Map common OpenAI-compatible timestamp shapes to MAW's contract."""
     payload = _as_mapping(body.get("data")) or body
-    text = _text(payload.get("text"))
+    text = _text(payload.get("text")).strip()
     raw_segments = payload.get("segments")
     raw_segments = raw_segments if isinstance(raw_segments, list) else []
     raw_words = payload.get("words")
@@ -197,8 +197,12 @@ def parse_timestamped_response(body: Mapping[str, Any]) -> dict[str, Any]:
     language = _text(payload.get("language") or payload.get("lang"))
     if items:
         _normalize_western_item_spacing(items)
+        if not text:
+            text = "".join(str(item.get("text", "")) for item in items).strip()
         return {"text": text, "language": language, "items": items, "segments": []}
     if segments:
+        if not text:
+            text = "".join(str(segment.get("text", "")) for segment in segments).strip()
         return {"text": text, "language": language, "items": [], "segments": segments}
     raise RuntimeError(
         "ASR 接口只返回了文本，没有返回 segments/words 时间戳；"
@@ -338,6 +342,7 @@ def main() -> None:
     parser.add_argument("--with-spectral", action="store_true")
     parser.add_argument("--no-html", action="store_true")
     parser.add_argument("-s", "--stickers", default=get_default_sticker_dir())
+    parser.add_argument("--debug", action="store_true", help="输出时间戳解析摘要")
     parser.add_argument("--debug-raw", action="store_true")
     args = parser.parse_args()
     if args.with_spectral and not args.with_waveform:
@@ -383,6 +388,12 @@ def main() -> None:
         )
         if not segments:
             raise RuntimeError("ASR 返回内容为空，未生成字幕段。")
+        if args.debug:
+            print("\n--- debug ---")
+            print(f"text: {result['text'][:200]}...")
+            print(f"items count: {len(result.get('items', []))}")
+            print(f"segments count: {len(result.get('segments', []))}")
+            print("--- end debug ---\n")
         cache_result = None
         if args.json_out and args.with_waveform:
             cache_result = embed_media_caches(

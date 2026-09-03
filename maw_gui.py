@@ -34,6 +34,7 @@ _TRANSCRIPTION_FLAGS = frozenset(
         "--transcribe-local",
         "--transcribe-bcut",
         "--transcribe-tencent",
+        "--transcribe-openai",
     }
 )
 _GUI_DEBUG_FLAGS = frozenset({"-dbg", "--debug", "-dt", "--devtools"})

@@ -41,7 +41,7 @@ Windows 图形包中的 `MAW.exe` 不带参数时启动 Launcher；带 `-h` 或 
 .\MAW.exe -i "D:\Videos\example.mp3" -o "D:\Videos\example.srt" "D:\Videos\example.mosp"
 ```
 
-完整的参数表、输出规则、Qwen/Soniox 示例、Server 管理、退出码和 AI/自动化调用模板见 [CLI 专门文档](CLI.md)。
+完整的参数表、Qwen/Soniox/腾讯云/OpenAI 兼容 ASR 示例、Server 管理、退出码和 AI/自动化调用模板见 [CLI 专门文档](CLI.md)。
 
 ## 1. 配置阿里云百炼 API
 
@@ -202,6 +202,30 @@ uv run python generate_subtitle_tencent_api.py "D:\Videos\example.mp4" -ll 2m --
 ```
 
 腾讯云结果中的 `Words` 会映射为工程 `items`，其中 `OffsetStartMs` / `OffsetEndMs` 是整数毫秒。启用 `--speaker` 时，MAW 会发送 `SpeakerDiarization=1`；说话人标签是匿名 ID。小于等于 5MB 的本地文件可直传，较大文件必须先上传到 COS 或其他公网可访问地址并使用 `--file-url`。
+
+## 用 OpenAI 兼容 ASR 转写（可选）
+
+MAW 支持 OpenAI 官方转写服务，以及实现同一 multipart 接口的自建或中转服务。默认地址和模型分别为 `https://api.openai.com/v1` 与支持时间戳的 `whisper-1`。在 `.env` 中配置：
+
+```ini
+MAW_OPENAI_ASR_API_KEY=你的 ASR 密钥
+MAW_OPENAI_ASR_BASE_URL=https://api.openai.com/v1
+MAW_OPENAI_ASR_MODEL=whisper-1
+```
+
+直接调用生成器：
+
+```powershell
+uv run python generate_subtitle_openai_api.py "D:\Videos\example.mp4" -ll 2m --json
+```
+
+也可以从公开 CLI 调用，并用 `--base-url` 临时覆盖 `.env`：
+
+```powershell
+MAW.exe --provider openai --base-url "https://api.openai.com/v1" -i "D:\Videos\example.mp4" -o "D:\Output\example.srt"
+```
+
+接口必须接受 `POST /audio/transcriptions`，并返回带 `start` / `end` 时间戳的 `segments` 或 `words`。只有文本没有时间戳的响应会被拒绝；说话人开关、Qwen 热词和 Soniox context 不会转发给该接口。
 
 ## 用必剪转写（实验性，免 Key，仅中文）
 

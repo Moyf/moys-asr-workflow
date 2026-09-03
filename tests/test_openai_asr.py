@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,6 +21,17 @@ from generate_subtitle_openai_api import (
 
 
 class OpenAiAsrTests(unittest.TestCase):
+    def test_generator_accepts_shared_debug_flag(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).parents[1] / "generate_subtitle_openai_api.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--debug", result.stdout)
+
     def test_official_openai_defaults(self) -> None:
         self.assertEqual(DEFAULT_BASE_URL, "https://api.openai.com/v1")
         self.assertEqual(DEFAULT_MODEL, "whisper-1")
@@ -100,6 +113,16 @@ class OpenAiAsrTests(unittest.TestCase):
         })
 
         self.assertEqual(result["segments"], [{"start": 0, "end": 2500, "text": "hello", "items": []}])
+
+    def test_parse_timestamped_response_derives_missing_top_level_text(self) -> None:
+        result = parse_timestamped_response({
+            "words": [
+                {"word": "The", "start": 0, "end": 0.2},
+                {"word": "beach", "start": 0.2, "end": 0.5},
+            ],
+        })
+
+        self.assertEqual(result["text"], "The beach")
 
     def test_parse_text_only_response_is_rejected(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "没有返回 segments/words 时间戳"):
