@@ -22,6 +22,9 @@ const gapCoreSource = fs.readFileSync(new URL('../web/gap-remove-core.js', impor
 vm.runInNewContext(gapCoreSource, context);
 const source = fs.readFileSync(new URL('../web/waveform.js', import.meta.url), 'utf8');
 vm.runInNewContext(source, context);
+// 供 .ReaPeaks 二进制 fixture 使用：必须在沙箱 realm 内创建 ArrayBuffer，
+// 否则 decodeReapeaksFile 的 `instanceof ArrayBuffer` 入参校验会拒掉它。
+vm.runInNewContext('globalThis.newArrayBuffer = (size) => new ArrayBuffer(size);', context);
 const helpers = context.window.AsrWaveform.testing;
 const builtinWorkspaces = context.window.AsrWaveform.builtinWorkspaces;
 
@@ -765,4 +768,97 @@ test('maps spectral freq/density to a valid hsl color', () => {
   const noisy = helpers.freqColor(1000, 0, 16383);
   const tonal = helpers.freqColor(1000, 16383, 16383);
   assert.ok(parseFloat(tonal.match(/hsl\([^,]+, ([\d.]+)%/)[1]) > parseFloat(noisy.match(/hsl\([^,]+, ([\d.]+)%/)[1]));
+});
+
+
+// ---- 波形时间轴契约 ----------------------------------------------------
+// 回归：.ReaPeaks 的 bin 率是 sample_rate / division，多数采样率下是分数。
+// 一旦把它 round 成整数当刻度用，整条时间轴被按比例缩放，错位随时长线性累积。
+
+function buildReapeaksBuffer({ sampleRate, division, peaks }) {
+  // ArrayBuffer 必须在被测代码所在的 realm 里创建：decodeReapeaksFile 用
+  // `instanceof ArrayBuffer` 做入参校验，跨 realm 的 buffer 会被直接拒掉。
+  const buffer = context.newArrayBuffer(18 + 8 + peaks * 4);
+  const view = new DataView(buffer);
+  const writeChars = (offset, text) => {
+    for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+  writeChars(0, 'RPKN');
+  view.setUint8(4, 1);              // channels
+  view.setUint8(5, 1);              // mipmap count（只放一个 wave 层）
+  view.setInt32(6, sampleRate, true);
+  view.setInt32(10, 1700000000, true);
+  view.setInt32(14, 1234, true);
+  view.setInt32(18, division, true);
+  view.setInt32(22, peaks, true);
+  for (let i = 0; i < peaks; i++) {
+    const amplitude = i === peaks - 1 ? 12000 : 500;
+    view.setInt16(26 + i * 4, amplitude, true);
+    view.setInt16(26 + i * 4 + 2, -amplitude, true);
+  }
+  return buffer;
+}
+
+
+test('publishes the fractional ReaPeaks bin rate instead of rounding it away', () => {
+  const { waveform } = helpers.decodeReapeaksFile(
+    buildReapeaksBuffer({ sampleRate: 16000, division: 53, peaks: 9057 }),
+    { name: 'a.wav', size: 1234, modified_ms: 1700000000000 },
+  );
+  assert.equal(waveform.sample_rate, 16000);
+  assert.equal(waveform.division, 53);
+  assert.equal(waveform.peak_count, 9057);
+  // 16000 / 53 = 301.886792…，绝不能被取整成 302
+  assert.notEqual(waveform.peaks_per_second, 302);
+  assert.ok(Math.abs(waveform.peaks_per_second - 16000 / 53) < 1e-6);
+  assert.equal(helpers.peaksRateOf(waveform), 16000 / 53);
+});
+
+test('keeps an integer rate as an integer when the division is exact', () => {
+  assert.equal(helpers.publishPeakRate(48000, 160), 300);
+  assert.equal(helpers.publishPeakRate(8000, 80), 100);
+  assert.ok(Number.isInteger(helpers.publishPeakRate(8000, 80)));
+  const { waveform } = helpers.decodeReapeaksFile(
+    buildReapeaksBuffer({ sampleRate: 8000, division: 80, peaks: 3 }),
+  );
+  assert.equal(waveform.peaks_per_second, 100);
+});
+
+test('peaksRateOf falls back to peaks_per_second for legacy payloads', () => {
+  assert.equal(helpers.peaksRateOf({ peaks_per_second: 100 }), 100);
+  assert.equal(helpers.peaksRateOf({ sample_rate: 16000, division: 53, peaks_per_second: 302 }), 16000 / 53);
+  // 半个精确率字段（缺失或非法）视为无刻度，不退回近似值
+  assert.equal(helpers.peaksRateOf({ sample_rate: 16000, division: 0, peaks_per_second: 100 }), 0);
+  assert.equal(helpers.peaksRateOf({ sample_rate: 16000, peaks_per_second: 100 }), 0);
+  assert.equal(helpers.peaksRateOf({}), 0);
+  assert.equal(helpers.peaksRateOf(null), 0);
+});
+
+test('a peak index maps back to its own sample position without drift', () => {
+  const { waveform } = helpers.decodeReapeaksFile(
+    buildReapeaksBuffer({ sampleRate: 16000, division: 53, peaks: 9057 }),
+  );
+  const rate = helpers.peaksRateOf(waveform);
+  const last = waveform.peak_count - 1;
+  const trueMs = (last * waveform.division / waveform.sample_rate) * 1000;
+  assert.ok(Math.abs(last / rate * 1000 - trueMs) <= 1000 / rate);
+  // 钉住取整的代价：用整数 302 当刻度，30 s 处已经偏 10 ms 以上
+  assert.ok(Math.abs(last / 302 * 1000 - trueMs) > 10);
+});
+
+test('decodePayload scales by the exact-rate pair when one is present', () => {
+  const base = {
+    schema: 'moy.asr.waveform.v1',
+    encoding: 'i8-minmax-base64',
+    peak_count: 1,
+    duration_ms: 10,
+    data: Buffer.from([0xf6, 0x0a]).toString('base64'),
+  };
+  assert.ok(helpers.decodePayload({ ...base, peaks_per_second: 100 }));
+  assert.ok(helpers.decodePayload({ ...base, peaks_per_second: 301.886792, sample_rate: 16000, division: 53 }));
+  // 精确率在场时就是刻度，近似值只是后备
+  assert.ok(helpers.decodePayload({ ...base, peaks_per_second: 0, sample_rate: 16000, division: 53 }));
+  assert.equal(helpers.decodePayload({ ...base, peaks_per_second: 0 }), null);
+  assert.equal(helpers.decodePayload({ ...base, peaks_per_second: 0, sample_rate: 16000 }), null);
+  assert.equal(helpers.decodePayload({ ...base, peaks_per_second: 100, sample_rate: 16000, division: 0 }), null);
 });
