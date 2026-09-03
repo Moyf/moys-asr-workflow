@@ -30,12 +30,16 @@ from generate_subtitle_qwen_api import (
     parse_duration,
     split_segments_auto,
 )
+from maw.app_paths import default_env_path
+from maw.console import configure_utf8_stdio
+from maw.ffmpeg import resolve_ffmpeg_tools
+from maw.gui_config import load_env
 from maw.project import repair_segment_durations
 from maw.media_cache import embed_media_caches, merge_media_caches
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_MODEL = "gpt-4o-transcribe"
+DEFAULT_MODEL = "whisper-1"
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
@@ -47,6 +51,25 @@ VIDEO_EXTENSIONS = frozenset({
 
 def _env_value(key: str, default: str = "") -> str:
     return os.environ.get(key, default).strip()
+
+
+def load_cli_config(
+    env_path: Path | None = None,
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Load OpenAI ASR and FFmpeg settings with process env taking priority."""
+    file_values = load_env(env_path or default_env_path())
+    values = os.environ if environment is None else environment
+
+    def pick(key: str, default: str = "") -> str:
+        return str(values.get(key) or file_values.get(key, default)).strip()
+
+    return {
+        "api_key": pick("MAW_OPENAI_ASR_API_KEY"),
+        "base_url": pick("MAW_OPENAI_ASR_BASE_URL", DEFAULT_BASE_URL),
+        "model": pick("MAW_OPENAI_ASR_MODEL", DEFAULT_MODEL),
+        "ffmpeg_path": pick("FFMPEG_PATH"),
+    }
 
 
 def normalize_base_url(value: str) -> str:
@@ -106,6 +129,28 @@ def _timestamp_item(raw: Mapping[str, Any]) -> dict[str, Any] | None:
     return item
 
 
+def _normalize_western_item_spacing(items: list[dict[str, Any]]) -> None:
+    """Add separators when an API returns western words without leading spaces."""
+    if not items:
+        return
+    cjk_items = sum(
+        any("\u3400" <= char <= "\u9fff" or "\u3040" <= char <= "\u30ff" for char in str(item.get("text", "")))
+        for item in items
+    )
+    if cjk_items * 2 >= len(items):
+        return
+
+    closing = set(".,!?;:%…)]}，。！？；：、'’")
+    opening = set("([{\"“‘")
+    previous = ""
+    for index, item in enumerate(items):
+        text = str(item.get("text", "")).strip()
+        if index and text and not text.startswith(tuple(closing)) and not previous.endswith(tuple(opening)):
+            text = f" {text}"
+        item["text"] = text
+        previous = text.rstrip()
+
+
 def _timestamp_segment(raw: Mapping[str, Any]) -> dict[str, Any] | None:
     text = _text(raw.get("text")).strip()
     start = _milliseconds(raw.get("start") or raw.get("start_time"))
@@ -151,6 +196,7 @@ def parse_timestamped_response(body: Mapping[str, Any]) -> dict[str, Any]:
 
     language = _text(payload.get("language") or payload.get("lang"))
     if items:
+        _normalize_western_item_spacing(items)
         return {"text": text, "language": language, "items": items, "segments": []}
     if segments:
         return {"text": text, "language": language, "items": [], "segments": segments}
@@ -224,26 +270,31 @@ def request_transcription(
     return parsed
 
 
-def _prepare_audio(input_path: Path, temp_dir: Path, length_limit: float | None) -> tuple[Path, float]:
+def _prepare_audio(
+    input_path: Path,
+    temp_dir: Path,
+    length_limit: float | None,
+    *,
+    ffmpeg_path: Path | None,
+    ffprobe_path: Path | None,
+) -> tuple[Path, float]:
     if input_path.suffix.lower() in VIDEO_EXTENSIONS:
         audio_path = temp_dir / "audio.wav"
-        source_duration = get_duration_sec(str(input_path))
+        source_duration = get_duration_sec(str(input_path), ffprobe_path=ffprobe_path)
         limit = length_limit if length_limit and length_limit < source_duration else None
-        extract_audio(str(input_path), str(audio_path), duration_limit=limit)
+        extract_audio(str(input_path), str(audio_path), duration_limit=limit, ffmpeg_path=ffmpeg_path)
     else:
         audio_path = temp_dir / input_path.name
         shutil.copy2(input_path, audio_path)
 
-    duration = get_duration_sec(str(audio_path))
+    duration = get_duration_sec(str(audio_path), ffprobe_path=ffprobe_path)
     if length_limit and length_limit < duration:
         limited = temp_dir / "audio_limited.wav"
-        subprocess.run(
-            [
-                "ffmpeg", "-i", str(audio_path), "-t", str(length_limit),
-                "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", "-y", str(limited),
-            ],
-            check=True,
-            capture_output=True,
+        extract_audio(
+            str(audio_path),
+            str(limited),
+            duration_limit=length_limit,
+            ffmpeg_path=ffmpeg_path,
         )
         audio_path = limited
         duration = length_limit
@@ -264,17 +315,24 @@ def _segments_from_result(
 
 
 def main() -> None:
+    configure_utf8_stdio()
+    config = load_cli_config()
     parser = argparse.ArgumentParser(description="通过 OpenAI 兼容 ASR 接口生成 MAW 字幕工程")
     parser.add_argument("input", help="输入视频或音频路径")
     parser.add_argument("-o", "--output", help="输出 SRT 路径")
-    parser.add_argument("--base-url", default=_env_value("MAW_OPENAI_ASR_BASE_URL", DEFAULT_BASE_URL))
-    parser.add_argument("--model", default=_env_value("MAW_OPENAI_ASR_MODEL", DEFAULT_MODEL))
+    parser.add_argument("--base-url", default=config["base_url"])
+    parser.add_argument("--model", default=config["model"])
     parser.add_argument("--language", default=None)
-    parser.add_argument("--max-len", type=int, default=21)
+    parser.add_argument("--max-len", type=int, default=18)
     parser.add_argument("--min-len", type=int, default=5)
-    parser.add_argument("--gap-split", type=int, default=1500)
+    parser.add_argument("--gap-split", type=int, default=800)
     parser.add_argument("-ll", "--length-limit", type=parse_duration, default=None)
     parser.add_argument("--keep-punct", action="store_true")
+    parser.add_argument(
+        "--strip-tail-punct",
+        default="，。",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
+    )
     parser.add_argument("--json", dest="json_out", action="store_true")
     parser.add_argument("--with-waveform", action="store_true")
     parser.add_argument("--with-spectral", action="store_true")
@@ -292,13 +350,20 @@ def main() -> None:
         print(f"错误: 文件不存在 - {input_path}", file=sys.stderr)
         raise SystemExit(1)
     output_path = Path(args.output).expanduser() if args.output else input_path.with_suffix(".srt")
-    api_key = _env_value("MAW_OPENAI_ASR_API_KEY")
+    api_key = config["api_key"]
+    ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config["ffmpeg_path"] or None)
 
     started = time.perf_counter()
     with tempfile.TemporaryDirectory() as temp_name:
         temp_dir = Path(temp_name)
         print(f"[媒体] 正在准备输入媒体: {input_path.name}")
-        audio_path, duration = _prepare_audio(input_path, temp_dir, args.length_limit)
+        audio_path, duration = _prepare_audio(
+            input_path,
+            temp_dir,
+            args.length_limit,
+            ffmpeg_path=ffmpeg_tools.ffmpeg,
+            ffprobe_path=ffmpeg_tools.ffprobe,
+        )
         print(f"[媒体] 音频时长: {int(duration // 60)}分{int(duration % 60)}秒")
         result = request_transcription(
             audio_path,
@@ -327,11 +392,14 @@ def main() -> None:
                 generate_spectral=args.with_spectral,
             )
 
-    if not args.keep_punct:
+    if not args.keep_punct and args.strip_tail_punct:
         for segment in segments:
-            segment["text"] = str(segment.get("text", "")).rstrip("，。")
-            for item in segment.get("items", []) or []:
-                item["text"] = str(item.get("text", "")).rstrip("，。")
+            segment["text"] = str(segment.get("text", "")).rstrip(args.strip_tail_punct)
+            items = segment.get("items", []) or []
+            for item in reversed(items):
+                item["text"] = str(item.get("text", "")).rstrip(args.strip_tail_punct)
+                if item["text"]:
+                    break
     repair_segment_durations(segments)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(generate_srt(segments), encoding="utf-8")

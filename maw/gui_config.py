@@ -20,7 +20,7 @@ QWEN_AUDIO_MODEL_ID: Final = "qwen-audio-3.0-asr-flash-filetrans"
 QWEN3_ASR_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
 OPENAI_ASR_MODEL_ID: Final = "custom-asr"
 OPENAI_ASR_DEFAULT_BASE_URL: Final = "https://api.openai.com/v1"
-OPENAI_ASR_DEFAULT_MODEL: Final = "gpt-4o-transcribe"
+OPENAI_ASR_DEFAULT_MODEL: Final = "whisper-1"
 # qwen-audio-3.0 是最新发布的模型，作为各入口默认；旧 qwen3-asr 置底保留（后续可能移除）。
 DEFAULT_MODEL_ID: Final = QWEN_AUDIO_MODEL_ID
 

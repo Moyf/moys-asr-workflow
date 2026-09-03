@@ -6,6 +6,7 @@
 
 ### ✨ 提升
 
+- **OpenAI 兼容 ASR** ： Launcher 可配置 OpenAI 官方或兼容的 `/audio/transcriptions` 服务，通过带时间戳的响应生成 SRT 与 `.mosp` 工程。
 - **ASS 字幕导出** ： 编辑器支持导出标准 `.ass` 字幕，并沿用主字幕预览的字体、字号和文字颜色。
 - **媒体实用工具** ： Launcher 工具箱新增「压制字幕」和「提取音频」；前者使用 FFmpeg 将 SRT / ASS / SSA 烧录进新视频，后者可查看并选择视频的音轨后输出 AAC/M4A，均保留源文件。
 - **托管运行环境** ： local / OCR 运行环境分开管理，减少安装时间和体积。

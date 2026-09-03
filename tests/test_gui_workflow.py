@@ -281,7 +281,25 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--base-url") + 1], "https://relay.test/v1")
         self.assertEqual(command[command.index("--model") + 1], "qwen3-asr-flash-filetrans")
         self.assertEqual(command[command.index("--language") + 1], "zh")
+        self.assertEqual(command[command.index("--strip-tail-punct") + 1], "")
         self.assertNotIn("secret-key", " ".join(command))
+
+    def test_openai_gui_command_is_accepted_by_cli_parser(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "missing.wav",
+            srt_path=self.srt_path,
+            provider="openai",
+            model="whisper-1",
+            base_url="https://api.openai.com/v1",
+            strip_tail_punct="",
+        )
+        command = build_transcribe_command(request, executable=sys.executable, frozen=False)
+
+        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, check=False)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("文件不存在", result.stderr)
+        self.assertNotIn("unrecognized arguments", result.stderr)
 
     def test_build_transcribe_command_frozen_openai_compatible_dispatches_flag(self) -> None:
         request = TranscriptionRequest(

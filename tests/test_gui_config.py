@@ -294,7 +294,7 @@ class GuiConfigTests(unittest.TestCase):
 
         self.assertEqual(provider.label, "自定义 OpenAI 兼容 ASR")
         self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_BASE_URL, "https://api.openai.com/v1")
-        self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_MODEL, "gpt-4o-transcribe")
+        self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_MODEL, "whisper-1")
         self.assertEqual(provider.key_url, "https://platform.openai.com/api-keys")
         self.assertEqual(provider.models[0].id, "custom-asr")
         self.assertEqual(provider.models[0].env_key, "MAW_OPENAI_ASR_API_KEY")

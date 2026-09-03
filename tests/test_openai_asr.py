@@ -9,6 +9,8 @@ from unittest import mock
 from generate_subtitle_openai_api import (
     DEFAULT_BASE_URL,
     DEFAULT_MODEL,
+    _segments_from_result,
+    load_cli_config,
     normalize_base_url,
     parse_timestamped_response,
     request_transcription,
@@ -19,8 +21,29 @@ from generate_subtitle_openai_api import (
 class OpenAiAsrTests(unittest.TestCase):
     def test_official_openai_defaults(self) -> None:
         self.assertEqual(DEFAULT_BASE_URL, "https://api.openai.com/v1")
-        self.assertEqual(DEFAULT_MODEL, "gpt-4o-transcribe")
+        self.assertEqual(DEFAULT_MODEL, "whisper-1")
         self.assertEqual(normalize_base_url(""), DEFAULT_BASE_URL)
+
+    def test_cli_config_reads_dotenv_and_process_environment_wins(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            env_path.write_text(
+                "MAW_OPENAI_ASR_API_KEY=file-key\n"
+                "MAW_OPENAI_ASR_BASE_URL=https://file.test/v1\n"
+                "MAW_OPENAI_ASR_MODEL=file-model\n"
+                "FFMPEG_PATH=/file/ffmpeg\n",
+                encoding="utf-8",
+            )
+
+            config = load_cli_config(
+                env_path,
+                {"MAW_OPENAI_ASR_API_KEY": "process-key"},
+            )
+
+        self.assertEqual(config["api_key"], "process-key")
+        self.assertEqual(config["base_url"], "https://file.test/v1")
+        self.assertEqual(config["model"], "file-model")
+        self.assertEqual(config["ffmpeg_path"], "/file/ffmpeg")
 
     def test_normalize_base_url_accepts_root_v1_and_endpoint_urls(self) -> None:
         self.assertEqual(normalize_base_url("https://example.test"), "https://example.test/v1")
@@ -52,6 +75,23 @@ class OpenAiAsrTests(unittest.TestCase):
         self.assertEqual(result["language"], "zh")
         self.assertEqual(result["items"][0]["start"], 100)
         self.assertEqual(result["items"][1]["end"], 1200)
+
+    def test_western_words_keep_spaces_in_generated_segments(self) -> None:
+        result = parse_timestamped_response({
+            "text": "The beach was quiet.",
+            "language": "en",
+            "words": [
+                {"word": "The", "start": 0.0, "end": 0.2},
+                {"word": "beach", "start": 0.2, "end": 0.5},
+                {"word": "was", "start": 0.5, "end": 0.7},
+                {"word": "quiet.", "start": 0.7, "end": 1.0},
+            ],
+        })
+
+        segments = _segments_from_result(result, max_len=18, min_len=3, gap_split=800)
+
+        self.assertEqual(segments[0]["text"], "The beach was quiet.")
+        self.assertEqual([item["text"] for item in segments[0]["items"]], ["The", " beach", " was", " quiet."])
 
     def test_parse_timestamped_segments_without_words(self) -> None:
         result = parse_timestamped_response({

@@ -10,7 +10,7 @@ import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from typing import final
+from typing import Mapping, final
 from unittest import mock
 from urllib.error import URLError
 
