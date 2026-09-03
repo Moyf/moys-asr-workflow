@@ -459,6 +459,16 @@ def default_paths() -> LauncherPaths:
     return LauncherPaths(root=root, env_path=DEFAULT_ENV_PATH, launcher_html=root / "web" / "launcher" / "index.html")
 
 
+def _launcher_icon_path() -> Path:
+    """返回当前平台的 Launcher 图标，避免 macOS 使用 Windows ICO。"""
+
+    if sys.platform == "darwin":
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).resolve().parent.parent / "Resources" / "maw.icns"
+        return asset_path("assets/maw.icns")
+    return asset_path("assets/maw.ico")
+
+
 # ---- Linux keycap 表情字体（Noto Color Emoji）----
 # 段落标题的 keycap 表情（1️⃣ 等）由「数字 + U+FE0F + U+20E3」组成，需要彩色 emoji 字体
 # 完整覆盖才可正常成型；部分 Linux 发行版（如 SteamOS 的 Twemoji）缺少 U+FE0F，会渲染成
@@ -2545,7 +2555,7 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
             apply_dark_title_bar(WINDOW_TITLE)
 
         window.events.loaded += _on_loaded
-    icon = asset_path("assets/maw.ico")
+    icon = _launcher_icon_path()
     webview.start(
         lambda: bind_launcher_drop(window, api),
         debug=debug or devtools,

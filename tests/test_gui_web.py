@@ -18,7 +18,7 @@ from urllib.error import URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _launcher_icon_path, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
@@ -2776,6 +2776,28 @@ class _FakeLogSink:
 
 @final
 class LauncherRuntimeTests(unittest.TestCase):
+    def test_launcher_icon_uses_bundle_icns_in_frozen_macos_app(self) -> None:
+        """打包版 macOS Launcher 使用 App 内的 ICNS 图标。"""
+
+        executable = "/Applications/MAW.app/Contents/MacOS/MAW"
+        with (
+            mock.patch("maw.gui_web.sys.platform", "darwin"),
+            mock.patch.object(sys, "frozen", True, create=True),
+            mock.patch.object(sys, "executable", executable),
+        ):
+            icon = _launcher_icon_path()
+
+        self.assertEqual(icon, Path(executable).resolve().parent.parent / "Resources" / "maw.icns")
+
+    def test_launcher_icon_keeps_platform_specific_source_assets(self) -> None:
+        """源码运行时 macOS 使用 ICNS，其他平台继续使用 ICO。"""
+
+        with mock.patch("maw.gui_web.asset_path", side_effect=lambda relative: Path(relative)):
+            with mock.patch("maw.gui_web.sys.platform", "darwin"):
+                self.assertEqual(_launcher_icon_path(), Path("assets/maw.icns"))
+            with mock.patch("maw.gui_web.sys.platform", "win32"):
+                self.assertEqual(_launcher_icon_path(), Path("assets/maw.ico"))
+
     def test_run_app_passes_debug_and_controls_automatic_devtools(self) -> None:
         paths = LauncherPaths(
             root=Path("launcher-root"),
