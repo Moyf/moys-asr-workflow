@@ -341,6 +341,18 @@ class PackagingContractTests(unittest.TestCase):
         for relative_path in sorted(bundled_paths):
             self.assertIn(_local_runtime_spec_entry(relative_path), spec)
 
+    def test_local_runtime_stays_out_of_the_editor_stack(self) -> None:
+        """Given local ASR entrypoints, When the import graph is built, Then the editor generator is absent.
+
+        Issue 96：转写 CLI 只需要「默认表情包目录」这一项配置，它过去住在 edit.py 里，
+        于是每个转写入口都连带导入整个编辑器和 Rust 波形内核；依赖清单不含该内核的
+        托管 Runtime（MOSS）在加载模型之前就 ModuleNotFoundError。
+        """
+        graph = _local_runtime_import_graph()
+
+        self.assertNotIn("edit", graph)
+        self.assertIn("maw.stickers", graph)
+
     def test_ocr_runtime_bundles_every_local_import_dependency(self) -> None:
         """Given the OCR worker entrypoint, When packaging is read, Then its local imports are copied beside it."""
         spec = read_text("MAW.spec")
