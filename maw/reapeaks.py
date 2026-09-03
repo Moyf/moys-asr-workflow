@@ -27,6 +27,7 @@ from pathlib import Path
 
 from maw import waveform as waveform_module
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.workspace_paths import reapeaks_cache_path
 
 
 def _load_rust_kernel():
@@ -233,10 +234,11 @@ def _unpack_12bit_bins(raw: bytes) -> list[int]:
 
 
 def find_reapeaks(media_path: Path) -> Path | None:
-    """Locate the .ReaPeaks cache REAPER would write next to a media file."""
+    """优先查找集中缓存，同时兼容旧版和 REAPER 的同目录缓存。"""
     parent = media_path.parent
     name = media_path.name
-    candidates = [parent / (name + suffix) for suffix in REAPEAKS_SUFFIXES]
+    candidates = [reapeaks_cache_path(media_path)]
+    candidates += [parent / (name + suffix) for suffix in REAPEAKS_SUFFIXES]
     candidates += [media_path.with_suffix(suffix) for suffix in REAPEAKS_SUFFIXES]
     seen: set[Path] = set()
     for candidate in candidates:
@@ -568,16 +570,15 @@ def generate_for_media(
     generated, else None (missing ffmpeg or decode failure). An existing cache
     is only reused when its header matches the current media and, when
     ``include_spectral`` is true, already contains a spectral mipmap; stale or
-    incomplete caches are rebuilt. The file is written next to the media so
-    the server only ever reads it.
+    incomplete caches are rebuilt. New files are written to the media's MAW
+    cache directory; legacy adjacent files remain readable.
 
     ``media_path`` is the file actually decoded (e.g. a limited-length
     extraction inside a temporary working directory). ``source_media_path``
-    is the original media: the cache is written next to it, its mtime is
-    recorded in the header (the recorded size comes from ``media_path`` and
-    is not part of any provenance check), so the server still finds and
-    accepts the cache after the temporary directory is gone. Defaults to
-    ``media_path`` for unchanged single-file behavior.
+    is the original media: the cache is stored in its MAW workspace, its mtime
+    is recorded in the header (the recorded size comes from ``media_path`` and
+    is not part of any provenance check), so the server still finds and accepts
+    the cache after the temporary directory is gone. Defaults to ``media_path``.
     """
     media_path = Path(media_path)
     signature_path = (
@@ -587,7 +588,7 @@ def generate_for_media(
     if existing is not None and _reapeaks_matches_media(existing, signature_path):
         if not include_spectral or _reapeaks_contains_spectral(existing):
             return existing
-    target = signature_path.with_name(signature_path.name + ".ReaPeaks")
+    target = reapeaks_cache_path(signature_path)
     try:
         media = media_path.stat()
         src = signature_path.stat()
@@ -607,6 +608,7 @@ def generate_for_media(
         if data is None:
             print("[reapeaks] ReaPeaks 数据为空")
             return None
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
     except Exception as exc:  # noqa: BLE001
         # 生成是兜底：任何失败都不阻断转写/启动流程。具体原因（缺 ffmpeg /

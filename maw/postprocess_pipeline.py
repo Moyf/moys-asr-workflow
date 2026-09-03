@@ -41,6 +41,7 @@ from maw.postprocess_ocr import OcrDedupArtifact, OcrDedupRequest, OcrRegion, ru
 from maw.ocr_runtime import OCR_MODEL_ID, run_ocr_in_runtime
 from maw.project_preview import JsonValue
 from maw.text_conversion import TextConversion, normalize_text_conversion_mode
+from maw.workspace_paths import cache_directory, find_workspace_root, sanitize_component
 
 
 POSTPROCESS_PLAN_VERSION: Final[int] = 1
@@ -420,7 +421,7 @@ def run_postprocess_pipeline(
     steps = enabled_steps(normalized)
     if not steps:
         raise ValueError("自动后处理没有选择任何步骤。")
-    run_directory = resume_directory.expanduser().resolve() if resume_directory is not None else _create_run_directory(media_path)
+    run_directory = resume_directory.expanduser().resolve() if resume_directory is not None else _create_run_directory(media_path, project_path)
     if resume_directory is not None and not run_directory.is_dir():
         raise ValueError(f"找不到可恢复的后处理目录：{run_directory}")
     manifest: dict[str, object]
@@ -891,10 +892,14 @@ def _merge_bilingual_subtitles(
     )
 
 
-def _create_run_directory(media_path: Path) -> Path:
-    root = media_path.expanduser().resolve().parent / POSTPROCESS_WORKSPACE_NAME
+def _create_run_directory(media_path: Path, project_path: Path | None = None) -> Path:
+    if project_path is not None and find_workspace_root(project_path) is not None:
+        root = cache_directory(media_path) / "后处理"
+        stem = sanitize_component(media_path.stem, "媒体")
+    else:
+        root = media_path.expanduser().resolve().parent / POSTPROCESS_WORKSPACE_NAME
+        stem = re.sub(r"[^A-Za-z0-9._-]+", "-", media_path.stem).strip(".-") or "media"
     root.mkdir(parents=True, exist_ok=True)
-    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", media_path.stem).strip(".-") or "media"
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     base = root / f"{stem}-{timestamp}"
     candidate = base

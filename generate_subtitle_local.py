@@ -34,6 +34,7 @@ from maw.local_asr import (  # noqa: E402
     prepared_audio,
     write_local_outputs,
 )
+from maw.workspace_paths import ensure_workspace_layout, original_artifacts_directory  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"长音频分块秒数（Qwen 默认 {QWEN_DEFAULT_CHUNK_SECONDS}；FunASR 默认 300）",
     )
     parser.add_argument("-ll", "--length-limit", type=parse_duration, help="只处理前 N 秒，例如 2m")
-    parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
+    parser.add_argument("-o", "--output", help="输出 SRT 路径（默认进入 MAW 工作目录）")
     parser.add_argument("--max-len", type=int, default=18, help="中文单条字幕最大字符数")
     parser.add_argument("--min-len", type=int, default=5, help="中文短句合并阈值")
     parser.add_argument("--gap-split", type=int, default=800, help="静音超过多少毫秒时切句")
@@ -105,7 +106,7 @@ def default_output_path(input_path: Path, engine: str) -> Path:
         "moss": "moss-local",
         "whisper": "whisper-local",
     }.get(engine, "local")
-    return input_path.with_name(f"{input_path.stem}.{tag}.srt")
+    return original_artifacts_directory(input_path) / f"{input_path.stem}.{tag}.srt"
 
 
 def load_hotword_files(paths: Sequence[str]) -> list[str]:
@@ -149,7 +150,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if batch_size_s is None:
         batch_size_s = QWEN_DEFAULT_CHUNK_SECONDS if args.engine == "qwen-asr" else 300
 
-    output_srt = Path(args.output).expanduser().resolve() if args.output else default_output_path(input_path, args.engine)
+    if args.output:
+        output_srt = Path(args.output).expanduser().resolve()
+    else:
+        ensure_workspace_layout(input_path)
+        output_srt = default_output_path(input_path, args.engine)
     ffmpeg_tools = resolve_ffmpeg_tools()
     ffmpeg_path = ffmpeg_tools.ffmpeg
     ffprobe_path = ffmpeg_tools.ffprobe

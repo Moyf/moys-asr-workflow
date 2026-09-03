@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest import mock
 
 from maw import reapeaks, waveform
+from maw.workspace_paths import reapeaks_cache_path
 import reapeaks as rust_generate
 
 
@@ -297,7 +298,7 @@ class GenerateReaPeaksTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_writes_and_reuses(self) -> None:
-        target = self.root / "tone.wav.ReaPeaks"
+        target = reapeaks_cache_path(self.tone_path)
         self.assertFalse(target.exists())
         generated = reapeaks.generate_for_media(self.tone_path)
         self.assertEqual(generated, target)
@@ -314,7 +315,8 @@ class GenerateReaPeaksTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_rebuilds_stale_cache(self) -> None:
         # 已有缓存但与当前媒体不匹配（旧媒体残留）时重新生成并覆盖。
-        stale = self.root / "tone.wav.ReaPeaks"
+        stale = reapeaks_cache_path(self.tone_path)
+        stale.parent.mkdir(parents=True)
         stale.write_bytes(b"RPKN" + b"\x00" * 4)
         generated = reapeaks.generate_for_media(self.tone_path)
         self.assertIsNotNone(generated)
@@ -323,12 +325,18 @@ class GenerateReaPeaksTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_rebuilds_wave_only_cache_when_spectral_is_requested(self) -> None:
-        target = self.root / "tone.wav.ReaPeaks"
+        target = reapeaks_cache_path(self.tone_path)
         reapeaks.generate_for_media(self.tone_path, include_spectral=False)
         self.assertFalse(reapeaks.ReaPeaksFile(str(target)).spectral_mipmaps())
 
         reapeaks.generate_for_media(self.tone_path, include_spectral=True)
         self.assertTrue(reapeaks.ReaPeaksFile(str(target)).spectral_mipmaps())
+
+    def test_find_reapeaks_keeps_legacy_adjacent_cache_compatible(self) -> None:
+        legacy = self.root / "tone.wav.ReaPeaks"
+        legacy.write_bytes(b"legacy")
+
+        self.assertEqual(reapeaks.find_reapeaks(self.tone_path), legacy)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_handles_non_wav_media(self) -> None:

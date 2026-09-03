@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import shutil
@@ -95,6 +96,21 @@ class WaveformExtractionTests(unittest.TestCase):
         cached, extracted = waveform_module.load_or_extract_waveform(None, self.media_path)
         self.assertEqual(cached, payload)
         self.assertFalse(extracted)
+
+    def test_legacy_adjacent_waveform_sidecar_remains_readable(self) -> None:
+        payload = {
+            "schema": waveform_module.WAVEFORM_SCHEMA,
+            "encoding": waveform_module.WAVEFORM_ENCODING,
+            "peaks_per_second": 100,
+            "peak_count": 1,
+            "duration_ms": 10,
+            "data": "AAA=",
+            "source": waveform_module.media_signature(self.media_path),
+        }
+        legacy = waveform_module.legacy_waveform_sidecar_path(self.media_path)
+        legacy.write_text(json.dumps(payload), encoding="utf-8")
+
+        self.assertEqual(waveform_module.load_waveform_sidecar(self.media_path), payload)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_embed_waveform_adds_valid_payload_without_sidecar(self) -> None:

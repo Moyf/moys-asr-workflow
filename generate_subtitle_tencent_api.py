@@ -20,12 +20,13 @@ from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.project import repair_segment_durations, validate_project
 from maw.speaker import apply_speaker_colors
 from maw.tencent import DEFAULT_ENGINE, load_config, transcribe
+from maw.workspace_paths import cache_directory, ensure_workspace_layout, original_artifacts_directory
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="使用腾讯云录音文件识别 API 生成视频字幕")
     parser.add_argument("input", help="输入视频或音频文件路径")
-    parser.add_argument("-o", "--output", help="输出 SRT 路径")
+    parser.add_argument("-o", "--output", help="输出 SRT 路径（默认进入 MAW 工作目录）")
     parser.add_argument("-l", "--max-len", type=int, default=18, help="每条字幕最大字数（默认 18）")
     parser.add_argument("--min-len", type=int, default=5, help="句号间最短字数")
     parser.add_argument("--language", help="保留参数；腾讯云录音文件识别由引擎自动识别")
@@ -53,7 +54,11 @@ def main() -> int:
     if not input_path.exists() and not args.file_url:
         print(f"错误: 文件不存在 - {input_path}", file=sys.stderr)
         return 1
-    output_path = Path(args.output) if args.output else input_path.with_suffix(".srt")
+    if args.output:
+        output_path = Path(args.output)
+    else:
+        ensure_workspace_layout(input_path)
+        output_path = original_artifacts_directory(input_path) / f"{input_path.stem}.srt"
     config = load_config()
     ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config.get("ffmpeg_path"))
     ffmpeg_path = ffmpeg_tools.ffmpeg
@@ -131,10 +136,16 @@ def main() -> int:
                 item["text"] = str(item["text"]).rstrip(args.strip_tail_punct)
     if args.speaker_colors:
         apply_speaker_colors(segments)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(generate_srt(segments), encoding="utf-8", newline="\n")
     print(f"字幕已保存到: {output_path}")
     if args.debug_raw:
-        raw_path = output_path.with_suffix(".asr-response.json")
+        raw_path = (
+            output_path.with_suffix(".asr-response.json")
+            if args.output
+            else cache_directory(input_path) / f"{output_path.stem}.asr-response.json"
+        )
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
         raw_path.write_text(json.dumps(raw_response, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
         print(f"[调试] 原始返回已保存到: {raw_path}")
     if args.debug:

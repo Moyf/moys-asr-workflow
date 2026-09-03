@@ -28,6 +28,7 @@ from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
 from maw.runtimes import OCR  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
+from maw.workspace_paths import original_artifacts_directory  # noqa: E402
 
 
 class FakeWindow:
@@ -2271,13 +2272,14 @@ class GuiWebBridgeTests(unittest.TestCase):
     def test_default_output_avoids_existing_srt_and_reports_rename(self) -> None:
         media = self.root / "clip.mp4"
         media.write_bytes(b"media")
-        output = self.root / "clip.qwen-audio.srt"
+        output = original_artifacts_directory(media) / "clip.qwen-audio.srt"
+        output.parent.mkdir(parents=True)
         output.write_text("existing", encoding="utf-8")
 
         result = self.api.default_output({"mediaPath": str(media), "providerId": "qwen", "modelId": "qwen-audio-3.0-asr-flash-filetrans"})
 
         self.assertTrue(result["renamed"])
-        self.assertEqual(result["path"], str(self.root / "clip.qwen-audio-1.srt"))
+        self.assertEqual(result["path"], str(output.with_name("clip.qwen-audio-1.srt")))
 
     def test_start_transcription_rechecks_output_collision_before_worker(self) -> None:
         media = self.root / "clip.mp3"

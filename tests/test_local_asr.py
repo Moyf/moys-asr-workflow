@@ -755,6 +755,8 @@ class LocalAsrFlowTests(unittest.TestCase):
         path = default_output_path(Path("D:/media/sample.mp4"), "funasr")
 
         self.assertEqual(path.name, "sample.funasr-local.srt")
+        self.assertEqual(path.parent.name, "原始工程与字幕")
+        self.assertEqual(path.parent.parent.name, "sample - MAW工作文件")
 
         self.assertEqual(default_output_path(Path("D:/media/sample.mp4"), "moss").name, "sample.moss-local.srt")
         self.assertEqual(default_output_path(Path("D:/media/sample.mp4"), "whisper").name, "sample.whisper-local.srt")

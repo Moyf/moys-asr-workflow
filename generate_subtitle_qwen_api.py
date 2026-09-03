@@ -38,6 +38,7 @@ from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tool, resolve_ffmpeg_tools
 
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.workspace_paths import cache_directory, ensure_workspace_layout, original_artifacts_directory
 
 
 # ===== 路径与常量 =====
@@ -1518,7 +1519,7 @@ def main():
         description="使用阿里云百炼 Qwen / Qwen-Audio / Fun-ASR API 生成视频字幕（云端版）",
     )
     parser.add_argument("input", help="输入视频或音频文件路径")
-    parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
+    parser.add_argument("-o", "--output", help="输出 SRT 路径（默认进入 MAW 工作目录）")
     parser.add_argument(
         "-l", "--max-len", type=int, default=18,
         help="每条字幕最大字数（默认 18；仅 CJK 内容生效，空格语言按词数自动处理）",
@@ -1636,7 +1637,8 @@ def main():
     if args.output:
         output_path = Path(args.output)
     else:
-        output_path = input_path.with_suffix(".srt")
+        ensure_workspace_layout(input_path)
+        output_path = original_artifacts_directory(input_path) / f"{input_path.stem}.srt"
 
     # 读配置（CLI args 覆盖 .env）
     config = _get_config()
@@ -1849,13 +1851,19 @@ def main():
             f"{ts_prefix}{output_path.stem}.{model_tag}.{speed_tag}.srt"
         )
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(srt_content, encoding="utf-8")
     print(f"\n字幕已保存到: {output_path}")
     print(f"共 {len(segments)} 条字幕")
     if args.debug_raw:
         if raw_response is None:
             raise RuntimeError("调试模式未获得 ASR 原始返回数据")
-        raw_path = output_path.with_suffix(".asr-response.json")
+        raw_path = (
+            output_path.with_suffix(".asr-response.json")
+            if args.output
+            else cache_directory(input_path) / f"{output_path.stem}.asr-response.json"
+        )
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
         with raw_path.open("w", encoding="utf-8", newline="\n") as raw_file:
             json.dump(raw_response, raw_file, ensure_ascii=False, indent=2)
             raw_file.write("\n")
