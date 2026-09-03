@@ -61,6 +61,8 @@ class LocalRuntimeTests(unittest.TestCase):
             work_dir.mkdir()
             environment = dict(os.environ)
             environment.pop("PYTHONPATH", None)
+            environment["PYTHONUTF8"] = "1"
+            environment["PYTHONIOENCODING"] = "utf-8:replace"
             driver = (
                 "import sys\n"
                 "from pathlib import Path\n"
@@ -75,6 +77,8 @@ class LocalRuntimeTests(unittest.TestCase):
                 cwd=work_dir,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 env=environment,
                 check=False,
             )
@@ -109,6 +113,8 @@ class LocalRuntimeTests(unittest.TestCase):
             work_dir.mkdir()
             environment = dict(os.environ)
             environment.pop("PYTHONPATH", None)
+            environment["PYTHONUTF8"] = "1"
+            environment["PYTHONIOENCODING"] = "utf-8:replace"
 
             result = subprocess.run(
                 [
@@ -123,6 +129,8 @@ class LocalRuntimeTests(unittest.TestCase):
                 cwd=work_dir,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 env=environment,
                 check=False,
             )

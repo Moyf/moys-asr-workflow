@@ -271,6 +271,11 @@ class GuiWorkflowTests(unittest.TestCase):
             cwd=ROOT,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            # 两头都钉死：子进程必须 UTF-8 输出、父进程必须 UTF-8 解码，
+            # 否则跟随宿主 locale 的测试进程会让中文 Windows 上 reader 线程直接崩掉。
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8:replace"},
             check=False,
         )
 
@@ -1153,6 +1158,9 @@ class GuiWorkflowTests(unittest.TestCase):
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8:replace"},
         )
 
         self.assertEqual(completed.returncode, 0)

@@ -75,6 +75,9 @@ class LocalEditorServerTests(unittest.TestCase):
             capture_output=True,
             check=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8:replace"},
         )
 
         self.assertRegex(result.stdout, r"-p(?: PORT)?, --port PORT")
