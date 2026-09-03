@@ -247,7 +247,9 @@ test('error reports copy safe details and support file URL fallback', async ({ p
   expect(report).not.toContain('secret-bearer-token');
   expect(report.match(/详细信息: backend detail/g)?.length).toBe(1);
   expect(report.match(/\[detail\] backend detail/g)?.length).toBe(2);
-  expect(report).toContain('1.5.0-beta.8');
+  const appVersion = await page.evaluate(() => window.MAWLauncher.config?.appVersion || '');
+  expect(appVersion).toBeTruthy();
+  expect(report).toContain(`版本: ${appVersion}`);
   expect(report).not.toContain('sk-secret-test-key');
 
   await page.evaluate(() => {
@@ -282,7 +284,7 @@ test('unknown errors stay generic and do not expose FFmpeg actions', async ({ pa
   await expect(page.locator('#errorNoticeFaq')).toBeVisible();
   await expect(page.locator('#errorNoticeFaq')).toHaveText('查看常见问题');
   await expect(page.locator('#errorNoticeCopy')).toHaveText('复制错误报告');
-  await expect(page.locator('#errorNoticeIssue')).toHaveText('打开项目主页');
+  await expect(page.locator('#errorNoticeIssue')).toHaveText('提交 Issue');
   await expect(page.locator('#errorNoticeIssue')).toBeVisible();
   await page.evaluate(() => {
     const original = window.MAWLauncher.callBackend;
@@ -293,9 +295,13 @@ test('unknown errors stay generic and do not expose FFmpeg actions', async ({ pa
     };
   });
   await page.locator('#errorNoticeIssue').click();
-  await expect.poll(() => page.evaluate(() => window.__issueCalls[0])).toEqual({
-    method: 'open_url', payload: { url: 'https://github.com/Moyf/moys-asr-workflow' },
-  });
+  await expect.poll(() => page.evaluate(() => window.__issueCalls.length)).toBe(1);
+  const issueCall = await page.evaluate(() => window.__issueCalls[0]);
+  expect(issueCall.method).toBe('open_url');
+  const issueUrl = new URL(issueCall.payload.url);
+  expect(issueUrl.pathname).toBe('/Moyf/moys-asr-workflow/issues/new');
+  expect(issueUrl.searchParams.get('title')).toContain('[bug] unknown_backend_failure');
+  expect(issueUrl.searchParams.get('body')).toContain('service exploded');
 });
 
 test('error reports keep one structured hint when detail matches the hint', async ({ page }) => {
