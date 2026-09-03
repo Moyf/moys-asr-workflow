@@ -89,6 +89,7 @@ def write_artifacts(
     warnings: tuple[str, ...] = (),
     output_directory: Path | None = None,
     media_path: Path | None = None,
+    output_name: str | None = None,
 ) -> SubtitleArtifact:
     normalized = normalize_project(project)
     raw_media = normalized.get("media")
@@ -102,8 +103,15 @@ def write_artifacts(
     if base is None:
         raise PostprocessFileError(Path("."), "an input project or SRT is required")
     output_directory = output_directory.expanduser().resolve() if output_directory is not None else None
-    project_path = _available_output(base, operation, base.suffix if source_project_path else ".mosp", output_directory=output_directory) if write_project else None
-    srt_path = _available_output(base, operation, ".srt", output_directory=output_directory) if write_srt else None
+    project_path, srt_path = _available_outputs(
+        base,
+        operation,
+        project_suffix=base.suffix if source_project_path else ".mosp",
+        write_project=write_project,
+        write_srt=write_srt,
+        output_directory=output_directory,
+        output_name=output_name,
+    )
     if project_path is not None:
         _atomic_write(project_path, json.dumps(normalized, ensure_ascii=False, indent=2) + "\n")
     if srt_path is not None:
@@ -155,15 +163,45 @@ def _format_srt_time(milliseconds: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
 
 
-def _available_output(source: Path, operation: str, suffix: str, *, output_directory: Path | None = None) -> Path:
+def normalize_output_name(value: str | None) -> str | None:
+    """Return a safe artifact basename, or ``None`` for the default naming rule."""
+
+    name = str(value or "").strip()
+    if not name:
+        return None
+    if name in {".", ".."} or any(char in name for char in ("/", "\\", "\x00")):
+        raise ValueError("输出名称只能填写文件名，不能包含路径或特殊字符。")
+    if any(ord(char) < 32 for char in name):
+        raise ValueError("输出名称不能包含控制字符。")
+    suffix = Path(name).suffix.lower()
+    if suffix in {".mosp", ".json", ".srt"}:
+        name = Path(name).stem.strip()
+    if not name or name in {".", ".."}:
+        raise ValueError("请输入有效的输出名称。")
+    return name
+
+
+def _available_outputs(
+    source: Path,
+    operation: str,
+    *,
+    project_suffix: str,
+    write_project: bool,
+    write_srt: bool,
+    output_directory: Path | None = None,
+    output_name: str | None = None,
+) -> tuple[Path | None, Path | None]:
     safe_operation = re.sub(r"[^a-z0-9-]+", "-", operation.lower()).strip("-") or "processed"
     directory = output_directory or source.parent
-    candidate = directory / f"{source.stem}.{safe_operation}{suffix}"
-    counter = 2
-    while candidate.exists():
-        candidate = directory / f"{source.stem}.{safe_operation}-{counter}{suffix}"
+    stem = normalize_output_name(output_name) or f"{source.stem}.{safe_operation}"
+    counter = 1
+    while True:
+        candidate_stem = stem if counter == 1 else f"{stem}-{counter}"
+        project_path = (directory / f"{candidate_stem}{project_suffix}").resolve() if write_project else None
+        srt_path = (directory / f"{candidate_stem}.srt").resolve() if write_srt else None
+        if all(path is None or not path.exists() for path in (project_path, srt_path)):
+            return project_path, srt_path
         counter += 1
-    return candidate.resolve()
 
 
 def _atomic_write(path: Path, text: str) -> None:

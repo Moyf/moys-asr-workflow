@@ -2055,6 +2055,14 @@ textarea::placeholder {
   background: var(--bg-panel);
 }
 
+.toolbox-output-fields {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 10px 12px;
+  min-width: 0;
+}
+
 .toolbox-output-field {
   display: flex;
   flex: 0 0 auto;
@@ -2070,6 +2078,41 @@ textarea::placeholder {
 
 .toolbox-output-field select {
   min-width: 132px;
+}
+
+.toolbox-output-name-field input {
+  min-width: 172px;
+  width: 210px;
+}
+
+.toolbox-template-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.toolbox-template-row:first-of-type {
+  margin-top: 0;
+}
+
+.toolbox-template-row select,
+.toolbox-template-row input {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.toolbox-template-status {
+  min-height: 1.2em;
+  margin-bottom: 0;
+}
+
+.toolbox-template-status.success {
+  color: var(--accent-hover);
+}
+
+.toolbox-template-status.error {
+  color: var(--red);
 }
 
 .toolbox-full-line-hint {
@@ -2538,6 +2581,14 @@ code {
   .toolbox-output-field {
     align-items: stretch;
     flex-direction: column;
+    width: 100%;
+  }
+  .toolbox-output-fields {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+  .toolbox-output-name-field input {
     width: 100%;
   }
   .toolbox-output-action,

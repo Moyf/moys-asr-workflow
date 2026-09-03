@@ -37,6 +37,7 @@ class FixedProcessRequest:
     output_directory: Path | None = None
     media_path: Path | None = None
     conversion: TextConversion = TextConversion.OFF
+    output_name: str | None = None
 
 
 # Kept as a source-compatible alias for integrations and saved callers using the
@@ -55,6 +56,7 @@ class LlmPostprocessRequest:
     output_directory: Path | None = None
     media_path: Path | None = None
     merge_bilingual: bool = False
+    output_name: str | None = None
 
 
 LlmComplete = Callable[[str, list[dict[str, JsonValue]]], Mapping[str, JsonValue]]
@@ -156,6 +158,7 @@ def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
         request.output_mode,
         output_directory=request.output_directory,
         media_path=request.media_path,
+        output_name=request.output_name,
     )
 
 
@@ -310,6 +313,7 @@ def run_llm_postprocess(
         warnings,
         output_directory=request.output_directory,
         media_path=request.media_path,
+        output_name=request.output_name,
     )
 
 
@@ -1512,6 +1516,7 @@ def _write(
     warnings: tuple[str, ...] = (),
     output_directory: Path | None = None,
     media_path: Path | None = None,
+    output_name: str | None = None,
 ) -> SubtitleArtifact:
     return write_artifacts(
         project,
@@ -1523,6 +1528,7 @@ def _write(
         warnings=warnings,
         output_directory=output_directory,
         media_path=media_path,
+        output_name=output_name,
     )
 
 

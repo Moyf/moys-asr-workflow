@@ -20,6 +20,42 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('prompt templates persist and custom output names reach the backend', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#postprocessPrompt').fill('保留品牌名称');
+  await page.locator('#llmPromptTemplateName').fill('品牌校对');
+  await page.locator('#saveLlmPromptTemplate').click();
+  await expect(page.locator('#llmPromptTemplate')).toHaveValue('品牌校对');
+
+  await page.reload();
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#toolboxFab').click();
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#postprocessPrompt').fill('临时内容');
+  await page.locator('#llmPromptTemplate').selectOption('品牌校对');
+  await expect(page.locator('#postprocessPrompt')).toHaveValue('保留品牌名称');
+
+  await page.evaluate(() => {
+    const callBackend = window.MAWLauncher.callBackend;
+    window.__fixedProcessPayload = null;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'run_fixed_process') window.__fixedProcessPayload = JSON.parse(JSON.stringify(payload));
+      return callBackend(method, payload);
+    };
+  });
+  await page.locator('#toolboxReplaceTab').click();
+  await page.locator('#toolboxInputPath').fill('D:\\Demo\\source.mosp');
+  await page.locator('#postprocessOutputName').fill('客户终稿');
+  await page.locator('#postprocessReplacements').fill('old => new');
+  await page.locator('#runFixedProcess').click();
+  await expect.poll(() => page.evaluate(() => window.__fixedProcessPayload?.outputName)).toBe('客户终稿');
+
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#deleteLlmPromptTemplate').click();
+  await expect(page.locator('#llmPromptTemplate')).toHaveValue('');
+});
+
 test('translation merge option follows manual and automatic translation controls', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxLlmTab').click();

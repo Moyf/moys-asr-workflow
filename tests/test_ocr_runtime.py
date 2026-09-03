@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 import tempfile
 import unittest
@@ -108,6 +107,7 @@ class OcrRuntimeTests(unittest.TestCase):
             fallback_video_path=self.root.parent / "fallback.mp4",
             media_path=self.root.parent / "source.mp4",
             output_directory=self.root.parent / "ocr-output",
+            output_name="OCR 后的字幕",
             output_mode=OutputMode.BOTH,
             region=OcrRegion(mode="custom", x1=0.05, y1=0.6, x2=0.95, y2=1.0),
             threshold=0.25,
@@ -158,6 +158,8 @@ class OcrRuntimeTests(unittest.TestCase):
         self.assertIn("--media-path", command)
         self.assertIn("--output-directory", command)
         self.assertIn(str(self.root.parent / "ocr-output"), command)
+        self.assertIn("--output-name", command)
+        self.assertIn("OCR 后的字幕", command)
 
     def _make_ready_runtime(self) -> None:
         python = self.root / ("python/python.exe" if sys.platform == "win32" else "python/bin/python")

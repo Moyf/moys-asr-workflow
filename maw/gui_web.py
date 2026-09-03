@@ -924,6 +924,7 @@ class LauncherApi:
                     replacements=replacements,
                     media_path=_optional_path(payload.get("mediaPath")),
                     conversion=normalize_text_conversion_mode(payload.get("conversion")),
+                    output_name=_optional_output_name(payload.get("outputName")),
                 )
             )
             self._emit_postprocess_status("toolbox_status_writing")
@@ -953,6 +954,7 @@ class LauncherApi:
                     extra_split_punctuation=tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value)),
                     preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
                     match_mode=str(payload.get("matchMode") or "script"),
+                    output_name=_optional_output_name(payload.get("outputName")),
                 )
             )
             self._emit_postprocess_status("toolbox_status_writing")
@@ -987,6 +989,7 @@ class LauncherApi:
                 region=_ocr_region(payload),
                 threshold=float(str(raw_threshold if raw_threshold is not None else "0.5")),
                 report=bool(payload.get("report")),
+                output_name=_optional_output_name(payload.get("outputName")),
             )
             result = run_ocr_in_runtime(
                 request,
@@ -1047,6 +1050,7 @@ class LauncherApi:
                     task_prompt=(str(payload.get("taskPrompt") or "") if "taskPrompt" in payload else None),
                     media_path=_optional_path(payload.get("mediaPath")),
                     merge_bilingual=bool(payload.get("mergeBilingual")),
+                    output_name=_optional_output_name(payload.get("outputName")),
                 ),
                 complete=complete,
                 on_status=self._emit_postprocess_status,
@@ -2900,6 +2904,11 @@ def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
 def _optional_path(value: object) -> Path | None:
     text = str(value or "").strip()
     return Path(text) if text else None
+
+
+def _optional_output_name(value: object) -> str | None:
+    text = str(value or "").strip()
+    return text or None
 
 
 def _output_mode(value: object) -> OutputMode:

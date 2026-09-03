@@ -558,6 +558,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             "projectPath": str(project),
             "srtPath": "",
             "outputMode": "both",
+            "outputName": "修正稿",
             "replacements": [{"source": "错", "target": "正"}],
         })
 
@@ -566,6 +567,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         output_srt = Path(str(result["srtPath"]))
         self.assertTrue(output_project.is_file())
         self.assertTrue(output_srt.is_file())
+        self.assertEqual(output_project.name, "修正稿.mosp")
+        self.assertEqual(output_srt.name, "修正稿.srt")
         self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "正字")
 
     def test_fixed_process_bridge_supports_conversion_without_rules(self) -> None:
@@ -849,6 +852,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             "projectPath": str(project),
             "scriptPath": str(script),
             "outputMode": "both",
+            "outputName": "文稿匹配版",
         })
 
         self.assertTrue(result["ok"])
@@ -856,6 +860,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         output_srt = Path(str(result["srtPath"]))
         self.assertTrue(output_project.is_file())
         self.assertTrue(output_srt.is_file())
+        self.assertEqual(output_project.name, "文稿匹配版.mosp")
+        self.assertEqual(output_srt.name, "文稿匹配版.srt")
         self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "旧句。")
 
     def test_script_preview_returns_bounded_utf8_text(self) -> None:
@@ -953,6 +959,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                         "regionY2": 100,
                         "threshold": 0,
                         "report": True,
+                        "outputName": "OCR 去重版",
                     })
 
         self.assertTrue(result["ok"])
@@ -965,6 +972,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(request.region.y1, 0.6)
         self.assertEqual(request.threshold, 0.0)
         self.assertTrue(request.report)
+        self.assertEqual(request.output_name, "OCR 去重版")
         self.assertEqual(process.call_args.kwargs["model_id"], "pp-ocrv6-small")
 
     def test_llm_bridge_uses_stored_key_without_echoing_it(self) -> None:
@@ -986,12 +994,14 @@ class GuiWebBridgeTests(unittest.TestCase):
                 "model": "deepseek-chat",
                 "reasoningMode": "high",
                 "customPrompt": "",
+                "outputName": "校对版",
             })
 
         settings = complete.call_args.args[0]
         self.assertEqual(settings.api_key, "sk-stored-secret")
         self.assertEqual(settings.reasoning_mode, "high")
         self.assertTrue(result["ok"])
+        self.assertEqual(Path(str(result["projectPath"])).name, "校对版.mosp")
         self.assertNotIn("stored-secret", str(result))
 
     def test_llm_bridge_forwards_stream_deltas_to_event_pump(self) -> None:
@@ -2892,7 +2902,12 @@ class LauncherAssetContractTests(unittest.TestCase):
             "postprocessScriptPath",
             "postprocessProvider",
             "postprocessPrompt",
+            "llmPromptTemplate",
+            "llmPromptTemplateName",
+            "saveLlmPromptTemplate",
+            "deleteLlmPromptTemplate",
             "postprocessOutputMode",
+            "postprocessOutputName",
             "postprocessFfconcatPath",
             "llmProvider",
             "llmApiKey",
@@ -2987,6 +3002,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('event.kind === "reset"', script)
         self.assertIn('taskPrompt: taskPromptText(operation)', script)
         self.assertIn('const customPrompt = $("postprocessPrompt").value.trim()', script)
+        self.assertIn("const LLM_PROMPT_TEMPLATES_KEY", script)
+        self.assertIn("function saveCurrentLlmPromptTemplate()", script)
+        self.assertIn("function applyLlmPromptTemplate()", script)
+        self.assertIn('outputName: $("postprocessOutputName").value.trim()', script)
         self.assertIn("const TASK_PROMPT_KEYS", script)
 
     def test_custom_llm_task_requires_a_prompt(self) -> None:

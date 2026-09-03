@@ -137,6 +137,47 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual(second.source_project_path, first.project_path)
         self.assertNotEqual(second.project_path, first.project_path)
 
+    def test_custom_output_name_keeps_project_and_srt_on_the_same_collision_suffix(self) -> None:
+        first = run_fixed_replacement(
+            ReplacementRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.BOTH,
+                replacements=(Replacement(source="酒", target="饮料"),),
+                output_name="海口四季鹿_中英字幕_v1.srt",
+            )
+        )
+        if first.project_path is None or first.srt_path is None:
+            self.fail("both output mode must create project and SRT files")
+        self.assertEqual(first.project_path.name, "海口四季鹿_中英字幕_v1.mosp")
+        self.assertEqual(first.srt_path.name, "海口四季鹿_中英字幕_v1.srt")
+
+        second = run_fixed_replacement(
+            ReplacementRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.BOTH,
+                replacements=(Replacement(source="酒", target="饮料"),),
+                output_name="海口四季鹿_中英字幕_v1",
+            )
+        )
+        if second.project_path is None or second.srt_path is None:
+            self.fail("both output mode must create project and SRT files")
+        self.assertEqual(second.project_path.name, "海口四季鹿_中英字幕_v1-2.mosp")
+        self.assertEqual(second.srt_path.name, "海口四季鹿_中英字幕_v1-2.srt")
+
+    def test_custom_output_name_rejects_paths(self) -> None:
+        with self.assertRaisesRegex(ValueError, "输出名称"):
+            run_fixed_replacement(
+                ReplacementRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.SRT,
+                    replacements=(Replacement(source="酒", target="饮料"),),
+                    output_name="../outside",
+                )
+            )
+
     def test_fixed_process_applies_batch_replacements_then_traditional_conversion(self) -> None:
         project = {
             "segments": [{
