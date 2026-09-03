@@ -93,6 +93,7 @@ from maw.ocr_runtime import OCR_MODEL_ID, OcrRuntimeCancelled, OcrRuntimeError, 
 from maw.waveform import is_waveform_payload
 from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
+from maw.workspace_paths import cache_directory
 
 
 OPEN_DIALOG = 10
@@ -1708,7 +1709,7 @@ class LauncherApi:
             "ok": True,
             "outputPath": str(request.srt_path),
             "outputRenamed": output_renamed,
-            "rawPath": str(raw_response_path(request.srt_path)) if request.debug_raw and request.provider != "local" else "",
+            "rawPath": str(raw_response_path(request.srt_path, request.media_path)) if request.debug_raw and request.provider != "local" else "",
         }
 
     def start_batch_transcription(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1770,7 +1771,9 @@ class LauncherApi:
         ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
         if ffmpeg_error is not None:
             return ffmpeg_error
-        manifest_path = Path(manifest_text).expanduser() if manifest_text else _unique_batch_manifest_path(first_request.srt_path.parent)
+        manifest_path = Path(manifest_text).expanduser() if manifest_text else _unique_batch_manifest_path(
+            cache_directory(first_request.media_path) / "批量任务"
+        )
         self.batch_cancel_event = Event()
         self.pump.start()
         self.batch_worker = threading.Thread(

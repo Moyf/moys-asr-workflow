@@ -17,6 +17,7 @@ from maw.gui_web import LauncherApi, LauncherPaths  # noqa: E402
 from maw.gui_workflow import TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.launcher_batch import BatchItem, manifest_payload, run_batch  # noqa: E402
 from maw.postprocess_pipeline import PostprocessCancelled  # noqa: E402
+from maw.workspace_paths import cache_directory, original_artifacts_directory  # noqa: E402
 
 
 class BatchRunnerTests(unittest.TestCase):
@@ -298,7 +299,10 @@ class BatchApiTests(unittest.TestCase):
                 assert worker is not None
                 worker.join(timeout=5)
                 items = run_batch.call_args.args[0]
-                self.assertEqual(items[0].request.srt_path, root / "clip.qwen-audio.srt")
+                self.assertEqual(
+                    items[0].request.srt_path,
+                    original_artifacts_directory(media) / "clip.qwen-audio.srt",
+                )
             api.shutdown()
 
     def test_start_batch_srt_only_marks_requests_without_project_artifacts(self) -> None:
@@ -381,13 +385,18 @@ class BatchApiTests(unittest.TestCase):
             root = Path(temp)
             media = root / "clip.mp3"
             media.write_bytes(b"media")
-            existing = root / "maw-batch-manifest.json"
+            manifest_directory = cache_directory(media) / "批量任务"
+            manifest_directory.mkdir(parents=True)
+            existing = manifest_directory / "maw-batch-manifest.json"
             existing.write_text("existing", encoding="utf-8")
             api = LauncherApi(paths=LauncherPaths(root, root / ".env", root / "launcher.html"), window_getter=lambda: None)
             with mock.patch("maw.gui_web._request_from_payload", return_value=TranscriptionRequest(media, root / "clip.srt")), mock.patch("maw.gui_web.run_batch"):
                 result = api.start_batch_transcription({"items": [{"id": "a", "mediaPath": str(media), "srtPath": str(root / "clip.srt")}], "apiKey": "secret"})
             self.assertTrue(result["ok"])
-            self.assertEqual(result["manifestPath"], str(root / "maw-batch-manifest-1.json"))
+            self.assertEqual(
+                result["manifestPath"],
+                str(manifest_directory / "maw-batch-manifest-1.json"),
+            )
             api.shutdown()
 
 

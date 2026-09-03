@@ -36,6 +36,7 @@ from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.gui_config import load_env
 from maw.project import repair_segment_durations
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.workspace_paths import cache_directory, ensure_workspace_layout, original_artifacts_directory
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -323,7 +324,7 @@ def main() -> None:
     config = load_cli_config()
     parser = argparse.ArgumentParser(description="通过 OpenAI 兼容 ASR 接口生成 MAW 字幕工程")
     parser.add_argument("input", help="输入视频或音频路径")
-    parser.add_argument("-o", "--output", help="输出 SRT 路径")
+    parser.add_argument("-o", "--output", help="输出 SRT 路径（默认进入 MAW 工作目录）")
     parser.add_argument("--base-url", default=config["base_url"])
     parser.add_argument("--model", default=config["model"])
     parser.add_argument("--language", default=None)
@@ -354,7 +355,11 @@ def main() -> None:
     if not input_path.is_file():
         print(f"错误: 文件不存在 - {input_path}", file=sys.stderr)
         raise SystemExit(1)
-    output_path = Path(args.output).expanduser() if args.output else input_path.with_suffix(".srt")
+    if args.output:
+        output_path = Path(args.output).expanduser()
+    else:
+        ensure_workspace_layout(input_path)
+        output_path = original_artifacts_directory(input_path) / f"{input_path.stem}.srt"
     api_key = config["api_key"]
     ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config["ffmpeg_path"] or None)
 
@@ -419,7 +424,12 @@ def main() -> None:
 
     raw_response = result.get("_raw_response")
     if args.debug_raw and raw_response is not None:
-        raw_path = output_path.with_suffix(".asr-response.json")
+        raw_path = (
+            output_path.with_suffix(".asr-response.json")
+            if args.output
+            else cache_directory(input_path) / f"{output_path.stem}.asr-response.json"
+        )
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
         raw_path.write_text(json.dumps(raw_response, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"[调试] ASR 原始返回已保存到: {raw_path}")
 

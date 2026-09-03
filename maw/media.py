@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.workspace_paths import cache_directory
 
 
 class MediaStatus(str, Enum):
@@ -132,14 +133,13 @@ def find_ffmpeg(configured_path: str | os.PathLike[str] | None = None) -> Path |
 def _conversion_output_path(source: Path, cache_dir: Path | None = None) -> Path:
     """Return the persistent playback file for a source.
 
-    Production conversions live beside the source (``clip.flv`` ->
-    ``clip.mp4``), so reopening a project can reuse the result.  ``cache_dir``
-    remains available for isolated tests and callers that explicitly want a
-    separate cache root.
+    Production conversions live in the source media's MAW cache directory.
+    ``cache_dir`` remains available for isolated tests and callers that
+    explicitly want a separate cache root.
     """
 
     if cache_dir is None:
-        return source.with_suffix(".mp4")
+        cache_dir = cache_directory(source)
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"{source.stem}.mp4"
 
@@ -195,6 +195,11 @@ def convert_media_for_browser(
     source = source.expanduser().resolve()
     if source.suffix.lower() not in CONVERSION_EXTENSIONS:
         return source
+    if cache_dir is None:
+        legacy_output = source.with_suffix(".mp4")
+        _cleanup_conversion_temp_files(legacy_output)
+        if _valid_media_file(legacy_output):
+            return legacy_output
     output = _conversion_output_path(source, cache_dir)
     _cleanup_conversion_temp_files(output)
     if _valid_media_file(output):

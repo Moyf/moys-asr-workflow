@@ -27,6 +27,7 @@ from maw.postprocess_pipeline import (
     _attach_translation_track,
     validate_plan,
 )
+from maw.workspace_paths import cache_directory, original_artifacts_directory
 
 
 class PostprocessPipelineTests(unittest.TestCase):
@@ -554,6 +555,29 @@ class PostprocessPipelineTests(unittest.TestCase):
         workspace = self.root / "MAW-Postprocess"
         self.assertTrue(workspace.is_dir())
         self.assertEqual(len(tuple(workspace.iterdir())), 1)
+
+    def test_pipeline_uses_workspace_cache_for_managed_project(self) -> None:
+        managed = original_artifacts_directory(self.media)
+        managed.mkdir(parents=True)
+        project = managed / self.project.name
+        srt = managed / self.srt.name
+        project.write_bytes(self.project.read_bytes())
+        srt.write_bytes(self.srt.read_bytes())
+        cancel = Event()
+        cancel.set()
+
+        with self.assertRaises(PostprocessCancelled):
+            run_postprocess_pipeline(
+                self.plan(self.replace_step()),
+                media_path=self.media,
+                project_path=project,
+                srt_path=srt,
+                env_path=self.env_path,
+                ffmpeg_path=None,
+                cancel_event=cancel,
+            )
+
+        self.assertTrue((cache_directory(self.media) / "后处理").is_dir())
 
 
 class PostprocessPreflightTests(unittest.TestCase):

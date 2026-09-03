@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from maw import media_cache, reapeaks
+from maw.workspace_paths import reapeaks_cache_path
 
 try:
     import numpy  # noqa: F401
@@ -95,11 +96,11 @@ class MediaCacheTests(unittest.TestCase):
         self.assertGreater(result.project["waveform"]["duration_ms"], 0)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    def test_reapeaks_cache_lands_next_to_source_media(self) -> None:
-        """临时缓存媒体的 .ReaPeaks 必须落到源媒体旁并记录源签名。
+    def test_reapeaks_cache_lands_in_source_workspace(self) -> None:
+        """临时缓存媒体的 .ReaPeaks 必须进入源媒体工作目录并记录源签名。
 
         回归：CLI 把提取音频放在 TemporaryDirectory 里，with 块退出后目录
-        即被删除；.ReaPeaks 若写在缓存媒体旁会随目录一起消失，源媒体旁永远
+        即被删除；.ReaPeaks 若写在缓存媒体旁会随目录一起消失，工作目录中永远
         没有频谱缓存，编辑器的频谱颜色与 ReaPeaks 波形层随之失效。
         """
         source = self.root / "source.mp4"
@@ -113,13 +114,13 @@ class MediaCacheTests(unittest.TestCase):
                 source_media_path=source,
                 generate_spectral=True,
             )
-        # with 块已退出、临时目录已删除：源媒体旁必须留有可用缓存
+        # with 块已退出、临时目录已删除：源媒体工作目录必须留有可用缓存
         self.assertIsNotNone(result.reapeaks_path)
         self.assertEqual(
-            Path(result.reapeaks_path), source.with_name(source.name + ".ReaPeaks")
+            Path(result.reapeaks_path), reapeaks_cache_path(source)
         )
         self.assertTrue(Path(result.reapeaks_path).exists())
-        # server 从源媒体旁读取时，头部签名必须匹配
+        # server 从统一缓存目录读取时，头部签名必须匹配
         self.assertIsNotNone(reapeaks.load_spectral_payload(source))
         self.assertIsNotNone(reapeaks.load_waveform_payload(source))
 

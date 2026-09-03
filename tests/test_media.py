@@ -13,6 +13,7 @@ from maw.media import (
     read_bwf_time_reference,
     resolve_project_media,
 )
+from maw.workspace_paths import cache_directory
 
 
 
@@ -127,7 +128,7 @@ class MediaResolutionTests(unittest.TestCase):
         self.assertEqual(result.read_bytes(), b"mp4")
         process.assert_called_once()
 
-    def test_flv_conversion_defaults_to_adjacent_mp4(self) -> None:
+    def test_flv_conversion_defaults_to_maw_cache(self) -> None:
         source = self.root / "take.flv"
         source.write_bytes(b"flv")
         ffmpeg = self.root / "ffmpeg.exe"
@@ -141,9 +142,9 @@ class MediaResolutionTests(unittest.TestCase):
         with mock.patch("maw.media.subprocess.run", side_effect=run) as process:
             result = convert_media_for_browser(source, ffmpeg_path=ffmpeg)
 
-        self.assertEqual(result, self.root / "take.mp4")
+        self.assertEqual(result, cache_directory(source) / "take.mp4")
         self.assertTrue(result.is_file())
-        self.assertFalse(list(self.root.glob("take.part-*.mp4")))
+        self.assertFalse(list(result.parent.glob("take.part-*.mp4")))
         self.assertEqual(Path(process.call_args.args[0][-1]).name, "take.part-0.mp4")
         process.assert_called_once()
 
@@ -163,6 +164,18 @@ class MediaResolutionTests(unittest.TestCase):
         self.assertEqual(result, output)
         process.assert_not_called()
         self.assertFalse(list(self.root.glob("take.part-*.mp4")))
+
+    def test_flv_conversion_keeps_reusing_legacy_adjacent_mp4(self) -> None:
+        source = self.root / "take.flv"
+        source.write_bytes(b"flv")
+        output = self.root / "take.mp4"
+        output.write_bytes(b"mp4")
+
+        with mock.patch("maw.media.subprocess.run") as process:
+            result = convert_media_for_browser(source)
+
+        self.assertEqual(result, output)
+        process.assert_not_called()
 
     def test_flv_conversion_rejects_nonzero_ffmpeg_output_and_cleans_temp(self) -> None:
         source = self.root / "take.flv"

@@ -24,6 +24,13 @@ from maw.media import read_bwf_time_reference
 from maw.qwen_audio import split_qwen_audio_hotwords
 from maw.local_runtime import default_runtime_root, model_cache_environment
 from maw.runtimes import LOCAL
+from maw.workspace_paths import (
+    cache_directory,
+    ensure_workspace_layout,
+    find_workspace_root,
+    original_artifacts_directory,
+    workspace_root,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,8 +141,17 @@ def build_output_paths(srt_path: Path) -> OutputPaths:
     return OutputPaths(srt=srt, json=srt.with_suffix(".mosp"), html=srt.with_suffix(".edit.html"))
 
 
-def raw_response_path(srt_path: Path) -> Path:
-    return Path(srt_path).expanduser().resolve().with_suffix(".asr-response.json")
+def raw_response_path(srt_path: Path, media_path: Path | None = None) -> Path:
+    srt = Path(srt_path).expanduser().resolve()
+    if (
+        media_path is not None
+        and find_workspace_root(srt) == workspace_root(media_path)
+    ):
+        return cache_directory(media_path) / f"{srt.stem}.asr-response.json"
+    workspace = find_workspace_root(srt)
+    if workspace is not None:
+        return workspace / "缓存与备份" / f"{srt.stem}.asr-response.json"
+    return srt.with_suffix(".asr-response.json")
 
 
 def unique_output_path(srt_path: Path) -> Path:
@@ -202,7 +218,7 @@ def default_srt_path(
             tag = ".qwen-asr-local"
     else:
         tag = PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
-    output = media.with_name(f"{media.stem}{tag}.srt")
+    output = original_artifacts_directory(media) / f"{media.stem}{tag}.srt"
     return with_test_suffix(output) if test_run else output
 
 
@@ -377,6 +393,8 @@ def run_transcription(
     if cancel_event and cancel_event.is_set():
         raise TranscriptionCancelledError
     paths = build_output_paths(request.srt_path)
+    if find_workspace_root(paths.srt) == workspace_root(request.media_path):
+        ensure_workspace_layout(request.media_path)
     paths.srt.parent.mkdir(parents=True, exist_ok=True)
     env = _child_environment(
         os.environ,
@@ -413,9 +431,14 @@ def run_transcription(
         raise TranscriptionProcessError(process.returncode, output=collected)
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
-    raw_path = raw_response_path(paths.srt) if request.debug_raw and request.provider != "local" else None
-    if raw_path is not None:
-        _require_output(raw_path, "raw ASR response")
+    raw_path = None
+    if request.debug_raw and request.provider != "local":
+        generated_raw_path = paths.srt.with_suffix(".asr-response.json")
+        _require_output(generated_raw_path, "raw ASR response")
+        raw_path = raw_response_path(paths.srt, request.media_path)
+        if raw_path != generated_raw_path:
+            raw_path.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(generated_raw_path, raw_path)
     html_path = None
     if request.generate_html:
         try:

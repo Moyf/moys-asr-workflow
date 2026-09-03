@@ -38,6 +38,10 @@ class LocalRuntimeTests(unittest.TestCase):
                 Path(__file__).resolve().parents[1] / "maw" / "ffmpeg.py",
                 package_root / "ffmpeg.py",
             )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "workspace_paths.py",
+                package_root / "workspace_paths.py",
+            )
             (package_root / "console.py").write_text(
                 "def configure_utf8_stdio():\n"
                 "    pass\n",

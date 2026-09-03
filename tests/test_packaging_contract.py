@@ -151,6 +151,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("maw.soniox", spec)
         self.assertIn("local-runtime", spec)
         self.assertIn('"app_paths.py"), "local-runtime/maw"', spec)
+        self.assertIn('"workspace_paths.py"), "local-runtime/maw"', spec)
         self.assertIn("local_runtime_worker.py", spec)
         self.assertIn("ocr-runtime", spec)
         self.assertIn("ocr_runtime_worker.py", spec)

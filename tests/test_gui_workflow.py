@@ -32,6 +32,7 @@ from maw.gui_workflow import (  # noqa: E402
 )
 from maw.gui_platform import _terminate_registered_job, terminate_process_tree  # noqa: E402
 from maw_gui import _is_ffmpeg_missing_error, _startup_error_log_path  # noqa: E402
+from maw.workspace_paths import cache_directory, original_artifacts_directory  # noqa: E402
 
 
 def _write_bwf_wav(path: Path, sample_rate: int, time_reference_samples: int) -> None:
@@ -449,6 +450,42 @@ class GuiWorkflowTests(unittest.TestCase):
             self.srt_path.with_suffix(".edit.html"),
             "en",
         )
+
+    def test_run_transcription_creates_workspace_and_moves_raw_response(self) -> None:
+        srt_path = original_artifacts_directory(self.media_path) / "clip.qwen-audio.srt"
+        srt_path.parent.mkdir(parents=True)
+        srt_path.write_text("1\n", encoding="utf-8")
+        srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+        generated_raw = srt_path.with_suffix(".asr-response.json")
+        generated_raw.write_text("{}\n", encoding="utf-8")
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=srt_path,
+            debug_raw=True,
+            generate_html=False,
+        )
+
+        class FakeProcess:
+            returncode = 0
+            stdout: list[str] = []
+
+            def poll(self) -> int | None:
+                return 0
+
+            def wait(self, timeout: float | None = None) -> int:
+                return 0
+
+        with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()):
+            result = run_transcription(request)
+
+        expected_raw = cache_directory(self.media_path) / "clip.qwen-audio.asr-response.json"
+        self.assertEqual(result.raw_path, expected_raw)
+        self.assertTrue(expected_raw.is_file())
+        self.assertFalse(generated_raw.exists())
+        root = expected_raw.parent.parent
+        self.assertTrue((root / "原始工程与字幕").is_dir())
+        self.assertTrue((root / "成片").is_dir())
+        self.assertTrue((root / "缓存与备份").is_dir())
 
     def test_terminate_process_tree_uses_windows_taskkill_for_descendants(self) -> None:
         class FakeProcess:
@@ -892,6 +929,10 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(default_srt_path(Path("clip.mp4")).name, "clip.qwen-audio.srt")
         self.assertEqual(
+            default_srt_path(self.media_path).parent,
+            original_artifacts_directory(self.media_path),
+        )
+        self.assertEqual(
             default_srt_path(Path("clip.mp4"), model="fun-asr").name,
             "clip.fun-asr.srt",
         )
@@ -909,6 +950,22 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="sensevoice-small-local").name, "clip.sensevoice-local.srt")
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="fun-asr-nano-local").name, "clip.funasr-local.srt")
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="funasr-local").name, "clip.funasr-local.srt")
+
+    def test_raw_response_path_uses_workspace_cache_for_managed_output(self) -> None:
+        srt = original_artifacts_directory(self.media_path) / "clip.qwen-audio.srt"
+
+        self.assertEqual(
+            raw_response_path(srt, self.media_path),
+            cache_directory(self.media_path) / "clip.qwen-audio.asr-response.json",
+        )
+
+    def test_raw_response_path_keeps_manual_output_directory(self) -> None:
+        manual = self.root / "手动输出" / "clip.srt"
+
+        self.assertEqual(
+            raw_response_path(manual, self.media_path),
+            manual.with_suffix(".asr-response.json"),
+        )
 
     def test_entrypoint_transcribe_soniox_help_dispatches_soniox_script(self) -> None:
         import maw_gui

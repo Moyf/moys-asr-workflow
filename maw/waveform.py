@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.workspace_paths import waveform_cache_path
 
 
 WAVEFORM_SCHEMA = "moy.asr.waveform.v1"
@@ -77,23 +78,31 @@ def waveform_matches_media(value: Any, media_path: Path) -> bool:
 
 
 def waveform_sidecar_path(media_path: Path) -> Path:
-    """Return the portable sidecar path used for media-derived waveforms."""
-    media_path = Path(media_path)
-    return media_path.with_suffix(".waveform.json")
+    """Return the centralized sidecar path used for media-derived waveforms."""
+    return waveform_cache_path(media_path)
+
+
+def legacy_waveform_sidecar_path(media_path: Path) -> Path:
+    """Return the pre-workspace sidecar path kept for read compatibility."""
+    return Path(media_path).with_suffix(".waveform.json")
 
 
 def load_waveform_sidecar(media_path: Path) -> dict[str, Any] | None:
     """Read a valid-looking waveform sidecar, ignoring missing/corrupt files."""
-    try:
-        value = json.loads(waveform_sidecar_path(media_path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return None
-    return value if is_waveform_payload(value) else None
+    for sidecar in (waveform_sidecar_path(media_path), legacy_waveform_sidecar_path(media_path)):
+        try:
+            value = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if is_waveform_payload(value):
+            return value
+    return None
 
 
 def save_waveform_sidecar(payload: dict[str, Any], media_path: Path) -> Path:
-    """Persist a waveform payload beside its source media for future reuse."""
+    """Persist a waveform payload in the media's MAW cache directory."""
     sidecar = waveform_sidecar_path(media_path)
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
     # write_bytes() keeps the sidecar LF-only on Windows as well.
     sidecar.write_bytes((json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     return sidecar
