@@ -7,13 +7,13 @@ from __future__ import annotations
 import ipaddress
 import json
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Final
 from urllib.parse import urlparse
 
 import requests
-from requests.exceptions import JSONDecodeError, RequestException
+from requests.exceptions import HTTPError, JSONDecodeError, RequestException
 
 from maw.project_preview import JsonValue
 
@@ -42,6 +42,18 @@ class LlmSettings:
 @dataclass(frozen=True, slots=True)
 class LlmClientError(RuntimeError):
     message: str
+    category: str = "client"
+    status_code: int | None = None
+    diagnostic: str = ""
+    operation: str = ""
+
+    def __post_init__(self) -> None:
+        # LLM errors cross the GUI bridge and may be copied into logs or an
+        # error report.  Keep the exception itself safe even when a caller
+        # constructs one from a provider/transport exception directly.
+        object.__setattr__(self, "message", _sanitize_error_text(self.message))
+        object.__setattr__(self, "diagnostic", _bound_diagnostic(self.diagnostic))
+        RuntimeError.__init__(self, self.message)
 
     def __str__(self) -> str:
         return self.message
@@ -50,6 +62,7 @@ class LlmClientError(RuntimeError):
 LlmDelta = Callable[[str, str], None]
 REASONING_MODES: Final[frozenset[str]] = frozenset({"auto", "off", "low", "medium", "high"})
 MAX_RESPONSE_ATTEMPTS: Final[int] = 2
+MAX_PROVIDER_DIAGNOSTIC_CHARS: Final[int] = 240
 _REASONING_ALIASES: Final[dict[str, str]] = {
     "default": DEFAULT_REASONING_MODE,
     "disabled": "off",
@@ -177,16 +190,33 @@ def _request_completion(
                 timeout=(10, 180),
                 **({"stream": True} if streaming else {}),
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except HTTPError as error:
+                raise _provider_response_error(response, settings=settings, operation="completion") from error
             if streaming:
                 try:
-                    body = _read_stream_response(response, on_delta)
+                    body = _read_stream_response(response, on_delta, settings=settings)
                 finally:
                     response.close()
             else:
                 body = response.json()
-    except (RequestException, JSONDecodeError) as error:
-        raise LlmClientError(f"LLM request failed: {error}") from error
+    except LlmClientError:
+        raise
+    except JSONDecodeError as error:
+        detail = _bound_diagnostic(str(error), settings=settings)
+        raise LlmClientError(
+            f"LLM response was not valid JSON: {detail or 'invalid JSON'}",
+            category="protocol",
+            operation="completion",
+        ) from error
+    except RequestException as error:
+        detail = _bound_diagnostic(str(error), settings=settings)
+        raise LlmClientError(
+            f"LLM network request failed: {detail or 'request failed'}",
+            category="network",
+            operation="completion",
+        ) from error
     if not isinstance(body, dict):
         raise LlmClientError("LLM response must be a JSON object")
     return body
@@ -249,9 +279,19 @@ def test_llm_connection(settings: LlmSettings) -> None:
                 json=payload,
                 timeout=(10, 30),
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except HTTPError as error:
+                raise _provider_response_error(response, settings=settings, operation="connection test") from error
+    except LlmClientError:
+        raise
     except RequestException as error:
-        raise LlmClientError(f"LLM connection test failed: {error}") from error
+        detail = _bound_diagnostic(str(error), settings=settings)
+        raise LlmClientError(
+            f"LLM network connection test failed: {detail or 'request failed'}",
+            category="network",
+            operation="connection test",
+        ) from error
 
 
 def list_llm_models(settings: LlmSettings) -> list[str]:
@@ -264,10 +304,27 @@ def list_llm_models(settings: LlmSettings) -> list[str]:
                 headers=_request_headers(settings, streaming=False),
                 timeout=(10, 30),
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except HTTPError as error:
+                raise _provider_response_error(response, settings=settings, operation="model list") from error
             body = response.json()
-    except (RequestException, JSONDecodeError) as error:
-        raise LlmClientError(f"LLM model list request failed: {error}") from error
+    except LlmClientError:
+        raise
+    except JSONDecodeError as error:
+        detail = _bound_diagnostic(str(error), settings=settings)
+        raise LlmClientError(
+            f"LLM model list response was not valid JSON: {detail or 'invalid JSON'}",
+            category="protocol",
+            operation="model list",
+        ) from error
+    except RequestException as error:
+        detail = _bound_diagnostic(str(error), settings=settings)
+        raise LlmClientError(
+            f"LLM network model-list request failed: {detail or 'request failed'}",
+            category="network",
+            operation="model list",
+        ) from error
 
     if not isinstance(body, dict):
         raise LlmClientError("LLM model list must be a JSON object")
@@ -383,7 +440,12 @@ def _request_headers(settings: LlmSettings, *, streaming: bool) -> dict[str, str
     return headers
 
 
-def _read_stream_response(response: requests.Response, on_delta: LlmDelta | None) -> dict[str, JsonValue]:
+def _read_stream_response(
+    response: requests.Response,
+    on_delta: LlmDelta | None,
+    *,
+    settings: LlmSettings | None = None,
+) -> dict[str, JsonValue]:
     if on_delta is None:
         raise AssertionError("stream callback is required for an SSE response")
     content_parts: list[str] = []
@@ -394,13 +456,18 @@ def _read_stream_response(response: requests.Response, on_delta: LlmDelta | None
         try:
             chunk = json.loads(data)
         except json.JSONDecodeError as error:
-            raise LlmClientError(f"LLM stream returned invalid JSON: {error}") from error
+            raise LlmClientError(f"LLM stream returned invalid JSON: {error}", category="protocol") from error
         if not isinstance(chunk, dict):
             continue
         error = chunk.get("error")
         if isinstance(error, dict):
-            message = error.get("message") or error.get("code") or "LLM stream failed"
-            raise LlmClientError(str(message))
+            diagnostic = _bound_diagnostic(_extract_diagnostic_fields(error), settings=settings)
+            message = diagnostic or "LLM stream failed"
+            raise LlmClientError(
+                f"LLM provider stream returned an error: {message}",
+                category="provider_response",
+                diagnostic=diagnostic,
+            )
         choice = _first_stream_choice(chunk)
         if choice is None:
             continue
@@ -461,6 +528,128 @@ def _stream_text(value: JsonValue) -> str:
         if isinstance(text, str):
             parts.append(text)
     return "".join(parts)
+
+
+def _provider_response_error(
+    response: requests.Response,
+    *,
+    settings: LlmSettings | None = None,
+    operation: str = "",
+) -> LlmClientError:
+    status_code = _response_status_code(response)
+    diagnostic = _extract_server_diagnostic(response, settings=settings)
+    status_text = f"HTTP {status_code}" if status_code is not None else "an HTTP error"
+    detail = f"{status_text}: {diagnostic}" if diagnostic else status_text
+    message = (
+        f"LLM provider returned {detail}. This is a provider response, not a network outage."
+    )
+    return LlmClientError(
+        message,
+        category="provider_response",
+        status_code=status_code,
+        diagnostic=diagnostic,
+        operation=operation,
+    )
+
+
+def _response_status_code(response: object) -> int | None:
+    value = getattr(response, "status_code", None)
+    try:
+        status_code = int(value)
+    except (TypeError, ValueError):
+        return None
+    return status_code if 100 <= status_code <= 599 else None
+
+
+def _extract_server_diagnostic(response: object, *, settings: LlmSettings | None = None) -> str:
+    """Extract a short, redacted provider message without retaining request data."""
+
+    try:
+        body = response.json()  # type: ignore[union-attr]
+    except (AttributeError, TypeError, ValueError):
+        body = getattr(response, "text", "")
+    if isinstance(body, Mapping):
+        return _bound_diagnostic(_extract_diagnostic_fields(body), settings=settings)
+    if isinstance(body, str):
+        return _bound_diagnostic(body, settings=settings)
+    return ""
+
+
+def _extract_diagnostic_fields(value: Mapping[object, object], *, depth: int = 0) -> str:
+    """Pick provider error fields only; never serialize arbitrary response JSON."""
+
+    if depth > 2:
+        return ""
+    parts: list[str] = []
+    nested_error = value.get("error")
+    if isinstance(nested_error, Mapping):
+        nested = _extract_diagnostic_fields(nested_error, depth=depth + 1)
+        if nested:
+            parts.append(nested)
+    elif isinstance(nested_error, (str, int, float)):
+        parts.append(str(nested_error))
+    for key in ("message", "detail", "code", "type", "param"):
+        candidate = value.get(key)
+        if isinstance(candidate, (str, int, float)) and str(candidate).strip():
+            parts.append(f"{key}={candidate}" if key != "message" else str(candidate))
+    unique: list[str] = []
+    for part in parts:
+        if part not in unique:
+            unique.append(part)
+    return " | ".join(unique)
+
+
+def _sanitize_error_text(value: object, *, settings: LlmSettings | None = None) -> str:
+    compact = re.sub(r"[\x00-\x1f\x7f]+", " ", str(value))
+    compact = re.sub(r"\s+", " ", compact).strip()
+    return _redact_diagnostic(compact, settings=settings)
+
+
+def _bound_diagnostic(value: str, *, settings: LlmSettings | None = None) -> str:
+    compact = _sanitize_error_text(value, settings=settings)
+    if len(compact) <= MAX_PROVIDER_DIAGNOSTIC_CHARS:
+        return compact
+    return f"{compact[:MAX_PROVIDER_DIAGNOSTIC_CHARS - 1]}…"
+
+
+def _redact_diagnostic(value: str, *, settings: LlmSettings | None = None) -> str:
+    redacted = value
+    if settings is not None:
+        # Requests can include the configured endpoint and key in transport
+        # exception text.  Replace those exact values before generic URL and
+        # header redaction; this also covers non-standard key formats.
+        parsed = urlparse(settings.base_url.strip())
+        settings_values = (
+            settings.api_key,
+            settings.base_url,
+            parsed.netloc,
+            parsed.hostname or "",
+        )
+        for secret in settings_values:
+            normalized = str(secret).strip()
+            if normalized:
+                redacted = re.sub(re.escape(normalized), "[REDACTED]", redacted, flags=re.IGNORECASE)
+
+    # Never expose an endpoint, including its path or query string.  Provider
+    # diagnostics remain useful because their non-URL message/code fields are
+    # retained below.
+    redacted = re.sub(r"(?i)\bhttps?://[^\s<>'\"`]+", "[REDACTED_URL]", redacted)
+    redacted = re.sub(
+        r"(?i)(\b(?:authorization|proxy-authorization)\b\s*['\"]?\s*[:=]\s*['\"]?)(?!\[REDACTED(?:_[A-Z]+)?\])[^'\"\r\n,;}\]]+",
+        r"\1[REDACTED]",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)\b(?:bearer|basic|token)\s+(?!\[REDACTED(?:_[A-Z]+)?\])[^\s,;}\]]+",
+        lambda match: f"{match.group(0).split(None, 1)[0]} [REDACTED]",
+        redacted,
+    )
+    redacted = re.sub(r"\bsk-[A-Za-z0-9_-]{4,}\b", "[REDACTED_API_KEY]", redacted)
+    return re.sub(
+        r"(?i)(\b(?:api[-_ ]?key|access[-_ ]?token|api[-_ ]?token|token|key|password|secret)\b\s*['\"]?\s*[:=]\s*['\"]?)(?!\[REDACTED(?:_[A-Z]+)?\])[^'\"\s,;}\]]+",
+        r"\1[REDACTED]",
+        redacted,
+    )
 
 
 def _is_loopback_host(host: str | None) -> bool:

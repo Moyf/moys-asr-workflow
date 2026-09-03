@@ -11,6 +11,7 @@ from unittest import mock
 from maw.gui_web import LauncherApi, LauncherPaths, _request_from_payload, _transcribe_strip_tail_punct
 from maw.postprocess import LlmPostprocessRequest
 from maw.postprocess_io import SubtitleArtifact
+from maw.postprocess_llm import LlmClientError
 from maw.postprocess_ocr import OcrDedupArtifact
 from maw.postprocess_pipeline import (
     PostprocessCancelled,
@@ -212,6 +213,89 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual(final_srt.name, "clip.postprocess.srt")
         self.assertEqual(final_translated_srt.name, "clip.postprocess.translate-en.srt")
         self.assertIn("Translation one", final_translated_srt.read_text(encoding="utf-8"))
+
+    def test_pipeline_keeps_blank_strict_translation_cue_in_place(self) -> None:
+        self.project.write_text(
+            json.dumps({
+                "segments": [
+                    {"id": "main-001", "start": 0, "end": 1000, "text": "第一句"},
+                    {"id": "main-002", "start": 1100, "end": 2000, "text": ""},
+                    {"id": "main-003", "start": 2100, "end": 3000, "text": "第三句"},
+                ],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        self.srt.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\n第一句\n\n"
+            "2\n00:00:01,100 --> 00:00:02,000\n\n"
+            "3\n00:00:02,100 --> 00:00:03,000\n第三句\n",
+            encoding="utf-8",
+        )
+        requested_cues: list[list[str]] = []
+
+        def fake_complete(_settings: object, _prompt: str, cues: list[dict[str, object]]) -> dict[str, object]:
+            requested_cues.append([str(cue["id"]) for cue in cues])
+            return {
+                "groups": [
+                    {"id": str(cue["id"]), "text": f"译文 {cue['id']}"}
+                    for cue in cues
+                ],
+            }
+
+        translate_step = {"id": "translate", "enabled": True, "providerId": "deepseek", "target": "en", "customPrompt": ""}
+        with mock.patch("maw.postprocess_pipeline.complete_subtitle_groups", side_effect=fake_complete):
+            result = run_postprocess_pipeline(
+                self.plan(translate_step, retain=True),
+                media_path=self.media,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=None,
+                cancel_event=Event(),
+                llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}},
+            )
+
+        self.assertEqual(requested_cues, [["c0001", "c0003"]])
+        combined = json.loads(result.project_path.read_text(encoding="utf-8"))
+        track = combined["multi_subtitle"]["tracks"][0]
+        self.assertEqual([segment["start"] for segment in track["segments"]], [0, 1100, 2100])
+        self.assertEqual([segment["end"] for segment in track["segments"]], [1000, 2000, 3000])
+        self.assertEqual([segment["text"] for segment in track["segments"]][0::2], ["译文 c0001", "译文 c0003"])
+        self.assertFalse(str(track["segments"][1]["text"]).strip())
+        self.assertEqual(
+            [binding["main_segment_ids"] for binding in combined["multi_subtitle"]["bindings"]],
+            [["main-001"], ["main-002"], ["main-003"]],
+        )
+
+    def test_pipeline_preserves_provider_response_classification_for_retry(self) -> None:
+        translate_step = {"id": "translate", "enabled": True, "providerId": "deepseek", "target": "en", "customPrompt": ""}
+        provider_error = LlmClientError(
+            "LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.",
+            category="provider_response",
+            status_code=400,
+            diagnostic="invalid request",
+        )
+
+        with mock.patch("maw.postprocess_pipeline.run_llm_postprocess", side_effect=provider_error):
+            with self.assertRaises(PostprocessPipelineError) as raised:
+                run_postprocess_pipeline(
+                    self.plan(translate_step, retain=True),
+                    media_path=self.media,
+                    project_path=self.project,
+                    srt_path=self.srt,
+                    env_path=self.env_path,
+                    ffmpeg_path=None,
+                    cancel_event=Event(),
+                    llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}},
+                )
+
+        error = raised.exception
+        self.assertEqual(error.failed_step, "translate")
+        self.assertEqual(error.category, "provider_response")
+        self.assertEqual(error.status_code, 400)
+        self.assertEqual(error.diagnostic, "invalid request")
+        self.assertIn("后处理步骤 translate 失败", str(error))
+        self.assertIn("HTTP 400", str(error))
 
     def test_translation_merge_publishes_one_track_and_keeps_translation_intermediate(self) -> None:
         translated_project = self.root / "translated.mosp"
