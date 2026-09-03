@@ -45,6 +45,30 @@ class MediaResolutionTests(unittest.TestCase):
         self.assertEqual(result.status, MediaStatus.SUCCESS)
         self.assertEqual(result.resolved_path, media)
 
+    def test_relative_media_path_moves_with_project_directory(self) -> None:
+        bundle = self.root / "成片"
+        bundle.mkdir()
+        project = bundle / "处理后.mosp"
+        media = bundle / "处理后.mp4"
+        media.write_bytes(b"media")
+        moved = self.root / "已移动的成片"
+        bundle.rename(moved)
+
+        result = resolve_project_media(moved / project.name, {"media": media.name})
+
+        self.assertEqual(result.status, MediaStatus.SUCCESS)
+        self.assertEqual(result.resolved_path, moved / media.name)
+
+    def test_renamed_project_and_media_use_project_name_as_last_fallback(self) -> None:
+        project = self.root / "新名字.mosp"
+        media = self.root / "新名字.mp4"
+        media.write_bytes(b"media")
+
+        result = resolve_project_media(project, {"media": r"D:\old\旧名字.mp4"})
+
+        self.assertEqual(result.status, MediaStatus.SUCCESS)
+        self.assertEqual(result.resolved_path, media)
+
     def test_reads_bwf_time_reference_from_wav(self) -> None:
         media = self.root / 'recording.wav'
         time_reference_samples = (2 << 32) + 8895762
@@ -70,7 +94,7 @@ class MediaResolutionTests(unittest.TestCase):
     def test_missing_project_media_falls_back_to_one_same_name_candidate(self) -> None:
         media = self.root / "take.flv"
         media.write_bytes(b"media")
-        result = resolve_project_media(self.project, {"media": "D:/old/take.mp4"})
+        result = resolve_project_media(self.project, {"media": r"D:\old\take.mp4"})
         self.assertEqual(result.status, MediaStatus.CONVERSION_NEEDED)
         self.assertEqual(result.resolved_path, media)
 

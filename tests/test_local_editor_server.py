@@ -329,6 +329,48 @@ class LocalEditorServerTests(unittest.TestCase):
                 peaks_per_second=100,
             )
 
+    def test_relative_media_reference_survives_loading_for_future_saves(self) -> None:
+        bundle = self.root / "成片"
+        bundle.mkdir()
+        media = bundle / "处理后.mp4"
+        media.write_bytes(b"media")
+        project_path = bundle / "处理后.mosp"
+        project_path.write_text(
+            json.dumps({"media": media.name, "segments": []}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        project = server_editor.load_project(
+            project_path,
+            None,
+            str(self.stickers),
+            no_waveform=True,
+            peaks_per_second=100,
+        )
+
+        self.assertEqual(project.media_path, media.resolve())
+        self.assertEqual(project.data["media"], media.name)
+
+    def test_local_name_fallback_repairs_a_stale_relative_reference(self) -> None:
+        media = self.root / "新名字.mp4"
+        media.write_bytes(b"media")
+        project_path = self.root / "新名字.mosp"
+        project_path.write_text(
+            json.dumps({"media": "旧名字.mp4", "segments": []}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        project = server_editor.load_project(
+            project_path,
+            None,
+            str(self.stickers),
+            no_waveform=True,
+            peaks_per_second=100,
+        )
+
+        self.assertEqual(project.media_path, media.resolve())
+        self.assertEqual(project.data["media"], media.name)
+
     def test_project_sticker_root_wins_over_launcher_root(self) -> None:
         project_root = self.root / "project-stickers"
         project_root.mkdir()
