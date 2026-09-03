@@ -412,6 +412,19 @@
       <div class="log-toolbar">
         <button id="openLogFolder" class="inline-link" type="button" data-i18n="open_log_folder">打开日志文件夹</button>
       </div>
+      <div id="errorNotice" class="error-notice hidden" role="alert" aria-live="assertive">
+        <div class="error-notice-copy">
+          <strong id="errorNoticeTitle" data-i18n="error_notice_title">任务未完成</strong>
+          <p id="errorNoticeMessage"></p>
+        </div>
+        <div id="errorNoticeActions" class="error-notice-actions">
+          <button id="errorNoticeAction" class="ghost small hidden" type="button"></button>
+          <button id="errorNoticeFaq" class="ghost small" type="button" data-i18n="error_open_faq">查看常见问题</button>
+          <button id="errorNoticeCopy" class="ghost small" type="button" data-i18n="error_copy_report">复制错误报告</button>
+          <button id="errorNoticeIssue" class="ghost small hidden" type="button" data-i18n="error_open_issue">提交 Issue</button>
+        </div>
+        <button id="errorNoticeClose" class="error-notice-close" type="button" data-i18n-aria-label="error_notice_close" aria-label="关闭提示">×</button>
+      </div>
     </section>
 
     <section id="serverCard" class="card" aria-labelledby="serverTitle">

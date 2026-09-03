@@ -864,8 +864,8 @@
     error_open_ffmpeg_settings: "FFmpeg 配置项",
     error_open_faq: "查看常见问题",
     error_open_faq_failed: "无法打开常见问题，请查看下方日志。",
-    error_open_issue: "打开项目主页",
-    error_open_issue_failed: "无法打开项目主页，请检查网络并查看下方日志。",
+    error_open_issue: "提交 Issue",
+    error_open_issue_failed: "无法打开 Issue 提交页，请检查网络并查看下方日志。",
     error_copy_report: "复制错误报告",
     error_copy_report_success: "已复制",
     error_copy_report_failed: "复制失败，请手动复制日志。",
@@ -878,8 +878,8 @@
     error_open_ffmpeg_settings: "FFmpeg settings",
     error_open_faq: "View FAQ",
     error_open_faq_failed: "Could not open the FAQ. Check the log below.",
-    error_open_issue: "Open project homepage",
-    error_open_issue_failed: "Could not open the project homepage. Check your connection and the log below.",
+    error_open_issue: "Report an Issue",
+    error_open_issue_failed: "Could not open the Issue form. Check your connection and the log below.",
     error_copy_report: "Copy error report",
     error_copy_report_success: "Copied",
     error_copy_report_failed: "Copy failed; please copy the log manually.",
@@ -1167,29 +1167,12 @@
     const footerTop = footer.getBoundingClientRect().top;
     const clearance = Math.max(116, Math.ceil(window.innerHeight - footerTop + 24));
     document.documentElement.style.setProperty("--launcher-footer-clearance", `${clearance}px`);
-    const shellScroll = document.querySelector(".shell-scroll");
-    const notice = $("errorNotice");
-    const status = $("status");
-    if (shellScroll && notice && !notice.classList.contains("hidden")) {
-      const noticeBottom = notice.getBoundingClientRect().bottom;
-      const statusBottom = status?.getBoundingClientRect().bottom || noticeBottom;
-      if (noticeBottom > footerTop || statusBottom > footerTop) shellScroll.scrollTop = shellScroll.scrollHeight;
-    }
   }
   function revealErrorNotice(notice) {
     syncFixedFooterClearance();
-    const shellScroll = document.querySelector(".shell-scroll");
-    if (shellScroll) {
-      shellScroll.scrollTop = shellScroll.scrollHeight;
-      return;
-    }
+    // The notice lives inside the log card, so a minimal scroll into view is
+    // enough; scrolling the container to the very end would push it away.
     notice.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    window.requestAnimationFrame(() => {
-      const footer = document.querySelector(".actions");
-      if (!footer) return;
-      const overlap = notice.getBoundingClientRect().bottom - footer.getBoundingClientRect().top + 1;
-      if (overlap > 0) window.scrollBy({ top: overlap, behavior: "smooth" });
-    });
   }
   function redactSensitive(value) {
     // Cover common key/value forms and HTTP Authorization: Bearer <token>
@@ -1305,9 +1288,26 @@
       appendLog(`[error] open_faq: ${detail}`);
     }
   }
+  function issueDraftUrl() {
+    const report = state.errorReport;
+    const version = state.config?.appVersion || $("appVersion")?.textContent?.trim() || "";
+    const title = report?.code ? `[bug] ${report.code} (MAW ${version})` : `[bug] MAW ${version}`;
+    const body = [
+      errorReportText(),
+      "",
+      "## 复现步骤",
+      "1. ",
+      "",
+      "## 预期行为",
+      "",
+      "## 实际行为",
+      "",
+    ].join("\n");
+    return `${HOME_URL}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+  }
   async function openErrorIssue() {
     try {
-      const result = await window.MAWLauncher.callBackend("open_url", { url: "https://github.com/Moyf/moys-asr-workflow" });
+      const result = await window.MAWLauncher.callBackend("open_url", { url: issueDraftUrl() });
       if (result?.ok) return;
       const detail = result?.detail || result?.error || t("error_open_issue_failed");
       setStatus(detail);
