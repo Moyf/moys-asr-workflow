@@ -348,10 +348,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
-          # The Installer is a separately distributed official build. Keep it
-          # out of the public Release artifact namespace; maintainers can
-          # download this artifact from the workflow and publish it elsewhere.
-          name: paid-MAW-Setup-Windows-x64-${{ steps.version.outputs.version }}
+          # The full MAW + MOSE Installer is a public GitHub Release asset.
+          name: MAW-Installer-Windows-x64-${{ steps.version.outputs.version }}
           path: build/installer/MAW-Setup-Windows-x64-${{ steps.version.outputs.version }}.exe
           if-no-files-found: error
 
@@ -821,6 +819,7 @@ jobs:
           required = {
               f"MAW-Windows-x64-{tag}.zip",
               f"MAW-lite-Windows-x64-{tag}.zip",
+              f"MAW-Setup-Windows-x64-{tag}.exe",
           }
           missing = sorted(name for name in required if not (root / name).is_file())
           if missing:

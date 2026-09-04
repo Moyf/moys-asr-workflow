@@ -12,25 +12,42 @@ $ExePath = Join-Path $RepoRoot 'dist\MAW\MAW.exe'
 $FaqSource = Join-Path $RepoRoot 'FAQ-常见问题.txt'
 $FaqBundlePath = Join-Path $RepoRoot 'dist\MAW\FAQ-常见问题.txt'
 
+function Invoke-NativeChecked {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [string[]]$Arguments = @(),
+        [string]$Description = ''
+    )
+
+    if (-not $Description) {
+        $Description = $FilePath
+    }
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Description failed with exit code $LASTEXITCODE."
+    }
+}
+
 if (-not (Test-Path -LiteralPath $EntryPoint -PathType Leaf)) {
     throw "Missing GUI entry point: $EntryPoint. Add maw_gui.py before building MAW.exe."
 }
 
 Push-Location -LiteralPath $RepoRoot
 try {
-    uv sync --group build --frozen
+    Invoke-NativeChecked -FilePath 'uv' -Arguments @('sync', '--group', 'build', '--frozen') -Description 'uv sync --group build --frozen'
     # 生成托管 Runtime 的 frozen requirements txt（MAW.spec datas 条件追加打包）；
     # 主清单（local/ocr dependency-group 走 uv export，moss 走 uv pip compile）与 CPU 变体
     # （从声明源剥离 GPU 参数后原生冻结）统一由 freezer 模块执行，与
     # build-appimage.sh / release.yml / 源码模式自动补齐完全同源。
     New-Item -ItemType Directory -Path 'build' -Force | Out-Null
-    uv run python -m maw.runtimes.freezer freeze --force
+    Invoke-NativeChecked -FilePath 'uv' -Arguments @('run', 'python', '-m', 'maw.runtimes.freezer', 'freeze', '--force') -Description 'uv run python -m maw.runtimes.freezer freeze --force'
 
     if (-not $SkipTests) {
-        uv run python -m unittest tests.test_packaging_contract
+        Invoke-NativeChecked -FilePath 'uv' -Arguments @('run', 'python', '-m', 'unittest', 'tests.test_packaging_contract') -Description 'packaging contract tests'
     }
 
-    uv run --group build pyinstaller --noconfirm --clean $SpecPath
+    Invoke-NativeChecked -FilePath 'uv' -Arguments @('run', '--group', 'build', 'pyinstaller', '--noconfirm', '--clean', $SpecPath) -Description 'PyInstaller MAW bundle'
 
     if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
         throw "PyInstaller completed but did not create dist\MAW\MAW.exe."

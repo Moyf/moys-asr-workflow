@@ -36,7 +36,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $ResolvedSource 'MAW.exe') -PathType
 if (-not (Test-Path -LiteralPath (Join-Path $ResolvedSource 'MOSE\MOSE.exe') -PathType Leaf)) {
     throw "Missing MOSE\MOSE.exe in $ResolvedSource. Stage the unified MAW + MOSE suite first."
 }
-foreach ($RelativePath in @('ffmpeg\bin\ffmpeg.exe', 'ffmpeg\bin\ffprobe.exe', 'assets\maw.ico')) {
+foreach ($RelativePath in @('ffmpeg\bin\ffmpeg.exe', 'ffmpeg\bin\ffprobe.exe', '_internal\assets\maw.ico')) {
     if (-not (Test-Path -LiteralPath (Join-Path $ResolvedSource $RelativePath) -PathType Leaf)) {
         throw "Missing standard bundle asset: $RelativePath"
     }

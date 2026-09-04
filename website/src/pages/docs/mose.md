@@ -16,10 +16,10 @@ Range seek、波形、最近工程和导出能力与 MAWE Server 保持一致，
 
 ## 分发方式
 
-源码和打包脚本公开；默认 GitHub Release 只放公开的 MAW / MAW-lite 便携包，不包含
-MOSE 或 Installer。官方 Windows Installer 作为单独的下载链接分发，Installer 本身
-不做 License Key 或联网授权校验，用户拿到安装包后可按 AGPL-3.0-only 条款使用、备份
-和再分发。官方链接之外的镜像、分享和自行打包不由项目负责更新与支持。
+源码和打包脚本公开；GitHub Release 同时发布 MAW / MAW-lite 便携包，以及包含 MOSE
+的 Windows x64 Installer。Installer 本身不做 License Key 或联网授权校验，用户拿到
+安装包后可按 AGPL-3.0-only 条款使用、备份和再分发。官方 Release 是内置更新检查的
+来源；自行打包版本的更新由打包者自行管理。
 
 Installer 安装的是同一个统一套件：
 
@@ -70,10 +70,10 @@ cd ..
 
 ## 自动更新与签名
 
-Launcher 每天最多自动检查一次，也可在「配置 → 软件更新」手动检查。更新清单和下载
-包使用 SHA-256 校验；当前公开 Release 不放 Installer，所以没有可自动下载的官方
-安装包时会打开发布页，用户通过官方 Installer 链接手动更新。以后若把 Installer
-放到独立的官方更新源，只需让清单提供同样的 Installer 资产，不需要引入 License Key。
+Launcher 每天最多自动检查一次，也可在「配置 → 软件更新」手动检查。公开 Release
+清单中的 Installer 使用 SHA-256 校验；安装版会自动下载并启动新版 Installer。若当前
+构建没有匹配资产（例如本地或预览构建），则打开发布页供用户手动更新，不需要引入
+License Key 或独立更新源。
 
 Release workflow 支持通过 `MAW_SIGN_CERTIFICATE_BASE64` 与
 `MAW_SIGN_CERTIFICATE_PASSWORD` secrets 调用 `scripts/sign-installer.ps1`。未配置证书

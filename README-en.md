@@ -13,14 +13,14 @@ MAW is an API-first subtitle generation and editing workflow. It provides Window
 
 ## Quick start
 
-1. [Download the latest release](https://github.com/Moyf/moys-asr-workflow/releases/latest). The default Release provides the FFmpeg-enabled `MAW-Windows-x64-v*.zip`, the smaller `MAW-lite-Windows-x64-v*.zip`, and the corresponding macOS packages. The official Windows Installer / MOSE suite is distributed separately from the default Release; source and packaging notes are in the [MOSE documentation](docs/MOSE.md).
+1. [Download the latest release](https://github.com/Moyf/moys-asr-workflow/releases/latest). The Release provides the FFmpeg-enabled `MAW-Windows-x64-v*.zip`, the smaller `MAW-lite-Windows-x64-v*.zip`, the Windows x64 `MAW-Setup-Windows-x64-v*.exe` Installer containing MOSE, and the corresponding macOS packages. Source and packaging notes are in the [MOSE documentation](docs/MOSE.md).
 2. Launch the portable `MAW.exe` / `MAW.app`. An official Windows Installer installs per-user under `%LOCALAPPDATA%\Programs\MAW` without administrator rights; in a MOSE suite you can also launch `MAW\MOSE\MOSE.exe` or double-click a `.mosp` project.
 3. Configure an ASR provider API key in the Launcher, choose your media, and start transcription.
 4. Review and edit the subtitles in MAWE, then export SRT, ASS, or another supported format.
 
 For installation, provider setup, editing, and troubleshooting, start with the [complete workflow guide](docs/WORKFLOW.md) (currently in Chinese).
 
-The official Windows Installer checks for updates at startup at most once per day; you can also check manually in Settings → Software updates. Whether an update can download an Installer automatically depends on that official build's configured update source. Portable, macOS, and Linux copies open the relevant release page for manual downloads. Updates keep `.env`, logs, model caches, and update state under `%LOCALAPPDATA%\MAW`. The Windows installer is not code-signed yet, so SmartScreen may warn on first launch; verify the official source and file hash.
+The official Windows Installer checks for updates at startup at most once per day; you can also check manually in Settings → Software updates. The updater downloads and verifies the newer Installer from the public GitHub Release. Portable, macOS, and Linux copies open the relevant release page for manual downloads. Updates keep `.env`, logs, model caches, and update state under `%LOCALAPPDATA%\MAW`. The Windows installer is not code-signed yet, so SmartScreen may warn on first launch; verify the official source and file hash.
 
 ## Core capabilities
 

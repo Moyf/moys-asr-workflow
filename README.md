@@ -15,14 +15,14 @@ MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 W
 
 ## 快速开始
 
-1. [下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)。默认 Release 提供带 FFmpeg 的 `MAW-Windows-x64-v*.zip`、不带 FFmpeg 的 `MAW-lite-Windows-x64-v*.zip`，以及 macOS 对应包。包含 MOSE 的官方 Windows Installer / 套件是单独的官方构建，不放进默认 Release；源码和打包说明见 [MOSE 文档](docs/MOSE.md)。
+1. [下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)。Release 提供带 FFmpeg 的 `MAW-Windows-x64-v*.zip`、不带 FFmpeg 的 `MAW-lite-Windows-x64-v*.zip`、包含 MOSE 的 Windows x64 `MAW-Setup-Windows-x64-v*.exe` Installer，以及 macOS 对应包；源码和打包说明见 [MOSE 文档](docs/MOSE.md)。
 2. 启动便携版 `MAW.exe` 或 `MAW.app`；如果取得官方 Installer，它按当前用户安装到 `%LOCALAPPDATA%\Programs\MAW`，不需要管理员权限。MOSE 套件中的 `MAW\MOSE\MOSE.exe` 也可以直接启动，或双击 `.mosp` 工程。
 3. 在 Launcher 配置转写服务的 API Key，选择媒体并点击生成。
 4. 在 MAWE 中检查、编辑字幕，导出 SRT、ASS 或其他格式。
 
 第一次使用、API 配置、编辑和排错：请从[完整工作流](docs/WORKFLOW.md)开始。
 
-Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版本，也可以在「配置 → 软件更新」手动检查；更新源是否提供可自动下载的 Installer 取决于该官方构建的发布配置。便携版、macOS 和 Linux 会打开对应发布页供手动下载。更新不会删除 `%LOCALAPPDATA%\MAW` 下的 `.env`、日志、模型缓存或更新状态。当前 Windows Installer 未配置代码签名，首次运行可能出现 SmartScreen 提示；请核验官方来源和文件哈希。
+Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版本，也可以在「配置 → 软件更新」手动检查；更新器会从公开 GitHub Release 下载并校验新版 Installer。便携版、macOS 和 Linux 会打开对应发布页供手动下载。更新不会删除 `%LOCALAPPDATA%\MAW` 下的 `.env`、日志、模型缓存或更新状态。当前 Windows Installer 未配置代码签名，首次运行可能出现 SmartScreen 提示；请核验官方来源和文件哈希。
 
 ## 核心能力
 

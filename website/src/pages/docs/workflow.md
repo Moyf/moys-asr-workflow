@@ -13,14 +13,14 @@ source: "docs/WORKFLOW.md"
 
 ## 0. 安装依赖
 
-如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python、uv、FFmpeg 与 ffprobe 已由默认 `MAW` 包打包，不需要单独安装；体积更小的 `MAW-lite` 包不包含 FFmpeg，需要系统已安装并可在 PATH 中找到 `ffmpeg` 和 `ffprobe`。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app` 或 `MAW-lite.app`。Windows x64 的官方 MOSE 套件与 Installer 属于单独的官方构建，不放进默认 GitHub Release；源码和打包脚本公开，具备条件的用户可以自行构建。
+如果使用 GitHub Releases 提供的 Windows 或 macOS 图形版，Python、uv、FFmpeg 与 ffprobe 已由默认 `MAW` 包打包，不需要单独安装；体积更小的 `MAW-lite` 包不包含 FFmpeg，需要系统已安装并可在 PATH 中找到 `ffmpeg` 和 `ffprobe`。Windows 解压后双击 `MAW.exe`；macOS 解压后打开 `MAW.app` 或 `MAW-lite.app`。Windows x64 的官方 MOSE 套件与 Installer 随 GitHub Release 公开发布；源码和打包脚本也公开，具备条件的用户可以自行构建。
 
 MOSE 与 MAW 共用 `server-editor/serve.py` 和 `.mosp` 工程契约。套件目录必须保持
 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe` 的相对关系，MOSE 不能从套件中单独拷出运行；
 `.mosp` 关联会先调用 `MAW.exe --open-project`，让 Launcher 完成更新检查后再打开
 MOSE；只在当前用户范围注册，不会关联旧的 `.json` 或覆盖 Windows 的 `UserChoice`。
 
-官方 Windows Installer 按当前用户安装到 `%LOCALAPPDATA%\Programs\MAW`，不需要管理员权限。安装版 Launcher 默认开启软件更新检查，每 24 小时最多请求一次；「配置 → 软件更新」中的手动检查会立即请求并继续使用 ETag 缓存。更新说明会在设置页安全渲染常见 Markdown；如果当前构建没有可自动下载的官方 Installer，则打开发布页或官方下载页供手动更新。更新状态、下载包和失败记录保存在 `%LOCALAPPDATA%\MAW\updates`，`.env`、日志和模型缓存不会因升级或卸载删除。
+官方 Windows Installer 按当前用户安装到 `%LOCALAPPDATA%\Programs\MAW`，不需要管理员权限。安装版 Launcher 默认开启软件更新检查，每 24 小时最多请求一次；「配置 → 软件更新」中的手动检查会立即请求并继续使用 ETag 缓存。更新说明会在设置页安全渲染常见 Markdown；更新器会从公开 GitHub Release 下载并校验新版 Installer，若当前构建没有匹配资产（例如本地或预览构建）则打开发布页供手动更新。更新状态、下载包和失败记录保存在 `%LOCALAPPDATA%\MAW\updates`，`.env`、日志和模型缓存不会因升级或卸载删除。
 
 源码方式继续按下列步骤安装：
 

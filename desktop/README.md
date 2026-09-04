@@ -28,8 +28,8 @@ MAW + MOSE Windows x64 Installer
     └── ffmpeg/…
 ```
 
-默认 GitHub Release 不上传 MOSE 或 Installer；官方 Installer 通过单独的下载链接
-分发。源码、构建脚本和测试公开，Installer 不包含 License Key 或联网授权校验。
+GitHub Release 会公开上传包含 MOSE 的 Windows x64 Installer；源码、构建脚本和测试也
+公开，Installer 不包含 License Key 或联网授权校验。
 `MOSE` 目录不能脱离同一套件的 `MAW.exe` 单独运行。
 
 ## 本地开发
@@ -82,8 +82,8 @@ uv run python edit.py --blank
 
 Installer 和完整便携套件为当前用户建立 `.mosp` 关联，命令指向
 `MAW.exe --open-project "%1"`。双击工程会先进入 Launcher 完成更新检查，再自动
-打开 MOSE；因此不会绕过更新提示。更新没有可下载的官方 Installer 时会打开发布页，
-由用户使用单独的官方 Installer 链接手动更新。
+打开 MOSE；因此不会绕过更新提示。更新器会从公开 GitHub Release 下载并校验新版
+Installer；如果当前构建没有匹配资产，则打开发布页供用户手动更新。
 
 Electron 窗口启用 `contextIsolation`、sandbox 且关闭 `nodeIntegration`；只允许导航
 到本次启动的精确 `127.0.0.1` 地址，外部链接交给系统浏览器。后端使用系统随机端口，

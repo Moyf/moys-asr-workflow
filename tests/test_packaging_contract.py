@@ -108,8 +108,13 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("PrivilegesRequired=lowest", installer)
         self.assertIn('ValueName: "ExecutablePath"', installer)
         self.assertIn('MAW-Setup-Windows-x64-v{#AppVersion}', installer)
-        self.assertIn("scripts/generate_update_manifest.py", read_text(".github/workflows/release.yml"))
-        self.assertIn("MAW-Setup-Windows-x64-", read_text(".github/workflows/release.yml"))
+        self.assertIn("_internal\\assets\\maw.ico", installer)
+        self.assertIn("_internal\\assets\\maw.ico", read_text("scripts/build-installer.ps1"))
+        release = read_text(".github/workflows/release.yml")
+        self.assertIn("scripts/generate_update_manifest.py", release)
+        self.assertIn("MAW-Setup-Windows-x64-", release)
+        self.assertIn("name: MAW-Installer-Windows-x64-", release)
+        self.assertNotIn("paid-MAW-Setup-Windows-x64-", release)
 
     def test_update_manifest_generator_emits_v1_hash_metadata(self) -> None:
         """Given release archives, When the manifest is generated, Then names, sizes, and hashes are deterministic."""
@@ -495,8 +500,10 @@ class PackagingContractTests(unittest.TestCase):
         """Given a Windows developer build, When the script is read, Then it builds dist/MAW/MAW.exe."""
         script = read_text("scripts/build-windows.ps1")
 
-        self.assertIn("uv sync --group build --frozen", script)
-        self.assertIn("uv run --group build pyinstaller", script)
+        self.assertIn("Invoke-NativeChecked", script)
+        self.assertIn("'--group', 'build', '--frozen'", script)
+        self.assertIn("'run', '--group', 'build', 'pyinstaller'", script)
+        self.assertIn("$LASTEXITCODE", script)
         self.assertIn("MAW.spec", script)
         self.assertIn("dist\\MAW\\MAW.exe", script)
         self.assertIn("$FaqSource", script)
@@ -617,7 +624,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("will-redirect", main_process)
         self.assertIn("window.postMessage({ source: 'mose-desktop'", preload)
         self.assertIn("['.mosp', '.json']", helpers)
-        self.assertIn("paid-MAW-Setup-Windows-x64-", workflow)
+        self.assertIn("name: MAW-Installer-Windows-x64-", workflow)
+        self.assertNotIn("paid-MAW-Setup-Windows-x64-", workflow)
         self.assertIn("npm ci --prefix desktop", workflow)
         self.assertIn("npm run build --prefix desktop", workflow)
         self.assertIn("win-unpacked", workflow)
