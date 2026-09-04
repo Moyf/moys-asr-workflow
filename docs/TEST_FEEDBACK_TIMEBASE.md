@@ -46,6 +46,7 @@
 13. `uv run python -m unittest discover -s tests -p "test_*.py"`：1020 项通过，6 项按环境条件跳过。
 14. 源媒体 FPS 元数据解析覆盖 `avg_frame_rate`、`r_frame_rate` 回退、音频输入和 FFprobe 缺失；工程校验与生成入口契约检查：通过。
 15. 重新执行 `uv run python edit.py --blank` 后，localhost `GET /` 返回 200，页面包含时间基准、帧吸附、分隔符和 `normalizeMediaMetadata`。
+16. `node --test tests\\test_editor_utils.mjs` 新增 23.976、24、25、29.97、30、50、59.94、60 FPS 的帧投影、同帧碰撞修复和字词拆分边界覆盖：214 项全部通过。
 
 ## 未验证边界
 

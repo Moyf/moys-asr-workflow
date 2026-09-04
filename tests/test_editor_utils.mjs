@@ -2542,6 +2542,87 @@ test('keeps frame-projected item timings inside their fixed subtitle segment', (
   assert.equal(segment.end, 73842);
 });
 
+for (const { label, fps } of [
+  { label: '23.976', fps: 23.976 },
+  { label: '24', fps: 24 },
+  { label: '25', fps: 25 },
+  { label: '29.97', fps: 29.97 },
+  { label: '30', fps: 30 },
+  { label: '50', fps: 50 },
+  { label: '59.94', fps: 59.94 },
+  { label: '60', fps: 60 },
+]) {
+  test(`remaps and splits dense word timings safely at ${label} FPS`, () => {
+    const words = Array.from({ length: 48 }, (_, index) => `w${String(index).padStart(2, '0')}`);
+    const sourceStart = 1000;
+    const sourceEnd = 3000;
+    const toFrameRange = (start, end) => {
+      const startFrame = helpers.frameNumberFromMilliseconds(start, fps);
+      const endFrame = Math.max(
+        startFrame + 1,
+        helpers.frameNumberFromMilliseconds(end, fps),
+      );
+      return {
+        start: helpers.millisecondsFromFrameNumber(startFrame, fps),
+        end: helpers.millisecondsFromFrameNumber(endFrame, fps),
+        start_frame: startFrame,
+        end_frame: endFrame,
+      };
+    };
+    const segmentRange = toFrameRange(sourceStart, sourceEnd);
+    const segment = {
+      ...segmentRange,
+      text: words.join(' '),
+      // 20ms 的字词让低帧率下出现真实的同帧碰撞，模拟切换到帧模式后的投影结果。
+      items: words.map((text, index) => ({
+        text,
+        ...toFrameRange(sourceStart + index * 20, sourceStart + (index + 1) * 20),
+      })),
+    };
+    const originalFramePairs = segment.items.map(({ start_frame, end_frame }) => [
+      start_frame, end_frame,
+    ]);
+    const originalSegmentRange = [segment.start, segment.end];
+
+    helpers.normalizeFrameItemTimingRanges(segment);
+
+    assert.deepEqual([segment.start, segment.end], originalSegmentRange);
+    assert.deepEqual(
+      segment.items.map(({ start_frame, end_frame }) => [start_frame, end_frame]),
+      originalFramePairs,
+    );
+    assert.ok(Number.isInteger(segment.start_frame));
+    assert.ok(Number.isInteger(segment.end_frame));
+    assert.ok(segment.end_frame > segment.start_frame);
+    let previousEnd = segment.start;
+    segment.items.forEach((item) => {
+      assert.ok(Number.isInteger(item.start_frame));
+      assert.ok(Number.isInteger(item.end_frame));
+      assert.ok(item.start_frame >= segment.start_frame);
+      assert.ok(item.end_frame <= segment.end_frame);
+      assert.ok(item.end_frame > item.start_frame);
+      assert.ok(item.start >= segment.start);
+      assert.ok(item.end <= segment.end);
+      assert.ok(item.end > item.start);
+      assert.ok(item.start >= previousEnd);
+      previousEnd = item.end;
+    });
+
+    const legalOffsets = helpers.subtitleSplitOffsets(segment.text, 'word');
+    assert.equal(legalOffsets.length, words.length - 1);
+    for (let index = 1; index < words.length; index += 1) {
+      const offset = segment.text.indexOf(words[index]);
+      const leftItem = segment.items[index - 1];
+      const rightItem = segment.items[index];
+      const targetMs = (leftItem.end + rightItem.start) / 2;
+      assert.equal(helpers.splitCharOffsetAtTime(segment, targetMs), offset);
+      const parts = helpers.splitSubtitleText(segment.text, offset, 'word');
+      assert.ok(parts?.left);
+      assert.ok(parts?.right);
+    }
+  });
+}
+
 test('repairs item overlap without hiding a real subtitle-segment overlap', () => {
   const segments = [
     { start: 0, end: 1000, text: '第一句', items: [{ start: 0, end: 600 }] },
