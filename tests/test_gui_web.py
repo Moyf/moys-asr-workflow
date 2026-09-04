@@ -1295,6 +1295,71 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(wait_for_server.call_args, mock.call("http://127.0.0.1:9877/", timeout=SERVER_START_TIMEOUT))
         self.assertTrue(self.api.stop_alignment_server()["stopped"])
 
+    def test_packaged_alignment_child_resets_pyinstaller_environment(self) -> None:
+        project = self.root / "project.mosp"
+        script = self.root / "script.txt"
+        executable = self.root / "MAW"
+        project.write_text('{"segments": []}\n', encoding="utf-8")
+        script.write_text("第一句\n", encoding="utf-8")
+        executable.write_bytes(b"app")
+
+        class FakeProcess:
+            def poll(self) -> int | None:
+                return None
+
+        with mock.patch.object(sys, "frozen", True, create=True):
+            with mock.patch.object(sys, "executable", str(executable)):
+                with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
+                    with mock.patch("maw.gui_web._free_local_port", return_value=9877):
+                        with mock.patch("maw.gui_web._wait_for_server", return_value=True):
+                            result = self.api.start_alignment_server({
+                                "projectPath": str(project),
+                                "scriptPath": str(script),
+                            })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(popen.call_args.args[0][:2], [str(executable), "--serve-alignment"])
+        self.assertEqual(
+            popen.call_args.kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"],
+            "1",
+        )
+
+    def test_alignment_timeout_returns_child_startup_log(self) -> None:
+        project = self.root / "project.mosp"
+        script = self.root / "script.txt"
+        project.write_text('{"segments": []}\n', encoding="utf-8")
+        script.write_text("第一句\n", encoding="utf-8")
+
+        class FakeProcess:
+            returncode = None
+
+            def poll(self) -> int | None:
+                return self.returncode
+
+            def terminate(self) -> None:
+                self.returncode = -15
+
+            def wait(self, timeout: float | None = None) -> int:
+                return self.returncode or 0
+
+        def spawn(*_args, **kwargs):
+            kwargs["stdout"].write(b"alignment child stalled\n")
+            kwargs["stdout"].flush()
+            return FakeProcess()
+
+        with mock.patch("maw.gui_web.subprocess.Popen", side_effect=spawn):
+            with mock.patch("maw.gui_web._free_local_port", return_value=9877):
+                with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+                    result = self.api.start_alignment_server({
+                        "projectPath": str(project),
+                        "scriptPath": str(script),
+                    })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "alignment_server_no_response")
+        self.assertIn("启动超时", result["detail"])
+        self.assertIn("alignment child stalled", result["detail"])
+
     def test_start_alignment_server_validates_project_script_and_media_inputs(self) -> None:
         script = self.root / "script.txt"
         project = self.root / "project.json"
@@ -1678,15 +1743,61 @@ class GuiWebBridgeTests(unittest.TestCase):
             def wait(self, timeout: float | None = None) -> int:
                 return self.returncode or 0
 
-        with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()):
+        log_directory = self.root / "logs"
+        api = LauncherApi(
+            paths=self.paths,
+            window_getter=lambda: self.window,
+            log_sink=LocalLogSink(directory=log_directory),
+        )
+
+        def spawn(*_args, **kwargs):
+            kwargs["stdout"].write(b"child stalled before binding port\n")
+            kwargs["stdout"].flush()
+            return FakeProcess()
+
+        with mock.patch("maw.gui_web.subprocess.Popen", side_effect=spawn):
             with mock.patch("maw.gui_web._wait_for_server", return_value=False):
                 with mock.patch("maw.gui_web.webbrowser.open") as open_browser:
-                    result = self.api.start_server({"jsonPath": str(project), "mediaPath": str(media), "port": "9876"})
+                    result = api.start_server({"jsonPath": str(project), "mediaPath": str(media), "port": "9876"})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "port")
         self.assertEqual(result["code"], "server_no_response")
+        self.assertIn("启动超时", result["detail"])
+        self.assertIn("child stalled before binding port", result["detail"])
+        persisted_log = next(log_directory.glob("maw-*.log")).read_text(encoding="utf-8")
+        self.assertIn("server_no_response", persisted_log)
+        self.assertIn("child stalled before binding port", persisted_log)
         open_browser.assert_not_called()
+
+    def test_packaged_server_child_resets_pyinstaller_environment(self) -> None:
+        project = self.root / "project.json"
+        media = self.root / "clip.mp4"
+        executable = self.root / "MAW"
+        project.write_text(json.dumps({"media": str(media), "segments": []}), encoding="utf-8")
+        media.write_bytes(b"media")
+        executable.write_bytes(b"app")
+
+        class FakeProcess:
+            def poll(self) -> int | None:
+                return None
+
+        with mock.patch.object(sys, "frozen", True, create=True):
+            with mock.patch.object(sys, "executable", str(executable)):
+                with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
+                    with mock.patch("maw.gui_web._wait_for_server", side_effect=[False, True]):
+                        result = self.api.start_server({
+                            "jsonPath": str(project),
+                            "mediaPath": str(media),
+                            "port": "9876",
+                        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(popen.call_args.args[0][:2], [str(executable), "--serve"])
+        self.assertEqual(
+            popen.call_args.kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"],
+            "1",
+        )
 
     def test_start_server_exposes_child_startup_log_when_process_exits(self) -> None:
         project = self.root / "project.json"

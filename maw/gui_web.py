@@ -459,6 +459,19 @@ def default_paths() -> LauncherPaths:
     return LauncherPaths(root=root, env_path=DEFAULT_ENV_PATH, launcher_html=root / "web" / "launcher" / "index.html")
 
 
+def _independent_app_child_environment() -> dict[str, str]:
+    """为独立运行的 MAW 子进程构建环境。
+
+    PyInstaller 6.9+ 默认把通过同一冻结程序启动的进程当作 worker。
+    编辑器 Server 是独立 MAW 实例，必须重置 bootloader 环境；源码模式
+    和外部 Python 解释器维持原行为。
+    """
+    environment = _child_environment(os.environ, "", provider="")
+    if getattr(sys, "frozen", False):
+        environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return environment
+
+
 # ---- Linux keycap 表情字体（Noto Color Emoji）----
 # 段落标题的 keycap 表情（1️⃣ 等）由「数字 + U+FE0F + U+20E3」组成，需要彩色 emoji 字体
 # 完整覆盖才可正常成型；部分 Linux 发行版（如 SteamOS 的 Twemoji）缺少 U+FE0F，会渲染成
@@ -1401,22 +1414,30 @@ class LauncherApi:
                 stdout=self.server_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_child_environment(os.environ, "", provider=""),
+                env=_independent_app_child_environment(),
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
         except OSError as error:
             self._close_server_log()
-            return _error_result("port", "server_start_failed", f"{url} | {error}")
+            detail = f"{url} | {error}"
+            self._persist_start_failure("server_start_failed", detail)
+            return _error_result("port", "server_start_failed", detail)
         if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
             exit_code = self.server_process.poll() if self.server_process else None
             if exit_code is not None:
                 detail = self._read_server_log()
                 detail = f"{url} | 进程退出码 {exit_code}" + (f"：{detail}" if detail else "")
+                self._persist_start_failure("server_start_failed", detail)
                 _ = self._stop_owned_server()
                 return _error_result("port", "server_start_failed", detail)
-            _ = self._stop_owned_server()
-            return _error_result("port", "server_no_response", url)
+            _ = self._stop_owned_server(close_log=False)
+            child_log = self._read_server_log()
+            self._close_server_log()
+            detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
+            detail += f"：{child_log}" if child_log else "：子进程未输出日志"
+            self._persist_start_failure("server_no_response", detail)
+            return _error_result("port", "server_no_response", detail)
         self._close_server_log()
         return {"ok": True, "url": launch_url}
 
@@ -1513,7 +1534,7 @@ class LauncherApi:
                 stdout=self.alignment_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_child_environment(os.environ, "", provider=""),
+                env=_independent_app_child_environment(),
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
@@ -1530,17 +1551,25 @@ class LauncherApi:
             self.alignment_script_path = None
             self.alignment_media_path = None
             self.alignment_gap_remove = None
-            return _error_result("", "alignment_server_start_failed", f"{url} | {error}")
+            detail = f"{url} | {error}"
+            self._persist_start_failure("alignment_server_start_failed", detail)
+            return _error_result("", "alignment_server_start_failed", detail)
 
         if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
             exit_code = self.alignment_process.poll() if self.alignment_process else None
             if exit_code is not None:
                 detail = self._read_alignment_log()
                 detail = f"{url} | process exited with code {exit_code}" + (f": {detail}" if detail else "")
+                self._persist_start_failure("alignment_server_start_failed", detail)
                 _ = self._stop_owned_alignment_server()
                 return _error_result("", "alignment_server_start_failed", detail)
-            _ = self._stop_owned_alignment_server()
-            return _error_result("", "alignment_server_no_response", url)
+            _ = self._stop_owned_alignment_server(close_log=False)
+            child_log = self._read_alignment_log()
+            self._close_alignment_log()
+            detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
+            detail += f"：{child_log}" if child_log else "：子进程未输出日志"
+            self._persist_start_failure("alignment_server_no_response", detail)
+            return _error_result("", "alignment_server_no_response", detail)
         self._close_alignment_log()
         return {
             "ok": True,
@@ -1585,7 +1614,7 @@ class LauncherApi:
             "detail": resolution.message,
         }
 
-    def _stop_owned_server(self) -> bool:
+    def _stop_owned_server(self, *, close_log: bool = True) -> bool:
         process = self.server_process
         self.server_process = None
         stopped = False
@@ -1597,7 +1626,8 @@ class LauncherApi:
         finally:
             if process is not None:
                 release_process_tree(process)
-            self._close_server_log()
+            if close_log:
+                self._close_server_log()
 
     def _read_server_log(self) -> str:
         log_file = self.server_log_file
@@ -1619,7 +1649,7 @@ class LauncherApi:
             except OSError:
                 pass
 
-    def _stop_owned_alignment_server(self) -> bool:
+    def _stop_owned_alignment_server(self, *, close_log: bool = True) -> bool:
         process = self.alignment_process
         self.alignment_process = None
         self.alignment_server_port = None
@@ -1636,7 +1666,12 @@ class LauncherApi:
         finally:
             if process is not None:
                 release_process_tree(process)
-            self._close_alignment_log()
+            if close_log:
+                self._close_alignment_log()
+
+    def _persist_start_failure(self, code: str, detail: str) -> None:
+        if self._log_sink is not None:
+            self._log_sink.append({"type": "error", "code": code, "detail": detail})
 
     def _read_alignment_log(self) -> str:
         log_file = self.alignment_log_file
