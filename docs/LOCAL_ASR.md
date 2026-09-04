@@ -90,7 +90,7 @@ uv run python generate_subtitle_local.py "D:\Videos\meeting.mp4" `
   --engine moss --length-limit 30s --device cuda --speaker-colors --json
 ```
 
-`--model` 可以指定上游模型 ID，`--model-path` 可以指定已经下载好的本地模型目录。Qwen3-ASR 0.6B 和 1.7B 都默认加载 `Qwen/Qwen3-ForcedAligner-0.6B`，以输出可编辑字幕所需的词级时间戳；它不是可选增强。SenseVoice 默认配合 FSMN-VAD 并保留句级时间戳，Fun-ASR-Nano 默认配合 FSMN-VAD 请求句级时间戳；如果上游返回字符级时间戳，MAW 会再按标点和静音切分，否则至少按 VAD 语音区间生成字幕。默认 `--device auto` 会优先使用 CUDA；如需排查兼容性或没有 NVIDIA GPU，可显式传入 `--device cpu`。第一次验证建议加 `--length-limit 30s`。
+`--model` 可以指定上游模型 ID，`--model-path` 可以指定已经下载好的本地模型目录。Qwen3-ASR 0.6B 和 1.7B 都默认加载 `Qwen/Qwen3-ForcedAligner-0.6B`，以输出可编辑字幕所需的词级时间戳；它不是可选增强。SenseVoice 默认配合 FSMN-VAD 并保留句级时间戳，Fun-ASR-Nano 默认配合 FSMN-VAD 请求句级时间戳；如果上游返回字符级时间戳，MAW 会再按标点和静音切分，否则至少按 VAD 语音区间生成字幕。默认 `--device auto` 会优先使用 CUDA；Apple Silicon 上的 Qwen3-ASR 会在无 CUDA 时自动使用 MPS，初始化失败则回退 CPU，其他本地引擎保持原有 CPU/CUDA 逻辑。如需排查兼容性，可显式传入 `--device cpu`。第一次验证建议加 `--length-limit 30s`。
 
 不使用 Launcher 时，也可以通过环境变量指定统一的模型缓存根目录：
 
