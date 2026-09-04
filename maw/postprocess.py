@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import difflib
+import re
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -79,6 +80,10 @@ MAX_LLM_INPUT_CHARS_PER_REQUEST: Final = 4000
 MAX_LLM_WARNING_TEXT_CHARS: Final = 240
 MAX_SINGLE_CUE_TRANSLATION_ATTEMPTS: Final = 2
 MAX_TRANSLATION_REPAIR_REQUESTS_PER_BATCH: Final = 32
+BILINGUAL_ARTIFACT_MARKER: Final = "bilingual"
+BILINGUAL_ARTIFACT_PATTERN: Final = re.compile(
+    rf"(?:^|[.-]){re.escape(BILINGUAL_ARTIFACT_MARKER)}(?:-\d+)?$"
+)
 TIMING_FIELDS: Final = ("start", "end", "text", "items")
 ONE_TO_ONE_TRANSLATION_OPERATIONS: Final = frozenset({"translate_en", "translate_zh"})
 
@@ -177,7 +182,7 @@ def run_llm_postprocess(
     custom = request.custom_prompt.strip()
     strict_translation = request.operation in ONE_TO_ONE_TRANSLATION_OPERATIONS
     if strict_translation:
-        _reject_recursive_translation_input(source_project, request.operation)
+        _reject_recursive_translation_input(source_project, source_srt, request.operation)
     item_aware_resegment = request.operation == "resegment" and _has_complete_items(project)
     system_prompt = _protocol_prompt(
         operation_prompt,
@@ -297,19 +302,21 @@ def run_llm_postprocess(
         )
     if len(batches) > 1:
         warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
+    output_operation = request.operation
     if request.merge_bilingual and strict_translation:
         processed = merge_bilingual_project(
             project,
             processed,
             translation_target="zh" if request.operation == "translate_zh" else "en",
         )
+        output_operation = f"{request.operation}-{BILINGUAL_ARTIFACT_MARKER}"
         warnings = ("已将原始文本和翻译文本合并为单条双语字幕。", *warnings)
     _notify_status(on_status, "toolbox_status_writing")
     return _write(
         processed,
         source_project,
         source_srt,
-        request.operation,
+        output_operation,
         request.output_mode,
         warnings,
         output_directory=request.output_directory,
@@ -342,8 +349,16 @@ def merge_bilingual_project(
         translated_text = translated.get("text")
         if not isinstance(source_text, str) or not isinstance(translated_text, str):
             raise ValueError(f"第 {index} 条字幕缺少有效的原始文本或翻译文本。")
+        source_has_text = bool(source_text.strip())
+        translated_has_text = bool(translated_text.strip())
+        if not source_has_text and not translated_has_text:
+            continue
         merged = copy.deepcopy(source)
-        if translation_target == "zh":
+        if not source_has_text:
+            merged["text"] = translated_text
+        elif not translated_has_text:
+            merged["text"] = source_text
+        elif translation_target == "zh":
             merged["text"] = f"{translated_text}\n{source_text}"
         else:
             merged["text"] = f"{source_text}\n{translated_text}"
@@ -356,6 +371,7 @@ def merge_bilingual_project(
     # an older extension track into the final project if the input was already
     # a multi-subtitle project.
     merged_project.pop("multi_subtitle", None)
+    merged_project.pop("extensionSegments", None)
     return normalize_project(merged_project)
 
 
@@ -524,18 +540,29 @@ def _merge_translation_response_parts(
     }
 
 
-def _reject_recursive_translation_input(source_project: Path | None, operation: str) -> None:
+def _reject_recursive_translation_input(
+    source_project: Path | None,
+    source_srt: Path | None,
+    operation: str,
+) -> None:
     """Apply a filename-convention guard, not content-based translation detection."""
-    if source_project is None:
-        return
     target = "translate-en" if operation == "translate_en" else "translate-zh"
-    if f".{target}" in source_project.stem.lower():
-        language = "英文" if operation == "translate_en" else "中文"
-        message = (
-            f"当前文件名符合已生成的{language}翻译工程命名规则（{source_project.name}）。"
-            "请选择最初的原字幕工程再执行翻译，避免把残缺或已翻译结果再次处理。"
-        )
-        raise ValueError(message)
+    source_paths = tuple(path for path in (source_project, source_srt) if path is not None)
+    for source in source_paths:
+        stem = source.stem.lower()
+        if BILINGUAL_ARTIFACT_PATTERN.search(stem):
+            message = (
+                f"当前文件名符合已生成的双语字幕命名规则（{source.name}）。"
+                "请选择最初的原字幕工程或 SRT，再执行翻译，避免把双语结果再次处理。"
+            )
+            raise ValueError(message)
+        if f".{target}" in stem:
+            language = "英文" if operation == "translate_en" else "中文"
+            message = (
+                f"当前文件名符合已生成的{language}翻译命名规则（{source.name}）。"
+                "请选择最初的原字幕工程或 SRT，再执行翻译，避免把残缺或已翻译结果再次处理。"
+            )
+            raise ValueError(message)
 
 
 def _cue_number(source_id: str) -> str:

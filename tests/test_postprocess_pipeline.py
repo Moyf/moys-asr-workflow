@@ -265,13 +265,19 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual([segment["text"] for segment in merged["segments"]], ["错字\nTranslation one", "保留\nTranslation two"])
         self.assertNotIn("multi_subtitle", merged)
         self.assertIsNone(result.translated_srt_path)
+        self.assertEqual(result.project_path.name, "clip.postprocess.bilingual.mosp")
+        self.assertEqual(result.srt_path.name, "clip.postprocess.bilingual.srt")
         self.assertTrue(result.run_directory.is_dir())
+        self.assertTrue((result.run_directory / translated_project.name).is_file())
         self.assertTrue((result.run_directory / translated_srt.name).is_file())
         self.assertIn("Translation one", (result.run_directory / translated_srt.name).read_text(encoding="utf-8"))
         self.assertNotIn("multi_subtitle", json.loads(result.project_path.read_text(encoding="utf-8")))
         self.assertFalse((self.root / "clip.postprocess.translate-en.srt").exists())
         manifest = json.loads((result.run_directory / "manifest.json").read_text(encoding="utf-8"))
         self.assertNotIn("finalTranslatedSrtPath", manifest)
+        step_manifest = manifest["steps"][0]
+        self.assertEqual(step_manifest["translationIntermediateProjectPath"], str((result.run_directory / translated_project.name).resolve()))
+        self.assertEqual(step_manifest["translationIntermediateSrtPath"], str((result.run_directory / translated_srt.name).resolve()))
 
     def test_chinese_translation_merge_puts_translation_first(self) -> None:
         translated_project = self.root / "translated.mosp"
@@ -323,6 +329,8 @@ class PostprocessPipelineTests(unittest.TestCase):
 
         merged = json.loads(result.project_path.read_text(encoding="utf-8"))
         self.assertEqual([segment["text"] for segment in merged["segments"]], ["中文一\n错字", "中文二\n保留"])
+        self.assertEqual(result.project_path.name, "clip.postprocess.bilingual.mosp")
+        self.assertEqual(result.srt_path.name, "clip.postprocess.bilingual.srt")
         self.assertIn("中文一\n错字", result.srt_path.read_text(encoding="utf-8"))
 
     def test_validation_requires_a_step_and_checks_ocr_dependencies(self) -> None:
