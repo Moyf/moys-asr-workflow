@@ -38,6 +38,9 @@ def enrich_project_media_metadata(
 
     media_metadata = probe_video_fps(candidate, ffprobe_path=ffprobe_path)
     if media_metadata is not None:
+        if "media" in enriched:
+            media = enriched.pop("media")
+            return {"media": media, "media_metadata": media_metadata, **enriched}
         enriched["media_metadata"] = media_metadata
     return enriched
 

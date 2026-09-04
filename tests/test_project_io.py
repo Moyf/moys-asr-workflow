@@ -36,7 +36,9 @@ class ProjectIoTests(unittest.TestCase):
 
             self.assertEqual(result, output)
             probe.assert_called_once_with(media, ffprobe_path=ffprobe)
-            self.assertEqual(json.loads(output.read_text(encoding="utf-8"))["media_metadata"], metadata)
+            saved = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(saved["media_metadata"], metadata)
+            self.assertEqual(list(saved)[:2], ["media", "media_metadata"])
             raw = output.read_bytes()
             self.assertTrue(raw.endswith(b"\n"))
             self.assertNotIn(b"\r\n", raw)
@@ -46,14 +48,16 @@ class ProjectIoTests(unittest.TestCase):
         existing = {"video_fps": 24, "video_fps_ratio": "24/1"}
         project = {
             "media": "clip.mp4",
-            "media_metadata": existing,
             "segments": [],
+            "language": "en",
+            "media_metadata": existing,
         }
 
         with mock.patch("maw.project_io.probe_video_fps") as probe:
             enriched = enrich_project_media_metadata(project, media_path="other.mp4")
 
         self.assertEqual(enriched["media_metadata"], existing)
+        self.assertEqual(list(enriched), ["media", "segments", "language", "media_metadata"])
         self.assertIsNot(enriched, project)
         probe.assert_not_called()
 
