@@ -9859,6 +9859,36 @@ document.addEventListener('keydown', (e) => {
   if (player.paused) togglePlayback();
 });
 
+function seekCurrentCueBoundary(boundary) {
+  const target = getCurrentCuePanelTarget();
+  const timeMs = Number(target?.segment?.[boundary]);
+  const duration = Number(player?.duration);
+  if (!target || !Number.isFinite(timeMs) || !hasLoadedMedia()
+      || !Number.isFinite(duration) || duration <= 0) return false;
+  stopJklReversePlayback({ render: false });
+  player.pause();
+  return seekMediaTo(timeMs / 1000);
+}
+
+// I/O：跳到当前字幕的开头/结尾并保持暂停。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'i' && e.key !== 'I' && e.key !== 'o' && e.key !== 'O') return;
+  if (editingState || extensionEditingState || e.repeat || isTextEditingTarget(e)) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (multiSubtitleSplitModal?.classList.contains('show')) return;
+  if (multiSubtitleImportModal?.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const boundary = e.key.toLowerCase() === 'i' ? 'start' : 'end';
+  if (!seekCurrentCueBoundary(boundary)) return;
+  e.preventDefault();
+  e.stopPropagation();
+});
+
 // N：仅在鼠标位于波形行时，从指针音频位置创建字幕；创建后单选新字幕，
 // 切换当前字幕面板并聚焦面板文本框。
 document.addEventListener('keydown', (e) => {

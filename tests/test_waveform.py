@@ -401,6 +401,7 @@ class EditorAssetTests(unittest.TestCase):
             '          <span><kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕</span>',
             page,
         )
+        self.assertIn('<span><kbd>I</kbd>/<kbd>O</kbd> 跳到当前字幕开头/结尾并保持暂停</span>', page)
         self.assertIn('基础操作', page)
         self.assertIn('快捷操作', page)
         self.assertIn('波形外观调整', page)
