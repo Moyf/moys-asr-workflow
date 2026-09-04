@@ -9,13 +9,18 @@ from pathlib import Path
 
 from maw.stickers import get_default_sticker_dir
 from generate_subtitle_qwen_api import (
+    build_segments_from_api_sentences,
     configure_console_output,
     extract_audio,
     generate_srt,
     get_duration_sec,
     parse_duration,
+    split_segments_auto,
+    WESTERN_MAX_WORDS,
+    WESTERN_MIN_WORDS,
 )
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.language import resolve_language, split_mode_for_text, timestamp_granularity_for_items
 from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.project_io import write_mosp
 from maw.project import repair_segment_durations, validate_project
@@ -29,6 +34,8 @@ def main() -> int:
     parser.add_argument("-o", "--output", help="输出 SRT 路径")
     parser.add_argument("-l", "--max-len", type=int, default=18, help="每条字幕最大字数（默认 18）")
     parser.add_argument("--min-len", type=int, default=5, help="句号间最短字数")
+    parser.add_argument("--max-words", type=int, default=WESTERN_MAX_WORDS, help="英文单条字幕最大单词数")
+    parser.add_argument("--min-words", type=int, default=WESTERN_MIN_WORDS, help="英文短句合并阈值（单词数）")
     parser.add_argument("--language", help="保留参数；腾讯云录音文件识别由引擎自动识别")
     parser.add_argument("--keep-punct", action="store_true", help="保留字幕末尾标点")
     parser.add_argument("--gap-split", type=int, default=800, help="静音切句阈值（毫秒，默认 800）")
@@ -49,6 +56,10 @@ def main() -> int:
     configure_console_output()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
+    if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
+        parser.error("字幕切分参数无效")
+    if args.max_len < args.min_len or args.max_words < args.min_words:
+        parser.error("最大值不能小于对应的短句合并阈值")
 
     input_path = Path(args.input)
     if not input_path.exists() and not args.file_url:
@@ -113,8 +124,30 @@ def main() -> int:
             print("错误: 未识别到任何内容", file=sys.stderr)
             return 2
         sentences = result.get("sentences", [])
+        split_mode = split_mode_for_text(
+            str(result.get("text") or ""),
+            result.get("language") or args.language,
+        )
         if sentences:
-            segments = [dict(sentence) for sentence in sentences]
+            segments = build_segments_from_api_sentences(
+                sentences,
+                max_len=args.max_len,
+                min_len=args.min_len,
+                gap_split_ms=args.gap_split,
+                max_words=args.max_words,
+                min_words=args.min_words,
+                split_mode=split_mode,
+            )
+        elif result.get("items"):
+            segments = split_segments_auto(
+                result["items"],
+                max_len=args.max_len,
+                min_len=args.min_len,
+                gap_split_ms=args.gap_split,
+                max_words=args.max_words,
+                min_words=args.min_words,
+                split_mode=split_mode,
+            )
         else:
             segments = [{"start": 0, "end": int(duration * 1000), "text": result["text"], "items": []}]
         repair_segment_durations(segments)
@@ -142,9 +175,20 @@ def main() -> int:
         print(f"[调试] 返回 {len(result.get('items', []))} 个字词时间码项")
     if args.json_out:
         json_path = output_path.with_suffix(".mosp")
+        language, language_source = resolve_language(
+            result.get("language"),
+            args.language,
+            str(result.get("text") or ""),
+        )
+        split_mode = split_mode_for_text(str(result.get("text") or ""), language)
         project = {
             "media": str(input_path),
-            "language": result.get("language", args.language or ""),
+            "language": language,
+            "language_source": language_source,
+            "split_mode": split_mode,
+            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
+                result.get("items") or [], split_mode, has_segments=bool(segments)
+            ),
             "model": f"tencent-{config['engine']}",
             "segments": segments,
         }

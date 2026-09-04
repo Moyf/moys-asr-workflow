@@ -40,6 +40,7 @@ from generate_subtitle_qwen_api import (
     is_cjk_char,
     split_segments_auto,
 )
+from maw.language import normalize_language_code
 # Re-exported for the Soniox CLI and existing callers of ``maw.soniox``.
 from maw.colors import COLOR_PALETTE as SPEAKER_COLOR_PALETTE  # 旧名兼容
 from maw.speaker import (
@@ -549,7 +550,8 @@ def tokens_to_items(tokens: list[dict]) -> list[dict]:
 def build_segments(items: list[dict], *, max_len: int, min_len: int,
                    gap_split_ms: int,
                    max_words: int = WESTERN_MAX_WORDS,
-                   min_words: int = WESTERN_MIN_WORDS) -> list[dict]:
+                   min_words: int = WESTERN_MIN_WORDS,
+                   split_mode: str | None = None) -> list[dict]:
     """speaker run 内切句（split_segments_auto 按静音组自动选择 CJK/英文逻辑）。
 
     每个 segment 的 speaker 来自其 run（run 内统一，满足
@@ -560,7 +562,7 @@ def build_segments(items: list[dict], *, max_len: int, min_len: int,
         run_speaker = next((it["speaker"] for it in run if it.get("speaker")), None)
         for seg in split_segments_auto(
             run, max_len=max_len, min_len=min_len, gap_split_ms=gap_split_ms,
-            max_words=max_words, min_words=min_words,
+            max_words=max_words, min_words=min_words, split_mode=split_mode,
         ):
             if run_speaker is not None:
                 seg["speaker"] = run_speaker
@@ -572,7 +574,7 @@ def majority_language(tokens: list[dict]) -> str:
     """按 token 数量取多数语言，作为工程 language；无语言标签时返回空。"""
     counts: dict[str, int] = {}
     for token in tokens:
-        lang = token.get("language")
+        lang = normalize_language_code(token.get("language"))
         if lang:
             counts[lang] = counts.get(lang, 0) + 1
     return max(counts, key=lambda k: counts[k]) if counts else ""
@@ -649,6 +651,7 @@ def transcribe(audio_path: str, config: dict, *,
         "language": majority_language(tokens),
         "items": tokens_to_items(merge_word_fragments(tokens)),
     }
+    result["timestamp_granularity"] = "word" if result["items"] else "unknown"
     if capture_raw:
         result["_raw_response"] = transcript
     return result

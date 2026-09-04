@@ -118,6 +118,13 @@ class ParseResultTests(unittest.TestCase):
 
         self.assertEqual(result["language"], "")
 
+    def test_parse_result_payload_marks_utterance_fallback_as_segment(self) -> None:
+        result = bcut.parse_result_payload(_result_json([
+            _utterance("整句没有逐字时间码", 0, 1200),
+        ]))
+
+        self.assertEqual(result["timestamp_granularity"], "segment")
+
     def test_parse_result_payload_rejects_invalid_json(self) -> None:
         with self.assertRaises(bcut.BcutApiError):
             bcut.parse_result_payload("not-json")
@@ -745,7 +752,10 @@ class TranscribeRawCaptureTests(unittest.TestCase):
 
         self.assertEqual(result["raw_response"]["utterances"][0]["transcript"], "你好。")
         # raw_response 不污染工程字段
-        self.assertEqual(set(result) - {"raw_response"}, {"text", "language", "items"})
+        self.assertEqual(
+            set(result) - {"raw_response"},
+            {"text", "language", "items", "timestamp_granularity"},
+        )
 
 
 if __name__ == "__main__":

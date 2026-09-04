@@ -158,6 +158,8 @@ class GuiWorkflowTests(unittest.TestCase):
             srt_path=self.srt_path,
             max_len="14",
             min_len="3",
+            max_words="11",
+            min_words="2",
             gap_split="800",
         )
 
@@ -165,6 +167,8 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(command[command.index("--max-len") + 1], "14")
         self.assertEqual(command[command.index("--min-len") + 1], "3")
+        self.assertEqual(command[command.index("--max-words") + 1], "11")
+        self.assertEqual(command[command.index("--min-words") + 1], "2")
         self.assertEqual(command[command.index("--gap-split") + 1], "800")
 
     def test_build_transcribe_command_always_sends_strip_tail_punct(self) -> None:

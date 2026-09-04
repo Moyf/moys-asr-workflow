@@ -18,6 +18,8 @@ MAW 通过独立的 MOSS 运行环境加载它：MOSS 需要 Transformers 5.x，
 
 MOSS 单次推理最多约 90 分钟，MAW 不对它做分块，以免不同块中的 `S01` / `S02` 失去跨长音频的一致性。它会把秒级浮点时间戳转换为 MAW 要求的整数毫秒，并保留每个字幕段的 `speaker` 字段。CPU 可以运行但预计较慢，建议使用 CUDA；首次验证建议使用 30 秒、包含两位说话人的中文音频。MOSS 的公开评测主要集中在中文多人场景，其他语言应先用自己的音频验收。
 
+MOSS 推理期间，Launcher 的日志会先显示输入准备状态，再按约 5 秒更新一次真实的“已生成 token 数”，结束时显示本次生成总数。上游没有可预知的最终输出长度，因此这里不计算百分比；如果首个 token 之前停留较久，仍属于音频特征准备或模型生成首 token 阶段。
+
 ## OpenAI Whisper（faster-whisper）
 
 faster-whisper 使用 CTranslate2 运行时实现 OpenAI Whisper 模型，自带 Silero VAD、30 秒滑动窗口和词级时间戳，长音频由上游内部处理，MAW 不再分块（`--batch-size-s` 对该引擎无效）。MAW 固定开启词级时间戳与 VAD 过滤并关闭跨段上下文（避免一句幻觉污染后续字幕），词级秒级时间戳会归一化为 MAW 要求的整数毫秒；句段拆分交给与 Qwen 路径相同的统一切句逻辑。
@@ -128,9 +130,11 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
 
 ## 分段整理（字数上限 / 停顿切句）
 
-Launcher 与 CLI 的 `--max-len`（中文单条最大字符数，默认 18）、`--min-len`（短句合并阈值，默认 5）、`--gap-split`（停顿切句毫秒，默认 800）对所有本地引擎（Qwen3-ASR、FunASR、MOSS）同样生效。引擎返回的分段中超过最大字数的条目会按既有切句逻辑重组：优先句号等强标点边界，其次逗号等弱标点，最后按字数硬切；组内过短片段按阈值合并。
+Launcher 与 CLI 的 `--max-len`（字符型每条最大字符数，默认 18）、`--min-len`（字符型短句合并阈值，默认 5）、`--max-words`（单词型每条最大单词数，默认 13）、`--min-words`（单词型短句合并阈值，默认 3）和 `--gap-split`（停顿切句毫秒，默认 800）会传给转写器。已知语言时由统一的 `split_mode` 选择字符型或单词型规则；没有语言元数据时，MAW 优先看文字脚本，能确认 CJK 就用字符型，无法确认的拉丁文本默认用单词型，但不会把它冒充成英语。
 
-MOSS 模型输出契约只有"段级"一对 start/end 时间戳（`[start][Sxx]文本[end]`），没有字词级时序。因此拆分超长段时，子段内部时间是按字符权重（CJK=1、其他=0.5）线性估算的，段首尾保持真实时间码；需要更精确的字级时间可考虑后续接入 Qwen3-ForcedAligner 做强制对齐（尚未实现）。
+MOSS 模型输出契约只有"段级"一对 start/end 时间戳（`[start][Sxx]文本[end]`），没有字词级时序。因此 MOSS 不再把整段伪造成字符/单词 `items`，也不对它做基于字数的硬切；每个模型段原样成为一条字幕。需要更细的时间码时，仍需后续接入 Qwen3-ForcedAligner 做强制对齐（尚未实现）。
+
+本地生成的 `.mosp` 会在顶层写入 `language`、`language_source`、`split_mode` 和 `timestamp_granularity`。例如 MOSS 英文输出若模型没有返回语言信息，可能是 `language: ""`、`language_source: "unknown"`、`split_mode: "word"`、`timestamp_granularity: "segment"`；这表示“按单词理解文本，但没有单词时间码”，不是识别成了英语。
 
 与云端管线默认行为一致，本地引擎输出的每条字幕结尾的全角逗号、句号会被去除（`！`、`？`保留）。
 

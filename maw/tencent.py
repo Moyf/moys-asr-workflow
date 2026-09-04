@@ -240,7 +240,13 @@ def parse_result(response: dict[str, object]) -> dict[str, object]:
         sentences.append(sentence)
         items.extend(sentence_items)
     text = "".join(str(sentence["text"]) for sentence in sentences)
-    return {"text": text, "language": "", "items": items, "sentences": sentences}
+    return {
+        "text": text,
+        "language": "",
+        "items": items,
+        "sentences": sentences,
+        "timestamp_granularity": "word" if items else "segment" if sentences else "unknown",
+    }
 
 
 def transcribe(

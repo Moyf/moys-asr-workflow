@@ -36,6 +36,14 @@ from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tool, resolve_ffmpeg_tools
+from maw.language import (
+    DEFAULT_MAX_WORDS,
+    DEFAULT_MIN_WORDS,
+    normalize_language_code,
+    resolve_language,
+    split_mode_for_text,
+    timestamp_granularity_for_items,
+)
 from maw.project_io import write_mosp
 
 from maw.media_cache import embed_media_caches, merge_media_caches
@@ -145,7 +153,7 @@ def _normalize_language(lang: str | None) -> str | None:
     key = lang.strip().lower()
     if key in {"auto", "automatic", "detect", "自动", "自动识别"}:
         return None
-    return LANGUAGE_MAP.get(key, key)
+    return LANGUAGE_MAP.get(key, normalize_language_code(lang) or key)
 
 
 def _validate_hotword_weight(value: str | int) -> int:
@@ -694,9 +702,11 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
 
 # ===== 双轨切句：CJK 检测 + 空格语言（英文等）切句 =====
 
-# 默认按词数计量：英文每条字幕 3–13 词（Netflix 风格上限约 14 词）
-WESTERN_MAX_WORDS = 13
-WESTERN_MIN_WORDS = 3
+# 默认按词数计量：英文每条字幕 3–13 词（Netflix 风格上限约 14 词）。
+# Keep the old provider-module names as compatibility aliases while the
+# actual defaults live in the shared language contract.
+WESTERN_MAX_WORDS = DEFAULT_MAX_WORDS
+WESTERN_MIN_WORDS = DEFAULT_MIN_WORDS
 
 # 句末强标点（完整句子边界）与弱标点（超长时的断点），兼容 CJK 全角
 WESTERN_STRONG_END = ".!?。！？；"
@@ -796,15 +806,23 @@ def split_segments_auto(items: list[dict], *, max_len: int, min_len: int,
                         gap_split_ms: int,
                         max_words: int = WESTERN_MAX_WORDS,
                         min_words: int = WESTERN_MIN_WORDS,
-                        natural_cjk: bool = False) -> list[dict]:
+                        natural_cjk: bool = False,
+                        split_mode: str | None = None) -> list[dict]:
     """按静音组自动选择切句逻辑（双轨）。
 
-    先按静音间隔预切；每个静音组内 CJK 主导则走中文逻辑，
-    否则走空格语言逻辑——中英混排的播客也能逐段正确归类。
+    先按静音间隔预切；未指定 ``split_mode`` 时，每个静音组内 CJK
+    主导则走中文逻辑，否则走空格语言逻辑——中英混排的播客也能逐段
+    正确归类。已知单一语言时，调用方可传 ``continuous`` 或 ``word``
+    固定计量方式。
     """
     segments: list[dict] = []
     for group in split_by_silence(items, gap_split_ms):
-        if is_cjk_dominant(group):
+        use_cjk = (
+            split_mode == "continuous"
+            if split_mode in {"continuous", "word"}
+            else is_cjk_dominant(group)
+        )
+        if use_cjk:
             natural_min_len = (
                 max(QWEN_AUDIO_NATURAL_MIN_LEN, min_len)
                 if natural_cjk else min_len
@@ -1155,16 +1173,22 @@ def parse_transcription_result(result: dict) -> dict:
     """
     transcripts = result.get("transcripts", [])
     if not transcripts:
-        return {"text": "", "language": "", "items": []}
+        return {
+            "text": "",
+            "language": "",
+            "items": [],
+            "timestamp_granularity": "unknown",
+        }
 
     # 只取第一个音轨（channel_id=0）
     t = transcripts[0]
     all_items: list[dict] = []
-    detected_language = ""
+    detected_language = normalize_language_code(result.get("language") or result.get("lang"))
+    has_word_timestamps = False
 
     for sent in t.get("sentences", []):
         if not detected_language and sent.get("language"):
-            detected_language = sent["language"]
+            detected_language = normalize_language_code(sent["language"])
 
         words = sent.get("words") or []
         if not words:
@@ -1176,6 +1200,7 @@ def parse_transcription_result(result: dict) -> dict:
             })
             continue
 
+        has_word_timestamps = True
         for w in words:
             text = w.get("text", "")
             punct = w.get("punctuation", "")
@@ -1189,6 +1214,7 @@ def parse_transcription_result(result: dict) -> dict:
         "text": t.get("text", ""),
         "language": detected_language,
         "items": all_items,
+        "timestamp_granularity": "word" if has_word_timestamps else "segment",
     }
 
 
@@ -1196,15 +1222,22 @@ def parse_funasr_transcription_result(result: dict) -> dict:
     """把 Fun-ASR/Qwen-Audio 的句级结果映射为 MAW items 和句子组。"""
     transcripts = result.get("transcripts", [])
     if not transcripts:
-        return {"text": "", "language": "", "items": [], "sentences": []}
+        return {
+            "text": "",
+            "language": "",
+            "items": [],
+            "sentences": [],
+            "timestamp_granularity": "unknown",
+        }
 
     transcript = transcripts[0]
     all_items: list[dict] = []
     parsed_sentences: list[dict] = []
-    detected_language = ""
+    detected_language = normalize_language_code(result.get("language") or result.get("lang"))
+    has_word_timestamps = False
     for sentence in transcript.get("sentences", []):
         if not detected_language and sentence.get("language"):
-            detected_language = str(sentence["language"])
+            detected_language = normalize_language_code(sentence["language"])
         speaker_id = sentence.get("speaker_id")
         speaker = str(speaker_id) if speaker_id is not None else None
         words = sentence.get("words") or []
@@ -1219,6 +1252,7 @@ def parse_funasr_transcription_result(result: dict) -> dict:
                 item["speaker"] = speaker
             sentence_items.append(item)
         else:
+            has_word_timestamps = True
             for word in words:
                 item = {
                     "text": word.get("text", "") + word.get("punctuation", ""),
@@ -1255,6 +1289,7 @@ def parse_funasr_transcription_result(result: dict) -> dict:
         "language": detected_language,
         "items": all_items,
         "sentences": parsed_sentences,
+        "timestamp_granularity": "word" if has_word_timestamps else "segment",
     }
 
 
@@ -1264,6 +1299,9 @@ def build_segments_preserving_speakers(
     max_len: int,
     min_len: int,
     gap_split_ms: int,
+    max_words: int = WESTERN_MAX_WORDS,
+    min_words: int = WESTERN_MIN_WORDS,
+    split_mode: str | None = None,
 ) -> list[dict]:
     """在每个 speaker run 内切句和修复零时长，避免跨说话人合并。"""
     segments: list[dict] = []
@@ -1277,6 +1315,9 @@ def build_segments_preserving_speakers(
             max_len=max_len,
             min_len=min_len,
             gap_split_ms=gap_split_ms,
+            max_words=max_words,
+            min_words=min_words,
+            split_mode=split_mode,
         )
         run_segments = repair_nonpositive_duration_segments(run_segments)
         if speaker is not None:
@@ -1292,6 +1333,9 @@ def build_segments_from_api_sentences(
     max_len: int,
     min_len: int,
     gap_split_ms: int,
+    max_words: int = WESTERN_MAX_WORDS,
+    min_words: int = WESTERN_MIN_WORDS,
+    split_mode: str | None = None,
 ) -> list[dict]:
     """优先保留云端句子边界，只在单句内部进行必要的切分。
 
@@ -1334,6 +1378,9 @@ def build_segments_from_api_sentences(
                 max_len=max_len,
                 min_len=min_len,
                 gap_split_ms=gap_split_ms,
+                max_words=max_words,
+                min_words=min_words,
+                split_mode=split_mode,
                 natural_cjk=(
                     len(run_text) > max_len
                     and is_cjk_dominant(run)
@@ -1505,8 +1552,23 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
     result = parse_funasr_transcription_result(raw) if uses_file_urls(model) else parse_transcription_result(raw)
     if capture_raw:
         result["_raw_response"] = raw
-    if not result.get("language") and norm_lang:
-        result["language"] = norm_lang
+    language_value, language_source = resolve_language(
+        result.get("language"),
+        norm_lang,
+        str(result.get("text") or ""),
+    )
+    result["language"] = language_value
+    result["language_source"] = language_source
+    result["split_mode"] = split_mode_for_text(
+        str(result.get("text") or ""),
+        language_value,
+    )
+    if result.get("timestamp_granularity") in {None, "unknown"}:
+        result["timestamp_granularity"] = timestamp_granularity_for_items(
+            result.get("items") or [],
+            result["split_mode"],
+            has_segments=bool(result.get("sentences")),
+        )
     result["usage"] = task_usage
     return result
 
@@ -1527,6 +1589,14 @@ def main():
     parser.add_argument(
         "--min-len", type=int, default=5,
         help="句号间最短字数，不足则合并（默认 5；仅 CJK 内容生效）",
+    )
+    parser.add_argument(
+        "--max-words", type=int, default=WESTERN_MAX_WORDS,
+        help=f"英文单条字幕最大单词数（默认 {WESTERN_MAX_WORDS}；仅空格语言生效）",
+    )
+    parser.add_argument(
+        "--min-words", type=int, default=WESTERN_MIN_WORDS,
+        help=f"英文短句合并阈值（默认 {WESTERN_MIN_WORDS}；仅空格语言生效）",
     )
     parser.add_argument(
         "--language", default=None,
@@ -1623,6 +1693,10 @@ def main():
     args = parser.parse_args()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
+    if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
+        parser.error("字幕切分参数无效")
+    if args.max_len < args.min_len or args.max_words < args.min_words:
+        parser.error("最大值不能小于对应的短句合并阈值")
     enable_speaker = args.speaker or args.speaker_colors
     if enable_speaker and not supports_speaker_diarization(args.model):
         parser.error("--speaker / --speaker-colors 仅适用于 Qwen-Audio 或 Fun-ASR 模型")
@@ -1760,11 +1834,15 @@ def main():
         api_sentences = result.get("sentences") if is_qwen_audio_model(args.model) else None
         if api_sentences:
             print("[解析] 正在按 Qwen-Audio 云端句子边界整理字幕...")
+            split_mode = split_mode_for_text(result.get("text", ""), result.get("language"))
             segments = build_segments_from_api_sentences(
                 api_sentences,
                 max_len=args.max_len,
                 min_len=args.min_len,
                 gap_split_ms=args.gap_split,
+                max_words=args.max_words,
+                min_words=args.min_words,
+                split_mode=split_mode,
             )
             print(f"[解析] 字幕整理完成：{len(segments)} 条（保留云端句子边界）。")
         elif not items:
@@ -1774,9 +1852,13 @@ def main():
             )
         else:
             print("[解析] 正在按停顿和字数整理字幕（中文首次运行可能加载 jieba 词典）...")
+            split_mode = split_mode_for_text(result.get("text", ""), result.get("language"))
             segments = build_segments_preserving_speakers(
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
+                max_words=args.max_words,
+                min_words=args.min_words,
+                split_mode=split_mode,
             )
             print(f"[解析] 字幕整理完成：{len(segments)} 条。")
 
@@ -1870,7 +1952,19 @@ def main():
         json_path = output_path.with_suffix(".mosp")
         json_data = {
             "media": str(input_path),
-            "language": result.get("language", ""),
+            "language": normalize_language_code(result.get("language")),
+            "language_source": result.get("language_source", "unknown"),
+            "split_mode": result.get("split_mode") or split_mode_for_text(
+                str(result.get("text") or ""),
+                result.get("language"),
+            ),
+            "timestamp_granularity": result.get("timestamp_granularity") or (
+                timestamp_granularity_for_items(
+                    result.get("items") or [],
+                    result.get("split_mode") or "word",
+                    has_segments=bool(segments),
+                )
+            ),
             "model": (
                 args.model if is_funasr_model(args.model)
                 else "qwen-audio-asr-api" if is_qwen_audio_model(args.model)
