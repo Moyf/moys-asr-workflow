@@ -417,6 +417,7 @@
     '上一条字幕': 'Previous subtitle', '下一条字幕': 'Next subtitle',
     '向前多选': 'Extend selection backward', '向后多选': 'Extend selection forward',
     '跳转并播放选中字幕': 'Seek to and play selected subtitle',
+    '跳到当前字幕开头/结尾并保持暂停': 'Seek to the current subtitle start/end and stay paused',
     '倍速 ×0.5/重置/×2': 'Speed ×0.5/reset/×2',
     '双击波形': 'Double-click waveform', '右键波形背景': 'Right-click waveform background',
     '在鼠标位置创建字幕（仅波形）': 'Create a subtitle at the pointer (waveform only)',
