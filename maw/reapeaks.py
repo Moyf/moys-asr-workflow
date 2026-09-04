@@ -606,11 +606,12 @@ def generate_for_media(
     incomplete caches are rebuilt. The file is written next to the media so
     the server only ever reads it.
 
-    ``source_media_path`` is the media the editor will open: the cache is
-    written next to it and its ``(mtime, size)`` is recorded in the header as
-    the provenance the server later checks. ``media_path`` is a fallback decode
-    input for callers that only have a derived file around (e.g. a temporary
-    extraction).  When the source itself is readable it is always preferred,
+    ``source_media_path`` is the media the editor will open: when it can be
+    decoded, the cache is written next to it and its ``(mtime, size)`` is
+    recorded in the header as the provenance the server later checks.
+    ``media_path`` is a fallback decode input for callers that only have a
+    derived file around (e.g. a temporary extraction).  When the source itself
+    is readable it is always preferred,
     because the .ReaPeaks header stores the decoded file's sample rate and
     channel count and has no room to record that they came from somewhere else:
     deriving a cache from a 16 kHz mono ASR extraction of a 48 kHz stereo video,
@@ -625,9 +626,9 @@ def generate_for_media(
     if existing is not None and _reapeaks_matches_media(existing, signature_path):
         if not include_spectral or _reapeaks_contains_spectral(existing):
             return existing
-    target = signature_path.with_name(signature_path.name + ".ReaPeaks")
     # 优先解码源媒体；源不可读或解不出音频时退回调用方给的派生文件，
-    # 让缓存至少覆盖"编辑器能看到的那部分"，而不是整体失效。
+    # 让缓存至少覆盖"编辑器能看到的那部分"，而不是整体失效。回退缓存
+    # 必须写在派生文件旁，避免把派生数据伪装成源媒体的缓存。
     candidates = (
         [media_path] if signature_path == media_path else [signature_path, media_path]
     )
@@ -664,6 +665,7 @@ def generate_for_media(
                     f"{decode_path.name} -> {candidates[1].name}"
                 )
             continue
+        target = decode_path.with_name(decode_path.name + ".ReaPeaks")
         try:
             target.write_bytes(data)
         except OSError as exc:

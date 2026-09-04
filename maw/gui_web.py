@@ -13,7 +13,7 @@ import threading
 import tempfile
 import time
 import webbrowser
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -3098,15 +3098,28 @@ def _wait_for_server(
     probe_timeout: float = 0.25,
 ) -> bool:
     probe_url = f"{url.rstrip('/')}{probe_path}"
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    deadline = time.monotonic() + max(0.0, timeout)
+    request_budget = max(0.01, probe_timeout)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
         try:
-            with urlopen(probe_url, timeout=probe_timeout) as response:
+            with urlopen(probe_url, timeout=min(request_budget, remaining)) as response:
                 if 200 <= response.status < 500:
                     return True
+        except HTTPError as error:
+            # urlopen raises for 4xx/5xx instead of returning a response.  A
+            # 4xx still proves that the local HTTP server is alive; retain the
+            # documented 200..499 readiness range while continuing to retry 5xx.
+            if 200 <= error.code < 500:
+                return True
         except (OSError, URLError):
-            time.sleep(0.1)
-    return False
+            pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.1, remaining))
 
 
 def _listening_process_id(port: int) -> int | None:

@@ -115,8 +115,8 @@ class MediaCacheTests(unittest.TestCase):
         self.assertIsNotNone(reapeaks.load_spectral_payload(source))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    def test_undecodable_source_falls_back_to_derived_but_keeps_source_signature(self) -> None:
-        """源媒体解不开时退回派生文件，工程签名仍指向源媒体（不阻断转写）。"""
+    def test_undecodable_source_falls_back_to_derived_with_actual_signature(self) -> None:
+        """源媒体解不开时退回派生文件，但缓存签名必须描述实际解码文件。"""
         source = self.root / "source.mp4"
         cache_media = self.root / "limited.wav"
         shutil.copy2(self.wav, cache_media)
@@ -129,12 +129,19 @@ class MediaCacheTests(unittest.TestCase):
             generate_spectral=True,
         )
 
+        derived_signature = media_cache.media_signature(cache_media)
         for key in ("waveform", "spectral", "waveform_reapeaks"):
             self.assertEqual(
-                result.project[key]["source"], media_cache.media_signature(source)
+                result.project[key]["source"], derived_signature
             )
         self.assertGreater(result.project["waveform"]["duration_ms"], 0)
-        # 退回派生文件后头部记的是派生大小，服务器读取时不能当作源媒体的缓存
+        self.assertEqual(
+            Path(result.reapeaks_path),
+            cache_media.with_name(cache_media.name + ".ReaPeaks"),
+        )
+        # 退回派生文件后，缓存只能被派生文件接受，不能误用于源媒体。
+        self.assertIsNotNone(reapeaks.load_waveform_payload(cache_media))
+        self.assertIsNone(reapeaks.load_spectral_payload(source))
         self.assertIsNone(reapeaks.load_waveform_payload(source))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")

@@ -14,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Mapping, final
 from unittest import mock
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -4104,6 +4104,41 @@ class WaitForServerProbeTests(unittest.TestCase):
         finally:
             server.shutdown()
             server.server_close()
+
+    def test_wait_for_server_treats_http_4xx_as_ready(self) -> None:
+        error = HTTPError(
+            "http://127.0.0.1:8250/api/startup-status",
+            HTTPStatus.NOT_FOUND,
+            "not found",
+            None,
+            None,
+        )
+        with mock.patch("maw.gui_web.urlopen", side_effect=error):
+            self.assertTrue(
+                _wait_for_server(
+                    "http://127.0.0.1:8250/",
+                    timeout=0.1,
+                    probe_path=EDITOR_HEALTH_PROBE_PATH,
+                )
+            )
+
+    def test_wait_for_server_caps_probe_timeout_to_remaining_budget(self) -> None:
+        probe_timeouts: list[float] = []
+
+        def fail_probe(_url: str, *, timeout: float) -> None:
+            probe_timeouts.append(timeout)
+            raise URLError("not ready")
+
+        with mock.patch("maw.gui_web.urlopen", side_effect=fail_probe):
+            self.assertFalse(
+                _wait_for_server(
+                    "http://127.0.0.1:8250/",
+                    timeout=0.12,
+                    probe_timeout=2.0,
+                )
+            )
+        self.assertTrue(probe_timeouts)
+        self.assertTrue(all(value <= 0.12 for value in probe_timeouts))
 
 
 if __name__ == "__main__":
