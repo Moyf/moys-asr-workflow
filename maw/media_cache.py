@@ -54,11 +54,16 @@ def embed_media_caches(
 ) -> MediaCacheResult:
     """嵌入波形缓存并生成 .ReaPeaks 缓存（best-effort）。
 
-    ``media_path`` 是实际用于解码和生成缓存的文件；``source_media_path``
-    是工程中记录的原始媒体。测试模式会把前者指向临时的 2 分钟音频，
-    但缓存的来源签名仍指向后者，避免工程加载时被误判为缓存失效；
-    ``.ReaPeaks`` 也写到源媒体旁（而非临时文件旁），临时目录清理后
-    服务器仍能从源媒体旁读到它。
+    ``source_media_path`` 是工程里记录的原始媒体，也就是编辑器将要打开的那份
+    文件：两份缓存的来源签名、``.ReaPeaks`` 的落点都指向它，因此临时目录被清理
+    后服务器仍能从源媒体旁读到缓存。``media_path`` 是调用方手头的派生文件
+    （测试模式的 2 分钟临时音频、本地 ASR 的 16 kHz 单声道提取），只在源媒体
+    已不可读时充当解码兜底。
+
+    解码一律优先源媒体：缓存会记住被解码文件的采样率与声道数，头部没有地方
+    记录"这些数据其实来自另一个文件"，用派生文件取峰会把整条时间轴重新定基
+    （16 kHz 的 peak 率不是整数，取整后误差随播放位置线性累积）并让尾部失去
+    覆盖。
 
     波形失败仅警告、ReaPeaks 失败仅跳过，与既有降级语义一致。
     ``generate_spectral`` 关闭时仍生成 ReaPeaks wave 层，但跳过频谱 FFT
@@ -68,7 +73,23 @@ def embed_media_caches(
     source_path = (
         Path(source_media_path) if source_media_path is not None else cache_path
     )
-    waveform_result = embed_waveform(project, cache_path, ffmpeg_bin=ffmpeg_bin)
+    # 与 reapeaks.generate_for_media 同一策略：源媒体可读就解码源媒体，
+    # 派生文件只在源不可用（或解不出音频）时兜底。
+    decode_path = cache_path
+    if source_path != cache_path and source_path.is_file():
+        decode_path = source_path
+    waveform_result = embed_waveform(project, decode_path, ffmpeg_bin=ffmpeg_bin)
+    if (
+        waveform_result.error is not None
+        and decode_path != cache_path
+        and cache_path.is_file()
+    ):
+        print(
+            "[waveform] 源媒体解码失败，改用派生文件生成缓存: "
+            f"{decode_path.name} -> {cache_path.name}"
+        )
+        decode_path = cache_path
+        waveform_result = embed_waveform(project, decode_path, ffmpeg_bin=ffmpeg_bin)
     project = waveform_result.project
     if waveform_result.error is None:
         payload = project.get("waveform")
@@ -112,10 +133,10 @@ def embed_media_caches(
                 print(f"[reapeaks-wave] 已嵌入 {reapeaks_wave['peak_count']} peaks")
         except (OSError, ValueError, IndexError, struct.error) as error:
             print(f"[reapeaks] 警告: 无法读取已生成缓存: {error}")
-    elif not cache_path.exists():
+    elif not source_path.exists() and not cache_path.exists():
         # 常见于调用方把生成挪到了临时目录清理之后；明确指出真实原因，
         # 避免「缺少 ffmpeg 或 numpy」的误导。
-        print(f"[reapeaks] 警告: 缓存媒体不存在，已跳过生成: {cache_path}")
+        print(f"[reapeaks] 警告: 缓存媒体不存在，已跳过生成: {source_path}")
     else:
         print("[reapeaks] 已跳过频谱缓存生成（原因见上方 [reapeaks] 日志）")
     return MediaCacheResult(
