@@ -8,17 +8,19 @@ import sys
 import tempfile
 import threading
 import unittest
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Mapping, final
 from unittest import mock
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
@@ -605,7 +607,10 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         ffmpeg = self.root / "ffmpeg.exe"
         with (
-            mock.patch("maw.gui_web._postprocess_ffmpeg", return_value=ffmpeg),
+            mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(
+                ffmpeg=ffmpeg,
+                ffprobe=None,
+            )),
             mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=None, reapeaks_path=None)) as embed,
         ):
             result = self.api.generate_waveform_project({"mediaPath": str(media), "generateSpectral": True})
@@ -1233,8 +1238,18 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(
             wait_for_server.call_args_list,
             [
-                mock.call("http://127.0.0.1:9876/", timeout=0.25),
-                mock.call("http://127.0.0.1:9876/", timeout=SERVER_START_TIMEOUT),
+                mock.call(
+                    "http://127.0.0.1:9876/",
+                    timeout=0.25,
+                    probe_path=EDITOR_HEALTH_PROBE_PATH,
+                    probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+                ),
+                mock.call(
+                    "http://127.0.0.1:9876/",
+                    timeout=SERVER_START_TIMEOUT,
+                    probe_path=EDITOR_HEALTH_PROBE_PATH,
+                    probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+                ),
             ],
         )
         self.assertNotIn("serverAlreadyRunning", result)
@@ -1294,6 +1309,71 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["gapRemove"]["lead_in_ms"], 120)
         self.assertEqual(wait_for_server.call_args, mock.call("http://127.0.0.1:9877/", timeout=SERVER_START_TIMEOUT))
         self.assertTrue(self.api.stop_alignment_server()["stopped"])
+
+    def test_packaged_alignment_child_resets_pyinstaller_environment(self) -> None:
+        project = self.root / "project.mosp"
+        script = self.root / "script.txt"
+        executable = self.root / "MAW"
+        project.write_text('{"segments": []}\n', encoding="utf-8")
+        script.write_text("第一句\n", encoding="utf-8")
+        executable.write_bytes(b"app")
+
+        class FakeProcess:
+            def poll(self) -> int | None:
+                return None
+
+        with mock.patch.object(sys, "frozen", True, create=True):
+            with mock.patch.object(sys, "executable", str(executable)):
+                with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
+                    with mock.patch("maw.gui_web._free_local_port", return_value=9877):
+                        with mock.patch("maw.gui_web._wait_for_server", return_value=True):
+                            result = self.api.start_alignment_server({
+                                "projectPath": str(project),
+                                "scriptPath": str(script),
+                            })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(popen.call_args.args[0][:2], [str(executable), "--serve-alignment"])
+        self.assertEqual(
+            popen.call_args.kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"],
+            "1",
+        )
+
+    def test_alignment_timeout_returns_child_startup_log(self) -> None:
+        project = self.root / "project.mosp"
+        script = self.root / "script.txt"
+        project.write_text('{"segments": []}\n', encoding="utf-8")
+        script.write_text("第一句\n", encoding="utf-8")
+
+        class FakeProcess:
+            returncode = None
+
+            def poll(self) -> int | None:
+                return self.returncode
+
+            def terminate(self) -> None:
+                self.returncode = -15
+
+            def wait(self, timeout: float | None = None) -> int:
+                return self.returncode or 0
+
+        def spawn(*_args, **kwargs):
+            kwargs["stdout"].write(b"alignment child stalled\n")
+            kwargs["stdout"].flush()
+            return FakeProcess()
+
+        with mock.patch("maw.gui_web.subprocess.Popen", side_effect=spawn):
+            with mock.patch("maw.gui_web._free_local_port", return_value=9877):
+                with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+                    result = self.api.start_alignment_server({
+                        "projectPath": str(project),
+                        "scriptPath": str(script),
+                    })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "alignment_server_no_response")
+        self.assertIn("启动超时", result["detail"])
+        self.assertIn("alignment child stalled", result["detail"])
 
     def test_start_alignment_server_validates_project_script_and_media_inputs(self) -> None:
         script = self.root / "script.txt"
@@ -1678,15 +1758,61 @@ class GuiWebBridgeTests(unittest.TestCase):
             def wait(self, timeout: float | None = None) -> int:
                 return self.returncode or 0
 
-        with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()):
+        log_directory = self.root / "logs"
+        api = LauncherApi(
+            paths=self.paths,
+            window_getter=lambda: self.window,
+            log_sink=LocalLogSink(directory=log_directory),
+        )
+
+        def spawn(*_args, **kwargs):
+            kwargs["stdout"].write(b"child stalled before binding port\n")
+            kwargs["stdout"].flush()
+            return FakeProcess()
+
+        with mock.patch("maw.gui_web.subprocess.Popen", side_effect=spawn):
             with mock.patch("maw.gui_web._wait_for_server", return_value=False):
                 with mock.patch("maw.gui_web.webbrowser.open") as open_browser:
-                    result = self.api.start_server({"jsonPath": str(project), "mediaPath": str(media), "port": "9876"})
+                    result = api.start_server({"jsonPath": str(project), "mediaPath": str(media), "port": "9876"})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "port")
         self.assertEqual(result["code"], "server_no_response")
+        self.assertIn("启动超时", result["detail"])
+        self.assertIn("child stalled before binding port", result["detail"])
+        persisted_log = next(log_directory.glob("maw-*.log")).read_text(encoding="utf-8")
+        self.assertIn("server_no_response", persisted_log)
+        self.assertIn("child stalled before binding port", persisted_log)
         open_browser.assert_not_called()
+
+    def test_packaged_server_child_resets_pyinstaller_environment(self) -> None:
+        project = self.root / "project.json"
+        media = self.root / "clip.mp4"
+        executable = self.root / "MAW"
+        project.write_text(json.dumps({"media": str(media), "segments": []}), encoding="utf-8")
+        media.write_bytes(b"media")
+        executable.write_bytes(b"app")
+
+        class FakeProcess:
+            def poll(self) -> int | None:
+                return None
+
+        with mock.patch.object(sys, "frozen", True, create=True):
+            with mock.patch.object(sys, "executable", str(executable)):
+                with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
+                    with mock.patch("maw.gui_web._wait_for_server", side_effect=[False, True]):
+                        result = self.api.start_server({
+                            "jsonPath": str(project),
+                            "mediaPath": str(media),
+                            "port": "9876",
+                        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(popen.call_args.args[0][:2], [str(executable), "--serve"])
+        self.assertEqual(
+            popen.call_args.kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"],
+            "1",
+        )
 
     def test_start_server_exposes_child_startup_log_when_process_exits(self) -> None:
         project = self.root / "project.json"
@@ -1740,7 +1866,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             def wait(self, timeout: float | None = None) -> int:
                 return self.returncode or 0
 
-        def wait(_url: str, *, timeout: float) -> bool:
+        def wait(_url: str, *, timeout: float, probe_path: str = "/", probe_timeout: float = 0.25) -> bool:
             calls.append("wait")
             return len(calls) > 1
 
@@ -3929,6 +4055,95 @@ class EmojiFontTests(unittest.TestCase):
         self.assertGreater(len(window.scripts), 0)
         self.assertIn("emojiFontReady", window.scripts[-1])
         self.assertIn(dest.as_uri(), window.scripts[-1])
+
+
+@final
+class WaitForServerProbeTests(unittest.TestCase):
+    """健康检查必须探测配置的轻量端点，并把 5xx 视为未就绪。"""
+
+    def test_wait_for_server_probes_configured_path(self) -> None:
+        seen_paths: list[str] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                seen_paths.append(self.path)
+                self.send_response(HTTPStatus.OK)
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def log_message(self, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{server.server_address[1]}/"
+            self.assertTrue(
+                _wait_for_server(url, timeout=2.0, probe_path="/api/startup-status", probe_timeout=1.0),
+            )
+            self.assertEqual(seen_paths, ["/api/startup-status"])
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_wait_for_server_treats_5xx_as_not_ready(self) -> None:
+        attempts: list[int] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                attempts.append(1)
+                self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
+                self.end_headers()
+
+            def log_message(self, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{server.server_address[1]}/"
+            self.assertFalse(_wait_for_server(url, timeout=0.35, probe_timeout=0.2))
+            self.assertGreaterEqual(len(attempts), 1)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_wait_for_server_treats_http_4xx_as_ready(self) -> None:
+        error = HTTPError(
+            "http://127.0.0.1:8250/api/startup-status",
+            HTTPStatus.NOT_FOUND,
+            "not found",
+            None,
+            None,
+        )
+        with mock.patch("maw.gui_web.urlopen", side_effect=error):
+            self.assertTrue(
+                _wait_for_server(
+                    "http://127.0.0.1:8250/",
+                    timeout=0.1,
+                    probe_path=EDITOR_HEALTH_PROBE_PATH,
+                )
+            )
+
+    def test_wait_for_server_caps_probe_timeout_to_remaining_budget(self) -> None:
+        probe_timeouts: list[float] = []
+
+        def fail_probe(_url: str, *, timeout: float) -> None:
+            probe_timeouts.append(timeout)
+            raise URLError("not ready")
+
+        with mock.patch("maw.gui_web.urlopen", side_effect=fail_probe):
+            self.assertFalse(
+                _wait_for_server(
+                    "http://127.0.0.1:8250/",
+                    timeout=0.12,
+                    probe_timeout=2.0,
+                )
+            )
+        self.assertTrue(probe_timeouts)
+        # Allow a small scheduling/clock-resolution margin while ensuring the
+        # 2-second per-probe default cannot escape the 120ms total budget.
+        self.assertTrue(all(0 < value < 0.2 for value in probe_timeouts))
 
 
 if __name__ == "__main__":

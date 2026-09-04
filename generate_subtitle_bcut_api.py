@@ -35,6 +35,7 @@ from generate_subtitle_qwen_api import (
 )
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
+from maw.project_io import write_mosp
 from maw.bcut import (
     SUPPORTED_AUDIO_EXTS,
     build_segments,
@@ -295,8 +296,11 @@ def main():
             print("[警告] 工程文件未通过契约校验，请把以下内容反馈给开发者：")
             for err in check.errors[:10]:
                 print(f"  {err.path}: {err.message}")
-        json_path.write_text(
-            json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
+        write_mosp(
+            json_path,
+            json_data,
+            media_path=input_path,
+            ffprobe_path=ffprobe_path,
         )
         print(f"工程文件已保存到: {json_path}")
 

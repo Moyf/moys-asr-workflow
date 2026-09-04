@@ -17,6 +17,7 @@ from generate_subtitle_qwen_api import (
 )
 from maw.media_cache import embed_media_caches, merge_media_caches
 from maw.ffmpeg import resolve_ffmpeg_tools
+from maw.project_io import write_mosp
 from maw.project import repair_segment_durations, validate_project
 from maw.speaker import apply_speaker_colors
 from maw.tencent import DEFAULT_ENGINE, load_config, transcribe
@@ -152,7 +153,12 @@ def main() -> int:
         check = validate_project(project)
         if not check.ok:
             raise RuntimeError("腾讯云结果未通过 MAW 工程校验: " + "; ".join(error.message for error in check.errors[:3]))
-        json_path.write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
+        write_mosp(
+            json_path,
+            project,
+            media_path=input_path,
+            ffprobe_path=ffprobe_path,
+        )
         print(f"工程文件已保存到: {json_path}")
     return 0
 

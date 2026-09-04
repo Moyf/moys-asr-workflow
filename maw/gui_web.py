@@ -13,7 +13,7 @@ import threading
 import tempfile
 import time
 import webbrowser
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -58,6 +58,7 @@ from maw.local_models import inspect_local_model, local_model_payload, prepare_l
 from maw.media import resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import read_project, read_srt
+from maw.project_io import write_mosp
 from maw.project import normalize_project
 from maw.postprocess_ffmpeg import (
     BurnSubtitleRequest,
@@ -104,6 +105,12 @@ MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
 MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
+# 编辑器健康检查探测轻量 JSON 端点：首页渲染会把全量工程数据内联进页面，
+# 大工程（长媒体内嵌波形）单次渲染可达数秒，不能作为就绪判据。
+EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
+# 单次探测超时与总超时分离：后台加载工程期间 GIL 繁忙，轻量端点也可能
+# 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
+EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
 BUNDLED_APP_VERSION = "1.5.3"
 MOSE_VERSION = "0.1.0"
@@ -457,6 +464,19 @@ def default_paths() -> LauncherPaths:
     # 源码运行时在仓库根；与 maw.gui_platform.asset_path 的取法保持一致。
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
     return LauncherPaths(root=root, env_path=DEFAULT_ENV_PATH, launcher_html=root / "web" / "launcher" / "index.html")
+
+
+def _independent_app_child_environment() -> dict[str, str]:
+    """为独立运行的 MAW 子进程构建环境。
+
+    PyInstaller 6.9+ 默认把通过同一冻结程序启动的进程当作 worker。
+    编辑器 Server 是独立 MAW 实例，必须重置 bootloader 环境；源码模式
+    和外部 Python 解释器维持原行为。
+    """
+    environment = _child_environment(os.environ, "", provider="")
+    if getattr(sys, "frozen", False):
+        environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return environment
 
 
 # ---- Linux keycap 表情字体（Noto Color Emoji）----
@@ -1375,7 +1395,12 @@ class LauncherApi:
         launch_url = f"{url}?lang={_gui_lang(payload)}"
 
         owned_server_running = self.server_process is not None and self.server_process.poll() is None
-        if _wait_for_server(url, timeout=0.25) and (not json_text or not owned_server_running):
+        if _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ) and (not json_text or not owned_server_running):
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:
             # 无工程：不带 JSON 路径启动，由服务器按「自动打开上次工程」设置恢复最近工程或回落为空白编辑器
@@ -1401,22 +1426,35 @@ class LauncherApi:
                 stdout=self.server_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_child_environment(os.environ, "", provider=""),
+                env=_independent_app_child_environment(),
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
         except OSError as error:
             self._close_server_log()
-            return _error_result("port", "server_start_failed", f"{url} | {error}")
-        if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
+            detail = f"{url} | {error}"
+            self._persist_start_failure("server_start_failed", detail)
+            return _error_result("port", "server_start_failed", detail)
+        if not _wait_for_server(
+            url,
+            timeout=SERVER_START_TIMEOUT,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             exit_code = self.server_process.poll() if self.server_process else None
             if exit_code is not None:
                 detail = self._read_server_log()
                 detail = f"{url} | 进程退出码 {exit_code}" + (f"：{detail}" if detail else "")
+                self._persist_start_failure("server_start_failed", detail)
                 _ = self._stop_owned_server()
                 return _error_result("port", "server_start_failed", detail)
-            _ = self._stop_owned_server()
-            return _error_result("port", "server_no_response", url)
+            _ = self._stop_owned_server(close_log=False)
+            child_log = self._read_server_log()
+            self._close_server_log()
+            detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
+            detail += f"：{child_log}" if child_log else "：子进程未输出日志"
+            self._persist_start_failure("server_no_response", detail)
+            return _error_result("port", "server_no_response", detail)
         self._close_server_log()
         return {"ok": True, "url": launch_url}
 
@@ -1513,7 +1551,7 @@ class LauncherApi:
                 stdout=self.alignment_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_child_environment(os.environ, "", provider=""),
+                env=_independent_app_child_environment(),
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
@@ -1530,17 +1568,25 @@ class LauncherApi:
             self.alignment_script_path = None
             self.alignment_media_path = None
             self.alignment_gap_remove = None
-            return _error_result("", "alignment_server_start_failed", f"{url} | {error}")
+            detail = f"{url} | {error}"
+            self._persist_start_failure("alignment_server_start_failed", detail)
+            return _error_result("", "alignment_server_start_failed", detail)
 
         if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
             exit_code = self.alignment_process.poll() if self.alignment_process else None
             if exit_code is not None:
                 detail = self._read_alignment_log()
                 detail = f"{url} | process exited with code {exit_code}" + (f": {detail}" if detail else "")
+                self._persist_start_failure("alignment_server_start_failed", detail)
                 _ = self._stop_owned_alignment_server()
                 return _error_result("", "alignment_server_start_failed", detail)
-            _ = self._stop_owned_alignment_server()
-            return _error_result("", "alignment_server_no_response", url)
+            _ = self._stop_owned_alignment_server(close_log=False)
+            child_log = self._read_alignment_log()
+            self._close_alignment_log()
+            detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
+            detail += f"：{child_log}" if child_log else "：子进程未输出日志"
+            self._persist_start_failure("alignment_server_no_response", detail)
+            return _error_result("", "alignment_server_no_response", detail)
         self._close_alignment_log()
         return {
             "ok": True,
@@ -1556,7 +1602,12 @@ class LauncherApi:
         """Report a responding MAW server on the currently selected localhost port."""
         port = _port(payload)
         url = f"http://127.0.0.1:{port}/"
-        if not _wait_for_server(url, timeout=0.25):
+        if not _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             return {"ok": True, "running": False, "url": url}
         pid = _maw_server_process_id(port)
         return {"ok": True, "running": pid is not None, "url": url, "pid": pid}
@@ -1585,7 +1636,7 @@ class LauncherApi:
             "detail": resolution.message,
         }
 
-    def _stop_owned_server(self) -> bool:
+    def _stop_owned_server(self, *, close_log: bool = True) -> bool:
         process = self.server_process
         self.server_process = None
         stopped = False
@@ -1597,7 +1648,8 @@ class LauncherApi:
         finally:
             if process is not None:
                 release_process_tree(process)
-            self._close_server_log()
+            if close_log:
+                self._close_server_log()
 
     def _read_server_log(self) -> str:
         log_file = self.server_log_file
@@ -1619,7 +1671,7 @@ class LauncherApi:
             except OSError:
                 pass
 
-    def _stop_owned_alignment_server(self) -> bool:
+    def _stop_owned_alignment_server(self, *, close_log: bool = True) -> bool:
         process = self.alignment_process
         self.alignment_process = None
         self.alignment_server_port = None
@@ -1636,7 +1688,12 @@ class LauncherApi:
         finally:
             if process is not None:
                 release_process_tree(process)
-            self._close_alignment_log()
+            if close_log:
+                self._close_alignment_log()
+
+    def _persist_start_failure(self, code: str, detail: str) -> None:
+        if self._log_sink is not None:
+            self._log_sink.append({"type": "error", "code": code, "detail": detail})
 
     def _read_alignment_log(self) -> str:
         log_file = self.alignment_log_file
@@ -1663,7 +1720,12 @@ class LauncherApi:
             return {"ok": True, "stopped": True}
         port = _port(payload or {})
         url = f"http://127.0.0.1:{port}/"
-        if not _wait_for_server(url, timeout=0.25):
+        if not _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             return {"ok": True, "stopped": False}
         if _stop_external_maw_server(port):
             return {"ok": True, "stopped": True}
@@ -1827,7 +1889,8 @@ class LauncherApi:
         project_path = output_seed.with_suffix(".mosp")
         project: dict[str, object] = {"media": str(media_path), "segments": []}
         try:
-            ffmpeg_path = _postprocess_ffmpeg(self.paths.env_path)
+            ffmpeg_tools = _postprocess_ffmpeg_tools(self.paths.env_path)
+            ffmpeg_path = ffmpeg_tools.ffmpeg
             cached = embed_media_caches(
                 project,
                 media_path,
@@ -1843,7 +1906,12 @@ class LauncherApi:
                     or "FFmpeg did not return any decodable audio samples."
                 )
                 return _error_result("mediaPath", "waveform_unavailable", detail)
-            project_path.write_bytes((json.dumps(normalized, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+            write_mosp(
+                project_path,
+                normalized,
+                media_path=media_path,
+                ffprobe_path=ffmpeg_tools.ffprobe,
+            )
         except (OSError, TypeError, ValueError) as error:
             return _error_result("mediaPath", "waveform_generation_failed", str(error))
 
@@ -3029,16 +3097,36 @@ def _drop_paths_from_event(event: Mapping[str, object]) -> list[str]:
     return paths
 
 
-def _wait_for_server(url: str, *, timeout: float) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+def _wait_for_server(
+    url: str,
+    *,
+    timeout: float,
+    probe_path: str = "/",
+    probe_timeout: float = 0.25,
+) -> bool:
+    probe_url = f"{url.rstrip('/')}{probe_path}"
+    deadline = time.monotonic() + max(0.0, timeout)
+    request_budget = max(0.01, probe_timeout)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
         try:
-            with urlopen(url, timeout=0.25) as response:
+            with urlopen(probe_url, timeout=min(request_budget, remaining)) as response:
                 if 200 <= response.status < 500:
                     return True
+        except HTTPError as error:
+            # urlopen raises for 4xx/5xx instead of returning a response.  A
+            # 4xx still proves that the local HTTP server is alive; retain the
+            # documented 200..499 readiness range while continuing to retry 5xx.
+            if 200 <= error.code < 500:
+                return True
         except (OSError, URLError):
-            time.sleep(0.1)
-    return False
+            pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.1, remaining))
 
 
 def _listening_process_id(port: int) -> int | None:
@@ -3047,7 +3135,8 @@ def _listening_process_id(port: int) -> int | None:
         return None
     try:
         result = subprocess.run(
-            ["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, check=False,
+            ["netstat", "-ano", "-p", "TCP"], capture_output=True,
+            encoding="mbcs", errors="replace", check=False,
             startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:
@@ -3068,7 +3157,8 @@ def _process_command_line(pid: int) -> str:
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
-            capture_output=True, text=True, check=False, startupinfo=startupinfo(), creationflags=creationflags(),
+            capture_output=True, encoding="mbcs", errors="replace", check=False,
+            startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:
         return ""
@@ -3097,7 +3187,8 @@ def _stop_external_maw_server(port: int) -> bool:
         return False
     try:
         result = subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True, check=False,
+            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True,
+            encoding="mbcs", errors="replace", check=False,
             startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:

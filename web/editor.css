@@ -110,6 +110,7 @@
     /* 波形画布 —— 供 waveform.js 通过 getComputedStyle 读取以跟随主题 */
     --wave-row-bg:          #1d252d;
     --wave-row-border:      #2d3944;
+    --wave-row-grid:        rgba(255, 255, 255, 0.04);
     --wave-row-tick:        #3b4b59;
     --wave-peak:            #65b89a;
     --wave-peak-dim:        #83909a;
@@ -314,6 +315,7 @@
     /* 波形画布 */
     --wave-row-bg:          #dfe4ea;
     --wave-row-border:      #c4cbd6;
+    --wave-row-grid:        rgba(42, 58, 78, 0.07);
     --wave-row-tick:        #aeb6c2;
     --wave-peak:            #27875f;   /* 原 #2f9e6f 在浅行底上仅 2.6:1，波形峰值发虚，加深至 3.5:1 */
     --wave-peak-dim:        #7d8898;   /* 媒体不可用时的降态峰：与 peak 同明度、去饱和，原值过浅 */
@@ -1012,6 +1014,16 @@
   .editor-settings-field > .editor-settings-item { width: auto; }
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
   .editor-settings-field > .editor-settings-hint { margin: 0; }
+  .timeline-settings-field {
+    gap: 6px; padding-top: 7px; border-top: 1px solid var(--border-subtle);
+  }
+  .timeline-settings-controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; width: 100%;
+  }
+  .timeline-settings-controls > .editor-settings-item { flex: 0 0 auto; }
+  .timeline-settings-controls .timeline-timecode-separator-input {
+    width: 2.5em !important; min-width: 2.5em; padding-left: 3px; padding-right: 3px; text-align: center;
+  }
   /* 字幕语言类型独立成组，避免提示与「合并字幕时插入字符」标题挤在一起。 */
   .split-language-type-field {
     gap: 5px; padding-top: 7px;
@@ -1175,7 +1187,8 @@
   .editor-settings-panel button:hover:not(:disabled) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
   .editor-settings-panel button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .editor-settings-panel button:disabled,
-  .editor-settings-panel select:disabled { opacity: .42; cursor: not-allowed; }
+  .editor-settings-panel select:disabled,
+  .editor-settings-panel input:disabled { opacity: .42; cursor: not-allowed; }
   .editor-settings-stepper {
     display: inline-flex; align-items: center; overflow: hidden;
     border: 1px solid var(--border); border-radius: var(--radius-sm);

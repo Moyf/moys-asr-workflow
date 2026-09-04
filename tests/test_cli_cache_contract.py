@@ -93,6 +93,38 @@ class CliCacheContractTests(unittest.TestCase):
             "否则缓存媒体在生成前就被临时目录清理",
         )
 
+    def test_project_generators_use_shared_mosp_writer(self) -> None:
+        project_io = REPO_ROOT / "maw" / "project_io.py"
+        project_io_tree = ast.parse(project_io.read_text(encoding="utf-8"), filename=str(project_io))
+        self.assertTrue(
+            _calls_named(project_io_tree, "probe_video_fps"),
+            "共享工程写出层必须负责尝试读取媒体 FPS",
+        )
+        for name in (*API_PROVIDER_CLIS, "generate_subtitle_tencent_api.py"):
+            with self.subTest(cli=name):
+                tree = ast.parse(
+                    (REPO_ROOT / name).read_text(encoding="utf-8"), filename=name
+                )
+                self.assertTrue(
+                    _calls_named(tree, "write_mosp"),
+                    f"{name} 生成 .mosp 时必须使用共享工程写出层",
+                )
+                self.assertFalse(
+                    _calls_named(tree, "probe_video_fps"),
+                    f"{name} 不应重复实现媒体 FPS 探测",
+                )
+        for relative in ("maw/local_asr.py", "maw/gui_web.py"):
+            with self.subTest(source=relative):
+                tree = ast.parse((REPO_ROOT / relative).read_text(encoding="utf-8"), filename=relative)
+                self.assertTrue(
+                    _calls_named(tree, "write_mosp"),
+                    f"{relative} 生成 .mosp 时必须使用共享工程写出层",
+                )
+                self.assertFalse(
+                    _calls_named(tree, "probe_video_fps"),
+                    f"{relative} 不应重复实现媒体 FPS 探测",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

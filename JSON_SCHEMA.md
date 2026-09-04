@@ -15,6 +15,11 @@
   "media": "...",
   "language": "...",
   "model": "...",
+  "media_metadata": {
+    "video_fps": 29.97002997002997,
+    "video_fps_ratio": "30000/1001"
+  },
+  "timebase": { "unit": "milliseconds", "fps": 30 },
   "sticker_root": "...",
   "waveform": { ... },
   "gap_remove": { ... },
@@ -31,12 +36,18 @@
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可）。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
 | `language` | `string` | 否 | 语言代码，如 `Chinese`、`English`。仅用于显示 |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
+| `media_metadata` | `object` | 否 | 源媒体元数据。视频可包含 `video_fps`（1–240 的数字）及可选的 `video_fps_ratio`（FFprobe 原始帧率比例字符串）；缺失时按旧工程处理 |
+| `timebase` | `object` | 否 | 字幕编辑时间基准：`unit` 为 `milliseconds` 或 `frames`，`fps` 范围为 1–240。缺失时按毫秒模式兼容读取 |
 | `sticker_root` | `string` | 否 | 表情包根目录绝对路径。打开工程时会覆盖编辑器内的 `STICKER_ROOT` |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
 | `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
 | `workspace` | `object` | 否 | 编辑器工作区：四个功能区的窗口布局与显示状态；不影响字幕和波形缓存。服务器版也可使用独立的本机命名工作区库跨工程复用 |
 | `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（拓展字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
+
+`media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在全局设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
+
+`timebase` 是字幕编辑器的时间基准，不改变媒体本身的时间单位。`unit: "milliseconds"` 保持旧行为；`unit: "frames"` 时，拖动、边界调整、方向键和 A/D 微调使用独立的帧字段，`fps` 决定帧与实际媒体时间的换算。为兼容旧工具，`start` / `end` 及字词时间码仍始终保存为整数毫秒；帧模式额外保存成对的 `start_frame` / `end_frame` 字段。帧时间码显示采用较通行的非丢帧格式 `HH:MM:SS:FF`，其中 `FF` 是当前秒内的帧号。
 
 ### 1.0 工程文件扩展名
 
@@ -55,6 +66,8 @@
   "schema": "moy.asr.waveform.v1",
   "encoding": "i8-minmax-base64",
   "peaks_per_second": 100,
+  "sample_rate": 1000,
+  "division": 10,
   "peak_count": 123456,
   "duration_ms": 1234560,
   "data": "base64 编码的 [min,max] int8 峰值对",
@@ -67,6 +80,8 @@
 ```
 
 - `data` 每个峰占 2 字节：有符号 int8 的最小值、最大值，整体再做 base64。
+- **时间刻度**：第 i 个峰覆盖 `[i × division / sample_rate, (i+1) × division / sample_rate)` 秒。做"峰值序号 ↔ 毫秒"换算时必须用 `sample_rate / division`；`peaks_per_second` 只是给人看的近似值。老缓存可以没有这两个字段（此时退化为 `peaks_per_second`），但只要出现一个就必须成对且合法，否则视为无效载荷。
+- `.ReaPeaks` 派生的载荷里 `sample_rate / division` 多数情况下是**分数**（16 kHz 媒体 `division=53` → 301.8868 峰/秒）。把它取整当刻度会按比例缩放整条时间轴，错位随媒体时长线性累积。
 - `source` 用于缓存失效；媒体文件名、字节大小或最后修改时间变化时会重新计算。
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
@@ -98,6 +113,8 @@
 - **生成时机**：转写生成工程时，`--with-waveform` 在媒体旁自动生成 `<媒体名>.ReaPeaks` 的 wave 层（GUI 默认开启）；只有同时勾选 Launcher 的“生成 ReaPeaks 频谱数据”或传入 `--with-spectral`，才额外执行频谱 FFT 并写入 spectral 层。`--with-spectral` 必须与 `--with-waveform` 一起使用。服务器只读取已有的 `.ReaPeaks`，不负责生成。生成由 Rust 内核（`reapeaks`）承担，经 ffmpeg 解码媒体；缺少 ffmpeg 或解码失败时打日志跳过。numpy 不参与 `.ReaPeaks` 生成（仅 OCR 后处理路径 lazy import）。
 - 解析器读取 REAPER 的 `RPKN`/`RPKL` 文件，取匹配 `peaks_per_second` 分辨率的 spectral 层（`-(int)'s'` 标记）；无 spectral 层、文件缺失或损坏时静默降级，不影响编辑器。
 - 未识别的 `schema` / `encoding` 会被忽略。浏览器端在 `decodeSpectralPayload` 校验这两字段与 `data` 长度（`peak_count * 4`）。
+- **与主波形层的对齐关系**：第 i 个频谱采样与第 i 个峰是同一时刻，两者共用 `division`，**不需要任何索引偏移**。频谱层的 `peak_count` 通常比配对的 wave 层少若干（44.1 kHz 真机文件少 7、16 kHz 少 25），因为末尾的 FFT 窗口填不满——缺口在尾部而非头部（用已知时刻的窄带脉冲实测：48 kHz 下频谱响应中心 bin 4207.5，wave 层最强 bin 4207）。因此这段尾部只是不上色，编辑器按索引越界处理，不得据此平移染色层。
+- 多声道媒体取声道 0 的主频/密度，服务端与浏览器端一致。
 
 ### 1.1b waveform_reapeaks 波形层（可选）
 
@@ -107,15 +124,20 @@
 {
   "schema": "moy.asr.waveform.v1",
   "encoding": "i8-minmax-base64",
-  "peaks_per_second": 300,
-  "peak_count": 1500,
-  "duration_ms": 5000,
+  "peaks_per_second": 301.886792,
+  "sample_rate": 16000,
+  "division": 53,
+  "peak_count": 1510,
+  "duration_ms": 5006,
   "data": "base64 的 [min,max] int8 对",
   "source": { "name": "audio.wav", "size": 441044, "modified_ms": 1786328355571 }
 }
 ```
 
-- 由服务器加载媒体时从 `find_reapeaks` 找到的 `.ReaPeaks` 解析最细 wave 层得到；`peaks_per_second = sample_rate / division`（约 300 峰/秒）。
+- 由服务器加载媒体时从 `find_reapeaks` 找到的 `.ReaPeaks` 解析最细 wave 层得到；刻度是 `sample_rate / division`（约 300 峰/秒），整除时 `peaks_per_second` 写成整数，否则写成精确比率（保留 6 位小数），**绝不取整**——取整会把整条时间轴按比例缩放，错位随媒体时长线性累积。
+- `.ReaPeaks` 永远描述"被解码的那份文件"。因此缓存生成一律优先解码工程记录的源媒体本身，不使用本地 ASR 的 16 kHz 单声道提取音频或 `--length-limit` 截断片段；头部 provenance 是源媒体的 `(mtime, size)` 双因子，任一不符即视为过期并重建。
+- **多声道合并**：本载荷把 `.ReaPeaks` 各声道合并成一条包络（min 取各声道最小、max 取各声道最大），与浏览器端 `decodeReapeaksFile` 完全一致。只取单一声道会让"双单声道"素材（人声只在右声道）画成直线。
+- 当前形状来源被切换时，波形绘制与「按音量移除空隙」的检测共用同一份包络，不会出现"看到的是一条曲线、按另一条曲线判断"。
 - 缺失 `.ReaPeaks` 或没有 wave 层时该字段不出现，编辑器回退自研波形。
 - 与 `spectral` 同源，均为 `.ReaPeaks` 派生的可丢弃缓存，非真源。
 - 没有 `spectral` 数据时，编辑器会自动取消并禁用“频谱颜色”开关；后台读到合法频谱后重新启用该开关。
@@ -423,6 +445,8 @@
   "id": "main-001",
   "start": 1234,
   "end": 5678,
+  "start_frame": 37,
+  "end_frame": 170,
   "text": "字幕文本",
   "items": [ ... ],
   "speaker": "1",
@@ -439,6 +463,8 @@
 | `id` | `string` | **必填** | 主字幕稳定 ID；输入缺失时规范化为 `main-001`、`main-002` 等确定性 ID |
 | `start` | `int` | **必填** | 段起始时间，**单位毫秒** |
 | `end` | `int` | **必填** | 段结束时间，**单位毫秒**，要求 `end > start` |
+| `start_frame` | `int` | 否 | 与 `end_frame` 成对出现的帧起始编号；`timebase.unit` 为 `frames` 时由编辑器使用 |
+| `end_frame` | `int` | 否 | 与 `start_frame` 成对出现的帧结束编号，要求 `end_frame > start_frame` |
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
 | `disabled` | `bool` | 否 | 禁用该字幕；预览、隐藏禁用项和默认导出会跳过它 |
@@ -451,7 +477,9 @@
 
 ### 关键约束
 
-- `start` / `end` / `items[*].start` / `items[*].end` 全部是**整数毫秒**（不是秒、不是字符串、不是浮点）
+- `start` / `end` / `items[*].start` / `items[*].end` 全部是**整数毫秒**（不是秒、不是字符串、不是浮点）；它们是兼容时间字段
+- `start_frame` / `end_frame` 与 `items[*].start_frame` / `items[*].end_frame` 是可选的独立帧字段，必须成对出现并为非负整数，结束帧大于起始帧
+- 进入帧模式后，编辑器以帧字段为操作真源，同时更新毫秒投影；切换 FPS 会保留实际媒体时间并重新计算帧编号
 - `segments` 建议按时间升序排列，且 `segments[i].end <= segments[i+1].start`
 - 代码不强校验时间重叠，但重叠会导致播放器跳转/高亮行为异常
 - `items` 首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`
@@ -468,6 +496,8 @@
   "text": "字",
   "start": 1234,
   "end": 1300,
+  "start_frame": 37,
+  "end_frame": 39,
   "speaker": "1"
 }
 ```
@@ -477,6 +507,8 @@
 | `text` | `string` | 是 | 单字或单词。**所有 item 的 `text` 拼接后应等于所属 segment 的 `text`**（标点也应包含在内，编辑器拆分时会按需剥掉） |
 | `start` | `int` | 是 | 该字/词起始时间（毫秒） |
 | `end` | `int` | 是 | 该字/词结束时间（毫秒） |
+| `start_frame` | `int` | 否 | 独立帧起始编号，与 `end_frame` 成对出现 |
+| `end_frame` | `int` | 否 | 独立帧结束编号，与 `start_frame` 成对出现 |
 | `speaker` | `string` | 否 | 该字/词的说话人标签（非空字符串），保存供应商返回的 opaque ID |
 
 ### 生成建议
@@ -620,7 +652,7 @@
 
 1. 输出必须是合法 UTF-8 JSON，顶层为 object，含 segments 数组（必需）
 2. 每个 segment 必须有 start、end、text 三个字段
-3. 时间单位统一为毫秒整数（不是秒、不是字符串、不是浮点）
+3. `start` / `end` 及 items 时间字段统一为毫秒整数（不是秒、不是字符串、不是浮点）；如使用帧模式，再提供成对的帧字段和 `timebase`
 4. start < end，且 segments 按时间升序排列
 5. items 数组每项 {text, start, end}；所有 item 的 text 拼接后应等于 segment.text
 6. items 首项 start = segment.start，末项 end = segment.end
@@ -674,12 +706,17 @@ uv run python edit.py your_generated.mosp
 | `segments` | array | ✅ | 字幕段数组 |
 | `segments[i].start` | int | ✅ | 毫秒 |
 | `segments[i].end` | int | ✅ | 毫秒 |
+| `timebase` | object | ❌ | `{unit: milliseconds\|frames, fps: 1–240}` |
+| `segments[i].start_frame` | int | ❌ | 帧编号，与 `end_frame` 成对 |
+| `segments[i].end_frame` | int | ❌ | 帧编号，与 `start_frame` 成对 |
 | `segments[i].text` | string | ✅ | 显示文本 |
 | `segments[i].items` | array | 推荐 | 字级时间戳，可 `[]` |
 | `segments[i].disabled` | bool | ❌ | 禁用该字幕 |
 | `segments[i].items[k].text` | string | ✅ | 单字/词 |
 | `segments[i].items[k].start` | int | ✅ | 毫秒 |
 | `segments[i].items[k].end` | int | ✅ | 毫秒 |
+| `segments[i].items[k].start_frame` | int | ❌ | 帧编号，与 `end_frame` 成对 |
+| `segments[i].items[k].end_frame` | int | ❌ | 帧编号，与 `start_frame` 成对 |
 | `segments[i].items[k].speaker` | string | ❌ | 说话人 opaque ID |
 | `segments[i].speaker` | string | ❌ | 段内统一说话人才写入 |
 | `segments[i].sticker` | object\|null | ❌ | 表情包 head |

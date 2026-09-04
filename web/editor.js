@@ -698,8 +698,13 @@ const DEFAULT_EDITOR_SETTINGS = {
   jklPlaybackMode: 'direction',
   // 媒体控制按钮与无选中字幕时左右方向键的跳转幅度。
   mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
+  mediaSeekStepFrames: 1,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
+  cueMoveStepFrames: 1,
+  // 帧模式下是否让波形鼠标指针吸附到最近帧（默认开启）；时间码分隔符默认使用冒号。
+  timelineSnapToFrame: true,
+  timelineTimecodeSeparator: ':',
   // 鼠标位置自动预览：暂停时指针在波形上移动即把画面定位到指针时间（默认关闭）。
   hoverSeekPreview: false,
   // 是否默认让同轨相邻字幕随边界调整一起联动；Alt 始终临时反转该行为。
@@ -790,8 +795,239 @@ function saveEditorSettings(settings) {
 }
 
 const EDITOR_SETTINGS = readEditorSettings();
+const normalizeTimelineTimebase = EDITOR_SETTINGS_UTILS.normalizeTimelineTimebase;
+const normalizeTimelineFps = EDITOR_SETTINGS_UTILS.normalizeTimelineFps;
+const normalizeTimelineTimecodeSeparator = EDITOR_SETTINGS_UTILS.normalizeTimelineTimecodeSeparator;
+const normalizeMediaMetadata = EDITOR_SETTINGS_UTILS.normalizeMediaMetadata;
+const DEFAULT_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.DEFAULT_TIMELINE_FPS;
+const frameNumberFromMilliseconds = EDITOR_SETTINGS_UTILS.frameNumberFromMilliseconds;
+const millisecondsFromFrameNumber = EDITOR_SETTINGS_UTILS.millisecondsFromFrameNumber;
+const formatFrameTimecode = EDITOR_SETTINGS_UTILS.formatFrameTimecode;
+const formatTimelineTimecode = EDITOR_SETTINGS_UTILS.formatTimelineTimecode;
+const parseFrameTimecode = EDITOR_SETTINGS_UTILS.parseFrameTimecode;
+const MIN_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.MIN_TIMELINE_FPS;
+const MAX_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.MAX_TIMELINE_FPS;
 // 把用户配置的拆分移除符号同步给共享工具层；设置面板修改时也会同步。
 MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(EDITOR_SETTINGS.splitTrimSymbols);
+
+const TIMELINE_ROUND_MS = 10;
+
+function roundTimelineMilliseconds(value) {
+  return Math.round(Number(value) / TIMELINE_ROUND_MS) * TIMELINE_ROUND_MS;
+}
+
+function hasValidFramePair(value) {
+  return !!value
+    && Number.isInteger(value.start_frame)
+    && Number.isInteger(value.end_frame)
+    && value.start_frame >= 0
+    && value.end_frame > value.start_frame;
+}
+
+function syncTimeRangeObjectTimebase(value, timebase, { preferFrames = false, frameBounds = null } = {}) {
+  if (!value || typeof value !== 'object') return null;
+  const frameMode = timebase.unit === 'frames';
+  const hasFrames = hasValidFramePair(value);
+  const rawStartMs = Number(value.start);
+  const rawEndMs = Number(value.end);
+  let startFrame = hasFrames && preferFrames
+    ? value.start_frame : frameNumberFromMilliseconds(rawStartMs, timebase.fps);
+  let endFrame = hasFrames && preferFrames
+    ? value.end_frame : frameNumberFromMilliseconds(rawEndMs, timebase.fps);
+  if (!Number.isInteger(startFrame) || startFrame < 0) startFrame = 0;
+  if (!Number.isInteger(endFrame) || endFrame <= startFrame) endFrame = startFrame + 1;
+
+  if (frameMode) {
+    if (frameBounds && Number.isInteger(frameBounds.start) && Number.isInteger(frameBounds.end)) {
+      const lower = Math.max(0, frameBounds.start);
+      const upper = Math.max(lower + 1, frameBounds.end);
+      startFrame = Math.min(Math.max(startFrame, lower), upper - 1);
+      endFrame = Math.min(Math.max(endFrame, startFrame + 1), upper);
+      if (endFrame <= startFrame) {
+        startFrame = Math.max(lower, upper - 1);
+        endFrame = upper;
+      }
+    }
+    value.start_frame = startFrame;
+    value.end_frame = endFrame;
+    value.start = millisecondsFromFrameNumber(startFrame, timebase.fps);
+    value.end = millisecondsFromFrameNumber(endFrame, timebase.fps);
+  } else {
+    const startMs = Number.isFinite(rawStartMs)
+      ? Math.max(0, Math.round(rawStartMs)) : millisecondsFromFrameNumber(startFrame, timebase.fps);
+    const endMs = Number.isFinite(rawEndMs)
+      ? Math.max(startMs + 1, Math.round(rawEndMs)) : millisecondsFromFrameNumber(endFrame, timebase.fps);
+    value.start = startMs;
+    value.end = Math.max(startMs + 1, endMs);
+    value.start_frame = frameNumberFromMilliseconds(value.start, timebase.fps);
+    value.end_frame = Math.max(
+      value.start_frame + 1,
+      frameNumberFromMilliseconds(value.end, timebase.fps),
+    );
+  }
+  return { startFrame: value.start_frame, endFrame: value.end_frame };
+}
+
+function syncSegmentTimebase(segment, timebase, { preferFrames = false, minimumStartFrame = 0 } = {}) {
+  if (!segment || typeof segment !== 'object') return;
+  const range = syncTimeRangeObjectTimebase(segment, timebase, { preferFrames });
+  if (timebase.unit === 'frames') {
+    const startFrame = Math.max(minimumStartFrame, segment.start_frame);
+    const endFrame = Math.max(startFrame + 1, segment.end_frame);
+    segment.start_frame = startFrame;
+    segment.end_frame = endFrame;
+    segment.start = millisecondsFromFrameNumber(startFrame, timebase.fps);
+    segment.end = millisecondsFromFrameNumber(endFrame, timebase.fps);
+  }
+  if (!Array.isArray(segment.items)) return range;
+  const frameBounds = timebase.unit === 'frames'
+    ? { start: segment.start_frame, end: segment.end_frame } : null;
+  segment.items.forEach((item) => {
+    syncTimeRangeObjectTimebase(item, timebase, { preferFrames, frameBounds });
+  });
+  if (timebase.unit === 'frames') {
+    window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);
+  }
+  return range;
+}
+
+function syncTrackTimebase(segments, timebase, { preferFrames = false } = {}) {
+  if (!Array.isArray(segments)) return;
+  let previousEndFrame = 0;
+  segments.forEach((segment) => {
+    syncSegmentTimebase(segment, timebase, {
+      preferFrames,
+      minimumStartFrame: timebase.unit === 'frames' ? previousEndFrame : 0,
+    });
+    if (timebase.unit === 'frames' && Number.isInteger(segment?.end_frame)) {
+      previousEndFrame = segment.end_frame;
+    }
+  });
+}
+
+function projectTimebase(project = DATA) {
+  return normalizeTimelineTimebase(project?.timebase);
+}
+
+function hasExplicitTimelineFps(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const fps = Number(value.fps);
+  if (!Number.isFinite(fps) || fps < MIN_TIMELINE_FPS || fps > MAX_TIMELINE_FPS) return false;
+  // A non-default FPS or an already-frame-based project represents an
+  // explicit choice.  A saved millisecond project with the historical 30 FPS
+  // default can still adopt the source media FPS on its first frame switch.
+  return value.unit === 'frames' || fps !== DEFAULT_TIMELINE_FPS;
+}
+
+function projectMediaVideoFps(project = DATA) {
+  return normalizeMediaMetadata(project?.media_metadata)?.video_fps ?? null;
+}
+
+let timelineFpsManuallySet = hasExplicitTimelineFps(DATA.timebase);
+
+function syncProjectTimebase(project = DATA, { preferFrames = false } = {}) {
+  if (!project || typeof project !== 'object') return normalizeTimelineTimebase();
+  const timebase = projectTimebase(project);
+  project.timebase = { ...timebase };
+  syncTrackTimebase(project.segments, timebase, { preferFrames });
+  const tracks = project.multi_subtitle?.tracks;
+  if (Array.isArray(tracks)) {
+    tracks.forEach((track) => syncTrackTimebase(track?.segments, timebase, { preferFrames }));
+  }
+  return timebase;
+}
+
+function syncProjectTimebaseAndBindingOffsets(project = DATA, options = {}) {
+  const timebase = syncProjectTimebase(project, options);
+  if (project && typeof project === 'object') {
+    MULTI_SUBTITLE_UTILS.rebuildBindingOffsets(project.multi_subtitle, project.segments);
+  }
+  return timebase;
+}
+
+function timelineIsFrameMode() {
+  return projectTimebase().unit === 'frames';
+}
+
+function timelineMinimumDurationMs() {
+  const timebase = projectTimebase();
+  if (timebase.unit !== 'frames') return SUBTITLE_MIN_DURATION_MS;
+  const minimumFrames = Math.max(1, Math.ceil(SUBTITLE_MIN_DURATION_MS * timebase.fps / 1000));
+  return millisecondsFromFrameNumber(minimumFrames, timebase.fps);
+}
+
+function timelineMinimumDurationValue() {
+  const timebase = projectTimebase();
+  return timebase.unit === 'frames'
+    ? Math.max(1, Math.ceil(SUBTITLE_MIN_DURATION_MS * timebase.fps / 1000))
+    : SUBTITLE_MIN_DURATION_MS;
+}
+
+function timelineTimingAdapter() {
+  const timebase = projectTimebase();
+  const frameMode = timebase.unit === 'frames';
+  const minimumDuration = timelineMinimumDurationValue();
+  const snapThreshold = frameMode
+    ? Math.max(1, Math.round(80 * timebase.fps / 1000)) : 80;
+  if (!frameMode) {
+    return {
+      unit: 'milliseconds',
+      fps: timebase.fps,
+      minDuration: minimumDuration,
+      snapThreshold,
+      round: roundTimelineMilliseconds,
+      getStart: (segment) => Number(segment?.start),
+      getEnd: (segment) => Number(segment?.end),
+      setStart: (segment, value) => { segment.start = roundTimelineMilliseconds(value); },
+      setEnd: (segment, value) => { segment.end = roundTimelineMilliseconds(value); },
+      getItemStart: (item) => Number(item?.start),
+      getItemEnd: (item) => Number(item?.end),
+      setItemStart: (item, value) => { item.start = roundTimelineMilliseconds(value); },
+      setItemEnd: (item, value) => { item.end = roundTimelineMilliseconds(value); },
+      fromMs: (value) => Number(value),
+      toMs: (value) => Number(value),
+      format: formatTimelineMilliseconds,
+    };
+  }
+  const readFrame = (value, frameField, msField) => Number.isInteger(value?.[frameField])
+    ? value[frameField] : frameNumberFromMilliseconds(value?.[msField], timebase.fps);
+  const writeFrame = (value, frameField, msField, frame) => {
+    const next = Math.max(0, Math.round(Number(frame)));
+    value[frameField] = next;
+    value[msField] = millisecondsFromFrameNumber(next, timebase.fps);
+  };
+  return {
+    unit: 'frames',
+    fps: timebase.fps,
+    minDuration: minimumDuration,
+    snapThreshold,
+    round: (value) => Math.round(Number(value)),
+    getStart: (segment) => readFrame(segment, 'start_frame', 'start'),
+    getEnd: (segment) => readFrame(segment, 'end_frame', 'end'),
+    setStart: (segment, value) => writeFrame(segment, 'start_frame', 'start', value),
+    setEnd: (segment, value) => writeFrame(segment, 'end_frame', 'end', value),
+    getItemStart: (item) => readFrame(item, 'start_frame', 'start'),
+    getItemEnd: (item) => readFrame(item, 'end_frame', 'end'),
+    setItemStart: (item, value) => writeFrame(item, 'start_frame', 'start', value),
+    setItemEnd: (item, value) => writeFrame(item, 'end_frame', 'end', value),
+    fromMs: (value) => frameNumberFromMilliseconds(value, timebase.fps),
+    toMs: (value) => millisecondsFromFrameNumber(value, timebase.fps),
+    format: (value) => formatFrameTimecode(
+      value,
+      timebase.fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    ),
+  };
+}
+
+function formatTimelineMilliseconds(ms) {
+  const safe = Math.max(0, Math.round(Number(ms) || 0));
+  const s = safe / 1000;
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2, '0')}:${(s - m * 60).toFixed(3).padStart(6, '0')}`;
+}
+
+syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase?.unit === 'frames' });
 
 // 标记颜色：5 种基础色，用于给字幕分组着色。
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
@@ -1178,6 +1414,8 @@ const mediaPlayToggle = document.getElementById('media-play-toggle');
 const mediaStepBack = document.getElementById('media-step-back');
 const mediaStepForward = document.getElementById('media-step-forward');
 const mediaSeekStepInput = document.getElementById('media-seek-step');
+const mediaSeekStepUnit = document.getElementById('media-seek-step-unit');
+const mediaSeekStepHint = document.getElementById('media-seek-step-hint');
 let mediaSeekInputLastValue = EDITOR_SETTINGS.mediaSeekStepMs;
 const mediaCurrentTime = document.getElementById('media-current-time');
 const mediaDuration = document.getElementById('media-duration');
@@ -1250,6 +1488,15 @@ const jklPlaybackModeHint = document.getElementById('jkl-playback-mode-hint');
 const hoverSeekPreviewToggle = document.getElementById('hover-seek-preview');
 const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
+const cueMoveStepUnit = document.getElementById('cue-move-step-unit');
+const cueMoveStepHint = document.getElementById('cue-move-step-hint');
+const timelineTimebaseSelect = document.getElementById('timeline-timebase');
+const timelineFpsInput = document.getElementById('timeline-fps');
+const timelineTimebaseHint = document.getElementById('timeline-timebase-hint');
+const timelineSnapToFrameToggle = document.getElementById('timeline-snap-to-frame');
+const timelineSnapToFrameHint = document.getElementById('timeline-snap-to-frame-hint');
+const timelineTimecodeSeparatorInput = document.getElementById('timeline-timecode-separator');
+const timelineTimecodeSeparatorHint = document.getElementById('timeline-timecode-separator-hint');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
 const replaceModal = document.getElementById('replace-modal');
 const textProcessModal = document.getElementById('text-process-modal');
@@ -1958,6 +2205,7 @@ function refreshSplitKeyHelp() {
 document.addEventListener('mawe:languagechange', () => {
   refreshSplitKeyHelp();
   renderCurrentCuePanel();
+  refreshTimelineSettingsUi();
   refreshMediaSeekStepHelp();
   refreshMediaSeekControlLabels();
 });
@@ -2035,12 +2283,21 @@ if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlay
 if (hoverSeekPreviewToggle) hoverSeekPreviewToggle.checked = EDITOR_SETTINGS.hoverSeekPreview;
 if (mediaSeekStepInput) mediaSeekStepInput.value = String(EDITOR_SETTINGS.mediaSeekStepMs);
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
+if (timelineTimebaseSelect) timelineTimebaseSelect.value = projectTimebase().unit;
+if (timelineFpsInput) timelineFpsInput.value = String(projectTimebase().fps);
+if (timelineSnapToFrameToggle) timelineSnapToFrameToggle.checked = EDITOR_SETTINGS.timelineSnapToFrame;
+if (timelineTimecodeSeparatorInput) {
+  timelineTimecodeSeparatorInput.value = normalizeTimelineTimecodeSeparator(
+    EDITOR_SETTINGS.timelineTimecodeSeparator,
+  );
+}
 if (autoSnapAdjacentCuesToggle) {
   autoSnapAdjacentCuesToggle.checked = EDITOR_SETTINGS.autoSnapAdjacentCues;
 }
 if (cueEditorCancelOnEscapeToggle) {
   cueEditorCancelOnEscapeToggle.checked = EDITOR_SETTINGS.cueEditorCancelOnEscape;
 }
+refreshTimelineSettingsUi();
 refreshMediaSeekStepHelp();
 refreshMediaSeekInputStep();
 refreshMediaSeekControlLabels();
@@ -2633,15 +2890,204 @@ jklPlaybackModeSelect?.addEventListener('change', () => {
 hoverSeekPreviewToggle?.addEventListener('change', () => {
   updateEditorSettings({ hoverSeekPreview: hoverSeekPreviewToggle.checked });
 });
-function refreshMediaSeekInputStep(value = EDITOR_SETTINGS.mediaSeekStepMs) {
-  if (mediaSeekStepInput) mediaSeekStepInput.step = String(mediaSeekStepForValue(value));
+function timelineMediaSeekStepValue() {
+  return timelineIsFrameMode()
+    ? EDITOR_SETTINGS.mediaSeekStepFrames : EDITOR_SETTINGS.mediaSeekStepMs;
+}
+
+function timelineCueMoveStepValue() {
+  return timelineIsFrameMode()
+    ? EDITOR_SETTINGS.cueMoveStepFrames : EDITOR_SETTINGS.cueMoveStepMs;
+}
+
+function timelineValueToMilliseconds(value) {
+  const timebase = projectTimebase();
+  return timebase.unit === 'frames'
+    ? millisecondsFromFrameNumber(value, timebase.fps) : Number(value);
+}
+
+function timelineFrameAlignedMilliseconds(valueMs) {
+  const numeric = Number(valueMs);
+  if (!Number.isFinite(numeric) || !timelineIsFrameMode()) return numeric;
+  const timebase = projectTimebase();
+  return millisecondsFromFrameNumber(
+    frameNumberFromMilliseconds(numeric, timebase.fps),
+    timebase.fps,
+  );
+}
+
+function timelineUiText(zh, en) {
+  return window.MAWE_I18N?.language === 'en' ? en : zh;
+}
+
+function timelineMediaSeekStepMilliseconds() {
+  return timelineValueToMilliseconds(timelineMediaSeekStepValue());
+}
+
+function timelineHasSubtitleData() {
+  return (Array.isArray(DATA?.segments) && DATA.segments.length > 0)
+    || (Array.isArray(DATA?.multi_subtitle?.tracks)
+      && DATA.multi_subtitle.tracks.some((track) => Array.isArray(track?.segments)
+        && track.segments.length > 0));
+}
+
+function confirmTimelineFrameRemap(current, nextUnit, nextFps) {
+  const enteringFrames = current.unit !== 'frames' && nextUnit === 'frames';
+  const changingFrameRate = current.unit === 'frames' && current.fps !== nextFps;
+  if ((!enteringFrames && !changingFrameRate) || !timelineHasSubtitleData()) return true;
+  const message = enteringFrames
+    ? timelineUiText(
+      `切换到帧时间基准（${nextFps} FPS）会批量将当前工程的所有字幕段、字词和副字幕时间映射到最近帧，并重写毫秒兼容值。原始的非帧对齐毫秒值无法在切回毫秒时恢复。是否继续？`,
+      `Switching to the frame timebase (${nextFps} FPS) will remap all subtitle segments, word timings, and secondary subtitle timings to frame boundaries and rewrite the compatible millisecond values. Original non-frame-aligned millisecond values cannot be restored when switching back. Continue?`,
+    )
+    : timelineUiText(
+      `将 FPS 从 ${current.fps} 改为 ${nextFps} 会批量重新映射当前工程的所有字幕段、字词和副字幕时间，并重写毫秒兼容值。原始的非帧对齐毫秒值无法恢复。是否继续？`,
+      `Changing FPS from ${current.fps} to ${nextFps} will remap all subtitle segments, word timings, and secondary subtitle timings and rewrite the compatible millisecond values. Original non-frame-aligned millisecond values cannot be restored. Continue?`,
+    );
+  return window.confirm(message);
+}
+
+function refreshTimelineSettingsUi() {
+  const timebase = projectTimebase();
+  const frameMode = timebase.unit === 'frames';
+  const separator = normalizeTimelineTimecodeSeparator(EDITOR_SETTINGS.timelineTimecodeSeparator);
+  if (timelineTimebaseSelect) timelineTimebaseSelect.value = timebase.unit;
+  if (timelineFpsInput) timelineFpsInput.value = String(timebase.fps);
+  if (timelineSnapToFrameToggle) {
+    timelineSnapToFrameToggle.checked = frameMode && EDITOR_SETTINGS.timelineSnapToFrame;
+    timelineSnapToFrameToggle.disabled = !frameMode;
+  }
+  if (timelineTimecodeSeparatorInput) timelineTimecodeSeparatorInput.value = separator;
+  if (mediaSeekStepInput) {
+    mediaSeekStepInput.min = frameMode ? '1' : String(MEDIA_SEEK_STEP_MIN_MS);
+    mediaSeekStepInput.max = frameMode ? '240' : String(MEDIA_SEEK_STEP_MAX_MS);
+    mediaSeekStepInput.step = frameMode ? '1' : String(mediaSeekStepForValue(EDITOR_SETTINGS.mediaSeekStepMs));
+    mediaSeekStepInput.value = String(timelineMediaSeekStepValue());
+  }
+  if (cueMoveStepInput) {
+    cueMoveStepInput.min = frameMode ? '1' : String(CUE_MOVE_STEP_MIN_MS);
+    cueMoveStepInput.max = frameMode ? '240' : String(CUE_MOVE_STEP_MAX_MS);
+    cueMoveStepInput.step = frameMode ? '1' : '10';
+    cueMoveStepInput.value = String(timelineCueMoveStepValue());
+  }
+  if (mediaSeekStepUnit) mediaSeekStepUnit.textContent = frameMode ? 'F' : 'ms';
+  if (cueMoveStepUnit) cueMoveStepUnit.textContent = frameMode ? 'F' : 'ms';
+  if (mediaSeekStepHint) {
+    mediaSeekStepHint.textContent = frameMode
+      ? timelineUiText(
+        `控制按钮和左右方向键的每次跳转帧数（当前 FPS：${timebase.fps}）。`,
+        `Number of frames jumped by the controls and left/right arrow keys (current FPS: ${timebase.fps}).`,
+      )
+      : timelineUiText(
+        '控制按钮和左右方向键的每次跳转时长（单位：ms）。',
+        'Duration for each jump from the controls and left/right arrow keys (unit: ms).',
+      );
+  }
+  if (cueMoveStepHint) {
+    cueMoveStepHint.textContent = frameMode
+      ? timelineUiText(
+        '方向键和按住字幕块/边界时按帧微调；具体用法详见帮助的「微调字幕」区。',
+        'Arrow keys and A/D fine-tune frame by frame while holding a cue/block or boundary; see the “Subtitle fine-tuning” section in Help for details.',
+      )
+      : timelineUiText(
+        '具体用法详见帮助的「微调字幕」区。',
+        'See the “Subtitle fine-tuning” section in Help for details.',
+      );
+  }
+  if (timelineTimebaseHint) {
+    timelineTimebaseHint.textContent = frameMode
+      ? timelineUiText(
+        `帧模式使用 HH:MM:SS${separator}FF 显示，FF 为当前秒内的帧号；当前 FPS：${timebase.fps}。`,
+        `Frame mode uses HH:MM:SS${separator}FF, where FF is the frame number within the current second; current FPS: ${timebase.fps}.`,
+      )
+      : timelineUiText(
+        '毫秒模式保持原有时间编辑方式。切换为帧模式后，拖动、方向键和 A/D 微调都会按帧执行。',
+        'Millisecond mode keeps the existing timing behavior. Switching to frame mode makes dragging, arrow keys, and A/D fine-tuning operate frame by frame.',
+      );
+  }
+  if (timelineSnapToFrameHint) {
+    timelineSnapToFrameHint.textContent = frameMode
+      ? timelineUiText(
+        '启用后，波形鼠标指针会吸附到最近的帧位置。',
+        'When enabled, the waveform pointer snaps to the nearest frame.',
+      )
+      : timelineUiText(
+        '仅帧模式生效；切换到帧模式后可启用。',
+        'Only active in frame mode; switch to frame mode to enable it.',
+      );
+  }
+  if (timelineTimecodeSeparatorHint) {
+    timelineTimecodeSeparatorHint.textContent = timelineUiText(
+      `帧时间码示例：HH:MM:SS${separator}FF；只替换秒与帧之间的分隔符。`,
+      `Frame timecode example: HH:MM:SS${separator}FF; only the separator between seconds and frames changes.`,
+    );
+  }
+  mediaSeekInputLastValue = timelineMediaSeekStepValue();
+  refreshMediaSeekStepHelp();
+  refreshMediaSeekControlLabels();
+}
+
+function setTimelineTimebase(patch = {}) {
+  const current = projectTimebase();
+  const nextUnit = patch.unit === 'frames' || patch.unit === 'milliseconds'
+    ? patch.unit : current.unit;
+  const hasFpsPatch = Object.prototype.hasOwnProperty.call(patch, 'fps');
+  const mediaDefaultFps = !timelineFpsManuallySet
+    && !hasFpsPatch
+    && current.unit !== 'frames'
+    && nextUnit === 'frames'
+    ? projectMediaVideoFps()
+    : null;
+  const nextFps = mediaDefaultFps ?? normalizeTimelineFps(patch.fps, current.fps);
+  if (current.unit === nextUnit && current.fps === nextFps) {
+    if (hasFpsPatch) timelineFpsManuallySet = true;
+    refreshTimelineSettingsUi();
+    return;
+  }
+  if (!confirmTimelineFrameRemap(current, nextUnit, nextFps)) {
+    refreshTimelineSettingsUi();
+    return;
+  }
+  if (hasFpsPatch) timelineFpsManuallySet = true;
+  // 先按旧时间基准把当前工程的双份时间值同步，再决定新 FPS 下是否保留帧号。
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: current.unit === 'frames' });
+  DATA.timebase = { unit: nextUnit, fps: nextFps };
+  // 变更 FPS 时保持媒体中的实际时间位置，再按新 FPS 重算独立帧字段；
+  // 否则同一个帧号会因 FPS 改变而把字幕整体提前或推后。
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
+  projectImportDirty = true;
+  refreshTimelineSettingsUi();
+  renderAll({ waveform: 'full' });
+  scheduleAutoSaveFlush();
+  const description = nextUnit === 'frames'
+    ? timelineUiText(`已切换到帧时间基准（${nextFps} FPS）`, `Switched to frame timebase (${nextFps} FPS)`)
+    : timelineUiText('已切换到毫秒时间基准', 'Switched to millisecond timebase');
+  flashHint(description, 'success');
+}
+
+function refreshMediaSeekInputStep(value = timelineMediaSeekStepValue()) {
+  if (!mediaSeekStepInput) return;
+  if (timelineIsFrameMode()) {
+    mediaSeekStepInput.min = '1';
+    mediaSeekStepInput.max = '240';
+    mediaSeekStepInput.step = '1';
+  } else {
+    mediaSeekStepInput.min = String(MEDIA_SEEK_STEP_MIN_MS);
+    mediaSeekStepInput.max = String(MEDIA_SEEK_STEP_MAX_MS);
+    mediaSeekStepInput.step = String(mediaSeekStepForValue(value));
+  }
 }
 
 function commitMediaSeekStepInput(value, { rewriteInput = true } = {}) {
-  const normalized = clampMediaSeekStepMs(value);
+  const frameMode = timelineIsFrameMode();
+  const normalized = frameMode
+    ? EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(value, 1)
+    : clampMediaSeekStepMs(value);
   if (rewriteInput && mediaSeekStepInput) mediaSeekStepInput.value = String(normalized);
   mediaSeekInputLastValue = normalized;
-  updateEditorSettings({ mediaSeekStepMs: normalized });
+  updateEditorSettings(frameMode
+    ? { mediaSeekStepFrames: normalized }
+    : { mediaSeekStepMs: normalized });
   refreshMediaSeekInputStep(normalized);
   refreshMediaSeekStepHelp();
   refreshMediaSeekControlLabels();
@@ -2649,6 +3095,11 @@ function commitMediaSeekStepInput(value, { rewriteInput = true } = {}) {
 
 function adjustMediaSeekStepInput(direction) {
   if (!mediaSeekStepInput) return;
+  if (timelineIsFrameMode()) {
+    const current = EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(mediaSeekStepInput.value, 1);
+    commitMediaSeekStepInput(Math.min(240, Math.max(1, current + (direction < 0 ? -1 : 1))));
+    return;
+  }
   const current = clampMediaSeekStepMs(mediaSeekStepInput.value);
   commitMediaSeekStepInput(nextMediaSeekStepValue(current, direction));
 }
@@ -2669,6 +3120,10 @@ mediaSeekStepInput?.addEventListener('wheel', (event) => {
 mediaSeekStepInput?.addEventListener('input', () => {
   const raw = mediaSeekStepInput.value.trim();
   if (!raw) return;
+  if (timelineIsFrameMode()) {
+    commitMediaSeekStepInput(raw, { rewriteInput: false });
+    return;
+  }
   const value = normalizeNativeMediaSeekStepValue(raw, mediaSeekInputLastValue);
   if (value === null) return;
   commitMediaSeekStepInput(value, { rewriteInput: value !== Number(raw) });
@@ -2677,9 +3132,32 @@ mediaSeekStepInput?.addEventListener('change', () => {
   commitMediaSeekStepInput(mediaSeekStepInput.value);
 });
 cueMoveStepInput?.addEventListener('change', () => {
-  const value = clampCueMoveStepMs(cueMoveStepInput.value);
+  const frameMode = timelineIsFrameMode();
+  const value = frameMode
+    ? EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(cueMoveStepInput.value, 1)
+    : clampCueMoveStepMs(cueMoveStepInput.value);
   cueMoveStepInput.value = String(value);
-  updateEditorSettings({ cueMoveStepMs: value });
+  updateEditorSettings(frameMode ? { cueMoveStepFrames: value } : { cueMoveStepMs: value });
+});
+timelineTimebaseSelect?.addEventListener('change', () => {
+  setTimelineTimebase({ unit: timelineTimebaseSelect.value });
+});
+timelineFpsInput?.addEventListener('change', () => {
+  setTimelineTimebase({ fps: timelineFpsInput.value });
+});
+timelineSnapToFrameToggle?.addEventListener('change', () => {
+  updateEditorSettings({ timelineSnapToFrame: timelineSnapToFrameToggle.checked });
+  waveformEditor?.refreshPointerLine?.();
+});
+timelineTimecodeSeparatorInput?.addEventListener('change', () => {
+  const separator = normalizeTimelineTimecodeSeparator(timelineTimecodeSeparatorInput.value);
+  timelineTimecodeSeparatorInput.value = separator;
+  updateEditorSettings({ timelineTimecodeSeparator: separator });
+  refreshTimelineSettingsUi();
+  waveformEditor?.refreshPointerLine?.();
+  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，
+  // 不必等到下一次字幕编辑操作才看到新格式。
+  renderAll({ waveform: 'none' });
 });
 autoSnapAdjacentCuesToggle?.addEventListener('change', () => {
   updateEditorSettings({ autoSnapAdjacentCues: autoSnapAdjacentCuesToggle.checked });
@@ -4262,6 +4740,9 @@ function alignSelectedExtensionSubtitleRanges() {
 
 // === 渲染 ===
 function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) {
+  // 其它编辑入口仍以毫秒修改工程对象；在重绘前把它们投影回当前时间基准，
+  // 保证帧模式下保存的数据和下一次帧操作保持一致。
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   invalidateCueListVisualAnchorRestore();
   const cueListAnchor = preserveCueListScroll ? captureCueListRenderAnchor() : null;
   stickerOverlayDataVersion += 1;
@@ -4329,6 +4810,19 @@ function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) 
 function parsePanelTime(value, fallback) {
   const raw = String(value || '').trim();
   if (!raw) return fallback;
+  const timebase = projectTimebase();
+  if (timebase.unit === 'frames') {
+    const timecodeFrames = parseFrameTimecode(
+      raw,
+      timebase.fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    );
+    if (timecodeFrames !== null) return millisecondsFromFrameNumber(timecodeFrames, timebase.fps);
+    if (/^\d+(?:\.\d+)?\s*F?$/iu.test(raw)) {
+      return millisecondsFromFrameNumber(Number.parseFloat(raw), timebase.fps);
+    }
+    return fallback;
+  }
   if (/^\d+(?:\.\d+)?$/.test(raw)) return Math.round(Number(raw) * 1000);
   const parts = raw.split(':').map(Number);
   if (parts.some((part) => !Number.isFinite(part))) return fallback;
@@ -4438,19 +4932,23 @@ function commitCuePanelEdit() {
   const nextText = cuePanelText.value.replace(/\r\n?/g, '\n');
   const oldStart = seg.start;
   const oldEnd = seg.end;
+  const minimumDurationMs = timelineMinimumDurationMs();
   const requestedStart = parsePanelTime(cuePanelStart.value, oldStart);
-  const requestedDuration = Math.max(100, parsePanelTime(cuePanelDuration.value, oldEnd - oldStart));
+  const requestedDuration = Math.max(
+    minimumDurationMs,
+    parsePanelTime(cuePanelDuration.value, oldEnd - oldStart),
+  );
   const previousEnd = idx > 0 ? segments[idx - 1].end : 0;
   const nextStart = idx + 1 < segments.length ? segments[idx + 1].start : (waveformEditor?.durationMs || oldEnd);
-  if (nextStart - previousEnd < 100) {
+  if (nextStart - previousEnd < minimumDurationMs) {
     flashHint('相邻字幕之间不足 100ms，无法调整当前字幕', 'warning');
     renderCurrentCuePanel();
     resetCuePanelEditState();
     return false;
   }
-  const newStart = Math.max(previousEnd, Math.min(requestedStart, nextStart - 100));
+  const newStart = Math.max(previousEnd, Math.min(requestedStart, nextStart - minimumDurationMs));
   const newEnd = Math.min(nextStart, newStart + requestedDuration);
-  if (newEnd - newStart < 100) {
+  if (newEnd - newStart < minimumDurationMs) {
     flashHint('字幕时长不能小于 100ms', 'warning');
     renderCurrentCuePanel();
     resetCuePanelEditState();
@@ -4464,16 +4962,16 @@ function commitCuePanelEdit() {
   ensureCuePanelUndo();
   seg.text = nextText;
   seg.start = newStart;
-  seg.end = Math.max(newStart + 100, newEnd);
+  seg.end = Math.max(newStart + minimumDurationMs, newEnd);
   if (seg.end > nextStart) {
     seg.end = nextStart;
-    seg.start = Math.max(previousEnd, seg.end - 100);
+    seg.start = Math.max(previousEnd, seg.end - minimumDurationMs);
   }
   if (target.kind === 'main') {
     seg.items = remapPanelItems(seg.items, oldStart, oldEnd, seg.start, seg.end);
   }
   seg._dirty = true;
-  const timingChanged = newStart !== oldStart || newEnd !== oldEnd;
+  const timingChanged = seg.start !== oldStart || seg.end !== oldEnd;
   if (target.kind === 'main') {
     if (timingChanged) {
       const syncPatch = { oldStart, oldEnd, mode: 'range' };
@@ -4540,7 +5038,13 @@ function renderCurrentCuePanel() {
   }
   if (document.activeElement !== cuePanelText || !cuePanelUndoPushed) cuePanelText.value = seg.text || '';
   cuePanelStart.value = fmtShort(seg.start);
-  cuePanelDuration.value = ((seg.end - seg.start) / 1000).toFixed(3);
+  cuePanelDuration.value = timelineIsFrameMode()
+    ? formatTimelineTimecode(
+      seg.end - seg.start,
+      projectTimebase().fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    )
+    : ((seg.end - seg.start) / 1000).toFixed(3);
   const splitMode = target.kind === 'extension'
     ? getExtensionSubtitleSplitMode(target.track, seg)
     : getMainSubtitleSplitMode(seg);
@@ -5032,6 +5536,13 @@ function buildDualCueEl(mainIndex, extensionIndex, track) {
 }
 
 function fmtShort(ms) {
+  if (timelineIsFrameMode()) {
+    return formatTimelineTimecode(
+      ms,
+      projectTimebase().fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    );
+  }
   const s = ms / 1000;
   const m = Math.floor(s / 60);
   return `${String(m).padStart(2,'0')}:${(s - m * 60).toFixed(3).padStart(6,'0')}`;
@@ -7484,6 +7995,9 @@ function flashSplitFeedback({ index, track = 'main', splitMs, feedbackPoint = nu
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!el) return false;
+  if (Number.isFinite(waveformTimeMs)) {
+    waveformTimeMs = timelineFrameAlignedMilliseconds(waveformTimeMs);
+  }
   // 从非编辑态按 B / 右键拆分时，startEdit() 可能让当前行先发生一次布局
   // 变化；锚点必须取自用户按键前看到的位置，而不是临时编辑态的位置。
   const cueListAnchor = Number.isFinite(waveformTimeMs)
@@ -8872,6 +9386,13 @@ function hasLoadedMedia() {
 }
 
 function formatMediaTime(seconds) {
+  if (timelineIsFrameMode()) {
+    return formatTimelineTimecode(
+      (Number(seconds) || 0) * 1000,
+      projectTimebase().fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    );
+  }
   const total = Math.max(0, Math.floor(Number(seconds) || 0));
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
@@ -8880,19 +9401,20 @@ function formatMediaTime(seconds) {
   return hours ? `${hours}:${pad(minutes)}:${pad(remaining)}` : `${pad(minutes)}:${pad(remaining)}`;
 }
 
-function mediaSeekStepLabel(milliseconds) {
-  return `${milliseconds}ms`;
+function mediaSeekStepLabel(value = timelineMediaSeekStepValue()) {
+  return timelineIsFrameMode() ? `${value}F` : `${value}ms`;
 }
 
 function refreshMediaSeekStepHelp() {
-  if (helpMediaSeekStep) helpMediaSeekStep.textContent = mediaSeekStepLabel(EDITOR_SETTINGS.mediaSeekStepMs);
+  if (helpMediaSeekStep) helpMediaSeekStep.textContent = mediaSeekStepLabel();
 }
 
 function refreshMediaSeekControlLabels() {
-  const milliseconds = EDITOR_SETTINGS.mediaSeekStepMs;
+  const value = timelineMediaSeekStepValue();
+  const unit = timelineIsFrameMode() ? 'F' : 'ms';
   const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  const backLabel = language === 'en' ? `Back ${milliseconds}ms` : `后退 ${milliseconds}ms`;
-  const forwardLabel = language === 'en' ? `Forward ${milliseconds}ms` : `前进 ${milliseconds}ms`;
+  const backLabel = language === 'en' ? `Back ${value}${unit}` : `后退 ${value}${unit}`;
+  const forwardLabel = language === 'en' ? `Forward ${value}${unit}` : `前进 ${value}${unit}`;
   if (mediaStepBack) {
     mediaStepBack.setAttribute('aria-label', backLabel);
     mediaStepBack.title = backLabel;
@@ -9051,8 +9573,8 @@ function seekMediaTo(timeSeconds) {
 }
 
 mediaPlayToggle?.addEventListener('click', togglePlayback);
-mediaStepBack?.addEventListener('click', () => seekMediaBy(-EDITOR_SETTINGS.mediaSeekStepMs / 1000));
-mediaStepForward?.addEventListener('click', () => seekMediaBy(EDITOR_SETTINGS.mediaSeekStepMs / 1000));
+mediaStepBack?.addEventListener('click', () => seekMediaBy(-timelineMediaSeekStepMilliseconds() / 1000));
+mediaStepForward?.addEventListener('click', () => seekMediaBy(timelineMediaSeekStepMilliseconds() / 1000));
 mediaSeek?.addEventListener('input', () => {
   if (!hasLoadedMedia()) return;
   player.currentTime = Number(mediaSeek.value) || 0;
@@ -9114,15 +9636,15 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (selected.size > 0 && waveformEditor) {
-    const deltaMs = direction * EDITOR_SETTINGS.cueMoveStepMs;
+    const deltaTime = direction * timelineCueMoveStepValue();
     if (commandKey) {
       if (e.shiftKey) {
-        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'end', e.altKey, activeTrack);
+        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaTime, 'end', e.altKey, activeTrack);
       } else {
-        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'start', e.altKey, activeTrack);
+        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaTime, 'start', e.altKey, activeTrack);
       }
     } else {
-      waveformEditor.adjustSelectedByKeyboard(deltaMs, e.altKey, activeTrack);
+      waveformEditor.adjustSelectedByKeyboard(deltaTime, e.altKey, activeTrack);
     }
     e.preventDefault();
     e.stopPropagation();
@@ -9132,7 +9654,7 @@ document.addEventListener('keydown', (e) => {
   if (!hasLoadedMedia()) return;
   e.preventDefault();
   e.stopPropagation();
-  seekMediaBy(direction * EDITOR_SETTINGS.mediaSeekStepMs / 1000);
+  seekMediaBy(direction * timelineMediaSeekStepMilliseconds() / 1000);
 }, true);
 
 function renderedCueBoundaryTarget(target, boundary) {
@@ -9487,7 +10009,7 @@ document.addEventListener('keydown', (e) => {
   const heldCueKey = (!e.shiftKey || key === 'a' || key === 'd')
     && waveformEditor?.handleHeldCueKey?.(
       direction,
-      direction * EDITOR_SETTINGS.cueMoveStepMs,
+      direction * timelineCueMoveStepValue(),
       { shiftKey: e.shiftKey, altKey: e.altKey, snap: key === 'a' || key === 'd' },
     );
   if (heldCueKey) {
@@ -9857,6 +10379,36 @@ document.addEventListener('keydown', (e) => {
   if (!segment) return;
   seekFromWaveform(segment.start / 1000);
   if (player.paused) togglePlayback();
+});
+
+function seekCurrentCueBoundary(boundary) {
+  const target = getCurrentCuePanelTarget();
+  const timeMs = Number(target?.segment?.[boundary]);
+  const duration = Number(player?.duration);
+  if (!target || !Number.isFinite(timeMs) || !hasLoadedMedia()
+      || !Number.isFinite(duration) || duration <= 0) return false;
+  stopJklReversePlayback({ render: false });
+  player.pause();
+  return seekMediaTo(timeMs / 1000);
+}
+
+// I/O：跳到当前字幕的开头/结尾并保持暂停。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'i' && e.key !== 'I' && e.key !== 'o' && e.key !== 'O') return;
+  if (editingState || extensionEditingState || e.repeat || isTextEditingTarget(e)) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (multiSubtitleSplitModal?.classList.contains('show')) return;
+  if (multiSubtitleImportModal?.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const boundary = e.key.toLowerCase() === 'i' ? 'start' : 'end';
+  if (!seekCurrentCueBoundary(boundary)) return;
+  e.preventDefault();
+  e.stopPropagation();
 });
 
 // N：仅在鼠标位于波形行时，从指针音频位置创建字幕；创建后单选新字幕，
@@ -11277,19 +11829,23 @@ function buildGapRemovedRegionsJson() {
 }
 
 function buildJson() {
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const repairedTimingCount = repairCurrentProjectTimings();
   if (repairedTimingCount > 0) {
     flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
   }
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const out = {
     media: DATA.media || '',
     language: DATA.language || '',
     model: DATA.model || '',
     sticker_root: STICKER_ROOT || '',
+    timebase: { ...projectTimebase() },
     segments: DATA.segments.map(s => {
       const o = {
         id: s.id,
         start: s.start, end: s.end, text: s.text,
+        start_frame: s.start_frame, end_frame: s.end_frame,
         items: s.items || [],
         sticker: s.sticker || null,
         sticker_ref: s.sticker_ref || null,
@@ -11322,6 +11878,8 @@ function buildJson() {
           id: segment.id,
           start: segment.start,
           end: segment.end,
+          start_frame: segment.start_frame,
+          end_frame: segment.end_frame,
           text: segment.text || '',
         };
         if (Array.isArray(segment.items)) outSegment.items = segment.items;
@@ -11340,6 +11898,8 @@ function buildJson() {
     })),
   };
   if (DATA.waveform) out.waveform = DATA.waveform;
+  const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
+  if (mediaMetadata) out.media_metadata = mediaMetadata;
   if (DATA.spectral) out.spectral = DATA.spectral;
   if (DATA.waveform_reapeaks) out.waveform_reapeaks = DATA.waveform_reapeaks;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
@@ -13889,7 +14449,11 @@ function resetLoadedMedia() {
 }
 
 function buildBlankProject() {
-  return { media: '', language: '', model: '', segments: [] };
+  return {
+    media: '', language: '', model: '',
+    timebase: { unit: 'milliseconds', fps: 30 },
+    segments: [],
+  };
 }
 
 function suggestedProjectName(file = null) {
@@ -13906,6 +14470,9 @@ function applyCanonicalProject(data, filename) {
   DATA.media = typeof data.media === 'string' ? data.media : '';
   DATA.language = data.language || '';
   DATA.model = data.model || '';
+  DATA.timebase = normalizeTimelineTimebase(data.timebase);
+  timelineFpsManuallySet = hasExplicitTimelineFps(data.timebase);
+  DATA.media_metadata = normalizeMediaMetadata(data.media_metadata);
   DATA.media_time_reference = data.media_time_reference || null;
   DATA.waveform = data.waveform || null;
   DATA.spectral = data.spectral || null;
@@ -13927,6 +14494,7 @@ function applyCanonicalProject(data, filename) {
   DATA.segments.length = 0;
   data.segments.forEach((segment) => DATA.segments.push(segment));
   DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, DATA.segments);
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase.unit === 'frames' });
   editorHistory.clear();
   updateUndoRedoButtons();
   clearSelection();
@@ -14042,12 +14610,26 @@ async function ensureProjectCheckpointForImport(file, { usePicker = true } = {})
 
 function isMawProject(data) {
   if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
+  if (data.media_metadata !== undefined && data.media_metadata !== null
+      && !normalizeMediaMetadata(data.media_metadata)) return false;
+  if (data.timebase !== undefined) {
+    const timebase = data.timebase;
+    if (!timebase || typeof timebase !== 'object' || Array.isArray(timebase)
+        || (timebase.unit !== 'milliseconds' && timebase.unit !== 'frames')
+        || typeof timebase.fps !== 'number' || !Number.isFinite(timebase.fps)
+        || timebase.fps < MIN_TIMELINE_FPS || timebase.fps > MAX_TIMELINE_FPS) return false;
+  }
+  const hasOptionalFramePair = (value) => {
+    const hasStart = Object.prototype.hasOwnProperty.call(value || {}, 'start_frame');
+    const hasEnd = Object.prototype.hasOwnProperty.call(value || {}, 'end_frame');
+    return (!hasStart && !hasEnd) || hasValidFramePair(value);
+  };
   let previousEnd = 0;
   return data.segments.every((segment) => {
     if (!segment || typeof segment !== 'object'
         || !Number.isInteger(segment.start) || !Number.isInteger(segment.end)
         || segment.start < 0 || segment.end <= segment.start || segment.start < previousEnd
-        || typeof segment.text !== 'string') return false;
+        || typeof segment.text !== 'string' || !hasOptionalFramePair(segment)) return false;
     previousEnd = segment.end;
     if (!Array.isArray(segment.items)) return segment.items === undefined;
     let itemEnd = segment.start;
@@ -14055,7 +14637,8 @@ function isMawProject(data) {
       if (!item || typeof item !== 'object'
           || !Number.isInteger(item.start) || !Number.isInteger(item.end)
           || item.start < segment.start || item.end > segment.end || item.end <= item.start
-          || item.start < itemEnd || typeof item.text !== 'string') return false;
+          || item.start < itemEnd || typeof item.text !== 'string'
+          || !hasOptionalFramePair(item)) return false;
       itemEnd = item.end;
       return true;
     });
@@ -14421,10 +15004,13 @@ async function openProjectFile(file, options = {}) {
     const data = JSON.parse(text);
     // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
     if (data && Array.isArray(data.segments)) {
+      data.timebase = normalizeTimelineTimebase(data.timebase);
+      MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(data);
+      syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
       window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
       window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
-      MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(data);
       normalizeProjectTimings(data);
+      syncProjectTimebaseAndBindingOffsets(data, { preferFrames: false });
     }
     if (!isMawProject(data)) {
       flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
@@ -16560,6 +17146,8 @@ function addExtensionRangeFromWaveform(
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
   if (!track?.segments) { flashHint('当前没有可用的副字幕轨', 'invalid'); return; }
+  requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
+  requestedEnd = timelineFrameAlignedMilliseconds(requestedEnd);
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return;
@@ -16611,6 +17199,8 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
   }
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
+  requestedEnd = timelineFrameAlignedMilliseconds(requestedEnd);
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return;
@@ -16654,6 +17244,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
 function addCueAtWaveformTime(timeMs, clickX, clickY) {
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  timeMs = timelineFrameAlignedMilliseconds(timeMs);
   if (findWaveformCueAtTime(timeMs) >= 0) {
     flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
     return;
@@ -16680,6 +17271,7 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
 function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExtensionTrack()) {
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  timeMs = timelineFrameAlignedMilliseconds(timeMs);
   if (!track || !Array.isArray(track.segments)) {
     flashHint('当前没有可用的副字幕轨', 'invalid');
     return;
@@ -16750,6 +17342,8 @@ function ensureBoundDragOriginal(drag, index, target) {
       target,
       start: target.start,
       end: target.end,
+      start_frame: target.start_frame,
+      end_frame: target.end_frame,
       items: Array.isArray(target.items)
         ? target.items.map((item) => ({ ...item })) : target.items,
     });
@@ -16764,6 +17358,8 @@ function snapshotBoundDragTrack(track) {
       segment,
       start: segment.start,
       end: segment.end,
+      start_frame: segment.start_frame,
+      end_frame: segment.end_frame,
       items: Array.isArray(segment.items)
         ? segment.items.map((item) => ({ ...item })) : segment.items,
     })),
@@ -16790,6 +17386,10 @@ function restoreBoundDragTimelineOriginals(drag) {
     track.segments = segments.map((entry) => {
       entry.segment.start = entry.start;
       entry.segment.end = entry.end;
+      if (entry.start_frame === undefined) delete entry.segment.start_frame;
+      else entry.segment.start_frame = entry.start_frame;
+      if (entry.end_frame === undefined) delete entry.segment.end_frame;
+      else entry.segment.end_frame = entry.end_frame;
       entry.segment.items = Array.isArray(entry.items)
         ? entry.items.map((item) => ({ ...item })) : entry.items;
       return entry.segment;
@@ -16835,22 +17435,24 @@ function syncBoundCueDrag(drag) {
     const { target, binding } = bound;
     const targetOriginal = ensureBoundDragOriginal(drag, index, target);
     const source = sourceSegments[index];
+    const sourceOriginalStart = Number(sourceOriginal.startMs ?? sourceOriginal.start);
+    const sourceOriginalEnd = Number(sourceOriginal.endMs ?? sourceOriginal.end);
     let nextStart = targetOriginal.start;
     let nextEnd = targetOriginal.end;
     if (drag.kind === 'move') {
-      const delta = source.start - sourceOriginal.start;
+      const delta = source.start - sourceOriginalStart;
       nextStart = targetOriginal.start + delta;
       nextEnd = targetOriginal.end + delta;
     } else if (drag.kind === 'resize-left') {
-      nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
+      nextStart = targetOriginal.start + (source.start - sourceOriginalStart);
     } else if (drag.kind === 'resize-right') {
-      nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
+      nextEnd = targetOriginal.end + (source.end - sourceOriginalEnd);
     } else if (drag.kind === 'resize-boundary') {
-      if (index === drag.index) nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
-      else nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
+      if (index === drag.index) nextEnd = targetOriginal.end + (source.end - sourceOriginalEnd);
+      else nextStart = targetOriginal.start + (source.start - sourceOriginalStart);
     } else if (drag.kind === 'resize-boundary-independent') {
-      if (drag.edge === 'start') nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
-      else nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
+      if (drag.edge === 'start') nextStart = targetOriginal.start + (source.start - sourceOriginalStart);
+      else nextEnd = targetOriginal.end + (source.end - sourceOriginalEnd);
     }
     if (nextEnd <= nextStart) nextEnd = nextStart + SUBTITLE_MIN_DURATION_MS;
 
@@ -17467,6 +18069,8 @@ function initWaveformEditor() {
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     getAutoSnapAdjacentCues: () => EDITOR_SETTINGS.autoSnapAdjacentCues,
+    getCueTiming: () => timelineTimingAdapter(),
+    getSnapToFrame: () => timelineIsFrameMode() && EDITOR_SETTINGS.timelineSnapToFrame,
     getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
     // JKL 倒放靠逐帧回退实现，媒体元素本身处于暂停态；倒放期间同样视为播放中。
     getHoverSeekPreview: () => EDITOR_SETTINGS.hoverSeekPreview && !jklReversePlaying,
@@ -17796,8 +18400,10 @@ window.addEventListener('drop', (e) => {
 // === 启动 ===
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase?.unit === 'frames' });
 const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
 const repairedTimingCount = normalizeProjectTimings(DATA);
+syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
 maweDebug('boot:begin', {
   server: Boolean(SERVER_CONFIG),
   segments: Array.isArray(DATA.segments) ? DATA.segments.length : null,
