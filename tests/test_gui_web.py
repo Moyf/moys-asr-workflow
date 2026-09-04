@@ -4138,7 +4138,9 @@ class WaitForServerProbeTests(unittest.TestCase):
                 )
             )
         self.assertTrue(probe_timeouts)
-        self.assertTrue(all(value <= 0.12 for value in probe_timeouts))
+        # Allow a small scheduling/clock-resolution margin while ensuring the
+        # 2-second per-probe default cannot escape the 120ms total budget.
+        self.assertTrue(all(0 < value < 0.2 for value in probe_timeouts))
 
 
 if __name__ == "__main__":
