@@ -33,6 +33,7 @@ from generate_subtitle_qwen_api import (
 )
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
+from maw.project_io import write_mosp
 from maw.project import repair_segment_durations, validate_project
 from maw.soniox import (
     MAX_AUDIO_SECONDS,
@@ -362,8 +363,11 @@ def main():
             for err in check.errors[:10]:
                 print(f"  {err.path}: {err.message}")
         print("[输出] 正在写入工程文件...")
-        json_path.write_text(
-            json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
+        write_mosp(
+            json_path,
+            json_data,
+            media_path=input_path,
+            ffprobe_path=ffprobe_path,
         )
         print(f"工程文件已保存到: {json_path}")
 

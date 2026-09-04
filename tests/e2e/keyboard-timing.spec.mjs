@@ -163,6 +163,26 @@ test('F seeks and plays a selected extension cue', async ({ page }) => {
   });
 });
 
+test('I/O seeks the current cue boundaries and stays paused', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.locator('.cue[data-idx="1"]').click();
+  await page.evaluate(() => { player.currentTime = 1; });
+  await page.locator('#media-play-toggle').click();
+  await page.waitForFunction(() => !document.getElementById('player').paused);
+
+  await page.keyboard.press('i');
+  await page.waitForFunction(() => {
+    const media = document.getElementById('player');
+    return media.paused && media.currentTime >= 10 && media.currentTime < 10.1;
+  });
+
+  await page.keyboard.press('o');
+  await page.waitForFunction(() => {
+    const media = document.getElementById('player');
+    return media.paused && media.currentTime >= 18 && media.currentTime < 18.1;
+  });
+});
+
 test('selected arrow keys move cues, adjust boundaries, and honor the configured step', async ({ page }) => {
   await loadAttachedCues(page, true);
   await page.locator('#waveform-settings-toggle').click();

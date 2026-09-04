@@ -458,6 +458,32 @@ class ScriptAlignmentTests(unittest.TestCase):
             [{"start": 140, "end": 1120}],
         )
 
+    def test_waveform_gap_detector_uses_fractional_exact_rate(self) -> None:
+        """合法的分数峰率不能在口播对齐的自动空隙检测中被静默忽略。"""
+        raw = bytearray()
+        for index in range(20):
+            value = 100 if index in {0, 12, 13, 19} else 0
+            raw.extend((0, value))
+        waveform = {
+            "schema": "moy.asr.waveform.v1",
+            "encoding": "i8-minmax-base64",
+            "peaks_per_second": 10.01,
+            "sample_rate": 1001,
+            "division": 100,
+            "duration_ms": 1998,
+            "data": base64.b64encode(raw).decode("ascii"),
+        }
+
+        self.assertEqual(
+            detect_waveform_gaps(
+                waveform,
+                minimum_ms=500,
+                lead_in_ms=40,
+                lead_out_ms=80,
+            ),
+            [{"start": 140, "end": 1119}],
+        )
+
     def test_item_boundary_splits_valid_prefix_from_extra_tail(self) -> None:
         target = "目前支持画面上的这些模型"
         tail = "之后还会继续增加"
