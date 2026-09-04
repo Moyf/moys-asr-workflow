@@ -406,6 +406,90 @@ test('keyboard movement ripples an attached following cue but Alt leaves it fixe
 });
 
 
+test('snaps pointer time only when frame snapping is enabled', () => {
+  const frameTiming = helpers.resolveTiming({
+    unit: 'frames',
+    fromMs: (value) => Math.round(Number(value) * 30 / 1000),
+    toMs: (value) => Math.round(Number(value) * 1000 / 30),
+  });
+  assert.equal(helpers.snapPointerTimeToTimingGrid(716, frameTiming, true), 700);
+  assert.equal(helpers.snapPointerTimeToTimingGrid(716, frameTiming, false), 716);
+  assert.equal(helpers.snapPointerTimeToTimingGrid(716, { unit: 'milliseconds' }, true), 716);
+});
+
+
+test('uses 100ms or current-FPS spacing for the two-second waveform grid', () => {
+  assert.equal(helpers.waveformGridStepMs({ unit: 'milliseconds' }), 100);
+  assert.equal(helpers.waveformGridStepMs({ unit: 'frames', fps: 25 }), 40);
+  assert.equal(helpers.waveformGridStepMs({ unit: 'frames', fps: 29.97 }), 1000 / 29.97);
+});
+
+
+test('runs cue movement and boundary remapping on an independent frame timeline', () => {
+  const frameTiming = helpers.resolveTiming({
+    unit: 'frames',
+    minDuration: 3,
+    snapThreshold: 2,
+    round: Math.round,
+    getStart: (segment) => segment.start_frame,
+    getEnd: (segment) => segment.end_frame,
+    setStart: (segment, value) => { segment.start_frame = Math.round(value); },
+    setEnd: (segment, value) => { segment.end_frame = Math.round(value); },
+    getItemStart: (item) => item.start_frame,
+    getItemEnd: (item) => item.end_frame,
+    setItemStart: (item, value) => { item.start_frame = Math.round(value); },
+    setItemEnd: (item, value) => { item.end_frame = Math.round(value); },
+    fromMs: (value) => Math.round(Number(value) * 30 / 1000),
+    toMs: (value) => Math.round(Number(value) * 1000 / 30),
+    format: (value) => `${value}F`,
+  });
+  assert.equal(frameTiming.unit, 'frames');
+
+  const moved = [
+    {
+      start: 0, end: 1000, start_frame: 0, end_frame: 30,
+      items: [{ text: 'A', start: 0, end: 1000, start_frame: 0, end_frame: 30 }],
+    },
+    {
+      start: 1000, end: 2000, start_frame: 30, end_frame: 60,
+      items: [{ text: 'B', start: 1000, end: 2000, start_frame: 30, end_frame: 60 }],
+    },
+  ];
+  const move = helpers.applyMoveStep(moved, [0], 1, 90, {
+    sticky: true,
+    minDuration: 3,
+    timing: frameTiming,
+  });
+  assert.equal(move.appliedDelta, 1);
+  assert.equal(moved[0].start_frame, 1);
+  assert.equal(moved[0].end_frame, 31);
+  assert.equal(moved[1].start_frame, 31);
+  assert.equal(moved[1].end_frame, 60);
+  assert.equal(moved[0].items[0].start_frame, 1);
+  assert.equal(moved[1].items[0].start_frame, 31);
+
+  const boundary = [
+    {
+      start: 0, end: 1000, start_frame: 0, end_frame: 30,
+      items: [{ text: 'A', start: 0, end: 1000, start_frame: 0, end_frame: 30 }],
+    },
+    {
+      start: 1000, end: 2000, start_frame: 30, end_frame: 60,
+      items: [{ text: 'B', start: 1000, end: 2000, start_frame: 30, end_frame: 60 }],
+    },
+  ];
+  helpers.applyBoundaryStep(boundary, 0, 'end', 2, 90, {
+    sticky: true,
+    minDuration: 3,
+    timing: frameTiming,
+  });
+  assert.equal(boundary[0].end_frame, 32);
+  assert.equal(boundary[1].start_frame, 32);
+  assert.equal(boundary[0].items[0].end_frame, 32);
+  assert.equal(boundary[1].items[0].start_frame, 32);
+});
+
+
 test('keyboard movement ripples an attached preceding cue when moving left', () => {
   const segments = [
     { start: 500, end: 1500, items: [{ text: 'A', start: 500, end: 1500 }] },

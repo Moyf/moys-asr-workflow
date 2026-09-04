@@ -8,7 +8,6 @@ Torch, QwenASR, FunASR, or faster-whisper installed.
 from __future__ import annotations
 
 import inspect
-import json
 import math
 import os
 import re
@@ -32,6 +31,7 @@ from generate_subtitle_qwen_api import (
     split_segments_auto,
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.project_io import write_mosp
 
 
 ProgressCallback = Callable[[str], None]
@@ -1396,6 +1396,7 @@ def write_local_outputs(
     with_waveform: bool,
     generate_spectral: bool = False,
     ffmpeg_path: str | Path | None = None,
+    ffprobe_path: str | Path | None = None,
 ) -> LocalOutputPaths:
     """Write SRT and optional MAW project/portable editor outputs."""
     output_srt.parent.mkdir(parents=True, exist_ok=True)
@@ -1424,10 +1425,11 @@ def write_local_outputs(
             cache_media_path or input_path,
             **cache_kwargs,
         ).project
-    json_path.write_text(
-        json.dumps(project, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-        newline="\n",
+    write_mosp(
+        json_path,
+        project,
+        media_path=input_path,
+        ffprobe_path=ffprobe_path,
     )
 
     html_path: Path | None = None
