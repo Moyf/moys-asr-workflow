@@ -22,6 +22,7 @@ import reapeaks as rust_generate
 
 # 固定源媒体 mtime，避免测试跨秒边界导致校验结果不确定。
 FIXED_MTIME = 1_700_000_000.0
+FIXED_MTIME_I = int(FIXED_MTIME)
 
 
 def _read_wav_pcm(path: Path) -> tuple[int, int, bytes]:
@@ -212,6 +213,53 @@ class ReaPeaksParseTests(unittest.TestCase):
         spec_data = struct.pack("<ii", (16383 << 15) | 300, (100 << 15) | 5000)
         legacy.write_bytes(header + mip_headers + wave_data + spec_data)
         self.assertIsNone(reapeaks.load_spectral_payload(media))
+
+    def test_parses_size_fingerprint_as_unsigned_low32(self) -> None:
+        # 官方规格为 "low 32 bits"：>2^31 的真实大文件（REAPER 真机写法）按
+        # i32 解读会得到负数；解析器必须按无符号位型读出。
+        media = self.root / "huge.mov"
+        media.write_bytes(b"\x00" * 8)
+        header = struct.pack(
+            "<4sBBiII", b"RPKN", 2, 1, 48000, 1_704_691_847, 2_903_746_742,
+        )
+        mip_headers = struct.pack("<ii", 160, 1)
+        wave_data = struct.pack("<hhhh", 100, -100, 100, -100)
+        cache = self.root / "huge.mov.ReaPeaks"
+        cache.write_bytes(header + mip_headers + wave_data)
+        parsed = reapeaks.ReaPeaksFile(str(cache))
+        self.assertEqual(parsed.src_timestamp, 1_704_691_847)
+        self.assertEqual(parsed.src_filesize, 2_903_746_742)
+
+    def test_timestamp_fingerprint_tolerances(self) -> None:
+        # 精确相等；秒级漂移；DST 整小时偏差（±数秒）；其余判不匹配。
+        cases = [
+            (FIXED_MTIME_I, FIXED_MTIME_I, True),
+            (FIXED_MTIME_I, FIXED_MTIME_I + 3, True),
+            (FIXED_MTIME_I, FIXED_MTIME_I - 3, True),
+            (FIXED_MTIME_I, FIXED_MTIME_I + 3597, True),  # 一小时差 3 秒
+            (FIXED_MTIME_I, FIXED_MTIME_I - 3603, True),
+            (FIXED_MTIME_I, FIXED_MTIME_I + 10, False),
+            (FIXED_MTIME_I, FIXED_MTIME_I + 7200, False),
+            (FIXED_MTIME_I, FIXED_MTIME_I + 1800, False),
+        ]
+        for stored, actual, expected in cases:
+            with self.subTest(stored=stored, actual=actual):
+                self.assertEqual(
+                    reapeaks._timestamp_fingerprint_matches(stored, actual), expected,
+                )
+
+    def test_matches_media_tolerates_copy_mtime_drift(self) -> None:
+        # 跨盘拷贝常使 mtime 漂移几秒；缓存不应被误杀（对齐 REAPER 行为）。
+        os.utime(self.media_path, (FIXED_MTIME + 3, FIXED_MTIME + 3))
+        self.assertTrue(
+            reapeaks._reapeaks_matches_media(self.reapeaks_path, self.media_path)
+        )
+        self.assertIsNotNone(reapeaks.load_spectral_payload(self.media_path))
+        # 但实打实换了文件（漂移两小时）仍判失效。
+        os.utime(self.media_path, (FIXED_MTIME + 7200, FIXED_MTIME + 7200))
+        self.assertFalse(
+            reapeaks._reapeaks_matches_media(self.reapeaks_path, self.media_path)
+        )
 
 
 class GenerateReaPeaksTests(unittest.TestCase):
