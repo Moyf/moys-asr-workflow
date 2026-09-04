@@ -69,6 +69,7 @@ datas = [
     (str(ROOT / "maw" / "local_asr.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "local_runtime_worker.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "media.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "project_io.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "ffmpeg.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project_preview.py"), "local-runtime/maw"),

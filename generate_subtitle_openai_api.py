@@ -34,8 +34,9 @@ from maw.app_paths import default_env_path
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.gui_config import load_env
-from maw.project import repair_segment_durations
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.project import repair_segment_durations
+from maw.project_io import write_mosp
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -433,7 +434,12 @@ def main() -> None:
         if cache_result is not None:
             json_data = merge_media_caches(json_data, cache_result)
         json_path = output_path.with_suffix(".mosp")
-        json_path.write_text(json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_mosp(
+            json_path,
+            json_data,
+            media_path=input_path,
+            ffprobe_path=ffmpeg_tools.ffprobe,
+        )
         print(f"工程文件已保存到: {json_path}")
         if not args.no_html:
             edit_script = Path(__file__).parent / "edit.py"

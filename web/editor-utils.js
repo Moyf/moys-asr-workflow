@@ -2012,6 +2012,50 @@
     return fixed;
   }
 
+  // 帧模式下，多个字词可能因为帧率取整而落在同一帧。它们的 frame
+  // 字段可以合法地重合，但保存用的毫秒兼容字段仍必须保持在字幕段内、
+  // 按 item 顺序排列；不能交给通用修复器按 100ms 向后扩张。
+  // 尽量保留帧投影出的毫秒范围，发生碰撞时只压缩到段内剩余空间。
+  function normalizeFrameItemTimingRanges(segment) {
+    if (!segment || typeof segment !== 'object' || !Array.isArray(segment.items)) return 0;
+    const segmentStart = Math.round(Number(segment.start));
+    const segmentEnd = Math.round(Number(segment.end));
+    if (!Number.isFinite(segmentStart) || !Number.isFinite(segmentEnd)
+        || segmentEnd < segmentStart) return 0;
+
+    const items = segment.items.filter((item) => item && typeof item === 'object');
+    const minimumDuration = segmentEnd - segmentStart >= items.length ? 1 : 0;
+    let previousItemEnd = segmentStart;
+    let processed = 0;
+    let fixed = 0;
+    segment.items.forEach((item) => {
+      if (!item || typeof item !== 'object') return;
+      const rawStart = Number(item.start);
+      const rawEnd = Number(item.end);
+      const candidateStart = Number.isFinite(rawStart)
+        ? Math.round(rawStart) : previousItemEnd;
+      const candidateEnd = Number.isFinite(rawEnd)
+        ? Math.round(rawEnd) : candidateStart;
+      const remainingItems = items.length - processed - 1;
+      const latestEnd = segmentEnd - minimumDuration * remainingItems;
+      const latestStart = latestEnd - minimumDuration;
+      const itemStart = Math.min(
+        Math.max(candidateStart, previousItemEnd, segmentStart),
+        latestStart,
+      );
+      const itemEnd = Math.min(
+        Math.max(candidateEnd, itemStart + minimumDuration),
+        latestEnd,
+      );
+      if (item.start !== itemStart || item.end !== itemEnd) fixed += 1;
+      item.start = itemStart;
+      item.end = itemEnd;
+      previousItemEnd = itemEnd;
+      processed += 1;
+    });
+    return fixed;
+  }
+
   function timedItemsFitSegmentRange(segment, start, end) {
     const items = Array.isArray(segment?.items) ? segment.items : null;
     if (!items) return true;
@@ -2514,6 +2558,129 @@
     if (edge === 'start') return text.replace(activeStartTrimPattern, '');
     return text.replace(activeEndTrimPattern, '');
   }
+
+  // 字幕编辑的时间基准。工程仍以整数毫秒保存兼容字段；帧字段是按工程
+  // FPS 计算的平行时间轴，用于需要逐帧定位的编辑操作。
+  const TIMELINE_TIMEBASE_UNITS = Object.freeze(['milliseconds', 'frames']);
+  const DEFAULT_TIMELINE_FPS = 30;
+  const DEFAULT_TIMELINE_TIMECODE_SEPARATOR = ':';
+  const MIN_TIMELINE_FPS = 1;
+  const MAX_TIMELINE_FPS = 240;
+
+  function normalizeTimelineFps(value, fallback = DEFAULT_TIMELINE_FPS) {
+    const fallbackValue = Number.isFinite(Number(fallback))
+      ? Number(fallback) : DEFAULT_TIMELINE_FPS;
+    const numeric = Number(value);
+    const safe = Number.isFinite(numeric) ? numeric : fallbackValue;
+    return Math.min(
+      MAX_TIMELINE_FPS,
+      Math.max(MIN_TIMELINE_FPS, Math.round(safe * 1000) / 1000),
+    );
+  }
+
+  function normalizeTimelineTimecodeSeparator(value, fallback = DEFAULT_TIMELINE_TIMECODE_SEPARATOR) {
+    const fallbackCandidate = Array.from(String(fallback ?? '').trim())[0] || '';
+    const safeFallback = fallbackCandidate && !/[\p{Letter}\p{Number}\s]/u.test(fallbackCandidate)
+      ? fallbackCandidate : DEFAULT_TIMELINE_TIMECODE_SEPARATOR;
+    const candidate = Array.from(String(value ?? '').trim())[0] || '';
+    return candidate && !/[\p{Letter}\p{Number}\s]/u.test(candidate) ? candidate : safeFallback;
+  }
+
+  function normalizeTimelineTimebase(value, fallback = {}) {
+    const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const fallbackRaw = fallback && typeof fallback === 'object' ? fallback : {};
+    const fallbackUnit = TIMELINE_TIMEBASE_UNITS.includes(fallbackRaw.unit)
+      ? fallbackRaw.unit : 'milliseconds';
+    return {
+      unit: TIMELINE_TIMEBASE_UNITS.includes(raw.unit) ? raw.unit : fallbackUnit,
+      fps: normalizeTimelineFps(raw.fps, fallbackRaw.fps ?? DEFAULT_TIMELINE_FPS),
+    };
+  }
+
+  function normalizeMediaMetadata(value) {
+    if (value == null) return null;
+    if (typeof value !== 'object' || Array.isArray(value)) return null;
+    const fps = value.video_fps;
+    if (typeof fps !== 'number' || !Number.isFinite(fps)
+        || fps < MIN_TIMELINE_FPS || fps > MAX_TIMELINE_FPS) return null;
+    if (value.video_fps_ratio !== undefined
+        && (typeof value.video_fps_ratio !== 'string' || !value.video_fps_ratio.trim())) return null;
+    const metadata = { video_fps: normalizeTimelineFps(fps) };
+    if (typeof value.video_fps_ratio === 'string') {
+      metadata.video_fps_ratio = value.video_fps_ratio.trim();
+    }
+    return metadata;
+  }
+
+  function frameNumberFromMilliseconds(value, fps = DEFAULT_TIMELINE_FPS) {
+    const numeric = Number(value);
+    const rate = normalizeTimelineFps(fps);
+    return Number.isFinite(numeric) ? Math.max(0, Math.round(numeric * rate / 1000)) : 0;
+  }
+
+  function millisecondsFromFrameNumber(value, fps = DEFAULT_TIMELINE_FPS) {
+    const frame = Number(value);
+    const rate = normalizeTimelineFps(fps);
+    return Number.isFinite(frame) ? Math.max(0, Math.round(frame * 1000 / rate)) : 0;
+  }
+
+  function nominalTimecodeFps(fps = DEFAULT_TIMELINE_FPS) {
+    return Math.max(1, Math.round(normalizeTimelineFps(fps)));
+  }
+
+  function formatFrameTimecode(
+    value,
+    fps = DEFAULT_TIMELINE_FPS,
+    separator = DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+  ) {
+    const nominalFps = nominalTimecodeFps(fps);
+    const totalFrames = Math.max(0, Math.round(Number(value) || 0));
+    const frame = totalFrames % nominalFps;
+    const totalSeconds = Math.floor(totalFrames / nominalFps);
+    const seconds = totalSeconds % 60;
+    const minutes = Math.floor(totalSeconds / 60) % 60;
+    const hours = Math.floor(totalSeconds / 3600);
+    const pad = (number, width) => String(number).padStart(width, '0');
+    return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(seconds, 2)}${
+      normalizeTimelineTimecodeSeparator(separator)
+    }${pad(frame, 2)}`;
+  }
+
+  function formatTimelineTimecode(
+    valueMs,
+    fps = DEFAULT_TIMELINE_FPS,
+    separator = DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+  ) {
+    return formatFrameTimecode(frameNumberFromMilliseconds(valueMs, fps), fps, separator);
+  }
+
+  function parseFrameTimecode(
+    value,
+    fps = DEFAULT_TIMELINE_FPS,
+    separator = DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+  ) {
+    const raw = String(value || '').trim();
+    const frameSeparator = normalizeTimelineTimecodeSeparator(separator);
+    const escapedSeparator = escapeSplitTrimPatternSource(frameSeparator);
+    const match = new RegExp(
+      '^(\\d+):(\\d{2}):(\\d{2})\\s*(?:' + escapedSeparator
+        + '|;|,|/)\\s*(\\d{1,3})\\s*F?$',
+      'iu',
+    ).exec(raw);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    const seconds = Number(match[3]);
+    const frame = Number(match[4]);
+    const nominalFps = nominalTimecodeFps(fps);
+    if (minutes >= 60 || seconds >= 60 || frame >= nominalFps) return null;
+    return (((hours * 60 + minutes) * 60) + seconds) * nominalFps + frame;
+  }
+
+  function clampTimelineFrameStep(value, fallback = 1) {
+    return clampInteger(value, fallback, 1, 240);
+  }
+
   const DEFAULT_EDITOR_SETTINGS = Object.freeze({
     splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true,
     mainSplitModeOverride: null,
@@ -2530,7 +2697,9 @@
     autoSaveProject: true, autoSaveIntervalSeconds: 30, stickerOverlayEnabled: false,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
-    cueMoveStepMs: 50, hoverSeekPreview: false, autoSnapAdjacentCues: true, ninjaMode: false,
+    mediaSeekStepFrames: 1, cueMoveStepMs: 50, cueMoveStepFrames: 1,
+    timelineSnapToFrame: true, timelineTimecodeSeparator: DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+    hoverSeekPreview: false, autoSnapAdjacentCues: true, ninjaMode: false,
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
@@ -2603,7 +2772,11 @@
       jklPlaybackMode: ['speed', 'direction'].includes(savedSettings.jklPlaybackMode)
         ? savedSettings.jklPlaybackMode : 'direction',
       mediaSeekStepMs: clampInteger(mediaSeekStepMs, 1000, 10, 60000),
+      mediaSeekStepFrames: clampTimelineFrameStep(savedSettings.mediaSeekStepFrames, 1),
       cueMoveStepMs: clampInteger(savedSettings.cueMoveStepMs, 50, 10, 2000),
+      cueMoveStepFrames: clampTimelineFrameStep(savedSettings.cueMoveStepFrames, 1),
+      timelineSnapToFrame: savedSettings.timelineSnapToFrame !== false,
+      timelineTimecodeSeparator: normalizeTimelineTimecodeSeparator(savedSettings.timelineTimecodeSeparator),
       hoverSeekPreview: savedSettings.hoverSeekPreview === true,
       autoSnapAdjacentCues: savedSettings.autoSnapAdjacentCues !== false,
       ninjaMode: savedSettings.ninjaMode === true,
@@ -4952,6 +5125,7 @@ export default MawDynamicCaptions;
     isShortSubtitleText,
     normalizeSegmentTimings,
     normalizeItemTimingRanges,
+    normalizeFrameItemTimingRanges,
     repairSegmentOverlap,
     planAutoMerge,
     applyAutoMergeSnaps,
@@ -4996,6 +5170,21 @@ export default MawDynamicCaptions;
     getSrtExportFirstIndex,
     getSrtExportOffset,
     normalizeEditorSettings,
+    TIMELINE_TIMEBASE_UNITS,
+    DEFAULT_TIMELINE_FPS,
+    DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+    MIN_TIMELINE_FPS,
+    MAX_TIMELINE_FPS,
+    normalizeTimelineFps,
+    normalizeTimelineTimecodeSeparator,
+    normalizeTimelineTimebase,
+    normalizeMediaMetadata,
+    frameNumberFromMilliseconds,
+    millisecondsFromFrameNumber,
+    formatFrameTimecode,
+    formatTimelineTimecode,
+    parseFrameTimecode,
+    clampTimelineFrameStep,
     normalizeMultiSubtitleRowHeight,
     normalizeClickBehavior,
     normalizeClickTarget,

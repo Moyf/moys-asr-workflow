@@ -607,7 +607,10 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         ffmpeg = self.root / "ffmpeg.exe"
         with (
-            mock.patch("maw.gui_web._postprocess_ffmpeg", return_value=ffmpeg),
+            mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(
+                ffmpeg=ffmpeg,
+                ffprobe=None,
+            )),
             mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=None, reapeaks_path=None)) as embed,
         ):
             result = self.api.generate_waveform_project({"mediaPath": str(media), "generateSpectral": True})

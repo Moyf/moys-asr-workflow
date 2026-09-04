@@ -36,6 +36,7 @@ from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tool, resolve_ffmpeg_tools
+from maw.project_io import write_mosp
 
 from maw.media_cache import embed_media_caches, merge_media_caches
 
@@ -1891,8 +1892,11 @@ def main():
         if cache_result is not None:
             json_data = merge_media_caches(json_data, cache_result)
         print("[输出] 正在写入工程文件...")
-        json_path.write_text(
-            json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
+        write_mosp(
+            json_path,
+            json_data,
+            media_path=input_path,
+            ffprobe_path=ffprobe_path,
         )
         print(f"工程文件已保存到: {json_path}")
 

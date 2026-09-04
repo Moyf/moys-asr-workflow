@@ -82,6 +82,88 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(binding["start_offset_ms"], 100)
         self.assertEqual(binding["end_offset_ms"], -100)
 
+    def test_validate_project_accepts_parallel_frame_timebase(self) -> None:
+        project = {
+            "timebase": {"unit": "frames", "fps": 29.97},
+            "segments": [{
+                "start": 1000,
+                "end": 3000,
+                "start_frame": 30,
+                "end_frame": 90,
+                "text": "主字幕",
+                "items": [{
+                    "text": "主字幕",
+                    "start": 1000,
+                    "end": 3000,
+                    "start_frame": 30,
+                    "end_frame": 90,
+                }],
+            }],
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.project["timebase"], {"unit": "frames", "fps": 29.97})
+        self.assertEqual(result.project["segments"][0]["start_frame"], 30)
+        self.assertEqual(result.project["segments"][0]["items"][0]["end_frame"], 90)
+
+    def test_validate_project_reports_invalid_timebase_and_frame_pairs(self) -> None:
+        project = {
+            "timebase": {"unit": "frames", "fps": 300},
+            "segments": [{
+                "start": 0,
+                "end": 1000,
+                "start_frame": 30,
+                "end_frame": 20,
+                "text": "主字幕",
+                "items": [{
+                    "text": "主字幕",
+                    "start": 0,
+                    "end": 1000,
+                    "start_frame": 30,
+                }],
+            }],
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.timebase.fps", paths)
+        self.assertIn("$.segments[0].end_frame", paths)
+        self.assertIn("$.segments[0].items[0]", paths)
+
+    def test_validate_project_accepts_optional_source_video_fps_metadata(self) -> None:
+        project = {
+            "media_metadata": {
+                "video_fps": 30000 / 1001,
+                "video_fps_ratio": "30000/1001",
+            },
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.project["media_metadata"], project["media_metadata"])
+
+    def test_validate_project_reports_invalid_source_video_fps_metadata(self) -> None:
+        project = {
+            "media_metadata": {
+                "video_fps": 300,
+                "video_fps_ratio": "",
+            },
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.media_metadata.video_fps", paths)
+        self.assertIn("$.media_metadata.video_fps_ratio", paths)
+
     def test_validate_project_reports_multi_subtitle_contract_errors(self) -> None:
         project = {
             "segments": [{"id": "main-a", "start": 0, "end": 1000, "text": "主"}],
