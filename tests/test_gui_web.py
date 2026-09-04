@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Mapping, final
@@ -25,6 +26,7 @@ from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
+from maw.postprocess_pipeline import PostprocessPipelineError  # noqa: E402
 from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
 from maw.runtimes import OCR  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
@@ -514,6 +516,29 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["code"], "postprocess_connection_failed")
         self.assertFalse(self.env_path.exists())
 
+    def test_postprocess_connection_http_failure_returns_non_secret_guidance_metadata(self) -> None:
+        error = LlmClientError(
+            "LLM connection test request failed (HTTP 401)",
+            status_code=401,
+            operation="connection test",
+        )
+        with mock.patch("maw.gui_web.test_llm_connection", side_effect=error):
+            result = self.api.test_postprocess_connection({
+                "providerId": "custom",
+                "apiKey": "test-only-key",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+                "save": True,
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_connection_failed")
+        self.assertEqual(result["httpStatus"], 401)
+        self.assertEqual(result["providerId"], "custom")
+        self.assertEqual(result["operation"], "connection test")
+        self.assertNotIn("test-only-key", str(result))
+        self.assertFalse(self.env_path.exists())
+
     def test_postprocess_models_use_form_values_without_writing_config(self) -> None:
         with mock.patch("maw.gui_web.list_llm_models", return_value=["model-a", "model-b"]) as list_models:
             result = self.api.get_postprocess_models({
@@ -530,6 +555,28 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(settings.api_key, "sk-entered")
         self.assertEqual(settings.base_url, "https://example.com/v1")
         self.assertEqual(settings.model, "custom-model")
+        self.assertFalse(self.env_path.exists())
+
+    def test_postprocess_models_http_failure_returns_non_secret_status_metadata(self) -> None:
+        error = LlmClientError(
+            "LLM model list request failed (HTTP 404)",
+            status_code=404,
+            operation="model list",
+        )
+        with mock.patch("maw.gui_web.list_llm_models", side_effect=error):
+            result = self.api.get_postprocess_models({
+                "providerId": "custom",
+                "apiKey": "test-only-key",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_models_failed")
+        self.assertEqual(result["httpStatus"], 404)
+        self.assertEqual(result["providerId"], "custom")
+        self.assertEqual(result["operation"], "model list")
+        self.assertNotIn("test-only-key", str(result))
         self.assertFalse(self.env_path.exists())
 
     def test_legacy_setting_bridges_return_structured_errors_for_invalid_values(self) -> None:
@@ -1057,6 +1104,60 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         request = process.call_args.args[0]
         self.assertTrue(request.merge_bilingual)
+
+    def test_llm_bridge_classifies_provider_http_error_without_exposing_secrets(self) -> None:
+        provider_error = LlmClientError(
+            "LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.",
+            category="provider_response",
+            status_code=400,
+            diagnostic="invalid request",
+        )
+        with mock.patch("maw.gui_web.process_llm_postprocess", side_effect=provider_error):
+            result = self.api.run_llm_postprocess({
+                "operation": "proofread",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "customPrompt": "",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_provider_response")
+        self.assertEqual(result["httpStatus"], 400)
+        self.assertEqual(result["diagnostic"], "invalid request")
+        self.assertIn("not a network outage", str(result["detail"]))
+        self.assertNotIn("sk-test", str(result))
+
+    def test_llm_network_bridge_redacts_endpoint_and_authorization(self) -> None:
+        provider_error = LlmClientError(
+            "LLM network request failed for https://api.example.test/v1/chat/completions?api_key=query-secret "
+            "Authorization: Bearer bearer-secret token=token-secret",
+            category="network",
+            diagnostic="https://api.example.test/v1?api_key=query-secret Bearer bearer-secret token=token-secret",
+        )
+        with mock.patch("maw.gui_web.process_llm_postprocess", side_effect=provider_error):
+            result = self.api.run_llm_postprocess({
+                "operation": "proofread",
+                "providerId": "custom",
+                "apiKey": "api-key-secret",
+                "baseUrl": "https://api.example.test/v1?api_key=query-secret",
+                "model": "custom-model",
+                "customPrompt": "",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_failed")
+        for secret in (
+            "api-key-secret",
+            "https://api.example.test/v1/chat/completions?api_key=query-secret",
+            "https://api.example.test/v1?api_key=query-secret",
+            "query-secret",
+            "bearer-secret",
+            "token-secret",
+        ):
+            self.assertNotIn(secret, str(result))
+        self.assertEqual(result["detail"], result["error"])
 
     def test_llm_custom_bridge_rejects_empty_prompt_before_provider_call(self) -> None:
         with mock.patch("maw.gui_web.complete_subtitle_groups") as complete:
@@ -2665,6 +2766,49 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('"code": "transcription_cancelled"', event_script)
         self.assertNotIn('"code": "transcription_failed"', event_script)
 
+    def test_worker_exposes_retry_and_original_transcription_for_provider_failure(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.wav",
+            srt_path=self.root / "clip.srt",
+            postprocess_plan={"enabled": True},
+            postprocess_llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}},
+        )
+        result = TranscriptionResult(
+            srt_path=self.root / "clip.srt",
+            json_path=self.root / "clip.mosp",
+            html_path=None,
+        )
+        failure = PostprocessPipelineError(
+            "后处理步骤 translate 失败：LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.",
+            run_directory=self.root / "MAW-Postprocess" / "run",
+            failed_index=0,
+            current_project=result.json_path,
+            current_srt=result.srt_path,
+            completed_steps=(),
+            failed_step="translate",
+            cause=LlmClientError(
+                "LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.",
+                category="provider_response",
+                status_code=400,
+                diagnostic="invalid request",
+            ),
+        )
+
+        with (
+            mock.patch("maw.gui_web.run_transcription", return_value=result),
+            mock.patch("maw.gui_web.run_postprocess_pipeline", side_effect=failure),
+        ):
+            self.api._worker_main(request, threading.Event())
+
+        self.assertTrue(self.window.scripts)
+        event_script = self.window.scripts[-1]
+        self.assertIn('"code": "postprocess_provider_response"', event_script)
+        self.assertIn('"canRetry": true', event_script)
+        self.assertIn('"failedStep": "translate"', event_script)
+        self.assertIn('"httpStatus": 400', event_script)
+        self.assertIn(str(result.json_path).replace("\\", "\\\\"), event_script)
+        self.assertIn(str(result.srt_path).replace("\\", "\\\\"), event_script)
+
     def test_worker_emits_retryable_error_for_ffmpeg_start_failure(self) -> None:
         request = TranscriptionRequest(
             media_path=self.root / "clip.mp4",
@@ -3150,6 +3294,18 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('toolbox_saved: "LLM settings saved."', launcher_script)
         self.assertIn('llm_connection_saved: "连接成功（已自动保存到本地环境）"', launcher_script)
         self.assertIn('llm_connection_saved: "Connection successful (saved to local environment automatically)."', launcher_script)
+        self.assertIn('llm_http_unauthorized:', launcher_script)
+        self.assertIn('llm_http_unauthorized_builtin:', launcher_script)
+        self.assertIn('llm_http_unauthorized_custom:', launcher_script)
+        self.assertIn('llm_http_forbidden:', launcher_script)
+        self.assertIn('llm_http_not_found:', launcher_script)
+        self.assertIn('llm_http_rate_limited:', launcher_script)
+        self.assertIn('llm_builtin_provider_key_guidance:', launcher_script)
+        self.assertIn('function llmBuiltInProviderKeyGuidance(context = {})', launcher_script)
+        self.assertIn('["deepseek", "zhipu", "qwen"].includes(providerId)', launcher_script)
+        self.assertIn('官方控制台获取的 API Key', launcher_script)
+        self.assertIn('第三方平台，请选择“自定义（兼容 OpenAI）”', launcher_script)
+        self.assertIn('当前供应商：自定义（兼容 OpenAI）。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
         self.assertIn('llm_custom_provider: "自定义（兼容 OpenAI）"', launcher_script)
         self.assertIn('llm_custom_provider: "Custom (OpenAI-compatible)"', launcher_script)
         self.assertIn('toolbox_key_loaded: "已从本地环境读取密钥 {key}"', launcher_script)
@@ -3158,12 +3314,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('field.value = result.apiKey || "";', script)
         self.assertIn('void loadPostprocessApiKey(item.id, item.maskedApiKey || "");', script)
         self.assertIn('function postprocessErrorText(result)', script)
-        self.assertIn('window.MAWLauncher.errorText(result?.code || "", detail)', script)
+        self.assertIn('window.MAWLauncher.errorText(result?.code || "", detail, result)', script)
         self.assertIn('function postprocessFieldId(field)', script)
         self.assertIn('function renderSettingsError(result)', script)
         self.assertIn('setFieldError(field, message);\n      setSettingsSaveStatus("", "", 0);', script)
         self.assertIn('function clearSettingsErrors()', script)
         self.assertIn('postprocessApiKey: "llmApiKey"', script)
+        self.assertIn('context?.httpStatus', launcher_script)
+        self.assertIn('Compare the provider, API URL, and the issuer of the API key', launcher_script)
         self.assertIn('save: true,', script)
         self.assertIn('setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");', script)
         self.assertNotIn("autoTest", script)

@@ -159,6 +159,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "custom_prompt_required": "A custom prompt is required.",
     "postprocess_config_invalid": "自动后处理配置不完整。",
     "postprocess_failed": "转写已完成，但自动后处理失败。",
+    "postprocess_provider_response": "LLM provider returned an HTTP error; this is not a network outage.",
     "postprocess_cancelled": "自动后处理已取消，原始转写产物仍然保留。",
     "waveform_unavailable": "Waveform data could not be embedded.",
     "waveform_generation_failed": "Waveform project generation failed.",
@@ -854,8 +855,14 @@ class LauncherApi:
         try:
             test_llm_connection(settings)
         except LlmClientError as error:
-            detail = str(error)
-            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_connection_failed", "detail": detail, "error": detail}
+            return _llm_error_result(
+                "postprocessProvider",
+                "postprocess_connection_failed",
+                error,
+                provider_id=preset.id,
+                operation="connection test",
+                preserve_provider_response_code=False,
+            )
         if bool(payload.get("save")):
             saved = self.save_postprocess_settings({
                 "providerId": preset.id,
@@ -904,8 +911,14 @@ class LauncherApi:
         try:
             models = list_llm_models(settings)
         except LlmClientError as error:
-            detail = str(error)
-            return {"ok": False, "field": "postprocessModel", "code": "postprocess_models_failed", "detail": detail, "error": detail}
+            return _llm_error_result(
+                "postprocessModel",
+                "postprocess_models_failed",
+                error,
+                provider_id=preset.id,
+                operation="model list",
+                preserve_provider_response_code=False,
+            )
         return {"ok": True, "providerId": preset.id, "models": models}
 
     def run_fixed_process(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1052,6 +1065,8 @@ class LauncherApi:
                 on_status=self._emit_postprocess_status,
             )
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+            if isinstance(error, LlmClientError):
+                return _llm_error_result("postprocessInput", "postprocess_failed", error)
             return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
@@ -2208,7 +2223,14 @@ class LauncherApi:
                 self.postprocess_translation_srt_path = auto_result.translated_srt_path
                 self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
             except PostprocessCancelled as error:
-                self._emit({"type": "error", "code": "postprocess_cancelled", "detail": str(error), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+                self._emit({
+                    "type": "error",
+                    "code": "postprocess_cancelled",
+                    "detail": str(error),
+                    "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
+                    "originalProjectPath": str(result.json_path),
+                    "originalSrtPath": str(result.srt_path),
+                })
                 if self.worker is threading.current_thread():
                     self.worker = None
                 self.pump.flush()
@@ -2225,19 +2247,26 @@ class LauncherApi:
                     "currentSrt": str(error.current_srt),
                     "llmSettings": request.postprocess_llm_settings,
                 }
-                self._emit({
-                    "type": "error",
-                    "code": "postprocess_failed",
-                    "detail": str(error),
-                    "canRetry": True,
-                    "postprocessRunDirectory": str(error.run_directory),
-                })
+                self._emit(_postprocess_pipeline_error_event(
+                    error,
+                    original_project_path=result.json_path,
+                    original_srt_path=result.srt_path,
+                    can_retry=True,
+                ))
                 if self.worker is threading.current_thread():
                     self.worker = None
                 self.pump.flush()
                 return
             except Exception as error:  # noqa: BLE001 - postprocess boundary reports separately from ASR.
-                self._emit({"type": "error", "code": "postprocess_failed", "detail": str(error), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+                self._emit({
+                    "type": "error",
+                    "code": "postprocess_failed",
+                    "detail": str(error),
+                    "canRetry": False,
+                    "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
+                    "originalProjectPath": str(result.json_path),
+                    "originalSrtPath": str(result.srt_path),
+                })
                 if self.worker is threading.current_thread():
                     self.worker = None
                 self.pump.flush()
@@ -2276,7 +2305,14 @@ class LauncherApi:
                 resume_srt_path=Path(str(context.get("currentSrt") or result.srt_path)),
             )
         except PostprocessCancelled as error:
-            self._emit({"type": "error", "code": "postprocess_cancelled", "detail": str(error), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+            self._emit({
+                "type": "error",
+                "code": "postprocess_cancelled",
+                "detail": str(error),
+                "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
+                "originalProjectPath": str(context.get("sourceProjectPath") or result.json_path),
+                "originalSrtPath": str(context.get("sourceSrtPath") or result.srt_path),
+            })
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -2289,13 +2325,26 @@ class LauncherApi:
                 "currentProject": str(error.current_project),
                 "currentSrt": str(error.current_srt),
             }
-            self._emit({"type": "error", "code": "postprocess_failed", "detail": str(error), "canRetry": True, "postprocessRunDirectory": str(error.run_directory)})
+            self._emit(_postprocess_pipeline_error_event(
+                error,
+                original_project_path=Path(str(context.get("sourceProjectPath") or result.json_path)),
+                original_srt_path=Path(str(context.get("sourceSrtPath") or result.srt_path)),
+                can_retry=True,
+            ))
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
             return
         except Exception as error:  # noqa: BLE001 - retry boundary reports to the Launcher.
-            self._emit({"type": "error", "code": "postprocess_failed", "detail": str(error), "canRetry": True, "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+            self._emit({
+                "type": "error",
+                "code": "postprocess_failed",
+                "detail": str(error),
+                "canRetry": True,
+                "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
+                "originalProjectPath": str(context.get("sourceProjectPath") or result.json_path),
+                "originalSrtPath": str(context.get("sourceSrtPath") or result.srt_path),
+            })
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -2896,6 +2945,75 @@ def _free_local_port() -> int:
 def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
     return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code)}
 
+
+def _llm_error_result(
+    field: str,
+    fallback_code: str,
+    error: LlmClientError,
+    *,
+    provider_id: str = "",
+    operation: str = "",
+    preserve_provider_response_code: bool = True,
+) -> dict[str, object]:
+    """Return a safe bridge error while preserving provider classification metadata."""
+
+    category = str(getattr(error, "category", "") or "")
+    code = (
+        "postprocess_provider_response"
+        if preserve_provider_response_code and category == "provider_response"
+        else fallback_code
+    )
+    result: dict[str, object] = {
+        "ok": False,
+        "field": field,
+        "code": code,
+        "detail": str(error),
+        "error": str(error),
+    }
+    status_code = getattr(error, "status_code", None)
+    if isinstance(status_code, int):
+        result["httpStatus"] = status_code
+        if provider_id:
+            result["providerId"] = provider_id
+        result["operation"] = str(getattr(error, "operation", "") or operation)
+    diagnostic = str(getattr(error, "diagnostic", "") or "")
+    if diagnostic:
+        result["diagnostic"] = diagnostic
+    return result
+
+
+def _postprocess_pipeline_error_event(
+    error: PostprocessPipelineError,
+    *,
+    original_project_path: Path,
+    original_srt_path: Path,
+    can_retry: bool,
+) -> dict[str, object]:
+    """Expose retry state and original transcription paths without provider secrets."""
+
+    category = str(getattr(error, "category", "") or "")
+    code = "postprocess_provider_response" if category == "provider_response" else "postprocess_failed"
+    event: dict[str, object] = {
+        "type": "error",
+        "code": code,
+        "detail": str(error),
+        "canRetry": can_retry,
+        "postprocessRunDirectory": str(error.run_directory),
+        "failedStep": error.failed_step,
+        "failedIndex": error.failed_index,
+        "completedSteps": list(error.completed_steps),
+        "currentProjectPath": str(error.current_project),
+        "currentSrtPath": str(error.current_srt),
+        "originalProjectPath": str(original_project_path),
+        "originalSrtPath": str(original_srt_path),
+    }
+    status_code = getattr(error, "status_code", None)
+    if isinstance(status_code, int):
+        event["httpStatus"] = status_code
+    diagnostic = str(getattr(error, "diagnostic", "") or "")
+    if diagnostic:
+        event["diagnostic"] = diagnostic
+    return event
 
 def _optional_path(value: object) -> Path | None:
     text = str(value or "").strip()
