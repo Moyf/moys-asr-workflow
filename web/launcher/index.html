@@ -14,6 +14,20 @@
       if (!resolvedDark) document.documentElement.dataset.theme = "light";
     } catch (error) { /* localStorage 不可用时保持默认暗色 */ }
   </script>
+  <style>
+    /* 在 launcher.css 到达前也保持与正式主题一致，避免 WebView2 默认白底闪一下。 */
+    html, body {
+      min-height: 100%;
+      margin: 0;
+      background: #16181d;
+      color: #e6e9ef;
+    }
+    html[data-theme="light"], html[data-theme="light"] body {
+      background: #f5f6f8;
+      color: #1f2530;
+    }
+    body:not(.launcher-ready) .shell { visibility: hidden; }
+  </style>
   <link rel="stylesheet" href="launcher.css">
 </head>
 <body>

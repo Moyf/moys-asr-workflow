@@ -1389,6 +1389,10 @@
   function resolveTheme() { if (state.theme === "light" || state.theme === "dark") return state.theme; return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
   function applyTheme() { if (resolveTheme() === "light") document.documentElement.dataset.theme = "light"; else delete document.documentElement.dataset.theme; $("themeLight").classList.toggle("active", state.theme === "light"); $("themeDark").classList.toggle("active", state.theme === "dark"); $("themeSystem").classList.toggle("active", state.theme === "system"); }
   function setTheme(pref) { if (!isThemePreference(pref)) return; state.theme = pref; storeTheme(pref); applyTheme(); void bridge("save_prefs", { theme: pref }).then((result) => { if (result.ok) { if (state.config) state.config.theme = pref; } else applyErrorResult(result); }); }
+  function revealLauncher() {
+    state.initializing = false;
+    document.body.classList.add("launcher-ready");
+  }
 
   // keycap 表情（1️⃣ 等）依赖彩色 emoji 字体：后端把 Noto Color Emoji 缓存到本机
   // 后提供 file:// URI，这里注入 @font-face；注入一次即可，重复事件会被跳过。
@@ -1648,15 +1652,64 @@
     return result;
   }
   function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); window.MAWLauncher?.onLanguageChanged?.(); }
-  function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const customAsr = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.toggle("hidden", customAsr); $("customAsrFields").classList.toggle("hidden", !customAsr); if (customAsr) { $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("openaiModel").value = state.config.openaiModel || "whisper-1"; } $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelPanel").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; $("openKeyUrl").textContent = current.label; $("providerNote").textContent = current.note || ""; $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); $("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0); renderKeyStatus(); syncWorkspace(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); void refreshLocalModels(); } }
-  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncLocalModelPath(model); $("modelNote").textContent = model.note || ""; applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); renderLocalModelStatus(); syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
+  function applyProvider(persistReset = false) {
+    const current = provider();
+    const preferred = state.config.lastModel;
+    const fallback = state.config.modelId || current.models[0]?.id;
+    const customAsr = current.id === "openai";
+    const modelValue = current.models.some((item) => item.id === preferred)
+      ? preferred
+      : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id);
+    fillSelect("model", current.models, modelValue);
+    fillSelect("region", current.regions, state.config.region || "beijing");
+    const local = isLocalProvider();
+    $("modelField").classList.toggle("hidden", customAsr);
+    $("customAsrFields").classList.toggle("hidden", !customAsr);
+    if (customAsr) {
+      $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1";
+      $("openaiModel").value = state.config.openaiModel || "whisper-1";
+    }
+    $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false);
+    $("localRuntimePanel").classList.toggle("hidden", !local);
+    $("localModelPanel").classList.toggle("hidden", !local);
+    $("localDeviceField").classList.toggle("hidden", !local);
+    $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false);
+    $("apiKey").value = current.apiKey || "";
+    $("openKeyUrl").textContent = current.label;
+    $("providerNote").textContent = current.note || "";
+    $("providerNote").classList.toggle("hidden", !current.note);
+    applySelectedModel(persistReset);
+    $("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0);
+    renderKeyStatus();
+    syncWorkspace(); syncAdvancedParamsGroup();
+    if (local) {
+      renderLocalRuntime();
+      if (!state.initializing) {
+        void refreshLocalRuntime();
+        void refreshLocalModels();
+      }
+    }
+  }
+  function applySelectedModel(persistReset = false) {
+    const current = provider();
+    const model = selectedModel();
+    syncLocalModelPath(model);
+    $("modelNote").textContent = model.note || "";
+    applyProviderLanguages(current, model, persistReset);
+    $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker);
+    syncQwenAudioOptions(model);
+    syncSonioxContextOptions(model);
+    renderLocalModelStatus();
+    if (!state.initializing) void syncDefaultOutput();
+    if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() });
+  }
   function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
   function languageValue() { const el = $("language"); if (el.multiple) return Array.from(el.selectedOptions).map((o) => o.value).filter(Boolean).join(","); return el.value; }
   function syncWorkspace() { $("workspaceField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || provider().regions.length === 0); }
   function syncAdvancedParamsGroup() { const group = $("advancedParamsGroup"); group.classList.toggle("hidden", !Array.from(group.querySelectorAll(".field")).some((field) => !field.classList.contains("hidden"))); }
   function appendTestSuffix(path) { const value = String(path || "").trim(); if (!value || /-test(?=\.[^./\\]+$)/iu.test(value)) return value; const separator = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")); const dot = value.lastIndexOf("."); if (dot <= separator) return `${value}-test`; return `${value.slice(0, dot)}-test${value.slice(dot)}`; }
   function removeTestSuffix(path) { return String(path || "").replace(/-test(?=\.[^./\\]+$)/iu, ""); }
-  function syncTestRun() { const on = $("testRun").checked; $("testRunHint").classList.toggle("hidden", !on); $("lengthLimit").disabled = on; if (state.srtAuto) { void syncDefaultOutput(); return; } const current = $("srtPath").value.trim(); if (on) { const next = appendTestSuffix(current); state.testSuffixAdded = Boolean(current && next !== current); $("srtPath").value = next; } else if (state.testSuffixAdded) { $("srtPath").value = removeTestSuffix(current); state.testSuffixAdded = false; } }
+  function syncTestRun() { const on = $("testRun").checked; $("testRunHint").classList.toggle("hidden", !on); $("lengthLimit").disabled = on; if (state.srtAuto) { if (!state.initializing) void syncDefaultOutput(); return; } const current = $("srtPath").value.trim(); if (on) { const next = appendTestSuffix(current); state.testSuffixAdded = Boolean(current && next !== current); $("srtPath").value = next; } else if (state.testSuffixAdded) { $("srtPath").value = removeTestSuffix(current); state.testSuffixAdded = false; } }
   function savePrefsDebounced(payload) { clearTimeout(prefsTimer); prefsTimer = setTimeout(() => bridge("save_prefs", payload), 300); }
   function normalizeZoomPercent(value) { const parsed = Number(value); if (!Number.isFinite(parsed)) return ZOOM_DEFAULT; return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(parsed / ZOOM_STEP) * ZOOM_STEP)); }
   function applyZoomPercent(value) { const zoomPercent = normalizeZoomPercent(value); document.documentElement.style.zoom = `${zoomPercent}%`; state.config.zoomPercent = zoomPercent; return zoomPercent; }
@@ -1904,6 +1957,7 @@
   }
 
   async function init() {
+    state.initializing = true;
     const realApi = await waitForBackend();
     api = realApi || mockApi();
     window.MAWLauncher.backend = realApi ? "real" : "mock";
@@ -1928,8 +1982,15 @@
     fillSelect("provider", state.config.providers, state.config.providerId || "qwen");
     applyProvider(false);
     $("workspaceId").value = state.config.workspaceId || "";
-    syncWorkspace(); syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage(); refreshFfmpeg();
-    appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled."); setStatus(t("ready")); await checkExistingServer(); window.dispatchEvent(new CustomEvent("mawlauncherready"));
+    syncWorkspace(); syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage();
+    await syncDefaultOutput();
+    await refreshFfmpeg();
+    if (isLocalProvider()) await Promise.all([refreshLocalRuntime(), refreshLocalModels()]);
+    appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled.");
+    setStatus(t("ready"));
+    await checkExistingServer();
+    window.dispatchEvent(new CustomEvent("mawlauncherready"));
+    revealLauncher();
   }
 
   function handleBackendEvent(event) {
@@ -2163,7 +2224,14 @@
   window.addEventListener("resize", syncFixedFooterClearance);
   const footer = document.querySelector(".actions");
   if (footer && window.ResizeObserver) new ResizeObserver(syncFixedFooterClearance).observe(footer);
-  document.addEventListener("DOMContentLoaded", init);
+  document.addEventListener("DOMContentLoaded", () => {
+    void init().catch((error) => {
+      const message = error && error.message ? error.message : String(error);
+      appendLog(`[init] ${message}`);
+      setStatus(message);
+      revealLauncher();
+    });
+  });
   document.addEventListener("keydown", handleZoomKeydown);
   document.addEventListener("wheel", handleZoomWheel, { passive: false });
 })();

@@ -2925,7 +2925,7 @@ class _FakeEventHook:
 
 class _FakeLauncherWindow:
     def __init__(self) -> None:
-        self.events = SimpleNamespace(closing=_FakeEventHook(), loaded=_FakeEventHook())
+        self.events = SimpleNamespace(closing=_FakeEventHook(), shown=_FakeEventHook(), loaded=_FakeEventHook())
         self.loaded_urls: list[str] = []
 
     def load_url(self, url: str) -> None:
@@ -2963,7 +2963,7 @@ class LauncherRuntimeTests(unittest.TestCase):
             install_tee.assert_called_once_with(api_sink)
             fake_webview.reset_mock()
 
-    def test_run_app_shows_boot_page_before_loading_launcher(self) -> None:
+    def test_run_app_loads_launcher_directly_without_boot_page(self) -> None:
         paths = LauncherPaths(
             root=Path("launcher-root"),
             env_path=Path("launcher-root/.env"),
@@ -2986,11 +2986,9 @@ class LauncherRuntimeTests(unittest.TestCase):
             run_app()
 
         create_kwargs = fake_webview.create_window.call_args.kwargs
-        self.assertIn("正在启动 Launcher", create_kwargs["html"])
-        self.assertNotIn("url", create_kwargs)
-        fake_window.events.loaded.fire()
-        self.assertEqual(fake_window.loaded_urls, [paths.launcher_html.resolve().as_uri()])
-        launcher_api_cls.return_value.pump.start.assert_not_called()
+        self.assertEqual(create_kwargs["url"], paths.launcher_html.resolve().as_uri())
+        self.assertNotIn("html", create_kwargs)
+        fake_window.events.shown.fire()
         fake_window.events.loaded.fire()
         launcher_api_cls.return_value.pump.start.assert_called_once_with()
 
@@ -3177,6 +3175,22 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('taskPrompt: taskPromptText(operation)', script)
         self.assertIn('const customPrompt = $("postprocessPrompt").value.trim()', script)
         self.assertIn("const TASK_PROMPT_KEYS", script)
+
+    def test_launcher_reveals_form_after_initialization_without_a_boot_page(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertNotIn('id="launcherBoot"', page)
+        self.assertIn('background: #16181d;', page)
+        self.assertIn('html[data-theme="light"]', page)
+        self.assertIn('body:not(.launcher-ready) .shell { visibility: hidden; }', page)
+        self.assertIn('body:not(.launcher-ready) .shell', stylesheet)
+        self.assertIn('function revealLauncher()', script)
+        self.assertIn('await syncDefaultOutput();', script)
+        self.assertIn('await refreshFfmpeg();', script)
+        self.assertIn('window.dispatchEvent(new CustomEvent("mawlauncherready"));\n    revealLauncher();', script)
+        self.assertIn('void init().catch((error) => {', script)
 
     def test_custom_llm_task_requires_a_prompt(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

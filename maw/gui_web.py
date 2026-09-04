@@ -103,61 +103,6 @@ WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
 MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
 MOSE_FILE_TYPE = "Moy.MOSE.Project"
-# WebView2 初始化期间先展示这段无外部依赖的页面，避免窗口长时间只显示
-# background_color。正式 Launcher 页面仍通过本地文件加载，以保留现有资源路径和 API 注入行为。
-_LAUNCHER_BOOT_HTML: Final = """<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MAW Launcher</title>
-  <style>
-    :root { color-scheme: dark; background: #16181d; color: #e6e9ef; }
-    * { box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; margin: 0; }
-    body {
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-      background: radial-gradient(circle at 50% 36%, rgba(108, 165, 232, .16), transparent 24rem), #16181d;
-      font: 14px -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
-    }
-    .boot { display: grid; justify-items: center; gap: 16px; }
-    .mark {
-      display: grid;
-      width: 64px;
-      height: 64px;
-      place-items: center;
-      border: 1px solid rgba(132, 183, 240, .48);
-      border-radius: 18px;
-      background: rgba(108, 165, 232, .14);
-      color: #b9d8fb;
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: .08em;
-      box-shadow: 0 10px 32px rgba(0, 0, 0, .24);
-    }
-    .label { color: #a8b1c0; }
-    .spinner {
-      width: 18px;
-      height: 18px;
-      border: 2px solid rgba(168, 177, 192, .28);
-      border-top-color: #84b7f0;
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
-</head>
-<body>
-  <main class="boot" aria-live="polite">
-    <div class="mark">MAW</div>
-    <div class="label">正在启动 Launcher…</div>
-    <div class="spinner" aria-hidden="true"></div>
-  </main>
-</body>
-</html>
-"""
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
 # 编辑器健康检查探测轻量 JSON 端点：首页渲染会把全量工程数据内联进页面，
@@ -2653,7 +2598,7 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     launcher_url = paths.launcher_html.resolve().as_uri()
     window = webview.create_window(
         WINDOW_TITLE,
-        html=_LAUNCHER_BOOT_HTML,
+        url=launcher_url,
         js_api=api,
         width=900,
         height=880,
@@ -2663,16 +2608,11 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     )
     if window is not None:
         window.events.closing += lambda: api.shutdown()
-        boot_page = True
+        # 在窗口首次显示时就同步标题栏颜色，避免内容尚未绘制时露出白色原生标题栏。
+        window.events.shown += lambda: apply_dark_title_bar(WINDOW_TITLE)
 
         def _on_loaded() -> None:
-            nonlocal boot_page
-            if boot_page:
-                boot_page = False
-                window.load_url(launcher_url)
-                return
             api.pump.start()
-            apply_dark_title_bar(WINDOW_TITLE)
 
         window.events.loaded += _on_loaded
     icon = asset_path("assets/maw.ico")
