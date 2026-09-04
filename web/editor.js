@@ -885,6 +885,9 @@ function syncSegmentTimebase(segment, timebase, { preferFrames = false, minimumS
   segment.items.forEach((item) => {
     syncTimeRangeObjectTimebase(item, timebase, { preferFrames, frameBounds });
   });
+  if (timebase.unit === 'frames') {
+    window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);
+  }
   return range;
 }
 

@@ -2012,6 +2012,50 @@
     return fixed;
   }
 
+  // 帧模式下，多个字词可能因为帧率取整而落在同一帧。它们的 frame
+  // 字段可以合法地重合，但保存用的毫秒兼容字段仍必须保持在字幕段内、
+  // 按 item 顺序排列；不能交给通用修复器按 100ms 向后扩张。
+  // 尽量保留帧投影出的毫秒范围，发生碰撞时只压缩到段内剩余空间。
+  function normalizeFrameItemTimingRanges(segment) {
+    if (!segment || typeof segment !== 'object' || !Array.isArray(segment.items)) return 0;
+    const segmentStart = Math.round(Number(segment.start));
+    const segmentEnd = Math.round(Number(segment.end));
+    if (!Number.isFinite(segmentStart) || !Number.isFinite(segmentEnd)
+        || segmentEnd < segmentStart) return 0;
+
+    const items = segment.items.filter((item) => item && typeof item === 'object');
+    const minimumDuration = segmentEnd - segmentStart >= items.length ? 1 : 0;
+    let previousItemEnd = segmentStart;
+    let processed = 0;
+    let fixed = 0;
+    segment.items.forEach((item) => {
+      if (!item || typeof item !== 'object') return;
+      const rawStart = Number(item.start);
+      const rawEnd = Number(item.end);
+      const candidateStart = Number.isFinite(rawStart)
+        ? Math.round(rawStart) : previousItemEnd;
+      const candidateEnd = Number.isFinite(rawEnd)
+        ? Math.round(rawEnd) : candidateStart;
+      const remainingItems = items.length - processed - 1;
+      const latestEnd = segmentEnd - minimumDuration * remainingItems;
+      const latestStart = latestEnd - minimumDuration;
+      const itemStart = Math.min(
+        Math.max(candidateStart, previousItemEnd, segmentStart),
+        latestStart,
+      );
+      const itemEnd = Math.min(
+        Math.max(candidateEnd, itemStart + minimumDuration),
+        latestEnd,
+      );
+      if (item.start !== itemStart || item.end !== itemEnd) fixed += 1;
+      item.start = itemStart;
+      item.end = itemEnd;
+      previousItemEnd = itemEnd;
+      processed += 1;
+    });
+    return fixed;
+  }
+
   function timedItemsFitSegmentRange(segment, start, end) {
     const items = Array.isArray(segment?.items) ? segment.items : null;
     if (!items) return true;
@@ -5081,6 +5125,7 @@ export default MawDynamicCaptions;
     isShortSubtitleText,
     normalizeSegmentTimings,
     normalizeItemTimingRanges,
+    normalizeFrameItemTimingRanges,
     repairSegmentOverlap,
     planAutoMerge,
     applyAutoMergeSnaps,

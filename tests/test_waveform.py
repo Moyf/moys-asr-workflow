@@ -380,6 +380,7 @@ class EditorAssetTests(unittest.TestCase):
             page,
         )
         self.assertIn('function syncProjectTimebaseAndBindingOffsets(', page)
+        self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', page)
         self.assertIn(
             'function buildJson() {\n'
             '  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });',

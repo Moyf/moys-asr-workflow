@@ -2508,6 +2508,40 @@ test('repairs a one-ms rounded item overlap before persistence', () => {
   assert.equal(segments[0].items[1].start, 66051);
 });
 
+test('keeps frame-projected item timings inside their fixed subtitle segment', () => {
+  const segment = {
+    start: 73383,
+    end: 73842,
+    items: [
+      { start: 73383, end: 73425 },
+      { start: 73425, end: 73467 },
+      { start: 73467, end: 73509 },
+      { start: 73509, end: 73509 },
+      { start: 73509, end: 73592 },
+      { start: 73592, end: 73634 },
+      { start: 73634, end: 73675 },
+      { start: 73675, end: 73717 },
+      { start: 73717, end: 73759 },
+      { start: 73759, end: 73801 },
+      { start: 73801, end: 73842 },
+      { start: 73801, end: 73842 },
+    ],
+  };
+
+  const fixed = helpers.normalizeFrameItemTimingRanges(segment);
+
+  assert.ok(fixed > 0);
+  let previousEnd = segment.start;
+  segment.items.forEach((item) => {
+    assert.ok(item.start >= segment.start);
+    assert.ok(item.end <= segment.end);
+    assert.ok(item.end > item.start);
+    assert.ok(item.start >= previousEnd);
+    previousEnd = item.end;
+  });
+  assert.equal(segment.end, 73842);
+});
+
 test('repairs item overlap without hiding a real subtitle-segment overlap', () => {
   const segments = [
     { start: 0, end: 1000, text: '第一句', items: [{ start: 0, end: 600 }] },
