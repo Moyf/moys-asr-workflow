@@ -58,6 +58,8 @@ REAPEAKS_SUFFIXES = (".ReaPeaks", ".reapeaks", ".REAPEAKS")
 
 # 官方规格允许的 mtime 指纹容差：小漂移几秒，以及夏令时造成的约一小时偏差。
 _MTIME_TOLERANCE_SECONDS = 5
+_UINT32_MASK = 0xFFFF_FFFF
+_UINT32_MODULUS = 0x1_0000_0000
 
 DIV_SPECTRAL = -ord("s")  # spectral peaks
 DIV_SPECTROGRAM = -ord("g")  # spectrogram
@@ -418,16 +420,19 @@ def _reapeaks_matches_media(reapeaks_path: Path | str, media_path: Path | str) -
         st = Path(media_path).stat()
     except OSError:
         return False
-    if ra.src_filesize != st.st_size & 0xFFFF_FFFF:
+    if ra.src_filesize != st.st_size & _UINT32_MASK:
         return False
     return _timestamp_fingerprint_matches(ra.src_timestamp, int(st.st_mtime))
 
 
 def _timestamp_fingerprint_matches(stored: int, actual: int) -> bool:
     """mtime 指纹比对：精确相等，或容许秒级漂移 / DST 整小时偏差。"""
-    if stored == actual:
-        return True
+    # Header stores only stat()'s low 32 bits. Compare in that same unsigned
+    # domain so the check remains correct after the counter wraps around.
+    stored &= _UINT32_MASK
+    actual &= _UINT32_MASK
     delta = abs(stored - actual)
+    delta = min(delta, _UINT32_MODULUS - delta)
     return delta <= _MTIME_TOLERANCE_SECONDS or abs(delta - 3600) <= _MTIME_TOLERANCE_SECONDS
 
 
@@ -662,8 +667,8 @@ def generate_for_media(
             src = decode_path.stat()
             # 官方规格：头里只存 stat() 值的低 32 位，大文件（>2GiB 的媒体、
             # 2038 后的 mtime）照常生成，指纹自然按位型回绕，无需守卫。
-            media_timestamp = int(src.st_mtime) & 0xFFFF_FFFF
-            media_filesize = src.st_size & 0xFFFF_FFFF
+            media_timestamp = int(src.st_mtime) & _UINT32_MASK
+            media_filesize = src.st_size & _UINT32_MASK
             data = generate_reapeaks_stream_bytes(
                 decode_path,
                 ffmpeg_bin=ffmpeg_bin,

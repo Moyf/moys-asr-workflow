@@ -241,6 +241,8 @@ class ReaPeaksParseTests(unittest.TestCase):
             (FIXED_MTIME_I, FIXED_MTIME_I + 10, False),
             (FIXED_MTIME_I, FIXED_MTIME_I + 7200, False),
             (FIXED_MTIME_I, FIXED_MTIME_I + 1800, False),
+            (0xFFFF_FFFE, 1, True),  # 32 位回绕边界仍只相差 3 秒
+            (0, 0x1_0000_0001, True),  # actual 也必须按低 32 位比较
         ]
         for stored, actual, expected in cases:
             with self.subTest(stored=stored, actual=actual):
