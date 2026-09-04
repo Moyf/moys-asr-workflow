@@ -137,6 +137,10 @@ button:disabled {
   flex-direction: column;
 }
 
+body:not(.launcher-ready) .shell {
+  visibility: hidden;
+}
+
 .shell-scroll {
   flex: 1 1 auto;
   min-width: 0;
