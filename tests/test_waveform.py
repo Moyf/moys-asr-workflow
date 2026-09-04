@@ -173,9 +173,20 @@ class EditorAssetTests(unittest.TestCase):
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
         self.assertIn("waveShapeSource: 'reapeaks'", editor)
         self.assertIn("getWaveShapeSource?.() || 'reapeaks'", waveform)
-        self.assertIn('<option value="reapeaks" selected>ReaPeaks 波形层</option>', template)
+        self.assertIn('<option value="reapeaks" selected>Reaper 波形</option>', template)
         self.assertNotIn('<option value="self" selected>', template)
-        self.assertIn("useReapeaksShape = shapeSource === 'reapeaks'", waveform)
+        self.assertIn(
+            "const useReapeaks = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;",
+            waveform,
+        )
+        # 选取只有一个入口：绘制与音量门限检测共用 activeWaveShape()，
+        # 否则会出现"看着一条曲线、按另一条曲线判断"的错位。
+        self.assertEqual(waveform.count("shapeSource === 'reapeaks'"), 1)
+        detection_start = waveform.index("getGapRemoveDetectionData()")
+        detection = waveform[detection_start:waveform.index("async processFile", detection_start)]
+        self.assertIn("this.activeWaveShape()", detection)
+        self.assertIn("peaks: shape.peaks", detection)
+        self.assertNotIn("peaks: this.peaks", detection)
 
     def test_long_media_waveform_hint_points_to_maw_gui(self) -> None:
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")

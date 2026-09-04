@@ -82,6 +82,37 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("usage:", result.stdout.lower())
 
+    def test_local_entry_imports_without_rust_kernel(self) -> None:
+        """Issue 96 回归：托管 Runtime 未装 Rust 波形内核（reapeaks）时，转写入口必须可导入。
+
+        MOSS 用独立的 ``local-runtime-moss`` 环境跑 ``local-runtime`` 脚本镜像，该环境
+        的依赖清单里没有 ``reapeaks``。此前入口经 ``maw.local_asr`` → 共享 API 模块 →
+        ``edit.py`` → ``maw.reapeaks`` 在导入期就 ModuleNotFoundError，模型根本没机会加载。
+        """
+        repo_root = Path(__file__).resolve().parents[1]
+        driver = (
+            "import sys\n"
+            f"sys.path.insert(0, {str(repo_root)!r})\n"
+            "sys.modules['reapeaks'] = None\n"
+            "import generate_subtitle_local\n"
+            "print('MAW_LOCAL_ENTRY_IMPORT_OK')\n"
+        )
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
+
+        result = subprocess.run(
+            [sys.executable, "-c", driver],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=environment,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("MAW_LOCAL_ENTRY_IMPORT_OK", result.stdout)
+
     def test_runtime_worker_imports_maw_when_started_by_file_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)

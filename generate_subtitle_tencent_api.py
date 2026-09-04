@@ -7,7 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from edit import get_default_sticker_dir
+from maw.stickers import get_default_sticker_dir
 from generate_subtitle_qwen_api import (
     configure_console_output,
     extract_audio,

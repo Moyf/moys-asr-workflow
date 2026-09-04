@@ -662,7 +662,7 @@
   function decodePayload(payload) {
     if (!payload || payload.schema !== SCHEMA || payload.encoding !== ENCODING) return null;
     if (!Number.isInteger(payload.peak_count) || payload.peak_count <= 0) return null;
-    if (!Number.isFinite(payload.peaks_per_second) || payload.peaks_per_second <= 0) return null;
+    if (!peaksRateOf(payload)) return null;
     if (typeof payload.data !== 'string') return null;
     try {
       const binary = atob(payload.data);
@@ -673,6 +673,38 @@
     } catch (_) {
       return null;
     }
+  }
+
+  // payload.peaks_per_second 只是给人看的近似值：真实刻度是 sample_rate / division，
+  // 而 .ReaPeaks 派生的层在多数采样率下都不是整数（16 kHz + div 53 = 301.8868）。
+  // 任何"峰值序号 ↔ 毫秒"的换算都必须走这里，否则误差会按比例缩放整条时间轴，
+  // 随媒体时长线性累积（16 kHz 在 15 分钟处约错开 1/3 秒）。
+  function peaksRateOf(payload) {
+    if (!payload) return 0;
+    const hasSampleRate = payload.sample_rate !== undefined && payload.sample_rate !== null;
+    const hasDivision = payload.division !== undefined && payload.division !== null;
+    // 只出现一半的精确率字段说明 payload 已损坏：宁可判定为无刻度，
+    // 也不要退回近似值画出错位波形（与 waveform.is_waveform_payload 一致）。
+    if (hasSampleRate !== hasDivision) return 0;
+    if (hasSampleRate) {
+      const sampleRate = Number(payload.sample_rate);
+      const division = Number(payload.division);
+      if (!Number.isFinite(sampleRate) || sampleRate <= 0) return 0;
+      if (!Number.isInteger(division) || division <= 0) return 0;
+      return sampleRate / division;
+    }
+    return Number.isFinite(payload.peaks_per_second) && payload.peaks_per_second > 0
+      ? payload.peaks_per_second
+      : 0;
+  }
+
+  // 发布给消费者的 peaks_per_second 保留精确比率（整除时写成整数），与
+  // maw/reapeaks.py::extract_waveform_payload 的取整策略完全一致，这样即使某个
+  // 读取方仍在用 peaks_per_second 做几何换算，也不会重新引入按比例累积的漂移。
+  function publishPeakRate(sampleRate, division) {
+    if (!sampleRate || !division) return 0;
+    const exactRate = sampleRate / division;
+    return Number.isInteger(exactRate) ? exactRate : Math.round(exactRate * 1e6) / 1e6;
   }
 
   // 浏览器端只读解析 REAPER 的 .ReaPeaks 文件。桌面/服务器版会在
@@ -781,10 +813,13 @@
     const division = Math.abs(finest.mip.division);
     if (!division) return null;
     const baseSource = source && typeof source === 'object' ? source : undefined;
+    // 与 maw/reapeaks.py::extract_waveform_payload 完全一致：精确比率 + sample_rate/division。
     const waveform = {
       schema: SCHEMA,
       encoding: ENCODING,
-      peaks_per_second: Math.round(sampleRate / division),
+      peaks_per_second: publishPeakRate(sampleRate, division),
+      sample_rate: sampleRate,
+      division,
       peak_count: finest.mip.peakCount,
       duration_ms: Math.round(finest.mip.peakCount * division / sampleRate * 1000),
       ...(baseSource ? { source: baseSource } : {}),
@@ -2640,12 +2675,37 @@
       return this.reapeaksPayload != null;
     }
 
-    getGapRemoveDetectionData() {
-      if (!this.payload || !this.peaks) return null;
+    /**
+     * 当前真正被绘制的那条波形形状（含缺数据时的回退）。
+     *
+     * 抽成一个方法是为了让"看到什么就按什么判断"成为结构保证，而不是两处各自
+     * 复制一遍判断。音量门限扫描尤其需要它：若固定用自研缓存，用户在 ReaPeaks
+     * 形状上调好的门限就和实际参与判断的包络不是同一条曲线，而且自研链先重采样到
+     * 1000 Hz，带限之外的瞬态会被整块削平（实测单样本满幅脉冲 8 个里一个都检不到），
+     * 拿它做静音门限会偏激进。
+     */
+    activeWaveShape() {
+      const shapeSource = this.options.getWaveShapeSource?.() || 'reapeaks';
+      const useReapeaks = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
+      const payload = useReapeaks ? this.reapeaksPayload : this.payload;
+      if (!payload) return null;
       return {
-        peaks: this.peaks,
-        peaks_per_second: this.payload.peaks_per_second,
-        duration_ms: this.payload.duration_ms,
+        payload,
+        peaks: useReapeaks ? this.reapeaksPeaks : this.peaks,
+        // 两种来源的 bin 宽度不同（自研固定 10 ms，.ReaPeaks 是 sample_rate/division
+        // 且多为分数），刻度必须随来源一起切换。
+        peaksPerSecond: peaksRateOf(payload),
+        peakCount: payload.peak_count,
+      };
+    }
+
+    getGapRemoveDetectionData() {
+      const shape = this.activeWaveShape();
+      if (!shape || !shape.peaks) return null;
+      return {
+        peaks: shape.peaks,
+        peaks_per_second: shape.peaksPerSecond,
+        duration_ms: shape.payload.duration_ms,
       };
     }
 
@@ -2724,7 +2784,11 @@
         const payload = {
           schema: SCHEMA,
           encoding: ENCODING,
-          peaks_per_second: peaksPerSecond,
+          // 请求密度只是目标值：bin 实际覆盖 bucketSamples 个原生采样，
+          // 例如 11025 Hz 下 bucket=110 → 真率 100.227 而非 100。
+          peaks_per_second: publishPeakRate(buffer.sampleRate, bucketSamples),
+          sample_rate: buffer.sampleRate,
+          division: bucketSamples,
           peak_count: peakCount,
           duration_ms: Math.round(buffer.duration * 1000),
           data: bytesToBase64(encoded),
@@ -3606,13 +3670,12 @@
       ctx.lineTo(width, height * 0.46);
       ctx.stroke();
 
-      // 波形形状来源：默认使用 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；用户可切回自研。
-      const shapeSource = this.options.getWaveShapeSource?.() || 'reapeaks';
-      const useReapeaksShape = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
-      const activePeaks = useReapeaksShape ? this.reapeaksPeaks : this.peaks;
-      const activePps = useReapeaksShape ? this.reapeaksPayload.peaks_per_second : this.payload.peaks_per_second;
-      const activeCount = useReapeaksShape ? this.reapeaksPayload.peak_count : this.payload.peak_count;
-      const peaksPerSecond = activePps;
+      // 形状来源开关（默认 .ReaPeaks，缺数据自动回退自研）与音量门限检测共用同一选取。
+      const waveShape = this.activeWaveShape();
+      if (!waveShape) return;
+      const activePeaks = waveShape.peaks;
+      const peaksPerSecond = waveShape.peaksPerSecond;
+      const activeCount = waveShape.peakCount;
       const useInterpolation = this.settings.mode === 'basic'
         && this.settings.visibleSeconds === ZOOM_PRESETS[0]
         && (rangeMs / 1000) * peaksPerSecond < width;
@@ -5594,6 +5657,10 @@
       decodePayload,
       decodeReapeaksFile,
       decodeSpectralPayload,
+      peaksRateOf,
+      publishPeakRate,
+      // 只做选取逻辑的单测入口：用 stub 的 this 调用，无需构造 DOM。
+      activeWaveShape: WaveformEditor.prototype.activeWaveShape,
       syncSpectralColorToggle,
       freqColor,
       resolveTiming,

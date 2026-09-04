@@ -66,6 +66,8 @@
   "schema": "moy.asr.waveform.v1",
   "encoding": "i8-minmax-base64",
   "peaks_per_second": 100,
+  "sample_rate": 1000,
+  "division": 10,
   "peak_count": 123456,
   "duration_ms": 1234560,
   "data": "base64 编码的 [min,max] int8 峰值对",
@@ -78,6 +80,8 @@
 ```
 
 - `data` 每个峰占 2 字节：有符号 int8 的最小值、最大值，整体再做 base64。
+- **时间刻度**：第 i 个峰覆盖 `[i × division / sample_rate, (i+1) × division / sample_rate)` 秒。做"峰值序号 ↔ 毫秒"换算时必须用 `sample_rate / division`；`peaks_per_second` 只是给人看的近似值。老缓存可以没有这两个字段（此时退化为 `peaks_per_second`），但只要出现一个就必须成对且合法，否则视为无效载荷。
+- `.ReaPeaks` 派生的载荷里 `sample_rate / division` 多数情况下是**分数**（16 kHz 媒体 `division=53` → 301.8868 峰/秒）。把它取整当刻度会按比例缩放整条时间轴，错位随媒体时长线性累积。
 - `source` 用于缓存失效；媒体文件名、字节大小或最后修改时间变化时会重新计算。
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
@@ -109,6 +113,8 @@
 - **生成时机**：转写生成工程时，`--with-waveform` 在媒体旁自动生成 `<媒体名>.ReaPeaks` 的 wave 层（GUI 默认开启）；只有同时勾选 Launcher 的“生成 ReaPeaks 频谱数据”或传入 `--with-spectral`，才额外执行频谱 FFT 并写入 spectral 层。`--with-spectral` 必须与 `--with-waveform` 一起使用。服务器只读取已有的 `.ReaPeaks`，不负责生成。生成由 Rust 内核（`reapeaks`）承担，经 ffmpeg 解码媒体；缺少 ffmpeg 或解码失败时打日志跳过。numpy 不参与 `.ReaPeaks` 生成（仅 OCR 后处理路径 lazy import）。
 - 解析器读取 REAPER 的 `RPKN`/`RPKL` 文件，取匹配 `peaks_per_second` 分辨率的 spectral 层（`-(int)'s'` 标记）；无 spectral 层、文件缺失或损坏时静默降级，不影响编辑器。
 - 未识别的 `schema` / `encoding` 会被忽略。浏览器端在 `decodeSpectralPayload` 校验这两字段与 `data` 长度（`peak_count * 4`）。
+- **与主波形层的对齐关系**：第 i 个频谱采样与第 i 个峰是同一时刻，两者共用 `division`，**不需要任何索引偏移**。频谱层的 `peak_count` 通常比配对的 wave 层少若干（44.1 kHz 真机文件少 7、16 kHz 少 25），因为末尾的 FFT 窗口填不满——缺口在尾部而非头部（用已知时刻的窄带脉冲实测：48 kHz 下频谱响应中心 bin 4207.5，wave 层最强 bin 4207）。因此这段尾部只是不上色，编辑器按索引越界处理，不得据此平移染色层。
+- 多声道媒体取声道 0 的主频/密度，服务端与浏览器端一致。
 
 ### 1.1b waveform_reapeaks 波形层（可选）
 
@@ -118,15 +124,20 @@
 {
   "schema": "moy.asr.waveform.v1",
   "encoding": "i8-minmax-base64",
-  "peaks_per_second": 300,
-  "peak_count": 1500,
-  "duration_ms": 5000,
+  "peaks_per_second": 301.886792,
+  "sample_rate": 16000,
+  "division": 53,
+  "peak_count": 1510,
+  "duration_ms": 5006,
   "data": "base64 的 [min,max] int8 对",
   "source": { "name": "audio.wav", "size": 441044, "modified_ms": 1786328355571 }
 }
 ```
 
-- 由服务器加载媒体时从 `find_reapeaks` 找到的 `.ReaPeaks` 解析最细 wave 层得到；`peaks_per_second = sample_rate / division`（约 300 峰/秒）。
+- 由服务器加载媒体时从 `find_reapeaks` 找到的 `.ReaPeaks` 解析最细 wave 层得到；刻度是 `sample_rate / division`（约 300 峰/秒），整除时 `peaks_per_second` 写成整数，否则写成精确比率（保留 6 位小数），**绝不取整**——取整会把整条时间轴按比例缩放，错位随媒体时长线性累积。
+- `.ReaPeaks` 永远描述"被解码的那份文件"。因此缓存生成一律优先解码工程记录的源媒体本身，不使用本地 ASR 的 16 kHz 单声道提取音频或 `--length-limit` 截断片段；头部 provenance 是源媒体的 `(mtime, size)` 双因子，任一不符即视为过期并重建。
+- **多声道合并**：本载荷把 `.ReaPeaks` 各声道合并成一条包络（min 取各声道最小、max 取各声道最大），与浏览器端 `decodeReapeaksFile` 完全一致。只取单一声道会让"双单声道"素材（人声只在右声道）画成直线。
+- 当前形状来源被切换时，波形绘制与「按音量移除空隙」的检测共用同一份包络，不会出现"看到的是一条曲线、按另一条曲线判断"。
 - 缺失 `.ReaPeaks` 或没有 wave 层时该字段不出现，编辑器回退自研波形。
 - 与 `spectral` 同源，均为 `.ReaPeaks` 派生的可丢弃缓存，非真源。
 - 没有 `spectral` 数据时，编辑器会自动取消并禁用“频谱颜色”开关；后台读到合法频谱后重新启用该开关。

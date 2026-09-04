@@ -29,7 +29,7 @@ from pathlib import Path
 
 import requests
 
-from edit import get_default_sticker_dir
+from maw.stickers import get_default_sticker_dir
 from maw.app_paths import default_env_path
 from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
