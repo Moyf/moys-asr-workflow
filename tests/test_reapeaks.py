@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import base64
+import io
 import math
 import os
 import shutil
 import struct
+import sys
 import tempfile
 import unittest
 import wave
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 from maw import reapeaks, waveform
 import reapeaks as rust_generate
@@ -73,6 +77,14 @@ class ReaPeaksParseTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def test_read_paths_ignore_the_missing_rust_kernel(self) -> None:
+        """Issue 96 回归：解码是纯 Python 路径，托管 Runtime 缺 Rust 内核也必须能读缓存。"""
+        with mock.patch.dict(sys.modules, {"reapeaks": None}):
+            payload = reapeaks.load_waveform_payload(self.media_path)
+
+        self.assertIsNotNone(payload)
+        self.assertGreater(payload["peak_count"], 0)
 
     def test_parses_header_and_mipmap_layout(self) -> None:
         parsed = reapeaks.ReaPeaksFile(str(self.reapeaks_path))
@@ -269,6 +281,19 @@ class GenerateReaPeaksTests(unittest.TestCase):
         vals = [raw[i] - 256 if raw[i] >= 128 else raw[i] for i in range(len(raw))]
         # 正弦波应有非零振幅，而非被压平成 0
         self.assertTrue(any(value != 0 for value in vals))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_generate_for_media_skips_without_rust_kernel(self) -> None:
+        """Issue 96 回归：缺 Rust 内核时生成必须打日志跳过，不能抛异常打断转写。"""
+        target = self.root / "tone.wav.ReaPeaks"
+        captured = io.StringIO()
+
+        with mock.patch.dict(sys.modules, {"reapeaks": None}), redirect_stdout(captured):
+            generated = reapeaks.generate_for_media(self.tone_path)
+
+        self.assertIsNone(generated)
+        self.assertFalse(target.exists())
+        self.assertIn("缺少 Rust 生成内核", captured.getvalue())
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_writes_and_reuses(self) -> None:

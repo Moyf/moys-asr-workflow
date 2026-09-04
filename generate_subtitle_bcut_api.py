@@ -26,7 +26,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from edit import get_default_sticker_dir
+from maw.stickers import get_default_sticker_dir
 from generate_subtitle_qwen_api import (
     extract_audio,
     generate_srt,

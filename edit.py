@@ -34,9 +34,9 @@ from pathlib import Path
 from typing import NotRequired, TypedDict
 
 from maw.colors import COLOR_PALETTE
-from maw.app_paths import default_env_path
 from maw.console import configure_utf8_stdio
 from maw.project import ProjectValidationFailed, normalize_project
+from maw.stickers import get_default_sticker_dir
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, read_bwf_time_reference
 from maw.waveform import (
     DEFAULT_PEAKS_PER_SECOND,
@@ -123,36 +123,6 @@ def media_tag(media_path: Path, media_url: str) -> str:
         f'style="width:100%;display:block;">'
         f'<source src="{html.escape(media_url)}"></audio>'
     )
-
-
-def load_env(path: Path | None = None) -> dict[str, str]:
-    """读取 MAW .env 文件，返回 key=value 字典。
-
-    零依赖实现（不引入 python-dotenv）。仅做简单 KEY=VALUE 解析，
-    忽略空行和 # 注释行。调用方若需系统环境变量优先，请用 os.getenv 覆盖。
-    文件不存在时返回空字典。
-    """
-    env_path = Path(path) if path is not None else default_env_path()
-    if not env_path.exists():
-        return {}
-    result: dict[str, str] = {}
-    for line in env_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        result[k.strip()] = v.strip()
-    return result
-
-
-def get_default_sticker_dir() -> str | None:
-    """获取默认表情包目录。
-
-    优先级：系统环境变量 STICKER_DIR > .env 文件里的 STICKER_DIR。
-    未配置时返回 None。
-    """
-    env = load_env()
-    return os.getenv("STICKER_DIR") or env.get("STICKER_DIR") or None
 
 
 def scan_stickers(dir_path: Path, max_depth: int = 3, max_items: int = 500) -> tuple[str, list[Sticker]]:
