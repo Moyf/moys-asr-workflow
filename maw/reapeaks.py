@@ -56,6 +56,11 @@ SPECTRAL_ENCODING = "u16-freq-density-base64"
 # REAPER appends one of these to the full media filename (e.g. ICE.wav.ReaPeaks).
 REAPEAKS_SUFFIXES = (".ReaPeaks", ".reapeaks", ".REAPEAKS")
 
+# 官方规格允许的 mtime 指纹容差：小漂移几秒，以及夏令时造成的约一小时偏差。
+_MTIME_TOLERANCE_SECONDS = 5
+_UINT32_MASK = 0xFFFF_FFFF
+_UINT32_MODULUS = 0x1_0000_0000
+
 DIV_SPECTRAL = -ord("s")  # spectral peaks
 DIV_SPECTROGRAM = -ord("g")  # spectrogram
 DIV_LOUDNESS = -ord("r")  # loudness (new)
@@ -116,8 +121,11 @@ class ReaPeaksFile:
         self.is_v12 = self.magic == MAGIC_V12
         self.channels = self.data[4]
         self.mipmap_count = self.data[5]
+        # 官方规格：mtime/size 是 stat() 值的低 32 位（"low 32 bits"），仅作
+        # 更新检测指纹；>2GiB / 2038 后的大值按无符号位型记录，按 i32 解读
+        # 会得到无意义的负数（REAPER 真机即按此语义写入）。
         self.sample_rate, self.src_timestamp, self.src_filesize = struct.unpack_from(
-            "<iii", self.data, 6
+            "<iII", self.data, 6
         )
         self.mipmaps: list[MipMap] = []
         self._parse_headers()
@@ -396,6 +404,11 @@ def _reapeaks_matches_media(reapeaks_path: Path | str, media_path: Path | str) -
     size check and gets rebuilt instead of silently stretching the editor's
     time axis.  A zero timestamp/filesize pair means a legacy MAW cache with no
     provenance and is treated as stale for the same reason.
+
+    对齐官方规格的容差：mtime/size 都只有 stat() 值的低 32 位精度，且
+    "REAPER will allow for small variations (a few seconds), as well as
+    within a few seconds of one hour off (to allow for DST changes)"——
+    跨盘拷贝导致的秒级 / 恰好一小时的 mtime 漂移不应误杀缓存。
     """
     try:
         ra = ReaPeaksFile(str(reapeaks_path))
@@ -407,7 +420,20 @@ def _reapeaks_matches_media(reapeaks_path: Path | str, media_path: Path | str) -
         st = Path(media_path).stat()
     except OSError:
         return False
-    return ra.src_timestamp == int(st.st_mtime) and ra.src_filesize == st.st_size
+    if ra.src_filesize != st.st_size & _UINT32_MASK:
+        return False
+    return _timestamp_fingerprint_matches(ra.src_timestamp, int(st.st_mtime))
+
+
+def _timestamp_fingerprint_matches(stored: int, actual: int) -> bool:
+    """mtime 指纹比对：精确相等，或容许秒级漂移 / DST 整小时偏差。"""
+    # Header stores only stat()'s low 32 bits. Compare in that same unsigned
+    # domain so the check remains correct after the counter wraps around.
+    stored &= _UINT32_MASK
+    actual &= _UINT32_MASK
+    delta = abs(stored - actual)
+    delta = min(delta, _UINT32_MODULUS - delta)
+    return delta <= _MTIME_TOLERANCE_SECONDS or abs(delta - 3600) <= _MTIME_TOLERANCE_SECONDS
 
 
 def _reapeaks_contains_spectral(reapeaks_path: Path | str) -> bool:
@@ -639,12 +665,10 @@ def generate_for_media(
         missing = False
         try:
             src = decode_path.stat()
-            media_timestamp = int(src.st_mtime)
-            media_filesize = src.st_size
-            if media_timestamp >= 0x80000000 or media_filesize > 0x7FFFFFFF:
-                # 超出 .ReaPeaks 头部 int32 字段范围，无法可靠记录来源，跳过生成。
-                print("[reapeaks] 音频数据过大，或时间戳格式违规")
-                return None
+            # 官方规格：头里只存 stat() 值的低 32 位，大文件（>2GiB 的媒体、
+            # 2038 后的 mtime）照常生成，指纹自然按位型回绕，无需守卫。
+            media_timestamp = int(src.st_mtime) & _UINT32_MASK
+            media_filesize = src.st_size & _UINT32_MASK
             data = generate_reapeaks_stream_bytes(
                 decode_path,
                 ffmpeg_bin=ffmpeg_bin,
