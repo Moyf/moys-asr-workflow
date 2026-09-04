@@ -312,7 +312,7 @@ class PackagingContractTests(unittest.TestCase):
         local_dependencies = set(project["dependency-groups"]["local"])
         self.assertIn("jieba>=0.42", local_dependencies)
         self.assertIn("requests>=2.28", local_dependencies)
-        self.assertIn("reapeaks>=0.3.1", local_dependencies)
+        self.assertIn("reapeaks>=0.3.2", local_dependencies)
         self.assertFalse(any(value.startswith("pywebview") for value in local_dependencies))
         self.assertFalse(any(value.startswith("opencc-") for value in local_dependencies))
         self.assertFalse(any(value.startswith("fonttools") for value in local_dependencies))

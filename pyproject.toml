@@ -15,7 +15,8 @@ dependencies = [
     # Rust .ReaPeaks 生成内核（MIT/Apache-2.0，独立仓库）；唯一生成路径，
     # 无 Python 参考实现回退。内核只在生成时按调用点导入，缺失时打日志跳过
     # 缓存生成，不在导入期阻断转写入口（缓存可由装了内核的环境重建）。
-    "reapeaks>=0.3.1"
+    # >=0.3.2：头部 mtime/size 指纹按官方规格取 stat() 低 32 位（大文件支持）。
+    "reapeaks>=0.3.2"
 ]
 
 # maw：MOSS runtime 依赖（Transformers 5.x）与 local dependency group 的 qwen-asr
@@ -73,7 +74,7 @@ local = [
     # GUI 桥接、OpenCC 与字体工具不属于 local-runtime。
     "jieba>=0.42",
     "requests>=2.28",
-    "reapeaks>=0.3.1",
+    "reapeaks>=0.3.2",
 ]
 ocr = [
     # OCR worker 使用的最小直接依赖；RapidOCR / ONNX Runtime 的传递依赖

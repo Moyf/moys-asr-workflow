@@ -173,7 +173,7 @@ class EditorAssetTests(unittest.TestCase):
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
         self.assertIn("waveShapeSource: 'reapeaks'", editor)
         self.assertIn("getWaveShapeSource?.() || 'reapeaks'", waveform)
-        self.assertIn('<option value="reapeaks" selected>ReaPeaks 波形层</option>', template)
+        self.assertIn('<option value="reapeaks" selected>Reaper 波形</option>', template)
         self.assertNotIn('<option value="self" selected>', template)
         self.assertIn(
             "const useReapeaks = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;",
