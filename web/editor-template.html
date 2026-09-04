@@ -859,6 +859,36 @@ __WAVEFORM_CSS__
     </label>
     <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
     </div>
+    <div class="editor-settings-field timeline-settings-field" role="group" aria-labelledby="timeline-settings-title">
+      <span class="editor-settings-title" id="timeline-settings-title">时间基准</span>
+      <div class="timeline-settings-controls">
+        <label class="editor-settings-item" title="字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行">
+          时间单位
+          <select id="timeline-timebase">
+            <option value="milliseconds" selected>毫秒</option>
+            <option value="frames">帧</option>
+          </select>
+        </label>
+        <label class="editor-settings-item" title="帧时间基准的帧率；帧模式会按此 FPS 保存并显示帧时间码">
+          FPS
+          <span class="gap-remove-number-control">
+            <input type="number" id="timeline-fps" min="1" max="240" step="0.001" value="30" inputmode="decimal" aria-label="帧率 FPS">
+            <span class="gap-remove-unit">fps</span>
+          </span>
+        </label>
+        <label class="editor-settings-item" title="帧模式下把波形鼠标指针吸附到最近的帧；毫秒模式下不生效">
+          <input type="checkbox" id="timeline-snap-to-frame">
+          吸附到帧
+        </label>
+        <label class="editor-settings-item" title="帧时间码中秒与帧之间的分隔符；只使用一个非字母数字符号">
+          时间码分隔符
+          <input type="text" id="timeline-timecode-separator" class="timeline-timecode-separator-input" value=":" maxlength="1" size="1" inputmode="text" autocomplete="off" spellcheck="false" aria-label="时间码分隔符">
+        </label>
+      </div>
+      <small class="editor-settings-hint" id="timeline-timebase-hint">毫秒模式保持原有时间编辑方式。帧模式使用 HH:MM:SS:FF 显示，FF 为当前秒内的帧号。</small>
+      <small class="editor-settings-hint" id="timeline-snap-to-frame-hint">仅帧模式生效；切换到帧模式后可启用。</small>
+      <small class="editor-settings-hint" id="timeline-timecode-separator-hint">帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。</small>
+    </div>
     </div>
   </div>
   <div class="editor-settings-group">
@@ -962,14 +992,14 @@ __WAVEFORM_CSS__
               <small class="settings-panel-hint" id="jkl-playback-mode-hint">J 倒放，K 停止（重置播放速度），K 播放。多次按 J/K 可以倍增速度。</small>
             </div>
             <div class="settings-panel-field">
-              <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的毫秒数">
+              <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的时间幅度">
                 <span>每次跳转时长</span>
                 <span class="gap-remove-number-control">
                   <input type="number" id="media-seek-step" min="10" max="60000" step="100" value="1000" inputmode="numeric" aria-label="每次跳转时长">
-                  <span class="gap-remove-unit">ms</span>
+                  <span class="gap-remove-unit" id="media-seek-step-unit">ms</span>
                 </span>
               </label>
-              <small class="settings-panel-hint">控制按钮和左右方向键的每次跳转时长（单位：ms）</small>
+              <small class="settings-panel-hint" id="media-seek-step-hint">控制按钮和左右方向键的每次跳转时长。</small>
             </div>
           </div>
           <div class="settings-panel-section subtitle-preview-settings-section">
@@ -1217,6 +1247,7 @@ __WAVEFORM_CSS__
             </span>
             <label class="editor-settings-item" id="waveform-seconds-per-row-setting">每行长度
               <select id="waveform-seconds-per-row">
+                <option value="2">2 秒</option>
                 <option value="5">5 秒</option>
                 <option value="10" selected>10 秒</option>
                 <option value="20">20 秒</option>
@@ -1266,14 +1297,14 @@ __WAVEFORM_CSS__
               <span class="settings-panel-title waveform-settings-title">按键调整字幕</span>
               <button type="button" class="settings-panel-help-link" id="keyboard-settings-help" data-help-tab-target="fine-tuning" title="打开帮助中的微调字幕说明" aria-label="打开帮助中的微调字幕说明">帮助</button>
             </div>
-            <label class="editor-settings-item" title="选中字幕时，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数">
+            <label class="editor-settings-item" title="选中字幕时，方向键和按住字幕块/边界时的每次调整幅度">
               字幕按键微调幅度
               <span class="gap-remove-number-control">
                 <input type="number" id="cue-move-step" min="10" max="2000" step="10" value="50" inputmode="numeric">
-                <span class="gap-remove-unit">ms</span>
+                <span class="gap-remove-unit" id="cue-move-step-unit">ms</span>
               </span>
             </label>
-            <small class="settings-panel-hint">具体用法详见帮助的「微调字幕」区</small>
+            <small class="settings-panel-hint" id="cue-move-step-hint">具体用法详见帮助的「微调字幕」区。</small>
           </div>
           <div class="settings-panel-section waveform-settings-section">
             <div class="settings-panel-title-row">

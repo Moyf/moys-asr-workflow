@@ -328,7 +328,52 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('const MEDIA_SEEK_STEP_MIN_MS = 10;', page)
         self.assertIn('mediaSeekStepForValue', page)
         self.assertIn('nextMediaSeekStepValue', page)
-        self.assertIn('seekMediaBy(-EDITOR_SETTINGS.mediaSeekStepMs / 1000)', page)
+        self.assertIn('seekMediaBy(-timelineMediaSeekStepMilliseconds() / 1000)', page)
+        self.assertIn('id="timeline-timebase"', page)
+        self.assertIn('id="timeline-fps"', page)
+        self.assertIn('id="timeline-snap-to-frame"', page)
+        self.assertIn('id="timeline-timecode-separator"', page)
+        self.assertIn('timelineSnapToFrame: true', page)
+        self.assertIn('timelineSnapToFrame: savedSettings.timelineSnapToFrame !== false', page)
+        self.assertIn(
+            'getSnapToFrame: () => timelineIsFrameMode() && EDITOR_SETTINGS.timelineSnapToFrame',
+            page,
+        )
+        self.assertEqual(page.count('id="timeline-timebase"'), 1)
+        self.assertEqual(page.count('id="timeline-snap-to-frame"'), 1)
+        self.assertIn('const ZOOM_PRESETS = [2, 5, 10, 20, 30, 60];', page)
+        self.assertIn(
+            "const showFineGrid = (this.settings.mode === 'basic' && this.settings.visibleSeconds === 2)\n"
+            "        || (this.settings.mode === 'multi' && this.settings.secondsPerRow === 2);",
+            page,
+        )
+        self.assertIn('<option value="2">2 秒</option>', page)
+        self.assertIn("rowGrid: get('--wave-row-grid'", page)
+        self.assertIn('timeline-settings-field', editor_settings_panel)
+        self.assertNotIn('timeline-settings-field', page[waveform_pane_start:])
+        self.assertIn('function confirmTimelineFrameRemap(current, nextUnit, nextFps)', page)
+        self.assertIn(
+            'if (!confirmTimelineFrameRemap(current, nextUnit, nextFps)) {\n'
+            '    refreshTimelineSettingsUi();\n'
+            '    return;\n'
+            '  }',
+            page,
+        )
+        self.assertIn(
+            "updateEditorSettings({ timelineTimecodeSeparator: separator });\n"
+            "  refreshTimelineSettingsUi();\n"
+            "  waveformEditor?.refreshPointerLine?.();\n"
+            "  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，\n"
+            "  // 不必等到下一次字幕编辑操作才看到新格式。\n"
+            "  renderAll({ waveform: 'none' });",
+            page,
+        )
+        self.assertIn('function syncProjectTimebaseAndBindingOffsets(', page)
+        self.assertIn(
+            'function buildJson() {\n'
+            '  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });',
+            page,
+        )
         self.assertIn('id="help-media-seek-step"', page)
         self.assertIn('class="help-break"', page)
         self.assertIn(

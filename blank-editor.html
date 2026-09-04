@@ -127,6 +127,7 @@
     /* 波形画布 —— 供 waveform.js 通过 getComputedStyle 读取以跟随主题 */
     --wave-row-bg:          #1d252d;
     --wave-row-border:      #2d3944;
+    --wave-row-grid:        rgba(255, 255, 255, 0.04);
     --wave-row-tick:        #3b4b59;
     --wave-peak:            #65b89a;
     --wave-peak-dim:        #83909a;
@@ -331,6 +332,7 @@
     /* 波形画布 */
     --wave-row-bg:          #dfe4ea;
     --wave-row-border:      #c4cbd6;
+    --wave-row-grid:        rgba(42, 58, 78, 0.07);
     --wave-row-tick:        #aeb6c2;
     --wave-peak:            #27875f;   /* 原 #2f9e6f 在浅行底上仅 2.6:1，波形峰值发虚，加深至 3.5:1 */
     --wave-peak-dim:        #7d8898;   /* 媒体不可用时的降态峰：与 peak 同明度、去饱和，原值过浅 */
@@ -1029,6 +1031,16 @@
   .editor-settings-field > .editor-settings-item { width: auto; }
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
   .editor-settings-field > .editor-settings-hint { margin: 0; }
+  .timeline-settings-field {
+    gap: 6px; padding-top: 7px; border-top: 1px solid var(--border-subtle);
+  }
+  .timeline-settings-controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; width: 100%;
+  }
+  .timeline-settings-controls > .editor-settings-item { flex: 0 0 auto; }
+  .timeline-settings-controls .timeline-timecode-separator-input {
+    width: 2.5em !important; min-width: 2.5em; padding-left: 3px; padding-right: 3px; text-align: center;
+  }
   /* 字幕语言类型独立成组，避免提示与「合并字幕时插入字符」标题挤在一起。 */
   .split-language-type-field {
     gap: 5px; padding-top: 7px;
@@ -1192,7 +1204,8 @@
   .editor-settings-panel button:hover:not(:disabled) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
   .editor-settings-panel button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .editor-settings-panel button:disabled,
-  .editor-settings-panel select:disabled { opacity: .42; cursor: not-allowed; }
+  .editor-settings-panel select:disabled,
+  .editor-settings-panel input:disabled { opacity: .42; cursor: not-allowed; }
   .editor-settings-stepper {
     display: inline-flex; align-items: center; overflow: hidden;
     border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -4935,6 +4948,36 @@
     </label>
     <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
     </div>
+    <div class="editor-settings-field timeline-settings-field" role="group" aria-labelledby="timeline-settings-title">
+      <span class="editor-settings-title" id="timeline-settings-title">时间基准</span>
+      <div class="timeline-settings-controls">
+        <label class="editor-settings-item" title="字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行">
+          时间单位
+          <select id="timeline-timebase">
+            <option value="milliseconds" selected>毫秒</option>
+            <option value="frames">帧</option>
+          </select>
+        </label>
+        <label class="editor-settings-item" title="帧时间基准的帧率；帧模式会按此 FPS 保存并显示帧时间码">
+          FPS
+          <span class="gap-remove-number-control">
+            <input type="number" id="timeline-fps" min="1" max="240" step="0.001" value="30" inputmode="decimal" aria-label="帧率 FPS">
+            <span class="gap-remove-unit">fps</span>
+          </span>
+        </label>
+        <label class="editor-settings-item" title="帧模式下把波形鼠标指针吸附到最近的帧；毫秒模式下不生效">
+          <input type="checkbox" id="timeline-snap-to-frame">
+          吸附到帧
+        </label>
+        <label class="editor-settings-item" title="帧时间码中秒与帧之间的分隔符；只使用一个非字母数字符号">
+          时间码分隔符
+          <input type="text" id="timeline-timecode-separator" class="timeline-timecode-separator-input" value=":" maxlength="1" size="1" inputmode="text" autocomplete="off" spellcheck="false" aria-label="时间码分隔符">
+        </label>
+      </div>
+      <small class="editor-settings-hint" id="timeline-timebase-hint">毫秒模式保持原有时间编辑方式。帧模式使用 HH:MM:SS:FF 显示，FF 为当前秒内的帧号。</small>
+      <small class="editor-settings-hint" id="timeline-snap-to-frame-hint">仅帧模式生效；切换到帧模式后可启用。</small>
+      <small class="editor-settings-hint" id="timeline-timecode-separator-hint">帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。</small>
+    </div>
     </div>
   </div>
   <div class="editor-settings-group">
@@ -5038,14 +5081,14 @@
               <small class="settings-panel-hint" id="jkl-playback-mode-hint">J 倒放，K 停止（重置播放速度），K 播放。多次按 J/K 可以倍增速度。</small>
             </div>
             <div class="settings-panel-field">
-              <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的毫秒数">
+              <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的时间幅度">
                 <span>每次跳转时长</span>
                 <span class="gap-remove-number-control">
                   <input type="number" id="media-seek-step" min="10" max="60000" step="100" value="1000" inputmode="numeric" aria-label="每次跳转时长">
-                  <span class="gap-remove-unit">ms</span>
+                  <span class="gap-remove-unit" id="media-seek-step-unit">ms</span>
                 </span>
               </label>
-              <small class="settings-panel-hint">控制按钮和左右方向键的每次跳转时长（单位：ms）</small>
+              <small class="settings-panel-hint" id="media-seek-step-hint">控制按钮和左右方向键的每次跳转时长。</small>
             </div>
           </div>
           <div class="settings-panel-section subtitle-preview-settings-section">
@@ -5293,6 +5336,7 @@
             </span>
             <label class="editor-settings-item" id="waveform-seconds-per-row-setting">每行长度
               <select id="waveform-seconds-per-row">
+                <option value="2">2 秒</option>
                 <option value="5">5 秒</option>
                 <option value="10" selected>10 秒</option>
                 <option value="20">20 秒</option>
@@ -5342,14 +5386,14 @@
               <span class="settings-panel-title waveform-settings-title">按键调整字幕</span>
               <button type="button" class="settings-panel-help-link" id="keyboard-settings-help" data-help-tab-target="fine-tuning" title="打开帮助中的微调字幕说明" aria-label="打开帮助中的微调字幕说明">帮助</button>
             </div>
-            <label class="editor-settings-item" title="选中字幕时，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数">
+            <label class="editor-settings-item" title="选中字幕时，方向键和按住字幕块/边界时的每次调整幅度">
               字幕按键微调幅度
               <span class="gap-remove-number-control">
                 <input type="number" id="cue-move-step" min="10" max="2000" step="10" value="50" inputmode="numeric">
-                <span class="gap-remove-unit">ms</span>
+                <span class="gap-remove-unit" id="cue-move-step-unit">ms</span>
               </span>
             </label>
-            <small class="settings-panel-hint">具体用法详见帮助的「微调字幕」区</small>
+            <small class="settings-panel-hint" id="cue-move-step-hint">具体用法详见帮助的「微调字幕」区。</small>
           </div>
           <div class="settings-panel-section waveform-settings-section">
             <div class="settings-panel-title-row">
@@ -9838,6 +9882,129 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     if (edge === 'start') return text.replace(activeStartTrimPattern, '');
     return text.replace(activeEndTrimPattern, '');
   }
+
+  // 字幕编辑的时间基准。工程仍以整数毫秒保存兼容字段；帧字段是按工程
+  // FPS 计算的平行时间轴，用于需要逐帧定位的编辑操作。
+  const TIMELINE_TIMEBASE_UNITS = Object.freeze(['milliseconds', 'frames']);
+  const DEFAULT_TIMELINE_FPS = 30;
+  const DEFAULT_TIMELINE_TIMECODE_SEPARATOR = ':';
+  const MIN_TIMELINE_FPS = 1;
+  const MAX_TIMELINE_FPS = 240;
+
+  function normalizeTimelineFps(value, fallback = DEFAULT_TIMELINE_FPS) {
+    const fallbackValue = Number.isFinite(Number(fallback))
+      ? Number(fallback) : DEFAULT_TIMELINE_FPS;
+    const numeric = Number(value);
+    const safe = Number.isFinite(numeric) ? numeric : fallbackValue;
+    return Math.min(
+      MAX_TIMELINE_FPS,
+      Math.max(MIN_TIMELINE_FPS, Math.round(safe * 1000) / 1000),
+    );
+  }
+
+  function normalizeTimelineTimecodeSeparator(value, fallback = DEFAULT_TIMELINE_TIMECODE_SEPARATOR) {
+    const fallbackCandidate = Array.from(String(fallback ?? '').trim())[0] || '';
+    const safeFallback = fallbackCandidate && !/[\p{Letter}\p{Number}\s]/u.test(fallbackCandidate)
+      ? fallbackCandidate : DEFAULT_TIMELINE_TIMECODE_SEPARATOR;
+    const candidate = Array.from(String(value ?? '').trim())[0] || '';
+    return candidate && !/[\p{Letter}\p{Number}\s]/u.test(candidate) ? candidate : safeFallback;
+  }
+
+  function normalizeTimelineTimebase(value, fallback = {}) {
+    const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const fallbackRaw = fallback && typeof fallback === 'object' ? fallback : {};
+    const fallbackUnit = TIMELINE_TIMEBASE_UNITS.includes(fallbackRaw.unit)
+      ? fallbackRaw.unit : 'milliseconds';
+    return {
+      unit: TIMELINE_TIMEBASE_UNITS.includes(raw.unit) ? raw.unit : fallbackUnit,
+      fps: normalizeTimelineFps(raw.fps, fallbackRaw.fps ?? DEFAULT_TIMELINE_FPS),
+    };
+  }
+
+  function normalizeMediaMetadata(value) {
+    if (value == null) return null;
+    if (typeof value !== 'object' || Array.isArray(value)) return null;
+    const fps = value.video_fps;
+    if (typeof fps !== 'number' || !Number.isFinite(fps)
+        || fps < MIN_TIMELINE_FPS || fps > MAX_TIMELINE_FPS) return null;
+    if (value.video_fps_ratio !== undefined
+        && (typeof value.video_fps_ratio !== 'string' || !value.video_fps_ratio.trim())) return null;
+    const metadata = { video_fps: normalizeTimelineFps(fps) };
+    if (typeof value.video_fps_ratio === 'string') {
+      metadata.video_fps_ratio = value.video_fps_ratio.trim();
+    }
+    return metadata;
+  }
+
+  function frameNumberFromMilliseconds(value, fps = DEFAULT_TIMELINE_FPS) {
+    const numeric = Number(value);
+    const rate = normalizeTimelineFps(fps);
+    return Number.isFinite(numeric) ? Math.max(0, Math.round(numeric * rate / 1000)) : 0;
+  }
+
+  function millisecondsFromFrameNumber(value, fps = DEFAULT_TIMELINE_FPS) {
+    const frame = Number(value);
+    const rate = normalizeTimelineFps(fps);
+    return Number.isFinite(frame) ? Math.max(0, Math.round(frame * 1000 / rate)) : 0;
+  }
+
+  function nominalTimecodeFps(fps = DEFAULT_TIMELINE_FPS) {
+    return Math.max(1, Math.round(normalizeTimelineFps(fps)));
+  }
+
+  function formatFrameTimecode(
+    value,
+    fps = DEFAULT_TIMELINE_FPS,
+    separator = DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+  ) {
+    const nominalFps = nominalTimecodeFps(fps);
+    const totalFrames = Math.max(0, Math.round(Number(value) || 0));
+    const frame = totalFrames % nominalFps;
+    const totalSeconds = Math.floor(totalFrames / nominalFps);
+    const seconds = totalSeconds % 60;
+    const minutes = Math.floor(totalSeconds / 60) % 60;
+    const hours = Math.floor(totalSeconds / 3600);
+    const pad = (number, width) => String(number).padStart(width, '0');
+    return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(seconds, 2)}${
+      normalizeTimelineTimecodeSeparator(separator)
+    }${pad(frame, 2)}`;
+  }
+
+  function formatTimelineTimecode(
+    valueMs,
+    fps = DEFAULT_TIMELINE_FPS,
+    separator = DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+  ) {
+    return formatFrameTimecode(frameNumberFromMilliseconds(valueMs, fps), fps, separator);
+  }
+
+  function parseFrameTimecode(
+    value,
+    fps = DEFAULT_TIMELINE_FPS,
+    separator = DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+  ) {
+    const raw = String(value || '').trim();
+    const frameSeparator = normalizeTimelineTimecodeSeparator(separator);
+    const escapedSeparator = escapeSplitTrimPatternSource(frameSeparator);
+    const match = new RegExp(
+      '^(\\d+):(\\d{2}):(\\d{2})\\s*(?:' + escapedSeparator
+        + '|;|,|/)\\s*(\\d{1,3})\\s*F?$',
+      'iu',
+    ).exec(raw);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    const seconds = Number(match[3]);
+    const frame = Number(match[4]);
+    const nominalFps = nominalTimecodeFps(fps);
+    if (minutes >= 60 || seconds >= 60 || frame >= nominalFps) return null;
+    return (((hours * 60 + minutes) * 60) + seconds) * nominalFps + frame;
+  }
+
+  function clampTimelineFrameStep(value, fallback = 1) {
+    return clampInteger(value, fallback, 1, 240);
+  }
+
   const DEFAULT_EDITOR_SETTINGS = Object.freeze({
     splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true,
     mainSplitModeOverride: null,
@@ -9854,7 +10021,9 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     autoSaveProject: true, autoSaveIntervalSeconds: 30, stickerOverlayEnabled: false,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
-    cueMoveStepMs: 50, hoverSeekPreview: false, autoSnapAdjacentCues: true, ninjaMode: false,
+    mediaSeekStepFrames: 1, cueMoveStepMs: 50, cueMoveStepFrames: 1,
+    timelineSnapToFrame: true, timelineTimecodeSeparator: DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+    hoverSeekPreview: false, autoSnapAdjacentCues: true, ninjaMode: false,
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
@@ -9927,7 +10096,11 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       jklPlaybackMode: ['speed', 'direction'].includes(savedSettings.jklPlaybackMode)
         ? savedSettings.jklPlaybackMode : 'direction',
       mediaSeekStepMs: clampInteger(mediaSeekStepMs, 1000, 10, 60000),
+      mediaSeekStepFrames: clampTimelineFrameStep(savedSettings.mediaSeekStepFrames, 1),
       cueMoveStepMs: clampInteger(savedSettings.cueMoveStepMs, 50, 10, 2000),
+      cueMoveStepFrames: clampTimelineFrameStep(savedSettings.cueMoveStepFrames, 1),
+      timelineSnapToFrame: savedSettings.timelineSnapToFrame !== false,
+      timelineTimecodeSeparator: normalizeTimelineTimecodeSeparator(savedSettings.timelineTimecodeSeparator),
       hoverSeekPreview: savedSettings.hoverSeekPreview === true,
       autoSnapAdjacentCues: savedSettings.autoSnapAdjacentCues !== false,
       ninjaMode: savedSettings.ninjaMode === true,
@@ -12320,6 +12493,21 @@ export default MawDynamicCaptions;
     getSrtExportFirstIndex,
     getSrtExportOffset,
     normalizeEditorSettings,
+    TIMELINE_TIMEBASE_UNITS,
+    DEFAULT_TIMELINE_FPS,
+    DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+    MIN_TIMELINE_FPS,
+    MAX_TIMELINE_FPS,
+    normalizeTimelineFps,
+    normalizeTimelineTimecodeSeparator,
+    normalizeTimelineTimebase,
+    normalizeMediaMetadata,
+    frameNumberFromMilliseconds,
+    millisecondsFromFrameNumber,
+    formatFrameTimecode,
+    formatTimelineTimecode,
+    parseFrameTimecode,
+    clampTimelineFrameStep,
     normalizeMultiSubtitleRowHeight,
     normalizeClickBehavior,
     normalizeClickTarget,
@@ -12576,7 +12764,12 @@ export default MawDynamicCaptions;
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
     '媒体': 'Media', '媒体设置': 'Media settings', '预览字幕': 'Subtitle preview', '预览字幕样式': 'Subtitle preview style', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
     '播放预览': 'Playback preview', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
-    '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '每次跳转时长': 'Seek duration per action', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)',
+    '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '每次跳转时长': 'Seek duration per action', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '媒体控制按钮和左右方向键每次跳转的时间幅度': 'Time amount to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)', '控制按钮和左右方向键的每次跳转时长。': 'Time amount for each jump from the controls and left/right arrow keys.',
+    '时间基准': 'Timebase', '时间单位': 'Time unit', '毫秒': 'Milliseconds', '帧': 'Frames',
+    '吸附到帧': 'Snap to frame', '时间码分隔符': 'Timecode separator',
+    '毫秒模式保持原有时间编辑方式。帧模式使用 HH:MM:SS:FF 显示，FF 为当前秒内的帧号。': 'Millisecond mode keeps the existing timing behavior. Frame mode uses HH:MM:SS:FF, where FF is the frame number within the current second.',
+    '仅帧模式生效；切换到帧模式后可启用。': 'Only active in frame mode; switch to frame mode to enable it.',
+    '帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。': 'Frame timecode example: HH:MM:SS:FF; only the separator between seconds and frames changes.',
     '频谱颜色': 'Spectral colors', '正在应用频谱颜色…': 'Applying spectral colors…', '正在关闭频谱颜色…': 'Removing spectral colors…',
     '预览字幕颜色': 'Color underline', '按字幕颜色快照给预览文字加下划线，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本': 'Underline the preview text with each subtitle color snapshot to tell colored subtitles apart; only affects the in-player preview, never subtitle text',
     '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
@@ -12823,7 +13016,10 @@ export default MawDynamicCaptions;
     '注：微调幅度可在波形区的': 'Note: Adjust the fine-tuning amount in the waveform area’s',
     '中调节，默认 50ms': 'to adjust it; the default is 50 ms',
     '其他': 'Other',
+    '字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行': 'Time unit used for subtitle editing; after switching to frames, dragging, arrow keys, and A/D fine-tuning operate frame by frame',
+    '帧时间基准的帧率；帧模式会按此 FPS 保存并显示帧时间码': 'Frame rate for the frame timebase; frame mode saves and displays frame timecodes at this FPS',
     '字幕按键微调幅度': 'Subtitle keyboard adjustment amount',
+    '选中字幕时，方向键和按住字幕块/边界时的每次调整幅度': 'Adjustment amount for arrow keys when a subtitle is selected and A/D while holding a cue/block boundary',
     '具体用法详见帮助的「微调字幕」区': 'See the “Subtitle fine-tuning” tab in Help for details',
     '上一条字幕': 'Previous subtitle', '下一条字幕': 'Next subtitle',
     '向前多选': 'Extend selection backward', '向后多选': 'Extend selection forward',
@@ -12953,6 +13149,13 @@ export default MawDynamicCaptions;
     '波形显示模式': 'Waveform display mode',
     '打开更多文件': 'Open more files',
     '导出或导入工作区配置': 'Export or import workspace configuration',
+    '媒体控制按钮和左右方向键每次跳转的时间幅度': 'Time amount to jump with the media controls and left/right arrow keys',
+    '帧率 FPS': 'Frame rate FPS',
+    '字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行': 'Time unit used for subtitle editing; after switching to frames, dragging, arrow keys, and A/D fine-tuning operate frame by frame',
+    '帧时间基准的帧率；帧模式会按此 FPS 保存并显示帧时间码': 'Frame rate for the frame timebase; frame mode saves and displays frame timecodes at this FPS',
+    '帧模式下把波形鼠标指针吸附到最近的帧；毫秒模式下不生效': 'Snap the waveform pointer to the nearest frame in frame mode; inactive in millisecond mode',
+    '帧时间码中秒与帧之间的分隔符；只使用一个非字母数字符号': 'Separator between seconds and frames in the frame timecode; use one non-alphanumeric symbol',
+    '选中字幕时，方向键和按住字幕块/边界时的每次调整幅度': 'Adjustment amount for arrow keys when a subtitle is selected and A/D while holding a cue/block boundary',
     '只影响播放器画面内的字幕预览，不改变字幕文本或时间': 'Only affects subtitle preview in the player; subtitle text and timing are unchanged',
     '选择播放器画面内字幕预览使用的字体族': 'Choose the font family used by the subtitle preview in the player',
     '读取本机已安装的字体': 'Read fonts installed on this computer',
@@ -13675,8 +13878,8 @@ export default MawDynamicCaptions;
   const ROOT_EDGE_DROP_RATIO = 0.055;
   const ROOT_EDGE_DROP_MIN_PX = 24;
   const ROOT_EDGE_DROP_MAX_PX = 48;
-  const ZOOM_PRESETS = [5, 10, 20, 30, 60];
-  const ROW_PRESETS = [5, 10, 20, 30];
+  const ZOOM_PRESETS = [2, 5, 10, 20, 30, 60];
+  const ROW_PRESETS = [2, 5, 10, 20, 30];
   const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
   const ROW_GAP = 10;
   const SPLIT_FLASH_DURATION_MS = 720;
@@ -13845,6 +14048,66 @@ export default MawDynamicCaptions;
     const millis = safe % 1000;
     const hh = hours ? `${String(hours).padStart(2, '0')}:` : '';
     return `${hh}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+  }
+
+  // 字幕编辑操作可以使用毫秒或工程提供的帧时间轴。波形的绘制和播放头
+  // 仍然使用毫秒；这里的适配器只负责字幕块的读写、约束和字词映射。
+  function resolveTiming(timing = null) {
+    const source = timing && typeof timing === 'object' ? timing : {};
+    const positive = (value, fallback) => (
+      Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : fallback
+    );
+    const frameMode = source.unit === 'frames';
+    return {
+      unit: frameMode ? 'frames' : 'milliseconds',
+      fps: positive(source.fps, 30),
+      minDuration: positive(source.minDuration, MIN_CUE_MS),
+      snapThreshold: positive(source.snapThreshold, SNAP_MS),
+      round: typeof source.round === 'function' ? source.round : roundMs,
+      getStart: typeof source.getStart === 'function'
+        ? source.getStart : (segment) => Number(segment?.start),
+      getEnd: typeof source.getEnd === 'function'
+        ? source.getEnd : (segment) => Number(segment?.end),
+      setStart: typeof source.setStart === 'function'
+        ? source.setStart : (segment, value) => { segment.start = value; },
+      setEnd: typeof source.setEnd === 'function'
+        ? source.setEnd : (segment, value) => { segment.end = value; },
+      getItemStart: typeof source.getItemStart === 'function'
+        ? source.getItemStart : (item) => Number(item?.start),
+      getItemEnd: typeof source.getItemEnd === 'function'
+        ? source.getItemEnd : (item) => Number(item?.end),
+      setItemStart: typeof source.setItemStart === 'function'
+        ? source.setItemStart : (item, value) => { item.start = value; },
+      setItemEnd: typeof source.setItemEnd === 'function'
+        ? source.setItemEnd : (item, value) => { item.end = value; },
+      fromMs: typeof source.fromMs === 'function'
+        ? source.fromMs : (value) => Number(value),
+      toMs: typeof source.toMs === 'function'
+        ? source.toMs : (value) => Number(value),
+      format: typeof source.format === 'function' ? source.format : formatCompact,
+    };
+  }
+
+  function waveformGridStepMs(timing = null) {
+    const clock = resolveTiming(timing);
+    return clock.unit === 'frames' ? 1000 / clock.fps : 100;
+  }
+
+  function snapPointerTimeToTimingGrid(valueMs, timing = null, enabled = false) {
+    const numeric = Number(valueMs);
+    if (!Number.isFinite(numeric)) return numeric;
+    const clock = resolveTiming(timing);
+    if (!enabled || clock.unit !== 'frames') return numeric;
+    return clock.toMs(clock.fromMs(numeric));
+  }
+
+  function restoreTiming(segment, original, timing = null) {
+    const clock = resolveTiming(timing);
+    if (!segment || !original) return;
+    clock.setStart(segment, original.start);
+    clock.setEnd(segment, original.end);
+    segment.items = Array.isArray(original.items)
+      ? original.items.map((item) => ({ ...item })) : original.items;
   }
 
   function normalizeModuleOrder(value) {
@@ -14459,19 +14722,28 @@ export default MawDynamicCaptions;
     return '#66727d';
   }
 
-  function applySharedBoundary(segments, leftIndex, boundary, minDuration = MIN_CUE_MS) {
+  function applySharedBoundary(
+    segments,
+    leftIndex,
+    boundary,
+    minDuration = MIN_CUE_MS,
+    timing = null,
+  ) {
+    const clock = resolveTiming(timing);
     const left = segments[leftIndex];
     const right = segments[leftIndex + 1];
     if (!left || !right) return segments;
-    const lower = left.start + minDuration;
-    const upper = right.end - minDuration;
-    const nextBoundary = clamp(roundMs(boundary), lower, upper);
-    const oldLeftEnd = left.end;
-    const oldRightStart = right.start;
-    left.end = nextBoundary;
-    right.start = nextBoundary;
-    left.items = remapItems(left.items, left.start, oldLeftEnd, left.start, nextBoundary);
-    right.items = remapItems(right.items, oldRightStart, right.end, nextBoundary, right.end);
+    const lower = clock.getStart(left) + minDuration;
+    const upper = clock.getEnd(right) - minDuration;
+    const nextBoundary = clamp(clock.round(boundary), lower, upper);
+    const oldLeftEnd = clock.getEnd(left);
+    const oldRightStart = clock.getStart(right);
+    const leftStart = clock.getStart(left);
+    const rightEnd = clock.getEnd(right);
+    clock.setEnd(left, nextBoundary);
+    clock.setStart(right, nextBoundary);
+    left.items = remapItems(left.items, leftStart, oldLeftEnd, leftStart, nextBoundary, clock);
+    right.items = remapItems(right.items, oldRightStart, rightEnd, nextBoundary, rightEnd, clock);
     return segments;
   }
 
@@ -14481,44 +14753,62 @@ export default MawDynamicCaptions;
   // edge === 'end' moves segments[leftIndex].end; 'start' moves
   // segments[leftIndex + 1].start. The moved edge is clamped to keep at
   // least minDuration inside its own segment and not cross its other edge.
-  function applyIndependentEdge(segments, leftIndex, edge, valueMs, minDuration = MIN_CUE_MS) {
+  function applyIndependentEdge(
+    segments,
+    leftIndex,
+    edge,
+    valueMs,
+    minDuration = MIN_CUE_MS,
+    timing = null,
+  ) {
+    const clock = resolveTiming(timing);
     const left = segments[leftIndex];
     const right = segments[leftIndex + 1];
     if (!left || !right || (edge !== 'end' && edge !== 'start')) return segments;
-    const value = roundMs(valueMs);
+    const value = clock.round(valueMs);
     if (edge === 'end') {
-      const lower = left.start + minDuration;
+      const lower = clock.getStart(left) + minDuration;
       // 右侧字幕保持不动；使用它的起点作为固定上限，不能把当前值
       // 当作上限，否则边界第一次向左拉开后就无法再向右回拖。
-      const upper = Number.isFinite(right.start) ? right.start : Infinity;
+      const upper = Number.isFinite(clock.getStart(right)) ? clock.getStart(right) : Infinity;
       const next = clamp(value, lower, upper);
-      const oldEnd = left.end;
-      left.end = next;
-      left.items = remapItems(left.items, left.start, oldEnd, left.start, next);
+      const oldEnd = clock.getEnd(left);
+      const leftStart = clock.getStart(left);
+      clock.setEnd(left, next);
+      left.items = remapItems(left.items, leftStart, oldEnd, leftStart, next, clock);
     } else {
-      const upper = right.end - minDuration;
+      const upper = clock.getEnd(right) - minDuration;
       // 左侧字幕保持不动；使用它的终点作为固定下限，同样允许边界
       // 在拉开后反向回到邻字幕边界。
-      const lower = Number.isFinite(left.end) ? left.end : 0;
+      const lower = Number.isFinite(clock.getEnd(left)) ? clock.getEnd(left) : 0;
       const next = clamp(value, lower, upper);
-      const oldStart = right.start;
-      right.start = next;
-      right.items = remapItems(right.items, oldStart, right.end, next, right.end);
+      const oldStart = clock.getStart(right);
+      const rightEnd = clock.getEnd(right);
+      clock.setStart(right, next);
+      right.items = remapItems(right.items, oldStart, rightEnd, next, rightEnd, clock);
     }
     return segments;
   }
 
-  function snapshotTiming(segment) {
+  function snapshotTiming(segment, timing = null) {
+    const clock = resolveTiming(timing);
+    const start = clock.getStart(segment);
+    const end = clock.getEnd(segment);
+    const startMs = Number(segment?.start);
+    const endMs = Number(segment?.end);
     return {
-      start: Number(segment.start),
-      end: Number(segment.end),
+      start: Number(start),
+      end: Number(end),
+      startMs: Number.isFinite(startMs) ? startMs : clock.toMs(start),
+      endMs: Number.isFinite(endMs) ? endMs : clock.toMs(end),
       items: Array.isArray(segment.items)
         ? segment.items.map((item) => ({ ...item })) : segment.items,
     };
   }
 
-  function isAttached(left, right) {
-    return !!left && !!right && Number(left.end) === Number(right.start);
+  function isAttached(left, right, timing = null) {
+    const clock = resolveTiming(timing);
+    return !!left && !!right && clock.getEnd(left) === clock.getStart(right);
   }
 
   function shouldAdjustAdjacentCuesIndependently(altKey, autoSnapAdjacentCues) {
@@ -14540,13 +14830,15 @@ export default MawDynamicCaptions;
   function planMoveStep(segments, indices, deltaMs, durationMs, {
     sticky = true,
     minDuration = MIN_CUE_MS,
+    timing = null,
   } = {}) {
+    const clock = resolveTiming(timing);
     const selectedIndices = normalizedIndices(segments, indices);
     if (!selectedIndices.length) {
       return { changed: false, appliedDelta: 0, indices: [], affectedIndices: [] };
     }
     const selected = new Set(selectedIndices);
-    const originals = new Map(selectedIndices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    const originals = new Map(selectedIndices.map((idx) => [idx, snapshotTiming(segments[idx], clock)]));
     const attachments = [];
     const attachmentOriginals = new Map();
     const previousAttachments = [];
@@ -14563,19 +14855,19 @@ export default MawDynamicCaptions;
       }
       const previous = segments[idx - 1];
       if (previous && !selected.has(idx - 1)) {
-        if (sticky && isAttached(previous, segments[idx])) {
-          const previousOriginal = snapshotTiming(previous);
+        if (sticky && isAttached(previous, segments[idx], clock)) {
+          const previousOriginal = snapshotTiming(previous, clock);
           previousAttachments.push({ index: idx, previousIndex: idx - 1 });
           previousAttachmentOriginals.set(idx - 1, previousOriginal);
           minDelta = Math.max(minDelta, previousOriginal.start + minDuration - original.start);
         } else {
-          minDelta = Math.max(minDelta, Number(previous.end) - original.start);
+          minDelta = Math.max(minDelta, clock.getEnd(previous) - original.start);
         }
       }
       const next = segments[idx + 1];
       if (!next || selected.has(idx + 1)) continue;
-      if (sticky && isAttached(segments[idx], next)) {
-        const nextOriginal = snapshotTiming(next);
+      if (sticky && isAttached(segments[idx], next, clock)) {
+        const nextOriginal = snapshotTiming(next, clock);
         attachments.push({ index: idx, nextIndex: idx + 1 });
         attachmentOriginals.set(idx + 1, nextOriginal);
         // The next cue's start follows the selected cue's end, so its end
@@ -14583,12 +14875,12 @@ export default MawDynamicCaptions;
         maxDelta = Math.min(maxDelta, nextOriginal.end - minDuration - original.end);
       } else {
         // An unlinked following cue stays fixed and may not be overlapped.
-        maxDelta = Math.min(maxDelta, Number(next.start) - original.end);
+        maxDelta = Math.min(maxDelta, clock.getStart(next) - original.end);
       }
     }
 
     const requested = Number(deltaMs);
-    const rounded = Number.isFinite(requested) ? roundMs(requested) : 0;
+    const rounded = Number.isFinite(requested) ? clock.round(requested) : 0;
     const appliedDelta = clamp(rounded, minDelta, maxDelta);
     const affectedIndices = [...selectedIndices];
     attachments.forEach(({ nextIndex }) => affectedIndices.push(nextIndex));
@@ -14609,31 +14901,47 @@ export default MawDynamicCaptions;
   function applyMoveStep(segments, indices, deltaMs, durationMs, options = {}) {
     const plan = planMoveStep(segments, indices, deltaMs, durationMs, options);
     if (!plan.changed) return plan;
+    const clock = resolveTiming(options.timing);
     const delta = plan.appliedDelta;
     plan.indices.forEach((idx) => {
       const original = plan.originals.get(idx);
       const segment = segments[idx];
-      segment.start = original.start + delta;
-      segment.end = original.end + delta;
+      clock.setStart(segment, original.start + delta);
+      clock.setEnd(segment, original.end + delta);
       if (Array.isArray(original.items)) {
-        segment.items = original.items.map((item) => ({
-          ...item,
-          start: item.start + delta,
-          end: item.end + delta,
-        }));
+        segment.items = original.items.map((item) => {
+          const copy = { ...item };
+          clock.setItemStart(copy, clock.getItemStart(item) + delta);
+          clock.setItemEnd(copy, clock.getItemEnd(item) + delta);
+          return copy;
+        });
       }
     });
     plan.attachments.forEach(({ nextIndex }) => {
       const original = plan.attachmentOriginals.get(nextIndex);
       const segment = segments[nextIndex];
-      segment.start = original.start + delta;
-      segment.items = remapItems(original.items, original.start, original.end, segment.start, segment.end);
+      clock.setStart(segment, original.start + delta);
+      segment.items = remapItems(
+        original.items,
+        original.start,
+        original.end,
+        clock.getStart(segment),
+        clock.getEnd(segment),
+        clock,
+      );
     });
     plan.previousAttachments.forEach(({ previousIndex }) => {
       const original = plan.previousAttachmentOriginals.get(previousIndex);
       const segment = segments[previousIndex];
-      segment.end = original.end + delta;
-      segment.items = remapItems(original.items, original.start, original.end, segment.start, segment.end);
+      clock.setEnd(segment, original.end + delta);
+      segment.items = remapItems(
+        original.items,
+        original.start,
+        original.end,
+        clock.getStart(segment),
+        clock.getEnd(segment),
+        clock,
+      );
     });
     return plan;
   }
@@ -14641,7 +14949,9 @@ export default MawDynamicCaptions;
   function planBoundaryStep(segments, index, edge, deltaMs, durationMs, {
     sticky = true,
     minDuration = MIN_CUE_MS,
+    timing = null,
   } = {}) {
+    const clock = resolveTiming(timing);
     const target = segments[index];
     if (!target || (edge !== 'start' && edge !== 'end')) {
       return { changed: false, appliedDelta: 0, indices: [], affectedIndices: [] };
@@ -14649,28 +14959,28 @@ export default MawDynamicCaptions;
     const previous = segments[index - 1];
     const next = segments[index + 1];
     const linkedNeighbor = edge === 'start'
-      ? (sticky && isAttached(previous, target) ? previous : null)
-      : (sticky && isAttached(target, next) ? next : null);
-    const current = edge === 'start' ? Number(target.start) : Number(target.end);
+      ? (sticky && isAttached(previous, target, clock) ? previous : null)
+      : (sticky && isAttached(target, next, clock) ? next : null);
+    const current = edge === 'start' ? clock.getStart(target) : clock.getEnd(target);
     const requested = Number(deltaMs);
-    const rounded = Number.isFinite(requested) ? roundMs(requested) : 0;
+    const rounded = Number.isFinite(requested) ? clock.round(requested) : 0;
     let lower;
     let upper;
     if (edge === 'start') {
-      lower = linkedNeighbor ? Number(previous.start) + minDuration : Number(previous?.end ?? 0);
-      upper = Number(target.end) - minDuration;
+      lower = linkedNeighbor ? clock.getStart(previous) + minDuration : Number(previous ? clock.getEnd(previous) : 0);
+      upper = clock.getEnd(target) - minDuration;
     } else {
-      lower = Number(target.start) + minDuration;
+      lower = clock.getStart(target) + minDuration;
       upper = linkedNeighbor
-        ? Number(next.end) - minDuration
-        : Number(next?.start ?? durationMs);
+        ? clock.getEnd(next) - minDuration
+        : Number(next ? clock.getStart(next) : durationMs);
       if (!Number.isFinite(upper) || upper <= 0) upper = Infinity;
     }
     const appliedDelta = clamp(current + rounded, lower, upper) - current;
     const affectedIndices = linkedNeighbor
       ? [index, edge === 'start' ? index - 1 : index + 1].sort((a, b) => a - b)
       : [index];
-    const snapshots = new Map(affectedIndices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    const snapshots = new Map(affectedIndices.map((idx) => [idx, snapshotTiming(segments[idx], clock)]));
     return {
       changed: appliedDelta !== 0,
       appliedDelta,
@@ -14686,26 +14996,39 @@ export default MawDynamicCaptions;
   function applyBoundaryStep(segments, index, edge, deltaMs, durationMs, options = {}) {
     const plan = planBoundaryStep(segments, index, edge, deltaMs, durationMs, options);
     if (!plan.changed) return plan;
+    const clock = resolveTiming(options.timing);
     const target = segments[plan.index];
     const oldTarget = plan.snapshots.get(plan.index);
     const value = (plan.edge === 'start' ? oldTarget.start : oldTarget.end) + plan.appliedDelta;
     if (plan.edge === 'start') {
-      target.start = value;
-      target.items = remapItems(oldTarget.items, oldTarget.start, oldTarget.end, target.start, target.end);
+      clock.setStart(target, value);
+      target.items = remapItems(
+        oldTarget.items, oldTarget.start, oldTarget.end,
+        clock.getStart(target), clock.getEnd(target), clock,
+      );
       if (plan.linked) {
         const previous = segments[plan.neighborIndex];
         const oldPrevious = plan.snapshots.get(plan.neighborIndex);
-        previous.end = value;
-        previous.items = remapItems(oldPrevious.items, oldPrevious.start, oldPrevious.end, previous.start, previous.end);
+        clock.setEnd(previous, value);
+        previous.items = remapItems(
+          oldPrevious.items, oldPrevious.start, oldPrevious.end,
+          clock.getStart(previous), clock.getEnd(previous), clock,
+        );
       }
     } else {
-      target.end = value;
-      target.items = remapItems(oldTarget.items, oldTarget.start, oldTarget.end, target.start, target.end);
+      clock.setEnd(target, value);
+      target.items = remapItems(
+        oldTarget.items, oldTarget.start, oldTarget.end,
+        clock.getStart(target), clock.getEnd(target), clock,
+      );
       if (plan.linked) {
         const next = segments[plan.neighborIndex];
         const oldNext = plan.snapshots.get(plan.neighborIndex);
-        next.start = value;
-        next.items = remapItems(oldNext.items, oldNext.start, oldNext.end, next.start, next.end);
+        clock.setStart(next, value);
+        next.items = remapItems(
+          oldNext.items, oldNext.start, oldNext.end,
+          clock.getStart(next), clock.getEnd(next), clock,
+        );
       }
     }
     return plan;
@@ -14791,18 +15114,24 @@ export default MawDynamicCaptions;
     return { start: nextStartMs, end: nextEndMs };
   }
 
-  function remapItems(items, oldStart, oldEnd, newStart, newEnd) {
+  function remapItems(items, oldStart, oldEnd, newStart, newEnd, timing = null) {
     if (!Array.isArray(items) || !items.length) return items;
+    const clock = resolveTiming(timing);
     const oldDuration = Math.max(1, oldEnd - oldStart);
     const newDuration = Math.max(1, newEnd - newStart);
     return items.map((item) => {
       // 等比缩放后钳回段内，并保证 end > start（防止取整后出现 0 长词块）。
-      const mappedStart = roundMs(newStart + ((item.start - oldStart) / oldDuration) * newDuration);
-      const mappedEnd = roundMs(newStart + ((item.end - oldStart) / oldDuration) * newDuration);
+      const itemStart = clock.getItemStart(item);
+      const itemEnd = clock.getItemEnd(item);
+      const mappedStart = clock.round(newStart + ((itemStart - oldStart) / oldDuration) * newDuration);
+      const mappedEnd = clock.round(newStart + ((itemEnd - oldStart) / oldDuration) * newDuration);
       let start = Math.min(Math.max(mappedStart, newStart), newEnd);
       const end = Math.min(Math.max(mappedEnd, start + 1), newEnd);
       if (end <= start) start = Math.max(newStart, end - 1);
-      return { ...item, start, end };
+      const copy = { ...item };
+      clock.setItemStart(copy, start);
+      clock.setItemEnd(copy, end);
+      return copy;
     });
   }
 
@@ -14930,6 +15259,10 @@ export default MawDynamicCaptions;
       this.hoverSeekPreviewFrame = 0;
       this.hoverSeekPreviewLastEvent = null;
       this.hoverSeekPreviewRow = null;
+      // 帧吸附开关切换时，重新用当前鼠标坐标计算可见指针线位置。
+      this.pointerLineEvent = null;
+      this.pointerLineRow = null;
+      this.pointerLineMarker = null;
       this.playheadDragActive = false;
       // Shift+滚轮调振幅的 debounce：滚动期间只累计净步数，停止后一次性重绘
       this.pendingScaleDirection = 0;
@@ -15092,10 +15425,33 @@ export default MawDynamicCaptions;
       this.bindLayoutResizers();
     }
 
+    pointerTimeMs(event, row, geometry = null, allowCrossRow = false) {
+      const requestedMs = allowCrossRow
+        ? this.timeFromPointerUnbounded(event, row, geometry)
+        : this.timeFromPointer(event, row, geometry);
+      return snapPointerTimeToTimingGrid(
+        requestedMs,
+        this.cueTiming(),
+        this.options.getSnapToFrame?.() === true,
+      );
+    }
+
+    refreshPointerLine() {
+      if (!this.pointerLineEvent || !this.pointerLineRow || !this.pointerLineMarker) return;
+      if (!this.pointerLineRow.isConnected) return;
+      this.showPointerLine(this.pointerLineEvent, this.pointerLineRow, this.pointerLineMarker);
+    }
+
     showPointerLine(event, row, marker) {
       if (!row || !marker) return;
       const rect = row.getBoundingClientRect();
-      const left = clamp(event.clientX - rect.left, 0, rect.width);
+      const rawLeft = clamp(event.clientX - rect.left, 0, rect.width);
+      const startMs = Number(row.dataset.startMs);
+      const endMs = Number(row.dataset.endMs);
+      const timeMs = this.pointerTimeMs(event, row);
+      const left = Number.isFinite(timeMs) && Number.isFinite(startMs) && Number.isFinite(endMs)
+        ? clamp(((timeMs - startMs) / Math.max(1, endMs - startMs)) * rect.width, 0, rect.width)
+        : rawLeft;
       marker.style.left = `${left}px`;
       marker.hidden = false;
     }
@@ -16205,6 +16561,7 @@ export default MawDynamicCaptions;
       this._waveColors = {
         rowBg: get('--wave-row-bg', '#1d252d'),
         rowBorder: get('--wave-row-border', '#2d3944'),
+        rowGrid: get('--wave-row-grid', 'rgba(255, 255, 255, 0.04)'),
         rowTick: get('--wave-row-tick', '#3b4b59'),
         peak: get('--wave-peak', '#65b89a'),
         peakDim: get('--wave-peak-dim', '#83909a'),
@@ -16452,7 +16809,7 @@ export default MawDynamicCaptions;
           !event.target.closest('.waveform-cue-block, .waveform-gap-block')
         ) {
           const track = this.trackAtPoint(event.clientX, event.clientY, row);
-          if (this.isCueTimeOccupied(this.timeFromPointer(event, row), track)) {
+          if (this.isCueTimeOccupied(this.pointerTimeMs(event, row), track)) {
             event.preventDefault();
             event.stopPropagation();
             this.options.onCueCreateRejected?.('occupied');
@@ -16489,13 +16846,26 @@ export default MawDynamicCaptions;
         if (this.settings.dragPlayhead) this.beginPlayheadDrag(event, row, geometry);
         this.seekFromPointer(event, row, false, geometry);
       });
-      row.addEventListener('pointerenter', (event) => this.showPointerLine(event, row, pointerLine));
+      row.addEventListener('pointerenter', (event) => {
+        this.pointerLineEvent = { clientX: event.clientX };
+        this.pointerLineRow = row;
+        this.pointerLineMarker = pointerLine;
+        this.showPointerLine(event, row, pointerLine);
+      });
       row.addEventListener('pointermove', (event) => {
+        this.pointerLineEvent = { clientX: event.clientX };
+        this.pointerLineRow = row;
+        this.pointerLineMarker = pointerLine;
         this.showPointerLine(event, row, pointerLine);
         this.scheduleHoverSeekPreview(event, row);
       });
       row.addEventListener('pointerleave', () => {
         this.hidePointerLine(pointerLine);
+        if (this.pointerLineMarker === pointerLine) {
+          this.pointerLineEvent = null;
+          this.pointerLineRow = null;
+          this.pointerLineMarker = null;
+        }
         this.cancelHoverSeekPreview();
       });
       row.addEventListener('auxclick', (event) => {
@@ -16513,7 +16883,7 @@ export default MawDynamicCaptions;
         if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
         event.preventDefault();
         event.stopPropagation();
-        const time = this.timeFromPointer(event, row);
+        const time = this.pointerTimeMs(event, row);
         const track = this.trackAtPoint(event.clientX, event.clientY, row);
         this.options.showBlankWaveformMenu?.(time, event.clientX, event.clientY, track);
       });
@@ -16677,7 +17047,7 @@ export default MawDynamicCaptions;
         block.addEventListener('contextmenu', (event) => {
           event.preventDefault();
           event.stopPropagation();
-          const timeMs = this.timeFromPointer(event, row);
+          const timeMs = this.pointerTimeMs(event, row);
           this.options.showContextMenu?.(event.clientX, event.clientY, index, timeMs);
         });
         block.addEventListener('dblclick', (event) => {
@@ -16733,7 +17103,7 @@ export default MawDynamicCaptions;
         block.addEventListener('contextmenu', (event) => {
           event.preventDefault();
           event.stopPropagation();
-          const timeMs = this.timeFromPointer(event, row);
+          const timeMs = this.pointerTimeMs(event, row);
           this.options.showExtensionContextMenu?.(event.clientX, event.clientY, index, timeMs);
         });
         block.addEventListener('dblclick', (event) => {
@@ -16938,6 +17308,21 @@ export default MawDynamicCaptions;
       const startMs = Number(row.dataset.startMs);
       const endMs = Number(row.dataset.endMs);
       const rangeMs = Math.max(1, endMs - startMs);
+      const showFineGrid = (this.settings.mode === 'basic' && this.settings.visibleSeconds === 2)
+        || (this.settings.mode === 'multi' && this.settings.secondsPerRow === 2);
+      if (showFineGrid) {
+        const gridStepMs = waveformGridStepMs(this.cueTiming());
+        const firstGrid = Math.ceil(startMs / gridStepMs) * gridStepMs;
+        ctx.strokeStyle = colors.rowGrid;
+        ctx.lineWidth = 1;
+        for (let grid = firstGrid; grid < endMs; grid += gridStepMs) {
+          const x = ((grid - startMs) / rangeMs) * width;
+          ctx.beginPath();
+          ctx.moveTo(x + 0.5, 0);
+          ctx.lineTo(x + 0.5, height);
+          ctx.stroke();
+        }
+      }
       const tickSeconds = rangeMs <= 10000 ? 1 : rangeMs <= 30000 ? 2 : 5;
       const firstTick = Math.ceil(startMs / (tickSeconds * 1000)) * tickSeconds * 1000;
       ctx.strokeStyle = colors.rowBorder;
@@ -17025,9 +17410,7 @@ export default MawDynamicCaptions;
       allowCrossRow = false,
       dragPreview = false,
     ) {
-      const requestedMs = allowCrossRow
-        ? this.timeFromPointerUnbounded(event, row, geometry)
-        : this.timeFromPointer(event, row, geometry);
+      const requestedMs = this.pointerTimeMs(event, row, geometry, allowCrossRow);
       const timeMs = allowCrossRow
         ? clamp(requestedMs, 0, Math.max(0, this.durationMs))
         : requestedMs;
@@ -17039,7 +17422,7 @@ export default MawDynamicCaptions;
     seekFromCue(event, row, index, playAfterSeek = false, geometry = null, track = 'main') {
       const segment = this.options.getSegments(track)[index];
       const timeMs = this.options.getClickTarget?.() === 'pointer'
-        ? this.timeFromPointer(event, row, geometry)
+        ? this.pointerTimeMs(event, row, geometry)
         : Number(segment?.start);
       if (!Number.isFinite(timeMs)) return;
       this.options.seek(timeMs / 1000);
@@ -17056,7 +17439,9 @@ export default MawDynamicCaptions;
       event.stopPropagation();
       this.focusWaveform();
       const geometry = this.captureRowGeometry(row);
-      const startMs = this.timeFromPointer(event, row, geometry);
+      const timing = this.cueTiming();
+      const snapToTimeline = (valueMs) => timing.toMs(timing.fromMs(valueMs));
+      const startMs = snapToTimeline(this.timeFromPointer(event, row, geometry));
       if (this.isCueTimeOccupied(startMs, track)) {
         this.options.onCueCreateRejected?.('occupied');
         return;
@@ -17082,7 +17467,11 @@ export default MawDynamicCaptions;
         const requestedMs = this.timeFromPointer(nextEvent, row, geometry);
         // 起点在空白时，拖入已有字幕只把终点挡在字幕边界，
         // 保留之前的“边界阻挡后仍可创建”行为。
-        drag.currentMs = this.clampCreateCueTime(drag.startMs, requestedMs, track);
+        drag.currentMs = this.clampCreateCueTime(
+          drag.startMs,
+          snapToTimeline(requestedMs),
+          track,
+        );
       };
       const updatePreview = () => {
         drag.frame = 0;
@@ -17102,7 +17491,10 @@ export default MawDynamicCaptions;
         const duration = Math.max(1, geometry.endMs - geometry.startMs);
         drag.preview.style.left = `${clamp(((start - geometry.startMs) / duration) * 100, 0, 100)}%`;
         drag.preview.style.width = `${Math.max(0.25, clamp(((end - start) / duration) * 100, 0, 100))}%`;
-        drag.preview.firstElementChild.textContent = `${formatCompact(roundMs(start))} → ${formatCompact(roundMs(end))} · ${formatCompact(roundMs(end - start))}`;
+        const startTime = timing.fromMs(roundMs(start));
+        const endTime = timing.fromMs(roundMs(end));
+        const durationTime = timing.fromMs(roundMs(end - start));
+        drag.preview.firstElementChild.textContent = `${timing.format(startTime)} → ${timing.format(endTime)} · ${timing.format(durationTime)}`;
       };
       const cleanup = () => {
         window.removeEventListener('pointermove', onMove);
@@ -17119,12 +17511,12 @@ export default MawDynamicCaptions;
       const finish = (commit, finalEvent = null) => {
         if (this.createCueDrag !== drag) return;
         if (finalEvent) updatePosition(finalEvent);
-        const start = roundMs(Math.min(drag.startMs, drag.currentMs));
-        const end = roundMs(Math.max(drag.startMs, drag.currentMs));
+        const start = snapToTimeline(roundMs(Math.min(drag.startMs, drag.currentMs)));
+        const end = snapToTimeline(roundMs(Math.max(drag.startMs, drag.currentMs)));
         cleanup();
         this.createCueDrag = null;
         if (!commit) return;
-        if (end - start < MIN_CUE_MS) {
+        if (end - start < timing.toMs(timing.minDuration)) {
           this.options.onCueCreateRejected?.('too-short', start, end);
           return;
         }
@@ -17352,7 +17744,7 @@ export default MawDynamicCaptions;
       const hit = document.elementFromPoint(clientX, clientY);
       const row = hit?.closest?.('.waveform-row');
       if (!row || !this.pane?.contains(row)) return null;
-      const timeMs = this.timeFromPointer({ clientX }, row);
+      const timeMs = this.pointerTimeMs({ clientX }, row);
       return Number.isFinite(timeMs) ? timeMs : null;
     }
 
@@ -17593,7 +17985,8 @@ export default MawDynamicCaptions;
       if (track === 'main' && this.tool === 'razor' && !targetHandle
           && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         const timeMs = this.timeFromPointer(event, row);
-        this.options.splitCueAtTime?.(index, timeMs);
+        const timing = this.cueTiming();
+        this.options.splitCueAtTime?.(index, timing.toMs(timing.fromMs(timeMs)));
         return;
       }
       // 相邻字幕独立调整：命中共享边界手柄时拆开为单侧拖动；Alt 会
@@ -17645,24 +18038,20 @@ export default MawDynamicCaptions;
       const indices = kind === 'move' && liveSelection.has(index)
         ? [...liveSelection].sort((a, b) => a - b) : [index];
       const segments = this.options.getSegments(track);
+      const timing = this.cueTiming();
       const dragIndices = kind === 'resize-boundary' ? [boundaryIndex, boundaryIndex + 1] : indices;
-      const originals = new Map(dragIndices.map((idx) => [idx, {
-        start: segments[idx].start,
-        end: segments[idx].end,
-        items: Array.isArray(segments[idx].items)
-          ? segments[idx].items.map((item) => ({ ...item })) : segments[idx].items,
-      }]));
+      const originals = new Map(dragIndices.map((idx) => [idx, snapshotTiming(segments[idx], timing)]));
       const cancelIndices = new Set(dragIndices);
       if (kind === 'move') {
         dragIndices.forEach((idx) => {
-          if (segments[idx - 1] && isAttached(segments[idx - 1], segments[idx])) cancelIndices.add(idx - 1);
-          if (segments[idx + 1] && isAttached(segments[idx], segments[idx + 1])) cancelIndices.add(idx + 1);
+          if (segments[idx - 1] && isAttached(segments[idx - 1], segments[idx], timing)) cancelIndices.add(idx - 1);
+          if (segments[idx + 1] && isAttached(segments[idx], segments[idx + 1], timing)) cancelIndices.add(idx + 1);
         });
       }
       const allOriginals = kind === 'move'
-        ? new Map(segments.map((segment, idx) => [idx, snapshotTiming(segment)]))
+        ? new Map(segments.map((segment, idx) => [idx, snapshotTiming(segment, timing)]))
         : null;
-      const cancelOriginals = new Map([...cancelIndices].map((idx) => [idx, snapshotTiming(segments[idx])]));
+      const cancelOriginals = new Map([...cancelIndices].map((idx) => [idx, snapshotTiming(segments[idx], timing)]));
       if (allOriginals) {
         allOriginals.forEach((original, idx) => cancelOriginals.set(idx, original));
       }
@@ -17680,6 +18069,8 @@ export default MawDynamicCaptions;
         row,
         originals,
         cancelOriginals,
+        timing,
+        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
         commitIndices: new Set(dragIndices),
         started: false,
         changed: false,
@@ -17714,9 +18105,14 @@ export default MawDynamicCaptions;
       const segments = this.options.getSegments(track);
       const left = segments[leftIndex];
       const right = segments[rightIndex];
-      if (!left || !right || Math.abs(left.end - right.start) > SNAP_MS) return false;
+      const timing = this.cueTiming();
+      const leftEnd = timing.getEnd(left);
+      const rightStart = timing.getStart(right);
+      if (!left || !right || Math.abs(leftEnd - rightStart) > timing.snapThreshold) return false;
       const pointerMs = this.timeFromPointer(event, row);
-      return Math.abs(pointerMs - left.end) <= SNAP_MS || Math.abs(pointerMs - right.start) <= SNAP_MS;
+      const pointerTime = timing.fromMs(pointerMs);
+      return Math.abs(pointerTime - leftEnd) <= timing.snapThreshold
+        || Math.abs(pointerTime - rightStart) <= timing.snapThreshold;
     }
 
     // Alt-drag 命中共享边界手柄：只拖动被命中一侧，邻居的相反边保持不动。
@@ -17729,13 +18125,9 @@ export default MawDynamicCaptions;
       const movedIndex = isLeftHandle ? index : index;
       const edge = isLeftHandle ? 'start' : 'end';
       const dragIndex = isLeftHandle ? index - 1 : index; // 左侧段索引，用于 applyIndependentEdge
-      const originals = new Map([[movedIndex, {
-        start: segments[movedIndex].start,
-        end: segments[movedIndex].end,
-        items: Array.isArray(segments[movedIndex].items)
-          ? segments[movedIndex].items.map((item) => ({ ...item })) : segments[movedIndex].items,
-      }]]);
       const geometry = this.captureRowGeometry(row);
+      const timing = this.cueTiming();
+      const originals = new Map([[movedIndex, snapshotTiming(segments[movedIndex], timing)]]);
       this.drag = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
@@ -17751,7 +18143,9 @@ export default MawDynamicCaptions;
         indices: [movedIndex],
         row,
         originals,
-        cancelOriginals: new Map([[movedIndex, snapshotTiming(segments[movedIndex])]]),
+        cancelOriginals: new Map([[movedIndex, snapshotTiming(segments[movedIndex], timing)]]),
+        timing,
+        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
         commitIndices: new Set([movedIndex]),
         started: false,
         changed: false,
@@ -17769,21 +18163,55 @@ export default MawDynamicCaptions;
       return Number(this.durationMs) > 0 ? Number(this.durationMs) : Infinity;
     }
 
+    cueTiming() {
+      return resolveTiming(this.options.getCueTiming?.());
+    }
+
+    cueTimingDuration() {
+      const clock = this.cueTiming();
+      const durationMs = this.cueDragDurationMs();
+      return Number.isFinite(durationMs) ? clock.fromMs(durationMs) : Infinity;
+    }
+
+    cueTimingValueFromMs(valueMs, timing = null) {
+      const clock = resolveTiming(timing || this.options.getCueTiming?.());
+      return clock.fromMs(valueMs);
+    }
+
+    cueTimingValueToMs(value, timing = null) {
+      const clock = resolveTiming(timing || this.options.getCueTiming?.());
+      return clock.toMs(value);
+    }
+
+    formatCueTiming(value, timing = null) {
+      const clock = resolveTiming(timing || this.options.getCueTiming?.());
+      return clock.format(value);
+    }
+
     captureCueDragOriginals(drag) {
       const segments = this.options.getSegments(drag.track || 'main');
-      drag.originals = new Map(drag.indices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+      drag.originals = new Map(drag.indices.map((idx) => [
+        idx,
+        snapshotTiming(segments[idx], drag.timing || this.cueTiming()),
+      ]));
     }
 
     adjustSelectedByKeyboard(deltaMs, altKey = false, track = 'main') {
       const segments = this.options.getSegments(track);
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
       if (!indices.length) return false;
+      const timing = this.cueTiming();
+      const operationOptions = {
+        sticky: !this.isAdjacentCueAdjustmentIndependent(altKey),
+        timing,
+        minDuration: timing.minDuration,
+      };
       const plan = planMoveStep(
         segments,
         indices,
         deltaMs,
-        this.cueDragDurationMs(),
-        { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) },
+        this.cueTimingDuration(),
+        operationOptions,
       );
       if (!plan.changed) return false;
       this.options.onBeginEdit?.('移动字幕时间');
@@ -17791,8 +18219,8 @@ export default MawDynamicCaptions;
         segments,
         indices,
         deltaMs,
-        this.cueDragDurationMs(),
-        { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) },
+        this.cueTimingDuration(),
+        operationOptions,
       );
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
       this.options.onCommitEdit?.(result.indices, 'move', track);
@@ -17805,8 +18233,13 @@ export default MawDynamicCaptions;
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
       if (!indices.length || (edge !== 'start' && edge !== 'end')) return false;
       const index = edge === 'start' ? indices[0] : indices[indices.length - 1];
-      const options = { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) };
-      const plan = planBoundaryStep(segments, index, edge, deltaMs, this.cueDragDurationMs(), options);
+      const timing = this.cueTiming();
+      const options = {
+        sticky: !this.isAdjacentCueAdjustmentIndependent(altKey),
+        timing,
+        minDuration: timing.minDuration,
+      };
+      const plan = planBoundaryStep(segments, index, edge, deltaMs, this.cueTimingDuration(), options);
       if (!plan.changed) return false;
       this.options.onBeginEdit?.(`${edge === 'start' ? '调整字幕起点' : '调整字幕终点'}`);
       const result = applyBoundaryStep(
@@ -17814,7 +18247,7 @@ export default MawDynamicCaptions;
         index,
         edge,
         deltaMs,
-        this.cueDragDurationMs(),
+        this.cueTimingDuration(),
         options,
       );
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
@@ -17841,8 +18274,9 @@ export default MawDynamicCaptions;
           || (edge !== 'start' && edge !== 'end')) return false;
 
       const segment = segments[index];
-      const current = Number(segment[edge]);
-      const requested = Number(timeMs);
+      const timing = this.cueTiming();
+      const current = edge === 'start' ? timing.getStart(segment) : timing.getEnd(segment);
+      const requested = timing.fromMs(timeMs);
       if (!Number.isFinite(current) || !Number.isFinite(requested)) return false;
 
       const previous = segments[index - 1];
@@ -17850,31 +18284,32 @@ export default MawDynamicCaptions;
       let lower;
       let upper;
       if (edge === 'start') {
-        lower = Number(previous?.end ?? 0);
-        upper = Number(segment.end) - MIN_CUE_MS;
+        lower = previous ? timing.getEnd(previous) : 0;
+        upper = timing.getEnd(segment) - timing.minDuration;
       } else {
-        lower = Number(segment.start) + MIN_CUE_MS;
-        upper = Number(next?.start ?? this.cueDragDurationMs());
+        lower = timing.getStart(segment) + timing.minDuration;
+        upper = next ? timing.getStart(next) : this.cueTimingDuration();
         if (!Number.isFinite(upper) || upper <= 0) upper = Infinity;
       }
       if (!Number.isFinite(lower) || lower > upper) return true;
 
-      const target = clamp(roundMs(requested), lower, upper);
+      const target = clamp(timing.round(requested), lower, upper);
       if (!Number.isFinite(target) || target === current) return true;
 
-      const original = snapshotTiming(segment);
+      const original = snapshotTiming(segment, timing);
       this.options.onBeginEdit?.(edge === 'start' ? '定位字幕起点' : '定位字幕终点');
       if (edge === 'start') {
-        segment.start = target;
+        timing.setStart(segment, target);
       } else {
-        segment.end = target;
+        timing.setEnd(segment, target);
       }
       segment.items = remapItems(
         original.items,
         original.start,
         original.end,
-        segment.start,
-        segment.end,
+        timing.getStart(segment),
+        timing.getEnd(segment),
+        timing,
       );
       segment._dirty = true;
       this.options.onCommitEdit?.(
@@ -17882,7 +18317,12 @@ export default MawDynamicCaptions;
         'resize-boundary-pointer',
         track,
         false,
-        { edge, targetIndex: index, targetTimeMs: target, original },
+        {
+          edge,
+          targetIndex: index,
+          targetTimeMs: timing.toMs(target),
+          original: { ...original, start: original.startMs, end: original.endMs },
+        },
       );
       this.refreshCueOverlay();
       return true;
@@ -17901,13 +18341,14 @@ export default MawDynamicCaptions;
       // 避免 Shift+方向键继续触发浏览器默认行为。
       if (!segment || !neighbor) return true;
 
+      const timing = this.cueTiming();
       const edge = direction < 0 ? 'start' : 'end';
-      const current = Number(segment[edge]);
-      const target = roundMs(direction < 0 ? neighbor.end : neighbor.start);
-      const lower = edge === 'start' ? 0 : Number(segment.start) + MIN_CUE_MS;
+      const current = edge === 'start' ? timing.getStart(segment) : timing.getEnd(segment);
+      const target = timing.round(direction < 0 ? timing.getEnd(neighbor) : timing.getStart(neighbor));
+      const lower = edge === 'start' ? 0 : timing.getStart(segment) + timing.minDuration;
       const upper = edge === 'start'
-        ? Number(segment.end) - MIN_CUE_MS
-        : this.cueDragDurationMs();
+        ? timing.getEnd(segment) - timing.minDuration
+        : this.cueTimingDuration();
       if (!Number.isFinite(current) || !Number.isFinite(target)
           || target < lower || target > upper || target === current) return true;
 
@@ -17916,8 +18357,8 @@ export default MawDynamicCaptions;
         index,
         edge,
         target - current,
-        this.cueDragDurationMs(),
-        { sticky: false },
+        this.cueTimingDuration(),
+        { sticky: false, timing, minDuration: timing.minDuration },
       );
       if (!result.changed) return true;
       this.options.onBeginEdit?.('贴近字幕边界');
@@ -17931,11 +18372,16 @@ export default MawDynamicCaptions;
       const drag = this.drag;
       if (!drag) return false;
       const segments = this.options.getSegments(drag.track || 'main');
-      const durationMs = this.cueDragDurationMs();
+      const timing = drag.timing || this.cueTiming();
+      const durationMs = Number(this.durationMs) > 0 ? timing.fromMs(this.durationMs) : Infinity;
       let plan;
       let apply;
       if (drag.kind === 'move') {
-        const options = { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) };
+        const options = {
+          sticky: !this.isAdjacentCueAdjustmentIndependent(altKey),
+          timing,
+          minDuration: timing.minDuration,
+        };
         plan = planMoveStep(segments, drag.indices, deltaMs, durationMs, options);
         apply = () => applyMoveStep(segments, drag.indices, deltaMs, durationMs, options);
       } else {
@@ -17944,6 +18390,8 @@ export default MawDynamicCaptions;
         const options = {
           sticky: drag.kind !== 'resize-boundary-independent'
             && !this.isAdjacentCueAdjustmentIndependent(altKey),
+          timing,
+          minDuration: timing.minDuration,
         };
         plan = planBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
         apply = () => applyBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
@@ -17963,6 +18411,9 @@ export default MawDynamicCaptions;
       drag.changed = true;
       this.captureCueDragOriginals(drag);
       drag.startClientX = drag.currentClientX;
+      drag.startPointerTime = timing.fromMs(
+        this.timeFromPointer({ clientX: drag.currentClientX }, drag.row, drag.geometry),
+      );
       this.scheduleRefreshCueBlocks();
       return true;
     }
@@ -17995,13 +18446,14 @@ export default MawDynamicCaptions;
       // 避免 Shift+A/D 穿透成“选择前后字幕”。
       if (!segment || !neighbor) return true;
 
+      const timing = drag.timing || this.cueTiming();
       const edge = direction < 0 ? 'start' : 'end';
-      const current = Number(segment[edge]);
-      const target = roundMs(direction < 0 ? neighbor.end : neighbor.start);
-      const lower = edge === 'start' ? 0 : Number(segment.start) + MIN_CUE_MS;
+      const current = edge === 'start' ? timing.getStart(segment) : timing.getEnd(segment);
+      const target = timing.round(direction < 0 ? timing.getEnd(neighbor) : timing.getStart(neighbor));
+      const lower = edge === 'start' ? 0 : timing.getStart(segment) + timing.minDuration;
       const upper = edge === 'start'
-        ? Number(segment.end) - MIN_CUE_MS
-        : this.cueDragDurationMs();
+        ? timing.getEnd(segment) - timing.minDuration
+        : Number.isFinite(this.durationMs) ? timing.fromMs(this.durationMs) : Infinity;
       if (!Number.isFinite(current) || !Number.isFinite(target)
           || target < lower || target > upper || target === current) return true;
 
@@ -18009,19 +18461,24 @@ export default MawDynamicCaptions;
         drag.started = true;
         this.options.onBeginEdit?.('贴近字幕边界');
       }
-      const original = snapshotTiming(segment);
-      segment[edge] = target;
+      const original = snapshotTiming(segment, timing);
+      if (edge === 'start') timing.setStart(segment, target);
+      else timing.setEnd(segment, target);
       segment.items = remapItems(
         original.items,
         original.start,
         original.end,
-        segment.start,
-        segment.end,
+        timing.getStart(segment),
+        timing.getEnd(segment),
+        timing,
       );
       drag.commitIndices.add(index);
       drag.changed = true;
       this.captureCueDragOriginals(drag);
       drag.startClientX = drag.currentClientX;
+      drag.startPointerTime = timing.fromMs(
+        this.timeFromPointer({ clientX: drag.currentClientX }, drag.row, drag.geometry),
+      );
       this.scheduleRefreshCueBlocks();
       return true;
     }
@@ -18041,10 +18498,7 @@ export default MawDynamicCaptions;
       drag.cancelOriginals.forEach((original, idx) => {
         const segment = segments[idx];
         if (!segment) return;
-        segment.start = original.start;
-        segment.end = original.end;
-        segment.items = Array.isArray(original.items)
-          ? original.items.map((item) => ({ ...item })) : original.items;
+        restoreTiming(segment, original, drag.timing || this.cueTiming());
       });
       this.content.querySelectorAll('.waveform-cue-block.dragging')
         .forEach((block) => block.classList.remove('dragging'));
@@ -18056,14 +18510,17 @@ export default MawDynamicCaptions;
     }
 
     applyIndependentBoundaryDrag(drag, rawDelta) {
+      const clock = resolveTiming(drag.timing || this.cueTiming());
       const segments = this.options.getSegments(drag.track);
       const original = drag.originals.get(drag.index);
       if (!original) return;
       const base = drag.edge === 'start' ? original.start : original.end;
       const value = base + rawDelta;
-      applyIndependentEdge(segments, drag.dragIndex, drag.edge, value, MIN_CUE_MS);
+      applyIndependentEdge(segments, drag.dragIndex, drag.edge, value, clock.minDuration, clock);
       const seg = segments[drag.index];
-      this.setStatus(`${drag.edge === 'start' ? '起点' : '终点'} ${formatCompact(drag.edge === 'start' ? seg.start : seg.end)}`);
+      this.setStatus(`${drag.edge === 'start' ? '起点' : '终点'} ${clock.format(
+        drag.edge === 'start' ? clock.getStart(seg) : clock.getEnd(seg),
+      )}`);
     }
 
     beginGapBoundaryDrag(event, index, row, edge) {
@@ -18434,8 +18891,13 @@ export default MawDynamicCaptions;
       if (!drag || event.pointerId !== drag.pointerId) return;
       event.preventDefault();
       drag.currentClientX = event.clientX;
-      const deltaMs = ((event.clientX - drag.startClientX) / drag.rowWidth) * drag.rangeMs;
-      if (!drag.started && Math.abs(deltaMs) < 2) return;
+      const timing = drag.timing || this.cueTiming();
+      const pointerMs = this.timeFromPointer(event, drag.row, drag.geometry);
+      const currentPointerTime = timing.fromMs(pointerMs);
+      const deltaTime = currentPointerTime - drag.startPointerTime;
+      const hasMeaningfulMovement = timing.unit === 'frames'
+        ? deltaTime !== 0 : Math.abs(deltaTime) >= 2;
+      if (!drag.started && !hasMeaningfulMovement) return;
       if (!drag.started) {
         drag.started = true;
         const label = drag.kind === 'move' ? '移动字幕时间'
@@ -18450,27 +18912,25 @@ export default MawDynamicCaptions;
       // 主字幕/副字幕绑定的独立调整仍只由 Alt 临时触发，不受同轨自动吸附开关影响。
       if (drag.track === 'extension' && event.altKey) drag.independent = true;
       const disableSnap = drag.independent === true;
-      if (drag.kind === 'move') this.applyMoveDrag(drag, deltaMs, disableSnap, drag.allowSqueeze);
-      else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaMs, drag.independent);
-      else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaMs);
-      else this.applyResizeDrag(drag, deltaMs, drag.independent);
+      if (drag.kind === 'move') this.applyMoveDrag(drag, deltaTime, disableSnap, drag.allowSqueeze);
+      else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaTime, drag.independent);
+      else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaTime);
+      else this.applyResizeDrag(drag, deltaTime, drag.independent);
       this.options.syncBoundCueDrag?.(drag);
       drag.changed = true;
       this.scheduleRefreshCueBlocks();
     }
 
     applyMoveDrag(drag, rawDelta, disableSnap, allowSqueeze = false) {
+      const clock = resolveTiming(drag.timing || this.cueTiming());
       const segments = this.options.getSegments(drag.track);
       const moved = new Set(drag.indices);
       const originalFor = (idx) => drag.squeezeOriginals?.get(idx)
-        || drag.originals.get(idx) || snapshotTiming(segments[idx]);
+        || drag.originals.get(idx) || snapshotTiming(segments[idx], clock);
       const restoreSegment = (idx, original) => {
         const segment = segments[idx];
         if (!segment || !original) return;
-        segment.start = original.start;
-        segment.end = original.end;
-        segment.items = Array.isArray(original.items)
-          ? original.items.map((item) => ({ ...item })) : original.items;
+        restoreTiming(segment, original, clock);
       };
       if (allowSqueeze && drag.squeezeOriginals) {
         drag.squeezeOriginals.forEach((original, idx) => {
@@ -18479,65 +18939,72 @@ export default MawDynamicCaptions;
       }
       let minDelta = -Infinity;
       let maxDelta = Infinity;
+      const duration = Number(this.durationMs) > 0 ? clock.fromMs(this.durationMs) : Infinity;
       for (const idx of drag.indices) {
         const original = drag.originals.get(idx);
         minDelta = Math.max(minDelta, -original.start);
-        maxDelta = Math.min(maxDelta, this.durationMs - original.end);
+        maxDelta = Math.min(maxDelta, duration - original.end);
         if (allowSqueeze) {
           let previousIndex = idx - 1;
           while (previousIndex >= 0 && moved.has(previousIndex)) previousIndex -= 1;
           if (previousIndex >= 0) {
             const previous = originalFor(previousIndex);
-            minDelta = Math.max(minDelta, previous.start + MIN_CUE_MS - original.start);
+            minDelta = Math.max(minDelta, previous.start + clock.minDuration - original.start);
           }
           let nextIndex = idx + 1;
           while (nextIndex < segments.length && moved.has(nextIndex)) nextIndex += 1;
           if (nextIndex < segments.length) {
             const next = originalFor(nextIndex);
-            maxDelta = Math.min(maxDelta, next.end - MIN_CUE_MS - original.end);
+            maxDelta = Math.min(maxDelta, next.end - clock.minDuration - original.end);
           }
         } else {
-          if (idx > 0 && !moved.has(idx - 1)) minDelta = Math.max(minDelta, segments[idx - 1].end - original.start);
+          if (idx > 0 && !moved.has(idx - 1)) {
+            minDelta = Math.max(minDelta, clock.getEnd(segments[idx - 1]) - original.start);
+          }
           if (idx + 1 < segments.length && !moved.has(idx + 1)) {
-            maxDelta = Math.min(maxDelta, segments[idx + 1].start - original.end);
+            maxDelta = Math.min(maxDelta, clock.getStart(segments[idx + 1]) - original.end);
           }
         }
       }
       let delta = rawDelta;
       if (!disableSnap) {
         const candidates = [];
-        const playhead = this.currentTimeMs();
-        const crossTrackTargets = this.options.getCrossTrackSnapTargets?.(drag.track) || [];
+        const playhead = clock.fromMs(this.currentTimeMs());
+        const crossTrackTargets = (this.options.getCrossTrackSnapTargets?.(drag.track) || [])
+          .map((target) => clock.fromMs(target));
         for (const idx of drag.indices) {
           const original = drag.originals.get(idx);
           candidates.push(playhead - original.start, playhead - original.end);
           if (!allowSqueeze) {
-            if (idx > 0 && !moved.has(idx - 1)) candidates.push(segments[idx - 1].end - original.start);
+            if (idx > 0 && !moved.has(idx - 1)) {
+              candidates.push(clock.getEnd(segments[idx - 1]) - original.start);
+            }
             if (idx + 1 < segments.length && !moved.has(idx + 1)) {
-              candidates.push(segments[idx + 1].start - original.end);
+              candidates.push(clock.getStart(segments[idx + 1]) - original.end);
             }
           }
           crossTrackTargets.forEach((target) => {
-            candidates.push(target - original.start, target - original.end);
+            if (Number.isFinite(target)) candidates.push(target - original.start, target - original.end);
           });
         }
         const nearest = candidates.reduce((best, value) => (
           Math.abs(value - delta) < Math.abs(best - delta) ? value : best
         ), Infinity);
-        if (Number.isFinite(nearest) && Math.abs(nearest - delta) <= SNAP_MS) delta = nearest;
+        if (Number.isFinite(nearest) && Math.abs(nearest - delta) <= clock.snapThreshold) delta = nearest;
       }
-      delta = clamp(roundMs(delta), minDelta, maxDelta);
+      delta = clamp(clock.round(delta), minDelta, maxDelta);
       for (const idx of drag.indices) {
         const original = drag.originals.get(idx);
         const segment = segments[idx];
-        segment.start = original.start + delta;
-        segment.end = original.end + delta;
+        clock.setStart(segment, original.start + delta);
+        clock.setEnd(segment, original.end + delta);
         if (Array.isArray(original.items)) {
-          segment.items = original.items.map((item) => ({
-            ...item,
-            start: item.start + delta,
-            end: item.end + delta,
-          }));
+          segment.items = original.items.map((item) => {
+            const copy = { ...item };
+            clock.setItemStart(copy, clock.getItemStart(item) + delta);
+            clock.setItemEnd(copy, clock.getItemEnd(item) + delta);
+            return copy;
+          });
         }
       }
       if (allowSqueeze) {
@@ -18548,16 +19015,17 @@ export default MawDynamicCaptions;
           if (previousIndex >= 0) {
             const previous = segments[previousIndex];
             const previousOriginal = originalFor(previousIndex);
-            if (previous && previous.end > segment.start) {
-              const nextEnd = Math.max(previousOriginal.start + MIN_CUE_MS, segment.start);
-              if (nextEnd < previous.end) {
-                previous.end = nextEnd;
+            if (previous && clock.getEnd(previous) > clock.getStart(segment)) {
+              const nextEnd = Math.max(previousOriginal.start + clock.minDuration, clock.getStart(segment));
+              if (nextEnd < clock.getEnd(previous)) {
+                clock.setEnd(previous, nextEnd);
                 previous.items = remapItems(
                   previousOriginal.items,
                   previousOriginal.start,
                   previousOriginal.end,
-                  previous.start,
-                  previous.end,
+                  clock.getStart(previous),
+                  clock.getEnd(previous),
+                  clock,
                 );
                 drag.commitIndices.add(previousIndex);
               }
@@ -18568,16 +19036,17 @@ export default MawDynamicCaptions;
           if (nextIndex < segments.length) {
             const next = segments[nextIndex];
             const nextOriginal = originalFor(nextIndex);
-            if (next && segment.end > next.start) {
-              const nextStart = Math.min(nextOriginal.end - MIN_CUE_MS, segment.end);
-              if (nextStart > next.start) {
-                next.start = nextStart;
+            if (next && clock.getEnd(segment) > clock.getStart(next)) {
+              const nextStart = Math.min(nextOriginal.end - clock.minDuration, clock.getEnd(segment));
+              if (nextStart > clock.getStart(next)) {
+                clock.setStart(next, nextStart);
                 next.items = remapItems(
                   nextOriginal.items,
                   nextOriginal.start,
                   nextOriginal.end,
-                  next.start,
-                  next.end,
+                  clock.getStart(next),
+                  clock.getEnd(next),
+                  clock,
                 );
                 drag.commitIndices.add(nextIndex);
               }
@@ -18585,77 +19054,81 @@ export default MawDynamicCaptions;
           }
         }
       }
-      this.setStatus(`${allowSqueeze ? '挤压移动' : '移动'} ${drag.indices.length} 条 · ${delta >= 0 ? '+' : ''}${delta} ms`);
+      const deltaLabel = clock.unit === 'frames' ? `${delta >= 0 ? '+' : ''}${delta}F` : `${delta >= 0 ? '+' : ''}${delta} ms`;
+      this.setStatus(`${allowSqueeze ? '挤压移动' : '移动'} ${drag.indices.length} 条 · ${deltaLabel}`);
     }
 
     applyResizeDrag(drag, rawDelta, disableSnap) {
+      const clock = resolveTiming(drag.timing || this.cueTiming());
       const segments = this.options.getSegments(drag.track);
       const segment = segments[drag.index];
       const original = drag.originals.get(drag.index);
       let newStart = original.start;
       let newEnd = original.end;
       if (drag.kind === 'resize-left') {
-        const lower = drag.index > 0 ? segments[drag.index - 1].end : 0;
-        const upper = original.end - MIN_CUE_MS;
+        const lower = drag.index > 0 ? clock.getEnd(segments[drag.index - 1]) : 0;
+        const upper = original.end - clock.minDuration;
         newStart = original.start + rawDelta;
         if (!disableSnap) {
-          const targets = [lower, this.currentTimeMs(), ...(
+          const targets = [lower, clock.fromMs(this.currentTimeMs()), ...(
             this.options.getCrossTrackSnapTargets?.(drag.track) || []
-          )];
+          ).map((target) => clock.fromMs(target))];
           const nearest = targets.reduce((best, value) => (
             Math.abs(value - newStart) < Math.abs(best - newStart) ? value : best
           ), Infinity);
-          if (Number.isFinite(nearest) && Math.abs(nearest - newStart) <= SNAP_MS) newStart = nearest;
+          if (Number.isFinite(nearest) && Math.abs(nearest - newStart) <= clock.snapThreshold) newStart = nearest;
         }
-        newStart = clamp(roundMs(newStart), lower, upper);
+        newStart = clamp(clock.round(newStart), lower, upper);
       } else {
-        const lower = original.start + MIN_CUE_MS;
-        const upper = drag.index + 1 < segments.length ? segments[drag.index + 1].start : this.durationMs;
+        const lower = original.start + clock.minDuration;
+        const upper = drag.index + 1 < segments.length
+          ? clock.getStart(segments[drag.index + 1]) : this.cueTimingDuration();
         newEnd = original.end + rawDelta;
         if (!disableSnap) {
-          const targets = [upper, this.currentTimeMs(), ...(
+          const targets = [upper, clock.fromMs(this.currentTimeMs()), ...(
             this.options.getCrossTrackSnapTargets?.(drag.track) || []
-          )];
+          ).map((target) => clock.fromMs(target))];
           const nearest = targets.reduce((best, value) => (
             Math.abs(value - newEnd) < Math.abs(best - newEnd) ? value : best
           ), Infinity);
-          if (Number.isFinite(nearest) && Math.abs(nearest - newEnd) <= SNAP_MS) newEnd = nearest;
+          if (Number.isFinite(nearest) && Math.abs(nearest - newEnd) <= clock.snapThreshold) newEnd = nearest;
         }
-        newEnd = clamp(roundMs(newEnd), lower, upper);
+        newEnd = clamp(clock.round(newEnd), lower, upper);
       }
-      segment.start = newStart;
-      segment.end = newEnd;
-      segment.items = remapItems(original.items, original.start, original.end, newStart, newEnd);
-      this.setStatus(`${formatCompact(newStart)} → ${formatCompact(newEnd)}`);
+      clock.setStart(segment, newStart);
+      clock.setEnd(segment, newEnd);
+      segment.items = remapItems(original.items, original.start, original.end, newStart, newEnd, clock);
+      this.setStatus(`${clock.format(newStart)} → ${clock.format(newEnd)}`);
     }
 
     applyBoundaryDrag(drag, rawDelta, disableSnap) {
+      const clock = resolveTiming(drag.timing || this.cueTiming());
       const segments = this.options.getSegments(drag.track);
       const left = drag.originals.get(drag.index);
       const right = drag.originals.get(drag.index + 1);
       if (!left || !right) return;
       let boundary = left.end + rawDelta;
-      const lower = left.start + MIN_CUE_MS;
-      const upper = right.end - MIN_CUE_MS;
+      const lower = left.start + clock.minDuration;
+      const upper = right.end - clock.minDuration;
       if (!disableSnap) {
-        const candidates = [this.currentTimeMs(), ...(
+        const candidates = [clock.fromMs(this.currentTimeMs()), ...(
           this.options.getCrossTrackSnapTargets?.(drag.track) || []
-        )];
-        if (drag.index > 0) candidates.push(segments[drag.index - 1].end);
-        if (drag.index + 2 < segments.length) candidates.push(segments[drag.index + 2].start);
+        ).map((target) => clock.fromMs(target))];
+        if (drag.index > 0) candidates.push(clock.getEnd(segments[drag.index - 1]));
+        if (drag.index + 2 < segments.length) candidates.push(clock.getStart(segments[drag.index + 2]));
         const nearest = candidates.reduce((best, value) => (
           Math.abs(value - boundary) < Math.abs(best - boundary) ? value : best
         ), Infinity);
-        if (Number.isFinite(nearest) && Math.abs(nearest - boundary) <= SNAP_MS) boundary = nearest;
+        if (Number.isFinite(nearest) && Math.abs(nearest - boundary) <= clock.snapThreshold) boundary = nearest;
       }
-      boundary = clamp(roundMs(boundary), lower, upper);
+      boundary = clamp(clock.round(boundary), lower, upper);
       const leftSegment = segments[drag.index];
       const rightSegment = segments[drag.index + 1];
-      leftSegment.end = boundary;
-      rightSegment.start = boundary;
-      leftSegment.items = remapItems(left.items, left.start, left.end, left.start, boundary);
-      rightSegment.items = remapItems(right.items, right.start, right.end, boundary, right.end);
-      this.setStatus(`共享边界 ${formatCompact(boundary)} · ${this.adjacentSnapModeStatusHint()}`);
+      clock.setEnd(leftSegment, boundary);
+      clock.setStart(rightSegment, boundary);
+      leftSegment.items = remapItems(left.items, left.start, left.end, left.start, boundary, clock);
+      rightSegment.items = remapItems(right.items, right.start, right.end, boundary, right.end, clock);
+      this.setStatus(`共享边界 ${clock.format(boundary)} · ${this.adjacentSnapModeStatusHint()}`);
       // 吸附模式提示只挂在「共享边界」状态上：共享边界拖动正是自动吸附
       // 默认联动/独立两种模式的直接体现，Alt 可随时临时反转。
     }
@@ -18673,10 +19146,7 @@ export default MawDynamicCaptions;
         drag.cancelOriginals.forEach((original, idx) => {
           const segment = this.options.getSegments(drag.track || 'main')[idx];
           if (!segment) return;
-          segment.start = original.start;
-          segment.end = original.end;
-          segment.items = Array.isArray(original.items)
-            ? original.items.map((item) => ({ ...item })) : original.items;
+          restoreTiming(segment, original, drag.timing || this.cueTiming());
         });
         this.refreshCueOverlay();
         return;
@@ -18860,6 +19330,9 @@ export default MawDynamicCaptions;
       decodeSpectralPayload,
       syncSpectralColorToggle,
       freqColor,
+      resolveTiming,
+      waveformGridStepMs,
+      snapPointerTimeToTimingGrid,
       remapItems,
       roundMs,
       sourceForFile,
@@ -19600,8 +20073,13 @@ const DEFAULT_EDITOR_SETTINGS = {
   jklPlaybackMode: 'direction',
   // 媒体控制按钮与无选中字幕时左右方向键的跳转幅度。
   mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
+  mediaSeekStepFrames: 1,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
+  cueMoveStepFrames: 1,
+  // 帧模式下是否让波形鼠标指针吸附到最近帧（默认开启）；时间码分隔符默认使用冒号。
+  timelineSnapToFrame: true,
+  timelineTimecodeSeparator: ':',
   // 鼠标位置自动预览：暂停时指针在波形上移动即把画面定位到指针时间（默认关闭）。
   hoverSeekPreview: false,
   // 是否默认让同轨相邻字幕随边界调整一起联动；Alt 始终临时反转该行为。
@@ -19692,8 +20170,236 @@ function saveEditorSettings(settings) {
 }
 
 const EDITOR_SETTINGS = readEditorSettings();
+const normalizeTimelineTimebase = EDITOR_SETTINGS_UTILS.normalizeTimelineTimebase;
+const normalizeTimelineFps = EDITOR_SETTINGS_UTILS.normalizeTimelineFps;
+const normalizeTimelineTimecodeSeparator = EDITOR_SETTINGS_UTILS.normalizeTimelineTimecodeSeparator;
+const normalizeMediaMetadata = EDITOR_SETTINGS_UTILS.normalizeMediaMetadata;
+const DEFAULT_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.DEFAULT_TIMELINE_FPS;
+const frameNumberFromMilliseconds = EDITOR_SETTINGS_UTILS.frameNumberFromMilliseconds;
+const millisecondsFromFrameNumber = EDITOR_SETTINGS_UTILS.millisecondsFromFrameNumber;
+const formatFrameTimecode = EDITOR_SETTINGS_UTILS.formatFrameTimecode;
+const formatTimelineTimecode = EDITOR_SETTINGS_UTILS.formatTimelineTimecode;
+const parseFrameTimecode = EDITOR_SETTINGS_UTILS.parseFrameTimecode;
+const MIN_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.MIN_TIMELINE_FPS;
+const MAX_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.MAX_TIMELINE_FPS;
 // 把用户配置的拆分移除符号同步给共享工具层；设置面板修改时也会同步。
 MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(EDITOR_SETTINGS.splitTrimSymbols);
+
+const TIMELINE_ROUND_MS = 10;
+
+function roundTimelineMilliseconds(value) {
+  return Math.round(Number(value) / TIMELINE_ROUND_MS) * TIMELINE_ROUND_MS;
+}
+
+function hasValidFramePair(value) {
+  return !!value
+    && Number.isInteger(value.start_frame)
+    && Number.isInteger(value.end_frame)
+    && value.start_frame >= 0
+    && value.end_frame > value.start_frame;
+}
+
+function syncTimeRangeObjectTimebase(value, timebase, { preferFrames = false, frameBounds = null } = {}) {
+  if (!value || typeof value !== 'object') return null;
+  const frameMode = timebase.unit === 'frames';
+  const hasFrames = hasValidFramePair(value);
+  const rawStartMs = Number(value.start);
+  const rawEndMs = Number(value.end);
+  let startFrame = hasFrames && preferFrames
+    ? value.start_frame : frameNumberFromMilliseconds(rawStartMs, timebase.fps);
+  let endFrame = hasFrames && preferFrames
+    ? value.end_frame : frameNumberFromMilliseconds(rawEndMs, timebase.fps);
+  if (!Number.isInteger(startFrame) || startFrame < 0) startFrame = 0;
+  if (!Number.isInteger(endFrame) || endFrame <= startFrame) endFrame = startFrame + 1;
+
+  if (frameMode) {
+    if (frameBounds && Number.isInteger(frameBounds.start) && Number.isInteger(frameBounds.end)) {
+      const lower = Math.max(0, frameBounds.start);
+      const upper = Math.max(lower + 1, frameBounds.end);
+      startFrame = Math.min(Math.max(startFrame, lower), upper - 1);
+      endFrame = Math.min(Math.max(endFrame, startFrame + 1), upper);
+      if (endFrame <= startFrame) {
+        startFrame = Math.max(lower, upper - 1);
+        endFrame = upper;
+      }
+    }
+    value.start_frame = startFrame;
+    value.end_frame = endFrame;
+    value.start = millisecondsFromFrameNumber(startFrame, timebase.fps);
+    value.end = millisecondsFromFrameNumber(endFrame, timebase.fps);
+  } else {
+    const startMs = Number.isFinite(rawStartMs)
+      ? Math.max(0, Math.round(rawStartMs)) : millisecondsFromFrameNumber(startFrame, timebase.fps);
+    const endMs = Number.isFinite(rawEndMs)
+      ? Math.max(startMs + 1, Math.round(rawEndMs)) : millisecondsFromFrameNumber(endFrame, timebase.fps);
+    value.start = startMs;
+    value.end = Math.max(startMs + 1, endMs);
+    value.start_frame = frameNumberFromMilliseconds(value.start, timebase.fps);
+    value.end_frame = Math.max(
+      value.start_frame + 1,
+      frameNumberFromMilliseconds(value.end, timebase.fps),
+    );
+  }
+  return { startFrame: value.start_frame, endFrame: value.end_frame };
+}
+
+function syncSegmentTimebase(segment, timebase, { preferFrames = false, minimumStartFrame = 0 } = {}) {
+  if (!segment || typeof segment !== 'object') return;
+  const range = syncTimeRangeObjectTimebase(segment, timebase, { preferFrames });
+  if (timebase.unit === 'frames') {
+    const startFrame = Math.max(minimumStartFrame, segment.start_frame);
+    const endFrame = Math.max(startFrame + 1, segment.end_frame);
+    segment.start_frame = startFrame;
+    segment.end_frame = endFrame;
+    segment.start = millisecondsFromFrameNumber(startFrame, timebase.fps);
+    segment.end = millisecondsFromFrameNumber(endFrame, timebase.fps);
+  }
+  if (!Array.isArray(segment.items)) return range;
+  const frameBounds = timebase.unit === 'frames'
+    ? { start: segment.start_frame, end: segment.end_frame } : null;
+  segment.items.forEach((item) => {
+    syncTimeRangeObjectTimebase(item, timebase, { preferFrames, frameBounds });
+  });
+  return range;
+}
+
+function syncTrackTimebase(segments, timebase, { preferFrames = false } = {}) {
+  if (!Array.isArray(segments)) return;
+  let previousEndFrame = 0;
+  segments.forEach((segment) => {
+    syncSegmentTimebase(segment, timebase, {
+      preferFrames,
+      minimumStartFrame: timebase.unit === 'frames' ? previousEndFrame : 0,
+    });
+    if (timebase.unit === 'frames' && Number.isInteger(segment?.end_frame)) {
+      previousEndFrame = segment.end_frame;
+    }
+  });
+}
+
+function projectTimebase(project = DATA) {
+  return normalizeTimelineTimebase(project?.timebase);
+}
+
+function hasExplicitTimelineFps(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const fps = Number(value.fps);
+  if (!Number.isFinite(fps) || fps < MIN_TIMELINE_FPS || fps > MAX_TIMELINE_FPS) return false;
+  // A non-default FPS or an already-frame-based project represents an
+  // explicit choice.  A saved millisecond project with the historical 30 FPS
+  // default can still adopt the source media FPS on its first frame switch.
+  return value.unit === 'frames' || fps !== DEFAULT_TIMELINE_FPS;
+}
+
+function projectMediaVideoFps(project = DATA) {
+  return normalizeMediaMetadata(project?.media_metadata)?.video_fps ?? null;
+}
+
+let timelineFpsManuallySet = hasExplicitTimelineFps(DATA.timebase);
+
+function syncProjectTimebase(project = DATA, { preferFrames = false } = {}) {
+  if (!project || typeof project !== 'object') return normalizeTimelineTimebase();
+  const timebase = projectTimebase(project);
+  project.timebase = { ...timebase };
+  syncTrackTimebase(project.segments, timebase, { preferFrames });
+  const tracks = project.multi_subtitle?.tracks;
+  if (Array.isArray(tracks)) {
+    tracks.forEach((track) => syncTrackTimebase(track?.segments, timebase, { preferFrames }));
+  }
+  return timebase;
+}
+
+function syncProjectTimebaseAndBindingOffsets(project = DATA, options = {}) {
+  const timebase = syncProjectTimebase(project, options);
+  if (project && typeof project === 'object') {
+    MULTI_SUBTITLE_UTILS.rebuildBindingOffsets(project.multi_subtitle, project.segments);
+  }
+  return timebase;
+}
+
+function timelineIsFrameMode() {
+  return projectTimebase().unit === 'frames';
+}
+
+function timelineMinimumDurationMs() {
+  const timebase = projectTimebase();
+  if (timebase.unit !== 'frames') return SUBTITLE_MIN_DURATION_MS;
+  const minimumFrames = Math.max(1, Math.ceil(SUBTITLE_MIN_DURATION_MS * timebase.fps / 1000));
+  return millisecondsFromFrameNumber(minimumFrames, timebase.fps);
+}
+
+function timelineMinimumDurationValue() {
+  const timebase = projectTimebase();
+  return timebase.unit === 'frames'
+    ? Math.max(1, Math.ceil(SUBTITLE_MIN_DURATION_MS * timebase.fps / 1000))
+    : SUBTITLE_MIN_DURATION_MS;
+}
+
+function timelineTimingAdapter() {
+  const timebase = projectTimebase();
+  const frameMode = timebase.unit === 'frames';
+  const minimumDuration = timelineMinimumDurationValue();
+  const snapThreshold = frameMode
+    ? Math.max(1, Math.round(80 * timebase.fps / 1000)) : 80;
+  if (!frameMode) {
+    return {
+      unit: 'milliseconds',
+      fps: timebase.fps,
+      minDuration: minimumDuration,
+      snapThreshold,
+      round: roundTimelineMilliseconds,
+      getStart: (segment) => Number(segment?.start),
+      getEnd: (segment) => Number(segment?.end),
+      setStart: (segment, value) => { segment.start = roundTimelineMilliseconds(value); },
+      setEnd: (segment, value) => { segment.end = roundTimelineMilliseconds(value); },
+      getItemStart: (item) => Number(item?.start),
+      getItemEnd: (item) => Number(item?.end),
+      setItemStart: (item, value) => { item.start = roundTimelineMilliseconds(value); },
+      setItemEnd: (item, value) => { item.end = roundTimelineMilliseconds(value); },
+      fromMs: (value) => Number(value),
+      toMs: (value) => Number(value),
+      format: formatTimelineMilliseconds,
+    };
+  }
+  const readFrame = (value, frameField, msField) => Number.isInteger(value?.[frameField])
+    ? value[frameField] : frameNumberFromMilliseconds(value?.[msField], timebase.fps);
+  const writeFrame = (value, frameField, msField, frame) => {
+    const next = Math.max(0, Math.round(Number(frame)));
+    value[frameField] = next;
+    value[msField] = millisecondsFromFrameNumber(next, timebase.fps);
+  };
+  return {
+    unit: 'frames',
+    fps: timebase.fps,
+    minDuration: minimumDuration,
+    snapThreshold,
+    round: (value) => Math.round(Number(value)),
+    getStart: (segment) => readFrame(segment, 'start_frame', 'start'),
+    getEnd: (segment) => readFrame(segment, 'end_frame', 'end'),
+    setStart: (segment, value) => writeFrame(segment, 'start_frame', 'start', value),
+    setEnd: (segment, value) => writeFrame(segment, 'end_frame', 'end', value),
+    getItemStart: (item) => readFrame(item, 'start_frame', 'start'),
+    getItemEnd: (item) => readFrame(item, 'end_frame', 'end'),
+    setItemStart: (item, value) => writeFrame(item, 'start_frame', 'start', value),
+    setItemEnd: (item, value) => writeFrame(item, 'end_frame', 'end', value),
+    fromMs: (value) => frameNumberFromMilliseconds(value, timebase.fps),
+    toMs: (value) => millisecondsFromFrameNumber(value, timebase.fps),
+    format: (value) => formatFrameTimecode(
+      value,
+      timebase.fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    ),
+  };
+}
+
+function formatTimelineMilliseconds(ms) {
+  const safe = Math.max(0, Math.round(Number(ms) || 0));
+  const s = safe / 1000;
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2, '0')}:${(s - m * 60).toFixed(3).padStart(6, '0')}`;
+}
+
+syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase?.unit === 'frames' });
 
 // 标记颜色：5 种基础色，用于给字幕分组着色。
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
@@ -20080,6 +20786,8 @@ const mediaPlayToggle = document.getElementById('media-play-toggle');
 const mediaStepBack = document.getElementById('media-step-back');
 const mediaStepForward = document.getElementById('media-step-forward');
 const mediaSeekStepInput = document.getElementById('media-seek-step');
+const mediaSeekStepUnit = document.getElementById('media-seek-step-unit');
+const mediaSeekStepHint = document.getElementById('media-seek-step-hint');
 let mediaSeekInputLastValue = EDITOR_SETTINGS.mediaSeekStepMs;
 const mediaCurrentTime = document.getElementById('media-current-time');
 const mediaDuration = document.getElementById('media-duration');
@@ -20152,6 +20860,15 @@ const jklPlaybackModeHint = document.getElementById('jkl-playback-mode-hint');
 const hoverSeekPreviewToggle = document.getElementById('hover-seek-preview');
 const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
+const cueMoveStepUnit = document.getElementById('cue-move-step-unit');
+const cueMoveStepHint = document.getElementById('cue-move-step-hint');
+const timelineTimebaseSelect = document.getElementById('timeline-timebase');
+const timelineFpsInput = document.getElementById('timeline-fps');
+const timelineTimebaseHint = document.getElementById('timeline-timebase-hint');
+const timelineSnapToFrameToggle = document.getElementById('timeline-snap-to-frame');
+const timelineSnapToFrameHint = document.getElementById('timeline-snap-to-frame-hint');
+const timelineTimecodeSeparatorInput = document.getElementById('timeline-timecode-separator');
+const timelineTimecodeSeparatorHint = document.getElementById('timeline-timecode-separator-hint');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
 const replaceModal = document.getElementById('replace-modal');
 const textProcessModal = document.getElementById('text-process-modal');
@@ -20860,6 +21577,7 @@ function refreshSplitKeyHelp() {
 document.addEventListener('mawe:languagechange', () => {
   refreshSplitKeyHelp();
   renderCurrentCuePanel();
+  refreshTimelineSettingsUi();
   refreshMediaSeekStepHelp();
   refreshMediaSeekControlLabels();
 });
@@ -20937,12 +21655,21 @@ if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlay
 if (hoverSeekPreviewToggle) hoverSeekPreviewToggle.checked = EDITOR_SETTINGS.hoverSeekPreview;
 if (mediaSeekStepInput) mediaSeekStepInput.value = String(EDITOR_SETTINGS.mediaSeekStepMs);
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
+if (timelineTimebaseSelect) timelineTimebaseSelect.value = projectTimebase().unit;
+if (timelineFpsInput) timelineFpsInput.value = String(projectTimebase().fps);
+if (timelineSnapToFrameToggle) timelineSnapToFrameToggle.checked = EDITOR_SETTINGS.timelineSnapToFrame;
+if (timelineTimecodeSeparatorInput) {
+  timelineTimecodeSeparatorInput.value = normalizeTimelineTimecodeSeparator(
+    EDITOR_SETTINGS.timelineTimecodeSeparator,
+  );
+}
 if (autoSnapAdjacentCuesToggle) {
   autoSnapAdjacentCuesToggle.checked = EDITOR_SETTINGS.autoSnapAdjacentCues;
 }
 if (cueEditorCancelOnEscapeToggle) {
   cueEditorCancelOnEscapeToggle.checked = EDITOR_SETTINGS.cueEditorCancelOnEscape;
 }
+refreshTimelineSettingsUi();
 refreshMediaSeekStepHelp();
 refreshMediaSeekInputStep();
 refreshMediaSeekControlLabels();
@@ -21535,15 +22262,204 @@ jklPlaybackModeSelect?.addEventListener('change', () => {
 hoverSeekPreviewToggle?.addEventListener('change', () => {
   updateEditorSettings({ hoverSeekPreview: hoverSeekPreviewToggle.checked });
 });
-function refreshMediaSeekInputStep(value = EDITOR_SETTINGS.mediaSeekStepMs) {
-  if (mediaSeekStepInput) mediaSeekStepInput.step = String(mediaSeekStepForValue(value));
+function timelineMediaSeekStepValue() {
+  return timelineIsFrameMode()
+    ? EDITOR_SETTINGS.mediaSeekStepFrames : EDITOR_SETTINGS.mediaSeekStepMs;
+}
+
+function timelineCueMoveStepValue() {
+  return timelineIsFrameMode()
+    ? EDITOR_SETTINGS.cueMoveStepFrames : EDITOR_SETTINGS.cueMoveStepMs;
+}
+
+function timelineValueToMilliseconds(value) {
+  const timebase = projectTimebase();
+  return timebase.unit === 'frames'
+    ? millisecondsFromFrameNumber(value, timebase.fps) : Number(value);
+}
+
+function timelineFrameAlignedMilliseconds(valueMs) {
+  const numeric = Number(valueMs);
+  if (!Number.isFinite(numeric) || !timelineIsFrameMode()) return numeric;
+  const timebase = projectTimebase();
+  return millisecondsFromFrameNumber(
+    frameNumberFromMilliseconds(numeric, timebase.fps),
+    timebase.fps,
+  );
+}
+
+function timelineUiText(zh, en) {
+  return window.MAWE_I18N?.language === 'en' ? en : zh;
+}
+
+function timelineMediaSeekStepMilliseconds() {
+  return timelineValueToMilliseconds(timelineMediaSeekStepValue());
+}
+
+function timelineHasSubtitleData() {
+  return (Array.isArray(DATA?.segments) && DATA.segments.length > 0)
+    || (Array.isArray(DATA?.multi_subtitle?.tracks)
+      && DATA.multi_subtitle.tracks.some((track) => Array.isArray(track?.segments)
+        && track.segments.length > 0));
+}
+
+function confirmTimelineFrameRemap(current, nextUnit, nextFps) {
+  const enteringFrames = current.unit !== 'frames' && nextUnit === 'frames';
+  const changingFrameRate = current.unit === 'frames' && current.fps !== nextFps;
+  if ((!enteringFrames && !changingFrameRate) || !timelineHasSubtitleData()) return true;
+  const message = enteringFrames
+    ? timelineUiText(
+      `切换到帧时间基准（${nextFps} FPS）会批量将当前工程的所有字幕段、字词和副字幕时间映射到最近帧，并重写毫秒兼容值。原始的非帧对齐毫秒值无法在切回毫秒时恢复。是否继续？`,
+      `Switching to the frame timebase (${nextFps} FPS) will remap all subtitle segments, word timings, and secondary subtitle timings to frame boundaries and rewrite the compatible millisecond values. Original non-frame-aligned millisecond values cannot be restored when switching back. Continue?`,
+    )
+    : timelineUiText(
+      `将 FPS 从 ${current.fps} 改为 ${nextFps} 会批量重新映射当前工程的所有字幕段、字词和副字幕时间，并重写毫秒兼容值。原始的非帧对齐毫秒值无法恢复。是否继续？`,
+      `Changing FPS from ${current.fps} to ${nextFps} will remap all subtitle segments, word timings, and secondary subtitle timings and rewrite the compatible millisecond values. Original non-frame-aligned millisecond values cannot be restored. Continue?`,
+    );
+  return window.confirm(message);
+}
+
+function refreshTimelineSettingsUi() {
+  const timebase = projectTimebase();
+  const frameMode = timebase.unit === 'frames';
+  const separator = normalizeTimelineTimecodeSeparator(EDITOR_SETTINGS.timelineTimecodeSeparator);
+  if (timelineTimebaseSelect) timelineTimebaseSelect.value = timebase.unit;
+  if (timelineFpsInput) timelineFpsInput.value = String(timebase.fps);
+  if (timelineSnapToFrameToggle) {
+    timelineSnapToFrameToggle.checked = frameMode && EDITOR_SETTINGS.timelineSnapToFrame;
+    timelineSnapToFrameToggle.disabled = !frameMode;
+  }
+  if (timelineTimecodeSeparatorInput) timelineTimecodeSeparatorInput.value = separator;
+  if (mediaSeekStepInput) {
+    mediaSeekStepInput.min = frameMode ? '1' : String(MEDIA_SEEK_STEP_MIN_MS);
+    mediaSeekStepInput.max = frameMode ? '240' : String(MEDIA_SEEK_STEP_MAX_MS);
+    mediaSeekStepInput.step = frameMode ? '1' : String(mediaSeekStepForValue(EDITOR_SETTINGS.mediaSeekStepMs));
+    mediaSeekStepInput.value = String(timelineMediaSeekStepValue());
+  }
+  if (cueMoveStepInput) {
+    cueMoveStepInput.min = frameMode ? '1' : String(CUE_MOVE_STEP_MIN_MS);
+    cueMoveStepInput.max = frameMode ? '240' : String(CUE_MOVE_STEP_MAX_MS);
+    cueMoveStepInput.step = frameMode ? '1' : '10';
+    cueMoveStepInput.value = String(timelineCueMoveStepValue());
+  }
+  if (mediaSeekStepUnit) mediaSeekStepUnit.textContent = frameMode ? 'F' : 'ms';
+  if (cueMoveStepUnit) cueMoveStepUnit.textContent = frameMode ? 'F' : 'ms';
+  if (mediaSeekStepHint) {
+    mediaSeekStepHint.textContent = frameMode
+      ? timelineUiText(
+        `控制按钮和左右方向键的每次跳转帧数（当前 FPS：${timebase.fps}）。`,
+        `Number of frames jumped by the controls and left/right arrow keys (current FPS: ${timebase.fps}).`,
+      )
+      : timelineUiText(
+        '控制按钮和左右方向键的每次跳转时长（单位：ms）。',
+        'Duration for each jump from the controls and left/right arrow keys (unit: ms).',
+      );
+  }
+  if (cueMoveStepHint) {
+    cueMoveStepHint.textContent = frameMode
+      ? timelineUiText(
+        '方向键和按住字幕块/边界时按帧微调；具体用法详见帮助的「微调字幕」区。',
+        'Arrow keys and A/D fine-tune frame by frame while holding a cue/block or boundary; see the “Subtitle fine-tuning” section in Help for details.',
+      )
+      : timelineUiText(
+        '具体用法详见帮助的「微调字幕」区。',
+        'See the “Subtitle fine-tuning” section in Help for details.',
+      );
+  }
+  if (timelineTimebaseHint) {
+    timelineTimebaseHint.textContent = frameMode
+      ? timelineUiText(
+        `帧模式使用 HH:MM:SS${separator}FF 显示，FF 为当前秒内的帧号；当前 FPS：${timebase.fps}。`,
+        `Frame mode uses HH:MM:SS${separator}FF, where FF is the frame number within the current second; current FPS: ${timebase.fps}.`,
+      )
+      : timelineUiText(
+        '毫秒模式保持原有时间编辑方式。切换为帧模式后，拖动、方向键和 A/D 微调都会按帧执行。',
+        'Millisecond mode keeps the existing timing behavior. Switching to frame mode makes dragging, arrow keys, and A/D fine-tuning operate frame by frame.',
+      );
+  }
+  if (timelineSnapToFrameHint) {
+    timelineSnapToFrameHint.textContent = frameMode
+      ? timelineUiText(
+        '启用后，波形鼠标指针会吸附到最近的帧位置。',
+        'When enabled, the waveform pointer snaps to the nearest frame.',
+      )
+      : timelineUiText(
+        '仅帧模式生效；切换到帧模式后可启用。',
+        'Only active in frame mode; switch to frame mode to enable it.',
+      );
+  }
+  if (timelineTimecodeSeparatorHint) {
+    timelineTimecodeSeparatorHint.textContent = timelineUiText(
+      `帧时间码示例：HH:MM:SS${separator}FF；只替换秒与帧之间的分隔符。`,
+      `Frame timecode example: HH:MM:SS${separator}FF; only the separator between seconds and frames changes.`,
+    );
+  }
+  mediaSeekInputLastValue = timelineMediaSeekStepValue();
+  refreshMediaSeekStepHelp();
+  refreshMediaSeekControlLabels();
+}
+
+function setTimelineTimebase(patch = {}) {
+  const current = projectTimebase();
+  const nextUnit = patch.unit === 'frames' || patch.unit === 'milliseconds'
+    ? patch.unit : current.unit;
+  const hasFpsPatch = Object.prototype.hasOwnProperty.call(patch, 'fps');
+  const mediaDefaultFps = !timelineFpsManuallySet
+    && !hasFpsPatch
+    && current.unit !== 'frames'
+    && nextUnit === 'frames'
+    ? projectMediaVideoFps()
+    : null;
+  const nextFps = mediaDefaultFps ?? normalizeTimelineFps(patch.fps, current.fps);
+  if (current.unit === nextUnit && current.fps === nextFps) {
+    if (hasFpsPatch) timelineFpsManuallySet = true;
+    refreshTimelineSettingsUi();
+    return;
+  }
+  if (!confirmTimelineFrameRemap(current, nextUnit, nextFps)) {
+    refreshTimelineSettingsUi();
+    return;
+  }
+  if (hasFpsPatch) timelineFpsManuallySet = true;
+  // 先按旧时间基准把当前工程的双份时间值同步，再决定新 FPS 下是否保留帧号。
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: current.unit === 'frames' });
+  DATA.timebase = { unit: nextUnit, fps: nextFps };
+  // 变更 FPS 时保持媒体中的实际时间位置，再按新 FPS 重算独立帧字段；
+  // 否则同一个帧号会因 FPS 改变而把字幕整体提前或推后。
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
+  projectImportDirty = true;
+  refreshTimelineSettingsUi();
+  renderAll({ waveform: 'full' });
+  scheduleAutoSaveFlush();
+  const description = nextUnit === 'frames'
+    ? timelineUiText(`已切换到帧时间基准（${nextFps} FPS）`, `Switched to frame timebase (${nextFps} FPS)`)
+    : timelineUiText('已切换到毫秒时间基准', 'Switched to millisecond timebase');
+  flashHint(description, 'success');
+}
+
+function refreshMediaSeekInputStep(value = timelineMediaSeekStepValue()) {
+  if (!mediaSeekStepInput) return;
+  if (timelineIsFrameMode()) {
+    mediaSeekStepInput.min = '1';
+    mediaSeekStepInput.max = '240';
+    mediaSeekStepInput.step = '1';
+  } else {
+    mediaSeekStepInput.min = String(MEDIA_SEEK_STEP_MIN_MS);
+    mediaSeekStepInput.max = String(MEDIA_SEEK_STEP_MAX_MS);
+    mediaSeekStepInput.step = String(mediaSeekStepForValue(value));
+  }
 }
 
 function commitMediaSeekStepInput(value, { rewriteInput = true } = {}) {
-  const normalized = clampMediaSeekStepMs(value);
+  const frameMode = timelineIsFrameMode();
+  const normalized = frameMode
+    ? EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(value, 1)
+    : clampMediaSeekStepMs(value);
   if (rewriteInput && mediaSeekStepInput) mediaSeekStepInput.value = String(normalized);
   mediaSeekInputLastValue = normalized;
-  updateEditorSettings({ mediaSeekStepMs: normalized });
+  updateEditorSettings(frameMode
+    ? { mediaSeekStepFrames: normalized }
+    : { mediaSeekStepMs: normalized });
   refreshMediaSeekInputStep(normalized);
   refreshMediaSeekStepHelp();
   refreshMediaSeekControlLabels();
@@ -21551,6 +22467,11 @@ function commitMediaSeekStepInput(value, { rewriteInput = true } = {}) {
 
 function adjustMediaSeekStepInput(direction) {
   if (!mediaSeekStepInput) return;
+  if (timelineIsFrameMode()) {
+    const current = EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(mediaSeekStepInput.value, 1);
+    commitMediaSeekStepInput(Math.min(240, Math.max(1, current + (direction < 0 ? -1 : 1))));
+    return;
+  }
   const current = clampMediaSeekStepMs(mediaSeekStepInput.value);
   commitMediaSeekStepInput(nextMediaSeekStepValue(current, direction));
 }
@@ -21571,6 +22492,10 @@ mediaSeekStepInput?.addEventListener('wheel', (event) => {
 mediaSeekStepInput?.addEventListener('input', () => {
   const raw = mediaSeekStepInput.value.trim();
   if (!raw) return;
+  if (timelineIsFrameMode()) {
+    commitMediaSeekStepInput(raw, { rewriteInput: false });
+    return;
+  }
   const value = normalizeNativeMediaSeekStepValue(raw, mediaSeekInputLastValue);
   if (value === null) return;
   commitMediaSeekStepInput(value, { rewriteInput: value !== Number(raw) });
@@ -21579,9 +22504,32 @@ mediaSeekStepInput?.addEventListener('change', () => {
   commitMediaSeekStepInput(mediaSeekStepInput.value);
 });
 cueMoveStepInput?.addEventListener('change', () => {
-  const value = clampCueMoveStepMs(cueMoveStepInput.value);
+  const frameMode = timelineIsFrameMode();
+  const value = frameMode
+    ? EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(cueMoveStepInput.value, 1)
+    : clampCueMoveStepMs(cueMoveStepInput.value);
   cueMoveStepInput.value = String(value);
-  updateEditorSettings({ cueMoveStepMs: value });
+  updateEditorSettings(frameMode ? { cueMoveStepFrames: value } : { cueMoveStepMs: value });
+});
+timelineTimebaseSelect?.addEventListener('change', () => {
+  setTimelineTimebase({ unit: timelineTimebaseSelect.value });
+});
+timelineFpsInput?.addEventListener('change', () => {
+  setTimelineTimebase({ fps: timelineFpsInput.value });
+});
+timelineSnapToFrameToggle?.addEventListener('change', () => {
+  updateEditorSettings({ timelineSnapToFrame: timelineSnapToFrameToggle.checked });
+  waveformEditor?.refreshPointerLine?.();
+});
+timelineTimecodeSeparatorInput?.addEventListener('change', () => {
+  const separator = normalizeTimelineTimecodeSeparator(timelineTimecodeSeparatorInput.value);
+  timelineTimecodeSeparatorInput.value = separator;
+  updateEditorSettings({ timelineTimecodeSeparator: separator });
+  refreshTimelineSettingsUi();
+  waveformEditor?.refreshPointerLine?.();
+  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，
+  // 不必等到下一次字幕编辑操作才看到新格式。
+  renderAll({ waveform: 'none' });
 });
 autoSnapAdjacentCuesToggle?.addEventListener('change', () => {
   updateEditorSettings({ autoSnapAdjacentCues: autoSnapAdjacentCuesToggle.checked });
@@ -23164,6 +24112,9 @@ function alignSelectedExtensionSubtitleRanges() {
 
 // === 渲染 ===
 function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) {
+  // 其它编辑入口仍以毫秒修改工程对象；在重绘前把它们投影回当前时间基准，
+  // 保证帧模式下保存的数据和下一次帧操作保持一致。
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   invalidateCueListVisualAnchorRestore();
   const cueListAnchor = preserveCueListScroll ? captureCueListRenderAnchor() : null;
   stickerOverlayDataVersion += 1;
@@ -23231,6 +24182,19 @@ function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) 
 function parsePanelTime(value, fallback) {
   const raw = String(value || '').trim();
   if (!raw) return fallback;
+  const timebase = projectTimebase();
+  if (timebase.unit === 'frames') {
+    const timecodeFrames = parseFrameTimecode(
+      raw,
+      timebase.fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    );
+    if (timecodeFrames !== null) return millisecondsFromFrameNumber(timecodeFrames, timebase.fps);
+    if (/^\d+(?:\.\d+)?\s*F?$/iu.test(raw)) {
+      return millisecondsFromFrameNumber(Number.parseFloat(raw), timebase.fps);
+    }
+    return fallback;
+  }
   if (/^\d+(?:\.\d+)?$/.test(raw)) return Math.round(Number(raw) * 1000);
   const parts = raw.split(':').map(Number);
   if (parts.some((part) => !Number.isFinite(part))) return fallback;
@@ -23340,19 +24304,23 @@ function commitCuePanelEdit() {
   const nextText = cuePanelText.value.replace(/\r\n?/g, '\n');
   const oldStart = seg.start;
   const oldEnd = seg.end;
+  const minimumDurationMs = timelineMinimumDurationMs();
   const requestedStart = parsePanelTime(cuePanelStart.value, oldStart);
-  const requestedDuration = Math.max(100, parsePanelTime(cuePanelDuration.value, oldEnd - oldStart));
+  const requestedDuration = Math.max(
+    minimumDurationMs,
+    parsePanelTime(cuePanelDuration.value, oldEnd - oldStart),
+  );
   const previousEnd = idx > 0 ? segments[idx - 1].end : 0;
   const nextStart = idx + 1 < segments.length ? segments[idx + 1].start : (waveformEditor?.durationMs || oldEnd);
-  if (nextStart - previousEnd < 100) {
+  if (nextStart - previousEnd < minimumDurationMs) {
     flashHint('相邻字幕之间不足 100ms，无法调整当前字幕', 'warning');
     renderCurrentCuePanel();
     resetCuePanelEditState();
     return false;
   }
-  const newStart = Math.max(previousEnd, Math.min(requestedStart, nextStart - 100));
+  const newStart = Math.max(previousEnd, Math.min(requestedStart, nextStart - minimumDurationMs));
   const newEnd = Math.min(nextStart, newStart + requestedDuration);
-  if (newEnd - newStart < 100) {
+  if (newEnd - newStart < minimumDurationMs) {
     flashHint('字幕时长不能小于 100ms', 'warning');
     renderCurrentCuePanel();
     resetCuePanelEditState();
@@ -23366,16 +24334,16 @@ function commitCuePanelEdit() {
   ensureCuePanelUndo();
   seg.text = nextText;
   seg.start = newStart;
-  seg.end = Math.max(newStart + 100, newEnd);
+  seg.end = Math.max(newStart + minimumDurationMs, newEnd);
   if (seg.end > nextStart) {
     seg.end = nextStart;
-    seg.start = Math.max(previousEnd, seg.end - 100);
+    seg.start = Math.max(previousEnd, seg.end - minimumDurationMs);
   }
   if (target.kind === 'main') {
     seg.items = remapPanelItems(seg.items, oldStart, oldEnd, seg.start, seg.end);
   }
   seg._dirty = true;
-  const timingChanged = newStart !== oldStart || newEnd !== oldEnd;
+  const timingChanged = seg.start !== oldStart || seg.end !== oldEnd;
   if (target.kind === 'main') {
     if (timingChanged) {
       const syncPatch = { oldStart, oldEnd, mode: 'range' };
@@ -23442,7 +24410,13 @@ function renderCurrentCuePanel() {
   }
   if (document.activeElement !== cuePanelText || !cuePanelUndoPushed) cuePanelText.value = seg.text || '';
   cuePanelStart.value = fmtShort(seg.start);
-  cuePanelDuration.value = ((seg.end - seg.start) / 1000).toFixed(3);
+  cuePanelDuration.value = timelineIsFrameMode()
+    ? formatTimelineTimecode(
+      seg.end - seg.start,
+      projectTimebase().fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    )
+    : ((seg.end - seg.start) / 1000).toFixed(3);
   const splitMode = target.kind === 'extension'
     ? getExtensionSubtitleSplitMode(target.track, seg)
     : getMainSubtitleSplitMode(seg);
@@ -23934,6 +24908,13 @@ function buildDualCueEl(mainIndex, extensionIndex, track) {
 }
 
 function fmtShort(ms) {
+  if (timelineIsFrameMode()) {
+    return formatTimelineTimecode(
+      ms,
+      projectTimebase().fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    );
+  }
   const s = ms / 1000;
   const m = Math.floor(s / 60);
   return `${String(m).padStart(2,'0')}:${(s - m * 60).toFixed(3).padStart(6,'0')}`;
@@ -26386,6 +27367,9 @@ function flashSplitFeedback({ index, track = 'main', splitMs, feedbackPoint = nu
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!el) return false;
+  if (Number.isFinite(waveformTimeMs)) {
+    waveformTimeMs = timelineFrameAlignedMilliseconds(waveformTimeMs);
+  }
   // 从非编辑态按 B / 右键拆分时，startEdit() 可能让当前行先发生一次布局
   // 变化；锚点必须取自用户按键前看到的位置，而不是临时编辑态的位置。
   const cueListAnchor = Number.isFinite(waveformTimeMs)
@@ -27774,6 +28758,13 @@ function hasLoadedMedia() {
 }
 
 function formatMediaTime(seconds) {
+  if (timelineIsFrameMode()) {
+    return formatTimelineTimecode(
+      (Number(seconds) || 0) * 1000,
+      projectTimebase().fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    );
+  }
   const total = Math.max(0, Math.floor(Number(seconds) || 0));
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
@@ -27782,19 +28773,20 @@ function formatMediaTime(seconds) {
   return hours ? `${hours}:${pad(minutes)}:${pad(remaining)}` : `${pad(minutes)}:${pad(remaining)}`;
 }
 
-function mediaSeekStepLabel(milliseconds) {
-  return `${milliseconds}ms`;
+function mediaSeekStepLabel(value = timelineMediaSeekStepValue()) {
+  return timelineIsFrameMode() ? `${value}F` : `${value}ms`;
 }
 
 function refreshMediaSeekStepHelp() {
-  if (helpMediaSeekStep) helpMediaSeekStep.textContent = mediaSeekStepLabel(EDITOR_SETTINGS.mediaSeekStepMs);
+  if (helpMediaSeekStep) helpMediaSeekStep.textContent = mediaSeekStepLabel();
 }
 
 function refreshMediaSeekControlLabels() {
-  const milliseconds = EDITOR_SETTINGS.mediaSeekStepMs;
+  const value = timelineMediaSeekStepValue();
+  const unit = timelineIsFrameMode() ? 'F' : 'ms';
   const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  const backLabel = language === 'en' ? `Back ${milliseconds}ms` : `后退 ${milliseconds}ms`;
-  const forwardLabel = language === 'en' ? `Forward ${milliseconds}ms` : `前进 ${milliseconds}ms`;
+  const backLabel = language === 'en' ? `Back ${value}${unit}` : `后退 ${value}${unit}`;
+  const forwardLabel = language === 'en' ? `Forward ${value}${unit}` : `前进 ${value}${unit}`;
   if (mediaStepBack) {
     mediaStepBack.setAttribute('aria-label', backLabel);
     mediaStepBack.title = backLabel;
@@ -27953,8 +28945,8 @@ function seekMediaTo(timeSeconds) {
 }
 
 mediaPlayToggle?.addEventListener('click', togglePlayback);
-mediaStepBack?.addEventListener('click', () => seekMediaBy(-EDITOR_SETTINGS.mediaSeekStepMs / 1000));
-mediaStepForward?.addEventListener('click', () => seekMediaBy(EDITOR_SETTINGS.mediaSeekStepMs / 1000));
+mediaStepBack?.addEventListener('click', () => seekMediaBy(-timelineMediaSeekStepMilliseconds() / 1000));
+mediaStepForward?.addEventListener('click', () => seekMediaBy(timelineMediaSeekStepMilliseconds() / 1000));
 mediaSeek?.addEventListener('input', () => {
   if (!hasLoadedMedia()) return;
   player.currentTime = Number(mediaSeek.value) || 0;
@@ -28016,15 +29008,15 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (selected.size > 0 && waveformEditor) {
-    const deltaMs = direction * EDITOR_SETTINGS.cueMoveStepMs;
+    const deltaTime = direction * timelineCueMoveStepValue();
     if (commandKey) {
       if (e.shiftKey) {
-        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'end', e.altKey, activeTrack);
+        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaTime, 'end', e.altKey, activeTrack);
       } else {
-        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'start', e.altKey, activeTrack);
+        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaTime, 'start', e.altKey, activeTrack);
       }
     } else {
-      waveformEditor.adjustSelectedByKeyboard(deltaMs, e.altKey, activeTrack);
+      waveformEditor.adjustSelectedByKeyboard(deltaTime, e.altKey, activeTrack);
     }
     e.preventDefault();
     e.stopPropagation();
@@ -28034,7 +29026,7 @@ document.addEventListener('keydown', (e) => {
   if (!hasLoadedMedia()) return;
   e.preventDefault();
   e.stopPropagation();
-  seekMediaBy(direction * EDITOR_SETTINGS.mediaSeekStepMs / 1000);
+  seekMediaBy(direction * timelineMediaSeekStepMilliseconds() / 1000);
 }, true);
 
 function renderedCueBoundaryTarget(target, boundary) {
@@ -28389,7 +29381,7 @@ document.addEventListener('keydown', (e) => {
   const heldCueKey = (!e.shiftKey || key === 'a' || key === 'd')
     && waveformEditor?.handleHeldCueKey?.(
       direction,
-      direction * EDITOR_SETTINGS.cueMoveStepMs,
+      direction * timelineCueMoveStepValue(),
       { shiftKey: e.shiftKey, altKey: e.altKey, snap: key === 'a' || key === 'd' },
     );
   if (heldCueKey) {
@@ -30179,19 +31171,23 @@ function buildGapRemovedRegionsJson() {
 }
 
 function buildJson() {
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const repairedTimingCount = repairCurrentProjectTimings();
   if (repairedTimingCount > 0) {
     flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
   }
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const out = {
     media: DATA.media || '',
     language: DATA.language || '',
     model: DATA.model || '',
     sticker_root: STICKER_ROOT || '',
+    timebase: { ...projectTimebase() },
     segments: DATA.segments.map(s => {
       const o = {
         id: s.id,
         start: s.start, end: s.end, text: s.text,
+        start_frame: s.start_frame, end_frame: s.end_frame,
         items: s.items || [],
         sticker: s.sticker || null,
         sticker_ref: s.sticker_ref || null,
@@ -30224,6 +31220,8 @@ function buildJson() {
           id: segment.id,
           start: segment.start,
           end: segment.end,
+          start_frame: segment.start_frame,
+          end_frame: segment.end_frame,
           text: segment.text || '',
         };
         if (Array.isArray(segment.items)) outSegment.items = segment.items;
@@ -30242,6 +31240,8 @@ function buildJson() {
     })),
   };
   if (DATA.waveform) out.waveform = DATA.waveform;
+  const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
+  if (mediaMetadata) out.media_metadata = mediaMetadata;
   if (DATA.spectral) out.spectral = DATA.spectral;
   if (DATA.waveform_reapeaks) out.waveform_reapeaks = DATA.waveform_reapeaks;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
@@ -32791,7 +33791,11 @@ function resetLoadedMedia() {
 }
 
 function buildBlankProject() {
-  return { media: '', language: '', model: '', segments: [] };
+  return {
+    media: '', language: '', model: '',
+    timebase: { unit: 'milliseconds', fps: 30 },
+    segments: [],
+  };
 }
 
 function suggestedProjectName(file = null) {
@@ -32808,6 +33812,9 @@ function applyCanonicalProject(data, filename) {
   DATA.media = typeof data.media === 'string' ? data.media : '';
   DATA.language = data.language || '';
   DATA.model = data.model || '';
+  DATA.timebase = normalizeTimelineTimebase(data.timebase);
+  timelineFpsManuallySet = hasExplicitTimelineFps(data.timebase);
+  DATA.media_metadata = normalizeMediaMetadata(data.media_metadata);
   DATA.media_time_reference = data.media_time_reference || null;
   DATA.waveform = data.waveform || null;
   DATA.spectral = data.spectral || null;
@@ -32829,6 +33836,7 @@ function applyCanonicalProject(data, filename) {
   DATA.segments.length = 0;
   data.segments.forEach((segment) => DATA.segments.push(segment));
   DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, DATA.segments);
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase.unit === 'frames' });
   editorHistory.clear();
   updateUndoRedoButtons();
   clearSelection();
@@ -32944,12 +33952,26 @@ async function ensureProjectCheckpointForImport(file, { usePicker = true } = {})
 
 function isMawProject(data) {
   if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
+  if (data.media_metadata !== undefined && data.media_metadata !== null
+      && !normalizeMediaMetadata(data.media_metadata)) return false;
+  if (data.timebase !== undefined) {
+    const timebase = data.timebase;
+    if (!timebase || typeof timebase !== 'object' || Array.isArray(timebase)
+        || (timebase.unit !== 'milliseconds' && timebase.unit !== 'frames')
+        || typeof timebase.fps !== 'number' || !Number.isFinite(timebase.fps)
+        || timebase.fps < MIN_TIMELINE_FPS || timebase.fps > MAX_TIMELINE_FPS) return false;
+  }
+  const hasOptionalFramePair = (value) => {
+    const hasStart = Object.prototype.hasOwnProperty.call(value || {}, 'start_frame');
+    const hasEnd = Object.prototype.hasOwnProperty.call(value || {}, 'end_frame');
+    return (!hasStart && !hasEnd) || hasValidFramePair(value);
+  };
   let previousEnd = 0;
   return data.segments.every((segment) => {
     if (!segment || typeof segment !== 'object'
         || !Number.isInteger(segment.start) || !Number.isInteger(segment.end)
         || segment.start < 0 || segment.end <= segment.start || segment.start < previousEnd
-        || typeof segment.text !== 'string') return false;
+        || typeof segment.text !== 'string' || !hasOptionalFramePair(segment)) return false;
     previousEnd = segment.end;
     if (!Array.isArray(segment.items)) return segment.items === undefined;
     let itemEnd = segment.start;
@@ -32957,7 +33979,8 @@ function isMawProject(data) {
       if (!item || typeof item !== 'object'
           || !Number.isInteger(item.start) || !Number.isInteger(item.end)
           || item.start < segment.start || item.end > segment.end || item.end <= item.start
-          || item.start < itemEnd || typeof item.text !== 'string') return false;
+          || item.start < itemEnd || typeof item.text !== 'string'
+          || !hasOptionalFramePair(item)) return false;
       itemEnd = item.end;
       return true;
     });
@@ -33323,10 +34346,13 @@ async function openProjectFile(file, options = {}) {
     const data = JSON.parse(text);
     // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
     if (data && Array.isArray(data.segments)) {
+      data.timebase = normalizeTimelineTimebase(data.timebase);
+      MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(data);
+      syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
       window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
       window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
-      MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(data);
       normalizeProjectTimings(data);
+      syncProjectTimebaseAndBindingOffsets(data, { preferFrames: false });
     }
     if (!isMawProject(data)) {
       flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
@@ -35462,6 +36488,8 @@ function addExtensionRangeFromWaveform(
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
   if (!track?.segments) { flashHint('当前没有可用的副字幕轨', 'invalid'); return; }
+  requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
+  requestedEnd = timelineFrameAlignedMilliseconds(requestedEnd);
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return;
@@ -35513,6 +36541,8 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
   }
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
+  requestedEnd = timelineFrameAlignedMilliseconds(requestedEnd);
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return;
@@ -35556,6 +36586,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
 function addCueAtWaveformTime(timeMs, clickX, clickY) {
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  timeMs = timelineFrameAlignedMilliseconds(timeMs);
   if (findWaveformCueAtTime(timeMs) >= 0) {
     flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
     return;
@@ -35582,6 +36613,7 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
 function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExtensionTrack()) {
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  timeMs = timelineFrameAlignedMilliseconds(timeMs);
   if (!track || !Array.isArray(track.segments)) {
     flashHint('当前没有可用的副字幕轨', 'invalid');
     return;
@@ -35652,6 +36684,8 @@ function ensureBoundDragOriginal(drag, index, target) {
       target,
       start: target.start,
       end: target.end,
+      start_frame: target.start_frame,
+      end_frame: target.end_frame,
       items: Array.isArray(target.items)
         ? target.items.map((item) => ({ ...item })) : target.items,
     });
@@ -35666,6 +36700,8 @@ function snapshotBoundDragTrack(track) {
       segment,
       start: segment.start,
       end: segment.end,
+      start_frame: segment.start_frame,
+      end_frame: segment.end_frame,
       items: Array.isArray(segment.items)
         ? segment.items.map((item) => ({ ...item })) : segment.items,
     })),
@@ -35692,6 +36728,10 @@ function restoreBoundDragTimelineOriginals(drag) {
     track.segments = segments.map((entry) => {
       entry.segment.start = entry.start;
       entry.segment.end = entry.end;
+      if (entry.start_frame === undefined) delete entry.segment.start_frame;
+      else entry.segment.start_frame = entry.start_frame;
+      if (entry.end_frame === undefined) delete entry.segment.end_frame;
+      else entry.segment.end_frame = entry.end_frame;
       entry.segment.items = Array.isArray(entry.items)
         ? entry.items.map((item) => ({ ...item })) : entry.items;
       return entry.segment;
@@ -35737,22 +36777,24 @@ function syncBoundCueDrag(drag) {
     const { target, binding } = bound;
     const targetOriginal = ensureBoundDragOriginal(drag, index, target);
     const source = sourceSegments[index];
+    const sourceOriginalStart = Number(sourceOriginal.startMs ?? sourceOriginal.start);
+    const sourceOriginalEnd = Number(sourceOriginal.endMs ?? sourceOriginal.end);
     let nextStart = targetOriginal.start;
     let nextEnd = targetOriginal.end;
     if (drag.kind === 'move') {
-      const delta = source.start - sourceOriginal.start;
+      const delta = source.start - sourceOriginalStart;
       nextStart = targetOriginal.start + delta;
       nextEnd = targetOriginal.end + delta;
     } else if (drag.kind === 'resize-left') {
-      nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
+      nextStart = targetOriginal.start + (source.start - sourceOriginalStart);
     } else if (drag.kind === 'resize-right') {
-      nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
+      nextEnd = targetOriginal.end + (source.end - sourceOriginalEnd);
     } else if (drag.kind === 'resize-boundary') {
-      if (index === drag.index) nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
-      else nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
+      if (index === drag.index) nextEnd = targetOriginal.end + (source.end - sourceOriginalEnd);
+      else nextStart = targetOriginal.start + (source.start - sourceOriginalStart);
     } else if (drag.kind === 'resize-boundary-independent') {
-      if (drag.edge === 'start') nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
-      else nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
+      if (drag.edge === 'start') nextStart = targetOriginal.start + (source.start - sourceOriginalStart);
+      else nextEnd = targetOriginal.end + (source.end - sourceOriginalEnd);
     }
     if (nextEnd <= nextStart) nextEnd = nextStart + SUBTITLE_MIN_DURATION_MS;
 
@@ -36369,6 +37411,8 @@ function initWaveformEditor() {
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     getAutoSnapAdjacentCues: () => EDITOR_SETTINGS.autoSnapAdjacentCues,
+    getCueTiming: () => timelineTimingAdapter(),
+    getSnapToFrame: () => timelineIsFrameMode() && EDITOR_SETTINGS.timelineSnapToFrame,
     getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
     // JKL 倒放靠逐帧回退实现，媒体元素本身处于暂停态；倒放期间同样视为播放中。
     getHoverSeekPreview: () => EDITOR_SETTINGS.hoverSeekPreview && !jklReversePlaying,
@@ -36698,8 +37742,10 @@ window.addEventListener('drop', (e) => {
 // === 启动 ===
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase?.unit === 'frames' });
 const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
 const repairedTimingCount = normalizeProjectTimings(DATA);
+syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
 maweDebug('boot:begin', {
   server: Boolean(SERVER_CONFIG),
   segments: Array.isArray(DATA.segments) ? DATA.segments.length : null,

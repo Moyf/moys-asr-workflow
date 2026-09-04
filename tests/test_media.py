@@ -10,6 +10,7 @@ from maw.media import (
     MediaConversionError,
     MediaStatus,
     convert_media_for_browser,
+    probe_video_fps,
     read_bwf_time_reference,
     resolve_project_media,
 )
@@ -66,6 +67,67 @@ class MediaResolutionTests(unittest.TestCase):
 
         self.assertIsNone(read_bwf_time_reference(wav))
         self.assertIsNone(read_bwf_time_reference(mp3))
+
+    def test_probes_video_fps_and_preserves_ffprobe_ratio(self) -> None:
+        media = self.root / "take.mp4"
+        media.write_bytes(b"video")
+        ffprobe = self.root / "ffprobe.exe"
+        ffprobe.write_bytes(b"exe")
+        completed = type(
+            "Completed",
+            (),
+            {"stdout": '{"streams":[{"avg_frame_rate":"30000/1001","r_frame_rate":"30/1"}]}'}
+        )()
+
+        with mock.patch("maw.media.find_ffprobe", return_value=ffprobe):
+            with mock.patch("maw.media.subprocess.run", return_value=completed) as process:
+                metadata = probe_video_fps(media)
+
+        self.assertIsNotNone(metadata)
+        self.assertAlmostEqual(metadata["video_fps"], 30000 / 1001)
+        self.assertEqual(metadata["video_fps_ratio"], "30000/1001")
+        command = process.call_args.args[0]
+        self.assertIn("-select_streams", command)
+        self.assertIn("v:0", command)
+        self.assertIn("stream=avg_frame_rate,r_frame_rate", command)
+        self.assertIn("-of", command)
+        self.assertIn("json", command)
+
+    def test_probes_r_frame_rate_when_average_rate_is_unavailable(self) -> None:
+        media = self.root / "take.mkv"
+        media.write_bytes(b"video")
+        completed = type(
+            "Completed",
+            (),
+            {"stdout": '{"streams":[{"avg_frame_rate":"N/A","r_frame_rate":"24/1"}]}'}
+        )()
+
+        with mock.patch("maw.media.find_ffprobe", return_value=Path("ffprobe")):
+            with mock.patch("maw.media.subprocess.run", return_value=completed):
+                self.assertEqual(
+                    probe_video_fps(media),
+                    {"video_fps": 24.0, "video_fps_ratio": "24/1"},
+                )
+
+    def test_video_fps_probe_is_best_effort_when_tool_or_rate_is_unavailable(self) -> None:
+        media = self.root / "take.mp4"
+        media.write_bytes(b"video")
+        with mock.patch("maw.media.find_ffprobe", return_value=None):
+            with mock.patch("maw.media.subprocess.run") as process:
+                self.assertIsNone(probe_video_fps(media))
+        process.assert_not_called()
+
+        completed = type("Completed", (), {"stdout": '{"streams":[]}'})()
+        with mock.patch("maw.media.find_ffprobe", return_value=Path("ffprobe")):
+            with mock.patch("maw.media.subprocess.run", return_value=completed):
+                self.assertIsNone(probe_video_fps(media))
+
+        audio = self.root / "take.wav"
+        audio.write_bytes(b"audio")
+        with mock.patch("maw.media.find_ffprobe", return_value=Path("ffprobe")):
+            with mock.patch("maw.media.subprocess.run") as process:
+                self.assertIsNone(probe_video_fps(audio))
+        process.assert_not_called()
 
     def test_missing_project_media_falls_back_to_one_same_name_candidate(self) -> None:
         media = self.root / "take.flv"

@@ -41,6 +41,7 @@ from maw.local_models import inspect_local_model, local_model_payload, prepare_l
 from maw.media import resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import read_project, read_srt
+from maw.project_io import write_mosp
 from maw.project import normalize_project
 from maw.postprocess_ffmpeg import (
     BurnSubtitleRequest,
@@ -1801,7 +1802,8 @@ class LauncherApi:
         project_path = output_seed.with_suffix(".mosp")
         project: dict[str, object] = {"media": str(media_path), "segments": []}
         try:
-            ffmpeg_path = _postprocess_ffmpeg(self.paths.env_path)
+            ffmpeg_tools = _postprocess_ffmpeg_tools(self.paths.env_path)
+            ffmpeg_path = ffmpeg_tools.ffmpeg
             cached = embed_media_caches(
                 project,
                 media_path,
@@ -1817,7 +1819,12 @@ class LauncherApi:
                     or "FFmpeg did not return any decodable audio samples."
                 )
                 return _error_result("mediaPath", "waveform_unavailable", detail)
-            project_path.write_bytes((json.dumps(normalized, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+            write_mosp(
+                project_path,
+                normalized,
+                media_path=media_path,
+                ffprobe_path=ffmpeg_tools.ffprobe,
+            )
         except (OSError, TypeError, ValueError) as error:
             return _error_result("mediaPath", "waveform_generation_failed", str(error))
 

@@ -207,6 +207,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 with_waveform=args.with_waveform,
                 generate_spectral=args.with_spectral,
                 ffmpeg_path=ffmpeg_path,
+                ffprobe_path=ffprobe_path,
             )
     except Exception as error:  # noqa: BLE001 - CLI boundary prints actionable error.
         print(f"错误: {error}")

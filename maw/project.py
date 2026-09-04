@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import dataclass
 from typing import TypeGuard, final
 
@@ -13,6 +14,9 @@ from maw.project_preview import JsonDict, JsonValue, clamped_preview, validate_p
 # pyright: reportImplicitOverride=false
 
 MIN_SEGMENT_DURATION_MS = 100
+TIMELINE_TIMEBASE_UNITS = frozenset({"milliseconds", "frames"})
+MIN_TIMELINE_FPS = 1.0
+MAX_TIMELINE_FPS = 240.0
 MULTI_SUBTITLE_SCHEMA = "moy.asr.multi_subtitle.v1"
 MULTI_SUBTITLE_DISPLAY_MODES = frozenset({"main", "extension", "both"})
 MULTI_SUBTITLE_SPLIT_MODES = frozenset({"continuous", "word"})
@@ -210,6 +214,8 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
         errors.append(ProjectValidationError("$", "must be an object"))
         return {"segments": []}
     normalized = copy.deepcopy(project)
+    _validate_timebase(normalized, errors)
+    _validate_media_metadata(normalized, errors)
     segments = normalized.get("segments")
     if not isinstance(segments, list):
         errors.append(ProjectValidationError("$.segments", "must be an array"))
@@ -236,6 +242,59 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
     _normalize_multi_subtitle(normalized, segments, errors)
     errors.extend(ProjectValidationError(path, message) for path, message in validate_preview(normalized))
     return normalized
+
+
+def _validate_timebase(project: JsonDict, errors: list[ProjectValidationError]) -> None:
+    """Validate the optional parallel frame timeline without breaking legacy files."""
+    if "timebase" not in project:
+        return
+    timebase = project.get("timebase")
+    if not isinstance(timebase, dict):
+        errors.append(ProjectValidationError("$.timebase", "must be an object"))
+        return
+    unit = timebase.get("unit")
+    if unit not in TIMELINE_TIMEBASE_UNITS:
+        errors.append(ProjectValidationError("$.timebase.unit", "must be milliseconds or frames"))
+    fps = timebase.get("fps")
+    if type(fps) not in (int, float) or not math.isfinite(float(fps)):
+        errors.append(ProjectValidationError("$.timebase.fps", "must be a finite number"))
+    elif not MIN_TIMELINE_FPS <= float(fps) <= MAX_TIMELINE_FPS:
+        errors.append(
+            ProjectValidationError(
+                "$.timebase.fps",
+                f"must be between {MIN_TIMELINE_FPS:g} and {MAX_TIMELINE_FPS:g}",
+            )
+        )
+
+
+def _validate_media_metadata(project: JsonDict, errors: list[ProjectValidationError]) -> None:
+    """Validate optional source-media metadata without affecting legacy files."""
+    if "media_metadata" not in project:
+        return
+    metadata = project.get("media_metadata")
+    if not isinstance(metadata, dict):
+        errors.append(ProjectValidationError("$.media_metadata", "must be an object"))
+        return
+    if "video_fps" in metadata:
+        fps = metadata.get("video_fps")
+        if type(fps) not in (int, float) or not math.isfinite(float(fps)):
+            errors.append(ProjectValidationError("$.media_metadata.video_fps", "must be a finite number"))
+        elif not MIN_TIMELINE_FPS <= float(fps) <= MAX_TIMELINE_FPS:
+            errors.append(
+                ProjectValidationError(
+                    "$.media_metadata.video_fps",
+                    f"must be between {MIN_TIMELINE_FPS:g} and {MAX_TIMELINE_FPS:g}",
+                )
+            )
+    if "video_fps_ratio" in metadata:
+        ratio = metadata.get("video_fps_ratio")
+        if not isinstance(ratio, str) or not ratio.strip():
+            errors.append(
+                ProjectValidationError(
+                    "$.media_metadata.video_fps_ratio",
+                    "must be a non-empty string",
+                )
+            )
 
 
 def _is_stable_id(value: JsonValue) -> bool:
@@ -493,6 +552,33 @@ def _single_binding_id(
     return value[0]
 
 
+def _validate_frame_pair(
+    value: JsonDict,
+    path: str,
+    errors: list[ProjectValidationError],
+) -> None:
+    """Validate optional frame projections while keeping millisecond fields required."""
+    has_start = "start_frame" in value
+    has_end = "end_frame" in value
+    if not has_start and not has_end:
+        return
+    if has_start != has_end:
+        errors.append(ProjectValidationError(path, "start_frame and end_frame must be provided together"))
+        return
+    start = value.get("start_frame")
+    end = value.get("end_frame")
+    if type(start) is not int:
+        errors.append(ProjectValidationError(f"{path}.start_frame", "must be a non-negative integer"))
+    elif start < 0:
+        errors.append(ProjectValidationError(f"{path}.start_frame", "must be non-negative"))
+    if type(end) is not int:
+        errors.append(ProjectValidationError(f"{path}.end_frame", "must be a non-negative integer"))
+    elif end < 0:
+        errors.append(ProjectValidationError(f"{path}.end_frame", "must be non-negative"))
+    if type(start) is int and type(end) is int and end <= start:
+        errors.append(ProjectValidationError(f"{path}.end_frame", "must be greater than start_frame"))
+
+
 def _validate_extension_segment(
     segment: JsonDict,
     path: str,
@@ -514,6 +600,7 @@ def _validate_extension_segment(
             errors.append(ProjectValidationError(f"{path}.start", "must be >= previous segment end"))
     if not isinstance(segment.get("text"), str):
         errors.append(ProjectValidationError(f"{path}.text", "must be a string"))
+    _validate_frame_pair(segment, path, errors)
     # Extension subtitles may come from a project or from a main-track swap.
     # Items are optional, but when present they must follow the same timing
     # contract as main-track items so the data survives a later swap back.
@@ -541,6 +628,7 @@ def _validate_segment(
             errors.append(ProjectValidationError(f"{path}.start", "must be >= previous segment end"))
     if not isinstance(segment.get("text"), str):
         errors.append(ProjectValidationError(f"{path}.text", "must be a string"))
+    _validate_frame_pair(segment, path, errors)
     if "speaker" in segment and (not isinstance(segment["speaker"], str) or not segment["speaker"].strip()):
         errors.append(ProjectValidationError(f"{path}.speaker", "must be a non-empty string"))
     _validate_items(segment, path, errors)
@@ -574,6 +662,7 @@ def _validate_item(
 ) -> None:
     start = item.get("start")
     end = item.get("end")
+    _validate_frame_pair(item, path, errors)
     if not isinstance(item.get("text"), str):
         errors.append(ProjectValidationError(f"{path}.text", "must be a string"))
     if not _is_int_ms(start):
