@@ -2465,11 +2465,15 @@ class GuiWebBridgeTests(unittest.TestCase):
             "apiKey": "sk-test",
             "maxLen": "14",
             "minLen": "3",
+            "maxWords": "11",
+            "minWords": "2",
             "gapSplit": "800",
         }, self.env_path)
 
         self.assertEqual(request.max_len, "14")
         self.assertEqual(request.min_len, "3")
+        self.assertEqual(request.max_words, "11")
+        self.assertEqual(request.min_words, "2")
         self.assertEqual(request.gap_split, "800")
 
     def test_request_from_payload_rejects_invalid_segmentation_options(self) -> None:
@@ -2485,6 +2489,12 @@ class GuiWebBridgeTests(unittest.TestCase):
             _request_from_payload({**base, "maxLen": "2", "minLen": "3"}, self.env_path)
 
         self.assertEqual(raised.exception.field, "maxLen")
+        self.assertEqual(raised.exception.code, "segmentation_invalid")
+
+        with self.assertRaises(PreflightError) as raised:
+            _request_from_payload({**base, "maxWords": "2", "minWords": "3"}, self.env_path)
+
+        self.assertEqual(raised.exception.field, "maxWords")
         self.assertEqual(raised.exception.code, "segmentation_invalid")
 
     def test_request_from_payload_only_generates_html_when_requested(self) -> None:
@@ -2900,6 +2910,28 @@ class _FakeLogSink:
         self.closed = True
 
 
+class _FakeEventHook:
+    def __init__(self) -> None:
+        self.callbacks: list[object] = []
+
+    def __iadd__(self, callback: object) -> "_FakeEventHook":
+        self.callbacks.append(callback)
+        return self
+
+    def fire(self) -> None:
+        for callback in self.callbacks:
+            callback()
+
+
+class _FakeLauncherWindow:
+    def __init__(self) -> None:
+        self.events = SimpleNamespace(closing=_FakeEventHook(), loaded=_FakeEventHook())
+        self.loaded_urls: list[str] = []
+
+    def load_url(self, url: str) -> None:
+        self.loaded_urls.append(url)
+
+
 @final
 class LauncherRuntimeTests(unittest.TestCase):
     def test_run_app_passes_debug_and_controls_automatic_devtools(self) -> None:
@@ -2930,6 +2962,37 @@ class LauncherRuntimeTests(unittest.TestCase):
             # 事件流与 stdout/stderr tee 必须共享同一个 sink 实例（单锁单文件）。
             install_tee.assert_called_once_with(api_sink)
             fake_webview.reset_mock()
+
+    def test_run_app_shows_boot_page_before_loading_launcher(self) -> None:
+        paths = LauncherPaths(
+            root=Path("launcher-root"),
+            env_path=Path("launcher-root/.env"),
+            launcher_html=Path("launcher-root/launcher.html"),
+        )
+        fake_window = _FakeLauncherWindow()
+        fake_webview = mock.Mock()
+        fake_webview.settings = {"OPEN_DEVTOOLS_IN_DEBUG": True}
+        fake_webview.create_window.return_value = fake_window
+        fake_webview.start.return_value = None
+
+        with (
+            mock.patch.dict(sys.modules, {"webview": fake_webview}),
+            mock.patch("maw.gui_web.default_paths", return_value=paths),
+            mock.patch("maw.gui_web.LauncherApi") as launcher_api_cls,
+            mock.patch("maw.gui_web.install_stdio_tee"),
+            mock.patch("maw.gui_web.asset_path", return_value=Path("missing.ico")),
+            mock.patch("maw.gui_web.apply_dark_title_bar"),
+        ):
+            run_app()
+
+        create_kwargs = fake_webview.create_window.call_args.kwargs
+        self.assertIn("正在启动 Launcher", create_kwargs["html"])
+        self.assertNotIn("url", create_kwargs)
+        fake_window.events.loaded.fire()
+        self.assertEqual(fake_window.loaded_urls, [paths.launcher_html.resolve().as_uri()])
+        launcher_api_cls.return_value.pump.start.assert_not_called()
+        fake_window.events.loaded.fire()
+        launcher_api_cls.return_value.pump.start.assert_called_once_with()
 
 
 @final
@@ -3374,18 +3437,27 @@ class LauncherAssetContractTests(unittest.TestCase):
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        for control in ("segmentationField", "maxLen", "minLen", "gapSplit"):
+        for control in ("segmentationField", "maxLen", "minLen", "maxWords", "minWords", "gapSplit"):
             self.assertIn(f'id="{control}"', page)
         self.assertIn('id="generateSpectral" type="checkbox"', page)
         self.assertIn('id="generateSpectralField"', page)
+        self.assertIn('class="segmentation-row segmentation-character-row"', page)
+        self.assertIn('class="segmentation-row segmentation-word-row"', page)
+        self.assertIn('data-i18n="english_segmentation_hint"', page)
+        self.assertLess(page.index('class="segmentation-row segmentation-character-row"'), page.index('class="segmentation-row segmentation-word-row"'))
         self.assertIn('maxLen: $("maxLen").value.trim()', script)
         self.assertIn('minLen: $("minLen").value.trim()', script)
+        self.assertIn('maxWords: $("maxWords").value.trim()', script)
+        self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
         self.assertIn('generate_spectral: "生成 ReaPeaks 频谱数据"', script)
         self.assertIn('generate_spectral: "Generate ReaPeaks spectral data"', script)
         self.assertIn('segmentation: "字幕切句"', script)
+        self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
+        self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
         self.assertIn(".segmentation-row", stylesheet)
+        self.assertIn(".segmentation-word-row", stylesheet)
 
     def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -3623,6 +3695,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('data-i18n="qwen_audio_options_title"', page)
         self.assertIn('id="maxLen" type="number"', page)
         self.assertIn('placeholder="18"', page)
+        self.assertIn('id="maxWords" type="number"', page)
+        self.assertIn('placeholder="13"', page)
+        self.assertIn('id="minWords" type="number"', page)
+        self.assertIn('placeholder="3"', page)
         self.assertIn('id="gapSplit" type="number"', page)
         self.assertIn('placeholder="800"', page)
         self.assertIn('advanced_params: "识别参数"', script)
@@ -3630,10 +3706,16 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('qwen_audio_options_title: "Qwen 上下文与热词"', script)
         self.assertIn('max_len_placeholder: "默认 18"', script)
         self.assertIn('max_len_placeholder: "Default: 18"', script)
+        self.assertIn('max_words_placeholder: "默认 13"', script)
+        self.assertIn('max_words_placeholder: "Default: 13"', script)
+        self.assertIn('min_words_placeholder: "默认 3"', script)
+        self.assertIn('min_words_placeholder: "Default: 3"', script)
         self.assertIn('gap_split_placeholder: "默认 800"', script)
         self.assertIn('gap_split_placeholder: "Default: 800"', script)
-        self.assertIn("最大字数：18，短句合并阈值：5，停顿切句：800ms", script)
-        self.assertIn("max characters: 18, short-cue merge threshold: 5, pause split: 800 ms", script)
+        self.assertIn("字符型设置和停顿设置留空使用默认值（最大字数：18、短句合并阈值：5、停顿切句：800ms）", script)
+        self.assertIn("Leave blank to use the defaults for character-mode and pause splitting (max characters: 18, short-cue threshold: 5, pause split: 800 ms)", script)
+        self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
+        self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
         self.assertIn('$("languageGroup").classList.toggle("hidden", current.supportsLanguage === false)', script)
         self.assertIn(".advanced-col {\n  display: grid;\n  grid-template-columns: 1fr 1fr;", stylesheet)
         self.assertNotIn("display: contents", stylesheet)

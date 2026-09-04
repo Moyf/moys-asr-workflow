@@ -22,6 +22,10 @@ if str(_BUNDLE_ROOT) not in sys.path:
 
 from maw.console import configure_utf8_stdio  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
+from maw.language import (  # noqa: E402
+    DEFAULT_MAX_WORDS,
+    DEFAULT_MIN_WORDS,
+)
 from maw.local_asr import (  # noqa: E402
     FUNASR_DEFAULT_MODEL,
     QWEN_DEFAULT_CHUNK_SECONDS,
@@ -79,6 +83,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
     parser.add_argument("--max-len", type=int, default=18, help="中文单条字幕最大字符数")
     parser.add_argument("--min-len", type=int, default=5, help="中文短句合并阈值")
+    parser.add_argument("--max-words", type=int, default=DEFAULT_MAX_WORDS, help="英文单条字幕最大单词数")
+    parser.add_argument("--min-words", type=int, default=DEFAULT_MIN_WORDS, help="英文短句合并阈值（单词数）")
     parser.add_argument("--gap-split", type=int, default=800, help="静音超过多少毫秒时切句")
     parser.add_argument(
         "--strip-tail-punct", default="，。",
@@ -132,6 +138,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     if args.length_limit is not None and args.length_limit <= 0:
         print("错误: --length-limit 必须大于 0")
+        return 2
+    if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
+        print("错误: 字幕切分参数无效")
+        return 2
+    if args.max_len < args.min_len or args.max_words < args.min_words:
+        print("错误: 最大值不能小于对应的短句合并阈值")
         return 2
     if args.with_waveform and not args.json:
         print("错误: --with-waveform 需要同时指定 --json")
@@ -187,6 +199,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_len=args.max_len,
                 min_len=args.min_len,
                 gap_split_ms=args.gap_split,
+                max_words=args.max_words,
+                min_words=args.min_words,
                 strip_tail_punct=args.strip_tail_punct,
             )
             if args.speaker_colors:

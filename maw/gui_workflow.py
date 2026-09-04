@@ -69,6 +69,8 @@ class TranscriptionRequest:
     runtime_python: str = ""
     postprocess_plan: dict[str, object] | None = None
     postprocess_llm_settings: dict[str, dict[str, str]] | None = None
+    max_words: str = ""
+    min_words: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +297,8 @@ def build_transcribe_command(
     _append_option(command, "--length-limit", request.length_limit)
     _append_option(command, "--max-len", request.max_len)
     _append_option(command, "--min-len", request.min_len)
+    _append_option(command, "--max-words", request.max_words)
+    _append_option(command, "--min-words", request.min_words)
     _append_option(command, "--gap-split", request.gap_split)
     # 始终显式下发（含空串）：空串表示共享保留符号配置要求完全不剥尾。
     command.extend(["--strip-tail-punct", request.strip_tail_punct])

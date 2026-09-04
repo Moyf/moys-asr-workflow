@@ -86,13 +86,14 @@ class OpenAiAsrTests(unittest.TestCase):
         })
 
         self.assertEqual(result["language"], "zh")
+        self.assertEqual(result["timestamp_granularity"], "word")
         self.assertEqual(result["items"][0]["start"], 100)
         self.assertEqual(result["items"][1]["end"], 1200)
 
     def test_western_words_keep_spaces_in_generated_segments(self) -> None:
         result = parse_timestamped_response({
             "text": "The beach was quiet.",
-            "language": "en",
+            "language": "English",
             "words": [
                 {"word": "The", "start": 0.0, "end": 0.2},
                 {"word": "beach", "start": 0.2, "end": 0.5},
@@ -101,6 +102,8 @@ class OpenAiAsrTests(unittest.TestCase):
             ],
         })
 
+        self.assertEqual(result["language"], "en")
+        self.assertEqual(result["timestamp_granularity"], "word")
         segments = _segments_from_result(result, max_len=18, min_len=3, gap_split=800)
 
         self.assertEqual(segments[0]["text"], "The beach was quiet.")
@@ -113,6 +116,7 @@ class OpenAiAsrTests(unittest.TestCase):
         })
 
         self.assertEqual(result["segments"], [{"start": 0, "end": 2500, "text": "hello", "items": []}])
+        self.assertEqual(result["timestamp_granularity"], "segment")
 
     def test_parse_timestamped_response_derives_missing_top_level_text(self) -> None:
         result = parse_timestamped_response({

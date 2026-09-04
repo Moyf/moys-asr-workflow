@@ -876,6 +876,15 @@ label {
   gap: 12px;
 }
 
+.segmentation-word-options {
+  display: grid;
+  gap: 6px;
+}
+
+.segmentation-word-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .segmentation-control {
   display: grid;
   min-width: 0;

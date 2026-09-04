@@ -478,8 +478,8 @@ def utterances_to_items(utterances: list) -> list[dict]:
 def parse_result_payload(raw: str) -> dict:
     """把必剪 result JSON 字符串转成本地 transcribe() 输出格式。
 
-    返回 {"text", "language", "items"}；language 按 items 的 CJK 占比推断
-    （接口本身不返回语种，必剪模型面向中文）。
+    返回 {"text", "language", "items", "timestamp_granularity"}；language 按
+    items 的 CJK 占比推断（接口本身不返回语种，必剪模型面向中文）。
     """
     try:
         payload = json.loads(raw)
@@ -489,6 +489,14 @@ def parse_result_payload(raw: str) -> dict:
         raise BcutApiError("必剪 result 结构异常（接口可能已变更）")
     utterances = payload.get("utterances") or []
     items = utterances_to_items(utterances)
+    has_character_timestamps = any(
+        isinstance(utterance, dict)
+        and any(
+            isinstance(word, dict) and str(word.get("label") or "")
+            for word in (utterance.get("words") or [])
+        )
+        for utterance in utterances
+    )
     text = "".join(
         str(u.get("transcript") or "") for u in utterances if isinstance(u, dict)
     )
@@ -498,6 +506,11 @@ def parse_result_payload(raw: str) -> dict:
         "text": text,
         "language": "zh" if is_cjk_dominant(items) else "",
         "items": items,
+        "timestamp_granularity": (
+            "char" if has_character_timestamps
+            else "segment" if items
+            else "unknown"
+        ),
     }
 
 

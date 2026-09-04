@@ -29,12 +29,20 @@ from generate_subtitle_qwen_api import (
     get_duration_sec,
     parse_duration,
     split_segments_auto,
+    WESTERN_MAX_WORDS,
+    WESTERN_MIN_WORDS,
 )
 from maw.app_paths import default_env_path
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.gui_config import load_env
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.language import (
+    normalize_language_code,
+    resolve_language,
+    split_mode_for_text,
+    timestamp_granularity_for_items,
+)
 from maw.project import repair_segment_durations
 from maw.project_io import write_mosp
 
@@ -195,16 +203,28 @@ def parse_timestamped_response(body: Mapping[str, Any]) -> dict[str, Any]:
             if item is not None:
                 items.append(item)
 
-    language = _text(payload.get("language") or payload.get("lang"))
+    language = normalize_language_code(payload.get("language") or payload.get("lang"))
     if items:
         _normalize_western_item_spacing(items)
         if not text:
             text = "".join(str(item.get("text", "")) for item in items).strip()
-        return {"text": text, "language": language, "items": items, "segments": []}
+        return {
+            "text": text,
+            "language": language,
+            "items": items,
+            "segments": [],
+            "timestamp_granularity": "word",
+        }
     if segments:
         if not text:
             text = "".join(str(segment.get("text", "")) for segment in segments).strip()
-        return {"text": text, "language": language, "items": [], "segments": segments}
+        return {
+            "text": text,
+            "language": language,
+            "items": [],
+            "segments": segments,
+            "timestamp_granularity": "segment",
+        }
     raise RuntimeError(
         "ASR 接口只返回了文本，没有返回 segments/words 时间戳；"
         "请让中转接口支持 response_format=verbose_json 和 timestamp_granularities，"
@@ -312,10 +332,21 @@ def _segments_from_result(
     max_len: int,
     min_len: int,
     gap_split: int,
+    max_words: int = WESTERN_MAX_WORDS,
+    min_words: int = WESTERN_MIN_WORDS,
 ) -> list[dict[str, Any]]:
     items = [dict(item) for item in result.get("items", [])]
     if items:
-        return split_segments_auto(items, max_len=max_len, min_len=min_len, gap_split_ms=gap_split)
+        split_mode = split_mode_for_text(str(result.get("text") or ""), result.get("language"))
+        return split_segments_auto(
+            items,
+            max_len=max_len,
+            min_len=min_len,
+            gap_split_ms=gap_split,
+            max_words=max_words,
+            min_words=min_words,
+            split_mode=split_mode,
+        )
     return [dict(segment) for segment in result.get("segments", [])]
 
 
@@ -330,6 +361,8 @@ def main() -> None:
     parser.add_argument("--language", default=None)
     parser.add_argument("--max-len", type=int, default=18)
     parser.add_argument("--min-len", type=int, default=5)
+    parser.add_argument("--max-words", type=int, default=WESTERN_MAX_WORDS)
+    parser.add_argument("--min-words", type=int, default=WESTERN_MIN_WORDS)
     parser.add_argument("--gap-split", type=int, default=800)
     parser.add_argument("-ll", "--length-limit", type=parse_duration, default=None)
     parser.add_argument("--keep-punct", action="store_true")
@@ -348,8 +381,10 @@ def main() -> None:
     args = parser.parse_args()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
-    if args.max_len < 1 or args.min_len < 1 or args.gap_split < 0:
+    if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
         parser.error("字幕切分参数无效")
+    if args.max_len < args.min_len or args.max_words < args.min_words:
+        parser.error("最大值不能小于对应的短句合并阈值")
 
     input_path = Path(args.input).expanduser()
     if not input_path.is_file():
@@ -386,6 +421,8 @@ def main() -> None:
             max_len=args.max_len,
             min_len=args.min_len,
             gap_split=args.gap_split,
+            max_words=args.max_words,
+            min_words=args.min_words,
         )
         if not segments:
             raise RuntimeError("ASR 返回内容为空，未生成字幕段。")
@@ -425,9 +462,20 @@ def main() -> None:
         print(f"[调试] ASR 原始返回已保存到: {raw_path}")
 
     if args.json_out:
+        language, language_source = resolve_language(
+            result.get("language"),
+            args.language,
+            str(result.get("text") or ""),
+        )
+        split_mode = split_mode_for_text(str(result.get("text") or ""), language)
         json_data: dict[str, Any] = {
             "media": str(input_path),
-            "language": result.get("language", ""),
+            "language": language,
+            "language_source": language_source,
+            "split_mode": split_mode,
+            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
+                result.get("items") or [], split_mode, has_segments=bool(segments)
+            ),
             "model": args.model,
             "segments": segments,
         }

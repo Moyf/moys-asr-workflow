@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -31,6 +32,14 @@ from generate_subtitle_qwen_api import (
     split_segments_auto,
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.language import (
+    DEFAULT_MAX_WORDS,
+    DEFAULT_MIN_WORDS,
+    normalize_language_code,
+    resolve_language,
+    split_mode_for_text,
+    timestamp_granularity_for_items,
+)
 from maw.project_io import write_mosp
 
 
@@ -50,15 +59,9 @@ MOSS_DEFAULT_MODEL = "OpenMOSS-Team/MOSS-Transcribe-Diarize"
 MOSS_DEFAULT_REVISION = "e8681d68e7042738ffca8ac8212bc8fcb1131ab8"
 MOSS_MAX_NEW_TOKENS = 65_536
 MOSS_MAX_AUDIO_SECONDS = 90 * 60
+MOSS_PROGRESS_INTERVAL_S = 5.0
 WHISPER_DEFAULT_MODEL = "large-v3"
 WHISPER_DEFAULT_VAD_MIN_SILENCE_MS = 500
-
-# faster-whisper 返回 ISO 语言码；空格分隔语言需要词间保留单个前导空格，
-# 与 Qwen 路径的英文处理（_QWEN_SPACE_SEPARATED_LANGUAGES）语义一致。
-_WHISPER_SPACE_SEPARATED_LANGUAGES = frozenset({
-    "ar", "cs", "da", "nl", "en", "fi", "fr", "de", "el", "hi", "hu", "id",
-    "it", "ms", "mk", "fa", "pl", "pt", "ro", "ru", "es", "sv", "th", "tr", "vi",
-})
 
 
 def _missing_moss_dependency(cause: ImportError) -> MissingLocalDependency:
@@ -87,6 +90,9 @@ class LocalTranscription:
     items: list[dict[str, Any]]
     segments: list[dict[str, Any]]
     model: str
+    language_source: str = "unknown"
+    split_mode: str = ""
+    timestamp_granularity: str = "unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -395,6 +401,7 @@ def funasr_output_to_transcription(
     model: str,
     *,
     rich_postprocess: bool = False,
+    language_hint: str | None = None,
 ) -> LocalTranscription:
     """Normalize common FunASR ``generate`` result shapes.
 
@@ -412,6 +419,7 @@ def funasr_output_to_transcription(
     )
     segments: list[dict[str, Any]] = []
     all_items: list[dict[str, Any]] = []
+    has_explicit_timestamp_items = False
 
     for sentence in sentence_info:
         if not isinstance(sentence, Mapping):
@@ -422,10 +430,13 @@ def funasr_output_to_transcription(
         )
         if not text:
             continue
-        items = items_from_timestamps(
+        timestamp_items = items_from_timestamps(
             text,
             sentence.get("timestamp") or sentence.get("timestamps") or sentence.get("word_timestamps"),
         )
+        if len(timestamp_items) > 1:
+            has_explicit_timestamp_items = True
+        items = timestamp_items
         start = _as_ms(sentence.get("start", sentence.get("begin_time")))
         end = _as_ms(sentence.get("end", sentence.get("end_time")))
         if items:
@@ -451,23 +462,36 @@ def funasr_output_to_transcription(
             payload.get("timestamp") or payload.get("timestamps") or payload.get("word_timestamps"),
         )
         all_items = items
+        has_explicit_timestamp_items = len(items) > 1
 
-    language = _as_text(payload.get("language") or payload.get("lang"))
-    return LocalTranscription(text, language, all_items, segments, model)
+    language, language_source = resolve_language(
+        payload.get("language") or payload.get("lang"),
+        language_hint,
+        text,
+    )
+    split_mode = split_mode_for_text(text, language)
+    timestamp_granularity = timestamp_granularity_for_items(
+        all_items,
+        split_mode,
+        explicit_items=has_explicit_timestamp_items,
+        has_segments=bool(segments),
+    )
+    return LocalTranscription(
+        text,
+        language,
+        all_items,
+        segments,
+        model,
+        language_source,
+        split_mode,
+        timestamp_granularity,
+    )
 
 
 _QWEN_LANGUAGE_NAMES = {
     "zh": "Chinese", "yue": "Cantonese", "en": "English", "ja": "Japanese",
     "ko": "Korean", "fr": "French", "de": "German", "es": "Spanish",
 }
-
-_QWEN_SPACE_SEPARATED_LANGUAGES = frozenset({
-    "arabic", "czech", "danish", "dutch", "english", "finnish", "french",
-    "german", "greek", "hindi", "hungarian", "indonesian", "italian", "malay",
-    "macedonian", "persian", "polish", "portuguese", "romanian", "russian",
-    "spanish", "swedish", "thai", "turkish", "vietnamese",
-})
-
 
 class QwenAsrEngine:
     """Lazy Qwen3-ASR runtime adapter."""
@@ -532,7 +556,8 @@ class QwenAsrEngine:
     ) -> LocalTranscription:
         if on_event:
             on_event(f"[local] transcribing: {audio_path.name}")
-        language_name = _QWEN_LANGUAGE_NAMES.get((language or "").lower(), language or None)
+        language_hint = normalize_language_code(language)
+        language_name = _QWEN_LANGUAGE_NAMES.get(language_hint, language_hint or None)
         kwargs: dict[str, Any] = {
             "audio": str(audio_path),
             "language": language_name,
@@ -560,8 +585,12 @@ class QwenAsrEngine:
         result = runtime.transcribe(**kwargs)
         first = result[0] if isinstance(result, Sequence) and not isinstance(result, (str, bytes)) else result
         text = _as_text(_read_field(first, "text"))
-        language_value = _as_text(_read_field(first, "language")) or language or ""
-        uses_spaces = language_value.lower() in _QWEN_SPACE_SEPARATED_LANGUAGES
+        language_value, language_source = resolve_language(
+            _read_field(first, "language"),
+            language,
+            text,
+        )
+        uses_spaces = split_mode_for_text(text, language_value) == "word"
         items: list[dict[str, Any]] = []
         timestamps = _read_field(
             first,
@@ -583,7 +612,21 @@ class QwenAsrEngine:
             items = _restore_qwen_alignment_text(text, items)
         if on_event:
             on_event(f"[local] detected language: {language_value or 'unknown'}")
-        return LocalTranscription(text, language_value, items, [], self.model)
+        split_mode = split_mode_for_text(text, language_value)
+        return LocalTranscription(
+            text,
+            language_value,
+            items,
+            [],
+            self.model,
+            language_source,
+            split_mode,
+            timestamp_granularity_for_items(
+                items,
+                split_mode,
+                has_segments=not bool(items) and bool(text),
+            ),
+        )
 
     @staticmethod
     def _extract_chunk(
@@ -669,6 +712,9 @@ class QwenAsrEngine:
             items,
             segments,
             transcription.model,
+            transcription.language_source,
+            transcription.split_mode,
+            transcription.timestamp_granularity,
         )
 
     def transcribe(
@@ -747,12 +793,21 @@ class QwenAsrEngine:
 
         language_value = next(
             (result.language for result in chunk_results if result.language),
-            language or "",
+            normalize_language_code(language),
         )
-        uses_spaces = language_value.lower() in _QWEN_SPACE_SEPARATED_LANGUAGES
+        language_source = next(
+            (
+                result.language_source
+                for result in chunk_results
+                if result.language_source != "unknown"
+            ),
+            "hint" if language_value else "unknown",
+        )
         merged_items: list[dict[str, Any]] = []
         merged_segments: list[dict[str, Any]] = []
         texts: list[str] = []
+        sample_text = next((result.text for result in chunk_results if result.text), "")
+        uses_spaces = split_mode_for_text(sample_text, language_value) == "word"
         for chunk_index, result in enumerate(chunk_results):
             add_leading_space = uses_spaces and chunk_index > 0
             if add_leading_space:
@@ -764,7 +819,26 @@ class QwenAsrEngine:
         text = (" ".join(texts) if uses_spaces else "".join(texts)).strip()
         if on_event:
             on_event(f"[local] 长音频分块识别完成，共 {len(chunk_results)} 段")
-        return LocalTranscription(text, language_value, merged_items, merged_segments, self.model)
+        split_mode = split_mode_for_text(text, language_value)
+        timestamp_granularity = timestamp_granularity_for_items(
+            merged_items,
+            split_mode,
+            explicit_items=any(
+                result.timestamp_granularity in {"word", "char"}
+                for result in chunk_results
+            ),
+            has_segments=bool(merged_segments) or bool(text),
+        )
+        return LocalTranscription(
+            text,
+            normalize_language_code(language_value),
+            merged_items,
+            merged_segments,
+            self.model,
+            language_source,
+            split_mode,
+            timestamp_granularity,
+        )
 
 
 class FunAsrEngine:
@@ -875,6 +949,7 @@ class FunAsrEngine:
             raw,
             self.model,
             rich_postprocess=self.rich_postprocess,
+            language_hint=language,
         )
 
 
@@ -954,19 +1029,59 @@ class MossDiarizeEngine:
             raise _missing_moss_dependency(error) from error
         model, processor, attention_report = self._load(on_event)
         if on_event:
-            on_event(f"[local] transcribing: {audio_path.name}")
+            on_event(f"[local] MOSS 正在准备输入：{audio_path.name}")
         messages = build_transcription_messages(audio_path)
-        result = generate_transcription(
-            model,
-            processor,
-            messages,
-            max_new_tokens=MOSS_MAX_NEW_TOKENS,
-            do_sample=False,
-            device=next(model.parameters()).device,
-            dtype=next(model.parameters()).dtype,
-            attention_report=attention_report,
-        )
-        if int(result.get("generated_tokens") or 0) >= MOSS_MAX_NEW_TOKENS and on_event:
+        last_progress_at = 0.0
+        last_progress_tokens = 0
+
+        def report_input_ready(_prompt_tokens: int) -> None:
+            if on_event:
+                on_event("[local] MOSS 音频特征已准备，开始生成转写")
+
+        def report_token_progress(generated_tokens: int) -> None:
+            nonlocal last_progress_at, last_progress_tokens
+            if on_event is None:
+                return
+            tokens = max(int(generated_tokens), 0)
+            now = time.monotonic()
+            if tokens <= 0 or (
+                tokens != 1
+                and now - last_progress_at < MOSS_PROGRESS_INTERVAL_S
+            ):
+                return
+            last_progress_at = now
+            last_progress_tokens = tokens
+            on_event(f"[local] MOSS 生成中：已生成 {tokens:,} tokens")
+
+        try:
+            generation_signature = inspect.signature(generate_transcription)
+            generation_parameters = generation_signature.parameters
+            supports_var_kwargs = any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in generation_parameters.values()
+            )
+        except (TypeError, ValueError):
+            generation_parameters = {}
+            supports_var_kwargs = False
+
+        generation_kwargs: dict[str, Any] = {
+            "max_new_tokens": MOSS_MAX_NEW_TOKENS,
+            "do_sample": False,
+            "device": next(model.parameters()).device,
+            "dtype": next(model.parameters()).dtype,
+            "attention_report": attention_report,
+        }
+        if on_event and ("input_callback" in generation_parameters or supports_var_kwargs):
+            generation_kwargs["input_callback"] = report_input_ready
+        if on_event and ("token_callback" in generation_parameters or supports_var_kwargs):
+            generation_kwargs["token_callback"] = report_token_progress
+        elif on_event:
+            on_event("[local] 当前 MOSS 运行包不支持 token 进度回调，将仅显示阶段状态")
+        result = generate_transcription(model, processor, messages, **generation_kwargs)
+        generated_tokens = int(result.get("generated_tokens") or last_progress_tokens or 0)
+        if on_event and generated_tokens:
+            on_event(f"[local] MOSS 生成完成：共 {generated_tokens:,} tokens")
+        if generated_tokens >= MOSS_MAX_NEW_TOKENS and on_event:
             on_event("[local] 警告：MOSS 输出达到最大 token 数，字幕可能在音频结尾处被截断")
         parsed = parse_transcript(str(result.get("text") or ""))
         segments: list[dict[str, Any]] = []
@@ -976,17 +1091,35 @@ class MossDiarizeEngine:
             end = _as_seconds_ms(entry.end)
             if end <= start or not entry.text:
                 continue
-            item = _item(entry.text, start, end, entry.speaker)
-            segment = _segment(entry.text, start, end, [item], entry.speaker)
-            items.append(item)
+            # MOSS exposes one start/end pair per diarized segment.  It does
+            # not expose word/character boundaries, so an item here would be
+            # misleading and would make the shared splitter count characters
+            # as words. Keep the segment timing and leave items absent.
+            segment = _segment(entry.text, start, end, [], entry.speaker)
+            segment.pop("items", None)
             segments.append(segment)
         if not segments and result.get("text") and on_event:
             on_event("[local] 警告：MOSS 返回的文本未解析出有效时间戳")
         for previous, current in zip(segments, segments[1:]):
             if current["start"] - previous["end"] > 10_000 and on_event:
                 on_event(f"[local] 警告：检测到超过 10 秒的无字幕空档（{previous['end']}–{current['start']}ms）")
-        language_value = language or ""
-        return LocalTranscription(str(result.get("text") or ""), language_value, items, segments, self.model)
+        text = str(result.get("text") or "")
+        language_value, language_source = resolve_language(
+            result.get("language"),
+            None,
+            text,
+        )
+        split_mode = split_mode_for_text(text, language_value)
+        return LocalTranscription(
+            text,
+            language_value,
+            items,
+            segments,
+            self.model,
+            language_source,
+            split_mode,
+            "segment",
+        )
 
 
 class WhisperEngine:
@@ -1108,14 +1241,30 @@ class WhisperEngine:
             kwargs["hotwords"] = " ".join(hotwords)
 
         raw_segments, info = runtime.transcribe(str(audio_path), **kwargs)
-        language_value = _as_text(_read_field(info, "language"))
-        uses_spaces = language_value.lower() in _WHISPER_SPACE_SEPARATED_LANGUAGES
+        raw_language = _read_field(info, "language")
+        language_value = normalize_language_code(raw_language) or normalize_language_code(language)
+        uses_spaces: bool | None = (
+            split_mode_for_text("", language_value) == "word"
+            if language_value
+            else None
+        )
         items: list[dict[str, Any]] = []
         texts: list[str] = []
+        has_word_timestamps = False
         # ``transcribe`` 返回生成器，迭代到 segment 时才真正执行推理。
         for segment in raw_segments:
-            added_before = len(items)
+            start_ms = _as_seconds_ms(_read_field(segment, "start"))
+            end_ms = _as_seconds_ms(_read_field(segment, "end"))
+            text_value = _as_text(_read_field(segment, "text")).strip()
             words = _read_field(segment, "words") or []
+            if uses_spaces is None:
+                mode_text = text_value or "".join(
+                    _as_text(_read_field(word, "word")) for word in words
+                )
+                uses_spaces = split_mode_for_text(mode_text, language_value) == "word"
+            added_before = len(items)
+            if words:
+                has_word_timestamps = True
             for word in words:
                 word_text = _as_text(_read_field(word, "word"))
                 if not word_text.strip():
@@ -1127,9 +1276,6 @@ class WhisperEngine:
                 if uses_spaces and items and not word_text.startswith(" "):
                     word_text = f" {word_text}"
                 items.append(_item(word_text, start, end))
-            start_ms = _as_seconds_ms(_read_field(segment, "start"))
-            end_ms = _as_seconds_ms(_read_field(segment, "end"))
-            text_value = _as_text(_read_field(segment, "text")).strip()
             if len(items) == added_before and text_value and end_ms > start_ms:
                 # 带 VAD 的常规输出不会走到这里：仅在某句拿不到可用词级
                 # 时间戳时保留句级字幕，不伪造字词边界。
@@ -1139,7 +1285,27 @@ class WhisperEngine:
         if on_event:
             on_event(f"[local] detected language: {language_value or 'unknown'}")
         text = (" ".join(texts) if uses_spaces else "".join(texts)).strip()
-        return LocalTranscription(text, language_value, items, [], self.model)
+        language_value, language_source = resolve_language(raw_language, language, text)
+        # If the engine did not return language metadata, preserve natural
+        # spaces for Latin-script text while keeping CJK text continuous.
+        if split_mode_for_text(text, language_value) == "word":
+            text = " ".join(texts).strip()
+        split_mode = split_mode_for_text(text, language_value)
+        return LocalTranscription(
+            text,
+            language_value,
+            items,
+            [],
+            self.model,
+            language_source,
+            split_mode,
+            timestamp_granularity_for_items(
+                items,
+                split_mode,
+                explicit_items=has_word_timestamps,
+                has_segments=bool(text),
+            ),
+        )
 
 
 def create_local_engine(
@@ -1203,11 +1369,12 @@ def _char_weight_weights(text: str) -> list[float]:
 def _expand_coarse_item(item: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Split one sentence-span item into per-character items with estimated times.
 
-    Local engines such as MOSS return one item covering a whole sentence with a
+    Some local adapters return one coarse item covering a whole sentence with a
     single start/end pair.  MAW's splitter can only regroup items, so a coarse
     item is expanded into character units whose timings are interpolated from
     the enclosing span; the last character always ends exactly at the original
-    ``end`` so neighbouring segments keep their real boundaries.
+    ``end`` so neighbouring segments keep their real boundaries. Segment-only
+    adapters such as MOSS do not call this helper.
     """
     text = str(item.get("text") or "")
     start = int(item.get("start") or 0)
@@ -1252,20 +1419,31 @@ def _resplit_engine_segment(
     max_len: int,
     min_len: int,
     gap_split_ms: int,
+    max_words: int,
+    min_words: int,
+    split_mode: str | None = None,
 ) -> list[dict[str, Any]]:
     """Re-group one engine-provided segment through MAW's shared splitter.
 
-    Only oversized segments (text longer than ``max_len``) are rebuilt; well
+    Only cues exceeding the configured character/word limit are rebuilt; well
     behaved engine cues pass through untouched so real word timestamps keep
     dominating whenever they exist.  Items lacking usable sub-granularity are
-    expanded via ``_expand_coarse_item`` first.
+    expanded via ``_expand_coarse_item`` first in continuous mode.
     """
     text = str(engine_segment.get("text") or "")
-    if len(text) <= max_len:
+    source_items = [
+        item for item in engine_segment.get("items") or []
+        if isinstance(item, Mapping) and item.get("text")
+    ]
+    if split_mode == "word":
+        needs_split = len(source_items) > max_words
+    else:
+        needs_split = len(text) > max_len
+    if not needs_split:
         return [dict(engine_segment)]
     unit_items: list[dict[str, Any]] = []
-    for nested_item in engine_segment.get("items") or []:
-        if isinstance(nested_item, Mapping) and len(str(nested_item.get("text") or "")) > max_len:
+    for nested_item in source_items:
+        if split_mode != "word" and len(str(nested_item.get("text") or "")) > max_len:
             unit_items.extend(_expand_coarse_item(nested_item))
         else:
             unit_items.append(dict(nested_item))
@@ -1276,6 +1454,9 @@ def _resplit_engine_segment(
         max_len=max_len,
         min_len=min_len,
         gap_split_ms=gap_split_ms,
+        max_words=max_words,
+        min_words=min_words,
+        split_mode=split_mode,
     )
     if not rebuilt:
         return [dict(engine_segment)]
@@ -1314,26 +1495,39 @@ def build_local_segments(
     max_len: int = 18,
     min_len: int = 5,
     gap_split_ms: int = 800,
+    max_words: int = DEFAULT_MAX_WORDS,
+    min_words: int = DEFAULT_MIN_WORDS,
     strip_tail_punct: str = _LOCAL_TAIL_PUNCT,
 ) -> list[dict[str, Any]]:
     """Turn adapter output into MAW's integer-millisecond subtitle segments."""
     if transcription.segments:
         segments: list[dict[str, Any]] = []
         for source in transcription.segments:
-            segments.extend(
-                _resplit_engine_segment(
-                    source,
-                    max_len=max_len,
-                    min_len=min_len,
-                    gap_split_ms=gap_split_ms,
+            if transcription.timestamp_granularity == "segment":
+                # A segment-only engine has no trustworthy boundary to split
+                # on. Preserve its original cue instead of fabricating items.
+                segments.append(dict(source))
+            else:
+                segments.extend(
+                    _resplit_engine_segment(
+                        source,
+                        max_len=max_len,
+                        min_len=min_len,
+                        gap_split_ms=gap_split_ms,
+                        max_words=max_words,
+                        min_words=min_words,
+                        split_mode=transcription.split_mode or None,
+                    )
                 )
-            )
     elif transcription.items:
         segments = split_segments_auto(
             transcription.items,
             max_len=max_len,
             min_len=min_len,
             gap_split_ms=gap_split_ms,
+            max_words=max_words,
+            min_words=min_words,
+            split_mode=transcription.split_mode or None,
         )
     elif transcription.text:
         segments = [{"start": 0, "end": max(duration_ms, 1), "text": transcription.text, "items": []}]
@@ -1405,9 +1599,24 @@ def write_local_outputs(
         return LocalOutputPaths(output_srt, None, None)
 
     json_path = output_srt.with_suffix(".mosp")
+    language = normalize_language_code(transcription.language)
+    split_mode = transcription.split_mode or split_mode_for_text(
+        transcription.text,
+        language,
+    )
+    timestamp_granularity = transcription.timestamp_granularity
+    if timestamp_granularity == "unknown":
+        timestamp_granularity = timestamp_granularity_for_items(
+            transcription.items,
+            split_mode,
+            has_segments=bool(segments),
+        )
     project: dict[str, Any] = {
         "media": str(input_path),
-        "language": transcription.language,
+        "language": language,
+        "language_source": transcription.language_source,
+        "split_mode": split_mode,
+        "timestamp_granularity": timestamp_granularity,
         "model": transcription.model,
         "segments": segments,
     }

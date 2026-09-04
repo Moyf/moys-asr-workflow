@@ -52,6 +52,9 @@ class LocalAsrNormalizationTests(unittest.TestCase):
         )
 
         self.assertEqual(result.language, "zh")
+        self.assertEqual(result.language_source, "detected")
+        self.assertEqual(result.split_mode, "continuous")
+        self.assertEqual(result.timestamp_granularity, "char")
         self.assertEqual("".join(item["text"] for item in result.items), "你好。")
         self.assertEqual(result.segments[0]["start"], 100)
         self.assertEqual(result.segments[0]["end"], 500)
@@ -72,6 +75,7 @@ class LocalAsrNormalizationTests(unittest.TestCase):
 
         self.assertEqual(result.segments[0]["items"][0]["text"], "hello world")
         self.assertEqual(result.segments[0]["items"][0]["start"], 0)
+        self.assertEqual(result.timestamp_granularity, "segment")
 
     def test_sensevoice_sentence_field_is_normalized(self) -> None:
         result = funasr_output_to_transcription(
@@ -88,6 +92,9 @@ class LocalAsrNormalizationTests(unittest.TestCase):
 
         self.assertEqual(result.text, "Hello world.")
         self.assertEqual(result.language, "en")
+        self.assertEqual(result.language_source, "detected")
+        self.assertEqual(result.split_mode, "word")
+        self.assertEqual(result.timestamp_granularity, "segment")
         self.assertEqual(result.segments[0]["text"], "Hello world.")
         self.assertEqual(result.segments[0]["items"][0]["start"], 200)
 
@@ -111,7 +118,39 @@ class LocalAsrNormalizationTests(unittest.TestCase):
 
 
 class LocalSegmentationTuningTests(unittest.TestCase):
-    """max_len/min_len/gap_split_ms 必须作用于引擎自带分段（MOSS 等粗粒度输出）。"""
+    """切分设置作用于可重组的引擎分段；段级-only 输出保留原始边界。"""
+
+    def test_segment_only_transcription_is_not_hard_split(self) -> None:
+        text = "The editing process. Now, don't get me wrong, I really enjoy it."
+        source = {
+            "start": 1000,
+            "end": 11500,
+            "text": text,
+            "speaker": "S01",
+        }
+        result = LocalTranscription(
+            text,
+            "",
+            [],
+            [source],
+            "moss-test",
+            "unknown",
+            "word",
+            "segment",
+        )
+
+        segments = build_local_segments(
+            result,
+            duration_ms=12_000,
+            max_len=4,
+            min_len=1,
+            max_words=2,
+            min_words=1,
+            gap_split_ms=1,
+        )
+
+        self.assertEqual(segments, [source])
+        self.assertNotIn("items", segments[0])
 
     def test_oversized_coarse_segment_resplits_within_max_len(self) -> None:
         text = "本地模型，AI校准和翻译，双语字幕，免费ASR，这些功能全都加上了。这么长一句话！"
@@ -191,6 +230,37 @@ class LocalSegmentationTuningTests(unittest.TestCase):
         self.assertEqual(segments[0]["end"], 900)
         self.assertEqual(segments[1]["start"], 900)
         self.assertEqual(segments[1]["end"], 1800)
+
+    def test_word_limit_applies_even_when_character_limit_is_not_reached(self) -> None:
+        text = "one two three"
+        word_items = [
+            {"text": "one", "start": 0, "end": 300},
+            {"text": " two", "start": 300, "end": 600},
+            {"text": " three", "start": 600, "end": 900},
+        ]
+        source = {"start": 0, "end": 900, "text": text, "items": word_items}
+        result = LocalTranscription(
+            text,
+            "en",
+            [],
+            [source],
+            "test-model",
+            "detected",
+            "word",
+            "word",
+        )
+
+        segments = build_local_segments(
+            result,
+            duration_ms=1000,
+            max_len=100,
+            min_len=1,
+            max_words=2,
+            min_words=1,
+        )
+
+        self.assertEqual([segment["text"] for segment in segments], ["one two", " three"])
+        self.assertEqual([len(segment["items"]) for segment in segments], [2, 1])
 
     def test_max_len_setting_changes_output(self) -> None:
         text = "一句特别特别长的中文台词需要被整理"
@@ -634,14 +704,19 @@ class LocalAsrFlowTests(unittest.TestCase):
                 "moss_transcribe_diarize": SimpleNamespace(parse_transcript=mock.Mock(return_value=parsed)),
                 "moss_transcribe_diarize.inference_utils": SimpleNamespace(
                     build_transcription_messages=mock.Mock(return_value=[]),
-                    generate_transcription=mock.Mock(return_value={"text": "raw"}),
+                    generate_transcription=mock.Mock(return_value={"text": "你好世界"}),
                 ),
             }):
                 with mock.patch("maw.local_asr.MossDiarizeEngine._load", return_value=engine._runtime):
                     result = engine.transcribe(Path("sample.wav"))
 
-        self.assertEqual([(item["start"], item["end"]) for item in result.items], [(500, 1250), (1500, 2000)])
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.language, "zh")
+        self.assertEqual(result.language_source, "inferred")
+        self.assertEqual(result.split_mode, "continuous")
+        self.assertEqual(result.timestamp_granularity, "segment")
         self.assertEqual([segment["speaker"] for segment in result.segments], ["S01", "S02"])
+        self.assertTrue(all("items" not in segment for segment in result.segments))
 
     def test_moss_warns_when_generation_reaches_output_limit(self) -> None:
         class FakeModel:
@@ -664,6 +739,46 @@ class LocalAsrFlowTests(unittest.TestCase):
                 engine.transcribe(Path("sample.wav"), on_event=events.append)
 
         self.assertTrue(any("达到最大 token 数" in event for event in events))
+
+    def test_moss_reports_generation_progress_when_runtime_supports_callbacks(self) -> None:
+        class FakeModel:
+            def parameters(self):
+                return iter([SimpleNamespace(device="cpu", dtype="float32")])
+
+        calls: dict[str, object] = {}
+
+        def fake_generate(
+            *_args: object,
+            input_callback=None,
+            token_callback=None,
+            **_kwargs: object,
+        ) -> dict[str, object]:
+            calls["input_callback"] = input_callback
+            calls["token_callback"] = token_callback
+            if input_callback:
+                input_callback(12)
+            if token_callback:
+                token_callback(32)
+            return {"text": "", "generated_tokens": 32}
+
+        engine = create_local_engine("moss")
+        engine._runtime = (FakeModel(), object(), {})
+        events: list[str] = []
+        with mock.patch("maw.local_asr.get_duration_sec", return_value=2.0):
+            with mock.patch.dict("sys.modules", {
+                "moss_transcribe_diarize": SimpleNamespace(parse_transcript=lambda _text: []),
+                "moss_transcribe_diarize.inference_utils": SimpleNamespace(
+                    build_transcription_messages=lambda _path: [],
+                    generate_transcription=fake_generate,
+                ),
+            }):
+                engine.transcribe(Path("sample.wav"), on_event=events.append)
+
+        self.assertIsNotNone(calls["input_callback"])
+        self.assertIsNotNone(calls["token_callback"])
+        self.assertTrue(any("音频特征已准备" in event for event in events))
+        self.assertTrue(any("已生成 32 tokens" in event for event in events))
+        self.assertTrue(any("生成完成：共 32 tokens" in event for event in events))
 
     def test_sensevoice_requests_sentence_timestamps_and_preserves_cues(self) -> None:
         class FakeRuntime:
@@ -771,6 +886,9 @@ class LocalAsrFlowTests(unittest.TestCase):
                 [],
                 [],
                 "paraformer-zh",
+                "detected",
+                "continuous",
+                "char",
             )
             segments = [{"start": 0, "end": 1000, "text": "你好", "items": []}]
 
@@ -785,7 +903,19 @@ class LocalAsrFlowTests(unittest.TestCase):
             )
 
             self.assertEqual(paths.json, root / "sample.funasr-local.mosp")
-            self.assertEqual(json.loads(paths.json.read_text(encoding="utf-8"))["model"], "paraformer-zh")
+            project = json.loads(paths.json.read_text(encoding="utf-8"))
+            self.assertEqual(project["model"], "paraformer-zh")
+            self.assertEqual(
+                {field: project[field] for field in (
+                    "language", "language_source", "split_mode", "timestamp_granularity"
+                )},
+                {
+                    "language": "zh",
+                    "language_source": "detected",
+                    "split_mode": "continuous",
+                    "timestamp_granularity": "char",
+                },
+            )
             self.assertEqual(media.read_bytes(), b"not decoded by this unit test")
 
 
@@ -799,6 +929,8 @@ class LocalCliParserTests(unittest.TestCase):
         self.assertEqual(args.engine, "funasr")
         self.assertEqual(args.length_limit, 120.0)
         self.assertEqual(args.hotword, ["MAW"])
+        self.assertEqual(args.max_words, 13)
+        self.assertEqual(args.min_words, 3)
 
     def test_parser_accepts_whisper_engine(self) -> None:
         args = build_parser().parse_args(["sample.mp4", "--engine", "whisper"])
