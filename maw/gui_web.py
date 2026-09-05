@@ -50,6 +50,7 @@ from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, instal
 from maw.local_runtime import (
     LocalRuntimeCancelled,
     LocalRuntimeError,
+    LocalRuntimeStatus,
     install_local_runtime,
     managed_runtime_status,
     resolve_model_cache_root,
@@ -90,7 +91,7 @@ from maw.postprocess_pipeline import (
 from maw.postprocess_pipeline import PostprocessPipelineError
 from maw.script_alignment import normalize_gap_remove_settings
 from maw.text_conversion import TextConversionUnavailable, normalize_text_conversion_mode
-from maw.ocr_runtime import OCR_MODEL_ID, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, recover_ocr_runtime_install, run_ocr_in_runtime
+from maw.ocr_runtime import OCR_MODEL_ID, OCR_MODEL_IDS, OCR_MODEL_LABELS, OCR_MODEL_TYPES, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, recover_ocr_runtime_install, run_ocr_in_runtime
 from maw.waveform import is_waveform_payload
 from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
@@ -634,7 +635,6 @@ class LauncherApi:
 
     def get_config(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         config = effective_config(self.paths.env_path)
-        ocr_runtime = self._ocr_runtime_status()
         visible_providers = tuple(item for item in PROVIDERS if not item.hidden)
         default_provider = visible_providers[0] if visible_providers else PROVIDERS[0]
         remembered_model = config.last_model or MODELS[0].id
@@ -648,6 +648,44 @@ class LauncherApi:
         )
         selected_api_key = api_key_for_provider(provider.id, self.paths.env_path)
         stored_env = load_env(self.paths.env_path)
+        ocr_runtime_root = effective_config_value(self.paths.env_path, "MAW_OCR_RUNTIME_ROOT")
+        # Do not inspect managed runtimes or model caches on the critical
+        # get_config request.  A large Hugging Face/ModelScope cache can make
+        # recursive status detection take seconds before the Launcher is
+        # allowed to paint its first usable frame.  The dedicated status
+        # endpoints below perform the real checks after the shell is visible.
+        local_runtime = {
+            "status": "checking",
+            "ready": False,
+            "path": "",
+            "pythonPath": "",
+            "modelCachePath": config.model_cache_root,
+            "detail": "",
+        }
+        ocr_runtime = {
+            "status": "checking",
+            "ready": False,
+            "path": ocr_runtime_root,
+            "pythonPath": "",
+            "detail": "",
+            "runtimeVersion": "",
+            "modelId": OCR_MODEL_ID,
+            "modelLabel": OCR_MODEL_LABELS.get(OCR_MODEL_ID, ""),
+            "modelInstalled": False,
+            "modelPath": "",
+        }
+        ocr_models = [
+            {
+                "id": model_id,
+                "label": OCR_MODEL_LABELS[model_id],
+                "modelType": OCR_MODEL_TYPES[model_id],
+                "status": "checking",
+                "installed": False,
+                "path": "",
+                "detail": "",
+            }
+            for model_id in OCR_MODEL_IDS
+        ]
         return {
             "providerId": provider.id,
             "modelId": selected_model.id,
@@ -665,16 +703,28 @@ class LauncherApi:
             "lastModel": config.last_model,
             "lastLanguage": config.last_language,
             "theme": config.theme,
-            "localRuntime": managed_runtime_status(config.model_cache_root).to_payload(),
-            "ocrRuntime": ocr_runtime.to_payload(),
-            "ocrModels": ocr_models_payload(ocr_runtime),
+            "localRuntime": local_runtime,
+            "ocrRuntime": ocr_runtime,
+            "ocrModels": ocr_models,
             "ocrModelId": OCR_MODEL_ID,
             "modelCacheRoot": config.model_cache_root,
-            "models": [_model_payload(item, model_cache_root=config.model_cache_root) for item in provider.models],
+            "models": [
+                _model_payload(
+                    item,
+                    model_cache_root=config.model_cache_root,
+                    include_local_status=False,
+                )
+                for item in provider.models
+            ],
             "regions": [{"id": value, "label": label} for value, label in provider.regions],
             "languages": [{"id": value, "label": label} for value, label in provider.languages],
             "providers": [
-                _provider_payload(item, self.paths.env_path, config.model_cache_root)
+                _provider_payload(
+                    item,
+                    self.paths.env_path,
+                    config.model_cache_root,
+                    include_local_status=False,
+                )
                 for item in visible_providers
             ],
             "postprocessProviders": _postprocess_provider_payloads(self.paths.env_path),
@@ -1931,17 +1981,23 @@ class LauncherApi:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         selected_id = str((payload or {}).get("modelId") or "")
         selected_path = str((payload or {}).get("modelPath") or "").strip()
-        selected_model = next((item for item in provider.models if item.id == selected_id), provider.models[0])
+        visible_models = tuple(item for item in provider.models if not item.hidden)
+        selected_model = next((item for item in visible_models if item.id == selected_id), visible_models[0])
+        runtime_by_engine: dict[str, LocalRuntimeStatus] = {}
+        for model in visible_models:
+            if model.engine not in runtime_by_engine:
+                runtime_by_engine[model.engine] = managed_runtime_status(model_cache_root, engine=model.engine)
         return {
             "ok": True,
-            "runtime": managed_runtime_status(model_cache_root, engine=selected_model.engine).to_payload(),
+            "runtime": runtime_by_engine[selected_model.engine].to_payload(),
             "models": [
                 _model_payload(
                     model,
                     model_path=selected_path if model.id == selected_id else "",
                     model_cache_root=model_cache_root,
+                    runtime_status=runtime_by_engine[model.engine],
                 )
-                for model in provider.models
+                for model in visible_models
             ],
         }
 
@@ -2595,9 +2651,10 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     log_sink = LocalLogSink()
     api = LauncherApi(paths=paths, default_server_port=server_port, log_sink=log_sink)
     install_stdio_tee(log_sink)
+    launcher_url = paths.launcher_html.resolve().as_uri()
     window = webview.create_window(
         WINDOW_TITLE,
-        url=paths.launcher_html.resolve().as_uri(),
+        url=launcher_url,
         js_api=api,
         width=900,
         height=880,
@@ -2607,10 +2664,11 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     )
     if window is not None:
         window.events.closing += lambda: api.shutdown()
+        # 在窗口首次显示时就同步标题栏颜色，避免内容尚未绘制时露出白色原生标题栏。
+        window.events.shown += lambda: apply_dark_title_bar(WINDOW_TITLE)
 
         def _on_loaded() -> None:
             api.pump.start()
-            apply_dark_title_bar(WINDOW_TITLE)
 
         window.events.loaded += _on_loaded
     icon = asset_path("assets/maw.ico")
@@ -2731,6 +2789,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
     max_len = _segmentation_option(payload, field="maxLen", label="最大字数", minimum=1)
     min_len = _segmentation_option(payload, field="minLen", label="短句合并阈值", minimum=1)
+    max_words = _segmentation_option(payload, field="maxWords", label="英文最大单词数", minimum=1)
+    min_words = _segmentation_option(payload, field="minWords", label="英文短句合并阈值（单词）", minimum=1)
     gap_split = _segmentation_option(payload, field="gapSplit", label="停顿切句阈值", minimum=0)
     strip_tail_punct = _transcribe_strip_tail_punct(env_path)
     if max_len and min_len and int(max_len) < int(min_len):
@@ -2738,6 +2798,12 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             "maxLen",
             "segmentation_invalid",
             "最大字数不能小于短句合并阈值。",
+        )
+    if max_words and min_words and int(max_words) < int(min_words):
+        raise PreflightError(
+            "maxWords",
+            "segmentation_invalid",
+            "英文最大单词数不能小于英文短句合并阈值。",
         )
     local_model_path = str(payload.get("localModelPath") or "").strip()
     device = str(payload.get("device") or "auto").strip().lower()
@@ -2834,6 +2900,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
         max_len=max_len,
         min_len=min_len,
+        max_words=max_words,
+        min_words=min_words,
         gap_split=gap_split,
         strip_tail_punct=strip_tail_punct,
         qwen_audio_context=qwen_audio_context,
@@ -3289,6 +3357,8 @@ def _provider_payload(
     provider: ProviderConfig,
     env_path: Path,
     model_cache_root: str = "",
+    *,
+    include_local_status: bool = True,
 ) -> dict[str, object]:
     api_key = api_key_for_provider(provider.id, env_path)
     return {
@@ -3305,7 +3375,11 @@ def _provider_payload(
         "note": provider.note,
         "commonLanguages": list(provider.common_languages),
         "models": [
-            _model_payload(item, model_cache_root=model_cache_root)
+            _model_payload(
+                item,
+                model_cache_root=model_cache_root,
+                include_local_status=include_local_status,
+            )
             for item in provider.models
             if not item.hidden
         ],
@@ -3319,6 +3393,8 @@ def _model_payload(
     *,
     model_path: str = "",
     model_cache_root: str = "",
+    include_local_status: bool = True,
+    runtime_status: LocalRuntimeStatus | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "id": model.id,
@@ -3339,9 +3415,25 @@ def _model_payload(
         ],
     }
     if model.kind == "local":
-        payload["localStatus"] = local_model_payload(
-            model,
-            model_path,
-            model_cache_root=model_cache_root,
-        )
+        if include_local_status:
+            payload["localStatus"] = local_model_payload(
+                model,
+                model_path,
+                model_cache_root=model_cache_root,
+                runtime_status=runtime_status,
+            )
+        else:
+            payload["localStatus"] = {
+                "status": "checking",
+                "runtimeAvailable": False,
+                "installed": False,
+                "path": "",
+                "detail": "",
+                "runtimeSource": "checking",
+                "runtimePython": "",
+                "engine": model.engine,
+                "modelRef": model.model_ref,
+                "requiredModelRefs": list(model.required_model_refs),
+                "canPrepare": False,
+            }
     return payload

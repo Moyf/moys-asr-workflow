@@ -32,6 +32,8 @@ from generate_subtitle_qwen_api import (
     generate_srt,
     get_duration_sec,
     parse_duration,
+    WESTERN_MAX_WORDS,
+    WESTERN_MIN_WORDS,
 )
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
@@ -44,6 +46,7 @@ from maw.bcut import (
 )
 from maw.project import repair_segment_durations, validate_project
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.language import resolve_language, split_mode_for_text, timestamp_granularity_for_items
 
 
 def main():
@@ -61,6 +64,8 @@ def main():
         "--min-len", type=int, default=5,
         help="句号间最短字数，不足则合并（默认 5；仅 CJK 内容生效）",
     )
+    parser.add_argument("--max-words", type=int, default=WESTERN_MAX_WORDS, help="英文单条字幕最大单词数")
+    parser.add_argument("--min-words", type=int, default=WESTERN_MIN_WORDS, help="英文短句合并阈值（单词数）")
     parser.add_argument(
         "--keep-punct", action="store_true",
         help="保留每条字幕末尾的逗号和句号（默认去除）",
@@ -108,6 +113,10 @@ def main():
     args = parser.parse_args()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
+    if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
+        parser.error("字幕切分参数无效")
+    if args.max_len < args.min_len or args.max_words < args.min_words:
+        parser.error("最大值不能小于对应的短句合并阈值")
 
     input_path = Path(args.input)
     if not input_path.exists():
@@ -199,13 +208,17 @@ def main():
             print(f"first 5 items: {items[:5]}")
             print("--- end debug ---\n")
 
-        if not items:
+        if result.get("timestamp_granularity") == "segment" and result.get("segments"):
+            print("[解析] 云端返回了混合或句级时间码，保留服务端字幕段边界...")
+            segments = [dict(segment) for segment in result["segments"]]
+        elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")
             segments = [{"start": 0, "end": int(duration * 1000), "text": result["text"]}]
         else:
             segments = build_segments(
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
+                max_words=args.max_words, min_words=args.min_words,
             )
 
         # 兜底：缺时间戳/倒挂会形成 0 长 item，
@@ -238,6 +251,7 @@ def main():
                     seg_items[k]["text"] = seg_items[k]["text"].rstrip(args.strip_tail_punct)
                     if seg_items[k]["text"]:
                         break
+                    seg_items.pop(k)
                     k -= 1
 
     srt_content = generate_srt(segments)
@@ -275,16 +289,29 @@ def main():
 
     if args.json_out:
         json_path = output_path.with_suffix(".mosp")
+        language, language_source = resolve_language(
+            result.get("language"),
+            None,
+            str(result.get("text") or ""),
+        )
+        split_mode = split_mode_for_text(str(result.get("text") or ""), language)
+        # 必剪接口不返回语种；result.language 是解析器根据完整文本脚本推断的，
+        # 因此保留 inferred，而不是把它误标为 detected。
         json_data = {
             "media": str(input_path),
-            "language": result.get("language", ""),
+            "language": language,
+            "language_source": result.get("language_source") or language_source,
+            "split_mode": split_mode,
+            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
+                result.get("items") or [], split_mode, has_segments=bool(segments)
+            ),
             "model": "bcut-asr",
             "segments": [
                 {
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": seg["text"],
-                    "items": seg.get("items", []),
+                    **({"items": seg["items"]} if "items" in seg else {}),
                 }
                 for seg in segments
             ],

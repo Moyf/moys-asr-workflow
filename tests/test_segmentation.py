@@ -63,6 +63,21 @@ class WesternSplitTests(unittest.TestCase):
         self.assertEqual(len(segments[0]["items"]), 13)
         self.assertEqual(len(segments[1]["items"]), 2)
 
+    def test_auto_word_mode_uses_configured_word_limit(self) -> None:
+        items = _words([(f" w{i}", i * 100, i * 100 + 90) for i in range(6)])
+
+        segments = split_segments_auto(
+            items,
+            max_len=100,
+            min_len=1,
+            max_words=4,
+            min_words=1,
+            gap_split_ms=99999,
+            split_mode="word",
+        )
+
+        self.assertEqual([len(segment["items"]) for segment in segments], [4, 2])
+
     def test_western_sentence_end_tolerates_trailing_quote(self) -> None:
         items = _words([
             (" He", 0, 100), (" said", 100, 200), (' "stop."', 200, 300),

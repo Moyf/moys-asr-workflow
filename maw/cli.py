@@ -99,6 +99,8 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--base-url", help="OpenAI 兼容 ASR Base URL（仅适用于 --provider openai；默认读取 .env）")
     parser.add_argument("--max-len", type=int, help="每条字幕最大字数")
     parser.add_argument("--min-len", type=int, help="句号间最短字数")
+    parser.add_argument("--max-words", type=int, help="英文每条字幕最大单词数")
+    parser.add_argument("--min-words", type=int, help="英文短句合并阈值（单词数）")
     parser.add_argument("--language", help="语言提示；Soniox 可写逗号分隔的多个语言")
     parser.add_argument("--keep-punct", action="store_true", help="保留字幕末尾的逗号和句号")
     parser.add_argument("--strip-tail-punct", help="句尾剥除的标点集合；传空串禁用剥除")
@@ -332,6 +334,10 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
         result.extend(["--max-len", str(args.max_len)])
     if args.min_len is not None:
         result.extend(["--min-len", str(args.min_len)])
+    if args.max_words is not None:
+        result.extend(["--max-words", str(args.max_words)])
+    if args.min_words is not None:
+        result.extend(["--min-words", str(args.min_words)])
     for flag, value in (
         ("--language", args.language),
         ("--base-url", args.base_url if args.provider == "openai" else None),
@@ -409,6 +415,8 @@ def _run_server(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
             args.model,
             args.max_len is not None,
             args.min_len is not None,
+            args.max_words is not None,
+            args.min_words is not None,
             args.language,
             args.keep_punct,
             args.gap_split is not None,
@@ -504,6 +512,8 @@ def _run_stop_server(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             args.model,
             args.max_len is not None,
             args.min_len is not None,
+            args.max_words is not None,
+            args.min_words is not None,
             args.language,
             args.keep_punct,
             args.gap_split is not None,

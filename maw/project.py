@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TypeGuard, final
 
 from maw.project_preview import JsonDict, JsonValue, clamped_preview, validate_preview
+from maw.language import LANGUAGE_SOURCES, SPLIT_MODES, TIMESTAMP_GRANULARITIES
 
 # Python 3.11 has no typing.override; basedpyright's override marker is therefore
 # disabled for this compatibility module.
@@ -239,6 +240,7 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
         if _valid_segment_time(segment) and _is_int_ms(end):
             previous_end = end
     _validate_head_refs(segments, errors)
+    _validate_transcription_metadata(normalized, errors)
     _normalize_multi_subtitle(normalized, segments, errors)
     errors.extend(ProjectValidationError(path, message) for path, message in validate_preview(normalized))
     return normalized
@@ -295,6 +297,25 @@ def _validate_media_metadata(project: JsonDict, errors: list[ProjectValidationEr
                     "must be a non-empty string",
                 )
             )
+
+
+def _validate_transcription_metadata(
+    project: JsonDict,
+    errors: list[ProjectValidationError],
+) -> None:
+    """Validate optional ASR metadata without changing legacy project values."""
+    for field in ("language", "language_source", "split_mode", "timestamp_granularity"):
+        if field in project and not isinstance(project[field], str):
+            errors.append(ProjectValidationError(f"$.{field}", "must be a string"))
+    language_source = project.get("language_source")
+    if isinstance(language_source, str) and language_source not in LANGUAGE_SOURCES:
+        errors.append(ProjectValidationError("$.language_source", "must be detected, hint, inferred, or unknown"))
+    split_mode = project.get("split_mode")
+    if isinstance(split_mode, str) and split_mode not in SPLIT_MODES:
+        errors.append(ProjectValidationError("$.split_mode", "must be continuous or word"))
+    timestamp_granularity = project.get("timestamp_granularity")
+    if isinstance(timestamp_granularity, str) and timestamp_granularity not in TIMESTAMP_GRANULARITIES:
+        errors.append(ProjectValidationError("$.timestamp_granularity", "must be char, word, segment, or unknown"))
 
 
 def _is_stable_id(value: JsonValue) -> bool:

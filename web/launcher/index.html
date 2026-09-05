@@ -14,10 +14,27 @@
       if (!resolvedDark) document.documentElement.dataset.theme = "light";
     } catch (error) { /* localStorage 不可用时保持默认暗色 */ }
   </script>
+  <style>
+    /* 在 launcher.css 到达前也保持与正式主题一致，避免 WebView2 默认白底闪一下。 */
+    html, body {
+      min-height: 100%;
+      margin: 0;
+      background: #16181d;
+      color: #e6e9ef;
+    }
+    html[data-theme="light"], html[data-theme="light"] body {
+      background: #f5f6f8;
+      color: #1f2530;
+    }
+    body:not(.launcher-ready) .shell {
+      pointer-events: none;
+      user-select: none;
+    }
+  </style>
   <link rel="stylesheet" href="launcher.css">
 </head>
 <body>
-  <main class="shell">
+  <main class="shell" inert aria-busy="true">
     <div class="shell-scroll">
     <header class="hero">
       <div class="hero-brand">
@@ -210,7 +227,7 @@
             </div>
             <div id="segmentationField" class="adv-group segmentation-field">
               <h3 data-i18n="segmentation">字幕切句</h3>
-              <div class="segmentation-row">
+              <div class="segmentation-row segmentation-character-row">
                 <div class="segmentation-control">
                   <label for="maxLen" data-i18n="max_len">最大字数</label>
                   <input id="maxLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="max_len_placeholder" placeholder="18" autocomplete="off">
@@ -227,7 +244,22 @@
                   <p id="gapSplitError" class="field-error"></p>
                 </div>
               </div>
-              <p class="hint" data-i18n="segmentation_hint">留空使用默认值（最大字数：18，短句合并阈值：5，停顿切句：800ms）；最大/最小字数主要作用于中文，停顿阈值单位为毫秒。</p>
+              <p class="hint" data-i18n="segmentation_hint">字符型设置和停顿设置留空使用默认值（最大字数：18、短句合并阈值：5、停顿切句：800ms）；系统会按语言/文本自动选择字符型或单词型规则。</p>
+              <div class="segmentation-word-options">
+                <div class="segmentation-row segmentation-word-row">
+                  <div class="segmentation-control">
+                    <label for="maxWords" data-i18n="max_words">英文最大单词数</label>
+                    <input id="maxWords" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="max_words_placeholder" placeholder="13" autocomplete="off">
+                    <p id="maxWordsError" class="field-error"></p>
+                  </div>
+                  <div class="segmentation-control">
+                    <label for="minWords" data-i18n="min_words">英文短句合并阈值（单词）</label>
+                    <input id="minWords" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="min_words_placeholder" placeholder="3" autocomplete="off">
+                    <p id="minWordsError" class="field-error"></p>
+                  </div>
+                </div>
+                <p class="hint" data-i18n="english_segmentation_hint">在生成英文字幕时，会启用该配置。</p>
+              </div>
             </div>
             <div id="qwenAudioOptions" class="adv-group qwen-audio-options hidden">
               <h3 data-i18n="qwen_audio_options_title">Qwen 上下文与热词</h3>

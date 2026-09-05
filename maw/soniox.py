@@ -40,6 +40,13 @@ from generate_subtitle_qwen_api import (
     is_cjk_char,
     split_segments_auto,
 )
+from maw.language import (
+    normalize_language_code,
+    normalize_timestamp_range,
+    split_mode_for_text,
+    timestamp_items_cover_text,
+    timestamp_granularity_for_items,
+)
 # Re-exported for the Soniox CLI and existing callers of ``maw.soniox``.
 from maw.colors import COLOR_PALETTE as SPEAKER_COLOR_PALETTE  # 旧名兼容
 from maw.speaker import (
@@ -503,8 +510,15 @@ def merge_word_fragments(tokens: list[dict]) -> list[dict]:
     """
     merged: list[dict] = []
     for token in tokens:
-        text = token.get("text", "")
-        if not text:
+        if not isinstance(token, Mapping):
+            continue
+        text = str(token.get("text") or "")
+        if not text.strip():
+            continue
+        timestamp = normalize_timestamp_range(
+            token.get("start_ms"), token.get("end_ms")
+        )
+        if timestamp is None:
             continue
         stripped = text.lstrip()
         continuation = (
@@ -516,40 +530,50 @@ def merge_word_fragments(tokens: list[dict]) -> list[dict]:
         if continuation:
             prev = merged[-1]
             prev["text"] += text
-            prev["end_ms"] = token.get("end_ms", prev.get("end_ms"))
+            prev["end_ms"] = timestamp[1]
         else:
-            merged.append(dict(token))
+            normalized = dict(token)
+            normalized["start_ms"], normalized["end_ms"] = timestamp
+            normalized["text"] = text
+            merged.append(normalized)
     return merged
 
 
 def tokens_to_items(tokens: list[dict]) -> list[dict]:
     """Soniox tokens → MAW items（整数毫秒）。一个 token 对应一个 item。
 
-    官方保证每个识别 token 都有 start_ms/end_ms；防御性兜底：
-    缺时间戳或时间倒挂时作为零宽 item 放在前一个 item 的末尾。
+    官方保证每个识别 token 都有 start_ms/end_ms；防御性处理：缺时间戳、
+    负时间或时间倒挂的 token 直接跳过，不把未知范围伪造成零宽 item。
     """
     items: list[dict] = []
-    previous_end = 0
     for token in tokens:
-        text = token.get("text", "")
-        if not text:
+        if not isinstance(token, Mapping):
             continue
-        start, end = token.get("start_ms"), token.get("end_ms")
-        if not (type(start) is int and type(end) is int) or end < start:
-            start = end = previous_end
-        item: dict = {"text": text, "start": start, "end": end}
+        text = str(token.get("text") or "")
+        if not text.strip():
+            continue
+        timestamp = normalize_timestamp_range(
+            token.get("start_ms"), token.get("end_ms")
+        )
+        if timestamp is None:
+            continue
+        item: dict = {
+            "text": text,
+            "start": timestamp[0],
+            "end": timestamp[1],
+        }
         speaker = token.get("speaker")
         if speaker is not None and str(speaker).strip():
             item["speaker"] = str(speaker)
         items.append(item)
-        previous_end = max(previous_end, end)
     return items
 
 
 def build_segments(items: list[dict], *, max_len: int, min_len: int,
                    gap_split_ms: int,
                    max_words: int = WESTERN_MAX_WORDS,
-                   min_words: int = WESTERN_MIN_WORDS) -> list[dict]:
+                   min_words: int = WESTERN_MIN_WORDS,
+                   split_mode: str | None = None) -> list[dict]:
     """speaker run 内切句（split_segments_auto 按静音组自动选择 CJK/英文逻辑）。
 
     每个 segment 的 speaker 来自其 run（run 内统一，满足
@@ -560,7 +584,7 @@ def build_segments(items: list[dict], *, max_len: int, min_len: int,
         run_speaker = next((it["speaker"] for it in run if it.get("speaker")), None)
         for seg in split_segments_auto(
             run, max_len=max_len, min_len=min_len, gap_split_ms=gap_split_ms,
-            max_words=max_words, min_words=min_words,
+            max_words=max_words, min_words=min_words, split_mode=split_mode,
         ):
             if run_speaker is not None:
                 seg["speaker"] = run_speaker
@@ -572,7 +596,9 @@ def majority_language(tokens: list[dict]) -> str:
     """按 token 数量取多数语言，作为工程 language；无语言标签时返回空。"""
     counts: dict[str, int] = {}
     for token in tokens:
-        lang = token.get("language")
+        if not isinstance(token, Mapping):
+            continue
+        lang = normalize_language_code(token.get("language"))
         if lang:
             counts[lang] = counts.get(lang, 0) + 1
     return max(counts, key=lambda k: counts[k]) if counts else ""
@@ -642,13 +668,75 @@ def transcribe(audio_path: str, config: dict, *,
         raise
     delete_transcription(base_url, api_key, transcription_id, on_status=on_status)
 
-    tokens = transcript.get("tokens", [])
+    raw_tokens = transcript.get("tokens", [])
+    tokens = raw_tokens if isinstance(raw_tokens, list) else []
     on_status(f"[soniox] 转写结果下载完成，耗时 {elapsed:.1f}s | tokens={len(tokens)}")
+    text = str(transcript.get("text") or "")
+    if not text:
+        # Some transcript responses omit the redundant top-level text. Keep
+        # token text even when one token has an unusable time range; otherwise
+        # a malformed timestamp would make valid recognition text disappear.
+        text = "".join(
+            str(token.get("text") or "")
+            for token in tokens
+            if isinstance(token, Mapping) and str(token.get("text") or "").strip()
+        ).strip()
+    valid_ranges: list[tuple[int, int]] = []
+    has_invalid_token = False
+    for token in tokens:
+        if not isinstance(token, Mapping):
+            has_invalid_token = True
+            continue
+        token_text = str(token.get("text") or "")
+        if not token_text.strip():
+            continue
+        timestamp = normalize_timestamp_range(
+            token.get("start_ms"), token.get("end_ms")
+        )
+        if timestamp is None:
+            has_invalid_token = True
+        else:
+            valid_ranges.append(timestamp)
+
+    segments: list[dict[str, object]] = []
+    items: list[dict] = []
+    if has_invalid_token:
+        # Soniox does not return sentence ranges. Once one token is malformed,
+        # keep the complete transcript as one conservative cue over the valid
+        # token envelope instead of presenting the remaining tokens as a
+        # complete word-level transcript.
+        if text and valid_ranges:
+            segments.append({
+                "start": min(start for start, _end in valid_ranges),
+                "end": max(end for _start, end in valid_ranges),
+                "text": text,
+            })
+    else:
+        items = tokens_to_items(merge_word_fragments(tokens))
+        if items and not timestamp_items_cover_text(text, items):
+            # Soniox has no sentence ranges to fall back to. Use the valid
+            # token envelope as one coarse cue instead of losing unaligned
+            # transcript text when the top-level text is longer than tokens.
+            items = []
+            has_invalid_token = True
+            if text and valid_ranges:
+                segments.append({
+                    "start": min(start for start, _end in valid_ranges),
+                    "end": max(end for _start, end in valid_ranges),
+                    "text": text,
+                })
+    language = majority_language(tokens)
+    split_mode = split_mode_for_text(text, language)
     result = {
-        "text": transcript.get("text", ""),
-        "language": majority_language(tokens),
-        "items": tokens_to_items(merge_word_fragments(tokens)),
+        "text": text,
+        "language": language,
+        "items": items,
+        "segments": segments,
     }
+    result["timestamp_granularity"] = (
+        "segment" if segments or has_invalid_token
+        else timestamp_granularity_for_items(items, split_mode, explicit_items=True)
+    )
     if capture_raw:
         result["_raw_response"] = transcript
     return result

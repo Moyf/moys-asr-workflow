@@ -36,6 +36,16 @@ from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tool, resolve_ffmpeg_tools
+from maw.language import (
+    DEFAULT_MAX_WORDS,
+    DEFAULT_MIN_WORDS,
+    normalize_language_code,
+    normalize_timestamp_range,
+    resolve_language,
+    split_mode_for_text,
+    timestamp_items_cover_text,
+    timestamp_granularity_for_items,
+)
 from maw.project_io import write_mosp
 
 from maw.media_cache import embed_media_caches, merge_media_caches
@@ -145,7 +155,7 @@ def _normalize_language(lang: str | None) -> str | None:
     key = lang.strip().lower()
     if key in {"auto", "automatic", "detect", "自动", "自动识别"}:
         return None
-    return LANGUAGE_MAP.get(key, key)
+    return LANGUAGE_MAP.get(key, normalize_language_code(lang) or key)
 
 
 def _validate_hotword_weight(value: str | int) -> int:
@@ -694,9 +704,11 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
 
 # ===== 双轨切句：CJK 检测 + 空格语言（英文等）切句 =====
 
-# 默认按词数计量：英文每条字幕 3–13 词（Netflix 风格上限约 14 词）
-WESTERN_MAX_WORDS = 13
-WESTERN_MIN_WORDS = 3
+# 默认按词数计量：英文每条字幕 3–13 词（Netflix 风格上限约 14 词）。
+# Keep the old provider-module names as compatibility aliases while the
+# actual defaults live in the shared language contract.
+WESTERN_MAX_WORDS = DEFAULT_MAX_WORDS
+WESTERN_MIN_WORDS = DEFAULT_MIN_WORDS
 
 # 句末强标点（完整句子边界）与弱标点（超长时的断点），兼容 CJK 全角
 WESTERN_STRONG_END = ".!?。！？；"
@@ -796,15 +808,23 @@ def split_segments_auto(items: list[dict], *, max_len: int, min_len: int,
                         gap_split_ms: int,
                         max_words: int = WESTERN_MAX_WORDS,
                         min_words: int = WESTERN_MIN_WORDS,
-                        natural_cjk: bool = False) -> list[dict]:
+                        natural_cjk: bool = False,
+                        split_mode: str | None = None) -> list[dict]:
     """按静音组自动选择切句逻辑（双轨）。
 
-    先按静音间隔预切；每个静音组内 CJK 主导则走中文逻辑，
-    否则走空格语言逻辑——中英混排的播客也能逐段正确归类。
+    先按静音间隔预切；未指定 ``split_mode`` 时，每个静音组内 CJK
+    主导则走中文逻辑，否则走空格语言逻辑——中英混排的播客也能逐段
+    正确归类。已知单一语言时，调用方可传 ``continuous`` 或 ``word``
+    固定计量方式。
     """
     segments: list[dict] = []
     for group in split_by_silence(items, gap_split_ms):
-        if is_cjk_dominant(group):
+        use_cjk = (
+            split_mode == "continuous"
+            if split_mode in {"continuous", "word"}
+            else is_cjk_dominant(group)
+        )
+        if use_cjk:
             natural_min_len = (
                 max(QWEN_AUDIO_NATURAL_MIN_LEN, min_len)
                 if natural_cjk else min_len
@@ -833,8 +853,11 @@ def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
 
     Qwen filetrans occasionally returns a word or sentence whose begin_time and
     end_time are identical. If punctuation/silence splitting isolates that item,
-    it becomes an invalid zero-duration segment. Keep its text/items, but attach
-    it to the next valid subtitle (or the previous one when it is trailing).
+    it becomes an invalid zero-duration segment. Keep its text, but attach it to
+    the next valid subtitle (or the previous one when it is trailing). If a
+    merged part contains an invalid item, omit the whole item list: the text is
+    still available as a sentence-level cue, but a partial item list would claim
+    precision for text whose boundary is unknown.
     """
     repaired: list[dict] = []
     pending: list[dict] = []
@@ -846,18 +869,84 @@ def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
         end = max(bounds)
         if end <= start:
             end = start + 1
-        return {
+        merged = {
             "start": start,
             "end": end,
-            "text": "".join(part.get("text", "") for part in parts),
-            "items": [
-                dict(item)
-                for part in parts
-                for item in part.get("items", [])
-            ],
+            "text": "".join(str(part.get("text", "")) for part in parts),
         }
+        item_parts: list[list[dict]] = []
+        items_complete = True
+        for part in parts:
+            raw_items = part.get("items")
+            if not isinstance(raw_items, list):
+                items_complete = False
+                break
+            normalized_items: list[dict] = []
+            for item in raw_items:
+                if not isinstance(item, dict) or not str(item.get("text") or ""):
+                    items_complete = False
+                    break
+                timestamp = normalize_timestamp_range(item.get("start"), item.get("end"))
+                if timestamp is None:
+                    items_complete = False
+                    break
+                normalized = dict(item)
+                normalized["start"], normalized["end"] = timestamp
+                normalized_items.append(normalized)
+            if not items_complete or not normalized_items:
+                items_complete = False
+                break
+            item_parts.append(normalized_items)
+        if items_complete and item_parts:
+            merged["items"] = [
+                item
+                for part_items in item_parts
+                for item in part_items
+            ]
 
-    for segment in segments:
+        # Keep a segment-level speaker only when the merged subtitle still
+        # represents one speaker.  This also covers item-level speaker data,
+        # which is the only speaker source for some provider fallbacks.
+        speakers = {
+            str(part["speaker"]).strip()
+            for part in parts
+            if part.get("speaker") is not None and str(part["speaker"]).strip()
+        }
+        speakers.update(
+            str(item["speaker"]).strip()
+            for part in parts
+            for item in part.get("items", [])
+            if isinstance(item, dict)
+            if item.get("speaker") is not None and str(item["speaker"]).strip()
+        )
+        if len(speakers) == 1:
+            merged["speaker"] = next(iter(speakers))
+        return merged
+
+    for raw_segment in segments:
+        segment = dict(raw_segment)
+        # A valid enclosing segment can safely keep its items only when every
+        # item has a strictly positive, non-negative range. A single malformed
+        # token downgrades the complete segment to sentence precision.
+        if "items" in segment:
+            raw_items = segment.get("items")
+            normalized_items: list[dict] = []
+            if isinstance(raw_items, list):
+                for item in raw_items:
+                    if not isinstance(item, dict) or not str(item.get("text") or ""):
+                        normalized_items = []
+                        break
+                    timestamp = normalize_timestamp_range(item.get("start"), item.get("end"))
+                    if timestamp is None:
+                        normalized_items = []
+                        break
+                    normalized = dict(item)
+                    normalized["start"], normalized["end"] = timestamp
+                    normalized_items.append(normalized)
+            if normalized_items:
+                segment["items"] = normalized_items
+            else:
+                segment.pop("items", None)
         if segment["end"] <= segment["start"]:
             pending.append(segment)
             continue
@@ -1155,40 +1244,141 @@ def parse_transcription_result(result: dict) -> dict:
     """
     transcripts = result.get("transcripts", [])
     if not transcripts:
-        return {"text": "", "language": "", "items": []}
+        return {
+            "text": "",
+            "language": "",
+            "items": [],
+            "timestamp_granularity": "unknown",
+        }
 
     # 只取第一个音轨（channel_id=0）
     t = transcripts[0]
     all_items: list[dict] = []
-    detected_language = ""
+    segments: list[dict] = []
+    sentence_texts: list[str] = []
+    detected_language = normalize_language_code(result.get("language") or result.get("lang"))
+    has_word_timestamps = False
+    has_fallback_segment = False
+    has_unranged_text = False
 
-    for sent in t.get("sentences", []):
+    raw_sentences = t.get("sentences", [])
+    raw_sentences = raw_sentences if isinstance(raw_sentences, list) else []
+    for sent in raw_sentences:
+        if not isinstance(sent, dict):
+            continue
         if not detected_language and sent.get("language"):
-            detected_language = sent["language"]
+            detected_language = normalize_language_code(sent["language"])
 
         words = sent.get("words") or []
-        if not words:
-            # 未启用字级时间戳时的兜底：用句子级
-            all_items.append({
-                "text": sent.get("text", ""),
-                "start": sent.get("begin_time", 0),
-                "end": sent.get("end_time", 0),
+        words = words if isinstance(words, list) else []
+        segment_items: list[dict] = []
+        raw_word_texts: list[str] = []
+        invalid_word_timestamp = False
+        for word in words:
+            if not isinstance(word, dict):
+                invalid_word_timestamp = True
+                continue
+            word_text = str(word.get("text") or "")
+            punctuation = str(word.get("punctuation") or "")
+            item_text = word_text + punctuation
+            if not item_text:
+                continue
+            raw_word_texts.append(item_text)
+            timestamp = normalize_timestamp_range(
+                word.get("begin_time"), word.get("end_time")
+            )
+            if timestamp is None:
+                invalid_word_timestamp = True
+                continue
+            segment_items.append({
+                "text": item_text,
+                "start": timestamp[0],
+                "end": timestamp[1],
             })
+
+        valid_item_range = (
+            min(item["start"] for item in segment_items),
+            max(item["end"] for item in segment_items),
+        ) if segment_items else None
+
+        # A partial word list is not safe to flatten: the missing token may be
+        # in the middle of the sentence. Keep the complete sentence text and
+        # use only the sentence range when it is valid.
+        segment_text = str(sent.get("text") or "".join(raw_word_texts))
+        if (
+            segment_items
+            and not invalid_word_timestamp
+            and not timestamp_items_cover_text(segment_text, segment_items)
+        ):
+            invalid_word_timestamp = True
+        if invalid_word_timestamp:
+            segment_items = []
+            has_fallback_segment = True
+        elif segment_items:
+            has_word_timestamps = True
+            all_items.extend(segment_items)
+        else:
+            has_fallback_segment = True
+
+        if segment_text.strip():
+            sentence_texts.append(segment_text)
+
+        sentence_range = normalize_timestamp_range(
+            sent.get("begin_time"), sent.get("end_time")
+        )
+        if sentence_range is None and valid_item_range is not None:
+            # Even when one word is malformed, the valid word envelope is a
+            # useful conservative sentence range.  Never expose those words
+            # as precise items in that case; the sentence text remains intact.
+            sentence_range = valid_item_range
+        elif sentence_range is not None and valid_item_range is not None:
+            # Some gateways report a rounded sentence range that is narrower
+            # than one of its word ranges.  The enclosing range must contain
+            # every item before callers use it as a coarse fallback.
+            sentence_range = (
+                min(sentence_range[0], valid_item_range[0]),
+                max(sentence_range[1], valid_item_range[1]),
+            )
+        if sentence_range is None or not segment_text.strip():
+            if segment_text.strip():
+                has_unranged_text = True
             continue
+        segment = {
+            "start": sentence_range[0],
+            "end": sentence_range[1],
+            "text": segment_text.strip(),
+        }
+        if segment_items and not invalid_word_timestamp:
+            segment["items"] = [dict(item) for item in segment_items]
+        segments.append(segment)
 
-        for w in words:
-            text = w.get("text", "")
-            punct = w.get("punctuation", "")
-            all_items.append({
-                "text": text + punct,
-                "start": w.get("begin_time", 0),
-                "end": w.get("end_time", 0),
-            })
-
+    text = str(t.get("text") or "")
+    if not text:
+        # Some compatible filetrans responses omit the transcript-level text
+        # while keeping sentence text.  Do not reject an otherwise usable
+        # timestamped response just because this redundant field is absent.
+        text = "".join(sentence_texts)
+    if (
+        text
+        and sentence_texts
+        and _re.sub(r"\s+", "", text) != _re.sub(r"\s+", "", "".join(sentence_texts))
+    ):
+        # Do not let a partial sentence array silently discard text present in
+        # the transcript-level field.  The caller will use a whole-media cue.
+        has_unranged_text = True
+    if has_unranged_text:
+        all_items = []
+        segments = []
     return {
-        "text": t.get("text", ""),
+        "text": text,
         "language": detected_language,
         "items": all_items,
+        "segments": segments if has_fallback_segment else [],
+        "timestamp_granularity": (
+            "word" if has_word_timestamps and not has_fallback_segment and not has_unranged_text
+            else "segment" if segments
+            else "unknown"
+        ),
     }
 
 
@@ -1196,65 +1386,137 @@ def parse_funasr_transcription_result(result: dict) -> dict:
     """把 Fun-ASR/Qwen-Audio 的句级结果映射为 MAW items 和句子组。"""
     transcripts = result.get("transcripts", [])
     if not transcripts:
-        return {"text": "", "language": "", "items": [], "sentences": []}
+        return {
+            "text": "",
+            "language": "",
+            "items": [],
+            "sentences": [],
+            "timestamp_granularity": "unknown",
+        }
 
     transcript = transcripts[0]
     all_items: list[dict] = []
     parsed_sentences: list[dict] = []
-    detected_language = ""
-    for sentence in transcript.get("sentences", []):
+    sentence_texts: list[str] = []
+    detected_language = normalize_language_code(result.get("language") or result.get("lang"))
+    has_word_timestamps = False
+    has_fallback_sentence = False
+    has_unranged_text = False
+    raw_sentences = transcript.get("sentences", [])
+    raw_sentences = raw_sentences if isinstance(raw_sentences, list) else []
+    for sentence in raw_sentences:
+        if not isinstance(sentence, dict):
+            continue
         if not detected_language and sentence.get("language"):
-            detected_language = str(sentence["language"])
+            detected_language = normalize_language_code(sentence["language"])
         speaker_id = sentence.get("speaker_id")
         speaker = str(speaker_id) if speaker_id is not None else None
         words = sentence.get("words") or []
-        sentence_items: list[dict] = []
-        if not words:
-            item = {
-                "text": sentence.get("text", ""),
-                "start": sentence.get("begin_time", 0),
-                "end": sentence.get("end_time", 0),
+        words = words if isinstance(words, list) else []
+        raw_items: list[dict] = []
+        raw_word_texts: list[str] = []
+        invalid_word_timestamp = False
+        for word in words:
+            if not isinstance(word, dict):
+                invalid_word_timestamp = True
+                continue
+            item_text = str(word.get("text") or "") + str(word.get("punctuation") or "")
+            if not item_text:
+                continue
+            raw_word_texts.append(item_text)
+            timestamp = normalize_timestamp_range(
+                word.get("begin_time"), word.get("end_time")
+            )
+            if timestamp is None:
+                invalid_word_timestamp = True
+                continue
+            item: dict[str, object] = {
+                "text": item_text,
+                "start": timestamp[0],
+                "end": timestamp[1],
             }
             if speaker is not None:
                 item["speaker"] = speaker
-            sentence_items.append(item)
-        else:
-            for word in words:
-                item = {
-                    "text": word.get("text", "") + word.get("punctuation", ""),
-                    "start": word.get("begin_time", 0),
-                    "end": word.get("end_time", 0),
-                }
-                if speaker is not None:
-                    item["speaker"] = speaker
-                sentence_items.append(item)
+            raw_items.append(item)
 
-        all_items.extend(sentence_items)
-        fallback_start = sentence_items[0]["start"] if sentence_items else 0
-        fallback_end = sentence_items[-1]["end"] if sentence_items else fallback_start
-        sentence_start = sentence.get("begin_time", fallback_start)
-        sentence_end = sentence.get("end_time", fallback_end)
-        if not isinstance(sentence_start, (int, float)):
-            sentence_start = fallback_start
-        if not isinstance(sentence_end, (int, float)):
-            sentence_end = fallback_end
-        parsed_sentence = {
-            "text": str(sentence.get("text") or "".join(
-                item["text"] for item in sentence_items
-            )),
-            "start": int(sentence_start),
-            "end": int(sentence_end),
-            "items": [dict(item) for item in sentence_items],
+        sentence_text = str(sentence.get("text") or "".join(raw_word_texts))
+
+        # Qwen-Audio commonly returns one phrase in ``words``. Treat a single
+        # phrase as the sentence span it is, not as a word sequence. A partial
+        # list is also sentence-level because its missing boundary is unknown.
+        sentence_items = (
+            raw_items
+            if raw_items and len(raw_items) > 1 and not invalid_word_timestamp
+            else []
+        )
+        if sentence_items and not timestamp_items_cover_text(sentence_text, sentence_items):
+            sentence_items = []
+            invalid_word_timestamp = True
+        if sentence_items:
+            has_word_timestamps = True
+            all_items.extend(sentence_items)
+        else:
+            has_fallback_sentence = True
+
+        if sentence_text.strip():
+            sentence_texts.append(sentence_text)
+
+        valid_item_range = (
+            min(item["start"] for item in raw_items),
+            max(item["end"] for item in raw_items),
+        ) if raw_items else None
+        sentence_range = normalize_timestamp_range(
+            sentence.get("begin_time"), sentence.get("end_time")
+        )
+        if sentence_range is None and valid_item_range is not None:
+            # A malformed word list still has usable outer bounds in some
+            # responses.  Keep the sentence as coarse, never partial words.
+            sentence_range = valid_item_range
+        elif sentence_range is not None and valid_item_range is not None:
+            # Keep the sentence envelope valid even when the provider's outer
+            # range is rounded inward relative to its word timestamps.
+            sentence_range = (
+                min(sentence_range[0], valid_item_range[0]),
+                max(sentence_range[1], valid_item_range[1]),
+            )
+        if sentence_range is None or not sentence_text.strip():
+            if sentence_text.strip():
+                has_unranged_text = True
+            continue
+        parsed_sentence: dict[str, object] = {
+            "text": sentence_text.strip(),
+            "start": sentence_range[0],
+            "end": sentence_range[1],
         }
+        if sentence_items:
+            parsed_sentence["items"] = [dict(item) for item in sentence_items]
         if speaker is not None:
             parsed_sentence["speaker"] = speaker
         parsed_sentences.append(parsed_sentence)
 
+    text = str(transcript.get("text") or "")
+    if not text:
+        # Fun-ASR variants may only expose text on sentence entries.
+        text = "".join(sentence_texts)
+    if (
+        text
+        and sentence_texts
+        and _re.sub(r"\s+", "", text) != _re.sub(r"\s+", "", "".join(sentence_texts))
+    ):
+        has_unranged_text = True
+    if has_unranged_text:
+        all_items = []
+        parsed_sentences = []
     return {
-        "text": transcript.get("text", ""),
+        "text": text,
         "language": detected_language,
         "items": all_items,
         "sentences": parsed_sentences,
+        "timestamp_granularity": (
+            "word" if has_word_timestamps and not has_fallback_sentence and not has_unranged_text
+            else "segment" if parsed_sentences
+            else "unknown"
+        ),
     }
 
 
@@ -1264,6 +1526,9 @@ def build_segments_preserving_speakers(
     max_len: int,
     min_len: int,
     gap_split_ms: int,
+    max_words: int = WESTERN_MAX_WORDS,
+    min_words: int = WESTERN_MIN_WORDS,
+    split_mode: str | None = None,
 ) -> list[dict]:
     """在每个 speaker run 内切句和修复零时长，避免跨说话人合并。"""
     segments: list[dict] = []
@@ -1277,6 +1542,9 @@ def build_segments_preserving_speakers(
             max_len=max_len,
             min_len=min_len,
             gap_split_ms=gap_split_ms,
+            max_words=max_words,
+            min_words=min_words,
+            split_mode=split_mode,
         )
         run_segments = repair_nonpositive_duration_segments(run_segments)
         if speaker is not None:
@@ -1292,6 +1560,9 @@ def build_segments_from_api_sentences(
     max_len: int,
     min_len: int,
     gap_split_ms: int,
+    max_words: int = WESTERN_MAX_WORDS,
+    min_words: int = WESTERN_MIN_WORDS,
+    split_mode: str | None = None,
 ) -> list[dict]:
     """优先保留云端句子边界，只在单句内部进行必要的切分。
 
@@ -1302,24 +1573,71 @@ def build_segments_from_api_sentences(
     """
     segments: list[dict] = []
     for sentence in sentences:
-        items = [dict(item) for item in sentence.get("items", []) if item.get("text")]
-        if items and not any(str(item.get("text") or "").strip() for item in items):
+        if not isinstance(sentence, dict):
+            continue
+        raw_items = sentence.get("items", [])
+        raw_items = raw_items if isinstance(raw_items, list) else []
+        items: list[dict] = []
+        raw_item_texts: list[str] = []
+        invalid_item = False
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                invalid_item = True
+                continue
+            item_text = str(raw_item.get("text") or "")
+            if not item_text.strip():
+                continue
+            raw_item_texts.append(item_text)
+            timestamp = normalize_timestamp_range(
+                raw_item.get("start"), raw_item.get("end")
+            )
+            if timestamp is None:
+                invalid_item = True
+                continue
+            item = dict(raw_item)
+            item["start"], item["end"] = timestamp
+            item["text"] = item_text
+            items.append(item)
+        item_range = (
+            min((item["start"] for item in items), default=0),
+            max((item["end"] for item in items), default=0),
+        ) if items else None
+        if invalid_item:
+            # Do not keep a partial list: the item that failed may be in the
+            # middle of the sentence. The enclosing sentence range is still
+            # useful when it is valid.
             items = []
-        sentence_text = str(sentence.get("text") or "".join(
-            item["text"] for item in items
-        ))
+        sentence_text = str(sentence.get("text") or "").strip()
+        if not sentence_text:
+            sentence_text = "".join(raw_item_texts).strip()
         sentence_speaker = sentence.get("speaker")
 
+        if items and not timestamp_items_cover_text(sentence_text, items):
+            items = []
         if not items:
             sentence_text = sentence_text.strip()
             if not sentence_text:
                 continue
-            start = sentence.get("start", 0)
-            end = sentence.get("end", start)
-            segment = {"start": start, "end": end, "text": sentence_text, "items": []}
+            sentence_range = normalize_timestamp_range(
+                sentence.get("start"), sentence.get("end")
+            )
+            if sentence_range is None:
+                if item_range is None:
+                    continue
+                sentence_range = item_range
+            elif item_range is not None:
+                sentence_range = (
+                    min(sentence_range[0], item_range[0]),
+                    max(sentence_range[1], item_range[1]),
+                )
+            segment = {
+                "start": sentence_range[0],
+                "end": sentence_range[1],
+                "text": sentence_text,
+            }
             if sentence_speaker is not None:
                 segment["speaker"] = str(sentence_speaker)
-            segments.extend(repair_nonpositive_duration_segments([segment]))
+            segments.append(segment)
             continue
 
         sentence_segments: list[dict] = []
@@ -1334,6 +1652,9 @@ def build_segments_from_api_sentences(
                 max_len=max_len,
                 min_len=min_len,
                 gap_split_ms=gap_split_ms,
+                max_words=max_words,
+                min_words=min_words,
+                split_mode=split_mode,
                 natural_cjk=(
                     len(run_text) > max_len
                     and is_cjk_dominant(run)
@@ -1354,9 +1675,18 @@ def build_segments_from_api_sentences(
             continue
 
         # 用 API 句级时间范围覆盖未拆分句子的首尾；拆分时只把首尾
-        # 扩展到句级范围，内部边界仍使用词级时间戳。
-        sentence_start = sentence.get("start", sentence_segments[0]["start"])
-        sentence_end = sentence.get("end", sentence_segments[-1]["end"])
+        # 扩展到句级范围，内部边界仍使用词级时间戳。若 API 句级范围
+        # 缺失或没有包住词级范围，则扩大到两者的包络，避免生成越界 item。
+        sentence_range = normalize_timestamp_range(
+            sentence.get("start"), sentence.get("end")
+        )
+        if sentence_range is None:
+            sentence_range = (
+                sentence_segments[0]["start"],
+                sentence_segments[-1]["end"],
+            )
+        sentence_start = min(sentence_range[0], sentence_segments[0]["start"])
+        sentence_end = max(sentence_range[1], sentence_segments[-1]["end"])
         if len(sentence_segments) == 1:
             sentence_segments[0]["start"] = sentence_start
             sentence_segments[0]["end"] = sentence_end
@@ -1505,8 +1835,23 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
     result = parse_funasr_transcription_result(raw) if uses_file_urls(model) else parse_transcription_result(raw)
     if capture_raw:
         result["_raw_response"] = raw
-    if not result.get("language") and norm_lang:
-        result["language"] = norm_lang
+    language_value, language_source = resolve_language(
+        result.get("language"),
+        norm_lang,
+        str(result.get("text") or ""),
+    )
+    result["language"] = language_value
+    result["language_source"] = language_source
+    result["split_mode"] = split_mode_for_text(
+        str(result.get("text") or ""),
+        language_value,
+    )
+    if result.get("timestamp_granularity") in {None, "unknown"}:
+        result["timestamp_granularity"] = timestamp_granularity_for_items(
+            result.get("items") or [],
+            result["split_mode"],
+            has_segments=bool(result.get("sentences")),
+        )
     result["usage"] = task_usage
     return result
 
@@ -1527,6 +1872,14 @@ def main():
     parser.add_argument(
         "--min-len", type=int, default=5,
         help="句号间最短字数，不足则合并（默认 5；仅 CJK 内容生效）",
+    )
+    parser.add_argument(
+        "--max-words", type=int, default=WESTERN_MAX_WORDS,
+        help=f"英文单条字幕最大单词数（默认 {WESTERN_MAX_WORDS}；仅空格语言生效）",
+    )
+    parser.add_argument(
+        "--min-words", type=int, default=WESTERN_MIN_WORDS,
+        help=f"英文短句合并阈值（默认 {WESTERN_MIN_WORDS}；仅空格语言生效）",
     )
     parser.add_argument(
         "--language", default=None,
@@ -1623,6 +1976,10 @@ def main():
     args = parser.parse_args()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
+    if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
+        parser.error("字幕切分参数无效")
+    if args.max_len < args.min_len or args.max_words < args.min_words:
+        parser.error("最大值不能小于对应的短句合并阈值")
     enable_speaker = args.speaker or args.speaker_colors
     if enable_speaker and not supports_speaker_diarization(args.model):
         parser.error("--speaker / --speaker-colors 仅适用于 Qwen-Audio 或 Fun-ASR 模型")
@@ -1757,15 +2114,25 @@ def main():
             print("--- end debug ---\n")
 
         items = result["items"]
-        api_sentences = result.get("sentences") if is_qwen_audio_model(args.model) else None
+        api_sentences = result.get("sentences") if uses_file_urls(args.model) else None
         if api_sentences:
-            print("[解析] 正在按 Qwen-Audio 云端句子边界整理字幕...")
+            print("[解析] 正在按云端句子边界整理字幕...")
+            split_mode = split_mode_for_text(result.get("text", ""), result.get("language"))
             segments = build_segments_from_api_sentences(
                 api_sentences,
                 max_len=args.max_len,
                 min_len=args.min_len,
                 gap_split_ms=args.gap_split,
+                max_words=args.max_words,
+                min_words=args.min_words,
+                split_mode=split_mode,
             )
+            print(f"[解析] 字幕整理完成：{len(segments)} 条（保留云端句子边界）。")
+        elif result.get("timestamp_granularity") == "segment" and result.get("segments"):
+            print("[解析] 云端仅返回句级时间码，保留服务端字幕段边界...")
+            segments = repair_nonpositive_duration_segments([
+                dict(segment) for segment in result["segments"]
+            ])
             print(f"[解析] 字幕整理完成：{len(segments)} 条（保留云端句子边界）。")
         elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")
@@ -1774,9 +2141,13 @@ def main():
             )
         else:
             print("[解析] 正在按停顿和字数整理字幕（中文首次运行可能加载 jieba 词典）...")
+            split_mode = split_mode_for_text(result.get("text", ""), result.get("language"))
             segments = build_segments_preserving_speakers(
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
+                max_words=args.max_words,
+                min_words=args.min_words,
+                split_mode=split_mode,
             )
             print(f"[解析] 字幕整理完成：{len(segments)} 条。")
 
@@ -1826,6 +2197,7 @@ def main():
                     seg_items[k]["text"] = seg_items[k]["text"].rstrip(args.strip_tail_punct)
                     if seg_items[k]["text"]:
                         break
+                    seg_items.pop(k)
                     k -= 1
 
     print(f"[输出] 正在生成 SRT（{len(segments)} 条字幕）...")
@@ -1870,7 +2242,19 @@ def main():
         json_path = output_path.with_suffix(".mosp")
         json_data = {
             "media": str(input_path),
-            "language": result.get("language", ""),
+            "language": normalize_language_code(result.get("language")),
+            "language_source": result.get("language_source", "unknown"),
+            "split_mode": result.get("split_mode") or split_mode_for_text(
+                str(result.get("text") or ""),
+                result.get("language"),
+            ),
+            "timestamp_granularity": result.get("timestamp_granularity") or (
+                timestamp_granularity_for_items(
+                    result.get("items") or [],
+                    result.get("split_mode") or "word",
+                    has_segments=bool(segments),
+                )
+            ),
             "model": (
                 args.model if is_funasr_model(args.model)
                 else "qwen-audio-asr-api" if is_qwen_audio_model(args.model)
@@ -1881,7 +2265,7 @@ def main():
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": seg["text"],
-                    "items": seg.get("items", []),
+                    **({"items": seg["items"]} if "items" in seg else {}),
                     **({"speaker": seg["speaker"]} if seg.get("speaker") is not None else {}),
                     **({"color": seg["color"]} if seg.get("color") else {}),
                     **({"color_ref": seg["color_ref"]} if seg.get("color_ref") else {}),

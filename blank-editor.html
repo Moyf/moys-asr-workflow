@@ -1286,6 +1286,7 @@
   }
   .color-filter-item .color-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .color-filter-item .color-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .toolbar .color-filter-menu .color-filter-select-all,
   .toolbar .color-filter-menu .color-filter-clear {
     margin-top: 2px; text-align: center; color: var(--text-secondary);
   }
@@ -25281,7 +25282,7 @@ function renderColorFilterMenu() {
   });
   const selectFilteredBtn = document.createElement('button');
   selectFilteredBtn.type = 'button';
-  selectFilteredBtn.className = 'dropdown-item color-filter-clear';
+  selectFilteredBtn.className = 'dropdown-item color-filter-select-all';
   selectFilteredBtn.textContent = '全选过滤结果';
   selectFilteredBtn.hidden = !colorFilterSelection;
   selectFilteredBtn.addEventListener('click', () => selectAllFilteredCues());

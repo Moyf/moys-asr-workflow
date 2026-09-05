@@ -116,6 +116,51 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
   expect(tabLayout.overflow).toBe(false);
 });
 
+test('does not start local transcription while model status is still checking', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#provider').selectOption('local');
+  await expect(page.locator('#localModelPanel')).toBeVisible();
+  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.locator('#srtPath').fill('D:\\Demo\\clip.local.srt');
+
+  await page.evaluate(() => {
+    const config = window.MAWLauncher.config;
+    config.localRuntime = { status: 'ready', ready: true, path: '', pythonPath: '' };
+    const local = config.providers.find((item) => item.id === 'local');
+    const model = local.models.find((item) => item.id === document.querySelector('#model').value);
+    model.localStatus = { status: 'checking', installed: false, canPrepare: false };
+  });
+
+  await page.locator('#start').click();
+  await expect(page.locator('#status')).toHaveText('正在检查本地模型……');
+  await expect(page.locator('#start')).toBeVisible();
+  await expect(page.locator('#stop')).toBeHidden();
+});
+
+test('keeps local runtime events working after the page learns that installation is in progress', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#provider').selectOption('local');
+  await expect(page.locator('#localRuntimePanel')).toBeVisible();
+
+  await page.evaluate(() => {
+    const config = window.MAWLauncher.config;
+    config.localRuntime = { status: 'installing', ready: false, path: 'D:\\Demo\\local-runtime', pythonPath: '' };
+    window.MAWLauncher.onBackendEvent({
+      type: 'localRuntimeProgress',
+      percent: 37,
+      message: '正在安装本地运行环境……',
+    });
+  });
+  await expect(page.locator('#localRuntimeProgress')).toBeVisible();
+  await expect.poll(() => page.locator('#localRuntimeProgressBar').getAttribute('style')).toContain('37%');
+  await expect(page.locator('#localRuntimeProgressMessage')).toHaveText('正在安装本地运行环境……');
+
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'localRuntimeReady' }));
+  await expect(page.locator('#status')).toHaveText('本地模型支持已安装完成');
+});
+
 test('LLM settings refill the saved key and save only after a successful connection test', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxLlmTab').click();

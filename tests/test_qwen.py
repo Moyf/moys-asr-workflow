@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -113,6 +112,34 @@ class QwenTimestampRepairTests(unittest.TestCase):
         self.assertEqual(repaired[0]["text"], "啊。")
         self.assertEqual((repaired[0]["start"], repaired[0]["end"]), (500, 501))
         normalize_project({"segments": repaired})
+
+    def test_repair_preserves_single_speaker_and_optional_items_shape(self) -> None:
+        repaired = repair_nonpositive_duration_segments([
+            {"start": 0, "end": 0, "text": "嗯", "speaker": "S01"},
+            {"start": 0, "end": 1000, "text": "继续", "speaker": "S01"},
+        ])
+
+        self.assertEqual(repaired, [{
+            "start": 0,
+            "end": 1000,
+            "text": "嗯继续",
+            "speaker": "S01",
+        }])
+
+    def test_repair_drops_conflicting_speakers_and_invalid_items(self) -> None:
+        repaired = repair_nonpositive_duration_segments([
+            {
+                "start": 0,
+                "end": 0,
+                "text": "嗯",
+                "speaker": "S01",
+                "items": [{"text": "嗯", "start": 0, "end": 0, "speaker": "S01"}],
+            },
+            {"start": 0, "end": 1000, "text": "继续", "speaker": "S02"},
+        ])
+
+        self.assertNotIn("speaker", repaired[0])
+        self.assertNotIn("items", repaired[0])
 
 
 if __name__ == "__main__":
