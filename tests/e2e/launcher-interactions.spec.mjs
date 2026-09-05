@@ -20,6 +20,33 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('OpenAI ASR exposes official models and a conditional Custom model input', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#provider').selectOption('openai');
+
+  await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI（及兼容接口）');
+  await expect(page.locator('#model')).toHaveValue('whisper-1');
+  await expect(page.locator('#model option')).toHaveCount(4);
+  expect(await page.locator('#model option').allTextContents()).toEqual([
+    'whisper-1',
+    'gpt-4o-transcribe',
+    'gpt-4o-mini-transcribe',
+    '自定义（Custom）',
+  ]);
+  await expect(page.locator('#openaiModelField')).toBeHidden();
+  await expect(page.locator('#openKeyUrl')).toHaveText('OpenAI 官方');
+  await expect(page.locator('#keyHintSuffix')).toHaveText('获取 API Key');
+
+  await page.locator('#model').selectOption('custom-asr');
+  await expect(page.locator('#openaiModelField')).toBeVisible();
+  await expect(page.locator('label[for="openaiModel"]')).toHaveText('自定义 ASR 模型名');
+  await page.locator('#openaiModel').fill('my-custom-model');
+  await page.locator('#model').selectOption('gpt-4o-mini-transcribe');
+  await expect(page.locator('#openaiModelField')).toBeHidden();
+  await page.locator('#model').selectOption('custom-asr');
+  await expect(page.locator('#openaiModel')).toHaveValue('my-custom-model');
+});
+
 test('OCR video source follows a newly dropped video media', async ({ page }) => {
   await openLauncher(page);
   await page.evaluate(() => {

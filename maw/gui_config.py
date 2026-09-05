@@ -286,10 +286,28 @@ QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
 
 OPENAI_ASR_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
-        id=OPENAI_ASR_MODEL_ID,
-        label="自定义 OpenAI 兼容 ASR",
+        id="whisper-1",
+        label="whisper-1",
         env_key="MAW_OPENAI_ASR_API_KEY",
-        note="默认使用 OpenAI 官方转写服务，也可填写其他兼容 /audio/transcriptions 的 ASR 地址和模型",
+        languages=LANGUAGES,
+    ),
+    ModelConfig(
+        id="gpt-4o-transcribe",
+        label="gpt-4o-transcribe",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        languages=LANGUAGES,
+    ),
+    ModelConfig(
+        id="gpt-4o-mini-transcribe",
+        label="gpt-4o-mini-transcribe",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        languages=LANGUAGES,
+    ),
+    ModelConfig(
+        id=OPENAI_ASR_MODEL_ID,
+        label="自定义（Custom）",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        note="选择后填写自定义 ASR 模型名",
         languages=LANGUAGES,
     ),
 )
@@ -458,7 +476,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ),
     ProviderConfig(
         id="openai",
-        label="自定义 OpenAI 兼容 ASR",
+        label="OpenAI（及兼容接口）",
         key_url="https://platform.openai.com/api-keys",
         models=OPENAI_ASR_MODELS,
         regions=(),

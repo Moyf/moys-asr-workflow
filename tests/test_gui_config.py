@@ -292,11 +292,15 @@ class GuiConfigTests(unittest.TestCase):
     def test_provider_registry_contains_custom_openai_compatible_asr(self) -> None:
         provider = gui_config.provider_by_id("openai")
 
-        self.assertEqual(provider.label, "自定义 OpenAI 兼容 ASR")
+        self.assertEqual(provider.label, "OpenAI（及兼容接口）")
         self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_BASE_URL, "https://api.openai.com/v1")
         self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_MODEL, "whisper-1")
         self.assertEqual(provider.key_url, "https://platform.openai.com/api-keys")
-        self.assertEqual(provider.models[0].id, "custom-asr")
+        self.assertEqual(
+            [model.id for model in provider.models],
+            ["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "custom-asr"],
+        )
+        self.assertEqual(provider.models[-1].label, "自定义（Custom）")
         self.assertEqual(provider.models[0].env_key, "MAW_OPENAI_ASR_API_KEY")
         self.assertEqual(provider.regions, ())
         self.assertIn("时间戳", provider.note)
