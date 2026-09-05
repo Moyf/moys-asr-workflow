@@ -1177,7 +1177,7 @@
   }
   function errText(code, detail, context = {}) {
     const compact = compactDetail(detail);
-    const builtInGuidance = ["postprocess_connection_failed", "postprocess_models_failed"].includes(code) && Number(context?.httpStatus) !== 401
+    const builtInGuidance = ["postprocess_connection_failed", "postprocess_models_failed"].includes(code) && !Number.isInteger(Number(context?.httpStatus))
       ? llmBuiltInProviderKeyGuidance(context)
       : "";
     if (["postprocess_connection_failed", "postprocess_models_failed"].includes(code)) {

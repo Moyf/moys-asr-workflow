@@ -67,11 +67,13 @@ class PostprocessStepError(RuntimeError):
         category: str = "",
         status_code: int | None = None,
         diagnostic: str = "",
+        operation: str = "",
     ) -> None:
         super().__init__(message)
         self.category = category
         self.status_code = status_code
         self.diagnostic = diagnostic
+        self.operation = operation
 
 
 LlmComplete = Callable[[str, list[dict[str, JsonValue]]], Mapping[str, JsonValue]]
@@ -379,6 +381,7 @@ def _postprocess_step_error(message: str, error: BaseException) -> PostprocessSt
         category=str(getattr(error, "category", "") or ""),
         status_code=status_code,
         diagnostic=str(getattr(error, "diagnostic", "") or ""),
+        operation=str(getattr(error, "operation", "") or ""),
     )
 
 
@@ -494,8 +497,9 @@ def _complete_strict_translation_batch(
             repair_response = complete(_missing_translation_retry_prompt(system_prompt), missing_batch)
         except RuntimeError as error:
             cue_id = missing_batch[0]["id"]
-            raise RuntimeError(
-                f"第 {batch_number}/{total_batches} 批遗漏字幕重试（{cue_id}）失败：{error}"
+            raise _postprocess_step_error(
+                f"第 {batch_number}/{total_batches} 批遗漏字幕重试（{cue_id}）失败：{error}",
+                error,
             ) from error
         repaired, remaining, repair_warnings, repaired_mode = _sanitize_llm_response(
             repair_response,

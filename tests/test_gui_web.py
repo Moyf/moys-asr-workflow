@@ -25,6 +25,7 @@ from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
+from maw.postprocess import PostprocessStepError  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.postprocess_pipeline import PostprocessPipelineError  # noqa: E402
 from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
@@ -1094,6 +1095,30 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["diagnostic"], "invalid request")
         self.assertIn("not a network outage", str(result["detail"]))
         self.assertNotIn("sk-test", str(result))
+
+    def test_llm_bridge_classifies_wrapped_provider_http_error(self) -> None:
+        provider_error = PostprocessStepError(
+            "第 1/1 批（c0001–c0001）处理失败：LLM provider returned HTTP 429: quota exhausted.",
+            category="provider_response",
+            status_code=429,
+            diagnostic="quota exhausted",
+            operation="completion",
+        )
+        with mock.patch("maw.gui_web.process_llm_postprocess", side_effect=provider_error):
+            result = self.api.run_llm_postprocess({
+                "operation": "proofread",
+                "providerId": "custom",
+                "apiKey": "sk-test",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+                "customPrompt": "",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_provider_response")
+        self.assertEqual(result["httpStatus"], 429)
+        self.assertEqual(result["operation"], "completion")
+        self.assertEqual(result["diagnostic"], "quota exhausted")
 
     def test_llm_network_bridge_redacts_endpoint_and_authorization(self) -> None:
         provider_error = LlmClientError(

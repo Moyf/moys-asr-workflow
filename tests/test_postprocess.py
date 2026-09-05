@@ -18,6 +18,7 @@ from maw.postprocess import (
     LlmPostprocessRequest,
     MAX_TRANSLATION_REPAIR_REQUESTS_PER_BATCH,
     OutputMode,
+    PostprocessStepError,
     Replacement,
     ReplacementRequest,
     run_fixed_process,
@@ -1178,6 +1179,42 @@ class PostprocessTests(unittest.TestCase):
                 ),
                 complete=complete,
             )
+
+    def test_llm_translation_repair_preserves_provider_error_metadata(self) -> None:
+        provider_error = LlmClientError(
+            "LLM provider returned HTTP 401: unauthorized. This is a provider response, not a network outage.",
+            category="provider_response",
+            status_code=401,
+            diagnostic="unauthorized",
+            operation="completion",
+        )
+        calls = 0
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return {"groups": [{"id": "c0001", "text": "第一句"}]}
+            raise provider_error
+
+        with self.assertRaises(PostprocessStepError) as raised:
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="translate_en",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
+
+        error = raised.exception
+        self.assertEqual(error.category, "provider_response")
+        self.assertEqual(error.status_code, 401)
+        self.assertEqual(error.diagnostic, "unauthorized")
+        self.assertEqual(error.operation, "completion")
+        self.assertIn("c0002", str(error))
 
     def test_llm_runner_reports_progress_stages(self) -> None:
         statuses: list[tuple[str, dict[str, int]]] = []

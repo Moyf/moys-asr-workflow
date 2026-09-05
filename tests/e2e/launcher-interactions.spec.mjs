@@ -254,12 +254,14 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
   await page.locator('#getLlmModels').click();
   await expect(page.locator('#llmModelError')).toContainText('接口或模型不存在（HTTP 404');
   await expect(page.locator('#llmModelError')).toContainText('/models');
+  await expect(page.locator('#llmModelError')).not.toContainText('官方控制台');
   await expect(page.locator('#llmModelError')).not.toContainText('test-only-key');
 
   await page.evaluate(() => { window.__llmFailureStatus = 429; });
   await page.locator('#getLlmModels').click();
   await expect(page.locator('#llmModelError')).toContainText('请求被限流或额度暂时耗尽（HTTP 429');
   await expect(page.locator('#llmModelError')).toContainText('稍后重试');
+  await expect(page.locator('#llmModelError')).not.toContainText('官方控制台');
   await expect(page.locator('#llmModelError')).not.toContainText('HTTP 404');
 
   await page.evaluate(() => { window.__llmFailureStatus = 401; window.__llmFailureProvider = 'custom'; });
