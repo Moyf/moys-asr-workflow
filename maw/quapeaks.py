@@ -61,6 +61,14 @@ _MTIME_TOLERANCE_SECONDS = 5
 _UINT32_MASK = 0xFFFF_FFFF
 _UINT32_MODULUS = 0x1_0000_0000
 
+# MAW 生成的容器后缀。tests/test_reapeaks.py 把它与内核 quapeaks.FILE_SUFFIX
+# 钉成同值：两边各写一份的话，改名时会出现内核写 A、MAW 找 B 的哑火。
+QUAPEAKS_SUFFIX = ".quapeaks"
+# 读取顺序：MAW 自己的产物在前（层更全，含自研层），REAPER 真机的
+# .ReaPeaks 在后但必须继续能读。.mopeaks 不在这里 —— 它是波形 sidecar
+# （由 maw.mopeaks 自己管），混进来会挡住 .ReaPeaks 的频谱染色。
+PEAKS_SUFFIXES = (QUAPEAKS_SUFFIX,) + REAPEAKS_SUFFIXES
+
 DIV_SPECTRAL = -ord("s")  # spectral peaks
 DIV_SPECTROGRAM = -ord("g")  # spectrogram
 DIV_LOUDNESS = -ord("r")  # loudness (new)
@@ -318,30 +326,98 @@ def _unpack_12bit_bins(raw: bytes) -> list[int]:
     return bins
 
 
+def _header_provenance(path: Path) -> tuple[int, int] | None:
+    """只读 18 字节全局头，取出 (src_timestamp, src_filesize) 指纹。
+
+    给候选排序用，所以刻意不构造 ReaPeaksFile —— 那会把几百万个峰全解一遍。
+    """
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(18)
+    except OSError:
+        return None
+    if len(head) < 18:
+        return None
+    try:
+        _, timestamp, filesize = struct.unpack_from("<iII", head, 6)
+    except struct.error:
+        return None
+    return timestamp, filesize
+
+
+def _header_matches_media(path: Path, media_path: Path) -> bool:
+    """头部指纹是否指向当前媒体（与 _reapeaks_matches_media 同一口径）。"""
+    stored = _header_provenance(path)
+    if stored is None or stored == (0, 0):
+        return False
+    try:
+        st = media_path.stat()
+    except OSError:
+        return False
+    return (
+        stored[1] == st.st_size & _UINT32_MASK
+        and _timestamp_fingerprint_matches(stored[0], int(st.st_mtime))
+    )
+
+
 def find_reapeaks(media_path: Path, *, audio_track: int = 0) -> Path | None:
-    """Locate the .ReaPeaks cache REAPER would write next to a media file."""
+    """Locate a peaks container next to a media file.
+
+    MAW 自己产出的 .quapeaks 排在 REAPER 的 .ReaPeaks 之前，但**过期的一方
+    不得挡住新鲜的一方**：先返回头部指纹与当前媒体相符的候选，都不相符时
+    退回第一个存在的文件（保持既有语义，由调用方的签名校验决定降级）。
+
+    多音轨沿用上游的 ``<媒体>.track-N`` 段（N 从 1 起，第 0 轨不带标记）：
+    同一素材的不同轨必须有各自的容器，否则后写的会把前一轨整份覆盖掉。
+    """
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
         raise ValueError("audio_track must be a non-negative integer")
     parent = media_path.parent
     name = media_path.name
     track_suffix = f".track-{audio_track + 1}" if audio_track else ""
     candidates = [
-        parent / (name + track_suffix + suffix) for suffix in REAPEAKS_SUFFIXES
+        parent / (name + track_suffix + suffix) for suffix in PEAKS_SUFFIXES
     ]
     candidates += [
-        media_path.with_suffix(track_suffix + suffix) for suffix in REAPEAKS_SUFFIXES
+        media_path.with_suffix(track_suffix + suffix) for suffix in PEAKS_SUFFIXES
     ]
     seen: set[Path] = set()
+    first_existing: Path | None = None
     for candidate in candidates:
         if candidate in seen:
             continue
         seen.add(candidate)
         try:
-            if candidate.is_file():
-                return candidate
+            if not candidate.is_file():
+                continue
         except OSError:
             continue
-    return None
+        if first_existing is None:
+            first_existing = candidate
+        if _header_matches_media(candidate, media_path):
+            return candidate
+    return first_existing
+
+
+def find_self_wave_container(
+    media_path: Path | str, *, audio_track: int = 0
+) -> Path | None:
+    """媒体旁哪个 peaks 容器已带有属于**当前媒体**的自研波形层，没有则 None。
+
+    mopeaks 回退的唯一判据（见 maw.media_cache）：不管是没装内核、内核抛错、
+    产物损坏还是压根没生成，只要这里回答 None，回退档就该写。
+    """
+    media_path = Path(media_path)
+    container = find_reapeaks(media_path, audio_track=audio_track)
+    if container is None:
+        return None
+    try:
+        ra = ReaPeaksFile(str(container))
+    except (OSError, ValueError, IndexError, struct.error):
+        return None
+    if not ra.self_wave_mipmaps():
+        return None
+    return container if _reapeaks_matches_media(container, media_path) else None
 
 
 def _paired_spectral_rates(ra: ReaPeaksFile) -> list[tuple[int, MipMap]]:
@@ -613,6 +689,36 @@ def _parse_wav_header(header: bytes) -> tuple[int, int, int] | None:
     return None
 
 
+def self_peaks_from_payload(payload: dict) -> tuple[int, int, bytes] | None:
+    """把 ``moy.asr.waveform.v1`` 载荷换成内核 set_self_peaks 的入参。
+
+    峰数据本身是字节数组，载荷里为了走 JSON 才 base64；这里解回去。
+    刻度必须用精确的 (sample_rate, division)：只传取整后的
+    peaks_per_second 等于把 PR #102 修掉的时间轴漂移又请回来。
+    """
+    sample_rate = payload.get("sample_rate")
+    division = payload.get("division")
+    if not (
+        isinstance(sample_rate, int)
+        and not isinstance(sample_rate, bool)
+        and sample_rate > 0
+        and isinstance(division, int)
+        and not isinstance(division, bool)
+        and division > 0
+    ):
+        pps = payload.get("peaks_per_second")
+        if isinstance(pps, bool) or not isinstance(pps, (int, float)) or pps <= 0:
+            return None
+        sample_rate, division = int(round(pps)), 1
+    try:
+        peaks = base64.b64decode(payload["data"], validate=True)
+    except Exception:  # noqa: BLE001 - binascii.Error 等，交给回退档报错
+        return None
+    if not peaks or len(peaks) % SELF_WAVE_BYTES_PER_PEAK:
+        return None
+    return sample_rate, division, peaks
+
+
 def generate_reapeaks_stream_bytes(
     media_path: Path | str,
     *,
@@ -621,6 +727,8 @@ def generate_reapeaks_stream_bytes(
     src_filesize: int = 0,
     include_spectral: bool = True,
     audio_track: int = 0,
+    flavor: str = "quapeaks",
+    self_peaks: tuple[int, int, bytes] | None = None,
 ) -> bytes | None:
     """Stream .ReaPeaks bytes straight from ffmpeg's WAV pipe.
 
@@ -685,10 +793,19 @@ def generate_reapeaks_stream_bytes(
                 channels,
                 features=features,
                 mipmap_levels=3,
+                flavor=flavor,
             )
         except Exception as exc:  # noqa: BLE001 - 构造失败必须响亮，不静默降级
             print(f"[reapeaks] Rust 内核初始化失败: {exc}")
             return None
+        if self_peaks is not None:
+            try:
+                streamer.set_self_peaks(*self_peaks)
+            except Exception as exc:  # noqa: BLE001
+                # 自研层进不去就等于这一档整体不成立：早失败早回退，
+                # 别把 ffmpeg 的解码时间花在一个拿不到峰的容器上。
+                print(f"[reapeaks] 自研波形层注入失败，改用 mopeaks: {exc}")
+                return None
         read_size = 1 * 1024 * 1024
         if data_off < len(header):
             streamer.feed(header[data_off:])
@@ -727,6 +844,32 @@ def generate_reapeaks_stream_bytes(
             proc.wait()
 
 
+def _self_check(container: Path, *, want_self_wave: bool) -> bool:
+    """刚写出的容器是否真能用：损坏、magic 不对、缺自研层都在这里挡下。
+
+    自检不过就等于这次生成失败，让调用方按判据回退 mopeaks —— 留下一个
+    后续读取会静默降级的半成品，比明确失败更难查。
+
+    刻意**不**在这里复核头部指纹是否指向源媒体：源不可解、改用派生文件解码时，
+    头部记的就是真正解码过的那个文件的指纹（上游既有语义，见 generate_for_media
+    的 candidates 注释）。读取端各自按自己的口径校验，生成端不替它做决定。
+    """
+    try:
+        ra = ReaPeaksFile(str(container))
+    except (OSError, ValueError, IndexError, struct.error) as exc:
+        print(f"[reapeaks] 自检失败：{container.name} 无法解析（{exc}）")
+        return False
+    if not ra.is_quapeaks:
+        print(
+            f"[reapeaks] 自检失败：{container.name} 的 magic 是 {ra.magic!r}，不是 QPK*"
+        )
+        return False
+    if want_self_wave and not ra.self_wave_mipmaps():
+        print(f"[reapeaks] 自检失败：{container.name} 缺自研波形层")
+        return False
+    return True
+
+
 def generate_for_media(
     media_path: Path,
     *,
@@ -735,10 +878,15 @@ def generate_for_media(
     source_media_path: Path | str | None = None,
     audio_track: int = 0,
     cache_audio_track: int | None = None,
+    self_peaks: tuple[int, int, bytes] | None = None,
 ) -> Path | None:
-    """Best-effort .ReaPeaks generation for a media file, or the existing path.
+    """Best-effort peaks-container generation for a media file, or the existing path.
 
-    Returns the .ReaPeaks path when a matching cache already existed or was
+    MAW 写的是自有容器 ``<媒体>.quapeaks``（flavor=quapeaks，可带自研波形层）；
+    REAPER 真机的 ``.ReaPeaks`` 仍然照读。传了 ``self_peaks`` 时，产物还要过
+    一遍 :func:`_self_check`，不过就返回 None 让调用方回退 mopeaks。
+
+    Returns the container path when a matching cache already existed or was
     generated, else None (missing ffmpeg or decode failure). An existing cache
     is only reused when its header matches the current media and, when
     ``include_spectral`` is true, already contains a spectral mipmap; stale or
@@ -801,12 +949,13 @@ def generate_for_media(
                 src_filesize=media_filesize,
                 include_spectral=include_spectral,
                 audio_track=audio_track if decode_path == signature_path else 0,
+                self_peaks=self_peaks,
             )
         except Exception as exc:  # noqa: BLE001
             # 生成是兜底：任何失败都不阻断转写/启动流程。具体原因（缺 ffmpeg /
             # 解码失败 / Rust 内核故障）由 generate_reapeaks_stream_bytes 打日志，
             # 这里的异常仅剩写文件或取 stat 等罕见兜底路径。
-            print(f"[reapeaks] .ReaPeaks 生成失败: {exc}")
+            print(f"[reapeaks] {QUAPEAKS_SUFFIX} 生成失败: {exc}")
             return None
         if data is None:
             if decode_path is candidates[0] and len(candidates) > 1:
@@ -816,18 +965,20 @@ def generate_for_media(
                 )
             continue
         target = decode_path.with_name(
-            decode_path.name + track_suffix + ".ReaPeaks"
+            decode_path.name + track_suffix + QUAPEAKS_SUFFIX
         )
         try:
             target.write_bytes(data)
         except OSError as exc:
-            print(f"[reapeaks] .ReaPeaks 写入失败: {exc}")
+            print(f"[reapeaks] {QUAPEAKS_SUFFIX} 写入失败: {exc}")
+            return None
+        if not _self_check(target, want_self_wave=self_peaks is not None):
             return None
         return target
     if missing:
         print(f"[reapeaks] 警告: 缓存媒体不存在，已跳过生成: {candidates[0]}")
     else:
-        print("[reapeaks] ReaPeaks 数据为空")
+        print("[reapeaks] 生成结果为空")
     return None
 
 

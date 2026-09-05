@@ -58,11 +58,13 @@ class MediaCacheTests(unittest.TestCase):
         # 默认只生成 ReaPeaks 波形层，不计算频谱。
         self.assertIsNotNone(result.reapeaks_path)
         self.assertTrue(Path(result.reapeaks_path).exists())
-        self.assertEqual(Path(result.reapeaks_path).name, "tone.wav.ReaPeaks")
+        self.assertEqual(Path(result.reapeaks_path).name, "tone.wav.quapeaks")
         self.assertNotIn("spectral", result.project)
         parsed = quapeaks.ReaPeaksFile(str(result.reapeaks_path))
         self.assertFalse(parsed.spectral_mipmaps())
         self.assertIn("wave", [m.kind for m in parsed.mipmaps])
+        # 自研波形这次跟着进了同一个容器（不再只躺在工程 JSON 里）
+        self.assertTrue(parsed.self_wave_mipmaps())
         self.assertIsNotNone(quapeaks.load_waveform_payload(self.wav))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
@@ -146,11 +148,11 @@ class MediaCacheTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_reapeaks_cache_lands_next_to_source_media(self) -> None:
-        """临时缓存媒体的 .ReaPeaks 必须落到源媒体旁并记录源签名。
+        """临时缓存媒体的峰值容器必须落到源媒体旁并记录源签名。
 
         回归：CLI 把提取音频放在 TemporaryDirectory 里，with 块退出后目录
-        即被删除；.ReaPeaks 若写在缓存媒体旁会随目录一起消失，源媒体旁永远
-        没有频谱缓存，编辑器的频谱颜色与 ReaPeaks 波形层随之失效。
+        即被删除；缓存容器若写在临时媒体旁会随目录一起消失，源媒体旁永远
+        没有频谱缓存，编辑器的频谱颜色与 Reaper 波形层随之失效。
         """
         source = self.root / "source.mp4"
         shutil.copy2(self.wav, source)
@@ -166,7 +168,7 @@ class MediaCacheTests(unittest.TestCase):
         # with 块已退出、临时目录已删除：源媒体旁必须留有可用缓存
         self.assertIsNotNone(result.reapeaks_path)
         self.assertEqual(
-            Path(result.reapeaks_path), source.with_name(source.name + ".ReaPeaks")
+            Path(result.reapeaks_path), source.with_name(source.name + ".quapeaks")
         )
         self.assertTrue(Path(result.reapeaks_path).exists())
         # server 从源媒体旁读取时，头部签名必须匹配
@@ -214,6 +216,7 @@ class MediaCacheTests(unittest.TestCase):
             source_media_path=self.wav,
             audio_track=2,
             cache_audio_track=2,
+            self_peaks=None,
         )
 
 

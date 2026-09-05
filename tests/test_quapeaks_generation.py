@@ -1,0 +1,285 @@
+"""c7b：生成侧产出 .quapeaks（含自研层）与 mopeaks 回退的端到端契约。
+
+与 tests/test_reapeaks.py 的分工：那边管容器**解析**与 REAPER 兼容；这里管
+"MAW 生成时把哪一层写到哪里、拿不到就退到哪"。生成相关用例都跑真 ffmpeg +
+真内核（缺任一即 skip），因为回退链的价值恰恰在于跨进程的真实失败模式。
+"""
+
+from __future__ import annotations
+
+import base64
+import math
+import shutil
+import struct
+import sys
+import tempfile
+import unittest
+import wave
+from pathlib import Path
+from unittest import mock
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+import quapeaks as kernel  # noqa: E402  真内核，用来钉后缀常量同源
+from maw import media_cache, mopeaks, quapeaks, waveform  # noqa: E402
+
+
+HAS_FFMPEG = shutil.which("ffmpeg") is not None
+
+
+def _make_tone(path: Path, *, seconds: float = 1.0, sample_rate: int = 8000) -> None:
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(sample_rate)
+        frames = bytearray()
+        for index in range(round(sample_rate * seconds)):
+            value = round(math.sin(2 * math.pi * 440 * index / sample_rate) * 16_000)
+            frames.extend(struct.pack("<h", value))
+        output.writeframes(frames)
+
+
+def _container_with_provenance(
+    path: Path, *, magic: bytes, timestamp: int, filesize: int, self_layer: bool
+) -> None:
+    """手搓一个只含一层的容器，头部指纹由调用方指定（用来构造新鲜/过期对）。"""
+    header = struct.pack("<4sBBiII", magic, 1, 1, 8000, timestamp, filesize)
+    if self_layer:
+        body = struct.pack("<ii", quapeaks.DIV_SELF_WAVE, 1)
+        body += struct.pack("<II", 1000, 10) + b"\x00\x64"
+    else:
+        body = struct.pack("<ii", 80, 1) + struct.pack("<hh", 100, -100)
+    path.write_bytes(header + body)
+
+
+@unittest.skipUnless(HAS_FFMPEG, "ffmpeg is required")
+class QuapeaksGenerationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.tone = self.root / "tone.wav"
+        _make_tone(self.tone)
+        self.payload = waveform.extract_waveform(self.tone, peaks_per_second=100)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _self_peaks(self) -> tuple[int, int, bytes]:
+        peaks = quapeaks.self_peaks_from_payload(self.payload)
+        self.assertIsNotNone(peaks, "extract_waveform 的载荷必须能换成内核入参")
+        assert peaks is not None
+        return peaks
+
+    def test_suffix_constant_shares_one_source_with_the_kernel(self) -> None:
+        # 两边各写一份的话，改名时会出现"内核写 A、MAW 找 B"的静默哑火。
+        self.assertEqual(quapeaks.QUAPEAKS_SUFFIX, kernel.FILE_SUFFIX)
+        self.assertEqual(mopeaks.mopeaks_path(self.tone).name, "tone.wav.mopeaks")
+
+    def test_exact_rate_is_taken_from_the_payload_not_the_rounded_rate(self) -> None:
+        # PR #102 的口径：内核那一层要的是 (sample_rate, division)，不是取整峰率。
+        sample_rate, division, peaks = self._self_peaks()
+        self.assertEqual(sample_rate, self.payload["sample_rate"])
+        self.assertEqual(division, self.payload["division"])
+        self.assertEqual(waveform.waveform_peaks_per_second(self.payload), sample_rate / division)
+        self.assertEqual(len(peaks), self.payload["peak_count"] * 2)
+
+    def test_generated_container_carries_the_self_layer(self) -> None:
+        generated = quapeaks.generate_for_media(self.tone, self_peaks=self._self_peaks())
+        self.assertIsNotNone(generated)
+        assert generated is not None
+        self.assertEqual(generated.name, "tone.wav.quapeaks")
+        parsed = quapeaks.ReaPeaksFile(str(generated))
+        self.assertTrue(parsed.is_quapeaks)
+        self.assertEqual(parsed.format_version, ord("1"))
+        kinds = [mip.kind for mip in parsed.mipmaps]
+        self.assertIn("self_wave", kinds)
+        self.assertIn("wave", kinds)
+        # 自研层排在最末：内核刻意把它放在所有既有层之后，不扰动前序偏移。
+        self.assertEqual(kinds.index("self_wave"), len(kinds) - 1)
+
+    def test_self_layer_peaks_equal_the_python_pipeline_output(self) -> None:
+        """内核那一层与 Python 提取必须给出同一批峰——两边没跑偏的唯一硬证据。"""
+        generated = quapeaks.generate_for_media(self.tone, self_peaks=self._self_peaks())
+        assert generated is not None
+        layers = quapeaks.ReaPeaksFile(str(generated)).self_wave_mipmaps()
+        self.assertEqual(len(layers), 1)
+        layer = layers[0].self_layer
+        self.assertIsNotNone(layer)
+        assert layer is not None
+        self.assertEqual(layer.sample_rate, self.payload["sample_rate"])
+        self.assertEqual(layer.division, self.payload["division"])
+        self.assertEqual(len(layer.peaks), self.payload["peak_count"])
+        raw = bytearray()
+        for low, high in layer.peaks:
+            raw += bytes((low & 0xFF, high & 0xFF))
+        self.assertEqual(bytes(raw), base64.b64decode(self.payload["data"]))
+
+    def test_self_wave_container_is_found_for_the_reader_chain(self) -> None:
+        generated = quapeaks.generate_for_media(self.tone, self_peaks=self._self_peaks())
+        assert generated is not None
+        self.assertEqual(quapeaks.find_self_wave_container(self.tone), generated)
+
+    def test_container_without_self_layer_does_not_count(self) -> None:
+        # 只生成波峰层（没传 self_peaks）→ 判据仍回答"没有"，回退档该写。
+        quapeaks.generate_for_media(self.tone)
+        self.assertIsNone(quapeaks.find_self_wave_container(self.tone))
+
+
+@unittest.skipUnless(HAS_FFMPEG, "ffmpeg is required")
+class MopeaksFallbackTests(unittest.TestCase):
+    """四条成因（未选内核 / import 失败 / 内核抛错 / 产物自检不过）都落到 mopeaks。"""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.tone = self.root / "tone.wav"
+        _make_tone(self.tone)
+        self.project: dict = {"media": str(self.tone), "segments": []}
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _assert_fell_back(self, result, *, container_absent: bool = True) -> None:
+        self.assertEqual((self.root / "tone.wav.quapeaks").exists(), not container_absent)
+        path = mopeaks.mopeaks_path(self.tone)
+        self.assertTrue(path.exists(), "自研波形必须仍有二进制缓存可落")
+        cached = mopeaks.load_mopeaks(self.tone)
+        self.assertIsNotNone(cached)
+        assert cached is not None
+        embedded = result.project["waveform"]
+        # 回退档与工程内联的那份必须是同一批峰
+        self.assertEqual(cached["data"], embedded["data"])
+        self.assertEqual(cached["source"], embedded["source"])
+
+    def test_missing_kernel_falls_back_via_media_cache(self) -> None:
+        with mock.patch.dict(sys.modules, {"quapeaks": None}):
+            result = media_cache.embed_media_caches(self.project, self.tone)
+        self.assertIsNotNone(result.project.get("waveform"))
+        self.assertIsNone(result.reapeaks_path)
+        self._assert_fell_back(result)
+
+    def test_kernel_error_falls_back_via_media_cache(self) -> None:
+        with mock.patch.object(
+            quapeaks, "generate_reapeaks_stream_bytes", side_effect=RuntimeError("内核炸了")
+        ):
+            result = media_cache.embed_media_caches(self.project, self.tone)
+        self.assertIsNone(result.reapeaks_path)
+        self._assert_fell_back(result)
+
+    def test_kernel_unavailable_still_reads_an_existing_mopeaks(self) -> None:
+        # 生成退到 mopeaks 之后，下一次打开工程得能把它当缓存读回来（不再抽 ffmpeg）。
+        with mock.patch.dict(sys.modules, {"quapeaks": None}):
+            media_cache.embed_media_caches(self.project, self.tone)
+        with mock.patch.object(waveform, "extract_waveform") as extractor:
+            cached, extracted = waveform.load_or_extract_waveform(None, self.tone)
+        extractor.assert_not_called()
+        self.assertFalse(extracted)
+        self.assertEqual(cached["data"], self.payload_data())
+
+    def payload_data(self) -> str:
+        # embed_media_caches 不改调用方的 project（它返回副本），所以现取一次。
+        return waveform.extract_waveform(self.tone, peaks_per_second=100)["data"]
+
+    def test_artifact_failing_self_check_yields_no_container(self) -> None:
+        # 内核"成功"返回了一个没有自研层的 RPKN 产物：等于这一档不成立。
+        bogus = struct.pack("<4sBBiII", b"RPKN", 1, 1, 8000, 1, 1) + struct.pack("<ii", 80, 1)
+        bogus += struct.pack("<hh", 100, -100)
+        with mock.patch.object(
+            quapeaks, "generate_reapeaks_stream_bytes", return_value=bogus
+        ):
+            generated = quapeaks.generate_for_media(
+                self.tone, self_peaks=(1000, 10, b"\x00\x64")
+            )
+        self.assertIsNone(generated)
+        self.assertIsNone(quapeaks.find_self_wave_container(self.tone))
+        # 自检不过的文件留在盘上（不悄悄删用户媒体目录里的东西），但不被当成有效容器；
+        # 于是编排层该写 mopeaks。
+        self.assertTrue((self.root / "tone.wav.quapeaks").exists())
+        with mock.patch.object(
+            quapeaks, "generate_reapeaks_stream_bytes", return_value=bogus
+        ):
+            result = media_cache.embed_media_caches(self.project, self.tone)
+        self.assertTrue(mopeaks.mopeaks_path(self.tone).exists())
+        self._assert_fell_back(result, container_absent=False)
+
+    def test_existing_valid_mopeaks_is_not_rewritten(self) -> None:
+        with mock.patch.dict(sys.modules, {"quapeaks": None}):
+            media_cache.embed_media_caches(self.project, self.tone)
+            path = mopeaks.mopeaks_path(self.tone)
+            first = path.read_bytes()
+            mtime = path.stat().st_mtime_ns
+            media_cache.embed_media_caches(self.project, self.tone)
+            self.assertEqual(path.read_bytes(), first)
+            self.assertEqual(path.stat().st_mtime_ns, mtime, "已有有效回退档就不该白写一遍")
+
+    def test_no_self_peaks_means_no_fallback_file(self) -> None:
+        # 波形都没抽出来时不该凭空造缓存。
+        missing = self.root / "nothing.wav"
+        with mock.patch.dict(sys.modules, {"quapeaks": None}):
+            result = media_cache.embed_media_caches(self.project, missing)
+        self.assertIsNotNone(result.waveform_error)
+        self.assertFalse(mopeaks.mopeaks_path(missing).exists())
+
+
+class FindReapeaksPreferenceTests(unittest.TestCase):
+    """容器发现：过期的一方不得挡住新鲜的一方。"""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.tone = self.root / "tone.wav"
+        self.tone.write_bytes(b"RIFF" + b"\x00" * 40)
+        st = self.tone.stat()
+        self.fresh = (int(st.st_mtime), st.st_size)
+        self.stale = (int(st.st_mtime), st.st_size + 999)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _write(self, name: str, magic: bytes, stamp: tuple[int, int], self_layer: bool) -> None:
+        _container_with_provenance(
+            self.root / name,
+            magic=magic,
+            timestamp=stamp[0],
+            filesize=stamp[1],
+            self_layer=self_layer,
+        )
+
+    def test_prefers_the_container_whose_header_matches_the_media(self) -> None:
+        # 过期的 .quapeaks（还带着自研层）不能挡住 REAPER 新鲜产出的 .ReaPeaks。
+        self._write("tone.wav.quapeaks", b"QPK1", self.stale, True)
+        self._write("tone.wav.ReaPeaks", b"RPKN", self.fresh, False)
+        found = quapeaks.find_reapeaks(self.tone)
+        self.assertEqual(found, self.root / "tone.wav.ReaPeaks")
+
+    def test_native_container_wins_when_both_are_fresh(self) -> None:
+        self._write("tone.wav.quapeaks", b"QPK1", self.fresh, True)
+        self._write("tone.wav.ReaPeaks", b"RPKN", self.fresh, False)
+        found = quapeaks.find_reapeaks(self.tone)
+        self.assertEqual(found, self.root / "tone.wav.quapeaks")
+        self.assertEqual(quapeaks.find_self_wave_container(self.tone), found)
+
+    def test_falls_back_to_the_first_existing_when_all_are_stale(self) -> None:
+        # 保持既有语义：都不匹配时仍返回一个路径，由调用方的签名校验决定降级。
+        self._write("tone.wav.ReaPeaks", b"RPKN", self.stale, False)
+        self.assertEqual(quapeaks.find_reapeaks(self.tone), self.root / "tone.wav.ReaPeaks")
+        self.assertIsNone(quapeaks.find_self_wave_container(self.tone))
+
+    def test_mopeaks_is_not_treated_as_a_peaks_container(self) -> None:
+        # 混进来会挡住 .ReaPeaks 的频谱染色：mopeaks 由 maw.mopeaks 自己管。
+        self._write("tone.wav.mopeaks", b"MPK1", self.fresh, True)
+        self.assertIsNone(quapeaks.find_reapeaks(self.tone))
+        # 但回退档自己当然读得动它。
+        self.assertIsNotNone(
+            mopeaks.decode_mopeaks((self.root / "tone.wav.mopeaks").read_bytes())
+        )
+
+    def test_reaper_uppercase_variants_still_discovered(self) -> None:
+        self._write("tone.wav.REAPEAKS", b"RPKN", self.fresh, False)
+        self.assertEqual(quapeaks.find_reapeaks(self.tone), self.root / "tone.wav.REAPEAKS")
+
+
+if __name__ == "__main__":
+    unittest.main()
