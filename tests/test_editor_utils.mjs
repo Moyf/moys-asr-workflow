@@ -179,6 +179,50 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(helpers.normalizeEditorSettings({ waveShapeSource: 'invalid' }).waveShapeSource, 'reapeaks');
 });
 
+test('converts and formats the parallel frame timebase', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.normalizeTimelineTimebase({ unit: 'frames', fps: 29.97 }),
+  )), { unit: 'frames', fps: 29.97 });
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.normalizeTimelineTimebase({ unit: 'invalid', fps: 999 }),
+  )), { unit: 'milliseconds', fps: 240 });
+  assert.equal(helpers.frameNumberFromMilliseconds(1000, 30), 30);
+  assert.equal(helpers.millisecondsFromFrameNumber(21, 30), 700);
+  assert.equal(helpers.formatFrameTimecode(36, 30), '00:00:01:06');
+  assert.equal(helpers.formatFrameTimecode(36, 30, ';'), '00:00:01;06');
+  assert.equal(helpers.formatTimelineTimecode(1200, 30), '00:00:01:06');
+  assert.equal(helpers.formatTimelineTimecode(1200, 30, ','), '00:00:01,06');
+  assert.equal(helpers.parseFrameTimecode('01:20:12 / 21F', 30), 144381);
+  assert.equal(helpers.parseFrameTimecode('01:20:12,21F', 30, ','), 144381);
+  assert.equal(helpers.parseFrameTimecode('00:00:01:30', 30), null);
+  assert.equal(helpers.normalizeTimelineTimecodeSeparator(' ; '), ';');
+  assert.equal(helpers.normalizeTimelineTimecodeSeparator('A'), ':');
+  const settings = helpers.normalizeEditorSettings({ mediaSeekStepFrames: 0, cueMoveStepFrames: 999 });
+  assert.equal(settings.mediaSeekStepFrames, 1);
+  assert.equal(settings.cueMoveStepFrames, 240);
+  assert.equal(settings.timelineSnapToFrame, true);
+  assert.equal(helpers.normalizeEditorSettings({ timelineSnapToFrame: false }).timelineSnapToFrame, false);
+  assert.equal(settings.timelineTimecodeSeparator, ':');
+  assert.equal(helpers.normalizeEditorSettings({
+    timelineSnapToFrame: true,
+    timelineTimecodeSeparator: ',',
+  }).timelineSnapToFrame, true);
+  assert.equal(helpers.normalizeEditorSettings({ timelineTimecodeSeparator: ',' }).timelineTimecodeSeparator, ',');
+});
+
+test('normalizes optional source video FPS metadata for frame-mode defaults', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
+    video_fps: 30000 / 1001,
+    video_fps_ratio: '30000/1001',
+  }))), {
+    video_fps: 29.97,
+    video_fps_ratio: '30000/1001',
+  });
+  assert.equal(helpers.normalizeMediaMetadata(undefined), null);
+  assert.equal(helpers.normalizeMediaMetadata({ video_fps: 300 }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ video_fps: 30, video_fps_ratio: '' }), null);
+});
+
 test('falls back to default split trim symbols and keeps single characters from free input', () => {
   const defaults = JSON.parse(JSON.stringify(helpers.DEFAULT_SPLIT_TRIM_SYMBOLS));
   // 默认集合 = 前 5 个 chip（全角）+ 文本框预填的半角逗号句点。
@@ -1176,6 +1220,40 @@ test('translates adjacent adjustment and current-cue operation settings to Engli
   assert.equal(
     i18n.translateText('关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。', 'en'),
     'When disabled, Esc keeps text changes; when enabled, it restores the text from before editing.',
+  );
+});
+
+
+test('translates timeline timebase settings to English', () => {
+  assert.equal(i18n.translateText('时间基准', 'en'), 'Timebase');
+  assert.equal(i18n.translateText('时间单位', 'en'), 'Time unit');
+  assert.equal(i18n.translateText('毫秒', 'en'), 'Milliseconds');
+  assert.equal(i18n.translateText('帧', 'en'), 'Frames');
+  assert.equal(i18n.translateText('吸附到帧', 'en'), 'Snap to frame');
+  assert.equal(i18n.translateText('时间码分隔符', 'en'), 'Timecode separator');
+  assert.equal(
+    i18n.translateText('仅帧模式生效；切换到帧模式后可启用。', 'en'),
+    'Only active in frame mode; switch to frame mode to enable it.',
+  );
+  assert.equal(
+    i18n.translateText('帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。', 'en'),
+    'Frame timecode example: HH:MM:SS:FF; only the separator between seconds and frames changes.',
+  );
+  assert.equal(
+    i18n.translateText('字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行', 'en'),
+    'Time unit used for subtitle editing; after switching to frames, dragging, arrow keys, and A/D fine-tuning operate frame by frame',
+  );
+  assert.equal(
+    i18n.translateText('帧率 FPS', 'en'),
+    'Frame rate FPS',
+  );
+  assert.equal(
+    i18n.translateText('帧模式下把波形鼠标指针吸附到最近的帧；毫秒模式下不生效', 'en'),
+    'Snap the waveform pointer to the nearest frame in frame mode; inactive in millisecond mode',
+  );
+  assert.equal(
+    i18n.translateText('帧时间码中秒与帧之间的分隔符；只使用一个非字母数字符号', 'en'),
+    'Separator between seconds and frames in the frame timecode; use one non-alphanumeric symbol',
   );
 });
 
@@ -2429,6 +2507,121 @@ test('repairs a one-ms rounded item overlap before persistence', () => {
   assert.equal(fixed, 1);
   assert.equal(segments[0].items[1].start, 66051);
 });
+
+test('keeps frame-projected item timings inside their fixed subtitle segment', () => {
+  const segment = {
+    start: 73383,
+    end: 73842,
+    items: [
+      { start: 73383, end: 73425 },
+      { start: 73425, end: 73467 },
+      { start: 73467, end: 73509 },
+      { start: 73509, end: 73509 },
+      { start: 73509, end: 73592 },
+      { start: 73592, end: 73634 },
+      { start: 73634, end: 73675 },
+      { start: 73675, end: 73717 },
+      { start: 73717, end: 73759 },
+      { start: 73759, end: 73801 },
+      { start: 73801, end: 73842 },
+      { start: 73801, end: 73842 },
+    ],
+  };
+
+  const fixed = helpers.normalizeFrameItemTimingRanges(segment);
+
+  assert.ok(fixed > 0);
+  let previousEnd = segment.start;
+  segment.items.forEach((item) => {
+    assert.ok(item.start >= segment.start);
+    assert.ok(item.end <= segment.end);
+    assert.ok(item.end > item.start);
+    assert.ok(item.start >= previousEnd);
+    previousEnd = item.end;
+  });
+  assert.equal(segment.end, 73842);
+});
+
+for (const { label, fps } of [
+  { label: '23.976', fps: 23.976 },
+  { label: '24', fps: 24 },
+  { label: '25', fps: 25 },
+  { label: '29.97', fps: 29.97 },
+  { label: '30', fps: 30 },
+  { label: '50', fps: 50 },
+  { label: '59.94', fps: 59.94 },
+  { label: '60', fps: 60 },
+]) {
+  test(`remaps and splits dense word timings safely at ${label} FPS`, () => {
+    const words = Array.from({ length: 48 }, (_, index) => `w${String(index).padStart(2, '0')}`);
+    const sourceStart = 1000;
+    const sourceEnd = 3000;
+    const toFrameRange = (start, end) => {
+      const startFrame = helpers.frameNumberFromMilliseconds(start, fps);
+      const endFrame = Math.max(
+        startFrame + 1,
+        helpers.frameNumberFromMilliseconds(end, fps),
+      );
+      return {
+        start: helpers.millisecondsFromFrameNumber(startFrame, fps),
+        end: helpers.millisecondsFromFrameNumber(endFrame, fps),
+        start_frame: startFrame,
+        end_frame: endFrame,
+      };
+    };
+    const segmentRange = toFrameRange(sourceStart, sourceEnd);
+    const segment = {
+      ...segmentRange,
+      text: words.join(' '),
+      // 20ms 的字词让低帧率下出现真实的同帧碰撞，模拟切换到帧模式后的投影结果。
+      items: words.map((text, index) => ({
+        text,
+        ...toFrameRange(sourceStart + index * 20, sourceStart + (index + 1) * 20),
+      })),
+    };
+    const originalFramePairs = segment.items.map(({ start_frame, end_frame }) => [
+      start_frame, end_frame,
+    ]);
+    const originalSegmentRange = [segment.start, segment.end];
+
+    helpers.normalizeFrameItemTimingRanges(segment);
+
+    assert.deepEqual([segment.start, segment.end], originalSegmentRange);
+    assert.deepEqual(
+      segment.items.map(({ start_frame, end_frame }) => [start_frame, end_frame]),
+      originalFramePairs,
+    );
+    assert.ok(Number.isInteger(segment.start_frame));
+    assert.ok(Number.isInteger(segment.end_frame));
+    assert.ok(segment.end_frame > segment.start_frame);
+    let previousEnd = segment.start;
+    segment.items.forEach((item) => {
+      assert.ok(Number.isInteger(item.start_frame));
+      assert.ok(Number.isInteger(item.end_frame));
+      assert.ok(item.start_frame >= segment.start_frame);
+      assert.ok(item.end_frame <= segment.end_frame);
+      assert.ok(item.end_frame > item.start_frame);
+      assert.ok(item.start >= segment.start);
+      assert.ok(item.end <= segment.end);
+      assert.ok(item.end > item.start);
+      assert.ok(item.start >= previousEnd);
+      previousEnd = item.end;
+    });
+
+    const legalOffsets = helpers.subtitleSplitOffsets(segment.text, 'word');
+    assert.equal(legalOffsets.length, words.length - 1);
+    for (let index = 1; index < words.length; index += 1) {
+      const offset = segment.text.indexOf(words[index]);
+      const leftItem = segment.items[index - 1];
+      const rightItem = segment.items[index];
+      const targetMs = (leftItem.end + rightItem.start) / 2;
+      assert.equal(helpers.splitCharOffsetAtTime(segment, targetMs), offset);
+      const parts = helpers.splitSubtitleText(segment.text, offset, 'word');
+      assert.ok(parts?.left);
+      assert.ok(parts?.right);
+    }
+  });
+}
 
 test('repairs item overlap without hiding a real subtitle-segment overlap', () => {
   const segments = [

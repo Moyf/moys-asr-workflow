@@ -13,7 +13,7 @@ import threading
 import tempfile
 import time
 import webbrowser
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -24,8 +24,25 @@ from typing import BinaryIO, Final, final
 from maw.app_paths import default_emoji_font_path
 from maw.ffmpeg import FfmpegTools, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
-from maw.waveform import is_waveform_payload
-from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS, ModelConfig, ProviderConfig, _gui_theme, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
+from maw.gui_config import (
+    DEFAULT_ENV_PATH,
+    DEFAULT_MODEL_ID,
+    MODELS,
+    OPENAI_ASR_DEFAULT_BASE_URL,
+    OPENAI_ASR_DEFAULT_MODEL,
+    PROVIDERS,
+    ModelConfig,
+    ProviderConfig,
+    _gui_theme,
+    api_key_for_provider,
+    effective_config,
+    load_env,
+    masked_secret,
+    model_by_label,
+    provider_by_id,
+    provider_for_model,
+    save_env,
+)
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
@@ -33,6 +50,7 @@ from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, instal
 from maw.local_runtime import (
     LocalRuntimeCancelled,
     LocalRuntimeError,
+    LocalRuntimeStatus,
     install_local_runtime,
     managed_runtime_status,
     resolve_model_cache_root,
@@ -41,6 +59,7 @@ from maw.local_models import inspect_local_model, local_model_payload, prepare_l
 from maw.media import resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import read_project, read_srt
+from maw.project_io import write_mosp
 from maw.project import normalize_project
 from maw.postprocess_ffmpeg import (
     BurnSubtitleRequest,
@@ -72,7 +91,8 @@ from maw.postprocess_pipeline import (
 from maw.postprocess_pipeline import PostprocessPipelineError
 from maw.script_alignment import normalize_gap_remove_settings
 from maw.text_conversion import TextConversionUnavailable, normalize_text_conversion_mode
-from maw.ocr_runtime import OCR_MODEL_ID, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, recover_ocr_runtime_install, run_ocr_in_runtime
+from maw.ocr_runtime import OCR_MODEL_ID, OCR_MODEL_IDS, OCR_MODEL_LABELS, OCR_MODEL_TYPES, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, recover_ocr_runtime_install, run_ocr_in_runtime
+from maw.waveform import is_waveform_payload
 from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
 
@@ -86,6 +106,12 @@ MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
 MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
+# 编辑器健康检查探测轻量 JSON 端点：首页渲染会把全量工程数据内联进页面，
+# 大工程（长媒体内嵌波形）单次渲染可达数秒，不能作为就绪判据。
+EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
+# 单次探测超时与总超时分离：后台加载工程期间 GIL 繁忙，轻量端点也可能
+# 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
+EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
 BUNDLED_APP_VERSION = "1.5.3"
 MOSE_VERSION = "0.1.0"
@@ -96,6 +122,8 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "media_not_found": "Media file does not exist.",
     "server_media_missing": "Project media is missing, unsupported, or ambiguous. Choose media manually.",
     "api_key_missing": "API key is required.",
+    "custom_asr_model_missing": "请填写自定义 ASR 模型名。",
+    "custom_asr_base_url_missing": "请填写自定义 ASR Base URL。",
     "local_runtime_missing": "本地模型运行时未安装。",
     "local_runtime_install_failed": "本地模型运行环境安装失败。",
     "local_runtime_cancelled": "本地模型运行环境安装已取消。",
@@ -440,6 +468,19 @@ def default_paths() -> LauncherPaths:
     return LauncherPaths(root=root, env_path=DEFAULT_ENV_PATH, launcher_html=root / "web" / "launcher" / "index.html")
 
 
+def _independent_app_child_environment() -> dict[str, str]:
+    """为独立运行的 MAW 子进程构建环境。
+
+    PyInstaller 6.9+ 默认把通过同一冻结程序启动的进程当作 worker。
+    编辑器 Server 是独立 MAW 实例，必须重置 bootloader 环境；源码模式
+    和外部 Python 解释器维持原行为。
+    """
+    environment = _child_environment(os.environ, "", provider="")
+    if getattr(sys, "frozen", False):
+        environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return environment
+
+
 # ---- Linux keycap 表情字体（Noto Color Emoji）----
 # 段落标题的 keycap 表情（1️⃣ 等）由「数字 + U+FE0F + U+20E3」组成，需要彩色 emoji 字体
 # 完整覆盖才可正常成型；部分 Linux 发行版（如 SteamOS 的 Twemoji）缺少 U+FE0F，会渲染成
@@ -595,7 +636,6 @@ class LauncherApi:
 
     def get_config(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         config = effective_config(self.paths.env_path)
-        ocr_runtime = self._ocr_runtime_status()
         visible_providers = tuple(item for item in PROVIDERS if not item.hidden)
         default_provider = visible_providers[0] if visible_providers else PROVIDERS[0]
         remembered_model = config.last_model or MODELS[0].id
@@ -608,6 +648,45 @@ class LauncherApi:
             visible_models[0] if visible_models else MODELS[0],
         )
         selected_api_key = api_key_for_provider(provider.id, self.paths.env_path)
+        stored_env = load_env(self.paths.env_path)
+        ocr_runtime_root = effective_config_value(self.paths.env_path, "MAW_OCR_RUNTIME_ROOT")
+        # Do not inspect managed runtimes or model caches on the critical
+        # get_config request.  A large Hugging Face/ModelScope cache can make
+        # recursive status detection take seconds before the Launcher is
+        # allowed to paint its first usable frame.  The dedicated status
+        # endpoints below perform the real checks after the shell is visible.
+        local_runtime = {
+            "status": "checking",
+            "ready": False,
+            "path": "",
+            "pythonPath": "",
+            "modelCachePath": config.model_cache_root,
+            "detail": "",
+        }
+        ocr_runtime = {
+            "status": "checking",
+            "ready": False,
+            "path": ocr_runtime_root,
+            "pythonPath": "",
+            "detail": "",
+            "runtimeVersion": "",
+            "modelId": OCR_MODEL_ID,
+            "modelLabel": OCR_MODEL_LABELS.get(OCR_MODEL_ID, ""),
+            "modelInstalled": False,
+            "modelPath": "",
+        }
+        ocr_models = [
+            {
+                "id": model_id,
+                "label": OCR_MODEL_LABELS[model_id],
+                "modelType": OCR_MODEL_TYPES[model_id],
+                "status": "checking",
+                "installed": False,
+                "path": "",
+                "detail": "",
+            }
+            for model_id in OCR_MODEL_IDS
+        ]
         return {
             "providerId": provider.id,
             "modelId": selected_model.id,
@@ -615,6 +694,8 @@ class LauncherApi:
             "maskedApiKey": masked_secret(selected_api_key),
             "region": config.region,
             "workspaceId": config.workspace_id,
+            "openaiBaseUrl": os.environ.get("MAW_OPENAI_ASR_BASE_URL") or stored_env.get("MAW_OPENAI_ASR_BASE_URL", OPENAI_ASR_DEFAULT_BASE_URL),
+            "openaiModel": os.environ.get("MAW_OPENAI_ASR_MODEL") or stored_env.get("MAW_OPENAI_ASR_MODEL", OPENAI_ASR_DEFAULT_MODEL),
             "language": config.language,
             "guiLang": config.gui_lang,
             "appVersion": _app_version(self.paths),
@@ -623,16 +704,28 @@ class LauncherApi:
             "lastModel": config.last_model,
             "lastLanguage": config.last_language,
             "theme": config.theme,
-            "localRuntime": managed_runtime_status(config.model_cache_root).to_payload(),
-            "ocrRuntime": ocr_runtime.to_payload(),
-            "ocrModels": ocr_models_payload(ocr_runtime),
+            "localRuntime": local_runtime,
+            "ocrRuntime": ocr_runtime,
+            "ocrModels": ocr_models,
             "ocrModelId": OCR_MODEL_ID,
             "modelCacheRoot": config.model_cache_root,
-            "models": [_model_payload(item, model_cache_root=config.model_cache_root) for item in provider.models],
+            "models": [
+                _model_payload(
+                    item,
+                    model_cache_root=config.model_cache_root,
+                    include_local_status=False,
+                )
+                for item in provider.models
+            ],
             "regions": [{"id": value, "label": label} for value, label in provider.regions],
             "languages": [{"id": value, "label": label} for value, label in provider.languages],
             "providers": [
-                _provider_payload(item, self.paths.env_path, config.model_cache_root)
+                _provider_payload(
+                    item,
+                    self.paths.env_path,
+                    config.model_cache_root,
+                    include_local_status=False,
+                )
                 for item in visible_providers
             ],
             "postprocessProviders": _postprocess_provider_payloads(self.paths.env_path),
@@ -699,6 +792,9 @@ class LauncherApi:
             updates["DASHSCOPE_REGION"] = str(payload.get("region") or "beijing")
             updates["DASHSCOPE_DEFAULT_LANGUAGE"] = str(payload.get("language") or "")
             updates["DASHSCOPE_WORKSPACE_ID"] = str(payload.get("workspaceId") or "").strip()
+        elif provider.id == "openai":
+            updates["MAW_OPENAI_ASR_BASE_URL"] = str(payload.get("openaiBaseUrl") or OPENAI_ASR_DEFAULT_BASE_URL).strip()
+            updates["MAW_OPENAI_ASR_MODEL"] = str(payload.get("openaiModel") or OPENAI_ASR_DEFAULT_MODEL).strip()
         try:
             save_env(self.paths.env_path, updates)
         except (OSError, UnicodeError, ValueError) as error:
@@ -1364,7 +1460,12 @@ class LauncherApi:
         launch_url = f"{url}?lang={_gui_lang(payload)}"
 
         owned_server_running = self.server_process is not None and self.server_process.poll() is None
-        if _wait_for_server(url, timeout=0.25) and (not json_text or not owned_server_running):
+        if _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ) and (not json_text or not owned_server_running):
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:
             # 无工程：不带 JSON 路径启动，由服务器按「自动打开上次工程」设置恢复最近工程或回落为空白编辑器
@@ -1390,22 +1491,35 @@ class LauncherApi:
                 stdout=self.server_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_child_environment(os.environ, "", provider=""),
+                env=_independent_app_child_environment(),
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
         except OSError as error:
             self._close_server_log()
-            return _error_result("port", "server_start_failed", f"{url} | {error}")
-        if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
+            detail = f"{url} | {error}"
+            self._persist_start_failure("server_start_failed", detail)
+            return _error_result("port", "server_start_failed", detail)
+        if not _wait_for_server(
+            url,
+            timeout=SERVER_START_TIMEOUT,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             exit_code = self.server_process.poll() if self.server_process else None
             if exit_code is not None:
                 detail = self._read_server_log()
                 detail = f"{url} | 进程退出码 {exit_code}" + (f"：{detail}" if detail else "")
+                self._persist_start_failure("server_start_failed", detail)
                 _ = self._stop_owned_server()
                 return _error_result("port", "server_start_failed", detail)
-            _ = self._stop_owned_server()
-            return _error_result("port", "server_no_response", url)
+            _ = self._stop_owned_server(close_log=False)
+            child_log = self._read_server_log()
+            self._close_server_log()
+            detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
+            detail += f"：{child_log}" if child_log else "：子进程未输出日志"
+            self._persist_start_failure("server_no_response", detail)
+            return _error_result("port", "server_no_response", detail)
         self._close_server_log()
         return {"ok": True, "url": launch_url}
 
@@ -1502,7 +1616,7 @@ class LauncherApi:
                 stdout=self.alignment_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_child_environment(os.environ, "", provider=""),
+                env=_independent_app_child_environment(),
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
@@ -1519,17 +1633,25 @@ class LauncherApi:
             self.alignment_script_path = None
             self.alignment_media_path = None
             self.alignment_gap_remove = None
-            return _error_result("", "alignment_server_start_failed", f"{url} | {error}")
+            detail = f"{url} | {error}"
+            self._persist_start_failure("alignment_server_start_failed", detail)
+            return _error_result("", "alignment_server_start_failed", detail)
 
         if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
             exit_code = self.alignment_process.poll() if self.alignment_process else None
             if exit_code is not None:
                 detail = self._read_alignment_log()
                 detail = f"{url} | process exited with code {exit_code}" + (f": {detail}" if detail else "")
+                self._persist_start_failure("alignment_server_start_failed", detail)
                 _ = self._stop_owned_alignment_server()
                 return _error_result("", "alignment_server_start_failed", detail)
-            _ = self._stop_owned_alignment_server()
-            return _error_result("", "alignment_server_no_response", url)
+            _ = self._stop_owned_alignment_server(close_log=False)
+            child_log = self._read_alignment_log()
+            self._close_alignment_log()
+            detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
+            detail += f"：{child_log}" if child_log else "：子进程未输出日志"
+            self._persist_start_failure("alignment_server_no_response", detail)
+            return _error_result("", "alignment_server_no_response", detail)
         self._close_alignment_log()
         return {
             "ok": True,
@@ -1545,7 +1667,12 @@ class LauncherApi:
         """Report a responding MAW server on the currently selected localhost port."""
         port = _port(payload)
         url = f"http://127.0.0.1:{port}/"
-        if not _wait_for_server(url, timeout=0.25):
+        if not _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             return {"ok": True, "running": False, "url": url}
         pid = _maw_server_process_id(port)
         return {"ok": True, "running": pid is not None, "url": url, "pid": pid}
@@ -1574,7 +1701,7 @@ class LauncherApi:
             "detail": resolution.message,
         }
 
-    def _stop_owned_server(self) -> bool:
+    def _stop_owned_server(self, *, close_log: bool = True) -> bool:
         process = self.server_process
         self.server_process = None
         stopped = False
@@ -1586,7 +1713,8 @@ class LauncherApi:
         finally:
             if process is not None:
                 release_process_tree(process)
-            self._close_server_log()
+            if close_log:
+                self._close_server_log()
 
     def _read_server_log(self) -> str:
         log_file = self.server_log_file
@@ -1608,7 +1736,7 @@ class LauncherApi:
             except OSError:
                 pass
 
-    def _stop_owned_alignment_server(self) -> bool:
+    def _stop_owned_alignment_server(self, *, close_log: bool = True) -> bool:
         process = self.alignment_process
         self.alignment_process = None
         self.alignment_server_port = None
@@ -1625,7 +1753,12 @@ class LauncherApi:
         finally:
             if process is not None:
                 release_process_tree(process)
-            self._close_alignment_log()
+            if close_log:
+                self._close_alignment_log()
+
+    def _persist_start_failure(self, code: str, detail: str) -> None:
+        if self._log_sink is not None:
+            self._log_sink.append({"type": "error", "code": code, "detail": detail})
 
     def _read_alignment_log(self) -> str:
         log_file = self.alignment_log_file
@@ -1652,7 +1785,12 @@ class LauncherApi:
             return {"ok": True, "stopped": True}
         port = _port(payload or {})
         url = f"http://127.0.0.1:{port}/"
-        if not _wait_for_server(url, timeout=0.25):
+        if not _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             return {"ok": True, "stopped": False}
         if _stop_external_maw_server(port):
             return {"ok": True, "stopped": True}
@@ -1816,7 +1954,8 @@ class LauncherApi:
         project_path = output_seed.with_suffix(".mosp")
         project: dict[str, object] = {"media": str(media_path), "segments": []}
         try:
-            ffmpeg_path = _postprocess_ffmpeg(self.paths.env_path)
+            ffmpeg_tools = _postprocess_ffmpeg_tools(self.paths.env_path)
+            ffmpeg_path = ffmpeg_tools.ffmpeg
             cached = embed_media_caches(
                 project,
                 media_path,
@@ -1832,7 +1971,12 @@ class LauncherApi:
                     or "FFmpeg did not return any decodable audio samples."
                 )
                 return _error_result("mediaPath", "waveform_unavailable", detail)
-            project_path.write_bytes((json.dumps(normalized, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+            write_mosp(
+                project_path,
+                normalized,
+                media_path=media_path,
+                ffprobe_path=ffmpeg_tools.ffprobe,
+            )
         except (OSError, TypeError, ValueError) as error:
             return _error_result("mediaPath", "waveform_generation_failed", str(error))
 
@@ -1852,17 +1996,23 @@ class LauncherApi:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         selected_id = str((payload or {}).get("modelId") or "")
         selected_path = str((payload or {}).get("modelPath") or "").strip()
-        selected_model = next((item for item in provider.models if item.id == selected_id), provider.models[0])
+        visible_models = tuple(item for item in provider.models if not item.hidden)
+        selected_model = next((item for item in visible_models if item.id == selected_id), visible_models[0])
+        runtime_by_engine: dict[str, LocalRuntimeStatus] = {}
+        for model in visible_models:
+            if model.engine not in runtime_by_engine:
+                runtime_by_engine[model.engine] = managed_runtime_status(model_cache_root, engine=model.engine)
         return {
             "ok": True,
-            "runtime": managed_runtime_status(model_cache_root, engine=selected_model.engine).to_payload(),
+            "runtime": runtime_by_engine[selected_model.engine].to_payload(),
             "models": [
                 _model_payload(
                     model,
                     model_path=selected_path if model.id == selected_id else "",
                     model_cache_root=model_cache_root,
+                    runtime_status=runtime_by_engine[model.engine],
                 )
-                for model in provider.models
+                for model in visible_models
             ],
         }
 
@@ -2550,9 +2700,10 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     log_sink = LocalLogSink()
     api = LauncherApi(paths=paths, default_server_port=server_port, log_sink=log_sink)
     install_stdio_tee(log_sink)
+    launcher_url = paths.launcher_html.resolve().as_uri()
     window = webview.create_window(
         WINDOW_TITLE,
-        url=paths.launcher_html.resolve().as_uri(),
+        url=launcher_url,
         js_api=api,
         width=900,
         height=880,
@@ -2562,10 +2713,11 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     )
     if window is not None:
         window.events.closing += lambda: api.shutdown()
+        # 在窗口首次显示时就同步标题栏颜色，避免内容尚未绘制时露出白色原生标题栏。
+        window.events.shown += lambda: apply_dark_title_bar(WINDOW_TITLE)
 
         def _on_loaded() -> None:
             api.pump.start()
-            apply_dark_title_bar(WINDOW_TITLE)
 
         window.events.loaded += _on_loaded
     icon = asset_path("assets/maw.ico")
@@ -2660,6 +2812,22 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         (item for item in provider.models if requested_model in (item.id, item.label)),
         provider.models[0],
     )
+    custom_model = ""
+    custom_base_url = ""
+    if provider.id == "openai":
+        stored_openai = load_env(env_path)
+        custom_model = (
+            str(payload.get("openaiModel") or "").strip()
+            or stored_openai.get("MAW_OPENAI_ASR_MODEL", OPENAI_ASR_DEFAULT_MODEL).strip()
+        )
+        custom_base_url = (
+            str(payload.get("openaiBaseUrl") or "").strip()
+            or stored_openai.get("MAW_OPENAI_ASR_BASE_URL", OPENAI_ASR_DEFAULT_BASE_URL).strip()
+        )
+        if not custom_model:
+            raise PreflightError("openaiModel", "custom_asr_model_missing", "请填写自定义 ASR 模型名。")
+        if not custom_base_url:
+            raise PreflightError("openaiBaseUrl", "custom_asr_base_url_missing", "请填写自定义 ASR Base URL。")
     api_key = str(payload.get("apiKey") or "").strip() or api_key_for_provider(provider.id, env_path)
     region = str(payload.get("region") or "beijing") if provider.id == "qwen" else ""
     workspace_id = str(payload.get("workspaceId") or "").strip()
@@ -2670,6 +2838,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
     max_len = _segmentation_option(payload, field="maxLen", label="最大字数", minimum=1)
     min_len = _segmentation_option(payload, field="minLen", label="短句合并阈值", minimum=1)
+    max_words = _segmentation_option(payload, field="maxWords", label="英文最大单词数", minimum=1)
+    min_words = _segmentation_option(payload, field="minWords", label="英文短句合并阈值（单词）", minimum=1)
     gap_split = _segmentation_option(payload, field="gapSplit", label="停顿切句阈值", minimum=0)
     strip_tail_punct = _transcribe_strip_tail_punct(env_path)
     if max_len and min_len and int(max_len) < int(min_len):
@@ -2677,6 +2847,12 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             "maxLen",
             "segmentation_invalid",
             "最大字数不能小于短句合并阈值。",
+        )
+    if max_words and min_words and int(max_words) < int(min_words):
+        raise PreflightError(
+            "maxWords",
+            "segmentation_invalid",
+            "英文最大单词数不能小于英文短句合并阈值。",
         )
     local_model_path = str(payload.get("localModelPath") or "").strip()
     device = str(payload.get("device") or "auto").strip().lower()
@@ -2767,12 +2943,14 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     return TranscriptionRequest(
         media_path=media,
         srt_path=srt,
-        model=model.model_ref or model.id,
+        model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
         length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
         max_len=max_len,
         min_len=min_len,
+        max_words=max_words,
+        min_words=min_words,
         gap_split=gap_split,
         strip_tail_punct=strip_tail_punct,
         qwen_audio_context=qwen_audio_context,
@@ -2801,6 +2979,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         model_cache_root=model_cache_root,
         device=device,
         forced_aligner=str(payload.get("forcedAligner") or "").strip(),
+        base_url=custom_base_url,
         runtime_python=runtime_python,
         postprocess_plan=auto_plan,
         postprocess_llm_settings=auto_llm_settings,
@@ -3104,16 +3283,36 @@ def _drop_paths_from_event(event: Mapping[str, object]) -> list[str]:
     return paths
 
 
-def _wait_for_server(url: str, *, timeout: float) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+def _wait_for_server(
+    url: str,
+    *,
+    timeout: float,
+    probe_path: str = "/",
+    probe_timeout: float = 0.25,
+) -> bool:
+    probe_url = f"{url.rstrip('/')}{probe_path}"
+    deadline = time.monotonic() + max(0.0, timeout)
+    request_budget = max(0.01, probe_timeout)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
         try:
-            with urlopen(url, timeout=0.25) as response:
+            with urlopen(probe_url, timeout=min(request_budget, remaining)) as response:
                 if 200 <= response.status < 500:
                     return True
+        except HTTPError as error:
+            # urlopen raises for 4xx/5xx instead of returning a response.  A
+            # 4xx still proves that the local HTTP server is alive; retain the
+            # documented 200..499 readiness range while continuing to retry 5xx.
+            if 200 <= error.code < 500:
+                return True
         except (OSError, URLError):
-            time.sleep(0.1)
-    return False
+            pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.1, remaining))
 
 
 def _listening_process_id(port: int) -> int | None:
@@ -3122,7 +3321,8 @@ def _listening_process_id(port: int) -> int | None:
         return None
     try:
         result = subprocess.run(
-            ["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, check=False,
+            ["netstat", "-ano", "-p", "TCP"], capture_output=True,
+            encoding="mbcs", errors="replace", check=False,
             startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:
@@ -3143,7 +3343,8 @@ def _process_command_line(pid: int) -> str:
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
-            capture_output=True, text=True, check=False, startupinfo=startupinfo(), creationflags=creationflags(),
+            capture_output=True, encoding="mbcs", errors="replace", check=False,
+            startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:
         return ""
@@ -3172,7 +3373,8 @@ def _stop_external_maw_server(port: int) -> bool:
         return False
     try:
         result = subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True, check=False,
+            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True,
+            encoding="mbcs", errors="replace", check=False,
             startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:
@@ -3273,6 +3475,8 @@ def _provider_payload(
     provider: ProviderConfig,
     env_path: Path,
     model_cache_root: str = "",
+    *,
+    include_local_status: bool = True,
 ) -> dict[str, object]:
     api_key = api_key_for_provider(provider.id, env_path)
     return {
@@ -3289,7 +3493,11 @@ def _provider_payload(
         "note": provider.note,
         "commonLanguages": list(provider.common_languages),
         "models": [
-            _model_payload(item, model_cache_root=model_cache_root)
+            _model_payload(
+                item,
+                model_cache_root=model_cache_root,
+                include_local_status=include_local_status,
+            )
             for item in provider.models
             if not item.hidden
         ],
@@ -3303,6 +3511,8 @@ def _model_payload(
     *,
     model_path: str = "",
     model_cache_root: str = "",
+    include_local_status: bool = True,
+    runtime_status: LocalRuntimeStatus | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "id": model.id,
@@ -3323,9 +3533,25 @@ def _model_payload(
         ],
     }
     if model.kind == "local":
-        payload["localStatus"] = local_model_payload(
-            model,
-            model_path,
-            model_cache_root=model_cache_root,
-        )
+        if include_local_status:
+            payload["localStatus"] = local_model_payload(
+                model,
+                model_path,
+                model_cache_root=model_cache_root,
+                runtime_status=runtime_status,
+            )
+        else:
+            payload["localStatus"] = {
+                "status": "checking",
+                "runtimeAvailable": False,
+                "installed": False,
+                "path": "",
+                "detail": "",
+                "runtimeSource": "checking",
+                "runtimePython": "",
+                "engine": model.engine,
+                "modelRef": model.model_ref,
+                "requiredModelRefs": list(model.required_model_refs),
+                "canPrepare": False,
+            }
     return payload

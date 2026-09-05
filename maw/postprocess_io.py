@@ -131,7 +131,7 @@ def render_srt(project: JsonDict) -> str:
         start = segment.get("start")
         end = segment.get("end")
         text = segment.get("text")
-        if type(start) is int and type(end) is int and isinstance(text, str):
+        if type(start) is int and type(end) is int and isinstance(text, str) and text.strip():
             safe_text = re.sub(r"\r?\n\s*\r?\n+", "\n", text.strip())
             blocks.append(f"{output_index}\n{_format_srt_time(start)} --> {_format_srt_time(end)}\n{safe_text}\n")
             output_index += 1

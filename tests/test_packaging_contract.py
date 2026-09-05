@@ -147,6 +147,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("generate_subtitle_qwen_api", spec)
         self.assertIn("generate_subtitle_soniox_api", spec)
         self.assertIn("generate_subtitle_bcut_api", spec)
+        self.assertIn("generate_subtitle_openai_api", spec)
         self.assertIn("maw.soniox", spec)
         self.assertIn("local-runtime", spec)
         self.assertIn('"app_paths.py"), "local-runtime/maw"', spec)
@@ -311,7 +312,7 @@ class PackagingContractTests(unittest.TestCase):
         local_dependencies = set(project["dependency-groups"]["local"])
         self.assertIn("jieba>=0.42", local_dependencies)
         self.assertIn("requests>=2.28", local_dependencies)
-        self.assertIn("reapeaks>=0.3.1", local_dependencies)
+        self.assertIn("reapeaks>=0.3.2", local_dependencies)
         self.assertFalse(any(value.startswith("pywebview") for value in local_dependencies))
         self.assertFalse(any(value.startswith("opencc-") for value in local_dependencies))
         self.assertFalse(any(value.startswith("fonttools") for value in local_dependencies))
@@ -340,6 +341,32 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("maw/qwen_audio.py", bundled_paths)
         for relative_path in sorted(bundled_paths):
             self.assertIn(_local_runtime_spec_entry(relative_path), spec)
+
+    def test_local_runtime_stays_out_of_the_editor_stack(self) -> None:
+        """Given local ASR entrypoints, When the import graph is built, Then the editor generator is absent.
+
+        Issue 96：转写 CLI 只需要「默认表情包目录」这一项配置，它过去住在 edit.py 里，
+        于是每个转写入口都连带导入整个编辑器和 Rust 波形内核；依赖清单不含该内核的
+        托管 Runtime（MOSS）在加载模型之前就 ModuleNotFoundError。
+        """
+        graph = _local_runtime_import_graph()
+
+        self.assertNotIn("edit", graph)
+        self.assertIn("maw.stickers", graph)
+
+    def test_rust_reapeaks_kernel_is_imported_only_at_the_call_site(self) -> None:
+        """Given managed runtimes may lack the Rust kernel, When the parser module is read, Then its import is lazy."""
+        source = read_text("maw/reapeaks.py")
+        tree = ast.parse(source)
+        top_level: set[str] = set()
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.Import):
+                top_level.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                top_level.add(node.module)
+
+        self.assertNotIn("reapeaks", top_level)
+        self.assertIn("import reapeaks as rust_generate", source)
 
     def test_ocr_runtime_bundles_every_local_import_dependency(self) -> None:
         """Given the OCR worker entrypoint, When packaging is read, Then its local imports are copied beside it."""
