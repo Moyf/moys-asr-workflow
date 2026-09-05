@@ -9,17 +9,19 @@ import tempfile
 import threading
 import unittest
 from collections.abc import Mapping
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from typing import final
 from unittest import mock
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
@@ -82,8 +84,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIsNone(config["lastModel"])
         self.assertIsNone(config["lastLanguage"])
         self.assertEqual(config["stickerDir"], "")
-        self.assertIn(config["localRuntime"]["status"], {"missing", "broken", "ready"})
-        self.assertIn(config["ocrRuntime"]["status"], {"missing", "broken", "ready"})
+        self.assertEqual(config["localRuntime"]["status"], "checking")
+        self.assertEqual(config["ocrRuntime"]["status"], "checking")
         self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
         self.assertEqual(config["providers"][0]["keyUrl"], "https://help.aliyun.com/zh/model-studio/get-api-key")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
@@ -166,8 +168,64 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(whisper["id"], "whisper-large-v3-local")
         self.assertIn("用户自行安装 CUDA 12 和 cuDNN 9", whisper["note"])
         self.assertIn("自动回退到 CPU", whisper["note"])
-        self.assertIn(local["models"][0]["localStatus"]["status"], {"runtime_missing", "missing", "installed", "partial", "path_invalid", "broken"})
+        self.assertEqual(local["models"][0]["localStatus"]["status"], "checking")
         self.assertEqual(config["modelCacheRoot"], "")
+
+    def test_get_config_does_not_scan_managed_runtime_or_model_caches(self) -> None:
+        with (
+            mock.patch("maw.gui_web.managed_runtime_status") as runtime_status,
+            mock.patch.object(self.api, "_ocr_runtime_status") as ocr_status,
+            mock.patch("maw.gui_web.local_model_payload") as model_payload,
+            mock.patch("maw.gui_web.ocr_models_payload") as ocr_models,
+        ):
+            config = self.api.get_config()
+
+        runtime_status.assert_not_called()
+        ocr_status.assert_not_called()
+        model_payload.assert_not_called()
+        ocr_models.assert_not_called()
+        self.assertEqual(config["localRuntime"]["status"], "checking")
+        self.assertEqual(config["ocrRuntime"]["status"], "checking")
+
+    def test_get_local_models_scans_visible_models_and_reuses_runtime_status_by_engine(self) -> None:
+        calls: list[str] = []
+
+        def runtime_status(_cache_root: str, *, engine: str) -> RuntimeStatus:
+            calls.append(engine)
+            return RuntimeStatus("missing", False, "", "", "missing", "1", "")
+
+        with (
+            mock.patch("maw.gui_web.managed_runtime_status", side_effect=runtime_status),
+            mock.patch("maw.local_models.managed_runtime_status") as model_runtime_status,
+            mock.patch("maw.local_models.importlib.util.find_spec", return_value=None),
+        ):
+            result = self.api.get_local_models({"modelId": "qwen3-asr-local"})
+
+        self.assertEqual(calls, ["qwen-asr", "funasr", "moss", "whisper"])
+        self.assertEqual(
+            [model["id"] for model in result["models"]],
+            [
+                "qwen3-asr-local",
+                "qwen3-asr-1.7b-local",
+                "sensevoice-small-local",
+                "moss-transcribe-diarize-local",
+                "whisper-large-v3-local",
+            ],
+        )
+        model_runtime_status.assert_not_called()
+
+    def test_get_config_uses_environment_override_for_initial_ocr_runtime_path(self) -> None:
+        file_runtime = self.root / "ocr-from-file"
+        env_runtime = self.root / "ocr-from-environment"
+        self.env_path.write_text(
+            f"MAW_OCR_RUNTIME_ROOT={file_runtime}\n",
+            encoding="utf-8",
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_OCR_RUNTIME_ROOT": str(env_runtime)}, clear=False):
+            config = self.api.get_config()
+
+        self.assertEqual(config["ocrRuntime"]["path"], str(env_runtime))
 
     def test_save_settings_accepts_custom_model_cache_root(self) -> None:
         cache_root = self.root / "models"
@@ -232,6 +290,40 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("DASHSCOPE_WORKSPACE_ID=ws-1", text)
         self.assertEqual(result["maskedApiKey"], "sk-…9999")
         self.assertNotIn("super-secret", result["message"])
+
+    def test_custom_openai_asr_settings_and_request_are_forwarded(self) -> None:
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+        result = self.api.save_settings({
+            "providerId": "openai",
+            "modelId": "custom-asr",
+            "apiKey": "sk-relay",
+            "openaiBaseUrl": "https://relay.example/v1",
+            "openaiModel": "relay-asr-model",
+            "guiLang": "zh",
+        })
+
+        self.assertTrue(result["ok"])
+        env_text = self.env_path.read_text(encoding="utf-8")
+        self.assertIn("MAW_OPENAI_ASR_API_KEY=sk-relay", env_text)
+        self.assertIn("MAW_OPENAI_ASR_BASE_URL=https://relay.example/v1", env_text)
+        self.assertIn("MAW_OPENAI_ASR_MODEL=relay-asr-model", env_text)
+
+        request = _request_from_payload({
+            "providerId": "openai",
+            "modelId": "custom-asr",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "clip.srt"),
+            "apiKey": "sk-relay",
+            "openaiBaseUrl": "https://relay.example/v1",
+            "openaiModel": "relay-asr-model",
+            "generateHtml": False,
+        }, self.env_path)
+
+        self.assertEqual(request.provider, "openai")
+        self.assertEqual(request.base_url, "https://relay.example/v1")
+        self.assertEqual(request.model, "relay-asr-model")
+        self.assertEqual(request.api_key, "sk-relay")
 
     def test_save_prefs_writes_only_gui_memory_keys(self) -> None:
         self.env_path.write_text("# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\n", encoding="utf-8")
@@ -619,7 +711,10 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         ffmpeg = self.root / "ffmpeg.exe"
         with (
-            mock.patch("maw.gui_web._postprocess_ffmpeg", return_value=ffmpeg),
+            mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(
+                ffmpeg=ffmpeg,
+                ffprobe=None,
+            )),
             mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=None, reapeaks_path=None)) as embed,
         ):
             result = self.api.generate_waveform_project({"mediaPath": str(media), "generateSpectral": True})
@@ -1325,8 +1420,18 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(
             wait_for_server.call_args_list,
             [
-                mock.call("http://127.0.0.1:9876/", timeout=0.25),
-                mock.call("http://127.0.0.1:9876/", timeout=SERVER_START_TIMEOUT),
+                mock.call(
+                    "http://127.0.0.1:9876/",
+                    timeout=0.25,
+                    probe_path=EDITOR_HEALTH_PROBE_PATH,
+                    probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+                ),
+                mock.call(
+                    "http://127.0.0.1:9876/",
+                    timeout=SERVER_START_TIMEOUT,
+                    probe_path=EDITOR_HEALTH_PROBE_PATH,
+                    probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+                ),
             ],
         )
         self.assertNotIn("serverAlreadyRunning", result)
@@ -1386,6 +1491,71 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["gapRemove"]["lead_in_ms"], 120)
         self.assertEqual(wait_for_server.call_args, mock.call("http://127.0.0.1:9877/", timeout=SERVER_START_TIMEOUT))
         self.assertTrue(self.api.stop_alignment_server()["stopped"])
+
+    def test_packaged_alignment_child_resets_pyinstaller_environment(self) -> None:
+        project = self.root / "project.mosp"
+        script = self.root / "script.txt"
+        executable = self.root / "MAW"
+        project.write_text('{"segments": []}\n', encoding="utf-8")
+        script.write_text("第一句\n", encoding="utf-8")
+        executable.write_bytes(b"app")
+
+        class FakeProcess:
+            def poll(self) -> int | None:
+                return None
+
+        with mock.patch.object(sys, "frozen", True, create=True):
+            with mock.patch.object(sys, "executable", str(executable)):
+                with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
+                    with mock.patch("maw.gui_web._free_local_port", return_value=9877):
+                        with mock.patch("maw.gui_web._wait_for_server", return_value=True):
+                            result = self.api.start_alignment_server({
+                                "projectPath": str(project),
+                                "scriptPath": str(script),
+                            })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(popen.call_args.args[0][:2], [str(executable), "--serve-alignment"])
+        self.assertEqual(
+            popen.call_args.kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"],
+            "1",
+        )
+
+    def test_alignment_timeout_returns_child_startup_log(self) -> None:
+        project = self.root / "project.mosp"
+        script = self.root / "script.txt"
+        project.write_text('{"segments": []}\n', encoding="utf-8")
+        script.write_text("第一句\n", encoding="utf-8")
+
+        class FakeProcess:
+            returncode = None
+
+            def poll(self) -> int | None:
+                return self.returncode
+
+            def terminate(self) -> None:
+                self.returncode = -15
+
+            def wait(self, timeout: float | None = None) -> int:
+                return self.returncode or 0
+
+        def spawn(*_args, **kwargs):
+            kwargs["stdout"].write(b"alignment child stalled\n")
+            kwargs["stdout"].flush()
+            return FakeProcess()
+
+        with mock.patch("maw.gui_web.subprocess.Popen", side_effect=spawn):
+            with mock.patch("maw.gui_web._free_local_port", return_value=9877):
+                with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+                    result = self.api.start_alignment_server({
+                        "projectPath": str(project),
+                        "scriptPath": str(script),
+                    })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "alignment_server_no_response")
+        self.assertIn("启动超时", result["detail"])
+        self.assertIn("alignment child stalled", result["detail"])
 
     def test_start_alignment_server_validates_project_script_and_media_inputs(self) -> None:
         script = self.root / "script.txt"
@@ -1770,15 +1940,61 @@ class GuiWebBridgeTests(unittest.TestCase):
             def wait(self, timeout: float | None = None) -> int:
                 return self.returncode or 0
 
-        with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()):
+        log_directory = self.root / "logs"
+        api = LauncherApi(
+            paths=self.paths,
+            window_getter=lambda: self.window,
+            log_sink=LocalLogSink(directory=log_directory),
+        )
+
+        def spawn(*_args, **kwargs):
+            kwargs["stdout"].write(b"child stalled before binding port\n")
+            kwargs["stdout"].flush()
+            return FakeProcess()
+
+        with mock.patch("maw.gui_web.subprocess.Popen", side_effect=spawn):
             with mock.patch("maw.gui_web._wait_for_server", return_value=False):
                 with mock.patch("maw.gui_web.webbrowser.open") as open_browser:
-                    result = self.api.start_server({"jsonPath": str(project), "mediaPath": str(media), "port": "9876"})
+                    result = api.start_server({"jsonPath": str(project), "mediaPath": str(media), "port": "9876"})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "port")
         self.assertEqual(result["code"], "server_no_response")
+        self.assertIn("启动超时", result["detail"])
+        self.assertIn("child stalled before binding port", result["detail"])
+        persisted_log = next(log_directory.glob("maw-*.log")).read_text(encoding="utf-8")
+        self.assertIn("server_no_response", persisted_log)
+        self.assertIn("child stalled before binding port", persisted_log)
         open_browser.assert_not_called()
+
+    def test_packaged_server_child_resets_pyinstaller_environment(self) -> None:
+        project = self.root / "project.json"
+        media = self.root / "clip.mp4"
+        executable = self.root / "MAW"
+        project.write_text(json.dumps({"media": str(media), "segments": []}), encoding="utf-8")
+        media.write_bytes(b"media")
+        executable.write_bytes(b"app")
+
+        class FakeProcess:
+            def poll(self) -> int | None:
+                return None
+
+        with mock.patch.object(sys, "frozen", True, create=True):
+            with mock.patch.object(sys, "executable", str(executable)):
+                with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
+                    with mock.patch("maw.gui_web._wait_for_server", side_effect=[False, True]):
+                        result = self.api.start_server({
+                            "jsonPath": str(project),
+                            "mediaPath": str(media),
+                            "port": "9876",
+                        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(popen.call_args.args[0][:2], [str(executable), "--serve"])
+        self.assertEqual(
+            popen.call_args.kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"],
+            "1",
+        )
 
     def test_start_server_exposes_child_startup_log_when_process_exits(self) -> None:
         project = self.root / "project.json"
@@ -1832,7 +2048,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             def wait(self, timeout: float | None = None) -> int:
                 return self.returncode or 0
 
-        def wait(_url: str, *, timeout: float) -> bool:
+        def wait(_url: str, *, timeout: float, probe_path: str = "/", probe_timeout: float = 0.25) -> bool:
             calls.append("wait")
             return len(calls) > 1
 
@@ -2431,11 +2647,15 @@ class GuiWebBridgeTests(unittest.TestCase):
             "apiKey": "sk-test",
             "maxLen": "14",
             "minLen": "3",
+            "maxWords": "11",
+            "minWords": "2",
             "gapSplit": "800",
         }, self.env_path)
 
         self.assertEqual(request.max_len, "14")
         self.assertEqual(request.min_len, "3")
+        self.assertEqual(request.max_words, "11")
+        self.assertEqual(request.min_words, "2")
         self.assertEqual(request.gap_split, "800")
 
     def test_request_from_payload_rejects_invalid_segmentation_options(self) -> None:
@@ -2451,6 +2671,12 @@ class GuiWebBridgeTests(unittest.TestCase):
             _request_from_payload({**base, "maxLen": "2", "minLen": "3"}, self.env_path)
 
         self.assertEqual(raised.exception.field, "maxLen")
+        self.assertEqual(raised.exception.code, "segmentation_invalid")
+
+        with self.assertRaises(PreflightError) as raised:
+            _request_from_payload({**base, "maxWords": "2", "minWords": "3"}, self.env_path)
+
+        self.assertEqual(raised.exception.field, "maxWords")
         self.assertEqual(raised.exception.code, "segmentation_invalid")
 
     def test_request_from_payload_only_generates_html_when_requested(self) -> None:
@@ -2909,6 +3135,28 @@ class _FakeLogSink:
         self.closed = True
 
 
+class _FakeEventHook:
+    def __init__(self) -> None:
+        self.callbacks: list[object] = []
+
+    def __iadd__(self, callback: object) -> "_FakeEventHook":
+        self.callbacks.append(callback)
+        return self
+
+    def fire(self) -> None:
+        for callback in self.callbacks:
+            callback()
+
+
+class _FakeLauncherWindow:
+    def __init__(self) -> None:
+        self.events = SimpleNamespace(closing=_FakeEventHook(), shown=_FakeEventHook(), loaded=_FakeEventHook())
+        self.loaded_urls: list[str] = []
+
+    def load_url(self, url: str) -> None:
+        self.loaded_urls.append(url)
+
+
 @final
 class LauncherRuntimeTests(unittest.TestCase):
     def test_run_app_passes_debug_and_controls_automatic_devtools(self) -> None:
@@ -2939,6 +3187,35 @@ class LauncherRuntimeTests(unittest.TestCase):
             # 事件流与 stdout/stderr tee 必须共享同一个 sink 实例（单锁单文件）。
             install_tee.assert_called_once_with(api_sink)
             fake_webview.reset_mock()
+
+    def test_run_app_loads_launcher_directly_without_boot_page(self) -> None:
+        paths = LauncherPaths(
+            root=Path("launcher-root"),
+            env_path=Path("launcher-root/.env"),
+            launcher_html=Path("launcher-root/launcher.html"),
+        )
+        fake_window = _FakeLauncherWindow()
+        fake_webview = mock.Mock()
+        fake_webview.settings = {"OPEN_DEVTOOLS_IN_DEBUG": True}
+        fake_webview.create_window.return_value = fake_window
+        fake_webview.start.return_value = None
+
+        with (
+            mock.patch.dict(sys.modules, {"webview": fake_webview}),
+            mock.patch("maw.gui_web.default_paths", return_value=paths),
+            mock.patch("maw.gui_web.LauncherApi") as launcher_api_cls,
+            mock.patch("maw.gui_web.install_stdio_tee"),
+            mock.patch("maw.gui_web.asset_path", return_value=Path("missing.ico")),
+            mock.patch("maw.gui_web.apply_dark_title_bar"),
+        ):
+            run_app()
+
+        create_kwargs = fake_webview.create_window.call_args.kwargs
+        self.assertEqual(create_kwargs["url"], paths.launcher_html.resolve().as_uri())
+        self.assertNotIn("html", create_kwargs)
+        fake_window.events.shown.fire()
+        fake_window.events.loaded.fire()
+        launcher_api_cls.return_value.pump.start.assert_called_once_with()
 
 
 @final
@@ -3123,6 +3400,35 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('taskPrompt: taskPromptText(operation)', script)
         self.assertIn('const customPrompt = $("postprocessPrompt").value.trim()', script)
         self.assertIn("const TASK_PROMPT_KEYS", script)
+
+    def test_launcher_reveals_form_after_initialization_without_a_boot_page(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertNotIn('id="launcherBoot"', page)
+        self.assertIn('background: #16181d;', page)
+        self.assertIn('html[data-theme="light"]', page)
+        self.assertIn('pointer-events: none;', page)
+        self.assertIn('<main class="shell" inert aria-busy="true">', page)
+        self.assertIn('body:not(.launcher-ready) .shell', stylesheet)
+        self.assertIn('pointer-events: none;', stylesheet)
+        self.assertIn('function revealLauncher()', script)
+        self.assertIn('shell?.removeAttribute("inert")', script)
+        self.assertIn('function refreshStartupState()', script)
+        self.assertIn('["default output", syncDefaultOutput()]', script)
+        self.assertIn('["FFmpeg", refreshFfmpeg()]', script)
+        self.assertIn('["server", checkExistingServer()]', script)
+        self.assertIn('["local models", refreshLocalModels()]', script)
+        self.assertNotIn('["local runtime", refreshLocalRuntime()]', script)
+        self.assertIn('let ocrRuntimeRequest = 0;', script)
+        self.assertIn('if (requestId !== ocrRuntimeRequest) return result;', script)
+        self.assertIn('let localRuntimeRequest = 0;', script)
+        self.assertIn('let localModelsRequest = 0;', script)
+        self.assertIn('statusRequestId !== localStatusRequest', script)
+        self.assertIn('Promise.allSettled', script)
+        self.assertIn('revealLauncher();\n    window.dispatchEvent(new CustomEvent("mawlauncherready"));\n    refreshStartupState();', script)
+        self.assertIn('void init().catch((error) => {', script)
 
     def test_custom_llm_task_requires_a_prompt(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -3397,18 +3703,27 @@ class LauncherAssetContractTests(unittest.TestCase):
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        for control in ("segmentationField", "maxLen", "minLen", "gapSplit"):
+        for control in ("segmentationField", "maxLen", "minLen", "maxWords", "minWords", "gapSplit"):
             self.assertIn(f'id="{control}"', page)
         self.assertIn('id="generateSpectral" type="checkbox"', page)
         self.assertIn('id="generateSpectralField"', page)
+        self.assertIn('class="segmentation-row segmentation-character-row"', page)
+        self.assertIn('class="segmentation-row segmentation-word-row"', page)
+        self.assertIn('data-i18n="english_segmentation_hint"', page)
+        self.assertLess(page.index('class="segmentation-row segmentation-character-row"'), page.index('class="segmentation-row segmentation-word-row"'))
         self.assertIn('maxLen: $("maxLen").value.trim()', script)
         self.assertIn('minLen: $("minLen").value.trim()', script)
+        self.assertIn('maxWords: $("maxWords").value.trim()', script)
+        self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
         self.assertIn('generate_spectral: "生成 ReaPeaks 频谱数据"', script)
         self.assertIn('generate_spectral: "Generate ReaPeaks spectral data"', script)
         self.assertIn('segmentation: "字幕切句"', script)
+        self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
+        self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
         self.assertIn(".segmentation-row", stylesheet)
+        self.assertIn(".segmentation-word-row", stylesheet)
 
     def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -3646,6 +3961,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('data-i18n="qwen_audio_options_title"', page)
         self.assertIn('id="maxLen" type="number"', page)
         self.assertIn('placeholder="18"', page)
+        self.assertIn('id="maxWords" type="number"', page)
+        self.assertIn('placeholder="13"', page)
+        self.assertIn('id="minWords" type="number"', page)
+        self.assertIn('placeholder="3"', page)
         self.assertIn('id="gapSplit" type="number"', page)
         self.assertIn('placeholder="800"', page)
         self.assertIn('advanced_params: "识别参数"', script)
@@ -3653,10 +3972,16 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('qwen_audio_options_title: "Qwen 上下文与热词"', script)
         self.assertIn('max_len_placeholder: "默认 18"', script)
         self.assertIn('max_len_placeholder: "Default: 18"', script)
+        self.assertIn('max_words_placeholder: "默认 13"', script)
+        self.assertIn('max_words_placeholder: "Default: 13"', script)
+        self.assertIn('min_words_placeholder: "默认 3"', script)
+        self.assertIn('min_words_placeholder: "Default: 3"', script)
         self.assertIn('gap_split_placeholder: "默认 800"', script)
         self.assertIn('gap_split_placeholder: "Default: 800"', script)
-        self.assertIn("最大字数：18，短句合并阈值：5，停顿切句：800ms", script)
-        self.assertIn("max characters: 18, short-cue merge threshold: 5, pause split: 800 ms", script)
+        self.assertIn("字符型设置和停顿设置留空使用默认值（最大字数：18、短句合并阈值：5、停顿切句：800ms）", script)
+        self.assertIn("Leave blank to use the defaults for character-mode and pause splitting (max characters: 18, short-cue threshold: 5, pause split: 800 ms)", script)
+        self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
+        self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
         self.assertIn('$("languageGroup").classList.toggle("hidden", current.supportsLanguage === false)', script)
         self.assertIn(".advanced-col {\n  display: grid;\n  grid-template-columns: 1fr 1fr;", stylesheet)
         self.assertNotIn("display: contents", stylesheet)
@@ -3781,6 +4106,17 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('event.type === "localRuntimeReady"', script)
         self.assertIn('def install_local_runtime(', backend)
         self.assertIn('def cancel_local_runtime(', backend)
+
+    def test_launcher_ignores_runtime_event_payloads_until_fresh_status_is_loaded(self) -> None:
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('const requestId = ++ocrRuntimeRequest;', script)
+        self.assertIn('if (requestId !== ocrRuntimeRequest) return result;', script)
+        self.assertIn('if (state.localRuntimeInstalling || runtime.status === "installing") {', script)
+        self.assertIn('if (!status.status || status.status === "checking")', script)
+        self.assertIn('if (state.localRuntimeInstalling || runtime.status === "installing")', script)
+        self.assertNotIn('state.config.localRuntime = event.runtime || { status: "ready", ready: true };', script)
+        self.assertNotIn('state.config.ocrRuntime = event.runtime || { status: "ready", ready: true };', script)
 
     def test_ocr_runtime_ready_hint_uses_a_clickable_directory_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -4078,6 +4414,95 @@ class EmojiFontTests(unittest.TestCase):
         self.assertGreater(len(window.scripts), 0)
         self.assertIn("emojiFontReady", window.scripts[-1])
         self.assertIn(dest.as_uri(), window.scripts[-1])
+
+
+@final
+class WaitForServerProbeTests(unittest.TestCase):
+    """健康检查必须探测配置的轻量端点，并把 5xx 视为未就绪。"""
+
+    def test_wait_for_server_probes_configured_path(self) -> None:
+        seen_paths: list[str] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                seen_paths.append(self.path)
+                self.send_response(HTTPStatus.OK)
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def log_message(self, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{server.server_address[1]}/"
+            self.assertTrue(
+                _wait_for_server(url, timeout=2.0, probe_path="/api/startup-status", probe_timeout=1.0),
+            )
+            self.assertEqual(seen_paths, ["/api/startup-status"])
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_wait_for_server_treats_5xx_as_not_ready(self) -> None:
+        attempts: list[int] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                attempts.append(1)
+                self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
+                self.end_headers()
+
+            def log_message(self, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{server.server_address[1]}/"
+            self.assertFalse(_wait_for_server(url, timeout=0.35, probe_timeout=0.2))
+            self.assertGreaterEqual(len(attempts), 1)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_wait_for_server_treats_http_4xx_as_ready(self) -> None:
+        error = HTTPError(
+            "http://127.0.0.1:8250/api/startup-status",
+            HTTPStatus.NOT_FOUND,
+            "not found",
+            None,
+            None,
+        )
+        with mock.patch("maw.gui_web.urlopen", side_effect=error):
+            self.assertTrue(
+                _wait_for_server(
+                    "http://127.0.0.1:8250/",
+                    timeout=0.1,
+                    probe_path=EDITOR_HEALTH_PROBE_PATH,
+                )
+            )
+
+    def test_wait_for_server_caps_probe_timeout_to_remaining_budget(self) -> None:
+        probe_timeouts: list[float] = []
+
+        def fail_probe(_url: str, *, timeout: float) -> None:
+            probe_timeouts.append(timeout)
+            raise URLError("not ready")
+
+        with mock.patch("maw.gui_web.urlopen", side_effect=fail_probe):
+            self.assertFalse(
+                _wait_for_server(
+                    "http://127.0.0.1:8250/",
+                    timeout=0.12,
+                    probe_timeout=2.0,
+                )
+            )
+        self.assertTrue(probe_timeouts)
+        # Allow a small scheduling/clock-resolution margin while ensuring the
+        # 2-second per-probe default cannot escape the 120ms total budget.
+        self.assertTrue(all(0 < value < 0.2 for value in probe_timeouts))
 
 
 if __name__ == "__main__":

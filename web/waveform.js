@@ -144,8 +144,8 @@
   const ROOT_EDGE_DROP_RATIO = 0.055;
   const ROOT_EDGE_DROP_MIN_PX = 24;
   const ROOT_EDGE_DROP_MAX_PX = 48;
-  const ZOOM_PRESETS = [5, 10, 20, 30, 60];
-  const ROW_PRESETS = [5, 10, 20, 30];
+  const ZOOM_PRESETS = [2, 5, 10, 20, 30, 60];
+  const ROW_PRESETS = [2, 5, 10, 20, 30];
   const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
   const ROW_GAP = 10;
   const SPLIT_FLASH_DURATION_MS = 720;
@@ -314,6 +314,66 @@
     const millis = safe % 1000;
     const hh = hours ? `${String(hours).padStart(2, '0')}:` : '';
     return `${hh}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+  }
+
+  // 字幕编辑操作可以使用毫秒或工程提供的帧时间轴。波形的绘制和播放头
+  // 仍然使用毫秒；这里的适配器只负责字幕块的读写、约束和字词映射。
+  function resolveTiming(timing = null) {
+    const source = timing && typeof timing === 'object' ? timing : {};
+    const positive = (value, fallback) => (
+      Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : fallback
+    );
+    const frameMode = source.unit === 'frames';
+    return {
+      unit: frameMode ? 'frames' : 'milliseconds',
+      fps: positive(source.fps, 30),
+      minDuration: positive(source.minDuration, MIN_CUE_MS),
+      snapThreshold: positive(source.snapThreshold, SNAP_MS),
+      round: typeof source.round === 'function' ? source.round : roundMs,
+      getStart: typeof source.getStart === 'function'
+        ? source.getStart : (segment) => Number(segment?.start),
+      getEnd: typeof source.getEnd === 'function'
+        ? source.getEnd : (segment) => Number(segment?.end),
+      setStart: typeof source.setStart === 'function'
+        ? source.setStart : (segment, value) => { segment.start = value; },
+      setEnd: typeof source.setEnd === 'function'
+        ? source.setEnd : (segment, value) => { segment.end = value; },
+      getItemStart: typeof source.getItemStart === 'function'
+        ? source.getItemStart : (item) => Number(item?.start),
+      getItemEnd: typeof source.getItemEnd === 'function'
+        ? source.getItemEnd : (item) => Number(item?.end),
+      setItemStart: typeof source.setItemStart === 'function'
+        ? source.setItemStart : (item, value) => { item.start = value; },
+      setItemEnd: typeof source.setItemEnd === 'function'
+        ? source.setItemEnd : (item, value) => { item.end = value; },
+      fromMs: typeof source.fromMs === 'function'
+        ? source.fromMs : (value) => Number(value),
+      toMs: typeof source.toMs === 'function'
+        ? source.toMs : (value) => Number(value),
+      format: typeof source.format === 'function' ? source.format : formatCompact,
+    };
+  }
+
+  function waveformGridStepMs(timing = null) {
+    const clock = resolveTiming(timing);
+    return clock.unit === 'frames' ? 1000 / clock.fps : 100;
+  }
+
+  function snapPointerTimeToTimingGrid(valueMs, timing = null, enabled = false) {
+    const numeric = Number(valueMs);
+    if (!Number.isFinite(numeric)) return numeric;
+    const clock = resolveTiming(timing);
+    if (!enabled || clock.unit !== 'frames') return numeric;
+    return clock.toMs(clock.fromMs(numeric));
+  }
+
+  function restoreTiming(segment, original, timing = null) {
+    const clock = resolveTiming(timing);
+    if (!segment || !original) return;
+    clock.setStart(segment, original.start);
+    clock.setEnd(segment, original.end);
+    segment.items = Array.isArray(original.items)
+      ? original.items.map((item) => ({ ...item })) : original.items;
   }
 
   function normalizeModuleOrder(value) {
@@ -602,7 +662,7 @@
   function decodePayload(payload) {
     if (!payload || payload.schema !== SCHEMA || payload.encoding !== ENCODING) return null;
     if (!Number.isInteger(payload.peak_count) || payload.peak_count <= 0) return null;
-    if (!Number.isFinite(payload.peaks_per_second) || payload.peaks_per_second <= 0) return null;
+    if (!peaksRateOf(payload)) return null;
     if (typeof payload.data !== 'string') return null;
     try {
       const binary = atob(payload.data);
@@ -613,6 +673,38 @@
     } catch (_) {
       return null;
     }
+  }
+
+  // payload.peaks_per_second 只是给人看的近似值：真实刻度是 sample_rate / division，
+  // 而 .ReaPeaks 派生的层在多数采样率下都不是整数（16 kHz + div 53 = 301.8868）。
+  // 任何"峰值序号 ↔ 毫秒"的换算都必须走这里，否则误差会按比例缩放整条时间轴，
+  // 随媒体时长线性累积（16 kHz 在 15 分钟处约错开 1/3 秒）。
+  function peaksRateOf(payload) {
+    if (!payload) return 0;
+    const hasSampleRate = payload.sample_rate !== undefined && payload.sample_rate !== null;
+    const hasDivision = payload.division !== undefined && payload.division !== null;
+    // 只出现一半的精确率字段说明 payload 已损坏：宁可判定为无刻度，
+    // 也不要退回近似值画出错位波形（与 waveform.is_waveform_payload 一致）。
+    if (hasSampleRate !== hasDivision) return 0;
+    if (hasSampleRate) {
+      const sampleRate = Number(payload.sample_rate);
+      const division = Number(payload.division);
+      if (!Number.isFinite(sampleRate) || sampleRate <= 0) return 0;
+      if (!Number.isInteger(division) || division <= 0) return 0;
+      return sampleRate / division;
+    }
+    return Number.isFinite(payload.peaks_per_second) && payload.peaks_per_second > 0
+      ? payload.peaks_per_second
+      : 0;
+  }
+
+  // 发布给消费者的 peaks_per_second 保留精确比率（整除时写成整数），与
+  // maw/reapeaks.py::extract_waveform_payload 的取整策略完全一致，这样即使某个
+  // 读取方仍在用 peaks_per_second 做几何换算，也不会重新引入按比例累积的漂移。
+  function publishPeakRate(sampleRate, division) {
+    if (!sampleRate || !division) return 0;
+    const exactRate = sampleRate / division;
+    return Number.isInteger(exactRate) ? exactRate : Math.round(exactRate * 1e6) / 1e6;
   }
 
   // 浏览器端只读解析 REAPER 的 .ReaPeaks 文件。桌面/服务器版会在
@@ -721,10 +813,13 @@
     const division = Math.abs(finest.mip.division);
     if (!division) return null;
     const baseSource = source && typeof source === 'object' ? source : undefined;
+    // 与 maw/reapeaks.py::extract_waveform_payload 完全一致：精确比率 + sample_rate/division。
     const waveform = {
       schema: SCHEMA,
       encoding: ENCODING,
-      peaks_per_second: Math.round(sampleRate / division),
+      peaks_per_second: publishPeakRate(sampleRate, division),
+      sample_rate: sampleRate,
+      division,
       peak_count: finest.mip.peakCount,
       duration_ms: Math.round(finest.mip.peakCount * division / sampleRate * 1000),
       ...(baseSource ? { source: baseSource } : {}),
@@ -928,19 +1023,28 @@
     return '#66727d';
   }
 
-  function applySharedBoundary(segments, leftIndex, boundary, minDuration = MIN_CUE_MS) {
+  function applySharedBoundary(
+    segments,
+    leftIndex,
+    boundary,
+    minDuration = MIN_CUE_MS,
+    timing = null,
+  ) {
+    const clock = resolveTiming(timing);
     const left = segments[leftIndex];
     const right = segments[leftIndex + 1];
     if (!left || !right) return segments;
-    const lower = left.start + minDuration;
-    const upper = right.end - minDuration;
-    const nextBoundary = clamp(roundMs(boundary), lower, upper);
-    const oldLeftEnd = left.end;
-    const oldRightStart = right.start;
-    left.end = nextBoundary;
-    right.start = nextBoundary;
-    left.items = remapItems(left.items, left.start, oldLeftEnd, left.start, nextBoundary);
-    right.items = remapItems(right.items, oldRightStart, right.end, nextBoundary, right.end);
+    const lower = clock.getStart(left) + minDuration;
+    const upper = clock.getEnd(right) - minDuration;
+    const nextBoundary = clamp(clock.round(boundary), lower, upper);
+    const oldLeftEnd = clock.getEnd(left);
+    const oldRightStart = clock.getStart(right);
+    const leftStart = clock.getStart(left);
+    const rightEnd = clock.getEnd(right);
+    clock.setEnd(left, nextBoundary);
+    clock.setStart(right, nextBoundary);
+    left.items = remapItems(left.items, leftStart, oldLeftEnd, leftStart, nextBoundary, clock);
+    right.items = remapItems(right.items, oldRightStart, rightEnd, nextBoundary, rightEnd, clock);
     return segments;
   }
 
@@ -950,44 +1054,62 @@
   // edge === 'end' moves segments[leftIndex].end; 'start' moves
   // segments[leftIndex + 1].start. The moved edge is clamped to keep at
   // least minDuration inside its own segment and not cross its other edge.
-  function applyIndependentEdge(segments, leftIndex, edge, valueMs, minDuration = MIN_CUE_MS) {
+  function applyIndependentEdge(
+    segments,
+    leftIndex,
+    edge,
+    valueMs,
+    minDuration = MIN_CUE_MS,
+    timing = null,
+  ) {
+    const clock = resolveTiming(timing);
     const left = segments[leftIndex];
     const right = segments[leftIndex + 1];
     if (!left || !right || (edge !== 'end' && edge !== 'start')) return segments;
-    const value = roundMs(valueMs);
+    const value = clock.round(valueMs);
     if (edge === 'end') {
-      const lower = left.start + minDuration;
+      const lower = clock.getStart(left) + minDuration;
       // 右侧字幕保持不动；使用它的起点作为固定上限，不能把当前值
       // 当作上限，否则边界第一次向左拉开后就无法再向右回拖。
-      const upper = Number.isFinite(right.start) ? right.start : Infinity;
+      const upper = Number.isFinite(clock.getStart(right)) ? clock.getStart(right) : Infinity;
       const next = clamp(value, lower, upper);
-      const oldEnd = left.end;
-      left.end = next;
-      left.items = remapItems(left.items, left.start, oldEnd, left.start, next);
+      const oldEnd = clock.getEnd(left);
+      const leftStart = clock.getStart(left);
+      clock.setEnd(left, next);
+      left.items = remapItems(left.items, leftStart, oldEnd, leftStart, next, clock);
     } else {
-      const upper = right.end - minDuration;
+      const upper = clock.getEnd(right) - minDuration;
       // 左侧字幕保持不动；使用它的终点作为固定下限，同样允许边界
       // 在拉开后反向回到邻字幕边界。
-      const lower = Number.isFinite(left.end) ? left.end : 0;
+      const lower = Number.isFinite(clock.getEnd(left)) ? clock.getEnd(left) : 0;
       const next = clamp(value, lower, upper);
-      const oldStart = right.start;
-      right.start = next;
-      right.items = remapItems(right.items, oldStart, right.end, next, right.end);
+      const oldStart = clock.getStart(right);
+      const rightEnd = clock.getEnd(right);
+      clock.setStart(right, next);
+      right.items = remapItems(right.items, oldStart, rightEnd, next, rightEnd, clock);
     }
     return segments;
   }
 
-  function snapshotTiming(segment) {
+  function snapshotTiming(segment, timing = null) {
+    const clock = resolveTiming(timing);
+    const start = clock.getStart(segment);
+    const end = clock.getEnd(segment);
+    const startMs = Number(segment?.start);
+    const endMs = Number(segment?.end);
     return {
-      start: Number(segment.start),
-      end: Number(segment.end),
+      start: Number(start),
+      end: Number(end),
+      startMs: Number.isFinite(startMs) ? startMs : clock.toMs(start),
+      endMs: Number.isFinite(endMs) ? endMs : clock.toMs(end),
       items: Array.isArray(segment.items)
         ? segment.items.map((item) => ({ ...item })) : segment.items,
     };
   }
 
-  function isAttached(left, right) {
-    return !!left && !!right && Number(left.end) === Number(right.start);
+  function isAttached(left, right, timing = null) {
+    const clock = resolveTiming(timing);
+    return !!left && !!right && clock.getEnd(left) === clock.getStart(right);
   }
 
   function shouldAdjustAdjacentCuesIndependently(altKey, autoSnapAdjacentCues) {
@@ -1009,13 +1131,15 @@
   function planMoveStep(segments, indices, deltaMs, durationMs, {
     sticky = true,
     minDuration = MIN_CUE_MS,
+    timing = null,
   } = {}) {
+    const clock = resolveTiming(timing);
     const selectedIndices = normalizedIndices(segments, indices);
     if (!selectedIndices.length) {
       return { changed: false, appliedDelta: 0, indices: [], affectedIndices: [] };
     }
     const selected = new Set(selectedIndices);
-    const originals = new Map(selectedIndices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    const originals = new Map(selectedIndices.map((idx) => [idx, snapshotTiming(segments[idx], clock)]));
     const attachments = [];
     const attachmentOriginals = new Map();
     const previousAttachments = [];
@@ -1032,19 +1156,19 @@
       }
       const previous = segments[idx - 1];
       if (previous && !selected.has(idx - 1)) {
-        if (sticky && isAttached(previous, segments[idx])) {
-          const previousOriginal = snapshotTiming(previous);
+        if (sticky && isAttached(previous, segments[idx], clock)) {
+          const previousOriginal = snapshotTiming(previous, clock);
           previousAttachments.push({ index: idx, previousIndex: idx - 1 });
           previousAttachmentOriginals.set(idx - 1, previousOriginal);
           minDelta = Math.max(minDelta, previousOriginal.start + minDuration - original.start);
         } else {
-          minDelta = Math.max(minDelta, Number(previous.end) - original.start);
+          minDelta = Math.max(minDelta, clock.getEnd(previous) - original.start);
         }
       }
       const next = segments[idx + 1];
       if (!next || selected.has(idx + 1)) continue;
-      if (sticky && isAttached(segments[idx], next)) {
-        const nextOriginal = snapshotTiming(next);
+      if (sticky && isAttached(segments[idx], next, clock)) {
+        const nextOriginal = snapshotTiming(next, clock);
         attachments.push({ index: idx, nextIndex: idx + 1 });
         attachmentOriginals.set(idx + 1, nextOriginal);
         // The next cue's start follows the selected cue's end, so its end
@@ -1052,12 +1176,12 @@
         maxDelta = Math.min(maxDelta, nextOriginal.end - minDuration - original.end);
       } else {
         // An unlinked following cue stays fixed and may not be overlapped.
-        maxDelta = Math.min(maxDelta, Number(next.start) - original.end);
+        maxDelta = Math.min(maxDelta, clock.getStart(next) - original.end);
       }
     }
 
     const requested = Number(deltaMs);
-    const rounded = Number.isFinite(requested) ? roundMs(requested) : 0;
+    const rounded = Number.isFinite(requested) ? clock.round(requested) : 0;
     const appliedDelta = clamp(rounded, minDelta, maxDelta);
     const affectedIndices = [...selectedIndices];
     attachments.forEach(({ nextIndex }) => affectedIndices.push(nextIndex));
@@ -1078,31 +1202,47 @@
   function applyMoveStep(segments, indices, deltaMs, durationMs, options = {}) {
     const plan = planMoveStep(segments, indices, deltaMs, durationMs, options);
     if (!plan.changed) return plan;
+    const clock = resolveTiming(options.timing);
     const delta = plan.appliedDelta;
     plan.indices.forEach((idx) => {
       const original = plan.originals.get(idx);
       const segment = segments[idx];
-      segment.start = original.start + delta;
-      segment.end = original.end + delta;
+      clock.setStart(segment, original.start + delta);
+      clock.setEnd(segment, original.end + delta);
       if (Array.isArray(original.items)) {
-        segment.items = original.items.map((item) => ({
-          ...item,
-          start: item.start + delta,
-          end: item.end + delta,
-        }));
+        segment.items = original.items.map((item) => {
+          const copy = { ...item };
+          clock.setItemStart(copy, clock.getItemStart(item) + delta);
+          clock.setItemEnd(copy, clock.getItemEnd(item) + delta);
+          return copy;
+        });
       }
     });
     plan.attachments.forEach(({ nextIndex }) => {
       const original = plan.attachmentOriginals.get(nextIndex);
       const segment = segments[nextIndex];
-      segment.start = original.start + delta;
-      segment.items = remapItems(original.items, original.start, original.end, segment.start, segment.end);
+      clock.setStart(segment, original.start + delta);
+      segment.items = remapItems(
+        original.items,
+        original.start,
+        original.end,
+        clock.getStart(segment),
+        clock.getEnd(segment),
+        clock,
+      );
     });
     plan.previousAttachments.forEach(({ previousIndex }) => {
       const original = plan.previousAttachmentOriginals.get(previousIndex);
       const segment = segments[previousIndex];
-      segment.end = original.end + delta;
-      segment.items = remapItems(original.items, original.start, original.end, segment.start, segment.end);
+      clock.setEnd(segment, original.end + delta);
+      segment.items = remapItems(
+        original.items,
+        original.start,
+        original.end,
+        clock.getStart(segment),
+        clock.getEnd(segment),
+        clock,
+      );
     });
     return plan;
   }
@@ -1110,7 +1250,9 @@
   function planBoundaryStep(segments, index, edge, deltaMs, durationMs, {
     sticky = true,
     minDuration = MIN_CUE_MS,
+    timing = null,
   } = {}) {
+    const clock = resolveTiming(timing);
     const target = segments[index];
     if (!target || (edge !== 'start' && edge !== 'end')) {
       return { changed: false, appliedDelta: 0, indices: [], affectedIndices: [] };
@@ -1118,28 +1260,28 @@
     const previous = segments[index - 1];
     const next = segments[index + 1];
     const linkedNeighbor = edge === 'start'
-      ? (sticky && isAttached(previous, target) ? previous : null)
-      : (sticky && isAttached(target, next) ? next : null);
-    const current = edge === 'start' ? Number(target.start) : Number(target.end);
+      ? (sticky && isAttached(previous, target, clock) ? previous : null)
+      : (sticky && isAttached(target, next, clock) ? next : null);
+    const current = edge === 'start' ? clock.getStart(target) : clock.getEnd(target);
     const requested = Number(deltaMs);
-    const rounded = Number.isFinite(requested) ? roundMs(requested) : 0;
+    const rounded = Number.isFinite(requested) ? clock.round(requested) : 0;
     let lower;
     let upper;
     if (edge === 'start') {
-      lower = linkedNeighbor ? Number(previous.start) + minDuration : Number(previous?.end ?? 0);
-      upper = Number(target.end) - minDuration;
+      lower = linkedNeighbor ? clock.getStart(previous) + minDuration : Number(previous ? clock.getEnd(previous) : 0);
+      upper = clock.getEnd(target) - minDuration;
     } else {
-      lower = Number(target.start) + minDuration;
+      lower = clock.getStart(target) + minDuration;
       upper = linkedNeighbor
-        ? Number(next.end) - minDuration
-        : Number(next?.start ?? durationMs);
+        ? clock.getEnd(next) - minDuration
+        : Number(next ? clock.getStart(next) : durationMs);
       if (!Number.isFinite(upper) || upper <= 0) upper = Infinity;
     }
     const appliedDelta = clamp(current + rounded, lower, upper) - current;
     const affectedIndices = linkedNeighbor
       ? [index, edge === 'start' ? index - 1 : index + 1].sort((a, b) => a - b)
       : [index];
-    const snapshots = new Map(affectedIndices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+    const snapshots = new Map(affectedIndices.map((idx) => [idx, snapshotTiming(segments[idx], clock)]));
     return {
       changed: appliedDelta !== 0,
       appliedDelta,
@@ -1155,26 +1297,39 @@
   function applyBoundaryStep(segments, index, edge, deltaMs, durationMs, options = {}) {
     const plan = planBoundaryStep(segments, index, edge, deltaMs, durationMs, options);
     if (!plan.changed) return plan;
+    const clock = resolveTiming(options.timing);
     const target = segments[plan.index];
     const oldTarget = plan.snapshots.get(plan.index);
     const value = (plan.edge === 'start' ? oldTarget.start : oldTarget.end) + plan.appliedDelta;
     if (plan.edge === 'start') {
-      target.start = value;
-      target.items = remapItems(oldTarget.items, oldTarget.start, oldTarget.end, target.start, target.end);
+      clock.setStart(target, value);
+      target.items = remapItems(
+        oldTarget.items, oldTarget.start, oldTarget.end,
+        clock.getStart(target), clock.getEnd(target), clock,
+      );
       if (plan.linked) {
         const previous = segments[plan.neighborIndex];
         const oldPrevious = plan.snapshots.get(plan.neighborIndex);
-        previous.end = value;
-        previous.items = remapItems(oldPrevious.items, oldPrevious.start, oldPrevious.end, previous.start, previous.end);
+        clock.setEnd(previous, value);
+        previous.items = remapItems(
+          oldPrevious.items, oldPrevious.start, oldPrevious.end,
+          clock.getStart(previous), clock.getEnd(previous), clock,
+        );
       }
     } else {
-      target.end = value;
-      target.items = remapItems(oldTarget.items, oldTarget.start, oldTarget.end, target.start, target.end);
+      clock.setEnd(target, value);
+      target.items = remapItems(
+        oldTarget.items, oldTarget.start, oldTarget.end,
+        clock.getStart(target), clock.getEnd(target), clock,
+      );
       if (plan.linked) {
         const next = segments[plan.neighborIndex];
         const oldNext = plan.snapshots.get(plan.neighborIndex);
-        next.start = value;
-        next.items = remapItems(oldNext.items, oldNext.start, oldNext.end, next.start, next.end);
+        clock.setStart(next, value);
+        next.items = remapItems(
+          oldNext.items, oldNext.start, oldNext.end,
+          clock.getStart(next), clock.getEnd(next), clock,
+        );
       }
     }
     return plan;
@@ -1260,18 +1415,24 @@
     return { start: nextStartMs, end: nextEndMs };
   }
 
-  function remapItems(items, oldStart, oldEnd, newStart, newEnd) {
+  function remapItems(items, oldStart, oldEnd, newStart, newEnd, timing = null) {
     if (!Array.isArray(items) || !items.length) return items;
+    const clock = resolveTiming(timing);
     const oldDuration = Math.max(1, oldEnd - oldStart);
     const newDuration = Math.max(1, newEnd - newStart);
     return items.map((item) => {
       // 等比缩放后钳回段内，并保证 end > start（防止取整后出现 0 长词块）。
-      const mappedStart = roundMs(newStart + ((item.start - oldStart) / oldDuration) * newDuration);
-      const mappedEnd = roundMs(newStart + ((item.end - oldStart) / oldDuration) * newDuration);
+      const itemStart = clock.getItemStart(item);
+      const itemEnd = clock.getItemEnd(item);
+      const mappedStart = clock.round(newStart + ((itemStart - oldStart) / oldDuration) * newDuration);
+      const mappedEnd = clock.round(newStart + ((itemEnd - oldStart) / oldDuration) * newDuration);
       let start = Math.min(Math.max(mappedStart, newStart), newEnd);
       const end = Math.min(Math.max(mappedEnd, start + 1), newEnd);
       if (end <= start) start = Math.max(newStart, end - 1);
-      return { ...item, start, end };
+      const copy = { ...item };
+      clock.setItemStart(copy, start);
+      clock.setItemEnd(copy, end);
+      return copy;
     });
   }
 
@@ -1399,6 +1560,10 @@
       this.hoverSeekPreviewFrame = 0;
       this.hoverSeekPreviewLastEvent = null;
       this.hoverSeekPreviewRow = null;
+      // 帧吸附开关切换时，重新用当前鼠标坐标计算可见指针线位置。
+      this.pointerLineEvent = null;
+      this.pointerLineRow = null;
+      this.pointerLineMarker = null;
       this.playheadDragActive = false;
       // Shift+滚轮调振幅的 debounce：滚动期间只累计净步数，停止后一次性重绘
       this.pendingScaleDirection = 0;
@@ -1561,10 +1726,33 @@
       this.bindLayoutResizers();
     }
 
+    pointerTimeMs(event, row, geometry = null, allowCrossRow = false) {
+      const requestedMs = allowCrossRow
+        ? this.timeFromPointerUnbounded(event, row, geometry)
+        : this.timeFromPointer(event, row, geometry);
+      return snapPointerTimeToTimingGrid(
+        requestedMs,
+        this.cueTiming(),
+        this.options.getSnapToFrame?.() === true,
+      );
+    }
+
+    refreshPointerLine() {
+      if (!this.pointerLineEvent || !this.pointerLineRow || !this.pointerLineMarker) return;
+      if (!this.pointerLineRow.isConnected) return;
+      this.showPointerLine(this.pointerLineEvent, this.pointerLineRow, this.pointerLineMarker);
+    }
+
     showPointerLine(event, row, marker) {
       if (!row || !marker) return;
       const rect = row.getBoundingClientRect();
-      const left = clamp(event.clientX - rect.left, 0, rect.width);
+      const rawLeft = clamp(event.clientX - rect.left, 0, rect.width);
+      const startMs = Number(row.dataset.startMs);
+      const endMs = Number(row.dataset.endMs);
+      const timeMs = this.pointerTimeMs(event, row);
+      const left = Number.isFinite(timeMs) && Number.isFinite(startMs) && Number.isFinite(endMs)
+        ? clamp(((timeMs - startMs) / Math.max(1, endMs - startMs)) * rect.width, 0, rect.width)
+        : rawLeft;
       marker.style.left = `${left}px`;
       marker.hidden = false;
     }
@@ -2487,12 +2675,37 @@
       return this.reapeaksPayload != null;
     }
 
-    getGapRemoveDetectionData() {
-      if (!this.payload || !this.peaks) return null;
+    /**
+     * 当前真正被绘制的那条波形形状（含缺数据时的回退）。
+     *
+     * 抽成一个方法是为了让"看到什么就按什么判断"成为结构保证，而不是两处各自
+     * 复制一遍判断。音量门限扫描尤其需要它：若固定用自研缓存，用户在 ReaPeaks
+     * 形状上调好的门限就和实际参与判断的包络不是同一条曲线，而且自研链先重采样到
+     * 1000 Hz，带限之外的瞬态会被整块削平（实测单样本满幅脉冲 8 个里一个都检不到），
+     * 拿它做静音门限会偏激进。
+     */
+    activeWaveShape() {
+      const shapeSource = this.options.getWaveShapeSource?.() || 'reapeaks';
+      const useReapeaks = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
+      const payload = useReapeaks ? this.reapeaksPayload : this.payload;
+      if (!payload) return null;
       return {
-        peaks: this.peaks,
-        peaks_per_second: this.payload.peaks_per_second,
-        duration_ms: this.payload.duration_ms,
+        payload,
+        peaks: useReapeaks ? this.reapeaksPeaks : this.peaks,
+        // 两种来源的 bin 宽度不同（自研固定 10 ms，.ReaPeaks 是 sample_rate/division
+        // 且多为分数），刻度必须随来源一起切换。
+        peaksPerSecond: peaksRateOf(payload),
+        peakCount: payload.peak_count,
+      };
+    }
+
+    getGapRemoveDetectionData() {
+      const shape = this.activeWaveShape();
+      if (!shape || !shape.peaks) return null;
+      return {
+        peaks: shape.peaks,
+        peaks_per_second: shape.peaksPerSecond,
+        duration_ms: shape.payload.duration_ms,
       };
     }
 
@@ -2571,7 +2784,11 @@
         const payload = {
           schema: SCHEMA,
           encoding: ENCODING,
-          peaks_per_second: peaksPerSecond,
+          // 请求密度只是目标值：bin 实际覆盖 bucketSamples 个原生采样，
+          // 例如 11025 Hz 下 bucket=110 → 真率 100.227 而非 100。
+          peaks_per_second: publishPeakRate(buffer.sampleRate, bucketSamples),
+          sample_rate: buffer.sampleRate,
+          division: bucketSamples,
           peak_count: peakCount,
           duration_ms: Math.round(buffer.duration * 1000),
           data: bytesToBase64(encoded),
@@ -2674,6 +2891,7 @@
       this._waveColors = {
         rowBg: get('--wave-row-bg', '#1d252d'),
         rowBorder: get('--wave-row-border', '#2d3944'),
+        rowGrid: get('--wave-row-grid', 'rgba(255, 255, 255, 0.04)'),
         rowTick: get('--wave-row-tick', '#3b4b59'),
         peak: get('--wave-peak', '#65b89a'),
         peakDim: get('--wave-peak-dim', '#83909a'),
@@ -2921,7 +3139,7 @@
           !event.target.closest('.waveform-cue-block, .waveform-gap-block')
         ) {
           const track = this.trackAtPoint(event.clientX, event.clientY, row);
-          if (this.isCueTimeOccupied(this.timeFromPointer(event, row), track)) {
+          if (this.isCueTimeOccupied(this.pointerTimeMs(event, row), track)) {
             event.preventDefault();
             event.stopPropagation();
             this.options.onCueCreateRejected?.('occupied');
@@ -2958,13 +3176,26 @@
         if (this.settings.dragPlayhead) this.beginPlayheadDrag(event, row, geometry);
         this.seekFromPointer(event, row, false, geometry);
       });
-      row.addEventListener('pointerenter', (event) => this.showPointerLine(event, row, pointerLine));
+      row.addEventListener('pointerenter', (event) => {
+        this.pointerLineEvent = { clientX: event.clientX };
+        this.pointerLineRow = row;
+        this.pointerLineMarker = pointerLine;
+        this.showPointerLine(event, row, pointerLine);
+      });
       row.addEventListener('pointermove', (event) => {
+        this.pointerLineEvent = { clientX: event.clientX };
+        this.pointerLineRow = row;
+        this.pointerLineMarker = pointerLine;
         this.showPointerLine(event, row, pointerLine);
         this.scheduleHoverSeekPreview(event, row);
       });
       row.addEventListener('pointerleave', () => {
         this.hidePointerLine(pointerLine);
+        if (this.pointerLineMarker === pointerLine) {
+          this.pointerLineEvent = null;
+          this.pointerLineRow = null;
+          this.pointerLineMarker = null;
+        }
         this.cancelHoverSeekPreview();
       });
       row.addEventListener('auxclick', (event) => {
@@ -2982,7 +3213,7 @@
         if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
         event.preventDefault();
         event.stopPropagation();
-        const time = this.timeFromPointer(event, row);
+        const time = this.pointerTimeMs(event, row);
         const track = this.trackAtPoint(event.clientX, event.clientY, row);
         this.options.showBlankWaveformMenu?.(time, event.clientX, event.clientY, track);
       });
@@ -3146,7 +3377,7 @@
         block.addEventListener('contextmenu', (event) => {
           event.preventDefault();
           event.stopPropagation();
-          const timeMs = this.timeFromPointer(event, row);
+          const timeMs = this.pointerTimeMs(event, row);
           this.options.showContextMenu?.(event.clientX, event.clientY, index, timeMs);
         });
         block.addEventListener('dblclick', (event) => {
@@ -3202,7 +3433,7 @@
         block.addEventListener('contextmenu', (event) => {
           event.preventDefault();
           event.stopPropagation();
-          const timeMs = this.timeFromPointer(event, row);
+          const timeMs = this.pointerTimeMs(event, row);
           this.options.showExtensionContextMenu?.(event.clientX, event.clientY, index, timeMs);
         });
         block.addEventListener('dblclick', (event) => {
@@ -3407,6 +3638,21 @@
       const startMs = Number(row.dataset.startMs);
       const endMs = Number(row.dataset.endMs);
       const rangeMs = Math.max(1, endMs - startMs);
+      const showFineGrid = (this.settings.mode === 'basic' && this.settings.visibleSeconds === 2)
+        || (this.settings.mode === 'multi' && this.settings.secondsPerRow === 2);
+      if (showFineGrid) {
+        const gridStepMs = waveformGridStepMs(this.cueTiming());
+        const firstGrid = Math.ceil(startMs / gridStepMs) * gridStepMs;
+        ctx.strokeStyle = colors.rowGrid;
+        ctx.lineWidth = 1;
+        for (let grid = firstGrid; grid < endMs; grid += gridStepMs) {
+          const x = ((grid - startMs) / rangeMs) * width;
+          ctx.beginPath();
+          ctx.moveTo(x + 0.5, 0);
+          ctx.lineTo(x + 0.5, height);
+          ctx.stroke();
+        }
+      }
       const tickSeconds = rangeMs <= 10000 ? 1 : rangeMs <= 30000 ? 2 : 5;
       const firstTick = Math.ceil(startMs / (tickSeconds * 1000)) * tickSeconds * 1000;
       ctx.strokeStyle = colors.rowBorder;
@@ -3424,13 +3670,12 @@
       ctx.lineTo(width, height * 0.46);
       ctx.stroke();
 
-      // 波形形状来源：默认使用 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；用户可切回自研。
-      const shapeSource = this.options.getWaveShapeSource?.() || 'reapeaks';
-      const useReapeaksShape = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
-      const activePeaks = useReapeaksShape ? this.reapeaksPeaks : this.peaks;
-      const activePps = useReapeaksShape ? this.reapeaksPayload.peaks_per_second : this.payload.peaks_per_second;
-      const activeCount = useReapeaksShape ? this.reapeaksPayload.peak_count : this.payload.peak_count;
-      const peaksPerSecond = activePps;
+      // 形状来源开关（默认 .ReaPeaks，缺数据自动回退自研）与音量门限检测共用同一选取。
+      const waveShape = this.activeWaveShape();
+      if (!waveShape) return;
+      const activePeaks = waveShape.peaks;
+      const peaksPerSecond = waveShape.peaksPerSecond;
+      const activeCount = waveShape.peakCount;
       const useInterpolation = this.settings.mode === 'basic'
         && this.settings.visibleSeconds === ZOOM_PRESETS[0]
         && (rangeMs / 1000) * peaksPerSecond < width;
@@ -3494,9 +3739,7 @@
       allowCrossRow = false,
       dragPreview = false,
     ) {
-      const requestedMs = allowCrossRow
-        ? this.timeFromPointerUnbounded(event, row, geometry)
-        : this.timeFromPointer(event, row, geometry);
+      const requestedMs = this.pointerTimeMs(event, row, geometry, allowCrossRow);
       const timeMs = allowCrossRow
         ? clamp(requestedMs, 0, Math.max(0, this.durationMs))
         : requestedMs;
@@ -3508,7 +3751,7 @@
     seekFromCue(event, row, index, playAfterSeek = false, geometry = null, track = 'main') {
       const segment = this.options.getSegments(track)[index];
       const timeMs = this.options.getClickTarget?.() === 'pointer'
-        ? this.timeFromPointer(event, row, geometry)
+        ? this.pointerTimeMs(event, row, geometry)
         : Number(segment?.start);
       if (!Number.isFinite(timeMs)) return;
       this.options.seek(timeMs / 1000);
@@ -3525,7 +3768,9 @@
       event.stopPropagation();
       this.focusWaveform();
       const geometry = this.captureRowGeometry(row);
-      const startMs = this.timeFromPointer(event, row, geometry);
+      const timing = this.cueTiming();
+      const snapToTimeline = (valueMs) => timing.toMs(timing.fromMs(valueMs));
+      const startMs = snapToTimeline(this.timeFromPointer(event, row, geometry));
       if (this.isCueTimeOccupied(startMs, track)) {
         this.options.onCueCreateRejected?.('occupied');
         return;
@@ -3551,7 +3796,11 @@
         const requestedMs = this.timeFromPointer(nextEvent, row, geometry);
         // 起点在空白时，拖入已有字幕只把终点挡在字幕边界，
         // 保留之前的“边界阻挡后仍可创建”行为。
-        drag.currentMs = this.clampCreateCueTime(drag.startMs, requestedMs, track);
+        drag.currentMs = this.clampCreateCueTime(
+          drag.startMs,
+          snapToTimeline(requestedMs),
+          track,
+        );
       };
       const updatePreview = () => {
         drag.frame = 0;
@@ -3571,7 +3820,10 @@
         const duration = Math.max(1, geometry.endMs - geometry.startMs);
         drag.preview.style.left = `${clamp(((start - geometry.startMs) / duration) * 100, 0, 100)}%`;
         drag.preview.style.width = `${Math.max(0.25, clamp(((end - start) / duration) * 100, 0, 100))}%`;
-        drag.preview.firstElementChild.textContent = `${formatCompact(roundMs(start))} → ${formatCompact(roundMs(end))} · ${formatCompact(roundMs(end - start))}`;
+        const startTime = timing.fromMs(roundMs(start));
+        const endTime = timing.fromMs(roundMs(end));
+        const durationTime = timing.fromMs(roundMs(end - start));
+        drag.preview.firstElementChild.textContent = `${timing.format(startTime)} → ${timing.format(endTime)} · ${timing.format(durationTime)}`;
       };
       const cleanup = () => {
         window.removeEventListener('pointermove', onMove);
@@ -3588,12 +3840,12 @@
       const finish = (commit, finalEvent = null) => {
         if (this.createCueDrag !== drag) return;
         if (finalEvent) updatePosition(finalEvent);
-        const start = roundMs(Math.min(drag.startMs, drag.currentMs));
-        const end = roundMs(Math.max(drag.startMs, drag.currentMs));
+        const start = snapToTimeline(roundMs(Math.min(drag.startMs, drag.currentMs)));
+        const end = snapToTimeline(roundMs(Math.max(drag.startMs, drag.currentMs)));
         cleanup();
         this.createCueDrag = null;
         if (!commit) return;
-        if (end - start < MIN_CUE_MS) {
+        if (end - start < timing.toMs(timing.minDuration)) {
           this.options.onCueCreateRejected?.('too-short', start, end);
           return;
         }
@@ -3821,7 +4073,7 @@
       const hit = document.elementFromPoint(clientX, clientY);
       const row = hit?.closest?.('.waveform-row');
       if (!row || !this.pane?.contains(row)) return null;
-      const timeMs = this.timeFromPointer({ clientX }, row);
+      const timeMs = this.pointerTimeMs({ clientX }, row);
       return Number.isFinite(timeMs) ? timeMs : null;
     }
 
@@ -4062,7 +4314,8 @@
       if (track === 'main' && this.tool === 'razor' && !targetHandle
           && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         const timeMs = this.timeFromPointer(event, row);
-        this.options.splitCueAtTime?.(index, timeMs);
+        const timing = this.cueTiming();
+        this.options.splitCueAtTime?.(index, timing.toMs(timing.fromMs(timeMs)));
         return;
       }
       // 相邻字幕独立调整：命中共享边界手柄时拆开为单侧拖动；Alt 会
@@ -4114,24 +4367,20 @@
       const indices = kind === 'move' && liveSelection.has(index)
         ? [...liveSelection].sort((a, b) => a - b) : [index];
       const segments = this.options.getSegments(track);
+      const timing = this.cueTiming();
       const dragIndices = kind === 'resize-boundary' ? [boundaryIndex, boundaryIndex + 1] : indices;
-      const originals = new Map(dragIndices.map((idx) => [idx, {
-        start: segments[idx].start,
-        end: segments[idx].end,
-        items: Array.isArray(segments[idx].items)
-          ? segments[idx].items.map((item) => ({ ...item })) : segments[idx].items,
-      }]));
+      const originals = new Map(dragIndices.map((idx) => [idx, snapshotTiming(segments[idx], timing)]));
       const cancelIndices = new Set(dragIndices);
       if (kind === 'move') {
         dragIndices.forEach((idx) => {
-          if (segments[idx - 1] && isAttached(segments[idx - 1], segments[idx])) cancelIndices.add(idx - 1);
-          if (segments[idx + 1] && isAttached(segments[idx], segments[idx + 1])) cancelIndices.add(idx + 1);
+          if (segments[idx - 1] && isAttached(segments[idx - 1], segments[idx], timing)) cancelIndices.add(idx - 1);
+          if (segments[idx + 1] && isAttached(segments[idx], segments[idx + 1], timing)) cancelIndices.add(idx + 1);
         });
       }
       const allOriginals = kind === 'move'
-        ? new Map(segments.map((segment, idx) => [idx, snapshotTiming(segment)]))
+        ? new Map(segments.map((segment, idx) => [idx, snapshotTiming(segment, timing)]))
         : null;
-      const cancelOriginals = new Map([...cancelIndices].map((idx) => [idx, snapshotTiming(segments[idx])]));
+      const cancelOriginals = new Map([...cancelIndices].map((idx) => [idx, snapshotTiming(segments[idx], timing)]));
       if (allOriginals) {
         allOriginals.forEach((original, idx) => cancelOriginals.set(idx, original));
       }
@@ -4149,6 +4398,8 @@
         row,
         originals,
         cancelOriginals,
+        timing,
+        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
         commitIndices: new Set(dragIndices),
         started: false,
         changed: false,
@@ -4183,9 +4434,14 @@
       const segments = this.options.getSegments(track);
       const left = segments[leftIndex];
       const right = segments[rightIndex];
-      if (!left || !right || Math.abs(left.end - right.start) > SNAP_MS) return false;
+      const timing = this.cueTiming();
+      const leftEnd = timing.getEnd(left);
+      const rightStart = timing.getStart(right);
+      if (!left || !right || Math.abs(leftEnd - rightStart) > timing.snapThreshold) return false;
       const pointerMs = this.timeFromPointer(event, row);
-      return Math.abs(pointerMs - left.end) <= SNAP_MS || Math.abs(pointerMs - right.start) <= SNAP_MS;
+      const pointerTime = timing.fromMs(pointerMs);
+      return Math.abs(pointerTime - leftEnd) <= timing.snapThreshold
+        || Math.abs(pointerTime - rightStart) <= timing.snapThreshold;
     }
 
     // Alt-drag 命中共享边界手柄：只拖动被命中一侧，邻居的相反边保持不动。
@@ -4198,13 +4454,9 @@
       const movedIndex = isLeftHandle ? index : index;
       const edge = isLeftHandle ? 'start' : 'end';
       const dragIndex = isLeftHandle ? index - 1 : index; // 左侧段索引，用于 applyIndependentEdge
-      const originals = new Map([[movedIndex, {
-        start: segments[movedIndex].start,
-        end: segments[movedIndex].end,
-        items: Array.isArray(segments[movedIndex].items)
-          ? segments[movedIndex].items.map((item) => ({ ...item })) : segments[movedIndex].items,
-      }]]);
       const geometry = this.captureRowGeometry(row);
+      const timing = this.cueTiming();
+      const originals = new Map([[movedIndex, snapshotTiming(segments[movedIndex], timing)]]);
       this.drag = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
@@ -4220,7 +4472,9 @@
         indices: [movedIndex],
         row,
         originals,
-        cancelOriginals: new Map([[movedIndex, snapshotTiming(segments[movedIndex])]]),
+        cancelOriginals: new Map([[movedIndex, snapshotTiming(segments[movedIndex], timing)]]),
+        timing,
+        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
         commitIndices: new Set([movedIndex]),
         started: false,
         changed: false,
@@ -4238,21 +4492,55 @@
       return Number(this.durationMs) > 0 ? Number(this.durationMs) : Infinity;
     }
 
+    cueTiming() {
+      return resolveTiming(this.options.getCueTiming?.());
+    }
+
+    cueTimingDuration() {
+      const clock = this.cueTiming();
+      const durationMs = this.cueDragDurationMs();
+      return Number.isFinite(durationMs) ? clock.fromMs(durationMs) : Infinity;
+    }
+
+    cueTimingValueFromMs(valueMs, timing = null) {
+      const clock = resolveTiming(timing || this.options.getCueTiming?.());
+      return clock.fromMs(valueMs);
+    }
+
+    cueTimingValueToMs(value, timing = null) {
+      const clock = resolveTiming(timing || this.options.getCueTiming?.());
+      return clock.toMs(value);
+    }
+
+    formatCueTiming(value, timing = null) {
+      const clock = resolveTiming(timing || this.options.getCueTiming?.());
+      return clock.format(value);
+    }
+
     captureCueDragOriginals(drag) {
       const segments = this.options.getSegments(drag.track || 'main');
-      drag.originals = new Map(drag.indices.map((idx) => [idx, snapshotTiming(segments[idx])]));
+      drag.originals = new Map(drag.indices.map((idx) => [
+        idx,
+        snapshotTiming(segments[idx], drag.timing || this.cueTiming()),
+      ]));
     }
 
     adjustSelectedByKeyboard(deltaMs, altKey = false, track = 'main') {
       const segments = this.options.getSegments(track);
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
       if (!indices.length) return false;
+      const timing = this.cueTiming();
+      const operationOptions = {
+        sticky: !this.isAdjacentCueAdjustmentIndependent(altKey),
+        timing,
+        minDuration: timing.minDuration,
+      };
       const plan = planMoveStep(
         segments,
         indices,
         deltaMs,
-        this.cueDragDurationMs(),
-        { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) },
+        this.cueTimingDuration(),
+        operationOptions,
       );
       if (!plan.changed) return false;
       this.options.onBeginEdit?.('移动字幕时间');
@@ -4260,8 +4548,8 @@
         segments,
         indices,
         deltaMs,
-        this.cueDragDurationMs(),
-        { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) },
+        this.cueTimingDuration(),
+        operationOptions,
       );
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
       this.options.onCommitEdit?.(result.indices, 'move', track);
@@ -4274,8 +4562,13 @@
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
       if (!indices.length || (edge !== 'start' && edge !== 'end')) return false;
       const index = edge === 'start' ? indices[0] : indices[indices.length - 1];
-      const options = { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) };
-      const plan = planBoundaryStep(segments, index, edge, deltaMs, this.cueDragDurationMs(), options);
+      const timing = this.cueTiming();
+      const options = {
+        sticky: !this.isAdjacentCueAdjustmentIndependent(altKey),
+        timing,
+        minDuration: timing.minDuration,
+      };
+      const plan = planBoundaryStep(segments, index, edge, deltaMs, this.cueTimingDuration(), options);
       if (!plan.changed) return false;
       this.options.onBeginEdit?.(`${edge === 'start' ? '调整字幕起点' : '调整字幕终点'}`);
       const result = applyBoundaryStep(
@@ -4283,7 +4576,7 @@
         index,
         edge,
         deltaMs,
-        this.cueDragDurationMs(),
+        this.cueTimingDuration(),
         options,
       );
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
@@ -4310,8 +4603,9 @@
           || (edge !== 'start' && edge !== 'end')) return false;
 
       const segment = segments[index];
-      const current = Number(segment[edge]);
-      const requested = Number(timeMs);
+      const timing = this.cueTiming();
+      const current = edge === 'start' ? timing.getStart(segment) : timing.getEnd(segment);
+      const requested = timing.fromMs(timeMs);
       if (!Number.isFinite(current) || !Number.isFinite(requested)) return false;
 
       const previous = segments[index - 1];
@@ -4319,31 +4613,32 @@
       let lower;
       let upper;
       if (edge === 'start') {
-        lower = Number(previous?.end ?? 0);
-        upper = Number(segment.end) - MIN_CUE_MS;
+        lower = previous ? timing.getEnd(previous) : 0;
+        upper = timing.getEnd(segment) - timing.minDuration;
       } else {
-        lower = Number(segment.start) + MIN_CUE_MS;
-        upper = Number(next?.start ?? this.cueDragDurationMs());
+        lower = timing.getStart(segment) + timing.minDuration;
+        upper = next ? timing.getStart(next) : this.cueTimingDuration();
         if (!Number.isFinite(upper) || upper <= 0) upper = Infinity;
       }
       if (!Number.isFinite(lower) || lower > upper) return true;
 
-      const target = clamp(roundMs(requested), lower, upper);
+      const target = clamp(timing.round(requested), lower, upper);
       if (!Number.isFinite(target) || target === current) return true;
 
-      const original = snapshotTiming(segment);
+      const original = snapshotTiming(segment, timing);
       this.options.onBeginEdit?.(edge === 'start' ? '定位字幕起点' : '定位字幕终点');
       if (edge === 'start') {
-        segment.start = target;
+        timing.setStart(segment, target);
       } else {
-        segment.end = target;
+        timing.setEnd(segment, target);
       }
       segment.items = remapItems(
         original.items,
         original.start,
         original.end,
-        segment.start,
-        segment.end,
+        timing.getStart(segment),
+        timing.getEnd(segment),
+        timing,
       );
       segment._dirty = true;
       this.options.onCommitEdit?.(
@@ -4351,7 +4646,12 @@
         'resize-boundary-pointer',
         track,
         false,
-        { edge, targetIndex: index, targetTimeMs: target, original },
+        {
+          edge,
+          targetIndex: index,
+          targetTimeMs: timing.toMs(target),
+          original: { ...original, start: original.startMs, end: original.endMs },
+        },
       );
       this.refreshCueOverlay();
       return true;
@@ -4370,13 +4670,14 @@
       // 避免 Shift+方向键继续触发浏览器默认行为。
       if (!segment || !neighbor) return true;
 
+      const timing = this.cueTiming();
       const edge = direction < 0 ? 'start' : 'end';
-      const current = Number(segment[edge]);
-      const target = roundMs(direction < 0 ? neighbor.end : neighbor.start);
-      const lower = edge === 'start' ? 0 : Number(segment.start) + MIN_CUE_MS;
+      const current = edge === 'start' ? timing.getStart(segment) : timing.getEnd(segment);
+      const target = timing.round(direction < 0 ? timing.getEnd(neighbor) : timing.getStart(neighbor));
+      const lower = edge === 'start' ? 0 : timing.getStart(segment) + timing.minDuration;
       const upper = edge === 'start'
-        ? Number(segment.end) - MIN_CUE_MS
-        : this.cueDragDurationMs();
+        ? timing.getEnd(segment) - timing.minDuration
+        : this.cueTimingDuration();
       if (!Number.isFinite(current) || !Number.isFinite(target)
           || target < lower || target > upper || target === current) return true;
 
@@ -4385,8 +4686,8 @@
         index,
         edge,
         target - current,
-        this.cueDragDurationMs(),
-        { sticky: false },
+        this.cueTimingDuration(),
+        { sticky: false, timing, minDuration: timing.minDuration },
       );
       if (!result.changed) return true;
       this.options.onBeginEdit?.('贴近字幕边界');
@@ -4400,11 +4701,16 @@
       const drag = this.drag;
       if (!drag) return false;
       const segments = this.options.getSegments(drag.track || 'main');
-      const durationMs = this.cueDragDurationMs();
+      const timing = drag.timing || this.cueTiming();
+      const durationMs = Number(this.durationMs) > 0 ? timing.fromMs(this.durationMs) : Infinity;
       let plan;
       let apply;
       if (drag.kind === 'move') {
-        const options = { sticky: !this.isAdjacentCueAdjustmentIndependent(altKey) };
+        const options = {
+          sticky: !this.isAdjacentCueAdjustmentIndependent(altKey),
+          timing,
+          minDuration: timing.minDuration,
+        };
         plan = planMoveStep(segments, drag.indices, deltaMs, durationMs, options);
         apply = () => applyMoveStep(segments, drag.indices, deltaMs, durationMs, options);
       } else {
@@ -4413,6 +4719,8 @@
         const options = {
           sticky: drag.kind !== 'resize-boundary-independent'
             && !this.isAdjacentCueAdjustmentIndependent(altKey),
+          timing,
+          minDuration: timing.minDuration,
         };
         plan = planBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
         apply = () => applyBoundaryStep(segments, drag.index, edge, deltaMs, durationMs, options);
@@ -4432,6 +4740,9 @@
       drag.changed = true;
       this.captureCueDragOriginals(drag);
       drag.startClientX = drag.currentClientX;
+      drag.startPointerTime = timing.fromMs(
+        this.timeFromPointer({ clientX: drag.currentClientX }, drag.row, drag.geometry),
+      );
       this.scheduleRefreshCueBlocks();
       return true;
     }
@@ -4464,13 +4775,14 @@
       // 避免 Shift+A/D 穿透成“选择前后字幕”。
       if (!segment || !neighbor) return true;
 
+      const timing = drag.timing || this.cueTiming();
       const edge = direction < 0 ? 'start' : 'end';
-      const current = Number(segment[edge]);
-      const target = roundMs(direction < 0 ? neighbor.end : neighbor.start);
-      const lower = edge === 'start' ? 0 : Number(segment.start) + MIN_CUE_MS;
+      const current = edge === 'start' ? timing.getStart(segment) : timing.getEnd(segment);
+      const target = timing.round(direction < 0 ? timing.getEnd(neighbor) : timing.getStart(neighbor));
+      const lower = edge === 'start' ? 0 : timing.getStart(segment) + timing.minDuration;
       const upper = edge === 'start'
-        ? Number(segment.end) - MIN_CUE_MS
-        : this.cueDragDurationMs();
+        ? timing.getEnd(segment) - timing.minDuration
+        : Number.isFinite(this.durationMs) ? timing.fromMs(this.durationMs) : Infinity;
       if (!Number.isFinite(current) || !Number.isFinite(target)
           || target < lower || target > upper || target === current) return true;
 
@@ -4478,19 +4790,24 @@
         drag.started = true;
         this.options.onBeginEdit?.('贴近字幕边界');
       }
-      const original = snapshotTiming(segment);
-      segment[edge] = target;
+      const original = snapshotTiming(segment, timing);
+      if (edge === 'start') timing.setStart(segment, target);
+      else timing.setEnd(segment, target);
       segment.items = remapItems(
         original.items,
         original.start,
         original.end,
-        segment.start,
-        segment.end,
+        timing.getStart(segment),
+        timing.getEnd(segment),
+        timing,
       );
       drag.commitIndices.add(index);
       drag.changed = true;
       this.captureCueDragOriginals(drag);
       drag.startClientX = drag.currentClientX;
+      drag.startPointerTime = timing.fromMs(
+        this.timeFromPointer({ clientX: drag.currentClientX }, drag.row, drag.geometry),
+      );
       this.scheduleRefreshCueBlocks();
       return true;
     }
@@ -4510,10 +4827,7 @@
       drag.cancelOriginals.forEach((original, idx) => {
         const segment = segments[idx];
         if (!segment) return;
-        segment.start = original.start;
-        segment.end = original.end;
-        segment.items = Array.isArray(original.items)
-          ? original.items.map((item) => ({ ...item })) : original.items;
+        restoreTiming(segment, original, drag.timing || this.cueTiming());
       });
       this.content.querySelectorAll('.waveform-cue-block.dragging')
         .forEach((block) => block.classList.remove('dragging'));
@@ -4525,14 +4839,17 @@
     }
 
     applyIndependentBoundaryDrag(drag, rawDelta) {
+      const clock = resolveTiming(drag.timing || this.cueTiming());
       const segments = this.options.getSegments(drag.track);
       const original = drag.originals.get(drag.index);
       if (!original) return;
       const base = drag.edge === 'start' ? original.start : original.end;
       const value = base + rawDelta;
-      applyIndependentEdge(segments, drag.dragIndex, drag.edge, value, MIN_CUE_MS);
+      applyIndependentEdge(segments, drag.dragIndex, drag.edge, value, clock.minDuration, clock);
       const seg = segments[drag.index];
-      this.setStatus(`${drag.edge === 'start' ? '起点' : '终点'} ${formatCompact(drag.edge === 'start' ? seg.start : seg.end)}`);
+      this.setStatus(`${drag.edge === 'start' ? '起点' : '终点'} ${clock.format(
+        drag.edge === 'start' ? clock.getStart(seg) : clock.getEnd(seg),
+      )}`);
     }
 
     beginGapBoundaryDrag(event, index, row, edge) {
@@ -4903,8 +5220,13 @@
       if (!drag || event.pointerId !== drag.pointerId) return;
       event.preventDefault();
       drag.currentClientX = event.clientX;
-      const deltaMs = ((event.clientX - drag.startClientX) / drag.rowWidth) * drag.rangeMs;
-      if (!drag.started && Math.abs(deltaMs) < 2) return;
+      const timing = drag.timing || this.cueTiming();
+      const pointerMs = this.timeFromPointer(event, drag.row, drag.geometry);
+      const currentPointerTime = timing.fromMs(pointerMs);
+      const deltaTime = currentPointerTime - drag.startPointerTime;
+      const hasMeaningfulMovement = timing.unit === 'frames'
+        ? deltaTime !== 0 : Math.abs(deltaTime) >= 2;
+      if (!drag.started && !hasMeaningfulMovement) return;
       if (!drag.started) {
         drag.started = true;
         const label = drag.kind === 'move' ? '移动字幕时间'
@@ -4919,27 +5241,25 @@
       // 主字幕/副字幕绑定的独立调整仍只由 Alt 临时触发，不受同轨自动吸附开关影响。
       if (drag.track === 'extension' && event.altKey) drag.independent = true;
       const disableSnap = drag.independent === true;
-      if (drag.kind === 'move') this.applyMoveDrag(drag, deltaMs, disableSnap, drag.allowSqueeze);
-      else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaMs, drag.independent);
-      else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaMs);
-      else this.applyResizeDrag(drag, deltaMs, drag.independent);
+      if (drag.kind === 'move') this.applyMoveDrag(drag, deltaTime, disableSnap, drag.allowSqueeze);
+      else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaTime, drag.independent);
+      else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaTime);
+      else this.applyResizeDrag(drag, deltaTime, drag.independent);
       this.options.syncBoundCueDrag?.(drag);
       drag.changed = true;
       this.scheduleRefreshCueBlocks();
     }
 
     applyMoveDrag(drag, rawDelta, disableSnap, allowSqueeze = false) {
+      const clock = resolveTiming(drag.timing || this.cueTiming());
       const segments = this.options.getSegments(drag.track);
       const moved = new Set(drag.indices);
       const originalFor = (idx) => drag.squeezeOriginals?.get(idx)
-        || drag.originals.get(idx) || snapshotTiming(segments[idx]);
+        || drag.originals.get(idx) || snapshotTiming(segments[idx], clock);
       const restoreSegment = (idx, original) => {
         const segment = segments[idx];
         if (!segment || !original) return;
-        segment.start = original.start;
-        segment.end = original.end;
-        segment.items = Array.isArray(original.items)
-          ? original.items.map((item) => ({ ...item })) : original.items;
+        restoreTiming(segment, original, clock);
       };
       if (allowSqueeze && drag.squeezeOriginals) {
         drag.squeezeOriginals.forEach((original, idx) => {
@@ -4948,65 +5268,72 @@
       }
       let minDelta = -Infinity;
       let maxDelta = Infinity;
+      const duration = Number(this.durationMs) > 0 ? clock.fromMs(this.durationMs) : Infinity;
       for (const idx of drag.indices) {
         const original = drag.originals.get(idx);
         minDelta = Math.max(minDelta, -original.start);
-        maxDelta = Math.min(maxDelta, this.durationMs - original.end);
+        maxDelta = Math.min(maxDelta, duration - original.end);
         if (allowSqueeze) {
           let previousIndex = idx - 1;
           while (previousIndex >= 0 && moved.has(previousIndex)) previousIndex -= 1;
           if (previousIndex >= 0) {
             const previous = originalFor(previousIndex);
-            minDelta = Math.max(minDelta, previous.start + MIN_CUE_MS - original.start);
+            minDelta = Math.max(minDelta, previous.start + clock.minDuration - original.start);
           }
           let nextIndex = idx + 1;
           while (nextIndex < segments.length && moved.has(nextIndex)) nextIndex += 1;
           if (nextIndex < segments.length) {
             const next = originalFor(nextIndex);
-            maxDelta = Math.min(maxDelta, next.end - MIN_CUE_MS - original.end);
+            maxDelta = Math.min(maxDelta, next.end - clock.minDuration - original.end);
           }
         } else {
-          if (idx > 0 && !moved.has(idx - 1)) minDelta = Math.max(minDelta, segments[idx - 1].end - original.start);
+          if (idx > 0 && !moved.has(idx - 1)) {
+            minDelta = Math.max(minDelta, clock.getEnd(segments[idx - 1]) - original.start);
+          }
           if (idx + 1 < segments.length && !moved.has(idx + 1)) {
-            maxDelta = Math.min(maxDelta, segments[idx + 1].start - original.end);
+            maxDelta = Math.min(maxDelta, clock.getStart(segments[idx + 1]) - original.end);
           }
         }
       }
       let delta = rawDelta;
       if (!disableSnap) {
         const candidates = [];
-        const playhead = this.currentTimeMs();
-        const crossTrackTargets = this.options.getCrossTrackSnapTargets?.(drag.track) || [];
+        const playhead = clock.fromMs(this.currentTimeMs());
+        const crossTrackTargets = (this.options.getCrossTrackSnapTargets?.(drag.track) || [])
+          .map((target) => clock.fromMs(target));
         for (const idx of drag.indices) {
           const original = drag.originals.get(idx);
           candidates.push(playhead - original.start, playhead - original.end);
           if (!allowSqueeze) {
-            if (idx > 0 && !moved.has(idx - 1)) candidates.push(segments[idx - 1].end - original.start);
+            if (idx > 0 && !moved.has(idx - 1)) {
+              candidates.push(clock.getEnd(segments[idx - 1]) - original.start);
+            }
             if (idx + 1 < segments.length && !moved.has(idx + 1)) {
-              candidates.push(segments[idx + 1].start - original.end);
+              candidates.push(clock.getStart(segments[idx + 1]) - original.end);
             }
           }
           crossTrackTargets.forEach((target) => {
-            candidates.push(target - original.start, target - original.end);
+            if (Number.isFinite(target)) candidates.push(target - original.start, target - original.end);
           });
         }
         const nearest = candidates.reduce((best, value) => (
           Math.abs(value - delta) < Math.abs(best - delta) ? value : best
         ), Infinity);
-        if (Number.isFinite(nearest) && Math.abs(nearest - delta) <= SNAP_MS) delta = nearest;
+        if (Number.isFinite(nearest) && Math.abs(nearest - delta) <= clock.snapThreshold) delta = nearest;
       }
-      delta = clamp(roundMs(delta), minDelta, maxDelta);
+      delta = clamp(clock.round(delta), minDelta, maxDelta);
       for (const idx of drag.indices) {
         const original = drag.originals.get(idx);
         const segment = segments[idx];
-        segment.start = original.start + delta;
-        segment.end = original.end + delta;
+        clock.setStart(segment, original.start + delta);
+        clock.setEnd(segment, original.end + delta);
         if (Array.isArray(original.items)) {
-          segment.items = original.items.map((item) => ({
-            ...item,
-            start: item.start + delta,
-            end: item.end + delta,
-          }));
+          segment.items = original.items.map((item) => {
+            const copy = { ...item };
+            clock.setItemStart(copy, clock.getItemStart(item) + delta);
+            clock.setItemEnd(copy, clock.getItemEnd(item) + delta);
+            return copy;
+          });
         }
       }
       if (allowSqueeze) {
@@ -5017,16 +5344,17 @@
           if (previousIndex >= 0) {
             const previous = segments[previousIndex];
             const previousOriginal = originalFor(previousIndex);
-            if (previous && previous.end > segment.start) {
-              const nextEnd = Math.max(previousOriginal.start + MIN_CUE_MS, segment.start);
-              if (nextEnd < previous.end) {
-                previous.end = nextEnd;
+            if (previous && clock.getEnd(previous) > clock.getStart(segment)) {
+              const nextEnd = Math.max(previousOriginal.start + clock.minDuration, clock.getStart(segment));
+              if (nextEnd < clock.getEnd(previous)) {
+                clock.setEnd(previous, nextEnd);
                 previous.items = remapItems(
                   previousOriginal.items,
                   previousOriginal.start,
                   previousOriginal.end,
-                  previous.start,
-                  previous.end,
+                  clock.getStart(previous),
+                  clock.getEnd(previous),
+                  clock,
                 );
                 drag.commitIndices.add(previousIndex);
               }
@@ -5037,16 +5365,17 @@
           if (nextIndex < segments.length) {
             const next = segments[nextIndex];
             const nextOriginal = originalFor(nextIndex);
-            if (next && segment.end > next.start) {
-              const nextStart = Math.min(nextOriginal.end - MIN_CUE_MS, segment.end);
-              if (nextStart > next.start) {
-                next.start = nextStart;
+            if (next && clock.getEnd(segment) > clock.getStart(next)) {
+              const nextStart = Math.min(nextOriginal.end - clock.minDuration, clock.getEnd(segment));
+              if (nextStart > clock.getStart(next)) {
+                clock.setStart(next, nextStart);
                 next.items = remapItems(
                   nextOriginal.items,
                   nextOriginal.start,
                   nextOriginal.end,
-                  next.start,
-                  next.end,
+                  clock.getStart(next),
+                  clock.getEnd(next),
+                  clock,
                 );
                 drag.commitIndices.add(nextIndex);
               }
@@ -5054,77 +5383,81 @@
           }
         }
       }
-      this.setStatus(`${allowSqueeze ? '挤压移动' : '移动'} ${drag.indices.length} 条 · ${delta >= 0 ? '+' : ''}${delta} ms`);
+      const deltaLabel = clock.unit === 'frames' ? `${delta >= 0 ? '+' : ''}${delta}F` : `${delta >= 0 ? '+' : ''}${delta} ms`;
+      this.setStatus(`${allowSqueeze ? '挤压移动' : '移动'} ${drag.indices.length} 条 · ${deltaLabel}`);
     }
 
     applyResizeDrag(drag, rawDelta, disableSnap) {
+      const clock = resolveTiming(drag.timing || this.cueTiming());
       const segments = this.options.getSegments(drag.track);
       const segment = segments[drag.index];
       const original = drag.originals.get(drag.index);
       let newStart = original.start;
       let newEnd = original.end;
       if (drag.kind === 'resize-left') {
-        const lower = drag.index > 0 ? segments[drag.index - 1].end : 0;
-        const upper = original.end - MIN_CUE_MS;
+        const lower = drag.index > 0 ? clock.getEnd(segments[drag.index - 1]) : 0;
+        const upper = original.end - clock.minDuration;
         newStart = original.start + rawDelta;
         if (!disableSnap) {
-          const targets = [lower, this.currentTimeMs(), ...(
+          const targets = [lower, clock.fromMs(this.currentTimeMs()), ...(
             this.options.getCrossTrackSnapTargets?.(drag.track) || []
-          )];
+          ).map((target) => clock.fromMs(target))];
           const nearest = targets.reduce((best, value) => (
             Math.abs(value - newStart) < Math.abs(best - newStart) ? value : best
           ), Infinity);
-          if (Number.isFinite(nearest) && Math.abs(nearest - newStart) <= SNAP_MS) newStart = nearest;
+          if (Number.isFinite(nearest) && Math.abs(nearest - newStart) <= clock.snapThreshold) newStart = nearest;
         }
-        newStart = clamp(roundMs(newStart), lower, upper);
+        newStart = clamp(clock.round(newStart), lower, upper);
       } else {
-        const lower = original.start + MIN_CUE_MS;
-        const upper = drag.index + 1 < segments.length ? segments[drag.index + 1].start : this.durationMs;
+        const lower = original.start + clock.minDuration;
+        const upper = drag.index + 1 < segments.length
+          ? clock.getStart(segments[drag.index + 1]) : this.cueTimingDuration();
         newEnd = original.end + rawDelta;
         if (!disableSnap) {
-          const targets = [upper, this.currentTimeMs(), ...(
+          const targets = [upper, clock.fromMs(this.currentTimeMs()), ...(
             this.options.getCrossTrackSnapTargets?.(drag.track) || []
-          )];
+          ).map((target) => clock.fromMs(target))];
           const nearest = targets.reduce((best, value) => (
             Math.abs(value - newEnd) < Math.abs(best - newEnd) ? value : best
           ), Infinity);
-          if (Number.isFinite(nearest) && Math.abs(nearest - newEnd) <= SNAP_MS) newEnd = nearest;
+          if (Number.isFinite(nearest) && Math.abs(nearest - newEnd) <= clock.snapThreshold) newEnd = nearest;
         }
-        newEnd = clamp(roundMs(newEnd), lower, upper);
+        newEnd = clamp(clock.round(newEnd), lower, upper);
       }
-      segment.start = newStart;
-      segment.end = newEnd;
-      segment.items = remapItems(original.items, original.start, original.end, newStart, newEnd);
-      this.setStatus(`${formatCompact(newStart)} → ${formatCompact(newEnd)}`);
+      clock.setStart(segment, newStart);
+      clock.setEnd(segment, newEnd);
+      segment.items = remapItems(original.items, original.start, original.end, newStart, newEnd, clock);
+      this.setStatus(`${clock.format(newStart)} → ${clock.format(newEnd)}`);
     }
 
     applyBoundaryDrag(drag, rawDelta, disableSnap) {
+      const clock = resolveTiming(drag.timing || this.cueTiming());
       const segments = this.options.getSegments(drag.track);
       const left = drag.originals.get(drag.index);
       const right = drag.originals.get(drag.index + 1);
       if (!left || !right) return;
       let boundary = left.end + rawDelta;
-      const lower = left.start + MIN_CUE_MS;
-      const upper = right.end - MIN_CUE_MS;
+      const lower = left.start + clock.minDuration;
+      const upper = right.end - clock.minDuration;
       if (!disableSnap) {
-        const candidates = [this.currentTimeMs(), ...(
+        const candidates = [clock.fromMs(this.currentTimeMs()), ...(
           this.options.getCrossTrackSnapTargets?.(drag.track) || []
-        )];
-        if (drag.index > 0) candidates.push(segments[drag.index - 1].end);
-        if (drag.index + 2 < segments.length) candidates.push(segments[drag.index + 2].start);
+        ).map((target) => clock.fromMs(target))];
+        if (drag.index > 0) candidates.push(clock.getEnd(segments[drag.index - 1]));
+        if (drag.index + 2 < segments.length) candidates.push(clock.getStart(segments[drag.index + 2]));
         const nearest = candidates.reduce((best, value) => (
           Math.abs(value - boundary) < Math.abs(best - boundary) ? value : best
         ), Infinity);
-        if (Number.isFinite(nearest) && Math.abs(nearest - boundary) <= SNAP_MS) boundary = nearest;
+        if (Number.isFinite(nearest) && Math.abs(nearest - boundary) <= clock.snapThreshold) boundary = nearest;
       }
-      boundary = clamp(roundMs(boundary), lower, upper);
+      boundary = clamp(clock.round(boundary), lower, upper);
       const leftSegment = segments[drag.index];
       const rightSegment = segments[drag.index + 1];
-      leftSegment.end = boundary;
-      rightSegment.start = boundary;
-      leftSegment.items = remapItems(left.items, left.start, left.end, left.start, boundary);
-      rightSegment.items = remapItems(right.items, right.start, right.end, boundary, right.end);
-      this.setStatus(`共享边界 ${formatCompact(boundary)} · ${this.adjacentSnapModeStatusHint()}`);
+      clock.setEnd(leftSegment, boundary);
+      clock.setStart(rightSegment, boundary);
+      leftSegment.items = remapItems(left.items, left.start, left.end, left.start, boundary, clock);
+      rightSegment.items = remapItems(right.items, right.start, right.end, boundary, right.end, clock);
+      this.setStatus(`共享边界 ${clock.format(boundary)} · ${this.adjacentSnapModeStatusHint()}`);
       // 吸附模式提示只挂在「共享边界」状态上：共享边界拖动正是自动吸附
       // 默认联动/独立两种模式的直接体现，Alt 可随时临时反转。
     }
@@ -5142,10 +5475,7 @@
         drag.cancelOriginals.forEach((original, idx) => {
           const segment = this.options.getSegments(drag.track || 'main')[idx];
           if (!segment) return;
-          segment.start = original.start;
-          segment.end = original.end;
-          segment.items = Array.isArray(original.items)
-            ? original.items.map((item) => ({ ...item })) : original.items;
+          restoreTiming(segment, original, drag.timing || this.cueTiming());
         });
         this.refreshCueOverlay();
         return;
@@ -5327,8 +5657,15 @@
       decodePayload,
       decodeReapeaksFile,
       decodeSpectralPayload,
+      peaksRateOf,
+      publishPeakRate,
+      // 只做选取逻辑的单测入口：用 stub 的 this 调用，无需构造 DOM。
+      activeWaveShape: WaveformEditor.prototype.activeWaveShape,
       syncSpectralColorToggle,
       freqColor,
+      resolveTiming,
+      waveformGridStepMs,
+      snapPointerTimeToTimingGrid,
       remapItems,
       roundMs,
       sourceForFile,

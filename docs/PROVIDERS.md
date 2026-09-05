@@ -9,6 +9,7 @@ MAW 本身不托管转写服务。你选择的服务商会直接接收待转写�
 | Qwen-Audio / Qwen3-ASR / Fun-ASR | 默认云端路径、中文和说话人分离 | 使用阿里云百炼 API Key；Launcher 默认优先 Qwen-Audio。 |
 | Soniox | 多语言、小语种和说话人分离 | 使用 Soniox Console API Key。 |
 | 腾讯云录音文件识别 | 中文/英文长音频的异步文件识别 | 使用 `TENCENT_SECRET_ID`、`TENCENT_SECRET_KEY`；大于 5MB 的媒体需使用 COS/公网 URL。 |
+| 自定义 OpenAI 兼容 ASR | 使用 OpenAI 官方服务或自己的兼容服务 | 默认使用 OpenAI 官方 Base URL 与转写模型；接口必须返回 `segments` 或 `words` 时间戳。 |
 | 必剪 ASR | 不想申请 Key 的中文快速体验 | 实验性、非官方接口，可能限流或失效。 |
 | 本地 Qwen3-ASR / FunASR | 希望离线转写且有合适硬件 | 实验性，需要单独安装运行环境和模型。 |
 
@@ -16,11 +17,13 @@ MAW 本身不托管转写服务。你选择的服务商会直接接收待转写�
 
 - 图形版：在 Launcher 中填写并保存到本机环境。
 - Release 包：优先读取应用程序同目录的 `.env`；不存在时使用 MAW 用户数据目录中的 `.env`，Windows 路径为 `%LOCALAPPDATA%\MAW\.env`。
-- 源码运行：继续使用仓库根目录的 `.env`，可从 `.env.example` 复制后填写 `DASHSCOPE_API_KEY`、`SONIOX_API_KEY`，或腾讯云的 `TENCENT_SECRET_ID` 与 `TENCENT_SECRET_KEY`。
+- 源码或 CLI：继续使用仓库根目录的 `.env`；可从 `.env.example` 复制后填写 `DASHSCOPE_API_KEY`、`SONIOX_API_KEY`、腾讯云的 `TENCENT_SECRET_ID` 与 `TENCENT_SECRET_KEY`，或自定义 OpenAI 兼容 ASR 的 `MAW_OPENAI_ASR_API_KEY`。
+- 自定义 OpenAI 兼容 ASR：在 Launcher 选择“自定义 OpenAI 兼容 ASR”，填写 `MAW_OPENAI_ASR_BASE_URL`、`MAW_OPENAI_ASR_MODEL` 和 `MAW_OPENAI_ASR_API_KEY`；程序调用 `POST {Base URL}/audio/transcriptions`。
 - API Key 只应保存在环境变量或本机 `.env` 中，不要放进命令行、工程、日志、截图或 AI 对话。
 - Qwen Key 申请见[阿里云百炼官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)；Soniox Key 见 [Soniox Console](https://console.soniox.com)。
 - 腾讯云密钥见[API 密钥管理](https://console.cloud.tencent.com/tokenhub/apikey)；录音文件识别使用 `CreateRecTask` / `DescribeTaskStatus`，默认引擎为 `16k_zh_en_2.0`。
 - 腾讯云的 `Words` 结果包含字词级毫秒时间码；传入 `--speaker` 会启用说话人分离并保留匿名 speaker 标签。完整示例见[完整工作流](WORKFLOW.md)。
+- 默认 Base URL 为 `https://api.openai.com/v1`，模型为支持词级时间戳的 `whisper-1`；使用兼容服务时，按服务商文档修改这两项。若服务只返回 `{ "text": "..." }` 而没有时间戳，MAW 会拒绝生成字幕，因为无法可靠对轨。
 
 区域、模型、热词、上下文和完整参数见[完整工作流](WORKFLOW.md)与[CLI 文档](CLI.md)。
 

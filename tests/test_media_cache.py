@@ -21,17 +21,19 @@ except ImportError:
     HAS_NUMPY = False
 
 
-def _make_tone(path: Path) -> None:
-    """1s 440Hz 单声道 wav。"""
-    sample_rate = 8000
+def _make_tone(
+    path: Path, sample_rate: int = 8000, channels: int = 1, seconds: float = 1.0
+) -> None:
+    """指定采样率/声道/时长的单音 wav（默认 1s 440Hz 单声道 8 kHz）。"""
     with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(1)
+        wf.setnchannels(channels)
         wf.setsampwidth(2)
         wf.setframerate(sample_rate)
         frames = bytearray()
-        for i in range(sample_rate):
+        for i in range(round(sample_rate * seconds)):
             value = round(math.sin(2 * math.pi * 440 * i / sample_rate) * 16_000)
-            frames.extend(struct.pack("<h", value))
+            for _ in range(channels):
+                frames.extend(struct.pack("<h", value))
         wf.writeframes(frames)
 
 
@@ -75,10 +77,48 @@ class MediaCacheTests(unittest.TestCase):
         self.assertIsNotNone(reapeaks.load_spectral_payload(self.wav))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    def test_test_mode_cache_uses_limited_media_but_keeps_source_signature(self) -> None:
+    def test_caches_describe_source_media_not_the_derived_extraction(self) -> None:
+        """缓存必须描述源媒体本身，而不是派生的 16 kHz / 截断提取音频。
+
+        回归：本地 ASR 把视频抽成 16 kHz 单声道临时 wav 后交给缓存生成，
+        .ReaPeaks 头部因此记下 16000 Hz —— 16 kHz 的最细层分频不整除采样率，
+        取整后的峰率把整条波形时间轴按比例缩放（15 分钟约错开 1/3 秒），
+        配合 --length-limit 时尾部还会完全没有数据。
+        """
+        source = self.root / "source.wav"
+        _make_tone(source, sample_rate=48000, channels=2, seconds=3.0)
+        derived = self.root / "prepared.wav"
+        _make_tone(derived, sample_rate=16000, channels=1, seconds=1.0)
+
+        result = media_cache.embed_media_caches(
+            {"media": str(source), "segments": []},
+            derived,
+            source_media_path=source,
+            generate_spectral=True,
+        )
+
+        reapeaks_wave = result.project["waveform_reapeaks"]
+        spectral = result.project["spectral"]
+        self.assertEqual(reapeaks_wave["sample_rate"], 48000)
+        self.assertGreaterEqual(reapeaks_wave["duration_ms"], 2900)
+        self.assertGreaterEqual(result.project["waveform"]["duration_ms"], 2900)
+        self.assertEqual(spectral["sample_rate"], 48000)
+        self.assertGreaterEqual(
+            spectral["peak_count"] * spectral["division"] / spectral["sample_rate"] * 1000, 2900
+        )
+        for key in ("waveform", "spectral", "waveform_reapeaks"):
+            self.assertEqual(
+                result.project[key]["source"], media_cache.media_signature(source)
+            )
+        # 服务器只读路径必须接受这份缓存
+        self.assertIsNotNone(reapeaks.load_waveform_payload(source))
+        self.assertIsNotNone(reapeaks.load_spectral_payload(source))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_undecodable_source_falls_back_to_derived_with_actual_signature(self) -> None:
+        """源媒体解不开时退回派生文件，但缓存签名必须描述实际解码文件。"""
         source = self.root / "source.mp4"
         cache_media = self.root / "limited.wav"
-        # 测试模式把实际生成缓存的媒体放在临时文件，工程仍需记录原始媒体签名。
         shutil.copy2(self.wav, cache_media)
         source.write_bytes(b"original-media")
 
@@ -89,10 +129,20 @@ class MediaCacheTests(unittest.TestCase):
             generate_spectral=True,
         )
 
-        self.assertEqual(result.project["waveform"]["source"], media_cache.media_signature(source))
-        self.assertEqual(result.project["spectral"]["source"], media_cache.media_signature(source))
-        self.assertEqual(result.project["waveform_reapeaks"]["source"], media_cache.media_signature(source))
+        derived_signature = media_cache.media_signature(cache_media)
+        for key in ("waveform", "spectral", "waveform_reapeaks"):
+            self.assertEqual(
+                result.project[key]["source"], derived_signature
+            )
         self.assertGreater(result.project["waveform"]["duration_ms"], 0)
+        self.assertEqual(
+            Path(result.reapeaks_path),
+            cache_media.with_name(cache_media.name + ".ReaPeaks"),
+        )
+        # 退回派生文件后，缓存只能被派生文件接受，不能误用于源媒体。
+        self.assertIsNotNone(reapeaks.load_waveform_payload(cache_media))
+        self.assertIsNone(reapeaks.load_spectral_payload(source))
+        self.assertIsNone(reapeaks.load_waveform_payload(source))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_reapeaks_cache_lands_next_to_source_media(self) -> None:

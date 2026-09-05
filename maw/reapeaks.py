@@ -9,6 +9,11 @@ the waveform. Loudness / spectrogram mipmaps are parsed but not exposed yet.
 The spectral payload is a *cache* derived from the media's .ReaPeaks file, so
 looking it up must never block the editor: any missing / unreadable /
 non-spectral file degrades to ``None``.
+
+Decoding is pure Python; only *generation* needs the Rust ``reapeaks``
+extension, and it is imported lazily at the call site.  Managed ASR runtimes
+are separate environments that may not ship the extension, and a cache
+generator must never take down transcription at import time.
 """
 
 from __future__ import annotations
@@ -20,9 +25,26 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import reapeaks as rust_generate
 from maw import waveform as waveform_module
 from maw.ffmpeg import resolve_ffmpeg_tool
+
+
+def _load_rust_kernel():
+    """按调用点延迟导入 Rust 生成内核，缺失时返回 None。
+
+    解析（读）路径是纯 Python 的，只有生成（写）才需要内核。托管 Runtime 是独立
+    环境（如 MOSS 的 ``local-runtime-moss``），未必装了 ``reapeaks``；放在模块顶层
+    导入会让任何 `from maw import reapeaks` 的入口在加载模型之前就崩掉。生成是
+    可重建缓存的兜底路径，必须按既有语义打日志说明原因后跳过，而不是拖垮转写。
+    """
+
+    try:
+        import reapeaks as rust_generate
+    except ImportError as exc:
+        print(f"[reapeaks] 缺少 Rust 生成内核 reapeaks（{exc}），跳过 .ReaPeaks 生成")
+        return None
+    return rust_generate
+
 
 MAGIC_V10 = b"RPKM"  # v1.0: min == -max (mirrored)
 MAGIC_V11 = b"RPKN"  # v1.1: explicit min/max
@@ -33,6 +55,11 @@ SPECTRAL_ENCODING = "u16-freq-density-base64"
 
 # REAPER appends one of these to the full media filename (e.g. ICE.wav.ReaPeaks).
 REAPEAKS_SUFFIXES = (".ReaPeaks", ".reapeaks", ".REAPEAKS")
+
+# 官方规格允许的 mtime 指纹容差：小漂移几秒，以及夏令时造成的约一小时偏差。
+_MTIME_TOLERANCE_SECONDS = 5
+_UINT32_MASK = 0xFFFF_FFFF
+_UINT32_MODULUS = 0x1_0000_0000
 
 DIV_SPECTRAL = -ord("s")  # spectral peaks
 DIV_SPECTROGRAM = -ord("g")  # spectrogram
@@ -94,8 +121,11 @@ class ReaPeaksFile:
         self.is_v12 = self.magic == MAGIC_V12
         self.channels = self.data[4]
         self.mipmap_count = self.data[5]
+        # 官方规格：mtime/size 是 stat() 值的低 32 位（"low 32 bits"），仅作
+        # 更新检测指纹；>2GiB / 2038 后的大值按无符号位型记录，按 i32 解读
+        # 会得到无意义的负数（REAPER 真机即按此语义写入）。
         self.sample_rate, self.src_timestamp, self.src_filesize = struct.unpack_from(
-            "<iii", self.data, 6
+            "<iII", self.data, 6
         )
         self.mipmaps: list[MipMap] = []
         self._parse_headers()
@@ -235,6 +265,15 @@ def _paired_spectral_rates(ra: ReaPeaksFile) -> list[tuple[int, MipMap]]:
     Spectral mipmaps carry ``-(int)'s'`` as their division_factor token but their
     real rate mirrors the paired main-sample mipmap, so the wave mipmap's
     division factor is what aligns them on the time axis.
+
+    The spectral layer usually has *fewer* peaks than its paired wave layer
+    (7 fewer for a 44.1 kHz REAPER file, 25 for 16 kHz) because the last FFT
+    windows cannot be filled.  That deficit is at the tail, not a head offset:
+    measured with a narrow-band burst at a known instant, the spectral response
+    is centered on the same bin the wave layer reports (48 kHz: 4207.5 vs 4207;
+    16 kHz: 4234 vs 4233).  So index ``i`` on both layers means the same moment
+    and no shift may be introduced here; the uncovered tail simply draws no
+    color, which the editor already handles with a bounds check.
     """
     wave_mips = ra.wave_mipmaps()
     spectral_mips = ra.spectral_mipmaps()
@@ -301,7 +340,23 @@ def extract_waveform_payload(
 
     Lets the editor render the waveform outline from REAPER's own peaks (raw
     sample-rate, immune to the 1000 Hz re-sample aliasing of the built-in
-    waveform cache). Channel 0 is used for display.
+    waveform cache).
+
+    All channels are merged into one outline (min of mins, max of maxes), which
+    is what the browser-side ``decodeReapeaksFile`` does too, so a project
+    opened by the server and a ``.ReaPeaks`` dropped into the editor produce the
+    same shape.  Picking a single channel instead would draw a flat line for the
+    dual-mono material that is common in broadcast and game audio (voice only on
+    the right channel).  Spectral data stays channel 0 on both sides.
+
+    The bin rate is ``sample_rate / division`` and is fractional for most media
+    (16 kHz with ``div=53`` is 301.8868 peaks/s).  It must never be rounded to
+    an integer here: the editor maps peak indices to timestamps through that
+    number, so a rounding error would scale the entire time axis and drift
+    linearly with the media length.  The exact pair is published alongside, and
+    ``peaks_per_second`` carries the exact ratio as well (an int only when the
+    division is exact) so that consumers which have not migrated still draw
+    correctly.
     """
     ra = ReaPeaksFile(str(reapeaks_path))
     wave_mips = ra.wave_mipmaps()
@@ -313,14 +368,23 @@ def extract_waveform_payload(
         return None
     buffer = bytearray()
     for peak_row in finest.wave:
-        peak = peak_row[0]  # channel 0 for display
-        low = _wave_to_int8(peak.min)
-        high = _wave_to_int8(peak.max)
+        low = 127
+        high = -127
+        for peak in peak_row:
+            low = min(low, _wave_to_int8(peak.min))
+            high = max(high, _wave_to_int8(peak.max))
+        if not peak_row:  # 声道数为 0 的损坏文件：留一条中线而不是画反的包络
+            low = high = 0
         buffer += bytes((low & 0xFF, high & 0xFF))
+    exact_rate = ra.sample_rate / div
     return {
         "schema": waveform_module.WAVEFORM_SCHEMA,
         "encoding": waveform_module.WAVEFORM_ENCODING,
-        "peaks_per_second": round(ra.sample_rate / div),
+        "peaks_per_second": (
+            int(exact_rate) if exact_rate.is_integer() else round(exact_rate, 6)
+        ),
+        "sample_rate": ra.sample_rate,
+        "division": div,
         "peak_count": len(finest.wave),
         "duration_ms": round(len(finest.wave) * div / ra.sample_rate * 1000),
         "source": waveform_module.media_signature(media_path),
@@ -331,14 +395,20 @@ def extract_waveform_payload(
 def _reapeaks_matches_media(reapeaks_path: Path | str, media_path: Path | str) -> bool:
     """True when a .ReaPeaks cache is acceptable for the *current* media.
 
-    Provenance is matched on the header's second-resolution mtime
-    (``src_timestamp``) only. The recorded size is deliberately not compared:
-    ``generate_for_media`` records the size of the file it decoded (a
-    temporary extraction), which can differ from the media the server later
-    resolves, while the timestamp is taken from the original media and
-    therefore survives that mapping. A zero timestamp/filesize pair means a
-    legacy MAW cache with no provenance, which is treated as stale so it gets
-    rebuilt instead of silently reused.
+    Provenance is the header's ``(src_timestamp, src_filesize)`` pair, which
+    ``generate_for_media`` records from the file it actually decoded.  Because
+    generation now decodes the source media itself, both halves are
+    comparable again and both are required: a cache that survives as a
+    timestamp match but was built from a different file (a 16 kHz mono
+    extraction of a 48 kHz stereo video, or a length-limited clip) fails the
+    size check and gets rebuilt instead of silently stretching the editor's
+    time axis.  A zero timestamp/filesize pair means a legacy MAW cache with no
+    provenance and is treated as stale for the same reason.
+
+    对齐官方规格的容差：mtime/size 都只有 stat() 值的低 32 位精度，且
+    "REAPER will allow for small variations (a few seconds), as well as
+    within a few seconds of one hour off (to allow for DST changes)"——
+    跨盘拷贝导致的秒级 / 恰好一小时的 mtime 漂移不应误杀缓存。
     """
     try:
         ra = ReaPeaksFile(str(reapeaks_path))
@@ -350,7 +420,20 @@ def _reapeaks_matches_media(reapeaks_path: Path | str, media_path: Path | str) -
         st = Path(media_path).stat()
     except OSError:
         return False
-    return ra.src_timestamp == int(st.st_mtime)
+    if ra.src_filesize != st.st_size & _UINT32_MASK:
+        return False
+    return _timestamp_fingerprint_matches(ra.src_timestamp, int(st.st_mtime))
+
+
+def _timestamp_fingerprint_matches(stored: int, actual: int) -> bool:
+    """mtime 指纹比对：精确相等，或容许秒级漂移 / DST 整小时偏差。"""
+    # Header stores only stat()'s low 32 bits. Compare in that same unsigned
+    # domain so the check remains correct after the counter wraps around.
+    stored &= _UINT32_MASK
+    actual &= _UINT32_MASK
+    delta = abs(stored - actual)
+    delta = min(delta, _UINT32_MODULUS - delta)
+    return delta <= _MTIME_TOLERANCE_SECONDS or abs(delta - 3600) <= _MTIME_TOLERANCE_SECONDS
 
 
 def _reapeaks_contains_spectral(reapeaks_path: Path | str) -> bool:
@@ -436,12 +519,16 @@ def generate_reapeaks_stream_bytes(
 
     Only the current ffmpeg chunk and the generator's bounded accumulators are
     in memory; the full PCM never materializes. Returns None when ffmpeg is
-    missing, the media has no decodable audio, or the Rust kernel fails; each
-    failure mode logs a distinct reason instead of degrading silently.
+    missing, the Rust kernel is unavailable, the media has no decodable audio,
+    or the Rust kernel fails; each failure mode logs a distinct reason instead
+    of degrading silently.
     """
     ffmpeg = resolve_ffmpeg(ffmpeg_bin)
     if not ffmpeg:
         print("[reapeaks] 缺少 ffmpeg，跳过 .ReaPeaks 生成")
+        return None
+    rust_generate = _load_rust_kernel()
+    if rust_generate is None:
         return None
     stderr_file = tempfile.TemporaryFile()
     try:
@@ -545,13 +632,17 @@ def generate_for_media(
     incomplete caches are rebuilt. The file is written next to the media so
     the server only ever reads it.
 
-    ``media_path`` is the file actually decoded (e.g. a limited-length
-    extraction inside a temporary working directory). ``source_media_path``
-    is the original media: the cache is written next to it, its mtime is
-    recorded in the header (the recorded size comes from ``media_path`` and
-    is not part of any provenance check), so the server still finds and
-    accepts the cache after the temporary directory is gone. Defaults to
-    ``media_path`` for unchanged single-file behavior.
+    ``source_media_path`` is the media the editor will open: when it can be
+    decoded, the cache is written next to it and its ``(mtime, size)`` is
+    recorded in the header as the provenance the server later checks.
+    ``media_path`` is a fallback decode input for callers that only have a
+    derived file around (e.g. a temporary extraction).  When the source itself
+    is readable it is always preferred,
+    because the .ReaPeaks header stores the decoded file's sample rate and
+    channel count and has no room to record that they came from somewhere else:
+    deriving a cache from a 16 kHz mono ASR extraction of a 48 kHz stereo video,
+    or from a ``--length-limit`` clip, silently re-bases the editor's whole time
+    axis and stops covering the tail.
     """
     media_path = Path(media_path)
     signature_path = (
@@ -561,34 +652,55 @@ def generate_for_media(
     if existing is not None and _reapeaks_matches_media(existing, signature_path):
         if not include_spectral or _reapeaks_contains_spectral(existing):
             return existing
-    target = signature_path.with_name(signature_path.name + ".ReaPeaks")
-    try:
-        media = media_path.stat()
-        src = signature_path.stat()
-        media_timestamp = int(src.st_mtime)
-        media_filesize = media.st_size
-        if media_timestamp >= 0x80000000 or media_filesize > 0x7FFFFFFF:
-            # 超出 .ReaPeaks 头部 int32 字段范围，无法可靠记录来源，跳过生成。
-            print("[reapeaks] 音频数据过大，或时间戳格式违规")
+    # 优先解码源媒体；源不可读或解不出音频时退回调用方给的派生文件，
+    # 让缓存至少覆盖"编辑器能看到的那部分"，而不是整体失效。回退缓存
+    # 必须写在派生文件旁，避免把派生数据伪装成源媒体的缓存。
+    candidates = (
+        [media_path] if signature_path == media_path else [signature_path, media_path]
+    )
+    missing = True
+    for decode_path in candidates:
+        if not decode_path.is_file():
+            continue
+        missing = False
+        try:
+            src = decode_path.stat()
+            # 官方规格：头里只存 stat() 值的低 32 位，大文件（>2GiB 的媒体、
+            # 2038 后的 mtime）照常生成，指纹自然按位型回绕，无需守卫。
+            media_timestamp = int(src.st_mtime) & _UINT32_MASK
+            media_filesize = src.st_size & _UINT32_MASK
+            data = generate_reapeaks_stream_bytes(
+                decode_path,
+                ffmpeg_bin=ffmpeg_bin,
+                src_timestamp=media_timestamp,
+                src_filesize=media_filesize,
+                include_spectral=include_spectral,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # 生成是兜底：任何失败都不阻断转写/启动流程。具体原因（缺 ffmpeg /
+            # 解码失败 / Rust 内核故障）由 generate_reapeaks_stream_bytes 打日志，
+            # 这里的异常仅剩写文件或取 stat 等罕见兜底路径。
+            print(f"[reapeaks] .ReaPeaks 生成失败: {exc}")
             return None
-        data = generate_reapeaks_stream_bytes(
-            media_path,
-            ffmpeg_bin=ffmpeg_bin,
-            src_timestamp=media_timestamp,
-            src_filesize=media_filesize,
-            include_spectral=include_spectral,
-        )
         if data is None:
-            print("[reapeaks] ReaPeaks 数据为空")
+            if decode_path is candidates[0] and len(candidates) > 1:
+                print(
+                    "[reapeaks] 源媒体解码失败，改用派生文件生成缓存: "
+                    f"{decode_path.name} -> {candidates[1].name}"
+                )
+            continue
+        target = decode_path.with_name(decode_path.name + ".ReaPeaks")
+        try:
+            target.write_bytes(data)
+        except OSError as exc:
+            print(f"[reapeaks] .ReaPeaks 写入失败: {exc}")
             return None
-        target.write_bytes(data)
-    except Exception as exc:  # noqa: BLE001
-        # 生成是兜底：任何失败都不阻断转写/启动流程。具体原因（缺 ffmpeg /
-        # 解码失败 / Rust 内核故障）由 generate_reapeaks_stream_bytes 打日志，
-        # 这里的异常仅剩写文件或取 stat 等罕见兜底路径。
-        print(f"[reapeaks] .ReaPeaks 生成失败: {exc}")
-        return None
-    return target
+        return target
+    if missing:
+        print(f"[reapeaks] 警告: 缓存媒体不存在，已跳过生成: {candidates[0]}")
+    else:
+        print("[reapeaks] ReaPeaks 数据为空")
+    return None
 
 
 if __name__ == "__main__":

@@ -292,6 +292,28 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="media-name" title="">未加载媒体</span>', page)
         self.assertIn('"canSave": true', page)
 
+    def test_build_server_page_defers_reapeaks_layers_to_waveform_endpoint(self) -> None:
+        """延迟加载开启时页面不内联频谱 / ReaPeaks 层；关闭时（--no-waveform）仍保留内联。"""
+        project = server_editor.ServerProject(
+            data={
+                "segments": [],
+                "spectral": {"marker": "spectral-layer-payload"},
+                "waveform_reapeaks": {"marker": "reapeaks-wave-layer-payload"},
+            },
+            json_path=self.root / "layered.mosp",
+            media_path=None,
+            sticker_root=None,
+            stickers=[],
+        )
+
+        deferred = server_editor.build_server_page(project).decode("utf-8")
+        self.assertNotIn("spectral-layer-payload", deferred)
+        self.assertNotIn("reapeaks-wave-layer-payload", deferred)
+
+        inlined = server_editor.build_server_page(project, defer_reapeaks=False).decode("utf-8")
+        self.assertIn("spectral-layer-payload", inlined)
+        self.assertIn("reapeaks-wave-layer-payload", inlined)
+
     def test_media_less_project_loads_without_a_sticker_directory(self) -> None:
         project_path = self.root / "no-stickers.mosp"
         project_path.write_text(

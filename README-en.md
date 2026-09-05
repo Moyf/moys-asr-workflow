@@ -22,7 +22,7 @@ For installation, provider setup, editing, and troubleshooting, start with the [
 
 ## Core capabilities
 
-- Transcribe with Qwen, Fun-ASR, or Soniox and generate SRT plus a `.mosp` project.
+- Transcribe with Qwen, Fun-ASR, Soniox, or an OpenAI-compatible ASR endpoint and generate SRT plus a `.mosp` project.
 - Edit in the MAWE Server editor with waveform navigation, split/merge, silence-gap handling, video preview, and multiple export formats.
 - Use the public CLI for batch jobs and AI automation: [CLI documentation](docs/CLI.md) (Chinese).
 - [Local Qwen3-ASR / FunASR](docs/LOCAL_ASR.md) and the key-free Bcut ASR path are experimental.

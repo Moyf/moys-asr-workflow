@@ -173,9 +173,20 @@ class EditorAssetTests(unittest.TestCase):
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
         self.assertIn("waveShapeSource: 'reapeaks'", editor)
         self.assertIn("getWaveShapeSource?.() || 'reapeaks'", waveform)
-        self.assertIn('<option value="reapeaks" selected>ReaPeaks 波形层</option>', template)
+        self.assertIn('<option value="reapeaks" selected>Reaper 波形</option>', template)
         self.assertNotIn('<option value="self" selected>', template)
-        self.assertIn("useReapeaksShape = shapeSource === 'reapeaks'", waveform)
+        self.assertIn(
+            "const useReapeaks = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;",
+            waveform,
+        )
+        # 选取只有一个入口：绘制与音量门限检测共用 activeWaveShape()，
+        # 否则会出现"看着一条曲线、按另一条曲线判断"的错位。
+        self.assertEqual(waveform.count("shapeSource === 'reapeaks'"), 1)
+        detection_start = waveform.index("getGapRemoveDetectionData()")
+        detection = waveform[detection_start:waveform.index("async processFile", detection_start)]
+        self.assertIn("this.activeWaveShape()", detection)
+        self.assertIn("peaks: shape.peaks", detection)
+        self.assertNotIn("peaks: this.peaks", detection)
 
     def test_long_media_waveform_hint_points_to_maw_gui(self) -> None:
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
@@ -328,7 +339,53 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('const MEDIA_SEEK_STEP_MIN_MS = 10;', page)
         self.assertIn('mediaSeekStepForValue', page)
         self.assertIn('nextMediaSeekStepValue', page)
-        self.assertIn('seekMediaBy(-EDITOR_SETTINGS.mediaSeekStepMs / 1000)', page)
+        self.assertIn('seekMediaBy(-timelineMediaSeekStepMilliseconds() / 1000)', page)
+        self.assertIn('id="timeline-timebase"', page)
+        self.assertIn('id="timeline-fps"', page)
+        self.assertIn('id="timeline-snap-to-frame"', page)
+        self.assertIn('id="timeline-timecode-separator"', page)
+        self.assertIn('timelineSnapToFrame: true', page)
+        self.assertIn('timelineSnapToFrame: savedSettings.timelineSnapToFrame !== false', page)
+        self.assertIn(
+            'getSnapToFrame: () => timelineIsFrameMode() && EDITOR_SETTINGS.timelineSnapToFrame',
+            page,
+        )
+        self.assertEqual(page.count('id="timeline-timebase"'), 1)
+        self.assertEqual(page.count('id="timeline-snap-to-frame"'), 1)
+        self.assertIn('const ZOOM_PRESETS = [2, 5, 10, 20, 30, 60];', page)
+        self.assertIn(
+            "const showFineGrid = (this.settings.mode === 'basic' && this.settings.visibleSeconds === 2)\n"
+            "        || (this.settings.mode === 'multi' && this.settings.secondsPerRow === 2);",
+            page,
+        )
+        self.assertIn('<option value="2">2 秒</option>', page)
+        self.assertIn("rowGrid: get('--wave-row-grid'", page)
+        self.assertIn('timeline-settings-field', editor_settings_panel)
+        self.assertNotIn('timeline-settings-field', page[waveform_pane_start:])
+        self.assertIn('function confirmTimelineFrameRemap(current, nextUnit, nextFps)', page)
+        self.assertIn(
+            'if (!confirmTimelineFrameRemap(current, nextUnit, nextFps)) {\n'
+            '    refreshTimelineSettingsUi();\n'
+            '    return;\n'
+            '  }',
+            page,
+        )
+        self.assertIn(
+            "updateEditorSettings({ timelineTimecodeSeparator: separator });\n"
+            "  refreshTimelineSettingsUi();\n"
+            "  waveformEditor?.refreshPointerLine?.();\n"
+            "  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，\n"
+            "  // 不必等到下一次字幕编辑操作才看到新格式。\n"
+            "  renderAll({ waveform: 'none' });",
+            page,
+        )
+        self.assertIn('function syncProjectTimebaseAndBindingOffsets(', page)
+        self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', page)
+        self.assertIn(
+            'function buildJson() {\n'
+            '  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });',
+            page,
+        )
         self.assertIn('id="help-media-seek-step"', page)
         self.assertIn('class="help-break"', page)
         self.assertIn(
@@ -401,6 +458,7 @@ class EditorAssetTests(unittest.TestCase):
             '          <span><kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕</span>',
             page,
         )
+        self.assertIn('<span><kbd>I</kbd>/<kbd>O</kbd> 跳到当前字幕开头/结尾并保持暂停</span>', page)
         self.assertIn('基础操作', page)
         self.assertIn('快捷操作', page)
         self.assertIn('波形外观调整', page)

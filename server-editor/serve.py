@@ -448,8 +448,16 @@ def build_server_page(
     settings: ServerSettings | None = None,
     request_token: str = "",
     startup_status: dict[str, object] | None = None,
+    *,
+    defer_reapeaks: bool = True,
 ) -> bytes:
-    """Render with current web/ assets on every page request to prevent UI drift."""
+    """Render with current web/ assets on every page request to prevent UI drift.
+
+    ``defer_reapeaks`` 开启时（默认）频谱 / ReaPeaks 波形层不内联进页面：
+    前端就绪后会经 ``/api/waveform`` 拉取（页面数据里内联这些层会让大工程
+    每次渲染都多序列化数 MB，显著拖慢首页响应）。``--no-waveform`` 等关闭
+    延迟加载的场景没有该端点兜底，仍需保留内联层。
+    """
     settings = settings or ServerSettings()
     startup_status = startup_status or {
         "status": "ready",
@@ -483,6 +491,9 @@ def build_server_page(
 
     page_data = copy.deepcopy(project.data)
     page_data.pop("media_time_reference", None)
+    if defer_reapeaks:
+        page_data.pop("spectral", None)
+        page_data.pop("waveform_reapeaks", None)
     if project.media_path:
         media_time_reference = read_bwf_time_reference(
             project.source_media_path or project.media_path,
@@ -1857,6 +1868,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 self.editor_server.settings,
                 self.editor_server.request_token,
                 self.editor_server.startup_status_payload(),
+                defer_reapeaks=self.editor_server.defer_reapeaks,
             )
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
