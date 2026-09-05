@@ -20,6 +20,19 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('OCR video source follows a newly dropped video media', async ({ page }) => {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    const jsonPath = document.getElementById('jsonPath');
+    jsonPath.value = 'D:\\Demo\\previous.mosp';
+    jsonPath.dispatchEvent(new Event('input', { bubbles: true }));
+    window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path: 'D:\\Demo\\new-video.mp4' });
+  });
+
+  await expect(page.locator('#mediaPath')).toHaveValue('D:\\Demo\\new-video.mp4');
+  await expect(page.locator('#ocrVideoPath')).toHaveValue('D:\\Demo\\new-video.mp4');
+});
+
 test('translation merge option follows manual and automatic translation controls', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxLlmTab').click();

@@ -533,17 +533,11 @@
     return VIDEO_EXTS.has(extension(mediaPath)) ? mediaPath : "";
   }
 
-  function ocrSourcePath() {
-    return $("toolboxInputPath").value.trim() || autoSourcePath();
-  }
 
-  function ocrSourceIsProject() {
-    const source = ocrSourcePath();
-    return Boolean(source) && extension(source) !== ".srt";
-  }
 
   function syncOcrVideo() {
-    if (!ocrVideoManual) $("ocrVideoPath").value = ocrSourceIsProject() ? "" : autoOcrVideoPath();
+    // A newly selected video is the most concrete OCR source. Do not let a stale project path from the previous transcription suppress it.
+    if (!ocrVideoManual) $("ocrVideoPath").value = autoOcrVideoPath();
   }
 
   function renderOcrRegion() {
@@ -1596,7 +1590,7 @@
       return;
     }
     const videoPath = ocrVideoManual ? $("ocrVideoPath").value.trim() : "";
-    const fallbackVideoPath = !ocrVideoManual && !ocrSourceIsProject() ? autoOcrVideoPath() : "";
+    const fallbackVideoPath = !ocrVideoManual ? autoOcrVideoPath() : "";
     if (videoPath && !VIDEO_EXTS.has(extension(videoPath))) {
       const message = t("toolbox_ocr_video_reject");
       setFieldError("ocrVideoPath", message);
