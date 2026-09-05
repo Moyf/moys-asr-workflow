@@ -102,5 +102,5 @@
 ## 最终验证（2026-09-05）
 
 - 本轮新增 Launcher 异步初始化与本地模型状态回归、云端/本地 ASR 时间码回退回归均通过；定向回归累计 76 项通过。
-- 全量 Chromium Playwright 已执行 295 项，282 项通过、13 项失败；失败集中在主线已有的帧字段兼容、gap 元数据/间隔语义、英文合并空格，以及一个旧工程加载竞态断言，未涉及本轮 Launcher 异步初始化或 ASR provider 时间码防御改动。
-- 最终验证：`.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"` 通过（1133 项，跳过 6 项）；`MAW_TEST_PYTHON=.venv\Scripts\python.exe node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs` 通过（269/269）；`.venv\Scripts\ruff.exe check .`、3 个前端入口语法检查和 `git diff --check` 均通过。
+- 全量 Chromium Playwright 已执行 295 项，281 项通过、14 项失败；失败涉及候选未改动的编辑器既有交互/多字幕断言、main 已有的帧字段与 gap 元数据/间隔语义、英文合并空格，以及一个旧工程加载竞态，未涉及本轮 Launcher 异步初始化或 ASR provider 时间码防御改动。
+- 最终验证：`.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"` 通过（1139 项，跳过 6 项）；`MAW_TEST_PYTHON=.venv\Scripts\python.exe node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs` 通过（269/269）；`.venv\Scripts\ruff.exe check .`、3 个前端入口语法检查和 `git diff --check` 均通过。
