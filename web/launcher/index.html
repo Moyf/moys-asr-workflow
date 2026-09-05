@@ -108,28 +108,28 @@
         <select id="model"></select>
         <p id="modelNote" class="hint"></p>
       </div>
-      <div id="customAsrFields" class="hidden">
+      <div id="customAsrFields" class="field hidden">
         <div class="field">
           <label for="openaiBaseUrl" data-i18n="custom_asr_base_url">ASR Base URL</label>
           <input id="openaiBaseUrl" type="url" autocomplete="off" data-i18n-placeholder="custom_asr_base_url_placeholder">
           <p class="hint" data-i18n="custom_asr_base_url_hint">默认使用 OpenAI 官方地址；程序会请求 /audio/transcriptions。</p>
           <p id="openaiBaseUrlError" class="field-error"></p>
         </div>
-        <div class="field">
+        <div id="openaiModelField" class="field">
           <label for="openaiModel" data-i18n="custom_asr_model">ASR 模型名</label>
           <input id="openaiModel" type="text" autocomplete="off" data-i18n-placeholder="custom_asr_model_placeholder">
           <p class="hint" data-i18n="custom_asr_model_hint">填写中转站控制台提供的模型名。</p>
           <p id="openaiModelError" class="field-error"></p>
         </div>
       </div>
-      <div class="field" id="apiKeyField">
+      <div id="apiKeyField" class="field">
         <label for="apiKey" data-i18n="key">API Key</label>
         <div class="path-row key-row">
           <input id="apiKey" type="password" autocomplete="off">
           <button id="saveSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
         </div>
         <p id="keyStatus" class="hint">未配置密钥</p>
-        <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">阿里云百炼</button> <span data-i18n="key_hint_suffix">获取 API Key ↗</span></p>
+        <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">阿里云百炼</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取 API Key ↗</span></p>
         <p id="apiKeyError" class="field-error"></p>
       </div>
       <div id="localRuntimePanel" class="local-runtime-panel hidden">

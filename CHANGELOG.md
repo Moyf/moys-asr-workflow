@@ -12,6 +12,7 @@
 ### ✨ 提升
 
 - **波形形状来源命名** ： 编辑器设置中「波形形状来源」的两个条目更名为「自研波形」和「Reaper 波形」，与实际来源对应更直观。
+- **OpenAI ASR 模型选择** ： Launcher 将识别方式更名为「OpenAI（及兼容接口）」，支持从模型下拉列表选择 `whisper-1`、`gpt-4o-transcribe`、`gpt-4o-mini-transcribe`，或在「自定义（Custom）」下填写模型名；API Key 链接指向 OpenAI 官方。
 - **OpenAI 兼容 ASR** ： Launcher 与公开 CLI 可配置 OpenAI 官方或兼容的 `/audio/transcriptions` 服务，通过带时间戳的响应生成 SRT 与 `.mosp` 工程。
 - **ASS 字幕导出** ： 编辑器支持导出标准 `.ass` 字幕，并沿用主字幕预览的字体、字号和文字颜色。
 - **当前字幕边界快捷键** ： 新增 `I` / `O`，可跳到当前字幕开头/结尾并保持暂停，方便逐条检查时间范围。

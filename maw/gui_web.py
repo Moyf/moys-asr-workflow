@@ -28,6 +28,7 @@ from maw.gui_config import (
     DEFAULT_ENV_PATH,
     DEFAULT_MODEL_ID,
     MODELS,
+    OPENAI_ASR_MODEL_ID,
     OPENAI_ASR_DEFAULT_BASE_URL,
     OPENAI_ASR_DEFAULT_MODEL,
     PROVIDERS,
@@ -743,7 +744,11 @@ class LauncherApi:
             updates["DASHSCOPE_WORKSPACE_ID"] = str(payload.get("workspaceId") or "").strip()
         elif provider.id == "openai":
             updates["MAW_OPENAI_ASR_BASE_URL"] = str(payload.get("openaiBaseUrl") or OPENAI_ASR_DEFAULT_BASE_URL).strip()
-            updates["MAW_OPENAI_ASR_MODEL"] = str(payload.get("openaiModel") or OPENAI_ASR_DEFAULT_MODEL).strip()
+            updates["MAW_OPENAI_ASR_MODEL"] = (
+                model.id
+                if model.id != OPENAI_ASR_MODEL_ID
+                else str(payload.get("openaiModel") or "").strip()
+            )
         try:
             save_env(self.paths.env_path, updates)
         except (OSError, UnicodeError, ValueError) as error:
@@ -2709,15 +2714,18 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     custom_base_url = ""
     if provider.id == "openai":
         stored_openai = load_env(env_path)
-        custom_model = (
-            str(payload.get("openaiModel") or "").strip()
-            or stored_openai.get("MAW_OPENAI_ASR_MODEL", OPENAI_ASR_DEFAULT_MODEL).strip()
-        )
+        if model.id == OPENAI_ASR_MODEL_ID:
+            custom_model = (
+                str(payload.get("openaiModel") or "").strip()
+                or stored_openai.get("MAW_OPENAI_ASR_MODEL", "").strip()
+            )
+        else:
+            custom_model = model.id
         custom_base_url = (
             str(payload.get("openaiBaseUrl") or "").strip()
             or stored_openai.get("MAW_OPENAI_ASR_BASE_URL", OPENAI_ASR_DEFAULT_BASE_URL).strip()
         )
-        if not custom_model:
+        if model.id == OPENAI_ASR_MODEL_ID and not custom_model:
             raise PreflightError("openaiModel", "custom_asr_model_missing", "请填写自定义 ASR 模型名。")
         if not custom_base_url:
             raise PreflightError("openaiBaseUrl", "custom_asr_base_url_missing", "请填写自定义 ASR Base URL。")

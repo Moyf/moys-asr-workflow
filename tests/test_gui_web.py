@@ -266,6 +266,40 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(request.model, "relay-asr-model")
         self.assertEqual(request.api_key, "sk-relay")
 
+    def test_official_openai_model_uses_the_selected_model(self) -> None:
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+
+        request = _request_from_payload({
+            "providerId": "openai",
+            "modelId": "gpt-4o-transcribe",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "clip.srt"),
+            "apiKey": "sk-openai",
+            "openaiBaseUrl": "https://api.openai.com/v1",
+            "openaiModel": "stale-custom-value",
+            "generateHtml": False,
+        }, self.env_path)
+
+        self.assertEqual(request.provider, "openai")
+        self.assertEqual(request.model, "gpt-4o-transcribe")
+
+    def test_save_settings_persists_the_selected_official_openai_model(self) -> None:
+        result = self.api.save_settings({
+            "providerId": "openai",
+            "modelId": "gpt-4o-mini-transcribe",
+            "apiKey": "sk-openai",
+            "openaiBaseUrl": "https://api.openai.com/v1",
+            "openaiModel": "stale-custom-value",
+            "guiLang": "zh",
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertIn(
+            "MAW_OPENAI_ASR_MODEL=gpt-4o-mini-transcribe",
+            self.env_path.read_text(encoding="utf-8"),
+        )
+
     def test_save_prefs_writes_only_gui_memory_keys(self) -> None:
         self.env_path.write_text("# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\n", encoding="utf-8")
 
