@@ -369,7 +369,7 @@ class GenerateReaPeaksTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_writes_and_reuses(self) -> None:
-        target = self.root / "tone.wav.ReaPeaks"
+        target = self.root / "tone.wav.quapeaks"
         self.assertFalse(target.exists())
         generated = quapeaks.generate_for_media(self.tone_path)
         self.assertEqual(generated, target)
@@ -378,7 +378,7 @@ class GenerateReaPeaksTests(unittest.TestCase):
         self.assertIsNotNone(payload)
         self.assertEqual(payload["schema"], quapeaks.SPECTRAL_SCHEMA)
         self.assertGreater(payload["peak_count"], 0)
-        # 已有 .ReaPeaks 时复用，不重复生成
+        # 已有可用容器时复用，不重复生成
         self.assertEqual(quapeaks.generate_for_media(self.tone_path), target)
         payload2 = quapeaks.load_spectral_payload(self.tone_path)
         self.assertIsNotNone(payload2)
@@ -395,7 +395,7 @@ class GenerateReaPeaksTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_rebuilds_wave_only_cache_when_spectral_is_requested(self) -> None:
-        target = self.root / "tone.wav.ReaPeaks"
+        target = self.root / "tone.wav.quapeaks"
         quapeaks.generate_for_media(self.tone_path, include_spectral=False)
         self.assertFalse(quapeaks.ReaPeaksFile(str(target)).spectral_mipmaps())
 

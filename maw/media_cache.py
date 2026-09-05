@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from maw import quapeaks
+from maw import mopeaks, quapeaks
 from maw.waveform import embed_waveform, media_signature
 
 
@@ -42,6 +42,18 @@ def merge_media_caches(
         if key in result.project:
             target[key] = result.project[key]
     return target
+
+
+def _persist_mopeaks_fallback(payload: dict[str, Any], media_path: Path) -> None:
+    """内核那一档没成，就把自研波形写进 mopeaks（纯 Python，不需要内核）。"""
+    if mopeaks.load_mopeaks(media_path) is not None:
+        return  # 已有有效回退档，不必白写一遍
+    try:
+        written = mopeaks.save_mopeaks(payload, media_path)
+    except (OSError, mopeaks.MopeaksError) as exc:
+        print(f"[mopeaks] 回退缓存写入失败: {exc}")
+        return
+    print(f"[mopeaks] 自研波形已回退到二进制 sidecar: {written.name}")
 
 
 def embed_media_caches(
@@ -139,6 +151,14 @@ def embed_media_caches(
         print("[reapeaks] 正在生成波形和频谱缓存（可能需要一些时间）……")
     else:
         print("[reapeaks] 正在生成波形缓存（已跳过频谱计算）……")
+    # 自研波形的落点：优先 .quapeaks 的自研层（与 wave / spectral 同容器，
+    # 读取端解析一次全拿到），拿不到时回退 mopeaks。
+    waveform_payload = project.get("waveform")
+    self_peaks = (
+        quapeaks.self_peaks_from_payload(waveform_payload)
+        if isinstance(waveform_payload, dict)
+        else None
+    )
     reapeaks_path = quapeaks.generate_for_media(
         cache_path,
         ffmpeg_bin=ffmpeg_bin,
@@ -146,6 +166,7 @@ def embed_media_caches(
         source_media_path=source_path,
         audio_track=audio_track,
         cache_audio_track=audio_track,
+        self_peaks=self_peaks,
     )
     if reapeaks_path is not None:
         cache_kind = "波形和频谱缓存" if generate_spectral else "波形缓存"
@@ -186,6 +207,12 @@ def embed_media_caches(
         print(f"[reapeaks] 警告: 缓存媒体不存在，已跳过生成: {source_path}")
     else:
         print("[reapeaks] 已跳过频谱缓存生成（原因见上方 [reapeaks] 日志）")
+    # 回退档判据只有一个问题：当前媒体的自研波形已经在容器里了吗？
+    # 没装内核 / 内核抛错 / 产物自检不过 / 压根没生成 —— 四种成因共用
+    # 这一条路径，调用方不需要数标志位。
+    if self_peaks is not None and isinstance(waveform_payload, dict):
+        if quapeaks.find_self_wave_container(source_path) is None:
+            _persist_mopeaks_fallback(waveform_payload, source_path)
     return MediaCacheResult(
         project=project,
         waveform_error=waveform_result.error,
