@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import mimetypes
 import os
+import re as _re
 import shutil
 import subprocess
 import sys
@@ -39,8 +41,10 @@ from maw.gui_config import load_env
 from maw.media_cache import embed_media_caches, merge_media_caches
 from maw.language import (
     normalize_language_code,
+    normalize_timestamp_range,
     resolve_language,
     split_mode_for_text,
+    timestamp_items_cover_text,
     timestamp_granularity_for_items,
 )
 from maw.project import repair_segment_durations
@@ -101,20 +105,47 @@ def _number(value: object, *, default: float | None = None) -> float | None:
     if value is None or value == "":
         return default
     try:
-        return float(value)
-    except (TypeError, ValueError):
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
         return default
+    return number if math.isfinite(number) else default
 
 
-def _milliseconds(value: object, *, default: int = 0) -> int:
+def _milliseconds(value: object, *, default: int | None = None) -> int | None:
+    """Convert an OpenAI-compatible timestamp value expressed in seconds."""
     number = _number(value)
     if number is None:
         return default
-    # OpenAI-compatible responses normally use seconds.  Accept millisecond
-    # values too because several gateways preserve upstream ASR timestamps.
-    if abs(number) > 10000:
-        return int(round(number))
-    return int(round(number * 1000))
+    milliseconds = number * 1000
+    if not math.isfinite(milliseconds):
+        return default
+    try:
+        return int(round(milliseconds))
+    except (OverflowError, ValueError):
+        return default
+
+
+def _timestamp_milliseconds(
+    raw: Mapping[str, Any],
+    field: str,
+    *,
+    default: int | None = None,
+) -> int | None:
+    """Read one timestamp without guessing its unit from the magnitude.
+
+    OpenAI's ``start``/``end`` fields are seconds.  A few compatible gateways
+    expose explicit ``start_ms``/``end_ms`` (or ``*_time_ms``) fields instead;
+    only those names are interpreted as milliseconds.  A magnitude heuristic
+    would misread valid timestamps from long recordings.
+    """
+    for key in (f"{field}_ms", f"{field}_time_ms"):
+        if key in raw and raw[key] is not None:
+            number = _number(raw[key])
+            return int(round(number)) if number is not None else default
+    for key in (field, f"{field}_time"):
+        if key in raw and raw[key] is not None:
+            return _milliseconds(raw[key], default=default)
+    return default
 
 
 def _text(value: object) -> str:
@@ -127,10 +158,12 @@ def _as_mapping(value: object) -> Mapping[str, Any]:
 
 def _timestamp_item(raw: Mapping[str, Any]) -> dict[str, Any] | None:
     text = _text(raw.get("word") or raw.get("text") or raw.get("token")).strip()
-    start = _milliseconds(raw.get("start") or raw.get("start_time"))
-    end = _milliseconds(raw.get("end") or raw.get("end_time"))
-    if not text or end <= start:
+    start = _timestamp_milliseconds(raw, "start")
+    end = _timestamp_milliseconds(raw, "end")
+    timestamp = normalize_timestamp_range(start, end)
+    if not text or timestamp is None:
         return None
+    start, end = timestamp
     item: dict[str, Any] = {"text": text, "start": start, "end": end}
     speaker = raw.get("speaker")
     if speaker is not None and str(speaker).strip():
@@ -162,15 +195,49 @@ def _normalize_western_item_spacing(items: list[dict[str, Any]]) -> None:
 
 def _timestamp_segment(raw: Mapping[str, Any]) -> dict[str, Any] | None:
     text = _text(raw.get("text")).strip()
-    start = _milliseconds(raw.get("start") or raw.get("start_time"))
-    end = _milliseconds(raw.get("end") or raw.get("end_time"))
-    if not text or end <= start:
+    start = _timestamp_milliseconds(raw, "start")
+    end = _timestamp_milliseconds(raw, "end")
+    timestamp = normalize_timestamp_range(start, end)
+    if not text or timestamp is None:
         return None
-    result: dict[str, Any] = {"start": start, "end": end, "text": text, "items": []}
+    start, end = timestamp
+    result: dict[str, Any] = {"start": start, "end": end, "text": text}
     speaker = raw.get("speaker")
     if speaker is not None and str(speaker).strip():
         result["speaker"] = str(speaker)
     return result
+
+
+def _timestamp_word_list(
+    raw_words: object,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Parse one word list and flag a partial/invalid timestamp response."""
+    words = raw_words if isinstance(raw_words, list) else []
+    items: list[dict[str, Any]] = []
+    invalid = False
+    for raw_word in words:
+        if not isinstance(raw_word, Mapping):
+            invalid = True
+            continue
+        word = _as_mapping(raw_word)
+        word_text = _text(word.get("word") or word.get("text") or word.get("token")).strip()
+        if not word_text:
+            continue
+        item = _timestamp_item(word)
+        if item is None:
+            invalid = True
+        else:
+            items.append(item)
+    return items, invalid
+
+
+def _timestamp_envelope(items: list[dict[str, Any]]) -> tuple[int, int] | None:
+    if not items:
+        return None
+    return (
+        min(item["start"] for item in items),
+        max(item["end"] for item in items),
+    )
 
 
 def parse_timestamped_response(body: Mapping[str, Any]) -> dict[str, Any]:
@@ -183,47 +250,198 @@ def parse_timestamped_response(body: Mapping[str, Any]) -> dict[str, Any]:
     raw_words = raw_words if isinstance(raw_words, list) else []
 
     segments: list[dict[str, Any]] = []
-    items: list[dict[str, Any]] = []
+    nested_items: list[dict[str, Any]] = []
+    nested_segment_items: list[list[dict[str, Any]]] = []
+    nested_segment_invalid: list[bool] = []
+    nested_invalid = False
+    segment_texts: list[str] = []
+    has_unranged_segment = False
     for raw_segment in raw_segments:
+        if not isinstance(raw_segment, Mapping):
+            # A malformed segment must not be silently discarded.  If the
+            # response still has a usable text/range envelope below, the
+            # caller can preserve it as one coarse cue.
+            has_unranged_segment = True
+            continue
         segment = _as_mapping(raw_segment)
-        segment_words = segment.get("words")
-        segment_words = segment_words if isinstance(segment_words, list) else []
-        for raw_word in segment_words:
-            item = _timestamp_item(_as_mapping(raw_word))
-            if item is not None:
-                items.append(item)
-        if not segment_words:
-            parsed = _timestamp_segment(segment)
-            if parsed is not None:
-                segments.append(parsed)
+        segment_text = _text(segment.get("text")).strip()
+        if segment_text:
+            segment_texts.append(segment_text)
+        segment_items, invalid_segment_word = _timestamp_word_list(segment.get("words"))
+        parsed = _timestamp_segment(segment)
+        segment_items_complete = not invalid_segment_word
+        if (
+            segment_items_complete
+            and segment_items
+            and segment_text
+            and not timestamp_items_cover_text(segment_text, segment_items)
+        ):
+            segment_items_complete = False
+        nested_invalid = nested_invalid or not segment_items_complete
+        if segment_items and segment_items_complete:
+            # Keep valid nested words even if the enclosing segment range is
+            # malformed; they can still provide a conservative fallback span.
+            nested_items.extend(segment_items)
+        if parsed is not None:
+            segments.append(parsed)
+            nested_segment_items.append(
+                [] if not segment_items_complete else [dict(item) for item in segment_items]
+            )
+            nested_segment_invalid.append(not segment_items_complete)
+        elif segment_text:
+            has_unranged_segment = True
 
-    if not items:
-        for raw_word in raw_words:
-            item = _timestamp_item(_as_mapping(raw_word))
-            if item is not None:
-                items.append(item)
+    top_level_items, top_level_invalid = _timestamp_word_list(raw_words)
+    has_top_level_words = bool(top_level_items or top_level_invalid)
 
+    # OpenAI's verbose_json commonly puts sentence ranges in segments[] and
+    # all word ranges in a separate top-level words[] array.  Without this
+    # association the words remain globally usable but disappear whenever a
+    # mixed segment-only response is preserved.  Prefer top-level words when
+    # present; they are the complete word list for that response shape.
+    precise_items = top_level_items if has_top_level_words else nested_items
     language = normalize_language_code(payload.get("language") or payload.get("lang"))
+    if not text:
+        if segment_texts:
+            combined = "".join(segment_texts)
+            separator = " " if split_mode_for_text(combined, language) == "word" else ""
+            text = separator.join(segment_texts).strip()
+        elif precise_items:
+            combined = "".join(str(item.get("text", "")) for item in precise_items)
+            separator = " " if split_mode_for_text(combined, language) == "word" else ""
+            text = separator.join(
+                str(item.get("text", "")).strip() for item in precise_items
+            ).strip()
+
+    top_level_text_incomplete = (
+        has_top_level_words
+        and bool(top_level_items)
+        and bool(text)
+        and not timestamp_items_cover_text(text, top_level_items)
+    )
+    items = precise_items
+    has_invalid_words = (
+        top_level_invalid or top_level_text_incomplete
+        if has_top_level_words
+        else nested_invalid
+    )
+    if has_top_level_words and (top_level_invalid or top_level_text_incomplete):
+        # An invalid top-level word cannot be assigned to a sentence safely.
+        # Discard all word precision for this response and retain only valid
+        # sentence ranges below.
+        items = []
+    elif has_top_level_words and segments:
+        mapped_count = 0
+        for item in top_level_items:
+            candidates: list[tuple[int, int, int]] = []
+            for index, segment in enumerate(segments):
+                overlap = min(item["end"], segment["end"]) - max(item["start"], segment["start"])
+                if overlap <= 0:
+                    continue
+                contained = int(
+                    item["start"] >= segment["start"]
+                    and item["end"] <= segment["end"]
+                )
+                candidates.append((contained, overlap, -index))
+            if candidates:
+                _, _, negative_index = max(candidates)
+                segment = segments[-negative_index]
+                segment.setdefault("items", []).append(item)
+                segment["start"] = min(segment["start"], item["start"])
+                segment["end"] = max(segment["end"], item["end"])
+                mapped_count += 1
+        if mapped_count != len(top_level_items):
+            # A top-level word outside every sentence cannot be safely
+            # assigned by time. Collapse to one envelope below so its text is
+            # not lost while preserving a valid timeline range.
+            has_unranged_segment = True
+        # A segment with no overlapping top-level words is a sentence-level
+        # fallback. Do not copy nested words into it: top-level words are the
+        # authoritative list for this response shape.
+        for segment in segments:
+            if not segment.get("items"):
+                segment.pop("items", None)
+    elif not has_top_level_words:
+        for segment, segment_items, invalid in zip(
+            segments, nested_segment_items, nested_segment_invalid
+        ):
+            if segment_items and not invalid:
+                segment["items"] = segment_items
+                segment["start"] = min(
+                    segment["start"], *(item["start"] for item in segment_items)
+                )
+                segment["end"] = max(
+                    segment["end"], *(item["end"] for item in segment_items)
+                )
+
+    # ``nested_segment_items`` contains only segments with usable sentence
+    # ranges. The top-level mapping above is the normal OpenAI shape; nested
+    # words retain their own segment association without shifting after a
+    # malformed range.
     if items:
         _normalize_western_item_spacing(items)
-        if not text:
-            text = "".join(str(item.get("text", "")) for item in items).strip()
+    for segment in segments:
+        if segment.get("items"):
+            # Top-level words are shared with ``items``; copy them before
+            # normalizing the per-sentence view so a leading separator at a
+            # later sentence boundary is not stripped from the flat list.
+            segment["items"] = [dict(item) for item in segment["items"]]
+            _normalize_western_item_spacing(segment["items"])
+    if (
+        text
+        and segment_texts
+        and _re.sub(r"\s+", "", text) != _re.sub(r"\s+", "", "".join(segment_texts))
+    ):
+        has_unranged_segment = True
+    if has_unranged_segment:
+        fallback_ranges = [
+            (segment["start"], segment["end"])
+            for segment in segments
+        ]
+        precise_range = _timestamp_envelope(precise_items)
+        if precise_range is not None:
+            fallback_ranges.append(precise_range)
+        if not text or not fallback_ranges:
+            raise RuntimeError(
+                "ASR 接口返回了无法定位的字幕文本，且没有可用的句级或词级时间范围；"
+                "无法安全生成字幕时间码。"
+            )
+        start = min(item[0] for item in fallback_ranges)
+        end = max(item[1] for item in fallback_ranges)
+        segments = [{"start": start, "end": end, "text": text}]
+        items = []
+        has_invalid_words = False
+    precise_range = _timestamp_envelope(precise_items)
+    if has_invalid_words and not segments and precise_range is not None and text:
+        # With no sentence array there is no finer boundary to preserve. Use
+        # the valid-item envelope as one conservative sentence fallback.
+        start, end = precise_range
+        segments = [{"start": start, "end": end, "text": text}]
+        items = []
+    has_fallback_segment = has_invalid_words or any(
+        segment.get("text") and not segment.get("items")
+        for segment in segments
+    )
+    if segments:
+        return {
+            "text": text,
+            "language": language,
+            "items": items,
+            "segments": segments,
+            "timestamp_granularity": "segment" if has_fallback_segment else "word" if items else "segment",
+        }
+    if items:
+        if has_invalid_words:
+            raise RuntimeError(
+                "ASR 接口返回了不完整的词级时间戳，且没有可用的句级时间范围；"
+                "无法安全生成字幕时间码。"
+            )
         return {
             "text": text,
             "language": language,
             "items": items,
             "segments": [],
             "timestamp_granularity": "word",
-        }
-    if segments:
-        if not text:
-            text = "".join(str(segment.get("text", "")) for segment in segments).strip()
-        return {
-            "text": text,
-            "language": language,
-            "items": [],
-            "segments": segments,
-            "timestamp_granularity": "segment",
         }
     raise RuntimeError(
         "ASR 接口只返回了文本，没有返回 segments/words 时间戳；"
@@ -336,6 +554,8 @@ def _segments_from_result(
     min_words: int = WESTERN_MIN_WORDS,
 ) -> list[dict[str, Any]]:
     items = [dict(item) for item in result.get("items", [])]
+    if result.get("timestamp_granularity") == "segment" and result.get("segments"):
+        return [dict(segment) for segment in result["segments"]]
     if items:
         split_mode = split_mode_for_text(str(result.get("text") or ""), result.get("language"))
         return split_segments_auto(
@@ -348,6 +568,29 @@ def _segments_from_result(
             split_mode=split_mode,
         )
     return [dict(segment) for segment in result.get("segments", [])]
+
+
+def _strip_trailing_punct(
+    segments: list[dict[str, Any]],
+    strip_chars: str,
+) -> None:
+    """Strip cue/item tail punctuation without retaining punctuation-only items."""
+    if not strip_chars:
+        return
+    for segment in segments:
+        segment["text"] = str(segment.get("text") or "").rstrip(strip_chars)
+        segment_items = segment.get("items")
+        if not isinstance(segment_items, list):
+            continue
+        for index in range(len(segment_items) - 1, -1, -1):
+            item = segment_items[index]
+            if not isinstance(item, dict):
+                segment_items.pop(index)
+                continue
+            item["text"] = str(item.get("text") or "").rstrip(strip_chars)
+            if item["text"]:
+                break
+            segment_items.pop(index)
 
 
 def main() -> None:
@@ -441,14 +684,8 @@ def main() -> None:
                 generate_spectral=args.with_spectral,
             )
 
-    if not args.keep_punct and args.strip_tail_punct:
-        for segment in segments:
-            segment["text"] = str(segment.get("text", "")).rstrip(args.strip_tail_punct)
-            items = segment.get("items", []) or []
-            for item in reversed(items):
-                item["text"] = str(item.get("text", "")).rstrip(args.strip_tail_punct)
-                if item["text"]:
-                    break
+    if not args.keep_punct:
+        _strip_trailing_punct(segments, args.strip_tail_punct)
     repair_segment_durations(segments)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(generate_srt(segments), encoding="utf-8")

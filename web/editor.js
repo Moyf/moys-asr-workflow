@@ -5779,7 +5779,7 @@ function renderColorFilterMenu() {
   });
   const selectFilteredBtn = document.createElement('button');
   selectFilteredBtn.type = 'button';
-  selectFilteredBtn.className = 'dropdown-item color-filter-clear';
+  selectFilteredBtn.className = 'dropdown-item color-filter-select-all';
   selectFilteredBtn.textContent = '全选过滤结果';
   selectFilteredBtn.hidden = !colorFilterSelection;
   selectFilteredBtn.addEventListener('click', () => selectAllFilteredCues());

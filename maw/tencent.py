@@ -14,6 +14,12 @@ from typing import Final
 import requests
 
 from maw.app_paths import default_env_path
+from maw.language import (
+    normalize_timestamp_range,
+    split_mode_for_text,
+    timestamp_items_cover_text,
+    timestamp_granularity_for_items,
+)
 
 SERVICE: Final = "asr"
 HOST: Final = "asr.tencentcloudapi.com"
@@ -199,20 +205,34 @@ def poll_task(task_id: int, config: dict[str, str | int], on_status=print) -> di
     raise TimeoutError(f"腾讯云 ASR 任务超时，task_id={task_id}")
 
 
-def _detail_items(detail: dict[str, object]) -> list[dict[str, object]]:
+def _detail_items(detail: dict[str, object]) -> tuple[list[dict[str, object]], bool]:
     words = detail.get("Words")
     if not isinstance(words, list):
-        return []
-    return [
-        {
-            "text": str(word.get("Word", "")),
-            "start": int(word.get("OffsetStartMs", 0)),
-            "end": int(word.get("OffsetEndMs", 0)),
-            **({"speaker": str(detail["SpeakerId"])} if detail.get("SpeakerId") is not None else {}),
+        return [], False
+    items: list[dict[str, object]] = []
+    invalid = False
+    for word in words:
+        if not isinstance(word, dict):
+            invalid = True
+            continue
+        text = str(word.get("Word") or "")
+        if not text:
+            continue
+        timestamp = normalize_timestamp_range(
+            word.get("OffsetStartMs"), word.get("OffsetEndMs")
+        )
+        if timestamp is None:
+            invalid = True
+            continue
+        item: dict[str, object] = {
+            "text": text,
+            "start": timestamp[0],
+            "end": timestamp[1],
         }
-        for word in words
-        if isinstance(word, dict) and word.get("Word")
-    ]
+        if detail.get("SpeakerId") is not None:
+            item["speaker"] = str(detail["SpeakerId"])
+        items.append(item)
+    return items, invalid
 
 
 def parse_result(response: dict[str, object]) -> dict[str, object]:
@@ -223,29 +243,95 @@ def parse_result(response: dict[str, object]) -> dict[str, object]:
     details = raw_details if isinstance(raw_details, list) else []
     sentences: list[dict[str, object]] = []
     items: list[dict[str, object]] = []
+    sentence_texts: list[str] = []
+    has_fallback_sentence = False
+    has_unranged_text = False
     for detail in details:
         if not isinstance(detail, dict):
             continue
-        sentence_items = _detail_items(detail)
-        start = int(detail.get("StartMs", sentence_items[0]["start"] if sentence_items else 0))
-        end = int(detail.get("EndMs", sentence_items[-1]["end"] if sentence_items else start))
+        sentence_items, invalid_word_timestamp = _detail_items(detail)
+        raw_words = detail.get("Words")
+        word_entries = raw_words if isinstance(raw_words, list) else []
+        word_text = "".join(
+            str(word.get("Word") or "")
+            for word in word_entries
+            if isinstance(word, dict)
+        )
+        sentence_text = str(
+            detail.get("FinalSentence")
+            or detail.get("SliceSentence")
+            or word_text
+        )
+        if sentence_text.strip():
+            sentence_texts.append(sentence_text)
+        sentence_range = normalize_timestamp_range(
+            detail.get("StartMs"), detail.get("EndMs")
+        )
+        valid_item_range = (
+            min(item["start"] for item in sentence_items),
+            max(item["end"] for item in sentence_items),
+        ) if sentence_items else None
+        if (
+            sentence_items
+            and not invalid_word_timestamp
+            and not timestamp_items_cover_text(sentence_text, sentence_items)
+        ):
+            # A complete timestamp range can still accompany a partial Words
+            # list. Keep the sentence as a coarse cue so text is not lost.
+            invalid_word_timestamp = True
+        if sentence_range is None and valid_item_range is not None:
+            sentence_range = valid_item_range
+        if sentence_range is None or not sentence_text.strip():
+            if sentence_text.strip():
+                has_unranged_text = True
+            continue
+        if sentence_items:
+            sentence_range = (
+                min(sentence_range[0], *(item["start"] for item in sentence_items)),
+                max(sentence_range[1], *(item["end"] for item in sentence_items)),
+            )
+        if invalid_word_timestamp:
+            # A partial Words array cannot safely be used for this sentence;
+            # keep its valid sentence range as a coarse fallback instead.
+            sentence_items = []
+        start, end = sentence_range
         sentence: dict[str, object] = {
-            "text": str(detail.get("FinalSentence") or detail.get("SliceSentence") or ""),
+            "text": sentence_text,
             "start": start,
             "end": end,
-            "items": sentence_items,
         }
+        if sentence_items:
+            sentence["items"] = sentence_items
         if detail.get("SpeakerId") is not None:
             sentence["speaker"] = str(detail["SpeakerId"])
         sentences.append(sentence)
         items.extend(sentence_items)
+        if not sentence_items:
+            has_fallback_sentence = True
     text = "".join(str(sentence["text"]) for sentence in sentences)
+    if has_unranged_text:
+        # Keep every recognized sentence in the returned text and let the CLI
+        # create one whole-media cue instead of silently dropping malformed
+        # details that cannot be placed on the timeline.
+        text = "".join(sentence_texts)
+        sentences = []
+        items = []
+    split_mode = split_mode_for_text(text)
+    if has_fallback_sentence or (sentences and not items):
+        timestamp_granularity = "segment"
+    else:
+        timestamp_granularity = timestamp_granularity_for_items(
+            items,
+            split_mode,
+            explicit_items=True,
+            has_segments=bool(sentences),
+        )
     return {
         "text": text,
         "language": "",
         "items": items,
         "sentences": sentences,
-        "timestamp_granularity": "word" if items else "segment" if sentences else "unknown",
+        "timestamp_granularity": timestamp_granularity,
     }
 
 

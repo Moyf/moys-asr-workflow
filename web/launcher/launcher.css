@@ -138,7 +138,8 @@ button:disabled {
 }
 
 body:not(.launcher-ready) .shell {
-  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
 }
 
 .shell-scroll {

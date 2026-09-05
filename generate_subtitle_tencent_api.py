@@ -161,8 +161,16 @@ def main() -> int:
     if not args.keep_punct:
         for segment in segments:
             segment["text"] = str(segment["text"]).rstrip(args.strip_tail_punct)
+            remaining_items = []
             for item in segment.get("items", []):
                 item["text"] = str(item["text"]).rstrip(args.strip_tail_punct)
+                if item["text"]:
+                    remaining_items.append(item)
+            if "items" in segment:
+                if remaining_items:
+                    segment["items"] = remaining_items
+                else:
+                    segment.pop("items")
     if args.speaker_colors:
         apply_speaker_colors(segments)
     output_path.write_text(generate_srt(segments), encoding="utf-8", newline="\n")

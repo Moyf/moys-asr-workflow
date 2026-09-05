@@ -80,6 +80,27 @@
 - 既有表情包列表布局与导出回归：2/2 通过；按 `B` 拆分的关键滚动/选中回归：4/4 通过。
 - 既有列表点击、拆分、波形导航、Home/End 和多字幕位置回归：14/14 通过。
 
-### 增量未验证边界
+### 早期阶段未验证边界
 
-- 未执行全量 Playwright 套件；本轮仅执行颜色/过滤场景及受影响的既有滚动回归。
+- 在早期布局反馈阶段尚未执行全量 Playwright 套件；当时仅覆盖颜色/过滤场景及受影响的既有滚动回归。全量结果见文末“最终验证”。
+
+## 增量记录：本地 ASR 时间码回退（2026-09-05）
+
+- FunASR 的混合时间戳只保留句级精度，并使用仍有效的时间戳首尾范围；Qwen Forced Aligner 的局部坏词码同样回退到有效词范围，不再静默扩大到整段媒体。
+- 删除云端 Fun-ASR 解析中未使用的中间变量，并为上述两种回退路径补充回归测试。
+- 当前阶段验证：`tests.test_local_asr` 53/53、`tests.test_qwen` 9/9、受影响文件 Ruff 检查通过、`git diff --check` 通过。
+- 全量 Python / Node 测试、Launcher 回归及最终完整 diff 复查在收尾阶段统一执行。
+
+## 增量记录：云端时间码防御与粗粒度边界（2026-09-05）
+
+- 修复 Soniox 时间码结果分支中的语法错误；非字典 token 与无效时间码统一降级为可用时间范围内的句级字幕，不再宣称完整词级精度。
+- Tencent 的非字典 `Words` 项现在会触发该句回退；Tencent、必剪、Soniox 按实际语言/文本推导 `char` / `word` 粒度；OpenAI、必剪、Tencent 的句段范围会扩展到完整包住所挂接的有效 item。
+- 本地 ASR 粗粒度项的总时长小于字符数时保留原句级 item，避免整数毫秒插值制造倒挂时间码。
+- 增量验证：`python -m py_compile ...` 通过；`python -m unittest tests.test_tencent tests.test_bcut tests.test_openai_asr tests.test_soniox tests.test_local_asr` 186/186 通过；`git diff --check` 通过。
+- 全量 Python / Node 测试、完整 Playwright、Launcher 异步竞态回归及最终完整 diff 复查在收尾阶段统一执行。
+
+## 最终验证（2026-09-05）
+
+- 本轮新增 Launcher 异步初始化与本地模型状态回归、云端/本地 ASR 时间码回退回归均通过；定向回归累计 76 项通过。
+- 全量 Chromium Playwright 已执行 295 项，282 项通过、13 项失败；失败集中在主线已有的帧字段兼容、gap 元数据/间隔语义、英文合并空格，以及一个旧工程加载竞态断言，未涉及本轮 Launcher 异步初始化或 ASR provider 时间码防御改动。
+- 最终验证：`.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"` 通过（1133 项，跳过 6 项）；`MAW_TEST_PYTHON=.venv\Scripts\python.exe node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs` 通过（269/269）；`.venv\Scripts\ruff.exe check .`、3 个前端入口语法检查和 `git diff --check` 均通过。

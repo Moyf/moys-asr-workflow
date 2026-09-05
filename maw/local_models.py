@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from maw.gui_config import ModelConfig
-from maw.local_runtime import managed_runtime_status, prepare_model_in_process, prepare_model_in_runtime
+from maw.local_runtime import LocalRuntimeStatus, managed_runtime_status, prepare_model_in_process, prepare_model_in_runtime, resolve_model_cache_root
 
 
 LocalModelEvent = Callable[[str], None]
@@ -67,15 +67,11 @@ def inspect_local_model(
     model_path: str | Path = "",
     *,
     model_cache_root: str | Path | None = None,
+    runtime_status: LocalRuntimeStatus | None = None,
 ) -> LocalModelStatus:
     """Return a UI-safe status without loading an optional model runtime."""
-    missing_runtime = _missing_runtime_packages(model.requires_runtime)
-    managed = managed_runtime_status(model_cache_root, engine=model.engine)
-    runtime_source = "current" if not missing_runtime else ("managed" if managed.ready else "missing")
-    runtime_python = managed.python_path if runtime_source == "managed" else ""
-    runtime_available = not missing_runtime or managed.ready
-    explicit = _normalise_directory(model_path)
     if model.kind != "local":
+        explicit = _normalise_directory(model_path)
         return LocalModelStatus(
             model.id,
             model.engine,
@@ -86,9 +82,15 @@ def inspect_local_model(
             str(explicit or ""),
             "",
             model.required_model_refs,
-            runtime_source,
-            runtime_python,
+            "current",
+            "",
         )
+    missing_runtime = _missing_runtime_packages(model.requires_runtime)
+    managed = runtime_status or managed_runtime_status(model_cache_root, engine=model.engine)
+    runtime_source = "current" if not missing_runtime else ("managed" if managed.ready else "missing")
+    runtime_python = managed.python_path if runtime_source == "managed" else ""
+    runtime_available = not missing_runtime or managed.ready
+    explicit = _normalise_directory(model_path)
     if explicit is not None and not explicit.is_dir():
         return LocalModelStatus(
             model.id,
@@ -212,8 +214,14 @@ def local_model_payload(
     model_path: str | Path = "",
     *,
     model_cache_root: str | Path | None = None,
+    runtime_status: LocalRuntimeStatus | None = None,
 ) -> dict[str, object]:
-    status = inspect_local_model(model, model_path, model_cache_root=model_cache_root)
+    status = inspect_local_model(
+        model,
+        model_path,
+        model_cache_root=model_cache_root,
+        runtime_status=runtime_status,
+    )
     return {
         "status": status.status,
         "runtimeAvailable": status.runtime_available,
@@ -686,12 +694,11 @@ def _huggingface_cache_roots(model_cache_root: str | Path | None = None) -> list
             roots.append(Path(env[key]).expanduser())
     if env.get("HF_HOME"):
         roots.append(Path(env["HF_HOME"]).expanduser() / "hub")
-    managed_root = managed_runtime_status(model_cache_root).model_cache_path
-    if managed_root:
-        roots.append(Path(managed_root) / "huggingface" / "hub")
-        # 兼容直接落在缓存根本体的 hub 布局（faster-whisper 早期版本曾把
-        # download_root 指到裸根）：已下载的权重仍可被发现，无需重新下载。
-        roots.append(Path(managed_root))
+    managed_root = resolve_model_cache_root(model_cache_root)
+    roots.append(managed_root / "huggingface" / "hub")
+    # 兼容直接落在缓存根本体的 hub 布局（faster-whisper 早期版本曾把
+    # download_root 指到裸根）：已下载的权重仍可被发现，无需重新下载。
+    roots.append(managed_root)
     roots.append(Path.home() / ".cache" / "huggingface" / "hub")
     return _unique_paths(roots)
 
@@ -702,9 +709,8 @@ def _modelscope_cache_roots(model_cache_root: str | Path | None = None) -> list[
     for key in ("MODELSCOPE_CACHE", "MODELSCOPE_HOME"):
         if env.get(key):
             roots.append(Path(env[key]).expanduser())
-    managed_root = managed_runtime_status(model_cache_root).model_cache_path
-    if managed_root:
-        roots.append(Path(managed_root) / "modelscope")
+    managed_root = resolve_model_cache_root(model_cache_root)
+    roots.append(managed_root / "modelscope")
     roots.append(Path.home() / ".cache" / "modelscope" / "hub")
     return _unique_paths(roots)
 

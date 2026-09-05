@@ -16,6 +16,7 @@ from generate_subtitle_openai_api import (
     normalize_base_url,
     parse_timestamped_response,
     request_transcription,
+    _strip_trailing_punct,
     transcription_url,
 )
 
@@ -115,7 +116,117 @@ class OpenAiAsrTests(unittest.TestCase):
             "segments": [{"start": 0, "end": 2.5, "text": "hello"}],
         })
 
-        self.assertEqual(result["segments"], [{"start": 0, "end": 2500, "text": "hello", "items": []}])
+        self.assertEqual(result["segments"], [{"start": 0, "end": 2500, "text": "hello"}])
+        self.assertEqual(result["timestamp_granularity"], "segment")
+
+    def test_parse_timestamped_long_seconds_and_explicit_milliseconds(self) -> None:
+        result = parse_timestamped_response({
+            "segments": [
+                {"start": 10_799.5, "end": 10_800, "text": "last seconds"},
+                {"start_ms": 10_800_000, "end_ms": 10_800_500, "text": "explicit ms"},
+            ],
+        })
+
+        self.assertEqual(
+            result["segments"],
+            [
+                {"start": 10_799_500, "end": 10_800_000, "text": "last seconds"},
+                {"start": 10_800_000, "end": 10_800_500, "text": "explicit ms"},
+            ],
+        )
+        self.assertEqual(result["timestamp_granularity"], "segment")
+
+    def test_parse_timestamped_mixed_segments_preserves_sentence_fallback(self) -> None:
+        result = parse_timestamped_response({
+            "text": "Hello world. Fallback sentence.",
+            "segments": [
+                {
+                    "start": 0,
+                    "end": 1,
+                    "text": "Hello world.",
+                    "words": [
+                        {"word": "Hello", "start": 0, "end": 0.4},
+                        {"word": "world.", "start": 0.4, "end": 1},
+                    ],
+                },
+                {"start": 1.2, "end": 2, "text": "Fallback sentence."},
+            ],
+        })
+
+        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(len(result["items"]), 2)
+        self.assertEqual(result["segments"][0]["items"], result["items"])
+        self.assertNotIn("items", result["segments"][1])
+        self.assertEqual(
+            [segment["text"] for segment in _segments_from_result(
+                result, max_len=18, min_len=3, gap_split=800,
+            )],
+            ["Hello world.", "Fallback sentence."],
+        )
+
+    def test_parse_timestamped_segment_range_contains_nested_words(self) -> None:
+        result = parse_timestamped_response({
+            "text": "范围修复 后续回退",
+            "segments": [
+                {
+                    "start": 0.2,
+                    "end": 0.7,
+                    "text": "范围修复",
+                    "words": [
+                        {"word": "范围", "start": 0.1, "end": 0.4},
+                        {"word": "修复", "start": 0.4, "end": 0.9},
+                    ],
+                },
+                {"start": 1.0, "end": 1.2, "text": "后续回退"},
+            ],
+        })
+
+        sentence = result["segments"][0]
+        self.assertEqual((sentence["start"], sentence["end"]), (100, 900))
+        self.assertTrue(
+            all(sentence["start"] <= item["start"] < item["end"] <= sentence["end"]
+                for item in sentence["items"])
+        )
+
+    def test_parse_timestamped_invalid_top_level_word_uses_valid_envelope(self) -> None:
+        result = parse_timestamped_response({
+            "text": "The missing word",
+            "words": [
+                {"word": "The", "start": 0, "end": 0.3},
+                {"word": "missing", "start": 0.3, "end": 0.3},
+                {"word": "word", "start": 0.6, "end": 0.9},
+            ],
+        })
+
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["segments"], [{
+            "start": 0,
+            "end": 900,
+            "text": "The missing word",
+        }])
+        self.assertEqual(result["timestamp_granularity"], "segment")
+
+    def test_parse_timestamped_unranged_mixed_segment_preserves_all_text(self) -> None:
+        result = parse_timestamped_response({
+            "text": "The timed word The unranged sentence",
+            "segments": [
+                {
+                    "start": 0,
+                    "end": 1,
+                    "text": "The timed word",
+                    "words": [{"word": "The", "start": 0, "end": 1}],
+                },
+                {"text": "The unranged sentence"},
+            ],
+        })
+
+        self.assertEqual(result["text"], "The timed word The unranged sentence")
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["segments"], [{
+            "start": 0,
+            "end": 1000,
+            "text": "The timed word The unranged sentence",
+        }])
         self.assertEqual(result["timestamp_granularity"], "segment")
 
     def test_parse_timestamped_response_derives_missing_top_level_text(self) -> None:
@@ -127,6 +238,40 @@ class OpenAiAsrTests(unittest.TestCase):
         })
 
         self.assertEqual(result["text"], "The beach")
+
+    def test_parse_timestamped_response_derives_all_sentence_text_when_top_level_text_is_missing(self) -> None:
+        result = parse_timestamped_response({
+            "segments": [
+                {
+                    "start": 0,
+                    "end": 1,
+                    "text": "Hello world.",
+                    "words": [
+                        {"word": "Hello", "start": 0, "end": 0.4},
+                        {"word": "world.", "start": 0.4, "end": 1},
+                    ],
+                },
+                {"start": 1.2, "end": 2, "text": "Fallback sentence."},
+            ],
+        })
+
+        self.assertEqual(result["text"], "Hello world. Fallback sentence.")
+
+    def test_strip_trailing_punct_removes_punctuation_only_items(self) -> None:
+        segments = [{
+            "start": 0,
+            "end": 1000,
+            "text": "你好。",
+            "items": [
+                {"text": "你好", "start": 0, "end": 900},
+                {"text": "。", "start": 900, "end": 1000},
+            ],
+        }]
+
+        _strip_trailing_punct(segments, "，。")
+
+        self.assertEqual(segments[0]["text"], "你好")
+        self.assertEqual(segments[0]["items"], [{"text": "你好", "start": 0, "end": 900}])
 
     def test_parse_text_only_response_is_rejected(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "没有返回 segments/words 时间戳"):

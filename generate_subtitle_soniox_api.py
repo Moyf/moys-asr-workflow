@@ -264,7 +264,10 @@ def main():
             print(f"first 5 items: {items[:5]}")
             print("--- end debug ---\n")
 
-        if not items:
+        if result.get("timestamp_granularity") == "segment" and result.get("segments"):
+            print("[解析] 云端词级时间码不完整，保留可用的句级时间范围...")
+            segments = [dict(segment) for segment in result["segments"]]
+        elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")
             segments = [{"start": 0, "end": int(duration * 1000), "text": result["text"]}]
         else:
@@ -318,6 +321,7 @@ def main():
                     seg_items[k]["text"] = seg_items[k]["text"].rstrip(args.strip_tail_punct)
                     if seg_items[k]["text"]:
                         break
+                    seg_items.pop(k)
                     k -= 1
 
     print(f"[输出] 正在生成 SRT（{len(segments)} 条字幕）...")
@@ -375,7 +379,7 @@ def main():
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": seg["text"],
-                    "items": seg.get("items", []),
+                    **({"items": seg["items"]} if "items" in seg else {}),
                     **({"speaker": seg["speaker"]} if seg.get("speaker") else {}),
                     **({"color": seg["color"]} if seg.get("color") else {}),
                     **({"color_ref": seg["color_ref"]} if seg.get("color_ref") else {}),

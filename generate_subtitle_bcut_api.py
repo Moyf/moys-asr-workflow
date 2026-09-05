@@ -208,7 +208,10 @@ def main():
             print(f"first 5 items: {items[:5]}")
             print("--- end debug ---\n")
 
-        if not items:
+        if result.get("timestamp_granularity") == "segment" and result.get("segments"):
+            print("[解析] 云端返回了混合或句级时间码，保留服务端字幕段边界...")
+            segments = [dict(segment) for segment in result["segments"]]
+        elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")
             segments = [{"start": 0, "end": int(duration * 1000), "text": result["text"]}]
         else:
@@ -248,6 +251,7 @@ def main():
                     seg_items[k]["text"] = seg_items[k]["text"].rstrip(args.strip_tail_punct)
                     if seg_items[k]["text"]:
                         break
+                    seg_items.pop(k)
                     k -= 1
 
     srt_content = generate_srt(segments)
@@ -291,10 +295,12 @@ def main():
             str(result.get("text") or ""),
         )
         split_mode = split_mode_for_text(str(result.get("text") or ""), language)
+        # 必剪接口不返回语种；result.language 是解析器根据完整文本脚本推断的，
+        # 因此保留 inferred，而不是把它误标为 detected。
         json_data = {
             "media": str(input_path),
             "language": language,
-            "language_source": "inferred" if result.get("language") else language_source,
+            "language_source": result.get("language_source") or language_source,
             "split_mode": split_mode,
             "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
                 result.get("items") or [], split_mode, has_segments=bool(segments)
@@ -305,7 +311,7 @@ def main():
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": seg["text"],
-                    "items": seg.get("items", []),
+                    **({"items": seg["items"]} if "items" in seg else {}),
                 }
                 for seg in segments
             ],

@@ -26,12 +26,15 @@
       background: #f5f6f8;
       color: #1f2530;
     }
-    body:not(.launcher-ready) .shell { visibility: hidden; }
+    body:not(.launcher-ready) .shell {
+      pointer-events: none;
+      user-select: none;
+    }
   </style>
   <link rel="stylesheet" href="launcher.css">
 </head>
 <body>
-  <main class="shell">
+  <main class="shell" inert aria-busy="true">
     <div class="shell-scroll">
     <header class="hero">
       <div class="hero-brand">

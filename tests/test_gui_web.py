@@ -81,8 +81,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIsNone(config["lastModel"])
         self.assertIsNone(config["lastLanguage"])
         self.assertEqual(config["stickerDir"], "")
-        self.assertIn(config["localRuntime"]["status"], {"missing", "broken", "ready"})
-        self.assertIn(config["ocrRuntime"]["status"], {"missing", "broken", "ready"})
+        self.assertEqual(config["localRuntime"]["status"], "checking")
+        self.assertEqual(config["ocrRuntime"]["status"], "checking")
         self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
         self.assertEqual(config["providers"][0]["keyUrl"], "https://help.aliyun.com/zh/model-studio/get-api-key")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
@@ -165,8 +165,64 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(whisper["id"], "whisper-large-v3-local")
         self.assertIn("用户自行安装 CUDA 12 和 cuDNN 9", whisper["note"])
         self.assertIn("自动回退到 CPU", whisper["note"])
-        self.assertIn(local["models"][0]["localStatus"]["status"], {"runtime_missing", "missing", "installed", "partial", "path_invalid", "broken"})
+        self.assertEqual(local["models"][0]["localStatus"]["status"], "checking")
         self.assertEqual(config["modelCacheRoot"], "")
+
+    def test_get_config_does_not_scan_managed_runtime_or_model_caches(self) -> None:
+        with (
+            mock.patch("maw.gui_web.managed_runtime_status") as runtime_status,
+            mock.patch.object(self.api, "_ocr_runtime_status") as ocr_status,
+            mock.patch("maw.gui_web.local_model_payload") as model_payload,
+            mock.patch("maw.gui_web.ocr_models_payload") as ocr_models,
+        ):
+            config = self.api.get_config()
+
+        runtime_status.assert_not_called()
+        ocr_status.assert_not_called()
+        model_payload.assert_not_called()
+        ocr_models.assert_not_called()
+        self.assertEqual(config["localRuntime"]["status"], "checking")
+        self.assertEqual(config["ocrRuntime"]["status"], "checking")
+
+    def test_get_local_models_scans_visible_models_and_reuses_runtime_status_by_engine(self) -> None:
+        calls: list[str] = []
+
+        def runtime_status(_cache_root: str, *, engine: str) -> RuntimeStatus:
+            calls.append(engine)
+            return RuntimeStatus("missing", False, "", "", "missing", "1", "")
+
+        with (
+            mock.patch("maw.gui_web.managed_runtime_status", side_effect=runtime_status),
+            mock.patch("maw.local_models.managed_runtime_status") as model_runtime_status,
+            mock.patch("maw.local_models.importlib.util.find_spec", return_value=None),
+        ):
+            result = self.api.get_local_models({"modelId": "qwen3-asr-local"})
+
+        self.assertEqual(calls, ["qwen-asr", "funasr", "moss", "whisper"])
+        self.assertEqual(
+            [model["id"] for model in result["models"]],
+            [
+                "qwen3-asr-local",
+                "qwen3-asr-1.7b-local",
+                "sensevoice-small-local",
+                "moss-transcribe-diarize-local",
+                "whisper-large-v3-local",
+            ],
+        )
+        model_runtime_status.assert_not_called()
+
+    def test_get_config_uses_environment_override_for_initial_ocr_runtime_path(self) -> None:
+        file_runtime = self.root / "ocr-from-file"
+        env_runtime = self.root / "ocr-from-environment"
+        self.env_path.write_text(
+            f"MAW_OCR_RUNTIME_ROOT={file_runtime}\n",
+            encoding="utf-8",
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_OCR_RUNTIME_ROOT": str(env_runtime)}, clear=False):
+            config = self.api.get_config()
+
+        self.assertEqual(config["ocrRuntime"]["path"], str(env_runtime))
 
     def test_save_settings_accepts_custom_model_cache_root(self) -> None:
         cache_root = self.root / "models"
@@ -3184,12 +3240,25 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertNotIn('id="launcherBoot"', page)
         self.assertIn('background: #16181d;', page)
         self.assertIn('html[data-theme="light"]', page)
-        self.assertIn('body:not(.launcher-ready) .shell { visibility: hidden; }', page)
+        self.assertIn('pointer-events: none;', page)
+        self.assertIn('<main class="shell" inert aria-busy="true">', page)
         self.assertIn('body:not(.launcher-ready) .shell', stylesheet)
+        self.assertIn('pointer-events: none;', stylesheet)
         self.assertIn('function revealLauncher()', script)
-        self.assertIn('await syncDefaultOutput();', script)
-        self.assertIn('await refreshFfmpeg();', script)
-        self.assertIn('window.dispatchEvent(new CustomEvent("mawlauncherready"));\n    revealLauncher();', script)
+        self.assertIn('shell?.removeAttribute("inert")', script)
+        self.assertIn('function refreshStartupState()', script)
+        self.assertIn('["default output", syncDefaultOutput()]', script)
+        self.assertIn('["FFmpeg", refreshFfmpeg()]', script)
+        self.assertIn('["server", checkExistingServer()]', script)
+        self.assertIn('["local models", refreshLocalModels()]', script)
+        self.assertNotIn('["local runtime", refreshLocalRuntime()]', script)
+        self.assertIn('let ocrRuntimeRequest = 0;', script)
+        self.assertIn('if (requestId !== ocrRuntimeRequest) return result;', script)
+        self.assertIn('let localRuntimeRequest = 0;', script)
+        self.assertIn('let localModelsRequest = 0;', script)
+        self.assertIn('statusRequestId !== localStatusRequest', script)
+        self.assertIn('Promise.allSettled', script)
+        self.assertIn('revealLauncher();\n    window.dispatchEvent(new CustomEvent("mawlauncherready"));\n    refreshStartupState();', script)
         self.assertIn('void init().catch((error) => {', script)
 
     def test_custom_llm_task_requires_a_prompt(self) -> None:
@@ -3854,6 +3923,17 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('event.type === "localRuntimeReady"', script)
         self.assertIn('def install_local_runtime(', backend)
         self.assertIn('def cancel_local_runtime(', backend)
+
+    def test_launcher_ignores_runtime_event_payloads_until_fresh_status_is_loaded(self) -> None:
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('const requestId = ++ocrRuntimeRequest;', script)
+        self.assertIn('if (requestId !== ocrRuntimeRequest) return result;', script)
+        self.assertIn('if (state.localRuntimeInstalling || runtime.status === "installing") {', script)
+        self.assertIn('if (!status.status || status.status === "checking")', script)
+        self.assertIn('if (state.localRuntimeInstalling || runtime.status === "installing")', script)
+        self.assertNotIn('state.config.localRuntime = event.runtime || { status: "ready", ready: true };', script)
+        self.assertNotIn('state.config.ocrRuntime = event.runtime || { status: "ready", ready: true };', script)
 
     def test_ocr_runtime_ready_hint_uses_a_clickable_directory_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

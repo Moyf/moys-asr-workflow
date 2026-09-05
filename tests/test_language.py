@@ -5,6 +5,7 @@ import unittest
 from maw.language import (
     infer_language_code,
     normalize_language_code,
+    normalize_timestamp_range,
     resolve_language,
     split_mode_for_text,
     timestamp_granularity_for_items,
@@ -35,8 +36,17 @@ class LanguageContractTests(unittest.TestCase):
             timestamp_granularity_for_items([], "word", has_segments=True),
             "segment",
         )
+
+    def test_timestamp_range_rejects_negative_and_overflowed_ranges(self) -> None:
+        self.assertIsNone(normalize_timestamp_range(-0.1, 0.2, scale=1000))
+        self.assertIsNone(normalize_timestamp_range(1, 2, scale=1e308))
+        self.assertEqual(normalize_timestamp_range(0.1, 0.2, scale=1000), (100, 200))
         self.assertEqual(
             timestamp_granularity_for_items([{"text": "hello"}], "word", explicit_items=False, has_segments=True),
+            "segment",
+        )
+        self.assertEqual(
+            timestamp_granularity_for_items([{"text": "hello"}], "word", has_segments=True),
             "segment",
         )
 
