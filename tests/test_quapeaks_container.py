@@ -16,7 +16,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from maw import reapeaks
+from maw import quapeaks
 
 TEST_DATA_DIR = Path(__file__).resolve().parent / "test_data"
 MONO = TEST_DATA_DIR / "tone_selfwave.wav.quapeaks"
@@ -26,7 +26,7 @@ MONO_PEAKS = [(-10, 10), (-20, 20), (-30, 30), (-40, 40), (-50, 50)]
 STEREO_PEAKS = [(-11, 11), (-22, 22), (-33, 33), (-44, 44)]
 
 
-def _only_self(ra: reapeaks.ReaPeaksFile):
+def _only_self(ra: quapeaks.ReaPeaksFile):
     layers = ra.self_wave_mipmaps()
     assert len(layers) == 1, f"期望恰好一个自研层，实得 {len(layers)}"
     return layers[0]
@@ -35,7 +35,7 @@ def _only_self(ra: reapeaks.ReaPeaksFile):
 class QuapeaksContainerTests(unittest.TestCase):
     @unittest.skipUnless(MONO.exists(), "fixture 缺失：tone_selfwave.wav.quapeaks")
     def test_container_is_recognised_as_quapeaks(self):
-        ra = reapeaks.ReaPeaksFile(str(MONO))
+        ra = quapeaks.ReaPeaksFile(str(MONO))
         self.assertTrue(ra.is_quapeaks)
         self.assertEqual(ra.magic, b"QPK1")
         self.assertEqual(ra.format_version, ord("1"))
@@ -43,9 +43,9 @@ class QuapeaksContainerTests(unittest.TestCase):
 
     @unittest.skipUnless(MONO.exists(), "fixture 缺失：tone_selfwave.wav.quapeaks")
     def test_self_wave_layer_is_decoded(self):
-        ra = reapeaks.ReaPeaksFile(str(MONO))
+        ra = quapeaks.ReaPeaksFile(str(MONO))
         mip = _only_self(ra)
-        self.assertEqual(mip.division_factor, reapeaks.DIV_SELF_WAVE)
+        self.assertEqual(mip.division_factor, quapeaks.DIV_SELF_WAVE)
         self.assertEqual(mip.division_factor, -109)
         self.assertEqual(mip.kind, "self_wave")
         self.assertIsNotNone(mip.self_layer)
@@ -56,13 +56,13 @@ class QuapeaksContainerTests(unittest.TestCase):
     @unittest.skipUnless(MONO.exists(), "fixture 缺失：tone_selfwave.wav.quapeaks")
     def test_parse_consumes_whole_file(self):
         # 任何一层宽度算错都会留下尾巴或越界；这里要求严丝合缝。
-        ra = reapeaks.ReaPeaksFile(str(MONO))
+        ra = quapeaks.ReaPeaksFile(str(MONO))
         self.assertEqual(ra.data_end, len(ra.data))
 
     @unittest.skipUnless(STEREO.exists(), "fixture 缺失：tone_stereo_selfwave.wav.quapeaks")
     def test_stereo_container_does_not_widen_self_layer(self):
         """自研层恒单声道：容器头 channels=2 时也不得按 2 声道读。"""
-        ra = reapeaks.ReaPeaksFile(str(STEREO))
+        ra = quapeaks.ReaPeaksFile(str(STEREO))
         self.assertEqual(ra.channels, 2, "前提：这是双声道容器")
         mip = _only_self(ra)
         self.assertEqual(mip.peak_count, len(STEREO_PEAKS), "峰数不能被声道数放大")
@@ -81,12 +81,12 @@ class QuapeaksContainerTests(unittest.TestCase):
                 "<4sBBiii", b"RPKN", 1, 1, 8000, 1700000000, 100
             )
         )
-        buf += struct.pack("<ii", reapeaks.DIV_SELF_WAVE, len(MONO_PEAKS))
+        buf += struct.pack("<ii", quapeaks.DIV_SELF_WAVE, len(MONO_PEAKS))
         buf += struct.pack("<II", 500, 1) + peaks
         tmp = self.temp_dir / "fake.wav.ReaPeaks"
         tmp.write_bytes(bytes(buf))
         with self.assertRaises(ValueError) as ctx:
-            reapeaks.ReaPeaksFile(str(tmp))
+            quapeaks.ReaPeaksFile(str(tmp))
         self.assertIn("拒绝猜测", str(ctx.exception))
 
     @unittest.skipUnless(STEREO.exists(), "fixture 缺失：tone_stereo_selfwave.wav.quapeaks")
@@ -100,9 +100,9 @@ class QuapeaksContainerTests(unittest.TestCase):
         raw = STEREO.read_bytes()
         count = raw[5]
         self_div, self_npeak = struct.unpack_from("<ii", raw, 18 + 8 * (count - 1))
-        self.assertEqual(self_div, reapeaks.DIV_SELF_WAVE, "前提：末层就是自研层")
+        self.assertEqual(self_div, quapeaks.DIV_SELF_WAVE, "前提：末层就是自研层")
         section_len = (
-            reapeaks.SELF_WAVE_PREFIX_LEN + self_npeak * reapeaks.SELF_WAVE_BYTES_PER_PEAK
+            quapeaks.SELF_WAVE_PREFIX_LEN + self_npeak * quapeaks.SELF_WAVE_BYTES_PER_PEAK
         )
         self_start = len(raw) - section_len
 
@@ -111,7 +111,7 @@ class QuapeaksContainerTests(unittest.TestCase):
                 tmp = self.temp_dir / "chopped.wav.quapeaks"
                 tmp.write_bytes(raw[: self_start] + raw[self_start : self_start + keep])
                 with self.assertRaises(ValueError) as ctx:
-                    reapeaks.ReaPeaksFile(str(tmp))
+                    quapeaks.ReaPeaksFile(str(tmp))
                 self.assertIn("自研波形层", str(ctx.exception))
 
     def setUp(self):

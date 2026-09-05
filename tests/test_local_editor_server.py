@@ -251,8 +251,8 @@ class LocalEditorServerTests(unittest.TestCase):
                 with (
                     mock.patch.object(server_editor, "resolve_project_media") as resolve_media,
                     mock.patch.object(server_editor.edit, "load_or_extract_waveform") as load_waveform,
-                    mock.patch.object(server_editor.reapeaks, "load_spectral_payload") as load_spectral,
-                    mock.patch.object(server_editor.reapeaks, "load_waveform_payload") as load_reapeaks_waveform,
+                    mock.patch.object(server_editor.quapeaks, "load_spectral_payload") as load_spectral,
+                    mock.patch.object(server_editor.quapeaks, "load_waveform_payload") as load_quapeaks_waveform,
                 ):
                     project = server_editor.load_project(
                         project_path,
@@ -265,7 +265,7 @@ class LocalEditorServerTests(unittest.TestCase):
                 resolve_media.assert_not_called()
                 load_waveform.assert_not_called()
                 load_spectral.assert_not_called()
-                load_reapeaks_waveform.assert_not_called()
+                load_quapeaks_waveform.assert_not_called()
                 self.assertEqual(project.json_path, project_path)
                 self.assertIsNone(project.media_path)
                 self.assertIsNone(project.source_media_path)
@@ -1303,8 +1303,8 @@ class LocalEditorServerTests(unittest.TestCase):
         }
         with (
             mock.patch.object(server_editor.edit, "load_or_extract_waveform", return_value=(self_waveform, False)) as waveform_load,
-            mock.patch.object(server_editor.reapeaks, "load_spectral_payload") as spectral_load,
-            mock.patch.object(server_editor.reapeaks, "load_waveform_payload") as reapeaks_wave_load,
+            mock.patch.object(server_editor.quapeaks, "load_spectral_payload") as spectral_load,
+            mock.patch.object(server_editor.quapeaks, "load_waveform_payload") as reapeaks_wave_load,
         ):
             project = server_editor.load_project(
                 self.project_path,
@@ -1336,8 +1336,8 @@ class LocalEditorServerTests(unittest.TestCase):
             return reapeaks_wave_payload
 
         with (
-            mock.patch.object(server_editor.reapeaks, "load_spectral_payload", side_effect=blocking_spectral_load),
-            mock.patch.object(server_editor.reapeaks, "load_waveform_payload", side_effect=waveform_reapeaks_load),
+            mock.patch.object(server_editor.quapeaks, "load_spectral_payload", side_effect=blocking_spectral_load),
+            mock.patch.object(server_editor.quapeaks, "load_waveform_payload", side_effect=waveform_reapeaks_load),
             server_editor.EditorServer(
                 ("127.0.0.1", 0),
                 project,

@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from maw import reapeaks
+from maw import quapeaks
 
 TEST_DATA_DIR = Path(__file__).resolve().parent / "test_data"
 
@@ -36,7 +36,7 @@ def _waveform_amps(reapeaks_path: Path, media_path: Path) -> tuple[int, list[int
 
     振幅 = max(|min|, |max|)，量化到 int8（与编辑器 i8-minmax 负载一致）。
     """
-    payload = reapeaks.extract_waveform_payload(reapeaks_path, media_path)
+    payload = quapeaks.extract_waveform_payload(reapeaks_path, media_path)
     assert payload is not None
     raw = base64.b64decode(payload["data"])
     pps = payload["peaks_per_second"]
@@ -84,7 +84,7 @@ class FixtureReaPeaksTests(unittest.TestCase):
 
     @unittest.skipUnless(_fixture_present("tone30.wav.ReaPeaks"), "REAPER fixture missing: tone30")
     def test_tone30_parses_real_reaper_cache(self) -> None:
-        ra = reapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone30.wav.ReaPeaks"))
+        ra = quapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone30.wav.ReaPeaks"))
         self.assertEqual(ra.sample_rate, 44100)
         self.assertEqual(ra.channels, 1)
         kinds = [m.kind for m in ra.mipmaps]
@@ -97,7 +97,7 @@ class FixtureReaPeaksTests(unittest.TestCase):
 
     @unittest.skipUnless(_fixture_present("tone_dual.wav.ReaPeaks"), "REAPER fixture missing: tone_dual")
     def test_tone_dual_parses_stereo_layout(self) -> None:
-        ra = reapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone_dual.wav.ReaPeaks"))
+        ra = quapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone_dual.wav.ReaPeaks"))
         self.assertEqual(ra.channels, 2)
         wave_mips = ra.wave_mipmaps()
         self.assertTrue(wave_mips)
@@ -106,7 +106,7 @@ class FixtureReaPeaksTests(unittest.TestCase):
 
     @unittest.skipUnless(_fixture_present("tone_48k.wav.ReaPeaks"), "REAPER fixture missing: tone_48k")
     def test_tone_48k_sample_rate(self) -> None:
-        ra = reapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone_48k.wav.ReaPeaks"))
+        ra = quapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone_48k.wav.ReaPeaks"))
         self.assertEqual(ra.sample_rate, 48000)
 
     @unittest.skipUnless(_fixture_present("tone30.wav.ReaPeaks"), "REAPER fixture missing: tone30")
@@ -139,7 +139,7 @@ class FixtureReaPeaksTests(unittest.TestCase):
     @unittest.skipUnless(_fixture_present("tone_dual.wav.ReaPeaks"), "REAPER fixture missing: tone_dual")
     def test_tone_dual_both_channels_have_amplitude(self) -> None:
         """双声道：左右声道各自应有非零振幅（左 1kHz 纯音，右 500Hz+噪声）。"""
-        ra = reapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone_dual.wav.ReaPeaks"))
+        ra = quapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone_dual.wav.ReaPeaks"))
         finest = ra.wave_mipmaps()[0]
         ch_amp = [0, 0]
         for row in finest.wave:
@@ -175,7 +175,7 @@ class GeneratedFixtureTests(unittest.TestCase):
             gen_func()
             wav = TEST_DATA_DIR / f"{name}.wav"
             # MAW 生成 .ReaPeaks
-            maw_reapeaks = reapeaks.generate_for_media(wav)
+            maw_reapeaks = quapeaks.generate_for_media(wav)
             self.assertIsNotNone(maw_reapeaks, f"MAW 生成 {name}.wav.ReaPeaks 失败")
             maw_data = maw_reapeaks.read_bytes()
             # 写临时 .maw 供调试，避免把测试产物留在 fixture 目录。

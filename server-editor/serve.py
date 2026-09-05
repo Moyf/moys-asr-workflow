@@ -46,7 +46,7 @@ mimetypes.add_type("audio/ogg", ".opus")
 
 import edit  # noqa: E402
 from maw.console import configure_utf8_stdio  # noqa: E402
-from maw import reapeaks  # noqa: E402
+from maw import quapeaks  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
@@ -407,7 +407,7 @@ def load_project(
         if load_reapeaks:
             # 频谱缓存：源媒体旁存在 .ReaPeaks 时读取并内联下发，供波形染色。
             # 缺失/损坏/无 spectral 层一律静默降级，不影响编辑器。
-            spectral = reapeaks.load_spectral_payload(
+            spectral = quapeaks.load_spectral_payload(
                 reapeaks_base,
                 peaks_per_second=peaks_per_second,
                 audio_track=audio_track,
@@ -417,7 +417,7 @@ def load_project(
                 print(f"[spectral] 已加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
 
             # ReaPeaks 波形层：最细 wave 层作为可选的波形形状来源（编辑器设置里切换）。
-            reapeaks_wave = reapeaks.load_waveform_payload(
+            reapeaks_wave = quapeaks.load_waveform_payload(
                 reapeaks_base,
                 audio_track=audio_track,
             )
@@ -751,13 +751,13 @@ class EditorServer(ThreadingHTTPServer):
         try:
             reapeaks_base = project.reapeaks_path or project.source_media_path or project.media_path
             if reapeaks_base is not None:
-                spectral = reapeaks.load_spectral_payload(
+                spectral = quapeaks.load_spectral_payload(
                     reapeaks_base, peaks_per_second=self.peaks_per_second,
                     audio_track=project.audio_track,
                 )
                 if spectral is not None:
                     print(f"[spectral] 后台加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
-                reapeaks_wave = reapeaks.load_waveform_payload(
+                reapeaks_wave = quapeaks.load_waveform_payload(
                     reapeaks_base,
                     audio_track=project.audio_track,
                 )
