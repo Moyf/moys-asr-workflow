@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from maw import media_cache, reapeaks
+from maw import media_cache, quapeaks
 
 try:
     import numpy  # noqa: F401
@@ -60,10 +60,10 @@ class MediaCacheTests(unittest.TestCase):
         self.assertTrue(Path(result.reapeaks_path).exists())
         self.assertEqual(Path(result.reapeaks_path).name, "tone.wav.ReaPeaks")
         self.assertNotIn("spectral", result.project)
-        parsed = reapeaks.ReaPeaksFile(str(result.reapeaks_path))
+        parsed = quapeaks.ReaPeaksFile(str(result.reapeaks_path))
         self.assertFalse(parsed.spectral_mipmaps())
         self.assertIn("wave", [m.kind for m in parsed.mipmaps])
-        self.assertIsNotNone(reapeaks.load_waveform_payload(self.wav))
+        self.assertIsNotNone(quapeaks.load_waveform_payload(self.wav))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_embeds_spectral_when_explicitly_requested(self) -> None:
@@ -74,7 +74,7 @@ class MediaCacheTests(unittest.TestCase):
         )
 
         self.assertIn("spectral", result.project)
-        self.assertIsNotNone(reapeaks.load_spectral_payload(self.wav))
+        self.assertIsNotNone(quapeaks.load_spectral_payload(self.wav))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_caches_describe_source_media_not_the_derived_extraction(self) -> None:
@@ -111,8 +111,8 @@ class MediaCacheTests(unittest.TestCase):
                 result.project[key]["source"], media_cache.media_signature(source)
             )
         # 服务器只读路径必须接受这份缓存
-        self.assertIsNotNone(reapeaks.load_waveform_payload(source))
-        self.assertIsNotNone(reapeaks.load_spectral_payload(source))
+        self.assertIsNotNone(quapeaks.load_waveform_payload(source))
+        self.assertIsNotNone(quapeaks.load_spectral_payload(source))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_undecodable_source_falls_back_to_derived_with_actual_signature(self) -> None:
@@ -140,9 +140,9 @@ class MediaCacheTests(unittest.TestCase):
             cache_media.with_name(cache_media.name + ".ReaPeaks"),
         )
         # 退回派生文件后，缓存只能被派生文件接受，不能误用于源媒体。
-        self.assertIsNotNone(reapeaks.load_waveform_payload(cache_media))
-        self.assertIsNone(reapeaks.load_spectral_payload(source))
-        self.assertIsNone(reapeaks.load_waveform_payload(source))
+        self.assertIsNotNone(quapeaks.load_waveform_payload(cache_media))
+        self.assertIsNone(quapeaks.load_spectral_payload(source))
+        self.assertIsNone(quapeaks.load_waveform_payload(source))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_reapeaks_cache_lands_next_to_source_media(self) -> None:
@@ -170,8 +170,8 @@ class MediaCacheTests(unittest.TestCase):
         )
         self.assertTrue(Path(result.reapeaks_path).exists())
         # server 从源媒体旁读取时，头部签名必须匹配
-        self.assertIsNotNone(reapeaks.load_spectral_payload(source))
-        self.assertIsNotNone(reapeaks.load_waveform_payload(source))
+        self.assertIsNotNone(quapeaks.load_spectral_payload(source))
+        self.assertIsNotNone(quapeaks.load_waveform_payload(source))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_missing_media_degrades_to_warning(self) -> None:
@@ -190,7 +190,7 @@ class MediaCacheTests(unittest.TestCase):
                 return_value=SimpleNamespace(project=self.project, error=None),
             ) as embed,
             mock.patch(
-                "maw.media_cache.reapeaks.generate_for_media",
+                "maw.media_cache.quapeaks.generate_for_media",
                 return_value=None,
             ) as generate,
         ):

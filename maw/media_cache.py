@@ -1,7 +1,7 @@
 """媒体派生缓存生成编排：波形嵌入 + 可选 ReaPeaks 频谱缓存。
 
 各 provider CLI 的 ``--with-waveform`` 统一走这里，避免逐个 CLI 重复
-``waveform.embed_waveform`` / ``reapeaks.generate_for_media`` 的调用与
+``waveform.embed_waveform`` / ``quapeaks.generate_for_media`` 的调用与
 日志样板。本模块只做编排，具体算法仍由 waveform / reapeaks 各自负责。
 """
 
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from maw import reapeaks
+from maw import quapeaks
 from maw.waveform import embed_waveform, media_signature
 
 
@@ -90,7 +90,7 @@ def embed_media_caches(
     source_path = (
         Path(source_media_path) if source_media_path is not None else cache_path
     )
-    # 与 reapeaks.generate_for_media 同一策略：源媒体可读就解码源媒体，
+    # 与 quapeaks.generate_for_media 同一策略：源媒体可读就解码源媒体，
     # 派生文件只在源不可用（或解不出音频）时兜底。
     decode_path = cache_path
     if source_path != cache_path and source_path.is_file():
@@ -139,7 +139,7 @@ def embed_media_caches(
         print("[reapeaks] 正在生成波形和频谱缓存（可能需要一些时间）……")
     else:
         print("[reapeaks] 正在生成波形缓存（已跳过频谱计算）……")
-    reapeaks_path = reapeaks.generate_for_media(
+    reapeaks_path = quapeaks.generate_for_media(
         cache_path,
         ffmpeg_bin=ffmpeg_bin,
         include_spectral=generate_spectral,
@@ -154,7 +154,7 @@ def embed_media_caches(
         # provenance 识别真实解码来源，避免嵌入层用源媒体签名覆盖派生数据。
         reapeaks_media_path: Path | None = None
         for candidate in (source_path, cache_path):
-            if reapeaks._reapeaks_matches_media(reapeaks_path, candidate):
+            if quapeaks._reapeaks_matches_media(reapeaks_path, candidate):
                 reapeaks_media_path = candidate
                 break
         if reapeaks_media_path is None:
@@ -162,7 +162,7 @@ def embed_media_caches(
         else:
             try:
                 if generate_spectral:
-                    spectral = reapeaks.extract_spectral_payload(
+                    spectral = quapeaks.extract_spectral_payload(
                         reapeaks_path,
                         reapeaks_media_path,
                         audio_track=audio_track,
@@ -170,7 +170,7 @@ def embed_media_caches(
                     if spectral is not None:
                         project["spectral"] = spectral
                         print(f"[spectral] 已嵌入 {spectral['peak_count']} 频谱点")
-                reapeaks_wave = reapeaks.extract_waveform_payload(
+                reapeaks_wave = quapeaks.extract_waveform_payload(
                     reapeaks_path,
                     reapeaks_media_path,
                     audio_track=audio_track,
