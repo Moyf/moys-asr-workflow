@@ -69,6 +69,9 @@ DIV_LOUDNESS_OLD = -ord("l")  # loudness (deprecated)
 # quapeaks 自有容器：magic 为 b'QPK' + 1 字节可打印版本号（当前 b'QPK1'）。
 # 全局头布局与 RPKN 完全相同，差别只在 magic 与允许的层集合。
 QUAPEAKS_MAGIC_PREFIX = b"QPK"
+# mopeaks：MAW 纯 Python 写出的回退容器（无内核时）。布局与 QPK 相同，
+# 只有 magic 与层数不同，所以自研层分支两种都认。
+MOPEAKS_MAGIC_PREFIX = b"MPK"
 
 # MAW 自研波形层。div 取负 ASCII 'm'，与 spectral/loudness 同一套 token 约定。
 DIV_SELF_WAVE = -ord("m")
@@ -150,7 +153,8 @@ class ReaPeaksFile:
         self.is_v12 = self.magic == MAGIC_V12
         # quapeaks 自有容器：magic 前缀 QPK，末字节是可打印 ASCII 版本位。
         self.is_quapeaks = self.magic[:3] == QUAPEAKS_MAGIC_PREFIX
-        self.format_version = self.magic[3] if self.is_quapeaks else None
+        self.is_mopeaks = self.magic[:3] == MOPEAKS_MAGIC_PREFIX
+        self.format_version = self.magic[3] if (self.is_quapeaks or self.is_mopeaks) else None
         self.channels = self.data[4]
         self.mipmap_count = self.data[5]
         # 官方规格：mtime/size 是 stat() 值的低 32 位（"low 32 bits"），仅作
@@ -252,10 +256,10 @@ class ReaPeaksFile:
         2. **只在 quapeaks 容器里承认这个 token**。REAPER 的 RPKN 文件若哪天自己
            用了 ``-'m'``，我们静默按自研层解就等于误读，宁可报错。
         """
-        if not self.is_quapeaks:
+        if not (self.is_quapeaks or self.is_mopeaks):
             raise ValueError(
                 f"{self.path}: 发现自研波形层 token（div={DIV_SELF_WAVE}）"
-                f"但 magic 不是 QPK*（{self.magic!r}），拒绝猜测"
+                f"但 magic 既非 QPK* 也非 MPK*（{self.magic!r}），拒绝猜测"
             )
         need = SELF_WAVE_PREFIX_LEN + mip.peak_count * SELF_WAVE_BYTES_PER_PEAK
         if off + need > len(self.data):
@@ -520,6 +524,14 @@ def _timestamp_fingerprint_matches(stored: int, actual: int) -> bool:
     delta = abs(stored - actual)
     delta = min(delta, _UINT32_MODULUS - delta)
     return delta <= _MTIME_TOLERANCE_SECONDS or abs(delta - 3600) <= _MTIME_TOLERANCE_SECONDS
+
+
+# maw.mopeaks（无内核时的回退档）与内核缓存必须对"媒体变没变"给同一个答案，
+# 所以这里给上游那两个私有实现加公开别名。刻意用别名而不是改名或复制一份：
+# 上游随时可能再动 _timestamp_fingerprint_matches 的实现，别名不会造成合并冲突，
+# 而抄第二份必然漂移。
+timestamp_fingerprint_matches = _timestamp_fingerprint_matches
+UINT32_MASK = _UINT32_MASK
 
 
 def _reapeaks_contains_spectral(reapeaks_path: Path | str) -> bool:

@@ -6,6 +6,7 @@ __pycache__/
 
 # Derived editor and waveform data. Keep the JSON project and the original media outside the repository when possible.
 *.waveform.json
+*.mopeaks
 *.json.bak
 *.edit.html
 !blank-editor.html
