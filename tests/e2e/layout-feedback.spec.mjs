@@ -149,6 +149,8 @@ test('shows the installed OCR settings hint and highlights video drops', async (
   expect(state.backgroundChanged).toBe(true);
 
   await page.locator('#settingsButton').click();
+  await page.locator('[data-settings-tab="runtime"]').click();
+  await expect(page.locator('[data-settings-tab="runtime"]')).toHaveAttribute('aria-selected', 'true');
   await page.locator('#ocrRuntimeHint .runtime-path-link').click();
   await expect.poll(() => page.evaluate(() => window.__openedRuntimeFolder)).toEqual({ kind: 'ocr-runtime' });
 });

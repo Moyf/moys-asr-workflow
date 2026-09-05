@@ -137,6 +137,11 @@ button:disabled {
   flex-direction: column;
 }
 
+body:not(.launcher-ready) .shell {
+  pointer-events: none;
+  user-select: none;
+}
+
 .shell-scroll {
   flex: 1 1 auto;
   min-width: 0;
@@ -874,6 +879,15 @@ label {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.segmentation-word-options {
+  display: grid;
+  gap: 6px;
+}
+
+.segmentation-word-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .segmentation-control {

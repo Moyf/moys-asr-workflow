@@ -25,11 +25,12 @@ from pathlib import Path
 
 from maw.stickers import get_default_sticker_dir
 from generate_subtitle_qwen_api import (
-    LANGUAGE_MAP,
     extract_audio,
     generate_srt,
     get_duration_sec,
     parse_duration,
+    WESTERN_MAX_WORDS,
+    WESTERN_MIN_WORDS,
 )
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
@@ -45,6 +46,12 @@ from maw.soniox import (
     transcribe,
 )
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.language import (
+    normalize_language_code,
+    resolve_language,
+    split_mode_for_text,
+    timestamp_granularity_for_items,
+)
 
 
 def _language_hints(raw: str | None) -> list[str]:
@@ -55,7 +62,10 @@ def _language_hints(raw: str | None) -> list[str]:
     for part in raw.split(","):
         key = part.strip().lower()
         if key:
-            hints.append(LANGUAGE_MAP.get(key, key))
+            canonical = normalize_language_code(key)
+            # Soniox calls Filipino ``tl``; keep the project-facing canonical
+            # code as ``fil`` while sending the provider's accepted hint.
+            hints.append("tl" if canonical == "fil" else canonical or key)
     return hints
 
 
@@ -74,6 +84,8 @@ def main():
         "--min-len", type=int, default=5,
         help="句号间最短字数，不足则合并（默认 5；仅 CJK 内容生效）",
     )
+    parser.add_argument("--max-words", type=int, default=WESTERN_MAX_WORDS, help="英文单条字幕最大单词数")
+    parser.add_argument("--min-words", type=int, default=WESTERN_MIN_WORDS, help="英文短句合并阈值（单词数）")
     parser.add_argument(
         "--language", default=None,
         help="语言提示，逗号分隔（如 zh,en 或 Chinese；默认自动识别）",
@@ -141,6 +153,10 @@ def main():
     args = parser.parse_args()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
+    if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
+        parser.error("字幕切分参数无效")
+    if args.max_len < args.min_len or args.max_words < args.min_words:
+        parser.error("最大值不能小于对应的短句合并阈值")
 
     input_path = Path(args.input)
     if not input_path.exists():
@@ -248,7 +264,10 @@ def main():
             print(f"first 5 items: {items[:5]}")
             print("--- end debug ---\n")
 
-        if not items:
+        if result.get("timestamp_granularity") == "segment" and result.get("segments"):
+            print("[解析] 云端词级时间码不完整，保留可用的句级时间范围...")
+            segments = [dict(segment) for segment in result["segments"]]
+        elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")
             segments = [{"start": 0, "end": int(duration * 1000), "text": result["text"]}]
         else:
@@ -256,6 +275,8 @@ def main():
             segments = build_segments(
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
+                max_words=args.max_words, min_words=args.min_words,
+                split_mode=split_mode_for_text(result.get("text", ""), result.get("language")),
             )
             print(f"[解析] 字幕整理完成：{len(segments)} 条。")
 
@@ -300,6 +321,7 @@ def main():
                     seg_items[k]["text"] = seg_items[k]["text"].rstrip(args.strip_tail_punct)
                     if seg_items[k]["text"]:
                         break
+                    seg_items.pop(k)
                     k -= 1
 
     print(f"[输出] 正在生成 SRT（{len(segments)} 条字幕）...")
@@ -336,17 +358,28 @@ def main():
         print(f"处理用时: {em}分{es}秒")
 
     if args.json_out:
+        language, language_source = resolve_language(
+            result.get("language"),
+            args.language,
+            str(result.get("text") or ""),
+        )
+        split_mode = split_mode_for_text(str(result.get("text") or ""), language)
         json_path = output_path.with_suffix(".mosp")
         json_data = {
             "media": str(input_path),
-            "language": result.get("language", ""),
+            "language": language,
+            "language_source": language_source,
+            "split_mode": split_mode,
+            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
+                result.get("items") or [], split_mode, has_segments=bool(segments)
+            ),
             "model": f"soniox-{args.model or config['model']}",
             "segments": [
                 {
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": seg["text"],
-                    "items": seg.get("items", []),
+                    **({"items": seg["items"]} if "items" in seg else {}),
                     **({"speaker": seg["speaker"]} if seg.get("speaker") else {}),
                     **({"color": seg["color"]} if seg.get("color") else {}),
                     **({"color_ref": seg["color_ref"]} if seg.get("color_ref") else {}),
