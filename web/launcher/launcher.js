@@ -349,6 +349,7 @@
     device_auto: "自动",
     device_cpu: "CPU",
     device_cuda: "CUDA",
+    local_checking: "正在检查本地模型……",
     local_runtime_missing: "本地运行时未安装",
     local_missing: "未检测到本地模型",
     local_partial: "已检测到主模型，但仍缺少组件",
@@ -365,6 +366,7 @@
     local_runtime_install: "安装本地模型支持",
     local_runtime_repair: "修复运行环境",
     local_runtime_cancel: "取消安装",
+    local_runtime_checking: "正在检查本地运行环境……",
     local_runtime_missing: "本地运行环境未安装",
     local_runtime_installing: "正在安装本地运行环境……",
     local_runtime_ready: "本地运行环境已就绪",
@@ -428,6 +430,7 @@
     device_auto: "Auto",
     device_cpu: "CPU",
     device_cuda: "CUDA",
+    local_checking: "Checking the local model…",
     local_runtime_missing: "Local runtime is not installed",
     local_missing: "No local model detected",
     local_partial: "Main model found, but components are missing",
@@ -444,6 +447,7 @@
     local_runtime_install: "Install local model support",
     local_runtime_repair: "Repair runtime",
     local_runtime_cancel: "Cancel installation",
+    local_runtime_checking: "Checking the local runtime…",
     local_runtime_missing: "Local runtime is not installed",
     local_runtime_installing: "Installing the local runtime…",
     local_runtime_ready: "Local runtime is ready",
@@ -720,6 +724,7 @@
     ocr_runtime_install: "安装 OCR 支持",
     ocr_runtime_repair: "修复 OCR 支持",
     ocr_runtime_cancel: "取消安装",
+    ocr_runtime_checking: "正在检查 OCR 支持……",
     ocr_runtime_missing: "OCR 支持未安装",
     ocr_runtime_installing: "正在安装 OCR 支持……",
     ocr_runtime_ready: "OCR 支持已就绪",
@@ -756,6 +761,7 @@
     ocr_runtime_install: "Install OCR support",
     ocr_runtime_repair: "Repair OCR support",
     ocr_runtime_cancel: "Cancel installation",
+    ocr_runtime_checking: "Checking OCR support…",
     ocr_runtime_missing: "OCR support is not installed",
     ocr_runtime_installing: "Installing OCR support…",
     ocr_runtime_ready: "OCR support is ready",
@@ -972,6 +978,16 @@
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
+  let defaultOutputRequest = 0;
+  let ffmpegRequest = 0;
+  let serverStatusRequest = 0;
+  let ocrRuntimeRequest = 0;
+  let localRuntimeRequest = 0;
+  let localModelsRequest = 0;
+  // Runtime and model checks both update localRuntime.  A single revision
+  // prevents an older request of either kind from putting stale status back
+  // after a newer check has already completed.
+  let localStatusRequest = 0;
   let activeSettingsTab = "general";
 
   function mockApi() {
@@ -1391,6 +1407,9 @@
   function setTheme(pref) { if (!isThemePreference(pref)) return; state.theme = pref; storeTheme(pref); applyTheme(); void bridge("save_prefs", { theme: pref }).then((result) => { if (result.ok) { if (state.config) state.config.theme = pref; } else applyErrorResult(result); }); }
   function revealLauncher() {
     state.initializing = false;
+    const shell = document.querySelector(".shell");
+    shell?.removeAttribute("inert");
+    shell?.setAttribute("aria-busy", "false");
     document.body.classList.add("launcher-ready");
   }
 
@@ -1444,7 +1463,7 @@
     $("stopServer").disabled = state.serverStarting || state.serverStopping;
   }
   async function stopEditorServer() { if (state.serverStopping) return; state.serverStopping = true; renderServerButton(); try { const result = await bridge("stop_server", serverPayload()); if (!result.ok) { applyErrorResult(result); return; } state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; setStatus(t("ready")); } finally { state.serverStopping = false; renderServerButton(); } }
-  async function checkExistingServer(prefix = "") { const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); }
+  async function checkExistingServer(prefix = "") { const requestId = ++serverStatusRequest; const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (requestId !== serverStatusRequest) return result; if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); }
   function syncHtmlMenu() { const enabled = $("generateHtml").checked; $("openHtml").classList.toggle("hidden", !enabled); $("openHtml").disabled = enabled && !state.result?.htmlPath; }
   function renderChevron(id) { const arrow = $(id).querySelector(".chevron"); if (arrow) arrow.textContent = $(id).classList.contains("collapsed") ? "▸" : "▾"; }
   function renderStickerCurrent() { $("stickerCurrent").textContent = state.config?.stickerDir || t("unset"); $("stickerDir").value = state.config?.stickerDir || ""; }
@@ -1517,8 +1536,8 @@
   function renderLocalRuntime() {
     if (!isLocalProvider()) return;
     const runtime = state.config.localRuntime || {};
-    const installing = state.localRuntimeInstalling;
-    const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing", installing: "local_runtime_installing" }[runtime.status] || "local_runtime_missing");
+    const installing = state.localRuntimeInstalling || runtime.status === "installing";
+    const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing", checking: "local_runtime_checking", installing: "local_runtime_installing" }[runtime.status] || "local_runtime_missing");
     renderLocalRuntimePaths(runtime);
     const target = $("localRuntimeStatus");
     // 实时流水只保留在进度条下方的 ProgressMessage 行，避免上下双显同一句。
@@ -1538,8 +1557,8 @@
   }
   function renderOcrRuntime() {
     const runtime = state.config?.ocrRuntime || {};
-    const installing = state.ocrRuntimeInstalling;
-    const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing", installing: "ocr_runtime_installing" }[runtime.status] || "ocr_runtime_missing");
+    const installing = state.ocrRuntimeInstalling || runtime.status === "installing";
+    const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing", checking: "ocr_runtime_checking", installing: "ocr_runtime_installing" }[runtime.status] || "ocr_runtime_missing");
     const target = $("ocrRuntimeStatus");
     // 与 localRuntime 一致：状态行固定文案，实时流水只在进度条下方。
     target.textContent = t(key);
@@ -1558,7 +1577,9 @@
     window.MAWLauncher?.onOcrRuntimeChanged?.();
   }
   async function refreshOcrRuntime() {
+    const requestId = ++ocrRuntimeRequest;
     const result = await bridge("get_ocr_runtime");
+    if (requestId !== ocrRuntimeRequest) return result;
     if (!result.ok) { applyErrorResult(result); return result; }
     state.config.ocrRuntime = result;
     state.config.ocrModels = result.models || state.config.ocrModels || [];
@@ -1566,8 +1587,10 @@
     return result;
   }
   async function saveOcrRuntimePath(path) {
+    const requestId = ++ocrRuntimeRequest;
     const value = String(path || "").trim();
     const result = await bridge("save_ocr_settings", { runtimePath: value });
+    if (requestId !== ocrRuntimeRequest) return result;
     if (!result.ok) {
       applyErrorResult(result);
       return result;
@@ -1584,7 +1607,7 @@
     const status = localStatus();
     const preparing = state.localPreparing;
     const target = $("localModelStatus");
-    const key = status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing" }[status.status] || "local_missing");
+    const key = status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing", checking: "local_checking" }[status.status] || "local_missing");
     // 与 runtime 面板一致：preparing 状态行固定"正在准备"文案，实时流水只在进度条下方。
     target.textContent = t(preparing ? "local_prepare_running" : key);
     target.className = `local-status ${preparing ? "warn" : (status.status === "installed" ? "ready" : "warn")}`;
@@ -1608,7 +1631,11 @@
   }
   async function refreshLocalRuntime() {
     if (!isLocalProvider()) return;
+    const requestId = ++localRuntimeRequest;
+    const statusRequestId = ++localStatusRequest;
+    const modelId = $("model").value;
     const result = await bridge("get_local_runtime", { modelId: $("model").value });
+    if (requestId !== localRuntimeRequest || statusRequestId !== localStatusRequest || !isLocalProvider() || $("model").value !== modelId) return result;
     if (!result.ok) { applyErrorResult(result); return result; }
     state.config.localRuntime = result;
     state.config.modelCacheRoot = result.modelCachePath || state.config.modelCacheRoot || "";
@@ -1617,7 +1644,12 @@
   }
   async function refreshLocalModels() {
     if (!isLocalProvider()) return;
-    const result = await bridge("get_local_models", { modelId: $("model").value, modelPath: $("localModelPath").value.trim() });
+    const requestId = ++localModelsRequest;
+    const statusRequestId = ++localStatusRequest;
+    const modelId = $("model").value;
+    const modelPath = $("localModelPath").value.trim();
+    const result = await bridge("get_local_models", { modelId, modelPath });
+    if (requestId !== localModelsRequest || statusRequestId !== localStatusRequest || !isLocalProvider() || $("model").value !== modelId || $("localModelPath").value.trim() !== modelPath) return result;
     if (!result.ok) { applyErrorResult(result); return result; }
     if (result.runtime) {
       state.config.localRuntime = result.runtime;
@@ -1645,7 +1677,6 @@
       return result;
     }
     state.config.modelCacheRoot = result.modelCacheRoot || value;
-    await refreshLocalRuntime();
     await refreshLocalModels();
     setError("localModelCachePath", "");
     setStatus(t("saved"));
@@ -1685,7 +1716,6 @@
     if (local) {
       renderLocalRuntime();
       if (!state.initializing) {
-        void refreshLocalRuntime();
         void refreshLocalModels();
       }
     }
@@ -1723,7 +1753,7 @@
     event.preventDefault();
     persistZoomPercent(event.key === "0" ? ZOOM_DEFAULT : state.config.zoomPercent + direction * ZOOM_STEP);
   }
-  async function syncDefaultOutput() { const result = await bridge("default_output", { mediaPath: $("mediaPath").value.trim(), providerId: $("provider").value, modelId: $("model").value, testRun: $("testRun").checked }); const path = result.ok ? result.path : ""; $("srtPath").placeholder = path; if (state.srtAuto) { $("srtPath").value = path; if (path) setError("srtPath", ""); setOutputNotice(result.renamed ? t("output_collision") : ""); } else setOutputNotice(""); }
+  async function syncDefaultOutput() { const requestId = ++defaultOutputRequest; const result = await bridge("default_output", { mediaPath: $("mediaPath").value.trim(), providerId: $("provider").value, modelId: $("model").value, testRun: $("testRun").checked }); if (requestId !== defaultOutputRequest) return result; const path = result.ok ? result.path : ""; $("srtPath").placeholder = path; if (state.srtAuto) { $("srtPath").value = path; if (path) setError("srtPath", ""); setOutputNotice(result.renamed ? t("output_collision") : ""); } else setOutputNotice(""); return result; }
   function syncFlvHints() {
     $("mediaPathFlvHint")?.classList.toggle("hidden", ext($("mediaPath").value.trim()) !== ".flv");
     $("serverMediaFlvHint")?.classList.toggle("hidden", ext($("serverMediaPath").value.trim()) !== ".flv");
@@ -1749,7 +1779,7 @@
   function setJsonPath(path) { $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); window.MAWLauncher?.onProjectPathChanged?.(); }
   function applyErrorResult(result, logDetail = true) { const detail = result.detail || result.error || ""; const message = errText(result.code, detail); const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message); if (result.field) setError(result.field, fieldMessage); if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer(); if (result.postprocessStep) window.MAWLauncher?.openAutoPostprocessStep?.(result.postprocessStep, result.field); else if (result.field === "autoPostprocessEnabled") $("autoPostprocessCard")?.scrollIntoView({ behavior: "smooth", block: "start" }); setStatus(message); if (logDetail && detail) appendLog(`[detail] ${detail}`); showErrorNotice(message, result.code || "", detail); }
   function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["maxWords", 1], ["minWords", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); if (data.maxWords && data.minWords && Number(data.maxWords) < Number(data.minWords)) return fail("maxWords", errText("segmentation_invalid", "")); return true; }
-  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (provider().id === "openai" && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
+  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (provider().id === "openai" && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
   function fail(field, message) { setError(field, message); setStatus(message); const input = $(field); if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" }); return false; }
   function toggle(id) { $(id).classList.toggle("collapsed"); renderChevron(id); }
   function setupScrollbarFlash() {
@@ -1865,7 +1895,7 @@
     setError("mediaPath", mediaDropError());
   }
   async function refreshServerMedia() { const jsonPath = $("jsonPath").value.trim(); const result = await bridge("check_server_media", { jsonPath }); state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists); $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath); return result; }
-  async function refreshFfmpeg() { const result = await bridge("check_ffmpeg"); $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
+  async function refreshFfmpeg() { const requestId = ++ffmpegRequest; const result = await bridge("check_ffmpeg"); if (requestId !== ffmpegRequest) return result; $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
   function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
   function selectSettingsTab(tabName) {
     const tabs = [...document.querySelectorAll("[data-settings-tab]")];
@@ -1926,6 +1956,7 @@
     const projectPath = $("jsonPath").value.trim();
     const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
     if ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath)) { await bridge("open_url", { url: currentUrl }); return; }
+    serverStatusRequest += 1;
     state.serverStarting = true;
     renderServerButton();
     try {
@@ -1956,6 +1987,25 @@
     }
   }
 
+  function refreshStartupState() {
+    const tasks = [
+      ["default output", syncDefaultOutput()],
+      ["FFmpeg", refreshFfmpeg()],
+      ["server", checkExistingServer()],
+      ["OCR", refreshOcrRuntime()],
+    ];
+    if (isLocalProvider()) {
+      tasks.push(["local models", refreshLocalModels()]);
+    }
+    void Promise.allSettled(tasks.map(([, task]) => task)).then((results) => {
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          appendLog(`[init:${tasks[index][0]}] ${result.reason?.message || result.reason}`);
+        }
+      });
+    });
+  }
+
   async function init() {
     state.initializing = true;
     const realApi = await waitForBackend();
@@ -1976,21 +2026,19 @@
     applyTheme();
     state.config.zoomPercent = applyZoomPercent(state.config.zoomPercent);
     window.MAWLauncher.config = state.config;
-    const emojiFont = await bridge("get_emoji_font_path");
-    if (emojiFont && emojiFont.ok && emojiFont.path) injectEmojiFont(emojiFont.path);
+    void bridge("get_emoji_font_path").then((emojiFont) => {
+      if (emojiFont && emojiFont.ok && emojiFont.path) injectEmojiFont(emojiFont.path);
+    });
     state.lang = state.config.guiLang || "zh";
     fillSelect("provider", state.config.providers, state.config.providerId || "qwen");
     applyProvider(false);
     $("workspaceId").value = state.config.workspaceId || "";
     syncWorkspace(); syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage();
-    await syncDefaultOutput();
-    await refreshFfmpeg();
-    if (isLocalProvider()) await Promise.all([refreshLocalRuntime(), refreshLocalModels()]);
     appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled.");
     setStatus(t("ready"));
-    await checkExistingServer();
-    window.dispatchEvent(new CustomEvent("mawlauncherready"));
     revealLauncher();
+    window.dispatchEvent(new CustomEvent("mawlauncherready"));
+    refreshStartupState();
   }
 
   function handleBackendEvent(event) {
@@ -2025,53 +2073,70 @@
       appendLog(t("local_prepare_cancelled"));
     }
     if (event.type === "localRuntimeProgress") {
-      state.localRuntimeInstalling = true;
-      state.localRuntimeProgress = Number(event.percent || 0);
-      state.localRuntimeProgressMessage = event.message || "";
-      renderLocalRuntime();
+      const runtime = state.config?.localRuntime || {};
+      if (state.localRuntimeInstalling || runtime.status === "installing") {
+        state.localRuntimeProgress = Number(event.percent || 0);
+        state.localRuntimeProgressMessage = event.message || "";
+        renderLocalRuntime();
+      }
     }
     if (event.type === "localRuntimeReady") {
+      const runtime = state.config?.localRuntime || {};
+      const wasInstalling = state.localRuntimeInstalling || runtime.status === "installing";
       state.localRuntimeInstalling = false;
       state.localRuntimeProgress = 100;
       state.localRuntimeProgressMessage = "";
-      state.config.localRuntime = event.runtime || { status: "ready", ready: true };
       renderLocalRuntime();
-      void refreshLocalModels();
-      setStatus(t("local_runtime_install_done"));
-      appendLog(t("local_runtime_install_done"));
+      if (wasInstalling) {
+        void refreshLocalModels();
+        setStatus(t("local_runtime_install_done"));
+        appendLog(t("local_runtime_install_done"));
+      }
     }
     if (event.type === "localRuntimeCancelled") {
+      const runtime = state.config?.localRuntime || {};
+      const wasInstalling = state.localRuntimeInstalling || runtime.status === "installing";
       state.localRuntimeInstalling = false;
       state.localRuntimeProgressMessage = "";
-      void refreshLocalRuntime();
       renderLocalRuntime();
-      setStatus(t("local_runtime_cancelled"));
-      appendLog(t("local_runtime_cancelled"));
+      if (wasInstalling) {
+        void refreshLocalModels();
+        setStatus(t("local_runtime_cancelled"));
+        appendLog(t("local_runtime_cancelled"));
+      }
     }
     if (event.type === "ocrRuntimeProgress") {
-      state.ocrRuntimeInstalling = true;
-      state.ocrRuntimeProgress = Number(event.percent || 0);
-      state.ocrRuntimeProgressMessage = event.message || "";
-      renderOcrRuntime();
+      const runtime = state.config?.ocrRuntime || {};
+      if (state.ocrRuntimeInstalling || runtime.status === "installing") {
+        state.ocrRuntimeProgress = Number(event.percent || 0);
+        state.ocrRuntimeProgressMessage = event.message || "";
+        renderOcrRuntime();
+      }
     }
     if (event.type === "ocrRuntimeReady") {
+      const runtime = state.config?.ocrRuntime || {};
+      const wasInstalling = state.ocrRuntimeInstalling || runtime.status === "installing";
       state.ocrRuntimeInstalling = false;
       state.ocrRuntimeProgress = 100;
       state.ocrRuntimeProgressMessage = "";
-      state.config.ocrRuntime = event.runtime || { status: "ready", ready: true };
-      state.config.ocrModels = event.models || state.config.ocrModels || [];
       renderOcrRuntime();
-      void refreshOcrRuntime();
-      setStatus(t("ocr_runtime_install_done"));
-      appendLog(t("ocr_runtime_install_done"));
+      if (wasInstalling) {
+        void refreshOcrRuntime();
+        setStatus(t("ocr_runtime_install_done"));
+        appendLog(t("ocr_runtime_install_done"));
+      }
     }
     if (event.type === "ocrRuntimeCancelled") {
+      const runtime = state.config?.ocrRuntime || {};
+      const wasInstalling = state.ocrRuntimeInstalling || runtime.status === "installing";
       state.ocrRuntimeInstalling = false;
       state.ocrRuntimeProgressMessage = "";
-      void refreshOcrRuntime();
       renderOcrRuntime();
-      setStatus(t("ocr_runtime_cancelled"));
-      appendLog(t("ocr_runtime_cancelled"));
+      if (wasInstalling) {
+        void refreshOcrRuntime();
+        setStatus(t("ocr_runtime_cancelled"));
+        appendLog(t("ocr_runtime_cancelled"));
+      }
     }
     if (event.type === "error" && event.code === "local_prepare_failed") {
       state.localPreparing = false;
@@ -2081,18 +2146,28 @@
       $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     if (event.type === "error" && ["local_runtime_install_failed", "local_runtime_cancelled"].includes(event.code)) {
-      state.localRuntimeInstalling = false;
-      state.localRuntimeProgressMessage = "";
-      void refreshLocalRuntime();
-      renderLocalRuntime();
-      if (event.code === "local_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const runtime = state.config?.localRuntime || {};
+      if (state.localRuntimeInstalling || runtime.status === "installing") {
+        state.localRuntimeInstalling = false;
+        state.localRuntimeProgressMessage = "";
+        void refreshLocalModels();
+        renderLocalRuntime();
+        if (event.code === "local_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        return;
+      }
     }
     if (event.type === "error" && ["ocr_runtime_install_failed", "ocr_runtime_cancelled"].includes(event.code)) {
-      state.ocrRuntimeInstalling = false;
-      state.ocrRuntimeProgressMessage = "";
-      void refreshOcrRuntime();
-      renderOcrRuntime();
-      if (event.code === "ocr_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const runtime = state.config?.ocrRuntime || {};
+      if (state.ocrRuntimeInstalling || runtime.status === "installing") {
+        state.ocrRuntimeInstalling = false;
+        state.ocrRuntimeProgressMessage = "";
+        void refreshOcrRuntime();
+        renderOcrRuntime();
+        if (event.code === "ocr_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        return;
+      }
     }
     if (event.type === "error") {
       setRunning(false);
@@ -2142,7 +2217,7 @@
     const action = $("errorNotice").dataset.action;
     if (action === "ffmpeg-settings") openSettings("ffmpegSettingsSection", "ffmpegPath");
   });
-  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
+  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) void refreshLocalModels(); }); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
   $("testRun").addEventListener("change", syncTestRun);
   $("generateHtml").addEventListener("change", syncHtmlMenu);
   $("mediaPath").addEventListener("input", () => { setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); }); $("srtPath").addEventListener("input", () => { state.srtAuto = false; state.testSuffixAdded = false; setError("srtPath", ""); setOutputNotice(""); });
@@ -2161,10 +2236,10 @@
   $("ocrRuntimePath").addEventListener("input", () => setError("ocrRuntimePath", ""));
   $("ocrRuntimePath").addEventListener("change", async () => { await saveOcrRuntimePath($("ocrRuntimePath").value); });
   $("refreshOcrRuntime").addEventListener("click", async () => { $("refreshOcrRuntime").disabled = true; try { await refreshOcrRuntime(); } finally { $("refreshOcrRuntime").disabled = false; } });
-  $("installOcrRuntime").addEventListener("click", async () => { if (state.ocrRuntimeInstalling) { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: state.config.ocrRuntime?.status === "broken" }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
+  $("installOcrRuntime").addEventListener("click", async () => { const runtime = state.config?.ocrRuntime || {}; if (state.ocrRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: state.config.ocrRuntime?.status === "broken" }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
   $("localModelPath").addEventListener("input", () => { setError("localModelPath", ""); if (isLocalProvider()) { state.localModelPaths[selectedModel().id] = $("localModelPath").value.trim(); void refreshLocalModels(); } });
   $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocalRuntime").disabled = true; try { await refreshLocalRuntime(); await refreshLocalModels(); } finally { $("refreshLocalRuntime").disabled = false; } });
-  $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localRuntimeInstalling) { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
+  $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; const runtime = state.config?.localRuntime || {}; if (state.localRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
   $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
   $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
   $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));

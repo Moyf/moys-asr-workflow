@@ -7,7 +7,9 @@ formats to their adapters.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import math
+import unicodedata
+from collections.abc import Mapping, Sequence
 
 
 LANGUAGE_SOURCES = frozenset({"detected", "hint", "inferred", "unknown"})
@@ -166,6 +168,81 @@ def infer_language_code(text: str) -> str:
     return ""
 
 
+def normalize_timestamp_range(
+    start: object,
+    end: object,
+    *,
+    scale: float = 1.0,
+) -> tuple[int, int] | None:
+    """Convert one provider timestamp pair to integer milliseconds.
+
+    Providers use both milliseconds and seconds and occasionally return
+    malformed values.  A range is usable only when both values are finite,
+    non-negative, and the rounded end is strictly after the rounded start.
+    ``None`` is returned for anything else so adapters can discard the whole
+    sentence/token group instead of manufacturing a zero-width item.
+    """
+    if isinstance(start, bool) or isinstance(end, bool):
+        return None
+    try:
+        start_value = float(start)
+        end_value = float(end)
+        multiplier = float(scale)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if (
+        not math.isfinite(start_value)
+        or not math.isfinite(end_value)
+        or not math.isfinite(multiplier)
+        or multiplier <= 0
+        or start_value < 0
+        or end_value < 0
+    ):
+        return None
+    start_scaled = start_value * multiplier
+    end_scaled = end_value * multiplier
+    if not math.isfinite(start_scaled) or not math.isfinite(end_scaled):
+        return None
+    try:
+        start_ms = int(round(start_scaled))
+        end_ms = int(round(end_scaled))
+    except (OverflowError, ValueError):
+        return None
+    if end_ms <= start_ms:
+        return None
+    return start_ms, end_ms
+
+
+def timestamp_items_cover_text(text: str, items: Sequence[object]) -> bool:
+    """Return whether timestamp item text accounts for a complete cue.
+
+    Providers may omit whitespace and punctuation from aligned tokens, so the
+    comparison ignores Unicode whitespace and punctuation while retaining
+    letters, numbers, marks, and symbols such as emoji.  A false result means
+    that flattening the items would silently lose or invent cue text; callers
+    should keep the enclosing sentence range instead.
+    """
+    values: list[str] = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            return False
+        value = str(item.get("text") or "")
+        if value.strip():
+            values.append(value)
+    if not values or not str(text or "").strip():
+        return False
+
+    def key(value: str) -> str:
+        return "".join(
+            char.casefold()
+            for char in value
+            if not char.isspace()
+            and not unicodedata.category(char).startswith("P")
+        )
+
+    return key(str(text)) == key("".join(values))
+
+
 def resolve_language(
     raw_language: object,
     language_hint: object = None,
@@ -219,10 +296,15 @@ def timestamp_granularity_for_items(
     items: Sequence[object],
     split_mode: str,
     *,
-    explicit_items: bool = True,
+    explicit_items: bool = False,
     has_segments: bool = False,
 ) -> str:
-    """Describe item granularity without claiming precision for fallback items."""
+    """Describe item granularity without claiming precision for fallback items.
+
+    ``items`` can contain a sentence-level fallback item, so callers must opt
+    in only when they know every returned item came from explicit sub-segment
+    timestamps.
+    """
     if not items or not explicit_items:
         return "segment" if has_segments else "unknown"
     return "char" if split_mode == "continuous" else "word"
@@ -237,9 +319,11 @@ __all__ = [
     "TIMESTAMP_GRANULARITIES",
     "infer_language_code",
     "is_space_separated_language",
+    "normalize_timestamp_range",
     "normalize_language_code",
     "resolve_language",
     "split_mode_for_language",
     "split_mode_for_text",
+    "timestamp_items_cover_text",
     "timestamp_granularity_for_items",
 ]

@@ -36,8 +36,10 @@ from maw.language import (
     DEFAULT_MAX_WORDS,
     DEFAULT_MIN_WORDS,
     normalize_language_code,
+    normalize_timestamp_range,
     resolve_language,
     split_mode_for_text,
+    timestamp_items_cover_text,
     timestamp_granularity_for_items,
 )
 from maw.project_io import write_mosp
@@ -192,19 +194,10 @@ def _as_ms(value: object, default: int = 0) -> int:
     if value is None:
         return default
     try:
-        return int(round(float(value)))
-    except (TypeError, ValueError):
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
         return default
-
-
-def _as_seconds_ms(value: object, default: int = 0) -> int:
-    """Convert a Qwen timestamp expressed in fractional seconds to ms."""
-    if value is None:
-        return default
-    try:
-        return int(round(float(value) * 1000))
-    except (TypeError, ValueError):
-        return default
+    return int(round(number)) if math.isfinite(number) else default
 
 
 def _alignment_key(value: str) -> str:
@@ -216,7 +209,10 @@ def _alignment_key(value: str) -> str:
     )
 
 
-def _restore_qwen_alignment_text(text: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _restore_qwen_alignment_text(
+    text: str,
+    items: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], bool]:
     """Restore ASR spaces and punctuation onto forced-alignment timestamps.
 
     Qwen's forced aligner returns normalized word/character tokens without most
@@ -226,6 +222,7 @@ def _restore_qwen_alignment_text(text: str, items: list[dict[str, Any]]) -> list
     """
     restored = [dict(item) for item in items]
     cursor = 0
+    complete = True
 
     for index, item in enumerate(restored):
         token = _alignment_key(_as_text(item.get("text")))
@@ -248,7 +245,11 @@ def _restore_qwen_alignment_text(text: str, items: list[dict[str, Any]]) -> list
                 break
 
         if match_start is None or match_end is None:
+            complete = False
             continue
+
+        if _alignment_key(text[cursor:match_start]):
+            complete = False
 
         # Attach punctuation immediately following the aligned token. Whitespace
         # starts the next item so western-language spaces remain intact.
@@ -263,8 +264,10 @@ def _restore_qwen_alignment_text(text: str, items: list[dict[str, Any]]) -> list
         cursor = match_end
 
     if cursor < len(text) and restored:
+        if _alignment_key(text[cursor:]):
+            complete = False
         restored[-1]["text"] = f"{restored[-1]['text']}{text[cursor:]}"
-    return restored
+    return restored, complete
 
 
 def _speaker(value: object) -> str | None:
@@ -301,12 +304,12 @@ def _segment(
 
 
 def _timestamp_pair(value: object) -> tuple[int, int] | None:
-    uses_seconds = False
+    scale = 1.0
     if isinstance(value, Mapping):
-        if "start_time" in value or "end_time" in value:
+        if "start_time" in value and "end_time" in value:
             start = value.get("start_time")
             end = value.get("end_time")
-            uses_seconds = True
+            scale = 1000.0
         else:
             start = value.get(
                 "start",
@@ -314,7 +317,10 @@ def _timestamp_pair(value: object) -> tuple[int, int] | None:
             )
             end = value.get(
                 "end",
-                value.get("end_ms", value.get("end_time_ms")),
+                value.get(
+                    "end_ms",
+                    value.get("end_time_ms", value.get("end_time")),
+                ),
             )
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)) and len(value) >= 2:
         start, end = value[0], value[1]
@@ -322,8 +328,7 @@ def _timestamp_pair(value: object) -> tuple[int, int] | None:
         return None
     if start is None or end is None:
         return None
-    converter = _as_seconds_ms if uses_seconds else _as_ms
-    return converter(start), converter(end)
+    return normalize_timestamp_range(start, end, scale=scale)
 
 
 def _text_units(text: str, count: int) -> list[str]:
@@ -335,6 +340,20 @@ def _text_units(text: str, count: int) -> list[str]:
     if count == 1:
         return [text]
     return []
+
+
+def _timestamp_range(timestamps: object) -> tuple[int, int] | None:
+    """Return the outer range covered by every usable timestamp pair."""
+    if not isinstance(timestamps, Sequence) or isinstance(timestamps, (str, bytes)):
+        return None
+    pairs = [
+        pair
+        for value in timestamps
+        if (pair := _timestamp_pair(value)) is not None
+    ]
+    if not pairs:
+        return None
+    return min(pair[0] for pair in pairs), max(pair[1] for pair in pairs)
 
 
 def items_from_timestamps(text: str, timestamps: object) -> list[dict[str, Any]]:
@@ -419,7 +438,10 @@ def funasr_output_to_transcription(
     )
     segments: list[dict[str, Any]] = []
     all_items: list[dict[str, Any]] = []
+    sentence_texts: list[str] = []
     has_explicit_timestamp_items = False
+    has_fallback_segments = False
+    has_unranged_text = False
 
     for sentence in sentence_info:
         if not isinstance(sentence, Mapping):
@@ -430,39 +452,74 @@ def funasr_output_to_transcription(
         )
         if not text:
             continue
-        timestamp_items = items_from_timestamps(
-            text,
-            sentence.get("timestamp") or sentence.get("timestamps") or sentence.get("word_timestamps"),
+        sentence_texts.append(text)
+        raw_timestamps = (
+            sentence.get("timestamp")
+            or sentence.get("timestamps")
+            or sentence.get("word_timestamps")
         )
-        if len(timestamp_items) > 1:
-            has_explicit_timestamp_items = True
-        items = timestamp_items
-        start = _as_ms(sentence.get("start", sentence.get("begin_time")))
-        end = _as_ms(sentence.get("end", sentence.get("end_time")))
+        timestamp_items = items_from_timestamps(text, raw_timestamps)
+        items = timestamp_items if len(timestamp_items) > 1 else []
         if items:
-            start = items[0]["start"] if start == 0 else start
-            end = items[-1]["end"] if end == 0 else end
-        if end <= start:
+            has_explicit_timestamp_items = True
+        sentence_range = normalize_timestamp_range(
+            sentence.get("start", sentence.get("begin_time")),
+            sentence.get("end", sentence.get("end_time")),
+        )
+        timestamp_range = _timestamp_range(raw_timestamps)
+        if timestamp_range is not None:
+            if sentence_range is None:
+                sentence_range = timestamp_range
+            else:
+                sentence_range = (
+                    min(sentence_range[0], timestamp_range[0]),
+                    max(sentence_range[1], timestamp_range[1]),
+                )
+        if sentence_range is None:
+            has_unranged_text = True
             continue
+        start, end = sentence_range
         if not items:
-            items = [_item(text, start, end, sentence.get("spk", sentence.get("speaker")))]
+            has_fallback_segments = True
         speaker = sentence.get("spk", sentence.get("speaker", sentence.get("speaker_id")))
         if speaker is not None:
             for item in items:
                 item.setdefault("speaker", str(speaker))
-        segments.append(_segment(text, start, end, items, speaker))
+        segment = _segment(text, start, end, items, speaker)
+        if not items:
+            segment.pop("items", None)
+        segments.append(segment)
         all_items.extend(items)
 
-    text = _rich_funasr_text(payload.get("text"), enabled=rich_postprocess) or "".join(
-        segment["text"] for segment in segments
-    )
-    if not segments:
-        items = items_from_timestamps(
-            text,
-            payload.get("timestamp") or payload.get("timestamps") or payload.get("word_timestamps"),
+    text = _rich_funasr_text(payload.get("text"), enabled=rich_postprocess) or "".join(sentence_texts)
+    if (
+        text
+        and sentence_texts
+        and re.sub(r"\s+", "", text) != re.sub(r"\s+", "", "".join(sentence_texts))
+    ):
+        # A partial sentence list must not make text outside the listed ranges
+        # disappear when the caller builds cues from ``segments``.
+        has_unranged_text = True
+    if has_unranged_text:
+        # The caller knows the media duration, so an unplaced sentence can be
+        # preserved as one whole-media fallback instead of being silently lost.
+        all_items = []
+        segments = []
+    if not segments and not has_unranged_text:
+        raw_timestamps = (
+            payload.get("timestamp")
+            or payload.get("timestamps")
+            or payload.get("word_timestamps")
         )
-        all_items = items
-        has_explicit_timestamp_items = len(items) > 1
+        timestamp_items = items_from_timestamps(text, raw_timestamps)
+        all_items = timestamp_items if len(timestamp_items) > 1 else []
+        has_explicit_timestamp_items = bool(all_items)
+        fallback_range = _timestamp_range(raw_timestamps)
+        if not all_items and fallback_range is not None and text:
+            start, end = fallback_range
+            if end > start:
+                segments = [{"start": start, "end": end, "text": text}]
+                has_fallback_segments = True
 
     language, language_source = resolve_language(
         payload.get("language") or payload.get("lang"),
@@ -473,7 +530,7 @@ def funasr_output_to_transcription(
     timestamp_granularity = timestamp_granularity_for_items(
         all_items,
         split_mode,
-        explicit_items=has_explicit_timestamp_items,
+        explicit_items=has_explicit_timestamp_items and not has_fallback_segments,
         has_segments=bool(segments),
     )
     return LocalTranscription(
@@ -585,13 +642,9 @@ class QwenAsrEngine:
         result = runtime.transcribe(**kwargs)
         first = result[0] if isinstance(result, Sequence) and not isinstance(result, (str, bytes)) else result
         text = _as_text(_read_field(first, "text"))
-        language_value, language_source = resolve_language(
-            _read_field(first, "language"),
-            language,
-            text,
-        )
-        uses_spaces = split_mode_for_text(text, language_value) == "word"
-        items: list[dict[str, Any]] = []
+        alignment_items: list[dict[str, Any]] = []
+        alignment_texts: list[str] = []
+        invalid_alignment = False
         timestamps = _read_field(
             first,
             "time_stamps",
@@ -600,31 +653,93 @@ class QwenAsrEngine:
         if isinstance(timestamps, Iterable) and not isinstance(timestamps, (str, bytes, Mapping)):
             for timestamp in timestamps:
                 timestamp_text = _as_text(_read_field(timestamp, "text"))
-                if not timestamp_text:
+                if not timestamp_text.strip():
                     continue
-                if uses_spaces and items and not timestamp_text.startswith(" "):
-                    timestamp_text = f" {timestamp_text}"
-                start = _as_seconds_ms(_read_field(timestamp, "start_time"))
-                end = _as_seconds_ms(_read_field(timestamp, "end_time"))
-                if end > start:
-                    items.append(_item(timestamp_text, start, end))
+                alignment_texts.append(timestamp_text)
+                timestamp_range = normalize_timestamp_range(
+                    _read_field(timestamp, "start_time"),
+                    _read_field(timestamp, "end_time"),
+                    scale=1000,
+                )
+                if timestamp_range is None:
+                    invalid_alignment = True
+                    continue
+                alignment_items.append(
+                    _item(timestamp_text, timestamp_range[0], timestamp_range[1])
+                )
+        alignment_text = text or "".join(alignment_texts).strip()
+        language_value, language_source = resolve_language(
+            _read_field(first, "language"),
+            language,
+            alignment_text,
+        )
+        split_mode = split_mode_for_text(alignment_text, language_value)
+        if not text and alignment_text:
+            # A few QwenASR wrappers omit the redundant transcript field but
+            # still return aligned tokens.  Resolve the language from the raw
+            # tokens first, then add spaces only for word-mode text; otherwise
+            # Chinese alignment tokens would be joined with incorrect spaces.
+            text = (
+                " ".join(str(item).strip() for item in alignment_texts)
+                if split_mode == "word"
+                else alignment_text
+            ).strip()
+        items: list[dict[str, Any]] = []
+        if not invalid_alignment:
+            for raw_item in alignment_items:
+                item = dict(raw_item)
+                if (
+                    split_mode == "word"
+                    and items
+                    and not str(item["text"]).startswith(" ")
+                ):
+                    item["text"] = f" {item['text']}"
+                items.append(item)
         if items:
-            items = _restore_qwen_alignment_text(text, items)
+            items, alignment_complete = _restore_qwen_alignment_text(text, items)
+            if not alignment_complete:
+                invalid_alignment = True
+                items = []
+        segments: list[dict[str, Any]] = []
+        if invalid_alignment and text:
+            sentence_range = normalize_timestamp_range(
+                _read_field(first, "start"),
+                _read_field(first, "end"),
+                scale=1000,
+            )
+            alignment_range = (
+                min(item["start"] for item in alignment_items),
+                max(item["end"] for item in alignment_items),
+            ) if alignment_items else None
+            if alignment_range is not None:
+                if sentence_range is None:
+                    sentence_range = alignment_range
+                else:
+                    sentence_range = (
+                        min(sentence_range[0], alignment_range[0]),
+                        max(sentence_range[1], alignment_range[1]),
+                    )
+            if sentence_range is not None:
+                segments.append({
+                    "start": sentence_range[0],
+                    "end": sentence_range[1],
+                    "text": text,
+                })
         if on_event:
             on_event(f"[local] detected language: {language_value or 'unknown'}")
-        split_mode = split_mode_for_text(text, language_value)
         return LocalTranscription(
             text,
             language_value,
             items,
-            [],
+            segments,
             self.model,
             language_source,
             split_mode,
             timestamp_granularity_for_items(
                 items,
                 split_mode,
-                has_segments=not bool(items) and bool(text),
+                explicit_items=bool(items) and not invalid_alignment,
+                has_segments=bool(segments) or bool(text),
             ),
         )
 
@@ -684,20 +799,21 @@ class QwenAsrEngine:
             shifted_segment = dict(segment)
             shifted_segment["start"] = _as_ms(segment.get("start")) + offset_ms
             shifted_segment["end"] = _as_ms(segment.get("end")) + offset_ms
-            shifted_items: list[dict[str, Any]] = []
-            for item_index, item in enumerate(segment.get("items") or []):
-                shifted_item = dict(item)
-                shifted_item["start"] = _as_ms(item.get("start")) + offset_ms
-                shifted_item["end"] = _as_ms(item.get("end")) + offset_ms
-                if (
-                    add_leading_space
-                    and item_index == 0
-                    and shifted_item.get("text")
-                    and not str(shifted_item["text"]).startswith(" ")
-                ):
-                    shifted_item["text"] = f" {shifted_item['text']}"
-                shifted_items.append(shifted_item)
-            shifted_segment["items"] = shifted_items
+            if "items" in segment:
+                shifted_items: list[dict[str, Any]] = []
+                for item_index, item in enumerate(segment.get("items") or []):
+                    shifted_item = dict(item)
+                    shifted_item["start"] = _as_ms(item.get("start")) + offset_ms
+                    shifted_item["end"] = _as_ms(item.get("end")) + offset_ms
+                    if (
+                        add_leading_space
+                        and item_index == 0
+                        and shifted_item.get("text")
+                        and not str(shifted_item["text"]).startswith(" ")
+                    ):
+                        shifted_item["text"] = f" {shifted_item['text']}"
+                    shifted_items.append(shifted_item)
+                shifted_segment["items"] = shifted_items
             if (
                 add_leading_space
                 and shifted_segment.get("text")
@@ -784,6 +900,28 @@ class QwenAsrEngine:
                     hotwords=hotwords,
                     on_event=on_event,
                 )
+                if (
+                    chunk_result.text
+                    and not chunk_result.items
+                    and not chunk_result.segments
+                ):
+                    # A chunk without aligned items still needs its own
+                    # timed cue; otherwise a later aligned chunk would make
+                    # the unaligned text disappear during segmentation.
+                    chunk_result = LocalTranscription(
+                        chunk_result.text,
+                        chunk_result.language,
+                        chunk_result.items,
+                        [{
+                            "start": 0,
+                            "end": max(int(round(chunk_duration_s * 1000)), 1),
+                            "text": chunk_result.text,
+                        }],
+                        chunk_result.model,
+                        chunk_result.language_source,
+                        chunk_result.split_mode,
+                        chunk_result.timestamp_granularity,
+                    )
                 chunk_results.append(
                     self._shift_chunk_result(
                         chunk_result,
@@ -808,12 +946,34 @@ class QwenAsrEngine:
         texts: list[str] = []
         sample_text = next((result.text for result in chunk_results if result.text), "")
         uses_spaces = split_mode_for_text(sample_text, language_value) == "word"
+        has_fallback_chunk = any(
+            result.text
+            and result.timestamp_granularity not in {"word", "char"}
+            for result in chunk_results
+        )
+        has_explicit_chunk = any(
+            result.text
+            and result.timestamp_granularity in {"word", "char"}
+            for result in chunk_results
+        )
+        use_chunk_segments = has_fallback_chunk and has_explicit_chunk
         for chunk_index, result in enumerate(chunk_results):
             add_leading_space = uses_spaces and chunk_index > 0
             if add_leading_space:
                 result = self._shift_chunk_result(result, 0, add_leading_space=True)
             merged_items.extend(result.items)
-            merged_segments.extend(result.segments)
+            if use_chunk_segments:
+                if result.segments:
+                    merged_segments.extend(result.segments)
+                elif result.items:
+                    merged_segments.append({
+                        "start": result.items[0]["start"],
+                        "end": result.items[-1]["end"],
+                        "text": result.text,
+                        "items": [dict(item) for item in result.items],
+                    })
+            else:
+                merged_segments.extend(result.segments)
             if result.text:
                 texts.append(result.text.strip())
         text = (" ".join(texts) if uses_spaces else "".join(texts)).strip()
@@ -823,8 +983,9 @@ class QwenAsrEngine:
         timestamp_granularity = timestamp_granularity_for_items(
             merged_items,
             split_mode,
-            explicit_items=any(
-                result.timestamp_granularity in {"word", "char"}
+            explicit_items=bool(chunk_results) and all(
+                not result.text
+                or result.timestamp_granularity in {"word", "char"}
                 for result in chunk_results
             ),
             has_segments=bool(merged_segments) or bool(text),
@@ -1043,11 +1204,11 @@ class MossDiarizeEngine:
             if on_event is None:
                 return
             tokens = max(int(generated_tokens), 0)
+            if tokens <= 0:
+                return
             now = time.monotonic()
-            if tokens <= 0 or (
-                tokens != 1
-                and now - last_progress_at < MOSS_PROGRESS_INTERVAL_S
-            ):
+            # Always show the first callback, then throttle the noisy stream.
+            if last_progress_tokens and now - last_progress_at < MOSS_PROGRESS_INTERVAL_S:
                 return
             last_progress_at = now
             last_progress_tokens = tokens
@@ -1086,18 +1247,28 @@ class MossDiarizeEngine:
         parsed = parse_transcript(str(result.get("text") or ""))
         segments: list[dict[str, Any]] = []
         items: list[dict[str, Any]] = []
+        has_unranged_text = False
         for entry in parsed:
-            start = _as_seconds_ms(entry.start)
-            end = _as_seconds_ms(entry.end)
-            if end <= start or not entry.text:
+            timestamp = normalize_timestamp_range(entry.start, entry.end, scale=1000)
+            entry_text = str(entry.text or "")
+            if not entry_text.strip():
                 continue
+            if timestamp is None:
+                # A valid later segment cannot justify silently dropping this
+                # text.  Clear all segment precision below so the caller can
+                # preserve the complete transcript as one whole-media cue.
+                has_unranged_text = True
+                continue
+            start, end = timestamp
             # MOSS exposes one start/end pair per diarized segment.  It does
             # not expose word/character boundaries, so an item here would be
             # misleading and would make the shared splitter count characters
             # as words. Keep the segment timing and leave items absent.
-            segment = _segment(entry.text, start, end, [], entry.speaker)
+            segment = _segment(entry_text, start, end, [], entry.speaker)
             segment.pop("items", None)
             segments.append(segment)
+        if has_unranged_text:
+            segments = []
         if not segments and result.get("text") and on_event:
             on_event("[local] 警告：MOSS 返回的文本未解析出有效时间戳")
         for previous, current in zip(segments, segments[1:]):
@@ -1250,60 +1421,130 @@ class WhisperEngine:
         )
         items: list[dict[str, Any]] = []
         texts: list[str] = []
-        has_word_timestamps = False
+        engine_segments: list[dict[str, Any]] = []
+        has_fallback_segment = False
+        has_unranged_fallback = False
         # ``transcribe`` 返回生成器，迭代到 segment 时才真正执行推理。
         for segment in raw_segments:
-            start_ms = _as_seconds_ms(_read_field(segment, "start"))
-            end_ms = _as_seconds_ms(_read_field(segment, "end"))
             text_value = _as_text(_read_field(segment, "text")).strip()
             words = _read_field(segment, "words") or []
+            words = (
+                list(words)
+                if isinstance(words, Iterable)
+                and not isinstance(words, (str, bytes, Mapping))
+                else []
+            )
+            if not text_value:
+                # faster-whisper normally repeats the segment text, but some
+                # compatible wrappers expose only the word entries. Preserve
+                # that recognition text instead of returning timed items with
+                # an empty top-level transcript.
+                text_value = "".join(
+                    _as_text(_read_field(word, "word")) for word in words
+                ).strip()
             if uses_spaces is None:
                 mode_text = text_value or "".join(
                     _as_text(_read_field(word, "word")) for word in words
                 )
                 uses_spaces = split_mode_for_text(mode_text, language_value) == "word"
-            added_before = len(items)
-            if words:
-                has_word_timestamps = True
+            word_entries = [
+                word for word in words
+                if _as_text(_read_field(word, "word")).strip()
+            ]
+            valid_segment_range = normalize_timestamp_range(
+                _read_field(segment, "start"),
+                _read_field(segment, "end"),
+                scale=1000,
+            )
+            segment_items: list[dict[str, Any]] = []
+            invalid_word_timestamp = False
             for word in words:
                 word_text = _as_text(_read_field(word, "word"))
                 if not word_text.strip():
                     continue
-                start = _as_seconds_ms(_read_field(word, "start"))
-                end = _as_seconds_ms(_read_field(word, "end"))
-                if end <= start:
+                timestamp_range = normalize_timestamp_range(
+                    _read_field(word, "start"),
+                    _read_field(word, "end"),
+                    scale=1000,
+                )
+                if timestamp_range is None:
+                    invalid_word_timestamp = True
                     continue
-                if uses_spaces and items and not word_text.startswith(" "):
+                start, end = timestamp_range
+                if uses_spaces and (items or segment_items) and not word_text.startswith(" "):
                     word_text = f" {word_text}"
-                items.append(_item(word_text, start, end))
-            if len(items) == added_before and text_value and end_ms > start_ms:
-                # 带 VAD 的常规输出不会走到这里：仅在某句拿不到可用词级
-                # 时间戳时保留句级字幕，不伪造字词边界。
-                items.append(_item(text_value, start_ms, end_ms))
+                item = _item(word_text, start, end)
+                segment_items.append(item)
+            segment_item_range = (
+                min(item["start"] for item in segment_items),
+                max(item["end"] for item in segment_items),
+            ) if segment_items else None
+            if (
+                segment_items
+                and not invalid_word_timestamp
+                and text_value
+                and not timestamp_items_cover_text(text_value, segment_items)
+            ):
+                invalid_word_timestamp = True
+            # A segment with missing or partially unusable word timestamps is
+            # a sentence-level fallback. Do not label the whole response as
+            # word-granular just because the raw ``words`` field was present.
+            if invalid_word_timestamp:
+                fallback_item_range = segment_item_range
+                segment_items = []
+            else:
+                fallback_item_range = None
+            if text_value and (not word_entries or invalid_word_timestamp):
+                has_fallback_segment = True
+            if segment_item_range is not None:
+                if valid_segment_range is None:
+                    valid_segment_range = segment_item_range
+                else:
+                    valid_segment_range = (
+                        min(valid_segment_range[0], segment_item_range[0]),
+                        max(valid_segment_range[1], segment_item_range[1]),
+                    )
+            if segment_items and not invalid_word_timestamp:
+                items.extend(segment_items)
+            if invalid_word_timestamp and valid_segment_range is None:
+                valid_segment_range = fallback_item_range
+            if text_value and valid_segment_range is not None:
+                engine_segment = {
+                    "start": valid_segment_range[0],
+                    "end": valid_segment_range[1],
+                    "text": text_value,
+                }
+                if segment_items and not invalid_word_timestamp:
+                    engine_segment["items"] = [dict(item) for item in segment_items]
+                engine_segments.append(engine_segment)
+            elif text_value and (not word_entries or invalid_word_timestamp):
+                has_unranged_fallback = True
             if text_value:
                 texts.append(text_value.strip())
         if on_event:
             on_event(f"[local] detected language: {language_value or 'unknown'}")
-        text = (" ".join(texts) if uses_spaces else "".join(texts)).strip()
-        language_value, language_source = resolve_language(raw_language, language, text)
+        raw_text = "".join(texts)
+        language_value, language_source = resolve_language(raw_language, language, raw_text)
+        split_mode = split_mode_for_text(raw_text, language_value)
         # If the engine did not return language metadata, preserve natural
         # spaces for Latin-script text while keeping CJK text continuous.
-        if split_mode_for_text(text, language_value) == "word":
-            text = " ".join(texts).strip()
-        split_mode = split_mode_for_text(text, language_value)
+        text = (" ".join(texts) if split_mode == "word" else raw_text).strip()
+        segments = [] if has_unranged_fallback else engine_segments if has_fallback_segment else []
+        if has_unranged_fallback:
+            items = []
         return LocalTranscription(
             text,
             language_value,
             items,
-            [],
+            segments,
             self.model,
             language_source,
             split_mode,
             timestamp_granularity_for_items(
                 items,
                 split_mode,
-                explicit_items=has_word_timestamps,
-                has_segments=bool(text),
+                explicit_items=bool(items) and not has_fallback_segment,
+                has_segments=bool(segments) or bool(text),
             ),
         )
 
@@ -1384,6 +1625,12 @@ def _expand_coarse_item(item: Mapping[str, Any]) -> list[dict[str, Any]]:
     weights = _char_weight_weights(text)
     total_weight = sum(weights) or float(len(weights))
     span = end - start
+    if span < len(text):
+        # There is not enough integer-millisecond space for one positive
+        # range per character.  Keeping the coarse item preserves the valid
+        # enclosing range; forcing ``cursor + 1`` would make later items end
+        # before they start and lose the original boundary.
+        return [dict(item)]
     expanded: list[dict[str, Any]] = []
     consumed = 0.0
     cursor = start
@@ -1485,6 +1732,7 @@ def _strip_trailing_punct(segments: list[dict[str, Any]], strip_chars: str = _LO
                 segment_items[k]["text"] = segment_items[k]["text"].rstrip(strip_chars)
                 if segment_items[k]["text"]:
                     break
+                segment_items.pop(k)
                 k -= 1
 
 
