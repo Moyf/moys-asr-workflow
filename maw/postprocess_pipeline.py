@@ -441,11 +441,13 @@ def run_postprocess_pipeline(
     current_srt = resume_srt_path or srt_path
     current_translated_srt: Path | None = None
     translation_target: str | None = None
+    bilingual_output = False
     resume_count = max(0, resume_from)
     manifest_steps = manifest.get("steps")
     for previous_index, previous_step in enumerate(steps[:resume_count]):
         if str(previous_step.get("id") or "") == "translate":
             translation_target = str(previous_step.get("target") or "zh")
+            bilingual_output = bool(previous_step.get("mergeBilingual"))
             previous_manifest_step = (
                 manifest_steps[previous_index]
                 if isinstance(manifest_steps, list) and previous_index < len(manifest_steps)
@@ -466,6 +468,8 @@ def run_postprocess_pipeline(
             manifest_steps[index - 1]["status"] = "running"
             _write_manifest(run_directory, manifest)
             _emit(on_event, {"stage": "step_start", "index": index, "total": len(steps), "step": step_id})
+            translation_intermediate_project: Path | None = None
+            translation_intermediate_srt: Path | None = None
             try:
                 artifact = _run_step(
                     step,
@@ -482,7 +486,13 @@ def run_postprocess_pipeline(
                 )
                 if step_id == "translate":
                     translation_target = str(step.get("target") or "zh")
+                    bilingual_output = bool(step.get("mergeBilingual"))
                     if bool(step.get("mergeBilingual")):
+                        # Keep the standalone translation in the run directory
+                        # as an inspectable intermediate; only the merged
+                        # artifact is published as the final output.
+                        translation_intermediate_project = artifact.project_path
+                        translation_intermediate_srt = artifact.srt_path
                         artifact = _merge_bilingual_subtitles(
                             source_project_path=current_project,
                             source_srt_path=current_srt,
@@ -524,6 +534,10 @@ def run_postprocess_pipeline(
             manifest_steps[index - 1]["srtPath"] = str(current_srt)
             if current_translated_srt is not None:
                 manifest_steps[index - 1]["translatedSrtPath"] = str(current_translated_srt)
+            if translation_intermediate_project is not None:
+                manifest_steps[index - 1]["translationIntermediateProjectPath"] = str(translation_intermediate_project)
+            if translation_intermediate_srt is not None:
+                manifest_steps[index - 1]["translationIntermediateSrtPath"] = str(translation_intermediate_srt)
             _write_manifest(run_directory, manifest)
             _emit(on_event, {
                 "stage": "step_done",
@@ -541,6 +555,7 @@ def run_postprocess_pipeline(
             current_srt,
             translated_srt=current_translated_srt,
             translation_target=translation_target,
+            bilingual=bilingual_output,
         )
         manifest["status"] = "done"
         manifest["finalProjectPath"] = str(final_project)
@@ -866,7 +881,11 @@ def _merge_bilingual_subtitles(
         raise ValueError("翻译步骤没有生成完整的工程和 SRT 产物。")
     source_project = read_project(source_project_path)
     translated_project = read_project(translated_artifact.project_path)
-    merged = merge_bilingual_project(source_project, translated_project)
+    merged = merge_bilingual_project(
+        source_project,
+        translated_project,
+        translation_target=target,
+    )
     warnings = (
         *translated_artifact.warnings,
         "翻译前后的独立字幕已保留为中间产物，最终输出为单条双语字幕。",
@@ -916,11 +935,13 @@ def _publish_final(
     *,
     translated_srt: Path | None = None,
     translation_target: str | None = None,
+    bilingual: bool = False,
 ) -> tuple[Path, Path, Path | None]:
     source_srt = source_srt.expanduser().resolve()
     source_project = source_project.expanduser().resolve()
     suffix = source_project.suffix.lower() if source_project.suffix.lower() in {".mosp", ".json"} else ".mosp"
-    base = source_srt.with_name(f"{source_srt.stem}.postprocess")
+    bilingual_suffix = ".bilingual" if bilingual else ""
+    base = source_srt.with_name(f"{source_srt.stem}.postprocess{bilingual_suffix}")
     counter = 1
     while True:
         marker = "" if counter == 1 else f"-{counter}"

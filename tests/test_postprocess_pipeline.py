@@ -265,13 +265,73 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual([segment["text"] for segment in merged["segments"]], ["错字\nTranslation one", "保留\nTranslation two"])
         self.assertNotIn("multi_subtitle", merged)
         self.assertIsNone(result.translated_srt_path)
+        self.assertEqual(result.project_path.name, "clip.postprocess.bilingual.mosp")
+        self.assertEqual(result.srt_path.name, "clip.postprocess.bilingual.srt")
         self.assertTrue(result.run_directory.is_dir())
+        self.assertTrue((result.run_directory / translated_project.name).is_file())
         self.assertTrue((result.run_directory / translated_srt.name).is_file())
         self.assertIn("Translation one", (result.run_directory / translated_srt.name).read_text(encoding="utf-8"))
         self.assertNotIn("multi_subtitle", json.loads(result.project_path.read_text(encoding="utf-8")))
         self.assertFalse((self.root / "clip.postprocess.translate-en.srt").exists())
         manifest = json.loads((result.run_directory / "manifest.json").read_text(encoding="utf-8"))
         self.assertNotIn("finalTranslatedSrtPath", manifest)
+        step_manifest = manifest["steps"][0]
+        self.assertEqual(step_manifest["translationIntermediateProjectPath"], str((result.run_directory / translated_project.name).resolve()))
+        self.assertEqual(step_manifest["translationIntermediateSrtPath"], str((result.run_directory / translated_srt.name).resolve()))
+
+    def test_chinese_translation_merge_puts_translation_first(self) -> None:
+        translated_project = self.root / "translated.mosp"
+        translated_srt = self.root / "translated.srt"
+        translated_project.write_text(
+            json.dumps({
+                "segments": [
+                    {"start": 0, "end": 1000, "text": "中文一"},
+                    {"start": 1100, "end": 2000, "text": "中文二"},
+                ]
+            }),
+            encoding="utf-8",
+        )
+        translated_srt.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\n中文一\n\n2\n00:00:01,100 --> 00:00:02,000\n中文二\n",
+            encoding="utf-8",
+        )
+
+        def fake_translate(request: LlmPostprocessRequest, *, complete: object, on_status: object) -> SubtitleArtifact:
+            del complete, on_status
+            output_directory = request.output_directory
+            if not isinstance(output_directory, Path):
+                raise AssertionError("translation request should contain an output directory")
+            output_project = output_directory / translated_project.name
+            output_srt = output_directory / translated_srt.name
+            output_project.write_text(translated_project.read_text(encoding="utf-8"), encoding="utf-8")
+            output_srt.write_text(translated_srt.read_text(encoding="utf-8"), encoding="utf-8")
+            return SubtitleArtifact(request.project_path, request.srt_path, output_project, output_srt)
+
+        translate_step = {
+            "id": "translate",
+            "enabled": True,
+            "providerId": "deepseek",
+            "target": "zh",
+            "mergeBilingual": True,
+            "customPrompt": "",
+        }
+        with mock.patch("maw.postprocess_pipeline.run_llm_postprocess", side_effect=fake_translate):
+            result = run_postprocess_pipeline(
+                self.plan(translate_step, retain=True),
+                media_path=self.media,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=None,
+                cancel_event=Event(),
+                llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}},
+            )
+
+        merged = json.loads(result.project_path.read_text(encoding="utf-8"))
+        self.assertEqual([segment["text"] for segment in merged["segments"]], ["中文一\n错字", "中文二\n保留"])
+        self.assertEqual(result.project_path.name, "clip.postprocess.bilingual.mosp")
+        self.assertEqual(result.srt_path.name, "clip.postprocess.bilingual.srt")
+        self.assertIn("中文一\n错字", result.srt_path.read_text(encoding="utf-8"))
 
     def test_validation_requires_a_step_and_checks_ocr_dependencies(self) -> None:
         empty_plan = default_postprocess_plan()

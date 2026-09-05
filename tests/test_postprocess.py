@@ -20,6 +20,7 @@ from maw.postprocess import (
     ReplacementRequest,
     run_fixed_process,
     apply_llm_groups,
+    merge_bilingual_project,
     run_fixed_replacement,
     run_llm_postprocess,
 )
@@ -712,12 +713,14 @@ class PostprocessTests(unittest.TestCase):
         project = sample_project(self.media)
         segments = project_segments(project)
         segments[0]["disabled"] = True
+        segments.append({"start": 2400, "end": 3000, "text": " \n"})
 
         rendered = render_srt(project)
 
         self.assertNotIn("酒很好喝", rendered)
         self.assertIn("1\n00:00:01,200 --> 00:00:02,200\n下一句", rendered)
         self.assertNotIn("\n2\n", rendered)
+        self.assertNotIn("00:00:02,400 --> 00:00:03,000", rendered)
 
     def test_srt_output_is_written_as_utf8_with_bom(self) -> None:
         target = self.root / "captions.srt"
@@ -1180,6 +1183,7 @@ class PostprocessTests(unittest.TestCase):
             "tracks": [{"id": "old-extension", "segments": []}],
             "bindings": [],
         }
+        source["extensionSegments"] = [{"start": 100, "end": 900, "text": "旧版副轨"}]
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         result = run_llm_postprocess(
             LlmPostprocessRequest(
@@ -1206,11 +1210,169 @@ class PostprocessTests(unittest.TestCase):
             ["酒很好喝\nThe wine is delicious.", "下一句\nThe next sentence."],
         )
         self.assertTrue(all("items" not in segment for segment in merged))
+        self.assertNotIn("extensionSegments", read_project(result.project_path))
         self.assertEqual(merged[0]["speaker"], "speaker-1")
         self.assertEqual(merged[1]["color"], project_segments(read_project(self.project_path))[1]["color"])
         self.assertIsNone(result.translated_srt_path)
+        self.assertEqual(result.project_path.name, "clip.translate-en-bilingual.mosp")
+        self.assertEqual(result.srt_path.name, "clip.translate-en-bilingual.srt")
         self.assertIn("酒很好喝\nThe wine is delicious.", result.srt_path.read_text(encoding="utf-8"))
         self.assertIn("已将原始文本和翻译文本合并", "\n".join(result.warnings))
+
+    def test_bilingual_merge_drops_empty_cues_and_legacy_extension_segments(self) -> None:
+        source = {
+            "segments": [
+                {"id": "main-1", "start": 0, "end": 1000, "text": "原文一"},
+                {"id": "main-2", "start": 1000, "end": 2000, "text": " "},
+                {"id": "main-3", "start": 2000, "end": 3000, "text": "仅原文"},
+                {"id": "main-4", "start": 3000, "end": 4000, "text": ""},
+            ],
+            "extensionSegments": [{"start": 0, "end": 1000, "text": "旧版副轨"}],
+            "multi_subtitle": {"enabled": True, "tracks": [], "bindings": []},
+        }
+        translated = {
+            "segments": [
+                {"id": "main-1", "start": 0, "end": 1000, "text": "译文一"},
+                {"id": "main-2", "start": 1000, "end": 2000, "text": ""},
+                {"id": "main-3", "start": 2000, "end": 3000, "text": " "},
+                {"id": "main-4", "start": 3000, "end": 4000, "text": "仅译文"},
+            ],
+        }
+
+        merged = merge_bilingual_project(source, translated, translation_target="zh")
+
+        segments = project_segments(merged)
+        self.assertEqual(
+            [segment["text"] for segment in segments],
+            ["译文一\n原文一", "仅原文", "仅译文"],
+        )
+        self.assertNotIn("multi_subtitle", merged)
+        self.assertNotIn("extensionSegments", merged)
+        rendered = render_srt(merged)
+        self.assertEqual(rendered.count("-->"), 3)
+        self.assertNotIn("\n\n\n", rendered)
+
+    def test_bilingual_project_output_blocks_retranslation_and_marks_bilingual_suffix(self) -> None:
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.BOTH,
+                operation="translate_en",
+                custom_prompt="",
+                merge_bilingual=True,
+            ),
+            complete=lambda _prompt, cues: {
+                "groups": [{"id": cue["id"], "text": f"Translation {cue['id']}"} for cue in cues]
+            },
+        )
+
+        if result.project_path is None or result.srt_path is None:
+            self.fail("both output mode must create project and SRT files")
+        self.assertEqual(result.project_path.name, "clip.translate-en-bilingual.mosp")
+        self.assertEqual(result.srt_path.name, "clip.translate-en-bilingual.srt")
+        with self.assertRaisesRegex(ValueError, "双语字幕命名规则"):
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=result.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="translate_zh",
+                    custom_prompt="",
+                ),
+                complete=lambda _prompt, _cues: self.fail("bilingual project must not be translated again"),
+            )
+
+    def test_bilingual_srt_input_blocks_retranslation_and_marks_bilingual_suffix(self) -> None:
+        source_srt = self.root / "captions.srt"
+        source_srt.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\n原文\n",
+            encoding="utf-8",
+        )
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=None,
+                srt_path=source_srt,
+                output_mode=OutputMode.BOTH,
+                operation="translate_en",
+                custom_prompt="",
+                media_path=self.media,
+                merge_bilingual=True,
+            ),
+            complete=lambda _prompt, cues: {
+                "groups": [{"id": cue["id"], "text": "Translation"} for cue in cues]
+            },
+        )
+
+        if result.project_path is None or result.srt_path is None:
+            self.fail("both output mode must create project and SRT files")
+        self.assertEqual(result.project_path.name, "captions.translate-en-bilingual.mosp")
+        self.assertEqual(result.srt_path.name, "captions.translate-en-bilingual.srt")
+        with self.assertRaisesRegex(ValueError, "双语字幕命名规则"):
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=None,
+                    srt_path=result.srt_path,
+                    output_mode=OutputMode.SRT,
+                    operation="translate_zh",
+                    custom_prompt="",
+                ),
+                complete=lambda _prompt, _cues: self.fail("bilingual SRT must not be translated again"),
+            )
+
+    def test_bilingual_marker_does_not_match_a_longer_filename_token(self) -> None:
+        source = self.root / "captions.bilingualish.srt"
+        source.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\n原文\n",
+            encoding="utf-8",
+        )
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=None,
+                srt_path=source,
+                output_mode=OutputMode.SRT,
+                operation="translate_en",
+                custom_prompt="",
+                merge_bilingual=True,
+            ),
+            complete=lambda _prompt, cues: {
+                "groups": [{"id": cue["id"], "text": "Translation"} for cue in cues]
+            },
+        )
+
+        self.assertIsNotNone(result.srt_path)
+        self.assertEqual(result.srt_path.name, "captions.bilingualish.translate-en-bilingual.srt")
+
+    def test_llm_chinese_translation_is_first_when_bilingual_subtitles_are_merged(self) -> None:
+        source = read_project(self.project_path)
+        source["segments"][0]["text"] = "The wine is delicious."
+        source["segments"][1]["text"] = "The next sentence."
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="translate_zh",
+                custom_prompt="",
+                merge_bilingual=True,
+            ),
+            complete=lambda _prompt, _cues: {
+                "groups": [
+                    {"id": "c0001", "text": "酒很好喝"},
+                    {"id": "c0002", "text": "下一句"},
+                ]
+            },
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        merged = project_segments(read_project(result.project_path))
+        self.assertEqual(
+            [segment["text"] for segment in merged],
+            ["酒很好喝\nThe wine is delicious.", "下一句\nThe next sentence."],
+        )
 
     def test_llm_translation_does_not_write_when_every_group_is_invalid(self) -> None:
         def complete(_system_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
