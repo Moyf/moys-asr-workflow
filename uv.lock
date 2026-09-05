@@ -1544,11 +1544,7 @@ requires-dist = [
     { name = "opencc-python-reimplemented", specifier = ">=0.1.7" },
     { name = "pywebview", marker = "sys_platform != 'linux'", specifier = ">=6.2.1" },
     { name = "pywebview", extras = ["qt"], marker = "sys_platform == 'linux'", specifier = ">=6.2.1" },
-<<<<<<< HEAD
-    { name = "reapeaks", specifier = ">=0.3.2" },
-=======
     { name = "quapeaks", specifier = ">=2026.0.0" },
->>>>>>> 548e81a0 (refactor!: 依赖切 quapeaks>=2026.0.0，maw/reapeaks.py 改名 maw/quapeaks.py)
     { name = "requests", specifier = ">=2.28" },
 ]
 
@@ -1563,10 +1559,6 @@ local = [
     { name = "jieba", specifier = ">=0.42" },
     { name = "quapeaks", specifier = ">=2026.0.0" },
     { name = "qwen-asr", specifier = ">=0.0.6" },
-<<<<<<< HEAD
-    { name = "reapeaks", specifier = ">=0.3.2" },
-=======
->>>>>>> 548e81a0 (refactor!: 依赖切 quapeaks>=2026.0.0，maw/reapeaks.py 改名 maw/quapeaks.py)
     { name = "requests", specifier = ">=2.28" },
     { name = "torch", marker = "sys_platform != 'darwin'", specifier = "==2.13.0+cu130", index = "https://download.pytorch.org/whl/cu130" },
     { name = "torch", marker = "sys_platform == 'darwin'", specifier = ">=2.13.0" },
@@ -3106,20 +3098,6 @@ wheels = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "reapeaks"
-version = "0.3.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c3/f2/99c5d3021a5def1a520a6f407835b592780abc22d0fc286e04f4d30d5dda/reapeaks-0.3.2.tar.gz", hash = "sha256:c7bd455dd34229cbee35bbde71036479d06a1387ff63d9f09f810cea7750c291", size = 1099018, upload-time = "2026-09-04T03:31:44.403Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a9/f8/a8bd323fa37352b705a5eb630c891bb75a64348a7543247e87e368a7e8db/reapeaks-0.3.2-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:9c464121b7a34deb41aa2c56d53ed0b5013460b2c2f928abaa6aeb232331a9ae", size = 410240, upload-time = "2026-09-04T03:31:37.376Z" },
-    { url = "https://files.pythonhosted.org/packages/64/b6/13e7cc4cadaefb31cc16c32875fc6c0ef52aa3874360458b9f0f13b3fd9f/reapeaks-0.3.2-cp310-abi3-manylinux_2_35_x86_64.whl", hash = "sha256:40b2be375e33dc9af4c2b652661c3769243b0ed55ba9d4bc4af176ac3061d65f", size = 695094, upload-time = "2026-09-04T03:31:41.222Z" },
-    { url = "https://files.pythonhosted.org/packages/b7/ff/d40e201afd69c444e0e713521d16eaa3e19103b529c6171cc9a168d5f0b8/reapeaks-0.3.2-cp310-abi3-win_amd64.whl", hash = "sha256:d3b8a588674d938773acb95d80a094250841d721372a11b52a0e82b16165410d", size = 556872, upload-time = "2026-09-04T03:31:42.917Z" },
-]
-
-[[package]]
-=======
->>>>>>> 548e81a0 (refactor!: 依赖切 quapeaks>=2026.0.0，maw/reapeaks.py 改名 maw/quapeaks.py)
 name = "regex"
 version = "2026.7.19"
 source = { registry = "https://pypi.org/simple" }
