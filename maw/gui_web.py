@@ -39,7 +39,7 @@ from maw.local_runtime import (
 )
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import resolve_project_media
-from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
+from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import read_project, read_srt
 from maw.project import normalize_project
 from maw.postprocess_ffmpeg import (
@@ -1039,7 +1039,7 @@ class LauncherApi:
                 on_status=self._emit_postprocess_status,
             )
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
-            if isinstance(error, LlmClientError):
+            if isinstance(error, (LlmClientError, PostprocessStepError)):
                 return _llm_error_result("postprocessInput", "postprocess_failed", error)
             return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
@@ -2906,7 +2906,7 @@ def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
 def _llm_error_result(
     field: str,
     fallback_code: str,
-    error: LlmClientError,
+    error: LlmClientError | PostprocessStepError,
     *,
     provider_id: str = "",
     operation: str = "",
