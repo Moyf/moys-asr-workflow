@@ -36,6 +36,10 @@ def main() -> int:
     parser.add_argument("--speaker-colors", action="store_true", help="请求说话人分离并写入一次性的字幕颜色快照")
     parser.add_argument("--json", dest="json_out", action="store_true", help="同时输出 .mosp 工程")
     parser.add_argument("--with-waveform", action="store_true", help="将波形嵌入工程")
+    parser.add_argument(
+        "--audio-track", type=int, default=0,
+        help="使用第几个音频轨道（从 0 开始，默认 0）",
+    )
     parser.add_argument("--with-spectral", action="store_true", help="生成频谱波形")
     parser.add_argument("-s", "--stickers", default=get_default_sticker_dir(), help="表情包文件夹路径")
     parser.add_argument("--no-html", action="store_true", help="禁用 HTML 生成")
@@ -46,6 +50,8 @@ def main() -> int:
     parser.add_argument("--debug", action="store_true", help="输出 API 调试摘要")
     parser.add_argument("--debug-raw", action="store_true", help="保存完整 API 原始 JSON")
     args = parser.parse_args()
+    if args.audio_track < 0:
+        parser.error("--audio-track 必须是非负整数")
     configure_console_output()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
@@ -85,6 +91,7 @@ def main() -> int:
                 audio_path,
                 duration_limit=limit,
                 ffmpeg_path=ffmpeg_path,
+                audio_track=args.audio_track,
             )
             duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
         else:
@@ -98,6 +105,7 @@ def main() -> int:
                 limited_path,
                 duration_limit=args.length_limit,
                 ffmpeg_path=ffmpeg_path,
+                audio_track=0,
             )
             audio_path = limited_path
             duration = args.length_limit
@@ -123,6 +131,7 @@ def main() -> int:
                 {"media": str(input_path)}, Path(audio_path), source_media_path=input_path,
                 generate_spectral=args.with_spectral,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
+                audio_track=args.audio_track if is_video else 0,
             )
 
     if not args.keep_punct:

@@ -140,6 +140,17 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertNotIn("--with-spectral", command)
         self.assertNotIn("secret-key", " ".join(command))
 
+    def test_build_transcribe_command_passes_selected_audio_track(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            audio_track=2,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--audio-track") + 1], "2")
+
     def test_build_transcribe_command_enables_spectral_generation_when_requested(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,

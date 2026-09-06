@@ -82,6 +82,10 @@ def main():
         help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
     )
     parser.add_argument(
+        "--audio-track", type=int, default=0,
+        help="使用第几个音频轨道（从 0 开始，默认 0）",
+    )
+    parser.add_argument(
         "--with-spectral", action="store_true",
         help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
     )
@@ -106,6 +110,8 @@ def main():
         help="保存必剪服务端返回的完整原始 JSON，用于排查断句、标点和时间码",
     )
     args = parser.parse_args()
+    if args.audio_track < 0:
+        parser.error("--audio-track 必须是非负整数")
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
 
@@ -146,6 +152,7 @@ def main():
                 audio_path,
                 duration_limit=media_limit,
                 ffmpeg_path=ffmpeg_path,
+                audio_track=args.audio_track if is_video else 0,
             )
             duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
             if media_limit is not None:
@@ -160,6 +167,7 @@ def main():
                 audio_path,
                 duration_limit=args.length_limit,
                 ffmpeg_path=ffmpeg_path,
+                audio_track=0,
             )
             duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
             lm, ls = divmod(int(min(args.length_limit, duration)), 60)
@@ -225,6 +233,7 @@ def main():
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
+                audio_track=args.audio_track if is_video else 0,
             )
 
     # 剥句末标点（与 Qwen 版一致；--keep-punct 优先，空集合禁用）

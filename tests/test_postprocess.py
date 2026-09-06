@@ -1891,7 +1891,7 @@ class MediaToolTests(unittest.TestCase):
             stdout=json.dumps({
                 "streams": [
                     {"index": 1, "codec_name": "aac", "channels": 2, "sample_rate": "48000", "tags": {"language": "zh", "title": "中文"}, "disposition": {"default": 1}},
-                    {"index": 2, "codec_name": "aac", "channels": 2, "sample_rate": "44100", "tags": {"language": "en"}, "disposition": {"default": 0}},
+                    {"index": 2, "codec_name": "aac", "channels": 2, "sample_rate": "44100", "tags": {"language": "en", "name": "Voice"}, "disposition": {"default": 0}},
                 ],
             }),
         )
@@ -1901,12 +1901,33 @@ class MediaToolTests(unittest.TestCase):
 
         self.assertEqual(tracks, (
             AudioTrack(0, 1, "aac", 2, 48000, "zh", "中文", True),
-            AudioTrack(1, 2, "aac", 2, 44100, "en", "", False),
+            AudioTrack(1, 2, "aac", 2, 44100, "en", "Voice", False),
         ))
         command = run.call_args.args[0]
         self.assertIn("-select_streams", command)
         self.assertIn("a", command)
+        self.assertIn(
+            "stream=index,codec_name,channels,sample_rate:stream_tags=language,title,name,handler_name:stream_disposition=default",
+            command,
+        )
         self.assertIn(str(self.media.resolve()), command)
+
+    def test_probe_audio_tracks_falls_back_from_title_to_name_and_handler_name(self) -> None:
+        completed = mock.Mock(
+            returncode=0,
+            stderr="",
+            stdout=json.dumps({
+                "streams": [
+                    {"index": 1, "tags": {"name": "Mix"}, "disposition": {"default": 1}},
+                    {"index": 2, "tags": {"handler_name": "OriginSound"}, "disposition": {"default": 0}},
+                ],
+            }),
+        )
+
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=completed):
+            tracks = probe_audio_tracks(self.media, ffprobe_path=Path("ffprobe"))
+
+        self.assertEqual([track.title for track in tracks], ["Mix", "OriginSound"])
 
     def test_burn_subtitles_reencodes_to_new_mp4_and_uses_subtitles_filter(self) -> None:
         with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:

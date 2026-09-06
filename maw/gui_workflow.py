@@ -69,6 +69,7 @@ class TranscriptionRequest:
     runtime_python: str = ""
     postprocess_plan: dict[str, object] | None = None
     postprocess_llm_settings: dict[str, dict[str, str]] | None = None
+    audio_track: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +249,7 @@ def build_transcribe_command(
         command = [exe, str(script)]
     command.append(str(request.media_path))
     command.extend(["--output", str(build_output_paths(request.srt_path).srt), "--json", "--no-html", "--with-waveform"])
+    command.extend(["--audio-track", str(request.audio_track)])
     if request.generate_spectral:
         command.append("--with-spectral")
     if request.debug_raw and not is_local:

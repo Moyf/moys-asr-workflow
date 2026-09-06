@@ -85,6 +85,7 @@
   "peak_count": 123456,
   "duration_ms": 1234560,
   "data": "base64 编码的 [min,max] int8 峰值对",
+  "audio_track": 0,
   "source": {
     "name": "audio.wav",
     "size": 987654321,
@@ -97,6 +98,7 @@
 - **时间刻度**：第 i 个峰覆盖 `[i × division / sample_rate, (i+1) × division / sample_rate)` 秒。做"峰值序号 ↔ 毫秒"换算时必须用 `sample_rate / division`；`peaks_per_second` 只是给人看的近似值。老缓存可以没有这两个字段（此时退化为 `peaks_per_second`），但只要出现一个就必须成对且合法，否则视为无效载荷。
 - `.ReaPeaks` 派生的载荷里 `sample_rate / division` 多数情况下是**分数**（16 kHz 媒体 `division=53` → 301.8868 峰/秒）。把它取整当刻度会按比例缩放整条时间轴，错位随媒体时长线性累积。
 - `source` 用于缓存失效；媒体文件名、字节大小或最后修改时间变化时会重新计算。
+- `audio_track` 可选，表示生成缓存时使用的、从 0 开始的音频流顺序；缺失时按 0 兼容。`waveform`、`spectral` 和 `waveform_reapeaks` 必须使用同一值；非 0 的 `.ReaPeaks` 使用 `<媒体名>.track-N.ReaPeaks`（N 为从 1 开始的显示编号），避免覆盖默认音轨缓存。
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
 - Qwen/Soniox/必剪/本地命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程文件时把同一 payload 写入顶层 `waveform`，并在媒体旁生成只含 wave 层的 `.ReaPeaks` 缓存。GUI 转写默认开启该模式。
@@ -114,6 +116,7 @@
   "division": 2400,
   "peak_count": 72000,
   "data": "base64 编码的 [freq,density] uint16 对",
+  "audio_track": 0,
   "source": {
     "name": "audio.wav",
     "size": 987654321,
@@ -144,6 +147,7 @@
   "peak_count": 1510,
   "duration_ms": 5006,
   "data": "base64 的 [min,max] int8 对",
+  "audio_track": 0,
   "source": { "name": "audio.wav", "size": 441044, "modified_ms": 1786328355571 }
 }
 ```

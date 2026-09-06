@@ -175,6 +175,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "media_tool_failed": "Media operation failed.",
     "audio_track_invalid": "The selected audio track is invalid.",
     "audio_tracks_missing": "No audio tracks were found in this media.",
+    "audio_tracks_unavailable": "Audio tracks could not be inspected.",
 }
 
 
@@ -1120,6 +1121,25 @@ class LauncherApi:
             "tracks": [_audio_track_payload(track) for track in tracks],
         }
 
+    def get_audio_tracks(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Inspect the main transcription media and expose its audio streams."""
+        media_text = str(payload.get("mediaPath") or "").strip()
+        media_path = Path(media_text).expanduser().resolve() if media_text else None
+        if media_path is None or media_path.suffix.lower() not in MEDIA_EXTS or not media_path.is_file():
+            return _error_result("mediaPath", "media_not_found", media_text)
+        tools = _postprocess_ffmpeg_tools(self.paths.env_path)
+        if tools.ffprobe is None:
+            return _error_result("mediaPath", "ffmpeg_missing", "FFprobe was not found.")
+        try:
+            tracks = inspect_audio_tracks(media_path, ffprobe_path=tools.ffprobe)
+        except (MediaToolError, OSError, RuntimeError, ValueError) as error:
+            return _error_result("mediaPath", "audio_tracks_unavailable", str(error))
+        return {
+            "ok": True,
+            "mediaPath": str(media_path),
+            "tracks": [_audio_track_payload(track) for track in tracks],
+        }
+
     def run_burn_subtitles(self, payload: Mapping[str, object]) -> dict[str, object]:
         tools = _postprocess_ffmpeg_tools(self.paths.env_path)
         if tools.ffmpeg is None:
@@ -1889,6 +1909,13 @@ class LauncherApi:
         media_path = Path(media_text).expanduser().resolve() if media_text else None
         if media_path is None or media_path.suffix.lower() not in MEDIA_EXTS or not media_path.is_file():
             return _error_result("mediaPath", "media_not_found", media_text)
+        audio_track = _payload_audio_track(payload, field="audioTrack")
+        if audio_track is None:
+            return _error_result(
+                "audioTrack",
+                "audio_track_invalid",
+                "音频轨道必须是非负整数。",
+            )
 
         output_seed = unique_output_path(media_path.with_suffix(".waveform.srt"))
         project_path = output_seed.with_suffix(".mosp")
@@ -1902,6 +1929,7 @@ class LauncherApi:
                 source_media_path=media_path,
                 generate_spectral=bool(payload.get("generateSpectral")),
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
+                audio_track=audio_track,
             )
             normalized = normalize_project(cached.project)
             waveform = normalized.get("waveform")
@@ -2737,6 +2765,13 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError("mediaPath", "media_not_found", "Media file does not exist.")
     if not srt_text or not srt.name:
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
+    audio_track = _payload_audio_track(payload, field="audioTrack")
+    if audio_track is None:
+        raise PreflightError(
+            "audioTrack",
+            "audio_track_invalid",
+            "音频轨道必须是非负整数。",
+        )
     max_len = _segmentation_option(payload, field="maxLen", label="最大字数", minimum=1)
     min_len = _segmentation_option(payload, field="minLen", label="短句合并阈值", minimum=1)
     gap_split = _segmentation_option(payload, field="gapSplit", label="停顿切句阈值", minimum=0)
@@ -2836,6 +2871,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     return TranscriptionRequest(
         media_path=media,
         srt_path=srt,
+        audio_track=audio_track,
         model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
@@ -2976,6 +3012,18 @@ def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
 def _optional_path(value: object) -> Path | None:
     text = str(value or "").strip()
     return Path(text) if text else None
+
+
+def _payload_audio_track(payload: Mapping[str, object], *, field: str) -> int | None:
+    """Parse a zero-based audio-track index from a Launcher payload."""
+    raw = payload.get(field)
+    if raw is None or not str(raw).strip():
+        return 0
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
 
 
 def _output_mode(value: object) -> OutputMode:

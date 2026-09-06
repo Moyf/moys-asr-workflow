@@ -87,6 +87,8 @@ CLI 未指定 `--model` 时默认使用 `qwen-audio-3.0-asr-flash-filetrans`；�
 
 CLI 默认不内嵌波形；需要交给编辑器直接打开且不想生成 `<媒体名>.waveform.json` sidecar 时，加 `--with-waveform`。该选项默认生成媒体旁 `.ReaPeaks` 的 wave 层，但跳过耗时较高的频谱计算；只有同时加 `--with-spectral` 才生成频谱层。Launcher 中对应的“生成 ReaPeaks 频谱数据”默认不勾选。波形提取会额外用 FFmpeg 完整扫一遍媒体，失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
 
+在 Launcher 放入包含两条或更多音轨的视频时，媒体路径下方会显示「声音轨道」。它优先选中 FFprobe 标记为默认的轨道（没有默认标记时选第一条）；转写、内嵌波形、频谱和 .ReaPeaks 都使用同一选择。单音轨视频和纯音频不会显示该控件；FFprobe 无法读取时保持与旧版本相同的第一条轨道行为。
+
 ## 用 Qwen-Audio 3.0 ASR 转写（热词与上下文）
 
 Launcher 和 CLI 默认都使用 `qwen-audio-3.0-asr-flash-filetrans`；需要切换其他模型时再显式指定：
@@ -329,7 +331,7 @@ Launcher 右下角的圆形按钮会打开工具箱。工具箱的标题、一�
 
 ### 提取音频
 
-「提取音频」会先用 FFprobe 读取媒体中的音轨，显示音轨序号、语言、标题、编码、声道数和采样率；多音轨时可选择需要的音轨，单音轨则默认选中它。运行后以 AAC 编码输出新的 `.m4a` 文件，不改写源媒体；没有音轨或未找到完整的 FFmpeg / FFprobe 时会给出明确提示。
+「提取音频」会先用 FFprobe 读取媒体中的音轨，显示音轨序号、语言、标题、编码、声道数和采样率；名称按容器的 `title`、`name`、`handler_name` 顺序读取。多音轨时可选择需要的音轨，单音轨则默认选中它。运行后以 AAC 编码输出新的 `.m4a` 文件，不改写源媒体；没有音轨或未找到完整的 FFmpeg / FFprobe 时会给出明确提示。
 
 ### 文稿匹配
 

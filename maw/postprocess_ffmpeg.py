@@ -192,7 +192,7 @@ def probe_audio_tracks(media_path: Path, *, ffprobe_path: Path) -> tuple[AudioTr
         "-select_streams",
         "a",
         "-show_entries",
-        "stream=index,codec_name,channels,sample_rate:stream_tags=language,title:stream_disposition=default",
+        "stream=index,codec_name,channels,sample_rate:stream_tags=language,title,name,handler_name:stream_disposition=default",
         "-of",
         "json",
         str(media),
@@ -240,7 +240,7 @@ def probe_audio_tracks(media_path: Path, *, ffprobe_path: Path) -> tuple[AudioTr
                 channels=_integer_or_none(stream.get("channels")),
                 sample_rate=_integer_or_none(stream.get("sample_rate")),
                 language=str(tags.get("language") or "").strip(),
-                title=str(tags.get("title") or "").strip(),
+                title=_first_nonempty_tag(tags, "title", "name", "handler_name"),
                 default=bool(_integer_or_none(disposition.get("default")) or 0),
             )
         )
@@ -405,6 +405,19 @@ def _integer_or_none(value: object) -> int | None:
         return int(str(value))
     except (TypeError, ValueError):
         return None
+
+
+def _first_nonempty_tag(tags: Mapping[object, object], *names: str) -> str:
+    """Return the first non-empty stream tag, tolerating FFprobe key casing."""
+    normalized = {
+        str(key).strip().casefold(): value
+        for key, value in tags.items()
+    }
+    for name in names:
+        value = str(normalized.get(name.casefold()) or "").strip()
+        if value:
+            return value
+    return ""
 
 
 def _escape_filter_value(value: str) -> str:

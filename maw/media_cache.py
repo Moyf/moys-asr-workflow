@@ -51,8 +51,15 @@ def embed_media_caches(
     source_media_path: Path | str | None = None,
     generate_spectral: bool = False,
     ffmpeg_bin: str | None = None,
+    audio_track: int = 0,
+    decode_audio_track: int | None = None,
 ) -> MediaCacheResult:
     """嵌入波形缓存并生成 .ReaPeaks 缓存（best-effort）。
+
+    ``audio_track`` 是工程和缓存身份中的逻辑轨道编号；``decode_audio_track``
+    是 ``media_path`` 实际解码的轨道编号。转写流程通常先把用户选中的
+    视频轨道提取成单轨临时 WAV，此时逻辑编号仍需保留为用户选择的编号，
+    但临时 WAV 的解码编号必须是 0。
 
     ``source_media_path`` 是工程里记录的原始媒体，也就是编辑器将要打开的那份
     文件：源媒体可解码时，两份缓存的来源签名、``.ReaPeaks`` 的落点都指向它，
@@ -70,6 +77,15 @@ def embed_media_caches(
     ``generate_spectral`` 关闭时仍生成 ReaPeaks wave 层，但跳过频谱 FFT
     与工程内的 spectral payload。
     """
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
+        raise ValueError("audio_track must be a non-negative integer")
+    if decode_audio_track is not None and (
+        not isinstance(decode_audio_track, int)
+        or isinstance(decode_audio_track, bool)
+        or decode_audio_track < 0
+    ):
+        raise ValueError("decode_audio_track must be a non-negative integer")
+
     cache_path = Path(media_path)
     source_path = (
         Path(source_media_path) if source_media_path is not None else cache_path
@@ -79,7 +95,14 @@ def embed_media_caches(
     decode_path = cache_path
     if source_path != cache_path and source_path.is_file():
         decode_path = source_path
-    waveform_result = embed_waveform(project, decode_path, ffmpeg_bin=ffmpeg_bin)
+    if decode_audio_track is None:
+        decode_audio_track = audio_track if decode_path == source_path else 0
+    waveform_result = embed_waveform(
+        project,
+        decode_path,
+        ffmpeg_bin=ffmpeg_bin,
+        audio_track=decode_audio_track,
+    )
     if (
         waveform_result.error is not None
         and decode_path != cache_path
@@ -90,11 +113,17 @@ def embed_media_caches(
             f"{decode_path.name} -> {cache_path.name}"
         )
         decode_path = cache_path
-        waveform_result = embed_waveform(project, decode_path, ffmpeg_bin=ffmpeg_bin)
+        waveform_result = embed_waveform(
+            project,
+            decode_path,
+            ffmpeg_bin=ffmpeg_bin,
+            audio_track=0,
+        )
     project = waveform_result.project
     if waveform_result.error is None:
         payload = project.get("waveform")
         if payload is not None:
+            payload["audio_track"] = audio_track
             # embed_waveform 已按实际解码文件写入签名。这里重新取一次同一文件的
             # 签名，明确禁止回退到派生文件后把它伪装成源媒体缓存。
             payload["source"] = media_signature(decode_path)
@@ -115,6 +144,8 @@ def embed_media_caches(
         ffmpeg_bin=ffmpeg_bin,
         include_spectral=generate_spectral,
         source_media_path=source_path,
+        audio_track=audio_track,
+        cache_audio_track=audio_track,
     )
     if reapeaks_path is not None:
         cache_kind = "波形和频谱缓存" if generate_spectral else "波形缓存"
@@ -134,12 +165,15 @@ def embed_media_caches(
                     spectral = reapeaks.extract_spectral_payload(
                         reapeaks_path,
                         reapeaks_media_path,
+                        audio_track=audio_track,
                     )
                     if spectral is not None:
                         project["spectral"] = spectral
                         print(f"[spectral] 已嵌入 {spectral['peak_count']} 频谱点")
                 reapeaks_wave = reapeaks.extract_waveform_payload(
-                    reapeaks_path, reapeaks_media_path
+                    reapeaks_path,
+                    reapeaks_media_path,
+                    audio_track=audio_track,
                 )
                 if reapeaks_wave is not None:
                     project["waveform_reapeaks"] = reapeaks_wave
