@@ -223,6 +223,48 @@ test('normalizes optional source video FPS metadata for frame-mode defaults', ()
   assert.equal(helpers.normalizeMediaMetadata({ video_fps: 30, video_fps_ratio: '' }), null);
 });
 
+test('normalizes source audio track metadata independently from video FPS', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
+    audio_tracks: [
+      {
+        audio_index: 0, stream_index: 1, codec: 'aac', language: '', title: '',
+        channels: 2, sample_rate: 48000, default: true,
+      },
+      {
+        audio_index: 1, stream_index: 4, codec: '', language: 'en', title: '',
+        channels: 1, sample_rate: 44100,
+      },
+    ],
+  }))), {
+    audio_tracks: [
+      {
+        audio_index: 0,
+        stream_index: 1,
+        codec: 'aac',
+        language: '',
+        title: '',
+        channels: 2,
+        sample_rate: 48000,
+        default: true,
+      },
+      {
+        audio_index: 1,
+        stream_index: 4,
+        codec: '',
+        language: 'en',
+        title: '',
+        channels: 1,
+        sample_rate: 44100,
+        default: false,
+      },
+    ],
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({ audio_tracks: [] }))), {
+    audio_tracks: [],
+  });
+  assert.equal(helpers.normalizeMediaMetadata({ audio_tracks: [{ stream_index: -1 }] }), null);
+});
+
 test('falls back to default split trim symbols and keeps single characters from free input', () => {
   const defaults = JSON.parse(JSON.stringify(helpers.DEFAULT_SPLIT_TRIM_SYMBOLS));
   // 默认集合 = 前 5 个 chip（全角）+ 文本框预填的半角逗号句点。

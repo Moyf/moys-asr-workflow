@@ -295,6 +295,31 @@ def _validate_media_metadata(project: JsonDict, errors: list[ProjectValidationEr
                     "must be a non-empty string",
                 )
             )
+    if "audio_tracks" in metadata:
+        audio_tracks = metadata.get("audio_tracks")
+        if not isinstance(audio_tracks, list):
+            errors.append(ProjectValidationError("$.media_metadata.audio_tracks", "must be an array"))
+            return
+        for index, track in enumerate(audio_tracks):
+            path = f"$.media_metadata.audio_tracks[{index}]"
+            if not isinstance(track, dict):
+                errors.append(ProjectValidationError(path, "must be an object"))
+                continue
+            stream_index = track.get("stream_index")
+            if type(stream_index) is not int or stream_index < 0:
+                errors.append(ProjectValidationError(f"{path}.stream_index", "must be a non-negative integer"))
+            audio_index = track.get("audio_index")
+            if audio_index is not None and (type(audio_index) is not int or audio_index < 0):
+                errors.append(ProjectValidationError(f"{path}.audio_index", "must be a non-negative integer"))
+            for field in ("codec", "language", "title"):
+                if field in track and not isinstance(track[field], str):
+                    errors.append(ProjectValidationError(f"{path}.{field}", "must be a string"))
+            for field in ("channels", "sample_rate"):
+                value = track.get(field)
+                if value is not None and (type(value) is not int or value <= 0):
+                    errors.append(ProjectValidationError(f"{path}.{field}", "must be a positive integer or null"))
+            if "default" in track and not isinstance(track["default"], bool):
+                errors.append(ProjectValidationError(f"{path}.default", "must be a boolean"))
 
 
 def _is_stable_id(value: JsonValue) -> bool:
