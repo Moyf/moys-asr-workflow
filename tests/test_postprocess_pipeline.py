@@ -86,6 +86,21 @@ class PostprocessPipelineTests(unittest.TestCase):
 
         self.assertEqual(normalized["steps"][0]["extraSplitPunctuation"], ["？", "！"])
 
+    def test_normalize_plan_preserves_ocr_video_path_mode(self) -> None:
+        plan = default_postprocess_plan()
+        plan["steps"] = [{"id": "ocr", "enabled": True, "videoPath": "D:\\Media\\manual.mov", "videoPathMode": "manual"}]
+
+        normalized = normalize_plan(plan)
+
+        ocr = next(step for step in normalized["steps"] if step["id"] == "ocr")
+        self.assertEqual(ocr["videoPath"], "D:\\Media\\manual.mov")
+        self.assertEqual(ocr["videoPathMode"], "manual")
+
+        plan["steps"][0]["videoPathMode"] = "invalid"
+        normalized = normalize_plan(plan)
+        ocr = next(step for step in normalized["steps"] if step["id"] == "ocr")
+        self.assertEqual(ocr["videoPathMode"], "")
+
     def test_match_mode_is_preserved_when_normalizing_plan(self) -> None:
         plan = default_postprocess_plan()
         plan["enabled"] = True

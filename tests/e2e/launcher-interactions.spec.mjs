@@ -49,6 +49,8 @@ test('OpenAI ASR exposes official models and a conditional Custom model input', 
 
 test('OCR video source follows a newly dropped video media', async ({ page }) => {
   await openLauncher(page);
+  await page.locator('#toolboxOcrTab').click();
+  await page.locator('#ocrVideoPath').fill('D:\\Demo\\1.mov');
   await page.evaluate(() => {
     const jsonPath = document.getElementById('jsonPath');
     jsonPath.value = 'D:\\Demo\\previous.mosp';
@@ -58,6 +60,25 @@ test('OCR video source follows a newly dropped video media', async ({ page }) =>
 
   await expect(page.locator('#mediaPath')).toHaveValue('D:\\Demo\\new-video.mp4');
   await expect(page.locator('#ocrVideoPath')).toHaveValue('D:\\Demo\\new-video.mp4');
+  await expect.poll(async () => page.evaluate(() => {
+    const step = window.MAWLauncher.config?.postprocessAutoPlan?.steps?.find((item) => item.id === 'ocr');
+    return [step?.videoPath || '', step?.videoPathMode || ''];
+  })).toEqual(['', 'auto']);
+});
+
+test('automatic OCR video source is not persisted as a manual override', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#mediaPath').fill('D:\\Demo\\1.mov');
+
+  const ocrStep = await page.evaluate(() => window.MAWLauncher.getAutoPostprocessPayload()
+    .steps.find((step) => step.id === 'ocr'));
+  expect(ocrStep.videoPath).toBe('');
+  expect(ocrStep.videoPathMode).toBe('auto');
+
+  await page.evaluate(() => {
+    window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path: 'D:\\Demo\\2.mov' });
+  });
+  await expect(page.locator('#ocrVideoPath')).toHaveValue('D:\\Demo\\2.mov');
 });
 
 test('translation merge option follows manual and automatic translation controls', async ({ page }) => {
