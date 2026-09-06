@@ -1697,7 +1697,7 @@
     $("mediaPathFlvHint")?.classList.toggle("hidden", ext($("mediaPath").value.trim()) !== ".flv");
     $("serverMediaFlvHint")?.classList.toggle("hidden", ext($("serverMediaPath").value.trim()) !== ".flv");
   }
-  function setMedia(path) { $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); window.MAWLauncher?.onMediaPathChanged?.(); }
+  function setMedia(path, { refreshOcrVideo = false } = {}) { $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); window.MAWLauncher?.onMediaPathChanged?.({ refreshOcrVideo }); }
   function setDroppedPath(field, path, eventType = "input") {
     const value = String(path || "").trim();
     const input = $(field);
@@ -1743,7 +1743,7 @@
     const suffix = ext(value);
     if (target === "media") {
       if (MEDIA_EXTS.has(suffix)) {
-        setMedia(value);
+        setMedia(value, { refreshOcrVideo: true });
         setStatus(t("media"));
       } else setError("mediaPath", mediaDropError());
       return;
@@ -1827,7 +1827,7 @@
       return;
     }
     if (MEDIA_EXTS.has(suffix)) {
-      setMedia(value);
+      setMedia(value, { refreshOcrVideo: true });
       setStatus(t("media"));
       return;
     }
