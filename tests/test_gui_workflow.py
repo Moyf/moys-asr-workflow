@@ -11,6 +11,7 @@ import time
 import unittest
 from pathlib import Path
 from threading import Event
+from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 from maw.gui_workflow import (  # noqa: E402
     TranscriptionProcessError,
     TranscriptionRequest,
+    TranscriptionResult,
     build_alignment_serve_command,
     build_serve_command,
     build_output_paths,
@@ -431,7 +433,7 @@ class GuiWorkflowTests(unittest.TestCase):
         with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()) as popen:
             with mock.patch(
                 "maw.gui_workflow.render_editor_html",
-                return_value=self.srt_path.with_suffix(".edit.html"),
+                return_value=self.root / "_maw" / "out.edit.html",
             ) as render_html:
                 result = run_transcription(request, on_event=events.append)
 
@@ -446,11 +448,11 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(events, ["started", "done"])
         self.assertEqual(result.srt_path, self.srt_path)
         self.assertEqual(result.json_path, self.srt_path.with_suffix(".mosp"))
-        self.assertEqual(result.html_path, self.srt_path.with_suffix(".edit.html"))
+        self.assertEqual(result.html_path, self.root / "_maw" / "out.edit.html")
         render_html.assert_called_once_with(
             self.srt_path.with_suffix(".mosp"),
             self.media_path,
-            self.srt_path.with_suffix(".edit.html"),
+            self.root / "_maw" / "out.edit.html",
             "en",
         )
 
@@ -913,6 +915,113 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="sensevoice-small-local").name, "clip.sensevoice-local.srt")
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="fun-asr-nano-local").name, "clip.funasr-local.srt")
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="funasr-local").name, "clip.funasr-local.srt")
+
+    def test_default_srt_path_attach_model_name_off_drops_all_tags(self) -> None:
+        from maw.gui_workflow import default_srt_path
+
+        self.assertEqual(default_srt_path(Path("clip.mp4"), attach_model_name=False).name, "clip.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="soniox", attach_model_name=False).name, "clip.srt")
+        self.assertEqual(
+            default_srt_path(Path("clip.mp4"), provider="local", model="sensevoice-small-local", attach_model_name=False).name,
+            "clip.srt",
+        )
+        self.assertEqual(default_srt_path(Path("clip.mp4"), test_run=True, attach_model_name=False).name, "clip-test.srt")
+
+    def test_default_srt_path_reads_attach_model_name_from_config(self) -> None:
+        from maw.gui_workflow import default_srt_path
+
+        config = SimpleNamespace(attach_model_name=False, output_subfolder=False)
+        with mock.patch("maw.gui_workflow.effective_config", return_value=config):
+            self.assertEqual(default_srt_path(Path("clip.mp4")).name, "clip.srt")
+
+        config = SimpleNamespace(attach_model_name=True, output_subfolder=False)
+        with mock.patch("maw.gui_workflow.effective_config", return_value=config):
+            self.assertEqual(default_srt_path(Path("clip.mp4")).name, "clip.qwen-audio.srt")
+
+    def test_default_srt_path_output_subfolder_places_srt_into_maw_root(self) -> None:
+        from maw.gui_workflow import default_srt_path
+
+        media = self.root / "clip.mp4"
+        config = SimpleNamespace(attach_model_name=True, output_subfolder=True)
+        with mock.patch("maw.gui_workflow.effective_config", return_value=config):
+            with mock.patch("maw.output_naming.subfolder_prefs", return_value=(True, False)):
+                self.assertEqual(default_srt_path(media), self.root / "_maw" / "clip.qwen-audio.srt")
+                self.assertEqual(default_srt_path(media, attach_model_name=False), self.root / "_maw" / "clip.srt")
+
+    def test_default_srt_path_output_subfolder_per_video_uses_video_maw_root(self) -> None:
+        from maw.gui_workflow import default_srt_path
+
+        media = self.root / "clip.mp4"
+        config = SimpleNamespace(attach_model_name=True, output_subfolder=True)
+        with mock.patch("maw.gui_workflow.effective_config", return_value=config):
+            with mock.patch("maw.output_naming.subfolder_prefs", return_value=(True, True)):
+                self.assertEqual(default_srt_path(media), self.root / "clip_maw" / "clip.qwen-audio.srt")
+
+    def test_run_transcription_ignores_maw_stat_and_keeps_transcribed_paths(self) -> None:
+        # RTF 进文件名已撤销：即使子进程输出 MAW_STAT，转写产物路径也保持转写前
+        # 唯一确定路径，不再重命名；MAW_STAT 行仍会随进度事件透传给上层日志。
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            ui_language="zh",
+            generate_html=False,
+        )
+        self.srt_path.write_text("1\n", encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+        events: list[str] = []
+
+        class FakeProcess:
+            returncode = 0
+            stdout = ["MAW_STAT rtf=0.123\n", "[info] 完成\n"]
+
+            def poll(self) -> int | None:
+                return 0
+
+            def wait(self, timeout: float | None = None) -> int:
+                return 0
+
+        with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()):
+            result = run_transcription(request, on_event=events.append)
+
+        self.assertEqual(result.srt_path, self.srt_path)
+        self.assertEqual(result.json_path, self.srt_path.with_suffix(".mosp"))
+        self.assertIsNone(result.html_path)
+        self.assertTrue(self.srt_path.exists())
+        self.assertTrue(self.srt_path.with_suffix(".mosp").exists())
+        self.assertFalse((self.root / "out.0.12x.srt").exists())
+        self.assertFalse((self.root / "out.0.12x.mosp").exists())
+        self.assertIn("MAW_STAT rtf=0.123", events)
+
+    def test_run_transcription_html_stays_on_transcribed_stem_with_maw_stat_present(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            ui_language="zh",
+        )
+        self.srt_path.write_text("1\n", encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+
+        class FakeProcess:
+            returncode = 0
+            stdout = ["MAW_STAT rtf=0.25\n"]
+
+            def poll(self) -> int | None:
+                return 0
+
+            def wait(self, timeout: float | None = None) -> int:
+                return 0
+
+        with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()):
+            with mock.patch("maw.gui_workflow.render_editor_html", return_value=None) as render_html:
+                result = run_transcription(request)
+
+        self.assertEqual(result.srt_path, self.srt_path)
+        render_html.assert_called_once_with(
+            self.srt_path.with_suffix(".mosp"),
+            self.media_path,
+            self.root / "_maw" / "out.edit.html",
+            "zh",
+        )
 
     def test_entrypoint_transcribe_soniox_help_dispatches_soniox_script(self) -> None:
         import maw_gui

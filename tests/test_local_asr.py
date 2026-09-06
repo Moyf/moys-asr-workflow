@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -1229,6 +1231,85 @@ class LocalCliParserTests(unittest.TestCase):
             path.write_text("\ufeff# comment\nMAW\n\nQwen3-ASR\nMAW\n", encoding="utf-8")
 
             self.assertEqual(load_hotword_files([str(path)]), ["MAW", "Qwen3-ASR"])
+
+
+class LocalCliNamingAndStatTests(unittest.TestCase):
+    """本地 CLI 的 --no-model-tag 命名与 MAW_STAT 行。"""
+
+    DURATION_MS = 100_000  # 100 秒 → elapsed 12.3s 得 rtf 0.123
+
+    def _run(self, extra_args, *, explicit_output=None):
+        from generate_subtitle_local import main
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "sample.wav"
+            media.write_bytes(b"media")
+            captured: dict = {}
+            fake_engine = mock.Mock()
+            fake_engine.transcribe.return_value = {"text": "你好", "language": "zh"}
+            argv = [str(media), *extra_args]
+            if explicit_output is not None:
+                argv += ["-o", str(explicit_output)]
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1012.3]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            def fake_wlo(**kwargs):
+                captured["output_srt"] = kwargs["output_srt"]
+                return SimpleNamespace(srt=kwargs["output_srt"], json=None, html=None)
+
+            with mock.patch(
+                "generate_subtitle_local.resolve_ffmpeg_tools",
+                return_value=SimpleNamespace(ffmpeg="ffmpeg", ffprobe="ffprobe"),
+            ), mock.patch("generate_subtitle_local.create_local_engine", return_value=fake_engine), \
+                 mock.patch(
+                     "generate_subtitle_local.build_local_segments",
+                     return_value=[{"start": 0, "end": 1000, "text": "你好"}],
+                 ), \
+                 mock.patch("generate_subtitle_local.write_local_outputs", side_effect=fake_wlo), \
+                 mock.patch("generate_subtitle_local.prepared_audio") as prepared, \
+                 mock.patch("generate_subtitle_local.time.perf_counter", side_effect=fake_perf), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                prepared.return_value.__enter__.return_value = (
+                    str(root / "audio.wav"),
+                    self.DURATION_MS,
+                )
+                code = main(argv)
+
+            self.assertEqual(code, 0)
+            return captured["output_srt"], stdout.getvalue()
+
+    @staticmethod
+    def _stat_line(stdout):
+        for line in stdout.splitlines():
+            if line.startswith("MAW_STAT rtf="):
+                return line
+        return None
+
+    def test_default_name_keeps_engine_tag_and_emits_stat(self) -> None:
+        output_srt, stdout = self._run(["--engine", "funasr"])
+
+        self.assertEqual(output_srt.name, "sample.funasr-local.srt")
+        self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
+
+    def test_no_model_tag_omits_engine_tag(self) -> None:
+        output_srt, _ = self._run(["--engine", "funasr", "--no-model-tag"])
+
+        self.assertEqual(output_srt.name, "sample.srt")
+
+    def test_explicit_output_is_not_tagged_but_stat_is_emitted(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            custom = Path(tmp_dir) / "out" / "custom.srt"
+            output_srt, stdout = self._run(["--engine", "qwen-asr"], explicit_output=str(custom))
+
+            self.assertEqual(output_srt, custom.resolve())
+            self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
 
 
 if __name__ == "__main__":

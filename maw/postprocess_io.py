@@ -11,6 +11,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from maw.output_naming import OPERATION_NAMES, is_translation_operation, operation_suffix
 from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
 
@@ -155,8 +156,8 @@ def _format_srt_time(milliseconds: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
 
 
-def _available_output(source: Path, operation: str, suffix: str, *, output_directory: Path | None = None) -> Path:
-    safe_operation = re.sub(r"[^a-z0-9-]+", "-", operation.lower()).strip("-") or "processed"
+def _available_output(source: Path, operation: str, suffix: str, *, output_directory: Path | None = None, lang: str | None = None) -> Path:
+    safe_operation = _operation_file_token(operation, lang=lang)
     directory = output_directory or source.parent
     candidate = directory / f"{source.stem}.{safe_operation}{suffix}"
     counter = 2
@@ -164,6 +165,30 @@ def _available_output(source: Path, operation: str, suffix: str, *, output_direc
         candidate = directory / f"{source.stem}.{safe_operation}-{counter}{suffix}"
         counter += 1
     return candidate.resolve()
+
+
+def _operation_file_token(operation: str, *, lang: str | None = None) -> str:
+    """Return the safe filename segment for an artifact operation.
+
+    Operations listed in the naming contract and translation artifacts
+    (``translate-{target}`` with optional ``-bilingual``/``-combined`` marker;
+    both hyphen and underscore bases are recognized) get their localized display
+    name. In the zh UI the marker is localized too, keeping the dot separator
+    (``翻译为中文.双语合一``); the en UI keeps the pre-change byte output
+    (``translate-zh-bilingual`` / legacy ``translate-zh`` for underscore bases).
+    Operations that fall outside both groups keep the legacy ASCII cleaning so
+    unrelated names do not change shape.
+    """
+    if operation in OPERATION_NAMES:
+        display = operation_suffix(operation, lang=lang).lstrip(".")
+        return re.sub(r"[^\w-]+", "-", display, flags=re.UNICODE).strip("-") or "processed"
+    if is_translation_operation(operation):
+        display = operation_suffix(operation, lang=lang).lstrip(".")
+        # zh 界面翻译段以点分隔本地化标记（翻译为中文.双语合一），点必须保留；
+        # en 界面 / 未知 target 的 display 即 legacy 清洗后的 operation，
+        # 结果与改动前逐字节一致。
+        return re.sub(r"[^\w.-]+", "-", display, flags=re.UNICODE).strip(".-") or "processed"
+    return re.sub(r"[^a-z0-9-]+", "-", operation.lower()).strip("-") or "processed"
 
 
 def _atomic_write(path: Path, text: str) -> None:

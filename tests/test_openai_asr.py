@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -306,6 +308,93 @@ class OpenAiAsrTests(unittest.TestCase):
                 ["segment", "word"],
             )
             self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer sk-test")
+
+
+class OpenAiCliOutputNamingTests(unittest.TestCase):
+    """OpenAI 兼容 CLI：默认名不注入段；MAW_STAT；debug-raw 落盘分支。"""
+
+    def _run(self, extra_args, *, explicit_output=None, debug_raw=False):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "你好", "language": "zh"}
+            if debug_raw:
+                result["_raw_response"] = {"text": "你好"}
+            argv = ["generate_subtitle_openai_api.py", str(media)]
+            if explicit_output is not None:
+                argv += ["-o", str(explicit_output)]
+            argv += extra_args
+            segments = [{"start": 0, "end": 1000, "text": "你好"}]
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [100.0, 200.0, 212.3, 300.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            with mock.patch("sys.argv", argv), \
+                 mock.patch(
+                     "generate_subtitle_openai_api._prepare_audio",
+                     return_value=(str(root / "audio.wav"), 100.0),
+                 ), \
+                 mock.patch("generate_subtitle_openai_api.request_transcription", return_value=result), \
+                 mock.patch("generate_subtitle_openai_api._segments_from_result", return_value=segments), \
+                 mock.patch("generate_subtitle_openai_api.time.perf_counter", side_effect=fake_perf), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_openai_api import main
+
+                main()
+                names = sorted(path.name for path in root.glob("*.srt"))
+            return names, stdout.getvalue()
+
+    @staticmethod
+    def _stat_line(stdout):
+        for line in stdout.splitlines():
+            if line.startswith("MAW_STAT rtf="):
+                return line
+        return None
+
+    def test_default_name_stays_plain_and_stat_is_emitted(self) -> None:
+        names, stdout = self._run([])
+
+        self.assertEqual(names, ["20-走廊.srt"])
+        self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
+
+    def test_debug_raw_default_goes_into_maw_dir(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "你好", "language": "zh", "_raw_response": {"text": "你好"}}
+            segments = [{"start": 0, "end": 1000, "text": "你好"}]
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [100.0, 200.0, 212.3, 300.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            with mock.patch(
+                "sys.argv", ["generate_subtitle_openai_api.py", str(media), "--debug-raw"]
+            ), mock.patch(
+                "generate_subtitle_openai_api._prepare_audio",
+                return_value=(str(root / "audio.wav"), 100.0),
+            ), mock.patch("generate_subtitle_openai_api.request_transcription", return_value=result), \
+                 mock.patch("generate_subtitle_openai_api._segments_from_result", return_value=segments), \
+                 mock.patch("generate_subtitle_openai_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_openai_api import main
+
+                main()
+
+            maw_dir = root / "_maw"
+            raw_files = sorted(maw_dir.glob("*.asr-response.json")) if maw_dir.exists() else []
+            self.assertEqual(len(raw_files), 1)
+            self.assertIn(".asr-response.json", raw_files[0].name)
 
 
 if __name__ == "__main__":

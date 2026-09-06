@@ -81,6 +81,11 @@ class EffectiveConfig:
     gui_lang: str
     sticker_dir: str
     show_rare_langs: bool = False
+    # 输出文件目录与命名（Launcher「通用 → 文件输出」）：
+    # output_naming.subfolder_prefs() 直接读取这两个字段。
+    output_subfolder: bool = False
+    per_video_subfolder: bool = False
+    attach_model_name: bool = True
     last_model: str | None = None
     last_language: str | None = None
     model_cache_root: str = ""
@@ -525,6 +530,14 @@ def normalize_zoom_percent(value: object) -> int:
     return min(150, max(80, round(parsed / 5) * 5))
 
 
+def _env_bool(value: str, default: bool = False) -> bool:
+    """解析 .env 布尔键；空值（未配置）时返回传入的默认值。"""
+    normalized = value.strip().lower()
+    if not normalized:
+        return default
+    return normalized in ("1", "true", "yes", "on")
+
+
 def save_env(path: Path, updates: Mapping[str, str]) -> None:
     for key, value in updates.items():
         if "\x00" in value or (value and value.splitlines() != [value]):
@@ -570,6 +583,9 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         gui_lang=_gui_language(pick("MAW_GUI_LANG", "zh")),
         sticker_dir=pick("STICKER_DIR"),
         show_rare_langs=pick("MAW_GUI_SHOW_RARE_LANGS").strip().lower() in ("1", "true", "yes", "on"),
+        output_subfolder=_env_bool(pick("MAW_GUI_OUTPUT_SUBFOLDER")),
+        per_video_subfolder=_env_bool(pick("MAW_GUI_PER_VIDEO_SUBFOLDER")),
+        attach_model_name=_env_bool(pick("MAW_GUI_ATTACH_MODEL_NAME"), default=True),
         last_model=pick_optional("MAW_GUI_LAST_MODEL"),
         last_language=pick_optional("MAW_GUI_LAST_LANGUAGE"),
         model_cache_root=pick("MAW_MODEL_CACHE_ROOT").strip(),

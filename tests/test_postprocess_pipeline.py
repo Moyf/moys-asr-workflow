@@ -24,6 +24,7 @@ from maw.postprocess_pipeline import (
     run_postprocess_pipeline,
     save_postprocess_plan,
     snapshot_postprocess_llm_settings,
+    _create_run_directory,
     _publish_final,
     _attach_translation_track,
     validate_plan,
@@ -208,11 +209,62 @@ class PostprocessPipelineTests(unittest.TestCase):
             result.srt_path,
             translated_srt=result.translated_srt_path,
             translation_target="en",
+            ui_language="en",
         )
         self.assertEqual(final_project.name, "clip.postprocess.mosp")
         self.assertEqual(final_srt.name, "clip.postprocess.srt")
         self.assertEqual(final_translated_srt.name, "clip.postprocess.translate-en.srt")
         self.assertIn("Translation one", final_translated_srt.read_text(encoding="utf-8"))
+
+        localized_project, localized_srt, localized_translated_srt = _publish_final(
+            self.project,
+            self.srt,
+            result.project_path,
+            result.srt_path,
+            translated_srt=result.translated_srt_path,
+            translation_target="en",
+            ui_language="zh",
+        )
+        self.assertEqual(localized_project.name, "clip.后处理.mosp")
+        self.assertEqual(localized_srt.name, "clip.后处理.srt")
+        self.assertEqual(localized_translated_srt.name, "clip.后处理.翻译为英文.srt")
+        self.assertIn("Translation one", localized_translated_srt.read_text(encoding="utf-8"))
+
+    def test_publish_final_localizes_translated_srt_name_by_ui_language(self) -> None:
+        translated_project = self.root / "translated.mosp"
+        translated_srt = self.root / "translated.srt"
+        translated_project.write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "译文"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        translated_srt.write_text("1\n00:00:00,000 --> 00:00:01,000\n译文\n", encoding="utf-8")
+
+        zh = _publish_final(
+            self.project,
+            self.srt,
+            translated_project,
+            translated_srt,
+            translated_srt=translated_srt,
+            translation_target="zh",
+            ui_language="zh",
+        )
+        self.assertEqual(zh[2].name, "clip.后处理.翻译为中文.srt")
+
+        en_source = self.root / "clip-en.srt"
+        en_source.write_text(self.srt.read_text(encoding="utf-8"), encoding="utf-8")
+        en_project = self.root / "clip-en.mosp"
+        en_project.write_text(self.project.read_text(encoding="utf-8"), encoding="utf-8")
+        en = _publish_final(
+            en_project,
+            en_source,
+            translated_project,
+            translated_srt,
+            translated_srt=translated_srt,
+            translation_target="en",
+            ui_language="en",
+        )
+        self.assertEqual(en[2].name, "clip-en.postprocess.translate-en.srt")
+        self.assertIn("译文", en[2].read_text(encoding="utf-8"))
 
     def test_pipeline_keeps_blank_strict_translation_cue_in_place(self) -> None:
         self.project.write_text(
@@ -343,6 +395,7 @@ class PostprocessPipelineTests(unittest.TestCase):
                 ffmpeg_path=None,
                 cancel_event=Event(),
                 llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}},
+                ui_language="en",
             )
 
         merged = json.loads(result.project_path.read_text(encoding="utf-8"))
@@ -351,6 +404,20 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertIsNone(result.translated_srt_path)
         self.assertEqual(result.project_path.name, "clip.postprocess.bilingual.mosp")
         self.assertEqual(result.srt_path.name, "clip.postprocess.bilingual.srt")
+        # zh 界面终稿双语命名本地化：.后处理.双语合一（en 保持 .postprocess.bilingual）。
+        zh_project, zh_srt, zh_translated = _publish_final(
+            self.project,
+            self.srt,
+            result.project_path,
+            result.srt_path,
+            translated_srt=None,
+            translation_target="en",
+            bilingual=True,
+            ui_language="zh",
+        )
+        self.assertEqual(zh_project.name, "clip.后处理.双语合一.mosp")
+        self.assertEqual(zh_srt.name, "clip.后处理.双语合一.srt")
+        self.assertIsNone(zh_translated)
         self.assertTrue(result.run_directory.is_dir())
         self.assertTrue((result.run_directory / translated_project.name).is_file())
         self.assertTrue((result.run_directory / translated_srt.name).is_file())
@@ -409,6 +476,7 @@ class PostprocessPipelineTests(unittest.TestCase):
                 ffmpeg_path=None,
                 cancel_event=Event(),
                 llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}},
+                ui_language="en",
             )
 
         merged = json.loads(result.project_path.read_text(encoding="utf-8"))
@@ -694,10 +762,72 @@ class PostprocessPipelineTests(unittest.TestCase):
                 env_path=self.env_path,
                 ffmpeg_path=None,
                 cancel_event=cancel,
+                ui_language="zh",
             )
-        workspace = self.root / "MAW-Postprocess"
+        workspace = self.root / "_maw" / "后处理"
         self.assertTrue(workspace.is_dir())
         self.assertEqual(len(tuple(workspace.iterdir())), 1)
+
+    def test_new_run_directories_live_under_localized_workspace(self) -> None:
+        chinese_media = self.root / "我的视频.mp3"
+        chinese_media.write_bytes(b"audio")
+
+        zh_run = _create_run_directory(chinese_media, lang="zh")
+        self.assertEqual(zh_run.parent, (self.root / "_maw" / "后处理").resolve())
+        self.assertTrue(zh_run.name.startswith("我的视频-"))
+
+        en_run = _create_run_directory(self.media, lang="en")
+        self.assertEqual(en_run.parent, (self.root / "_maw" / "postprocess").resolve())
+        self.assertTrue(en_run.name.startswith("clip-"))
+
+    def test_resume_still_accepts_an_explicit_legacy_workspace_path(self) -> None:
+        old_run = self.root / "MAW-Postprocess" / "run-20260101-120000"
+        old_run.mkdir(parents=True)
+        current_project = old_run / "current.mosp"
+        current_srt = old_run / "current.srt"
+        current_project.write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "正字"}, {"start": 1100, "end": 2000, "text": "保留"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        current_srt.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\n正字\n\n2\n00:00:01,100 --> 00:00:02,000\n保留\n",
+            encoding="utf-8",
+        )
+        (old_run / "manifest.json").write_text(
+            json.dumps({
+                "version": 1,
+                "mediaPath": str(self.media),
+                "sourceProjectPath": str(self.project),
+                "sourceSrtPath": str(self.srt),
+                "retainIntermediate": True,
+                "steps": [
+                    {"id": "replace", "status": "done", "projectPath": str(current_project), "srtPath": str(current_srt)},
+                    {"id": "match", "status": "pending"},
+                ],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        result = run_postprocess_pipeline(
+            self.plan(self.replace_step(), self.match_step(), retain=True),
+            media_path=self.media,
+            project_path=self.project,
+            srt_path=self.srt,
+            env_path=self.env_path,
+            ffmpeg_path=None,
+            cancel_event=Event(),
+            resume_directory=old_run,
+            resume_from=1,
+            resume_project_path=current_project,
+            resume_srt_path=current_srt,
+        )
+
+        self.assertEqual(result.run_directory, old_run.resolve())
+        self.assertTrue(old_run.is_dir())
+        self.assertTrue((old_run / "manifest.json").is_file())
+        self.assertTrue(result.srt_path.is_file())
+        self.assertIn("正字", result.srt_path.read_text(encoding="utf-8"))
+        self.assertFalse((self.root / "_maw").exists())
 
 
 class PostprocessPreflightTests(unittest.TestCase):

@@ -63,6 +63,8 @@ datas = [
     (str(ROOT / "maw" / "waveform.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "reapeaks.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "media_cache.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "output_naming.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "gui_config.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "__init__.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "app_paths.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "console.py"), "local-runtime/maw"),
@@ -89,6 +91,9 @@ datas = [
     (str(ROOT / "maw" / "project.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "language.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "project_preview.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "output_naming.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "gui_config.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "app_paths.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "ocr_runtime_worker.py"), "ocr-runtime/maw"),
 ]
 opencc_datas = collect_data_files("opencc")
@@ -145,6 +150,7 @@ a = Analysis(
         "maw.media_cache",
         "maw.waveform",
         "maw.reapeaks",
+        "maw.output_naming",
         "generate_subtitle_qwen_api",
         "generate_subtitle_soniox_api",
         "generate_subtitle_tencent_api",
