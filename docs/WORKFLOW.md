@@ -391,7 +391,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 
 ### FFconcat 媒体重组
 
-媒体重组读取 `.ffconcat` 文件并调用 FFmpeg，以流复制方式生成 `*.gap-removed.*` 新媒体。出于本地文件安全限制，文件只允许使用 `ffconcat version 1.0`、`file`、`inpoint`、`outpoint` 和 `duration` 指令，而且每个 `file` 必须解析到 Launcher 当前媒体；外部媒体、网络地址和其他 FFconcat 指令都会被拒绝。
+媒体重组读取 `.ffconcat` 文件并调用 FFmpeg，以流复制方式生成 `*.gap-removed.*` 新媒体（中文界面为 `*.去空隙.*`）。出于本地文件安全限制，文件只允许使用 `ffconcat version 1.0`、`file`、`inpoint`、`outpoint` 和 `duration` 指令，而且每个 `file` 必须解析到 Launcher 当前媒体；外部媒体、网络地址和其他 FFconcat 指令都会被拒绝。
 
 重组完成后只有 Launcher 的媒体路径会切换到新文件，工程和 SRT 时间轴不会自动改写。需要与去空隙媒体匹配的字幕时，应从编辑器的空隙移除时间线导出对应 SRT，而不是把原工程直接配到重组媒体。
 

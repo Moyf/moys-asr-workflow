@@ -40,6 +40,10 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.media.write_bytes(b"audio")
         self.project = self.root / "clip.mosp"
         self.srt = self.root / "clip.srt"
+        # run 目录布局用例隔离真实 .env 的输出目录开关
+        prefs_patcher = mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False))
+        prefs_patcher.start()
+        self.addCleanup(prefs_patcher.stop)
         project = {"segments": [{"start": 0, "end": 1000, "text": "错字"}, {"start": 1100, "end": 2000, "text": "保留"}]}
         self.project.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
         self.srt.write_text(

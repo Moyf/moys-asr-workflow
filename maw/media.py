@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from maw.ffmpeg import resolve_ffmpeg_tool
-from maw.output_naming import OPERATION_NAMES, TRANSLATION_MARKER_NAMES, TRANSLATION_TARGET_NAMES, maw_root
+from maw.output_naming import MEDIA_SUFFIX_NAMES, OPERATION_NAMES, TRANSLATION_MARKER_NAMES, TRANSLATION_TARGET_NAMES, maw_root
 
 
 class MediaStatus(str, Enum):
@@ -379,7 +379,11 @@ _MEDIA_OPERATION_NAMES = tuple(
     name.lower()
     for operation in OPERATION_NAMES
     for name in (OPERATION_NAMES[operation]["zh"], OPERATION_NAMES[operation]["en"])
-) + _MEDIA_TRANSLATION_NAMES + _MEDIA_MARKER_NAMES
+) + _MEDIA_TRANSLATION_NAMES + _MEDIA_MARKER_NAMES + tuple(
+    name.lower()
+    for suffix in MEDIA_SUFFIX_NAMES
+    for name in (MEDIA_SUFFIX_NAMES[suffix]["zh"], MEDIA_SUFFIX_NAMES[suffix]["en"])
+)
 _MEDIA_OPERATION_TAGS = tuple(f".{name}." for name in _MEDIA_OPERATION_NAMES)
 _MEDIA_OPERATION_TERMINALS = tuple(f".{name}" for name in _MEDIA_OPERATION_NAMES)
 
