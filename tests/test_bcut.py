@@ -693,7 +693,7 @@ class BcutCliAudioPreparationTests(unittest.TestCase):
                 main()
 
             extract_audio.assert_called_once_with(
-                str(input_path), mock.ANY, duration_limit=600.0, ffmpeg_path=mock.ANY
+                str(input_path), mock.ANY, duration_limit=600.0, ffmpeg_path=mock.ANY, audio_track=0
             )
             copy2.assert_not_called()
             self.assertEqual(len(durations), 1)

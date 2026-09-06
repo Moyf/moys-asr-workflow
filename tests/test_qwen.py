@@ -59,7 +59,8 @@ class QwenMediaExtractionTests(unittest.TestCase):
         # FFmpeg 经统一解析器解析，可能是绝对路径；按可执行名断言。
         command = run.call_args.args[0]
         self.assertEqual(Path(command[0]).stem.lower(), "ffmpeg")
-        self.assertEqual(command[1:5], ["-i", "input.mp4", "-t", "120"])
+        # 多音轨支持：第一遍 ffmpeg 始终 -map 选中的音轨（默认第一条）。
+        self.assertEqual(command[1:7], ["-i", "input.mp4", "-map", "0:a:0", "-t", "120"])
         self.assertEqual(command[-1], "output.wav")
 
 
