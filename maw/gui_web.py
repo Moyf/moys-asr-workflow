@@ -114,7 +114,7 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.5.3"
+BUNDLED_APP_VERSION = "1.6.0-beta.1"
 MOSE_VERSION = "0.1.0"
 
 
