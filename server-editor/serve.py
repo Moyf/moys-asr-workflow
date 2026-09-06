@@ -65,6 +65,7 @@ from maw.media import (  # noqa: E402
     read_bwf_time_reference,
     resolve_project_media,
 )
+from maw.waveform import audio_track_from_payloads  # noqa: E402
 from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # noqa: E402
 
 
@@ -99,6 +100,7 @@ class ServerProject:
     stickers: list[dict]
     source_media_path: Path | None = None
     reapeaks_path: Path | None = None
+    audio_track: int = 0
 
 
 ProjectLoadProgressCallback = Callable[[str, int], None]
@@ -319,6 +321,11 @@ def load_project(
     if repaired_count:
         print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
     data = normalize_project(raw_data)
+    audio_track = audio_track_from_payloads(
+        data.get("waveform"),
+        data.get("spectral"),
+        data.get("waveform_reapeaks"),
+    )
     report("validating_project", 20)
     sticker_source = data.get("sticker_root")
     sticker_root: Path | None = None
@@ -347,6 +354,7 @@ def load_project(
             stickers,
             source_media_path=None,
             reapeaks_path=None,
+            audio_track=audio_track,
         )
 
     resolution = resolve_project_media(json_path, data, explicit_media)
@@ -383,6 +391,7 @@ def load_project(
                 media_path,
                 peaks_per_second=peaks_per_second,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
+                audio_track=audio_track,
             )
             data["waveform"] = waveform
             state = "已提取" if extracted else "使用缓存"
@@ -394,13 +403,20 @@ def load_project(
         if load_reapeaks:
             # 频谱缓存：源媒体旁存在 .ReaPeaks 时读取并内联下发，供波形染色。
             # 缺失/损坏/无 spectral 层一律静默降级，不影响编辑器。
-            spectral = reapeaks.load_spectral_payload(reapeaks_base, peaks_per_second=peaks_per_second)
+            spectral = reapeaks.load_spectral_payload(
+                reapeaks_base,
+                peaks_per_second=peaks_per_second,
+                audio_track=audio_track,
+            )
             if spectral is not None:
                 data["spectral"] = spectral
                 print(f"[spectral] 已加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
 
             # ReaPeaks 波形层：最细 wave 层作为可选的波形形状来源（编辑器设置里切换）。
-            reapeaks_wave = reapeaks.load_waveform_payload(reapeaks_base)
+            reapeaks_wave = reapeaks.load_waveform_payload(
+                reapeaks_base,
+                audio_track=audio_track,
+            )
             if reapeaks_wave is not None:
                 data["waveform_reapeaks"] = reapeaks_wave
                 print(
@@ -417,6 +433,7 @@ def load_project(
         stickers,
         source_media_path=source_media_path,
         reapeaks_path=reapeaks_base,
+        audio_track=audio_track,
     )
 
 
@@ -732,10 +749,14 @@ class EditorServer(ThreadingHTTPServer):
             if reapeaks_base is not None:
                 spectral = reapeaks.load_spectral_payload(
                     reapeaks_base, peaks_per_second=self.peaks_per_second,
+                    audio_track=project.audio_track,
                 )
                 if spectral is not None:
                     print(f"[spectral] 后台加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
-                reapeaks_wave = reapeaks.load_waveform_payload(reapeaks_base)
+                reapeaks_wave = reapeaks.load_waveform_payload(
+                    reapeaks_base,
+                    audio_track=project.audio_track,
+                )
                 if reapeaks_wave is not None:
                     print(
                         f"[reapeaks-wave] 后台加载 {reapeaks_wave['peak_count']} peaks "

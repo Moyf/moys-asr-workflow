@@ -55,6 +55,11 @@
         <p id="mediaPathError" class="field-error"></p>
         <p id="mediaPathFlvHint" class="hint warn hidden" data-i18n="flv_media_hint" aria-live="polite">flv 无法预览，将会自动转换成 mp4 格式</p>
       </div>
+      <div id="audioTrackField" class="field audio-track-field hidden">
+        <label for="audioTrack" data-i18n="audio_track">声音轨道</label>
+        <select id="audioTrack" aria-describedby="audioTrackHint"></select>
+        <p id="audioTrackHint" class="hint" data-i18n="audio_track_hint">检测到多个声音轨道，请选择用于转写和波形的轨道。</p>
+      </div>
       <div class="field">
         <label for="srtPath" data-i18n="srt_output">SRT 输出</label>
         <input id="srtPath" type="text" autocomplete="off">

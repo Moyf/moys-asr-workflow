@@ -1012,6 +1012,7 @@
     try {
       const result = await bridge("generate_waveform_project", {
         mediaPath,
+        audioTrack: window.MAWLauncher.getAudioTrackForMedia?.(mediaPath),
         generateSpectral: $("toolboxGenerateSpectral").checked,
       });
       if (!result.ok) {

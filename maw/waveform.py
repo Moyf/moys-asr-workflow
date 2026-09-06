@@ -125,9 +125,27 @@ def is_waveform_payload(value: Any) -> bool:
     )
 
 
-def waveform_matches_media(value: Any, media_path: Path) -> bool:
+def audio_track_from_payloads(*payloads: Any) -> int:
+    """Return the first valid logical audio-track number from cache payloads."""
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        value = payload.get("audio_track")
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+    return 0
+
+
+def waveform_matches_media(
+    value: Any,
+    media_path: Path,
+    *,
+    audio_track: int | None = None,
+) -> bool:
     """Return true when a valid payload was derived from this exact file."""
     if not is_waveform_payload(value):
+        return False
+    if audio_track is not None and audio_track_from_payloads(value) != audio_track:
         return False
     return value.get("source") == media_signature(media_path)
 
@@ -174,6 +192,7 @@ def extract_waveform(
     peaks_per_second: int = DEFAULT_PEAKS_PER_SECOND,
     pcm_sample_rate: int | None = None,
     ffmpeg_bin: str | None = None,
+    audio_track: int = 0,
 ) -> dict[str, Any]:
     """Stream a mono PCM envelope from FFmpeg without retaining decoded audio.
 
@@ -183,6 +202,8 @@ def extract_waveform(
     media_path = Path(media_path).resolve()
     if not media_path.is_file():
         raise WaveformError(f"媒体文件不存在: {media_path}")
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
+        raise ValueError("audio_track must be a non-negative integer")
     if peaks_per_second <= 0:
         raise ValueError("peaks_per_second must be positive")
     if pcm_sample_rate is None:
@@ -209,7 +230,7 @@ def extract_waveform(
         "-i",
         str(media_path),
         "-map",
-        "0:a:0",
+        f"0:a:{audio_track}",
         "-vn",
         "-ac",
         "1",
@@ -280,6 +301,7 @@ def extract_waveform(
         "peak_count": peak_count,
         "duration_ms": duration_ms,
         "data": base64.b64encode(encoded).decode("ascii"),
+        "audio_track": audio_track,
         "source": media_signature(media_path),
     }
 
@@ -290,6 +312,7 @@ def embed_waveform(
     *,
     peaks_per_second: int = DEFAULT_PEAKS_PER_SECOND,
     ffmpeg_bin: str | None = None,
+    audio_track: int = 0,
 ) -> EmbeddedWaveformResult:
     """Return a project copy with embedded peaks, or the original project on failure."""
     try:
@@ -297,6 +320,7 @@ def embed_waveform(
             media_path,
             peaks_per_second=peaks_per_second,
             ffmpeg_bin=ffmpeg_bin,
+            audio_track=audio_track,
         )
     except Exception as exc:  # noqa: BLE001
         return EmbeddedWaveformResult(project=project, error=exc)
@@ -311,16 +335,19 @@ def load_or_extract_waveform(
     *,
     peaks_per_second: int = DEFAULT_PEAKS_PER_SECOND,
     ffmpeg_bin: str | None = None,
+    audio_track: int = 0,
 ) -> tuple[dict[str, Any], bool]:
     """Return cached peaks when valid, otherwise extract a fresh payload."""
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
+        raise ValueError("audio_track must be a non-negative integer")
     if (
-        waveform_matches_media(existing, media_path)
+        waveform_matches_media(existing, media_path, audio_track=audio_track)
         and existing["peaks_per_second"] == peaks_per_second
     ):
         return existing, False
     sidecar = load_waveform_sidecar(media_path)
     if (
-        waveform_matches_media(sidecar, media_path)
+        waveform_matches_media(sidecar, media_path, audio_track=audio_track)
         and sidecar["peaks_per_second"] == peaks_per_second
     ):
         return sidecar, False
@@ -328,6 +355,7 @@ def load_or_extract_waveform(
         media_path,
         peaks_per_second=peaks_per_second,
         ffmpeg_bin=ffmpeg_bin,
+        audio_track=audio_track,
     )
     try:
         save_waveform_sidecar(payload, media_path)

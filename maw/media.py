@@ -212,7 +212,7 @@ def probe_audio_tracks(
         str(executable), "-v", "error",
         "-select_streams", "a",
         "-show_entries",
-        "stream=index,codec_name,channels,sample_rate:stream_tags=language,title:stream_disposition=default",
+        "stream=index,codec_name,channels,sample_rate:stream_tags=language,title,name,handler_name:stream_disposition=default",
         "-of", "json", str(source),
     ]
     try:
@@ -251,10 +251,23 @@ def probe_audio_tracks(
             "channels": channels,
             "sample_rate": sample_rate,
             "language": str(tags.get("language") or "").strip(),
-            "title": str(tags.get("title") or "").strip(),
+            "title": _first_nonempty_tag(tags, "title", "name", "handler_name"),
             "default": default_value == 1,
         })
     return tracks
+
+
+def _first_nonempty_tag(tags: Mapping[object, object], *names: str) -> str:
+    """Return the first non-empty FFprobe stream tag, tolerating key casing."""
+    normalized = {
+        str(key).strip().casefold(): value
+        for key, value in tags.items()
+    }
+    for name in names:
+        value = str(normalized.get(name.casefold()) or "").strip()
+        if value:
+            return value
+    return ""
 
 
 @dataclass(frozen=True, slots=True)

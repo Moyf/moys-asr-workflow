@@ -151,6 +151,7 @@ class WaveformExtractionTests(unittest.TestCase):
             self.media_path,
             peaks_per_second=waveform_module.DEFAULT_PEAKS_PER_SECOND,
             ffmpeg_bin="C:/MAW/ffmpeg.exe",
+            audio_track=0,
         )
 
 

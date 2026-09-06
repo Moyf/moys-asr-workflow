@@ -66,6 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--speaker-model", help="FunASR 可选说话人模型")
     parser.add_argument("--speaker-colors", action="store_true", help="为说话人段落生成颜色快照")
     parser.add_argument("--language", help="语言提示，例如 zh 或 en")
+    parser.add_argument(
+        "--audio-track", type=int, default=0,
+        help="使用第几个音频轨道（从 0 开始，默认 0）",
+    )
     parser.add_argument("--hotword", action="append", default=[], help="热词，可重复传入")
     parser.add_argument(
         "--hotword-file", action="append", default=[], metavar="FILE",
@@ -133,6 +137,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.length_limit is not None and args.length_limit <= 0:
         print("错误: --length-limit 必须大于 0")
         return 2
+    if args.audio_track < 0:
+        print("错误: --audio-track 必须是非负整数")
+        return 2
     if args.with_waveform and not args.json:
         print("错误: --with-waveform 需要同时指定 --json")
         return 2
@@ -171,6 +178,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             on_event=print,
             ffmpeg_path=ffmpeg_path,
             ffprobe_path=ffprobe_path,
+            audio_track=args.audio_track,
         ) as (audio_path, duration_ms):
             result = engine.transcribe(
                 audio_path,
@@ -208,6 +216,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 generate_spectral=args.with_spectral,
                 ffmpeg_path=ffmpeg_path,
                 ffprobe_path=ffprobe_path,
+                audio_track=args.audio_track,
             )
     except Exception as error:  # noqa: BLE001 - CLI boundary prints actionable error.
         print(f"错误: {error}")

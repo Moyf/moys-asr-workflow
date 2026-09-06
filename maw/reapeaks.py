@@ -240,12 +240,19 @@ def _unpack_12bit_bins(raw: bytes) -> list[int]:
     return bins
 
 
-def find_reapeaks(media_path: Path) -> Path | None:
+def find_reapeaks(media_path: Path, *, audio_track: int = 0) -> Path | None:
     """Locate the .ReaPeaks cache REAPER would write next to a media file."""
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
+        raise ValueError("audio_track must be a non-negative integer")
     parent = media_path.parent
     name = media_path.name
-    candidates = [parent / (name + suffix) for suffix in REAPEAKS_SUFFIXES]
-    candidates += [media_path.with_suffix(suffix) for suffix in REAPEAKS_SUFFIXES]
+    track_suffix = f".track-{audio_track + 1}" if audio_track else ""
+    candidates = [
+        parent / (name + track_suffix + suffix) for suffix in REAPEAKS_SUFFIXES
+    ]
+    candidates += [
+        media_path.with_suffix(track_suffix + suffix) for suffix in REAPEAKS_SUFFIXES
+    ]
     seen: set[Path] = set()
     for candidate in candidates:
         if candidate in seen:
@@ -285,6 +292,7 @@ def extract_spectral_payload(
     media_path: Path,
     *,
     peaks_per_second: int = 100,
+    audio_track: int = 0,
 ) -> dict | None:
     """Parse a .ReaPeaks file into a versioned spectral payload, or None.
 
@@ -313,6 +321,7 @@ def extract_spectral_payload(
         "sample_rate": ra.sample_rate,
         "division": eff_div,
         "peak_count": spectral.peak_count,
+        "audio_track": audio_track,
         "source": waveform_module.media_signature(media_path),
         "data": base64.b64encode(bytes(buffer)).decode("ascii"),
     }
@@ -335,6 +344,8 @@ def _wave_to_int8(value: float | int) -> int:
 def extract_waveform_payload(
     reapeaks_path: Path | str,
     media_path: Path,
+    *,
+    audio_track: int = 0,
 ) -> dict | None:
     """Convert the finest .ReaPeaks wave mipmap into a ``moy.asr.waveform.v1`` payload.
 
@@ -387,6 +398,7 @@ def extract_waveform_payload(
         "division": div,
         "peak_count": len(finest.wave),
         "duration_ms": round(len(finest.wave) * div / ra.sample_rate * 1000),
+        "audio_track": audio_track,
         "source": waveform_module.media_signature(media_path),
         "data": base64.b64encode(bytes(buffer)).decode("ascii"),
     }
@@ -444,31 +456,39 @@ def _reapeaks_contains_spectral(reapeaks_path: Path | str) -> bool:
         return False
 
 
-def load_waveform_payload(media_path: Path) -> dict | None:
+def load_waveform_payload(media_path: Path, *, audio_track: int = 0) -> dict | None:
     """Return a waveform payload from the media's .ReaPeaks, or None."""
-    reapeaks_path = find_reapeaks(media_path)
+    reapeaks_path = find_reapeaks(media_path, audio_track=audio_track)
     if reapeaks_path is None or not _reapeaks_matches_media(reapeaks_path, media_path):
         return None
     try:
-        return extract_waveform_payload(reapeaks_path, media_path)
+        return extract_waveform_payload(
+            reapeaks_path, media_path, audio_track=audio_track
+        )
     except (OSError, struct.error, ValueError, IndexError):
         return None
 
 
 def load_spectral_payload(
-    media_path: Path, *, peaks_per_second: int = 100
+    media_path: Path,
+    *,
+    peaks_per_second: int = 100,
+    audio_track: int = 0,
 ) -> dict | None:
     """Find the media's .ReaPeaks and return a spectral payload, or None.
 
     Any missing / unreadable / non-spectral / stale .ReaPeaks degrades to None
     so the editor keeps working without spectral coloring.
     """
-    reapeaks_path = find_reapeaks(media_path)
+    reapeaks_path = find_reapeaks(media_path, audio_track=audio_track)
     if reapeaks_path is None or not _reapeaks_matches_media(reapeaks_path, media_path):
         return None
     try:
         return extract_spectral_payload(
-            reapeaks_path, media_path, peaks_per_second=peaks_per_second
+            reapeaks_path,
+            media_path,
+            peaks_per_second=peaks_per_second,
+            audio_track=audio_track,
         )
     except (OSError, struct.error, ValueError, IndexError):
         return None
@@ -514,6 +534,7 @@ def generate_reapeaks_stream_bytes(
     src_timestamp: int = 0,
     src_filesize: int = 0,
     include_spectral: bool = True,
+    audio_track: int = 0,
 ) -> bytes | None:
     """Stream .ReaPeaks bytes straight from ffmpeg's WAV pipe.
 
@@ -526,6 +547,8 @@ def generate_reapeaks_stream_bytes(
     ffmpeg = resolve_ffmpeg(ffmpeg_bin)
     if not ffmpeg:
         print("[reapeaks] 缺少 ffmpeg，跳过 .ReaPeaks 生成")
+        return None
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
         return None
     rust_generate = _load_rust_kernel()
     if rust_generate is None:
@@ -541,6 +564,8 @@ def generate_reapeaks_stream_bytes(
                 "error",
                 "-i",
                 str(media_path),
+                "-map",
+                f"0:a:{audio_track}",
                 "-vn",
                 "-acodec",
                 "pcm_s16le",
@@ -622,6 +647,8 @@ def generate_for_media(
     ffmpeg_bin: str | None = None,
     include_spectral: bool = True,
     source_media_path: Path | str | None = None,
+    audio_track: int = 0,
+    cache_audio_track: int | None = None,
 ) -> Path | None:
     """Best-effort .ReaPeaks generation for a media file, or the existing path.
 
@@ -644,17 +671,29 @@ def generate_for_media(
     or from a ``--length-limit`` clip, silently re-bases the editor's whole time
     axis and stops covering the tail.
     """
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
+        return None
+    if cache_audio_track is None:
+        cache_audio_track = audio_track
+    if (
+        not isinstance(cache_audio_track, int)
+        or isinstance(cache_audio_track, bool)
+        or cache_audio_track < 0
+    ):
+        return None
+
     media_path = Path(media_path)
     signature_path = (
         Path(source_media_path) if source_media_path is not None else media_path
     )
-    existing = find_reapeaks(signature_path)
+    existing = find_reapeaks(signature_path, audio_track=cache_audio_track)
     if existing is not None and _reapeaks_matches_media(existing, signature_path):
         if not include_spectral or _reapeaks_contains_spectral(existing):
             return existing
     # 优先解码源媒体；源不可读或解不出音频时退回调用方给的派生文件，
     # 让缓存至少覆盖"编辑器能看到的那部分"，而不是整体失效。回退缓存
     # 必须写在派生文件旁，避免把派生数据伪装成源媒体的缓存。
+    track_suffix = f".track-{cache_audio_track + 1}" if cache_audio_track else ""
     candidates = (
         [media_path] if signature_path == media_path else [signature_path, media_path]
     )
@@ -675,6 +714,7 @@ def generate_for_media(
                 src_timestamp=media_timestamp,
                 src_filesize=media_filesize,
                 include_spectral=include_spectral,
+                audio_track=audio_track if decode_path == signature_path else 0,
             )
         except Exception as exc:  # noqa: BLE001
             # 生成是兜底：任何失败都不阻断转写/启动流程。具体原因（缺 ffmpeg /
@@ -689,7 +729,9 @@ def generate_for_media(
                     f"{decode_path.name} -> {candidates[1].name}"
                 )
             continue
-        target = decode_path.with_name(decode_path.name + ".ReaPeaks")
+        target = decode_path.with_name(
+            decode_path.name + track_suffix + ".ReaPeaks"
+        )
         try:
             target.write_bytes(data)
         except OSError as exc:

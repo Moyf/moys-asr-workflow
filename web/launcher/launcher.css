@@ -479,6 +479,22 @@ button:disabled {
   margin-top: 10px;
 }
 
+.audio-track-field {
+  padding: 10px;
+  border: 1px solid var(--accent-soft);
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--accent-tint), transparent 72%), var(--bg-input);
+}
+
+.audio-track-field label {
+  color: var(--accent-hover);
+  font-weight: 600;
+}
+
+.audio-track-field .hint {
+  font-size: 12px;
+}
+
 .field:first-of-type {
   margin-top: 0;
 }

@@ -129,15 +129,24 @@ def _extract_audio_for_local(
     duration_limit: float | None = None,
     *,
     ffmpeg_path: str | Path | None = None,
+    audio_track: int = 0,
 ) -> None:
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
+        raise ValueError("audio_track must be a non-negative integer")
     if ffmpeg_path is None:
-        extract_audio(source_path, output_path, duration_limit=duration_limit)
+        extract_audio(
+            source_path,
+            output_path,
+            duration_limit=duration_limit,
+            audio_track=audio_track,
+        )
     else:
         extract_audio(
             source_path,
             output_path,
             duration_limit=duration_limit,
             ffmpeg_path=ffmpeg_path,
+            audio_track=audio_track,
         )
 
 
@@ -1351,13 +1360,20 @@ def prepared_audio(
     on_event: ProgressCallback | None = None,
     ffmpeg_path: str | Path | None = None,
     ffprobe_path: str | Path | None = None,
+    audio_track: int = 0,
 ) -> Iterator[tuple[Path, int]]:
     """Provide a local 16 kHz mono WAV for video or limited-length inputs."""
     if not input_path.exists():
         raise FileNotFoundError(f"媒体文件不存在: {input_path}")
     if length_limit_s is not None and length_limit_s <= 0:
         raise ValueError("length limit must be greater than 0")
-    needs_temp = input_path.suffix.lower() in VIDEO_EXTENSIONS or length_limit_s is not None
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
+        raise ValueError("audio_track must be a non-negative integer")
+    needs_temp = (
+        input_path.suffix.lower() in VIDEO_EXTENSIONS
+        or length_limit_s is not None
+        or audio_track != 0
+    )
     if not needs_temp:
         duration_ms = max(int(round(_media_duration_seconds(str(input_path), ffprobe_path) * 1000)), 1)
         if on_event:
@@ -1373,6 +1389,7 @@ def prepared_audio(
                 str(audio_path),
                 duration_limit=length_limit_s,
                 ffmpeg_path=ffmpeg_path,
+                audio_track=audio_track,
             )
         else:
             shutil.copy2(input_path, audio_path)
@@ -1397,6 +1414,7 @@ def write_local_outputs(
     generate_spectral: bool = False,
     ffmpeg_path: str | Path | None = None,
     ffprobe_path: str | Path | None = None,
+    audio_track: int = 0,
 ) -> LocalOutputPaths:
     """Write SRT and optional MAW project/portable editor outputs."""
     output_srt.parent.mkdir(parents=True, exist_ok=True)
@@ -1417,6 +1435,7 @@ def write_local_outputs(
         cache_kwargs: dict[str, object] = {
             "source_media_path": input_path,
             "generate_spectral": generate_spectral,
+            "audio_track": audio_track,
         }
         if ffmpeg_path is not None:
             cache_kwargs["ffmpeg_bin"] = str(ffmpeg_path)

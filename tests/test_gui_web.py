@@ -647,7 +647,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             )),
             mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=None, reapeaks_path=None)) as embed,
         ):
-            result = self.api.generate_waveform_project({"mediaPath": str(media), "generateSpectral": True})
+            result = self.api.generate_waveform_project({"mediaPath": str(media), "generateSpectral": True, "audioTrack": "2"})
 
         self.assertTrue(result["ok"])
         project_path = Path(str(result["projectPath"]))
@@ -663,6 +663,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             source_media_path=media.resolve(),
             generate_spectral=True,
             ffmpeg_bin=str(ffmpeg),
+            audio_track=2,
         )
 
     def test_generate_waveform_project_rejects_invalid_embedded_waveform(self) -> None:
@@ -1195,6 +1196,34 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["tracks"], [{"audioIndex": 0, "streamIndex": 3, "codec": "aac", "channels": 2, "sampleRate": 48000, "language": "zh", "title": "中文", "default": True}])
         self.assertEqual(inspect.call_args.kwargs["ffprobe_path"], ffprobe)
+
+    def test_get_audio_tracks_bridge_returns_normalized_track_payload(self) -> None:
+        media = self.root / "clip.mp4"
+        ffprobe = self.root / ("ffprobe.exe" if os.name == "nt" else "ffprobe")
+        _ = media.write_bytes(b"media")
+        _ = ffprobe.write_bytes(b"exe")
+        track = SimpleNamespace(audio_index=0, stream_index=1, codec_name="aac", channels=2, sample_rate=48000, language="zho", title="Mix", default=True)
+
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=None, ffprobe=ffprobe)):
+            with mock.patch("maw.gui_web.inspect_audio_tracks", return_value=(track,)) as inspect:
+                result = self.api.get_audio_tracks({"mediaPath": str(media)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mediaPath"], str(media.resolve()))
+        self.assertEqual(result["tracks"], [{"audioIndex": 0, "streamIndex": 1, "codec": "aac", "channels": 2, "sampleRate": 48000, "language": "zho", "title": "Mix", "default": True}])
+        inspect.assert_called_once_with(media.resolve(), ffprobe_path=ffprobe)
+
+    def test_get_audio_tracks_bridge_reports_probe_failure(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=None, ffprobe=Path("ffprobe"))):
+            with mock.patch("maw.gui_web.inspect_audio_tracks", side_effect=RuntimeError("probe failed")):
+                result = self.api.get_audio_tracks({"mediaPath": str(media)})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "mediaPath")
+        self.assertEqual(result["code"], "audio_tracks_unavailable")
 
     def test_extract_audio_bridge_uses_selected_track_and_returns_m4a(self) -> None:
         media = self.root / "clip.mp4"
@@ -2488,6 +2517,34 @@ class GuiWebBridgeTests(unittest.TestCase):
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "30m")
+
+    def test_request_from_payload_carries_selected_audio_track(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "audioTrack": "2",
+        }, self.env_path)
+
+        self.assertEqual(request.audio_track, 2)
+
+    def test_request_from_payload_rejects_negative_audio_track(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        with self.assertRaises(PreflightError) as raised:
+            _request_from_payload({
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "apiKey": "sk-test",
+                "audioTrack": -1,
+            }, self.env_path)
+
+        self.assertEqual(raised.exception.field, "audioTrack")
+        self.assertEqual(raised.exception.code, "audio_track_invalid")
 
     def test_request_from_payload_passes_segmentation_options(self) -> None:
         media = self.root / "clip.mp3"

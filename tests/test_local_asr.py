@@ -219,7 +219,13 @@ class LocalAsrFlowTests(unittest.TestCase):
             input_path.write_bytes(b"video")
             calls: list[tuple[str, str, float | None]] = []
 
-            def fake_extract(source: str, target: str, duration_limit: float | None = None) -> None:
+            def fake_extract(
+                source: str,
+                target: str,
+                duration_limit: float | None = None,
+                *,
+                audio_track: int = 0,
+            ) -> None:
                 calls.append((source, target, duration_limit))
                 Path(target).write_bytes(b"wav")
 
@@ -238,7 +244,13 @@ class LocalAsrFlowTests(unittest.TestCase):
             input_path.write_bytes(b"video")
             events: list[str] = []
 
-            def fake_extract(source: str, target: str, duration_limit: float | None = None) -> None:
+            def fake_extract(
+                source: str,
+                target: str,
+                duration_limit: float | None = None,
+                *,
+                audio_track: int = 0,
+            ) -> None:
                 Path(target).write_bytes(b"wav")
 
             with mock.patch("maw.local_asr.extract_audio", side_effect=fake_extract):
@@ -247,6 +259,29 @@ class LocalAsrFlowTests(unittest.TestCase):
                         pass
 
             self.assertEqual(events, ["[local] 正在准备加载模型……"])
+
+    def test_prepared_audio_passes_selected_track_to_video_extraction(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "clip.mp4"
+            input_path.write_bytes(b"video")
+            tracks: list[int] = []
+
+            def fake_extract(
+                source: str,
+                target: str,
+                duration_limit: float | None = None,
+                *,
+                audio_track: int = 0,
+            ) -> None:
+                tracks.append(audio_track)
+                Path(target).write_bytes(b"wav")
+
+            with mock.patch("maw.local_asr.extract_audio", side_effect=fake_extract):
+                with mock.patch("maw.local_asr.get_duration_sec", return_value=3.0):
+                    with prepared_audio(input_path, audio_track=2):
+                        pass
+
+            self.assertEqual(tracks, [2])
 
     def test_qwen_seconds_timestamps_are_normalized_to_milliseconds(self) -> None:
         class FakeAlignResult:

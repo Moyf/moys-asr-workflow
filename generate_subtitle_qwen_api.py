@@ -271,8 +271,17 @@ def extract_audio(
     duration_limit: float | None = None,
     *,
     ffmpeg_path: str | os.PathLike[str] | None = None,
+    audio_track: int = 0,
 ) -> None:
-    cmd = [_resolve_media_tool("ffmpeg", ffmpeg_path), "-i", video_path]
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
+        raise ValueError("audio_track must be a non-negative integer")
+    cmd = [
+        _resolve_media_tool("ffmpeg", ffmpeg_path),
+        "-i",
+        video_path,
+        "-map",
+        f"0:a:{audio_track}",
+    ]
     if duration_limit is not None:
         cmd.extend(["-t", str(duration_limit)])
     cmd.extend([
@@ -1561,6 +1570,10 @@ def main():
         help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
     )
     parser.add_argument(
+        "--audio-track", type=int, default=0,
+        help="使用第几个音频轨道（从 0 开始，默认 0）",
+    )
+    parser.add_argument(
         "--with-spectral", action="store_true",
         help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
     )
@@ -1621,6 +1634,8 @@ def main():
         help="保存 ASR 服务端返回的完整原始 JSON，用于排查断句、标点和时间码",
     )
     args = parser.parse_args()
+    if args.audio_track < 0:
+        parser.error("--audio-track 必须是非负整数")
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
     enable_speaker = args.speaker or args.speaker_colors
@@ -1688,6 +1703,7 @@ def main():
                     audio_path,
                     duration_limit=video_limit,
                     ffmpeg_path=ffmpeg_path,
+                    audio_track=args.audio_track,
                 )
                 print("[媒体] 正在读取提取后音频时长...")
                 duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
@@ -1804,6 +1820,7 @@ def main():
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
+                audio_track=args.audio_track,
             )
 
     if enable_speaker:

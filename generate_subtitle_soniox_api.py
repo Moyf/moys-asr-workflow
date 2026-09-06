@@ -107,6 +107,10 @@ def main():
         help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
     )
     parser.add_argument(
+        "--audio-track", type=int, default=0,
+        help="使用第几个音频轨道（从 0 开始，默认 0）",
+    )
+    parser.add_argument(
         "--with-spectral", action="store_true",
         help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
     )
@@ -139,6 +143,8 @@ def main():
         help="保存 Soniox transcript API 返回的完整原始 JSON，用于排查解析和时间码",
     )
     args = parser.parse_args()
+    if args.audio_track < 0:
+        parser.error("--audio-track 必须是非负整数")
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
 
@@ -182,6 +188,7 @@ def main():
                 audio_path,
                 duration_limit=video_limit,
                 ffmpeg_path=ffmpeg_path,
+                audio_track=args.audio_track,
             )
             print("[媒体] 正在读取提取后音频时长...")
             duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
@@ -214,6 +221,7 @@ def main():
                 limited_path,
                 duration_limit=limit_sec,
                 ffmpeg_path=ffmpeg_path,
+                audio_track=0,
             )
             audio_path = limited_path
             duration = limit_sec
@@ -277,6 +285,7 @@ def main():
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
+                audio_track=args.audio_track if is_video else 0,
             )
 
     if enable_speaker:

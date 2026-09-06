@@ -198,14 +198,22 @@ class MediaCacheTests(unittest.TestCase):
                 self.project,
                 self.wav,
                 ffmpeg_bin=ffmpeg,
+                audio_track=2,
             )
 
-        embed.assert_called_once_with(self.project, self.wav, ffmpeg_bin=ffmpeg)
+        embed.assert_called_once_with(
+            self.project,
+            self.wav,
+            ffmpeg_bin=ffmpeg,
+            audio_track=2,
+        )
         generate.assert_called_once_with(
             self.wav,
             ffmpeg_bin=ffmpeg,
             include_spectral=False,
             source_media_path=self.wav,
+            audio_track=2,
+            cache_audio_track=2,
         )
 
 

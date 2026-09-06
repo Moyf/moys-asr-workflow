@@ -282,12 +282,21 @@ def _prepare_audio(
     *,
     ffmpeg_path: Path | None,
     ffprobe_path: Path | None,
+    audio_track: int = 0,
 ) -> tuple[Path, float]:
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
+        raise ValueError("audio_track must be a non-negative integer")
     if input_path.suffix.lower() in VIDEO_EXTENSIONS:
         audio_path = temp_dir / "audio.wav"
         source_duration = get_duration_sec(str(input_path), ffprobe_path=ffprobe_path)
         limit = length_limit if length_limit and length_limit < source_duration else None
-        extract_audio(str(input_path), str(audio_path), duration_limit=limit, ffmpeg_path=ffmpeg_path)
+        extract_audio(
+            str(input_path),
+            str(audio_path),
+            duration_limit=limit,
+            ffmpeg_path=ffmpeg_path,
+            audio_track=audio_track,
+        )
     else:
         audio_path = temp_dir / input_path.name
         shutil.copy2(input_path, audio_path)
@@ -300,6 +309,7 @@ def _prepare_audio(
             str(limited),
             duration_limit=length_limit,
             ffmpeg_path=ffmpeg_path,
+            audio_track=0,
         )
         audio_path = limited
         duration = length_limit
@@ -340,12 +350,18 @@ def main() -> None:
     )
     parser.add_argument("--json", dest="json_out", action="store_true")
     parser.add_argument("--with-waveform", action="store_true")
+    parser.add_argument(
+        "--audio-track", type=int, default=0,
+        help="使用第几个音频轨道（从 0 开始，默认 0）",
+    )
     parser.add_argument("--with-spectral", action="store_true")
     parser.add_argument("--no-html", action="store_true")
     parser.add_argument("-s", "--stickers", default=get_default_sticker_dir())
     parser.add_argument("--debug", action="store_true", help="输出时间戳解析摘要")
     parser.add_argument("--debug-raw", action="store_true")
     args = parser.parse_args()
+    if args.audio_track < 0:
+        parser.error("--audio-track 必须是非负整数")
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
     if args.max_len < 1 or args.min_len < 1 or args.gap_split < 0:
@@ -369,6 +385,7 @@ def main() -> None:
             args.length_limit,
             ffmpeg_path=ffmpeg_tools.ffmpeg,
             ffprobe_path=ffmpeg_tools.ffprobe,
+            audio_track=args.audio_track,
         )
         print(f"[媒体] 音频时长: {int(duration // 60)}分{int(duration % 60)}秒")
         result = request_transcription(
@@ -402,6 +419,7 @@ def main() -> None:
                 audio_path,
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
+                audio_track=args.audio_track if input_path.suffix.lower() in VIDEO_EXTENSIONS else 0,
             )
 
     if not args.keep_punct and args.strip_tail_punct:
