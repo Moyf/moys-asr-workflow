@@ -12,6 +12,31 @@ from maw.project import (
 
 
 class ProjectContractTests(unittest.TestCase):
+    def test_validate_project_accepts_transcription_metadata(self) -> None:
+        result = validate_project({
+            "language": "en",
+            "language_source": "detected",
+            "split_mode": "word",
+            "timestamp_granularity": "segment",
+            "segments": [{"start": 0, "end": 1000, "text": "hello"}],
+        })
+
+        self.assertTrue(result.ok, msg=str([error.to_json() for error in result.errors]))
+
+    def test_validate_project_rejects_unknown_transcription_metadata_values(self) -> None:
+        result = validate_project({
+            "language_source": "model_guess",
+            "split_mode": "characters",
+            "timestamp_granularity": "sentence",
+            "segments": [{"start": 0, "end": 1000, "text": "hello"}],
+        })
+
+        paths = {error.path for error in result.errors}
+        self.assertEqual(
+            paths & {"$.language_source", "$.split_mode", "$.timestamp_granularity"},
+            {"$.language_source", "$.split_mode", "$.timestamp_granularity"},
+        )
+
     def test_normalize_project_generates_stable_main_ids_for_legacy_projects(self) -> None:
         project = {"segments": [{"start": 0, "end": 1000, "text": "hello"}]}
 

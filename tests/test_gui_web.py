@@ -8,11 +8,12 @@ import sys
 import tempfile
 import threading
 import unittest
+from collections.abc import Mapping
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Mapping, final
+from typing import final
 from unittest import mock
 from urllib.error import HTTPError, URLError
 
@@ -26,7 +27,9 @@ from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
+from maw.postprocess import PostprocessStepError  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
+from maw.postprocess_pipeline import PostprocessPipelineError  # noqa: E402
 from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
 from maw.runtimes import OCR  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
@@ -81,8 +84,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIsNone(config["lastModel"])
         self.assertIsNone(config["lastLanguage"])
         self.assertEqual(config["stickerDir"], "")
-        self.assertIn(config["localRuntime"]["status"], {"missing", "broken", "ready"})
-        self.assertIn(config["ocrRuntime"]["status"], {"missing", "broken", "ready"})
+        self.assertEqual(config["localRuntime"]["status"], "checking")
+        self.assertEqual(config["ocrRuntime"]["status"], "checking")
         self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
         self.assertEqual(config["providers"][0]["keyUrl"], "https://help.aliyun.com/zh/model-studio/get-api-key")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
@@ -165,8 +168,64 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(whisper["id"], "whisper-large-v3-local")
         self.assertIn("用户自行安装 CUDA 12 和 cuDNN 9", whisper["note"])
         self.assertIn("自动回退到 CPU", whisper["note"])
-        self.assertIn(local["models"][0]["localStatus"]["status"], {"runtime_missing", "missing", "installed", "partial", "path_invalid", "broken"})
+        self.assertEqual(local["models"][0]["localStatus"]["status"], "checking")
         self.assertEqual(config["modelCacheRoot"], "")
+
+    def test_get_config_does_not_scan_managed_runtime_or_model_caches(self) -> None:
+        with (
+            mock.patch("maw.gui_web.managed_runtime_status") as runtime_status,
+            mock.patch.object(self.api, "_ocr_runtime_status") as ocr_status,
+            mock.patch("maw.gui_web.local_model_payload") as model_payload,
+            mock.patch("maw.gui_web.ocr_models_payload") as ocr_models,
+        ):
+            config = self.api.get_config()
+
+        runtime_status.assert_not_called()
+        ocr_status.assert_not_called()
+        model_payload.assert_not_called()
+        ocr_models.assert_not_called()
+        self.assertEqual(config["localRuntime"]["status"], "checking")
+        self.assertEqual(config["ocrRuntime"]["status"], "checking")
+
+    def test_get_local_models_scans_visible_models_and_reuses_runtime_status_by_engine(self) -> None:
+        calls: list[str] = []
+
+        def runtime_status(_cache_root: str, *, engine: str) -> RuntimeStatus:
+            calls.append(engine)
+            return RuntimeStatus("missing", False, "", "", "missing", "1", "")
+
+        with (
+            mock.patch("maw.gui_web.managed_runtime_status", side_effect=runtime_status),
+            mock.patch("maw.local_models.managed_runtime_status") as model_runtime_status,
+            mock.patch("maw.local_models.importlib.util.find_spec", return_value=None),
+        ):
+            result = self.api.get_local_models({"modelId": "qwen3-asr-local"})
+
+        self.assertEqual(calls, ["qwen-asr", "funasr", "moss", "whisper"])
+        self.assertEqual(
+            [model["id"] for model in result["models"]],
+            [
+                "qwen3-asr-local",
+                "qwen3-asr-1.7b-local",
+                "sensevoice-small-local",
+                "moss-transcribe-diarize-local",
+                "whisper-large-v3-local",
+            ],
+        )
+        model_runtime_status.assert_not_called()
+
+    def test_get_config_uses_environment_override_for_initial_ocr_runtime_path(self) -> None:
+        file_runtime = self.root / "ocr-from-file"
+        env_runtime = self.root / "ocr-from-environment"
+        self.env_path.write_text(
+            f"MAW_OCR_RUNTIME_ROOT={file_runtime}\n",
+            encoding="utf-8",
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_OCR_RUNTIME_ROOT": str(env_runtime)}, clear=False):
+            config = self.api.get_config()
+
+        self.assertEqual(config["ocrRuntime"]["path"], str(env_runtime))
 
     def test_save_settings_accepts_custom_model_cache_root(self) -> None:
         cache_root = self.root / "models"
@@ -550,6 +609,29 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["code"], "postprocess_connection_failed")
         self.assertFalse(self.env_path.exists())
 
+    def test_postprocess_connection_http_failure_returns_non_secret_guidance_metadata(self) -> None:
+        error = LlmClientError(
+            "LLM connection test request failed (HTTP 401)",
+            status_code=401,
+            operation="connection test",
+        )
+        with mock.patch("maw.gui_web.test_llm_connection", side_effect=error):
+            result = self.api.test_postprocess_connection({
+                "providerId": "custom",
+                "apiKey": "test-only-key",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+                "save": True,
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_connection_failed")
+        self.assertEqual(result["httpStatus"], 401)
+        self.assertEqual(result["providerId"], "custom")
+        self.assertEqual(result["operation"], "connection test")
+        self.assertNotIn("test-only-key", str(result))
+        self.assertFalse(self.env_path.exists())
+
     def test_postprocess_models_use_form_values_without_writing_config(self) -> None:
         with mock.patch("maw.gui_web.list_llm_models", return_value=["model-a", "model-b"]) as list_models:
             result = self.api.get_postprocess_models({
@@ -566,6 +648,28 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(settings.api_key, "sk-entered")
         self.assertEqual(settings.base_url, "https://example.com/v1")
         self.assertEqual(settings.model, "custom-model")
+        self.assertFalse(self.env_path.exists())
+
+    def test_postprocess_models_http_failure_returns_non_secret_status_metadata(self) -> None:
+        error = LlmClientError(
+            "LLM model list request failed (HTTP 404)",
+            status_code=404,
+            operation="model list",
+        )
+        with mock.patch("maw.gui_web.list_llm_models", side_effect=error):
+            result = self.api.get_postprocess_models({
+                "providerId": "custom",
+                "apiKey": "test-only-key",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_models_failed")
+        self.assertEqual(result["httpStatus"], 404)
+        self.assertEqual(result["providerId"], "custom")
+        self.assertEqual(result["operation"], "model list")
+        self.assertNotIn("test-only-key", str(result))
         self.assertFalse(self.env_path.exists())
 
     def test_legacy_setting_bridges_return_structured_errors_for_invalid_values(self) -> None:
@@ -1097,6 +1201,84 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         request = process.call_args.args[0]
         self.assertTrue(request.merge_bilingual)
+
+    def test_llm_bridge_classifies_provider_http_error_without_exposing_secrets(self) -> None:
+        provider_error = LlmClientError(
+            "LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.",
+            category="provider_response",
+            status_code=400,
+            diagnostic="invalid request",
+        )
+        with mock.patch("maw.gui_web.process_llm_postprocess", side_effect=provider_error):
+            result = self.api.run_llm_postprocess({
+                "operation": "proofread",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "customPrompt": "",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_provider_response")
+        self.assertEqual(result["httpStatus"], 400)
+        self.assertEqual(result["diagnostic"], "invalid request")
+        self.assertIn("not a network outage", str(result["detail"]))
+        self.assertNotIn("sk-test", str(result))
+
+    def test_llm_bridge_classifies_wrapped_provider_http_error(self) -> None:
+        provider_error = PostprocessStepError(
+            "第 1/1 批（c0001–c0001）处理失败：LLM provider returned HTTP 429: quota exhausted.",
+            category="provider_response",
+            status_code=429,
+            diagnostic="quota exhausted",
+            operation="completion",
+        )
+        with mock.patch("maw.gui_web.process_llm_postprocess", side_effect=provider_error):
+            result = self.api.run_llm_postprocess({
+                "operation": "proofread",
+                "providerId": "custom",
+                "apiKey": "sk-test",
+                "baseUrl": "https://example.com/v1",
+                "model": "custom-model",
+                "customPrompt": "",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_provider_response")
+        self.assertEqual(result["httpStatus"], 429)
+        self.assertEqual(result["operation"], "completion")
+        self.assertEqual(result["diagnostic"], "quota exhausted")
+
+    def test_llm_network_bridge_redacts_endpoint_and_authorization(self) -> None:
+        provider_error = LlmClientError(
+            "LLM network request failed for https://api.example.test/v1/chat/completions?api_key=query-secret "
+            "Authorization: Bearer bearer-secret token=token-secret",
+            category="network",
+            diagnostic="https://api.example.test/v1?api_key=query-secret Bearer bearer-secret token=token-secret",
+        )
+        with mock.patch("maw.gui_web.process_llm_postprocess", side_effect=provider_error):
+            result = self.api.run_llm_postprocess({
+                "operation": "proofread",
+                "providerId": "custom",
+                "apiKey": "api-key-secret",
+                "baseUrl": "https://api.example.test/v1?api_key=query-secret",
+                "model": "custom-model",
+                "customPrompt": "",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_failed")
+        for secret in (
+            "api-key-secret",
+            "https://api.example.test/v1/chat/completions?api_key=query-secret",
+            "https://api.example.test/v1?api_key=query-secret",
+            "query-secret",
+            "bearer-secret",
+            "token-secret",
+        ):
+            self.assertNotIn(secret, str(result))
+        self.assertEqual(result["detail"], result["error"])
 
     def test_llm_custom_bridge_rejects_empty_prompt_before_provider_call(self) -> None:
         with mock.patch("maw.gui_web.complete_subtitle_groups") as complete:
@@ -2556,11 +2738,15 @@ class GuiWebBridgeTests(unittest.TestCase):
             "apiKey": "sk-test",
             "maxLen": "14",
             "minLen": "3",
+            "maxWords": "11",
+            "minWords": "2",
             "gapSplit": "800",
         }, self.env_path)
 
         self.assertEqual(request.max_len, "14")
         self.assertEqual(request.min_len, "3")
+        self.assertEqual(request.max_words, "11")
+        self.assertEqual(request.min_words, "2")
         self.assertEqual(request.gap_split, "800")
 
     def test_request_from_payload_rejects_invalid_segmentation_options(self) -> None:
@@ -2576,6 +2762,12 @@ class GuiWebBridgeTests(unittest.TestCase):
             _request_from_payload({**base, "maxLen": "2", "minLen": "3"}, self.env_path)
 
         self.assertEqual(raised.exception.field, "maxLen")
+        self.assertEqual(raised.exception.code, "segmentation_invalid")
+
+        with self.assertRaises(PreflightError) as raised:
+            _request_from_payload({**base, "maxWords": "2", "minWords": "3"}, self.env_path)
+
+        self.assertEqual(raised.exception.field, "maxWords")
         self.assertEqual(raised.exception.code, "segmentation_invalid")
 
     def test_request_from_payload_only_generates_html_when_requested(self) -> None:
@@ -2882,6 +3074,49 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('"code": "transcription_cancelled"', event_script)
         self.assertNotIn('"code": "transcription_failed"', event_script)
 
+    def test_worker_exposes_retry_and_original_transcription_for_provider_failure(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.wav",
+            srt_path=self.root / "clip.srt",
+            postprocess_plan={"enabled": True},
+            postprocess_llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}},
+        )
+        result = TranscriptionResult(
+            srt_path=self.root / "clip.srt",
+            json_path=self.root / "clip.mosp",
+            html_path=None,
+        )
+        failure = PostprocessPipelineError(
+            "后处理步骤 translate 失败：LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.",
+            run_directory=self.root / "MAW-Postprocess" / "run",
+            failed_index=0,
+            current_project=result.json_path,
+            current_srt=result.srt_path,
+            completed_steps=(),
+            failed_step="translate",
+            cause=LlmClientError(
+                "LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.",
+                category="provider_response",
+                status_code=400,
+                diagnostic="invalid request",
+            ),
+        )
+
+        with (
+            mock.patch("maw.gui_web.run_transcription", return_value=result),
+            mock.patch("maw.gui_web.run_postprocess_pipeline", side_effect=failure),
+        ):
+            self.api._worker_main(request, threading.Event())
+
+        self.assertTrue(self.window.scripts)
+        event_script = self.window.scripts[-1]
+        self.assertIn('"code": "postprocess_provider_response"', event_script)
+        self.assertIn('"canRetry": true', event_script)
+        self.assertIn('"failedStep": "translate"', event_script)
+        self.assertIn('"httpStatus": 400', event_script)
+        self.assertIn(str(result.json_path).replace("\\", "\\\\"), event_script)
+        self.assertIn(str(result.srt_path).replace("\\", "\\\\"), event_script)
+
     def test_worker_emits_retryable_error_for_ffmpeg_start_failure(self) -> None:
         request = TranscriptionRequest(
             media_path=self.root / "clip.mp4",
@@ -2991,6 +3226,28 @@ class _FakeLogSink:
         self.closed = True
 
 
+class _FakeEventHook:
+    def __init__(self) -> None:
+        self.callbacks: list[object] = []
+
+    def __iadd__(self, callback: object) -> "_FakeEventHook":
+        self.callbacks.append(callback)
+        return self
+
+    def fire(self) -> None:
+        for callback in self.callbacks:
+            callback()
+
+
+class _FakeLauncherWindow:
+    def __init__(self) -> None:
+        self.events = SimpleNamespace(closing=_FakeEventHook(), shown=_FakeEventHook(), loaded=_FakeEventHook())
+        self.loaded_urls: list[str] = []
+
+    def load_url(self, url: str) -> None:
+        self.loaded_urls.append(url)
+
+
 @final
 class LauncherRuntimeTests(unittest.TestCase):
     def test_run_app_passes_debug_and_controls_automatic_devtools(self) -> None:
@@ -3021,6 +3278,35 @@ class LauncherRuntimeTests(unittest.TestCase):
             # 事件流与 stdout/stderr tee 必须共享同一个 sink 实例（单锁单文件）。
             install_tee.assert_called_once_with(api_sink)
             fake_webview.reset_mock()
+
+    def test_run_app_loads_launcher_directly_without_boot_page(self) -> None:
+        paths = LauncherPaths(
+            root=Path("launcher-root"),
+            env_path=Path("launcher-root/.env"),
+            launcher_html=Path("launcher-root/launcher.html"),
+        )
+        fake_window = _FakeLauncherWindow()
+        fake_webview = mock.Mock()
+        fake_webview.settings = {"OPEN_DEVTOOLS_IN_DEBUG": True}
+        fake_webview.create_window.return_value = fake_window
+        fake_webview.start.return_value = None
+
+        with (
+            mock.patch.dict(sys.modules, {"webview": fake_webview}),
+            mock.patch("maw.gui_web.default_paths", return_value=paths),
+            mock.patch("maw.gui_web.LauncherApi") as launcher_api_cls,
+            mock.patch("maw.gui_web.install_stdio_tee"),
+            mock.patch("maw.gui_web.asset_path", return_value=Path("missing.ico")),
+            mock.patch("maw.gui_web.apply_dark_title_bar"),
+        ):
+            run_app()
+
+        create_kwargs = fake_webview.create_window.call_args.kwargs
+        self.assertEqual(create_kwargs["url"], paths.launcher_html.resolve().as_uri())
+        self.assertNotIn("html", create_kwargs)
+        fake_window.events.shown.fire()
+        fake_window.events.loaded.fire()
+        launcher_api_cls.return_value.pump.start.assert_called_once_with()
 
 
 @final
@@ -3206,6 +3492,35 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('const customPrompt = $("postprocessPrompt").value.trim()', script)
         self.assertIn("const TASK_PROMPT_KEYS", script)
 
+    def test_launcher_reveals_form_after_initialization_without_a_boot_page(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        self.assertNotIn('id="launcherBoot"', page)
+        self.assertIn('background: #16181d;', page)
+        self.assertIn('html[data-theme="light"]', page)
+        self.assertIn('pointer-events: none;', page)
+        self.assertIn('<main class="shell" inert aria-busy="true">', page)
+        self.assertIn('body:not(.launcher-ready) .shell', stylesheet)
+        self.assertIn('pointer-events: none;', stylesheet)
+        self.assertIn('function revealLauncher()', script)
+        self.assertIn('shell?.removeAttribute("inert")', script)
+        self.assertIn('function refreshStartupState()', script)
+        self.assertIn('["default output", syncDefaultOutput()]', script)
+        self.assertIn('["FFmpeg", refreshFfmpeg()]', script)
+        self.assertIn('["server", checkExistingServer()]', script)
+        self.assertIn('["local models", refreshLocalModels()]', script)
+        self.assertNotIn('["local runtime", refreshLocalRuntime()]', script)
+        self.assertIn('let ocrRuntimeRequest = 0;', script)
+        self.assertIn('if (requestId !== ocrRuntimeRequest) return result;', script)
+        self.assertIn('let localRuntimeRequest = 0;', script)
+        self.assertIn('let localModelsRequest = 0;', script)
+        self.assertIn('statusRequestId !== localStatusRequest', script)
+        self.assertIn('Promise.allSettled', script)
+        self.assertIn('revealLauncher();\n    window.dispatchEvent(new CustomEvent("mawlauncherready"));\n    refreshStartupState();', script)
+        self.assertIn('void init().catch((error) => {', script)
+
     def test_custom_llm_task_requires_a_prompt(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
@@ -3367,6 +3682,18 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('toolbox_saved: "LLM settings saved."', launcher_script)
         self.assertIn('llm_connection_saved: "连接成功（已自动保存到本地环境）"', launcher_script)
         self.assertIn('llm_connection_saved: "Connection successful (saved to local environment automatically)."', launcher_script)
+        self.assertIn('llm_http_unauthorized:', launcher_script)
+        self.assertIn('llm_http_unauthorized_builtin:', launcher_script)
+        self.assertIn('llm_http_unauthorized_custom:', launcher_script)
+        self.assertIn('llm_http_forbidden:', launcher_script)
+        self.assertIn('llm_http_not_found:', launcher_script)
+        self.assertIn('llm_http_rate_limited:', launcher_script)
+        self.assertIn('llm_builtin_provider_key_guidance:', launcher_script)
+        self.assertIn('function llmBuiltInProviderKeyGuidance(context = {})', launcher_script)
+        self.assertIn('["deepseek", "zhipu", "qwen"].includes(providerId)', launcher_script)
+        self.assertIn('官方控制台获取的 API Key', launcher_script)
+        self.assertIn('第三方平台，请选择“自定义（兼容 OpenAI）”', launcher_script)
+        self.assertIn('当前供应商：自定义（兼容 OpenAI）。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
         self.assertIn('llm_custom_provider: "自定义（兼容 OpenAI）"', launcher_script)
         self.assertIn('llm_custom_provider: "Custom (OpenAI-compatible)"', launcher_script)
         self.assertIn('toolbox_key_loaded: "已从本地环境读取密钥 {key}"', launcher_script)
@@ -3375,12 +3702,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('field.value = result.apiKey || "";', script)
         self.assertIn('void loadPostprocessApiKey(item.id, item.maskedApiKey || "");', script)
         self.assertIn('function postprocessErrorText(result)', script)
-        self.assertIn('window.MAWLauncher.errorText(result?.code || "", detail)', script)
+        self.assertIn('window.MAWLauncher.errorText(result?.code || "", detail, result)', script)
         self.assertIn('function postprocessFieldId(field)', script)
         self.assertIn('function renderSettingsError(result)', script)
         self.assertIn('setFieldError(field, message);\n      setSettingsSaveStatus("", "", 0);', script)
         self.assertIn('function clearSettingsErrors()', script)
         self.assertIn('postprocessApiKey: "llmApiKey"', script)
+        self.assertIn('context?.httpStatus', launcher_script)
+        self.assertIn('Compare the provider, API URL, and the issuer of the API key', launcher_script)
         self.assertIn('save: true,', script)
         self.assertIn('setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");', script)
         self.assertNotIn("autoTest", script)
@@ -3465,18 +3794,27 @@ class LauncherAssetContractTests(unittest.TestCase):
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        for control in ("segmentationField", "maxLen", "minLen", "gapSplit"):
+        for control in ("segmentationField", "maxLen", "minLen", "maxWords", "minWords", "gapSplit"):
             self.assertIn(f'id="{control}"', page)
         self.assertIn('id="generateSpectral" type="checkbox"', page)
         self.assertIn('id="generateSpectralField"', page)
+        self.assertIn('class="segmentation-row segmentation-character-row"', page)
+        self.assertIn('class="segmentation-row segmentation-word-row"', page)
+        self.assertIn('data-i18n="english_segmentation_hint"', page)
+        self.assertLess(page.index('class="segmentation-row segmentation-character-row"'), page.index('class="segmentation-row segmentation-word-row"'))
         self.assertIn('maxLen: $("maxLen").value.trim()', script)
         self.assertIn('minLen: $("minLen").value.trim()', script)
+        self.assertIn('maxWords: $("maxWords").value.trim()', script)
+        self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
         self.assertIn('generate_spectral: "生成 ReaPeaks 频谱数据"', script)
         self.assertIn('generate_spectral: "Generate ReaPeaks spectral data"', script)
         self.assertIn('segmentation: "字幕切句"', script)
+        self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
+        self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
         self.assertIn(".segmentation-row", stylesheet)
+        self.assertIn(".segmentation-word-row", stylesheet)
 
     def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -3714,6 +4052,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('data-i18n="qwen_audio_options_title"', page)
         self.assertIn('id="maxLen" type="number"', page)
         self.assertIn('placeholder="18"', page)
+        self.assertIn('id="maxWords" type="number"', page)
+        self.assertIn('placeholder="13"', page)
+        self.assertIn('id="minWords" type="number"', page)
+        self.assertIn('placeholder="3"', page)
         self.assertIn('id="gapSplit" type="number"', page)
         self.assertIn('placeholder="800"', page)
         self.assertIn('advanced_params: "识别参数"', script)
@@ -3721,10 +4063,16 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('qwen_audio_options_title: "Qwen 上下文与热词"', script)
         self.assertIn('max_len_placeholder: "默认 18"', script)
         self.assertIn('max_len_placeholder: "Default: 18"', script)
+        self.assertIn('max_words_placeholder: "默认 13"', script)
+        self.assertIn('max_words_placeholder: "Default: 13"', script)
+        self.assertIn('min_words_placeholder: "默认 3"', script)
+        self.assertIn('min_words_placeholder: "Default: 3"', script)
         self.assertIn('gap_split_placeholder: "默认 800"', script)
         self.assertIn('gap_split_placeholder: "Default: 800"', script)
-        self.assertIn("最大字数：18，短句合并阈值：5，停顿切句：800ms", script)
-        self.assertIn("max characters: 18, short-cue merge threshold: 5, pause split: 800 ms", script)
+        self.assertIn("字符型设置和停顿设置留空使用默认值（最大字数：18、短句合并阈值：5、停顿切句：800ms）", script)
+        self.assertIn("Leave blank to use the defaults for character-mode and pause splitting (max characters: 18, short-cue threshold: 5, pause split: 800 ms)", script)
+        self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
+        self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
         self.assertIn('$("languageGroup").classList.toggle("hidden", current.supportsLanguage === false)', script)
         self.assertIn(".advanced-col {\n  display: grid;\n  grid-template-columns: 1fr 1fr;", stylesheet)
         self.assertNotIn("display: contents", stylesheet)
@@ -3849,6 +4197,17 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('event.type === "localRuntimeReady"', script)
         self.assertIn('def install_local_runtime(', backend)
         self.assertIn('def cancel_local_runtime(', backend)
+
+    def test_launcher_ignores_runtime_event_payloads_until_fresh_status_is_loaded(self) -> None:
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('const requestId = ++ocrRuntimeRequest;', script)
+        self.assertIn('if (requestId !== ocrRuntimeRequest) return result;', script)
+        self.assertIn('if (state.localRuntimeInstalling || runtime.status === "installing") {', script)
+        self.assertIn('if (!status.status || status.status === "checking")', script)
+        self.assertIn('if (state.localRuntimeInstalling || runtime.status === "installing")', script)
+        self.assertNotIn('state.config.localRuntime = event.runtime || { status: "ready", ready: true };', script)
+        self.assertNotIn('state.config.ocrRuntime = event.runtime || { status: "ready", ready: true };', script)
 
     def test_ocr_runtime_ready_hint_uses_a_clickable_directory_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

@@ -67,21 +67,25 @@ class TokenMappingTests(unittest.TestCase):
     def test_tokens_to_items_defends_missing_or_inverted_timestamps(self) -> None:
         tokens = [
             _token("a", 100, 200),
-            {"text": "b"},  # 缺时间戳 → 零宽落在前一个 end
-            {"text": "c", "start_ms": 500, "end_ms": 400},  # 倒挂 → 零宽
+            {"text": "b"},  # 缺时间戳 → 跳过，不能伪造零宽 item
+            {"text": "c", "start_ms": 500, "end_ms": 400},  # 倒挂 → 跳过
             {"text": ""},  # 空文本跳过
         ]
 
         items = soniox.tokens_to_items(tokens)
 
-        self.assertEqual(items[1], {"text": "b", "start": 200, "end": 200})
-        self.assertEqual(items[2], {"text": "c", "start": 200, "end": 200})
-        self.assertEqual(len(items), 3)
+        self.assertEqual(items, [{"text": "a", "start": 100, "end": 200}])
 
     def test_tokens_to_items_omits_blank_speaker(self) -> None:
         items = soniox.tokens_to_items([_token("a", 0, 100, speaker="  ")])
 
         self.assertNotIn("speaker", items[0])
+
+    def test_majority_language_skips_non_mapping_tokens(self) -> None:
+        self.assertEqual(
+            soniox.majority_language([None, _token("a", 0, 100, language="en")]),
+            "en",
+        )
 
 
 class WordFragmentMergeTests(unittest.TestCase):
@@ -588,6 +592,29 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual(len(result["items"]), 3)
         self.assertEqual(result["items"][0]["speaker"], "1")
         self.assertEqual(result["_raw_response"], transcript)
+
+    def test_transcribe_derives_text_even_when_a_token_timestamp_is_invalid(self) -> None:
+        config = {"api_key": KEY, "base_url": BASE, "model": "stt-async-v5",
+                  "poll_interval": 0, "poll_timeout": 60}
+        transcript = {
+            "tokens": [
+                _token("hello", 0, 300, language="en"),
+                {"text": " broken", "language": "en"},
+                _token(" world", 600, 900, language="en"),
+            ],
+        }
+        with mock.patch.object(soniox, "upload_file", return_value="f1"), \
+             mock.patch.object(soniox, "create_transcription", return_value="t1"), \
+             mock.patch.object(soniox, "poll_transcription", return_value=None), \
+             mock.patch.object(soniox, "get_transcript", return_value=transcript), \
+             mock.patch.object(soniox, "delete_transcription"):
+            result = soniox.transcribe(
+                "audio.wav", config, on_status=lambda _m: None
+            )
+
+        self.assertEqual(result["text"], "hello broken world")
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["timestamp_granularity"], "segment")
 
     def test_delete_transcription_is_best_effort(self) -> None:
         with mock.patch("maw.soniox.requests") as req:

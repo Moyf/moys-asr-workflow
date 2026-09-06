@@ -58,6 +58,25 @@ class LlmPostprocessRequest:
     merge_bilingual: bool = False
 
 
+class PostprocessStepError(RuntimeError):
+    """A bounded error from one LLM post-processing step."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        category: str = "",
+        status_code: int | None = None,
+        diagnostic: str = "",
+        operation: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.category = category
+        self.status_code = status_code
+        self.diagnostic = diagnostic
+        self.operation = operation
+
+
 LlmComplete = Callable[[str, list[dict[str, JsonValue]]], Mapping[str, JsonValue]]
 LlmStatus = Callable[[str, Mapping[str, int]], None]
 
@@ -229,8 +248,9 @@ def run_llm_postprocess(
             except RuntimeError as error:
                 first_id = batch[0]["id"] if batch else "?"
                 last_id = batch[-1]["id"] if batch else "?"
-                raise RuntimeError(
-                    f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}"
+                raise _postprocess_step_error(
+                    f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}",
+                    error,
                 ) from error
             clean_response, batch_skipped, batch_warnings, response_mode = _sanitize_llm_response(
                 response,
@@ -380,6 +400,19 @@ def _notify_status(on_status: LlmStatus | None, key: str, **details: int) -> Non
         on_status(key, details)
 
 
+def _postprocess_step_error(message: str, error: BaseException) -> PostprocessStepError:
+    status_code = getattr(error, "status_code", None)
+    if not isinstance(status_code, int):
+        status_code = None
+    return PostprocessStepError(
+        message,
+        category=str(getattr(error, "category", "") or ""),
+        status_code=status_code,
+        diagnostic=str(getattr(error, "diagnostic", "") or ""),
+        operation=str(getattr(error, "operation", "") or ""),
+    )
+
+
 def apply_llm_groups(project: JsonDict, response: Mapping[str, JsonValue]) -> JsonDict:
     processed, _warnings = _apply_llm_groups_with_warnings(project, response)
     return processed
@@ -442,8 +475,9 @@ def _complete_strict_translation_batch(
         first_id = batch[0]["id"] if batch else "?"
         last_id = batch[-1]["id"] if batch else "?"
         label = "遗漏字幕重试" if is_repair else "处理"
-        raise RuntimeError(
-            f"第 {batch_number}/{total_batches} 批{label}（{first_id}–{last_id}）失败：{error}"
+        raise _postprocess_step_error(
+            f"第 {batch_number}/{total_batches} 批{label}（{first_id}–{last_id}）失败：{error}",
+            error,
         ) from error
     clean_response, skipped, warnings, response_mode = _sanitize_llm_response(
         response,
@@ -491,8 +525,9 @@ def _complete_strict_translation_batch(
             repair_response = complete(_missing_translation_retry_prompt(system_prompt), missing_batch)
         except RuntimeError as error:
             cue_id = missing_batch[0]["id"]
-            raise RuntimeError(
-                f"第 {batch_number}/{total_batches} 批遗漏字幕重试（{cue_id}）失败：{error}"
+            raise _postprocess_step_error(
+                f"第 {batch_number}/{total_batches} 批遗漏字幕重试（{cue_id}）失败：{error}",
+                error,
             ) from error
         repaired, remaining, repair_warnings, repaired_mode = _sanitize_llm_response(
             repair_response,

@@ -40,7 +40,86 @@ class TencentProviderTests(unittest.TestCase):
             {"text": "你", "start": 10, "end": 300, "speaker": "2"},
             {"text": "好。", "start": 300, "end": 800, "speaker": "2"},
         ])
+        self.assertEqual(result["timestamp_granularity"], "char")
         self.assertEqual(result["sentences"][0]["speaker"], "2")
+
+    def test_parse_result_derives_word_granularity_for_latin_text(self) -> None:
+        result = parse_result({
+            "ResultDetail": [{
+                "FinalSentence": "hello world",
+                "StartMs": 0,
+                "EndMs": 800,
+                "Words": [
+                    {"Word": "hello", "OffsetStartMs": 0, "OffsetEndMs": 400},
+                    {"Word": " world", "OffsetStartMs": 400, "OffsetEndMs": 800},
+                ],
+            }],
+        })
+
+        self.assertEqual(result["timestamp_granularity"], "word")
+
+    def test_parse_result_marks_non_mapping_word_as_sentence_fallback(self) -> None:
+        result = parse_result({
+            "ResultDetail": [{
+                "FinalSentence": "整句回退",
+                "StartMs": 100,
+                "EndMs": 900,
+                "Words": [
+                    {"Word": "整句", "OffsetStartMs": 100, "OffsetEndMs": 500},
+                    "malformed-word",
+                    {"Word": "回退", "OffsetStartMs": 500, "OffsetEndMs": 900},
+                ],
+            }],
+        })
+
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(result["sentences"], [{
+            "start": 100,
+            "end": 900,
+            "text": "整句回退",
+        }])
+
+    def test_parse_result_expands_sentence_range_to_contain_word_items(self) -> None:
+        result = parse_result({
+            "ResultDetail": [{
+                "FinalSentence": "范围修复",
+                "StartMs": 200,
+                "EndMs": 700,
+                "Words": [
+                    {"Word": "范围", "OffsetStartMs": 100, "OffsetEndMs": 400},
+                    {"Word": "修复", "OffsetStartMs": 400, "OffsetEndMs": 900},
+                ],
+            }],
+        })
+
+        sentence = result["sentences"][0]
+        self.assertEqual((sentence["start"], sentence["end"]), (100, 900))
+        self.assertTrue(
+            all(sentence["start"] <= item["start"] < item["end"] <= sentence["end"]
+                for item in sentence["items"])
+        )
+
+    def test_parse_result_does_not_drop_unranged_mixed_sentence(self) -> None:
+        result = parse_result({
+            "ResultDetail": [
+                {
+                    "FinalSentence": "有时间码",
+                    "StartMs": 0,
+                    "EndMs": 600,
+                    "Words": [
+                        {"Word": "有", "OffsetStartMs": 0, "OffsetEndMs": 300},
+                        {"Word": "时间码", "OffsetStartMs": 300, "OffsetEndMs": 600},
+                    ],
+                },
+                {"FinalSentence": "没有可用范围", "Words": [{"Word": "没有"}]},
+            ],
+        })
+
+        self.assertEqual(result["text"], "有时间码没有可用范围")
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["sentences"], [])
+        self.assertEqual(result["timestamp_granularity"], "unknown")
 
     def test_submit_task_uses_base64_for_small_local_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

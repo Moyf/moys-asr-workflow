@@ -1269,6 +1269,7 @@
   }
   .color-filter-item .color-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .color-filter-item .color-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .toolbar .color-filter-menu .color-filter-select-all,
   .toolbar .color-filter-menu .color-filter-clear {
     margin-top: 2px; text-align: center; color: var(--text-secondary);
   }
