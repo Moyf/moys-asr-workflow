@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
 from generate_subtitle_qwen_api import (
     FILETRANS_MODEL,
+    FUNASR_MODEL,
     QWEN3_ASR_FILETRANS_MODEL,
     QWEN_AUDIO_FILETRANS_MODEL,
     build_segments_from_api_sentences,
     build_qwen_audio_context,
     is_qwen_audio_model,
     load_hotwords,
+    main,
     parse_funasr_transcription_result,
+    parse_transcription_result,
     poll_task,
     submit_filetrans,
     supports_speaker_diarization,
@@ -36,6 +41,86 @@ class QwenAudioAdapterTests(unittest.TestCase):
         self.assertTrue(is_qwen_audio_model(QWEN_AUDIO_FILETRANS_MODEL))
         self.assertTrue(supports_speaker_diarization(QWEN_AUDIO_FILETRANS_MODEL))
         self.assertFalse(is_qwen_audio_model("qwen3-asr-flash-filetrans"))
+
+    def test_qwen_standard_mixed_timestamps_preserve_sentence_fallback(self) -> None:
+        result = parse_transcription_result({
+            "language": "en",
+            "transcripts": [{
+                "text": "Hello world. Fallback sentence.",
+                "sentences": [
+                    {
+                        "begin_time": 0,
+                        "end_time": 1000,
+                        "text": "Hello world.",
+                        "words": [
+                            {"begin_time": 0, "end_time": 400, "text": "Hello", "punctuation": ""},
+                            {"begin_time": 400, "end_time": 1000, "text": "world", "punctuation": "."},
+                        ],
+                    },
+                    {
+                        "begin_time": 1200,
+                        "end_time": 2000,
+                        "text": "Fallback sentence.",
+                    },
+                ],
+            }],
+        })
+
+        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(len(result["items"]), 2)
+        self.assertEqual(result["segments"][0]["items"], result["items"])
+        self.assertNotIn("items", result["segments"][1])
+
+    def test_qwen_standard_sentence_range_contains_word_items(self) -> None:
+        result = parse_transcription_result({
+            "language": "zh",
+            "transcripts": [{
+                "text": "范围修复。句级回退。",
+                "sentences": [
+                    {
+                        "begin_time": 200,
+                        "end_time": 700,
+                        "text": "范围修复。",
+                        "words": [
+                            {"begin_time": 100, "end_time": 400, "text": "范围"},
+                            {"begin_time": 400, "end_time": 900, "text": "修复", "punctuation": "。"},
+                        ],
+                    },
+                    {
+                        "begin_time": 1000,
+                        "end_time": 1300,
+                        "text": "句级回退。",
+                    },
+                ],
+            }],
+        })
+
+        sentence = result["segments"][0]
+        self.assertEqual((sentence["start"], sentence["end"]), (100, 900))
+        self.assertTrue(
+            all(sentence["start"] <= item["start"] < item["end"] <= sentence["end"]
+                for item in sentence["items"])
+        )
+
+    def test_qwen_standard_derives_missing_transcript_text(self) -> None:
+        result = parse_transcription_result({
+            "language": "zh",
+            "transcripts": [{
+                "sentences": [{
+                    "begin_time": 0,
+                    "end_time": 500,
+                    "words": [{
+                        "begin_time": 0,
+                        "end_time": 500,
+                        "text": "你好",
+                        "punctuation": "。",
+                    }],
+                }],
+            }],
+        })
+
+        self.assertEqual(result["text"], "你好。")
+        self.assertEqual(result["timestamp_granularity"], "word")
 
     @mock.patch("generate_subtitle_qwen_api.requests.post")
     def test_submit_uses_qwen3_file_url_contract(self, post: mock.Mock) -> None:
@@ -288,24 +373,154 @@ class QwenAudioAdapterTests(unittest.TestCase):
         )
 
         self.assertEqual(result["language"], "zh")
-        self.assertEqual(result["items"], [{
-            "text": "你好。",
-            "start": 100,
-            "end": 300,
-            "speaker": "2",
-        }])
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["timestamp_granularity"], "segment")
         self.assertEqual(result["sentences"], [{
             "text": "你好。",
             "start": 100,
             "end": 300,
-            "items": [{
-                "text": "你好。",
-                "start": 100,
-                "end": 300,
-                "speaker": "2",
-            }],
             "speaker": "2",
         }])
+
+    def test_parse_qwen_audio_derives_missing_transcript_text(self) -> None:
+        result = parse_funasr_transcription_result({
+            "transcripts": [{
+                "sentences": [{
+                    "begin_time": 100,
+                    "end_time": 300,
+                    "words": [{
+                        "begin_time": 100,
+                        "end_time": 300,
+                        "text": "你好",
+                        "punctuation": "。",
+                    }],
+                }],
+            }],
+        })
+
+        self.assertEqual(result["text"], "你好。")
+        self.assertEqual(result["sentences"][0]["text"], "你好。")
+
+    def test_qwen_audio_mixed_word_and_sentence_timestamps_are_segment_granular(self) -> None:
+        result = parse_funasr_transcription_result(
+            {
+                "transcripts": [{
+                    "text": "精确时间码。句级回退。",
+                    "sentences": [
+                        {
+                            "begin_time": 0,
+                            "end_time": 500,
+                            "text": "精确时间码。",
+                            "words": [
+                                {"begin_time": 0, "end_time": 200, "text": "精确", "punctuation": ""},
+                                {"begin_time": 200, "end_time": 500, "text": "时间码。", "punctuation": ""},
+                            ],
+                        },
+                        {
+                            "begin_time": 800,
+                            "end_time": 1300,
+                            "text": "句级回退。",
+                        },
+                    ],
+                }]
+            }
+        )
+
+        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(len(result["items"]), 2)
+        self.assertEqual(result["sentences"][0]["items"], result["items"])
+        self.assertNotIn("items", result["sentences"][1])
+        self.assertEqual(
+            [segment["text"] for segment in build_segments_from_api_sentences(
+                result["sentences"], max_len=18, min_len=5, gap_split_ms=800,
+            )],
+            ["精确时间码。", "句级回退。"],
+        )
+
+    def test_parse_qwen_audio_sentence_range_contains_word_items(self) -> None:
+        result = parse_funasr_transcription_result({
+            "transcripts": [{
+                "text": "范围修复。句级回退。",
+                "sentences": [
+                    {
+                        "begin_time": 200,
+                        "end_time": 700,
+                        "text": "范围修复。",
+                        "words": [
+                            {"begin_time": 100, "end_time": 400, "text": "范围"},
+                            {"begin_time": 400, "end_time": 900, "text": "修复", "punctuation": "。"},
+                        ],
+                    },
+                    {
+                        "begin_time": 1000,
+                        "end_time": 1300,
+                        "text": "句级回退。",
+                    },
+                ],
+            }],
+        })
+
+        sentence = result["sentences"][0]
+        self.assertEqual((sentence["start"], sentence["end"]), (100, 900))
+        self.assertTrue(
+            all(sentence["start"] <= item["start"] < item["end"] <= sentence["end"]
+                for item in sentence["items"])
+        )
+
+    def test_funasr_main_preserves_sentence_fallback_boundaries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            media_path = Path(directory) / "input.wav"
+            output_path = Path(directory) / "output.srt"
+            media_path.write_bytes(b"audio")
+            result = {
+                "text": "精确时间码。句级回退。",
+                "language": "zh",
+                "items": [
+                    {"text": "精确", "start": 0, "end": 200},
+                    {"text": "时间码。", "start": 200, "end": 500},
+                ],
+                "sentences": [
+                    {
+                        "text": "精确时间码。",
+                        "start": 0,
+                        "end": 500,
+                        "items": [
+                            {"text": "精确", "start": 0, "end": 200},
+                            {"text": "时间码。", "start": 200, "end": 500},
+                        ],
+                    },
+                    {"text": "句级回退。", "start": 800, "end": 1300},
+                ],
+                "timestamp_granularity": "segment",
+            }
+            with (
+                mock.patch("sys.argv", [
+                    "generate_subtitle_qwen_api.py",
+                    str(media_path),
+                    "--model",
+                    FUNASR_MODEL,
+                    "-o",
+                    str(output_path),
+                ]),
+                mock.patch("generate_subtitle_qwen_api.resolve_ffmpeg_tools"),
+                mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=2.0),
+                mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result),
+                redirect_stdout(io.StringIO()),
+            ):
+                main()
+
+            self.assertEqual(
+                output_path.read_text(encoding="utf-8").splitlines(),
+                [
+                    "1",
+                    "00:00:00,000 --> 00:00:00,500",
+                    "精确时间码",
+                    "",
+                    "2",
+                    "00:00:00,800 --> 00:00:01,300",
+                    "句级回退",
+                ],
+            )
 
     def test_qwen_audio_keeps_sentence_boundaries_without_punctuation(self) -> None:
         result = parse_funasr_transcription_result(
@@ -438,6 +653,26 @@ class QwenAudioAdapterTests(unittest.TestCase):
 
         self.assertEqual([segment["text"] for segment in segments], ["有效字幕"])
         self.assertEqual((segments[0]["start"], segments[0]["end"]), (200, 800))
+
+    def test_build_segments_keeps_valid_item_range_when_another_item_is_invalid(self) -> None:
+        segments = build_segments_from_api_sentences(
+            [{
+                "text": "保留有效范围",
+                "items": [
+                    {"text": "保留", "start": 100, "end": 300},
+                    {"text": "有效", "start": 300},
+                ],
+            }],
+            max_len=21,
+            min_len=5,
+            gap_split_ms=800,
+        )
+
+        self.assertEqual(segments, [{
+            "start": 100,
+            "end": 300,
+            "text": "保留有效范围",
+        }])
 
 
 if __name__ == "__main__":

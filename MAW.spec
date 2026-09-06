@@ -72,6 +72,7 @@ datas = [
     (str(ROOT / "maw" / "project_io.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "ffmpeg.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "language.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project_preview.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "qwen_audio.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "colors.py"), "local-runtime/maw"),
@@ -86,6 +87,7 @@ datas = [
     (str(ROOT / "maw" / "postprocess_ocr.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "text_conversion.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "project.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "language.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "project_preview.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "ocr_runtime_worker.py"), "ocr-runtime/maw"),
 ]

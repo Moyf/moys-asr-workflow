@@ -331,7 +331,7 @@
   function postprocessErrorText(result) {
     const detail = result?.detail || result?.error || "";
     return window.MAWLauncher.errorText
-      ? window.MAWLauncher.errorText(result?.code || "", detail)
+      ? window.MAWLauncher.errorText(result?.code || "", detail, result)
       : (detail || t("failed"));
   }
 
