@@ -42,6 +42,10 @@ class LocalRuntimeTests(unittest.TestCase):
                 Path(__file__).resolve().parents[1] / "maw" / "language.py",
                 package_root / "language.py",
             )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "output_naming.py",
+                package_root / "output_naming.py",
+            )
             (package_root / "console.py").write_text(
                 "def configure_utf8_stdio():\n"
                 "    pass\n",

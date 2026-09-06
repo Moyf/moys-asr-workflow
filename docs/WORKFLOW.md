@@ -82,10 +82,10 @@ CLI 未指定 `--model` 时默认使用 `qwen-audio-3.0-asr-flash-filetrans`；�
 --with-waveform      把波形写进工程文件，免去编辑器首次打开的 sidecar 缓存文件
 --with-spectral      在 ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）
 --debug              输出部分 API 原始结果，便于反馈问题
---debug-raw          单独保存完整 ASR 原始 JSON（<输出文件名>.asr-response.json）
+--debug-raw          单独保存完整 ASR 原始 JSON；不写 -o 时存到媒体旁 _maw/
 ```
 
-CLI 默认不内嵌波形；需要交给编辑器直接打开且不想生成 `<媒体名>.waveform.json` sidecar 时，加 `--with-waveform`。该选项默认生成媒体旁 `.ReaPeaks` 的 wave 层，但跳过耗时较高的频谱计算；只有同时加 `--with-spectral` 才生成频谱层。Launcher 中对应的“生成 ReaPeaks 频谱数据”默认不勾选。波形提取会额外用 FFmpeg 完整扫一遍媒体，失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
+CLI 默认不内嵌波形；需要把波形写进工程、交给编辑器直接打开时，加 `--with-waveform`。该选项会额外用 FFmpeg 完整扫一遍媒体，默认在媒体旁生成 `.ReaPeaks` 的 wave 层（跳过耗时较高的频谱计算；只有同时加 `--with-spectral` 才生成频谱层）。不加 `--with-waveform` 时，编辑器首次打开会按需在媒体旁的 `_maw` 目录生成 `视频.waveform.json` sidecar 缓存；旧版直接写在媒体旁的同名 sidecar 仍会被读取，不会被迁移。Launcher 中对应的“生成 ReaPeaks 频谱数据”默认不勾选。波形提取失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
 
 在 Launcher 放入包含两条或更多音轨的视频时，媒体路径下方会显示「声音轨道」。它优先选中 FFprobe 标记为默认的轨道（没有默认标记时选第一条）；转写、内嵌波形、频谱和 .ReaPeaks 都使用同一选择。单音轨视频和纯音频不会显示该控件；FFprobe 无法读取时保持与旧版本相同的第一条轨道行为。
 
@@ -257,7 +257,7 @@ uv run python generate_subtitle_bcut_api.py "D:\Videos\example.mp4" -ll 2m --jso
 
 Launcher 可以在转写成功后自动串接文稿匹配、固定处理、LLM 校对、重新断句、OCR 字幕去重和翻译。功能默认关闭；配置、LLM 连接验证、中间产物目录、失败恢复和安全边界见[转写后自动处理](POSTPROCESS_PIPELINE.md)。
 
-自动处理会保留原始转写结果，最终结果另写为带 `.postprocess` 后缀的 `.mosp` 和 `.srt`。失败或取消不会影响原始结果，并会保留中间目录供恢复。
+自动处理会保留原始转写结果，最终结果另写为带操作后缀的 `.mosp` 和 `.srt`（中文界面为 `.后处理`，英文界面为 `.postprocess`）。失败或取消不会影响原始结果，并会保留中间目录供恢复。
 
 ## 2.6 Launcher 批量转写
 
@@ -267,8 +267,31 @@ Launcher 的「批量」模式用于把多个本地媒体按顺序转写。切�
 
 - 每个文件仍会生成自己的 `.srt`、`.mosp`，以及启用 HTML 输出时的 `.edit.html`。如果默认输出名已存在或与队列中其他文件冲突，Launcher 会自动加上 `-1`、`-2` 等后缀，源媒体不会被覆盖。
 - 单个文件的预检、转写或后处理失败只会标记该行失败，后续文件仍会继续执行。完成的条目可直接打开工程或所在文件夹。
-- 每批会在第一个有效媒体的输出目录创建 `maw-batch-manifest.json`；文件名冲突时同样自动加后缀。它记录已脱敏的设置和每个文件的结果，并以原子方式更新，便于排查已完成、失败或取消的条目；它不是恢复或继续执行批次的入口。
+- 每批会在第一个有效媒体的输出子目录（`_maw`；启用「每个视频单独创建子文件夹」时为 `<视频名>_maw`）创建 `maw-batch-manifest.json`；文件名冲突时同样自动加后缀。它记录已脱敏的设置和每个文件的结果，并以原子方式更新，便于排查已完成、失败或取消的条目；它不是恢复或继续执行批次的入口。
 - 批量 V1 会跳过「文稿匹配」步骤，避免把同一份文稿错误用于多个媒体；这个限制不会修改已保存的单文件文稿匹配设置。其他自动处理步骤仍按 [转写后自动处理](POSTPROCESS_PIPELINE.md) 的规则执行。
+
+## 2.7 输出文件默认放在哪里
+
+最终产物和自动生成的辅助文件默认分开存放：SRT / `.mosp`（以及之后导出的 ASS）留在媒体旁，其余波形 sidecar、转换缓存、HTML 等辅助文件归入媒体旁的 `_maw` 子目录，避免媒体文件夹被缓存堆满：
+
+```text
+媒体所在目录/
+├── 视频.srt / .mosp        （最终产物，默认在外层）
+└── _maw/
+    ├── 后处理/              （自动后处理中间产物，英文界面为 postprocess/）
+    ├── 视频.waveform.json   （波形 sidecar 缓存）
+    └── （转换缓存、asr-response、edit.html、批量清单等辅助文件）
+```
+
+进入 `_maw` 的辅助文件包括：编辑器首次打开时按需生成的波形 sidecar（`视频.waveform.json`）、FLV 等媒体为浏览器播放生成的转换缓存（如 `clip.mp4`）、`--debug-raw` 未指定 `-o` 时保存的 `asr-response.json`、Launcher 生成的便携 `.edit.html`，以及批量转写的 `maw-batch-manifest.json`。`.ReaPeaks` 波形缓存仍按 REAPER 惯例写在媒体旁。旧版直接写在媒体旁的波形 sidecar 与转换缓存仍会被识别读取，不会被迁移或破坏。
+
+Launcher「配置 → 通用 → 文件输出」可以调整最终产物的位置和命名：
+
+- **将所有输出文件放入子文件夹**（默认关）：开启后 SRT / `.mosp` 也写入 `_maw`。
+- **每个视频单独创建子文件夹**（默认关）：开启后子文件夹以视频命名，如 `视频名_maw`，每个媒体相互独立。
+- **附加模型名称**（默认开）：关闭后 SRT 文件名不再含供应商/模型段（`clip.qwen-audio.srt` → `clip.srt`）。
+
+转写过程会在 Launcher 日志输出起止时间码、转写耗时与媒体时长；开启自动后处理时还会汇总全程总用时与各步骤耗时。实时率（RTF）= 转写耗时 ÷ 媒体原长，`0.12x` 表示耗时为原长的 0.12 倍，数值越小越快；使用阿里云百炼服务时日志会附带按 `0.00022 元/秒` 估算的费用。命令行转写 CLI 的输出见 [CLI.md](CLI.md)。
 
 ## 3. 理解三个输出文件
 
@@ -303,7 +326,7 @@ uv run python server-editor\serve.py "D:\Videos\example.qwen3-asr-api.mosp"
 uv run python server-editor\serve.py "D:\Projects\subtitle.mosp" -m "E:\Media\moved-video.mp4"
 ```
 
-如果关联媒体是 FLV，服务器会先复用媒体旁边的同名 MP4（例如 `clip.flv` 对应 `clip.mp4`）；不存在时再调用用户配置的 `FFMPEG_PATH`，或 PATH 中的 `ffmpeg`，把转换结果原子写回媒体旁边。Desktop 版使用随应用提供的 FFmpeg sidecar。工程仍保存可继续使用的媒体路径。
+如果关联媒体是 FLV，服务器会优先复用已有转换缓存（旧版写在媒体旁的 `clip.mp4`，或 `_maw` 里的新缓存）；都没有时再调用用户配置的 `FFMPEG_PATH`，或 PATH 中的 `ffmpeg`，把转换结果原子写入媒体旁的 `_maw` 目录（`clip.flv` 对应 `_maw/clip.mp4`）。Desktop 版使用随应用提供的 FFmpeg sidecar。工程仍保存可继续使用的媒体路径。
 
 首次启动空白编辑器：
 
@@ -352,7 +375,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 - 模型只能返回 cue ID 的分组与新文字；本地程序检查 ID 是否完整、连续且顺序不变，再使用本地时间槽生成结果。
 - 合并字幕时，新段使用第一段的开始时间和最后一段的结束时间；拆分单段时，本地在原时间槽内分配正时长，模型不能指定时间。
 - 文字改变后，旧的逐词 `items` 会被移除；重新断句后，可能错位的贴纸和颜色引用也会被移除。`segments` 仍是字幕与时间的真源。
-- 「合并双语字幕」会保留原始字幕的时间范围和安全元数据，移除无法对应双行文字的逐词时间码并跳过空 cue；自动后处理中的翻译前后独立结果会作为中间产物，不再额外发布译文副轨，最终文件名为 `*.postprocess.bilingual.*`。
+- 「合并双语字幕」会保留原始字幕的时间范围和安全元数据，移除无法对应双行文字的逐词时间码并跳过空 cue；自动后处理中的翻译前后独立结果会作为中间产物，不再额外发布译文副轨，最终文件名在中文界面为 `*.后处理.bilingual.*`、英文界面为 `*.postprocess.bilingual.*`。
 
 供应商 API Key、URL 和模型可在 Launcher 右上角的 `⚙️ 配置` →「LLM 后处理」中保存到本机 `.env`；工具箱 LLM 面板提供快捷链接跳转到这里。界面和 bridge 结果只显示掩码，不会把完整 Key 写入工程或日志。留空已经保存过的 Key 输入框并再次保存 URL/模型时，原 Key 会保留。「测试连接」只使用当前表单值发送最小请求，不会写入配置；保存成功后显示的「LLM 设置已保存。」只是短暂的状态反馈。字幕文字会发送到所选 LLM 供应商，请根据素材敏感程度和供应商的数据政策决定是否使用。完整机器协议见 [LLM_POSTPROCESS_PROTOCOL.md](LLM_POSTPROCESS_PROTOCOL.md)。
 
@@ -370,7 +393,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 
 ### FFconcat 媒体重组
 
-媒体重组读取 `.ffconcat` 文件并调用 FFmpeg，以流复制方式生成 `*.gap-removed.*` 新媒体。出于本地文件安全限制，文件只允许使用 `ffconcat version 1.0`、`file`、`inpoint`、`outpoint` 和 `duration` 指令，而且每个 `file` 必须解析到 Launcher 当前媒体；外部媒体、网络地址和其他 FFconcat 指令都会被拒绝。
+媒体重组读取 `.ffconcat` 文件并调用 FFmpeg，以流复制方式生成 `*.gap-removed.*` 新媒体（中文界面为 `*.去空隙.*`）。出于本地文件安全限制，文件只允许使用 `ffconcat version 1.0`、`file`、`inpoint`、`outpoint` 和 `duration` 指令，而且每个 `file` 必须解析到 Launcher 当前媒体；外部媒体、网络地址和其他 FFconcat 指令都会被拒绝。
 
 重组完成后只有 Launcher 的媒体路径会切换到新文件，工程和 SRT 时间轴不会自动改写。需要与去空隙媒体匹配的字幕时，应从编辑器的空隙移除时间线导出对应 SRT，而不是把原工程直接配到重组媒体。
 

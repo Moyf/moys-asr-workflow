@@ -11,6 +11,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+from maw.output_naming import TRANSLATION_TARGET_NAMES, translation_marker_name
 from maw.postprocess_io import SubtitleArtifact, read_project, read_srt, write_artifacts
 from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
@@ -99,9 +100,12 @@ MAX_LLM_INPUT_CHARS_PER_REQUEST: Final = 4000
 MAX_LLM_WARNING_TEXT_CHARS: Final = 240
 MAX_SINGLE_CUE_TRANSLATION_ATTEMPTS: Final = 2
 MAX_TRANSLATION_REPAIR_REQUESTS_PER_BATCH: Final = 32
+# 双语合一产物在文件名中的标记 ID 与其 zh 界面显示名（双语合一）都识别：
+# 旧版英文命名（clip.translate-zh-bilingual / 中间产物带 .bilingual 段）与 zh 界面
+# 本地化命名（clip.翻译为中文.双语合一 等）再次进入翻译时必须被拦截。
 BILINGUAL_ARTIFACT_MARKER: Final = "bilingual"
 BILINGUAL_ARTIFACT_PATTERN: Final = re.compile(
-    rf"(?:^|[.-]){re.escape(BILINGUAL_ARTIFACT_MARKER)}(?:-\d+)?$"
+    rf"(?:^|[.-])(?:{re.escape(BILINGUAL_ARTIFACT_MARKER)}|{re.escape(translation_marker_name('bilingual', lang='zh'))})(?:-\d+)?$"
 )
 TIMING_FIELDS: Final = ("start", "end", "text", "items")
 ONE_TO_ONE_TRANSLATION_OPERATIONS: Final = frozenset({"translate_en", "translate_zh"})
@@ -581,7 +585,12 @@ def _reject_recursive_translation_input(
     operation: str,
 ) -> None:
     """Apply a filename-convention guard, not content-based translation detection."""
-    target = "translate-en" if operation == "translate_en" else "translate-zh"
+    language = "zh" if operation == "translate_zh" else "en"
+    language_label = "中文" if language == "zh" else "英文"
+    markers = (
+        f".translate-{language}",
+        f".翻译为{TRANSLATION_TARGET_NAMES['zh'][language]}",
+    )
     source_paths = tuple(path for path in (source_project, source_srt) if path is not None)
     for source in source_paths:
         stem = source.stem.lower()
@@ -591,10 +600,9 @@ def _reject_recursive_translation_input(
                 "请选择最初的原字幕工程或 SRT，再执行翻译，避免把双语结果再次处理。"
             )
             raise ValueError(message)
-        if f".{target}" in stem:
-            language = "英文" if operation == "translate_en" else "中文"
+        if any(marker in stem for marker in markers):
             message = (
-                f"当前文件名符合已生成的{language}翻译命名规则（{source.name}）。"
+                f"当前文件名符合已生成的{language_label}翻译命名规则（{source.name}）。"
                 "请选择最初的原字幕工程或 SRT，再执行翻译，避免把残缺或已翻译结果再次处理。"
             )
             raise ValueError(message)

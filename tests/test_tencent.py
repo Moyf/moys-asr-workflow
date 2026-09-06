@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import base64
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from maw.speaker import apply_speaker_colors
@@ -199,6 +202,99 @@ class TencentProviderTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(TimeoutError, "task_id=7"):
                 poll_task(7, config, on_status=lambda _message: None)
+
+
+class TencentCliOutputNamingTests(unittest.TestCase):
+    """腾讯云 CLI：默认名不注入段；MAW_STAT/debug-raw。"""
+
+    def _run(self, extra_args, *, debug_raw=False, explicit_output=None):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh"}
+            if debug_raw:
+                result["_raw_response"] = {"Result": []}
+            argv = ["generate_subtitle_tencent_api.py", str(media)]
+            if explicit_output is not None:
+                argv += ["-o", str(explicit_output)]
+            argv += extra_args
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            config = {"secret_id": "id", "secret_key": "key", "engine": "16k_zh"}
+            with mock.patch("sys.argv", argv), \
+                 mock.patch("generate_subtitle_tencent_api.load_config", return_value=config), \
+                 mock.patch(
+                     "generate_subtitle_tencent_api.resolve_ffmpeg_tools",
+                     return_value=SimpleNamespace(ffmpeg="ffmpeg", ffprobe="ffprobe"),
+                 ), \
+                 mock.patch("generate_subtitle_tencent_api.get_duration_sec", return_value=1000.0), \
+                 mock.patch("generate_subtitle_tencent_api.shutil.copy2"), \
+                 mock.patch("generate_subtitle_tencent_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_tencent_api.time.perf_counter", side_effect=fake_perf), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_tencent_api import main
+
+                code = main()
+                names = sorted(path.name for path in root.glob("*.srt"))
+            self.assertEqual(code, 0)
+            return names, stdout.getvalue()
+
+    @staticmethod
+    def _stat_line(stdout):
+        for line in stdout.splitlines():
+            if line.startswith("MAW_STAT rtf="):
+                return line
+        return None
+
+    def test_default_name_stays_plain_and_stat_is_emitted(self) -> None:
+        names, stdout = self._run([])
+
+        self.assertEqual(names, ["20-走廊.srt"])
+        self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
+
+    def test_debug_raw_default_goes_into_maw_dir(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh", "_raw_response": {"Result": []}}
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            config = {"secret_id": "id", "secret_key": "key", "engine": "16k_zh"}
+            with mock.patch(
+                "sys.argv", ["generate_subtitle_tencent_api.py", str(media), "--debug-raw"]
+            ), mock.patch("generate_subtitle_tencent_api.load_config", return_value=config), \
+                 mock.patch(
+                     "generate_subtitle_tencent_api.resolve_ffmpeg_tools",
+                     return_value=SimpleNamespace(ffmpeg="ffmpeg", ffprobe="ffprobe"),
+                 ), \
+                 mock.patch("generate_subtitle_tencent_api.get_duration_sec", return_value=1000.0), \
+                 mock.patch("generate_subtitle_tencent_api.shutil.copy2"), \
+                 mock.patch("generate_subtitle_tencent_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_tencent_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_tencent_api import main
+
+                self.assertEqual(main(), 0)
+
+            maw_dir = root / "_maw"
+            raw_files = sorted(maw_dir.glob("*.asr-response.json")) if maw_dir.exists() else []
+            self.assertEqual(len(raw_files), 1)
+            self.assertIn(".asr-response.json", raw_files[0].name)
 
 
 if __name__ == "__main__":

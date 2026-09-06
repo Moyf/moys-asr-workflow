@@ -8,6 +8,7 @@ import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -244,6 +245,23 @@ class BatchRunnerTests(unittest.TestCase):
 
 
 class BatchApiTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        # 批量清单与输出路径用例隔离真实 .env 的输出目录开关
+        config_patcher = mock.patch(
+            "maw.gui_workflow.effective_config",
+            return_value=SimpleNamespace(output_subfolder=False, per_video_subfolder=False, attach_model_name=True),
+        )
+        config_patcher.start()
+        self.addCleanup(config_patcher.stop)
+        prefs_patcher = mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False))
+        prefs_patcher.start()
+        self.addCleanup(prefs_patcher.stop)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
     @staticmethod
     def _blocked_batch_runner(error: Exception | None = None) -> tuple[threading.Event, threading.Event, object]:
         started = threading.Event()
@@ -381,13 +399,15 @@ class BatchApiTests(unittest.TestCase):
             root = Path(temp)
             media = root / "clip.mp3"
             media.write_bytes(b"media")
-            existing = root / "maw-batch-manifest.json"
+            manifest_root = root / "_maw"
+            manifest_root.mkdir()
+            existing = manifest_root / "maw-batch-manifest.json"
             existing.write_text("existing", encoding="utf-8")
             api = LauncherApi(paths=LauncherPaths(root, root / ".env", root / "launcher.html"), window_getter=lambda: None)
             with mock.patch("maw.gui_web._request_from_payload", return_value=TranscriptionRequest(media, root / "clip.srt")), mock.patch("maw.gui_web.run_batch"):
                 result = api.start_batch_transcription({"items": [{"id": "a", "mediaPath": str(media), "srtPath": str(root / "clip.srt")}], "apiKey": "secret"})
             self.assertTrue(result["ok"])
-            self.assertEqual(result["manifestPath"], str(root / "maw-batch-manifest-1.json"))
+            self.assertEqual(result["manifestPath"], str(manifest_root / "maw-batch-manifest-1.json"))
             api.shutdown()
 
 

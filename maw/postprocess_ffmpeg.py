@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Callable, Final, Mapping
 
 from maw.gui_platform import creationflags, release_process_tree, startupinfo, terminate_process_tree
+from maw.output_naming import media_suffix
 
 
 ALLOWED_DIRECTIVES: Final = frozenset({"ffconcat", "file", "inpoint", "outpoint", "duration"})
@@ -378,10 +379,11 @@ def _resolve_file_directive(base: Path, raw_value: str) -> Path:
 
 def _available_media_output(media: Path, *, suffix: str = "gap-removed", extension: str | None = None) -> Path:
     output_extension = extension or media.suffix
-    candidate = media.with_name(f"{media.stem}.{suffix}{output_extension}")
+    display_suffix = media_suffix(suffix)
+    candidate = media.with_name(f"{media.stem}.{display_suffix}{output_extension}")
     counter = 2
     while candidate.exists():
-        candidate = media.with_name(f"{media.stem}.{suffix}-{counter}{output_extension}")
+        candidate = media.with_name(f"{media.stem}.{display_suffix}-{counter}{output_extension}")
         counter += 1
     return candidate.resolve()
 
