@@ -1008,6 +1008,21 @@
           <p id="stickerDirError" class="field-error"></p>
         </div>
       </div>
+      <div class="settings-section">
+        <h3 data-i18n="settings_file_output">文件输出</h3>
+        <label class="check-field" for="outputSubfolder">
+          <input id="outputSubfolder" type="checkbox" data-i18n-title="output_subfolder_title" title="将所有输出文件放入子文件夹（默认关闭）：SRT、工程与编辑器页面写入媒体旁的 _maw 子目录">
+          <span data-i18n="output_subfolder">将所有输出文件放入子文件夹</span>
+        </label>
+        <label class="check-field" for="perVideoSubfolder">
+          <input id="perVideoSubfolder" type="checkbox" data-i18n-title="per_video_subfolder_title" title="每个视频单独创建子文件夹（默认关闭）：需要先开启「将所有输出文件放入子文件夹」，每个媒体各自使用「视频名_maw」目录">
+          <span data-i18n="per_video_subfolder">每个视频单独创建子文件夹</span>
+        </label>
+        <label class="check-field" for="attachModelName">
+          <input id="attachModelName" type="checkbox" data-i18n-title="attach_model_name_title" title="附加模型名称（默认开启）：SRT 文件名带上供应商/模型段，如 clip.qwen-audio.srt">
+          <span data-i18n="attach_model_name">附加模型名称</span>
+        </label>
+      </div>
       </section>
       <section id="settingsLlmPanel" class="settings-panel hidden" role="tabpanel" aria-labelledby="settingsLlmTab" data-settings-panel="llm" aria-hidden="true">
       <div class="settings-section" id="llmSettingsSection">

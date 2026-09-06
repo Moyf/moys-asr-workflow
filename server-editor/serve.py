@@ -374,9 +374,13 @@ def load_project(
     if not no_waveform:
         report("preparing_waveform", 50)
         try:
+            # 波形 sidecar 是"源媒体身份"的缓存：以 source_media_path（工程里
+            # data["media"] 记的就是它）为键，_maw 由 waveform_sidecar_path 按
+            # maw_root 计算。不能传转换后的播放缓存（可能在 _maw 里），否则会
+            # 在 _maw/_maw 下重复嵌套一层。
             waveform, extracted = edit.load_or_extract_waveform(
                 data.get("waveform"),
-                media_path,
+                source_media_path,
                 peaks_per_second=peaks_per_second,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
             )

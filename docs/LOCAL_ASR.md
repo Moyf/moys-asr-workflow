@@ -105,6 +105,8 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" --engine funasr
 
 `--json` 会同时生成 `.mosp` 工程；默认还会生成便携 `.edit.html`，如不需要可加 `--no-html`。`--with-waveform` 只能与 `--json` 一起使用。
 
+不指定 `-o` 时，默认输出名带引擎标识段，如 Qwen3-ASR 为 `example.qwen-asr-local.srt`、FunASR 为 `example.funasr-local.srt`；不需要标识段时可加 `--no-model-tag`，需要把实时率写进文件名时可加 `--rtf-tag`（如 `example.funasr-local.0.12x.srt`，实时率越小越快）。
+
 ## 热词
 
 Qwen3-ASR 将热词作为上游的 `context` 提示传入，能帮助识别专有名词，但不是保证命中的硬约束。直接传入热词时可重复使用 `--hotword`：

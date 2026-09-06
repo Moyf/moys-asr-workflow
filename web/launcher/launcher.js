@@ -29,6 +29,13 @@
       settings_language: "语言",
       show_rare_langs: "显示相对小众的语言",
       show_rare_langs_hint: "开启后，「语言」列表显示供应商支持的全部语种；关闭时只显示 8 种常用语言。",
+      settings_file_output: "文件输出",
+      output_subfolder: "将所有输出文件放入子文件夹",
+      output_subfolder_title: "将所有输出文件放入子文件夹（默认关闭）：SRT、工程与编辑器页面写入媒体旁的 _maw 子目录",
+      per_video_subfolder: "每个视频单独创建子文件夹",
+      per_video_subfolder_title: "每个视频单独创建子文件夹（默认关闭）：需要先开启「将所有输出文件放入子文件夹」，每个媒体各自使用「视频名_maw」目录",
+      attach_model_name: "附加模型名称",
+      attach_model_name_title: "附加模型名称（默认开启）：SRT 文件名带上供应商/模型段，如 clip.qwen-audio.srt",
       key: "API Key",
       save_key: "存入本地环境",
       key_hint_prefix: "在",
@@ -112,6 +119,13 @@
       settings_language: "Language",
       show_rare_langs: "Show less common languages",
       show_rare_langs_hint: "When enabled, the language list shows every supported language; otherwise it shows 8 common languages.",
+      settings_file_output: "File output",
+      output_subfolder: "Put all outputs in a subfolder",
+      output_subfolder_title: "Put all outputs in a subfolder (off by default): SRT, project, and editor page go to the _maw subfolder next to the media.",
+      per_video_subfolder: "Create a separate subfolder per video",
+      per_video_subfolder_title: "Create a separate subfolder per video (off by default): requires “Put all outputs in a subfolder”; each media uses its own “video-name_maw” folder.",
+      attach_model_name: "Append model name",
+      attach_model_name_title: "Append model name (on by default): SRT filenames carry the provider/model segment, e.g. clip.qwen-audio.srt.",
       key: "API Key",
       save_key: "Save locally",
       key_hint_prefix: "Get an API Key from",
@@ -1013,7 +1027,7 @@
   let activeSettingsTab = "general";
 
   function mockApi() {
-    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null };
+    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null, outputSubfolder: false, perVideoSubfolder: false, attachModelName: true };
     const chainedPath = (path, operation, fallback) => path
       ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
       : fallback;
@@ -1035,6 +1049,9 @@
         openaiBaseUrl: saved.openaiBaseUrl,
         openaiModel: saved.openaiModel,
         showRareLangs: saved.showRareLangs || false,
+        outputSubfolder: saved.outputSubfolder,
+        perVideoSubfolder: saved.perVideoSubfolder,
+        attachModelName: saved.attachModelName,
         appVersion: "1.5.3",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
@@ -1136,7 +1153,23 @@
           }
         ]
       }),
-      default_output: async ({ mediaPath, providerId, modelId, testRun }) => ({ ok: true, path: mediaPath ? mediaPath.replace(/\.[^.\\/]+$/, `${providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))) }${testRun ? "-test" : ""}.srt`) : "" }),
+      default_output: async ({ mediaPath, providerId, modelId, testRun }) => {
+        let path = "";
+        if (mediaPath) {
+          const sep = mediaPath.includes("\\") ? "\\" : "/";
+          const dirIndex = Math.max(mediaPath.lastIndexOf("/"), mediaPath.lastIndexOf("\\"));
+          const dir = dirIndex >= 0 ? mediaPath.slice(0, dirIndex + 1) : "";
+          const stem = mediaPath.slice(dirIndex + 1).replace(/\.[^.\\/]+$/, "");
+          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))));
+          let outputDir = dir;
+          if (saved.outputSubfolder) {
+            const root = saved.perVideoSubfolder ? `${stem}_maw` : "_maw";
+            outputDir = dir ? `${dir}${root}${sep}` : `${root}${sep}`;
+          }
+          path = `${outputDir}${stem}${tag}${testRun ? "-test" : ""}.srt`;
+        }
+        return { ok: true, path };
+      },
       choose_file: async ({ kind }) => ({ ok: true, path: kind === "json" ? "D:\\Demo\\project.json" : (kind === "subtitle" ? "D:\\Demo\\project.mosp" : (kind === "subtitle-burn" ? "D:\\Demo\\clip.srt" : (kind === "video" ? "D:\\Demo\\clip.mp4" : (kind === "ffconcat" ? "D:\\Demo\\clip.ffconcat" : (kind === "script" ? "D:\\Demo\\script.txt" : (kind === "hotwords" ? "D:\\Demo\\hotwords.txt" : "D:\\Demo\\clip.mp4")))))) }),
       read_script_preview: async () => ({ ok: true, path: "D:\\Demo\\script.txt", preview: "第一行\n第二行", truncated: false }),
       read_hotword_file: async () => ({ ok: true, path: "D:\\Demo\\hotwords.txt", text: "张三\n阿里云百炼\n专业术语\n" }),
@@ -1151,7 +1184,7 @@
       get_local_models: async ({ modelId, modelPath }) => ({ ok: true, runtime: state.config?.localRuntime || {}, models: (state.config?.providers.find((item) => item.id === "local")?.models || []).map((model) => ({ ...model, localStatus: { ...(model.localStatus || {}), ...(model.id === modelId && modelPath ? { status: "installed", installed: true, path: modelPath, detail: "已使用指定的模型目录。" } : {}) } })) }),
       prepare_local_model: async ({ modelId }) => { clearTimeout(modelPrepareTimer); modelPrepareTimer = setTimeout(() => { state.config?.providers.find((item) => item.id === "local")?.models.forEach((model) => { if (model.id === modelId) model.localStatus = { ...(model.localStatus || {}), status: "installed", installed: true, runtimeAvailable: true, canPrepare: false, detail: "已检测到本地模型。" }; }); window.MAWLauncher.onBackendEvent({ type: "modelPrepared", modelId }); }, 400); return { ok: true, preparing: true, modelId }; },
       cancel_local_model: async () => { clearTimeout(modelPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
-       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
+       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); for (const key of ["outputSubfolder", "perVideoSubfolder", "attachModelName"]) { if (Object.prototype.hasOwnProperty.call(payload, key)) saved[key] = Boolean(payload[key]); } if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
       open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
       open_runtime_folder: async (payload) => { window.__openedRuntimeFolder = payload; return { ok: true }; },
       open_blank_html: async () => ({ ok: true }),
@@ -2004,6 +2037,9 @@
     void refreshOcrRuntime();
     renderStickerCurrent();
     $("showRareLangs").checked = Boolean(state.config.showRareLangs);
+    $("outputSubfolder").checked = Boolean(state.config.outputSubfolder);
+    $("perVideoSubfolder").checked = Boolean(state.config.perVideoSubfolder);
+    $("attachModelName").checked = state.config.attachModelName !== false;
     if (sectionId) {
       requestAnimationFrame(() => {
         $(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2316,6 +2352,11 @@
   $("pickStickerDir").addEventListener("click", async () => { const result = await bridge("choose_folder"); if (result.ok) await saveStickerDirectory(result.path); });
   $("stickerDir").addEventListener("change", async () => { const path = $("stickerDir").value.trim(); if (path) await saveStickerDirectory(path); });
   $("showRareLangs").addEventListener("change", async () => { state.config.showRareLangs = $("showRareLangs").checked; applyProviderLanguages(provider(), selectedModel()); const result = await bridge("save_prefs", { showRareLangs: state.config.showRareLangs }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); });
+  const syncDefaultOutputPreview = () => { if (!state.initializing) void syncDefaultOutput(); };
+  const saveOutputPref = async (key) => { const on = $(key).checked; state.config[key] = on; const result = await bridge("save_prefs", { [key]: on }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); };
+  $("outputSubfolder").addEventListener("change", async () => { await saveOutputPref("outputSubfolder"); syncDefaultOutputPreview(); });
+  $("perVideoSubfolder").addEventListener("change", async () => { await saveOutputPref("perVideoSubfolder"); syncDefaultOutputPreview(); });
+  $("attachModelName").addEventListener("change", async () => { await saveOutputPref("attachModelName"); syncDefaultOutputPreview(); });
   $("languageReset").addEventListener("click", () => { const el = $("language"); Array.from(el.options).forEach((o) => { o.selected = false; }); savePrefsDebounced({ language: "" }); });
   $("saveSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; if (current.id === "openai") { state.config.openaiBaseUrl = payload.openaiBaseUrl; state.config.openaiModel = payload.openaiModel; } renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
   $("start").addEventListener("click", async () => { if (!validateLocal()) return; hideErrorNotice(); $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });

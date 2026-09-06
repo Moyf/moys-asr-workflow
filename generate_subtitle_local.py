@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
@@ -21,6 +23,7 @@ if str(_BUNDLE_ROOT) not in sys.path:
     sys.path.insert(0, str(_BUNDLE_ROOT))
 
 from maw.console import configure_utf8_stdio  # noqa: E402
+from maw.output_naming import format_elapsed, format_maw_stat  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.language import (  # noqa: E402
     DEFAULT_MAX_WORDS,
@@ -101,17 +104,30 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug-raw", action="store_true",
         help="兼容 Launcher 的调试选项；本地引擎暂不保存额外的原始响应文件",
     )
+    parser.add_argument(
+        "--no-model-tag", action="store_true",
+        help="默认输出文件名不附加引擎标识段（默认附加，如 qwen-asr-local）",
+    )
     return parser
 
 
-def default_output_path(input_path: Path, engine: str) -> Path:
+def default_output_path(
+    input_path: Path,
+    engine: str,
+    *,
+    no_model_tag: bool = False,
+) -> Path:
     tag = {
         "qwen-asr": "qwen-asr-local",
         "funasr": "funasr-local",
         "moss": "moss-local",
         "whisper": "whisper-local",
     }.get(engine, "local")
-    return input_path.with_name(f"{input_path.stem}.{tag}.srt")
+    name_parts: list[str] = []
+    if not no_model_tag:
+        name_parts.append(tag)
+    suffix = f".{'.'.join(name_parts)}" if name_parts else ""
+    return input_path.with_name(f"{input_path.stem}{suffix}.srt")
 
 
 def load_hotword_files(paths: Sequence[str]) -> list[str]:
@@ -161,7 +177,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if batch_size_s is None:
         batch_size_s = QWEN_DEFAULT_CHUNK_SECONDS if args.engine == "qwen-asr" else 300
 
-    output_srt = Path(args.output).expanduser().resolve() if args.output else default_output_path(input_path, args.engine)
+    output_arg = Path(args.output).expanduser().resolve() if args.output else None
     ffmpeg_tools = resolve_ffmpeg_tools()
     ffmpeg_path = ffmpeg_tools.ffmpeg
     ffprobe_path = ffmpeg_tools.ffprobe
@@ -184,6 +200,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             ffmpeg_path=ffmpeg_path,
             ffprobe_path=ffprobe_path,
         ) as (audio_path, duration_ms):
+            duration_sec = duration_ms / 1000.0
+            print(f"转写开始: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            t0 = time.perf_counter()
             result = engine.transcribe(
                 audio_path,
                 language=args.language,
@@ -193,6 +212,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ffmpeg_path=ffmpeg_path,
                 ffprobe_path=ffprobe_path,
             )
+            elapsed = time.perf_counter() - t0
+            print(f"转写结束: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            rtf = (elapsed / duration_sec) if duration_sec > 0 else 0.0
             segments = build_local_segments(
                 result,
                 duration_ms=duration_ms,
@@ -210,6 +232,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             if not segments:
                 print("错误: 本地模型没有返回可用的转写文本")
                 return 1
+            if output_arg is not None:
+                output_srt = output_arg
+            else:
+                output_srt = default_output_path(
+                    input_path,
+                    args.engine,
+                    no_model_tag=args.no_model_tag,
+                )
             outputs = write_local_outputs(
                 input_path=input_path,
                 cache_media_path=audio_path,
@@ -233,6 +263,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if outputs.html:
         print(f"HTML 已保存: {outputs.html}")
     print(f"字幕段数: {len(segments)}")
+    print(f"转写耗时: {format_elapsed(elapsed)}")
+    if duration_sec > 0:
+        print(f"媒体时长: {format_elapsed(duration_sec)}")
+        print(f"转写时长为媒体时长的 {rtf:.2f} 倍")
+        print(f"实际 RTF: {rtf:.3f} ({(1 / rtf):.1f}x 实时)" if rtf > 0 else f"实际 RTF: {rtf:.3f}")
+    maw_stat = format_maw_stat(rtf)
+    if maw_stat:
+        print(maw_stat)
     return 0
 
 

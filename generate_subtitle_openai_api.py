@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -49,6 +50,7 @@ from maw.language import (
 )
 from maw.project import repair_segment_durations
 from maw.project_io import write_mosp
+from maw.output_naming import format_elapsed, format_maw_stat, maw_root
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -621,6 +623,7 @@ def main() -> None:
     parser.add_argument("-s", "--stickers", default=get_default_sticker_dir())
     parser.add_argument("--debug", action="store_true", help="输出时间戳解析摘要")
     parser.add_argument("--debug-raw", action="store_true")
+    parser.add_argument("--no-model-tag", action="store_true", help="输出文件名不附加模型标识段（本 CLI 默认无该段，保留以统一接口）")
     args = parser.parse_args()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
@@ -649,6 +652,8 @@ def main() -> None:
             ffprobe_path=ffmpeg_tools.ffprobe,
         )
         print(f"[媒体] 音频时长: {int(duration // 60)}分{int(duration % 60)}秒")
+        print(f"转写开始: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        t0 = time.perf_counter()
         result = request_transcription(
             audio_path,
             base_url=args.base_url,
@@ -656,6 +661,9 @@ def main() -> None:
             model=args.model,
             language=args.language,
         )
+        transcribe_elapsed = time.perf_counter() - t0
+        print(f"转写结束: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        rtf = (transcribe_elapsed / duration) if duration > 0 else 0.0
         if not result.get("text"):
             print("错误: 未识别到任何内容", file=sys.stderr)
             raise SystemExit(2)
@@ -694,7 +702,12 @@ def main() -> None:
 
     raw_response = result.get("_raw_response")
     if args.debug_raw and raw_response is not None:
-        raw_path = output_path.with_suffix(".asr-response.json")
+        raw_path = (
+            maw_root(input_path) / f"{output_path.stem}.asr-response.json"
+            if not args.output
+            else output_path.with_suffix(".asr-response.json")
+        )
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
         raw_path.write_text(json.dumps(raw_response, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"[调试] ASR 原始返回已保存到: {raw_path}")
 
@@ -736,7 +749,14 @@ def main() -> None:
 
     elapsed = time.perf_counter() - started
     speed = duration / elapsed if elapsed > 0 and duration > 0 else 0
-    print(f"处理用时: {int(elapsed // 60)}分{int(elapsed % 60)}秒 ({speed:.1f}x 实时)")
+    print(f"转写耗时: {format_elapsed(elapsed)}")
+    if duration > 0:
+        print(f"媒体时长: {format_elapsed(duration)}")
+        print(f"转写时长为媒体时长的 {rtf:.2f} 倍")
+        print(f"实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
+    maw_stat = format_maw_stat(rtf)
+    if maw_stat:
+        print(maw_stat)
 
 
 if __name__ == "__main__":

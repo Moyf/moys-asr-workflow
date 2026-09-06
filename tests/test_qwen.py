@@ -142,5 +142,131 @@ class QwenTimestampRepairTests(unittest.TestCase):
         self.assertNotIn("items", repaired[0])
 
 
+class QwenCliOutputNamingTests(unittest.TestCase):
+    """CLI 默认命名开关（--no-model-tag）、MAW_STAT 与 debug-raw 落盘分支。
+
+    统一用 mock 打掉转写与媒体时长，避免依赖真实 .env / FFmpeg。
+    """
+
+    MODEL = "qwen3-asr-flash-filetrans"
+    MEDIA_NAME = "20-走廊.mp3"
+
+    def _run(self, extra_args, *, duration=1000.0):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / self.MEDIA_NAME
+            media.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh", "items": []}
+            args = [str(media), "--model", self.MODEL, *extra_args]
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with mock.patch("sys.argv", ["generate_subtitle_qwen_api.py", *args]), \
+                 mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=duration), \
+                 mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_qwen_api.time.perf_counter", side_effect=fake_perf), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                main()
+                names = sorted(path.name for path in root.glob("*.srt"))
+            return names, stdout.getvalue(), stderr.getvalue()
+
+    @staticmethod
+    def _stat_line(stdout):
+        for line in stdout.splitlines():
+            if line.startswith("MAW_STAT rtf="):
+                return line
+        return None
+
+    def test_default_name_has_no_speed_segment(self) -> None:
+        import re as _re
+
+        names, stdout, _ = self._run([])
+
+        self.assertEqual(len(names), 1)
+        self.assertIsNotNone(
+            _re.fullmatch(r"\[\d{10}\]20-走廊\.qwen3-asr-api\.srt", names[0])
+        )
+        self.assertNotRegex(names[0], r"\.\d+x\.srt$")
+        self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
+
+    def test_no_model_tag_omits_model_segment(self) -> None:
+        import re as _re
+
+        names, stdout, _ = self._run(["--no-model-tag"])
+
+        self.assertEqual(len(names), 1)
+        self.assertIsNotNone(_re.fullmatch(r"\[\d{10}\]20-走廊\.srt", names[0]))
+
+    def test_explicit_output_keeps_exact_name_and_stat(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output = Path(tmp_dir) / "out.srt"
+            media_dir = Path(tmp_dir) / "media"
+            media_dir.mkdir()
+            # 便于 _run 使用与输出不同目录，验证显式输出不注入任何段
+            (media_dir / self.MEDIA_NAME).write_bytes(b"x")
+
+            # 重新手动执行（_run 固定把输入放同 root）
+            result = {"text": "测试", "language": "zh", "items": [], "_raw_response": {"ok": True}}
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            with mock.patch(
+                "sys.argv",
+                ["generate_subtitle_qwen_api.py", str(media_dir / self.MEDIA_NAME), "--model", self.MODEL, "--debug-raw", "-o", str(output)],
+            ), mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=1000.0), \
+                 mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_qwen_api.time.perf_counter", side_effect=fake_perf), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                main()
+
+            self.assertTrue(output.exists())
+            self.assertTrue(output.with_suffix(".asr-response.json").exists())
+            self.assertFalse((Path(tmp_dir) / "media" / "_maw").exists())
+            self.assertEqual(self._stat_line(stdout.getvalue()), "MAW_STAT rtf=0.123")
+
+    def test_debug_raw_default_writes_into_maw_dir(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / self.MEDIA_NAME
+            media.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh", "items": [], "_raw_response": {"utterances": []}}
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            with mock.patch(
+                "sys.argv",
+                ["generate_subtitle_qwen_api.py", str(media), "--model", self.MODEL, "--debug-raw"],
+            ), mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=1000.0), \
+                 mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_qwen_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                main()
+
+            maw_dir = root / "_maw"
+            raw_files = sorted(maw_dir.glob("*.asr-response.json")) if maw_dir.exists() else []
+            self.assertEqual(len(raw_files), 1)
+            self.assertIn("20-走廊.qwen3-asr-api.asr-response.json", raw_files[0].name)
+            self.assertEqual(self._stat_line(stdout.getvalue()), "MAW_STAT rtf=0.123")
+
+
 if __name__ == "__main__":
     unittest.main()

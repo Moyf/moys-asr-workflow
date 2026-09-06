@@ -4,7 +4,7 @@ import io
 import json
 import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -880,6 +880,97 @@ class TranscribeRawCaptureTests(unittest.TestCase):
             set(result) - {"raw_response"},
             {"text", "language", "language_source", "items", "timestamp_granularity"},
         )
+
+
+class BcutCliOutputNamingTests(unittest.TestCase):
+    """必剪 CLI 的 --no-model-tag 命名与 MAW_STAT / debug-raw 落盘。"""
+
+    def _run(self, extra_args, *, debug_raw=False, explicit_output=None):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh", "items": []}
+            if debug_raw:
+                result["raw_response"] = {"utterances": []}
+            argv = ["generate_subtitle_bcut_api.py", str(media)]
+            if explicit_output is not None:
+                argv += ["-o", str(explicit_output)]
+            argv += extra_args
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            with mock.patch("sys.argv", argv), \
+                 mock.patch(
+                     "generate_subtitle_bcut_api.load_config",
+                     return_value={"poll_interval": 2, "poll_timeout": 60, "max_audio_seconds": 7200},
+                 ), \
+                 mock.patch("generate_subtitle_bcut_api.get_duration_sec", return_value=1000.0), \
+                 mock.patch("generate_subtitle_bcut_api.shutil.copy2"), \
+                 mock.patch("generate_subtitle_bcut_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_bcut_api.time.perf_counter", side_effect=fake_perf), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_bcut_api import main
+
+                main()
+                names = sorted(path.name for path in root.glob("*.srt"))
+            return names, stdout.getvalue()
+
+    @staticmethod
+    def _stat_line(stdout):
+        for line in stdout.splitlines():
+            if line.startswith("MAW_STAT rtf="):
+                return line
+        return None
+
+    def test_default_name_has_no_speed_segment(self) -> None:
+        import re as _re
+
+        names, stdout = self._run([])
+
+        self.assertEqual(len(names), 1)
+        self.assertIsNotNone(_re.fullmatch(r"\[\d{10}\]20-走廊\.bcut\.srt", names[0]))
+        self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
+
+    def test_debug_raw_default_goes_into_maw_dir(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh", "items": [], "raw_response": {"utterances": []}}
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            with mock.patch(
+                "sys.argv",
+                ["generate_subtitle_bcut_api.py", str(media), "--debug-raw"],
+            ), mock.patch(
+                "generate_subtitle_bcut_api.load_config",
+                return_value={"poll_interval": 2, "poll_timeout": 60, "max_audio_seconds": 7200},
+            ), mock.patch("generate_subtitle_bcut_api.get_duration_sec", return_value=1000.0), \
+                 mock.patch("generate_subtitle_bcut_api.shutil.copy2"), \
+                 mock.patch("generate_subtitle_bcut_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_bcut_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_bcut_api import main
+
+                main()
+
+            maw_dir = root / "_maw"
+            raw_files = sorted(maw_dir.glob("*.asr-response.json")) if maw_dir.exists() else []
+            self.assertEqual(len(raw_files), 1)
+            self.assertIn(".bcut.asr-response.json", raw_files[0].name)
 
 
 if __name__ == "__main__":

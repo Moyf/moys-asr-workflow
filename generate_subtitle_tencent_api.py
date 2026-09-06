@@ -5,9 +5,12 @@ import json
 import shutil
 import sys
 import tempfile
+import time
+from datetime import datetime
 from pathlib import Path
 
 from maw.stickers import get_default_sticker_dir
+from maw.output_naming import format_elapsed, format_maw_stat, maw_root
 from generate_subtitle_qwen_api import (
     build_segments_from_api_sentences,
     configure_console_output,
@@ -52,6 +55,7 @@ def main() -> int:
     parser.add_argument("--strip-tail-punct", default="，。", help="句尾剥除的标点集合；传空串禁用剥除")
     parser.add_argument("--debug", action="store_true", help="输出 API 调试摘要")
     parser.add_argument("--debug-raw", action="store_true", help="保存完整 API 原始 JSON")
+    parser.add_argument("--no-model-tag", action="store_true", help="输出文件名不附加 tencent 供应商标识段")
     args = parser.parse_args()
     configure_console_output()
     if args.with_spectral and not args.with_waveform:
@@ -113,12 +117,16 @@ def main() -> int:
             audio_path = limited_path
             duration = args.length_limit
 
+        print(f"转写开始: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        t0 = time.perf_counter()
         result = transcribe(
             audio_path,
             config,
             args.file_url,
             speaker_diarization=args.speaker or args.speaker_colors,
         )
+        elapsed = time.perf_counter() - t0
+        print(f"转写结束: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         raw_response = result.pop("_raw_response", None)
         if not result.get("text"):
             print("错误: 未识别到任何内容", file=sys.stderr)
@@ -158,6 +166,12 @@ def main() -> int:
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
             )
 
+    if duration > 0:
+        rtf = elapsed / duration
+        speed = (1 / rtf) if rtf > 0 else 0
+    else:
+        rtf = 0.0
+        speed = 0
     if not args.keep_punct:
         for segment in segments:
             segment["text"] = str(segment["text"]).rstrip(args.strip_tail_punct)
@@ -176,7 +190,12 @@ def main() -> int:
     output_path.write_text(generate_srt(segments), encoding="utf-8", newline="\n")
     print(f"字幕已保存到: {output_path}")
     if args.debug_raw:
-        raw_path = output_path.with_suffix(".asr-response.json")
+        raw_path = (
+            maw_root(input_path) / f"{output_path.stem}.asr-response.json"
+            if not args.output
+            else output_path.with_suffix(".asr-response.json")
+        )
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
         raw_path.write_text(json.dumps(raw_response, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
         print(f"[调试] 原始返回已保存到: {raw_path}")
     if args.debug:
@@ -212,6 +231,14 @@ def main() -> int:
             ffprobe_path=ffprobe_path,
         )
         print(f"工程文件已保存到: {json_path}")
+    print(f"转写耗时: {format_elapsed(elapsed)}")
+    if duration > 0:
+        print(f"媒体时长: {format_elapsed(duration)}")
+        print(f"转写时长为媒体时长的 {rtf:.2f} 倍")
+        print(f"实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
+    maw_stat = format_maw_stat(rtf)
+    if maw_stat:
+        print(maw_stat)
     return 0
 
 
