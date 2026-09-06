@@ -113,6 +113,18 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 
 `-ll` / `--length-limit` 支持数字秒数以及 `s`、`m`、`h` 后缀，例如 `90`、`20s`、`2m`、`1h`。它会在 FFmpeg 提取阶段限制输入范围；不需要测试截取时不要长期保留这个参数。
 
+### 六个转写 CLI 的默认命名与公共开关
+
+仓库根目录还提供可直接运行的转写脚本：`generate_subtitle_qwen_api.py`、`generate_subtitle_bcut_api.py`、`generate_subtitle_soniox_api.py`、`generate_subtitle_tencent_api.py`、`generate_subtitle_openai_api.py` 和 `generate_subtitle_local.py`（合称六个转写 CLI）。它们是 `MAW.exe` 转写时调用的底层脚本，也可像工作流文档那样在源码环境用 `uv run python generate_subtitle_*.py` 直接运行。`MAW.exe` 总会把最终 SRT / `.mosp` 路径显式传给它们，因此下面的命名规则只在这些脚本自己决定输出名时生效：
+
+- 不写 `-o` / `--output` 时，脚本自行命名输出，且默认名不附带任何倍速或实时率段。多数脚本保留时间戳与供应商/模型标识段，例如 `[202609061234]clip.qwen3-asr-api.srt`；腾讯云与 OpenAI 兼容脚本的默认名只有媒体主名（`clip.srt`）；本地 CLI 使用引擎标识段（如 `clip.qwen-asr-local.srt`）。
+- `--no-model-tag` ：省略默认名中的标识段（`clip.qwen3-asr-api.srt` → `clip.srt`）。腾讯云 CLI 的默认文件名本来就不含任何标识段，此开关对它无效果。
+- 显式指定 `-o` / `--output` 时完全按给定路径输出，不注入以上任何段。
+- `--debug-raw` ：单独保存完整 ASR 原始返回。未指定 `-o` 时，`asr-response.json` 写入媒体旁的 `_maw` 目录；指定了 `-o` 时与输出同目录。（本地 CLI 的该参数仅为兼容保留，不额外落盘。）
+- 转写开始与结束时各输出一行时间码（如 `转写开始: 2026-09-06 14:32:05`）；完成后输出转写耗时、媒体时长以及实时率说明（`转写时长为媒体时长的 0.12 倍`）。实时率（RTF）= 转写耗时 ÷ 媒体原长，数值越小越快。
+- 费用估算：使用阿里云百炼服务（Qwen / Fun-ASR / Qwen-Audio）时，按媒体时长以 `0.00022 元/秒` 输出预计费用，如 `预计费用: 约 0.34 元（0.00022 元/秒 × 1548.0 秒）`；其他服务商暂无公开单价，不显示估算。
+- 转写成功时在 stdout 末尾输出一行机器可读的 `MAW_STAT rtf=0.123`（rtf 为保留三位小数的实时率）。`MAW.exe` 转写也会透出这一行，脚本可直接用它解析实时率，不必依赖人读的进度文本。
+
 ## 4. 完整参数
 
 ### 4.1 帮助、输入和输出

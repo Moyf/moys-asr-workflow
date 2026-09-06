@@ -5,20 +5,24 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Event
 
 from maw.app_paths import default_env_path
+from maw.ffmpeg import media_duration_seconds
 from maw.gui_workflow import (
     MissingOutputError,
     TranscriptionCancelledError,
     TranscriptionProcessError,
     TranscriptionRequest,
     TranscriptionResult,
+    build_output_paths,
     run_transcription,
 )
+from maw.output_naming import format_elapsed
 from maw.postprocess_pipeline import PostprocessCancelled, PostprocessPipelineError, enabled_steps
 
 
@@ -94,9 +98,11 @@ def run_batch(
             continue
         _emit(on_event, {"type": "batch_item", "id": item.item_id, "index": index, "status": "running"})
         try:
-            request = replace(item.request, srt_path=_batch_unique_output_path(item.request.srt_path, reserved))
-            reserved.update(_artifact_paths(request.srt_path))
+            request = replace(item.request, srt_path=_batch_unique_output_path(item.request.srt_path, reserved, item.request.media_path))
+            reserved.update(_artifact_paths(request.srt_path, item.request.media_path))
+            item_t0 = time.perf_counter()
             result = transcribe(request, cancel_event=cancel_event)
+            transcription_elapsed = time.perf_counter() - item_t0
             if request.postprocess_plan:
                 assert postprocess is not None
                 sanitized_plan = _batch_postprocess_plan(request.postprocess_plan)
@@ -120,6 +126,14 @@ def run_batch(
             final_srt = getattr(pipeline_result, "srt_path", result.srt_path)
             final_json: Path | None = getattr(pipeline_result, "project_path", result.json_path)
             final_html: Path | None = getattr(pipeline_result, "html_path", result.html_path)
+            item_total_elapsed = time.perf_counter() - item_t0
+            _emit_item_timing(
+                on_event, item, index,
+                total_elapsed=item_total_elapsed,
+                transcription_elapsed=transcription_elapsed,
+                postprocess_elapsed=(item_total_elapsed - transcription_elapsed) if pipeline_result is not None else None,
+                media_duration=media_duration_seconds(request.media_path, ffprobe_path=ffmpeg_path),
+            )
             if request.srt_only:
                 if final_json is not None:
                     final_json.unlink(missing_ok=True)
@@ -180,14 +194,15 @@ def _batch_postprocess_plan(plan: Mapping[str, object]) -> dict[str, object]:
     }
 
 
-def _artifact_paths(path: Path) -> set[Path]:
-    return {path, path.with_suffix(".mosp"), path.with_suffix(".edit.html")}
+def _artifact_paths(path: Path, media_path: Path | None = None) -> set[Path]:
+    srt = Path(path)
+    return {srt, srt.with_suffix(".mosp"), build_output_paths(srt, media_path).html}
 
 
-def _batch_unique_output_path(path: Path, reserved: set[Path]) -> Path:
+def _batch_unique_output_path(path: Path, reserved: set[Path], media_path: Path | None = None) -> Path:
     candidate = path
     counter = 1
-    while _artifact_paths(candidate) & reserved or any(item.exists() for item in _artifact_paths(candidate)):
+    while _artifact_paths(candidate, media_path) & reserved or any(item.exists() for item in _artifact_paths(candidate, media_path)):
         candidate = path.with_name(f"{path.stem}-{counter}{path.suffix}")
         counter += 1
     return candidate
@@ -223,6 +238,29 @@ def _emit_item_log(on_event: BatchEvent | None, item: BatchItem, index: int, eve
     message = str(event.get("message") or event.get("detail") or event.get("step") or "").strip()
     if message:
         _emit(on_event, {"type": "batch_item_log", "id": item.item_id, "index": index, "message": message})
+
+
+def _emit_item_timing(
+    on_event: BatchEvent | None,
+    item: BatchItem,
+    index: int,
+    *,
+    total_elapsed: float,
+    transcription_elapsed: float,
+    postprocess_elapsed: float | None,
+    media_duration: float | None,
+) -> None:
+    """批量单条目的端到端耗时汇总，进 Launcher 批量日志。"""
+    parts = [f"转写 {format_elapsed(transcription_elapsed)}"]
+    if postprocess_elapsed is not None:
+        parts.append(f"后处理 {format_elapsed(postprocess_elapsed)}")
+    _emit_item_log(on_event, item, index, {"message": f"[计时] 该条目全程总用时: {format_elapsed(total_elapsed)}"})
+    _emit_item_log(on_event, item, index, {"message": f"[计时] 耗时汇总: {' / '.join(parts)}"})
+    if media_duration is not None and media_duration > 0 and total_elapsed > 0:
+        _emit_item_log(
+            on_event, item, index,
+            {"message": f"[计时] 全程耗时为媒体时长的 {total_elapsed / media_duration:.2f} 倍"},
+        )
 
 
 def _without_secrets(value: object) -> object:

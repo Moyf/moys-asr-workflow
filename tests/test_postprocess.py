@@ -8,11 +8,13 @@ import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import final
 from unittest import mock
 
 from requests.exceptions import HTTPError, RequestException
 
+from maw import gui_config
 from maw.postprocess import (
     FixedProcessRequest,
     LlmPostprocessRequest,
@@ -100,6 +102,16 @@ class PostprocessTests(unittest.TestCase):
             json.dumps(sample_project(self.media), ensure_ascii=False),
             encoding="utf-8",
         )
+        # 让本类所有命名断言在确定性的 en 界面下运行（不依赖开发者 .env）：
+        # 工具箱 operation（下划线 base）的 en 文件名保持改动前 legacy ASCII，
+        # 现有断言（clip.translate-en-bilingual.* 等）因此继续逐字节成立。
+        self._language_patch = mock.patch.object(
+            gui_config,
+            "effective_config",
+            return_value=SimpleNamespace(gui_lang="en"),
+        )
+        self._language_patch.start()
+        self.addCleanup(self._language_patch.stop)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -1386,6 +1398,36 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("酒很好喝\nThe wine is delicious.", result.srt_path.read_text(encoding="utf-8"))
         self.assertIn("已将原始文本和翻译文本合并", "\n".join(result.warnings))
 
+    def test_bilingual_merge_output_names_localize_in_zh_ui(self) -> None:
+        # 工具箱双语产物在 zh 界面命名 .翻译为中文.双语合一（operation 保持
+        # translate_zh-bilingual 内部 ID，仅文件名显示本地化）。
+        with mock.patch.object(
+            gui_config,
+            "effective_config",
+            return_value=SimpleNamespace(gui_lang="zh"),
+        ):
+            result = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.BOTH,
+                    operation="translate_zh",
+                    custom_prompt="",
+                    merge_bilingual=True,
+                ),
+                complete=lambda _prompt, _cues: {
+                    "groups": [
+                        {"id": "c0001", "text": "红酒非常美味。"},
+                        {"id": "c0002", "text": "这是下一句。"},
+                    ]
+                },
+            )
+        if result.project_path is None or result.srt_path is None:
+            self.fail("both output mode must create project and SRT files")
+        self.assertEqual(result.project_path.name, "clip.翻译为中文.双语合一.mosp")
+        self.assertEqual(result.srt_path.name, "clip.翻译为中文.双语合一.srt")
+        self.assertIn("红酒非常美味。\n酒很好喝", result.srt_path.read_text(encoding="utf-8"))
+
     def test_bilingual_merge_drops_empty_cues_and_legacy_extension_segments(self) -> None:
         source = {
             "segments": [
@@ -1817,6 +1859,78 @@ class PostprocessTests(unittest.TestCase):
                 complete=lambda _prompt, _cues: {"groups": []},
             )
 
+    def test_llm_translation_rejects_chinese_named_previous_translation_as_input(self) -> None:
+        # zh 界面产出的 .翻译为中文 / .翻译为英文 命名再次翻译时同样被拦截，
+        # 含本地化组合标记（.双语合一 / .整合）的新命名。
+        for name, operation in (
+            ("source.翻译为中文.mosp", "translate_zh"),
+            ("source.翻译为中文.bilingual.mosp", "translate_zh"),
+            ("source.翻译为中文.双语合一.mosp", "translate_zh"),
+            ("source.翻译为中文.整合.mosp", "translate_zh"),
+            ("source.翻译为英文.mosp", "translate_en"),
+            ("source.翻译为中文.combined.mosp", "translate_zh"),
+        ):
+            with self.subTest(name=name):
+                translated_path = self.root / name
+                translated_path.write_text(json.dumps(sample_project(self.media), ensure_ascii=False), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "请选择最初的原字幕工程"):
+                    _ = run_llm_postprocess(
+                        LlmPostprocessRequest(
+                            project_path=translated_path,
+                            srt_path=None,
+                            output_mode=OutputMode.JSON,
+                            operation=operation,
+                            custom_prompt="",
+                        ),
+                        complete=lambda _prompt, _cues: self.fail("已翻译文件不应再请求翻译模型"),
+                    )
+
+    def test_llm_translation_guard_blocks_localized_bilingual_marker_for_any_target(self) -> None:
+        # 双语合一标记（本地化 zh 命名）与旧 bilingual 标记一样，在任意翻译方向
+        # 都触发「双语字幕命名规则」拦截（不依赖目标语言段）。
+        for name, operation in (
+            ("source.翻译为中文.双语合一.mosp", "translate_zh"),
+            ("source.翻译为中文.双语合一.mosp", "translate_en"),
+            ("source.翻译为英文.双语合一.mosp", "translate_zh"),
+            ("source.translate-zh.bilingual.mosp", "translate_en"),
+        ):
+            with self.subTest(name=name):
+                translated_path = self.root / name
+                translated_path.write_text(json.dumps(sample_project(self.media), ensure_ascii=False), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "双语字幕命名规则"):
+                    _ = run_llm_postprocess(
+                        LlmPostprocessRequest(
+                            project_path=translated_path,
+                            srt_path=None,
+                            output_mode=OutputMode.JSON,
+                            operation=operation,
+                            custom_prompt="",
+                        ),
+                        complete=lambda _prompt, _cues: self.fail("双语产物不应再请求翻译模型"),
+                    )
+
+    def test_llm_translation_guard_also_matches_old_english_names_in_zh_interface(self) -> None:
+        # 旧英文命名（历史 / 他人分享）在任意界面下对同方向翻译都被拦截：
+        # .translate-zh 纯段与带 bilingual 组合变体。
+        for name, operation in (
+            ("source.translate-zh.mosp", "translate_zh"),
+            ("source.translate-zh.bilingual.mosp", "translate_zh"),
+        ):
+            with self.subTest(name=name):
+                translated_path = self.root / name
+                translated_path.write_text(json.dumps(sample_project(self.media), ensure_ascii=False), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "请选择最初的原字幕工程"):
+                    _ = run_llm_postprocess(
+                        LlmPostprocessRequest(
+                            project_path=translated_path,
+                            srt_path=None,
+                            output_mode=OutputMode.JSON,
+                            operation=operation,
+                            custom_prompt="",
+                        ),
+                        complete=lambda _prompt, _cues: self.fail("旧英文命名的已翻译文件也应被拦截"),
+                    )
+
     def test_llm_translation_does_not_write_partial_output_after_missing_cue_retries(self) -> None:
         before = set(self.root.iterdir())
 
@@ -1940,6 +2054,10 @@ class FfconcatTests(unittest.TestCase):
         self.root = Path(self.temp_dir.name)
         self.media = self.root / "clip.mp4"
         _ = self.media.write_bytes(b"media")
+        # 媒体工具产物后缀断言按英文原样运行，隔离真实 .env 的界面语言
+        lang_patcher = mock.patch("maw.output_naming.resolve_lang", return_value="en")
+        lang_patcher.start()
+        self.addCleanup(lang_patcher.stop)
         self.concat = self.root / "clip_gap-removed.ffconcat"
         normalized = self.media.as_posix().replace("'", "'\\''")
         concat_text = "".join(
@@ -1994,6 +2112,25 @@ class FfconcatTests(unittest.TestCase):
         self.assertIn(str(self.concat.resolve()), command)
         self.assertEqual(result.media_path.name, "clip.gap-removed.mp4")
 
+    def test_ffconcat_output_suffix_localizes_for_chinese_ui(self) -> None:
+        """中文界面下媒体重组产物后缀为「去空隙」。"""
+        completed = mock.Mock(returncode=0, stderr="")
+
+        def create_output(command: list[str], **_kwargs: object) -> mock.Mock:
+            _ = Path(command[-1]).write_bytes(b"rebuilt")
+            return completed
+
+        with (
+            mock.patch("maw.output_naming.resolve_lang", return_value="zh"),
+            mock.patch("maw.postprocess_ffmpeg.subprocess.run", side_effect=create_output),
+        ):
+            result = run_ffconcat_rebuild(
+                FfconcatRequest(media_path=self.media, ffconcat_path=self.concat),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        self.assertEqual(result.media_path.name, "clip.去空隙.mp4")
+
     def test_ffconcat_rebuild_rejects_success_without_output_file(self) -> None:
         completed = mock.Mock(returncode=0, stderr="")
 
@@ -2028,6 +2165,10 @@ class MediaToolTests(unittest.TestCase):
         self.subtitle = self.root / "clip.srt"
         _ = self.media.write_bytes(b"media")
         _ = self.subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+        # 媒体工具产物后缀断言按英文原样运行，隔离真实 .env 的界面语言
+        lang_patcher = mock.patch("maw.output_naming.resolve_lang", return_value="en")
+        lang_patcher.start()
+        self.addCleanup(lang_patcher.stop)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()

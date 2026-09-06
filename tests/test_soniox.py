@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import io
 import json
+import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from unittest import mock
 
 import requests
@@ -642,6 +644,62 @@ class SonioxCliExitContractTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as raised:
                 main()
         self.assertEqual(raised.exception.code, 1)
+
+
+class SonioxCliOutputNamingTests(unittest.TestCase):
+    """Soniox CLI 的 --no-model-tag 命名与 MAW_STAT。"""
+
+    def _run(self, extra_args):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh", "items": []}
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            with mock.patch(
+                "sys.argv", ["generate_subtitle_soniox_api.py", str(media), *extra_args]
+            ), mock.patch(
+                "generate_subtitle_soniox_api.load_config",
+                return_value={"model": "stt-async-v5"},
+            ), mock.patch("generate_subtitle_soniox_api.get_duration_sec", return_value=1000.0), \
+                 mock.patch("generate_subtitle_soniox_api.shutil.copy2"), \
+                 mock.patch("generate_subtitle_soniox_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_soniox_api.time.perf_counter", side_effect=fake_perf), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_soniox_api import main
+
+                main()
+                names = sorted(path.name for path in root.glob("*.srt"))
+            return names, stdout.getvalue()
+
+    @staticmethod
+    def _stat_line(stdout):
+        for line in stdout.splitlines():
+            if line.startswith("MAW_STAT rtf="):
+                return line
+        return None
+
+    def test_default_name_has_no_speed_segment(self) -> None:
+        import re as _re
+
+        names, stdout = self._run([])
+
+        self.assertEqual(len(names), 1)
+        self.assertIsNotNone(_re.fullmatch(r"\[\d{10}\]20-走廊\.soniox\.srt", names[0]))
+        self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
+
+    def test_no_model_tag_omits_provider_segment(self) -> None:
+        import re as _re
+
+        names, _ = self._run(["--no-model-tag"])
+        self.assertEqual(len(names), 1)
+        self.assertIsNotNone(_re.fullmatch(r"\[\d{10}\]20-走廊\.srt", names[0]))
 
 
 if __name__ == "__main__":

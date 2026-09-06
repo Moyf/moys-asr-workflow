@@ -8,9 +8,9 @@ import copy
 import hashlib
 import json
 import os
-import re
 import shutil
 import tempfile
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -19,6 +19,7 @@ from threading import Event
 from typing import Final
 
 from maw.gui_config import load_env
+from maw.output_naming import format_elapsed, operation_suffix, postprocess_workspace, resolve_lang, sanitize_component, translation_marker_name
 from maw.postprocess import (
     FixedProcessRequest,
     LlmPostprocessRequest,
@@ -45,7 +46,6 @@ from maw.text_conversion import TextConversion, normalize_text_conversion_mode
 
 POSTPROCESS_PLAN_VERSION: Final[int] = 1
 POSTPROCESS_CONFIG_FILENAME: Final[str] = "maw-postprocess.json"
-POSTPROCESS_WORKSPACE_NAME: Final[str] = "MAW-Postprocess"
 STEP_ORDER: Final[tuple[str, ...]] = (
     "match",
     "replace",
@@ -423,14 +423,16 @@ def run_postprocess_pipeline(
     resume_from: int = 0,
     resume_project_path: Path | None = None,
     resume_srt_path: Path | None = None,
+    ui_language: str | None = None,
 ) -> PipelineResult:
+    language = resolve_lang(ui_language)
     normalized, errors = validate_plan(plan, env_path=env_path, media_path=media_path, ffmpeg_path=ffmpeg_path, llm_settings=llm_settings)
     if errors:
         raise ValueError(errors[0]["message"])
     steps = enabled_steps(normalized)
     if not steps:
         raise ValueError("自动后处理没有选择任何步骤。")
-    run_directory = resume_directory.expanduser().resolve() if resume_directory is not None else _create_run_directory(media_path)
+    run_directory = resume_directory.expanduser().resolve() if resume_directory is not None else _create_run_directory(media_path, lang=language)
     if resume_directory is not None and not run_directory.is_dir():
         raise ValueError(f"找不到可恢复的后处理目录：{run_directory}")
     manifest: dict[str, object]
@@ -469,6 +471,7 @@ def run_postprocess_pipeline(
                     current_translated_srt = Path(previous_path).expanduser().resolve()
     completed: list[str] = [str(step["id"]) for step in steps[:max(0, resume_from)]]
     warnings: list[str] = []
+    pipeline_t0 = time.perf_counter()
     try:
         for index, step in enumerate(steps[max(0, resume_from):], max(0, resume_from) + 1):
             _check_cancel(cancel_event)
@@ -478,6 +481,7 @@ def run_postprocess_pipeline(
             manifest_steps[index - 1]["status"] = "running"
             _write_manifest(run_directory, manifest)
             _emit(on_event, {"stage": "step_start", "index": index, "total": len(steps), "step": step_id})
+            step_t0 = time.perf_counter()
             translation_intermediate_project: Path | None = None
             translation_intermediate_srt: Path | None = None
             try:
@@ -541,7 +545,9 @@ def run_postprocess_pipeline(
                 current_translated_srt = translated_srt_path
             completed.append(step_id)
             warnings.extend(artifact.warnings)
+            step_elapsed = time.perf_counter() - step_t0
             manifest_steps[index - 1]["status"] = "done"
+            manifest_steps[index - 1]["elapsedSeconds"] = round(step_elapsed, 3)
             manifest_steps[index - 1]["projectPath"] = str(current_project)
             manifest_steps[index - 1]["srtPath"] = str(current_srt)
             if current_translated_srt is not None:
@@ -551,11 +557,13 @@ def run_postprocess_pipeline(
             if translation_intermediate_srt is not None:
                 manifest_steps[index - 1]["translationIntermediateSrtPath"] = str(translation_intermediate_srt)
             _write_manifest(run_directory, manifest)
+            print(f"后处理步骤 {step_id} 耗时 {format_elapsed(step_elapsed)}")
             _emit(on_event, {
                 "stage": "step_done",
                 "index": index,
                 "total": len(steps),
                 "step": step_id,
+                "elapsedSeconds": round(step_elapsed, 3),
                 "projectName": current_project.name,
                 "srtName": current_srt.name,
                 "translatedSrtName": current_translated_srt.name if current_translated_srt is not None else "",
@@ -568,16 +576,21 @@ def run_postprocess_pipeline(
             translated_srt=current_translated_srt,
             translation_target=translation_target,
             bilingual=bilingual_output,
+            ui_language=language,
         )
         manifest["status"] = "done"
         manifest["finalProjectPath"] = str(final_project)
         manifest["finalSrtPath"] = str(final_srt)
+        pipeline_elapsed = time.perf_counter() - pipeline_t0
+        manifest["elapsedSeconds"] = round(pipeline_elapsed, 3)
         if final_translated_srt is not None:
             manifest["finalTranslatedSrtPath"] = str(final_translated_srt)
         _write_manifest(run_directory, manifest)
+        print(f"后处理总用时: {format_elapsed(pipeline_elapsed)}")
         _emit(on_event, {
             "stage": "done",
             "total": len(steps),
+            "elapsedSeconds": round(pipeline_elapsed, 3),
             "projectName": final_project.name,
             "srtName": final_srt.name,
             "translatedSrtName": final_translated_srt.name if final_translated_srt is not None else "",
@@ -938,10 +951,10 @@ def _merge_bilingual_subtitles(
     )
 
 
-def _create_run_directory(media_path: Path) -> Path:
-    root = media_path.expanduser().resolve().parent / POSTPROCESS_WORKSPACE_NAME
+def _create_run_directory(media_path: Path, *, lang: str | None = None) -> Path:
+    root = postprocess_workspace(media_path, lang=lang)
     root.mkdir(parents=True, exist_ok=True)
-    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", media_path.stem).strip(".-") or "media"
+    stem = sanitize_component(media_path.stem, "media")
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     base = root / f"{stem}-{timestamp}"
     candidate = base
@@ -964,12 +977,15 @@ def _publish_final(
     translated_srt: Path | None = None,
     translation_target: str | None = None,
     bilingual: bool = False,
+    ui_language: str | None = None,
 ) -> tuple[Path, Path, Path | None]:
     source_srt = source_srt.expanduser().resolve()
     source_project = source_project.expanduser().resolve()
     suffix = source_project.suffix.lower() if source_project.suffix.lower() in {".mosp", ".json"} else ".mosp"
-    bilingual_suffix = ".bilingual" if bilingual else ""
-    base = source_srt.with_name(f"{source_srt.stem}.postprocess{bilingual_suffix}")
+    bilingual_suffix = (
+        f".{translation_marker_name('bilingual', lang=ui_language)}" if bilingual else ""
+    )
+    base = source_srt.with_name(f"{source_srt.stem}{operation_suffix('postprocess', lang=ui_language)}{bilingual_suffix}")
     counter = 1
     while True:
         marker = "" if counter == 1 else f"-{counter}"
@@ -978,7 +994,9 @@ def _publish_final(
         final_translated_srt = None
         if translated_srt is not None:
             target = translation_target if translation_target in TRANSLATION_TARGETS else "zh"
-            final_translated_srt = base.with_name(f"{base.name}{marker}.translate-{target}.srt")
+            final_translated_srt = base.with_name(
+                f"{base.name}{marker}{operation_suffix(f'translate-{target}', lang=ui_language)}.srt"
+            )
         destinations = (final_project, final_srt, final_translated_srt)
         if all(not path.exists() for path in destinations if path is not None):
             _copy_atomic(srt, final_srt)

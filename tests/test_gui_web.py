@@ -54,6 +54,17 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.paths = LauncherPaths(root=self.root, env_path=self.env_path, launcher_html=self.root / "launcher.html")
         self.window = FakeWindow()
         self.api = LauncherApi(paths=self.paths, window_getter=lambda: self.window)
+        # 输出布局与命名设置默认按「全部关」运行，避免读取开发者机器的真实 .env；
+        # 各设置项用例在测试内部自行覆盖（见 test_default_output_honours_*）。
+        gui_config_patcher = mock.patch(
+            "maw.gui_workflow.effective_config",
+            return_value=SimpleNamespace(output_subfolder=False, per_video_subfolder=False, attach_model_name=True),
+        )
+        gui_config_patcher.start()
+        self.addCleanup(gui_config_patcher.stop)
+        prefs_patcher = mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False))
+        prefs_patcher.start()
+        self.addCleanup(prefs_patcher.stop)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -369,6 +380,37 @@ class GuiWebBridgeTests(unittest.TestCase):
             self.env_path.read_text(encoding="utf-8"),
             "# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\nMAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n",
         )
+
+    def test_save_prefs_persists_file_output_flags_and_get_config_restores_them(self) -> None:
+        """Given 文件输出 toggles, When saved, Then .env and bulk config reflect them."""
+        for key in ("MAW_GUI_OUTPUT_SUBFOLDER", "MAW_GUI_PER_VIDEO_SUBFOLDER", "MAW_GUI_ATTACH_MODEL_NAME"):
+            os.environ.pop(key, None)
+        result = self.api.save_prefs({
+            "outputSubfolder": True,
+            "perVideoSubfolder": False,
+            "attachModelName": False,
+        })
+
+        self.assertTrue(result["ok"])
+        text = self.env_path.read_text(encoding="utf-8")
+        self.assertIn("MAW_GUI_OUTPUT_SUBFOLDER=true", text)
+        self.assertIn("MAW_GUI_PER_VIDEO_SUBFOLDER=false", text)
+        self.assertIn("MAW_GUI_ATTACH_MODEL_NAME=false", text)
+        config = self.api.get_config()
+        self.assertTrue(config["outputSubfolder"])
+        self.assertFalse(config["perVideoSubfolder"])
+        self.assertFalse(config["attachModelName"])
+
+    def test_get_config_defaults_file_output_flags_without_env(self) -> None:
+        """Given no file-output keys anywhere, When config resolved, Then documented defaults hold."""
+        for key in ("MAW_GUI_OUTPUT_SUBFOLDER", "MAW_GUI_PER_VIDEO_SUBFOLDER", "MAW_GUI_ATTACH_MODEL_NAME"):
+            os.environ.pop(key, None)
+
+        config = self.api.get_config()
+
+        self.assertFalse(config["outputSubfolder"])
+        self.assertFalse(config["perVideoSubfolder"])
+        self.assertTrue(config["attachModelName"])
 
     def test_save_prefs_persists_theme_and_get_config_restores_it(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=False):
@@ -2649,6 +2691,29 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertTrue(result["renamed"])
         self.assertEqual(result["path"], str(self.root / "clip.qwen-audio-1.srt"))
+
+    def test_default_output_honours_output_subfolder_setting(self) -> None:
+        """Given subfolder enabled, When previewing, Then the SRT preview lands in _maw."""
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        config = SimpleNamespace(output_subfolder=True, per_video_subfolder=False, attach_model_name=True)
+        with mock.patch("maw.gui_workflow.effective_config", return_value=config):
+            result = self.api.default_output({"mediaPath": str(media), "providerId": "qwen", "modelId": "qwen-audio-3.0-asr-flash-filetrans"})
+
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["renamed"])
+        self.assertEqual(result["path"], str(self.root / "_maw" / "clip.qwen-audio.srt"))
+
+    def test_default_output_honours_attach_model_name_setting(self) -> None:
+        """Given model-name attachment disabled, When previewing, Then the SRT filename carries no tag."""
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        config = SimpleNamespace(output_subfolder=False, per_video_subfolder=False, attach_model_name=False)
+        with mock.patch("maw.gui_workflow.effective_config", return_value=config):
+            result = self.api.default_output({"mediaPath": str(media), "providerId": "qwen", "modelId": "qwen-audio-3.0-asr-flash-filetrans"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["path"], str(self.root / "clip.srt"))
 
     def test_start_transcription_rechecks_output_collision_before_worker(self) -> None:
         media = self.root / "clip.mp3"

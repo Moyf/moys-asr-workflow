@@ -427,6 +427,60 @@ class GuiConfigTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {}, clear=True):
                 self.assertFalse(gui_config.effective_config(env_path).show_rare_langs)
 
+    def test_effective_config_file_output_flags_defaults_and_env_values(self) -> None:
+        """Given 文件输出 flags unset or set in .env, When resolved, Then defaults and values apply."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            with mock.patch.dict(os.environ, {}, clear=True):
+                config = gui_config.effective_config(env_path)
+            self.assertFalse(config.output_subfolder)
+            self.assertFalse(config.per_video_subfolder)
+            self.assertTrue(config.attach_model_name)
+
+            _ = env_path.write_text(
+                "MAW_GUI_OUTPUT_SUBFOLDER=true\n"
+                "MAW_GUI_PER_VIDEO_SUBFOLDER=1\n"
+                "MAW_GUI_ATTACH_MODEL_NAME=off\n",
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {}, clear=True):
+                config = gui_config.effective_config(env_path)
+            self.assertTrue(config.output_subfolder)
+            self.assertTrue(config.per_video_subfolder)
+            self.assertFalse(config.attach_model_name)
+
+    def test_effective_config_file_output_flags_prefer_system_environment(self) -> None:
+        """Given process env differs from .env, When resolved, Then process env wins."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            _ = env_path.write_text(
+                "MAW_GUI_OUTPUT_SUBFOLDER=true\nMAW_GUI_ATTACH_MODEL_NAME=false\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict(
+                os.environ,
+                {"MAW_GUI_OUTPUT_SUBFOLDER": "false", "MAW_GUI_ATTACH_MODEL_NAME": "true"},
+                clear=True,
+            ):
+                config = gui_config.effective_config(env_path)
+            self.assertFalse(config.output_subfolder)
+            self.assertTrue(config.attach_model_name)
+
+    def test_effective_config_file_output_flags_invalid_values_fall_back_to_defaults(self) -> None:
+        """Given 无法识别的布尔取值, When resolved, Then 按默认值处理。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            _ = env_path.write_text(
+                "MAW_GUI_OUTPUT_SUBFOLDER=bogus\nMAW_GUI_ATTACH_MODEL_NAME=bogus\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                config = gui_config.effective_config(env_path)
+            self.assertFalse(config.output_subfolder)
+            self.assertFalse(config.attach_model_name)
+
     def test_model_by_label_searches_all_providers(self) -> None:
         """Given a Soniox model id, When resolved, Then its env key comes from the Soniox entry."""
         model = gui_config.model_by_label("stt-async-v5")

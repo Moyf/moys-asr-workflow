@@ -46,6 +46,7 @@ from maw.soniox import (
     transcribe,
 )
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.output_naming import format_elapsed, format_maw_stat, maw_root
 from maw.language import (
     normalize_language_code,
     resolve_language,
@@ -154,6 +155,10 @@ def main():
         "--debug-raw", action="store_true",
         help="保存 Soniox transcript API 返回的完整原始 JSON，用于排查解析和时间码",
     )
+    parser.add_argument(
+        "--no-model-tag", action="store_true",
+        help="默认输出文件名不附加供应商标识段（默认附加 soniox）",
+    )
     args = parser.parse_args()
     if args.audio_track < 0:
         parser.error("--audio-track 必须是非负整数")
@@ -245,6 +250,7 @@ def main():
             print(f"[info] 已截取前 {lm}分{ls}秒用于测试")
 
         print("[soniox] 本地媒体准备完成，开始连接 Soniox...")
+        print(f"转写开始: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         t0 = time.perf_counter()
         result = transcribe(
             audio_path, config,
@@ -255,6 +261,7 @@ def main():
             capture_raw=args.debug_raw,
         )
         elapsed = time.perf_counter() - t0
+        print(f"转写结束: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
         raw_response = result.pop("_raw_response", None)
         if not result or not result.get("text"):
@@ -336,7 +343,6 @@ def main():
     print(f"[输出] 正在生成 SRT（{len(segments)} 条字幕）...")
     srt_content = generate_srt(segments)
 
-    em, es = divmod(int(elapsed), 60)
     if duration > 0:
         rtf = elapsed / duration
         speed = (1 / rtf) if rtf > 0 else 0
@@ -344,10 +350,13 @@ def main():
         rtf = 0
         speed = 0
     if not args.output:
-        speed_tag = f"{speed:.1f}x" if speed else "na"
         ts_prefix = f"[{datetime.now().strftime('%y%m%d%H%M')}]"
+        name_parts = []
+        if not args.no_model_tag:
+            name_parts.append("soniox")
+        suffix = f".{'.'.join(name_parts)}" if name_parts else ""
         output_path = output_path.with_name(
-            f"{ts_prefix}{output_path.stem}.soniox.{speed_tag}.srt"
+            f"{ts_prefix}{output_path.stem}{suffix}.srt"
         )
 
     output_path.write_text(srt_content, encoding="utf-8")
@@ -356,15 +365,21 @@ def main():
     if args.debug_raw:
         if raw_response is None:
             raise RuntimeError("调试模式未获得 Soniox transcript 原始返回数据")
-        raw_path = output_path.with_suffix(".asr-response.json")
+        raw_path = (
+            maw_root(input_path) / f"{output_path.stem}.asr-response.json"
+            if not args.output
+            else output_path.with_suffix(".asr-response.json")
+        )
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
         with raw_path.open("w", encoding="utf-8", newline="\n") as raw_file:
             json.dump(raw_response, raw_file, ensure_ascii=False, indent=2)
             raw_file.write("\n")
         print(f"[调试] Soniox transcript 原始返回已保存到: {raw_path}")
+    print(f"转写耗时: {format_elapsed(elapsed)}")
     if duration > 0:
-        print(f"处理用时: {em}分{es}秒 | 实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
-    else:
-        print(f"处理用时: {em}分{es}秒")
+        print(f"媒体时长: {format_elapsed(duration)}")
+        print(f"转写时长为媒体时长的 {rtf:.2f} 倍")
+        print(f"实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
 
     if args.json_out:
         language, language_source = resolve_language(
@@ -430,6 +445,10 @@ def main():
                     subprocess.run(cmd, check=True)
                 except subprocess.CalledProcessError as e:
                     print(f"[警告] edit.py 失败 (exit {e.returncode})")
+
+    maw_stat = format_maw_stat(rtf)
+    if maw_stat:
+        print(maw_stat)
 
 
 if __name__ == "__main__":

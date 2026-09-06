@@ -22,7 +22,7 @@ from threading import Event, Lock
 from typing import BinaryIO, Final, final
 
 from maw.app_paths import default_emoji_font_path
-from maw.ffmpeg import FfmpegTools, resolve_ffmpeg_tools
+from maw.ffmpeg import FfmpegTools, media_duration_seconds, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
 from maw.gui_config import (
     DEFAULT_ENV_PATH,
@@ -45,8 +45,9 @@ from maw.gui_config import (
     save_env,
 )
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
-from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
+from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee
 from maw.local_runtime import (
     LocalRuntimeCancelled,
@@ -703,6 +704,9 @@ class LauncherApi:
             "appVersion": _app_version(self.paths),
             "stickerDir": config.sticker_dir,
             "showRareLangs": config.show_rare_langs,
+            "outputSubfolder": config.output_subfolder,
+            "perVideoSubfolder": config.per_video_subfolder,
+            "attachModelName": config.attach_model_name,
             "lastModel": config.last_model,
             "lastLanguage": config.last_language,
             "theme": config.theme,
@@ -766,7 +770,7 @@ class LauncherApi:
             default_srt_path(Path(media_text), provider=provider_id, model=model_id, test_run=test_run)
             if media_text else Path()
         )
-        selected = unique_output_path(requested) if media_text else requested
+        selected = unique_output_path(requested, Path(media_text)) if media_text else requested
         return {
             "ok": bool(media_text),
             "path": str(selected) if media_text else "",
@@ -820,6 +824,13 @@ class LauncherApi:
             updates["MAW_GUI_LAST_LANGUAGE"] = str(payload.get("language") or "")
         if "showRareLangs" in payload:
             updates["MAW_GUI_SHOW_RARE_LANGS"] = "true" if payload.get("showRareLangs") else "false"
+        for payload_key, env_key in (
+            ("outputSubfolder", "MAW_GUI_OUTPUT_SUBFOLDER"),
+            ("perVideoSubfolder", "MAW_GUI_PER_VIDEO_SUBFOLDER"),
+            ("attachModelName", "MAW_GUI_ATTACH_MODEL_NAME"),
+        ):
+            if payload_key in payload:
+                updates[env_key] = "true" if payload.get(payload_key) else "false"
         if "theme" in payload:
             updates["MAW_GUI_THEME"] = _gui_theme(str(payload.get("theme") or "")) or "system"
         if "zoomPercent" in payload:
@@ -1844,7 +1855,7 @@ class LauncherApi:
         ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
         if ffmpeg_error is not None:
             return ffmpeg_error
-        selected_output = unique_output_path(request.srt_path)
+        selected_output = unique_output_path(request.srt_path, request.media_path)
         output_renamed = selected_output != request.srt_path
         if output_renamed:
             request = replace(request, srt_path=selected_output)
@@ -1897,9 +1908,9 @@ class LauncherApi:
                 if isinstance(raw_plan, Mapping):
                     merged["autoPostprocess"] = _batch_postprocess_plan(raw_plan)
                 request = _request_from_payload(merged, self.paths.env_path)
-                selected = _batch_unique_output_path(request.srt_path, reserved)
+                selected = _batch_unique_output_path(request.srt_path, reserved, request.media_path)
                 items.append(BatchItem(str(raw_item.get("id") or index), replace(request, srt_path=selected)))
-                reserved.update(_artifact_paths(selected))
+                reserved.update(_artifact_paths(selected, request.media_path))
             except PreflightError as error:
                 items.append(BatchItem(item_id, None, error.message))
             except (OSError, ValueError) as error:
@@ -1922,7 +1933,13 @@ class LauncherApi:
         ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
         if ffmpeg_error is not None:
             return ffmpeg_error
-        manifest_path = Path(manifest_text).expanduser() if manifest_text else _unique_batch_manifest_path(first_request.srt_path.parent)
+        if manifest_text:
+            manifest_path = Path(manifest_text).expanduser()
+        else:
+            # 批量清单属于「其余文件」：默认落在媒体对应的 _maw 根目录。
+            manifest_root = maw_root(first_request.media_path)
+            manifest_root.mkdir(parents=True, exist_ok=True)
+            manifest_path = _unique_batch_manifest_path(manifest_root)
         self.batch_cancel_event = Event()
         self.pump.start()
         self.batch_worker = threading.Thread(
@@ -2308,6 +2325,7 @@ class LauncherApi:
 
     def _worker_main(self, request: TranscriptionRequest, cancel_event: Event) -> None:
         child_output: list[str] = []
+        flow_t0 = time.perf_counter()
 
         def on_child_event(line: str) -> None:
             child_output.append(line)
@@ -2359,6 +2377,7 @@ class LauncherApi:
             self.pump.flush()
             return
         self.result = result
+        transcription_elapsed = time.perf_counter() - flow_t0
         self.postprocess_retry_context = None
         self._last_postprocess_progress_at = 0.0
         auto_run_directory: Path | None = None
@@ -2430,6 +2449,23 @@ class LauncherApi:
                 return
         result = self.result
         assert result is not None
+        if request.postprocess_plan:
+            total_elapsed = time.perf_counter() - flow_t0
+            postprocess_elapsed = max(0.0, total_elapsed - transcription_elapsed)
+            self._emit({"type": "log", "message": f"[计时] 全程总用时: {format_elapsed(total_elapsed)}"})
+            self._emit({
+                "type": "log",
+                "message": (
+                    f"[计时] 耗时汇总: 转写 {format_elapsed(transcription_elapsed)}"
+                    f" / 后处理 {format_elapsed(postprocess_elapsed)}"
+                ),
+            })
+            media_duration = media_duration_seconds(request.media_path)
+            if media_duration is not None and media_duration > 0 and total_elapsed > 0:
+                self._emit({
+                    "type": "log",
+                    "message": f"[计时] 全程耗时为媒体时长的 {total_elapsed / media_duration:.2f} 倍",
+                })
         self.postprocess_workspace_directory = auto_run_directory if auto_run_directory and auto_run_directory.is_dir() else None
         self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
@@ -3058,14 +3094,15 @@ def _dialog_result(selected: tuple[str, ...] | None, *, include_paths: bool = Fa
     return result
 
 
-def _artifact_paths(path: Path) -> set[Path]:
-    return {path, path.with_suffix(".mosp"), path.with_suffix(".edit.html")}
+def _artifact_paths(path: Path, media_path: Path | None = None) -> set[Path]:
+    srt = Path(path)
+    return {srt, srt.with_suffix(".mosp"), build_output_paths(srt, media_path).html}
 
 
-def _batch_unique_output_path(path: Path, reserved: set[Path]) -> Path:
-    candidate = unique_output_path(path)
+def _batch_unique_output_path(path: Path, reserved: set[Path], media_path: Path | None = None) -> Path:
+    candidate = unique_output_path(path, media_path)
     counter = 1
-    while _artifact_paths(candidate) & reserved:
+    while _artifact_paths(candidate, media_path) & reserved:
         candidate = path.with_name(f"{path.stem}-{counter}{path.suffix}")
         counter += 1
     return candidate
