@@ -137,6 +137,10 @@ fn media_stem(value: &str) -> String {
         ".match.", ".匹配.",
         ".翻译为中文.", ".翻译为英文.",
         ".双语合一.", ".整合.",
+        // 媒体工具产物后缀（与 output_naming.MEDIA_SUFFIX_NAMES 一致）。
+        ".gap-removed.", ".去空隙.",
+        ".subtitled.", ".压字幕.",
+        ".audio.", ".音频.",
     ];
     if let Some(tag) = tags.iter().find(|tag| stem.contains(*tag)) {
         let index = stem.find(*tag).unwrap_or(0);
@@ -150,6 +154,9 @@ fn media_stem(value: &str) -> String {
         ".match", ".匹配",
         ".翻译为中文", ".翻译为英文",
         ".双语合一", ".整合",
+        ".gap-removed", ".去空隙",
+        ".subtitled", ".压字幕",
+        ".audio", ".音频",
     ];
     if let Some(term) = terminals.iter().find(|term| stem.ends_with(*term)) {
         let end = stem.len() - term.len();

@@ -11701,7 +11701,7 @@ async function downloadColorSrts(gapRemoved = false) {
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  const gapSuffix = gapRemoved ? '_gap-removed' : '';
+  const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
   const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
     colorName: color.name,
     timeOffset: 0,
@@ -13713,7 +13713,7 @@ async function exportLottieDynamicCaptions() {
     const blob = await response.blob();
     closeLottieExportModal();
     const suffix = extension ? '_extension' : '';
-    const gapSuffix = gapRemoved ? '_gap-removed' : '';
+    const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
     const saved = await downloadFile(
       blob,
       `${FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.lottie`,
@@ -13832,7 +13832,7 @@ async function exportOgrafDynamicCaptions() {
     const blob = await response.blob();
     closeOgrafExportModal();
     const suffix = extension ? '_extension' : '';
-    const gapSuffix = gapRemoved ? '_gap-removed' : '';
+    const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
     const saved = await downloadFile(
       blob,
       `${FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.ograf.zip`,
@@ -13971,14 +13971,14 @@ async function exportStickerOtio(kind, buildTimeline, filename, description) {
 document.getElementById('download-sticker-otio')?.addEventListener('click', () => {
   if (stickerExportBlocked('download-sticker-otio')) return;
   exportStickerOtio(
-    'stickers', buildStickerOtio, `${FILENAME_BASE}_stickers.otio`, 'OTIO 工程文件'
+    'stickers', buildStickerOtio, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, 'OTIO 工程文件'
   );
 });
 document.getElementById('download-gap-removed-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedSrt();
   if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_gap-removed.srt`, 'text/plain', {
+    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
       desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
     });
   }
@@ -14005,7 +14005,7 @@ document.getElementById('download-gap-removed-otio')?.addEventListener('click', 
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedOtio();
   if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_gap-removed.otio`, 'application/vnd.opentimelineio+json', {
+    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
       desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
     });
   }
@@ -14014,7 +14014,7 @@ document.getElementById('download-gap-removed-otioz')?.addEventListener('click',
   await exportTimelineOtioz(
     'gap-removed',
     buildGapRemovedOtio,
-    `${FILENAME_BASE}_gap-removed.otioz`,
+    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otioz`,
     '去空隙时间线 OTIOZ 打包工程',
   );
 });
@@ -14022,7 +14022,7 @@ document.getElementById('download-gap-removed-ffconcat')?.addEventListener('clic
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedFfconcat();
   if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_gap-removed.ffconcat`, 'text/plain', {
+    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ffconcat`, 'text/plain', {
       desc: 'FFconcat 剪辑计划', types: { 'text/plain': ['.ffconcat'] }
     });
   }
@@ -14031,7 +14031,7 @@ document.getElementById('download-gap-removed-regions-json')?.addEventListener('
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedRegionsJson();
   if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_gap-removed.keep-regions.json`, 'application/json', {
+    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.keep-regions.json`, 'application/json', {
       desc: '去空隙保留区域 JSON', types: { 'application/json': ['.json'] }
     });
   }
@@ -14040,7 +14040,7 @@ document.getElementById('download-gap-removed-sticker-otio')?.addEventListener('
   if (stickerExportBlocked('download-gap-removed-sticker-otio')) return;
   await exportStickerOtio(
     'gap-removed-stickers', buildGapRemovedStickerOtio,
-    `${FILENAME_BASE}_gap-removed-stickers.otio`, '去空隙表情包 OTIO 工程'
+    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, '去空隙表情包 OTIO 工程'
   );
 });
 document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener('click', async () => {
@@ -14053,14 +14053,14 @@ document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener(
   }
   await exportStickerOtoz(
     'gap-removed-stickers', buildGapRemovedStickerOtio,
-    `${FILENAME_BASE}_gap-removed-stickers.otioz`, '去空隙表情包 OTIOZ 打包工程'
+    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '去空隙表情包 OTIOZ 打包工程'
   );
 });
 document.getElementById('download-sticker-otioz')?.addEventListener('click', async () => {
   if (stickerExportBlocked('download-sticker-otioz')) return;
   await exportStickerOtoz(
     'stickers', buildStickerOtio,
-    `${FILENAME_BASE}_stickers.otioz`, '表情包 OTIOZ 打包工程'
+    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '表情包 OTIOZ 打包工程'
   );
 });
 

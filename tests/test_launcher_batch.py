@@ -245,6 +245,23 @@ class BatchRunnerTests(unittest.TestCase):
 
 
 class BatchApiTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        # 批量清单与输出路径用例隔离真实 .env 的输出目录开关
+        config_patcher = mock.patch(
+            "maw.gui_workflow.effective_config",
+            return_value=SimpleNamespace(output_subfolder=False, per_video_subfolder=False, attach_model_name=True),
+        )
+        config_patcher.start()
+        self.addCleanup(config_patcher.stop)
+        prefs_patcher = mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False))
+        prefs_patcher.start()
+        self.addCleanup(prefs_patcher.stop)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
     @staticmethod
     def _blocked_batch_runner(error: Exception | None = None) -> tuple[threading.Event, threading.Event, object]:
         started = threading.Event()

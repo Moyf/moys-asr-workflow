@@ -57,6 +57,10 @@ class GuiWorkflowTests(unittest.TestCase):
         self.media_path = self.root / "clip.mp3"
         self.media_path.write_bytes(b"placeholder")
         self.srt_path = self.root / "out.srt"
+        # 输出目录开关隔离真实 .env，路径用例一律按共享 _maw 布局断言
+        prefs_patcher = mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False))
+        prefs_patcher.start()
+        self.addCleanup(prefs_patcher.stop)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()

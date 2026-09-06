@@ -2054,6 +2054,10 @@ class FfconcatTests(unittest.TestCase):
         self.root = Path(self.temp_dir.name)
         self.media = self.root / "clip.mp4"
         _ = self.media.write_bytes(b"media")
+        # 媒体工具产物后缀断言按英文原样运行，隔离真实 .env 的界面语言
+        lang_patcher = mock.patch("maw.output_naming.resolve_lang", return_value="en")
+        lang_patcher.start()
+        self.addCleanup(lang_patcher.stop)
         self.concat = self.root / "clip_gap-removed.ffconcat"
         normalized = self.media.as_posix().replace("'", "'\\''")
         concat_text = "".join(
@@ -2108,6 +2112,25 @@ class FfconcatTests(unittest.TestCase):
         self.assertIn(str(self.concat.resolve()), command)
         self.assertEqual(result.media_path.name, "clip.gap-removed.mp4")
 
+    def test_ffconcat_output_suffix_localizes_for_chinese_ui(self) -> None:
+        """中文界面下媒体重组产物后缀为「去空隙」。"""
+        completed = mock.Mock(returncode=0, stderr="")
+
+        def create_output(command: list[str], **_kwargs: object) -> mock.Mock:
+            _ = Path(command[-1]).write_bytes(b"rebuilt")
+            return completed
+
+        with (
+            mock.patch("maw.output_naming.resolve_lang", return_value="zh"),
+            mock.patch("maw.postprocess_ffmpeg.subprocess.run", side_effect=create_output),
+        ):
+            result = run_ffconcat_rebuild(
+                FfconcatRequest(media_path=self.media, ffconcat_path=self.concat),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        self.assertEqual(result.media_path.name, "clip.去空隙.mp4")
+
     def test_ffconcat_rebuild_rejects_success_without_output_file(self) -> None:
         completed = mock.Mock(returncode=0, stderr="")
 
@@ -2142,6 +2165,10 @@ class MediaToolTests(unittest.TestCase):
         self.subtitle = self.root / "clip.srt"
         _ = self.media.write_bytes(b"media")
         _ = self.subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+        # 媒体工具产物后缀断言按英文原样运行，隔离真实 .env 的界面语言
+        lang_patcher = mock.patch("maw.output_naming.resolve_lang", return_value="en")
+        lang_patcher.start()
+        self.addCleanup(lang_patcher.stop)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()

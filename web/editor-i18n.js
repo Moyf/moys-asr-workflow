@@ -805,6 +805,14 @@
 
   let language = readLanguage();
 
+  // 导出文件名中的技术段（按当前语言映射；中文界面译出，英文界面原样）。
+  const EXPORT_NAME_SEGMENTS = { 'gap-removed': '去空隙', 'stickers': '表情包' };
+
+  function exportTag(segment) {
+    if (language !== ZH) return segment;
+    return EXPORT_NAME_SEGMENTS[segment] || segment;
+  }
+
   function translateText(value, lang = language) {
     const text = String(value ?? '');
     if (lang !== EN) return text;
@@ -1120,6 +1128,7 @@
   global.MAWE_I18N = {
     get language() { return language; },
     applyLanguage,
+    exportTag,
     start,
     translateText,
     validateTranslationKeys,

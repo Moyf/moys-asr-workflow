@@ -31,6 +31,13 @@ OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
     "match": {"zh": "匹配", "en": "match"},
 }
 
+# 媒体工具产物后缀（压制字幕/提取音频/媒体重组）；未列出的后缀原样使用。
+MEDIA_SUFFIX_NAMES: Final[dict[str, dict[str, str]]] = {
+    "gap-removed": {"zh": "去空隙", "en": "gap-removed"},
+    "subtitled": {"zh": "压字幕", "en": "subtitled"},
+    "audio": {"zh": "音频", "en": "audio"},
+}
+
 # 翻译目标语言显示名（按 UI 语言索引的目标名）：zh 界面显示「中文/英文」，
 # en 界面保持代码目标名本身（zh/en）。
 TRANSLATION_TARGET_NAMES: Final[dict[str, dict[str, str]]] = {
@@ -204,6 +211,12 @@ def operation_suffix(operation: str, lang: str | None = None) -> str:
     return f".{display}"
 
 
+def media_suffix(suffix: str, lang: str | None = None) -> str:
+    """媒体工具产物后缀的本地化显示名；未列出的后缀原样返回。"""
+    language = resolve_lang(lang)
+    return MEDIA_SUFFIX_NAMES.get(suffix, {}).get(language) or suffix
+
+
 def format_maw_stat(rtf: float | None) -> str | None:
     """生成机器可读状态行；rtf 无效时返回 None。"""
     if rtf is None or rtf <= 0:
@@ -249,6 +262,7 @@ __all__ = [
     "DEFAULT_LANG",
     "MAW_DIR_NAME",
     "MAW_STAT_PREFIX",
+    "MEDIA_SUFFIX_NAMES",
     "OPERATION_NAMES",
     "POSTPROCESS_DIR_NAMES",
     "TRANSLATION_MARKER_NAMES",
@@ -259,6 +273,7 @@ __all__ = [
     "is_translation_operation",
     "maw_root",
     "maw_root_candidates",
+    "media_suffix",
     "operation_suffix",
     "parse_maw_stat",
     "postprocess_workspace",
