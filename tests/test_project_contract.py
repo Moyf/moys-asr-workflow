@@ -148,6 +148,44 @@ class ProjectContractTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.project["media_metadata"], project["media_metadata"])
 
+    def test_validate_project_accepts_audio_track_inventory_without_video_fps(self) -> None:
+        project = {
+            "media_metadata": {
+                "audio_tracks": [{
+                    "audio_index": 0,
+                    "stream_index": 1,
+                    "codec": "aac",
+                    "channels": 2,
+                    "sample_rate": 48000,
+                    "language": "zh",
+                    "title": "中文",
+                    "default": True,
+                }],
+            },
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.project["media_metadata"], project["media_metadata"])
+
+    def test_validate_project_reports_invalid_audio_track_inventory(self) -> None:
+        project = {
+            "media_metadata": {
+                "audio_tracks": [{"stream_index": -1, "channels": 0, "default": "yes"}],
+            },
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.media_metadata.audio_tracks[0].stream_index", paths)
+        self.assertIn("$.media_metadata.audio_tracks[0].channels", paths)
+        self.assertIn("$.media_metadata.audio_tracks[0].default", paths)
+
     def test_validate_project_reports_invalid_source_video_fps_metadata(self) -> None:
         project = {
             "media_metadata": {

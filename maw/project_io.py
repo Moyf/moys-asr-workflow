@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from maw.media import probe_video_fps
+from maw.media import probe_audio_tracks, probe_video_fps
 
 
 def enrich_project_media_metadata(
@@ -16,16 +16,22 @@ def enrich_project_media_metadata(
     *,
     ffprobe_path: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Return a project copy with optional source-video FPS metadata.
+    """Return a project copy with optional source-media metadata.
 
-    Existing ``media_metadata`` is deliberately preserved.  Callers can pass
-    the active media explicitly; otherwise the project's ``media`` field is
-    used as a best-effort fallback.  FFprobe failures are handled by
-    :func:`maw.media.probe_video_fps` and never block serialization.
+    Existing metadata fields are deliberately preserved. Callers can pass the
+    active media explicitly; otherwise the project's ``media`` field is used
+    as a best-effort fallback. FFprobe failures are handled by the media probe
+    helpers and never block serialization.
     """
 
     enriched = dict(project)
-    if "media_metadata" in enriched:
+    existing_metadata = enriched.get("media_metadata")
+    if existing_metadata is not None and not isinstance(existing_metadata, Mapping):
+        return enriched
+    metadata = dict(existing_metadata) if isinstance(existing_metadata, Mapping) else {}
+    need_video_fps = "video_fps" not in metadata
+    need_audio_tracks = "audio_tracks" not in metadata
+    if not need_video_fps and not need_audio_tracks:
         return enriched
 
     candidate = media_path
@@ -36,12 +42,19 @@ def enrich_project_media_metadata(
     if candidate is None or (isinstance(candidate, str) and not candidate.strip()):
         return enriched
 
-    media_metadata = probe_video_fps(candidate, ffprobe_path=ffprobe_path)
-    if media_metadata is not None:
-        if "media" in enriched:
+    if need_video_fps:
+        video_metadata = probe_video_fps(candidate, ffprobe_path=ffprobe_path)
+        if video_metadata is not None:
+            metadata.update(video_metadata)
+    if need_audio_tracks:
+        audio_tracks = probe_audio_tracks(candidate, ffprobe_path=ffprobe_path)
+        if audio_tracks is not None:
+            metadata["audio_tracks"] = audio_tracks
+    if metadata:
+        if "media" in enriched and "media_metadata" not in enriched:
             media = enriched.pop("media")
-            return {"media": media, "media_metadata": media_metadata, **enriched}
-        enriched["media_metadata"] = media_metadata
+            return {"media": media, "media_metadata": metadata, **enriched}
+        enriched["media_metadata"] = metadata
     return enriched
 
 
