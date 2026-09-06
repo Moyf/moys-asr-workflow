@@ -12130,23 +12130,117 @@ function mediaTargetUrl() {
   return '';
 }
 
+function otioAudioTrackMetadata(audioTrack, fallbackIndex = 0) {
+  if (!audioTrack || !Number.isInteger(audioTrack.stream_index) || audioTrack.stream_index < 0) {
+    return {};
+  }
+  const audioIndex = otioAudioTrackIndex(audioTrack, fallbackIndex);
+  const metadata = {
+    audio_track_index: audioIndex,
+    audio_stream_index: audioTrack.stream_index,
+  };
+  for (const field of ['codec', 'language', 'title']) {
+    if (audioTrack[field]) metadata[field] = audioTrack[field];
+  }
+  if (Number.isInteger(audioTrack.channels) && audioTrack.channels > 0) {
+    metadata.channels = audioTrack.channels;
+  }
+  if (Number.isInteger(audioTrack.sample_rate) && audioTrack.sample_rate > 0) {
+    metadata.sample_rate = audioTrack.sample_rate;
+  }
+  if (audioTrack.default === true) metadata.default = true;
+  return { moy: metadata };
+}
+
+function otioAudioTrackIndex(audioTrack, fallbackIndex = 0) {
+  return Number.isInteger(audioTrack?.audio_index) && audioTrack.audio_index >= 0
+    ? audioTrack.audio_index : fallbackIndex;
+}
+
+function otioAudioTrackName(audioTrack, index, total) {
+  if (total <= 1) return '音频';
+  const details = [audioTrack?.title, audioTrack?.language]
+    .filter((value, detailIndex, values) => value && values.indexOf(value) === detailIndex)
+    .join(' · ');
+  return `音频 ${index + 1}${details ? ` · ${details}` : ''}`;
+}
+
+function otioMediaName(targetUrl) {
+  const raw = String(targetUrl || '').split(/[?#]/, 1)[0].replace(/[\\/]+$/, '');
+  const candidate = raw.split(/[\\/]/).pop() || '';
+  if (!candidate) return '';
+  try {
+    return decodeURIComponent(candidate);
+  } catch {
+    return candidate;
+  }
+}
+
+function resolveOtioAudioType(audioTrack) {
+  if (audioTrack?.channels === 1) return 'Mono';
+  if (audioTrack?.channels === 2) return 'Stereo';
+  return null;
+}
+
+function resolveOtioTrackMetadata(kind, audioTrack) {
+  if (kind === 'Video') {
+    return { Resolve_OTIO: { Locked: false } };
+  }
+  const audioType = resolveOtioAudioType(audioTrack);
+  return {
+    Resolve_OTIO: {
+      ...(audioType ? { 'Audio Type': audioType } : {}),
+      Locked: false,
+      SoloOn: false,
+    },
+  };
+}
+
+function resolveOtioClipMetadata(kind, audioTrack, audioTrackIndex, linkGroupId = 1) {
+  const resolveMetadata = { 'Link Group ID': linkGroupId };
+  if (kind === 'Audio') {
+    const sourceTrackId = otioAudioTrackIndex(audioTrack, audioTrackIndex);
+    const channels = Number.isInteger(audioTrack?.channels) && audioTrack.channels > 0
+      ? audioTrack.channels : 0;
+    if (channels > 0) {
+      resolveMetadata.Channels = Array.from({ length: channels }, (_, sourceChannelId) => ({
+        'Source Channel ID': sourceChannelId,
+        'Source Track ID': sourceTrackId,
+      }));
+    }
+  }
+  return { Resolve_OTIO: resolveMetadata };
+}
+
 function buildTimelineMediaClip(
   interval, index, kind, targetUrl, sourceStartFrame, sourceDurationFrames,
-  { includeSubtitleMarkers = false, gapRemoved = false } = {},
+  {
+    includeSubtitleMarkers = false,
+    gapRemoved = false,
+    audioTrack = null,
+    audioTrackIndex = 0,
+    clipName = '',
+  } = {},
 ) {
   const startFrame = msToOtioFrames(interval.start);
   const endFrame = msToOtioFrames(interval.end);
   const durationFrames = Math.max(1, endFrame - startFrame);
-  return {
-    OTIO_SCHEMA: 'Clip.2',
-    metadata: gapRemoved ? {
+  const audioMetadata = otioAudioTrackMetadata(audioTrack, audioTrackIndex);
+  const clipMetadata = {
+    ...(gapRemoved ? {
       moy: {
         gap_remove_source_start_ms: interval.start,
         gap_remove_source_end_ms: interval.end,
         gap_remove_sequence_index: index,
+        ...(audioMetadata.moy || {}),
       },
-    } : {},
-    name: `${kind} ${index + 1}`,
+    } : audioMetadata),
+    ...resolveOtioClipMetadata(kind, audioTrack, audioTrackIndex, index + 1),
+  };
+  return {
+    OTIO_SCHEMA: 'Clip.2',
+    metadata: clipMetadata,
+    name: clipName || `${kind} ${index + 1}`,
     source_range: otioTimeRange(sourceStartFrame + startFrame, durationFrames),
     effects: [],
     markers: includeSubtitleMarkers
@@ -12157,8 +12251,8 @@ function buildTimelineMediaClip(
     media_references: {
       DEFAULT_MEDIA: {
         OTIO_SCHEMA: 'ExternalReference.1',
-        metadata: {},
-        name: '',
+        metadata: audioMetadata,
+        name: clipName,
         available_range: otioTimeRange(sourceStartFrame, sourceDurationFrames),
         available_image_bounds: null,
         target_url: targetUrl,
@@ -12196,12 +12290,30 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
   }
   const sourceDurationFrames = Math.max(1, msToOtioFrames(durationMs));
   const sourceStartFrame = mediaStartOtioFrames();
+  const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
+  const audioMetadata = Array.isArray(mediaMetadata?.audio_tracks)
+    ? mediaMetadata.audio_tracks : null;
+  const clipName = otioMediaName(targetUrl);
+  const audioEntries = audioMetadata === null
+    ? [null]
+    : audioMetadata.map((audioTrack, index) => ({ audioTrack, index }));
+  const audioSpecs = audioEntries.length || player?.tagName !== 'AUDIO'
+    ? audioEntries.map(({ audioTrack, index }) => ({
+      name: otioAudioTrackName(audioTrack, index, audioEntries.length),
+      kind: 'Audio',
+      audioTrack,
+      audioTrackIndex: index,
+    }))
+    : [{ name: '音频', kind: 'Audio', audioTrack: null, audioTrackIndex: 0 }];
   const trackSpecs = player?.tagName === 'AUDIO'
-    ? [{ name: '音频', kind: 'Audio' }]
-    : [{ name: '视频', kind: 'Video' }, { name: '音频', kind: 'Audio' }];
-  const tracks = trackSpecs.map((track) => ({
+    ? audioSpecs
+    : [{ name: '视频', kind: 'Video', audioTrack: null, audioTrackIndex: 0 }, ...audioSpecs];
+  const tracks = trackSpecs.map((track, trackIndex) => ({
     OTIO_SCHEMA: 'Track.1',
-    metadata: {},
+    metadata: {
+      ...otioAudioTrackMetadata(track.audioTrack, track.audioTrackIndex),
+      ...resolveOtioTrackMetadata(track.kind, track.audioTrack),
+    },
     name: track.name,
     source_range: null,
     effects: [],
@@ -12211,13 +12323,17 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
     children: intervals.map((interval, index) => buildTimelineMediaClip(
       interval,
       index,
-      track.name,
+      track.kind,
       targetUrl,
       sourceStartFrame,
       sourceDurationFrames,
       {
-        includeSubtitleMarkers: track.kind === 'Video' || trackSpecs.length === 1,
+        includeSubtitleMarkers: track.kind === 'Video'
+          || (track.kind === 'Audio' && player?.tagName === 'AUDIO' && trackIndex === 0),
         gapRemoved,
+        audioTrack: track.audioTrack,
+        audioTrackIndex: track.audioTrackIndex,
+        clipName,
       },
     )),
     kind: track.kind,
@@ -12225,10 +12341,18 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
   const metadata = {
     moy: {
       source_media: targetUrl,
+      ...(audioMetadata !== null ? {
+        audio_tracks: audioMetadata.map((audioTrack, index) => ({
+          ...otioAudioTrackMetadata(audioTrack, index).moy,
+        })),
+      } : {}),
       ...(gapRemoved ? {
         gap_remove_schema: GAP_REMOVE_SCHEMA,
         removed_gaps_ms: removed,
       } : {}),
+    },
+    Resolve_OTIO: {
+      'Resolve OTIO Meta Version': '1.0',
     },
   };
   return JSON.stringify({
