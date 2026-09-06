@@ -8,6 +8,7 @@ import os
 import re
 import struct
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from fractions import Fraction
@@ -167,6 +168,93 @@ def probe_video_fps(
             fps, ratio = parsed
             return {"video_fps": fps, "video_fps_ratio": ratio}
     return None
+
+
+def _parse_probe_integer(value: object, *, minimum: int = 0) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and re.fullmatch(r"\d+", value.strip()):
+        parsed = int(value.strip())
+    else:
+        return None
+    return parsed if parsed >= minimum else None
+
+
+def probe_audio_tracks(
+    path: Path | str,
+    *,
+    ffprobe_path: str | os.PathLike[str] | None = None,
+) -> list[dict[str, Any]] | None:
+    """Read the source media's audio streams as optional project metadata.
+
+    ``audio_index`` is the zero-based order among audio streams while
+    ``stream_index`` is FFmpeg's stream index in the original container.  A
+    successful probe with no audio streams returns an empty list; an absent
+    FFprobe executable or any probe failure returns ``None`` so metadata
+    enrichment never blocks project generation.
+    """
+
+    source = Path(path).expanduser()
+    if source.suffix.lower() not in MEDIA_EXTENSIONS:
+        return None
+    try:
+        if not source.is_file():
+            return None
+    except OSError:
+        return None
+
+    executable = find_ffprobe(ffprobe_path)
+    if executable is None:
+        return None
+    command = [
+        str(executable), "-v", "error",
+        "-select_streams", "a",
+        "-show_entries",
+        "stream=index,codec_name,channels,sample_rate:stream_tags=language,title:stream_disposition=default",
+        "-of", "json", str(source),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+            timeout=10,
+        )
+        payload = json.loads(result.stdout or "")
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError):
+        return None
+
+    streams = payload.get("streams") if isinstance(payload, Mapping) else None
+    if not isinstance(streams, list):
+        return None
+    tracks: list[dict[str, Any]] = []
+    for stream in streams:
+        if not isinstance(stream, Mapping):
+            continue
+        stream_index = _parse_probe_integer(stream.get("index"))
+        if stream_index is None:
+            continue
+        tags = stream.get("tags") if isinstance(stream.get("tags"), Mapping) else {}
+        disposition = stream.get("disposition") if isinstance(stream.get("disposition"), Mapping) else {}
+        channels = _parse_probe_integer(stream.get("channels"), minimum=1)
+        sample_rate = _parse_probe_integer(stream.get("sample_rate"), minimum=1)
+        default_value = _parse_probe_integer(disposition.get("default"))
+        tracks.append({
+            "audio_index": len(tracks),
+            "stream_index": stream_index,
+            "codec": str(stream.get("codec_name") or "").strip(),
+            "channels": channels,
+            "sample_rate": sample_rate,
+            "language": str(tags.get("language") or "").strip(),
+            "title": str(tags.get("title") or "").strip(),
+            "default": default_value == 1,
+        })
+    return tracks
 
 
 @dataclass(frozen=True, slots=True)

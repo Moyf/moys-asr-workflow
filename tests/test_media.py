@@ -10,6 +10,7 @@ from maw.media import (
     MediaConversionError,
     MediaStatus,
     convert_media_for_browser,
+    probe_audio_tracks,
     probe_video_fps,
     read_bwf_time_reference,
     resolve_project_media,
@@ -108,6 +109,63 @@ class MediaResolutionTests(unittest.TestCase):
                     probe_video_fps(media),
                     {"video_fps": 24.0, "video_fps_ratio": "24/1"},
                 )
+
+    def test_probes_audio_tracks_and_keeps_container_stream_indices(self) -> None:
+        media = self.root / "take.mp4"
+        media.write_bytes(b"video")
+        completed = type(
+            "Completed",
+            (),
+            {"stdout": '{"streams":['
+                '{"index":1,"codec_name":"aac","channels":2,"sample_rate":"48000",'
+                '"tags":{"language":"zh","title":"中文"},"disposition":{"default":1}},'
+                '{"index":4,"codec_name":"aac","channels":1,"sample_rate":"44100",'
+                '"tags":{"language":"en"},"disposition":{"default":0}}]}'},
+        )()
+
+        with mock.patch("maw.media.find_ffprobe", return_value=Path("ffprobe")):
+            with mock.patch("maw.media.subprocess.run", return_value=completed) as process:
+                tracks = probe_audio_tracks(media)
+
+        self.assertEqual(
+            tracks,
+            [
+                {
+                    "audio_index": 0,
+                    "stream_index": 1,
+                    "codec": "aac",
+                    "channels": 2,
+                    "sample_rate": 48000,
+                    "language": "zh",
+                    "title": "中文",
+                    "default": True,
+                },
+                {
+                    "audio_index": 1,
+                    "stream_index": 4,
+                    "codec": "aac",
+                    "channels": 1,
+                    "sample_rate": 44100,
+                    "language": "en",
+                    "title": "",
+                    "default": False,
+                },
+            ],
+        )
+        command = process.call_args.args[0]
+        self.assertEqual(command[command.index("-select_streams") + 1], "a")
+        self.assertTrue(any(
+            value.startswith("stream=index,codec_name,channels,sample_rate")
+            for value in command
+        ))
+
+    def test_audio_track_probe_is_best_effort_when_ffprobe_is_unavailable(self) -> None:
+        media = self.root / "take.mp4"
+        media.write_bytes(b"video")
+        with mock.patch("maw.media.find_ffprobe", return_value=None):
+            with mock.patch("maw.media.subprocess.run") as process:
+                self.assertIsNone(probe_audio_tracks(media))
+        process.assert_not_called()
 
     def test_video_fps_probe_is_best_effort_when_tool_or_rate_is_unavailable(self) -> None:
         media = self.root / "take.mp4"

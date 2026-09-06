@@ -2600,14 +2600,43 @@
   function normalizeMediaMetadata(value) {
     if (value == null) return null;
     if (typeof value !== 'object' || Array.isArray(value)) return null;
+    const hasFps = value.video_fps !== undefined;
     const fps = value.video_fps;
-    if (typeof fps !== 'number' || !Number.isFinite(fps)
-        || fps < MIN_TIMELINE_FPS || fps > MAX_TIMELINE_FPS) return null;
+    if (hasFps && (typeof fps !== 'number' || !Number.isFinite(fps)
+        || fps < MIN_TIMELINE_FPS || fps > MAX_TIMELINE_FPS)) return null;
     if (value.video_fps_ratio !== undefined
-        && (typeof value.video_fps_ratio !== 'string' || !value.video_fps_ratio.trim())) return null;
-    const metadata = { video_fps: normalizeTimelineFps(fps) };
+        && (!hasFps || typeof value.video_fps_ratio !== 'string' || !value.video_fps_ratio.trim())) return null;
+    const hasAudioTracks = value.audio_tracks !== undefined;
+    if (hasAudioTracks && !Array.isArray(value.audio_tracks)) return null;
+    if (!hasFps && !hasAudioTracks) return null;
+    const metadata = {};
+    if (hasFps) metadata.video_fps = normalizeTimelineFps(fps);
     if (typeof value.video_fps_ratio === 'string') {
       metadata.video_fps_ratio = value.video_fps_ratio.trim();
+    }
+    if (hasAudioTracks) {
+      const audioTracks = value.audio_tracks.map((track, index) => {
+        if (!track || typeof track !== 'object' || Array.isArray(track)) return null;
+        const streamIndex = track.stream_index;
+        if (!Number.isInteger(streamIndex) || streamIndex < 0) return null;
+        const audioIndex = track.audio_index === undefined ? index : track.audio_index;
+        if (!Number.isInteger(audioIndex) || audioIndex < 0) return null;
+        const normalized = { audio_index: audioIndex, stream_index: streamIndex };
+        for (const field of ['codec', 'language', 'title']) {
+          if (track[field] !== undefined && typeof track[field] !== 'string') return null;
+          if (typeof track[field] === 'string') normalized[field] = track[field].trim();
+        }
+        for (const field of ['channels', 'sample_rate']) {
+          if (track[field] !== undefined && track[field] !== null
+              && (!Number.isInteger(track[field]) || track[field] <= 0)) return null;
+          normalized[field] = track[field] ?? null;
+        }
+        if (track.default !== undefined && typeof track.default !== 'boolean') return null;
+        normalized.default = track.default === true;
+        return normalized;
+      });
+      if (audioTracks.some((track) => track === null)) return null;
+      metadata.audio_tracks = audioTracks;
     }
     return metadata;
   }

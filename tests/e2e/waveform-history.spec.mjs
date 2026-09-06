@@ -2171,6 +2171,13 @@ test('server media loads from the resolved project path and OTIO keeps its absol
   expect(state.currentSrc).toBe(`${server.url}media`);
 
   await page.evaluate(() => {
+    DATA.media_metadata = {
+      audio_tracks: [
+        { audio_index: 0, stream_index: 1, channels: 2, sample_rate: 48000 },
+        { audio_index: 1, stream_index: 2, channels: 2, sample_rate: 48000 },
+        { audio_index: 2, stream_index: 3, channels: 2, sample_rate: 48000 },
+      ],
+    };
     DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
@@ -2231,4 +2238,147 @@ test('server media loads from the resolved project path and OTIO keeps its absol
     { sequenceStart: 170, sourceStart: mediaStart + 1234, sourceDuration: 60, availableStart: mediaStart, availableDuration: 18000 },
     { sequenceStart: 230, sourceStart: mediaStart + 1316, sourceDuration: 16684, availableStart: mediaStart, availableDuration: 18000 },
   ]);
+
+  const resolveMappings = payload.tracks.children.map((track) => ({
+    kind: track.kind,
+    linkGroupIds: track.children.map((clip) => clip.metadata.Resolve_OTIO['Link Group ID']),
+    sourceTrackIds: track.kind === 'Audio'
+      ? track.children.map((clip) => clip.metadata.Resolve_OTIO.Channels.map(
+        (channel) => channel['Source Track ID'],
+      ))
+      : null,
+  }));
+  expect(resolveMappings).toEqual([
+    { kind: 'Video', linkGroupIds: [1, 2, 3, 4], sourceTrackIds: null },
+    { kind: 'Audio', linkGroupIds: [1, 2, 3, 4], sourceTrackIds: [[0, 0], [0, 0], [0, 0], [0, 0]] },
+    { kind: 'Audio', linkGroupIds: [1, 2, 3, 4], sourceTrackIds: [[1, 1], [1, 1], [1, 1], [1, 1]] },
+    { kind: 'Audio', linkGroupIds: [1, 2, 3, 4], sourceTrackIds: [[2, 2], [2, 2], [2, 2], [2, 2]] },
+  ]);
+});
+
+test('OTIO exports every source audio stream as its own audio track', async ({ page }) => {
+  await page.goto(server.url);
+  const result = await page.evaluate(() => {
+    DATA.media_metadata = {
+      audio_tracks: [
+        {
+          audio_index: 0,
+          stream_index: 1,
+          codec: 'aac',
+          channels: 2,
+          sample_rate: 48000,
+          language: 'zh',
+          title: '中文',
+          default: true,
+        },
+        {
+          audio_index: 1,
+          stream_index: 4,
+          codec: 'aac',
+          channels: 1,
+          sample_rate: 44100,
+          language: 'en',
+          title: 'English',
+          default: false,
+        },
+      ],
+    };
+    const payload = JSON.parse(buildSourceOtio());
+    const summarizeTracks = (timeline) => timeline.tracks.children.map((track) => ({
+      name: track.name,
+      kind: track.kind,
+      streamIndex: track.metadata?.moy?.audio_stream_index ?? null,
+      referenceStreamIndex: track.children[0]?.media_references?.DEFAULT_MEDIA?.metadata?.moy?.audio_stream_index ?? null,
+      resolveTrack: track.metadata?.Resolve_OTIO ?? null,
+      resolveClip: track.children[0]?.metadata?.Resolve_OTIO ?? null,
+      clipName: track.children[0]?.name ?? null,
+      referenceName: track.children[0]?.media_references?.DEFAULT_MEDIA?.name ?? null,
+    }));
+    const originalPlayer = player;
+    const videoPlayer = document.createElement('video');
+    player = videoPlayer;
+    const videoPayload = JSON.parse(buildSourceOtio());
+    player = originalPlayer;
+    return {
+      tracks: summarizeTracks(payload),
+      videoTracks: summarizeTracks(videoPayload),
+      timelineStreams: payload.metadata.moy.audio_tracks.map((track) => track.audio_stream_index),
+      resolveTimeline: payload.metadata.Resolve_OTIO,
+    };
+  });
+
+  expect(result.tracks).toEqual([
+    {
+      name: '音频 1 · 中文 · zh',
+      kind: 'Audio',
+      streamIndex: 1,
+      referenceStreamIndex: 1,
+      resolveTrack: { 'Audio Type': 'Stereo', Locked: false, SoloOn: false },
+      resolveClip: {
+        Channels: [
+          { 'Source Channel ID': 0, 'Source Track ID': 0 },
+          { 'Source Channel ID': 1, 'Source Track ID': 0 },
+        ],
+        'Link Group ID': 1,
+      },
+      clipName: 'synthetic.wav',
+      referenceName: 'synthetic.wav',
+    },
+    {
+      name: '音频 2 · English · en',
+      kind: 'Audio',
+      streamIndex: 4,
+      referenceStreamIndex: 4,
+      resolveTrack: { 'Audio Type': 'Mono', Locked: false, SoloOn: false },
+      resolveClip: {
+        Channels: [{ 'Source Channel ID': 0, 'Source Track ID': 1 }],
+        'Link Group ID': 1,
+      },
+      clipName: 'synthetic.wav',
+      referenceName: 'synthetic.wav',
+    },
+  ]);
+  expect(result.videoTracks).toEqual([
+    {
+      name: '视频',
+      kind: 'Video',
+      streamIndex: null,
+      referenceStreamIndex: null,
+      resolveTrack: { Locked: false },
+      resolveClip: { 'Link Group ID': 1 },
+      clipName: 'synthetic.wav',
+      referenceName: 'synthetic.wav',
+    },
+    {
+      name: '音频 1 · 中文 · zh',
+      kind: 'Audio',
+      streamIndex: 1,
+      referenceStreamIndex: 1,
+      resolveTrack: { 'Audio Type': 'Stereo', Locked: false, SoloOn: false },
+      resolveClip: {
+        Channels: [
+          { 'Source Channel ID': 0, 'Source Track ID': 0 },
+          { 'Source Channel ID': 1, 'Source Track ID': 0 },
+        ],
+        'Link Group ID': 1,
+      },
+      clipName: 'synthetic.wav',
+      referenceName: 'synthetic.wav',
+    },
+    {
+      name: '音频 2 · English · en',
+      kind: 'Audio',
+      streamIndex: 4,
+      referenceStreamIndex: 4,
+      resolveTrack: { 'Audio Type': 'Mono', Locked: false, SoloOn: false },
+      resolveClip: {
+        Channels: [{ 'Source Channel ID': 0, 'Source Track ID': 1 }],
+        'Link Group ID': 1,
+      },
+      clipName: 'synthetic.wav',
+      referenceName: 'synthetic.wav',
+    },
+  ]);
+  expect(result.timelineStreams).toEqual([1, 4]);
+  expect(result.resolveTimeline).toEqual({ 'Resolve OTIO Meta Version': '1.0' });
 });

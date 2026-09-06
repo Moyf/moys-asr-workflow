@@ -55,6 +55,7 @@ from maw.project import (  # noqa: E402
     normalize_project,
     repair_project_timing_ranges,
 )
+from maw.project_io import enrich_project_media_metadata  # noqa: E402
 from maw.media import (  # noqa: E402
     MEDIA_EXTENSIONS,
     MediaConversionError,
@@ -367,6 +368,9 @@ def load_project(
         print(f"[media] 已为浏览器准备播放缓存: {media_path}")
     # 保存时应沿用实际被服务器加载的媒体；这也会把 -m 覆盖的路径同步回工程。
     data["media"] = str(source_media_path)
+    # 旧工程可能没有源音轨清单；在加载时补探测，确保 OTIO 导出不会只
+    # 看见容器中的第一条音频流。探测失败时继续按旧工程兼容路径导出。
+    data = normalize_project(enrich_project_media_metadata(data, media_path=source_media_path))
     # .ReaPeaks 是转写时对"工程 media 字段原始文件"生成的；转换场景下
     # resolved_path 可能已被 _paired_mp4 升级为配对的 mp4，必须用原始
     # 请求路径（requested_path）查找，否则会漏读源媒体旁的缓存。

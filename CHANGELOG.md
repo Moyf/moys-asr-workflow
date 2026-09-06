@@ -11,6 +11,7 @@
 
 ### ✨ 提升
 
+- **多音轨 OTIO 导出** ： 读取源媒体的完整音轨清单，导出 OTIO 时为每条音轨建立独立的 `Audio` 轨道，并写入达芬奇可识别的源轨道/声道映射与按分段区分的 `Link Group ID`；同时保留源 stream index，旧工程仍兼容单音轨导出。
 - **波形形状来源命名** ： 编辑器设置中「波形形状来源」的两个条目更名为「自研波形」和「Reaper 波形」，与实际来源对应更直观。
 - **OpenAI ASR 模型选择** ： Launcher 将识别方式更名为「OpenAI（及兼容接口）」，支持从模型下拉列表选择 `whisper-1`、`gpt-4o-transcribe`、`gpt-4o-mini-transcribe`，或在「自定义（Custom）」下填写模型名；API Key 链接指向 OpenAI 官方。
 - **OpenAI 兼容 ASR** ： Launcher 与公开 CLI 可配置 OpenAI 官方或兼容的 `/audio/transcriptions` 服务，通过带时间戳的响应生成 SRT 与 `.mosp` 工程。

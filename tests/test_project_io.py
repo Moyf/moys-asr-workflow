@@ -71,6 +71,33 @@ class ProjectIoTests(unittest.TestCase):
         self.assertEqual(enriched["media_metadata"], metadata)
         probe.assert_called_once_with("clip.mp4", ffprobe_path=None)
 
+    def test_enriches_existing_video_metadata_with_audio_track_inventory(self) -> None:
+        media = Path("clip.mp4")
+        tracks = [{
+            "audio_index": 0,
+            "stream_index": 1,
+            "codec": "aac",
+            "channels": 2,
+            "sample_rate": 48000,
+            "language": "zh",
+            "title": "中文",
+            "default": True,
+        }]
+        project = {
+            "media": str(media),
+            "segments": [],
+            "media_metadata": {"video_fps": 24.0, "video_fps_ratio": "24/1"},
+        }
+
+        with mock.patch("maw.project_io.probe_video_fps") as video_probe:
+            with mock.patch("maw.project_io.probe_audio_tracks", return_value=tracks) as audio_probe:
+                enriched = enrich_project_media_metadata(project, media_path=media, ffprobe_path="ffprobe")
+
+        self.assertEqual(enriched["media_metadata"]["audio_tracks"], tracks)
+        self.assertEqual(enriched["media_metadata"]["video_fps"], 24.0)
+        video_probe.assert_not_called()
+        audio_probe.assert_called_once_with(media, ffprobe_path="ffprobe")
+
 
 if __name__ == "__main__":
     unittest.main()
