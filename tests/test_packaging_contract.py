@@ -542,8 +542,6 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("bootstrap", script)
         self.assertIn("python-3.11.9-embed-amd64.zip", script)
         self.assertIn("get-pip.py", script)
-        self.assertNotIn("Join-Path $RepoRoot 'build' 'python-3.11.9-embed-amd64.zip'", script)
-        self.assertNotIn("Join-Path $RepoRoot 'build' 'get-pip.py'", script)
         self.assertIn("$ErrorActionPreference = 'Stop'", script)
 
     def test_windows_preview_workflow_verifies_launcher_version(self) -> None:

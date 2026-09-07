@@ -62,8 +62,8 @@ try {
 
     $BootstrapDirectory = Join-Path (Split-Path -Parent $ExePath) 'bootstrap'
     New-Item -ItemType Directory -Path $BootstrapDirectory -Force | Out-Null
-    $EmbedZip = Join-Path $RepoRoot 'build\python-3.11.9-embed-amd64.zip'
-    $GetPip = Join-Path $RepoRoot 'build\get-pip.py'
+    $EmbedZip = Join-Path $RepoRoot 'build' 'python-3.11.9-embed-amd64.zip'
+    $GetPip = Join-Path $RepoRoot 'build' 'get-pip.py'
     foreach ($Asset in @($EmbedZip, $GetPip)) {
         if (-not (Test-Path -LiteralPath $Asset -PathType Leaf)) {
             throw "Missing bootstrap asset: $Asset"
