@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from maw.media import probe_audio_tracks, probe_video_fps
+from maw.project import PROJECT_SCHEMA
 
 
 def enrich_project_media_metadata(
@@ -74,7 +75,9 @@ def serialize_mosp(
         media_path,
         ffprobe_path=ffprobe_path,
     )
-    return json.dumps(enriched, ensure_ascii=False, indent=2) + "\n"
+    enriched.pop("schema", None)
+    canonical = {"schema": PROJECT_SCHEMA, **enriched}
+    return json.dumps(canonical, ensure_ascii=False, indent=2) + "\n"
 
 
 def write_mosp(
