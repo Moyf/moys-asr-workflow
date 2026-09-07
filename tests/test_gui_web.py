@@ -894,6 +894,11 @@ class GuiWebBridgeTests(unittest.TestCase):
         utilities_view = html.index('id="toolboxUtilitiesView"')
         postprocess_html = html[postprocess_view:utilities_view]
         utilities_html = html[utilities_view:html.index('class="toolbox-footer"')]
+        utilities_content = html.index('id="toolboxUtilitiesContent"')
+        utility_panels = html.index('class="toolbox-utility-panels"', utilities_content)
+        alignment_panel = html.index('id="toolboxAlignmentPanel"', utility_panels)
+        alignment_close = html.index("</section>", alignment_panel)
+        ffconcat_panel = html.index('id="toolboxFfconcatPanel"', alignment_panel)
 
         self.assertLess(header, primary_tabs)
         self.assertLess(primary_tabs, postprocess_view)
@@ -903,6 +908,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('data-i18n="toolbox_group_utilities"', html)
         self.assertIn('id="toolboxPostprocessView" class="toolbox-primary-view" role="tabpanel"', html)
         self.assertIn('id="toolboxUtilitiesView" class="toolbox-primary-view hidden" role="tabpanel"', html)
+        self.assertIn('id="toolboxUtilitiesContent" class="toolbox-utilities-content hidden"', utilities_html)
+        self.assertIn('aria-orientation="vertical"', utilities_html)
+        self.assertLess(utility_panels, alignment_panel)
+        self.assertLess(alignment_close, ffconcat_panel)
         for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab"):
             self.assertIn(f'id="{tab_id}"', postprocess_html)
         for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
@@ -993,7 +1002,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });", postprocess_script)
         self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
         self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
-        self.assertIn('.toolbox-utility-tab-list {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }', styles)
+        self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  grid-template-columns: minmax(108px, .32fr) minmax(0, 1fr);', styles)
+        self.assertIn('.toolbox-utility-tab-list {\n  grid-template-columns: 1fr;\n}', styles)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
 
     def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
@@ -3661,13 +3671,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertLess(primary_tabs, utilities_view)
         self.assertLess(postprocess_view, utilities_view)
         self.assertLess(postprocess_tabs, content)
-        self.assertLess(utilities_tabs, content)
+        self.assertLess(content, utilities_tabs)
         self.assertLess(content, progress)
         self.assertLess(progress, result)
         self.assertIn('data-i18n="toolbox_chain_hint">每次生成新文件，并自动作为下一步输入；选择工具后运行。</p>', page)
         self.assertIn('id="toolboxResult" class="toolbox-result hidden"', page)
         self.assertIn('result.classList.remove("hidden")', script)
         self.assertLess(result, match_panel)
+        self.assertLess(utilities_tabs, match_panel)
         self.assertLess(match_panel, llm_panel)
         self.assertLess(ffconcat_end, footer)
         self.assertLess(footer, drawer_end)
@@ -3727,7 +3738,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".toolbox-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 10px;\n  align-items: start;\n}", stylesheet)
         # 文稿匹配保持单字段；固定处理按批量替换和简繁转换分组。
         match_panel = page[page.index('id="toolboxMatchPanel"'):page.index('id="toolboxOcrPanel"')]
-        replace_panel = page[page.index('id="toolboxReplacePanel"'):page.index('id="toolboxFfconcatPanel"')]
+        replace_panel = page[page.index('id="toolboxReplacePanel"'):page.index('class="toolbox-footer"')]
         self.assertNotIn("adv-group", match_panel)
         self.assertIn('data-i18n="toolbox_group_fixed_replacements"', replace_panel)
         self.assertIn('data-i18n="toolbox_group_fixed_conversion"', replace_panel)
@@ -3867,6 +3878,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('class="segmentation-row segmentation-word-row"', page)
         self.assertIn('data-i18n="english_segmentation_hint"', page)
         self.assertLess(page.index('class="segmentation-row segmentation-character-row"'), page.index('class="segmentation-row segmentation-word-row"'))
+        self.assertLess(page.index('id="settingsProcessingPanel"'), page.index('id="segmentationSettingsSection"'))
+        self.assertLess(page.index('id="segmentationSettingsSection"'), page.index('id="punctuationSettingsSection"'))
+        self.assertNotIn('id="segmentationField"', page[page.index('id="advancedCard"'):page.index('id="settingsModal"')])
         self.assertIn('maxLen: $("maxLen").value.trim()', script)
         self.assertIn('minLen: $("minLen").value.trim()', script)
         self.assertIn('maxWords: $("maxWords").value.trim()', script)
@@ -3878,8 +3892,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('segmentation: "字幕切句"', script)
         self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
         self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
+        self.assertIn('if (settingsSection?.id) openSettings(settingsSection.id, field);', script)
         self.assertIn(".segmentation-row", stylesheet)
         self.assertIn(".segmentation-word-row", stylesheet)
+        self.assertIn(".segmentation-settings-fields", stylesheet)
 
     def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -4106,7 +4122,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        self.assertIn('id="segmentationField" class="adv-group segmentation-field"', page)
+        self.assertIn('id="segmentationField" class="segmentation-settings-fields"', page)
         self.assertIn('id="advancedParamsGroup" class="adv-group"', page)
         self.assertIn("function syncAdvancedParamsGroup()", script)
         self.assertIn("syncWorkspace(); syncAdvancedParamsGroup();", script)

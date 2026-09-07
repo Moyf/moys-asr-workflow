@@ -912,6 +912,15 @@ label {
   gap: 6px;
 }
 
+.segmentation-settings-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.modal-card .segmentation-settings-fields > h3 {
+  margin: 0;
+}
+
 .path-row,
 .port-row {
   display: grid;
@@ -2006,8 +2015,39 @@ textarea::placeholder {
   gap: 4px;
 }
 
+.toolbox-utilities-content {
+  display: grid;
+  grid-template-columns: minmax(108px, .32fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  margin-top: 12px;
+}
+
+.toolbox-utility-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin-top: 0;
+  padding: 4px;
+}
+
 .toolbox-utility-tab-list {
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  grid-template-columns: 1fr;
+}
+
+.toolbox-utility-tab-list .toolbox-tab {
+  min-height: 36px;
+  padding: 7px 9px;
+  text-align: left;
+  line-height: 1.35;
+}
+
+.toolbox-utility-panels {
+  min-width: 0;
+}
+
+.toolbox-utility-panels .toolbox-panel {
+  margin-top: 0;
 }
 
 .toolbox-tab {
@@ -2559,7 +2599,7 @@ code {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .toolbox-utility-tab-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
   .toolbox-footer {
     align-items: stretch;
@@ -2576,6 +2616,13 @@ code {
   }
   .toolbox-action-slot .primary {
     width: 100%;
+  }
+}
+
+@media (max-width:620px) {
+  .toolbox-utilities-content {
+    grid-template-columns: minmax(96px, 32%) minmax(0, 1fr);
+    gap: 8px;
   }
 }
 

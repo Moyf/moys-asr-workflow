@@ -124,6 +124,34 @@ test('translation merge option follows manual and automatic translation controls
   await expect(page.locator('#autoTranslateMergeField')).toBeHidden();
 });
 
+test('Utilities use a vertical tab rail with arrow-key navigation', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+
+  await expect(page.locator('#toolboxUtilitiesContent')).toBeVisible();
+  await expect(page.locator('#toolboxUtilitiesTabList')).toHaveAttribute('aria-orientation', 'vertical');
+  const layout = await page.locator('#toolboxUtilitiesContent').evaluate((element) => {
+    const style = getComputedStyle(element);
+    const tabListStyle = getComputedStyle(element.querySelector('.toolbox-utility-tab-list'));
+    return {
+      columns: style.gridTemplateColumns.split(' ').length,
+      tabColumnCount: tabListStyle.gridTemplateColumns.split(' ').length,
+    };
+  });
+  expect(layout.columns).toBe(2);
+  expect(layout.tabColumnCount).toBe(1);
+
+  await page.locator('#toolboxAlignmentTab').focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#toolboxWaveformTab')).toBeFocused();
+  await expect(page.locator('#toolboxWaveformPanel')).toBeVisible();
+  await expect(page.locator('#toolboxAlignmentPanel')).toBeHidden();
+
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#toolboxAlignmentTab')).toBeFocused();
+  await expect(page.locator('#toolboxAlignmentPanel')).toBeVisible();
+});
+
 test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
@@ -175,6 +203,28 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
   });
   expect(tabLayout.columns).toBe(2);
   expect(tabLayout.overflow).toBe(false);
+});
+
+test('segmentation settings live under Processing and validation opens that tab', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsProcessingTab').click();
+  await expect(page.locator('#settingsProcessingPanel')).toBeVisible();
+  await expect(page.locator('#segmentationSettingsSection')).toBeVisible();
+  await page.locator('#maxLen').fill('2');
+  await page.locator('#minLen').fill('5');
+  await page.locator('#settingsClose').click();
+
+  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.locator('#srtPath').fill('D:\\Demo\\clip.srt');
+  await page.locator('#start').click();
+
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#settingsProcessingTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#segmentationSettingsSection')).toBeVisible();
+  await expect(page.locator('#maxLenError')).toHaveText('切句参数无效：请输入整数，并确保最大字数不小于短句合并阈值。');
 });
 
 test('does not start local transcription while model status is still checking', async ({ page }) => {
