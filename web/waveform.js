@@ -715,7 +715,11 @@
     const bytes = new Uint8Array(arrayBuffer);
     if (bytes.length < 18) return null;
     const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
-    if (!['RPKM', 'RPKN', 'RPKL'].includes(magic)) return null;
+    // QPK + 1 字节可打印版本号（当前 QPK1）。全局头与层表布局与 RPKN 相同，
+    // wave 层同样是 i16 min/max，所以下面按 RPKM/RPKL 分支取宽度的逻辑不用改：
+    // QPK* 天然落进与 RPKN 相同的 else 分支。
+    const isNative = magic.slice(0, 3) === 'QPK';
+    if (!isNative && !['RPKM', 'RPKN', 'RPKL'].includes(magic)) return null;
     const channels = bytes[4];
     const mipmapCount = bytes[5];
     if (!channels || !mipmapCount) return null;

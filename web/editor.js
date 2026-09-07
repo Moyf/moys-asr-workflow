@@ -1140,7 +1140,9 @@ function isMediaFile(file) {
   return Boolean(file) && (file.type.startsWith('video/') || file.type.startsWith('audio/') || MEDIA_FILE_RE.test(file.name));
 }
 function isReapeaksFile(file) {
-  return Boolean(file) && /\.reapeaks$/i.test(file.name);
+  // .quapeaks 是 MAW 自有容器（改名自 reapeaks 内核）：浏览器直读必须同样认它，
+  // 否则服务端读得到、用户在浏览器里打开却报「不支持的文件」。
+  return Boolean(file) && /\.(?:reapeaks|quapeaks)$/i.test(file.name);
 }
 
 // === 统一撤销/重做 ===
