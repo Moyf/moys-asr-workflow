@@ -496,6 +496,7 @@ def _normalize_multi_subtitle(
                 errors.append(ProjectValidationError(segment_path, "must be an object"))
                 continue
             _validate_extension_segment(segment, segment_path, previous_end, errors)
+            _validate_ref_pair(raw_segments, segment_index, segment_path, "color", "color_ref", errors)
             segment_id = segment.get("id")
             if isinstance(track_id, str) and _is_stable_id(segment_id):
                 extension_ids[track_id].add(segment_id.strip())
