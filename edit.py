@@ -34,13 +34,15 @@ from pathlib import Path
 from typing import NotRequired, TypedDict
 
 from maw.colors import COLOR_PALETTE
-from maw.app_paths import default_env_path
 from maw.console import configure_utf8_stdio
 from maw.project import ProjectValidationFailed, normalize_project
+from maw.project_io import enrich_project_media_metadata
+from maw.stickers import get_default_sticker_dir
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, read_bwf_time_reference
 from maw.waveform import (
     DEFAULT_PEAKS_PER_SECOND,
     WaveformError,
+    audio_track_from_payloads,
     load_or_extract_waveform,
 )
 
@@ -50,7 +52,7 @@ VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 # Keep this aligned with pyproject.toml; release workflows synchronize it.
-BUNDLED_EDITOR_VERSION = "1.5.3"
+BUNDLED_EDITOR_VERSION = "1.6.0-beta.1"
 
 
 class Sticker(TypedDict):
@@ -123,36 +125,6 @@ def media_tag(media_path: Path, media_url: str) -> str:
         f'style="width:100%;display:block;">'
         f'<source src="{html.escape(media_url)}"></audio>'
     )
-
-
-def load_env(path: Path | None = None) -> dict[str, str]:
-    """读取 MAW .env 文件，返回 key=value 字典。
-
-    零依赖实现（不引入 python-dotenv）。仅做简单 KEY=VALUE 解析，
-    忽略空行和 # 注释行。调用方若需系统环境变量优先，请用 os.getenv 覆盖。
-    文件不存在时返回空字典。
-    """
-    env_path = Path(path) if path is not None else default_env_path()
-    if not env_path.exists():
-        return {}
-    result: dict[str, str] = {}
-    for line in env_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        result[k.strip()] = v.strip()
-    return result
-
-
-def get_default_sticker_dir() -> str | None:
-    """获取默认表情包目录。
-
-    优先级：系统环境变量 STICKER_DIR > .env 文件里的 STICKER_DIR。
-    未配置时返回 None。
-    """
-    env = load_env()
-    return os.getenv("STICKER_DIR") or env.get("STICKER_DIR") or None
 
 
 def scan_stickers(dir_path: Path, max_depth: int = 3, max_items: int = 500) -> tuple[str, list[Sticker]]:
@@ -407,6 +379,16 @@ def main():
         print("错误: 找不到媒体文件，请用 -m 参数指定")
         return 1
 
+    audio_track = audio_track_from_payloads(
+        data.get("waveform"),
+        data.get("spectral"),
+        data.get("waveform_reapeaks"),
+    )
+
+    # 旧工程可能只有视频 FPS 元数据；补探测音频流信息，供 OTIO 导出
+    # 为每条源音轨建立独立的音频轨道。FFprobe 失败时保留旧工程行为。
+    data = normalize_project(enrich_project_media_metadata(data, media_path=media_path))
+
     # BWF 的媒体时间基准属于源媒体，不属于字幕时间码；每次根据当前
     # 实际加载的文件重新读取，避免沿用工程中可能过期的值。
     data.pop("media_time_reference", None)
@@ -420,6 +402,7 @@ def main():
                 data.get("waveform"),
                 media_path,
                 peaks_per_second=args.waveform_peaks_per_second,
+                audio_track=audio_track,
             )
             data["waveform"] = waveform
             state = "已提取" if extracted else "使用缓存"
@@ -433,11 +416,13 @@ def main():
 
         # ReaPeaks 频谱染色与波形层（可选缓存，读取媒体旁 .ReaPeaks；缺失静默降级）
         spectral = reapeaks.load_spectral_payload(
-            media_path, peaks_per_second=args.waveform_peaks_per_second
+            media_path,
+            peaks_per_second=args.waveform_peaks_per_second,
+            audio_track=audio_track,
         )
         if spectral is not None:
             data["spectral"] = spectral
-        reapeaks_wave = reapeaks.load_waveform_payload(media_path)
+        reapeaks_wave = reapeaks.load_waveform_payload(media_path, audio_track=audio_track)
         if reapeaks_wave is not None:
             data["waveform_reapeaks"] = reapeaks_wave
 

@@ -20,6 +20,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
+from maw.waveform import waveform_peaks_per_second
+
 
 DEFAULT_MIN_SCORE: Final[float] = 0.55
 DEFAULT_COMPLETE_SCORE: Final[float] = 0.78
@@ -1211,10 +1213,10 @@ def detect_waveform_gaps(
 
     if waveform.get("schema") != "moy.asr.waveform.v1" or waveform.get("encoding") != "i8-minmax-base64":
         return []
-    peaks_per_second = waveform.get("peaks_per_second")
+    peaks_per_second = waveform_peaks_per_second(waveform)
     duration_ms = waveform.get("duration_ms")
     data = waveform.get("data")
-    if type(peaks_per_second) is not int or peaks_per_second <= 0 or type(duration_ms) is not int or duration_ms <= 0:
+    if peaks_per_second <= 0 or type(duration_ms) is not int or duration_ms <= 0:
         return []
     if not isinstance(data, str):
         return []
@@ -1222,7 +1224,10 @@ def detect_waveform_gaps(
         encoded = base64.b64decode(data, validate=True)
     except (ValueError, binascii.Error):
         return []
-    sample_count = min(len(encoded) // 2, max(0, (duration_ms * peaks_per_second + 999) // 1000))
+    sample_count = min(
+        len(encoded) // 2,
+        max(0, math.ceil(duration_ms * peaks_per_second / 1000)),
+    )
     open_threshold = max(-96.0, min(0.0, float(threshold_db)))
     close_threshold = open_threshold - max(0.0, min(30.0, float(hysteresis_db)))
     minimum = max(0, int(minimum_ms))

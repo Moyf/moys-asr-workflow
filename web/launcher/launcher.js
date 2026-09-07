@@ -29,10 +29,19 @@
       settings_language: "语言",
       show_rare_langs: "显示相对小众的语言",
       show_rare_langs_hint: "开启后，「语言」列表显示供应商支持的全部语种；关闭时只显示 8 种常用语言。",
+      settings_file_output: "文件输出",
+      output_subfolder: "将所有输出文件放入子文件夹",
+      output_subfolder_title: "将所有输出文件放入子文件夹（默认关闭）：SRT、工程与编辑器页面写入媒体旁的 _maw 子目录",
+      per_video_subfolder: "每个视频单独创建子文件夹",
+      per_video_subfolder_title: "每个视频单独创建子文件夹（默认关闭）：需要先开启「将所有输出文件放入子文件夹」，每个媒体各自使用「视频名_maw」目录",
+      attach_model_name: "附加模型名称",
+      attach_model_name_title: "附加模型名称（默认开启）：SRT 文件名带上供应商/模型段，如 clip.qwen-audio.srt",
       key: "API Key",
       save_key: "存入本地环境",
       key_hint_prefix: "在",
       key_hint_suffix: "获取 API Key ↗",
+      openai_official: "OpenAI 官方",
+      openai_key_hint_suffix: "获取 API Key",
       json_project: "工程文件",
       json_placeholder: "生成工程后会自动填入，也可以手动选择之前的工程",
       server_media: "服务器媒体（可选）",
@@ -112,10 +121,19 @@
       settings_language: "Language",
       show_rare_langs: "Show less common languages",
       show_rare_langs_hint: "When enabled, the language list shows every supported language; otherwise it shows 8 common languages.",
+      settings_file_output: "File output",
+      output_subfolder: "Put all outputs in a subfolder",
+      output_subfolder_title: "Put all outputs in a subfolder (off by default): SRT, project, and editor page go to the _maw subfolder next to the media.",
+      per_video_subfolder: "Create a separate subfolder per video",
+      per_video_subfolder_title: "Create a separate subfolder per video (off by default): requires “Put all outputs in a subfolder”; each media uses its own “video-name_maw” folder.",
+      attach_model_name: "Append model name",
+      attach_model_name_title: "Append model name (on by default): SRT filenames carry the provider/model segment, e.g. clip.qwen-audio.srt.",
       key: "API Key",
       save_key: "Save locally",
       key_hint_prefix: "Get an API Key from",
       key_hint_suffix: "↗",
+      openai_official: "OpenAI official",
+      openai_key_hint_suffix: "↗",
       json_project: "Project file",
       json_placeholder: "Auto-filled after generation, or choose an earlier project",
       server_media: "Server media (optional)",
@@ -170,6 +188,28 @@
     }
   };
   Object.assign(STRINGS.zh, {
+    audio_track: "声音轨道",
+    audio_track_hint: "检测到多个声音轨道，请选择用于转写和波形的轨道。",
+    audio_track_loading: "正在读取声音轨道……",
+    audio_track_probe_failed: "无法读取声音轨道，将使用第一个轨道。",
+    audio_track_number: "音频 #",
+    audio_track_default: "默认",
+    audio_track_channels: "{count} 声道",
+    audio_track_sample_rate: "{rate} kHz",
+    audio_track_id: "ID {id}"
+  });
+  Object.assign(STRINGS.en, {
+    audio_track: "Audio track",
+    audio_track_hint: "Multiple audio tracks were found. Choose the track for transcription and waveform generation.",
+    audio_track_loading: "Reading audio tracks…",
+    audio_track_probe_failed: "Audio tracks could not be read; the first track will be used.",
+    audio_track_number: "Audio #",
+    audio_track_default: "Default",
+    audio_track_channels: "{count} ch",
+    audio_track_sample_rate: "{rate} kHz",
+    audio_track_id: "ID {id}"
+  });
+  Object.assign(STRINGS.zh, {
     toolbox_burn_subtitle: "压制字幕", toolbox_burn_subtitle_hint: "将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。", toolbox_burn_subtitle_input: "字幕文件", toolbox_burn_subtitle_placeholder: "选择或拖入 .srt / .ass / .ssa 字幕", toolbox_burn_subtitle_input_hint: "默认跟随当前的 SRT 输出，也支持手动选择 ASS / SSA。", toolbox_burn_subtitle_invalid: "请选择 .srt、.ass 或 .ssa 字幕文件。", toolbox_burn_done: "字幕压制完成，已切换到新媒体：", toolbox_extract_audio: "提取音频", toolbox_extract_audio_hint: "从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。", toolbox_audio_track: "音轨", toolbox_audio_track_choose: "先选择媒体，MAW 会读取可用音轨。", toolbox_audio_tracks_reading: "正在读取音轨……", toolbox_audio_tracks_found: "已找到 {count} 条音轨。", toolbox_audio_tracks_none: "没有检测到可用音轨。", toolbox_audio_track_item: "音轨", toolbox_audio_track_default: "默认", toolbox_audio_track_invalid: "所选音轨无效，请重新选择。", toolbox_extract_audio_done: "音频提取完成，已切换到新媒体：", toolbox_utility_video_required: "压制字幕需要包含视频画面的媒体文件。", toolbox_status_burning: "正在压制字幕并重新编码视频……", toolbox_status_extracting: "正在提取音频……", toolbox_status_cancelling: "正在停止媒体处理……"
   });
   Object.assign(STRINGS.en, {
@@ -180,14 +220,30 @@
     test_run_title: "仅截取前2分钟内容，用于快速测试功能和 API",
     test_run_override: "快速测试已限定前 2 分钟",
     drop_reject_media: "仅支持以下媒体文件类型：\n{extensions}",
-    output_collision: "检测到同名输出文件，为避免覆盖，生成的新文件已自动添加后缀。"
+    output_collision: "检测到同名输出文件，为避免覆盖，生成的新文件已自动添加后缀。",
+    custom_asr_base_url: "ASR Base URL",
+    custom_asr_base_url_placeholder: "例如 https://api.openai.com/v1",
+    custom_asr_base_url_hint: "程序会请求该地址下的 /audio/transcriptions，并要求接口返回时间戳。",
+    custom_asr_model: "自定义 ASR 模型名",
+    custom_asr_model_placeholder: "例如 my-custom-model",
+    custom_asr_model_hint: "填写中转站或服务商控制台提供的模型名。",
+    custom_asr_base_url_missing: "请填写自定义 ASR Base URL。",
+    custom_asr_model_missing: "请填写自定义 ASR 模型名。"
   });
   Object.assign(STRINGS.en, {
     test_run: "Quick test",
     test_run_title: "Trim to the first 2 minutes for a quick workflow and API test",
     test_run_override: "Quick test is limited to the first 2 minutes",
     drop_reject_media: "Only the following media file types are supported:\n{extensions}",
-    output_collision: "An output file with the same name already exists. To avoid overwriting it, the new output has been given a suffix."
+    output_collision: "An output file with the same name already exists. To avoid overwriting it, the new output has been given a suffix.",
+    custom_asr_base_url: "ASR Base URL",
+    custom_asr_base_url_placeholder: "For example, https://api.openai.com/v1",
+    custom_asr_base_url_hint: "MAW calls /audio/transcriptions under this URL and requires timestamped output.",
+    custom_asr_model: "Custom ASR model name",
+    custom_asr_model_placeholder: "For example, my-custom-model",
+    custom_asr_model_hint: "Enter the model name provided by your relay or service provider.",
+    custom_asr_base_url_missing: "Enter a custom ASR Base URL.",
+    custom_asr_model_missing: "Enter a custom ASR model name."
   });
   Object.assign(STRINGS.zh, {
     mode_label: "转写模式",
@@ -333,6 +389,7 @@
     device_auto: "自动",
     device_cpu: "CPU",
     device_cuda: "CUDA",
+    local_checking: "正在检查本地模型……",
     local_runtime_missing: "本地运行时未安装",
     local_missing: "未检测到本地模型",
     local_partial: "已检测到主模型，但仍缺少组件",
@@ -349,6 +406,7 @@
     local_runtime_install: "安装本地模型支持",
     local_runtime_repair: "修复运行环境",
     local_runtime_cancel: "取消安装",
+    local_runtime_checking: "正在检查本地运行环境……",
     local_runtime_missing: "本地运行环境未安装",
     local_runtime_installing: "正在安装本地运行环境……",
     local_runtime_ready: "本地运行环境已就绪",
@@ -412,6 +470,7 @@
     device_auto: "Auto",
     device_cpu: "CPU",
     device_cuda: "CUDA",
+    local_checking: "Checking the local model…",
     local_runtime_missing: "Local runtime is not installed",
     local_missing: "No local model detected",
     local_partial: "Main model found, but components are missing",
@@ -428,6 +487,7 @@
     local_runtime_install: "Install local model support",
     local_runtime_repair: "Repair runtime",
     local_runtime_cancel: "Cancel installation",
+    local_runtime_checking: "Checking the local runtime…",
     local_runtime_missing: "Local runtime is not installed",
     local_runtime_installing: "Installing the local runtime…",
     local_runtime_ready: "Local runtime is ready",
@@ -446,15 +506,20 @@
     advanced_misc: "其他",
     generate_spectral: "生成 ReaPeaks 频谱数据",
     generate_spectral_hint: "默认只生成 ReaPeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。",
-    generate_spectral_title: "为媒体旁的 .ReaPeaks 缓存额外生成频谱层；不影响自研波形。",
+    generate_spectral_title: "为媒体旁的 .ReaPeaks 缓存额外生成频谱层；不影响原生波形。",
     segmentation: "字幕切句",
     max_len: "最大字数",
     min_len: "短句合并阈值",
+    max_words: "英文最大单词数",
+    min_words: "英文短句合并阈值（单词）",
     gap_split: "停顿切句（毫秒）",
     max_len_placeholder: "默认 18",
     min_len_placeholder: "默认 5",
+    max_words_placeholder: "默认 13",
+    min_words_placeholder: "默认 3",
     gap_split_placeholder: "默认 800",
-    segmentation_hint: "留空使用默认值（最大字数：18，短句合并阈值：5，停顿切句：800ms）；最大/最小字数主要作用于中文，停顿阈值单位为毫秒。",
+    segmentation_hint: "字符型设置和停顿设置留空使用默认值（最大字数：18、短句合并阈值：5、停顿切句：800ms）；系统会按语言/文本自动选择字符型或单词型规则。",
+    english_segmentation_hint: "在生成英文字幕时，会启用该配置。",
     qwen_audio_options_title: "Qwen 上下文与热词",
     toolbox_group_ocr_video: "视频来源",
     toolbox_group_ocr_region: "识别区域与模型",
@@ -514,15 +579,20 @@
     advanced_misc: "Other",
     generate_spectral: "Generate ReaPeaks spectral data",
     generate_spectral_hint: "By default only the ReaPeaks wave layer is generated. Spectral data adds processing time and file size.",
-    generate_spectral_title: "Add a spectral layer to the .ReaPeaks cache beside the media; this does not change the built-in waveform.",
+    generate_spectral_title: "Add a spectral layer to the .ReaPeaks cache beside the media; this does not change the native waveform.",
     segmentation: "Subtitle segmentation",
     max_len: "Max characters",
     min_len: "Short-phrase merge threshold",
+    max_words: "English max words",
+    min_words: "English short-cue merge threshold (words)",
     gap_split: "Pause split (ms)",
     max_len_placeholder: "Default: 18",
     min_len_placeholder: "Default: 5",
+    max_words_placeholder: "Default: 13",
+    min_words_placeholder: "Default: 3",
     gap_split_placeholder: "Default: 800",
-    segmentation_hint: "Leave blank to use the defaults (max characters: 18, short-cue merge threshold: 5, pause split: 800 ms); character thresholds mainly apply to CJK, and the pause threshold is in milliseconds.",
+    segmentation_hint: "Leave blank to use the defaults for character-mode and pause splitting (max characters: 18, short-cue threshold: 5, pause split: 800 ms); MAW chooses character or word rules from language/text metadata.",
+    english_segmentation_hint: "This configuration is used when generating English subtitles.",
     qwen_audio_options_title: "Qwen context & hotwords",
     toolbox_group_ocr_video: "Video source",
     toolbox_group_ocr_region: "Region & model",
@@ -604,6 +674,16 @@
     llm_models_loaded: "已获取 {count} 个模型，可在上方快速选择",
     llm_models_empty: "供应商没有返回可用模型。",
     llm_model_choices_title: "展开已获取模型列表",
+    llm_provider_unknown: "当前选择的供应商",
+    llm_builtin_provider_key_guidance: "{provider} 是内置供应商，请使用其官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义（兼容 OpenAI）”，并按该平台官方文档配置 API URL。",
+    llm_http_unauthorized: "认证失败（HTTP 401，{operation}）。当前供应商：{provider}。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
+    llm_http_unauthorized_builtin: "认证失败（HTTP 401，{operation}）。当前供应商：{provider} 官网；请使用官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义（兼容 OpenAI）”，并按该平台官方文档配置 API URL。",
+    llm_http_unauthorized_custom: "认证失败（HTTP 401，{operation}）。当前供应商：自定义（兼容 OpenAI）。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
+    llm_http_forbidden: "供应商拒绝了请求（HTTP 403，{operation}）。当前供应商：{provider}。请核对供应商、API URL 与 API Key 签发方是否一致，并确认账号或模型有权限；不要在错误报告中粘贴 Key。",
+    llm_http_not_found: "接口或模型不存在（HTTP 404，{operation}）。请检查 API URL 的兼容路径和模型 ID；获取模型时还要确认该供应商提供 /models 接口。这个状态通常不是 API Key 问题。",
+    llm_http_rate_limited: "请求被限流或额度暂时耗尽（HTTP 429，{operation}）。请稍后重试，降低请求频率或批次大小，并检查当前供应商的额度与限流策略。",
+    llm_http_connection_operation: "连接测试",
+    llm_http_model_list_operation: "获取模型",
     llm_quick_actions: "快捷功能",
     llm_connection_testing: "正在测试连接……",
     llm_connection_success: "连接成功。",
@@ -645,6 +725,16 @@
     llm_models_loaded: "Fetched {count} models; choose one above.",
     llm_models_empty: "The provider returned no usable models.",
     llm_model_choices_title: "Show fetched model list",
+    llm_provider_unknown: "the selected provider",
+    llm_builtin_provider_key_guidance: "{provider} is a built-in provider. Use an API key obtained from its official console. If the API key came from a third-party platform, choose Custom (OpenAI-compatible) and configure the API URL according to that platform's official documentation.",
+    llm_http_unauthorized: "Authentication failed (HTTP 401, {operation}). Current provider: {provider}. Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
+    llm_http_unauthorized_builtin: "Authentication failed (HTTP 401, {operation}). Current provider: {provider} official service. Use an API key obtained from its official console. If the API key came from a third-party platform, choose Custom (OpenAI-compatible) and configure the API URL according to that platform's official documentation.",
+    llm_http_unauthorized_custom: "Authentication failed (HTTP 401, {operation}). Current provider: Custom (OpenAI-compatible). Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
+    llm_http_forbidden: "The provider rejected the request (HTTP 403, {operation}). Current provider: {provider}. Compare the provider, API URL, and the issuer of the API key, then confirm that the account or model is allowed; never paste the key into an error report.",
+    llm_http_not_found: "The endpoint or model was not found (HTTP 404, {operation}). Check the compatible API URL path and model ID; when fetching models, confirm that the provider exposes /models. This is usually not an API-key problem.",
+    llm_http_rate_limited: "The request was rate-limited or the quota is temporarily exhausted (HTTP 429, {operation}). Wait and retry, reduce request frequency or batch size, and check the current provider's quota and rate-limit policy.",
+    llm_http_connection_operation: "connection test",
+    llm_http_model_list_operation: "model lookup",
     llm_quick_actions: "Quick actions",
     llm_connection_testing: "Testing connection…",
     llm_connection_success: "Connection successful.",
@@ -758,6 +848,7 @@
     ocr_runtime_install: "安装 OCR 支持",
     ocr_runtime_repair: "修复 OCR 支持",
     ocr_runtime_cancel: "取消安装",
+    ocr_runtime_checking: "正在检查 OCR 支持……",
     ocr_runtime_missing: "OCR 支持未安装",
     ocr_runtime_installing: "正在安装 OCR 支持……",
     ocr_runtime_ready: "OCR 支持已就绪",
@@ -794,6 +885,7 @@
     ocr_runtime_install: "Install OCR support",
     ocr_runtime_repair: "Repair OCR support",
     ocr_runtime_cancel: "Cancel installation",
+    ocr_runtime_checking: "Checking OCR support…",
     ocr_runtime_missing: "OCR support is not installed",
     ocr_runtime_installing: "Installing OCR support…",
     ocr_runtime_ready: "OCR support is ready",
@@ -825,6 +917,8 @@
       server_stop_not_maw: "当前端口上的进程不是 MAW 字幕编辑服务器，未执行停止。",
       server_stop_failed: "无法停止当前端口上的 MAW 字幕编辑服务器。",
       api_key_missing: "请填写 API Key，或先在 ⚙ 配置/密钥区保存。",
+      custom_asr_base_url_missing: "请填写自定义 ASR Base URL。",
+      custom_asr_model_missing: "请填写自定义 ASR 模型名。",
       local_runtime_missing: "本地模型运行时未安装。请先安装本地 ASR 依赖。",
       local_runtime_install_failed: (detail) => `本地运行环境安装失败：${detail || "请查看日志后重试。"}`,
       local_runtime_cancelled: "本地运行环境安装已取消。",
@@ -845,7 +939,8 @@
       soniox_context_too_long: "Soniox 上下文约限制为 10000 个字符。",
       soniox_context_invalid: "Soniox 上下文格式不正确，请检查高级设置中的填写格式。",
       postprocess_config_invalid: (detail) => `自动后处理配置不完整：${detail || "请打开工具箱完成配置。"}`,
-      postprocess_failed: (detail) => `转写已完成，但自动后处理失败：${detail || "请查看日志。"}`,
+      postprocess_provider_response: (detail) => `后处理服务已返回 HTTP 错误，这不是网络中断；原始转写仍然保留，可从失败步骤重试。${detail ? ` 详细信息：${detail}` : ""}`,
+      postprocess_failed: (detail) => `转写已完成，但自动后处理失败；原始转写仍然保留，可从失败步骤重试：${detail || "请查看日志。"}`,
       postprocess_cancelled: "自动后处理已取消，原始转写产物仍然保留。",
       waveform_unavailable: (detail) => `无法从该媒体生成可用波形：${detail || "请检查 FFmpeg 和媒体文件。"}`,
       waveform_generation_failed: (detail) => `波形工程生成失败：${detail || "请检查媒体与输出目录权限。"}`,
@@ -854,6 +949,7 @@
       media_tool_failed: (detail) => `媒体处理失败：${detail || "请检查 FFmpeg 和输入文件。"}`,
       audio_track_invalid: "所选音轨无效，请重新选择。",
       audio_tracks_missing: "没有检测到可用音轨。",
+      audio_tracks_unavailable: (detail) => `无法读取音轨：${detail || "请检查 FFprobe 和媒体文件。"}`,
       hotwords_file_missing: "请选择存在且为 UTF-8 编码的 .txt 热词文件。",
       output_missing: "请填写 SRT 输出路径。",
       segmentation_invalid: "切句参数无效：请输入整数，并确保最大字数不小于短句合并阈值。",
@@ -897,6 +993,8 @@
       server_stop_not_maw: "The current port is not used by a MAW subtitle editor server, so it was not stopped.",
       server_stop_failed: "Unable to stop the MAW subtitle editor server on the current port.",
       api_key_missing: "Enter an API Key, or save one first in Settings / API key.",
+      custom_asr_base_url_missing: "Enter a custom ASR Base URL.",
+      custom_asr_model_missing: "Enter a custom ASR model name.",
       local_runtime_missing: "The local ASR runtime is not installed. Install the local dependencies first.",
       local_runtime_install_failed: (detail) => `Local runtime installation failed: ${detail || "check the log and retry."}`,
       local_runtime_cancelled: "Local runtime installation was cancelled.",
@@ -916,6 +1014,7 @@
       context_too_long: "Qwen-Audio context is limited to 400 characters.",
       soniox_context_too_long: "Soniox context is limited to approximately 10,000 characters.",
       postprocess_config_invalid: (detail) => `Automatic post-processing is not configured: ${detail || "open the toolbox to finish setup."}`,
+      postprocess_provider_response: (detail) => `The post-processing provider returned an HTTP error; this is not a network outage. The original transcription remains available, and you can retry from the failed step.${detail ? ` Details: ${detail}` : ""}`,
       waveform_unavailable: (detail) => `No usable waveform could be generated: ${detail || "check FFmpeg and the media file."}`,
       waveform_generation_failed: (detail) => `Waveform project generation failed: ${detail || "check the media and output-folder permissions."}`,
       media_tool_busy: "Another media operation is already running. Please wait for it to finish.",
@@ -923,7 +1022,8 @@
       media_tool_failed: (detail) => `Media operation failed: ${detail || "check FFmpeg and the input file."}`,
       audio_track_invalid: "The selected audio track is invalid. Choose it again.",
       audio_tracks_missing: "No usable audio tracks were found.",
-      postprocess_failed: (detail) => `Transcription completed, but automatic post-processing failed: ${detail || "check the log."}`,
+      audio_tracks_unavailable: (detail) => `Audio tracks could not be read: ${detail || "check FFprobe and the media file."}`,
+      postprocess_failed: (detail) => `Transcription completed, but automatic post-processing failed. The original transcription remains available, and you can retry from the failed step.${detail ? ` Details: ${detail}` : ""}`,
       postprocess_cancelled: "Automatic post-processing was cancelled; the original transcription remains available.",
       soniox_context_invalid: "Soniox context format is invalid. Check the Advanced options format.",
       hotwords_file_missing: "Choose an existing UTF-8 .txt hotword file.",
@@ -1054,15 +1154,27 @@
   const HOTWORD_WEIGHTS = new Set([1, 2, 3, 4, 5, 50]);
   const MAX_HOTWORDS = 2000;
   const MAX_SUPER_HOTWORDS = 50;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, update: null, updateChecking: false, updateCheckGeneration: 0, updateDownloading: false, updateManualCheck: false, updateReady: false, updateApplying: false, updateError: "", updateErrorCode: "", updateErrorDetail: "", updateProgress: 0 };
+  const OPENAI_ASR_CUSTOM_MODEL_ID = "custom-asr";
+  const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"]);
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, update: null, updateChecking: false, updateCheckGeneration: 0, updateDownloading: false, updateManualCheck: false, updateReady: false, updateApplying: false, updateError: "", updateErrorCode: "", updateErrorDetail: "", updateProgress: 0 };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
+  let defaultOutputRequest = 0;
+  let ffmpegRequest = 0;
+  let serverStatusRequest = 0;
+  let ocrRuntimeRequest = 0;
+  let localRuntimeRequest = 0;
+  let localModelsRequest = 0;
+  // Runtime and model checks both update localRuntime.  A single revision
+  // prevents an older request of either kind from putting stale status back
+  // after a newer check has already completed.
+  let localStatusRequest = 0;
   let activeSettingsTab = "general";
   let updateCheckWaiter = null;
 
   function mockApi() {
-    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "", postprocessApiKeys: {}, theme: null };
+    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null, outputSubfolder: false, perVideoSubfolder: false, attachModelName: true };
     const chainedPath = (path, operation, fallback) => path
       ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
       : fallback;
@@ -1083,9 +1195,14 @@
          theme: saved.theme,
         moseAvailable: true,
         moseBundled: true,
-        showRareLangs: saved.showRareLangs || false,
-        appVersion: "1.5.3",
         update: { ok: true, currentVersion: "1.5.0", latestVersion: "1.5.0", latestTag: "v1.5.0", available: false, assetAvailable: false, capability: "none", channel: "stable", autoCheck: true, installation: { kind: "source", platform: "windows", arch: "x64", canApply: false } },
+        openaiBaseUrl: saved.openaiBaseUrl,
+        openaiModel: saved.openaiModel,
+        showRareLangs: saved.showRareLangs || false,
+        outputSubfolder: saved.outputSubfolder,
+        perVideoSubfolder: saved.perVideoSubfolder,
+        attachModelName: saved.attachModelName,
+        appVersion: "1.6.0-beta.1",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
@@ -1134,6 +1251,25 @@
             languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }]
           },
           {
+            id: "openai",
+            label: "OpenAI（及兼容接口）",
+            keyUrl: "https://platform.openai.com/api-keys",
+            apiKey: saved.apiKey,
+            maskedApiKey: saved.apiKey ? "sk-…demo" : "",
+            supportsSpeaker: false,
+            multiLanguage: false,
+            note: "默认连接 OpenAI 官方服务，也可填写其他兼容 /audio/transcriptions 的地址；必须返回 segments/words 时间戳。",
+            commonLanguages: ["", "zh", "en"],
+            models: [
+              { id: "whisper-1", label: "whisper-1", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-transcribe", label: "gpt-4o-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-mini-transcribe", label: "gpt-4o-mini-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: OPENAI_ASR_CUSTOM_MODEL_ID, label: "自定义（Custom）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "选择后填写自定义 ASR 模型名", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
+            ],
+            regions: [],
+            languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }]
+          },
+          {
             id: "local",
             label: "本地模型（Beta）",
             kind: "local",
@@ -1172,7 +1308,28 @@
           }
         ]
       }),
-      default_output: async ({ mediaPath, providerId, modelId, testRun }) => ({ ok: true, path: mediaPath ? mediaPath.replace(/\.[^.\\/]+$/, `${providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))}${testRun ? "-test" : ""}.srt`) : "" }),
+      default_output: async ({ mediaPath, providerId, modelId, testRun }) => {
+        let path = "";
+        if (mediaPath) {
+          const sep = mediaPath.includes("\\") ? "\\" : "/";
+          const dirIndex = Math.max(mediaPath.lastIndexOf("/"), mediaPath.lastIndexOf("\\"));
+          const dir = dirIndex >= 0 ? mediaPath.slice(0, dirIndex + 1) : "";
+          const stem = mediaPath.slice(dirIndex + 1).replace(/\.[^.\\/]+$/, "");
+          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))));
+          let outputDir = dir;
+          if (saved.outputSubfolder) {
+            const root = saved.perVideoSubfolder ? `${stem}_maw` : "_maw";
+            outputDir = dir ? `${dir}${root}${sep}` : `${root}${sep}`;
+          }
+          path = `${outputDir}${stem}${tag}${testRun ? "-test" : ""}.srt`;
+        }
+        return { ok: true, path };
+      },
+      get_audio_tracks: async ({ mediaPath = "" } = {}) => VIDEO_EXTS.has(ext(mediaPath)) ? ({ ok: true, tracks: [
+        { audioIndex: 0, streamIndex: 1, title: "Mix", channels: 2, sampleRate: 48000, default: true },
+        { audioIndex: 1, streamIndex: 2, title: "Voice", channels: 2, sampleRate: 48000, default: false },
+        { audioIndex: 2, streamIndex: 3, title: "OriginSound", channels: 2, sampleRate: 48000, default: false },
+      ] }) : ({ ok: true, tracks: [] }),
       choose_file: async ({ kind }) => ({ ok: true, path: kind === "json" ? "D:\\Demo\\project.json" : (kind === "subtitle" ? "D:\\Demo\\project.mosp" : (kind === "subtitle-burn" ? "D:\\Demo\\clip.srt" : (kind === "video" ? "D:\\Demo\\clip.mp4" : (kind === "ffconcat" ? "D:\\Demo\\clip.ffconcat" : (kind === "script" ? "D:\\Demo\\script.txt" : (kind === "hotwords" ? "D:\\Demo\\hotwords.txt" : "D:\\Demo\\clip.mp4")))))) }),
       read_script_preview: async () => ({ ok: true, path: "D:\\Demo\\script.txt", preview: "第一行\n第二行", truncated: false }),
       read_hotword_file: async () => ({ ok: true, path: "D:\\Demo\\hotwords.txt", text: "张三\n阿里云百炼\n专业术语\n" }),
@@ -1187,7 +1344,7 @@
       get_local_models: async ({ modelId, modelPath }) => ({ ok: true, runtime: state.config?.localRuntime || {}, models: (state.config?.providers.find((item) => item.id === "local")?.models || []).map((model) => ({ ...model, localStatus: { ...(model.localStatus || {}), ...(model.id === modelId && modelPath ? { status: "installed", installed: true, path: modelPath, detail: "已使用指定的模型目录。" } : {}) } })) }),
       prepare_local_model: async ({ modelId }) => { clearTimeout(modelPrepareTimer); modelPrepareTimer = setTimeout(() => { state.config?.providers.find((item) => item.id === "local")?.models.forEach((model) => { if (model.id === modelId) model.localStatus = { ...(model.localStatus || {}), status: "installed", installed: true, runtimeAvailable: true, canPrepare: false, detail: "已检测到本地模型。" }; }); window.MAWLauncher.onBackendEvent({ type: "modelPrepared", modelId }); }, 400); return { ok: true, preparing: true, modelId }; },
       cancel_local_model: async () => { clearTimeout(modelPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
-       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
+       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); for (const key of ["outputSubfolder", "perVideoSubfolder", "attachModelName"]) { if (Object.prototype.hasOwnProperty.call(payload, key)) saved[key] = Boolean(payload[key]); } if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
       open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
       open_runtime_folder: async (payload) => { window.__openedRuntimeFolder = payload; return { ok: true }; },
       open_blank_html: async () => ({ ok: true }),
@@ -1250,10 +1407,71 @@
 
   const t = (key) => STRINGS[state.lang][key] || key;
   function compactDetail(detail) { return String(detail || "").replace(/\s+/g, " ").trim(); }
-  function errText(code, detail) { const entry = ERROR_TEXT[state.lang][code]; const compact = compactDetail(detail); if (typeof entry === "function") return entry(compact); return entry || compact || t("failed"); }
+  function llmProviderLabel(providerId) {
+    const id = String(providerId || "").trim();
+    const item = state.config?.postprocessProviders?.find((candidate) => candidate.id === id);
+    if (id === "custom" && item?.displayName) return item.displayName;
+    const labels = state.lang === "en"
+      ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen", custom: "Custom (OpenAI-compatible)" }
+      : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen", custom: "自定义（兼容 OpenAI）" };
+    return labels[id] || item?.label || t("llm_provider_unknown");
+  }
+  function llmBuiltInProviderKeyGuidance(context = {}) {
+    const providerId = String(context?.providerId || "").trim();
+    if (!["deepseek", "zhipu", "qwen"].includes(providerId)) return "";
+    return t("llm_builtin_provider_key_guidance")
+      .replaceAll("{provider}", llmProviderLabel(providerId));
+  }
+  function llmHttpErrorText(status, context = {}) {
+    const numericStatus = Number(status);
+    const providerId = String(context?.providerId || "").trim();
+    const keys = { 401: "llm_http_unauthorized", 403: "llm_http_forbidden", 404: "llm_http_not_found", 429: "llm_http_rate_limited" };
+    const key = numericStatus === 401 && ["deepseek", "zhipu", "qwen"].includes(providerId)
+      ? "llm_http_unauthorized_builtin"
+      : (numericStatus === 401 && providerId === "custom" ? "llm_http_unauthorized_custom" : keys[numericStatus]);
+    if (!key) return "";
+    const isModelList = String(context?.operation || "").toLowerCase().includes("model");
+    const operation = t(isModelList ? "llm_http_model_list_operation" : "llm_http_connection_operation");
+    return t(key)
+      .replaceAll("{provider}", llmProviderLabel(context?.providerId))
+      .replaceAll("{operation}", operation);
+  }
+  function errText(code, detail, context = {}) {
+    const compact = compactDetail(detail);
+    const builtInGuidance = ["postprocess_connection_failed", "postprocess_models_failed"].includes(code) && !Number.isInteger(Number(context?.httpStatus))
+      ? llmBuiltInProviderKeyGuidance(context)
+      : "";
+    if (["postprocess_connection_failed", "postprocess_models_failed"].includes(code)) {
+      const guidance = llmHttpErrorText(context?.httpStatus, context);
+      if (guidance) return [guidance, builtInGuidance].filter(Boolean).join(" ");
+    }
+    const entry = ERROR_TEXT[state.lang][code];
+    const message = typeof entry === "function" ? entry(compact) : (entry || compact || t("failed"));
+    return [message, builtInGuidance].filter(Boolean).join(" ");
+  }
   const ext = (path) => (path.match(/\.[^.\\/]+$/)?.[0] || "").toLowerCase();
   const provider = () => state.config.providers.find((item) => item.id === $("provider").value) || state.config.providers[0];
   const selectedModel = () => provider().models.find((item) => item.id === $("model").value) || provider().models[0];
+  const isOpenAiProvider = () => provider()?.id === "openai";
+  const isCustomOpenAiModel = () => isOpenAiProvider() && selectedModel()?.id === OPENAI_ASR_CUSTOM_MODEL_ID;
+  function customOpenAiModelDraft() {
+    if (state.config && state.config.openaiCustomModel !== undefined) return String(state.config.openaiCustomModel || "").trim();
+    const saved = String(state.config?.openaiModel || "").trim();
+    return OPENAI_ASR_OFFICIAL_MODEL_IDS.has(saved) ? "" : saved;
+  }
+  function syncOpenAiFields() {
+    const openai = isOpenAiProvider();
+    const custom = isCustomOpenAiModel();
+    $("customAsrFields").classList.toggle("hidden", !openai);
+    $("openaiModelField").classList.toggle("hidden", !custom);
+    if (custom) {
+      const current = $("openaiModel").value.trim();
+      const saved = customOpenAiModelDraft();
+      const draft = current && !OPENAI_ASR_OFFICIAL_MODEL_IDS.has(current) ? current : saved;
+      $("openaiModel").value = draft;
+      state.config.openaiCustomModel = draft;
+    }
+  }
   function appendMessageText(container, text) {
     String(text).split("\n").forEach((part, index) => {
       if (index > 0) container.append(document.createElement("br"));
@@ -1644,6 +1862,13 @@
   function resolveTheme() { if (state.theme === "light" || state.theme === "dark") return state.theme; return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
   function applyTheme() { if (resolveTheme() === "light") document.documentElement.dataset.theme = "light"; else delete document.documentElement.dataset.theme; $("themeLight").classList.toggle("active", state.theme === "light"); $("themeDark").classList.toggle("active", state.theme === "dark"); $("themeSystem").classList.toggle("active", state.theme === "system"); }
   function setTheme(pref) { if (!isThemePreference(pref)) return; state.theme = pref; storeTheme(pref); applyTheme(); void bridge("save_prefs", { theme: pref }).then((result) => { if (result.ok) { if (state.config) state.config.theme = pref; } else applyErrorResult(result); }); }
+  function revealLauncher() {
+    state.initializing = false;
+    const shell = document.querySelector(".shell");
+    shell?.removeAttribute("inert");
+    shell?.setAttribute("aria-busy", "false");
+    document.body.classList.add("launcher-ready");
+  }
 
   // keycap 表情（1️⃣ 等）依赖彩色 emoji 字体：后端把 Noto Color Emoji 缓存到本机
   // 后提供 file:// URI，这里注入 @font-face；注入一次即可，重复事件会被跳过。
@@ -1681,8 +1906,8 @@
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
-  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
-  function formPayload() { return { providerId: $("provider").value, modelId: $("model").value, mediaPath: $("mediaPath").value.trim(), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit").value.trim(), maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
+  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
+  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; return { providerId: $("provider").value, modelId, mediaPath: $("mediaPath").value.trim(), audioTrack: getAudioTrackForMedia($("mediaPath").value.trim()), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit").value.trim(), maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function moseAvailable() { return Boolean(state.config?.moseAvailable); }
   function renderServerButton() {
@@ -1720,7 +1945,7 @@
     return true;
   }
   async function stopEditorServer() { if (state.serverStopping) return; state.serverStopping = true; renderServerButton(); try { const result = await bridge("stop_server", serverPayload()); if (!result.ok) { applyErrorResult(result); return; } state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; setStatus(t("ready")); } finally { state.serverStopping = false; renderServerButton(); } }
-  async function checkExistingServer(prefix = "") { const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); }
+  async function checkExistingServer(prefix = "") { const requestId = ++serverStatusRequest; const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (requestId !== serverStatusRequest) return result; if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); }
   function syncHtmlMenu() { const enabled = $("generateHtml").checked; $("openHtml").classList.toggle("hidden", !enabled); $("openHtml").disabled = enabled && !state.result?.htmlPath; }
   function renderChevron(id) { const arrow = $(id).querySelector(".chevron"); if (arrow) arrow.textContent = $(id).classList.contains("collapsed") ? "▸" : "▾"; }
   function renderStickerCurrent() { $("stickerCurrent").textContent = state.config?.stickerDir || t("unset"); $("stickerDir").value = state.config?.stickerDir || ""; }
@@ -2000,6 +2225,7 @@
     renderUpdate();
   }
   async function saveStickerDirectory(path) { $("stickerDir").value = path; const result = await bridge("save_sticker_dir", { path }); setError("stickerDir", result.ok ? "" : errText(result.code, result.detail || result.error)); if (result.ok) { state.config.stickerDir = result.stickerDir; renderStickerCurrent(); setStatus(t("saved")); } else setStatus(errText(result.code, result.detail || result.error)); return result; }
+  function renderKeyHint() { const current = provider(); $("openKeyUrl").textContent = current?.id === "openai" ? t("openai_official") : (current?.label || ""); const suffix = $("keyHintSuffix"); if (suffix) suffix.textContent = t(current?.id === "openai" ? "openai_key_hint_suffix" : "key_hint_suffix"); }
   function renderKeyStatus() { const masked = state.config && !isLocalProvider() ? provider().maskedApiKey : ""; $("keyStatus").textContent = masked ? t("key_loaded").replace("{key}", masked) : t("key_empty"); }
   function syncQwenAudioOptions(model) { const enabled = provider().id === "qwen" && Boolean(model?.supportsContext || model?.supportsHotwords); $("qwenAudioOptions").classList.toggle("hidden", !enabled); $("qwenAudioContextField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsContext)); $("qwenAudioHotwordsSection").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsHotwords)); syncQwenAudioHotwordsMode(); }
   function syncSonioxContextOptions(model) { const enabled = provider().id === "soniox" && Boolean(model?.supportsContext); $("sonioxContextOptions").classList.toggle("hidden", !enabled); }
@@ -2068,8 +2294,8 @@
   function renderLocalRuntime() {
     if (!isLocalProvider()) return;
     const runtime = state.config.localRuntime || {};
-    const installing = state.localRuntimeInstalling;
-    const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing", installing: "local_runtime_installing" }[runtime.status] || "local_runtime_missing");
+    const installing = state.localRuntimeInstalling || runtime.status === "installing";
+    const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing", checking: "local_runtime_checking", installing: "local_runtime_installing" }[runtime.status] || "local_runtime_missing");
     renderLocalRuntimePaths(runtime);
     const target = $("localRuntimeStatus");
     // 实时流水只保留在进度条下方的 ProgressMessage 行，避免上下双显同一句。
@@ -2089,8 +2315,8 @@
   }
   function renderOcrRuntime() {
     const runtime = state.config?.ocrRuntime || {};
-    const installing = state.ocrRuntimeInstalling;
-    const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing", installing: "ocr_runtime_installing" }[runtime.status] || "ocr_runtime_missing");
+    const installing = state.ocrRuntimeInstalling || runtime.status === "installing";
+    const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing", checking: "ocr_runtime_checking", installing: "ocr_runtime_installing" }[runtime.status] || "ocr_runtime_missing");
     const target = $("ocrRuntimeStatus");
     // 与 localRuntime 一致：状态行固定文案，实时流水只在进度条下方。
     target.textContent = t(key);
@@ -2109,7 +2335,9 @@
     window.MAWLauncher?.onOcrRuntimeChanged?.();
   }
   async function refreshOcrRuntime() {
+    const requestId = ++ocrRuntimeRequest;
     const result = await bridge("get_ocr_runtime");
+    if (requestId !== ocrRuntimeRequest) return result;
     if (!result.ok) { applyErrorResult(result); return result; }
     state.config.ocrRuntime = result;
     state.config.ocrModels = result.models || state.config.ocrModels || [];
@@ -2117,8 +2345,10 @@
     return result;
   }
   async function saveOcrRuntimePath(path) {
+    const requestId = ++ocrRuntimeRequest;
     const value = String(path || "").trim();
     const result = await bridge("save_ocr_settings", { runtimePath: value });
+    if (requestId !== ocrRuntimeRequest) return result;
     if (!result.ok) {
       applyErrorResult(result);
       return result;
@@ -2135,7 +2365,7 @@
     const status = localStatus();
     const preparing = state.localPreparing;
     const target = $("localModelStatus");
-    const key = status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing" }[status.status] || "local_missing");
+    const key = status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing", checking: "local_checking" }[status.status] || "local_missing");
     // 与 runtime 面板一致：preparing 状态行固定"正在准备"文案，实时流水只在进度条下方。
     target.textContent = t(preparing ? "local_prepare_running" : key);
     target.className = `local-status ${preparing ? "warn" : (status.status === "installed" ? "ready" : "warn")}`;
@@ -2159,7 +2389,11 @@
   }
   async function refreshLocalRuntime() {
     if (!isLocalProvider()) return;
+    const requestId = ++localRuntimeRequest;
+    const statusRequestId = ++localStatusRequest;
+    const modelId = $("model").value;
     const result = await bridge("get_local_runtime", { modelId: $("model").value });
+    if (requestId !== localRuntimeRequest || statusRequestId !== localStatusRequest || !isLocalProvider() || $("model").value !== modelId) return result;
     if (!result.ok) { applyErrorResult(result); return result; }
     state.config.localRuntime = result;
     state.config.modelCacheRoot = result.modelCachePath || state.config.modelCacheRoot || "";
@@ -2168,7 +2402,12 @@
   }
   async function refreshLocalModels() {
     if (!isLocalProvider()) return;
-    const result = await bridge("get_local_models", { modelId: $("model").value, modelPath: $("localModelPath").value.trim() });
+    const requestId = ++localModelsRequest;
+    const statusRequestId = ++localStatusRequest;
+    const modelId = $("model").value;
+    const modelPath = $("localModelPath").value.trim();
+    const result = await bridge("get_local_models", { modelId, modelPath });
+    if (requestId !== localModelsRequest || statusRequestId !== localStatusRequest || !isLocalProvider() || $("model").value !== modelId || $("localModelPath").value.trim() !== modelPath) return result;
     if (!result.ok) { applyErrorResult(result); return result; }
     if (result.runtime) {
       state.config.localRuntime = result.runtime;
@@ -2196,22 +2435,21 @@
       return result;
     }
     state.config.modelCacheRoot = result.modelCacheRoot || value;
-    await refreshLocalRuntime();
     await refreshLocalModels();
     setError("localModelCachePath", "");
     setStatus(t("saved"));
     return result;
   }
-  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); renderUpdate(); window.MAWLauncher?.onLanguageChanged?.(); }
-  function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelPanel").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; $("openKeyUrl").textContent = current.label; $("providerNote").textContent = current.note || ""; $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); $("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0); renderKeyStatus(); syncWorkspace(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); void refreshLocalModels(); } }
-  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncLocalModelPath(model); $("modelNote").textContent = model.note || ""; applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); renderLocalModelStatus(); syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
+  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderAudioTracks(); if (state.audioTracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint"); renderKeyHint(); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); renderUpdate(); window.MAWLauncher?.onLanguageChanged?.(); }
+  function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelPanel").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); $("providerNote").textContent = current.note || ""; $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); $("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0); renderKeyStatus(); syncWorkspace(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) void refreshLocalModels(); } }
+  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); $("modelNote").textContent = model.note || ""; applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
   function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
   function languageValue() { const el = $("language"); if (el.multiple) return Array.from(el.selectedOptions).map((o) => o.value).filter(Boolean).join(","); return el.value; }
   function syncWorkspace() { $("workspaceField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || provider().regions.length === 0); }
   function syncAdvancedParamsGroup() { const group = $("advancedParamsGroup"); group.classList.toggle("hidden", !Array.from(group.querySelectorAll(".field")).some((field) => !field.classList.contains("hidden"))); }
   function appendTestSuffix(path) { const value = String(path || "").trim(); if (!value || /-test(?=\.[^./\\]+$)/iu.test(value)) return value; const separator = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")); const dot = value.lastIndexOf("."); if (dot <= separator) return `${value}-test`; return `${value.slice(0, dot)}-test${value.slice(dot)}`; }
   function removeTestSuffix(path) { return String(path || "").replace(/-test(?=\.[^./\\]+$)/iu, ""); }
-  function syncTestRun() { const on = $("testRun").checked; $("testRunHint").classList.toggle("hidden", !on); $("lengthLimit").disabled = on; if (state.srtAuto) { void syncDefaultOutput(); return; } const current = $("srtPath").value.trim(); if (on) { const next = appendTestSuffix(current); state.testSuffixAdded = Boolean(current && next !== current); $("srtPath").value = next; } else if (state.testSuffixAdded) { $("srtPath").value = removeTestSuffix(current); state.testSuffixAdded = false; } }
+  function syncTestRun() { const on = $("testRun").checked; $("testRunHint").classList.toggle("hidden", !on); $("lengthLimit").disabled = on; if (state.srtAuto) { if (!state.initializing) void syncDefaultOutput(); return; } const current = $("srtPath").value.trim(); if (on) { const next = appendTestSuffix(current); state.testSuffixAdded = Boolean(current && next !== current); $("srtPath").value = next; } else if (state.testSuffixAdded) { $("srtPath").value = removeTestSuffix(current); state.testSuffixAdded = false; } }
   function savePrefsDebounced(payload) { clearTimeout(prefsTimer); prefsTimer = setTimeout(() => bridge("save_prefs", payload), 300); }
   function normalizeZoomPercent(value) { const parsed = Number(value); if (!Number.isFinite(parsed)) return ZOOM_DEFAULT; return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(parsed / ZOOM_STEP) * ZOOM_STEP)); }
   function applyZoomPercent(value) { const zoomPercent = normalizeZoomPercent(value); document.documentElement.style.zoom = `${zoomPercent}%`; state.config.zoomPercent = zoomPercent; return zoomPercent; }
@@ -2225,12 +2463,96 @@
     event.preventDefault();
     persistZoomPercent(event.key === "0" ? ZOOM_DEFAULT : state.config.zoomPercent + direction * ZOOM_STEP);
   }
-  async function syncDefaultOutput() { const result = await bridge("default_output", { mediaPath: $("mediaPath").value.trim(), providerId: $("provider").value, modelId: $("model").value, testRun: $("testRun").checked }); const path = result.ok ? result.path : ""; $("srtPath").placeholder = path; if (state.srtAuto) { $("srtPath").value = path; if (path) setError("srtPath", ""); setOutputNotice(result.renamed ? t("output_collision") : ""); } else setOutputNotice(""); }
+  async function syncDefaultOutput() { const requestId = ++defaultOutputRequest; const result = await bridge("default_output", { mediaPath: $("mediaPath").value.trim(), providerId: $("provider").value, modelId: $("model").value, testRun: $("testRun").checked }); if (requestId !== defaultOutputRequest) return result; const path = result.ok ? result.path : ""; $("srtPath").placeholder = path; if (state.srtAuto) { $("srtPath").value = path; if (path) setError("srtPath", ""); setOutputNotice(result.renamed ? t("output_collision") : ""); } else setOutputNotice(""); return result; }
   function syncFlvHints() {
     $("mediaPathFlvHint")?.classList.toggle("hidden", ext($("mediaPath").value.trim()) !== ".flv");
     $("serverMediaFlvHint")?.classList.toggle("hidden", ext($("serverMediaPath").value.trim()) !== ".flv");
   }
-  function setMedia(path) { $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); window.MAWLauncher?.onMediaPathChanged?.(); }
+  function audioTrackIndex(track) {
+    const value = Number(track?.audioIndex ?? track?.index);
+    return Number.isInteger(value) && value >= 0 ? value : null;
+  }
+  function audioTrackIsDefault(track) {
+    return Boolean(track?.default ?? track?.isDefault);
+  }
+  function audioTrackOptionLabel(track) {
+    const index = audioTrackIndex(track);
+    const parts = [`${t("audio_track_number")}${(index ?? 0) + 1}`];
+    if (track.title) parts.push(String(track.title));
+    if (track.language) parts.push(String(track.language).toUpperCase());
+    if (Number.isInteger(track.channels) && track.channels > 0) parts.push(t("audio_track_channels").replace("{count}", String(track.channels)));
+    if (Number.isInteger(track.sampleRate) && track.sampleRate > 0) parts.push(t("audio_track_sample_rate").replace("{rate}", String(Math.round(track.sampleRate / 100) / 10)));
+    if (track.streamIndex !== undefined && track.streamIndex !== null && String(track.streamIndex) !== "") parts.push(t("audio_track_id").replace("{id}", String(track.streamIndex)));
+    if (audioTrackIsDefault(track)) parts.push(t("audio_track_default"));
+    return parts.join(" · ");
+  }
+  function renderAudioTracks(tracks = state.audioTracks) {
+    const field = $("audioTrackField");
+    const select = $("audioTrack");
+    if (!field || !select) return;
+    const validTracks = Array.isArray(tracks) ? tracks.filter((track) => audioTrackIndex(track) !== null) : [];
+    const multiple = validTracks.length > 1;
+    field.classList.toggle("hidden", !multiple);
+    select.disabled = !multiple;
+    select.innerHTML = "";
+    if (!multiple) return;
+    validTracks.forEach((track) => select.add(new Option(audioTrackOptionLabel(track), String(audioTrackIndex(track)))));
+    const defaultTrack = validTracks.find(audioTrackIsDefault) || validTracks[0];
+    const selected = Number.isInteger(state.audioTrack) && validTracks.some((track) => audioTrackIndex(track) === state.audioTrack)
+      ? state.audioTrack
+      : (audioTrackIndex(defaultTrack) ?? 0);
+    state.audioTrack = Number(selected);
+    select.value = String(state.audioTrack);
+  }
+  function showAudioTrackLoading() {
+    const field = $("audioTrackField");
+    const select = $("audioTrack");
+    if (!field || !select) return;
+    field.classList.remove("hidden");
+    select.disabled = true;
+    select.innerHTML = "";
+    select.add(new Option(t("audio_track_loading"), ""));
+    $("audioTrackHint").textContent = t("audio_track_loading");
+  }
+  async function refreshAudioTracks(path) {
+    const value = String(path || "").trim();
+    const key = audioTrackPathKey(value);
+    const token = ++state.audioTrackProbeToken;
+    state.audioTrackPath = key;
+    state.audioTracks = [];
+    state.audioTrack = null;
+    if (!value || !VIDEO_EXTS.has(ext(value))) {
+      renderAudioTracks([]);
+      return;
+    }
+    showAudioTrackLoading();
+    const result = await bridge("get_audio_tracks", { mediaPath: value });
+    if (token !== state.audioTrackProbeToken || key !== audioTrackPathKey($("mediaPath").value)) return;
+    const tracks = result?.ok && Array.isArray(result.tracks) ? result.tracks : [];
+    state.audioTracks = tracks;
+    renderAudioTracks(tracks);
+    if (!result.ok && tracks.length === 0) $("audioTrackHint").textContent = t("audio_track_probe_failed");
+    else if (tracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint");
+  }
+  function scheduleAudioTrackProbe(path) {
+    clearTimeout(state.audioTrackProbeTimer);
+    const value = String(path || "").trim();
+    state.audioTrackProbeToken += 1;
+    state.audioTrackPath = audioTrackPathKey(value);
+    state.audioTracks = [];
+    state.audioTrack = null;
+    if (VIDEO_EXTS.has(ext(value))) showAudioTrackLoading();
+    else renderAudioTracks([]);
+    if (!value || !VIDEO_EXTS.has(ext(value))) return;
+    state.audioTrackProbeTimer = window.setTimeout(() => { void refreshAudioTracks(value); }, 280);
+  }
+  function audioTrackPathKey(path) { return String(path || "").trim().replace(/[\\/]+/gu, "\\").toLocaleLowerCase(); }
+  function getAudioTrackForMedia(path) {
+    const value = String(path || "").trim();
+    if (audioTrackPathKey(value) !== state.audioTrackPath || state.audioTracks.length <= 1 || !Number.isInteger(state.audioTrack)) return null;
+    return state.audioTrack;
+  }
+  function setMedia(path, { refreshOcrVideo = false } = {}) { clearTimeout(state.audioTrackProbeTimer); $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); void refreshAudioTracks(path); window.MAWLauncher?.onMediaPathChanged?.({ refreshOcrVideo }); }
   function setDroppedPath(field, path, eventType = "input") {
     const value = String(path || "").trim();
     const input = $(field);
@@ -2250,9 +2572,17 @@
   }
   function setJsonPath(path) { $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); window.MAWLauncher?.onProjectPathChanged?.(); }
   function applyErrorResult(result, logDetail = true) { const detail = result.detail || result.error || ""; const message = errText(result.code, detail); const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message); if (result.field) setError(result.field, fieldMessage); if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer(); if (result.postprocessStep) window.MAWLauncher?.openAutoPostprocessStep?.(result.postprocessStep, result.field); else if (result.field === "autoPostprocessEnabled") $("autoPostprocessCard")?.scrollIntoView({ behavior: "smooth", block: "start" }); setStatus(message); if (logDetail && detail) appendLog(`[detail] ${detail}`); showErrorNotice(message, result.code || "", detail); }
-  function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); return true; }
-  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
-  function fail(field, message) { setError(field, message); setStatus(message); const input = $(field); if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" }); return false; }
+  function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["maxWords", 1], ["minWords", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); if (data.maxWords && data.minWords && Number(data.maxWords) < Number(data.minWords)) return fail("maxWords", errText("segmentation_invalid", "")); return true; }
+  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (isCustomOpenAiModel() && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
+  function fail(field, message) {
+    setError(field, message);
+    setStatus(message);
+    const input = $(field);
+    const settingsSection = input?.closest?.(".settings-section");
+    if (settingsSection?.id) openSettings(settingsSection.id, field);
+    if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" });
+    return false;
+  }
   function toggle(id) { $(id).classList.toggle("collapsed"); renderChevron(id); }
   function setupScrollbarFlash() {
     const VISIBLE_MS = 900;
@@ -2276,7 +2606,7 @@
     const suffix = ext(value);
     if (target === "media") {
       if (MEDIA_EXTS.has(suffix)) {
-        setMedia(value);
+        setMedia(value, { refreshOcrVideo: true });
         setStatus(t("media"));
       } else setError("mediaPath", mediaDropError());
       return;
@@ -2360,14 +2690,14 @@
       return;
     }
     if (MEDIA_EXTS.has(suffix)) {
-      setMedia(value);
+      setMedia(value, { refreshOcrVideo: true });
       setStatus(t("media"));
       return;
     }
     setError("mediaPath", mediaDropError());
   }
   async function refreshServerMedia() { const jsonPath = $("jsonPath").value.trim(); const result = await bridge("check_server_media", { jsonPath }); state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists); $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath); return result; }
-  async function refreshFfmpeg() { const result = await bridge("check_ffmpeg"); $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
+  async function refreshFfmpeg() { const requestId = ++ffmpegRequest; const result = await bridge("check_ffmpeg"); if (requestId !== ffmpegRequest) return result; $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
   function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
   function selectSettingsTab(tabName) {
     const tabs = [...document.querySelectorAll("[data-settings-tab]")];
@@ -2414,6 +2744,9 @@
     void refreshOcrRuntime();
     renderStickerCurrent();
     $("showRareLangs").checked = Boolean(state.config.showRareLangs);
+    $("outputSubfolder").checked = Boolean(state.config.outputSubfolder);
+    $("perVideoSubfolder").checked = Boolean(state.config.perVideoSubfolder);
+    $("attachModelName").checked = state.config.attachModelName !== false;
     if (sectionId) {
       requestAnimationFrame(() => {
         $(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2455,6 +2788,7 @@
     const projectPath = $("jsonPath").value.trim();
     const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
     if ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath)) { await bridge("open_url", { url: currentUrl }); return; }
+    serverStatusRequest += 1;
     state.serverStarting = true;
     renderServerButton();
     try {
@@ -2473,7 +2807,27 @@
     }
   }
 
+  function refreshStartupState() {
+    const tasks = [
+      ["default output", syncDefaultOutput()],
+      ["FFmpeg", refreshFfmpeg()],
+      ["server", checkExistingServer()],
+      ["OCR", refreshOcrRuntime()],
+    ];
+    if (isLocalProvider()) {
+      tasks.push(["local models", refreshLocalModels()]);
+    }
+    void Promise.allSettled(tasks.map(([, task]) => task)).then((results) => {
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          appendLog(`[init:${tasks[index][0]}] ${result.reason?.message || result.reason}`);
+        }
+      });
+    });
+  }
+
   async function init() {
+    state.initializing = true;
     const realApi = await waitForBackend();
     api = realApi || mockApi();
     window.MAWLauncher.backend = realApi ? "real" : "mock";
@@ -2494,18 +2848,23 @@
     applyTheme();
     state.config.zoomPercent = applyZoomPercent(state.config.zoomPercent);
     window.MAWLauncher.config = state.config;
-    const emojiFont = await bridge("get_emoji_font_path");
-    if (emojiFont && emojiFont.ok && emojiFont.path) injectEmojiFont(emojiFont.path);
+    void bridge("get_emoji_font_path").then((emojiFont) => {
+      if (emojiFont && emojiFont.ok && emojiFont.path) injectEmojiFont(emojiFont.path);
+    });
     state.lang = state.config.guiLang || "zh";
     fillSelect("provider", state.config.providers, state.config.providerId || "qwen");
     applyProvider(false);
     $("workspaceId").value = state.config.workspaceId || "";
-    syncWorkspace(); syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage(); renderUpdate(); refreshFfmpeg();
-    appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled."); setStatus(t("ready")); await checkExistingServer();
-    if (state.update?.autoCheck !== false) {
+    syncWorkspace(); syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage(); renderUpdate();
+    appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled.");
+    setStatus(t("ready"));
+    if (initialProjectPath && state.update?.autoCheck !== false) {
       await checkForUpdates(false, true);
     }
+    revealLauncher();
     window.dispatchEvent(new CustomEvent("mawlauncherready"));
+    refreshStartupState();
+    if (!initialProjectPath && state.update?.autoCheck !== false) void checkForUpdates(false);
     if (initialProjectPath) {
       setJsonPath(initialProjectPath);
       await openPreferredEditor();
@@ -2577,53 +2936,70 @@
       appendLog(t("local_prepare_cancelled"));
     }
     if (event.type === "localRuntimeProgress") {
-      state.localRuntimeInstalling = true;
-      state.localRuntimeProgress = Number(event.percent || 0);
-      state.localRuntimeProgressMessage = event.message || "";
-      renderLocalRuntime();
+      const runtime = state.config?.localRuntime || {};
+      if (state.localRuntimeInstalling || runtime.status === "installing") {
+        state.localRuntimeProgress = Number(event.percent || 0);
+        state.localRuntimeProgressMessage = event.message || "";
+        renderLocalRuntime();
+      }
     }
     if (event.type === "localRuntimeReady") {
+      const runtime = state.config?.localRuntime || {};
+      const wasInstalling = state.localRuntimeInstalling || runtime.status === "installing";
       state.localRuntimeInstalling = false;
       state.localRuntimeProgress = 100;
       state.localRuntimeProgressMessage = "";
-      state.config.localRuntime = event.runtime || { status: "ready", ready: true };
       renderLocalRuntime();
-      void refreshLocalModels();
-      setStatus(t("local_runtime_install_done"));
-      appendLog(t("local_runtime_install_done"));
+      if (wasInstalling) {
+        void refreshLocalModels();
+        setStatus(t("local_runtime_install_done"));
+        appendLog(t("local_runtime_install_done"));
+      }
     }
     if (event.type === "localRuntimeCancelled") {
+      const runtime = state.config?.localRuntime || {};
+      const wasInstalling = state.localRuntimeInstalling || runtime.status === "installing";
       state.localRuntimeInstalling = false;
       state.localRuntimeProgressMessage = "";
-      void refreshLocalRuntime();
       renderLocalRuntime();
-      setStatus(t("local_runtime_cancelled"));
-      appendLog(t("local_runtime_cancelled"));
+      if (wasInstalling) {
+        void refreshLocalModels();
+        setStatus(t("local_runtime_cancelled"));
+        appendLog(t("local_runtime_cancelled"));
+      }
     }
     if (event.type === "ocrRuntimeProgress") {
-      state.ocrRuntimeInstalling = true;
-      state.ocrRuntimeProgress = Number(event.percent || 0);
-      state.ocrRuntimeProgressMessage = event.message || "";
-      renderOcrRuntime();
+      const runtime = state.config?.ocrRuntime || {};
+      if (state.ocrRuntimeInstalling || runtime.status === "installing") {
+        state.ocrRuntimeProgress = Number(event.percent || 0);
+        state.ocrRuntimeProgressMessage = event.message || "";
+        renderOcrRuntime();
+      }
     }
     if (event.type === "ocrRuntimeReady") {
+      const runtime = state.config?.ocrRuntime || {};
+      const wasInstalling = state.ocrRuntimeInstalling || runtime.status === "installing";
       state.ocrRuntimeInstalling = false;
       state.ocrRuntimeProgress = 100;
       state.ocrRuntimeProgressMessage = "";
-      state.config.ocrRuntime = event.runtime || { status: "ready", ready: true };
-      state.config.ocrModels = event.models || state.config.ocrModels || [];
       renderOcrRuntime();
-      void refreshOcrRuntime();
-      setStatus(t("ocr_runtime_install_done"));
-      appendLog(t("ocr_runtime_install_done"));
+      if (wasInstalling) {
+        void refreshOcrRuntime();
+        setStatus(t("ocr_runtime_install_done"));
+        appendLog(t("ocr_runtime_install_done"));
+      }
     }
     if (event.type === "ocrRuntimeCancelled") {
+      const runtime = state.config?.ocrRuntime || {};
+      const wasInstalling = state.ocrRuntimeInstalling || runtime.status === "installing";
       state.ocrRuntimeInstalling = false;
       state.ocrRuntimeProgressMessage = "";
-      void refreshOcrRuntime();
       renderOcrRuntime();
-      setStatus(t("ocr_runtime_cancelled"));
-      appendLog(t("ocr_runtime_cancelled"));
+      if (wasInstalling) {
+        void refreshOcrRuntime();
+        setStatus(t("ocr_runtime_cancelled"));
+        appendLog(t("ocr_runtime_cancelled"));
+      }
     }
     if (event.type === "error" && event.code === "local_prepare_failed") {
       state.localPreparing = false;
@@ -2633,22 +3009,35 @@
       $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     if (event.type === "error" && ["local_runtime_install_failed", "local_runtime_cancelled"].includes(event.code)) {
-      state.localRuntimeInstalling = false;
-      state.localRuntimeProgressMessage = "";
-      void refreshLocalRuntime();
-      renderLocalRuntime();
-      if (event.code === "local_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const runtime = state.config?.localRuntime || {};
+      if (state.localRuntimeInstalling || runtime.status === "installing") {
+        state.localRuntimeInstalling = false;
+        state.localRuntimeProgressMessage = "";
+        void refreshLocalModels();
+        renderLocalRuntime();
+        if (event.code === "local_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        return;
+      }
     }
     if (event.type === "error" && ["ocr_runtime_install_failed", "ocr_runtime_cancelled"].includes(event.code)) {
-      state.ocrRuntimeInstalling = false;
-      state.ocrRuntimeProgressMessage = "";
-      void refreshOcrRuntime();
-      renderOcrRuntime();
-      if (event.code === "ocr_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const runtime = state.config?.ocrRuntime || {};
+      if (state.ocrRuntimeInstalling || runtime.status === "installing") {
+        state.ocrRuntimeInstalling = false;
+        state.ocrRuntimeProgressMessage = "";
+        void refreshOcrRuntime();
+        renderOcrRuntime();
+        if (event.code === "ocr_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        return;
+      }
     }
     if (event.type === "error") {
       setRunning(false);
       $("retryPostprocess")?.classList.toggle("hidden", !event.canRetry);
+      if (event.originalSrtPath) $("srtPath").value = String(event.originalSrtPath);
+      if (event.originalProjectPath) $("jsonPath").value = String(event.originalProjectPath);
+      if (event.originalSrtPath || event.originalProjectPath) $("openFolder")?.classList.remove("hidden");
       const detail = event.detail || event.message || "";
       const message = event.code ? errText(event.code, detail) : detail || t("failed");
       // 友好提示归错误卡片、status 与复制报告的结构化字段所有；日志只保留后端原始 detail。
@@ -2674,7 +3063,7 @@
     if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, openPreferredEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart: hideErrorNotice, onBatchError: (result) => applyErrorResult(result, false), onLanguageChanged() {}, onProjectPathChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, openPreferredEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart: hideErrorNotice, onBatchError: (result) => applyErrorResult(result, false), onLanguageChanged() {}, onProjectPathChanged() {}, onMediaPathChanged() {} };
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
@@ -2711,15 +3100,16 @@
     const action = $("errorNotice").dataset.action;
     if (action === "ffmpeg-settings") openSettings("ffmpegSettingsSection", "ffmpegPath");
   });
-  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
+  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("audioTrack").addEventListener("change", () => { const value = Number($("audioTrack").value); if (Number.isInteger(value) && value >= 0) state.audioTrack = value; }); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
   $("testRun").addEventListener("change", syncTestRun);
+  $("openaiModel").addEventListener("input", () => { if (isCustomOpenAiModel()) state.config.openaiCustomModel = $("openaiModel").value.trim(); });
   $("generateHtml").addEventListener("change", syncHtmlMenu);
-  $("mediaPath").addEventListener("input", () => { setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); }); $("srtPath").addEventListener("input", () => { state.srtAuto = false; state.testSuffixAdded = false; setError("srtPath", ""); setOutputNotice(""); });
+  $("mediaPath").addEventListener("input", () => { setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); scheduleAudioTrackProbe($("mediaPath").value); }); $("srtPath").addEventListener("input", () => { state.srtAuto = false; state.testSuffixAdded = false; setError("srtPath", ""); setOutputNotice(""); });
   $("pickMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (!result.ok) return; if (!MEDIA_EXTS.has(ext(result.path))) { setError("mediaPath", mediaDropError()); return; } setMedia(result.path); });
   $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });
   $("pickJson").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "json" }); if (result.ok) setJsonPath(result.path); });
   $("jsonPath").addEventListener("input", () => setError("jsonPath", "")); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) setServerMedia(result.path || ""); });
-  ["apiKey", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
+  ["apiKey", "openaiBaseUrl", "openaiModel", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
   $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
   $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
   $("pickLocalModelPath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "model" }); if (result.ok) { $("localModelPath").value = result.path; state.localModelPaths[selectedModel().id] = result.path; setError("localModelPath", ""); await refreshLocalModels(); } });
@@ -2730,10 +3120,10 @@
   $("ocrRuntimePath").addEventListener("input", () => setError("ocrRuntimePath", ""));
   $("ocrRuntimePath").addEventListener("change", async () => { await saveOcrRuntimePath($("ocrRuntimePath").value); });
   $("refreshOcrRuntime").addEventListener("click", async () => { $("refreshOcrRuntime").disabled = true; try { await refreshOcrRuntime(); } finally { $("refreshOcrRuntime").disabled = false; } });
-  $("installOcrRuntime").addEventListener("click", async () => { if (state.ocrRuntimeInstalling) { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: state.config.ocrRuntime?.status === "broken" }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
+  $("installOcrRuntime").addEventListener("click", async () => { const runtime = state.config?.ocrRuntime || {}; if (state.ocrRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: state.config.ocrRuntime?.status === "broken" }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
   $("localModelPath").addEventListener("input", () => { setError("localModelPath", ""); if (isLocalProvider()) { state.localModelPaths[selectedModel().id] = $("localModelPath").value.trim(); void refreshLocalModels(); } });
   $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocalRuntime").disabled = true; try { await refreshLocalRuntime(); await refreshLocalModels(); } finally { $("refreshLocalRuntime").disabled = false; } });
-  $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localRuntimeInstalling) { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
+  $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; const runtime = state.config?.localRuntime || {}; if (state.localRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
   $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
   $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
   $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));
@@ -2744,8 +3134,13 @@
   $("pickStickerDir").addEventListener("click", async () => { const result = await bridge("choose_folder"); if (result.ok) await saveStickerDirectory(result.path); });
   $("stickerDir").addEventListener("change", async () => { const path = $("stickerDir").value.trim(); if (path) await saveStickerDirectory(path); });
   $("showRareLangs").addEventListener("change", async () => { state.config.showRareLangs = $("showRareLangs").checked; applyProviderLanguages(provider(), selectedModel()); const result = await bridge("save_prefs", { showRareLangs: state.config.showRareLangs }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); });
+  const syncDefaultOutputPreview = () => { if (!state.initializing) void syncDefaultOutput(); };
+  const saveOutputPref = async (key) => { const on = $(key).checked; state.config[key] = on; const result = await bridge("save_prefs", { [key]: on }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); };
+  $("outputSubfolder").addEventListener("change", async () => { await saveOutputPref("outputSubfolder"); syncDefaultOutputPreview(); });
+  $("perVideoSubfolder").addEventListener("change", async () => { await saveOutputPref("perVideoSubfolder"); syncDefaultOutputPreview(); });
+  $("attachModelName").addEventListener("change", async () => { await saveOutputPref("attachModelName"); syncDefaultOutputPreview(); });
   $("languageReset").addEventListener("click", () => { const el = $("language"); Array.from(el.options).forEach((o) => { o.selected = false; }); savePrefsDebounced({ language: "" }); });
-  $("saveSettings").addEventListener("click", async () => { const result = await bridge("save_settings", formPayload()); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
+  $("saveSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; if (current.id === "openai") { state.config.openaiBaseUrl = payload.openaiBaseUrl; state.config.openaiModel = payload.openaiModel; } renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
   $("start").addEventListener("click", async () => { if (!validateLocal()) return; hideErrorNotice(); $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });
   $("stop").addEventListener("click", async () => { if (!state.running) return; $("stop").disabled = true; setStatus(t("batch_stopping")); const result = await bridge("cancel_transcription"); if (!result.ok) { $("stop").disabled = false; setStatus(result.detail || result.error || t("failed")); } });
   $("retryPostprocess").addEventListener("click", async () => { hideErrorNotice(); $("retryPostprocess").classList.add("hidden"); setRunning(true); const result = await bridge("retry_postprocess"); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } });
@@ -2793,7 +3188,14 @@
   window.addEventListener("resize", syncFixedFooterClearance);
   const footer = document.querySelector(".actions");
   if (footer && window.ResizeObserver) new ResizeObserver(syncFixedFooterClearance).observe(footer);
-  document.addEventListener("DOMContentLoaded", init);
+  document.addEventListener("DOMContentLoaded", () => {
+    void init().catch((error) => {
+      const message = error && error.message ? error.message : String(error);
+      appendLog(`[init] ${message}`);
+      setStatus(message);
+      revealLauncher();
+    });
+  });
   document.addEventListener("keydown", handleZoomKeydown);
   document.addEventListener("wheel", handleZoomWheel, { passive: false });
 })();

@@ -50,7 +50,7 @@ npm run build
 npm run smoke
 cd ..
 .\scripts\stage-mose-bundle.ps1
-.\scripts\build-installer.ps1 -Version "1.5.3"
+.\scripts\build-installer.ps1 -Version "1.6.0-beta.1"
 ```
 
 `build-installer.ps1` 需要 Inno Setup 6 的 `ISCC.exe`；脚本默认读取

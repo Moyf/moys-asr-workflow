@@ -26,15 +26,18 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from edit import get_default_sticker_dir
+from maw.stickers import get_default_sticker_dir
 from generate_subtitle_qwen_api import (
     extract_audio,
     generate_srt,
     get_duration_sec,
     parse_duration,
+    WESTERN_MAX_WORDS,
+    WESTERN_MIN_WORDS,
 )
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
+from maw.project_io import write_mosp
 from maw.bcut import (
     SUPPORTED_AUDIO_EXTS,
     build_segments,
@@ -43,6 +46,8 @@ from maw.bcut import (
 )
 from maw.project import repair_segment_durations, validate_project
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.language import resolve_language, split_mode_for_text, timestamp_granularity_for_items
+from maw.output_naming import format_elapsed, format_maw_stat, maw_root
 
 
 def main():
@@ -60,6 +65,8 @@ def main():
         "--min-len", type=int, default=5,
         help="句号间最短字数，不足则合并（默认 5；仅 CJK 内容生效）",
     )
+    parser.add_argument("--max-words", type=int, default=WESTERN_MAX_WORDS, help="英文单条字幕最大单词数")
+    parser.add_argument("--min-words", type=int, default=WESTERN_MIN_WORDS, help="英文短句合并阈值（单词数）")
     parser.add_argument(
         "--keep-punct", action="store_true",
         help="保留每条字幕末尾的逗号和句号（默认去除）",
@@ -79,6 +86,10 @@ def main():
     parser.add_argument(
         "--with-waveform", action="store_true",
         help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
+    )
+    parser.add_argument(
+        "--audio-track", type=int, default=0,
+        help="使用第几个音频轨道（从 0 开始，默认 0）",
     )
     parser.add_argument(
         "--with-spectral", action="store_true",
@@ -104,9 +115,19 @@ def main():
         "--debug-raw", action="store_true",
         help="保存必剪服务端返回的完整原始 JSON，用于排查断句、标点和时间码",
     )
+    parser.add_argument(
+        "--no-model-tag", action="store_true",
+        help="默认输出文件名不附加供应商标识段（默认附加 bcut）",
+    )
     args = parser.parse_args()
+    if args.audio_track < 0:
+        parser.error("--audio-track 必须是非负整数")
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
+    if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
+        parser.error("字幕切分参数无效")
+    if args.max_len < args.min_len or args.max_words < args.min_words:
+        parser.error("最大值不能小于对应的短句合并阈值")
 
     input_path = Path(args.input)
     if not input_path.exists():
@@ -145,6 +166,7 @@ def main():
                 audio_path,
                 duration_limit=media_limit,
                 ffmpeg_path=ffmpeg_path,
+                audio_track=args.audio_track if is_video else 0,
             )
             duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
             if media_limit is not None:
@@ -159,6 +181,7 @@ def main():
                 audio_path,
                 duration_limit=args.length_limit,
                 ffmpeg_path=ffmpeg_path,
+                audio_track=0,
             )
             duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
             lm, ls = divmod(int(min(args.length_limit, duration)), 60)
@@ -180,9 +203,11 @@ def main():
                 f"       请用 -ll 截取部分时长，或先把音频分割成多个文件。"
             )
 
+        print(f"转写开始: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         t0 = time.perf_counter()
         result = transcribe(audio_path, config, capture_raw=args.debug_raw)
         elapsed = time.perf_counter() - t0
+        print(f"转写结束: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
         if not result or not result.get("text"):
             print("错误: 未识别到任何内容", file=sys.stderr)
@@ -198,13 +223,17 @@ def main():
             print(f"first 5 items: {items[:5]}")
             print("--- end debug ---\n")
 
-        if not items:
+        if result.get("timestamp_granularity") == "segment" and result.get("segments"):
+            print("[解析] 云端返回了混合或句级时间码，保留服务端字幕段边界...")
+            segments = [dict(segment) for segment in result["segments"]]
+        elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")
             segments = [{"start": 0, "end": int(duration * 1000), "text": result["text"]}]
         else:
             segments = build_segments(
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
+                max_words=args.max_words, min_words=args.min_words,
             )
 
         # 兜底：缺时间戳/倒挂会形成 0 长 item，
@@ -224,6 +253,7 @@ def main():
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
+                audio_track=args.audio_track if is_video else 0,
             )
 
     # 剥句末标点（与 Qwen 版一致；--keep-punct 优先，空集合禁用）
@@ -237,11 +267,11 @@ def main():
                     seg_items[k]["text"] = seg_items[k]["text"].rstrip(args.strip_tail_punct)
                     if seg_items[k]["text"]:
                         break
+                    seg_items.pop(k)
                     k -= 1
 
     srt_content = generate_srt(segments)
 
-    em, es = divmod(int(elapsed), 60)
     if duration > 0:
         rtf = elapsed / duration
         speed = (1 / rtf) if rtf > 0 else 0
@@ -249,10 +279,13 @@ def main():
         rtf = 0
         speed = 0
     if not args.output:
-        speed_tag = f"{speed:.1f}x" if speed else "na"
         ts_prefix = f"[{datetime.now().strftime('%y%m%d%H%M')}]"
+        name_parts = []
+        if not args.no_model_tag:
+            name_parts.append("bcut")
+        suffix = f".{'.'.join(name_parts)}" if name_parts else ""
         output_path = output_path.with_name(
-            f"{ts_prefix}{output_path.stem}.bcut.{speed_tag}.srt"
+            f"{ts_prefix}{output_path.stem}{suffix}.srt"
         )
 
     output_path.write_text(srt_content, encoding="utf-8")
@@ -262,28 +295,47 @@ def main():
         raw_response = result.pop("raw_response", None)
         if raw_response is None:
             raise RuntimeError("调试模式未获得 ASR 原始返回数据")
-        raw_path = output_path.with_suffix(".asr-response.json")
+        raw_path = (
+            maw_root(input_path) / f"{output_path.stem}.asr-response.json"
+            if not args.output
+            else output_path.with_suffix(".asr-response.json")
+        )
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
         with raw_path.open("w", encoding="utf-8", newline="\n") as raw_file:
             json.dump(raw_response, raw_file, ensure_ascii=False, indent=2)
             raw_file.write("\n")
         print(f"[调试] ASR 原始返回已保存到: {raw_path}")
+    print(f"转写耗时: {format_elapsed(elapsed)}")
     if duration > 0:
-        print(f"处理用时: {em}分{es}秒 | 实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
-    else:
-        print(f"处理用时: {em}分{es}秒")
+        print(f"媒体时长: {format_elapsed(duration)}")
+        print(f"转写时长为媒体时长的 {rtf:.2f} 倍")
+        print(f"实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
 
     if args.json_out:
         json_path = output_path.with_suffix(".mosp")
+        language, language_source = resolve_language(
+            result.get("language"),
+            None,
+            str(result.get("text") or ""),
+        )
+        split_mode = split_mode_for_text(str(result.get("text") or ""), language)
+        # 必剪接口不返回语种；result.language 是解析器根据完整文本脚本推断的，
+        # 因此保留 inferred，而不是把它误标为 detected。
         json_data = {
             "media": str(input_path),
-            "language": result.get("language", ""),
+            "language": language,
+            "language_source": result.get("language_source") or language_source,
+            "split_mode": split_mode,
+            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
+                result.get("items") or [], split_mode, has_segments=bool(segments)
+            ),
             "model": "bcut-asr",
             "segments": [
                 {
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": seg["text"],
-                    "items": seg.get("items", []),
+                    **({"items": seg["items"]} if "items" in seg else {}),
                 }
                 for seg in segments
             ],
@@ -295,8 +347,11 @@ def main():
             print("[警告] 工程文件未通过契约校验，请把以下内容反馈给开发者：")
             for err in check.errors[:10]:
                 print(f"  {err.path}: {err.message}")
-        json_path.write_text(
-            json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
+        write_mosp(
+            json_path,
+            json_data,
+            media_path=input_path,
+            ffprobe_path=ffprobe_path,
         )
         print(f"工程文件已保存到: {json_path}")
 
@@ -317,6 +372,10 @@ def main():
                     subprocess.run(cmd, check=True)
                 except subprocess.CalledProcessError as e:
                     print(f"[警告] edit.py 失败 (exit {e.returncode})")
+
+    maw_stat = format_maw_stat(rtf)
+    if maw_stat:
+        print(maw_stat)
 
 
 if __name__ == "__main__":

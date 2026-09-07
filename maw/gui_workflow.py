@@ -18,9 +18,10 @@ from typing import BinaryIO, Final, TextIO, final
 
 from maw.console import configure_utf8_environment
 from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, bundled_ffmpeg_directory, ffmpeg_search_path, resolve_ffmpeg_tools
-from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, load_env
+from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, effective_config, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.media import read_bwf_time_reference
+from maw.output_naming import maw_root
 from maw.qwen_audio import split_qwen_audio_hotwords
 from maw.local_runtime import default_runtime_root, model_cache_environment
 from maw.runtimes import LOCAL
@@ -54,6 +55,7 @@ class TranscriptionRequest:
     region: str = ""
     workspace_id: str = ""
     provider: str = "qwen"
+    base_url: str = ""
     speaker_colors: bool = False
     generate_spectral: bool = False
     ui_language: str = "zh"
@@ -68,6 +70,9 @@ class TranscriptionRequest:
     runtime_python: str = ""
     postprocess_plan: dict[str, object] | None = None
     postprocess_llm_settings: dict[str, dict[str, str]] | None = None
+    audio_track: int = 0
+    max_words: str = ""
+    min_words: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,21 +133,30 @@ class MissingOutputError(Exception):
         super().__init__(f"{label} output was not created: {path}")
 
 
-def build_output_paths(srt_path: Path) -> OutputPaths:
+def build_output_paths(srt_path: Path, media_path: Path | None = None) -> OutputPaths:
+    """展开 srt 及其工程/HTML 副本路径。
+
+    ``media_path`` 缺省时保持旧行为：HTML 与 srt 同目录。传入媒体路径后，
+    HTML 属于「其余文件」，一律落入 ``output_naming.maw_root(media_path)``。
+    """
     srt = Path(srt_path).expanduser().resolve()
-    return OutputPaths(srt=srt, json=srt.with_suffix(".mosp"), html=srt.with_suffix(".edit.html"))
+    if media_path is None:
+        html = srt.with_suffix(".edit.html")
+    else:
+        html = maw_root(media_path) / f"{srt.stem}.edit.html"
+    return OutputPaths(srt=srt, json=srt.with_suffix(".mosp"), html=html)
 
 
 def raw_response_path(srt_path: Path) -> Path:
     return Path(srt_path).expanduser().resolve().with_suffix(".asr-response.json")
 
 
-def unique_output_path(srt_path: Path) -> Path:
+def unique_output_path(srt_path: Path, media_path: Path | None = None) -> Path:
     """为已有输出及其工程副本选择一个不会覆盖文件的新路径。"""
     original = Path(srt_path).expanduser()
 
     def occupied(candidate: Path) -> bool:
-        paths = build_output_paths(candidate)
+        paths = build_output_paths(candidate, media_path)
         return any(path.exists() for path in (paths.srt, paths.json, paths.html))
 
     if not occupied(original):
@@ -162,6 +176,7 @@ PROVIDER_SRT_TAGS: Final = {
     "local": ".qwen-asr-local",
     "bcut": ".bcut",
     "tencent": ".tencent-asr",
+    "openai": ".custom-asr",
 }
 
 
@@ -173,34 +188,55 @@ def with_test_suffix(path: Path) -> Path:
     return path.with_name(f"{path.stem}-test{path.suffix}")
 
 
+def _srt_model_tag(provider: str, model: str) -> str:
+    """返回带前导点的模型/供应商文件名段（local 细分引擎；qwen 细分音频模型）。"""
+    if provider == "qwen" and model.startswith("fun-asr"):
+        return ".fun-asr"
+    if provider == "qwen" and model == QWEN_AUDIO_MODEL_ID:
+        return ".qwen-audio"
+    if provider == "local":
+        local_model = model.casefold()
+        if "sensevoice" in local_model:
+            return ".sensevoice-local"
+        if "funasr" in local_model or "fun-asr" in local_model:
+            return ".funasr-local"
+        if "qwen3-asr-1.7b" in local_model:
+            return ".qwen3-asr-1.7b-local"
+        if "moss" in local_model:
+            return ".moss-local"
+        if "whisper" in local_model:
+            return ".whisper-local"
+        return ".qwen-asr-local"
+    return PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
+
+
 def default_srt_path(
     media_path: Path,
     provider: str = "qwen",
     model: str = DEFAULT_MODEL_ID,
     test_run: bool = False,
+    *,
+    attach_model_name: bool | None = None,
+    subfolder: bool | None = None,
 ) -> Path:
+    """媒体对应的默认 SRT 输出路径。
+
+    - ``attach_model_name``：为 None 时读取用户配置（默认附加模型/供应商段）；
+      False 产出 ``<stem>.srt``。
+    - ``subfolder``：为 None 时读取用户配置；True 时落入
+      ``output_naming.maw_root(media)``（共享 ``_maw`` 或每视频子目录）。
+    """
     media = Path(media_path).expanduser()
-    if provider == "qwen" and model.startswith("fun-asr"):
-        tag = ".fun-asr"
-    elif provider == "qwen" and model == QWEN_AUDIO_MODEL_ID:
-        tag = ".qwen-audio"
-    elif provider == "local":
-        local_model = model.casefold()
-        if "sensevoice" in local_model:
-            tag = ".sensevoice-local"
-        elif "funasr" in local_model or "fun-asr" in local_model:
-            tag = ".funasr-local"
-        elif "qwen3-asr-1.7b" in local_model:
-            tag = ".qwen3-asr-1.7b-local"
-        elif "moss" in local_model:
-            tag = ".moss-local"
-        elif "whisper" in local_model:
-            tag = ".whisper-local"
-        else:
-            tag = ".qwen-asr-local"
+    config = effective_config()
+    if attach_model_name is None:
+        attach_model_name = bool(config.attach_model_name)
+    if subfolder is None:
+        subfolder = bool(config.output_subfolder)
+    tag = _srt_model_tag(provider, model) if attach_model_name else ""
+    if subfolder:
+        output = maw_root(media) / f"{media.stem}{tag}.srt"
     else:
-        tag = PROVIDER_SRT_TAGS.get(provider, PROVIDER_SRT_TAGS["qwen"])
-    output = media.with_name(f"{media.stem}{tag}.srt")
+        output = media.with_name(f"{media.stem}{tag}.srt")
     return with_test_suffix(output) if test_run else output
 
 
@@ -215,6 +251,7 @@ def build_transcribe_command(
     is_soniox = request.provider == "soniox"
     is_tencent = request.provider == "tencent"
     is_bcut = request.provider == "bcut"
+    is_openai = request.provider == "openai"
     is_local = request.provider == "local"
     if is_local:
         script_name = "generate_subtitle_local.py"
@@ -222,6 +259,8 @@ def build_transcribe_command(
         script_name = "generate_subtitle_bcut_api.py"
     elif is_tencent:
         script_name = "generate_subtitle_tencent_api.py"
+    elif is_openai:
+        script_name = "generate_subtitle_openai_api.py"
     else:
         script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
     script = Path(__file__).resolve().parents[1] / script_name
@@ -235,12 +274,15 @@ def build_transcribe_command(
             command = [exe, "--transcribe-bcut"]
         elif is_tencent:
             command = [exe, "--transcribe-tencent"]
+        elif is_openai:
+            command = [exe, "--transcribe-openai"]
         else:
             command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
     else:
         command = [exe, str(script)]
     command.append(str(request.media_path))
     command.extend(["--output", str(build_output_paths(request.srt_path).srt), "--json", "--no-html", "--with-waveform"])
+    command.extend(["--audio-track", str(request.audio_track)])
     if request.generate_spectral:
         command.append("--with-spectral")
     if request.debug_raw and not is_local:
@@ -272,6 +314,10 @@ def build_transcribe_command(
     elif is_bcut:
         # 必剪接口无语言/模型/说话人参数，这里一律不下发
         pass
+    elif is_openai:
+        _append_option(command, "--base-url", request.base_url)
+        _append_option(command, "--model", request.model)
+        _append_option(command, "--language", request.language)
     else:
         _append_option(command, "--model", request.model or DEFAULT_MODEL_ID)
         _append_option(command, "--region", request.region)
@@ -284,6 +330,8 @@ def build_transcribe_command(
     _append_option(command, "--length-limit", request.length_limit)
     _append_option(command, "--max-len", request.max_len)
     _append_option(command, "--min-len", request.min_len)
+    _append_option(command, "--max-words", request.max_words)
+    _append_option(command, "--min-words", request.min_words)
     _append_option(command, "--gap-split", request.gap_split)
     # 始终显式下发（含空串）：空串表示共享保留符号配置要求完全不剥尾。
     command.extend(["--strip-tail-punct", request.strip_tail_punct])
@@ -365,7 +413,7 @@ def run_transcription(
 ) -> TranscriptionResult:
     if cancel_event and cancel_event.is_set():
         raise TranscriptionCancelledError
-    paths = build_output_paths(request.srt_path)
+    paths = build_output_paths(request.srt_path, request.media_path)
     paths.srt.parent.mkdir(parents=True, exist_ok=True)
     env = _child_environment(
         os.environ,
@@ -374,6 +422,7 @@ def run_transcription(
         request.provider,
         request.model_cache_root,
         request.engine,
+        request.base_url,
     )
     command = build_transcribe_command(request, executable=executable, frozen=frozen)
     process = popen_process_tree(
@@ -407,6 +456,8 @@ def run_transcription(
     html_path = None
     if request.generate_html:
         try:
+            # HTML 落 media 对应的 _maw 根；该目录可能尚未创建（srt 仍在媒体旁时）。
+            paths.html.parent.mkdir(parents=True, exist_ok=True)
             html_path = render_editor_html(paths.json, request.media_path, paths.html, request.ui_language)
         except Exception as error:  # HTML is optional; preserve successful SRT/JSON outputs.
             (on_event or _ignore)(f"[warning] 编辑器 HTML 生成失败，SRT/JSON 已保留：{error}")
@@ -512,6 +563,7 @@ def _child_environment(
     provider: str = "qwen",
     model_cache_root: str = "",
     engine: str = "",
+    base_url: str = "",
 ) -> dict[str, str]:
     env = dict(parent)
     # The bundled local-runtime Python is not itself PyInstaller-frozen, so
@@ -548,6 +600,11 @@ def _child_environment(
         secret_key = parent.get("TENCENT_SECRET_KEY") or load_env(DEFAULT_ENV_PATH).get("TENCENT_SECRET_KEY", "")
         if secret_key:
             env["TENCENT_SECRET_KEY"] = secret_key
+    elif provider == "openai":
+        if api_key:
+            env["MAW_OPENAI_ASR_API_KEY"] = api_key
+        if base_url:
+            env["MAW_OPENAI_ASR_BASE_URL"] = base_url
     else:
         if api_key:
             env["DASHSCOPE_API_KEY"] = api_key

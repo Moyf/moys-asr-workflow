@@ -20,6 +20,67 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('OpenAI ASR exposes official models and a conditional Custom model input', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#provider').selectOption('openai');
+
+  await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI（及兼容接口）');
+  await expect(page.locator('#model')).toHaveValue('whisper-1');
+  await expect(page.locator('#model option')).toHaveCount(4);
+  expect(await page.locator('#model option').allTextContents()).toEqual([
+    'whisper-1',
+    'gpt-4o-transcribe',
+    'gpt-4o-mini-transcribe',
+    '自定义（Custom）',
+  ]);
+  await expect(page.locator('#openaiModelField')).toBeHidden();
+  await expect(page.locator('#openKeyUrl')).toHaveText('OpenAI 官方');
+  await expect(page.locator('#keyHintSuffix')).toHaveText('获取 API Key');
+
+  await page.locator('#model').selectOption('custom-asr');
+  await expect(page.locator('#openaiModelField')).toBeVisible();
+  await expect(page.locator('label[for="openaiModel"]')).toHaveText('自定义 ASR 模型名');
+  await page.locator('#openaiModel').fill('my-custom-model');
+  await page.locator('#model').selectOption('gpt-4o-mini-transcribe');
+  await expect(page.locator('#openaiModelField')).toBeHidden();
+  await page.locator('#model').selectOption('custom-asr');
+  await expect(page.locator('#openaiModel')).toHaveValue('my-custom-model');
+});
+
+test('OCR video source follows a newly dropped video media', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxOcrTab').click();
+  await page.locator('#ocrVideoPath').fill('D:\\Demo\\1.mov');
+  await page.evaluate(() => {
+    const jsonPath = document.getElementById('jsonPath');
+    jsonPath.value = 'D:\\Demo\\previous.mosp';
+    jsonPath.dispatchEvent(new Event('input', { bubbles: true }));
+    window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path: 'D:\\Demo\\new-video.mp4' });
+  });
+
+  await expect(page.locator('#mediaPath')).toHaveValue('D:\\Demo\\new-video.mp4');
+  await expect(page.locator('#ocrVideoPath')).toHaveValue('D:\\Demo\\new-video.mp4');
+  await expect.poll(async () => page.evaluate(() => {
+    const step = window.MAWLauncher.config?.postprocessAutoPlan?.steps?.find((item) => item.id === 'ocr');
+    return [step?.videoPath || '', step?.videoPathMode || ''];
+  })).toEqual(['', 'auto']);
+});
+
+test('automatic OCR video source is not persisted as a manual override', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#mediaPath').fill('D:\\Demo\\1.mov');
+
+  const ocrStep = await page.evaluate(() => window.MAWLauncher.getAutoPostprocessPayload()
+    .steps.find((step) => step.id === 'ocr'));
+  expect(ocrStep.videoPath).toBe('');
+  expect(ocrStep.videoPathMode).toBe('auto');
+
+  await page.evaluate(() => {
+    window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path: 'D:\\Demo\\2.mov' });
+  });
+  await expect(page.locator('#ocrVideoPath')).toHaveValue('D:\\Demo\\2.mov');
+});
+
 test('translation merge option follows manual and automatic translation controls', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxLlmTab').click();
@@ -61,6 +122,34 @@ test('translation merge option follows manual and automatic translation controls
   await page.locator('#autoStepTranslate').uncheck();
   await expect(page.locator('#autoTranslateTargetField')).toBeHidden();
   await expect(page.locator('#autoTranslateMergeField')).toBeHidden();
+});
+
+test('Utilities use a vertical tab rail with arrow-key navigation', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+
+  await expect(page.locator('#toolboxUtilitiesContent')).toBeVisible();
+  await expect(page.locator('#toolboxUtilitiesTabList')).toHaveAttribute('aria-orientation', 'vertical');
+  const layout = await page.locator('#toolboxUtilitiesContent').evaluate((element) => {
+    const style = getComputedStyle(element);
+    const tabListStyle = getComputedStyle(element.querySelector('.toolbox-utility-tab-list'));
+    return {
+      columns: style.gridTemplateColumns.split(' ').length,
+      tabColumnCount: tabListStyle.gridTemplateColumns.split(' ').length,
+    };
+  });
+  expect(layout.columns).toBe(2);
+  expect(layout.tabColumnCount).toBe(1);
+
+  await page.locator('#toolboxAlignmentTab').focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#toolboxWaveformTab')).toBeFocused();
+  await expect(page.locator('#toolboxWaveformPanel')).toBeVisible();
+  await expect(page.locator('#toolboxAlignmentPanel')).toBeHidden();
+
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#toolboxAlignmentTab')).toBeFocused();
+  await expect(page.locator('#toolboxAlignmentPanel')).toBeVisible();
 });
 
 test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {
@@ -239,6 +328,73 @@ test('update download can be cancelled and leaves the settings action recoverabl
   await expect(page.locator('#updateSettingsStatus')).toContainText('更新下载已取消');
 });
 
+test('segmentation settings live under Processing and validation opens that tab', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsProcessingTab').click();
+  await expect(page.locator('#settingsProcessingPanel')).toBeVisible();
+  await expect(page.locator('#segmentationSettingsSection')).toBeVisible();
+  await page.locator('#maxLen').fill('2');
+  await page.locator('#minLen').fill('5');
+  await page.locator('#settingsClose').click();
+
+  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.locator('#srtPath').fill('D:\\Demo\\clip.srt');
+  await page.locator('#start').click();
+
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#settingsProcessingTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#segmentationSettingsSection')).toBeVisible();
+  await expect(page.locator('#maxLenError')).toHaveText('切句参数无效：请输入整数，并确保最大字数不小于短句合并阈值。');
+});
+
+test('does not start local transcription while model status is still checking', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#provider').selectOption('local');
+  await expect(page.locator('#localModelPanel')).toBeVisible();
+  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.locator('#srtPath').fill('D:\\Demo\\clip.local.srt');
+
+  await page.evaluate(() => {
+    const config = window.MAWLauncher.config;
+    config.localRuntime = { status: 'ready', ready: true, path: '', pythonPath: '' };
+    const local = config.providers.find((item) => item.id === 'local');
+    const model = local.models.find((item) => item.id === document.querySelector('#model').value);
+    model.localStatus = { status: 'checking', installed: false, canPrepare: false };
+  });
+
+  await page.locator('#start').click();
+  await expect(page.locator('#status')).toHaveText('正在检查本地模型……');
+  await expect(page.locator('#start')).toBeVisible();
+  await expect(page.locator('#stop')).toBeHidden();
+});
+
+test('keeps local runtime events working after the page learns that installation is in progress', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#provider').selectOption('local');
+  await expect(page.locator('#localRuntimePanel')).toBeVisible();
+
+  await page.evaluate(() => {
+    const config = window.MAWLauncher.config;
+    config.localRuntime = { status: 'installing', ready: false, path: 'D:\\Demo\\local-runtime', pythonPath: '' };
+    window.MAWLauncher.onBackendEvent({
+      type: 'localRuntimeProgress',
+      percent: 37,
+      message: '正在安装本地运行环境……',
+    });
+  });
+  await expect(page.locator('#localRuntimeProgress')).toBeVisible();
+  await expect.poll(() => page.locator('#localRuntimeProgressBar').getAttribute('style')).toContain('37%');
+  await expect(page.locator('#localRuntimeProgressMessage')).toHaveText('正在安装本地运行环境……');
+
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'localRuntimeReady' }));
+  await expect(page.locator('#status')).toHaveText('本地模型支持已安装完成');
+});
+
 test('LLM settings refill the saved key and save only after a successful connection test', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxLlmTab').click();
@@ -325,6 +481,78 @@ test('Custom provider labels and missing-key errors follow the selected language
   await expect(page.locator('#llmApiKeyError')).toHaveText('');
   await expect(page.locator('#llmApiKey')).not.toHaveClass(/invalid/);
 });
+
+test('LLM HTTP failures give provider-aware actions without showing the key', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#openLlmSettings').click();
+  await page.locator('#llmApiKey').fill('test-only-key');
+  await page.evaluate(() => {
+    window.__llmFailureStatus = 401;
+    window.__llmFailureProvider = 'deepseek';
+    window.MAWLauncher.callBackend = async (method) => {
+      if (method === 'test_postprocess_connection') {
+        return {
+          ok: false,
+          field: 'postprocessProvider',
+          code: 'postprocess_connection_failed',
+          httpStatus: window.__llmFailureStatus,
+          providerId: window.__llmFailureProvider,
+          operation: 'connection test',
+        };
+      }
+      if (method === 'get_postprocess_models') {
+        return {
+          ok: false,
+          field: 'postprocessModel',
+          code: 'postprocess_models_failed',
+          httpStatus: window.__llmFailureStatus,
+          providerId: window.__llmFailureProvider,
+          operation: 'model list',
+        };
+      }
+      return { ok: true };
+    };
+  });
+
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('认证失败（HTTP 401');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：DeepSeek 官网');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('官方控制台');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('自定义（兼容 OpenAI）');
+  await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('正确配置模型名');
+  await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('test-only-key');
+
+  await page.evaluate(() => { window.__llmFailureStatus = 403; });
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('供应商拒绝了请求（HTTP 403');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('账号或模型有权限');
+
+  await page.evaluate(() => { window.__llmFailureStatus = 404; });
+  await page.locator('#getLlmModels').click();
+  await expect(page.locator('#llmModelError')).toContainText('接口或模型不存在（HTTP 404');
+  await expect(page.locator('#llmModelError')).toContainText('/models');
+  await expect(page.locator('#llmModelError')).not.toContainText('官方控制台');
+  await expect(page.locator('#llmModelError')).not.toContainText('test-only-key');
+
+  await page.evaluate(() => { window.__llmFailureStatus = 429; });
+  await page.locator('#getLlmModels').click();
+  await expect(page.locator('#llmModelError')).toContainText('请求被限流或额度暂时耗尽（HTTP 429');
+  await expect(page.locator('#llmModelError')).toContainText('稍后重试');
+  await expect(page.locator('#llmModelError')).not.toContainText('官方控制台');
+  await expect(page.locator('#llmModelError')).not.toContainText('HTTP 404');
+
+  await page.evaluate(() => { window.__llmFailureStatus = 401; window.__llmFailureProvider = 'custom'; });
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('认证失败（HTTP 401');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：自定义（兼容 OpenAI）');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL、API Key 是否来自同一服务商');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('正确配置模型名');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('请勿在错误报告中粘贴你的个人 API Key');
+  await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('官方控制台');
+});
+
 test('runtime errors show an actionable notice outside the log', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
@@ -376,6 +604,27 @@ test('runtime errors show an actionable notice outside the log', async ({ page }
   await expect(notice).toBeHidden();
   await expect(page.locator('#status')).toBeVisible();
   await expect(page.locator('#status')).toContainText('未找到 FFmpeg / FFprobe');
+});
+
+test('provider HTTP failures keep retry guidance and original transcription discoverable', async ({ page }) => {
+  await openLauncher(page);
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+    type: 'error',
+    code: 'postprocess_provider_response',
+    detail: '后处理步骤 translate 失败：LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.',
+    canRetry: true,
+    failedStep: 'translate',
+    originalSrtPath: 'D:\\Demo\\clip.srt',
+    originalProjectPath: 'D:\\Demo\\clip.mosp',
+  }));
+
+  await expect(page.locator('#errorNotice')).toBeVisible();
+  await expect(page.locator('#errorNoticeMessage')).toContainText('这不是网络中断');
+  await expect(page.locator('#errorNoticeMessage')).toContainText('原始转写仍然保留');
+  await expect(page.locator('#retryPostprocess')).toBeVisible();
+  await expect(page.locator('#openFolder')).toBeVisible();
+  await expect(page.locator('#srtPath')).toHaveValue('D:\\Demo\\clip.srt');
+  await expect(page.locator('#jsonPath')).toHaveValue('D:\\Demo\\clip.mosp');
 });
 
 test('error notice and status remain above the fixed footer at desktop and narrow widths', async ({ page }) => {

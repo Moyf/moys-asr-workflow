@@ -18,6 +18,9 @@ DEFAULT_ENV_PATH: Final = default_env_path()
 EXAMPLE_ENV_PATH: Final = ROOT / ".env.example"
 QWEN_AUDIO_MODEL_ID: Final = "qwen-audio-3.0-asr-flash-filetrans"
 QWEN3_ASR_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
+OPENAI_ASR_MODEL_ID: Final = "custom-asr"
+OPENAI_ASR_DEFAULT_BASE_URL: Final = "https://api.openai.com/v1"
+OPENAI_ASR_DEFAULT_MODEL: Final = "whisper-1"
 # qwen-audio-3.0 是最新发布的模型，作为各入口默认；旧 qwen3-asr 置底保留（后续可能移除）。
 DEFAULT_MODEL_ID: Final = QWEN_AUDIO_MODEL_ID
 
@@ -78,6 +81,11 @@ class EffectiveConfig:
     gui_lang: str
     sticker_dir: str
     show_rare_langs: bool = False
+    # 输出文件目录与命名（Launcher「通用 → 文件输出」）：
+    # output_naming.subfolder_prefs() 直接读取这两个字段。
+    output_subfolder: bool = False
+    per_video_subfolder: bool = False
+    attach_model_name: bool = True
     last_model: str | None = None
     last_language: str | None = None
     model_cache_root: str = ""
@@ -281,6 +289,34 @@ QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
     ),
 )
 
+OPENAI_ASR_MODELS: Final[tuple[ModelConfig, ...]] = (
+    ModelConfig(
+        id="whisper-1",
+        label="whisper-1",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        languages=LANGUAGES,
+    ),
+    ModelConfig(
+        id="gpt-4o-transcribe",
+        label="gpt-4o-transcribe",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        languages=LANGUAGES,
+    ),
+    ModelConfig(
+        id="gpt-4o-mini-transcribe",
+        label="gpt-4o-mini-transcribe",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        languages=LANGUAGES,
+    ),
+    ModelConfig(
+        id=OPENAI_ASR_MODEL_ID,
+        label="自定义（Custom）",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        note="选择后填写自定义 ASR 模型名",
+        languages=LANGUAGES,
+    ),
+)
+
 SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
         id="stt-async-v5",
@@ -371,8 +407,8 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         id="moss-transcribe-diarize-local",
         label="MOSS Transcribe-Diarize 0.9B（无字词时间码）",
         env_key="",
-        # 无字词级时间码是 MOSS 输出契约的硬限制，超长段重切只能按字符权重
-        # 估算子段时间（见 docs/LOCAL_ASR.md），必须在模型说明里提前告知。
+        # 无字词级时间码是 MOSS 输出契约的硬限制；MAW 不伪造 items，也不对
+        # 模型段做字数硬切，必须在模型说明里提前告知。
         note="端到端转写与说话人分离；仅段级时间戳，无字词级时间码；需要独立的 Transformers 5.x 运行环境，建议 CUDA",
         supports_speaker=True,
         languages=LANGUAGES,
@@ -444,6 +480,16 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         hidden=True,
     ),
     ProviderConfig(
+        id="openai",
+        label="OpenAI（及兼容接口）",
+        key_url="https://platform.openai.com/api-keys",
+        models=OPENAI_ASR_MODELS,
+        regions=(),
+        languages=LANGUAGES,
+        common_languages=QWEN_COMMON_LANGUAGES,
+        note="需要返回 segments 或 words 时间戳，才能生成可精确对轨的字幕。",
+    ),
+    ProviderConfig(
         id="local",
         label="本地模型（Beta）",
         key_url="",
@@ -502,6 +548,14 @@ def normalize_zoom_percent(value: object) -> int:
     return min(150, max(80, round(parsed / 5) * 5))
 
 
+def _env_bool(value: str, default: bool = False) -> bool:
+    """解析 .env 布尔键；空值（未配置）时返回传入的默认值。"""
+    normalized = value.strip().lower()
+    if not normalized:
+        return default
+    return normalized in ("1", "true", "yes", "on")
+
+
 def save_env(path: Path, updates: Mapping[str, str]) -> None:
     for key, value in updates.items():
         if "\x00" in value or (value and value.splitlines() != [value]):
@@ -547,6 +601,9 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         gui_lang=_gui_language(pick("MAW_GUI_LANG", "zh")),
         sticker_dir=pick("STICKER_DIR"),
         show_rare_langs=pick("MAW_GUI_SHOW_RARE_LANGS").strip().lower() in ("1", "true", "yes", "on"),
+        output_subfolder=_env_bool(pick("MAW_GUI_OUTPUT_SUBFOLDER")),
+        per_video_subfolder=_env_bool(pick("MAW_GUI_PER_VIDEO_SUBFOLDER")),
+        attach_model_name=_env_bool(pick("MAW_GUI_ATTACH_MODEL_NAME"), default=True),
         last_model=pick_optional("MAW_GUI_LAST_MODEL"),
         last_language=pick_optional("MAW_GUI_LAST_LANGUAGE"),
         model_cache_root=pick("MAW_MODEL_CACHE_ROOT").strip(),

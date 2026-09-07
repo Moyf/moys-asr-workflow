@@ -26,7 +26,7 @@ Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版�
 
 ## 核心能力
 
-- 使用 Qwen / Fun-ASR / Soniox / 腾讯云录音文件识别转写，生成 SRT 与 `.mosp` 工程。
+- 使用 Qwen / Fun-ASR / Soniox / 腾讯云录音文件识别，或 OpenAI（及兼容接口）转写，生成 SRT 与 `.mosp` 工程。
 - MAWE Server 编辑器支持波形定位、拆分合并、静音空隙处理、画面预览和多种导出格式。
 - Windows 套件提供优先使用的 MOSE Electron 独立编辑器；它与 MAW 共用同一 Server、`.mosp` 工程、波形、媒体和导出契约。Launcher 找不到 MOSE 时会自动回退到 Server 版。
 - MAWE 支持可选的多重字幕：拖入第二条字幕作为副轨，支持主副字幕交换、绑定/解绑、联动编辑、跨轨道吸附，以及 `G` / `Shift+G` / `H` / `B` 快捷操作。

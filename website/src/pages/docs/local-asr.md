@@ -137,9 +137,11 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
 
 ## 分段整理（字数上限 / 停顿切句）
 
-Launcher 与 CLI 的 `--max-len`（中文单条最大字符数，默认 18）、`--min-len`（短句合并阈值，默认 5）、`--gap-split`（停顿切句毫秒，默认 800）对所有本地引擎（Qwen3-ASR、FunASR、MOSS）同样生效。引擎返回的分段中超过最大字数的条目会按既有切句逻辑重组：优先句号等强标点边界，其次逗号等弱标点，最后按字数硬切；组内过短片段按阈值合并。
+Launcher 与 CLI 的 `--max-len`（字符型每条最大字符数，默认 18）、`--min-len`（字符型短句合并阈值，默认 5）、`--max-words`（单词型每条最大单词数，默认 13）、`--min-words`（单词型短句合并阈值，默认 3）和 `--gap-split`（停顿切句毫秒，默认 800）会传给转写器。已知语言时由统一的 `split_mode` 选择字符型或单词型规则；没有语言元数据时，MAW 优先看文字脚本，能确认 CJK 就用字符型，无法确认的拉丁文本默认用单词型，但不会把它冒充成英语。
 
-MOSS 模型输出契约只有"段级"一对 start/end 时间戳（`[start][Sxx]文本[end]`），没有字词级时序。因此拆分超长段时，子段内部时间是按字符权重（CJK=1、其他=0.5）线性估算的，段首尾保持真实时间码；需要更精确的字级时间可考虑后续接入 Qwen3-ForcedAligner 做强制对齐（尚未实现）。
+MOSS 模型输出契约只有"段级"一对 start/end 时间戳（`[start][Sxx]文本[end]`），没有字词级时序。因此 MOSS 不再把整段伪造成字符/单词 `items`，也不对它做基于字数的硬切；每个模型段原样成为一条字幕。需要更细的时间码时，仍需后续接入 Qwen3-ForcedAligner 做强制对齐（尚未实现）。
+
+本地生成的 `.mosp` 会在顶层写入 `language`、`language_source`、`split_mode` 和 `timestamp_granularity`。例如 MOSS 英文输出若模型没有返回语言信息，可能是 `language: ""`、`language_source: "unknown"`、`split_mode: "word"`、`timestamp_granularity: "segment"`；这表示“按单词理解文本，但没有单词时间码”，不是识别成了英语。
 
 与云端管线默认行为一致，本地引擎输出的每条字幕结尾的全角逗号、句号会被去除（`！`、`？`保留）。
 

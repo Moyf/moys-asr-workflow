@@ -312,7 +312,7 @@
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
-        { id: "ocr", enabled: false, videoPath: "", regionMode: "full", regionX1: 0, regionY1: 0, regionX2: 100, regionY2: 100, threshold: 0.5, report: false },
+        { id: "ocr", enabled: false, videoPath: "", videoPathMode: "", regionMode: "full", regionX1: 0, regionY1: 0, regionX2: 100, regionY2: 100, threshold: 0.5, report: false },
         { id: "translate", enabled: false, providerId: "deepseek", target: "zh", mergeBilingual: false, customPrompt: "" },
       ],
     };
@@ -331,7 +331,7 @@
   function postprocessErrorText(result) {
     const detail = result?.detail || result?.error || "";
     return window.MAWLauncher.errorText
-      ? window.MAWLauncher.errorText(result?.code || "", detail)
+      ? window.MAWLauncher.errorText(result?.code || "", detail, result)
       : (detail || t("failed"));
   }
 
@@ -533,17 +533,11 @@
     return VIDEO_EXTS.has(extension(mediaPath)) ? mediaPath : "";
   }
 
-  function ocrSourcePath() {
-    return $("toolboxInputPath").value.trim() || autoSourcePath();
-  }
 
-  function ocrSourceIsProject() {
-    const source = ocrSourcePath();
-    return Boolean(source) && extension(source) !== ".srt";
-  }
 
   function syncOcrVideo() {
-    if (!ocrVideoManual) $("ocrVideoPath").value = ocrSourceIsProject() ? "" : autoOcrVideoPath();
+    // A newly selected video is the most concrete OCR source. Do not let a stale project path from the previous transcription suppress it.
+    if (!ocrVideoManual) $("ocrVideoPath").value = autoOcrVideoPath();
   }
 
   function renderOcrRegion() {
@@ -620,7 +614,7 @@
   }
 
   function activeToolboxView() {
-    return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");
+    return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesContent");
   }
 
   function selectToolboxSection(section) {
@@ -632,7 +626,9 @@
       tab.tabIndex = active ? 0 : -1;
     });
     $("toolboxPostprocessView").classList.toggle("hidden", section !== "postprocess");
+    $("toolboxUtilitiesContent").classList.toggle("hidden", section !== "utilities");
     $("toolboxUtilitiesView").classList.toggle("hidden", section !== "utilities");
+    $("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities");
     const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");
     if (activeTab) selectTool(activeTab.dataset.tool);
   }
@@ -1018,6 +1014,7 @@
     try {
       const result = await bridge("generate_waveform_project", {
         mediaPath,
+        audioTrack: window.MAWLauncher.getAudioTrackForMedia?.(mediaPath),
         generateSpectral: $("toolboxGenerateSpectral").checked,
       });
       if (!result.ok) {
@@ -1318,7 +1315,7 @@
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
-        { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: $("ocrVideoPath").value.trim(), ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
+        { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: ocrVideoManual ? $("ocrVideoPath").value.trim() : "", videoPathMode: ocrVideoManual ? "manual" : "auto", ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
         { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId, target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), customPrompt: getLlmPrompt(autoLlmOperation("translate")) },
       ],
     };
@@ -1513,8 +1510,13 @@
       if (typeof prompt === "string") llmPrompts[autoLlmOperation(stepId)] = prompt;
     });
     const ocr = byId.get("ocr") || {};
-    $("ocrVideoPath").value = String(ocr.videoPath || "");
-    ocrVideoManual = Boolean($("ocrVideoPath").value.trim());
+    const configuredVideoPath = String(ocr.videoPath || "").trim();
+    const videoPathMode = String(ocr.videoPathMode || "").trim();
+    // Older plans persisted the auto-filled path as if it were a manual override.
+    // Treat an unspecified mode as automatic so that a later media drop can recover
+    // from stale paths; choosing a video now writes the explicit manual mode.
+    ocrVideoManual = videoPathMode === "manual" && Boolean(configuredVideoPath);
+    $("ocrVideoPath").value = ocrVideoManual ? configuredVideoPath : autoOcrVideoPath();
     $("ocrRegionMode").value = ocr.regionMode === "custom" ? "custom_region" : String(ocr.regionMode || "full");
     $("ocrRegionX1").value = String(ocr.regionX1 ?? 0);
     $("ocrRegionY1").value = String(ocr.regionY1 ?? 0);
@@ -1596,7 +1598,7 @@
       return;
     }
     const videoPath = ocrVideoManual ? $("ocrVideoPath").value.trim() : "";
-    const fallbackVideoPath = !ocrVideoManual && !ocrSourceIsProject() ? autoOcrVideoPath() : "";
+    const fallbackVideoPath = !ocrVideoManual ? autoOcrVideoPath() : "";
     if (videoPath && !VIDEO_EXTS.has(extension(videoPath))) {
       const message = t("toolbox_ocr_video_reject");
       setFieldError("ocrVideoPath", message);
@@ -2227,8 +2229,16 @@
     if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();
     syncAlignmentNames();
   };
-  window.MAWLauncher.onMediaPathChanged = () => {
+  window.MAWLauncher.onMediaPathChanged = ({ refreshOcrVideo = false } = {}) => {
+    if (refreshOcrVideo) {
+      ocrVideoManual = false;
+      $("ocrVideoPath").value = autoOcrVideoPath();
+    }
     syncPaths();
+    if (refreshOcrVideo) {
+      renderAutoPostprocessState();
+      persistAutoPlanSoon();
+    }
     void refreshAudioTracks();
   };
   function applyBatchModeLocks() {

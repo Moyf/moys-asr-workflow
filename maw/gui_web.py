@@ -14,7 +14,7 @@ import tempfile
 import time
 import webbrowser
 from functools import wraps
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -23,25 +23,46 @@ from threading import Event, Lock
 from typing import BinaryIO, Final, final
 
 from maw.app_paths import default_app_data_root, default_emoji_font_path
-from maw.ffmpeg import FfmpegTools, resolve_ffmpeg_tools
+from maw.ffmpeg import FfmpegTools, media_duration_seconds, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
-from maw.waveform import is_waveform_payload
-from maw.gui_config import DEFAULT_ENV_PATH, DEFAULT_MODEL_ID, MODELS, PROVIDERS, ModelConfig, ProviderConfig, _gui_theme, api_key_for_provider, effective_config, masked_secret, model_by_label, provider_by_id, provider_for_model, save_env
+from maw.gui_config import (
+    DEFAULT_ENV_PATH,
+    DEFAULT_MODEL_ID,
+    MODELS,
+    OPENAI_ASR_MODEL_ID,
+    OPENAI_ASR_DEFAULT_BASE_URL,
+    OPENAI_ASR_DEFAULT_MODEL,
+    PROVIDERS,
+    ModelConfig,
+    ProviderConfig,
+    _gui_theme,
+    api_key_for_provider,
+    effective_config,
+    load_env,
+    masked_secret,
+    model_by_label,
+    provider_by_id,
+    provider_for_model,
+    save_env,
+)
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
-from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
+from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee
 from maw.local_runtime import (
     LocalRuntimeCancelled,
     LocalRuntimeError,
+    LocalRuntimeStatus,
     install_local_runtime,
     managed_runtime_status,
     resolve_model_cache_root,
 )
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import resolve_project_media
-from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
+from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import read_project, read_srt
+from maw.project_io import write_mosp
 from maw.project import normalize_project
 from maw.postprocess_ffmpeg import (
     BurnSubtitleRequest,
@@ -73,7 +94,8 @@ from maw.postprocess_pipeline import (
 from maw.postprocess_pipeline import PostprocessPipelineError
 from maw.script_alignment import normalize_gap_remove_settings
 from maw.text_conversion import TextConversionUnavailable, normalize_text_conversion_mode
-from maw.ocr_runtime import OCR_MODEL_ID, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, recover_ocr_runtime_install, run_ocr_in_runtime
+from maw.ocr_runtime import OCR_MODEL_ID, OCR_MODEL_IDS, OCR_MODEL_LABELS, OCR_MODEL_TYPES, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, recover_ocr_runtime_install, run_ocr_in_runtime
+from maw.waveform import is_waveform_payload
 from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
 from maw.updater import UpdateCancelled, UpdateClient, UpdateError
@@ -89,8 +111,14 @@ MAW_FILE_TYPE = "Moy.MAW.Project"
 MOSE_USER_CHOICE_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.mosp\UserChoice"
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
+# 编辑器健康检查探测轻量 JSON 端点：首页渲染会把全量工程数据内联进页面，
+# 大工程（长媒体内嵌波形）单次渲染可达数秒，不能作为就绪判据。
+EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
+# 单次探测超时与总超时分离：后台加载工程期间 GIL 繁忙，轻量端点也可能
+# 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
+EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.5.3"
+BUNDLED_APP_VERSION = "1.6.0-beta.1"
 # MOSE ships inside the same suite as MAW, so its registry marker must follow
 # the public project version rather than retaining the prototype 0.1.x value.
 MOSE_VERSION = BUNDLED_APP_VERSION
@@ -102,6 +130,8 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "media_not_found": "Media file does not exist.",
     "server_media_missing": "Project media is missing, unsupported, or ambiguous. Choose media manually.",
     "api_key_missing": "API key is required.",
+    "custom_asr_model_missing": "请填写自定义 ASR 模型名。",
+    "custom_asr_base_url_missing": "请填写自定义 ASR Base URL。",
     "local_runtime_missing": "本地模型运行时未安装。",
     "local_runtime_install_failed": "本地模型运行环境安装失败。",
     "local_runtime_cancelled": "本地模型运行环境安装已取消。",
@@ -145,6 +175,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "custom_prompt_required": "A custom prompt is required.",
     "postprocess_config_invalid": "自动后处理配置不完整。",
     "postprocess_failed": "转写已完成，但自动后处理失败。",
+    "postprocess_provider_response": "LLM provider returned an HTTP error; this is not a network outage.",
     "postprocess_cancelled": "自动后处理已取消，原始转写产物仍然保留。",
     "waveform_unavailable": "Waveform data could not be embedded.",
     "waveform_generation_failed": "Waveform project generation failed.",
@@ -170,6 +201,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "installer_start_failed": "无法启动 MAW 更新安装程序。",
     "update_busy": "请先完成当前任务，再更新 MAW。",
     "state_write_failed": "无法保存更新状态，请检查应用数据目录权限。",
+    "audio_tracks_unavailable": "Audio tracks could not be inspected.",
 }
 
 
@@ -545,6 +577,19 @@ def default_paths() -> LauncherPaths:
     )
 
 
+def _independent_app_child_environment() -> dict[str, str]:
+    """为独立运行的 MAW 子进程构建环境。
+
+    PyInstaller 6.9+ 默认把通过同一冻结程序启动的进程当作 worker。
+    编辑器 Server 是独立 MAW 实例，必须重置 bootloader 环境；源码模式
+    和外部 Python 解释器维持原行为。
+    """
+    environment = _child_environment(os.environ, "", provider="")
+    if getattr(sys, "frozen", False):
+        environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return environment
+
+
 # ---- Linux keycap 表情字体（Noto Color Emoji）----
 # 段落标题的 keycap 表情（1️⃣ 等）由「数字 + U+FE0F + U+20E3」组成，需要彩色 emoji 字体
 # 完整覆盖才可正常成型；部分 Linux 发行版（如 SteamOS 的 Twemoji）缺少 U+FE0F，会渲染成
@@ -721,7 +766,6 @@ class LauncherApi:
 
     def get_config(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         config = effective_config(self.paths.env_path)
-        ocr_runtime = self._ocr_runtime_status()
         visible_providers = tuple(item for item in PROVIDERS if not item.hidden)
         default_provider = visible_providers[0] if visible_providers else PROVIDERS[0]
         remembered_model = config.last_model or MODELS[0].id
@@ -734,6 +778,45 @@ class LauncherApi:
             visible_models[0] if visible_models else MODELS[0],
         )
         selected_api_key = api_key_for_provider(provider.id, self.paths.env_path)
+        stored_env = load_env(self.paths.env_path)
+        ocr_runtime_root = effective_config_value(self.paths.env_path, "MAW_OCR_RUNTIME_ROOT")
+        # Do not inspect managed runtimes or model caches on the critical
+        # get_config request.  A large Hugging Face/ModelScope cache can make
+        # recursive status detection take seconds before the Launcher is
+        # allowed to paint its first usable frame.  The dedicated status
+        # endpoints below perform the real checks after the shell is visible.
+        local_runtime = {
+            "status": "checking",
+            "ready": False,
+            "path": "",
+            "pythonPath": "",
+            "modelCachePath": config.model_cache_root,
+            "detail": "",
+        }
+        ocr_runtime = {
+            "status": "checking",
+            "ready": False,
+            "path": ocr_runtime_root,
+            "pythonPath": "",
+            "detail": "",
+            "runtimeVersion": "",
+            "modelId": OCR_MODEL_ID,
+            "modelLabel": OCR_MODEL_LABELS.get(OCR_MODEL_ID, ""),
+            "modelInstalled": False,
+            "modelPath": "",
+        }
+        ocr_models = [
+            {
+                "id": model_id,
+                "label": OCR_MODEL_LABELS[model_id],
+                "modelType": OCR_MODEL_TYPES[model_id],
+                "status": "checking",
+                "installed": False,
+                "path": "",
+                "detail": "",
+            }
+            for model_id in OCR_MODEL_IDS
+        ]
         return {
             "providerId": provider.id,
             "modelId": selected_model.id,
@@ -741,24 +824,41 @@ class LauncherApi:
             "maskedApiKey": masked_secret(selected_api_key),
             "region": config.region,
             "workspaceId": config.workspace_id,
+            "openaiBaseUrl": os.environ.get("MAW_OPENAI_ASR_BASE_URL") or stored_env.get("MAW_OPENAI_ASR_BASE_URL", OPENAI_ASR_DEFAULT_BASE_URL),
+            "openaiModel": os.environ.get("MAW_OPENAI_ASR_MODEL") or stored_env.get("MAW_OPENAI_ASR_MODEL", OPENAI_ASR_DEFAULT_MODEL),
             "language": config.language,
             "guiLang": config.gui_lang,
             "appVersion": _app_version(self.paths),
             "stickerDir": config.sticker_dir,
             "showRareLangs": config.show_rare_langs,
+            "outputSubfolder": config.output_subfolder,
+            "perVideoSubfolder": config.per_video_subfolder,
+            "attachModelName": config.attach_model_name,
             "lastModel": config.last_model,
             "lastLanguage": config.last_language,
             "theme": config.theme,
-            "localRuntime": managed_runtime_status(config.model_cache_root).to_payload(),
-            "ocrRuntime": ocr_runtime.to_payload(),
-            "ocrModels": ocr_models_payload(ocr_runtime),
+            "localRuntime": local_runtime,
+            "ocrRuntime": ocr_runtime,
+            "ocrModels": ocr_models,
             "ocrModelId": OCR_MODEL_ID,
             "modelCacheRoot": config.model_cache_root,
-            "models": [_model_payload(item, model_cache_root=config.model_cache_root) for item in provider.models],
+            "models": [
+                _model_payload(
+                    item,
+                    model_cache_root=config.model_cache_root,
+                    include_local_status=False,
+                )
+                for item in provider.models
+            ],
             "regions": [{"id": value, "label": label} for value, label in provider.regions],
             "languages": [{"id": value, "label": label} for value, label in provider.languages],
             "providers": [
-                _provider_payload(item, self.paths.env_path, config.model_cache_root)
+                _provider_payload(
+                    item,
+                    self.paths.env_path,
+                    config.model_cache_root,
+                    include_local_status=False,
+                )
                 for item in visible_providers
             ],
             "postprocessProviders": _postprocess_provider_payloads(self.paths.env_path),
@@ -937,7 +1037,7 @@ class LauncherApi:
             default_srt_path(Path(media_text), provider=provider_id, model=model_id, test_run=test_run)
             if media_text else Path()
         )
-        selected = unique_output_path(requested) if media_text else requested
+        selected = unique_output_path(requested, Path(media_text)) if media_text else requested
         return {
             "ok": bool(media_text),
             "path": str(selected) if media_text else "",
@@ -965,6 +1065,13 @@ class LauncherApi:
             updates["DASHSCOPE_REGION"] = str(payload.get("region") or "beijing")
             updates["DASHSCOPE_DEFAULT_LANGUAGE"] = str(payload.get("language") or "")
             updates["DASHSCOPE_WORKSPACE_ID"] = str(payload.get("workspaceId") or "").strip()
+        elif provider.id == "openai":
+            updates["MAW_OPENAI_ASR_BASE_URL"] = str(payload.get("openaiBaseUrl") or OPENAI_ASR_DEFAULT_BASE_URL).strip()
+            updates["MAW_OPENAI_ASR_MODEL"] = (
+                model.id
+                if model.id != OPENAI_ASR_MODEL_ID
+                else str(payload.get("openaiModel") or "").strip()
+            )
         try:
             save_env(self.paths.env_path, updates)
         except (OSError, UnicodeError, ValueError) as error:
@@ -984,6 +1091,13 @@ class LauncherApi:
             updates["MAW_GUI_LAST_LANGUAGE"] = str(payload.get("language") or "")
         if "showRareLangs" in payload:
             updates["MAW_GUI_SHOW_RARE_LANGS"] = "true" if payload.get("showRareLangs") else "false"
+        for payload_key, env_key in (
+            ("outputSubfolder", "MAW_GUI_OUTPUT_SUBFOLDER"),
+            ("perVideoSubfolder", "MAW_GUI_PER_VIDEO_SUBFOLDER"),
+            ("attachModelName", "MAW_GUI_ATTACH_MODEL_NAME"),
+        ):
+            if payload_key in payload:
+                updates[env_key] = "true" if payload.get(payload_key) else "false"
         if "theme" in payload:
             updates["MAW_GUI_THEME"] = _gui_theme(str(payload.get("theme") or "")) or "system"
         if "zoomPercent" in payload:
@@ -1095,8 +1209,14 @@ class LauncherApi:
         try:
             test_llm_connection(settings)
         except LlmClientError as error:
-            detail = str(error)
-            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_connection_failed", "detail": detail, "error": detail}
+            return _llm_error_result(
+                "postprocessProvider",
+                "postprocess_connection_failed",
+                error,
+                provider_id=preset.id,
+                operation="connection test",
+                preserve_provider_response_code=False,
+            )
         if bool(payload.get("save")):
             saved = self.save_postprocess_settings({
                 "providerId": preset.id,
@@ -1145,8 +1265,14 @@ class LauncherApi:
         try:
             models = list_llm_models(settings)
         except LlmClientError as error:
-            detail = str(error)
-            return {"ok": False, "field": "postprocessModel", "code": "postprocess_models_failed", "detail": detail, "error": detail}
+            return _llm_error_result(
+                "postprocessModel",
+                "postprocess_models_failed",
+                error,
+                provider_id=preset.id,
+                operation="model list",
+                preserve_provider_response_code=False,
+            )
         return {"ok": True, "providerId": preset.id, "models": models}
 
     @_toolbox_operation
@@ -1297,6 +1423,8 @@ class LauncherApi:
                 on_status=self._emit_postprocess_status,
             )
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+            if isinstance(error, (LlmClientError, PostprocessStepError)):
+                return _llm_error_result("postprocessInput", "postprocess_failed", error)
             return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
@@ -1338,6 +1466,25 @@ class LauncherApi:
         return {
             "ok": True,
             "mediaPath": str(Path(str(payload.get("mediaPath") or "")).expanduser().resolve()),
+            "tracks": [_audio_track_payload(track) for track in tracks],
+        }
+
+    def get_audio_tracks(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Inspect the main transcription media and expose its audio streams."""
+        media_text = str(payload.get("mediaPath") or "").strip()
+        media_path = Path(media_text).expanduser().resolve() if media_text else None
+        if media_path is None or media_path.suffix.lower() not in MEDIA_EXTS or not media_path.is_file():
+            return _error_result("mediaPath", "media_not_found", media_text)
+        tools = _postprocess_ffmpeg_tools(self.paths.env_path)
+        if tools.ffprobe is None:
+            return _error_result("mediaPath", "ffmpeg_missing", "FFprobe was not found.")
+        try:
+            tracks = inspect_audio_tracks(media_path, ffprobe_path=tools.ffprobe)
+        except (MediaToolError, OSError, RuntimeError, ValueError) as error:
+            return _error_result("mediaPath", "audio_tracks_unavailable", str(error))
+        return {
+            "ok": True,
+            "mediaPath": str(media_path),
             "tracks": [_audio_track_payload(track) for track in tracks],
         }
 
@@ -1635,7 +1782,12 @@ class LauncherApi:
         launch_url = f"{url}?lang={_gui_lang(payload)}"
 
         owned_server_running = self.server_process is not None and self.server_process.poll() is None
-        if _wait_for_server(url, timeout=0.25) and (not json_text or not owned_server_running):
+        if _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ) and (not json_text or not owned_server_running):
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:
             # 无工程：不带 JSON 路径启动，由服务器按「自动打开上次工程」设置恢复最近工程或回落为空白编辑器
@@ -1661,22 +1813,35 @@ class LauncherApi:
                 stdout=self.server_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_child_environment(os.environ, "", provider=""),
+                env=_independent_app_child_environment(),
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
         except OSError as error:
             self._close_server_log()
-            return _error_result("port", "server_start_failed", f"{url} | {error}")
-        if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
+            detail = f"{url} | {error}"
+            self._persist_start_failure("server_start_failed", detail)
+            return _error_result("port", "server_start_failed", detail)
+        if not _wait_for_server(
+            url,
+            timeout=SERVER_START_TIMEOUT,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             exit_code = self.server_process.poll() if self.server_process else None
             if exit_code is not None:
                 detail = self._read_server_log()
                 detail = f"{url} | 进程退出码 {exit_code}" + (f"：{detail}" if detail else "")
+                self._persist_start_failure("server_start_failed", detail)
                 _ = self._stop_owned_server()
                 return _error_result("port", "server_start_failed", detail)
-            _ = self._stop_owned_server()
-            return _error_result("port", "server_no_response", url)
+            _ = self._stop_owned_server(close_log=False)
+            child_log = self._read_server_log()
+            self._close_server_log()
+            detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
+            detail += f"：{child_log}" if child_log else "：子进程未输出日志"
+            self._persist_start_failure("server_no_response", detail)
+            return _error_result("port", "server_no_response", detail)
         self._close_server_log()
         return {"ok": True, "url": launch_url}
 
@@ -1773,7 +1938,7 @@ class LauncherApi:
                 stdout=self.alignment_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_child_environment(os.environ, "", provider=""),
+                env=_independent_app_child_environment(),
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
@@ -1790,17 +1955,25 @@ class LauncherApi:
             self.alignment_script_path = None
             self.alignment_media_path = None
             self.alignment_gap_remove = None
-            return _error_result("", "alignment_server_start_failed", f"{url} | {error}")
+            detail = f"{url} | {error}"
+            self._persist_start_failure("alignment_server_start_failed", detail)
+            return _error_result("", "alignment_server_start_failed", detail)
 
         if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
             exit_code = self.alignment_process.poll() if self.alignment_process else None
             if exit_code is not None:
                 detail = self._read_alignment_log()
                 detail = f"{url} | process exited with code {exit_code}" + (f": {detail}" if detail else "")
+                self._persist_start_failure("alignment_server_start_failed", detail)
                 _ = self._stop_owned_alignment_server()
                 return _error_result("", "alignment_server_start_failed", detail)
-            _ = self._stop_owned_alignment_server()
-            return _error_result("", "alignment_server_no_response", url)
+            _ = self._stop_owned_alignment_server(close_log=False)
+            child_log = self._read_alignment_log()
+            self._close_alignment_log()
+            detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
+            detail += f"：{child_log}" if child_log else "：子进程未输出日志"
+            self._persist_start_failure("alignment_server_no_response", detail)
+            return _error_result("", "alignment_server_no_response", detail)
         self._close_alignment_log()
         return {
             "ok": True,
@@ -1816,7 +1989,12 @@ class LauncherApi:
         """Report a responding MAW server on the currently selected localhost port."""
         port = _port(payload)
         url = f"http://127.0.0.1:{port}/"
-        if not _wait_for_server(url, timeout=0.25):
+        if not _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             return {"ok": True, "running": False, "url": url}
         pid = _maw_server_process_id(port)
         return {"ok": True, "running": pid is not None, "url": url, "pid": pid}
@@ -1845,7 +2023,7 @@ class LauncherApi:
             "detail": resolution.message,
         }
 
-    def _stop_owned_server(self) -> bool:
+    def _stop_owned_server(self, *, close_log: bool = True) -> bool:
         process = self.server_process
         self.server_process = None
         stopped = False
@@ -1857,7 +2035,8 @@ class LauncherApi:
         finally:
             if process is not None:
                 release_process_tree(process)
-            self._close_server_log()
+            if close_log:
+                self._close_server_log()
 
     def _read_server_log(self) -> str:
         log_file = self.server_log_file
@@ -1879,7 +2058,7 @@ class LauncherApi:
             except OSError:
                 pass
 
-    def _stop_owned_alignment_server(self) -> bool:
+    def _stop_owned_alignment_server(self, *, close_log: bool = True) -> bool:
         process = self.alignment_process
         self.alignment_process = None
         self.alignment_server_port = None
@@ -1896,7 +2075,12 @@ class LauncherApi:
         finally:
             if process is not None:
                 release_process_tree(process)
-            self._close_alignment_log()
+            if close_log:
+                self._close_alignment_log()
+
+    def _persist_start_failure(self, code: str, detail: str) -> None:
+        if self._log_sink is not None:
+            self._log_sink.append({"type": "error", "code": code, "detail": detail})
 
     def _read_alignment_log(self) -> str:
         log_file = self.alignment_log_file
@@ -1923,7 +2107,12 @@ class LauncherApi:
             return {"ok": True, "stopped": True}
         port = _port(payload or {})
         url = f"http://127.0.0.1:{port}/"
-        if not _wait_for_server(url, timeout=0.25):
+        if not _wait_for_server(
+            url,
+            timeout=0.25,
+            probe_path=EDITOR_HEALTH_PROBE_PATH,
+            probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+        ):
             return {"ok": True, "stopped": False}
         if _stop_external_maw_server(port):
             return {"ok": True, "stopped": True}
@@ -1952,7 +2141,7 @@ class LauncherApi:
         ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
         if ffmpeg_error is not None:
             return ffmpeg_error
-        selected_output = unique_output_path(request.srt_path)
+        selected_output = unique_output_path(request.srt_path, request.media_path)
         output_renamed = selected_output != request.srt_path
         if output_renamed:
             request = replace(request, srt_path=selected_output)
@@ -2005,9 +2194,9 @@ class LauncherApi:
                 if isinstance(raw_plan, Mapping):
                     merged["autoPostprocess"] = _batch_postprocess_plan(raw_plan)
                 request = _request_from_payload(merged, self.paths.env_path)
-                selected = _batch_unique_output_path(request.srt_path, reserved)
+                selected = _batch_unique_output_path(request.srt_path, reserved, request.media_path)
                 items.append(BatchItem(str(raw_item.get("id") or index), replace(request, srt_path=selected)))
-                reserved.update(_artifact_paths(selected))
+                reserved.update(_artifact_paths(selected, request.media_path))
             except PreflightError as error:
                 items.append(BatchItem(item_id, None, error.message))
             except (OSError, ValueError) as error:
@@ -2030,7 +2219,13 @@ class LauncherApi:
         ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
         if ffmpeg_error is not None:
             return ffmpeg_error
-        manifest_path = Path(manifest_text).expanduser() if manifest_text else _unique_batch_manifest_path(first_request.srt_path.parent)
+        if manifest_text:
+            manifest_path = Path(manifest_text).expanduser()
+        else:
+            # 批量清单属于「其余文件」：默认落在媒体对应的 _maw 根目录。
+            manifest_root = maw_root(first_request.media_path)
+            manifest_root.mkdir(parents=True, exist_ok=True)
+            manifest_path = _unique_batch_manifest_path(manifest_root)
         self.batch_cancel_event = Event()
         self.pump.start()
         self.batch_worker = threading.Thread(
@@ -2083,18 +2278,27 @@ class LauncherApi:
         media_path = Path(media_text).expanduser().resolve() if media_text else None
         if media_path is None or media_path.suffix.lower() not in MEDIA_EXTS or not media_path.is_file():
             return _error_result("mediaPath", "media_not_found", media_text)
+        audio_track = _payload_audio_track(payload, field="audioTrack")
+        if audio_track is None:
+            return _error_result(
+                "audioTrack",
+                "audio_track_invalid",
+                "音频轨道必须是非负整数。",
+            )
 
         output_seed = unique_output_path(media_path.with_suffix(".waveform.srt"))
         project_path = output_seed.with_suffix(".mosp")
         project: dict[str, object] = {"media": str(media_path), "segments": []}
         try:
-            ffmpeg_path = _postprocess_ffmpeg(self.paths.env_path)
+            ffmpeg_tools = _postprocess_ffmpeg_tools(self.paths.env_path)
+            ffmpeg_path = ffmpeg_tools.ffmpeg
             cached = embed_media_caches(
                 project,
                 media_path,
                 source_media_path=media_path,
                 generate_spectral=bool(payload.get("generateSpectral")),
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
+                audio_track=audio_track,
             )
             normalized = normalize_project(cached.project)
             waveform = normalized.get("waveform")
@@ -2104,7 +2308,12 @@ class LauncherApi:
                     or "FFmpeg did not return any decodable audio samples."
                 )
                 return _error_result("mediaPath", "waveform_unavailable", detail)
-            project_path.write_bytes((json.dumps(normalized, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+            write_mosp(
+                project_path,
+                normalized,
+                media_path=media_path,
+                ffprobe_path=ffmpeg_tools.ffprobe,
+            )
         except (OSError, TypeError, ValueError) as error:
             return _error_result("mediaPath", "waveform_generation_failed", str(error))
 
@@ -2124,17 +2333,23 @@ class LauncherApi:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         selected_id = str((payload or {}).get("modelId") or "")
         selected_path = str((payload or {}).get("modelPath") or "").strip()
-        selected_model = next((item for item in provider.models if item.id == selected_id), provider.models[0])
+        visible_models = tuple(item for item in provider.models if not item.hidden)
+        selected_model = next((item for item in visible_models if item.id == selected_id), visible_models[0])
+        runtime_by_engine: dict[str, LocalRuntimeStatus] = {}
+        for model in visible_models:
+            if model.engine not in runtime_by_engine:
+                runtime_by_engine[model.engine] = managed_runtime_status(model_cache_root, engine=model.engine)
         return {
             "ok": True,
-            "runtime": managed_runtime_status(model_cache_root, engine=selected_model.engine).to_payload(),
+            "runtime": runtime_by_engine[selected_model.engine].to_payload(),
             "models": [
                 _model_payload(
                     model,
                     model_path=selected_path if model.id == selected_id else "",
                     model_cache_root=model_cache_root,
+                    runtime_status=runtime_by_engine[model.engine],
                 )
-                for model in provider.models
+                for model in visible_models
             ],
         }
 
@@ -2399,6 +2614,7 @@ class LauncherApi:
 
     def _worker_main(self, request: TranscriptionRequest, cancel_event: Event) -> None:
         child_output: list[str] = []
+        flow_t0 = time.perf_counter()
 
         def on_child_event(line: str) -> None:
             child_output.append(line)
@@ -2450,6 +2666,7 @@ class LauncherApi:
             self.pump.flush()
             return
         self.result = result
+        transcription_elapsed = time.perf_counter() - flow_t0
         self.postprocess_retry_context = None
         self._last_postprocess_progress_at = 0.0
         auto_run_directory: Path | None = None
@@ -2471,7 +2688,14 @@ class LauncherApi:
                 self.postprocess_translation_srt_path = auto_result.translated_srt_path
                 self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
             except PostprocessCancelled as error:
-                self._emit({"type": "error", "code": "postprocess_cancelled", "detail": str(error), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+                self._emit({
+                    "type": "error",
+                    "code": "postprocess_cancelled",
+                    "detail": str(error),
+                    "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
+                    "originalProjectPath": str(result.json_path),
+                    "originalSrtPath": str(result.srt_path),
+                })
                 if self.worker is threading.current_thread():
                     self.worker = None
                 self.pump.flush()
@@ -2488,25 +2712,49 @@ class LauncherApi:
                     "currentSrt": str(error.current_srt),
                     "llmSettings": request.postprocess_llm_settings,
                 }
-                self._emit({
-                    "type": "error",
-                    "code": "postprocess_failed",
-                    "detail": str(error),
-                    "canRetry": True,
-                    "postprocessRunDirectory": str(error.run_directory),
-                })
+                self._emit(_postprocess_pipeline_error_event(
+                    error,
+                    original_project_path=result.json_path,
+                    original_srt_path=result.srt_path,
+                    can_retry=True,
+                ))
                 if self.worker is threading.current_thread():
                     self.worker = None
                 self.pump.flush()
                 return
             except Exception as error:  # noqa: BLE001 - postprocess boundary reports separately from ASR.
-                self._emit({"type": "error", "code": "postprocess_failed", "detail": str(error), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+                self._emit({
+                    "type": "error",
+                    "code": "postprocess_failed",
+                    "detail": str(error),
+                    "canRetry": False,
+                    "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
+                    "originalProjectPath": str(result.json_path),
+                    "originalSrtPath": str(result.srt_path),
+                })
                 if self.worker is threading.current_thread():
                     self.worker = None
                 self.pump.flush()
                 return
         result = self.result
         assert result is not None
+        if request.postprocess_plan:
+            total_elapsed = time.perf_counter() - flow_t0
+            postprocess_elapsed = max(0.0, total_elapsed - transcription_elapsed)
+            self._emit({"type": "log", "message": f"[计时] 全程总用时: {format_elapsed(total_elapsed)}"})
+            self._emit({
+                "type": "log",
+                "message": (
+                    f"[计时] 耗时汇总: 转写 {format_elapsed(transcription_elapsed)}"
+                    f" / 后处理 {format_elapsed(postprocess_elapsed)}"
+                ),
+            })
+            media_duration = media_duration_seconds(request.media_path)
+            if media_duration is not None and media_duration > 0 and total_elapsed > 0:
+                self._emit({
+                    "type": "log",
+                    "message": f"[计时] 全程耗时为媒体时长的 {total_elapsed / media_duration:.2f} 倍",
+                })
         self.postprocess_workspace_directory = auto_run_directory if auto_run_directory and auto_run_directory.is_dir() else None
         self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
@@ -2539,7 +2787,14 @@ class LauncherApi:
                 resume_srt_path=Path(str(context.get("currentSrt") or result.srt_path)),
             )
         except PostprocessCancelled as error:
-            self._emit({"type": "error", "code": "postprocess_cancelled", "detail": str(error), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+            self._emit({
+                "type": "error",
+                "code": "postprocess_cancelled",
+                "detail": str(error),
+                "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
+                "originalProjectPath": str(context.get("sourceProjectPath") or result.json_path),
+                "originalSrtPath": str(context.get("sourceSrtPath") or result.srt_path),
+            })
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -2552,13 +2807,26 @@ class LauncherApi:
                 "currentProject": str(error.current_project),
                 "currentSrt": str(error.current_srt),
             }
-            self._emit({"type": "error", "code": "postprocess_failed", "detail": str(error), "canRetry": True, "postprocessRunDirectory": str(error.run_directory)})
+            self._emit(_postprocess_pipeline_error_event(
+                error,
+                original_project_path=Path(str(context.get("sourceProjectPath") or result.json_path)),
+                original_srt_path=Path(str(context.get("sourceSrtPath") or result.srt_path)),
+                can_retry=True,
+            ))
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
             return
         except Exception as error:  # noqa: BLE001 - retry boundary reports to the Launcher.
-            self._emit({"type": "error", "code": "postprocess_failed", "detail": str(error), "canRetry": True, "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")})
+            self._emit({
+                "type": "error",
+                "code": "postprocess_failed",
+                "detail": str(error),
+                "canRetry": True,
+                "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
+                "originalProjectPath": str(context.get("sourceProjectPath") or result.json_path),
+                "originalSrtPath": str(context.get("sourceSrtPath") or result.srt_path),
+            })
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -2807,9 +3075,10 @@ def run_app(
         initial_project_path=initial_project_path,
     )
     install_stdio_tee(log_sink)
+    launcher_url = paths.launcher_html.resolve().as_uri()
     window = webview.create_window(
         WINDOW_TITLE,
-        url=paths.launcher_html.resolve().as_uri(),
+        url=launcher_url,
         js_api=api,
         width=900,
         height=880,
@@ -2819,10 +3088,11 @@ def run_app(
     )
     if window is not None:
         window.events.closing += lambda: api.shutdown()
+        # 在窗口首次显示时就同步标题栏颜色，避免内容尚未绘制时露出白色原生标题栏。
+        window.events.shown += lambda: apply_dark_title_bar(WINDOW_TITLE)
 
         def _on_loaded() -> None:
             api.pump.start()
-            apply_dark_title_bar(WINDOW_TITLE)
 
         window.events.loaded += _on_loaded
     icon = asset_path("assets/maw.ico")
@@ -2917,6 +3187,25 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         (item for item in provider.models if requested_model in (item.id, item.label)),
         provider.models[0],
     )
+    custom_model = ""
+    custom_base_url = ""
+    if provider.id == "openai":
+        stored_openai = load_env(env_path)
+        if model.id == OPENAI_ASR_MODEL_ID:
+            custom_model = (
+                str(payload.get("openaiModel") or "").strip()
+                or stored_openai.get("MAW_OPENAI_ASR_MODEL", "").strip()
+            )
+        else:
+            custom_model = model.id
+        custom_base_url = (
+            str(payload.get("openaiBaseUrl") or "").strip()
+            or stored_openai.get("MAW_OPENAI_ASR_BASE_URL", OPENAI_ASR_DEFAULT_BASE_URL).strip()
+        )
+        if model.id == OPENAI_ASR_MODEL_ID and not custom_model:
+            raise PreflightError("openaiModel", "custom_asr_model_missing", "请填写自定义 ASR 模型名。")
+        if not custom_base_url:
+            raise PreflightError("openaiBaseUrl", "custom_asr_base_url_missing", "请填写自定义 ASR Base URL。")
     api_key = str(payload.get("apiKey") or "").strip() or api_key_for_provider(provider.id, env_path)
     region = str(payload.get("region") or "beijing") if provider.id == "qwen" else ""
     workspace_id = str(payload.get("workspaceId") or "").strip()
@@ -2925,8 +3214,17 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError("mediaPath", "media_not_found", "Media file does not exist.")
     if not srt_text or not srt.name:
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
+    audio_track = _payload_audio_track(payload, field="audioTrack")
+    if audio_track is None:
+        raise PreflightError(
+            "audioTrack",
+            "audio_track_invalid",
+            "音频轨道必须是非负整数。",
+        )
     max_len = _segmentation_option(payload, field="maxLen", label="最大字数", minimum=1)
     min_len = _segmentation_option(payload, field="minLen", label="短句合并阈值", minimum=1)
+    max_words = _segmentation_option(payload, field="maxWords", label="英文最大单词数", minimum=1)
+    min_words = _segmentation_option(payload, field="minWords", label="英文短句合并阈值（单词）", minimum=1)
     gap_split = _segmentation_option(payload, field="gapSplit", label="停顿切句阈值", minimum=0)
     strip_tail_punct = _transcribe_strip_tail_punct(env_path)
     if max_len and min_len and int(max_len) < int(min_len):
@@ -2934,6 +3232,12 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             "maxLen",
             "segmentation_invalid",
             "最大字数不能小于短句合并阈值。",
+        )
+    if max_words and min_words and int(max_words) < int(min_words):
+        raise PreflightError(
+            "maxWords",
+            "segmentation_invalid",
+            "英文最大单词数不能小于英文短句合并阈值。",
         )
     local_model_path = str(payload.get("localModelPath") or "").strip()
     device = str(payload.get("device") or "auto").strip().lower()
@@ -3024,12 +3328,15 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     return TranscriptionRequest(
         media_path=media,
         srt_path=srt,
-        model=model.model_ref or model.id,
+        audio_track=audio_track,
+        model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
         length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
         max_len=max_len,
         min_len=min_len,
+        max_words=max_words,
+        min_words=min_words,
         gap_split=gap_split,
         strip_tail_punct=strip_tail_punct,
         qwen_audio_context=qwen_audio_context,
@@ -3058,6 +3365,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         model_cache_root=model_cache_root,
         device=device,
         forced_aligner=str(payload.get("forcedAligner") or "").strip(),
+        base_url=custom_base_url,
         runtime_python=runtime_python,
         postprocess_plan=auto_plan,
         postprocess_llm_settings=auto_llm_settings,
@@ -3092,14 +3400,15 @@ def _dialog_result(selected: tuple[str, ...] | None, *, include_paths: bool = Fa
     return result
 
 
-def _artifact_paths(path: Path) -> set[Path]:
-    return {path, path.with_suffix(".mosp"), path.with_suffix(".edit.html")}
+def _artifact_paths(path: Path, media_path: Path | None = None) -> set[Path]:
+    srt = Path(path)
+    return {srt, srt.with_suffix(".mosp"), build_output_paths(srt, media_path).html}
 
 
-def _batch_unique_output_path(path: Path, reserved: set[Path]) -> Path:
-    candidate = unique_output_path(path)
+def _batch_unique_output_path(path: Path, reserved: set[Path], media_path: Path | None = None) -> Path:
+    candidate = unique_output_path(path, media_path)
     counter = 1
-    while _artifact_paths(candidate) & reserved:
+    while _artifact_paths(candidate, media_path) & reserved:
         candidate = path.with_name(f"{path.stem}-{counter}{path.suffix}")
         counter += 1
     return candidate
@@ -3160,9 +3469,90 @@ def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
     return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code)}
 
 
+def _llm_error_result(
+    field: str,
+    fallback_code: str,
+    error: LlmClientError | PostprocessStepError,
+    *,
+    provider_id: str = "",
+    operation: str = "",
+    preserve_provider_response_code: bool = True,
+) -> dict[str, object]:
+    """Return a safe bridge error while preserving provider classification metadata."""
+
+    category = str(getattr(error, "category", "") or "")
+    code = (
+        "postprocess_provider_response"
+        if preserve_provider_response_code and category == "provider_response"
+        else fallback_code
+    )
+    result: dict[str, object] = {
+        "ok": False,
+        "field": field,
+        "code": code,
+        "detail": str(error),
+        "error": str(error),
+    }
+    status_code = getattr(error, "status_code", None)
+    if isinstance(status_code, int):
+        result["httpStatus"] = status_code
+        if provider_id:
+            result["providerId"] = provider_id
+        result["operation"] = str(getattr(error, "operation", "") or operation)
+    diagnostic = str(getattr(error, "diagnostic", "") or "")
+    if diagnostic:
+        result["diagnostic"] = diagnostic
+    return result
+
+
+def _postprocess_pipeline_error_event(
+    error: PostprocessPipelineError,
+    *,
+    original_project_path: Path,
+    original_srt_path: Path,
+    can_retry: bool,
+) -> dict[str, object]:
+    """Expose retry state and original transcription paths without provider secrets."""
+
+    category = str(getattr(error, "category", "") or "")
+    code = "postprocess_provider_response" if category == "provider_response" else "postprocess_failed"
+    event: dict[str, object] = {
+        "type": "error",
+        "code": code,
+        "detail": str(error),
+        "canRetry": can_retry,
+        "postprocessRunDirectory": str(error.run_directory),
+        "failedStep": error.failed_step,
+        "failedIndex": error.failed_index,
+        "completedSteps": list(error.completed_steps),
+        "currentProjectPath": str(error.current_project),
+        "currentSrtPath": str(error.current_srt),
+        "originalProjectPath": str(original_project_path),
+        "originalSrtPath": str(original_srt_path),
+    }
+    status_code = getattr(error, "status_code", None)
+    if isinstance(status_code, int):
+        event["httpStatus"] = status_code
+    diagnostic = str(getattr(error, "diagnostic", "") or "")
+    if diagnostic:
+        event["diagnostic"] = diagnostic
+    return event
+
 def _optional_path(value: object) -> Path | None:
     text = str(value or "").strip()
     return Path(text) if text else None
+
+
+def _payload_audio_track(payload: Mapping[str, object], *, field: str) -> int | None:
+    """Parse a zero-based audio-track index from a Launcher payload."""
+    raw = payload.get(field)
+    if raw is None or not str(raw).strip():
+        return 0
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
 
 
 def _output_mode(value: object) -> OutputMode:
@@ -3292,16 +3682,36 @@ def _drop_paths_from_event(event: Mapping[str, object]) -> list[str]:
     return paths
 
 
-def _wait_for_server(url: str, *, timeout: float) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+def _wait_for_server(
+    url: str,
+    *,
+    timeout: float,
+    probe_path: str = "/",
+    probe_timeout: float = 0.25,
+) -> bool:
+    probe_url = f"{url.rstrip('/')}{probe_path}"
+    deadline = time.monotonic() + max(0.0, timeout)
+    request_budget = max(0.01, probe_timeout)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
         try:
-            with urlopen(url, timeout=0.25) as response:
+            with urlopen(probe_url, timeout=min(request_budget, remaining)) as response:
                 if 200 <= response.status < 500:
                     return True
+        except HTTPError as error:
+            # urlopen raises for 4xx/5xx instead of returning a response.  A
+            # 4xx still proves that the local HTTP server is alive; retain the
+            # documented 200..499 readiness range while continuing to retry 5xx.
+            if 200 <= error.code < 500:
+                return True
         except (OSError, URLError):
-            time.sleep(0.1)
-    return False
+            pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.1, remaining))
 
 
 def _listening_process_id(port: int) -> int | None:
@@ -3310,7 +3720,8 @@ def _listening_process_id(port: int) -> int | None:
         return None
     try:
         result = subprocess.run(
-            ["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, check=False,
+            ["netstat", "-ano", "-p", "TCP"], capture_output=True,
+            encoding="mbcs", errors="replace", check=False,
             startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:
@@ -3331,7 +3742,8 @@ def _process_command_line(pid: int) -> str:
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
-            capture_output=True, text=True, check=False, startupinfo=startupinfo(), creationflags=creationflags(),
+            capture_output=True, encoding="mbcs", errors="replace", check=False,
+            startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:
         return ""
@@ -3360,7 +3772,8 @@ def _stop_external_maw_server(port: int) -> bool:
         return False
     try:
         result = subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True, check=False,
+            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True,
+            encoding="mbcs", errors="replace", check=False,
             startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except OSError:
@@ -3461,6 +3874,8 @@ def _provider_payload(
     provider: ProviderConfig,
     env_path: Path,
     model_cache_root: str = "",
+    *,
+    include_local_status: bool = True,
 ) -> dict[str, object]:
     api_key = api_key_for_provider(provider.id, env_path)
     return {
@@ -3477,7 +3892,11 @@ def _provider_payload(
         "note": provider.note,
         "commonLanguages": list(provider.common_languages),
         "models": [
-            _model_payload(item, model_cache_root=model_cache_root)
+            _model_payload(
+                item,
+                model_cache_root=model_cache_root,
+                include_local_status=include_local_status,
+            )
             for item in provider.models
             if not item.hidden
         ],
@@ -3491,6 +3910,8 @@ def _model_payload(
     *,
     model_path: str = "",
     model_cache_root: str = "",
+    include_local_status: bool = True,
+    runtime_status: LocalRuntimeStatus | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "id": model.id,
@@ -3511,9 +3932,25 @@ def _model_payload(
         ],
     }
     if model.kind == "local":
-        payload["localStatus"] = local_model_payload(
-            model,
-            model_path,
-            model_cache_root=model_cache_root,
-        )
+        if include_local_status:
+            payload["localStatus"] = local_model_payload(
+                model,
+                model_path,
+                model_cache_root=model_cache_root,
+                runtime_status=runtime_status,
+            )
+        else:
+            payload["localStatus"] = {
+                "status": "checking",
+                "runtimeAvailable": False,
+                "installed": False,
+                "path": "",
+                "detail": "",
+                "runtimeSource": "checking",
+                "runtimePython": "",
+                "engine": model.engine,
+                "modelRef": model.model_ref,
+                "requiredModelRefs": list(model.required_model_refs),
+                "canPrepare": False,
+            }
     return payload

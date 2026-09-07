@@ -4,7 +4,7 @@ import io
 import json
 import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -80,32 +80,37 @@ class ItemMappingTests(unittest.TestCase):
         utterances = [
             _utterance("ab", 0, 200, [
                 _word("a", 100, 200),
-                {"label": "b"},                      # 缺时间戳 → 零宽落在前一个 end
-                {"label": "c", "start_time": 500, "end_time": 400},  # 倒挂 → 零宽
+                {"label": "b"},                      # 缺时间戳 → 整句回退
+                {"label": "c", "start_time": 500, "end_time": 400},  # 倒挂 → 整句回退
                 {"label": ""},                       # 空文本跳过
-                "not-a-dict",                        # 异常结构跳过
+                "not-a-dict",                        # 异常结构 → 整句回退
             ]),
         ]
 
         items = bcut.utterances_to_items(utterances)
 
-        self.assertEqual([it["text"] for it in items], ["a", "b", "c"])
-        self.assertEqual(items[1], {"text": "b", "start": 200, "end": 200})
-        self.assertEqual(items[2], {"text": "c", "start": 200, "end": 200})
+        self.assertEqual(items, [{"text": "ab", "start": 0, "end": 200}])
 
 
 class ParseResultTests(unittest.TestCase):
     def test_parse_result_payload_builds_text_language_items(self) -> None:
         raw = _result_json([
-            _utterance("大家好。", 0, 1000, [_word("大", 0, 300)]),
-            _utterance("我是字幕。", 1500, 3000, [_word("我", 1500, 1800)]),
+            _utterance("大家好。", 0, 1000, [
+                _word("大", 0, 300), _word("家", 300, 550),
+                _word("好", 550, 800), _word("。", 800, 1000),
+            ]),
+            _utterance("我是字幕。", 1500, 3000, [
+                _word("我", 1500, 1800), _word("是", 1800, 2100),
+                _word("字", 2100, 2400), _word("幕", 2400, 2700),
+                _word("。", 2700, 3000),
+            ]),
         ])
 
         result = bcut.parse_result_payload(raw)
 
         self.assertEqual(result["text"], "大家好。我是字幕。")
         self.assertEqual(result["language"], "zh")
-        self.assertEqual(len(result["items"]), 2)
+        self.assertEqual(len(result["items"]), 9)
 
     def test_parse_result_payload_western_language_not_forced_zh(self) -> None:
         raw = _result_json([
@@ -117,6 +122,124 @@ class ParseResultTests(unittest.TestCase):
         result = bcut.parse_result_payload(raw)
 
         self.assertEqual(result["language"], "")
+
+    def test_parse_result_payload_marks_utterance_fallback_as_segment(self) -> None:
+        result = bcut.parse_result_payload(_result_json([
+            _utterance("整句没有逐字时间码", 0, 1200),
+        ]))
+
+        self.assertEqual(result["language"], "zh")
+        self.assertEqual(result["language_source"], "inferred")
+        self.assertEqual(result["timestamp_granularity"], "segment")
+
+    def test_parse_result_payload_keeps_mixed_utterance_boundaries(self) -> None:
+        result = bcut.parse_result_payload(_result_json([
+            _utterance("大家好", 0, 600, [
+                _word("大", 0, 200), _word("家", 200, 400), _word("好", 400, 600),
+            ]),
+            _utterance("整句没有逐字时间码", 900, 1800),
+        ]))
+
+        self.assertEqual(result["language"], "zh")
+        self.assertEqual(result["language_source"], "inferred")
+        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(len(result["items"]), 3)
+        self.assertEqual(result["segments"][0]["items"], result["items"])
+        self.assertNotIn("items", result["segments"][1])
+
+    def test_parse_result_payload_keeps_word_utterance_without_transcript(self) -> None:
+        result = bcut.parse_result_payload(_result_json([
+            {
+                "start_time": 0,
+                "end_time": 600,
+                "words": [_word("大", 0, 300), _word("家", 300, 600)],
+            },
+            _utterance("整句没有逐字时间码", 900, 1800),
+        ]))
+
+        self.assertEqual(result["text"], "大家整句没有逐字时间码")
+        self.assertEqual([segment["text"] for segment in result["segments"]], [
+            "大家",
+            "整句没有逐字时间码",
+        ])
+        self.assertEqual(result["segments"][0]["items"], result["items"])
+
+    def test_parse_result_payload_falls_back_for_invalid_word_timestamps(self) -> None:
+        result = bcut.parse_result_payload(_result_json([{
+            "transcript": "整句回退",
+            "start_time": 0,
+            "end_time": 1000,
+            "words": [{"label": "整句", "start_time": 900, "end_time": 400}],
+        }]))
+
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(result["segments"], [{
+            "start": 0,
+            "end": 1000,
+            "text": "整句回退",
+        }])
+
+    def test_parse_result_payload_recovers_word_bounds_for_invalid_utterance_range(self) -> None:
+        result = bcut.parse_result_payload(_result_json([
+            _utterance("大家好", 900, 400, [
+                _word("大", 100, 200), _word("家好", 200, 300),
+            ]),
+            _utterance("整句回退", 400, 800),
+        ]))
+
+        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(result["segments"][0], {
+            "start": 100,
+            "end": 300,
+            "text": "大家好",
+            "items": result["items"],
+        })
+
+    def test_parse_result_payload_expands_sentence_range_to_contain_word_items(self) -> None:
+        result = bcut.parse_result_payload(_result_json([
+            _utterance("范围修复", 200, 700, [
+                _word("范围", 100, 400), _word("修复", 400, 900),
+            ]),
+            _utterance("后续回退", 1000, 1200),
+        ]))
+
+        sentence = result["segments"][0]
+        self.assertEqual((sentence["start"], sentence["end"]), (100, 900))
+        self.assertTrue(
+            all(sentence["start"] <= item["start"] < item["end"] <= sentence["end"]
+                for item in sentence["items"])
+        )
+
+    def test_parse_result_payload_recovers_valid_word_bounds_when_both_ranges_are_invalid(self) -> None:
+        result = bcut.parse_result_payload(_result_json([
+            _utterance("大家好", 900, 400, [
+                _word("大", 100, 200),
+                {"label": "家好", "start_time": 300},
+            ]),
+        ]))
+
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["segments"], [{
+            "start": 100,
+            "end": 200,
+            "text": "大家好",
+        }])
+        self.assertEqual(result["timestamp_granularity"], "segment")
+
+    def test_parse_result_payload_does_not_drop_unranged_mixed_utterance(self) -> None:
+        result = bcut.parse_result_payload(_result_json([
+            _utterance("有时间码", 0, 600, [_word("有", 0, 300), _word("时间码", 300, 600)]),
+            {
+                "transcript": "没有可用范围",
+                "words": [{"label": "没有", "start_time": 800, "end_time": 700}],
+            },
+        ]))
+
+        self.assertEqual(result["text"], "有时间码没有可用范围")
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["segments"], [])
+        self.assertEqual(result["timestamp_granularity"], "unknown")
 
     def test_parse_result_payload_rejects_invalid_json(self) -> None:
         with self.assertRaises(bcut.BcutApiError):
@@ -453,7 +576,9 @@ class TranscribeRetryTests(unittest.TestCase):
         return {"poll_interval": 0, "poll_timeout": 60, "max_audio_seconds": 7200}
 
     def test_transcribe_retries_initial_network_failure_then_succeeds(self) -> None:
-        raw = _result_json([_utterance("你好。", 0, 500, [_word("你", 0, 250)])])
+        raw = _result_json([_utterance("你好。", 0, 500, [
+            _word("你", 0, 150), _word("好", 150, 350), _word("。", 350, 500),
+        ])])
         with mock.patch.object(
             bcut, "request_upload",
             side_effect=[requests.exceptions.ConnectionError("boom"),
@@ -470,7 +595,11 @@ class TranscribeRetryTests(unittest.TestCase):
         self.assertEqual(request_upload.call_count, 2)
         self.assertEqual(result["text"], "你好。")
         self.assertEqual(result["language"], "zh")
-        self.assertEqual(result["items"], [{"text": "你", "start": 0, "end": 250}])
+        self.assertEqual(result["items"], [
+            {"text": "你", "start": 0, "end": 150},
+            {"text": "好", "start": 150, "end": 350},
+            {"text": "。", "start": 350, "end": 500},
+        ])
 
     def test_transcribe_retries_retryable_http_upload_failure(self) -> None:
         upload = {
@@ -564,7 +693,7 @@ class BcutCliAudioPreparationTests(unittest.TestCase):
                 main()
 
             extract_audio.assert_called_once_with(
-                str(input_path), mock.ANY, duration_limit=600.0, ffmpeg_path=mock.ANY
+                str(input_path), mock.ANY, duration_limit=600.0, ffmpeg_path=mock.ANY, audio_track=0
             )
             copy2.assert_not_called()
             self.assertEqual(len(durations), 1)
@@ -727,7 +856,9 @@ class PublicCliWiringTests(unittest.TestCase):
 
 class TranscribeRawCaptureTests(unittest.TestCase):
     def test_capture_raw_includes_parsed_payload(self) -> None:
-        raw = _result_json([_utterance("你好。", 0, 500, [_word("你", 0, 250)])])
+        raw = _result_json([_utterance("你好。", 0, 500, [
+            _word("你", 0, 150), _word("好", 150, 350), _word("。", 350, 500),
+        ])])
         with mock.patch.object(bcut, "request_upload", return_value={
             "in_boss_key": "k", "resource_id": "r", "upload_id": "u",
             "upload_urls": ["https://up/1"], "per_size": 1024,
@@ -745,7 +876,101 @@ class TranscribeRawCaptureTests(unittest.TestCase):
 
         self.assertEqual(result["raw_response"]["utterances"][0]["transcript"], "你好。")
         # raw_response 不污染工程字段
-        self.assertEqual(set(result) - {"raw_response"}, {"text", "language", "items"})
+        self.assertEqual(
+            set(result) - {"raw_response"},
+            {"text", "language", "language_source", "items", "timestamp_granularity"},
+        )
+
+
+class BcutCliOutputNamingTests(unittest.TestCase):
+    """必剪 CLI 的 --no-model-tag 命名与 MAW_STAT / debug-raw 落盘。"""
+
+    def _run(self, extra_args, *, debug_raw=False, explicit_output=None):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh", "items": []}
+            if debug_raw:
+                result["raw_response"] = {"utterances": []}
+            argv = ["generate_subtitle_bcut_api.py", str(media)]
+            if explicit_output is not None:
+                argv += ["-o", str(explicit_output)]
+            argv += extra_args
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            with mock.patch("sys.argv", argv), \
+                 mock.patch(
+                     "generate_subtitle_bcut_api.load_config",
+                     return_value={"poll_interval": 2, "poll_timeout": 60, "max_audio_seconds": 7200},
+                 ), \
+                 mock.patch("generate_subtitle_bcut_api.get_duration_sec", return_value=1000.0), \
+                 mock.patch("generate_subtitle_bcut_api.shutil.copy2"), \
+                 mock.patch("generate_subtitle_bcut_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_bcut_api.time.perf_counter", side_effect=fake_perf), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_bcut_api import main
+
+                main()
+                names = sorted(path.name for path in root.glob("*.srt"))
+            return names, stdout.getvalue()
+
+    @staticmethod
+    def _stat_line(stdout):
+        for line in stdout.splitlines():
+            if line.startswith("MAW_STAT rtf="):
+                return line
+        return None
+
+    def test_default_name_has_no_speed_segment(self) -> None:
+        import re as _re
+
+        names, stdout = self._run([])
+
+        self.assertEqual(len(names), 1)
+        self.assertIsNotNone(_re.fullmatch(r"\[\d{10}\]20-走廊\.bcut\.srt", names[0]))
+        self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
+
+    def test_debug_raw_default_goes_into_maw_dir(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh", "items": [], "raw_response": {"utterances": []}}
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            with mock.patch(
+                "sys.argv",
+                ["generate_subtitle_bcut_api.py", str(media), "--debug-raw"],
+            ), mock.patch(
+                "generate_subtitle_bcut_api.load_config",
+                return_value={"poll_interval": 2, "poll_timeout": 60, "max_audio_seconds": 7200},
+            ), mock.patch("generate_subtitle_bcut_api.get_duration_sec", return_value=1000.0), \
+                 mock.patch("generate_subtitle_bcut_api.shutil.copy2"), \
+                 mock.patch("generate_subtitle_bcut_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_bcut_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_bcut_api import main
+
+                main()
+
+            maw_dir = root / "_maw"
+            raw_files = sorted(maw_dir.glob("*.asr-response.json")) if maw_dir.exists() else []
+            self.assertEqual(len(raw_files), 1)
+            self.assertIn(".bcut.asr-response.json", raw_files[0].name)
 
 
 if __name__ == "__main__":

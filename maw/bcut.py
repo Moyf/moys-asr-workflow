@@ -45,8 +45,13 @@ from maw.app_paths import default_env_path
 from generate_subtitle_qwen_api import (
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
-    is_cjk_dominant,
     split_segments_auto,
+)
+from maw.language import (
+    infer_language_code,
+    normalize_timestamp_range,
+    split_mode_for_text,
+    timestamp_items_cover_text,
 )
 
 BASE_URL = "https://member.bilibili.com/x/bcut/rubick-interface"
@@ -440,46 +445,59 @@ def utterances_to_items(utterances: list) -> list[dict]:
 
     优先使用逐字 words[]（label/start_time/end_time）；某句缺 words 时
     回退为句级单 item（该句内拆分精度会下降，但时间仍正确）。
-    防御性兜底：缺时间戳或时间倒挂时作为零宽 item 放在前一个 item 的末尾。
+    防御性兜底：某句只要有一个非空字词缺时间戳或时间倒挂，就放弃该句
+    的逐字项并回退为有效的句级 item；句级范围也无效时直接跳过，绝不
+    生成零宽或负时长 item。
     """
     items: list[dict] = []
-    previous_end = 0
     for utterance in utterances:
         if not isinstance(utterance, dict):
             continue
         words = utterance.get("words") or []
         word_items: list[dict] = []
+        invalid_word_timestamp = False
         for word in words:
             if not isinstance(word, dict):
+                invalid_word_timestamp = True
                 continue
             label = str(word.get("label") or "")
             if not label:
                 continue
             start, end = word.get("start_time"), word.get("end_time")
-            if not (type(start) is int and type(end) is int) or end < start:
-                start = end = previous_end
-            word_items.append({"text": label, "start": start, "end": end})
-            previous_end = max(previous_end, end)
-        if word_items:
+            timestamp = normalize_timestamp_range(start, end)
+            if timestamp is None:
+                invalid_word_timestamp = True
+                continue
+            word_items.append({
+                "text": label,
+                "start": timestamp[0],
+                "end": timestamp[1],
+            })
+        if word_items and not invalid_word_timestamp:
             items.extend(word_items)
             continue
 
         transcript = str(utterance.get("transcript") or "")
         if not transcript:
             continue
-        start, end = utterance.get("start_time"), utterance.get("end_time")
-        if not (type(start) is int and type(end) is int) or end < start:
-            start = end = previous_end
-        items.append({"text": transcript, "start": start, "end": end})
-        previous_end = max(previous_end, end)
+        timestamp = normalize_timestamp_range(
+            utterance.get("start_time"), utterance.get("end_time")
+        )
+        if timestamp is not None:
+            items.append({
+                "text": transcript,
+                "start": timestamp[0],
+                "end": timestamp[1],
+            })
     return items
 
 
 def parse_result_payload(raw: str) -> dict:
     """把必剪 result JSON 字符串转成本地 transcribe() 输出格式。
 
-    返回 {"text", "language", "items"}；language 按 items 的 CJK 占比推断
-    （接口本身不返回语种，必剪模型面向中文）。
+    返回 ``text``、``language``、``language_source``、``items`` 和
+    ``timestamp_granularity``；必剪接口本身不返回语种，``language`` 仅按
+    完整转写文本中可识别的文字脚本推断，不能视为服务端检测结果。
     """
     try:
         payload = json.loads(raw)
@@ -488,17 +506,128 @@ def parse_result_payload(raw: str) -> dict:
     if not isinstance(payload, dict):
         raise BcutApiError("必剪 result 结构异常（接口可能已变更）")
     utterances = payload.get("utterances") or []
-    items = utterances_to_items(utterances)
+    parsed_utterances: list[
+        tuple[dict, list[dict], str, bool, tuple[int, int] | None]
+    ] = []
+    has_unranged_text = False
+    for utterance in utterances:
+        if not isinstance(utterance, dict):
+            continue
+        word_items: list[dict] = []
+        word_text: list[str] = []
+        has_word_items = True
+        invalid_word_timestamp = False
+        raw_words = utterance.get("words")
+        words = raw_words if isinstance(raw_words, list) else []
+        for word in words:
+            if not isinstance(word, dict):
+                invalid_word_timestamp = True
+                continue
+            label = str(word.get("label") or "")
+            if not label:
+                continue
+            word_text.append(label)
+            start, end = word.get("start_time"), word.get("end_time")
+            timestamp = normalize_timestamp_range(start, end)
+            if timestamp is None:
+                invalid_word_timestamp = True
+                continue
+            word_items.append({"text": label, "start": timestamp[0], "end": timestamp[1]})
+        if not word_text:
+            has_word_items = False
+        if invalid_word_timestamp:
+            has_word_items = False
+        valid_word_range = (
+            min(item["start"] for item in word_items),
+            max(item["end"] for item in word_items),
+        ) if word_items else None
+        transcript = str(utterance.get("transcript") or "")
+        utterance_text = transcript or "".join(word_text)
+        if has_word_items and not timestamp_items_cover_text(utterance_text, word_items):
+            # Valid ranges are not enough: flattening a partial word list would
+            # make the missing transcript text disappear from the output.
+            has_word_items = False
+        parsed_utterances.append(
+            (utterance, word_items, utterance_text, has_word_items, valid_word_range)
+        )
+    items = [
+        item
+        for _utterance, word_items, _text, has_word_items, _valid_word_range in parsed_utterances
+        if has_word_items
+        for item in word_items
+    ]
+    has_precise_timestamps = any(
+        has_word_items
+        for _, _items, _text, has_word_items, _valid_word_range in parsed_utterances
+    )
+    has_segment_fallback = any(
+        utterance_text.strip() and not has_word_items
+        for _utterance, _items, utterance_text, has_word_items, _valid_word_range in parsed_utterances
+    )
     text = "".join(
-        str(u.get("transcript") or "") for u in utterances if isinstance(u, dict)
+        utterance_text
+        for _utterance, _items, utterance_text, _has_word_items, _valid_word_range in parsed_utterances
     )
     if not text:
         text = "".join(it["text"] for it in items)
-    return {
+    language = infer_language_code(text)
+    split_mode = split_mode_for_text(text, language)
+    result = {
         "text": text,
-        "language": "zh" if is_cjk_dominant(items) else "",
+        "language": language,
         "items": items,
+        # 必剪接口没有语言字段；zh 只是根据脚本文字推断，不能写成
+        # detected，否则会让工程误以为服务端返回了可靠的语言识别结果。
+        "language_source": "inferred" if language else "unknown",
+        "timestamp_granularity": (
+            "segment" if has_segment_fallback
+            else "char" if has_precise_timestamps and split_mode == "continuous"
+            else "word" if has_precise_timestamps
+            else "segment" if items
+            else "unknown"
+        ),
     }
+    if has_segment_fallback:
+        segments: list[dict] = []
+        for (
+            utterance,
+            word_items,
+            utterance_text,
+            has_word_items,
+            valid_word_range,
+        ) in parsed_utterances:
+            if not utterance_text.strip():
+                continue
+            sentence_range = normalize_timestamp_range(
+                utterance.get("start_time"), utterance.get("end_time")
+            )
+            if sentence_range is None and valid_word_range is not None:
+                # Some responses have valid word ranges but an inverted or
+                # empty utterance range.  Recover a conservative sentence
+                # range from the valid word timestamps instead of dropping
+                # the utterance (including mixed-precision responses).
+                sentence_range = valid_word_range
+            if sentence_range is None:
+                has_unranged_text = True
+                continue
+            start, end = sentence_range
+            if has_word_items and word_items:
+                start = min(start, *(item["start"] for item in word_items))
+                end = max(end, *(item["end"] for item in word_items))
+            segment = {"start": start, "end": end, "text": utterance_text}
+            if has_word_items:
+                segment["items"] = word_items
+            segments.append(segment)
+        result["segments"] = segments
+        if has_unranged_text:
+            # The caller has no duration here, so make it choose its explicit
+            # whole-media fallback rather than silently omitting one utterance.
+            result["items"] = []
+            result["segments"] = []
+            result["timestamp_granularity"] = "unknown"
+        elif not segments:
+            result["timestamp_granularity"] = "unknown"
+    return result
 
 
 def build_segments(items: list[dict], *, max_len: int, min_len: int,
@@ -562,8 +691,11 @@ def transcribe(audio_path: str, config: dict, *, capture_raw: bool = False,
 
     申请上传和单个分片的临时网络错误最多重试 MAX_TRIES 次；提交分片与建任务
     不重复调用，以免网络结果未知时产生重复远端资源；轮询内部自带网络容错。
-    返回 {"text", "language", "items"}，可直接交给 build_segments() 切句；
-    capture_raw=True 时额外带 "raw_response"（解析后的服务端原始负载，调试用）。
+    返回包含 ``text``、``language``、``language_source``、``items``、
+    ``timestamp_granularity`` 的解析结果；混合精度响应还会带
+    ``segments``，可直接交给 ``build_segments()`` 或保留服务端句边界。
+    ``capture_raw=True`` 时额外带 ``raw_response``（解析后的服务端原始负载，
+    调试用）。
     """
     path = Path(audio_path)
     fmt = path.suffix.lower()

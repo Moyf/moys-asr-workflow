@@ -55,6 +55,7 @@ from maw.project import (  # noqa: E402
     normalize_project,
     repair_project_timing_ranges,
 )
+from maw.project_io import enrich_project_media_metadata  # noqa: E402
 from maw.media import (  # noqa: E402
     MEDIA_EXTENSIONS,
     MediaConversionError,
@@ -64,6 +65,7 @@ from maw.media import (  # noqa: E402
     read_bwf_time_reference,
     resolve_project_media,
 )
+from maw.waveform import audio_track_from_payloads  # noqa: E402
 from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # noqa: E402
 
 
@@ -98,6 +100,7 @@ class ServerProject:
     stickers: list[dict]
     source_media_path: Path | None = None
     reapeaks_path: Path | None = None
+    audio_track: int = 0
 
 
 ProjectLoadProgressCallback = Callable[[str, int], None]
@@ -318,6 +321,11 @@ def load_project(
     if repaired_count:
         print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
     data = normalize_project(raw_data)
+    audio_track = audio_track_from_payloads(
+        data.get("waveform"),
+        data.get("spectral"),
+        data.get("waveform_reapeaks"),
+    )
     report("validating_project", 20)
     sticker_source = data.get("sticker_root")
     sticker_root: Path | None = None
@@ -346,6 +354,7 @@ def load_project(
             stickers,
             source_media_path=None,
             reapeaks_path=None,
+            audio_track=audio_track,
         )
 
     resolution = resolve_project_media(json_path, data, explicit_media)
@@ -367,6 +376,9 @@ def load_project(
         print(f"[media] 已为浏览器准备播放缓存: {media_path}")
     # 保存时应沿用实际被服务器加载的媒体；这也会把 -m 覆盖的路径同步回工程。
     data["media"] = str(source_media_path)
+    # 旧工程可能没有源音轨清单；在加载时补探测，确保 OTIO 导出不会只
+    # 看见容器中的第一条音频流。探测失败时继续按旧工程兼容路径导出。
+    data = normalize_project(enrich_project_media_metadata(data, media_path=source_media_path))
     # .ReaPeaks 是转写时对"工程 media 字段原始文件"生成的；转换场景下
     # resolved_path 可能已被 _paired_mp4 升级为配对的 mp4，必须用原始
     # 请求路径（requested_path）查找，否则会漏读源媒体旁的缓存。
@@ -374,11 +386,16 @@ def load_project(
     if not no_waveform:
         report("preparing_waveform", 50)
         try:
+            # 波形 sidecar 是"源媒体身份"的缓存：以 source_media_path（工程里
+            # data["media"] 记的就是它）为键，_maw 由 waveform_sidecar_path 按
+            # maw_root 计算。不能传转换后的播放缓存（可能在 _maw 里），否则会
+            # 在 _maw/_maw 下重复嵌套一层。
             waveform, extracted = edit.load_or_extract_waveform(
                 data.get("waveform"),
-                media_path,
+                source_media_path,
                 peaks_per_second=peaks_per_second,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
+                audio_track=audio_track,
             )
             data["waveform"] = waveform
             state = "已提取" if extracted else "使用缓存"
@@ -390,13 +407,20 @@ def load_project(
         if load_reapeaks:
             # 频谱缓存：源媒体旁存在 .ReaPeaks 时读取并内联下发，供波形染色。
             # 缺失/损坏/无 spectral 层一律静默降级，不影响编辑器。
-            spectral = reapeaks.load_spectral_payload(reapeaks_base, peaks_per_second=peaks_per_second)
+            spectral = reapeaks.load_spectral_payload(
+                reapeaks_base,
+                peaks_per_second=peaks_per_second,
+                audio_track=audio_track,
+            )
             if spectral is not None:
                 data["spectral"] = spectral
                 print(f"[spectral] 已加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
 
             # ReaPeaks 波形层：最细 wave 层作为可选的波形形状来源（编辑器设置里切换）。
-            reapeaks_wave = reapeaks.load_waveform_payload(reapeaks_base)
+            reapeaks_wave = reapeaks.load_waveform_payload(
+                reapeaks_base,
+                audio_track=audio_track,
+            )
             if reapeaks_wave is not None:
                 data["waveform_reapeaks"] = reapeaks_wave
                 print(
@@ -413,6 +437,7 @@ def load_project(
         stickers,
         source_media_path=source_media_path,
         reapeaks_path=reapeaks_base,
+        audio_track=audio_track,
     )
 
 
@@ -448,9 +473,17 @@ def build_server_page(
     settings: ServerSettings | None = None,
     request_token: str = "",
     startup_status: dict[str, object] | None = None,
+    *,
+    defer_reapeaks: bool = True,
     desktop_mode: bool = False,
 ) -> bytes:
-    """Render with current web/ assets on every page request to prevent UI drift."""
+    """Render with current web/ assets on every page request to prevent UI drift.
+
+    ``defer_reapeaks`` 开启时（默认）频谱 / ReaPeaks 波形层不内联进页面：
+    前端就绪后会经 ``/api/waveform`` 拉取（页面数据里内联这些层会让大工程
+    每次渲染都多序列化数 MB，显著拖慢首页响应）。``--no-waveform`` 等关闭
+    延迟加载的场景没有该端点兜底，仍需保留内联层。
+    """
     settings = settings or ServerSettings()
     startup_status = startup_status or {
         "status": "ready",
@@ -484,6 +517,9 @@ def build_server_page(
 
     page_data = copy.deepcopy(project.data)
     page_data.pop("media_time_reference", None)
+    if defer_reapeaks:
+        page_data.pop("spectral", None)
+        page_data.pop("waveform_reapeaks", None)
     if project.media_path:
         media_time_reference = read_bwf_time_reference(
             project.source_media_path or project.media_path,
@@ -774,10 +810,14 @@ class EditorServer(ThreadingHTTPServer):
             if reapeaks_base is not None:
                 spectral = reapeaks.load_spectral_payload(
                     reapeaks_base, peaks_per_second=self.peaks_per_second,
+                    audio_track=project.audio_track,
                 )
                 if spectral is not None:
                     print(f"[spectral] 后台加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
-                reapeaks_wave = reapeaks.load_waveform_payload(reapeaks_base)
+                reapeaks_wave = reapeaks.load_waveform_payload(
+                    reapeaks_base,
+                    audio_track=project.audio_track,
+                )
                 if reapeaks_wave is not None:
                     print(
                         f"[reapeaks-wave] 后台加载 {reapeaks_wave['peak_count']} peaks "
@@ -2037,7 +2077,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 self.editor_server.settings,
                 self.editor_server.request_token,
                 self.editor_server.startup_status_payload(),
-                self.editor_server.desktop_mode,
+                defer_reapeaks=self.editor_server.defer_reapeaks,
+                desktop_mode=self.editor_server.desktop_mode,
             )
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")

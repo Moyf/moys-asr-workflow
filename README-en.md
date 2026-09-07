@@ -24,7 +24,7 @@ The official Windows Installer checks for updates at startup at most once per da
 
 ## Core capabilities
 
-- Transcribe with Qwen, Fun-ASR, or Soniox and generate SRT plus a `.mosp` project.
+- Transcribe with Qwen, Fun-ASR, Soniox, or an OpenAI-compatible ASR endpoint and generate SRT plus a `.mosp` project.
 - Edit in the MAWE Server editor with waveform navigation, split/merge, silence-gap handling, video preview, and multiple export formats.
 - The Windows suite includes the preferred MOSE Electron editor. It shares the MAW Server, `.mosp` project, waveform, media, and export contracts; the Launcher falls back to the Server editor when MOSE is unavailable.
 - Use the public CLI for batch jobs and AI automation: [CLI documentation](docs/CLI.md) (Chinese).

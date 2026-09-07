@@ -289,6 +289,22 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(provider.regions, ())
         self.assertIn("SECRET_KEY", provider.note)
 
+    def test_provider_registry_contains_custom_openai_compatible_asr(self) -> None:
+        provider = gui_config.provider_by_id("openai")
+
+        self.assertEqual(provider.label, "OpenAI（及兼容接口）")
+        self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_BASE_URL, "https://api.openai.com/v1")
+        self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_MODEL, "whisper-1")
+        self.assertEqual(provider.key_url, "https://platform.openai.com/api-keys")
+        self.assertEqual(
+            [model.id for model in provider.models],
+            ["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "custom-asr"],
+        )
+        self.assertEqual(provider.models[-1].label, "自定义（Custom）")
+        self.assertEqual(provider.models[0].env_key, "MAW_OPENAI_ASR_API_KEY")
+        self.assertEqual(provider.regions, ())
+        self.assertIn("时间戳", provider.note)
+
     def test_provider_registry_contains_local_models_without_api_key(self) -> None:
         provider = gui_config.provider_by_id("local")
 
@@ -410,6 +426,60 @@ class GuiConfigTests(unittest.TestCase):
             _ = env_path.write_text("", encoding="utf-8")
             with mock.patch.dict(os.environ, {}, clear=True):
                 self.assertFalse(gui_config.effective_config(env_path).show_rare_langs)
+
+    def test_effective_config_file_output_flags_defaults_and_env_values(self) -> None:
+        """Given 文件输出 flags unset or set in .env, When resolved, Then defaults and values apply."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            with mock.patch.dict(os.environ, {}, clear=True):
+                config = gui_config.effective_config(env_path)
+            self.assertFalse(config.output_subfolder)
+            self.assertFalse(config.per_video_subfolder)
+            self.assertTrue(config.attach_model_name)
+
+            _ = env_path.write_text(
+                "MAW_GUI_OUTPUT_SUBFOLDER=true\n"
+                "MAW_GUI_PER_VIDEO_SUBFOLDER=1\n"
+                "MAW_GUI_ATTACH_MODEL_NAME=off\n",
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {}, clear=True):
+                config = gui_config.effective_config(env_path)
+            self.assertTrue(config.output_subfolder)
+            self.assertTrue(config.per_video_subfolder)
+            self.assertFalse(config.attach_model_name)
+
+    def test_effective_config_file_output_flags_prefer_system_environment(self) -> None:
+        """Given process env differs from .env, When resolved, Then process env wins."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            _ = env_path.write_text(
+                "MAW_GUI_OUTPUT_SUBFOLDER=true\nMAW_GUI_ATTACH_MODEL_NAME=false\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict(
+                os.environ,
+                {"MAW_GUI_OUTPUT_SUBFOLDER": "false", "MAW_GUI_ATTACH_MODEL_NAME": "true"},
+                clear=True,
+            ):
+                config = gui_config.effective_config(env_path)
+            self.assertFalse(config.output_subfolder)
+            self.assertTrue(config.attach_model_name)
+
+    def test_effective_config_file_output_flags_invalid_values_fall_back_to_defaults(self) -> None:
+        """Given 无法识别的布尔取值, When resolved, Then 按默认值处理。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            _ = env_path.write_text(
+                "MAW_GUI_OUTPUT_SUBFOLDER=bogus\nMAW_GUI_ATTACH_MODEL_NAME=bogus\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                config = gui_config.effective_config(env_path)
+            self.assertFalse(config.output_subfolder)
+            self.assertFalse(config.attach_model_name)
 
     def test_model_by_label_searches_all_providers(self) -> None:
         """Given a Soniox model id, When resolved, Then its env key comes from the Soniox entry."""

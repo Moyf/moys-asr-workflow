@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -25,6 +27,7 @@ from maw.local_asr import (
     LocalTranscription,
     QwenAsrEngine,
     WhisperEngine,
+    _expand_coarse_item,
     build_local_segments,
     create_local_engine,
     funasr_output_to_transcription,
@@ -36,6 +39,16 @@ from maw.local_asr import (
 
 
 class LocalAsrNormalizationTests(unittest.TestCase):
+    def test_coarse_item_is_kept_when_span_cannot_fit_each_character(self) -> None:
+        item = {
+            "text": "时间太短",
+            "start": 100,
+            "end": 102,
+            "speaker": "S01",
+        }
+
+        self.assertEqual(_expand_coarse_item(item), [item])
+
     def test_fun_asr_character_timestamps_preserve_text(self) -> None:
         result = funasr_output_to_transcription(
             [{
@@ -52,11 +65,14 @@ class LocalAsrNormalizationTests(unittest.TestCase):
         )
 
         self.assertEqual(result.language, "zh")
+        self.assertEqual(result.language_source, "detected")
+        self.assertEqual(result.split_mode, "continuous")
+        self.assertEqual(result.timestamp_granularity, "char")
         self.assertEqual("".join(item["text"] for item in result.items), "你好。")
         self.assertEqual(result.segments[0]["start"], 100)
         self.assertEqual(result.segments[0]["end"], 500)
 
-    def test_fun_asr_unknown_timestamp_granularity_keeps_sentence_item(self) -> None:
+    def test_fun_asr_unknown_timestamp_granularity_keeps_sentence_boundary(self) -> None:
         result = funasr_output_to_transcription(
             [{
                 "text": "hello world",
@@ -70,8 +86,9 @@ class LocalAsrNormalizationTests(unittest.TestCase):
             "paraformer-zh",
         )
 
-        self.assertEqual(result.segments[0]["items"][0]["text"], "hello world")
-        self.assertEqual(result.segments[0]["items"][0]["start"], 0)
+        self.assertEqual(result.items, [])
+        self.assertNotIn("items", result.segments[0])
+        self.assertEqual(result.timestamp_granularity, "segment")
 
     def test_sensevoice_sentence_field_is_normalized(self) -> None:
         result = funasr_output_to_transcription(
@@ -88,14 +105,102 @@ class LocalAsrNormalizationTests(unittest.TestCase):
 
         self.assertEqual(result.text, "Hello world.")
         self.assertEqual(result.language, "en")
+        self.assertEqual(result.language_source, "detected")
+        self.assertEqual(result.split_mode, "word")
+        self.assertEqual(result.timestamp_granularity, "segment")
         self.assertEqual(result.segments[0]["text"], "Hello world.")
-        self.assertEqual(result.segments[0]["items"][0]["start"], 200)
+        self.assertNotIn("items", result.segments[0])
+
+    def test_fun_asr_mixed_timestamp_precision_keeps_sentence_fallback(self) -> None:
+        result = funasr_output_to_transcription(
+            [{
+                "text": "你好。没有逐字时间码。",
+                "lang": "zh",
+                "sentence_info": [
+                    {
+                        "text": "你好。",
+                        "start": 0,
+                        "end": 500,
+                        "timestamp": [[0, 150], [150, 300], [300, 500]],
+                    },
+                    {
+                        "text": "没有逐字时间码。",
+                        "start": 800,
+                        "end": 1600,
+                    },
+                ],
+            }],
+            "paraformer-zh",
+        )
+
+        self.assertEqual(result.timestamp_granularity, "segment")
+        self.assertEqual(len(result.items), 3)
+        self.assertEqual(result.segments[0]["items"], result.items)
+        self.assertNotIn("items", result.segments[1])
+        self.assertEqual(
+            [segment["text"] for segment in build_local_segments(result, duration_ms=2000)],
+            ["你好", "没有逐字时间码"],
+        )
+
+    def test_fun_asr_mixed_invalid_timestamps_use_valid_sentence_range(self) -> None:
+        result = funasr_output_to_transcription(
+            [{
+                "text": "你好。",
+                "lang": "zh",
+                "sentence_info": [{
+                    "text": "你好。",
+                    "timestamp": [[100, 220], [220, "invalid"], [400, 500]],
+                }],
+            }],
+            "paraformer-zh",
+        )
+
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.timestamp_granularity, "segment")
+        self.assertEqual(result.segments, [{
+            "start": 100,
+            "end": 500,
+            "text": "你好。",
+        }])
+
+    def test_fun_asr_unranged_sentence_falls_back_without_dropping_text(self) -> None:
+        result = funasr_output_to_transcription(
+            [{
+                "text": "有时间码。没有可用范围。",
+                "lang": "zh",
+                "sentence_info": [
+                    {"text": "有时间码。", "start": 0, "end": 600},
+                    {"text": "没有可用范围。", "start": 800},
+                ],
+            }],
+            "paraformer-zh",
+        )
+
+        self.assertEqual(result.text, "有时间码。没有可用范围。")
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.segments, [])
+        self.assertEqual(result.timestamp_granularity, "unknown")
+        self.assertEqual(
+            build_local_segments(result, duration_ms=2000),
+            [{"start": 0, "end": 2000, "text": "有时间码。没有可用范围"}],
+        )
 
     def test_items_from_timestamps_supports_word_units_with_spaces(self) -> None:
         items = items_from_timestamps("hello world", [[0, 400], [400, 900]])
 
         self.assertEqual([item["text"] for item in items], ["hello", " world"])
         self.assertEqual(items[-1]["end"], 900)
+
+    def test_items_from_timestamps_accepts_end_time_as_millisecond_fallback(self) -> None:
+        items = items_from_timestamps(
+            "你好",
+            [{"start": 100, "end_time": 220}, {"start": 220, "end_time": 500}],
+        )
+
+        self.assertEqual(
+            [(item["start"], item["end"]) for item in items],
+            [(100, 220), (220, 500)],
+        )
 
     def test_build_segments_falls_back_to_one_segment_without_timestamps(self) -> None:
         result = LocalTranscription("没有时间戳", "zh", [], [], "test-model")
@@ -106,12 +211,43 @@ class LocalAsrNormalizationTests(unittest.TestCase):
             "start": 0,
             "end": 1200,
             "text": "没有时间戳",
-            "items": [],
         }])
 
 
 class LocalSegmentationTuningTests(unittest.TestCase):
-    """max_len/min_len/gap_split_ms 必须作用于引擎自带分段（MOSS 等粗粒度输出）。"""
+    """切分设置作用于可重组的引擎分段；段级-only 输出保留原始边界。"""
+
+    def test_segment_only_transcription_is_not_hard_split(self) -> None:
+        text = "The editing process. Now, don't get me wrong, I really enjoy it."
+        source = {
+            "start": 1000,
+            "end": 11500,
+            "text": text,
+            "speaker": "S01",
+        }
+        result = LocalTranscription(
+            text,
+            "",
+            [],
+            [source],
+            "moss-test",
+            "unknown",
+            "word",
+            "segment",
+        )
+
+        segments = build_local_segments(
+            result,
+            duration_ms=12_000,
+            max_len=4,
+            min_len=1,
+            max_words=2,
+            min_words=1,
+            gap_split_ms=1,
+        )
+
+        self.assertEqual(segments, [source])
+        self.assertNotIn("items", segments[0])
 
     def test_oversized_coarse_segment_resplits_within_max_len(self) -> None:
         text = "本地模型，AI校准和翻译，双语字幕，免费ASR，这些功能全都加上了。这么长一句话！"
@@ -192,6 +328,37 @@ class LocalSegmentationTuningTests(unittest.TestCase):
         self.assertEqual(segments[1]["start"], 900)
         self.assertEqual(segments[1]["end"], 1800)
 
+    def test_word_limit_applies_even_when_character_limit_is_not_reached(self) -> None:
+        text = "one two three"
+        word_items = [
+            {"text": "one", "start": 0, "end": 300},
+            {"text": " two", "start": 300, "end": 600},
+            {"text": " three", "start": 600, "end": 900},
+        ]
+        source = {"start": 0, "end": 900, "text": text, "items": word_items}
+        result = LocalTranscription(
+            text,
+            "en",
+            [],
+            [source],
+            "test-model",
+            "detected",
+            "word",
+            "word",
+        )
+
+        segments = build_local_segments(
+            result,
+            duration_ms=1000,
+            max_len=100,
+            min_len=1,
+            max_words=2,
+            min_words=1,
+        )
+
+        self.assertEqual([segment["text"] for segment in segments], ["one two", " three"])
+        self.assertEqual([len(segment["items"]) for segment in segments], [2, 1])
+
     def test_max_len_setting_changes_output(self) -> None:
         text = "一句特别特别长的中文台词需要被整理"
         coarse = {"start": 0, "end": 4000, "text": text, "items": [{"text": text, "start": 0, "end": 4000}]}
@@ -219,7 +386,13 @@ class LocalAsrFlowTests(unittest.TestCase):
             input_path.write_bytes(b"video")
             calls: list[tuple[str, str, float | None]] = []
 
-            def fake_extract(source: str, target: str, duration_limit: float | None = None) -> None:
+            def fake_extract(
+                source: str,
+                target: str,
+                duration_limit: float | None = None,
+                *,
+                audio_track: int = 0,
+            ) -> None:
                 calls.append((source, target, duration_limit))
                 Path(target).write_bytes(b"wav")
 
@@ -238,7 +411,13 @@ class LocalAsrFlowTests(unittest.TestCase):
             input_path.write_bytes(b"video")
             events: list[str] = []
 
-            def fake_extract(source: str, target: str, duration_limit: float | None = None) -> None:
+            def fake_extract(
+                source: str,
+                target: str,
+                duration_limit: float | None = None,
+                *,
+                audio_track: int = 0,
+            ) -> None:
                 Path(target).write_bytes(b"wav")
 
             with mock.patch("maw.local_asr.extract_audio", side_effect=fake_extract):
@@ -247,6 +426,29 @@ class LocalAsrFlowTests(unittest.TestCase):
                         pass
 
             self.assertEqual(events, ["[local] 正在准备加载模型……"])
+
+    def test_prepared_audio_passes_selected_track_to_video_extraction(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "clip.mp4"
+            input_path.write_bytes(b"video")
+            tracks: list[int] = []
+
+            def fake_extract(
+                source: str,
+                target: str,
+                duration_limit: float | None = None,
+                *,
+                audio_track: int = 0,
+            ) -> None:
+                tracks.append(audio_track)
+                Path(target).write_bytes(b"wav")
+
+            with mock.patch("maw.local_asr.extract_audio", side_effect=fake_extract):
+                with mock.patch("maw.local_asr.get_duration_sec", return_value=3.0):
+                    with prepared_audio(input_path, audio_track=2):
+                        pass
+
+            self.assertEqual(tracks, [2])
 
     def test_qwen_seconds_timestamps_are_normalized_to_milliseconds(self) -> None:
         class FakeAlignResult:
@@ -280,6 +482,100 @@ class LocalAsrFlowTests(unittest.TestCase):
         ])
         self.assertEqual(runtime.kwargs["audio"], "sample.wav")
         self.assertEqual(runtime.kwargs["language"], "Chinese")
+
+    def test_qwen_missing_transcript_uses_alignment_text(self) -> None:
+        class FakeRuntime:
+            def transcribe(self, **kwargs):
+                del kwargs
+                return [SimpleNamespace(
+                    language="Chinese",
+                    time_stamps=[
+                        SimpleNamespace(text="你", start_time=0.0, end_time=0.2),
+                        SimpleNamespace(text="好", start_time=0.2, end_time=0.5),
+                    ],
+                )]
+
+        engine = QwenAsrEngine(forced_aligner="test-aligner")
+        engine._runtime = FakeRuntime()
+
+        result = engine.transcribe(Path("sample.wav"), language="zh")
+
+        self.assertEqual(result.text, "你好")
+        self.assertEqual([item["text"] for item in result.items], ["你", "好"])
+
+    def test_qwen_missing_text_and_language_infers_chinese_before_spacing(self) -> None:
+        class FakeRuntime:
+            def transcribe(self, **kwargs):
+                del kwargs
+                return [SimpleNamespace(
+                    time_stamps=[
+                        SimpleNamespace(text="你", start_time=0.0, end_time=0.2),
+                        SimpleNamespace(text="好", start_time=0.2, end_time=0.5),
+                    ],
+                )]
+
+        engine = QwenAsrEngine(forced_aligner="test-aligner")
+        engine._runtime = FakeRuntime()
+
+        result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual(result.text, "你好")
+        self.assertEqual(result.language, "zh")
+        self.assertEqual(result.language_source, "inferred")
+        self.assertEqual(result.split_mode, "continuous")
+        self.assertEqual([item["text"] for item in result.items], ["你", "好"])
+
+    def test_qwen_missing_text_and_language_keeps_word_spacing(self) -> None:
+        class FakeRuntime:
+            def transcribe(self, **kwargs):
+                del kwargs
+                return [SimpleNamespace(
+                    time_stamps=[
+                        SimpleNamespace(text="Hello", start_time=0.0, end_time=0.2),
+                        SimpleNamespace(text="world", start_time=0.2, end_time=0.5),
+                    ],
+                )]
+
+        engine = QwenAsrEngine(forced_aligner="test-aligner")
+        engine._runtime = FakeRuntime()
+
+        result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual(result.text, "Hello world")
+        self.assertEqual(result.language, "")
+        self.assertEqual(result.language_source, "unknown")
+        self.assertEqual(result.split_mode, "word")
+        self.assertEqual([item["text"] for item in result.items], ["Hello", " world"])
+
+    def test_qwen_invalid_alignment_without_sentence_range_uses_valid_alignment_range(self) -> None:
+        class FakeRuntime:
+            def transcribe(self, **kwargs):
+                del kwargs
+                return [SimpleNamespace(
+                    text="有完整文本",
+                    language="Chinese",
+                    time_stamps=[
+                        SimpleNamespace(text="有", start_time=0.0, end_time=0.2),
+                        SimpleNamespace(text="完整", start_time=0.2, end_time=0.2),
+                        SimpleNamespace(text="文本", start_time=0.4, end_time=0.6),
+                    ],
+                )]
+
+        engine = QwenAsrEngine(forced_aligner="test-aligner")
+        engine._runtime = FakeRuntime()
+
+        result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.segments, [{
+            "start": 0,
+            "end": 600,
+            "text": "有完整文本",
+        }])
+        self.assertEqual(
+            build_local_segments(result, duration_ms=1200),
+            [{"start": 0, "end": 600, "text": "有完整文本"}],
+        )
 
     def test_qwen_english_alignment_items_restore_spaces(self) -> None:
         class FakeRuntime:
@@ -560,7 +856,7 @@ class LocalAsrFlowTests(unittest.TestCase):
             ["Hello, world.", " Next sentence works!"],
         )
 
-    def test_whisper_segment_without_words_keeps_sentence_item(self) -> None:
+    def test_whisper_segment_without_words_keeps_sentence_boundary(self) -> None:
         class FakeRuntime:
             def transcribe(self, audio: str, **kwargs: object):
                 segments = [
@@ -578,8 +874,75 @@ class LocalAsrFlowTests(unittest.TestCase):
 
         result = engine.transcribe(Path("sample.wav"))
 
-        self.assertEqual(result.items[0]["text"], "只有句子级时间戳。")
-        self.assertEqual((result.items[0]["start"], result.items[0]["end"]), (0, 1000))
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.segments, [{
+            "start": 0,
+            "end": 1000,
+            "text": "只有句子级时间戳。",
+        }])
+        self.assertEqual(result.timestamp_granularity, "segment")
+
+    def test_whisper_invalid_word_timestamps_do_not_claim_word_precision(self) -> None:
+        class FakeRuntime:
+            def transcribe(self, audio: str, **kwargs: object):
+                del audio, kwargs
+                return [
+                    SimpleNamespace(
+                        start=0.0,
+                        end=1.0,
+                        text="有精确字词。",
+                        words=[
+                            SimpleNamespace(word="有", start=0.0, end=0.2),
+                            SimpleNamespace(word="精确", start=0.2, end=0.6),
+                            SimpleNamespace(word="字词。", start=0.6, end=1.0),
+                        ],
+                    ),
+                    SimpleNamespace(
+                        start=1.2,
+                        end=2.0,
+                        text="只有句子级时间码。",
+                        words=[SimpleNamespace(word="只有句子级时间码。", start=2.0, end=2.0)],
+                    ),
+                ], SimpleNamespace(language="zh")
+
+        engine = create_local_engine("whisper")
+        engine._runtime = FakeRuntime()
+
+        result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual(result.timestamp_granularity, "segment")
+        self.assertEqual(result.segments[0]["items"][0]["text"], "有")
+        self.assertNotIn("items", result.segments[1])
+        self.assertEqual(
+            [segment["text"] for segment in build_local_segments(result, duration_ms=2200)],
+            ["有精确字词", "只有句子级时间码"],
+        )
+
+    def test_whisper_generator_words_are_not_consumed_and_can_supply_text(self) -> None:
+        class FakeRuntime:
+            def transcribe(self, audio: str, **kwargs: object):
+                del audio, kwargs
+                words = (
+                    word for word in [
+                        SimpleNamespace(word="你", start=0.0, end=0.2),
+                        SimpleNamespace(word="好", start=0.2, end=0.5),
+                    ]
+                )
+                return [SimpleNamespace(
+                    start=0.0,
+                    end=0.5,
+                    text="",
+                    words=words,
+                )], SimpleNamespace(language="zh")
+
+        engine = create_local_engine("whisper")
+        engine._runtime = FakeRuntime()
+
+        result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual(result.text, "你好")
+        self.assertEqual([item["text"] for item in result.items], ["你", "好"])
+        self.assertEqual(result.timestamp_granularity, "char")
 
     def test_moss_default_revision_is_pinned(self) -> None:
         self.assertRegex(MOSS_DEFAULT_REVISION, r"^[0-9a-f]{40}$")
@@ -634,14 +997,49 @@ class LocalAsrFlowTests(unittest.TestCase):
                 "moss_transcribe_diarize": SimpleNamespace(parse_transcript=mock.Mock(return_value=parsed)),
                 "moss_transcribe_diarize.inference_utils": SimpleNamespace(
                     build_transcription_messages=mock.Mock(return_value=[]),
-                    generate_transcription=mock.Mock(return_value={"text": "raw"}),
+                    generate_transcription=mock.Mock(return_value={"text": "你好世界"}),
                 ),
             }):
                 with mock.patch("maw.local_asr.MossDiarizeEngine._load", return_value=engine._runtime):
                     result = engine.transcribe(Path("sample.wav"))
 
-        self.assertEqual([(item["start"], item["end"]) for item in result.items], [(500, 1250), (1500, 2000)])
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.language, "zh")
+        self.assertEqual(result.language_source, "inferred")
+        self.assertEqual(result.split_mode, "continuous")
+        self.assertEqual(result.timestamp_granularity, "segment")
         self.assertEqual([segment["speaker"] for segment in result.segments], ["S01", "S02"])
+        self.assertTrue(all("items" not in segment for segment in result.segments))
+
+    def test_moss_preserves_text_when_any_segment_has_invalid_time(self) -> None:
+        class FakeModel:
+            def parameters(self):
+                return iter([SimpleNamespace(device="cpu", dtype="float32")])
+
+        engine = create_local_engine("moss")
+        engine._runtime = (FakeModel(), object(), {})
+        parsed = [
+            SimpleNamespace(start=-0.5, end=0.5, speaker="S01", text="负数"),
+            SimpleNamespace(start=0.5, end=0.5, speaker="S01", text="零长"),
+            SimpleNamespace(start=0.75, end=1.25, speaker="S01", text="有效"),
+        ]
+        with mock.patch("maw.local_asr.get_duration_sec", return_value=2.0):
+            with mock.patch.dict("sys.modules", {
+                "moss_transcribe_diarize": SimpleNamespace(parse_transcript=mock.Mock(return_value=parsed)),
+                "moss_transcribe_diarize.inference_utils": SimpleNamespace(
+                    build_transcription_messages=mock.Mock(return_value=[]),
+                    generate_transcription=mock.Mock(return_value={"text": "负数零长有效"}),
+                ),
+            }):
+                with mock.patch("maw.local_asr.MossDiarizeEngine._load", return_value=engine._runtime):
+                    result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual(result.text, "负数零长有效")
+        self.assertEqual(result.segments, [])
+        self.assertEqual(
+            build_local_segments(result, duration_ms=2000),
+            [{"start": 0, "end": 2000, "text": "负数零长有效"}],
+        )
 
     def test_moss_warns_when_generation_reaches_output_limit(self) -> None:
         class FakeModel:
@@ -664,6 +1062,46 @@ class LocalAsrFlowTests(unittest.TestCase):
                 engine.transcribe(Path("sample.wav"), on_event=events.append)
 
         self.assertTrue(any("达到最大 token 数" in event for event in events))
+
+    def test_moss_reports_generation_progress_when_runtime_supports_callbacks(self) -> None:
+        class FakeModel:
+            def parameters(self):
+                return iter([SimpleNamespace(device="cpu", dtype="float32")])
+
+        calls: dict[str, object] = {}
+
+        def fake_generate(
+            *_args: object,
+            input_callback=None,
+            token_callback=None,
+            **_kwargs: object,
+        ) -> dict[str, object]:
+            calls["input_callback"] = input_callback
+            calls["token_callback"] = token_callback
+            if input_callback:
+                input_callback(12)
+            if token_callback:
+                token_callback(32)
+            return {"text": "", "generated_tokens": 32}
+
+        engine = create_local_engine("moss")
+        engine._runtime = (FakeModel(), object(), {})
+        events: list[str] = []
+        with mock.patch("maw.local_asr.get_duration_sec", return_value=2.0):
+            with mock.patch.dict("sys.modules", {
+                "moss_transcribe_diarize": SimpleNamespace(parse_transcript=lambda _text: []),
+                "moss_transcribe_diarize.inference_utils": SimpleNamespace(
+                    build_transcription_messages=lambda _path: [],
+                    generate_transcription=fake_generate,
+                ),
+            }):
+                engine.transcribe(Path("sample.wav"), on_event=events.append)
+
+        self.assertIsNotNone(calls["input_callback"])
+        self.assertIsNotNone(calls["token_callback"])
+        self.assertTrue(any("音频特征已准备" in event for event in events))
+        self.assertTrue(any("已生成 32 tokens" in event for event in events))
+        self.assertTrue(any("生成完成：共 32 tokens" in event for event in events))
 
     def test_sensevoice_requests_sentence_timestamps_and_preserves_cues(self) -> None:
         class FakeRuntime:
@@ -771,6 +1209,9 @@ class LocalAsrFlowTests(unittest.TestCase):
                 [],
                 [],
                 "paraformer-zh",
+                "detected",
+                "continuous",
+                "char",
             )
             segments = [{"start": 0, "end": 1000, "text": "你好", "items": []}]
 
@@ -785,7 +1226,19 @@ class LocalAsrFlowTests(unittest.TestCase):
             )
 
             self.assertEqual(paths.json, root / "sample.funasr-local.mosp")
-            self.assertEqual(json.loads(paths.json.read_text(encoding="utf-8"))["model"], "paraformer-zh")
+            project = json.loads(paths.json.read_text(encoding="utf-8"))
+            self.assertEqual(project["model"], "paraformer-zh")
+            self.assertEqual(
+                {field: project[field] for field in (
+                    "language", "language_source", "split_mode", "timestamp_granularity"
+                )},
+                {
+                    "language": "zh",
+                    "language_source": "detected",
+                    "split_mode": "continuous",
+                    "timestamp_granularity": "char",
+                },
+            )
             self.assertEqual(media.read_bytes(), b"not decoded by this unit test")
 
 
@@ -799,6 +1252,8 @@ class LocalCliParserTests(unittest.TestCase):
         self.assertEqual(args.engine, "funasr")
         self.assertEqual(args.length_limit, 120.0)
         self.assertEqual(args.hotword, ["MAW"])
+        self.assertEqual(args.max_words, 13)
+        self.assertEqual(args.min_words, 3)
 
     def test_parser_accepts_whisper_engine(self) -> None:
         args = build_parser().parse_args(["sample.mp4", "--engine", "whisper"])
@@ -811,6 +1266,85 @@ class LocalCliParserTests(unittest.TestCase):
             path.write_text("\ufeff# comment\nMAW\n\nQwen3-ASR\nMAW\n", encoding="utf-8")
 
             self.assertEqual(load_hotword_files([str(path)]), ["MAW", "Qwen3-ASR"])
+
+
+class LocalCliNamingAndStatTests(unittest.TestCase):
+    """本地 CLI 的 --no-model-tag 命名与 MAW_STAT 行。"""
+
+    DURATION_MS = 100_000  # 100 秒 → elapsed 12.3s 得 rtf 0.123
+
+    def _run(self, extra_args, *, explicit_output=None):
+        from generate_subtitle_local import main
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "sample.wav"
+            media.write_bytes(b"media")
+            captured: dict = {}
+            fake_engine = mock.Mock()
+            fake_engine.transcribe.return_value = {"text": "你好", "language": "zh"}
+            argv = [str(media), *extra_args]
+            if explicit_output is not None:
+                argv += ["-o", str(explicit_output)]
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1012.3]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            def fake_wlo(**kwargs):
+                captured["output_srt"] = kwargs["output_srt"]
+                return SimpleNamespace(srt=kwargs["output_srt"], json=None, html=None)
+
+            with mock.patch(
+                "generate_subtitle_local.resolve_ffmpeg_tools",
+                return_value=SimpleNamespace(ffmpeg="ffmpeg", ffprobe="ffprobe"),
+            ), mock.patch("generate_subtitle_local.create_local_engine", return_value=fake_engine), \
+                 mock.patch(
+                     "generate_subtitle_local.build_local_segments",
+                     return_value=[{"start": 0, "end": 1000, "text": "你好"}],
+                 ), \
+                 mock.patch("generate_subtitle_local.write_local_outputs", side_effect=fake_wlo), \
+                 mock.patch("generate_subtitle_local.prepared_audio") as prepared, \
+                 mock.patch("generate_subtitle_local.time.perf_counter", side_effect=fake_perf), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                prepared.return_value.__enter__.return_value = (
+                    str(root / "audio.wav"),
+                    self.DURATION_MS,
+                )
+                code = main(argv)
+
+            self.assertEqual(code, 0)
+            return captured["output_srt"], stdout.getvalue()
+
+    @staticmethod
+    def _stat_line(stdout):
+        for line in stdout.splitlines():
+            if line.startswith("MAW_STAT rtf="):
+                return line
+        return None
+
+    def test_default_name_keeps_engine_tag_and_emits_stat(self) -> None:
+        output_srt, stdout = self._run(["--engine", "funasr"])
+
+        self.assertEqual(output_srt.name, "sample.funasr-local.srt")
+        self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
+
+    def test_no_model_tag_omits_engine_tag(self) -> None:
+        output_srt, _ = self._run(["--engine", "funasr", "--no-model-tag"])
+
+        self.assertEqual(output_srt.name, "sample.srt")
+
+    def test_explicit_output_is_not_tagged_but_stat_is_emitted(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            custom = Path(tmp_dir) / "out" / "custom.srt"
+            output_srt, stdout = self._run(["--engine", "qwen-asr"], explicit_output=str(custom))
+
+            self.assertEqual(output_srt, custom.resolve())
+            self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
 
 
 if __name__ == "__main__":

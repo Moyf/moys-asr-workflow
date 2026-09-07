@@ -1212,9 +1212,21 @@
     return magnitude > 0 ? 20 * Math.log10(magnitude / 127) : -Infinity;
   }
 
+  // bin 序号 ↔ 毫秒的刻度：优先用精确的 sample_rate / division，peaks_per_second
+  // 只是近似值（.ReaPeaks 派生的层多为分数率）。用近似值会让检测区间随时间线性偏移。
+  function waveformPeaksRate(waveform) {
+    const sampleRate = Number(waveform?.sample_rate);
+    const division = Number(waveform?.division);
+    if (Number.isFinite(sampleRate) && sampleRate > 0
+      && Number.isInteger(division) && division > 0) {
+      return sampleRate / division;
+    }
+    return Number(waveform?.peaks_per_second);
+  }
+
   function detectAudioGapRemoveGaps(waveform, options = {}) {
     const peaks = waveform?.peaks;
-    const peaksPerSecond = Number(waveform?.peaks_per_second);
+    const peaksPerSecond = Number(waveformPeaksRate(waveform));
     const durationMs = Math.max(0, Math.round(Number(waveform?.duration_ms) || 0));
     if (!peaks || !Number.isFinite(peaksPerSecond) || peaksPerSecond <= 0 || !durationMs) return [];
 
