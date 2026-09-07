@@ -1576,7 +1576,7 @@ textarea::placeholder {
   right: 20px;
   bottom: 134px;
   z-index: 36;
-  width: min(560px, calc(100vw - 40px));
+  width: min(600px, calc(100vw - 40px));
   block-size: min(640px, calc(100dvh - 156px));
   min-inline-size: min(360px, calc(100vw - 24px));
   max-inline-size: calc(100vw - 40px);
@@ -2017,18 +2017,39 @@ textarea::placeholder {
 
 .toolbox-utilities-content {
   display: grid;
-  grid-template-columns: minmax(108px, .32fr) minmax(0, 1fr);
+  grid-template-columns: minmax(108px, .25fr) minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
   margin-top: 12px;
 }
 
+/* 实用工具区左右两列各自独立滚动：激活时 scroller 变 flex 列，
+   utilities 网格占满剩余高度，滚动只发生在两列内部。 */
+.toolbox-drawer.toolbox-utilities-active .toolbox-content {
+  display: flex;
+  flex-direction: column;
+  --toolbox-top-fade: 0px;
+  --toolbox-bottom-fade: 0px;
+  animation: none;
+}
+
+.toolbox-drawer.toolbox-utilities-active .toolbox-utilities-content {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/* 左列极少溢出；隐去滚动条，避免经典滚动条在标签右侧长期占位。 */
 .toolbox-utility-tabs {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  overflow-y: auto;
+  min-block-size: 0;
+  overscroll-behavior: contain;
   margin-top: 0;
   padding: 4px;
+  scrollbar-width: none;
+}
+
+.toolbox-utility-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .toolbox-utility-tab-list {
@@ -2044,6 +2065,9 @@ textarea::placeholder {
 
 .toolbox-utility-panels {
   min-width: 0;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .toolbox-utility-panels .toolbox-panel {
@@ -2621,7 +2645,7 @@ code {
 
 @media (max-width:620px) {
   .toolbox-utilities-content {
-    grid-template-columns: minmax(96px, 32%) minmax(0, 1fr);
+    grid-template-columns: minmax(96px, 25%) minmax(0, 1fr);
     gap: 8px;
   }
 }

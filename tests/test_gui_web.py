@@ -1002,8 +1002,12 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });", postprocess_script)
         self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
         self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
-        self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  grid-template-columns: minmax(108px, .32fr) minmax(0, 1fr);', styles)
+        self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  grid-template-columns: minmax(108px, .25fr) minmax(0, 1fr);', styles)
         self.assertIn('.toolbox-utility-tab-list {\n  grid-template-columns: 1fr;\n}', styles)
+        self.assertIn('$("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
+        self.assertIn('.toolbox-drawer.toolbox-utilities-active .toolbox-content {\n  display: flex;\n  flex-direction: column;', styles)
+        self.assertIn('.toolbox-utility-tabs {\n  overflow-y: auto;\n  min-block-size: 0;\n  overscroll-behavior: contain;\n  margin-top: 0;\n  padding: 4px;\n  scrollbar-width: none;\n}', styles)
+        self.assertIn('.toolbox-utility-panels {\n  min-width: 0;\n  min-block-size: 0;\n  overflow-y: auto;', styles)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
 
     def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
