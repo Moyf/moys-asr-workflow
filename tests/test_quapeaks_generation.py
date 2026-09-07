@@ -277,5 +277,58 @@ class FindReapeaksPreferenceTests(unittest.TestCase):
         self.assertTrue(found.is_file(), "返回的必须是真实存在的文件")
 
 
+
+class SpectralCapabilityFilterTests(unittest.TestCase):
+    """review 第 4 项：候选要先按能力过滤，再比新鲜度。"""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.tone = self.root / "tone.wav"
+        self.tone.write_bytes(b"RIFF" + b"\x00" * 40)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _container(self, name: str, *, spectral: bool) -> Path:
+        """手搓一份合法容器：wave 层 + 可选 spectral 层，指纹指向当前媒体。"""
+        st = self.tone.stat()
+        layers = 2 if spectral else 1
+        head = struct.pack("<4sBBiII", b"RPKN", 1, layers, 8000,
+                           int(st.st_mtime) & 0xFFFF_FFFF, st.st_size & 0xFFFF_FFFF)
+        table = struct.pack("<ii", 80, 1)
+        wave = struct.pack("<hh", 100, -100)
+        if spectral:
+            table += struct.pack("<ii", -ord("s"), 1)
+            wave += struct.pack("<ii", 1000, 1)
+        path = self.root / name
+        path.write_bytes(head + table + wave)
+        return path
+
+    def test_wave_only_native_container_does_not_shadow_spectral_cache(self) -> None:
+        # 两份都新鲜（指纹都指向当前媒体），只有一份带 spectral 层。
+        self._container("tone.wav.quapeaks", spectral=False)
+        with_spec = self._container("tone.wav.ReaPeaks", spectral=True)
+        # 不声明需求时，优先级仍是自有容器在前 —— 这条不变。
+        plain = quapeaks.find_reapeaks(self.tone)
+        assert plain is not None
+        self.assertEqual(plain.name, "tone.wav.quapeaks")
+        # 要频谱时必须落到带 spectral 的那份，否则频谱染色被静默短路。
+        picked = quapeaks.find_reapeaks(self.tone, need_spectral=True)
+        self.assertEqual(picked, with_spec)
+
+    def test_load_spectral_payload_picks_the_usable_candidate(self) -> None:
+        self._container("tone.wav.quapeaks", spectral=False)
+        self._container("tone.wav.ReaPeaks", spectral=True)
+        payload = quapeaks.load_spectral_payload(self.tone)
+        self.assertIsNotNone(payload, "带 spectral 的候选被 wave-only 容器挡住时会返回 None")
+        self.assertEqual(payload["peak_count"], 1)
+
+    def test_no_spectral_candidate_at_all_is_a_miss_not_a_crash(self) -> None:
+        self._container("tone.wav.quapeaks", spectral=False)
+        self.assertIsNone(quapeaks.find_reapeaks(self.tone, need_spectral=True))
+        self.assertIsNone(quapeaks.load_spectral_payload(self.tone))
+
+
 if __name__ == "__main__":
     unittest.main()
