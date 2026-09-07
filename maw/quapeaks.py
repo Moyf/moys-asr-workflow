@@ -966,9 +966,14 @@ def generate_for_media(
     ):
         return None
 
-    media_path = Path(media_path)
+    # 与 output_naming 的 maw_root / waveform_dirs 同口径 resolve：新生成目标的
+    # 拼写必须和 find_reapeaks 经 waveform_dirs 找回来的完全一致，否则在 TEMP
+    # 为 8.3 短名（RUNNER~1）的环境里，同一份容器会以两种拼写被返回/比较。
+    media_path = Path(media_path).resolve(strict=False)
     signature_path = (
-        Path(source_media_path) if source_media_path is not None else media_path
+        Path(source_media_path).resolve(strict=False)
+        if source_media_path is not None
+        else media_path
     )
     existing = find_reapeaks(signature_path, audio_track=cache_audio_track)
     if existing is not None and _reapeaks_matches_media(existing, signature_path):

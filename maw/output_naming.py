@@ -127,7 +127,10 @@ def waveform_dirs(media_path: Path | str) -> list[Path]:
 
     ``.ReaPeaks`` 不走这里 —— 那是 REAPER 写的，永远只在媒体旁。
     """
-    media_path = Path(media_path).expanduser()
+    # 与 maw_root / maw_root_candidates 同口径 resolve：TEMP 用 8.3 短名拼写
+    # （如 RUNNER~1）的环境里，「媒体旁」这一路不展开的话，同一目录会以两种
+    # 拼写进候选表，下面的 normcase 去重认不出它们是同一个地方。
+    media_path = Path(media_path).expanduser().resolve(strict=False)
     dirs: list[Path] = []
     if subfolder_prefs()[0]:
         dirs.append(maw_root(media_path))

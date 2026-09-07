@@ -365,16 +365,21 @@ class WaveformPlacementContractTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def _expected(self, *parts: str) -> Path:
+        """期望路径按生产端口径 resolve：CI 的 TEMP 常是 8.3 短名（RUNNER~1），
+        waveform_dirs/maw_root 返回的是展开后的长名，直接比原始拼写必挂。"""
+        return self.root.joinpath(*parts).resolve()
+
     def test_default_writes_next_to_media(self) -> None:
         with _subfolder_config(output_subfolder=False):
             written = mopeaks.save_mopeaks(self.payload, self.media_path)
-        self.assertEqual(written, self.root / "ICE.mkv.mopeaks")
+        self.assertEqual(written, self._expected("ICE.mkv.mopeaks"))
         self.assertFalse((self.root / "_maw").exists())
 
     def test_subfolder_preference_moves_the_write_point(self) -> None:
         with _subfolder_config(output_subfolder=True):
             written = mopeaks.save_mopeaks(self.payload, self.media_path)
-        self.assertEqual(written, self.root / "_maw" / "ICE.mkv.mopeaks")
+        self.assertEqual(written, self._expected("_maw", "ICE.mkv.mopeaks"))
         self.assertTrue(written.is_file(), "_maw 不存在时必须自己建出来")
 
     def test_reader_finds_a_cache_left_by_the_other_setting(self) -> None:
@@ -393,7 +398,7 @@ class WaveformPlacementContractTests(unittest.TestCase):
         with _subfolder_config(output_subfolder=True, per_video=True):
             self.assertEqual(
                 mopeaks.mopeaks_path(self.media_path).parent,
-                self.root / "ICE_maw",
+                self._expected("ICE_maw"),
             )
         with _subfolder_config(output_subfolder=False):
             back = mopeaks.load_mopeaks(self.media_path)
@@ -431,7 +436,7 @@ class WaveformPlacementContractTests(unittest.TestCase):
             )
             found = maw_quapeaks.find_reapeaks(self.media_path)
             self.assertEqual(found, self.root / "ICE.mkv.ReaPeaks")
-            self.assertEqual(dirs[0], self.root / "_maw")
+            self.assertEqual(dirs[0], self._expected("_maw"))
 
 
 if __name__ == "__main__":

@@ -369,7 +369,9 @@ class GenerateReapeaksTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_writes_and_reuses(self) -> None:
-        target = self.root / "tone.wav.quapeaks"
+        # 生产端（generate_for_media / waveform_dirs）会把路径 resolve 成长名，
+        # 期望值按同一口径展开，避免 CI 的 8.3 短名 TEMP（RUNNER~1）拼写不一致。
+        target = (self.root / "tone.wav.quapeaks").resolve()
         self.assertFalse(target.exists())
         generated = quapeaks.generate_for_media(self.tone_path)
         self.assertEqual(generated, target)
