@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from maw.project import PROJECT_SCHEMA
 from maw.project_io import enrich_project_media_metadata, write_mosp
 
 
@@ -37,12 +38,22 @@ class ProjectIoTests(unittest.TestCase):
             self.assertEqual(result, output)
             probe.assert_called_once_with(media, ffprobe_path=ffprobe)
             saved = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(saved["schema"], PROJECT_SCHEMA)
             self.assertEqual(saved["media_metadata"], metadata)
-            self.assertEqual(list(saved)[:2], ["media", "media_metadata"])
+            self.assertEqual(list(saved)[:3], ["schema", "media", "media_metadata"])
             raw = output.read_bytes()
             self.assertTrue(raw.endswith(b"\n"))
             self.assertNotIn(b"\r\n", raw)
             self.assertNotIn("media_metadata", project)
+
+    def test_write_mosp_replaces_missing_or_stale_schema_with_current_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "project.mosp"
+
+            write_mosp(output, {"schema": "moy.asr.project.draft", "segments": []})
+
+            saved = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(saved["schema"], PROJECT_SCHEMA)
 
     def test_existing_media_metadata_is_preserved_without_reprobing(self) -> None:
         existing = {"video_fps": 24, "video_fps_ratio": "24/1"}

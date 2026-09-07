@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from maw.project import PROJECT_SCHEMA
 from maw.postprocess_io import _available_output, write_artifacts
 
 
@@ -167,6 +168,7 @@ class PostprocessOutputNamingTests(unittest.TestCase):
             )
         self.assertEqual(zh.project_path.name, "clip.OCR去重.mosp")
         self.assertEqual(zh.srt_path.name, "clip.OCR去重.srt")
+        self.assertEqual(json.loads(zh.project_path.read_text(encoding="utf-8"))["schema"], PROJECT_SCHEMA)
 
         with mock.patch("maw.output_naming.resolve_lang", return_value="en"):
             en = write_artifacts(

@@ -10,6 +10,8 @@ from tempfile import TemporaryDirectory
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from maw.project import PROJECT_SCHEMA
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_PATH = ROOT / "server-align" / "serve.py"
@@ -120,6 +122,7 @@ class ServerAlignTests(unittest.TestCase):
 
             self.assertTrue(exported["ok"])
             output = json.loads(Path(exported["path"]).read_text(encoding="utf-8"))
+            self.assertEqual(output["schema"], PROJECT_SCHEMA)
             self.assertEqual(output["gap_remove"]["schema"], "moy.asr.gap_remove.v1")
             self.assertTrue(output["gap_remove"]["skip_playback"])
             self.assertEqual(output["gap_remove"]["operation_mode"], "boundary_drag")
