@@ -56,6 +56,28 @@ test('Launcher Ctrl+wheel zoom is bounded, persisted, and leaves ordinary wheel 
   await expect.poll(() => page.evaluate(() => document.documentElement.style.zoom)).toBe('150%');
 });
 
+test('Launcher action footer remains flush with the viewport after zoom changes', async ({ page }) => {
+  // Given: the Launcher has completed initialization at a regular desktop viewport.
+  await page.setViewportSize({ width: 884, height: 630 });
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.zoomPercent === 100);
+
+  // When: the user switches between the smallest and largest supported Launcher zoom levels.
+  const zoom = async (deltaY) => page.evaluate((delta) => {
+    document.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true, deltaY: delta }));
+  }, deltaY);
+  for (const [zoomPercent, deltaY, steps] of [[80, 100, 4], [150, -100, 14]]) {
+    for (let index = 0; index < steps; index += 1) await zoom(deltaY);
+    await expect.poll(() => page.evaluate(() => document.documentElement.style.zoom)).toBe(`${zoomPercent}%`);
+
+    // Then: the action footer's lower edge remains at the visible viewport edge.
+    await expect.poll(() => page.locator('.actions').evaluate((footer) => {
+      const rect = footer.getBoundingClientRect();
+      return Math.round(rect.bottom - window.innerHeight);
+    })).toBe(0);
+  }
+});
+
 test('Launcher keyboard zoom supports equals, plus, minus, and reset without stealing native controls', async ({ page }) => {
   // Given: a fresh Launcher at the default zoom.
   await page.goto(`file://${launcherPath}`);
