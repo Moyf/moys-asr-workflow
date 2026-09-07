@@ -126,6 +126,8 @@ column. Long paths use `overflow-wrap: anywhere` and never force horizontal scro
   default and reset value. Pointer events and `getBoundingClientRect()` remain in
   viewport pixels; CSS geometry is written in page units through the shared
   viewport-to-page conversion, so overlays and both toolbox resize axes stay aligned.
+  The Launcher shell height is the viewport height divided by the active zoom ratio,
+  so the action footer remains flush with the visible viewport edge at every zoom level.
 - On narrow screens the floating button clears the two-row sticky action footer and
   the open drawer clears the button; error results use primary text over the red-soft
   background to preserve AA contrast.
