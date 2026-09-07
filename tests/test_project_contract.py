@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from maw.project import (
+    PROJECT_SCHEMA,
     ProjectValidationFailed,
     normalize_project,
     repair_project_timing_ranges,
@@ -12,6 +13,39 @@ from maw.project import (
 
 
 class ProjectContractTests(unittest.TestCase):
+    def test_normalize_project_upgrades_unversioned_legacy_project_to_current_schema(self) -> None:
+        project = {"segments": [{"start": 0, "end": 1000, "text": "legacy"}]}
+
+        normalized = normalize_project(project)
+
+        self.assertEqual(normalized["schema"], PROJECT_SCHEMA)
+
+    def test_validate_project_accepts_current_schema(self) -> None:
+        result = validate_project({
+            "schema": PROJECT_SCHEMA,
+            "segments": [{"start": 0, "end": 1000, "text": "current"}],
+        })
+
+        self.assertTrue(result.ok, msg=str([error.to_json() for error in result.errors]))
+
+    def test_validate_project_rejects_unknown_project_schema(self) -> None:
+        result = validate_project({
+            "schema": "moy.asr.project.v2",
+            "segments": [{"start": 0, "end": 1000, "text": "future"}],
+        })
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.schema", {error.path for error in result.errors})
+
+    def test_validate_project_rejects_non_string_project_schema(self) -> None:
+        result = validate_project({
+            "schema": None,
+            "segments": [{"start": 0, "end": 1000, "text": "invalid"}],
+        })
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.schema", {error.path for error in result.errors})
+
     def test_validate_project_accepts_transcription_metadata(self) -> None:
         result = validate_project({
             "language": "en",
