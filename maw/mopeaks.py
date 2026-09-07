@@ -41,12 +41,10 @@ from maw.waveform import (
     WAVEFORM_SCHEMA,
     is_waveform_payload,
     media_signature,
-    waveform_matches_media,
 )
 
 # 0.x 版把载荷写成 JSON sidecar（媒体后缀被 with_suffix 整个换掉）。
 # 现只写 mopeaks，但旧文件要还能读，否则用户升级后第一次打开=全量重抽。
-LEGACY_SIDECAR_SUFFIX = ".waveform.json"
 
 # 全局头长度与 REAPER/quapeaks 一致：4s magic | B ch | B layers | <III>
 HEADER_LEN = 18
@@ -62,10 +60,23 @@ class MopeaksError(ValueError):
     """mopeaks 载荷无法序列化或读回。"""
 
 
-def mopeaks_path(media_path: Path | str) -> Path:
-    """返回媒体旁的 mopeaks 路径（保留完整媒体名，与 .ReaPeaks/.quapeaks 同风格）。"""
+def mopeaks_path(media_path: Path | str, *, audio_track: int = 0) -> Path:
+    """返回媒体旁的 mopeaks 路径。
+
+    两件事跟上游对齐：保留完整媒体名（``ICE.mkv.mopeaks``，与 .ReaPeaks/.quapeaks 同风格），
+    非默认音轨加 ``.track-N`` 段（N 从 1 起，第 0 轨不带标记）—— 否则同一素材的
+    两条轨会互相覆盖对方的缓存。
+    """
     media_path = Path(media_path)
-    return media_path.with_name(media_path.name + ".mopeaks")
+    _check_track(audio_track)
+    track_suffix = f".track-{audio_track + 1}" if audio_track else ""
+    return media_path.with_name(media_path.name + track_suffix + ".mopeaks")
+
+
+def _check_track(audio_track: int) -> None:
+    """音轨号必须是非负整数：与 maw.waveform / maw.quapeaks 同一套入口校验。"""
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
+        raise MopeaksError("audio_track 必须是非负整数")
 
 
 def _exact_rate(payload: dict[str, Any]) -> tuple[int, int]:
@@ -115,7 +126,12 @@ def encode_mopeaks(payload: dict[str, Any], media_path: Path | str) -> bytes:
     return bytes(out)
 
 
-def decode_mopeaks(data: bytes, path: str | Path = "<mopeaks>") -> dict[str, Any]:
+def decode_mopeaks(
+    data: bytes,
+    path: str | Path = "<mopeaks>",
+    *,
+    audio_track: int = 0,
+) -> dict[str, Any]:
     """把 mopeaks 字节解回 ``moy.asr.waveform.v1`` 载荷。"""
     if len(data) < HEADER_LEN + LAYER_HEADER_LEN + SELF_PREFIX_LEN:
         raise MopeaksError(f"{path}: 文件过短，无法解析 mopeaks 头部")
@@ -138,6 +154,11 @@ def decode_mopeaks(data: bytes, path: str | Path = "<mopeaks>") -> dict[str, Any
             f"{path}: 声明 npeak={peak_count}，需 {need} 字节，但文件只剩 {len(data) - off} 字节"
         )
     peaks = data[off : off + need]
+    # 刻度必须为正：文件被截断/篡改后这里可能是 0，而除数 0 抛的是
+    # ZeroDivisionError，不在 load_mopeaks 捕获的 (OSError, ValueError, struct.error)
+    # 里 —— 会在耗时转写完成之后把编辑器炸掉，而不是安静地重抽一次。
+    if sample_rate <= 0 or division <= 0:
+        raise MopeaksError(f"{path}: 自研层刻度非法（sample_rate={sample_rate}, division={division}）")
     duration_ms = round(peak_count * division / sample_rate * 1000)
     # 签名里只放能诚实还原的部分：头存的是 low-32 的秒级 mtime 与 size，
     # modified_ms 因此只有秒精度 —— load_mopeaks 会按同一口径复核后再回填
@@ -148,6 +169,7 @@ def decode_mopeaks(data: bytes, path: str | Path = "<mopeaks>") -> dict[str, Any
         "peaks_per_second": round(sample_rate / division),
         "sample_rate": sample_rate,
         "division": division,
+        "audio_track": audio_track,
         "peak_count": peak_count,
         "duration_ms": duration_ms,
         "data": base64.b64encode(peaks).decode("ascii"),
@@ -159,44 +181,13 @@ def decode_mopeaks(data: bytes, path: str | Path = "<mopeaks>") -> dict[str, Any
     }
 
 
-def load_legacy_json_sidecar(media_path: Path | str) -> dict[str, Any] | None:
-    """只读兼容：旧版本写在媒体旁的 JSON sidecar；缺失/损坏/签名不符给 None。
-
-    没有任何地方再写它，所以这是一个只会萎缩的入口。
-    """
-    legacy = Path(media_path).with_suffix(LEGACY_SIDECAR_SUFFIX)
-    try:
-        value = json.loads(legacy.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError):
-        return None
-    return value if is_waveform_payload(value) else None
 
 
-def load_waveform_cache(media_path: Path | str) -> dict[str, Any] | None:
-    """读媒体旁的自研波形缓存：mopeaks 优先，回退旧 JSON 并就地迁移。
-
-    调用方拿到 None 就该重新提取——签名校验、结构校验都在这里做完，
-    坏文件不会被当成"有缓存"从而让编辑器画出一条空波形。
-    """
-    payload = load_mopeaks(media_path)
-    if payload is not None:
-        return payload
-    legacy = load_legacy_json_sidecar(media_path)
-    if legacy is None or not waveform_matches_media(legacy, Path(media_path)):
-        return None
-    try:
-        save_mopeaks(legacy, media_path)
-    except (OSError, MopeaksError):
-        # 迁移只是省一次重抽，不值得为它让读取失败。
-        return legacy
-    # 交回迁移后的版本：老 JSON 只有取整的 peaks_per_second，
-    # 而 mopeaks 里补好了精确刻度 (sample_rate, division)。
-    return load_mopeaks(media_path) or legacy
-
-
-def save_mopeaks(payload: dict[str, Any], media_path: Path | str) -> Path:
+def save_mopeaks(
+    payload: dict[str, Any], media_path: Path | str, *, audio_track: int = 0
+) -> Path:
     """原子写入 mopeaks（临时文件 + replace，绝不做"先删后写"）。"""
-    target = mopeaks_path(media_path)
+    target = mopeaks_path(media_path, audio_track=audio_track)
     blob = encode_mopeaks(payload, media_path)
     fd, tmp = tempfile.mkstemp(prefix=".mopeaks-", dir=str(target.parent))
     try:
@@ -209,12 +200,25 @@ def save_mopeaks(payload: dict[str, Any], media_path: Path | str) -> Path:
     return target
 
 
-def load_mopeaks(media_path: Path | str) -> dict[str, Any] | None:
+def load_waveform_cache(
+    media_path: Path | str, *, audio_track: int = 0
+) -> dict[str, Any] | None:
+    """读媒体旁的自研波形缓存；缺失/损坏/签名不符一律 None（= 该重抽）。
+
+    旧 <媒体>.waveform.json **不再读**：本次任务已彻底去掉 JSON sidecar，
+    历史文件留在盘上不管，代价是老用户第一次打开重抽一次 ffmpeg（换取只有一种缓存）。
+    """
+    return load_mopeaks(media_path, audio_track=audio_track)
+
+
+def load_mopeaks(
+    media_path: Path | str, *, audio_track: int = 0
+) -> dict[str, Any] | None:
     """读取并校验媒体旁的 mopeaks；缺失/损坏/签名不符时返回 None。"""
     media_path = Path(media_path)
-    path = mopeaks_path(media_path)
+    path = mopeaks_path(media_path, audio_track=audio_track)
     try:
-        payload = decode_mopeaks(path.read_bytes(), path)
+        payload = decode_mopeaks(path.read_bytes(), path, audio_track=audio_track)
     except (OSError, ValueError, struct.error):
         return None
     # source 里只存了秒级 mtime 与 size，按同口径复核。判定直接借用内核
