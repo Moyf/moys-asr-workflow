@@ -31836,7 +31836,7 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
     ? mediaMetadata.audio_tracks : null;
   const clipName = otioMediaName(targetUrl);
   const audioEntries = audioMetadata === null
-    ? [null]
+    ? [{ audioTrack: null, index: 0 }]
     : audioMetadata.map((audioTrack, index) => ({ audioTrack, index }));
   const audioSpecs = audioEntries.length || player?.tagName !== 'AUDIO'
     ? audioEntries.map(({ audioTrack, index }) => ({
