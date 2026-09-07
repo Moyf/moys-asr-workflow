@@ -44,12 +44,14 @@ def merge_media_caches(
     return target
 
 
-def _persist_mopeaks_fallback(payload: dict[str, Any], media_path: Path) -> None:
+def _persist_mopeaks_fallback(
+    payload: dict[str, Any], media_path: Path, *, audio_track: int = 0
+) -> None:
     """内核那一档没成，就把自研波形写进 mopeaks（纯 Python，不需要内核）。"""
-    if mopeaks.load_mopeaks(media_path) is not None:
+    if mopeaks.load_mopeaks(media_path, audio_track=audio_track) is not None:
         return  # 已有有效回退档，不必白写一遍
     try:
-        written = mopeaks.save_mopeaks(payload, media_path)
+        written = mopeaks.save_mopeaks(payload, media_path, audio_track=audio_track)
     except (OSError, mopeaks.MopeaksError) as exc:
         print(f"[mopeaks] 回退缓存写入失败: {exc}")
         return
@@ -210,9 +212,18 @@ def embed_media_caches(
     # 回退档判据只有一个问题：当前媒体的自研波形已经在容器里了吗？
     # 没装内核 / 内核抛错 / 产物自检不过 / 压根没生成 —— 四种成因共用
     # 这一条路径，调用方不需要数标志位。
+    # 回退档的签名对象必须是**真正解码过的那个文件**：源媒体不可解时
+    # embed_waveform 解的是派生 WAV，把它的峰写成源媒体的缓存，会让短片段
+    # 的时间轴被当成完整源媒体的有效波形接受（错而不显）。载荷自己的
+    # source.name 就是那次解码所用的文件名，按它落点最准。
     if self_peaks is not None and isinstance(waveform_payload, dict):
-        if quapeaks.find_self_wave_container(source_path) is None:
-            _persist_mopeaks_fallback(waveform_payload, source_path)
+        src_name = str(waveform_payload.get("source", {}).get("name") or "")
+        if src_name and src_name == cache_path.name:
+            signed = cache_path
+        else:
+            signed = source_path
+        if quapeaks.find_self_wave_container(signed, audio_track=audio_track) is None:
+            _persist_mopeaks_fallback(waveform_payload, signed, audio_track=audio_track)
     return MediaCacheResult(
         project=project,
         waveform_error=waveform_result.error,

@@ -356,6 +356,14 @@ class PackagingContractTests(unittest.TestCase):
 
     def test_rust_quapeaks_kernel_is_imported_only_at_the_call_site(self) -> None:
         """Given managed runtimes may lack the Rust kernel, When the parser module is read, Then its import is lazy."""
+        # 打包缺模块属于"源码跑得好、产物一开就崩"：media_cache 在模块级导入
+        # maw.mopeaks，spec 漏了它，本地 ASR worker 会在波形阶段 ImportError，
+        # 而现有导入图检查只覆盖 OCR runtime 那条链，抓不到。
+        spec = read_text("MAW.spec")
+        self.assertIn(
+            '(str(ROOT / "maw" / "mopeaks.py"), "local-runtime/maw")', spec
+        )
+        self.assertIn('"maw.mopeaks"', spec)
         source = read_text("maw/quapeaks.py")
         tree = ast.parse(source)
         top_level: set[str] = set()

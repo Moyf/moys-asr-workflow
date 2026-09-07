@@ -87,6 +87,7 @@ class MopeaksRoundTripTests(unittest.TestCase):
         payload = make_payload(media_path=self.media_path)
         back = mopeaks.decode_mopeaks(mopeaks.encode_mopeaks(payload, self.media_path))
         source = back.pop("source")
+        back.pop("audio_track")  # 由落点（文件名/调用方）告知，不来自载荷本身
         self.assertEqual(back, {k: v for k, v in payload.items() if k != "source"})
         # 容器只存得下秒级 mtime 与 low-32 size，所以这两项按同一口径折过。
         self.assertEqual(source["size"], self.media_path.stat().st_size)
@@ -95,7 +96,10 @@ class MopeaksRoundTripTests(unittest.TestCase):
     def test_save_then_load_returns_the_same_payload(self) -> None:
         payload = make_payload(media_path=self.media_path)
         mopeaks.save_mopeaks(payload, self.media_path)
-        self.assertEqual(mopeaks.load_mopeaks(self.media_path), payload)
+        self.assertEqual(
+            {k: v for k, v in mopeaks.load_mopeaks(self.media_path).items() if k != "audio_track"},
+            payload,
+        )
 
     def test_exact_rate_survives_a_payload_that_only_has_the_rounded_rate(self) -> None:
         # PR #102 的教训：只留整数峰率会把刻度漂移又请回来。
@@ -244,59 +248,6 @@ class MopeaksFingerprintPolicyTests(unittest.TestCase):
                 self.assertNotIn(f"\n{name} =", src, "格式常量的真源在 maw.quapeaks，不要抄第二份")
         self.assertIs(mopeaks.timestamp_fingerprint_matches, quapeaks._timestamp_fingerprint_matches)
 
-
-class LegacyJsonSidecarTests(unittest.TestCase):
-    """旧 .waveform.json 只读兼容：能读、能迁走，但绝不再写。"""
-
-    def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.media_path = Path(self.temp_dir.name) / "tone.wav"
-        self.media_path.write_bytes(b"RIFF" + b"\x00" * 40)
-        # 上游把 sidecar 搬进 _maw 后，媒体旁那份降为最后的兼容候选。
-        self.legacy = self.media_path.with_suffix(".waveform.json")
-
-    def tearDown(self) -> None:
-        self.temp_dir.cleanup()
-
-    def _write_legacy(self, payload: dict) -> None:
-        self.legacy.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def test_legacy_is_readable_and_migrated_in_place(self) -> None:
-        payload = make_payload(media_path=self.media_path)
-        self._write_legacy(payload)
-        cached = mopeaks.load_waveform_cache(self.media_path)
-        self.assertIsNotNone(cached)
-        self.assertEqual(cached["data"], payload["data"])
-        # 迁移是"顺手"：下一次读取不再碰 JSON。
-        self.assertEqual(mopeaks.load_mopeaks(self.media_path)["data"], payload["data"])
-
-    def test_legacy_without_exact_rate_is_upgraded_to_one(self) -> None:
-        self._write_legacy(make_payload(media_path=self.media_path, sample_rate=None, division=None))
-        cached = mopeaks.load_waveform_cache(self.media_path)
-        self.assertEqual(cached["sample_rate"], 100)
-        self.assertEqual(cached["division"], 1)
-
-    def test_stale_legacy_is_not_used(self) -> None:
-        self._write_legacy(make_payload(media_path=self.media_path))
-        self.media_path.write_bytes(self.media_path.read_bytes() + b"\x7f\x7f")
-        self.assertIsNone(mopeaks.load_waveform_cache(self.media_path))
-        self.assertFalse(mopeaks.mopeaks_path(self.media_path).exists(), "过期缓存不该被迁成新的")
-
-    def test_corrupt_legacy_is_ignored(self) -> None:
-        self.legacy.write_text("{not json", encoding="utf-8")
-        self.assertIsNone(mopeaks.load_legacy_json_sidecar(self.media_path))
-        self.assertIsNone(mopeaks.load_waveform_cache(self.media_path))
-
-    def test_mopeaks_wins_over_legacy(self) -> None:
-        self._write_legacy(make_payload(peaks=b"\x11\x22", media_path=self.media_path))
-        mopeaks.save_mopeaks(make_payload(peaks=b"\x33\x44", media_path=self.media_path), self.media_path)
-        cached = mopeaks.load_waveform_cache(self.media_path)
-        self.assertEqual(cached["data"], base64.b64encode(b"\x33\x44").decode("ascii"))
-
-    def test_legacy_filename_replaces_the_media_suffix(self) -> None:
-        # 老版本的 with_suffix 语义（tone.wav → tone.waveform.json）必须原样保留，
-        # 否则兼容个寂寞。
-        self.assertEqual(self.legacy.name, "tone.waveform.json")
 
 
 if __name__ == "__main__":

@@ -23,7 +23,12 @@ web/                          # 所有前端源码
 docs/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 ```
 
-`web/` 是唯一前端源码。`edit.py` 将它内联为便携 `.edit.html`，`server-editor` 则在每次请求时从它渲染页面。因此，修改 `web/` 或模板后必须运行：
+`web/` 是唯一前端源码。`edit.py` 将它内联为便携 `.edit.html`，`server-editor` 则在每次请求时从它渲染页面。因此，修改 `web/` 或模板后需要重新生成内联副本：
+
+**但现行约定是：除非维护者主动要求，不要生成 `blank-editor.html`。**
+它是生成产物、体积大，且每次重生成都会带来上百行噪声 diff，review 时淹没真实改动。
+改了 `web/` 就只提交 `web/` 源码，并在 PR 描述里注明「内联副本待发布前统一重生成」；
+发布检查时再一次性重生成，并核对 `git diff --stat blank-editor.html` 符合预期。
 
 ```powershell
 uv run python edit.py --blank

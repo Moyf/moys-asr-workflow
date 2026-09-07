@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 import edit  # noqa: E402
 from maw import gui_config  # noqa: E402
+from maw import mopeaks  # noqa: E402
 from maw import waveform as waveform_module  # noqa: E402
 
 
@@ -94,111 +95,49 @@ class WaveformExtractionTests(unittest.TestCase):
         self.media_path.write_bytes(self.media_path.read_bytes() + b"\x00\x00")
         self.assertFalse(waveform_module.waveform_matches_media(payload, self.media_path))
 
-    def test_sidecar_waveform_is_reused_when_project_has_no_embedded_cache(self) -> None:
+    def test_mopeaks_cache_is_reused_when_project_has_no_embedded_cache(self) -> None:
+        # 波形缓存的唯一落点是 mopeaks 二进制容器；命中它就不该再碰 ffmpeg。
         payload = {
             "schema": waveform_module.WAVEFORM_SCHEMA,
             "encoding": waveform_module.WAVEFORM_ENCODING,
             "peaks_per_second": 100,
+            "sample_rate": 1000,
+            "division": 10,
             "peak_count": 1,
             "duration_ms": 10,
             "data": "AAA=",
             "source": waveform_module.media_signature(self.media_path),
         }
-        with _patch_output_config():
-            sidecar = waveform_module.waveform_sidecar_path(self.media_path)
-            waveform_module.save_waveform_sidecar(payload, self.media_path)
-            self.assertTrue(sidecar.exists())
-            self.assertNotIn(b"\r\n", sidecar.read_bytes())
-            self.assertEqual(waveform_module.load_waveform_sidecar(self.media_path), payload)
-            cached, extracted = waveform_module.load_or_extract_waveform(None, self.media_path)
-            self.assertEqual(cached, payload)
-            self.assertFalse(extracted)
+        mopeaks.save_mopeaks(payload, self.media_path)
+        self.assertTrue(mopeaks.mopeaks_path(self.media_path).exists())
+        with mock.patch.object(waveform_module, "extract_waveform") as extractor:
+            cached, extracted = waveform_module.load_or_extract_waveform(
+                None, self.media_path
+            )
+        extractor.assert_not_called()
+        self.assertFalse(extracted)
+        self.assertEqual(cached["data"], payload["data"])
 
-    def test_waveform_sidecar_writes_into_maw_directory(self) -> None:
-        """波形是可重建缓存：sidecar 默认落 _maw，不再污染媒体所在目录。"""
-        payload = {
-            "schema": waveform_module.WAVEFORM_SCHEMA,
-            "encoding": waveform_module.WAVEFORM_ENCODING,
-            "peaks_per_second": 100,
-            "peak_count": 1,
-            "duration_ms": 10,
-            "data": "AAA=",
-            "source": waveform_module.media_signature(self.media_path),
-        }
-        with _patch_output_config():
-            sidecar = waveform_module.waveform_sidecar_path(self.media_path)
-            self.assertEqual(sidecar, self.root / "_maw" / "tone.waveform.json")
-            waveform_module.save_waveform_sidecar(payload, self.media_path)
-            self.assertTrue((self.root / "_maw" / "tone.waveform.json").is_file())
-            # 旧媒体旁位置不写入、不迁移
-            self.assertFalse((self.root / "tone.waveform.json").exists())
+    def test_json_sidecar_helpers_are_gone(self) -> None:
+        """回归钉：waveform.json 已被彻底去掉，别再让它悄悄回来。
 
-    def test_waveform_sidecar_uses_per_video_maw_when_preferred(self) -> None:
-        payload = {
-            "schema": waveform_module.WAVEFORM_SCHEMA,
-            "encoding": waveform_module.WAVEFORM_ENCODING,
-            "peaks_per_second": 100,
-            "peak_count": 1,
-            "duration_ms": 10,
-            "data": "AAA=",
-            "source": waveform_module.media_signature(self.media_path),
-        }
-        with _patch_output_config(per_video=True):
-            sidecar = waveform_module.waveform_sidecar_path(self.media_path)
-            self.assertEqual(sidecar, self.root / "tone_maw" / "tone.waveform.json")
-            waveform_module.save_waveform_sidecar(payload, self.media_path)
-            self.assertTrue(sidecar.is_file())
-            self.assertEqual(waveform_module.load_waveform_sidecar(self.media_path), payload)
-
-    def test_load_waveform_sidecar_reads_legacy_media_adjacent_path(self) -> None:
-        """旧位置缓存兼容读取：媒体旁的 .waveform.json 仍能被加载。"""
-        payload = {
-            "schema": waveform_module.WAVEFORM_SCHEMA,
-            "encoding": waveform_module.WAVEFORM_ENCODING,
-            "peaks_per_second": 100,
-            "peak_count": 1,
-            "duration_ms": 10,
-            "data": "AAA=",
-            "source": waveform_module.media_signature(self.media_path),
-        }
-        legacy = self.root / "tone.waveform.json"
-        legacy.write_text(
-            json.dumps(payload, ensure_ascii=False) + "\n",
-            encoding="utf-8",
+        上游曾把它升级为「_maw 布局 + 3 处兼容读」；本次任务的取舍是只要一种缓存，
+        代价是老用户第一次打开重抽一次 ffmpeg。写侧与读侧都必须没有第二条路。
+        """
+        for name in (
+            "waveform_sidecar_path",
+            "_waveform_sidecar_candidates",
+            "load_waveform_sidecar",
+            "save_waveform_sidecar",
+        ):
+            self.assertFalse(hasattr(waveform_module, name), f"{name} 应已删除")
+        source = (Path(__file__).resolve().parents[1] / "maw" / "waveform.py").read_text(
+            encoding="utf-8"
         )
-        with _patch_output_config():
-            self.assertEqual(waveform_module.load_waveform_sidecar(self.media_path), payload)
-            cached, extracted = waveform_module.load_or_extract_waveform(None, self.media_path)
-            self.assertEqual(cached, payload)
-            self.assertFalse(extracted)
-            # 兼容读取不迁移：只读旧文件，不写 _maw
-            self.assertFalse((self.root / "_maw" / "tone.waveform.json").exists())
+        self.assertNotIn("waveform.json", source)
+        self.assertNotIn("output_naming", source)
 
-    def test_load_waveform_sidecar_prefers_maw_over_legacy_position(self) -> None:
-        """同时存在新旧两份时，_maw（新位置）优先于媒体旁旧缓存。"""
-        new_payload = {
-            "schema": waveform_module.WAVEFORM_SCHEMA,
-            "encoding": waveform_module.WAVEFORM_ENCODING,
-            "peaks_per_second": 100,
-            "peak_count": 1,
-            "duration_ms": 10,
-            "data": "AAA=",
-            "source": waveform_module.media_signature(self.media_path),
-        }
-        legacy_payload = dict(new_payload)
-        legacy_payload["peak_count"] = 2
-        legacy_payload["data"] = "AAA="  # 结构合法即可，用于区分新旧两份
-        legacy = self.root / "tone.waveform.json"
-        legacy.write_text(
-            json.dumps(legacy_payload, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        with _patch_output_config():
-            waveform_module.save_waveform_sidecar(new_payload, self.media_path)
-            self.assertEqual(waveform_module.load_waveform_sidecar(self.media_path), new_payload)
-
-    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    def test_embed_waveform_adds_valid_payload_without_sidecar(self) -> None:
+    def test_embed_waveform_adds_valid_payload_without_writing_cache(self) -> None:
         project = {"segments": []}
 
         result = waveform_module.embed_waveform(project, self.media_path)
@@ -211,7 +150,7 @@ class WaveformExtractionTests(unittest.TestCase):
         self.assertEqual(embedded["encoding"], waveform_module.WAVEFORM_ENCODING)
         self.assertGreater(embedded["peak_count"], 0)
         self.assertEqual(embedded["source"], waveform_module.media_signature(self.media_path))
-        self.assertFalse(waveform_module.waveform_sidecar_path(self.media_path).exists())
+        self.assertFalse(mopeaks.mopeaks_path(self.media_path).exists())
 
     def test_embed_waveform_leaves_project_unchanged_when_extraction_fails(self) -> None:
         project = {"segments": [], "waveform": {"stale": True}}
