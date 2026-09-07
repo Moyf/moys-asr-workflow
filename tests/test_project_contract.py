@@ -493,7 +493,7 @@ class ProjectContractTests(unittest.TestCase):
             "preview": {"subtitle": {"x": 0.0, "y": 0.76, "width": 1.0, "height": 0.16,
                                         "font_size": 32, "font_family": "yahei",
                                         "background_color": "#1A2b3C", "background_alpha": 0,
-                                        "color": "#ffffff"},
+                                        "color": "#ffffff", "color_style": "both"},
                         "extension_subtitle": {"font_size": 16, "font_family": "sans", "color": "#ffd34d"}},
         }
 
@@ -504,6 +504,7 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(result.project["preview"]["subtitle"]["font_family"], "yahei")
         self.assertEqual(result.project["preview"]["subtitle"]["background_color"], "#1A2b3C")
         self.assertEqual(result.project["preview"]["subtitle"]["background_alpha"], 0)
+        self.assertEqual(result.project["preview"]["subtitle"]["color_style"], "both")
         self.assertEqual(result.project["preview"]["extension_subtitle"]["color"], "#ffd34d")
 
     def test_validate_project_accepts_preview_speaker_label_settings(self) -> None:
@@ -513,6 +514,7 @@ class ProjectContractTests(unittest.TestCase):
                 "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
                 "speaker_labels": {
                     "enabled": True,
+                    "separator": "：",
                     "names": {
                         "yellow": "Host",
                         "green": "",
@@ -530,6 +532,10 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(
             result.project["preview"]["subtitle"]["speaker_labels"]["names"]["green"],
             "",
+        )
+        self.assertEqual(
+            result.project["preview"]["subtitle"]["speaker_labels"]["separator"],
+            "：",
         )
 
     def test_validate_project_accepts_extension_color_refs(self) -> None:
@@ -581,6 +587,7 @@ class ProjectContractTests(unittest.TestCase):
                 "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
                 "speaker_labels": {
                     "enabled": "yes",
+                    "separator": "s" * 17,
                     "names": {
                         "yellow": "x" * 65,
                         "green": "line\nbreak",
@@ -595,6 +602,7 @@ class ProjectContractTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("$.preview.subtitle.speaker_labels.enabled", paths)
+        self.assertIn("$.preview.subtitle.speaker_labels.separator", paths)
         self.assertIn("$.preview.subtitle.speaker_labels.names.yellow", paths)
         self.assertIn("$.preview.subtitle.speaker_labels.names.green", paths)
         self.assertIn("$.preview.subtitle.speaker_labels.names.red", paths)
@@ -656,6 +664,7 @@ class ProjectContractTests(unittest.TestCase):
             "preview": {"subtitle": {
                 "x": 0.0, "y": 0.76, "width": 1.0, "height": 0.16,
                 "font_size": 100, "font_family": "", "background_color": "black", "background_alpha": 1.1,
+                "color_style": "outline",
             }},
         }
 
@@ -666,6 +675,7 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn("$.preview.subtitle.font_family", paths)
         self.assertIn("$.preview.subtitle.background_color", paths)
         self.assertIn("$.preview.subtitle.background_alpha", paths)
+        self.assertIn("$.preview.subtitle.color_style", paths)
 
     def test_validate_project_rejects_non_object_preview(self) -> None:
         project = {

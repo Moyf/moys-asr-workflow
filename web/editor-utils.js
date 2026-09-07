@@ -43,6 +43,8 @@
     blue: 'SP5',
   });
   const SPEAKER_LABEL_MAX_LENGTH = 64;
+  const DEFAULT_SPEAKER_LABEL_SEPARATOR = '：';
+  const SPEAKER_LABEL_SEPARATOR_MAX_LENGTH = 16;
 
   function normalizeSpeakerLabel(value, fallback = '') {
     if (typeof value !== 'string') return fallback;
@@ -63,10 +65,19 @@
     ]));
   }
 
+  function normalizeSpeakerLabelSeparator(value) {
+    if (typeof value !== 'string') return DEFAULT_SPEAKER_LABEL_SEPARATOR;
+    const normalized = value.replace(/[\u0000-\u001f\u007f]/g, '');
+    return normalized.length <= SPEAKER_LABEL_SEPARATOR_MAX_LENGTH
+      ? normalized
+      : DEFAULT_SPEAKER_LABEL_SEPARATOR;
+  }
+
   function normalizeSpeakerLabelSettings(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     return {
       enabled: source.enabled === true,
+      separator: normalizeSpeakerLabelSeparator(source.separator),
       names: normalizeSpeakerLabels(source.names),
     };
   }
@@ -77,10 +88,16 @@
     return normalizeSpeakerLabels(labels)[colorName] || '';
   }
 
-  function formatSpeakerLabelledText(text, segment, segments, labels) {
+  function formatSpeakerLabelledText(
+    text,
+    segment,
+    segments,
+    labels,
+    separator = DEFAULT_SPEAKER_LABEL_SEPARATOR,
+  ) {
     const content = String(text ?? '');
     const label = speakerLabelForSegment(segment, segments, labels);
-    return label ? `${label}: ${content}` : content;
+    return label ? `${label}${normalizeSpeakerLabelSeparator(separator)}${content}` : content;
   }
 
   // SRT files commonly come from Windows subtitle tools, which may save them
@@ -3714,6 +3731,9 @@
     const speakerLabels = options.speakerLabelsEnabled === true
       ? normalizeSpeakerLabels(options.speakerLabels)
       : null;
+    const speakerLabelSeparator = options.speakerLabelsEnabled === true
+      ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
+      : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const parts = [];
     let outputIndex = 0;
     source.forEach((segment, sourceIndex) => {
@@ -3733,7 +3753,9 @@
       parts.push(String(outputIndex));
       parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
       parts.push(disabled ? '' : speakerLabels
-        ? formatSpeakerLabelledText(segment.text, segment, source, speakerLabels)
+        ? formatSpeakerLabelledText(
+          segment.text, segment, source, speakerLabels, speakerLabelSeparator,
+        )
         : String(segment.text || ''));
       parts.push('');
     });
@@ -5311,8 +5333,11 @@ export default MawDynamicCaptions;
     SPEAKER_LABEL_COLORS,
     DEFAULT_SPEAKER_LABELS,
     SPEAKER_LABEL_MAX_LENGTH,
+    DEFAULT_SPEAKER_LABEL_SEPARATOR,
+    SPEAKER_LABEL_SEPARATOR_MAX_LENGTH,
     normalizeSpeakerLabel,
     normalizeSpeakerLabels,
+    normalizeSpeakerLabelSeparator,
     normalizeSpeakerLabelSettings,
     speakerLabelForSegment,
     formatSpeakerLabelledText,

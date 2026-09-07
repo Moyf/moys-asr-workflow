@@ -590,6 +590,20 @@
     text-shadow: 0 1px 2px rgba(0,0,0,0.8);
     pointer-events: none;
   }
+  .subtitle-overlay .subtitle-speaker-label {
+    display: inline;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    color: inherit;
+    font: inherit;
+    line-height: inherit;
+    white-space: inherit;
+    word-break: inherit;
+    text-shadow: inherit;
+  }
   .player-wrap.fullscreen-preview .subtitle-overlay span {
     font-size: calc(var(--subtitle-preview-font-size) + var(--subtitle-preview-font-size));
   }
@@ -970,6 +984,7 @@
     display: grid; grid-template-columns: 8em minmax(0, 1fr); align-items: center; gap: 8px;
     color: var(--text-secondary); font-size: 12px; white-space: nowrap;
   }
+  .subtitle-preview-setting-row[hidden] { display: none; }
   .subtitle-preview-setting-row > span { color: var(--text-muted); }
   .subtitle-preview-setting-row select { width: 100%; min-width: 0; }
   .subtitle-preview-setting-row input[type="color"] {
@@ -5278,9 +5293,17 @@
                     <output id="subtitle-background-alpha-value" for="subtitle-background-alpha">65%</output>
                   </div>
                 </label>
-                <label class="toggle settings-panel-item" title="按字幕颜色快照给预览文字加下划线，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
+                <label class="toggle settings-panel-item" title="按字幕颜色快照给预览字幕应用所选颜色样式，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
                   <input type="checkbox" id="subtitle-color-underline" checked aria-label="预览字幕颜色">
                   预览字幕颜色
+                </label>
+                <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
+                  <span>样式</span>
+                  <select id="subtitle-color-style" aria-label="预览字幕颜色样式">
+                    <option value="underline" selected>下划线</option>
+                    <option value="text">文字颜色</option>
+                    <option value="both">下划线 + 文字颜色</option>
+                  </select>
                 </label>
                 <label class="toggle settings-panel-item subtitle-speaker-label-toggle" title="在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本">
                   <input type="checkbox" id="subtitle-speaker-labels-enabled" aria-label="显示说话人名称">
@@ -5308,6 +5331,10 @@
                     <label class="subtitle-speaker-label-row" title="设置蓝色对应的说话人名称">
                       <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="blue" aria-hidden="true"></span>蓝</span>
                       <input type="text" id="subtitle-speaker-label-blue" value="SP5" maxlength="64" autocomplete="off" aria-label="蓝色对应的说话人名称">
+                    </label>
+                    <label class="subtitle-speaker-label-row subtitle-speaker-label-separator-row" title="设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号">
+                      <span>分隔符</span>
+                      <input type="text" id="subtitle-speaker-label-separator" value="：" maxlength="16" autocomplete="off" spellcheck="false" aria-label="分隔符">
                     </label>
                   </div>
                 </div>
@@ -5373,7 +5400,7 @@
     <div class="player-stage">
       <audio id="player" preload="metadata" style="width:100%;display:block;"></audio>
           <div class="player-empty" id="player-empty">拖入工程、媒体或 SRT 开始编辑</div>
-      <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 显示控制点，Esc 退出。"><span id="overlay-main-text"></span><span id="overlay-extension-text" class="subtitle-extension-text hidden"></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
+      <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 显示控制点，Esc 退出。"><span id="overlay-main-text"><span id="overlay-main-speaker-label" class="subtitle-speaker-label hidden"></span></span><span id="overlay-extension-text" class="subtitle-extension-text hidden"></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
     </div>
     <div class="media-controls" id="media-controls" role="group" aria-label="媒体播放控制">
       <button type="button" id="media-play-toggle" aria-label="播放" title="播放">▶</button>
@@ -7582,6 +7609,8 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     blue: 'SP5',
   });
   const SPEAKER_LABEL_MAX_LENGTH = 64;
+  const DEFAULT_SPEAKER_LABEL_SEPARATOR = '：';
+  const SPEAKER_LABEL_SEPARATOR_MAX_LENGTH = 16;
 
   function normalizeSpeakerLabel(value, fallback = '') {
     if (typeof value !== 'string') return fallback;
@@ -7602,10 +7631,19 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     ]));
   }
 
+  function normalizeSpeakerLabelSeparator(value) {
+    if (typeof value !== 'string') return DEFAULT_SPEAKER_LABEL_SEPARATOR;
+    const normalized = value.replace(/[\u0000-\u001f\u007f]/g, '');
+    return normalized.length <= SPEAKER_LABEL_SEPARATOR_MAX_LENGTH
+      ? normalized
+      : DEFAULT_SPEAKER_LABEL_SEPARATOR;
+  }
+
   function normalizeSpeakerLabelSettings(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     return {
       enabled: source.enabled === true,
+      separator: normalizeSpeakerLabelSeparator(source.separator),
       names: normalizeSpeakerLabels(source.names),
     };
   }
@@ -7616,10 +7654,16 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     return normalizeSpeakerLabels(labels)[colorName] || '';
   }
 
-  function formatSpeakerLabelledText(text, segment, segments, labels) {
+  function formatSpeakerLabelledText(
+    text,
+    segment,
+    segments,
+    labels,
+    separator = DEFAULT_SPEAKER_LABEL_SEPARATOR,
+  ) {
     const content = String(text ?? '');
     const label = speakerLabelForSegment(segment, segments, labels);
-    return label ? `${label}: ${content}` : content;
+    return label ? `${label}${normalizeSpeakerLabelSeparator(separator)}${content}` : content;
   }
 
   // SRT files commonly come from Windows subtitle tools, which may save them
@@ -11253,6 +11297,9 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     const speakerLabels = options.speakerLabelsEnabled === true
       ? normalizeSpeakerLabels(options.speakerLabels)
       : null;
+    const speakerLabelSeparator = options.speakerLabelsEnabled === true
+      ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
+      : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const parts = [];
     let outputIndex = 0;
     source.forEach((segment, sourceIndex) => {
@@ -11272,7 +11319,9 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       parts.push(String(outputIndex));
       parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
       parts.push(disabled ? '' : speakerLabels
-        ? formatSpeakerLabelledText(segment.text, segment, source, speakerLabels)
+        ? formatSpeakerLabelledText(
+          segment.text, segment, source, speakerLabels, speakerLabelSeparator,
+        )
         : String(segment.text || ''));
       parts.push('');
     });
@@ -12850,8 +12899,11 @@ export default MawDynamicCaptions;
     SPEAKER_LABEL_COLORS,
     DEFAULT_SPEAKER_LABELS,
     SPEAKER_LABEL_MAX_LENGTH,
+    DEFAULT_SPEAKER_LABEL_SEPARATOR,
+    SPEAKER_LABEL_SEPARATOR_MAX_LENGTH,
     normalizeSpeakerLabel,
     normalizeSpeakerLabels,
+    normalizeSpeakerLabelSeparator,
     normalizeSpeakerLabelSettings,
     speakerLabelForSegment,
     formatSpeakerLabelledText,
@@ -13055,8 +13107,9 @@ export default MawDynamicCaptions;
     '松开以加载工程、媒体或 SRT': 'Drop to load a project, media, or SRT',
     '自动保存': 'Auto-save', '自动保存间隔': 'Auto-save interval', '秒': 'sec',
     '显示说话人名称': 'Show speaker names',
+    '分隔符': 'Separator',
     '导出时附加说话人名称': 'Include speaker names when exporting',
-    '字幕预览中的说话人名称开启后会自动勾选；只影响导出的 SRT，不会改动工程里的字幕文本。': 'This is checked automatically when speaker names are enabled in the subtitle preview; it only affects exported SRT and does not change subtitle text in the project.',
+    '字幕预览中的说话人名称开启后会自动勾选；导出 SRT 时会附加对应名称及分隔符，只影响导出的 SRT，不会改动工程里的字幕文本。': 'This is checked automatically when speaker names are enabled in the subtitle preview; exported SRT includes the matching name and separator, while the project subtitle text remains unchanged.',
     '导出字幕': 'Export subtitles', '导出字幕 ▾': 'Export subtitles ▾',
     '导出完整字幕': 'Export full subtitles', '导出完整字幕（SRT）': 'Export full subtitles (SRT)',
     '导出完整字幕（SRT/ASS）或按颜色分别导出字幕': 'Export full subtitles (SRT/ASS) or separate files by color',
@@ -13190,6 +13243,9 @@ export default MawDynamicCaptions;
     '微软雅黑 / 苹方': 'Microsoft YaHei / PingFang', '黑体': 'SimHei', '宋体': 'SimSun', 'Arial / Segoe UI': 'Arial / Segoe UI',
     '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)',
     '文字颜色': 'Text color', '背景颜色': 'Background color', '背景不透明度': 'Background opacity',
+    '样式': 'Style', '预览字幕颜色样式': 'Subtitle color preview style',
+    '选择按字幕颜色快照应用到预览字幕的样式': 'Choose how the subtitle color snapshot is applied to the preview',
+    '下划线': 'Underline', '下划线 + 文字颜色': 'Underline + text color',
     '背景色': 'Background color', '不透明度': 'Opacity',
     '副字幕背景色': 'Secondary subtitle background color',
     '只影响播放器画面内的字幕预览，不改变字幕文本或时间': 'Only affects subtitle preview in the player; it does not change subtitle text or timing',
@@ -13212,7 +13268,7 @@ export default MawDynamicCaptions;
     '仅帧模式生效；切换到帧模式后可启用。': 'Only active in frame mode; switch to frame mode to enable it.',
     '帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。': 'Frame timecode example: HH:MM:SS:FF; only the separator between seconds and frames changes.',
     '频谱颜色': 'Spectral colors', '正在应用频谱颜色…': 'Applying spectral colors…', '正在关闭频谱颜色…': 'Removing spectral colors…',
-    '预览字幕颜色': 'Color underline', '按字幕颜色快照给预览文字加下划线，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本': 'Underline the preview text with each subtitle color snapshot to tell colored subtitles apart; only affects the in-player preview, never subtitle text',
+    '预览字幕颜色': 'Subtitle color preview', '按字幕颜色快照给预览字幕应用所选颜色样式，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本': 'Apply the selected subtitle color style to the preview using each subtitle color snapshot; only affects the in-player preview, never subtitle text',
     '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
     '全屏': 'Fullscreen', '退出全屏': 'Exit fullscreen',
@@ -13613,9 +13669,10 @@ export default MawDynamicCaptions;
     '选择播放器画面内主字幕预览的颜色': 'Choose the color of the main subtitle preview in the player',
     '调整播放器画面内副字幕预览的背景色': 'Adjust the secondary subtitle preview background color in the player',
     '选择播放器画面内副字幕预览的颜色': 'Choose the color of the secondary subtitle preview in the player',
-    '开启字幕预览中的说话人名称后默认勾选；导出 SRT 时在字幕前附加对应名称，可手动关闭': 'Checked by default when speaker names are enabled in the subtitle preview; add the matching name before each subtitle in exported SRT, and turn it off manually when needed',
+    '开启字幕预览中的说话人名称后默认勾选；导出 SRT 时在字幕前附加对应名称及分隔符，可手动关闭': 'Checked by default when speaker names are enabled in the subtitle preview; add the matching name and separator before each subtitle in exported SRT, and turn it off manually when needed',
     '在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本': 'Show the speaker name for each color before the subtitle in the player preview; preview only, subtitle text is unchanged',
-    '配置颜色对应的说话人名称；留空可隐藏该颜色的名称。仅影响预览，不改变字幕文本。': 'Configure the speaker name for each color; leave a name empty to hide it. Preview only, subtitle text is unchanged.',
+    '配置颜色对应的说话人名称；留空可隐藏该颜色的名称。分隔符默认「：」，支持空格和英文引号。仅影响预览，不改变字幕文本。': 'Configure the speaker name for each color; leave a name empty to hide it. The separator defaults to “：” and supports spaces or English quotation marks. Preview only, subtitle text is unchanged.',
+    '设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号': 'Set the separator between the speaker name and subtitle text; the default is “：”, and spaces or English quotation marks are also supported',
     '设置黄色对应的说话人名称': 'Set the speaker name for yellow',
     '设置绿色对应的说话人名称': 'Set the speaker name for green',
     '设置红色对应的说话人名称': 'Set the speaker name for red',
@@ -14215,6 +14272,7 @@ export default MawDynamicCaptions;
   const SPECTRAL_SCHEMA = 'moy.asr.spectral.v1';
   const SPECTRAL_ENCODING = 'u16-freq-density-base64';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
+  const POINTER_DRAG_THRESHOLD_PX = 3;
 
   function localizedWaveformMessage(zh, en) {
     return window.MAWE_I18N?.language === 'en' ? en : zh;
@@ -18328,7 +18386,7 @@ export default MawDynamicCaptions;
       };
       const onMove = (moveEvent) => {
         if (!(moveEvent.buttons & 1)) { cleanup(); return; }
-        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= 3) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= POINTER_DRAG_THRESHOLD_PX) {
           moved = true;
           if (!dragging) {
             dragging = true;
@@ -19068,12 +19126,14 @@ export default MawDynamicCaptions;
         index,
         edge,
         row,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
         originalGaps: gaps.map((gap) => ({ ...gap })),
         nextGaps: gaps.map((gap) => ({ ...gap })),
         captureTarget: event.currentTarget,
         changed: false,
+        moved: false,
       };
-      event.currentTarget.classList.add('dragging');
       event.currentTarget.setPointerCapture?.(event.pointerId);
       window.addEventListener('pointermove', this._gapBoundaryMove = (moveEvent) => this.moveGapBoundaryDrag(moveEvent));
       window.addEventListener('pointerup', this._gapBoundaryEnd = (upEvent) => this.endGapBoundaryDrag(upEvent), { once: true });
@@ -19102,7 +19162,6 @@ export default MawDynamicCaptions;
         changed: false,
         moved: false,
       };
-      captureTarget.classList.add('dragging');
       captureTarget.setPointerCapture?.(event.pointerId);
       window.addEventListener('pointermove', this._gapMoveMove = (moveEvent) => this.moveGapMoveDrag(moveEvent));
       window.addEventListener('pointerup', this._gapMoveEnd = (upEvent) => this.endGapMoveDrag(upEvent), { once: true });
@@ -19121,12 +19180,14 @@ export default MawDynamicCaptions;
     moveGapMoveDrag(event) {
       const drag = this.gapMoveDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
-      event.preventDefault();
-      const dx = event.clientX - drag.startClientX;
-      const dy = event.clientY - drag.startClientY;
-      if (dx * dx + dy * dy >= 9) {
+      if (!drag.moved) {
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (dx * dx + dy * dy < POINTER_DRAG_THRESHOLD_PX ** 2) return;
         drag.moved = true;
+        drag.captureTarget.classList.add('dragging');
       }
+      event.preventDefault();
       const pointerMs = this.timeFromPointerUnbounded(event, drag.row);
       const deltaMs = roundMs(pointerMs - drag.startPointerMs);
       drag.targetGap = this.gapMoveTarget(drag.originalGaps[drag.index], deltaMs);
@@ -19237,6 +19298,7 @@ export default MawDynamicCaptions;
     previewGapBoundaryDrag(drag) {
       this.clearGapBoundaryPreview();
       this.refreshGapBlocks(drag.originalGaps);
+      if (!drag.moved) return;
       const original = drag.originalGaps[drag.index];
       if (!original) return;
       const anchor = drag.edge === 'start' ? original.end - 1 : original.start + 1;
@@ -19279,6 +19341,13 @@ export default MawDynamicCaptions;
     moveGapBoundaryDrag(event) {
       const drag = this.gapBoundaryDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.moved) {
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (dx * dx + dy * dy < POINTER_DRAG_THRESHOLD_PX ** 2) return;
+        drag.moved = true;
+        drag.captureTarget.classList.add('dragging');
+      }
       event.preventDefault();
       const valueMs = clamp(
         roundMs(this.timeFromPointerUnbounded(event, drag.row)),
@@ -19331,12 +19400,14 @@ export default MawDynamicCaptions;
       this.gapRangeDrag = {
         pointerId: event.pointerId,
         row,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
         startMs,
         endMs: startMs,
         removed,
+        moved: false,
         previews: [],
       };
-      this.layoutGapRangePreview(this.gapRangeDrag);
       row.setPointerCapture?.(event.pointerId);
       window.addEventListener('pointermove', this._gapRangeMove = (moveEvent) => this.moveGapRangeDrag(moveEvent));
       window.addEventListener('pointerup', this._gapRangeEnd = (upEvent) => this.endGapRangeDrag(upEvent), { once: true });
@@ -19356,6 +19427,11 @@ export default MawDynamicCaptions;
     }
 
     layoutGapRangePreview(drag) {
+      if (!drag.moved) {
+        drag.previews = [];
+        this.clearGapRangePreviews();
+        return;
+      }
       const start = Math.min(drag.startMs, drag.endMs);
       const end = Math.max(drag.startMs, drag.endMs);
       const previews = [];
@@ -19400,6 +19476,12 @@ export default MawDynamicCaptions;
     moveGapRangeDrag(event) {
       const drag = this.gapRangeDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.moved) {
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (dx * dx + dy * dy < POINTER_DRAG_THRESHOLD_PX ** 2) return;
+        drag.moved = true;
+      }
       event.preventDefault();
       drag.endMs = this.gapRangePointerTime(event, drag.row);
       this.layoutGapRangePreview(drag);
@@ -19414,7 +19496,7 @@ export default MawDynamicCaptions;
       try { drag.row.releasePointerCapture?.(event.pointerId); } catch (_) {}
       this.clearGapRangePreviews();
       this.gapRangeDrag = null;
-      if (event.type === 'pointercancel') return;
+      if (event.type === 'pointercancel' || !drag.moved) return;
       const start = roundMs(Math.min(drag.startMs, drag.endMs));
       const end = roundMs(Math.max(drag.startMs, drag.endMs));
       if (end - start < ROUND_MS) return;
@@ -20663,6 +20745,8 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
+const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'both']);
+const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
   yahei: '"Microsoft YaHei", "PingFang SC", sans-serif',
@@ -21312,6 +21396,9 @@ const totalCountEl = document.getElementById('total-count');
 const selCountEl = document.getElementById('sel-count');
 const overlayEl = document.getElementById('overlay');
 const overlayTextEl = document.getElementById('overlay-main-text');
+const overlayMainSpeakerLabelEl = document.getElementById('overlay-main-speaker-label');
+const overlayMainTextNode = document.createTextNode('');
+overlayTextEl.append(overlayMainTextNode);
 const overlayExtensionTextEl = document.getElementById('overlay-extension-text');
 const overlayToggle = document.getElementById('overlay-toggle');
 const extensionOverlayToggleWrap = document.getElementById('extension-overlay-toggle-wrap');
@@ -21326,8 +21413,11 @@ const subtitleBackgroundAlphaInput = document.getElementById('subtitle-backgroun
 const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
+const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
+const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
 const subtitleSpeakerLabelsEnabledInput = document.getElementById('subtitle-speaker-labels-enabled');
 const subtitleSpeakerLabelsSettings = document.getElementById('subtitle-speaker-labels-settings');
+const subtitleSpeakerLabelSeparatorInput = document.getElementById('subtitle-speaker-label-separator');
 const subtitleSpeakerLabelInputs = Object.fromEntries(
   (window.AsrEditorUtils.SPEAKER_LABEL_COLORS || []).map((color) => [
     color,
@@ -23216,7 +23306,13 @@ subtitleColorUnderlineInput?.addEventListener('change', () => {
   setSubtitleAppearance({ color_underline: subtitleColorUnderlineInput.checked });
   update();
 });
+subtitleColorStyleSelect?.addEventListener('change', () => {
+  pushPreviewUndo('调整预览字幕颜色样式', snapshotPreviewState());
+  setSubtitleAppearance({ color_style: subtitleColorStyleSelect.value });
+  update();
+});
 const speakerLabelUndoColors = new Set();
+let speakerLabelSeparatorUndo = false;
 function applySpeakerLabelInput(color, { finalize = false } = {}) {
   const input = subtitleSpeakerLabelInputs[color];
   if (!input) return;
@@ -23239,6 +23335,26 @@ Object.entries(subtitleSpeakerLabelInputs).forEach(([color, input]) => {
   input?.addEventListener('input', () => applySpeakerLabelInput(color));
   input?.addEventListener('change', () => applySpeakerLabelInput(color, { finalize: true }));
 });
+function applySpeakerLabelSeparatorInput({ finalize = false } = {}) {
+  const input = subtitleSpeakerLabelSeparatorInput;
+  if (!input) return;
+  if (!speakerLabelSeparatorUndo) {
+    pushPreviewUndo('调整说话人分隔符', snapshotPreviewState());
+    speakerLabelSeparatorUndo = true;
+  }
+  const current = getSpeakerLabelSettings();
+  setSpeakerLabelSettings({ ...current, separator: input.value });
+  if (finalize) {
+    speakerLabelSeparatorUndo = false;
+    input.value = getSpeakerLabelSettings().separator;
+  }
+  update();
+}
+subtitleSpeakerLabelSeparatorInput?.addEventListener('input', () => applySpeakerLabelSeparatorInput());
+subtitleSpeakerLabelSeparatorInput?.addEventListener(
+  'change',
+  () => applySpeakerLabelSeparatorInput({ finalize: true }),
+);
 subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
   const previous = snapshotPreviewState();
   previous.speakerLabels.enabled = !subtitleSpeakerLabelsEnabledInput.checked;
@@ -30856,6 +30972,10 @@ function normalizeSubtitleColor(value) {
   const color = value.trim().toLowerCase();
   return /^#[0-9a-f]{6}$/i.test(color) ? color : null;
 }
+function normalizeSubtitleColorStyle(value) {
+  return typeof value === 'string' && SUBTITLE_COLOR_STYLE_VALUES.includes(value)
+    ? value : null;
+}
 function normalizeSubtitleAppearance(value) {
   const result = {};
   const fontSize = value && typeof value.font_size === 'number' && Number.isFinite(value.font_size)
@@ -30871,6 +30991,8 @@ function normalizeSubtitleAppearance(value) {
   if (backgroundAlpha !== null) result.background_alpha = backgroundAlpha;
   const color = normalizeSubtitleColor(value?.color);
   if (color) result.color = color;
+  const colorStyle = normalizeSubtitleColorStyle(value?.color_style);
+  if (colorStyle) result.color_style = colorStyle;
   if (value?.color_underline === false) result.color_underline = false;
   return result;
 }
@@ -30880,6 +31002,7 @@ function getSubtitleAppearance(value = DATA.preview?.subtitle) {
     ...result,
     color: result.color || DEFAULT_SUBTITLE_COLOR,
     color_underline: result.color_underline !== false,
+    color_style: result.color_style || DEFAULT_SUBTITLE_COLOR_STYLE,
   };
 }
 function getSpeakerLabelSettings(value = DATA.preview?.subtitle?.speaker_labels) {
@@ -30898,6 +31021,9 @@ function syncSpeakerLabelControls(settings = getSpeakerLabelSettings()) {
   Object.entries(subtitleSpeakerLabelInputs).forEach(([color, input]) => {
     if (input && document.activeElement !== input) input.value = settings.names[color] || '';
   });
+  if (subtitleSpeakerLabelSeparatorInput && document.activeElement !== subtitleSpeakerLabelSeparatorInput) {
+    subtitleSpeakerLabelSeparatorInput.value = settings.separator;
+  }
   document.querySelectorAll('[data-speaker-label-swatch]').forEach((swatch) => {
     const color = swatch.dataset.speakerLabelSwatch;
     const value = COLOR_BY_NAME[color]?.value;
@@ -30936,6 +31062,12 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   syncSubtitleFontSizeSelect(subtitleFontSizeSelect, appearance.font_size);
   if (subtitleColorUnderlineInput) {
     subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
+  }
+  if (subtitleColorStyleSelect) {
+    subtitleColorStyleSelect.value = appearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
+  }
+  if (subtitleColorStyleControl) {
+    subtitleColorStyleControl.hidden = appearance.color_underline === false;
   }
   if (subtitleFontFamilySelect) {
     subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
@@ -31010,6 +31142,10 @@ function applySubtitleAppearance(value = DATA.preview?.subtitle) {
     || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
   overlayTextEl.style.backgroundColor = hasCustomBackground ? subtitleBackgroundCss(appearance) : '';
   overlayTextEl.style.color = appearance.color || DEFAULT_SUBTITLE_COLOR;
+  // The preview refresh caches the effective text color in a dataset value.
+  // Applying the stored base appearance resets the inline color, so invalidate
+  // that cache and let the next refresh reapply a color-snapshot style.
+  delete overlayTextEl.dataset.colorText;
   syncSubtitleAppearanceControls(appearance);
 }
 function applyExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
@@ -31060,6 +31196,10 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
     // true 是默认值，不落盘；只在关闭时写入 color_underline: false。
     if (patch.color_underline) delete next.color_underline;
     else next.color_underline = false;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'color_style')) {
+    const colorStyle = normalizeSubtitleColorStyle(patch.color_style);
+    if (colorStyle) next.color_style = colorStyle;
   }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = {
@@ -31213,7 +31353,7 @@ function setPreviewGeometry(geo, { markDirty = true, replaceAppearance = false }
   const clamped = GEO_UTILS.clampPreviewGeometry(GEO_UTILS.normalizePreviewGeometry(geo));
   const appearance = replaceAppearance
     ? getSubtitleAppearance(geo)
-    : { ...getSubtitleAppearance(), ...getSubtitleAppearance(geo) };
+    : { ...getSubtitleAppearance(), ...normalizeSubtitleAppearance(geo) };
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = {
     ...clamped,
@@ -31497,31 +31637,63 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
   }
   const speakerLabels = getSpeakerLabelSettings();
-  const mainText = mainVisible
-    ? (speakerLabels.enabled
-      ? window.AsrEditorUtils.formatSpeakerLabelledText(
-        seg.text, seg, DATA.segments, speakerLabels.names,
-      )
-      : (seg.text || ''))
+  const mainColorName = mainVisible && seg
+    ? MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments)
+    : null;
+  const speakerLabel = mainVisible && speakerLabels.enabled
+    ? window.AsrEditorUtils.speakerLabelForSegment(
+      seg, DATA.segments, speakerLabels.names,
+    )
     : '';
+  const speakerLabelVisible = Boolean(speakerLabel && mainColorName && COLOR_BY_NAME[mainColorName]);
+  const speakerLabelColor = speakerLabelVisible ? COLOR_BY_NAME[mainColorName].value : '';
+  const speakerLabelText = speakerLabelVisible
+    ? `${speakerLabel}${speakerLabels.separator}`
+    : '';
+  const mainText = mainVisible ? String(seg.text || '') : '';
   const extensionText = extensionVisible ? (extension.text || '') : '';
-  if (mainVisible && overlayTextEl.textContent !== mainText) overlayTextEl.textContent = mainText;
+  if (overlayMainSpeakerLabelEl.classList.contains('hidden') === speakerLabelVisible) {
+    overlayMainSpeakerLabelEl.classList.toggle('hidden', !speakerLabelVisible);
+  }
+  if (overlayMainSpeakerLabelEl.textContent !== speakerLabelText) {
+    overlayMainSpeakerLabelEl.textContent = speakerLabelText;
+  }
+  if (overlayMainSpeakerLabelEl.dataset.color !== speakerLabelColor) {
+    overlayMainSpeakerLabelEl.dataset.color = speakerLabelColor;
+    overlayMainSpeakerLabelEl.style.color = speakerLabelColor;
+  }
+  if (overlayMainTextNode.nodeValue !== mainText) overlayMainTextNode.nodeValue = mainText;
   if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
     overlayExtensionTextEl.textContent = extensionText;
   }
-  // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref）给预览文字加下划线。
-  // dataset 记录上次应用的颜色，避免播放刷新每帧都写内联样式。
-  const colorUnderlineEnabled = DATA.preview?.subtitle?.color_underline !== false;
-  let colorUnderline = '';
-  if (mainVisible && colorUnderlineEnabled && seg) {
+  // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
+  // 预览文字颜色、下划线或两者。dataset 记录上次应用的结果，避免播放刷新
+  // 每帧都写内联样式。
+  const subtitleAppearance = getSubtitleAppearance();
+  const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
+  const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
+  let previewSegmentColor = '';
+  if (mainVisible && colorPreviewEnabled && seg) {
     const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
-    colorUnderline = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
+    previewSegmentColor = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
   }
+  const colorUnderline = colorPreviewEnabled
+    && (colorStyle === 'underline' || colorStyle === 'both')
+    ? previewSegmentColor : '';
+  const textColor = colorPreviewEnabled
+    && (colorStyle === 'text' || colorStyle === 'both')
+    && previewSegmentColor
+    ? previewSegmentColor
+    : subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
   if (overlayTextEl.dataset.colorUnderline !== colorUnderline) {
     overlayTextEl.dataset.colorUnderline = colorUnderline;
     overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
     overlayTextEl.style.textDecorationColor = colorUnderline;
     overlayTextEl.style.textUnderlineOffset = colorUnderline ? '0.25em' : '';
+  }
+  if (overlayTextEl.dataset.colorText !== textColor) {
+    overlayTextEl.dataset.colorText = textColor;
+    overlayTextEl.style.color = textColor;
   }
   const overlayHidden = !mainVisible && !extensionVisible;
   if (overlayEl.classList.contains('hidden') !== overlayHidden) {
@@ -31714,6 +31886,7 @@ function speakerLabelExportOptions() {
   return {
     speakerLabelsEnabled: EDITOR_SETTINGS.exportSpeakerLabels === true,
     speakerLabels: settings.names,
+    speakerLabelSeparator: settings.separator,
   };
 }
 
