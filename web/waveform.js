@@ -9,6 +9,7 @@
   const SPECTRAL_SCHEMA = 'moy.asr.spectral.v1';
   const SPECTRAL_ENCODING = 'u16-freq-density-base64';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
+  const POINTER_DRAG_THRESHOLD_PX = 3;
 
   function localizedWaveformMessage(zh, en) {
     return window.MAWE_I18N?.language === 'en' ? en : zh;
@@ -4122,7 +4123,7 @@
       };
       const onMove = (moveEvent) => {
         if (!(moveEvent.buttons & 1)) { cleanup(); return; }
-        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= 3) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= POINTER_DRAG_THRESHOLD_PX) {
           moved = true;
           if (!dragging) {
             dragging = true;
@@ -4862,12 +4863,14 @@
         index,
         edge,
         row,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
         originalGaps: gaps.map((gap) => ({ ...gap })),
         nextGaps: gaps.map((gap) => ({ ...gap })),
         captureTarget: event.currentTarget,
         changed: false,
+        moved: false,
       };
-      event.currentTarget.classList.add('dragging');
       event.currentTarget.setPointerCapture?.(event.pointerId);
       window.addEventListener('pointermove', this._gapBoundaryMove = (moveEvent) => this.moveGapBoundaryDrag(moveEvent));
       window.addEventListener('pointerup', this._gapBoundaryEnd = (upEvent) => this.endGapBoundaryDrag(upEvent), { once: true });
@@ -4896,7 +4899,6 @@
         changed: false,
         moved: false,
       };
-      captureTarget.classList.add('dragging');
       captureTarget.setPointerCapture?.(event.pointerId);
       window.addEventListener('pointermove', this._gapMoveMove = (moveEvent) => this.moveGapMoveDrag(moveEvent));
       window.addEventListener('pointerup', this._gapMoveEnd = (upEvent) => this.endGapMoveDrag(upEvent), { once: true });
@@ -4915,12 +4917,14 @@
     moveGapMoveDrag(event) {
       const drag = this.gapMoveDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
-      event.preventDefault();
-      const dx = event.clientX - drag.startClientX;
-      const dy = event.clientY - drag.startClientY;
-      if (dx * dx + dy * dy >= 9) {
+      if (!drag.moved) {
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (dx * dx + dy * dy < POINTER_DRAG_THRESHOLD_PX ** 2) return;
         drag.moved = true;
+        drag.captureTarget.classList.add('dragging');
       }
+      event.preventDefault();
       const pointerMs = this.timeFromPointerUnbounded(event, drag.row);
       const deltaMs = roundMs(pointerMs - drag.startPointerMs);
       drag.targetGap = this.gapMoveTarget(drag.originalGaps[drag.index], deltaMs);
@@ -5031,6 +5035,7 @@
     previewGapBoundaryDrag(drag) {
       this.clearGapBoundaryPreview();
       this.refreshGapBlocks(drag.originalGaps);
+      if (!drag.moved) return;
       const original = drag.originalGaps[drag.index];
       if (!original) return;
       const anchor = drag.edge === 'start' ? original.end - 1 : original.start + 1;
@@ -5073,6 +5078,13 @@
     moveGapBoundaryDrag(event) {
       const drag = this.gapBoundaryDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.moved) {
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (dx * dx + dy * dy < POINTER_DRAG_THRESHOLD_PX ** 2) return;
+        drag.moved = true;
+        drag.captureTarget.classList.add('dragging');
+      }
       event.preventDefault();
       const valueMs = clamp(
         roundMs(this.timeFromPointerUnbounded(event, drag.row)),
@@ -5125,12 +5137,14 @@
       this.gapRangeDrag = {
         pointerId: event.pointerId,
         row,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
         startMs,
         endMs: startMs,
         removed,
+        moved: false,
         previews: [],
       };
-      this.layoutGapRangePreview(this.gapRangeDrag);
       row.setPointerCapture?.(event.pointerId);
       window.addEventListener('pointermove', this._gapRangeMove = (moveEvent) => this.moveGapRangeDrag(moveEvent));
       window.addEventListener('pointerup', this._gapRangeEnd = (upEvent) => this.endGapRangeDrag(upEvent), { once: true });
@@ -5150,6 +5164,11 @@
     }
 
     layoutGapRangePreview(drag) {
+      if (!drag.moved) {
+        drag.previews = [];
+        this.clearGapRangePreviews();
+        return;
+      }
       const start = Math.min(drag.startMs, drag.endMs);
       const end = Math.max(drag.startMs, drag.endMs);
       const previews = [];
@@ -5194,6 +5213,12 @@
     moveGapRangeDrag(event) {
       const drag = this.gapRangeDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.moved) {
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (dx * dx + dy * dy < POINTER_DRAG_THRESHOLD_PX ** 2) return;
+        drag.moved = true;
+      }
       event.preventDefault();
       drag.endMs = this.gapRangePointerTime(event, drag.row);
       this.layoutGapRangePreview(drag);
@@ -5208,7 +5233,7 @@
       try { drag.row.releasePointerCapture?.(event.pointerId); } catch (_) {}
       this.clearGapRangePreviews();
       this.gapRangeDrag = null;
-      if (event.type === 'pointercancel') return;
+      if (event.type === 'pointercancel' || !drag.moved) return;
       const start = roundMs(Math.min(drag.startMs, drag.endMs));
       const end = roundMs(Math.max(drag.startMs, drag.endMs));
       if (end - start < ROUND_MS) return;

@@ -1358,6 +1358,18 @@ test('translates timeline timebase settings to English', () => {
   );
 });
 
+test('translates speaker label separator settings to English', () => {
+  assert.equal(i18n.translateText('分隔符', 'en'), 'Separator');
+  assert.equal(
+    i18n.translateText('设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号', 'en'),
+    'Set the separator between the speaker name and subtitle text; the default is “：”, and spaces or English quotation marks are also supported',
+  );
+  assert.equal(
+    i18n.translateText('配置颜色对应的说话人名称；留空可隐藏该颜色的名称。分隔符默认「：」，支持空格和英文引号。仅影响预览，不改变字幕文本。', 'en'),
+    'Configure the speaker name for each color; leave a name empty to hide it. The separator defaults to “：” and supports spaces or English quotation marks. Preview only, subtitle text is unchanged.',
+  );
+});
+
 test('translates OTIOZ export labels, mode hints and dynamic messages to English', () => {
   assert.equal(i18n.translateText('完整字幕（SRT）', 'en'), 'Full subtitles (SRT)');
   assert.equal(i18n.translateText('表情包 OTIO 工程', 'en'), 'Sticker OTIO project');
@@ -2986,6 +2998,7 @@ test('resolves referenced subtitle colors from their head when available', () =>
 test('normalizes speaker label settings with defaults and safe names', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeSpeakerLabelSettings({
     enabled: true,
+    separator: ' ',
     names: {
       yellow: '  Host\nOne  ',
       green: '',
@@ -2995,6 +3008,7 @@ test('normalizes speaker label settings with defaults and safe names', () => {
     },
   }))), {
     enabled: true,
+    separator: ' ',
     names: {
       yellow: 'Host One',
       green: '',
@@ -3003,6 +3017,19 @@ test('normalizes speaker label settings with defaults and safe names', () => {
       blue: 'Guest',
     },
   });
+});
+
+
+test('normalizes speaker label separators without trimming spaces', () => {
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(undefined), '：');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(''), '');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(' '), ' ');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator('"'), '"');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(' \n"'), ' "');
+  assert.equal(
+    helpers.normalizeSpeakerLabelSeparator('s'.repeat(helpers.SPEAKER_LABEL_SEPARATOR_MAX_LENGTH + 1)),
+    '：',
+  );
 });
 
 
@@ -3015,8 +3042,10 @@ test('formats speaker names from subtitle colors without changing plain text', (
   ];
   const labels = { yellow: '主持人', blue: '' };
 
-  assert.equal(helpers.formatSpeakerLabelledText('第一句', segments[0], segments, labels), '主持人: 第一句');
-  assert.equal(helpers.formatSpeakerLabelledText('第二句', segments[1], segments, labels), '主持人: 第二句');
+  assert.equal(helpers.formatSpeakerLabelledText('第一句', segments[0], segments, labels), '主持人：第一句');
+  assert.equal(helpers.formatSpeakerLabelledText('第二句', segments[1], segments, labels), '主持人：第二句');
+  assert.equal(helpers.formatSpeakerLabelledText('第一句', segments[0], segments, labels, ' '), '主持人 第一句');
+  assert.equal(helpers.formatSpeakerLabelledText('第二句', segments[1], segments, labels, '"'), '主持人"第二句');
   assert.equal(helpers.formatSpeakerLabelledText('第三句', segments[2], segments, labels), '第三句');
   assert.equal(helpers.formatSpeakerLabelledText('普通句', segments[3], segments, labels), '普通句');
 });
@@ -3091,11 +3120,24 @@ test('optionally prefixes configured speaker names in SRT output', () => {
   assert.equal(helpers.buildSrtPayload(segments, options), [
     '1',
     '0ms --> 1000ms',
-    'Host: yellow line',
+    'Host：yellow line',
     '',
     '2',
     '1200ms --> 2200ms',
-    'Guest: green line',
+    'Guest：green line',
+    '',
+  ].join('\n'));
+  assert.equal(helpers.buildSrtPayload(segments, {
+    ...options,
+    speakerLabelSeparator: ' ',
+  }), [
+    '1',
+    '0ms --> 1000ms',
+    'Host yellow line',
+    '',
+    '2',
+    '1200ms --> 2200ms',
+    'Guest green line',
     '',
   ].join('\n'));
   assert.equal(helpers.buildSrtPayload(segments, {

@@ -19,8 +19,10 @@ SUBTITLE_BACKGROUND_ALPHA_MIN = 0.0
 SUBTITLE_BACKGROUND_ALPHA_MAX = 1.0
 SUBTITLE_BACKGROUND_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
 SUBTITLE_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+SUBTITLE_COLOR_STYLES = frozenset({"underline", "text", "both"})
 SPEAKER_LABEL_COLORS = ("yellow", "green", "red", "purple", "blue")
 SPEAKER_LABEL_MAX_LENGTH = 64
+SPEAKER_LABEL_SEPARATOR_MAX_LENGTH = 16
 
 
 def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
@@ -74,6 +76,14 @@ def _validate_speaker_label_settings(value: JsonValue, path: str) -> tuple[Valid
     issues: list[ValidationIssue] = []
     if "enabled" in value and not isinstance(value.get("enabled"), bool):
         issues.append((f"{path}.enabled", "must be a boolean"))
+    if "separator" in value:
+        separator = value.get("separator")
+        if (not isinstance(separator, str) or len(separator) > SPEAKER_LABEL_SEPARATOR_MAX_LENGTH
+                or any(ord(char) < 0x20 or ord(char) == 0x7F for char in separator)):
+            issues.append((
+                f"{path}.separator",
+                "must be a string up to 16 characters without control characters",
+            ))
     names = value.get("names")
     if names is None:
         return tuple(issues)
@@ -123,6 +133,13 @@ def _validate_subtitle_style(value: JsonDict, path: str) -> tuple[ValidationIssu
         color = value.get("color")
         if not isinstance(color, str) or SUBTITLE_COLOR_RE.fullmatch(color) is None:
             issues.append((f"{path}.color", "must be a six-digit hexadecimal color"))
+    color_style = value.get("color_style")
+    if "color_style" in value and (
+            not isinstance(color_style, str) or color_style not in SUBTITLE_COLOR_STYLES):
+        issues.append((
+            f"{path}.color_style",
+            "must be one of underline, text, or both",
+        ))
     return tuple(issues)
 
 
