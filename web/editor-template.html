@@ -148,7 +148,6 @@ __WAVEFORM_CSS__
       <div class="dropdown-menu" id="gap-removed-export-menu" role="menu">
         <div class="dropdown-item" id="download-gap-removed-srt" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出字幕；原工程时间不变">字幕 SRT</div>
         <div class="dropdown-item" id="download-gap-removed-color-srt" role="menuitem" tabindex="0" hidden title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">按颜色导出字幕</div>
-        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-otio-menu">OpenTimelineIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-otio-menu" role="menu">
@@ -156,9 +155,18 @@ __WAVEFORM_CSS__
             <div class="dropdown-item" id="download-gap-removed-otioz" role="menuitem" tabindex="0" title="导出原视频/音频的去空隙 OTIOZ 时间线；服务器只打包当前工程媒体文件">时间线 OTIOZ 打包工程</div>
             <div class="dropdown-item" id="download-gap-removed-sticker-otio" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO 工程</div>
             <div class="dropdown-item" id="download-gap-removed-sticker-otioz" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃">表情包 OTIOZ 打包工程</div>
+            <div class="dropdown-separator" role="separator"></div>
+            <label class="dropdown-setting-toggle" title="导出时间线 OTIO 的同时保存对应的 SRT 字幕文件">
+              <input type="checkbox" data-otio-export-option="srt" checked> 同时导出 SRT 字幕
+            </label>
+            <label class="dropdown-setting-toggle" title="把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO">
+              <input type="checkbox" data-otio-export-option="stickers" checked> 时间线包含表情包
+            </label>
+            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段">
+              <input type="checkbox" data-otio-export-option="markers" checked> 将字幕内容作为标记写入
+            </label>
           </div>
         </div>
-        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-data-menu">数据文件</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-data-menu" role="menu">
@@ -172,7 +180,6 @@ __WAVEFORM_CSS__
       <button id="extra-export-btn" title="更多导出" aria-expanded="false" aria-controls="extra-export-menu" aria-haspopup="menu">更多导出 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu" role="menu">
         <div class="dropdown-item" id="download-fcp7-export" role="menuitem" tabindex="0" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
-        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-otio-menu">OTIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="extra-otio-menu" role="menu">
@@ -180,9 +187,18 @@ __WAVEFORM_CSS__
             <div class="dropdown-item" id="download-otioz" role="menuitem" tabindex="0" title="导出原视频/音频的完整 OTIOZ 时间线；服务器只打包当前工程媒体文件">时间线 OTIOZ 打包工程</div>
             <div class="dropdown-item" id="download-sticker-otio" role="menuitem" tabindex="0" title="导出只包含表情包图片轨道的 OTIO 工程">表情包 OTIO 工程</div>
             <div class="dropdown-item" id="download-sticker-otioz" role="menuitem" tabindex="0" title="导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）">表情包 OTIOZ 打包工程</div>
+            <div class="dropdown-separator" role="separator"></div>
+            <label class="dropdown-setting-toggle" title="导出时间线 OTIO 的同时保存对应的 SRT 字幕文件">
+              <input type="checkbox" data-otio-export-option="srt" checked> 同时导出 SRT 字幕
+            </label>
+            <label class="dropdown-setting-toggle" title="把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO">
+              <input type="checkbox" data-otio-export-option="stickers" checked> 时间线包含表情包
+            </label>
+            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段">
+              <input type="checkbox" data-otio-export-option="markers" checked> 将字幕内容作为标记写入
+            </label>
           </div>
         </div>
-        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-dynamic-menu">动态图形</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="extra-dynamic-menu" role="menu">
@@ -190,7 +206,6 @@ __WAVEFORM_CSS__
             <div class="dropdown-item" id="download-ograf" role="menuitem" tabindex="0" title="导出符合 OGraf 规范的动态字幕包（需要以 server-editor 打开并绑定工程文件）">动态字幕（OGraf）</div>
           </div>
         </div>
-        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-data-menu">数据文件</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="extra-data-menu" role="menu">
