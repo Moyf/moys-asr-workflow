@@ -77,6 +77,11 @@ DIV_LOUDNESS_OLD = -ord("l")  # loudness (deprecated)
 # quapeaks 自有容器：magic 为 b'QPK' + 1 字节可打印版本号（当前 b'QPK1'）。
 # 全局头布局与 RPKN 完全相同，差别只在 magic 与允许的层集合。
 QUAPEAKS_MAGIC_PREFIX = b"QPK"
+# 已支持的自有容器 magic（前缀 + 版本字节）。**只比前缀是不够的**：未知版本
+# （QPK2 / MPK2 …）的字段布局可能已经变了，按旧布局解会把版本升级或损坏文件
+# 当成合法缓存读出来 —— 那比崩溃更糟。所以认家族、拒版本：家族对但版本不认识
+# 时整份判为不支持，由调用方降级为 cache miss 重建。
+SUPPORTED_NATIVE_MAGICS = (b"QPK1", b"MPK1")
 # mopeaks：MAW 纯 Python 写出的回退容器（无内核时）。布局与 QPK 相同，
 # 只有 magic 与层数不同，所以自研层分支两种都认。
 MOPEAKS_MAGIC_PREFIX = b"MPK"
@@ -160,8 +165,14 @@ class ReapeaksFile:
         self.magic = self.data[0:4]
         self.is_v12 = self.magic == MAGIC_V12
         # quapeaks 自有容器：magic 前缀 QPK，末字节是可打印 ASCII 版本位。
-        self.is_quapeaks = self.magic[:3] == QUAPEAKS_MAGIC_PREFIX
-        self.is_mopeaks = self.magic[:3] == MOPEAKS_MAGIC_PREFIX
+        self.is_quapeaks = self.magic == b"QPK1"
+        self.is_mopeaks = self.magic == b"MPK1"
+        native_family = self.magic[:3] in (QUAPEAKS_MAGIC_PREFIX, MOPEAKS_MAGIC_PREFIX)
+        if native_family and self.magic not in SUPPORTED_NATIVE_MAGICS:
+            raise ValueError(
+                f"{self.path}: 自有容器版本不认识（magic={self.magic!r}，本版本只支持 "
+                f"{SUPPORTED_NATIVE_MAGICS!r}），拒绝按旧布局解析"
+            )
         self.format_version = self.magic[3] if (self.is_quapeaks or self.is_mopeaks) else None
         self.channels = self.data[4]
         self.mipmap_count = self.data[5]

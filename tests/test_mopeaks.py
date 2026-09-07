@@ -23,6 +23,8 @@ sys.path.insert(0, str(ROOT))
 
 from maw import mopeaks, quapeaks, waveform  # noqa: E402
 
+WT_ROOT = ROOT
+
 
 class _FakeStat:
     """只带 mopeaks 真正会读的字段，用来伪造 >2 GiB 素材。"""
@@ -248,6 +250,65 @@ class MopeaksFingerprintPolicyTests(unittest.TestCase):
                 self.assertNotIn(f"\n{name} =", src, "格式常量的真源在 maw.quapeaks，不要抄第二份")
         self.assertIs(mopeaks.timestamp_fingerprint_matches, quapeaks._timestamp_fingerprint_matches)
 
+
+
+class UnsupportedVersionAndBoundaryTests(unittest.TestCase):
+    """review 第 5 项：只比前缀会把未知版本/损坏文件当合法缓存读。"""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.media_path = Path(self.temp_dir.name) / "tone.wav"
+        self.media_path.write_bytes(b"RIFF" + b"\x00" * 40)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _good(self) -> bytes:
+        return mopeaks.encode_mopeaks(make_payload(media_path=self.media_path), self.media_path)
+
+    def _patch(self, blob: bytes, offset: int, raw: bytes) -> bytes:
+        out = bytearray(blob)
+        out[offset : offset + len(raw)] = raw
+        return bytes(out)
+
+    def test_unknown_mopeaks_version_is_a_cache_miss(self) -> None:
+        blob = self._patch(self._good(), 3, b"2")
+        self.assertEqual(blob[:4], b"MPK2")
+        with self.assertRaises(mopeaks.MopeaksError):
+            mopeaks.decode_mopeaks(blob)
+        path = mopeaks.mopeaks_path(self.media_path)
+        path.write_bytes(blob)
+        self.assertIsNone(mopeaks.load_mopeaks(self.media_path), "未知版本必须重建，不能按旧布局解")
+
+    def test_negative_and_zero_peak_count_are_refused(self) -> None:
+        good = self._good()
+        for npeak in (-1, 0, 1 << 30):
+            with self.subTest(npeak=npeak):
+                blob = self._patch(good, mopeaks.HEADER_LEN + 4, struct.pack("<i", npeak))
+                with self.assertRaises(mopeaks.MopeaksError):
+                    mopeaks.decode_mopeaks(blob)
+
+    def test_supported_version_still_round_trips(self) -> None:
+        payload = make_payload(media_path=self.media_path)
+        mopeaks.save_mopeaks(payload, self.media_path)
+        back = mopeaks.load_mopeaks(self.media_path)
+        self.assertIsNotNone(back)
+        self.assertEqual(back["data"], payload["data"])
+
+    def test_parser_refuses_unknown_native_container(self) -> None:
+        """ReapeaksFile 同样只比前缀过：QPK2 必须整份判不支持。"""
+        from maw import quapeaks as maw_quapeaks
+
+        fixture = WT_ROOT / "tests" / "test_data" / "tone_selfwave.wav.quapeaks"
+        if not fixture.exists():
+            self.skipTest(f"缺少 fixture {fixture}")
+        blob = bytearray(fixture.read_bytes())
+        self.assertEqual(bytes(blob[:4]), b"QPK1", "fixture 应是已支持版本")
+        blob[3] = ord("2")
+        probe = Path(self.temp_dir.name) / "probe.quapeaks"
+        probe.write_bytes(bytes(blob))
+        with self.assertRaises(ValueError):
+            maw_quapeaks.ReapeaksFile(str(probe))
 
 
 if __name__ == "__main__":
