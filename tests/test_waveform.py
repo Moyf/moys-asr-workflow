@@ -137,6 +137,9 @@ class WaveformExtractionTests(unittest.TestCase):
         self.assertNotIn("waveform.json", source)
         self.assertNotIn("output_naming", source)
 
+    # 这条要真跑 ffmpeg 抽一次波形：CI 的 Windows runner 没装 ffmpeg，
+    # 少了这个守卫它就会以 WaveformError 失败（本地有 ffmpeg 看不出来）。
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_embed_waveform_adds_valid_payload_without_writing_cache(self) -> None:
         project = {"segments": []}
 
