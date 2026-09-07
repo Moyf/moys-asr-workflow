@@ -11856,6 +11856,16 @@ function buildGapRemovedRegionsJson() {
   }, null, 2);
 }
 
+const CANONICAL_PROJECT_FIELDS = new Set([
+  'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity',
+  'model', 'sticker_root', 'timebase', 'segments', 'multi_subtitle', 'waveform',
+  'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'gap_remove',
+  'script_alignment', 'workspace', 'preview',
+]);
+let projectExtensionFields = Object.fromEntries(
+  Object.entries(DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+);
+
 function buildJson() {
   syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const repairedTimingCount = repairCurrentProjectTimings();
@@ -11864,6 +11874,8 @@ function buildJson() {
   }
   syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const out = {
+    schema: window.AsrEditorUtils.PROJECT_SCHEMA,
+    ...projectExtensionFields,
     media: DATA.media || '',
     language: DATA.language || '',
     model: DATA.model || '',
@@ -11887,6 +11899,11 @@ function buildJson() {
       return o;
     }),
   };
+  if (typeof DATA.language_source === 'string') out.language_source = DATA.language_source;
+  if (typeof DATA.split_mode === 'string') out.split_mode = DATA.split_mode;
+  if (typeof DATA.timestamp_granularity === 'string') {
+    out.timestamp_granularity = DATA.timestamp_granularity;
+  }
   const multi = getMultiSubtitleState();
   out.multi_subtitle = {
     schema: multi.schema || MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
@@ -14602,6 +14619,7 @@ function resetLoadedMedia() {
 
 function buildBlankProject() {
   return {
+    schema: window.AsrEditorUtils.PROJECT_SCHEMA,
     media: '', language: '', model: '',
     timebase: { unit: 'milliseconds', fps: 30 },
     segments: [],
@@ -14619,8 +14637,16 @@ function applyCanonicalProject(data, filename) {
   currentCuePanelTrackId = null;
   resetCuePanelEditState();
   resetLoadedMedia();
+  projectExtensionFields = Object.fromEntries(
+    Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+  );
+  DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
   DATA.media = typeof data.media === 'string' ? data.media : '';
   DATA.language = data.language || '';
+  DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
+  DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
+  DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
+    ? data.timestamp_granularity : undefined;
   DATA.model = data.model || '';
   DATA.timebase = normalizeTimelineTimebase(data.timebase);
   timelineFpsManuallySet = hasExplicitTimelineFps(data.timebase);
@@ -15154,6 +15180,12 @@ async function openProjectFile(file, options = {}) {
     const text = await readFileTextWithProgress(file);
     updateEditorLoading(60, `正在解析工程 ${file.name}…`);
     const data = JSON.parse(text);
+    if (data && typeof data === 'object' && !Array.isArray(data)
+        && Object.prototype.hasOwnProperty.call(data, 'schema')
+        && !window.AsrEditorUtils.supportsProjectSchema(data)) {
+      flashHint('不支持的工程格式版本，请使用新版 MAW 打开。', 'warning');
+      return false;
+    }
     // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
     if (data && Array.isArray(data.segments)) {
       data.timebase = normalizeTimelineTimebase(data.timebase);
