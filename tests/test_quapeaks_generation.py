@@ -263,8 +263,18 @@ class FindReapeaksPreferenceTests(unittest.TestCase):
         )
 
     def test_reaper_uppercase_variants_still_discovered(self) -> None:
+        # 这条原先断言精确拼法，在 macOS 上必炸：默认 APFS 与 NTFS 一样**大小写不敏感
+        # 但保留大小写**，.ReaPeaks 与 .REAPEAKS 是同一个文件，find_reapeaks 按候选
+        # 顺序先命中 .ReaPeaks 就返回那个拼法；而 PurePosixPath 的比较又是大小写**敏感**
+        # 的，于是断言失败。Windows 同样不敏感却看不出来，因为 WindowsPath.__eq__
+        # 自己忽略大小写。Linux 真区分大小写，所以也只有它走到 .REAPEAKS 分支。
+        # 这条要保的是"大写变体也能被发现"，拼法不是它该钉的东西。
         self._write("tone.wav.REAPEAKS", b"RPKN", self.fresh, False)
-        self.assertEqual(quapeaks.find_reapeaks(self.tone), self.root / "tone.wav.REAPEAKS")
+        found = quapeaks.find_reapeaks(self.tone)
+        self.assertIsNotNone(found)
+        assert found is not None
+        self.assertEqual(found.name.lower(), "tone.wav.reapeaks")
+        self.assertTrue(found.is_file(), "返回的必须是真实存在的文件")
 
 
 if __name__ == "__main__":
