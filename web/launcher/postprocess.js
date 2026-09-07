@@ -614,7 +614,7 @@
   }
 
   function activeToolboxView() {
-    return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");
+    return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesContent");
   }
 
   function selectToolboxSection(section) {
@@ -626,6 +626,7 @@
       tab.tabIndex = active ? 0 : -1;
     });
     $("toolboxPostprocessView").classList.toggle("hidden", section !== "postprocess");
+    $("toolboxUtilitiesContent").classList.toggle("hidden", section !== "utilities");
     $("toolboxUtilitiesView").classList.toggle("hidden", section !== "utilities");
     const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");
     if (activeTab) selectTool(activeTab.dataset.tool);
