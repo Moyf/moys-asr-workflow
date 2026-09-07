@@ -101,7 +101,9 @@ class LocalRuntimeTests(unittest.TestCase):
         driver = (
             "import sys\n"
             f"sys.path.insert(0, {str(repo_root)!r})\n"
-            "sys.modules['reapeaks'] = None\n"
+            # 改名后内核包叫 quapeaks；这里若还屏蔽 reapeaks，测试等于在验证
+            # "缺一个已经不存在的包时仍可导入"，真正要保的场景没有覆盖到。
+            "sys.modules['quapeaks'] = None\n"
             "import generate_subtitle_local\n"
             "print('MAW_LOCAL_ENTRY_IMPORT_OK')\n"
         )
