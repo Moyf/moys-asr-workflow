@@ -824,31 +824,24 @@ class EditorAssetTests(unittest.TestCase):
         gap_menu_end = page.index('<span class="dropdown" id="extra-export-dropdown">', gap_menu_start)
         gap_menu = page[gap_menu_start:gap_menu_end]
         separator = '<div class="dropdown-separator" role="separator"></div>'
-        self.assertEqual(gap_menu.count(separator), 2)
-        first_separator = gap_menu.index(separator)
-        second_separator = gap_menu.index(separator, first_separator + len(separator))
-        self.assertLess(gap_menu.index('id="download-gap-removed-color-srt"'), first_separator)
-        self.assertLess(first_separator, gap_menu.index('id="download-gap-removed-otio"'))
-        self.assertLess(gap_menu.index('id="download-gap-removed-otioz"'), second_separator)
-        self.assertLess(
-            gap_menu.index('id="download-gap-removed-sticker-otioz"'),
-            second_separator,
-        )
-        self.assertLess(second_separator, gap_menu.index('id="download-gap-removed-ffconcat"'))
+        # 分组分隔线已移除（二级子菜单本身承担分组），仅保留 OTIO 子菜单内选项开关前的一条。
+        self.assertEqual(gap_menu.count(separator), 1)
+        only_separator = gap_menu.index(separator)
+        self.assertLess(gap_menu.index('id="download-gap-removed-sticker-otioz"'), only_separator)
+        self.assertLess(only_separator, gap_menu.index('data-otio-export-option'))
+        self.assertLess(only_separator, gap_menu.index('id="download-gap-removed-ffconcat"'))
 
         extra_menu_start = page.index('<div class="dropdown-menu" id="extra-export-menu" role="menu">')
         extra_menu_end = page.index('\n      </div>\n    </span>\n  </span>\n</div>', extra_menu_start)
         extra_menu = page[extra_menu_start:extra_menu_end]
-        self.assertEqual(extra_menu.count(separator), 3)
-        first_separator = extra_menu.index(separator)
-        second_separator = extra_menu.index(separator, first_separator + len(separator))
-        third_separator = extra_menu.index(separator, second_separator + len(separator))
-        self.assertLess(extra_menu.index('id="download-fcp7-export"'), first_separator)
-        self.assertLess(first_separator, extra_menu.index('id="download-otio"'))
-        self.assertLess(extra_menu.index('id="download-sticker-otioz"'), second_separator)
-        self.assertLess(second_separator, extra_menu.index('id="download-lottie"'))
-        self.assertLess(extra_menu.index('id="download-ograf"'), third_separator)
-        self.assertLess(third_separator, extra_menu.index('id="download-plain-text"'))
+        # 分组分隔线已移除（二级子菜单本身承担分组），仅保留 OTIO 子菜单内选项开关前的一条。
+        self.assertEqual(extra_menu.count(separator), 1)
+        only_separator = extra_menu.index(separator)
+        self.assertLess(extra_menu.index('id="download-fcp7-export"'), only_separator)
+        self.assertLess(extra_menu.index('id="download-sticker-otioz"'), only_separator)
+        self.assertLess(only_separator, extra_menu.index('data-otio-export-option'))
+        self.assertLess(only_separator, extra_menu.index('id="download-lottie"'))
+        self.assertLess(extra_menu.index('id="download-ograf"'), extra_menu.index('id="download-plain-text"'))
         self.assertLess(extra_menu.index('id="download-plain-text"'), extra_menu.index('id="download-resolve-json"'))
         self.assertIn('showGapContextMenu?.(event.clientX, event.clientY, index)', page)
         self.assertIn("gap.removed === false ? '移除区段' : '恢复区段'", page)

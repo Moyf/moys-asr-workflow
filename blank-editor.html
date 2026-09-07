@@ -77,6 +77,8 @@
     --btn-border:    var(--border);
     --btn-border-hover: var(--border-strong);
     --btn-text:      #cdd4e0;
+    /* 下拉菜单边框 —— 与按钮边框同色（浅色主题经 --border 自动跟随）。 */
+    --menu-border:   var(--btn-border);
 
     /* 中性 hover —— 不改变色相的轻微抬升 */
     --hover-bg: rgba(255, 255, 255, 0.035);
@@ -1274,7 +1276,7 @@
   .toolbar .dropdown-menu {
     display: none;
     position: absolute; right: 0; top: calc(100% + 4px);
-    background: var(--bg-overlay); border: 1px solid var(--border-subtle);
+    background: var(--bg-overlay); border: 1px solid var(--menu-border);
     border-radius: var(--radius-md); padding: 4px 0; min-width: 240px;
     box-shadow: var(--shadow-3); z-index: 200;
   }
@@ -1384,6 +1386,13 @@
     border-radius: var(--radius-sm);
   }
   .multi-subtitle-setting-toggle:hover { background: var(--accent-tint); color: var(--text-primary); }
+  /* 导出下拉菜单里的通用设置开关（如 OTIO 导出选项），与多重字幕开关同视觉。 */
+  .dropdown-setting-toggle {
+    display: flex; align-items: center; gap: 6px; padding: 5px 7px;
+    color: var(--text-secondary); font-size: 12px; cursor: pointer; user-select: none;
+    border-radius: var(--radius-sm); white-space: nowrap;
+  }
+  .dropdown-setting-toggle:hover { background: var(--accent-tint); color: var(--text-primary); }
   .multi-subtitle-setting-row {
     display: grid; grid-template-columns: minmax(0, 1fr) 108px; align-items: center; gap: 8px;
     padding: 4px 7px; color: var(--text-muted); font-size: 12px; white-space: nowrap;
@@ -4277,7 +4286,6 @@
       <div class="dropdown-menu" id="gap-removed-export-menu" role="menu">
         <div class="dropdown-item" id="download-gap-removed-srt" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出字幕；原工程时间不变">字幕 SRT</div>
         <div class="dropdown-item" id="download-gap-removed-color-srt" role="menuitem" tabindex="0" hidden title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">按颜色导出字幕</div>
-        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-otio-menu">OpenTimelineIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-otio-menu" role="menu">
@@ -4285,9 +4293,18 @@
             <div class="dropdown-item" id="download-gap-removed-otioz" role="menuitem" tabindex="0" title="导出原视频/音频的去空隙 OTIOZ 时间线；服务器只打包当前工程媒体文件">时间线 OTIOZ 打包工程</div>
             <div class="dropdown-item" id="download-gap-removed-sticker-otio" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO 工程</div>
             <div class="dropdown-item" id="download-gap-removed-sticker-otioz" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃">表情包 OTIOZ 打包工程</div>
+            <div class="dropdown-separator" role="separator"></div>
+            <label class="dropdown-setting-toggle" title="导出时间线 OTIO 的同时保存对应的 SRT 字幕文件">
+              <input type="checkbox" data-otio-export-option="srt" checked> 同时导出 SRT 字幕
+            </label>
+            <label class="dropdown-setting-toggle" title="把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO">
+              <input type="checkbox" data-otio-export-option="stickers" checked> 时间线包含表情包
+            </label>
+            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段">
+              <input type="checkbox" data-otio-export-option="markers" checked> 将字幕内容作为标记写入
+            </label>
           </div>
         </div>
-        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-data-menu">数据文件</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-data-menu" role="menu">
@@ -4301,7 +4318,6 @@
       <button id="extra-export-btn" title="更多导出" aria-expanded="false" aria-controls="extra-export-menu" aria-haspopup="menu">更多导出 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu" role="menu">
         <div class="dropdown-item" id="download-fcp7-export" role="menuitem" tabindex="0" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML（实验性）</div>
-        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-otio-menu">OTIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="extra-otio-menu" role="menu">
@@ -4309,9 +4325,18 @@
             <div class="dropdown-item" id="download-otioz" role="menuitem" tabindex="0" title="导出原视频/音频的完整 OTIOZ 时间线；服务器只打包当前工程媒体文件">时间线 OTIOZ 打包工程</div>
             <div class="dropdown-item" id="download-sticker-otio" role="menuitem" tabindex="0" title="导出只包含表情包图片轨道的 OTIO 工程">表情包 OTIO 工程</div>
             <div class="dropdown-item" id="download-sticker-otioz" role="menuitem" tabindex="0" title="导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）">表情包 OTIOZ 打包工程</div>
+            <div class="dropdown-separator" role="separator"></div>
+            <label class="dropdown-setting-toggle" title="导出时间线 OTIO 的同时保存对应的 SRT 字幕文件">
+              <input type="checkbox" data-otio-export-option="srt" checked> 同时导出 SRT 字幕
+            </label>
+            <label class="dropdown-setting-toggle" title="把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO">
+              <input type="checkbox" data-otio-export-option="stickers" checked> 时间线包含表情包
+            </label>
+            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段">
+              <input type="checkbox" data-otio-export-option="markers" checked> 将字幕内容作为标记写入
+            </label>
           </div>
         </div>
-        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-dynamic-menu">动态图形</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="extra-dynamic-menu" role="menu">
@@ -4319,7 +4344,6 @@
             <div class="dropdown-item" id="download-ograf" role="menuitem" tabindex="0" title="导出符合 OGraf 规范的动态字幕包（需要以 server-editor 打开并绑定工程文件）">动态字幕（OGraf）</div>
           </div>
         </div>
-        <div class="dropdown-separator" role="separator"></div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-data-menu">数据文件</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="extra-data-menu" role="menu">
@@ -10189,6 +10213,7 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     autoMergeAbsorbShort: true, autoMergeAbsorbDirection: 'previous', exportColorUnified: true,
     autoSaveProject: true, autoSaveIntervalSeconds: 30, stickerOverlayEnabled: false,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
+    otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
     mediaSeekStepFrames: 1, cueMoveStepMs: 50, cueMoveStepFrames: 1,
     timelineSnapToFrame: true, timelineTimecodeSeparator: DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
@@ -10258,6 +10283,10 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       autoSaveIntervalSeconds: clampInteger(savedSettings.autoSaveIntervalSeconds, 30, 5, 3600),
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
       stickerOtioExportMode: savedSettings.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
+      // 时间线 OTIO 导出选项：默认同时导出 SRT、合并表情包轨、写入字幕标记。
+      otioExportIncludeSrt: savedSettings.otioExportIncludeSrt !== false,
+      otioExportIncludeStickers: savedSettings.otioExportIncludeStickers !== false,
+      otioExportIncludeMarkers: savedSettings.otioExportIncludeMarkers !== false,
       clickBehavior: ['select-only', 'select-and-seek', 'select-and-play'].includes(savedSettings.clickBehavior)
         ? savedSettings.clickBehavior : 'select-and-seek',
       clickTarget: ['cue-start', 'pointer'].includes(savedSettings.clickTarget) ? savedSettings.clickTarget : 'pointer',
@@ -12826,6 +12855,12 @@ export default MawDynamicCaptions;
     '导出工程': 'Export project', '导出去空隙版本 ▾': 'Export gap-removed version ▾',
     '字幕 SRT': 'Subtitle SRT', '时间线 OTIO 工程': 'Timeline OTIO project', '时间线 OTIOZ 打包工程': 'Timeline OTIOZ bundle',
     '表情包 OTIO 工程': 'Sticker OTIO project', '表情包 OTIOZ 打包工程': 'Sticker OTIOZ bundle',
+    '同时导出 SRT 字幕': 'Also export SRT subtitles',
+    '导出时间线 OTIO 的同时保存对应的 SRT 字幕文件': 'Save the matching SRT subtitle file alongside the timeline OTIO export',
+    '时间线包含表情包': 'Timeline includes stickers',
+    '把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO': 'Merge stickers into the same OTIO project as an overlay video track; no separate sticker OTIO export needed',
+    '将字幕内容作为标记写入': 'Write subtitle text as markers',
+    '把每条字幕的文本与时间作为标记写入时间线片段': 'Write each subtitle text and timing as markers on the timeline clips',
     'OpenTimeline': 'OpenTimeline', 'OpenTimelineIO': 'OpenTimelineIO', 'OTIO': 'OTIO', '数据': 'Data', '数据文件': 'Data files',
     '彩蛋': 'Easter eggs', '动态图形': 'Dynamic graphics',
     '导出时间线模式': 'Export timeline mode', '去空隙时间线': 'Gap-removed timeline', '原始时间线': 'Source timeline',
@@ -20343,6 +20378,10 @@ const DEFAULT_EDITOR_SETTINGS = {
   stickerOverlayEnabled: false,
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
   stickerOtioExportMode: 'original',
+  // 时间线 OTIO / OTIOZ 导出选项：同时导出 SRT、合并表情包轨、写入字幕标记（默认全开）。
+  otioExportIncludeSrt: true,
+  otioExportIncludeStickers: true,
+  otioExportIncludeMarkers: true,
   // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
@@ -20421,6 +20460,9 @@ function readEditorSettings() {
     cueEditorCancelOnEscape: saved.cueEditorCancelOnEscape === true,
     autoSnapAdjacentCues: saved.autoSnapAdjacentCues !== false,
     stickerOtioExportMode: saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
+    otioExportIncludeSrt: saved.otioExportIncludeSrt !== false,
+    otioExportIncludeStickers: saved.otioExportIncludeStickers !== false,
+    otioExportIncludeMarkers: saved.otioExportIncludeMarkers !== false,
   });
 }
 
@@ -32001,7 +32043,11 @@ function buildTimelineMediaClip(
   };
 }
 
-function buildTimelineOtio({ gapRemoved = false } = {}) {
+function buildTimelineOtio({
+  gapRemoved = false,
+  includeStickers = false,
+  includeSubtitleMarkers = true,
+} = {}) {
   const removed = gapRemoved ? getRemovedGapRanges() : [];
   if (gapRemoved && !removed.length) {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
@@ -32067,8 +32113,10 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
       sourceStartFrame,
       sourceDurationFrames,
       {
-        includeSubtitleMarkers: track.kind === 'Video'
-          || (track.kind === 'Audio' && player?.tagName === 'AUDIO' && trackIndex === 0),
+        includeSubtitleMarkers: includeSubtitleMarkers && (
+          track.kind === 'Video'
+          || (track.kind === 'Audio' && player?.tagName === 'AUDIO' && trackIndex === 0)
+        ),
         gapRemoved,
         audioTrack: track.audioTrack,
         audioTrackIndex: track.audioTrackIndex,
@@ -32077,6 +32125,23 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
     )),
     kind: track.kind,
   }));
+  // 勾选「时间线包含表情包」时，把表情包作为叠加视频轨合并进同一个 OTIO 时间线；
+  // 没有表情包时静默跳过，仅保留时间线本体。
+  if (includeStickers) {
+    const collected = collectStickerOtioEntries(removed);
+    if (collected.error) {
+      flashHint(collected.error, 'warning');
+      return null;
+    }
+    if (collected.entries.length) {
+      const stickerTrack = buildStickerOtioTrack(collected.entries);
+      if (stickerTrack.error) {
+        flashHint(stickerTrack.error, 'warning');
+        return null;
+      }
+      tracks.push(stickerTrack.track);
+    }
+  }
   const metadata = {
     moy: {
       source_media: targetUrl,
@@ -32114,11 +32179,19 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
 }
 
 function buildSourceOtio() {
-  return buildTimelineOtio({ gapRemoved: false });
+  return buildTimelineOtio({
+    gapRemoved: false,
+    includeStickers: EDITOR_SETTINGS.otioExportIncludeStickers,
+    includeSubtitleMarkers: EDITOR_SETTINGS.otioExportIncludeMarkers,
+  });
 }
 
 function buildGapRemovedOtio() {
-  return buildTimelineOtio({ gapRemoved: true });
+  return buildTimelineOtio({
+    gapRemoved: true,
+    includeStickers: EDITOR_SETTINGS.otioExportIncludeStickers,
+    includeSubtitleMarkers: EDITOR_SETTINGS.otioExportIncludeMarkers,
+  });
 }
 
 function stickerOtioName(sticker, absPath) {
@@ -32187,7 +32260,9 @@ function collectStickerOtioEntries(removed) {
   return { entries };
 }
 
-function buildStickerOtioTimeline(stickers, timelineName) {
+// 把表情包条目构建为一条可放进任意时间线 Stack 的单层视频轨（Gap 填充 + 图片 Clip）。
+// stickers 会被就地排序；时间重叠时返回 { error }，由调用方决定中止还是跳过。
+function buildStickerOtioTrack(stickers) {
   stickers.sort((a, b) => (a.startMs - b.startMs) || (a.endMs - b.endMs) || (a.idx - b.idx));
   const children = [];
   let cursor = 0;
@@ -32241,6 +32316,25 @@ function buildStickerOtioTimeline(stickers, timelineName) {
     cursor = startFrame + durationFrames;
   }
   return {
+    track: {
+      OTIO_SCHEMA: 'Track.1',
+      metadata: {},
+      name: '表情包',
+      source_range: null,
+      effects: [],
+      markers: [],
+      enabled: true,
+      color: null,
+      children,
+      kind: 'Video',
+    },
+  };
+}
+
+function buildStickerOtioTimeline(stickers, timelineName) {
+  const result = buildStickerOtioTrack(stickers);
+  if (result.error) return result;
+  return {
     json: JSON.stringify({
       OTIO_SCHEMA: 'Timeline.1',
       metadata: {},
@@ -32255,18 +32349,7 @@ function buildStickerOtioTimeline(stickers, timelineName) {
         markers: [],
         enabled: true,
         color: null,
-        children: [{
-          OTIO_SCHEMA: 'Track.1',
-          metadata: {},
-          name: '表情包',
-          source_range: null,
-          effects: [],
-          markers: [],
-          enabled: true,
-          color: null,
-          children,
-          kind: 'Video',
-        }],
+        children: [result.track],
       },
     }, null, 4),
   };
@@ -32335,10 +32418,10 @@ async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
   const tr = (s) => window.MAWE_I18N?.translateText?.(s) || s;
   if (editingState) finishEdit(true);
   const payload = buildTimeline();
-  if (!payload) return;
+  if (!payload) return false;
   if (!SERVER_CONFIG?.canOtozTimelineExport || !SERVER_CONFIG?.otiozTimelineExportUrl) {
     flashHint(tr('当前工程无法导出时间线 OTIOZ（需要以 server-editor 打开并绑定工程文件）'), 'warning');
-    return;
+    return false;
   }
   flashHint(tr('正在生成时间线 OTIOZ 打包工程…'));
   try {
@@ -32357,11 +32440,12 @@ async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
     }
     const blob = await response.blob();
     flashHint(tr('时间线 OTIOZ 已生成，媒体已打包进 zip'), 'success');
-    await downloadFile(blob, filename, 'application/zip', {
+    return Boolean(await downloadFile(blob, filename, 'application/zip', {
       desc: description, types: { 'application/zip': ['.otioz'] },
-    });
+    }));
   } catch (error) {
     flashHint(`${tr('时间线 OTIOZ 导出失败')}：${error.message || error}`, 'warning');
+    return false;
   }
 }
 
@@ -33853,36 +33937,60 @@ document.getElementById('download-gap-removed-color-srt')?.addEventListener('cli
 document.getElementById('download-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildSourceOtio();
-  if (payload) {
-    await downloadFile(payload, FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
-      desc: 'OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  if (!payload) return;
+  await downloadFile(payload, FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
+    desc: 'OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  });
+  if (EDITOR_SETTINGS.otioExportIncludeSrt) {
+    await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+      desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
     });
   }
 });
 document.getElementById('download-otioz')?.addEventListener('click', async () => {
-  await exportTimelineOtioz(
+  const saved = await exportTimelineOtioz(
     'source',
     buildSourceOtio,
     FILENAME_BASE + '.otioz',
     'OTIOZ 打包工程',
   );
+  if (saved && EDITOR_SETTINGS.otioExportIncludeSrt) {
+    await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+      desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
+    });
+  }
 });
 document.getElementById('download-gap-removed-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedOtio();
-  if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
-      desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
-    });
+  if (!payload) return;
+  await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
+    desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  });
+  if (EDITOR_SETTINGS.otioExportIncludeSrt) {
+    const srtPayload = buildGapRemovedSrt();
+    if (srtPayload) {
+      await downloadFile(srtPayload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+        desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
+      });
+    }
   }
 });
 document.getElementById('download-gap-removed-otioz')?.addEventListener('click', async () => {
-  await exportTimelineOtioz(
+  const saved = await exportTimelineOtioz(
     'gap-removed',
     buildGapRemovedOtio,
     `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otioz`,
     '去空隙时间线 OTIOZ 打包工程',
   );
+  if (saved && EDITOR_SETTINGS.otioExportIncludeSrt) {
+    const srtPayload = buildGapRemovedSrt();
+    if (srtPayload) {
+      await downloadFile(srtPayload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+        desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
+      });
+    }
+  }
 });
 document.getElementById('download-gap-removed-ffconcat')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
@@ -33929,6 +34037,38 @@ document.getElementById('download-sticker-otioz')?.addEventListener('click', asy
     `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '表情包 OTIOZ 打包工程'
   );
 });
+
+// 时间线 OTIO / OTIOZ 导出选项：两个 OTIO 子菜单（原始 / 去空隙）共享同一份设置，
+// 任一处勾选立即持久化并同步另一处；导出时由 buildSourceOtio / buildGapRemovedOtio 读取。
+const OTIO_EXPORT_OPTION_KEYS = {
+  srt: 'otioExportIncludeSrt',
+  stickers: 'otioExportIncludeStickers',
+  markers: 'otioExportIncludeMarkers',
+};
+const otioExportOptionInputs = [
+  ...document.querySelectorAll('input[data-otio-export-option]'),
+];
+
+function syncOtioExportOptionInputs() {
+  otioExportOptionInputs.forEach((input) => {
+    const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
+    if (key) input.checked = Boolean(EDITOR_SETTINGS[key]);
+  });
+}
+
+otioExportOptionInputs.forEach((input) => {
+  input.addEventListener('change', () => {
+    const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
+    if (!key) return;
+    updateEditorSettings({ [key]: input.checked });
+    syncOtioExportOptionInputs();
+    // 鼠标点击切换后立即交还焦点：焦点留在子菜单内的复选框上会让悬停关闭
+    // 逻辑（wrapper.contains(document.activeElement)）一直误判指针仍在菜单内，
+    // 导致二级菜单不再自动收起。键盘切换（:focus-visible）保持焦点不受影响。
+    if (!input.matches(':focus-visible')) input.blur();
+  });
+});
+syncOtioExportOptionInputs();
 
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
 updateStickerExportButtons();

@@ -833,6 +833,67 @@ class LocalEditorServerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "只绑定一个源媒体"):
             server_editor.export_timeline_otioz(project, "source", timeline)
 
+    def test_timeline_otioz_export_packages_merged_sticker_track(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        timeline = {
+            "OTIO_SCHEMA": "Timeline.1",
+            "tracks": {"children": [
+                {"children": [{
+                    "OTIO_SCHEMA": "Clip.2",
+                    "media_references": {
+                        "DEFAULT_MEDIA": {
+                            "OTIO_SCHEMA": "ExternalReference.1",
+                            "target_url": "file:///outside/should-not-be-read.mp4",
+                        },
+                    },
+                }]},
+                {"children": [{
+                    "OTIO_SCHEMA": "Clip.2",
+                    "metadata": {"moy": {"sticker_rel": "nested/cat.png"}},
+                    "media_references": {
+                        "DEFAULT_MEDIA": {
+                            "OTIO_SCHEMA": "ExternalReference.1",
+                            "target_url": "file:///outside/should-not-be-read.png",
+                        },
+                    },
+                }]},
+            ]},
+        }
+        zip_bytes, otio_name = server_editor.export_timeline_otioz(
+            project, "source", timeline, project.sticker_root,
+        )
+        self.assertEqual(otio_name, "clip.otio")
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+            self.assertEqual(
+                set(archive.namelist()),
+                {"content.otio", "version.txt", "media/clip.mp3", "media/cat.png"},
+            )
+            self.assertEqual(archive.read("media/clip.mp3"), b"0123456789")
+            self.assertEqual(archive.read("media/cat.png"), b"png")
+            exported = json.loads(archive.read("content.otio").decode("utf-8"))
+        tracks = exported["tracks"]["children"]
+        media_target = tracks[0]["children"][0]["media_references"]["DEFAULT_MEDIA"]["target_url"]
+        self.assertEqual(media_target, "media/clip.mp3")
+        sticker_reference = tracks[1]["children"][0]["media_references"]["DEFAULT_MEDIA"]
+        self.assertEqual(sticker_reference["target_url"], "media/cat.png")
+        self.assertEqual(
+            sticker_reference["available_range"]["duration"],
+            {"OTIO_SCHEMA": "RationalTime.1", "rate": 60, "value": 1.0},
+        )
+
+    def test_timeline_otioz_export_requires_sticker_root_for_merged_stickers(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        timeline = {"OTIO_SCHEMA": "Timeline.1", "tracks": {"children": [{"children": [
+            {"OTIO_SCHEMA": "Clip.2", "metadata": {"moy": {"sticker_rel": "nested/cat.png"}},
+             "media_references": {"DEFAULT_MEDIA": {"target_url": "old"}}},
+        ]}]}}
+        with self.assertRaisesRegex(ValueError, "尚未验证表情包根目录"):
+            server_editor.export_timeline_otioz(project, "source", timeline, None)
+
     def test_timeline_otioz_endpoint_requires_token_and_returns_zip(self) -> None:
         server, thread, base_url = self._sticker_otioz_serve()
         timeline = {
