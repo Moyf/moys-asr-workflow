@@ -42,7 +42,7 @@ def _load_rust_kernel():
     try:
         import quapeaks as rust_generate
     except ImportError as exc:
-        print(f"[reapeaks] 缺少 Rust 生成内核 quapeaks（{exc}），跳过 .ReaPeaks 生成")
+        print(f"[reapeaks] 缺少 Rust 生成内核 quapeaks（{exc}），跳过 .quapeaks 生成")
         return None
     return rust_generate
 
@@ -790,7 +790,7 @@ def generate_reapeaks_stream_bytes(
     """
     ffmpeg = resolve_ffmpeg(ffmpeg_bin)
     if not ffmpeg:
-        print("[reapeaks] 缺少 ffmpeg，跳过 .ReaPeaks 生成")
+        print("[reapeaks] 缺少 ffmpeg，跳过 .quapeaks 生成")
         return None
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
         return None
