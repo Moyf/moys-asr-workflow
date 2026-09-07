@@ -117,6 +117,7 @@ test('defaults the waveform shape source to ReaPeaks', async ({ page }) => {
 test('explains where to configure automatic timecode splitting', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   const hint = page.locator('#split-use-word-timestamps-hint');
   await expect(hint).toContainText('开启时，会自动按可用时间码拆分');
   await expect(hint).toContainText('关闭后将打开拆分弹窗');
@@ -1677,6 +1678,7 @@ test('uses the linked split dialog when the main cue is active with its bound ex
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await page.locator('#split-use-word-timestamps').uncheck();
   await page.locator('#editor-settings-toggle').click();
 
@@ -1782,6 +1784,7 @@ test('keeps the subtitle-list caret position as the linked main split point', as
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await page.locator('#split-use-word-timestamps').uncheck();
   await page.locator('#editor-settings-toggle').click();
 
@@ -3477,6 +3480,7 @@ test('uses the split dialog for waveform main splitting when word timestamps are
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await expect(page.locator('#split-use-word-timestamps')).toBeChecked();
   await page.locator('#split-use-word-timestamps').uncheck();
   await page.locator('#editor-settings-toggle').click();
@@ -3557,6 +3561,7 @@ test('uses the split dialog for SRT-style main subtitles without word timestamps
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await expect(page.locator('#split-use-word-timestamps')).toBeChecked();
   await page.locator('#editor-settings-toggle').click();
 
@@ -3605,6 +3610,7 @@ test('keeps the waveform pointer as the absolute cut in a linked split dialog', 
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await expect(page.locator('#split-use-word-timestamps')).toBeChecked();
   await page.locator('#split-use-word-timestamps').uncheck();
   await page.locator('#editor-settings-toggle').click();
@@ -3701,6 +3707,7 @@ test('labels a linked split time inferred from main word timestamps', async ({ p
   await page.keyboard.press('Escape');
 
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await page.locator('#split-use-word-timestamps').uncheck();
   await page.locator('#editor-settings-toggle').click();
   await mainText.click();

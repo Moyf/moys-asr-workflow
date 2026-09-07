@@ -502,7 +502,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="auto-save-project"', page)
         self.assertIn('id="auto-save-project" checked', page)
         self.assertIn('id="auto-save-interval"', page)
-        self.assertLess(page.index('editor-settings-title">导出'), page.index('id="server-auto-save-settings"'))
+        self.assertLess(page.index('id="editor-settings-page-export"'), page.index('id="server-auto-save-settings"'))
         self.assertIn('function scheduleAutoSave()', page)
         self.assertIn('hasUnsavedProjectChanges() && !projectSaveInFlight', page)
         self.assertIn('id="recent-projects"', page)

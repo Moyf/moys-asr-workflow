@@ -109,7 +109,7 @@ function splitModeLabel(mode) {
   return mode === 'continuous' ? '字符型' : '单词型';
 }
 function splitModeExample(mode) {
-  return mode === 'continuous' ? '（适用于中文、日文等）' : '（适用于英文、俄文等）';
+  return mode === 'continuous' ? '（适用于中文、日文等语言）' : '（适用于英文、俄文等语言）';
 }
 
 // 合并多条字幕时按「字符型/单词型」取对应连接符：中文直接拼接，西文默认空格。
@@ -1469,9 +1469,6 @@ const cueEditorSplitKey = document.getElementById('cue-editor-split-key');
 const cueEditorConfirmKey = document.getElementById('cue-editor-confirm-key');
 const helpTabButtons = Array.from(document.querySelectorAll('[data-help-tab]'));
 const helpTabPanels = Array.from(document.querySelectorAll('[data-help-tab-panel]'));
-const helpAdvancedToggle = document.getElementById('help-advanced-toggle');
-const helpAdvancedTabs = document.getElementById('help-advanced-tabs');
-const helpAdvancedTabButtons = Array.from(helpAdvancedTabs?.querySelectorAll('[data-help-tab]') || []);
 const helpOpenWaveformSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-waveform-settings]'));
 const helpOpenMediaSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-media-settings]'));
 const helpOpenGapRemovePanelButton = document.getElementById('help-open-gap-remove-panel');
@@ -1672,6 +1669,10 @@ const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
+const EDITOR_SETTINGS_WINDOW_POSITION_KEY = 'moy.asr.editor.settings.window.v1';
+const EDITOR_SETTINGS_WINDOW_TAB_KEY = 'moy.asr.editor.settings.window_tab.v1';
+const editorSettingsClose = document.getElementById('editor-settings-close');
+const editorSettingsDragHandle = document.getElementById('editor-settings-drag-handle');
 
 const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
@@ -1701,7 +1702,6 @@ let cuePanelUndoPushed = false;
 let cuePanelUndoRecord = null;
 let cuePanelTextEditSnapshot = null;
 let cuePanelCanceling = false;
-let editorSettingsPanelFrame = 0;
 
 function resetCuePanelEditState() {
   cuePanelUndoPushed = false;
@@ -1870,23 +1870,63 @@ function applyNinjaSettings() {
   if (ninjaRazorIcon) ninjaRazorIcon.hidden = !enabled;
 }
 
+// 全局设置窗口：复用 createFloatingPanel 获得拖动、位置持久化、Esc 关闭与按钮 active 态；
+// 窗口内部用左侧垂直标签页切换不同分区，并记忆用户上次停留的分区。
+const editorSettingsTabs = editorSettingsPanel
+  ? Array.from(editorSettingsPanel.querySelectorAll('.editor-settings-nav-tab'))
+  : [];
+const editorSettingsFloatingPanel = createFloatingPanel({
+  panel: editorSettingsPanel,
+  dragHandle: editorSettingsDragHandle,
+  manageButton: editorSettingsToggle,
+  anchorButton: editorSettingsToggle,
+  positionKey: EDITOR_SETTINGS_WINDOW_POSITION_KEY,
+  // 所有打开路径（按钮点击 / 桥接）都先恢复标签页，保证默认分区带上 active 样式，
+  // 且窗口按实际内容尺寸定位。
+  onOpen: restoreEditorSettingsActiveTab,
+});
+
+function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
+  if (!tab) return;
+  for (const item of editorSettingsTabs) {
+    const active = item === tab;
+    item.classList.toggle('active', active);
+    item.setAttribute('aria-selected', String(active));
+    item.tabIndex = active ? 0 : -1;
+    const page = document.getElementById(item.getAttribute('aria-controls') || '');
+    if (page) page.hidden = !active;
+  }
+  if (focus) tab.focus();
+  try {
+    localStorage.setItem(EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
+  } catch (_) {
+    // file:// 隐私模式可能拒绝 localStorage；切换标签页本身不受影响。
+  }
+}
+
+function restoreEditorSettingsActiveTab() {
+  let saved = '';
+  try {
+    saved = localStorage.getItem(EDITOR_SETTINGS_WINDOW_TAB_KEY) || '';
+  } catch (_) {
+    saved = '';
+  }
+  // 忽略已隐藏的分区（如当前环境不可用的「保存」），回退到第一个可见分区。
+  const tab = editorSettingsTabs.find((item) => item.dataset.settingsTab === saved && !item.hidden)
+    || editorSettingsTabs.find((item) => !item.hidden)
+    || editorSettingsTabs[0];
+  setEditorSettingsActiveTab(tab);
+}
+
 function setEditorSettingsPanelOpen(open) {
   if (!editorSettingsPanel || !editorSettingsToggle) return;
   if (!open) {
     setMergeJoinSettingsPanelOpen(false);
     setSplitTrimSettingsPanelOpen(false);
+    editorSettingsFloatingPanel.close();
+    return;
   }
-  editorSettingsToggle.classList.toggle('active', open);
-  editorSettingsToggle.setAttribute('aria-expanded', String(open));
-  // 先让按钮状态绘制出来，再展开/收起文档流中的大面板，避免布局重排把高亮拖后。
-  cancelAnimationFrame(editorSettingsPanelFrame);
-  editorSettingsPanelFrame = requestAnimationFrame(() => {
-    editorSettingsPanelFrame = requestAnimationFrame(() => {
-      editorSettingsPanelFrame = 0;
-      if (editorSettingsToggle.getAttribute('aria-expanded') !== String(open)) return;
-      editorSettingsPanel.hidden = !open;
-    });
-  });
+  editorSettingsFloatingPanel.open();
 }
 
 function positionAnchoredSettingsPanel(panel, toggle) {
@@ -2242,7 +2282,7 @@ function refreshMergeJoinModeHint() {
   // 用户觉得不对就自己点按钮换。
   const effective = hasPinned ? override : detected;
   const other = effective === 'continuous' ? 'word' : 'continuous';
-  mergeJoinModeText.textContent = `当前为「${splitModeLabel(effective)}」${splitModeExample(effective)}`;
+  mergeJoinModeText.textContent = `当前字幕为「${splitModeLabel(effective)}」${splitModeExample(effective)}`;
   // 按钮 title 给出目标类型的语言说明，帮助用户选择。
   mergeJoinModeSwitch.textContent = `切换为${splitModeLabel(other)}`;
   mergeJoinModeSwitch.title = other === 'word'
@@ -2391,7 +2431,29 @@ multiSubtitleAlignButton?.addEventListener('click', () => {
 });
 applySubtitleAppearance();
 applyExtensionSubtitleAppearance();
-editorSettingsToggle?.addEventListener('click', () => setEditorSettingsPanelOpen(editorSettingsPanel?.hidden));
+// 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
+editorSettingsTabs.forEach((tab) => {
+  tab.addEventListener('click', () => setEditorSettingsActiveTab(tab));
+  tab.addEventListener('keydown', (event) => {
+    // 方向键只在可见分区之间循环；隐藏分区（如不可用的「保存」）不参与导航。
+    const visibleTabs = editorSettingsTabs.filter((item) => !item.hidden);
+    const index = visibleTabs.indexOf(tab);
+    let next = -1;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      next = (index + 1) % visibleTabs.length;
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      next = (index - 1 + visibleTabs.length) % visibleTabs.length;
+    } else if (event.key === 'Home') {
+      next = 0;
+    } else if (event.key === 'End') {
+      next = visibleTabs.length - 1;
+    }
+    if (next < 0) return;
+    event.preventDefault();
+    setEditorSettingsActiveTab(visibleTabs[next], { focus: true });
+  });
+});
+editorSettingsClose?.addEventListener('click', () => setEditorSettingsPanelOpen(false));
 mergeJoinSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setMergeJoinSettingsPanelOpen(mergeJoinSettingsPanel?.hidden);
@@ -2528,30 +2590,12 @@ function visibleHelpTabButtons() {
   return helpTabButtons.filter((button) => !button.closest('[hidden]'));
 }
 
-function setHelpAdvancedTabsOpen(open, { focus = false } = {}) {
-  if (!helpAdvancedTabs || !helpAdvancedToggle) return;
-  const nextOpen = Boolean(open);
-  if (!nextOpen && helpAdvancedTabButtons.some((button) => button.getAttribute('aria-selected') === 'true')) {
-    selectHelpTab('basic');
-  }
-  helpAdvancedTabs.hidden = !nextOpen;
-  helpAdvancedToggle.setAttribute('aria-expanded', String(nextOpen));
-  helpAdvancedToggle.classList.toggle('is-active', nextOpen);
-  if (focus) {
-    const activeButton = helpAdvancedTabButtons.find((button) => button.getAttribute('aria-selected') === 'true');
-    (activeButton || helpAdvancedTabButtons[0])?.focus();
-  }
-}
-
 function selectHelpTab(tabName, { focus = false } = {}) {
   const activeButton = helpTabButtons.find((button) => button.dataset.helpTab === tabName);
   if (!activeButton) return;
-  if (helpAdvancedTabButtons.includes(activeButton) && helpAdvancedTabs?.hidden) {
-    setHelpAdvancedTabsOpen(true);
-  }
   helpTabButtons.forEach((button) => {
     const active = button === activeButton;
-    button.classList.toggle('is-active', active);
+    button.classList.toggle('active', active);
     button.setAttribute('aria-selected', String(active));
     button.tabIndex = active ? 0 : -1;
   });
@@ -2562,10 +2606,6 @@ function selectHelpTab(tabName, { focus = false } = {}) {
   });
   if (focus) activeButton.focus();
 }
-
-helpAdvancedToggle?.addEventListener('click', () => {
-  setHelpAdvancedTabsOpen(helpAdvancedTabs?.hidden === true);
-});
 
 helpTabButtons.forEach((button) => {
   button.addEventListener('click', () => selectHelpTab(button.dataset.helpTab));
@@ -2615,7 +2655,7 @@ function restoreHelpPanelSize() {
     saved = null;
   }
   if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
-  helpPanel.style.width = `${Math.min(Math.max(320, saved.width), window.innerWidth - 12)}px`;
+  helpPanel.style.width = `${Math.min(Math.max(400, saved.width), window.innerWidth - 12)}px`;
   helpPanel.style.height = `${Math.min(Math.max(240, saved.height), window.innerHeight - 12)}px`;
 }
 let helpPanelSizeSaveTimer = 0;
@@ -13063,6 +13103,9 @@ function scheduleAutoSave() {
     // 服务器绑定工程或浏览器保存对话框（句柄模式）任一可用时都可自动保存。
     const available = Boolean(SERVER_CONFIG?.saveUrl || window.showSaveFilePicker);
     serverAutoSaveSettings.hidden = !available;
+    // 自动保存不可用时隐藏「保存」标签页，避免设置窗口出现空白分区。
+    const saveTab = document.getElementById('editor-settings-tab-save');
+    if (saveTab) saveTab.hidden = !available;
     if (!available) return;
   const sync = () => {
     autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
