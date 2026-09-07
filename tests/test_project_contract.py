@@ -506,6 +506,99 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(result.project["preview"]["subtitle"]["background_alpha"], 0)
         self.assertEqual(result.project["preview"]["extension_subtitle"]["color"], "#ffd34d")
 
+    def test_validate_project_accepts_preview_speaker_label_settings(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": {"subtitle": {
+                "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
+                "speaker_labels": {
+                    "enabled": True,
+                    "names": {
+                        "yellow": "Host",
+                        "green": "",
+                        "red": "Guest",
+                        "purple": "Editor",
+                        "blue": "Narrator",
+                    },
+                },
+            }},
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            result.project["preview"]["subtitle"]["speaker_labels"]["names"]["green"],
+            "",
+        )
+
+    def test_validate_project_accepts_extension_color_refs(self) -> None:
+        project = {
+            "segments": [{"id": "main-001", "start": 0, "end": 1000, "text": "main"}],
+            "multi_subtitle": {
+                "enabled": True,
+                "tracks": [{
+                    "id": "translation",
+                    "segments": [
+                        {
+                            "id": "translation-001",
+                            "start": 0,
+                            "end": 1000,
+                            "text": "副字幕",
+                            "color": {
+                                "name": "yellow",
+                                "value": "#c4a019",
+                                "start": 0,
+                                "end": 2000,
+                            },
+                        },
+                        {
+                            "id": "translation-002",
+                            "start": 1100,
+                            "end": 2000,
+                            "text": "副字幕二",
+                            "color": None,
+                            "color_ref": {"name": "yellow", "headIdx": 0},
+                        },
+                    ],
+                }],
+                "bindings": [],
+            },
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            result.project["multi_subtitle"]["tracks"][0]["segments"][1]["color_ref"]["headIdx"],
+            0,
+        )
+
+    def test_validate_project_rejects_invalid_preview_speaker_label_settings(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": {"subtitle": {
+                "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
+                "speaker_labels": {
+                    "enabled": "yes",
+                    "names": {
+                        "yellow": "x" * 65,
+                        "green": "line\nbreak",
+                        "red": 42,
+                    },
+                },
+            }},
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.preview.subtitle.speaker_labels.enabled", paths)
+        self.assertIn("$.preview.subtitle.speaker_labels.names.yellow", paths)
+        self.assertIn("$.preview.subtitle.speaker_labels.names.green", paths)
+        self.assertIn("$.preview.subtitle.speaker_labels.names.red", paths)
+
     def test_validate_project_accepts_custom_preview_subtitle_font_family(self) -> None:
         project = {
             "segments": [{"start": 0, "end": 1000, "text": "hi"}],

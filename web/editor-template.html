@@ -944,6 +944,11 @@ __WAVEFORM_CSS__
     </label>
     <small class="editor-settings-hint">选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。</small>
     </div>
+    <div class="editor-settings-field">
+    <label class="toggle editor-settings-item" title="开启或关闭字幕预览中的说话人名称时同步勾选或取消勾选；导出 SRT 时在字幕前附加对应名称，可手动调整">
+      <input type="checkbox" id="export-speaker-labels"> 导出时附加说话人名称
+    </label>
+    <small class="editor-settings-hint">字幕预览中的说话人名称开启时自动勾选，关闭时同步取消；导出开关仍可独立调整。只影响导出的 SRT，不会改动工程里的字幕文本。</small>
     </div>
   </div>
   </div>
@@ -1112,10 +1117,39 @@ __WAVEFORM_CSS__
                     <output id="subtitle-background-alpha-value" for="subtitle-background-alpha">65%</output>
                   </div>
                 </label>
-                <label class="subtitle-preview-setting-row" title="按字幕颜色快照给预览文字加下划线，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
-                  <span>预览字幕颜色</span>
+                <label class="toggle settings-panel-item" title="按字幕颜色快照给预览文字加下划线，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
                   <input type="checkbox" id="subtitle-color-underline" checked aria-label="预览字幕颜色">
+                  预览字幕颜色
                 </label>
+                <label class="toggle settings-panel-item subtitle-speaker-label-toggle" title="在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本">
+                  <input type="checkbox" id="subtitle-speaker-labels-enabled" aria-label="显示说话人名称">
+                  显示说话人名称
+                </label>
+                <div class="subtitle-speaker-labels-settings" id="subtitle-speaker-labels-settings" hidden>
+                  <small class="settings-panel-hint">配置颜色对应的说话人名称；留空可隐藏该颜色的名称。仅影响预览，不改变字幕文本。</small>
+                  <div class="subtitle-speaker-label-list">
+                    <label class="subtitle-speaker-label-row" title="设置黄色对应的说话人名称">
+                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="yellow" aria-hidden="true"></span>黄</span>
+                      <input type="text" id="subtitle-speaker-label-yellow" value="SP1" maxlength="64" autocomplete="off" aria-label="黄色对应的说话人名称">
+                    </label>
+                    <label class="subtitle-speaker-label-row" title="设置绿色对应的说话人名称">
+                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="green" aria-hidden="true"></span>绿</span>
+                      <input type="text" id="subtitle-speaker-label-green" value="SP2" maxlength="64" autocomplete="off" aria-label="绿色对应的说话人名称">
+                    </label>
+                    <label class="subtitle-speaker-label-row" title="设置红色对应的说话人名称">
+                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="red" aria-hidden="true"></span>红</span>
+                      <input type="text" id="subtitle-speaker-label-red" value="SP3" maxlength="64" autocomplete="off" aria-label="红色对应的说话人名称">
+                    </label>
+                    <label class="subtitle-speaker-label-row" title="设置紫色对应的说话人名称">
+                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="purple" aria-hidden="true"></span>紫</span>
+                      <input type="text" id="subtitle-speaker-label-purple" value="SP4" maxlength="64" autocomplete="off" aria-label="紫色对应的说话人名称">
+                    </label>
+                    <label class="subtitle-speaker-label-row" title="设置蓝色对应的说话人名称">
+                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="blue" aria-hidden="true"></span>蓝</span>
+                      <input type="text" id="subtitle-speaker-label-blue" value="SP5" maxlength="64" autocomplete="off" aria-label="蓝色对应的说话人名称">
+                    </label>
+                  </div>
+                </div>
               </div>
             </section>
             <section class="subtitle-preview-track-settings subtitle-preview-extension-settings" id="extension-subtitle-preview-settings" hidden>
