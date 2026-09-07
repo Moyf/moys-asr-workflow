@@ -56,6 +56,13 @@ function repositoryRoot() {
   return path.resolve(__dirname, '..', '..');
 }
 
+function windowIconPath() {
+  const candidate = app.isPackaged
+    ? path.join(process.resourcesPath, 'assets', 'maw.ico')
+    : path.join(repositoryRoot(), 'assets', 'maw.ico');
+  return fs.existsSync(candidate) ? candidate : undefined;
+}
+
 function packagedMawPath() {
   return resolvePackagedMawPath(process.execPath);
 }
@@ -232,6 +239,7 @@ function createWindow(state, { show = true } = {}) {
     minWidth: 960,
     minHeight: 600,
     title: 'MOSE — Moy\'s Open Subtitle Editor',
+    icon: windowIconPath(),
     backgroundColor: '#16181d',
     show,
     webPreferences: {

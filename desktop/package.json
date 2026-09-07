@@ -26,6 +26,12 @@
       "src/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "../assets/maw.ico",
+        "to": "assets/maw.ico"
+      }
+    ],
     "win": {
       "target": [
         {
