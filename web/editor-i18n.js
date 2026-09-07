@@ -438,6 +438,9 @@
     '已取消新增字幕': 'Subtitle creation canceled',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '增加静音区段': 'Add silent region',
+    '填充区间空隙': 'Fill range into one gap',
+    '当前没有已激活的空隙，无法填充区间空隙': 'No active gaps available; nothing to fill',
+    '媒体时长尚不可用；请先加载媒体后再填充区间空隙': 'Media duration is unavailable; load media before filling the gap range',
     '空隙区段操作方式设为「中键拖动」时：': 'When gap region operation is “Middle-button drag”:',
     '增加恢复区段': 'Add restored region', '切换移除/保留': 'Toggle removed/kept',
     '恢复区段': 'Restore region', '移除区段': 'Remove region', '清理该区段': 'Clear this region',
@@ -900,6 +903,9 @@
     // flashHint：已移除 N 段音量空隙，共 6秒（占比 2.1%）
     match = /^已移除\s+(\d+)\s+段音量空隙，共\s+(.+)$/.exec(text);
     if (match) return `Removed ${match[1]} loudness gaps, ${translateText(match[2], EN)} total`;
+    // flashHint：已填充并合并为 6秒（占比 2.1%）静音空隙
+    match = /^已填充并合并为\s+(.+)\s+静音空隙$/.exec(text);
+    if (match) return `Filled and merged into ${translateText(match[1], EN)} of silent gaps`;
     // 波形状态：12:34.567 · 缓存波形（未加载媒体）
     match = /^(.+?)\s+·\s+缓存波形（未加载媒体）$/.exec(text);
     if (match) return `${match[1]} · cached waveform (no media loaded)`;
