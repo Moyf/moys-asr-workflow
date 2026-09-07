@@ -22,7 +22,6 @@ Python（内核只在生成时按调用点导入），抄一份只会让两级�
 from __future__ import annotations
 
 import base64
-import json
 import os
 import struct
 import tempfile
