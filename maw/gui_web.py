@@ -595,6 +595,7 @@ class LauncherApi:
         self.postprocess_translation_srt_path: Path | None = None
         self._last_postprocess_progress_at = 0.0
         self.pump = EventPump(window_getter=self.window_getter)
+        _sync_local_runtime_root(self.paths.env_path)
 
     def get_emoji_font_path(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         """返回本地可用的 Noto Color Emoji 路径（file:// URI；未就绪或非 Linux 为空字符串）。
@@ -2093,6 +2094,27 @@ class LauncherApi:
         status = self._ocr_runtime_status()
         return {"ok": True, "runtimePath": status.path, "runtime": status.to_payload()}
 
+    def save_local_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """保存本地（非 MOSS）运行环境根目录：.env 持久化 + 进程环境变量即时生效。
+
+        托管 runtime 的根目录解析链是「显式配置 -> 进程级 MAW_LOCAL_RUNTIME_ROOT ->
+        默认 app-data」；这里不改动任何调用方签名，只负责维护 .env 与进程环境变量。
+        """
+        value = str(payload.get("runtimePath") or payload.get("path") or "").strip()
+        candidate = Path(value).expanduser().resolve(strict=False) if value else None
+        if candidate is not None and candidate.exists() and not candidate.is_dir():
+            return _error_result("localRuntimePath", "local_runtime_path_invalid", str(candidate))
+        try:
+            save_env(self.paths.env_path, {"MAW_LOCAL_RUNTIME_ROOT": str(candidate) if candidate else ""})
+        except (OSError, UnicodeError, ValueError) as error:
+            return _error_result("localRuntimePath", "config_save_failed", f"{self.paths.env_path}: {error}")
+        if candidate is None:
+            os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
+        else:
+            os.environ["MAW_LOCAL_RUNTIME_ROOT"] = str(candidate)
+        status = managed_runtime_status(effective_config(self.paths.env_path).model_cache_root)
+        return {"ok": True, "runtimePath": status.path, "runtime": status.to_payload()}
+
     def install_ocr_runtime(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
         if self.ocr_runtime_worker and self.ocr_runtime_worker.is_alive():
             return _error_result("ocrModel", "ocr_runtime_install_failed", "OCR 运行环境正在安装中。")
@@ -3562,6 +3584,18 @@ def effective_config_value(env_path: Path, key: str) -> str:
     from maw.gui_config import load_env
 
     return os.environ.get(key) or load_env(env_path).get(key, "")
+
+
+def _sync_local_runtime_root(env_path: Path) -> None:
+    """启动时把 .env 持久化的本地运行环境根目录回填进进程环境变量。
+
+    托管 runtime 的 resolve_root 只读进程级 ``MAW_LOCAL_RUNTIME_ROOT``；
+    不回填的话，重启后 .env 里的自定义目录会被忽略。进程里已显式设置时
+    以外部环境变量优先，与 resolve_root 的优先级一致。
+    """
+    override = effective_config_value(env_path, "MAW_LOCAL_RUNTIME_ROOT")
+    if override and not os.environ.get("MAW_LOCAL_RUNTIME_ROOT"):
+        os.environ["MAW_LOCAL_RUNTIME_ROOT"] = override
 
 
 def _provider_payload(
