@@ -974,12 +974,35 @@
     flex: 1 1 100px; min-width: 0; color: var(--text-faint); font-size: 11px; line-height: 1.35;
     white-space: normal;
   }
+  .subtitle-speaker-label-toggle { flex: 0 0 100%; }
+  .subtitle-speaker-labels-settings {
+    display: grid; flex: 0 0 100%; gap: 7px; min-width: 0; box-sizing: border-box;
+    padding-top: 8px; border-top: 1px solid var(--border-subtle);
+  }
+  .subtitle-speaker-labels-settings[hidden] { display: none; }
+  .subtitle-speaker-label-list {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; min-width: 0;
+  }
+  .subtitle-speaker-label-row {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px;
+    min-width: 0; color: var(--text-secondary); font-size: 12px;
+  }
+  .subtitle-speaker-label-row input[type="text"] { width: 100%; min-width: 0; box-sizing: border-box; }
+  .subtitle-speaker-label-color {
+    display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); white-space: nowrap;
+  }
+  .subtitle-speaker-label-swatch {
+    display: inline-block; width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--text-primary) 30%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, #000 35%, transparent);
+  }
   .subtitle-preview-extension-settings {
     margin-top: 0; padding-top: 8px;
   }
   .subtitle-preview-extension-settings[hidden] { display: none; }
   @media (max-width: 380px) {
     .subtitle-preview-setting-pair { grid-template-columns: 1fr; }
+    .subtitle-speaker-label-list { grid-template-columns: 1fr; }
   }
 
   /* 全局设置是可拖动的非模态独立窗口：左侧垂直标签页 + 右侧内容区。

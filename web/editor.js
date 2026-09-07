@@ -682,6 +682,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   autoMergeAbsorbDirection: 'previous',
   // 按颜色导出 SRT：统一导出先选择一个 SRT 文件名作为前缀。
   exportColorUnified: true,
+  // 导出 SRT 时是否按字幕颜色附加说话人名称（仅本地偏好）。
+  exportSpeakerLabels: false,
   // 自动保存仅对绑定工程的 localhost 服务器版生效。
   autoSaveProject: true,
   autoSaveIntervalSeconds: 30,
@@ -1206,6 +1208,7 @@ function snapshotPreviewState() {
   return {
     overlay: !!overlayToggle.checked,
     subtitle: { ...getPreviewGeometry(), ...getSubtitleAppearance() },
+    speakerLabels: getSpeakerLabelSettings(),
     extensionOverlay: !!extensionOverlayToggle?.checked,
     extensionSubtitle: { ...getStoredExtensionSubtitleAppearance() },
     sticker: { ...getStickerGeometry() },
@@ -1220,6 +1223,7 @@ function applyPreviewState(state) {
     updateEditorSettings({ extensionOverlayEnabled: state.extensionOverlay });
   }
   if (state.subtitle) setPreviewGeometry(state.subtitle, { markDirty: true, replaceAppearance: true });
+  if (state.speakerLabels) setSpeakerLabelSettings(state.speakerLabels, { markDirty: true });
   if (state.extensionSubtitle) restoreExtensionSubtitleAppearance(state.extensionSubtitle, { markDirty: true });
   if (state.sticker) setStickerGeometry(state.sticker, { markDirty: true });
   refreshPreviewGeometryEditable();
@@ -1408,6 +1412,14 @@ const subtitleBackgroundAlphaInput = document.getElementById('subtitle-backgroun
 const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
+const subtitleSpeakerLabelsEnabledInput = document.getElementById('subtitle-speaker-labels-enabled');
+const subtitleSpeakerLabelsSettings = document.getElementById('subtitle-speaker-labels-settings');
+const subtitleSpeakerLabelInputs = Object.fromEntries(
+  (window.AsrEditorUtils.SPEAKER_LABEL_COLORS || []).map((color) => [
+    color,
+    document.getElementById(`subtitle-speaker-label-${color}`),
+  ]),
+);
 const extensionSubtitlePreviewSettings = document.getElementById('extension-subtitle-preview-settings');
 const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
@@ -1466,6 +1478,7 @@ const razorToolSvg = razorToolButton?.querySelector('svg');
 const ninjaRazorIcon = razorToolButton?.querySelector('.ninja-razor-icon');
 const ninjaSlashFlash = document.getElementById('ninja-slash-flash');
 const exportColorUnifiedToggle = document.getElementById('export-color-unified');
+const exportSpeakerLabelsToggle = document.getElementById('export-speaker-labels');
 const helpToggle = document.getElementById('help-toggle');
 const themeToggle = document.getElementById('theme-toggle');
 const helpPanel = document.getElementById('help-panel');
@@ -2318,6 +2331,7 @@ if (extensionOverlayToggle) extensionOverlayToggle.checked = false;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
 if (exportColorUnifiedToggle) exportColorUnifiedToggle.checked = EDITOR_SETTINGS.exportColorUnified;
+if (exportSpeakerLabelsToggle) exportSpeakerLabelsToggle.checked = EDITOR_SETTINGS.exportSpeakerLabels;
 if (autoSaveProjectToggle) autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
 if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
@@ -2912,6 +2926,9 @@ selectGroupMembersToggle?.addEventListener('change', () => {
 exportColorUnifiedToggle?.addEventListener('change', () => {
   updateEditorSettings({ exportColorUnified: exportColorUnifiedToggle.checked });
 });
+exportSpeakerLabelsToggle?.addEventListener('change', () => {
+  updateEditorSettings({ exportSpeakerLabels: exportSpeakerLabelsToggle.checked });
+});
 clickBehaviorSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickBehavior: normalizeClickBehavior(clickBehaviorSelect.value) });
   refreshClickBehaviorHint();
@@ -3283,6 +3300,43 @@ subtitleColorInput?.addEventListener('change', () => {
 subtitleColorUnderlineInput?.addEventListener('change', () => {
   pushPreviewUndo('切换预览字幕颜色下划线', snapshotPreviewState());
   setSubtitleAppearance({ color_underline: subtitleColorUnderlineInput.checked });
+  update();
+});
+const speakerLabelUndoColors = new Set();
+function applySpeakerLabelInput(color, { finalize = false } = {}) {
+  const input = subtitleSpeakerLabelInputs[color];
+  if (!input) return;
+  if (!speakerLabelUndoColors.has(color)) {
+    pushPreviewUndo('重命名说话人', snapshotPreviewState());
+    speakerLabelUndoColors.add(color);
+  }
+  const current = getSpeakerLabelSettings();
+  setSpeakerLabelSettings({
+    ...current,
+    names: { ...current.names, [color]: input.value },
+  });
+  if (finalize) {
+    speakerLabelUndoColors.delete(color);
+    input.value = getSpeakerLabelSettings().names[color] || '';
+  }
+  update();
+}
+Object.entries(subtitleSpeakerLabelInputs).forEach(([color, input]) => {
+  input?.addEventListener('input', () => applySpeakerLabelInput(color));
+  input?.addEventListener('change', () => applySpeakerLabelInput(color, { finalize: true }));
+});
+subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
+  const previous = snapshotPreviewState();
+  previous.speakerLabels.enabled = !subtitleSpeakerLabelsEnabledInput.checked;
+  pushPreviewUndo('切换说话人名称预览', previous);
+  setSpeakerLabelSettings({
+    ...getSpeakerLabelSettings(),
+    enabled: subtitleSpeakerLabelsEnabledInput.checked,
+  });
+  // 显示开关改变时同步 SRT 附加选项；导出开关仍可在全局设置中独立调整。
+  const speakerLabelsEnabled = subtitleSpeakerLabelsEnabledInput.checked;
+  updateEditorSettings({ exportSpeakerLabels: speakerLabelsEnabled });
+  if (exportSpeakerLabelsToggle) exportSpeakerLabelsToggle.checked = speakerLabelsEnabled;
   update();
 });
 extensionSubtitleFontSizeSelect?.addEventListener('change', () => {
@@ -10914,6 +10968,28 @@ function getSubtitleAppearance(value = DATA.preview?.subtitle) {
     color_underline: result.color_underline !== false,
   };
 }
+function getSpeakerLabelSettings(value = DATA.preview?.subtitle?.speaker_labels) {
+  // applySubtitleAppearance() runs during the early boot sequence, before the
+  // preview-geometry section initializes its later GEO_UTILS alias.
+  return EDITOR_SETTINGS_UTILS.normalizeSpeakerLabelSettings(value);
+}
+function syncSpeakerLabelControls(settings = getSpeakerLabelSettings()) {
+  if (subtitleSpeakerLabelsEnabledInput) {
+    subtitleSpeakerLabelsEnabledInput.checked = settings.enabled;
+  }
+  if (subtitleSpeakerLabelsSettings) {
+    subtitleSpeakerLabelsSettings.dataset.enabled = settings.enabled ? 'true' : 'false';
+    subtitleSpeakerLabelsSettings.hidden = !settings.enabled;
+  }
+  Object.entries(subtitleSpeakerLabelInputs).forEach(([color, input]) => {
+    if (input && document.activeElement !== input) input.value = settings.names[color] || '';
+  });
+  document.querySelectorAll('[data-speaker-label-swatch]').forEach((swatch) => {
+    const color = swatch.dataset.speakerLabelSwatch;
+    const value = COLOR_BY_NAME[color]?.value;
+    if (value) swatch.style.backgroundColor = value;
+  });
+}
 function getStoredExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
   return normalizeSubtitleAppearance(value);
 }
@@ -10973,6 +11049,7 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
     }
   }
   if (subtitleColorInput) subtitleColorInput.value = appearance.color || DEFAULT_SUBTITLE_COLOR;
+  syncSpeakerLabelControls();
 }
 function syncExtensionSubtitleAppearanceControls() {
   const stored = getStoredExtensionSubtitleAppearance();
@@ -11071,10 +11148,27 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
     else next.color_underline = false;
   }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
-  DATA.preview.subtitle = { ...getPreviewGeometry(), ...next };
+  DATA.preview.subtitle = {
+    ...getPreviewGeometry(),
+    ...next,
+    speaker_labels: getSpeakerLabelSettings(),
+  };
   if (markDirty) previewGeometryDirty = true;
   applySubtitleAppearance(DATA.preview.subtitle);
   return next;
+}
+
+function setSpeakerLabelSettings(value, { markDirty = true } = {}) {
+  const settings = getSpeakerLabelSettings(value);
+  if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
+  DATA.preview.subtitle = {
+    ...getPreviewGeometry(),
+    ...getSubtitleAppearance(),
+    speaker_labels: settings,
+  };
+  if (markDirty) previewGeometryDirty = true;
+  applySubtitleAppearance(DATA.preview.subtitle);
+  return settings;
 }
 function collectSubtitleLocalFontFamilies(fontData) {
   const families = new Map();
@@ -11207,7 +11301,11 @@ function setPreviewGeometry(geo, { markDirty = true, replaceAppearance = false }
     ? getSubtitleAppearance(geo)
     : { ...getSubtitleAppearance(), ...getSubtitleAppearance(geo) };
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
-  DATA.preview.subtitle = { ...clamped, ...appearance };
+  DATA.preview.subtitle = {
+    ...clamped,
+    ...appearance,
+    speaker_labels: getSpeakerLabelSettings(),
+  };
   if (markDirty) previewGeometryDirty = true;
   applyPreviewGeometryToDom(clamped);
   applySubtitleAppearance(DATA.preview.subtitle);
@@ -11484,7 +11582,14 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayExtensionTextEl.classList.contains('hidden') === extensionVisible) {
     overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
   }
-  const mainText = mainVisible ? (seg.text || '') : '';
+  const speakerLabels = getSpeakerLabelSettings();
+  const mainText = mainVisible
+    ? (speakerLabels.enabled
+      ? window.AsrEditorUtils.formatSpeakerLabelledText(
+        seg.text, seg, DATA.segments, speakerLabels.names,
+      )
+      : (seg.text || ''))
+    : '';
   const extensionText = extensionVisible ? (extension.text || '') : '';
   if (mainVisible && overlayTextEl.textContent !== mainText) overlayTextEl.textContent = mainText;
   if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
@@ -11690,6 +11795,14 @@ overlayToggle.addEventListener('change', () => {
 // 程序内开关（不暴露 GUI）：导出 SRT 时保留禁用项的时间轴序号但内容替换为空白
 let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
+function speakerLabelExportOptions() {
+  const settings = getSpeakerLabelSettings();
+  return {
+    speakerLabelsEnabled: EDITOR_SETTINGS.exportSpeakerLabels === true,
+    speakerLabels: settings.names,
+  };
+}
+
 function buildSrt() {
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
@@ -11699,6 +11812,7 @@ function buildSrt() {
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
 }
@@ -11717,6 +11831,7 @@ function buildAss() {
 
 function buildExtensionSrt(track = getActiveExtensionTrack()) {
   return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
 }
@@ -11736,6 +11851,7 @@ function buildGapRemovedSrt() {
     firstEnabledIndex,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
     ensurePositiveDuration: true,
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
 }
@@ -11786,6 +11902,7 @@ async function downloadColorSrts(gapRemoved = false) {
       ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
       : undefined,
     ensurePositiveDuration: gapRemoved,
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
   let filenameBase = `${FILENAME_BASE}${gapSuffix}`;
@@ -11975,6 +12092,8 @@ function buildJson() {
           text: segment.text || '',
         };
         if (Array.isArray(segment.items)) outSegment.items = segment.items;
+        if (segment.color != null) outSegment.color = segment.color;
+        if (segment.color_ref != null) outSegment.color_ref = segment.color_ref;
         if (segment._dirty) outSegment._dirty = true;
         if (segment.disabled) outSegment.disabled = true;
         return outSegment;
@@ -11999,7 +12118,13 @@ function buildJson() {
   const workspace = buildCurrentWorkspaceData();
   if (workspace) out.workspace = workspace;
   // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
-  const preview = { subtitle: { ...getPreviewGeometry(), ...getSubtitleAppearance() } };
+  const preview = {
+    subtitle: {
+      ...getPreviewGeometry(),
+      ...getSubtitleAppearance(),
+      speaker_labels: getSpeakerLabelSettings(),
+    },
+  };
   if (getActiveExtensionTrack() || DATA.preview?.extension_subtitle) {
     preview.extension_subtitle = { ...getStoredExtensionSubtitleAppearance() };
   }

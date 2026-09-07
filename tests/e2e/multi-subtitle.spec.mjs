@@ -1453,6 +1453,14 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
+  await page.evaluate(() => {
+    const [first, second] = DATA.segments;
+    first.color = { name: 'yellow', value: '#c4a019', start: first.start, end: second.end };
+    first.color_ref = null;
+    second.color = null;
+    second.color_ref = { name: 'yellow', headIdx: 0 };
+  });
+
   await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-swap')).toHaveCSS('border-style', 'solid');
   await expect(page.locator('#multi-subtitle-swap')).toHaveCSS('border-top-width', '1px');
@@ -1461,6 +1469,20 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
     .toHaveText('你好，世界。');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension .text'))
     .toHaveText('Hello world.');
+  expect(await page.evaluate(() => JSON.parse(JSON.stringify({
+    main: DATA.segments.slice(0, 2).map(({ color, color_ref }) => ({ color, color_ref })),
+    extension: DATA.multi_subtitle.tracks[0].segments.slice(0, 2)
+      .map(({ color, color_ref }) => ({ color, color_ref })),
+  })))).toEqual({
+    main: [
+      { color: { name: 'yellow', value: '#c4a019', start: 50, end: 4950 }, color_ref: null },
+      { color: null, color_ref: { name: 'yellow', headIdx: 0 } },
+    ],
+    extension: [
+      { color: { name: 'yellow', value: '#c4a019', start: 0, end: 5000 } },
+      { color_ref: { name: 'yellow', headIdx: 0 } },
+    ],
+  });
 
   await page.keyboard.press('Control+z');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text'))
