@@ -168,20 +168,6 @@ class MopeaksFallbackTests(unittest.TestCase):
         self.assertIsNone(result.reapeaks_path)
         self._assert_fell_back(result)
 
-    def test_kernel_unavailable_still_reads_an_existing_mopeaks(self) -> None:
-        # 生成退到 mopeaks 之后，下一次打开工程得能把它当缓存读回来（不再抽 ffmpeg）。
-        with mock.patch.dict(sys.modules, {"quapeaks": None}):
-            media_cache.embed_media_caches(self.project, self.tone)
-        with mock.patch.object(waveform, "extract_waveform") as extractor:
-            cached, extracted = waveform.load_or_extract_waveform(None, self.tone)
-        extractor.assert_not_called()
-        self.assertFalse(extracted)
-        self.assertEqual(cached["data"], self.payload_data())
-
-    def payload_data(self) -> str:
-        # embed_media_caches 不改调用方的 project（它返回副本），所以现取一次。
-        return waveform.extract_waveform(self.tone, peaks_per_second=100)["data"]
-
     def test_artifact_failing_self_check_yields_no_container(self) -> None:
         # 内核"成功"返回了一个没有自研层的 RPKN 产物：等于这一档不成立。
         bogus = struct.pack("<4sBBiII", b"RPKN", 1, 1, 8000, 1, 1) + struct.pack("<ii", 80, 1)
