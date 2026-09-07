@@ -162,7 +162,6 @@ body:not(.launcher-ready) .shell {
   padding: 16px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, var(--accent-tint), transparent 58%), var(--bg-panel);
   box-shadow: var(--shadow-2);
 }
 
@@ -524,12 +523,16 @@ label {
   color: var(--amber);
 }
 
-#providerNote {
+/* 琥珀提示框（callout）：供应商风险提示、beta 说明等需要醒目的提示文案。 */
+.hint-callout {
   padding: 8px 12px;
-  margin: 10px 0 2px;
   border-radius: 6px;
   background: color-mix(in srgb, var(--amber) 10%, transparent);
   line-height: 1.6;
+}
+
+#providerNote {
+  margin: 10px 0 2px;
 }
 
 .provider-row {
@@ -550,7 +553,6 @@ label {
   padding: 10px;
   border: 1px solid var(--accent-soft);
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--accent-tint), transparent 75%), var(--bg-input);
 }
 
 .local-runtime-panel {
@@ -2401,7 +2403,7 @@ textarea::placeholder {
 
 .modal-card {
   position: relative;
-  width: min(620px, calc(100vw - 32px));
+  width: min(720px, calc(100vw - 32px));
   max-height: calc(100vh - 36px);
   display: flex;
   flex-direction: column;
@@ -2417,6 +2419,7 @@ textarea::placeholder {
   height: min(720px, calc(100vh - 36px));
   block-size: min(720px, calc(100dvh - 36px));
   max-block-size: calc(100dvh - 36px);
+  min-block-size: min(680px, calc(100dvh - 36px));
 }
 
 .batch-confirm-card {
@@ -2509,6 +2512,32 @@ textarea::placeholder {
   }
 }
 
+/* 设置弹窗滚动区边缘渐隐：与 .toolbox-content 同一套 scroll-driven 做法，
+   顶部渐隐仅在滚动后出现，底部渐隐在接近底部时消失。 */
+@property --settings-top-fade {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --settings-bottom-fade {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 18px;
+}
+
+@keyframes settings-top-fade {
+  to {
+    --settings-top-fade: 18px;
+  }
+}
+
+@keyframes settings-bottom-fade {
+  to {
+    --settings-bottom-fade: 0px;
+  }
+}
+
 .settings-scroll {
   min-block-size: 0;
   flex: 1 1 auto;
@@ -2516,6 +2545,27 @@ textarea::placeholder {
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
   padding-inline-end: 2px;
+  --settings-top-fade: 0px;
+  --settings-bottom-fade: 18px;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black var(--settings-top-fade),
+    black calc(100% - var(--settings-bottom-fade)),
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black var(--settings-top-fade),
+    black calc(100% - var(--settings-bottom-fade)),
+    transparent
+  );
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  animation: settings-top-fade linear both, settings-bottom-fade linear both;
+  animation-timeline: scroll(self), scroll(self);
+  animation-range: 0 2rem, calc(100% - 2rem) 100%;
 }
 
 .settings-section {
@@ -2858,6 +2908,11 @@ select[multiple] option {
 }
 
 .modal-card .settings-section:first-of-type {
+  margin-top: 0;
+}
+
+/* Runtime 面板：本地运行时区块对非本地供应商隐藏时，OCR 区块顶格显示。 */
+.modal-card .settings-section.hidden + .settings-section {
   margin-top: 0;
 }
 
