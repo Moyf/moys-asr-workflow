@@ -115,7 +115,7 @@ source: "JSON_SCHEMA.md"
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
 - Qwen/Soniox/必剪/本地命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程文件时把同一 payload 写入顶层 `waveform`，并在媒体旁生成只含 wave 层与自研波形层的 `.quapeaks` 缓存。GUI 转写默认开启该模式。
-- 编辑器首次打开缺少有效 `waveform` 的工程时，会在**媒体旁**写入 `<媒体名>.mopeaks` 缓存（非默认音轨为 `<媒体名>.track-N.mopeaks`）。它是 `moy.asr.waveform.v1` 峰数据的二进制容器：全局头与 `.quapeaks` / `.ReaPeaks` 同布局（18 B），层 token 与自研层同值（`div = -(int)'m'`），仅 magic 为 `MPK` + 版本字节。不属于字幕真源，删除后可重新提取。**旧的 `<媒体名>.waveform.json` sidecar 已彻底移除，不再写也不再读。**
+- 编辑器首次打开缺少有效 `waveform` 的工程时，写入 `<媒体名>.mopeaks` 缓存（非默认音轨为 `<媒体名>.track-N.mopeaks`）。落点跟随「将所有输出放入子文件夹」设置：默认在媒体旁，勾选后进入对应 `_maw`；读取端两种位置都会找。它是 `moy.asr.waveform.v1` 峰数据的二进制容器：全局头与 `.quapeaks` / `.ReaPeaks` 同布局（18 B），层 token 与自研层同值（`div = -(int)'m'`），仅 magic 为 `MPK` + 版本字节。不属于字幕真源，删除后可重新提取。**旧的 `<媒体名>.waveform.json` sidecar 已彻底移除，不再写也不再读。**
 
 ### 1.1a spectral 频谱缓存（可选）
 
