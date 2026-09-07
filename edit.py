@@ -414,7 +414,7 @@ def main():
             data.pop("waveform", None)
             print(f"[waveform] 警告: {exc}；编辑器仍可正常使用")
 
-        # ReaPeaks 频谱染色与波形层（可选缓存，读取媒体旁 .ReaPeaks；缺失静默降级）
+        # reapeaks 频谱染色与波形层（可选缓存，读取媒体旁 .ReaPeaks；缺失静默降级）
         spectral = quapeaks.load_spectral_payload(
             media_path,
             peaks_per_second=args.waveform_peaks_per_second,

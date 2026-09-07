@@ -48,7 +48,7 @@ def _waveform_amps(reapeaks_path: Path, media_path: Path) -> tuple[int, list[int
     return pps, amps
 
 
-class FixtureReaPeaksTests(unittest.TestCase):
+class FixtureReapeaksTests(unittest.TestCase):
     """用 REAPER 真机生成的 .ReaPeaks 验证解析器与 REAPER 格式兼容。
 
     fixture 流程：gen_fixtures.py 生成 wav → 用户在 REAPER 打开生成
@@ -84,7 +84,7 @@ class FixtureReaPeaksTests(unittest.TestCase):
 
     @unittest.skipUnless(_fixture_present("tone30.wav.ReaPeaks"), "REAPER fixture missing: tone30")
     def test_tone30_parses_real_reaper_cache(self) -> None:
-        ra = quapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone30.wav.ReaPeaks"))
+        ra = quapeaks.ReapeaksFile(str(TEST_DATA_DIR / "tone30.wav.ReaPeaks"))
         self.assertEqual(ra.sample_rate, 44100)
         self.assertEqual(ra.channels, 1)
         kinds = [m.kind for m in ra.mipmaps]
@@ -97,7 +97,7 @@ class FixtureReaPeaksTests(unittest.TestCase):
 
     @unittest.skipUnless(_fixture_present("tone_dual.wav.ReaPeaks"), "REAPER fixture missing: tone_dual")
     def test_tone_dual_parses_stereo_layout(self) -> None:
-        ra = quapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone_dual.wav.ReaPeaks"))
+        ra = quapeaks.ReapeaksFile(str(TEST_DATA_DIR / "tone_dual.wav.ReaPeaks"))
         self.assertEqual(ra.channels, 2)
         wave_mips = ra.wave_mipmaps()
         self.assertTrue(wave_mips)
@@ -106,7 +106,7 @@ class FixtureReaPeaksTests(unittest.TestCase):
 
     @unittest.skipUnless(_fixture_present("tone_48k.wav.ReaPeaks"), "REAPER fixture missing: tone_48k")
     def test_tone_48k_sample_rate(self) -> None:
-        ra = quapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone_48k.wav.ReaPeaks"))
+        ra = quapeaks.ReapeaksFile(str(TEST_DATA_DIR / "tone_48k.wav.ReaPeaks"))
         self.assertEqual(ra.sample_rate, 48000)
 
     @unittest.skipUnless(_fixture_present("tone30.wav.ReaPeaks"), "REAPER fixture missing: tone30")
@@ -139,7 +139,7 @@ class FixtureReaPeaksTests(unittest.TestCase):
     @unittest.skipUnless(_fixture_present("tone_dual.wav.ReaPeaks"), "REAPER fixture missing: tone_dual")
     def test_tone_dual_both_channels_have_amplitude(self) -> None:
         """双声道：左右声道各自应有非零振幅（左 1kHz 纯音，右 500Hz+噪声）。"""
-        ra = quapeaks.ReaPeaksFile(str(TEST_DATA_DIR / "tone_dual.wav.ReaPeaks"))
+        ra = quapeaks.ReapeaksFile(str(TEST_DATA_DIR / "tone_dual.wav.ReaPeaks"))
         finest = ra.wave_mipmaps()[0]
         ch_amp = [0, 0]
         for row in finest.wave:

@@ -1,4 +1,4 @@
-"""媒体派生缓存生成编排：波形嵌入 + 可选 ReaPeaks 频谱缓存。
+"""媒体派生缓存生成编排：波形嵌入 + 可选 reapeaks 频谱缓存。
 
 各 provider CLI 的 ``--with-waveform`` 统一走这里，避免逐个 CLI 重复
 ``waveform.embed_waveform`` / ``quapeaks.generate_for_media`` 的调用与
@@ -20,7 +20,7 @@ from maw.waveform import embed_waveform, media_signature
 class MediaCacheResult:
     """一次媒体缓存编排的结果。
 
-    波形失败不阻断 ReaPeaks，反之亦然；两者任一失败都不阻断工程写出。
+    波形失败不阻断 reapeaks，反之亦然；两者任一失败都不阻断工程写出。
     """
 
     project: dict[str, Any]
@@ -87,8 +87,8 @@ def embed_media_caches(
     （16 kHz 的 peak 率不是整数，取整后误差随播放位置线性累积）并让尾部失去
     覆盖。
 
-    波形失败仅警告、ReaPeaks 失败仅跳过，与既有降级语义一致。
-    ``generate_spectral`` 关闭时仍生成 ReaPeaks wave 层，但跳过频谱 FFT
+    波形失败仅警告、reapeaks 失败仅跳过，与既有降级语义一致。
+    ``generate_spectral`` 关闭时仍生成 reapeaks wave 层，但跳过频谱 FFT
     与工程内的 spectral payload。
     """
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:

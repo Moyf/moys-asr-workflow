@@ -55,12 +55,12 @@ class MediaCacheTests(unittest.TestCase):
         self.assertIsNone(result.waveform_error)
         self.assertIn("waveform", result.project)
         self.assertGreater(result.project["waveform"]["peak_count"], 0)
-        # 默认只生成 ReaPeaks 波形层，不计算频谱。
+        # 默认只生成 reapeaks 波形层，不计算频谱。
         self.assertIsNotNone(result.reapeaks_path)
         self.assertTrue(Path(result.reapeaks_path).exists())
         self.assertEqual(Path(result.reapeaks_path).name, "tone.wav.quapeaks")
         self.assertNotIn("spectral", result.project)
-        parsed = quapeaks.ReaPeaksFile(str(result.reapeaks_path))
+        parsed = quapeaks.ReapeaksFile(str(result.reapeaks_path))
         self.assertFalse(parsed.spectral_mipmaps())
         self.assertIn("wave", [m.kind for m in parsed.mipmaps])
         # 自研波形这次跟着进了同一个容器（不再只躺在工程 JSON 里）

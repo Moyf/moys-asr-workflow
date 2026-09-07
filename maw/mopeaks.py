@@ -8,7 +8,7 @@
   18B 全局头  | 1 个 mipmap 表项 | 单个自研层
 
 层 token 与 quapeaks 的自研层完全相同（``div = -(int)'m'``、段内前缀
-``u32 sample_rate | u32 division``），所以 MAW 的 ``ReaPeaksFile`` 只需一条分支
+``u32 sample_rate | u32 division``），所以 MAW 的 ``ReapeaksFile`` 只需一条分支
 就能吃两种容器 —— "有没有内核产物"由 magic（``MPK`` vs ``QPK``）区分，
 而不是靠发明第二种层类型。这也是本模块不依赖 quapeaks **内核包**的原因：
 纯 ``struct``，回退档必须真的能在缺内核时用。

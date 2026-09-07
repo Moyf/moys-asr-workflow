@@ -892,7 +892,7 @@ function buildReapeaksBuffer({ sampleRate, division, peaks, channels = 1, channe
 }
 
 
-test('publishes the fractional ReaPeaks bin rate instead of rounding it away', () => {
+test('publishes the fractional reapeaks bin rate instead of rounding it away', () => {
   const { waveform } = helpers.decodeReapeaksFile(
     buildReapeaksBuffer({ sampleRate: 16000, division: 53, peaks: 9057 }),
     { name: 'a.wav', size: 1234, modified_ms: 1700000000000 },
@@ -984,7 +984,7 @@ test('activeWaveShape follows the drawn shape so detection uses the same envelop
     reapeaksPayload: over.rpPayload,
     reapeaksPeaks: over.rpPeaks,
   });
-  // 默认用 ReaPeaks 形状：刻度跟着切成 301.8868，检测也读同一份峰
+  // 默认用 reapeaks 形状：刻度跟着切成 301.8868，检测也读同一份峰
   const a = shape.call(stub({ source: 'reapeaks', payload: ownPayload, peaks: ownPeaks, rpPayload, rpPeaks }));
   assert.equal(a.payload, rpPayload);
   assert.equal(a.peaks, rpPeaks);

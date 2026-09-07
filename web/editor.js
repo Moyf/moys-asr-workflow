@@ -15827,10 +15827,10 @@ async function loadReapeaksFile(file) {
     waveformEditor.setReapeaksWaveform(parsed.waveform);
     waveformEditor.setSpectralPayload(parsed.spectral);
     waveformEditor.setMediaAvailable(false);
-    flashHint(`已加载 ReaPeaks 缓存：${file.name}`, 'success');
+    flashHint(`已加载 reapeaks 缓存：${file.name}`, 'success');
     return true;
   } catch (error) {
-    flashHint(`加载 ReaPeaks 失败：${error.message || error}`, 'warning');
+    flashHint(`加载 reapeaks 失败：${error.message || error}`, 'warning');
     return false;
   }
 }
@@ -18783,7 +18783,7 @@ async function handleDroppedFiles(files) {
   const srtFile = files.find(isSrtFile);
   let stagedSrtSegments = null;
   if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
-    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / ReaPeaks）', 'warning');
+    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / reapeaks）', 'warning');
     return;
   }
   if (jsonFile) {

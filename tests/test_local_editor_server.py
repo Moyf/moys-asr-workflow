@@ -295,7 +295,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('"canSave": true', page)
 
     def test_build_server_page_defers_reapeaks_layers_to_waveform_endpoint(self) -> None:
-        """延迟加载开启时页面不内联频谱 / ReaPeaks 层；关闭时（--no-waveform）仍保留内联。"""
+        """延迟加载开启时页面不内联频谱 / reapeaks 层；关闭时（--no-waveform）仍保留内联。"""
         project = server_editor.ServerProject(
             data={
                 "segments": [],
@@ -1353,7 +1353,7 @@ class LocalEditorServerTests(unittest.TestCase):
             try:
                 self.assertTrue(loader_started.wait(timeout=2))
 
-                # If ReaPeaks were still on the request/startup path, this
+                # If reapeaks were still on the request/startup path, this
                 # request would wait for release_loader instead of returning.
                 with urllib.request.urlopen(f"{base_url}/", timeout=1) as response:
                     self.assertEqual(response.status, 200)
