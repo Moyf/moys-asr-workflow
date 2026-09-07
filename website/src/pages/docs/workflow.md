@@ -94,7 +94,7 @@ CLI 未指定 `--model` 时默认使用 `qwen-audio-3.0-asr-flash-filetrans`；�
 --debug-raw          单独保存完整 ASR 原始 JSON（<输出文件名>.asr-response.json）
 ```
 
-CLI 默认不内嵌波形；编辑器按需提取的波形缓存是媒体旁的 `<媒体名>.mopeaks`（非默认音轨带 `.track-N`），旧的 `<媒体名>.waveform.json` sidecar 已彻底移除、不再读写；需要交给编辑器直接打开时，加 `--with-waveform`。该选项默认在媒体旁生成 `.quapeaks` 的 wave 层与自研波形层，但跳过耗时较高的频谱计算；只有同时加 `--with-spectral` 才生成频谱层。Launcher 中对应的“生成 reapeaks 频谱数据”默认不勾选。波形提取会额外用 FFmpeg 完整扫一遍媒体，失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
+CLI 默认不内嵌波形；编辑器按需提取的波形缓存是 `<媒体名>.mopeaks`（非默认音轨带 `.track-N`；落点跟随「将所有输出放入子文件夹」设置：默认在媒体旁，勾选后进对应 `_maw`，读取端两种位置都会找），旧的 `<媒体名>.waveform.json` sidecar 已彻底移除、不再读写；需要交给编辑器直接打开时，加 `--with-waveform`。该选项默认生成 `.quapeaks` 的 wave 层与自研波形层（落点同样跟随该设置；`.ReaPeaks` 不受影响，永远在媒体旁），但跳过耗时较高的频谱计算；只有同时加 `--with-spectral` 才生成频谱层。Launcher 中对应的“生成 reapeaks 频谱数据”默认不勾选。波形提取会额外用 FFmpeg 完整扫一遍媒体，失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
 
 ## 用 Qwen-Audio 3.0 ASR 转写（热词与上下文）
 
