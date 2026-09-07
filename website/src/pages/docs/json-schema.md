@@ -114,8 +114,8 @@ source: "JSON_SCHEMA.md"
 - `source` 用于缓存失效；媒体文件名、字节大小或最后修改时间变化时会重新计算。
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
-- Qwen/Soniox/必剪/本地命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程文件时把同一 payload 写入顶层 `waveform`，并在媒体旁生成只含 wave 层的 `.ReaPeaks` 缓存。GUI 转写默认开启该模式。
-- 编辑器首次打开缺少有效 `waveform` 的工程时，仍可能在媒体旁写入 `<媒体名>.waveform.json` sidecar；它使用同一 `source` 签名，可被后续工程复用。sidecar 不属于字幕真源，删除后可重新提取。
+- Qwen/Soniox/必剪/本地命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程文件时把同一 payload 写入顶层 `waveform`，并在媒体旁生成只含 wave 层与自研波形层的 `.quapeaks` 缓存。GUI 转写默认开启该模式。
+- 编辑器首次打开缺少有效 `waveform` 的工程时，会在**媒体旁**写入 `<媒体名>.mopeaks` 缓存（非默认音轨为 `<媒体名>.track-N.mopeaks`）。它是 `moy.asr.waveform.v1` 峰数据的二进制容器：全局头与 `.quapeaks` / `.ReaPeaks` 同布局（18 B），层 token 与自研层同值（`div = -(int)'m'`），仅 magic 为 `MPK` + 版本字节。不属于字幕真源，删除后可重新提取。**旧的 `<媒体名>.waveform.json` sidecar 已彻底移除，不再写也不再读。**
 
 ### 1.1a spectral 频谱缓存（可选）
 
@@ -139,7 +139,7 @@ source: "JSON_SCHEMA.md"
 
 - `data` 每个频谱采样占 4 字节：主频 uint16（低 15 位有效，0–32767）、密度 uint16（低 14 位有效，0–16383），整体再做 base64。
 - `division` 是时间对齐用的每采样样本数：`sample_rate / division` 即每秒频谱采样数。`sample_rate`、`source` 与主波形一致。
-- **生成时机**：转写生成工程时，`--with-waveform` 在媒体旁自动生成 `<媒体名>.ReaPeaks` 的 wave 层（GUI 默认开启）；只有同时勾选 Launcher 的“生成 ReaPeaks 频谱数据”或传入 `--with-spectral`，才额外执行频谱 FFT 并写入 spectral 层。`--with-spectral` 必须与 `--with-waveform` 一起使用。服务器只读取已有的 `.ReaPeaks`，不负责生成。生成由 Rust 内核（`reapeaks`）承担，经 ffmpeg 解码媒体；缺少 ffmpeg 或解码失败时打日志跳过。numpy 不参与 `.ReaPeaks` 生成（仅 OCR 后处理路径 lazy import）。
+- **生成时机**：转写生成工程时，`--with-waveform` 在媒体旁自动生成 `<媒体名>.ReaPeaks` 的 wave 层（GUI 默认开启）；只有同时勾选 Launcher 的“生成 ReaPeaks 频谱数据”或传入 `--with-spectral`，才额外执行频谱 FFT 并写入 spectral 层。`--with-spectral` 必须与 `--with-waveform` 一起使用。服务器只读取已有的 peaks 容器（`.quapeaks` 优先，REAPER 原生 `.ReaPeaks` 照读），不负责生成。生成由 Rust 内核（`quapeaks`，改名自 `reapeaks`）承担，经 ffmpeg 解码媒体；缺少 ffmpeg 或解码失败时打日志跳过。numpy 不参与 `.ReaPeaks` 生成（仅 OCR 后处理路径 lazy import）。
 - 解析器读取 REAPER 的 `RPKN`/`RPKL` 文件，取匹配 `peaks_per_second` 分辨率的 spectral 层（`-(int)'s'` 标记）；无 spectral 层、文件缺失或损坏时静默降级，不影响编辑器。
 - 未识别的 `schema` / `encoding` 会被忽略。浏览器端在 `decodeSpectralPayload` 校验这两字段与 `data` 长度（`peak_count * 4`）。
 - **与主波形层的对齐关系**：第 i 个频谱采样与第 i 个峰是同一时刻，两者共用 `division`，**不需要任何索引偏移**。频谱层的 `peak_count` 通常比配对的 wave 层少若干（44.1 kHz 真机文件少 7、16 kHz 少 25），因为末尾的 FFT 窗口填不满——缺口在尾部而非头部（用已知时刻的窄带脉冲实测：48 kHz 下频谱响应中心 bin 4207.5，wave 层最强 bin 4207）。因此这段尾部只是不上色，编辑器按索引越界处理，不得据此平移染色层。
