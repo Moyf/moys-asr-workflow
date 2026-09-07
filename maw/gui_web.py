@@ -2043,7 +2043,7 @@ class LauncherApi:
 
         warnings: list[str] = []
         if cached.reapeaks_path is None:
-            warnings.append("ReaPeaks cache was not generated.")
+            warnings.append("reapeaks cache was not generated.")
         return {
             "ok": True,
             "mediaPath": str(media_path),

@@ -144,7 +144,7 @@ def _rpk_munge(value: int) -> float:
     return -(2.0 ** ((-value - 24576) / 1024.0))
 
 
-class ReaPeaksFile:
+class ReapeaksFile:
     """Read-only parser for REAPER .reapeaks files.
 
     All multi-byte integers are little-endian; v1.1+ store per-peak min/max
@@ -329,7 +329,7 @@ def _unpack_12bit_bins(raw: bytes) -> list[int]:
 def _header_provenance(path: Path) -> tuple[int, int] | None:
     """只读 18 字节全局头，取出 (src_timestamp, src_filesize) 指纹。
 
-    给候选排序用，所以刻意不构造 ReaPeaksFile —— 那会把几百万个峰全解一遍。
+    给候选排序用，所以刻意不构造 ReapeaksFile —— 那会把几百万个峰全解一遍。
     """
     try:
         with open(path, "rb") as handle:
@@ -412,7 +412,7 @@ def find_self_wave_container(
     if container is None:
         return None
     try:
-        ra = ReaPeaksFile(str(container))
+        ra = ReapeaksFile(str(container))
     except (OSError, ValueError, IndexError, struct.error):
         return None
     if not ra.self_wave_mipmaps():
@@ -420,7 +420,7 @@ def find_self_wave_container(
     return container if _reapeaks_matches_media(container, media_path) else None
 
 
-def _paired_spectral_rates(ra: ReaPeaksFile) -> list[tuple[int, MipMap]]:
+def _paired_spectral_rates(ra: ReapeaksFile) -> list[tuple[int, MipMap]]:
     """Pair spectral mipmaps with their wave mipmap by order.
 
     Spectral mipmaps carry ``-(int)'s'`` as their division_factor token but their
@@ -454,7 +454,7 @@ def extract_spectral_payload(
     payload size stays comparable to the waveform cache. Channel 0 is used for
     display; the source signature is that of the media itself.
     """
-    ra = ReaPeaksFile(str(reapeaks_path))
+    ra = ReapeaksFile(str(reapeaks_path))
     pairs = _paired_spectral_rates(ra)
     if not pairs:
         return None
@@ -523,7 +523,7 @@ def extract_waveform_payload(
     division is exact) so that consumers which have not migrated still draw
     correctly.
     """
-    ra = ReaPeaksFile(str(reapeaks_path))
+    ra = ReapeaksFile(str(reapeaks_path))
     wave_mips = ra.wave_mipmaps()
     if not wave_mips:
         return None
@@ -577,7 +577,7 @@ def _reapeaks_matches_media(reapeaks_path: Path | str, media_path: Path | str) -
     跨盘拷贝导致的秒级 / 恰好一小时的 mtime 漂移不应误杀缓存。
     """
     try:
-        ra = ReaPeaksFile(str(reapeaks_path))
+        ra = ReapeaksFile(str(reapeaks_path))
     except (OSError, struct.error, ValueError, IndexError):
         return False
     if ra.src_timestamp == 0 and ra.src_filesize == 0:
@@ -613,7 +613,7 @@ UINT32_MASK = _UINT32_MASK
 def _reapeaks_contains_spectral(reapeaks_path: Path | str) -> bool:
     """Return whether a readable cache contains at least one spectral mipmap."""
     try:
-        return bool(ReaPeaksFile(str(reapeaks_path)).spectral_mipmaps())
+        return bool(ReapeaksFile(str(reapeaks_path)).spectral_mipmaps())
     except (OSError, struct.error, ValueError, IndexError):
         return False
 
@@ -855,7 +855,7 @@ def _self_check(container: Path, *, want_self_wave: bool) -> bool:
     的 candidates 注释）。读取端各自按自己的口径校验，生成端不替它做决定。
     """
     try:
-        ra = ReaPeaksFile(str(container))
+        ra = ReapeaksFile(str(container))
     except (OSError, ValueError, IndexError, struct.error) as exc:
         print(f"[reapeaks] 自检失败：{container.name} 无法解析（{exc}）")
         return False
@@ -985,7 +985,7 @@ def generate_for_media(
 if __name__ == "__main__":
     import sys
 
-    file = ReaPeaksFile(sys.argv[1])
+    file = ReapeaksFile(sys.argv[1])
     print(file.summary())
     wave_mips = file.wave_mipmaps()
     if wave_mips:

@@ -88,7 +88,7 @@ def build_reapeaks(
     path.write_bytes(header + mip_headers + wave_data + spec_data)
 
 
-class ReaPeaksParseTests(unittest.TestCase):
+class ReapeaksParseTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
@@ -110,7 +110,7 @@ class ReaPeaksParseTests(unittest.TestCase):
         self.assertGreater(payload["peak_count"], 0)
 
     def test_parses_header_and_mipmap_layout(self) -> None:
-        parsed = quapeaks.ReaPeaksFile(str(self.reapeaks_path))
+        parsed = quapeaks.ReapeaksFile(str(self.reapeaks_path))
         self.assertEqual(parsed.magic, b"RPKN")
         self.assertFalse(parsed.is_v12)
         self.assertEqual(parsed.channels, 1)
@@ -120,7 +120,7 @@ class ReaPeaksParseTests(unittest.TestCase):
         self.assertEqual([m.kind for m in parsed.mipmaps], ["wave", "spectral"])
 
     def test_parses_wave_minmax(self) -> None:
-        parsed = quapeaks.ReaPeaksFile(str(self.reapeaks_path))
+        parsed = quapeaks.ReapeaksFile(str(self.reapeaks_path))
         wave = parsed.mipmaps[0]
         self.assertEqual(wave.division_factor, 80)
         self.assertEqual(wave.peak_count, 2)
@@ -130,7 +130,7 @@ class ReaPeaksParseTests(unittest.TestCase):
         ])
 
     def test_parses_spectral_freq_density(self) -> None:
-        parsed = quapeaks.ReaPeaksFile(str(self.reapeaks_path))
+        parsed = quapeaks.ReapeaksFile(str(self.reapeaks_path))
         spectral = parsed.mipmaps[1]
         self.assertEqual(spectral.division_factor, -ord("s"))
         self.assertEqual(spectral.kind, "spectral")
@@ -226,7 +226,7 @@ class ReaPeaksParseTests(unittest.TestCase):
         wave_data = struct.pack("<hhhh", 100, -100, 100, -100)
         cache = self.root / "huge.mov.ReaPeaks"
         cache.write_bytes(header + mip_headers + wave_data)
-        parsed = quapeaks.ReaPeaksFile(str(cache))
+        parsed = quapeaks.ReapeaksFile(str(cache))
         self.assertEqual(parsed.src_timestamp, 1_704_691_847)
         self.assertEqual(parsed.src_filesize, 2_903_746_742)
 
@@ -264,7 +264,7 @@ class ReaPeaksParseTests(unittest.TestCase):
         )
 
 
-class GenerateReaPeaksTests(unittest.TestCase):
+class GenerateReapeaksTests(unittest.TestCase):
     """生成 → 解析 往返：验证 MAW 能自建 .ReaPeaks 并被只读路径读取。"""
 
     def setUp(self) -> None:
@@ -298,7 +298,7 @@ class GenerateReaPeaksTests(unittest.TestCase):
         data = streamer.finish()
         target = self.root / "tone.ReaPeaks"
         target.write_bytes(data)
-        parsed = quapeaks.ReaPeaksFile(str(target))
+        parsed = quapeaks.ReapeaksFile(str(target))
         self.assertEqual(parsed.magic, b"RPKN")
         self.assertEqual(parsed.channels, 1)
         kinds = [m.kind for m in parsed.mipmaps]
@@ -330,7 +330,7 @@ class GenerateReaPeaksTests(unittest.TestCase):
         target = self.root / "tone-wave-only.ReaPeaks"
         target.write_bytes(data)
 
-        parsed = quapeaks.ReaPeaksFile(str(target))
+        parsed = quapeaks.ReapeaksFile(str(target))
         self.assertIn("wave", [m.kind for m in parsed.mipmaps])
         self.assertNotIn("spectral", [m.kind for m in parsed.mipmaps])
         self.assertIsNone(quapeaks.extract_spectral_payload(target, self.tone_path))
@@ -397,10 +397,10 @@ class GenerateReaPeaksTests(unittest.TestCase):
     def test_generate_for_media_rebuilds_wave_only_cache_when_spectral_is_requested(self) -> None:
         target = self.root / "tone.wav.quapeaks"
         quapeaks.generate_for_media(self.tone_path, include_spectral=False)
-        self.assertFalse(quapeaks.ReaPeaksFile(str(target)).spectral_mipmaps())
+        self.assertFalse(quapeaks.ReapeaksFile(str(target)).spectral_mipmaps())
 
         quapeaks.generate_for_media(self.tone_path, include_spectral=True)
-        self.assertTrue(quapeaks.ReaPeaksFile(str(target)).spectral_mipmaps())
+        self.assertTrue(quapeaks.ReapeaksFile(str(target)).spectral_mipmaps())
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_generate_for_media_handles_non_wav_media(self) -> None:
@@ -545,7 +545,7 @@ class GeneratedFractionalRateTests(unittest.TestCase):
         self.cache.write_bytes(
             streamer.finish(src_timestamp=int(src.st_mtime), src_filesize=src.st_size)
         )
-        self.parsed = quapeaks.ReaPeaksFile(str(self.cache))
+        self.parsed = quapeaks.ReapeaksFile(str(self.cache))
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()

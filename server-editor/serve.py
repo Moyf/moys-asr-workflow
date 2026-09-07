@@ -416,7 +416,7 @@ def load_project(
                 data["spectral"] = spectral
                 print(f"[spectral] 已加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
 
-            # ReaPeaks 波形层：最细 wave 层作为可选的波形形状来源（编辑器设置里切换）。
+            # reapeaks 波形层：最细 wave 层作为可选的波形形状来源（编辑器设置里切换）。
             reapeaks_wave = quapeaks.load_waveform_payload(
                 reapeaks_base,
                 audio_track=audio_track,
@@ -456,9 +456,9 @@ def load_blank_project(stickers_dir: str | None) -> ServerProject:
 
 
 def without_deferred_reapeaks(project: ServerProject) -> ServerProject:
-    """Keep the self-generated waveform while omitting optional ReaPeaks layers.
+    """Keep the self-generated waveform while omitting optional reapeaks layers.
 
-    ReaPeaks can contain millions of decoded points.  The editor must be able
+    reapeaks can contain millions of decoded points.  The editor must be able
     to render the project before those optional layers are parsed; they are
     fetched from ``/api/waveform`` after the server starts listening.
     """
@@ -478,7 +478,7 @@ def build_server_page(
 ) -> bytes:
     """Render with current web/ assets on every page request to prevent UI drift.
 
-    ``defer_reapeaks`` 开启时（默认）频谱 / ReaPeaks 波形层不内联进页面：
+    ``defer_reapeaks`` 开启时（默认）频谱 / reapeaks 波形层不内联进页面：
     前端就绪后会经 ``/api/waveform`` 拉取（页面数据里内联这些层会让大工程
     每次渲染都多序列化数 MB，显著拖慢首页响应）。``--no-waveform`` 等关闭
     延迟加载的场景没有该端点兜底，仍需保留内联层。
@@ -724,7 +724,7 @@ class EditorServer(ThreadingHTTPServer):
             return root, stickers
 
     def start_deferred_reapeaks_load(self) -> None:
-        """Load optional ReaPeaks layers after the HTTP server is available."""
+        """Load optional reapeaks layers after the HTTP server is available."""
         if not self.defer_reapeaks:
             return
         with self.reapeaks_lock:

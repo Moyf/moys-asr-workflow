@@ -90,7 +90,7 @@ class QuapeaksGenerationTests(unittest.TestCase):
         self.assertIsNotNone(generated)
         assert generated is not None
         self.assertEqual(generated.name, "tone.wav.quapeaks")
-        parsed = quapeaks.ReaPeaksFile(str(generated))
+        parsed = quapeaks.ReapeaksFile(str(generated))
         self.assertTrue(parsed.is_quapeaks)
         self.assertEqual(parsed.format_version, ord("1"))
         kinds = [mip.kind for mip in parsed.mipmaps]
@@ -103,7 +103,7 @@ class QuapeaksGenerationTests(unittest.TestCase):
         """内核那一层与 Python 提取必须给出同一批峰——两边没跑偏的唯一硬证据。"""
         generated = quapeaks.generate_for_media(self.tone, self_peaks=self._self_peaks())
         assert generated is not None
-        layers = quapeaks.ReaPeaksFile(str(generated)).self_wave_mipmaps()
+        layers = quapeaks.ReapeaksFile(str(generated)).self_wave_mipmaps()
         self.assertEqual(len(layers), 1)
         layer = layers[0].self_layer
         self.assertIsNotNone(layer)
