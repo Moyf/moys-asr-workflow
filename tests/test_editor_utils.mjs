@@ -421,6 +421,35 @@ test('keeps restored gaps visible in the single-layer display view', () => {
   ]);
 });
 
+test('resolves the gap-fill range from the nearest gaps around a point', () => {
+  const gaps = [
+    { start: 100, end: 150, removed: true },
+    { start: 300, end: 350, removed: true },
+  ];
+  const fill = (point, duration) => JSON.parse(JSON.stringify(helpers.resolveGapFillRange(gaps, point, duration)));
+  assert.deepEqual(fill(200, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(120, 1000), { start: 100, end: 150 });
+  assert.deepEqual(fill(50, 1000), { start: 0, end: 150 });
+  assert.deepEqual(fill(500, 1000), { start: 300, end: 1000 });
+});
+
+test('gap-fill range ignores restored boundaries, swallows them, and guards invalid input', () => {
+  const gaps = [
+    { start: 100, end: 150, removed: true },
+    { start: 180, end: 220, removed: false },
+    { start: 300, end: 350, removed: true },
+  ];
+  const fill = (point, duration) => JSON.parse(JSON.stringify(helpers.resolveGapFillRange(gaps, point, duration)));
+  assert.deepEqual(fill(260, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(160, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(200, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(120, 1000), { start: 100, end: 150 });
+  assert.equal(helpers.resolveGapFillRange([], 200, 1000), null);
+  assert.equal(helpers.resolveGapFillRange(gaps, Number.NaN, 1000), null);
+  assert.equal(helpers.resolveGapFillRange([{ start: 100, end: 150, removed: false }], 200, 1000), null);
+  assert.equal(helpers.resolveGapFillRange([{ start: 100, end: 150 }], 500, 0), null);
+});
+
 test('projects overlapping enabled and restored ranges into one non-overlapping layer', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(gapCore.getGapRemoveDisplayGaps([
     { start: 100, end: 300, removed: true, origins: ['audio_gate'] },

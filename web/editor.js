@@ -3718,6 +3718,34 @@ function addGapAtWaveformTime(timeMs) {
   return true;
 }
 
+function fillGapRangeAtWaveformTime(timeMs) {
+  const gaps = getGapRemoveGaps();
+  if (!gaps.some((gap) => gap.removed !== false)) {
+    flashHint('当前没有已激活的空隙，无法填充区间空隙', 'invalid');
+    return false;
+  }
+  const range = window.AsrEditorUtils.resolveGapFillRange(gaps, timeMs, gapRemoveMediaDurationMs());
+  if (!range) {
+    flashHint('媒体时长尚不可用；请先加载媒体后再填充区间空隙', 'invalid');
+    return false;
+  }
+  const state = getGapRemoveData(true);
+  const sourceGaps = window.AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
+  const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, range.start, range.end, true);
+  if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
+    flashHint('该位置已经是已移除的空隙', 'invalid');
+    return false;
+  }
+  pushGapRemoveUndo('填充区间空隙');
+  state.detector = 'audio_gate';
+  commitManualGapRemoveChange(
+    state,
+    [{ start: range.start, end: range.end, removed: true }],
+  );
+  flashHint(`已填充并合并为 ${formatGapRemoveTotal(range.end - range.start)} 静音空隙`, 'success');
+  return true;
+}
+
 function translateManualGap(index, deltaMs, mode = 'move') {
   const state = getGapRemoveData(false);
   if (!state) return false;
@@ -17645,25 +17673,29 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
     }
     ctxmenu.appendChild(it);
   }
+  function addSep() {
+    const sep = document.createElement('div');
+    sep.className = 'sep';
+    ctxmenu.appendChild(sep);
+  }
   const mainIdx = findWaveformCueAtTime(timeMs, DATA.segments);
   const extensionTrack = getActiveExtensionTrack();
   const extensionIdx = findWaveformCueAtTime(timeMs, extensionTrack?.segments);
   if (effectiveTrack === 'extension') {
     addItem(
       '创建副字幕',
-      '',
+      'N',
       () => addExtensionAtWaveformTime(timeMs, clickX, clickY, extensionTrack),
       extensionIdx >= 0,
     );
   } else {
     addItem(
       '创建字幕',
-      '',
+      'N',
       () => addCueAtWaveformTime(timeMs, clickX, clickY),
       mainIdx >= 0,
     );
   }
-  addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));
   if (Array.isArray(DATA.segments) && DATA.segments.length) {
     addItem(
       '按音频位置拆分主字幕',
@@ -17679,6 +17711,11 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       () => openExtensionSplitModal(extensionIdx, timeMs, extensionTrack),
       extensionIdx < 0,
     );
+  }
+  addSep();
+  addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));
+  if (getGapRemoveGaps().some((gap) => gap.removed !== false)) {
+    addItem('填充区间空隙', '', () => fillGapRangeAtWaveformTime(timeMs));
   }
 
   ctxmenu.classList.add('show');

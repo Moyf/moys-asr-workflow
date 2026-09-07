@@ -2911,6 +2911,27 @@
     });
   }
 
+  // 「填充区间空隙」：以一个时间点为锚点，取左右两侧最近的「已激活」空隙作为
+  // 边界，返回需要完全填充为单一空隙的区间。未激活空隙不作为边界，落在区间
+  // 内时会被直接吞掉；锚点落在已激活空隙内时返回该空隙本身；锚点位于所有
+  // 已激活空隙之前/之后时，边界向时间轴开头/结尾（durationMs）拓展。
+  function resolveGapFillRange(gaps, pointMs, durationMs = 0) {
+    const normalized = normalizeGapRemoveGaps(gaps).filter((gap) => gap.removed !== false);
+    if (!normalized.length) return null;
+    const point = Number(pointMs);
+    if (!Number.isFinite(point)) return null;
+    const containing = normalized.find((gap) => gap.start <= point && gap.end >= point);
+    if (containing) return { start: containing.start, end: containing.end };
+    const previous = [...normalized].reverse().find((gap) => gap.end <= point) || null;
+    const next = normalized.find((gap) => gap.start >= point) || null;
+    const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+    if (!next && duration <= 0) return null;
+    const start = previous ? previous.start : 0;
+    const end = next ? next.end : duration;
+    if (end <= start) return null;
+    return { start, end };
+  }
+
   const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
     segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览',
   });
@@ -5268,6 +5289,7 @@ export default MawDynamicCaptions;
     mapGapRemovedTime,
     buildGapRemovedIntervals,
     buildGapRemovedDynamicSegments,
+    resolveGapFillRange,
     EXPORT_FRAME_PROFILES,
     resolveExportFrameProfile,
     exportMsToFrames,
