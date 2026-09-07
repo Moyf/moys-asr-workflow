@@ -18,6 +18,16 @@ const onboardingPrimary = document.getElementById('onboarding-primary');
 const onboardingHelp = document.getElementById('onboarding-help');
 const ONBOARDING_STORAGE_KEY = 'moy.asr.editor.onboarding.v1';
 const ONBOARDING_STEP_COUNT = 3;
+
+function serverOnboardingPersistenceEnabled() {
+  return typeof SERVER_CONFIG !== 'undefined'
+    && Boolean(
+      SERVER_CONFIG?.desktopMode
+      && SERVER_CONFIG?.settingsUrl
+      && Object.prototype.hasOwnProperty.call(SERVER_CONFIG, 'onboardingStatus'),
+    );
+}
+
   const editor = window.MAWE_EDITOR_BRIDGE;
   const {
     data: DATA,
@@ -54,6 +64,10 @@ let onboardingPositionFrame = 0;
 let onboardingAdvanceTimer = 0;
 
 function readOnboardingStatus() {
+  if (serverOnboardingPersistenceEnabled()) {
+    const status = SERVER_CONFIG.onboardingStatus;
+    return typeof status === 'string' ? status : '';
+  }
   try {
     return localStorage.getItem(ONBOARDING_STORAGE_KEY) || '';
   } catch (_) {
@@ -66,6 +80,26 @@ function saveOnboardingStatus(status) {
     localStorage.setItem(ONBOARDING_STORAGE_KEY, status);
   } catch (_) {
     // file:// 隐私模式下可能拒绝 localStorage；本次页面仍可继续引导。
+  }
+  if (!serverOnboardingPersistenceEnabled()) return;
+  // MOSE starts a new random localhost port on every launch.  Keep the
+  // current renderer in sync immediately, then persist the terminal state in
+  // the shared per-user settings file through the server API.  ``keepalive``
+  // lets a just-finished onboarding save survive the renderer closing.
+  SERVER_CONFIG.onboardingStatus = status;
+  try {
+    const url = new URL(SERVER_CONFIG.settingsUrl, window.location.href);
+    void fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ onboardingStatus: status }),
+      keepalive: true,
+    }).catch(() => {
+      // The local state remains usable; a later launch can show the guide
+      // again if the server could not persist this request.
+    });
+  } catch (_) {
+    // A malformed or unavailable settings URL must not block the editor.
   }
 }
 

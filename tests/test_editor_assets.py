@@ -126,6 +126,13 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn(".server-connection-banner", styles)
         self.assertIn(".server-connection-banner[hidden]", styles)
 
+    def test_mose_onboarding_uses_user_settings_across_random_server_ports(self) -> None:
+        script = edit.read_web_asset("editor-onboarding.js")
+        self.assertIn("serverOnboardingPersistenceEnabled", script)
+        self.assertIn("SERVER_CONFIG.onboardingStatus", script)
+        self.assertIn("body: JSON.stringify({ onboardingStatus: status })", script)
+        self.assertIn("keepalive: true", script)
+
     def test_new_project_action_precedes_open_project(self) -> None:
         template = edit.read_web_asset("editor-template.html")
         self.assertIn('id="new-project"', template)

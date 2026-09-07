@@ -3087,6 +3087,9 @@ def run_app(
     # enabled. Keep debug mode and automatic DevTools opening independently
     # controllable so normal development does not force an extra window.
     webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = devtools
+    # The Launcher/editor document renders its own theme-aware toolbar.  Do
+    # not expose pywebview's system-colored File/Edit/View/Window menu above it.
+    webview.settings["SHOW_DEFAULT_MENUS"] = False
     paths = default_paths()
     # 事件流与进程内 print/traceback 共用同一个 sink：单锁单文件。
     log_sink = LocalLogSink()

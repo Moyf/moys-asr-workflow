@@ -3592,6 +3592,7 @@ class LauncherRuntimeTests(unittest.TestCase):
                 run_app(debug=debug, devtools=devtools)
 
             self.assertEqual(fake_webview.settings["OPEN_DEVTOOLS_IN_DEBUG"], devtools)
+            self.assertFalse(fake_webview.settings["SHOW_DEFAULT_MENUS"])
             self.assertEqual(fake_webview.start.call_args.kwargs["debug"], debug or devtools)
             api_sink = launcher_api_cls.call_args.kwargs["log_sink"]
             self.assertIsInstance(api_sink, LocalLogSink)
