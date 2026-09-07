@@ -134,8 +134,14 @@ def decode_mopeaks(
     """把 mopeaks 字节解回 ``moy.asr.waveform.v1`` 载荷。"""
     if len(data) < HEADER_LEN + LAYER_HEADER_LEN + SELF_PREFIX_LEN:
         raise MopeaksError(f"{path}: 文件过短，无法解析 mopeaks 头部")
+    # 精确到版本字节：未知 MPK2/MPK9 的布局可能已变，按旧布局解会把损坏或
+    # 升级产物当合法缓存。家族对但版本不认识 → 一律 cache miss。
     if data[0:3] != MAGIC_PREFIX:
         raise MopeaksError(f"{path}: magic 不是 MPK*（{data[0:4]!r}）")
+    if data[0:4] != MAGIC:
+        raise MopeaksError(
+            f"{path}: mopeaks 版本不认识（{data[0:4]!r}，只支持 {MAGIC!r}）"
+        )
     channels, layers = data[4], data[5]
     if channels != CHANNELS or layers != LAYER_COUNT:
         raise MopeaksError(
@@ -144,6 +150,10 @@ def decode_mopeaks(
     div, peak_count = struct.unpack_from("<ii", data, HEADER_LEN)
     if div != DIV_SELF_WAVE:
         raise MopeaksError(f"{path}: 唯一的层必须是自研波形层（实得 div={div}）")
+    # 负数或 0 都会让下面的 need 变成非正数，从而**绕过**截断检查：
+    # 0 峰不是可用缓存，负数则是损坏文件。
+    if peak_count <= 0:
+        raise MopeaksError(f"{path}: npeak={peak_count} 不是可用的峰数")
     off = HEADER_LEN + LAYER_HEADER_LEN
     sample_rate, division = struct.unpack_from("<II", data, off)
     off += SELF_PREFIX_LEN
