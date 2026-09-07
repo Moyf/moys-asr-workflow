@@ -103,8 +103,8 @@ class ReaPeaksParseTests(unittest.TestCase):
 
     def test_read_paths_ignore_the_missing_rust_kernel(self) -> None:
         """Issue 96 回归：解码是纯 Python 路径，托管 Runtime 缺 Rust 内核也必须能读缓存。"""
-        with mock.patch.dict(sys.modules, {"reapeaks": None}):
-            payload = reapeaks.load_waveform_payload(self.media_path)
+        with mock.patch.dict(sys.modules, {"quapeaks": None}):
+            payload = quapeaks.load_waveform_payload(self.media_path)
 
         self.assertIsNotNone(payload)
         self.assertGreater(payload["peak_count"], 0)
@@ -226,7 +226,7 @@ class ReaPeaksParseTests(unittest.TestCase):
         wave_data = struct.pack("<hhhh", 100, -100, 100, -100)
         cache = self.root / "huge.mov.ReaPeaks"
         cache.write_bytes(header + mip_headers + wave_data)
-        parsed = reapeaks.ReaPeaksFile(str(cache))
+        parsed = quapeaks.ReaPeaksFile(str(cache))
         self.assertEqual(parsed.src_timestamp, 1_704_691_847)
         self.assertEqual(parsed.src_filesize, 2_903_746_742)
 
@@ -247,20 +247,20 @@ class ReaPeaksParseTests(unittest.TestCase):
         for stored, actual, expected in cases:
             with self.subTest(stored=stored, actual=actual):
                 self.assertEqual(
-                    reapeaks._timestamp_fingerprint_matches(stored, actual), expected,
+                    quapeaks._timestamp_fingerprint_matches(stored, actual), expected,
                 )
 
     def test_matches_media_tolerates_copy_mtime_drift(self) -> None:
         # 跨盘拷贝常使 mtime 漂移几秒；缓存不应被误杀（对齐 REAPER 行为）。
         os.utime(self.media_path, (FIXED_MTIME + 3, FIXED_MTIME + 3))
         self.assertTrue(
-            reapeaks._reapeaks_matches_media(self.reapeaks_path, self.media_path)
+            quapeaks._reapeaks_matches_media(self.reapeaks_path, self.media_path)
         )
-        self.assertIsNotNone(reapeaks.load_spectral_payload(self.media_path))
+        self.assertIsNotNone(quapeaks.load_spectral_payload(self.media_path))
         # 但实打实换了文件（漂移两小时）仍判失效。
         os.utime(self.media_path, (FIXED_MTIME + 7200, FIXED_MTIME + 7200))
         self.assertFalse(
-            reapeaks._reapeaks_matches_media(self.reapeaks_path, self.media_path)
+            quapeaks._reapeaks_matches_media(self.reapeaks_path, self.media_path)
         )
 
 
@@ -360,8 +360,8 @@ class GenerateReaPeaksTests(unittest.TestCase):
         target = self.root / "tone.wav.ReaPeaks"
         captured = io.StringIO()
 
-        with mock.patch.dict(sys.modules, {"reapeaks": None}), redirect_stdout(captured):
-            generated = reapeaks.generate_for_media(self.tone_path)
+        with mock.patch.dict(sys.modules, {"quapeaks": None}), redirect_stdout(captured):
+            generated = quapeaks.generate_for_media(self.tone_path)
 
         self.assertIsNone(generated)
         self.assertFalse(target.exists())

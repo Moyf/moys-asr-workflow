@@ -139,7 +139,7 @@ class MediaCacheTests(unittest.TestCase):
         self.assertGreater(result.project["waveform"]["duration_ms"], 0)
         self.assertEqual(
             Path(result.reapeaks_path),
-            cache_media.with_name(cache_media.name + ".ReaPeaks"),
+            cache_media.with_name(cache_media.name + ".quapeaks"),
         )
         # 退回派生文件后，缓存只能被派生文件接受，不能误用于源媒体。
         self.assertIsNotNone(quapeaks.load_waveform_payload(cache_media))

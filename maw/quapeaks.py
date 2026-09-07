@@ -39,9 +39,9 @@ def _load_rust_kernel():
     """
 
     try:
-        import reapeaks as rust_generate
+        import quapeaks as rust_generate
     except ImportError as exc:
-        print(f"[reapeaks] 缺少 Rust 生成内核 reapeaks（{exc}），跳过 .ReaPeaks 生成")
+        print(f"[reapeaks] 缺少 Rust 生成内核 quapeaks（{exc}），跳过 .ReaPeaks 生成")
         return None
     return rust_generate
 
