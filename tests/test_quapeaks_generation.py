@@ -244,7 +244,9 @@ class FindReapeaksPreferenceTests(unittest.TestCase):
         self._write("tone.wav.quapeaks", b"QPK1", self.fresh, True)
         self._write("tone.wav.ReaPeaks", b"RPKN", self.fresh, False)
         found = quapeaks.find_reapeaks(self.tone)
-        self.assertEqual(found, self.root / "tone.wav.quapeaks")
+        # .quapeaks 候选经 waveform_dirs（已 resolve 成长名），期望值同口径展开，
+        # 避免 CI 的 8.3 短名 TEMP（RUNNER~1）拼写不一致。
+        self.assertEqual(found, (self.root / "tone.wav.quapeaks").resolve())
         self.assertEqual(quapeaks.find_self_wave_container(self.tone), found)
 
     def test_falls_back_to_the_first_existing_when_all_are_stale(self) -> None:

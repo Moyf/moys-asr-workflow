@@ -137,9 +137,11 @@ class MediaCacheTests(unittest.TestCase):
                 result.project[key]["source"], derived_signature
             )
         self.assertGreater(result.project["waveform"]["duration_ms"], 0)
+        # 生产端按 output_naming 口径 resolve 成长名，期望值同口径展开，
+        # 避免 CI 的 8.3 短名 TEMP（RUNNER~1）拼写不一致。
         self.assertEqual(
             Path(result.reapeaks_path),
-            cache_media.with_name(cache_media.name + ".quapeaks"),
+            cache_media.with_name(cache_media.name + ".quapeaks").resolve(),
         )
         # 退回派生文件后，缓存只能被派生文件接受，不能误用于源媒体。
         self.assertIsNotNone(quapeaks.load_waveform_payload(cache_media))
@@ -168,7 +170,8 @@ class MediaCacheTests(unittest.TestCase):
         # with 块已退出、临时目录已删除：源媒体旁必须留有可用缓存
         self.assertIsNotNone(result.reapeaks_path)
         self.assertEqual(
-            Path(result.reapeaks_path), source.with_name(source.name + ".quapeaks")
+            Path(result.reapeaks_path),
+            source.with_name(source.name + ".quapeaks").resolve(),
         )
         self.assertTrue(Path(result.reapeaks_path).exists())
         # server 从源媒体旁读取时，头部签名必须匹配
