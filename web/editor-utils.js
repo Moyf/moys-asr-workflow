@@ -20,6 +20,12 @@
     'Noto Sans CJK SC': 'Noto Sans CJK 简体中文',
     'Noto Serif CJK SC': 'Noto Serif CJK 简体中文',
   });
+  const PROJECT_SCHEMA = 'moy.asr.project.v1';
+
+  function supportsProjectSchema(project) {
+    if (!project || typeof project !== 'object' || Array.isArray(project)) return false;
+    return project.schema === undefined || project.schema === PROJECT_SCHEMA;
+  }
 
   function subtitleFontFamilyDisplayName(family, language) {
     if (language !== 'zh' || typeof family !== 'string') return family;
@@ -5150,6 +5156,8 @@ export default MawDynamicCaptions;
   }
 
   window.AsrEditorUtils = {
+    PROJECT_SCHEMA,
+    supportsProjectSchema,
     subtitleFontFamilyDisplayName,
     decodeSubtitleText,
     parseBwfTimeReference,
