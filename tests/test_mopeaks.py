@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import os
 import struct
@@ -204,8 +205,29 @@ class MopeaksLow32ProvenanceTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    @contextlib.contextmanager
+    def _huge_media(self):
+        """只把**这个媒体文件**的 stat 换成假的，其余路径一律走真 stat。
+
+        全局 patch Path.stat 会把目录的 stat 也换掉：save_mopeaks 里
+        mkdir(exist_ok=True) 撞 FileExistsError 后，pathlib 会转去问
+        is_dir()→stat().st_mode，假对象没这个字段就直接炸——那是 patch 越界，
+        不是被测行为。
+        """
+        real = Path.stat
+        target = self.media_path
+        fake = self.fake
+
+        def fake_stat(self_path, *args, **kwargs):
+            if self_path == target:
+                return fake
+            return real(self_path, *args, **kwargs)
+
+        with mock.patch.object(Path, "stat", autospec=True, side_effect=fake_stat):
+            yield
+
     def test_size_field_is_written_and_read_unsigned(self) -> None:
-        with mock.patch.object(Path, "stat", return_value=self.fake):
+        with self._huge_media():
             blob = mopeaks.encode_mopeaks(make_payload(media_path=self.media_path), self.media_path)
         self.assertEqual(struct.unpack_from("<I", blob, 14)[0], self.HUGE)
         self.assertLess(struct.unpack_from("<i", blob, 14)[0], 0, "先确认这条字节确实会被有符号读法坑到")
@@ -214,7 +236,7 @@ class MopeaksLow32ProvenanceTests(unittest.TestCase):
     def test_cache_still_matches_a_huge_media(self) -> None:
         # 回归：早先按有符号 i32 解，>2 GiB 素材的 size 读成负数，
         # 与真实的 st_size 永不相等 —— 缓存被判过期，每次打开都重算。
-        with mock.patch.object(Path, "stat", return_value=self.fake):
+        with self._huge_media():
             mopeaks.save_mopeaks(make_payload(media_path=self.media_path), self.media_path)
             self.assertEqual(mopeaks.load_mopeaks(self.media_path)["source"]["size"], self.HUGE)
 
@@ -309,6 +331,107 @@ class UnsupportedVersionAndBoundaryTests(unittest.TestCase):
         probe.write_bytes(bytes(blob))
         with self.assertRaises(ValueError):
             maw_quapeaks.ReapeaksFile(str(probe))
+
+
+
+@contextlib.contextmanager
+def _subfolder_config(*, output_subfolder: bool, per_video: bool = False):
+    """只替 output_naming 读配置的那一个入口，不动别的环境。"""
+    from types import SimpleNamespace
+
+    from maw import gui_config
+
+    def effective_config():
+        return SimpleNamespace(
+            gui_lang="zh",
+            output_subfolder=output_subfolder,
+            per_video_subfolder=per_video,
+        )
+
+    with mock.patch.object(gui_config, "effective_config", effective_config):
+        yield
+
+
+class WaveformPlacementContractTests(unittest.TestCase):
+    """review 第 7 项：写入点跟随配置，读取端两种位置都要找得到。"""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.media_path = self.root / "ICE.mkv"
+        self.media_path.write_bytes(b"RIFF" + b"\x00" * 40)
+        self.payload = make_payload(media_path=self.media_path)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_default_writes_next_to_media(self) -> None:
+        with _subfolder_config(output_subfolder=False):
+            written = mopeaks.save_mopeaks(self.payload, self.media_path)
+        self.assertEqual(written, self.root / "ICE.mkv.mopeaks")
+        self.assertFalse((self.root / "_maw").exists())
+
+    def test_subfolder_preference_moves_the_write_point(self) -> None:
+        with _subfolder_config(output_subfolder=True):
+            written = mopeaks.save_mopeaks(self.payload, self.media_path)
+        self.assertEqual(written, self.root / "_maw" / "ICE.mkv.mopeaks")
+        self.assertTrue(written.is_file(), "_maw 不存在时必须自己建出来")
+
+    def test_reader_finds_a_cache_left_by_the_other_setting(self) -> None:
+        """用户改一次设置就把已有缓存判过期、整批重抽 ffmpeg，是最难归因的静默慢。"""
+        with _subfolder_config(output_subfolder=False):
+            mopeaks.save_mopeaks(self.payload, self.media_path)
+        with _subfolder_config(output_subfolder=True):
+            back = mopeaks.load_mopeaks(self.media_path)
+        self.assertIsNotNone(back, "缓存写在媒体旁、设置改成子文件夹后仍须读得到")
+        self.assertEqual(back["data"], self.payload["data"])
+
+    def test_per_video_maw_root_is_also_searched(self) -> None:
+        (self.root / "ICE_maw").mkdir()
+        blob = mopeaks.encode_mopeaks(self.payload, self.media_path)
+        (self.root / "ICE_maw" / "ICE.mkv.mopeaks").write_bytes(blob)
+        with _subfolder_config(output_subfolder=True, per_video=True):
+            self.assertEqual(
+                mopeaks.mopeaks_path(self.media_path).parent,
+                self.root / "ICE_maw",
+            )
+        with _subfolder_config(output_subfolder=False):
+            back = mopeaks.load_mopeaks(self.media_path)
+        self.assertIsNotNone(back, "每视频 _maw 里的缓存也要能回退读到")
+
+    def test_non_default_track_does_not_share_a_file(self) -> None:
+        with _subfolder_config(output_subfolder=False):
+            first = mopeaks.mopeaks_path(self.media_path, audio_track=0)
+            second = mopeaks.mopeaks_path(self.media_path, audio_track=1)
+        self.assertEqual(first.name, "ICE.mkv.mopeaks")
+        self.assertEqual(second.name, "ICE.mkv.track-2.mopeaks")
+        with _subfolder_config(output_subfolder=False):
+            mopeaks.save_mopeaks(self.payload, self.media_path, audio_track=1)
+            self.assertIsNotNone(mopeaks.load_mopeaks(self.media_path, audio_track=1))
+            self.assertIsNone(
+                mopeaks.load_mopeaks(self.media_path, audio_track=0),
+                "第 2 轨的缓存不得被第 1 轨命中",
+            )
+
+    def test_quapeaks_follows_config_while_reapeaks_does_not(self) -> None:
+        from maw import quapeaks as maw_quapeaks
+
+        with _subfolder_config(output_subfolder=True):
+            dirs = maw_quapeaks.waveform_dirs(self.media_path)
+            self.assertEqual(maw_quapeaks.find_reapeaks(self.media_path), None)
+            # .ReaPeaks 是 REAPER 写的，永远只在媒体旁：造一份就要被找到，
+            # 哪怕配置说"所有输出进子文件夹"。
+            st = self.media_path.stat()
+            head = struct.pack(
+                "<4sBBiII", b"RPKN", 1, 1, 8000,
+                int(st.st_mtime) & 0xFFFF_FFFF, st.st_size & 0xFFFF_FFFF,
+            )
+            (self.root / "ICE.mkv.ReaPeaks").write_bytes(
+                head + struct.pack("<ii", 80, 1) + struct.pack("<hh", 10, -10)
+            )
+            found = maw_quapeaks.find_reapeaks(self.media_path)
+            self.assertEqual(found, self.root / "ICE.mkv.ReaPeaks")
+            self.assertEqual(dirs[0], self.root / "_maw")
 
 
 if __name__ == "__main__":

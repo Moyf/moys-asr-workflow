@@ -27,6 +27,7 @@ from pathlib import Path
 
 from maw import waveform as waveform_module
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.output_naming import waveform_dirs
 
 
 def _load_rust_kernel():
@@ -408,8 +409,14 @@ def find_reapeaks(
     parent = media_path.parent
     name = media_path.name
     track_suffix = f".track-{audio_track + 1}" if audio_track else ""
+    # 自有容器 .quapeaks 跟随配置（可能进 _maw）；REAPER 的 .ReaPeaks 永远
+    # 只在媒体旁 —— 那是它写死的位置，挪了就读不到真机产物。
     candidates = [
-        parent / (name + track_suffix + suffix) for suffix in PEAKS_SUFFIXES
+        directory / (name + track_suffix + QUAPEAKS_SUFFIX)
+        for directory in waveform_dirs(media_path)
+    ]
+    candidates += [
+        parent / (name + track_suffix + suffix) for suffix in REAPEAKS_SUFFIXES
     ]
     candidates += [
         media_path.with_suffix(track_suffix + suffix) for suffix in PEAKS_SUFFIXES

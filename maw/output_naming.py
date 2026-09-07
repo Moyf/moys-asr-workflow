@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import re
+import os
 from pathlib import Path
 from typing import Final
 
@@ -115,6 +116,31 @@ def maw_root(media_path: Path | str, *, per_video: bool | None = None) -> Path:
     if per_video:
         return media.parent / f"{sanitize_component(media.stem, '视频')}{MAW_DIR_NAME}"
     return media.parent / MAW_DIR_NAME
+
+
+def waveform_dirs(media_path: Path | str) -> list[Path]:
+    """波形缓存的目录表：**第 0 项是写入点，其余是读取回退**，顺序即优先级。
+
+    契约（维护者定的）：默认跟随媒体；只有用户明确勾了「将所有输出放入子
+    文件夹」时，波形才进对应的 `_maw`。读取端两种位置都要找得到，否则用户
+    改一次设置就把全部已有缓存判成过期、整批重抽 ffmpeg。
+
+    ``.ReaPeaks`` 不走这里 —— 那是 REAPER 写的，永远只在媒体旁。
+    """
+    media_path = Path(media_path).expanduser()
+    dirs: list[Path] = []
+    if subfolder_prefs()[0]:
+        dirs.append(maw_root(media_path))
+    dirs.append(media_path.parent)
+    dirs.extend(maw_root_candidates(media_path))
+    out: list[Path] = []
+    seen: set[str] = set()
+    for directory in dirs:
+        key = os.path.normcase(str(directory))
+        if key not in seen:
+            seen.add(key)
+            out.append(directory)
+    return out
 
 
 def maw_root_candidates(media_path: Path | str) -> list[Path]:

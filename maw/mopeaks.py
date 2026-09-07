@@ -35,6 +35,7 @@ from maw.quapeaks import (
     UINT32_MASK,
     timestamp_fingerprint_matches,
 )
+from maw.output_naming import waveform_dirs
 from maw.waveform import (
     WAVEFORM_ENCODING,
     WAVEFORM_SCHEMA,
@@ -60,16 +61,31 @@ class MopeaksError(ValueError):
 
 
 def mopeaks_path(media_path: Path | str, *, audio_track: int = 0) -> Path:
-    """返回媒体旁的 mopeaks 路径。
+    """mopeaks 的**写入点**：由 waveform_dirs() 的第一项决定。
 
-    两件事跟上游对齐：保留完整媒体名（``ICE.mkv.mopeaks``，与 .ReaPeaks/.quapeaks 同风格），
-    非默认音轨加 ``.track-N`` 段（N 从 1 起，第 0 轨不带标记）—— 否则同一素材的
-    两条轨会互相覆盖对方的缓存。
+    默认在媒体旁（``ICE.mkv.mopeaks``，与 .ReaPeaks/.quapeaks 同风格、保留完整媒体名）；
+    用户勾了「将所有输出放入子文件夹」时进 ``_maw``。非默认音轨加 ``.track-N`` 段
+    （N 从 1 起，第 0 轨不带标记），否则两条轨会互相覆盖对方的缓存。
     """
     media_path = Path(media_path)
     _check_track(audio_track)
     track_suffix = f".track-{audio_track + 1}" if audio_track else ""
-    return media_path.with_name(media_path.name + track_suffix + ".mopeaks")
+    return waveform_dirs(media_path)[0] / (
+        media_path.name + track_suffix + ".mopeaks"
+    )
+
+
+def mopeaks_candidates(media_path: Path | str, *, audio_track: int = 0) -> list[Path]:
+    """读取顺序下的全部候选路径：写入点在前，其余位置在后。
+
+    用户改一次设置就把已有缓存判成过期、整批重抽 ffmpeg，是最难归因的
+    "静默慢"，所以所有位置都得找。
+    """
+    media_path = Path(media_path)
+    _check_track(audio_track)
+    track_suffix = f".track-{audio_track + 1}" if audio_track else ""
+    filename = media_path.name + track_suffix + ".mopeaks"
+    return [directory / filename for directory in waveform_dirs(media_path)]
 
 
 def _check_track(audio_track: int) -> None:
@@ -198,6 +214,7 @@ def save_mopeaks(
     """原子写入 mopeaks（临时文件 + replace，绝不做"先删后写"）。"""
     target = mopeaks_path(media_path, audio_track=audio_track)
     blob = encode_mopeaks(payload, media_path)
+    target.parent.mkdir(parents=True, exist_ok=True)  # _maw 可能还不存在
     fd, tmp = tempfile.mkstemp(prefix=".mopeaks-", dir=str(target.parent))
     try:
         with os.fdopen(fd, "wb") as fh:
@@ -225,10 +242,13 @@ def load_mopeaks(
 ) -> dict[str, Any] | None:
     """读取并校验媒体旁的 mopeaks；缺失/损坏/签名不符时返回 None。"""
     media_path = Path(media_path)
-    path = mopeaks_path(media_path, audio_track=audio_track)
-    try:
-        payload = decode_mopeaks(path.read_bytes(), path, audio_track=audio_track)
-    except (OSError, ValueError, struct.error):
+    for path in mopeaks_candidates(media_path, audio_track=audio_track):
+        try:
+            payload = decode_mopeaks(path.read_bytes(), path, audio_track=audio_track)
+        except (OSError, ValueError, struct.error):
+            continue  # 这个位置没有/坏了，接着找下一个
+        break
+    else:
         return None
     # source 里只存了秒级 mtime 与 size，按同口径复核。判定直接借用内核
     # 缓存那一套（低 32 位掩码 + mtime 环形指纹，容秒级漂移与 DST 整小时），
