@@ -330,5 +330,75 @@ class SpectralCapabilityFilterTests(unittest.TestCase):
         self.assertIsNone(quapeaks.load_spectral_payload(self.tone))
 
 
+
+class SameBasenameDifferentDirTests(unittest.TestCase):
+    """review 第 2/6 项：源与派生媒体同名不同目录时，回退档必须跟解码方走。
+
+    场景刻意让**源可用**：media_cache 优先解码源媒体，于是 decode_path = 源，
+    payload["source"]["name"] 也就是 "tone.wav" —— 与派生文件的 name 相同。
+    旧的 basename 猜法在这一步会错选 cache_path，把缓存写到派生目录去。
+    """
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.src_dir = self.root / "src"
+        self.cache_dir = self.root / "cache"
+        self.src_dir.mkdir()
+        self.cache_dir.mkdir()
+        self.source_media = self.src_dir / "tone.wav"
+        self.cache_media = self.cache_dir / "tone.wav"  # 同名，不同目录
+        _make_tone(self.source_media)
+        self.cache_media.write_bytes(b"RIFF" + b"\x00" * 40)
+        self.payload = {
+            "schema": waveform.WAVEFORM_SCHEMA,
+            "encoding": waveform.WAVEFORM_ENCODING,
+            "peaks_per_second": 100,
+            "sample_rate": 1000,
+            "division": 10,
+            "peak_count": 1,
+            "duration_ms": 10,
+            "data": "AAA=",
+            "source": waveform.media_signature(self.source_media),
+        }
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _run(self):
+        from maw.waveform import EmbeddedWaveformResult
+
+        seen: list = []
+
+        def fake_embed(project, media_path, **kwargs):
+            merged = dict(project)
+            merged["waveform"] = self.payload
+            return EmbeddedWaveformResult(project=merged, error=None)
+
+        with mock.patch.object(media_cache, "embed_waveform", side_effect=fake_embed), \
+            mock.patch.object(quapeaks, "generate_for_media", return_value=None), \
+            mock.patch.object(quapeaks, "find_self_wave_container", return_value=None), \
+            mock.patch.object(
+                media_cache, "_persist_mopeaks_fallback",
+                side_effect=lambda payload, media_path, **kw: seen.append(Path(media_path)),
+            ):
+            media_cache.embed_media_caches(
+                {"media": str(self.source_media), "segments": []},
+                self.cache_media,
+                source_media_path=self.source_media,
+            )
+        return seen
+
+    def test_fallback_follows_the_decoded_source_not_the_derived_sibling(self) -> None:
+        seen = self._run()
+        self.assertEqual(
+            seen, [self.source_media],
+            "解码的是源媒体，回退档就得写在源媒体旁；按 basename 猜会跑到派生目录去",
+        )
+        self.assertEqual(seen[0].name, "tone.wav")
+        self.assertEqual(seen[0].parent, self.src_dir)
+        self.assertNotEqual(seen[0].parent, self.cache_dir)
+
+
 if __name__ == "__main__":
     unittest.main()
