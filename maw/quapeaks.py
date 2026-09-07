@@ -371,7 +371,29 @@ def _header_matches_media(path: Path, media_path: Path) -> bool:
     )
 
 
-def find_reapeaks(media_path: Path, *, audio_track: int = 0) -> Path | None:
+def _header_has_spectral_layer(path: Path) -> bool:
+    """只读全局头 + 层表，判断容器里有没有 spectral 层（不解峰数据）。
+
+    给候选过滤用：构造 ReapeaksFile 会把几百万个峰全解一遍，拿它来挑文件等于
+    为了选对文件先把最贵的活干完。层数按头里的字节数夹住，损坏文件不致多读。
+    """
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(18)
+            if len(head) < 18:
+                return False
+            table = handle.read(min(head[5], 64) * 8)
+    except OSError:
+        return False
+    for index in range(len(table) // 8):
+        if struct.unpack_from("<i", table, index * 8)[0] == -ord("s"):
+            return True
+    return False
+
+
+def find_reapeaks(
+    media_path: Path, *, audio_track: int = 0, need_spectral: bool = False
+) -> Path | None:
     """Locate a peaks container next to a media file.
 
     MAW 自己产出的 .quapeaks 排在 REAPER 的 .ReaPeaks 之前，但**过期的一方
@@ -402,6 +424,11 @@ def find_reapeaks(media_path: Path, *, audio_track: int = 0) -> Path | None:
             if not candidate.is_file():
                 continue
         except OSError:
+            continue
+        # 先按调用方需要的能力过滤：一份新鲜但只有 wave 层的 .quapeaks 不该
+        # 挡住同样新鲜、带 spectral 层的 .ReaPeaks —— 否则频谱染色会被静默短路，
+        # 而日志上看着"缓存是好的"。连回退候选也一并要求，不给它当选的机会。
+        if need_spectral and not _header_has_spectral_layer(candidate):
             continue
         if first_existing is None:
             first_existing = candidate
@@ -652,8 +679,13 @@ def load_spectral_payload(
 
     Any missing / unreadable / non-spectral / stale .ReaPeaks degrades to None
     so the editor keeps working without spectral coloring.
+
+    候选按 need_spectral 过滤：不然一份更新的 wave-only .quapeaks 会挡住
+    带 spectral 层的 .ReaPeaks，读出来是 None 而不是退去读那份能用的。
     """
-    reapeaks_path = find_reapeaks(media_path, audio_track=audio_track)
+    reapeaks_path = find_reapeaks(
+        media_path, audio_track=audio_track, need_spectral=True
+    )
     if reapeaks_path is None or not _reapeaks_matches_media(reapeaks_path, media_path):
         return None
     try:
