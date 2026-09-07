@@ -287,7 +287,7 @@ jobs:
           if ($MoseFileVersion -ne $ExpectedMoseVersion) {
             throw "MOSE.exe version $MoseFileVersion does not match $ExpectedMoseVersion."
           }
-          # electron-builder derives the Windows resource from assets/MOSE-icon.png;
+          # electron-builder derives the Windows resource from the multi-size assets/maw.ico;
           # extract it once from the finished PE so a package cannot silently
           # ship the generic Electron icon.
           Add-Type -AssemblyName System.Drawing

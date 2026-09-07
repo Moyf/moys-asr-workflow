@@ -5,6 +5,7 @@ const {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   shell,
 } = require('electron');
 const crypto = require('node:crypto');
@@ -438,6 +439,10 @@ if (!gotLock) {
     }
   });
   app.whenReady().then(async () => {
+    // MAWE renders its own theme-aware toolbar inside the editor document.
+    // Electron's default File/Edit/View/Window menu is redundant and follows
+    // the OS chrome instead of the editor theme, so keep only the title bar.
+    Menu.setApplicationMenu(null);
     registerIpc();
     await bootstrap(initialProjectPath);
   });
