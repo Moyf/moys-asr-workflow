@@ -19,6 +19,8 @@ SUBTITLE_BACKGROUND_ALPHA_MIN = 0.0
 SUBTITLE_BACKGROUND_ALPHA_MAX = 1.0
 SUBTITLE_BACKGROUND_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
 SUBTITLE_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+SPEAKER_LABEL_COLORS = ("yellow", "green", "red", "purple", "blue")
+SPEAKER_LABEL_MAX_LENGTH = 64
 
 
 def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
@@ -45,6 +47,9 @@ def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
                 else:
                     values[field] = float(value)
             issues.extend(_validate_subtitle_style(subtitle, "$.preview.subtitle"))
+            issues.extend(_validate_speaker_label_settings(
+                subtitle.get("speaker_labels"), "$.preview.subtitle.speaker_labels",
+            ))
             if len(values) == 4:
                 if values["x"] + values["width"] > 1:
                     issues.append(("$.preview.subtitle", "x + width must be <= 1"))
@@ -57,6 +62,34 @@ def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
             issues.append(("$.preview.extension_subtitle", "must be an object or null"))
         else:
             issues.extend(_validate_subtitle_style(extension_subtitle, "$.preview.extension_subtitle"))
+    return tuple(issues)
+
+
+def _validate_speaker_label_settings(value: JsonValue, path: str) -> tuple[ValidationIssue, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, dict):
+        return ((path, "must be an object or null"),)
+
+    issues: list[ValidationIssue] = []
+    if "enabled" in value and not isinstance(value.get("enabled"), bool):
+        issues.append((f"{path}.enabled", "must be a boolean"))
+    names = value.get("names")
+    if names is None:
+        return tuple(issues)
+    if not isinstance(names, dict):
+        issues.append((f"{path}.names", "must be an object or null"))
+        return tuple(issues)
+    for color in SPEAKER_LABEL_COLORS:
+        if color not in names:
+            continue
+        label = names.get(color)
+        if (not isinstance(label, str) or len(label) > SPEAKER_LABEL_MAX_LENGTH
+                or any(ord(char) < 0x20 or ord(char) == 0x7F for char in label)):
+            issues.append((
+                f"{path}.names.{color}",
+                "must be a string up to 64 characters without control characters",
+            ))
     return tuple(issues)
 
 
