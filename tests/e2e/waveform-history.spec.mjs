@@ -1593,6 +1593,7 @@ test('settings gears stay at the end of their headers and rise above dividers', 
 test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await page.locator('#help-toggle').click();
   const helpPanel = page.locator('#help-panel');
   await expect(helpPanel).toHaveClass(/show/);
@@ -1700,7 +1701,6 @@ test('Help settings actions open the related waveform and media settings', async
   await page.locator('#waveform-settings-toggle').click();
   await expect(helpPanel).toHaveClass(/show/);
 
-  await helpPanel.locator('#help-advanced-toggle').click();
   await helpPanel.getByRole('tab', { name: '微调字幕', exact: true }).click();
   await helpPanel.locator('#help-open-waveform-keyboard-settings').click();
   await expect(helpPanel).toHaveClass(/show/);

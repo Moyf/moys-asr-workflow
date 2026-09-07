@@ -146,8 +146,11 @@ test('the default waveform subtitle target follows the pointer', async ({ page }
   await page.goto(server.url);
   await waitForMedia(page);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-general').click();
   await expect(page.locator('#click-target')).toHaveValue('pointer');
   await expect(page.locator('#click-target-field')).toBeVisible();
+  // 关闭设置窗口：浮动窗口悬浮在波形区上方，避免后续点击被窗口拦截。
+  await page.locator('#editor-settings-toggle').click();
   await page.evaluate(() => {
     document.getElementById('waveform-scroll').scrollTop = 5 * (120 + 10);
   });

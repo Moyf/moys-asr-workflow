@@ -105,11 +105,10 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   expect(await page.evaluate(() => document.activeElement?.id)).not.toBe('help-toggle');
   const helpPanel = page.locator('#help-panel');
   await expect(helpPanel).toHaveClass(/show/);
-  await expect(helpPanel.getByRole('tab')).toHaveText(['基础操作', '快捷操作', '波形区', '播放与导航']);
+  await expect(helpPanel.getByRole('tab')).toHaveText(['基础操作', '快捷操作', '波形区', '播放与导航', '微调字幕', '空隙操作', '批量操作']);
   await expect(helpPanel.getByRole('tab').first()).toHaveCSS('font-size', '13px');
-  await expect(helpPanel.locator('#help-advanced-toggle')).toHaveText('进阶');
-  await expect(helpPanel.locator('#help-advanced-toggle')).toHaveAttribute('aria-expanded', 'false');
-  await expect(helpPanel.locator('#help-advanced-tabs')).toBeHidden();
+  await expect(helpPanel.locator('.editor-settings-nav')).toHaveAttribute('aria-orientation', 'vertical');
+  await expect(helpPanel.locator('.help-nav-group-label')).toHaveText('进阶');
   await expect(helpPanel.getByRole('tab', { name: '基础操作' })).toHaveAttribute('aria-selected', 'true');
   const basicPanel = helpPanel.locator('#help-tab-panel-basic');
   await expect(basicPanel).toHaveCSS('font-size', '13px');
@@ -143,10 +142,6 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(waveformPanel.locator('.help-important').filter({ hasText: 'Shift+拖拽空白处' })).toHaveCount(1);
   await expect(waveformPanel.locator('.help-important').filter({ hasText: '绑定到主副字幕（自动匹配）' })).toHaveCount(1);
   await expect(waveformPanel.locator('.help-important').filter({ hasText: '将选中的副字幕的时长对齐到绑定主字幕' })).toHaveCount(1);
-  await helpPanel.locator('#help-advanced-toggle').click();
-  await expect(helpPanel.locator('#help-advanced-tabs')).toBeVisible();
-  await expect(helpPanel.locator('#help-advanced-toggle')).toHaveAttribute('aria-expanded', 'true');
-  await expect(helpPanel.getByRole('tab')).toHaveText(['基础操作', '快捷操作', '波形区', '播放与导航', '微调字幕', '空隙操作', '批量操作']);
   await helpPanel.getByRole('tab', { name: '微调字幕', exact: true }).click();
   const fineTuningPanel = helpPanel.locator('#help-tab-panel-fine-tuning');
   await expect(fineTuningPanel).toBeVisible();
@@ -205,7 +200,6 @@ test('Gap help translates the updated operations in English', async ({ page }) =
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
   await page.goto(server.url);
   await page.locator('#help-toggle').click();
-  await page.locator('#help-advanced-toggle').click();
   await page.getByRole('tab', { name: 'Gap operations', exact: true }).click();
 
   const gapHelp = page.locator('#help-tab-panel-gap');

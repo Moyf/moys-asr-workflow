@@ -453,6 +453,8 @@ test('Shift+A/D on a held subtitle snaps its outer boundaries to neighbors', asy
     renderAll();
   });
   await page.locator('#editor-settings-toggle').click();
+  // 关闭设置窗口：浮动窗口悬浮在波形区上方，避免按住拖动被窗口拦截。
+  await page.locator('#editor-settings-toggle').click();
   const block = page.locator('.waveform-cue-block[data-idx="1"]').first();
   await expect(block).toBeVisible();
   const blockBox = await stableVisibleBoundingBox(page, block);

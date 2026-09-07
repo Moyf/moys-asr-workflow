@@ -241,7 +241,7 @@ __WAVEFORM_CSS__
   <span class="info">已选 <b id="sel-count">0</b></span>
   <span class="toolbar-utility-group" role="group" aria-label="编辑器工具">
     <button type="button" id="language-toggle" class="language-toggle" title="Switch to English">🌐English</button>
-    <button type="button" id="editor-settings-toggle" title="展开编辑器通用设置" aria-expanded="false" aria-controls="editor-settings-panel">⚙️ 全局设置</button>
+    <button type="button" id="editor-settings-toggle" title="打开全局设置窗口" aria-expanded="false" aria-controls="editor-settings-panel">⚙️ 全局设置</button>
     <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">🤔 帮助</button>
     <button type="button" id="theme-toggle" title="切换到亮色主题" aria-label="切换到亮色主题">🌖</button>
   </span>
@@ -474,31 +474,25 @@ __WAVEFORM_CSS__
 
 <!-- 可拖动的非模态帮助窗口 -->
 <aside class="gap-remove-panel help-panel" id="help-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="help-panel-title">
-  <header class="gap-remove-panel-header" id="help-drag-handle">
-    <div class="gap-remove-heading">
-      <span class="gap-remove-eyebrow">MAWE</span>
-      <h3 id="help-panel-title">操作帮助</h3>
-    </div>
+  <header class="gap-remove-panel-header help-window-header" id="help-drag-handle">
+    <h3 id="help-panel-title" class="help-window-title">操作帮助</h3>
     <div class="help-header-actions">
       <button type="button" id="help-onboarding" class="help-replay-button" title="重新查看快速上手">快速上手</button>
-      <button type="button" id="help-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭帮助窗口">×</button>
+      <button type="button" id="help-close" class="help-window-close" title="关闭（Esc）" aria-label="关闭帮助窗口">×</button>
     </div>
   </header>
-  <div class="help-tab-bar">
-    <div class="help-tabs" role="tablist" aria-label="常用帮助分类">
-      <button type="button" class="help-tab" id="help-tab-basic" role="tab" aria-selected="true" aria-controls="help-tab-panel-basic" data-help-tab="basic">基础操作</button>
-      <button type="button" class="help-tab" id="help-tab-shortcuts" role="tab" aria-selected="false" aria-controls="help-tab-panel-shortcuts" data-help-tab="shortcuts" tabindex="-1">快捷操作</button>
-      <button type="button" class="help-tab" id="help-tab-waveform" role="tab" aria-selected="false" aria-controls="help-tab-panel-waveform" data-help-tab="waveform" tabindex="-1">波形区</button>
-      <button type="button" class="help-tab" id="help-tab-playback" role="tab" aria-selected="false" aria-controls="help-tab-panel-playback" data-help-tab="playback" tabindex="-1">播放与导航</button>
-    </div>
-    <button type="button" class="help-tab help-advanced-toggle" id="help-advanced-toggle" aria-expanded="false" aria-controls="help-advanced-tabs">进阶</button>
-  </div>
-  <div class="help-tabs help-advanced-tabs" id="help-advanced-tabs" role="tablist" aria-label="进阶帮助分类" hidden>
-    <button type="button" class="help-tab" id="help-tab-fine-tuning" role="tab" aria-selected="false" aria-controls="help-tab-panel-fine-tuning" data-help-tab="fine-tuning" tabindex="-1">微调字幕</button>
-    <button type="button" class="help-tab" id="help-tab-gap" role="tab" aria-selected="false" aria-controls="help-tab-panel-gap" data-help-tab="gap" tabindex="-1">空隙操作</button>
-    <button type="button" class="help-tab" id="help-tab-batch" role="tab" aria-selected="false" aria-controls="help-tab-panel-batch" data-help-tab="batch" tabindex="-1">批量操作</button>
-  </div>
-  <div class="gap-remove-panel-body help-panel-body">
+  <div class="help-window-body">
+    <nav class="editor-settings-nav" role="tablist" aria-orientation="vertical" aria-label="帮助分区">
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-basic" role="tab" aria-selected="true" aria-controls="help-tab-panel-basic" data-help-tab="basic">基础操作</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-shortcuts" role="tab" aria-selected="false" aria-controls="help-tab-panel-shortcuts" data-help-tab="shortcuts" tabindex="-1">快捷操作</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-waveform" role="tab" aria-selected="false" aria-controls="help-tab-panel-waveform" data-help-tab="waveform" tabindex="-1">波形区</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-playback" role="tab" aria-selected="false" aria-controls="help-tab-panel-playback" data-help-tab="playback" tabindex="-1">播放与导航</button>
+      <div class="help-nav-group-label" aria-hidden="true">进阶</div>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-fine-tuning" role="tab" aria-selected="false" aria-controls="help-tab-panel-fine-tuning" data-help-tab="fine-tuning" tabindex="-1">微调字幕</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-gap" role="tab" aria-selected="false" aria-controls="help-tab-panel-gap" data-help-tab="gap" tabindex="-1">空隙操作</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-batch" role="tab" aria-selected="false" aria-controls="help-tab-panel-batch" data-help-tab="batch" tabindex="-1">批量操作</button>
+    </nav>
+    <div class="gap-remove-panel-body help-panel-body">
     <section class="help-group help-tab-panel" id="help-tab-panel-basic" role="tabpanel" aria-labelledby="help-tab-basic" data-help-tab-panel="basic" tabindex="0">
       <h4 class="help-title">基础操作</h4>
       <section class="help-subgroup">
@@ -738,6 +732,7 @@ __WAVEFORM_CSS__
         </div>
       </section>
     </section>
+    </div>
   </div>
 </aside>
 
@@ -770,10 +765,96 @@ __WAVEFORM_CSS__
   </section>
 </div>
 
-<section class="editor-settings-panel" id="editor-settings-panel" aria-label="MAWE 设置" hidden>
+<section class="editor-settings-panel editor-settings-window" id="editor-settings-panel" role="dialog" aria-modal="false" aria-label="MAWE 设置" aria-hidden="true">
+  <header class="editor-settings-window-header" id="editor-settings-drag-handle">
+    <span class="editor-settings-window-title">全局设置</span>
+    <button type="button" class="editor-settings-window-close" id="editor-settings-close" title="关闭（Esc）" aria-label="关闭全局设置窗口">×</button>
+  </header>
+  <div class="editor-settings-window-body">
+    <nav class="editor-settings-nav" role="tablist" aria-orientation="vertical" aria-label="设置分区">
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-general" role="tab" data-settings-tab="general" aria-selected="true" aria-controls="editor-settings-page-general">通用操作</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-timebase" role="tab" data-settings-tab="timebase" aria-selected="false" aria-controls="editor-settings-page-timebase" tabindex="-1">时间基准</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-split-merge" role="tab" data-settings-tab="split-merge" aria-selected="false" aria-controls="editor-settings-page-split-merge" tabindex="-1">拆分与合并</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-export" role="tab" data-settings-tab="export" aria-selected="false" aria-controls="editor-settings-page-export" tabindex="-1">导出</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-save" role="tab" data-settings-tab="save" aria-selected="false" aria-controls="editor-settings-page-save" tabindex="-1">保存</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-sticker" role="tab" data-settings-tab="sticker" aria-selected="false" aria-controls="editor-settings-page-sticker" tabindex="-1">表情包</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-easter-eggs" role="tab" data-settings-tab="easter-eggs" aria-selected="false" aria-controls="editor-settings-page-easter-eggs" tabindex="-1">彩蛋</button>
+    </nav>
+    <div class="editor-settings-pages">
+  <div class="editor-settings-page" id="editor-settings-page-general" role="tabpanel" aria-labelledby="editor-settings-tab-general">
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
-    <span class="editor-settings-title">拆分与合并</span>
+    <div class="editor-settings-field">
+    <label class="editor-settings-item" title="字幕列表与波形字幕块的普通单击行为；双击编辑不受影响">
+      点击字幕块时
+      <select id="click-behavior">
+        <option value="select-and-seek" selected>选中并跳转</option>
+        <option value="select-only">仅选中（不跳转）</option>
+        <option value="select-and-play">选中并跳转（自动播放）</option>
+      </select>
+    </label>
+    <small class="editor-settings-hint" id="click-behavior-hint">暂停时只跳转，不自动播放；播放中跳转后继续播放。</small>
+    </div>
+    <label class="editor-settings-item" id="click-target-field" title="字幕列表点击始终跳转到字幕开头；此设置只影响波形区点击字幕块">
+      跳转目标
+      <select id="click-target">
+        <option value="cue-start">字幕开头</option>
+        <option value="pointer" selected>鼠标所在位置</option>
+      </select>
+    </label>
+    <div class="editor-settings-field">
+    <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
+      <input type="checkbox" id="select-group-members"> 同时选中分组内项目
+    </label>
+    <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
+    </div>
+    </div>
+  </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-timebase" role="tabpanel" aria-labelledby="editor-settings-tab-timebase" hidden>
+  <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
+    <div class="editor-settings-field timeline-settings-field">
+      <div class="editor-settings-field timeline-mode-field">
+        <div class="timeline-settings-controls">
+          <label class="editor-settings-item" title="字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行">
+            时间单位
+            <select id="timeline-timebase">
+              <option value="milliseconds" selected>毫秒</option>
+              <option value="frames">帧</option>
+            </select>
+          </label>
+          <label class="editor-settings-item" title="帧时间基准的帧率；帧模式会按此 FPS 保存并显示帧时间码">
+            FPS
+            <span class="gap-remove-number-control">
+              <input type="number" id="timeline-fps" min="1" max="240" step="0.001" value="30" inputmode="decimal" aria-label="帧率 FPS">
+              <span class="gap-remove-unit">fps</span>
+            </span>
+          </label>
+        </div>
+        <small class="editor-settings-hint" id="timeline-timebase-hint">毫秒模式保持原有时间编辑方式。切换为帧模式后，拖动、方向键和 A/D 微调都会按帧执行。</small>
+      </div>
+      <div class="editor-settings-field timeline-snap-field">
+        <label class="toggle editor-settings-item" title="帧模式下把波形鼠标指针吸附到最近的帧；毫秒模式下不生效">
+          <input type="checkbox" id="timeline-snap-to-frame">
+          吸附到帧
+        </label>
+        <small class="editor-settings-hint" id="timeline-snap-to-frame-hint">仅帧模式生效；切换到帧模式后可启用。</small>
+      </div>
+      <div class="editor-settings-field timeline-separator-field">
+        <label class="editor-settings-item" title="帧时间码中秒与帧之间的分隔符；只使用一个非字母数字符号">
+          时间码分隔符
+          <input type="text" id="timeline-timecode-separator" class="timeline-timecode-separator-input" value=":" maxlength="1" size="1" inputmode="text" autocomplete="off" spellcheck="false" aria-label="时间码分隔符">
+        </label>
+        <small class="editor-settings-hint" id="timeline-timecode-separator-hint">帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。</small>
+      </div>
+    </div>
+    </div>
+  </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-split-merge" role="tabpanel" aria-labelledby="editor-settings-tab-split-merge" hidden>
+  <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
     <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存">
       字幕（编辑状态下）拆分按键
       <select id="split-key">
@@ -785,16 +866,6 @@ __WAVEFORM_CSS__
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
     <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分。</small>
-    <div class="editor-settings-field split-language-type-field" role="group" aria-labelledby="split-language-type-title">
-      <span class="editor-settings-item split-language-type-title" id="split-language-type-title">字幕语言类型</span>
-      <div class="split-language-type-row">
-        <span class="split-join-mode-hint-group" id="merge-join-mode-hint" hidden>
-          <span class="editor-settings-item" id="merge-join-mode-text"></span>
-          <button type="button" class="split-join-mode-switch" id="merge-join-mode-switch"></button>
-        </span>
-      </div>
-      <small class="editor-settings-hint split-language-type-hint">语言类型会影响拆分面板的分隔判断，以及合并时是否插入空格等。</small>
-    </div>
     <div class="editor-settings-field split-join-settings-actions" role="group" aria-label="拆分与合并配置">
       <div class="split-join-settings-anchor merge-join-settings-field" id="merge-join-settings">
         <button type="button" id="merge-join-settings-toggle" title="配置合并字幕时插入字符" aria-expanded="false" aria-controls="merge-join-settings-panel" aria-haspopup="dialog">配置合并字符</button>
@@ -834,68 +905,21 @@ __WAVEFORM_CSS__
     </div>
     </div>
   </div>
-  <div class="editor-settings-group">
-    <div class="editor-settings-sub-group">
-    <span class="editor-settings-title">通用操作</span>
-    <div class="editor-settings-field">
-    <label class="editor-settings-item" title="字幕列表与波形字幕块的普通单击行为；双击编辑不受影响">
-      点击字幕块时
-      <select id="click-behavior">
-        <option value="select-and-seek" selected>选中并跳转</option>
-        <option value="select-only">仅选中（不跳转）</option>
-        <option value="select-and-play">选中并跳转（自动播放）</option>
-      </select>
-    </label>
-    <small class="editor-settings-hint" id="click-behavior-hint">暂停时只跳转，不自动播放；播放中跳转后继续播放。</small>
+  <span class="editor-settings-group-heading" id="split-language-type-title">字幕语言类型</span>
+  <div class="editor-settings-group split-language-type-group" role="group" aria-labelledby="split-language-type-title">
+    <div class="split-language-type-row">
+      <span class="split-join-mode-hint-group" id="merge-join-mode-hint" hidden>
+        <span class="editor-settings-item" id="merge-join-mode-text"></span>
+        <button type="button" class="split-join-mode-switch" id="merge-join-mode-switch"></button>
+      </span>
     </div>
-    <label class="editor-settings-item" id="click-target-field" title="字幕列表点击始终跳转到字幕开头；此设置只影响波形区点击字幕块">
-      跳转目标
-      <select id="click-target">
-        <option value="cue-start">字幕开头</option>
-        <option value="pointer" selected>鼠标所在位置</option>
-      </select>
-    </label>
-    <div class="editor-settings-field">
-    <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
-      <input type="checkbox" id="select-group-members"> 同时选中分组内项目
-    </label>
-    <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
-    </div>
-    <div class="editor-settings-field timeline-settings-field" role="group" aria-labelledby="timeline-settings-title">
-      <span class="editor-settings-title" id="timeline-settings-title">时间基准</span>
-      <div class="timeline-settings-controls">
-        <label class="editor-settings-item" title="字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行">
-          时间单位
-          <select id="timeline-timebase">
-            <option value="milliseconds" selected>毫秒</option>
-            <option value="frames">帧</option>
-          </select>
-        </label>
-        <label class="editor-settings-item" title="帧时间基准的帧率；帧模式会按此 FPS 保存并显示帧时间码">
-          FPS
-          <span class="gap-remove-number-control">
-            <input type="number" id="timeline-fps" min="1" max="240" step="0.001" value="30" inputmode="decimal" aria-label="帧率 FPS">
-            <span class="gap-remove-unit">fps</span>
-          </span>
-        </label>
-        <label class="editor-settings-item" title="帧模式下把波形鼠标指针吸附到最近的帧；毫秒模式下不生效">
-          <input type="checkbox" id="timeline-snap-to-frame">
-          吸附到帧
-        </label>
-        <label class="editor-settings-item" title="帧时间码中秒与帧之间的分隔符；只使用一个非字母数字符号">
-          时间码分隔符
-          <input type="text" id="timeline-timecode-separator" class="timeline-timecode-separator-input" value=":" maxlength="1" size="1" inputmode="text" autocomplete="off" spellcheck="false" aria-label="时间码分隔符">
-        </label>
-      </div>
-      <small class="editor-settings-hint" id="timeline-timebase-hint">毫秒模式保持原有时间编辑方式。帧模式使用 HH:MM:SS:FF 显示，FF 为当前秒内的帧号。</small>
-      <small class="editor-settings-hint" id="timeline-snap-to-frame-hint">仅帧模式生效；切换到帧模式后可启用。</small>
-      <small class="editor-settings-hint" id="timeline-timecode-separator-hint">帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。</small>
-    </div>
-    </div>
+    <small class="editor-settings-hint split-language-type-hint">语言类型会影响拆分面板的分隔判断（英文会按单词拆）、计数的规则，以及合并时是否插入空格等。</small>
+    <small class="editor-settings-hint">对于双语字幕，可以在「多重字幕」中单独配置两种字幕的语言类型。</small>
   </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-export" role="tabpanel" aria-labelledby="editor-settings-tab-export" hidden>
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
-    <span class="editor-settings-title">导出</span>
     <label class="toggle editor-settings-item" title="只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴">
       <input type="checkbox" id="export-start-at-zero"> SRT 首条从 0 开始
     </label>
@@ -906,8 +930,11 @@ __WAVEFORM_CSS__
     <small class="editor-settings-hint">选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。</small>
     </div>
     </div>
+  </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-save" role="tabpanel" aria-labelledby="editor-settings-tab-save" hidden>
+  <div class="editor-settings-group">
     <div id="server-auto-save-settings" class="editor-settings-sub-group" hidden>
-      <span class="editor-settings-title">保存</span>
         <label class="toggle editor-settings-item" title="将改动自动保存回当前工程文件">
           <input type="checkbox" id="auto-save-project" checked> 自动保存
         </label>
@@ -919,9 +946,10 @@ __WAVEFORM_CSS__
       </label>
     </div>
   </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-sticker" role="tabpanel" aria-labelledby="editor-settings-tab-sticker" hidden>
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
-      <span class="editor-settings-title">表情包</span>
       <div class="editor-settings-field">
         <button type="button" id="sticker-root-btn" title="设置表情包根目录">设置表情包根目录</button>
       </div>
@@ -933,7 +961,12 @@ __WAVEFORM_CSS__
         </select>
       </label>
       <small class="editor-settings-hint" id="sticker-otio-export-mode-hint">选择引用原始表情包素材；选择便携模式时，服务器会将素材复制到工程同目录。</small>
-      <span class="editor-settings-title">彩蛋</span>
+    </div>
+  </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-easter-eggs" role="tabpanel" aria-labelledby="editor-settings-tab-easter-eggs" hidden>
+  <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
       <div class="editor-settings-toggle-group ninja-toggle-group">
         <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，并可启用拆分音效与刀光特效">
           <input type="checkbox" id="ninja-mode"> 字幕忍者
@@ -962,6 +995,9 @@ __WAVEFORM_CSS__
         </div>
         <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
       </div>
+    </div>
+  </div>
+  </div>
     </div>
   </div>
 </section>

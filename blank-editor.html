@@ -997,14 +997,59 @@
     .subtitle-preview-setting-pair { grid-template-columns: 1fr; }
   }
 
-  .editor-settings-panel {
-    flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr));
-    gap: 8px; margin: -2px 0 8px; padding: 10px;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
-    box-shadow: var(--shadow-1);
+  /* 全局设置是可拖动的非模态独立窗口：左侧垂直标签页 + 右侧内容区。
+     z-index 低于锚定弹出面板（420）与表情包根目录弹窗（280），
+     保证窗口内的「配置合并字符 / 配置拆分标点」浮层和表情包弹窗都能盖住窗口。 */
+  .editor-settings-window {
+    display: none; position: fixed; z-index: 270;
+    flex-direction: column;
+    width: min(560px, calc(100vw - 24px));
+    max-height: min(600px, calc(100vh - 60px));
+    padding: 0;
+    background: var(--bg-overlay);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-3);
   }
-  .editor-settings-panel[hidden] { display: none; }
+  .editor-settings-window.show { display: flex; }
+  .editor-settings-window-header {
+    display: flex; flex: 0 0 auto; align-items: center; gap: 8px;
+    padding: 9px 8px 9px 14px;
+    background: var(--bg-raised); border-bottom: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    cursor: grab; user-select: none;
+  }
+  .editor-settings-window.dragging .editor-settings-window-header { cursor: grabbing; }
+  .editor-settings-window-title { flex: 1 1 auto; color: var(--text-primary); font-size: 13px; font-weight: 600; }
+  .editor-settings-window-close {
+    min-width: 26px; padding: 3px 8px; color: var(--btn-text); background: var(--btn-bg);
+    border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    font-size: 14px; line-height: 1; cursor: pointer;
+    transition: background var(--t-fast), border-color var(--t-fast);
+  }
+  .editor-settings-window-close:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .editor-settings-window-close:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-window-body { display: flex; flex: 1 1 auto; min-height: 0; }
+  .editor-settings-nav {
+    display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 2px;
+    width: 132px; padding: 10px 8px;
+    background: var(--bg-raised); border-right: 1px solid var(--border-subtle);
+    border-radius: 0 0 0 var(--radius-lg);
+  }
+  .editor-settings-nav-tab {
+    padding: 6px 10px; text-align: left; color: var(--text-secondary); background: none;
+    border: 1px solid transparent; border-radius: var(--radius-sm);
+    font-size: 13px; cursor: pointer; white-space: nowrap;
+    transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+  }
+  .editor-settings-nav-tab:hover { color: var(--text-primary); background: var(--accent-tint); }
+  .editor-settings-nav-tab:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-nav-tab.active {
+    color: var(--text-primary); background: var(--accent-tint-strong);
+    border-color: var(--accent);
+  }
+  .editor-settings-pages { flex: 1 1 auto; min-width: 0; padding: 10px 12px; overflow-y: auto; }
+  .editor-settings-page { display: flex; flex-direction: column; gap: 8px; }
+  .editor-settings-page[hidden] { display: none; }
   .editor-settings-group {
     display: flex; flex-direction: column; align-items: stretch; gap: 16px;
     min-width: 0; padding: 8px 10px;
@@ -1032,7 +1077,7 @@
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
   .editor-settings-field > .editor-settings-hint { margin: 0; }
   .timeline-settings-field {
-    gap: 6px; padding-top: 7px; border-top: 1px solid var(--border-subtle);
+    gap: 6px;
   }
   .timeline-settings-controls {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; width: 100%;
@@ -1041,17 +1086,17 @@
   .timeline-settings-controls .timeline-timecode-separator-input {
     width: 2.5em !important; min-width: 2.5em; padding-left: 3px; padding-right: 3px; text-align: center;
   }
-  /* 字幕语言类型独立成组，避免提示与「合并字幕时插入字符」标题挤在一起。 */
-  .split-language-type-field {
-    gap: 5px; padding-top: 7px;
-    border-top: 1px solid var(--border-subtle);
+  /* 字幕语言类型独立成一个卡片；分区标题由左侧标签页承担，卡片内的
+     group-heading 只用于标注这张卡片本身。 */
+  .split-language-type-group { gap: 8px; }
+  .editor-settings-group-heading {
+    color: var(--text-secondary); font-size: 0.8em;
+    font-weight: 600; letter-spacing: .08em;
   }
-  .split-language-type-title { font-weight: 600; }
   .split-language-type-row {
     display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
     width: 100%; min-width: 0;
   }
-  .split-language-type-row > .split-join-mode-hint-group { margin-left: 0; }
   .split-language-type-hint { width: 100%; }
 
   /* 合并字符与拆分标点使用同一行的两个配置入口。 */
@@ -1119,10 +1164,10 @@
     flex: 1 1 calc(50% - 10px);
     min-width: 0;
   }
+  /* 类型提示与「切换为字符型/单词型」上下两行：按钮独立成行、无下划线。 */
   .split-join-mode-hint-group {
-    display: inline-flex; flex-wrap: wrap; align-items: baseline;
-    gap: 2px 8px;
-    margin-left: auto; min-width: 0; max-width: 100%;
+    display: flex; flex-direction: column; align-items: flex-start;
+    gap: 4px; min-width: 0; max-width: 100%;
   }
   .split-join-mode-hint-group[hidden] { display: none; }
   .split-join-mode-hint-group > #merge-join-mode-text { white-space: nowrap; }
@@ -1130,7 +1175,6 @@
     background: none; border: none; padding: 0;
     color: var(--accent); cursor: pointer;
     font-size: 12px; line-height: inherit; white-space: nowrap;
-    text-decoration: underline; text-underline-offset: 2px;
   }
   .split-join-mode-switch:hover { color: var(--accent-hover); }
   .split-trim-symbol-grid {
@@ -1196,13 +1240,15 @@
     transition: border-color var(--t-fast), box-shadow var(--t-fast);
   }
   .editor-settings-panel input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
-  .editor-settings-panel button {
+  /* 通用按钮样式不作用于设置导航标签：标签有独立的基础/hover/active 外观，
+     否则这里的更高优先级会在 hover 时盖掉 active 高亮。 */
+  .editor-settings-panel button:not(.editor-settings-nav-tab) {
     min-width: 26px; padding: 3px 7px; color: var(--btn-text); background: var(--btn-bg);
     border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
     transition: background var(--t-fast), border-color var(--t-fast), filter var(--t-fast);
   }
-  .editor-settings-panel button:hover:not(:disabled) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
-  .editor-settings-panel button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .editor-settings-panel button:disabled,
   .editor-settings-panel select:disabled,
   .editor-settings-panel input:disabled { opacity: .42; cursor: not-allowed; }
@@ -1216,10 +1262,9 @@
     font: 11px var(--font-mono);
     background: var(--bg-input);
   }
-  @media (max-width: 860px) {
-    .editor-settings-panel { grid-template-columns: 1fr; }
-  }
   @media (max-width: 420px) {
+    .editor-settings-window { width: calc(100vw - 16px); }
+    .editor-settings-nav { width: 104px; padding: 8px 6px; }
     .editor-settings-toggle-group > .toggle { gap: 2px; }
   }
 
@@ -1421,46 +1466,39 @@
     height: 1px; background: var(--border-subtle); margin: 4px 0;
   }
 
-  /* === 操作帮助 === */
+  /* === 操作帮助 ===
+     视觉与「全局设置」窗口同构：纯色面板 + 左侧垂直标签页；
+     帮助内容自己的琥珀色高亮（help-important / 快速上手按钮）保留。 */
   .gap-remove-panel.help-panel {
-    width: min(720px, calc(100vw - 24px));
-    min-width: 320px; min-height: 240px; max-width: calc(100vw - 24px);
+    width: min(780px, calc(100vw - 24px));
+    min-width: 400px; min-height: 240px; max-width: calc(100vw - 24px);
     resize: both;
     container: help-panel / inline-size;
+    background: var(--bg-overlay);
+    backdrop-filter: none;
+    box-shadow: var(--shadow-3);
   }
-  .help-tab-bar {
-    flex: 0 0 auto; display: flex; align-items: flex-end; min-width: 0;
-    padding: 9px 14px 0; overflow: hidden; border-bottom: 1px solid var(--border-subtle);
+  /* 基础 .gap-remove-panel-header 在文件更靠后处且带渐变背景，
+     这里必须用更高特异性覆盖才能生效。 */
+  .help-panel .gap-remove-panel-header {
+    min-height: 0; padding: 9px 8px 9px 14px;
+    background: var(--bg-raised);
   }
-  .help-tabs {
-    flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 4px 6px; align-content: flex-start;
-    padding: 9px 14px 0; overflow: hidden; border-bottom: 1px solid var(--border-subtle);
+  .help-window-title { flex: 1 1 auto; margin: 0; color: var(--text-primary); font-size: 13px; font-weight: 600; }
+  .help-window-close {
+    min-width: 26px; padding: 3px 8px; color: var(--btn-text); background: var(--btn-bg);
+    border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    font-size: 14px; line-height: 1; cursor: pointer;
+    transition: background var(--t-fast), border-color var(--t-fast);
   }
-  .help-tab-bar .help-tabs {
-    flex: 1 1 auto; min-width: 0; padding: 0; overflow: visible; border-bottom: 0;
+  .help-window-close:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .help-window-close:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .help-window-body { display: flex; flex: 1 1 auto; min-height: 0; }
+  .help-nav-group-label {
+    margin: 8px 4px 2px; color: var(--text-faint);
+    font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
   }
-  .help-advanced-toggle { margin-left: 6px; }
-  .help-advanced-toggle[aria-expanded="true"] {
-    color: var(--text-primary); background: var(--bg-raised);
-    border-color: var(--border-subtle); border-bottom-color: var(--bg-raised);
-    margin-bottom: -1px;
-  }
-  .help-advanced-tabs[hidden] { display: none; }
-  .help-tab {
-    flex: 0 0 auto; min-height: 35px; padding: 7px 13px;
-    color: var(--text-muted); background: transparent;
-    border: 1px solid transparent; border-bottom: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-    cursor: pointer; font-size: 13px; white-space: nowrap;
-    transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
-  }
-  .help-tab:hover { color: var(--text-primary); background: var(--bg-raised); }
-  .help-tab[aria-selected="true"] {
-    color: var(--text-primary); background: var(--bg-raised);
-    border-color: var(--border-subtle); border-bottom-color: var(--bg-raised);
-    margin-bottom: -1px;
-  }
-  .help-tab:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
-  .help-panel-body { flex: 1 1 auto; display: block; }
+  .help-panel-body { flex: 1 1 auto; display: block; min-width: 0; }
   .help-tab-panel[hidden] { display: none; }
   .help-tab-panel { width: 100%; box-sizing: border-box; }
   .help-group {
@@ -3048,6 +3086,7 @@
   .toolbar.waveform-toolbar,
   .modal .preview,
   .settings-panel,
+  .editor-settings-pages,
   .multi-subtitle-import-preview,
   .gap-remove-list,
   .gap-remove-panel-body,
@@ -4331,7 +4370,7 @@
   <span class="info">已选 <b id="sel-count">0</b></span>
   <span class="toolbar-utility-group" role="group" aria-label="编辑器工具">
     <button type="button" id="language-toggle" class="language-toggle" title="Switch to English">🌐English</button>
-    <button type="button" id="editor-settings-toggle" title="展开编辑器通用设置" aria-expanded="false" aria-controls="editor-settings-panel">⚙️ 全局设置</button>
+    <button type="button" id="editor-settings-toggle" title="打开全局设置窗口" aria-expanded="false" aria-controls="editor-settings-panel">⚙️ 全局设置</button>
     <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">🤔 帮助</button>
     <button type="button" id="theme-toggle" title="切换到亮色主题" aria-label="切换到亮色主题">🌖</button>
   </span>
@@ -4564,31 +4603,25 @@
 
 <!-- 可拖动的非模态帮助窗口 -->
 <aside class="gap-remove-panel help-panel" id="help-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="help-panel-title">
-  <header class="gap-remove-panel-header" id="help-drag-handle">
-    <div class="gap-remove-heading">
-      <span class="gap-remove-eyebrow">MAWE</span>
-      <h3 id="help-panel-title">操作帮助</h3>
-    </div>
+  <header class="gap-remove-panel-header help-window-header" id="help-drag-handle">
+    <h3 id="help-panel-title" class="help-window-title">操作帮助</h3>
     <div class="help-header-actions">
       <button type="button" id="help-onboarding" class="help-replay-button" title="重新查看快速上手">快速上手</button>
-      <button type="button" id="help-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭帮助窗口">×</button>
+      <button type="button" id="help-close" class="help-window-close" title="关闭（Esc）" aria-label="关闭帮助窗口">×</button>
     </div>
   </header>
-  <div class="help-tab-bar">
-    <div class="help-tabs" role="tablist" aria-label="常用帮助分类">
-      <button type="button" class="help-tab" id="help-tab-basic" role="tab" aria-selected="true" aria-controls="help-tab-panel-basic" data-help-tab="basic">基础操作</button>
-      <button type="button" class="help-tab" id="help-tab-shortcuts" role="tab" aria-selected="false" aria-controls="help-tab-panel-shortcuts" data-help-tab="shortcuts" tabindex="-1">快捷操作</button>
-      <button type="button" class="help-tab" id="help-tab-waveform" role="tab" aria-selected="false" aria-controls="help-tab-panel-waveform" data-help-tab="waveform" tabindex="-1">波形区</button>
-      <button type="button" class="help-tab" id="help-tab-playback" role="tab" aria-selected="false" aria-controls="help-tab-panel-playback" data-help-tab="playback" tabindex="-1">播放与导航</button>
-    </div>
-    <button type="button" class="help-tab help-advanced-toggle" id="help-advanced-toggle" aria-expanded="false" aria-controls="help-advanced-tabs">进阶</button>
-  </div>
-  <div class="help-tabs help-advanced-tabs" id="help-advanced-tabs" role="tablist" aria-label="进阶帮助分类" hidden>
-    <button type="button" class="help-tab" id="help-tab-fine-tuning" role="tab" aria-selected="false" aria-controls="help-tab-panel-fine-tuning" data-help-tab="fine-tuning" tabindex="-1">微调字幕</button>
-    <button type="button" class="help-tab" id="help-tab-gap" role="tab" aria-selected="false" aria-controls="help-tab-panel-gap" data-help-tab="gap" tabindex="-1">空隙操作</button>
-    <button type="button" class="help-tab" id="help-tab-batch" role="tab" aria-selected="false" aria-controls="help-tab-panel-batch" data-help-tab="batch" tabindex="-1">批量操作</button>
-  </div>
-  <div class="gap-remove-panel-body help-panel-body">
+  <div class="help-window-body">
+    <nav class="editor-settings-nav" role="tablist" aria-orientation="vertical" aria-label="帮助分区">
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-basic" role="tab" aria-selected="true" aria-controls="help-tab-panel-basic" data-help-tab="basic">基础操作</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-shortcuts" role="tab" aria-selected="false" aria-controls="help-tab-panel-shortcuts" data-help-tab="shortcuts" tabindex="-1">快捷操作</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-waveform" role="tab" aria-selected="false" aria-controls="help-tab-panel-waveform" data-help-tab="waveform" tabindex="-1">波形区</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-playback" role="tab" aria-selected="false" aria-controls="help-tab-panel-playback" data-help-tab="playback" tabindex="-1">播放与导航</button>
+      <div class="help-nav-group-label" aria-hidden="true">进阶</div>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-fine-tuning" role="tab" aria-selected="false" aria-controls="help-tab-panel-fine-tuning" data-help-tab="fine-tuning" tabindex="-1">微调字幕</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-gap" role="tab" aria-selected="false" aria-controls="help-tab-panel-gap" data-help-tab="gap" tabindex="-1">空隙操作</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-batch" role="tab" aria-selected="false" aria-controls="help-tab-panel-batch" data-help-tab="batch" tabindex="-1">批量操作</button>
+    </nav>
+    <div class="gap-remove-panel-body help-panel-body">
     <section class="help-group help-tab-panel" id="help-tab-panel-basic" role="tabpanel" aria-labelledby="help-tab-basic" data-help-tab-panel="basic" tabindex="0">
       <h4 class="help-title">基础操作</h4>
       <section class="help-subgroup">
@@ -4828,6 +4861,7 @@
         </div>
       </section>
     </section>
+    </div>
   </div>
 </aside>
 
@@ -4860,10 +4894,96 @@
   </section>
 </div>
 
-<section class="editor-settings-panel" id="editor-settings-panel" aria-label="MAWE 设置" hidden>
+<section class="editor-settings-panel editor-settings-window" id="editor-settings-panel" role="dialog" aria-modal="false" aria-label="MAWE 设置" aria-hidden="true">
+  <header class="editor-settings-window-header" id="editor-settings-drag-handle">
+    <span class="editor-settings-window-title">全局设置</span>
+    <button type="button" class="editor-settings-window-close" id="editor-settings-close" title="关闭（Esc）" aria-label="关闭全局设置窗口">×</button>
+  </header>
+  <div class="editor-settings-window-body">
+    <nav class="editor-settings-nav" role="tablist" aria-orientation="vertical" aria-label="设置分区">
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-general" role="tab" data-settings-tab="general" aria-selected="true" aria-controls="editor-settings-page-general">通用操作</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-timebase" role="tab" data-settings-tab="timebase" aria-selected="false" aria-controls="editor-settings-page-timebase" tabindex="-1">时间基准</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-split-merge" role="tab" data-settings-tab="split-merge" aria-selected="false" aria-controls="editor-settings-page-split-merge" tabindex="-1">拆分与合并</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-export" role="tab" data-settings-tab="export" aria-selected="false" aria-controls="editor-settings-page-export" tabindex="-1">导出</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-save" role="tab" data-settings-tab="save" aria-selected="false" aria-controls="editor-settings-page-save" tabindex="-1">保存</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-sticker" role="tab" data-settings-tab="sticker" aria-selected="false" aria-controls="editor-settings-page-sticker" tabindex="-1">表情包</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-easter-eggs" role="tab" data-settings-tab="easter-eggs" aria-selected="false" aria-controls="editor-settings-page-easter-eggs" tabindex="-1">彩蛋</button>
+    </nav>
+    <div class="editor-settings-pages">
+  <div class="editor-settings-page" id="editor-settings-page-general" role="tabpanel" aria-labelledby="editor-settings-tab-general">
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
-    <span class="editor-settings-title">拆分与合并</span>
+    <div class="editor-settings-field">
+    <label class="editor-settings-item" title="字幕列表与波形字幕块的普通单击行为；双击编辑不受影响">
+      点击字幕块时
+      <select id="click-behavior">
+        <option value="select-and-seek" selected>选中并跳转</option>
+        <option value="select-only">仅选中（不跳转）</option>
+        <option value="select-and-play">选中并跳转（自动播放）</option>
+      </select>
+    </label>
+    <small class="editor-settings-hint" id="click-behavior-hint">暂停时只跳转，不自动播放；播放中跳转后继续播放。</small>
+    </div>
+    <label class="editor-settings-item" id="click-target-field" title="字幕列表点击始终跳转到字幕开头；此设置只影响波形区点击字幕块">
+      跳转目标
+      <select id="click-target">
+        <option value="cue-start">字幕开头</option>
+        <option value="pointer" selected>鼠标所在位置</option>
+      </select>
+    </label>
+    <div class="editor-settings-field">
+    <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
+      <input type="checkbox" id="select-group-members"> 同时选中分组内项目
+    </label>
+    <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
+    </div>
+    </div>
+  </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-timebase" role="tabpanel" aria-labelledby="editor-settings-tab-timebase" hidden>
+  <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
+    <div class="editor-settings-field timeline-settings-field">
+      <div class="editor-settings-field timeline-mode-field">
+        <div class="timeline-settings-controls">
+          <label class="editor-settings-item" title="字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行">
+            时间单位
+            <select id="timeline-timebase">
+              <option value="milliseconds" selected>毫秒</option>
+              <option value="frames">帧</option>
+            </select>
+          </label>
+          <label class="editor-settings-item" title="帧时间基准的帧率；帧模式会按此 FPS 保存并显示帧时间码">
+            FPS
+            <span class="gap-remove-number-control">
+              <input type="number" id="timeline-fps" min="1" max="240" step="0.001" value="30" inputmode="decimal" aria-label="帧率 FPS">
+              <span class="gap-remove-unit">fps</span>
+            </span>
+          </label>
+        </div>
+        <small class="editor-settings-hint" id="timeline-timebase-hint">毫秒模式保持原有时间编辑方式。切换为帧模式后，拖动、方向键和 A/D 微调都会按帧执行。</small>
+      </div>
+      <div class="editor-settings-field timeline-snap-field">
+        <label class="toggle editor-settings-item" title="帧模式下把波形鼠标指针吸附到最近的帧；毫秒模式下不生效">
+          <input type="checkbox" id="timeline-snap-to-frame">
+          吸附到帧
+        </label>
+        <small class="editor-settings-hint" id="timeline-snap-to-frame-hint">仅帧模式生效；切换到帧模式后可启用。</small>
+      </div>
+      <div class="editor-settings-field timeline-separator-field">
+        <label class="editor-settings-item" title="帧时间码中秒与帧之间的分隔符；只使用一个非字母数字符号">
+          时间码分隔符
+          <input type="text" id="timeline-timecode-separator" class="timeline-timecode-separator-input" value=":" maxlength="1" size="1" inputmode="text" autocomplete="off" spellcheck="false" aria-label="时间码分隔符">
+        </label>
+        <small class="editor-settings-hint" id="timeline-timecode-separator-hint">帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。</small>
+      </div>
+    </div>
+    </div>
+  </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-split-merge" role="tabpanel" aria-labelledby="editor-settings-tab-split-merge" hidden>
+  <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
     <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存">
       字幕（编辑状态下）拆分按键
       <select id="split-key">
@@ -4875,16 +4995,6 @@
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
     <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分。</small>
-    <div class="editor-settings-field split-language-type-field" role="group" aria-labelledby="split-language-type-title">
-      <span class="editor-settings-item split-language-type-title" id="split-language-type-title">字幕语言类型</span>
-      <div class="split-language-type-row">
-        <span class="split-join-mode-hint-group" id="merge-join-mode-hint" hidden>
-          <span class="editor-settings-item" id="merge-join-mode-text"></span>
-          <button type="button" class="split-join-mode-switch" id="merge-join-mode-switch"></button>
-        </span>
-      </div>
-      <small class="editor-settings-hint split-language-type-hint">语言类型会影响拆分面板的分隔判断，以及合并时是否插入空格等。</small>
-    </div>
     <div class="editor-settings-field split-join-settings-actions" role="group" aria-label="拆分与合并配置">
       <div class="split-join-settings-anchor merge-join-settings-field" id="merge-join-settings">
         <button type="button" id="merge-join-settings-toggle" title="配置合并字幕时插入字符" aria-expanded="false" aria-controls="merge-join-settings-panel" aria-haspopup="dialog">配置合并字符</button>
@@ -4924,68 +5034,21 @@
     </div>
     </div>
   </div>
-  <div class="editor-settings-group">
-    <div class="editor-settings-sub-group">
-    <span class="editor-settings-title">通用操作</span>
-    <div class="editor-settings-field">
-    <label class="editor-settings-item" title="字幕列表与波形字幕块的普通单击行为；双击编辑不受影响">
-      点击字幕块时
-      <select id="click-behavior">
-        <option value="select-and-seek" selected>选中并跳转</option>
-        <option value="select-only">仅选中（不跳转）</option>
-        <option value="select-and-play">选中并跳转（自动播放）</option>
-      </select>
-    </label>
-    <small class="editor-settings-hint" id="click-behavior-hint">暂停时只跳转，不自动播放；播放中跳转后继续播放。</small>
+  <span class="editor-settings-group-heading" id="split-language-type-title">字幕语言类型</span>
+  <div class="editor-settings-group split-language-type-group" role="group" aria-labelledby="split-language-type-title">
+    <div class="split-language-type-row">
+      <span class="split-join-mode-hint-group" id="merge-join-mode-hint" hidden>
+        <span class="editor-settings-item" id="merge-join-mode-text"></span>
+        <button type="button" class="split-join-mode-switch" id="merge-join-mode-switch"></button>
+      </span>
     </div>
-    <label class="editor-settings-item" id="click-target-field" title="字幕列表点击始终跳转到字幕开头；此设置只影响波形区点击字幕块">
-      跳转目标
-      <select id="click-target">
-        <option value="cue-start">字幕开头</option>
-        <option value="pointer" selected>鼠标所在位置</option>
-      </select>
-    </label>
-    <div class="editor-settings-field">
-    <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
-      <input type="checkbox" id="select-group-members"> 同时选中分组内项目
-    </label>
-    <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
-    </div>
-    <div class="editor-settings-field timeline-settings-field" role="group" aria-labelledby="timeline-settings-title">
-      <span class="editor-settings-title" id="timeline-settings-title">时间基准</span>
-      <div class="timeline-settings-controls">
-        <label class="editor-settings-item" title="字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行">
-          时间单位
-          <select id="timeline-timebase">
-            <option value="milliseconds" selected>毫秒</option>
-            <option value="frames">帧</option>
-          </select>
-        </label>
-        <label class="editor-settings-item" title="帧时间基准的帧率；帧模式会按此 FPS 保存并显示帧时间码">
-          FPS
-          <span class="gap-remove-number-control">
-            <input type="number" id="timeline-fps" min="1" max="240" step="0.001" value="30" inputmode="decimal" aria-label="帧率 FPS">
-            <span class="gap-remove-unit">fps</span>
-          </span>
-        </label>
-        <label class="editor-settings-item" title="帧模式下把波形鼠标指针吸附到最近的帧；毫秒模式下不生效">
-          <input type="checkbox" id="timeline-snap-to-frame">
-          吸附到帧
-        </label>
-        <label class="editor-settings-item" title="帧时间码中秒与帧之间的分隔符；只使用一个非字母数字符号">
-          时间码分隔符
-          <input type="text" id="timeline-timecode-separator" class="timeline-timecode-separator-input" value=":" maxlength="1" size="1" inputmode="text" autocomplete="off" spellcheck="false" aria-label="时间码分隔符">
-        </label>
-      </div>
-      <small class="editor-settings-hint" id="timeline-timebase-hint">毫秒模式保持原有时间编辑方式。帧模式使用 HH:MM:SS:FF 显示，FF 为当前秒内的帧号。</small>
-      <small class="editor-settings-hint" id="timeline-snap-to-frame-hint">仅帧模式生效；切换到帧模式后可启用。</small>
-      <small class="editor-settings-hint" id="timeline-timecode-separator-hint">帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。</small>
-    </div>
-    </div>
+    <small class="editor-settings-hint split-language-type-hint">语言类型会影响拆分面板的分隔判断（英文会按单词拆）、计数的规则，以及合并时是否插入空格等。</small>
+    <small class="editor-settings-hint">对于双语字幕，可以在「多重字幕」中单独配置两种字幕的语言类型。</small>
   </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-export" role="tabpanel" aria-labelledby="editor-settings-tab-export" hidden>
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
-    <span class="editor-settings-title">导出</span>
     <label class="toggle editor-settings-item" title="只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴">
       <input type="checkbox" id="export-start-at-zero"> SRT 首条从 0 开始
     </label>
@@ -4996,8 +5059,11 @@
     <small class="editor-settings-hint">选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。</small>
     </div>
     </div>
+  </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-save" role="tabpanel" aria-labelledby="editor-settings-tab-save" hidden>
+  <div class="editor-settings-group">
     <div id="server-auto-save-settings" class="editor-settings-sub-group" hidden>
-      <span class="editor-settings-title">保存</span>
         <label class="toggle editor-settings-item" title="将改动自动保存回当前工程文件">
           <input type="checkbox" id="auto-save-project" checked> 自动保存
         </label>
@@ -5009,9 +5075,10 @@
       </label>
     </div>
   </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-sticker" role="tabpanel" aria-labelledby="editor-settings-tab-sticker" hidden>
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
-      <span class="editor-settings-title">表情包</span>
       <div class="editor-settings-field">
         <button type="button" id="sticker-root-btn" title="设置表情包根目录">设置表情包根目录</button>
       </div>
@@ -5023,7 +5090,12 @@
         </select>
       </label>
       <small class="editor-settings-hint" id="sticker-otio-export-mode-hint">选择引用原始表情包素材；选择便携模式时，服务器会将素材复制到工程同目录。</small>
-      <span class="editor-settings-title">彩蛋</span>
+    </div>
+  </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-easter-eggs" role="tabpanel" aria-labelledby="editor-settings-tab-easter-eggs" hidden>
+  <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
       <div class="editor-settings-toggle-group ninja-toggle-group">
         <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，并可启用拆分音效与刀光特效">
           <input type="checkbox" id="ninja-mode"> 字幕忍者
@@ -5052,6 +5124,9 @@
         </div>
         <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
       </div>
+    </div>
+  </div>
+  </div>
     </div>
   </div>
 </section>
@@ -12886,7 +12961,7 @@ export default MawDynamicCaptions;
     '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '每次跳转时长': 'Seek duration per action', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '媒体控制按钮和左右方向键每次跳转的时间幅度': 'Time amount to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)', '控制按钮和左右方向键的每次跳转时长。': 'Time amount for each jump from the controls and left/right arrow keys.',
     '时间基准': 'Timebase', '时间单位': 'Time unit', '毫秒': 'Milliseconds', '帧': 'Frames',
     '吸附到帧': 'Snap to frame', '时间码分隔符': 'Timecode separator',
-    '毫秒模式保持原有时间编辑方式。帧模式使用 HH:MM:SS:FF 显示，FF 为当前秒内的帧号。': 'Millisecond mode keeps the existing timing behavior. Frame mode uses HH:MM:SS:FF, where FF is the frame number within the current second.',
+    '毫秒模式保持原有时间编辑方式。切换为帧模式后，拖动、方向键和 A/D 微调都会按帧执行。': 'Millisecond mode keeps the existing timing behavior. Switching to frame mode makes dragging, arrow keys, and A/D fine-tuning operate frame by frame.',
     '仅帧模式生效；切换到帧模式后可启用。': 'Only active in frame mode; switch to frame mode to enable it.',
     '帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。': 'Frame timecode example: HH:MM:SS:FF; only the separator between seconds and frames changes.',
     '频谱颜色': 'Spectral colors', '正在应用频谱颜色…': 'Applying spectral colors…', '正在关闭频谱颜色…': 'Removing spectral colors…',
@@ -13069,7 +13144,7 @@ export default MawDynamicCaptions;
     '进入字幕编辑区（仅单选时）': 'Focus subtitle editor (single selection only)', '退出字幕编辑区（文本编辑时）': 'Exit subtitle editor (while editing)', '清除字幕选择（非编辑状态）': 'Clear subtitle selection (when not editing)',
     '选中所有字幕': 'Select all subtitles', '选中所有字幕（非编辑状态）': 'Select all subtitles (when not editing)',
     '右键': 'Right-click', '通用': 'General', '基础操作': 'Basic operations', '快捷操作': 'Shortcuts', '字幕操作': 'Subtitle actions', '波形区': 'Waveform area', '波形区字幕操作': 'Waveform subtitle actions',
-    '进阶': 'Advanced', '常用帮助分类': 'Common help categories', '进阶帮助分类': 'Advanced help categories',
+    '进阶': 'Advanced', '帮助分区': 'Help sections',
     '鼠标操作': 'Mouse actions', '选择操作': 'Selection', '编辑操作': 'Editing actions', '快捷功能': 'Quick actions', '切换工具': 'Switch tools',
     '处理范围': 'Scope', '查找并批量替换字幕文本': 'Find and batch-replace subtitle text',
     '集中编辑字幕文本，可预览拆分、合并和字词时间码映射': 'Edit subtitle text in one place and preview split, merge, and word-timing mappings',
@@ -13320,7 +13395,8 @@ export default MawDynamicCaptions;
     '过滤字幕…': 'Filter subtitles…', '清空': 'Clear', '正在加载…': 'Loading…',
     '只显示超过阈值的字幕（再次点击关闭）': 'Show only subtitles over the threshold (click again to turn off)',
     '查看鼠标操作与键盘快捷键': 'View mouse and keyboard shortcuts',
-    '展开编辑器通用设置': 'Open editor general settings', '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
+    '打开全局设置窗口': 'Open the global settings window', '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
+    '全局设置': 'Global settings', '关闭全局设置窗口': 'Close the global settings window', '设置分区': 'Settings sections',
     '选中字幕时，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数': 'Milliseconds adjusted per arrow-key press or A/D press while holding a subtitle block or edge',
     '关闭（Esc）': 'Close (Esc)',
     '关闭纯文本编辑': 'Close plain text editor',
@@ -13451,7 +13527,8 @@ export default MawDynamicCaptions;
       'When enabled, cues split automatically at usable word timings; otherwise the split dialog opens for manual splitting.',
     '开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分。':
       'When enabled, split automatically using available timecodes; otherwise the split dialog opens for manual splitting.',
-    '语言类型会影响拆分面板的分隔判断，以及合并时是否插入空格等。': 'Language type affects split-boundary decisions and whether spaces are inserted when merging.',
+    '语言类型会影响拆分面板的分隔判断（英文会按单词拆）、计数的规则，以及合并时是否插入空格等。': 'Language type affects split-boundary decisions (English splits by word), character counting rules, and whether spaces are inserted when merging.',
+    '对于双语字幕，可以在「多重字幕」中单独配置两种字幕的语言类型。': 'For dual-track subtitles, configure each track\'s language type separately in the multiple-subtitle settings.',
     '配置合并字幕时插入字符': 'Configure characters inserted when merging subtitles', '配置合并字符': 'Configure merge separator', '配置拆分标点': 'Configure split punctuation',
     '合并字幕时插入字符': 'Text inserted when merging subtitles',
     '留空则直接拼接': 'Leave empty to join directly', '默认一个空格': 'Defaults to one space',
@@ -13466,7 +13543,7 @@ export default MawDynamicCaptions;
     '全角逗号': 'Fullwidth comma', '句号': 'Period', '顿号': 'Enumerated comma',
     '全角感叹号': 'Fullwidth exclamation mark', '全角问号': 'Fullwidth question mark',
     '单词型：英语等西文语言，按空格分隔多个单词': 'Word-based: Latin-script languages such as English, where words are separated by spaces',
-    '适用于英文、俄文等': 'for English, Russian, and similar languages', '适用于中文、日文等': 'for Chinese, Japanese, and similar languages',
+    '适用于英文、俄文等语言': 'for English, Russian, and similar languages', '适用于中文、日文等语言': 'for Chinese, Japanese, and similar languages',
     '字符型：中文、日文等按字符拆分的语言': 'Character-based: languages such as Chinese and Japanese, split per character',
   };
 
@@ -13691,11 +13768,11 @@ export default MawDynamicCaptions;
     match = /^已交换主副字幕：主轨\s+(\d+)\s+条，副轨\s+(\d+)\s+条$/.exec(text);
     if (match) return `Swapped main and secondary subtitles: ${match[1]} main, ${match[2]} secondary`;
     // 合并连接设置旁的主字幕类型提示与切换按钮 title（目标类型语言说明）
-    match = /^当前为「(.+)」(?:（(.+)）)?$/.exec(text);
+    match = /^当前字幕为「(.+)」(?:（(.+)）)?$/.exec(text);
     if (match) {
       const mode = translateText(match[1], EN);
       const example = match[2] ? translateText(match[2], EN) : '';
-      return `Current: ${mode}${example ? ` (${example})` : ''}`;
+      return `Current subtitle: ${mode}${example ? ` (${example})` : ''}`;
     }
     match = /^切换为(单词型|字符型)$/.exec(text);
     if (match) return `Switch to ${translateText(match[1], EN)}`;
@@ -19686,7 +19763,7 @@ function splitModeLabel(mode) {
   return mode === 'continuous' ? '字符型' : '单词型';
 }
 function splitModeExample(mode) {
-  return mode === 'continuous' ? '（适用于中文、日文等）' : '（适用于英文、俄文等）';
+  return mode === 'continuous' ? '（适用于中文、日文等语言）' : '（适用于英文、俄文等语言）';
 }
 
 // 合并多条字幕时按「字符型/单词型」取对应连接符：中文直接拼接，西文默认空格。
@@ -21046,9 +21123,6 @@ const cueEditorSplitKey = document.getElementById('cue-editor-split-key');
 const cueEditorConfirmKey = document.getElementById('cue-editor-confirm-key');
 const helpTabButtons = Array.from(document.querySelectorAll('[data-help-tab]'));
 const helpTabPanels = Array.from(document.querySelectorAll('[data-help-tab-panel]'));
-const helpAdvancedToggle = document.getElementById('help-advanced-toggle');
-const helpAdvancedTabs = document.getElementById('help-advanced-tabs');
-const helpAdvancedTabButtons = Array.from(helpAdvancedTabs?.querySelectorAll('[data-help-tab]') || []);
 const helpOpenWaveformSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-waveform-settings]'));
 const helpOpenMediaSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-media-settings]'));
 const helpOpenGapRemovePanelButton = document.getElementById('help-open-gap-remove-panel');
@@ -21249,6 +21323,10 @@ const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
+const EDITOR_SETTINGS_WINDOW_POSITION_KEY = 'moy.asr.editor.settings.window.v1';
+const EDITOR_SETTINGS_WINDOW_TAB_KEY = 'moy.asr.editor.settings.window_tab.v1';
+const editorSettingsClose = document.getElementById('editor-settings-close');
+const editorSettingsDragHandle = document.getElementById('editor-settings-drag-handle');
 
 const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
@@ -21278,7 +21356,6 @@ let cuePanelUndoPushed = false;
 let cuePanelUndoRecord = null;
 let cuePanelTextEditSnapshot = null;
 let cuePanelCanceling = false;
-let editorSettingsPanelFrame = 0;
 
 function resetCuePanelEditState() {
   cuePanelUndoPushed = false;
@@ -21447,23 +21524,63 @@ function applyNinjaSettings() {
   if (ninjaRazorIcon) ninjaRazorIcon.hidden = !enabled;
 }
 
+// 全局设置窗口：复用 createFloatingPanel 获得拖动、位置持久化、Esc 关闭与按钮 active 态；
+// 窗口内部用左侧垂直标签页切换不同分区，并记忆用户上次停留的分区。
+const editorSettingsTabs = editorSettingsPanel
+  ? Array.from(editorSettingsPanel.querySelectorAll('.editor-settings-nav-tab'))
+  : [];
+const editorSettingsFloatingPanel = createFloatingPanel({
+  panel: editorSettingsPanel,
+  dragHandle: editorSettingsDragHandle,
+  manageButton: editorSettingsToggle,
+  anchorButton: editorSettingsToggle,
+  positionKey: EDITOR_SETTINGS_WINDOW_POSITION_KEY,
+  // 所有打开路径（按钮点击 / 桥接）都先恢复标签页，保证默认分区带上 active 样式，
+  // 且窗口按实际内容尺寸定位。
+  onOpen: restoreEditorSettingsActiveTab,
+});
+
+function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
+  if (!tab) return;
+  for (const item of editorSettingsTabs) {
+    const active = item === tab;
+    item.classList.toggle('active', active);
+    item.setAttribute('aria-selected', String(active));
+    item.tabIndex = active ? 0 : -1;
+    const page = document.getElementById(item.getAttribute('aria-controls') || '');
+    if (page) page.hidden = !active;
+  }
+  if (focus) tab.focus();
+  try {
+    localStorage.setItem(EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
+  } catch (_) {
+    // file:// 隐私模式可能拒绝 localStorage；切换标签页本身不受影响。
+  }
+}
+
+function restoreEditorSettingsActiveTab() {
+  let saved = '';
+  try {
+    saved = localStorage.getItem(EDITOR_SETTINGS_WINDOW_TAB_KEY) || '';
+  } catch (_) {
+    saved = '';
+  }
+  // 忽略已隐藏的分区（如当前环境不可用的「保存」），回退到第一个可见分区。
+  const tab = editorSettingsTabs.find((item) => item.dataset.settingsTab === saved && !item.hidden)
+    || editorSettingsTabs.find((item) => !item.hidden)
+    || editorSettingsTabs[0];
+  setEditorSettingsActiveTab(tab);
+}
+
 function setEditorSettingsPanelOpen(open) {
   if (!editorSettingsPanel || !editorSettingsToggle) return;
   if (!open) {
     setMergeJoinSettingsPanelOpen(false);
     setSplitTrimSettingsPanelOpen(false);
+    editorSettingsFloatingPanel.close();
+    return;
   }
-  editorSettingsToggle.classList.toggle('active', open);
-  editorSettingsToggle.setAttribute('aria-expanded', String(open));
-  // 先让按钮状态绘制出来，再展开/收起文档流中的大面板，避免布局重排把高亮拖后。
-  cancelAnimationFrame(editorSettingsPanelFrame);
-  editorSettingsPanelFrame = requestAnimationFrame(() => {
-    editorSettingsPanelFrame = requestAnimationFrame(() => {
-      editorSettingsPanelFrame = 0;
-      if (editorSettingsToggle.getAttribute('aria-expanded') !== String(open)) return;
-      editorSettingsPanel.hidden = !open;
-    });
-  });
+  editorSettingsFloatingPanel.open();
 }
 
 function positionAnchoredSettingsPanel(panel, toggle) {
@@ -21819,7 +21936,7 @@ function refreshMergeJoinModeHint() {
   // 用户觉得不对就自己点按钮换。
   const effective = hasPinned ? override : detected;
   const other = effective === 'continuous' ? 'word' : 'continuous';
-  mergeJoinModeText.textContent = `当前为「${splitModeLabel(effective)}」${splitModeExample(effective)}`;
+  mergeJoinModeText.textContent = `当前字幕为「${splitModeLabel(effective)}」${splitModeExample(effective)}`;
   // 按钮 title 给出目标类型的语言说明，帮助用户选择。
   mergeJoinModeSwitch.textContent = `切换为${splitModeLabel(other)}`;
   mergeJoinModeSwitch.title = other === 'word'
@@ -21968,7 +22085,29 @@ multiSubtitleAlignButton?.addEventListener('click', () => {
 });
 applySubtitleAppearance();
 applyExtensionSubtitleAppearance();
-editorSettingsToggle?.addEventListener('click', () => setEditorSettingsPanelOpen(editorSettingsPanel?.hidden));
+// 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
+editorSettingsTabs.forEach((tab) => {
+  tab.addEventListener('click', () => setEditorSettingsActiveTab(tab));
+  tab.addEventListener('keydown', (event) => {
+    // 方向键只在可见分区之间循环；隐藏分区（如不可用的「保存」）不参与导航。
+    const visibleTabs = editorSettingsTabs.filter((item) => !item.hidden);
+    const index = visibleTabs.indexOf(tab);
+    let next = -1;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      next = (index + 1) % visibleTabs.length;
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      next = (index - 1 + visibleTabs.length) % visibleTabs.length;
+    } else if (event.key === 'Home') {
+      next = 0;
+    } else if (event.key === 'End') {
+      next = visibleTabs.length - 1;
+    }
+    if (next < 0) return;
+    event.preventDefault();
+    setEditorSettingsActiveTab(visibleTabs[next], { focus: true });
+  });
+});
+editorSettingsClose?.addEventListener('click', () => setEditorSettingsPanelOpen(false));
 mergeJoinSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setMergeJoinSettingsPanelOpen(mergeJoinSettingsPanel?.hidden);
@@ -22105,30 +22244,12 @@ function visibleHelpTabButtons() {
   return helpTabButtons.filter((button) => !button.closest('[hidden]'));
 }
 
-function setHelpAdvancedTabsOpen(open, { focus = false } = {}) {
-  if (!helpAdvancedTabs || !helpAdvancedToggle) return;
-  const nextOpen = Boolean(open);
-  if (!nextOpen && helpAdvancedTabButtons.some((button) => button.getAttribute('aria-selected') === 'true')) {
-    selectHelpTab('basic');
-  }
-  helpAdvancedTabs.hidden = !nextOpen;
-  helpAdvancedToggle.setAttribute('aria-expanded', String(nextOpen));
-  helpAdvancedToggle.classList.toggle('is-active', nextOpen);
-  if (focus) {
-    const activeButton = helpAdvancedTabButtons.find((button) => button.getAttribute('aria-selected') === 'true');
-    (activeButton || helpAdvancedTabButtons[0])?.focus();
-  }
-}
-
 function selectHelpTab(tabName, { focus = false } = {}) {
   const activeButton = helpTabButtons.find((button) => button.dataset.helpTab === tabName);
   if (!activeButton) return;
-  if (helpAdvancedTabButtons.includes(activeButton) && helpAdvancedTabs?.hidden) {
-    setHelpAdvancedTabsOpen(true);
-  }
   helpTabButtons.forEach((button) => {
     const active = button === activeButton;
-    button.classList.toggle('is-active', active);
+    button.classList.toggle('active', active);
     button.setAttribute('aria-selected', String(active));
     button.tabIndex = active ? 0 : -1;
   });
@@ -22139,10 +22260,6 @@ function selectHelpTab(tabName, { focus = false } = {}) {
   });
   if (focus) activeButton.focus();
 }
-
-helpAdvancedToggle?.addEventListener('click', () => {
-  setHelpAdvancedTabsOpen(helpAdvancedTabs?.hidden === true);
-});
 
 helpTabButtons.forEach((button) => {
   button.addEventListener('click', () => selectHelpTab(button.dataset.helpTab));
@@ -22192,7 +22309,7 @@ function restoreHelpPanelSize() {
     saved = null;
   }
   if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
-  helpPanel.style.width = `${Math.min(Math.max(320, saved.width), window.innerWidth - 12)}px`;
+  helpPanel.style.width = `${Math.min(Math.max(400, saved.width), window.innerWidth - 12)}px`;
   helpPanel.style.height = `${Math.min(Math.max(240, saved.height), window.innerHeight - 12)}px`;
 }
 let helpPanelSizeSaveTimer = 0;
@@ -32640,6 +32757,9 @@ function scheduleAutoSave() {
     // 服务器绑定工程或浏览器保存对话框（句柄模式）任一可用时都可自动保存。
     const available = Boolean(SERVER_CONFIG?.saveUrl || window.showSaveFilePicker);
     serverAutoSaveSettings.hidden = !available;
+    // 自动保存不可用时隐藏「保存」标签页，避免设置窗口出现空白分区。
+    const saveTab = document.getElementById('editor-settings-tab-save');
+    if (saveTab) saveTab.hidden = !available;
     if (!available) return;
   const sync = () => {
     autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
