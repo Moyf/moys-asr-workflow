@@ -1321,8 +1321,17 @@ def export_sticker_otioz(project: ServerProject, kind: str, timeline: dict, root
     return buffer.getvalue(), otio_name, len(used)
 
 
-def export_timeline_otioz(project: ServerProject, kind: str, timeline: dict) -> tuple[bytes, str]:
-    """Build an OTIOZ archive containing only the bound project's source media."""
+def export_timeline_otioz(
+    project: ServerProject,
+    kind: str,
+    timeline: dict,
+    sticker_root: Path | None = None,
+) -> tuple[bytes, str]:
+    """Build an OTIOZ archive containing the bound project's source media.
+
+    时间线里合并的表情包轨（带 ``moy.sticker_rel`` 的 Clip）会把图片一并打包，
+    并把对应 target_url 重写为包内路径；普通媒体引用仍只允许绑定工程的单源媒体。
+    """
     if project.json_path is None:
         raise ValueError("当前服务器没有绑定工程文件")
     if timeline.get("OTIO_SCHEMA") != "Timeline.1":
@@ -1345,9 +1354,58 @@ def export_timeline_otioz(project: ServerProject, kind: str, timeline: dict) -> 
     payload = copy.deepcopy(timeline)
     reference_count = 0
     target_urls: set[str] = set()
+    sticker_files: dict[Path, str] = {}
+    # 预占媒体名：表情包扩展名与视频不同，正常不会冲突，防御性兜底。
+    used_names: set[str] = {source.name.casefold()}
+
+    def add_sticker_file(sticker_source: Path) -> str:
+        filename = sticker_source.name
+        stem, extension = sticker_source.stem, sticker_source.suffix
+        candidate_name = filename
+        collision = 1
+        while candidate_name.casefold() in used_names:
+            collision += 1
+            candidate_name = f"{stem}-{collision}{extension}"
+        used_names.add(candidate_name.casefold())
+        sticker_files[sticker_source] = candidate_name
+        return candidate_name
 
     def visit(value: dict) -> None:
         nonlocal reference_count
+        if value.get("OTIO_SCHEMA") == "Clip.2":
+            metadata = value.get("metadata")
+            moy = metadata.get("moy") if isinstance(metadata, dict) else None
+            sticker_rel = moy.get("sticker_rel") if isinstance(moy, dict) else None
+            if isinstance(sticker_rel, str) and sticker_rel.strip():
+                references = value.get("media_references")
+                if not isinstance(references, dict) or not references:
+                    raise ValueError("表情包 Clip 缺少媒体引用")
+                if sticker_root is None:
+                    raise ValueError("尚未验证表情包根目录，无法打包表情包")
+                sticker_source = _sticker_rel_path(sticker_rel.strip(), sticker_root)
+                if sticker_source not in sticker_files:
+                    add_sticker_file(sticker_source)
+                packed_name = sticker_files[sticker_source]
+                fps = 60
+                source_range = value.get("source_range")
+                if isinstance(source_range, dict):
+                    duration = source_range.get("duration")
+                    if isinstance(duration, dict) and isinstance(duration.get("rate"), (int, float)):
+                        fps = duration["rate"]
+                for reference in references.values():
+                    if not isinstance(reference, dict):
+                        continue
+                    if isinstance(reference.get("target_url"), str):
+                        # Resolve treats OTIOZ target_url as a package path and
+                        # does not reliably URI-decode its final component.
+                        reference["target_url"] = "media/" + packed_name
+                    if reference.get("OTIO_SCHEMA") == "ExternalReference.1" and not isinstance(reference.get("available_range"), dict):
+                        reference["available_range"] = {
+                            "OTIO_SCHEMA": "TimeRange.1",
+                            "duration": {"OTIO_SCHEMA": "RationalTime.1", "rate": fps, "value": 1.0},
+                            "start_time": {"OTIO_SCHEMA": "RationalTime.1", "rate": fps, "value": 0.0},
+                        }
+                return
         if value.get("OTIO_SCHEMA") == "ExternalReference.1":
             target_url = value.get("target_url")
             if not isinstance(target_url, str) or not target_url.strip():
@@ -1381,6 +1439,8 @@ def export_timeline_otioz(project: ServerProject, kind: str, timeline: dict) -> 
         )
         archive.writestr("version.txt", "1.0.0".encode("utf-8"), compress_type=zipfile.ZIP_DEFLATED)
         archive.writestr(media_target, source.read_bytes(), compress_type=zipfile.ZIP_STORED)
+        for sticker_source, packed_name in sticker_files.items():
+            archive.writestr(f"media/{packed_name}", sticker_source.read_bytes(), compress_type=zipfile.ZIP_STORED)
     return buffer.getvalue(), otio_name
 
 
@@ -1772,6 +1832,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             try:
                 zip_bytes, otio_name = export_timeline_otioz(
                     self.editor_server.project, kind, timeline,
+                    self.editor_server.project.sticker_root,
                 )
             finally:
                 self.editor_server.timeline_otioz_lock.release()

@@ -60,6 +60,8 @@
     --btn-border:    var(--border);
     --btn-border-hover: var(--border-strong);
     --btn-text:      #cdd4e0;
+    /* 下拉菜单边框 —— 与按钮边框同色（浅色主题经 --border 自动跟随）。 */
+    --menu-border:   var(--btn-border);
 
     /* 中性 hover —— 不改变色相的轻微抬升 */
     --hover-bg: rgba(255, 255, 255, 0.035);
@@ -980,14 +982,59 @@
     .subtitle-preview-setting-pair { grid-template-columns: 1fr; }
   }
 
-  .editor-settings-panel {
-    flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr));
-    gap: 8px; margin: -2px 0 8px; padding: 10px;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
-    box-shadow: var(--shadow-1);
+  /* 全局设置是可拖动的非模态独立窗口：左侧垂直标签页 + 右侧内容区。
+     z-index 低于锚定弹出面板（420）与表情包根目录弹窗（280），
+     保证窗口内的「配置合并字符 / 配置拆分标点」浮层和表情包弹窗都能盖住窗口。 */
+  .editor-settings-window {
+    display: none; position: fixed; z-index: 270;
+    flex-direction: column;
+    width: min(560px, calc(100vw - 24px));
+    max-height: min(600px, calc(100vh - 60px));
+    padding: 0;
+    background: var(--bg-overlay);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-3);
   }
-  .editor-settings-panel[hidden] { display: none; }
+  .editor-settings-window.show { display: flex; }
+  .editor-settings-window-header {
+    display: flex; flex: 0 0 auto; align-items: center; gap: 8px;
+    padding: 9px 8px 9px 14px;
+    background: var(--bg-raised); border-bottom: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    cursor: grab; user-select: none;
+  }
+  .editor-settings-window.dragging .editor-settings-window-header { cursor: grabbing; }
+  .editor-settings-window-title { flex: 1 1 auto; color: var(--text-primary); font-size: 13px; font-weight: 600; }
+  .editor-settings-window-close {
+    min-width: 26px; padding: 3px 8px; color: var(--btn-text); background: var(--btn-bg);
+    border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    font-size: 14px; line-height: 1; cursor: pointer;
+    transition: background var(--t-fast), border-color var(--t-fast);
+  }
+  .editor-settings-window-close:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .editor-settings-window-close:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-window-body { display: flex; flex: 1 1 auto; min-height: 0; }
+  .editor-settings-nav {
+    display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 2px;
+    width: 132px; padding: 10px 8px;
+    background: var(--bg-raised); border-right: 1px solid var(--border-subtle);
+    border-radius: 0 0 0 var(--radius-lg);
+  }
+  .editor-settings-nav-tab {
+    padding: 6px 10px; text-align: left; color: var(--text-secondary); background: none;
+    border: 1px solid transparent; border-radius: var(--radius-sm);
+    font-size: 13px; cursor: pointer; white-space: nowrap;
+    transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+  }
+  .editor-settings-nav-tab:hover { color: var(--text-primary); background: var(--accent-tint); }
+  .editor-settings-nav-tab:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-nav-tab.active {
+    color: var(--text-primary); background: var(--accent-tint-strong);
+    border-color: var(--accent);
+  }
+  .editor-settings-pages { flex: 1 1 auto; min-width: 0; padding: 10px 12px; overflow-y: auto; }
+  .editor-settings-page { display: flex; flex-direction: column; gap: 8px; }
+  .editor-settings-page[hidden] { display: none; }
   .editor-settings-group {
     display: flex; flex-direction: column; align-items: stretch; gap: 16px;
     min-width: 0; padding: 8px 10px;
@@ -1015,7 +1062,7 @@
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
   .editor-settings-field > .editor-settings-hint { margin: 0; }
   .timeline-settings-field {
-    gap: 6px; padding-top: 7px; border-top: 1px solid var(--border-subtle);
+    gap: 6px;
   }
   .timeline-settings-controls {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; width: 100%;
@@ -1024,17 +1071,17 @@
   .timeline-settings-controls .timeline-timecode-separator-input {
     width: 2.5em !important; min-width: 2.5em; padding-left: 3px; padding-right: 3px; text-align: center;
   }
-  /* 字幕语言类型独立成组，避免提示与「合并字幕时插入字符」标题挤在一起。 */
-  .split-language-type-field {
-    gap: 5px; padding-top: 7px;
-    border-top: 1px solid var(--border-subtle);
+  /* 字幕语言类型独立成一个卡片；分区标题由左侧标签页承担，卡片内的
+     group-heading 只用于标注这张卡片本身。 */
+  .split-language-type-group { gap: 8px; }
+  .editor-settings-group-heading {
+    color: var(--text-secondary); font-size: 0.8em;
+    font-weight: 600; letter-spacing: .08em;
   }
-  .split-language-type-title { font-weight: 600; }
   .split-language-type-row {
     display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
     width: 100%; min-width: 0;
   }
-  .split-language-type-row > .split-join-mode-hint-group { margin-left: 0; }
   .split-language-type-hint { width: 100%; }
 
   /* 合并字符与拆分标点使用同一行的两个配置入口。 */
@@ -1102,10 +1149,10 @@
     flex: 1 1 calc(50% - 10px);
     min-width: 0;
   }
+  /* 类型提示与「切换为字符型/单词型」上下两行：按钮独立成行、无下划线。 */
   .split-join-mode-hint-group {
-    display: inline-flex; flex-wrap: wrap; align-items: baseline;
-    gap: 2px 8px;
-    margin-left: auto; min-width: 0; max-width: 100%;
+    display: flex; flex-direction: column; align-items: flex-start;
+    gap: 4px; min-width: 0; max-width: 100%;
   }
   .split-join-mode-hint-group[hidden] { display: none; }
   .split-join-mode-hint-group > #merge-join-mode-text { white-space: nowrap; }
@@ -1113,7 +1160,6 @@
     background: none; border: none; padding: 0;
     color: var(--accent); cursor: pointer;
     font-size: 12px; line-height: inherit; white-space: nowrap;
-    text-decoration: underline; text-underline-offset: 2px;
   }
   .split-join-mode-switch:hover { color: var(--accent-hover); }
   .split-trim-symbol-grid {
@@ -1179,13 +1225,15 @@
     transition: border-color var(--t-fast), box-shadow var(--t-fast);
   }
   .editor-settings-panel input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
-  .editor-settings-panel button {
+  /* 通用按钮样式不作用于设置导航标签：标签有独立的基础/hover/active 外观，
+     否则这里的更高优先级会在 hover 时盖掉 active 高亮。 */
+  .editor-settings-panel button:not(.editor-settings-nav-tab) {
     min-width: 26px; padding: 3px 7px; color: var(--btn-text); background: var(--btn-bg);
     border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
     transition: background var(--t-fast), border-color var(--t-fast), filter var(--t-fast);
   }
-  .editor-settings-panel button:hover:not(:disabled) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
-  .editor-settings-panel button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .editor-settings-panel button:disabled,
   .editor-settings-panel select:disabled,
   .editor-settings-panel input:disabled { opacity: .42; cursor: not-allowed; }
@@ -1199,10 +1247,9 @@
     font: 11px var(--font-mono);
     background: var(--bg-input);
   }
-  @media (max-width: 860px) {
-    .editor-settings-panel { grid-template-columns: 1fr; }
-  }
   @media (max-width: 420px) {
+    .editor-settings-window { width: calc(100vw - 16px); }
+    .editor-settings-nav { width: 104px; padding: 8px 6px; }
     .editor-settings-toggle-group > .toggle { gap: 2px; }
   }
 
@@ -1212,7 +1259,7 @@
   .toolbar .dropdown-menu {
     display: none;
     position: absolute; right: 0; top: calc(100% + 4px);
-    background: var(--bg-overlay); border: 1px solid var(--border-subtle);
+    background: var(--bg-overlay); border: 1px solid var(--menu-border);
     border-radius: var(--radius-md); padding: 4px 0; min-width: 240px;
     box-shadow: var(--shadow-3); z-index: 200;
   }
@@ -1322,6 +1369,13 @@
     border-radius: var(--radius-sm);
   }
   .multi-subtitle-setting-toggle:hover { background: var(--accent-tint); color: var(--text-primary); }
+  /* 导出下拉菜单里的通用设置开关（如 OTIO 导出选项），与多重字幕开关同视觉。 */
+  .dropdown-setting-toggle {
+    display: flex; align-items: center; gap: 6px; padding: 5px 7px;
+    color: var(--text-secondary); font-size: 12px; cursor: pointer; user-select: none;
+    border-radius: var(--radius-sm); white-space: nowrap;
+  }
+  .dropdown-setting-toggle:hover { background: var(--accent-tint); color: var(--text-primary); }
   .multi-subtitle-setting-row {
     display: grid; grid-template-columns: minmax(0, 1fr) 108px; align-items: center; gap: 8px;
     padding: 4px 7px; color: var(--text-muted); font-size: 12px; white-space: nowrap;
@@ -1404,46 +1458,39 @@
     height: 1px; background: var(--border-subtle); margin: 4px 0;
   }
 
-  /* === 操作帮助 === */
+  /* === 操作帮助 ===
+     视觉与「全局设置」窗口同构：纯色面板 + 左侧垂直标签页；
+     帮助内容自己的琥珀色高亮（help-important / 快速上手按钮）保留。 */
   .gap-remove-panel.help-panel {
-    width: min(720px, calc(100vw - 24px));
-    min-width: 320px; min-height: 240px; max-width: calc(100vw - 24px);
+    width: min(780px, calc(100vw - 24px));
+    min-width: 400px; min-height: 240px; max-width: calc(100vw - 24px);
     resize: both;
     container: help-panel / inline-size;
+    background: var(--bg-overlay);
+    backdrop-filter: none;
+    box-shadow: var(--shadow-3);
   }
-  .help-tab-bar {
-    flex: 0 0 auto; display: flex; align-items: flex-end; min-width: 0;
-    padding: 9px 14px 0; overflow: hidden; border-bottom: 1px solid var(--border-subtle);
+  /* 基础 .gap-remove-panel-header 在文件更靠后处且带渐变背景，
+     这里必须用更高特异性覆盖才能生效。 */
+  .help-panel .gap-remove-panel-header {
+    min-height: 0; padding: 9px 8px 9px 14px;
+    background: var(--bg-raised);
   }
-  .help-tabs {
-    flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 4px 6px; align-content: flex-start;
-    padding: 9px 14px 0; overflow: hidden; border-bottom: 1px solid var(--border-subtle);
+  .help-window-title { flex: 1 1 auto; margin: 0; color: var(--text-primary); font-size: 13px; font-weight: 600; }
+  .help-window-close {
+    min-width: 26px; padding: 3px 8px; color: var(--btn-text); background: var(--btn-bg);
+    border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    font-size: 14px; line-height: 1; cursor: pointer;
+    transition: background var(--t-fast), border-color var(--t-fast);
   }
-  .help-tab-bar .help-tabs {
-    flex: 1 1 auto; min-width: 0; padding: 0; overflow: visible; border-bottom: 0;
+  .help-window-close:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .help-window-close:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .help-window-body { display: flex; flex: 1 1 auto; min-height: 0; }
+  .help-nav-group-label {
+    margin: 8px 4px 2px; color: var(--text-faint);
+    font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
   }
-  .help-advanced-toggle { margin-left: 6px; }
-  .help-advanced-toggle[aria-expanded="true"] {
-    color: var(--text-primary); background: var(--bg-raised);
-    border-color: var(--border-subtle); border-bottom-color: var(--bg-raised);
-    margin-bottom: -1px;
-  }
-  .help-advanced-tabs[hidden] { display: none; }
-  .help-tab {
-    flex: 0 0 auto; min-height: 35px; padding: 7px 13px;
-    color: var(--text-muted); background: transparent;
-    border: 1px solid transparent; border-bottom: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-    cursor: pointer; font-size: 13px; white-space: nowrap;
-    transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
-  }
-  .help-tab:hover { color: var(--text-primary); background: var(--bg-raised); }
-  .help-tab[aria-selected="true"] {
-    color: var(--text-primary); background: var(--bg-raised);
-    border-color: var(--border-subtle); border-bottom-color: var(--bg-raised);
-    margin-bottom: -1px;
-  }
-  .help-tab:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
-  .help-panel-body { flex: 1 1 auto; display: block; }
+  .help-panel-body { flex: 1 1 auto; display: block; min-width: 0; }
   .help-tab-panel[hidden] { display: none; }
   .help-tab-panel { width: 100%; box-sizing: border-box; }
   .help-group {
@@ -3031,6 +3078,7 @@
   .toolbar.waveform-toolbar,
   .modal .preview,
   .settings-panel,
+  .editor-settings-pages,
   .multi-subtitle-import-preview,
   .gap-remove-list,
   .gap-remove-panel-body,

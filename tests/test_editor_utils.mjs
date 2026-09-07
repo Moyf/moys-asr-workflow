@@ -21,6 +21,12 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+test('accepts legacy and current project schemas but rejects unknown versions', () => {
+  assert.equal(helpers.supportsProjectSchema({ segments: [] }), true);
+  assert.equal(helpers.supportsProjectSchema({ schema: helpers.PROJECT_SCHEMA, segments: [] }), true);
+  assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v2', segments: [] }), false);
+});
+
 // XML assertions are part of the Node unit suite, but still need a Python
 // subprocess. Keep it on the same locked project environment as E2E instead
 // of silently selecting whichever python.exe happens to be on PATH.
@@ -177,6 +183,30 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(settings.waveShapeSource, 'reapeaks');
   assert.equal(helpers.normalizeEditorSettings({ waveShapeSource: 'self' }).waveShapeSource, 'self');
   assert.equal(helpers.normalizeEditorSettings({ waveShapeSource: 'invalid' }).waveShapeSource, 'reapeaks');
+});
+
+test('normalizes timeline OTIO export options and defaults them to enabled', () => {
+  const defaults = helpers.normalizeEditorSettings({});
+  assert.equal(defaults.otioExportIncludeSrt, true);
+  assert.equal(defaults.otioExportIncludeStickers, true);
+  assert.equal(defaults.otioExportIncludeMarkers, true);
+  const disabled = helpers.normalizeEditorSettings({
+    otioExportIncludeSrt: false,
+    otioExportIncludeStickers: false,
+    otioExportIncludeMarkers: false,
+  });
+  assert.equal(disabled.otioExportIncludeSrt, false);
+  assert.equal(disabled.otioExportIncludeStickers, false);
+  assert.equal(disabled.otioExportIncludeMarkers, false);
+  // 只有显式 false 会关闭选项；其它假值一律回退为默认勾选，避免损坏的持久化数据关闭导出能力。
+  const repaired = helpers.normalizeEditorSettings({
+    otioExportIncludeSrt: 0,
+    otioExportIncludeStickers: null,
+    otioExportIncludeMarkers: undefined,
+  });
+  assert.equal(repaired.otioExportIncludeSrt, true);
+  assert.equal(repaired.otioExportIncludeStickers, true);
+  assert.equal(repaired.otioExportIncludeMarkers, true);
 });
 
 test('converts and formats the parallel frame timebase', () => {
@@ -419,6 +449,35 @@ test('keeps restored gaps visible in the single-layer display view', () => {
     { start: 180, end: 220, removed: false },
     { start: 220, end: 250, removed: true },
   ]);
+});
+
+test('resolves the gap-fill range from the nearest gaps around a point', () => {
+  const gaps = [
+    { start: 100, end: 150, removed: true },
+    { start: 300, end: 350, removed: true },
+  ];
+  const fill = (point, duration) => JSON.parse(JSON.stringify(helpers.resolveGapFillRange(gaps, point, duration)));
+  assert.deepEqual(fill(200, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(120, 1000), { start: 100, end: 150 });
+  assert.deepEqual(fill(50, 1000), { start: 0, end: 150 });
+  assert.deepEqual(fill(500, 1000), { start: 300, end: 1000 });
+});
+
+test('gap-fill range ignores restored boundaries, swallows them, and guards invalid input', () => {
+  const gaps = [
+    { start: 100, end: 150, removed: true },
+    { start: 180, end: 220, removed: false },
+    { start: 300, end: 350, removed: true },
+  ];
+  const fill = (point, duration) => JSON.parse(JSON.stringify(helpers.resolveGapFillRange(gaps, point, duration)));
+  assert.deepEqual(fill(260, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(160, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(200, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(120, 1000), { start: 100, end: 150 });
+  assert.equal(helpers.resolveGapFillRange([], 200, 1000), null);
+  assert.equal(helpers.resolveGapFillRange(gaps, Number.NaN, 1000), null);
+  assert.equal(helpers.resolveGapFillRange([{ start: 100, end: 150, removed: false }], 200, 1000), null);
+  assert.equal(helpers.resolveGapFillRange([{ start: 100, end: 150 }], 500, 0), null);
 });
 
 test('projects overlapping enabled and restored ranges into one non-overlapping layer', () => {

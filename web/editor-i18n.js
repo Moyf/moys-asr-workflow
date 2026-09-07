@@ -33,6 +33,12 @@
     '导出工程': 'Export project', '导出去空隙版本 ▾': 'Export gap-removed version ▾',
     '字幕 SRT': 'Subtitle SRT', '时间线 OTIO 工程': 'Timeline OTIO project', '时间线 OTIOZ 打包工程': 'Timeline OTIOZ bundle',
     '表情包 OTIO 工程': 'Sticker OTIO project', '表情包 OTIOZ 打包工程': 'Sticker OTIOZ bundle',
+    '同时导出 SRT 字幕': 'Also export SRT subtitles',
+    '导出时间线 OTIO 的同时保存对应的 SRT 字幕文件': 'Save the matching SRT subtitle file alongside the timeline OTIO export',
+    '时间线包含表情包': 'Timeline includes stickers',
+    '把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO': 'Merge stickers into the same OTIO project as an overlay video track; no separate sticker OTIO export needed',
+    '将字幕内容作为标记写入': 'Write subtitle text as markers',
+    '把每条字幕的文本与时间作为标记写入时间线片段': 'Write each subtitle text and timing as markers on the timeline clips',
     'OpenTimeline': 'OpenTimeline', 'OpenTimelineIO': 'OpenTimelineIO', 'OTIO': 'OTIO', '数据': 'Data', '数据文件': 'Data files',
     '彩蛋': 'Easter eggs', '动态图形': 'Dynamic graphics',
     '导出时间线模式': 'Export timeline mode', '去空隙时间线': 'Gap-removed timeline', '原始时间线': 'Source timeline',
@@ -168,7 +174,7 @@
     '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '每次跳转时长': 'Seek duration per action', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '媒体控制按钮和左右方向键每次跳转的时间幅度': 'Time amount to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)', '控制按钮和左右方向键的每次跳转时长。': 'Time amount for each jump from the controls and left/right arrow keys.',
     '时间基准': 'Timebase', '时间单位': 'Time unit', '毫秒': 'Milliseconds', '帧': 'Frames',
     '吸附到帧': 'Snap to frame', '时间码分隔符': 'Timecode separator',
-    '毫秒模式保持原有时间编辑方式。帧模式使用 HH:MM:SS:FF 显示，FF 为当前秒内的帧号。': 'Millisecond mode keeps the existing timing behavior. Frame mode uses HH:MM:SS:FF, where FF is the frame number within the current second.',
+    '毫秒模式保持原有时间编辑方式。切换为帧模式后，拖动、方向键和 A/D 微调都会按帧执行。': 'Millisecond mode keeps the existing timing behavior. Switching to frame mode makes dragging, arrow keys, and A/D fine-tuning operate frame by frame.',
     '仅帧模式生效；切换到帧模式后可启用。': 'Only active in frame mode; switch to frame mode to enable it.',
     '帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。': 'Frame timecode example: HH:MM:SS:FF; only the separator between seconds and frames changes.',
     '频谱颜色': 'Spectral colors', '正在应用频谱颜色…': 'Applying spectral colors…', '正在关闭频谱颜色…': 'Removing spectral colors…',
@@ -351,7 +357,7 @@
     '进入字幕编辑区（仅单选时）': 'Focus subtitle editor (single selection only)', '退出字幕编辑区（文本编辑时）': 'Exit subtitle editor (while editing)', '清除字幕选择（非编辑状态）': 'Clear subtitle selection (when not editing)',
     '选中所有字幕': 'Select all subtitles', '选中所有字幕（非编辑状态）': 'Select all subtitles (when not editing)',
     '右键': 'Right-click', '通用': 'General', '基础操作': 'Basic operations', '快捷操作': 'Shortcuts', '字幕操作': 'Subtitle actions', '波形区': 'Waveform area', '波形区字幕操作': 'Waveform subtitle actions',
-    '进阶': 'Advanced', '常用帮助分类': 'Common help categories', '进阶帮助分类': 'Advanced help categories',
+    '进阶': 'Advanced', '帮助分区': 'Help sections',
     '鼠标操作': 'Mouse actions', '选择操作': 'Selection', '编辑操作': 'Editing actions', '快捷功能': 'Quick actions', '切换工具': 'Switch tools',
     '处理范围': 'Scope', '查找并批量替换字幕文本': 'Find and batch-replace subtitle text',
     '集中编辑字幕文本，可预览拆分、合并和字词时间码映射': 'Edit subtitle text in one place and preview split, merge, and word-timing mappings',
@@ -438,6 +444,9 @@
     '已取消新增字幕': 'Subtitle creation canceled',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '增加静音区段': 'Add silent region',
+    '填充区间空隙': 'Fill range into one gap',
+    '当前没有已激活的空隙，无法填充区间空隙': 'No active gaps available; nothing to fill',
+    '媒体时长尚不可用；请先加载媒体后再填充区间空隙': 'Media duration is unavailable; load media before filling the gap range',
     '空隙区段操作方式设为「中键拖动」时：': 'When gap region operation is “Middle-button drag”:',
     '增加恢复区段': 'Add restored region', '切换移除/保留': 'Toggle removed/kept',
     '恢复区段': 'Restore region', '移除区段': 'Remove region', '清理该区段': 'Clear this region',
@@ -599,7 +608,8 @@
     '过滤字幕…': 'Filter subtitles…', '清空': 'Clear', '正在加载…': 'Loading…',
     '只显示超过阈值的字幕（再次点击关闭）': 'Show only subtitles over the threshold (click again to turn off)',
     '查看鼠标操作与键盘快捷键': 'View mouse and keyboard shortcuts',
-    '展开编辑器通用设置': 'Open editor general settings', '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
+    '打开全局设置窗口': 'Open the global settings window', '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
+    '全局设置': 'Global settings', '关闭全局设置窗口': 'Close the global settings window', '设置分区': 'Settings sections',
     '选中字幕时，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数': 'Milliseconds adjusted per arrow-key press or A/D press while holding a subtitle block or edge',
     '关闭（Esc）': 'Close (Esc)',
     '关闭纯文本编辑': 'Close plain text editor',
@@ -730,7 +740,8 @@
       'When enabled, cues split automatically at usable word timings; otherwise the split dialog opens for manual splitting.',
     '开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分。':
       'When enabled, split automatically using available timecodes; otherwise the split dialog opens for manual splitting.',
-    '语言类型会影响拆分面板的分隔判断，以及合并时是否插入空格等。': 'Language type affects split-boundary decisions and whether spaces are inserted when merging.',
+    '语言类型会影响拆分面板的分隔判断（英文会按单词拆）、计数的规则，以及合并时是否插入空格等。': 'Language type affects split-boundary decisions (English splits by word), character counting rules, and whether spaces are inserted when merging.',
+    '对于双语字幕，可以在「多重字幕」中单独配置两种字幕的语言类型。': 'For dual-track subtitles, configure each track\'s language type separately in the multiple-subtitle settings.',
     '配置合并字幕时插入字符': 'Configure characters inserted when merging subtitles', '配置合并字符': 'Configure merge separator', '配置拆分标点': 'Configure split punctuation',
     '合并字幕时插入字符': 'Text inserted when merging subtitles',
     '留空则直接拼接': 'Leave empty to join directly', '默认一个空格': 'Defaults to one space',
@@ -745,7 +756,7 @@
     '全角逗号': 'Fullwidth comma', '句号': 'Period', '顿号': 'Enumerated comma',
     '全角感叹号': 'Fullwidth exclamation mark', '全角问号': 'Fullwidth question mark',
     '单词型：英语等西文语言，按空格分隔多个单词': 'Word-based: Latin-script languages such as English, where words are separated by spaces',
-    '适用于英文、俄文等': 'for English, Russian, and similar languages', '适用于中文、日文等': 'for Chinese, Japanese, and similar languages',
+    '适用于英文、俄文等语言': 'for English, Russian, and similar languages', '适用于中文、日文等语言': 'for Chinese, Japanese, and similar languages',
     '字符型：中文、日文等按字符拆分的语言': 'Character-based: languages such as Chinese and Japanese, split per character',
   };
 
@@ -900,6 +911,9 @@
     // flashHint：已移除 N 段音量空隙，共 6秒（占比 2.1%）
     match = /^已移除\s+(\d+)\s+段音量空隙，共\s+(.+)$/.exec(text);
     if (match) return `Removed ${match[1]} loudness gaps, ${translateText(match[2], EN)} total`;
+    // flashHint：已填充并合并为 6秒（占比 2.1%）静音空隙
+    match = /^已填充并合并为\s+(.+)\s+静音空隙$/.exec(text);
+    if (match) return `Filled and merged into ${translateText(match[1], EN)} of silent gaps`;
     // 波形状态：12:34.567 · 缓存波形（未加载媒体）
     match = /^(.+?)\s+·\s+缓存波形（未加载媒体）$/.exec(text);
     if (match) return `${match[1]} · cached waveform (no media loaded)`;
@@ -967,11 +981,11 @@
     match = /^已交换主副字幕：主轨\s+(\d+)\s+条，副轨\s+(\d+)\s+条$/.exec(text);
     if (match) return `Swapped main and secondary subtitles: ${match[1]} main, ${match[2]} secondary`;
     // 合并连接设置旁的主字幕类型提示与切换按钮 title（目标类型语言说明）
-    match = /^当前为「(.+)」(?:（(.+)）)?$/.exec(text);
+    match = /^当前字幕为「(.+)」(?:（(.+)）)?$/.exec(text);
     if (match) {
       const mode = translateText(match[1], EN);
       const example = match[2] ? translateText(match[2], EN) : '';
-      return `Current: ${mode}${example ? ` (${example})` : ''}`;
+      return `Current subtitle: ${mode}${example ? ` (${example})` : ''}`;
     }
     match = /^切换为(单词型|字符型)$/.exec(text);
     if (match) return `Switch to ${translateText(match[1], EN)}`;

@@ -109,7 +109,7 @@ function splitModeLabel(mode) {
   return mode === 'continuous' ? '字符型' : '单词型';
 }
 function splitModeExample(mode) {
-  return mode === 'continuous' ? '（适用于中文、日文等）' : '（适用于英文、俄文等）';
+  return mode === 'continuous' ? '（适用于中文、日文等语言）' : '（适用于英文、俄文等语言）';
 }
 
 // 合并多条字幕时按「字符型/单词型」取对应连接符：中文直接拼接，西文默认空格。
@@ -689,6 +689,10 @@ const DEFAULT_EDITOR_SETTINGS = {
   stickerOverlayEnabled: false,
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
   stickerOtioExportMode: 'original',
+  // 时间线 OTIO / OTIOZ 导出选项：同时导出 SRT、合并表情包轨、写入字幕标记（默认全开）。
+  otioExportIncludeSrt: true,
+  otioExportIncludeStickers: true,
+  otioExportIncludeMarkers: true,
   // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
@@ -767,6 +771,9 @@ function readEditorSettings() {
     cueEditorCancelOnEscape: saved.cueEditorCancelOnEscape === true,
     autoSnapAdjacentCues: saved.autoSnapAdjacentCues !== false,
     stickerOtioExportMode: saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
+    otioExportIncludeSrt: saved.otioExportIncludeSrt !== false,
+    otioExportIncludeStickers: saved.otioExportIncludeStickers !== false,
+    otioExportIncludeMarkers: saved.otioExportIncludeMarkers !== false,
   });
 }
 
@@ -1469,9 +1476,6 @@ const cueEditorSplitKey = document.getElementById('cue-editor-split-key');
 const cueEditorConfirmKey = document.getElementById('cue-editor-confirm-key');
 const helpTabButtons = Array.from(document.querySelectorAll('[data-help-tab]'));
 const helpTabPanels = Array.from(document.querySelectorAll('[data-help-tab-panel]'));
-const helpAdvancedToggle = document.getElementById('help-advanced-toggle');
-const helpAdvancedTabs = document.getElementById('help-advanced-tabs');
-const helpAdvancedTabButtons = Array.from(helpAdvancedTabs?.querySelectorAll('[data-help-tab]') || []);
 const helpOpenWaveformSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-waveform-settings]'));
 const helpOpenMediaSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-media-settings]'));
 const helpOpenGapRemovePanelButton = document.getElementById('help-open-gap-remove-panel');
@@ -1672,6 +1676,10 @@ const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
+const EDITOR_SETTINGS_WINDOW_POSITION_KEY = 'moy.asr.editor.settings.window.v1';
+const EDITOR_SETTINGS_WINDOW_TAB_KEY = 'moy.asr.editor.settings.window_tab.v1';
+const editorSettingsClose = document.getElementById('editor-settings-close');
+const editorSettingsDragHandle = document.getElementById('editor-settings-drag-handle');
 
 const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
@@ -1701,7 +1709,6 @@ let cuePanelUndoPushed = false;
 let cuePanelUndoRecord = null;
 let cuePanelTextEditSnapshot = null;
 let cuePanelCanceling = false;
-let editorSettingsPanelFrame = 0;
 
 function resetCuePanelEditState() {
   cuePanelUndoPushed = false;
@@ -1870,23 +1877,63 @@ function applyNinjaSettings() {
   if (ninjaRazorIcon) ninjaRazorIcon.hidden = !enabled;
 }
 
+// 全局设置窗口：复用 createFloatingPanel 获得拖动、位置持久化、Esc 关闭与按钮 active 态；
+// 窗口内部用左侧垂直标签页切换不同分区，并记忆用户上次停留的分区。
+const editorSettingsTabs = editorSettingsPanel
+  ? Array.from(editorSettingsPanel.querySelectorAll('.editor-settings-nav-tab'))
+  : [];
+const editorSettingsFloatingPanel = createFloatingPanel({
+  panel: editorSettingsPanel,
+  dragHandle: editorSettingsDragHandle,
+  manageButton: editorSettingsToggle,
+  anchorButton: editorSettingsToggle,
+  positionKey: EDITOR_SETTINGS_WINDOW_POSITION_KEY,
+  // 所有打开路径（按钮点击 / 桥接）都先恢复标签页，保证默认分区带上 active 样式，
+  // 且窗口按实际内容尺寸定位。
+  onOpen: restoreEditorSettingsActiveTab,
+});
+
+function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
+  if (!tab) return;
+  for (const item of editorSettingsTabs) {
+    const active = item === tab;
+    item.classList.toggle('active', active);
+    item.setAttribute('aria-selected', String(active));
+    item.tabIndex = active ? 0 : -1;
+    const page = document.getElementById(item.getAttribute('aria-controls') || '');
+    if (page) page.hidden = !active;
+  }
+  if (focus) tab.focus();
+  try {
+    localStorage.setItem(EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
+  } catch (_) {
+    // file:// 隐私模式可能拒绝 localStorage；切换标签页本身不受影响。
+  }
+}
+
+function restoreEditorSettingsActiveTab() {
+  let saved = '';
+  try {
+    saved = localStorage.getItem(EDITOR_SETTINGS_WINDOW_TAB_KEY) || '';
+  } catch (_) {
+    saved = '';
+  }
+  // 忽略已隐藏的分区（如当前环境不可用的「保存」），回退到第一个可见分区。
+  const tab = editorSettingsTabs.find((item) => item.dataset.settingsTab === saved && !item.hidden)
+    || editorSettingsTabs.find((item) => !item.hidden)
+    || editorSettingsTabs[0];
+  setEditorSettingsActiveTab(tab);
+}
+
 function setEditorSettingsPanelOpen(open) {
   if (!editorSettingsPanel || !editorSettingsToggle) return;
   if (!open) {
     setMergeJoinSettingsPanelOpen(false);
     setSplitTrimSettingsPanelOpen(false);
+    editorSettingsFloatingPanel.close();
+    return;
   }
-  editorSettingsToggle.classList.toggle('active', open);
-  editorSettingsToggle.setAttribute('aria-expanded', String(open));
-  // 先让按钮状态绘制出来，再展开/收起文档流中的大面板，避免布局重排把高亮拖后。
-  cancelAnimationFrame(editorSettingsPanelFrame);
-  editorSettingsPanelFrame = requestAnimationFrame(() => {
-    editorSettingsPanelFrame = requestAnimationFrame(() => {
-      editorSettingsPanelFrame = 0;
-      if (editorSettingsToggle.getAttribute('aria-expanded') !== String(open)) return;
-      editorSettingsPanel.hidden = !open;
-    });
-  });
+  editorSettingsFloatingPanel.open();
 }
 
 function positionAnchoredSettingsPanel(panel, toggle) {
@@ -2242,7 +2289,7 @@ function refreshMergeJoinModeHint() {
   // 用户觉得不对就自己点按钮换。
   const effective = hasPinned ? override : detected;
   const other = effective === 'continuous' ? 'word' : 'continuous';
-  mergeJoinModeText.textContent = `当前为「${splitModeLabel(effective)}」${splitModeExample(effective)}`;
+  mergeJoinModeText.textContent = `当前字幕为「${splitModeLabel(effective)}」${splitModeExample(effective)}`;
   // 按钮 title 给出目标类型的语言说明，帮助用户选择。
   mergeJoinModeSwitch.textContent = `切换为${splitModeLabel(other)}`;
   mergeJoinModeSwitch.title = other === 'word'
@@ -2391,7 +2438,29 @@ multiSubtitleAlignButton?.addEventListener('click', () => {
 });
 applySubtitleAppearance();
 applyExtensionSubtitleAppearance();
-editorSettingsToggle?.addEventListener('click', () => setEditorSettingsPanelOpen(editorSettingsPanel?.hidden));
+// 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
+editorSettingsTabs.forEach((tab) => {
+  tab.addEventListener('click', () => setEditorSettingsActiveTab(tab));
+  tab.addEventListener('keydown', (event) => {
+    // 方向键只在可见分区之间循环；隐藏分区（如不可用的「保存」）不参与导航。
+    const visibleTabs = editorSettingsTabs.filter((item) => !item.hidden);
+    const index = visibleTabs.indexOf(tab);
+    let next = -1;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      next = (index + 1) % visibleTabs.length;
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      next = (index - 1 + visibleTabs.length) % visibleTabs.length;
+    } else if (event.key === 'Home') {
+      next = 0;
+    } else if (event.key === 'End') {
+      next = visibleTabs.length - 1;
+    }
+    if (next < 0) return;
+    event.preventDefault();
+    setEditorSettingsActiveTab(visibleTabs[next], { focus: true });
+  });
+});
+editorSettingsClose?.addEventListener('click', () => setEditorSettingsPanelOpen(false));
 mergeJoinSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setMergeJoinSettingsPanelOpen(mergeJoinSettingsPanel?.hidden);
@@ -2528,30 +2597,12 @@ function visibleHelpTabButtons() {
   return helpTabButtons.filter((button) => !button.closest('[hidden]'));
 }
 
-function setHelpAdvancedTabsOpen(open, { focus = false } = {}) {
-  if (!helpAdvancedTabs || !helpAdvancedToggle) return;
-  const nextOpen = Boolean(open);
-  if (!nextOpen && helpAdvancedTabButtons.some((button) => button.getAttribute('aria-selected') === 'true')) {
-    selectHelpTab('basic');
-  }
-  helpAdvancedTabs.hidden = !nextOpen;
-  helpAdvancedToggle.setAttribute('aria-expanded', String(nextOpen));
-  helpAdvancedToggle.classList.toggle('is-active', nextOpen);
-  if (focus) {
-    const activeButton = helpAdvancedTabButtons.find((button) => button.getAttribute('aria-selected') === 'true');
-    (activeButton || helpAdvancedTabButtons[0])?.focus();
-  }
-}
-
 function selectHelpTab(tabName, { focus = false } = {}) {
   const activeButton = helpTabButtons.find((button) => button.dataset.helpTab === tabName);
   if (!activeButton) return;
-  if (helpAdvancedTabButtons.includes(activeButton) && helpAdvancedTabs?.hidden) {
-    setHelpAdvancedTabsOpen(true);
-  }
   helpTabButtons.forEach((button) => {
     const active = button === activeButton;
-    button.classList.toggle('is-active', active);
+    button.classList.toggle('active', active);
     button.setAttribute('aria-selected', String(active));
     button.tabIndex = active ? 0 : -1;
   });
@@ -2562,10 +2613,6 @@ function selectHelpTab(tabName, { focus = false } = {}) {
   });
   if (focus) activeButton.focus();
 }
-
-helpAdvancedToggle?.addEventListener('click', () => {
-  setHelpAdvancedTabsOpen(helpAdvancedTabs?.hidden === true);
-});
 
 helpTabButtons.forEach((button) => {
   button.addEventListener('click', () => selectHelpTab(button.dataset.helpTab));
@@ -2615,7 +2662,7 @@ function restoreHelpPanelSize() {
     saved = null;
   }
   if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
-  helpPanel.style.width = `${Math.min(Math.max(320, saved.width), window.innerWidth - 12)}px`;
+  helpPanel.style.width = `${Math.min(Math.max(400, saved.width), window.innerWidth - 12)}px`;
   helpPanel.style.height = `${Math.min(Math.max(240, saved.height), window.innerHeight - 12)}px`;
 }
 let helpPanelSizeSaveTimer = 0;
@@ -3715,6 +3762,34 @@ function addGapAtWaveformTime(timeMs) {
   );
   waveformEditor?.revealTime(start, true);
   flashHint(`已添加 ${formatGapRemoveTotal(end - start)} 静音空隙`, 'success');
+  return true;
+}
+
+function fillGapRangeAtWaveformTime(timeMs) {
+  const gaps = getGapRemoveGaps();
+  if (!gaps.some((gap) => gap.removed !== false)) {
+    flashHint('当前没有已激活的空隙，无法填充区间空隙', 'invalid');
+    return false;
+  }
+  const range = window.AsrEditorUtils.resolveGapFillRange(gaps, timeMs, gapRemoveMediaDurationMs());
+  if (!range) {
+    flashHint('媒体时长尚不可用；请先加载媒体后再填充区间空隙', 'invalid');
+    return false;
+  }
+  const state = getGapRemoveData(true);
+  const sourceGaps = window.AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
+  const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, range.start, range.end, true);
+  if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
+    flashHint('该位置已经是已移除的空隙', 'invalid');
+    return false;
+  }
+  pushGapRemoveUndo('填充区间空隙');
+  state.detector = 'audio_gate';
+  commitManualGapRemoveChange(
+    state,
+    [{ start: range.start, end: range.end, removed: true }],
+  );
+  flashHint(`已填充并合并为 ${formatGapRemoveTotal(range.end - range.start)} 静音空隙`, 'success');
   return true;
 }
 
@@ -11828,6 +11903,16 @@ function buildGapRemovedRegionsJson() {
   }, null, 2);
 }
 
+const CANONICAL_PROJECT_FIELDS = new Set([
+  'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity',
+  'model', 'sticker_root', 'timebase', 'segments', 'multi_subtitle', 'waveform',
+  'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'gap_remove',
+  'script_alignment', 'workspace', 'preview',
+]);
+let projectExtensionFields = Object.fromEntries(
+  Object.entries(DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+);
+
 function buildJson() {
   syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const repairedTimingCount = repairCurrentProjectTimings();
@@ -11836,6 +11921,8 @@ function buildJson() {
   }
   syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const out = {
+    schema: window.AsrEditorUtils.PROJECT_SCHEMA,
+    ...projectExtensionFields,
     media: DATA.media || '',
     language: DATA.language || '',
     model: DATA.model || '',
@@ -11859,6 +11946,11 @@ function buildJson() {
       return o;
     }),
   };
+  if (typeof DATA.language_source === 'string') out.language_source = DATA.language_source;
+  if (typeof DATA.split_mode === 'string') out.split_mode = DATA.split_mode;
+  if (typeof DATA.timestamp_granularity === 'string') {
+    out.timestamp_granularity = DATA.timestamp_granularity;
+  }
   const multi = getMultiSubtitleState();
   out.multi_subtitle = {
     schema: multi.schema || MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
@@ -12262,7 +12354,11 @@ function buildTimelineMediaClip(
   };
 }
 
-function buildTimelineOtio({ gapRemoved = false } = {}) {
+function buildTimelineOtio({
+  gapRemoved = false,
+  includeStickers = false,
+  includeSubtitleMarkers = true,
+} = {}) {
   const removed = gapRemoved ? getRemovedGapRanges() : [];
   if (gapRemoved && !removed.length) {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
@@ -12295,7 +12391,7 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
     ? mediaMetadata.audio_tracks : null;
   const clipName = otioMediaName(targetUrl);
   const audioEntries = audioMetadata === null
-    ? [null]
+    ? [{ audioTrack: null, index: 0 }]
     : audioMetadata.map((audioTrack, index) => ({ audioTrack, index }));
   const audioSpecs = audioEntries.length || player?.tagName !== 'AUDIO'
     ? audioEntries.map(({ audioTrack, index }) => ({
@@ -12328,8 +12424,10 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
       sourceStartFrame,
       sourceDurationFrames,
       {
-        includeSubtitleMarkers: track.kind === 'Video'
-          || (track.kind === 'Audio' && player?.tagName === 'AUDIO' && trackIndex === 0),
+        includeSubtitleMarkers: includeSubtitleMarkers && (
+          track.kind === 'Video'
+          || (track.kind === 'Audio' && player?.tagName === 'AUDIO' && trackIndex === 0)
+        ),
         gapRemoved,
         audioTrack: track.audioTrack,
         audioTrackIndex: track.audioTrackIndex,
@@ -12338,6 +12436,23 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
     )),
     kind: track.kind,
   }));
+  // 勾选「时间线包含表情包」时，把表情包作为叠加视频轨合并进同一个 OTIO 时间线；
+  // 没有表情包时静默跳过，仅保留时间线本体。
+  if (includeStickers) {
+    const collected = collectStickerOtioEntries(removed);
+    if (collected.error) {
+      flashHint(collected.error, 'warning');
+      return null;
+    }
+    if (collected.entries.length) {
+      const stickerTrack = buildStickerOtioTrack(collected.entries);
+      if (stickerTrack.error) {
+        flashHint(stickerTrack.error, 'warning');
+        return null;
+      }
+      tracks.push(stickerTrack.track);
+    }
+  }
   const metadata = {
     moy: {
       source_media: targetUrl,
@@ -12375,11 +12490,19 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
 }
 
 function buildSourceOtio() {
-  return buildTimelineOtio({ gapRemoved: false });
+  return buildTimelineOtio({
+    gapRemoved: false,
+    includeStickers: EDITOR_SETTINGS.otioExportIncludeStickers,
+    includeSubtitleMarkers: EDITOR_SETTINGS.otioExportIncludeMarkers,
+  });
 }
 
 function buildGapRemovedOtio() {
-  return buildTimelineOtio({ gapRemoved: true });
+  return buildTimelineOtio({
+    gapRemoved: true,
+    includeStickers: EDITOR_SETTINGS.otioExportIncludeStickers,
+    includeSubtitleMarkers: EDITOR_SETTINGS.otioExportIncludeMarkers,
+  });
 }
 
 function stickerOtioName(sticker, absPath) {
@@ -12448,7 +12571,9 @@ function collectStickerOtioEntries(removed) {
   return { entries };
 }
 
-function buildStickerOtioTimeline(stickers, timelineName) {
+// 把表情包条目构建为一条可放进任意时间线 Stack 的单层视频轨（Gap 填充 + 图片 Clip）。
+// stickers 会被就地排序；时间重叠时返回 { error }，由调用方决定中止还是跳过。
+function buildStickerOtioTrack(stickers) {
   stickers.sort((a, b) => (a.startMs - b.startMs) || (a.endMs - b.endMs) || (a.idx - b.idx));
   const children = [];
   let cursor = 0;
@@ -12502,6 +12627,25 @@ function buildStickerOtioTimeline(stickers, timelineName) {
     cursor = startFrame + durationFrames;
   }
   return {
+    track: {
+      OTIO_SCHEMA: 'Track.1',
+      metadata: {},
+      name: '表情包',
+      source_range: null,
+      effects: [],
+      markers: [],
+      enabled: true,
+      color: null,
+      children,
+      kind: 'Video',
+    },
+  };
+}
+
+function buildStickerOtioTimeline(stickers, timelineName) {
+  const result = buildStickerOtioTrack(stickers);
+  if (result.error) return result;
+  return {
     json: JSON.stringify({
       OTIO_SCHEMA: 'Timeline.1',
       metadata: {},
@@ -12516,18 +12660,7 @@ function buildStickerOtioTimeline(stickers, timelineName) {
         markers: [],
         enabled: true,
         color: null,
-        children: [{
-          OTIO_SCHEMA: 'Track.1',
-          metadata: {},
-          name: '表情包',
-          source_range: null,
-          effects: [],
-          markers: [],
-          enabled: true,
-          color: null,
-          children,
-          kind: 'Video',
-        }],
+        children: [result.track],
       },
     }, null, 4),
   };
@@ -12596,10 +12729,10 @@ async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
   const tr = (s) => window.MAWE_I18N?.translateText?.(s) || s;
   if (editingState) finishEdit(true);
   const payload = buildTimeline();
-  if (!payload) return;
+  if (!payload) return false;
   if (!SERVER_CONFIG?.canOtozTimelineExport || !SERVER_CONFIG?.otiozTimelineExportUrl) {
     flashHint(tr('当前工程无法导出时间线 OTIOZ（需要以 server-editor 打开并绑定工程文件）'), 'warning');
-    return;
+    return false;
   }
   flashHint(tr('正在生成时间线 OTIOZ 打包工程…'));
   try {
@@ -12618,11 +12751,12 @@ async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
     }
     const blob = await response.blob();
     flashHint(tr('时间线 OTIOZ 已生成，媒体已打包进 zip'), 'success');
-    await downloadFile(blob, filename, 'application/zip', {
+    return Boolean(await downloadFile(blob, filename, 'application/zip', {
       desc: description, types: { 'application/zip': ['.otioz'] },
-    });
+    }));
   } catch (error) {
     flashHint(`${tr('时间线 OTIOZ 导出失败')}：${error.message || error}`, 'warning');
+    return false;
   }
 }
 
@@ -13018,6 +13152,9 @@ function scheduleAutoSave() {
     // 服务器绑定工程或浏览器保存对话框（句柄模式）任一可用时都可自动保存。
     const available = Boolean(SERVER_CONFIG?.saveUrl || window.showSaveFilePicker);
     serverAutoSaveSettings.hidden = !available;
+    // 自动保存不可用时隐藏「保存」标签页，避免设置窗口出现空白分区。
+    const saveTab = document.getElementById('editor-settings-tab-save');
+    if (saveTab) saveTab.hidden = !available;
     if (!available) return;
   const sync = () => {
     autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
@@ -14139,36 +14276,60 @@ document.getElementById('download-gap-removed-color-srt')?.addEventListener('cli
 document.getElementById('download-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildSourceOtio();
-  if (payload) {
-    await downloadFile(payload, FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
-      desc: 'OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  if (!payload) return;
+  await downloadFile(payload, FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
+    desc: 'OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  });
+  if (EDITOR_SETTINGS.otioExportIncludeSrt) {
+    await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+      desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
     });
   }
 });
 document.getElementById('download-otioz')?.addEventListener('click', async () => {
-  await exportTimelineOtioz(
+  const saved = await exportTimelineOtioz(
     'source',
     buildSourceOtio,
     FILENAME_BASE + '.otioz',
     'OTIOZ 打包工程',
   );
+  if (saved && EDITOR_SETTINGS.otioExportIncludeSrt) {
+    await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+      desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
+    });
+  }
 });
 document.getElementById('download-gap-removed-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedOtio();
-  if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
-      desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
-    });
+  if (!payload) return;
+  await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
+    desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  });
+  if (EDITOR_SETTINGS.otioExportIncludeSrt) {
+    const srtPayload = buildGapRemovedSrt();
+    if (srtPayload) {
+      await downloadFile(srtPayload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+        desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
+      });
+    }
   }
 });
 document.getElementById('download-gap-removed-otioz')?.addEventListener('click', async () => {
-  await exportTimelineOtioz(
+  const saved = await exportTimelineOtioz(
     'gap-removed',
     buildGapRemovedOtio,
     `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otioz`,
     '去空隙时间线 OTIOZ 打包工程',
   );
+  if (saved && EDITOR_SETTINGS.otioExportIncludeSrt) {
+    const srtPayload = buildGapRemovedSrt();
+    if (srtPayload) {
+      await downloadFile(srtPayload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+        desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
+      });
+    }
+  }
 });
 document.getElementById('download-gap-removed-ffconcat')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
@@ -14215,6 +14376,38 @@ document.getElementById('download-sticker-otioz')?.addEventListener('click', asy
     `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '表情包 OTIOZ 打包工程'
   );
 });
+
+// 时间线 OTIO / OTIOZ 导出选项：两个 OTIO 子菜单（原始 / 去空隙）共享同一份设置，
+// 任一处勾选立即持久化并同步另一处；导出时由 buildSourceOtio / buildGapRemovedOtio 读取。
+const OTIO_EXPORT_OPTION_KEYS = {
+  srt: 'otioExportIncludeSrt',
+  stickers: 'otioExportIncludeStickers',
+  markers: 'otioExportIncludeMarkers',
+};
+const otioExportOptionInputs = [
+  ...document.querySelectorAll('input[data-otio-export-option]'),
+];
+
+function syncOtioExportOptionInputs() {
+  otioExportOptionInputs.forEach((input) => {
+    const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
+    if (key) input.checked = Boolean(EDITOR_SETTINGS[key]);
+  });
+}
+
+otioExportOptionInputs.forEach((input) => {
+  input.addEventListener('change', () => {
+    const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
+    if (!key) return;
+    updateEditorSettings({ [key]: input.checked });
+    syncOtioExportOptionInputs();
+    // 鼠标点击切换后立即交还焦点：焦点留在子菜单内的复选框上会让悬停关闭
+    // 逻辑（wrapper.contains(document.activeElement)）一直误判指针仍在菜单内，
+    // 导致二级菜单不再自动收起。键盘切换（:focus-visible）保持焦点不受影响。
+    if (!input.matches(':focus-visible')) input.blur();
+  });
+});
+syncOtioExportOptionInputs();
 
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
 updateStickerExportButtons();
@@ -14602,6 +14795,7 @@ function resetLoadedMedia() {
 
 function buildBlankProject() {
   return {
+    schema: window.AsrEditorUtils.PROJECT_SCHEMA,
     media: '', language: '', model: '',
     timebase: { unit: 'milliseconds', fps: 30 },
     segments: [],
@@ -14619,8 +14813,16 @@ function applyCanonicalProject(data, filename) {
   currentCuePanelTrackId = null;
   resetCuePanelEditState();
   resetLoadedMedia();
+  projectExtensionFields = Object.fromEntries(
+    Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+  );
+  DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
   DATA.media = typeof data.media === 'string' ? data.media : '';
   DATA.language = data.language || '';
+  DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
+  DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
+  DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
+    ? data.timestamp_granularity : undefined;
   DATA.model = data.model || '';
   DATA.timebase = normalizeTimelineTimebase(data.timebase);
   timelineFpsManuallySet = hasExplicitTimelineFps(data.timebase);
@@ -15154,6 +15356,12 @@ async function openProjectFile(file, options = {}) {
     const text = await readFileTextWithProgress(file);
     updateEditorLoading(60, `正在解析工程 ${file.name}…`);
     const data = JSON.parse(text);
+    if (data && typeof data === 'object' && !Array.isArray(data)
+        && Object.prototype.hasOwnProperty.call(data, 'schema')
+        && !window.AsrEditorUtils.supportsProjectSchema(data)) {
+      flashHint('不支持的工程格式版本，请使用新版 MAW 打开。', 'warning');
+      return false;
+    }
     // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
     if (data && Array.isArray(data.segments)) {
       data.timebase = normalizeTimelineTimebase(data.timebase);
@@ -17673,25 +17881,29 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
     }
     ctxmenu.appendChild(it);
   }
+  function addSep() {
+    const sep = document.createElement('div');
+    sep.className = 'sep';
+    ctxmenu.appendChild(sep);
+  }
   const mainIdx = findWaveformCueAtTime(timeMs, DATA.segments);
   const extensionTrack = getActiveExtensionTrack();
   const extensionIdx = findWaveformCueAtTime(timeMs, extensionTrack?.segments);
   if (effectiveTrack === 'extension') {
     addItem(
       '创建副字幕',
-      '',
+      'N',
       () => addExtensionAtWaveformTime(timeMs, clickX, clickY, extensionTrack),
       extensionIdx >= 0,
     );
   } else {
     addItem(
       '创建字幕',
-      '',
+      'N',
       () => addCueAtWaveformTime(timeMs, clickX, clickY),
       mainIdx >= 0,
     );
   }
-  addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));
   if (Array.isArray(DATA.segments) && DATA.segments.length) {
     addItem(
       '按音频位置拆分主字幕',
@@ -17707,6 +17919,11 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       () => openExtensionSplitModal(extensionIdx, timeMs, extensionTrack),
       extensionIdx < 0,
     );
+  }
+  addSep();
+  addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));
+  if (getGapRemoveGaps().some((gap) => gap.removed !== false)) {
+    addItem('填充区间空隙', '', () => fillGapRangeAtWaveformTime(timeMs));
   }
 
   ctxmenu.classList.add('show');

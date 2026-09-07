@@ -376,6 +376,8 @@ test('keeps local runtime events working after the page learns that installation
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#provider').selectOption('local');
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsRuntimeTab').click();
   await expect(page.locator('#localRuntimePanel')).toBeVisible();
 
   await page.evaluate(() => {
@@ -393,6 +395,52 @@ test('keeps local runtime events working after the page learns that installation
 
   await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'localRuntimeReady' }));
   await expect(page.locator('#status')).toHaveText('本地模型支持已安装完成');
+});
+
+test('local runtime check sits above the model panel and deep-links to the Runtime tab top', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#provider').selectOption('local');
+  await expect(page.locator('#localRuntimeCheckField')).toBeVisible();
+  const checkRow = await page.locator('#localRuntimeCheckField').boundingBox();
+  const modelPanel = await page.locator('#localModelPanel').boundingBox();
+  expect(checkRow.y + checkRow.height).toBeLessThan(modelPanel.y);
+  await expect(page.locator('#localModelCachePathLine')).toContainText('模型缓存：D:\\Models\\MAW');
+  await expect(page.locator('#localRuntimeCheckStatus')).toHaveText('本地运行环境未安装');
+  await page.locator('#openLocalRuntimeSettings').click();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#localRuntimePanel')).toBeVisible();
+  // 深度链接落在 Runtime 面板顶部：内容区回到顶部，弹窗卡片本体不被滚动。
+  await expect.poll(() => page.locator('.settings-scroll').evaluate((el) => el.scrollTop)).toBeLessThan(4);
+  await expect.poll(() => page.locator('.settings-modal-card').evaluate((el) => el.scrollTop)).toBe(0);
+});
+
+test('English mode localizes provider, model, and language labels from the backend config', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#langToggle').click();
+  await page.locator('#provider').selectOption('local');
+
+  await expect(page.locator('#provider option[value="local"]')).toHaveText('Local models (Beta)');
+  await expect(page.locator('#model option[value="qwen3-asr-local"]')).toHaveText('Qwen3-ASR 0.6B (recommended)');
+  await expect(page.locator('#modelNote')).toHaveText('Runs locally; the first preparation downloads Qwen3-ASR and the Forced Aligner.');
+  await expect(page.locator('#language option').first()).toHaveText('Auto detect');
+});
+
+test('local runtime accepts a custom root directory in Settings', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#provider').selectOption('local');
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsRuntimeTab').click();
+  await expect(page.locator('#localRuntimePath')).toBeVisible();
+
+  await page.locator('#localRuntimePath').fill('D:\\Demo\\custom-runtime');
+  await page.locator('#localRuntimePath').dispatchEvent('change');
+
+  await expect(page.locator('#localRuntimePaths')).toContainText('D:\\Demo\\custom-runtime');
+  await expect(page.locator('#localRuntimePathError')).toHaveText('');
 });
 
 test('LLM settings refill the saved key and save only after a successful connection test', async ({ page }) => {

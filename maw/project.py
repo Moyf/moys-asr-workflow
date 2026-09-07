@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass
-from typing import TypeGuard, final
+from typing import Final, TypeGuard, final
 
 from maw.project_preview import JsonDict, JsonValue, clamped_preview, validate_preview
 from maw.language import LANGUAGE_SOURCES, SPLIT_MODES, TIMESTAMP_GRANULARITIES
@@ -15,6 +15,7 @@ from maw.language import LANGUAGE_SOURCES, SPLIT_MODES, TIMESTAMP_GRANULARITIES
 # pyright: reportImplicitOverride=false
 
 MIN_SEGMENT_DURATION_MS = 100
+PROJECT_SCHEMA: Final = "moy.asr.project.v1"
 TIMELINE_TIMEBASE_UNITS = frozenset({"milliseconds", "frames"})
 MIN_TIMELINE_FPS = 1.0
 MAX_TIMELINE_FPS = 240.0
@@ -215,6 +216,10 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
         errors.append(ProjectValidationError("$", "must be an object"))
         return {"segments": []}
     normalized = copy.deepcopy(project)
+    schema = normalized.get("schema")
+    if "schema" in normalized and schema != PROJECT_SCHEMA:
+        errors.append(ProjectValidationError("$.schema", f"must be {PROJECT_SCHEMA}"))
+    normalized["schema"] = PROJECT_SCHEMA
     _validate_timebase(normalized, errors)
     _validate_media_metadata(normalized, errors)
     segments = normalized.get("segments")
