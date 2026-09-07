@@ -212,18 +212,14 @@ def embed_media_caches(
     # 回退档判据只有一个问题：当前媒体的自研波形已经在容器里了吗？
     # 没装内核 / 内核抛错 / 产物自检不过 / 压根没生成 —— 四种成因共用
     # 这一条路径，调用方不需要数标志位。
-    # 回退档的签名对象必须是**真正解码过的那个文件**：源媒体不可解时
-    # embed_waveform 解的是派生 WAV，把它的峰写成源媒体的缓存，会让短片段
-    # 的时间轴被当成完整源媒体的有效波形接受（错而不显）。载荷自己的
-    # source.name 就是那次解码所用的文件名，按它落点最准。
+    # 回退档的落点与签名都用 decode_path —— 它就是本次**真正解码过的那个文件**
+    # （源媒体不可解时是派生 WAV，与上面 payload["source"] = media_signature(decode_path)
+    # 同一个口径）。原先按 payload["source"]["name"] 比 basename 来猜，在源媒体与
+    # 临时派生媒体**同名不同目录**时会猜错：缓存被写进临时目录，with 块一退出就随
+    # 目录一起消失，等于白算一次，而且现场看不出来。
     if self_peaks is not None and isinstance(waveform_payload, dict):
-        src_name = str(waveform_payload.get("source", {}).get("name") or "")
-        if src_name and src_name == cache_path.name:
-            signed = cache_path
-        else:
-            signed = source_path
-        if quapeaks.find_self_wave_container(signed, audio_track=audio_track) is None:
-            _persist_mopeaks_fallback(waveform_payload, signed, audio_track=audio_track)
+        if quapeaks.find_self_wave_container(decode_path, audio_track=audio_track) is None:
+            _persist_mopeaks_fallback(waveform_payload, decode_path, audio_track=audio_track)
     return MediaCacheResult(
         project=project,
         waveform_error=waveform_result.error,
