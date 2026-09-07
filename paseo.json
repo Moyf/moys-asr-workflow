@@ -1,7 +1,7 @@
 {
   "scripts": {
     "gui": {
-      "command": "uv run python maw_gui.py"
+      "command": "uv run python maw_gui.py --debug"
     },
     "serve": {
       "type": "service",
@@ -10,7 +10,7 @@
   },
   "metadataGeneration": {
     "branchName": {
-      "instructions": "分支以feat/或fix/开头"
+      "instructions": "分支以feat/或fix/开头；分支名称用语义的内容，而不是直接随机生成。"
     },
     "commitMessage": {
       "instructions": "使用带scope的Conventional Commits\n使用中文\n在描述中写上具体的修改内容，但别太啰嗦"
