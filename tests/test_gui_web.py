@@ -21,6 +21,11 @@ from urllib.error import HTTPError, URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+
+def _canonical_test_path(value: str | os.PathLike[str]) -> str:
+    """Compare paths after resolving platform-specific aliases and symlinks."""
+    return os.path.normcase(os.path.realpath(os.fspath(value)))
+
 from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
@@ -311,8 +316,8 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         with mock.patch.dict(os.environ, {}, clear=False):
             api = LauncherApi(paths=LauncherPaths(root=self.root, env_path=self.env_path, launcher_html=self.root / "launcher.html"), window_getter=lambda: None)
-            self.assertEqual(os.environ["MAW_LOCAL_RUNTIME_ROOT"], str(runtime_root))
-            self.assertEqual(api.get_local_runtime()["path"], str(runtime_root))
+            self.assertEqual(_canonical_test_path(os.environ["MAW_LOCAL_RUNTIME_ROOT"]), _canonical_test_path(runtime_root))
+            self.assertEqual(_canonical_test_path(api.get_local_runtime()["path"]), _canonical_test_path(runtime_root))
 
     def test_local_runtime_supports_a_custom_root_directory(self) -> None:
         """Given OCR-like custom folder support, When configuring local runtime, Then the same settings flow exists."""
@@ -2790,7 +2795,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertFalse(result["renamed"])
-        self.assertEqual(result["path"], str(self.root / "_maw" / "clip.qwen-audio.srt"))
+        self.assertEqual(_canonical_test_path(result["path"]), _canonical_test_path(self.root / "_maw" / "clip.qwen-audio.srt"))
 
     def test_default_output_honours_attach_model_name_setting(self) -> None:
         """Given model-name attachment disabled, When previewing, Then the SRT filename carries no tag."""

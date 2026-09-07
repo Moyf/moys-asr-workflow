@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -13,6 +14,11 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+
+def _canonical_test_path(value: str | os.PathLike[str]) -> str:
+    """Compare paths after resolving platform-specific aliases and symlinks."""
+    return os.path.normcase(os.path.realpath(os.fspath(value)))
 
 from maw.gui_web import LauncherApi, LauncherPaths  # noqa: E402
 from maw.gui_workflow import TranscriptionRequest, TranscriptionResult  # noqa: E402
@@ -407,7 +413,7 @@ class BatchApiTests(unittest.TestCase):
             with mock.patch("maw.gui_web._request_from_payload", return_value=TranscriptionRequest(media, root / "clip.srt")), mock.patch("maw.gui_web.run_batch"):
                 result = api.start_batch_transcription({"items": [{"id": "a", "mediaPath": str(media), "srtPath": str(root / "clip.srt")}], "apiKey": "secret"})
             self.assertTrue(result["ok"])
-            self.assertEqual(result["manifestPath"], str(manifest_root / "maw-batch-manifest-1.json"))
+            self.assertEqual(_canonical_test_path(result["manifestPath"]), _canonical_test_path(manifest_root / "maw-batch-manifest-1.json"))
             api.shutdown()
 
 
