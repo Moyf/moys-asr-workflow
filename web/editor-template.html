@@ -1156,6 +1156,14 @@ __WAVEFORM_CSS__
         </span>
       </label>
     </div>
+    <div class="editor-settings-sub-group" id="project-backup-settings">
+      <label class="toggle editor-settings-item"><input type="checkbox" id="project-backup-enabled"> 备份工程</label>
+      <label class="editor-settings-item">自动备份间隔（分钟）<span class="gap-remove-number-control"><input id="project-backup-minutes" type="number" min="1" max="1440" step="1" value="5"></span></label>
+      <label class="editor-settings-item">最大保存版本数<span class="gap-remove-number-control"><input id="project-backup-limit" type="number" min="1" max="1000" step="1" value="20"></span></label>
+      <div class="editor-settings-field"><button type="button" id="project-backup-open">打开备份文件夹</button></div>
+      <small class="editor-settings-hint">开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/backups。</small>
+      <small class="editor-settings-hint" id="project-backup-unavailable">工程备份需要本地 Server 绑定工程；浏览器另存为的文件不支持目录备份。</small>
+    </div>
   </div>
   </div>
   <div class="editor-settings-page" id="editor-settings-page-sticker" role="tabpanel" aria-labelledby="editor-settings-tab-sticker" hidden>

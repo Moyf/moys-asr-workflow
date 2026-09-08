@@ -12,6 +12,7 @@ dependencies = [
     "pywebview>=6.2.1; sys_platform != 'linux'",
     "pywebview[qt]>=6.2.1; sys_platform == 'linux'",
     "requests>=2.28",
+    "send2trash>=1.8.3",
     # Rust peaks 生成内核 quapeaks（MIT/Apache-2.0，独立仓库，改名自 reapeaks-rs）；
     # 唯一生成路径，无 Python 参考实现回退。内核只在生成时按调用点导入，缺失时打日志
     # 跳过缓存生成，不在导入期阻断转写入口（缓存可由装了内核的环境重建）。

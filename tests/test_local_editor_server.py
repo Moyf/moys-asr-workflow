@@ -48,6 +48,39 @@ def _write_reapeaks_for(media_path: Path) -> Path:
 
 
 class LocalEditorServerTests(unittest.TestCase):
+    def test_open_backup_folder_is_bound_and_requires_token(self) -> None:
+        handler = object.__new__(server_editor.EditorRequestHandler)
+        handler.server = mock.Mock()
+        handler.server.project.json_path = self.project_path
+        handler.server.request_token = 'test-token'
+        handler.send_json = mock.Mock()
+        handler.read_json_request = mock.Mock(return_value={'requestToken': 'wrong'})
+        with mock.patch.object(server_editor.os, 'startfile', create=True) as opener, mock.patch.object(server_editor.sys, 'platform', 'win32'):
+            handler.open_backup_directory()
+            self.assertEqual(handler.send_json.call_args.args[0], 403)
+            opener.assert_not_called()
+            handler.read_json_request.return_value = {'requestToken': 'test-token', 'path': str(self.root / 'untrusted')}
+            handler.open_backup_directory()
+            opener.assert_called_once_with(str(self.root / '_maw' / 'backups'))
+            self.assertEqual(handler.send_json.call_args.args[0], 200)
+
+    def test_version_backup_does_not_save_or_remember_snapshot(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        original = self.project_path.read_bytes()
+        with server_editor.EditorServer(('127.0.0.1', 0), project) as server:
+            data = {'segments': [], 'language': 'en'}
+            target, backup = server.save_project(data, backup_limit=2, backup_only=True)
+            self.assertEqual(target, self.project_path)
+            self.assertEqual(self.project_path.read_bytes(), original)
+            self.assertEqual(server.settings.recent_projects, ())
+            self.assertEqual(json.loads(backup.read_text(encoding='utf-8'))['language'], 'en')
+            server.save_project(data, backup_limit=2)
+            self.assertEqual(len(list(backup.parent.glob('*.mosp-bak'))), 2)
+            self.assertEqual([p.path for p in server.settings.recent_projects], [target])
+            self.assertIs(server_editor.remember_project(server.settings, backup), server.settings)
+
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         # Windows CI may expose %TEMP% as an 8.3 short path while production code resolves it.
@@ -502,7 +535,10 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="auto-save-project"', page)
         self.assertIn('id="auto-save-project" checked', page)
         self.assertIn('id="auto-save-interval"', page)
+        self.assertIn('id="project-backup-enabled"', page)
+        self.assertIn('> 备份工程</label>', page)
         self.assertLess(page.index('id="editor-settings-page-export"'), page.index('id="server-auto-save-settings"'))
+        self.assertLess(page.index('id="server-auto-save-settings"'), page.index('id="project-backup-settings"'))
         self.assertIn('function scheduleAutoSave()', page)
         self.assertIn('hasUnsavedProjectChanges() && !projectSaveInFlight', page)
         self.assertIn('id="recent-projects"', page)

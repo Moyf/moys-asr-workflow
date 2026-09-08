@@ -18,6 +18,7 @@ import secrets
 import shutil
 import socket
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
@@ -47,6 +48,7 @@ mimetypes.add_type("audio/ogg", ".opus")
 import edit  # noqa: E402
 from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import quapeaks  # noqa: E402
+from maw.project_backups import backup_directory, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
@@ -262,6 +264,8 @@ def write_server_settings(path: Path, settings: ServerSettings) -> None:
 
 def remember_project(settings: ServerSettings, project_path: Path) -> ServerSettings:
     """Move one explicitly opened project to the front, retaining only ten entries."""
+    if project_path.name.lower().endswith('.mosp-bak'):
+        return settings
     resolved = project_path.expanduser().resolve()
     recent = [RecentProject(resolved, resolved.name)]
     recent.extend(item for item in settings.recent_projects if item.path != resolved)
@@ -1007,9 +1011,13 @@ class EditorServer(ThreadingHTTPServer):
         self.start_deferred_reapeaks_load()
         return project
 
-    def save_project(self, project_data: dict, filename: str | None = None) -> tuple[Path, Path | None]:
+    def save_project(self, project_data: dict, filename: str | None = None, *, backup_limit: int | None = None, backup_only: bool = False) -> tuple[Path, Path | None]:
         if not self.project.json_path:
             raise SaveProjectError("当前服务器没有绑定工程文件；请先导出 .mosp 工程，再重新打开该文件")
+        if backup_limit is not None and (type(backup_limit) is not int or not 1 <= backup_limit <= 1000):
+            raise SaveProjectError("最大保存版本数必须为 1–1000 的整数")
+        if backup_only and (backup_limit is None or filename is not None):
+            raise SaveProjectError("备份必须使用当前绑定工程与有效的版本数")
         try:
             repaired_project = copy.deepcopy(project_data)
             # 保存时只自动修复字/词级取整冲突；真正的字幕段重叠仍交给严格校验，
@@ -1025,7 +1033,11 @@ class EditorServer(ThreadingHTTPServer):
         if not self.save_lock.acquire(blocking=False):
             raise ProjectMutationInProgressError("另一个工程保存操作正在进行")
         try:
+            if backup_only:
+                return target, write_backup(target, normalized_project, backup_limit)
             backup = write_project_json(target, normalized_project)
+            if backup_limit is not None:
+                backup = write_backup(target, normalized_project, backup_limit)
             # 磁盘副本已剥离；运行态不能跟着丢缓存，否则保存→刷新后原生
             # 波形被清空、被 /api/waveform 的 REAPER 峰静默顶替。同一媒体、
             # 同一音轨时把运行态缓存合并回新工程，媒体/音轨变化则失效。
@@ -1572,6 +1584,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.shutdown_server()
         elif path == "/api/project":
             self.save_project()
+        elif path == "/api/project/backups/open":
+            self.open_backup_directory()
         elif path == "/api/project/attach":
             self.attach_project()
         elif path == "/api/recent-projects/open":
@@ -1613,11 +1627,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             filename = request.get("filename")
             if filename is not None and not isinstance(filename, str):
                 raise SaveProjectError("文件名格式不正确")
-            target, backup = self.editor_server.save_project(request.get("project"), filename)
+            target, backup = self.editor_server.save_project(
+                request.get("project"), filename,
+                backup_limit=request.get("backupLimit"),
+                backup_only=request.get("backupOnly") is True,
+            )
         except ProjectMutationInProgressError as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
             return
-        except (UnicodeDecodeError, json.JSONDecodeError, SaveProjectError) as error:
+        except (UnicodeDecodeError, json.JSONDecodeError, SaveProjectError, ValueError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
         except OSError as error:
@@ -1633,6 +1651,29 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         token = request.get("requestToken")
         if not isinstance(token, str) or not compare_digest(token, self.editor_server.request_token):
             raise PermissionError("请求令牌无效")
+
+    def open_backup_directory(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            project = self.editor_server.project.json_path
+            if project is None:
+                raise ValueError("当前服务器没有绑定工程文件")
+            directory = backup_directory(project)
+            directory.mkdir(parents=True, exist_ok=True)
+            if directory.is_symlink() or directory.resolve() != directory.absolute():
+                raise ValueError("备份目录不能通过链接指向其他位置")
+            if sys.platform == "win32":
+                os.startfile(str(directory))
+            else:
+                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(directory)])
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (OSError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {"ok": True})
 
     def set_sticker_root(self) -> None:
         try:

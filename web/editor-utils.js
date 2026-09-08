@@ -2873,6 +2873,9 @@
       exportSpeakerLabels: savedSettings.exportSpeakerLabels === true,
       autoSaveProject: savedSettings.autoSaveProject !== false,
       autoSaveIntervalSeconds: clampInteger(savedSettings.autoSaveIntervalSeconds, 30, 5, 3600),
+      projectBackupEnabled: savedSettings.projectBackupEnabled === true,
+      projectBackupMinutes: clampInteger(savedSettings.projectBackupMinutes, 5, 1, 1440),
+      projectBackupLimit: clampInteger(savedSettings.projectBackupLimit, 20, 1, 1000),
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
       stickerOtioExportMode: savedSettings.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
       // 时间线 OTIO 导出选项：默认同时导出 SRT、合并表情包轨、写入字幕标记。

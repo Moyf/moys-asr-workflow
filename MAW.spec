@@ -153,6 +153,7 @@ a = Analysis(
         "maw.quapeaks",
         "maw.mopeaks",
         "maw.output_naming",
+        "maw.project_backups",
         "generate_subtitle_qwen_api",
         "generate_subtitle_soniox_api",
         "generate_subtitle_tencent_api",
