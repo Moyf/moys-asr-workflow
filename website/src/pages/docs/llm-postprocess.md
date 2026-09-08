@@ -109,11 +109,11 @@ source: "docs/LLM_POSTPROCESS_PROTOCOL.md"
 
 ## 5. 文件与链式处理
 
-处理结果使用原输入目录和操作后缀生成，例如 `clip.proofread.mosp`、`clip.proofread.srt`。同名文件已存在时会追加递增编号。写入采用同目录临时文件加原子替换，且永不覆盖源工程或源 SRT。合并双语时，手动工具箱输出使用 `clip.translate-en-bilingual.mosp` / `clip.translate-en-bilingual.srt`（中文目标对应 `translate-zh-bilingual`）；自动后处理最终输出使用 `clip.postprocess.bilingual.mosp` / `clip.postprocess.bilingual.srt`。只有 SRT 输入时也使用相同的 `.bilingual` 命名标记。
+处理结果使用原输入目录和操作后缀生成，例如 `clip.proofread.mosp`、`clip.proofread.srt`。同名文件已存在时会追加递增编号。写入采用同目录临时文件加原子替换，且永不覆盖源工程或源 SRT。合并双语时，手动工具箱输出在中文界面为 `clip.翻译为英文.双语合一.mosp` / `clip.翻译为英文.双语合一.srt`（中文目标对应 `.翻译为中文.双语合一`；英文界面为 `clip.translate-en-bilingual.mosp` / `clip.translate-en-bilingual.srt`）；自动后处理最终输出使用 `clip.postprocess.bilingual.mosp` / `clip.postprocess.bilingual.srt`，中文界面下本地化为 `clip.后处理.双语合一.mosp` / `clip.后处理.双语合一.srt`（`.proofread` 等非翻译操作后缀不随界面语言变化；翻译段 `translate-*` 与双语标记会本地化）。只有 SRT 输入时也使用相同的双语合一命名标记。
 
 成功后 Launcher 会把生成路径设为下一次工具运行的输入，因此可以按“固定处理 → LLM 校对 → 翻译”等顺序链式处理。固定处理可先批量替换，再做简繁转换；只有 SRT 输入时，如选择工程输出，会创建 `.mosp` 工程。
 
-翻译入口会检查工程和 SRT 输入的文件名：`.bilingual` 会阻止再次翻译，`.translate-en` / `.translate-zh` 仍会阻止同一目标的明显重复翻译。这是显式产物标记保护，不是对被用户重命名文件的内容或语言进行识别。
+翻译入口会检查工程和 SRT 输入的文件名：「双语合一 / bilingual」会阻止再次翻译，`.translate-en` / `.translate-zh`（含中文界面的 `.翻译为英文` / `.翻译为中文`）会阻止同一目标的明显重复翻译。这是显式产物标记保护，不是对被用户重命名文件的内容或语言进行识别。
 
 ## 6. OpenAI-compatible HTTP 契约
 

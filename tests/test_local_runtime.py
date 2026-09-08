@@ -46,6 +46,10 @@ class LocalRuntimeTests(unittest.TestCase):
                 Path(__file__).resolve().parents[1] / "maw" / "output_naming.py",
                 package_root / "output_naming.py",
             )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "media.py",
+                package_root / "media.py",
+            )
             (package_root / "console.py").write_text(
                 "def configure_utf8_stdio():\n"
                 "    pass\n",
@@ -95,13 +99,15 @@ class LocalRuntimeTests(unittest.TestCase):
 
         MOSS 用独立的 ``local-runtime-moss`` 环境跑 ``local-runtime`` 脚本镜像，该环境
         的依赖清单里没有 ``reapeaks``。此前入口经 ``maw.local_asr`` → 共享 API 模块 →
-        ``edit.py`` → ``maw.reapeaks`` 在导入期就 ModuleNotFoundError，模型根本没机会加载。
+        ``edit.py`` → ``maw.quapeaks`` 在导入期就 ModuleNotFoundError，模型根本没机会加载。
         """
         repo_root = Path(__file__).resolve().parents[1]
         driver = (
             "import sys\n"
             f"sys.path.insert(0, {str(repo_root)!r})\n"
-            "sys.modules['reapeaks'] = None\n"
+            # 改名后内核包叫 quapeaks；这里若还屏蔽 reapeaks，测试等于在验证
+            # "缺一个已经不存在的包时仍可导入"，真正要保的场景没有覆盖到。
+            "sys.modules['quapeaks'] = None\n"
             "import generate_subtitle_local\n"
             "print('MAW_LOCAL_ENTRY_IMPORT_OK')\n"
         )
@@ -200,7 +206,7 @@ class LocalRuntimeTests(unittest.TestCase):
             def fake_run(command: list[str], **_kwargs: object) -> int:
                 if "install" in command:
                     packages = root / "site-packages"
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
                         (packages / name).mkdir(parents=True, exist_ok=True)
                 return 0
 

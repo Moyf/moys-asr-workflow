@@ -28,6 +28,12 @@ vm.runInNewContext('globalThis.newArrayBuffer = (size) => new ArrayBuffer(size);
 const helpers = context.window.AsrWaveform.testing;
 const builtinWorkspaces = context.window.AsrWaveform.builtinWorkspaces;
 
+function copyToSandboxArrayBuffer(bytes) {
+  const buffer = context.newArrayBuffer(bytes.length);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
 
 test('decodes compact signed min/max peaks', () => {
   const bytes = Buffer.from([0x81, 0x7f, 0xf6, 0x0a]);
@@ -892,7 +898,7 @@ function buildReapeaksBuffer({ sampleRate, division, peaks, channels = 1, channe
 }
 
 
-test('publishes the fractional ReaPeaks bin rate instead of rounding it away', () => {
+test('publishes the fractional reapeaks bin rate instead of rounding it away', () => {
   const { waveform } = helpers.decodeReapeaksFile(
     buildReapeaksBuffer({ sampleRate: 16000, division: 53, peaks: 9057 }),
     { name: 'a.wav', size: 1234, modified_ms: 1700000000000 },
@@ -971,6 +977,22 @@ test('decodes a stereo .ReaPeaks by merging channels, not by picking one', () =>
   assert.ok(peaks[7] > peaks[1]);
 });
 
+test('decodes the real QPK1 self-wave fixtures', () => {
+  for (const name of ['tone_selfwave.wav.quapeaks', 'tone_stereo_selfwave.wav.quapeaks']) {
+    const bytes = fs.readFileSync(new URL(`test_data/${name}`, import.meta.url));
+    const decoded = helpers.decodeReapeaksFile(copyToSandboxArrayBuffer(bytes));
+    assert.ok(decoded?.waveform, `${name} should expose a waveform`);
+    assert.ok(helpers.decodePayload(decoded.waveform), `${name} waveform payload should validate`);
+  }
+});
+
+test('rejects an unknown QPK container version', () => {
+  const bytes = fs.readFileSync(new URL('test_data/tone_selfwave.wav.quapeaks', import.meta.url));
+  const unknown = Buffer.from(bytes);
+  unknown[3] = '2'.charCodeAt(0);
+  assert.equal(helpers.decodeReapeaksFile(copyToSandboxArrayBuffer(unknown)), null);
+});
+
 test('activeWaveShape follows the drawn shape so detection uses the same envelope', () => {
   const shape = helpers.activeWaveShape;
   const ownPayload = { peaks_per_second: 100, peak_count: 10, duration_ms: 100 };
@@ -984,7 +1006,7 @@ test('activeWaveShape follows the drawn shape so detection uses the same envelop
     reapeaksPayload: over.rpPayload,
     reapeaksPeaks: over.rpPeaks,
   });
-  // 默认用 ReaPeaks 形状：刻度跟着切成 301.8868，检测也读同一份峰
+  // 默认用 reapeaks 形状：刻度跟着切成 301.8868，检测也读同一份峰
   const a = shape.call(stub({ source: 'reapeaks', payload: ownPayload, peaks: ownPeaks, rpPayload, rpPeaks }));
   assert.equal(a.payload, rpPayload);
   assert.equal(a.peaks, rpPeaks);

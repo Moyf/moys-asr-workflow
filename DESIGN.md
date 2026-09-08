@@ -160,6 +160,8 @@ column. Long paths use `overflow-wrap: anywhere` and never force horizontal scro
   internal `gap_remove` / `extra` field names remain data-contract identifiers.
 - The Utilities media input follows the Launcher's media path until the user chooses,
   drops, or types an override. Clearing that override restores following behavior.
+  Its shared audio-track selector appears for waveform generation and audio extraction,
+  so both tools use the same selected track and container-default track identity.
   Waveform offers separate generate-only and generate-and-open-editor actions, with a
   scoped optional spectral-cache checkbox; only the latter changes the Launcher project
   and starts the existing MAWE Server flow. FFconcat accepts a picked or dropped script

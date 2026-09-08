@@ -10,7 +10,7 @@ on:
       - "docs/**"
       - "edit.py"
       - "web/**"
-      - "maw/reapeaks.py"
+      - "maw/quapeaks.py"
       - "maw/**"
       - ".github/workflows/deploy-editor-pages.yml"
   workflow_dispatch:

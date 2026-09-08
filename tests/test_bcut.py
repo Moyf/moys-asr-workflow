@@ -655,6 +655,64 @@ class TranscribeRetryTests(unittest.TestCase):
 
 
 class BcutCliAudioPreparationTests(unittest.TestCase):
+    def test_video_forwards_default_track_only_to_cache_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "clip.mp4"
+            output_path = Path(tmpdir) / "out.srt"
+            input_path.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh", "items": []}
+            cache_result = mock.Mock(project={"media": str(input_path)}, waveform_error=None)
+
+            with (
+                mock.patch(
+                    "sys.argv",
+                    [
+                        "generate_subtitle_bcut_api.py",
+                        str(input_path),
+                        "-o", str(output_path),
+                        "--json",
+                        "--with-waveform",
+                        "--audio-track", "1",
+                        "--default-audio-track", "1",
+                        "--no-html",
+                    ],
+                ),
+                mock.patch(
+                    "generate_subtitle_bcut_api.load_config",
+                    return_value={
+                        "poll_interval": 2,
+                        "poll_timeout": 60,
+                        "max_audio_seconds": 7200,
+                    },
+                ),
+                mock.patch(
+                    "generate_subtitle_bcut_api.get_duration_sec",
+                    side_effect=[60.0, 60.0],
+                ),
+                mock.patch("generate_subtitle_bcut_api.extract_audio") as extract_audio,
+                mock.patch("generate_subtitle_bcut_api.transcribe", return_value=result),
+                mock.patch(
+                    "generate_subtitle_bcut_api.embed_media_caches",
+                    return_value=cache_result,
+                ) as embed_media_caches,
+                mock.patch("generate_subtitle_bcut_api.write_mosp"),
+            ):
+                from generate_subtitle_bcut_api import main
+
+                main()
+
+            extract_audio.assert_called_once_with(
+                str(input_path),
+                mock.ANY,
+                duration_limit=None,
+                ffmpeg_path=mock.ANY,
+                audio_track=1,
+            )
+            self.assertEqual(
+                embed_media_caches.call_args.kwargs["default_audio_track"],
+                1,
+            )
+
     def test_length_limit_crops_supported_audio_before_max_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             input_path = Path(tmpdir) / "long.mp3"
