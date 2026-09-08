@@ -275,7 +275,6 @@
 .layout-custom .current-cue-panel {
   min-height: max-content;
   overflow: hidden;
-  padding-top: 30px;
 }
 .layout-custom .layout-module-slot[data-layout-module="panel"],
 .layout-custom .layout-child:has(.layout-module-slot[data-layout-module="panel"]) {
@@ -299,12 +298,17 @@
   overflow-x: hidden;
 }
 .layout-custom .layout-resizer { display: none; }
+/* 拖动分隔条默认隐形，悬停/拖动时才浮现，避免常驻线条切割面板。 */
 .layout-split-divider {
   position: relative;
   z-index: 35;
   flex: 0 0 7px;
   background: transparent;
+  opacity: 0;
+  transition: opacity .12s;
 }
+.layout-split-divider:hover,
+.layout-split-divider.dragging { opacity: 1; }
 .layout-split-divider::after {
   content: "";
   position: absolute;
@@ -315,9 +319,9 @@
 .layout-split-divider:hover::after,
 .layout-split-divider.dragging::after { background: var(--accent); }
 .layout-split-divider-row { cursor: col-resize; }
-.layout-split-divider-row::after { top: 0; bottom: 0; left: 2px; width: 3px; }
+.layout-split-divider-row::after { top: 0; bottom: 0; left: 2px; width: 2px; }
 .layout-split-divider-column { cursor: row-resize; }
-.layout-split-divider-column::after { left: 0; right: 0; top: 2px; height: 3px; }
+.layout-split-divider-column::after { left: 0; right: 0; top: 2px; height: 2px; }
 
 .waveform-pane {
   --waveform-content-top: var(--panel-toolbar-h);

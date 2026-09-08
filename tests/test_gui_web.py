@@ -2220,7 +2220,10 @@ class GuiWebBridgeTests(unittest.TestCase):
 
     def test_start_server_reports_code_when_project_json_is_missing(self) -> None:
         """Given missing project JSON, When starting server, Then json_not_found code is returned."""
-        result = self.api.start_server({"jsonPath": str(self.root / "missing.json"), "mediaPath": "", "port": "8765"})
+        # 预探测必须隔离本机环境：开发者机器上该端口可能有无关进程应答，
+        # 会被误判为「服务器已在运行」而跳过 JSON 校验。
+        with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+            result = self.api.start_server({"jsonPath": str(self.root / "missing.json"), "mediaPath": "", "port": "8765"})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "jsonPath")
@@ -2396,7 +2399,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         project = self.root / "project.json"
         project.write_text('{"segments": []}\n', encoding="utf-8")
 
-        result = self.api.start_server({"jsonPath": str(project), "mediaPath": "", "port": "8765"})
+        # 同上：隔离本机端口占用，避免预探测误判服务器已在运行。
+        with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+            result = self.api.start_server({"jsonPath": str(project), "mediaPath": "", "port": "8765"})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "serverMediaPath")

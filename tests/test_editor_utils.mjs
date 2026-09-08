@@ -1222,7 +1222,10 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('保存成功！', 'en'), 'Saved!');
   assert.equal(i18n.translateText('字幕忍者', 'en'), 'Subtitle Ninja');
   assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
-  assert.equal(i18n.translateText('字幕大小', 'en'), 'Font size');
+  assert.equal(i18n.translateText('文字大小', 'en'), 'Font size');
+  assert.equal(i18n.translateText('视频预览', 'en'), 'Video preview');
+  assert.equal(i18n.translateText('播放控制', 'en'), 'Playback controls');
+  assert.equal(i18n.translateText('颜色样式', 'en'), 'Color style');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
   assert.equal(i18n.translateText('空隙检测与调整', 'en'), 'Gap detection and adjustment');
   assert.equal(i18n.translateText('进一步收缩空隙', 'en'), 'Shrink gaps further');
