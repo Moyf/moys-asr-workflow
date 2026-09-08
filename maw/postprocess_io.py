@@ -55,7 +55,8 @@ def read_srt(path: Path) -> JsonDict:
     except (OSError, UnicodeError) as error:
         raise PostprocessFileError(source, f"cannot read SRT: {error}") from error
     segments: list[JsonValue] = []
-    previous_end = 0
+    overlay_segments: list[JsonValue] = []
+    previous_start = 0
     stripped = text.strip()
     blocks = re.split(r"\r?\n\s*\r?\n", stripped) if stripped else []
     for cue_index, block in enumerate(blocks, 1):
@@ -72,11 +73,30 @@ def read_srt(path: Path) -> JsonDict:
             raise PostprocessFileError(source, f"cue {cue_index} has an invalid timestamp")
         start = _parse_srt_time(left, source, cue_index)
         end = _parse_srt_time(right_parts[0], source, cue_index)
-        if start < previous_end or end <= start:
+        if start < previous_start or end <= start:
             raise PostprocessFileError(source, f"cue {cue_index} has overlapping or invalid timing")
-        segments.append({"start": start, "end": end, "text": "\n".join(lines[timing_index + 1 :]).strip()})
-        previous_end = end
-    return normalize_project({"segments": segments})
+        cue = {"start": start, "end": end, "text": "\n".join(lines[timing_index + 1 :]).strip()}
+        if _fits_track(segments, start, end):
+            segments.append(cue)
+        elif _fits_track(overlay_segments, start, end):
+            overlay_segments.append(cue)
+        else:
+            raise PostprocessFileError(source, f"cue {cue_index} cannot fit into the main and overlay tracks")
+        previous_start = start
+    project: JsonDict = {"segments": segments}
+    if overlay_segments:
+        project["overlay_track"] = {"enabled": True, "segments": overlay_segments}
+    return normalize_project(project)
+
+
+def _fits_track(segments: list[JsonValue], start: int, end: int) -> bool:
+    """Return whether a positive cue range fits without overlapping a track."""
+    return all(
+        not isinstance(segment, dict)
+        or end <= int(segment.get("start", 0))
+        or start >= int(segment.get("end", 0))
+        for segment in segments
+    )
 
 
 def write_artifacts(
@@ -119,12 +139,11 @@ def write_artifacts(
 
 
 def render_srt(project: JsonDict) -> str:
-    segments = project.get("segments")
-    if not isinstance(segments, list):
+    main_segments = project.get("segments")
+    if not isinstance(main_segments, list):
         return ""
     blocks: list[str] = []
-    output_index = 1
-    for segment in segments:
+    for output_index, segment in enumerate(_srt_segments(project, main_segments), 1):
         if not isinstance(segment, dict):
             continue
         if segment.get("disabled") is True:
@@ -135,8 +154,30 @@ def render_srt(project: JsonDict) -> str:
         if type(start) is int and type(end) is int and isinstance(text, str) and text.strip():
             safe_text = re.sub(r"\r?\n\s*\r?\n+", "\n", text.strip())
             blocks.append(f"{output_index}\n{_format_srt_time(start)} --> {_format_srt_time(end)}\n{safe_text}\n")
-            output_index += 1
     return "\n".join(blocks)
+
+
+def _srt_segments(project: JsonDict, main_segments: list[JsonValue]) -> list[JsonValue]:
+    """Return enabled main and overlay cues ordered by start time and track."""
+    overlay_segments: list[JsonValue] = []
+    overlay = project.get("overlay_track")
+    if isinstance(overlay, dict) and overlay.get("enabled") is True:
+        raw_overlay_segments = overlay.get("segments")
+        if isinstance(raw_overlay_segments, list):
+            overlay_segments = raw_overlay_segments
+    cues = [
+        (segment, track_index, segment_index)
+        for track_index, track_segments in enumerate((main_segments, overlay_segments))
+        for segment_index, segment in enumerate(track_segments)
+        if isinstance(segment, dict)
+        and segment.get("disabled") is not True
+        and type(segment.get("start")) is int
+        and type(segment.get("end")) is int
+        and isinstance(segment.get("text"), str)
+        and segment["text"].strip()
+    ]
+    cues.sort(key=lambda cue: (cue[0]["start"], cue[1], cue[2]))
+    return [cue[0] for cue in cues]
 
 
 def _parse_srt_time(value: str, path: Path, cue_index: int) -> int:

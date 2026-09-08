@@ -755,6 +755,60 @@ class PostprocessTests(unittest.TestCase):
         with self.assertRaisesRegex(PostprocessFileError, "cue 2 has no timing line"):
             _ = read_srt(malformed)
 
+    def test_srt_reader_places_overlapping_cues_in_overlay_track(self) -> None:
+        source = self.root / "overlap.srt"
+        _ = source.write_text(
+            "1\n00:00:00,000 --> 00:00:02,000\n主\n\n"
+            "2\n00:00:00,500 --> 00:00:01,500\n叠\n",
+            encoding="utf-8",
+        )
+
+        project = read_srt(source)
+
+        self.assertEqual([segment["text"] for segment in project["segments"]], ["主"])
+        self.assertEqual(
+            [segment["text"] for segment in project["overlay_track"]["segments"]],
+            ["叠"],
+        )
+
+    def test_srt_reader_rejects_a_third_overlapping_layer(self) -> None:
+        source = self.root / "three-layers.srt"
+        _ = source.write_text(
+            "1\n00:00:00,000 --> 00:00:03,000\n一\n\n"
+            "2\n00:00:00,500 --> 00:00:02,500\n二\n\n"
+            "3\n00:00:01,000 --> 00:00:02,000\n三\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(PostprocessFileError, "cue 3 cannot fit"):
+            _ = read_srt(source)
+
+    def test_render_srt_merges_main_and_overlay_tracks_by_time(self) -> None:
+        project = {
+            "segments": [
+                {"start": 0, "end": 1000, "text": "主一"},
+                {"start": 2000, "end": 3000, "text": "主二"},
+            ],
+            "overlay_track": {
+                "enabled": True,
+                "segments": [
+                    {"start": 500, "end": 1500, "text": "叠一"},
+                    {"start": 2000, "end": 2500, "text": "叠二"},
+                    {"start": 3000, "end": 3500, "text": "已禁用", "disabled": True},
+                ],
+            },
+        }
+
+        rendered = render_srt(project)
+
+        self.assertEqual(
+            rendered,
+            "1\n00:00:00,000 --> 00:00:01,000\n主一\n\n"
+            "2\n00:00:00,500 --> 00:00:01,500\n叠一\n\n"
+            "3\n00:00:02,000 --> 00:00:03,000\n主二\n\n"
+            "4\n00:00:02,000 --> 00:00:02,500\n叠二\n",
+        )
+
     def test_atomic_write_removes_temporary_file_after_encoding_failure(self) -> None:
         target = self.root / "result.json"
 
