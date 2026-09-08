@@ -139,6 +139,11 @@ def repair_project_timing_ranges(
     main_segments = project.get("segments")
     repair = repair_segment_durations if repair_segment_ranges else repair_item_timing_ranges
     fixed = repair(main_segments) if isinstance(main_segments, list) else 0
+    overlay = project.get("overlay_track")
+    if isinstance(overlay, dict):
+        overlay_segments = overlay.get("segments")
+        if isinstance(overlay_segments, list):
+            fixed += repair(overlay_segments)
     multi = project.get("multi_subtitle")
     if not isinstance(multi, dict):
         return fixed
@@ -241,9 +246,51 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
             previous_end = end
     _validate_head_refs(segments, errors)
     _validate_transcription_metadata(normalized, errors)
+    _normalize_overlay_track(normalized, errors)
     _normalize_multi_subtitle(normalized, segments, errors)
     errors.extend(ProjectValidationError(path, message) for path, message in validate_preview(normalized))
     return normalized
+
+
+def _normalize_overlay_track(
+    project: JsonDict,
+    errors: list[ProjectValidationError],
+) -> None:
+    """Validate the optional independent, single overlay subtitle track."""
+    if "overlay_track" not in project or project.get("overlay_track") is None:
+        return
+    raw = project.get("overlay_track")
+    if not isinstance(raw, dict):
+        errors.append(ProjectValidationError("$.overlay_track", "must be an object"))
+        project["overlay_track"] = {"enabled": False, "segments": []}
+        return
+
+    enabled = raw.get("enabled")
+    if enabled is None:
+        raw["enabled"] = False
+    elif not isinstance(enabled, bool):
+        errors.append(ProjectValidationError("$.overlay_track.enabled", "must be a boolean"))
+
+    segments = raw.get("segments")
+    if segments is None:
+        segments = []
+        raw["segments"] = segments
+    elif not isinstance(segments, list):
+        errors.append(ProjectValidationError("$.overlay_track.segments", "must be an array"))
+        segments = []
+        raw["segments"] = segments
+
+    _normalize_stable_ids(segments, "overlay", "$.overlay_track.segments", errors)
+    previous_end: int | None = None
+    for index, segment in enumerate(segments):
+        path = f"$.overlay_track.segments[{index}]"
+        if not isinstance(segment, dict):
+            errors.append(ProjectValidationError(path, "must be an object"))
+            continue
+        _validate_segment(segment, path, previous_end, errors)
+        if _valid_segment_time(segment) and _is_int_ms(segment.get("end")):
+            previous_end = segment["end"]
+    _validate_head_refs(segments, errors, path_prefix="$.overlay_track.segments")
 
 
 def _validate_timebase(project: JsonDict, errors: list[ProjectValidationError]) -> None:
@@ -729,11 +776,16 @@ def _validate_item(
         errors.append(ProjectValidationError(f"{path}.start", "must be >= previous item end"))
 
 
-def _validate_head_refs(segments: list[JsonValue], errors: list[ProjectValidationError]) -> None:
+def _validate_head_refs(
+    segments: list[JsonValue],
+    errors: list[ProjectValidationError],
+    *,
+    path_prefix: str = "$.segments",
+) -> None:
     for index, segment in enumerate(segments):
         if not isinstance(segment, dict):
             continue
-        path = f"$.segments[{index}]"
+        path = f"{path_prefix}[{index}]"
         _validate_ref_pair(segments, index, path, "sticker", "sticker_ref", errors)
         _validate_ref_pair(segments, index, path, "color", "color_ref", errors)
 
