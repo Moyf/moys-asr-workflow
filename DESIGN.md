@@ -212,5 +212,7 @@ Readability is a product constraint, not optional polish.
 - Relative units such as `em` must be checked against their inherited size;
   their computed result must not fall below `11px` unless covered by an explicit
   exception.
-- `web/` is the source of truth. After changing editor CSS, regenerate
-  `blank-editor.html` with `uv run python edit.py --blank`.
+- `web/` is the source of truth. After changing editor CSS, validate the
+  Server editor during normal development; regenerate `blank-editor.html`
+  with `uv run python edit.py --blank` only before a release or when explicitly
+  requested.
