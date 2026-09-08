@@ -2983,7 +2983,11 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         if raw_default_audio_track is None or not str(raw_default_audio_track).strip()
         else _payload_audio_track(payload, field="defaultAudioTrack")
     )
-    if raw_default_audio_track is not None and default_audio_track is None:
+    if (
+        raw_default_audio_track is not None
+        and str(raw_default_audio_track).strip()
+        and default_audio_track is None
+    ):
         raise PreflightError(
             "defaultAudioTrack",
             "audio_track_invalid",

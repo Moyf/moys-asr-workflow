@@ -326,6 +326,22 @@ def load_or_extract_waveform(
         and existing["peaks_per_second"] == peaks_per_second
     ):
         return existing, False
+    # 内核成功时自研波形只在 .quapeaks 的自研层里、没有 .mopeaks：去内联工程
+    # 的冷启动不认这一层，就会白白重抽一遍 FFmpeg、再落一份内容重复的回退档。
+    # 函数内导入与下面的 mopeaks 同理，避免顶层互导成环。
+    from maw import quapeaks as maw_quapeaks
+
+    container_payload = maw_quapeaks.load_self_wave_payload(
+        media_path,
+        audio_track=audio_track,
+        default_audio_track=default_audio_track,
+        peaks_per_second=peaks_per_second,
+    )
+    if (
+        container_payload is not None
+        and audio_track_from_payloads(container_payload) == audio_track
+    ):
+        return container_payload, False
     # 函数内导入：maw.mopeaks 在模块级借用本文件的载荷契约，顶层互导会成环。
     from maw import mopeaks
 
@@ -352,6 +368,8 @@ def load_or_extract_waveform(
         and sidecar_hit.payload["peaks_per_second"] == peaks_per_second
         else None
     )
+    if fallback is None and container_payload is not None:
+        fallback = container_payload
     try:
         payload = extract_waveform(
             media_path,

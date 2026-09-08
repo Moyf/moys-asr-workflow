@@ -116,6 +116,105 @@ class QuapeaksGenerationTests(unittest.TestCase):
             raw += bytes((low & 0xFF, high & 0xFF))
         self.assertEqual(bytes(raw), base64.b64decode(self.payload["data"]))
 
+    def test_cold_start_hits_container_without_extracting(self) -> None:
+        """去内联工程冷启动：无内联、无 .mopeaks，读取链必须直接命中自研层。
+
+        判别力：extract_waveform 一被调用就失败——"没有 [reapeaks] 生成日志"
+        证明不了没重抽，因为 Python 自研波形提取根本不打这条日志。
+        """
+        generated = quapeaks.generate_for_media(self.tone, self_peaks=self._self_peaks())
+        self.assertIsNotNone(generated)
+
+        def _must_not_extract(*args: object, **kwargs: object) -> dict[str, object]:
+            raise AssertionError("有有效 .quapeaks 自研层时不得走 FFmpeg 重抽")
+
+        with mock.patch.object(waveform, "extract_waveform", _must_not_extract):
+            payload, extracted = waveform.load_or_extract_waveform(
+                None, self.tone, peaks_per_second=self.payload["peaks_per_second"]
+            )
+        self.assertFalse(extracted)
+        self.assertEqual(payload["data"], self.payload["data"])
+        self.assertEqual(payload["audio_track"], 0)
+        self.assertEqual(payload["source"], waveform.media_signature(self.tone))
+        self.assertFalse(
+            mopeaks.mopeaks_path(self.tone).exists(),
+            "命中容器自研层时不得新建 .mopeaks 回退档",
+        )
+
+    def test_resolution_mismatch_falls_through_to_extraction(self) -> None:
+        generated = quapeaks.generate_for_media(self.tone, self_peaks=self._self_peaks())
+        self.assertIsNotNone(generated)
+        calls: list[int] = []
+
+        def _fake_extract(media_path: object, *, peaks_per_second: int, **kwargs: object) -> dict[str, object]:
+            calls.append(peaks_per_second)
+            return {**self.payload, "peaks_per_second": peaks_per_second}
+
+        with mock.patch.object(waveform, "extract_waveform", _fake_extract):
+            payload, extracted = waveform.load_or_extract_waveform(
+                None, self.tone, peaks_per_second=50
+            )
+        self.assertTrue(extracted)
+        self.assertEqual(calls, [50])
+        self.assertEqual(payload["peaks_per_second"], 50)
+        self.assertTrue(
+            mopeaks.mopeaks_path(self.tone).exists(), "重抽后回退档照常落盘"
+        )
+
+    def test_track_mismatch_does_not_cross_hit_other_track_container(self) -> None:
+        """第 0 轨读取不得命中第 2 轨的容器。
+
+        单轨媒体解不出第 2 轨，无法走真实生成；按 _container_with_provenance
+        的字节口径手搓一份 track-2 容器，头部指纹对齐当前媒体。
+        """
+        st = self.tone.stat()
+        header = struct.pack(
+            "<4sBBiII", b"QPK1", 1, 1, 8000,
+            int(st.st_mtime) & 0xFFFF_FFFF, st.st_size & 0xFFFF_FFFF,
+        )
+        body = struct.pack("<ii", quapeaks.DIV_SELF_WAVE, 1)
+        body += struct.pack("<II", 1000, 10) + b"\x00\x64"
+        (self.root / "tone.wav.track-2.quapeaks").write_bytes(header + body)
+
+        hit = quapeaks.load_self_wave_payload(self.tone, audio_track=1)
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit["audio_track"], 1)
+        self.assertEqual(hit["sample_rate"], 1000)
+        self.assertEqual(hit["division"], 10)
+
+        miss = quapeaks.load_self_wave_payload(self.tone, audio_track=0)
+        self.assertIsNone(miss, "非本轨的容器不得被当作本轨缓存")
+
+    def test_nondefault_self_wave_fallback_keeps_default_track_identity(self) -> None:
+        generated = quapeaks.generate_for_media(self.tone, self_peaks=self._self_peaks())
+        self.assertIsNotNone(generated)
+
+        payload = quapeaks.load_self_wave_payload(
+            self.tone,
+            audio_track=0,
+            default_audio_track=1,
+        )
+
+        self.assertIsNotNone(payload)
+        assert payload is not None
+        self.assertEqual(payload["audio_track"], 1)
+
+        with mock.patch.object(
+            waveform,
+            "extract_waveform",
+            side_effect=waveform.WaveformError("selected track unavailable"),
+        ):
+            fallback, extracted = waveform.load_or_extract_waveform(
+                None,
+                self.tone,
+                audio_track=0,
+                default_audio_track=1,
+                peaks_per_second=self.payload["peaks_per_second"],
+            )
+        self.assertFalse(extracted)
+        self.assertEqual(fallback["audio_track"], 1)
+
     def test_self_wave_container_is_found_for_the_reader_chain(self) -> None:
         generated = quapeaks.generate_for_media(self.tone, self_peaks=self._self_peaks())
         assert generated is not None
