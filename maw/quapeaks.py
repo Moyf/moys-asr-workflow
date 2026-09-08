@@ -24,6 +24,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from maw import waveform as waveform_module
 from maw.ffmpeg import resolve_ffmpeg_tool
@@ -471,6 +472,53 @@ def find_self_wave_container(
     if not ra.self_wave_mipmaps():
         return None
     return container if _reapeaks_matches_media(container, media_path) else None
+
+
+def load_self_wave_payload(
+    media_path: Path | str,
+    *,
+    audio_track: int = 0,
+    peaks_per_second: int | None = None,
+) -> dict[str, Any] | None:
+    """从有效容器的自研波形层还原波形 payload，供读取链先于 FFmpeg 尝试。
+
+    内核成功时只写 ``.quapeaks``、没有 ``.mopeaks``：读取链若不认自研层，
+    去内联工程的冷启动会白白重抽一遍 FFmpeg、再落一份内容重复的回退档。
+    定位与指纹校验复用 :func:`find_self_wave_container`；任何一环不满足都
+    返回 None，由调用方继续走 ``.mopeaks`` / 重抽。
+    """
+    media_path = Path(media_path)
+    container = find_self_wave_container(media_path, audio_track=audio_track)
+    if container is None:
+        return None
+    try:
+        layers = ReapeaksFile(str(container)).self_wave_mipmaps()
+        layer = layers[0].self_layer if layers else None
+    except (OSError, ValueError, IndexError, struct.error):
+        return None
+    if layer is None or not layer.peaks:
+        return None
+    peaks_per_second_actual = round(layer.sample_rate / layer.division)
+    if peaks_per_second is not None and peaks_per_second != peaks_per_second_actual:
+        return None
+    raw = bytearray(len(layer.peaks) * SELF_WAVE_BYTES_PER_PEAK)
+    for index, (low, high) in enumerate(layer.peaks):
+        raw[index * 2] = low & 0xFF
+        raw[index * 2 + 1] = high & 0xFF
+    return {
+        "schema": waveform_module.WAVEFORM_SCHEMA,
+        "encoding": waveform_module.WAVEFORM_ENCODING,
+        "peaks_per_second": peaks_per_second_actual,
+        "sample_rate": layer.sample_rate,
+        "division": layer.division,
+        "audio_track": audio_track,
+        "peak_count": len(layer.peaks),
+        "duration_ms": round(
+            len(layer.peaks) * layer.division / layer.sample_rate * 1000
+        ),
+        "data": base64.b64encode(bytes(raw)).decode("ascii"),
+        "source": waveform_module.media_signature(media_path),
+    }
 
 
 def _paired_spectral_rates(ra: ReapeaksFile) -> list[tuple[int, MipMap]]:

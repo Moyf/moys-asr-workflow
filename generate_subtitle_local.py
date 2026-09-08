@@ -98,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
     )
     parser.add_argument("--json", action="store_true", help="同时生成 .mosp 工程")
-    parser.add_argument("--with-waveform", action="store_true", help="把波形缓存嵌入 .mosp")
+    parser.add_argument("--with-waveform", action="store_true", help="在媒体旁生成 .quapeaks 波形缓存（不再写进工程文件）")
     parser.add_argument(
         "--with-spectral", action="store_true",
         help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",

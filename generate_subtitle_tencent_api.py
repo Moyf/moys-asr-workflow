@@ -45,7 +45,7 @@ def main() -> int:
     parser.add_argument("--speaker", action="store_true", help="请求腾讯云说话人分离并保留 speaker 标签")
     parser.add_argument("--speaker-colors", action="store_true", help="请求说话人分离并写入一次性的字幕颜色快照")
     parser.add_argument("--json", dest="json_out", action="store_true", help="同时输出 .mosp 工程")
-    parser.add_argument("--with-waveform", action="store_true", help="将波形嵌入工程")
+    parser.add_argument("--with-waveform", action="store_true", help="在媒体旁生成 .quapeaks 波形缓存（不再写进工程文件）")
     parser.add_argument(
         "--audio-track", type=int, default=0,
         help="使用第几个音频轨道（从 0 开始，默认 0）",

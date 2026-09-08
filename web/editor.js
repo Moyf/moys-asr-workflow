@@ -12110,11 +12110,11 @@ function buildJson() {
       end_offset_ms: binding.end_offset_ms || 0,
     })),
   };
-  if (DATA.waveform) out.waveform = DATA.waveform;
+  // 三块波形缓存不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
+  // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
+  // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
   const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
   if (mediaMetadata) out.media_metadata = mediaMetadata;
-  if (DATA.spectral) out.spectral = DATA.spectral;
-  if (DATA.waveform_reapeaks) out.waveform_reapeaks = DATA.waveform_reapeaks;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
   if (DATA.script_alignment) out.script_alignment = DATA.script_alignment;
   const workspace = buildCurrentWorkspaceData();

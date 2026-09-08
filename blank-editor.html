@@ -10204,7 +10204,12 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
         && (!hasFps || typeof value.video_fps_ratio !== 'string' || !value.video_fps_ratio.trim())) return null;
     const hasAudioTracks = value.audio_tracks !== undefined;
     if (hasAudioTracks && !Array.isArray(value.audio_tracks)) return null;
-    if (!hasFps && !hasAudioTracks) return null;
+    // audio_track：用户所选的当前音轨（非负整数），工程去内联后是重启恢复
+    // 所选轨的唯一载体；与音轨清单 audio_tracks 是两个概念。
+    const hasSelectedAudioTrack = value.audio_track !== undefined;
+    if (hasSelectedAudioTrack
+        && (!Number.isInteger(value.audio_track) || value.audio_track < 0)) return null;
+    if (!hasFps && !hasAudioTracks && !hasSelectedAudioTrack) return null;
     const metadata = {};
     if (hasFps) metadata.video_fps = normalizeTimelineFps(fps);
     if (typeof value.video_fps_ratio === 'string') {
@@ -10234,6 +10239,7 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       if (audioTracks.some((track) => track === null)) return null;
       metadata.audio_tracks = audioTracks;
     }
+    if (hasSelectedAudioTrack) metadata.audio_track = value.audio_track;
     return metadata;
   }
 
@@ -14921,7 +14927,11 @@ export default MawDynamicCaptions;
     const bytes = new Uint8Array(arrayBuffer);
     if (bytes.length < 18) return null;
     const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
-    if (!['RPKM', 'RPKN', 'RPKL'].includes(magic)) return null;
+    // QPK + 1 字节可打印版本号（当前 QPK1）。全局头与层表布局与 RPKN 相同，
+    // wave 层同样是 i16 min/max，所以下面按 RPKM/RPKL 分支取宽度的逻辑不用改：
+    // QPK* 天然落进与 RPKN 相同的 else 分支。
+    const isNative = magic.slice(0, 3) === 'QPK';
+    if (!isNative && !['RPKM', 'RPKN', 'RPKL'].includes(magic)) return null;
     const channels = bytes[4];
     const mipmapCount = bytes[5];
     if (!channels || !mipmapCount) return null;
@@ -16885,7 +16895,7 @@ export default MawDynamicCaptions;
      * 当前真正被绘制的那条波形形状（含缺数据时的回退）。
      *
      * 抽成一个方法是为了让"看到什么就按什么判断"成为结构保证，而不是两处各自
-     * 复制一遍判断。音量门限扫描尤其需要它：若固定用自研缓存，用户在 ReaPeaks
+     * 复制一遍判断。音量门限扫描尤其需要它：若固定用自研缓存，用户在 reapeaks
      * 形状上调好的门限就和实际参与判断的包络不是同一条曲线，而且自研链先重采样到
      * 1000 Hz，带限之外的瞬态会被整块削平（实测单样本满幅脉冲 8 个里一个都检不到），
      * 拿它做静音门限会偏激进。
@@ -21054,7 +21064,9 @@ function isMediaFile(file) {
   return Boolean(file) && (file.type.startsWith('video/') || file.type.startsWith('audio/') || MEDIA_FILE_RE.test(file.name));
 }
 function isReapeaksFile(file) {
-  return Boolean(file) && /\.reapeaks$/i.test(file.name);
+  // .quapeaks 是 MAW 自有容器（改名自 reapeaks 内核）：浏览器直读必须同样认它，
+  // 否则服务端读得到、用户在浏览器里打开却报「不支持的文件」。
+  return Boolean(file) && /\.(?:reapeaks|quapeaks)$/i.test(file.name);
 }
 
 // === 统一撤销/重做 ===
@@ -32022,11 +32034,11 @@ function buildJson() {
       end_offset_ms: binding.end_offset_ms || 0,
     })),
   };
-  if (DATA.waveform) out.waveform = DATA.waveform;
+  // 三块波形缓存不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
+  // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
+  // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
   const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
   if (mediaMetadata) out.media_metadata = mediaMetadata;
-  if (DATA.spectral) out.spectral = DATA.spectral;
-  if (DATA.waveform_reapeaks) out.waveform_reapeaks = DATA.waveform_reapeaks;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
   if (DATA.script_alignment) out.script_alignment = DATA.script_alignment;
   const workspace = buildCurrentWorkspaceData();
@@ -35739,10 +35751,10 @@ async function loadReapeaksFile(file) {
     waveformEditor.setReapeaksWaveform(parsed.waveform);
     waveformEditor.setSpectralPayload(parsed.spectral);
     waveformEditor.setMediaAvailable(false);
-    flashHint(`已加载 ReaPeaks 缓存：${file.name}`, 'success');
+    flashHint(`已加载 reapeaks 缓存：${file.name}`, 'success');
     return true;
   } catch (error) {
-    flashHint(`加载 ReaPeaks 失败：${error.message || error}`, 'warning');
+    flashHint(`加载 reapeaks 失败：${error.message || error}`, 'warning');
     return false;
   }
 }
@@ -38695,7 +38707,7 @@ async function handleDroppedFiles(files) {
   const srtFile = files.find(isSrtFile);
   let stagedSrtSegments = null;
   if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
-    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / ReaPeaks）', 'warning');
+    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / reapeaks）', 'warning');
     return;
   }
   if (jsonFile) {

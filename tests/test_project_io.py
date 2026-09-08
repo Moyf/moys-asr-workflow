@@ -7,7 +7,13 @@ from pathlib import Path
 from unittest import mock
 
 from maw.project import PROJECT_SCHEMA
-from maw.project_io import enrich_project_media_metadata, write_mosp
+from maw.project_io import (
+    INLINE_CACHE_KEYS,
+    enrich_project_media_metadata,
+    serialize_mosp,
+    strip_inline_caches,
+    write_mosp,
+)
 
 
 class ProjectIoTests(unittest.TestCase):
@@ -108,6 +114,71 @@ class ProjectIoTests(unittest.TestCase):
         self.assertEqual(enriched["media_metadata"]["video_fps"], 24.0)
         video_probe.assert_not_called()
         audio_probe.assert_called_once_with(media, ffprobe_path="ffprobe")
+
+
+class InlineCacheStripTests(unittest.TestCase):
+    """工程去内联：三块波形缓存只活在运行态，落盘边界统一剥离。"""
+
+    def test_serialize_mosp_strips_inline_caches_and_keeps_input_intact(self) -> None:
+        payload = {
+            "schema": "moy.asr.waveform.v1",
+            "encoding": "i8-minmax-base64",
+            "data": "AAAA",
+            "peak_count": 1,
+            "peaks_per_second": 100,
+            "duration_ms": 10,
+        }
+        project = {
+            "media": "clip.mp4",
+            "segments": [],
+            "language": "zh",
+            "waveform": payload,
+            "spectral": payload,
+            "waveform_reapeaks": payload,
+        }
+
+        text = serialize_mosp(project)
+
+        saved = json.loads(text)
+        for key in INLINE_CACHE_KEYS:
+            self.assertNotIn(key, saved, f"{key} 不得再写进工程文件")
+            self.assertIn(key, project, "剥离必须发生在副本上，运行态工程不能被动到")
+        self.assertEqual(saved["segments"], [])
+        self.assertEqual(saved["schema"], PROJECT_SCHEMA)
+
+    def test_strip_inline_caches_returns_copy_without_touching_runtime(self) -> None:
+        original = {"segments": [], "waveform": {"data": "AAAA"}}
+
+        stripped = strip_inline_caches(original)
+
+        self.assertNotIn("waveform", stripped)
+        self.assertIn("waveform", original)
+        self.assertEqual(stripped["segments"], original["segments"])
+
+    def test_write_mosp_output_has_no_inline_caches(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "clip.mosp"
+            payload = {
+                "schema": "moy.asr.waveform.v1",
+                "encoding": "i8-minmax-base64",
+                "data": "AAAA",
+                "peak_count": 1,
+                "peaks_per_second": 100,
+                "duration_ms": 10,
+            }
+            project = {
+                "media": "clip.mp4",
+                "segments": [],
+                "waveform": payload,
+                "spectral": payload,
+                "waveform_reapeaks": payload,
+            }
+
+            write_mosp(output, project)
+
+            saved = json.loads(output.read_text(encoding="utf-8"))
+            for key in INLINE_CACHE_KEYS:
+                self.assertNotIn(key, saved)
 
 
 if __name__ == "__main__":

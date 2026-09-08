@@ -43,6 +43,7 @@ from maw.waveform import (
     DEFAULT_PEAKS_PER_SECOND,
     WaveformError,
     audio_track_from_payloads,
+    audio_track_from_project,
     load_or_extract_waveform,
 )
 
@@ -379,11 +380,14 @@ def main():
         print("错误: 找不到媒体文件，请用 -m 参数指定")
         return 1
 
-    audio_track = audio_track_from_payloads(
-        data.get("waveform"),
-        data.get("spectral"),
-        data.get("waveform_reapeaks"),
-    )
+    audio_track = audio_track_from_project(data)
+    if audio_track is None:
+        # 旧工程没有显式音轨字段，从缓存 payload 推断；去内联工程走上面的字段。
+        audio_track = audio_track_from_payloads(
+            data.get("waveform"),
+            data.get("spectral"),
+            data.get("waveform_reapeaks"),
+        )
 
     # 旧工程可能只有视频 FPS 元数据；补探测音频流信息，供 OTIO 导出
     # 为每条源音轨建立独立的音频轨道。FFprobe 失败时保留旧工程行为。

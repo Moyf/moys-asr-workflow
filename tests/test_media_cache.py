@@ -49,6 +49,24 @@ class MediaCacheTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_selected_audio_track_is_stamped_for_deinlined_projects(self) -> None:
+        """去内联后 media_metadata.audio_track 是重启恢复所选轨的唯一来源。"""
+        result = media_cache.embed_media_caches(self.project, self.wav)
+        self.assertEqual(result.audio_track, 0)
+        self.assertEqual(result.project["media_metadata"]["audio_track"], 0)
+        if "waveform" in result.project:
+            self.assertEqual(result.project["waveform"]["audio_track"], 0)
+
+        manual = media_cache.MediaCacheResult(project={}, audio_track=2)
+        merged_with_metadata = media_cache.merge_media_caches(
+            {"media_metadata": {"video_fps": 30}}, manual
+        )
+        self.assertEqual(merged_with_metadata["media_metadata"]["audio_track"], 2)
+        self.assertEqual(merged_with_metadata["media_metadata"]["video_fps"], 30)
+        merged_without_metadata = media_cache.merge_media_caches({}, manual)
+        self.assertEqual(merged_without_metadata["media_metadata"]["audio_track"], 2)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_embeds_waveform_and_wave_only_reapeaks_by_default(self) -> None:
         result = media_cache.embed_media_caches(self.project, self.wav)
         # 波形已嵌入工程

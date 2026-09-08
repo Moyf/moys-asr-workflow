@@ -282,6 +282,16 @@ def _validate_media_metadata(project: JsonDict, errors: list[ProjectValidationEr
     if not isinstance(metadata, dict):
         errors.append(ProjectValidationError("$.media_metadata", "must be an object"))
         return
+    if "audio_track" in metadata:
+        audio_track = metadata.get("audio_track")
+        # 工程去内联后缓存 payload 不再落盘，这里是所选音轨的持久化载体。
+        if type(audio_track) is not int or audio_track < 0:
+            errors.append(
+                ProjectValidationError(
+                    "$.media_metadata.audio_track",
+                    "must be a non-negative integer",
+                )
+            )
     if "video_fps" in metadata:
         fps = metadata.get("video_fps")
         if type(fps) not in (int, float) or not math.isfinite(float(fps)):
