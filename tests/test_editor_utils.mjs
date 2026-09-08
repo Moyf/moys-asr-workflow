@@ -4367,6 +4367,54 @@ test('normalizes legacy multi-subtitle data with stable IDs and preserves option
 });
 
 
+test('normalizes an enabled overlay track with stable IDs without creating a bilingual track', () => {
+  const project = {
+    segments: [{ start: 0, end: 1000, text: '主字幕' }],
+    overlay_track: {
+      enabled: true,
+      segments: [{ start: 400, end: 800, text: '叠加字幕' }],
+    },
+  };
+
+  helpers.normalizeMultiSubtitleProject(project);
+
+  assert.equal(project.overlay_track.enabled, true);
+  assert.equal(project.overlay_track.segments[0].id, 'overlay-001');
+  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks)), []);
+});
+
+
+test('merges main and overlay cues by start time with main track tie priority', () => {
+  const merged = helpers.mergeMainAndOverlaySegments(
+    [
+      { start: 0, end: 1000, text: '主一' },
+      { start: 2000, end: 3000, text: '主二' },
+    ],
+    [
+      { start: 500, end: 1500, text: '叠一' },
+      { start: 2000, end: 2500, text: '叠二' },
+    ],
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(merged.map((segment) => segment.text))), [
+    '主一', '叠一', '主二', '叠二',
+  ]);
+});
+
+
+test('includes overlay track data in a segment history snapshot', () => {
+  const snapshot = helpers.buildSegmentsHistorySnapshot(
+    [{ text: '主字幕' }],
+    { enabled: false },
+    { enabled: true, segments: [{ text: '叠加字幕' }] },
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.overlay_track)), {
+    enabled: true, segments: [{ text: '叠加字幕' }],
+  });
+});
+
+
 test('browser ID repair reserves later explicit IDs like the server contract', () => {
   const project = {
     segments: [

@@ -2914,8 +2914,12 @@
   const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
     segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览',
   });
-  function buildSegmentsHistorySnapshot(segments, multiSubtitle) {
-    return { segments: cloneJsonValue(segments), multi_subtitle: cloneJsonValue(multiSubtitle) };
+  function buildSegmentsHistorySnapshot(segments, multiSubtitle, overlayTrack = null) {
+    return {
+      segments: cloneJsonValue(segments),
+      multi_subtitle: cloneJsonValue(multiSubtitle),
+      overlay_track: cloneJsonValue(overlayTrack),
+    };
   }
   function buildHistoryRecord(kind, label, payload, view = null) {
     const recordKind = Object.prototype.hasOwnProperty.call(HISTORY_RECORD_DEFAULT_LABELS, kind)
@@ -2992,6 +2996,34 @@
     let candidate = `${base}-${suffix}`;
     while (used.has(candidate)) candidate = `${base}-${suffix++}`;
     return candidate;
+  }
+
+  function normalizeOverlayTrack(value) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const rawSegments = Array.isArray(source.segments) ? source.segments : [];
+    const segments = rawSegments
+      .filter((segment) => segment && typeof segment === 'object')
+      .map((segment) => {
+        const copy = { ...segment };
+        if (Array.isArray(copy.items)) copy.items = copy.items.map((item) => ({ ...item }));
+        else delete copy.items;
+        return copy;
+      });
+    ensureStableSegmentIds(segments, 'overlay');
+    return { enabled: source.enabled === true, segments };
+  }
+
+  function mergeMainAndOverlaySegments(mainSegments, overlaySegments) {
+    const main = Array.isArray(mainSegments) ? mainSegments : [];
+    const overlay = Array.isArray(overlaySegments) ? overlaySegments : [];
+    return [
+      ...main.map((segment, index) => ({ segment, trackOrder: 0, index })),
+      ...overlay.map((segment, index) => ({ segment, trackOrder: 1, index })),
+    ].sort((left, right) => (
+      Number(left.segment?.start) - Number(right.segment?.start)
+      || left.trackOrder - right.trackOrder
+      || left.index - right.index
+    )).map(({ segment }) => segment);
   }
 
   function normalizeMultiSubtitle(value, mainSegments = []) {
@@ -3086,6 +3118,7 @@
   function normalizeMultiSubtitleProject(project) {
     if (!project || typeof project !== 'object') return project;
     ensureStableSegmentIds(project.segments, 'main');
+    project.overlay_track = normalizeOverlayTrack(project.overlay_track);
     project.multi_subtitle = normalizeMultiSubtitle(project.multi_subtitle, project.segments);
     return project;
   }
@@ -5175,6 +5208,8 @@ export default MawDynamicCaptions;
     uniqueStableSegmentId,
     normalizeMultiSubtitle,
     normalizeMultiSubtitleProject,
+    normalizeOverlayTrack,
+    mergeMainAndOverlaySegments,
     detectSubtitleSplitMode,
     isWordSplitConnector,
     SPLIT_TRIM_PRIMARY_SYMBOLS,
