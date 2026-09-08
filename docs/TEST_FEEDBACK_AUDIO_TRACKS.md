@@ -45,8 +45,9 @@
 - 2026-09-08：Launcher 定向 E2E 34 项通过；Chromium 实测工具箱音轨选择器在桌面、平板和手机三档视口中仅对「生成波形」和「提取音频」显示，其他实用工具隐藏，控制台无错误。
 - 2026-09-08：PR 全量 Playwright 为 291 项通过、21 项失败；同一环境的 `origin/main` 基线为 293 项通过、19 项失败。两项仅在 PR 全量运行中出现的失败，在 PR 与基线各连续重跑 3 次均通过；其余 19 项与基线失败一致，因此没有发现本分支引入的可复现 E2E 回归。该结论不把仓库基线失败记为通过。
 - 已验证：完整 Python 回归 1361 项通过、6 项跳过；Node 单元测试 280 项通过；Ruff、相关 JavaScript 语法检查和 `git diff --check` 均通过；与 `origin/main` 的 merge-tree 成功生成，无冲突。
+- 2026-09-08：已用普通 merge commit 集成贡献者新增的“工程不内联波形缓存”提交，统一持久化字段为 `media_metadata.selected_audio_track`；`.quapeaks` 自研层读取也纳入精确轨优先、默认轨仅作失败回退的协议。此前基于 `origin/main` 的 merge-tree 证据已过期，合并后门禁结果以本节后续记录为准。
 
 ### 剩余任务
 
 1. **阻塞，需窗口验收**：使用 `E:\Videos\录像\OBS\Endacopia\00-开局.mp4` 打开真实 pywebview Launcher，确认下拉框显示 `Mix`、`Voice`、`OriginSound`，默认 `Mix`；切换后确认提交 payload 与生成波形均为所选索引。Windows UI 自动化运行时初始化崩溃，本轮只能完成真实 Chromium 页面验收，不能冒充桌面窗口验收。
-2. **待处理**：提交并推送当前修复，等待 PR 新 CI 通过后使用普通 merge commit 合并，不 squash。
+2. **待处理**：完成合并后门禁并推送当前修复，等待 PR 新 CI 通过后使用普通 merge commit 合并，不 squash。

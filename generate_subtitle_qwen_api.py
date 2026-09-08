@@ -1928,7 +1928,7 @@ def main():
     )
     parser.add_argument(
         "--with-waveform", action="store_true",
-        help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
+        help="在媒体旁生成 .quapeaks 波形缓存（不再写进工程文件；GUI 转写默认开启）",
     )
     parser.add_argument(
         "--audio-track", type=int, default=0,
@@ -2213,7 +2213,7 @@ def main():
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
-                audio_track=args.audio_track,
+                audio_track=args.audio_track if is_video else 0,
                 default_audio_track=default_audio_track,
             )
 
@@ -2335,7 +2335,7 @@ def main():
             json_data,
             media_path=input_path,
             ffprobe_path=ffprobe_path,
-            selected_audio_track=args.audio_track,
+            selected_audio_track=args.audio_track if is_video else 0,
         )
         print(f"工程文件已保存到: {json_path}")
 

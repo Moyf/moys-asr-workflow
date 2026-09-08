@@ -301,8 +301,14 @@ test('normalizes the persisted selected audio track', () => {
   }))), {
     selected_audio_track: 2,
   });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
+    video_fps: 30,
+    selected_audio_track: 1,
+  }))), { video_fps: 30, selected_audio_track: 1 });
   assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: -1 }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: 1.5 }), null);
   assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: true }), null);
+  assert.equal(helpers.normalizeMediaMetadata({}), null);
 });
 
 test('falls back to default split trim symbols and keeps single characters from free input', () => {

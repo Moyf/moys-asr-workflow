@@ -153,7 +153,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `--speaker-colors` | 启用说话人分离，并按首次出现顺序写入一次性的字幕颜色快照；之后仍可在编辑器中修改。 |
 | `-ll VALUE`, `--length-limit VALUE` | 只处理媒体前指定时长，例如 `2m`、`20s`、`1h`、`90`。 |
 | `--json` | 旧 CLI 兼容参数；MAW 公开 CLI 默认已经生成 `.mosp`，通常不需要写。 |
-| `--with-waveform` | 将波形峰值嵌入 `.mosp`。会额外使用 FFmpeg 扫描媒体；不指定时波形由编辑器按需建立 sidecar 缓存。 |
+| `--with-waveform` | 在媒体旁生成 `.quapeaks` 波形缓存（不再写进工程文件）。会额外使用 FFmpeg 扫描媒体；不指定时波形由编辑器按需建立 `.mopeaks` 缓存。 |
 | `--html` | 在 SRT 和 `.mosp` 之外，再生成便携 `.edit.html`。 |
 | `--no-html` | 明确关闭便携 HTML；这是默认行为，也保留用于兼容旧脚本。不能和 `--html` 同时使用。 |
 | `--debug` | 输出更多 API 调试信息。调试日志仍不会输出 API Key。 |

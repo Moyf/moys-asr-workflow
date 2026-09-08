@@ -117,8 +117,8 @@ source: "JSON_SCHEMA.md"
 - `audio_track` 可选，表示生成缓存时使用的、从 0 开始的音频流顺序；缺失时按 0 兼容。`waveform`、`spectral` 和 `waveform_reapeaks` 必须使用同一值。容器默认轨使用无音轨后缀的 `<媒体名>.<后缀>`；其他轨（包括默认轨不是 0 时的索引 0）使用 `<媒体名>.track-N.<后缀>`，N 为从 1 开始的显示编号。读取非默认轨时优先使用精确缓存；缓存缺失时先尝试为所选轨重建，只有重建失败才临时显示无后缀的默认轨缓存。
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
-- Qwen/Soniox/必剪/本地命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程文件时把同一 payload 写入顶层 `waveform`，并生成只含 wave 层与自研波形层的 `.quapeaks` 缓存。缓存默认跟随媒体，启用「将所有输出放入子文件夹」后进入对应 `_maw`。GUI 转写默认开启该模式。
-- 编辑器首次打开缺少有效 `waveform` 的工程时，按上述默认轨命名规则写入 `<媒体名>.mopeaks` 或 `<媒体名>.track-N.mopeaks`。落点跟随「将所有输出放入子文件夹」设置：默认在媒体旁，勾选后进入对应 `_maw`；读取端两种位置都会找。它是 `moy.asr.waveform.v1` 峰数据的二进制容器，不属于字幕真源，删除后可重新提取。**旧的 `<媒体名>.waveform.json` sidecar 已彻底移除，不再写也不再读。**
+- Qwen/Soniox/必剪/本地命令行生成器默认不生成波形缓存；加 `--with-waveform` 时在媒体旁生成包含 wave 层与自研波形层的 `.quapeaks` 缓存。payload 只保留在运行态，**不再写入工程文件**。GUI 转写默认开启该模式。
+- 编辑器首次打开缺少有效 `waveform` 的工程时，读取顺序为：工程内联（旧工程）→ 所选轨有效 `.quapeaks` 自研波形层 → 所选轨有效 `.mopeaks` → FFmpeg 重新提取；所选轨重抽失败后才临时显示默认轨缓存。重抽产物按上述默认轨命名规则写入 `<媒体名>.mopeaks` 或 `<媒体名>.track-N.mopeaks`。落点跟随「将所有输出放入子文件夹」设置：默认在媒体旁，勾选后进入对应 `_maw`；读取端各位置都会找。`.mopeaks` 是 `moy.asr.waveform.v1` 峰数据的二进制容器：全局头与 `.quapeaks` / `.ReaPeaks` 同布局（18 B），层 token 与自研层同值（`div = -(int)'m'`），仅 magic 为 `MPK` + 版本字节。不属于字幕真源，删除后可重新提取。**旧的 `<媒体名>.waveform.json` sidecar 已彻底移除，不再写也不再读。**
 
 ### 1.1a spectral 频谱缓存（可选）
 
@@ -132,6 +132,7 @@ source: "JSON_SCHEMA.md"
   "division": 2400,
   "peak_count": 72000,
   "data": "base64 编码的 [freq,density] uint16 对",
+  "audio_track": 0,
   "source": {
     "name": "audio.wav",
     "size": 987654321,
@@ -162,6 +163,7 @@ source: "JSON_SCHEMA.md"
   "peak_count": 1510,
   "duration_ms": 5006,
   "data": "base64 的 [min,max] int8 对",
+  "audio_track": 0,
   "source": { "name": "audio.wav", "size": 441044, "modified_ms": 1786328355571 }
 }
 ```

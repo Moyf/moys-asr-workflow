@@ -1028,6 +1028,5 @@ class EditorAssetTests(unittest.TestCase):
             styles,
         )
 
-
 if __name__ == "__main__":
     unittest.main()

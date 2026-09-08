@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from maw import mopeaks, quapeaks
+from maw.project_io import INLINE_CACHE_KEYS as CACHE_KEYS
 from maw.waveform import embed_waveform, media_signature
 
 
@@ -31,7 +32,8 @@ class MediaCacheResult:
 # 生成后需要合并进最终工程的缓存键。CLI 在临时目录存活期内先调用
 # embed_media_caches，工程其余字段（segments 等）后处理完成后再合并，
 # 避免缓存生成被挪到临时目录清理之后（v1.4.0 后回归的根因）。
-CACHE_KEYS = ("waveform", "spectral", "waveform_reapeaks")
+# 缓存键的定义在 maw.project_io（落盘剥离的同一份清单）；运行态照旧合并，
+# 落盘边界才剥离。
 
 
 def merge_media_caches(
@@ -127,11 +129,6 @@ def embed_media_caches(
     ):
         raise ValueError("decode_audio_track must be a non-negative integer")
 
-    project = dict(project)
-    raw_metadata = project.get("media_metadata")
-    metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
-    metadata["selected_audio_track"] = audio_track
-    project["media_metadata"] = metadata
     cache_path = Path(media_path)
     source_path = (
         Path(source_media_path) if source_media_path is not None else cache_path
@@ -178,11 +175,11 @@ def embed_media_caches(
             # 签名，明确禁止回退到派生文件后把它伪装成源媒体缓存。
             payload["source"] = media_signature(decode_path)
             print(
-                f"[waveform] 已嵌入 {payload['peak_count']} peaks "
+                f"[waveform] 已生成波形缓存: {payload['peak_count']} peaks "
                 f"({payload['peaks_per_second']}/秒)"
             )
     else:
-        print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
+        print(f"[waveform] 警告: {waveform_result.error}；已跳过波形缓存")
 
     project.pop("spectral", None)
     if generate_spectral:
@@ -218,7 +215,7 @@ def embed_media_caches(
                 reapeaks_media_path = candidate
                 break
         if reapeaks_media_path is None:
-            print("[reapeaks] 警告: 生成缓存的来源已变化，已跳过内嵌缓存")
+            print("[reapeaks] 警告: 生成缓存的来源已变化，已跳过波形层与频谱缓存")
         else:
             try:
                 if generate_spectral:
@@ -229,7 +226,7 @@ def embed_media_caches(
                     )
                     if spectral is not None:
                         project["spectral"] = spectral
-                        print(f"[spectral] 已嵌入 {spectral['peak_count']} 频谱点")
+                        print(f"[spectral] 已生成频谱缓存: {spectral['peak_count']} 频谱点")
                 reapeaks_wave = quapeaks.extract_waveform_payload(
                     reapeaks_path,
                     reapeaks_media_path,
@@ -237,7 +234,7 @@ def embed_media_caches(
                 )
                 if reapeaks_wave is not None:
                     project["waveform_reapeaks"] = reapeaks_wave
-                    print(f"[reapeaks-wave] 已嵌入 {reapeaks_wave['peak_count']} peaks")
+                    print(f"[reapeaks-wave] 已生成波形层缓存: {reapeaks_wave['peak_count']} peaks")
             except (OSError, ValueError, IndexError, struct.error) as error:
                 print(f"[reapeaks] 警告: 无法读取已生成缓存: {error}")
     elif not source_path.exists() and not cache_path.exists():

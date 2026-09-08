@@ -48,6 +48,19 @@ class MediaCacheTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_selected_audio_track_survives_cache_merge_without_inline_payloads(self) -> None:
+        result = media_cache.MediaCacheResult(
+            project={"media_metadata": {"selected_audio_track": 2}},
+        )
+
+        merged = media_cache.merge_media_caches(
+            {"media_metadata": {"video_fps": 30}},
+            result,
+        )
+
+        self.assertEqual(merged["media_metadata"]["selected_audio_track"], 2)
+        self.assertEqual(merged["media_metadata"]["video_fps"], 30)
+
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_embeds_waveform_and_wave_only_reapeaks_by_default(self) -> None:
         result = media_cache.embed_media_caches(self.project, self.wav)
