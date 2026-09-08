@@ -11,6 +11,32 @@ from maw.media import probe_audio_tracks, probe_video_fps
 from maw.project import PROJECT_SCHEMA
 
 
+def selected_audio_track_from_metadata(metadata: object) -> int | None:
+    """Return the persisted logical audio-track selection, when valid."""
+    if not isinstance(metadata, Mapping):
+        return None
+    value = metadata.get("selected_audio_track")
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
+def default_audio_track_from_metadata(metadata: object) -> int:
+    """Return the container default track, falling back to audio index 0."""
+    if not isinstance(metadata, Mapping):
+        return 0
+    tracks = metadata.get("audio_tracks")
+    if not isinstance(tracks, list):
+        return 0
+    for track in tracks:
+        if not isinstance(track, Mapping) or track.get("default") is not True:
+            continue
+        value = track.get("audio_index")
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+    return 0
+
+
 def enrich_project_media_metadata(
     project: Mapping[str, Any],
     media_path: Path | str | None = None,
@@ -64,6 +90,7 @@ def serialize_mosp(
     *,
     media_path: Path | str | None = None,
     ffprobe_path: Path | str | None = None,
+    selected_audio_track: int | None = None,
 ) -> str:
     """Serialize a MAW project after optional source-media enrichment.
 
@@ -75,6 +102,11 @@ def serialize_mosp(
         media_path,
         ffprobe_path=ffprobe_path,
     )
+    if selected_audio_track is not None:
+        metadata = enriched.get("media_metadata")
+        merged_metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
+        merged_metadata["selected_audio_track"] = selected_audio_track
+        enriched["media_metadata"] = merged_metadata
     enriched.pop("schema", None)
     canonical = {"schema": PROJECT_SCHEMA, **enriched}
     return json.dumps(canonical, ensure_ascii=False, indent=2) + "\n"
@@ -86,6 +118,7 @@ def write_mosp(
     *,
     media_path: Path | str | None = None,
     ffprobe_path: Path | str | None = None,
+    selected_audio_track: int | None = None,
 ) -> Path:
     """Write a UTF-8 LF-terminated ``.mosp`` project and return its path."""
 
@@ -96,6 +129,7 @@ def write_mosp(
             project,
             media_path=media_path,
             ffprobe_path=ffprobe_path,
+            selected_audio_track=selected_audio_track,
         ),
         encoding="utf-8",
         newline="\n",
