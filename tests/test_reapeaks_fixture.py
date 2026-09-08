@@ -158,11 +158,11 @@ class FixtureReapeaksTests(unittest.TestCase):
 
 
 class GeneratedFixtureTests(unittest.TestCase):
-    """验证 MAW 生成的 .ReaPeaks 与 REAPER 真机 fixture 二进制极其相似。
+    """验证 MAW 生成的 .quapeaks 与 REAPER 真机 fixture 保持兼容布局。
 
-    测试流程：gen_fixtures.py 生成 wav → MAW 生成器生成 .ReaPeaks → 对比
-    fixture 目录里的 REAPER 真机 .ReaPeaks。头部（除 src_timestamp/
-    src_filesize 外）和数据段应完全相同。
+    测试流程：gen_fixtures.py 生成 wav → MAW 生成器生成 .quapeaks → 对比
+    fixture 目录里的 REAPER 真机 .ReaPeaks。magic 和自研层是 MAW 扩展，
+    其余头字段与共有层仍应兼容。
     """
 
     def _compare_reapeaks(self, name: str) -> None:
@@ -174,34 +174,42 @@ class GeneratedFixtureTests(unittest.TestCase):
             gen_func = getattr(gen_fixtures, f"gen_{name}")
             gen_func()
             wav = TEST_DATA_DIR / f"{name}.wav"
-            # MAW 生成 .ReaPeaks
+            # MAW 生成 .quapeaks
             maw_reapeaks = quapeaks.generate_for_media(wav)
-            self.assertIsNotNone(maw_reapeaks, f"MAW 生成 {name}.wav.ReaPeaks 失败")
+            self.assertIsNotNone(maw_reapeaks, f"MAW 生成 {name}.wav.quapeaks 失败")
+            assert maw_reapeaks is not None
             maw_data = maw_reapeaks.read_bytes()
-            # 写临时 .maw 供调试，避免把测试产物留在 fixture 目录。
-            (Path(debug_dir.name) / f"{name}.wav.ReaPeaks.maw").write_bytes(maw_data)
-            # 对比头部（除 src_timestamp 外）
-            self.assertEqual(maw_data[:10], fixture_data[:10], f"{name} 头部前 10 字节不同")
-            self.assertEqual(maw_data[14:18], fixture_data[14:18], f"{name} src_filesize 不同")
-            # 对比 mipmap headers 的 div（npeak 允许差异）
-            mipmap_count = maw_data[5]
-            import struct
-            for i in range(mipmap_count):
-                maw_div = struct.unpack_from("<i", maw_data, 18 + i * 8)[0]
-                fixture_div = struct.unpack_from("<i", fixture_data, 18 + i * 8)[0]
-                self.assertEqual(maw_div, fixture_div, f"{name} mip{i} div 不同")
-            # 数据段长度差异 < 10%
-            data_start = 18 + mipmap_count * 8
-            maw_data_len = len(maw_data) - data_start
-            fixture_data_len = len(fixture_data) - data_start
-            diff_ratio = abs(maw_data_len - fixture_data_len) / max(maw_data_len, fixture_data_len)
-            self.assertLess(diff_ratio, 0.1, f"{name} 数据段长度差异 {diff_ratio:.2%} > 10%")
+            (Path(debug_dir.name) / f"{name}.wav.quapeaks").write_bytes(maw_data)
+            generated = quapeaks.ReapeaksFile(str(maw_reapeaks))
+            fixture = quapeaks.ReapeaksFile(str(fixture_path))
+            self.assertEqual(generated.magic, b"QPK1")
+            self.assertEqual(generated.channels, fixture.channels)
+            self.assertEqual(generated.sample_rate, fixture.sample_rate)
+            generated_shared = [mip for mip in generated.mipmaps if mip.kind != "self_wave"]
+            self.assertEqual(
+                [(mip.kind, mip.division_factor) for mip in generated_shared],
+                [(mip.kind, mip.division_factor) for mip in fixture.mipmaps],
+            )
+            for index, (generated_mip, fixture_mip) in enumerate(
+                zip(generated_shared, fixture.mipmaps)
+            ):
+                diff_ratio = abs(generated_mip.peak_count - fixture_mip.peak_count) / max(
+                    generated_mip.peak_count, fixture_mip.peak_count, 1
+                )
+                self.assertLess(
+                    diff_ratio,
+                    0.1,
+                    f"{name} mip{index} 峰数差异 {diff_ratio:.2%} > 10%",
+                )
         finally:
             # 清理
             debug_dir.cleanup()
             wav = TEST_DATA_DIR / f"{name}.wav"
             if wav.exists():
                 wav.unlink()
+            generated_path = TEST_DATA_DIR / f"{name}.wav.quapeaks"
+            if generated_path.exists():
+                generated_path.unlink()
             fixture_path.write_bytes(fixture_data)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import base64
 import contextlib
-import json
 import os
 import struct
 import sys
@@ -22,7 +21,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw import mopeaks, quapeaks, waveform  # noqa: E402
+from maw import mopeaks, waveform  # noqa: E402
 
 WT_ROOT = ROOT
 
@@ -263,14 +262,13 @@ class MopeaksFingerprintPolicyTests(unittest.TestCase):
         os.utime(self.media_path, (1_700_007_200.0, 1_700_007_200.0))
         self.assertIsNone(mopeaks.load_mopeaks(self.media_path))
 
-    def test_format_constants_have_a_single_source(self) -> None:
-        # assertIs 对小整数会假绿（-5..256 被 CPython 驻留，抄一份也 is 相等），
-        # 所以直接查源码：mopeaks 里不得再出现这些常量的赋值。
+    def test_container_implementation_does_not_depend_on_quapeaks(self) -> None:
+        # mopeaks 是长期稳定的纯 Python 兜底层；quapeaks 模块无法导入时，
+        # 容器本身仍必须可编码、解码和校验。
         src = Path(mopeaks.__file__).read_text(encoding="utf-8")
-        for name in ("DIV_SELF_WAVE", "SELF_PREFIX_LEN", "BYTES_PER_PEAK", "UINT32_MASK"):
-            with self.subTest(name=name):
-                self.assertNotIn(f"\n{name} =", src, "格式常量的真源在 maw.quapeaks，不要抄第二份")
-        self.assertIs(mopeaks.timestamp_fingerprint_matches, quapeaks._timestamp_fingerprint_matches)
+        self.assertNotIn("from maw.quapeaks import", src)
+        self.assertEqual(mopeaks.DIV_SELF_WAVE, -ord("m"))
+        self.assertEqual(mopeaks.BYTES_PER_PEAK, 2)
 
 
 
@@ -391,6 +389,20 @@ class WaveformPlacementContractTests(unittest.TestCase):
         self.assertIsNotNone(back, "缓存写在媒体旁、设置改成子文件夹后仍须读得到")
         self.assertEqual(back["data"], self.payload["data"])
 
+    def test_reader_skips_a_stale_preferred_candidate(self) -> None:
+        valid = mopeaks.encode_mopeaks(self.payload, self.media_path)
+        stale = bytearray(valid)
+        struct.pack_into("<I", stale, 14, self.media_path.stat().st_size + 1)
+        (self.root / "_maw").mkdir()
+        (self.root / "_maw" / "ICE.mkv.mopeaks").write_bytes(stale)
+        (self.root / "ICE.mkv.mopeaks").write_bytes(valid)
+
+        with _subfolder_config(output_subfolder=True):
+            back = mopeaks.load_mopeaks(self.media_path)
+
+        self.assertIsNotNone(back, "过期的首选位置不能挡住后续有效候选")
+        self.assertEqual(back["data"], self.payload["data"])
+
     def test_per_video_maw_root_is_also_searched(self) -> None:
         (self.root / "ICE_maw").mkdir()
         blob = mopeaks.encode_mopeaks(self.payload, self.media_path)
@@ -437,6 +449,31 @@ class WaveformPlacementContractTests(unittest.TestCase):
             found = maw_quapeaks.find_reapeaks(self.media_path)
             self.assertEqual(found, self.root / "ICE.mkv.ReaPeaks")
             self.assertEqual(dirs[0], self._expected("_maw"))
+
+    def test_quapeaks_generation_uses_the_configured_write_directory(self) -> None:
+        from maw import quapeaks as maw_quapeaks
+
+        blob = (
+            struct.pack("<4sBBiII", b"QPK1", 1, 1, 8000, 1, 1)
+            + struct.pack("<ii", 80, 1)
+            + struct.pack("<hh", 100, -100)
+        )
+        with (
+            _subfolder_config(output_subfolder=True),
+            mock.patch.object(
+                maw_quapeaks, "generate_reapeaks_stream_bytes", return_value=blob
+            ),
+            mock.patch.object(maw_quapeaks, "_self_check", return_value=True),
+        ):
+            generated = maw_quapeaks.generate_for_media(
+                self.media_path,
+                include_spectral=False,
+            )
+
+        self.assertEqual(generated, self._expected("_maw", "ICE.mkv.quapeaks"))
+        self.assertTrue(generated.is_file())
+        self.assertFalse((self.root / "ICE.mkv.quapeaks").exists())
+        self.assertEqual(list(generated.parent.glob(".quapeaks-*")), [])
 
 
 if __name__ == "__main__":

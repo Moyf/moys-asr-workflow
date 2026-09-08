@@ -10,7 +10,7 @@ The spectral payload is a *cache* derived from the media's .ReaPeaks file, so
 looking it up must never block the editor: any missing / unreadable /
 non-spectral file degrades to ``None``.
 
-Decoding is pure Python; only *generation* needs the Rust ``reapeaks``
+Decoding is pure Python; only *generation* needs the Rust ``quapeaks``
 extension, and it is imported lazily at the call site.  Managed ASR runtimes
 are separate environments that may not ship the extension, and a cache
 generator must never take down transcription at import time.
@@ -34,8 +34,8 @@ def _load_rust_kernel():
     """按调用点延迟导入 Rust 生成内核，缺失时返回 None。
 
     解析（读）路径是纯 Python 的，只有生成（写）才需要内核。托管 Runtime 是独立
-    环境（如 MOSS 的 ``local-runtime-moss``），未必装了 ``reapeaks``；放在模块顶层
-    导入会让任何 `from maw import reapeaks` 的入口在加载模型之前就崩掉。生成是
+    环境（如 MOSS 的 ``local-runtime-moss``），未必装了 ``quapeaks``；放在模块顶层
+    导入会让任何 `from maw import quapeaks` 的入口在加载模型之前就崩掉。生成是
     可重建缓存的兜底路径，必须按既有语义打日志说明原因后跳过，而不是拖垮转写。
     """
 
@@ -177,6 +177,10 @@ class ReapeaksFile:
         self.format_version = self.magic[3] if (self.is_quapeaks or self.is_mopeaks) else None
         self.channels = self.data[4]
         self.mipmap_count = self.data[5]
+        if self.channels <= 0 or self.mipmap_count <= 0:
+            raise ValueError(
+                f"{self.path}: channels={self.channels}、mipmaps={self.mipmap_count} 不是可解析的布局"
+            )
         # 官方规格：mtime/size 是 stat() 值的低 32 位（"low 32 bits"），仅作
         # 更新检测指纹；>2GiB / 2038 后的大值按无符号位型记录，按 i32 解读
         # 会得到无意义的负数（REAPER 真机即按此语义写入）。
@@ -190,8 +194,12 @@ class ReapeaksFile:
     # ------------- headers -------------
     def _parse_headers(self) -> None:
         off = 18
+        if off + self.mipmap_count * 8 > len(self.data):
+            raise ValueError(f"{self.path}: mipmap 表被截断")
         for _ in range(self.mipmap_count):
             div, npeak = struct.unpack_from("<ii", self.data, off)
+            if npeak < 0:
+                raise ValueError(f"{self.path}: npeak={npeak} 不能为负数")
             self.mipmaps.append(MipMap(div, npeak, _kind_for(div)))
             off += 8
 
@@ -401,7 +409,7 @@ def find_reapeaks(
     不得挡住新鲜的一方**：先返回头部指纹与当前媒体相符的候选，都不相符时
     退回第一个存在的文件（保持既有语义，由调用方的签名校验决定降级）。
 
-    多音轨沿用上游的 ``<媒体>.track-N`` 段（N 从 1 起，第 0 轨不带标记）：
+    多音轨当前沿用上游的 ``<媒体>.track-N`` 段（N 从 1 起，第 0 轨不带标记）：
     同一素材的不同轨必须有各自的容器，否则后写的会把前一轨整份覆盖掉。
     """
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
@@ -1019,14 +1027,24 @@ def generate_for_media(
                     f"{decode_path.name} -> {candidates[1].name}"
                 )
             continue
-        target = decode_path.with_name(
+        target = waveform_dirs(decode_path)[0] / (
             decode_path.name + track_suffix + QUAPEAKS_SUFFIX
         )
+        temporary: Path | None = None
         try:
-            target.write_bytes(data)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                prefix=".quapeaks-", dir=target.parent, delete=False
+            ) as output:
+                temporary = Path(output.name)
+                output.write(data)
+            temporary.replace(target)
         except OSError as exc:
             print(f"[reapeaks] {QUAPEAKS_SUFFIX} 写入失败: {exc}")
             return None
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
         if not _self_check(target, want_self_wave=self_peaks is not None):
             return None
         return target

@@ -194,6 +194,26 @@ class ReapeaksParseTests(unittest.TestCase):
         media.write_bytes(b"\x00")
         self.assertIsNone(quapeaks.load_spectral_payload(media))
 
+    def test_rejects_zero_channels_before_reading_declared_peaks(self) -> None:
+        malformed = self.root / "zero-channels.ReaPeaks"
+        malformed.write_bytes(
+            struct.pack("<4sBBiII", b"RPKN", 0, 1, 8000, 1, 1)
+            + struct.pack("<ii", 80, 10_000)
+        )
+
+        with self.assertRaises(ValueError):
+            quapeaks.ReapeaksFile(str(malformed))
+
+    def test_rejects_negative_peak_count(self) -> None:
+        malformed = self.root / "negative-peaks.ReaPeaks"
+        malformed.write_bytes(
+            struct.pack("<4sBBiII", b"RPKN", 1, 1, 8000, 1, 1)
+            + struct.pack("<ii", 80, -1)
+        )
+
+        with self.assertRaises(ValueError):
+            quapeaks.ReapeaksFile(str(malformed))
+
     def test_stale_cache_degrades_when_media_replaced(self) -> None:
         # 媒体被替换（内容与大小变化）后，旧缓存不再被使用。
         self.media_path.write_bytes(b"RIFF" + b"\x00" * 128)

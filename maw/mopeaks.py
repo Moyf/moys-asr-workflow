@@ -13,10 +13,8 @@
 而不是靠发明第二种层类型。这也是本模块不依赖 quapeaks **内核包**的原因：
 纯 ``struct``，回退档必须真的能在缺内核时用。
 
-自研层的格式常量（层 token、段前缀长度、每峰字节数）与低 32 位指纹判定一律
-**从 ``maw.quapeaks`` 借用**，不在这里抄第二份：那个模块的解析部分本就是纯
-Python（内核只在生成时按调用点导入），抄一份只会让两级缓存在"媒体变没变"
-和"自研层是哪个 token"上各自漂移。
+格式与指纹策略保留在这个纯 Python 回退模块内；即使 ``maw.quapeaks`` 或原生
+内核无法导入，mopeaks 仍能独立编码、解码和校验。
 """
 
 from __future__ import annotations
@@ -28,13 +26,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from maw.quapeaks import (
-    DIV_SELF_WAVE,
-    SELF_WAVE_BYTES_PER_PEAK as BYTES_PER_PEAK,
-    SELF_WAVE_PREFIX_LEN as SELF_PREFIX_LEN,
-    UINT32_MASK,
-    timestamp_fingerprint_matches,
-)
 from maw.output_naming import waveform_dirs
 from maw.waveform import (
     WAVEFORM_ENCODING,
@@ -43,8 +34,6 @@ from maw.waveform import (
     media_signature,
 )
 
-# 0.x 版把载荷写成 JSON sidecar（媒体后缀被 with_suffix 整个换掉）。
-# 现只写 mopeaks，但旧文件要还能读，否则用户升级后第一次打开=全量重抽。
 
 # 全局头长度与 REAPER/quapeaks 一致：4s magic | B ch | B layers | <III>
 HEADER_LEN = 18
@@ -53,6 +42,12 @@ MAGIC_PREFIX = b"MPK"
 MAGIC = MAGIC_PREFIX + b"1"
 CHANNELS = 1
 LAYER_COUNT = 1
+DIV_SELF_WAVE = -ord("m")
+SELF_PREFIX_LEN = 8
+BYTES_PER_PEAK = 2
+UINT32_MASK = 0xFFFF_FFFF
+UINT32_MODULUS = 0x1_0000_0000
+MTIME_TOLERANCE_SECONDS = 5
 
 
 
@@ -60,12 +55,24 @@ class MopeaksError(ValueError):
     """mopeaks 载荷无法序列化或读回。"""
 
 
+def timestamp_fingerprint_matches(stored: int, actual: int) -> bool:
+    """按 low-32 mtime 口径容忍秒级复制漂移与夏令时整小时偏差。"""
+    stored &= UINT32_MASK
+    actual &= UINT32_MASK
+    delta = abs(stored - actual)
+    delta = min(delta, UINT32_MODULUS - delta)
+    return (
+        delta <= MTIME_TOLERANCE_SECONDS
+        or abs(delta - 3600) <= MTIME_TOLERANCE_SECONDS
+    )
+
+
 def mopeaks_path(media_path: Path | str, *, audio_track: int = 0) -> Path:
     """mopeaks 的**写入点**：由 waveform_dirs() 的第一项决定。
 
     默认在媒体旁（``ICE.mkv.mopeaks``，与 .ReaPeaks/.quapeaks 同风格、保留完整媒体名）；
-    用户勾了「将所有输出放入子文件夹」时进 ``_maw``。非默认音轨加 ``.track-N`` 段
-    （N 从 1 起，第 0 轨不带标记），否则两条轨会互相覆盖对方的缓存。
+    用户勾了「将所有输出放入子文件夹」时进 ``_maw``。当前非 0 音轨加
+    ``.track-N`` 段（N 从 1 起），否则两条轨会互相覆盖对方的缓存。
     """
     media_path = Path(media_path)
     _check_track(audio_track)
@@ -242,28 +249,22 @@ def load_mopeaks(
 ) -> dict[str, Any] | None:
     """读取并校验媒体旁的 mopeaks；缺失/损坏/签名不符时返回 None。"""
     media_path = Path(media_path)
+    try:
+        st = media_path.stat()
+    except OSError:
+        return None
     for path in mopeaks_candidates(media_path, audio_track=audio_track):
         try:
             payload = decode_mopeaks(path.read_bytes(), path, audio_track=audio_track)
         except (OSError, ValueError, struct.error):
             continue  # 这个位置没有/坏了，接着找下一个
-        break
-    else:
-        return None
-    # source 里只存了秒级 mtime 与 size，按同口径复核。判定直接借用内核
-    # 缓存那一套（低 32 位掩码 + mtime 环形指纹，容秒级漂移与 DST 整小时），
-    # 否则同一份跨盘拷贝会出现 .quapeaks 认、mopeaks 不认的分叉。
-    try:
-        st = media_path.stat()
-    except OSError:
-        return None
-    if payload["source"]["size"] != st.st_size & UINT32_MASK:
-        return None
-    if not timestamp_fingerprint_matches(
-        payload["source"]["modified_ms"] // 1000, int(st.st_mtime)
-    ):
-        return None
-    payload["source"] = media_signature(media_path)
-    if not is_waveform_payload(payload):
-        return None
-    return payload
+        if payload["source"]["size"] != st.st_size & UINT32_MASK:
+            continue
+        if not timestamp_fingerprint_matches(
+            payload["source"]["modified_ms"] // 1000, int(st.st_mtime)
+        ):
+            continue
+        payload["source"] = media_signature(media_path)
+        if is_waveform_payload(payload):
+            return payload
+    return None
