@@ -872,7 +872,12 @@ class GuiWebBridgeTests(unittest.TestCase):
             )),
             mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=None, reapeaks_path=None)) as embed,
         ):
-            result = self.api.generate_waveform_project({"mediaPath": str(media), "generateSpectral": True, "audioTrack": "2"})
+            result = self.api.generate_waveform_project({
+                "mediaPath": str(media),
+                "generateSpectral": True,
+                "audioTrack": "2",
+                "defaultAudioTrack": "1",
+            })
 
         self.assertTrue(result["ok"])
         project_path = Path(str(result["projectPath"]))
@@ -889,6 +894,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             generate_spectral=True,
             ffmpeg_bin=str(ffmpeg),
             audio_track=2,
+            default_audio_track=1,
         )
 
     def test_generate_waveform_project_rejects_invalid_embedded_waveform(self) -> None:
@@ -951,6 +957,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('const mediaPath = $("toolboxUtilityMediaPath").value.trim()', script)
         self.assertIn('id="toolboxGenerateSpectral" type="checkbox"', html)
         self.assertIn('generateSpectral: $("toolboxGenerateSpectral").checked', script)
+        self.assertIn("audioTrack: selectedToolboxAudioTrack()", script)
+        self.assertIn("defaultAudioTrack: defaultToolboxAudioTrack()", script)
         self.assertNotIn('generateSpectral: $("generateSpectral").checked', script)
         self.assertIn('id="generateWaveform"', html)
         self.assertIn('id="runWaveform"', html)
@@ -2220,7 +2228,8 @@ class GuiWebBridgeTests(unittest.TestCase):
 
     def test_start_server_reports_code_when_project_json_is_missing(self) -> None:
         """Given missing project JSON, When starting server, Then json_not_found code is returned."""
-        result = self.api.start_server({"jsonPath": str(self.root / "missing.json"), "mediaPath": "", "port": "8765"})
+        with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+            result = self.api.start_server({"jsonPath": str(self.root / "missing.json"), "mediaPath": "", "port": "8765"})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "jsonPath")
@@ -2396,7 +2405,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         project = self.root / "project.json"
         project.write_text('{"segments": []}\n', encoding="utf-8")
 
-        result = self.api.start_server({"jsonPath": str(project), "mediaPath": "", "port": "8765"})
+        with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+            result = self.api.start_server({"jsonPath": str(project), "mediaPath": "", "port": "8765"})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "serverMediaPath")
@@ -2625,6 +2635,63 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["code"], "batch_items_invalid")
         self.assertIn("missing", result["detail"])
+
+    def test_batch_uses_each_media_default_audio_track_when_selection_is_omitted(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+
+        ffprobe = self.root / "ffprobe.exe"
+        with (
+            mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffprobe=ffprobe)),
+            mock.patch("maw.gui_web.resolve_default_audio_track", return_value=2) as resolve_default,
+            mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread,
+        ):
+            result = self.api.start_batch_transcription({
+                "items": [{"id": "clip", "mediaPath": str(media)}],
+                "settings": {"apiKey": "sk-test"},
+            })
+
+        self.assertTrue(result["ok"])
+        batch_items = thread.call_args.kwargs["args"][0]
+        request = batch_items[0].request
+        self.assertIsNotNone(request)
+        assert request is not None
+        self.assertEqual(request.audio_track, 2)
+        self.assertEqual(request.default_audio_track, 2)
+        resolve_default.assert_called_once_with(
+            media.resolve(),
+            None,
+            ffprobe_path=ffprobe,
+        )
+
+    def test_batch_preserves_an_explicit_zero_audio_track(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+
+        with (
+            mock.patch("maw.gui_web.resolve_default_audio_track") as resolve_default,
+            mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread,
+        ):
+            result = self.api.start_batch_transcription({
+                "items": [{"id": "clip", "mediaPath": str(media)}],
+                "settings": {
+                    "apiKey": "sk-test",
+                    "audioTrack": 0,
+                    "defaultAudioTrack": 2,
+                },
+            })
+
+        self.assertTrue(result["ok"])
+        request = thread.call_args.kwargs["args"][0][0].request
+        self.assertIsNotNone(request)
+        assert request is not None
+        self.assertEqual(request.audio_track, 0)
+        self.assertEqual(request.default_audio_track, 2)
+        resolve_default.assert_not_called()
 
     def test_local_request_skips_api_key_and_carries_engine_options(self) -> None:
         media = self.root / "clip.mp3"
@@ -2871,6 +2938,33 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertEqual(request.audio_track, 2)
 
+    def test_request_from_payload_carries_default_audio_track(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "audioTrack": "0",
+            "defaultAudioTrack": "2",
+        }, self.env_path)
+
+        self.assertEqual(request.audio_track, 0)
+        self.assertEqual(request.default_audio_track, 2)
+
+    def test_request_from_payload_leaves_missing_default_disposition_for_cli_probe(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }, self.env_path)
+
+        self.assertIsNone(request.default_audio_track)
+
     def test_request_from_payload_rejects_negative_audio_track(self) -> None:
         media = self.root / "clip.mp4"
         media.write_bytes(b"media")
@@ -2884,6 +2978,21 @@ class GuiWebBridgeTests(unittest.TestCase):
             }, self.env_path)
 
         self.assertEqual(raised.exception.field, "audioTrack")
+        self.assertEqual(raised.exception.code, "audio_track_invalid")
+
+    def test_request_from_payload_rejects_negative_default_audio_track(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        with self.assertRaises(PreflightError) as raised:
+            _request_from_payload({
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "apiKey": "sk-test",
+                "defaultAudioTrack": -1,
+            }, self.env_path)
+
+        self.assertEqual(raised.exception.field, "defaultAudioTrack")
         self.assertEqual(raised.exception.code, "audio_track_invalid")
 
     def test_request_from_payload_passes_segmentation_options(self) -> None:
