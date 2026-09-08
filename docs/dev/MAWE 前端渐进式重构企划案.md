@@ -101,7 +101,7 @@ status: in_progress
 ### 源码与生成约束
 
 - `web/` 始终是唯一前端源码。
-- `blank-editor.html` 始终由 `uv run python edit.py --blank` 生成，不得手改内联副本。
+- `blank-editor.html` 只能由 `uv run python edit.py --blank` 生成，不得手改内联副本；日常开发不自动刷新，默认在版本发布前生成，其他时间需明确指定。
 - 所有脚本、样式、文档与生成文件保持 UTF-8、LF。
 - 在正式决定引入构建器之前，源码必须能由 Python 生成链直接按确定顺序内联。
 
@@ -256,7 +256,7 @@ web/
 2. 将模板中的多个 JS 占位符收敛为一个由生成器提供的有序内联结果。
 3. 引入只负责模块工厂注册的 `window.MAWE` 命名空间。
 4. 保留 `AsrEditorUtils`、`AsrWaveform`、`MAWE_I18N`、`MAWE_ONBOARDING` 和 `MAWE_EDITOR_BRIDGE` 兼容出口，不在本阶段改调用者。
-5. 更新生成契约测试并重新生成 `blank-editor.html`。
+5. 更新生成契约测试；只有发布前或明确指定时才重新生成 `blank-editor.html`。
 
 阶段出口：
 
@@ -395,9 +395,10 @@ node --check web\editor.js
 node --check web\waveform.js
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
 uv run python -m unittest tests.test_gui_web tests.test_local_editor_server tests.test_packaging_contract
-uv run python edit.py --blank
 git diff --check
 ```
+
+若本批次明确需要验证便携 HTML，或正在准备版本发布，再单独执行 `uv run python edit.py --blank`。
 
 新增脚本后，语法检查应覆盖资产清单中的全部 JS，而不是只检查两个历史入口文件。命令可在 Phase 1 通过小型检查脚本统一，避免清单和验证范围漂移。
 

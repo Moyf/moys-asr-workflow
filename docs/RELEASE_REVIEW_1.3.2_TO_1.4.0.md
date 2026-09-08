@@ -58,7 +58,7 @@
 
 ## HTML、在线编辑器与发布
 
-- 统一 MAWE Server、便携 HTML、Tauri 和在线编辑器使用的前端脚本清单；`web/` 是唯一前端源码，模板改动后重新生成 `blank-editor.html`。
+- 统一 MAWE Server、便携 HTML、Tauri 和在线编辑器使用的前端脚本清单；`web/` 是唯一前端源码，模板改动后的 `blank-editor.html` 在发布前或明确指定时生成。
 - HTML 编辑器顶部从“生成时间”改为显示版本号，并与 Launcher 版本号同步；版本源为 `pyproject.toml`，发布前由同步脚本校验 Launcher、HTML 和项目版本一致。
 - 增加 Astro 官网与 GitHub Pages 在线编辑器，网站文档从仓库文档同步生成；在线编辑器由主分支推送自动构建和部署，Server 版仍是当前主流程。
 - 暂时隐藏“同时生成单文件版网页编辑器（html）”选项，并在项目文档中明确：单文件 HTML 继续兼容保留，当前以服务器版和在线编辑器为主。

@@ -17,7 +17,7 @@
 ## 事实基线
 
 - 开始时 `git status --short`、`git diff --stat` 与 `git diff` 均无输出，工作区干净。
-- `web/` 是唯一编辑器前端源码；修改后必须通过 `uv run python edit.py --blank` 重新生成 `blank-editor.html`。
+- `web/` 是唯一编辑器前端源码；日常开发不反复生成 `blank-editor.html`，仅在版本发布前或明确指定时通过 `uv run python edit.py --blank` 更新它。
 - 当前 `.mosp` 契约包含媒体路径，但没有工程文件自身路径；浏览器不能仅凭拖入的 `File` 对象读取其绝对路径。
 - 当前审阅重点：区分“Server 实际打开/保存的工程路径”与“工程内容中可能陈旧的来源路径”，避免把不可信路径用于任意文件读取或写入。
 

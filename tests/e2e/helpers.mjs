@@ -2,7 +2,7 @@
 // Deterministic synthetic WAV + project JSON generated at runtime; no committed media.
 // Event/process/port-based lifecycle — no arbitrary sleeps for correctness.
 import { execFileSync, spawn } from 'node:child_process';
-import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync, copyFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
@@ -478,24 +478,14 @@ export async function startStaticServer(filePath, port) {
 }
 
 // ---------------------------------------------------------------------------
-// Generate blank-editor.html via edit.py --blank.
+// Use the repository portable artifact. It is refreshed only before a release
+// or when explicitly requested; E2E setup must not regenerate it by default.
 // ---------------------------------------------------------------------------
-export function generateBlankEditor(outputPath) {
-  const args = ['edit.py', '--blank', '-o', outputPath];
-  try {
-    execFileSync(PYTHON_RUNNER.command, pythonCommandArgs(args), {
-      cwd: process.cwd(),
-      encoding: 'utf-8',
-      timeout: 30000,
-      windowsHide: true,
-    });
-  } catch (error) {
-    if (!configuredPython && (error?.code === 'ENOENT' || error?.status === 127)) {
-      throw new Error(
-        `E2E requires uv to run the project Python environment. Run "uv sync" first, or set MAW_E2E_PYTHON explicitly. Original error: ${error.message}`,
-      );
-    }
-    throw error;
+export function copyPortableBlankEditor(outputPath) {
+  const sourcePath = join(process.cwd(), 'blank-editor.html');
+  if (!existsSync(sourcePath)) {
+    throw new Error(`Committed portable editor is missing: ${sourcePath}`);
   }
+  copyFileSync(sourcePath, outputPath);
   return outputPath;
 }

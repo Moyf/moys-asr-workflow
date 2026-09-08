@@ -30,7 +30,7 @@ npx tauri build   # 仅构建本地开发包；MOSE 暂不随 MAW Release 分发
 ```
 
 启动后：
-- Cargo 构建脚本自动从 `../web/` 生成 `desktop/src/index.html`（等价 `edit.py --blank`）
+- Cargo 构建脚本自动从 `../web/` 生成 `desktop/src/index.html`（装配内容等价于 `edit.py --blank`，但不刷新仓库根目录的 `blank-editor.html`）
 - webview 加载该文件，显示完整 MAWE 编辑器界面
 - 改 `web/` 源码后需要重启 `npx tauri dev`（暂无 watch 热重载）
 

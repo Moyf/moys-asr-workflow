@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import {
   cleanupTempDir,
   findFreePort,
-  generateBlankEditor,
+  copyPortableBlankEditor,
   generateWaveformPayload,
   makeTempDir,
   startStaticServer,
@@ -16,7 +16,7 @@ let server;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('multi-subtitle');
-  const blankPath = generateBlankEditor(join(tempDir, 'blank-editor.html'));
+  const blankPath = copyPortableBlankEditor(join(tempDir, 'blank-editor.html'));
   server = await startStaticServer(blankPath, await findFreePort());
 });
 

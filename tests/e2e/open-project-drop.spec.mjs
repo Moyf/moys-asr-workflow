@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import {
   cleanupTempDir,
   findFreePort,
-  generateBlankEditor,
+  copyPortableBlankEditor,
   generateProjectJson,
   generateWav,
   makeTempDir,
@@ -25,7 +25,7 @@ test.beforeAll(async () => {
   // 短媒体即可：只验证加载链路，不校验波形时长一致性。
   generateWav(mediaPath, 5);
   generateProjectJson(projectPath);
-  server = await startStaticServer(generateBlankEditor(join(tempDir, 'blank.html')), await findFreePort());
+  server = await startStaticServer(copyPortableBlankEditor(join(tempDir, 'blank.html')), await findFreePort());
 });
 
 test.afterAll(async () => {
