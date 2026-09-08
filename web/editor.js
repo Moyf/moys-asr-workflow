@@ -1434,6 +1434,7 @@ const subtitleSpeakerLabelInputs = Object.fromEntries(
   ]),
 );
 const extensionSubtitlePreviewSettings = document.getElementById('extension-subtitle-preview-settings');
+const extensionSubtitlePreviewTitle = document.getElementById('extension-subtitle-preview-title');
 const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
 const extensionSubtitleColorInput = document.getElementById('extension-subtitle-color');
@@ -2206,6 +2207,7 @@ function updateMultiSubtitleUi() {
   if (multiSubtitleWaveformControls) multiSubtitleWaveformControls.hidden = !enabled;
   if (multiSubtitleAlignButton) multiSubtitleAlignButton.hidden = !enabled;
   if (extensionOverlayToggleWrap) extensionOverlayToggleWrap.hidden = !enabled;
+  if (extensionSubtitlePreviewTitle) extensionSubtitlePreviewTitle.hidden = !enabled;
   if (extensionSubtitlePreviewSettings) extensionSubtitlePreviewSettings.hidden = !enabled;
   if (extensionOverlayToggle) {
     if (enteringEnabled) updateEditorSettings({ extensionOverlayEnabled: true });

@@ -891,17 +891,6 @@
   .subtitle-preview-settings-fields {
     display: grid; gap: 8px; width: 100%; min-width: 0;
   }
-  /* 「字幕预览」分组内的主/副字幕卡片：比分组底色深一档形成嵌套层级。 */
-  .subtitle-preview-track-settings {
-    display: grid; gap: 8px; width: 100%; min-width: 0; box-sizing: border-box;
-    padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-  }
-  .subtitle-preview-track-settings[hidden] { display: none; }
-  .subtitle-preview-track-title {
-    margin: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600;
-    letter-spacing: .06em;
-  }
   .subtitle-preview-setting-pair {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0;
   }
@@ -1009,10 +998,6 @@
     border: 1px solid color-mix(in srgb, var(--text-primary) 30%, transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, #000 35%, transparent);
   }
-  .subtitle-preview-extension-settings {
-    margin-top: 0; padding-top: 8px;
-  }
-  .subtitle-preview-extension-settings[hidden] { display: none; }
   @media (max-width: 380px) {
     .subtitle-preview-setting-pair { grid-template-columns: 1fr; }
     .subtitle-speaker-label-list { grid-template-columns: 1fr; }
@@ -1058,6 +1043,10 @@
     width: 132px; padding: 10px 8px;
     background: var(--bg-raised); border-right: 1px solid var(--border-subtle);
     border-radius: 0 0 0 var(--radius-lg);
+  }
+  .editor-settings-nav-group-label {
+    margin: 8px 4px 2px; color: var(--text-faint);
+    font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
   }
   .editor-settings-nav-tab {
     padding: 6px 10px; text-align: left; color: var(--text-secondary); background: none;

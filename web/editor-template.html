@@ -787,12 +787,17 @@ __WAVEFORM_CSS__
   </header>
   <div class="editor-settings-window-body">
     <nav class="editor-settings-nav" role="tablist" aria-orientation="vertical" aria-label="设置分区">
+      <div class="editor-settings-nav-group-label" aria-hidden="true">基础</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-general" role="tab" data-settings-tab="general" aria-selected="true" aria-controls="editor-settings-page-general">通用操作</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-subtitle-preview" role="tab" data-settings-tab="subtitle-preview" aria-selected="false" aria-controls="editor-settings-page-subtitle-preview" tabindex="-1">视频预览</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-subtitle-style" role="tab" data-settings-tab="subtitle-style" aria-selected="false" aria-controls="editor-settings-page-subtitle-style" tabindex="-1">字幕样式</button>
+      <div class="editor-settings-nav-group-label" aria-hidden="true">编辑</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-timebase" role="tab" data-settings-tab="timebase" aria-selected="false" aria-controls="editor-settings-page-timebase" tabindex="-1">时间基准</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-split-merge" role="tab" data-settings-tab="split-merge" aria-selected="false" aria-controls="editor-settings-page-split-merge" tabindex="-1">拆分与合并</button>
+      <div class="editor-settings-nav-group-label" aria-hidden="true">工程与输出</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-export" role="tab" data-settings-tab="export" aria-selected="false" aria-controls="editor-settings-page-export" tabindex="-1">导出</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-save" role="tab" data-settings-tab="save" aria-selected="false" aria-controls="editor-settings-page-save" tabindex="-1">保存</button>
+      <div class="editor-settings-nav-group-label" aria-hidden="true">扩展功能</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-sticker" role="tab" data-settings-tab="sticker" aria-selected="false" aria-controls="editor-settings-page-sticker" tabindex="-1">表情包</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-easter-eggs" role="tab" data-settings-tab="easter-eggs" aria-selected="false" aria-controls="editor-settings-page-easter-eggs" tabindex="-1">彩蛋</button>
     </nav>
@@ -833,7 +838,6 @@ __WAVEFORM_CSS__
       <label class="toggle editor-settings-item" title="在播放器画面内预览主字幕"><input type="checkbox" id="overlay-toggle" checked> 预览字幕</label>
       <label class="toggle editor-settings-item" id="extension-overlay-toggle-wrap" hidden><input type="checkbox" id="extension-overlay-toggle" checked> 预览副字幕</label>
       <label class="toggle editor-settings-item" title="在视频画面右上角预览当前时间的表情包"><input type="checkbox" id="sticker-overlay-toggle"> 预览表情包</label>
-      <label class="toggle editor-settings-item" title="在波形区悬停鼠标时，播放器自动预览指针位置的画面"><input type="checkbox" id="hover-seek-preview"> 自动预览鼠标位置画面</label>
     </div>
   </div>
   <span class="editor-settings-group-heading" id="playback-controls-title">播放控制</span>
@@ -859,13 +863,14 @@ __WAVEFORM_CSS__
         </label>
         <small class="editor-settings-hint" id="media-seek-step-hint">控制按钮和左右方向键的每次跳转时长。</small>
       </div>
+      <label class="toggle editor-settings-item" title="在波形区悬停鼠标时，播放器自动预览指针位置的画面"><input type="checkbox" id="hover-seek-preview"> 自动预览鼠标位置画面</label>
     </div>
   </div>
-  <span class="editor-settings-group-heading" id="subtitle-preview-style-title">字幕预览</span>
-  <div class="editor-settings-group subtitle-preview-style-group" role="group" aria-labelledby="subtitle-preview-style-title">
-    <section class="subtitle-preview-track-settings" id="main-subtitle-preview-settings">
-      <h5 class="subtitle-preview-track-title">主字幕</h5>
-      <div class="subtitle-preview-settings-fields">
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-subtitle-style" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-style" hidden>
+  <span class="editor-settings-group-heading" id="subtitle-preview-style-title">主字幕</span>
+  <div class="editor-settings-group subtitle-preview-style-group" id="main-subtitle-preview-settings" role="group" aria-labelledby="subtitle-preview-style-title">
+    <div class="subtitle-preview-settings-fields">
         <label class="subtitle-preview-setting-row" title="只影响播放器画面内的字幕预览，不改变字幕文本或时间">
           <span>文字大小</span>
           <select id="subtitle-font-size">
@@ -961,11 +966,11 @@ __WAVEFORM_CSS__
             </label>
           </div>
         </div>
-      </div>
-    </section>
-    <section class="subtitle-preview-track-settings subtitle-preview-extension-settings" id="extension-subtitle-preview-settings" hidden>
-      <h5 class="subtitle-preview-track-title">副字幕</h5>
-      <div class="subtitle-preview-settings-fields">
+    </div>
+  </div>
+  <span class="editor-settings-group-heading" id="extension-subtitle-preview-title" hidden>副字幕</span>
+  <div class="editor-settings-group subtitle-preview-style-group" id="extension-subtitle-preview-settings" role="group" aria-labelledby="extension-subtitle-preview-title" hidden>
+    <div class="subtitle-preview-settings-fields">
         <label class="subtitle-preview-setting-row" title="只影响播放器画面内的副字幕预览">
           <span>文字大小</span>
           <select id="extension-subtitle-font-size">
@@ -1012,8 +1017,7 @@ __WAVEFORM_CSS__
             <output id="extension-subtitle-background-alpha-value" for="extension-subtitle-background-alpha">65%</output>
           </div>
         </label>
-      </div>
-    </section>
+    </div>
   </div>
   </div>
   <div class="editor-settings-page" id="editor-settings-page-timebase" role="tabpanel" aria-labelledby="editor-settings-tab-timebase" hidden>
