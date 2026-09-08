@@ -204,10 +204,14 @@ class MediaCacheTests(unittest.TestCase):
                 self.wav,
                 ffmpeg_bin=ffmpeg,
                 audio_track=2,
+                default_audio_track=1,
             )
 
         embed.assert_called_once_with(
-            self.project,
+            {
+                **self.project,
+                "media_metadata": {"selected_audio_track": 2},
+            },
             self.wav,
             ffmpeg_bin=ffmpeg,
             audio_track=2,
@@ -219,8 +223,41 @@ class MediaCacheTests(unittest.TestCase):
             source_media_path=self.wav,
             audio_track=2,
             cache_audio_track=2,
+            default_audio_track=1,
             self_peaks=None,
         )
+
+    def test_selected_audio_track_is_persisted_without_waveform_output(self) -> None:
+        with (
+            mock.patch(
+                "maw.media_cache.embed_waveform",
+                return_value=SimpleNamespace(project=self.project, error=RuntimeError("decode failed")),
+            ),
+            mock.patch("maw.media_cache.quapeaks.generate_for_media", return_value=None),
+        ):
+            result = media_cache.embed_media_caches(
+                self.project,
+                self.wav,
+                audio_track=2,
+                default_audio_track=1,
+            )
+
+        self.assertEqual(result.project["media_metadata"]["selected_audio_track"], 2)
+        self.assertNotIn("waveform", result.project)
+
+    def test_merge_media_caches_preserves_selected_audio_track(self) -> None:
+        target = {
+            "media_metadata": {"audio_tracks": [{"audio_index": 0}]},
+            "segments": [],
+        }
+        result = media_cache.MediaCacheResult(
+            project={"media_metadata": {"selected_audio_track": 2}},
+        )
+
+        merged = media_cache.merge_media_caches(target, result)
+
+        self.assertEqual(merged["media_metadata"]["selected_audio_track"], 2)
+        self.assertEqual(merged["media_metadata"]["audio_tracks"], [{"audio_index": 0}])
 
 
 if __name__ == "__main__":

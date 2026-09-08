@@ -37,21 +37,41 @@ CACHE_KEYS = ("waveform", "spectral", "waveform_reapeaks")
 def merge_media_caches(
     target: dict[str, Any], result: MediaCacheResult
 ) -> dict[str, Any]:
-    """把 ``result.project`` 里生成的缓存键合并进 ``target`` 工程。"""
+    """把 ``result.project`` 里生成的缓存与音轨选择合并进 ``target`` 工程。"""
     for key in CACHE_KEYS:
         if key in result.project:
             target[key] = result.project[key]
+    result_metadata = result.project.get("media_metadata")
+    if isinstance(result_metadata, dict) and "selected_audio_track" in result_metadata:
+        target_metadata = target.get("media_metadata")
+        merged_metadata = dict(target_metadata) if isinstance(target_metadata, dict) else {}
+        merged_metadata["selected_audio_track"] = result_metadata["selected_audio_track"]
+        target["media_metadata"] = merged_metadata
     return target
 
 
 def _persist_mopeaks_fallback(
-    payload: dict[str, Any], media_path: Path, *, audio_track: int = 0
+    payload: dict[str, Any],
+    media_path: Path,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int = 0,
 ) -> None:
     """内核那一档没成，就把自研波形写进 mopeaks（纯 Python，不需要内核）。"""
-    if mopeaks.load_mopeaks(media_path, audio_track=audio_track) is not None:
+    hit = mopeaks.load_mopeaks_hit(
+        media_path,
+        audio_track=audio_track,
+        default_audio_track=default_audio_track,
+    )
+    if hit is not None and hit.kind == "exact":
         return  # 已有有效回退档，不必白写一遍
     try:
-        written = mopeaks.save_mopeaks(payload, media_path, audio_track=audio_track)
+        written = mopeaks.save_mopeaks(
+            payload,
+            media_path,
+            audio_track=audio_track,
+            default_audio_track=default_audio_track,
+        )
     except (OSError, mopeaks.MopeaksError) as exc:
         print(f"[mopeaks] 回退缓存写入失败: {exc}")
         return
@@ -66,6 +86,7 @@ def embed_media_caches(
     generate_spectral: bool = False,
     ffmpeg_bin: str | None = None,
     audio_track: int = 0,
+    default_audio_track: int = 0,
     decode_audio_track: int | None = None,
 ) -> MediaCacheResult:
     """嵌入波形缓存并生成 .ReaPeaks 缓存（best-effort）。
@@ -93,6 +114,12 @@ def embed_media_caches(
     """
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
         raise ValueError("audio_track must be a non-negative integer")
+    if (
+        not isinstance(default_audio_track, int)
+        or isinstance(default_audio_track, bool)
+        or default_audio_track < 0
+    ):
+        raise ValueError("default_audio_track must be a non-negative integer")
     if decode_audio_track is not None and (
         not isinstance(decode_audio_track, int)
         or isinstance(decode_audio_track, bool)
@@ -100,6 +127,11 @@ def embed_media_caches(
     ):
         raise ValueError("decode_audio_track must be a non-negative integer")
 
+    project = dict(project)
+    raw_metadata = project.get("media_metadata")
+    metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+    metadata["selected_audio_track"] = audio_track
+    project["media_metadata"] = metadata
     cache_path = Path(media_path)
     source_path = (
         Path(source_media_path) if source_media_path is not None else cache_path
@@ -134,6 +166,10 @@ def embed_media_caches(
             audio_track=0,
         )
     project = waveform_result.project
+    raw_metadata = project.get("media_metadata")
+    metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+    metadata["selected_audio_track"] = audio_track
+    project["media_metadata"] = metadata
     if waveform_result.error is None:
         payload = project.get("waveform")
         if payload is not None:
@@ -168,6 +204,7 @@ def embed_media_caches(
         source_media_path=source_path,
         audio_track=audio_track,
         cache_audio_track=audio_track,
+        default_audio_track=default_audio_track,
         self_peaks=self_peaks,
     )
     if reapeaks_path is not None:
@@ -218,8 +255,17 @@ def embed_media_caches(
     # 临时派生媒体**同名不同目录**时会猜错：缓存被写进临时目录，with 块一退出就随
     # 目录一起消失，等于白算一次，而且现场看不出来。
     if self_peaks is not None and isinstance(waveform_payload, dict):
-        if quapeaks.find_self_wave_container(decode_path, audio_track=audio_track) is None:
-            _persist_mopeaks_fallback(waveform_payload, decode_path, audio_track=audio_track)
+        if quapeaks.find_self_wave_container(
+            decode_path,
+            audio_track=audio_track,
+            default_audio_track=default_audio_track,
+        ) is None:
+            _persist_mopeaks_fallback(
+                waveform_payload,
+                decode_path,
+                audio_track=audio_track,
+                default_audio_track=default_audio_track,
+            )
     return MediaCacheResult(
         project=project,
         waveform_error=waveform_result.error,
