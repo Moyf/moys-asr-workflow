@@ -313,9 +313,9 @@
               <div id="generateSpectralField" class="field">
                 <label class="check-field" for="generateSpectral" data-i18n-title="generate_spectral_title">
                   <input id="generateSpectral" type="checkbox">
-                  <span data-i18n="generate_spectral">生成 ReaPeaks 频谱数据</span>
+                  <span data-i18n="generate_spectral">生成 reapeaks 频谱数据</span>
                 </label>
-                <p class="hint" data-i18n="generate_spectral_hint">默认只生成 ReaPeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
+                <p class="hint" data-i18n="generate_spectral_hint">默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
               </div>
               <div id="debugRawField" class="field">
                 <label class="check-field" for="debugRaw" data-i18n-title="debug_raw_title">
@@ -529,6 +529,12 @@
           <p class="hint" data-i18n="toolbox_utility_media_hint">默认跟随 Launcher 媒体；选择或拖入媒体后，以这里为准。清空可恢复跟随。</p>
           <p id="toolboxUtilityMediaPathError" class="field-error"></p>
         </div>
+        <div id="toolboxAudioTrackField" class="field hidden">
+          <label for="toolboxAudioTrack" data-i18n="toolbox_audio_track">音轨</label>
+          <select id="toolboxAudioTrack"></select>
+          <p id="toolboxAudioTrackStatus" class="hint" aria-live="polite" data-i18n="toolbox_audio_track_choose">先选择媒体，MAW 会读取可用音轨。</p>
+          <p id="toolboxAudioTrackError" class="field-error"></p>
+        </div>
       </section>
     </div>
     <div class="toolbox-content">
@@ -564,9 +570,9 @@
         <div class="field toolbox-waveform-spectral-field">
           <label class="check-field" for="toolboxGenerateSpectral" data-i18n-title="generate_spectral_title">
             <input id="toolboxGenerateSpectral" type="checkbox">
-            <span data-i18n="generate_spectral">生成 ReaPeaks 频谱数据</span>
+            <span data-i18n="generate_spectral">生成 reapeaks 频谱数据</span>
           </label>
-          <p class="hint" data-i18n="generate_spectral_hint">默认只生成 ReaPeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
+          <p class="hint" data-i18n="generate_spectral_hint">默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
         </div>
       </section>
 
@@ -658,12 +664,6 @@
 
       <section id="toolboxExtractAudioPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxExtractAudioTab">
         <p class="hint toolbox-panel-hint" data-i18n="toolbox_extract_audio_hint">从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。</p>
-        <div class="field">
-          <label for="toolboxAudioTrack" data-i18n="toolbox_audio_track">音轨</label>
-          <select id="toolboxAudioTrack"></select>
-          <p id="toolboxAudioTrackStatus" class="hint" aria-live="polite" data-i18n="toolbox_audio_track_choose">先选择媒体，MAW 会读取可用音轨。</p>
-          <p id="toolboxAudioTrackError" class="field-error"></p>
-        </div>
         <p class="toolbox-notice" data-i18n="toolbox_ready">选择工具后运行；始终生成新文件，不覆盖源文件。</p>
       </section>
 

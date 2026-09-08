@@ -107,7 +107,7 @@ async function moveWaveformPointerToTime(page, blockLocator, timeMs) {
   );
 }
 
-test('defaults the waveform shape source to ReaPeaks', async ({ page }) => {
+test('defaults the waveform shape source to reapeaks', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#waveform-settings-toggle').click();
   await expect(page.locator('#waveform-settings-panel')).toBeVisible();

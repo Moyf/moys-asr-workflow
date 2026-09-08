@@ -40,6 +40,7 @@ from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.gui_config import load_env
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.media import resolve_default_audio_track
 from maw.language import (
     normalize_language_code,
     normalize_timestamp_range,
@@ -632,6 +633,7 @@ def main() -> None:
         "--audio-track", type=int, default=0,
         help="使用第几个音频轨道（从 0 开始，默认 0）",
     )
+    parser.add_argument("--default-audio-track", type=int, help=argparse.SUPPRESS)
     parser.add_argument("--with-spectral", action="store_true")
     parser.add_argument("--no-html", action="store_true")
     parser.add_argument("-s", "--stickers", default=get_default_sticker_dir())
@@ -641,6 +643,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.audio_track < 0:
         parser.error("--audio-track 必须是非负整数")
+    if args.default_audio_track is not None and args.default_audio_track < 0:
+        parser.error("--default-audio-track 必须是非负整数")
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
     if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
@@ -655,6 +659,11 @@ def main() -> None:
     output_path = Path(args.output).expanduser() if args.output else input_path.with_suffix(".srt")
     api_key = config["api_key"]
     ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config["ffmpeg_path"] or None)
+    default_audio_track = resolve_default_audio_track(
+        input_path,
+        args.default_audio_track,
+        ffprobe_path=ffmpeg_tools.ffprobe,
+    )
 
     started = time.perf_counter()
     with tempfile.TemporaryDirectory() as temp_name:
@@ -708,6 +717,11 @@ def main() -> None:
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
                 audio_track=args.audio_track if input_path.suffix.lower() in VIDEO_EXTENSIONS else 0,
+                default_audio_track=(
+                    default_audio_track
+                    if input_path.suffix.lower() in VIDEO_EXTENSIONS
+                    else 0
+                ),
             )
 
     if not args.keep_punct:
@@ -755,6 +769,11 @@ def main() -> None:
             json_data,
             media_path=input_path,
             ffprobe_path=ffmpeg_tools.ffprobe,
+            selected_audio_track=(
+                args.audio_track
+                if input_path.suffix.lower() in VIDEO_EXTENSIONS
+                else 0
+            ),
         )
         print(f"工程文件已保存到: {json_path}")
         if not args.no_html:

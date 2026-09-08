@@ -2682,7 +2682,10 @@
         && (!hasFps || typeof value.video_fps_ratio !== 'string' || !value.video_fps_ratio.trim())) return null;
     const hasAudioTracks = value.audio_tracks !== undefined;
     if (hasAudioTracks && !Array.isArray(value.audio_tracks)) return null;
-    if (!hasFps && !hasAudioTracks) return null;
+    const hasSelectedAudioTrack = value.selected_audio_track !== undefined;
+    if (hasSelectedAudioTrack
+        && (!Number.isInteger(value.selected_audio_track) || value.selected_audio_track < 0)) return null;
+    if (!hasFps && !hasAudioTracks && !hasSelectedAudioTrack) return null;
     const metadata = {};
     if (hasFps) metadata.video_fps = normalizeTimelineFps(fps);
     if (typeof value.video_fps_ratio === 'string') {
@@ -2712,6 +2715,7 @@
       if (audioTracks.some((track) => track === null)) return null;
       metadata.audio_tracks = audioTracks;
     }
+    if (hasSelectedAudioTrack) metadata.selected_audio_track = value.selected_audio_track;
     return metadata;
   }
 
