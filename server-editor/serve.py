@@ -55,7 +55,11 @@ from maw.project import (  # noqa: E402
     normalize_project,
     repair_project_timing_ranges,
 )
-from maw.project_io import enrich_project_media_metadata  # noqa: E402
+from maw.project_io import (  # noqa: E402
+    default_audio_track_from_metadata,
+    enrich_project_media_metadata,
+    selected_audio_track_from_metadata,
+)
 from maw.media import (  # noqa: E402
     MEDIA_EXTENSIONS,
     MediaConversionError,
@@ -101,6 +105,7 @@ class ServerProject:
     source_media_path: Path | None = None
     reapeaks_path: Path | None = None
     audio_track: int = 0
+    default_audio_track: int = 0
 
 
 ProjectLoadProgressCallback = Callable[[str, int], None]
@@ -321,7 +326,7 @@ def load_project(
     if repaired_count:
         print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
     data = normalize_project(raw_data)
-    audio_track = audio_track_from_payloads(
+    payload_audio_track = audio_track_from_payloads(
         data.get("waveform"),
         data.get("spectral"),
         data.get("waveform_reapeaks"),
@@ -346,6 +351,10 @@ def load_project(
     media_value = data.get("media")
     if explicit_media is None and (not isinstance(media_value, str) or not media_value.strip()):
         report("finalizing", 95)
+        media_metadata = data.get("media_metadata")
+        selected_audio_track = selected_audio_track_from_metadata(media_metadata)
+        audio_track = payload_audio_track if selected_audio_track is None else selected_audio_track
+        default_audio_track = default_audio_track_from_metadata(media_metadata)
         return ServerProject(
             data,
             json_path,
@@ -355,6 +364,7 @@ def load_project(
             source_media_path=None,
             reapeaks_path=None,
             audio_track=audio_track,
+            default_audio_track=default_audio_track,
         )
 
     resolution = resolve_project_media(json_path, data, explicit_media)
@@ -379,6 +389,10 @@ def load_project(
     # 旧工程可能没有源音轨清单；在加载时补探测，确保 OTIO 导出不会只
     # 看见容器中的第一条音频流。探测失败时继续按旧工程兼容路径导出。
     data = normalize_project(enrich_project_media_metadata(data, media_path=source_media_path))
+    media_metadata = data.get("media_metadata")
+    selected_audio_track = selected_audio_track_from_metadata(media_metadata)
+    audio_track = payload_audio_track if selected_audio_track is None else selected_audio_track
+    default_audio_track = default_audio_track_from_metadata(media_metadata)
     # .ReaPeaks 是转写时对"工程 media 字段原始文件"生成的；转换场景下
     # resolved_path 可能已被 _paired_mp4 升级为配对的 mp4，必须用原始
     # 请求路径（requested_path）查找，否则会漏读源媒体旁的缓存。
@@ -396,6 +410,7 @@ def load_project(
                 peaks_per_second=peaks_per_second,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
                 audio_track=audio_track,
+                default_audio_track=default_audio_track,
             )
             data["waveform"] = waveform
             state = "已提取" if extracted else "使用缓存"
@@ -411,6 +426,7 @@ def load_project(
                 reapeaks_base,
                 peaks_per_second=peaks_per_second,
                 audio_track=audio_track,
+                default_audio_track=default_audio_track,
             )
             if spectral is not None:
                 data["spectral"] = spectral
@@ -420,6 +436,7 @@ def load_project(
             reapeaks_wave = quapeaks.load_waveform_payload(
                 reapeaks_base,
                 audio_track=audio_track,
+                default_audio_track=default_audio_track,
             )
             if reapeaks_wave is not None:
                 data["waveform_reapeaks"] = reapeaks_wave
@@ -438,6 +455,7 @@ def load_project(
         source_media_path=source_media_path,
         reapeaks_path=reapeaks_base,
         audio_track=audio_track,
+        default_audio_track=default_audio_track,
     )
 
 
@@ -754,12 +772,14 @@ class EditorServer(ThreadingHTTPServer):
                 spectral = quapeaks.load_spectral_payload(
                     reapeaks_base, peaks_per_second=self.peaks_per_second,
                     audio_track=project.audio_track,
+                    default_audio_track=project.default_audio_track,
                 )
                 if spectral is not None:
                     print(f"[spectral] 后台加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
                 reapeaks_wave = quapeaks.load_waveform_payload(
                     reapeaks_base,
                     audio_track=project.audio_track,
+                    default_audio_track=project.default_audio_track,
                 )
                 if reapeaks_wave is not None:
                     print(
