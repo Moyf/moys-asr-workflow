@@ -1913,6 +1913,96 @@ class LocalEditorServerTests(unittest.TestCase):
                 server.shutdown()
                 thread.join(timeout=2)
 
+    def test_save_keeps_runtime_caches_off_disk_and_intact_in_memory(self) -> None:
+        """浏览器保存不带缓存：磁盘必须干净，运行态原生波形不得被清空。
+
+        回归：save_project 曾把浏览器回传的 normalized_project 直接替换进
+        运行态，保存→刷新后原生波形丢失、被 /api/waveform 的 REAPER 峰顶替。
+        """
+        waveform_payload = {
+            "schema": "moy.asr.waveform.v1",
+            "encoding": "i8-minmax-base64",
+            "peaks_per_second": 100,
+            "sample_rate": 1000,
+            "division": 10,
+            "peak_count": 4,
+            "duration_ms": 40,
+            "data": "AQIDBA==",
+            "audio_track": 0,
+            "source": {"name": self.media.name, "size": 1, "modified_ms": 1},
+        }
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        project.data["waveform"] = waveform_payload
+
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(payload: dict) -> tuple[int, dict]:
+                    request = urllib.request.Request(
+                        f"{base_url}/api/project",
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(request) as response:
+                        return response.status, json.loads(response.read())
+
+                # 等延迟加载线程落定（状态 pending/loading → ready/failed）；
+                # 它收尾时会用快照整表替换运行态 data，注入必须发生在其后。
+                deadline = time.time() + 5
+                while server.reapeaks_status in ("pending", "loading") and time.time() < deadline:
+                    time.sleep(0.05)
+                server.project.data["spectral"] = dict(waveform_payload, schema="moy.asr.spectral.v1")
+                server.project.data["waveform_reapeaks"] = dict(waveform_payload, peak_count=6, data="QUJDRA==")
+
+                browser_payload = {
+                    "media": str(self.media),
+                    "segments": [{"start": 0, "end": 1000, "text": "浏览器格式"}],
+                    "media_metadata": {"audio_track": 0},
+                }
+                status, _ = post({"project": browser_payload, "filename": None})
+                self.assertEqual(status, 200)
+                # 磁盘干净：三块缓存不得落盘。
+                saved = json.loads(self.project_path.read_text(encoding="utf-8"))
+                for key in ("waveform", "spectral", "waveform_reapeaks"):
+                    self.assertNotIn(key, saved)
+                # 运行态保留原生波形与两层缓存：保存→刷新不丢形状。
+                self.assertEqual(server.project.data["waveform"]["data"], "AQIDBA==")
+                self.assertIn("spectral", server.project.data)
+                self.assertIn("waveform_reapeaks", server.project.data)
+
+                # 同媒体换音轨：旧缓存描述的是另一条轨，必须失效。
+                switched = dict(browser_payload, media_metadata={"audio_track": 1})
+                status, _ = post({"project": switched, "filename": None})
+                self.assertEqual(status, 200)
+                for key in ("waveform", "spectral", "waveform_reapeaks"):
+                    self.assertNotIn(key, server.project.data)
+
+                # 旧页面不带 audio_track 字段时不得误清运行态缓存（防御路径）。
+                server.project.data["waveform"] = waveform_payload
+                legacy_payload = {"media": str(self.media), "segments": []}
+                status, _ = post({"project": legacy_payload, "filename": None})
+                self.assertEqual(status, 200)
+                self.assertEqual(server.project.data["waveform"]["data"], "AQIDBA==")
+
+                # 换媒体：缓存描述的是另一个文件，必须失效。
+                other = self.root / "other.wav"
+                other.write_bytes(b"audio")
+                status, _ = post({
+                    "project": {"media": str(other), "segments": []},
+                    "filename": None,
+                })
+                self.assertEqual(status, 200)
+                self.assertNotIn("waveform", server.project.data)
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_server_accepts_reconciled_extension_ranges_but_rejects_overlap(self) -> None:
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
