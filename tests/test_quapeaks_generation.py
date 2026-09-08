@@ -249,6 +249,33 @@ class FindReapeaksPreferenceTests(unittest.TestCase):
         self.assertEqual(found, (self.root / "tone.wav.quapeaks").resolve())
         self.assertEqual(quapeaks.find_self_wave_container(self.tone), found)
 
+    def test_nondefault_lookup_prefers_exact_then_reports_default_fallback(self) -> None:
+        self._write("tone.wav.quapeaks", b"QPK1", self.fresh, True)
+        self._write("tone.wav.track-1.quapeaks", b"QPK1", self.fresh, True)
+
+        exact = quapeaks.find_reapeaks_hit(
+            self.tone,
+            audio_track=0,
+            default_audio_track=1,
+        )
+        self.assertIsNotNone(exact)
+        assert exact is not None
+        self.assertEqual(exact.kind, "exact")
+        self.assertEqual(exact.audio_track, 0)
+        self.assertEqual(exact.path.name, "tone.wav.track-1.quapeaks")
+
+        (self.root / "tone.wav.track-1.quapeaks").unlink()
+        fallback = quapeaks.find_reapeaks_hit(
+            self.tone,
+            audio_track=0,
+            default_audio_track=1,
+        )
+        self.assertIsNotNone(fallback)
+        assert fallback is not None
+        self.assertEqual(fallback.kind, "default_fallback")
+        self.assertEqual(fallback.audio_track, 1)
+        self.assertEqual(fallback.path.name, "tone.wav.quapeaks")
+
     def test_falls_back_to_the_first_existing_when_all_are_stale(self) -> None:
         # 保持既有语义：都不匹配时仍返回一个路径，由调用方的签名校验决定降级。
         self._write("tone.wav.ReaPeaks", b"RPKN", self.stale, False)

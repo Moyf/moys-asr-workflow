@@ -24,10 +24,15 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from maw import waveform as waveform_module
 from maw.ffmpeg import resolve_ffmpeg_tool
-from maw.output_naming import waveform_dirs
+from maw.output_naming import (
+    audio_track_cache_candidates,
+    audio_track_cache_suffix,
+    waveform_dirs,
+)
 
 
 def _load_rust_kernel():
@@ -400,8 +405,21 @@ def _header_has_spectral_layer(path: Path) -> bool:
     return False
 
 
+@dataclass(frozen=True, slots=True)
+class ReapeaksHit:
+    """A peaks container and the logical track identity represented by its path."""
+
+    path: Path
+    audio_track: int
+    kind: Literal["exact", "default_fallback"]
+
+
 def find_reapeaks(
-    media_path: Path, *, audio_track: int = 0, need_spectral: bool = False
+    media_path: Path,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int | None = None,
+    need_spectral: bool = False,
 ) -> Path | None:
     """Locate a peaks container next to a media file.
 
@@ -412,48 +430,76 @@ def find_reapeaks(
     多音轨当前沿用上游的 ``<媒体>.track-N`` 段（N 从 1 起，第 0 轨不带标记）：
     同一素材的不同轨必须有各自的容器，否则后写的会把前一轨整份覆盖掉。
     """
+    hit = find_reapeaks_hit(
+        media_path,
+        audio_track=audio_track,
+        default_audio_track=default_audio_track,
+        need_spectral=need_spectral,
+    )
+    return hit.path if hit is not None else None
+
+
+def find_reapeaks_hit(
+    media_path: Path,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int | None = None,
+    need_spectral: bool = False,
+) -> ReapeaksHit | None:
+    """Locate an exact peaks cache, then the unsuffixed default fallback."""
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
         raise ValueError("audio_track must be a non-negative integer")
     parent = media_path.parent
     name = media_path.name
-    track_suffix = f".track-{audio_track + 1}" if audio_track else ""
-    # 自有容器 .quapeaks 跟随配置（可能进 _maw）；REAPER 的 .ReaPeaks 永远
-    # 只在媒体旁 —— 那是它写死的位置，挪了就读不到真机产物。
-    candidates = [
-        directory / (name + track_suffix + QUAPEAKS_SUFFIX)
-        for directory in waveform_dirs(media_path)
-    ]
-    candidates += [
-        parent / (name + track_suffix + suffix) for suffix in REAPEAKS_SUFFIXES
-    ]
-    candidates += [
-        media_path.with_suffix(track_suffix + suffix) for suffix in PEAKS_SUFFIXES
-    ]
-    seen: set[Path] = set()
-    first_existing: Path | None = None
-    for candidate in candidates:
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        try:
-            if not candidate.is_file():
+    first_existing_hit: ReapeaksHit | None = None
+    for candidate_track, track_suffix in audio_track_cache_candidates(
+        audio_track,
+        default_audio_track=default_audio_track,
+    ):
+        # 自有容器 .quapeaks 跟随配置（可能进 _maw）；REAPER 的 .ReaPeaks 永远
+        # 只在媒体旁 —— 那是它写死的位置，挪了就读不到真机产物。
+        candidates = [
+            directory / (name + track_suffix + QUAPEAKS_SUFFIX)
+            for directory in waveform_dirs(media_path)
+        ]
+        candidates += [
+            parent / (name + track_suffix + suffix) for suffix in REAPEAKS_SUFFIXES
+        ]
+        candidates += [
+            media_path.with_suffix(track_suffix + suffix) for suffix in PEAKS_SUFFIXES
+        ]
+        seen: set[Path] = set()
+        for candidate in candidates:
+            if candidate in seen:
                 continue
-        except OSError:
-            continue
-        # 先按调用方需要的能力过滤：一份新鲜但只有 wave 层的 .quapeaks 不该
-        # 挡住同样新鲜、带 spectral 层的 .ReaPeaks —— 否则频谱染色会被静默短路，
-        # 而日志上看着"缓存是好的"。连回退候选也一并要求，不给它当选的机会。
-        if need_spectral and not _header_has_spectral_layer(candidate):
-            continue
-        if first_existing is None:
-            first_existing = candidate
-        if _header_matches_media(candidate, media_path):
-            return candidate
-    return first_existing
+            seen.add(candidate)
+            try:
+                if not candidate.is_file():
+                    continue
+            except OSError:
+                continue
+            if need_spectral and not _header_has_spectral_layer(candidate):
+                continue
+            if first_existing_hit is None:
+                first_existing_hit = ReapeaksHit(
+                    path=candidate,
+                    audio_track=candidate_track,
+                    kind="exact" if candidate_track == audio_track else "default_fallback",
+                )
+            if _header_matches_media(candidate, media_path):
+                return ReapeaksHit(
+                    path=candidate,
+                    audio_track=candidate_track,
+                    kind="exact" if candidate_track == audio_track else "default_fallback",
+                )
+    return first_existing_hit
 
 
 def find_self_wave_container(
-    media_path: Path | str, *, audio_track: int = 0
+    media_path: Path | str,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int | None = None,
 ) -> Path | None:
     """媒体旁哪个 peaks 容器已带有属于**当前媒体**的自研波形层，没有则 None。
 
@@ -461,9 +507,14 @@ def find_self_wave_container(
     产物损坏还是压根没生成，只要这里回答 None，回退档就该写。
     """
     media_path = Path(media_path)
-    container = find_reapeaks(media_path, audio_track=audio_track)
-    if container is None:
+    hit = find_reapeaks_hit(
+        media_path,
+        audio_track=audio_track,
+        default_audio_track=default_audio_track,
+    )
+    if hit is None or hit.kind != "exact":
         return None
+    container = hit.path
     try:
         ra = ReapeaksFile(str(container))
     except (OSError, ValueError, IndexError, struct.error):
@@ -671,14 +722,23 @@ def _reapeaks_contains_spectral(reapeaks_path: Path | str) -> bool:
         return False
 
 
-def load_waveform_payload(media_path: Path, *, audio_track: int = 0) -> dict | None:
+def load_waveform_payload(
+    media_path: Path,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int | None = None,
+) -> dict | None:
     """Return a waveform payload from the media's .ReaPeaks, or None."""
-    reapeaks_path = find_reapeaks(media_path, audio_track=audio_track)
-    if reapeaks_path is None or not _reapeaks_matches_media(reapeaks_path, media_path):
+    hit = find_reapeaks_hit(
+        media_path,
+        audio_track=audio_track,
+        default_audio_track=default_audio_track,
+    )
+    if hit is None or not _reapeaks_matches_media(hit.path, media_path):
         return None
     try:
         return extract_waveform_payload(
-            reapeaks_path, media_path, audio_track=audio_track
+            hit.path, media_path, audio_track=hit.audio_track
         )
     except (OSError, struct.error, ValueError, IndexError):
         return None
@@ -689,6 +749,7 @@ def load_spectral_payload(
     *,
     peaks_per_second: int = 100,
     audio_track: int = 0,
+    default_audio_track: int | None = None,
 ) -> dict | None:
     """Find the media's .ReaPeaks and return a spectral payload, or None.
 
@@ -698,17 +759,20 @@ def load_spectral_payload(
     候选按 need_spectral 过滤：不然一份更新的 wave-only .quapeaks 会挡住
     带 spectral 层的 .ReaPeaks，读出来是 None 而不是退去读那份能用的。
     """
-    reapeaks_path = find_reapeaks(
-        media_path, audio_track=audio_track, need_spectral=True
+    hit = find_reapeaks_hit(
+        media_path,
+        audio_track=audio_track,
+        default_audio_track=default_audio_track,
+        need_spectral=True,
     )
-    if reapeaks_path is None or not _reapeaks_matches_media(reapeaks_path, media_path):
+    if hit is None or not _reapeaks_matches_media(hit.path, media_path):
         return None
     try:
         return extract_spectral_payload(
-            reapeaks_path,
+            hit.path,
             media_path,
             peaks_per_second=peaks_per_second,
-            audio_track=audio_track,
+            audio_track=hit.audio_track,
         )
     except (OSError, struct.error, ValueError, IndexError):
         return None
@@ -936,6 +1000,7 @@ def generate_for_media(
     source_media_path: Path | str | None = None,
     audio_track: int = 0,
     cache_audio_track: int | None = None,
+    default_audio_track: int | None = None,
     self_peaks: tuple[int, int, bytes] | None = None,
 ) -> Path | None:
     """Best-effort peaks-container generation for a media file, or the existing path.
@@ -983,14 +1048,26 @@ def generate_for_media(
         if source_media_path is not None
         else media_path
     )
-    existing = find_reapeaks(signature_path, audio_track=cache_audio_track)
+    existing_hit = find_reapeaks_hit(
+        signature_path,
+        audio_track=cache_audio_track,
+        default_audio_track=default_audio_track,
+    )
+    existing = existing_hit.path if existing_hit is not None else None
     if existing is not None and _reapeaks_matches_media(existing, signature_path):
-        if not include_spectral or _reapeaks_contains_spectral(existing):
+        if (
+            existing_hit is not None
+            and existing_hit.kind == "exact"
+            and (not include_spectral or _reapeaks_contains_spectral(existing))
+        ):
             return existing
     # 优先解码源媒体；源不可读或解不出音频时退回调用方给的派生文件，
     # 让缓存至少覆盖"编辑器能看到的那部分"，而不是整体失效。回退缓存
     # 必须写在派生文件旁，避免把派生数据伪装成源媒体的缓存。
-    track_suffix = f".track-{cache_audio_track + 1}" if cache_audio_track else ""
+    track_suffix = audio_track_cache_suffix(
+        cache_audio_track,
+        default_audio_track=default_audio_track,
+    )
     candidates = (
         [media_path] if signature_path == media_path else [signature_path, media_path]
     )
