@@ -848,7 +848,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(json.loads(Path(str(result["projectPath"])).read_text(encoding="utf-8"))["segments"][0]["text"], "软件")
 
     def test_generate_waveform_project_creates_media_only_embedded_project(self) -> None:
-        """Given media, When generating waveform, Then a normalized cache-only project is written."""
+        """Given media, When generating waveform, Then a normalized project without inline caches is written."""
         media = self.root / "clip.wav"
         media.write_bytes(b"audio")
         embedded = {
@@ -881,7 +881,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         project = json.loads(project_path.read_text(encoding="utf-8"))
         self.assertEqual(project["segments"], [])
         self.assertEqual(project["media"], str(media.resolve()))
-        self.assertEqual(project["waveform"]["data"], "AQIDBA==")
+        # 工程去内联：波形缓存不再写进工程文件，只保留在 embed 结果的运行态里。
+        self.assertNotIn("waveform", project)
+        self.assertNotIn("spectral", project)
+        self.assertNotIn("waveform_reapeaks", project)
         embed.assert_called_once_with(
             {"media": str(media.resolve()), "segments": []},
             media.resolve(),

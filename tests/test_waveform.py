@@ -945,5 +945,20 @@ class EditorAssetTests(unittest.TestCase):
         )
 
 
+class AudioTrackProjectFieldTests(unittest.TestCase):
+    """media_metadata.audio_track：工程去内联后所选音轨的持久化载体。"""
+
+    def test_reads_persisted_track_and_rejects_invalid_shapes(self) -> None:
+        read = waveform_module.audio_track_from_project
+        self.assertIsNone(read(None))
+        self.assertIsNone(read({}))
+        self.assertIsNone(read({"media_metadata": {}}))
+        self.assertIsNone(read({"media_metadata": {"audio_track": -1}}))
+        self.assertIsNone(read({"media_metadata": {"audio_track": True}}))
+        self.assertIsNone(read({"media_metadata": {"audio_track": "2"}}))
+        self.assertEqual(read({"media_metadata": {"audio_track": 0}}), 0)
+        self.assertEqual(read({"media_metadata": {"audio_track": 2}}), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

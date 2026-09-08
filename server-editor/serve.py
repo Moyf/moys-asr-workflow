@@ -65,7 +65,11 @@ from maw.media import (  # noqa: E402
     read_bwf_time_reference,
     resolve_project_media,
 )
-from maw.waveform import audio_track_from_payloads  # noqa: E402
+from maw.project_io import strip_inline_caches  # noqa: E402
+from maw.waveform import (  # noqa: E402
+    audio_track_from_payloads,
+    audio_track_from_project,
+)
 from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # noqa: E402
 
 
@@ -321,11 +325,14 @@ def load_project(
     if repaired_count:
         print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
     data = normalize_project(raw_data)
-    audio_track = audio_track_from_payloads(
-        data.get("waveform"),
-        data.get("spectral"),
-        data.get("waveform_reapeaks"),
-    )
+    audio_track = audio_track_from_project(data)
+    if audio_track is None:
+        # 旧工程没有显式音轨字段，从缓存 payload 推断；去内联工程走上面的字段。
+        audio_track = audio_track_from_payloads(
+            data.get("waveform"),
+            data.get("spectral"),
+            data.get("waveform_reapeaks"),
+        )
     report("validating_project", 20)
     sticker_source = data.get("sticker_root")
     sticker_root: Path | None = None
@@ -1460,7 +1467,13 @@ def export_ograf(project: ServerProject, graphic: dict) -> tuple[bytes, str]:
 
 
 def write_project_json(target: Path, project_data: dict) -> Path | None:
-    """Atomically write LF JSON and retain the immediately previous file as .bak."""
+    """Atomically write LF JSON and retain the immediately previous file as .bak.
+
+    落盘前剥掉三块内联波形缓存：磁盘工程的波形真源在媒体旁的 ``.quapeaks`` /
+    ``.mopeaks``，写进工程只会被 base64 撑大并在下次加载时"复活"内联。
+    ``strip_inline_caches`` 返回副本，调用方持有的运行态工程不受影响，
+    页面波形不消失。
+    """
     target.parent.mkdir(parents=True, exist_ok=True)
     backup = target.with_suffix(f"{target.suffix}.bak") if target.exists() else None
     if backup:
@@ -1468,7 +1481,7 @@ def write_project_json(target: Path, project_data: dict) -> Path | None:
     fd, temp_name = tempfile.mkstemp(prefix=f".{target.stem}.", suffix=".tmp", dir=target.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
-            json.dump(project_data, output, ensure_ascii=False, indent=2)
+            json.dump(strip_inline_caches(project_data), output, ensure_ascii=False, indent=2)
             output.write("\n")
         os.replace(temp_name, target)
     except Exception:

@@ -1927,7 +1927,7 @@ def main():
     )
     parser.add_argument(
         "--with-waveform", action="store_true",
-        help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
+        help="在媒体旁生成 .quapeaks 波形缓存（不再写进工程文件；GUI 转写默认开启）",
     )
     parser.add_argument(
         "--audio-track", type=int, default=0,

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from maw import mopeaks, quapeaks
+from maw.project_io import INLINE_CACHE_KEYS as CACHE_KEYS
 from maw.waveform import embed_waveform, media_signature
 
 
@@ -26,21 +27,33 @@ class MediaCacheResult:
     project: dict[str, Any]
     waveform_error: Exception | None = None
     reapeaks_path: Path | None = None
+    audio_track: int = 0
 
 
 # 生成后需要合并进最终工程的缓存键。CLI 在临时目录存活期内先调用
 # embed_media_caches，工程其余字段（segments 等）后处理完成后再合并，
 # 避免缓存生成被挪到临时目录清理之后（v1.4.0 后回归的根因）。
-CACHE_KEYS = ("waveform", "spectral", "waveform_reapeaks")
+# 缓存键的定义在 maw.project_io（落盘剥离的同一份清单）；运行态照旧合并，
+# 落盘边界才剥离。
 
 
 def merge_media_caches(
     target: dict[str, Any], result: MediaCacheResult
 ) -> dict[str, Any]:
-    """把 ``result.project`` 里生成的缓存键合并进 ``target`` 工程。"""
+    """把 ``result.project`` 里生成的缓存键合并进 ``target`` 工程。
+
+    当前音轨随缓存一起合并：工程去内联后 payload 会从落盘副本剥掉，而
+    ``media_metadata.audio_track`` 是重启后恢复所选音轨的唯一来源，所以
+    即使缓存生成全部失败也要把用户选的轨道写进去。
+    """
     for key in CACHE_KEYS:
         if key in result.project:
             target[key] = result.project[key]
+    metadata = target.get("media_metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+        target["media_metadata"] = metadata
+    metadata["audio_track"] = result.audio_track
     return target
 
 
@@ -142,11 +155,11 @@ def embed_media_caches(
             # 签名，明确禁止回退到派生文件后把它伪装成源媒体缓存。
             payload["source"] = media_signature(decode_path)
             print(
-                f"[waveform] 已嵌入 {payload['peak_count']} peaks "
+                f"[waveform] 已生成波形缓存: {payload['peak_count']} peaks "
                 f"({payload['peaks_per_second']}/秒)"
             )
     else:
-        print(f"[waveform] 警告: {waveform_result.error}；已跳过内嵌波形")
+        print(f"[waveform] 警告: {waveform_result.error}；已跳过波形缓存")
 
     project.pop("spectral", None)
     if generate_spectral:
@@ -181,7 +194,7 @@ def embed_media_caches(
                 reapeaks_media_path = candidate
                 break
         if reapeaks_media_path is None:
-            print("[reapeaks] 警告: 生成缓存的来源已变化，已跳过内嵌缓存")
+            print("[reapeaks] 警告: 生成缓存的来源已变化，已跳过波形层与频谱缓存")
         else:
             try:
                 if generate_spectral:
@@ -192,7 +205,7 @@ def embed_media_caches(
                     )
                     if spectral is not None:
                         project["spectral"] = spectral
-                        print(f"[spectral] 已嵌入 {spectral['peak_count']} 频谱点")
+                        print(f"[spectral] 已生成频谱缓存: {spectral['peak_count']} 频谱点")
                 reapeaks_wave = quapeaks.extract_waveform_payload(
                     reapeaks_path,
                     reapeaks_media_path,
@@ -200,7 +213,7 @@ def embed_media_caches(
                 )
                 if reapeaks_wave is not None:
                     project["waveform_reapeaks"] = reapeaks_wave
-                    print(f"[reapeaks-wave] 已嵌入 {reapeaks_wave['peak_count']} peaks")
+                    print(f"[reapeaks-wave] 已生成波形层缓存: {reapeaks_wave['peak_count']} peaks")
             except (OSError, ValueError, IndexError, struct.error) as error:
                 print(f"[reapeaks] 警告: 无法读取已生成缓存: {error}")
     elif not source_path.exists() and not cache_path.exists():
@@ -220,8 +233,17 @@ def embed_media_caches(
     if self_peaks is not None and isinstance(waveform_payload, dict):
         if quapeaks.find_self_wave_container(decode_path, audio_track=audio_track) is None:
             _persist_mopeaks_fallback(waveform_payload, decode_path, audio_track=audio_track)
+    # 直接调用 embed_media_caches 的调用方（本地 ASR / GUI / 测试）不经过
+    # merge_media_caches：当前音轨在这里也要落进 media_metadata，否则去内联
+    # 工程重启后所选音轨会丢。
+    metadata = project.get("media_metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+        project["media_metadata"] = metadata
+    metadata["audio_track"] = audio_track
     return MediaCacheResult(
         project=project,
         waveform_error=waveform_result.error,
         reapeaks_path=reapeaks_path,
+        audio_track=audio_track,
     )

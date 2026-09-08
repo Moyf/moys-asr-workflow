@@ -56,7 +56,7 @@
 | `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
 | `timestamp_granularity` | `string` | 否 | 时间码粒度：`char`、`word`、`segment` 或 `unknown`。只有整段 start/end 的模型使用 `segment`；这类工程的字幕段可以没有 `items` |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
-| `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
+| `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、`audio_tracks` 音轨清单和 `audio_track`（用户所选的当前音轨，非负整数）；缺失时按旧工程处理 |
 | `timebase` | `object` | 否 | 字幕编辑时间基准：`unit` 为 `milliseconds` 或 `frames`，`fps` 范围为 1–240。缺失时按毫秒模式兼容读取 |
 | `sticker_root` | `string` | 否 | 表情包根目录绝对路径。打开工程时会覆盖编辑器内的 `STICKER_ROOT` |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
@@ -68,6 +68,8 @@
 `media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在全局设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
 
 `media_metadata.audio_tracks` 是从源容器读取的音轨清单。`audio_index` 是音频流内部的从 0 开始顺序，`stream_index` 是源容器中的 FFmpeg stream index；其余字段用于保留编码、声道、采样率、语言、标题和默认标记。编辑器导出 OTIO 时会为每条清单建立独立的 `Audio` 轨道，在达芬奇使用的 `Resolve_OTIO.Channels` 中写入源音轨/声道映射，并在 `moy` 元数据中保留对应的 stream index。旧工程缺少该字段时继续生成一条兼容的音频轨道。
+
+`media_metadata.audio_track` 记录用户所选的当前音轨（从 0 开始），与 `audio_tracks` 清单是两个概念。工程文件不再内联波形缓存后，它是重启 / 换机打开工程时恢复所选音轨的唯一载体；缺失时旧工程回退为从缓存 payload 推断，再缺失按 0 处理。
 
 `timebase` 是字幕编辑器的时间基准，不改变媒体本身的时间单位。`unit: "milliseconds"` 保持旧行为；`unit: "frames"` 时，拖动、边界调整、方向键和 A/D 微调使用独立的帧字段，`fps` 决定帧与实际媒体时间的换算。为兼容旧工具，`start` / `end` 及字词时间码仍始终保存为整数毫秒；帧模式额外保存成对的 `start_frame` / `end_frame` 字段。帧时间码显示采用较通行的非丢帧格式 `HH:MM:SS:FF`，其中 `FF` 是当前秒内的帧号。
 
@@ -81,7 +83,7 @@
 
 ### 1.1 waveform 波形缓存
 
-`waveform` 不是工程真源，而是从媒体派生的性能缓存。第三方生成 JSON 时可以完全省略；编辑器加载媒体后会补算。
+`waveform` 不是工程真源，而是从媒体派生的性能缓存。第三方生成 JSON 时可以完全省略；编辑器加载媒体后会补算。**生成器与编辑器保存不再把波形缓存写进工程文件**：旧工程里已有的内联缓存仍被读取，保存后自然消失。
 
 ```json
 {
@@ -109,8 +111,8 @@
 - `audio_track` 可选，表示生成缓存时使用的、从 0 开始的音频流顺序；缺失时按 0 兼容。`waveform`、`spectral` 和 `waveform_reapeaks` 必须使用同一值；非 0 音轨的缓存统一使用 `<媒体名>.track-N.<后缀>`（N 为从 1 开始的显示编号），适用于 `.ReaPeaks`、`.quapeaks` 与 `.mopeaks`，避免覆盖默认音轨缓存。
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
-- Qwen/Soniox/必剪/本地命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程文件时把同一 payload 写入顶层 `waveform`，并生成只含 wave 层与自研波形层的 `.quapeaks` 缓存。缓存默认跟随媒体，启用「将所有输出放入子文件夹」后进入对应 `_maw`。GUI 转写默认开启该模式。
-- 编辑器首次打开缺少有效 `waveform` 的工程时，写入 `<媒体名>.mopeaks` 缓存（当前非 0 音轨为 `<媒体名>.track-N.mopeaks`）。落点跟随「将所有输出放入子文件夹」设置：默认在媒体旁，勾选后进入对应 `_maw`；读取端两种位置都会找。它是 `moy.asr.waveform.v1` 峰数据的二进制容器，不属于字幕真源，删除后可重新提取。**旧的 `<媒体名>.waveform.json` sidecar 已彻底移除，不再写也不再读。**
+- Qwen/Soniox/必剪/本地命令行生成器默认不生成波形缓存；加 `--with-waveform` 时在媒体旁生成包含 wave 层与自研波形层的 `.quapeaks` 缓存。payload 只保留在运行态，**不再写入工程文件**。GUI 转写默认开启该模式。
+- 编辑器首次打开缺少有效 `waveform` 的工程时，读取顺序为：工程内联（旧工程）→ 有效 `.quapeaks` 自研波形层 → 有效 `.mopeaks` → FFmpeg 重新提取；重抽只发生在前三者全部落空时，落盘为 `<媒体名>.mopeaks`（非默认音轨为 `<媒体名>.track-N.mopeaks`）。落点跟随「将所有输出放入子文件夹」设置：默认在媒体旁，勾选后进入对应 `_maw`；读取端各位置都会找。`.mopeaks` 是 `moy.asr.waveform.v1` 峰数据的二进制容器：全局头与 `.quapeaks` / `.ReaPeaks` 同布局（18 B），层 token 与自研层同值（`div = -(int)'m'`），仅 magic 为 `MPK` + 版本字节。不属于字幕真源，删除后可重新提取。**旧的 `<媒体名>.waveform.json` sidecar 已彻底移除，不再写也不再读。**
 
 ### 1.1a spectral 频谱缓存（可选）
 

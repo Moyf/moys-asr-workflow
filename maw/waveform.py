@@ -135,6 +135,24 @@ def audio_track_from_payloads(*payloads: Any) -> int:
     return 0
 
 
+def audio_track_from_project(project: Any) -> int | None:
+    """Return the explicitly persisted current audio track, or None when absent.
+
+    工程去内联后缓存 payload 不再落盘，``audio_track_from_payloads`` 失去数据
+    来源；当前音轨改为由 ``media_metadata.audio_track`` 显式持久化。返回 None
+    表示工程没有该字段（旧工程），调用方应回退到 payload 推断或 0。
+    """
+    if not isinstance(project, dict):
+        return None
+    metadata = project.get("media_metadata")
+    if not isinstance(metadata, dict):
+        return None
+    value = metadata.get("audio_track")
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
 def waveform_matches_media(
     value: Any,
     media_path: Path,
@@ -325,6 +343,16 @@ def load_or_extract_waveform(
         and existing["peaks_per_second"] == peaks_per_second
     ):
         return existing, False
+    # 内核成功时自研波形只在 .quapeaks 的自研层里、没有 .mopeaks：去内联工程
+    # 的冷启动不认这一层，就会白白重抽一遍 FFmpeg、再落一份内容重复的回退档。
+    # 函数内导入与下面的 mopeaks 同理，避免顶层互导成环。
+    from maw import quapeaks as maw_quapeaks
+
+    container_payload = maw_quapeaks.load_self_wave_payload(
+        media_path, audio_track=audio_track, peaks_per_second=peaks_per_second
+    )
+    if container_payload is not None:
+        return container_payload, False
     # 函数内导入：maw.mopeaks 在模块级借用本文件的载荷契约，顶层互导会成环。
     from maw import mopeaks
 
