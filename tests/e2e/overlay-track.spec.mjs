@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
+  copyPortableBlankEditor,
   findFreePort,
-  generateBlankEditor,
   generateWaveformPayload,
   makeTempDir,
   startStaticServer,
@@ -14,7 +14,7 @@ let server;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('overlay-track');
-  const blankPath = generateBlankEditor(join(tempDir, 'blank-editor.html'));
+  const blankPath = copyPortableBlankEditor(join(tempDir, 'blank-editor.html'));
   server = await startStaticServer(blankPath, await findFreePort());
 });
 
