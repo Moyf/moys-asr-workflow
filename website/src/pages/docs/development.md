@@ -18,6 +18,7 @@ MAW（Moy's ASR Workflow）是一个收窄的本地工作流：本地媒体经�
 - `generate_subtitle_qwen_api.py`：Qwen/Fun-ASR 转写命令入口，`--json` 为历史兼容参数名，默认生成 `.mosp` 工程。
 - `generate_subtitle_soniox_api.py`：Soniox 转写命令入口，同样默认生成 `.mosp` 工程。
 - `generate_subtitle_tencent_api.py`：腾讯云录音文件识别命令入口，使用 TC3 签名并默认生成 `.mosp` 工程。
+- `generate_subtitle_openai_api.py`：OpenAI 官方或兼容 ASR 转写命令入口，要求响应包含 `segments` 或 `words` 时间戳。
 - `maw/gui_web.py`、`maw/gui_workflow.py` 与 `web/launcher/`：Launcher 图形界面及其后端桥接。
 - `edit.py`：读取 `.mosp` / `.json` 工程，渲染单文件 `.edit.html`；也生成 `blank-editor.html`。波形、峰值容器与媒体缓存实现位于 `maw/waveform.py`、`maw/quapeaks.py`、`maw/media_cache.py`（`quapeaks.py` 改名自 `reapeaks.py`；Python 参考实现 `maw/reapeaks_generate.py` 已随 Rust 成为唯一生成路径而删除，故不再列出）。
 - `server-editor/serve.py`：仅监听 `127.0.0.1` 的编辑器服务器，负责媒体 Range 响应、工程安全保存与本机设置。
@@ -140,3 +141,22 @@ git diff --check
 ```
 
 交互改动还应手动启动 `uv run python server-editor\serve.py --blank`，验证拖放、播放、Seek、工作区拖动及保存。所有文本保持 UTF-8 与 LF。
+
+### 浏览器回归环境
+
+`tests/e2e/helpers.mjs` 默认通过 `uv run --frozen python` 启动 Python-backed server，并删除继承的 `PYTHONPATH`；只有明确设置 `MAW_E2E_PYTHON` 时才使用指定解释器。这样可以避免把系统 Python 与仓库 `.venv` 的 `site-packages` 混用。
+
+Windows 上建议使用项目入口运行浏览器回归：
+
+```powershell
+.\scripts\run-e2e.ps1 tests/e2e/ass-export.spec.mjs --reporter=line
+```
+
+入口会先验证仓库 `.venv` 是否能导入锁定的 `quapeaks`；若不能，则用 `py -3` 找到系统 Python，在 `%TEMP%\maw-e2e` 下按 `uv.lock` 创建隔离环境和缓存，并以 `MAW_E2E_PYTHON` 启动测试。它还把默认 Playwright 输出放到用户临时目录，避免共享工作树的 `test-results` 权限或占用影响测试。
+
+如果本机的 Playwright Chromium 被安全策略阻止启动，可显式指定已安装且可执行的 Chromium 系浏览器，不改变默认浏览器选择：
+
+```powershell
+$env:MAW_E2E_CHROMIUM_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+.\scripts\run-e2e.ps1 tests/e2e/ass-export.spec.mjs --reporter=line
+```
