@@ -36,6 +36,10 @@
     --accent-soft:        rgba(108, 165, 232, 0.16);
     --accent-line:   #6ca5e8;
 
+    /* 独立叠加轨：不与主/副字幕绑定，使用既有青绿成功色区分其状态。 */
+    --overlay-track-accent: var(--green);
+    --overlay-track-tint: var(--green-soft);
+
     /* 琥珀 —— 编辑/脏数据/警告语义（与蓝色不竞争） */
     --amber:        #d49a4a;
     --amber-hover:  #e0a85a;
@@ -2117,6 +2121,19 @@
 
   .multi-subtitle-controls { display: inline-flex; align-items: center; gap: 6px; }
   .multi-subtitle-controls[hidden] { display: none; }
+  .overlay-track-toggle {
+    display: inline-flex; align-items: center; gap: 6px; min-height: var(--control-h);
+    padding: 3px 8px; border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    background: var(--btn-bg); color: var(--btn-text); font-size: 12px;
+  }
+  .overlay-track-toggle[hidden] { display: none; }
+  .overlay-track-toggle:has(input:checked) {
+    border-color: var(--overlay-track-accent); background: var(--overlay-track-tint);
+  }
+  .cue.overlay-track-cue { border-left-color: var(--overlay-track-accent); }
+  .cue.overlay-track-cue.selected {
+    background: var(--overlay-track-tint); box-shadow: inset 0 0 0 1px var(--overlay-track-accent);
+  }
   .multi-subtitle-controls select { min-height: var(--control-h); }
   .multi-subtitle-controls button { min-height: var(--control-h); }
   .multi-subtitle-main-toggle {

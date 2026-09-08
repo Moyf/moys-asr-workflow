@@ -68,6 +68,16 @@ function getMultiSubtitleState() {
   return normalizeMultiSubtitleState();
 }
 
+function getOverlayTrack() {
+  getMultiSubtitleState();
+  return DATA.overlay_track;
+}
+
+function overlayTrackVisible() {
+  const track = getOverlayTrack();
+  return track?.enabled === true && Array.isArray(track.segments) && track.segments.length > 0;
+}
+
 function getExtensionTrack(trackId = null) {
   const multi = getMultiSubtitleState();
   return (multi.tracks || []).find((track) => !trackId || track.id === trackId) || null;
@@ -934,6 +944,7 @@ function syncProjectTimebase(project = DATA, { preferFrames = false } = {}) {
   if (Array.isArray(tracks)) {
     tracks.forEach((track) => syncTrackTimebase(track?.segments, timebase, { preferFrames }));
   }
+  syncTrackTimebase(project.overlay_track?.segments, timebase, { preferFrames });
   return timebase;
 }
 
@@ -1148,7 +1159,11 @@ let gapRemoveDirty = false;
 function snapshotSegments() {
   // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记；多字幕数据与主轨
   // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
-  return EDITOR_SETTINGS_UTILS.buildSegmentsHistorySnapshot(DATA.segments, getMultiSubtitleState());
+  return EDITOR_SETTINGS_UTILS.buildSegmentsHistorySnapshot(
+    DATA.segments,
+    getMultiSubtitleState(),
+    getOverlayTrack(),
+  );
 }
 function snapshotEditorSelection() {
   const extensionTrack = getActiveExtensionTrack();
@@ -1303,13 +1318,19 @@ function applyHistoryRecord(record) {
     return true;
   }
   const snapshot = record.segs && Array.isArray(record.segs.segments)
-    ? record.segs : { segments: record.segs, multi_subtitle: DATA.multi_subtitle };
+    ? record.segs
+    : {
+      segments: record.segs,
+      multi_subtitle: DATA.multi_subtitle,
+      overlay_track: DATA.overlay_track,
+    };
   const previousWaveformStructure = multiSubtitleWaveformStructureKey();
   DATA.segments.length = 0;
   (snapshot.segments || []).forEach(s => DATA.segments.push(s));
   DATA.multi_subtitle = snapshot.multi_subtitle || {
     schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
   };
+  DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(snapshot.overlay_track);
   normalizeMultiSubtitleState();
   // 历史恢复会改变下标身份；丢弃旧面板绑定，避免 clearSelection() 把旧面板
   // 内容提交到恢复后占据同一下标的另一条字幕，并因此生成新历史、清空 redo。
@@ -1577,6 +1598,9 @@ const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown
 const downloadColorSrtItem = document.getElementById('download-color-srt');
 const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-removed-color-srt');
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
+const overlayTrackControls = document.getElementById('overlay-track-controls');
+const overlayTrackToggle = document.getElementById('overlay-track-toggle');
+const overlayTrackSeparator = document.getElementById('overlay-track-separator');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
 // 已开启多重字幕但尚未加载第二条字幕时的开关右侧提示。
@@ -2034,6 +2058,10 @@ function syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEna
 }
 
 function updateMultiSubtitleUi() {
+  const overlayVisible = overlayTrackVisible();
+  if (overlayTrackControls) overlayTrackControls.hidden = !getOverlayTrack()?.segments?.length;
+  if (overlayTrackSeparator) overlayTrackSeparator.hidden = overlayTrackControls?.hidden !== false;
+  if (overlayTrackToggle) overlayTrackToggle.checked = overlayVisible;
   const track = getActiveExtensionTrack();
   const hasTrack = Boolean(track && Array.isArray(track.segments));
   const enabled = hasTrack && getMultiSubtitleState().enabled === true;
@@ -2123,6 +2151,15 @@ function updateMultiSubtitleUi() {
   container.classList.toggle('multi-subtitle-enabled', enabled);
   container.dataset.multiDisplayMode = enabled ? (getMultiSubtitleState().display_mode || 'both') : 'main';
 }
+
+overlayTrackToggle?.addEventListener('change', () => {
+  const overlay = getOverlayTrack();
+  if (!overlay) return;
+  overlay.enabled = overlayTrackToggle.checked;
+  overlay._dirty = true;
+  scheduleAutoSaveFlush();
+  renderAll({ waveform: 'full' });
+});
 
 function bindCueListDisplayToggle(toggle, key) {
   toggle.addEventListener('change', () => {
@@ -4760,8 +4797,17 @@ function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) 
   }
   const cueFragment = document.createDocumentFragment();
   const multiVisible = multiSubtitleVisible();
+  const overlayVisible = overlayTrackVisible();
   const displayMode = getMultiSubtitleState().display_mode || 'both';
-  if (!multiVisible || displayMode === 'main') {
+  if (overlayVisible && !multiVisible) {
+    const overlaySegments = getOverlayTrack().segments;
+    MULTI_SUBTITLE_UTILS.mergeMainAndOverlaySegments(DATA.segments, overlaySegments)
+      .forEach((segment) => cueFragment.appendChild(
+        overlaySegments.includes(segment)
+          ? buildOverlayCueEl(segment, overlaySegments.indexOf(segment))
+          : buildCueEl(segment, DATA.segments.indexOf(segment)),
+      ));
+  } else if (!multiVisible || displayMode === 'main') {
     DATA.segments.forEach((seg, i) => cueFragment.appendChild(buildCueEl(seg, i)));
   } else if (displayMode === 'extension') {
     const track = getActiveExtensionTrack();
@@ -4774,7 +4820,9 @@ function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) 
   container.appendChild(cueFragment);
   applyCueListDisplaySettings({ preserveCueListScroll: false });
   refreshColorFilterUi();
-  totalCountEl.textContent = multiVisible && displayMode === 'extension'
+  totalCountEl.textContent = overlayVisible && !multiVisible
+    ? DATA.segments.length + getOverlayTrack().segments.length
+    : multiVisible && displayMode === 'extension'
     ? getActiveExtensionTrack()?.segments.length || 0
     : DATA.segments.length;
   // buildCueEl/buildMultiCueColumn 已经按当前搜索词生成了文本；这里仅
@@ -4856,6 +4904,11 @@ function getCurrentCuePanelTarget() {
       ? { kind: 'extension', index, trackId: track.id, track, segment }
       : null;
   }
+  if (currentCuePanelKind === 'overlay') {
+    const track = getOverlayTrack();
+    const segment = track?.segments?.[index];
+    return segment ? { kind: 'overlay', index, trackId: null, track, segment } : null;
+  }
   const segment = DATA.segments[index];
   return segment ? { kind: 'main', index, trackId: null, track: null, segment } : null;
 }
@@ -4868,6 +4921,9 @@ function getCuePanelTextElement(target) {
         + `.multi-extension-cue[data-ext-idx="${target.index}"] > .text`,
     );
   }
+  if (target.kind === 'overlay') {
+    return container.querySelector(`.overlay-track-cue[data-overlay-idx="${target.index}"] > .text`);
+  }
   return container.querySelector(
     `.multi-dual-cue[data-main-idx="${target.index}"] .multi-cue-column.main .text, `
       + `.cue[data-idx="${target.index}"] > .text`,
@@ -4875,7 +4931,7 @@ function getCuePanelTextElement(target) {
 }
 
 function setCuePanelTarget(kind, index, trackId = null) {
-  const nextKind = kind === 'extension' ? 'extension' : 'main';
+  const nextKind = kind === 'extension' || kind === 'overlay' ? kind : 'main';
   let nextIndex = Number.isInteger(index) ? index : -1;
   let nextTrackId = nextKind === 'extension' ? trackId : null;
   if (nextKind === 'extension') {
@@ -4886,6 +4942,8 @@ function setCuePanelTarget(kind, index, trackId = null) {
     } else {
       nextTrackId = track.id;
     }
+  } else if (nextKind === 'overlay') {
+    if (!getOverlayTrack()?.segments?.[nextIndex]) nextIndex = -1;
   } else if (!DATA.segments[nextIndex]) {
     nextIndex = -1;
   }
@@ -4913,6 +4971,10 @@ function setCurrentCuePanelExtensionIndex(index, track = getActiveExtensionTrack
   setCuePanelTarget('extension', index, track?.id || null);
 }
 
+function setCurrentCuePanelOverlayIndex(index) {
+  setCuePanelTarget('overlay', index);
+}
+
 function ensureCuePanelUndo(label = null) {
   if (!cuePanelUndoPushed) {
     const target = getCurrentCuePanelTarget();
@@ -4927,7 +4989,7 @@ function commitCuePanelEdit() {
   const target = getCurrentCuePanelTarget();
   const seg = target?.segment;
   if (!target || !seg) { resetCuePanelEditState(); return false; }
-  const segments = target.kind === 'extension' ? target.track.segments : DATA.segments;
+  const segments = target.kind === 'main' ? DATA.segments : target.track.segments;
   const idx = target.index;
   const nextText = cuePanelText.value.replace(/\r\n?/g, '\n');
   const oldStart = seg.start;
@@ -4990,14 +5052,18 @@ function commitCuePanelEdit() {
         );
       }
     }
-  } else {
+  } else if (target.kind === 'extension') {
     if (timingChanged) {
       const blocked = constrainBoundExtensionPanelEdit(seg, target.track, oldStart, oldEnd);
       if (blocked) flashHint('主字幕轨道已无可用空间，已限制副字幕时间', 'warning');
     }
   }
-  syncBindingOffsets();
-  markMultiSubtitleDirty();
+  if (target.kind === 'overlay') {
+    target.track._dirty = true;
+  } else {
+    syncBindingOffsets();
+    markMultiSubtitleDirty();
+  }
   scheduleAutoSaveFlush();
   resetCuePanelEditState();
   renderAll();
@@ -5013,8 +5079,10 @@ function renderCurrentCuePanel() {
   const empty = !target;
   cuePanel.classList.toggle('empty', empty);
   cuePanel.classList.toggle('extension-target', !empty && target.kind === 'extension');
+  cuePanel.classList.toggle('overlay-target', !empty && target.kind === 'overlay');
   if (cuePanelTarget) {
-    const label = empty ? '未选择' : target.kind === 'extension' ? '副字幕' : '主字幕';
+    const label = empty ? '未选择' : target.kind === 'extension'
+      ? '副字幕' : target.kind === 'overlay' ? '叠加字幕' : '主字幕';
     cuePanelTarget.textContent = window.MAWE_I18N?.translateText?.(label) || label;
     cuePanelTarget.classList.toggle('extension', !empty && target.kind === 'extension');
   }
@@ -5070,7 +5138,7 @@ function renderCurrentCuePanel() {
     cuePanelSticker.textContent = window.MAWE_I18N?.translateText?.('暂无表情包') || '暂无表情包';
     cuePanelSticker.title = window.MAWE_I18N?.translateText?.('点击添加表情包') || '点击添加表情包';
   }
-  const segments = target.kind === 'extension' ? target.track.segments : DATA.segments;
+  const segments = target.kind === 'main' ? DATA.segments : target.track.segments;
   const previous = window.AsrEditorUtils.findAdjacentCueIndex(segments, idx, -1, hideDisabled);
   const next = window.AsrEditorUtils.findAdjacentCueIndex(segments, idx, 1, hideDisabled);
   cuePanelPrev.disabled = previous < 0;
@@ -5186,24 +5254,28 @@ function navigateCuePanel(direction) {
   const target = getCurrentCuePanelTarget();
   if (!target) return;
   commitCuePanelEdit();
+  const segments = target.kind === 'main' ? DATA.segments : target.track.segments;
   const next = window.AsrEditorUtils.findAdjacentCueIndex(
-    target.kind === 'extension' ? target.track.segments : DATA.segments,
+    segments,
     target.index,
     direction,
     hideDisabled,
   );
   if (next < 0) return;
-  const segments = target.kind === 'extension' ? target.track.segments : DATA.segments;
   if (target.kind === 'extension') {
     selectOnlyExtension(next);
     lastClickedExtensionIdx = next;
+  } else if (target.kind === 'overlay') {
+    setCuePanelTarget('overlay', next);
   } else {
     selectOnly(next);
     lastClickedIdx = next;
   }
-  const cue = container.querySelector(
-    target.kind === 'extension' ? `.cue[data-ext-idx="${next}"]` : `.cue[data-idx="${next}"]`,
-  );
+  const cue = container.querySelector(target.kind === 'extension'
+    ? `.cue[data-ext-idx="${next}"]`
+    : target.kind === 'overlay'
+      ? `.overlay-track-cue[data-overlay-idx="${next}"]`
+      : `.cue[data-idx="${next}"]`);
   if (cue) scrollCueToCenter(cue);
   waveformEditor?.revealTime(segments[next].start, true);
 }
@@ -5211,6 +5283,7 @@ function navigateCuePanel(direction) {
 function splitCuePanelAtCursor() {
   const target = getCurrentCuePanelTarget();
   if (!target) return;
+  if (target.kind === 'overlay') return;
   const cursorOffset = cuePanelText.selectionStart;
   if (target.kind === 'extension') {
     const splitTime = splitTimeForTextOffset(target.segment, cursorOffset);
@@ -5284,6 +5357,7 @@ cuePanelText?.addEventListener('input', () => {
     applyCharCount(textEl.closest('.cue')?.querySelector('.charcount'), seg.text, splitMode);
   }
   if (target.kind === 'extension') waveformEditor?.refreshExtensionCueLabel(target.index, target.trackId);
+  else if (target.kind === 'overlay') waveformEditor?.refreshCueOverlay();
   else waveformEditor?.refreshCueLabel(target.index);
   refreshSubtitlePreview();
 });
@@ -5405,7 +5479,7 @@ function updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack = n
   }
 }
 
-function buildCueEl(seg, idx, { extensionTrack = null } = {}) {
+function buildCueEl(seg, idx, { extensionTrack = null, overlayTrack = false } = {}) {
   const isExtension = Boolean(extensionTrack);
   const el = document.createElement('div');
   el.className = multiSubtitleVisible() ? 'cue multi-cue' : 'cue';
@@ -5466,7 +5540,7 @@ function buildCueEl(seg, idx, { extensionTrack = null } = {}) {
   el.appendChild(cntEl);
 
   if (isExtension) bindExtensionCueEvents(el, idx, extensionTrack);
-  else bindCueEvents(el, idx);
+  else if (!overlayTrack) bindCueEvents(el, idx);
   return el;
 }
 
@@ -5511,6 +5585,24 @@ function buildMultiCueColumn(segment, index, track, kind) {
 
 function buildExtensionCueEl(seg, idx, track) {
   return buildCueEl(seg, idx, { extensionTrack: track });
+}
+
+function buildOverlayCueEl(seg, index) {
+  const el = buildCueEl(seg, index, { overlayTrack: true });
+  el.classList.add('overlay-track-cue');
+  el.dataset.overlayIdx = String(index);
+  el.removeAttribute('data-idx');
+  el.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setCuePanelTarget('overlay', index);
+  });
+  el.addEventListener('dblclick', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setCuePanelTarget('overlay', index);
+    focusCuePanelText(index, 'overlay');
+  });
+  return el;
 }
 
 function buildDualCueEl(mainIndex, extensionIndex, track) {
@@ -5976,10 +6068,14 @@ function applySearch(query, { refreshText = true, preserveCueListScroll = true }
         ? Number(el.dataset.mainIdx)
         : (el.dataset.idx != null ? Number(el.dataset.idx) : -1);
       const extIdx = el.dataset.extIdx != null ? Number(el.dataset.extIdx) : -1;
+      const overlayIdx = el.dataset.overlayIdx != null ? Number(el.dataset.overlayIdx) : -1;
       const mainSeg = Number.isInteger(mainIdx) && mainIdx >= 0 ? DATA.segments[mainIdx] : null;
       const extensionSeg = Number.isInteger(extIdx) && extIdx >= 0 && extensionTrack
         ? extensionTrack.segments[extIdx] : null;
-      const searchableText = [mainSeg?.text, extensionSeg?.text].filter(Boolean).join('\n');
+      const overlaySeg = Number.isInteger(overlayIdx) && overlayIdx >= 0
+        ? getOverlayTrack()?.segments?.[overlayIdx] : null;
+      const searchableText = [mainSeg?.text, extensionSeg?.text, overlaySeg?.text]
+        .filter(Boolean).join('\n');
       if (!searchableText) {
         el.classList.add('hidden');
         return;
@@ -5987,7 +6083,7 @@ function applySearch(query, { refreshText = true, preserveCueListScroll = true }
       let matched = !re || re.test(searchableText);
       if (re) re.lastIndex = 0;
       if (matched && colorFilterSelection && !colorFilterSuspended()) {
-        matched = colorFilterSelection.has(effectiveCueColorKey(mainSeg));
+        matched = colorFilterSelection.has(effectiveCueColorKey(mainSeg || extensionSeg || overlaySeg));
       }
       const keepTemporaryVisible = filterOver
         && EDITOR_SETTINGS.cueListKeepSplitVisible
@@ -5996,7 +6092,8 @@ function applySearch(query, { refreshText = true, preserveCueListScroll = true }
         const count = (mainSeg ? calcCharWidth(mainSeg.text, getMainSubtitleSplitMode(mainSeg)) : 0)
           + (extensionSeg
             ? calcCharWidth(extensionSeg.text, getExtensionSubtitleSplitMode(extensionTrack, extensionSeg))
-            : 0);
+            : 0)
+          + (overlaySeg ? calcCharWidth(overlaySeg.text, getMainSubtitleSplitMode(overlaySeg)) : 0);
         matched = count > threshold;
       }
       el.classList.toggle('hidden', !matched);
@@ -11616,11 +11713,14 @@ overlayToggle.addEventListener('change', () => {
 let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
 function buildSrt() {
+  const segments = overlayTrackVisible()
+    ? MULTI_SUBTITLE_UTILS.mergeMainAndOverlaySegments(DATA.segments, getOverlayTrack().segments)
+    : DATA.segments;
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    DATA.segments,
+    segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  return window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+  return window.AsrEditorUtils.buildSrtPayload(segments, {
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
@@ -11897,6 +11997,30 @@ function buildJson() {
       end_offset_ms: binding.end_offset_ms || 0,
     })),
   };
+  const overlay = getOverlayTrack();
+  if (overlay?.enabled === true || overlay?.segments?.length) {
+    out.overlay_track = {
+      enabled: overlay.enabled === true,
+      segments: (overlay.segments || []).map((segment) => {
+        const outSegment = {
+          id: segment.id,
+          start: segment.start,
+          end: segment.end,
+          start_frame: segment.start_frame,
+          end_frame: segment.end_frame,
+          text: segment.text || '',
+          items: segment.items || [],
+          sticker: segment.sticker || null,
+          sticker_ref: segment.sticker_ref || null,
+          color: segment.color || null,
+          color_ref: segment.color_ref || null,
+        };
+        if (segment._dirty) outSegment._dirty = true;
+        if (segment.disabled) outSegment.disabled = true;
+        return outSegment;
+      }),
+    };
+  }
   if (DATA.waveform) out.waveform = DATA.waveform;
   const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
   if (mediaMetadata) out.media_metadata = mediaMetadata;
@@ -11930,6 +12054,7 @@ function normalizeProjectTimings(project, { repairSegmentRanges = true } = {}) {
       fixed += normalize(track?.segments);
     });
   }
+  fixed += normalize(project.overlay_track?.segments);
   return fixed;
 }
 
@@ -11961,10 +12086,13 @@ function repairCurrentProjectTimings() {
     result.changed.push(...repaired.changed);
     return result;
   }, { fixed: 0, changed: [] });
-  const fixed = main.fixed + extension.fixed;
+  const overlay = repairTimingGroup(getOverlayTrack()?.segments);
+  const fixed = main.fixed + extension.fixed + overlay.fixed;
   if (fixed > 0) {
     markMainSegmentsDirty(main.changed);
     extension.changed.forEach((segment) => { segment._dirty = true; });
+    overlay.changed.forEach((segment) => { segment._dirty = true; });
+    if (overlay.changed.length) getOverlayTrack()._dirty = true;
     if (main.changed.length || extension.changed.length) markMultiSubtitleStateDirty();
     syncBindingOffsets();
   }
@@ -13043,9 +13171,11 @@ function scheduleAutoSave() {
 function hasUnsavedProjectChanges() {
   const multiDirty = Boolean(DATA.multi_subtitle?._dirty)
     || (DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
+  const overlayDirty = Boolean(DATA.overlay_track?._dirty)
+    || DATA.overlay_track?.segments?.some((segment) => segment._dirty);
   return projectImportDirty || gapRemoveDirty || previewGeometryDirty
     || DATA.segments.some((segment) => segment._dirty)
-    || multiDirty;
+    || multiDirty || overlayDirty;
 }
 
 // 文字编辑先写入页面内存，避免每个按键都请求服务器；失焦后短暂防抖保存，
@@ -14618,6 +14748,7 @@ function applyCanonicalProject(data, filename) {
   DATA.segments.length = 0;
   data.segments.forEach((segment) => DATA.segments.push(segment));
   DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, DATA.segments);
+  DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(data.overlay_track);
   syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase.unit === 'frames' });
   editorHistory.clear();
   updateUndoRedoButtons();

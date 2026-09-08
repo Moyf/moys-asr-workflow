@@ -67,6 +67,12 @@ __WAVEFORM_CSS__
     <button type="button" id="redo-btn" title="重做 (Ctrl(Cmd)+Shift+Z)" disabled>↷ 重做</button>
   </span>
   <span class="sep"></span>
+  <label class="overlay-track-toggle" id="overlay-track-controls" hidden
+         title="显示独立叠加字幕轨；它不会与多重字幕建立绑定关系">
+    <input type="checkbox" id="overlay-track-toggle">
+    叠加字幕
+  </label>
+  <span class="sep overlay-track-separator" id="overlay-track-separator" hidden></span>
   <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
     <label class="multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
            title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
