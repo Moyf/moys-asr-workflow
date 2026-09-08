@@ -51,8 +51,8 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await revealSpeakerCue(page);
 
   await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
-  const previewPanel = page.locator('#editor-settings-page-subtitle-preview');
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  const previewPanel = page.locator('#editor-settings-page-subtitle-style');
   await expect(previewPanel).toBeVisible();
   await expect(page.locator('label.toggle.editor-settings-item:has(#subtitle-color-underline)'))
     .toHaveCount(1);
@@ -212,7 +212,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await revealSpeakerCue(page);
   await expect(page.locator('#overlay-main-text')).toHaveText('Host"Alpha');
   await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
   await expect(page.locator('#subtitle-speaker-label-yellow')).toHaveValue('Host');
   await expect(page.locator('#subtitle-speaker-label-separator')).toHaveValue('"');
   await expect(page.locator('#subtitle-color-style')).toHaveValue('stroke');

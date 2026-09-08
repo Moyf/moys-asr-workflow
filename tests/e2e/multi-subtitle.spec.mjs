@@ -2269,6 +2269,9 @@ test('shows independent extension preview controls with yellow defaults', async 
   await expect(page.locator('#editor-settings-page-subtitle-preview')).toBeVisible();
   await expect(page.locator('#extension-overlay-toggle-wrap')).toBeVisible();
   await expect(page.locator('#extension-overlay-toggle')).toBeChecked();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
+  await expect(page.locator('#extension-subtitle-preview-title')).toBeVisible();
   await expect(page.locator('#extension-subtitle-preview-settings')).toBeVisible();
   await expect(page.locator('#subtitle-color')).toHaveValue('#ffffff');
   await expect(page.locator('#extension-subtitle-color')).toHaveValue('#ffd34d');
@@ -2296,7 +2299,7 @@ test('refreshes local font options for both main and extension subtitles', async
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
 
   const scanButton = page.locator('#subtitle-font-family-scan');
   await expect(scanButton).toBeEnabled();
@@ -2327,7 +2330,7 @@ test('localizes approved scanned font labels in both selectors', async ({ page }
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
   await page.locator('#subtitle-font-family-scan').click();
   const options = await page.evaluate(() => ['subtitle-font-family', 'extension-subtitle-font-family']
     .map((id) => Array.from(document.getElementById(id).options, (option) => ({

@@ -405,13 +405,16 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="editor-settings-panel"', page)
         self.assertIn('id="editor-settings-drag-handle"', page)
         self.assertIn('id="editor-settings-close"', page)
-        # 全局设置窗口：左侧垂直标签页，八个分区一一对应内容页
-        for settings_section in ('general', 'subtitle-preview', 'timebase', 'split-merge', 'export', 'save', 'sticker', 'easter-eggs'):
+        # 全局设置窗口：左侧垂直标签页，九个分区一一对应内容页
+        for settings_section in ('general', 'subtitle-preview', 'subtitle-style', 'timebase', 'split-merge', 'export', 'save', 'sticker', 'easter-eggs'):
             self.assertIn(f'id="editor-settings-tab-{settings_section}"', page)
             self.assertIn(f'id="editor-settings-page-{settings_section}"', page)
-        # 全局设置 8 个导航标签；帮助面板垂直标签页复用同款导航类，另有 7 个
-        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 15)
-        self.assertEqual(page.count('class="editor-settings-page"'), 8)
+        # 全局设置 9 个导航标签；帮助面板垂直标签页复用同款导航类，另有 7 个
+        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 16)
+        self.assertEqual(page.count('class="editor-settings-page"'), 9)
+        self.assertEqual(page.count('class="editor-settings-nav-group-label"'), 4)
+        for group_label in ('基础', '编辑', '工程与输出', '扩展功能'):
+            self.assertIn(f'class="editor-settings-nav-group-label" aria-hidden="true">{group_label}</div>', page)
         self.assertIn('id="cue-editor-settings-toggle"', page)
         self.assertIn('id="cue-editor-settings-panel"', page)
         # 编辑区 header 不再显示「编辑」模块标签，只保留快捷键提示
@@ -438,7 +441,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('静音空隙', editor_settings)
         self.assertNotIn('id="cue-move-step"', editor_settings_panel)
         # 分区标题由左侧标签页承担，设置窗口内不再重复书写页面标题
-        for section_title in ('通用操作', '时间基准', '拆分与合并', '导出', '保存', '表情包', '彩蛋'):
+        for section_title in ('通用操作', '视频预览', '字幕样式', '时间基准', '拆分与合并', '导出', '保存', '表情包', '彩蛋'):
             self.assertNotIn(f'<span class="editor-settings-title">{section_title}</span>', page)
         self.assertNotIn('<span class="editor-settings-title">其他</span>', page)
         self.assertIn('id="sticker-root-btn"', page)
@@ -462,7 +465,7 @@ class EditorAssetTests(unittest.TestCase):
             page.count('class="editor-settings-group"')
             + page.count('class="editor-settings-group playback-controls-group"')
             + page.count('class="editor-settings-group subtitle-preview-style-group"'),
-            10,
+            11,
         )
         self.assertEqual(page.count('class="editor-settings-group split-language-type-group"'), 1)
         self.assertLess(page.index('id="cue-move-step"'), page.index('<span class="settings-panel-title waveform-settings-title">静音空隙</span>'))
@@ -474,9 +477,12 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="overlay-toggle"', page)
         self.assertIn('id="sticker-overlay-toggle"', page)
         self.assertIn('id="hover-seek-preview"', page)
-        self.assertIn('id="subtitle-preview-style-title">字幕预览</span>', page)
+        self.assertIn('id="subtitle-preview-style-title">主字幕</span>', page)
+        self.assertIn('id="extension-subtitle-preview-title" hidden>副字幕</span>', page)
         self.assertIn('id="main-subtitle-preview-settings"', page)
         self.assertIn('id="extension-subtitle-preview-settings"', page)
+        self.assertNotIn('subtitle-preview-track-settings', page)
+        self.assertNotIn('subtitle-preview-track-title', page)
         self.assertEqual(page.count('class="subtitle-preview-setting-pair"'), 2)
         self.assertEqual(page.count('class="subtitle-preview-setting-cell"'), 4)
         self.assertIn('id="subtitle-color-style-control"', page)
@@ -496,9 +502,11 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="media-seek-step" min="10" max="60000" step="100" value="1000"', page)
         general_page_start = page.index('id="editor-settings-page-general"')
         subtitle_preview_page_start = page.index('id="editor-settings-page-subtitle-preview"')
+        subtitle_style_page_start = page.index('id="editor-settings-page-subtitle-style"')
         timebase_page_start = page.index('id="editor-settings-page-timebase"')
         general_page = page[general_page_start:subtitle_preview_page_start]
-        video_preview_page = page[subtitle_preview_page_start:timebase_page_start]
+        video_preview_page = page[subtitle_preview_page_start:subtitle_style_page_start]
+        subtitle_style_page = page[subtitle_style_page_start:timebase_page_start]
         # 「播放控制」组已从「通用操作」移入「视频预览」
         self.assertNotIn('id="jkl-playback-mode"', general_page)
         self.assertNotIn('id="media-seek-step"', general_page)
@@ -506,17 +514,35 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="media-seek-step"', video_preview_page)
         self.assertIn('id="hover-seek-preview"', video_preview_page)
         self.assertIn('id="overlay-toggle"', video_preview_page)
+        preview_controls = video_preview_page[:video_preview_page.index('<span class="editor-settings-group-heading" id="playback-controls-title">')]
+        playback_controls = video_preview_page[video_preview_page.index('<span class="editor-settings-group-heading" id="playback-controls-title">'):]
+        self.assertNotIn('id="hover-seek-preview"', preview_controls)
+        self.assertIn('id="hover-seek-preview"', playback_controls)
         self.assertIn(
             'class="editor-settings-group playback-controls-group" role="group" aria-labelledby="playback-controls-title"',
             video_preview_page,
         )
         self.assertIn('<span class="editor-settings-group-heading" id="playback-controls-title">播放控制</span>', video_preview_page)
-        self.assertIn(
+        self.assertNotIn(
             'class="editor-settings-group subtitle-preview-style-group" role="group" aria-labelledby="subtitle-preview-style-title"',
             video_preview_page,
         )
+        self.assertIn(
+            'class="editor-settings-group subtitle-preview-style-group" id="main-subtitle-preview-settings" role="group" aria-labelledby="subtitle-preview-style-title"',
+            subtitle_style_page,
+        )
+        self.assertIn(
+            'class="editor-settings-group subtitle-preview-style-group" id="extension-subtitle-preview-settings" role="group" aria-labelledby="extension-subtitle-preview-title" hidden',
+            subtitle_style_page,
+        )
+        self.assertEqual(page.count('class="editor-settings-group subtitle-preview-style-group"'), 2)
+        self.assertLess(page.index('id="subtitle-preview-style-title"'), page.index('id="main-subtitle-preview-settings"'))
+        self.assertLess(page.index('id="main-subtitle-preview-settings"'), page.index('id="extension-subtitle-preview-title"'))
+        self.assertLess(page.index('id="extension-subtitle-preview-title"'), page.index('id="extension-subtitle-preview-settings"'))
         self.assertNotIn('<span class="editor-settings-title">播放控制</span>', video_preview_page)
         self.assertEqual(general_page.count('class="editor-settings-group"'), 1)
+        self.assertNotIn('id="subtitle-font-size"', video_preview_page)
+        self.assertIn('id="subtitle-font-size"', subtitle_style_page)
         self.assertIn('class="media-seek-icon"', page)
         self.assertNotIn('>−5<', page)
         self.assertIn('mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS', page)
@@ -583,9 +609,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 😝', page)
         self.assertIn('id="jkl-playback-mode"', editor_settings_panel)
         self.assertIn('id="media-seek-step"', editor_settings_panel)
-        # JKL/跳转时长与字幕样式都位于「视频预览」分区页内
+        # JKL/跳转时长位于「视频预览」，字幕样式位于独立分区页内
         self.assertGreater(page.index('id="jkl-playback-mode"'), page.index('id="editor-settings-page-subtitle-preview"'))
-        self.assertGreater(page.index('id="subtitle-font-size"'), page.index('id="editor-settings-page-subtitle-preview"'))
+        self.assertGreater(page.index('id="subtitle-font-size"'), page.index('id="editor-settings-page-subtitle-style"'))
         self.assertIn('id="help-split-key"', page)
         self.assertIn('id="help-waveform-split-key"', page)
         self.assertIn('按当前时间基准拆分字幕', page)
