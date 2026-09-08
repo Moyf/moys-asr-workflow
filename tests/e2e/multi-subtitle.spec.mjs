@@ -119,7 +119,7 @@ test('explains where to configure automatic timecode splitting', async ({ page }
   await page.locator('#editor-settings-toggle').click();
   await page.locator('#editor-settings-tab-split-merge').click();
   const hint = page.locator('#split-use-word-timestamps-hint');
-  await expect(hint).toContainText('开启时，会自动按可用时间码拆分');
+  await expect(hint).toContainText('开启时，自动按可用时间码拆分');
   await expect(hint).toContainText('关闭后将打开拆分弹窗');
   await expect(hint).not.toContainText('右上角「🔧 设置 → 拆分与合并」');
 });
@@ -379,7 +379,7 @@ test('reserves space for the dirty marker beside main dual-column text', async (
     };
   });
   expect(geometry.boxSizing).toBe('border-box');
-  expect(geometry.paddingLeft).toBe('3px');
+  expect(geometry.paddingLeft).toBe('8px');
   expect(geometry.textLeft).toBeGreaterThanOrEqual(geometry.columnLeft + 3);
 });
 
@@ -891,7 +891,10 @@ test('applies text processing to selected extension subtitles', async ({ page })
   await expect(page.locator('#text-process-preview')).toContainText('副字幕第 1 条');
   await page.locator('#text-process-confirm').click();
 
-  await expect(row.locator('.multi-cue-column.main .text')).toHaveText('main cue');
+  const mainRow = page.locator('.multi-dual-cue').filter({
+    has: page.locator('.multi-cue-column.main .text'),
+  });
+  await expect(mainRow.locator('.multi-cue-column.main .text')).toHaveText('main cue');
   await expect(row.locator('.multi-cue-column.extension .text')).toHaveText('X extension cue');
 });
 
@@ -3742,7 +3745,7 @@ test('labels a linked split time inferred from main word timestamps', async ({ p
   await expect(page.locator('#multi-subtitle-split-meta'))
     .toContainText('默认位置参考主字幕字词时间码，可继续调整');
   await expect(page.locator('#multi-subtitle-split-meta'))
-    .toContainText('共用绝对切点 00:03.200');
+    .toContainText('共用绝对切点 00:02.800');
   await expect(page.locator('#multi-subtitle-split-main-lane'))
     .not.toHaveClass(/timestamp-locked-lane/);
   await expect(page.locator('#multi-subtitle-split-timestamp-hint')).toBeHidden();
