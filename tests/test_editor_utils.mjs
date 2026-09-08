@@ -295,6 +295,22 @@ test('normalizes source audio track metadata independently from video FPS', () =
   assert.equal(helpers.normalizeMediaMetadata({ audio_tracks: [{ stream_index: -1 }] }), null);
 });
 
+test('normalizes the persisted selected audio track', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
+    selected_audio_track: 2,
+  }))), {
+    selected_audio_track: 2,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
+    video_fps: 30,
+    selected_audio_track: 1,
+  }))), { video_fps: 30, selected_audio_track: 1 });
+  assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: -1 }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: 1.5 }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: true }), null);
+  assert.equal(helpers.normalizeMediaMetadata({}), null);
+});
+
 test('falls back to default split trim symbols and keeps single characters from free input', () => {
   const defaults = JSON.parse(JSON.stringify(helpers.DEFAULT_SPLIT_TRIM_SYMBOLS));
   // 默认集合 = 前 5 个 chip（全角）+ 文本框预填的半角逗号句点。

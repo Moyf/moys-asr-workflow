@@ -302,6 +302,15 @@ def _validate_media_metadata(project: JsonDict, errors: list[ProjectValidationEr
                     "must be a non-empty string",
                 )
             )
+    if "selected_audio_track" in metadata:
+        selected_audio_track = metadata.get("selected_audio_track")
+        if type(selected_audio_track) is not int or selected_audio_track < 0:
+            errors.append(
+                ProjectValidationError(
+                    "$.media_metadata.selected_audio_track",
+                    "must be a non-negative integer",
+                )
+            )
     if "audio_tracks" in metadata:
         audio_tracks = metadata.get("audio_tracks")
         if not isinstance(audio_tracks, list):
