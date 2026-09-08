@@ -36,7 +36,11 @@ from typing import NotRequired, TypedDict
 from maw.colors import COLOR_PALETTE
 from maw.console import configure_utf8_stdio
 from maw.project import ProjectValidationFailed, normalize_project
-from maw.project_io import enrich_project_media_metadata
+from maw.project_io import (
+    default_audio_track_from_metadata,
+    enrich_project_media_metadata,
+    selected_audio_track_from_metadata,
+)
 from maw.stickers import get_default_sticker_dir
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, read_bwf_time_reference
 from maw.waveform import (
@@ -379,7 +383,7 @@ def main():
         print("错误: 找不到媒体文件，请用 -m 参数指定")
         return 1
 
-    audio_track = audio_track_from_payloads(
+    payload_audio_track = audio_track_from_payloads(
         data.get("waveform"),
         data.get("spectral"),
         data.get("waveform_reapeaks"),
@@ -388,6 +392,10 @@ def main():
     # 旧工程可能只有视频 FPS 元数据；补探测音频流信息，供 OTIO 导出
     # 为每条源音轨建立独立的音频轨道。FFprobe 失败时保留旧工程行为。
     data = normalize_project(enrich_project_media_metadata(data, media_path=media_path))
+    media_metadata = data.get("media_metadata")
+    selected_audio_track = selected_audio_track_from_metadata(media_metadata)
+    audio_track = payload_audio_track if selected_audio_track is None else selected_audio_track
+    default_audio_track = default_audio_track_from_metadata(media_metadata)
 
     # BWF 的媒体时间基准属于源媒体，不属于字幕时间码；每次根据当前
     # 实际加载的文件重新读取，避免沿用工程中可能过期的值。
@@ -403,6 +411,7 @@ def main():
                 media_path,
                 peaks_per_second=args.waveform_peaks_per_second,
                 audio_track=audio_track,
+                default_audio_track=default_audio_track,
             )
             data["waveform"] = waveform
             state = "已提取" if extracted else "使用缓存"
@@ -419,10 +428,15 @@ def main():
             media_path,
             peaks_per_second=args.waveform_peaks_per_second,
             audio_track=audio_track,
+            default_audio_track=default_audio_track,
         )
         if spectral is not None:
             data["spectral"] = spectral
-        reapeaks_wave = quapeaks.load_waveform_payload(media_path, audio_track=audio_track)
+        reapeaks_wave = quapeaks.load_waveform_payload(
+            media_path,
+            audio_track=audio_track,
+            default_audio_track=default_audio_track,
+        )
         if reapeaks_wave is not None:
             data["waveform_reapeaks"] = reapeaks_wave
 
