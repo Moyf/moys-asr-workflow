@@ -996,7 +996,11 @@
     display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px;
     min-width: 0; color: var(--text-secondary); font-size: 12px;
   }
-  .subtitle-speaker-label-row input[type="text"] { width: 100%; min-width: 0; box-sizing: border-box; }
+  /* 三级选择器压过 .editor-settings-panel input[type=text] 的固定 140px，
+     让说话人名称输入框跟随两列 grid 单元格动态伸缩，窄面板下不再重叠。 */
+  .editor-settings-panel .subtitle-speaker-label-row input[type="text"] {
+    width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box;
+  }
   .subtitle-speaker-label-color {
     display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); white-space: nowrap;
   }
@@ -1999,16 +2003,18 @@
   .cue .time-arrow { grid-area: arrow; }
   .cue .time-end { grid-area: end; }
   .cue .time-start, .cue .time-arrow, .cue .time-end { white-space: nowrap; }
-  /* 列表变窄时，所有行同时切到同一个两行时间码列，避免逐行 flex 收缩造成错位。 */
+  /* 列表变窄时，所有行同时切到同一个两行时间码列，避免逐行 flex 收缩造成错位；
+     上下堆叠已表达先后顺序，隐藏箭头，帧模式 11 字符时间码也不会超出 11ch。 */
   @container cue-list (max-width: 700px) {
     .cue-list-count { display: none; }
     .cue .time {
-      grid-template-columns: max-content max-content;
+      grid-template-columns: max-content;
       grid-template-areas:
-        "start arrow"
-        "end end";
+        "start"
+        "end";
       width: 11ch; flex-basis: 11ch;
     }
+    .cue .time-arrow { display: none; }
   }
   .cue .sticker-slot {
     flex: 0 1 80px; min-width: 40px; max-width: 100px;
