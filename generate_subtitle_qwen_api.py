@@ -49,6 +49,7 @@ from maw.language import (
 from maw.project_io import write_mosp
 
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.media import resolve_default_audio_track
 from maw.output_naming import (
     DASHSCOPE_PRICE_PER_SECOND,
     estimate_dashscope_cost,
@@ -1933,6 +1934,7 @@ def main():
         "--audio-track", type=int, default=0,
         help="使用第几个音频轨道（从 0 开始，默认 0）",
     )
+    parser.add_argument("--default-audio-track", type=int, help=argparse.SUPPRESS)
     parser.add_argument(
         "--with-spectral", action="store_true",
         help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
@@ -2000,6 +2002,8 @@ def main():
     args = parser.parse_args()
     if args.audio_track < 0:
         parser.error("--audio-track 必须是非负整数")
+    if args.default_audio_track is not None and args.default_audio_track < 0:
+        parser.error("--default-audio-track 必须是非负整数")
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
     if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
@@ -2027,6 +2031,11 @@ def main():
     ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config.get("ffmpeg_path"))
     ffmpeg_path = ffmpeg_tools.ffmpeg
     ffprobe_path = ffmpeg_tools.ffprobe
+    default_audio_track = resolve_default_audio_track(
+        input_path,
+        args.default_audio_track,
+        ffprobe_path=ffprobe_path,
+    )
     print(f"[准备] 已载入转写配置（模型: {args.model}）")
     if args.region:
         config["region"] = args.region.lower()
@@ -2205,6 +2214,7 @@ def main():
                 generate_spectral=args.with_spectral,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
                 audio_track=args.audio_track,
+                default_audio_track=default_audio_track,
             )
 
     if enable_speaker:
@@ -2325,6 +2335,7 @@ def main():
             json_data,
             media_path=input_path,
             ffprobe_path=ffprobe_path,
+            selected_audio_track=args.audio_track,
         )
         print(f"工程文件已保存到: {json_path}")
 
