@@ -5302,7 +5302,8 @@
                   <select id="subtitle-color-style" aria-label="预览字幕颜色样式">
                     <option value="underline" selected>下划线</option>
                     <option value="text">文字颜色</option>
-                    <option value="both">下划线 + 文字颜色</option>
+                    <option value="shadow">阴影</option>
+                    <option value="stroke">描边</option>
                   </select>
                 </label>
                 <label class="toggle settings-panel-item subtitle-speaker-label-toggle" title="在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本">
@@ -13245,7 +13246,7 @@ export default MawDynamicCaptions;
     '文字颜色': 'Text color', '背景颜色': 'Background color', '背景不透明度': 'Background opacity',
     '样式': 'Style', '预览字幕颜色样式': 'Subtitle color preview style',
     '选择按字幕颜色快照应用到预览字幕的样式': 'Choose how the subtitle color snapshot is applied to the preview',
-    '下划线': 'Underline', '下划线 + 文字颜色': 'Underline + text color',
+    '下划线': 'Underline', '阴影': 'Shadow', '描边': 'Stroke',
     '背景色': 'Background color', '不透明度': 'Opacity',
     '副字幕背景色': 'Secondary subtitle background color',
     '只影响播放器画面内的字幕预览，不改变字幕文本或时间': 'Only affects subtitle preview in the player; it does not change subtitle text or timing',
@@ -20745,7 +20746,7 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
-const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'both']);
+const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'shadow', 'stroke']);
 const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
@@ -31667,8 +31668,8 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     overlayExtensionTextEl.textContent = extensionText;
   }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
-  // 预览文字颜色、下划线或两者。dataset 记录上次应用的结果，避免播放刷新
-  // 每帧都写内联样式。
+  // 预览文字颜色、下划线、阴影或描边。dataset 记录上次应用的结果，避免
+  // 播放刷新每帧都写内联样式。
   const subtitleAppearance = getSubtitleAppearance();
   const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
   const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
@@ -31678,13 +31679,23 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     previewSegmentColor = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
   }
   const colorUnderline = colorPreviewEnabled
-    && (colorStyle === 'underline' || colorStyle === 'both')
+    && colorStyle === 'underline'
     ? previewSegmentColor : '';
   const textColor = colorPreviewEnabled
-    && (colorStyle === 'text' || colorStyle === 'both')
+    && colorStyle === 'text'
     && previewSegmentColor
     ? previewSegmentColor
     : subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
+  const textShadow = colorPreviewEnabled
+    && colorStyle === 'shadow'
+    && previewSegmentColor
+    ? `${previewSegmentColor} 1px 1px 2px`
+    : '';
+  const textStroke = colorPreviewEnabled
+    && colorStyle === 'stroke'
+    && previewSegmentColor
+    ? `.125em ${previewSegmentColor}`
+    : '';
   if (overlayTextEl.dataset.colorUnderline !== colorUnderline) {
     overlayTextEl.dataset.colorUnderline = colorUnderline;
     overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
@@ -31694,6 +31705,15 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayTextEl.dataset.colorText !== textColor) {
     overlayTextEl.dataset.colorText = textColor;
     overlayTextEl.style.color = textColor;
+  }
+  if (overlayTextEl.dataset.colorShadow !== textShadow) {
+    overlayTextEl.dataset.colorShadow = textShadow;
+    overlayTextEl.style.textShadow = textShadow;
+  }
+  if (overlayTextEl.dataset.colorStroke !== textStroke) {
+    overlayTextEl.dataset.colorStroke = textStroke;
+    overlayTextEl.style.webkitTextStroke = textStroke;
+    overlayTextEl.style.paintOrder = textStroke ? 'stroke fill' : '';
   }
   const overlayHidden = !mainVisible && !extensionVisible;
   if (overlayEl.classList.contains('hidden') !== overlayHidden) {
