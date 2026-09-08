@@ -430,6 +430,95 @@ class WaveformPlacementContractTests(unittest.TestCase):
                 "第 2 轨的缓存不得被第 1 轨命中",
             )
 
+    def test_nonzero_default_track_uses_unsuffixed_cache(self) -> None:
+        with _subfolder_config(output_subfolder=False):
+            default_track = mopeaks.mopeaks_path(
+                self.media_path,
+                audio_track=1,
+                default_audio_track=1,
+            )
+        self.assertEqual(default_track.name, "ICE.mkv.mopeaks")
+
+    def test_index_zero_nondefault_track_uses_track_one_suffix(self) -> None:
+        with _subfolder_config(output_subfolder=False):
+            nondefault = mopeaks.mopeaks_path(
+                self.media_path,
+                audio_track=0,
+                default_audio_track=1,
+            )
+        self.assertEqual(nondefault.name, "ICE.mkv.track-1.mopeaks")
+
+    def test_exact_cache_precedes_default_fallback(self) -> None:
+        with _subfolder_config(output_subfolder=False):
+            mopeaks.save_mopeaks(
+                self.payload,
+                self.media_path,
+                audio_track=1,
+                default_audio_track=1,
+            )
+            mopeaks.save_mopeaks(
+                self.payload,
+                self.media_path,
+                audio_track=0,
+                default_audio_track=1,
+            )
+            hit = mopeaks.load_mopeaks_hit(
+                self.media_path,
+                audio_track=0,
+                default_audio_track=1,
+            )
+
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit.kind, "exact")
+        self.assertEqual(hit.audio_track, 0)
+        self.assertEqual(hit.path.name, "ICE.mkv.track-1.mopeaks")
+
+    def test_missing_exact_cache_returns_typed_default_fallback(self) -> None:
+        with _subfolder_config(output_subfolder=False):
+            mopeaks.save_mopeaks(
+                self.payload,
+                self.media_path,
+                audio_track=1,
+                default_audio_track=1,
+            )
+            hit = mopeaks.load_mopeaks_hit(
+                self.media_path,
+                audio_track=0,
+                default_audio_track=1,
+            )
+
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit.kind, "default_fallback")
+        self.assertEqual(hit.audio_track, 1)
+        self.assertEqual(hit.payload["audio_track"], 1)
+        self.assertEqual(hit.path.name, "ICE.mkv.mopeaks")
+        self.assertIsNone(
+            mopeaks.load_mopeaks(
+                self.media_path,
+                audio_track=0,
+                default_audio_track=1,
+            ),
+            "兼容读取 API 不能把默认轨回退伪装成所选轨的精确缓存",
+        )
+
+    def test_missing_default_disposition_falls_back_to_index_zero(self) -> None:
+        with _subfolder_config(output_subfolder=False):
+            default_track = mopeaks.mopeaks_path(
+                self.media_path,
+                audio_track=0,
+                default_audio_track=None,
+            )
+            nondefault = mopeaks.mopeaks_path(
+                self.media_path,
+                audio_track=1,
+                default_audio_track=None,
+            )
+
+        self.assertEqual(default_track.name, "ICE.mkv.mopeaks")
+        self.assertEqual(nondefault.name, "ICE.mkv.track-2.mopeaks")
+
     def test_quapeaks_follows_config_while_reapeaks_does_not(self) -> None:
         from maw import quapeaks as maw_quapeaks
 

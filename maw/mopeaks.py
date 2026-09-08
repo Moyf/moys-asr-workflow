@@ -23,10 +23,15 @@ import base64
 import os
 import struct
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from maw.output_naming import waveform_dirs
+from maw.output_naming import (
+    audio_track_cache_candidates,
+    audio_track_cache_suffix,
+    waveform_dirs,
+)
 from maw.waveform import (
     WAVEFORM_ENCODING,
     WAVEFORM_SCHEMA,
@@ -55,6 +60,16 @@ class MopeaksError(ValueError):
     """mopeaks 载荷无法序列化或读回。"""
 
 
+@dataclass(frozen=True, slots=True)
+class MopeaksHit:
+    """A validated mopeaks payload and the cache identity that supplied it."""
+
+    payload: dict[str, Any]
+    path: Path
+    audio_track: int
+    kind: Literal["exact", "default_fallback"]
+
+
 def timestamp_fingerprint_matches(stored: int, actual: int) -> bool:
     """按 low-32 mtime 口径容忍秒级复制漂移与夏令时整小时偏差。"""
     stored &= UINT32_MASK
@@ -67,7 +82,12 @@ def timestamp_fingerprint_matches(stored: int, actual: int) -> bool:
     )
 
 
-def mopeaks_path(media_path: Path | str, *, audio_track: int = 0) -> Path:
+def mopeaks_path(
+    media_path: Path | str,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int | None = None,
+) -> Path:
     """mopeaks 的**写入点**：由 waveform_dirs() 的第一项决定。
 
     默认在媒体旁（``ICE.mkv.mopeaks``，与 .ReaPeaks/.quapeaks 同风格、保留完整媒体名）；
@@ -76,13 +96,21 @@ def mopeaks_path(media_path: Path | str, *, audio_track: int = 0) -> Path:
     """
     media_path = Path(media_path)
     _check_track(audio_track)
-    track_suffix = f".track-{audio_track + 1}" if audio_track else ""
+    track_suffix = audio_track_cache_suffix(
+        audio_track,
+        default_audio_track=default_audio_track,
+    )
     return waveform_dirs(media_path)[0] / (
         media_path.name + track_suffix + ".mopeaks"
     )
 
 
-def mopeaks_candidates(media_path: Path | str, *, audio_track: int = 0) -> list[Path]:
+def mopeaks_candidates(
+    media_path: Path | str,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int | None = None,
+) -> list[Path]:
     """读取顺序下的全部候选路径：写入点在前，其余位置在后。
 
     用户改一次设置就把已有缓存判成过期、整批重抽 ffmpeg，是最难归因的
@@ -90,9 +118,14 @@ def mopeaks_candidates(media_path: Path | str, *, audio_track: int = 0) -> list[
     """
     media_path = Path(media_path)
     _check_track(audio_track)
-    track_suffix = f".track-{audio_track + 1}" if audio_track else ""
-    filename = media_path.name + track_suffix + ".mopeaks"
-    return [directory / filename for directory in waveform_dirs(media_path)]
+    paths: list[Path] = []
+    for _, track_suffix in audio_track_cache_candidates(
+        audio_track,
+        default_audio_track=default_audio_track,
+    ):
+        filename = media_path.name + track_suffix + ".mopeaks"
+        paths.extend(directory / filename for directory in waveform_dirs(media_path))
+    return paths
 
 
 def _check_track(audio_track: int) -> None:
@@ -216,10 +249,18 @@ def decode_mopeaks(
 
 
 def save_mopeaks(
-    payload: dict[str, Any], media_path: Path | str, *, audio_track: int = 0
+    payload: dict[str, Any],
+    media_path: Path | str,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int | None = None,
 ) -> Path:
     """原子写入 mopeaks（临时文件 + replace，绝不做"先删后写"）。"""
-    target = mopeaks_path(media_path, audio_track=audio_track)
+    target = mopeaks_path(
+        media_path,
+        audio_track=audio_track,
+        default_audio_track=default_audio_track,
+    )
     blob = encode_mopeaks(payload, media_path)
     target.parent.mkdir(parents=True, exist_ok=True)  # _maw 可能还不存在
     fd, tmp = tempfile.mkstemp(prefix=".mopeaks-", dir=str(target.parent))
@@ -234,37 +275,76 @@ def save_mopeaks(
 
 
 def load_waveform_cache(
-    media_path: Path | str, *, audio_track: int = 0
+    media_path: Path | str,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int | None = None,
 ) -> dict[str, Any] | None:
     """读媒体旁的自研波形缓存；缺失/损坏/签名不符一律 None（= 该重抽）。
 
     旧 <媒体>.waveform.json **不再读**：本次任务已彻底去掉 JSON sidecar，
     历史文件留在盘上不管，代价是老用户第一次打开重抽一次 ffmpeg（换取只有一种缓存）。
     """
-    return load_mopeaks(media_path, audio_track=audio_track)
+    return load_mopeaks(
+        media_path,
+        audio_track=audio_track,
+        default_audio_track=default_audio_track,
+    )
 
 
 def load_mopeaks(
-    media_path: Path | str, *, audio_track: int = 0
+    media_path: Path | str,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int | None = None,
 ) -> dict[str, Any] | None:
     """读取并校验媒体旁的 mopeaks；缺失/损坏/签名不符时返回 None。"""
+    hit = load_mopeaks_hit(
+        media_path,
+        audio_track=audio_track,
+        default_audio_track=default_audio_track,
+    )
+    return hit.payload if hit is not None and hit.kind == "exact" else None
+
+
+def load_mopeaks_hit(
+    media_path: Path | str,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int | None = None,
+) -> MopeaksHit | None:
+    """Return a validated exact or default-fallback mopeaks cache hit."""
     media_path = Path(media_path)
     try:
         st = media_path.stat()
     except OSError:
         return None
-    for path in mopeaks_candidates(media_path, audio_track=audio_track):
-        try:
-            payload = decode_mopeaks(path.read_bytes(), path, audio_track=audio_track)
-        except (OSError, ValueError, struct.error):
-            continue  # 这个位置没有/坏了，接着找下一个
-        if payload["source"]["size"] != st.st_size & UINT32_MASK:
-            continue
-        if not timestamp_fingerprint_matches(
-            payload["source"]["modified_ms"] // 1000, int(st.st_mtime)
-        ):
-            continue
-        payload["source"] = media_signature(media_path)
-        if is_waveform_payload(payload):
-            return payload
+    for candidate_track, track_suffix in audio_track_cache_candidates(
+        audio_track,
+        default_audio_track=default_audio_track,
+    ):
+        filename = media_path.name + track_suffix + ".mopeaks"
+        for path in (directory / filename for directory in waveform_dirs(media_path)):
+            try:
+                payload = decode_mopeaks(
+                    path.read_bytes(),
+                    path,
+                    audio_track=candidate_track,
+                )
+            except (OSError, ValueError, struct.error):
+                continue  # 这个位置没有/坏了，接着找下一个
+            if payload["source"]["size"] != st.st_size & UINT32_MASK:
+                continue
+            if not timestamp_fingerprint_matches(
+                payload["source"]["modified_ms"] // 1000, int(st.st_mtime)
+            ):
+                continue
+            payload["source"] = media_signature(media_path)
+            if is_waveform_payload(payload):
+                return MopeaksHit(
+                    payload=payload,
+                    path=path,
+                    audio_track=candidate_track,
+                    kind="exact" if candidate_track == audio_track else "default_fallback",
+                )
     return None
