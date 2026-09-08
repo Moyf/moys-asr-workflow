@@ -11,9 +11,9 @@ MAW（Moy's ASR Workflow）是一个收窄的本地工作流：本地媒体经�
 - `generate_subtitle_tencent_api.py`：腾讯云录音文件识别命令入口，使用 TC3 签名并默认生成 `.mosp` 工程。
 - `generate_subtitle_openai_api.py`：OpenAI 官方或兼容 ASR 转写命令入口，要求响应包含 `segments` 或 `words` 时间戳。
 - `maw/gui_web.py`、`maw/gui_workflow.py` 与 `web/launcher/`：Launcher 图形界面及其后端桥接。
-- `edit.py`：读取 `.mosp` / `.json` 工程，渲染单文件 `.edit.html`；也生成 `blank-editor.html`。波形、ReaPeaks 和媒体缓存实现位于 `maw/waveform.py`、`maw/reapeaks.py`、`maw/reapeaks_generate.py`、`maw/media_cache.py`。
+- `edit.py`：读取 `.mosp` / `.json` 工程，渲染单文件 `.edit.html`；也生成 `blank-editor.html`。波形、峰值容器与媒体缓存实现位于 `maw/waveform.py`、`maw/quapeaks.py`、`maw/media_cache.py`（`quapeaks.py` 改名自 `reapeaks.py`；Python 参考实现 `maw/reapeaks_generate.py` 已随 Rust 成为唯一生成路径而删除，故不再列出）。
 - `server-editor/serve.py`：仅监听 `127.0.0.1` 的编辑器服务器，负责媒体 Range 响应、工程安全保存与本机设置。
-- `web/`：唯一前端源码。`editor-template.html` 组合 `editor.css`、`waveform.css` 与 `editor-scripts.txt` 中按顺序列出的脚本；禁止手改生成后的 `blank-editor.html`。
+- `web/`：唯一前端源码。`editor-template.html` 组合 `editor.css`、`waveform.css` 与 `editor-scripts.txt` 中按顺序列出的脚本；禁止手改生成后的 `blank-editor.html`。日常开发不反复生成根目录的空白 HTML，只有版本发布前或明确指定更新便携产物时才刷新它。
 
 ### 当前编辑器维护重点
 
@@ -23,7 +23,7 @@ MAW（Moy's ASR Workflow）是一个收窄的本地工作流：本地媒体经�
 
 前端代码边界的渐进式整理方案见 [`dev/MAWE 前端渐进式重构企划案.md`](dev/MAWE%20前端渐进式重构企划案.md)，当前 Phase 0–1 的依赖、状态和装配快照见 [`dev/MAWE 前端重构基线.md`](dev/MAWE%20前端重构基线.md)。该企划当前不采用 React，不改变编辑器行为或工程契约。
 
-修改 `web/`、模板或内联资源后，必须执行：
+修改 `web/`、模板或内联资源后，日常以 Server 编辑器和源码测试为准；只有版本发布前或明确指定更新便携产物时，才执行：
 
 ```powershell
 uv run python edit.py --blank
@@ -143,7 +143,7 @@ Windows 上建议使用项目入口运行浏览器回归：
 .\scripts\run-e2e.ps1 tests/e2e/ass-export.spec.mjs --reporter=line
 ```
 
-入口会先验证仓库 `.venv` 是否能导入锁定的 `reapeaks`；若不能，则用 `py -3` 找到系统 Python，在 `%TEMP%\maw-e2e` 下按 `uv.lock` 创建隔离环境和缓存，并以 `MAW_E2E_PYTHON` 启动测试。它还把默认 Playwright 输出放到用户临时目录，避免共享工作树的 `test-results` 权限或占用影响测试。
+入口会先验证仓库 `.venv` 是否能导入锁定的 `quapeaks`；若不能，则用 `py -3` 找到系统 Python，在 `%TEMP%\maw-e2e` 下按 `uv.lock` 创建隔离环境和缓存，并以 `MAW_E2E_PYTHON` 启动测试。它还把默认 Playwright 输出放到用户临时目录，避免共享工作树的 `test-results` 权限或占用影响测试。
 
 如果本机的 Playwright Chromium 被安全策略阻止启动，可显式指定已安装且可执行的 Chromium 系浏览器，不改变默认浏览器选择：
 

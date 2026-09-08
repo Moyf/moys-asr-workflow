@@ -9,6 +9,7 @@
   const SPECTRAL_SCHEMA = 'moy.asr.spectral.v1';
   const SPECTRAL_ENCODING = 'u16-freq-density-base64';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
+  const POINTER_DRAG_THRESHOLD_PX = 3;
 
   function localizedWaveformMessage(zh, en) {
     return window.MAWE_I18N?.language === 'en' ? en : zh;
@@ -715,7 +716,11 @@
     const bytes = new Uint8Array(arrayBuffer);
     if (bytes.length < 18) return null;
     const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
-    if (!['RPKM', 'RPKN', 'RPKL'].includes(magic)) return null;
+    // QPK + 1 字节可打印版本号（当前 QPK1）。全局头与层表布局与 RPKN 相同，
+    // wave 层同样是 i16 min/max，所以下面按 RPKM/RPKL 分支取宽度的逻辑不用改：
+    // QPK1 天然落进与 RPKN 相同的 else 分支。
+    const isNative = magic === 'QPK1';
+    if (!isNative && !['RPKM', 'RPKN', 'RPKL'].includes(magic)) return null;
     const channels = bytes[4];
     const mipmapCount = bytes[5];
     if (!channels || !mipmapCount) return null;
@@ -730,7 +735,9 @@
       const division = view.getInt32(headerOffset, true);
       const peakCount = view.getInt32(headerOffset + 4, true);
       if (peakCount < 0) return null;
-      const kind = division === -'s'.charCodeAt(0)
+      const kind = division === -'m'.charCodeAt(0)
+        ? 'self-wave'
+        : division === -'s'.charCodeAt(0)
         ? 'spectral'
         : division === -'g'.charCodeAt(0)
           ? 'spectrogram'
@@ -797,6 +804,11 @@
             spectral[peak * 2 + 1] = density;
           }
           spectralMips.push({ mip, data: spectral });
+          continue;
+        }
+        if (mip.kind === 'self-wave') {
+          need(8 + mip.peakCount * 2);
+          offset += 8 + mip.peakCount * 2;
           continue;
         }
         // 跳过当前编辑器不显示的 spectrogram/loudness 层，但仍准确推进
@@ -2679,7 +2691,7 @@
      * 当前真正被绘制的那条波形形状（含缺数据时的回退）。
      *
      * 抽成一个方法是为了让"看到什么就按什么判断"成为结构保证，而不是两处各自
-     * 复制一遍判断。音量门限扫描尤其需要它：若固定用自研缓存，用户在 ReaPeaks
+     * 复制一遍判断。音量门限扫描尤其需要它：若固定用自研缓存，用户在 reapeaks
      * 形状上调好的门限就和实际参与判断的包络不是同一条曲线，而且自研链先重采样到
      * 1000 Hz，带限之外的瞬态会被整块削平（实测单样本满幅脉冲 8 个里一个都检不到），
      * 拿它做静音门限会偏激进。
@@ -4122,7 +4134,7 @@
       };
       const onMove = (moveEvent) => {
         if (!(moveEvent.buttons & 1)) { cleanup(); return; }
-        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= 3) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) >= POINTER_DRAG_THRESHOLD_PX) {
           moved = true;
           if (!dragging) {
             dragging = true;
@@ -4862,12 +4874,14 @@
         index,
         edge,
         row,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
         originalGaps: gaps.map((gap) => ({ ...gap })),
         nextGaps: gaps.map((gap) => ({ ...gap })),
         captureTarget: event.currentTarget,
         changed: false,
+        moved: false,
       };
-      event.currentTarget.classList.add('dragging');
       event.currentTarget.setPointerCapture?.(event.pointerId);
       window.addEventListener('pointermove', this._gapBoundaryMove = (moveEvent) => this.moveGapBoundaryDrag(moveEvent));
       window.addEventListener('pointerup', this._gapBoundaryEnd = (upEvent) => this.endGapBoundaryDrag(upEvent), { once: true });
@@ -4896,7 +4910,6 @@
         changed: false,
         moved: false,
       };
-      captureTarget.classList.add('dragging');
       captureTarget.setPointerCapture?.(event.pointerId);
       window.addEventListener('pointermove', this._gapMoveMove = (moveEvent) => this.moveGapMoveDrag(moveEvent));
       window.addEventListener('pointerup', this._gapMoveEnd = (upEvent) => this.endGapMoveDrag(upEvent), { once: true });
@@ -4915,12 +4928,14 @@
     moveGapMoveDrag(event) {
       const drag = this.gapMoveDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
-      event.preventDefault();
-      const dx = event.clientX - drag.startClientX;
-      const dy = event.clientY - drag.startClientY;
-      if (dx * dx + dy * dy >= 9) {
+      if (!drag.moved) {
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (dx * dx + dy * dy < POINTER_DRAG_THRESHOLD_PX ** 2) return;
         drag.moved = true;
+        drag.captureTarget.classList.add('dragging');
       }
+      event.preventDefault();
       const pointerMs = this.timeFromPointerUnbounded(event, drag.row);
       const deltaMs = roundMs(pointerMs - drag.startPointerMs);
       drag.targetGap = this.gapMoveTarget(drag.originalGaps[drag.index], deltaMs);
@@ -5031,6 +5046,7 @@
     previewGapBoundaryDrag(drag) {
       this.clearGapBoundaryPreview();
       this.refreshGapBlocks(drag.originalGaps);
+      if (!drag.moved) return;
       const original = drag.originalGaps[drag.index];
       if (!original) return;
       const anchor = drag.edge === 'start' ? original.end - 1 : original.start + 1;
@@ -5073,6 +5089,13 @@
     moveGapBoundaryDrag(event) {
       const drag = this.gapBoundaryDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.moved) {
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (dx * dx + dy * dy < POINTER_DRAG_THRESHOLD_PX ** 2) return;
+        drag.moved = true;
+        drag.captureTarget.classList.add('dragging');
+      }
       event.preventDefault();
       const valueMs = clamp(
         roundMs(this.timeFromPointerUnbounded(event, drag.row)),
@@ -5125,12 +5148,14 @@
       this.gapRangeDrag = {
         pointerId: event.pointerId,
         row,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
         startMs,
         endMs: startMs,
         removed,
+        moved: false,
         previews: [],
       };
-      this.layoutGapRangePreview(this.gapRangeDrag);
       row.setPointerCapture?.(event.pointerId);
       window.addEventListener('pointermove', this._gapRangeMove = (moveEvent) => this.moveGapRangeDrag(moveEvent));
       window.addEventListener('pointerup', this._gapRangeEnd = (upEvent) => this.endGapRangeDrag(upEvent), { once: true });
@@ -5150,6 +5175,11 @@
     }
 
     layoutGapRangePreview(drag) {
+      if (!drag.moved) {
+        drag.previews = [];
+        this.clearGapRangePreviews();
+        return;
+      }
       const start = Math.min(drag.startMs, drag.endMs);
       const end = Math.max(drag.startMs, drag.endMs);
       const previews = [];
@@ -5194,6 +5224,12 @@
     moveGapRangeDrag(event) {
       const drag = this.gapRangeDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.moved) {
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (dx * dx + dy * dy < POINTER_DRAG_THRESHOLD_PX ** 2) return;
+        drag.moved = true;
+      }
       event.preventDefault();
       drag.endMs = this.gapRangePointerTime(event, drag.row);
       this.layoutGapRangePreview(drag);
@@ -5208,7 +5244,7 @@
       try { drag.row.releasePointerCapture?.(event.pointerId); } catch (_) {}
       this.clearGapRangePreviews();
       this.gapRangeDrag = null;
-      if (event.type === 'pointercancel') return;
+      if (event.type === 'pointercancel' || !drag.moved) return;
       const start = roundMs(Math.min(drag.startMs, drag.endMs));
       const end = roundMs(Math.max(drag.startMs, drag.endMs));
       if (end - start < ROUND_MS) return;

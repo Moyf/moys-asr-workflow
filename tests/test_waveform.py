@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import math
 import os
 import shutil
@@ -21,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 import edit  # noqa: E402
 from maw import gui_config  # noqa: E402
+from maw import mopeaks  # noqa: E402
 from maw import waveform as waveform_module  # noqa: E402
 
 
@@ -94,111 +94,137 @@ class WaveformExtractionTests(unittest.TestCase):
         self.media_path.write_bytes(self.media_path.read_bytes() + b"\x00\x00")
         self.assertFalse(waveform_module.waveform_matches_media(payload, self.media_path))
 
-    def test_sidecar_waveform_is_reused_when_project_has_no_embedded_cache(self) -> None:
+    def test_mopeaks_cache_is_reused_when_project_has_no_embedded_cache(self) -> None:
+        # 波形缓存的唯一落点是 mopeaks 二进制容器；命中它就不该再碰 ffmpeg。
         payload = {
             "schema": waveform_module.WAVEFORM_SCHEMA,
             "encoding": waveform_module.WAVEFORM_ENCODING,
             "peaks_per_second": 100,
+            "sample_rate": 1000,
+            "division": 10,
             "peak_count": 1,
             "duration_ms": 10,
             "data": "AAA=",
             "source": waveform_module.media_signature(self.media_path),
         }
-        with _patch_output_config():
-            sidecar = waveform_module.waveform_sidecar_path(self.media_path)
-            waveform_module.save_waveform_sidecar(payload, self.media_path)
-            self.assertTrue(sidecar.exists())
-            self.assertNotIn(b"\r\n", sidecar.read_bytes())
-            self.assertEqual(waveform_module.load_waveform_sidecar(self.media_path), payload)
-            cached, extracted = waveform_module.load_or_extract_waveform(None, self.media_path)
-            self.assertEqual(cached, payload)
-            self.assertFalse(extracted)
+        mopeaks.save_mopeaks(payload, self.media_path)
+        self.assertTrue(mopeaks.mopeaks_path(self.media_path).exists())
+        with mock.patch.object(waveform_module, "extract_waveform") as extractor:
+            cached, extracted = waveform_module.load_or_extract_waveform(
+                None, self.media_path
+            )
+        extractor.assert_not_called()
+        self.assertFalse(extracted)
+        self.assertEqual(cached["data"], payload["data"])
 
-    def test_waveform_sidecar_writes_into_maw_directory(self) -> None:
-        """波形是可重建缓存：sidecar 默认落 _maw，不再污染媒体所在目录。"""
+    def test_default_track_cache_is_used_only_after_selected_track_extraction_fails(self) -> None:
         payload = {
             "schema": waveform_module.WAVEFORM_SCHEMA,
             "encoding": waveform_module.WAVEFORM_ENCODING,
             "peaks_per_second": 100,
+            "sample_rate": 1000,
+            "division": 10,
             "peak_count": 1,
             "duration_ms": 10,
             "data": "AAA=",
             "source": waveform_module.media_signature(self.media_path),
         }
-        with _patch_output_config():
-            sidecar = waveform_module.waveform_sidecar_path(self.media_path)
-            self.assertEqual(sidecar, self.root / "_maw" / "tone.waveform.json")
-            waveform_module.save_waveform_sidecar(payload, self.media_path)
-            self.assertTrue((self.root / "_maw" / "tone.waveform.json").is_file())
-            # 旧媒体旁位置不写入、不迁移
-            self.assertFalse((self.root / "tone.waveform.json").exists())
-
-    def test_waveform_sidecar_uses_per_video_maw_when_preferred(self) -> None:
-        payload = {
-            "schema": waveform_module.WAVEFORM_SCHEMA,
-            "encoding": waveform_module.WAVEFORM_ENCODING,
-            "peaks_per_second": 100,
-            "peak_count": 1,
-            "duration_ms": 10,
-            "data": "AAA=",
-            "source": waveform_module.media_signature(self.media_path),
-        }
-        with _patch_output_config(per_video=True):
-            sidecar = waveform_module.waveform_sidecar_path(self.media_path)
-            self.assertEqual(sidecar, self.root / "tone_maw" / "tone.waveform.json")
-            waveform_module.save_waveform_sidecar(payload, self.media_path)
-            self.assertTrue(sidecar.is_file())
-            self.assertEqual(waveform_module.load_waveform_sidecar(self.media_path), payload)
-
-    def test_load_waveform_sidecar_reads_legacy_media_adjacent_path(self) -> None:
-        """旧位置缓存兼容读取：媒体旁的 .waveform.json 仍能被加载。"""
-        payload = {
-            "schema": waveform_module.WAVEFORM_SCHEMA,
-            "encoding": waveform_module.WAVEFORM_ENCODING,
-            "peaks_per_second": 100,
-            "peak_count": 1,
-            "duration_ms": 10,
-            "data": "AAA=",
-            "source": waveform_module.media_signature(self.media_path),
-        }
-        legacy = self.root / "tone.waveform.json"
-        legacy.write_text(
-            json.dumps(payload, ensure_ascii=False) + "\n",
-            encoding="utf-8",
+        mopeaks.save_mopeaks(
+            payload,
+            self.media_path,
+            audio_track=1,
+            default_audio_track=1,
         )
-        with _patch_output_config():
-            self.assertEqual(waveform_module.load_waveform_sidecar(self.media_path), payload)
-            cached, extracted = waveform_module.load_or_extract_waveform(None, self.media_path)
-            self.assertEqual(cached, payload)
-            self.assertFalse(extracted)
-            # 兼容读取不迁移：只读旧文件，不写 _maw
-            self.assertFalse((self.root / "_maw" / "tone.waveform.json").exists())
 
-    def test_load_waveform_sidecar_prefers_maw_over_legacy_position(self) -> None:
-        """同时存在新旧两份时，_maw（新位置）优先于媒体旁旧缓存。"""
-        new_payload = {
+        with mock.patch.object(
+            waveform_module,
+            "extract_waveform",
+            side_effect=waveform_module.WaveformError("selected track unavailable"),
+        ) as extractor:
+            cached, extracted = waveform_module.load_or_extract_waveform(
+                None,
+                self.media_path,
+                audio_track=0,
+                default_audio_track=1,
+            )
+
+        extractor.assert_called_once_with(
+            self.media_path,
+            peaks_per_second=waveform_module.DEFAULT_PEAKS_PER_SECOND,
+            ffmpeg_bin=None,
+            audio_track=0,
+        )
+        self.assertFalse(extracted)
+        self.assertEqual(cached["audio_track"], 1)
+
+    def test_default_track_fallback_does_not_block_selected_track_rebuild(self) -> None:
+        fallback = {
             "schema": waveform_module.WAVEFORM_SCHEMA,
             "encoding": waveform_module.WAVEFORM_ENCODING,
             "peaks_per_second": 100,
+            "sample_rate": 1000,
+            "division": 10,
             "peak_count": 1,
             "duration_ms": 10,
             "data": "AAA=",
             "source": waveform_module.media_signature(self.media_path),
         }
-        legacy_payload = dict(new_payload)
-        legacy_payload["peak_count"] = 2
-        legacy_payload["data"] = "AAA="  # 结构合法即可，用于区分新旧两份
-        legacy = self.root / "tone.waveform.json"
-        legacy.write_text(
-            json.dumps(legacy_payload, ensure_ascii=False) + "\n",
-            encoding="utf-8",
+        selected = {**fallback, "audio_track": 0, "data": "AQI="}
+        mopeaks.save_mopeaks(
+            fallback,
+            self.media_path,
+            audio_track=1,
+            default_audio_track=1,
         )
-        with _patch_output_config():
-            waveform_module.save_waveform_sidecar(new_payload, self.media_path)
-            self.assertEqual(waveform_module.load_waveform_sidecar(self.media_path), new_payload)
 
+        with (
+            mock.patch.object(
+                waveform_module,
+                "extract_waveform",
+                return_value=selected,
+            ) as extractor,
+            mock.patch.object(mopeaks, "save_mopeaks") as save,
+        ):
+            cached, extracted = waveform_module.load_or_extract_waveform(
+                None,
+                self.media_path,
+                audio_track=0,
+                default_audio_track=1,
+            )
+
+        extractor.assert_called_once()
+        save.assert_called_once_with(
+            selected,
+            self.media_path,
+            audio_track=0,
+            default_audio_track=1,
+        )
+        self.assertTrue(extracted)
+        self.assertIs(cached, selected)
+
+    def test_json_sidecar_helpers_are_gone(self) -> None:
+        """回归钉：waveform.json 已被彻底去掉，别再让它悄悄回来。
+
+        上游曾把它升级为「_maw 布局 + 3 处兼容读」；本次任务的取舍是只要一种缓存，
+        代价是老用户第一次打开重抽一次 ffmpeg。写侧与读侧都必须没有第二条路。
+        """
+        for name in (
+            "waveform_sidecar_path",
+            "_waveform_sidecar_candidates",
+            "load_waveform_sidecar",
+            "save_waveform_sidecar",
+        ):
+            self.assertFalse(hasattr(waveform_module, name), f"{name} 应已删除")
+        source = (Path(__file__).resolve().parents[1] / "maw" / "waveform.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("waveform.json", source)
+        self.assertNotIn("output_naming", source)
+
+    # 这条要真跑 ffmpeg 抽一次波形：CI 的 Windows runner 没装 ffmpeg，
+    # 少了这个守卫它就会以 WaveformError 失败（本地有 ffmpeg 看不出来）。
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
-    def test_embed_waveform_adds_valid_payload_without_sidecar(self) -> None:
+    def test_embed_waveform_adds_valid_payload_without_writing_cache(self) -> None:
         project = {"segments": []}
 
         result = waveform_module.embed_waveform(project, self.media_path)
@@ -211,7 +237,7 @@ class WaveformExtractionTests(unittest.TestCase):
         self.assertEqual(embedded["encoding"], waveform_module.WAVEFORM_ENCODING)
         self.assertGreater(embedded["peak_count"], 0)
         self.assertEqual(embedded["source"], waveform_module.media_signature(self.media_path))
-        self.assertFalse(waveform_module.waveform_sidecar_path(self.media_path).exists())
+        self.assertFalse(mopeaks.mopeaks_path(self.media_path).exists())
 
     def test_embed_waveform_leaves_project_unchanged_when_extraction_fails(self) -> None:
         project = {"segments": [], "waveform": {"stale": True}}
@@ -377,6 +403,15 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('const SERVER_CONFIG = null;', page)
         self.assertIn('id="editor-settings-toggle"', page)
         self.assertIn('id="editor-settings-panel"', page)
+        self.assertIn('id="editor-settings-drag-handle"', page)
+        self.assertIn('id="editor-settings-close"', page)
+        # 全局设置窗口：左侧垂直标签页，八个分区一一对应内容页
+        for settings_section in ('general', 'subtitle-preview', 'timebase', 'split-merge', 'export', 'save', 'sticker', 'easter-eggs'):
+            self.assertIn(f'id="editor-settings-tab-{settings_section}"', page)
+            self.assertIn(f'id="editor-settings-page-{settings_section}"', page)
+        # 全局设置 8 个导航标签；帮助面板垂直标签页复用同款导航类，另有 7 个
+        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 15)
+        self.assertEqual(page.count('class="editor-settings-page"'), 8)
         self.assertIn('id="cue-editor-settings-toggle"', page)
         self.assertIn('id="cue-editor-settings-panel"', page)
         # 编辑区 header 不再显示「编辑」模块标签，只保留快捷键提示
@@ -397,37 +432,60 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('具体用法详见帮助的「微调字幕」区', page)
         waveform_pane_start = page.index('<section class="waveform-pane"')
         editor_settings = page[page.index('id="editor-settings-panel"'):waveform_pane_start]
-        editor_settings_panel_end = page.index('</section>', page.index('id="editor-settings-panel"'))
+        editor_settings_panel_end = page.index('</section>\n\n<input type="file" id="open-project-file"', page.index('id="editor-settings-panel"'))
         editor_settings_panel = page[page.index('id="editor-settings-panel"'):editor_settings_panel_end]
         self.assertNotIn('音频波形区', editor_settings)
         self.assertNotIn('静音空隙', editor_settings)
         self.assertNotIn('id="cue-move-step"', editor_settings_panel)
-        self.assertIn('<span class="editor-settings-title">通用操作</span>', page)
-        self.assertIn('<span class="editor-settings-title">表情包</span>', page)
-        self.assertIn('<span class="editor-settings-title">彩蛋</span>', page)
+        # 分区标题由左侧标签页承担，设置窗口内不再重复书写页面标题
+        for section_title in ('通用操作', '时间基准', '拆分与合并', '导出', '保存', '表情包', '彩蛋'):
+            self.assertNotIn(f'<span class="editor-settings-title">{section_title}</span>', page)
         self.assertNotIn('<span class="editor-settings-title">其他</span>', page)
         self.assertIn('id="sticker-root-btn"', page)
         self.assertIn('id="sticker-otio-export-mode"', page)
         self.assertIn('id="sticker-otio-export-mode-hint"', page)
         self.assertIn('选择引用原始表情包素材；选择便携模式时，服务器会将素材复制到工程同目录。', page)
         self.assertLess(page.index('id="editor-settings-panel"'), page.index('id="sticker-root-btn"'))
-        sticker_group_start = page.index('<span class="editor-settings-title">表情包</span>')
-        sticker_group_end = page.index('\n  </div>\n</section>', sticker_group_start)
-        sticker_group = page[sticker_group_start:sticker_group_end]
-        self.assertIn('<span class="editor-settings-title">彩蛋</span>', sticker_group)
+        sticker_page_start = page.index('id="editor-settings-page-sticker"')
+        easter_eggs_page_start = page.index('id="editor-settings-page-easter-eggs"')
+        self.assertLess(sticker_page_start, easter_eggs_page_start)
         self.assertNotIn('<span class="editor-settings-title">🥷🏻</span>', page)
-        self.assertEqual(page.count('class="editor-settings-group"'), 4)
+        # 拆分与合并分区：「字幕语言类型」为第二个卡片，heading 置于卡片外上方
+        self.assertIn('class="editor-settings-group split-language-type-group" role="group" aria-labelledby="split-language-type-title"', page)
+        self.assertIn('<span class="editor-settings-group-heading" id="split-language-type-title">字幕语言类型</span>', page)
+        self.assertIn('字幕语言类型</span>\n  <div class="editor-settings-group split-language-type-group"', page)
+        self.assertLess(page.index('id="split-use-word-timestamps-hint"'), page.index('id="split-language-type-title"'))
+        self.assertNotIn('split-language-type-field', page)
+        self.assertNotIn('editor-settings-item split-language-type-title', page)
+        self.assertIn('对于双语字幕，可以在「多重字幕」中单独配置两种字幕的语言类型。', page)
+        self.assertEqual(
+            page.count('class="editor-settings-group"')
+            + page.count('class="editor-settings-group playback-controls-group"')
+            + page.count('class="editor-settings-group subtitle-preview-style-group"'),
+            10,
+        )
+        self.assertEqual(page.count('class="editor-settings-group split-language-type-group"'), 1)
         self.assertLess(page.index('id="cue-move-step"'), page.index('<span class="settings-panel-title waveform-settings-title">静音空隙</span>'))
         self.assertIn('字幕（编辑状态下）拆分按键', page)
         self.assertNotIn('波形区拆分按键', page)
         self.assertEqual(page.count('class="editor-settings-item editor-settings-list-fields editor-settings-display-row"'), 0)
-        self.assertIn('class="settings-panel-section media-preview-settings-section"', page)
+        self.assertNotIn('subtitle-preview-settings-toggle', page)
+        self.assertNotIn('subtitle-preview-settings-panel', page)
+        self.assertIn('id="overlay-toggle"', page)
+        self.assertIn('id="sticker-overlay-toggle"', page)
         self.assertIn('id="hover-seek-preview"', page)
-        self.assertIn('class="settings-panel-title">预览字幕样式</span>', page)
+        self.assertIn('id="subtitle-preview-style-title">字幕预览</span>', page)
         self.assertIn('id="main-subtitle-preview-settings"', page)
         self.assertIn('id="extension-subtitle-preview-settings"', page)
-        self.assertEqual(page.count('class="subtitle-preview-setting-pair"'), 4)
-        self.assertEqual(page.count('class="subtitle-preview-setting-cell"'), 8)
+        self.assertEqual(page.count('class="subtitle-preview-setting-pair"'), 2)
+        self.assertEqual(page.count('class="subtitle-preview-setting-cell"'), 4)
+        self.assertIn('id="subtitle-color-style-control"', page)
+        self.assertIn('id="subtitle-color-style"', page)
+        self.assertIn('value="underline"', page)
+        self.assertNotIn('value="shadow"', page)
+        self.assertIn('>颜色样式</span>', page)
+        self.assertIn('>文字大小</span>', page)
+        self.assertNotIn('>字幕大小</span>', page)
         self.assertIn('文字颜色', page)
         self.assertIn('背景颜色', page)
         self.assertIn('背景不透明度', page)
@@ -436,6 +494,29 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('J 倒放（无反向声音），K 停止并重置 1×；停止时按 K 以 1×播放。速度档位为 1×、2×、4×、8×、16×。', page)
         self.assertIn('id="jkl-playback-mode"', page)
         self.assertIn('id="media-seek-step" min="10" max="60000" step="100" value="1000"', page)
+        general_page_start = page.index('id="editor-settings-page-general"')
+        subtitle_preview_page_start = page.index('id="editor-settings-page-subtitle-preview"')
+        timebase_page_start = page.index('id="editor-settings-page-timebase"')
+        general_page = page[general_page_start:subtitle_preview_page_start]
+        video_preview_page = page[subtitle_preview_page_start:timebase_page_start]
+        # 「播放控制」组已从「通用操作」移入「视频预览」
+        self.assertNotIn('id="jkl-playback-mode"', general_page)
+        self.assertNotIn('id="media-seek-step"', general_page)
+        self.assertIn('id="jkl-playback-mode"', video_preview_page)
+        self.assertIn('id="media-seek-step"', video_preview_page)
+        self.assertIn('id="hover-seek-preview"', video_preview_page)
+        self.assertIn('id="overlay-toggle"', video_preview_page)
+        self.assertIn(
+            'class="editor-settings-group playback-controls-group" role="group" aria-labelledby="playback-controls-title"',
+            video_preview_page,
+        )
+        self.assertIn('<span class="editor-settings-group-heading" id="playback-controls-title">播放控制</span>', video_preview_page)
+        self.assertIn(
+            'class="editor-settings-group subtitle-preview-style-group" role="group" aria-labelledby="subtitle-preview-style-title"',
+            video_preview_page,
+        )
+        self.assertNotIn('<span class="editor-settings-title">播放控制</span>', video_preview_page)
+        self.assertEqual(general_page.count('class="editor-settings-group"'), 1)
         self.assertIn('class="media-seek-icon"', page)
         self.assertNotIn('>−5<', page)
         self.assertIn('mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS', page)
@@ -500,7 +581,11 @@ class EditorAssetTests(unittest.TestCase):
             page,
         )
         self.assertIn('其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 😝', page)
-        self.assertNotIn('id="jkl-playback-mode"', editor_settings_panel)
+        self.assertIn('id="jkl-playback-mode"', editor_settings_panel)
+        self.assertIn('id="media-seek-step"', editor_settings_panel)
+        # JKL/跳转时长与字幕样式都位于「视频预览」分区页内
+        self.assertGreater(page.index('id="jkl-playback-mode"'), page.index('id="editor-settings-page-subtitle-preview"'))
+        self.assertGreater(page.index('id="subtitle-font-size"'), page.index('id="editor-settings-page-subtitle-preview"'))
         self.assertIn('id="help-split-key"', page)
         self.assertIn('id="help-waveform-split-key"', page)
         self.assertIn('按当前时间基准拆分字幕', page)
@@ -539,10 +624,10 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="help-tab-panel-fine-tuning"', page)
         self.assertIn('id="help-tab-panel-gap"', page)
         self.assertIn('id="help-tab-panel-batch"', page)
-        self.assertIn('id="help-advanced-toggle"', page)
-        self.assertIn('id="help-advanced-tabs"', page)
-        self.assertIn('aria-label="常用帮助分类"', page)
-        self.assertIn('aria-label="进阶帮助分类"', page)
+        self.assertIn('aria-orientation="vertical" aria-label="帮助分区"', page)
+        self.assertIn('class="help-nav-group-label"', page)
+        self.assertNotIn('id="help-advanced-toggle"', page)
+        self.assertNotIn('id="help-advanced-tabs"', page)
         self.assertNotIn('id="help-tab-panel-advanced"', page)
         self.assertIn('class="help-tip-callout"', page)
         self.assertIn('class="help-category"', page)
@@ -662,7 +747,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-navigation'", page)
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-sticker'", page)
         self.assertIn('class="toolbar main-toolbar"', page)
-        self.assertIn('class="toolbar player-toolbar"', page)
+        self.assertNotIn('class="toolbar player-toolbar"', page)
         self.assertIn('class="toolbar cue-list-toolbar"', page)
         self.assertIn('class="toolbar waveform-toolbar"', page)
         self.assertNotIn('class="toolbar row-subtitle"', page)
@@ -807,31 +892,24 @@ class EditorAssetTests(unittest.TestCase):
         gap_menu_end = page.index('<span class="dropdown" id="extra-export-dropdown">', gap_menu_start)
         gap_menu = page[gap_menu_start:gap_menu_end]
         separator = '<div class="dropdown-separator" role="separator"></div>'
-        self.assertEqual(gap_menu.count(separator), 2)
-        first_separator = gap_menu.index(separator)
-        second_separator = gap_menu.index(separator, first_separator + len(separator))
-        self.assertLess(gap_menu.index('id="download-gap-removed-color-srt"'), first_separator)
-        self.assertLess(first_separator, gap_menu.index('id="download-gap-removed-otio"'))
-        self.assertLess(gap_menu.index('id="download-gap-removed-otioz"'), second_separator)
-        self.assertLess(
-            gap_menu.index('id="download-gap-removed-sticker-otioz"'),
-            second_separator,
-        )
-        self.assertLess(second_separator, gap_menu.index('id="download-gap-removed-ffconcat"'))
+        # 分组分隔线已移除（二级子菜单本身承担分组），仅保留 OTIO 子菜单内选项开关前的一条。
+        self.assertEqual(gap_menu.count(separator), 1)
+        only_separator = gap_menu.index(separator)
+        self.assertLess(gap_menu.index('id="download-gap-removed-sticker-otioz"'), only_separator)
+        self.assertLess(only_separator, gap_menu.index('data-otio-export-option'))
+        self.assertLess(only_separator, gap_menu.index('id="download-gap-removed-ffconcat"'))
 
         extra_menu_start = page.index('<div class="dropdown-menu" id="extra-export-menu" role="menu">')
         extra_menu_end = page.index('\n      </div>\n    </span>\n  </span>\n</div>', extra_menu_start)
         extra_menu = page[extra_menu_start:extra_menu_end]
-        self.assertEqual(extra_menu.count(separator), 3)
-        first_separator = extra_menu.index(separator)
-        second_separator = extra_menu.index(separator, first_separator + len(separator))
-        third_separator = extra_menu.index(separator, second_separator + len(separator))
-        self.assertLess(extra_menu.index('id="download-fcp7-export"'), first_separator)
-        self.assertLess(first_separator, extra_menu.index('id="download-otio"'))
-        self.assertLess(extra_menu.index('id="download-sticker-otioz"'), second_separator)
-        self.assertLess(second_separator, extra_menu.index('id="download-lottie"'))
-        self.assertLess(extra_menu.index('id="download-ograf"'), third_separator)
-        self.assertLess(third_separator, extra_menu.index('id="download-plain-text"'))
+        # 分组分隔线已移除（二级子菜单本身承担分组），仅保留 OTIO 子菜单内选项开关前的一条。
+        self.assertEqual(extra_menu.count(separator), 1)
+        only_separator = extra_menu.index(separator)
+        self.assertLess(extra_menu.index('id="download-fcp7-export"'), only_separator)
+        self.assertLess(extra_menu.index('id="download-sticker-otioz"'), only_separator)
+        self.assertLess(only_separator, extra_menu.index('data-otio-export-option'))
+        self.assertLess(only_separator, extra_menu.index('id="download-lottie"'))
+        self.assertLess(extra_menu.index('id="download-ograf"'), extra_menu.index('id="download-plain-text"'))
         self.assertLess(extra_menu.index('id="download-plain-text"'), extra_menu.index('id="download-resolve-json"'))
         self.assertIn('showGapContextMenu?.(event.clientX, event.clientY, index)', page)
         self.assertIn("gap.removed === false ? '移除区段' : '恢复区段'", page)
@@ -846,16 +924,23 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="subtitle-font-family-scan"', page)
         self.assertIn('id="subtitle-background-color"', page)
         self.assertIn('id="subtitle-background-alpha"', page)
+        self.assertIn('id="subtitle-speaker-label-separator"', page)
+        self.assertLess(page.index('id="subtitle-speaker-label-blue"'), page.index('id="subtitle-speaker-label-separator"'))
         self.assertIn('queryLocalFonts', page)
         self.assertIn('var(--font-sans)', page)
-        self.assertIn('id="subtitle-preview-settings-toggle"', page)
-        self.assertIn('id="subtitle-preview-settings-panel"', page)
+        self.assertNotIn('id="subtitle-preview-settings-toggle"', page)
+        self.assertNotIn('id="subtitle-preview-settings-panel"', page)
         self.assertIn('class="subtitle-preview-setting-row"', page)
         self.assertNotIn('<span class="editor-settings-title">字幕预览</span>', page)
         self.assertIn('getSubtitleAppearance()', page)
         self.assertIn('font_size', page)
         self.assertIn('font_family', page)
         self.assertIn('background_alpha', page)
+        self.assertIn('color_style', page)
+        self.assertIn('value="stroke"', page)
+        self.assertNotIn('下划线 + 文字颜色', page)
+        self.assertIn('speakerLabelText', page)
+        self.assertNotIn('overlayMainSpeakerSeparatorNode', page)
         self.assertIn('accept=".json,.mosp,application/json"', page)
         self.assertNotIn('id="open-project-file" accept=".json,.mosp,application/json" multiple', page)
         self.assertNotIn("confirm('是否同时选择该工程关联的媒体文件？", page)
@@ -991,7 +1076,6 @@ class EditorAssetTests(unittest.TestCase):
             "  overflow-y: auto;",
             styles,
         )
-
 
 if __name__ == "__main__":
     unittest.main()

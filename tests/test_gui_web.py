@@ -21,7 +21,12 @@ from urllib.error import HTTPError, URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
+
+def _canonical_test_path(value: str | os.PathLike[str]) -> str:
+    """Compare paths after resolving platform-specific aliases and symlinks."""
+    return os.path.normcase(os.path.realpath(os.fspath(value)))
+
+from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _launcher_icon_path, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
@@ -267,6 +272,80 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "ocrRuntimePath")
         self.assertEqual(result["code"], "ocr_runtime_path_invalid")
+
+    def test_save_local_settings_persists_runtime_root_and_rescans_status(self) -> None:
+        runtime_root = self.root / "local-runtime"
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            result = self.api.save_local_settings({"runtimePath": str(runtime_root)})
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["runtimePath"], str(runtime_root.resolve()))
+            self.assertEqual(result["runtime"]["path"], str(runtime_root.resolve()))
+            self.assertEqual(os.environ["MAW_LOCAL_RUNTIME_ROOT"], str(runtime_root.resolve()))
+            self.assertEqual(self.api.get_local_runtime()["path"], str(runtime_root.resolve()))
+
+        self.assertIn(f"MAW_LOCAL_RUNTIME_ROOT={runtime_root.resolve()}", self.env_path.read_text(encoding="utf-8"))
+
+    def test_save_local_settings_rejects_file_runtime_path(self) -> None:
+        runtime_file = self.root / "local-runtime.txt"
+        runtime_file.write_text("not a directory", encoding="utf-8")
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            result = self.api.save_local_settings({"runtimePath": str(runtime_file)})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "localRuntimePath")
+        self.assertEqual(result["code"], "local_runtime_path_invalid")
+
+    def test_save_local_settings_empty_path_falls_back_to_default_root(self) -> None:
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(self.root / "custom")}, clear=False):
+            result = self.api.save_local_settings({"runtimePath": ""})
+
+            self.assertTrue(result["ok"])
+            self.assertNotIn("MAW_LOCAL_RUNTIME_ROOT", os.environ)
+
+        self.assertIn("MAW_LOCAL_RUNTIME_ROOT=\n", self.env_path.read_text(encoding="utf-8"))
+
+    def test_local_runtime_root_from_env_file_is_synced_on_api_start(self) -> None:
+        runtime_root = self.root / "local-from-env"
+        self.env_path.write_text(
+            f"MAW_MODEL_CACHE_ROOT=\nMAW_LOCAL_RUNTIME_ROOT={runtime_root}\n",
+            encoding="utf-8",
+        )
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            api = LauncherApi(paths=LauncherPaths(root=self.root, env_path=self.env_path, launcher_html=self.root / "launcher.html"), window_getter=lambda: None)
+            self.assertEqual(_canonical_test_path(os.environ["MAW_LOCAL_RUNTIME_ROOT"]), _canonical_test_path(runtime_root))
+            self.assertEqual(_canonical_test_path(api.get_local_runtime()["path"]), _canonical_test_path(runtime_root))
+
+    def test_local_runtime_supports_a_custom_root_directory(self) -> None:
+        """Given OCR-like custom folder support, When configuring local runtime, Then the same settings flow exists."""
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
+        env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+
+        self.assertIn('id="localRuntimePath"', page)
+        self.assertIn('id="pickLocalRuntimePath"', page)
+        self.assertIn('data-i18n="local_runtime_path_label"', page)
+        self.assertIn('id="localRuntimePathError"', page)
+        self.assertIn('bridge("save_local_settings", { runtimePath: value })', script)
+        self.assertIn('$("pickLocalRuntimePath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "runtime" });', script)
+        self.assertIn('bindDropField("localRuntimePath", "localRuntime")', script)
+        self.assertIn('localRuntime: ["localRuntimePath", "change"]', script)
+        self.assertIn('local_runtime_path_invalid: "The local runtime path cannot point to a file."', script)
+        self.assertIn("def save_local_settings(", backend)
+        self.assertIn('_error_result("localRuntimePath", "local_runtime_path_invalid", str(candidate))', backend)
+        self.assertIn('save_env(self.paths.env_path, {"MAW_LOCAL_RUNTIME_ROOT": str(candidate) if candidate else ""})', backend)
+        self.assertIn("_sync_local_runtime_root(self.paths.env_path)", backend)
+        self.assertIn("MAW_LOCAL_RUNTIME_ROOT=", env_example)
+        # 模型缓存链接行跟随主页面「模型保存目录」说明，而非设置运行时区块。
+        self.assertIn('id="localModelCachePathLine"', page)
+        self.assertGreater(page.index('id="localModelCachePathLine"'), page.index('data-i18n="local_model_cache_path_hint"'))
+        self.assertIn("function renderLocalModelCachePathLine(runtime)", script)
+        self.assertIn("renderLocalModelCachePathLine(runtime);", script)
+        self.assertNotIn('{ label: t("local_model_cache_path"), path: runtime.modelCachePath || "", payload: { kind: "model-cache" } },', script)
 
     def test_save_settings_rejects_file_as_model_cache_root(self) -> None:
         cache_file = self.root / "models.txt"
@@ -769,7 +848,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(json.loads(Path(str(result["projectPath"])).read_text(encoding="utf-8"))["segments"][0]["text"], "软件")
 
     def test_generate_waveform_project_creates_media_only_embedded_project(self) -> None:
-        """Given media, When generating waveform, Then a normalized cache-only project is written."""
+        """Given media, When generating waveform, Then a normalized project without inline caches is written."""
         media = self.root / "clip.wav"
         media.write_bytes(b"audio")
         embedded = {
@@ -793,7 +872,12 @@ class GuiWebBridgeTests(unittest.TestCase):
             )),
             mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=None, reapeaks_path=None)) as embed,
         ):
-            result = self.api.generate_waveform_project({"mediaPath": str(media), "generateSpectral": True, "audioTrack": "2"})
+            result = self.api.generate_waveform_project({
+                "mediaPath": str(media),
+                "generateSpectral": True,
+                "audioTrack": "2",
+                "defaultAudioTrack": "1",
+            })
 
         self.assertTrue(result["ok"])
         project_path = Path(str(result["projectPath"]))
@@ -802,7 +886,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         project = json.loads(project_path.read_text(encoding="utf-8"))
         self.assertEqual(project["segments"], [])
         self.assertEqual(project["media"], str(media.resolve()))
-        self.assertEqual(project["waveform"]["data"], "AQIDBA==")
+        # 工程去内联：波形缓存不再写进工程文件，只保留在 embed 结果的运行态里。
+        self.assertNotIn("waveform", project)
+        self.assertNotIn("spectral", project)
+        self.assertNotIn("waveform_reapeaks", project)
         embed.assert_called_once_with(
             {"media": str(media.resolve()), "segments": []},
             media.resolve(),
@@ -810,6 +897,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             generate_spectral=True,
             ffmpeg_bin=str(ffmpeg),
             audio_track=2,
+            default_audio_track=1,
         )
 
     def test_generate_waveform_project_rejects_invalid_embedded_waveform(self) -> None:
@@ -872,6 +960,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('const mediaPath = $("toolboxUtilityMediaPath").value.trim()', script)
         self.assertIn('id="toolboxGenerateSpectral" type="checkbox"', html)
         self.assertIn('generateSpectral: $("toolboxGenerateSpectral").checked', script)
+        self.assertIn("audioTrack: selectedToolboxAudioTrack()", script)
+        self.assertIn("defaultAudioTrack: defaultToolboxAudioTrack()", script)
         self.assertNotIn('generateSpectral: $("generateSpectral").checked', script)
         self.assertIn('id="generateWaveform"', html)
         self.assertIn('id="runWaveform"', html)
@@ -1002,8 +1092,12 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });", postprocess_script)
         self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
         self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
-        self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  grid-template-columns: minmax(108px, .32fr) minmax(0, 1fr);', styles)
+        self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  grid-template-columns: minmax(108px, .25fr) minmax(0, 1fr);', styles)
         self.assertIn('.toolbox-utility-tab-list {\n  grid-template-columns: 1fr;\n}', styles)
+        self.assertIn('$("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
+        self.assertIn('.toolbox-drawer.toolbox-utilities-active .toolbox-content {\n  display: flex;\n  flex-direction: column;', styles)
+        self.assertIn('.toolbox-utility-tabs {\n  overflow-y: auto;\n  min-block-size: 0;\n  overscroll-behavior: contain;\n  margin-top: 0;\n  padding: 4px;\n  scrollbar-width: none;\n}', styles)
+        self.assertIn('.toolbox-utility-panels {\n  min-width: 0;\n  min-block-size: 0;\n  overflow-y: auto;', styles)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
 
     def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
@@ -2137,7 +2231,10 @@ class GuiWebBridgeTests(unittest.TestCase):
 
     def test_start_server_reports_code_when_project_json_is_missing(self) -> None:
         """Given missing project JSON, When starting server, Then json_not_found code is returned."""
-        result = self.api.start_server({"jsonPath": str(self.root / "missing.json"), "mediaPath": "", "port": "8765"})
+        # 预探测必须隔离本机环境：开发者机器上该端口可能有无关进程应答，
+        # 会被误判为「服务器已在运行」而跳过 JSON 校验。
+        with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+            result = self.api.start_server({"jsonPath": str(self.root / "missing.json"), "mediaPath": "", "port": "8765"})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "jsonPath")
@@ -2313,7 +2410,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         project = self.root / "project.json"
         project.write_text('{"segments": []}\n', encoding="utf-8")
 
-        result = self.api.start_server({"jsonPath": str(project), "mediaPath": "", "port": "8765"})
+        # 同上：隔离本机端口占用，避免预探测误判服务器已在运行。
+        with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+            result = self.api.start_server({"jsonPath": str(project), "mediaPath": "", "port": "8765"})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "serverMediaPath")
@@ -2543,6 +2642,63 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["code"], "batch_items_invalid")
         self.assertIn("missing", result["detail"])
 
+    def test_batch_uses_each_media_default_audio_track_when_selection_is_omitted(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+
+        ffprobe = self.root / "ffprobe.exe"
+        with (
+            mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffprobe=ffprobe)),
+            mock.patch("maw.gui_web.resolve_default_audio_track", return_value=2) as resolve_default,
+            mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread,
+        ):
+            result = self.api.start_batch_transcription({
+                "items": [{"id": "clip", "mediaPath": str(media)}],
+                "settings": {"apiKey": "sk-test"},
+            })
+
+        self.assertTrue(result["ok"])
+        batch_items = thread.call_args.kwargs["args"][0]
+        request = batch_items[0].request
+        self.assertIsNotNone(request)
+        assert request is not None
+        self.assertEqual(request.audio_track, 2)
+        self.assertEqual(request.default_audio_track, 2)
+        resolve_default.assert_called_once_with(
+            media.resolve(),
+            None,
+            ffprobe_path=ffprobe,
+        )
+
+    def test_batch_preserves_an_explicit_zero_audio_track(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+
+        with (
+            mock.patch("maw.gui_web.resolve_default_audio_track") as resolve_default,
+            mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread,
+        ):
+            result = self.api.start_batch_transcription({
+                "items": [{"id": "clip", "mediaPath": str(media)}],
+                "settings": {
+                    "apiKey": "sk-test",
+                    "audioTrack": 0,
+                    "defaultAudioTrack": 2,
+                },
+            })
+
+        self.assertTrue(result["ok"])
+        request = thread.call_args.kwargs["args"][0][0].request
+        self.assertIsNotNone(request)
+        assert request is not None
+        self.assertEqual(request.audio_track, 0)
+        self.assertEqual(request.default_audio_track, 2)
+        resolve_default.assert_not_called()
+
     def test_local_request_skips_api_key_and_carries_engine_options(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -2712,7 +2868,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertFalse(result["renamed"])
-        self.assertEqual(result["path"], str(self.root / "_maw" / "clip.qwen-audio.srt"))
+        self.assertEqual(_canonical_test_path(result["path"]), _canonical_test_path(self.root / "_maw" / "clip.qwen-audio.srt"))
 
     def test_default_output_honours_attach_model_name_setting(self) -> None:
         """Given model-name attachment disabled, When previewing, Then the SRT filename carries no tag."""
@@ -2788,6 +2944,46 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertEqual(request.audio_track, 2)
 
+    def test_request_from_payload_carries_default_audio_track(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "audioTrack": "0",
+            "defaultAudioTrack": "2",
+        }, self.env_path)
+
+        self.assertEqual(request.audio_track, 0)
+        self.assertEqual(request.default_audio_track, 2)
+
+    def test_request_from_payload_leaves_missing_default_disposition_for_cli_probe(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }, self.env_path)
+
+        self.assertIsNone(request.default_audio_track)
+
+    def test_request_from_payload_treats_empty_default_audio_track_as_missing(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "defaultAudioTrack": "",
+        }, self.env_path)
+
+        self.assertIsNone(request.default_audio_track)
+
     def test_request_from_payload_rejects_negative_audio_track(self) -> None:
         media = self.root / "clip.mp4"
         media.write_bytes(b"media")
@@ -2801,6 +2997,21 @@ class GuiWebBridgeTests(unittest.TestCase):
             }, self.env_path)
 
         self.assertEqual(raised.exception.field, "audioTrack")
+        self.assertEqual(raised.exception.code, "audio_track_invalid")
+
+    def test_request_from_payload_rejects_negative_default_audio_track(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        with self.assertRaises(PreflightError) as raised:
+            _request_from_payload({
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "apiKey": "sk-test",
+                "defaultAudioTrack": -1,
+            }, self.env_path)
+
+        self.assertEqual(raised.exception.field, "defaultAudioTrack")
         self.assertEqual(raised.exception.code, "audio_track_invalid")
 
     def test_request_from_payload_passes_segmentation_options(self) -> None:
@@ -3325,6 +3536,28 @@ class _FakeLauncherWindow:
 
 @final
 class LauncherRuntimeTests(unittest.TestCase):
+    def test_launcher_icon_uses_bundle_icns_in_frozen_macos_app(self) -> None:
+        """打包版 macOS Launcher 使用 App 内的 ICNS 图标。"""
+
+        executable = "/Applications/MAW.app/Contents/MacOS/MAW"
+        with (
+            mock.patch("maw.gui_web.sys.platform", "darwin"),
+            mock.patch.object(sys, "frozen", True, create=True),
+            mock.patch.object(sys, "executable", executable),
+        ):
+            icon = _launcher_icon_path()
+
+        self.assertEqual(icon, Path(executable).resolve().parent.parent / "Resources" / "maw.icns")
+
+    def test_launcher_icon_keeps_platform_specific_source_assets(self) -> None:
+        """源码运行时 macOS 使用 ICNS，其他平台继续使用 ICO。"""
+
+        with mock.patch("maw.gui_web.asset_path", side_effect=lambda relative: Path(relative)):
+            with mock.patch("maw.gui_web.sys.platform", "darwin"):
+                self.assertEqual(_launcher_icon_path(), Path("assets/maw.icns"))
+            with mock.patch("maw.gui_web.sys.platform", "win32"):
+                self.assertEqual(_launcher_icon_path(), Path("assets/maw.ico"))
+
     def test_run_app_passes_debug_and_controls_automatic_devtools(self) -> None:
         paths = LauncherPaths(
             root=Path("launcher-root"),
@@ -3887,8 +4120,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
-        self.assertIn('generate_spectral: "生成 ReaPeaks 频谱数据"', script)
-        self.assertIn('generate_spectral: "Generate ReaPeaks spectral data"', script)
+        self.assertIn('generate_spectral: "生成 reapeaks 频谱数据"', script)
+        self.assertIn('generate_spectral: "Generate reapeaks spectral data"', script)
         self.assertIn('segmentation: "字幕切句"', script)
         self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
         self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
@@ -4278,6 +4511,78 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('event.type === "localRuntimeReady"', script)
         self.assertIn('def install_local_runtime(', backend)
         self.assertIn('def cancel_local_runtime(', backend)
+
+    def test_local_runtime_lives_in_settings_runtime_tab_with_advanced_check_link(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        runtime_tab_panel = page.index('data-settings-panel="runtime"')
+        runtime_panel = page.index('id="localRuntimePanel"')
+        ocr_section = page.index('id="ocrSettingsSection"')
+        # 本地模型运行时区块位于设置 Runtime 面板内、OCR 支持之前。
+        self.assertLess(runtime_tab_panel, runtime_panel)
+        self.assertLess(runtime_panel, ocr_section)
+        self.assertIn('data-i18n="settings_local_runtime"', page)
+        self.assertIn('id="localRuntimeCheckField"', page)
+        # 检测行位于本地模型面板上方（面板外兄弟节点）。
+        self.assertLess(page.index('id="localRuntimeCheckField"'), page.index('id="localModelPanel"'))
+        self.assertIn('id="openLocalRuntimeSettings"', page)
+        self.assertIn('settings_local_runtime: "本地模型运行时"', script)
+        self.assertIn('settings_local_runtime: "Local model runtime"', script)
+        self.assertIn('local_runtime_view_settings: "在 ⚙️ 设置中查看"', script)
+        self.assertIn('local_runtime_view_settings: "View in ⚙️ Settings"', script)
+        self.assertIn('$("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });', script)
+        self.assertIn('runtimeHintText(runtime, "local_runtime_ready_hint", "local_runtime_hint")', script)
+        self.assertIn('runtimeHintText(runtime, "ocr_runtime_ready", "settings_ocr_hint")', script)
+        self.assertIn('localModelHintText(status)', script)
+
+    def test_launcher_deep_link_scrolls_only_the_settings_container(self) -> None:
+        """Given a settings deep link, When opening a section, Then only .settings-scroll moves."""
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('section?.closest(".settings-scroll")', script)
+        self.assertIn('scroll.scrollTo({ top: Math.max(0, section.offsetTop - scroll.offsetTop), behavior: "smooth" })', script)
+        # beta 说明与供应商风险提示共用琥珀 callout 样式。
+        self.assertIn(".hint-callout {", stylesheet)
+        self.assertIn('class="hint warn hint-callout" data-i18n="local_beta_note"', page)
+        self.assertIn('id="providerNote" class="hint warn hint-callout hidden"', page)
+        self.assertIn('background: color-mix(in srgb, var(--amber) 10%, transparent);', stylesheet)
+
+    def test_launcher_modal_and_scroll_fade_visual_updates(self) -> None:
+        """Given the beta7 visual feedback, When styling modals, Then cards widen and settings scroll fades at edges."""
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        # 弹窗卡片统一加宽；设置弹窗限制最小块高（小屏随视口收缩）。
+        self.assertIn("width: min(720px, calc(100vw - 32px));", stylesheet)
+        self.assertIn("min-block-size: min(680px, calc(100dvh - 36px));", stylesheet)
+        # hero 与本地模型面板不再铺渐变底色。
+        self.assertNotIn("background: linear-gradient(135deg, var(--accent-tint), transparent 58%), var(--bg-panel);", stylesheet)
+        self.assertNotIn("background: linear-gradient(135deg, var(--accent-tint), transparent 75%), var(--bg-input);", stylesheet)
+        # 设置滚动区复用工具箱的 scroll-driven 边缘渐隐。
+        self.assertIn("@property --settings-top-fade", stylesheet)
+        self.assertIn("@property --settings-bottom-fade", stylesheet)
+        self.assertEqual(stylesheet.count("animation-timeline: scroll(self), scroll(self);"), 2)
+
+    def test_launcher_localizes_backend_config_labels_in_english_mode(self) -> None:
+        """Given backend config labels arrive in Chinese, When the GUI is English, Then ids map to English labels."""
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        backend = (ROOT / "maw" / "gui_config.py").read_text(encoding="utf-8")
+
+        self.assertIn('note="本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner"', backend)
+        self.assertIn('"qwen3-asr-local": "Qwen3-ASR 0.6B (recommended)"', script)
+        self.assertIn('"qwen3-asr-local": "Runs locally; the first preparation downloads Qwen3-ASR and the Forced Aligner."', script)
+        self.assertIn('local: "Local models (Beta)"', script)
+        self.assertIn('openai: "The API must return segments or words timestamps to produce accurately aligned subtitles."', script)
+        self.assertIn('"": "Auto detect"', script)
+        self.assertIn('function localizedSelectLabel(selectId, item)', script)
+        self.assertIn('new Option(localizedSelectLabel(id, item), item.id)', script)
+        self.assertIn('function providerNoteText(providerItem)', script)
+        self.assertIn('function modelNoteText(modelItem)', script)
+        self.assertIn('$("modelNote").textContent = modelNoteText(model);', script)
+        self.assertIn('$("providerNote").textContent = providerNoteText(current);', script)
+        self.assertIn('renderServerButton(); refillSelectLabels();', script)
 
     def test_launcher_ignores_runtime_event_payloads_until_fresh_status_is_loaded(self) -> None:
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")

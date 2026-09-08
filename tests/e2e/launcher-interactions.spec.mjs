@@ -81,6 +81,50 @@ test('automatic OCR video source is not persisted as a manual override', async (
   await expect(page.locator('#ocrVideoPath')).toHaveValue('D:\\Demo\\2.mov');
 });
 
+test('waveform tool sends the selected and container-default audio tracks', async ({ page }) => {
+  // Given: the toolbox media has two tracks and track 2 is the container default.
+  await openLauncher(page);
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+  await page.locator('#toolboxWaveformTab').click();
+  await page.evaluate(() => {
+    window.__waveformCalls = [];
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      window.__waveformCalls.push({ method, payload });
+      if (method === 'probe_audio_tracks') {
+        return {
+          ok: true,
+          tracks: [
+            { audioIndex: 0, title: 'Voice', default: false },
+            { audioIndex: 1, title: 'Mix', default: true },
+          ],
+        };
+      }
+      if (method === 'generate_waveform_project') {
+        return { ok: true, projectPath: 'D:\\Demo\\clip.waveform.mosp', warnings: [] };
+      }
+      return { ok: true };
+    };
+    const media = document.getElementById('toolboxUtilityMediaPath');
+    media.value = 'D:\\Demo\\clip.mp4';
+    media.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(page.locator('#toolboxAudioTrack')).toHaveValue('1');
+  await page.locator('#toolboxAudioTrack').selectOption('0');
+
+  // When: a waveform-only project is generated for the non-default track.
+  await page.locator('#generateWaveform').click();
+
+  // Then: cache identity carries both the selected track and the real default.
+  await expect.poll(() => page.evaluate(() => (
+    window.__waveformCalls.find(({ method }) => method === 'generate_waveform_project')?.payload
+  ))).toEqual({
+    mediaPath: 'D:\\Demo\\clip.mp4',
+    audioTrack: 0,
+    defaultAudioTrack: 1,
+    generateSpectral: false,
+  });
+});
+
 test('translation merge option follows manual and automatic translation controls', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxLlmTab').click();
@@ -253,6 +297,8 @@ test('keeps local runtime events working after the page learns that installation
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#provider').selectOption('local');
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsRuntimeTab').click();
   await expect(page.locator('#localRuntimePanel')).toBeVisible();
 
   await page.evaluate(() => {
@@ -270,6 +316,52 @@ test('keeps local runtime events working after the page learns that installation
 
   await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'localRuntimeReady' }));
   await expect(page.locator('#status')).toHaveText('本地模型支持已安装完成');
+});
+
+test('local runtime check sits above the model panel and deep-links to the Runtime tab top', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#provider').selectOption('local');
+  await expect(page.locator('#localRuntimeCheckField')).toBeVisible();
+  const checkRow = await page.locator('#localRuntimeCheckField').boundingBox();
+  const modelPanel = await page.locator('#localModelPanel').boundingBox();
+  expect(checkRow.y + checkRow.height).toBeLessThan(modelPanel.y);
+  await expect(page.locator('#localModelCachePathLine')).toContainText('模型缓存：D:\\Models\\MAW');
+  await expect(page.locator('#localRuntimeCheckStatus')).toHaveText('本地运行环境未安装');
+  await page.locator('#openLocalRuntimeSettings').click();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#localRuntimePanel')).toBeVisible();
+  // 深度链接落在 Runtime 面板顶部：内容区回到顶部，弹窗卡片本体不被滚动。
+  await expect.poll(() => page.locator('.settings-scroll').evaluate((el) => el.scrollTop)).toBeLessThan(4);
+  await expect.poll(() => page.locator('.settings-modal-card').evaluate((el) => el.scrollTop)).toBe(0);
+});
+
+test('English mode localizes provider, model, and language labels from the backend config', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#langToggle').click();
+  await page.locator('#provider').selectOption('local');
+
+  await expect(page.locator('#provider option[value="local"]')).toHaveText('Local models (Beta)');
+  await expect(page.locator('#model option[value="qwen3-asr-local"]')).toHaveText('Qwen3-ASR 0.6B (recommended)');
+  await expect(page.locator('#modelNote')).toHaveText('Runs locally; the first preparation downloads Qwen3-ASR and the Forced Aligner.');
+  await expect(page.locator('#language option').first()).toHaveText('Auto detect');
+});
+
+test('local runtime accepts a custom root directory in Settings', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#provider').selectOption('local');
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsRuntimeTab').click();
+  await expect(page.locator('#localRuntimePath')).toBeVisible();
+
+  await page.locator('#localRuntimePath').fill('D:\\Demo\\custom-runtime');
+  await page.locator('#localRuntimePath').dispatchEvent('change');
+
+  await expect(page.locator('#localRuntimePaths')).toContainText('D:\\Demo\\custom-runtime');
+  await expect(page.locator('#localRuntimePathError')).toHaveText('');
 });
 
 test('LLM settings refill the saved key and save only after a successful connection test', async ({ page }) => {

@@ -25,6 +25,7 @@ REMOVED_END_PUNCTUATION = frozenset("，。；、,.;")
 SPLIT_PUNCTUATION = PRESERVED_END_PUNCTUATION | REMOVED_END_PUNCTUATION | frozenset("\n")
 CLOSING_PUNCTUATION = frozenset("”’」』】〕〉》）)]}」』】〕〉》")
 MARKDOWN_EXTENSIONS = frozenset({".md", ".markdown"})
+PROJECT_SCHEMA = "moy.asr.project.v1"
 _MARKDOWN_HEADING_PREFIX = re.compile(r"^[ \t]{0,3}#{1,6}(?:[ \t]+|$)", re.MULTILINE)
 
 
@@ -120,6 +121,8 @@ def parse_mosp(text: str) -> tuple[list[TimedChar], int, int]:
         raise AlignmentError(f"MOSP JSON 无效：第 {exc.lineno} 行第 {exc.colno} 列") from exc
     if not isinstance(project, dict):
         raise AlignmentError("MOSP 顶层必须是 JSON 对象")
+    if "schema" in project and project.get("schema") != PROJECT_SCHEMA:
+        raise AlignmentError(f"不支持的 MOSP 工程版本：{project.get('schema')}")
     segments = project.get("segments")
     if not isinstance(segments, list) or not segments:
         raise AlignmentError("MOSP 缺少非空 segments 数组")
@@ -558,6 +561,7 @@ def generate_matched_mosp(
         project = json.loads(mosp_text.lstrip("\ufeff"))
     except json.JSONDecodeError as exc:  # parse_mosp normally reports this first.
         raise AlignmentError("MOSP JSON 无效") from exc
+    project["schema"] = PROJECT_SCHEMA
     project["segments"] = build_mosp_segments(segments, timings, output)
     content = json.dumps(project, ensure_ascii=False, indent=2) + "\n"
     return output, report, content

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import {
   cleanupTempDir,
   findFreePort,
-  generateBlankEditor,
+  copyPortableBlankEditor,
   generateWaveformPayload,
   makeTempDir,
   startStaticServer,
@@ -16,7 +16,7 @@ let server;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('multi-subtitle');
-  const blankPath = generateBlankEditor(join(tempDir, 'blank-editor.html'));
+  const blankPath = copyPortableBlankEditor(join(tempDir, 'blank-editor.html'));
   server = await startStaticServer(blankPath, await findFreePort());
 });
 
@@ -107,7 +107,7 @@ async function moveWaveformPointerToTime(page, blockLocator, timeMs) {
   );
 }
 
-test('defaults the waveform shape source to ReaPeaks', async ({ page }) => {
+test('defaults the waveform shape source to reapeaks', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#waveform-settings-toggle').click();
   await expect(page.locator('#waveform-settings-panel')).toBeVisible();
@@ -117,6 +117,7 @@ test('defaults the waveform shape source to ReaPeaks', async ({ page }) => {
 test('explains where to configure automatic timecode splitting', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   const hint = page.locator('#split-use-word-timestamps-hint');
   await expect(hint).toContainText('开启时，会自动按可用时间码拆分');
   await expect(hint).toContainText('关闭后将打开拆分弹窗');
@@ -1452,6 +1453,14 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
+  await page.evaluate(() => {
+    const [first, second] = DATA.segments;
+    first.color = { name: 'yellow', value: '#c4a019', start: first.start, end: second.end };
+    first.color_ref = null;
+    second.color = null;
+    second.color_ref = { name: 'yellow', headIdx: 0 };
+  });
+
   await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-swap')).toHaveCSS('border-style', 'solid');
   await expect(page.locator('#multi-subtitle-swap')).toHaveCSS('border-top-width', '1px');
@@ -1460,6 +1469,20 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
     .toHaveText('你好，世界。');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension .text'))
     .toHaveText('Hello world.');
+  expect(await page.evaluate(() => JSON.parse(JSON.stringify({
+    main: DATA.segments.slice(0, 2).map(({ color, color_ref }) => ({ color, color_ref })),
+    extension: DATA.multi_subtitle.tracks[0].segments.slice(0, 2)
+      .map(({ color, color_ref }) => ({ color, color_ref })),
+  })))).toEqual({
+    main: [
+      { color: { name: 'yellow', value: '#c4a019', start: 50, end: 4950 }, color_ref: null },
+      { color: null, color_ref: { name: 'yellow', headIdx: 0 } },
+    ],
+    extension: [
+      { color: { name: 'yellow', value: '#c4a019', start: 0, end: 5000 } },
+      { color_ref: { name: 'yellow', headIdx: 0 } },
+    ],
+  });
 
   await page.keyboard.press('Control+z');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text'))
@@ -1677,6 +1700,7 @@ test('uses the linked split dialog when the main cue is active with its bound ex
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await page.locator('#split-use-word-timestamps').uncheck();
   await page.locator('#editor-settings-toggle').click();
 
@@ -1782,6 +1806,7 @@ test('keeps the subtitle-list caret position as the linked main split point', as
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await page.locator('#split-use-word-timestamps').uncheck();
   await page.locator('#editor-settings-toggle').click();
 
@@ -2234,12 +2259,13 @@ test('shows independent extension preview controls with yellow defaults', async 
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
-  await expect(page.locator('#extension-overlay-toggle-wrap')).toBeVisible();
-  await expect(page.locator('#extension-overlay-toggle')).toBeChecked();
   await expect(page.locator('#overlay')).toHaveCSS('flex-direction', 'column');
   await expect(page.locator('#overlay')).toHaveCSS('gap', '0px');
-  await page.locator('#subtitle-preview-settings-toggle').click();
-  await expect(page.locator('#subtitle-preview-settings-panel')).toBeVisible();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await expect(page.locator('#editor-settings-page-subtitle-preview')).toBeVisible();
+  await expect(page.locator('#extension-overlay-toggle-wrap')).toBeVisible();
+  await expect(page.locator('#extension-overlay-toggle')).toBeChecked();
   await expect(page.locator('#extension-subtitle-preview-settings')).toBeVisible();
   await expect(page.locator('#subtitle-color')).toHaveValue('#ffffff');
   await expect(page.locator('#extension-subtitle-color')).toHaveValue('#ffd34d');
@@ -2253,6 +2279,7 @@ test('shows independent extension preview controls with yellow defaults', async 
   await expect(page.locator('#overlay-extension-text')).toHaveCSS('background-color', 'rgba(18, 52, 86, 0.65)');
   await page.locator('#extension-overlay-toggle').uncheck();
   await expect(page.locator('#extension-overlay-toggle')).not.toBeChecked();
+  await page.locator('#editor-settings-close').click();
 });
 
 test('refreshes local font options for both main and extension subtitles', async ({ page }) => {
@@ -2265,7 +2292,8 @@ test('refreshes local font options for both main and extension subtitles', async
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
 
   const scanButton = page.locator('#subtitle-font-family-scan');
   await expect(scanButton).toBeEnabled();
@@ -2295,7 +2323,8 @@ test('localizes approved scanned font labels in both selectors', async ({ page }
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
   await page.locator('#subtitle-font-family-scan').click();
   const options = await page.evaluate(() => ['subtitle-font-family', 'extension-subtitle-font-family']
     .map((id) => Array.from(document.getElementById(id).options, (option) => ({
@@ -3477,6 +3506,7 @@ test('uses the split dialog for waveform main splitting when word timestamps are
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await expect(page.locator('#split-use-word-timestamps')).toBeChecked();
   await page.locator('#split-use-word-timestamps').uncheck();
   await page.locator('#editor-settings-toggle').click();
@@ -3557,6 +3587,7 @@ test('uses the split dialog for SRT-style main subtitles without word timestamps
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await expect(page.locator('#split-use-word-timestamps')).toBeChecked();
   await page.locator('#editor-settings-toggle').click();
 
@@ -3605,6 +3636,7 @@ test('keeps the waveform pointer as the absolute cut in a linked split dialog', 
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await expect(page.locator('#split-use-word-timestamps')).toBeChecked();
   await page.locator('#split-use-word-timestamps').uncheck();
   await page.locator('#editor-settings-toggle').click();
@@ -3701,6 +3733,7 @@ test('labels a linked split time inferred from main word timestamps', async ({ p
   await page.keyboard.press('Escape');
 
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   await page.locator('#split-use-word-timestamps').uncheck();
   await page.locator('#editor-settings-toggle').click();
   await mainText.click();

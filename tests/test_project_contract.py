@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from maw.project import (
+    PROJECT_SCHEMA,
     ProjectValidationFailed,
     normalize_project,
     repair_project_timing_ranges,
@@ -12,6 +13,39 @@ from maw.project import (
 
 
 class ProjectContractTests(unittest.TestCase):
+    def test_normalize_project_upgrades_unversioned_legacy_project_to_current_schema(self) -> None:
+        project = {"segments": [{"start": 0, "end": 1000, "text": "legacy"}]}
+
+        normalized = normalize_project(project)
+
+        self.assertEqual(normalized["schema"], PROJECT_SCHEMA)
+
+    def test_validate_project_accepts_current_schema(self) -> None:
+        result = validate_project({
+            "schema": PROJECT_SCHEMA,
+            "segments": [{"start": 0, "end": 1000, "text": "current"}],
+        })
+
+        self.assertTrue(result.ok, msg=str([error.to_json() for error in result.errors]))
+
+    def test_validate_project_rejects_unknown_project_schema(self) -> None:
+        result = validate_project({
+            "schema": "moy.asr.project.v2",
+            "segments": [{"start": 0, "end": 1000, "text": "future"}],
+        })
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.schema", {error.path for error in result.errors})
+
+    def test_validate_project_rejects_non_string_project_schema(self) -> None:
+        result = validate_project({
+            "schema": None,
+            "segments": [{"start": 0, "end": 1000, "text": "invalid"}],
+        })
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.schema", {error.path for error in result.errors})
+
     def test_validate_project_accepts_transcription_metadata(self) -> None:
         result = validate_project({
             "language": "en",
@@ -210,6 +244,29 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn("$.media_metadata.audio_tracks[0].stream_index", paths)
         self.assertIn("$.media_metadata.audio_tracks[0].channels", paths)
         self.assertIn("$.media_metadata.audio_tracks[0].default", paths)
+
+    def test_validate_project_accepts_persisted_selected_audio_track(self) -> None:
+        project = {
+            "media_metadata": {"selected_audio_track": 2},
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.project["media_metadata"]["selected_audio_track"], 2)
+
+    def test_validate_project_reports_invalid_selected_audio_track(self) -> None:
+        project = {
+            "media_metadata": {"selected_audio_track": -1},
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.media_metadata.selected_audio_track", paths)
 
     def test_validate_project_reports_invalid_source_video_fps_metadata(self) -> None:
         project = {
@@ -512,7 +569,7 @@ class ProjectContractTests(unittest.TestCase):
             "preview": {"subtitle": {"x": 0.0, "y": 0.76, "width": 1.0, "height": 0.16,
                                         "font_size": 32, "font_family": "yahei",
                                         "background_color": "#1A2b3C", "background_alpha": 0,
-                                        "color": "#ffffff"},
+                                        "color": "#ffffff", "color_style": "stroke"},
                         "extension_subtitle": {"font_size": 16, "font_family": "sans", "color": "#ffd34d"}},
         }
 
@@ -523,7 +580,108 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(result.project["preview"]["subtitle"]["font_family"], "yahei")
         self.assertEqual(result.project["preview"]["subtitle"]["background_color"], "#1A2b3C")
         self.assertEqual(result.project["preview"]["subtitle"]["background_alpha"], 0)
+        self.assertEqual(result.project["preview"]["subtitle"]["color_style"], "stroke")
         self.assertEqual(result.project["preview"]["extension_subtitle"]["color"], "#ffd34d")
+
+    def test_validate_project_accepts_preview_speaker_label_settings(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": {"subtitle": {
+                "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
+                "speaker_labels": {
+                    "enabled": True,
+                    "separator": "：",
+                    "names": {
+                        "yellow": "Host",
+                        "green": "",
+                        "red": "Guest",
+                        "purple": "Editor",
+                        "blue": "Narrator",
+                    },
+                },
+            }},
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            result.project["preview"]["subtitle"]["speaker_labels"]["names"]["green"],
+            "",
+        )
+        self.assertEqual(
+            result.project["preview"]["subtitle"]["speaker_labels"]["separator"],
+            "：",
+        )
+
+    def test_validate_project_accepts_extension_color_refs(self) -> None:
+        project = {
+            "segments": [{"id": "main-001", "start": 0, "end": 1000, "text": "main"}],
+            "multi_subtitle": {
+                "enabled": True,
+                "tracks": [{
+                    "id": "translation",
+                    "segments": [
+                        {
+                            "id": "translation-001",
+                            "start": 0,
+                            "end": 1000,
+                            "text": "副字幕",
+                            "color": {
+                                "name": "yellow",
+                                "value": "#c4a019",
+                                "start": 0,
+                                "end": 2000,
+                            },
+                        },
+                        {
+                            "id": "translation-002",
+                            "start": 1100,
+                            "end": 2000,
+                            "text": "副字幕二",
+                            "color": None,
+                            "color_ref": {"name": "yellow", "headIdx": 0},
+                        },
+                    ],
+                }],
+                "bindings": [],
+            },
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            result.project["multi_subtitle"]["tracks"][0]["segments"][1]["color_ref"]["headIdx"],
+            0,
+        )
+
+    def test_validate_project_rejects_invalid_preview_speaker_label_settings(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": {"subtitle": {
+                "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
+                "speaker_labels": {
+                    "enabled": "yes",
+                    "separator": "s" * 17,
+                    "names": {
+                        "yellow": "x" * 65,
+                        "green": "line\nbreak",
+                        "red": 42,
+                    },
+                },
+            }},
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.preview.subtitle.speaker_labels.enabled", paths)
+        self.assertIn("$.preview.subtitle.speaker_labels.separator", paths)
+        self.assertIn("$.preview.subtitle.speaker_labels.names.yellow", paths)
+        self.assertIn("$.preview.subtitle.speaker_labels.names.green", paths)
+        self.assertIn("$.preview.subtitle.speaker_labels.names.red", paths)
 
     def test_validate_project_accepts_custom_preview_subtitle_font_family(self) -> None:
         project = {
@@ -582,6 +740,7 @@ class ProjectContractTests(unittest.TestCase):
             "preview": {"subtitle": {
                 "x": 0.0, "y": 0.76, "width": 1.0, "height": 0.16,
                 "font_size": 100, "font_family": "", "background_color": "black", "background_alpha": 1.1,
+                "color_style": "both",
             }},
         }
 
@@ -592,6 +751,7 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn("$.preview.subtitle.font_family", paths)
         self.assertIn("$.preview.subtitle.background_color", paths)
         self.assertIn("$.preview.subtitle.background_alpha", paths)
+        self.assertIn("$.preview.subtitle.color_style", paths)
 
     def test_validate_project_rejects_non_object_preview(self) -> None:
         project = {

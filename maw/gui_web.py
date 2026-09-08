@@ -58,7 +58,7 @@ from maw.local_runtime import (
     resolve_model_cache_root,
 )
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
-from maw.media import resolve_project_media
+from maw.media import resolve_default_audio_track, resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import read_project, read_srt
 from maw.project_io import write_mosp
@@ -115,7 +115,7 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.6.0-beta.1"
+BUNDLED_APP_VERSION = "1.6.0-beta.2"
 MOSE_VERSION = "0.1.0"
 
 
@@ -484,6 +484,16 @@ def _independent_app_child_environment() -> dict[str, str]:
     return environment
 
 
+def _launcher_icon_path() -> Path:
+    """返回当前平台的 Launcher 图标，避免 macOS 使用 Windows ICO。"""
+
+    if sys.platform == "darwin":
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).resolve().parent.parent / "Resources" / "maw.icns"
+        return asset_path("assets/maw.icns")
+    return asset_path("assets/maw.ico")
+
+
 # ---- Linux keycap 表情字体（Noto Color Emoji）----
 # 段落标题的 keycap 表情（1️⃣ 等）由「数字 + U+FE0F + U+20E3」组成，需要彩色 emoji 字体
 # 完整覆盖才可正常成型；部分 Linux 发行版（如 SteamOS 的 Twemoji）缺少 U+FE0F，会渲染成
@@ -595,6 +605,7 @@ class LauncherApi:
         self.postprocess_translation_srt_path: Path | None = None
         self._last_postprocess_progress_at = 0.0
         self.pump = EventPump(window_getter=self.window_getter)
+        _sync_local_runtime_root(self.paths.env_path)
 
     def get_emoji_font_path(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         """返回本地可用的 Noto Color Emoji 路径（file:// URI；未就绪或非 Linux 为空字符串）。
@@ -1896,6 +1907,27 @@ class LauncherApi:
                 }
                 merged = dict(item_payload)
                 media_text = str(merged.get("mediaPath") or "").strip()
+                raw_audio_track = merged.get("audioTrack")
+                if media_text and (raw_audio_track is None or not str(raw_audio_track).strip()):
+                    raw_default = merged.get("defaultAudioTrack")
+                    explicit_default = (
+                        None
+                        if raw_default is None or not str(raw_default).strip()
+                        else _payload_audio_track(merged, field="defaultAudioTrack")
+                    )
+                    if raw_default is not None and str(raw_default).strip() and explicit_default is None:
+                        raise PreflightError(
+                            "defaultAudioTrack",
+                            "audio_track_invalid",
+                            "默认音频轨道必须是非负整数。",
+                        )
+                    default_audio_track = resolve_default_audio_track(
+                        Path(media_text).expanduser().resolve(),
+                        explicit_default,
+                        ffprobe_path=_postprocess_ffmpeg_tools(self.paths.env_path).ffprobe,
+                    )
+                    merged["audioTrack"] = default_audio_track
+                    merged["defaultAudioTrack"] = default_audio_track
                 if media_text and not str(merged.get("srtPath") or "").strip():
                     merged["srtPath"] = str(
                         default_srt_path(
@@ -1998,6 +2030,13 @@ class LauncherApi:
                 "audio_track_invalid",
                 "音频轨道必须是非负整数。",
             )
+        default_audio_track = _payload_audio_track(payload, field="defaultAudioTrack")
+        if default_audio_track is None:
+            return _error_result(
+                "defaultAudioTrack",
+                "audio_track_invalid",
+                "默认音频轨道必须是非负整数。",
+            )
 
         output_seed = unique_output_path(media_path.with_suffix(".waveform.srt"))
         project_path = output_seed.with_suffix(".mosp")
@@ -2012,6 +2051,7 @@ class LauncherApi:
                 generate_spectral=bool(payload.get("generateSpectral")),
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
                 audio_track=audio_track,
+                default_audio_track=default_audio_track,
             )
             normalized = normalize_project(cached.project)
             waveform = normalized.get("waveform")
@@ -2026,13 +2066,14 @@ class LauncherApi:
                 normalized,
                 media_path=media_path,
                 ffprobe_path=ffmpeg_tools.ffprobe,
+                selected_audio_track=audio_track,
             )
         except (OSError, TypeError, ValueError) as error:
             return _error_result("mediaPath", "waveform_generation_failed", str(error))
 
         warnings: list[str] = []
         if cached.reapeaks_path is None:
-            warnings.append("ReaPeaks cache was not generated.")
+            warnings.append("reapeaks cache was not generated.")
         return {
             "ok": True,
             "mediaPath": str(media_path),
@@ -2091,6 +2132,27 @@ class LauncherApi:
         except (OSError, UnicodeError, ValueError) as error:
             return _error_result("ocrRuntimePath", "config_save_failed", f"{self.paths.env_path}: {error}")
         status = self._ocr_runtime_status()
+        return {"ok": True, "runtimePath": status.path, "runtime": status.to_payload()}
+
+    def save_local_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """保存本地（非 MOSS）运行环境根目录：.env 持久化 + 进程环境变量即时生效。
+
+        托管 runtime 的根目录解析链是「显式配置 -> 进程级 MAW_LOCAL_RUNTIME_ROOT ->
+        默认 app-data」；这里不改动任何调用方签名，只负责维护 .env 与进程环境变量。
+        """
+        value = str(payload.get("runtimePath") or payload.get("path") or "").strip()
+        candidate = Path(value).expanduser().resolve(strict=False) if value else None
+        if candidate is not None and candidate.exists() and not candidate.is_dir():
+            return _error_result("localRuntimePath", "local_runtime_path_invalid", str(candidate))
+        try:
+            save_env(self.paths.env_path, {"MAW_LOCAL_RUNTIME_ROOT": str(candidate) if candidate else ""})
+        except (OSError, UnicodeError, ValueError) as error:
+            return _error_result("localRuntimePath", "config_save_failed", f"{self.paths.env_path}: {error}")
+        if candidate is None:
+            os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
+        else:
+            os.environ["MAW_LOCAL_RUNTIME_ROOT"] = str(candidate)
+        status = managed_runtime_status(effective_config(self.paths.env_path).model_cache_root)
         return {"ok": True, "runtimePath": status.path, "runtime": status.to_payload()}
 
     def install_ocr_runtime(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
@@ -2789,7 +2851,7 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
             api.pump.start()
 
         window.events.loaded += _on_loaded
-    icon = asset_path("assets/maw.ico")
+    icon = _launcher_icon_path()
     webview.start(
         lambda: bind_launcher_drop(window, api),
         debug=debug or devtools,
@@ -2915,6 +2977,22 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             "audio_track_invalid",
             "音频轨道必须是非负整数。",
         )
+    raw_default_audio_track = payload.get("defaultAudioTrack")
+    default_audio_track = (
+        None
+        if raw_default_audio_track is None or not str(raw_default_audio_track).strip()
+        else _payload_audio_track(payload, field="defaultAudioTrack")
+    )
+    if (
+        raw_default_audio_track is not None
+        and str(raw_default_audio_track).strip()
+        and default_audio_track is None
+    ):
+        raise PreflightError(
+            "defaultAudioTrack",
+            "audio_track_invalid",
+            "默认音频轨道必须是非负整数。",
+        )
     max_len = _segmentation_option(payload, field="maxLen", label="最大字数", minimum=1)
     min_len = _segmentation_option(payload, field="minLen", label="短句合并阈值", minimum=1)
     max_words = _segmentation_option(payload, field="maxWords", label="英文最大单词数", minimum=1)
@@ -3023,6 +3101,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         media_path=media,
         srt_path=srt,
         audio_track=audio_track,
+        default_audio_track=default_audio_track,
         model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
@@ -3562,6 +3641,18 @@ def effective_config_value(env_path: Path, key: str) -> str:
     from maw.gui_config import load_env
 
     return os.environ.get(key) or load_env(env_path).get(key, "")
+
+
+def _sync_local_runtime_root(env_path: Path) -> None:
+    """启动时把 .env 持久化的本地运行环境根目录回填进进程环境变量。
+
+    托管 runtime 的 resolve_root 只读进程级 ``MAW_LOCAL_RUNTIME_ROOT``；
+    不回填的话，重启后 .env 里的自定义目录会被忽略。进程里已显式设置时
+    以外部环境变量优先，与 resolve_root 的优先级一致。
+    """
+    override = effective_config_value(env_path, "MAW_LOCAL_RUNTIME_ROOT")
+    if override and not os.environ.get("MAW_LOCAL_RUNTIME_ROOT"):
+        os.environ["MAW_LOCAL_RUNTIME_ROOT"] = override
 
 
 def _provider_payload(

@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass
-from typing import TypeGuard, final
+from typing import Final, TypeGuard, final
 
 from maw.project_preview import JsonDict, JsonValue, clamped_preview, validate_preview
 from maw.language import LANGUAGE_SOURCES, SPLIT_MODES, TIMESTAMP_GRANULARITIES
@@ -15,6 +15,7 @@ from maw.language import LANGUAGE_SOURCES, SPLIT_MODES, TIMESTAMP_GRANULARITIES
 # pyright: reportImplicitOverride=false
 
 MIN_SEGMENT_DURATION_MS = 100
+PROJECT_SCHEMA: Final = "moy.asr.project.v1"
 TIMELINE_TIMEBASE_UNITS = frozenset({"milliseconds", "frames"})
 MIN_TIMELINE_FPS = 1.0
 MAX_TIMELINE_FPS = 240.0
@@ -220,6 +221,10 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
         errors.append(ProjectValidationError("$", "must be an object"))
         return {"segments": []}
     normalized = copy.deepcopy(project)
+    schema = normalized.get("schema")
+    if "schema" in normalized and schema != PROJECT_SCHEMA:
+        errors.append(ProjectValidationError("$.schema", f"must be {PROJECT_SCHEMA}"))
+    normalized["schema"] = PROJECT_SCHEMA
     _validate_timebase(normalized, errors)
     _validate_media_metadata(normalized, errors)
     segments = normalized.get("segments")
@@ -342,6 +347,15 @@ def _validate_media_metadata(project: JsonDict, errors: list[ProjectValidationEr
                 ProjectValidationError(
                     "$.media_metadata.video_fps_ratio",
                     "must be a non-empty string",
+                )
+            )
+    if "selected_audio_track" in metadata:
+        selected_audio_track = metadata.get("selected_audio_track")
+        if type(selected_audio_track) is not int or selected_audio_track < 0:
+            errors.append(
+                ProjectValidationError(
+                    "$.media_metadata.selected_audio_track",
+                    "must be a non-negative integer",
                 )
             )
     if "audio_tracks" in metadata:
@@ -538,6 +552,7 @@ def _normalize_multi_subtitle(
                 errors.append(ProjectValidationError(segment_path, "must be an object"))
                 continue
             _validate_extension_segment(segment, segment_path, previous_end, errors)
+            _validate_ref_pair(raw_segments, segment_index, segment_path, "color", "color_ref", errors)
             segment_id = segment.get("id")
             if isinstance(track_id, str) and _is_stable_id(segment_id):
                 extension_ids[track_id].add(segment_id.strip())

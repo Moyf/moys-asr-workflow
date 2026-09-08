@@ -130,7 +130,7 @@ button:disabled {
 
 .shell {
   width: 100%;
-  height: 100dvh;
+  height: var(--launcher-shell-height, 100dvh);
   min-height: 0;
   margin: 0;
   display: flex;
@@ -162,7 +162,6 @@ body:not(.launcher-ready) .shell {
   padding: 16px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, var(--accent-tint), transparent 58%), var(--bg-panel);
   box-shadow: var(--shadow-2);
 }
 
@@ -524,12 +523,16 @@ label {
   color: var(--amber);
 }
 
-#providerNote {
+/* 琥珀提示框（callout）：供应商风险提示、beta 说明等需要醒目的提示文案。 */
+.hint-callout {
   padding: 8px 12px;
-  margin: 10px 0 2px;
   border-radius: 6px;
   background: color-mix(in srgb, var(--amber) 10%, transparent);
   line-height: 1.6;
+}
+
+#providerNote {
+  margin: 10px 0 2px;
 }
 
 .provider-row {
@@ -550,7 +553,6 @@ label {
   padding: 10px;
   border: 1px solid var(--accent-soft);
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--accent-tint), transparent 75%), var(--bg-input);
 }
 
 .local-runtime-panel {
@@ -1576,7 +1578,7 @@ textarea::placeholder {
   right: 20px;
   bottom: 134px;
   z-index: 36;
-  width: min(560px, calc(100vw - 40px));
+  width: min(600px, calc(100vw - 40px));
   block-size: min(640px, calc(100dvh - 156px));
   min-inline-size: min(360px, calc(100vw - 24px));
   max-inline-size: calc(100vw - 40px);
@@ -2017,18 +2019,39 @@ textarea::placeholder {
 
 .toolbox-utilities-content {
   display: grid;
-  grid-template-columns: minmax(108px, .32fr) minmax(0, 1fr);
+  grid-template-columns: minmax(108px, .25fr) minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
   margin-top: 12px;
 }
 
+/* 实用工具区左右两列各自独立滚动：激活时 scroller 变 flex 列，
+   utilities 网格占满剩余高度，滚动只发生在两列内部。 */
+.toolbox-drawer.toolbox-utilities-active .toolbox-content {
+  display: flex;
+  flex-direction: column;
+  --toolbox-top-fade: 0px;
+  --toolbox-bottom-fade: 0px;
+  animation: none;
+}
+
+.toolbox-drawer.toolbox-utilities-active .toolbox-utilities-content {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/* 左列极少溢出；隐去滚动条，避免经典滚动条在标签右侧长期占位。 */
 .toolbox-utility-tabs {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  overflow-y: auto;
+  min-block-size: 0;
+  overscroll-behavior: contain;
   margin-top: 0;
   padding: 4px;
+  scrollbar-width: none;
+}
+
+.toolbox-utility-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .toolbox-utility-tab-list {
@@ -2044,6 +2067,9 @@ textarea::placeholder {
 
 .toolbox-utility-panels {
   min-width: 0;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .toolbox-utility-panels .toolbox-panel {
@@ -2377,7 +2403,7 @@ textarea::placeholder {
 
 .modal-card {
   position: relative;
-  width: min(620px, calc(100vw - 32px));
+  width: min(720px, calc(100vw - 32px));
   max-height: calc(100vh - 36px);
   display: flex;
   flex-direction: column;
@@ -2393,6 +2419,7 @@ textarea::placeholder {
   height: min(720px, calc(100vh - 36px));
   block-size: min(720px, calc(100dvh - 36px));
   max-block-size: calc(100dvh - 36px);
+  min-block-size: min(680px, calc(100dvh - 36px));
 }
 
 .batch-confirm-card {
@@ -2485,6 +2512,32 @@ textarea::placeholder {
   }
 }
 
+/* 设置弹窗滚动区边缘渐隐：与 .toolbox-content 同一套 scroll-driven 做法，
+   顶部渐隐仅在滚动后出现，底部渐隐在接近底部时消失。 */
+@property --settings-top-fade {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --settings-bottom-fade {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 18px;
+}
+
+@keyframes settings-top-fade {
+  to {
+    --settings-top-fade: 18px;
+  }
+}
+
+@keyframes settings-bottom-fade {
+  to {
+    --settings-bottom-fade: 0px;
+  }
+}
+
 .settings-scroll {
   min-block-size: 0;
   flex: 1 1 auto;
@@ -2492,6 +2545,27 @@ textarea::placeholder {
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
   padding-inline-end: 2px;
+  --settings-top-fade: 0px;
+  --settings-bottom-fade: 18px;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black var(--settings-top-fade),
+    black calc(100% - var(--settings-bottom-fade)),
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black var(--settings-top-fade),
+    black calc(100% - var(--settings-bottom-fade)),
+    transparent
+  );
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  animation: settings-top-fade linear both, settings-bottom-fade linear both;
+  animation-timeline: scroll(self), scroll(self);
+  animation-range: 0 2rem, calc(100% - 2rem) 100%;
 }
 
 .settings-section {
@@ -2621,7 +2695,7 @@ code {
 
 @media (max-width:620px) {
   .toolbox-utilities-content {
-    grid-template-columns: minmax(96px, 32%) minmax(0, 1fr);
+    grid-template-columns: minmax(96px, 25%) minmax(0, 1fr);
     gap: 8px;
   }
 }
@@ -2834,6 +2908,11 @@ select[multiple] option {
 }
 
 .modal-card .settings-section:first-of-type {
+  margin-top: 0;
+}
+
+/* Runtime 面板：本地运行时区块对非本地供应商隐藏时，OCR 区块顶格显示。 */
+.modal-card .settings-section.hidden + .settings-section {
   margin-top: 0;
 }
 

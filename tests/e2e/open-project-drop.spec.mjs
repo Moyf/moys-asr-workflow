@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import {
   cleanupTempDir,
   findFreePort,
-  generateBlankEditor,
+  copyPortableBlankEditor,
   generateProjectJson,
   generateWav,
   makeTempDir,
@@ -25,7 +25,7 @@ test.beforeAll(async () => {
   // 短媒体即可：只验证加载链路，不校验波形时长一致性。
   generateWav(mediaPath, 5);
   generateProjectJson(projectPath);
-  server = await startStaticServer(generateBlankEditor(join(tempDir, 'blank.html')), await findFreePort());
+  server = await startStaticServer(copyPortableBlankEditor(join(tempDir, 'blank.html')), await findFreePort());
 });
 
 test.afterAll(async () => {
@@ -92,6 +92,54 @@ test('opening and serializing a project preserves script alignment metadata', as
 
   const serialized = await page.evaluate(() => JSON.parse(buildJson()));
   expect(serialized.script_alignment).toEqual(scriptAlignment);
+});
+
+test('opening and serializing a legacy project adds v1 and preserves transcription metadata', async ({ page }) => {
+  const project = {
+    media: '',
+    language: 'en',
+    language_source: 'detected',
+    split_mode: 'word',
+    timestamp_granularity: 'segment',
+    future_optional_metadata: { producer: 'research-build' },
+    segments: [{ start: 100, end: 1900, text: 'metadata' }],
+  };
+  const spec = {
+    name: 'metadata.mosp',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  };
+
+  await page.goto(server.url);
+  await dropFiles(page, [spec]);
+  await expect(page.locator('#json-name')).toHaveText('metadata.mosp');
+
+  const serialized = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(serialized.schema).toBe('moy.asr.project.v1');
+  expect(serialized.language_source).toBe('detected');
+  expect(serialized.split_mode).toBe('word');
+  expect(serialized.timestamp_granularity).toBe('segment');
+  expect(serialized.future_optional_metadata).toEqual({ producer: 'research-build' });
+});
+
+test('opening an unknown project schema is rejected without replacing the current project', async ({ page }) => {
+  const futureProject = {
+    schema: 'moy.asr.project.v2',
+    media: '',
+    segments: [{ start: 100, end: 1900, text: 'future' }],
+  };
+  const spec = {
+    name: 'future.mosp',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(futureProject), 'utf8').toString('base64'),
+  };
+
+  await page.goto(server.url);
+  const before = await page.evaluate(() => JSON.stringify(DATA));
+  await dropFiles(page, [spec]);
+
+  await expect(page.locator('#hint-stack .hint-warning')).toContainText('不支持的工程格式版本');
+  expect(await page.evaluate(() => JSON.stringify(DATA))).toBe(before);
 });
 
 test('dropping a project over an existing project asks before offering open or extension choices', async ({ page }) => {

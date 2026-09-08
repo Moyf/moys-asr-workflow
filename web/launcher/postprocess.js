@@ -628,6 +628,7 @@
     $("toolboxPostprocessView").classList.toggle("hidden", section !== "postprocess");
     $("toolboxUtilitiesContent").classList.toggle("hidden", section !== "utilities");
     $("toolboxUtilitiesView").classList.toggle("hidden", section !== "utilities");
+    $("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities");
     const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");
     if (activeTab) selectTool(activeTab.dataset.tool);
   }
@@ -647,6 +648,7 @@
     });
     $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess");
     $("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities");
+    $("toolboxAudioTrackField").classList.toggle("hidden", !["waveform", "extractAudio"].includes(tool));
     $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || !$("toolboxChainList").children.length);
     const configOnly = toolboxOpenMode === "auto-config";
     $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly);
@@ -897,6 +899,17 @@
     status.textContent = t("toolbox_audio_tracks_found").replace("{count}", String(audioTracks.length));
   }
 
+  function selectedToolboxAudioTrack() {
+    const value = Number($("toolboxAudioTrack").value);
+    return Number.isInteger(value) && value >= 0 ? value : 0;
+  }
+
+  function defaultToolboxAudioTrack() {
+    const track = audioTracks.find((item) => item.default) || audioTracks[0];
+    const value = Number(track?.audioIndex);
+    return Number.isInteger(value) && value >= 0 ? value : 0;
+  }
+
   async function refreshAudioTracks() {
     const requestId = ++audioProbeRequest;
     const mediaPath = $("toolboxUtilityMediaPath").value.trim();
@@ -1013,7 +1026,8 @@
     try {
       const result = await bridge("generate_waveform_project", {
         mediaPath,
-        audioTrack: window.MAWLauncher.getAudioTrackForMedia?.(mediaPath),
+        audioTrack: selectedToolboxAudioTrack(),
+        defaultAudioTrack: defaultToolboxAudioTrack(),
         generateSpectral: $("toolboxGenerateSpectral").checked,
       });
       if (!result.ok) {

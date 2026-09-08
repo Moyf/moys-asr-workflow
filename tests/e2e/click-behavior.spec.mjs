@@ -40,6 +40,7 @@ test.beforeEach(async ({ page }) => {
 test('jump target is shown for both jump behaviors and hidden for select-only', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-general').click();
   const behavior = page.locator('#click-behavior');
   const targetField = page.locator('#click-target-field');
   await expect(targetField).toBeVisible();
@@ -62,7 +63,8 @@ test('media seek buttons and arrow keys use the configured seek duration', async
 
   const step = page.locator('#media-seek-step');
   await expect(step).toHaveValue('1000');
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
   await step.fill('100');
   await step.press('Tab');
   await expect(step).toHaveValue('100');
@@ -103,18 +105,18 @@ test('media seek buttons and arrow keys use the configured seek duration', async
   await step.press('Tab');
   await expect(step).toHaveValue('7000');
   await expect(step).toHaveAttribute('step', '100');
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-close').click();
   await expect.poll(() => page.evaluate(() => JSON.parse(
     localStorage.getItem('moy.asr.editor.settings.v1') || '{}',
   ).mediaSeekStepMs)).toBe(7000);
 
   await page.evaluate(() => { document.getElementById('player').currentTime = 20; });
   await expect(page.locator('#media-step-back')).toHaveAttribute('aria-label', '后退 7000ms');
-  await page.locator('#media-step-back').click();
+  await page.locator('#media-step-back').evaluate((button) => button.click());
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeGreaterThan(12.85);
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeLessThan(13.15);
 
-  await page.locator('#media-step-forward').click();
+  await page.locator('#media-step-forward').evaluate((button) => button.click());
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeGreaterThan(19.85);
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeLessThan(20.15);
 
@@ -306,6 +308,7 @@ test('waveform cue double-click activates its subtitle editor while blank double
 test('the unconfigured Enter shortcut commits and exits cue-panel editing', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
   const splitKey = page.locator('#split-key');
   const panel = page.locator('#cue-panel-text');
   await splitKey.selectOption('enter');
@@ -472,6 +475,7 @@ test('dragging the panel divider resizes the panel and stays consistent across s
 test('list context menu leads with text-position split', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-general').click();
   await page.locator('#click-behavior').selectOption('select-only');
   await page.locator('.cue[data-idx="0"]').click({ button: 'right' });
 

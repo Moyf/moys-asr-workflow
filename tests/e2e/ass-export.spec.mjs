@@ -80,8 +80,9 @@ test('exports ASS with the current font, size, color and enabled subtitle text',
   await stubSavePicker(page);
   await page.goto(server.url);
 
-  await page.locator('#subtitle-preview-settings-toggle').click();
-  await expect(page.locator('#subtitle-preview-settings-panel')).toBeVisible();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await expect(page.locator('#editor-settings-page-subtitle-preview')).toBeVisible();
   await page.locator('#subtitle-font-family').selectOption('hei');
   await page.locator('#subtitle-font-size').selectOption('40');
   await page.locator('#subtitle-color').evaluate((input) => {
@@ -89,6 +90,7 @@ test('exports ASS with the current font, size, color and enabled subtitle text',
     input.dispatchEvent(new Event('change', { bubbles: true }));
   });
 
+  await page.locator('#editor-settings-close').click();
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#download-full-ass')).toHaveText('完整字幕（ASS）');
   await page.locator('#download-full-ass').click();

@@ -119,7 +119,7 @@ function splitModeLabel(mode) {
   return mode === 'continuous' ? '字符型' : '单词型';
 }
 function splitModeExample(mode) {
-  return mode === 'continuous' ? '（适用于中文、日文等）' : '（适用于英文、俄文等）';
+  return mode === 'continuous' ? '（适用于中文、日文等语言）' : '（适用于英文、俄文等语言）';
 }
 
 // 合并多条字幕时按「字符型/单词型」取对应连接符：中文直接拼接，西文默认空格。
@@ -692,6 +692,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   autoMergeAbsorbDirection: 'previous',
   // 按颜色导出 SRT：统一导出先选择一个 SRT 文件名作为前缀。
   exportColorUnified: true,
+  // 导出 SRT 时是否按字幕颜色附加说话人名称（仅本地偏好）。
+  exportSpeakerLabels: false,
   // 自动保存仅对绑定工程的 localhost 服务器版生效。
   autoSaveProject: true,
   autoSaveIntervalSeconds: 30,
@@ -699,6 +701,10 @@ const DEFAULT_EDITOR_SETTINGS = {
   stickerOverlayEnabled: false,
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
   stickerOtioExportMode: 'original',
+  // 时间线 OTIO / OTIOZ 导出选项：同时导出 SRT、合并表情包轨、写入字幕标记（默认全开）。
+  otioExportIncludeSrt: true,
+  otioExportIncludeStickers: true,
+  otioExportIncludeMarkers: true,
   // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
@@ -753,6 +759,8 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
+const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
+const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
   yahei: '"Microsoft YaHei", "PingFang SC", sans-serif',
@@ -777,6 +785,9 @@ function readEditorSettings() {
     cueEditorCancelOnEscape: saved.cueEditorCancelOnEscape === true,
     autoSnapAdjacentCues: saved.autoSnapAdjacentCues !== false,
     stickerOtioExportMode: saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
+    otioExportIncludeSrt: saved.otioExportIncludeSrt !== false,
+    otioExportIncludeStickers: saved.otioExportIncludeStickers !== false,
+    otioExportIncludeMarkers: saved.otioExportIncludeMarkers !== false,
   });
 }
 
@@ -1142,7 +1153,9 @@ function isMediaFile(file) {
   return Boolean(file) && (file.type.startsWith('video/') || file.type.startsWith('audio/') || MEDIA_FILE_RE.test(file.name));
 }
 function isReapeaksFile(file) {
-  return Boolean(file) && /\.reapeaks$/i.test(file.name);
+  // .quapeaks 是 MAW 自有容器（改名自 reapeaks 内核）：浏览器直读必须同样认它，
+  // 否则服务端读得到、用户在浏览器里打开却报「不支持的文件」。
+  return Boolean(file) && /\.(?:reapeaks|quapeaks)$/i.test(file.name);
 }
 
 // === 统一撤销/重做 ===
@@ -1214,6 +1227,7 @@ function snapshotPreviewState() {
   return {
     overlay: !!overlayToggle.checked,
     subtitle: { ...getPreviewGeometry(), ...getSubtitleAppearance() },
+    speakerLabels: getSpeakerLabelSettings(),
     extensionOverlay: !!extensionOverlayToggle?.checked,
     extensionSubtitle: { ...getStoredExtensionSubtitleAppearance() },
     sticker: { ...getStickerGeometry() },
@@ -1228,6 +1242,7 @@ function applyPreviewState(state) {
     updateEditorSettings({ extensionOverlayEnabled: state.extensionOverlay });
   }
   if (state.subtitle) setPreviewGeometry(state.subtitle, { markDirty: true, replaceAppearance: true });
+  if (state.speakerLabels) setSpeakerLabelSettings(state.speakerLabels, { markDirty: true });
   if (state.extensionSubtitle) restoreExtensionSubtitleAppearance(state.extensionSubtitle, { markDirty: true });
   if (state.sticker) setStickerGeometry(state.sticker, { markDirty: true });
   refreshPreviewGeometryEditable();
@@ -1408,6 +1423,9 @@ const totalCountEl = document.getElementById('total-count');
 const selCountEl = document.getElementById('sel-count');
 const overlayEl = document.getElementById('overlay');
 const overlayTextEl = document.getElementById('overlay-main-text');
+const overlayMainSpeakerLabelEl = document.getElementById('overlay-main-speaker-label');
+const overlayMainTextNode = document.createTextNode('');
+overlayTextEl.append(overlayMainTextNode);
 const overlayExtensionTextEl = document.getElementById('overlay-extension-text');
 const overlayToggle = document.getElementById('overlay-toggle');
 const extensionOverlayToggleWrap = document.getElementById('extension-overlay-toggle-wrap');
@@ -1422,6 +1440,17 @@ const subtitleBackgroundAlphaInput = document.getElementById('subtitle-backgroun
 const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
+const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
+const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
+const subtitleSpeakerLabelsEnabledInput = document.getElementById('subtitle-speaker-labels-enabled');
+const subtitleSpeakerLabelsSettings = document.getElementById('subtitle-speaker-labels-settings');
+const subtitleSpeakerLabelSeparatorInput = document.getElementById('subtitle-speaker-label-separator');
+const subtitleSpeakerLabelInputs = Object.fromEntries(
+  (window.AsrEditorUtils.SPEAKER_LABEL_COLORS || []).map((color) => [
+    color,
+    document.getElementById(`subtitle-speaker-label-${color}`),
+  ]),
+);
 const extensionSubtitlePreviewSettings = document.getElementById('extension-subtitle-preview-settings');
 const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
@@ -1480,6 +1509,7 @@ const razorToolSvg = razorToolButton?.querySelector('svg');
 const ninjaRazorIcon = razorToolButton?.querySelector('.ninja-razor-icon');
 const ninjaSlashFlash = document.getElementById('ninja-slash-flash');
 const exportColorUnifiedToggle = document.getElementById('export-color-unified');
+const exportSpeakerLabelsToggle = document.getElementById('export-speaker-labels');
 const helpToggle = document.getElementById('help-toggle');
 const themeToggle = document.getElementById('theme-toggle');
 const helpPanel = document.getElementById('help-panel');
@@ -1490,9 +1520,6 @@ const cueEditorSplitKey = document.getElementById('cue-editor-split-key');
 const cueEditorConfirmKey = document.getElementById('cue-editor-confirm-key');
 const helpTabButtons = Array.from(document.querySelectorAll('[data-help-tab]'));
 const helpTabPanels = Array.from(document.querySelectorAll('[data-help-tab-panel]'));
-const helpAdvancedToggle = document.getElementById('help-advanced-toggle');
-const helpAdvancedTabs = document.getElementById('help-advanced-tabs');
-const helpAdvancedTabButtons = Array.from(helpAdvancedTabs?.querySelectorAll('[data-help-tab]') || []);
 const helpOpenWaveformSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-waveform-settings]'));
 const helpOpenMediaSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-media-settings]'));
 const helpOpenGapRemovePanelButton = document.getElementById('help-open-gap-remove-panel');
@@ -1648,9 +1675,6 @@ const mergeJoinSettingsPanel = document.getElementById('merge-join-settings-pane
 const splitTrimSettings = document.getElementById('split-trim-settings');
 const splitTrimSettingsToggle = document.getElementById('split-trim-settings-toggle');
 const splitTrimSettingsPanel = document.getElementById('split-trim-settings-panel');
-const subtitlePreviewSettings = document.getElementById('subtitle-preview-settings');
-const subtitlePreviewSettingsToggle = document.getElementById('subtitle-preview-settings-toggle');
-const subtitlePreviewSettingsPanel = document.getElementById('subtitle-preview-settings-panel');
 const cueEditorSettings = document.getElementById('cue-editor-settings');
 const cueEditorSettingsToggle = document.getElementById('cue-editor-settings-toggle');
 const cueEditorSettingsPanel = document.getElementById('cue-editor-settings-panel');
@@ -1696,6 +1720,11 @@ const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
+const EDITOR_SETTINGS_WINDOW_POSITION_KEY = 'moy.asr.editor.settings.window.v1';
+const EDITOR_SETTINGS_WINDOW_SIZE_KEY = 'moy.asr.editor.settings.window_size.v1';
+const EDITOR_SETTINGS_WINDOW_TAB_KEY = 'moy.asr.editor.settings.window_tab.v1';
+const editorSettingsClose = document.getElementById('editor-settings-close');
+const editorSettingsDragHandle = document.getElementById('editor-settings-drag-handle');
 
 const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
@@ -1725,7 +1754,6 @@ let cuePanelUndoPushed = false;
 let cuePanelUndoRecord = null;
 let cuePanelTextEditSnapshot = null;
 let cuePanelCanceling = false;
-let editorSettingsPanelFrame = 0;
 
 function resetCuePanelEditState() {
   cuePanelUndoPushed = false;
@@ -1894,23 +1922,99 @@ function applyNinjaSettings() {
   if (ninjaRazorIcon) ninjaRazorIcon.hidden = !enabled;
 }
 
+// 全局设置窗口：复用 createFloatingPanel 获得拖动、位置持久化、Esc 关闭与按钮 active 态；
+// 窗口内部用左侧垂直标签页切换不同分区，并记忆用户上次停留的分区。
+const editorSettingsTabs = editorSettingsPanel
+  ? Array.from(editorSettingsPanel.querySelectorAll('.editor-settings-nav-tab'))
+  : [];
+const editorSettingsFloatingPanel = createFloatingPanel({
+  panel: editorSettingsPanel,
+  dragHandle: editorSettingsDragHandle,
+  manageButton: editorSettingsToggle,
+  anchorButton: editorSettingsToggle,
+  positionKey: EDITOR_SETTINGS_WINDOW_POSITION_KEY,
+  // 所有打开路径（按钮点击 / 桥接）都先恢复尺寸与标签页，保证默认分区带上
+  // active 样式，且窗口按实际内容尺寸定位。
+  onOpen: () => {
+    restoreEditorSettingsPanelSize();
+    restoreEditorSettingsActiveTab();
+  },
+});
+
+function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
+  if (!tab) return;
+  for (const item of editorSettingsTabs) {
+    const active = item === tab;
+    item.classList.toggle('active', active);
+    item.setAttribute('aria-selected', String(active));
+    item.tabIndex = active ? 0 : -1;
+    const page = document.getElementById(item.getAttribute('aria-controls') || '');
+    if (page) page.hidden = !active;
+  }
+  if (focus) tab.focus();
+  try {
+    localStorage.setItem(EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
+  } catch (_) {
+    // file:// 隐私模式可能拒绝 localStorage；切换标签页本身不受影响。
+  }
+}
+
+function restoreEditorSettingsActiveTab() {
+  let saved = '';
+  try {
+    saved = localStorage.getItem(EDITOR_SETTINGS_WINDOW_TAB_KEY) || '';
+  } catch (_) {
+    saved = '';
+  }
+  // 忽略已隐藏的分区（如当前环境不可用的「保存」），回退到第一个可见分区。
+  const tab = editorSettingsTabs.find((item) => item.dataset.settingsTab === saved && !item.hidden)
+    || editorSettingsTabs.find((item) => !item.hidden)
+    || editorSettingsTabs[0];
+  setEditorSettingsActiveTab(tab);
+}
+
+// 浮窗尺寸：与帮助窗口一致，仅在用户拖过右下角缩放手柄后持久化；
+// 未缩放时保持 CSS 默认宽度/自动高度。
+function restoreEditorSettingsPanelSize() {
+  if (!editorSettingsPanel) return;
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY) || 'null');
+  } catch (_) {
+    saved = null;
+  }
+  if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
+  editorSettingsPanel.style.width = `${Math.min(Math.max(460, saved.width), window.innerWidth - 12)}px`;
+  editorSettingsPanel.style.height = `${Math.min(Math.max(280, saved.height), window.innerHeight - 24)}px`;
+}
+let editorSettingsPanelSizeSaveTimer = 0;
+if (editorSettingsPanel) {
+  new ResizeObserver(() => {
+    if (!editorSettingsPanel.classList.contains('show')) return;
+    if (!editorSettingsPanel.style.width && !editorSettingsPanel.style.height) return;
+    clearTimeout(editorSettingsPanelSizeSaveTimer);
+    editorSettingsPanelSizeSaveTimer = setTimeout(() => {
+      const rect = editorSettingsPanel.getBoundingClientRect();
+      try {
+        localStorage.setItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY, JSON.stringify({
+          width: Math.round(rect.width), height: Math.round(rect.height),
+        }));
+      } catch (_) {
+        // file:// 隐私模式下 localStorage 可能被拒；缩放本身仍可用。
+      }
+    }, 250);
+  }).observe(editorSettingsPanel);
+}
+
 function setEditorSettingsPanelOpen(open) {
   if (!editorSettingsPanel || !editorSettingsToggle) return;
   if (!open) {
     setMergeJoinSettingsPanelOpen(false);
     setSplitTrimSettingsPanelOpen(false);
+    editorSettingsFloatingPanel.close();
+    return;
   }
-  editorSettingsToggle.classList.toggle('active', open);
-  editorSettingsToggle.setAttribute('aria-expanded', String(open));
-  // 先让按钮状态绘制出来，再展开/收起文档流中的大面板，避免布局重排把高亮拖后。
-  cancelAnimationFrame(editorSettingsPanelFrame);
-  editorSettingsPanelFrame = requestAnimationFrame(() => {
-    editorSettingsPanelFrame = requestAnimationFrame(() => {
-      editorSettingsPanelFrame = 0;
-      if (editorSettingsToggle.getAttribute('aria-expanded') !== String(open)) return;
-      editorSettingsPanel.hidden = !open;
-    });
-  });
+  editorSettingsFloatingPanel.open();
 }
 
 function positionAnchoredSettingsPanel(panel, toggle) {
@@ -1962,19 +2066,6 @@ function setSplitTrimSettingsPanelOpen(open) {
 function setSettingsPanelOwnerOpen(panel, open) {
   const owner = panel?.closest('.player-wrap, .current-cue-panel, .cues-container, .waveform-pane');
   owner?.classList.toggle('settings-panel-owner-open', open);
-}
-
-function positionSubtitlePreviewSettingsPanel() {
-  positionAnchoredSettingsPanel(subtitlePreviewSettingsPanel, subtitlePreviewSettingsToggle);
-}
-
-function setSubtitlePreviewSettingsPanelOpen(open) {
-  if (!subtitlePreviewSettingsPanel || !subtitlePreviewSettingsToggle) return;
-  subtitlePreviewSettingsPanel.hidden = !open;
-  setSettingsPanelOwnerOpen(subtitlePreviewSettingsPanel, open);
-  subtitlePreviewSettingsToggle.classList.toggle('active', open);
-  subtitlePreviewSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionSubtitlePreviewSettingsPanel();
 }
 
 function positionCueListSettingsPanel() {
@@ -2279,7 +2370,7 @@ function refreshMergeJoinModeHint() {
   // 用户觉得不对就自己点按钮换。
   const effective = hasPinned ? override : detected;
   const other = effective === 'continuous' ? 'word' : 'continuous';
-  mergeJoinModeText.textContent = `当前为「${splitModeLabel(effective)}」${splitModeExample(effective)}`;
+  mergeJoinModeText.textContent = `当前字幕为「${splitModeLabel(effective)}」${splitModeExample(effective)}`;
   // 按钮 title 给出目标类型的语言说明，帮助用户选择。
   mergeJoinModeSwitch.textContent = `切换为${splitModeLabel(other)}`;
   mergeJoinModeSwitch.title = other === 'word'
@@ -2308,6 +2399,7 @@ if (extensionOverlayToggle) extensionOverlayToggle.checked = false;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
 if (exportColorUnifiedToggle) exportColorUnifiedToggle.checked = EDITOR_SETTINGS.exportColorUnified;
+if (exportSpeakerLabelsToggle) exportSpeakerLabelsToggle.checked = EDITOR_SETTINGS.exportSpeakerLabels;
 if (autoSaveProjectToggle) autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
 if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
@@ -2428,7 +2520,29 @@ multiSubtitleAlignButton?.addEventListener('click', () => {
 });
 applySubtitleAppearance();
 applyExtensionSubtitleAppearance();
-editorSettingsToggle?.addEventListener('click', () => setEditorSettingsPanelOpen(editorSettingsPanel?.hidden));
+// 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
+editorSettingsTabs.forEach((tab) => {
+  tab.addEventListener('click', () => setEditorSettingsActiveTab(tab));
+  tab.addEventListener('keydown', (event) => {
+    // 方向键只在可见分区之间循环；隐藏分区（如不可用的「保存」）不参与导航。
+    const visibleTabs = editorSettingsTabs.filter((item) => !item.hidden);
+    const index = visibleTabs.indexOf(tab);
+    let next = -1;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      next = (index + 1) % visibleTabs.length;
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      next = (index - 1 + visibleTabs.length) % visibleTabs.length;
+    } else if (event.key === 'Home') {
+      next = 0;
+    } else if (event.key === 'End') {
+      next = visibleTabs.length - 1;
+    }
+    if (next < 0) return;
+    event.preventDefault();
+    setEditorSettingsActiveTab(visibleTabs[next], { focus: true });
+  });
+});
+editorSettingsClose?.addEventListener('click', () => setEditorSettingsPanelOpen(false));
 mergeJoinSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setMergeJoinSettingsPanelOpen(mergeJoinSettingsPanel?.hidden);
@@ -2436,10 +2550,6 @@ mergeJoinSettingsToggle?.addEventListener('click', (event) => {
 splitTrimSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setSplitTrimSettingsPanelOpen(splitTrimSettingsPanel?.hidden);
-});
-subtitlePreviewSettingsToggle?.addEventListener('click', (event) => {
-  event.stopPropagation();
-  setSubtitlePreviewSettingsPanelOpen(subtitlePreviewSettingsPanel?.hidden);
 });
 cueListSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
@@ -2461,9 +2571,6 @@ document.addEventListener('pointerdown', (event) => {
       applySearch(searchEl.value);
     }
   }
-  if (!subtitlePreviewSettingsPanel?.hidden && !subtitlePreviewSettings?.contains(event.target)) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-  }
   if (!cueListSettingsPanel?.hidden && !cueListSettings?.contains(event.target)) {
     setCueListSettingsPanelOpen(false);
   }
@@ -2482,10 +2589,6 @@ document.addEventListener('pointerdown', (event) => {
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  if (!subtitlePreviewSettingsPanel?.hidden) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-    subtitlePreviewSettingsToggle?.focus();
-  }
   if (!cueListSettingsPanel?.hidden) {
     setCueListSettingsPanelOpen(false);
     cueListSettingsToggle?.focus();
@@ -2511,17 +2614,12 @@ window.addEventListener('resize', positionMergeJoinSettingsPanel);
 window.addEventListener('scroll', positionMergeJoinSettingsPanel, true);
 window.addEventListener('resize', positionSplitTrimSettingsPanel);
 window.addEventListener('scroll', positionSplitTrimSettingsPanel, true);
-window.addEventListener('resize', positionSubtitlePreviewSettingsPanel);
-window.addEventListener('scroll', positionSubtitlePreviewSettingsPanel, true);
 window.addEventListener('resize', positionCueListSettingsPanel);
 window.addEventListener('scroll', positionCueListSettingsPanel, true);
 window.addEventListener('resize', positionWaveformSettingsPanel);
 window.addEventListener('scroll', positionWaveformSettingsPanel, true);
 window.addEventListener('resize', positionCueEditorSettingsPanel);
 window.addEventListener('scroll', positionCueEditorSettingsPanel, true);
-subtitlePreviewSettings?.closest('.player-toolbar')?.addEventListener(
-  'scroll', positionSubtitlePreviewSettingsPanel,
-);
 cueListSettings?.closest('.cue-list-toolbar')?.addEventListener(
   'scroll', positionCueListSettingsPanel,
 );
@@ -2549,11 +2647,15 @@ helpOpenWaveformSettingsButtons.forEach((button) => {
     waveformSettingsToggle?.focus();
   });
 });
+// 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
+function openEditorSettingsAtTab(tabId) {
+  setEditorSettingsPanelOpen(true);
+  setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
+}
 helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
-    setSubtitlePreviewSettingsPanelOpen(true);
-    subtitlePreviewSettingsToggle?.focus();
+    openEditorSettingsAtTab('editor-settings-tab-subtitle-preview');
   });
 });
 helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {
@@ -2565,30 +2667,12 @@ function visibleHelpTabButtons() {
   return helpTabButtons.filter((button) => !button.closest('[hidden]'));
 }
 
-function setHelpAdvancedTabsOpen(open, { focus = false } = {}) {
-  if (!helpAdvancedTabs || !helpAdvancedToggle) return;
-  const nextOpen = Boolean(open);
-  if (!nextOpen && helpAdvancedTabButtons.some((button) => button.getAttribute('aria-selected') === 'true')) {
-    selectHelpTab('basic');
-  }
-  helpAdvancedTabs.hidden = !nextOpen;
-  helpAdvancedToggle.setAttribute('aria-expanded', String(nextOpen));
-  helpAdvancedToggle.classList.toggle('is-active', nextOpen);
-  if (focus) {
-    const activeButton = helpAdvancedTabButtons.find((button) => button.getAttribute('aria-selected') === 'true');
-    (activeButton || helpAdvancedTabButtons[0])?.focus();
-  }
-}
-
 function selectHelpTab(tabName, { focus = false } = {}) {
   const activeButton = helpTabButtons.find((button) => button.dataset.helpTab === tabName);
   if (!activeButton) return;
-  if (helpAdvancedTabButtons.includes(activeButton) && helpAdvancedTabs?.hidden) {
-    setHelpAdvancedTabsOpen(true);
-  }
   helpTabButtons.forEach((button) => {
     const active = button === activeButton;
-    button.classList.toggle('is-active', active);
+    button.classList.toggle('active', active);
     button.setAttribute('aria-selected', String(active));
     button.tabIndex = active ? 0 : -1;
   });
@@ -2599,10 +2683,6 @@ function selectHelpTab(tabName, { focus = false } = {}) {
   });
   if (focus) activeButton.focus();
 }
-
-helpAdvancedToggle?.addEventListener('click', () => {
-  setHelpAdvancedTabsOpen(helpAdvancedTabs?.hidden === true);
-});
 
 helpTabButtons.forEach((button) => {
   button.addEventListener('click', () => selectHelpTab(button.dataset.helpTab));
@@ -2652,7 +2732,7 @@ function restoreHelpPanelSize() {
     saved = null;
   }
   if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
-  helpPanel.style.width = `${Math.min(Math.max(320, saved.width), window.innerWidth - 12)}px`;
+  helpPanel.style.width = `${Math.min(Math.max(400, saved.width), window.innerWidth - 12)}px`;
   helpPanel.style.height = `${Math.min(Math.max(240, saved.height), window.innerHeight - 12)}px`;
 }
 let helpPanelSizeSaveTimer = 0;
@@ -2901,6 +2981,9 @@ selectGroupMembersToggle?.addEventListener('change', () => {
 });
 exportColorUnifiedToggle?.addEventListener('change', () => {
   updateEditorSettings({ exportColorUnified: exportColorUnifiedToggle.checked });
+});
+exportSpeakerLabelsToggle?.addEventListener('change', () => {
+  updateEditorSettings({ exportSpeakerLabels: exportSpeakerLabelsToggle.checked });
 });
 clickBehaviorSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickBehavior: normalizeClickBehavior(clickBehaviorSelect.value) });
@@ -3273,6 +3356,69 @@ subtitleColorInput?.addEventListener('change', () => {
 subtitleColorUnderlineInput?.addEventListener('change', () => {
   pushPreviewUndo('切换预览字幕颜色下划线', snapshotPreviewState());
   setSubtitleAppearance({ color_underline: subtitleColorUnderlineInput.checked });
+  update();
+});
+subtitleColorStyleSelect?.addEventListener('change', () => {
+  pushPreviewUndo('调整预览字幕颜色样式', snapshotPreviewState());
+  setSubtitleAppearance({ color_style: subtitleColorStyleSelect.value });
+  update();
+});
+const speakerLabelUndoColors = new Set();
+let speakerLabelSeparatorUndo = false;
+function applySpeakerLabelInput(color, { finalize = false } = {}) {
+  const input = subtitleSpeakerLabelInputs[color];
+  if (!input) return;
+  if (!speakerLabelUndoColors.has(color)) {
+    pushPreviewUndo('重命名说话人', snapshotPreviewState());
+    speakerLabelUndoColors.add(color);
+  }
+  const current = getSpeakerLabelSettings();
+  setSpeakerLabelSettings({
+    ...current,
+    names: { ...current.names, [color]: input.value },
+  });
+  if (finalize) {
+    speakerLabelUndoColors.delete(color);
+    input.value = getSpeakerLabelSettings().names[color] || '';
+  }
+  update();
+}
+Object.entries(subtitleSpeakerLabelInputs).forEach(([color, input]) => {
+  input?.addEventListener('input', () => applySpeakerLabelInput(color));
+  input?.addEventListener('change', () => applySpeakerLabelInput(color, { finalize: true }));
+});
+function applySpeakerLabelSeparatorInput({ finalize = false } = {}) {
+  const input = subtitleSpeakerLabelSeparatorInput;
+  if (!input) return;
+  if (!speakerLabelSeparatorUndo) {
+    pushPreviewUndo('调整说话人分隔符', snapshotPreviewState());
+    speakerLabelSeparatorUndo = true;
+  }
+  const current = getSpeakerLabelSettings();
+  setSpeakerLabelSettings({ ...current, separator: input.value });
+  if (finalize) {
+    speakerLabelSeparatorUndo = false;
+    input.value = getSpeakerLabelSettings().separator;
+  }
+  update();
+}
+subtitleSpeakerLabelSeparatorInput?.addEventListener('input', () => applySpeakerLabelSeparatorInput());
+subtitleSpeakerLabelSeparatorInput?.addEventListener(
+  'change',
+  () => applySpeakerLabelSeparatorInput({ finalize: true }),
+);
+subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
+  const previous = snapshotPreviewState();
+  previous.speakerLabels.enabled = !subtitleSpeakerLabelsEnabledInput.checked;
+  pushPreviewUndo('切换说话人名称预览', previous);
+  setSpeakerLabelSettings({
+    ...getSpeakerLabelSettings(),
+    enabled: subtitleSpeakerLabelsEnabledInput.checked,
+  });
+  // 显示开关改变时同步 SRT 附加选项；导出开关仍可在全局设置中独立调整。
+  const speakerLabelsEnabled = subtitleSpeakerLabelsEnabledInput.checked;
+  updateEditorSettings({ exportSpeakerLabels: speakerLabelsEnabled });
+  if (exportSpeakerLabelsToggle) exportSpeakerLabelsToggle.checked = speakerLabelsEnabled;
   update();
 });
 extensionSubtitleFontSizeSelect?.addEventListener('change', () => {
@@ -3752,6 +3898,34 @@ function addGapAtWaveformTime(timeMs) {
   );
   waveformEditor?.revealTime(start, true);
   flashHint(`已添加 ${formatGapRemoveTotal(end - start)} 静音空隙`, 'success');
+  return true;
+}
+
+function fillGapRangeAtWaveformTime(timeMs) {
+  const gaps = getGapRemoveGaps();
+  if (!gaps.some((gap) => gap.removed !== false)) {
+    flashHint('当前没有已激活的空隙，无法填充区间空隙', 'invalid');
+    return false;
+  }
+  const range = window.AsrEditorUtils.resolveGapFillRange(gaps, timeMs, gapRemoveMediaDurationMs());
+  if (!range) {
+    flashHint('媒体时长尚不可用；请先加载媒体后再填充区间空隙', 'invalid');
+    return false;
+  }
+  const state = getGapRemoveData(true);
+  const sourceGaps = window.AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
+  const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, range.start, range.end, true);
+  if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
+    flashHint('该位置已经是已移除的空隙', 'invalid');
+    return false;
+  }
+  pushGapRemoveUndo('填充区间空隙');
+  state.detector = 'audio_gate';
+  commitManualGapRemoveChange(
+    state,
+    [{ start: range.start, end: range.end, removed: true }],
+  );
+  flashHint(`已填充并合并为 ${formatGapRemoveTotal(range.end - range.start)} 静音空隙`, 'success');
   return true;
 }
 
@@ -10819,6 +10993,8 @@ document.addEventListener('pointerdown', (e) => {
 // AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
 const GEO_UTILS = window.AsrEditorUtils;
 let previewGeometryDirty = false;
+// 启动早期生成的自定义字体选项先用原始名称占位；共享工具层就绪后立即统一本地化。
+relabelSubtitleFontFamilyOptions();
 
 function getPreviewGeometry() {
   return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.subtitle);
@@ -10896,7 +11072,10 @@ function subtitleFontFamilyOptionExists(select, value) {
 }
 function subtitleFontFamilyDisplayName(family) {
   const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  return GEO_UTILS.subtitleFontFamilyDisplayName(family, language);
+  // 启动早期 applySubtitleAppearance() 会先生成自定义字体选项，此时
+  // GEO_UTILS 别名（文件后部才初始化）尚处于暂时性死区；直接读共享工具层，
+  // 不可用时先用原始字体名占位，别名就绪后由 relabelSubtitleFontFamilyOptions 统一本地化。
+  return window.AsrEditorUtils?.subtitleFontFamilyDisplayName(family, language) ?? family;
 }
 function relabelSubtitleFontFamilyOptions() {
   [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
@@ -10909,6 +11088,10 @@ function normalizeSubtitleColor(value) {
   if (typeof value !== 'string') return null;
   const color = value.trim().toLowerCase();
   return /^#[0-9a-f]{6}$/i.test(color) ? color : null;
+}
+function normalizeSubtitleColorStyle(value) {
+  return typeof value === 'string' && SUBTITLE_COLOR_STYLE_VALUES.includes(value)
+    ? value : null;
 }
 function normalizeSubtitleAppearance(value) {
   const result = {};
@@ -10925,6 +11108,8 @@ function normalizeSubtitleAppearance(value) {
   if (backgroundAlpha !== null) result.background_alpha = backgroundAlpha;
   const color = normalizeSubtitleColor(value?.color);
   if (color) result.color = color;
+  const colorStyle = normalizeSubtitleColorStyle(value?.color_style);
+  if (colorStyle) result.color_style = colorStyle;
   if (value?.color_underline === false) result.color_underline = false;
   return result;
 }
@@ -10934,7 +11119,33 @@ function getSubtitleAppearance(value = DATA.preview?.subtitle) {
     ...result,
     color: result.color || DEFAULT_SUBTITLE_COLOR,
     color_underline: result.color_underline !== false,
+    color_style: result.color_style || DEFAULT_SUBTITLE_COLOR_STYLE,
   };
+}
+function getSpeakerLabelSettings(value = DATA.preview?.subtitle?.speaker_labels) {
+  // applySubtitleAppearance() runs during the early boot sequence, before the
+  // preview-geometry section initializes its later GEO_UTILS alias.
+  return EDITOR_SETTINGS_UTILS.normalizeSpeakerLabelSettings(value);
+}
+function syncSpeakerLabelControls(settings = getSpeakerLabelSettings()) {
+  if (subtitleSpeakerLabelsEnabledInput) {
+    subtitleSpeakerLabelsEnabledInput.checked = settings.enabled;
+  }
+  if (subtitleSpeakerLabelsSettings) {
+    subtitleSpeakerLabelsSettings.dataset.enabled = settings.enabled ? 'true' : 'false';
+    subtitleSpeakerLabelsSettings.hidden = !settings.enabled;
+  }
+  Object.entries(subtitleSpeakerLabelInputs).forEach(([color, input]) => {
+    if (input && document.activeElement !== input) input.value = settings.names[color] || '';
+  });
+  if (subtitleSpeakerLabelSeparatorInput && document.activeElement !== subtitleSpeakerLabelSeparatorInput) {
+    subtitleSpeakerLabelSeparatorInput.value = settings.separator;
+  }
+  document.querySelectorAll('[data-speaker-label-swatch]').forEach((swatch) => {
+    const color = swatch.dataset.speakerLabelSwatch;
+    const value = COLOR_BY_NAME[color]?.value;
+    if (value) swatch.style.backgroundColor = value;
+  });
 }
 function getStoredExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
   return normalizeSubtitleAppearance(value);
@@ -10969,6 +11180,12 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   if (subtitleColorUnderlineInput) {
     subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
+  if (subtitleColorStyleSelect) {
+    subtitleColorStyleSelect.value = appearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
+  }
+  if (subtitleColorStyleControl) {
+    subtitleColorStyleControl.hidden = appearance.color_underline === false;
+  }
   if (subtitleFontFamilySelect) {
     subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
     const family = appearance.font_family || 'default';
@@ -10995,6 +11212,7 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
     }
   }
   if (subtitleColorInput) subtitleColorInput.value = appearance.color || DEFAULT_SUBTITLE_COLOR;
+  syncSpeakerLabelControls();
 }
 function syncExtensionSubtitleAppearanceControls() {
   const stored = getStoredExtensionSubtitleAppearance();
@@ -11041,6 +11259,10 @@ function applySubtitleAppearance(value = DATA.preview?.subtitle) {
     || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
   overlayTextEl.style.backgroundColor = hasCustomBackground ? subtitleBackgroundCss(appearance) : '';
   overlayTextEl.style.color = appearance.color || DEFAULT_SUBTITLE_COLOR;
+  // The preview refresh caches the effective text color in a dataset value.
+  // Applying the stored base appearance resets the inline color, so invalidate
+  // that cache and let the next refresh reapply a color-snapshot style.
+  delete overlayTextEl.dataset.colorText;
   syncSubtitleAppearanceControls(appearance);
 }
 function applyExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
@@ -11092,11 +11314,32 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
     if (patch.color_underline) delete next.color_underline;
     else next.color_underline = false;
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'color_style')) {
+    const colorStyle = normalizeSubtitleColorStyle(patch.color_style);
+    if (colorStyle) next.color_style = colorStyle;
+  }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
-  DATA.preview.subtitle = { ...getPreviewGeometry(), ...next };
+  DATA.preview.subtitle = {
+    ...getPreviewGeometry(),
+    ...next,
+    speaker_labels: getSpeakerLabelSettings(),
+  };
   if (markDirty) previewGeometryDirty = true;
   applySubtitleAppearance(DATA.preview.subtitle);
   return next;
+}
+
+function setSpeakerLabelSettings(value, { markDirty = true } = {}) {
+  const settings = getSpeakerLabelSettings(value);
+  if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
+  DATA.preview.subtitle = {
+    ...getPreviewGeometry(),
+    ...getSubtitleAppearance(),
+    speaker_labels: settings,
+  };
+  if (markDirty) previewGeometryDirty = true;
+  applySubtitleAppearance(DATA.preview.subtitle);
+  return settings;
 }
 function collectSubtitleLocalFontFamilies(fontData) {
   const families = new Map();
@@ -11227,9 +11470,13 @@ function setPreviewGeometry(geo, { markDirty = true, replaceAppearance = false }
   const clamped = GEO_UTILS.clampPreviewGeometry(GEO_UTILS.normalizePreviewGeometry(geo));
   const appearance = replaceAppearance
     ? getSubtitleAppearance(geo)
-    : { ...getSubtitleAppearance(), ...getSubtitleAppearance(geo) };
+    : { ...getSubtitleAppearance(), ...normalizeSubtitleAppearance(geo) };
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
-  DATA.preview.subtitle = { ...clamped, ...appearance };
+  DATA.preview.subtitle = {
+    ...clamped,
+    ...appearance,
+    speaker_labels: getSpeakerLabelSettings(),
+  };
   if (markDirty) previewGeometryDirty = true;
   applyPreviewGeometryToDom(clamped);
   applySubtitleAppearance(DATA.preview.subtitle);
@@ -11506,25 +11753,74 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayExtensionTextEl.classList.contains('hidden') === extensionVisible) {
     overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
   }
-  const mainText = mainVisible ? (seg.text || '') : '';
+  const speakerLabels = getSpeakerLabelSettings();
+  const mainColorName = mainVisible && seg
+    ? MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments)
+    : null;
+  const speakerLabel = mainVisible && speakerLabels.enabled
+    ? window.AsrEditorUtils.speakerLabelForSegment(
+      seg, DATA.segments, speakerLabels.names,
+    )
+    : '';
+  const speakerLabelVisible = Boolean(speakerLabel && mainColorName && COLOR_BY_NAME[mainColorName]);
+  const speakerLabelColor = speakerLabelVisible ? COLOR_BY_NAME[mainColorName].value : '';
+  const speakerLabelText = speakerLabelVisible
+    ? `${speakerLabel}${speakerLabels.separator}`
+    : '';
+  const mainText = mainVisible ? String(seg.text || '') : '';
   const extensionText = extensionVisible ? (extension.text || '') : '';
-  if (mainVisible && overlayTextEl.textContent !== mainText) overlayTextEl.textContent = mainText;
+  if (overlayMainSpeakerLabelEl.classList.contains('hidden') === speakerLabelVisible) {
+    overlayMainSpeakerLabelEl.classList.toggle('hidden', !speakerLabelVisible);
+  }
+  if (overlayMainSpeakerLabelEl.textContent !== speakerLabelText) {
+    overlayMainSpeakerLabelEl.textContent = speakerLabelText;
+  }
+  if (overlayMainSpeakerLabelEl.dataset.color !== speakerLabelColor) {
+    overlayMainSpeakerLabelEl.dataset.color = speakerLabelColor;
+    overlayMainSpeakerLabelEl.style.color = speakerLabelColor;
+  }
+  if (overlayMainTextNode.nodeValue !== mainText) overlayMainTextNode.nodeValue = mainText;
   if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
     overlayExtensionTextEl.textContent = extensionText;
   }
-  // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref）给预览文字加下划线。
-  // dataset 记录上次应用的颜色，避免播放刷新每帧都写内联样式。
-  const colorUnderlineEnabled = DATA.preview?.subtitle?.color_underline !== false;
-  let colorUnderline = '';
-  if (mainVisible && colorUnderlineEnabled && seg) {
+  // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
+  // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
+  // 播放刷新每帧都写内联样式。
+  const subtitleAppearance = getSubtitleAppearance();
+  const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
+  const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
+  let previewSegmentColor = '';
+  if (mainVisible && colorPreviewEnabled && seg) {
     const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
-    colorUnderline = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
+    previewSegmentColor = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
   }
+  const colorUnderline = colorPreviewEnabled
+    && colorStyle === 'underline'
+    ? previewSegmentColor : '';
+  const textColor = colorPreviewEnabled
+    && colorStyle === 'text'
+    && previewSegmentColor
+    ? previewSegmentColor
+    : subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
+  const textStroke = colorPreviewEnabled
+    && colorStyle === 'stroke'
+    && previewSegmentColor
+    ? `.125em ${previewSegmentColor}`
+    : '';
   if (overlayTextEl.dataset.colorUnderline !== colorUnderline) {
     overlayTextEl.dataset.colorUnderline = colorUnderline;
     overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
     overlayTextEl.style.textDecorationColor = colorUnderline;
     overlayTextEl.style.textUnderlineOffset = colorUnderline ? '0.25em' : '';
+  }
+  if (overlayTextEl.dataset.colorText !== textColor) {
+    overlayTextEl.dataset.colorText = textColor;
+    overlayTextEl.style.color = textColor;
+  }
+  if (overlayTextEl.dataset.colorStroke !== textStroke) {
+    overlayTextEl.dataset.colorStroke = textStroke;
+    overlayTextEl.style.webkitTextStroke = textStroke;
+    overlayTextEl.style.paintOrder = textStroke ? 'stroke fill' : '';
   }
   const overlayHidden = !mainVisible && !extensionVisible;
   if (overlayEl.classList.contains('hidden') !== overlayHidden) {
@@ -11712,6 +12008,15 @@ overlayToggle.addEventListener('change', () => {
 // 程序内开关（不暴露 GUI）：导出 SRT 时保留禁用项的时间轴序号但内容替换为空白
 let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
+function speakerLabelExportOptions() {
+  const settings = getSpeakerLabelSettings();
+  return {
+    speakerLabelsEnabled: EDITOR_SETTINGS.exportSpeakerLabels === true,
+    speakerLabels: settings.names,
+    speakerLabelSeparator: settings.separator,
+  };
+}
+
 function buildSrt() {
   const segments = overlayTrackVisible()
     ? MULTI_SUBTITLE_UTILS.mergeMainAndOverlaySegments(DATA.segments, getOverlayTrack().segments)
@@ -11724,6 +12029,7 @@ function buildSrt() {
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
 }
@@ -11742,6 +12048,7 @@ function buildAss() {
 
 function buildExtensionSrt(track = getActiveExtensionTrack()) {
   return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
 }
@@ -11761,6 +12068,7 @@ function buildGapRemovedSrt() {
     firstEnabledIndex,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
     ensurePositiveDuration: true,
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
 }
@@ -11811,6 +12119,7 @@ async function downloadColorSrts(gapRemoved = false) {
       ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
       : undefined,
     ensurePositiveDuration: gapRemoved,
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
   let filenameBase = `${FILENAME_BASE}${gapSuffix}`;
@@ -11928,6 +12237,16 @@ function buildGapRemovedRegionsJson() {
   }, null, 2);
 }
 
+const CANONICAL_PROJECT_FIELDS = new Set([
+  'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity',
+  'model', 'sticker_root', 'timebase', 'segments', 'multi_subtitle', 'waveform',
+  'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'gap_remove',
+  'script_alignment', 'workspace', 'preview',
+]);
+let projectExtensionFields = Object.fromEntries(
+  Object.entries(DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+);
+
 function buildJson() {
   syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const repairedTimingCount = repairCurrentProjectTimings();
@@ -11936,6 +12255,8 @@ function buildJson() {
   }
   syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const out = {
+    schema: window.AsrEditorUtils.PROJECT_SCHEMA,
+    ...projectExtensionFields,
     media: DATA.media || '',
     language: DATA.language || '',
     model: DATA.model || '',
@@ -11959,6 +12280,11 @@ function buildJson() {
       return o;
     }),
   };
+  if (typeof DATA.language_source === 'string') out.language_source = DATA.language_source;
+  if (typeof DATA.split_mode === 'string') out.split_mode = DATA.split_mode;
+  if (typeof DATA.timestamp_granularity === 'string') {
+    out.timestamp_granularity = DATA.timestamp_granularity;
+  }
   const multi = getMultiSubtitleState();
   out.multi_subtitle = {
     schema: multi.schema || MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
@@ -11983,6 +12309,8 @@ function buildJson() {
           text: segment.text || '',
         };
         if (Array.isArray(segment.items)) outSegment.items = segment.items;
+        if (segment.color != null) outSegment.color = segment.color;
+        if (segment.color_ref != null) outSegment.color_ref = segment.color_ref;
         if (segment._dirty) outSegment._dirty = true;
         if (segment.disabled) outSegment.disabled = true;
         return outSegment;
@@ -12021,17 +12349,23 @@ function buildJson() {
       }),
     };
   }
-  if (DATA.waveform) out.waveform = DATA.waveform;
+  // 三块波形缓存不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
+  // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
+  // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
   const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
   if (mediaMetadata) out.media_metadata = mediaMetadata;
-  if (DATA.spectral) out.spectral = DATA.spectral;
-  if (DATA.waveform_reapeaks) out.waveform_reapeaks = DATA.waveform_reapeaks;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
   if (DATA.script_alignment) out.script_alignment = DATA.script_alignment;
   const workspace = buildCurrentWorkspaceData();
   if (workspace) out.workspace = workspace;
   // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
-  const preview = { subtitle: { ...getPreviewGeometry(), ...getSubtitleAppearance() } };
+  const preview = {
+    subtitle: {
+      ...getPreviewGeometry(),
+      ...getSubtitleAppearance(),
+      speaker_labels: getSpeakerLabelSettings(),
+    },
+  };
   if (getActiveExtensionTrack() || DATA.preview?.extension_subtitle) {
     preview.extension_subtitle = { ...getStoredExtensionSubtitleAppearance() };
   }
@@ -12390,7 +12724,11 @@ function buildTimelineMediaClip(
   };
 }
 
-function buildTimelineOtio({ gapRemoved = false } = {}) {
+function buildTimelineOtio({
+  gapRemoved = false,
+  includeStickers = false,
+  includeSubtitleMarkers = true,
+} = {}) {
   const removed = gapRemoved ? getRemovedGapRanges() : [];
   if (gapRemoved && !removed.length) {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
@@ -12423,7 +12761,7 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
     ? mediaMetadata.audio_tracks : null;
   const clipName = otioMediaName(targetUrl);
   const audioEntries = audioMetadata === null
-    ? [null]
+    ? [{ audioTrack: null, index: 0 }]
     : audioMetadata.map((audioTrack, index) => ({ audioTrack, index }));
   const audioSpecs = audioEntries.length || player?.tagName !== 'AUDIO'
     ? audioEntries.map(({ audioTrack, index }) => ({
@@ -12456,8 +12794,10 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
       sourceStartFrame,
       sourceDurationFrames,
       {
-        includeSubtitleMarkers: track.kind === 'Video'
-          || (track.kind === 'Audio' && player?.tagName === 'AUDIO' && trackIndex === 0),
+        includeSubtitleMarkers: includeSubtitleMarkers && (
+          track.kind === 'Video'
+          || (track.kind === 'Audio' && player?.tagName === 'AUDIO' && trackIndex === 0)
+        ),
         gapRemoved,
         audioTrack: track.audioTrack,
         audioTrackIndex: track.audioTrackIndex,
@@ -12466,6 +12806,23 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
     )),
     kind: track.kind,
   }));
+  // 勾选「时间线包含表情包」时，把表情包作为叠加视频轨合并进同一个 OTIO 时间线；
+  // 没有表情包时静默跳过，仅保留时间线本体。
+  if (includeStickers) {
+    const collected = collectStickerOtioEntries(removed);
+    if (collected.error) {
+      flashHint(collected.error, 'warning');
+      return null;
+    }
+    if (collected.entries.length) {
+      const stickerTrack = buildStickerOtioTrack(collected.entries);
+      if (stickerTrack.error) {
+        flashHint(stickerTrack.error, 'warning');
+        return null;
+      }
+      tracks.push(stickerTrack.track);
+    }
+  }
   const metadata = {
     moy: {
       source_media: targetUrl,
@@ -12503,11 +12860,19 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
 }
 
 function buildSourceOtio() {
-  return buildTimelineOtio({ gapRemoved: false });
+  return buildTimelineOtio({
+    gapRemoved: false,
+    includeStickers: EDITOR_SETTINGS.otioExportIncludeStickers,
+    includeSubtitleMarkers: EDITOR_SETTINGS.otioExportIncludeMarkers,
+  });
 }
 
 function buildGapRemovedOtio() {
-  return buildTimelineOtio({ gapRemoved: true });
+  return buildTimelineOtio({
+    gapRemoved: true,
+    includeStickers: EDITOR_SETTINGS.otioExportIncludeStickers,
+    includeSubtitleMarkers: EDITOR_SETTINGS.otioExportIncludeMarkers,
+  });
 }
 
 function stickerOtioName(sticker, absPath) {
@@ -12576,7 +12941,9 @@ function collectStickerOtioEntries(removed) {
   return { entries };
 }
 
-function buildStickerOtioTimeline(stickers, timelineName) {
+// 把表情包条目构建为一条可放进任意时间线 Stack 的单层视频轨（Gap 填充 + 图片 Clip）。
+// stickers 会被就地排序；时间重叠时返回 { error }，由调用方决定中止还是跳过。
+function buildStickerOtioTrack(stickers) {
   stickers.sort((a, b) => (a.startMs - b.startMs) || (a.endMs - b.endMs) || (a.idx - b.idx));
   const children = [];
   let cursor = 0;
@@ -12630,6 +12997,25 @@ function buildStickerOtioTimeline(stickers, timelineName) {
     cursor = startFrame + durationFrames;
   }
   return {
+    track: {
+      OTIO_SCHEMA: 'Track.1',
+      metadata: {},
+      name: '表情包',
+      source_range: null,
+      effects: [],
+      markers: [],
+      enabled: true,
+      color: null,
+      children,
+      kind: 'Video',
+    },
+  };
+}
+
+function buildStickerOtioTimeline(stickers, timelineName) {
+  const result = buildStickerOtioTrack(stickers);
+  if (result.error) return result;
+  return {
     json: JSON.stringify({
       OTIO_SCHEMA: 'Timeline.1',
       metadata: {},
@@ -12644,18 +13030,7 @@ function buildStickerOtioTimeline(stickers, timelineName) {
         markers: [],
         enabled: true,
         color: null,
-        children: [{
-          OTIO_SCHEMA: 'Track.1',
-          metadata: {},
-          name: '表情包',
-          source_range: null,
-          effects: [],
-          markers: [],
-          enabled: true,
-          color: null,
-          children,
-          kind: 'Video',
-        }],
+        children: [result.track],
       },
     }, null, 4),
   };
@@ -12724,10 +13099,10 @@ async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
   const tr = (s) => window.MAWE_I18N?.translateText?.(s) || s;
   if (editingState) finishEdit(true);
   const payload = buildTimeline();
-  if (!payload) return;
+  if (!payload) return false;
   if (!SERVER_CONFIG?.canOtozTimelineExport || !SERVER_CONFIG?.otiozTimelineExportUrl) {
     flashHint(tr('当前工程无法导出时间线 OTIOZ（需要以 server-editor 打开并绑定工程文件）'), 'warning');
-    return;
+    return false;
   }
   flashHint(tr('正在生成时间线 OTIOZ 打包工程…'));
   try {
@@ -12746,11 +13121,12 @@ async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
     }
     const blob = await response.blob();
     flashHint(tr('时间线 OTIOZ 已生成，媒体已打包进 zip'), 'success');
-    await downloadFile(blob, filename, 'application/zip', {
+    return Boolean(await downloadFile(blob, filename, 'application/zip', {
       desc: description, types: { 'application/zip': ['.otioz'] },
-    });
+    }));
   } catch (error) {
     flashHint(`${tr('时间线 OTIOZ 导出失败')}：${error.message || error}`, 'warning');
+    return false;
   }
 }
 
@@ -13146,6 +13522,9 @@ function scheduleAutoSave() {
     // 服务器绑定工程或浏览器保存对话框（句柄模式）任一可用时都可自动保存。
     const available = Boolean(SERVER_CONFIG?.saveUrl || window.showSaveFilePicker);
     serverAutoSaveSettings.hidden = !available;
+    // 自动保存不可用时隐藏「保存」标签页，避免设置窗口出现空白分区。
+    const saveTab = document.getElementById('editor-settings-tab-save');
+    if (saveTab) saveTab.hidden = !available;
     if (!available) return;
   const sync = () => {
     autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
@@ -14241,36 +14620,60 @@ document.getElementById('download-gap-removed-color-srt')?.addEventListener('cli
 document.getElementById('download-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildSourceOtio();
-  if (payload) {
-    await downloadFile(payload, FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
-      desc: 'OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  if (!payload) return;
+  await downloadFile(payload, FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
+    desc: 'OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  });
+  if (EDITOR_SETTINGS.otioExportIncludeSrt) {
+    await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+      desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
     });
   }
 });
 document.getElementById('download-otioz')?.addEventListener('click', async () => {
-  await exportTimelineOtioz(
+  const saved = await exportTimelineOtioz(
     'source',
     buildSourceOtio,
     FILENAME_BASE + '.otioz',
     'OTIOZ 打包工程',
   );
+  if (saved && EDITOR_SETTINGS.otioExportIncludeSrt) {
+    await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+      desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
+    });
+  }
 });
 document.getElementById('download-gap-removed-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedOtio();
-  if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
-      desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
-    });
+  if (!payload) return;
+  await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
+    desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  });
+  if (EDITOR_SETTINGS.otioExportIncludeSrt) {
+    const srtPayload = buildGapRemovedSrt();
+    if (srtPayload) {
+      await downloadFile(srtPayload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+        desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
+      });
+    }
   }
 });
 document.getElementById('download-gap-removed-otioz')?.addEventListener('click', async () => {
-  await exportTimelineOtioz(
+  const saved = await exportTimelineOtioz(
     'gap-removed',
     buildGapRemovedOtio,
     `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otioz`,
     '去空隙时间线 OTIOZ 打包工程',
   );
+  if (saved && EDITOR_SETTINGS.otioExportIncludeSrt) {
+    const srtPayload = buildGapRemovedSrt();
+    if (srtPayload) {
+      await downloadFile(srtPayload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+        desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
+      });
+    }
+  }
 });
 document.getElementById('download-gap-removed-ffconcat')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
@@ -14317,6 +14720,38 @@ document.getElementById('download-sticker-otioz')?.addEventListener('click', asy
     `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '表情包 OTIOZ 打包工程'
   );
 });
+
+// 时间线 OTIO / OTIOZ 导出选项：两个 OTIO 子菜单（原始 / 去空隙）共享同一份设置，
+// 任一处勾选立即持久化并同步另一处；导出时由 buildSourceOtio / buildGapRemovedOtio 读取。
+const OTIO_EXPORT_OPTION_KEYS = {
+  srt: 'otioExportIncludeSrt',
+  stickers: 'otioExportIncludeStickers',
+  markers: 'otioExportIncludeMarkers',
+};
+const otioExportOptionInputs = [
+  ...document.querySelectorAll('input[data-otio-export-option]'),
+];
+
+function syncOtioExportOptionInputs() {
+  otioExportOptionInputs.forEach((input) => {
+    const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
+    if (key) input.checked = Boolean(EDITOR_SETTINGS[key]);
+  });
+}
+
+otioExportOptionInputs.forEach((input) => {
+  input.addEventListener('change', () => {
+    const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
+    if (!key) return;
+    updateEditorSettings({ [key]: input.checked });
+    syncOtioExportOptionInputs();
+    // 鼠标点击切换后立即交还焦点：焦点留在子菜单内的复选框上会让悬停关闭
+    // 逻辑（wrapper.contains(document.activeElement)）一直误判指针仍在菜单内，
+    // 导致二级菜单不再自动收起。键盘切换（:focus-visible）保持焦点不受影响。
+    if (!input.matches(':focus-visible')) input.blur();
+  });
+});
+syncOtioExportOptionInputs();
 
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
 updateStickerExportButtons();
@@ -14704,6 +15139,7 @@ function resetLoadedMedia() {
 
 function buildBlankProject() {
   return {
+    schema: window.AsrEditorUtils.PROJECT_SCHEMA,
     media: '', language: '', model: '',
     timebase: { unit: 'milliseconds', fps: 30 },
     segments: [],
@@ -14721,8 +15157,16 @@ function applyCanonicalProject(data, filename) {
   currentCuePanelTrackId = null;
   resetCuePanelEditState();
   resetLoadedMedia();
+  projectExtensionFields = Object.fromEntries(
+    Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+  );
+  DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
   DATA.media = typeof data.media === 'string' ? data.media : '';
   DATA.language = data.language || '';
+  DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
+  DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
+  DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
+    ? data.timestamp_granularity : undefined;
   DATA.model = data.model || '';
   DATA.timebase = normalizeTimelineTimebase(data.timebase);
   timelineFpsManuallySet = hasExplicitTimelineFps(data.timebase);
@@ -15257,6 +15701,12 @@ async function openProjectFile(file, options = {}) {
     const text = await readFileTextWithProgress(file);
     updateEditorLoading(60, `正在解析工程 ${file.name}…`);
     const data = JSON.parse(text);
+    if (data && typeof data === 'object' && !Array.isArray(data)
+        && Object.prototype.hasOwnProperty.call(data, 'schema')
+        && !window.AsrEditorUtils.supportsProjectSchema(data)) {
+      flashHint('不支持的工程格式版本，请使用新版 MAW 打开。', 'warning');
+      return false;
+    }
     // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
     if (data && Array.isArray(data.segments)) {
       data.timebase = normalizeTimelineTimebase(data.timebase);
@@ -15623,10 +16073,10 @@ async function loadReapeaksFile(file) {
     waveformEditor.setReapeaksWaveform(parsed.waveform);
     waveformEditor.setSpectralPayload(parsed.spectral);
     waveformEditor.setMediaAvailable(false);
-    flashHint(`已加载 ReaPeaks 缓存：${file.name}`, 'success');
+    flashHint(`已加载 reapeaks 缓存：${file.name}`, 'success');
     return true;
   } catch (error) {
-    flashHint(`加载 ReaPeaks 失败：${error.message || error}`, 'warning');
+    flashHint(`加载 reapeaks 失败：${error.message || error}`, 'warning');
     return false;
   }
 }
@@ -17776,25 +18226,29 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
     }
     ctxmenu.appendChild(it);
   }
+  function addSep() {
+    const sep = document.createElement('div');
+    sep.className = 'sep';
+    ctxmenu.appendChild(sep);
+  }
   const mainIdx = findWaveformCueAtTime(timeMs, DATA.segments);
   const extensionTrack = getActiveExtensionTrack();
   const extensionIdx = findWaveformCueAtTime(timeMs, extensionTrack?.segments);
   if (effectiveTrack === 'extension') {
     addItem(
       '创建副字幕',
-      '',
+      'N',
       () => addExtensionAtWaveformTime(timeMs, clickX, clickY, extensionTrack),
       extensionIdx >= 0,
     );
   } else {
     addItem(
       '创建字幕',
-      '',
+      'N',
       () => addCueAtWaveformTime(timeMs, clickX, clickY),
       mainIdx >= 0,
     );
   }
-  addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));
   if (Array.isArray(DATA.segments) && DATA.segments.length) {
     addItem(
       '按音频位置拆分主字幕',
@@ -17810,6 +18264,11 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       () => openExtensionSplitModal(extensionIdx, timeMs, extensionTrack),
       extensionIdx < 0,
     );
+  }
+  addSep();
+  addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));
+  if (getGapRemoveGaps().some((gap) => gap.removed !== false)) {
+    addItem('填充区间空隙', '', () => fillGapRangeAtWaveformTime(timeMs));
   }
 
   ctxmenu.classList.add('show');
@@ -18570,7 +19029,7 @@ async function handleDroppedFiles(files) {
   const srtFile = files.find(isSrtFile);
   let stagedSrtSegments = null;
   if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
-    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / ReaPeaks）', 'warning');
+    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / reapeaks）', 'warning');
     return;
   }
   if (jsonFile) {
