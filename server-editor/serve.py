@@ -71,6 +71,7 @@ from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # no
 
 MAX_RECENT_PROJECTS = 10
 BUILTIN_WORKSPACE_IDS = frozenset({"classic", "wave-right", "three-fold", "cinema"})
+ONBOARDING_STATUSES = frozenset({"completed", "skipped"})
 PRPROJ_CAPABILITY = {
     "ok": False,
     "capability": "prproj",
@@ -128,6 +129,10 @@ class ServerSettings:
     saved_workspaces: dict[str, dict[str, object]] = field(default_factory=dict)
     preset_workspaces: dict[str, dict[str, object]] = field(default_factory=dict)
     active_workspace_name: str = ""
+    # The Electron MOSE shell starts a fresh localhost origin on every launch,
+    # so its onboarding state must live in the shared per-user settings file
+    # rather than in origin-scoped browser storage.
+    onboarding_status: str = ""
 
 
 class SaveProjectError(ValueError):
@@ -221,12 +226,18 @@ def read_server_settings(path: Path) -> ServerSettings:
             if name in BUILTIN_WORKSPACE_IDS and isinstance(workspace, dict):
                 preset_workspaces[name] = copy.deepcopy(workspace)
     active_workspace_name = payload.get("active_workspace_name")
+    onboarding_status = payload.get("onboarding_status")
     return ServerSettings(
         auto_open_last_project=payload.get("auto_open_last_project") is not False,
         recent_projects=tuple(projects),
         saved_workspaces=saved_workspaces,
         preset_workspaces=preset_workspaces,
         active_workspace_name=active_workspace_name if active_workspace_name in saved_workspaces else "",
+        onboarding_status=(
+            onboarding_status
+            if isinstance(onboarding_status, str) and onboarding_status in ONBOARDING_STATUSES
+            else ""
+        ),
     )
 
 
@@ -240,6 +251,7 @@ def write_server_settings(path: Path, settings: ServerSettings) -> None:
         "saved_workspaces": settings.saved_workspaces,
         "preset_workspaces": settings.preset_workspaces,
         "active_workspace_name": settings.active_workspace_name,
+        "onboarding_status": settings.onboarding_status,
     }
     fd, temp_name = tempfile.mkstemp(prefix=f".{path.stem}.", suffix=".tmp", dir=path.parent)
     try:
@@ -570,6 +582,10 @@ def build_server_page(
     if desktop_mode:
         server_config["desktopMode"] = True
         server_config["desktopOpenProjectUrl"] = "/api/desktop/project/open"
+        # MOSE uses a fresh random localhost port for every launch.  Expose
+        # the user-level onboarding state only to that shell so the editor can
+        # persist it outside the port-scoped browser storage namespace.
+        server_config["onboardingStatus"] = settings.onboarding_status
     page = edit.render_editor_page(
         title=title,
         media_html=media_html,
@@ -923,6 +939,13 @@ class EditorServer(ThreadingHTTPServer):
             if name and name not in self.settings.saved_workspaces:
                 raise ValueError("工作区不存在")
             self.settings = replace(self.settings, active_workspace_name=name)
+            self.persist_settings()
+
+    def set_onboarding_status(self, status: str) -> None:
+        if not isinstance(status, str) or status not in ONBOARDING_STATUSES:
+            raise ValueError("新手引导状态不正确")
+        with self.settings_lock:
+            self.settings = replace(self.settings, onboarding_status=status)
             self.persist_settings()
 
     def update_workspace_navigation(
@@ -2036,6 +2059,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "savedWorkspaces": settings.saved_workspaces,
             "presetWorkspaces": settings.preset_workspaces,
             "activeWorkspaceName": settings.active_workspace_name,
+            "onboardingStatus": settings.onboarding_status,
         })
 
     def _apply_settings_request(self, request: dict[str, object]) -> bool:
@@ -2087,6 +2111,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if not isinstance(active_workspace_name, str):
                 raise ValueError("activeWorkspaceName 必须是字符串")
             self.editor_server.set_active_workspace(active_workspace_name)
+            return True
+        onboarding_status = request.get("onboardingStatus")
+        if onboarding_status is not None:
+            if not isinstance(onboarding_status, str):
+                raise ValueError("onboardingStatus 必须是字符串")
+            self.editor_server.set_onboarding_status(onboarding_status)
             return True
         update_navigation = request.get("updateWorkspaceNavigation")
         if update_navigation is not None:

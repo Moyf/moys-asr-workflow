@@ -35,6 +35,9 @@ Installer 安装的是同一个统一套件：
   但不会建立系统关联。
 - MOSE 支持命令行传入 `.mosp` / `.json`。第二次启动会通过 Electron 单实例锁把
   工程路径转发给现有窗口，并沿用编辑器的 dirty-state 确认。
+- 「快速上手」状态保存在 `%LOCALAPPDATA%\MAW\server-editor-settings.json` 的用户级设置中。
+  MOSE 每次使用随机 localhost 端口也不会因此重复显示；单独打开的 `file://` 编辑器仍按
+  浏览器存储隔离。
 
 ## 本地构建与测试
 
