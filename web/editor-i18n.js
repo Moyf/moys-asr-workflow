@@ -162,7 +162,7 @@
     '文字颜色': 'Text color', '背景颜色': 'Background color', '背景不透明度': 'Background opacity',
     '样式': 'Style', '预览字幕颜色样式': 'Subtitle color preview style',
     '选择按字幕颜色快照应用到预览字幕的样式': 'Choose how the subtitle color snapshot is applied to the preview',
-    '下划线': 'Underline', '下划线 + 文字颜色': 'Underline + text color',
+    '下划线': 'Underline', '阴影': 'Shadow', '描边': 'Stroke',
     '背景色': 'Background color', '不透明度': 'Opacity',
     '副字幕背景色': 'Secondary subtitle background color',
     '只影响播放器画面内的字幕预览，不改变字幕文本或时间': 'Only affects subtitle preview in the player; it does not change subtitle text or timing',

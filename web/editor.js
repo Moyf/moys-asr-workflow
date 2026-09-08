@@ -749,7 +749,7 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
-const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'both']);
+const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'shadow', 'stroke']);
 const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
@@ -11671,8 +11671,8 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     overlayExtensionTextEl.textContent = extensionText;
   }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
-  // 预览文字颜色、下划线或两者。dataset 记录上次应用的结果，避免播放刷新
-  // 每帧都写内联样式。
+  // 预览文字颜色、下划线、阴影或描边。dataset 记录上次应用的结果，避免
+  // 播放刷新每帧都写内联样式。
   const subtitleAppearance = getSubtitleAppearance();
   const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
   const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
@@ -11682,13 +11682,23 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     previewSegmentColor = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
   }
   const colorUnderline = colorPreviewEnabled
-    && (colorStyle === 'underline' || colorStyle === 'both')
+    && colorStyle === 'underline'
     ? previewSegmentColor : '';
   const textColor = colorPreviewEnabled
-    && (colorStyle === 'text' || colorStyle === 'both')
+    && colorStyle === 'text'
     && previewSegmentColor
     ? previewSegmentColor
     : subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
+  const textShadow = colorPreviewEnabled
+    && colorStyle === 'shadow'
+    && previewSegmentColor
+    ? `${previewSegmentColor} 1px 1px 2px`
+    : '';
+  const textStroke = colorPreviewEnabled
+    && colorStyle === 'stroke'
+    && previewSegmentColor
+    ? `.125em ${previewSegmentColor}`
+    : '';
   if (overlayTextEl.dataset.colorUnderline !== colorUnderline) {
     overlayTextEl.dataset.colorUnderline = colorUnderline;
     overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
@@ -11698,6 +11708,15 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayTextEl.dataset.colorText !== textColor) {
     overlayTextEl.dataset.colorText = textColor;
     overlayTextEl.style.color = textColor;
+  }
+  if (overlayTextEl.dataset.colorShadow !== textShadow) {
+    overlayTextEl.dataset.colorShadow = textShadow;
+    overlayTextEl.style.textShadow = textShadow;
+  }
+  if (overlayTextEl.dataset.colorStroke !== textStroke) {
+    overlayTextEl.dataset.colorStroke = textStroke;
+    overlayTextEl.style.webkitTextStroke = textStroke;
+    overlayTextEl.style.paintOrder = textStroke ? 'stroke fill' : '';
   }
   const overlayHidden = !mainVisible && !extensionVisible;
   if (overlayEl.classList.contains('hidden') !== overlayHidden) {
