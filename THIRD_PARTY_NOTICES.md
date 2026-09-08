@@ -4,6 +4,7 @@
 
 | Component | Purpose | License / terms |
 |---|---|---|
+| [Send2Trash](https://github.com/arsenetar/send2trash) | Move expired project backups to the system recycle bin | BSD-3-Clause |
 | [requests](https://requests.readthedocs.io/) | HTTP requests to the ASR API | Apache-2.0 |
 | [jieba](https://github.com/fxsjy/jieba) | Chinese subtitle segmentation | MIT |
 | [fontTools](https://github.com/fonttools/fonttools) | Convert installed font outlines into font-independent Lottie vector glyphs | MIT |
