@@ -51,3 +51,10 @@
 
 1. **阻塞，需窗口验收**：使用 `E:\Videos\录像\OBS\Endacopia\00-开局.mp4` 打开真实 pywebview Launcher，确认下拉框显示 `Mix`、`Voice`、`OriginSound`，默认 `Mix`；切换后确认提交 payload 与生成波形均为所选索引。Windows UI 自动化运行时初始化崩溃，本轮只能完成真实 Chromium 页面验收，不能冒充桌面窗口验收。
 2. **待处理**：完成合并后门禁并推送当前修复，等待 PR 新 CI 通过后使用普通 merge commit 合并，不 squash。
+
+### 阶段 4：集成审阅与上游二次提交（2026-09-08）
+
+- 已验证：集成审阅代理（merge commit `16a4c4b9`）完成，无阻断回归；全量 Python 1371 项、Node 280 项通过。非阻断发现四项：website workflow 镜像残留字面 ` HEAD` 且段落过期（MEDIUM，已修复）；六个 CLI 的 `is_video` 守卫不一致（LOW，先前已存在）；无测试钉住 `default_audio_track` 一致性（LOW）；`embed_media_caches` 失败路径潜在原地修改（LOW，当前调用方均传新建 dict）。
+- 上游 PR #118 新增贡献者提交 `ef7c7058`（保存不再清空运行态波形缓存），已以普通 merge commit `0c2c7c51` 合并。冲突适配：该提交以 `media_metadata.audio_track` 判定同轨，本分支统一为 `selected_audio_track`，`_restore_runtime_inline_caches` 改用 `selected_audio_track_from_metadata`，保存链路测试同步改字段；浏览器端 `normalizeMediaMetadata` 仅保留 `selected_audio_track`，生产 payload 路径已核实携带该字段。
+- 已修复：运行 `npm run sync:docs` 重新生成全部 13 篇 website 文档镜像，消除 ` HEAD` 残留、旧口径段落及此前积累的镜像漂移（提交 `58450d18`）。
+- 已验证：定向 `tests.test_local_editor_server` 63 项通过；全量 Python 1372 项通过（6 项跳过）；Node 280 项通过；Ruff 通过；`git diff --check` 干净；`blank-editor.html` 未重新生成。
