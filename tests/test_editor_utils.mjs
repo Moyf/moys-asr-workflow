@@ -1358,6 +1358,18 @@ test('translates timeline timebase settings to English', () => {
   );
 });
 
+test('translates speaker label separator settings to English', () => {
+  assert.equal(i18n.translateText('分隔符', 'en'), 'Separator');
+  assert.equal(
+    i18n.translateText('设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号', 'en'),
+    'Set the separator between the speaker name and subtitle text; the default is “：”, and spaces or English quotation marks are also supported',
+  );
+  assert.equal(
+    i18n.translateText('配置颜色对应的说话人名称；留空可隐藏该颜色的名称。分隔符默认「：」，支持空格和英文引号。仅影响预览，不改变字幕文本。', 'en'),
+    'Configure the speaker name for each color; leave a name empty to hide it. The separator defaults to “：” and supports spaces or English quotation marks. Preview only, subtitle text is unchanged.',
+  );
+});
+
 test('translates OTIOZ export labels, mode hints and dynamic messages to English', () => {
   assert.equal(i18n.translateText('完整字幕（SRT）', 'en'), 'Full subtitles (SRT)');
   assert.equal(i18n.translateText('表情包 OTIO 工程', 'en'), 'Sticker OTIO project');
@@ -2983,6 +2995,62 @@ test('resolves referenced subtitle colors from their head when available', () =>
 });
 
 
+test('normalizes speaker label settings with defaults and safe names', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeSpeakerLabelSettings({
+    enabled: true,
+    separator: ' ',
+    names: {
+      yellow: '  Host\nOne  ',
+      green: '',
+      red: 'r'.repeat(helpers.SPEAKER_LABEL_MAX_LENGTH + 1),
+      purple: 42,
+      blue: 'Guest',
+    },
+  }))), {
+    enabled: true,
+    separator: ' ',
+    names: {
+      yellow: 'Host One',
+      green: '',
+      red: 'SP3',
+      purple: 'SP4',
+      blue: 'Guest',
+    },
+  });
+});
+
+
+test('normalizes speaker label separators without trimming spaces', () => {
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(undefined), '：');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(''), '');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(' '), ' ');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator('"'), '"');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(' \n"'), ' "');
+  assert.equal(
+    helpers.normalizeSpeakerLabelSeparator('s'.repeat(helpers.SPEAKER_LABEL_SEPARATOR_MAX_LENGTH + 1)),
+    '：',
+  );
+});
+
+
+test('formats speaker names from subtitle colors without changing plain text', () => {
+  const segments = [
+    { color: { name: 'yellow' } },
+    { color_ref: { name: 'yellow', headIdx: 0 } },
+    { color: { name: 'blue' } },
+    {},
+  ];
+  const labels = { yellow: '主持人', blue: '' };
+
+  assert.equal(helpers.formatSpeakerLabelledText('第一句', segments[0], segments, labels), '主持人：第一句');
+  assert.equal(helpers.formatSpeakerLabelledText('第二句', segments[1], segments, labels), '主持人：第二句');
+  assert.equal(helpers.formatSpeakerLabelledText('第一句', segments[0], segments, labels, ' '), '主持人 第一句');
+  assert.equal(helpers.formatSpeakerLabelledText('第二句', segments[1], segments, labels, '"'), '主持人"第二句');
+  assert.equal(helpers.formatSpeakerLabelledText('第三句', segments[2], segments, labels), '第三句');
+  assert.equal(helpers.formatSpeakerLabelledText('普通句', segments[3], segments, labels), '普通句');
+});
+
+
 test('shifts color and sticker references when a subtitle is inserted', () => {
   const segments = [
     { color: { name: 'blue' }, sticker: { name: 'blue-sticker' } },
@@ -3033,6 +3101,56 @@ test('builds a color SRT on the shared full-export timeline and excludes disable
     '2',
     '1500ms --> 2300ms',
     'member',
+    '',
+  ].join('\n'));
+});
+
+test('optionally prefixes configured speaker names in SRT output', () => {
+  const segments = [
+    { start: 0, end: 1000, text: 'yellow line', color: { name: 'yellow' } },
+    { start: 1200, end: 2200, text: 'green line', color: { name: 'green' } },
+    { start: 2400, end: 3400, text: 'disabled', disabled: true, color: { name: 'red' } },
+  ];
+  const options = {
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host', green: 'Guest', red: 'Editor' },
+    formatTime: (timeMs) => `${timeMs}ms`,
+  };
+
+  assert.equal(helpers.buildSrtPayload(segments, options), [
+    '1',
+    '0ms --> 1000ms',
+    'Host：yellow line',
+    '',
+    '2',
+    '1200ms --> 2200ms',
+    'Guest：green line',
+    '',
+  ].join('\n'));
+  assert.equal(helpers.buildSrtPayload(segments, {
+    ...options,
+    speakerLabelSeparator: ' ',
+  }), [
+    '1',
+    '0ms --> 1000ms',
+    'Host yellow line',
+    '',
+    '2',
+    '1200ms --> 2200ms',
+    'Guest green line',
+    '',
+  ].join('\n'));
+  assert.equal(helpers.buildSrtPayload(segments, {
+    ...options,
+    speakerLabelsEnabled: false,
+  }), [
+    '1',
+    '0ms --> 1000ms',
+    'yellow line',
+    '',
+    '2',
+    '1200ms --> 2200ms',
+    'green line',
     '',
   ].join('\n'));
 });
@@ -4448,6 +4566,11 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
     segments: [{
       id: 'main-001', start: 0, end: 1000, text: 'English',
       items: [{ start: 0, end: 1000, text: 'English' }],
+      color: { name: 'yellow', value: '#c4a019', start: 0, end: 2200 },
+    }, {
+      id: 'main-002', start: 1200, end: 2200, text: 'English two',
+      items: [{ start: 1200, end: 2200, text: 'English two' }],
+      color: null, color_ref: { name: 'yellow', headIdx: 0 },
     }],
     multi_subtitle: {
       enabled: true,
@@ -4458,11 +4581,18 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
         segments: [{
           id: 'translation-001', start: 40, end: 960, text: '中文',
           items: [{ start: 40, end: 960, text: '中文' }],
+        }, {
+          id: 'translation-002', start: 1240, end: 2160, text: '中文二',
+          items: [{ start: 1240, end: 2160, text: '中文二' }],
         }],
       }],
       bindings: [{
         id: 'binding-001', track_id: 'translation',
         main_segment_ids: ['main-001'], extension_segment_ids: ['translation-001'],
+        start_offset_ms: 40, end_offset_ms: -40,
+      }, {
+        id: 'binding-002', track_id: 'translation',
+        main_segment_ids: ['main-002'], extension_segment_ids: ['translation-002'],
         start_offset_ms: 40, end_offset_ms: -40,
       }],
     },
@@ -4470,6 +4600,11 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
 
   const result = helpers.swapMainAndExtensionSubtitle(project, 'translation');
   assert.equal(result.swapped, true);
+  assert.equal(result.mappedColorCount, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(project.segments.map(({ color, color_ref }) => ({ color, color_ref })))), [
+    { color: { name: 'yellow', value: '#c4a019', start: 40, end: 2160 }, color_ref: null },
+    { color: null, color_ref: { name: 'yellow', headIdx: 0 } },
+  ]);
   assert.equal(project.segments[0].text, '中文');
   assert.deepEqual(JSON.parse(JSON.stringify(project.segments[0].items)), [
     { start: 40, end: 960, text: '中文' },
@@ -4477,6 +4612,10 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
   assert.equal(project.multi_subtitle.tracks[0].segments[0].text, 'English');
   assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments[0].items)), [
     { start: 0, end: 1000, text: 'English' },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments.map(({ color, color_ref }) => ({ color, color_ref })))), [
+    { color: { name: 'yellow', value: '#c4a019', start: 0, end: 2200 } },
+    { color_ref: { name: 'yellow', headIdx: 0 } },
   ]);
   assert.equal(project.multi_subtitle.main_split_mode, 'continuous');
   assert.equal(project.multi_subtitle.tracks[0].split_mode, 'word');
@@ -4490,10 +4629,21 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
   assert.deepEqual(JSON.parse(JSON.stringify(project.segments)), [{
     id: 'main-001', start: 0, end: 1000, text: 'English',
     items: [{ start: 0, end: 1000, text: 'English' }],
+    color: { name: 'yellow', value: '#c4a019', start: 0, end: 2200 },
+    color_ref: null,
+  }, {
+    id: 'main-002', start: 1200, end: 2200, text: 'English two',
+    items: [{ start: 1200, end: 2200, text: 'English two' }],
+    color: null, color_ref: { name: 'yellow', headIdx: 0 },
   }]);
   assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments)), [{
     id: 'translation-001', start: 40, end: 960, text: '中文',
     items: [{ start: 40, end: 960, text: '中文' }],
+    color: { name: 'yellow', value: '#c4a019', start: 40, end: 2160 },
+  }, {
+    id: 'translation-002', start: 1240, end: 2160, text: '中文二',
+    items: [{ start: 1240, end: 2160, text: '中文二' }],
+    color_ref: { name: 'yellow', headIdx: 0 },
   }]);
 });
 

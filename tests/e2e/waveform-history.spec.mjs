@@ -105,6 +105,49 @@ test('blank waveform context menu disables subtitle creation over an existing cu
   await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
 });
 
+test('gap click does not show drag styling until the pointer moves', async ({ page }) => {
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    DATA.gap_remove = {
+      schema: 'moy.asr.gap_remove.v1',
+      detector: 'audio_gate',
+      minimum_ms: 500,
+      threshold_db: -24,
+      hysteresis_db: 2,
+      lead_in_ms: 40,
+      lead_out_ms: 80,
+      skip_playback: true,
+      operation_mode: 'boundary_drag',
+      manual_corrections: false,
+      gaps: [{ start: 12000, end: 12500, removed: true }],
+    };
+    updateGapRemoveUi();
+    renderAll({ waveform: 'full' });
+  });
+
+  const block = page.locator('.waveform-gap-block[data-gap-index="0"]').first();
+  await expect(block).toBeVisible();
+  const box = await block.boundingBox();
+  expect(box).not.toBeNull();
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await expect(block).not.toHaveClass(/dragging/);
+  await page.mouse.move(x + 1, y);
+  await expect(block).not.toHaveClass(/dragging/);
+  await page.mouse.up();
+  await expect(block).not.toHaveClass(/dragging/);
+
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 100, y);
+  await expect(block).toHaveClass(/dragging/);
+  await page.mouse.up();
+  await expect(block).not.toHaveClass(/dragging/);
+});
+
 test('gap context menu and modifier drags update the gap timeline', async ({ page }) => {
   await page.goto(server.url);
   const setGaps = async (gaps, operationMode = 'boundary_drag') => {
@@ -258,7 +301,9 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   expect(moveBox).not.toBeNull();
   await page.mouse.move(moveBox.x + moveBox.width / 2, moveBox.y + moveBox.height / 2);
   await page.mouse.down();
+  await expect(page.locator('.waveform-gap-block[data-gap-index="0"].dragging')).toHaveCount(0);
   await page.mouse.move(moveBox.x + moveBox.width / 2 + 100, moveBox.y + moveBox.height / 2);
+  await expect(page.locator('.waveform-gap-block[data-gap-index="0"].dragging')).toHaveCount(1);
   await page.mouse.up();
   const moved = await page.evaluate(() => DATA.gap_remove.gaps);
   expect(moved).toHaveLength(1);

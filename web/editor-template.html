@@ -944,6 +944,11 @@ __WAVEFORM_CSS__
     </label>
     <small class="editor-settings-hint">选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。</small>
     </div>
+    <div class="editor-settings-field">
+    <label class="toggle editor-settings-item" title="开启或关闭字幕预览中的说话人名称时同步勾选或取消勾选；导出 SRT 时在字幕前附加对应名称，可手动调整">
+      <input type="checkbox" id="export-speaker-labels"> 导出时附加说话人名称
+    </label>
+    <small class="editor-settings-hint">字幕预览中的说话人名称开启时自动勾选，关闭时同步取消；导出开关仍可独立调整。只影响导出的 SRT，不会改动工程里的字幕文本。</small>
     </div>
   </div>
   </div>
@@ -1112,10 +1117,51 @@ __WAVEFORM_CSS__
                     <output id="subtitle-background-alpha-value" for="subtitle-background-alpha">65%</output>
                   </div>
                 </label>
-                <label class="subtitle-preview-setting-row" title="按字幕颜色快照给预览文字加下划线，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
-                  <span>预览字幕颜色</span>
+                <label class="toggle settings-panel-item" title="按字幕颜色快照给预览字幕应用所选颜色样式，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
                   <input type="checkbox" id="subtitle-color-underline" checked aria-label="预览字幕颜色">
+                  预览字幕颜色
                 </label>
+                <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
+                  <span>样式</span>
+                  <select id="subtitle-color-style" aria-label="预览字幕颜色样式">
+                    <option value="underline" selected>下划线</option>
+                    <option value="text">文字颜色</option>
+                    <option value="both">下划线 + 文字颜色</option>
+                  </select>
+                </label>
+                <label class="toggle settings-panel-item subtitle-speaker-label-toggle" title="在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本">
+                  <input type="checkbox" id="subtitle-speaker-labels-enabled" aria-label="显示说话人名称">
+                  显示说话人名称
+                </label>
+                <div class="subtitle-speaker-labels-settings" id="subtitle-speaker-labels-settings" hidden>
+                  <small class="settings-panel-hint">配置颜色对应的说话人名称；留空可隐藏该颜色的名称。仅影响预览，不改变字幕文本。</small>
+                  <div class="subtitle-speaker-label-list">
+                    <label class="subtitle-speaker-label-row" title="设置黄色对应的说话人名称">
+                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="yellow" aria-hidden="true"></span>黄</span>
+                      <input type="text" id="subtitle-speaker-label-yellow" value="SP1" maxlength="64" autocomplete="off" aria-label="黄色对应的说话人名称">
+                    </label>
+                    <label class="subtitle-speaker-label-row" title="设置绿色对应的说话人名称">
+                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="green" aria-hidden="true"></span>绿</span>
+                      <input type="text" id="subtitle-speaker-label-green" value="SP2" maxlength="64" autocomplete="off" aria-label="绿色对应的说话人名称">
+                    </label>
+                    <label class="subtitle-speaker-label-row" title="设置红色对应的说话人名称">
+                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="red" aria-hidden="true"></span>红</span>
+                      <input type="text" id="subtitle-speaker-label-red" value="SP3" maxlength="64" autocomplete="off" aria-label="红色对应的说话人名称">
+                    </label>
+                    <label class="subtitle-speaker-label-row" title="设置紫色对应的说话人名称">
+                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="purple" aria-hidden="true"></span>紫</span>
+                      <input type="text" id="subtitle-speaker-label-purple" value="SP4" maxlength="64" autocomplete="off" aria-label="紫色对应的说话人名称">
+                    </label>
+                    <label class="subtitle-speaker-label-row" title="设置蓝色对应的说话人名称">
+                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="blue" aria-hidden="true"></span>蓝</span>
+                      <input type="text" id="subtitle-speaker-label-blue" value="SP5" maxlength="64" autocomplete="off" aria-label="蓝色对应的说话人名称">
+                    </label>
+                    <label class="subtitle-speaker-label-row subtitle-speaker-label-separator-row" title="设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号">
+                      <span>分隔符</span>
+                      <input type="text" id="subtitle-speaker-label-separator" value="：" maxlength="16" autocomplete="off" spellcheck="false" aria-label="分隔符">
+                    </label>
+                  </div>
+                </div>
               </div>
             </section>
             <section class="subtitle-preview-track-settings subtitle-preview-extension-settings" id="extension-subtitle-preview-settings" hidden>
@@ -1178,7 +1224,7 @@ __WAVEFORM_CSS__
     <div class="player-stage">
       __MEDIA_HTML__
           <div class="player-empty" id="player-empty">拖入工程、媒体或 SRT 开始编辑</div>
-      <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 显示控制点，Esc 退出。"><span id="overlay-main-text"></span><span id="overlay-extension-text" class="subtitle-extension-text hidden"></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
+      <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 显示控制点，Esc 退出。"><span id="overlay-main-text"><span id="overlay-main-speaker-label" class="subtitle-speaker-label hidden"></span></span><span id="overlay-extension-text" class="subtitle-extension-text hidden"></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
     </div>
     <div class="media-controls" id="media-controls" role="group" aria-label="媒体播放控制">
       <button type="button" id="media-play-toggle" aria-label="播放" title="播放">▶</button>

@@ -63,7 +63,7 @@
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
 | `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
 | `workspace` | `object` | 否 | 编辑器工作区：四个功能区的窗口布局与显示状态；不影响字幕和波形缓存。服务器版也可使用独立的本机命名工作区库跨工程复用 |
-| `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（拓展字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
+| `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（副字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
 
 `media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在全局设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
 
@@ -355,7 +355,10 @@
 
 ```json
 {
-  "subtitle": { "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei", "color": "#ffffff" },
+  "subtitle": {
+    "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei", "color": "#ffffff",
+    "speaker_labels": { "enabled": true, "separator": "：", "names": { "yellow": "SP1", "green": "SP2", "red": "SP3", "purple": "SP4", "blue": "SP5" } }
+  },
   "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#ffd34d" },
   "sticker": { "x": 0.73, "y": 0.04, "width": 0.24, "height": 0.3 }
 }
@@ -371,16 +374,19 @@
 | `font_family` | `string` | 否 | 字幕预览字体族：内置键 `default`、`yahei`、`hei`、`song`、`sans`，或本机字体族名称（最长 128 个字符） |
 | `background_color` | `string` | 否 | 字幕预览背景色，6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `background_alpha` | `number` | 否 | 字幕预览背景不透明度，范围 `[0, 1]`；缺失时使用 `0.65`，设为 `0` 时隐藏背景 |
-| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，拓展字幕默认黄色 `#ffd34d` |
-| `color_underline` | `boolean` | 否 | 播放预览按字幕颜色快照给文字加下划线以区分不同颜色的字幕；缺失时视为 `true`（默认开启），设为 `false` 时关闭下划线。编辑器仅在关闭时写入该字段 |
-| `preview.extension_subtitle` | `object` | 否 | 拓展字幕样式；同样支持 `font_size`、`font_family`、`color`，没有字号时默认比主字幕小 2px |
+| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#ffd34d` |
+| `color_underline` | `boolean` | 否 | 播放预览是否按字幕颜色快照应用颜色样式；缺失时视为 `true`（默认开启），设为 `false` 时关闭颜色预览。保留该字段以兼容旧工程 |
+| `color_style` | `string` | 否 | 颜色预览样式：`underline`（下划线，默认）、`text`（文字颜色）或 `both`（下划线+文字颜色） |
+| `speaker_labels` | `object` | 否 | 说话人标签预览设置；颜色默认对应 `SP1`～`SP5`，只显示在预览中，不修改 `segments[*].text` |
+| `preview.extension_subtitle` | `object` | 否 | 副字幕样式；同样支持 `font_size`、`font_family`、`color`，没有字号时默认比主字幕小 2px |
 
 ### 约束
 
 - `x`、`y`、`width`、`height` 四个字段都必须是数字（不接受字符串、布尔），且落在 `[0, 1]`。
 - 若存在 `font_size`，必须是 `[12, 96]` 内的数字；若存在 `font_family`，必须是内置字体键或非空本机字体族名称，最长 128 个字符，不能包含控制字符；若存在 `background_color`，必须是 `#RRGGBB` 格式；若存在 `background_alpha`，必须是 `[0, 1]` 内的数字。
-- 若存在 `color`，必须是 `#RRGGBB` 六位十六进制颜色；拓展字幕样式不包含独立几何，沿用 `preview.subtitle` 的预览框。
-- 若存在 `color_underline`，必须是布尔值；其他取值视为缺失并按默认 `true` 处理。
+- 若存在 `color`，必须是 `#RRGGBB` 六位十六进制颜色；副字幕样式不包含独立几何，沿用 `preview.subtitle` 的预览框。
+- 若存在 `color_underline`，必须是布尔值；其他取值视为缺失并按默认 `true` 处理；若存在 `color_style`，必须是 `underline`、`text` 或 `both`，其他取值视为缺失并按默认 `underline` 处理。
+- 若存在 `speaker_labels`，必须是对象；其中 `enabled`（如存在）必须是布尔值，`separator`（如存在）必须是长度不超过 16 且不含控制字符的字符串（允许为空或空格），`names`（如存在）必须是对象，五种颜色的名称必须是长度不超过 64 且不含控制字符的字符串；名称允许为空以隐藏该颜色的标签。编辑器的“导出时附加说话人名称”选项开启时，SRT 会在字幕前附加对应名称及分隔符。
 - 盒子必须留在播放器内：`x + width <= 1` 且 `y + height <= 1`。
 - 编辑器额外强制最小可读尺寸 `width >= 0.20`、`height >= 0.08`（这是编辑器 UX 钳制，非数据契约的硬校验；导入时会被编辑器再钳制）。
 - `preview` 缺失或 `preview.subtitle` 缺失时按**旧工程**处理，编辑器使用默认几何 `{ x: 0.1, y: 0.76, width: 0.8, height: 0.16 }`——字幕带占 76%→92%（底部留 8%），宽度 80% 居中。
@@ -389,7 +395,7 @@
 
 ### 1.5 multi_subtitle 多重字幕
 
-`multi_subtitle` 是可选的双语字幕扩展结构。旧工程缺失该字段时，编辑器按关闭状态加载；保存时会补写关闭的空结构。顶层 `segments` 始终是主轨真源，扩展字幕只放在 `tracks[*].segments` 中。
+`multi_subtitle` 是可选的双语字幕结构。旧工程缺失该字段时，编辑器按关闭状态加载；保存时会补写关闭的空结构。顶层 `segments` 始终是主轨真源，副字幕只放在 `tracks[*].segments` 中。
 
 ```json
 {
@@ -438,12 +444,14 @@
 | `tracks[i].language` | string | 否 | 语言或语言代码 |
 | `tracks[i].split_mode` | string | 否 | 副字幕语言类型：`continuous`（字符型）或 `word`（单词型）；用于近似拆分和字数统计 |
 | `tracks[i].source_name` | string | 否 | 来源文件名，不保存绝对路径 |
-| `tracks[i].segments` | array | 是 | 扩展字幕段；每段至少有段级时间码和文本，`items` 可选 |
-| `tracks[i].segments[j].id` | string | 是 | 扩展字幕稳定 ID |
+| `tracks[i].segments` | array | 是 | 副字幕段；每段至少有段级时间码和文本，`items` 可选 |
+| `tracks[i].segments[j].id` | string | 是 | 副字幕稳定 ID |
 | `tracks[i].segments[j].start/end` | int | 是 | 非负整数毫秒，`start < end` |
-| `tracks[i].segments[j].text` | string | 是 | 扩展字幕文本 |
+| `tracks[i].segments[j].text` | string | 是 | 副字幕文本 |
 | `tracks[i].segments[j].items` | array | 否 | 可选字词时间码；结构和主轨 `segments[i].items` 相同 |
-| `tracks[i].segments[j].disabled` | bool | 否 | 禁用该扩展字幕；预览、隐藏禁用项和扩展 SRT 导出会跳过它 |
+| `tracks[i].segments[j].disabled` | bool | 否 | 禁用该副字幕；预览、隐藏禁用项和副字幕 SRT 导出会跳过它 |
+| `tracks[i].segments[j].color` | object\|null | 否 | 副字幕颜色标记 head；结构和主轨 `segments[i].color` 相同 |
+| `tracks[i].segments[j].color_ref` | object\|null | 否 | 副字幕后续段引用的颜色；`headIdx` 指向同一 `tracks[i].segments` 数组中的 head |
 | `bindings` | array | 否 | 主轨与扩展轨的绑定关系 |
 | `bindings[i].track_id` | string | 是 | 指向扩展轨 ID |
 | `bindings[i].main_segment_ids` | array | 是 | MVP 必须恰好一个主轨 ID |
@@ -456,6 +464,7 @@
 - 主轨和扩展轨段均使用不重复的稳定字符串 ID；当前规范化会为缺失 ID 的输入补齐，并在导出/保存时写入。主轨按 `main-001`、扩展轨按 `<track-id>-segment-001` 的顺序生成；如果生成值与后续显式 ID 冲突，会使用确定性的 `-generated` 后缀。浏览器与 Python 服务端使用同一规则。
 - 当前 MVP 强制每个绑定一对一；数组形式保留给未来一对多关系，但当前校验要求数组长度均为 1，且一个端点不能重复绑定。
 - 自动导入按段级时间码匹配：时间区间有交集，且开始/结束时间差均不超过 `300ms`；冲突选择总差值最小的候选。未匹配段保留，可手动绑定。
+- 副字幕段也可以保存 `color` / `color_ref`；其中 `color_ref.headIdx` 是当前副字幕数组中的 0-based 整数下标，并且必须指向更早的颜色 head。交换主副字幕时，编辑器按绑定关系将主轨颜色映射到新的主轨，同时保留移到副轨的原主轨颜色信息。
 - SRT 导入没有字词时间码，因此扩展段通常不带 `items`；mosp/json 导入和主副交换可以带上可选 `items`，保存、加载和再次交换时保留它们。
 - `continuous`（字符型）允许字符边界，`word`（单词型）只允许空格或安全标点附近的边界，禁止拆碎单词。切分时会清理断点两侧相邻的中英文逗号、句号及空白；两种模式也分别决定字数统计规则。
 - `enabled: false` 时工程仍保留轨道、绑定、语言类型和 ID；主轨 SRT 导出语义不变，扩展轨使用独立 SRT 导出。
@@ -583,7 +592,7 @@
 }
 ```
 
-`headIdx` 是 `segments` 数组里的整数下标（0-based），指向同属一个表情包的 head 段。拆分/合并/删除时编辑器会自动维护这个索引。
+`headIdx` 是当前字幕数组里的整数下标（0-based），指向同属一个表情包的 head 段：主轨使用顶层 `segments`，副字幕使用对应的 `tracks[i].segments`。拆分/合并/删除时编辑器会自动维护这个索引。
 
 ### 4.3 color head
 
@@ -606,6 +615,8 @@
 ```json
 { "name": "red", "headIdx": 5 }
 ```
+
+`headIdx` 使用当前字幕数组的 0-based 下标；主轨颜色引用查找顶层 `segments`，副字幕颜色引用查找所属的 `tracks[i].segments`。交换主副字幕时，编辑器会按绑定关系重建新主轨的颜色组索引，并保留移到副字幕的原主轨颜色字段。
 
 ---
 
@@ -767,7 +778,11 @@ uv run python edit.py your_generated.mosp
 | `preview.subtitle.background_color` | string | ❌ | 6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `preview.subtitle.background_alpha` | number | ❌ | 不透明度 `[0,1]`；缺失时使用 `0.65`，设为 `0` 时隐藏字幕背景 |
 | `preview.subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#ffffff` |
-| `preview.extension_subtitle` | object | ❌ | 拓展字幕样式；沿用主字幕预览框 |
+| `preview.subtitle.speaker_labels` | object | ❌ | 说话人标签预览设置；默认关闭，名称默认为黄/绿/红/紫/蓝对应 `SP1`～`SP5` |
+| `preview.subtitle.speaker_labels.enabled` | boolean | ❌ | 开启后在播放器预览字幕前显示对应颜色的说话人名称；不修改字幕文本 |
+| `preview.subtitle.speaker_labels.separator` | string | ❌ | 说话人名称与字幕内容之间的分隔符，默认 `：`；最长 16 个字符，允许为空、空格或英文引号，不含控制字符 |
+| `preview.subtitle.speaker_labels.names.<color>` | string | ❌ | 颜色对应名称，最长 64 个字符；允许为空；`<color>` 为 `yellow` / `green` / `red` / `purple` / `blue` |
+| `preview.extension_subtitle` | object | ❌ | 副字幕样式；沿用主字幕预览框 |
 | `preview.extension_subtitle.font_size` | number | ❌ | px，范围 `[12,96]`；缺失时默认比主字幕小 2px |
 | `preview.extension_subtitle.font_family` | string | ❌ | `default` / `yahei` / `hei` / `song` / `sans` |
 | `preview.extension_subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#ffd34d` |

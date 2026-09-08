@@ -32,6 +32,74 @@
     return SUBTITLE_FONT_FAMILY_DISPLAY_NAMES_ZH[family] || family;
   }
 
+  const SPEAKER_LABEL_COLORS = Object.freeze([
+    'yellow', 'green', 'red', 'purple', 'blue',
+  ]);
+  const DEFAULT_SPEAKER_LABELS = Object.freeze({
+    yellow: 'SP1',
+    green: 'SP2',
+    red: 'SP3',
+    purple: 'SP4',
+    blue: 'SP5',
+  });
+  const SPEAKER_LABEL_MAX_LENGTH = 64;
+  const DEFAULT_SPEAKER_LABEL_SEPARATOR = '：';
+  const SPEAKER_LABEL_SEPARATOR_MAX_LENGTH = 16;
+
+  function normalizeSpeakerLabel(value, fallback = '') {
+    if (typeof value !== 'string') return fallback;
+    const normalized = value
+      .replace(/[\u0000-\u001f\u007f]/gu, ' ')
+      .replace(/\s+/gu, ' ')
+      .trim();
+    return normalized.length <= SPEAKER_LABEL_MAX_LENGTH ? normalized : fallback;
+  }
+
+  function normalizeSpeakerLabels(value) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    return Object.fromEntries(SPEAKER_LABEL_COLORS.map((color) => [
+      color,
+      Object.prototype.hasOwnProperty.call(source, color)
+        ? normalizeSpeakerLabel(source[color], DEFAULT_SPEAKER_LABELS[color])
+        : DEFAULT_SPEAKER_LABELS[color],
+    ]));
+  }
+
+  function normalizeSpeakerLabelSeparator(value) {
+    if (typeof value !== 'string') return DEFAULT_SPEAKER_LABEL_SEPARATOR;
+    const normalized = value.replace(/[\u0000-\u001f\u007f]/g, '');
+    return normalized.length <= SPEAKER_LABEL_SEPARATOR_MAX_LENGTH
+      ? normalized
+      : DEFAULT_SPEAKER_LABEL_SEPARATOR;
+  }
+
+  function normalizeSpeakerLabelSettings(value) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    return {
+      enabled: source.enabled === true,
+      separator: normalizeSpeakerLabelSeparator(source.separator),
+      names: normalizeSpeakerLabels(source.names),
+    };
+  }
+
+  function speakerLabelForSegment(segment, segments, labels) {
+    const colorName = effectiveColorName(segment, segments);
+    if (!colorName) return '';
+    return normalizeSpeakerLabels(labels)[colorName] || '';
+  }
+
+  function formatSpeakerLabelledText(
+    text,
+    segment,
+    segments,
+    labels,
+    separator = DEFAULT_SPEAKER_LABEL_SEPARATOR,
+  ) {
+    const content = String(text ?? '');
+    const label = speakerLabelForSegment(segment, segments, labels);
+    return label ? `${label}${normalizeSpeakerLabelSeparator(separator)}${content}` : content;
+  }
+
   // SRT files commonly come from Windows subtitle tools, which may save them
   // as UTF-8 (with or without BOM) or as the local GBK code page. Decode the
   // bytes here instead of relying on File.text(), whose encoding is fixed to
@@ -2729,6 +2797,7 @@
     mergeJoinTextContinuous: '', mergeJoinTextWord: ' ',
     autoMergeGapMs: 200, autoMergeSnapDirection: 'backward', autoMergeShortCount: 3,
     autoMergeAbsorbShort: true, autoMergeAbsorbDirection: 'previous', exportColorUnified: true,
+    exportSpeakerLabels: false,
     autoSaveProject: true, autoSaveIntervalSeconds: 30, stickerOverlayEnabled: false,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
@@ -2797,6 +2866,7 @@
       autoMergeAbsorbShort: savedSettings.autoMergeAbsorbShort !== false,
       autoMergeAbsorbDirection: savedSettings.autoMergeAbsorbDirection === 'next' ? 'next' : 'previous',
       exportColorUnified: savedSettings.exportColorUnified !== false,
+      exportSpeakerLabels: savedSettings.exportSpeakerLabels === true,
       autoSaveProject: savedSettings.autoSaveProject !== false,
       autoSaveIntervalSeconds: clampInteger(savedSettings.autoSaveIntervalSeconds, 30, 5, 3600),
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
@@ -3298,8 +3368,66 @@
     return multiSubtitle;
   }
 
-  // 交换主轨与当前唯一副轨。副轨保留可选的 items，
-  // 但不携带表情包和颜色分组等主轨专属字段。
+  function copySubtitleColorFields(source, target) {
+    if (!source || !target) return;
+    if (source.color != null) target.color = cloneJsonValue(source.color);
+    if (source.color_ref != null) target.color_ref = cloneJsonValue(source.color_ref);
+  }
+
+  // 把 sourceSegments 中按绑定关系找到的颜色组写入 targetSegments。
+  // target 的 headIdx 不能直接复用 source 下标：交换后两条字幕的数组长度和顺序
+  // 可能不同，因此每个目标颜色组都在目标数组中重新选择最早的一条作为 head。
+  function mapBoundSubtitleColors(sourceSegments, targetSegments, sourceToTarget) {
+    if (!Array.isArray(sourceSegments) || !Array.isArray(targetSegments)
+        || !(sourceToTarget instanceof Map)) return 0;
+    const groups = new Map();
+    sourceSegments.forEach((segment, sourceIndex) => {
+      const sourceHeadIndex = segment?.color
+        ? sourceIndex
+        : Number.isInteger(segment?.color_ref?.headIdx) ? segment.color_ref.headIdx : null;
+      const sourceHead = Number.isInteger(sourceHeadIndex)
+        ? sourceSegments[sourceHeadIndex]?.color
+        : null;
+      const targetIndex = sourceToTarget.get(sourceIndex);
+      if (!sourceHead || typeof sourceHead !== 'object'
+          || !Number.isInteger(targetIndex) || !targetSegments[targetIndex]) return;
+      const group = groups.get(sourceHeadIndex) || {
+        sourceHead,
+        targetIndexes: [],
+      };
+      group.targetIndexes.push(targetIndex);
+      groups.set(sourceHeadIndex, group);
+    });
+
+    let mappedCount = 0;
+    groups.forEach(({ sourceHead, targetIndexes }) => {
+      const uniqueTargetIndexes = [...new Set(targetIndexes)].sort((left, right) => left - right);
+      if (!uniqueTargetIndexes.length) return;
+      const targetHeadIndex = uniqueTargetIndexes[0];
+      const targetLastIndex = uniqueTargetIndexes[uniqueTargetIndexes.length - 1];
+      const mappedHead = cloneJsonValue(sourceHead) || {};
+      if (Number.isFinite(Number(targetSegments[targetHeadIndex]?.start))) {
+        mappedHead.start = targetSegments[targetHeadIndex].start;
+      }
+      if (Number.isFinite(Number(targetSegments[targetLastIndex]?.end))) {
+        mappedHead.end = targetSegments[targetLastIndex].end;
+      }
+      uniqueTargetIndexes.forEach((targetIndex, memberIndex) => {
+        const target = targetSegments[targetIndex];
+        target.color = null;
+        target.color_ref = null;
+        if (memberIndex === 0) {
+          target.color = mappedHead;
+        } else {
+          target.color_ref = { name: mappedHead.name, headIdx: targetHeadIndex };
+        }
+        mappedCount++;
+      });
+    });
+    return mappedCount;
+  }
+
+  // 交换主轨与当前唯一副轨。副轨保留可选的 items 和颜色信息，
   // 绑定关系按端点整体交换，并在新主轨写入后重新计算 offset。
   function swapMainAndExtensionSubtitle(project, trackId = null) {
     if (!project || typeof project !== 'object' || !Array.isArray(project.segments)) {
@@ -3319,6 +3447,32 @@
     const oldMainSplitMode = multi.main_split_mode;
     const oldExtensionSplitMode = track.split_mode;
     const nextMain = oldExtension.map((segment) => ({ ...segment }));
+    const oldMainIndexById = new Map(oldMain.map((segment, index) => [stableId(segment?.id), index]));
+    const oldExtensionIndexById = new Map(
+      oldExtension.map((segment, index) => [stableId(segment?.id), index]),
+    );
+    const mainToExtensionIndex = new Map();
+    (multi.bindings || []).forEach((binding) => {
+      if (binding.track_id !== track.id) return;
+      const sourceIds = Array.isArray(binding.main_segment_ids)
+        ? binding.main_segment_ids : [];
+      const targetIds = Array.isArray(binding.extension_segment_ids)
+        ? binding.extension_segment_ids : [];
+      const pairCount = Math.min(sourceIds.length, targetIds.length);
+      for (let pairIndex = 0; pairIndex < pairCount; pairIndex++) {
+        const sourceIndex = oldMainIndexById.get(stableId(sourceIds[pairIndex]));
+        const targetIndex = oldExtensionIndexById.get(stableId(targetIds[pairIndex]));
+        if (Number.isInteger(sourceIndex) && Number.isInteger(targetIndex)
+            && !mainToExtensionIndex.has(sourceIndex)) {
+          mainToExtensionIndex.set(sourceIndex, targetIndex);
+        }
+      }
+    });
+    const mappedColorCount = mapBoundSubtitleColors(
+      oldMain,
+      nextMain,
+      mainToExtensionIndex,
+    );
     const nextExtension = oldMain.map((segment) => {
       const copy = {
         id: stableId(segment.id),
@@ -3329,6 +3483,7 @@
       if (Array.isArray(segment.items)) {
         copy.items = segment.items.map((item) => ({ ...item }));
       }
+      copySubtitleColorFields(segment, copy);
       if (segment._dirty) copy._dirty = true;
       return copy;
     });
@@ -3354,6 +3509,7 @@
       mainCount: project.segments.length,
       extensionCount: track.segments.length,
       bindingCount,
+      mappedColorCount,
     };
   }
 
@@ -3572,6 +3728,12 @@
       ? options.firstEnabledIndex
       : getSrtExportFirstIndex(source, alignFirstStart);
     const keepDisabledPlaceholder = options.keepDisabledPlaceholder === true && !colorName;
+    const speakerLabels = options.speakerLabelsEnabled === true
+      ? normalizeSpeakerLabels(options.speakerLabels)
+      : null;
+    const speakerLabelSeparator = options.speakerLabelsEnabled === true
+      ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
+      : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const parts = [];
     let outputIndex = 0;
     source.forEach((segment, sourceIndex) => {
@@ -3590,7 +3752,11 @@
       outputIndex += 1;
       parts.push(String(outputIndex));
       parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
-      parts.push(disabled ? '' : String(segment.text || ''));
+      parts.push(disabled ? '' : speakerLabels
+        ? formatSpeakerLabelledText(
+          segment.text, segment, source, speakerLabels, speakerLabelSeparator,
+        )
+        : String(segment.text || ''));
       parts.push('');
     });
     return parts.join('\n');
@@ -5164,6 +5330,17 @@ export default MawDynamicCaptions;
     PROJECT_SCHEMA,
     supportsProjectSchema,
     subtitleFontFamilyDisplayName,
+    SPEAKER_LABEL_COLORS,
+    DEFAULT_SPEAKER_LABELS,
+    SPEAKER_LABEL_MAX_LENGTH,
+    DEFAULT_SPEAKER_LABEL_SEPARATOR,
+    SPEAKER_LABEL_SEPARATOR_MAX_LENGTH,
+    normalizeSpeakerLabel,
+    normalizeSpeakerLabels,
+    normalizeSpeakerLabelSeparator,
+    normalizeSpeakerLabelSettings,
+    speakerLabelForSegment,
+    formatSpeakerLabelledText,
     decodeSubtitleText,
     parseBwfTimeReference,
     readBwfTimeReferenceFromFile,
