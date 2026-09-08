@@ -2259,12 +2259,13 @@ test('shows independent extension preview controls with yellow defaults', async 
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
-  await expect(page.locator('#extension-overlay-toggle-wrap')).toBeVisible();
-  await expect(page.locator('#extension-overlay-toggle')).toBeChecked();
   await expect(page.locator('#overlay')).toHaveCSS('flex-direction', 'column');
   await expect(page.locator('#overlay')).toHaveCSS('gap', '0px');
-  await page.locator('#subtitle-preview-settings-toggle').click();
-  await expect(page.locator('#subtitle-preview-settings-panel')).toBeVisible();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await expect(page.locator('#editor-settings-page-subtitle-preview')).toBeVisible();
+  await expect(page.locator('#extension-overlay-toggle-wrap')).toBeVisible();
+  await expect(page.locator('#extension-overlay-toggle')).toBeChecked();
   await expect(page.locator('#extension-subtitle-preview-settings')).toBeVisible();
   await expect(page.locator('#subtitle-color')).toHaveValue('#ffffff');
   await expect(page.locator('#extension-subtitle-color')).toHaveValue('#ffd34d');
@@ -2278,6 +2279,7 @@ test('shows independent extension preview controls with yellow defaults', async 
   await expect(page.locator('#overlay-extension-text')).toHaveCSS('background-color', 'rgba(18, 52, 86, 0.65)');
   await page.locator('#extension-overlay-toggle').uncheck();
   await expect(page.locator('#extension-overlay-toggle')).not.toBeChecked();
+  await page.locator('#editor-settings-close').click();
 });
 
 test('refreshes local font options for both main and extension subtitles', async ({ page }) => {
@@ -2290,7 +2292,8 @@ test('refreshes local font options for both main and extension subtitles', async
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
 
   const scanButton = page.locator('#subtitle-font-family-scan');
   await expect(scanButton).toBeEnabled();
@@ -2320,7 +2323,8 @@ test('localizes approved scanned font labels in both selectors', async ({ page }
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
   await page.locator('#subtitle-font-family-scan').click();
   const options = await page.evaluate(() => ['subtitle-font-family', 'extension-subtitle-font-family']
     .map((id) => Array.from(document.getElementById(id).options, (option) => ({

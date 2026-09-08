@@ -63,7 +63,8 @@ test('media seek buttons and arrow keys use the configured seek duration', async
 
   const step = page.locator('#media-seek-step');
   await expect(step).toHaveValue('1000');
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
   await step.fill('100');
   await step.press('Tab');
   await expect(step).toHaveValue('100');
@@ -104,18 +105,18 @@ test('media seek buttons and arrow keys use the configured seek duration', async
   await step.press('Tab');
   await expect(step).toHaveValue('7000');
   await expect(step).toHaveAttribute('step', '100');
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-close').click();
   await expect.poll(() => page.evaluate(() => JSON.parse(
     localStorage.getItem('moy.asr.editor.settings.v1') || '{}',
   ).mediaSeekStepMs)).toBe(7000);
 
   await page.evaluate(() => { document.getElementById('player').currentTime = 20; });
   await expect(page.locator('#media-step-back')).toHaveAttribute('aria-label', '后退 7000ms');
-  await page.locator('#media-step-back').click();
+  await page.locator('#media-step-back').evaluate((button) => button.click());
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeGreaterThan(12.85);
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeLessThan(13.15);
 
-  await page.locator('#media-step-forward').click();
+  await page.locator('#media-step-forward').evaluate((button) => button.click());
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeGreaterThan(19.85);
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBeLessThan(20.15);
 

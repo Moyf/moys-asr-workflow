@@ -749,7 +749,7 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
-const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'shadow', 'stroke']);
+const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
 const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
@@ -1649,9 +1649,6 @@ const mergeJoinSettingsPanel = document.getElementById('merge-join-settings-pane
 const splitTrimSettings = document.getElementById('split-trim-settings');
 const splitTrimSettingsToggle = document.getElementById('split-trim-settings-toggle');
 const splitTrimSettingsPanel = document.getElementById('split-trim-settings-panel');
-const subtitlePreviewSettings = document.getElementById('subtitle-preview-settings');
-const subtitlePreviewSettingsToggle = document.getElementById('subtitle-preview-settings-toggle');
-const subtitlePreviewSettingsPanel = document.getElementById('subtitle-preview-settings-panel');
 const cueEditorSettings = document.getElementById('cue-editor-settings');
 const cueEditorSettingsToggle = document.getElementById('cue-editor-settings-toggle');
 const cueEditorSettingsPanel = document.getElementById('cue-editor-settings-panel');
@@ -1698,6 +1695,7 @@ const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
 const EDITOR_SETTINGS_WINDOW_POSITION_KEY = 'moy.asr.editor.settings.window.v1';
+const EDITOR_SETTINGS_WINDOW_SIZE_KEY = 'moy.asr.editor.settings.window_size.v1';
 const EDITOR_SETTINGS_WINDOW_TAB_KEY = 'moy.asr.editor.settings.window_tab.v1';
 const editorSettingsClose = document.getElementById('editor-settings-close');
 const editorSettingsDragHandle = document.getElementById('editor-settings-drag-handle');
@@ -1909,9 +1907,12 @@ const editorSettingsFloatingPanel = createFloatingPanel({
   manageButton: editorSettingsToggle,
   anchorButton: editorSettingsToggle,
   positionKey: EDITOR_SETTINGS_WINDOW_POSITION_KEY,
-  // 所有打开路径（按钮点击 / 桥接）都先恢复标签页，保证默认分区带上 active 样式，
-  // 且窗口按实际内容尺寸定位。
-  onOpen: restoreEditorSettingsActiveTab,
+  // 所有打开路径（按钮点击 / 桥接）都先恢复尺寸与标签页，保证默认分区带上
+  // active 样式，且窗口按实际内容尺寸定位。
+  onOpen: () => {
+    restoreEditorSettingsPanelSize();
+    restoreEditorSettingsActiveTab();
+  },
 });
 
 function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
@@ -1944,6 +1945,39 @@ function restoreEditorSettingsActiveTab() {
     || editorSettingsTabs.find((item) => !item.hidden)
     || editorSettingsTabs[0];
   setEditorSettingsActiveTab(tab);
+}
+
+// 浮窗尺寸：与帮助窗口一致，仅在用户拖过右下角缩放手柄后持久化；
+// 未缩放时保持 CSS 默认宽度/自动高度。
+function restoreEditorSettingsPanelSize() {
+  if (!editorSettingsPanel) return;
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY) || 'null');
+  } catch (_) {
+    saved = null;
+  }
+  if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
+  editorSettingsPanel.style.width = `${Math.min(Math.max(460, saved.width), window.innerWidth - 12)}px`;
+  editorSettingsPanel.style.height = `${Math.min(Math.max(280, saved.height), window.innerHeight - 24)}px`;
+}
+let editorSettingsPanelSizeSaveTimer = 0;
+if (editorSettingsPanel) {
+  new ResizeObserver(() => {
+    if (!editorSettingsPanel.classList.contains('show')) return;
+    if (!editorSettingsPanel.style.width && !editorSettingsPanel.style.height) return;
+    clearTimeout(editorSettingsPanelSizeSaveTimer);
+    editorSettingsPanelSizeSaveTimer = setTimeout(() => {
+      const rect = editorSettingsPanel.getBoundingClientRect();
+      try {
+        localStorage.setItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY, JSON.stringify({
+          width: Math.round(rect.width), height: Math.round(rect.height),
+        }));
+      } catch (_) {
+        // file:// 隐私模式下 localStorage 可能被拒；缩放本身仍可用。
+      }
+    }, 250);
+  }).observe(editorSettingsPanel);
 }
 
 function setEditorSettingsPanelOpen(open) {
@@ -2006,19 +2040,6 @@ function setSplitTrimSettingsPanelOpen(open) {
 function setSettingsPanelOwnerOpen(panel, open) {
   const owner = panel?.closest('.player-wrap, .current-cue-panel, .cues-container, .waveform-pane');
   owner?.classList.toggle('settings-panel-owner-open', open);
-}
-
-function positionSubtitlePreviewSettingsPanel() {
-  positionAnchoredSettingsPanel(subtitlePreviewSettingsPanel, subtitlePreviewSettingsToggle);
-}
-
-function setSubtitlePreviewSettingsPanelOpen(open) {
-  if (!subtitlePreviewSettingsPanel || !subtitlePreviewSettingsToggle) return;
-  subtitlePreviewSettingsPanel.hidden = !open;
-  setSettingsPanelOwnerOpen(subtitlePreviewSettingsPanel, open);
-  subtitlePreviewSettingsToggle.classList.toggle('active', open);
-  subtitlePreviewSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionSubtitlePreviewSettingsPanel();
 }
 
 function positionCueListSettingsPanel() {
@@ -2491,10 +2512,6 @@ splitTrimSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setSplitTrimSettingsPanelOpen(splitTrimSettingsPanel?.hidden);
 });
-subtitlePreviewSettingsToggle?.addEventListener('click', (event) => {
-  event.stopPropagation();
-  setSubtitlePreviewSettingsPanelOpen(subtitlePreviewSettingsPanel?.hidden);
-});
 cueListSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setCueListSettingsPanelOpen(cueListSettingsPanel?.hidden);
@@ -2515,9 +2532,6 @@ document.addEventListener('pointerdown', (event) => {
       applySearch(searchEl.value);
     }
   }
-  if (!subtitlePreviewSettingsPanel?.hidden && !subtitlePreviewSettings?.contains(event.target)) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-  }
   if (!cueListSettingsPanel?.hidden && !cueListSettings?.contains(event.target)) {
     setCueListSettingsPanelOpen(false);
   }
@@ -2536,10 +2550,6 @@ document.addEventListener('pointerdown', (event) => {
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  if (!subtitlePreviewSettingsPanel?.hidden) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-    subtitlePreviewSettingsToggle?.focus();
-  }
   if (!cueListSettingsPanel?.hidden) {
     setCueListSettingsPanelOpen(false);
     cueListSettingsToggle?.focus();
@@ -2565,17 +2575,12 @@ window.addEventListener('resize', positionMergeJoinSettingsPanel);
 window.addEventListener('scroll', positionMergeJoinSettingsPanel, true);
 window.addEventListener('resize', positionSplitTrimSettingsPanel);
 window.addEventListener('scroll', positionSplitTrimSettingsPanel, true);
-window.addEventListener('resize', positionSubtitlePreviewSettingsPanel);
-window.addEventListener('scroll', positionSubtitlePreviewSettingsPanel, true);
 window.addEventListener('resize', positionCueListSettingsPanel);
 window.addEventListener('scroll', positionCueListSettingsPanel, true);
 window.addEventListener('resize', positionWaveformSettingsPanel);
 window.addEventListener('scroll', positionWaveformSettingsPanel, true);
 window.addEventListener('resize', positionCueEditorSettingsPanel);
 window.addEventListener('scroll', positionCueEditorSettingsPanel, true);
-subtitlePreviewSettings?.closest('.player-toolbar')?.addEventListener(
-  'scroll', positionSubtitlePreviewSettingsPanel,
-);
 cueListSettings?.closest('.cue-list-toolbar')?.addEventListener(
   'scroll', positionCueListSettingsPanel,
 );
@@ -2603,11 +2608,15 @@ helpOpenWaveformSettingsButtons.forEach((button) => {
     waveformSettingsToggle?.focus();
   });
 });
+// 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
+function openEditorSettingsAtTab(tabId) {
+  setEditorSettingsPanelOpen(true);
+  setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
+}
 helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
-    setSubtitlePreviewSettingsPanelOpen(true);
-    subtitlePreviewSettingsToggle?.focus();
+    openEditorSettingsAtTab('editor-settings-tab-subtitle-preview');
   });
 });
 helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {
@@ -10885,6 +10894,8 @@ document.addEventListener('pointerdown', (e) => {
 // AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
 const GEO_UTILS = window.AsrEditorUtils;
 let previewGeometryDirty = false;
+// 启动早期生成的自定义字体选项先用原始名称占位；共享工具层就绪后立即统一本地化。
+relabelSubtitleFontFamilyOptions();
 
 function getPreviewGeometry() {
   return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.subtitle);
@@ -10962,7 +10973,10 @@ function subtitleFontFamilyOptionExists(select, value) {
 }
 function subtitleFontFamilyDisplayName(family) {
   const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  return GEO_UTILS.subtitleFontFamilyDisplayName(family, language);
+  // 启动早期 applySubtitleAppearance() 会先生成自定义字体选项，此时
+  // GEO_UTILS 别名（文件后部才初始化）尚处于暂时性死区；直接读共享工具层，
+  // 不可用时先用原始字体名占位，别名就绪后由 relabelSubtitleFontFamilyOptions 统一本地化。
+  return window.AsrEditorUtils?.subtitleFontFamilyDisplayName(family, language) ?? family;
 }
 function relabelSubtitleFontFamilyOptions() {
   [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
@@ -11671,7 +11685,7 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     overlayExtensionTextEl.textContent = extensionText;
   }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
-  // 预览文字颜色、下划线、阴影或描边。dataset 记录上次应用的结果，避免
+  // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
   // 播放刷新每帧都写内联样式。
   const subtitleAppearance = getSubtitleAppearance();
   const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
@@ -11689,11 +11703,6 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     && previewSegmentColor
     ? previewSegmentColor
     : subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
-  const textShadow = colorPreviewEnabled
-    && colorStyle === 'shadow'
-    && previewSegmentColor
-    ? `${previewSegmentColor} 1px 1px 2px`
-    : '';
   const textStroke = colorPreviewEnabled
     && colorStyle === 'stroke'
     && previewSegmentColor
@@ -11708,10 +11717,6 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayTextEl.dataset.colorText !== textColor) {
     overlayTextEl.dataset.colorText = textColor;
     overlayTextEl.style.color = textColor;
-  }
-  if (overlayTextEl.dataset.colorShadow !== textShadow) {
-    overlayTextEl.dataset.colorShadow = textShadow;
-    overlayTextEl.style.textShadow = textShadow;
   }
   if (overlayTextEl.dataset.colorStroke !== textStroke) {
     overlayTextEl.dataset.colorStroke = textStroke;

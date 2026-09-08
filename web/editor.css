@@ -478,8 +478,8 @@
   .server-connection-banner-message { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 
   /* === 媒体区 === */
-  /* player-wrap 是媒体预览面板：顶部 .player-toolbar + 下方 .player-stage（视频与预览层）。
-     预览层（字幕/表情包）的几何以 stage 为定位与测量基准，工具栏不参与。 */
+  /* player-wrap 是媒体预览面板：.player-stage（视频与预览层）+ 下方 .media-controls。
+      预览层（字幕/表情包）的几何以 stage 为定位与测量基准。 */
   .player-wrap {
     flex: 0 0 auto; margin-bottom: 8px;
     position: relative; display: flex; flex-direction: column; width: 100%;
@@ -540,8 +540,10 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
   }
-  /* 布局编辑模式下让出顶部 dock-handle 的高度。 */
+  /* 布局编辑模式下让出顶部 dock-handle 的高度。
+     字幕编辑区工具栏带 -10px 顶边距，需在把手高度上再多让 10px。 */
   .editor-workspace.layout-editing .player-wrap { padding-top: var(--dock-handle-h); }
+  .editor-workspace.layout-editing .current-cue-panel { padding-top: calc(var(--dock-handle-h) + 10px); }
   .player-empty, .cues-empty {
     position: absolute; inset: 0; z-index: 20;
     display: flex; align-items: center; justify-content: center;
@@ -741,9 +743,8 @@
   .toolbar .right-group { margin-left: auto; display: flex; gap: 8px; align-items: center; }
   .toolbar-utility-group { display: inline-flex; align-items: center; gap: 4px; }
 
-  /* 面板内嵌工具栏（媒体预览 / 字幕列表 / 波形顶部）：复用 .toolbar 控件样式，
-     额外固定高度、单行不换行 + 横向滚动，避免与波形 scroll 的 padding 错位。 */
-  .toolbar.player-toolbar,
+  /* 面板内嵌工具栏（字幕列表 / 波形顶部 / 字幕编辑区）：复用 .toolbar 控件样式，
+      额外固定高度、单行不换行 + 横向滚动，避免与波形 scroll 的 padding 错位。 */
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .toolbar.cue-editor-toolbar {
@@ -759,7 +760,6 @@
     border-bottom: 1px solid var(--border-subtle);
     box-shadow: 0 1px 0 var(--panel-toolbar-shadow);
   }
-  .toolbar.player-toolbar > *,
   .toolbar.cue-list-toolbar > *,
   .toolbar.waveform-toolbar > *,
   .toolbar.cue-editor-toolbar > * {
@@ -767,7 +767,6 @@
     min-width: 0;
   }
   /* 齿轮固定在工具栏最右侧；左侧控件允许收缩，不能把齿轮推出可视区域。 */
-  .toolbar.player-toolbar > .settings-anchor,
   .toolbar.cue-list-toolbar > .settings-anchor,
   .toolbar.waveform-toolbar > .settings-anchor,
   .toolbar.cue-editor-toolbar > .settings-anchor {
@@ -775,7 +774,6 @@
     min-width: 30px;
   }
   /* 各工具栏都不依赖横向滚动才能看到所属设置；内容不足时由左侧项让位。 */
-  .toolbar.player-toolbar,
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .toolbar.cue-editor-toolbar { overflow-x: hidden; }
@@ -888,19 +886,15 @@
   .settings-panel-section .settings-panel-help-link:focus-visible {
     outline: 2px solid var(--accent-line); outline-offset: 1px;
   }
-  .subtitle-preview-settings-panel { width: min(400px, calc(100vw - 16px)); }
   .cue-list-settings-panel { width: min(340px, calc(100vw - 16px)); }
   .cue-editor-settings-panel { width: min(300px, calc(100vw - 16px)); }
   .subtitle-preview-settings-fields {
     display: grid; gap: 8px; width: 100%; min-width: 0;
   }
-  .subtitle-preview-settings-section { display: grid; gap: 10px; }
-  .subtitle-preview-settings-section > .settings-panel-title {
-    display: block; width: 100%; text-align: center;
-  }
+  /* 「字幕预览」分组内的主/副字幕卡片：比分组底色深一档形成嵌套层级。 */
   .subtitle-preview-track-settings {
     display: grid; gap: 8px; width: 100%; min-width: 0; box-sizing: border-box;
-    padding: 8px 10px; background: var(--bg-panel); border: 1px solid var(--border-subtle);
+    padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
   }
   .subtitle-preview-track-settings[hidden] { display: none; }
@@ -913,9 +907,9 @@
   }
   .subtitle-preview-setting-cell {
     display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px;
-    min-width: 0; color: var(--text-secondary); font-size: 12px; white-space: nowrap;
+    min-width: 0; color: var(--text-secondary); font-size: 12px;
   }
-  .subtitle-preview-setting-cell > span { color: var(--text-muted); }
+  .subtitle-preview-setting-cell > span { color: var(--text-secondary); white-space: nowrap; }
   .subtitle-preview-setting-cell select { width: 100%; min-width: 0; }
   .subtitle-preview-setting-cell input[type="color"] {
     width: 100%; height: 24px; min-width: 0; padding: 2px;
@@ -965,10 +959,10 @@
   .waveform-settings-section button:disabled { opacity: .42; cursor: not-allowed; }
   .subtitle-preview-setting-row {
     display: grid; grid-template-columns: 8em minmax(0, 1fr); align-items: center; gap: 8px;
-    color: var(--text-secondary); font-size: 12px; white-space: nowrap;
+    color: var(--text-secondary); font-size: 12px;
   }
   .subtitle-preview-setting-row[hidden] { display: none; }
-  .subtitle-preview-setting-row > span { color: var(--text-muted); }
+  .subtitle-preview-setting-row > span { color: var(--text-secondary); white-space: nowrap; }
   .subtitle-preview-setting-row select { width: 100%; min-width: 0; }
   .subtitle-preview-setting-row input[type="color"] {
     width: 100%; height: 24px; min-width: 0; padding: 2px;
@@ -1020,15 +1014,18 @@
     .subtitle-speaker-label-list { grid-template-columns: 1fr; }
   }
 
-  /* 全局设置是可拖动的非模态独立窗口：左侧垂直标签页 + 右侧内容区。
-     z-index 低于锚定弹出面板（420）与表情包根目录弹窗（280），
+  /* 全局设置是可拖动、可缩放的非模态独立窗口：左侧垂直标签页 + 右侧内容区。
+     z-index 高于帮助窗口（320，帮助链接会直接打开本窗口），
+     低于锚定弹出面板（420）与表情包根目录弹窗（335），
      保证窗口内的「配置合并字符 / 配置拆分标点」浮层和表情包弹窗都能盖住窗口。 */
   .editor-settings-window {
-    display: none; position: fixed; z-index: 270;
+    display: none; position: fixed; z-index: 330;
     flex-direction: column;
     width: min(560px, calc(100vw - 24px));
-    max-height: min(600px, calc(100vh - 60px));
+    min-width: 460px; min-height: 280px;
+    max-width: calc(100vw - 24px); max-height: calc(100vh - 60px);
     padding: 0;
+    overflow: hidden; resize: both;
     background: var(--bg-overlay);
     border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
     box-shadow: var(--shadow-3);
@@ -1286,7 +1283,7 @@
     background: var(--bg-input);
   }
   @media (max-width: 420px) {
-    .editor-settings-window { width: calc(100vw - 16px); }
+    .editor-settings-window { width: calc(100vw - 16px); min-width: 0; resize: none; }
     .editor-settings-nav { width: 104px; padding: 8px 6px; }
     .editor-settings-toggle-group > .toggle { gap: 2px; }
   }
@@ -2391,7 +2388,8 @@
     width: 100%;
     min-width: 0;
   }
-  #sticker-root-modal { z-index: 280; }
+  /* 从全局设置窗口打开，必须盖住设置窗口（330）。 */
+  #sticker-root-modal { z-index: 335; }
   #sticker-root-modal .modal {
     width: min(540px, calc(100vw - 32px));
     min-width: 0;
@@ -3111,7 +3109,6 @@
   /* === 统一细滚动条（字幕列表 / 波形 / 面板工具栏 / 模态预览 / 空隙面板 / 表情网格）=== */
   .cues-container,
   .waveform-scroll,
-  .toolbar.player-toolbar,
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .modal .preview,
@@ -3130,7 +3127,6 @@
   }
   .cues-container::-webkit-scrollbar,
   .waveform-scroll::-webkit-scrollbar,
-  .toolbar.player-toolbar::-webkit-scrollbar,
   .toolbar.cue-list-toolbar::-webkit-scrollbar,
   .toolbar.waveform-toolbar::-webkit-scrollbar,
   .modal .preview::-webkit-scrollbar,
@@ -3145,7 +3141,6 @@
   .hint-project-preview-value::-webkit-scrollbar { width: 6px; height: 6px; }
   .cues-container::-webkit-scrollbar-track,
   .waveform-scroll::-webkit-scrollbar-track,
-  .toolbar.player-toolbar::-webkit-scrollbar-track,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-track,
   .toolbar.waveform-toolbar::-webkit-scrollbar-track,
   .modal .preview::-webkit-scrollbar-track,
@@ -3160,7 +3155,6 @@
   .hint-project-preview-value::-webkit-scrollbar-track { background: var(--scroll-track); }
   .cues-container::-webkit-scrollbar-thumb,
   .waveform-scroll::-webkit-scrollbar-thumb,
-  .toolbar.player-toolbar::-webkit-scrollbar-thumb,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-thumb,
   .toolbar.waveform-toolbar::-webkit-scrollbar-thumb,
   .modal .preview::-webkit-scrollbar-thumb,
@@ -3178,7 +3172,6 @@
   }
   .cues-container::-webkit-scrollbar-thumb:hover,
   .waveform-scroll::-webkit-scrollbar-thumb:hover,
-  .toolbar.player-toolbar::-webkit-scrollbar-thumb:hover,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-thumb:hover,
   .toolbar.waveform-toolbar::-webkit-scrollbar-thumb:hover,
   .modal .preview::-webkit-scrollbar-thumb:hover,

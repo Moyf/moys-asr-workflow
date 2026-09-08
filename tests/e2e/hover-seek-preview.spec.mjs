@@ -60,13 +60,14 @@ async function hoverFirstWaveformRow(page, ratio) {
 }
 
 test('hover seek preview defaults off and hovering the waveform does not seek', async ({ page }) => {
-  // Given: no persisted preference; the player 媒体设置 panel exposes the toggle unchecked.
+  // Given: no persisted preference; the 全局设置「视频预览」tab exposes the toggle unchecked.
   await openEditorWithMedia(page);
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
   const toggle = page.getByRole('checkbox', { name: '自动预览鼠标位置画面' });
   await expect(toggle).toBeVisible();
   await expect(toggle).not.toBeChecked();
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-close').click();
 
   // When: the pointer moves across the first waveform row.
   await hoverFirstWaveformRow(page, 0.5);

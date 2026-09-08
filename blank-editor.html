@@ -495,8 +495,8 @@
   .server-connection-banner-message { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 
   /* === 媒体区 === */
-  /* player-wrap 是媒体预览面板：顶部 .player-toolbar + 下方 .player-stage（视频与预览层）。
-     预览层（字幕/表情包）的几何以 stage 为定位与测量基准，工具栏不参与。 */
+  /* player-wrap 是媒体预览面板：.player-stage（视频与预览层）+ 下方 .media-controls。
+      预览层（字幕/表情包）的几何以 stage 为定位与测量基准。 */
   .player-wrap {
     flex: 0 0 auto; margin-bottom: 8px;
     position: relative; display: flex; flex-direction: column; width: 100%;
@@ -557,8 +557,10 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
   }
-  /* 布局编辑模式下让出顶部 dock-handle 的高度。 */
+  /* 布局编辑模式下让出顶部 dock-handle 的高度。
+     字幕编辑区工具栏带 -10px 顶边距，需在把手高度上再多让 10px。 */
   .editor-workspace.layout-editing .player-wrap { padding-top: var(--dock-handle-h); }
+  .editor-workspace.layout-editing .current-cue-panel { padding-top: calc(var(--dock-handle-h) + 10px); }
   .player-empty, .cues-empty {
     position: absolute; inset: 0; z-index: 20;
     display: flex; align-items: center; justify-content: center;
@@ -758,9 +760,8 @@
   .toolbar .right-group { margin-left: auto; display: flex; gap: 8px; align-items: center; }
   .toolbar-utility-group { display: inline-flex; align-items: center; gap: 4px; }
 
-  /* 面板内嵌工具栏（媒体预览 / 字幕列表 / 波形顶部）：复用 .toolbar 控件样式，
-     额外固定高度、单行不换行 + 横向滚动，避免与波形 scroll 的 padding 错位。 */
-  .toolbar.player-toolbar,
+  /* 面板内嵌工具栏（字幕列表 / 波形顶部 / 字幕编辑区）：复用 .toolbar 控件样式，
+      额外固定高度、单行不换行 + 横向滚动，避免与波形 scroll 的 padding 错位。 */
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .toolbar.cue-editor-toolbar {
@@ -776,7 +777,6 @@
     border-bottom: 1px solid var(--border-subtle);
     box-shadow: 0 1px 0 var(--panel-toolbar-shadow);
   }
-  .toolbar.player-toolbar > *,
   .toolbar.cue-list-toolbar > *,
   .toolbar.waveform-toolbar > *,
   .toolbar.cue-editor-toolbar > * {
@@ -784,7 +784,6 @@
     min-width: 0;
   }
   /* 齿轮固定在工具栏最右侧；左侧控件允许收缩，不能把齿轮推出可视区域。 */
-  .toolbar.player-toolbar > .settings-anchor,
   .toolbar.cue-list-toolbar > .settings-anchor,
   .toolbar.waveform-toolbar > .settings-anchor,
   .toolbar.cue-editor-toolbar > .settings-anchor {
@@ -792,7 +791,6 @@
     min-width: 30px;
   }
   /* 各工具栏都不依赖横向滚动才能看到所属设置；内容不足时由左侧项让位。 */
-  .toolbar.player-toolbar,
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .toolbar.cue-editor-toolbar { overflow-x: hidden; }
@@ -905,19 +903,15 @@
   .settings-panel-section .settings-panel-help-link:focus-visible {
     outline: 2px solid var(--accent-line); outline-offset: 1px;
   }
-  .subtitle-preview-settings-panel { width: min(400px, calc(100vw - 16px)); }
   .cue-list-settings-panel { width: min(340px, calc(100vw - 16px)); }
   .cue-editor-settings-panel { width: min(300px, calc(100vw - 16px)); }
   .subtitle-preview-settings-fields {
     display: grid; gap: 8px; width: 100%; min-width: 0;
   }
-  .subtitle-preview-settings-section { display: grid; gap: 10px; }
-  .subtitle-preview-settings-section > .settings-panel-title {
-    display: block; width: 100%; text-align: center;
-  }
+  /* 「字幕预览」分组内的主/副字幕卡片：比分组底色深一档形成嵌套层级。 */
   .subtitle-preview-track-settings {
     display: grid; gap: 8px; width: 100%; min-width: 0; box-sizing: border-box;
-    padding: 8px 10px; background: var(--bg-panel); border: 1px solid var(--border-subtle);
+    padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
   }
   .subtitle-preview-track-settings[hidden] { display: none; }
@@ -930,9 +924,9 @@
   }
   .subtitle-preview-setting-cell {
     display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px;
-    min-width: 0; color: var(--text-secondary); font-size: 12px; white-space: nowrap;
+    min-width: 0; color: var(--text-secondary); font-size: 12px;
   }
-  .subtitle-preview-setting-cell > span { color: var(--text-muted); }
+  .subtitle-preview-setting-cell > span { color: var(--text-secondary); white-space: nowrap; }
   .subtitle-preview-setting-cell select { width: 100%; min-width: 0; }
   .subtitle-preview-setting-cell input[type="color"] {
     width: 100%; height: 24px; min-width: 0; padding: 2px;
@@ -982,10 +976,10 @@
   .waveform-settings-section button:disabled { opacity: .42; cursor: not-allowed; }
   .subtitle-preview-setting-row {
     display: grid; grid-template-columns: 8em minmax(0, 1fr); align-items: center; gap: 8px;
-    color: var(--text-secondary); font-size: 12px; white-space: nowrap;
+    color: var(--text-secondary); font-size: 12px;
   }
   .subtitle-preview-setting-row[hidden] { display: none; }
-  .subtitle-preview-setting-row > span { color: var(--text-muted); }
+  .subtitle-preview-setting-row > span { color: var(--text-secondary); white-space: nowrap; }
   .subtitle-preview-setting-row select { width: 100%; min-width: 0; }
   .subtitle-preview-setting-row input[type="color"] {
     width: 100%; height: 24px; min-width: 0; padding: 2px;
@@ -1037,15 +1031,17 @@
     .subtitle-speaker-label-list { grid-template-columns: 1fr; }
   }
 
-  /* 全局设置是可拖动的非模态独立窗口：左侧垂直标签页 + 右侧内容区。
+  /* 全局设置是可拖动、可缩放的非模态独立窗口：左侧垂直标签页 + 右侧内容区。
      z-index 低于锚定弹出面板（420）与表情包根目录弹窗（280），
      保证窗口内的「配置合并字符 / 配置拆分标点」浮层和表情包弹窗都能盖住窗口。 */
   .editor-settings-window {
     display: none; position: fixed; z-index: 270;
     flex-direction: column;
     width: min(560px, calc(100vw - 24px));
-    max-height: min(600px, calc(100vh - 60px));
+    min-width: 460px; min-height: 280px;
+    max-width: calc(100vw - 24px); max-height: calc(100vh - 60px);
     padding: 0;
+    overflow: hidden; resize: both;
     background: var(--bg-overlay);
     border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
     box-shadow: var(--shadow-3);
@@ -1303,7 +1299,7 @@
     background: var(--bg-input);
   }
   @media (max-width: 420px) {
-    .editor-settings-window { width: calc(100vw - 16px); }
+    .editor-settings-window { width: calc(100vw - 16px); min-width: 0; resize: none; }
     .editor-settings-nav { width: 104px; padding: 8px 6px; }
     .editor-settings-toggle-group > .toggle { gap: 2px; }
   }
@@ -3128,7 +3124,6 @@
   /* === 统一细滚动条（字幕列表 / 波形 / 面板工具栏 / 模态预览 / 空隙面板 / 表情网格）=== */
   .cues-container,
   .waveform-scroll,
-  .toolbar.player-toolbar,
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .modal .preview,
@@ -3147,7 +3142,6 @@
   }
   .cues-container::-webkit-scrollbar,
   .waveform-scroll::-webkit-scrollbar,
-  .toolbar.player-toolbar::-webkit-scrollbar,
   .toolbar.cue-list-toolbar::-webkit-scrollbar,
   .toolbar.waveform-toolbar::-webkit-scrollbar,
   .modal .preview::-webkit-scrollbar,
@@ -3162,7 +3156,6 @@
   .hint-project-preview-value::-webkit-scrollbar { width: 6px; height: 6px; }
   .cues-container::-webkit-scrollbar-track,
   .waveform-scroll::-webkit-scrollbar-track,
-  .toolbar.player-toolbar::-webkit-scrollbar-track,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-track,
   .toolbar.waveform-toolbar::-webkit-scrollbar-track,
   .modal .preview::-webkit-scrollbar-track,
@@ -3177,7 +3170,6 @@
   .hint-project-preview-value::-webkit-scrollbar-track { background: var(--scroll-track); }
   .cues-container::-webkit-scrollbar-thumb,
   .waveform-scroll::-webkit-scrollbar-thumb,
-  .toolbar.player-toolbar::-webkit-scrollbar-thumb,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-thumb,
   .toolbar.waveform-toolbar::-webkit-scrollbar-thumb,
   .modal .preview::-webkit-scrollbar-thumb,
@@ -3195,7 +3187,6 @@
   }
   .cues-container::-webkit-scrollbar-thumb:hover,
   .waveform-scroll::-webkit-scrollbar-thumb:hover,
-  .toolbar.player-toolbar::-webkit-scrollbar-thumb:hover,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-thumb:hover,
   .toolbar.waveform-toolbar::-webkit-scrollbar-thumb:hover,
   .modal .preview::-webkit-scrollbar-thumb:hover,
@@ -3485,7 +3476,6 @@
 .layout-custom .current-cue-panel {
   min-height: max-content;
   overflow: hidden;
-  padding-top: 30px;
 }
 .layout-custom .layout-module-slot[data-layout-module="panel"],
 .layout-custom .layout-child:has(.layout-module-slot[data-layout-module="panel"]) {
@@ -3509,12 +3499,17 @@
   overflow-x: hidden;
 }
 .layout-custom .layout-resizer { display: none; }
+/* 拖动分隔条默认隐形，悬停/拖动时才浮现，避免常驻线条切割面板。 */
 .layout-split-divider {
   position: relative;
   z-index: 35;
   flex: 0 0 7px;
   background: transparent;
+  opacity: 0;
+  transition: opacity .12s;
 }
+.layout-split-divider:hover,
+.layout-split-divider.dragging { opacity: 1; }
 .layout-split-divider::after {
   content: "";
   position: absolute;
@@ -3525,9 +3520,9 @@
 .layout-split-divider:hover::after,
 .layout-split-divider.dragging::after { background: var(--accent); }
 .layout-split-divider-row { cursor: col-resize; }
-.layout-split-divider-row::after { top: 0; bottom: 0; left: 2px; width: 3px; }
+.layout-split-divider-row::after { top: 0; bottom: 0; left: 2px; width: 2px; }
 .layout-split-divider-column { cursor: row-resize; }
-.layout-split-divider-column::after { left: 0; right: 0; top: 2px; height: 3px; }
+.layout-split-divider-column::after { left: 0; right: 0; top: 2px; height: 2px; }
 
 .waveform-pane {
   --waveform-content-top: var(--panel-toolbar-h);
@@ -4907,9 +4902,9 @@
           <span><kbd>Home</kbd>/<kbd>End</kbd> 在波形区或播放器跳转到媒体开头/结尾</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> <span id="help-jkl-mode">倒放/停止/1×播放</span></span>
-          <span class="help-note">可在媒体区的
-            <button type="button" class="help-inline-action" id="help-open-media-settings" data-help-open-media-settings aria-controls="subtitle-preview-settings-panel">⚙️设置</button>
-            中调整 JKL 按键模式，或是跳转的时长。</span>
+          <span class="help-note">预览开关、鼠标位置预览、JKL 按键模式和跳转时长可在
+            <button type="button" class="help-inline-action" id="help-open-media-settings" data-help-open-media-settings aria-controls="editor-settings-page-subtitle-preview">全局设置</button>
+            的「视频预览」中调整。</span>
         </div>
       </section>
       <section class="help-subgroup">
@@ -4964,6 +4959,7 @@
   <div class="editor-settings-window-body">
     <nav class="editor-settings-nav" role="tablist" aria-orientation="vertical" aria-label="设置分区">
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-general" role="tab" data-settings-tab="general" aria-selected="true" aria-controls="editor-settings-page-general">通用操作</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-subtitle-preview" role="tab" data-settings-tab="subtitle-preview" aria-selected="false" aria-controls="editor-settings-page-subtitle-preview" tabindex="-1">视频预览</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-timebase" role="tab" data-settings-tab="timebase" aria-selected="false" aria-controls="editor-settings-page-timebase" tabindex="-1">时间基准</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-split-merge" role="tab" data-settings-tab="split-merge" aria-selected="false" aria-controls="editor-settings-page-split-merge" tabindex="-1">拆分与合并</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-export" role="tab" data-settings-tab="export" aria-selected="false" aria-controls="editor-settings-page-export" tabindex="-1">导出</button>
@@ -5000,6 +4996,195 @@
     <small class="editor-settings-hint">选中字幕时，同时选中和它相同颜色/表情包的字幕</small>
     </div>
     </div>
+  </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-subtitle-preview" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-preview" hidden>
+  <div class="editor-settings-group">
+    <div class="editor-settings-sub-group">
+      <label class="toggle editor-settings-item" title="在播放器画面内预览主字幕"><input type="checkbox" id="overlay-toggle" checked> 预览字幕</label>
+      <label class="toggle editor-settings-item" id="extension-overlay-toggle-wrap" hidden><input type="checkbox" id="extension-overlay-toggle" checked> 预览副字幕</label>
+      <label class="toggle editor-settings-item" title="在视频画面右上角预览当前时间的表情包"><input type="checkbox" id="sticker-overlay-toggle"> 预览表情包</label>
+      <label class="toggle editor-settings-item" title="在波形区悬停鼠标时，播放器自动预览指针位置的画面"><input type="checkbox" id="hover-seek-preview"> 自动预览鼠标位置画面</label>
+    </div>
+  </div>
+  <span class="editor-settings-group-heading" id="playback-controls-title">播放控制</span>
+  <div class="editor-settings-group playback-controls-group" role="group" aria-labelledby="playback-controls-title">
+    <div class="editor-settings-sub-group">
+      <div class="editor-settings-field">
+        <label class="editor-settings-item" title="选择 J/K/L 的播放控制方式">
+          <span>JKL 按键播放控制</span>
+          <select id="jkl-playback-mode">
+            <option value="speed">慢速和倍速</option>
+            <option value="direction" selected>倒放和正放</option>
+          </select>
+        </label>
+        <small class="editor-settings-hint" id="jkl-playback-mode-hint">J 倒放，K 停止（重置播放速度），K 播放。多次按 J/K 可以倍增速度。</small>
+      </div>
+      <div class="editor-settings-field">
+        <label class="editor-settings-item" title="媒体控制按钮和左右方向键每次跳转的时间幅度">
+          <span>每次跳转时长</span>
+          <span class="gap-remove-number-control">
+            <input type="number" id="media-seek-step" min="10" max="60000" step="100" value="1000" inputmode="numeric" aria-label="每次跳转时长">
+            <span class="gap-remove-unit" id="media-seek-step-unit">ms</span>
+          </span>
+        </label>
+        <small class="editor-settings-hint" id="media-seek-step-hint">控制按钮和左右方向键的每次跳转时长。</small>
+      </div>
+    </div>
+  </div>
+  <span class="editor-settings-group-heading" id="subtitle-preview-style-title">字幕预览</span>
+  <div class="editor-settings-group subtitle-preview-style-group" role="group" aria-labelledby="subtitle-preview-style-title">
+    <section class="subtitle-preview-track-settings" id="main-subtitle-preview-settings">
+      <h5 class="subtitle-preview-track-title">主字幕</h5>
+      <div class="subtitle-preview-settings-fields">
+        <label class="subtitle-preview-setting-row" title="只影响播放器画面内的字幕预览，不改变字幕文本或时间">
+          <span>文字大小</span>
+          <select id="subtitle-font-size">
+            <option value="auto" selected>自动（响应式）</option>
+            <option value="12">12 px</option>
+            <option value="14">14 px</option>
+            <option value="18">18 px</option>
+            <option value="22">22 px</option>
+            <option value="26">26 px</option>
+            <option value="32">32 px</option>
+            <option value="40">40 px</option>
+            <option value="48">48 px</option>
+            <option value="56">56 px</option>
+            <option value="64">64 px</option>
+            <option value="72">72 px</option>
+            <option value="84">84 px</option>
+            <option value="96">96 px</option>
+          </select>
+        </label>
+        <label class="subtitle-preview-setting-row" title="选择播放器画面内字幕预览使用的字体族">
+          <span>字体</span>
+          <select id="subtitle-font-family">
+            <option value="default" selected>默认无衬线</option>
+            <option value="yahei">微软雅黑 / 苹方</option>
+            <option value="hei">黑体</option>
+            <option value="song">宋体</option>
+            <option value="sans">Arial / Segoe UI</option>
+          </select>
+        </label>
+        <div class="subtitle-preview-font-scan">
+          <button type="button" id="subtitle-font-family-scan" title="读取本机已安装的字体">读取本机字体</button>
+          <span id="subtitle-font-family-status" class="subtitle-preview-font-scan-status" role="status" aria-live="polite">点击读取本机字体（首次需要授权）</span>
+        </div>
+        <div class="subtitle-preview-setting-pair">
+          <label class="subtitle-preview-setting-cell" title="选择播放器画面内字幕预览的文字颜色">
+            <span>文字颜色</span>
+            <input type="color" id="subtitle-color" value="#ffffff" aria-label="文字颜色">
+          </label>
+          <label class="subtitle-preview-setting-cell" title="调整播放器画面内字幕预览的背景色">
+            <span>背景颜色</span>
+            <input id="subtitle-background-color" type="color" value="#000000" aria-label="背景颜色">
+          </label>
+        </div>
+        <label class="subtitle-preview-setting-row" title="调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景">
+          <span>背景不透明度</span>
+          <div class="subtitle-preview-alpha-control">
+            <input id="subtitle-background-alpha" type="range" min="0" max="1" step="0.01" value="0.65" aria-label="背景不透明度">
+            <output id="subtitle-background-alpha-value" for="subtitle-background-alpha">65%</output>
+          </div>
+        </label>
+        <label class="toggle editor-settings-item" title="按字幕颜色快照给预览字幕应用所选颜色样式，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
+          <input type="checkbox" id="subtitle-color-underline" checked aria-label="预览字幕颜色">
+          预览字幕颜色
+        </label>
+        <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
+          <span>颜色样式</span>
+          <select id="subtitle-color-style" aria-label="预览字幕颜色样式">
+            <option value="underline" selected>下划线</option>
+            <option value="text">文字颜色</option>
+            <option value="stroke">描边</option>
+          </select>
+        </label>
+        <label class="toggle editor-settings-item subtitle-speaker-label-toggle" title="在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本">
+          <input type="checkbox" id="subtitle-speaker-labels-enabled" aria-label="显示说话人名称">
+          显示说话人名称
+        </label>
+        <div class="subtitle-speaker-labels-settings" id="subtitle-speaker-labels-settings" hidden>
+          <small class="editor-settings-hint">配置颜色对应的说话人名称；留空可隐藏该颜色的名称。仅影响预览，不改变字幕文本。</small>
+          <div class="subtitle-speaker-label-list">
+            <label class="subtitle-speaker-label-row" title="设置黄色对应的说话人名称">
+              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="yellow" aria-hidden="true"></span>黄</span>
+              <input type="text" id="subtitle-speaker-label-yellow" value="SP1" maxlength="64" autocomplete="off" aria-label="黄色对应的说话人名称">
+            </label>
+            <label class="subtitle-speaker-label-row" title="设置绿色对应的说话人名称">
+              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="green" aria-hidden="true"></span>绿</span>
+              <input type="text" id="subtitle-speaker-label-green" value="SP2" maxlength="64" autocomplete="off" aria-label="绿色对应的说话人名称">
+            </label>
+            <label class="subtitle-speaker-label-row" title="设置红色对应的说话人名称">
+              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="red" aria-hidden="true"></span>红</span>
+              <input type="text" id="subtitle-speaker-label-red" value="SP3" maxlength="64" autocomplete="off" aria-label="红色对应的说话人名称">
+            </label>
+            <label class="subtitle-speaker-label-row" title="设置紫色对应的说话人名称">
+              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="purple" aria-hidden="true"></span>紫</span>
+              <input type="text" id="subtitle-speaker-label-purple" value="SP4" maxlength="64" autocomplete="off" aria-label="紫色对应的说话人名称">
+            </label>
+            <label class="subtitle-speaker-label-row" title="设置蓝色对应的说话人名称">
+              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="blue" aria-hidden="true"></span>蓝</span>
+              <input type="text" id="subtitle-speaker-label-blue" value="SP5" maxlength="64" autocomplete="off" aria-label="蓝色对应的说话人名称">
+            </label>
+            <label class="subtitle-speaker-label-row subtitle-speaker-label-separator-row" title="设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号">
+              <span>分隔符</span>
+              <input type="text" id="subtitle-speaker-label-separator" value="：" maxlength="16" autocomplete="off" spellcheck="false" aria-label="分隔符">
+            </label>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="subtitle-preview-track-settings subtitle-preview-extension-settings" id="extension-subtitle-preview-settings" hidden>
+      <h5 class="subtitle-preview-track-title">副字幕</h5>
+      <div class="subtitle-preview-settings-fields">
+        <label class="subtitle-preview-setting-row" title="只影响播放器画面内的副字幕预览">
+          <span>文字大小</span>
+          <select id="extension-subtitle-font-size">
+            <option value="auto" selected>自动（比主字幕小一号）</option>
+            <option value="12">12 px</option>
+            <option value="14">14 px</option>
+            <option value="18">18 px</option>
+            <option value="22">22 px</option>
+            <option value="26">26 px</option>
+            <option value="32">32 px</option>
+            <option value="40">40 px</option>
+            <option value="48">48 px</option>
+            <option value="56">56 px</option>
+            <option value="64">64 px</option>
+            <option value="72">72 px</option>
+            <option value="84">84 px</option>
+            <option value="96">96 px</option>
+          </select>
+        </label>
+        <label class="subtitle-preview-setting-row" title="选择播放器画面内副字幕预览使用的字体族">
+          <span>字体</span>
+          <select id="extension-subtitle-font-family">
+            <option value="default" selected>默认无衬线</option>
+            <option value="yahei">微软雅黑 / 苹方</option>
+            <option value="hei">黑体</option>
+            <option value="song">宋体</option>
+            <option value="sans">Arial / Segoe UI</option>
+          </select>
+        </label>
+        <div class="subtitle-preview-setting-pair">
+          <label class="subtitle-preview-setting-cell" title="选择播放器画面内副字幕预览的文字颜色">
+            <span>文字颜色</span>
+            <input type="color" id="extension-subtitle-color" value="#ffd34d" aria-label="文字颜色">
+          </label>
+          <label class="subtitle-preview-setting-cell" title="调整播放器画面内副字幕预览的背景色">
+            <span>背景颜色</span>
+            <input id="extension-subtitle-background-color" type="color" value="#000000" aria-label="背景颜色">
+          </label>
+        </div>
+        <label class="subtitle-preview-setting-row" title="调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景">
+          <span>背景不透明度</span>
+          <div class="subtitle-preview-alpha-control">
+            <input id="extension-subtitle-background-alpha" type="range" min="0" max="1" step="0.01" value="0.65" aria-label="背景不透明度">
+            <output id="extension-subtitle-background-alpha-value" for="extension-subtitle-background-alpha">65%</output>
+          </div>
+        </label>
+      </div>
+    </section>
   </div>
   </div>
   <div class="editor-settings-page" id="editor-settings-page-timebase" role="tabpanel" aria-labelledby="editor-settings-tab-timebase" hidden>
@@ -5128,6 +5313,7 @@
     </div>
   </div>
   </div>
+  </div>
   <div class="editor-settings-page" id="editor-settings-page-save" role="tabpanel" aria-labelledby="editor-settings-tab-save" hidden>
   <div class="editor-settings-group">
     <div id="server-auto-save-settings" class="editor-settings-sub-group" hidden>
@@ -5204,200 +5390,6 @@
 
 <div class="editor-workspace waveform-basic" id="editor-workspace">
   <div class="player-wrap">
-    <div class="toolbar player-toolbar">
-      <span class="info layout-toolbar-label">媒体</span>
-      <label class="toggle"><input type="checkbox" id="overlay-toggle" checked> 预览字幕</label>
-      <label class="toggle" id="extension-overlay-toggle-wrap" hidden><input type="checkbox" id="extension-overlay-toggle" checked> 预览副字幕</label>
-      <label class="toggle" title="在视频画面右上角预览当前时间的表情包"><input type="checkbox" id="sticker-overlay-toggle"> 预览表情包</label>
-      <div class="settings-anchor subtitle-preview-settings" id="subtitle-preview-settings">
-        <button type="button" id="subtitle-preview-settings-toggle" class="subtitle-preview-settings-toggle" title="媒体设置" aria-label="媒体设置" aria-expanded="false" aria-controls="subtitle-preview-settings-panel" aria-haspopup="dialog">⚙️</button>
-        <div class="settings-panel subtitle-preview-settings-panel" id="subtitle-preview-settings-panel" role="dialog" aria-label="媒体设置" hidden>
-          <div class="settings-panel-section media-preview-settings-section">
-            <span class="settings-panel-title">播放预览</span>
-            <label class="toggle settings-panel-item"><input type="checkbox" id="hover-seek-preview"> 自动预览鼠标位置画面</label>
-            <div class="settings-panel-field">
-              <label class="settings-panel-item" title="选择 J/K/L 的播放控制方式">
-                <span>JKL 按键播放控制</span>
-                <select id="jkl-playback-mode">
-                  <option value="speed">慢速和倍速</option>
-                  <option value="direction" selected>倒放和正放</option>
-                </select>
-              </label>
-              <small class="settings-panel-hint" id="jkl-playback-mode-hint">J 倒放，K 停止（重置播放速度），K 播放。多次按 J/K 可以倍增速度。</small>
-            </div>
-            <div class="settings-panel-field">
-              <label class="settings-panel-item" title="媒体控制按钮和左右方向键每次跳转的时间幅度">
-                <span>每次跳转时长</span>
-                <span class="gap-remove-number-control">
-                  <input type="number" id="media-seek-step" min="10" max="60000" step="100" value="1000" inputmode="numeric" aria-label="每次跳转时长">
-                  <span class="gap-remove-unit" id="media-seek-step-unit">ms</span>
-                </span>
-              </label>
-              <small class="settings-panel-hint" id="media-seek-step-hint">控制按钮和左右方向键的每次跳转时长。</small>
-            </div>
-          </div>
-          <div class="settings-panel-section subtitle-preview-settings-section">
-            <span class="settings-panel-title">预览字幕样式</span>
-            <section class="subtitle-preview-track-settings" id="main-subtitle-preview-settings">
-              <h5 class="subtitle-preview-track-title">主字幕</h5>
-              <div class="subtitle-preview-settings-fields">
-                <div class="subtitle-preview-setting-pair">
-                  <label class="subtitle-preview-setting-cell" title="只影响播放器画面内的字幕预览，不改变字幕文本或时间">
-                    <span>字幕大小</span>
-                    <select id="subtitle-font-size">
-                      <option value="auto" selected>自动（响应式）</option>
-                      <option value="12">12 px</option>
-                      <option value="14">14 px</option>
-                      <option value="18">18 px</option>
-                      <option value="22">22 px</option>
-                      <option value="26">26 px</option>
-                      <option value="32">32 px</option>
-                      <option value="40">40 px</option>
-                      <option value="48">48 px</option>
-                      <option value="56">56 px</option>
-                      <option value="64">64 px</option>
-                      <option value="72">72 px</option>
-                      <option value="84">84 px</option>
-                      <option value="96">96 px</option>
-                    </select>
-                  </label>
-                  <label class="subtitle-preview-setting-cell" title="选择播放器画面内字幕预览使用的字体族">
-                    <span>字体</span>
-                    <select id="subtitle-font-family">
-                      <option value="default" selected>默认无衬线</option>
-                      <option value="yahei">微软雅黑 / 苹方</option>
-                      <option value="hei">黑体</option>
-                      <option value="song">宋体</option>
-                      <option value="sans">Arial / Segoe UI</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="subtitle-preview-font-scan">
-                  <button type="button" id="subtitle-font-family-scan" title="读取本机已安装的字体">读取本机字体</button>
-                  <span id="subtitle-font-family-status" class="subtitle-preview-font-scan-status" role="status" aria-live="polite">点击读取本机字体（首次需要授权）</span>
-                </div>
-                <div class="subtitle-preview-setting-pair">
-                  <label class="subtitle-preview-setting-cell" title="选择播放器画面内字幕预览的文字颜色">
-                    <span>文字颜色</span>
-                    <input type="color" id="subtitle-color" value="#ffffff" aria-label="文字颜色">
-                  </label>
-                  <label class="subtitle-preview-setting-cell" title="调整播放器画面内字幕预览的背景色">
-                    <span>背景颜色</span>
-                    <input id="subtitle-background-color" type="color" value="#000000" aria-label="背景颜色">
-                  </label>
-                </div>
-                <label class="subtitle-preview-setting-row" title="调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景">
-                  <span>背景不透明度</span>
-                  <div class="subtitle-preview-alpha-control">
-                    <input id="subtitle-background-alpha" type="range" min="0" max="1" step="0.01" value="0.65" aria-label="背景不透明度">
-                    <output id="subtitle-background-alpha-value" for="subtitle-background-alpha">65%</output>
-                  </div>
-                </label>
-                <label class="toggle settings-panel-item" title="按字幕颜色快照给预览字幕应用所选颜色样式，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
-                  <input type="checkbox" id="subtitle-color-underline" checked aria-label="预览字幕颜色">
-                  预览字幕颜色
-                </label>
-                <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
-                  <span>样式</span>
-                  <select id="subtitle-color-style" aria-label="预览字幕颜色样式">
-                    <option value="underline" selected>下划线</option>
-                    <option value="text">文字颜色</option>
-                    <option value="shadow">阴影</option>
-                    <option value="stroke">描边</option>
-                  </select>
-                </label>
-                <label class="toggle settings-panel-item subtitle-speaker-label-toggle" title="在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本">
-                  <input type="checkbox" id="subtitle-speaker-labels-enabled" aria-label="显示说话人名称">
-                  显示说话人名称
-                </label>
-                <div class="subtitle-speaker-labels-settings" id="subtitle-speaker-labels-settings" hidden>
-                  <small class="settings-panel-hint">配置颜色对应的说话人名称；留空可隐藏该颜色的名称。仅影响预览，不改变字幕文本。</small>
-                  <div class="subtitle-speaker-label-list">
-                    <label class="subtitle-speaker-label-row" title="设置黄色对应的说话人名称">
-                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="yellow" aria-hidden="true"></span>黄</span>
-                      <input type="text" id="subtitle-speaker-label-yellow" value="SP1" maxlength="64" autocomplete="off" aria-label="黄色对应的说话人名称">
-                    </label>
-                    <label class="subtitle-speaker-label-row" title="设置绿色对应的说话人名称">
-                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="green" aria-hidden="true"></span>绿</span>
-                      <input type="text" id="subtitle-speaker-label-green" value="SP2" maxlength="64" autocomplete="off" aria-label="绿色对应的说话人名称">
-                    </label>
-                    <label class="subtitle-speaker-label-row" title="设置红色对应的说话人名称">
-                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="red" aria-hidden="true"></span>红</span>
-                      <input type="text" id="subtitle-speaker-label-red" value="SP3" maxlength="64" autocomplete="off" aria-label="红色对应的说话人名称">
-                    </label>
-                    <label class="subtitle-speaker-label-row" title="设置紫色对应的说话人名称">
-                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="purple" aria-hidden="true"></span>紫</span>
-                      <input type="text" id="subtitle-speaker-label-purple" value="SP4" maxlength="64" autocomplete="off" aria-label="紫色对应的说话人名称">
-                    </label>
-                    <label class="subtitle-speaker-label-row" title="设置蓝色对应的说话人名称">
-                      <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="blue" aria-hidden="true"></span>蓝</span>
-                      <input type="text" id="subtitle-speaker-label-blue" value="SP5" maxlength="64" autocomplete="off" aria-label="蓝色对应的说话人名称">
-                    </label>
-                    <label class="subtitle-speaker-label-row subtitle-speaker-label-separator-row" title="设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号">
-                      <span>分隔符</span>
-                      <input type="text" id="subtitle-speaker-label-separator" value="：" maxlength="16" autocomplete="off" spellcheck="false" aria-label="分隔符">
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </section>
-            <section class="subtitle-preview-track-settings subtitle-preview-extension-settings" id="extension-subtitle-preview-settings" hidden>
-              <h5 class="subtitle-preview-track-title">副字幕</h5>
-              <div class="subtitle-preview-settings-fields">
-                <div class="subtitle-preview-setting-pair">
-                  <label class="subtitle-preview-setting-cell" title="只影响播放器画面内的副字幕预览">
-                    <span>字幕大小</span>
-                    <select id="extension-subtitle-font-size">
-                      <option value="auto" selected>自动（比主字幕小一号）</option>
-                      <option value="12">12 px</option>
-                      <option value="14">14 px</option>
-                      <option value="18">18 px</option>
-                      <option value="22">22 px</option>
-                      <option value="26">26 px</option>
-                      <option value="32">32 px</option>
-                      <option value="40">40 px</option>
-                      <option value="48">48 px</option>
-                      <option value="56">56 px</option>
-                      <option value="64">64 px</option>
-                      <option value="72">72 px</option>
-                      <option value="84">84 px</option>
-                      <option value="96">96 px</option>
-                    </select>
-                  </label>
-                  <label class="subtitle-preview-setting-cell" title="选择播放器画面内副字幕预览使用的字体族">
-                    <span>字体</span>
-                    <select id="extension-subtitle-font-family">
-                      <option value="default" selected>默认无衬线</option>
-                      <option value="yahei">微软雅黑 / 苹方</option>
-                      <option value="hei">黑体</option>
-                      <option value="song">宋体</option>
-                      <option value="sans">Arial / Segoe UI</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="subtitle-preview-setting-pair">
-                  <label class="subtitle-preview-setting-cell" title="选择播放器画面内副字幕预览的文字颜色">
-                    <span>文字颜色</span>
-                    <input type="color" id="extension-subtitle-color" value="#ffd34d" aria-label="文字颜色">
-                  </label>
-                  <label class="subtitle-preview-setting-cell" title="调整播放器画面内副字幕预览的背景色">
-                    <span>背景颜色</span>
-                    <input type="color" id="extension-subtitle-background-color" value="#000000" aria-label="背景颜色">
-                  </label>
-                </div>
-                <label class="subtitle-preview-setting-row" title="调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景">
-                  <span>背景不透明度</span>
-                  <div class="subtitle-preview-alpha-control">
-                    <input id="extension-subtitle-background-alpha" type="range" min="0" max="1" step="0.01" value="0.65" aria-label="背景不透明度">
-                    <output id="extension-subtitle-background-alpha-value" for="extension-subtitle-background-alpha">65%</output>
-                  </div>
-                </label>
-              </div>
-            </section>
-          </div>
-        </div>
-      </div>
-    </div>
     <div class="player-stage">
       <audio id="player" preload="metadata" style="width:100%;display:block;"></audio>
           <div class="player-empty" id="player-empty">拖入工程、媒体或 SRT 开始编辑</div>
@@ -13237,16 +13229,16 @@ export default MawDynamicCaptions;
     '主字幕调整时副字幕只跟随；冲突时优先限制副字幕，必要时保留重叠，不会缩短主字幕': 'When the main subtitle changes, the secondary subtitle only follows; conflicts limit the secondary subtitle first without shortening the main subtitle',
     '主字幕调整时副字幕只跟随；冲突时优先限制副字幕，不会缩短主字幕': 'When the main subtitle changes, the secondary subtitle only follows; conflicts limit the secondary subtitle first without shortening the main subtitle',
     '副字幕调整时受主字幕轨道边界限制，主字幕没有可用空间时无法继续拖动': 'When the secondary subtitle changes, the main-track boundaries limit the operation; dragging stops when the main track has no room',
-    '字体大小': 'Font size', '字幕大小': 'Font size', '主字幕大小': 'Main subtitle size', '副字幕大小': 'Secondary subtitle size',
+    '字体大小': 'Font size', '文字大小': 'Font size',
     '自动（响应式）': 'Auto (responsive)', '自动（比主字幕小一号）': 'Auto (two px smaller than main)', '字体': 'Font',
     '主字幕字体': 'Main subtitle font', '副字幕字体': 'Secondary subtitle font', '默认无衬线': 'Default sans-serif',
     '主字幕颜色': 'Main subtitle color', '副字幕颜色': 'Secondary subtitle color',
     '微软雅黑 / 苹方': 'Microsoft YaHei / PingFang', '黑体': 'SimHei', '宋体': 'SimSun', 'Arial / Segoe UI': 'Arial / Segoe UI',
     '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)',
     '文字颜色': 'Text color', '背景颜色': 'Background color', '背景不透明度': 'Background opacity',
-    '样式': 'Style', '预览字幕颜色样式': 'Subtitle color preview style',
+    '颜色样式': 'Color style', '预览字幕颜色样式': 'Subtitle color preview style',
     '选择按字幕颜色快照应用到预览字幕的样式': 'Choose how the subtitle color snapshot is applied to the preview',
-    '下划线': 'Underline', '阴影': 'Shadow', '描边': 'Stroke',
+    '下划线': 'Underline', '描边': 'Stroke',
     '背景色': 'Background color', '不透明度': 'Opacity',
     '副字幕背景色': 'Secondary subtitle background color',
     '只影响播放器画面内的字幕预览，不改变字幕文本或时间': 'Only affects subtitle preview in the player; it does not change subtitle text or timing',
@@ -13260,8 +13252,9 @@ export default MawDynamicCaptions;
     '调整播放器画面内副字幕预览的背景色': 'Adjust the background color used by the secondary subtitle preview in the player',
     '调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the secondary subtitle preview background opacity in the player; set it to 0 to hide the background',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
-    '媒体': 'Media', '媒体设置': 'Media settings', '预览字幕': 'Subtitle preview', '预览字幕样式': 'Subtitle preview style', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
-    '播放预览': 'Playback preview', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
+    '媒体': 'Media', '预览字幕': 'Subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
+    '视频预览': 'Video preview', '播放控制': 'Playback controls', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
+    '在播放器画面内预览主字幕': 'Preview the main subtitle in the player', '在波形区悬停鼠标时，播放器自动预览指针位置的画面': 'While hovering the waveform, the player automatically previews the frame at the pointer',
     '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '每次跳转时长': 'Seek duration per action', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '媒体控制按钮和左右方向键每次跳转的时间幅度': 'Time amount to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)', '控制按钮和左右方向键的每次跳转时长。': 'Time amount for each jump from the controls and left/right arrow keys.',
     '时间基准': 'Timebase', '时间单位': 'Time unit', '毫秒': 'Milliseconds', '帧': 'Frames',
     '吸附到帧': 'Snap to frame', '时间码分隔符': 'Timecode separator',
@@ -13490,7 +13483,12 @@ export default MawDynamicCaptions;
     '无选中时前后跳转': 'Seek back/forward with no selection',
     '无选中时前后跳转（时长：': 'Seek back/forward with no selection (duration:',
     '在波形区或播放器跳转到媒体开头/结尾': 'Seek to the start/end of the media from the waveform or player',
-    '可在媒体区的': 'Use the', '⚙️设置': '⚙️ settings', '中调整 JKL 按键模式，或是跳转的时长。': 'to adjust the JKL key mode and seek duration.',
+    '⚙️设置': '⚙️ settings',
+    '预览开关、鼠标位置预览、JKL 按键模式和跳转时长可在': 'Adjust preview toggles, the pointer-position preview, JKL playback mode, and seek duration in',
+    '的「视频预览」中调整。': ' under “Video preview”.',
+    '配置颜色对应的说话人名称；留空可隐藏该颜色的名称。仅影响预览，不改变字幕文本。': 'Configure the speaker name for each color; leave a name blank to hide that color’s name. Affects the preview only, never subtitle text.',
+    '字幕预览中的说话人名称开启时自动勾选，关闭时同步取消；导出开关仍可独立调整。只影响导出的 SRT，不会改动工程里的字幕文本。': 'Checked automatically while speaker names are on in the subtitle preview, and unchecked when they are off; the export toggle stays independent. Only affects exported SRT, never the project subtitle text.',
+    '开启或关闭字幕预览中的说话人名称时同步勾选或取消勾选；导出 SRT 时在字幕前附加对应名称，可手动调整': 'Checked and unchecked together with speaker names in the subtitle preview; exported SRT prefixes each subtitle with the matching name, and this can be toggled manually',
     '选中字幕时': 'With subtitles selected:', '选中字幕时：': 'With subtitles selected:',
     '按键微调字幕': 'Fine-tuning subtitles with keys', '选中字幕': 'With a subtitle selected',
     '微调移动字幕': 'Fine-tune subtitle movement', '将字幕起点/终点贴到前一条结尾/后一条开头': 'Snap the subtitle start/end to the previous end/next start',
@@ -20746,7 +20744,7 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
-const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'shadow', 'stroke']);
+const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
 const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
@@ -21646,9 +21644,6 @@ const mergeJoinSettingsPanel = document.getElementById('merge-join-settings-pane
 const splitTrimSettings = document.getElementById('split-trim-settings');
 const splitTrimSettingsToggle = document.getElementById('split-trim-settings-toggle');
 const splitTrimSettingsPanel = document.getElementById('split-trim-settings-panel');
-const subtitlePreviewSettings = document.getElementById('subtitle-preview-settings');
-const subtitlePreviewSettingsToggle = document.getElementById('subtitle-preview-settings-toggle');
-const subtitlePreviewSettingsPanel = document.getElementById('subtitle-preview-settings-panel');
 const cueEditorSettings = document.getElementById('cue-editor-settings');
 const cueEditorSettingsToggle = document.getElementById('cue-editor-settings-toggle');
 const cueEditorSettingsPanel = document.getElementById('cue-editor-settings-panel');
@@ -21695,6 +21690,7 @@ const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
 const EDITOR_SETTINGS_WINDOW_POSITION_KEY = 'moy.asr.editor.settings.window.v1';
+const EDITOR_SETTINGS_WINDOW_SIZE_KEY = 'moy.asr.editor.settings.window_size.v1';
 const EDITOR_SETTINGS_WINDOW_TAB_KEY = 'moy.asr.editor.settings.window_tab.v1';
 const editorSettingsClose = document.getElementById('editor-settings-close');
 const editorSettingsDragHandle = document.getElementById('editor-settings-drag-handle');
@@ -21906,9 +21902,12 @@ const editorSettingsFloatingPanel = createFloatingPanel({
   manageButton: editorSettingsToggle,
   anchorButton: editorSettingsToggle,
   positionKey: EDITOR_SETTINGS_WINDOW_POSITION_KEY,
-  // 所有打开路径（按钮点击 / 桥接）都先恢复标签页，保证默认分区带上 active 样式，
-  // 且窗口按实际内容尺寸定位。
-  onOpen: restoreEditorSettingsActiveTab,
+  // 所有打开路径（按钮点击 / 桥接）都先恢复尺寸与标签页，保证默认分区带上
+  // active 样式，且窗口按实际内容尺寸定位。
+  onOpen: () => {
+    restoreEditorSettingsPanelSize();
+    restoreEditorSettingsActiveTab();
+  },
 });
 
 function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
@@ -21941,6 +21940,39 @@ function restoreEditorSettingsActiveTab() {
     || editorSettingsTabs.find((item) => !item.hidden)
     || editorSettingsTabs[0];
   setEditorSettingsActiveTab(tab);
+}
+
+// 浮窗尺寸：与帮助窗口一致，仅在用户拖过右下角缩放手柄后持久化；
+// 未缩放时保持 CSS 默认宽度/自动高度。
+function restoreEditorSettingsPanelSize() {
+  if (!editorSettingsPanel) return;
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY) || 'null');
+  } catch (_) {
+    saved = null;
+  }
+  if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
+  editorSettingsPanel.style.width = `${Math.min(Math.max(460, saved.width), window.innerWidth - 12)}px`;
+  editorSettingsPanel.style.height = `${Math.min(Math.max(280, saved.height), window.innerHeight - 24)}px`;
+}
+let editorSettingsPanelSizeSaveTimer = 0;
+if (editorSettingsPanel) {
+  new ResizeObserver(() => {
+    if (!editorSettingsPanel.classList.contains('show')) return;
+    if (!editorSettingsPanel.style.width && !editorSettingsPanel.style.height) return;
+    clearTimeout(editorSettingsPanelSizeSaveTimer);
+    editorSettingsPanelSizeSaveTimer = setTimeout(() => {
+      const rect = editorSettingsPanel.getBoundingClientRect();
+      try {
+        localStorage.setItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY, JSON.stringify({
+          width: Math.round(rect.width), height: Math.round(rect.height),
+        }));
+      } catch (_) {
+        // file:// 隐私模式下 localStorage 可能被拒；缩放本身仍可用。
+      }
+    }, 250);
+  }).observe(editorSettingsPanel);
 }
 
 function setEditorSettingsPanelOpen(open) {
@@ -22003,19 +22035,6 @@ function setSplitTrimSettingsPanelOpen(open) {
 function setSettingsPanelOwnerOpen(panel, open) {
   const owner = panel?.closest('.player-wrap, .current-cue-panel, .cues-container, .waveform-pane');
   owner?.classList.toggle('settings-panel-owner-open', open);
-}
-
-function positionSubtitlePreviewSettingsPanel() {
-  positionAnchoredSettingsPanel(subtitlePreviewSettingsPanel, subtitlePreviewSettingsToggle);
-}
-
-function setSubtitlePreviewSettingsPanelOpen(open) {
-  if (!subtitlePreviewSettingsPanel || !subtitlePreviewSettingsToggle) return;
-  subtitlePreviewSettingsPanel.hidden = !open;
-  setSettingsPanelOwnerOpen(subtitlePreviewSettingsPanel, open);
-  subtitlePreviewSettingsToggle.classList.toggle('active', open);
-  subtitlePreviewSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionSubtitlePreviewSettingsPanel();
 }
 
 function positionCueListSettingsPanel() {
@@ -22488,10 +22507,6 @@ splitTrimSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setSplitTrimSettingsPanelOpen(splitTrimSettingsPanel?.hidden);
 });
-subtitlePreviewSettingsToggle?.addEventListener('click', (event) => {
-  event.stopPropagation();
-  setSubtitlePreviewSettingsPanelOpen(subtitlePreviewSettingsPanel?.hidden);
-});
 cueListSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setCueListSettingsPanelOpen(cueListSettingsPanel?.hidden);
@@ -22512,9 +22527,6 @@ document.addEventListener('pointerdown', (event) => {
       applySearch(searchEl.value);
     }
   }
-  if (!subtitlePreviewSettingsPanel?.hidden && !subtitlePreviewSettings?.contains(event.target)) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-  }
   if (!cueListSettingsPanel?.hidden && !cueListSettings?.contains(event.target)) {
     setCueListSettingsPanelOpen(false);
   }
@@ -22533,10 +22545,6 @@ document.addEventListener('pointerdown', (event) => {
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  if (!subtitlePreviewSettingsPanel?.hidden) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-    subtitlePreviewSettingsToggle?.focus();
-  }
   if (!cueListSettingsPanel?.hidden) {
     setCueListSettingsPanelOpen(false);
     cueListSettingsToggle?.focus();
@@ -22562,17 +22570,12 @@ window.addEventListener('resize', positionMergeJoinSettingsPanel);
 window.addEventListener('scroll', positionMergeJoinSettingsPanel, true);
 window.addEventListener('resize', positionSplitTrimSettingsPanel);
 window.addEventListener('scroll', positionSplitTrimSettingsPanel, true);
-window.addEventListener('resize', positionSubtitlePreviewSettingsPanel);
-window.addEventListener('scroll', positionSubtitlePreviewSettingsPanel, true);
 window.addEventListener('resize', positionCueListSettingsPanel);
 window.addEventListener('scroll', positionCueListSettingsPanel, true);
 window.addEventListener('resize', positionWaveformSettingsPanel);
 window.addEventListener('scroll', positionWaveformSettingsPanel, true);
 window.addEventListener('resize', positionCueEditorSettingsPanel);
 window.addEventListener('scroll', positionCueEditorSettingsPanel, true);
-subtitlePreviewSettings?.closest('.player-toolbar')?.addEventListener(
-  'scroll', positionSubtitlePreviewSettingsPanel,
-);
 cueListSettings?.closest('.cue-list-toolbar')?.addEventListener(
   'scroll', positionCueListSettingsPanel,
 );
@@ -22600,11 +22603,15 @@ helpOpenWaveformSettingsButtons.forEach((button) => {
     waveformSettingsToggle?.focus();
   });
 });
+// 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
+function openEditorSettingsAtTab(tabId) {
+  setEditorSettingsPanelOpen(true);
+  setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
+}
 helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
-    setSubtitlePreviewSettingsPanelOpen(true);
-    subtitlePreviewSettingsToggle?.focus();
+    openEditorSettingsAtTab('editor-settings-tab-subtitle-preview');
   });
 });
 helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {
@@ -30882,6 +30889,8 @@ document.addEventListener('pointerdown', (e) => {
 // AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
 const GEO_UTILS = window.AsrEditorUtils;
 let previewGeometryDirty = false;
+// 启动早期生成的自定义字体选项先用原始名称占位；共享工具层就绪后立即统一本地化。
+relabelSubtitleFontFamilyOptions();
 
 function getPreviewGeometry() {
   return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.subtitle);
@@ -30959,7 +30968,10 @@ function subtitleFontFamilyOptionExists(select, value) {
 }
 function subtitleFontFamilyDisplayName(family) {
   const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  return GEO_UTILS.subtitleFontFamilyDisplayName(family, language);
+  // 启动早期 applySubtitleAppearance() 会先生成自定义字体选项，此时
+  // GEO_UTILS 别名（文件后部才初始化）尚处于暂时性死区；直接读共享工具层，
+  // 不可用时先用原始字体名占位，别名就绪后由 relabelSubtitleFontFamilyOptions 统一本地化。
+  return window.AsrEditorUtils?.subtitleFontFamilyDisplayName(family, language) ?? family;
 }
 function relabelSubtitleFontFamilyOptions() {
   [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
@@ -31668,7 +31680,7 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     overlayExtensionTextEl.textContent = extensionText;
   }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
-  // 预览文字颜色、下划线、阴影或描边。dataset 记录上次应用的结果，避免
+  // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
   // 播放刷新每帧都写内联样式。
   const subtitleAppearance = getSubtitleAppearance();
   const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
@@ -31686,11 +31698,6 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     && previewSegmentColor
     ? previewSegmentColor
     : subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
-  const textShadow = colorPreviewEnabled
-    && colorStyle === 'shadow'
-    && previewSegmentColor
-    ? `${previewSegmentColor} 1px 1px 2px`
-    : '';
   const textStroke = colorPreviewEnabled
     && colorStyle === 'stroke'
     && previewSegmentColor
@@ -31705,10 +31712,6 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayTextEl.dataset.colorText !== textColor) {
     overlayTextEl.dataset.colorText = textColor;
     overlayTextEl.style.color = textColor;
-  }
-  if (overlayTextEl.dataset.colorShadow !== textShadow) {
-    overlayTextEl.dataset.colorShadow = textShadow;
-    overlayTextEl.style.textShadow = textShadow;
   }
   if (overlayTextEl.dataset.colorStroke !== textStroke) {
     overlayTextEl.dataset.colorStroke = textStroke;
