@@ -316,6 +316,7 @@ def load_or_extract_waveform(
     peaks_per_second: int = DEFAULT_PEAKS_PER_SECOND,
     ffmpeg_bin: str | None = None,
     audio_track: int = 0,
+    default_audio_track: int | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Return cached peaks when valid, otherwise extract a fresh payload."""
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
@@ -328,20 +329,47 @@ def load_or_extract_waveform(
     # 函数内导入：maw.mopeaks 在模块级借用本文件的载荷契约，顶层互导会成环。
     from maw import mopeaks
 
-    sidecar = mopeaks.load_waveform_cache(media_path, audio_track=audio_track)
-    if (
-        waveform_matches_media(sidecar, media_path, audio_track=audio_track)
-        and sidecar["peaks_per_second"] == peaks_per_second
-    ):
-        return sidecar, False
-    payload = extract_waveform(
+    sidecar_hit = mopeaks.load_mopeaks_hit(
         media_path,
-        peaks_per_second=peaks_per_second,
-        ffmpeg_bin=ffmpeg_bin,
         audio_track=audio_track,
+        default_audio_track=default_audio_track,
+    )
+    if (
+        sidecar_hit is not None
+        and sidecar_hit.kind == "exact"
+        and waveform_matches_media(
+            sidecar_hit.payload,
+            media_path,
+            audio_track=audio_track,
+        )
+        and sidecar_hit.payload["peaks_per_second"] == peaks_per_second
+    ):
+        return sidecar_hit.payload, False
+    fallback = (
+        sidecar_hit.payload
+        if sidecar_hit is not None
+        and sidecar_hit.kind == "default_fallback"
+        and sidecar_hit.payload["peaks_per_second"] == peaks_per_second
+        else None
     )
     try:
-        mopeaks.save_mopeaks(payload, media_path, audio_track=audio_track)
+        payload = extract_waveform(
+            media_path,
+            peaks_per_second=peaks_per_second,
+            ffmpeg_bin=ffmpeg_bin,
+            audio_track=audio_track,
+        )
+    except WaveformError:
+        if fallback is not None:
+            return fallback, False
+        raise
+    try:
+        mopeaks.save_mopeaks(
+            payload,
+            media_path,
+            audio_track=audio_track,
+            default_audio_track=default_audio_track,
+        )
     except OSError:
         # A read-only media folder must not prevent HTML generation.
         pass

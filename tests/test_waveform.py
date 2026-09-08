@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import math
 import os
 import shutil
@@ -117,6 +116,91 @@ class WaveformExtractionTests(unittest.TestCase):
         extractor.assert_not_called()
         self.assertFalse(extracted)
         self.assertEqual(cached["data"], payload["data"])
+
+    def test_default_track_cache_is_used_only_after_selected_track_extraction_fails(self) -> None:
+        payload = {
+            "schema": waveform_module.WAVEFORM_SCHEMA,
+            "encoding": waveform_module.WAVEFORM_ENCODING,
+            "peaks_per_second": 100,
+            "sample_rate": 1000,
+            "division": 10,
+            "peak_count": 1,
+            "duration_ms": 10,
+            "data": "AAA=",
+            "source": waveform_module.media_signature(self.media_path),
+        }
+        mopeaks.save_mopeaks(
+            payload,
+            self.media_path,
+            audio_track=1,
+            default_audio_track=1,
+        )
+
+        with mock.patch.object(
+            waveform_module,
+            "extract_waveform",
+            side_effect=waveform_module.WaveformError("selected track unavailable"),
+        ) as extractor:
+            cached, extracted = waveform_module.load_or_extract_waveform(
+                None,
+                self.media_path,
+                audio_track=0,
+                default_audio_track=1,
+            )
+
+        extractor.assert_called_once_with(
+            self.media_path,
+            peaks_per_second=waveform_module.DEFAULT_PEAKS_PER_SECOND,
+            ffmpeg_bin=None,
+            audio_track=0,
+        )
+        self.assertFalse(extracted)
+        self.assertEqual(cached["audio_track"], 1)
+
+    def test_default_track_fallback_does_not_block_selected_track_rebuild(self) -> None:
+        fallback = {
+            "schema": waveform_module.WAVEFORM_SCHEMA,
+            "encoding": waveform_module.WAVEFORM_ENCODING,
+            "peaks_per_second": 100,
+            "sample_rate": 1000,
+            "division": 10,
+            "peak_count": 1,
+            "duration_ms": 10,
+            "data": "AAA=",
+            "source": waveform_module.media_signature(self.media_path),
+        }
+        selected = {**fallback, "audio_track": 0, "data": "AQI="}
+        mopeaks.save_mopeaks(
+            fallback,
+            self.media_path,
+            audio_track=1,
+            default_audio_track=1,
+        )
+
+        with (
+            mock.patch.object(
+                waveform_module,
+                "extract_waveform",
+                return_value=selected,
+            ) as extractor,
+            mock.patch.object(mopeaks, "save_mopeaks") as save,
+        ):
+            cached, extracted = waveform_module.load_or_extract_waveform(
+                None,
+                self.media_path,
+                audio_track=0,
+                default_audio_track=1,
+            )
+
+        extractor.assert_called_once()
+        save.assert_called_once_with(
+            selected,
+            self.media_path,
+            audio_track=0,
+            default_audio_track=1,
+        )
+        self.assertTrue(extracted)
+        self.assertIs(cached, selected)
 
     def test_json_sidecar_helpers_are_gone(self) -> None:
         """回归钉：waveform.json 已被彻底去掉，别再让它悄悄回来。
