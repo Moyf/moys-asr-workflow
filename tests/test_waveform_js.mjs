@@ -28,6 +28,12 @@ vm.runInNewContext('globalThis.newArrayBuffer = (size) => new ArrayBuffer(size);
 const helpers = context.window.AsrWaveform.testing;
 const builtinWorkspaces = context.window.AsrWaveform.builtinWorkspaces;
 
+function copyToSandboxArrayBuffer(bytes) {
+  const buffer = context.newArrayBuffer(bytes.length);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
 
 test('decodes compact signed min/max peaks', () => {
   const bytes = Buffer.from([0x81, 0x7f, 0xf6, 0x0a]);
@@ -969,6 +975,22 @@ test('decodes a stereo .ReaPeaks by merging channels, not by picking one', () =>
   assert.ok(peaks[1] > 0, `右声道内容必须被合并进来，峰 0 max=${peaks[1]}`);
   // 峰 3（放大 24 倍）应比峰 0 更强
   assert.ok(peaks[7] > peaks[1]);
+});
+
+test('decodes the real QPK1 self-wave fixtures', () => {
+  for (const name of ['tone_selfwave.wav.quapeaks', 'tone_stereo_selfwave.wav.quapeaks']) {
+    const bytes = fs.readFileSync(new URL(`test_data/${name}`, import.meta.url));
+    const decoded = helpers.decodeReapeaksFile(copyToSandboxArrayBuffer(bytes));
+    assert.ok(decoded?.waveform, `${name} should expose a waveform`);
+    assert.ok(helpers.decodePayload(decoded.waveform), `${name} waveform payload should validate`);
+  }
+});
+
+test('rejects an unknown QPK container version', () => {
+  const bytes = fs.readFileSync(new URL('test_data/tone_selfwave.wav.quapeaks', import.meta.url));
+  const unknown = Buffer.from(bytes);
+  unknown[3] = '2'.charCodeAt(0);
+  assert.equal(helpers.decodeReapeaksFile(copyToSandboxArrayBuffer(unknown)), null);
 });
 
 test('activeWaveShape follows the drawn shape so detection uses the same envelope', () => {

@@ -717,8 +717,8 @@
     const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
     // QPK + 1 字节可打印版本号（当前 QPK1）。全局头与层表布局与 RPKN 相同，
     // wave 层同样是 i16 min/max，所以下面按 RPKM/RPKL 分支取宽度的逻辑不用改：
-    // QPK* 天然落进与 RPKN 相同的 else 分支。
-    const isNative = magic.slice(0, 3) === 'QPK';
+    // QPK1 天然落进与 RPKN 相同的 else 分支。
+    const isNative = magic === 'QPK1';
     if (!isNative && !['RPKM', 'RPKN', 'RPKL'].includes(magic)) return null;
     const channels = bytes[4];
     const mipmapCount = bytes[5];
@@ -734,7 +734,9 @@
       const division = view.getInt32(headerOffset, true);
       const peakCount = view.getInt32(headerOffset + 4, true);
       if (peakCount < 0) return null;
-      const kind = division === -'s'.charCodeAt(0)
+      const kind = division === -'m'.charCodeAt(0)
+        ? 'self-wave'
+        : division === -'s'.charCodeAt(0)
         ? 'spectral'
         : division === -'g'.charCodeAt(0)
           ? 'spectrogram'
@@ -801,6 +803,11 @@
             spectral[peak * 2 + 1] = density;
           }
           spectralMips.push({ mip, data: spectral });
+          continue;
+        }
+        if (mip.kind === 'self-wave') {
+          need(8 + mip.peakCount * 2);
+          offset += 8 + mip.peakCount * 2;
           continue;
         }
         // 跳过当前编辑器不显示的 spectrogram/loudness 层，但仍准确推进
