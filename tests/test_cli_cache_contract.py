@@ -113,6 +113,28 @@ class CliCacheContractTests(unittest.TestCase):
                     _calls_named(tree, "probe_video_fps"),
                     f"{name} 不应重复实现媒体 FPS 探测",
                 )
+
+    def test_project_generators_persist_selected_audio_track_at_write_time(self) -> None:
+        for name in (*API_PROVIDER_CLIS, "generate_subtitle_tencent_api.py"):
+            with self.subTest(cli=name):
+                tree = ast.parse(
+                    (REPO_ROOT / name).read_text(encoding="utf-8"), filename=name
+                )
+                write_calls = [
+                    node
+                    for node in ast.walk(tree)
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "write_mosp"
+                ]
+                self.assertTrue(write_calls)
+                self.assertTrue(
+                    all(
+                        any(keyword.arg == "selected_audio_track" for keyword in call.keywords)
+                        for call in write_calls
+                    ),
+                    f"{name} 写工程时必须独立持久化所选音轨",
+                )
         for relative in ("maw/local_asr.py", "maw/gui_web.py"):
             with self.subTest(source=relative):
                 tree = ast.parse((REPO_ROOT / relative).read_text(encoding="utf-8"), filename=relative)

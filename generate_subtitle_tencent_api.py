@@ -23,6 +23,7 @@ from generate_subtitle_qwen_api import (
     WESTERN_MIN_WORDS,
 )
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.media import resolve_default_audio_track
 from maw.language import resolve_language, split_mode_for_text, timestamp_granularity_for_items
 from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.project_io import write_mosp
@@ -45,11 +46,12 @@ def main() -> int:
     parser.add_argument("--speaker", action="store_true", help="请求腾讯云说话人分离并保留 speaker 标签")
     parser.add_argument("--speaker-colors", action="store_true", help="请求说话人分离并写入一次性的字幕颜色快照")
     parser.add_argument("--json", dest="json_out", action="store_true", help="同时输出 .mosp 工程")
-    parser.add_argument("--with-waveform", action="store_true", help="将波形嵌入工程")
+    parser.add_argument("--with-waveform", action="store_true", help="在媒体旁生成 .quapeaks 波形缓存（不再写进工程文件）")
     parser.add_argument(
         "--audio-track", type=int, default=0,
         help="使用第几个音频轨道（从 0 开始，默认 0）",
     )
+    parser.add_argument("--default-audio-track", type=int, help=argparse.SUPPRESS)
     parser.add_argument("--with-spectral", action="store_true", help="生成频谱波形")
     parser.add_argument("-s", "--stickers", default=get_default_sticker_dir(), help="表情包文件夹路径")
     parser.add_argument("--no-html", action="store_true", help="禁用 HTML 生成")
@@ -63,6 +65,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.audio_track < 0:
         parser.error("--audio-track 必须是非负整数")
+    if args.default_audio_track is not None and args.default_audio_track < 0:
+        parser.error("--default-audio-track 必须是非负整数")
     configure_console_output()
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
@@ -80,6 +84,11 @@ def main() -> int:
     ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config.get("ffmpeg_path"))
     ffmpeg_path = ffmpeg_tools.ffmpeg
     ffprobe_path = ffmpeg_tools.ffprobe
+    default_audio_track = resolve_default_audio_track(
+        input_path,
+        args.default_audio_track,
+        ffprobe_path=ffprobe_path,
+    )
     if not config["secret_id"] or not config["secret_key"]:
         parser.error("未配置 TENCENT_SECRET_ID / TENCENT_SECRET_KEY；请在 .env 或系统环境变量中填写")
     if args.model:
@@ -173,6 +182,7 @@ def main() -> int:
                 generate_spectral=args.with_spectral,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
                 audio_track=args.audio_track if is_video else 0,
+                default_audio_track=default_audio_track if is_video else 0,
             )
 
     if duration > 0:
@@ -238,6 +248,7 @@ def main() -> int:
             project,
             media_path=input_path,
             ffprobe_path=ffprobe_path,
+            selected_audio_track=args.audio_track if is_video else 0,
         )
         print(f"工程文件已保存到: {json_path}")
     print(f"转写耗时: {format_elapsed(elapsed)}")

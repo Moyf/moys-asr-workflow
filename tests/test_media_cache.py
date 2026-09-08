@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from maw import media_cache, reapeaks
+from maw import media_cache, quapeaks
 
 try:
     import numpy  # noqa: F401
@@ -48,6 +48,19 @@ class MediaCacheTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_selected_audio_track_survives_cache_merge_without_inline_payloads(self) -> None:
+        result = media_cache.MediaCacheResult(
+            project={"media_metadata": {"selected_audio_track": 2}},
+        )
+
+        merged = media_cache.merge_media_caches(
+            {"media_metadata": {"video_fps": 30}},
+            result,
+        )
+
+        self.assertEqual(merged["media_metadata"]["selected_audio_track"], 2)
+        self.assertEqual(merged["media_metadata"]["video_fps"], 30)
+
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_embeds_waveform_and_wave_only_reapeaks_by_default(self) -> None:
         result = media_cache.embed_media_caches(self.project, self.wav)
@@ -55,15 +68,17 @@ class MediaCacheTests(unittest.TestCase):
         self.assertIsNone(result.waveform_error)
         self.assertIn("waveform", result.project)
         self.assertGreater(result.project["waveform"]["peak_count"], 0)
-        # 默认只生成 ReaPeaks 波形层，不计算频谱。
+        # 默认只生成 reapeaks 波形层，不计算频谱。
         self.assertIsNotNone(result.reapeaks_path)
         self.assertTrue(Path(result.reapeaks_path).exists())
-        self.assertEqual(Path(result.reapeaks_path).name, "tone.wav.ReaPeaks")
+        self.assertEqual(Path(result.reapeaks_path).name, "tone.wav.quapeaks")
         self.assertNotIn("spectral", result.project)
-        parsed = reapeaks.ReaPeaksFile(str(result.reapeaks_path))
+        parsed = quapeaks.ReapeaksFile(str(result.reapeaks_path))
         self.assertFalse(parsed.spectral_mipmaps())
         self.assertIn("wave", [m.kind for m in parsed.mipmaps])
-        self.assertIsNotNone(reapeaks.load_waveform_payload(self.wav))
+        # 自研波形这次跟着进了同一个容器（不再只躺在工程 JSON 里）
+        self.assertTrue(parsed.self_wave_mipmaps())
+        self.assertIsNotNone(quapeaks.load_waveform_payload(self.wav))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_embeds_spectral_when_explicitly_requested(self) -> None:
@@ -74,7 +89,7 @@ class MediaCacheTests(unittest.TestCase):
         )
 
         self.assertIn("spectral", result.project)
-        self.assertIsNotNone(reapeaks.load_spectral_payload(self.wav))
+        self.assertIsNotNone(quapeaks.load_spectral_payload(self.wav))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_caches_describe_source_media_not_the_derived_extraction(self) -> None:
@@ -111,8 +126,8 @@ class MediaCacheTests(unittest.TestCase):
                 result.project[key]["source"], media_cache.media_signature(source)
             )
         # 服务器只读路径必须接受这份缓存
-        self.assertIsNotNone(reapeaks.load_waveform_payload(source))
-        self.assertIsNotNone(reapeaks.load_spectral_payload(source))
+        self.assertIsNotNone(quapeaks.load_waveform_payload(source))
+        self.assertIsNotNone(quapeaks.load_spectral_payload(source))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_undecodable_source_falls_back_to_derived_with_actual_signature(self) -> None:
@@ -135,22 +150,24 @@ class MediaCacheTests(unittest.TestCase):
                 result.project[key]["source"], derived_signature
             )
         self.assertGreater(result.project["waveform"]["duration_ms"], 0)
+        # 生产端按 output_naming 口径 resolve 成长名，期望值同口径展开，
+        # 避免 CI 的 8.3 短名 TEMP（RUNNER~1）拼写不一致。
         self.assertEqual(
             Path(result.reapeaks_path),
-            cache_media.with_name(cache_media.name + ".ReaPeaks"),
+            cache_media.with_name(cache_media.name + ".quapeaks").resolve(),
         )
         # 退回派生文件后，缓存只能被派生文件接受，不能误用于源媒体。
-        self.assertIsNotNone(reapeaks.load_waveform_payload(cache_media))
-        self.assertIsNone(reapeaks.load_spectral_payload(source))
-        self.assertIsNone(reapeaks.load_waveform_payload(source))
+        self.assertIsNotNone(quapeaks.load_waveform_payload(cache_media))
+        self.assertIsNone(quapeaks.load_spectral_payload(source))
+        self.assertIsNone(quapeaks.load_waveform_payload(source))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_reapeaks_cache_lands_next_to_source_media(self) -> None:
-        """临时缓存媒体的 .ReaPeaks 必须落到源媒体旁并记录源签名。
+        """临时缓存媒体的峰值容器必须落到源媒体旁并记录源签名。
 
         回归：CLI 把提取音频放在 TemporaryDirectory 里，with 块退出后目录
-        即被删除；.ReaPeaks 若写在缓存媒体旁会随目录一起消失，源媒体旁永远
-        没有频谱缓存，编辑器的频谱颜色与 ReaPeaks 波形层随之失效。
+        即被删除；缓存容器若写在临时媒体旁会随目录一起消失，源媒体旁永远
+        没有频谱缓存，编辑器的频谱颜色与 Reaper 波形层随之失效。
         """
         source = self.root / "source.mp4"
         shutil.copy2(self.wav, source)
@@ -166,12 +183,13 @@ class MediaCacheTests(unittest.TestCase):
         # with 块已退出、临时目录已删除：源媒体旁必须留有可用缓存
         self.assertIsNotNone(result.reapeaks_path)
         self.assertEqual(
-            Path(result.reapeaks_path), source.with_name(source.name + ".ReaPeaks")
+            Path(result.reapeaks_path),
+            source.with_name(source.name + ".quapeaks").resolve(),
         )
         self.assertTrue(Path(result.reapeaks_path).exists())
         # server 从源媒体旁读取时，头部签名必须匹配
-        self.assertIsNotNone(reapeaks.load_spectral_payload(source))
-        self.assertIsNotNone(reapeaks.load_waveform_payload(source))
+        self.assertIsNotNone(quapeaks.load_spectral_payload(source))
+        self.assertIsNotNone(quapeaks.load_waveform_payload(source))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_missing_media_degrades_to_warning(self) -> None:
@@ -190,7 +208,7 @@ class MediaCacheTests(unittest.TestCase):
                 return_value=SimpleNamespace(project=self.project, error=None),
             ) as embed,
             mock.patch(
-                "maw.media_cache.reapeaks.generate_for_media",
+                "maw.media_cache.quapeaks.generate_for_media",
                 return_value=None,
             ) as generate,
         ):
@@ -199,10 +217,14 @@ class MediaCacheTests(unittest.TestCase):
                 self.wav,
                 ffmpeg_bin=ffmpeg,
                 audio_track=2,
+                default_audio_track=1,
             )
 
         embed.assert_called_once_with(
-            self.project,
+            {
+                **self.project,
+                "media_metadata": {"selected_audio_track": 2},
+            },
             self.wav,
             ffmpeg_bin=ffmpeg,
             audio_track=2,
@@ -214,7 +236,41 @@ class MediaCacheTests(unittest.TestCase):
             source_media_path=self.wav,
             audio_track=2,
             cache_audio_track=2,
+            default_audio_track=1,
+            self_peaks=None,
         )
+
+    def test_selected_audio_track_is_persisted_without_waveform_output(self) -> None:
+        with (
+            mock.patch(
+                "maw.media_cache.embed_waveform",
+                return_value=SimpleNamespace(project=self.project, error=RuntimeError("decode failed")),
+            ),
+            mock.patch("maw.media_cache.quapeaks.generate_for_media", return_value=None),
+        ):
+            result = media_cache.embed_media_caches(
+                self.project,
+                self.wav,
+                audio_track=2,
+                default_audio_track=1,
+            )
+
+        self.assertEqual(result.project["media_metadata"]["selected_audio_track"], 2)
+        self.assertNotIn("waveform", result.project)
+
+    def test_merge_media_caches_preserves_selected_audio_track(self) -> None:
+        target = {
+            "media_metadata": {"audio_tracks": [{"audio_index": 0}]},
+            "segments": [],
+        }
+        result = media_cache.MediaCacheResult(
+            project={"media_metadata": {"selected_audio_track": 2}},
+        )
+
+        merged = media_cache.merge_media_caches(target, result)
+
+        self.assertEqual(merged["media_metadata"]["selected_audio_track"], 2)
+        self.assertEqual(merged["media_metadata"]["audio_tracks"], [{"audio_index": 0}])
 
 
 if __name__ == "__main__":

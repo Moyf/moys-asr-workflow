@@ -3,7 +3,8 @@
 所有自动生成的文件 / 目录路径都应经由本模块函数拼出：
 
 - 最终产物（srt / mosp / ass）默认留在媒体旁，可选统一放入 ``_maw``；
-- 其余文件（波形、ReaPeaks、asr-response、后处理中间产物等）默认进入 ``_maw``；
+- 波形缓存默认跟随媒体，用户启用输出子文件夹时进入对应 ``_maw``；
+- asr-response 与后处理中间产物等默认进入 ``_maw``；
 - 子目录名与操作后缀按 UI 语言（zh / en）本地化，读取时兼容两套命名；
 - 旧版媒体同目录的缓存保持兼容读取，不做自动迁移。
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import math
 import re
+import os
 from pathlib import Path
 from typing import Final
 
@@ -115,6 +117,73 @@ def maw_root(media_path: Path | str, *, per_video: bool | None = None) -> Path:
     if per_video:
         return media.parent / f"{sanitize_component(media.stem, '视频')}{MAW_DIR_NAME}"
     return media.parent / MAW_DIR_NAME
+
+
+def waveform_dirs(media_path: Path | str) -> list[Path]:
+    """波形缓存的目录表：**第 0 项是写入点，其余是读取回退**，顺序即优先级。
+
+    契约（维护者定的）：默认跟随媒体；只有用户明确勾了「将所有输出放入子
+    文件夹」时，波形才进对应的 `_maw`。读取端两种位置都要找得到，否则用户
+    改一次设置就把全部已有缓存判成过期、整批重抽 ffmpeg。
+
+    ``.ReaPeaks`` 不走这里 —— 那是 REAPER 写的，永远只在媒体旁。
+    """
+    # 与 maw_root / maw_root_candidates 同口径 resolve：TEMP 用 8.3 短名拼写
+    # （如 RUNNER~1）的环境里，「媒体旁」这一路不展开的话，同一目录会以两种
+    # 拼写进候选表，下面的 normcase 去重认不出它们是同一个地方。
+    media_path = Path(media_path).expanduser().resolve(strict=False)
+    dirs: list[Path] = []
+    if subfolder_prefs()[0]:
+        dirs.append(maw_root(media_path))
+    dirs.append(media_path.parent)
+    dirs.extend(maw_root_candidates(media_path))
+    out: list[Path] = []
+    seen: set[str] = set()
+    for directory in dirs:
+        key = os.path.normcase(str(directory))
+        if key not in seen:
+            seen.add(key)
+            out.append(directory)
+    return out
+
+
+def audio_track_cache_suffix(
+    audio_track: int,
+    *,
+    default_audio_track: int | None = None,
+) -> str:
+    """Return the cache suffix for a logical audio track.
+
+    Unsuffixed caches belong to the container's default audio track. When the
+    container has no default disposition, index 0 is the deterministic fallback.
+    """
+    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
+        raise ValueError("audio_track must be a non-negative integer")
+    if default_audio_track is None:
+        default_audio_track = 0
+    if (
+        not isinstance(default_audio_track, int)
+        or isinstance(default_audio_track, bool)
+        or default_audio_track < 0
+    ):
+        raise ValueError("default_audio_track must be a non-negative integer or None")
+    return "" if audio_track == default_audio_track else f".track-{audio_track + 1}"
+
+
+def audio_track_cache_candidates(
+    audio_track: int,
+    *,
+    default_audio_track: int | None = None,
+) -> tuple[tuple[int, str], ...]:
+    """Return ``(track, suffix)`` candidates, exact first then default fallback."""
+    default_track = 0 if default_audio_track is None else default_audio_track
+    exact = audio_track_cache_suffix(
+        audio_track,
+        default_audio_track=default_track,
+    )
+    if audio_track == default_track:
+        return ((audio_track, exact),)
+    return ((audio_track, exact), (default_track, ""))
 
 
 def maw_root_candidates(media_path: Path | str) -> list[Path]:

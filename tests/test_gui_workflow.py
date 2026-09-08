@@ -20,7 +20,6 @@ sys.path.insert(0, str(ROOT))
 from maw.gui_workflow import (  # noqa: E402
     TranscriptionProcessError,
     TranscriptionRequest,
-    TranscriptionResult,
     build_alignment_serve_command,
     build_serve_command,
     build_output_paths,
@@ -151,11 +150,13 @@ class GuiWorkflowTests(unittest.TestCase):
             media_path=self.media_path,
             srt_path=self.srt_path,
             audio_track=2,
+            default_audio_track=1,
         )
 
         command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
 
         self.assertEqual(command[command.index("--audio-track") + 1], "2")
+        self.assertEqual(command[command.index("--default-audio-track") + 1], "1")
 
     def test_build_transcribe_command_enables_spectral_generation_when_requested(self) -> None:
         request = TranscriptionRequest(

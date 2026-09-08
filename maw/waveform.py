@@ -10,7 +10,6 @@ editor project and later be reused by a desktop shell.
 from __future__ import annotations
 
 import base64
-import json
 import math
 import subprocess
 import sys
@@ -20,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 from maw.ffmpeg import resolve_ffmpeg_tool
-from maw.output_naming import maw_root, maw_root_candidates
 
 
 WAVEFORM_SCHEMA = "moy.asr.waveform.v1"
@@ -151,55 +149,8 @@ def waveform_matches_media(
     return value.get("source") == media_signature(media_path)
 
 
-def waveform_sidecar_path(media_path: Path) -> Path:
-    """Return the primary sidecar path for media-derived waveforms.
-
-    The sidecar is a rebuildable cache, so it lives in the media's ``_maw``
-    directory instead of cluttering the folder that holds the source media.
-    When ``per_video`` is enabled the folder is ``<名称>_maw``, otherwise the
-    shared ``_maw``; both are decided by :func:`maw.output_naming.maw_root`.
-    """
-    media_path = Path(media_path)
-    return maw_root(media_path) / f"{media_path.stem}.waveform.json"
 
 
-def _waveform_sidecar_candidates(media_path: Path) -> list[Path]:
-    """Locations to check when reading a sidecar, newest layout first.
-
-    Order: the two ``_maw`` roots (shared, then per-video), finally the legacy
-    media-adjacent path.  Legacy files are read for compatibility but never
-    migrated or written by this module.
-    """
-    media_path = Path(media_path)
-    candidates = [
-        root / f"{media_path.stem}.waveform.json"
-        for root in maw_root_candidates(media_path)
-    ]
-    legacy = media_path.with_suffix(".waveform.json")
-    if legacy not in candidates:
-        candidates.append(legacy)
-    return candidates
-
-
-def load_waveform_sidecar(media_path: Path) -> dict[str, Any] | None:
-    """Read a valid-looking waveform sidecar, ignoring missing/corrupt files."""
-    for candidate in _waveform_sidecar_candidates(media_path):
-        try:
-            value = json.loads(candidate.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            continue
-        if is_waveform_payload(value):
-            return value
-    return None
-
-
-def save_waveform_sidecar(payload: dict[str, Any], media_path: Path) -> Path:
-    """Persist a waveform payload into the media's ``_maw`` directory."""
-    sidecar = waveform_sidecar_path(media_path)
-    sidecar.parent.mkdir(parents=True, exist_ok=True)
-    # write_bytes() keeps the sidecar LF-only on Windows as well.
-    sidecar.write_bytes((json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-    return sidecar
 
 
 def _quantize_sample(value: int) -> int:
@@ -365,6 +316,7 @@ def load_or_extract_waveform(
     peaks_per_second: int = DEFAULT_PEAKS_PER_SECOND,
     ffmpeg_bin: str | None = None,
     audio_track: int = 0,
+    default_audio_track: int | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Return cached peaks when valid, otherwise extract a fresh payload."""
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
@@ -374,20 +326,68 @@ def load_or_extract_waveform(
         and existing["peaks_per_second"] == peaks_per_second
     ):
         return existing, False
-    sidecar = load_waveform_sidecar(media_path)
-    if (
-        waveform_matches_media(sidecar, media_path, audio_track=audio_track)
-        and sidecar["peaks_per_second"] == peaks_per_second
-    ):
-        return sidecar, False
-    payload = extract_waveform(
+    # 内核成功时自研波形只在 .quapeaks 的自研层里、没有 .mopeaks：去内联工程
+    # 的冷启动不认这一层，就会白白重抽一遍 FFmpeg、再落一份内容重复的回退档。
+    # 函数内导入与下面的 mopeaks 同理，避免顶层互导成环。
+    from maw import quapeaks as maw_quapeaks
+
+    container_payload = maw_quapeaks.load_self_wave_payload(
         media_path,
-        peaks_per_second=peaks_per_second,
-        ffmpeg_bin=ffmpeg_bin,
         audio_track=audio_track,
+        default_audio_track=default_audio_track,
+        peaks_per_second=peaks_per_second,
     )
+    if (
+        container_payload is not None
+        and audio_track_from_payloads(container_payload) == audio_track
+    ):
+        return container_payload, False
+    # 函数内导入：maw.mopeaks 在模块级借用本文件的载荷契约，顶层互导会成环。
+    from maw import mopeaks
+
+    sidecar_hit = mopeaks.load_mopeaks_hit(
+        media_path,
+        audio_track=audio_track,
+        default_audio_track=default_audio_track,
+    )
+    if (
+        sidecar_hit is not None
+        and sidecar_hit.kind == "exact"
+        and waveform_matches_media(
+            sidecar_hit.payload,
+            media_path,
+            audio_track=audio_track,
+        )
+        and sidecar_hit.payload["peaks_per_second"] == peaks_per_second
+    ):
+        return sidecar_hit.payload, False
+    fallback = (
+        sidecar_hit.payload
+        if sidecar_hit is not None
+        and sidecar_hit.kind == "default_fallback"
+        and sidecar_hit.payload["peaks_per_second"] == peaks_per_second
+        else None
+    )
+    if fallback is None and container_payload is not None:
+        fallback = container_payload
     try:
-        save_waveform_sidecar(payload, media_path)
+        payload = extract_waveform(
+            media_path,
+            peaks_per_second=peaks_per_second,
+            ffmpeg_bin=ffmpeg_bin,
+            audio_track=audio_track,
+        )
+    except WaveformError:
+        if fallback is not None:
+            return fallback, False
+        raise
+    try:
+        mopeaks.save_mopeaks(
+            payload,
+            media_path,
+            audio_track=audio_track,
+            default_audio_track=default_audio_track,
+        )
     except OSError:
         # A read-only media folder must not prevent HTML generation.
         pass

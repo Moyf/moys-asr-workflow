@@ -245,6 +245,29 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn("$.media_metadata.audio_tracks[0].channels", paths)
         self.assertIn("$.media_metadata.audio_tracks[0].default", paths)
 
+    def test_validate_project_accepts_persisted_selected_audio_track(self) -> None:
+        project = {
+            "media_metadata": {"selected_audio_track": 2},
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.project["media_metadata"]["selected_audio_track"], 2)
+
+    def test_validate_project_reports_invalid_selected_audio_track(self) -> None:
+        project = {
+            "media_metadata": {"selected_audio_track": -1},
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.media_metadata.selected_audio_track", paths)
+
     def test_validate_project_reports_invalid_source_video_fps_metadata(self) -> None:
         project = {
             "media_metadata": {

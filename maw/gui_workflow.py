@@ -71,6 +71,7 @@ class TranscriptionRequest:
     postprocess_plan: dict[str, object] | None = None
     postprocess_llm_settings: dict[str, dict[str, str]] | None = None
     audio_track: int = 0
+    default_audio_track: int | None = None
     max_words: str = ""
     min_words: str = ""
 
@@ -283,6 +284,8 @@ def build_transcribe_command(
     command.append(str(request.media_path))
     command.extend(["--output", str(build_output_paths(request.srt_path).srt), "--json", "--no-html", "--with-waveform"])
     command.extend(["--audio-track", str(request.audio_track)])
+    if request.default_audio_track is not None:
+        command.extend(["--default-audio-track", str(request.default_audio_track)])
     if request.generate_spectral:
         command.append("--with-spectral")
     if request.debug_raw and not is_local:
