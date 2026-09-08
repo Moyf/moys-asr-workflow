@@ -65,7 +65,7 @@ from maw.media import (  # noqa: E402
     read_bwf_time_reference,
     resolve_project_media,
 )
-from maw.project_io import strip_inline_caches  # noqa: E402
+from maw.project_io import INLINE_CACHE_KEYS, strip_inline_caches  # noqa: E402
 from maw.waveform import (  # noqa: E402
     audio_track_from_payloads,
     audio_track_from_project,
@@ -1010,6 +1010,10 @@ class EditorServer(ThreadingHTTPServer):
             raise ProjectMutationInProgressError("另一个工程保存操作正在进行")
         try:
             backup = write_project_json(target, normalized_project)
+            # 磁盘副本已剥离；运行态不能跟着丢缓存，否则保存→刷新后原生
+            # 波形被清空、被 /api/waveform 的 REAPER 峰静默顶替。同一媒体、
+            # 同一音轨时把运行态缓存合并回新工程，媒体/音轨变化则失效。
+            _restore_runtime_inline_caches(self.project.data, normalized_project)
             self.project = replace(self.project, data=normalized_project, json_path=target)
             self.remember_project(target)
         finally:
@@ -1488,6 +1492,35 @@ def write_project_json(target: Path, project_data: dict) -> Path | None:
         # 保留未完成的临时文件以便排障；不要静默删除用户可恢复的文件。
         raise
     return backup
+
+
+def _restore_runtime_inline_caches(previous: dict | None, incoming: dict) -> None:
+    """把运行态里仍属于当前媒体、当前所选音轨的波形缓存合并回保存后的工程。
+
+    浏览器保存不再携带三块缓存，磁盘副本由 :func:`write_project_json` 剥离；
+    但运行态若跟着磁盘副本一起丢缓存，保存→刷新后原生波形会被清空，进而被
+    ``/api/waveform`` 的 REAPER 峰静默顶替。仅在同一媒体、同一所选音轨时
+    恢复：媒体或音轨变了，缓存描述的就是另一个对象，必须失效。incoming
+    已携带同名键时不覆盖（以提交内容为准）。
+    """
+    if not isinstance(previous, dict):
+        return
+    if str(previous.get("media") or "") != str(incoming.get("media") or ""):
+        return
+    previous_track = audio_track_from_project(previous)
+    if previous_track is None:
+        previous_track = audio_track_from_payloads(
+            previous.get("waveform"),
+            previous.get("spectral"),
+            previous.get("waveform_reapeaks"),
+        )
+    incoming_track = audio_track_from_project(incoming)
+    if incoming_track is not None and incoming_track != previous_track:
+        return
+    for key in INLINE_CACHE_KEYS:
+        value = previous.get(key)
+        if key not in incoming and isinstance(value, dict):
+            incoming[key] = value
 
 
 class EditorRequestHandler(BaseHTTPRequestHandler):
