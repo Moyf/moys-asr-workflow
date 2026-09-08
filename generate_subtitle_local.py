@@ -41,6 +41,7 @@ from maw.local_asr import (  # noqa: E402
     prepared_audio,
     write_local_outputs,
 )
+from maw.media import resolve_default_audio_track  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -77,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--audio-track", type=int, default=0,
         help="使用第几个音频轨道（从 0 开始，默认 0）",
     )
+    parser.add_argument("--default-audio-track", type=int, help=argparse.SUPPRESS)
     parser.add_argument("--hotword", action="append", default=[], help="热词，可重复传入")
     parser.add_argument(
         "--hotword-file", action="append", default=[], metavar="FILE",
@@ -162,6 +164,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.audio_track < 0:
         print("错误: --audio-track 必须是非负整数")
         return 2
+    if args.default_audio_track is not None and args.default_audio_track < 0:
+        print("错误: --default-audio-track 必须是非负整数")
+        return 2
     if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
         print("错误: 字幕切分参数无效")
         return 2
@@ -188,6 +193,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     ffmpeg_tools = resolve_ffmpeg_tools()
     ffmpeg_path = ffmpeg_tools.ffmpeg
     ffprobe_path = ffmpeg_tools.ffprobe
+    default_audio_track = resolve_default_audio_track(
+        input_path,
+        args.default_audio_track,
+        ffprobe_path=ffprobe_path,
+    )
     engine = create_local_engine(
         args.engine,
         model=args.model,
@@ -261,6 +271,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ffmpeg_path=ffmpeg_path,
                 ffprobe_path=ffprobe_path,
                 audio_track=args.audio_track,
+                default_audio_track=default_audio_track,
             )
     except Exception as error:  # noqa: BLE001 - CLI boundary prints actionable error.
         print(f"错误: {error}")
