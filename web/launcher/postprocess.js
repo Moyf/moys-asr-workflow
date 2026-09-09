@@ -59,6 +59,8 @@
   let mediaToolCancelling = false;
   let audioTracks = [];
   let audioProbeRequest = 0;
+  let scriptPreviewRequest = 0;
+  let splitPreviewRequest = 0;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -235,6 +237,8 @@
   }
 
   async function refreshScriptPreview() {
+    const requestId = ++scriptPreviewRequest;
+    splitPreviewRequest += 1;
     const path = $("postprocessScriptPath").value.trim();
     const preview = $("postprocessScriptPreview");
     if (!path || !SCRIPT_EXTS.has(extension(path))) {
@@ -244,7 +248,14 @@
       setMatchStats("");
       return;
     }
-    const result = await bridge("read_script_preview", { path });
+    const result = await bridge("read_script_preview", {
+      path,
+      matchMode: $("postprocessMatchMode").value,
+      extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
+      preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
+      cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
+    });
+    if (requestId !== scriptPreviewRequest || path !== $("postprocessScriptPath").value.trim()) return;
     if (!result.ok) {
       preview.classList.add("hidden");
       hideSplitPreview();
@@ -257,6 +268,7 @@
   }
 
   async function refreshSplitPreview() {
+    const requestId = ++splitPreviewRequest;
     const preview = $("postprocessSplitPreview");
     const path = $("postprocessScriptPath").value.trim();
     const mode = $("postprocessMatchMode").value;
@@ -272,11 +284,16 @@
       matchMode: mode,
       extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
       preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
+      cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
     });
+    if (requestId !== splitPreviewRequest) return;
     if (!result.ok) {
       hideSplitPreview();
+      const localizedError = ["match_too_low", "subtitle_invalid", "script_invalid", "match_invalid"].includes(result.errorCode)
+        ? postprocessErrorText(result)
+        : "";
       setMatchStats(
-        result.errorCode === "match_too_low" ? t("toolbox_match_preview_too_low") : t("toolbox_match_preview_failed"),
+        localizedError || (result.errorCode === "match_too_low" ? t("toolbox_match_preview_too_low") : t("toolbox_match_preview_failed")),
         "error",
       );
       return;
@@ -308,7 +325,7 @@
       enabled: false,
       retainIntermediate: false,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"] },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -1217,6 +1234,8 @@
     inputManual = false;
     syncPaths();
     addChainResult(chain, result);
+    setMatchStats("");
+    void refreshScriptPreview();
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
     if (result.reportPath) warnings.push(`${t("toolbox_ocr_report_path")} ${result.reportPath}`);
     setResult(`${t("toolbox_done")}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success");
@@ -1324,7 +1343,7 @@
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
-        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation") },
+        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
@@ -1508,6 +1527,7 @@
     $("postprocessScriptPath").value = String(match.scriptPath || "");
     $("postprocessExtraSplitPunctuation").value = Array.isArray(match.extraSplitPunctuation) ? match.extraSplitPunctuation.join("\n") : "";
     $("postprocessPreservePunctuation").value = Array.isArray(match.preservePunctuation) ? match.preservePunctuation.join("\n") : "";
+    $("postprocessCleanMarkdownSymbols").checked = match.cleanMarkdownSymbols !== false;
     validateMatchPunctuation();
     void refreshScriptPreview();
     const replace = byId.get("replace") || {};
@@ -1582,9 +1602,10 @@
         matchMode: $("postprocessMatchMode").value,
         extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
         preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
+        cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
       });
       if (result.ok) applySubtitleResult(result, { kind: "match" });
-      else setResult(result.error || result.detail || t("failed"), "error");
+      else setResult(postprocessErrorText(result), "error");
     } finally {
       setBusy(false);
     }
@@ -2010,9 +2031,10 @@
   $("stopToolboxAlignment").addEventListener("click", () => { void stopToolboxAlignment(); });
   $("runScriptMatch").addEventListener("click", runScriptMatch);
   $("postprocessScriptPath").addEventListener("input", () => { void refreshScriptPreview(); });
-  $("postprocessExtraSplitPunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
-  $("postprocessPreservePunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
-  $("postprocessMatchMode").addEventListener("change", () => { validateMatchPunctuation(); void refreshSplitPreview(); persistAutoPlanSoon(); });
+  $("postprocessCleanMarkdownSymbols").addEventListener("input", () => { void refreshScriptPreview(); persistAutoPlanSoon(); });
+  $("postprocessExtraSplitPunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
+  $("postprocessPreservePunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
+  $("postprocessMatchMode").addEventListener("change", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
   $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));
@@ -2041,6 +2063,7 @@
     if (result.ok) {
       inputManual = true;
       $("toolboxInputPath").value = result.path;
+      $("toolboxInputPath").dispatchEvent(new Event("input", { bubbles: true }));
       setFieldError("toolboxInputPath", "");
       syncOcrVideo();
       syncInputName();

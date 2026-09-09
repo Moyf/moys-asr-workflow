@@ -101,6 +101,32 @@ def clean_markdown_text(text: str) -> str:
     return _MARKDOWN_HEADING_PREFIX.sub("", "\n".join(lines))
 
 
+_MARKDOWN_INLINE_PATTERNS = (
+    (re.compile(r"(?<!\\)(\*\*\*|___)(?=\S)(\S(?:.*?\S)?)(?<!\\)\1"), r"\2"),
+    (re.compile(r"(?<!\\)(\*\*|__)(?=\S)(\S(?:.*?\S)?)(?<!\\)\1"), r"\2"),
+    (re.compile(r"(?<!\\)~~(?=\S)(\S(?:.*?\S)?)(?<!\\)~~"), r"\1"),
+    (re.compile(r"(?<!\\)==(?=\S)(\S(?:.*?\S)?)(?<!\\)=="), r"\1"),
+    (re.compile(r"(?<!\\)`(?=\S)(\S(?:.*?\S)?)(?<!\\)`"), r"\1"),
+    (re.compile(r"(?<!\\)\*(?=\S)(\S(?:.*?\S)?)(?<!\\)\*"), r"\1"),
+    (re.compile(r"(?<!\\)(?<!\w)_(?=\S)(\S(?:.*?\S)?)(?<!\\)_(?!\w)"), r"\1"),
+)
+
+
+def clean_markdown_inline_symbols(text: str) -> str:
+    """Remove common paired Markdown formatting markers, keeping visible text."""
+
+    cleaned = text
+    # Repeating the passes lets nested forms such as ``***粗斜体***`` become
+    # plain text after the outer bold markers are removed first.
+    for _ in range(3):
+        previous = cleaned
+        for pattern, replacement in _MARKDOWN_INLINE_PATTERNS:
+            cleaned = pattern.sub(replacement, cleaned)
+        if cleaned == previous:
+            break
+    return cleaned
+
+
 def _milliseconds(value: object, location: str) -> int:
     if (
         isinstance(value, bool)

@@ -75,6 +75,7 @@ def default_postprocess_plan() -> dict[str, object]:
                 "matchMode": "script",
                 "extraSplitPunctuation": list(DEFAULT_EXTRA_SPLIT_PUNCTUATION),
                 "preservePunctuation": ["？", "！"],
+                "cleanMarkdownSymbols": True,
             },
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
@@ -133,6 +134,8 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = bool(value)
             elif key == "matchMode":
                 step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
+            elif key == "cleanMarkdownSymbols":
+                step[key] = bool(value)
             elif key == "videoPathMode":
                 mode = str(value or "").strip()
                 step[key] = mode if mode in {"", "auto", "manual"} else ""
@@ -650,6 +653,7 @@ def _run_step(
             match_mode=str(step.get("matchMode") or "script"),
             extra_split_punctuation=tuple(str(value) for value in step.get("extraSplitPunctuation", ()) if str(value)),
             preserve_punctuation=tuple(str(value) for value in step.get("preservePunctuation", ()) if str(value)),
+            clean_markdown_symbols=step.get("cleanMarkdownSymbols", True) is not False,
         ))
     if step_id == "replace":
         replacements = tuple(
