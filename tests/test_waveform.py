@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 import edit  # noqa: E402
 from maw import gui_config  # noqa: E402
 from maw import mopeaks  # noqa: E402
+from maw import quapeaks  # noqa: E402
 from maw import waveform as waveform_module  # noqa: E402
 
 
@@ -116,6 +117,34 @@ class WaveformExtractionTests(unittest.TestCase):
         extractor.assert_not_called()
         self.assertFalse(extracted)
         self.assertEqual(cached["data"], payload["data"])
+
+    def test_waveform_progress_notifies_before_cache_miss_extraction(self) -> None:
+        payload = {
+            "schema": waveform_module.WAVEFORM_SCHEMA,
+            "encoding": waveform_module.WAVEFORM_ENCODING,
+            "peaks_per_second": 100,
+            "peak_count": 1,
+            "duration_ms": 10,
+            "data": "AAA=",
+            "source": waveform_module.media_signature(self.media_path),
+        }
+        progress: list[str] = []
+
+        with (
+            mock.patch.object(quapeaks, "load_self_wave_payload", return_value=None),
+            mock.patch.object(mopeaks, "load_mopeaks_hit", return_value=None),
+            mock.patch.object(waveform_module, "extract_waveform", return_value=payload),
+            mock.patch.object(mopeaks, "save_mopeaks"),
+        ):
+            cached, extracted = waveform_module.load_or_extract_waveform(
+                None,
+                self.media_path,
+                on_progress=progress.append,
+            )
+
+        self.assertIs(cached, payload)
+        self.assertTrue(extracted)
+        self.assertEqual(progress, ["generating"])
 
     def test_default_track_cache_is_used_only_after_selected_track_extraction_fails(self) -> None:
         payload = {
