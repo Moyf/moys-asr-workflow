@@ -12058,7 +12058,7 @@ async function downloadColorSrts(gapRemoved = false) {
     }
   }
   for (const color of colors) {
-    const filename = `${filenameBase}_${color.name}.srt`;
+    const filename = `${filenameBase}_${window.MAWE_I18N?.exportTag?.(color.name) || color.name}.srt`;
     if (EDITOR_SETTINGS.exportColorUnified) {
       const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);

@@ -1963,8 +1963,8 @@ test('colored subtitles export per-color SRT files including the uncolored defau
   await page.locator('#download-color-srt').click();
   await expect.poll(() => downloads.length).toBe(3);
   expect(downloads.map((download) => download.suggestedFilename())).toEqual([
-    'project_red.srt',
-    'project_blue.srt',
+    'project_红色.srt',
+    'project_蓝色.srt',
     'project_default.srt',
   ]);
   expect(await downloads[0].createReadStream().then(async (stream) => {
@@ -2213,7 +2213,7 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
   const downloadPromise = page.waitForEvent('download');
   await page.locator('#download-gap-removed-color-srt').click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe('project_去空隙_red.srt');
+  expect(download.suggestedFilename()).toBe('project_去空隙_红色.srt');
 });
 
 test('server media loads from the resolved project path and OTIO keeps its absolute source URL', async ({ page }) => {
