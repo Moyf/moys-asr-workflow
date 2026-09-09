@@ -3019,9 +3019,10 @@
   }
 
   /* === 右上角提示卡片（flashHint）===
-     最多 3 条垂直堆叠，新提示出现在下方；fade in/out 由 JS 驱动 */
+     最多 3 条垂直堆叠，新提示出现在下方；fade in/out 由 JS 驱动。
+     置于非模态浮层栈（430+）之上，但保留给拖拽遮罩和加载层（500/510）。 */
   #hint-stack {
-    position: fixed; top: 16px; right: 16px; z-index: 300;
+    position: fixed; top: 16px; right: 16px; z-index: 490;
     display: flex; flex-direction: column; gap: 8px;
     max-width: 380px;
   }

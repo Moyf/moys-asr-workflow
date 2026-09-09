@@ -1200,6 +1200,16 @@ class EditorAssetTests(unittest.TestCase):
             "  overflow-y: auto;",
             styles,
         )
+        resizer_start = styles.index(".layout-resizer {")
+        resizer_end = styles.index(".layout-resizer::after {", resizer_start)
+        resizer_styles = styles[resizer_start:resizer_end]
+        self.assertIn("opacity: 0", resizer_styles)
+        self.assertIn(".layout-resizer:hover,\n.layout-resizer.dragging { opacity: 1; }", styles)
+        self.assertIn(".layout-resizer-v::after { top: 0; bottom: 0; left: 2px; width: 2px; }", styles)
+        self.assertIn(
+            ".layout-resizer-h1::after, .layout-resizer-h2::after { left: 0; right: 0; top: 2px; height: 2px; }",
+            styles,
+        )
 
 if __name__ == "__main__":
     unittest.main()
