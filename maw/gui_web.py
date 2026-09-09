@@ -2909,6 +2909,21 @@ def _segmentation_option(
 _TAIL_STRIP_CANDIDATES = "，。"
 
 
+def _match_step_symbols(env_path: Path, key: str) -> list[str]:
+    """读取共享后处理 plan 里 match 步骤的符号列表配置。"""
+    plan = load_postprocess_plan(env_path)
+    steps = plan.get("steps")
+    values: list[str] = []
+    if isinstance(steps, Sequence) and not isinstance(steps, (str, bytes)):
+        for step in steps:
+            if isinstance(step, Mapping) and step.get("id") == "match":
+                value = step.get(key)
+                if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                    values = [str(item) for item in value if str(item)]
+                break
+    return values
+
+
 def _transcribe_strip_tail_punct(env_path: Path) -> str:
     """Derive transcription tail-strip set from the shared 保留符号 settings.
 
@@ -2916,17 +2931,13 @@ def _transcribe_strip_tail_punct(env_path: Path) -> str:
     the 文稿匹配 toolbox; symbols marked as preserved are subtracted from the
     strip candidates so transcription output keeps them at cue tails.
     """
-    plan = load_postprocess_plan(env_path)
-    steps = plan.get("steps")
-    preserved: set[str] = set()
-    if isinstance(steps, Sequence) and not isinstance(steps, (str, bytes)):
-        for step in steps:
-            if isinstance(step, Mapping) and step.get("id") == "match":
-                value = step.get("preservePunctuation")
-                if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-                    preserved = {str(item) for item in value if str(item)}
-                break
+    preserved = set(_match_step_symbols(env_path, "preservePunctuation"))
     return "".join(candidate for candidate in _TAIL_STRIP_CANDIDATES if candidate not in preserved)
+
+
+def _transcribe_extra_strong_punct(env_path: Path) -> str:
+    """Derive the transcription extra strong-punct set from shared 额外断句符号."""
+    return "".join(_match_step_symbols(env_path, "extraSplitPunctuation"))
 
 
 def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> TranscriptionRequest:
@@ -2999,6 +3010,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     min_words = _segmentation_option(payload, field="minWords", label="英文短句合并阈值（单词）", minimum=1)
     gap_split = _segmentation_option(payload, field="gapSplit", label="停顿切句阈值", minimum=0)
     strip_tail_punct = _transcribe_strip_tail_punct(env_path)
+    extra_strong_punct = _transcribe_extra_strong_punct(env_path)
     if max_len and min_len and int(max_len) < int(min_len):
         raise PreflightError(
             "maxLen",
@@ -3112,6 +3124,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         min_words=min_words,
         gap_split=gap_split,
         strip_tail_punct=strip_tail_punct,
+        extra_strong_punct=extra_strong_punct,
         qwen_audio_context=qwen_audio_context,
         qwen_audio_hotwords=qwen_audio_hotwords,
         qwen_audio_hotwords_file=qwen_audio_hotwords_file,
