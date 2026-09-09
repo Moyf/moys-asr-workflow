@@ -104,6 +104,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--language", help="语言提示；Soniox 可写逗号分隔的多个语言")
     parser.add_argument("--keep-punct", action="store_true", help="保留字幕末尾的逗号和句号")
     parser.add_argument("--strip-tail-punct", help="句尾剥除的标点集合；传空串禁用剥除")
+    parser.add_argument("--extra-strong-punct", help="额外强断句符号集合（每个字符并入强断句符号）")
     parser.add_argument("--gap-split", type=int, help="静音切句阈值（毫秒）")
     parser.add_argument("--speaker", action="store_true", help="开启说话人分离")
     parser.add_argument("--speaker-colors", action="store_true", help="开启说话人分离并写入字幕颜色快照")
@@ -343,6 +344,8 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
         ("--base-url", args.base_url if args.provider == "openai" else None),
         ("--gap-split", args.gap_split),
         ("--strip-tail-punct", args.strip_tail_punct),
+        # 目前仅 Qwen 云端脚本支持额外强断句符号，其他供应商不下发。
+        ("--extra-strong-punct", args.extra_strong_punct if args.provider == "qwen" else None),
         ("--length-limit", args.length_limit),
         ("--model", args.model),
         ("--stickers", args.stickers),

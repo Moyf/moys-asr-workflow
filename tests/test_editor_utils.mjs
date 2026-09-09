@@ -178,8 +178,31 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(settings.mediaSeekStepMs, 2000);
   assert.equal(settings.cueMoveStepMs, 10);
   assert.equal(settings.theme, 'light');
+  assert.equal(helpers.normalizeEditorSettings({ theme: 'system' }).theme, 'system');
+  assert.equal(helpers.normalizeEditorSettings({ theme: 'invalid' }).theme, 'dark');
+  assert.equal(settings.accentColor, 'blue');
+  assert.equal(settings.accentColorCustom, '#6ca5e8');
+  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'red' }).accentColor, 'red');
+  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'orange' }).accentColor, 'orange');
+  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'invalid' }).accentColor, 'blue');
+  assert.equal(
+    helpers.normalizeEditorSettings({ accentColor: 'custom', accentColorCustom: '#A1b2C3' }).accentColorCustom,
+    '#a1b2c3',
+  );
+  assert.equal(helpers.normalizeEditorSettings({ accentColorCustom: 'invalid' }).accentColorCustom, '#6ca5e8');
   assert.equal(settings.stickerOtioExportMode, 'portable');
   assert.equal(settings.autoMergeShortCount, 20);
+  assert.equal(settings.autoSaveProject, true);
+  assert.equal(settings.projectBackupEnabled, true);
+  assert.equal(
+    helpers.normalizeEditorSettings({ projectBackupEnabled: false }).projectBackupEnabled,
+    false,
+  );
+  assert.equal(settings.exportSpeakerNamesAsSuffix, false);
+  assert.equal(
+    helpers.normalizeEditorSettings({ exportSpeakerNamesAsSuffix: true }).exportSpeakerNamesAsSuffix,
+    true,
+  );
   assert.equal(settings.waveShapeSource, 'reapeaks');
   assert.equal(helpers.normalizeEditorSettings({ waveShapeSource: 'self' }).waveShapeSource, 'self');
   assert.equal(helpers.normalizeEditorSettings({ waveShapeSource: 'invalid' }).waveShapeSource, 'reapeaks');
@@ -1239,6 +1262,20 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('字幕忍者', 'en'), 'Subtitle Ninja');
   assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
   assert.equal(i18n.translateText('文字大小', 'en'), 'Font size');
+  assert.equal(i18n.translateText('界面', 'en'), 'Interface');
+  assert.equal(i18n.translateText('媒体', 'en'), 'Media');
+  assert.equal(i18n.translateText('外观', 'en'), 'Appearance');
+  assert.equal(i18n.translateText('语言', 'en'), 'Language');
+  assert.equal(i18n.translateText('主题', 'en'), 'Theme');
+  assert.equal(i18n.translateText('明亮模式', 'en'), 'Light mode');
+  assert.equal(i18n.translateText('暗色模式', 'en'), 'Dark mode');
+  assert.equal(i18n.translateText('跟随系统', 'en'), 'Follow System');
+  assert.equal(i18n.translateText('强调色', 'en'), 'Accent Color');
+  assert.equal(i18n.translateText('蓝色', 'en'), 'Blue');
+  assert.equal(i18n.translateText('红色', 'en'), 'Red');
+  assert.equal(i18n.translateText('橙色', 'en'), 'Orange');
+  assert.equal(i18n.translateText('自定义', 'en'), 'Custom');
+  assert.equal(i18n.translateText('自定义颜色', 'en'), 'Custom color');
   assert.equal(i18n.translateText('视频预览', 'en'), 'Video preview');
   assert.equal(i18n.translateText('播放控制', 'en'), 'Playback controls');
   assert.equal(i18n.translateText('颜色样式', 'en'), 'Color style');
@@ -1379,6 +1416,18 @@ test('translates timeline timebase settings to English', () => {
 
 test('translates speaker label separator settings to English', () => {
   assert.equal(i18n.translateText('分隔符', 'en'), 'Separator');
+  assert.equal(i18n.translateText('字幕颜色', 'en'), 'Subtitle colors');
+  assert.equal(i18n.translateText('说话人', 'en'), 'Speaker');
+  assert.equal(i18n.translateText('颜色与说话人', 'en'), 'Colors and speakers');
+  assert.equal(i18n.translateText('将颜色映射为说话人', 'en'), 'Map colors to speakers');
+  assert.equal(i18n.translateText('在预览字幕中显示说话人', 'en'), 'Show speaker names in preview subtitles');
+  assert.equal(i18n.translateText('使用说话人名称作为后缀', 'en'), 'Use speaker name as suffix');
+  assert.equal(
+    i18n.translateText('在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。', 'en'),
+    'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
+  );
+  assert.equal(i18n.translateText('🤓👆 你可以在', 'en'), '🤓👆 You can configure color-to-speaker names in');
+  assert.equal(i18n.translateText('中配置颜色对应的说话人名。', 'en'), ' settings.');
   assert.equal(
     i18n.translateText('设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号', 'en'),
     'Set the separator between the speaker name and subtitle text; the default is “：”, and spaces or English quotation marks are also supported',
@@ -3026,6 +3075,7 @@ test('normalizes speaker label settings with defaults and safe names', () => {
       blue: 'Guest',
     },
   }))), {
+    mapping_enabled: true,
     enabled: true,
     separator: ' ',
     names: {
@@ -3036,6 +3086,12 @@ test('normalizes speaker label settings with defaults and safe names', () => {
       blue: 'Guest',
     },
   });
+  assert.equal(helpers.normalizeSpeakerLabelSettings({}).mapping_enabled, false);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: true }).mapping_enabled, true);
+  assert.equal(
+    helpers.normalizeSpeakerLabelSettings({ enabled: true, mapping_enabled: false }).mapping_enabled,
+    false,
+  );
 });
 
 

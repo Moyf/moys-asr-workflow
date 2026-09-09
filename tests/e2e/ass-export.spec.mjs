@@ -81,8 +81,8 @@ test('exports ASS with the current font, size, color and enabled subtitle text',
   await page.goto(server.url);
 
   await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
-  await expect(page.locator('#editor-settings-page-subtitle-preview')).toBeVisible();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
   await page.locator('#subtitle-font-family').selectOption('hei');
   await page.locator('#subtitle-font-size').selectOption('40');
   await page.locator('#subtitle-color').evaluate((input) => {

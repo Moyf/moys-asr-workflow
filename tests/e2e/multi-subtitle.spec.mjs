@@ -171,6 +171,75 @@ test('offers importing a second SRT when enabling multiple subtitles without an 
   await expect(page.locator('#multi-subtitle-settings-toggle')).toBeVisible();
 });
 
+test('opens multiple-subtitle settings from the split language hint', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
+  const settingsLink = page.locator('#split-multi-subtitle-settings-link');
+  await expect(settingsLink).toBeVisible();
+  await expect(page.locator('#split-multi-subtitle-settings-disabled')).toBeHidden();
+
+  await settingsLink.click();
+  await expect(page.locator('#multi-subtitle-settings-menu')).toBeVisible();
+  await expect(page.locator('#multi-subtitle-settings-toggle')).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('raises the last activated window or gear popup above older floating surfaces', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  await page.locator('#editor-settings-toggle').click();
+  const settingsPanel = page.locator('#editor-settings-panel');
+  const multiSettingsToggle = page.locator('#multi-subtitle-settings-toggle');
+  const multiSettingsMenu = page.locator('#multi-subtitle-settings-menu');
+
+  // 这个齿轮位于全局设置窗口之外；用 pointerdown + click 模拟用户先激活再打开它。
+  await multiSettingsToggle.dispatchEvent('pointerdown', { bubbles: true, button: 0 });
+  await multiSettingsToggle.evaluate((element) => element.click());
+  await expect(multiSettingsMenu).toBeVisible();
+  let layers = await page.evaluate(() => ({
+    settings: Number(getComputedStyle(document.getElementById('editor-settings-panel')).zIndex),
+    multi: Number(getComputedStyle(document.getElementById('multi-subtitle-settings-dropdown')).zIndex),
+  }));
+  expect(layers.multi).toBeGreaterThan(layers.settings);
+
+  // 再点击全局设置窗口内容，窗口应回到最上层，而不是继续被齿轮菜单遮挡。
+  await settingsPanel.locator('.editor-settings-window-body').dispatchEvent('pointerdown', {
+    bubbles: true,
+    button: 0,
+  });
+  layers = await page.evaluate(() => ({
+    settings: Number(getComputedStyle(document.getElementById('editor-settings-panel')).zIndex),
+    multi: Number(getComputedStyle(document.getElementById('multi-subtitle-settings-dropdown')).zIndex),
+  }));
+  expect(layers.settings).toBeGreaterThan(layers.multi);
+});
+
+test('raises a gear popup without raising its containing editor panel', async ({ page }) => {
+  await page.goto(server.url);
+  const owner = page.locator('#current-cue-panel');
+  const popup = page.locator('#cue-editor-settings-panel');
+
+  await page.locator('#cue-editor-settings-toggle').click();
+  await expect(popup).toBeVisible();
+
+  const layers = await page.evaluate(() => {
+    const ownerElement = document.getElementById('current-cue-panel');
+    const popupElement = document.getElementById('cue-editor-settings-panel');
+    return {
+      ownerInlineZIndex: ownerElement?.style.zIndex || '',
+      popupInlineZIndex: popupElement?.style.zIndex || '',
+      popupComputedZIndex: Number(getComputedStyle(popupElement).zIndex),
+    };
+  });
+  expect(await owner.isVisible()).toBe(true);
+  expect(layers.ownerInlineZIndex).toBe('');
+  expect(layers.popupInlineZIndex).not.toBe('');
+  expect(layers.popupComputedZIndex).toBeGreaterThan(420);
+});
+
 test('waveform extension cue double-click focuses the extension editor', async ({ page }) => {
   const project = {
     segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
@@ -199,6 +268,94 @@ test('waveform extension cue double-click focuses the extension editor', async (
   await cue.dblclick();
   await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
   await expect(page.locator('#cue-panel-text')).toBeFocused();
+});
+
+test('light theme keeps the main waveform subtitle white and secondary subtitle lightly gray', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-light-001', start: 0, end: 2000, text: 'main cue' }],
+    waveform: generateWaveformPayload(3000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-light-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [{ id: 'extension-light-001', start: 0, end: 2000, text: 'extension cue' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'light-waveform-cues.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const mainCue = page.locator('.waveform-cue-block[data-track="main"]').first();
+  const extensionCue = page.locator('.waveform-cue-block[data-track="extension"]').first();
+  await expect(mainCue).toBeVisible();
+  await expect(extensionCue).toBeVisible();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('[data-editor-theme="light"]').click();
+
+  const colors = await page.evaluate(() => {
+    const read = (selector) => {
+      const style = getComputedStyle(document.querySelector(selector));
+      return { background: style.backgroundColor, color: style.color };
+    };
+    return {
+      main: read('.waveform-cue-block[data-track="main"]'),
+      extension: read('.waveform-cue-block[data-track="extension"]'),
+    };
+  });
+  expect(colors.main.background).toBe('rgba(255, 255, 255, 0.82)');
+  // 初始播放位置命中主字幕活动态，使用亮色主题的活动字幕深色令牌。
+  expect(colors.main.color).toBe('rgb(31, 37, 48)');
+  expect(colors.extension.background).toBe('rgba(238, 240, 244, 0.68)');
+  expect(colors.extension.background).not.toBe(colors.main.background);
+});
+
+test('light theme keeps mapped subtitle colors visible on main waveform blocks', async ({ page }) => {
+  const project = {
+    segments: [{
+      id: 'main-colored-light-001', start: 0, end: 2000, text: 'colored main cue',
+      color: { name: 'red', value: '#e74c3c', start: 0, end: 2000 },
+    }],
+    waveform: generateWaveformPayload(3000),
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-colored-light-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [{ id: 'extension-colored-light-001', start: 0, end: 2000, text: 'extension cue' }],
+      }],
+      bindings: [],
+    },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'light-waveform-colored-cue.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+
+  const mainCue = page.locator('.waveform-cue-block[data-track="main"]').first();
+  await expect(mainCue).toBeVisible();
+  await expect(mainCue).toHaveClass(/has-subtitle-color/);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('[data-editor-theme="light"]').click();
+
+  const colors = await mainCue.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      background: style.backgroundColor,
+      defaultBackground: getComputedStyle(document.documentElement)
+        .getPropertyValue('--wave-cue-main-bg').trim(),
+    };
+  });
+  expect(colors.background).not.toBe(colors.defaultBackground);
 });
 
 test('extension list clicks auto-scroll and double-click places the caret at the pointer', async ({ page }) => {
@@ -2269,6 +2426,9 @@ test('shows independent extension preview controls with yellow defaults', async 
   await expect(page.locator('#editor-settings-page-subtitle-preview')).toBeVisible();
   await expect(page.locator('#extension-overlay-toggle-wrap')).toBeVisible();
   await expect(page.locator('#extension-overlay-toggle')).toBeChecked();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
+  await expect(page.locator('#extension-subtitle-preview-title')).toBeVisible();
   await expect(page.locator('#extension-subtitle-preview-settings')).toBeVisible();
   await expect(page.locator('#subtitle-color')).toHaveValue('#ffffff');
   await expect(page.locator('#extension-subtitle-color')).toHaveValue('#ffd34d');
@@ -2296,7 +2456,7 @@ test('refreshes local font options for both main and extension subtitles', async
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
 
   const scanButton = page.locator('#subtitle-font-family-scan');
   await expect(scanButton).toBeEnabled();
@@ -2327,7 +2487,7 @@ test('localizes approved scanned font labels in both selectors', async ({ page }
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
   await page.locator('#subtitle-font-family-scan').click();
   const options = await page.evaluate(() => ['subtitle-font-family', 'extension-subtitle-font-family']
     .map((id) => Array.from(document.getElementById(id).options, (option) => ({
@@ -2343,7 +2503,9 @@ test('localizes approved scanned font labels in both selectors', async ({ page }
   ]));
   await page.locator('#subtitle-font-family').selectOption('Source Han Sans SC');
   await page.locator('#extension-subtitle-font-family').selectOption('SimSun');
+  await page.locator('#editor-settings-tab-interface').click();
   await page.locator('#language-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
   await expect(page.locator('#subtitle-font-family option:checked')).toHaveText('Source Han Sans SC');
   await expect(page.locator('#extension-subtitle-font-family option:checked')).toHaveText('SimSun');
   expect(await page.evaluate(() => ({
