@@ -8,6 +8,7 @@ MAW 本身不托管转写服务。你选择的服务商会直接接收待转写�
 | --- | --- | --- |
 | Qwen-Audio / Qwen3-ASR / Fun-ASR | 默认云端路径、中文和说话人分离 | 使用阿里云百炼 API Key；Launcher 默认优先 Qwen-Audio。 |
 | Soniox | 多语言、小语种和说话人分离 | 使用 Soniox Console API Key。 |
+| 豆包语音识别（火山引擎） | 中文为主的单 Key 云端路径，支持热词和说话人分离 | 使用火山引擎新版控制台的 `VOLC_API_KEY`；base64 直传单文件 ≤25MB 且 ≤120 分钟，MAW 会先提取为低码率单声道音频再提交。 |
 | 腾讯云录音文件识别 | 中文/英文长音频的异步文件识别 | 使用 `TENCENT_SECRET_ID`、`TENCENT_SECRET_KEY`；大于 5MB 的媒体需使用 COS/公网 URL。 |
 | OpenAI（及兼容接口） | 使用 OpenAI 官方服务或自己的兼容服务 | Launcher 可选择 `whisper-1`、`gpt-4o-transcribe`、`gpt-4o-mini-transcribe` 或“自定义（Custom）”；接口必须返回 `segments` 或 `words` 时间戳。 |
 | 必剪 ASR | 不想申请 Key 的中文快速体验 | 实验性、非官方接口，可能限流或失效。 |
@@ -17,20 +18,21 @@ MAW 本身不托管转写服务。你选择的服务商会直接接收待转写�
 
 - 图形版：在 Launcher 中填写并保存到本机环境。
 - Release 包：优先读取应用程序同目录的 `.env`；不存在时使用 MAW 用户数据目录中的 `.env`，Windows 路径为 `%LOCALAPPDATA%\MAW\.env`。
-- 源码或 CLI：继续使用仓库根目录的 `.env`；可从 `.env.example` 复制后填写 `DASHSCOPE_API_KEY`、`SONIOX_API_KEY`、腾讯云的 `TENCENT_SECRET_ID` 与 `TENCENT_SECRET_KEY`，或 OpenAI（及兼容接口）的 `MAW_OPENAI_ASR_API_KEY`。
+- 源码或 CLI：继续使用仓库根目录的 `.env`；可从 `.env.example` 复制后填写 `DASHSCOPE_API_KEY`、`SONIOX_API_KEY`、豆包的 `VOLC_API_KEY`、腾讯云的 `TENCENT_SECRET_ID` 与 `TENCENT_SECRET_KEY`，或 OpenAI（及兼容接口）的 `MAW_OPENAI_ASR_API_KEY`。
 - OpenAI（及兼容接口）：在 Launcher 选择“OpenAI（及兼容接口）”，从“模型”下拉列表选择官方模型；选择“自定义（Custom）”后再填写自定义模型名。兼容服务需要填写 `MAW_OPENAI_ASR_BASE_URL`，模型与 API Key 分别保存到 `MAW_OPENAI_ASR_MODEL` 和 `MAW_OPENAI_ASR_API_KEY`；程序调用 `POST {Base URL}/audio/transcriptions`。
 - API Key 只应保存在环境变量或本机 `.env` 中，不要放进命令行、工程、日志、截图或 AI 对话。
-- Qwen Key 申请见[阿里云百炼官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)；Soniox Key 见 [Soniox Console](https://console.soniox.com)。
+- Qwen Key 申请见[阿里云百炼官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)；Soniox Key 见 [Soniox Console](https://console.soniox.com)；豆包 Key 在[火山引擎语音控制台](https://console.volcengine.com/speech/new/experience/asr)开通大模型录音文件识别后获取。
 - OpenAI 官方 API Key 见 [OpenAI Platform](https://platform.openai.com/api-keys)。
 - 腾讯云密钥见[API 密钥管理](https://console.cloud.tencent.com/tokenhub/apikey)；录音文件识别使用 `CreateRecTask` / `DescribeTaskStatus`，默认引擎为 `16k_zh_en_2.0`。
 - 腾讯云的 `Words` 结果包含字词级毫秒时间码；传入 `--speaker` 会启用说话人分离并保留匿名 speaker 标签。完整示例见[完整工作流](WORKFLOW.md)。
+- 豆包走异步 submit/query 接口，`utterances[].words[]` 提供字/词级毫秒时间码；`--speaker` 启用说话人分离，`--hotword` 即时热词直传 `corpus.context`。模型通过 `VOLC_ASR_RESOURCE_ID` 配置，默认 `volc.seedasr.auc`（2.0）。
 - 默认 Base URL 为 `https://api.openai.com/v1`，模型为支持词级时间戳的 `whisper-1`；使用兼容服务时，按服务商文档修改这两项。若服务只返回 `{ "text": "..." }` 而没有时间戳，MAW 会拒绝生成字幕，因为无法可靠对轨。
 
 区域、模型、热词、上下文和完整参数见[完整工作流](WORKFLOW.md)与[CLI 文档](CLI.md)。
 
 ## 费用
 
-- Qwen 和 Soniox 的免费额度、计费方式与价格会变化，请以[阿里云模型定价](https://help.aliyun.com/zh/model-studio/model-pricing)和 [Soniox Pricing](https://soniox.com/pricing) 为准。
+- Qwen 和 Soniox 的免费额度、计费方式与价格会变化，请以[阿里云模型定价](https://help.aliyun.com/zh/model-studio/model-pricing)和 [Soniox Pricing](https://soniox.com/pricing) 为准。豆包按音频 token 计量（约 6.25 token/秒），价格以[火山引擎语音控制台](https://console.volcengine.com/speech/new/experience/asr)为准。
 - 必剪 ASR 没有稳定的配额或服务承诺，请只把它当作应急体验入口。
 - 本地模型不产生云端转写费用，但会消耗本机的存储、显存/内存和计算资源。
 
