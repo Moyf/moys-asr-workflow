@@ -180,6 +180,16 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(settings.theme, 'light');
   assert.equal(helpers.normalizeEditorSettings({ theme: 'system' }).theme, 'system');
   assert.equal(helpers.normalizeEditorSettings({ theme: 'invalid' }).theme, 'dark');
+  assert.equal(settings.accentColor, 'blue');
+  assert.equal(settings.accentColorCustom, '#6ca5e8');
+  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'red' }).accentColor, 'red');
+  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'orange' }).accentColor, 'orange');
+  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'invalid' }).accentColor, 'blue');
+  assert.equal(
+    helpers.normalizeEditorSettings({ accentColor: 'custom', accentColorCustom: '#A1b2C3' }).accentColorCustom,
+    '#a1b2c3',
+  );
+  assert.equal(helpers.normalizeEditorSettings({ accentColorCustom: 'invalid' }).accentColorCustom, '#6ca5e8');
   assert.equal(settings.stickerOtioExportMode, 'portable');
   assert.equal(settings.autoMergeShortCount, 20);
   assert.equal(settings.exportSpeakerNamesAsSuffix, false);
@@ -1254,6 +1264,12 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('明亮模式', 'en'), 'Light mode');
   assert.equal(i18n.translateText('暗色模式', 'en'), 'Dark mode');
   assert.equal(i18n.translateText('跟随系统', 'en'), 'Follow System');
+  assert.equal(i18n.translateText('强调色', 'en'), 'Accent Color');
+  assert.equal(i18n.translateText('蓝色', 'en'), 'Blue');
+  assert.equal(i18n.translateText('红色', 'en'), 'Red');
+  assert.equal(i18n.translateText('橙色', 'en'), 'Orange');
+  assert.equal(i18n.translateText('自定义', 'en'), 'Custom');
+  assert.equal(i18n.translateText('自定义颜色', 'en'), 'Custom color');
   assert.equal(i18n.translateText('视频预览', 'en'), 'Video preview');
   assert.equal(i18n.translateText('播放控制', 'en'), 'Playback controls');
   assert.equal(i18n.translateText('颜色样式', 'en'), 'Color style');

@@ -12,6 +12,15 @@
     var saved = JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1') || '{}');
     var savedTheme = saved && saved.theme;
     var theme = ['light', 'dark', 'system'].includes(savedTheme) ? savedTheme : 'dark';
+    var savedAccentColor = saved && saved.accentColor;
+    var accentColor = ['blue', 'red', 'orange', 'custom'].includes(savedAccentColor)
+      ? savedAccentColor : 'blue';
+    var customAccentColor = saved && saved.accentColorCustom;
+    if (!/^#[0-9a-f]{6}$/i.test(customAccentColor || '')) customAccentColor = '#6ca5e8';
+    document.documentElement.dataset.accent = accentColor;
+    if (accentColor === 'custom') {
+      document.documentElement.style.setProperty('--accent-custom', customAccentColor);
+    }
     var prefersDark = typeof window.matchMedia === 'function'
       && window.matchMedia('(prefers-color-scheme: dark)').matches;
     if (theme === 'light' || (theme === 'system' && !prefersDark)) {
@@ -821,6 +830,20 @@ __WAVEFORM_CSS__
         <button type="button" class="editor-settings-segment" data-editor-theme="system" aria-pressed="false">跟随系统</button>
       </div>
     </div>
+    <div class="editor-settings-field interface-accent-setting">
+      <span class="editor-settings-item">强调色</span>
+      <div class="editor-settings-segmented editor-settings-accent-options" role="group" aria-label="强调色">
+        <button type="button" class="editor-settings-segment editor-settings-accent-option" data-editor-accent="blue" aria-pressed="false"><span class="editor-settings-accent-swatch" data-accent-swatch="blue" aria-hidden="true"></span><span>蓝色</span></button>
+        <button type="button" class="editor-settings-segment editor-settings-accent-option" data-editor-accent="red" aria-pressed="false"><span class="editor-settings-accent-swatch" data-accent-swatch="red" aria-hidden="true"></span><span>红色</span></button>
+        <button type="button" class="editor-settings-segment editor-settings-accent-option" data-editor-accent="orange" aria-pressed="false"><span class="editor-settings-accent-swatch" data-accent-swatch="orange" aria-hidden="true"></span><span>橙色</span></button>
+        <button type="button" class="editor-settings-segment editor-settings-accent-option" data-editor-accent="custom" aria-pressed="false"><span class="editor-settings-accent-swatch" data-accent-swatch="custom" aria-hidden="true"></span><span>自定义</span></button>
+      </div>
+      <div class="editor-settings-custom-color" id="editor-accent-custom-field" hidden>
+        <span>自定义颜色</span>
+        <input type="color" class="editor-settings-color-input" id="editor-accent-custom" value="#6ca5e8" aria-label="自定义颜色">
+        <output id="editor-accent-custom-value" for="editor-accent-custom">#6ca5e8</output>
+      </div>
+    </div>
     </div>
   </div>
   <span class="editor-settings-group-heading" id="interface-language-title">语言</span>
@@ -936,14 +959,14 @@ __WAVEFORM_CSS__
           <span id="subtitle-font-family-status" class="subtitle-preview-font-scan-status" role="status" aria-live="polite">点击读取本机字体（首次需要授权）</span>
         </div>
         <div class="subtitle-preview-setting-pair">
-          <label class="subtitle-preview-setting-cell" title="选择播放器画面内字幕预览的文字颜色">
+          <div class="subtitle-preview-setting-cell" title="选择播放器画面内字幕预览的文字颜色">
             <span>文字颜色</span>
-            <input type="color" id="subtitle-color" value="#ffffff" aria-label="文字颜色">
-          </label>
-          <label class="subtitle-preview-setting-cell" title="调整播放器画面内字幕预览的背景色">
+            <input type="color" class="editor-settings-color-input" id="subtitle-color" value="#ffffff" aria-label="文字颜色">
+          </div>
+          <div class="subtitle-preview-setting-cell" title="调整播放器画面内字幕预览的背景色">
             <span>背景颜色</span>
-            <input id="subtitle-background-color" type="color" value="#000000" aria-label="背景颜色">
-          </label>
+            <input id="subtitle-background-color" class="editor-settings-color-input" type="color" value="#000000" aria-label="背景颜色">
+          </div>
         </div>
         <label class="subtitle-preview-setting-row" title="调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景">
           <span>背景不透明度</span>
@@ -987,14 +1010,14 @@ __WAVEFORM_CSS__
           </select>
         </label>
         <div class="subtitle-preview-setting-pair">
-          <label class="subtitle-preview-setting-cell" title="选择播放器画面内副字幕预览的文字颜色">
+          <div class="subtitle-preview-setting-cell" title="选择播放器画面内副字幕预览的文字颜色">
             <span>文字颜色</span>
-            <input type="color" id="extension-subtitle-color" value="#ffd34d" aria-label="文字颜色">
-          </label>
-          <label class="subtitle-preview-setting-cell" title="调整播放器画面内副字幕预览的背景色">
+            <input type="color" class="editor-settings-color-input" id="extension-subtitle-color" value="#ffd34d" aria-label="文字颜色">
+          </div>
+          <div class="subtitle-preview-setting-cell" title="调整播放器画面内副字幕预览的背景色">
             <span>背景颜色</span>
-            <input id="extension-subtitle-background-color" type="color" value="#000000" aria-label="背景颜色">
-          </label>
+            <input id="extension-subtitle-background-color" class="editor-settings-color-input" type="color" value="#000000" aria-label="背景颜色">
+          </div>
         </div>
         <label class="subtitle-preview-setting-row" title="调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景">
           <span>背景不透明度</span>
