@@ -47,7 +47,6 @@ from requests.exceptions import RequestException
 
 from maw.app_paths import default_env_path
 from generate_subtitle_qwen_api import (
-    FFMPEG_MISSING_MESSAGE,
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
 )
