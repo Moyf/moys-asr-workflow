@@ -258,6 +258,26 @@ def probe_audio_tracks(
     return tracks
 
 
+def resolve_default_audio_track(
+    path: Path | str,
+    explicit: int | None,
+    *,
+    ffprobe_path: str | os.PathLike[str] | None = None,
+) -> int:
+    """Resolve the container default audio index, falling back to index 0."""
+    if explicit is not None:
+        if not isinstance(explicit, int) or isinstance(explicit, bool) or explicit < 0:
+            raise ValueError("default audio track must be a non-negative integer")
+        return explicit
+    tracks = probe_audio_tracks(path, ffprobe_path=ffprobe_path) or []
+    for track in tracks:
+        if track.get("default") is True:
+            value = track.get("audio_index")
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                return value
+    return 0
+
+
 def _first_nonempty_tag(tags: Mapping[object, object], *names: str) -> str:
     """Return the first non-empty FFprobe stream tag, tolerating key casing."""
     normalized = {

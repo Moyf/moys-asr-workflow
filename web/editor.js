@@ -6,6 +6,57 @@ let STICKER_URL_PREFIX = __STICKER_URL_PREFIX_JSON__;
 const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
+// 所有非模态浮层共用一个前置栈：最后点击、打开或获得焦点的浮层排在最上面。
+// 起始值高于普通设置弹窗（420），但低于拖拽遮罩和加载层（500/510）。
+const FLOATING_SURFACE_Z_INDEX_BASE = 430;
+const floatingSurfaceStack = [];
+const floatingSurfaceRoots = new WeakSet();
+const floatingSurfaceActivationTargets = new WeakSet();
+
+function floatingSurfaceRoot(surface) {
+  if (!surface) return null;
+  const windowRoot = surface.closest('.editor-settings-window, .gap-remove-panel');
+  if (windowRoot) return windowRoot;
+  return surface.parentElement?.closest('.toolbar .dropdown') || surface;
+}
+
+function floatingSurfaceIsOpen(surface) {
+  if (!surface) return false;
+  if (surface.matches('.settings-panel')) return !surface.hidden;
+  if (surface.matches('.dropdown')) return surface.classList.contains('open');
+  return surface.classList.contains('show');
+}
+
+function syncFloatingSurfaceLayers() {
+  floatingSurfaceStack.forEach((surface, index) => {
+    const zIndex = FLOATING_SURFACE_Z_INDEX_BASE + index;
+    surface.style.zIndex = String(zIndex);
+  });
+}
+
+function bringFloatingSurfaceToFront(surface) {
+  const root = floatingSurfaceRoot(surface);
+  if (!root || !floatingSurfaceRoots.has(root)) return;
+  const currentIndex = floatingSurfaceStack.indexOf(root);
+  if (currentIndex >= 0) floatingSurfaceStack.splice(currentIndex, 1);
+  floatingSurfaceStack.push(root);
+  syncFloatingSurfaceLayers();
+}
+
+function bindFloatingSurfaceActivation(surface) {
+  const root = floatingSurfaceRoot(surface);
+  if (!root) return;
+  if (!floatingSurfaceRoots.has(root)) {
+    floatingSurfaceRoots.add(root);
+    floatingSurfaceStack.push(root);
+  }
+  if (floatingSurfaceActivationTargets.has(surface)) return;
+  const activate = () => bringFloatingSurfaceToFront(root);
+  surface.addEventListener('pointerdown', activate, true);
+  surface.addEventListener('focusin', activate, true);
+  floatingSurfaceActivationTargets.add(surface);
+}
+
 const MAWE_DEBUG_ENABLED = Boolean(
   SERVER_CONFIG?.debug || new URLSearchParams(window.location.search).has('mawe-debug'),
 );
@@ -684,9 +735,14 @@ const DEFAULT_EDITOR_SETTINGS = {
   exportColorUnified: true,
   // 导出 SRT 时是否按字幕颜色附加说话人名称（仅本地偏好）。
   exportSpeakerLabels: false,
+  // 按颜色导出 SRT 时是否优先使用颜色映射的说话人名称作为文件名后缀（仅本地偏好）。
+  exportSpeakerNamesAsSuffix: false,
   // 自动保存仅对绑定工程的 localhost 服务器版生效。
   autoSaveProject: true,
   autoSaveIntervalSeconds: 30,
+  projectBackupEnabled: true,
+  projectBackupMinutes: 5,
+  projectBackupLimit: 20,
   // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
   stickerOverlayEnabled: false,
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
@@ -733,8 +789,11 @@ const DEFAULT_EDITOR_SETTINGS = {
   multiSubtitleAutoSyncDuration: true,
   // 多重字幕波形是否显示主/副轨道编号徽标。
   multiSubtitleShowTrackBadges: false,
-  // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
+  // 界面主题：dark（默认）/ light / system。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
+  // 界面强调色：blue（默认）/ red / orange / custom；自定义颜色单独保存为六位十六进制值。
+  accentColor: 'blue',
+  accentColorCustom: '#6ca5e8',
   // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
   waveShapeSource: 'reapeaks',
 };
@@ -749,7 +808,7 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
-const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'shadow', 'stroke']);
+const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
 const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
@@ -786,6 +845,8 @@ const normalizeClickBehavior = EDITOR_SETTINGS_UTILS.normalizeClickBehavior;
 const normalizeClickTarget = EDITOR_SETTINGS_UTILS.normalizeClickTarget;
 const normalizeKeyboardOperationReferenceMode = EDITOR_SETTINGS_UTILS.normalizeKeyboardOperationReferenceMode;
 const normalizeJklPlaybackMode = EDITOR_SETTINGS_UTILS.normalizeJklPlaybackMode;
+const normalizeEditorAccentColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentColor;
+const normalizeEditorAccentCustomColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentCustomColor;
 const clampAutoSaveInterval = EDITOR_SETTINGS_UTILS.clampAutoSaveInterval;
 const clampCharcountThreshold = EDITOR_SETTINGS_UTILS.clampCharcountThreshold;
 const clampNinjaSlashLength = EDITOR_SETTINGS_UTILS.clampNinjaSlashLength;
@@ -1142,7 +1203,9 @@ function isMediaFile(file) {
   return Boolean(file) && (file.type.startsWith('video/') || file.type.startsWith('audio/') || MEDIA_FILE_RE.test(file.name));
 }
 function isReapeaksFile(file) {
-  return Boolean(file) && /\.reapeaks$/i.test(file.name);
+  // .quapeaks 是 MAW 自有容器（改名自 reapeaks 内核）：浏览器直读必须同样认它，
+  // 否则服务端读得到、用户在浏览器里打开却报「不支持的文件」。
+  return Boolean(file) && /\.(?:reapeaks|quapeaks)$/i.test(file.name);
 }
 
 // === 统一撤销/重做 ===
@@ -1419,6 +1482,8 @@ const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
 const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
 const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
+const subtitleSpeakerMappingEnabledInput = document.getElementById('subtitle-speaker-mapping-enabled');
+const subtitleSpeakerLabelsToggle = document.getElementById('subtitle-speaker-labels-enabled-wrap');
 const subtitleSpeakerLabelsEnabledInput = document.getElementById('subtitle-speaker-labels-enabled');
 const subtitleSpeakerLabelsSettings = document.getElementById('subtitle-speaker-labels-settings');
 const subtitleSpeakerLabelSeparatorInput = document.getElementById('subtitle-speaker-label-separator');
@@ -1429,6 +1494,7 @@ const subtitleSpeakerLabelInputs = Object.fromEntries(
   ]),
 );
 const extensionSubtitlePreviewSettings = document.getElementById('extension-subtitle-preview-settings');
+const extensionSubtitlePreviewTitle = document.getElementById('extension-subtitle-preview-title');
 const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
 const extensionSubtitleColorInput = document.getElementById('extension-subtitle-color');
@@ -1487,8 +1553,14 @@ const ninjaRazorIcon = razorToolButton?.querySelector('.ninja-razor-icon');
 const ninjaSlashFlash = document.getElementById('ninja-slash-flash');
 const exportColorUnifiedToggle = document.getElementById('export-color-unified');
 const exportSpeakerLabelsToggle = document.getElementById('export-speaker-labels');
+const exportSpeakerNamesAsSuffixToggle = document.getElementById('export-speaker-names-as-suffix');
+const exportOpenSubtitleColorSettingsButton = document.getElementById('export-open-subtitle-color-settings');
 const helpToggle = document.getElementById('help-toggle');
-const themeToggle = document.getElementById('theme-toggle');
+const editorThemeOptions = Array.from(document.querySelectorAll('[data-editor-theme]'));
+const editorAccentOptions = Array.from(document.querySelectorAll('[data-editor-accent]'));
+const editorAccentCustomField = document.getElementById('editor-accent-custom-field');
+const editorAccentCustomInput = document.getElementById('editor-accent-custom');
+const editorAccentCustomValue = document.getElementById('editor-accent-custom-value');
 const helpPanel = document.getElementById('help-panel');
 const helpDragHandle = document.getElementById('help-drag-handle');
 const helpCloseButton = document.getElementById('help-close');
@@ -1604,6 +1676,10 @@ const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-rem
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
+const multiSubtitleSettingsToggle = document.getElementById('multi-subtitle-settings-toggle');
+const splitMultiSubtitleSettingsEnabledHint = document.getElementById('split-multi-subtitle-settings-enabled');
+const splitMultiSubtitleSettingsDisabledHint = document.getElementById('split-multi-subtitle-settings-disabled');
+const splitMultiSubtitleSettingsLink = document.getElementById('split-multi-subtitle-settings-link');
 // 已开启多重字幕但尚未加载第二条字幕时的开关右侧提示。
 const multiSubtitleEmptyHint = document.getElementById('multi-subtitle-empty-hint');
 const multiSubtitleSwapButton = document.getElementById('multi-subtitle-swap');
@@ -1649,9 +1725,6 @@ const mergeJoinSettingsPanel = document.getElementById('merge-join-settings-pane
 const splitTrimSettings = document.getElementById('split-trim-settings');
 const splitTrimSettingsToggle = document.getElementById('split-trim-settings-toggle');
 const splitTrimSettingsPanel = document.getElementById('split-trim-settings-panel');
-const subtitlePreviewSettings = document.getElementById('subtitle-preview-settings');
-const subtitlePreviewSettingsToggle = document.getElementById('subtitle-preview-settings-toggle');
-const subtitlePreviewSettingsPanel = document.getElementById('subtitle-preview-settings-panel');
 const cueEditorSettings = document.getElementById('cue-editor-settings');
 const cueEditorSettingsToggle = document.getElementById('cue-editor-settings-toggle');
 const cueEditorSettingsPanel = document.getElementById('cue-editor-settings-panel');
@@ -1698,6 +1771,7 @@ const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
 const EDITOR_SETTINGS_WINDOW_POSITION_KEY = 'moy.asr.editor.settings.window.v1';
+const EDITOR_SETTINGS_WINDOW_SIZE_KEY = 'moy.asr.editor.settings.window_size.v1';
 const EDITOR_SETTINGS_WINDOW_TAB_KEY = 'moy.asr.editor.settings.window_tab.v1';
 const editorSettingsClose = document.getElementById('editor-settings-close');
 const editorSettingsDragHandle = document.getElementById('editor-settings-drag-handle');
@@ -1721,6 +1795,27 @@ const subtitleExtendManageButton = document.getElementById('subtitle-extend-mana
 const subtitleExtendRunButton = document.getElementById('subtitle-extend-run');
 const subtitleExtendForwardInput = document.getElementById('subtitle-extend-forward-ms');
 const subtitleExtendBackwardInput = document.getElementById('subtitle-extend-backward-ms');
+
+// 先登记所有可独立激活的非模态浮层。嵌套在全局设置窗口里的齿轮弹窗会
+// 自动归到全局设置窗口这一层，点击它们时也会把外层窗口带到最前面。
+// 表情包根目录弹窗从全局设置窗口打开，同样入栈，打开时动态置顶盖住窗口
+//（CSS 的 335 只是 JS 初始化前的静态兜底）。
+[
+  editorSettingsPanel,
+  helpPanel,
+  gapRemovePanel,
+  autoMergePanel,
+  subtitleExtendPanel,
+  mergeJoinSettingsPanel,
+  splitTrimSettingsPanel,
+  cueListSettingsPanel,
+  cueEditorSettingsPanel,
+  waveformSettingsPanel,
+  multiSubtitleSettingsDropdown,
+  document.getElementById('sticker-root-modal'),
+  ...document.querySelectorAll('.toolbar .dropdown'),
+].forEach(bindFloatingSurfaceActivation);
+
 let gapPreviewRange = null;
 let gapRemovePanelDrag = null;
 let currentCuePanelIdx = -1;
@@ -1909,9 +2004,12 @@ const editorSettingsFloatingPanel = createFloatingPanel({
   manageButton: editorSettingsToggle,
   anchorButton: editorSettingsToggle,
   positionKey: EDITOR_SETTINGS_WINDOW_POSITION_KEY,
-  // 所有打开路径（按钮点击 / 桥接）都先恢复标签页，保证默认分区带上 active 样式，
-  // 且窗口按实际内容尺寸定位。
-  onOpen: restoreEditorSettingsActiveTab,
+  // 所有打开路径（按钮点击 / 桥接）都先恢复尺寸与标签页，保证默认分区带上
+  // active 样式，且窗口按实际内容尺寸定位。
+  onOpen: () => {
+    restoreEditorSettingsPanelSize();
+    restoreEditorSettingsActiveTab();
+  },
 });
 
 function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
@@ -1944,6 +2042,39 @@ function restoreEditorSettingsActiveTab() {
     || editorSettingsTabs.find((item) => !item.hidden)
     || editorSettingsTabs[0];
   setEditorSettingsActiveTab(tab);
+}
+
+// 浮窗尺寸：与帮助窗口一致，仅在用户拖过右下角缩放手柄后持久化；
+// 未缩放时保持 CSS 默认宽度/自动高度。
+function restoreEditorSettingsPanelSize() {
+  if (!editorSettingsPanel) return;
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY) || 'null');
+  } catch (_) {
+    saved = null;
+  }
+  if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
+  editorSettingsPanel.style.width = `${Math.min(Math.max(460, saved.width), window.innerWidth - 12)}px`;
+  editorSettingsPanel.style.height = `${Math.min(Math.max(280, saved.height), window.innerHeight - 24)}px`;
+}
+let editorSettingsPanelSizeSaveTimer = 0;
+if (editorSettingsPanel) {
+  new ResizeObserver(() => {
+    if (!editorSettingsPanel.classList.contains('show')) return;
+    if (!editorSettingsPanel.style.width && !editorSettingsPanel.style.height) return;
+    clearTimeout(editorSettingsPanelSizeSaveTimer);
+    editorSettingsPanelSizeSaveTimer = setTimeout(() => {
+      const rect = editorSettingsPanel.getBoundingClientRect();
+      try {
+        localStorage.setItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY, JSON.stringify({
+          width: Math.round(rect.width), height: Math.round(rect.height),
+        }));
+      } catch (_) {
+        // file:// 隐私模式下 localStorage 可能被拒；缩放本身仍可用。
+      }
+    }, 250);
+  }).observe(editorSettingsPanel);
 }
 
 function setEditorSettingsPanelOpen(open) {
@@ -1988,7 +2119,11 @@ function setMergeJoinSettingsPanelOpen(open) {
   mergeJoinSettingsPanel.hidden = !open;
   mergeJoinSettingsToggle.classList.toggle('active', open);
   mergeJoinSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionMergeJoinSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(mergeJoinSettingsPanel);
+    positionMergeJoinSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionSplitTrimSettingsPanel() {
@@ -2000,25 +2135,16 @@ function setSplitTrimSettingsPanelOpen(open) {
   splitTrimSettingsPanel.hidden = !open;
   splitTrimSettingsToggle.classList.toggle('active', open);
   splitTrimSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionSplitTrimSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(splitTrimSettingsPanel);
+    positionSplitTrimSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function setSettingsPanelOwnerOpen(panel, open) {
   const owner = panel?.closest('.player-wrap, .current-cue-panel, .cues-container, .waveform-pane');
   owner?.classList.toggle('settings-panel-owner-open', open);
-}
-
-function positionSubtitlePreviewSettingsPanel() {
-  positionAnchoredSettingsPanel(subtitlePreviewSettingsPanel, subtitlePreviewSettingsToggle);
-}
-
-function setSubtitlePreviewSettingsPanelOpen(open) {
-  if (!subtitlePreviewSettingsPanel || !subtitlePreviewSettingsToggle) return;
-  subtitlePreviewSettingsPanel.hidden = !open;
-  setSettingsPanelOwnerOpen(subtitlePreviewSettingsPanel, open);
-  subtitlePreviewSettingsToggle.classList.toggle('active', open);
-  subtitlePreviewSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionSubtitlePreviewSettingsPanel();
 }
 
 function positionCueListSettingsPanel() {
@@ -2031,7 +2157,11 @@ function setCueListSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(cueListSettingsPanel, open);
   cueListSettingsToggle.classList.toggle('active', open);
   cueListSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionCueListSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(cueListSettingsPanel);
+    positionCueListSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionCueEditorSettingsPanel() {
@@ -2044,7 +2174,11 @@ function setCueEditorSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(cueEditorSettingsPanel, open);
   cueEditorSettingsToggle.classList.toggle('active', open);
   cueEditorSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionCueEditorSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(cueEditorSettingsPanel);
+    positionCueEditorSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionWaveformSettingsPanel() {
@@ -2057,7 +2191,11 @@ function setWaveformSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(waveformSettingsPanel, open);
   waveformSettingsToggle.classList.toggle('active', open);
   waveformSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionWaveformSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(waveformSettingsPanel);
+    positionWaveformSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function applyCueListDisplaySettings({ preserveCueListScroll = true } = {}) {
@@ -2125,6 +2263,8 @@ function updateMultiSubtitleUi() {
     // 提示与齿轮互斥：开启但无副轨 → 显示；其余隐藏。
     multiSubtitleEmptyHint.hidden = !(getMultiSubtitleState().enabled === true && !enabled);
   }
+  if (splitMultiSubtitleSettingsEnabledHint) splitMultiSubtitleSettingsEnabledHint.hidden = !enabled;
+  if (splitMultiSubtitleSettingsDisabledHint) splitMultiSubtitleSettingsDisabledHint.hidden = enabled;
   if (multiSubtitleToggle) {
     // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
     multiSubtitleToggle.checked = getMultiSubtitleState().enabled === true;
@@ -2180,6 +2320,7 @@ function updateMultiSubtitleUi() {
   if (multiSubtitleWaveformControls) multiSubtitleWaveformControls.hidden = !enabled;
   if (multiSubtitleAlignButton) multiSubtitleAlignButton.hidden = !enabled;
   if (extensionOverlayToggleWrap) extensionOverlayToggleWrap.hidden = !enabled;
+  if (extensionSubtitlePreviewTitle) extensionSubtitlePreviewTitle.hidden = !enabled;
   if (extensionSubtitlePreviewSettings) extensionSubtitlePreviewSettings.hidden = !enabled;
   if (extensionOverlayToggle) {
     if (enteringEnabled) updateEditorSettings({ extensionOverlayEnabled: true });
@@ -2188,6 +2329,19 @@ function updateMultiSubtitleUi() {
       : false;
   }
   previousMultiSubtitlePreviewEnabled = enabled;
+  // 「仅看超长」按单轨文本字数筛选；多重字幕开启后主/副两栏合并计数失去筛选意义，
+  // 隐藏入口（含前面的分隔线）。若筛选已激活则一并复位，避免残留不可见的过滤状态。
+  const filterOverButton = document.getElementById('filter-over');
+  if (filterOverButton) {
+    filterOverButton.hidden = enabled;
+    const filterOverSep = document.getElementById('filter-over-sep');
+    if (filterOverSep) filterOverSep.hidden = enabled;
+    if (enabled && filterOverButton.classList.contains('active')) {
+      filterOverButton.classList.remove('active');
+      clearTemporaryVisibleSplitCues();
+      applySearch(searchEl.value);
+    }
+  }
   container.classList.toggle('multi-subtitle-enabled', enabled);
   container.dataset.multiDisplayMode = enabled ? (getMultiSubtitleState().display_mode || 'both') : 'main';
 }
@@ -2340,6 +2494,9 @@ exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
 if (exportColorUnifiedToggle) exportColorUnifiedToggle.checked = EDITOR_SETTINGS.exportColorUnified;
 if (exportSpeakerLabelsToggle) exportSpeakerLabelsToggle.checked = EDITOR_SETTINGS.exportSpeakerLabels;
+if (exportSpeakerNamesAsSuffixToggle) {
+  exportSpeakerNamesAsSuffixToggle.checked = EDITOR_SETTINGS.exportSpeakerNamesAsSuffix;
+}
 if (autoSaveProjectToggle) autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
 if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
@@ -2491,10 +2648,6 @@ splitTrimSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setSplitTrimSettingsPanelOpen(splitTrimSettingsPanel?.hidden);
 });
-subtitlePreviewSettingsToggle?.addEventListener('click', (event) => {
-  event.stopPropagation();
-  setSubtitlePreviewSettingsPanelOpen(subtitlePreviewSettingsPanel?.hidden);
-});
 cueListSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setCueListSettingsPanelOpen(cueListSettingsPanel?.hidden);
@@ -2515,9 +2668,6 @@ document.addEventListener('pointerdown', (event) => {
       applySearch(searchEl.value);
     }
   }
-  if (!subtitlePreviewSettingsPanel?.hidden && !subtitlePreviewSettings?.contains(event.target)) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-  }
   if (!cueListSettingsPanel?.hidden && !cueListSettings?.contains(event.target)) {
     setCueListSettingsPanelOpen(false);
   }
@@ -2536,10 +2686,6 @@ document.addEventListener('pointerdown', (event) => {
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  if (!subtitlePreviewSettingsPanel?.hidden) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-    subtitlePreviewSettingsToggle?.focus();
-  }
   if (!cueListSettingsPanel?.hidden) {
     setCueListSettingsPanelOpen(false);
     cueListSettingsToggle?.focus();
@@ -2565,17 +2711,12 @@ window.addEventListener('resize', positionMergeJoinSettingsPanel);
 window.addEventListener('scroll', positionMergeJoinSettingsPanel, true);
 window.addEventListener('resize', positionSplitTrimSettingsPanel);
 window.addEventListener('scroll', positionSplitTrimSettingsPanel, true);
-window.addEventListener('resize', positionSubtitlePreviewSettingsPanel);
-window.addEventListener('scroll', positionSubtitlePreviewSettingsPanel, true);
 window.addEventListener('resize', positionCueListSettingsPanel);
 window.addEventListener('scroll', positionCueListSettingsPanel, true);
 window.addEventListener('resize', positionWaveformSettingsPanel);
 window.addEventListener('scroll', positionWaveformSettingsPanel, true);
 window.addEventListener('resize', positionCueEditorSettingsPanel);
 window.addEventListener('scroll', positionCueEditorSettingsPanel, true);
-subtitlePreviewSettings?.closest('.player-toolbar')?.addEventListener(
-  'scroll', positionSubtitlePreviewSettingsPanel,
-);
 cueListSettings?.closest('.cue-list-toolbar')?.addEventListener(
   'scroll', positionCueListSettingsPanel,
 );
@@ -2603,11 +2744,26 @@ helpOpenWaveformSettingsButtons.forEach((button) => {
     waveformSettingsToggle?.focus();
   });
 });
+// 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
+function openEditorSettingsAtTab(tabId) {
+  setEditorSettingsPanelOpen(true);
+  setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
+}
+exportOpenSubtitleColorSettingsButton?.addEventListener('click', (event) => {
+  event.preventDefault();
+  openEditorSettingsAtTab('editor-settings-tab-subtitle-color');
+});
+splitMultiSubtitleSettingsLink?.addEventListener('click', (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!multiSubtitleVisible()) return;
+  multiSubtitleSettingsToggle?.click();
+  multiSubtitleSettingsToggle?.focus();
+});
 helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
-    setSubtitlePreviewSettingsPanelOpen(true);
-    subtitlePreviewSettingsToggle?.focus();
+    openEditorSettingsAtTab('editor-settings-tab-subtitle-preview');
   });
 });
 helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {
@@ -2707,32 +2863,116 @@ if (helpPanel) {
 }
 
 
-// 明暗主题：令牌全部定义在 CSS（:root 暗色 / [data-theme="light"] 亮色），
-// 这里只负责写 <html data-theme>、持久化、同步按钮，以及通知波形重绘画布。
-// 按钮显示的是「目标主题」（与相邻 🌐 语言按钮同一约定）：暗色时显示 🌖（点击转亮）。
-// title 用中文源串，英文界面由 i18n 的属性 MutationObserver 自动翻译。
-function refreshThemeToggle(theme) {
-  if (!themeToggle) return;
-  const toLight = theme !== 'light';
-  themeToggle.textContent = toLight ? '🌖' : '🌘';
-  const title = toLight ? '切换到亮色主题' : '切换到暗色主题';
-  themeToggle.title = title;
-  themeToggle.setAttribute('aria-label', title);
+// 明暗主题与界面强调色：令牌全部定义在 CSS，
+// 这里只负责解析偏好、写 <html> 数据属性、持久化，以及通知波形重绘画布。
+const EDITOR_THEME_VALUES = Object.freeze(['light', 'dark', 'system']);
+const EDITOR_ACCENT_COLOR_DEBOUNCE_MS = 160;
+function normalizeEditorTheme(theme) {
+  return EDITOR_THEME_VALUES.includes(theme) ? theme : 'dark';
+}
+function resolveEditorTheme(theme) {
+  const preference = normalizeEditorTheme(theme);
+  if (preference !== 'system') return preference;
+  const media = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  return media ? (media.matches ? 'dark' : 'light') : 'dark';
+}
+function refreshEditorThemeOptions(theme) {
+  const preference = normalizeEditorTheme(theme);
+  editorThemeOptions.forEach((option) => {
+    const active = option.dataset.editorTheme === preference;
+    option.classList.toggle('active', active);
+    option.setAttribute('aria-pressed', String(active));
+  });
+}
+function refreshEditorAccentOptions(accentColor) {
+  const preference = normalizeEditorAccentColor(accentColor);
+  editorAccentOptions.forEach((option) => {
+    const active = option.dataset.editorAccent === preference;
+    option.classList.toggle('active', active);
+    option.setAttribute('aria-pressed', String(active));
+  });
+}
+function applyEditorAccentColor(accentColor, { rerenderWaveform = true } = {}) {
+  const preference = normalizeEditorAccentColor(accentColor);
+  const customColor = normalizeEditorAccentCustomColor(EDITOR_SETTINGS.accentColorCustom);
+  const root = document.documentElement;
+  root.dataset.accent = preference;
+  if (preference === 'custom') root.style.setProperty('--accent-custom', customColor);
+  else root.style.removeProperty('--accent-custom');
+  refreshEditorAccentOptions(preference);
+  if (editorAccentCustomField) editorAccentCustomField.hidden = preference !== 'custom';
+  if (editorAccentCustomInput) editorAccentCustomInput.value = customColor;
+  if (editorAccentCustomValue) editorAccentCustomValue.textContent = customColor;
+  // 波形画布颜色是 JS 读取的令牌快照，强调色切换后同样需要重绘。
+  if (rerenderWaveform && waveformEditor) waveformEditor.render();
+}
+let editorAccentCustomColorTimer = 0;
+let pendingEditorAccentCustomColor = null;
+function flushEditorAccentCustomColor(value = editorAccentCustomInput?.value) {
+  if (editorAccentCustomColorTimer) {
+    window.clearTimeout(editorAccentCustomColorTimer);
+    editorAccentCustomColorTimer = 0;
+  }
+  const customColor = normalizeEditorAccentCustomColor(value);
+  pendingEditorAccentCustomColor = null;
+  updateEditorSettings({ accentColor: 'custom', accentColorCustom: customColor });
+  applyEditorAccentColor('custom');
+}
+function scheduleEditorAccentCustomColor(value) {
+  pendingEditorAccentCustomColor = normalizeEditorAccentCustomColor(value);
+  if (editorAccentCustomColorTimer) window.clearTimeout(editorAccentCustomColorTimer);
+  editorAccentCustomColorTimer = window.setTimeout(() => {
+    editorAccentCustomColorTimer = 0;
+    const customColor = pendingEditorAccentCustomColor;
+    pendingEditorAccentCustomColor = null;
+    if (customColor) flushEditorAccentCustomColor(customColor);
+  }, EDITOR_ACCENT_COLOR_DEBOUNCE_MS);
 }
 function applyTheme(theme, { rerenderWaveform = true } = {}) {
-  const next = theme === 'light' ? 'light' : 'dark';
-  if (next === 'light') document.documentElement.dataset.theme = 'light';
+  const preference = normalizeEditorTheme(theme);
+  const resolved = resolveEditorTheme(preference);
+  if (resolved === 'light') document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;
-  refreshThemeToggle(next);
+  refreshEditorThemeOptions(preference);
   // 画布颜色是 JS 读取的令牌快照，必须全量重绘才能跟随主题
   if (rerenderWaveform && waveformEditor) waveformEditor.render();
 }
+applyEditorAccentColor(EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
 applyTheme(EDITOR_SETTINGS.theme, { rerenderWaveform: false });
-themeToggle?.addEventListener('click', () => {
-  const next = EDITOR_SETTINGS.theme === 'light' ? 'dark' : 'light';
-  updateEditorSettings({ theme: next });
-  applyTheme(next);
+editorThemeOptions.forEach((option) => {
+  option.addEventListener('click', () => {
+    const next = normalizeEditorTheme(option.dataset.editorTheme);
+    updateEditorSettings({ theme: next });
+    applyTheme(next);
+  });
 });
+editorAccentOptions.forEach((option) => {
+  option.addEventListener('click', () => {
+    if (pendingEditorAccentCustomColor !== null) flushEditorAccentCustomColor();
+    const next = normalizeEditorAccentColor(option.dataset.editorAccent);
+    updateEditorSettings({ accentColor: next });
+    applyEditorAccentColor(next);
+  });
+});
+editorAccentCustomInput?.addEventListener('input', () => {
+  const customColor = normalizeEditorAccentCustomColor(editorAccentCustomInput.value);
+  if (editorAccentCustomValue) editorAccentCustomValue.textContent = customColor;
+  scheduleEditorAccentCustomColor(customColor);
+});
+editorAccentCustomInput?.addEventListener('change', () => {
+  flushEditorAccentCustomColor(editorAccentCustomInput.value);
+});
+const editorSystemThemeMedia = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+const refreshEditorSystemTheme = () => {
+  if (EDITOR_SETTINGS.theme === 'system') applyTheme('system');
+};
+if (editorSystemThemeMedia?.addEventListener) {
+  editorSystemThemeMedia.addEventListener('change', refreshEditorSystemTheme);
+} else {
+  editorSystemThemeMedia?.addListener?.(refreshEditorSystemTheme);
+}
 splitKeySel.addEventListener('change', () => {
   updateEditorSettings({ splitKey: splitKeySel.value });
   refreshSplitKeyHelp();
@@ -2936,6 +3176,9 @@ exportColorUnifiedToggle?.addEventListener('change', () => {
 });
 exportSpeakerLabelsToggle?.addEventListener('change', () => {
   updateEditorSettings({ exportSpeakerLabels: exportSpeakerLabelsToggle.checked });
+});
+exportSpeakerNamesAsSuffixToggle?.addEventListener('change', () => {
+  updateEditorSettings({ exportSpeakerNamesAsSuffix: exportSpeakerNamesAsSuffixToggle.checked });
 });
 clickBehaviorSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickBehavior: normalizeClickBehavior(clickBehaviorSelect.value) });
@@ -3359,6 +3602,16 @@ subtitleSpeakerLabelSeparatorInput?.addEventListener(
   'change',
   () => applySpeakerLabelSeparatorInput({ finalize: true }),
 );
+subtitleSpeakerMappingEnabledInput?.addEventListener('change', () => {
+  const previous = snapshotPreviewState();
+  previous.speakerLabels.mapping_enabled = !subtitleSpeakerMappingEnabledInput.checked;
+  pushPreviewUndo('切换颜色说话人映射', previous);
+  setSpeakerLabelSettings({
+    ...getSpeakerLabelSettings(),
+    mapping_enabled: subtitleSpeakerMappingEnabledInput.checked,
+  });
+  update();
+});
 subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
   const previous = snapshotPreviewState();
   previous.speakerLabels.enabled = !subtitleSpeakerLabelsEnabledInput.checked;
@@ -3963,6 +4216,7 @@ function clearAllGaps() {
 // 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
 function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen }) {
   if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false };
+  bindFloatingSurfaceActivation(panel);
   let drag = null;
 
   function isOpen() { return panel.classList.contains('show'); }
@@ -4022,6 +4276,7 @@ function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, po
     if (typeof onOpen === 'function') onOpen();
     panel.classList.add('show');
     panel.setAttribute('aria-hidden', 'false');
+    bringFloatingSurfaceToFront(panel);
     manageButton?.classList.add('active');
     manageButton?.setAttribute('aria-expanded', 'true');
     requestAnimationFrame(() => {
@@ -4035,6 +4290,7 @@ function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, po
     drag = null;
     manageButton?.classList.remove('active');
     manageButton?.setAttribute('aria-expanded', 'false');
+    syncFloatingSurfaceLayers();
   }
 
   function toggle() { if (isOpen()) close(); else open(); }
@@ -4192,6 +4448,7 @@ function closeGapRemovePanel() {
   gapRemovePanelDrag = null;
   gapRemoveManageButton?.classList.remove('active');
   gapRemoveManageButton?.setAttribute('aria-expanded', 'false');
+  syncFloatingSurfaceLayers();
 }
 
 function openGapRemovePanel() {
@@ -4216,6 +4473,7 @@ function openGapRemovePanel() {
   renderGapRemoveList();
   gapRemovePanel.classList.add('show');
   gapRemovePanel.setAttribute('aria-hidden', 'false');
+  bringFloatingSurfaceToFront(gapRemovePanel);
   gapRemoveManageButton?.classList.add('active');
   gapRemoveManageButton?.setAttribute('aria-expanded', 'true');
   requestAnimationFrame(restoreGapRemovePanelPosition);
@@ -10885,6 +11143,8 @@ document.addEventListener('pointerdown', (e) => {
 // AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
 const GEO_UTILS = window.AsrEditorUtils;
 let previewGeometryDirty = false;
+// 启动早期生成的自定义字体选项先用原始名称占位；共享工具层就绪后立即统一本地化。
+relabelSubtitleFontFamilyOptions();
 
 function getPreviewGeometry() {
   return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.subtitle);
@@ -10962,7 +11222,10 @@ function subtitleFontFamilyOptionExists(select, value) {
 }
 function subtitleFontFamilyDisplayName(family) {
   const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  return GEO_UTILS.subtitleFontFamilyDisplayName(family, language);
+  // 启动早期 applySubtitleAppearance() 会先生成自定义字体选项，此时
+  // GEO_UTILS 别名（文件后部才初始化）尚处于暂时性死区；直接读共享工具层，
+  // 不可用时先用原始字体名占位，别名就绪后由 relabelSubtitleFontFamilyOptions 统一本地化。
+  return window.AsrEditorUtils?.subtitleFontFamilyDisplayName(family, language) ?? family;
 }
 function relabelSubtitleFontFamilyOptions() {
   [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
@@ -11015,12 +11278,20 @@ function getSpeakerLabelSettings(value = DATA.preview?.subtitle?.speaker_labels)
   return EDITOR_SETTINGS_UTILS.normalizeSpeakerLabelSettings(value);
 }
 function syncSpeakerLabelControls(settings = getSpeakerLabelSettings()) {
+  const mappingEnabled = settings.mapping_enabled === true;
+  if (subtitleSpeakerMappingEnabledInput) {
+    subtitleSpeakerMappingEnabledInput.checked = mappingEnabled;
+  }
+  if (subtitleSpeakerLabelsToggle) {
+    subtitleSpeakerLabelsToggle.hidden = !mappingEnabled;
+  }
   if (subtitleSpeakerLabelsEnabledInput) {
     subtitleSpeakerLabelsEnabledInput.checked = settings.enabled;
   }
   if (subtitleSpeakerLabelsSettings) {
+    subtitleSpeakerLabelsSettings.dataset.mappingEnabled = mappingEnabled ? 'true' : 'false';
     subtitleSpeakerLabelsSettings.dataset.enabled = settings.enabled ? 'true' : 'false';
-    subtitleSpeakerLabelsSettings.hidden = !settings.enabled;
+    subtitleSpeakerLabelsSettings.hidden = !mappingEnabled;
   }
   Object.entries(subtitleSpeakerLabelInputs).forEach(([color, input]) => {
     if (input && document.activeElement !== input) input.value = settings.names[color] || '';
@@ -11640,17 +11911,25 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayExtensionTextEl.classList.contains('hidden') === extensionVisible) {
     overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
   }
+  const subtitleAppearance = getSubtitleAppearance();
+  const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
+  const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
+  const mainSubtitleColor = subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
   const speakerLabels = getSpeakerLabelSettings();
   const mainColorName = mainVisible && seg
     ? MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments)
     : null;
-  const speakerLabel = mainVisible && speakerLabels.enabled
+  const speakerLabel = mainVisible && speakerLabels.mapping_enabled && speakerLabels.enabled
     ? window.AsrEditorUtils.speakerLabelForSegment(
       seg, DATA.segments, speakerLabels.names,
     )
     : '';
   const speakerLabelVisible = Boolean(speakerLabel && mainColorName && COLOR_BY_NAME[mainColorName]);
-  const speakerLabelColor = speakerLabelVisible ? COLOR_BY_NAME[mainColorName].value : '';
+  const speakerLabelColor = speakerLabelVisible
+    ? colorPreviewEnabled && colorStyle === 'stroke'
+      ? mainSubtitleColor
+      : COLOR_BY_NAME[mainColorName].value
+    : '';
   const speakerLabelText = speakerLabelVisible
     ? `${speakerLabel}${speakerLabels.separator}`
     : '';
@@ -11671,11 +11950,8 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     overlayExtensionTextEl.textContent = extensionText;
   }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
-  // 预览文字颜色、下划线、阴影或描边。dataset 记录上次应用的结果，避免
+  // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
   // 播放刷新每帧都写内联样式。
-  const subtitleAppearance = getSubtitleAppearance();
-  const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
-  const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
   let previewSegmentColor = '';
   if (mainVisible && colorPreviewEnabled && seg) {
     const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
@@ -11688,12 +11964,7 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     && colorStyle === 'text'
     && previewSegmentColor
     ? previewSegmentColor
-    : subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
-  const textShadow = colorPreviewEnabled
-    && colorStyle === 'shadow'
-    && previewSegmentColor
-    ? `${previewSegmentColor} 1px 1px 2px`
-    : '';
+    : mainSubtitleColor;
   const textStroke = colorPreviewEnabled
     && colorStyle === 'stroke'
     && previewSegmentColor
@@ -11708,10 +11979,6 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayTextEl.dataset.colorText !== textColor) {
     overlayTextEl.dataset.colorText = textColor;
     overlayTextEl.style.color = textColor;
-  }
-  if (overlayTextEl.dataset.colorShadow !== textShadow) {
-    overlayTextEl.dataset.colorShadow = textShadow;
-    overlayTextEl.style.textShadow = textShadow;
   }
   if (overlayTextEl.dataset.colorStroke !== textStroke) {
     overlayTextEl.dataset.colorStroke = textStroke;
@@ -11907,7 +12174,8 @@ let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 function speakerLabelExportOptions() {
   const settings = getSpeakerLabelSettings();
   return {
-    speakerLabelsEnabled: EDITOR_SETTINGS.exportSpeakerLabels === true,
+    speakerLabelsEnabled: EDITOR_SETTINGS.exportSpeakerLabels === true
+      && settings.mapping_enabled === true,
     speakerLabels: settings.names,
     speakerLabelSeparator: settings.separator,
   };
@@ -11986,6 +12254,25 @@ function updateSubtitleExportUi() {
   }
 }
 
+function safeColorExportFilenameSuffix(value, fallback) {
+  const normalized = String(value ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, '_')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/[. ]+$/g, '')
+    .trim();
+  return normalized || fallback;
+}
+
+function colorExportFilenameSuffix(color, speakerSettings = getSpeakerLabelSettings()) {
+  const colorSuffix = window.MAWE_I18N?.exportTag?.(color.name) || color.name;
+  if (!EDITOR_SETTINGS.exportSpeakerNamesAsSuffix
+      || speakerSettings.mapping_enabled !== true
+      || color.name === 'default') {
+    return colorSuffix;
+  }
+  return safeColorExportFilenameSuffix(speakerSettings.names?.[color.name], colorSuffix);
+}
+
 async function downloadColorSrts(gapRemoved = false) {
   if (editingState) finishEdit(true);
   const colors = usedSubtitleColors();
@@ -12003,6 +12290,7 @@ async function downloadColorSrts(gapRemoved = false) {
     EDITOR_SETTINGS.exportStartAtZero,
   );
   const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
+  const speakerSettings = getSpeakerLabelSettings();
   const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
     colorName: color.name,
     timeOffset: 0,
@@ -12033,7 +12321,7 @@ async function downloadColorSrts(gapRemoved = false) {
     }
   }
   for (const color of colors) {
-    const filename = `${filenameBase}_${color.name}.srt`;
+    const filename = `${filenameBase}_${colorExportFilenameSuffix(color, speakerSettings)}.srt`;
     if (EDITOR_SETTINGS.exportColorUnified) {
       const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -12218,11 +12506,11 @@ function buildJson() {
       end_offset_ms: binding.end_offset_ms || 0,
     })),
   };
-  if (DATA.waveform) out.waveform = DATA.waveform;
+  // 三块波形缓存不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
+  // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
+  // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
   const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
   if (mediaMetadata) out.media_metadata = mediaMetadata;
-  if (DATA.spectral) out.spectral = DATA.spectral;
-  if (DATA.waveform_reapeaks) out.waveform_reapeaks = DATA.waveform_reapeaks;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
   if (DATA.script_alignment) out.script_alignment = DATA.script_alignment;
   const workspace = buildCurrentWorkspaceData();
@@ -13362,10 +13650,56 @@ function configureServerSaveControls() {
     saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
   }
   syncStickerOtioExportMode();
+  syncProjectBackupControls();
 }
 
 let autoSaveTimer = null;
+let projectBackupTimer = null;
+function syncProjectBackupControls() {
+  const available = serverProjectSavingEnabled() && !projectFileHandle;
+  const enabled = document.getElementById('project-backup-enabled');
+  const minutes = document.getElementById('project-backup-minutes');
+  const limit = document.getElementById('project-backup-limit');
+  enabled.checked = EDITOR_SETTINGS.projectBackupEnabled;
+  enabled.disabled = !available;
+  document.getElementById('project-backup-open').disabled = !available;
+  minutes.value = EDITOR_SETTINGS.projectBackupMinutes;
+  limit.value = EDITOR_SETTINGS.projectBackupLimit;
+  minutes.disabled = limit.disabled = !available || !enabled.checked;
+  document.getElementById('project-backup-unavailable').hidden = available;
+  if (projectBackupTimer !== null) window.clearInterval(projectBackupTimer);
+  projectBackupTimer = null;
+  if (available && enabled.checked) {
+    projectBackupTimer = window.setInterval(() => {
+      void saveProjectToServer({ silent: true, backupOnly: true });
+    }, EDITOR_SETTINGS.projectBackupMinutes * 60000);
+  }
+}
+for (const [id, key, fallback, max] of [
+  ['project-backup-enabled', 'projectBackupEnabled', true, 0],
+  ['project-backup-minutes', 'projectBackupMinutes', 5, 1440],
+  ['project-backup-limit', 'projectBackupLimit', 20, 1000],
+]) {
+  document.getElementById(id)?.addEventListener('change', (event) => {
+    const value = max ? Math.min(max, Math.max(1, Math.round(Number(event.target.value) || fallback))) : event.target.checked;
+    updateEditorSettings({ [key]: value });
+    syncProjectBackupControls();
+  });
+}
 let autoSaveFlushTimer = null;
+document.getElementById('project-backup-open')?.addEventListener('click', async () => {
+  if (!serverProjectSavingEnabled() || projectFileHandle) return;
+  try {
+    const response = await fetch(new URL('/api/project/backups/open', window.location.href), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || response.status);
+  } catch (error) {
+    flashHint(`打开备份文件夹失败：${error.message || error}`, 'warning');
+  }
+});
 let projectSaveInFlight = false;
 const EDIT_SAVE_DEBOUNCE_MS = 400;
 
@@ -13550,6 +13884,8 @@ function configureRecentProjects() {
     recentProjectsToggle.addEventListener('click', (event) => {
       event.stopPropagation();
       recentProjectsEl.classList.toggle('open');
+      if (recentProjectsEl.classList.contains('open')) bringFloatingSurfaceToFront(recentProjectsEl);
+      else syncFloatingSurfaceLayers();
     });
     document.addEventListener('click', (event) => {
       if (!recentProjectsEl.contains(event.target)) recentProjectsEl.classList.remove('open');
@@ -13920,7 +14256,8 @@ function markProjectSaved(filename, backupName, { silent = false } = {}) {
   if (!silent) flashHint('保存成功！', 'success');
 }
 
-async function saveProjectToServer({ silent = false } = {}) {
+async function saveProjectToServer({ silent = false, backupOnly = false } = {}) {
+  if (backupOnly && (projectFileHandle || !EDITOR_SETTINGS.projectBackupEnabled)) return false;
   if (!serverProjectSavingEnabled()) {
     if (!silent) flashHint('当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件', 'invalid');
     return false;
@@ -13936,13 +14273,18 @@ async function saveProjectToServer({ silent = false } = {}) {
     const response = await fetch(saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project: JSON.parse(projectJson), filename: null }),
+      body: JSON.stringify({
+        project: JSON.parse(projectJson), filename: null,
+        backupOnly,
+        backupLimit: EDITOR_SETTINGS.projectBackupEnabled && (backupOnly || !silent)
+          ? EDITOR_SETTINGS.projectBackupLimit : null,
+      }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) {
       throw new Error(result.error || `服务器返回 ${response.status}`);
     }
-    markProjectSaved(result.filename, result.backup, { silent });
+    if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent });
     return true;
   } catch (error) {
     const detail = error?.message || error;
@@ -13950,7 +14292,7 @@ async function saveProjectToServer({ silent = false } = {}) {
     // A stale browser tab can outlive the localhost process (the browser reports
     // ERR_CONNECTION_REFUSED). Offer a real file save so Ctrl+S never strands
     // completed edits, while making clear that the bound JSON was not overwritten.
-    if (error instanceof TypeError
+    if (!silent && error instanceof TypeError
         && confirm('无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？')) {
       const saved = await downloadFile(projectJson, `${FILENAME_BASE}.mosp`, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
@@ -14754,6 +15096,8 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = nu
       previousPointerPoint = null;
       lastPointInsideOpenWrapper = null;
     }
+    if (open) bringFloatingSurfaceToFront(dd);
+    else syncFloatingSurfaceLayers();
     if (open && positioner) requestAnimationFrame(positioner);
     if (!open && restoreFocus) btn.focus();
   };
@@ -15935,10 +16279,10 @@ async function loadReapeaksFile(file) {
     waveformEditor.setReapeaksWaveform(parsed.waveform);
     waveformEditor.setSpectralPayload(parsed.spectral);
     waveformEditor.setMediaAvailable(false);
-    flashHint(`已加载 ReaPeaks 缓存：${file.name}`, 'success');
+    flashHint(`已加载 reapeaks 缓存：${file.name}`, 'success');
     return true;
   } catch (error) {
-    flashHint(`加载 ReaPeaks 失败：${error.message || error}`, 'warning');
+    flashHint(`加载 reapeaks 失败：${error.message || error}`, 'warning');
     return false;
   }
 }
@@ -16008,6 +16352,8 @@ function setStickerRootModalOpen(open) {
     stickerRootReturnFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
     stickerRootModal.classList.add('show');
+    // 设置窗口由浮层栈动态抬高（430+），固定 335 盖不住它；打开时入栈置顶。
+    bringFloatingSurfaceToFront(stickerRootModal);
     const initialFocus = stickerRootServerEnabled
       ? stickerRootInput : document.getElementById('sticker-root-cancel');
     setTimeout(() => initialFocus.focus(), 50);
@@ -18119,7 +18465,8 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       mainIdx < 0,
     );
   }
-  if (Array.isArray(extensionTrack?.segments) && extensionTrack.segments.length) {
+  // 拆分副字幕是多重字幕编辑动作；关闭多重字幕（副轨数据保留但不再参与编辑）时不提供。
+  if (multiSubtitleVisible() && Array.isArray(extensionTrack?.segments) && extensionTrack.segments.length) {
     addItem(
       '按音频位置拆分副字幕',
       '',
@@ -18891,7 +19238,7 @@ async function handleDroppedFiles(files) {
   const srtFile = files.find(isSrtFile);
   let stagedSrtSegments = null;
   if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
-    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / ReaPeaks）', 'warning');
+    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / reapeaks）', 'warning');
     return;
   }
   if (jsonFile) {

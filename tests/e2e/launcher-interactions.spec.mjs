@@ -20,22 +20,52 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
-test('OpenAI ASR exposes official models and a conditional Custom model input', async ({ page }) => {
+test('OpenAI ASR exposes official and OpenRouter models with a conditional Custom input', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#provider').selectOption('openai');
 
   await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI（及兼容接口）');
   await expect(page.locator('#model')).toHaveValue('whisper-1');
-  await expect(page.locator('#model option')).toHaveCount(4);
+  await expect(page.locator('#model option')).toHaveCount(8);
   expect(await page.locator('#model option').allTextContents()).toEqual([
     'whisper-1',
     'gpt-4o-transcribe',
     'gpt-4o-mini-transcribe',
+    'gpt-transcribe（支持关键词）',
+    'gpt-4o-transcribe-diarize（说话人分离）',
+    'whisper-large-v3-turbo（OpenRouter）',
+    'whisper-large-v3（OpenRouter）',
     '自定义（Custom）',
   ]);
   await expect(page.locator('#openaiModelField')).toBeHidden();
   await expect(page.locator('#openKeyUrl')).toHaveText('OpenAI 官方');
+  await expect(page.locator('#openKeyHintOr')).toHaveText(' 或 ');
+  await expect(page.locator('#openRouterKeyUrl')).toHaveText('OpenRouter');
   await expect(page.locator('#keyHintSuffix')).toHaveText('获取 API Key');
+
+  await page.locator('#openaiBaseUrl').fill('https://openrouter.ai/api/v1');
+  await expect(page.locator('#modelNote')).toContainText('OpenRouter 参考价');
+  await page.locator('#openaiBaseUrl').fill('https://api.openai.com/v1');
+  await expect(page.locator('#modelNote')).not.toContainText('OpenRouter 参考价');
+  await expect(page.locator('#modelNote')).toContainText('OpenAI 官方参考价');
+  await page.locator('#openaiBaseUrl').fill('https://relay.example/v1');
+  await expect(page.locator('#modelNote')).not.toContainText('参考价');
+
+  await page.locator('#openaiBaseUrl').fill('https://api.openai.com/v1');
+  await page.locator('#model').selectOption('gpt-transcribe');
+  await page.locator('#advancedToggle').click();
+  await expect(page.locator('#openaiAdvancedOptions')).toBeVisible();
+  await expect(page.locator('#openaiPromptField')).toBeVisible();
+  await expect(page.locator('#openaiKeywordsField')).toBeVisible();
+  await expect(page.locator('#openaiDiarizationField')).toBeHidden();
+
+  await page.locator('#model').selectOption('gpt-4o-transcribe-diarize');
+  await expect(page.locator('#openaiPromptField')).toBeHidden();
+  await expect(page.locator('#openaiKeywordsField')).toBeHidden();
+  await expect(page.locator('#openaiDiarizationField')).toBeVisible();
+  await expect(page.locator('#openaiDiarizationUnsupported')).toBeHidden();
+  await page.locator('#openaiBaseUrl').fill('https://openrouter.ai/api/v1');
+  await expect(page.locator('#openaiDiarizationUnsupported')).toBeVisible();
 
   await page.locator('#model').selectOption('custom-asr');
   await expect(page.locator('#openaiModelField')).toBeVisible();
@@ -45,6 +75,19 @@ test('OpenAI ASR exposes official models and a conditional Custom model input', 
   await expect(page.locator('#openaiModelField')).toBeHidden();
   await page.locator('#model').selectOption('custom-asr');
   await expect(page.locator('#openaiModel')).toHaveValue('my-custom-model');
+});
+
+test('cloud ASR models show provider-specific price hints', async ({ page }) => {
+  await openLauncher(page);
+
+  await page.locator('#provider').selectOption('qwen');
+  await expect(page.locator('#modelNote')).toContainText('阿里云百炼参考价');
+
+  await page.locator('#provider').selectOption('soniox');
+  await expect(page.locator('#modelNote')).toContainText('Soniox 参考价');
+
+  await page.locator('#provider').selectOption('openai');
+  await expect(page.locator('#modelNote')).toContainText('OpenAI 官方参考价');
 });
 
 test('OCR video source follows a newly dropped video media', async ({ page }) => {
@@ -79,6 +122,50 @@ test('automatic OCR video source is not persisted as a manual override', async (
     window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path: 'D:\\Demo\\2.mov' });
   });
   await expect(page.locator('#ocrVideoPath')).toHaveValue('D:\\Demo\\2.mov');
+});
+
+test('waveform tool sends the selected and container-default audio tracks', async ({ page }) => {
+  // Given: the toolbox media has two tracks and track 2 is the container default.
+  await openLauncher(page);
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+  await page.locator('#toolboxWaveformTab').click();
+  await page.evaluate(() => {
+    window.__waveformCalls = [];
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      window.__waveformCalls.push({ method, payload });
+      if (method === 'probe_audio_tracks') {
+        return {
+          ok: true,
+          tracks: [
+            { audioIndex: 0, title: 'Voice', default: false },
+            { audioIndex: 1, title: 'Mix', default: true },
+          ],
+        };
+      }
+      if (method === 'generate_waveform_project') {
+        return { ok: true, projectPath: 'D:\\Demo\\clip.waveform.mosp', warnings: [] };
+      }
+      return { ok: true };
+    };
+    const media = document.getElementById('toolboxUtilityMediaPath');
+    media.value = 'D:\\Demo\\clip.mp4';
+    media.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(page.locator('#toolboxAudioTrack')).toHaveValue('1');
+  await page.locator('#toolboxAudioTrack').selectOption('0');
+
+  // When: a waveform-only project is generated for the non-default track.
+  await page.locator('#generateWaveform').click();
+
+  // Then: cache identity carries both the selected track and the real default.
+  await expect.poll(() => page.evaluate(() => (
+    window.__waveformCalls.find(({ method }) => method === 'generate_waveform_project')?.payload
+  ))).toEqual({
+    mediaPath: 'D:\\Demo\\clip.mp4',
+    audioTrack: 0,
+    defaultAudioTrack: 1,
+    generateSpectral: false,
+  });
 });
 
 test('translation merge option follows manual and automatic translation controls', async ({ page }) => {

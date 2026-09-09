@@ -75,7 +75,11 @@
 
   function normalizeSpeakerLabelSettings(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const hasMappingEnabled = Object.prototype.hasOwnProperty.call(source, 'mapping_enabled');
     return {
+      // 旧工程没有独立的映射开关时，沿用原来的 enabled 语义，避免升级后
+      // 已配置的说话人名称突然失效；新工程则默认关闭颜色到说话人的映射。
+      mapping_enabled: hasMappingEnabled ? source.mapping_enabled === true : source.enabled === true,
       enabled: source.enabled === true,
       separator: normalizeSpeakerLabelSeparator(source.separator),
       names: normalizeSpeakerLabels(source.names),
@@ -2682,7 +2686,10 @@
         && (!hasFps || typeof value.video_fps_ratio !== 'string' || !value.video_fps_ratio.trim())) return null;
     const hasAudioTracks = value.audio_tracks !== undefined;
     if (hasAudioTracks && !Array.isArray(value.audio_tracks)) return null;
-    if (!hasFps && !hasAudioTracks) return null;
+    const hasSelectedAudioTrack = value.selected_audio_track !== undefined;
+    if (hasSelectedAudioTrack
+        && (!Number.isInteger(value.selected_audio_track) || value.selected_audio_track < 0)) return null;
+    if (!hasFps && !hasAudioTracks && !hasSelectedAudioTrack) return null;
     const metadata = {};
     if (hasFps) metadata.video_fps = normalizeTimelineFps(fps);
     if (typeof value.video_fps_ratio === 'string') {
@@ -2712,6 +2719,7 @@
       if (audioTracks.some((track) => track === null)) return null;
       metadata.audio_tracks = audioTracks;
     }
+    if (hasSelectedAudioTrack) metadata.selected_audio_track = value.selected_audio_track;
     return metadata;
   }
 
@@ -2784,6 +2792,19 @@
     return clampInteger(value, fallback, 1, 240);
   }
 
+  const EDITOR_ACCENT_COLOR_VALUES = Object.freeze(['blue', 'red', 'orange', 'custom']);
+  const DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR = '#6ca5e8';
+
+  function normalizeEditorAccentColor(value) {
+    return EDITOR_ACCENT_COLOR_VALUES.includes(value) ? value : 'blue';
+  }
+
+  function normalizeEditorAccentCustomColor(value) {
+    const color = String(value ?? '').trim();
+    return /^#[0-9a-f]{6}$/i.test(color)
+      ? color.toLowerCase() : DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR;
+  }
+
   const DEFAULT_EDITOR_SETTINGS = Object.freeze({
     splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true,
     mainSplitModeOverride: null,
@@ -2797,8 +2818,9 @@
     mergeJoinTextContinuous: '', mergeJoinTextWord: ' ',
     autoMergeGapMs: 200, autoMergeSnapDirection: 'backward', autoMergeShortCount: 3,
     autoMergeAbsorbShort: true, autoMergeAbsorbDirection: 'previous', exportColorUnified: true,
-    exportSpeakerLabels: false,
-    autoSaveProject: true, autoSaveIntervalSeconds: 30, stickerOverlayEnabled: false,
+    exportSpeakerLabels: false, exportSpeakerNamesAsSuffix: false,
+    autoSaveProject: true, autoSaveIntervalSeconds: 30, projectBackupEnabled: true,
+    stickerOverlayEnabled: false,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
@@ -2808,6 +2830,7 @@
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
+    accentColor: 'blue', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
     waveShapeSource: 'reapeaks',
   });
 
@@ -2867,8 +2890,12 @@
       autoMergeAbsorbDirection: savedSettings.autoMergeAbsorbDirection === 'next' ? 'next' : 'previous',
       exportColorUnified: savedSettings.exportColorUnified !== false,
       exportSpeakerLabels: savedSettings.exportSpeakerLabels === true,
+      exportSpeakerNamesAsSuffix: savedSettings.exportSpeakerNamesAsSuffix === true,
       autoSaveProject: savedSettings.autoSaveProject !== false,
       autoSaveIntervalSeconds: clampInteger(savedSettings.autoSaveIntervalSeconds, 30, 5, 3600),
+      projectBackupEnabled: savedSettings.projectBackupEnabled !== false,
+      projectBackupMinutes: clampInteger(savedSettings.projectBackupMinutes, 5, 1, 1440),
+      projectBackupLimit: clampInteger(savedSettings.projectBackupLimit, 20, 1, 1000),
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
       stickerOtioExportMode: savedSettings.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
       // 时间线 OTIO 导出选项：默认同时导出 SRT、合并表情包轨、写入字幕标记。
@@ -2898,7 +2925,10 @@
       selectBoundSubtitlePair: savedSettings.selectBoundSubtitlePair !== false,
       multiSubtitleAutoSyncDuration: savedSettings.multiSubtitleAutoSyncDuration !== false,
       multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
-      theme: savedSettings.theme === 'light' ? 'light' : 'dark',
+      theme: ['light', 'dark', 'system'].includes(savedSettings.theme)
+        ? savedSettings.theme : 'dark',
+      accentColor: normalizeEditorAccentColor(savedSettings.accentColor),
+      accentColorCustom: normalizeEditorAccentCustomColor(savedSettings.accentColorCustom),
       waveShapeSource: savedSettings.waveShapeSource === 'self' ? 'self' : 'reapeaks',
     };
   }
@@ -5409,6 +5439,10 @@ export default MawDynamicCaptions;
     buildMultiDisplayRows,
     getSrtExportFirstIndex,
     getSrtExportOffset,
+    EDITOR_ACCENT_COLOR_VALUES,
+    DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    normalizeEditorAccentColor,
+    normalizeEditorAccentCustomColor,
     normalizeEditorSettings,
     TIMELINE_TIMEBASE_UNITS,
     DEFAULT_TIMELINE_FPS,

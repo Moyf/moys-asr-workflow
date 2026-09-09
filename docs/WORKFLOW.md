@@ -79,15 +79,15 @@ CLI 未指定 `--model` 时默认使用 `qwen-audio-3.0-asr-flash-filetrans`；�
 --gap-split 1000     相邻字间隔超过 N 毫秒时强制切句
 --keep-punct         保留每条字幕末尾的逗号和句号
 --no-html            只要 SRT 和工程文件，不生成便携 HTML
---with-waveform      把波形写进工程文件，免去编辑器首次打开的 sidecar 缓存文件
---with-spectral      在 ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）
+--with-waveform      在媒体旁生成 .quapeaks 波形缓存（不再写进工程文件）
+--with-spectral      在 peaks 容器中额外生成频谱数据（需要 --with-waveform）
 --debug              输出部分 API 原始结果，便于反馈问题
 --debug-raw          单独保存完整 ASR 原始 JSON；不写 -o 时存到媒体旁 _maw/
 ```
 
-CLI 默认不内嵌波形；需要把波形写进工程、交给编辑器直接打开时，加 `--with-waveform`。该选项会额外用 FFmpeg 完整扫一遍媒体，默认在媒体旁生成 `.ReaPeaks` 的 wave 层（跳过耗时较高的频谱计算；只有同时加 `--with-spectral` 才生成频谱层）。不加 `--with-waveform` 时，编辑器首次打开会按需在媒体旁的 `_maw` 目录生成 `视频.waveform.json` sidecar 缓存；旧版直接写在媒体旁的同名 sidecar 仍会被读取，不会被迁移。Launcher 中对应的“生成 ReaPeaks 频谱数据”默认不勾选。波形提取失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
+CLI 默认不生成波形缓存；需要交给编辑器直接打开时，加 `--with-waveform`。该选项会额外用 FFmpeg 完整扫一遍媒体，在媒体旁生成 `.quapeaks` 的 wave 层（跳过耗时较高的频谱计算；只有同时加 `--with-spectral` 才生成频谱层）。**波形数据不再写进工程文件**：工程只保存字幕与设置，体积不随素材时长暴涨。不加 `--with-waveform` 时，编辑器首次打开会按需建立缓存，读取顺序为工程内联（旧工程）→ `.quapeaks` 自研层 → `.mopeaks` → FFmpeg 重抽，重抽结果落为 `.mopeaks` sidecar；旧版直接写在媒体旁的 `视频.waveform.json` sidecar 已不再读取，也不会被迁移。`.mopeaks` 与 `.quapeaks` 的落点跟随「将所有输出放入子文件夹」设置：默认在媒体旁，勾选后进入对应 `_maw`，读取端各位置都会查找；REAPER 原生 `.ReaPeaks` 始终在媒体旁。只有同时加 `--with-spectral` 才生成频谱层。Launcher 中对应的“生成 reapeaks 频谱数据”默认不勾选。波形提取失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
 
-在 Launcher 放入包含两条或更多音轨的视频时，媒体路径下方会显示「声音轨道」。它优先选中 FFprobe 标记为默认的轨道（没有默认标记时选第一条）；转写、内嵌波形、频谱和 .ReaPeaks 都使用同一选择。单音轨视频和纯音频不会显示该控件；FFprobe 无法读取时保持与旧版本相同的第一条轨道行为。
+在 Launcher 放入包含两条或更多音轨的视频时，媒体路径下方会显示「声音轨道」。它优先选中 FFprobe 标记为默认的轨道（没有默认标记时选第一条）；转写、波形缓存、频谱和 `.ReaPeaks` 都使用同一选择，工程也会保存该选择供编辑器重新打开时恢复。默认轨使用无后缀缓存，其他轨使用 `.track-N`；所选轨的精确缓存缺失时会先尝试重建，只有重建失败才临时显示默认轨缓存。单音轨视频和纯音频不会显示该控件；FFprobe 无法读取时保持与旧版本相同的第一条轨道行为。批量转写会为每个媒体独立探测默认轨，不复用主界面当前文件的选择。
 
 ## 用 Qwen-Audio 3.0 ASR 转写（热词与上下文）
 
@@ -182,6 +182,27 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" -ll 2m --j
 
 输出文件与 Qwen 流程相同（SRT / `.mosp` / edit.html），文件命名标签为 `.soniox.`。注意：Soniox 单文件最长 5 小时；token 粒度是 word/sub-word，中文不保证逐字；转写完成后脚本会自动删除云端文件与转写记录。
 
+## 用豆包语音识别转写（火山引擎，可选，支持说话人与热词）
+
+在[火山引擎语音控制台](https://console.volcengine.com/speech/new/experience/asr)开通「大模型录音文件识别」并获取单一 `VOLC_API_KEY`（新版控制台，无需 AppID）后：
+
+```powershell
+uv run python generate_subtitle_doubao_api.py "D:\Videos\example.mp4" -ll 2m --json
+```
+
+常用可选项：
+
+```text
+--speaker            开启说话人分离，speaker 标签写入工程文件（不改变字幕颜色）
+--speaker-colors     在 --speaker 基础上，把不同说话人一次性映射成 5 种字幕颜色
+--language en        显式语种提示（en/ja/ko/de/fr/es/pt/ar/id/ms/th/fil）；中文与粤语无需指定
+--hotword "词"       即时热词，可重复传入；直传豆包 corpus.context
+--model RESOURCE     覆盖资源 ID，默认 volc.seedasr.auc（2.0），可选 volc.bigasr.auc_idle 闲时版
+--with-waveform      在媒体旁生成 .quapeaks 波形缓存
+```
+
+豆包接口为异步 submit/query，`utterances[].words[]` 提供字/词级毫秒时间码，标点保留在句文本中。MAW 会先把媒体提取为 ogg + opus 24kbps 单声道音频再 base64 直传；官方限制单文件 ≤25MB 且 ≤120 分钟，超限任务请先用 `-ll` 截取或分割文件（Files API 大文件通道暂未接入）。费用按音频 token 计量（约 6.25 token/秒），以火山引擎控制台为准。
+
 ## 用腾讯云录音文件识别转写（可选，支持字词时间码与说话人）
 
 在 `.env` 中填写 `TENCENT_SECRET_ID` 和 `TENCENT_SECRET_KEY` 后，可以使用默认的 `16k_zh_en_2.0` 引擎：
@@ -207,7 +228,7 @@ uv run python generate_subtitle_tencent_api.py "D:\Videos\example.mp4" -ll 2m --
 
 ## 用 OpenAI 兼容 ASR 转写（可选）
 
-MAW 支持 OpenAI 官方转写服务，以及实现同一 multipart 接口的自建或中转服务。默认地址和模型分别为 `https://api.openai.com/v1` 与支持时间戳的 `whisper-1`。在 `.env` 中配置：
+MAW 支持 OpenAI 官方转写服务、OpenRouter，以及实现同一 multipart 接口的自建或中转服务。默认地址和模型分别为 `https://api.openai.com/v1` 与支持时间戳的 `whisper-1`。OpenAI API Key 可在 OpenAI 官方或 OpenRouter 获取。在 `.env` 中配置：
 
 ```ini
 MAW_OPENAI_ASR_API_KEY=你的 ASR 密钥
@@ -221,13 +242,13 @@ MAW_OPENAI_ASR_MODEL=whisper-1
 uv run python generate_subtitle_openai_api.py "D:\Videos\example.mp4" -ll 2m --json
 ```
 
-也可以从公开 CLI 调用，并用 `--base-url` 临时覆盖 `.env`：
+也可以从公开 CLI 调用，并用 `--base-url` 临时覆盖 `.env`。OpenRouter CLI 要填写完整的 `openai/whisper-1` 模型 ID：
 
 ```powershell
-MAW.exe --provider openai --base-url "https://api.openai.com/v1" -i "D:\Videos\example.mp4" -o "D:\Output\example.srt"
+MAW.exe --provider openai --base-url "https://openrouter.ai/api/v1" --model "openai/whisper-1" -i "D:\Videos\example.mp4" -o "D:\Output\example.srt"
 ```
 
-接口必须接受 `POST /audio/transcriptions`，并返回带 `start` / `end` 时间戳的 `segments` 或 `words`。只有文本没有时间戳的响应会被拒绝；说话人开关、Qwen 热词和 Soniox context 不会转发给该接口。
+Launcher 在 OpenRouter 下会为内置模型自动补上 `openai/`；其他中转站不会自动猜测模型名，请选择“自定义（Custom）”并填写服务商提供的完整模型名。接口必须接受 `POST /audio/transcriptions`，并返回带 `start` / `end` 时间戳的 `segments` 或 `words`。只有文本没有时间戳的响应会被拒绝。支持能力按模型显示：`Prompt` 会发送为 `prompt`，`gpt-transcribe` 的关键词会逐行发送为 `keywords[]`；选择 `gpt-4o-transcribe-diarize` 会自动请求 `diarized_json`，但 OpenRouter 不支持 diarize，其他中转站也可能不支持这些参数。遇到兼容性 400 时，请检查模型名称，并在未专门适配的中转站使用“自定义（Custom）”填写完整模型名。
 
 ## 用必剪转写（实验性，免 Key，仅中文）
 
@@ -279,11 +300,11 @@ Launcher 的「批量」模式用于把多个本地媒体按顺序转写。切�
 ├── 视频.srt / .mosp        （最终产物，默认在外层）
 └── _maw/
     ├── 后处理/              （自动后处理中间产物，英文界面为 postprocess/）
-    ├── 视频.waveform.json   （波形 sidecar 缓存）
+    ├── （波形缓存不在这里：见下方说明）
     └── （转换缓存、asr-response、edit.html、批量清单等辅助文件）
 ```
 
-进入 `_maw` 的辅助文件包括：编辑器首次打开时按需生成的波形 sidecar（`视频.waveform.json`）、FLV 等媒体为浏览器播放生成的转换缓存（如 `clip.mp4`）、`--debug-raw` 未指定 `-o` 时保存的 `asr-response.json`、Launcher 生成的便携 `.edit.html`，以及批量转写的 `maw-batch-manifest.json`。`.ReaPeaks` 波形缓存仍按 REAPER 惯例写在媒体旁。旧版直接写在媒体旁的波形 sidecar 与转换缓存仍会被识别读取，不会被迁移或破坏。
+波形缓存的落点跟随「将所有输出放入子文件夹」设置：默认写在媒体旁（`ICE.mkv.mopeaks` / `ICE.mkv.quapeaks`），勾选后进入对应的 `_maw` 目录。读取端两种位置都会找（写入点 → 媒体旁 → 共享 `_maw` → 每视频 `_maw`），所以改一次设置不会把已有缓存全部判过期。**唯一例外是 `.ReaPeaks`** —— 那是 REAPER 写死的位置，永远只在媒体旁，否则读不到真机产物。 进入 `_maw` 的其余辅助文件包括：FLV 等媒体为浏览器播放生成的转换缓存（如 `clip.mp4`）、`--debug-raw` 未指定 `-o` 时保存的 `asr-response.json`、Launcher 生成的便携 `.edit.html`，以及批量转写的 `maw-batch-manifest.json`。`.ReaPeaks` 波形缓存仍按 REAPER 惯例写在媒体旁。旧版直接写在媒体旁的波形 sidecar 与转换缓存仍会被识别读取，不会被迁移或破坏。
 
 Launcher「配置 → 通用 → 文件输出」可以调整最终产物的位置和命名：
 
@@ -346,7 +367,7 @@ Launcher 右下角的圆形按钮会打开工具箱。工具箱的标题、一�
 
 工具箱的一级标签页默认选中「后处理」。「后处理」包含文稿匹配、OCR 字幕去重、LLM 处理和固定替换，面向现有字幕工程或 SRT；它的「处理文件」默认跟随 Launcher 当前填写的工程（或 SRT）路径，也可以手动选择或拖入其他 `.mosp` / `.json` / `.srt` 文件作为处理对象。字幕工具可以在「工程 + SRT」「仅工程」「仅 SRT」之间选择输出。每次成功处理都会生成带操作后缀的新文件，并把新路径自动填回 Launcher 和「处理文件」，供下一步继续处理；工具箱中的处理产物列表也可以点击切换输入。源文件不会被覆盖。
 
-切换到「实用工具」后，页面只显示媒体操作：生成波形、媒体重组、压制字幕和提取音频。它自己的「媒体文件」默认跟随 Launcher 当前媒体，但允许选择、拖入或直接输入独立覆盖值；清空该输入即可恢复跟随 Launcher。生成波形提供「生成波形文件」和「生成波形并打开编辑器」两个按钮，并可单独选择是否写入 ReaPeaks 频谱数据：前者只写出媒体专用 `.mosp`，后者还会把该工程切换为 Launcher 当前工程并打开编辑器。媒体重组同样只使用此页面的媒体文件，不会改写字幕时间轴或后处理的输入链；先在编辑器中执行「移除静音空隙」，导出 FFconcat 文件后可选择或拖入该文件重组媒体。
+切换到「实用工具」后，页面只显示媒体操作：生成波形、媒体重组、压制字幕和提取音频。它自己的「媒体文件」默认跟随 Launcher 当前媒体，但允许选择、拖入或直接输入独立覆盖值；清空该输入即可恢复跟随 Launcher。生成波形提供「生成波形文件」和「生成波形并打开编辑器」两个按钮，并可单独选择是否写入 reapeaks 频谱数据：前者只写出媒体专用 `.mosp`，后者还会把该工程切换为 Launcher 当前工程并打开编辑器。媒体重组同样只使用此页面的媒体文件，不会改写字幕时间轴或后处理的输入链；先在编辑器中执行「移除静音空隙」，导出 FFconcat 文件后可选择或拖入该文件重组媒体。
 
 ### 压制字幕
 

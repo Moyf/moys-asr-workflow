@@ -20,7 +20,6 @@ sys.path.insert(0, str(ROOT))
 from maw.gui_workflow import (  # noqa: E402
     TranscriptionProcessError,
     TranscriptionRequest,
-    TranscriptionResult,
     build_alignment_serve_command,
     build_serve_command,
     build_output_paths,
@@ -151,11 +150,13 @@ class GuiWorkflowTests(unittest.TestCase):
             media_path=self.media_path,
             srt_path=self.srt_path,
             audio_track=2,
+            default_audio_track=1,
         )
 
         command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
 
         self.assertEqual(command[command.index("--audio-track") + 1], "2")
+        self.assertEqual(command[command.index("--default-audio-track") + 1], "1")
 
     def test_build_transcribe_command_enables_spectral_generation_when_requested(self) -> None:
         request = TranscriptionRequest(
@@ -209,6 +210,28 @@ class GuiWorkflowTests(unittest.TestCase):
         empty_command = build_transcribe_command(empty, executable=Path("python.exe"), frozen=False)
 
         self.assertEqual(empty_command[empty_command.index("--strip-tail-punct") + 1], "")
+
+    def test_build_transcribe_command_sends_extra_strong_punct_when_configured(self) -> None:
+        # 仅在配置了额外断句符号时下发；空配置保持命令行与旧版一致。
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            extra_strong_punct="?!;",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--extra-strong-punct") + 1], "?!;")
+
+        empty = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            extra_strong_punct="",
+        )
+
+        empty_command = build_transcribe_command(empty, executable=Path("python.exe"), frozen=False)
+
+        self.assertNotIn("--extra-strong-punct", empty_command)
 
     def test_build_transcribe_command_debug_raw_saves_full_response(self) -> None:
         request = TranscriptionRequest(
@@ -304,6 +327,26 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--language") + 1], "zh")
         self.assertEqual(command[command.index("--strip-tail-punct") + 1], "")
         self.assertNotIn("secret-key", " ".join(command))
+
+    def test_build_transcribe_command_openai_passes_advanced_options(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="openai",
+            model="gpt-4o-transcribe-diarize",
+            language="en",
+            base_url="https://api.openai.com/v1",
+            openai_prompt="A product meeting.",
+            openai_keywords=("OpenAI", "MAW"),
+            openai_diarize=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--prompt") + 1], "A product meeting.")
+        keyword_positions = [index for index, value in enumerate(command) if value == "--keyword"]
+        self.assertEqual([command[index + 1] for index in keyword_positions], ["OpenAI", "MAW"])
+        self.assertIn("--diarize", command)
 
     def test_openai_gui_command_is_accepted_by_cli_parser(self) -> None:
         request = TranscriptionRequest(

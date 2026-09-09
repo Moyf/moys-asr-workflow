@@ -245,6 +245,29 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn("$.media_metadata.audio_tracks[0].channels", paths)
         self.assertIn("$.media_metadata.audio_tracks[0].default", paths)
 
+    def test_validate_project_accepts_persisted_selected_audio_track(self) -> None:
+        project = {
+            "media_metadata": {"selected_audio_track": 2},
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.project["media_metadata"]["selected_audio_track"], 2)
+
+    def test_validate_project_reports_invalid_selected_audio_track(self) -> None:
+        project = {
+            "media_metadata": {"selected_audio_track": -1},
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.media_metadata.selected_audio_track", paths)
+
     def test_validate_project_reports_invalid_source_video_fps_metadata(self) -> None:
         project = {
             "media_metadata": {
@@ -513,6 +536,7 @@ class ProjectContractTests(unittest.TestCase):
             "preview": {"subtitle": {
                 "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
                 "speaker_labels": {
+                    "mapping_enabled": True,
                     "enabled": True,
                     "separator": "：",
                     "names": {
@@ -536,6 +560,9 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(
             result.project["preview"]["subtitle"]["speaker_labels"]["separator"],
             "：",
+        )
+        self.assertTrue(
+            result.project["preview"]["subtitle"]["speaker_labels"]["mapping_enabled"],
         )
 
     def test_validate_project_accepts_extension_color_refs(self) -> None:
@@ -586,6 +613,7 @@ class ProjectContractTests(unittest.TestCase):
             "preview": {"subtitle": {
                 "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
                 "speaker_labels": {
+                    "mapping_enabled": "yes",
                     "enabled": "yes",
                     "separator": "s" * 17,
                     "names": {
@@ -601,6 +629,7 @@ class ProjectContractTests(unittest.TestCase):
         paths = {error.path for error in result.errors}
 
         self.assertFalse(result.ok)
+        self.assertIn("$.preview.subtitle.speaker_labels.mapping_enabled", paths)
         self.assertIn("$.preview.subtitle.speaker_labels.enabled", paths)
         self.assertIn("$.preview.subtitle.speaker_labels.separator", paths)
         self.assertIn("$.preview.subtitle.speaker_labels.names.yellow", paths)

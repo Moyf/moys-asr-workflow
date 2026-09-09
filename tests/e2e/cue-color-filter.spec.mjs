@@ -329,8 +329,12 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   const multiSelect = page.locator('#multi-subtitle-main-language-mode');
   const languageTypeGroup = page.locator('.split-language-type-group');
   const languageTypeHeading = page.locator('#split-language-type-title');
+  const multiSubtitleSettingsLink = page.locator('#split-multi-subtitle-settings-link');
+  const multiSubtitleSettingsDisabledHint = page.locator('#split-multi-subtitle-settings-disabled');
 
   await expect(languageTypeHeading).toHaveText('字幕语言类型');
+  await expect(multiSubtitleSettingsLink).toBeHidden();
+  await expect(multiSubtitleSettingsDisabledHint).toHaveText('对于双语字幕，可以在多重字幕的设置（需要先启用多重字幕）中单独配置两种字幕的语言类型。');
   expect(await hintText.evaluate((element) => Boolean(element.closest('.split-language-type-group')))).toBe(true);
   expect(await hintText.evaluate((element) => Boolean(element.closest('.merge-join-settings-field')))).toBe(false);
   expect(await page.evaluate(() => {

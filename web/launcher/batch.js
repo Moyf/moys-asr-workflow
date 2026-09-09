@@ -243,7 +243,7 @@
     lockControls(true);
     $("status").textContent = t("batch_starting");
     // 单文件的媒体/输出路径不进批量载荷：每个条目的输出由后端按媒体权威分配。
-    const { mediaPath: _singleMediaPath, srtPath: _singleSrtPath, ...settings } = window.MAWLauncher.getTranscriptionPayload();
+    const { mediaPath: _singleMediaPath, srtPath: _singleSrtPath, audioTrack: _singleAudioTrack, defaultAudioTrack: _singleDefaultAudioTrack, ...settings } = window.MAWLauncher.getTranscriptionPayload();
     settings.generateHtml = false;
     settings.batchSrtOnly = Boolean($("batchSrtOnly")?.checked);
     const items = itemsToRun.map((item) => ({ id: item.id, mediaPath: item.mediaPath }));

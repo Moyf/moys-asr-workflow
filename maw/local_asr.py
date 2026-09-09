@@ -1906,6 +1906,7 @@ def write_local_outputs(
     ffmpeg_path: str | Path | None = None,
     ffprobe_path: str | Path | None = None,
     audio_track: int = 0,
+    default_audio_track: int = 0,
 ) -> LocalOutputPaths:
     """Write SRT and optional MAW project/portable editor outputs."""
     output_srt.parent.mkdir(parents=True, exist_ok=True)
@@ -1942,6 +1943,7 @@ def write_local_outputs(
             "source_media_path": input_path,
             "generate_spectral": generate_spectral,
             "audio_track": audio_track,
+            "default_audio_track": default_audio_track,
         }
         if ffmpeg_path is not None:
             cache_kwargs["ffmpeg_bin"] = str(ffmpeg_path)
@@ -1955,6 +1957,7 @@ def write_local_outputs(
         project,
         media_path=input_path,
         ffprobe_path=ffprobe_path,
+        selected_audio_track=audio_track,
     )
 
     html_path: Path | None = None

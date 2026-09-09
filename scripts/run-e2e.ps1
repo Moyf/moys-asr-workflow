@@ -39,7 +39,7 @@ function Test-MawE2ePython {
     }
 
     try {
-        & $Python -c "import importlib.metadata as metadata; import reapeaks; print(metadata.version('reapeaks'))" *> $null
+        & $Python -c "import importlib.metadata as metadata; import quapeaks; print(metadata.version('quapeaks'))" *> $null
         return $LASTEXITCODE -eq 0
     } catch {
         return $false
@@ -72,7 +72,7 @@ $pythonPath = $null
 if (-not [string]::IsNullOrWhiteSpace($configuredPython)) {
     $pythonPath = Resolve-ExecutablePath $configuredPython.Trim()
     if ($null -eq $pythonPath -or -not (Test-MawE2ePython $pythonPath)) {
-        throw "MAW_E2E_PYTHON is missing or cannot import reapeaks: $configuredPython"
+        throw "MAW_E2E_PYTHON is missing or cannot import quapeaks: $configuredPython"
     }
 } else {
     $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
@@ -114,7 +114,7 @@ if (-not [string]::IsNullOrWhiteSpace($configuredPython)) {
 
         $pythonPath = Join-Path $environmentPath "Scripts\python.exe"
         if (-not (Test-MawE2ePython $pythonPath)) {
-            throw "The isolated E2E environment was created, but it cannot import reapeaks: $pythonPath"
+            throw "The isolated E2E environment was created, but it cannot import quapeaks: $pythonPath"
         }
     }
 }

@@ -126,6 +126,13 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn(".server-connection-banner", styles)
         self.assertIn(".server-connection-banner[hidden]", styles)
 
+    def test_server_onboarding_uses_user_settings_across_random_ports(self) -> None:
+        script = edit.read_web_asset("editor-onboarding.js")
+        self.assertIn("serverOnboardingPersistenceEnabled", script)
+        self.assertIn("SERVER_CONFIG.onboardingStatus", script)
+        self.assertIn("body: JSON.stringify({ onboardingStatus: status })", script)
+        self.assertIn("keepalive: true", script)
+
     def test_new_project_action_precedes_open_project(self) -> None:
         template = edit.read_web_asset("editor-template.html")
         self.assertIn('id="new-project"', template)
@@ -162,7 +169,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("function setStickerRootModalOpen(open)", script)
         self.assertIn("event.key === 'Escape'", script)
         self.assertIn("event.key !== 'Tab'", script)
-        self.assertIn("#sticker-root-modal { z-index: 280; }", styles)
+        self.assertIn("#sticker-root-modal { z-index: 335; }", styles)
         self.assertIn("width: min(540px, calc(100vw - 32px))", styles)
         for removed in (
             "showDirectoryPicker",

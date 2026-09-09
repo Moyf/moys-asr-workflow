@@ -49,6 +49,7 @@ from maw.language import (
 from maw.project_io import write_mosp
 
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.media import resolve_default_audio_track
 from maw.output_naming import (
     DASHSCOPE_PRICE_PER_SECOND,
     estimate_dashscope_cost,
@@ -405,6 +406,22 @@ def generate_srt(segments: list[dict]) -> str:
 
 # ===== 切句逻辑（与本地版 _split_words_to_segments 一致，纯 Python 复制） =====
 
+# 共享断句配置里的「额外断句符号」，并入转写侧强断句符号。
+# CLI 进程内只需配置一次（见 configure_extra_strong_punct），因此使用模块级集合。
+_EXTRA_STRONG_PUNCT: set[str] = set()
+
+
+def configure_extra_strong_punct(chars: object) -> None:
+    """注册额外断句符号（来自 Launcher 共享断句配置），并入转写强断句符号。"""
+    global _EXTRA_STRONG_PUNCT
+    _EXTRA_STRONG_PUNCT = {ch for ch in str(chars or "") if not ch.isspace()}
+
+
+def _strong_punct_set(defaults: str) -> set[str]:
+    """默认强断句符号并上额外断句符号后的有效集合。"""
+    return set(defaults) | _EXTRA_STRONG_PUNCT
+
+
 def split_by_silence(items: list[dict], min_gap_ms: int) -> list[list[dict]]:
     """按相邻 item 之间的静音间隔切分。"""
     if not items or min_gap_ms <= 0:
@@ -666,7 +683,7 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
     3. 对超长片段，按弱标点（，、：,;）拆分
     4. 没有弱标点时，用 jieba 分词找最佳断点
     """
-    STRONG_PUNCT = set("。！？；\n")
+    STRONG_PUNCT = _strong_punct_set("。！？；\n")
     WEAK_PUNCT = set("，、：,;")
 
     def to_seg(group):
@@ -731,6 +748,11 @@ WESTERN_STRONG_END = ".!?。！？；"
 WESTERN_WEAK_END = ",;:，、：,;—–"
 # 判定时剥掉的尾部引号/括号（如 word." 仍视为句号结尾）
 _TRAILING_QUOTES = "\"'”’)]}』」"
+
+
+def _western_strong_end() -> str:
+    """西文句末强标点（含额外断句符号）。"""
+    return WESTERN_STRONG_END + "".join(_EXTRA_STRONG_PUNCT)
 
 
 def is_cjk_char(char: str) -> bool:
@@ -799,7 +821,7 @@ def split_words_to_segments_western(items: list[dict], max_words: int = WESTERN_
         buf: list[dict] = []
         for it in sg:
             buf.append(it)
-            if _ends_with_punct(it["text"], WESTERN_STRONG_END):
+            if _ends_with_punct(it["text"], _western_strong_end()):
                 raw_groups.append(buf)
                 buf = []
         if buf:
@@ -977,6 +999,165 @@ def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
         else:
             repaired.append(merge(pending))
     return repaired
+
+
+# 无词级时间码时的文本切块断点：强/弱标点与西文常用标点，并上额外断句符号。
+_COARSE_PIECE_BREAK_PUNCT = "。！？；，、：,.!?;:"
+
+
+def build_interpolated_items(
+    text: str,
+    start_ms: int,
+    end_ms: int,
+    *,
+    max_piece_len: int,
+) -> list[dict]:
+    """把无词级时间码的文本按标点切块，并在句段范围内按字数占比插值时间。
+
+    用于句子级兜底段：服务端只给了整句时间范围时，按标点把文本切成
+    小块，下游即可继续用标点/最大字数逻辑拆分；时间点是线性插值的
+    近似值，因此结果不得再携带 ``items`` 冒充词级精度。
+    """
+    clean = str(text or "").strip()
+    if not clean:
+        return []
+    if end_ms <= start_ms:
+        return [{"text": clean, "start": start_ms, "end": max(end_ms, start_ms + 1)}]
+
+    breaks = set(_COARSE_PIECE_BREAK_PUNCT) | _EXTRA_STRONG_PUNCT
+    pieces: list[str] = []
+    buf = ""
+    for ch in clean:
+        buf += ch
+        if ch in breaks:
+            pieces.append(buf)
+            buf = ""
+    if buf:
+        if buf.strip() or not pieces:
+            pieces.append(buf)
+        else:
+            # 尾部纯空白并回上一块，避免丢字符。
+            pieces[-1] += buf
+
+    step = max(1, int(max_piece_len))
+    bounded: list[str] = []
+    for piece in pieces:
+        while len(piece) > step:
+            bounded.append(piece[:step])
+            piece = piece[step:]
+        if piece:
+            bounded.append(piece)
+
+    total = sum(len(piece) for piece in bounded)
+    span = end_ms - start_ms
+    items: list[dict] = []
+    cursor = start_ms
+    cum = 0
+    for index, piece in enumerate(bounded):
+        cum += len(piece)
+        if index == len(bounded) - 1:
+            boundary = end_ms
+        else:
+            boundary = start_ms + int(round(span * cum / total))
+            boundary = max(boundary, cursor + 1)
+        items.append({"text": piece, "start": cursor, "end": boundary})
+        cursor = boundary
+    return items
+
+
+def split_coarse_segment(
+    segment: dict,
+    *,
+    max_len: int,
+    min_len: int,
+    gap_split_ms: int,
+    max_words: int = WESTERN_MAX_WORDS,
+    min_words: int = WESTERN_MIN_WORDS,
+    split_mode: str | None = None,
+) -> list[dict]:
+    """对句级兜底段做超长二次拆分，保留原句边界。
+
+    - 不超长的段原样返回（包括其 items）。
+    - 超长且带有效 items 的段用词级时间精确拆分。
+    - 超长且无 items 的段按标点切块并插值时间拆分，结果不携带 items。
+    """
+    text = str(segment.get("text") or "")
+    if split_mode == "word":
+        overlong = len(text.split()) > max_words
+    else:
+        overlong = len(text) > max_len
+    if not overlong:
+        return [segment]
+
+    raw_items = segment.get("items")
+    raw_items = raw_items if isinstance(raw_items, list) and raw_items else []
+    if raw_items:
+        pieces = split_segments_auto(
+            [dict(item) for item in raw_items],
+            max_len=max_len,
+            min_len=min_len,
+            gap_split_ms=gap_split_ms,
+            max_words=max_words,
+            min_words=min_words,
+            split_mode=split_mode,
+        )
+    else:
+        pseudo_items = build_interpolated_items(
+            text, segment["start"], segment["end"], max_piece_len=max_len
+        )
+        if not pseudo_items:
+            return [segment]
+        pieces = split_segments_auto(
+            pseudo_items,
+            max_len=max_len,
+            min_len=min_len,
+            gap_split_ms=0,
+            max_words=max_words,
+            min_words=min_words,
+            split_mode=split_mode,
+        )
+        # 插值时间是近似值，不得伪装成词级精度写进工程。
+        pieces = [
+            {key: value for key, value in piece.items() if key != "items"}
+            for piece in pieces
+        ]
+    if not pieces:
+        return [segment]
+
+    # 外缘对齐原段范围（与 build_segments_from_api_sentences 的包络做法一致），
+    # 防止服务端句级范围与词级范围的圆整差异造成越界。
+    pieces[0]["start"] = min(pieces[0]["start"], segment["start"])
+    pieces[-1]["end"] = max(pieces[-1]["end"], segment["end"])
+    speaker = segment.get("speaker")
+    if speaker is not None:
+        for piece in pieces:
+            piece["speaker"] = speaker
+    return pieces
+
+
+def split_coarse_segments(
+    segments: list[dict],
+    *,
+    max_len: int,
+    min_len: int,
+    gap_split_ms: int,
+    max_words: int = WESTERN_MAX_WORDS,
+    min_words: int = WESTERN_MIN_WORDS,
+    split_mode: str | None = None,
+) -> list[dict]:
+    """逐段调用 split_coarse_segment（见其 docstring）。"""
+    result: list[dict] = []
+    for segment in segments:
+        result.extend(split_coarse_segment(
+            segment,
+            max_len=max_len,
+            min_len=min_len,
+            gap_split_ms=gap_split_ms,
+            max_words=max_words,
+            min_words=min_words,
+            split_mode=split_mode,
+        ))
+    return result
 
 
 # ===== DashScope filetrans API 调用 =====
@@ -1653,14 +1834,24 @@ def build_segments_from_api_sentences(
             }
             if sentence_speaker is not None:
                 segment["speaker"] = str(sentence_speaker)
-            segments.append(segment)
+            # 无词级时间码的句子不再整句落盘：保留句边界，
+            # 超长时按标点/最大字数做兜底二次拆分。
+            segments.extend(split_coarse_segment(
+                segment,
+                max_len=max_len,
+                min_len=min_len,
+                gap_split_ms=gap_split_ms,
+                max_words=max_words,
+                min_words=min_words,
+                split_mode=split_mode,
+            ))
             continue
 
         sentence_segments: list[dict] = []
         for run in split_items_by_speaker(items):
             run_text = "".join(item.get("text", "") for item in run)
             has_internal_punctuation = any(
-                any(char in "。！？；，、：,.!?;:" for char in item.get("text", ""))
+                any(char in (set(_COARSE_PIECE_BREAK_PUNCT) | _EXTRA_STRONG_PUNCT) for char in item.get("text", ""))
                 for item in run[:-1]
             )
             run_segments = split_segments_auto(
@@ -1910,6 +2101,10 @@ def main():
         help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
     )
     parser.add_argument(
+        "--extra-strong-punct", default="",
+        help="额外强断句符号集合（来自共享断句配置；每个字符并入强断句符号，默认空）",
+    )
+    parser.add_argument(
         "--gap-split", type=int, default=800,
         help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 800）",
     )
@@ -1927,12 +2122,13 @@ def main():
     )
     parser.add_argument(
         "--with-waveform", action="store_true",
-        help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
+        help="在媒体旁生成 .quapeaks 波形缓存（不再写进工程文件；GUI 转写默认开启）",
     )
     parser.add_argument(
         "--audio-track", type=int, default=0,
         help="使用第几个音频轨道（从 0 开始，默认 0）",
     )
+    parser.add_argument("--default-audio-track", type=int, help=argparse.SUPPRESS)
     parser.add_argument(
         "--with-spectral", action="store_true",
         help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
@@ -2000,6 +2196,8 @@ def main():
     args = parser.parse_args()
     if args.audio_track < 0:
         parser.error("--audio-track 必须是非负整数")
+    if args.default_audio_track is not None and args.default_audio_track < 0:
+        parser.error("--default-audio-track 必须是非负整数")
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
     if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
@@ -2011,6 +2209,7 @@ def main():
         parser.error("--speaker / --speaker-colors 仅适用于 Qwen-Audio 或 Fun-ASR 模型")
     if args.context is not None and args.context_file:
         parser.error("--context 与 --context-file 只能二选一")
+    configure_extra_strong_punct(args.extra_strong_punct)
 
     input_path = Path(args.input)
     if not input_path.exists() and not args.file_url:
@@ -2027,6 +2226,11 @@ def main():
     ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config.get("ffmpeg_path"))
     ffmpeg_path = ffmpeg_tools.ffmpeg
     ffprobe_path = ffmpeg_tools.ffprobe
+    default_audio_track = resolve_default_audio_track(
+        input_path,
+        args.default_audio_track,
+        ffprobe_path=ffprobe_path,
+    )
     print(f"[准备] 已载入转写配置（模型: {args.model}）")
     if args.region:
         config["region"] = args.region.lower()
@@ -2158,10 +2362,20 @@ def main():
             )
             print(f"[解析] 字幕整理完成：{len(segments)} 条（保留云端句子边界）。")
         elif result.get("timestamp_granularity") == "segment" and result.get("segments"):
-            print("[解析] 云端仅返回句级时间码，保留服务端字幕段边界...")
-            segments = repair_nonpositive_duration_segments([
+            print("[解析] 云端未返回完整词级时间码，保留服务端段边界并对超长段二次拆分...")
+            split_mode = split_mode_for_text(result.get("text", ""), result.get("language"))
+            coarse_segments = repair_nonpositive_duration_segments([
                 dict(segment) for segment in result["segments"]
             ])
+            segments = split_coarse_segments(
+                coarse_segments,
+                max_len=args.max_len,
+                min_len=args.min_len,
+                gap_split_ms=args.gap_split,
+                max_words=args.max_words,
+                min_words=args.min_words,
+                split_mode=split_mode,
+            )
             print(f"[解析] 字幕整理完成：{len(segments)} 条（保留云端句子边界）。")
         elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")
@@ -2204,7 +2418,8 @@ def main():
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
-                audio_track=args.audio_track,
+                audio_track=args.audio_track if is_video else 0,
+                default_audio_track=default_audio_track,
             )
 
     if enable_speaker:
@@ -2325,6 +2540,7 @@ def main():
             json_data,
             media_path=input_path,
             ffprobe_path=ffprobe_path,
+            selected_audio_track=args.audio_track if is_video else 0,
         )
         print(f"工程文件已保存到: {json_path}")
 

@@ -151,7 +151,7 @@
           <button id="saveSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
         </div>
         <p id="keyStatus" class="hint">未配置密钥</p>
-        <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">阿里云百炼</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取 API Key ↗</span></p>
+        <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">阿里云百炼</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取 API Key ↗</span></p>
         <p id="apiKeyError" class="field-error"></p>
       </div>
       <div id="localRuntimeCheckField" class="field hidden"><div class="local-status-row"><p id="localRuntimeCheckStatus" class="local-status" aria-live="polite"></p><button id="openLocalRuntimeSettings" class="inline-link" type="button" data-i18n="local_runtime_view_settings">在 ⚙️ 设置中查看</button></div></div>
@@ -301,6 +301,25 @@
               </div>
               <p id="sonioxContextCount" class="character-count soniox-context-count" aria-live="polite">当前字符数：0/10000</p>
             </div>
+            <div id="openaiAdvancedOptions" class="adv-group openai-advanced-options hidden">
+              <h3 data-i18n="openai_advanced_title">OpenAI 转写高级设置</h3>
+              <div id="openaiPromptField" class="field hidden">
+                <label for="openaiPrompt" data-i18n="openai_prompt">Prompt（提示词）</label>
+                <textarea id="openaiPrompt" rows="3" autocomplete="off" data-i18n-placeholder="openai_prompt_placeholder"></textarea>
+                <p class="hint" data-i18n="openai_prompt_hint">补充领域背景、专有名词或前文；Whisper 最多支持 224 tokens。</p>
+                <p id="openaiPromptError" class="field-error"></p>
+              </div>
+              <div id="openaiKeywordsField" class="field hidden">
+                <label for="openaiKeywords" data-i18n="openai_keywords">Keywords（关键词）</label>
+                <textarea id="openaiKeywords" rows="3" autocomplete="off" data-i18n-placeholder="openai_keywords_placeholder"></textarea>
+                <p class="hint" data-i18n="openai_keywords_hint">每行一个词或短语；当前仅对 gpt-transcribe 发送。</p>
+                <p id="openaiKeywordsError" class="field-error"></p>
+              </div>
+              <div id="openaiDiarizationField" class="field hidden">
+                <p class="hint" data-i18n="openai_diarization_hint">当前模型会使用 diarized_json 返回带说话人标注的段落；无需额外勾选。</p>
+                <p id="openaiDiarizationUnsupported" class="field-warning" data-i18n="openai_diarization_openrouter_hint">OpenRouter 不支持 diarize，请改用 OpenAI 官方 Base URL。</p>
+              </div>
+            </div>
             <div class="adv-group">
               <h3 data-i18n="advanced_misc">其他</h3>
               <div id="speakerColorsField" class="field hidden">
@@ -313,9 +332,9 @@
               <div id="generateSpectralField" class="field">
                 <label class="check-field" for="generateSpectral" data-i18n-title="generate_spectral_title">
                   <input id="generateSpectral" type="checkbox">
-                  <span data-i18n="generate_spectral">生成 ReaPeaks 频谱数据</span>
+                  <span data-i18n="generate_spectral">生成 reapeaks 频谱数据</span>
                 </label>
-                <p class="hint" data-i18n="generate_spectral_hint">默认只生成 ReaPeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
+                <p class="hint" data-i18n="generate_spectral_hint">默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
               </div>
               <div id="debugRawField" class="field">
                 <label class="check-field" for="debugRaw" data-i18n-title="debug_raw_title">
@@ -529,6 +548,12 @@
           <p class="hint" data-i18n="toolbox_utility_media_hint">默认跟随 Launcher 媒体；选择或拖入媒体后，以这里为准。清空可恢复跟随。</p>
           <p id="toolboxUtilityMediaPathError" class="field-error"></p>
         </div>
+        <div id="toolboxAudioTrackField" class="field hidden">
+          <label for="toolboxAudioTrack" data-i18n="toolbox_audio_track">音轨</label>
+          <select id="toolboxAudioTrack"></select>
+          <p id="toolboxAudioTrackStatus" class="hint" aria-live="polite" data-i18n="toolbox_audio_track_choose">先选择媒体，MAW 会读取可用音轨。</p>
+          <p id="toolboxAudioTrackError" class="field-error"></p>
+        </div>
       </section>
     </div>
     <div class="toolbox-content">
@@ -564,9 +589,9 @@
         <div class="field toolbox-waveform-spectral-field">
           <label class="check-field" for="toolboxGenerateSpectral" data-i18n-title="generate_spectral_title">
             <input id="toolboxGenerateSpectral" type="checkbox">
-            <span data-i18n="generate_spectral">生成 ReaPeaks 频谱数据</span>
+            <span data-i18n="generate_spectral">生成 reapeaks 频谱数据</span>
           </label>
-          <p class="hint" data-i18n="generate_spectral_hint">默认只生成 ReaPeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
+          <p class="hint" data-i18n="generate_spectral_hint">默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
         </div>
       </section>
 
@@ -658,12 +683,6 @@
 
       <section id="toolboxExtractAudioPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxExtractAudioTab">
         <p class="hint toolbox-panel-hint" data-i18n="toolbox_extract_audio_hint">从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。</p>
-        <div class="field">
-          <label for="toolboxAudioTrack" data-i18n="toolbox_audio_track">音轨</label>
-          <select id="toolboxAudioTrack"></select>
-          <p id="toolboxAudioTrackStatus" class="hint" aria-live="polite" data-i18n="toolbox_audio_track_choose">先选择媒体，MAW 会读取可用音轨。</p>
-          <p id="toolboxAudioTrackError" class="field-error"></p>
-        </div>
         <p class="toolbox-notice" data-i18n="toolbox_ready">选择工具后运行；始终生成新文件，不覆盖源文件。</p>
       </section>
 
@@ -1090,11 +1109,11 @@
       </div>
       <div class="settings-section" id="punctuationSettingsSection">
         <h3 data-i18n="settings_punctuation_title">断句与标点</h3>
-        <p class="hint" data-i18n="settings_punctuation_hint">文稿匹配与转写后处理共用这里的断句与保留符号。</p>
+        <p class="hint" data-i18n="settings_punctuation_hint">文稿匹配与转写共用这里的断句与保留符号；额外断句符号在云端转写切句时同样作为强断句符号生效。</p>
         <div class="field">
           <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">额外断句符号</label>
           <textarea id="postprocessExtraSplitPunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="？\n！\n——\n~"></textarea>
-          <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；逗号、句号、问号、感叹号和换行默认生效，同时对转写后处理的句尾剥除生效。</p>
+          <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。</p>
         </div>
         <div class="field">
           <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句后保留符号</label>

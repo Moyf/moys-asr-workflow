@@ -27,8 +27,11 @@
     --border:        #353a44;
     --border-strong: #3d4350;
 
-    /* 强调色 —— 蓝色为唯一主强调（活动/选中/聚焦） */
-    --accent:        #6ca5e8;
+    /* 强调色 —— 蓝色为默认主强调（活动/选中/聚焦）；界面设置可切换整套 accent 令牌。 */
+    --accent-blue:   #6ca5e8;
+    --accent-custom: var(--accent-blue);
+    --accent:        var(--accent-blue);
+    --accent-active-fg: var(--bg-base);
     --accent-hover:  #84b7f0;
     --accent-strong: #5a8fd6;
     --accent-tint:        rgba(108, 165, 232, 0.12);
@@ -256,7 +259,9 @@
     /* 强调色 —— 加深以在亮底保持对比。原 #3d7fcf 白底仅 4.1:1、#5091de 作为常驻文字色
        （active 时间码 / 波形时间徽章 / 引用链接）仅 2.9-3.3:1，未达自身「亮底 AA」的设计
        目标；再加深一档至 4.7+ / 5.9+，tint 同步换基色。 */
-    --accent:        #3874c9;
+    --accent-blue:   #3874c9;
+    --accent:        var(--accent-blue);
+    --accent-active-fg: var(--bg-base);
     --accent-hover:  #2a5a9e;
     --accent-strong: #2f6bb8;
     --accent-tint:        rgba(56, 116, 201, 0.12);
@@ -322,6 +327,9 @@
     --wave-peak:            #27875f;   /* 原 #2f9e6f 在浅行底上仅 2.6:1，波形峰值发虚，加深至 3.5:1 */
     --wave-peak-dim:        #7d8898;   /* 媒体不可用时的降态峰：与 peak 同明度、去饱和，原值过浅 */
     --wave-cue-mix:         rgba(255, 255, 255, 0.82);
+    /* 字幕块保留透明度，透出波形行背景；主字幕视觉上接近白色，副字幕略灰。 */
+    --wave-cue-main-bg:     rgba(255, 255, 255, 0.82);
+    --wave-cue-extension-bg: rgba(238, 240, 244, 0.68);
     --wave-cue-text:        #16202c;
     --wave-cue-active-mix:  #a9c8e8;
     --wave-cue-handle:      rgba(32, 52, 80, 0.14);
@@ -421,6 +429,63 @@
     --gap-scan-shadow:      rgba(176, 105, 45, 0.18);
   }
 
+  /* 可选界面强调色：预设同时覆盖所有由 accent 派生的令牌，保持 hover、聚焦、选中和提示的色相一致。 */
+  :root[data-accent="red"] {
+    --accent:        #c25656;
+    --accent-hover:  #d06a6a;
+    --accent-strong: #b34a4a;
+    --accent-tint:   rgba(194, 86, 86, 0.12);
+    --accent-tint-strong: rgba(194, 86, 86, 0.22);
+    --accent-soft:   rgba(194, 86, 86, 0.16);
+    --accent-line:   #c25656;
+    --cue-hover-bg:  rgba(194, 86, 86, 0.20);
+  }
+  :root[data-theme="light"][data-accent="red"] {
+    --accent:        #c84545;
+    --accent-hover:  #a93232;
+    --accent-strong: #b53e3e;
+    --accent-tint:   rgba(200, 69, 69, 0.12);
+    --accent-tint-strong: rgba(200, 69, 69, 0.20);
+    --accent-soft:   rgba(200, 69, 69, 0.16);
+    --accent-line:   #c84545;
+    --cue-hover-bg:  rgba(200, 69, 69, 0.18);
+  }
+  :root[data-accent="orange"] {
+    --accent:        #e0a05a;
+    --accent-hover:  #efb16b;
+    --accent-strong: #cc8b42;
+    --accent-tint:   rgba(224, 160, 90, 0.12);
+    --accent-tint-strong: rgba(224, 160, 90, 0.22);
+    --accent-soft:   rgba(224, 160, 90, 0.16);
+    --accent-line:   #e0a05a;
+    --cue-hover-bg:  rgba(224, 160, 90, 0.20);
+  }
+  :root[data-theme="light"][data-accent="orange"] {
+    --accent:        #d9834a;
+    --accent-hover:  #bb6737;
+    --accent-strong: #c87340;
+    --accent-tint:   rgba(217, 131, 74, 0.12);
+    --accent-tint-strong: rgba(217, 131, 74, 0.20);
+    --accent-soft:   rgba(217, 131, 74, 0.16);
+    --accent-line:   #d9834a;
+    --cue-hover-bg:  rgba(217, 131, 74, 0.18);
+    --accent-active-fg: #2d1c13;
+  }
+  :root[data-accent="custom"] {
+    --accent:        var(--accent-custom, var(--accent-blue));
+    --accent-hover:  color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 82%, white);
+    --accent-strong: color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 84%, black);
+    --accent-tint:   color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 12%, transparent);
+    --accent-tint-strong: color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 22%, transparent);
+    --accent-soft:   color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 16%, transparent);
+    --accent-line:   var(--accent-custom, var(--accent-blue));
+    --cue-hover-bg:  color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 20%, transparent);
+  }
+  :root[data-theme="light"][data-accent="custom"] {
+    --accent-hover:  color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 82%, black);
+    --accent-strong: color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 88%, black);
+  }
+
   * { box-sizing: border-box; }
 
   ::selection { background: var(--accent-soft); color: var(--text-primary); }
@@ -478,8 +543,8 @@
   .server-connection-banner-message { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 
   /* === 媒体区 === */
-  /* player-wrap 是媒体预览面板：顶部 .player-toolbar + 下方 .player-stage（视频与预览层）。
-     预览层（字幕/表情包）的几何以 stage 为定位与测量基准，工具栏不参与。 */
+  /* player-wrap 是媒体预览面板：.player-stage（视频与预览层）+ 下方 .media-controls。
+      预览层（字幕/表情包）的几何以 stage 为定位与测量基准。 */
   .player-wrap {
     flex: 0 0 auto; margin-bottom: 8px;
     position: relative; display: flex; flex-direction: column; width: 100%;
@@ -540,8 +605,10 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
   }
-  /* 布局编辑模式下让出顶部 dock-handle 的高度。 */
+  /* 布局编辑模式下让出顶部 dock-handle 的高度。
+     字幕编辑区工具栏带 -10px 顶边距，需在把手高度上再多让 10px。 */
   .editor-workspace.layout-editing .player-wrap { padding-top: var(--dock-handle-h); }
+  .editor-workspace.layout-editing .current-cue-panel { padding-top: calc(var(--dock-handle-h) + 10px); }
   .player-empty, .cues-empty {
     position: absolute; inset: 0; z-index: 20;
     display: flex; align-items: center; justify-content: center;
@@ -741,9 +808,8 @@
   .toolbar .right-group { margin-left: auto; display: flex; gap: 8px; align-items: center; }
   .toolbar-utility-group { display: inline-flex; align-items: center; gap: 4px; }
 
-  /* 面板内嵌工具栏（媒体预览 / 字幕列表 / 波形顶部）：复用 .toolbar 控件样式，
-     额外固定高度、单行不换行 + 横向滚动，避免与波形 scroll 的 padding 错位。 */
-  .toolbar.player-toolbar,
+  /* 面板内嵌工具栏（字幕列表 / 波形顶部 / 字幕编辑区）：复用 .toolbar 控件样式，
+      额外固定高度、单行不换行 + 横向滚动，避免与波形 scroll 的 padding 错位。 */
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .toolbar.cue-editor-toolbar {
@@ -759,7 +825,6 @@
     border-bottom: 1px solid var(--border-subtle);
     box-shadow: 0 1px 0 var(--panel-toolbar-shadow);
   }
-  .toolbar.player-toolbar > *,
   .toolbar.cue-list-toolbar > *,
   .toolbar.waveform-toolbar > *,
   .toolbar.cue-editor-toolbar > * {
@@ -767,7 +832,6 @@
     min-width: 0;
   }
   /* 齿轮固定在工具栏最右侧；左侧控件允许收缩，不能把齿轮推出可视区域。 */
-  .toolbar.player-toolbar > .settings-anchor,
   .toolbar.cue-list-toolbar > .settings-anchor,
   .toolbar.waveform-toolbar > .settings-anchor,
   .toolbar.cue-editor-toolbar > .settings-anchor {
@@ -775,7 +839,6 @@
     min-width: 30px;
   }
   /* 各工具栏都不依赖横向滚动才能看到所属设置；内容不足时由左侧项让位。 */
-  .toolbar.player-toolbar,
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .toolbar.cue-editor-toolbar { overflow-x: hidden; }
@@ -888,37 +951,24 @@
   .settings-panel-section .settings-panel-help-link:focus-visible {
     outline: 2px solid var(--accent-line); outline-offset: 1px;
   }
-  .subtitle-preview-settings-panel { width: min(400px, calc(100vw - 16px)); }
   .cue-list-settings-panel { width: min(340px, calc(100vw - 16px)); }
   .cue-editor-settings-panel { width: min(300px, calc(100vw - 16px)); }
   .subtitle-preview-settings-fields {
     display: grid; gap: 8px; width: 100%; min-width: 0;
-  }
-  .subtitle-preview-settings-section { display: grid; gap: 10px; }
-  .subtitle-preview-settings-section > .settings-panel-title {
-    display: block; width: 100%; text-align: center;
-  }
-  .subtitle-preview-track-settings {
-    display: grid; gap: 8px; width: 100%; min-width: 0; box-sizing: border-box;
-    padding: 8px 10px; background: var(--bg-panel); border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-  }
-  .subtitle-preview-track-settings[hidden] { display: none; }
-  .subtitle-preview-track-title {
-    margin: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600;
-    letter-spacing: .06em;
   }
   .subtitle-preview-setting-pair {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0;
   }
   .subtitle-preview-setting-cell {
     display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px;
-    min-width: 0; color: var(--text-secondary); font-size: 12px; white-space: nowrap;
+    min-width: 0; color: var(--text-secondary); font-size: 12px;
   }
-  .subtitle-preview-setting-cell > span { color: var(--text-muted); }
+  .subtitle-preview-setting-cell > span { color: var(--text-secondary); white-space: nowrap; }
   .subtitle-preview-setting-cell select { width: 100%; min-width: 0; }
-  .subtitle-preview-setting-cell input[type="color"] {
-    width: 100%; height: 24px; min-width: 0; padding: 2px;
+  .editor-settings-color-input,
+  .subtitle-preview-setting-cell input[type="color"],
+  .subtitle-preview-setting-row input[type="color"] {
+    width: 42px; height: 26px; min-width: 42px; padding: 2px;
     background: var(--bg-input); border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm); cursor: pointer;
   }
@@ -965,16 +1015,12 @@
   .waveform-settings-section button:disabled { opacity: .42; cursor: not-allowed; }
   .subtitle-preview-setting-row {
     display: grid; grid-template-columns: 8em minmax(0, 1fr); align-items: center; gap: 8px;
-    color: var(--text-secondary); font-size: 12px; white-space: nowrap;
+    color: var(--text-secondary); font-size: 12px;
   }
   .subtitle-preview-setting-row[hidden] { display: none; }
-  .subtitle-preview-setting-row > span { color: var(--text-muted); }
+  .subtitle-preview-setting-row > span { color: var(--text-secondary); white-space: nowrap; }
   .subtitle-preview-setting-row select { width: 100%; min-width: 0; }
-  .subtitle-preview-setting-row input[type="color"] {
-    width: 100%; height: 24px; min-width: 0; padding: 2px;
-    background: var(--bg-input); border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm); cursor: pointer;
-  }
+  .subtitle-color-style-control select { width: min(180px, 100%); justify-self: start; }
   .subtitle-preview-alpha-control { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .subtitle-preview-alpha-control input[type="range"] { flex: 1 1 auto; min-width: 0; }
   .subtitle-preview-alpha-control output {
@@ -1002,7 +1048,11 @@
     display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px;
     min-width: 0; color: var(--text-secondary); font-size: 12px;
   }
-  .subtitle-speaker-label-row input[type="text"] { width: 100%; min-width: 0; box-sizing: border-box; }
+  /* 三级选择器压过 .editor-settings-panel input[type=text] 的固定 140px，
+     让说话人名称输入框跟随两列 grid 单元格动态伸缩，窄面板下不再重叠。 */
+  .editor-settings-panel .subtitle-speaker-label-row input[type="text"] {
+    width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box;
+  }
   .subtitle-speaker-label-color {
     display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); white-space: nowrap;
   }
@@ -1011,24 +1061,22 @@
     border: 1px solid color-mix(in srgb, var(--text-primary) 30%, transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, #000 35%, transparent);
   }
-  .subtitle-preview-extension-settings {
-    margin-top: 0; padding-top: 8px;
-  }
-  .subtitle-preview-extension-settings[hidden] { display: none; }
   @media (max-width: 380px) {
     .subtitle-preview-setting-pair { grid-template-columns: 1fr; }
     .subtitle-speaker-label-list { grid-template-columns: 1fr; }
   }
 
-  /* 全局设置是可拖动的非模态独立窗口：左侧垂直标签页 + 右侧内容区。
-     z-index 低于锚定弹出面板（420）与表情包根目录弹窗（280），
-     保证窗口内的「配置合并字符 / 配置拆分标点」浮层和表情包弹窗都能盖住窗口。 */
+  /* 全局设置是可拖动、可缩放的非模态独立窗口：左侧垂直标签页 + 右侧内容区。
+     330 是未激活时的兜底值；打开或点击后由 editor.js 的浮层栈动态提升，
+     保证最后激活的窗口/齿轮弹窗在最上层。 */
   .editor-settings-window {
-    display: none; position: fixed; z-index: 270;
+    display: none; position: fixed; z-index: 330;
     flex-direction: column;
     width: min(560px, calc(100vw - 24px));
-    max-height: min(600px, calc(100vh - 60px));
+    min-width: 460px; min-height: 280px;
+    max-width: calc(100vw - 24px); max-height: calc(100vh - 60px);
     padding: 0;
+    overflow: hidden; resize: both;
     background: var(--bg-overlay);
     border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
     box-shadow: var(--shadow-3);
@@ -1054,9 +1102,14 @@
   .editor-settings-window-body { display: flex; flex: 1 1 auto; min-height: 0; }
   .editor-settings-nav {
     display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 2px;
-    width: 132px; padding: 10px 8px;
+    width: 132px; min-height: 0; padding: 10px 8px;
+    overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
     background: var(--bg-raised); border-right: 1px solid var(--border-subtle);
     border-radius: 0 0 0 var(--radius-lg);
+  }
+  .editor-settings-nav-group-label {
+    margin: 8px 4px 2px; color: var(--text-faint);
+    font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
   }
   .editor-settings-nav-tab {
     padding: 6px 10px; text-align: left; color: var(--text-secondary); background: none;
@@ -1116,6 +1169,54 @@
     color: var(--text-secondary); font-size: 0.8em;
     font-weight: 600; letter-spacing: .08em;
   }
+  .editor-settings-segmented {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px; width: 100%; padding: 2px;
+    background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  }
+  .editor-settings-accent-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .editor-settings-segment {
+    min-width: 0; min-height: 26px; padding: 4px 8px;
+    border: 0; border-radius: var(--radius-sm);
+    background: transparent; color: var(--text-muted);
+    font-size: 12px; line-height: 1.25; cursor: pointer;
+    transition: background var(--t-fast), color var(--t-fast);
+  }
+  .editor-settings-segment:hover { background: var(--btn-bg-hover); color: var(--text-primary); }
+  .editor-settings-segment:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-segment.active {
+    background: var(--accent); color: var(--accent-active-fg, var(--bg-base)); font-weight: 400;
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .editor-settings-segment.active:hover { background: var(--accent-hover); color: var(--accent-active-fg, var(--bg-base)); }
+  #editor-settings-page-interface > .editor-settings-group {
+    gap: 0; padding: 0; background: transparent; border: 0; border-radius: 0;
+  }
+  #editor-settings-page-interface .interface-theme-setting,
+  #editor-settings-page-interface .interface-accent-setting { gap: 6px; }
+  .editor-settings-accent-option { display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .editor-settings-accent-swatch {
+    display: inline-block; flex: 0 0 auto; width: 10px; height: 10px; border: 1px solid rgba(0, 0, 0, 0.24);
+    border-radius: 50%; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  }
+  .editor-settings-accent-swatch[data-accent-swatch="blue"] { background: #6ca5e8; }
+  .editor-settings-accent-swatch[data-accent-swatch="red"] { background: #c25656; }
+  .editor-settings-accent-swatch[data-accent-swatch="orange"] { background: #e0a05a; }
+  .editor-settings-accent-swatch[data-accent-swatch="custom"] { background: var(--accent-custom, var(--accent-blue)); }
+  :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="blue"] { background: #3874c9; }
+  :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="red"] { background: #c84545; }
+  :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="orange"] { background: #d9834a; }
+  .editor-settings-custom-color {
+    display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px;
+  }
+  .editor-settings-custom-color[hidden] { display: none; }
+  .editor-settings-color-input:focus-visible {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
+  .editor-settings-custom-color output {
+    color: var(--text-muted); font-family: var(--font-mono); font-size: 11px;
+  }
+  .interface-language-row { justify-content: space-between; width: 100%; }
   .split-language-type-row {
     display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
     width: 100%; min-width: 0;
@@ -1243,6 +1344,8 @@
     flex: 0 0 100%; gap: 3px 12px;
   }
   .ninja-toggle-group > .editor-settings-hint { flex: 0 0 100%; }
+  .ninja-toggle-group > #ninja-sound-field,
+  .ninja-toggle-group > #ninja-slash-effect-field { flex: 0 0 100%; }
   /* 刀光参数紧跟显示开关；空间足够时同行，不足时自动换行。 */
   .ninja-slash-params {
     flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px 16px;
@@ -1265,13 +1368,24 @@
   .editor-settings-panel input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
   /* 通用按钮样式不作用于设置导航标签：标签有独立的基础/hover/active 外观，
      否则这里的更高优先级会在 hover 时盖掉 active 高亮。 */
-  .editor-settings-panel button:not(.editor-settings-nav-tab) {
+  .editor-settings-panel button:not(.editor-settings-nav-tab):not(.editor-settings-segment) {
     min-width: 26px; padding: 3px 7px; color: var(--btn-text); background: var(--btn-bg);
     border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
     transition: background var(--t-fast), border-color var(--t-fast), filter var(--t-fast);
   }
-  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
-  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab):not(.editor-settings-segment) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab):not(.editor-settings-segment) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-panel button:not(.editor-settings-nav-tab).editor-settings-inline-action {
+    min-width: 0; padding: 0 2px; color: var(--accent); background: transparent; border: 0;
+    border-radius: var(--radius-sm); font: inherit; line-height: inherit; text-decoration: underline;
+    text-underline-offset: 2px; vertical-align: baseline;
+  }
+  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab).editor-settings-inline-action {
+    color: var(--text-primary); background: transparent; border-color: transparent;
+  }
+  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab).editor-settings-inline-action {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
   .editor-settings-panel button:disabled,
   .editor-settings-panel select:disabled,
   .editor-settings-panel input:disabled { opacity: .42; cursor: not-allowed; }
@@ -1286,7 +1400,7 @@
     background: var(--bg-input);
   }
   @media (max-width: 420px) {
-    .editor-settings-window { width: calc(100vw - 16px); }
+    .editor-settings-window { width: calc(100vw - 16px); min-width: 0; resize: none; }
     .editor-settings-nav { width: 104px; padding: 8px 6px; }
     .editor-settings-toggle-group > .toggle { gap: 2px; }
   }
@@ -1491,7 +1605,7 @@
   .toolbar .dropdown-item.is-missing { opacity: .55; }
   .toolbar .dropdown-item.is-missing .recent-project-name { text-decoration: line-through; }
   .toolbar .recent-project-setting input { margin: 0; }
-  .toolbar .language-toggle { min-width: 38px; font-weight: 700; }
+  .editor-settings-panel .language-toggle { min-width: 72px; font-weight: 400; }
   .toolbar .dropdown-sep {
     height: 1px; background: var(--border-subtle); margin: 4px 0;
   }
@@ -1764,7 +1878,7 @@
     container: cue-panel / inline-size;
     gap: 10px; margin-bottom: 8px; padding: 10px 12px;
     background: var(--bg-panel);
-    border: 1px solid var(--border-subtle); border-left: 3px solid var(--amber); border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
     box-shadow: var(--shadow-2);
   }
   .current-cue-panel > .cue-editor-toolbar {
@@ -2002,16 +2116,18 @@
   .cue .time-arrow { grid-area: arrow; }
   .cue .time-end { grid-area: end; }
   .cue .time-start, .cue .time-arrow, .cue .time-end { white-space: nowrap; }
-  /* 列表变窄时，所有行同时切到同一个两行时间码列，避免逐行 flex 收缩造成错位。 */
+  /* 列表变窄时，所有行同时切到同一个两行时间码列，避免逐行 flex 收缩造成错位；
+     上下堆叠已表达先后顺序，隐藏箭头，帧模式 11 字符时间码也不会超出 11ch。 */
   @container cue-list (max-width: 700px) {
     .cue-list-count { display: none; }
     .cue .time {
-      grid-template-columns: max-content max-content;
+      grid-template-columns: max-content;
       grid-template-areas:
-        "start arrow"
-        "end end";
+        "start"
+        "end";
       width: 11ch; flex-basis: 11ch;
     }
+    .cue .time-arrow { display: none; }
   }
   .cue .sticker-slot {
     flex: 0 1 80px; min-width: 40px; max-width: 100px;
@@ -2391,7 +2507,9 @@
     width: 100%;
     min-width: 0;
   }
-  #sticker-root-modal { z-index: 280; }
+  /* 从全局设置窗口打开，必须盖住设置窗口。330/335 只是 JS 初始化前的静态兜底；
+     浮层栈启动后由 editor.js 在打开时动态置顶（见 setStickerRootModalOpen）。 */
+  #sticker-root-modal { z-index: 335; }
   #sticker-root-modal .modal {
     width: min(540px, calc(100vw - 32px));
     min-width: 0;
@@ -3111,12 +3229,12 @@
   /* === 统一细滚动条（字幕列表 / 波形 / 面板工具栏 / 模态预览 / 空隙面板 / 表情网格）=== */
   .cues-container,
   .waveform-scroll,
-  .toolbar.player-toolbar,
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .modal .preview,
   .settings-panel,
   .editor-settings-pages,
+  .editor-settings-nav,
   .multi-subtitle-import-preview,
   .gap-remove-list,
   .gap-remove-panel-body,
@@ -3130,7 +3248,6 @@
   }
   .cues-container::-webkit-scrollbar,
   .waveform-scroll::-webkit-scrollbar,
-  .toolbar.player-toolbar::-webkit-scrollbar,
   .toolbar.cue-list-toolbar::-webkit-scrollbar,
   .toolbar.waveform-toolbar::-webkit-scrollbar,
   .modal .preview::-webkit-scrollbar,
@@ -3145,7 +3262,6 @@
   .hint-project-preview-value::-webkit-scrollbar { width: 6px; height: 6px; }
   .cues-container::-webkit-scrollbar-track,
   .waveform-scroll::-webkit-scrollbar-track,
-  .toolbar.player-toolbar::-webkit-scrollbar-track,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-track,
   .toolbar.waveform-toolbar::-webkit-scrollbar-track,
   .modal .preview::-webkit-scrollbar-track,
@@ -3160,7 +3276,6 @@
   .hint-project-preview-value::-webkit-scrollbar-track { background: var(--scroll-track); }
   .cues-container::-webkit-scrollbar-thumb,
   .waveform-scroll::-webkit-scrollbar-thumb,
-  .toolbar.player-toolbar::-webkit-scrollbar-thumb,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-thumb,
   .toolbar.waveform-toolbar::-webkit-scrollbar-thumb,
   .modal .preview::-webkit-scrollbar-thumb,
@@ -3178,7 +3293,6 @@
   }
   .cues-container::-webkit-scrollbar-thumb:hover,
   .waveform-scroll::-webkit-scrollbar-thumb:hover,
-  .toolbar.player-toolbar::-webkit-scrollbar-thumb:hover,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-thumb:hover,
   .toolbar.waveform-toolbar::-webkit-scrollbar-thumb:hover,
   .modal .preview::-webkit-scrollbar-thumb:hover,
