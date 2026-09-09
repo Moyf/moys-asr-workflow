@@ -37,6 +37,7 @@ from maw.gui_config import (
     _gui_theme,
     api_key_for_provider,
     effective_config,
+    is_openrouter_base_url,
     load_env,
     masked_secret,
     model_by_label,
@@ -2965,6 +2966,33 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             raise PreflightError("openaiModel", "custom_asr_model_missing", "请填写自定义 ASR 模型名。")
         if not custom_base_url:
             raise PreflightError("openaiBaseUrl", "custom_asr_base_url_missing", "请填写自定义 ASR Base URL。")
+    openai_prompt = ""
+    openai_keywords: tuple[str, ...] = ()
+    openai_diarize = False
+    if provider.id == "openai":
+        if model.supports_prompt:
+            openai_prompt = str(payload.get("openaiPrompt") or "").strip()
+        if model.supports_keywords:
+            raw_keywords = str(payload.get("openaiKeywords") or "")
+            openai_keywords = tuple(
+                keyword.strip()
+                for keyword in raw_keywords.splitlines()
+                if keyword.strip()
+            )
+            if any("<" in keyword or ">" in keyword for keyword in openai_keywords):
+                raise PreflightError(
+                    "openaiKeywords",
+                    "openai_keywords_invalid",
+                    "OpenAI Keywords 不能包含 < 或 >。",
+                )
+        if model.supports_diarization:
+            if is_openrouter_base_url(custom_base_url):
+                raise PreflightError(
+                    "model",
+                    "openai_diarize_openrouter_unsupported",
+                    "OpenRouter 不支持 gpt-4o-transcribe-diarize，请改用 OpenAI 官方 Base URL。",
+                )
+            openai_diarize = True
     api_key = str(payload.get("apiKey") or "").strip() or api_key_for_provider(provider.id, env_path)
     region = str(payload.get("region") or "beijing") if provider.id == "qwen" else ""
     workspace_id = str(payload.get("workspaceId") or "").strip()
@@ -3142,6 +3170,9 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         device=device,
         forced_aligner=str(payload.get("forcedAligner") or "").strip(),
         base_url=custom_base_url,
+        openai_prompt=openai_prompt,
+        openai_keywords=openai_keywords,
+        openai_diarize=openai_diarize,
         runtime_python=runtime_python,
         postprocess_plan=auto_plan,
         postprocess_llm_settings=auto_llm_settings,
@@ -3710,6 +3741,9 @@ def _model_payload(
         "openrouterNote": model.openrouter_note,
         "priceNote": model.price_note,
         "supportsSpeaker": model.supports_speaker,
+        "supportsPrompt": model.supports_prompt,
+        "supportsKeywords": model.supports_keywords,
+        "supportsDiarization": model.supports_diarization,
         "supportsContext": model.supports_context,
         "supportsHotwords": model.supports_hotwords,
         "supportsVocabulary": model.supports_vocabulary,

@@ -159,7 +159,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `--debug` | 输出更多 API 调试信息。调试日志仍不会输出 API Key。 |
 | `-s PATH`, `--stickers PATH` | 指定表情包目录。它会传递给转写后生成的编辑器工程，也可用于 Server。 |
 
-`--speaker-colors` 已经包含说话人分离，不必同时重复写 `--speaker`。Qwen3-ASR 不支持说话人开关；Qwen-Audio、Fun-ASR、Soniox 和腾讯云 `16k_zh_en_2.0` 支持情况以当前供应商及账户能力为准。自定义 OpenAI 兼容接口需要自行保证时间戳能力，公开 CLI 不会代发说话人参数。腾讯云大于 5MB 的媒体需要 `--file-url`。
+`--speaker-colors` 已经包含说话人分离，不必同时重复写 `--speaker`。Qwen3-ASR 不支持说话人开关；Qwen-Audio、Fun-ASR、Soniox 和腾讯云 `16k_zh_en_2.0` 支持情况以当前供应商及账户能力为准。OpenAI 兼容接口的说话人分离使用专用的 `--diarize`，而不是通用的 `--speaker`；自定义接口需要自行保证对应能力。腾讯云大于 5MB 的媒体需要 `--file-url`。
 
 ### 4.3 Qwen / 百炼专用参数
 
@@ -206,8 +206,11 @@ PowerShell 中如果 context JSON 含有空格，请将整个 JSON 放在引号�
 | 参数 | 说明 |
 | --- | --- |
 | `--base-url URL` | OpenAI 官方或兼容服务的根地址、带 `/v1` 的地址，或完整的 `/audio/transcriptions` 地址；省略时读取 `MAW_OPENAI_ASR_BASE_URL`，默认 `https://api.openai.com/v1`。 |
+| `--prompt TEXT` | 给支持该能力的模型补充领域背景、专有名词或前文。`whisper-1` 的提示词最多支持 224 tokens；模型不支持时不要使用。 |
+| `--keyword WORD` | 给支持该能力的模型追加关键词；可重复指定，每个参数一个词或短语。当前 OpenAI 官方只对 `gpt-transcribe` 发送该参数；关键词不能包含 `<`、`>` 或换行。 |
+| `--diarize` | 为支持说话人分离的模型请求 `diarized_json` 和自动分块。目前用于 `gpt-4o-transcribe-diarize`；不能与 `--prompt` / `--keyword` 同时使用。OpenRouter 不支持该模型。 |
 
-接口必须接受 `POST /audio/transcriptions` 的 multipart 请求，并返回 `segments` 或 `words` 时间戳。MAW 会请求 `verbose_json`、segment 和 word 时间戳；只有文本而没有时间戳的响应会被拒绝。API Key 使用 `MAW_OPENAI_ASR_API_KEY`，不接受命令行参数。
+普通模式要求接口接受 `POST /audio/transcriptions` 的 multipart 请求，并返回 `segments` 或 `words` 时间戳；MAW 会请求 `verbose_json`、segment 和 word 时间戳。`--diarize` 模式改请求 `diarized_json`，并读取段级 `speaker` 标签。只有文本而没有时间戳的响应会被拒绝。API Key 使用 `MAW_OPENAI_ASR_API_KEY`，不接受命令行参数。
 
 ### 4.6 Server 参数
 
@@ -312,7 +315,7 @@ OpenRouter 的 CLI 配置需要使用完整的 OpenRouter 模型 ID：
     -o "D:\Output\panel.srt" "D:\Output\panel.mosp"
 ```
 
-Launcher 在 OpenRouter 下会为内置模型自动补上 `openai/`；CLI 不做这个猜测。使用其他中转站时，请在 Launcher 选择“自定义（Custom）”，或在 CLI 直接填写服务商提供的完整模型名。服务必须返回带时间戳的 `segments` 或 `words`；只返回文本的兼容接口不能生成可靠字幕。
+Launcher 在 OpenRouter 下会为内置模型自动补上 `openai/`；CLI 不做这个猜测。使用其他中转站时，请在 Launcher 选择“自定义（Custom）”，或在 CLI 直接填写服务商提供的完整模型名。服务必须返回带时间戳的 `segments` 或 `words`；只返回文本的兼容接口不能生成可靠字幕。OpenAI 官方模型的 `prompt` / `keywords` / `diarize` 能力并不代表每个中转站都实现，遇到 400 时请检查模型名称、`response_format` 和服务商文档。
 
 ### 必剪：免 Key 快速体验（实验性，仅中文）
 

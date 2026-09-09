@@ -117,6 +117,8 @@ class GuiWebBridgeTests(unittest.TestCase):
                 "whisper-1",
                 "gpt-4o-transcribe",
                 "gpt-4o-mini-transcribe",
+                "gpt-transcribe",
+                "gpt-4o-transcribe-diarize",
                 "whisper-large-v3-turbo",
                 "whisper-large-v3",
                 "custom-asr",
@@ -124,6 +126,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         )
         self.assertIn("OpenRouter", openai["models"][0]["openrouterNote"])
         self.assertIn("0.006", openai["models"][0]["priceNote"])
+        self.assertTrue(openai["models"][0]["supportsPrompt"])
+        self.assertTrue(openai["models"][3]["supportsKeywords"])
+        self.assertIn("0.0045", openai["models"][3]["openrouterNote"])
+        self.assertTrue(openai["models"][4]["supportsDiarization"])
         self.assertEqual(config["models"][0]["id"], "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(config["models"][1]["id"], "fun-asr")
         self.assertEqual(config["models"][2]["id"], "qwen3-asr-flash-filetrans")
@@ -449,6 +455,51 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertEqual(request.provider, "openai")
         self.assertEqual(request.model, "gpt-4o-transcribe")
+
+    def test_openai_advanced_options_are_forwarded_for_supported_models(self) -> None:
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+
+        request = _request_from_payload({
+            "providerId": "openai",
+            "modelId": "gpt-transcribe",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "clip.srt"),
+            "apiKey": "sk-openai",
+            "openaiBaseUrl": "https://api.openai.com/v1",
+            "openaiPrompt": "A product meeting.",
+            "openaiKeywords": "OpenAI\nMAW\n",
+            "generateHtml": False,
+        }, self.env_path)
+
+        self.assertEqual(request.openai_prompt, "A product meeting.")
+        self.assertEqual(request.openai_keywords, ("OpenAI", "MAW"))
+        self.assertFalse(request.openai_diarize)
+
+    def test_openai_diarize_is_forwarded_and_rejected_for_openrouter(self) -> None:
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+        payload = {
+            "providerId": "openai",
+            "modelId": "gpt-4o-transcribe-diarize",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "clip.srt"),
+            "apiKey": "sk-openai",
+            "openaiBaseUrl": "https://api.openai.com/v1",
+            "speakerColors": True,
+            "generateHtml": False,
+        }
+
+        request = _request_from_payload(payload, self.env_path)
+        self.assertTrue(request.openai_diarize)
+        self.assertTrue(request.speaker_colors)
+
+        with self.assertRaises(PreflightError) as context:
+            _request_from_payload(
+                {**payload, "openaiBaseUrl": "https://openrouter.ai/api/v1"},
+                self.env_path,
+            )
+        self.assertEqual(context.exception.code, "openai_diarize_openrouter_unsupported")
 
     def test_openrouter_prefixes_builtin_openai_model_but_preserves_custom_model(self) -> None:
         media = self.root / "clip.wav"
