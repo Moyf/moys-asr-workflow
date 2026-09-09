@@ -1344,6 +1344,8 @@
     flex: 0 0 100%; gap: 3px 12px;
   }
   .ninja-toggle-group > .editor-settings-hint { flex: 0 0 100%; }
+  .ninja-toggle-group > #ninja-sound-field,
+  .ninja-toggle-group > #ninja-slash-effect-field { flex: 0 0 100%; }
   /* 刀光参数紧跟显示开关；空间足够时同行，不足时自动换行。 */
   .ninja-slash-params {
     flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px 16px;

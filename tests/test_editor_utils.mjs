@@ -192,6 +192,12 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(helpers.normalizeEditorSettings({ accentColorCustom: 'invalid' }).accentColorCustom, '#6ca5e8');
   assert.equal(settings.stickerOtioExportMode, 'portable');
   assert.equal(settings.autoMergeShortCount, 20);
+  assert.equal(settings.autoSaveProject, true);
+  assert.equal(settings.projectBackupEnabled, true);
+  assert.equal(
+    helpers.normalizeEditorSettings({ projectBackupEnabled: false }).projectBackupEnabled,
+    false,
+  );
   assert.equal(settings.exportSpeakerNamesAsSuffix, false);
   assert.equal(
     helpers.normalizeEditorSettings({ exportSpeakerNamesAsSuffix: true }).exportSpeakerNamesAsSuffix,
