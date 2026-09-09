@@ -50,12 +50,12 @@ python server-align\serve.py path\source.mosp path\script.txt --media path\recor
 - 默认保留原始 `segments[*].start/end/items`，不改写 ASR 时间码；如果一个带有有效 `items` 的源段同时包含文稿内容和额外片段，则按 item 边界拆成多个字幕段，保留各自原始 item 时间码；
 - 对未采用 take 和被禁用的额外片段设置 `segments[*].disabled = true`；
 - 将保留区间之外的时间写入 `gap_remove.gaps`，`removed: true`；
-- 如果输入 mosp 有内嵌 waveform，则按 MAWE 的 audio gate 规则额外检测静音空隙；
+- 如果输入 mosp 有有效内嵌 waveform，则按 MAWE 的 audio gate 规则额外检测静音空隙；没有内嵌波形时，启动阶段会按工程记录的所选音轨读取媒体旁（或对应 `_maw` 缓存目录）的 `.quapeaks` wave 层，并将读取结果仅用于本次运行；
 - 写入 `script_alignment` 元数据，保留选择结果和缺失/不完整状态，便于后续诊断。
 
 从 Launcher 的「口播对齐」入口启动时，自动空隙检测会使用 Launcher 面板中的最小空隙、音量阈值、前端预留和后端预留；滞回沿用 2dB 的内部默认值。这份配置与 MAWE 的编辑器设置分开保存。直接启动本 Server 时，也可以通过 `--gap-minimum-ms`、`--gap-threshold-db`、`--gap-hysteresis-db`、`--gap-lead-in-ms` 和 `--gap-lead-out-ms` 传入同样的参数。
 
-当前 MVP 只做选择、禁用和 gap-remove 工程输出，不重编码媒体；打开输出的 `.mosp` 后，MAWE 可以继续播放跳过空隙、编辑字幕和导出去空隙版本。没有内嵌 waveform 时，take 块仍可用，但需要在 MAWE 中重新扫描静音空隙。
+当前 MVP 只做选择、禁用和 gap-remove 工程输出，不重编码媒体；打开输出的 `.mosp` 后，MAWE 可以继续播放跳过空隙、编辑字幕和导出去空隙版本。没有可用的内嵌 waveform 或媒体旁缓存时，take 块仍可用，但不会在口播对齐中自动检测静音空隙，可在 MAWE 中重新扫描。
 
 候选的顺序和 take 组合仍以 mosp 的启用字幕段为单位；有完整 `items` 时，目标句是某个源段的安全前缀/后缀，就会把候选边界下沉到 item 边界。导出时，目标句、额外片段和禁用尾段会拆成独立字幕段；没有有效 `items` 的旧工程仍只能按字幕段边界处理。
 

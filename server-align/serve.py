@@ -13,6 +13,7 @@ import json
 import mimetypes
 import os
 import secrets
+import struct
 import tempfile
 import webbrowser
 from collections.abc import Mapping
@@ -30,14 +31,21 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in os.sys.path:
     os.sys.path.insert(0, str(ROOT))
 
+from maw import quapeaks  # noqa: E402
 from maw.postprocess_io import read_project  # noqa: E402
 from maw.project import normalize_project  # noqa: E402
+from maw.project_io import (  # noqa: E402
+    default_audio_track_from_metadata,
+    selected_audio_track_from_metadata,
+    strip_inline_caches,
+)
 from maw.script_alignment import (  # noqa: E402
     align_project_to_script,
     apply_alignment_to_project,
     make_selection_manifest,
     normalize_gap_remove_settings,
 )
+from maw.waveform import audio_track_from_payloads, waveform_matches_media  # noqa: E402
 
 
 PAGE_PATH = Path(__file__).with_name("index.html")
@@ -333,8 +341,9 @@ def load_state(
 ) -> AlignmentState:
     project = read_project(project_path)
     script = script_path.read_text(encoding="utf-8-sig")
-    alignment = align_project_to_script(project, script)
     resolved_media = resolve_media_path(project_path, project, media_path)
+    _load_waveform_cache(project, resolved_media)
+    alignment = align_project_to_script(project, script)
     normalized_gap_remove = (
         normalize_gap_remove_settings(gap_remove_override)
         if gap_remove_override is not None
@@ -348,6 +357,57 @@ def load_state(
         alignment,
         normalized_gap_remove,
     )
+
+
+def _load_waveform_cache(project: dict[str, object], media_path: Path | None) -> None:
+    """Load a matching runtime waveform from the project or media cache.
+
+    The alignment server must be able to use media-adjacent ``.quapeaks`` files
+    without turning a cache miss into an implicit FFmpeg scan.  A cache loaded
+    here is runtime-only; :func:`write_project` removes it before serialization.
+    """
+
+    if media_path is None:
+        return
+    payload_audio_track = audio_track_from_payloads(
+        project.get("waveform"),
+        project.get("spectral"),
+        project.get("waveform_reapeaks"),
+    )
+    media_metadata = project.get("media_metadata")
+    selected_audio_track = selected_audio_track_from_metadata(media_metadata)
+    audio_track = payload_audio_track if selected_audio_track is None else selected_audio_track
+    default_audio_track = default_audio_track_from_metadata(media_metadata)
+
+    existing = project.get("waveform")
+    if waveform_matches_media(existing, media_path, audio_track=audio_track):
+        return
+    project.pop("waveform", None)
+
+    loaders = (
+        quapeaks.load_self_wave_payload,
+        quapeaks.load_waveform_payload,
+    )
+    for loader in loaders:
+        try:
+            cached = loader(
+                media_path,
+                audio_track=audio_track,
+                default_audio_track=default_audio_track,
+            )
+        except (OSError, ValueError, IndexError, struct.error):
+            continue
+        if (
+            cached is not None
+            and audio_track_from_payloads(cached) == audio_track
+            and waveform_matches_media(cached, media_path, audio_track=audio_track)
+        ):
+            project["waveform"] = cached
+            print(
+                f"[waveform] 已读取媒体缓存: {cached['peak_count']} peaks "
+                f"({cached['peaks_per_second']}/秒)"
+            )
+            return
 
 
 def _gap_detection_kwargs(state: AlignmentState) -> dict[str, object]:
@@ -382,7 +442,7 @@ def write_project(project_path: Path, payload: dict[str, object]) -> Path:
     while candidate.exists():
         candidate = directory / f"{project_path.stem}.aligned-{counter}.mosp"
         counter += 1
-    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    text = json.dumps(strip_inline_caches(payload), ensure_ascii=False, indent=2) + "\n"
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{candidate.name}.", suffix=".tmp", dir=directory)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
