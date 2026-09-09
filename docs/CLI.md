@@ -149,6 +149,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `--language VALUE` | 语言提示。Qwen 可写 `zh`、`en` 等；Soniox 可写逗号分隔的 `zh,en`。不确定语言时可以省略，让供应商自动识别。 |
 | `--keep-punct` | 保留每条字幕末尾的逗号和句号；默认会去掉。 |
 | `--gap-split MS` | 相邻文字停顿超过指定毫秒数时强制切句；默认 `800`。 |
+| `--extra-strong-punct CHARS` | 额外强断句符号集合（如 `"?!;"`），其中每个字符都会作为云端转写切句的强断句符号；与 Launcher「断句与标点」共享配置对应，默认空。仅 `--provider qwen` 支持并下发。 |
 | `--speaker` | 启用说话人分离，并把匿名 speaker 标签写入 `.mosp`。需要选择支持该功能的模型。 |
 | `--speaker-colors` | 启用说话人分离，并按首次出现顺序写入一次性的字幕颜色快照；之后仍可在编辑器中修改。 |
 | `-ll VALUE`, `--length-limit VALUE` | 只处理媒体前指定时长，例如 `2m`、`20s`、`1h`、`90`。 |
