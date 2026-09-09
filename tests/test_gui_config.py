@@ -306,6 +306,8 @@ class GuiConfigTests(unittest.TestCase):
                 "whisper-1",
                 "gpt-4o-transcribe",
                 "gpt-4o-mini-transcribe",
+                "gpt-transcribe",
+                "gpt-4o-transcribe-diarize",
                 "whisper-large-v3-turbo",
                 "whisper-large-v3",
                 "custom-asr",
@@ -317,6 +319,12 @@ class GuiConfigTests(unittest.TestCase):
         self.assertIn("时间戳", provider.note)
         self.assertIn("OpenRouter", provider.models[0].openrouter_note)
         self.assertIn("0.006", provider.models[0].price_note)
+        self.assertTrue(provider.models[0].supports_prompt)
+        self.assertTrue(provider.models[3].supports_prompt)
+        self.assertTrue(provider.models[3].supports_keywords)
+        self.assertTrue(provider.models[4].supports_diarization)
+        self.assertTrue(provider.models[4].supports_speaker)
+        self.assertIn("不支持", provider.models[4].openrouter_note)
 
     def test_openrouter_prefixes_builtin_openai_models_only(self) -> None:
         self.assertTrue(gui_config.is_openrouter_base_url("https://openrouter.ai/api/v1"))
@@ -327,6 +335,10 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(
             gui_config.openai_model_for_base_url("https://openrouter.ai/api/v1", "whisper-1"),
             "openai/whisper-1",
+        )
+        self.assertEqual(
+            gui_config.openai_model_for_base_url("https://openrouter.ai/api/v1", "gpt-transcribe"),
+            "openai/gpt-transcribe",
         )
         self.assertEqual(
             gui_config.openai_model_for_base_url("https://api.openai.com/v1", "whisper-1"),

@@ -25,6 +25,7 @@ OPENAI_ASR_DEFAULT_MODEL: Final = "whisper-1"
 OPENROUTER_ASR_KEY_URL: Final = "https://openrouter.ai/keys"
 OPENAI_ASR_PRESET_MODEL_IDS: Final[tuple[str, ...]] = (
     "whisper-1",
+    "gpt-transcribe",
     "gpt-4o-transcribe",
     "gpt-4o-mini-transcribe",
     "whisper-large-v3-turbo",
@@ -43,6 +44,9 @@ class ModelConfig:
     openrouter_note: str = ""
     price_note: str = ""
     supports_speaker: bool = False
+    supports_prompt: bool = False
+    supports_keywords: bool = False
+    supports_diarization: bool = False
     supports_context: bool = False
     supports_hotwords: bool = False
     supports_vocabulary: bool = False
@@ -328,24 +332,52 @@ OPENAI_ASR_MODELS: Final[tuple[ModelConfig, ...]] = (
         id="whisper-1",
         label="whisper-1",
         env_key="MAW_OPENAI_ASR_API_KEY",
+        note="支持 Prompt；Whisper 提示词最多 224 tokens。",
         openrouter_note="OpenRouter 参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。价格和可用能力以 OpenRouter 模型页为准。",
         price_note="OpenAI 官方参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。",
+        supports_prompt=True,
         languages=LANGUAGES,
     ),
     ModelConfig(
         id="gpt-4o-transcribe",
         label="gpt-4o-transcribe",
         env_key="MAW_OPENAI_ASR_API_KEY",
+        note="支持 Prompt；需由接口返回 segments 或 words 时间戳。",
         openrouter_note="OpenRouter 参考价：输入 $2.50 / 1M tokens，输出 $10 / 1M tokens；需由接口返回 segments 或 words 时间戳。",
         price_note="OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。",
+        supports_prompt=True,
         languages=LANGUAGES,
     ),
     ModelConfig(
         id="gpt-4o-mini-transcribe",
         label="gpt-4o-mini-transcribe",
         env_key="MAW_OPENAI_ASR_API_KEY",
+        note="支持 Prompt；需由接口返回 segments 或 words 时间戳。",
         openrouter_note="OpenRouter 参考价：输入 $1.25 / 1M tokens，输出 $5 / 1M tokens；需由接口返回 segments 或 words 时间戳。",
         price_note="OpenAI 官方参考价：输入 $1.25 / 1M audio tokens，输出 $5 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。",
+        supports_prompt=True,
+        languages=LANGUAGES,
+    ),
+    ModelConfig(
+        id="gpt-transcribe",
+        label="gpt-transcribe（支持关键词）",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        note="OpenAI 官方推荐的文件转写模型；支持 Prompt 和 Keywords，需由接口返回时间戳。",
+        openrouter_note="OpenRouter 参考价：$0.0045 / 分钟；支持 Prompt、Keywords 和 languages[]，需由接口返回时间戳。",
+        price_note="OpenAI 官方参考价：$0.0045 / 分钟。",
+        supports_prompt=True,
+        supports_keywords=True,
+        languages=LANGUAGES,
+    ),
+    ModelConfig(
+        id="gpt-4o-transcribe-diarize",
+        label="gpt-4o-transcribe-diarize（说话人分离）",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        note="OpenAI 官方说话人分离模型；返回段级 speaker 与时间戳，OpenRouter 不支持。",
+        openrouter_note="OpenRouter 不支持 diarize；请改用 OpenAI 官方 Base URL。",
+        price_note="OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens。",
+        supports_speaker=True,
+        supports_diarization=True,
         languages=LANGUAGES,
     ),
     ModelConfig(

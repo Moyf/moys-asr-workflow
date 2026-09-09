@@ -309,6 +309,103 @@ class OpenAiAsrTests(unittest.TestCase):
             )
             self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer sk-test")
 
+    def test_request_transcription_sends_gpt_transcribe_prompt_keywords_and_languages(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "clip.wav"
+            audio_path.write_bytes(b"audio")
+            response = mock.Mock(ok=True)
+            response.json.return_value = {
+                "text": "hello",
+                "segments": [{"start": 0, "end": 1, "text": "hello"}],
+            }
+
+            with mock.patch("generate_subtitle_openai_api.requests.post", return_value=response) as post:
+                request_transcription(
+                    audio_path,
+                    base_url="https://api.openai.com/v1",
+                    api_key="sk-test",
+                    model="openai/gpt-transcribe",
+                    language="en,zh",
+                    prompt="A product meeting.",
+                    keywords=("OpenAI", "MAW"),
+                )
+
+            data = post.call_args.kwargs["data"]
+            self.assertIn(("prompt", "A product meeting."), data)
+            self.assertEqual(
+                [value for key, value in data if key == "keywords[]"],
+                ["OpenAI", "MAW"],
+            )
+            self.assertEqual(
+                [value for key, value in data if key == "languages[]"],
+                ["en", "zh"],
+            )
+            self.assertNotIn(("language", "en,zh"), data)
+
+    def test_request_transcription_rejects_invalid_keyword_characters(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "clip.wav"
+            audio_path.write_bytes(b"audio")
+
+            with self.assertRaisesRegex(RuntimeError, "不能包含"):
+                request_transcription(
+                    audio_path,
+                    base_url="https://api.openai.com/v1",
+                    api_key="sk-test",
+                    model="gpt-transcribe",
+                    language=None,
+                    keywords=("bad<keyword",),
+                )
+
+    def test_request_transcription_uses_diarized_json_and_preserves_speakers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "clip.wav"
+            audio_path.write_bytes(b"audio")
+            response = mock.Mock(ok=True)
+            response.json.return_value = {
+                "text": "Hello world",
+                "segments": [
+                    {"start": 0, "end": 1.2, "text": "Hello", "speaker": "A"},
+                    {"start": 1.2, "end": 2.5, "text": "world", "speaker": "B"},
+                ],
+            }
+
+            with mock.patch("generate_subtitle_openai_api.requests.post", return_value=response) as post:
+                result = request_transcription(
+                    audio_path,
+                    base_url="https://api.openai.com/v1",
+                    api_key="sk-test",
+                    model="gpt-4o-transcribe-diarize",
+                    language="en",
+                    diarize=True,
+                )
+
+            data = post.call_args.kwargs["data"]
+            self.assertIn(("response_format", "diarized_json"), data)
+            self.assertIn(("chunking_strategy", "auto"), data)
+            self.assertNotIn(("response_format", "verbose_json"), data)
+            self.assertNotIn(("timestamp_granularities[]", "segment"), data)
+            self.assertEqual(
+                [segment["speaker"] for segment in result["segments"]],
+                ["A", "B"],
+            )
+
+    def test_request_transcription_rejects_prompt_and_keywords_for_diarize(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "clip.wav"
+            audio_path.write_bytes(b"audio")
+
+            with self.assertRaisesRegex(RuntimeError, "不支持 prompt 或 keywords"):
+                request_transcription(
+                    audio_path,
+                    base_url="https://api.openai.com/v1",
+                    api_key="sk-test",
+                    model="gpt-4o-transcribe-diarize",
+                    language=None,
+                    prompt="context",
+                    diarize=True,
+                )
+
     def test_request_transcription_explains_model_name_for_compatibility_errors(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             audio_path = Path(temp_dir) / "clip.wav"

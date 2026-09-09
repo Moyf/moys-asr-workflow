@@ -306,6 +306,26 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--strip-tail-punct") + 1], "")
         self.assertNotIn("secret-key", " ".join(command))
 
+    def test_build_transcribe_command_openai_passes_advanced_options(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="openai",
+            model="gpt-4o-transcribe-diarize",
+            language="en",
+            base_url="https://api.openai.com/v1",
+            openai_prompt="A product meeting.",
+            openai_keywords=("OpenAI", "MAW"),
+            openai_diarize=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--prompt") + 1], "A product meeting.")
+        keyword_positions = [index for index, value in enumerate(command) if value == "--keyword"]
+        self.assertEqual([command[index + 1] for index in keyword_positions], ["OpenAI", "MAW"])
+        self.assertIn("--diarize", command)
+
     def test_openai_gui_command_is_accepted_by_cli_parser(self) -> None:
         request = TranscriptionRequest(
             media_path=self.root / "missing.wav",

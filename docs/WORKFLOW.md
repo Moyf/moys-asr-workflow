@@ -227,7 +227,7 @@ uv run python generate_subtitle_openai_api.py "D:\Videos\example.mp4" -ll 2m --j
 MAW.exe --provider openai --base-url "https://openrouter.ai/api/v1" --model "openai/whisper-1" -i "D:\Videos\example.mp4" -o "D:\Output\example.srt"
 ```
 
-Launcher 在 OpenRouter 下会为内置模型自动补上 `openai/`；其他中转站不会自动猜测模型名，请选择“自定义（Custom）”并填写服务商提供的完整模型名。接口必须接受 `POST /audio/transcriptions`，并返回带 `start` / `end` 时间戳的 `segments` 或 `words`。只有文本没有时间戳的响应会被拒绝；说话人开关、Qwen 热词和 Soniox context 不会转发给该接口。
+Launcher 在 OpenRouter 下会为内置模型自动补上 `openai/`；其他中转站不会自动猜测模型名，请选择“自定义（Custom）”并填写服务商提供的完整模型名。接口必须接受 `POST /audio/transcriptions`，并返回带 `start` / `end` 时间戳的 `segments` 或 `words`。只有文本没有时间戳的响应会被拒绝。支持能力按模型显示：`Prompt` 会发送为 `prompt`，`gpt-transcribe` 的关键词会逐行发送为 `keywords[]`；选择 `gpt-4o-transcribe-diarize` 会自动请求 `diarized_json`，但 OpenRouter 不支持 diarize，其他中转站也可能不支持这些参数。遇到兼容性 400 时，请检查模型名称，并在未专门适配的中转站使用“自定义（Custom）”填写完整模型名。
 
 ## 用必剪转写（实验性，免 Key，仅中文）
 
