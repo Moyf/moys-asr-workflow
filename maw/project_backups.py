@@ -18,6 +18,18 @@ def backup_directory(project: Path) -> Path:
     return root / "backups"
 
 
+_VERSION_NAME_RE = re.compile(r"^.+-(\d{4}-\d{2}-\d{2}_\d{6})(?:-(\d{6}))?\.mosp-bak$")
+
+
+def _version_order(path: Path) -> tuple:
+    """按文件名里的时间戳与同秒序号排序，避免 mtime 相同时错删较新版本。"""
+    match = _VERSION_NAME_RE.fullmatch(path.name)
+    if match is None:
+        return ("", -1)
+    sequence = int(match.group(2)) if match.group(2) else 0
+    return (match.group(1), sequence)
+
+
 def write_backup(project: Path, data: dict, limit: int) -> Path:
     """Publish a complete snapshot before pruning only this project's versions."""
     if type(limit) is not int or not 1 <= limit <= 1000:
@@ -40,7 +52,7 @@ def write_backup(project: Path, data: dict, limit: int) -> Path:
     pattern = re.compile(re.escape(project.stem) + r"-\d{4}-\d{2}-\d{2}_\d{6}(?:-\d{6})?\.mosp-bak$")
     versions = sorted(
         (p for p in directory.iterdir() if pattern.fullmatch(p.name) and p.is_file() and not p.is_symlink()),
-        key=lambda p: (p.stat().st_mtime_ns, p.name),
+        key=_version_order,
     )
     for old in versions[:-limit]:
         send2trash(str(old))
