@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
-  copyPortableBlankEditor,
+  buildPortableBlankEditor,
   findFreePort,
   generateWaveformPayload,
   makeTempDir,
@@ -15,7 +15,7 @@ let server;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('overlay-track');
-  const blankPath = copyPortableBlankEditor(join(tempDir, 'blank-editor.html'));
+  const blankPath = buildPortableBlankEditor(join(tempDir, 'blank-editor.html'));
   server = await startStaticServer(blankPath, await findFreePort());
 });
 
