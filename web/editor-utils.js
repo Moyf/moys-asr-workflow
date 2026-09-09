@@ -3132,6 +3132,34 @@
     )).map(({ segment }) => segment);
   }
 
+  // === 叠加字幕轨的段落迁移 ===
+  // 主轨与叠加轨是两条互不绑定的时间轴；把段落从一条轨移到另一条轨时保持
+  // 目标轨按 start 升序（同 start 时插到既有段之后），返回段在新轨中的下标。
+  // 原地修改传入数组——编辑器以 DATA.segments / DATA.overlay_track 为真源。
+  function insertSegmentByStart(trackSegments, segment) {
+    const list = Array.isArray(trackSegments) ? trackSegments : [];
+    const start = Number(segment?.start);
+    let insertAt = list.length;
+    for (let index = 0; index < list.length; index += 1) {
+      if (Number(list[index]?.start) > start) {
+        insertAt = index;
+        break;
+      }
+    }
+    list.splice(insertAt, 0, segment);
+    return insertAt;
+  }
+
+  function moveSegmentBetweenTracks(sourceSegments, targetSegments, index) {
+    const source = Array.isArray(sourceSegments) ? sourceSegments : [];
+    const target = Array.isArray(targetSegments) ? targetSegments : [];
+    if (!Number.isInteger(index) || index < 0 || index >= source.length) return -1;
+    const segment = source[index];
+    if (!segment || typeof segment !== 'object') return -1;
+    source.splice(index, 1);
+    return insertSegmentByStart(target, segment);
+  }
+
   function normalizeMultiSubtitle(value, mainSegments = []) {
     const source = value && typeof value === 'object' ? value : {};
     const rawTracks = Array.isArray(source.tracks) ? source.tracks : [];
@@ -3748,6 +3776,28 @@
       });
     });
     return repaired;
+  }
+
+  // 从字幕数组移除/迁出下标 index 的段后同步选择状态：该下标移出选中集，
+  // 其后的选中项与 Shift 范围锚点前移一位，避免选中状态落到后面的字幕上。
+  // selection 是会被原地修改的 Set；返回 { wasSelected, nextAnchor }。
+  function shiftSelectionAfterRemoval(selection, anchorIndex, removedIndex) {
+    // 用 Object.prototype.toString 判断 Set，兼容 vm 等跨 realm 环境。
+    if (Object.prototype.toString.call(selection) !== '[object Set]' || !Number.isInteger(removedIndex)) {
+      return { wasSelected: false, nextAnchor: Number.isInteger(anchorIndex) ? anchorIndex : -1 };
+    }
+    const wasSelected = selection.has(removedIndex);
+    selection.delete(removedIndex);
+    [...selection].forEach((idx) => {
+      if (idx > removedIndex) {
+        selection.delete(idx);
+        selection.add(idx - 1);
+      }
+    });
+    const anchor = Number.isInteger(anchorIndex) ? anchorIndex : -1;
+    const nextAnchor = anchor === removedIndex ? -1
+      : anchor > removedIndex ? anchor - 1 : anchor;
+    return { wasSelected, nextAnchor };
   }
 
   function buildSrtPayload(segments, options = {}) {
@@ -5425,6 +5475,7 @@ export default MawDynamicCaptions;
     normalizeMultiSubtitleProject,
     normalizeOverlayTrack,
     mergeMainAndOverlaySegments,
+    moveSegmentBetweenTracks,
     detectSubtitleSplitMode,
     isWordSplitConnector,
     SPLIT_TRIM_PRIMARY_SYMBOLS,
@@ -5497,6 +5548,7 @@ export default MawDynamicCaptions;
     effectiveColorName,
     shiftGroupReferenceIndices,
     repairGroupReferenceIndices,
+    shiftSelectionAfterRemoval,
     buildSrtPayload,
     normalizeAssFontFamily,
     assColorFromHex,

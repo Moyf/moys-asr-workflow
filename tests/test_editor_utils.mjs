@@ -4611,6 +4611,74 @@ test('includes overlay track data in a segment history snapshot', () => {
 });
 
 
+test('moves a segment between main and overlay tracks keeping target start order', () => {
+  const main = [
+    { id: 'a', start: 0, end: 1000 },
+    { id: 'b', start: 2000, end: 3000 },
+  ];
+  const overlay = [{ id: 'o1', start: 500, end: 1200 }];
+
+  // 主轨 index 0（start 0）应插到 overlay 的 start 500 之前。
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, 0), 0);
+  assert.equal(main.length, 1);
+  assert.equal(main[0].id, 'b');
+  assert.deepEqual(overlay.map((segment) => segment.id), ['a', 'o1']);
+
+  // 越界与无效下标安全返回 -1，不改动两侧数组。
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, 5), -1);
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, -1), -1);
+  assert.equal(main.length, 1);
+  assert.equal(overlay.length, 2);
+
+  // 反向：把 overlay 的 'a' 移回主轨，应按 start 升序插到 'b' 之前。
+  assert.equal(helpers.moveSegmentBetweenTracks(overlay, main, 0), 0);
+  assert.deepEqual(main.map((segment) => segment.id), ['a', 'b']);
+  assert.deepEqual(overlay.map((segment) => segment.id), ['o1']);
+
+  // 同 start 时插到既有段之后，保持目标轨稳定排序。
+  const target = [{ id: 't1', start: 1000, end: 1500 }];
+  assert.equal(helpers.moveSegmentBetweenTracks([main[1]], target, 0), 1);
+  assert.deepEqual(target.map((segment) => segment.id), ['t1', 'b']);
+});
+
+
+test('shifts selection sets and the range anchor after a cue is removed', () => {
+  // 被移除的下标本身被选中：移出选中集，其后选中项前移一位（5 前移为 4），
+  // 锚点在被移除下标之后时同样前移（5 前移为 4）。
+  const selection = new Set([1, 3, 5]);
+  const result = helpers.shiftSelectionAfterRemoval(selection, 5, 3);
+  assert.equal(result.wasSelected, true);
+  assert.deepEqual([...selection].sort(), [1, 4]);
+  assert.equal(result.nextAnchor, 4);
+
+  // 锚点正好是被移除的下标：锚点清空为 -1，避免 Shift 范围选悬空。
+  const anchorSelection = new Set([2, 7]);
+  const anchorReset = helpers.shiftSelectionAfterRemoval(anchorSelection, 2, 2);
+  assert.equal(anchorReset.wasSelected, true);
+  assert.deepEqual([...anchorSelection].sort(), [6]);
+  assert.equal(anchorReset.nextAnchor, -1);
+
+  // 被移除的下标未被选中：选中集仅做前移（4 前移为 3），锚点不变。
+  const untouched = new Set([0, 4]);
+  const notSelected = helpers.shiftSelectionAfterRemoval(untouched, 1, 2);
+  assert.equal(notSelected.wasSelected, false);
+  assert.deepEqual([...untouched].sort(), [0, 3]);
+  assert.equal(notSelected.nextAnchor, 1);
+
+  // 锚点与选中项都在被移除下标之前：完全不受影响。
+  const before = new Set([0, 1]);
+  const unchanged = helpers.shiftSelectionAfterRemoval(before, 1, 4);
+  assert.equal(unchanged.wasSelected, false);
+  assert.deepEqual([...before].sort(), [0, 1]);
+  assert.equal(unchanged.nextAnchor, 1);
+
+  // 非法输入不抛错：返回未选中与原锚点。
+  const invalid = helpers.shiftSelectionAfterRemoval(null, 3, Number.NaN);
+  assert.equal(invalid.wasSelected, false);
+  assert.equal(invalid.nextAnchor, 3);
+});
+
+
 test('browser ID repair reserves later explicit IDs like the server contract', () => {
   const project = {
     segments: [
