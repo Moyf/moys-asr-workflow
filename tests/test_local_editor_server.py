@@ -544,7 +544,12 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
         self.assertIn('"name": "clip.json"}], "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
-        self.assertIn('"activeWorkspaceName": ""};', page)
+        self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""};', page)
+        completed_page = server_editor.build_server_page(
+            project,
+            server_editor.replace(settings, onboarding_status="completed"),
+        ).decode("utf-8")
+        self.assertIn('"onboardingStatus": "completed"', completed_page)
         self.assertIn('id="save-project"', page)
         self.assertIn('id="save-project-as"', page)
         self.assertIn('id="save-project-dropdown"', page)
@@ -1514,6 +1519,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertNotIn(paths[0].resolve(), [item.path for item in settings.recent_projects])
 
         settings_path = self.root / "server-editor-settings.json"
+        settings = server_editor.replace(settings, onboarding_status="completed")
         server_editor.write_server_settings(settings_path, settings)
         saved = settings_path.read_bytes()
         self.assertNotIn(b"\r\n", saved)
@@ -1570,6 +1576,18 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertTrue(result["ok"])
                 self.assertFalse(server.settings.auto_open_last_project)
                 self.assertFalse(server_editor.read_server_settings(settings_path).auto_open_last_project)
+
+                status, result = post("/api/settings", {"onboardingStatus": "completed"})
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(result["onboardingStatus"], "completed")
+                self.assertEqual(server.settings.onboarding_status, "completed")
+                self.assertEqual(server_editor.read_server_settings(settings_path).onboarding_status, "completed")
+
+                status, result = post("/api/settings", {"onboardingStatus": "unknown"})
+                self.assertEqual(status, 400)
+                self.assertFalse(result["ok"])
+                self.assertEqual(server.settings.onboarding_status, "completed")
 
                 workspace = {"schema": "moy.asr.editor.workspace.v1", "preset": "custom", "tree": {}}
                 status, result = post("/api/settings", {
