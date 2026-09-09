@@ -2682,7 +2682,10 @@
         && (!hasFps || typeof value.video_fps_ratio !== 'string' || !value.video_fps_ratio.trim())) return null;
     const hasAudioTracks = value.audio_tracks !== undefined;
     if (hasAudioTracks && !Array.isArray(value.audio_tracks)) return null;
-    if (!hasFps && !hasAudioTracks) return null;
+    const hasSelectedAudioTrack = value.selected_audio_track !== undefined;
+    if (hasSelectedAudioTrack
+        && (!Number.isInteger(value.selected_audio_track) || value.selected_audio_track < 0)) return null;
+    if (!hasFps && !hasAudioTracks && !hasSelectedAudioTrack) return null;
     const metadata = {};
     if (hasFps) metadata.video_fps = normalizeTimelineFps(fps);
     if (typeof value.video_fps_ratio === 'string') {
@@ -2712,6 +2715,7 @@
       if (audioTracks.some((track) => track === null)) return null;
       metadata.audio_tracks = audioTracks;
     }
+    if (hasSelectedAudioTrack) metadata.selected_audio_track = value.selected_audio_track;
     return metadata;
   }
 
@@ -2869,6 +2873,9 @@
       exportSpeakerLabels: savedSettings.exportSpeakerLabels === true,
       autoSaveProject: savedSettings.autoSaveProject !== false,
       autoSaveIntervalSeconds: clampInteger(savedSettings.autoSaveIntervalSeconds, 30, 5, 3600),
+      projectBackupEnabled: savedSettings.projectBackupEnabled === true,
+      projectBackupMinutes: clampInteger(savedSettings.projectBackupMinutes, 5, 1, 1440),
+      projectBackupLimit: clampInteger(savedSettings.projectBackupLimit, 20, 1, 1000),
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
       stickerOtioExportMode: savedSettings.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
       // 时间线 OTIO 导出选项：默认同时导出 SRT、合并表情包轨、写入字幕标记。

@@ -50,14 +50,18 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await page.goto(server.url);
   await revealSpeakerCue(page);
 
-  await page.locator('#subtitle-preview-settings-toggle').click();
-  const previewPanel = page.locator('#subtitle-preview-settings-panel');
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  const previewPanel = page.locator('#editor-settings-page-subtitle-preview');
   await expect(previewPanel).toBeVisible();
-  await expect(page.locator('label.toggle.settings-panel-item:has(#subtitle-color-underline)'))
+  await expect(page.locator('label.toggle.editor-settings-item:has(#subtitle-color-underline)'))
     .toHaveCount(1);
   await expect(page.locator('#subtitle-color-underline')).toBeChecked();
   await expect(page.locator('#subtitle-color-style-control')).toBeVisible();
   await expect(page.locator('#subtitle-color-style')).toHaveValue('underline');
+  await expect(page.locator('#subtitle-color-style option[value="both"]')).toHaveCount(0);
+  await expect(page.locator('#subtitle-color-style option[value="shadow"]')).toHaveCount(0);
+  await expect(page.locator('#subtitle-color-style option[value="stroke"]')).toHaveCount(1);
   await expect(page.locator('#subtitle-speaker-labels-enabled')).not.toBeChecked();
   await expect(page.locator('#subtitle-speaker-labels-settings')).toBeHidden();
   await expect(page.locator('#subtitle-speaker-label-separator')).toBeHidden();
@@ -116,20 +120,43 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#subtitle-color-style')).toHaveValue('text');
   let colorStylePreview = await page.locator('#overlay-main-text').evaluate((element) => {
     const style = getComputedStyle(element);
-    return { color: style.color, textDecorationLine: style.textDecorationLine };
+    return {
+      color: style.color,
+      textDecorationLine: style.textDecorationLine,
+      textShadow: element.style.textShadow,
+      textStroke: element.style.getPropertyValue('-webkit-text-stroke'),
+      paintOrder: element.style.paintOrder,
+    };
   });
-  expect(colorStylePreview).toEqual({ color: 'rgb(196, 160, 25)', textDecorationLine: 'none' });
-  await page.locator('#subtitle-color-style').selectOption('both');
+  expect(colorStylePreview).toEqual({
+    color: 'rgb(196, 160, 25)',
+    textDecorationLine: 'none',
+    textShadow: '',
+    textStroke: '',
+    paintOrder: '',
+  });
+  await page.locator('#subtitle-color-style').selectOption('stroke');
+  await expect(page.locator('#subtitle-color-style')).toHaveValue('stroke');
   colorStylePreview = await page.locator('#overlay-main-text').evaluate((element) => {
     const style = getComputedStyle(element);
-    return { color: style.color, textDecorationLine: style.textDecorationLine };
+    return {
+      color: style.color,
+      textDecorationLine: style.textDecorationLine,
+      textShadow: element.style.textShadow,
+      textStroke: element.style.getPropertyValue('-webkit-text-stroke'),
+      paintOrder: element.style.paintOrder,
+    };
   });
-  expect(colorStylePreview).toEqual({ color: 'rgb(196, 160, 25)', textDecorationLine: 'underline' });
+  expect(colorStylePreview.color).toBe('rgb(255, 255, 255)');
+  expect(colorStylePreview.textDecorationLine).toBe('none');
+  expect(colorStylePreview.textShadow).toBe('');
+  expect(colorStylePreview.textStroke).toContain('rgb(196, 160, 25)');
+  expect(colorStylePreview.paintOrder).toBe('stroke');
   await page.locator('#subtitle-color-underline').uncheck();
   await expect(page.locator('#subtitle-color-style-control')).toBeHidden();
   await page.locator('#subtitle-color-underline').check();
   await expect(page.locator('#subtitle-color-style-control')).toBeVisible();
-  await expect(page.locator('#subtitle-color-style')).toHaveValue('both');
+  await expect(page.locator('#subtitle-color-style')).toHaveValue('stroke');
 
   await page.locator('#subtitle-speaker-label-separator').fill('"');
   await expect(page.locator('#overlay-main-speaker-label')).toHaveText('Host"');
@@ -151,7 +178,6 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#export-speaker-labels')).toBeChecked();
   await expect(page.locator('#overlay-main-text')).toHaveText('Host"Alpha');
 
-  await page.locator('#editor-settings-toggle').click();
   await expect(page.locator('#editor-settings-panel')).toBeVisible();
   await page.locator('#editor-settings-tab-export').click();
   const exportToggle = page.locator('#export-speaker-labels');
@@ -163,6 +189,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   expect(await page.evaluate(() => buildSrt())).not.toContain('Host"Alpha');
   expect(await page.evaluate(() => buildSrt())).toContain('Alpha');
 
+  await page.locator('#editor-settings-close').click();
   await page.getByRole('button', { name: '保存工程', exact: true }).click();
   await expect.poll(() => page.evaluate(() => previewGeometryDirty)).toBe(false);
 
@@ -178,14 +205,15 @@ test('configures preview-only speaker labels and independently controls SRT expo
       blue: 'SP5',
     },
   });
-  expect(onDisk.preview.subtitle.color_style).toBe('both');
+  expect(onDisk.preview.subtitle.color_style).toBe('stroke');
   expect(onDisk.segments[0].text).toBe('Alpha');
 
   await page.reload();
   await revealSpeakerCue(page);
   await expect(page.locator('#overlay-main-text')).toHaveText('Host"Alpha');
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
   await expect(page.locator('#subtitle-speaker-label-yellow')).toHaveValue('Host');
   await expect(page.locator('#subtitle-speaker-label-separator')).toHaveValue('"');
-  await expect(page.locator('#subtitle-color-style')).toHaveValue('both');
+  await expect(page.locator('#subtitle-color-style')).toHaveValue('stroke');
 });

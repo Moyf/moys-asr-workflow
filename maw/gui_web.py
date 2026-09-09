@@ -59,7 +59,7 @@ from maw.local_runtime import (
     resolve_model_cache_root,
 )
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
-from maw.media import resolve_project_media
+from maw.media import resolve_default_audio_track, resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import read_project, read_srt
 from maw.project_io import write_mosp
@@ -2193,6 +2193,27 @@ class LauncherApi:
                 }
                 merged = dict(item_payload)
                 media_text = str(merged.get("mediaPath") or "").strip()
+                raw_audio_track = merged.get("audioTrack")
+                if media_text and (raw_audio_track is None or not str(raw_audio_track).strip()):
+                    raw_default = merged.get("defaultAudioTrack")
+                    explicit_default = (
+                        None
+                        if raw_default is None or not str(raw_default).strip()
+                        else _payload_audio_track(merged, field="defaultAudioTrack")
+                    )
+                    if raw_default is not None and str(raw_default).strip() and explicit_default is None:
+                        raise PreflightError(
+                            "defaultAudioTrack",
+                            "audio_track_invalid",
+                            "默认音频轨道必须是非负整数。",
+                        )
+                    default_audio_track = resolve_default_audio_track(
+                        Path(media_text).expanduser().resolve(),
+                        explicit_default,
+                        ffprobe_path=_postprocess_ffmpeg_tools(self.paths.env_path).ffprobe,
+                    )
+                    merged["audioTrack"] = default_audio_track
+                    merged["defaultAudioTrack"] = default_audio_track
                 if media_text and not str(merged.get("srtPath") or "").strip():
                     merged["srtPath"] = str(
                         default_srt_path(
@@ -2296,6 +2317,13 @@ class LauncherApi:
                 "audio_track_invalid",
                 "音频轨道必须是非负整数。",
             )
+        default_audio_track = _payload_audio_track(payload, field="defaultAudioTrack")
+        if default_audio_track is None:
+            return _error_result(
+                "defaultAudioTrack",
+                "audio_track_invalid",
+                "默认音频轨道必须是非负整数。",
+            )
 
         output_seed = unique_output_path(media_path.with_suffix(".waveform.srt"))
         project_path = output_seed.with_suffix(".mosp")
@@ -2310,6 +2338,7 @@ class LauncherApi:
                 generate_spectral=bool(payload.get("generateSpectral")),
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
                 audio_track=audio_track,
+                default_audio_track=default_audio_track,
             )
             normalized = normalize_project(cached.project)
             waveform = normalized.get("waveform")
@@ -2324,13 +2353,14 @@ class LauncherApi:
                 normalized,
                 media_path=media_path,
                 ffprobe_path=ffmpeg_tools.ffprobe,
+                selected_audio_track=audio_track,
             )
         except (OSError, TypeError, ValueError) as error:
             return _error_result("mediaPath", "waveform_generation_failed", str(error))
 
         warnings: list[str] = []
         if cached.reapeaks_path is None:
-            warnings.append("ReaPeaks cache was not generated.")
+            warnings.append("reapeaks cache was not generated.")
         return {
             "ok": True,
             "mediaPath": str(media_path),
@@ -3188,6 +3218,21 @@ def _segmentation_option(
 _TAIL_STRIP_CANDIDATES = "，。"
 
 
+def _match_step_symbols(env_path: Path, key: str) -> list[str]:
+    """读取共享后处理 plan 里 match 步骤的符号列表配置。"""
+    plan = load_postprocess_plan(env_path)
+    steps = plan.get("steps")
+    values: list[str] = []
+    if isinstance(steps, Sequence) and not isinstance(steps, (str, bytes)):
+        for step in steps:
+            if isinstance(step, Mapping) and step.get("id") == "match":
+                value = step.get(key)
+                if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                    values = [str(item) for item in value if str(item)]
+                break
+    return values
+
+
 def _transcribe_strip_tail_punct(env_path: Path) -> str:
     """Derive transcription tail-strip set from the shared 保留符号 settings.
 
@@ -3195,17 +3240,13 @@ def _transcribe_strip_tail_punct(env_path: Path) -> str:
     the 文稿匹配 toolbox; symbols marked as preserved are subtracted from the
     strip candidates so transcription output keeps them at cue tails.
     """
-    plan = load_postprocess_plan(env_path)
-    steps = plan.get("steps")
-    preserved: set[str] = set()
-    if isinstance(steps, Sequence) and not isinstance(steps, (str, bytes)):
-        for step in steps:
-            if isinstance(step, Mapping) and step.get("id") == "match":
-                value = step.get("preservePunctuation")
-                if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-                    preserved = {str(item) for item in value if str(item)}
-                break
+    preserved = set(_match_step_symbols(env_path, "preservePunctuation"))
     return "".join(candidate for candidate in _TAIL_STRIP_CANDIDATES if candidate not in preserved)
+
+
+def _transcribe_extra_strong_punct(env_path: Path) -> str:
+    """Derive the transcription extra strong-punct set from shared 额外断句符号."""
+    return "".join(_match_step_symbols(env_path, "extraSplitPunctuation"))
 
 
 def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> TranscriptionRequest:
@@ -3256,12 +3297,29 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             "audio_track_invalid",
             "音频轨道必须是非负整数。",
         )
+    raw_default_audio_track = payload.get("defaultAudioTrack")
+    default_audio_track = (
+        None
+        if raw_default_audio_track is None or not str(raw_default_audio_track).strip()
+        else _payload_audio_track(payload, field="defaultAudioTrack")
+    )
+    if (
+        raw_default_audio_track is not None
+        and str(raw_default_audio_track).strip()
+        and default_audio_track is None
+    ):
+        raise PreflightError(
+            "defaultAudioTrack",
+            "audio_track_invalid",
+            "默认音频轨道必须是非负整数。",
+        )
     max_len = _segmentation_option(payload, field="maxLen", label="最大字数", minimum=1)
     min_len = _segmentation_option(payload, field="minLen", label="短句合并阈值", minimum=1)
     max_words = _segmentation_option(payload, field="maxWords", label="英文最大单词数", minimum=1)
     min_words = _segmentation_option(payload, field="minWords", label="英文短句合并阈值（单词）", minimum=1)
     gap_split = _segmentation_option(payload, field="gapSplit", label="停顿切句阈值", minimum=0)
     strip_tail_punct = _transcribe_strip_tail_punct(env_path)
+    extra_strong_punct = _transcribe_extra_strong_punct(env_path)
     if max_len and min_len and int(max_len) < int(min_len):
         raise PreflightError(
             "maxLen",
@@ -3364,6 +3422,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         media_path=media,
         srt_path=srt,
         audio_track=audio_track,
+        default_audio_track=default_audio_track,
         model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
@@ -3374,6 +3433,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         min_words=min_words,
         gap_split=gap_split,
         strip_tail_punct=strip_tail_punct,
+        extra_strong_punct=extra_strong_punct,
         qwen_audio_context=qwen_audio_context,
         qwen_audio_hotwords=qwen_audio_hotwords,
         qwen_audio_hotwords_file=qwen_audio_hotwords_file,

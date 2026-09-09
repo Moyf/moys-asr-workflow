@@ -141,4 +141,4 @@ localhost 模式的「最近工程」菜单会列出最近打开的工程；菜�
 
 JSON 的最小要求是顶层 `segments` 数组；每条字幕至少要有毫秒整数 `start`、`end` 和文本 `text`。完整字段、字/词时间码和波形缓存说明见 [JSON_SCHEMA.md](../json-schema/)。
 
-修改前端时，`web/` 是唯一源码。修改后运行 `uv run python edit.py --blank` 来重新生成根目录的 `blank-editor.html`。
+修改前端时，`web/` 是唯一源码。日常开发以 Server 编辑器为准，不要反复生成根目录的 `blank-editor.html`；只有版本发布前或明确指定更新便携产物时，才运行 `uv run python edit.py --blank`。

@@ -13,7 +13,7 @@ status: captured
 
 - 分支：`refactor/mawe-p0-p1`
 - 基线日期：2026-08-13
-- 主要流程：`server-editor/serve.py` 生成页面；`edit.py --blank` 生成便携页面
+- 主要流程：`server-editor/serve.py` 生成页面；`edit.py --blank` 在发布前或明确指定时生成便携页面
 - 行为原则：不改变工程 schema、DOM 合同、快捷键、导出内容和波形交互
 
 ### Phase 0 开始前的源码规模
@@ -91,11 +91,10 @@ node --check web\editor.js
 node --check web\editor-onboarding.js
 node --test tests\test_editor_runtime.mjs tests\test_editor_utils.mjs tests\test_waveform_js.mjs
 uv run python -m unittest tests.test_editor_assets tests.test_waveform
-uv run python edit.py --blank
 git diff --check
 ```
 
-交互验收仍以 Server 编辑器为主；涉及模板或共享脚本装配时，至少打开生成后的 `blank-editor.html` 做一次启动 smoke。长媒体滚动和连续播放的性能样本应在拥有固定工程夹具后补齐；在此之前不能声称已经完成性能门槛验证。
+交互验收仍以 Server 编辑器为主；涉及模板或共享脚本装配时，日常不自动刷新 `blank-editor.html`，只有明确指定或发布前更新便携产物后，才打开该文件做一次启动 smoke。长媒体滚动和连续播放的性能样本应在拥有固定工程夹具后补齐；在此之前不能声称已经完成性能门槛验证。
 
 ### 2026-08-13 当前批次验证记录
 

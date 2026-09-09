@@ -367,7 +367,7 @@ class PackagingContractTests(unittest.TestCase):
         local_dependencies = set(project["dependency-groups"]["local"])
         self.assertIn("jieba>=0.42", local_dependencies)
         self.assertIn("requests>=2.28", local_dependencies)
-        self.assertIn("reapeaks>=0.3.2", local_dependencies)
+        self.assertIn("quapeaks>=2026.0.0", local_dependencies)
         self.assertFalse(any(value.startswith("pywebview") for value in local_dependencies))
         self.assertFalse(any(value.startswith("opencc-") for value in local_dependencies))
         self.assertFalse(any(value.startswith("fonttools") for value in local_dependencies))
@@ -409,9 +409,17 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("edit", graph)
         self.assertIn("maw.stickers", graph)
 
-    def test_rust_reapeaks_kernel_is_imported_only_at_the_call_site(self) -> None:
+    def test_rust_quapeaks_kernel_is_imported_only_at_the_call_site(self) -> None:
         """Given managed runtimes may lack the Rust kernel, When the parser module is read, Then its import is lazy."""
-        source = read_text("maw/reapeaks.py")
+        # 打包缺模块属于"源码跑得好、产物一开就崩"：media_cache 在模块级导入
+        # maw.mopeaks，spec 漏了它，本地 ASR worker 会在波形阶段 ImportError，
+        # 而现有导入图检查只覆盖 OCR runtime 那条链，抓不到。
+        spec = read_text("MAW.spec")
+        self.assertIn(
+            '(str(ROOT / "maw" / "mopeaks.py"), "local-runtime/maw")', spec
+        )
+        self.assertIn('"maw.mopeaks"', spec)
+        source = read_text("maw/quapeaks.py")
         tree = ast.parse(source)
         top_level: set[str] = set()
         for node in ast.iter_child_nodes(tree):
@@ -420,8 +428,8 @@ class PackagingContractTests(unittest.TestCase):
             elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
                 top_level.add(node.module)
 
-        self.assertNotIn("reapeaks", top_level)
-        self.assertIn("import reapeaks as rust_generate", source)
+        self.assertNotIn("quapeaks", top_level)
+        self.assertIn("import quapeaks as rust_generate", source)
 
     def test_ocr_runtime_bundles_every_local_import_dependency(self) -> None:
         """Given the OCR worker entrypoint, When packaging is read, Then its local imports are copied beside it."""

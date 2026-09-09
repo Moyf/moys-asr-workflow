@@ -34,7 +34,7 @@ from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
 from maw.postprocess import PostprocessStepError  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
-from maw.postprocess_pipeline import PostprocessPipelineError  # noqa: E402
+from maw.postprocess_pipeline import PostprocessPipelineError, save_postprocess_plan  # noqa: E402
 from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
 from maw.runtimes import OCR  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
@@ -896,7 +896,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(json.loads(Path(str(result["projectPath"])).read_text(encoding="utf-8"))["segments"][0]["text"], "软件")
 
     def test_generate_waveform_project_creates_media_only_embedded_project(self) -> None:
-        """Given media, When generating waveform, Then a normalized cache-only project is written."""
+        """Given media, When generating waveform, Then a normalized project without inline caches is written."""
         media = self.root / "clip.wav"
         media.write_bytes(b"audio")
         embedded = {
@@ -920,7 +920,12 @@ class GuiWebBridgeTests(unittest.TestCase):
             )),
             mock.patch("maw.gui_web.embed_media_caches", return_value=SimpleNamespace(project=embedded, waveform_error=None, reapeaks_path=None)) as embed,
         ):
-            result = self.api.generate_waveform_project({"mediaPath": str(media), "generateSpectral": True, "audioTrack": "2"})
+            result = self.api.generate_waveform_project({
+                "mediaPath": str(media),
+                "generateSpectral": True,
+                "audioTrack": "2",
+                "defaultAudioTrack": "1",
+            })
 
         self.assertTrue(result["ok"])
         project_path = Path(str(result["projectPath"]))
@@ -929,7 +934,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         project = json.loads(project_path.read_text(encoding="utf-8"))
         self.assertEqual(project["segments"], [])
         self.assertEqual(project["media"], str(media.resolve()))
-        self.assertEqual(project["waveform"]["data"], "AQIDBA==")
+        # 工程去内联：波形缓存不再写进工程文件，只保留在 embed 结果的运行态里。
+        self.assertNotIn("waveform", project)
+        self.assertNotIn("spectral", project)
+        self.assertNotIn("waveform_reapeaks", project)
         embed.assert_called_once_with(
             {"media": str(media.resolve()), "segments": []},
             media.resolve(),
@@ -937,6 +945,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             generate_spectral=True,
             ffmpeg_bin=str(ffmpeg),
             audio_track=2,
+            default_audio_track=1,
         )
 
     def test_generate_waveform_project_rejects_invalid_embedded_waveform(self) -> None:
@@ -999,6 +1008,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('const mediaPath = $("toolboxUtilityMediaPath").value.trim()', script)
         self.assertIn('id="toolboxGenerateSpectral" type="checkbox"', html)
         self.assertIn('generateSpectral: $("toolboxGenerateSpectral").checked', script)
+        self.assertIn("audioTrack: selectedToolboxAudioTrack()", script)
+        self.assertIn("defaultAudioTrack: defaultToolboxAudioTrack()", script)
         self.assertNotIn('generateSpectral: $("generateSpectral").checked', script)
         self.assertIn('id="generateWaveform"', html)
         self.assertIn('id="runWaveform"', html)
@@ -2382,7 +2393,10 @@ class GuiWebBridgeTests(unittest.TestCase):
 
     def test_start_server_reports_code_when_project_json_is_missing(self) -> None:
         """Given missing project JSON, When starting server, Then json_not_found code is returned."""
-        result = self.api.start_server({"jsonPath": str(self.root / "missing.json"), "mediaPath": "", "port": "8765"})
+        # 预探测必须隔离本机环境：开发者机器上该端口可能有无关进程应答，
+        # 会被误判为「服务器已在运行」而跳过 JSON 校验。
+        with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+            result = self.api.start_server({"jsonPath": str(self.root / "missing.json"), "mediaPath": "", "port": "8765"})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "jsonPath")
@@ -2558,7 +2572,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         project = self.root / "project.json"
         project.write_text('{"segments": []}\n', encoding="utf-8")
 
-        result = self.api.start_server({"jsonPath": str(project), "mediaPath": "", "port": "8765"})
+        # 同上：隔离本机端口占用，避免预探测误判服务器已在运行。
+        with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+            result = self.api.start_server({"jsonPath": str(project), "mediaPath": "", "port": "8765"})
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "serverMediaPath")
@@ -2788,6 +2804,63 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["code"], "batch_items_invalid")
         self.assertIn("missing", result["detail"])
 
+    def test_batch_uses_each_media_default_audio_track_when_selection_is_omitted(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+
+        ffprobe = self.root / "ffprobe.exe"
+        with (
+            mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffprobe=ffprobe)),
+            mock.patch("maw.gui_web.resolve_default_audio_track", return_value=2) as resolve_default,
+            mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread,
+        ):
+            result = self.api.start_batch_transcription({
+                "items": [{"id": "clip", "mediaPath": str(media)}],
+                "settings": {"apiKey": "sk-test"},
+            })
+
+        self.assertTrue(result["ok"])
+        batch_items = thread.call_args.kwargs["args"][0]
+        request = batch_items[0].request
+        self.assertIsNotNone(request)
+        assert request is not None
+        self.assertEqual(request.audio_track, 2)
+        self.assertEqual(request.default_audio_track, 2)
+        resolve_default.assert_called_once_with(
+            media.resolve(),
+            None,
+            ffprobe_path=ffprobe,
+        )
+
+    def test_batch_preserves_an_explicit_zero_audio_track(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+
+        with (
+            mock.patch("maw.gui_web.resolve_default_audio_track") as resolve_default,
+            mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread,
+        ):
+            result = self.api.start_batch_transcription({
+                "items": [{"id": "clip", "mediaPath": str(media)}],
+                "settings": {
+                    "apiKey": "sk-test",
+                    "audioTrack": 0,
+                    "defaultAudioTrack": 2,
+                },
+            })
+
+        self.assertTrue(result["ok"])
+        request = thread.call_args.kwargs["args"][0][0].request
+        self.assertIsNotNone(request)
+        assert request is not None
+        self.assertEqual(request.audio_track, 0)
+        self.assertEqual(request.default_audio_track, 2)
+        resolve_default.assert_not_called()
+
     def test_local_request_skips_api_key_and_carries_engine_options(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -2907,6 +2980,30 @@ class GuiWebBridgeTests(unittest.TestCase):
         }, self.env_path)
 
         self.assertIsNone(request.postprocess_plan)
+
+    def test_request_from_payload_reads_shared_extra_strong_punct(self) -> None:
+        """共享断句配置的额外断句符号会下发给云端转写作为强断句符号。"""
+        save_postprocess_plan(self.env_path, {
+            "enabled": False,
+            "steps": [{
+                "id": "match",
+                "enabled": True,
+                "extraSplitPunctuation": ["?", "!", "", "——"],
+                "preservePunctuation": ["~"],
+            }],
+        })
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }, self.env_path)
+
+        self.assertEqual(request.extra_strong_punct, "?!——")
+        # 保留符号只影响句尾剥除集合，与额外断句符号互不影响。
+        self.assertIn("，", request.strip_tail_punct)
 
     def test_start_transcription_rejects_singapore_without_workspace(self) -> None:
         """Given Singapore region, When workspace is absent, Then workspace blocks."""
@@ -3033,6 +3130,46 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertEqual(request.audio_track, 2)
 
+    def test_request_from_payload_carries_default_audio_track(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "audioTrack": "0",
+            "defaultAudioTrack": "2",
+        }, self.env_path)
+
+        self.assertEqual(request.audio_track, 0)
+        self.assertEqual(request.default_audio_track, 2)
+
+    def test_request_from_payload_leaves_missing_default_disposition_for_cli_probe(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }, self.env_path)
+
+        self.assertIsNone(request.default_audio_track)
+
+    def test_request_from_payload_treats_empty_default_audio_track_as_missing(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "defaultAudioTrack": "",
+        }, self.env_path)
+
+        self.assertIsNone(request.default_audio_track)
+
     def test_request_from_payload_rejects_negative_audio_track(self) -> None:
         media = self.root / "clip.mp4"
         media.write_bytes(b"media")
@@ -3046,6 +3183,21 @@ class GuiWebBridgeTests(unittest.TestCase):
             }, self.env_path)
 
         self.assertEqual(raised.exception.field, "audioTrack")
+        self.assertEqual(raised.exception.code, "audio_track_invalid")
+
+    def test_request_from_payload_rejects_negative_default_audio_track(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+
+        with self.assertRaises(PreflightError) as raised:
+            _request_from_payload({
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "apiKey": "sk-test",
+                "defaultAudioTrack": -1,
+            }, self.env_path)
+
+        self.assertEqual(raised.exception.field, "defaultAudioTrack")
         self.assertEqual(raised.exception.code, "audio_track_invalid")
 
     def test_request_from_payload_passes_segmentation_options(self) -> None:
@@ -4104,11 +4256,11 @@ class LauncherAssetContractTests(unittest.TestCase):
             script,
         )
         self.assertIn(
-            'toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，同时对转写后处理的句尾剥除生效。"',
+            'toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。"',
             launcher_script,
         )
         self.assertIn(
-            'toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, and also drive tail-punctuation stripping in transcription post-processing."',
+            'toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, cloud transcription treats them as strong break symbols too, and they also drive tail-punctuation stripping in transcription post-processing."',
             launcher_script,
         )
 
@@ -4177,8 +4329,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
-        self.assertIn('generate_spectral: "生成 ReaPeaks 频谱数据"', script)
-        self.assertIn('generate_spectral: "Generate ReaPeaks spectral data"', script)
+        self.assertIn('generate_spectral: "生成 reapeaks 频谱数据"', script)
+        self.assertIn('generate_spectral: "Generate reapeaks spectral data"', script)
         self.assertIn('segmentation: "字幕切句"', script)
         self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
         self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)

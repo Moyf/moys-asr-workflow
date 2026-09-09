@@ -166,7 +166,6 @@ test('keeps every Editor settings gear visible while left toolbar content shrink
     await page.reload();
     await page.waitForSelector('#editor-workspace');
     const gears = await page.evaluate(() => [
-      ['.player-toolbar', '#subtitle-preview-settings-toggle'],
       ['.cue-editor-toolbar', '#cue-editor-settings-toggle'],
       ['.waveform-toolbar', '#waveform-settings-toggle'],
       ['.cue-list-toolbar', '#cue-list-settings-toggle'],
@@ -194,7 +193,6 @@ test('keeps every Editor settings gear visible while left toolbar content shrink
   const editorScrollbarState = await page.evaluate(() => [
     '.cues-container',
     '.waveform-scroll',
-    '.subtitle-preview-settings-panel',
     '.multi-subtitle-import-preview',
   ].map((selector) => {
     const element = document.querySelector(selector);

@@ -687,6 +687,9 @@ const DEFAULT_EDITOR_SETTINGS = {
   // 自动保存仅对绑定工程的 localhost 服务器版生效。
   autoSaveProject: true,
   autoSaveIntervalSeconds: 30,
+  projectBackupEnabled: false,
+  projectBackupMinutes: 5,
+  projectBackupLimit: 20,
   // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
   stickerOverlayEnabled: false,
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
@@ -749,7 +752,7 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
-const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'both']);
+const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
 const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
@@ -1142,7 +1145,9 @@ function isMediaFile(file) {
   return Boolean(file) && (file.type.startsWith('video/') || file.type.startsWith('audio/') || MEDIA_FILE_RE.test(file.name));
 }
 function isReapeaksFile(file) {
-  return Boolean(file) && /\.reapeaks$/i.test(file.name);
+  // .quapeaks 是 MAW 自有容器（改名自 reapeaks 内核）：浏览器直读必须同样认它，
+  // 否则服务端读得到、用户在浏览器里打开却报「不支持的文件」。
+  return Boolean(file) && /\.(?:reapeaks|quapeaks)$/i.test(file.name);
 }
 
 // === 统一撤销/重做 ===
@@ -1649,9 +1654,6 @@ const mergeJoinSettingsPanel = document.getElementById('merge-join-settings-pane
 const splitTrimSettings = document.getElementById('split-trim-settings');
 const splitTrimSettingsToggle = document.getElementById('split-trim-settings-toggle');
 const splitTrimSettingsPanel = document.getElementById('split-trim-settings-panel');
-const subtitlePreviewSettings = document.getElementById('subtitle-preview-settings');
-const subtitlePreviewSettingsToggle = document.getElementById('subtitle-preview-settings-toggle');
-const subtitlePreviewSettingsPanel = document.getElementById('subtitle-preview-settings-panel');
 const cueEditorSettings = document.getElementById('cue-editor-settings');
 const cueEditorSettingsToggle = document.getElementById('cue-editor-settings-toggle');
 const cueEditorSettingsPanel = document.getElementById('cue-editor-settings-panel');
@@ -1698,6 +1700,7 @@ const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
 const EDITOR_SETTINGS_WINDOW_POSITION_KEY = 'moy.asr.editor.settings.window.v1';
+const EDITOR_SETTINGS_WINDOW_SIZE_KEY = 'moy.asr.editor.settings.window_size.v1';
 const EDITOR_SETTINGS_WINDOW_TAB_KEY = 'moy.asr.editor.settings.window_tab.v1';
 const editorSettingsClose = document.getElementById('editor-settings-close');
 const editorSettingsDragHandle = document.getElementById('editor-settings-drag-handle');
@@ -1909,9 +1912,12 @@ const editorSettingsFloatingPanel = createFloatingPanel({
   manageButton: editorSettingsToggle,
   anchorButton: editorSettingsToggle,
   positionKey: EDITOR_SETTINGS_WINDOW_POSITION_KEY,
-  // 所有打开路径（按钮点击 / 桥接）都先恢复标签页，保证默认分区带上 active 样式，
-  // 且窗口按实际内容尺寸定位。
-  onOpen: restoreEditorSettingsActiveTab,
+  // 所有打开路径（按钮点击 / 桥接）都先恢复尺寸与标签页，保证默认分区带上
+  // active 样式，且窗口按实际内容尺寸定位。
+  onOpen: () => {
+    restoreEditorSettingsPanelSize();
+    restoreEditorSettingsActiveTab();
+  },
 });
 
 function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
@@ -1944,6 +1950,39 @@ function restoreEditorSettingsActiveTab() {
     || editorSettingsTabs.find((item) => !item.hidden)
     || editorSettingsTabs[0];
   setEditorSettingsActiveTab(tab);
+}
+
+// 浮窗尺寸：与帮助窗口一致，仅在用户拖过右下角缩放手柄后持久化；
+// 未缩放时保持 CSS 默认宽度/自动高度。
+function restoreEditorSettingsPanelSize() {
+  if (!editorSettingsPanel) return;
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY) || 'null');
+  } catch (_) {
+    saved = null;
+  }
+  if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
+  editorSettingsPanel.style.width = `${Math.min(Math.max(460, saved.width), window.innerWidth - 12)}px`;
+  editorSettingsPanel.style.height = `${Math.min(Math.max(280, saved.height), window.innerHeight - 24)}px`;
+}
+let editorSettingsPanelSizeSaveTimer = 0;
+if (editorSettingsPanel) {
+  new ResizeObserver(() => {
+    if (!editorSettingsPanel.classList.contains('show')) return;
+    if (!editorSettingsPanel.style.width && !editorSettingsPanel.style.height) return;
+    clearTimeout(editorSettingsPanelSizeSaveTimer);
+    editorSettingsPanelSizeSaveTimer = setTimeout(() => {
+      const rect = editorSettingsPanel.getBoundingClientRect();
+      try {
+        localStorage.setItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY, JSON.stringify({
+          width: Math.round(rect.width), height: Math.round(rect.height),
+        }));
+      } catch (_) {
+        // file:// 隐私模式下 localStorage 可能被拒；缩放本身仍可用。
+      }
+    }, 250);
+  }).observe(editorSettingsPanel);
 }
 
 function setEditorSettingsPanelOpen(open) {
@@ -2006,19 +2045,6 @@ function setSplitTrimSettingsPanelOpen(open) {
 function setSettingsPanelOwnerOpen(panel, open) {
   const owner = panel?.closest('.player-wrap, .current-cue-panel, .cues-container, .waveform-pane');
   owner?.classList.toggle('settings-panel-owner-open', open);
-}
-
-function positionSubtitlePreviewSettingsPanel() {
-  positionAnchoredSettingsPanel(subtitlePreviewSettingsPanel, subtitlePreviewSettingsToggle);
-}
-
-function setSubtitlePreviewSettingsPanelOpen(open) {
-  if (!subtitlePreviewSettingsPanel || !subtitlePreviewSettingsToggle) return;
-  subtitlePreviewSettingsPanel.hidden = !open;
-  setSettingsPanelOwnerOpen(subtitlePreviewSettingsPanel, open);
-  subtitlePreviewSettingsToggle.classList.toggle('active', open);
-  subtitlePreviewSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionSubtitlePreviewSettingsPanel();
 }
 
 function positionCueListSettingsPanel() {
@@ -2491,10 +2517,6 @@ splitTrimSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setSplitTrimSettingsPanelOpen(splitTrimSettingsPanel?.hidden);
 });
-subtitlePreviewSettingsToggle?.addEventListener('click', (event) => {
-  event.stopPropagation();
-  setSubtitlePreviewSettingsPanelOpen(subtitlePreviewSettingsPanel?.hidden);
-});
 cueListSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setCueListSettingsPanelOpen(cueListSettingsPanel?.hidden);
@@ -2515,9 +2537,6 @@ document.addEventListener('pointerdown', (event) => {
       applySearch(searchEl.value);
     }
   }
-  if (!subtitlePreviewSettingsPanel?.hidden && !subtitlePreviewSettings?.contains(event.target)) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-  }
   if (!cueListSettingsPanel?.hidden && !cueListSettings?.contains(event.target)) {
     setCueListSettingsPanelOpen(false);
   }
@@ -2536,10 +2555,6 @@ document.addEventListener('pointerdown', (event) => {
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  if (!subtitlePreviewSettingsPanel?.hidden) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-    subtitlePreviewSettingsToggle?.focus();
-  }
   if (!cueListSettingsPanel?.hidden) {
     setCueListSettingsPanelOpen(false);
     cueListSettingsToggle?.focus();
@@ -2565,17 +2580,12 @@ window.addEventListener('resize', positionMergeJoinSettingsPanel);
 window.addEventListener('scroll', positionMergeJoinSettingsPanel, true);
 window.addEventListener('resize', positionSplitTrimSettingsPanel);
 window.addEventListener('scroll', positionSplitTrimSettingsPanel, true);
-window.addEventListener('resize', positionSubtitlePreviewSettingsPanel);
-window.addEventListener('scroll', positionSubtitlePreviewSettingsPanel, true);
 window.addEventListener('resize', positionCueListSettingsPanel);
 window.addEventListener('scroll', positionCueListSettingsPanel, true);
 window.addEventListener('resize', positionWaveformSettingsPanel);
 window.addEventListener('scroll', positionWaveformSettingsPanel, true);
 window.addEventListener('resize', positionCueEditorSettingsPanel);
 window.addEventListener('scroll', positionCueEditorSettingsPanel, true);
-subtitlePreviewSettings?.closest('.player-toolbar')?.addEventListener(
-  'scroll', positionSubtitlePreviewSettingsPanel,
-);
 cueListSettings?.closest('.cue-list-toolbar')?.addEventListener(
   'scroll', positionCueListSettingsPanel,
 );
@@ -2603,11 +2613,15 @@ helpOpenWaveformSettingsButtons.forEach((button) => {
     waveformSettingsToggle?.focus();
   });
 });
+// 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
+function openEditorSettingsAtTab(tabId) {
+  setEditorSettingsPanelOpen(true);
+  setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
+}
 helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
-    setSubtitlePreviewSettingsPanelOpen(true);
-    subtitlePreviewSettingsToggle?.focus();
+    openEditorSettingsAtTab('editor-settings-tab-subtitle-preview');
   });
 });
 helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {
@@ -10885,6 +10899,8 @@ document.addEventListener('pointerdown', (e) => {
 // AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
 const GEO_UTILS = window.AsrEditorUtils;
 let previewGeometryDirty = false;
+// 启动早期生成的自定义字体选项先用原始名称占位；共享工具层就绪后立即统一本地化。
+relabelSubtitleFontFamilyOptions();
 
 function getPreviewGeometry() {
   return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.subtitle);
@@ -10962,7 +10978,10 @@ function subtitleFontFamilyOptionExists(select, value) {
 }
 function subtitleFontFamilyDisplayName(family) {
   const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  return GEO_UTILS.subtitleFontFamilyDisplayName(family, language);
+  // 启动早期 applySubtitleAppearance() 会先生成自定义字体选项，此时
+  // GEO_UTILS 别名（文件后部才初始化）尚处于暂时性死区；直接读共享工具层，
+  // 不可用时先用原始字体名占位，别名就绪后由 relabelSubtitleFontFamilyOptions 统一本地化。
+  return window.AsrEditorUtils?.subtitleFontFamilyDisplayName(family, language) ?? family;
 }
 function relabelSubtitleFontFamilyOptions() {
   [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
@@ -11671,8 +11690,8 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     overlayExtensionTextEl.textContent = extensionText;
   }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
-  // 预览文字颜色、下划线或两者。dataset 记录上次应用的结果，避免播放刷新
-  // 每帧都写内联样式。
+  // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
+  // 播放刷新每帧都写内联样式。
   const subtitleAppearance = getSubtitleAppearance();
   const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
   const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
@@ -11682,13 +11701,18 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     previewSegmentColor = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
   }
   const colorUnderline = colorPreviewEnabled
-    && (colorStyle === 'underline' || colorStyle === 'both')
+    && colorStyle === 'underline'
     ? previewSegmentColor : '';
   const textColor = colorPreviewEnabled
-    && (colorStyle === 'text' || colorStyle === 'both')
+    && colorStyle === 'text'
     && previewSegmentColor
     ? previewSegmentColor
     : subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
+  const textStroke = colorPreviewEnabled
+    && colorStyle === 'stroke'
+    && previewSegmentColor
+    ? `.125em ${previewSegmentColor}`
+    : '';
   if (overlayTextEl.dataset.colorUnderline !== colorUnderline) {
     overlayTextEl.dataset.colorUnderline = colorUnderline;
     overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
@@ -11698,6 +11722,11 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayTextEl.dataset.colorText !== textColor) {
     overlayTextEl.dataset.colorText = textColor;
     overlayTextEl.style.color = textColor;
+  }
+  if (overlayTextEl.dataset.colorStroke !== textStroke) {
+    overlayTextEl.dataset.colorStroke = textStroke;
+    overlayTextEl.style.webkitTextStroke = textStroke;
+    overlayTextEl.style.paintOrder = textStroke ? 'stroke fill' : '';
   }
   const overlayHidden = !mainVisible && !extensionVisible;
   if (overlayEl.classList.contains('hidden') !== overlayHidden) {
@@ -12199,11 +12228,11 @@ function buildJson() {
       end_offset_ms: binding.end_offset_ms || 0,
     })),
   };
-  if (DATA.waveform) out.waveform = DATA.waveform;
+  // 三块波形缓存不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
+  // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
+  // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
   const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
   if (mediaMetadata) out.media_metadata = mediaMetadata;
-  if (DATA.spectral) out.spectral = DATA.spectral;
-  if (DATA.waveform_reapeaks) out.waveform_reapeaks = DATA.waveform_reapeaks;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
   if (DATA.script_alignment) out.script_alignment = DATA.script_alignment;
   const workspace = buildCurrentWorkspaceData();
@@ -13343,10 +13372,56 @@ function configureServerSaveControls() {
     saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
   }
   syncStickerOtioExportMode();
+  syncProjectBackupControls();
 }
 
 let autoSaveTimer = null;
+let projectBackupTimer = null;
+function syncProjectBackupControls() {
+  const available = serverProjectSavingEnabled() && !projectFileHandle;
+  const enabled = document.getElementById('project-backup-enabled');
+  const minutes = document.getElementById('project-backup-minutes');
+  const limit = document.getElementById('project-backup-limit');
+  enabled.checked = EDITOR_SETTINGS.projectBackupEnabled;
+  enabled.disabled = !available;
+  document.getElementById('project-backup-open').disabled = !available;
+  minutes.value = EDITOR_SETTINGS.projectBackupMinutes;
+  limit.value = EDITOR_SETTINGS.projectBackupLimit;
+  minutes.disabled = limit.disabled = !available || !enabled.checked;
+  document.getElementById('project-backup-unavailable').hidden = available;
+  if (projectBackupTimer !== null) window.clearInterval(projectBackupTimer);
+  projectBackupTimer = null;
+  if (available && enabled.checked) {
+    projectBackupTimer = window.setInterval(() => {
+      void saveProjectToServer({ silent: true, backupOnly: true });
+    }, EDITOR_SETTINGS.projectBackupMinutes * 60000);
+  }
+}
+for (const [id, key, fallback, max] of [
+  ['project-backup-enabled', 'projectBackupEnabled', false, 0],
+  ['project-backup-minutes', 'projectBackupMinutes', 5, 1440],
+  ['project-backup-limit', 'projectBackupLimit', 20, 1000],
+]) {
+  document.getElementById(id)?.addEventListener('change', (event) => {
+    const value = max ? Math.min(max, Math.max(1, Math.round(Number(event.target.value) || fallback))) : event.target.checked;
+    updateEditorSettings({ [key]: value });
+    syncProjectBackupControls();
+  });
+}
 let autoSaveFlushTimer = null;
+document.getElementById('project-backup-open')?.addEventListener('click', async () => {
+  if (!serverProjectSavingEnabled() || projectFileHandle) return;
+  try {
+    const response = await fetch(new URL('/api/project/backups/open', window.location.href), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || response.status);
+  } catch (error) {
+    flashHint(`打开备份文件夹失败：${error.message || error}`, 'warning');
+  }
+});
 let projectSaveInFlight = false;
 const EDIT_SAVE_DEBOUNCE_MS = 400;
 
@@ -13929,7 +14004,8 @@ function markProjectSaved(filename, backupName, { silent = false } = {}) {
   if (!silent) flashHint('保存成功！', 'success');
 }
 
-async function saveProjectToServer({ silent = false } = {}) {
+async function saveProjectToServer({ silent = false, backupOnly = false } = {}) {
+  if (backupOnly && (projectFileHandle || !EDITOR_SETTINGS.projectBackupEnabled)) return false;
   if (!serverProjectSavingEnabled()) {
     if (!silent) flashHint('当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件', 'invalid');
     return false;
@@ -13945,13 +14021,18 @@ async function saveProjectToServer({ silent = false } = {}) {
     const response = await fetch(saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project: JSON.parse(projectJson), filename: null }),
+      body: JSON.stringify({
+        project: JSON.parse(projectJson), filename: null,
+        backupOnly,
+        backupLimit: EDITOR_SETTINGS.projectBackupEnabled && (backupOnly || !silent)
+          ? EDITOR_SETTINGS.projectBackupLimit : null,
+      }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) {
       throw new Error(result.error || `服务器返回 ${response.status}`);
     }
-    markProjectSaved(result.filename, result.backup, { silent });
+    if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent });
     return true;
   } catch (error) {
     const detail = error?.message || error;
@@ -13959,7 +14040,7 @@ async function saveProjectToServer({ silent = false } = {}) {
     // A stale browser tab can outlive the localhost process (the browser reports
     // ERR_CONNECTION_REFUSED). Offer a real file save so Ctrl+S never strands
     // completed edits, while making clear that the bound JSON was not overwritten.
-    if (error instanceof TypeError
+    if (!silent && error instanceof TypeError
         && confirm('无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？')) {
       const saved = await downloadFile(projectJson, `${FILENAME_BASE}.mosp`, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
@@ -15944,10 +16025,10 @@ async function loadReapeaksFile(file) {
     waveformEditor.setReapeaksWaveform(parsed.waveform);
     waveformEditor.setSpectralPayload(parsed.spectral);
     waveformEditor.setMediaAvailable(false);
-    flashHint(`已加载 ReaPeaks 缓存：${file.name}`, 'success');
+    flashHint(`已加载 reapeaks 缓存：${file.name}`, 'success');
     return true;
   } catch (error) {
-    flashHint(`加载 ReaPeaks 失败：${error.message || error}`, 'warning');
+    flashHint(`加载 reapeaks 失败：${error.message || error}`, 'warning');
     return false;
   }
 }
@@ -18900,7 +18981,7 @@ async function handleDroppedFiles(files) {
   const srtFile = files.find(isSrtFile);
   let stagedSrtSegments = null;
   if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
-    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / ReaPeaks）', 'warning');
+    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / reapeaks）', 'warning');
     return;
   }
   if (jsonFile) {

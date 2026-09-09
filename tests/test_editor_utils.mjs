@@ -295,6 +295,22 @@ test('normalizes source audio track metadata independently from video FPS', () =
   assert.equal(helpers.normalizeMediaMetadata({ audio_tracks: [{ stream_index: -1 }] }), null);
 });
 
+test('normalizes the persisted selected audio track', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
+    selected_audio_track: 2,
+  }))), {
+    selected_audio_track: 2,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
+    video_fps: 30,
+    selected_audio_track: 1,
+  }))), { video_fps: 30, selected_audio_track: 1 });
+  assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: -1 }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: 1.5 }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: true }), null);
+  assert.equal(helpers.normalizeMediaMetadata({}), null);
+});
+
 test('falls back to default split trim symbols and keeps single characters from free input', () => {
   const defaults = JSON.parse(JSON.stringify(helpers.DEFAULT_SPLIT_TRIM_SYMBOLS));
   // 默认集合 = 前 5 个 chip（全角）+ 文本框预填的半角逗号句点。
@@ -1222,7 +1238,10 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('保存成功！', 'en'), 'Saved!');
   assert.equal(i18n.translateText('字幕忍者', 'en'), 'Subtitle Ninja');
   assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
-  assert.equal(i18n.translateText('字幕大小', 'en'), 'Font size');
+  assert.equal(i18n.translateText('文字大小', 'en'), 'Font size');
+  assert.equal(i18n.translateText('视频预览', 'en'), 'Video preview');
+  assert.equal(i18n.translateText('播放控制', 'en'), 'Playback controls');
+  assert.equal(i18n.translateText('颜色样式', 'en'), 'Color style');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
   assert.equal(i18n.translateText('空隙检测与调整', 'en'), 'Gap detection and adjustment');
   assert.equal(i18n.translateText('进一步收缩空隙', 'en'), 'Shrink gaps further');
