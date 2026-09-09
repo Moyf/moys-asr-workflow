@@ -33,6 +33,7 @@ from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
 from maw.postprocess import PostprocessStepError  # noqa: E402
+from maw.postprocess_io import read_project  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.postprocess_pipeline import PostprocessPipelineError, save_postprocess_plan  # noqa: E402
 from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
@@ -1244,7 +1245,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         output_srt = Path(str(result["srtPath"]))
         self.assertTrue(output_project.is_file())
         self.assertTrue(output_srt.is_file())
-        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "旧句。")
+        self.assertTrue(output_project.name.startswith("clip.匹配"))
+        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "旧句")
+        self.assertNotIn("旧句。", output_srt.read_text(encoding="utf-8"))
 
     def test_script_preview_returns_bounded_utf8_text(self) -> None:
         script = self.root / "preview.txt"
@@ -1271,14 +1274,53 @@ class GuiWebBridgeTests(unittest.TestCase):
         result = self.api.read_script_preview({"path": str(script)})
 
         self.assertTrue(result["ok"])
-        self.assertEqual(result["preview"], "标题\n正文\n")
+        self.assertEqual(result["preview"], "标题\n正文")
         self.assertFalse(result["truncated"])
+
+    def test_markdown_script_preview_can_clean_inline_symbols(self) -> None:
+        script = self.root / "inline-preview.md"
+        script.write_text("**粗体**\n==高亮==\n", encoding="utf-8")
+
+        cleaned = self.api.read_script_preview({"path": str(script)})
+        preserved = self.api.read_script_preview({"path": str(script), "cleanMarkdownSymbols": False})
+
+        self.assertEqual(cleaned["preview"].rstrip("\n"), "粗体\n高亮")
+        self.assertEqual(preserved["preview"].rstrip("\n"), "**粗体**\n==高亮==")
+
+    def test_script_preview_uses_processed_split_and_tail_punctuation(self) -> None:
+        script = self.root / "processed-preview.txt"
+        script.write_text("第一句，第二句？第三句。", encoding="utf-8")
+
+        result = self.api.read_script_preview({
+            "path": str(script),
+            "extraSplitPunctuation": ["？"],
+            "preservePunctuation": ["？"],
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["preview"], "第一句\n第二句？\n第三句")
+
+    def test_script_match_bridge_forwards_markdown_cleanup_setting(self) -> None:
+        project = self.root / "clip.mosp"
+        script = self.root / "inline-match.md"
+        project.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "这样"}]}), encoding="utf-8")
+        script.write_text("**这样**", encoding="utf-8")
+
+        preserved = self.api.run_script_match({
+            "projectPath": str(project),
+            "scriptPath": str(script),
+            "outputMode": "project",
+            "cleanMarkdownSymbols": False,
+        })
+
+        self.assertTrue(preserved["ok"])
+        self.assertIn("**这样**", read_project(Path(preserved["projectPath"]))["segments"][0]["text"])
 
     def test_script_match_preview_returns_split_text(self) -> None:
         project = self.root / "clip.mosp"
         script = self.root / "preview.txt"
         project.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "甲乙"}]}), encoding="utf-8")
-        script.write_text("甲\n乙", encoding="utf-8")
+        script.write_text("**甲**\n==乙==", encoding="utf-8")
 
         result = self.api.preview_script_match({"projectPath": str(project), "scriptPath": str(script)})
 
@@ -1287,6 +1329,53 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["matchRate"], 100)
         self.assertEqual(result["originalSegmentCount"], 1)
         self.assertEqual(result["matchedSegmentCount"], 2)
+
+        preserved = self.api.preview_script_match({
+            "projectPath": str(project),
+            "scriptPath": str(script),
+            "cleanMarkdownSymbols": False,
+        })
+
+        self.assertTrue(preserved["ok"])
+        self.assertEqual(preserved["preview"], "1. **甲**\n2. ==乙==")
+
+    def test_match_preview_distinguishes_invalid_subtitle_from_low_match(self) -> None:
+        malformed = self.root / "malformed.srt"
+        malformed.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\n甲\n\n2\n00:00:00,900 --> 00:00:02,000\n乙\n",
+            encoding="utf-8",
+        )
+        script = self.root / "valid.txt"
+        script.write_text("甲乙", encoding="utf-8")
+
+        result = self.api.preview_script_match({"srtPath": str(malformed), "scriptPath": str(script)})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["errorCode"], "subtitle_invalid")
+
+        run_result = self.api.run_script_match({
+            "srtPath": str(malformed),
+            "scriptPath": str(script),
+            "outputMode": "both",
+        })
+        self.assertFalse(run_result["ok"])
+        self.assertEqual(run_result["code"], "subtitle_invalid")
+
+    def test_script_match_bridge_returns_structured_low_match_error(self) -> None:
+        project = self.root / "low-match.mosp"
+        script = self.root / "low-match.txt"
+        project.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "字幕甲乙丙"}]}), encoding="utf-8")
+        script.write_text("文稿丁戊己", encoding="utf-8")
+
+        result = self.api.run_script_match({
+            "projectPath": str(project),
+            "scriptPath": str(script),
+            "outputMode": "both",
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "match_too_low")
+        self.assertEqual(result["minimumMatchRate"], 55)
 
     def test_ocr_dedup_bridge_forwards_video_region_threshold_and_report(self) -> None:
         project = self.root / "clip.mosp"
@@ -4165,9 +4254,13 @@ class LauncherAssetContractTests(unittest.TestCase):
         launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"] },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
             script,
         )
+        self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)
+        self.assertIn('match_too_low: (_detail, context) => `文稿与字幕匹配度过低', launcher_script)
+        self.assertIn('else setResult(postprocessErrorText(result), "error");', script)
+        self.assertIn('void refreshScriptPreview();', script)
         self.assertIn(
             'toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。"',
             launcher_script,
@@ -4176,6 +4269,15 @@ class LauncherAssetContractTests(unittest.TestCase):
             'toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, cloud transcription treats them as strong break symbols too, and they also drive tail-punctuation stripping in transcription post-processing."',
             launcher_script,
         )
+
+    def test_launcher_match_markdown_cleanup_is_shared_by_previews_and_runs(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn('<input id="postprocessCleanMarkdownSymbols" type="checkbox" checked>', page)
+        self.assertIn("cleanMarkdownSymbols: $(\"postprocessCleanMarkdownSymbols\").checked", script)
+        self.assertIn("cleanMarkdownSymbols: Boolean($(\"postprocessCleanMarkdownSymbols\")?.checked)", script)
+        self.assertIn('$("postprocessCleanMarkdownSymbols").addEventListener("input"', script)
 
     def test_launcher_hero_shows_the_bundled_brand_icon(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

@@ -700,7 +700,7 @@
           <p class="hint" data-i18n="toolbox_script_hint">文稿文字会替换字幕文字；原字幕时间保持不变。</p>
            <div class="match-previews">
              <div id="postprocessScriptPreview" class="script-preview hidden" aria-live="polite">
-               <div class="toolbox-preset-label" data-i18n="toolbox_script_preview">外稿预览</div>
+               <div class="toolbox-preset-label" data-i18n="toolbox_script_preview">处理后文稿预览（前 240 字）</div>
                <pre id="postprocessScriptPreviewText"></pre>
              </div>
              <div id="postprocessSplitPreview" class="script-preview hidden" aria-live="polite">
@@ -718,6 +718,13 @@
          </select>
          <p class="hint" data-i18n="toolbox_match_mode_hint">按文稿换行会使用文稿中的换行和断句符号；只更正文本保留现有字幕分段。</p>
          <p id="postprocessMatchStats" class="match-stats hidden" aria-live="polite"></p>
+        </div>
+        <div class="field">
+          <label class="check-field" for="postprocessCleanMarkdownSymbols">
+            <input id="postprocessCleanMarkdownSymbols" type="checkbox" checked>
+            <span data-i18n="toolbox_clean_markdown_symbols">自动清理 Markdown 符号</span>
+          </label>
+          <p class="hint" data-i18n="toolbox_clean_markdown_symbols_hint">匹配前移除粗体、斜体、删除线、行内代码和 ==高亮== 标记，只保留可见文字。</p>
         </div>
         <p class="hint"><button id="openPunctSettings" class="inline-link" type="button" data-i18n="toolbox_punct_open_settings">在 ⚙️ 设置中配置断句与保留符号</button></p>
     </section>

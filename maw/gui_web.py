@@ -62,9 +62,9 @@ from maw.local_runtime import (
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import resolve_default_audio_track, resolve_project_media
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
-from maw.postprocess_io import read_project, read_srt
+from maw.postprocess_io import PostprocessFileError, read_project, read_srt
 from maw.project_io import write_mosp
-from maw.project import normalize_project
+from maw.project import ProjectValidationFailed, normalize_project
 from maw.postprocess_ffmpeg import (
     BurnSubtitleRequest,
     ExtractAudioRequest,
@@ -76,7 +76,7 @@ from maw.postprocess_ffmpeg import (
     run_extract_audio as process_extract_audio,
     run_ffconcat_rebuild as process_ffconcat_rebuild,
 )
-from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, MARKDOWN_EXTENSIONS, SCRIPT_EXTENSIONS, ScriptMatchRequest, _match_project, _read_script, clean_markdown_text, prepare_script_text, run_script_match as process_script_match
+from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
@@ -171,6 +171,10 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "custom_prompt_required": "A custom prompt is required.",
     "postprocess_config_invalid": "自动后处理配置不完整。",
     "postprocess_failed": "转写已完成，但自动后处理失败。",
+    "subtitle_invalid": "Subtitle or project could not be parsed.",
+    "script_invalid": "Script could not be parsed.",
+    "match_too_low": "Script and subtitle match coverage is too low.",
+    "match_invalid": "Script matching could not be completed.",
     "postprocess_provider_response": "LLM provider returned an HTTP error; this is not a network outage.",
     "postprocess_cancelled": "自动后处理已取消，原始转写产物仍然保留。",
     "waveform_unavailable": "Waveform data could not be embedded.",
@@ -1052,23 +1056,40 @@ class LauncherApi:
     def run_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
         script_path = _optional_path(payload.get("scriptPath"))
         if script_path is None:
-            return _error_result("postprocessScriptPath", "postprocess_failed", "A script file is required.")
+            return _error_result("postprocessScriptPath", "script_invalid", "A script file is required.")
+        project_path = _optional_path(payload.get("projectPath"))
+        srt_path = _optional_path(payload.get("srtPath"))
         self._emit_postprocess_status("toolbox_status_reading")
         try:
             self._emit_postprocess_status("toolbox_status_matching")
             result = process_script_match(
                 ScriptMatchRequest(
-                    project_path=_optional_path(payload.get("projectPath")),
-                    srt_path=_optional_path(payload.get("srtPath")),
+                    project_path=project_path,
+                    srt_path=srt_path,
                     script_path=script_path,
                     output_mode=_output_mode(payload.get("outputMode")),
                     media_path=_optional_path(payload.get("mediaPath")),
                     extra_split_punctuation=tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value)),
                     preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
                     match_mode=str(payload.get("matchMode") or "script"),
+                    clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
                 )
             )
             self._emit_postprocess_status("toolbox_status_writing")
+        except MatchCoverageError as error:
+            return _match_coverage_error_result("postprocessScriptPath", error)
+        except PostprocessFileError as error:
+            code = _script_match_input_error_code(
+                error,
+                script_path=script_path,
+                project_path=project_path,
+                srt_path=srt_path,
+            )
+            return _error_result("postprocessScriptPath", code, str(error))
+        except ProjectValidationFailed as error:
+            return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
+        except SubtitleMatchError as error:
+            return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
         except (OSError, UnicodeError, ValueError) as error:
             return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
@@ -1369,18 +1390,28 @@ class LauncherApi:
         return {"ok": True, "path": str(path), "text": text}
 
     def read_script_preview(self, payload: Mapping[str, object]) -> dict[str, object]:
-        """Return a bounded UTF-8 manuscript preview for the Launcher."""
+        """Return the bounded, processed manuscript preview used by matching."""
 
         value = str(payload.get("path") or "").strip()
         path = Path(value).expanduser()
         if not value or not path.is_file() or path.suffix.lower() not in SCRIPT_EXTENSIONS:
-            return _error_result("postprocessScriptPath", "script_preview_missing", "文稿文件不存在或格式不支持。")
+            return _error_result("postprocessScriptPath", "script_invalid", "文稿文件不存在或格式不支持。")
         try:
-            text = path.read_text(encoding="utf-8-sig")
-        except (OSError, UnicodeError) as error:
-            return _error_result("postprocessScriptPath", "script_preview_failed", str(error))
-        if path.suffix.lower() in MARKDOWN_EXTENSIONS:
-            text = clean_markdown_text(text)
+            _script_path, script_text = _read_script(path)
+            match_mode = str(payload.get("matchMode") or "script")
+            extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
+            preserve = tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value))
+            text = processed_script_text(
+                script_text,
+                match_mode=match_mode,
+                extra_split_punctuation=extra_split,
+                preserve_punctuation=preserve,
+                clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
+            )
+        except PostprocessFileError as error:
+            return _error_result("postprocessScriptPath", "script_invalid", str(error))
+        except (OSError, UnicodeError, ValueError) as error:
+            return _error_result("postprocessScriptPath", "match_invalid", str(error))
         preview_limit = 240
         preview = text.replace("\r\n", "\n").replace("\r", "\n")[:preview_limit]
         return {"ok": True, "path": str(path), "preview": preview, "truncated": len(text) > preview_limit}
@@ -1392,23 +1423,39 @@ class LauncherApi:
         if script_path is None or (project_path is None and srt_path is None):
             return {"ok": False, "preview": "", "errorCode": "missing_source"}
         try:
-            project = read_project(project_path) if project_path is not None else read_srt(srt_path)
-            _, script_text = _read_script(script_path)
+            try:
+                project = read_project(project_path) if project_path is not None else read_srt(srt_path)
+            except (PostprocessFileError, ProjectValidationFailed) as error:
+                return {"ok": False, "preview": "", "errorCode": "subtitle_invalid", "code": "subtitle_invalid", "detail": str(error)}
+            try:
+                _, script_text = _read_script(script_path)
+            except PostprocessFileError as error:
+                return {"ok": False, "preview": "", "errorCode": "script_invalid", "code": "script_invalid", "detail": str(error)}
             match_mode = str(payload.get("matchMode") or "script")
             extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
             preserve = tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value))
+            clean_markdown_symbols = payload.get("cleanMarkdownSymbols", True) is not False
             prepared, _warning = prepare_script_text(
                 script_text,
                 extra_split if match_mode == "script" else (),
                 preserve if match_mode == "script" else (),
+                clean_markdown_symbols=clean_markdown_symbols,
             )
-            matched, warnings = _match_project(
-                project,
-                prepared,
-                DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split if match_mode == "script" else ()),
-                DEFAULT_SPLIT_PUNCTUATION | frozenset(preserve if match_mode == "script" else ()),
-                match_mode,
-            )
+            if match_mode == "script" and project_path is not None and _has_complete_item_timings(project):
+                matched, warnings = _match_project_with_character_timings(
+                    project,
+                    prepared,
+                    extra_split,
+                    preserve,
+                )
+            else:
+                matched, warnings = _match_project(
+                    project,
+                    prepared,
+                    DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split if match_mode == "script" else ()),
+                    frozenset(preserve if match_mode == "script" else ()),
+                    match_mode,
+                )
             segments = matched.get("segments", [])
             preview = "\n".join(
                 f"{index + 1}. {segment.get('text', '')}"
@@ -1437,9 +1484,20 @@ class LauncherApi:
                 "matchedSegmentCount": matched_segment_count,
                 "truncated": False,
             }
+        except MatchCoverageError as error:
+            return {
+                "ok": False,
+                "preview": "",
+                "errorCode": "match_too_low",
+                "code": "match_too_low",
+                "detail": str(error),
+                "matchRate": round(error.coverage * 100),
+                "minimumMatchRate": round(error.minimum_coverage * 100),
+            }
+        except SubtitleMatchError as error:
+            return {"ok": False, "preview": "", "errorCode": "subtitle_invalid", "code": "subtitle_invalid", "detail": str(error)}
         except ValueError as error:
-            error_code = "match_too_low" if "coverage is too low" in str(error) else "preview_failed"
-            return {"ok": False, "preview": "", "errorCode": error_code}
+            return {"ok": False, "preview": "", "errorCode": "match_invalid", "code": "match_invalid", "detail": str(error)}
         except (OSError, UnicodeError):
             return {"ok": False, "preview": "", "errorCode": "preview_failed"}
 
@@ -3287,6 +3345,31 @@ def _free_local_port() -> int:
 
 def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
     return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code)}
+
+
+def _script_match_input_error_code(
+    error: PostprocessFileError,
+    *,
+    script_path: Path,
+    project_path: Path | None,
+    srt_path: Path | None,
+) -> str:
+    error_path = error.path.expanduser().resolve(strict=False)
+    if error_path == script_path.expanduser().resolve(strict=False):
+        return "script_invalid"
+    input_paths = tuple(path.expanduser().resolve(strict=False) for path in (project_path, srt_path) if path is not None)
+    if error_path in input_paths:
+        return "subtitle_invalid"
+    return "postprocess_failed"
+
+
+def _match_coverage_error_result(field: str, error: MatchCoverageError) -> dict[str, object]:
+    result = _error_result(field, "match_too_low", str(error))
+    result.update(
+        matchRate=round(error.coverage * 100),
+        minimumMatchRate=round(error.minimum_coverage * 100),
+    )
+    return result
 
 
 def _llm_error_result(
