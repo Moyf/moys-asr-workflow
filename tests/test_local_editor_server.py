@@ -169,7 +169,7 @@ class LocalEditorServerTests(unittest.TestCase):
         }
 
         def load_project_in_background(progress: server_editor.ProjectLoadProgressCallback) -> server_editor.ServerProject:
-            progress("preparing_waveform", 50)
+            progress("loading_waveform_cache", 40)
             load_started.set()
             release_load.wait(timeout=3)
             return server_editor.load_project(
@@ -191,7 +191,7 @@ class LocalEditorServerTests(unittest.TestCase):
                     with urllib.request.urlopen(f"{base_url}/api/startup-status", timeout=2) as response:
                         status = json.loads(response.read())
                     self.assertEqual(status["status"], "loading")
-                    self.assertEqual(status["stage"], "preparing_waveform")
+                    self.assertEqual(status["stage"], "loading_waveform_cache")
 
                     with urllib.request.urlopen(base_url, timeout=2) as response:
                         page = response.read().decode("utf-8")
@@ -212,6 +212,76 @@ class LocalEditorServerTests(unittest.TestCase):
                     release_load.set()
                     server.shutdown()
                     thread.join(timeout=2)
+
+    def test_project_load_reports_distinct_waveform_cache_and_generation_phases(self) -> None:
+        waveform = {
+            "schema": "moy.asr.waveform.v1",
+            "encoding": "i8-minmax-base64",
+            "peaks_per_second": 100,
+            "peak_count": 1,
+            "duration_ms": 10,
+            "data": "AIA=",
+        }
+        events: list[tuple[str, int]] = []
+
+        def load_waveform(*_args: object, **kwargs: object) -> tuple[dict, bool]:
+            callback = kwargs["on_progress"]
+            assert callable(callback)
+            callback("generating")
+            return waveform, True
+
+        with mock.patch.object(server_editor.edit, "load_or_extract_waveform", side_effect=load_waveform):
+            server_editor.load_project(
+                self.project_path,
+                None,
+                str(self.stickers),
+                no_waveform=False,
+                load_reapeaks=False,
+                peaks_per_second=100,
+                progress=lambda stage, value: events.append((stage, value)),
+            )
+
+        self.assertEqual(
+            events,
+            [
+                ("reading_project", 5),
+                ("validating_project", 20),
+                ("preparing_media", 35),
+                ("loading_waveform_cache", 40),
+                ("generating_waveform", 50),
+                ("waveform_ready", 60),
+                ("finalizing", 95),
+            ],
+        )
+
+    def test_project_load_cache_hit_does_not_report_waveform_generation(self) -> None:
+        waveform = {
+            "schema": "moy.asr.waveform.v1",
+            "encoding": "i8-minmax-base64",
+            "peaks_per_second": 100,
+            "peak_count": 1,
+            "duration_ms": 10,
+            "data": "AIA=",
+        }
+        events: list[tuple[str, int]] = []
+        with mock.patch.object(
+            server_editor.edit,
+            "load_or_extract_waveform",
+            return_value=(waveform, False),
+        ):
+            server_editor.load_project(
+                self.project_path,
+                None,
+                str(self.stickers),
+                no_waveform=False,
+                load_reapeaks=False,
+                peaks_per_second=100,
+                progress=lambda stage, value: events.append((stage, value)),
+            )
+
+        self.assertNotIn(("generating_waveform", 50), events)
+        self.assertIn(("loading_waveform_cache", 40), events)
+        self.assertIn(("waveform_ready", 60), events)
 
     def test_initial_project_load_error_keeps_server_available(self) -> None:
         project = server_editor.load_blank_project(str(self.stickers))

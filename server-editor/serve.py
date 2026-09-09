@@ -414,7 +414,12 @@ def load_project(
     # 请求路径（requested_path）查找，否则会漏读源媒体旁的缓存。
     reapeaks_base = resolution.requested_path or source_media_path
     if not no_waveform:
-        report("preparing_waveform", 50)
+        report("loading_waveform_cache", 40)
+
+        def report_waveform_progress(stage: str) -> None:
+            if stage == "generating":
+                report("generating_waveform", 50)
+
         try:
             # 波形 sidecar 是"源媒体身份"的缓存：以 source_media_path（工程里
             # data["media"] 记的就是它）为键，_maw 由 waveform_sidecar_path 按
@@ -427,15 +432,19 @@ def load_project(
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
                 audio_track=audio_track,
                 default_audio_track=default_audio_track,
+                on_progress=report_waveform_progress,
             )
             data["waveform"] = waveform
             state = "已提取" if extracted else "使用缓存"
             print(f"[waveform] {state}: {waveform['peak_count']} peaks ({waveform['peaks_per_second']}/秒)")
+            report("waveform_ready", 60)
         except (edit.WaveformError, ValueError) as error:
             data.pop("waveform", None)
             print(f"[waveform] 警告: {error}；编辑器仍可正常使用")
+            report("waveform_unavailable", 60)
 
         if load_reapeaks:
+            report("loading_spectral_cache", 70)
             # 频谱缓存：源媒体旁存在 .ReaPeaks 时读取并内联下发，供波形染色。
             # 缺失/损坏/无 spectral 层一律静默降级，不影响编辑器。
             spectral = quapeaks.load_spectral_payload(
@@ -448,6 +457,7 @@ def load_project(
                 data["spectral"] = spectral
                 print(f"[spectral] 已加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
 
+            report("loading_reapeaks_waveform", 82)
             # reapeaks 波形层：最细 wave 层作为可选的波形形状来源（编辑器设置里切换）。
             reapeaks_wave = quapeaks.load_waveform_payload(
                 reapeaks_base,
@@ -460,6 +470,8 @@ def load_project(
                     f"[reapeaks-wave] 已加载 {reapeaks_wave['peak_count']} peaks "
                     f"({reapeaks_wave['peaks_per_second']}/秒)"
                 )
+    else:
+        report("waveform_skipped", 60)
 
     report("finalizing", 95)
     return ServerProject(

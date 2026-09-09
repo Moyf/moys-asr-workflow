@@ -126,6 +126,20 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn(".server-connection-banner", styles)
         self.assertIn(".server-connection-banner[hidden]", styles)
 
+    def test_server_startup_labels_distinguish_waveform_cache_and_generation(self) -> None:
+        script = edit.read_web_asset("editor.js")
+        for label in (
+            "loading_waveform_cache: '正在读取波形缓存…'",
+            "generating_waveform: '未找到可用缓存，正在生成波形…'",
+            "waveform_ready: '波形已就绪…'",
+            "loading_spectral_cache: '正在读取频谱缓存…'",
+            "loading_reapeaks_waveform: '正在读取 REAPER 波形缓存…'",
+            "loading_waveform_cache: 'Reading waveform cache…'",
+            "generating_waveform: 'No usable cache found; generating waveform…'",
+        ):
+            self.assertIn(label, script)
+        self.assertNotIn("preparing_waveform: '正在生成波形…'", script)
+
     def test_hint_stack_stays_above_floating_surfaces(self) -> None:
         styles = edit.read_web_asset("editor.css")
         hint_stack = styles[styles.index("#hint-stack {"):styles.index("  .hint-card {", styles.index("#hint-stack {"))]
