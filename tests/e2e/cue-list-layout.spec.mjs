@@ -66,12 +66,13 @@ test('all timecodes switch together between wide one-line and narrow two-line la
     });
     return [...cueList.querySelectorAll('.cue .time')].map((time) => {
       const start = time.querySelector('.time-start').getBoundingClientRect();
-      const arrow = time.querySelector('.time-arrow').getBoundingClientRect();
+      const arrow = time.querySelector('.time-arrow');
       const end = time.querySelector('.time-end').getBoundingClientRect();
       return {
         width: time.getBoundingClientRect().width,
         startTop: start.top,
-        arrowTop: arrow.top,
+        arrowTop: arrow.getBoundingClientRect().top,
+        arrowHidden: getComputedStyle(arrow).display === 'none',
         endTop: end.top,
       };
     });
@@ -80,6 +81,7 @@ test('all timecodes switch together between wide one-line and narrow two-line la
   const wide = await measureTimecodes(820);
   expect(new Set(wide.map(({ width }) => width)).size).toBe(1);
   for (const row of wide) {
+    expect(row.arrowHidden).toBe(false);
     expect(Math.abs(row.startTop - row.arrowTop)).toBeLessThan(1);
     expect(Math.abs(row.startTop - row.endTop)).toBeLessThan(1);
   }
@@ -88,7 +90,7 @@ test('all timecodes switch together between wide one-line and narrow two-line la
   expect(new Set(narrow.map(({ width }) => width)).size).toBe(1);
   expect(narrow[0].width).toBeLessThan(wide[0].width);
   for (const row of narrow) {
-    expect(Math.abs(row.startTop - row.arrowTop)).toBeLessThan(1);
+    expect(row.arrowHidden).toBe(true);
     expect(row.endTop).toBeGreaterThan(row.startTop);
   }
 });

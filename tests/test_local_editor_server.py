@@ -536,6 +536,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="auto-save-project" checked', page)
         self.assertIn('id="auto-save-interval"', page)
         self.assertIn('id="project-backup-enabled"', page)
+        self.assertIn('id="project-backup-enabled" checked', page)
         self.assertIn('> 备份工程</label>', page)
         self.assertLess(page.index('id="editor-settings-page-export"'), page.index('id="server-auto-save-settings"'))
         self.assertLess(page.index('id="server-auto-save-settings"'), page.index('id="project-backup-settings"'))

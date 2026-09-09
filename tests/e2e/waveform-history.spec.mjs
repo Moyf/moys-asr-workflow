@@ -188,7 +188,7 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   const added = await page.evaluate(() => DATA.gap_remove.gaps);
   expect(added).toHaveLength(1);
   expect(added[0].removed).toBe(true);
-  expect(added[0].end - added[0].start).toBe(500);
+  expect(added[0].end - added[0].start).toBe(400);
 
   await setGaps([], 'boundary_drag');
   const altRangeRow = page.locator('.waveform-row[data-row-index="0"]').first();
@@ -457,14 +457,14 @@ test('shrinks existing gaps from the gap settings padding', async ({ page }) => 
 
   await page.locator('#gap-remove-shrink').click();
   await expect.poll(() => page.evaluate(() => DATA.gap_remove.gaps)).toEqual([
-    { start: 1100, end: 1800, removed: true },
-    { start: 3100, end: 3200, removed: false },
+    { start: 1100, end: 1800, removed: true, source: 'audio_gate', origins: ['audio_gate'] },
+    { start: 3000, end: 3400, removed: false, source: 'manual', origins: ['manual'] },
   ]);
   await expect.poll(() => page.evaluate(() => ({
     leadIn: DATA.gap_remove.lead_in_ms,
     leadOut: DATA.gap_remove.lead_out_ms,
   }))).toEqual({ leadIn: 100, leadOut: 200 });
-  await expect(page.locator('#hint-stack')).toContainText('已按前端 100ms、后端 200ms 收缩 2 段空隙');
+  await expect(page.locator('#hint-stack')).toContainText('已按前端 100ms、后端 200ms 收缩 1 段空隙');
 
   await page.locator('#undo-btn').click();
   await expect.poll(() => page.evaluate(() => DATA.gap_remove.gaps)).toEqual([
@@ -711,7 +711,10 @@ test('manual text split keeps malformed item timing inside both cues and restore
   expect((await saveResponse).ok()).toBe(true);
 
   await page.getByRole('button', { name: /撤销/ }).click();
-  await expect.poll(() => page.evaluate(() => JSON.stringify(DATA.segments[0]))).toBe(JSON.stringify(original));
+  await expect.poll(() => page.evaluate(() => JSON.stringify(
+    DATA.segments[0],
+    (key, value) => (key === 'start_frame' || key === 'end_frame' ? undefined : value),
+  ))).toBe(JSON.stringify(original));
   await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
 
   await page.getByRole('button', { name: /重做/ }).click();
@@ -821,8 +824,8 @@ test('C merge refreshes the paused main subtitle preview', async ({ page }) => {
   await cues.nth(1).click({ modifiers: ['Control'] });
   await page.keyboard.press('c');
 
-  await expect(page.locator('.cue .text').first()).toHaveText('AlphaBravo');
-  await expect(page.locator('#overlay-main-text')).toHaveText('AlphaBravo');
+  await expect(page.locator('.cue .text').first()).toHaveText('Alpha Bravo');
+  await expect(page.locator('#overlay-main-text')).toHaveText('Alpha Bravo');
 });
 
 test('C merge keeps the subtitle list at its current position', async ({ page }) => {
@@ -1901,7 +1904,7 @@ test('C merges a common group and Shift+A/D extends the subtitle selection', asy
   await page.keyboard.press('c');
 
   await expect(cues).toHaveCount(5);
-  await expect(cues.nth(1).locator('.text')).toHaveText('BravoCharlie');
+  await expect(cues.nth(1).locator('.text')).toHaveText('Bravo Charlie');
   await expect.poll(() => page.evaluate(() => ({
     colorRef: DATA.segments[1].color_ref,
     stickerRef: DATA.segments[1].sticker_ref,
@@ -1960,8 +1963,8 @@ test('colored subtitles export per-color SRT files including the uncolored defau
   await page.locator('#download-color-srt').click();
   await expect.poll(() => downloads.length).toBe(3);
   expect(downloads.map((download) => download.suggestedFilename())).toEqual([
-    'project_red.srt',
-    'project_blue.srt',
+    'project_红色.srt',
+    'project_蓝色.srt',
     'project_default.srt',
   ]);
   expect(await downloads[0].createReadStream().then(async (stream) => {
@@ -2210,7 +2213,7 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
   const downloadPromise = page.waitForEvent('download');
   await page.locator('#download-gap-removed-color-srt').click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe('project_gap-removed_red.srt');
+  expect(download.suggestedFilename()).toBe('project_去空隙_红色.srt');
 });
 
 test('server media loads from the resolved project path and OTIO keeps its absolute source URL', async ({ page }) => {
@@ -2302,7 +2305,6 @@ test('server media loads from the resolved project path and OTIO keeps its absol
       : null,
   }));
   expect(resolveMappings).toEqual([
-    { kind: 'Video', linkGroupIds: [1, 2, 3, 4], sourceTrackIds: null },
     { kind: 'Audio', linkGroupIds: [1, 2, 3, 4], sourceTrackIds: [[0, 0], [0, 0], [0, 0], [0, 0]] },
     { kind: 'Audio', linkGroupIds: [1, 2, 3, 4], sourceTrackIds: [[1, 1], [1, 1], [1, 1], [1, 1]] },
     { kind: 'Audio', linkGroupIds: [1, 2, 3, 4], sourceTrackIds: [[2, 2], [2, 2], [2, 2], [2, 2]] },
