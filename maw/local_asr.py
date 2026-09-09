@@ -279,6 +279,50 @@ def _restore_qwen_alignment_text(
     return restored, complete
 
 
+def _qwen_alignment_range(start: object, end: object) -> tuple[int, int] | None:
+    """Keep finite zero-width aligner tokens for text-preserving grouping."""
+    valid = normalize_timestamp_range(start, end, scale=1000)
+    if valid is not None:
+        return valid
+    if isinstance(start, bool) or isinstance(end, bool):
+        return None
+    try:
+        first, last = float(start), float(end)
+        if not (math.isfinite(first) and math.isfinite(last) and 0 <= first <= last):
+            return None
+        first_ms, last_ms = round(first * 1000), round(last * 1000)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return (first_ms, last_ms) if first_ms == last_ms else None
+
+
+def _group_qwen_zero_width_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Absorb untimed tokens into an adjacent timed group, without losing text.
+
+    The group uses the outer provider range; no independent word boundary is
+    invented. An entirely zero-width alignment still has no usable duration.
+    """
+    grouped: list[dict[str, Any]] = []
+    leading: list[dict[str, Any]] = []
+    for source in items:
+        item = dict(source)
+        if item["end"] <= item["start"]:
+            if grouped:
+                grouped[-1]["text"] += item["text"]
+                grouped[-1]["start"] = min(grouped[-1]["start"], item["start"])
+                grouped[-1]["end"] = max(grouped[-1]["end"], item["end"])
+            else:
+                leading.append(item)
+            continue
+        if leading:
+            item["text"] = "".join(part["text"] for part in leading) + item["text"]
+            item["start"] = min(item["start"], *(part["start"] for part in leading))
+            item["end"] = max(item["end"], *(part["end"] for part in leading))
+            leading = []
+        grouped.append(item)
+    return grouped
+
+
 def _speaker(value: object) -> str | None:
     if value is None or not str(value).strip():
         return None
@@ -665,10 +709,9 @@ class QwenAsrEngine:
                 if not timestamp_text.strip():
                     continue
                 alignment_texts.append(timestamp_text)
-                timestamp_range = normalize_timestamp_range(
+                timestamp_range = _qwen_alignment_range(
                     _read_field(timestamp, "start_time"),
                     _read_field(timestamp, "end_time"),
-                    scale=1000,
                 )
                 if timestamp_range is None:
                     invalid_alignment = True
@@ -709,6 +752,10 @@ class QwenAsrEngine:
             if not alignment_complete:
                 invalid_alignment = True
                 items = []
+            else:
+                items = _group_qwen_zero_width_items(items)
+                if not items:
+                    invalid_alignment = True
         segments: list[dict[str, Any]] = []
         if invalid_alignment and text:
             sentence_range = normalize_timestamp_range(
@@ -719,7 +766,7 @@ class QwenAsrEngine:
             alignment_range = (
                 min(item["start"] for item in alignment_items),
                 max(item["end"] for item in alignment_items),
-            ) if alignment_items else None
+            ) if any(item["end"] > item["start"] for item in alignment_items) else None
             if alignment_range is not None:
                 if sentence_range is None:
                     sentence_range = alignment_range
@@ -735,6 +782,8 @@ class QwenAsrEngine:
                     "text": text,
                 })
         if on_event:
+            if not items and text:
+                on_event("[local] 警告：Qwen 词级对齐不完整或时间码无效，本识别块将保留为整段字幕")
             on_event(f"[local] detected language: {language_value or 'unknown'}")
         return LocalTranscription(
             text,
