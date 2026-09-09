@@ -987,3 +987,23 @@
   .editor-workspace.layout-custom .free-layout-root { flex-direction: column; }
   .editor-workspace.layout-custom .layout-module-slot { min-height: 170px; }
 }
+
+/* === 独立叠加字幕轨的波形块 ===
+   高度与主字幕块一致（35px），位置紧贴主字幕块正上方：
+   单层行主块 bottom 7px + 高 35px，叠加块 bottom 48px；
+   基础模式主块加高为 max(35px, min(72px, 40%))，叠加块随之抬高；
+   多重字幕行主字幕在上一格（bottom = inset + lane + gap），叠加块再往上一层。
+   注意 height/line-height 不能用含百分比的 --multi-subtitle-lane-height：
+   line-height 的百分比按自身字号解析，calc 会算出负值导致文字高度为 0。 */
+.waveform-cue-block.waveform-overlay-block {
+  bottom: calc(7px + 35px + 6px);
+  height: 35px;
+  line-height: 35px;
+  z-index: 7;
+}
+.waveform-basic .waveform-cue-block.waveform-overlay-block {
+  bottom: calc(7px + max(35px, min(72px, 40%)) + 6px);
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block.waveform-overlay-block {
+  bottom: calc(var(--multi-subtitle-bottom-inset) + (var(--multi-subtitle-lane-height) * 2) + var(--multi-subtitle-lane-gap) + 6px);
+}
