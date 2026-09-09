@@ -1035,6 +1035,14 @@
     return '#66727d';
   }
 
+  function hasSubtitleColor(segment) {
+    return Boolean(
+      (segment.color?.name && PALETTE[segment.color.name])
+      || (segment.color_ref?.name && PALETTE[segment.color_ref.name])
+      || segment.color?.value,
+    );
+  }
+
   function applySharedBoundary(
     segments,
     leftIndex,
@@ -3341,6 +3349,7 @@
         block.dataset.start = String(segment.start);
         block.dataset.end = String(segment.end);
         block.style.setProperty('--cue-color', colorForSegment(segment));
+        if (hasSubtitleColor(segment)) block.classList.add('has-subtitle-color');
         if (selected.has(index)) block.classList.add('selected');
         if (segment.disabled) block.classList.add('disabled');
         // 空隙中沿用的当前字幕不点亮 active 轮廓（仅视觉；逻辑语义不变）。
