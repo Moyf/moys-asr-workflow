@@ -893,6 +893,9 @@ const DEFAULT_EDITOR_SETTINGS = {
   // 自动保存仅对绑定工程的 localhost 服务器版生效。
   autoSaveProject: true,
   autoSaveIntervalSeconds: 30,
+  projectBackupEnabled: false,
+  projectBackupMinutes: 5,
+  projectBackupLimit: 20,
   // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
   stickerOverlayEnabled: false,
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
@@ -2436,6 +2439,19 @@ function updateMultiSubtitleUi() {
       : false;
   }
   previousMultiSubtitlePreviewEnabled = enabled;
+  // 「仅看超长」按单轨文本字数筛选；多重字幕开启后主/副两栏合并计数失去筛选意义，
+  // 隐藏入口（含前面的分隔线）。若筛选已激活则一并复位，避免残留不可见的过滤状态。
+  const filterOverButton = document.getElementById('filter-over');
+  if (filterOverButton) {
+    filterOverButton.hidden = enabled;
+    const filterOverSep = document.getElementById('filter-over-sep');
+    if (filterOverSep) filterOverSep.hidden = enabled;
+    if (enabled && filterOverButton.classList.contains('active')) {
+      filterOverButton.classList.remove('active');
+      clearTemporaryVisibleSplitCues();
+      applySearch(searchEl.value);
+    }
+  }
   container.classList.toggle('multi-subtitle-enabled', enabled);
   container.dataset.multiDisplayMode = enabled ? (getMultiSubtitleState().display_mode || 'both') : 'main';
 }
@@ -12381,7 +12397,7 @@ async function downloadColorSrts(gapRemoved = false) {
     }
   }
   for (const color of colors) {
-    const filename = `${filenameBase}_${color.name}.srt`;
+    const filename = `${filenameBase}_${window.MAWE_I18N?.exportTag?.(color.name) || color.name}.srt`;
     if (EDITOR_SETTINGS.exportColorUnified) {
       const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -13738,10 +13754,56 @@ function configureServerSaveControls() {
     saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
   }
   syncStickerOtioExportMode();
+  syncProjectBackupControls();
 }
 
 let autoSaveTimer = null;
+let projectBackupTimer = null;
+function syncProjectBackupControls() {
+  const available = serverProjectSavingEnabled() && !projectFileHandle;
+  const enabled = document.getElementById('project-backup-enabled');
+  const minutes = document.getElementById('project-backup-minutes');
+  const limit = document.getElementById('project-backup-limit');
+  enabled.checked = EDITOR_SETTINGS.projectBackupEnabled;
+  enabled.disabled = !available;
+  document.getElementById('project-backup-open').disabled = !available;
+  minutes.value = EDITOR_SETTINGS.projectBackupMinutes;
+  limit.value = EDITOR_SETTINGS.projectBackupLimit;
+  minutes.disabled = limit.disabled = !available || !enabled.checked;
+  document.getElementById('project-backup-unavailable').hidden = available;
+  if (projectBackupTimer !== null) window.clearInterval(projectBackupTimer);
+  projectBackupTimer = null;
+  if (available && enabled.checked) {
+    projectBackupTimer = window.setInterval(() => {
+      void saveProjectToServer({ silent: true, backupOnly: true });
+    }, EDITOR_SETTINGS.projectBackupMinutes * 60000);
+  }
+}
+for (const [id, key, fallback, max] of [
+  ['project-backup-enabled', 'projectBackupEnabled', false, 0],
+  ['project-backup-minutes', 'projectBackupMinutes', 5, 1440],
+  ['project-backup-limit', 'projectBackupLimit', 20, 1000],
+]) {
+  document.getElementById(id)?.addEventListener('change', (event) => {
+    const value = max ? Math.min(max, Math.max(1, Math.round(Number(event.target.value) || fallback))) : event.target.checked;
+    updateEditorSettings({ [key]: value });
+    syncProjectBackupControls();
+  });
+}
 let autoSaveFlushTimer = null;
+document.getElementById('project-backup-open')?.addEventListener('click', async () => {
+  if (!serverProjectSavingEnabled() || projectFileHandle) return;
+  try {
+    const response = await fetch(new URL('/api/project/backups/open', window.location.href), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || response.status);
+  } catch (error) {
+    flashHint(`打开备份文件夹失败：${error.message || error}`, 'warning');
+  }
+});
 let projectSaveInFlight = false;
 const EDIT_SAVE_DEBOUNCE_MS = 400;
 
@@ -14298,7 +14360,8 @@ function markProjectSaved(filename, backupName, { silent = false } = {}) {
   if (!silent) flashHint('保存成功！', 'success');
 }
 
-async function saveProjectToServer({ silent = false } = {}) {
+async function saveProjectToServer({ silent = false, backupOnly = false } = {}) {
+  if (backupOnly && (projectFileHandle || !EDITOR_SETTINGS.projectBackupEnabled)) return false;
   if (!serverProjectSavingEnabled()) {
     if (!silent) flashHint('当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件', 'invalid');
     return false;
@@ -14314,13 +14377,18 @@ async function saveProjectToServer({ silent = false } = {}) {
     const response = await fetch(saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project: JSON.parse(projectJson), filename: null }),
+      body: JSON.stringify({
+        project: JSON.parse(projectJson), filename: null,
+        backupOnly,
+        backupLimit: EDITOR_SETTINGS.projectBackupEnabled && (backupOnly || !silent)
+          ? EDITOR_SETTINGS.projectBackupLimit : null,
+      }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) {
       throw new Error(result.error || `服务器返回 ${response.status}`);
     }
-    markProjectSaved(result.filename, result.backup, { silent });
+    if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent });
     return true;
   } catch (error) {
     const detail = error?.message || error;
@@ -14328,7 +14396,7 @@ async function saveProjectToServer({ silent = false } = {}) {
     // A stale browser tab can outlive the localhost process (the browser reports
     // ERR_CONNECTION_REFUSED). Offer a real file save so Ctrl+S never strands
     // completed edits, while making clear that the bound JSON was not overwritten.
-    if (error instanceof TypeError
+    if (!silent && error instanceof TypeError
         && confirm('无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？')) {
       const saved = await downloadFile(projectJson, `${FILENAME_BASE}.mosp`, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
@@ -18498,7 +18566,8 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       mainIdx < 0,
     );
   }
-  if (Array.isArray(extensionTrack?.segments) && extensionTrack.segments.length) {
+  // 拆分副字幕是多重字幕编辑动作；关闭多重字幕（副轨数据保留但不再参与编辑）时不提供。
+  if (multiSubtitleVisible() && Array.isArray(extensionTrack?.segments) && extensionTrack.segments.length) {
     addItem(
       '按音频位置拆分副字幕',
       '',

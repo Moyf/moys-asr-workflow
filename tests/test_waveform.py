@@ -794,7 +794,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('grid-template-areas: "start arrow end";', page)
         self.assertIn('width: 24ch; padding-top: 1px; flex: 0 0 24ch;', page)
         self.assertIn('@container cue-list (max-width: 700px)', page)
-        self.assertIn('"start arrow"\n        "end end";', page)
+        # 窄布局为单列两行并隐藏箭头：上下排列已表达先后顺序，帧模式 11 字符不超出 11ch。
+        self.assertIn('"start"\n        "end";', page)
+        self.assertIn('.cue .time-arrow { display: none; }', page)
         self.assertIn("timeStartEl.className = 'time-start';", page)
         self.assertIn("timeArrowEl.className = 'time-arrow';", page)
         self.assertIn("timeEndEl.className = 'time-end';", page)

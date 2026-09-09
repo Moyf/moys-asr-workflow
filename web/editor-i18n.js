@@ -9,6 +9,12 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '备份工程': 'Back up project',
+    '打开备份文件夹': 'Open backup folder',
+    '自动备份间隔（分钟）': 'Backup interval (minutes)',
+    '最大保存版本数': 'Maximum versions',
+    '开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/backups。': 'Create scheduled and manual-save snapshots; remove the oldest versions above the limit. Backups are stored in the project’s _maw/backups folder.',
+    '工程备份需要本地 Server 绑定工程；浏览器另存为的文件不支持目录备份。': 'Project backups require a project bound to the local server. Files selected with browser Save As do not support directory backups.',
     '撤销': 'Undo', '重做': 'Redo', '↶ 撤销': '↶ Undo', '↷ 重做': '↷ Redo',
     '新建工程': 'New project', '创建并保存一个空白工程': 'Create and save a blank project',
     '当前有未保存的改动，是否确定新建工程？将丢失未保存内容。': 'There are unsaved changes. Create a new project and discard them?',
@@ -844,7 +850,11 @@
   let language = readLanguage();
 
   // 导出文件名中的技术段（按当前语言映射；中文界面译出，英文界面原样）。
-  const EXPORT_NAME_SEGMENTS = { 'gap-removed': '去空隙', 'stickers': '表情包' };
+  // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」。
+  const EXPORT_NAME_SEGMENTS = {
+    'gap-removed': '去空隙', 'stickers': '表情包',
+    'yellow': '黄色', 'green': '绿色', 'red': '红色', 'purple': '紫色', 'blue': '蓝色',
+  };
 
   function exportTag(segment) {
     if (language !== ZH) return segment;

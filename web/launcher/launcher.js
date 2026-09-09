@@ -41,6 +41,8 @@
       key_hint_prefix: "在",
       key_hint_suffix: "获取 API Key ↗",
       openai_official: "OpenAI 官方",
+      openrouter: "OpenRouter",
+      openai_key_hint_or: " 或 ",
       openai_key_hint_suffix: "获取 API Key",
       json_project: "工程文件",
       json_placeholder: "生成工程后会自动填入，也可以手动选择之前的工程",
@@ -133,6 +135,8 @@
       key_hint_prefix: "Get an API Key from",
       key_hint_suffix: "↗",
       openai_official: "OpenAI official",
+      openrouter: "OpenRouter",
+      openai_key_hint_or: " or ",
       openai_key_hint_suffix: "↗",
       json_project: "Project file",
       json_placeholder: "Auto-filled after generation, or choose an earlier project",
@@ -226,9 +230,10 @@
     custom_asr_base_url_hint: "程序会请求该地址下的 /audio/transcriptions，并要求接口返回时间戳。",
     custom_asr_model: "自定义 ASR 模型名",
     custom_asr_model_placeholder: "例如 my-custom-model",
-    custom_asr_model_hint: "填写中转站或服务商控制台提供的模型名。",
+    custom_asr_model_hint: "中转站或服务商的模型名可能不同；请填写控制台提供的完整模型名。",
     custom_asr_base_url_missing: "请填写自定义 ASR Base URL。",
-    custom_asr_model_missing: "请填写自定义 ASR 模型名。"
+    custom_asr_model_missing: "请填写自定义 ASR 模型名。",
+    transcription_model_hint: "请检查模型名称是否与当前接口一致；使用中转站时，请选择“自定义（Custom）”，填写服务商提供的完整模型名。"
   });
   Object.assign(STRINGS.en, {
     test_run: "Quick test",
@@ -241,9 +246,10 @@
     custom_asr_base_url_hint: "MAW calls /audio/transcriptions under this URL and requires timestamped output.",
     custom_asr_model: "Custom ASR model name",
     custom_asr_model_placeholder: "For example, my-custom-model",
-    custom_asr_model_hint: "Enter the model name provided by your relay or service provider.",
+    custom_asr_model_hint: "Relay and service-provider model names may differ; enter the exact model name from its console.",
     custom_asr_base_url_missing: "Enter a custom ASR Base URL.",
-    custom_asr_model_missing: "Enter a custom ASR model name."
+    custom_asr_model_missing: "Enter a custom ASR model name.",
+    transcription_model_hint: "Check that the model name matches this endpoint. If you use a relay, choose Custom and enter the exact model name provided by the service."
   });
   Object.assign(STRINGS.zh, {
     mode_label: "转写模式",
@@ -1049,7 +1055,7 @@
   const MAX_HOTWORDS = 2000;
   const MAX_SUPER_HOTWORDS = 50;
   const OPENAI_ASR_CUSTOM_MODEL_ID = "custom-asr";
-  const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"]);
+  const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "whisper-large-v3-turbo", "whisper-large-v3"]);
   const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0 };
   const dragState = { depth: 0 };
   let api = null;
@@ -1120,9 +1126,9 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "yue", "en"],
             models: [
-              { id: "qwen-audio-3.0-asr-flash-filetrans", label: "qwen-audio-3.0-asr（热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
-              { id: "fun-asr", label: "fun-asr（支持说话人）", envKey: "DASHSCOPE_API_KEY", note: "支持说话人分离与词级时间戳", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }] },
-              { id: "qwen3-asr-flash-filetrans", label: "qwen3-asr（准确率更高）", envKey: "DASHSCOPE_API_KEY", note: "", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
+              { id: "qwen-audio-3.0-asr-flash-filetrans", label: "qwen-audio-3.0-asr（热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
+              { id: "fun-asr", label: "fun-asr（支持说话人）", envKey: "DASHSCOPE_API_KEY", note: "支持说话人分离与词级时间戳", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "qwen3-asr-flash-filetrans", label: "qwen3-asr（准确率更高）", envKey: "DASHSCOPE_API_KEY", note: "", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
             ],
             regions: [{ id: "beijing", label: "北京（华北 2，默认）" }, { id: "singapore", label: "新加坡（需要 Workspace ID）" }],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "da", label: "丹麦语 / Danish" }]
@@ -1136,7 +1142,7 @@
             supportsSpeaker: true,
             multiLanguage: true,
             commonLanguages: ["zh", "en", "ja", "ko"],
-            models: [{ id: "stt-async-v5", label: "Soniox Async STT（v5，上下文）", envKey: "SONIOX_API_KEY", note: "支持 general、text、terms 和 translation_terms 上下文", supportsSpeaker: true, supportsContext: true, languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }] }],
+            models: [{ id: "stt-async-v5", label: "Soniox Async STT（v5，上下文）", envKey: "SONIOX_API_KEY", note: "支持 general、text、terms 和 translation_terms 上下文", priceNote: "Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本和输出文本各 $3.50 / 1M。", supportsSpeaker: true, supportsContext: true, languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }] }],
             regions: [],
             languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }]
           },
@@ -1144,16 +1150,19 @@
             id: "openai",
             label: "OpenAI（及兼容接口）",
             keyUrl: "https://platform.openai.com/api-keys",
+            secondaryKeyUrl: "https://openrouter.ai/keys",
             apiKey: saved.apiKey,
             maskedApiKey: saved.apiKey ? "sk-…demo" : "",
             supportsSpeaker: false,
             multiLanguage: false,
-            note: "默认连接 OpenAI 官方服务，也可填写其他兼容 /audio/transcriptions 的地址；必须返回 segments/words 时间戳。",
+            note: "默认连接 OpenAI 官方服务；OpenRouter 会自动适配预设模型 ID。其他中转站请选择“自定义（Custom）”并填写服务商提供的完整模型名；接口必须返回 segments 或 words 时间戳。",
             commonLanguages: ["", "zh", "en"],
             models: [
-              { id: "whisper-1", label: "whisper-1", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "gpt-4o-transcribe", label: "gpt-4o-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "gpt-4o-mini-transcribe", label: "gpt-4o-mini-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "whisper-1", label: "whisper-1", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。价格和可用能力以 OpenRouter 模型页为准。", priceNote: "OpenAI 官方参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-transcribe", label: "gpt-4o-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：输入 $2.50 / 1M tokens，输出 $10 / 1M tokens；需由接口返回 segments 或 words 时间戳。", priceNote: "OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-mini-transcribe", label: "gpt-4o-mini-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：输入 $1.25 / 1M tokens，输出 $5 / 1M tokens；需由接口返回 segments 或 words 时间戳。", priceNote: "OpenAI 官方参考价：输入 $1.25 / 1M audio tokens，输出 $5 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "whisper-large-v3-turbo", label: "whisper-large-v3-turbo（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.04 / 小时；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "whisper-large-v3", label: "whisper-large-v3（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.0015 / 分钟；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
               { id: OPENAI_ASR_CUSTOM_MODEL_ID, label: "自定义（Custom）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "选择后填写自定义 ASR 模型名", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
             ],
             regions: [],
@@ -1305,7 +1314,7 @@
   // 英文界面按稳定 id 映射为英文，id 未收录时回退后端原文。
   const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (QwenASR / FunASR)", soniox: "Soniox STT", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI (and compatible)", local: "Local models (Beta)", bcut: "Bcut ASR (unofficial · free · experimental)" };
   const PROVIDER_NOTES_EN = {
-    openai: "The API must return segments or words timestamps to produce accurately aligned subtitles.",
+    openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models. For other relays, choose Custom and enter the exact model name they provide. The API must return segments or words timestamps.",
     tencent: "Requires TENCENT_SECRET_ID and TENCENT_SECRET_KEY; use a COS URL for media larger than 5 MB.",
     bcut: "Unofficial free endpoint: no API key, Chinese only, 2-hour per-file limit. The endpoint may change, break, or rate-limit at any time; avoid high-frequency calls. For important or batch tasks, prefer the official providers above.",
   };
@@ -1316,6 +1325,11 @@
     "custom-asr": "Custom",
     "stt-async-v5": "Soniox Async STT (v5, context)",
     "16k_zh_en_2.0": "Tencent Cloud recorded-file ASR (large model 2.0)",
+    "whisper-1": "whisper-1",
+    "gpt-4o-transcribe": "gpt-4o-transcribe",
+    "gpt-4o-mini-transcribe": "gpt-4o-mini-transcribe",
+    "whisper-large-v3-turbo": "Whisper Large V3 Turbo (OpenRouter)",
+    "whisper-large-v3": "Whisper Large V3 (OpenRouter)",
     "qwen3-asr-local": "Qwen3-ASR 0.6B (recommended)",
     "qwen3-asr-1.7b-local": "Qwen3-ASR 1.7B",
     "fun-asr-nano-local": "Fun-ASR-Nano 2512 (GPU)",
@@ -1339,6 +1353,23 @@
     "whisper-large-v3-local": "OpenAI Whisper multilingual local recognition; the CTranslate2 runtime bundles VAD and has no speaker diarization. GPU use requires installing CUDA 12 and cuDNN 9 yourself; otherwise it falls back to CPU.",
     "bcut-asr": "Millisecond per-character timestamps; no API key required.",
   };
+  const MODEL_PRICING_NOTES_EN = {
+    "qwen-audio-3.0-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
+    "fun-asr": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
+    "qwen3-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
+    "stt-async-v5": "Soniox reference price: about $0.10/hour for async file transcription; token-based pricing with $1.50 / 1M audio input tokens and $3.50 / 1M input-text and output-text tokens.",
+    "16k_zh_en_2.0": "Tencent Cloud reference price: CNY 0.8/hour for recorded-file ASR large model 2.0 on pay-as-you-go; a 60-hour prepaid pack is CNY 48.",
+    "whisper-1": "OpenAI official reference price: $0.006/minute; the endpoint must return segments or words timestamps.",
+    "gpt-4o-transcribe": "OpenAI official reference price: $2.50 / 1M audio input tokens and $10 / 1M audio output tokens; the endpoint must return timestamps.",
+    "gpt-4o-mini-transcribe": "OpenAI official reference price: $1.25 / 1M audio input tokens and $5 / 1M audio output tokens; the endpoint must return timestamps.",
+  };
+  const MODEL_OPENROUTER_NOTES_EN = {
+    "whisper-1": "OpenRouter reference price: $0.006/minute; the endpoint must return segments or words timestamps. Prices and capabilities can change.",
+    "gpt-4o-transcribe": "OpenRouter reference price: $2.50 / 1M input tokens and $10 / 1M output tokens; the endpoint must return timestamps.",
+    "gpt-4o-mini-transcribe": "OpenRouter reference price: $1.25 / 1M input tokens and $5 / 1M output tokens; the endpoint must return timestamps.",
+    "whisper-large-v3-turbo": "OpenRouter reference price: $0.04/hour; the endpoint must return segments or words timestamps.",
+    "whisper-large-v3": "OpenRouter reference price: $0.0015/minute; the endpoint must return segments or words timestamps.",
+  };
   const REGION_LABELS_EN = { beijing: "Beijing (China North 2, default)", singapore: "Singapore (Workspace ID required)" };
   const LANGUAGE_LABELS_EN = { "": "Auto detect", zh: "Chinese", yue: "Cantonese", en: "English", ja: "Japanese", de: "German", ko: "Korean", ru: "Russian", fr: "French", pt: "Portuguese", ar: "Arabic", it: "Italian", es: "Spanish", hi: "Hindi", id: "Indonesian", th: "Thai", tr: "Turkish", uk: "Ukrainian", vi: "Vietnamese", cs: "Czech", da: "Danish", fil: "Filipino", fi: "Finnish", is: "Icelandic", ms: "Malay", no: "Norwegian", pl: "Polish", sv: "Swedish", nl: "Dutch", el: "Greek", hu: "Hungarian", ro: "Romanian", bg: "Bulgarian", hr: "Croatian", sk: "Slovak", sl: "Slovenian", sw: "Swahili", tl: "Tagalog", ta: "Tamil", te: "Telugu", ur: "Urdu", cy: "Welsh", af: "Afrikaans", sq: "Albanian", az: "Azerbaijani", eu: "Basque", be: "Belarusian", bn: "Bengali", bs: "Bosnian", ca: "Catalan", et: "Estonian", gl: "Galician", gu: "Gujarati", he: "Hebrew", kn: "Kannada", kk: "Kazakh", lv: "Latvian", lt: "Lithuanian", mk: "Macedonian", ml: "Malayalam", mr: "Marathi", fa: "Persian", pa: "Punjabi", sr: "Serbian" };
   function localizedSelectLabel(selectId, item) {
@@ -1347,7 +1378,37 @@
     return map?.[item.id] || item.label;
   }
   function providerNoteText(providerItem) { return state.lang === "en" ? (PROVIDER_NOTES_EN[providerItem.id] || providerItem.note) : providerItem.note; }
-  function modelNoteText(modelItem) { return state.lang === "en" ? (MODEL_NOTES_EN[modelItem.id] || modelItem.note) : modelItem.note; }
+  function isOpenRouterBaseUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return false;
+    try {
+      const url = new URL(/^[a-z][a-z\d+.-]*:\/\//iu.test(raw) ? raw : `https://${raw}`);
+      return ["openrouter.ai", "www.openrouter.ai"].includes(url.hostname.toLowerCase().replace(/^www\./u, ""));
+    } catch (_error) {
+      return false;
+    }
+  }
+  function isOpenAiOfficialBaseUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return false;
+    try {
+      const url = new URL(/^[a-z][a-z\d+.-]*:\/\//iu.test(raw) ? raw : `https://${raw}`);
+      return url.hostname.toLowerCase().replace(/^www\./u, "") === "api.openai.com";
+    } catch (_error) {
+      return false;
+    }
+  }
+  function modelNoteText(modelItem) {
+    const openRouterNote = modelItem.openrouterNote || "";
+    const baseUrl = $("openaiBaseUrl")?.value || state.config?.openaiBaseUrl;
+    const isOpenai = isOpenAiProvider();
+    const isOpenRouter = isOpenai && isOpenRouterBaseUrl(baseUrl);
+    if (isOpenRouter && openRouterNote) return state.lang === "en" ? (MODEL_OPENROUTER_NOTES_EN[modelItem.id] || openRouterNote) : openRouterNote;
+    const note = state.lang === "en" ? (MODEL_NOTES_EN[modelItem.id] || modelItem.note) : modelItem.note;
+    if (isOpenai && !isOpenAiOfficialBaseUrl(baseUrl)) return note;
+    const priceNote = state.lang === "en" ? (MODEL_PRICING_NOTES_EN[modelItem.id] || modelItem.priceNote) : modelItem.priceNote;
+    return [note, priceNote].filter(Boolean).join(state.lang === "en" ? "; " : "；");
+  }
   function llmProviderLabel(providerId) {
     const id = String(providerId || "").trim();
     const item = state.config?.postprocessProviders?.find((candidate) => candidate.id === id);
@@ -1382,13 +1443,19 @@
     const builtInGuidance = ["postprocess_connection_failed", "postprocess_models_failed"].includes(code) && !Number.isInteger(Number(context?.httpStatus))
       ? llmBuiltInProviderKeyGuidance(context)
       : "";
+    const modelGuidance = code === "transcription_failed"
+      && $("provider")?.value === "openai"
+      && /(model|response[_ ]?format|verbose_json|timestamp)/iu.test(compact)
+      && !/(自定义（Custom）|choose Custom|exact model name)/iu.test(compact)
+      ? t("transcription_model_hint")
+      : "";
     if (["postprocess_connection_failed", "postprocess_models_failed"].includes(code)) {
       const guidance = llmHttpErrorText(context?.httpStatus, context);
       if (guidance) return [guidance, builtInGuidance].filter(Boolean).join(" ");
     }
     const entry = ERROR_TEXT[state.lang][code];
     const message = typeof entry === "function" ? entry(compact) : (entry || compact || t("failed"));
-    return [message, builtInGuidance].filter(Boolean).join(" ");
+    return [message, modelGuidance, builtInGuidance].filter(Boolean).join(" ");
   }
   const ext = (path) => (path.match(/\.[^.\\/]+$/)?.[0] || "").toLowerCase();
   const provider = () => state.config.providers.find((item) => item.id === $("provider").value) || state.config.providers[0];
@@ -1710,7 +1777,19 @@
   function renderChevron(id) { const arrow = $(id).querySelector(".chevron"); if (arrow) arrow.textContent = $(id).classList.contains("collapsed") ? "▸" : "▾"; }
   function renderStickerCurrent() { $("stickerCurrent").textContent = state.config?.stickerDir || t("unset"); $("stickerDir").value = state.config?.stickerDir || ""; }
   async function saveStickerDirectory(path) { $("stickerDir").value = path; const result = await bridge("save_sticker_dir", { path }); setError("stickerDir", result.ok ? "" : errText(result.code, result.detail || result.error)); if (result.ok) { state.config.stickerDir = result.stickerDir; renderStickerCurrent(); setStatus(t("saved")); } else setStatus(errText(result.code, result.detail || result.error)); return result; }
-  function renderKeyHint() { const current = provider(); $("openKeyUrl").textContent = current?.id === "openai" ? t("openai_official") : (current?.label || ""); const suffix = $("keyHintSuffix"); if (suffix) suffix.textContent = t(current?.id === "openai" ? "openai_key_hint_suffix" : "key_hint_suffix"); }
+  function renderKeyHint() {
+    const current = provider();
+    const isOpenai = current?.id === "openai";
+    $("openKeyUrl").textContent = isOpenai ? t("openai_official") : (current?.label || "");
+    $("openKeyHintOr")?.classList.toggle("hidden", !isOpenai);
+    const openRouterLink = $("openRouterKeyUrl");
+    if (openRouterLink) {
+      openRouterLink.textContent = t("openrouter");
+      openRouterLink.classList.toggle("hidden", !isOpenai);
+    }
+    const suffix = $("keyHintSuffix");
+    if (suffix) suffix.textContent = t(isOpenai ? "openai_key_hint_suffix" : "key_hint_suffix");
+  }
   function renderKeyStatus() { const masked = state.config && !isLocalProvider() ? provider().maskedApiKey : ""; $("keyStatus").textContent = masked ? t("key_loaded").replace("{key}", masked) : t("key_empty"); }
   function syncQwenAudioOptions(model) { const enabled = provider().id === "qwen" && Boolean(model?.supportsContext || model?.supportsHotwords); $("qwenAudioOptions").classList.toggle("hidden", !enabled); $("qwenAudioContextField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsContext)); $("qwenAudioHotwordsSection").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsHotwords)); syncQwenAudioHotwordsMode(); }
   function syncSonioxContextOptions(model) { const enabled = provider().id === "soniox" && Boolean(model?.supportsContext); $("sonioxContextOptions").classList.toggle("hidden", !enabled); }
@@ -2569,9 +2648,10 @@
   $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });
   $("pickJson").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "json" }); if (result.ok) setJsonPath(result.path); });
   $("jsonPath").addEventListener("input", () => setError("jsonPath", "")); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) setServerMedia(result.path || ""); });
-  ["apiKey", "openaiBaseUrl", "openaiModel", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
+  ["apiKey", "openaiBaseUrl", "openaiModel", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") $("modelNote").textContent = modelNoteText(selectedModel()); if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") $("modelNote").textContent = modelNoteText(selectedModel()); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
   $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
   $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
+  $("openRouterKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().secondaryKeyUrl || "https://openrouter.ai/keys" }));
   $("pickLocalModelPath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "model" }); if (result.ok) { $("localModelPath").value = result.path; state.localModelPaths[selectedModel().id] = result.path; setError("localModelPath", ""); await refreshLocalModels(); } });
   $("pickLocalModelCachePath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "model-cache" }); if (result.ok) { $("localModelCachePath").value = result.path; await saveLocalModelCache(result.path); } });
   $("localModelCachePath").addEventListener("input", () => setError("localModelCachePath", ""));
