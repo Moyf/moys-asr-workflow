@@ -1798,6 +1798,8 @@ const subtitleExtendBackwardInput = document.getElementById('subtitle-extend-bac
 
 // 先登记所有可独立激活的非模态浮层。嵌套在全局设置窗口里的齿轮弹窗会
 // 自动归到全局设置窗口这一层，点击它们时也会把外层窗口带到最前面。
+// 表情包根目录弹窗从全局设置窗口打开，同样入栈，打开时动态置顶盖住窗口
+//（CSS 的 335 只是 JS 初始化前的静态兜底）。
 [
   editorSettingsPanel,
   helpPanel,
@@ -1810,6 +1812,7 @@ const subtitleExtendBackwardInput = document.getElementById('subtitle-extend-bac
   cueEditorSettingsPanel,
   waveformSettingsPanel,
   multiSubtitleSettingsDropdown,
+  document.getElementById('sticker-root-modal'),
   ...document.querySelectorAll('.toolbar .dropdown'),
 ].forEach(bindFloatingSurfaceActivation);
 
@@ -16349,6 +16352,8 @@ function setStickerRootModalOpen(open) {
     stickerRootReturnFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
     stickerRootModal.classList.add('show');
+    // 设置窗口由浮层栈动态抬高（430+），固定 335 盖不住它；打开时入栈置顶。
+    bringFloatingSurfaceToFront(stickerRootModal);
     const initialFocus = stickerRootServerEnabled
       ? stickerRootInput : document.getElementById('sticker-root-cancel');
     setTimeout(() => initialFocus.focus(), 50);
