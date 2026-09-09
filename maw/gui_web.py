@@ -40,6 +40,7 @@ from maw.gui_config import (
     load_env,
     masked_secret,
     model_by_label,
+    openai_model_for_base_url,
     provider_by_id,
     provider_for_model,
     save_env,
@@ -2958,6 +2959,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             str(payload.get("openaiBaseUrl") or "").strip()
             or stored_openai.get("MAW_OPENAI_ASR_BASE_URL", OPENAI_ASR_DEFAULT_BASE_URL).strip()
         )
+        if model.id != OPENAI_ASR_MODEL_ID:
+            custom_model = openai_model_for_base_url(custom_base_url, custom_model)
         if model.id == OPENAI_ASR_MODEL_ID and not custom_model:
             raise PreflightError("openaiModel", "custom_asr_model_missing", "请填写自定义 ASR 模型名。")
         if not custom_base_url:
@@ -3668,6 +3671,7 @@ def _provider_payload(
         "label": provider.label,
         "kind": provider.kind,
         "keyUrl": provider.key_url,
+        "secondaryKeyUrl": provider.secondary_key_url,
         "requiresApiKey": provider.requires_api_key,
         "apiKey": api_key,
         "maskedApiKey": masked_secret(api_key),
@@ -3703,6 +3707,8 @@ def _model_payload(
         "label": model.label,
         "envKey": model.env_key,
         "note": model.note,
+        "openrouterNote": model.openrouter_note,
+        "priceNote": model.price_note,
         "supportsSpeaker": model.supports_speaker,
         "supportsContext": model.supports_context,
         "supportsHotwords": model.supports_hotwords,

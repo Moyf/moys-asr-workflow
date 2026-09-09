@@ -107,6 +107,23 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
         self.assertEqual(len(config["providers"][1]["commonLanguages"]), 8)
+        self.assertIn("0.00022", config["providers"][0]["models"][0]["priceNote"])
+        self.assertIn("0.10", config["providers"][1]["models"][0]["priceNote"])
+        openai = next(provider for provider in config["providers"] if provider["id"] == "openai")
+        self.assertEqual(openai["secondaryKeyUrl"], "https://openrouter.ai/keys")
+        self.assertEqual(
+            [model["id"] for model in openai["models"]],
+            [
+                "whisper-1",
+                "gpt-4o-transcribe",
+                "gpt-4o-mini-transcribe",
+                "whisper-large-v3-turbo",
+                "whisper-large-v3",
+                "custom-asr",
+            ],
+        )
+        self.assertIn("OpenRouter", openai["models"][0]["openrouterNote"])
+        self.assertIn("0.006", openai["models"][0]["priceNote"])
         self.assertEqual(config["models"][0]["id"], "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(config["models"][1]["id"], "fun-asr")
         self.assertEqual(config["models"][2]["id"], "qwen3-asr-flash-filetrans")
@@ -432,6 +449,36 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertEqual(request.provider, "openai")
         self.assertEqual(request.model, "gpt-4o-transcribe")
+
+    def test_openrouter_prefixes_builtin_openai_model_but_preserves_custom_model(self) -> None:
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+
+        request = _request_from_payload({
+            "providerId": "openai",
+            "modelId": "whisper-1",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "clip.srt"),
+            "apiKey": "sk-openrouter",
+            "openaiBaseUrl": "https://openrouter.ai/api/v1",
+            "openaiModel": "stale-custom-value",
+            "generateHtml": False,
+        }, self.env_path)
+
+        self.assertEqual(request.model, "openai/whisper-1")
+
+        custom_request = _request_from_payload({
+            "providerId": "openai",
+            "modelId": "custom-asr",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "custom.srt"),
+            "apiKey": "sk-openrouter",
+            "openaiBaseUrl": "https://openrouter.ai/api/v1",
+            "openaiModel": "relay/custom-model",
+            "generateHtml": False,
+        }, self.env_path)
+
+        self.assertEqual(custom_request.model, "relay/custom-model")
 
     def test_save_settings_persists_the_selected_official_openai_model(self) -> None:
         result = self.api.save_settings({
@@ -4574,7 +4621,11 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('"qwen3-asr-local": "Qwen3-ASR 0.6B (recommended)"', script)
         self.assertIn('"qwen3-asr-local": "Runs locally; the first preparation downloads Qwen3-ASR and the Forced Aligner."', script)
         self.assertIn('local: "Local models (Beta)"', script)
-        self.assertIn('openai: "The API must return segments or words timestamps to produce accurately aligned subtitles."', script)
+        self.assertIn('openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models.', script)
+        self.assertIn('secondaryKeyUrl', script)
+        self.assertIn('openrouterNote', script)
+        self.assertIn('priceNote', script)
+        self.assertIn('MODEL_PRICING_NOTES_EN', script)
         self.assertIn('"": "Auto detect"', script)
         self.assertIn('function localizedSelectLabel(selectId, item)', script)
         self.assertIn('new Option(localizedSelectLabel(id, item), item.id)', script)
