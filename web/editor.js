@@ -684,6 +684,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   exportColorUnified: true,
   // 导出 SRT 时是否按字幕颜色附加说话人名称（仅本地偏好）。
   exportSpeakerLabels: false,
+  // 按颜色导出 SRT 时是否优先使用颜色映射的说话人名称作为文件名后缀（仅本地偏好）。
+  exportSpeakerNamesAsSuffix: false,
   // 自动保存仅对绑定工程的 localhost 服务器版生效。
   autoSaveProject: true,
   autoSaveIntervalSeconds: 30,
@@ -736,7 +738,7 @@ const DEFAULT_EDITOR_SETTINGS = {
   multiSubtitleAutoSyncDuration: true,
   // 多重字幕波形是否显示主/副轨道编号徽标。
   multiSubtitleShowTrackBadges: false,
-  // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
+  // 界面主题：dark（默认）/ light / system。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
   // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
   waveShapeSource: 'reapeaks',
@@ -1424,6 +1426,8 @@ const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
 const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
 const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
+const subtitleSpeakerMappingEnabledInput = document.getElementById('subtitle-speaker-mapping-enabled');
+const subtitleSpeakerLabelsToggle = document.getElementById('subtitle-speaker-labels-enabled-wrap');
 const subtitleSpeakerLabelsEnabledInput = document.getElementById('subtitle-speaker-labels-enabled');
 const subtitleSpeakerLabelsSettings = document.getElementById('subtitle-speaker-labels-settings');
 const subtitleSpeakerLabelSeparatorInput = document.getElementById('subtitle-speaker-label-separator');
@@ -1493,8 +1497,10 @@ const ninjaRazorIcon = razorToolButton?.querySelector('.ninja-razor-icon');
 const ninjaSlashFlash = document.getElementById('ninja-slash-flash');
 const exportColorUnifiedToggle = document.getElementById('export-color-unified');
 const exportSpeakerLabelsToggle = document.getElementById('export-speaker-labels');
+const exportSpeakerNamesAsSuffixToggle = document.getElementById('export-speaker-names-as-suffix');
+const exportOpenSubtitleColorSettingsButton = document.getElementById('export-open-subtitle-color-settings');
 const helpToggle = document.getElementById('help-toggle');
-const themeToggle = document.getElementById('theme-toggle');
+const editorThemeOptions = Array.from(document.querySelectorAll('[data-editor-theme]'));
 const helpPanel = document.getElementById('help-panel');
 const helpDragHandle = document.getElementById('help-drag-handle');
 const helpCloseButton = document.getElementById('help-close');
@@ -1610,6 +1616,10 @@ const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-rem
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
+const multiSubtitleSettingsToggle = document.getElementById('multi-subtitle-settings-toggle');
+const splitMultiSubtitleSettingsEnabledHint = document.getElementById('split-multi-subtitle-settings-enabled');
+const splitMultiSubtitleSettingsDisabledHint = document.getElementById('split-multi-subtitle-settings-disabled');
+const splitMultiSubtitleSettingsLink = document.getElementById('split-multi-subtitle-settings-link');
 // 已开启多重字幕但尚未加载第二条字幕时的开关右侧提示。
 const multiSubtitleEmptyHint = document.getElementById('multi-subtitle-empty-hint');
 const multiSubtitleSwapButton = document.getElementById('multi-subtitle-swap');
@@ -2152,6 +2162,8 @@ function updateMultiSubtitleUi() {
     // 提示与齿轮互斥：开启但无副轨 → 显示；其余隐藏。
     multiSubtitleEmptyHint.hidden = !(getMultiSubtitleState().enabled === true && !enabled);
   }
+  if (splitMultiSubtitleSettingsEnabledHint) splitMultiSubtitleSettingsEnabledHint.hidden = !enabled;
+  if (splitMultiSubtitleSettingsDisabledHint) splitMultiSubtitleSettingsDisabledHint.hidden = enabled;
   if (multiSubtitleToggle) {
     // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
     multiSubtitleToggle.checked = getMultiSubtitleState().enabled === true;
@@ -2381,6 +2393,9 @@ exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
 if (exportColorUnifiedToggle) exportColorUnifiedToggle.checked = EDITOR_SETTINGS.exportColorUnified;
 if (exportSpeakerLabelsToggle) exportSpeakerLabelsToggle.checked = EDITOR_SETTINGS.exportSpeakerLabels;
+if (exportSpeakerNamesAsSuffixToggle) {
+  exportSpeakerNamesAsSuffixToggle.checked = EDITOR_SETTINGS.exportSpeakerNamesAsSuffix;
+}
 if (autoSaveProjectToggle) autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
 if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
@@ -2633,6 +2648,17 @@ function openEditorSettingsAtTab(tabId) {
   setEditorSettingsPanelOpen(true);
   setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
 }
+exportOpenSubtitleColorSettingsButton?.addEventListener('click', (event) => {
+  event.preventDefault();
+  openEditorSettingsAtTab('editor-settings-tab-subtitle-color');
+});
+splitMultiSubtitleSettingsLink?.addEventListener('click', (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!multiSubtitleVisible()) return;
+  multiSubtitleSettingsToggle?.click();
+  multiSubtitleSettingsToggle?.focus();
+});
 helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
@@ -2737,31 +2763,53 @@ if (helpPanel) {
 
 
 // 明暗主题：令牌全部定义在 CSS（:root 暗色 / [data-theme="light"] 亮色），
-// 这里只负责写 <html data-theme>、持久化、同步按钮，以及通知波形重绘画布。
-// 按钮显示的是「目标主题」（与相邻 🌐 语言按钮同一约定）：暗色时显示 🌖（点击转亮）。
-// title 用中文源串，英文界面由 i18n 的属性 MutationObserver 自动翻译。
-function refreshThemeToggle(theme) {
-  if (!themeToggle) return;
-  const toLight = theme !== 'light';
-  themeToggle.textContent = toLight ? '🌖' : '🌘';
-  const title = toLight ? '切换到亮色主题' : '切换到暗色主题';
-  themeToggle.title = title;
-  themeToggle.setAttribute('aria-label', title);
+// 这里只负责解析偏好、写 <html data-theme>、持久化，以及通知波形重绘画布。
+const EDITOR_THEME_VALUES = Object.freeze(['light', 'dark', 'system']);
+function normalizeEditorTheme(theme) {
+  return EDITOR_THEME_VALUES.includes(theme) ? theme : 'dark';
+}
+function resolveEditorTheme(theme) {
+  const preference = normalizeEditorTheme(theme);
+  if (preference !== 'system') return preference;
+  const media = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  return media ? (media.matches ? 'dark' : 'light') : 'dark';
+}
+function refreshEditorThemeOptions(theme) {
+  const preference = normalizeEditorTheme(theme);
+  editorThemeOptions.forEach((option) => {
+    const active = option.dataset.editorTheme === preference;
+    option.classList.toggle('active', active);
+    option.setAttribute('aria-pressed', String(active));
+  });
 }
 function applyTheme(theme, { rerenderWaveform = true } = {}) {
-  const next = theme === 'light' ? 'light' : 'dark';
-  if (next === 'light') document.documentElement.dataset.theme = 'light';
+  const preference = normalizeEditorTheme(theme);
+  const resolved = resolveEditorTheme(preference);
+  if (resolved === 'light') document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;
-  refreshThemeToggle(next);
+  refreshEditorThemeOptions(preference);
   // 画布颜色是 JS 读取的令牌快照，必须全量重绘才能跟随主题
   if (rerenderWaveform && waveformEditor) waveformEditor.render();
 }
 applyTheme(EDITOR_SETTINGS.theme, { rerenderWaveform: false });
-themeToggle?.addEventListener('click', () => {
-  const next = EDITOR_SETTINGS.theme === 'light' ? 'dark' : 'light';
-  updateEditorSettings({ theme: next });
-  applyTheme(next);
+editorThemeOptions.forEach((option) => {
+  option.addEventListener('click', () => {
+    const next = normalizeEditorTheme(option.dataset.editorTheme);
+    updateEditorSettings({ theme: next });
+    applyTheme(next);
+  });
 });
+const editorSystemThemeMedia = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+const refreshEditorSystemTheme = () => {
+  if (EDITOR_SETTINGS.theme === 'system') applyTheme('system');
+};
+if (editorSystemThemeMedia?.addEventListener) {
+  editorSystemThemeMedia.addEventListener('change', refreshEditorSystemTheme);
+} else {
+  editorSystemThemeMedia?.addListener?.(refreshEditorSystemTheme);
+}
 splitKeySel.addEventListener('change', () => {
   updateEditorSettings({ splitKey: splitKeySel.value });
   refreshSplitKeyHelp();
@@ -2965,6 +3013,9 @@ exportColorUnifiedToggle?.addEventListener('change', () => {
 });
 exportSpeakerLabelsToggle?.addEventListener('change', () => {
   updateEditorSettings({ exportSpeakerLabels: exportSpeakerLabelsToggle.checked });
+});
+exportSpeakerNamesAsSuffixToggle?.addEventListener('change', () => {
+  updateEditorSettings({ exportSpeakerNamesAsSuffix: exportSpeakerNamesAsSuffixToggle.checked });
 });
 clickBehaviorSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickBehavior: normalizeClickBehavior(clickBehaviorSelect.value) });
@@ -3388,6 +3439,16 @@ subtitleSpeakerLabelSeparatorInput?.addEventListener(
   'change',
   () => applySpeakerLabelSeparatorInput({ finalize: true }),
 );
+subtitleSpeakerMappingEnabledInput?.addEventListener('change', () => {
+  const previous = snapshotPreviewState();
+  previous.speakerLabels.mapping_enabled = !subtitleSpeakerMappingEnabledInput.checked;
+  pushPreviewUndo('切换颜色说话人映射', previous);
+  setSpeakerLabelSettings({
+    ...getSpeakerLabelSettings(),
+    mapping_enabled: subtitleSpeakerMappingEnabledInput.checked,
+  });
+  update();
+});
 subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
   const previous = snapshotPreviewState();
   previous.speakerLabels.enabled = !subtitleSpeakerLabelsEnabledInput.checked;
@@ -11049,12 +11110,20 @@ function getSpeakerLabelSettings(value = DATA.preview?.subtitle?.speaker_labels)
   return EDITOR_SETTINGS_UTILS.normalizeSpeakerLabelSettings(value);
 }
 function syncSpeakerLabelControls(settings = getSpeakerLabelSettings()) {
+  const mappingEnabled = settings.mapping_enabled === true;
+  if (subtitleSpeakerMappingEnabledInput) {
+    subtitleSpeakerMappingEnabledInput.checked = mappingEnabled;
+  }
+  if (subtitleSpeakerLabelsToggle) {
+    subtitleSpeakerLabelsToggle.hidden = !mappingEnabled;
+  }
   if (subtitleSpeakerLabelsEnabledInput) {
     subtitleSpeakerLabelsEnabledInput.checked = settings.enabled;
   }
   if (subtitleSpeakerLabelsSettings) {
+    subtitleSpeakerLabelsSettings.dataset.mappingEnabled = mappingEnabled ? 'true' : 'false';
     subtitleSpeakerLabelsSettings.dataset.enabled = settings.enabled ? 'true' : 'false';
-    subtitleSpeakerLabelsSettings.hidden = !settings.enabled;
+    subtitleSpeakerLabelsSettings.hidden = !mappingEnabled;
   }
   Object.entries(subtitleSpeakerLabelInputs).forEach(([color, input]) => {
     if (input && document.activeElement !== input) input.value = settings.names[color] || '';
@@ -11678,7 +11747,7 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   const mainColorName = mainVisible && seg
     ? MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments)
     : null;
-  const speakerLabel = mainVisible && speakerLabels.enabled
+  const speakerLabel = mainVisible && speakerLabels.mapping_enabled && speakerLabels.enabled
     ? window.AsrEditorUtils.speakerLabelForSegment(
       seg, DATA.segments, speakerLabels.names,
     )
@@ -11932,7 +12001,8 @@ let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 function speakerLabelExportOptions() {
   const settings = getSpeakerLabelSettings();
   return {
-    speakerLabelsEnabled: EDITOR_SETTINGS.exportSpeakerLabels === true,
+    speakerLabelsEnabled: EDITOR_SETTINGS.exportSpeakerLabels === true
+      && settings.mapping_enabled === true,
     speakerLabels: settings.names,
     speakerLabelSeparator: settings.separator,
   };
@@ -12011,6 +12081,25 @@ function updateSubtitleExportUi() {
   }
 }
 
+function safeColorExportFilenameSuffix(value, fallback) {
+  const normalized = String(value ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, '_')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/[. ]+$/g, '')
+    .trim();
+  return normalized || fallback;
+}
+
+function colorExportFilenameSuffix(color, speakerSettings = getSpeakerLabelSettings()) {
+  const colorSuffix = window.MAWE_I18N?.exportTag?.(color.name) || color.name;
+  if (!EDITOR_SETTINGS.exportSpeakerNamesAsSuffix
+      || speakerSettings.mapping_enabled !== true
+      || color.name === 'default') {
+    return colorSuffix;
+  }
+  return safeColorExportFilenameSuffix(speakerSettings.names?.[color.name], colorSuffix);
+}
+
 async function downloadColorSrts(gapRemoved = false) {
   if (editingState) finishEdit(true);
   const colors = usedSubtitleColors();
@@ -12028,6 +12117,7 @@ async function downloadColorSrts(gapRemoved = false) {
     EDITOR_SETTINGS.exportStartAtZero,
   );
   const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
+  const speakerSettings = getSpeakerLabelSettings();
   const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
     colorName: color.name,
     timeOffset: 0,
@@ -12058,7 +12148,7 @@ async function downloadColorSrts(gapRemoved = false) {
     }
   }
   for (const color of colors) {
-    const filename = `${filenameBase}_${window.MAWE_I18N?.exportTag?.(color.name) || color.name}.srt`;
+    const filename = `${filenameBase}_${colorExportFilenameSuffix(color, speakerSettings)}.srt`;
     if (EDITOR_SETTINGS.exportColorUnified) {
       const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);

@@ -171,6 +171,21 @@ test('offers importing a second SRT when enabling multiple subtitles without an 
   await expect(page.locator('#multi-subtitle-settings-toggle')).toBeVisible();
 });
 
+test('opens multiple-subtitle settings from the split language hint', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-split-merge').click();
+  const settingsLink = page.locator('#split-multi-subtitle-settings-link');
+  await expect(settingsLink).toBeVisible();
+  await expect(page.locator('#split-multi-subtitle-settings-disabled')).toBeHidden();
+
+  await settingsLink.click();
+  await expect(page.locator('#multi-subtitle-settings-menu')).toBeVisible();
+  await expect(page.locator('#multi-subtitle-settings-toggle')).toHaveAttribute('aria-expanded', 'true');
+});
+
 test('waveform extension cue double-click focuses the extension editor', async ({ page }) => {
   const project = {
     segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
@@ -2346,7 +2361,9 @@ test('localizes approved scanned font labels in both selectors', async ({ page }
   ]));
   await page.locator('#subtitle-font-family').selectOption('Source Han Sans SC');
   await page.locator('#extension-subtitle-font-family').selectOption('SimSun');
+  await page.locator('#editor-settings-tab-interface').click();
   await page.locator('#language-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
   await expect(page.locator('#subtitle-font-family option:checked')).toHaveText('Source Han Sans SC');
   await expect(page.locator('#extension-subtitle-font-family option:checked')).toHaveText('SimSun');
   expect(await page.evaluate(() => ({

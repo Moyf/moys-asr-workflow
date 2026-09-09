@@ -48,6 +48,11 @@ test('English locale covers the editor shell and recent-project setting stays fi
   await page.locator('#recent-projects-toggle').click();
 
   await page.locator('#editor-settings-toggle').click();
+  await expect(page.locator('#editor-settings-tab-interface')).toHaveText('Interface');
+  await expect(page.locator('[data-editor-theme="light"]')).toHaveText('Light mode');
+  await expect(page.locator('[data-editor-theme="dark"]')).toHaveText('Dark mode');
+  await expect(page.locator('[data-editor-theme="system"]')).toHaveText('Follow System');
+  await expect(page.locator('#language-toggle')).toHaveText('🌐中文');
   const shellText = await page.locator('body').innerText();
   const untranslatedShellLines = shellText.split('\n')
     .map((line) => line.trim())
@@ -80,11 +85,38 @@ test('English locale covers the editor shell and recent-project setting stays fi
   expect(await page.locator('#ctxmenu').innerText()).not.toMatch(/[\u3400-\u9fff]/u);
   await page.keyboard.press('Escape');
 
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-interface').click();
   await page.locator('#language-toggle').click();
   await expect(page.locator('#save-project')).toHaveText('保存工程');
   await expect(page.locator('#search')).toHaveAttribute('placeholder', '过滤字幕…');
   await expect(page.locator('#cue-panel-text')).toHaveAttribute('placeholder', '选择一条字幕开始编辑…');
   expect(await page.evaluate(() => localStorage.getItem('mawe.language'))).toBe('zh');
+});
+
+test('Interface settings supports light, dark, and system themes', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+
+  await expect(page.locator('#editor-settings-tab-interface')).toHaveClass(/active/);
+  await expect(page.locator('[data-editor-theme="dark"]')).toHaveAttribute('aria-pressed', 'true');
+  const themeStyles = await page.evaluate(() => {
+    const active = getComputedStyle(document.querySelector('[data-editor-theme="dark"]'));
+    const inactive = getComputedStyle(document.querySelector('[data-editor-theme="light"]'));
+    return { activeBackground: active.backgroundColor, inactiveBackground: inactive.backgroundColor };
+  });
+  expect(themeStyles.activeBackground).not.toBe(themeStyles.inactiveBackground);
+
+  await page.locator('[data-editor-theme="light"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('[data-editor-theme="light"]')).toHaveAttribute('aria-pressed', 'true');
+
+  await page.locator('[data-editor-theme="system"]').click();
+  await expect(page.locator('[data-editor-theme="system"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'light');
 });
 
 test('GUI launch language overrides the saved editor language once and persists it', async ({ page }) => {

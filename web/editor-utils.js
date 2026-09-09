@@ -75,7 +75,11 @@
 
   function normalizeSpeakerLabelSettings(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const hasMappingEnabled = Object.prototype.hasOwnProperty.call(source, 'mapping_enabled');
     return {
+      // 旧工程没有独立的映射开关时，沿用原来的 enabled 语义，避免升级后
+      // 已配置的说话人名称突然失效；新工程则默认关闭颜色到说话人的映射。
+      mapping_enabled: hasMappingEnabled ? source.mapping_enabled === true : source.enabled === true,
       enabled: source.enabled === true,
       separator: normalizeSpeakerLabelSeparator(source.separator),
       names: normalizeSpeakerLabels(source.names),
@@ -2801,7 +2805,7 @@
     mergeJoinTextContinuous: '', mergeJoinTextWord: ' ',
     autoMergeGapMs: 200, autoMergeSnapDirection: 'backward', autoMergeShortCount: 3,
     autoMergeAbsorbShort: true, autoMergeAbsorbDirection: 'previous', exportColorUnified: true,
-    exportSpeakerLabels: false,
+    exportSpeakerLabels: false, exportSpeakerNamesAsSuffix: false,
     autoSaveProject: true, autoSaveIntervalSeconds: 30, stickerOverlayEnabled: false,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
@@ -2871,6 +2875,7 @@
       autoMergeAbsorbDirection: savedSettings.autoMergeAbsorbDirection === 'next' ? 'next' : 'previous',
       exportColorUnified: savedSettings.exportColorUnified !== false,
       exportSpeakerLabels: savedSettings.exportSpeakerLabels === true,
+      exportSpeakerNamesAsSuffix: savedSettings.exportSpeakerNamesAsSuffix === true,
       autoSaveProject: savedSettings.autoSaveProject !== false,
       autoSaveIntervalSeconds: clampInteger(savedSettings.autoSaveIntervalSeconds, 30, 5, 3600),
       projectBackupEnabled: savedSettings.projectBackupEnabled === true,
@@ -2905,7 +2910,8 @@
       selectBoundSubtitlePair: savedSettings.selectBoundSubtitlePair !== false,
       multiSubtitleAutoSyncDuration: savedSettings.multiSubtitleAutoSyncDuration !== false,
       multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
-      theme: savedSettings.theme === 'light' ? 'light' : 'dark',
+      theme: ['light', 'dark', 'system'].includes(savedSettings.theme)
+        ? savedSettings.theme : 'dark',
       waveShapeSource: savedSettings.waveShapeSource === 'self' ? 'self' : 'reapeaks',
     };
   }

@@ -953,6 +953,7 @@
   .subtitle-preview-setting-row[hidden] { display: none; }
   .subtitle-preview-setting-row > span { color: var(--text-secondary); white-space: nowrap; }
   .subtitle-preview-setting-row select { width: 100%; min-width: 0; }
+  .subtitle-color-style-control select { width: min(180px, 100%); justify-self: start; }
   .subtitle-preview-setting-row input[type="color"] {
     width: 100%; height: 24px; min-width: 0; padding: 2px;
     background: var(--bg-input); border: 1px solid var(--border-subtle);
@@ -1106,6 +1107,30 @@
     color: var(--text-secondary); font-size: 0.8em;
     font-weight: 600; letter-spacing: .08em;
   }
+  .editor-settings-segmented {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px; width: 100%; padding: 2px;
+    background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  }
+  .editor-settings-segment {
+    min-width: 0; min-height: 26px; padding: 4px 8px;
+    border: 0; border-radius: var(--radius-sm);
+    background: transparent; color: var(--text-muted);
+    font-size: 12px; line-height: 1.25; cursor: pointer;
+    transition: background var(--t-fast), color var(--t-fast);
+  }
+  .editor-settings-segment:hover { background: var(--btn-bg-hover); color: var(--text-primary); }
+  .editor-settings-segment:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-segment.active {
+    background: var(--accent); color: var(--bg-base); font-weight: 700;
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .editor-settings-segment.active:hover { background: var(--accent-hover); color: var(--bg-base); }
+  #editor-settings-page-interface > .editor-settings-group {
+    gap: 0; padding: 0; background: transparent; border: 0; border-radius: 0;
+  }
+  #editor-settings-page-interface .interface-theme-setting { gap: 6px; }
+  .interface-language-row { justify-content: space-between; width: 100%; }
   .split-language-type-row {
     display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
     width: 100%; min-width: 0;
@@ -1255,13 +1280,24 @@
   .editor-settings-panel input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
   /* 通用按钮样式不作用于设置导航标签：标签有独立的基础/hover/active 外观，
      否则这里的更高优先级会在 hover 时盖掉 active 高亮。 */
-  .editor-settings-panel button:not(.editor-settings-nav-tab) {
+  .editor-settings-panel button:not(.editor-settings-nav-tab):not(.editor-settings-segment) {
     min-width: 26px; padding: 3px 7px; color: var(--btn-text); background: var(--btn-bg);
     border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
     transition: background var(--t-fast), border-color var(--t-fast), filter var(--t-fast);
   }
-  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
-  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab):not(.editor-settings-segment) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab):not(.editor-settings-segment) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-panel button:not(.editor-settings-nav-tab).editor-settings-inline-action {
+    min-width: 0; padding: 0 2px; color: var(--accent); background: transparent; border: 0;
+    border-radius: var(--radius-sm); font: inherit; line-height: inherit; text-decoration: underline;
+    text-underline-offset: 2px; vertical-align: baseline;
+  }
+  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab).editor-settings-inline-action {
+    color: var(--text-primary); background: transparent; border-color: transparent;
+  }
+  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab).editor-settings-inline-action {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
   .editor-settings-panel button:disabled,
   .editor-settings-panel select:disabled,
   .editor-settings-panel input:disabled { opacity: .42; cursor: not-allowed; }
@@ -1481,7 +1517,7 @@
   .toolbar .dropdown-item.is-missing { opacity: .55; }
   .toolbar .dropdown-item.is-missing .recent-project-name { text-decoration: line-through; }
   .toolbar .recent-project-setting input { margin: 0; }
-  .toolbar .language-toggle { min-width: 38px; font-weight: 700; }
+  .editor-settings-panel .language-toggle { min-width: 72px; font-weight: 700; }
   .toolbar .dropdown-sep {
     height: 1px; background: var(--border-subtle); margin: 4px 0;
   }
@@ -1754,7 +1790,7 @@
     container: cue-panel / inline-size;
     gap: 10px; margin-bottom: 8px; padding: 10px 12px;
     background: var(--bg-panel);
-    border: 1px solid var(--border-subtle); border-left: 3px solid var(--amber); border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
     box-shadow: var(--shadow-2);
   }
   .current-cue-panel > .cue-editor-toolbar {
