@@ -11,7 +11,7 @@ import {
   findFreePort,
   generateWav,
   generateWaveformPayload,
-  copyPortableBlankEditor,
+  buildPortableBlankEditor,
   startServer,
   startStaticServer,
   disableOnboarding,
@@ -255,7 +255,7 @@ test.beforeAll(async () => {
   blankHtmlPath = join(portableDir, 'blank-editor.html');
   generateWav(portableWavPath, MARQUEE_DURATION_MS / 1000);
   generateMarqueeProject(portableProjectPath);
-  copyPortableBlankEditor(blankHtmlPath);
+  buildPortableBlankEditor(blankHtmlPath);
   portablePort = await findFreePort();
   portableStaticServer = await startStaticServer(blankHtmlPath, portablePort);
 });

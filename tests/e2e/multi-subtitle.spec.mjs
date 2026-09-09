@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import {
   cleanupTempDir,
   findFreePort,
-  copyPortableBlankEditor,
+  buildPortableBlankEditor,
   generateWaveformPayload,
   makeTempDir,
   startStaticServer,
@@ -16,7 +16,7 @@ let server;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('multi-subtitle');
-  const blankPath = copyPortableBlankEditor(join(tempDir, 'blank-editor.html'));
+  const blankPath = buildPortableBlankEditor(join(tempDir, 'blank-editor.html'));
   server = await startStaticServer(blankPath, await findFreePort());
 });
 
@@ -3080,9 +3080,16 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
   await expect(page.locator('.waveform-row.multi-subtitle-row')).toHaveCount(0);
   await expect(page.locator('#download-multi-srt')).toBeHidden();
+  // 关闭多重字幕后副轨数据保留，但「拆分副字幕」不再出现在右键菜单，「仅看超长」恢复显示。
+  await expect(page.locator('#filter-over')).toBeVisible();
+  await page.evaluate(() => showWaveformBlankMenu(1500, 100, 100, 'main'));
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分副字幕' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
   await page.locator('#multi-subtitle-toggle').check();
   await expect(page.locator('.waveform-row.multi-subtitle-row')).not.toHaveCount(0);
   await expect(page.locator('#multi-subtitle-settings-menu')).toBeHidden();
+  await expect(page.locator('#filter-over')).toBeHidden();
+  await expect(page.locator('#filter-over-sep')).toBeHidden();
 
   const [mainRect, extensionRect] = await Promise.all([
     mainBlock.boundingBox(),
