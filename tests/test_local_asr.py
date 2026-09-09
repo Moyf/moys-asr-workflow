@@ -556,7 +556,7 @@ class LocalAsrFlowTests(unittest.TestCase):
                     language="Chinese",
                     time_stamps=[
                         SimpleNamespace(text="有", start_time=0.0, end_time=0.2),
-                        SimpleNamespace(text="完整", start_time=0.2, end_time=0.2),
+                        SimpleNamespace(text="完整", start_time=0.3, end_time=0.2),
                         SimpleNamespace(text="文本", start_time=0.4, end_time=0.6),
                     ],
                 )]
@@ -576,6 +576,54 @@ class LocalAsrFlowTests(unittest.TestCase):
             build_local_segments(result, duration_ms=1200),
             [{"start": 0, "end": 600, "text": "有完整文本"}],
         )
+
+    def test_qwen_zero_width_tokens_keep_text_and_sentence_splitting(self) -> None:
+        words = ["Hello", "there", "world", "Next", "sentence", "works"]
+        for zero_indices in ({0}, {1}, {5}, {0, 1}, {1, 2}, {0, 1, 2, 3, 4, 5}):
+            with self.subTest(zero_indices=zero_indices):
+                runtime = SimpleNamespace(transcribe=lambda **kwargs: [SimpleNamespace(
+                    text="Hello there world. Next sentence works!",
+                    language="English",
+                    time_stamps=[SimpleNamespace(
+                        text=word, start_time=index,
+                        end_time=index if index in zero_indices else index + 1,
+                    ) for index, word in enumerate(words)],
+                )])
+                engine = QwenAsrEngine(forced_aligner="test-aligner")
+                result = engine._transcribe_one(
+                    runtime, Path("sample.wav"), language="en", hotwords=[], on_event=None,
+                )
+                if len(zero_indices) == len(words):
+                    self.assertEqual(result.items, [])
+                    continue
+                self.assertEqual("".join(item["text"] for item in result.items), result.text)
+                self.assertTrue(all(item["end"] > item["start"] for item in result.items))
+                segments = build_local_segments(result, duration_ms=6000, min_words=1)
+                self.assertGreater(len(segments), 1)
+                self.assertEqual("".join(segment["text"] for segment in segments), result.text)
+
+    def test_qwen_zero_width_word_does_not_turn_long_audio_into_chunk_cues(self) -> None:
+        text = "Hello there world. Next sentence works!"
+        runtime = SimpleNamespace(transcribe=lambda **kwargs: [SimpleNamespace(
+            text=text, language="English", time_stamps=[
+                SimpleNamespace(text=word, start_time=index * 0.5,
+                                end_time=index * 0.5 if index == 1 else (index + 1) * 0.5)
+                for index, word in enumerate(["Hello", "there", "world", "Next", "sentence", "works"])
+            ],
+        )])
+        engine = QwenAsrEngine(forced_aligner="test-aligner")
+        engine._runtime = runtime
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio = Path(temp_dir) / "long.wav"
+            audio.write_bytes(b"wav")
+            with mock.patch("maw.local_asr.get_duration_sec", return_value=65.0), \
+                    mock.patch("maw.local_asr.subprocess.run"):
+                result = engine.transcribe(audio, language="en", ffmpeg_path="ffmpeg")
+        segments = build_local_segments(result, duration_ms=65000, min_words=1)
+        self.assertEqual(len(segments), 6)
+        self.assertEqual([s["start"] for s in segments], [0, 1500, 30000, 31500, 60000, 61500])
+        self.assertTrue(all(s["end"] - s["start"] < 3000 for s in segments))
+        self.assertEqual("".join(s["text"] for s in segments).replace(" ", ""), text.replace(" ", "") * 3)
 
     def test_qwen_english_alignment_items_restore_spaces(self) -> None:
         class FakeRuntime:
