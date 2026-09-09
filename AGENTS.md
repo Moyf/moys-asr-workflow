@@ -47,6 +47,12 @@ uv run python -m unittest discover -s tests -p "test_*.py"
 git diff --check
 ```
 
+### Agent 命令执行：避免 uv 超时卡住
+
+- `uv run` 每次执行都会重新解析并可能同步环境，冷启动时远超命令工具的默认超时（约 2 分钟），表现为命令"卡住"且长时间无输出。
+- Agent 自动化执行的命令一律使用 `uv run --no-sync`（环境由开发者手动 `uv sync` 维护）。
+- 长命令拆分成多次执行并显式设置超时；不要把 `uv run` 与慢命令（如 `Test-NetConnection`、`Start-Sleep`）串联在同一条链里。
+
 自动化测试覆盖数据处理和服务器契约，不能替代真实浏览器中的拖动、播放、Seek 和布局体验。涉及编辑器交互的改动，应至少手动启动：
 
 ```powershell
