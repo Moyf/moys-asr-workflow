@@ -68,6 +68,9 @@ class TranscriptionRequest:
     model_cache_root: str = ""
     device: str = "auto"
     forced_aligner: str = ""
+    openai_prompt: str = ""
+    openai_keywords: tuple[str, ...] = ()
+    openai_diarize: bool = False
     runtime_python: str = ""
     postprocess_plan: dict[str, object] | None = None
     postprocess_llm_settings: dict[str, dict[str, str]] | None = None
@@ -333,6 +336,11 @@ def build_transcribe_command(
         _append_option(command, "--base-url", request.base_url)
         _append_option(command, "--model", request.model)
         _append_option(command, "--language", request.language)
+        _append_option(command, "--prompt", request.openai_prompt)
+        for keyword in request.openai_keywords:
+            _append_option(command, "--keyword", keyword)
+        if request.openai_diarize:
+            command.append("--diarize")
     else:
         _append_option(command, "--model", request.model or DEFAULT_MODEL_ID)
         _append_option(command, "--region", request.region)

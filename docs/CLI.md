@@ -43,13 +43,13 @@ DASHSCOPE_API_KEY=你的百炼密钥
 # Soniox；只使用 Soniox 时填写这一项即可
 SONIOX_API_KEY=你的 Soniox 密钥
 
-# OpenAI 官方或兼容 ASR；只使用 OpenAI 兼容接口时填写这一组
+# OpenAI 官方、OpenRouter 或兼容 ASR；只使用 OpenAI 兼容接口时填写这一组
 MAW_OPENAI_ASR_API_KEY=你的 ASR 密钥
 MAW_OPENAI_ASR_BASE_URL=https://api.openai.com/v1
 MAW_OPENAI_ASR_MODEL=whisper-1
 ```
 
-Windows Release 包会优先读取 `MAW.exe` 同目录的 `.env`；该文件不存在时回退到 `%LOCALAPPDATA%\MAW\.env`。macOS / Linux 也优先读取应用程序同目录的 `.env`，再回退到对应的 MAW 用户数据目录；源码方式继续读取仓库根 `.env`。环境变量优先于 `.env`。API Key 的申请方式见 [ASR 服务与配置](PROVIDERS.md) 和[阿里云官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)。
+Windows Release 包会优先读取 `MAW.exe` 同目录的 `.env`；该文件不存在时回退到 `%LOCALAPPDATA%\MAW\.env`。macOS / Linux 也优先读取应用程序同目录的 `.env`，再回退到对应的 MAW 用户数据目录；源码方式继续读取仓库根 `.env`。环境变量优先于 `.env`。API Key 的申请方式见 [ASR 服务与配置](PROVIDERS.md)；OpenAI 用户可在 [OpenAI Platform](https://platform.openai.com/api-keys) 或 [OpenRouter](https://openrouter.ai/keys) 获取 API Key。
 
 ### PowerShell 路径
 
@@ -136,7 +136,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `-o PATH [PATH]`, `--output PATH [PATH]` | 第一个路径为 SRT，第二个可选路径为 `.mosp`；最多两个路径。 |
 | `--mosp PATH` | 单独指定 `.mosp` 输出路径；不能和 `-o` 的第二个路径同时使用。 |
 | `--provider qwen\|soniox\|doubao\|tencent\|openai\|bcut` | 选择供应商，默认 `qwen`。`openai` 使用 OpenAI 官方或兼容的转写接口；`doubao` 使用豆包（火山引擎）录音文件识别；`tencent` 使用腾讯云录音文件识别；`bcut` 为免 Key 的实验性非官方接口。 |
-| `--model MODEL` | 覆盖供应商的模型。Qwen 常用值为 `qwen-audio-3.0-asr-flash-filetrans`、`qwen3-asr-flash-filetrans`、`fun-asr`；Soniox 默认读取 `.env`；豆包为资源 ID（默认 `volc.seedasr.auc`，可选 `volc.bigasr.auc` / `volc.bigasr.auc_idle`）；OpenAI 兼容接口默认使用 `whisper-1`。 |
+| `--model MODEL` | 覆盖供应商的模型。Qwen 常用值为 `qwen-audio-3.0-asr-flash-filetrans`、`qwen3-asr-flash-filetrans`、`fun-asr`；Soniox 默认读取 `.env`；豆包为资源 ID（默认 `volc.seedasr.auc`，可选 `volc.bigasr.auc` / `volc.bigasr.auc_idle`）；OpenAI 兼容接口默认使用 `whisper-1`。OpenRouter CLI 请显式使用完整模型 ID，例如 `openai/whisper-1`；其他中转站也请按服务商文档填写完整模型名。 |
 
 ### 4.2 字幕切分、说话人和工程内容
 
@@ -160,7 +160,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `--debug` | 输出更多 API 调试信息。调试日志仍不会输出 API Key。 |
 | `-s PATH`, `--stickers PATH` | 指定表情包目录。它会传递给转写后生成的编辑器工程，也可用于 Server。 |
 
-`--speaker-colors` 已经包含说话人分离，不必同时重复写 `--speaker`。Qwen3-ASR 不支持说话人开关；Qwen-Audio、Fun-ASR、Soniox、豆包和腾讯云 `16k_zh_en_2.0` 支持情况以当前供应商及账户能力为准。自定义 OpenAI 兼容接口需要自行保证时间戳能力，公开 CLI 不会代发说话人参数。腾讯云大于 5MB 的媒体需要 `--file-url`。
+`--speaker-colors` 已经包含说话人分离，不必同时重复写 `--speaker`。Qwen3-ASR 不支持说话人开关；Qwen-Audio、Fun-ASR、Soniox、豆包和腾讯云 `16k_zh_en_2.0` 支持情况以当前供应商及账户能力为准。OpenAI 兼容接口的说话人分离使用专用的 `--diarize`，而不是通用的 `--speaker`；自定义接口需要自行保证对应能力。腾讯云大于 5MB 的媒体需要 `--file-url`。
 
 ### 4.3 Qwen / 百炼专用参数
 
@@ -207,8 +207,11 @@ PowerShell 中如果 context JSON 含有空格，请将整个 JSON 放在引号�
 | 参数 | 说明 |
 | --- | --- |
 | `--base-url URL` | OpenAI 官方或兼容服务的根地址、带 `/v1` 的地址，或完整的 `/audio/transcriptions` 地址；省略时读取 `MAW_OPENAI_ASR_BASE_URL`，默认 `https://api.openai.com/v1`。 |
+| `--prompt TEXT` | 给支持该能力的模型补充领域背景、专有名词或前文。`whisper-1` 的提示词最多支持 224 tokens；模型不支持时不要使用。 |
+| `--keyword WORD` | 给支持该能力的模型追加关键词；可重复指定，每个参数一个词或短语。当前 OpenAI 官方只对 `gpt-transcribe` 发送该参数；关键词不能包含 `<`、`>` 或换行。 |
+| `--diarize` | 为支持说话人分离的模型请求 `diarized_json` 和自动分块。目前用于 `gpt-4o-transcribe-diarize`；不能与 `--prompt` / `--keyword` 同时使用。OpenRouter 不支持该模型。 |
 
-接口必须接受 `POST /audio/transcriptions` 的 multipart 请求，并返回 `segments` 或 `words` 时间戳。MAW 会请求 `verbose_json`、segment 和 word 时间戳；只有文本而没有时间戳的响应会被拒绝。API Key 使用 `MAW_OPENAI_ASR_API_KEY`，不接受命令行参数。
+普通模式要求接口接受 `POST /audio/transcriptions` 的 multipart 请求，并返回 `segments` 或 `words` 时间戳；MAW 会请求 `verbose_json`、segment 和 word 时间戳。`--diarize` 模式改请求 `diarized_json`，并读取段级 `speaker` 标签。只有文本而没有时间戳的响应会被拒绝。API Key 使用 `MAW_OPENAI_ASR_API_KEY`，不接受命令行参数。
 
 ### 4.6 豆包专用参数
 
@@ -321,7 +324,7 @@ $server = Start-Process `
     --hotword "专业名词B"
 ```
 
-### OpenAI 兼容 ASR：官方或自建服务
+### OpenAI 兼容 ASR：官方、OpenRouter 或其他中转
 
 先在 `.env` 中配置 `MAW_OPENAI_ASR_API_KEY`；兼容服务再设置 `MAW_OPENAI_ASR_BASE_URL` 和 `MAW_OPENAI_ASR_MODEL`：
 
@@ -335,7 +338,18 @@ $server = Start-Process `
     --language en
 ```
 
-服务必须返回带时间戳的 `segments` 或 `words`；只返回文本的兼容接口不能生成可靠字幕。
+OpenRouter 的 CLI 配置需要使用完整的 OpenRouter 模型 ID：
+
+```powershell
+.\MAW.exe `
+    --provider openai `
+    --base-url "https://openrouter.ai/api/v1" `
+    --model "openai/whisper-1" `
+    -i "D:\Videos\panel.mp4" `
+    -o "D:\Output\panel.srt" "D:\Output\panel.mosp"
+```
+
+Launcher 在 OpenRouter 下会为内置模型自动补上 `openai/`；CLI 不做这个猜测。使用其他中转站时，请在 Launcher 选择“自定义（Custom）”，或在 CLI 直接填写服务商提供的完整模型名。服务必须返回带时间戳的 `segments` 或 `words`；只返回文本的兼容接口不能生成可靠字幕。OpenAI 官方模型的 `prompt` / `keywords` / `diarize` 能力并不代表每个中转站都实现，遇到 400 时请检查模型名称、`response_format` 和服务商文档。
 
 ### 必剪：免 Key 快速体验（实验性，仅中文）
 

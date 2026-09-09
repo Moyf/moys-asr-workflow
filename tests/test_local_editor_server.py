@@ -327,6 +327,30 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="media-name" title="">未加载媒体</span>', page)
         self.assertIn('"canSave": true', page)
 
+    def test_startup_page_shows_project_loading_overlay_before_javascript_runs(self) -> None:
+        project = server_editor.ServerProject(
+            data={"segments": []},
+            json_path=self.root / "loading.mosp",
+            media_path=None,
+            sticker_root=None,
+            stickers=[],
+        )
+
+        loading = server_editor.build_server_page(
+            project,
+            startup_status={
+                "status": "loading",
+                "stage": "reading_project",
+                "progress": 5,
+                "error": "",
+            },
+        ).decode("utf-8")
+        ready = server_editor.build_server_page(project).decode("utf-8")
+
+        self.assertIn('id="editor-loading" aria-live="polite"', loading)
+        self.assertIn('id="editor-loading-label">正在加载工程…</div>', loading)
+        self.assertIn('id="editor-loading" hidden aria-live="polite"', ready)
+
     def test_build_server_page_defers_reapeaks_layers_to_waveform_endpoint(self) -> None:
         """延迟加载开启时页面不内联频谱 / reapeaks 层；关闭时（--no-waveform）仍保留内联。"""
         project = server_editor.ServerProject(
@@ -520,7 +544,12 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
         self.assertIn('"name": "clip.json"}], "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
-        self.assertIn('"activeWorkspaceName": ""};', page)
+        self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""};', page)
+        completed_page = server_editor.build_server_page(
+            project,
+            server_editor.replace(settings, onboarding_status="completed"),
+        ).decode("utf-8")
+        self.assertIn('"onboardingStatus": "completed"', completed_page)
         self.assertIn('id="save-project"', page)
         self.assertIn('id="save-project-as"', page)
         self.assertIn('id="save-project-dropdown"', page)
@@ -1490,6 +1519,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertNotIn(paths[0].resolve(), [item.path for item in settings.recent_projects])
 
         settings_path = self.root / "server-editor-settings.json"
+        settings = server_editor.replace(settings, onboarding_status="completed")
         server_editor.write_server_settings(settings_path, settings)
         saved = settings_path.read_bytes()
         self.assertNotIn(b"\r\n", saved)
@@ -1546,6 +1576,18 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertTrue(result["ok"])
                 self.assertFalse(server.settings.auto_open_last_project)
                 self.assertFalse(server_editor.read_server_settings(settings_path).auto_open_last_project)
+
+                status, result = post("/api/settings", {"onboardingStatus": "completed"})
+                self.assertEqual(status, 200)
+                self.assertTrue(result["ok"])
+                self.assertEqual(result["onboardingStatus"], "completed")
+                self.assertEqual(server.settings.onboarding_status, "completed")
+                self.assertEqual(server_editor.read_server_settings(settings_path).onboarding_status, "completed")
+
+                status, result = post("/api/settings", {"onboardingStatus": "unknown"})
+                self.assertEqual(status, 400)
+                self.assertFalse(result["ok"])
+                self.assertEqual(server.settings.onboarding_status, "completed")
 
                 workspace = {"schema": "moy.asr.editor.workspace.v1", "preset": "custom", "tree": {}}
                 status, result = post("/api/settings", {

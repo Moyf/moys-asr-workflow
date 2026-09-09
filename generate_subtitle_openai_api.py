@@ -1,9 +1,10 @@
 """Generate MAW subtitle projects through an OpenAI-compatible ASR endpoint.
 
 The endpoint must implement ``POST /audio/transcriptions`` and return either
-OpenAI ``verbose_json`` data with ``segments``/``words`` timestamps or an
-equivalent timestamped JSON structure.  A text-only response is rejected by
-default because it cannot produce trustworthy subtitle timing.
+OpenAI ``verbose_json`` data with ``segments``/``words`` timestamps,
+``diarized_json`` data with speaker segments, or an equivalent timestamped
+JSON structure.  A text-only response is rejected by default because it
+cannot produce trustworthy subtitle timing.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
@@ -466,6 +468,28 @@ def _error_detail(response: requests.Response) -> str:
     return json.dumps(body, ensure_ascii=False)[:1000]
 
 
+def _model_compatibility_hint(detail: str) -> str:
+    normalized = str(detail or "").casefold()
+    if not any(
+        term in normalized
+        for term in (
+            "model",
+            "模型",
+            "response_format",
+            "verbose_json",
+            "diarized_json",
+            "timestamp",
+            "prompt",
+            "keyword",
+        )
+    ):
+        return ""
+    return (
+        "提示：请检查模型名称是否与当前接口一致；使用中转站时，请在 Launcher 选择“自定义（Custom）”，"
+        "并填写服务商提供的完整模型名。"
+    )
+
+
 def request_transcription(
     audio_path: Path,
     *,
@@ -473,6 +497,9 @@ def request_transcription(
     api_key: str,
     model: str,
     language: str | None,
+    prompt: str | None = None,
+    keywords: Sequence[str] | None = None,
+    diarize: bool = False,
 ) -> dict[str, Any]:
     if not api_key:
         raise RuntimeError(
@@ -481,14 +508,39 @@ def request_transcription(
     if not model.strip():
         raise RuntimeError("未配置自定义 ASR 模型名。")
 
-    data: list[tuple[str, str]] = [
-        ("model", model.strip()),
-        ("response_format", "verbose_json"),
-        ("timestamp_granularities[]", "segment"),
-        ("timestamp_granularities[]", "word"),
-    ]
+    model_id = model.strip()
+    model_alias = model_id.rsplit("/", 1)[-1]
+    has_keywords = any(str(keyword or "").strip() for keyword in (keywords or ()))
+    if diarize and (str(prompt or "").strip() or has_keywords):
+        raise RuntimeError("gpt-4o-transcribe-diarize 不支持 prompt 或 keywords。")
+    data: list[tuple[str, str]] = [("model", model_id)]
+    if diarize:
+        data.extend([
+            ("response_format", "diarized_json"),
+            ("chunking_strategy", "auto"),
+        ])
+    else:
+        data.extend([
+            ("response_format", "verbose_json"),
+            ("timestamp_granularities[]", "segment"),
+            ("timestamp_granularities[]", "word"),
+        ])
     if language:
-        data.append(("language", language.strip()))
+        language_value = language.strip()
+        if model_alias == "gpt-transcribe":
+            language_values = [value.strip() for value in language_value.split(",") if value.strip()]
+            data.extend(("languages[]", value) for value in language_values)
+        else:
+            data.append(("language", language_value))
+    prompt_value = str(prompt or "").strip()
+    if prompt_value:
+        data.append(("prompt", prompt_value))
+    for keyword in keywords or ():
+        keyword_value = str(keyword or "").strip()
+        if keyword_value:
+            if any(character in keyword_value for character in "<>\r\n"):
+                raise RuntimeError("OpenAI Keywords 不能包含 <、> 或换行。")
+            data.append(("keywords[]", keyword_value))
     content_type = mimetypes.guess_type(audio_path.name)[0] or "application/octet-stream"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -504,8 +556,12 @@ def request_transcription(
             timeout=(30, 3600),
         )
     if not response.ok:
+        detail = _error_detail(response)
+        hint = _model_compatibility_hint(detail)
+        if hint:
+            detail = f"{detail}；{hint}"
         raise RuntimeError(
-            f"自定义 ASR 请求失败 (HTTP {response.status_code}): {_error_detail(response)}"
+            f"自定义 ASR 请求失败 (HTTP {response.status_code}): {detail}"
         )
     try:
         body = response.json()
@@ -615,6 +671,9 @@ def main() -> None:
     parser.add_argument("--base-url", default=config["base_url"])
     parser.add_argument("--model", default=config["model"])
     parser.add_argument("--language", default=None)
+    parser.add_argument("--prompt", default="", help="传给支持该参数的转写模型的上下文提示")
+    parser.add_argument("--keyword", action="append", default=[], help="传给支持该参数的模型的关键词；可重复指定")
+    parser.add_argument("--diarize", action="store_true", help="使用 diarized_json 返回说话人段落")
     parser.add_argument("--max-len", type=int, default=18)
     parser.add_argument("--min-len", type=int, default=5)
     parser.add_argument("--max-words", type=int, default=WESTERN_MAX_WORDS)
@@ -686,6 +745,9 @@ def main() -> None:
             api_key=api_key,
             model=args.model,
             language=args.language,
+            prompt=args.prompt,
+            keywords=args.keyword,
+            diarize=args.diarize,
         )
         transcribe_elapsed = time.perf_counter() - t0
         print(f"转写结束: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

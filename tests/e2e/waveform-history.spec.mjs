@@ -1944,29 +1944,37 @@ test('colored subtitles export per-color SRT files including the uncolored defau
     saved.exportColorUnified = false;
     localStorage.setItem(key, JSON.stringify(saved));
   });
-  await page.goto(server.url);
-  await page.evaluate(() => {
-    DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
-    DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
-    DATA.segments[2].color = { name: 'blue', value: '#168cff', start: 100000, end: 108000 };
-    renderAll();
-    window.showSaveFilePicker = undefined;
-  });
 
-  await expect(page.locator('#subtitle-export-dropdown')).toBeVisible();
-  await page.locator('#subtitle-export-btn').click();
-  await expect(page.locator('#download-full-srt')).toBeVisible();
-  await expect(page.locator('#download-color-srt')).toBeVisible();
+  // 文件名颜色段按界面语言生成：中文 _红色/_蓝色，英文 _red/_blue；default 组两种语言保持原样。
+  // 用 ?lang= 显式指定界面语言，断言不依赖服务器默认语言。
+  const expectedColorFilenames = {
+    zh: ['project_红色.srt', 'project_蓝色.srt', 'project_default.srt'],
+    en: ['project_red.srt', 'project_blue.srt', 'project_default.srt'],
+  };
+  let downloads = [];
+  for (const lang of ['zh', 'en']) {
+    await page.goto(`${server.url}?lang=${lang}`);
+    await page.evaluate(() => {
+      DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
+      DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
+      DATA.segments[2].color = { name: 'blue', value: '#168cff', start: 100000, end: 108000 };
+      renderAll();
+      window.showSaveFilePicker = undefined;
+    });
 
-  const downloads = [];
-  page.on('download', (download) => downloads.push(download));
-  await page.locator('#download-color-srt').click();
-  await expect.poll(() => downloads.length).toBe(3);
-  expect(downloads.map((download) => download.suggestedFilename())).toEqual([
-    'project_红色.srt',
-    'project_蓝色.srt',
-    'project_default.srt',
-  ]);
+    await expect(page.locator('#subtitle-export-dropdown')).toBeVisible();
+    await page.locator('#subtitle-export-btn').click();
+    await expect(page.locator('#download-full-srt')).toBeVisible();
+    await expect(page.locator('#download-color-srt')).toBeVisible();
+
+    const langDownloads = [];
+    page.on('download', (download) => langDownloads.push(download));
+    await page.locator('#download-color-srt').click();
+    await expect.poll(() => langDownloads.length).toBe(3);
+    expect(langDownloads.map((download) => download.suggestedFilename()))
+      .toEqual(expectedColorFilenames[lang]);
+    downloads = langDownloads;
+  }
   expect(await downloads[0].createReadStream().then(async (stream) => {
     const chunks = [];
     for await (const chunk of stream) chunks.push(chunk);
@@ -2184,36 +2192,45 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
     saved.exportColorUnified = false;
     localStorage.setItem(key, JSON.stringify(saved));
   });
-  await page.goto(server.url);
-  await page.evaluate(() => {
-    DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
-    DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
-    DATA.gap_remove = {
-      schema: 'moy.asr.gap_remove.v1',
-      detector: 'audio_gate',
-      minimum_ms: 500,
-      threshold_db: -24,
-      hysteresis_db: 2,
-      lead_in_ms: 40,
-      lead_out_ms: 80,
-      skip_playback: true,
-      operation_mode: 'middle_drag',
-      manual_corrections: false,
-      gaps: [{ start: 20000, end: 30000, removed: true }],
-    };
-    updateGapRemoveUi();
-    renderAll();
-    window.showSaveFilePicker = undefined;
-  });
 
-  await page.locator('#gap-removed-export-btn').click();
-  await expect(page.locator('#download-gap-removed-color-srt')).toBeVisible();
-  await expect(page.locator('#download-gap-removed-otio')).toHaveText('时间线 OTIO 工程');
+  // 文件名技术段按界面语言生成：中文「去空隙_红色」，英文「gap-removed_red」；
+  // OTIO 菜单项文案同样按语言断言。用 ?lang= 显式指定界面语言，不依赖服务器默认语言。
+  const expectedByLang = {
+    zh: { otioLabel: '时间线 OTIO 工程', colorSrtName: 'project_去空隙_红色.srt' },
+    en: { otioLabel: 'Timeline OTIO project', colorSrtName: 'project_gap-removed_red.srt' },
+  };
+  for (const lang of ['zh', 'en']) {
+    await page.goto(`${server.url}?lang=${lang}`);
+    await page.evaluate(() => {
+      DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
+      DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
+      DATA.gap_remove = {
+        schema: 'moy.asr.gap_remove.v1',
+        detector: 'audio_gate',
+        minimum_ms: 500,
+        threshold_db: -24,
+        hysteresis_db: 2,
+        lead_in_ms: 40,
+        lead_out_ms: 80,
+        skip_playback: true,
+        operation_mode: 'middle_drag',
+        manual_corrections: false,
+        gaps: [{ start: 20000, end: 30000, removed: true }],
+      };
+      updateGapRemoveUi();
+      renderAll();
+      window.showSaveFilePicker = undefined;
+    });
 
-  const downloadPromise = page.waitForEvent('download');
-  await page.locator('#download-gap-removed-color-srt').click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe('project_去空隙_红色.srt');
+    await page.locator('#gap-removed-export-btn').click();
+    await expect(page.locator('#download-gap-removed-color-srt')).toBeVisible();
+    await expect(page.locator('#download-gap-removed-otio')).toHaveText(expectedByLang[lang].otioLabel);
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator('#download-gap-removed-color-srt').click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(expectedByLang[lang].colorSrtName);
+  }
 });
 
 test('server media loads from the resolved project path and OTIO keeps its absolute source URL', async ({ page }) => {

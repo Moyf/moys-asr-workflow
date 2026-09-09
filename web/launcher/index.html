@@ -151,7 +151,7 @@
           <button id="saveSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
         </div>
         <p id="keyStatus" class="hint">未配置密钥</p>
-        <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">阿里云百炼</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取 API Key ↗</span></p>
+        <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">阿里云百炼</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取 API Key ↗</span></p>
         <p id="apiKeyError" class="field-error"></p>
       </div>
       <div id="localRuntimeCheckField" class="field hidden"><div class="local-status-row"><p id="localRuntimeCheckStatus" class="local-status" aria-live="polite"></p><button id="openLocalRuntimeSettings" class="inline-link" type="button" data-i18n="local_runtime_view_settings">在 ⚙️ 设置中查看</button></div></div>
@@ -300,6 +300,25 @@
                 </div>
               </div>
               <p id="sonioxContextCount" class="character-count soniox-context-count" aria-live="polite">当前字符数：0/10000</p>
+            </div>
+            <div id="openaiAdvancedOptions" class="adv-group openai-advanced-options hidden">
+              <h3 data-i18n="openai_advanced_title">OpenAI 转写高级设置</h3>
+              <div id="openaiPromptField" class="field hidden">
+                <label for="openaiPrompt" data-i18n="openai_prompt">Prompt（提示词）</label>
+                <textarea id="openaiPrompt" rows="3" autocomplete="off" data-i18n-placeholder="openai_prompt_placeholder"></textarea>
+                <p class="hint" data-i18n="openai_prompt_hint">补充领域背景、专有名词或前文；Whisper 最多支持 224 tokens。</p>
+                <p id="openaiPromptError" class="field-error"></p>
+              </div>
+              <div id="openaiKeywordsField" class="field hidden">
+                <label for="openaiKeywords" data-i18n="openai_keywords">Keywords（关键词）</label>
+                <textarea id="openaiKeywords" rows="3" autocomplete="off" data-i18n-placeholder="openai_keywords_placeholder"></textarea>
+                <p class="hint" data-i18n="openai_keywords_hint">每行一个词或短语；当前仅对 gpt-transcribe 发送。</p>
+                <p id="openaiKeywordsError" class="field-error"></p>
+              </div>
+              <div id="openaiDiarizationField" class="field hidden">
+                <p class="hint" data-i18n="openai_diarization_hint">当前模型会使用 diarized_json 返回带说话人标注的段落；无需额外勾选。</p>
+                <p id="openaiDiarizationUnsupported" class="field-warning" data-i18n="openai_diarization_openrouter_hint">OpenRouter 不支持 diarize，请改用 OpenAI 官方 Base URL。</p>
+              </div>
             </div>
             <div class="adv-group">
               <h3 data-i18n="advanced_misc">其他</h3>

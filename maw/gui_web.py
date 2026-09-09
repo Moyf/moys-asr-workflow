@@ -37,9 +37,11 @@ from maw.gui_config import (
     _gui_theme,
     api_key_for_provider,
     effective_config,
+    is_openrouter_base_url,
     load_env,
     masked_secret,
     model_by_label,
+    openai_model_for_base_url,
     provider_by_id,
     provider_for_model,
     save_env,
@@ -2969,10 +2971,39 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             str(payload.get("openaiBaseUrl") or "").strip()
             or stored_openai.get("MAW_OPENAI_ASR_BASE_URL", OPENAI_ASR_DEFAULT_BASE_URL).strip()
         )
+        if model.id != OPENAI_ASR_MODEL_ID:
+            custom_model = openai_model_for_base_url(custom_base_url, custom_model)
         if model.id == OPENAI_ASR_MODEL_ID and not custom_model:
             raise PreflightError("openaiModel", "custom_asr_model_missing", "请填写自定义 ASR 模型名。")
         if not custom_base_url:
             raise PreflightError("openaiBaseUrl", "custom_asr_base_url_missing", "请填写自定义 ASR Base URL。")
+    openai_prompt = ""
+    openai_keywords: tuple[str, ...] = ()
+    openai_diarize = False
+    if provider.id == "openai":
+        if model.supports_prompt:
+            openai_prompt = str(payload.get("openaiPrompt") or "").strip()
+        if model.supports_keywords:
+            raw_keywords = str(payload.get("openaiKeywords") or "")
+            openai_keywords = tuple(
+                keyword.strip()
+                for keyword in raw_keywords.splitlines()
+                if keyword.strip()
+            )
+            if any("<" in keyword or ">" in keyword for keyword in openai_keywords):
+                raise PreflightError(
+                    "openaiKeywords",
+                    "openai_keywords_invalid",
+                    "OpenAI Keywords 不能包含 < 或 >。",
+                )
+        if model.supports_diarization:
+            if is_openrouter_base_url(custom_base_url):
+                raise PreflightError(
+                    "model",
+                    "openai_diarize_openrouter_unsupported",
+                    "OpenRouter 不支持 gpt-4o-transcribe-diarize，请改用 OpenAI 官方 Base URL。",
+                )
+            openai_diarize = True
     api_key = str(payload.get("apiKey") or "").strip() or api_key_for_provider(provider.id, env_path)
     region = str(payload.get("region") or "beijing") if provider.id == "qwen" else ""
     workspace_id = str(payload.get("workspaceId") or "").strip()
@@ -3152,6 +3183,9 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         device=device,
         forced_aligner=str(payload.get("forcedAligner") or "").strip(),
         base_url=custom_base_url,
+        openai_prompt=openai_prompt,
+        openai_keywords=openai_keywords,
+        openai_diarize=openai_diarize,
         runtime_python=runtime_python,
         postprocess_plan=auto_plan,
         postprocess_llm_settings=auto_llm_settings,
@@ -3681,6 +3715,7 @@ def _provider_payload(
         "label": provider.label,
         "kind": provider.kind,
         "keyUrl": provider.key_url,
+        "secondaryKeyUrl": provider.secondary_key_url,
         "requiresApiKey": provider.requires_api_key,
         "apiKey": api_key,
         "maskedApiKey": masked_secret(api_key),
@@ -3716,7 +3751,12 @@ def _model_payload(
         "label": model.label,
         "envKey": model.env_key,
         "note": model.note,
+        "openrouterNote": model.openrouter_note,
+        "priceNote": model.price_note,
         "supportsSpeaker": model.supports_speaker,
+        "supportsPrompt": model.supports_prompt,
+        "supportsKeywords": model.supports_keywords,
+        "supportsDiarization": model.supports_diarization,
         "supportsContext": model.supports_context,
         "supportsHotwords": model.supports_hotwords,
         "supportsVocabulary": model.supports_vocabulary,
