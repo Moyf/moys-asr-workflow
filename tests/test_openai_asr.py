@@ -309,6 +309,27 @@ class OpenAiAsrTests(unittest.TestCase):
             )
             self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer sk-test")
 
+    def test_request_transcription_explains_model_name_for_compatibility_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "clip.wav"
+            audio_path.write_bytes(b"audio")
+            response = mock.Mock(ok=False, status_code=400)
+            response.json.return_value = {
+                "error": {
+                    "message": 'The selected model does not support response_format "verbose_json".'
+                }
+            }
+
+            with mock.patch("generate_subtitle_openai_api.requests.post", return_value=response):
+                with self.assertRaisesRegex(RuntimeError, "自定义（Custom）"):
+                    request_transcription(
+                        audio_path,
+                        base_url="https://openrouter.ai/api/v1",
+                        api_key="sk-test",
+                        model="whisper-1",
+                        language=None,
+                    )
+
 
 class OpenAiCliOutputNamingTests(unittest.TestCase):
     """OpenAI 兼容 CLI：默认名不注入段；MAW_STAT；debug-raw 落盘分支。"""

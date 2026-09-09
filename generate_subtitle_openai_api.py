@@ -466,6 +466,16 @@ def _error_detail(response: requests.Response) -> str:
     return json.dumps(body, ensure_ascii=False)[:1000]
 
 
+def _model_compatibility_hint(detail: str) -> str:
+    normalized = str(detail or "").casefold()
+    if not any(term in normalized for term in ("model", "模型", "response_format", "verbose_json", "timestamp")):
+        return ""
+    return (
+        "提示：请检查模型名称是否与当前接口一致；使用中转站时，请在 Launcher 选择“自定义（Custom）”，"
+        "并填写服务商提供的完整模型名。"
+    )
+
+
 def request_transcription(
     audio_path: Path,
     *,
@@ -504,8 +514,12 @@ def request_transcription(
             timeout=(30, 3600),
         )
     if not response.ok:
+        detail = _error_detail(response)
+        hint = _model_compatibility_hint(detail)
+        if hint:
+            detail = f"{detail}；{hint}"
         raise RuntimeError(
-            f"自定义 ASR 请求失败 (HTTP {response.status_code}): {_error_detail(response)}"
+            f"自定义 ASR 请求失败 (HTTP {response.status_code}): {detail}"
         )
     try:
         body = response.json()

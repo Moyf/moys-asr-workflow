@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
+from urllib.parse import urlparse
 
 from maw.app_paths import SOURCE_ROOT, default_env_path
 
@@ -21,6 +22,14 @@ QWEN3_ASR_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
 OPENAI_ASR_MODEL_ID: Final = "custom-asr"
 OPENAI_ASR_DEFAULT_BASE_URL: Final = "https://api.openai.com/v1"
 OPENAI_ASR_DEFAULT_MODEL: Final = "whisper-1"
+OPENROUTER_ASR_KEY_URL: Final = "https://openrouter.ai/keys"
+OPENAI_ASR_PRESET_MODEL_IDS: Final[tuple[str, ...]] = (
+    "whisper-1",
+    "gpt-4o-transcribe",
+    "gpt-4o-mini-transcribe",
+    "whisper-large-v3-turbo",
+    "whisper-large-v3",
+)
 # qwen-audio-3.0 是最新发布的模型，作为各入口默认；旧 qwen3-asr 置底保留（后续可能移除）。
 DEFAULT_MODEL_ID: Final = QWEN_AUDIO_MODEL_ID
 
@@ -31,6 +40,8 @@ class ModelConfig:
     label: str
     env_key: str
     note: str = ""
+    openrouter_note: str = ""
+    price_note: str = ""
     supports_speaker: bool = False
     supports_context: bool = False
     supports_hotwords: bool = False
@@ -68,8 +79,28 @@ class ProviderConfig:
     supports_language: bool = True
     # 供应商级风险提示（如非官方接口）；非空时 GUI 在供应商下方展示。
     note: str = ""
+    secondary_key_url: str = ""
     # 暂时保留底层配置与 CLI 能力，但不在 Launcher 的供应商列表中展示。
     hidden: bool = False
+
+
+def is_openrouter_base_url(base_url: str) -> bool:
+    value = str(base_url or "").strip()
+    if not value:
+        return False
+    try:
+        parsed = urlparse(value if "://" in value else f"https://{value}")
+        hostname = (parsed.hostname or "").casefold().rstrip(".")
+    except ValueError:
+        return False
+    return hostname in {"openrouter.ai", "www.openrouter.ai"}
+
+
+def openai_model_for_base_url(base_url: str, model_id: str) -> str:
+    model = str(model_id or "").strip()
+    if is_openrouter_base_url(base_url) and model in OPENAI_ASR_PRESET_MODEL_IDS:
+        return f"openai/{model}"
+    return model
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,6 +298,7 @@ QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
         label="qwen-audio-3.0-asr（热词 / 上下文）",
         env_key="DASHSCOPE_API_KEY",
         note="支持即时热词、上下文与说话人分离",
+        price_note="阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。",
         supports_speaker=True,
         supports_context=True,
         supports_hotwords=True,
@@ -278,6 +310,7 @@ QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
         label="fun-asr（支持说话人）",
         env_key="DASHSCOPE_API_KEY",
         note="支持说话人分离与词级时间戳",
+        price_note="阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。",
         supports_speaker=True,
         languages=FUNASR_LANGUAGES,
     ),
@@ -285,6 +318,7 @@ QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
         id=QWEN3_ASR_MODEL_ID,
         label="qwen3-asr（准确率更高）",
         env_key="DASHSCOPE_API_KEY",
+        price_note="阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。",
         languages=LANGUAGES,
     ),
 )
@@ -294,18 +328,38 @@ OPENAI_ASR_MODELS: Final[tuple[ModelConfig, ...]] = (
         id="whisper-1",
         label="whisper-1",
         env_key="MAW_OPENAI_ASR_API_KEY",
+        openrouter_note="OpenRouter 参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。价格和可用能力以 OpenRouter 模型页为准。",
+        price_note="OpenAI 官方参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。",
         languages=LANGUAGES,
     ),
     ModelConfig(
         id="gpt-4o-transcribe",
         label="gpt-4o-transcribe",
         env_key="MAW_OPENAI_ASR_API_KEY",
+        openrouter_note="OpenRouter 参考价：输入 $2.50 / 1M tokens，输出 $10 / 1M tokens；需由接口返回 segments 或 words 时间戳。",
+        price_note="OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。",
         languages=LANGUAGES,
     ),
     ModelConfig(
         id="gpt-4o-mini-transcribe",
         label="gpt-4o-mini-transcribe",
         env_key="MAW_OPENAI_ASR_API_KEY",
+        openrouter_note="OpenRouter 参考价：输入 $1.25 / 1M tokens，输出 $5 / 1M tokens；需由接口返回 segments 或 words 时间戳。",
+        price_note="OpenAI 官方参考价：输入 $1.25 / 1M audio tokens，输出 $5 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。",
+        languages=LANGUAGES,
+    ),
+    ModelConfig(
+        id="whisper-large-v3-turbo",
+        label="whisper-large-v3-turbo（OpenRouter）",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        openrouter_note="OpenRouter 参考价：$0.04 / 小时；需由接口返回 segments 或 words 时间戳。",
+        languages=LANGUAGES,
+    ),
+    ModelConfig(
+        id="whisper-large-v3",
+        label="whisper-large-v3（OpenRouter）",
+        env_key="MAW_OPENAI_ASR_API_KEY",
+        openrouter_note="OpenRouter 参考价：$0.0015 / 分钟；需由接口返回 segments 或 words 时间戳。",
         languages=LANGUAGES,
     ),
     ModelConfig(
@@ -323,6 +377,7 @@ SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
         label="Soniox Async STT（v5，上下文）",
         env_key="SONIOX_API_KEY",
         note="支持 general、text、terms 和 translation_terms 上下文",
+        price_note="Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本和输出文本各 $3.50 / 1M。",
         supports_speaker=True,
         supports_context=True,
         languages=SONIOX_LANGUAGES,
@@ -335,6 +390,7 @@ TENCENT_MODELS: Final[tuple[ModelConfig, ...]] = (
         label="腾讯云录音文件识别（大模型 2.0）",
         env_key="TENCENT_SECRET_ID",
         note="SecretId 写入此处；SecretKey 请在本机 .env 配置",
+        price_note="腾讯云参考价：录音文件识别大模型 2.0 后付费 ¥0.8 / 小时；60 小时预付包 ¥48。",
         supports_speaker=True,
         languages=LANGUAGES,
     ),
@@ -487,7 +543,8 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         regions=(),
         languages=LANGUAGES,
         common_languages=QWEN_COMMON_LANGUAGES,
-        note="需要返回 segments 或 words 时间戳，才能生成可精确对轨的字幕。",
+        note="默认连接 OpenAI 官方服务；OpenRouter 会自动适配预设模型 ID。其他中转站请选择“自定义（Custom）”并填写服务商提供的完整模型名；接口必须返回 segments 或 words 时间戳。",
+        secondary_key_url=OPENROUTER_ASR_KEY_URL,
     ),
     ProviderConfig(
         id="local",
