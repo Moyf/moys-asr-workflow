@@ -850,7 +850,11 @@
   let language = readLanguage();
 
   // 导出文件名中的技术段（按当前语言映射；中文界面译出，英文界面原样）。
-  const EXPORT_NAME_SEGMENTS = { 'gap-removed': '去空隙', 'stickers': '表情包' };
+  // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」。
+  const EXPORT_NAME_SEGMENTS = {
+    'gap-removed': '去空隙', 'stickers': '表情包',
+    'yellow': '黄色', 'green': '绿色', 'red': '红色', 'purple': '紫色', 'blue': '蓝色',
+  };
 
   function exportTag(segment) {
     if (language !== ZH) return segment;
