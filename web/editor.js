@@ -78,6 +78,202 @@ function overlayTrackVisible() {
   return track?.enabled === true && Array.isArray(track.segments) && track.segments.length > 0;
 }
 
+// === 主轨 ↔ 叠加轨 段落迁移 ===
+// 两条轨道互不绑定；迁移保持目标轨按 start 升序（同 start 插到既有段之后），
+// 返回段在目标轨中的新下标，失败返回 -1。数组操作委托给 editor-utils 纯函数。
+function moveSegmentToOverlayTrack(index) {
+  const segment = DATA.segments[index];
+  const overlay = getOverlayTrack();
+  if (!segment || !overlay || !Array.isArray(overlay.segments)) return -1;
+  const newIndex = MULTI_SUBTITLE_UTILS.moveSegmentBetweenTracks(DATA.segments, overlay.segments, index);
+  if (newIndex < 0) return -1;
+  overlay.enabled = true;
+  overlay._dirty = true;
+  segment._dirty = true;
+  return newIndex;
+}
+
+function moveOverlaySegmentToMainTrack(index) {
+  const overlay = getOverlayTrack();
+  const segment = overlay?.segments?.[index];
+  if (!segment || !Array.isArray(DATA.segments)) return -1;
+  const newIndex = MULTI_SUBTITLE_UTILS.moveSegmentBetweenTracks(overlay.segments, DATA.segments, index);
+  if (newIndex < 0) return -1;
+  overlay._dirty = true;
+  segment._dirty = true;
+  return newIndex;
+}
+
+function shiftMainGroupRefsAfterMove(movedIndexes) {
+  const removeSet = new Set(movedIndexes);
+  // 迁移对主轨组关系的影响与删除一致：先按切点拆组（清掉被迁移段的 head/ref），
+  // 再把剩余 ref 的 headIdx 前移，最后断开仍指向被迁移下标的残余 ref。
+  splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
+  splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
+  // 被迁移段若曾绑定副字幕，绑定一并解除（叠加轨不参与主副绑定）。
+  const movedIds = [...removeSet].map((index) => DATA.segments[index]?.id).filter(Boolean);
+  if (movedIds.length) {
+    removeBindingsForSegmentIds(movedIds, []);
+    markMultiSubtitleDirty();
+  }
+  const shiftHeadIdx = (ref) => {
+    let shift = 0;
+    for (const index of movedIndexes) { if (index < ref.headIdx) shift += 1; else break; }
+    if (shift) ref.headIdx -= shift;
+  };
+  DATA.segments.forEach((segment) => {
+    if (segment.sticker_ref) shiftHeadIdx(segment.sticker_ref);
+    if (segment.color_ref) shiftHeadIdx(segment.color_ref);
+    if (segment.sticker_ref && removeSet.has(segment.sticker_ref.headIdx)) segment.sticker_ref = null;
+    if (segment.color_ref && removeSet.has(segment.color_ref.headIdx)) segment.color_ref = null;
+  });
+}
+
+// 回轨方向：主轨在 insertAt 处插入一段后，其后所有 *_ref.headIdx 需 +1，
+// 否则组引用会指到错误的段（保存校验报 "must point to a color head"）。
+function shiftMainGroupRefsAfterInsert(insertAt) {
+  DATA.segments.forEach((segment) => {
+    if (segment.sticker_ref && segment.sticker_ref.headIdx >= insertAt) segment.sticker_ref.headIdx += 1;
+    if (segment.color_ref && segment.color_ref.headIdx >= insertAt) segment.color_ref.headIdx += 1;
+  });
+}
+
+function resetOverlayGroupRefs(index) {
+  // 叠加轨的 ref 只引用叠加轨自身段；一条段离开后断开指向它的 ref 并前移 headIdx。
+  const overlay = getOverlayTrack();
+  (overlay?.segments || []).forEach((segment) => {
+    if (segment.sticker_ref?.headIdx === index) segment.sticker_ref = null;
+    if (segment.color_ref?.headIdx === index) segment.color_ref = null;
+    if (segment.sticker_ref && segment.sticker_ref.headIdx > index) segment.sticker_ref.headIdx -= 1;
+    if (segment.color_ref && segment.color_ref.headIdx > index) segment.color_ref.headIdx -= 1;
+  });
+}
+
+function detachCuePanelFromTrackEdits() {
+  commitCuePanelEdit();
+  currentCuePanelIdx = -1;
+  currentCuePanelKind = 'main';
+  currentCuePanelTrackId = null;
+  resetCuePanelEditState();
+}
+
+// 菜单入口：把选中的主轨字幕转为叠加字幕。返回成功迁移的数量。
+function convertMainCuesToOverlay(idxs, { label = '转为叠加字幕', pushHistory = true, silent = false } = {}) {
+  const targets = [...new Set(Array.isArray(idxs) ? idxs : [])]
+    .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < DATA.segments.length)
+    .sort((a, b) => a - b);
+  if (!targets.length) return 0;
+  detachCuePanelFromTrackEdits();
+  if (pushHistory) pushUndo(label);
+  shiftMainGroupRefsAfterMove(targets);
+  let converted = 0;
+  // 倒序迁移：主轨下标在移除后仍然稳定。
+  for (let index = targets.length - 1; index >= 0; index -= 1) {
+    if (moveSegmentToOverlayTrack(targets[index]) >= 0) converted += 1;
+  }
+  if (!converted) return 0;
+  clearSelection({ silent: true });
+  lastActive = -1;
+  if (!silent) {
+    renderAll({ waveform: 'full' });
+    scheduleAutoSaveFlush();
+    flashHint(`已转为叠加字幕 ${converted} 条`, 'success');
+  }
+  return converted;
+}
+
+// 拖动逃逸入口：单条迁移，不推送历史（拖动开始时已推）、不渲染（拖动中由
+// 波形自刷新，列表在 onCommitEdit 的 renderAll 里更新）。返回新叠加轨下标。
+// 迁移后主轨下标整体前移：同步主轨选中集与 Shift 锚点，避免选中状态落到
+// 后面的字幕上；被迁移字幕保持选中（转入叠加轨选中集与字幕面板）。
+function convertMainCueToOverlayForDrag(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= DATA.segments.length) return -1;
+  const panelWasHere = currentCuePanelKind === 'main' && currentCuePanelIdx === index;
+  // 拖动中段的时间已被实时改写，而面板输入框仍停留在拖动开始前的位置；
+  // 先把面板刷新到段的当前时间，避免 detach 提交时用陈旧输入覆盖拖动结果。
+  renderCurrentCuePanel();
+  detachCuePanelFromTrackEdits();
+  shiftMainGroupRefsAfterMove([index]);
+  const newIndex = moveSegmentToOverlayTrack(index);
+  if (newIndex < 0) return -1;
+  const { wasSelected, nextAnchor } = window.AsrEditorUtils.shiftSelectionAfterRemoval(
+    selectedIdxs, lastClickedIdx, index,
+  );
+  lastClickedIdx = nextAnchor;
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+  if (panelWasHere) setCuePanelTarget('overlay', newIndex);
+  if (wasSelected) {
+    selectedOverlayIdxs.add(newIndex);
+    lastClickedOverlayIdx = newIndex;
+  }
+  return newIndex;
+}
+
+// 拖动往返入口：把叠加轨字幕移回主轨（不推历史、不渲染——拖动的
+// 单次撤销在 onBeginEdit 已建立，列表在 onCommitEdit 的 renderAll 更新）。
+// 返回段在主轨中的新下标。选择同步逻辑与主转叠加的拖动入口对称。
+function convertOverlayCueToMainForDrag(index) {
+  const overlay = getOverlayTrack();
+  if (!overlay?.segments?.[index]) return -1;
+  const panelWasHere = currentCuePanelKind === 'overlay' && currentCuePanelIdx === index;
+  // 与主转叠加的拖动入口同理：先刷新面板到段的当前时间，防止后续
+  // setCuePanelTarget 的提交用陈旧输入把拖动结果写回旧位置。
+  renderCurrentCuePanel();
+  resetOverlayGroupRefs(index);
+  const newIndex = moveOverlaySegmentToMainTrack(index);
+  if (newIndex < 0) return -1;
+  shiftMainGroupRefsAfterInsert(newIndex);
+  const { wasSelected, nextAnchor } = window.AsrEditorUtils.shiftSelectionAfterRemoval(
+    selectedOverlayIdxs, lastClickedOverlayIdx, index,
+  );
+  lastClickedOverlayIdx = nextAnchor;
+  selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+  if (panelWasHere) setCuePanelTarget('main', newIndex);
+  if (wasSelected && !isHiddenDisabled(newIndex)) {
+    addMainIndexToSelection(newIndex);
+    lastClickedIdx = newIndex;
+  }
+  return newIndex;
+}
+
+function convertOverlayCueToMain(index) {
+  const overlay = getOverlayTrack();
+  if (!overlay?.segments?.[index]) return false;
+  detachCuePanelFromTrackEdits();
+  pushUndo('叠加字幕转回主轨');
+  resetOverlayGroupRefs(index);
+  const newIndex = moveOverlaySegmentToMainTrack(index);
+  if (newIndex < 0) return false;
+  shiftMainGroupRefsAfterInsert(newIndex);
+  lastClickedOverlayIdx = window.AsrEditorUtils.shiftSelectionAfterRemoval(
+    selectedOverlayIdxs, lastClickedOverlayIdx, index,
+  ).nextAnchor;
+  renderAll({ waveform: 'full' });
+  scheduleAutoSaveFlush();
+  flashHint('已转回主轨', 'success');
+  return true;
+}
+
+function deleteOverlayCues(indices) {
+  const overlay = getOverlayTrack();
+  const sorted = [...new Set(Array.isArray(indices) ? indices : [])]
+    .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < (overlay?.segments?.length || 0))
+    .sort((a, b) => a - b);
+  if (!sorted.length) return;
+  detachCuePanelFromTrackEdits();
+  pushUndo(`删除 ${sorted.length} 条叠加字幕`);
+  for (let index = sorted.length - 1; index >= 0; index -= 1) {
+    resetOverlayGroupRefs(sorted[index]);
+    overlay.segments.splice(sorted[index], 1);
+  }
+  selectedOverlayIdxs.clear();
+  lastClickedOverlayIdx = -1;
+  overlay._dirty = true;
+  renderAll({ waveform: 'full' });
+  scheduleAutoSaveFlush();
+  flashHint(`已删除 ${sorted.length} 条叠加字幕`, 'success');
+}
+
 function getExtensionTrack(trackId = null) {
   const multi = getMultiSubtitleState();
   return (multi.tracks || []).find((track) => !trackId || track.id === trackId) || null;
@@ -1427,6 +1623,7 @@ const overlayMainSpeakerLabelEl = document.getElementById('overlay-main-speaker-
 const overlayMainTextNode = document.createTextNode('');
 overlayTextEl.append(overlayMainTextNode);
 const overlayExtensionTextEl = document.getElementById('overlay-extension-text');
+const overlayTrackTextEl = document.getElementById('overlay-track-text');
 const overlayToggle = document.getElementById('overlay-toggle');
 const extensionOverlayToggleWrap = document.getElementById('extension-overlay-toggle-wrap');
 const extensionOverlayToggle = document.getElementById('extension-overlay-toggle');
@@ -4418,8 +4615,10 @@ function stickerAbsPath(sticker) {
 }
 const selectedIdxs = new Set();
 const selectedExtensionIdxs = new Set();
+const selectedOverlayIdxs = new Set();
 let lastClickedIdx = -1;  // 用于 Shift+click 范围选
 let lastClickedExtensionIdx = -1;
+let lastClickedOverlayIdx = -1;
 // “仅看超长”开启时，刚拆出的字幕临时绕过字数过滤；使用稳定 ID，避免 splice 后下标错位。
 const temporaryVisibleSplitCueKeys = new Set();
 // 右键选择「绑定到主字幕」后的等待状态。使用稳定 ID 而不是数组下标，
@@ -4453,6 +4652,12 @@ function clearSelection({ silent = false, commitCuePanel = true } = {}) {
       .forEach((el) => el.classList.remove('selected'));
   });
   selectedExtensionIdxs.clear();
+  selectedOverlayIdxs.forEach((index) => {
+    container.querySelectorAll(`.cue[data-overlay-idx="${index}"]`)
+      .forEach((el) => el.classList.remove('selected'));
+  });
+  selectedOverlayIdxs.clear();
+  lastClickedOverlayIdx = -1;
   selCountEl.textContent = '0';
   if (silent) {
     // 结构编辑会马上 renderAll() 并重新选中目标；此时不必先刷新旧波形
@@ -4973,32 +5178,37 @@ function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) 
   const multiVisible = multiSubtitleVisible();
   const overlayVisible = overlayTrackVisible();
   const displayMode = getMultiSubtitleState().display_mode || 'both';
-  if (overlayVisible && !multiVisible) {
-    const overlaySegments = getOverlayTrack().segments;
-    MULTI_SUBTITLE_UTILS.mergeMainAndOverlaySegments(DATA.segments, overlaySegments)
-      .forEach((segment) => cueFragment.appendChild(
-        overlaySegments.includes(segment)
-          ? buildOverlayCueEl(segment, overlaySegments.indexOf(segment))
-          : buildCueEl(segment, DATA.segments.indexOf(segment)),
-      ));
-  } else if (!multiVisible || displayMode === 'main') {
-    DATA.segments.forEach((seg, i) => cueFragment.appendChild(buildCueEl(seg, i)));
+  // 叠加行在单轨和多重字幕的所有显示模式下都要渲染：按 start 归并插入，
+  // 同 start 时主/副行在前、叠加行在后（与 mergeMainAndOverlaySegments 一致）。
+  const overlaySegments = overlayVisible ? getOverlayTrack().segments : [];
+  const rows = [];
+  if (!multiVisible || displayMode === 'main') {
+    DATA.segments.forEach((seg, i) => rows.push({ start: seg.start, order: 0, el: buildCueEl(seg, i) }));
   } else if (displayMode === 'extension') {
     const track = getActiveExtensionTrack();
-    track.segments.forEach((seg, i) => cueFragment.appendChild(buildExtensionCueEl(seg, i, track)));
+    track.segments.forEach((seg, i) => rows.push({ start: seg.start, order: 0, el: buildExtensionCueEl(seg, i, track) }));
   } else {
     const track = getActiveExtensionTrack();
-    const rows = MULTI_SUBTITLE_UTILS.buildMultiDisplayRows(DATA.segments, track.segments, getMultiSubtitleState().bindings);
-    rows.forEach((row) => cueFragment.appendChild(buildDualCueEl(row.mainIndex, row.extensionIndex, track)));
+    const displayRows = MULTI_SUBTITLE_UTILS.buildMultiDisplayRows(DATA.segments, track.segments, getMultiSubtitleState().bindings);
+    displayRows.forEach((row) => {
+      const mainSeg = row.mainIndex == null ? null : DATA.segments[row.mainIndex];
+      const extensionSeg = row.extensionIndex == null ? null : track.segments[row.extensionIndex];
+      rows.push({
+        start: mainSeg ? mainSeg.start : (extensionSeg ? extensionSeg.start : 0),
+        order: 0,
+        el: buildDualCueEl(row.mainIndex, row.extensionIndex, track),
+      });
+    });
   }
+  overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));
+  rows.sort((a, b) => a.start - b.start || a.order - b.order);
+  rows.forEach((row) => cueFragment.appendChild(row.el));
   container.appendChild(cueFragment);
   applyCueListDisplaySettings({ preserveCueListScroll: false });
   refreshColorFilterUi();
-  totalCountEl.textContent = overlayVisible && !multiVisible
-    ? DATA.segments.length + getOverlayTrack().segments.length
-    : multiVisible && displayMode === 'extension'
-    ? getActiveExtensionTrack()?.segments.length || 0
-    : DATA.segments.length;
+  totalCountEl.textContent = multiVisible && displayMode === 'extension'
+    ? (getActiveExtensionTrack()?.segments.length || 0) + overlaySegments.length
+    : DATA.segments.length + overlaySegments.length;
   // buildCueEl/buildMultiCueColumn 已经按当前搜索词生成了文本；这里仅
   // 计算隐藏状态和数量，避免长工程 renderAll() 再逐行重建一遍文本节点。
   applySearch(searchEl.value, { refreshText: false, preserveCueListScroll: false });
@@ -5655,12 +5865,15 @@ function updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack = n
 
 function buildCueEl(seg, idx, { extensionTrack = null, overlayTrack = false } = {}) {
   const isExtension = Boolean(extensionTrack);
+  const isOverlay = Boolean(overlayTrack);
   const el = document.createElement('div');
-  el.className = multiSubtitleVisible() ? 'cue multi-cue' : 'cue';
+  // 叠加行不参与多重字幕的双列结构：不携带 multi-cue / data-mainIdx，
+  // 否则会被列表的选中、搜索、hover 等主轨逻辑误当成一条主字幕行。
+  el.className = multiSubtitleVisible() && !isOverlay ? 'cue multi-cue' : 'cue';
   if (isExtension) {
     el.classList.add('multi-extension-cue');
     el.dataset.extIdx = String(idx);
-  } else {
+  } else if (!isOverlay) {
     el.dataset.idx = idx;
     if (multiSubtitleVisible()) el.dataset.mainIdx = String(idx);
   }
@@ -5674,7 +5887,7 @@ function buildCueEl(seg, idx, { extensionTrack = null, overlayTrack = false } = 
 
   const indexEl = document.createElement('span');
   indexEl.className = 'index';
-  indexEl.textContent = String(idx + 1);
+  indexEl.textContent = isOverlay ? `叠加字幕 ${idx + 1}` : String(idx + 1);
 
   const timeEl = document.createElement('span');
   timeEl.className = 'time';
@@ -5761,20 +5974,36 @@ function buildExtensionCueEl(seg, idx, track) {
   return buildCueEl(seg, idx, { extensionTrack: track });
 }
 
+function selectOverlayCueRow(index, { focusEditor = false } = {}) {
+  selectedOverlayIdxs.clear();
+  selectedOverlayIdxs.add(index);
+  lastClickedOverlayIdx = index;
+  setCuePanelTarget('overlay', index);
+  if (focusEditor) focusCuePanelText(index, 'overlay');
+  waveformEditor?.updateSelection?.();
+  const row = container.querySelector(`.cue[data-overlay-idx="${index}"]`);
+  if (row) scrollCueIntoViewIfNeeded(row);
+}
+
 function buildOverlayCueEl(seg, index) {
   const el = buildCueEl(seg, index, { overlayTrack: true });
   el.classList.add('overlay-track-cue');
   el.dataset.overlayIdx = String(index);
   el.removeAttribute('data-idx');
+  el.classList.toggle('selected', selectedOverlayIdxs.has(index));
   el.addEventListener('click', (event) => {
     event.stopPropagation();
-    setCuePanelTarget('overlay', index);
+    selectOverlayCueRow(index);
   });
   el.addEventListener('dblclick', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    setCuePanelTarget('overlay', index);
-    focusCuePanelText(index, 'overlay');
+    selectOverlayCueRow(index, { focusEditor: true });
+  });
+  el.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    showOverlayContextMenu(event.clientX, event.clientY, index);
   });
   return el;
 }
@@ -11745,6 +11974,11 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   const mainVisible = !!overlayToggle.checked && isSubtitlePreviewActive(seg, tMs);
   const extension = extensionSegmentAtTime(tMs, idx);
   const extensionVisible = !!extensionOverlayToggle?.checked && !!extension;
+  // 独立叠加轨预览：播放头落在叠加字幕内时显示其文本（叠加轨开启即预览）。
+  const overlayCue = overlayTrackVisible()
+    ? (getOverlayTrack()?.segments || []).find((segment) => isSubtitlePreviewActive(segment, tMs)) || null
+    : null;
+  const overlayCueVisible = Boolean(overlayCue);
   // 播放刷新每帧都会经过这里；只在可见状态或文字真的变化时触碰 DOM，
   // 避免连续 textContent/classList 写入触发不必要的样式和绘制工作。
   if (overlayTextEl.classList.contains('hidden') === mainVisible) {
@@ -11752,6 +11986,9 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   }
   if (overlayExtensionTextEl.classList.contains('hidden') === extensionVisible) {
     overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
+  }
+  if (overlayTrackTextEl.classList.contains('hidden') === overlayCueVisible) {
+    overlayTrackTextEl.classList.toggle('hidden', !overlayCueVisible);
   }
   const speakerLabels = getSpeakerLabelSettings();
   const mainColorName = mainVisible && seg
@@ -11782,6 +12019,10 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayMainTextNode.nodeValue !== mainText) overlayMainTextNode.nodeValue = mainText;
   if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
     overlayExtensionTextEl.textContent = extensionText;
+  }
+  const overlayCueText = overlayCueVisible ? String(overlayCue.text || '') : '';
+  if (overlayTrackTextEl.textContent !== overlayCueText) {
+    overlayTrackTextEl.textContent = overlayCueText;
   }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
   // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
@@ -18390,6 +18631,9 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
         unbindSelectedSubtitlePair();
       });
     }
+    addSep();
+    // 组 4：叠加字幕轨迁移。叠加轨与多重字幕互相独立，转换随时可用。
+    addItem('转为叠加字幕', '', () => convertMainCuesToOverlay([idx]));
   } else {
     // 组 1：合并与批量文本操作
     addItem(`合并 ${targetIdxs.length} 条字幕`, 'C', () => mergeSegments(targetIdxs));
@@ -18411,6 +18655,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
       '',
       () => toggleDisabled(targetIdxs)
     );
+    addItem(`转为叠加字幕 ${targetIdxs.length} 条`, '', () => convertMainCuesToOverlay(targetIdxs));
     addItem(`删除 ${targetIdxs.length} 条字幕`, 'Delete', () => {
       deleteSegments(targetIdxs);
     }, { danger: true });
@@ -18418,6 +18663,41 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
   }
 
   // 调整 ctxmenu 位置（避免溢出）
+  ctxmenu.classList.add('show');
+  const rect = ctxmenu.getBoundingClientRect();
+  let nx = x, ny = y;
+  if (x + rect.width > window.innerWidth) nx = window.innerWidth - rect.width - 4;
+  if (y + rect.height > window.innerHeight) ny = window.innerHeight - rect.height - 4;
+  ctxmenu.style.left = nx + 'px';
+  ctxmenu.style.top = ny + 'px';
+}
+
+// 叠加字幕块的右键菜单：转回主轨 / 删除。叠加轨不参与拆分合并与绑定。
+function showOverlayContextMenu(x, y, index) {
+  const overlay = getOverlayTrack();
+  if (!overlay?.segments?.[index]) return;
+  ctxmenu.innerHTML = '';
+  const addItem = (label, fn, opts = {}) => {
+    const it = document.createElement('div');
+    it.className = 'item' + (opts.danger ? ' danger' : '') + (opts.disabled ? ' disabled' : '');
+    const lbl = document.createElement('span');
+    lbl.textContent = label;
+    it.appendChild(lbl);
+    it.addEventListener('click', () => { ctxmenu.classList.remove('show'); fn(); });
+    ctxmenu.appendChild(it);
+  };
+  const addSep = () => {
+    const sep = document.createElement('div');
+    sep.className = 'sep';
+    ctxmenu.appendChild(sep);
+  };
+  addItem('编辑文本', () => {
+    setCuePanelTarget('overlay', index);
+    focusCuePanelText(index, 'overlay');
+  });
+  addItem('转回主轨', () => convertOverlayCueToMain(index));
+  addSep();
+  addItem('删除此叠加字幕', () => deleteOverlayCues([index]), { danger: true });
   ctxmenu.classList.add('show');
   const rect = ctxmenu.getBoundingClientRect();
   let nx = x, ny = y;
@@ -18686,18 +18966,38 @@ function initWaveformEditor() {
   }
   waveformEditor = window.AsrWaveform.create({
     getSegments: (track = 'main') => track === 'extension'
-      ? (getActiveExtensionTrack()?.segments || []) : DATA.segments,
+      ? (getActiveExtensionTrack()?.segments || [])
+      : track === 'overlay'
+        ? (overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [])
+        : DATA.segments,
     getExtensionSegments: (trackId = null) => getExtensionTrack(trackId)?.segments || [],
     getCrossTrackSnapTargets: (track = 'main') => {
-      if (!multiSubtitleVisible() || !EDITOR_SETTINGS.crossTrackSnap) return [];
-      const otherSegments = track === 'extension'
-        ? DATA.segments : (getActiveExtensionTrack()?.segments || []);
-      return otherSegments.flatMap((segment) => [segment?.start, segment?.end])
+      if (!EDITOR_SETTINGS.crossTrackSnap) return [];
+      const collectEdges = (segments) => (segments || [])
+        .flatMap((segment) => [segment?.start, segment?.end])
         .filter((timeMs) => Number.isFinite(Number(timeMs)))
         .map((timeMs) => Number(timeMs));
+      // 叠加轨与主轨互为吸附参照；多重字幕开启时副轨边界同样参与。
+      if (track === 'overlay') {
+        const targets = collectEdges(DATA.segments);
+        if (multiSubtitleVisible()) targets.push(...collectEdges(getActiveExtensionTrack()?.segments));
+        return targets;
+      }
+      if (!multiSubtitleVisible()) {
+        return track === 'main' && overlayTrackVisible()
+          ? collectEdges(getOverlayTrack()?.segments)
+          : [];
+      }
+      const otherSegments = track === 'extension'
+        ? DATA.segments : (getActiveExtensionTrack()?.segments || []);
+      const targets = collectEdges(otherSegments);
+      if (track === 'main' && overlayTrackVisible()) targets.push(...collectEdges(getOverlayTrack()?.segments));
+      return targets;
     },
-    getSelection: (track = 'main') => track === 'extension' ? selectedExtensionIdxs : selectedIdxs,
+    getSelection: (track = 'main') => track === 'extension' ? selectedExtensionIdxs
+      : track === 'overlay' ? selectedOverlayIdxs : selectedIdxs,
     getExtensionSelection: () => selectedExtensionIdxs,
+    getOverlaySelection: () => selectedOverlayIdxs,
     getBindingMarkerTargets,
     multiSubtitleVisible: () => multiSubtitleVisible(),
     // 波形上已经选中的块不会再次调用 selectCue；单独提供激活回调，
@@ -18714,6 +19014,23 @@ function initWaveformEditor() {
       setCurrentCuePanelExtensionIndex(idx, getActiveExtensionTrack());
       focusCuePanelText(idx, 'extension');
     },
+    selectOverlayCue: (idx) => {
+      selectOverlayCueRow(idx);
+      lastClickedOverlayIdx = idx;
+    },
+    activateOverlayCue: (idx) => {
+      selectedOverlayIdxs.clear();
+      selectedOverlayIdxs.add(idx);
+      setCuePanelTarget('overlay', idx);
+    },
+    enterOverlayCueEditor: (idx) => {
+      selectOverlayCueRow(idx, { focusEditor: true });
+    },
+    // Shift+拖动逃逸：主轨邻居挡路时把被拖字幕迁入叠加轨，返回新下标。
+    convertCueToOverlay: (idx) => convertMainCueToOverlayForDrag(idx),
+    // Shift+拖动往返：叠加轨字幕拖回主轨空隙时移回主轨，返回新下标。
+    convertOverlayCueToMainDrag: (idx) => convertOverlayCueToMainForDrag(idx),
+    showOverlayContextMenu: (x, y, idx) => showOverlayContextMenu(x, y, idx),
     selectCue: (idx) => {
       selectCueByClick(idx);
       lastClickedIdx = idx;
@@ -18810,23 +19127,32 @@ function initWaveformEditor() {
       syncTimelineGroupRanges();
       // 拖动预览期间保持下标稳定；提交时再整理副轨数组，避免冲突裁剪后
       // 原本位于目标前面的字幕保留右侧区间而落到目标之后，保存时违反顺序契约。
-      if (multiSubtitleVisible()) sortExtensionTrackSegments(getActiveExtensionTrack());
+      if (multiSubtitleVisible() && track !== 'overlay') sortExtensionTrackSegments(getActiveExtensionTrack());
       syncBindingOffsets();
       markMainSegmentsDirty(track === 'main' ? idxs.map((idx) => DATA.segments[idx]).filter(Boolean) : []);
+      if (track === 'overlay') {
+        const overlay = getOverlayTrack();
+        if (overlay) {
+          overlay._dirty = true;
+          idxs.forEach((idx) => { if (overlay.segments[idx]) overlay.segments[idx]._dirty = true; });
+        }
+      }
       if (linkedChanged || multiSubtitleVisible() || track === 'extension') markMultiSubtitleDirty();
       renderAll();
       updateWithoutCueListAutoScroll();
       flashHint(kind === 'move'
         ? track === 'extension'
           ? `已移动 ${idxs.length} 条副字幕`
-          : `已${independent ? '独立' : '联动'}移动 ${idxs.length} 条字幕`
+          : track === 'overlay'
+            ? `已移动 ${idxs.length} 条叠加字幕`
+            : `已${independent ? '独立' : '联动'}移动 ${idxs.length} 条字幕`
         : kind === 'resize-boundary-pointer'
-          ? `已将${track === 'extension' ? '副字幕' : '字幕'}${details?.edge === 'start' ? '起点' : '终点'}定位到鼠标位置`
+          ? `已将${track === 'extension' ? '副字幕' : track === 'overlay' ? '叠加字幕' : '字幕'}${details?.edge === 'start' ? '起点' : '终点'}定位到鼠标位置`
         : kind === 'resize-boundary'
           ? `已${independent ? '独立' : '联动'}调整第 ${idxs[0] + 1} / ${idxs[1] + 1} 条边界`
           : kind === 'resize-boundary-independent'
             ? `已独立调整第 ${idxs[0] + 1} 条字幕边界`
-            : `已调整第 ${idxs[0] + 1} 条字幕时间`);
+            : `已调整${track === 'overlay' ? '叠加字幕' : '字幕'}时间`);
     },
     onPayload: (payload) => {
       DATA.waveform = payload;
