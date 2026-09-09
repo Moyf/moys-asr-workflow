@@ -568,6 +568,7 @@ def build_server_page(
         sticker_root_json=json.dumps(project.sticker_root.as_posix() if project.sticker_root else "", ensure_ascii=False),
         sticker_url_prefix_json=json.dumps("/stickers", ensure_ascii=False),
         ninja_sfx_base_url_json=json.dumps("/sfx/", ensure_ascii=False),
+        editor_loading_hidden="" if startup_status.get("status") == "loading" else " hidden",
         server_config_json=json.dumps({
             "saveUrl": "/api/project",
             "requestToken": request_token,

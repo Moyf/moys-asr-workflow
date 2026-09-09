@@ -327,6 +327,30 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="media-name" title="">未加载媒体</span>', page)
         self.assertIn('"canSave": true', page)
 
+    def test_startup_page_shows_project_loading_overlay_before_javascript_runs(self) -> None:
+        project = server_editor.ServerProject(
+            data={"segments": []},
+            json_path=self.root / "loading.mosp",
+            media_path=None,
+            sticker_root=None,
+            stickers=[],
+        )
+
+        loading = server_editor.build_server_page(
+            project,
+            startup_status={
+                "status": "loading",
+                "stage": "reading_project",
+                "progress": 5,
+                "error": "",
+            },
+        ).decode("utf-8")
+        ready = server_editor.build_server_page(project).decode("utf-8")
+
+        self.assertIn('id="editor-loading" aria-live="polite"', loading)
+        self.assertIn('id="editor-loading-label">正在加载工程…</div>', loading)
+        self.assertIn('id="editor-loading" hidden aria-live="polite"', ready)
+
     def test_build_server_page_defers_reapeaks_layers_to_waveform_endpoint(self) -> None:
         """延迟加载开启时页面不内联频谱 / reapeaks 层；关闭时（--no-waveform）仍保留内联。"""
         project = server_editor.ServerProject(
