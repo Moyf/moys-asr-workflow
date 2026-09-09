@@ -266,6 +266,140 @@ test('keeps the selection on the converted cue after a Shift+drag track change',
   await expect(nextMainRow).not.toHaveClass(/selected/);
 });
 
+test('carries the color marking through main ↔ overlay conversions', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [
+      { id: 'head-1', start: 0, end: 900, text: 'red head', color: { name: 'red' } },
+      { id: 'member-1', start: 1000, end: 1900, text: 'red member', color_ref: { headIdx: 0 } },
+      { id: 'plain-1', start: 2000, end: 2900, text: 'plain cue' },
+    ],
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.cue[data-idx="2"]')).toHaveCount(1);
+
+  // 右键把颜色 head 转为叠加字幕：颜色标记跟随（物化为自持 head），
+  // 主轨剩余组员按组拆分语义提升为新 head，不产生跨轨引用。
+  await page.locator('.cue[data-idx="0"]').click({ button: 'right', force: true });
+  await expect(page.locator('#ctxmenu.show')).toBeVisible();
+  await page.getByText('转为叠加字幕', { exact: true }).click();
+  await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
+  await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveClass(/has-color/);
+
+  const afterOut = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(afterOut.overlay_track.segments[0]).toMatchObject({ id: 'head-1', text: 'red head' });
+  expect(afterOut.overlay_track.segments[0].color).toMatchObject({ name: 'red', start: 0, end: 900 });
+  expect(afterOut.overlay_track.segments[0].color.value).toMatch(/^#[0-9a-f]{6}$/i);
+  expect(afterOut.segments[0]).toMatchObject({ id: 'member-1' });
+  expect(afterOut.segments[0].color).toMatchObject({ name: 'red', start: 1000, end: 1900 });
+  expect(afterOut.segments[0].color_ref).toBeNull();
+
+  // 转回主轨：颜色同样跟随（数据层直调，菜单点击路径已有用例覆盖）。
+  const reverted = await page.evaluate(() => convertOverlayCueToMain(0));
+  expect(reverted).toBe(true);
+  const afterBack = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(afterBack.overlay_track.segments).toHaveLength(0);
+  expect(afterBack.segments.find((segment) => segment.id === 'head-1').color)
+    .toMatchObject({ name: 'red', start: 0, end: 900 });
+  const dangling = [
+    ...afterBack.segments,
+    ...(afterBack.overlay_track?.segments || []),
+  ].filter((segment) => {
+    if (!segment.color_ref) return false;
+    const head = afterBack.segments[segment.color_ref.headIdx];
+    return !head || !head.color;
+  });
+  expect(dangling).toEqual([]);
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
+test('keeps the cue color on a Shift+drag conversion and colors the overlay preview', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [
+      { id: 'main-001', start: 0, end: 2000, text: 'plain cue', color: { name: 'red' } },
+      { id: 'main-002', start: 2200, end: 4200, text: 'dragged cue', color: { name: 'green' } },
+      { id: 'main-003', start: 4400, end: 5800, text: 'third cue' },
+    ],
+    waveform: generateWaveformPayload(6000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  const draggedBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]');
+  await expect(draggedBlock).toBeVisible();
+
+  // 先选中再 Shift+拖入重叠：转换后叠加字幕保留自己的颜色标记。
+  // 拖到 1500ms（抓取偏移为指针在段中心，段起点应落在 ~500ms）。
+  await draggedBlock.click();
+  const rowGeometry = await page.evaluate(() => {
+    const row = document.querySelector('.waveform-cue-block[data-track="main"]').closest('.waveform-row');
+    const rect = row.getBoundingClientRect();
+    const startMs = Number(row.dataset.startMs);
+    const endMs = Number(row.dataset.endMs);
+    const timeToX = (timeMs) => rect.left + ((timeMs - startMs) / (endMs - startMs)) * rect.width;
+    return { overlapX: timeToX(1500) };
+  });
+  const box = await draggedBlock.boundingBox();
+  const centerY = box.y + box.height / 2;
+  await page.keyboard.down('Shift');
+  await page.mouse.move(box.x + box.width / 2, centerY);
+  await page.mouse.down();
+  await page.mouse.move(rowGeometry.overlapX, centerY, { steps: 12 });
+  await page.keyboard.up('Shift');
+  await page.mouse.up();
+  // 松手提交后列表重绘：转换出的叠加行保留颜色标记。
+  const convertedOverlay = page.locator('.overlay-track-cue[data-overlay-idx="0"]');
+  await expect(convertedOverlay).toHaveCount(1);
+  await expect(convertedOverlay).toHaveClass(/has-color/);
+
+  const afterDrag = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(afterDrag.overlay_track.segments.map((segment) => segment.id))
+    .toEqual(['main-002']);
+  expect(afterDrag.overlay_track.segments[0].color).toMatchObject({ name: 'green' });
+  const convertedColor = afterDrag.overlay_track.segments[0].color;
+  expect(convertedColor.end - convertedColor.start).toBe(2000);
+  expect(convertedColor.start).toBeGreaterThanOrEqual(450);
+  expect(convertedColor.start).toBeLessThanOrEqual(550);
+  // 主轨字幕的颜色不受影响。
+  expect(afterDrag.segments[0].color).toMatchObject({ name: 'red' });
+
+  // 预览：播放头落在主字幕与叠加字幕重叠区时，两条预览文本各自应用
+  // 自己的颜色快照（默认下划线样式：叠加轨绿色、主字幕红色）。
+  const colors = await page.evaluate(() => {
+    document.getElementById('overlay-toggle').checked = true;
+    player.currentTime = 0.8;
+    update();
+    const palette = Object.fromEntries(window.ASR_EDITOR_PALETTE.map((c) => [c.name, c.value]));
+    const rgbOf = (hex) => {
+      const probe = document.createElement('span');
+      probe.style.color = hex;
+      document.body.appendChild(probe);
+      const rgb = getComputedStyle(probe).color;
+      probe.remove();
+      return rgb;
+    };
+    const track = document.getElementById('overlay-track-text');
+    const main = document.getElementById('overlay-main-text');
+    return {
+      greenRgb: rgbOf(palette.green),
+      redRgb: rgbOf(palette.red),
+      trackLine: getComputedStyle(track).textDecorationLine,
+      trackDeco: getComputedStyle(track).textDecorationColor,
+      mainLine: getComputedStyle(main).textDecorationLine,
+      mainDeco: getComputedStyle(main).textDecorationColor,
+    };
+  });
+  expect(colors.trackLine).toBe('underline');
+  expect(colors.trackDeco).toBe(colors.greenRgb);
+  expect(colors.mainLine).toBe('underline');
+  expect(colors.mainDeco).toBe(colors.redRgb);
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
 test('keeps color group references valid through an overlay round trip', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
