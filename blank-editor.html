@@ -1023,7 +1023,11 @@
     display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px;
     min-width: 0; color: var(--text-secondary); font-size: 12px;
   }
-  .subtitle-speaker-label-row input[type="text"] { width: 100%; min-width: 0; box-sizing: border-box; }
+  /* 三级选择器压过 .editor-settings-panel input[type=text] 的固定 140px，
+     让说话人名称输入框跟随两列 grid 单元格动态伸缩，窄面板下不再重叠。 */
+  .editor-settings-panel .subtitle-speaker-label-row input[type="text"] {
+    width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box;
+  }
   .subtitle-speaker-label-color {
     display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); white-space: nowrap;
   }
@@ -2026,16 +2030,18 @@
   .cue .time-arrow { grid-area: arrow; }
   .cue .time-end { grid-area: end; }
   .cue .time-start, .cue .time-arrow, .cue .time-end { white-space: nowrap; }
-  /* 列表变窄时，所有行同时切到同一个两行时间码列，避免逐行 flex 收缩造成错位。 */
+  /* 列表变窄时，所有行同时切到同一个两行时间码列，避免逐行 flex 收缩造成错位；
+     上下堆叠已表达先后顺序，隐藏箭头，帧模式 11 字符时间码也不会超出 11ch。 */
   @container cue-list (max-width: 700px) {
     .cue-list-count { display: none; }
     .cue .time {
-      grid-template-columns: max-content max-content;
+      grid-template-columns: max-content;
       grid-template-areas:
-        "start arrow"
-        "end end";
+        "start"
+        "end";
       width: 11ch; flex-basis: 11ch;
     }
+    .cue .time-arrow { display: none; }
   }
   .cue .sticker-slot {
     flex: 0 1 80px; min-width: 40px; max-width: 100px;
@@ -5376,6 +5382,14 @@
         </span>
       </label>
     </div>
+    <div class="editor-settings-sub-group" id="project-backup-settings">
+      <label class="toggle editor-settings-item"><input type="checkbox" id="project-backup-enabled"> 备份工程</label>
+      <label class="editor-settings-item">自动备份间隔（分钟）<span class="gap-remove-number-control"><input id="project-backup-minutes" type="number" min="1" max="1440" step="1" value="5"></span></label>
+      <label class="editor-settings-item">最大保存版本数<span class="gap-remove-number-control"><input id="project-backup-limit" type="number" min="1" max="1000" step="1" value="20"></span></label>
+      <div class="editor-settings-field"><button type="button" id="project-backup-open">打开备份文件夹</button></div>
+      <small class="editor-settings-hint">开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/backups。</small>
+      <small class="editor-settings-hint" id="project-backup-unavailable">工程备份需要本地 Server 绑定工程；浏览器另存为的文件不支持目录备份。</small>
+    </div>
   </div>
   </div>
   <div class="editor-settings-page" id="editor-settings-page-sticker" role="tabpanel" aria-labelledby="editor-settings-tab-sticker" hidden>
@@ -5718,7 +5732,7 @@
           <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理</button>
         </div>
       </div>
-      <span class="sep"></span>
+      <span class="sep" id="filter-over-sep"></span>
       <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）">仅看超长</button>
     </div>
       <div class="cues-empty" id="cues-empty">拖入工程或 SRT 后显示字幕列表</div>
@@ -10481,6 +10495,9 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       exportSpeakerLabels: savedSettings.exportSpeakerLabels === true,
       autoSaveProject: savedSettings.autoSaveProject !== false,
       autoSaveIntervalSeconds: clampInteger(savedSettings.autoSaveIntervalSeconds, 30, 5, 3600),
+      projectBackupEnabled: savedSettings.projectBackupEnabled === true,
+      projectBackupMinutes: clampInteger(savedSettings.projectBackupMinutes, 5, 1, 1440),
+      projectBackupLimit: clampInteger(savedSettings.projectBackupLimit, 20, 1, 1000),
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
       stickerOtioExportMode: savedSettings.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
       // 时间线 OTIO 导出选项：默认同时导出 SRT、合并表情包轨、写入字幕标记。
@@ -13225,6 +13242,12 @@ export default MawDynamicCaptions;
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '备份工程': 'Back up project',
+    '打开备份文件夹': 'Open backup folder',
+    '自动备份间隔（分钟）': 'Backup interval (minutes)',
+    '最大保存版本数': 'Maximum versions',
+    '开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/backups。': 'Create scheduled and manual-save snapshots; remove the oldest versions above the limit. Backups are stored in the project’s _maw/backups folder.',
+    '工程备份需要本地 Server 绑定工程；浏览器另存为的文件不支持目录备份。': 'Project backups require a project bound to the local server. Files selected with browser Save As do not support directory backups.',
     '撤销': 'Undo', '重做': 'Redo', '↶ 撤销': '↶ Undo', '↷ 重做': '↷ Redo',
     '新建工程': 'New project', '创建并保存一个空白工程': 'Create and save a blank project',
     '当前有未保存的改动，是否确定新建工程？将丢失未保存内容。': 'There are unsaved changes. Create a new project and discard them?',
@@ -14060,7 +14083,11 @@ export default MawDynamicCaptions;
   let language = readLanguage();
 
   // 导出文件名中的技术段（按当前语言映射；中文界面译出，英文界面原样）。
-  const EXPORT_NAME_SEGMENTS = { 'gap-removed': '去空隙', 'stickers': '表情包' };
+  // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」。
+  const EXPORT_NAME_SEGMENTS = {
+    'gap-removed': '去空隙', 'stickers': '表情包',
+    'yellow': '黄色', 'green': '绿色', 'red': '红色', 'purple': '紫色', 'blue': '蓝色',
+  };
 
   function exportTag(segment) {
     if (language !== ZH) return segment;
@@ -21248,6 +21275,9 @@ const DEFAULT_EDITOR_SETTINGS = {
   // 自动保存仅对绑定工程的 localhost 服务器版生效。
   autoSaveProject: true,
   autoSaveIntervalSeconds: 30,
+  projectBackupEnabled: false,
+  projectBackupMinutes: 5,
+  projectBackupLimit: 20,
   // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
   stickerOverlayEnabled: false,
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
@@ -22791,6 +22821,19 @@ function updateMultiSubtitleUi() {
       : false;
   }
   previousMultiSubtitlePreviewEnabled = enabled;
+  // 「仅看超长」按单轨文本字数筛选；多重字幕开启后主/副两栏合并计数失去筛选意义，
+  // 隐藏入口（含前面的分隔线）。若筛选已激活则一并复位，避免残留不可见的过滤状态。
+  const filterOverButton = document.getElementById('filter-over');
+  if (filterOverButton) {
+    filterOverButton.hidden = enabled;
+    const filterOverSep = document.getElementById('filter-over-sep');
+    if (filterOverSep) filterOverSep.hidden = enabled;
+    if (enabled && filterOverButton.classList.contains('active')) {
+      filterOverButton.classList.remove('active');
+      clearTemporaryVisibleSplitCues();
+      applySearch(searchEl.value);
+    }
+  }
   container.classList.toggle('multi-subtitle-enabled', enabled);
   container.dataset.multiDisplayMode = enabled ? (getMultiSubtitleState().display_mode || 'both') : 'main';
 }
@@ -32736,7 +32779,7 @@ async function downloadColorSrts(gapRemoved = false) {
     }
   }
   for (const color of colors) {
-    const filename = `${filenameBase}_${color.name}.srt`;
+    const filename = `${filenameBase}_${window.MAWE_I18N?.exportTag?.(color.name) || color.name}.srt`;
     if (EDITOR_SETTINGS.exportColorUnified) {
       const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -34093,10 +34136,56 @@ function configureServerSaveControls() {
     saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
   }
   syncStickerOtioExportMode();
+  syncProjectBackupControls();
 }
 
 let autoSaveTimer = null;
+let projectBackupTimer = null;
+function syncProjectBackupControls() {
+  const available = serverProjectSavingEnabled() && !projectFileHandle;
+  const enabled = document.getElementById('project-backup-enabled');
+  const minutes = document.getElementById('project-backup-minutes');
+  const limit = document.getElementById('project-backup-limit');
+  enabled.checked = EDITOR_SETTINGS.projectBackupEnabled;
+  enabled.disabled = !available;
+  document.getElementById('project-backup-open').disabled = !available;
+  minutes.value = EDITOR_SETTINGS.projectBackupMinutes;
+  limit.value = EDITOR_SETTINGS.projectBackupLimit;
+  minutes.disabled = limit.disabled = !available || !enabled.checked;
+  document.getElementById('project-backup-unavailable').hidden = available;
+  if (projectBackupTimer !== null) window.clearInterval(projectBackupTimer);
+  projectBackupTimer = null;
+  if (available && enabled.checked) {
+    projectBackupTimer = window.setInterval(() => {
+      void saveProjectToServer({ silent: true, backupOnly: true });
+    }, EDITOR_SETTINGS.projectBackupMinutes * 60000);
+  }
+}
+for (const [id, key, fallback, max] of [
+  ['project-backup-enabled', 'projectBackupEnabled', false, 0],
+  ['project-backup-minutes', 'projectBackupMinutes', 5, 1440],
+  ['project-backup-limit', 'projectBackupLimit', 20, 1000],
+]) {
+  document.getElementById(id)?.addEventListener('change', (event) => {
+    const value = max ? Math.min(max, Math.max(1, Math.round(Number(event.target.value) || fallback))) : event.target.checked;
+    updateEditorSettings({ [key]: value });
+    syncProjectBackupControls();
+  });
+}
 let autoSaveFlushTimer = null;
+document.getElementById('project-backup-open')?.addEventListener('click', async () => {
+  if (!serverProjectSavingEnabled() || projectFileHandle) return;
+  try {
+    const response = await fetch(new URL('/api/project/backups/open', window.location.href), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || response.status);
+  } catch (error) {
+    flashHint(`打开备份文件夹失败：${error.message || error}`, 'warning');
+  }
+});
 let projectSaveInFlight = false;
 const EDIT_SAVE_DEBOUNCE_MS = 400;
 
@@ -34653,7 +34742,8 @@ function markProjectSaved(filename, backupName, { silent = false } = {}) {
   if (!silent) flashHint('保存成功！', 'success');
 }
 
-async function saveProjectToServer({ silent = false } = {}) {
+async function saveProjectToServer({ silent = false, backupOnly = false } = {}) {
+  if (backupOnly && (projectFileHandle || !EDITOR_SETTINGS.projectBackupEnabled)) return false;
   if (!serverProjectSavingEnabled()) {
     if (!silent) flashHint('当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件', 'invalid');
     return false;
@@ -34669,13 +34759,18 @@ async function saveProjectToServer({ silent = false } = {}) {
     const response = await fetch(saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project: JSON.parse(projectJson), filename: null }),
+      body: JSON.stringify({
+        project: JSON.parse(projectJson), filename: null,
+        backupOnly,
+        backupLimit: EDITOR_SETTINGS.projectBackupEnabled && (backupOnly || !silent)
+          ? EDITOR_SETTINGS.projectBackupLimit : null,
+      }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) {
       throw new Error(result.error || `服务器返回 ${response.status}`);
     }
-    markProjectSaved(result.filename, result.backup, { silent });
+    if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent });
     return true;
   } catch (error) {
     const detail = error?.message || error;
@@ -34683,7 +34778,7 @@ async function saveProjectToServer({ silent = false } = {}) {
     // A stale browser tab can outlive the localhost process (the browser reports
     // ERR_CONNECTION_REFUSED). Offer a real file save so Ctrl+S never strands
     // completed edits, while making clear that the bound JSON was not overwritten.
-    if (error instanceof TypeError
+    if (!silent && error instanceof TypeError
         && confirm('无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？')) {
       const saved = await downloadFile(projectJson, `${FILENAME_BASE}.mosp`, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
@@ -38853,7 +38948,8 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       mainIdx < 0,
     );
   }
-  if (Array.isArray(extensionTrack?.segments) && extensionTrack.segments.length) {
+  // 拆分副字幕是多重字幕编辑动作；关闭多重字幕（副轨数据保留但不再参与编辑）时不提供。
+  if (multiSubtitleVisible() && Array.isArray(extensionTrack?.segments) && extensionTrack.segments.length) {
     addItem(
       '按音频位置拆分副字幕',
       '',
