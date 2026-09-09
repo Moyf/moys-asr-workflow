@@ -247,6 +247,7 @@ def render_editor_page(**context: str) -> str:
         "__STICKER_ROOT_JSON__": context["sticker_root_json"],
         "__STICKER_URL_PREFIX_JSON__": context.get("sticker_url_prefix_json", '""'),
         "__SERVER_CONFIG_JSON__": context.get("server_config_json", "null"),
+        "__EDITOR_LOADING_HIDDEN__": context.get("editor_loading_hidden", " hidden"),
         "__NINJA_SFX_BASE_URL_JSON__": context.get("ninja_sfx_base_url_json", '"web/sfx/"'),
         "__UI_LANGUAGE_JSON__": context.get("ui_language_json", "null"),
         "__APP_VERSION__": context["app_version"],
