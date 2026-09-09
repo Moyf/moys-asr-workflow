@@ -2507,7 +2507,8 @@
     width: 100%;
     min-width: 0;
   }
-  /* 从全局设置窗口打开，必须盖住设置窗口（330）。 */
+  /* 从全局设置窗口打开，必须盖住设置窗口。330/335 只是 JS 初始化前的静态兜底；
+     浮层栈启动后由 editor.js 在打开时动态置顶（见 setStickerRootModalOpen）。 */
   #sticker-root-modal { z-index: 335; }
   #sticker-root-modal .modal {
     width: min(540px, calc(100vw - 32px));
