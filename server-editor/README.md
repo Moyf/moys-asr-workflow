@@ -41,7 +41,9 @@ uv run python server-editor\serve.py D:\path\project.json --port 0 --no-open
 %LOCALAPPDATA%\MAW\server-editor-settings.json
 ```
 
-该文件仅包含开关和最近工程的 JSON 路径/名称；工程本身仍保留原位置。升级时，如果新文件不存在，服务器会只读回退到旧的 `%LOCALAPPDATA%\Moy\moys-asr-workflow\server-editor-settings.json`；后续保存只写入新位置。不存在、损坏或媒体已移动的记录都不会触发目录扫描；自动恢复失败会提示原因并启动空白编辑器。
+该文件仅包含开关、最近工程的 JSON 路径/名称和本机编辑器引导状态；工程本身仍保留原位置。升级时，如果新文件不存在，服务器会只读回退到旧的 `%LOCALAPPDATA%\Moy\moys-asr-workflow\server-editor-settings.json`；后续保存只写入新位置。不存在、损坏或媒体已移动的记录都不会触发目录扫描；自动恢复失败会提示原因并启动空白编辑器。
+
+浏览器的 `localStorage` 按 localhost 端口隔离。服务器版的「快速上手」完成/跳过状态因此改由这个用户级文件保存，换用新的端口后不会重复弹出；自包含的 `file://` 编辑器仍使用自己的浏览器存储。
 
 如果用 JSON 工程路径启动，工具栏会额外出现「保存工程」和「另存为…」：
 
