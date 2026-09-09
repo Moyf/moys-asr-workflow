@@ -34,7 +34,7 @@ from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
 from maw.postprocess import PostprocessStepError  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
-from maw.postprocess_pipeline import PostprocessPipelineError  # noqa: E402
+from maw.postprocess_pipeline import PostprocessPipelineError, save_postprocess_plan  # noqa: E402
 from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
 from maw.runtimes import OCR  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
@@ -2917,6 +2917,30 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertIsNone(request.postprocess_plan)
 
+    def test_request_from_payload_reads_shared_extra_strong_punct(self) -> None:
+        """共享断句配置的额外断句符号会下发给云端转写作为强断句符号。"""
+        save_postprocess_plan(self.env_path, {
+            "enabled": False,
+            "steps": [{
+                "id": "match",
+                "enabled": True,
+                "extraSplitPunctuation": ["?", "!", "", "——"],
+                "preservePunctuation": ["~"],
+            }],
+        })
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }, self.env_path)
+
+        self.assertEqual(request.extra_strong_punct, "?!——")
+        # 保留符号只影响句尾剥除集合，与额外断句符号互不影响。
+        self.assertIn("，", request.strip_tail_punct)
+
     def test_start_transcription_rejects_singapore_without_workspace(self) -> None:
         """Given Singapore region, When workspace is absent, Then workspace blocks."""
         media = self.root / "clip.mp3"
@@ -4145,11 +4169,11 @@ class LauncherAssetContractTests(unittest.TestCase):
             script,
         )
         self.assertIn(
-            'toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，同时对转写后处理的句尾剥除生效。"',
+            'toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。"',
             launcher_script,
         )
         self.assertIn(
-            'toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, and also drive tail-punctuation stripping in transcription post-processing."',
+            'toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, cloud transcription treats them as strong break symbols too, and they also drive tail-punctuation stripping in transcription post-processing."',
             launcher_script,
         )
 

@@ -211,6 +211,28 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(empty_command[empty_command.index("--strip-tail-punct") + 1], "")
 
+    def test_build_transcribe_command_sends_extra_strong_punct_when_configured(self) -> None:
+        # 仅在配置了额外断句符号时下发；空配置保持命令行与旧版一致。
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            extra_strong_punct="?!;",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--extra-strong-punct") + 1], "?!;")
+
+        empty = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            extra_strong_punct="",
+        )
+
+        empty_command = build_transcribe_command(empty, executable=Path("python.exe"), frozen=False)
+
+        self.assertNotIn("--extra-strong-punct", empty_command)
+
     def test_build_transcribe_command_debug_raw_saves_full_response(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,
