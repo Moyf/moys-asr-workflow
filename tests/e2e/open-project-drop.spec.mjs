@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import {
   cleanupTempDir,
   findFreePort,
-  copyPortableBlankEditor,
+  buildPortableBlankEditor,
   generateProjectJson,
   generateWav,
   makeTempDir,
@@ -25,7 +25,7 @@ test.beforeAll(async () => {
   // 短媒体即可：只验证加载链路，不校验波形时长一致性。
   generateWav(mediaPath, 5);
   generateProjectJson(projectPath);
-  server = await startStaticServer(copyPortableBlankEditor(join(tempDir, 'blank.html')), await findFreePort());
+  server = await startStaticServer(buildPortableBlankEditor(join(tempDir, 'blank.html')), await findFreePort());
 });
 
 test.afterAll(async () => {
@@ -42,6 +42,12 @@ function dropFiles(page, files) {
     }
     return dt;
   }, files).then((dataTransfer) => page.dispatchEvent('body', 'drop', { dataTransfer }));
+}
+
+// 33c6d8cc 起 buildJson 无条件写入派生的 start_frame/end_frame（毫秒字段是
+// 语义真源，帧字段随保存重新计算）；深比较只保留毫秒语义字段。
+function stripDerivedFrameFields(items) {
+  return items.map(({ start_frame, end_frame, ...item }) => item);
 }
 
 function projectSpec(name = 'project.json') {
@@ -201,7 +207,7 @@ test('can use a dropped project subtitle as an extension and preserve optional i
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
   const imported = await page.evaluate(() => JSON.parse(buildJson()));
-  expect(imported.multi_subtitle.tracks[0].segments[0].items).toEqual([
+  expect(stripDerivedFrameFields(imported.multi_subtitle.tracks[0].segments[0].items)).toEqual([
     { text: '带字词时间码的副字幕', start: 100, end: 1900 },
   ]);
 
@@ -214,7 +220,7 @@ test('can use a dropped project subtitle as an extension and preserve optional i
   await page.locator('#multi-subtitle-swap').click();
 
   const roundTripped = await page.evaluate(() => JSON.parse(buildJson()));
-  expect(roundTripped.multi_subtitle.tracks[0].segments[0].items).toEqual([
+  expect(stripDerivedFrameFields(roundTripped.multi_subtitle.tracks[0].segments[0].items)).toEqual([
     { text: '带字词时间码的副字幕', start: 100, end: 1900 },
   ]);
 });

@@ -2214,6 +2214,19 @@ function updateMultiSubtitleUi() {
       : false;
   }
   previousMultiSubtitlePreviewEnabled = enabled;
+  // 「仅看超长」按单轨文本字数筛选；多重字幕开启后主/副两栏合并计数失去筛选意义，
+  // 隐藏入口（含前面的分隔线）。若筛选已激活则一并复位，避免残留不可见的过滤状态。
+  const filterOverButton = document.getElementById('filter-over');
+  if (filterOverButton) {
+    filterOverButton.hidden = enabled;
+    const filterOverSep = document.getElementById('filter-over-sep');
+    if (filterOverSep) filterOverSep.hidden = enabled;
+    if (enabled && filterOverButton.classList.contains('active')) {
+      filterOverButton.classList.remove('active');
+      clearTemporaryVisibleSplitCues();
+      applySearch(searchEl.value);
+    }
+  }
   container.classList.toggle('multi-subtitle-enabled', enabled);
   container.dataset.multiDisplayMode = enabled ? (getMultiSubtitleState().display_mode || 'both') : 'main';
 }
@@ -18181,7 +18194,8 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       mainIdx < 0,
     );
   }
-  if (Array.isArray(extensionTrack?.segments) && extensionTrack.segments.length) {
+  // 拆分副字幕是多重字幕编辑动作；关闭多重字幕（副轨数据保留但不再参与编辑）时不提供。
+  if (multiSubtitleVisible() && Array.isArray(extensionTrack?.segments) && extensionTrack.segments.length) {
     addItem(
       '按音频位置拆分副字幕',
       '',
