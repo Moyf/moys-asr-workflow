@@ -740,7 +740,7 @@ const DEFAULT_EDITOR_SETTINGS = {
   // 自动保存仅对绑定工程的 localhost 服务器版生效。
   autoSaveProject: true,
   autoSaveIntervalSeconds: 30,
-  projectBackupEnabled: false,
+  projectBackupEnabled: true,
   projectBackupMinutes: 5,
   projectBackupLimit: 20,
   // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
@@ -11908,6 +11908,10 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayExtensionTextEl.classList.contains('hidden') === extensionVisible) {
     overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
   }
+  const subtitleAppearance = getSubtitleAppearance();
+  const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
+  const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
+  const mainSubtitleColor = subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
   const speakerLabels = getSpeakerLabelSettings();
   const mainColorName = mainVisible && seg
     ? MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments)
@@ -11918,7 +11922,11 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     )
     : '';
   const speakerLabelVisible = Boolean(speakerLabel && mainColorName && COLOR_BY_NAME[mainColorName]);
-  const speakerLabelColor = speakerLabelVisible ? COLOR_BY_NAME[mainColorName].value : '';
+  const speakerLabelColor = speakerLabelVisible
+    ? colorPreviewEnabled && colorStyle === 'stroke'
+      ? mainSubtitleColor
+      : COLOR_BY_NAME[mainColorName].value
+    : '';
   const speakerLabelText = speakerLabelVisible
     ? `${speakerLabel}${speakerLabels.separator}`
     : '';
@@ -11941,9 +11949,6 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
   // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
   // 播放刷新每帧都写内联样式。
-  const subtitleAppearance = getSubtitleAppearance();
-  const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
-  const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
   let previewSegmentColor = '';
   if (mainVisible && colorPreviewEnabled && seg) {
     const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
@@ -11956,7 +11961,7 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     && colorStyle === 'text'
     && previewSegmentColor
     ? previewSegmentColor
-    : subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
+    : mainSubtitleColor;
   const textStroke = colorPreviewEnabled
     && colorStyle === 'stroke'
     && previewSegmentColor
@@ -13668,7 +13673,7 @@ function syncProjectBackupControls() {
   }
 }
 for (const [id, key, fallback, max] of [
-  ['project-backup-enabled', 'projectBackupEnabled', false, 0],
+  ['project-backup-enabled', 'projectBackupEnabled', true, 0],
   ['project-backup-minutes', 'projectBackupMinutes', 5, 1440],
   ['project-backup-limit', 'projectBackupLimit', 20, 1000],
 ]) {

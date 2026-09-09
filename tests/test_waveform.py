@@ -1142,11 +1142,15 @@ class EditorAssetTests(unittest.TestCase):
             '打开字幕忍者模式，让拆分字幕变得更加有趣',
             '.ninja-toggle-group {\n    display: flex; flex-wrap: wrap; align-items: center;',
             '.ninja-toggle-group > .editor-settings-hint { flex: 0 0 100%; }',
+            '.ninja-toggle-group > #ninja-sound-field,\n  .ninja-toggle-group > #ninja-slash-effect-field { flex: 0 0 100%; }',
             '.ninja-slash-params {\n    flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px 16px;\n    flex: 1 1 320px; min-width: min(100%, 320px);',
         ):
             self.assertIn(marker, page)
         # 仓库只内置 Opus 音效；OGG 备选格式已移除。
         self.assertNotIn('sfx_katana_slash_01.ogg', page)
+        self.assertLess(page.index('id="ninja-mode"'), page.index('打开字幕忍者模式，让拆分字幕变得更加有趣'))
+        self.assertLess(page.index('打开字幕忍者模式，让拆分字幕变得更加有趣'), page.index('id="ninja-sound-field"'))
+        self.assertLess(page.index('id="ninja-sound-field"'), page.index('id="ninja-slash-effect-field"'))
 
     def test_user_text_that_looks_like_a_template_token_is_preserved(self) -> None:
         page = edit.render_editor_page(

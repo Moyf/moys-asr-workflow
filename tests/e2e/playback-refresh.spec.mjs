@@ -156,6 +156,43 @@ test('video preview tab owns preview toggles and playback controls', async ({ pa
   await expect(page.locator('#jkl-playback-mode')).toBeHidden();
 });
 
+test('settings and help navigation scroll independently when panels are short', async ({ page }) => {
+  await page.goto(server.url);
+
+  await page.locator('#editor-settings-toggle').click();
+  const settingsPanel = page.locator('#editor-settings-panel');
+  await settingsPanel.evaluate((element) => { element.style.height = '280px'; });
+  const settingsNav = settingsPanel.locator('.editor-settings-nav');
+  const settingsNavState = await settingsNav.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      overflowY: style.overflowY,
+      overflowX: style.overflowX,
+      canScroll: element.scrollHeight > element.clientHeight,
+    };
+  });
+  expect(settingsNavState).toEqual({ overflowY: 'auto', overflowX: 'hidden', canScroll: true });
+  await settingsNav.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  expect(await settingsNav.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await page.locator('#editor-settings-close').click();
+
+  await page.locator('#help-toggle').click();
+  const helpPanel = page.locator('#help-panel');
+  await helpPanel.evaluate((element) => { element.style.height = '240px'; });
+  const helpNav = helpPanel.locator('.editor-settings-nav');
+  const helpNavState = await helpNav.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      overflowY: style.overflowY,
+      overflowX: style.overflowX,
+      canScroll: element.scrollHeight > element.clientHeight,
+    };
+  });
+  expect(helpNavState).toEqual({ overflowY: 'auto', overflowX: 'hidden', canScroll: true });
+  await helpNav.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  expect(await helpNav.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});
+
 test('JKL direction mode drives the timeline backward and forward', async ({ page }) => {
   await page.goto(server.url);
   await page.waitForFunction(() => {

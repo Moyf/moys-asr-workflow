@@ -1244,7 +1244,7 @@ __WAVEFORM_CSS__
       </label>
     </div>
     <div class="editor-settings-sub-group" id="project-backup-settings">
-      <label class="toggle editor-settings-item"><input type="checkbox" id="project-backup-enabled"> 备份工程</label>
+      <label class="toggle editor-settings-item"><input type="checkbox" id="project-backup-enabled" checked> 备份工程</label>
       <label class="editor-settings-item">自动备份间隔（分钟）<span class="gap-remove-number-control"><input id="project-backup-minutes" type="number" min="1" max="1440" step="1" value="5"></span></label>
       <label class="editor-settings-item">最大保存版本数<span class="gap-remove-number-control"><input id="project-backup-limit" type="number" min="1" max="1000" step="1" value="20"></span></label>
       <div class="editor-settings-field"><button type="button" id="project-backup-open">打开备份文件夹</button></div>
@@ -1277,6 +1277,7 @@ __WAVEFORM_CSS__
         <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，并可启用拆分音效与刀光特效">
           <input type="checkbox" id="ninja-mode"> 字幕忍者
         </label>
+        <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
         <label class="toggle editor-settings-item" id="ninja-sound-field" title="开启后，成功拆分时播放随机刀光音效" hidden>
           <input type="checkbox" id="ninja-sound" checked> 播放音效
         </label>
@@ -1299,7 +1300,6 @@ __WAVEFORM_CSS__
             </span>
           </label>
         </div>
-        <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
       </div>
     </div>
   </div>

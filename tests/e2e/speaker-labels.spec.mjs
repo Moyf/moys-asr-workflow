@@ -163,6 +163,18 @@ test('configures preview-only speaker labels and independently controls SRT expo
   expect(colorStylePreview.textShadow).toBe('');
   expect(colorStylePreview.textStroke).toContain('rgb(196, 160, 25)');
   expect(colorStylePreview.paintOrder).toBe('stroke');
+  const strokeLabelColors = await page.evaluate(() => {
+    const label = document.getElementById('overlay-main-speaker-label');
+    const mainText = document.getElementById('overlay-main-text');
+    return {
+      label: getComputedStyle(label).color,
+      mainText: getComputedStyle(mainText).color,
+    };
+  });
+  expect(strokeLabelColors.label).toBe(strokeLabelColors.mainText);
+  await page.locator('#subtitle-color-style').selectOption('underline');
+  await expect(page.locator('#overlay-main-speaker-label')).toHaveCSS('color', 'rgb(196, 160, 25)');
+  await page.locator('#subtitle-color-style').selectOption('stroke');
   await page.locator('#subtitle-color-underline').uncheck();
   await expect(page.locator('#subtitle-color-style-control')).toBeHidden();
   await page.locator('#subtitle-color-underline').check();
