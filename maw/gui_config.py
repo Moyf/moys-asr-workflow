@@ -296,6 +296,42 @@ SONIOX_COMMON_LANGUAGES: Final[tuple[str, ...]] = (
     "zh", "en", "ja", "ko", "fr", "de", "es", "ru",
 )
 
+# 豆包 audio.language 显式支持的语种（官方文档）；中文与粤语不传 language
+# 即自动识别（还覆盖上海话、闽南语、四川、陕西等方言），因此映射为空。
+# https://www.volcengine.com/docs/6561/1354868
+DOUBAO_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
+    ("", "自动识别"),
+    ("zh", "中文 / Mandarin"),
+    ("yue", "粤语 / Cantonese"),
+    ("en", "英语 / English"),
+    ("ja", "日语 / Japanese"),
+    ("ko", "韩语 / Korean"),
+    ("de", "德语 / German"),
+    ("fr", "法语 / French"),
+    ("es", "西班牙语 / Spanish"),
+    ("pt", "葡萄牙语 / Portuguese"),
+    ("ar", "阿拉伯语 / Arabic"),
+    ("id", "印尼语 / Indonesian"),
+    ("ms", "马来语 / Malay"),
+    ("th", "泰语 / Thai"),
+    ("fil", "菲律宾语 / Filipino"),
+)
+
+DOUBAO_COMMON_LANGUAGES: Final[tuple[str, ...]] = (
+    "", "zh", "yue", "en", "ja", "ko",
+)
+
+DOUBAO_MODELS: Final[tuple[ModelConfig, ...]] = (
+    ModelConfig(
+        id="volc.seedasr.auc",
+        label="豆包录音文件识别 2.0（Seed-ASR）",
+        env_key="VOLC_API_KEY",
+        note="支持说话人分离与即时热词；2.0 准确率更高",
+        supports_speaker=True,
+        languages=DOUBAO_LANGUAGES,
+    ),
+)
+
 QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
         id=QWEN_AUDIO_MODEL_ID,
@@ -555,6 +591,20 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         supports_speaker=True,
         multi_language=True,
         common_languages=SONIOX_COMMON_LANGUAGES,
+    ),
+    ProviderConfig(
+        id="doubao",
+        label="豆包语音识别（火山引擎）",
+        key_url="https://console.volcengine.com/speech/new/experience/asr",
+        models=DOUBAO_MODELS,
+        regions=(),
+        languages=DOUBAO_LANGUAGES,
+        supports_speaker=True,
+        common_languages=DOUBAO_COMMON_LANGUAGES,
+        note=(
+            "媒体会直接上传到火山引擎；base64 直传单文件 ≤25MB 且 ≤120 分钟，"
+            "MAW 会先提取为低码率单声道音频再提交。"
+        ),
     ),
     ProviderConfig(
         id="tencent",

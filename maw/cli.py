@@ -91,7 +91,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--mosp", dest="mosp_output", help="单独指定 .mosp 工程输出路径（等价于 -o SRT MOSP 的第二个路径）")
     parser.add_argument(
         "--provider",
-        choices=("qwen", "soniox", "tencent", "openai", "bcut"),
+        choices=("qwen", "soniox", "doubao", "tencent", "openai", "bcut"),
         default="qwen",
         help="ASR 供应商（默认 qwen；openai 为 OpenAI 兼容接口）",
     )
@@ -125,7 +125,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--workspace-id", help="Qwen Workspace ID；也可放在 .env")
     parser.add_argument("--file-url", help="Qwen 已上传文件的公网/OSS URL")
     parser.add_argument("--vocabulary-id", help="Qwen 预编译词表 ID")
-    parser.add_argument("--hotword", action="append", help="Qwen 即时热词；可重复传入")
+    parser.add_argument("--hotword", action="append", help="Qwen/豆包 即时热词；可重复传入")
     parser.add_argument("--hotword-file", help="Qwen 即时热词 UTF-8 文本文件")
     parser.add_argument("--hotword-weight", help="Qwen 即时热词权重（1-5 或 50）")
     parser.add_argument("--context", help="Qwen-Audio context，最多 400 字符")
@@ -248,6 +248,16 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
         or args.hotword
     ):
         parser.error("--provider soniox 不支持 Qwen 专用的地域、词表、热词、context 或 file-url 参数")
+    if args.provider == "doubao" and (
+        any(
+            value is not None for value in (
+                args.region, args.workspace_id, args.file_url, args.vocabulary_id,
+                args.hotword_file, args.hotword_weight, args.context,
+                args.context_file, args.soniox_context_json,
+            )
+        )
+    ):
+        parser.error("--provider doubao 仅支持 --model、--language、--hotword 和通用字幕参数")
     if args.provider == "tencent" and (
         any(
             value is not None for value in (
@@ -382,6 +392,10 @@ def _invoke_generator(provider: str, argv: Sequence[str]) -> int:
         import generate_subtitle_soniox_api as generator
 
         script_name = "generate_subtitle_soniox_api.py"
+    elif provider == "doubao":
+        import generate_subtitle_doubao_api as generator
+
+        script_name = "generate_subtitle_doubao_api.py"
     elif provider == "bcut":
         import generate_subtitle_bcut_api as generator
 

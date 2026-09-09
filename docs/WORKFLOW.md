@@ -182,6 +182,27 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" -ll 2m --j
 
 输出文件与 Qwen 流程相同（SRT / `.mosp` / edit.html），文件命名标签为 `.soniox.`。注意：Soniox 单文件最长 5 小时；token 粒度是 word/sub-word，中文不保证逐字；转写完成后脚本会自动删除云端文件与转写记录。
 
+## 用豆包语音识别转写（火山引擎，可选，支持说话人与热词）
+
+在[火山引擎语音控制台](https://console.volcengine.com/speech/new/experience/asr)开通「大模型录音文件识别」并获取单一 `VOLC_API_KEY`（新版控制台，无需 AppID）后：
+
+```powershell
+uv run python generate_subtitle_doubao_api.py "D:\Videos\example.mp4" -ll 2m --json
+```
+
+常用可选项：
+
+```text
+--speaker            开启说话人分离，speaker 标签写入工程文件（不改变字幕颜色）
+--speaker-colors     在 --speaker 基础上，把不同说话人一次性映射成 5 种字幕颜色
+--language en        显式语种提示（en/ja/ko/de/fr/es/pt/ar/id/ms/th/fil）；中文与粤语无需指定
+--hotword "词"       即时热词，可重复传入；直传豆包 corpus.context
+--model RESOURCE     覆盖资源 ID，默认 volc.seedasr.auc（2.0），可选 volc.bigasr.auc_idle 闲时版
+--with-waveform      在媒体旁生成 .quapeaks 波形缓存
+```
+
+豆包接口为异步 submit/query，`utterances[].words[]` 提供字/词级毫秒时间码，标点保留在句文本中。MAW 会先把媒体提取为 ogg + opus 24kbps 单声道音频再 base64 直传；官方限制单文件 ≤25MB 且 ≤120 分钟，超限任务请先用 `-ll` 截取或分割文件（Files API 大文件通道暂未接入）。费用按音频 token 计量（约 6.25 token/秒），以火山引擎控制台为准。
+
 ## 用腾讯云录音文件识别转写（可选，支持字词时间码与说话人）
 
 在 `.env` 中填写 `TENCENT_SECRET_ID` 和 `TENCENT_SECRET_KEY` 后，可以使用默认的 `16k_zh_en_2.0` 引擎：
