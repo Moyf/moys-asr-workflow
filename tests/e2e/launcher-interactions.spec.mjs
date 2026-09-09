@@ -26,11 +26,13 @@ test('OpenAI ASR exposes official and OpenRouter models with a conditional Custo
 
   await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI（及兼容接口）');
   await expect(page.locator('#model')).toHaveValue('whisper-1');
-  await expect(page.locator('#model option')).toHaveCount(6);
+  await expect(page.locator('#model option')).toHaveCount(8);
   expect(await page.locator('#model option').allTextContents()).toEqual([
     'whisper-1',
     'gpt-4o-transcribe',
     'gpt-4o-mini-transcribe',
+    'gpt-transcribe（支持关键词）',
+    'gpt-4o-transcribe-diarize（说话人分离）',
     'whisper-large-v3-turbo（OpenRouter）',
     'whisper-large-v3（OpenRouter）',
     '自定义（Custom）',
@@ -48,6 +50,22 @@ test('OpenAI ASR exposes official and OpenRouter models with a conditional Custo
   await expect(page.locator('#modelNote')).toContainText('OpenAI 官方参考价');
   await page.locator('#openaiBaseUrl').fill('https://relay.example/v1');
   await expect(page.locator('#modelNote')).not.toContainText('参考价');
+
+  await page.locator('#openaiBaseUrl').fill('https://api.openai.com/v1');
+  await page.locator('#model').selectOption('gpt-transcribe');
+  await page.locator('#advancedToggle').click();
+  await expect(page.locator('#openaiAdvancedOptions')).toBeVisible();
+  await expect(page.locator('#openaiPromptField')).toBeVisible();
+  await expect(page.locator('#openaiKeywordsField')).toBeVisible();
+  await expect(page.locator('#openaiDiarizationField')).toBeHidden();
+
+  await page.locator('#model').selectOption('gpt-4o-transcribe-diarize');
+  await expect(page.locator('#openaiPromptField')).toBeHidden();
+  await expect(page.locator('#openaiKeywordsField')).toBeHidden();
+  await expect(page.locator('#openaiDiarizationField')).toBeVisible();
+  await expect(page.locator('#openaiDiarizationUnsupported')).toBeHidden();
+  await page.locator('#openaiBaseUrl').fill('https://openrouter.ai/api/v1');
+  await expect(page.locator('#openaiDiarizationUnsupported')).toBeVisible();
 
   await page.locator('#model').selectOption('custom-asr');
   await expect(page.locator('#openaiModelField')).toBeVisible();

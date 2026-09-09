@@ -360,7 +360,7 @@
 {
   "subtitle": {
     "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei", "color": "#ffffff",
-    "speaker_labels": { "enabled": true, "separator": "：", "names": { "yellow": "SP1", "green": "SP2", "red": "SP3", "purple": "SP4", "blue": "SP5" } }
+    "speaker_labels": { "mapping_enabled": true, "enabled": true, "separator": "：", "names": { "yellow": "SP1", "green": "SP2", "red": "SP3", "purple": "SP4", "blue": "SP5" } }
   },
   "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#ffd34d" },
   "sticker": { "x": 0.73, "y": 0.04, "width": 0.24, "height": 0.3 }
@@ -380,7 +380,7 @@
 | `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#ffd34d` |
 | `color_underline` | `boolean` | 否 | 播放预览是否按字幕颜色快照应用颜色样式；缺失时视为 `true`（默认开启），设为 `false` 时关闭颜色预览。保留该字段以兼容旧工程 |
 | `color_style` | `string` | 否 | 颜色预览样式：`underline`（下划线，默认）、`text`（文字颜色）、`shadow`（阴影）或 `stroke`（描边） |
-| `speaker_labels` | `object` | 否 | 说话人标签预览设置；颜色默认对应 `SP1`～`SP5`，只显示在预览中，不修改 `segments[*].text` |
+| `speaker_labels` | `object` | 否 | 颜色到说话人的映射与标签预览设置；颜色默认对应 `SP1`～`SP5`，只显示在预览中，不修改 `segments[*].text` |
 | `preview.extension_subtitle` | `object` | 否 | 副字幕样式；同样支持 `font_size`、`font_family`、`color`，没有字号时默认比主字幕小 2px |
 
 ### 约束
@@ -389,7 +389,7 @@
 - 若存在 `font_size`，必须是 `[12, 96]` 内的数字；若存在 `font_family`，必须是内置字体键或非空本机字体族名称，最长 128 个字符，不能包含控制字符；若存在 `background_color`，必须是 `#RRGGBB` 格式；若存在 `background_alpha`，必须是 `[0, 1]` 内的数字。
 - 若存在 `color`，必须是 `#RRGGBB` 六位十六进制颜色；副字幕样式不包含独立几何，沿用 `preview.subtitle` 的预览框。
 - 若存在 `color_underline`，必须是布尔值；其他取值视为缺失并按默认 `true` 处理；若存在 `color_style`，必须是 `underline`、`text`、`shadow` 或 `stroke`，其他取值视为缺失并按默认 `underline` 处理。
-- 若存在 `speaker_labels`，必须是对象；其中 `enabled`（如存在）必须是布尔值，`separator`（如存在）必须是长度不超过 16 且不含控制字符的字符串（允许为空或空格），`names`（如存在）必须是对象，五种颜色的名称必须是长度不超过 64 且不含控制字符的字符串；名称允许为空以隐藏该颜色的标签。编辑器的“导出时附加说话人名称”选项开启时，SRT 会在字幕前附加对应名称及分隔符。
+- 若存在 `speaker_labels`，必须是对象；其中 `mapping_enabled`、`enabled`（如存在）必须是布尔值，`separator`（如存在）必须是长度不超过 16 且不含控制字符的字符串（允许为空或空格），`names`（如存在）必须是对象，五种颜色的名称必须是长度不超过 64 且不含控制字符的字符串；名称允许为空以隐藏该颜色的标签。编辑器的“将颜色映射为说话人”开启后，预览和“导出时附加说话人名称”可以使用这些映射。
 - 盒子必须留在播放器内：`x + width <= 1` 且 `y + height <= 1`。
 - 编辑器额外强制最小可读尺寸 `width >= 0.20`、`height >= 0.08`（这是编辑器 UX 钳制，非数据契约的硬校验；导入时会被编辑器再钳制）。
 - `preview` 缺失或 `preview.subtitle` 缺失时按**旧工程**处理，编辑器使用默认几何 `{ x: 0.1, y: 0.76, width: 0.8, height: 0.16 }`——字幕带占 76%→92%（底部留 8%），宽度 80% 居中。
@@ -812,7 +812,8 @@ uv run python edit.py your_generated.mosp
 | `preview.subtitle.background_color` | string | ❌ | 6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `preview.subtitle.background_alpha` | number | ❌ | 不透明度 `[0,1]`；缺失时使用 `0.65`，设为 `0` 时隐藏字幕背景 |
 | `preview.subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#ffffff` |
-| `preview.subtitle.speaker_labels` | object | ❌ | 说话人标签预览设置；默认关闭，名称默认为黄/绿/红/紫/蓝对应 `SP1`～`SP5` |
+| `preview.subtitle.speaker_labels` | object | ❌ | 颜色到说话人的映射与标签预览设置；默认关闭，名称默认为黄/绿/红/紫/蓝对应 `SP1`～`SP5` |
+| `preview.subtitle.speaker_labels.mapping_enabled` | boolean | ❌ | 是否启用颜色到说话人的映射；关闭时不显示映射配置，也不在预览和导出中使用说话人名称 |
 | `preview.subtitle.speaker_labels.enabled` | boolean | ❌ | 开启后在播放器预览字幕前显示对应颜色的说话人名称；不修改字幕文本 |
 | `preview.subtitle.speaker_labels.separator` | string | ❌ | 说话人名称与字幕内容之间的分隔符，默认 `：`；最长 16 个字符，允许为空、空格或英文引号，不含控制字符 |
 | `preview.subtitle.speaker_labels.names.<color>` | string | ❌ | 颜色对应名称，最长 64 个字符；允许为空；`<color>` 为 `yellow` / `green` / `red` / `purple` / `blue` |

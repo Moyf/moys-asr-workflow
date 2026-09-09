@@ -34,7 +34,7 @@ from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
 from maw.postprocess import PostprocessStepError  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
-from maw.postprocess_pipeline import PostprocessPipelineError  # noqa: E402
+from maw.postprocess_pipeline import PostprocessPipelineError, save_postprocess_plan  # noqa: E402
 from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
 from maw.runtimes import OCR  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
@@ -117,6 +117,8 @@ class GuiWebBridgeTests(unittest.TestCase):
                 "whisper-1",
                 "gpt-4o-transcribe",
                 "gpt-4o-mini-transcribe",
+                "gpt-transcribe",
+                "gpt-4o-transcribe-diarize",
                 "whisper-large-v3-turbo",
                 "whisper-large-v3",
                 "custom-asr",
@@ -124,6 +126,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         )
         self.assertIn("OpenRouter", openai["models"][0]["openrouterNote"])
         self.assertIn("0.006", openai["models"][0]["priceNote"])
+        self.assertTrue(openai["models"][0]["supportsPrompt"])
+        self.assertTrue(openai["models"][3]["supportsKeywords"])
+        self.assertIn("0.0045", openai["models"][3]["openrouterNote"])
+        self.assertTrue(openai["models"][4]["supportsDiarization"])
         self.assertEqual(config["models"][0]["id"], "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(config["models"][1]["id"], "fun-asr")
         self.assertEqual(config["models"][2]["id"], "qwen3-asr-flash-filetrans")
@@ -449,6 +455,51 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertEqual(request.provider, "openai")
         self.assertEqual(request.model, "gpt-4o-transcribe")
+
+    def test_openai_advanced_options_are_forwarded_for_supported_models(self) -> None:
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+
+        request = _request_from_payload({
+            "providerId": "openai",
+            "modelId": "gpt-transcribe",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "clip.srt"),
+            "apiKey": "sk-openai",
+            "openaiBaseUrl": "https://api.openai.com/v1",
+            "openaiPrompt": "A product meeting.",
+            "openaiKeywords": "OpenAI\nMAW\n",
+            "generateHtml": False,
+        }, self.env_path)
+
+        self.assertEqual(request.openai_prompt, "A product meeting.")
+        self.assertEqual(request.openai_keywords, ("OpenAI", "MAW"))
+        self.assertFalse(request.openai_diarize)
+
+    def test_openai_diarize_is_forwarded_and_rejected_for_openrouter(self) -> None:
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+        payload = {
+            "providerId": "openai",
+            "modelId": "gpt-4o-transcribe-diarize",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "clip.srt"),
+            "apiKey": "sk-openai",
+            "openaiBaseUrl": "https://api.openai.com/v1",
+            "speakerColors": True,
+            "generateHtml": False,
+        }
+
+        request = _request_from_payload(payload, self.env_path)
+        self.assertTrue(request.openai_diarize)
+        self.assertTrue(request.speaker_colors)
+
+        with self.assertRaises(PreflightError) as context:
+            _request_from_payload(
+                {**payload, "openaiBaseUrl": "https://openrouter.ai/api/v1"},
+                self.env_path,
+            )
+        self.assertEqual(context.exception.code, "openai_diarize_openrouter_unsupported")
 
     def test_openrouter_prefixes_builtin_openai_model_but_preserves_custom_model(self) -> None:
         media = self.root / "clip.wav"
@@ -2866,6 +2917,30 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertIsNone(request.postprocess_plan)
 
+    def test_request_from_payload_reads_shared_extra_strong_punct(self) -> None:
+        """共享断句配置的额外断句符号会下发给云端转写作为强断句符号。"""
+        save_postprocess_plan(self.env_path, {
+            "enabled": False,
+            "steps": [{
+                "id": "match",
+                "enabled": True,
+                "extraSplitPunctuation": ["?", "!", "", "——"],
+                "preservePunctuation": ["~"],
+            }],
+        })
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+
+        request = _request_from_payload({
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }, self.env_path)
+
+        self.assertEqual(request.extra_strong_punct, "?!——")
+        # 保留符号只影响句尾剥除集合，与额外断句符号互不影响。
+        self.assertIn("，", request.strip_tail_punct)
+
     def test_start_transcription_rejects_singapore_without_workspace(self) -> None:
         """Given Singapore region, When workspace is absent, Then workspace blocks."""
         media = self.root / "clip.mp3"
@@ -4094,11 +4169,11 @@ class LauncherAssetContractTests(unittest.TestCase):
             script,
         )
         self.assertIn(
-            'toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，同时对转写后处理的句尾剥除生效。"',
+            'toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。"',
             launcher_script,
         )
         self.assertIn(
-            'toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, and also drive tail-punctuation stripping in transcription post-processing."',
+            'toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, cloud transcription treats them as strong break symbols too, and they also drive tail-punctuation stripping in transcription post-processing."',
             launcher_script,
         )
 

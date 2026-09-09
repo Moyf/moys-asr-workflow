@@ -10,7 +10,22 @@
 (function () {
   try {
     var saved = JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1') || '{}');
-    if (saved && saved.theme === 'light') document.documentElement.dataset.theme = 'light';
+    var savedTheme = saved && saved.theme;
+    var theme = ['light', 'dark', 'system'].includes(savedTheme) ? savedTheme : 'dark';
+    var savedAccentColor = saved && saved.accentColor;
+    var accentColor = ['blue', 'red', 'orange', 'custom'].includes(savedAccentColor)
+      ? savedAccentColor : 'blue';
+    var customAccentColor = saved && saved.accentColorCustom;
+    if (!/^#[0-9a-f]{6}$/i.test(customAccentColor || '')) customAccentColor = '#6ca5e8';
+    document.documentElement.dataset.accent = accentColor;
+    if (accentColor === 'custom') {
+      document.documentElement.style.setProperty('--accent-custom', customAccentColor);
+    }
+    var prefersDark = typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (theme === 'light' || (theme === 'system' && !prefersDark)) {
+      document.documentElement.dataset.theme = 'light';
+    }
   } catch (e) { /* 忽略：保持默认暗色 */ }
 })();
 </script>
@@ -44,8 +59,11 @@
     --border:        #353a44;
     --border-strong: #3d4350;
 
-    /* 强调色 —— 蓝色为唯一主强调（活动/选中/聚焦） */
-    --accent:        #6ca5e8;
+    /* 强调色 —— 蓝色为默认主强调（活动/选中/聚焦）；界面设置可切换整套 accent 令牌。 */
+    --accent-blue:   #6ca5e8;
+    --accent-custom: var(--accent-blue);
+    --accent:        var(--accent-blue);
+    --accent-active-fg: var(--bg-base);
     --accent-hover:  #84b7f0;
     --accent-strong: #5a8fd6;
     --accent-tint:        rgba(108, 165, 232, 0.12);
@@ -273,7 +291,9 @@
     /* 强调色 —— 加深以在亮底保持对比。原 #3d7fcf 白底仅 4.1:1、#5091de 作为常驻文字色
        （active 时间码 / 波形时间徽章 / 引用链接）仅 2.9-3.3:1，未达自身「亮底 AA」的设计
        目标；再加深一档至 4.7+ / 5.9+，tint 同步换基色。 */
-    --accent:        #3874c9;
+    --accent-blue:   #3874c9;
+    --accent:        var(--accent-blue);
+    --accent-active-fg: var(--bg-base);
     --accent-hover:  #2a5a9e;
     --accent-strong: #2f6bb8;
     --accent-tint:        rgba(56, 116, 201, 0.12);
@@ -339,6 +359,9 @@
     --wave-peak:            #27875f;   /* 原 #2f9e6f 在浅行底上仅 2.6:1，波形峰值发虚，加深至 3.5:1 */
     --wave-peak-dim:        #7d8898;   /* 媒体不可用时的降态峰：与 peak 同明度、去饱和，原值过浅 */
     --wave-cue-mix:         rgba(255, 255, 255, 0.82);
+    /* 字幕块保留透明度，透出波形行背景；主字幕视觉上接近白色，副字幕略灰。 */
+    --wave-cue-main-bg:     rgba(255, 255, 255, 0.82);
+    --wave-cue-extension-bg: rgba(238, 240, 244, 0.68);
     --wave-cue-text:        #16202c;
     --wave-cue-active-mix:  #a9c8e8;
     --wave-cue-handle:      rgba(32, 52, 80, 0.14);
@@ -436,6 +459,63 @@
     --gap-scan-hover-border:#dc8e4c;
     --gap-scan-inset:       rgba(255, 255, 255, 0.26);
     --gap-scan-shadow:      rgba(176, 105, 45, 0.18);
+  }
+
+  /* 可选界面强调色：预设同时覆盖所有由 accent 派生的令牌，保持 hover、聚焦、选中和提示的色相一致。 */
+  :root[data-accent="red"] {
+    --accent:        #c25656;
+    --accent-hover:  #d06a6a;
+    --accent-strong: #b34a4a;
+    --accent-tint:   rgba(194, 86, 86, 0.12);
+    --accent-tint-strong: rgba(194, 86, 86, 0.22);
+    --accent-soft:   rgba(194, 86, 86, 0.16);
+    --accent-line:   #c25656;
+    --cue-hover-bg:  rgba(194, 86, 86, 0.20);
+  }
+  :root[data-theme="light"][data-accent="red"] {
+    --accent:        #c84545;
+    --accent-hover:  #a93232;
+    --accent-strong: #b53e3e;
+    --accent-tint:   rgba(200, 69, 69, 0.12);
+    --accent-tint-strong: rgba(200, 69, 69, 0.20);
+    --accent-soft:   rgba(200, 69, 69, 0.16);
+    --accent-line:   #c84545;
+    --cue-hover-bg:  rgba(200, 69, 69, 0.18);
+  }
+  :root[data-accent="orange"] {
+    --accent:        #e0a05a;
+    --accent-hover:  #efb16b;
+    --accent-strong: #cc8b42;
+    --accent-tint:   rgba(224, 160, 90, 0.12);
+    --accent-tint-strong: rgba(224, 160, 90, 0.22);
+    --accent-soft:   rgba(224, 160, 90, 0.16);
+    --accent-line:   #e0a05a;
+    --cue-hover-bg:  rgba(224, 160, 90, 0.20);
+  }
+  :root[data-theme="light"][data-accent="orange"] {
+    --accent:        #d9834a;
+    --accent-hover:  #bb6737;
+    --accent-strong: #c87340;
+    --accent-tint:   rgba(217, 131, 74, 0.12);
+    --accent-tint-strong: rgba(217, 131, 74, 0.20);
+    --accent-soft:   rgba(217, 131, 74, 0.16);
+    --accent-line:   #d9834a;
+    --cue-hover-bg:  rgba(217, 131, 74, 0.18);
+    --accent-active-fg: #2d1c13;
+  }
+  :root[data-accent="custom"] {
+    --accent:        var(--accent-custom, var(--accent-blue));
+    --accent-hover:  color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 82%, white);
+    --accent-strong: color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 84%, black);
+    --accent-tint:   color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 12%, transparent);
+    --accent-tint-strong: color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 22%, transparent);
+    --accent-soft:   color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 16%, transparent);
+    --accent-line:   var(--accent-custom, var(--accent-blue));
+    --cue-hover-bg:  color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 20%, transparent);
+  }
+  :root[data-theme="light"][data-accent="custom"] {
+    --accent-hover:  color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 82%, black);
+    --accent-strong: color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 88%, black);
   }
 
   * { box-sizing: border-box; }
@@ -918,17 +998,6 @@
   .subtitle-preview-settings-fields {
     display: grid; gap: 8px; width: 100%; min-width: 0;
   }
-  /* 「字幕预览」分组内的主/副字幕卡片：比分组底色深一档形成嵌套层级。 */
-  .subtitle-preview-track-settings {
-    display: grid; gap: 8px; width: 100%; min-width: 0; box-sizing: border-box;
-    padding: 10px 12px; background: var(--bg-panel); border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-  }
-  .subtitle-preview-track-settings[hidden] { display: none; }
-  .subtitle-preview-track-title {
-    margin: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600;
-    letter-spacing: .06em;
-  }
   .subtitle-preview-setting-pair {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0;
   }
@@ -938,8 +1007,10 @@
   }
   .subtitle-preview-setting-cell > span { color: var(--text-secondary); white-space: nowrap; }
   .subtitle-preview-setting-cell select { width: 100%; min-width: 0; }
-  .subtitle-preview-setting-cell input[type="color"] {
-    width: 100%; height: 24px; min-width: 0; padding: 2px;
+  .editor-settings-color-input,
+  .subtitle-preview-setting-cell input[type="color"],
+  .subtitle-preview-setting-row input[type="color"] {
+    width: 42px; height: 26px; min-width: 42px; padding: 2px;
     background: var(--bg-input); border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm); cursor: pointer;
   }
@@ -991,11 +1062,7 @@
   .subtitle-preview-setting-row[hidden] { display: none; }
   .subtitle-preview-setting-row > span { color: var(--text-secondary); white-space: nowrap; }
   .subtitle-preview-setting-row select { width: 100%; min-width: 0; }
-  .subtitle-preview-setting-row input[type="color"] {
-    width: 100%; height: 24px; min-width: 0; padding: 2px;
-    background: var(--bg-input); border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm); cursor: pointer;
-  }
+  .subtitle-color-style-control select { width: min(180px, 100%); justify-self: start; }
   .subtitle-preview-alpha-control { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .subtitle-preview-alpha-control input[type="range"] { flex: 1 1 auto; min-width: 0; }
   .subtitle-preview-alpha-control output {
@@ -1036,19 +1103,14 @@
     border: 1px solid color-mix(in srgb, var(--text-primary) 30%, transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, #000 35%, transparent);
   }
-  .subtitle-preview-extension-settings {
-    margin-top: 0; padding-top: 8px;
-  }
-  .subtitle-preview-extension-settings[hidden] { display: none; }
   @media (max-width: 380px) {
     .subtitle-preview-setting-pair { grid-template-columns: 1fr; }
     .subtitle-speaker-label-list { grid-template-columns: 1fr; }
   }
 
   /* 全局设置是可拖动、可缩放的非模态独立窗口：左侧垂直标签页 + 右侧内容区。
-     z-index 高于帮助窗口（320，帮助链接会直接打开本窗口），
-     低于锚定弹出面板（420）与表情包根目录弹窗（335），
-     保证窗口内的「配置合并字符 / 配置拆分标点」浮层和表情包弹窗都能盖住窗口。 */
+     330 是未激活时的兜底值；打开或点击后由 editor.js 的浮层栈动态提升，
+     保证最后激活的窗口/齿轮弹窗在最上层。 */
   .editor-settings-window {
     display: none; position: fixed; z-index: 330;
     flex-direction: column;
@@ -1082,9 +1144,14 @@
   .editor-settings-window-body { display: flex; flex: 1 1 auto; min-height: 0; }
   .editor-settings-nav {
     display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 2px;
-    width: 132px; padding: 10px 8px;
+    width: 132px; min-height: 0; padding: 10px 8px;
+    overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
     background: var(--bg-raised); border-right: 1px solid var(--border-subtle);
     border-radius: 0 0 0 var(--radius-lg);
+  }
+  .editor-settings-nav-group-label {
+    margin: 8px 4px 2px; color: var(--text-faint);
+    font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
   }
   .editor-settings-nav-tab {
     padding: 6px 10px; text-align: left; color: var(--text-secondary); background: none;
@@ -1144,6 +1211,54 @@
     color: var(--text-secondary); font-size: 0.8em;
     font-weight: 600; letter-spacing: .08em;
   }
+  .editor-settings-segmented {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px; width: 100%; padding: 2px;
+    background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  }
+  .editor-settings-accent-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .editor-settings-segment {
+    min-width: 0; min-height: 26px; padding: 4px 8px;
+    border: 0; border-radius: var(--radius-sm);
+    background: transparent; color: var(--text-muted);
+    font-size: 12px; line-height: 1.25; cursor: pointer;
+    transition: background var(--t-fast), color var(--t-fast);
+  }
+  .editor-settings-segment:hover { background: var(--btn-bg-hover); color: var(--text-primary); }
+  .editor-settings-segment:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-segment.active {
+    background: var(--accent); color: var(--accent-active-fg, var(--bg-base)); font-weight: 400;
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .editor-settings-segment.active:hover { background: var(--accent-hover); color: var(--accent-active-fg, var(--bg-base)); }
+  #editor-settings-page-interface > .editor-settings-group {
+    gap: 0; padding: 0; background: transparent; border: 0; border-radius: 0;
+  }
+  #editor-settings-page-interface .interface-theme-setting,
+  #editor-settings-page-interface .interface-accent-setting { gap: 6px; }
+  .editor-settings-accent-option { display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .editor-settings-accent-swatch {
+    display: inline-block; flex: 0 0 auto; width: 10px; height: 10px; border: 1px solid rgba(0, 0, 0, 0.24);
+    border-radius: 50%; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  }
+  .editor-settings-accent-swatch[data-accent-swatch="blue"] { background: #6ca5e8; }
+  .editor-settings-accent-swatch[data-accent-swatch="red"] { background: #c25656; }
+  .editor-settings-accent-swatch[data-accent-swatch="orange"] { background: #e0a05a; }
+  .editor-settings-accent-swatch[data-accent-swatch="custom"] { background: var(--accent-custom, var(--accent-blue)); }
+  :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="blue"] { background: #3874c9; }
+  :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="red"] { background: #c84545; }
+  :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="orange"] { background: #d9834a; }
+  .editor-settings-custom-color {
+    display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px;
+  }
+  .editor-settings-custom-color[hidden] { display: none; }
+  .editor-settings-color-input:focus-visible {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
+  .editor-settings-custom-color output {
+    color: var(--text-muted); font-family: var(--font-mono); font-size: 11px;
+  }
+  .interface-language-row { justify-content: space-between; width: 100%; }
   .split-language-type-row {
     display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
     width: 100%; min-width: 0;
@@ -1271,6 +1386,8 @@
     flex: 0 0 100%; gap: 3px 12px;
   }
   .ninja-toggle-group > .editor-settings-hint { flex: 0 0 100%; }
+  .ninja-toggle-group > #ninja-sound-field,
+  .ninja-toggle-group > #ninja-slash-effect-field { flex: 0 0 100%; }
   /* 刀光参数紧跟显示开关；空间足够时同行，不足时自动换行。 */
   .ninja-slash-params {
     flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px 16px;
@@ -1293,13 +1410,24 @@
   .editor-settings-panel input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
   /* 通用按钮样式不作用于设置导航标签：标签有独立的基础/hover/active 外观，
      否则这里的更高优先级会在 hover 时盖掉 active 高亮。 */
-  .editor-settings-panel button:not(.editor-settings-nav-tab) {
+  .editor-settings-panel button:not(.editor-settings-nav-tab):not(.editor-settings-segment) {
     min-width: 26px; padding: 3px 7px; color: var(--btn-text); background: var(--btn-bg);
     border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
     transition: background var(--t-fast), border-color var(--t-fast), filter var(--t-fast);
   }
-  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
-  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab):not(.editor-settings-segment) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab):not(.editor-settings-segment) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-panel button:not(.editor-settings-nav-tab).editor-settings-inline-action {
+    min-width: 0; padding: 0 2px; color: var(--accent); background: transparent; border: 0;
+    border-radius: var(--radius-sm); font: inherit; line-height: inherit; text-decoration: underline;
+    text-underline-offset: 2px; vertical-align: baseline;
+  }
+  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab).editor-settings-inline-action {
+    color: var(--text-primary); background: transparent; border-color: transparent;
+  }
+  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab).editor-settings-inline-action {
+    outline: 2px solid var(--accent-line); outline-offset: 1px;
+  }
   .editor-settings-panel button:disabled,
   .editor-settings-panel select:disabled,
   .editor-settings-panel input:disabled { opacity: .42; cursor: not-allowed; }
@@ -1519,7 +1647,7 @@
   .toolbar .dropdown-item.is-missing { opacity: .55; }
   .toolbar .dropdown-item.is-missing .recent-project-name { text-decoration: line-through; }
   .toolbar .recent-project-setting input { margin: 0; }
-  .toolbar .language-toggle { min-width: 38px; font-weight: 700; }
+  .editor-settings-panel .language-toggle { min-width: 72px; font-weight: 400; }
   .toolbar .dropdown-sep {
     height: 1px; background: var(--border-subtle); margin: 4px 0;
   }
@@ -1792,7 +1920,7 @@
     container: cue-panel / inline-size;
     gap: 10px; margin-bottom: 8px; padding: 10px 12px;
     background: var(--bg-panel);
-    border: 1px solid var(--border-subtle); border-left: 3px solid var(--amber); border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
     box-shadow: var(--shadow-2);
   }
   .current-cue-panel > .cue-editor-toolbar {
@@ -2432,7 +2560,8 @@
     width: 100%;
     min-width: 0;
   }
-  /* 从全局设置窗口打开，必须盖住设置窗口（330）。 */
+  /* 从全局设置窗口打开，必须盖住设置窗口。330/335 只是 JS 初始化前的静态兜底；
+     浮层栈启动后由 editor.js 在打开时动态置顶（见 setStickerRootModalOpen）。 */
   #sticker-root-modal { z-index: 335; }
   #sticker-root-modal .modal {
     width: min(540px, calc(100vw - 32px));
@@ -3158,6 +3287,7 @@
   .modal .preview,
   .settings-panel,
   .editor-settings-pages,
+  .editor-settings-nav,
   .multi-subtitle-import-preview,
   .gap-remove-list,
   .gap-remove-panel-body,
@@ -3796,7 +3926,14 @@
   bottom: var(--multi-subtitle-bottom-inset);
   outline-style: dotted;
   outline-color: color-mix(in srgb, var(--cue-color) 50%, var(--wave-cue-mix));
-  background: color-mix(in srgb, var(--cue-color) 10%, var(--wave-cue-mix));
+  background: var(--wave-cue-extension-bg, color-mix(in srgb, var(--cue-color) 10%, var(--wave-cue-mix)));
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"] {
+  background: var(--wave-cue-main-bg, color-mix(in srgb, var(--cue-color) 42%, var(--wave-cue-mix)));
+}
+/* 亮色主题的主字幕默认保持白底，但有颜色映射时不能把 --cue-color 盖掉。 */
+:root[data-theme="light"] .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"].has-subtitle-color {
+  background: color-mix(in srgb, var(--cue-color) 42%, var(--wave-cue-main-bg));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-badge {
   /* 双字幕时 badge 要放在最上方主字幕块之上；单层行继续使用默认 bottom。 */
@@ -4481,10 +4618,8 @@
   <span class="info">当前 <b id="now">00:00.000</b></span>
   <span class="info">已选 <b id="sel-count">0</b></span>
   <span class="toolbar-utility-group" role="group" aria-label="编辑器工具">
-    <button type="button" id="language-toggle" class="language-toggle" title="Switch to English">🌐English</button>
     <button type="button" id="editor-settings-toggle" title="打开全局设置窗口" aria-expanded="false" aria-controls="editor-settings-panel">⚙️ 全局设置</button>
     <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">🤔 帮助</button>
-    <button type="button" id="theme-toggle" title="切换到亮色主题" aria-label="切换到亮色主题">🌖</button>
   </span>
 </div>
 
@@ -5013,17 +5148,63 @@
   </header>
   <div class="editor-settings-window-body">
     <nav class="editor-settings-nav" role="tablist" aria-orientation="vertical" aria-label="设置分区">
-      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-general" role="tab" data-settings-tab="general" aria-selected="true" aria-controls="editor-settings-page-general">通用操作</button>
+      <div class="editor-settings-nav-group-label" aria-hidden="true">基础</div>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-interface" role="tab" data-settings-tab="interface" aria-selected="true" aria-controls="editor-settings-page-interface">界面</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-general" role="tab" data-settings-tab="general" aria-selected="false" aria-controls="editor-settings-page-general" tabindex="-1">通用操作</button>
+      <div class="editor-settings-nav-group-label" aria-hidden="true">媒体</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-subtitle-preview" role="tab" data-settings-tab="subtitle-preview" aria-selected="false" aria-controls="editor-settings-page-subtitle-preview" tabindex="-1">视频预览</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-subtitle-style" role="tab" data-settings-tab="subtitle-style" aria-selected="false" aria-controls="editor-settings-page-subtitle-style" tabindex="-1">字幕样式</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-subtitle-color" role="tab" data-settings-tab="subtitle-color" aria-selected="false" aria-controls="editor-settings-page-subtitle-color" tabindex="-1">字幕颜色</button>
+      <div class="editor-settings-nav-group-label" aria-hidden="true">编辑</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-timebase" role="tab" data-settings-tab="timebase" aria-selected="false" aria-controls="editor-settings-page-timebase" tabindex="-1">时间基准</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-split-merge" role="tab" data-settings-tab="split-merge" aria-selected="false" aria-controls="editor-settings-page-split-merge" tabindex="-1">拆分与合并</button>
+      <div class="editor-settings-nav-group-label" aria-hidden="true">工程与输出</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-export" role="tab" data-settings-tab="export" aria-selected="false" aria-controls="editor-settings-page-export" tabindex="-1">导出</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-save" role="tab" data-settings-tab="save" aria-selected="false" aria-controls="editor-settings-page-save" tabindex="-1">保存</button>
+      <div class="editor-settings-nav-group-label" aria-hidden="true">扩展功能</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-sticker" role="tab" data-settings-tab="sticker" aria-selected="false" aria-controls="editor-settings-page-sticker" tabindex="-1">表情包</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-easter-eggs" role="tab" data-settings-tab="easter-eggs" aria-selected="false" aria-controls="editor-settings-page-easter-eggs" tabindex="-1">彩蛋</button>
     </nav>
     <div class="editor-settings-pages">
-  <div class="editor-settings-page" id="editor-settings-page-general" role="tabpanel" aria-labelledby="editor-settings-tab-general">
+  <div class="editor-settings-page" id="editor-settings-page-interface" role="tabpanel" aria-labelledby="editor-settings-tab-interface">
+  <span class="editor-settings-group-heading" id="interface-appearance-title">外观</span>
+  <div class="editor-settings-group" role="group" aria-labelledby="interface-appearance-title">
+    <div class="editor-settings-sub-group">
+    <div class="editor-settings-field interface-theme-setting">
+      <span class="editor-settings-item">主题</span>
+      <div class="editor-settings-segmented" role="group" aria-label="主题">
+        <button type="button" class="editor-settings-segment" data-editor-theme="light" aria-pressed="false">明亮模式</button>
+        <button type="button" class="editor-settings-segment" data-editor-theme="dark" aria-pressed="false">暗色模式</button>
+        <button type="button" class="editor-settings-segment" data-editor-theme="system" aria-pressed="false">跟随系统</button>
+      </div>
+    </div>
+    <div class="editor-settings-field interface-accent-setting">
+      <span class="editor-settings-item">强调色</span>
+      <div class="editor-settings-segmented editor-settings-accent-options" role="group" aria-label="强调色">
+        <button type="button" class="editor-settings-segment editor-settings-accent-option" data-editor-accent="blue" aria-pressed="false"><span class="editor-settings-accent-swatch" data-accent-swatch="blue" aria-hidden="true"></span><span>蓝色</span></button>
+        <button type="button" class="editor-settings-segment editor-settings-accent-option" data-editor-accent="red" aria-pressed="false"><span class="editor-settings-accent-swatch" data-accent-swatch="red" aria-hidden="true"></span><span>红色</span></button>
+        <button type="button" class="editor-settings-segment editor-settings-accent-option" data-editor-accent="orange" aria-pressed="false"><span class="editor-settings-accent-swatch" data-accent-swatch="orange" aria-hidden="true"></span><span>橙色</span></button>
+        <button type="button" class="editor-settings-segment editor-settings-accent-option" data-editor-accent="custom" aria-pressed="false"><span class="editor-settings-accent-swatch" data-accent-swatch="custom" aria-hidden="true"></span><span>自定义</span></button>
+      </div>
+      <div class="editor-settings-custom-color" id="editor-accent-custom-field" hidden>
+        <span>自定义颜色</span>
+        <input type="color" class="editor-settings-color-input" id="editor-accent-custom" value="#6ca5e8" aria-label="自定义颜色">
+        <output id="editor-accent-custom-value" for="editor-accent-custom">#6ca5e8</output>
+      </div>
+    </div>
+    </div>
+  </div>
+  <span class="editor-settings-group-heading" id="interface-language-title">语言</span>
+  <div class="editor-settings-group" role="group" aria-labelledby="interface-language-title">
+    <div class="editor-settings-sub-group">
+      <div class="editor-settings-item interface-language-row">
+        <span>语言</span>
+        <button type="button" id="language-toggle" class="language-toggle" title="Switch to English">🌐English</button>
+      </div>
+    </div>
+  </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-general" role="tabpanel" aria-labelledby="editor-settings-tab-general" hidden>
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
     <div class="editor-settings-field">
@@ -5059,12 +5240,12 @@
       <label class="toggle editor-settings-item" title="在播放器画面内预览主字幕"><input type="checkbox" id="overlay-toggle" checked> 预览字幕</label>
       <label class="toggle editor-settings-item" id="extension-overlay-toggle-wrap" hidden><input type="checkbox" id="extension-overlay-toggle" checked> 预览副字幕</label>
       <label class="toggle editor-settings-item" title="在视频画面右上角预览当前时间的表情包"><input type="checkbox" id="sticker-overlay-toggle"> 预览表情包</label>
-      <label class="toggle editor-settings-item" title="在波形区悬停鼠标时，播放器自动预览指针位置的画面"><input type="checkbox" id="hover-seek-preview"> 自动预览鼠标位置画面</label>
     </div>
   </div>
   <span class="editor-settings-group-heading" id="playback-controls-title">播放控制</span>
   <div class="editor-settings-group playback-controls-group" role="group" aria-labelledby="playback-controls-title">
     <div class="editor-settings-sub-group">
+      <label class="toggle editor-settings-item" title="在波形区悬停鼠标时，播放器自动预览指针位置的画面"><input type="checkbox" id="hover-seek-preview"> 自动预览鼠标位置画面</label>
       <div class="editor-settings-field">
         <label class="editor-settings-item" title="选择 J/K/L 的播放控制方式">
           <span>JKL 按键播放控制</span>
@@ -5087,11 +5268,11 @@
       </div>
     </div>
   </div>
-  <span class="editor-settings-group-heading" id="subtitle-preview-style-title">字幕预览</span>
-  <div class="editor-settings-group subtitle-preview-style-group" role="group" aria-labelledby="subtitle-preview-style-title">
-    <section class="subtitle-preview-track-settings" id="main-subtitle-preview-settings">
-      <h5 class="subtitle-preview-track-title">主字幕</h5>
-      <div class="subtitle-preview-settings-fields">
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-subtitle-style" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-style" hidden>
+  <span class="editor-settings-group-heading" id="subtitle-preview-style-title">主字幕</span>
+  <div class="editor-settings-group subtitle-preview-style-group" id="main-subtitle-preview-settings" role="group" aria-labelledby="subtitle-preview-style-title">
+    <div class="subtitle-preview-settings-fields">
         <label class="subtitle-preview-setting-row" title="只影响播放器画面内的字幕预览，不改变字幕文本或时间">
           <span>文字大小</span>
           <select id="subtitle-font-size">
@@ -5126,14 +5307,14 @@
           <span id="subtitle-font-family-status" class="subtitle-preview-font-scan-status" role="status" aria-live="polite">点击读取本机字体（首次需要授权）</span>
         </div>
         <div class="subtitle-preview-setting-pair">
-          <label class="subtitle-preview-setting-cell" title="选择播放器画面内字幕预览的文字颜色">
+          <div class="subtitle-preview-setting-cell" title="选择播放器画面内字幕预览的文字颜色">
             <span>文字颜色</span>
-            <input type="color" id="subtitle-color" value="#ffffff" aria-label="文字颜色">
-          </label>
-          <label class="subtitle-preview-setting-cell" title="调整播放器画面内字幕预览的背景色">
+            <input type="color" class="editor-settings-color-input" id="subtitle-color" value="#ffffff" aria-label="文字颜色">
+          </div>
+          <div class="subtitle-preview-setting-cell" title="调整播放器画面内字幕预览的背景色">
             <span>背景颜色</span>
-            <input id="subtitle-background-color" type="color" value="#000000" aria-label="背景颜色">
-          </label>
+            <input id="subtitle-background-color" class="editor-settings-color-input" type="color" value="#000000" aria-label="背景颜色">
+          </div>
         </div>
         <label class="subtitle-preview-setting-row" title="调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景">
           <span>背景不透明度</span>
@@ -5142,56 +5323,11 @@
             <output id="subtitle-background-alpha-value" for="subtitle-background-alpha">65%</output>
           </div>
         </label>
-        <label class="toggle editor-settings-item" title="按字幕颜色快照给预览字幕应用所选颜色样式，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
-          <input type="checkbox" id="subtitle-color-underline" checked aria-label="预览字幕颜色">
-          预览字幕颜色
-        </label>
-        <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
-          <span>颜色样式</span>
-          <select id="subtitle-color-style" aria-label="预览字幕颜色样式">
-            <option value="underline" selected>下划线</option>
-            <option value="text">文字颜色</option>
-            <option value="stroke">描边</option>
-          </select>
-        </label>
-        <label class="toggle editor-settings-item subtitle-speaker-label-toggle" title="在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本">
-          <input type="checkbox" id="subtitle-speaker-labels-enabled" aria-label="显示说话人名称">
-          显示说话人名称
-        </label>
-        <div class="subtitle-speaker-labels-settings" id="subtitle-speaker-labels-settings" hidden>
-          <small class="editor-settings-hint">配置颜色对应的说话人名称；留空可隐藏该颜色的名称。仅影响预览，不改变字幕文本。</small>
-          <div class="subtitle-speaker-label-list">
-            <label class="subtitle-speaker-label-row" title="设置黄色对应的说话人名称">
-              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="yellow" aria-hidden="true"></span>黄</span>
-              <input type="text" id="subtitle-speaker-label-yellow" value="SP1" maxlength="64" autocomplete="off" aria-label="黄色对应的说话人名称">
-            </label>
-            <label class="subtitle-speaker-label-row" title="设置绿色对应的说话人名称">
-              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="green" aria-hidden="true"></span>绿</span>
-              <input type="text" id="subtitle-speaker-label-green" value="SP2" maxlength="64" autocomplete="off" aria-label="绿色对应的说话人名称">
-            </label>
-            <label class="subtitle-speaker-label-row" title="设置红色对应的说话人名称">
-              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="red" aria-hidden="true"></span>红</span>
-              <input type="text" id="subtitle-speaker-label-red" value="SP3" maxlength="64" autocomplete="off" aria-label="红色对应的说话人名称">
-            </label>
-            <label class="subtitle-speaker-label-row" title="设置紫色对应的说话人名称">
-              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="purple" aria-hidden="true"></span>紫</span>
-              <input type="text" id="subtitle-speaker-label-purple" value="SP4" maxlength="64" autocomplete="off" aria-label="紫色对应的说话人名称">
-            </label>
-            <label class="subtitle-speaker-label-row" title="设置蓝色对应的说话人名称">
-              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="blue" aria-hidden="true"></span>蓝</span>
-              <input type="text" id="subtitle-speaker-label-blue" value="SP5" maxlength="64" autocomplete="off" aria-label="蓝色对应的说话人名称">
-            </label>
-            <label class="subtitle-speaker-label-row subtitle-speaker-label-separator-row" title="设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号">
-              <span>分隔符</span>
-              <input type="text" id="subtitle-speaker-label-separator" value="：" maxlength="16" autocomplete="off" spellcheck="false" aria-label="分隔符">
-            </label>
-          </div>
-        </div>
-      </div>
-    </section>
-    <section class="subtitle-preview-track-settings subtitle-preview-extension-settings" id="extension-subtitle-preview-settings" hidden>
-      <h5 class="subtitle-preview-track-title">副字幕</h5>
-      <div class="subtitle-preview-settings-fields">
+    </div>
+  </div>
+  <span class="editor-settings-group-heading" id="extension-subtitle-preview-title" hidden>副字幕</span>
+  <div class="editor-settings-group subtitle-preview-style-group" id="extension-subtitle-preview-settings" role="group" aria-labelledby="extension-subtitle-preview-title" hidden>
+    <div class="subtitle-preview-settings-fields">
         <label class="subtitle-preview-setting-row" title="只影响播放器画面内的副字幕预览">
           <span>文字大小</span>
           <select id="extension-subtitle-font-size">
@@ -5222,14 +5358,14 @@
           </select>
         </label>
         <div class="subtitle-preview-setting-pair">
-          <label class="subtitle-preview-setting-cell" title="选择播放器画面内副字幕预览的文字颜色">
+          <div class="subtitle-preview-setting-cell" title="选择播放器画面内副字幕预览的文字颜色">
             <span>文字颜色</span>
-            <input type="color" id="extension-subtitle-color" value="#ffd34d" aria-label="文字颜色">
-          </label>
-          <label class="subtitle-preview-setting-cell" title="调整播放器画面内副字幕预览的背景色">
+            <input type="color" class="editor-settings-color-input" id="extension-subtitle-color" value="#ffd34d" aria-label="文字颜色">
+          </div>
+          <div class="subtitle-preview-setting-cell" title="调整播放器画面内副字幕预览的背景色">
             <span>背景颜色</span>
-            <input id="extension-subtitle-background-color" type="color" value="#000000" aria-label="背景颜色">
-          </label>
+            <input id="extension-subtitle-background-color" class="editor-settings-color-input" type="color" value="#000000" aria-label="背景颜色">
+          </div>
         </div>
         <label class="subtitle-preview-setting-row" title="调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景">
           <span>背景不透明度</span>
@@ -5238,8 +5374,67 @@
             <output id="extension-subtitle-background-alpha-value" for="extension-subtitle-background-alpha">65%</output>
           </div>
         </label>
-      </div>
-    </section>
+    </div>
+  </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-subtitle-color" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-color" hidden>
+  <div class="editor-settings-group subtitle-color-settings-group" id="subtitle-color-settings" role="group" aria-label="字幕颜色">
+    <div class="subtitle-preview-settings-fields">
+        <label class="toggle editor-settings-item" title="按字幕颜色快照给预览字幕应用所选颜色样式，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
+          <input type="checkbox" id="subtitle-color-underline" checked aria-label="预览字幕颜色">
+          预览字幕颜色
+        </label>
+        <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
+          <span>颜色样式</span>
+          <select id="subtitle-color-style" aria-label="预览字幕颜色样式">
+            <option value="underline" selected>下划线</option>
+            <option value="text">文字颜色</option>
+            <option value="stroke">描边</option>
+          </select>
+        </label>
+    </div>
+  </div>
+  <span class="editor-settings-group-heading" id="subtitle-speaker-settings-title">说话人</span>
+  <div class="editor-settings-group subtitle-speaker-settings-group" id="subtitle-speaker-settings" role="group" aria-labelledby="subtitle-speaker-settings-title">
+    <div class="subtitle-preview-settings-fields">
+        <label class="toggle editor-settings-item subtitle-speaker-label-toggle" title="开启颜色到说话人名称的映射；开启后可在下方显示名称并编辑颜色对应的说话人名称">
+          <input type="checkbox" id="subtitle-speaker-mapping-enabled" aria-label="将颜色映射为说话人">
+          将颜色映射为说话人
+        </label>
+        <label class="toggle editor-settings-item subtitle-speaker-label-toggle" id="subtitle-speaker-labels-enabled-wrap" title="在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本" hidden>
+          <input type="checkbox" id="subtitle-speaker-labels-enabled" aria-label="在预览字幕中显示说话人">
+          在预览字幕中显示说话人
+        </label>
+        <div class="subtitle-speaker-labels-settings" id="subtitle-speaker-labels-settings" hidden>
+          <small class="editor-settings-hint">配置颜色对应的说话人名称；留空可隐藏该颜色的名称。仅影响预览，不改变字幕文本。</small>
+          <div class="subtitle-speaker-label-list">
+            <label class="subtitle-speaker-label-row" title="设置黄色对应的说话人名称">
+              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="yellow" aria-hidden="true"></span>黄</span>
+              <input type="text" id="subtitle-speaker-label-yellow" value="SP1" maxlength="64" autocomplete="off" aria-label="黄色对应的说话人名称">
+            </label>
+            <label class="subtitle-speaker-label-row" title="设置绿色对应的说话人名称">
+              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="green" aria-hidden="true"></span>绿</span>
+              <input type="text" id="subtitle-speaker-label-green" value="SP2" maxlength="64" autocomplete="off" aria-label="绿色对应的说话人名称">
+            </label>
+            <label class="subtitle-speaker-label-row" title="设置红色对应的说话人名称">
+              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="red" aria-hidden="true"></span>红</span>
+              <input type="text" id="subtitle-speaker-label-red" value="SP3" maxlength="64" autocomplete="off" aria-label="红色对应的说话人名称">
+            </label>
+            <label class="subtitle-speaker-label-row" title="设置紫色对应的说话人名称">
+              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="purple" aria-hidden="true"></span>紫</span>
+              <input type="text" id="subtitle-speaker-label-purple" value="SP4" maxlength="64" autocomplete="off" aria-label="紫色对应的说话人名称">
+            </label>
+            <label class="subtitle-speaker-label-row" title="设置蓝色对应的说话人名称">
+              <span class="subtitle-speaker-label-color"><span class="subtitle-speaker-label-swatch" data-speaker-label-swatch="blue" aria-hidden="true"></span>蓝</span>
+              <input type="text" id="subtitle-speaker-label-blue" value="SP5" maxlength="64" autocomplete="off" aria-label="蓝色对应的说话人名称">
+            </label>
+            <label class="subtitle-speaker-label-row subtitle-speaker-label-separator-row" title="设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号">
+              <span>分隔符</span>
+              <input type="text" id="subtitle-speaker-label-separator" value="：" maxlength="16" autocomplete="off" spellcheck="false" aria-label="分隔符">
+            </label>
+          </div>
+        </div>
+    </div>
   </div>
   </div>
   <div class="editor-settings-page" id="editor-settings-page-timebase" role="tabpanel" aria-labelledby="editor-settings-tab-timebase" hidden>
@@ -5345,26 +5540,40 @@
       </span>
     </div>
     <small class="editor-settings-hint split-language-type-hint">语言类型会影响拆分面板的分隔判断（英文会按单词拆）、计数的规则，以及合并时是否插入空格等。</small>
-    <small class="editor-settings-hint">对于双语字幕，可以在「多重字幕」中单独配置两种字幕的语言类型。</small>
+    <small class="editor-settings-hint split-multi-subtitle-settings-hint">
+      <span id="split-multi-subtitle-settings-enabled" hidden><span>对于双语字幕，可以在</span><button type="button" class="editor-settings-inline-action" id="split-multi-subtitle-settings-link" title="打开多重字幕设置" aria-label="打开多重字幕设置">多重字幕的设置</button><span>中单独配置两种字幕的语言类型。</span></span>
+      <span id="split-multi-subtitle-settings-disabled">对于双语字幕，可以在多重字幕的设置（需要先启用多重字幕）中单独配置两种字幕的语言类型。</span>
+    </small>
   </div>
   </div>
   <div class="editor-settings-page" id="editor-settings-page-export" role="tabpanel" aria-labelledby="editor-settings-tab-export" hidden>
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
     <label class="toggle editor-settings-item" title="只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴">
-      <input type="checkbox" id="export-start-at-zero"> SRT 首条从 0 开始
+      <input type="checkbox" id="export-start-at-zero"> SRT 首条字幕起始时间从 0 开始
     </label>
+  </div>
+  </div>
+  <span class="editor-settings-group-heading" id="export-color-speaker-title">颜色与说话人</span>
+  <div class="editor-settings-group" role="group" aria-labelledby="export-color-speaker-title">
+    <div class="editor-settings-sub-group">
     <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="勾选后按颜色导出会先选择一个 SRT 文件名作为前缀，再下载「前缀_颜色.srt」；取消勾选则逐个颜色弹出保存对话框">
       <input type="checkbox" id="export-color-unified" checked> 彩色字幕统一导出
     </label>
     <small class="editor-settings-hint">选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。</small>
+    <label class="toggle editor-settings-item" title="勾选后按说话人名称生成彩色字幕文件名后缀；没有对应名称时回退为颜色">
+      <input type="checkbox" id="export-speaker-names-as-suffix"> 使用说话人名称作为后缀
+    </label>
     </div>
     <div class="editor-settings-field">
-    <label class="toggle editor-settings-item" title="开启或关闭字幕预览中的说话人名称时同步勾选或取消勾选；导出 SRT 时在字幕前附加对应名称，可手动调整">
+    <label class="toggle editor-settings-item" title="在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。">
       <input type="checkbox" id="export-speaker-labels"> 导出时附加说话人名称
     </label>
-    <small class="editor-settings-hint">字幕预览中的说话人名称开启时自动勾选，关闭时同步取消；导出开关仍可独立调整。只影响导出的 SRT，不会改动工程里的字幕文本。</small>
+    <small class="editor-settings-hint">
+      在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。
+      <br>🤓👆 你可以在 <button type="button" class="editor-settings-inline-action" id="export-open-subtitle-color-settings" title="打开字幕颜色设置" aria-label="打开字幕颜色设置">字幕颜色</button> 中配置颜色对应的说话人名。
+    </small>
     </div>
   </div>
   </div>
@@ -5383,7 +5592,7 @@
       </label>
     </div>
     <div class="editor-settings-sub-group" id="project-backup-settings">
-      <label class="toggle editor-settings-item"><input type="checkbox" id="project-backup-enabled"> 备份工程</label>
+      <label class="toggle editor-settings-item"><input type="checkbox" id="project-backup-enabled" checked> 备份工程</label>
       <label class="editor-settings-item">自动备份间隔（分钟）<span class="gap-remove-number-control"><input id="project-backup-minutes" type="number" min="1" max="1440" step="1" value="5"></span></label>
       <label class="editor-settings-item">最大保存版本数<span class="gap-remove-number-control"><input id="project-backup-limit" type="number" min="1" max="1000" step="1" value="20"></span></label>
       <div class="editor-settings-field"><button type="button" id="project-backup-open">打开备份文件夹</button></div>
@@ -5416,6 +5625,7 @@
         <label class="toggle editor-settings-item" title="开启后，分割工具改用 🔪 图标，并可启用拆分音效与刀光特效">
           <input type="checkbox" id="ninja-mode"> 字幕忍者
         </label>
+        <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
         <label class="toggle editor-settings-item" id="ninja-sound-field" title="开启后，成功拆分时播放随机刀光音效" hidden>
           <input type="checkbox" id="ninja-sound" checked> 播放音效
         </label>
@@ -5438,7 +5648,6 @@
             </span>
           </label>
         </div>
-        <small class="editor-settings-hint">打开字幕忍者模式，让拆分字幕变得更加有趣</small>
       </div>
     </div>
   </div>
@@ -6130,7 +6339,7 @@
 <!-- 文件读取/媒体解码进度 -->
 <div class="editor-loading" id="editor-loading" hidden aria-live="polite" aria-busy="true">
   <div class="editor-loading-card">
-    <div class="editor-loading-label" id="editor-loading-label">正在加载…</div>
+    <div class="editor-loading-label" id="editor-loading-label">正在加载工程…</div>
     <div class="editor-loading-progress-row">
       <progress id="editor-loading-progress" max="100" value="0"></progress>
       <span id="editor-loading-progress-value">0%</span>
@@ -7697,7 +7906,11 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
 
   function normalizeSpeakerLabelSettings(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const hasMappingEnabled = Object.prototype.hasOwnProperty.call(source, 'mapping_enabled');
     return {
+      // 旧工程没有独立的映射开关时，沿用原来的 enabled 语义，避免升级后
+      // 已配置的说话人名称突然失效；新工程则默认关闭颜色到说话人的映射。
+      mapping_enabled: hasMappingEnabled ? source.mapping_enabled === true : source.enabled === true,
       enabled: source.enabled === true,
       separator: normalizeSpeakerLabelSeparator(source.separator),
       names: normalizeSpeakerLabels(source.names),
@@ -10410,6 +10623,19 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     return clampInteger(value, fallback, 1, 240);
   }
 
+  const EDITOR_ACCENT_COLOR_VALUES = Object.freeze(['blue', 'red', 'orange', 'custom']);
+  const DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR = '#6ca5e8';
+
+  function normalizeEditorAccentColor(value) {
+    return EDITOR_ACCENT_COLOR_VALUES.includes(value) ? value : 'blue';
+  }
+
+  function normalizeEditorAccentCustomColor(value) {
+    const color = String(value ?? '').trim();
+    return /^#[0-9a-f]{6}$/i.test(color)
+      ? color.toLowerCase() : DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR;
+  }
+
   const DEFAULT_EDITOR_SETTINGS = Object.freeze({
     splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true,
     mainSplitModeOverride: null,
@@ -10423,8 +10649,9 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     mergeJoinTextContinuous: '', mergeJoinTextWord: ' ',
     autoMergeGapMs: 200, autoMergeSnapDirection: 'backward', autoMergeShortCount: 3,
     autoMergeAbsorbShort: true, autoMergeAbsorbDirection: 'previous', exportColorUnified: true,
-    exportSpeakerLabels: false,
-    autoSaveProject: true, autoSaveIntervalSeconds: 30, stickerOverlayEnabled: false,
+    exportSpeakerLabels: false, exportSpeakerNamesAsSuffix: false,
+    autoSaveProject: true, autoSaveIntervalSeconds: 30, projectBackupEnabled: true,
+    stickerOverlayEnabled: false,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
@@ -10434,6 +10661,7 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
+    accentColor: 'blue', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
     waveShapeSource: 'reapeaks',
   });
 
@@ -10493,9 +10721,10 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       autoMergeAbsorbDirection: savedSettings.autoMergeAbsorbDirection === 'next' ? 'next' : 'previous',
       exportColorUnified: savedSettings.exportColorUnified !== false,
       exportSpeakerLabels: savedSettings.exportSpeakerLabels === true,
+      exportSpeakerNamesAsSuffix: savedSettings.exportSpeakerNamesAsSuffix === true,
       autoSaveProject: savedSettings.autoSaveProject !== false,
       autoSaveIntervalSeconds: clampInteger(savedSettings.autoSaveIntervalSeconds, 30, 5, 3600),
-      projectBackupEnabled: savedSettings.projectBackupEnabled === true,
+      projectBackupEnabled: savedSettings.projectBackupEnabled !== false,
       projectBackupMinutes: clampInteger(savedSettings.projectBackupMinutes, 5, 1, 1440),
       projectBackupLimit: clampInteger(savedSettings.projectBackupLimit, 20, 1, 1000),
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
@@ -10527,7 +10756,10 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       selectBoundSubtitlePair: savedSettings.selectBoundSubtitlePair !== false,
       multiSubtitleAutoSyncDuration: savedSettings.multiSubtitleAutoSyncDuration !== false,
       multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
-      theme: savedSettings.theme === 'light' ? 'light' : 'dark',
+      theme: ['light', 'dark', 'system'].includes(savedSettings.theme)
+        ? savedSettings.theme : 'dark',
+      accentColor: normalizeEditorAccentColor(savedSettings.accentColor),
+      accentColorCustom: normalizeEditorAccentCustomColor(savedSettings.accentColorCustom),
       waveShapeSource: savedSettings.waveShapeSource === 'self' ? 'self' : 'reapeaks',
     };
   }
@@ -13124,6 +13356,10 @@ export default MawDynamicCaptions;
     buildMultiDisplayRows,
     getSrtExportFirstIndex,
     getSrtExportOffset,
+    EDITOR_ACCENT_COLOR_VALUES,
+    DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    normalizeEditorAccentColor,
+    normalizeEditorAccentCustomColor,
     normalizeEditorSettings,
     TIMELINE_TIMEBASE_UNITS,
     DEFAULT_TIMELINE_FPS,
@@ -13261,8 +13497,11 @@ export default MawDynamicCaptions;
     '拖入媒体后显示波形': 'Drop media to display its waveform',
     '拖入工程或 SRT 后显示字幕列表': 'Drop a project or SRT to display subtitles',
     '松开以加载工程、媒体或 SRT': 'Drop to load a project, media, or SRT',
-    '自动保存': 'Auto-save', '自动保存间隔': 'Auto-save interval', '秒': 'sec',
+    '自动保存': 'Auto-save', '自动保存间隔': 'Auto-save interval', '秒': 'sec', '说话人': 'Speaker',
+    '强调色': 'Accent Color', '自定义颜色': 'Custom color', '自定义': 'Custom', '橙色': 'Orange',
     '显示说话人名称': 'Show speaker names',
+    '在预览字幕中显示说话人': 'Show speaker names in preview subtitles',
+    '将颜色映射为说话人': 'Map colors to speakers',
     '分隔符': 'Separator',
     '导出时附加说话人名称': 'Include speaker names when exporting',
     '字幕预览中的说话人名称开启后会自动勾选；导出 SRT 时会附加对应名称及分隔符，只影响导出的 SRT，不会改动工程里的字幕文本。': 'This is checked automatically when speaker names are enabled in the subtitle preview; exported SRT includes the matching name and separator, while the project subtitle text remains unchanged.',
@@ -13362,7 +13601,7 @@ export default MawDynamicCaptions;
     '正在生成表情包 OTIOZ 打包工程…': 'Generating sticker OTIOZ bundle…',
     'OTIOZ 已生成，图片已打包进 zip': 'OTIOZ generated; images are packed into the zip',
     '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除': 'No silent gaps removed yet; scan with "Remove silent gaps" first',
-    '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
+    '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '字幕样式': 'Subtitle style', '字幕颜色': 'Subtitle colors', '界面': 'Interface', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
     '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '叠加字幕': 'Overlay subtitles', '显示独立叠加字幕轨；它不会与多重字幕建立绑定关系': 'Show the independent overlay subtitle track; it does not create bindings with multiple subtitles', '转为叠加字幕': 'Convert to overlay', '转回主轨': 'Move to main track', '删除此叠加字幕': 'Delete overlay subtitle', '编辑文本': 'Edit text', '已转回主轨': 'Moved to the main track', '已调整叠加字幕时间': 'Adjusted overlay subtitle timing', '主轨': 'Main track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
     '拆分与合并': 'Split and merge', '拆分与合并配置': 'Split and merge settings', '波形形状来源': 'Waveform shape source', '原生波形': 'Native waveform', 'REAPER 波形': 'REAPER waveform',
     '显示方式': 'Display mode', '语言类型': 'Language type', '字幕语言类型': 'Subtitle language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
@@ -13392,7 +13631,7 @@ export default MawDynamicCaptions;
     '主字幕调整时副字幕只跟随；冲突时优先限制副字幕，必要时保留重叠，不会缩短主字幕': 'When the main subtitle changes, the secondary subtitle only follows; conflicts limit the secondary subtitle first without shortening the main subtitle',
     '主字幕调整时副字幕只跟随；冲突时优先限制副字幕，不会缩短主字幕': 'When the main subtitle changes, the secondary subtitle only follows; conflicts limit the secondary subtitle first without shortening the main subtitle',
     '副字幕调整时受主字幕轨道边界限制，主字幕没有可用空间时无法继续拖动': 'When the secondary subtitle changes, the main-track boundaries limit the operation; dragging stops when the main track has no room',
-    '字体大小': 'Font size', '文字大小': 'Font size',
+    '字体大小': 'Font size', '文字大小': 'Font size', '颜色与说话人': 'Colors and speakers',
     '自动（响应式）': 'Auto (responsive)', '自动（比主字幕小一号）': 'Auto (two px smaller than main)', '字体': 'Font',
     '主字幕字体': 'Main subtitle font', '副字幕字体': 'Secondary subtitle font', '默认无衬线': 'Default sans-serif',
     '主字幕颜色': 'Main subtitle color', '副字幕颜色': 'Secondary subtitle color',
@@ -13415,7 +13654,7 @@ export default MawDynamicCaptions;
     '调整播放器画面内副字幕预览的背景色': 'Adjust the background color used by the secondary subtitle preview in the player',
     '调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the secondary subtitle preview background opacity in the player; set it to 0 to hide the background',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
-    '媒体': 'Media', '预览字幕': 'Subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
+    '媒体': 'Media', '外观': 'Appearance', '语言': 'Language', '主题': 'Theme', '明亮模式': 'Light mode', '暗色模式': 'Dark mode', '跟随系统': 'Follow System', '预览字幕': 'Subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
     '视频预览': 'Video preview', '播放控制': 'Playback controls', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
     '在播放器画面内预览主字幕': 'Preview the main subtitle in the player', '在波形区悬停鼠标时，播放器自动预览指针位置的画面': 'While hovering the waveform, the player automatically previews the frame at the pointer',
     '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '每次跳转时长': 'Seek duration per action', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '媒体控制按钮和左右方向键每次跳转的时间幅度': 'Time amount to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)', '控制按钮和左右方向键的每次跳转时长。': 'Time amount for each jump from the controls and left/right arrow keys.',
@@ -13426,6 +13665,13 @@ export default MawDynamicCaptions;
     '帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。': 'Frame timecode example: HH:MM:SS:FF; only the separator between seconds and frames changes.',
     '频谱颜色': 'Spectral colors', '正在应用频谱颜色…': 'Applying spectral colors…', '正在关闭频谱颜色…': 'Removing spectral colors…',
     '预览字幕颜色': 'Subtitle color preview', '按字幕颜色快照给预览字幕应用所选颜色样式，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本': 'Apply the selected subtitle color style to the preview using each subtitle color snapshot; only affects the in-player preview, never subtitle text',
+    '开启颜色到说话人名称的映射；开启后可在下方显示名称并编辑颜色对应的说话人名称': 'Enable the color-to-speaker mapping; after enabling, show and edit the speaker names below',
+    '打开字幕颜色设置': 'Open subtitle color settings',
+    '在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。': 'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
+    '🤓👆 你可以在': '🤓👆 You can configure color-to-speaker names in',
+    '中配置颜色对应的说话人名。': ' settings.',
+    '使用说话人名称作为后缀': 'Use speaker name as suffix',
+    '勾选后按说话人名称生成彩色字幕文件名后缀；没有对应名称时回退为颜色': 'When enabled, use the speaker name as the colored subtitle filename suffix; fall back to the color when no name is mapped',
     '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
     '全屏': 'Fullscreen', '退出全屏': 'Exit fullscreen',
@@ -13433,7 +13679,7 @@ export default MawDynamicCaptions;
     '字数阈值': 'Character threshold', '仅看超长': 'Long only', '字幕列表设置': 'Subtitle list settings',
     '拆分后临时保留显示': 'Temporarily keep split results visible', '点击字幕后自动滚动': 'Auto-scroll after clicking a subtitle', '显示内容': 'Displayed content',
     '当前': 'Current', '已选': 'Selected', '波形': 'Waveform', '音频波形区': 'Audio waveform', '波形设置': 'Waveform settings', '波形轨道徽标（开启后）：': 'Waveform track badges (when enabled):', '使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形': 'Color the waveform using the spectral cache by dominant frequency; when disabled, use the original solid-color waveform',
-    '多行': 'Multi-row', '基础': 'Basic', '隐藏': 'Hidden',
+    '多行': 'Multi-row', '基础': 'Basic', '工程与输出': 'Project & output', '扩展功能': 'Extensions', '隐藏': 'Hidden',
     '选择': 'Select', '分割': 'Razor', '移除静音空隙': 'Remove silent gaps',
     '跳过空隙': 'Skip gaps', '播放时跳过空隙': 'Skip gaps during playback', '未扫描空隙': 'Gaps not scanned', '工作区': 'Workspace',
     '拼合字幕': 'Snap subtitles', '拼合参数': 'Snap parameters',
@@ -13558,6 +13804,7 @@ export default MawDynamicCaptions;
     '选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。': 'When enabled, export all color groups as filename_color; otherwise each color opens its own save dialog.',
     'Oi！检测到你添加了表情包，是否需要帮你打开「设置」中的字幕列表/编辑区的表情包显示开关？   ヾ(´･ω･｀)ﾉ': 'Oi! You added a sticker. Would you like to enable sticker display in the subtitle list and editor under Settings?   ヾ(´･ω･｀)ﾉ',
     'SRT 首条从 0 开始': 'Start the first SRT cue at 0',
+    'SRT 首条字幕起始时间从 0 开始': 'Start the first SRT subtitle at 0',
     '只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴': 'Only move the first exported subtitle to 00:00; keep its end time and all later timecodes unchanged in the project and OTIO',
     '导入字幕': 'Import subtitles', '请选择你要执行的行为：': 'Choose what to do:',
     '替换当前字幕': 'Replace current subtitles', '作为多重字幕': 'Add as multiple subtitles', '导入': 'Import',
@@ -13650,8 +13897,6 @@ export default MawDynamicCaptions;
     '预览开关、鼠标位置预览、JKL 按键模式和跳转时长可在': 'Adjust preview toggles, the pointer-position preview, JKL playback mode, and seek duration in',
     '的「视频预览」中调整。': ' under “Video preview”.',
     '配置颜色对应的说话人名称；留空可隐藏该颜色的名称。仅影响预览，不改变字幕文本。': 'Configure the speaker name for each color; leave a name blank to hide that color’s name. Affects the preview only, never subtitle text.',
-    '字幕预览中的说话人名称开启时自动勾选，关闭时同步取消；导出开关仍可独立调整。只影响导出的 SRT，不会改动工程里的字幕文本。': 'Checked automatically while speaker names are on in the subtitle preview, and unchecked when they are off; the export toggle stays independent. Only affects exported SRT, never the project subtitle text.',
-    '开启或关闭字幕预览中的说话人名称时同步勾选或取消勾选；导出 SRT 时在字幕前附加对应名称，可手动调整': 'Checked and unchecked together with speaker names in the subtitle preview; exported SRT prefixes each subtitle with the matching name, and this can be toggled manually',
     '选中字幕时': 'With subtitles selected:', '选中字幕时：': 'With subtitles selected:',
     '按键微调字幕': 'Fine-tuning subtitles with keys', '选中字幕': 'With a subtitle selected',
     '微调移动字幕': 'Fine-tune subtitle movement', '将字幕起点/终点贴到前一条结尾/后一条开头': 'Snap the subtitle start/end to the previous end/next start',
@@ -13802,7 +14047,7 @@ export default MawDynamicCaptions;
     '清除所有选中': 'Clear selection', '取消选中': 'Deselect', '取消选择': 'Deselect', '请选择至少两个字幕块！': 'Select at least two subtitle blocks!',
     '红': 'Red', '黄': 'Yellow',
     '蓝': 'Blue', '绿': 'Green', '紫': 'Purple',
-    '红色': 'red', '黄色': 'yellow', '蓝色': 'blue', '绿色': 'green', '紫色': 'purple'
+    '红色': 'Red', '黄色': 'Yellow', '蓝色': 'Blue', '绿色': 'Green', '紫色': 'Purple'
   };
 
   const EN_ATTR = {
@@ -14007,7 +14252,10 @@ export default MawDynamicCaptions;
     '开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分。':
       'When enabled, split automatically using available timecodes; otherwise the split dialog opens for manual splitting.',
     '语言类型会影响拆分面板的分隔判断（英文会按单词拆）、计数的规则，以及合并时是否插入空格等。': 'Language type affects split-boundary decisions (English splits by word), character counting rules, and whether spaces are inserted when merging.',
-    '对于双语字幕，可以在「多重字幕」中单独配置两种字幕的语言类型。': 'For dual-track subtitles, configure each track\'s language type separately in the multiple-subtitle settings.',
+    '对于双语字幕，可以在': 'For dual-track subtitles, configure each track\'s language type in ',
+    '多重字幕的设置': 'multiple-subtitle settings', '中单独配置两种字幕的语言类型。': ' separately.',
+    '对于双语字幕，可以在多重字幕的设置（需要先启用多重字幕）中单独配置两种字幕的语言类型。': 'For dual-track subtitles, configure each track\'s language type in multiple-subtitle settings (enable multiple subtitles first).',
+    '打开多重字幕设置': 'Open multiple-subtitle settings',
     '配置合并字幕时插入字符': 'Configure characters inserted when merging subtitles', '配置合并字符': 'Configure merge separator', '配置拆分标点': 'Configure split punctuation',
     '合并字幕时插入字符': 'Text inserted when merging subtitles',
     '留空则直接拼接': 'Leave empty to join directly', '默认一个空格': 'Defaults to one space',
@@ -15478,6 +15726,14 @@ export default MawDynamicCaptions;
     if (segment.color_ref?.name && PALETTE[segment.color_ref.name]) return PALETTE[segment.color_ref.name];
     if (segment.color?.value) return segment.color.value;
     return '#66727d';
+  }
+
+  function hasSubtitleColor(segment) {
+    return Boolean(
+      (segment.color?.name && PALETTE[segment.color.name])
+      || (segment.color_ref?.name && PALETTE[segment.color_ref.name])
+      || segment.color?.value,
+    );
   }
 
   function applySharedBoundary(
@@ -17786,6 +18042,7 @@ export default MawDynamicCaptions;
         block.dataset.start = String(segment.start);
         block.dataset.end = String(segment.end);
         block.style.setProperty('--cue-color', colorForSegment(segment));
+        if (hasSubtitleColor(segment)) block.classList.add('has-subtitle-color');
         if (selected.has(index)) block.classList.add('selected');
         if (segment.disabled) block.classList.add('disabled');
         // 空隙中沿用的当前字幕不点亮 active 轮廓（仅视觉；逻辑语义不变）。
@@ -20388,6 +20645,57 @@ let STICKER_URL_PREFIX = "";
 const SERVER_CONFIG = null;
 const NINJA_SFX_BASE_URL = "web/sfx/";
 
+// 所有非模态浮层共用一个前置栈：最后点击、打开或获得焦点的浮层排在最上面。
+// 起始值高于普通设置弹窗（420），但低于拖拽遮罩和加载层（500/510）。
+const FLOATING_SURFACE_Z_INDEX_BASE = 430;
+const floatingSurfaceStack = [];
+const floatingSurfaceRoots = new WeakSet();
+const floatingSurfaceActivationTargets = new WeakSet();
+
+function floatingSurfaceRoot(surface) {
+  if (!surface) return null;
+  const windowRoot = surface.closest('.editor-settings-window, .gap-remove-panel');
+  if (windowRoot) return windowRoot;
+  return surface.parentElement?.closest('.toolbar .dropdown') || surface;
+}
+
+function floatingSurfaceIsOpen(surface) {
+  if (!surface) return false;
+  if (surface.matches('.settings-panel')) return !surface.hidden;
+  if (surface.matches('.dropdown')) return surface.classList.contains('open');
+  return surface.classList.contains('show');
+}
+
+function syncFloatingSurfaceLayers() {
+  floatingSurfaceStack.forEach((surface, index) => {
+    const zIndex = FLOATING_SURFACE_Z_INDEX_BASE + index;
+    surface.style.zIndex = String(zIndex);
+  });
+}
+
+function bringFloatingSurfaceToFront(surface) {
+  const root = floatingSurfaceRoot(surface);
+  if (!root || !floatingSurfaceRoots.has(root)) return;
+  const currentIndex = floatingSurfaceStack.indexOf(root);
+  if (currentIndex >= 0) floatingSurfaceStack.splice(currentIndex, 1);
+  floatingSurfaceStack.push(root);
+  syncFloatingSurfaceLayers();
+}
+
+function bindFloatingSurfaceActivation(surface) {
+  const root = floatingSurfaceRoot(surface);
+  if (!root) return;
+  if (!floatingSurfaceRoots.has(root)) {
+    floatingSurfaceRoots.add(root);
+    floatingSurfaceStack.push(root);
+  }
+  if (floatingSurfaceActivationTargets.has(surface)) return;
+  const activate = () => bringFloatingSurfaceToFront(root);
+  surface.addEventListener('pointerdown', activate, true);
+  surface.addEventListener('focusin', activate, true);
+  floatingSurfaceActivationTargets.add(surface);
+}
+
 const MAWE_DEBUG_ENABLED = Boolean(
   SERVER_CONFIG?.debug || new URLSearchParams(window.location.search).has('mawe-debug'),
 );
@@ -21328,10 +21636,12 @@ const DEFAULT_EDITOR_SETTINGS = {
   exportColorUnified: true,
   // 导出 SRT 时是否按字幕颜色附加说话人名称（仅本地偏好）。
   exportSpeakerLabels: false,
+  // 按颜色导出 SRT 时是否优先使用颜色映射的说话人名称作为文件名后缀（仅本地偏好）。
+  exportSpeakerNamesAsSuffix: false,
   // 自动保存仅对绑定工程的 localhost 服务器版生效。
   autoSaveProject: true,
   autoSaveIntervalSeconds: 30,
-  projectBackupEnabled: false,
+  projectBackupEnabled: true,
   projectBackupMinutes: 5,
   projectBackupLimit: 20,
   // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
@@ -21380,8 +21690,11 @@ const DEFAULT_EDITOR_SETTINGS = {
   multiSubtitleAutoSyncDuration: true,
   // 多重字幕波形是否显示主/副轨道编号徽标。
   multiSubtitleShowTrackBadges: false,
-  // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
+  // 界面主题：dark（默认）/ light / system。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
+  // 界面强调色：blue（默认）/ red / orange / custom；自定义颜色单独保存为六位十六进制值。
+  accentColor: 'blue',
+  accentColorCustom: '#6ca5e8',
   // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
   waveShapeSource: 'reapeaks',
 };
@@ -21433,6 +21746,8 @@ const normalizeClickBehavior = EDITOR_SETTINGS_UTILS.normalizeClickBehavior;
 const normalizeClickTarget = EDITOR_SETTINGS_UTILS.normalizeClickTarget;
 const normalizeKeyboardOperationReferenceMode = EDITOR_SETTINGS_UTILS.normalizeKeyboardOperationReferenceMode;
 const normalizeJklPlaybackMode = EDITOR_SETTINGS_UTILS.normalizeJklPlaybackMode;
+const normalizeEditorAccentColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentColor;
+const normalizeEditorAccentCustomColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentCustomColor;
 const clampAutoSaveInterval = EDITOR_SETTINGS_UTILS.clampAutoSaveInterval;
 const clampCharcountThreshold = EDITOR_SETTINGS_UTILS.clampCharcountThreshold;
 const clampNinjaSlashLength = EDITOR_SETTINGS_UTILS.clampNinjaSlashLength;
@@ -22080,6 +22395,8 @@ const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
 const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
 const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
+const subtitleSpeakerMappingEnabledInput = document.getElementById('subtitle-speaker-mapping-enabled');
+const subtitleSpeakerLabelsToggle = document.getElementById('subtitle-speaker-labels-enabled-wrap');
 const subtitleSpeakerLabelsEnabledInput = document.getElementById('subtitle-speaker-labels-enabled');
 const subtitleSpeakerLabelsSettings = document.getElementById('subtitle-speaker-labels-settings');
 const subtitleSpeakerLabelSeparatorInput = document.getElementById('subtitle-speaker-label-separator');
@@ -22090,6 +22407,7 @@ const subtitleSpeakerLabelInputs = Object.fromEntries(
   ]),
 );
 const extensionSubtitlePreviewSettings = document.getElementById('extension-subtitle-preview-settings');
+const extensionSubtitlePreviewTitle = document.getElementById('extension-subtitle-preview-title');
 const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
 const extensionSubtitleColorInput = document.getElementById('extension-subtitle-color');
@@ -22148,8 +22466,14 @@ const ninjaRazorIcon = razorToolButton?.querySelector('.ninja-razor-icon');
 const ninjaSlashFlash = document.getElementById('ninja-slash-flash');
 const exportColorUnifiedToggle = document.getElementById('export-color-unified');
 const exportSpeakerLabelsToggle = document.getElementById('export-speaker-labels');
+const exportSpeakerNamesAsSuffixToggle = document.getElementById('export-speaker-names-as-suffix');
+const exportOpenSubtitleColorSettingsButton = document.getElementById('export-open-subtitle-color-settings');
 const helpToggle = document.getElementById('help-toggle');
-const themeToggle = document.getElementById('theme-toggle');
+const editorThemeOptions = Array.from(document.querySelectorAll('[data-editor-theme]'));
+const editorAccentOptions = Array.from(document.querySelectorAll('[data-editor-accent]'));
+const editorAccentCustomField = document.getElementById('editor-accent-custom-field');
+const editorAccentCustomInput = document.getElementById('editor-accent-custom');
+const editorAccentCustomValue = document.getElementById('editor-accent-custom-value');
 const helpPanel = document.getElementById('help-panel');
 const helpDragHandle = document.getElementById('help-drag-handle');
 const helpCloseButton = document.getElementById('help-close');
@@ -22268,6 +22592,10 @@ const overlayTrackToggle = document.getElementById('overlay-track-toggle');
 const overlayTrackSeparator = document.getElementById('overlay-track-separator');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
+const multiSubtitleSettingsToggle = document.getElementById('multi-subtitle-settings-toggle');
+const splitMultiSubtitleSettingsEnabledHint = document.getElementById('split-multi-subtitle-settings-enabled');
+const splitMultiSubtitleSettingsDisabledHint = document.getElementById('split-multi-subtitle-settings-disabled');
+const splitMultiSubtitleSettingsLink = document.getElementById('split-multi-subtitle-settings-link');
 // 已开启多重字幕但尚未加载第二条字幕时的开关右侧提示。
 const multiSubtitleEmptyHint = document.getElementById('multi-subtitle-empty-hint');
 const multiSubtitleSwapButton = document.getElementById('multi-subtitle-swap');
@@ -22383,6 +22711,27 @@ const subtitleExtendManageButton = document.getElementById('subtitle-extend-mana
 const subtitleExtendRunButton = document.getElementById('subtitle-extend-run');
 const subtitleExtendForwardInput = document.getElementById('subtitle-extend-forward-ms');
 const subtitleExtendBackwardInput = document.getElementById('subtitle-extend-backward-ms');
+
+// 先登记所有可独立激活的非模态浮层。嵌套在全局设置窗口里的齿轮弹窗会
+// 自动归到全局设置窗口这一层，点击它们时也会把外层窗口带到最前面。
+// 表情包根目录弹窗从全局设置窗口打开，同样入栈，打开时动态置顶盖住窗口
+//（CSS 的 335 只是 JS 初始化前的静态兜底）。
+[
+  editorSettingsPanel,
+  helpPanel,
+  gapRemovePanel,
+  autoMergePanel,
+  subtitleExtendPanel,
+  mergeJoinSettingsPanel,
+  splitTrimSettingsPanel,
+  cueListSettingsPanel,
+  cueEditorSettingsPanel,
+  waveformSettingsPanel,
+  multiSubtitleSettingsDropdown,
+  document.getElementById('sticker-root-modal'),
+  ...document.querySelectorAll('.toolbar .dropdown'),
+].forEach(bindFloatingSurfaceActivation);
+
 let gapPreviewRange = null;
 let gapRemovePanelDrag = null;
 let currentCuePanelIdx = -1;
@@ -22686,7 +23035,11 @@ function setMergeJoinSettingsPanelOpen(open) {
   mergeJoinSettingsPanel.hidden = !open;
   mergeJoinSettingsToggle.classList.toggle('active', open);
   mergeJoinSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionMergeJoinSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(mergeJoinSettingsPanel);
+    positionMergeJoinSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionSplitTrimSettingsPanel() {
@@ -22698,7 +23051,11 @@ function setSplitTrimSettingsPanelOpen(open) {
   splitTrimSettingsPanel.hidden = !open;
   splitTrimSettingsToggle.classList.toggle('active', open);
   splitTrimSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionSplitTrimSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(splitTrimSettingsPanel);
+    positionSplitTrimSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function setSettingsPanelOwnerOpen(panel, open) {
@@ -22716,7 +23073,11 @@ function setCueListSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(cueListSettingsPanel, open);
   cueListSettingsToggle.classList.toggle('active', open);
   cueListSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionCueListSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(cueListSettingsPanel);
+    positionCueListSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionCueEditorSettingsPanel() {
@@ -22729,7 +23090,11 @@ function setCueEditorSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(cueEditorSettingsPanel, open);
   cueEditorSettingsToggle.classList.toggle('active', open);
   cueEditorSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionCueEditorSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(cueEditorSettingsPanel);
+    positionCueEditorSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionWaveformSettingsPanel() {
@@ -22742,7 +23107,11 @@ function setWaveformSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(waveformSettingsPanel, open);
   waveformSettingsToggle.classList.toggle('active', open);
   waveformSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionWaveformSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(waveformSettingsPanel);
+    positionWaveformSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function applyCueListDisplaySettings({ preserveCueListScroll = true } = {}) {
@@ -22814,6 +23183,8 @@ function updateMultiSubtitleUi() {
     // 提示与齿轮互斥：开启但无副轨 → 显示；其余隐藏。
     multiSubtitleEmptyHint.hidden = !(getMultiSubtitleState().enabled === true && !enabled);
   }
+  if (splitMultiSubtitleSettingsEnabledHint) splitMultiSubtitleSettingsEnabledHint.hidden = !enabled;
+  if (splitMultiSubtitleSettingsDisabledHint) splitMultiSubtitleSettingsDisabledHint.hidden = enabled;
   if (multiSubtitleToggle) {
     // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
     multiSubtitleToggle.checked = getMultiSubtitleState().enabled === true;
@@ -22869,6 +23240,7 @@ function updateMultiSubtitleUi() {
   if (multiSubtitleWaveformControls) multiSubtitleWaveformControls.hidden = !enabled;
   if (multiSubtitleAlignButton) multiSubtitleAlignButton.hidden = !enabled;
   if (extensionOverlayToggleWrap) extensionOverlayToggleWrap.hidden = !enabled;
+  if (extensionSubtitlePreviewTitle) extensionSubtitlePreviewTitle.hidden = !enabled;
   if (extensionSubtitlePreviewSettings) extensionSubtitlePreviewSettings.hidden = !enabled;
   if (extensionOverlayToggle) {
     if (enteringEnabled) updateEditorSettings({ extensionOverlayEnabled: true });
@@ -23051,6 +23423,9 @@ exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
 if (exportColorUnifiedToggle) exportColorUnifiedToggle.checked = EDITOR_SETTINGS.exportColorUnified;
 if (exportSpeakerLabelsToggle) exportSpeakerLabelsToggle.checked = EDITOR_SETTINGS.exportSpeakerLabels;
+if (exportSpeakerNamesAsSuffixToggle) {
+  exportSpeakerNamesAsSuffixToggle.checked = EDITOR_SETTINGS.exportSpeakerNamesAsSuffix;
+}
 if (autoSaveProjectToggle) autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
 if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
@@ -23303,6 +23678,17 @@ function openEditorSettingsAtTab(tabId) {
   setEditorSettingsPanelOpen(true);
   setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
 }
+exportOpenSubtitleColorSettingsButton?.addEventListener('click', (event) => {
+  event.preventDefault();
+  openEditorSettingsAtTab('editor-settings-tab-subtitle-color');
+});
+splitMultiSubtitleSettingsLink?.addEventListener('click', (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!multiSubtitleVisible()) return;
+  multiSubtitleSettingsToggle?.click();
+  multiSubtitleSettingsToggle?.focus();
+});
 helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
@@ -23406,32 +23792,116 @@ if (helpPanel) {
 }
 
 
-// 明暗主题：令牌全部定义在 CSS（:root 暗色 / [data-theme="light"] 亮色），
-// 这里只负责写 <html data-theme>、持久化、同步按钮，以及通知波形重绘画布。
-// 按钮显示的是「目标主题」（与相邻 🌐 语言按钮同一约定）：暗色时显示 🌖（点击转亮）。
-// title 用中文源串，英文界面由 i18n 的属性 MutationObserver 自动翻译。
-function refreshThemeToggle(theme) {
-  if (!themeToggle) return;
-  const toLight = theme !== 'light';
-  themeToggle.textContent = toLight ? '🌖' : '🌘';
-  const title = toLight ? '切换到亮色主题' : '切换到暗色主题';
-  themeToggle.title = title;
-  themeToggle.setAttribute('aria-label', title);
+// 明暗主题与界面强调色：令牌全部定义在 CSS，
+// 这里只负责解析偏好、写 <html> 数据属性、持久化，以及通知波形重绘画布。
+const EDITOR_THEME_VALUES = Object.freeze(['light', 'dark', 'system']);
+const EDITOR_ACCENT_COLOR_DEBOUNCE_MS = 160;
+function normalizeEditorTheme(theme) {
+  return EDITOR_THEME_VALUES.includes(theme) ? theme : 'dark';
+}
+function resolveEditorTheme(theme) {
+  const preference = normalizeEditorTheme(theme);
+  if (preference !== 'system') return preference;
+  const media = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  return media ? (media.matches ? 'dark' : 'light') : 'dark';
+}
+function refreshEditorThemeOptions(theme) {
+  const preference = normalizeEditorTheme(theme);
+  editorThemeOptions.forEach((option) => {
+    const active = option.dataset.editorTheme === preference;
+    option.classList.toggle('active', active);
+    option.setAttribute('aria-pressed', String(active));
+  });
+}
+function refreshEditorAccentOptions(accentColor) {
+  const preference = normalizeEditorAccentColor(accentColor);
+  editorAccentOptions.forEach((option) => {
+    const active = option.dataset.editorAccent === preference;
+    option.classList.toggle('active', active);
+    option.setAttribute('aria-pressed', String(active));
+  });
+}
+function applyEditorAccentColor(accentColor, { rerenderWaveform = true } = {}) {
+  const preference = normalizeEditorAccentColor(accentColor);
+  const customColor = normalizeEditorAccentCustomColor(EDITOR_SETTINGS.accentColorCustom);
+  const root = document.documentElement;
+  root.dataset.accent = preference;
+  if (preference === 'custom') root.style.setProperty('--accent-custom', customColor);
+  else root.style.removeProperty('--accent-custom');
+  refreshEditorAccentOptions(preference);
+  if (editorAccentCustomField) editorAccentCustomField.hidden = preference !== 'custom';
+  if (editorAccentCustomInput) editorAccentCustomInput.value = customColor;
+  if (editorAccentCustomValue) editorAccentCustomValue.textContent = customColor;
+  // 波形画布颜色是 JS 读取的令牌快照，强调色切换后同样需要重绘。
+  if (rerenderWaveform && waveformEditor) waveformEditor.render();
+}
+let editorAccentCustomColorTimer = 0;
+let pendingEditorAccentCustomColor = null;
+function flushEditorAccentCustomColor(value = editorAccentCustomInput?.value) {
+  if (editorAccentCustomColorTimer) {
+    window.clearTimeout(editorAccentCustomColorTimer);
+    editorAccentCustomColorTimer = 0;
+  }
+  const customColor = normalizeEditorAccentCustomColor(value);
+  pendingEditorAccentCustomColor = null;
+  updateEditorSettings({ accentColor: 'custom', accentColorCustom: customColor });
+  applyEditorAccentColor('custom');
+}
+function scheduleEditorAccentCustomColor(value) {
+  pendingEditorAccentCustomColor = normalizeEditorAccentCustomColor(value);
+  if (editorAccentCustomColorTimer) window.clearTimeout(editorAccentCustomColorTimer);
+  editorAccentCustomColorTimer = window.setTimeout(() => {
+    editorAccentCustomColorTimer = 0;
+    const customColor = pendingEditorAccentCustomColor;
+    pendingEditorAccentCustomColor = null;
+    if (customColor) flushEditorAccentCustomColor(customColor);
+  }, EDITOR_ACCENT_COLOR_DEBOUNCE_MS);
 }
 function applyTheme(theme, { rerenderWaveform = true } = {}) {
-  const next = theme === 'light' ? 'light' : 'dark';
-  if (next === 'light') document.documentElement.dataset.theme = 'light';
+  const preference = normalizeEditorTheme(theme);
+  const resolved = resolveEditorTheme(preference);
+  if (resolved === 'light') document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;
-  refreshThemeToggle(next);
+  refreshEditorThemeOptions(preference);
   // 画布颜色是 JS 读取的令牌快照，必须全量重绘才能跟随主题
   if (rerenderWaveform && waveformEditor) waveformEditor.render();
 }
+applyEditorAccentColor(EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
 applyTheme(EDITOR_SETTINGS.theme, { rerenderWaveform: false });
-themeToggle?.addEventListener('click', () => {
-  const next = EDITOR_SETTINGS.theme === 'light' ? 'dark' : 'light';
-  updateEditorSettings({ theme: next });
-  applyTheme(next);
+editorThemeOptions.forEach((option) => {
+  option.addEventListener('click', () => {
+    const next = normalizeEditorTheme(option.dataset.editorTheme);
+    updateEditorSettings({ theme: next });
+    applyTheme(next);
+  });
 });
+editorAccentOptions.forEach((option) => {
+  option.addEventListener('click', () => {
+    if (pendingEditorAccentCustomColor !== null) flushEditorAccentCustomColor();
+    const next = normalizeEditorAccentColor(option.dataset.editorAccent);
+    updateEditorSettings({ accentColor: next });
+    applyEditorAccentColor(next);
+  });
+});
+editorAccentCustomInput?.addEventListener('input', () => {
+  const customColor = normalizeEditorAccentCustomColor(editorAccentCustomInput.value);
+  if (editorAccentCustomValue) editorAccentCustomValue.textContent = customColor;
+  scheduleEditorAccentCustomColor(customColor);
+});
+editorAccentCustomInput?.addEventListener('change', () => {
+  flushEditorAccentCustomColor(editorAccentCustomInput.value);
+});
+const editorSystemThemeMedia = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+const refreshEditorSystemTheme = () => {
+  if (EDITOR_SETTINGS.theme === 'system') applyTheme('system');
+};
+if (editorSystemThemeMedia?.addEventListener) {
+  editorSystemThemeMedia.addEventListener('change', refreshEditorSystemTheme);
+} else {
+  editorSystemThemeMedia?.addListener?.(refreshEditorSystemTheme);
+}
 splitKeySel.addEventListener('change', () => {
   updateEditorSettings({ splitKey: splitKeySel.value });
   refreshSplitKeyHelp();
@@ -23635,6 +24105,9 @@ exportColorUnifiedToggle?.addEventListener('change', () => {
 });
 exportSpeakerLabelsToggle?.addEventListener('change', () => {
   updateEditorSettings({ exportSpeakerLabels: exportSpeakerLabelsToggle.checked });
+});
+exportSpeakerNamesAsSuffixToggle?.addEventListener('change', () => {
+  updateEditorSettings({ exportSpeakerNamesAsSuffix: exportSpeakerNamesAsSuffixToggle.checked });
 });
 clickBehaviorSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickBehavior: normalizeClickBehavior(clickBehaviorSelect.value) });
@@ -24058,6 +24531,16 @@ subtitleSpeakerLabelSeparatorInput?.addEventListener(
   'change',
   () => applySpeakerLabelSeparatorInput({ finalize: true }),
 );
+subtitleSpeakerMappingEnabledInput?.addEventListener('change', () => {
+  const previous = snapshotPreviewState();
+  previous.speakerLabels.mapping_enabled = !subtitleSpeakerMappingEnabledInput.checked;
+  pushPreviewUndo('切换颜色说话人映射', previous);
+  setSpeakerLabelSettings({
+    ...getSpeakerLabelSettings(),
+    mapping_enabled: subtitleSpeakerMappingEnabledInput.checked,
+  });
+  update();
+});
 subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
   const previous = snapshotPreviewState();
   previous.speakerLabels.enabled = !subtitleSpeakerLabelsEnabledInput.checked;
@@ -24662,6 +25145,7 @@ function clearAllGaps() {
 // 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
 function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen }) {
   if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false };
+  bindFloatingSurfaceActivation(panel);
   let drag = null;
 
   function isOpen() { return panel.classList.contains('show'); }
@@ -24721,6 +25205,7 @@ function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, po
     if (typeof onOpen === 'function') onOpen();
     panel.classList.add('show');
     panel.setAttribute('aria-hidden', 'false');
+    bringFloatingSurfaceToFront(panel);
     manageButton?.classList.add('active');
     manageButton?.setAttribute('aria-expanded', 'true');
     requestAnimationFrame(() => {
@@ -24734,6 +25219,7 @@ function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, po
     drag = null;
     manageButton?.classList.remove('active');
     manageButton?.setAttribute('aria-expanded', 'false');
+    syncFloatingSurfaceLayers();
   }
 
   function toggle() { if (isOpen()) close(); else open(); }
@@ -24891,6 +25377,7 @@ function closeGapRemovePanel() {
   gapRemovePanelDrag = null;
   gapRemoveManageButton?.classList.remove('active');
   gapRemoveManageButton?.setAttribute('aria-expanded', 'false');
+  syncFloatingSurfaceLayers();
 }
 
 function openGapRemovePanel() {
@@ -24915,6 +25402,7 @@ function openGapRemovePanel() {
   renderGapRemoveList();
   gapRemovePanel.classList.add('show');
   gapRemovePanel.setAttribute('aria-hidden', 'false');
+  bringFloatingSurfaceToFront(gapRemovePanel);
   gapRemoveManageButton?.classList.add('active');
   gapRemoveManageButton?.setAttribute('aria-expanded', 'true');
   requestAnimationFrame(restoreGapRemovePanelPosition);
@@ -31811,12 +32299,20 @@ function getSpeakerLabelSettings(value = DATA.preview?.subtitle?.speaker_labels)
   return EDITOR_SETTINGS_UTILS.normalizeSpeakerLabelSettings(value);
 }
 function syncSpeakerLabelControls(settings = getSpeakerLabelSettings()) {
+  const mappingEnabled = settings.mapping_enabled === true;
+  if (subtitleSpeakerMappingEnabledInput) {
+    subtitleSpeakerMappingEnabledInput.checked = mappingEnabled;
+  }
+  if (subtitleSpeakerLabelsToggle) {
+    subtitleSpeakerLabelsToggle.hidden = !mappingEnabled;
+  }
   if (subtitleSpeakerLabelsEnabledInput) {
     subtitleSpeakerLabelsEnabledInput.checked = settings.enabled;
   }
   if (subtitleSpeakerLabelsSettings) {
+    subtitleSpeakerLabelsSettings.dataset.mappingEnabled = mappingEnabled ? 'true' : 'false';
     subtitleSpeakerLabelsSettings.dataset.enabled = settings.enabled ? 'true' : 'false';
-    subtitleSpeakerLabelsSettings.hidden = !settings.enabled;
+    subtitleSpeakerLabelsSettings.hidden = !mappingEnabled;
   }
   Object.entries(subtitleSpeakerLabelInputs).forEach(([color, input]) => {
     if (input && document.activeElement !== input) input.value = settings.names[color] || '';
@@ -32444,17 +32940,25 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayTrackTextEl.classList.contains('hidden') === overlayCueVisible) {
     overlayTrackTextEl.classList.toggle('hidden', !overlayCueVisible);
   }
+  const subtitleAppearance = getSubtitleAppearance();
+  const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
+  const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
+  const mainSubtitleColor = subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
   const speakerLabels = getSpeakerLabelSettings();
   const mainColorName = mainVisible && seg
     ? MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments)
     : null;
-  const speakerLabel = mainVisible && speakerLabels.enabled
+  const speakerLabel = mainVisible && speakerLabels.mapping_enabled && speakerLabels.enabled
     ? window.AsrEditorUtils.speakerLabelForSegment(
       seg, DATA.segments, speakerLabels.names,
     )
     : '';
   const speakerLabelVisible = Boolean(speakerLabel && mainColorName && COLOR_BY_NAME[mainColorName]);
-  const speakerLabelColor = speakerLabelVisible ? COLOR_BY_NAME[mainColorName].value : '';
+  const speakerLabelColor = speakerLabelVisible
+    ? colorPreviewEnabled && colorStyle === 'stroke'
+      ? mainSubtitleColor
+      : COLOR_BY_NAME[mainColorName].value
+    : '';
   const speakerLabelText = speakerLabelVisible
     ? `${speakerLabel}${speakerLabels.separator}`
     : '';
@@ -32481,9 +32985,6 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
   // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
   // 播放刷新每帧都写内联样式。
-  const subtitleAppearance = getSubtitleAppearance();
-  const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
-  const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
   let previewSegmentColor = '';
   if (mainVisible && colorPreviewEnabled && seg) {
     const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
@@ -32496,7 +32997,7 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     && colorStyle === 'text'
     && previewSegmentColor
     ? previewSegmentColor
-    : subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
+    : mainSubtitleColor;
   const textStroke = colorPreviewEnabled
     && colorStyle === 'stroke'
     && previewSegmentColor
@@ -32735,7 +33236,8 @@ let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 function speakerLabelExportOptions() {
   const settings = getSpeakerLabelSettings();
   return {
-    speakerLabelsEnabled: EDITOR_SETTINGS.exportSpeakerLabels === true,
+    speakerLabelsEnabled: EDITOR_SETTINGS.exportSpeakerLabels === true
+      && settings.mapping_enabled === true,
     speakerLabels: settings.names,
     speakerLabelSeparator: settings.separator,
   };
@@ -32817,6 +33319,25 @@ function updateSubtitleExportUi() {
   }
 }
 
+function safeColorExportFilenameSuffix(value, fallback) {
+  const normalized = String(value ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, '_')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/[. ]+$/g, '')
+    .trim();
+  return normalized || fallback;
+}
+
+function colorExportFilenameSuffix(color, speakerSettings = getSpeakerLabelSettings()) {
+  const colorSuffix = window.MAWE_I18N?.exportTag?.(color.name) || color.name;
+  if (!EDITOR_SETTINGS.exportSpeakerNamesAsSuffix
+      || speakerSettings.mapping_enabled !== true
+      || color.name === 'default') {
+    return colorSuffix;
+  }
+  return safeColorExportFilenameSuffix(speakerSettings.names?.[color.name], colorSuffix);
+}
+
 async function downloadColorSrts(gapRemoved = false) {
   if (editingState) finishEdit(true);
   const colors = usedSubtitleColors();
@@ -32834,6 +33355,7 @@ async function downloadColorSrts(gapRemoved = false) {
     EDITOR_SETTINGS.exportStartAtZero,
   );
   const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
+  const speakerSettings = getSpeakerLabelSettings();
   const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
     colorName: color.name,
     timeOffset: 0,
@@ -32864,7 +33386,7 @@ async function downloadColorSrts(gapRemoved = false) {
     }
   }
   for (const color of colors) {
-    const filename = `${filenameBase}_${window.MAWE_I18N?.exportTag?.(color.name) || color.name}.srt`;
+    const filename = `${filenameBase}_${colorExportFilenameSuffix(color, speakerSettings)}.srt`;
     if (EDITOR_SETTINGS.exportColorUnified) {
       const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -34247,7 +34769,7 @@ function syncProjectBackupControls() {
   }
 }
 for (const [id, key, fallback, max] of [
-  ['project-backup-enabled', 'projectBackupEnabled', false, 0],
+  ['project-backup-enabled', 'projectBackupEnabled', true, 0],
   ['project-backup-minutes', 'projectBackupMinutes', 5, 1440],
   ['project-backup-limit', 'projectBackupLimit', 20, 1000],
 ]) {
@@ -34457,6 +34979,8 @@ function configureRecentProjects() {
     recentProjectsToggle.addEventListener('click', (event) => {
       event.stopPropagation();
       recentProjectsEl.classList.toggle('open');
+      if (recentProjectsEl.classList.contains('open')) bringFloatingSurfaceToFront(recentProjectsEl);
+      else syncFloatingSurfaceLayers();
     });
     document.addEventListener('click', (event) => {
       if (!recentProjectsEl.contains(event.target)) recentProjectsEl.classList.remove('open');
@@ -35667,6 +36191,8 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = nu
       previousPointerPoint = null;
       lastPointInsideOpenWrapper = null;
     }
+    if (open) bringFloatingSurfaceToFront(dd);
+    else syncFloatingSurfaceLayers();
     if (open && positioner) requestAnimationFrame(positioner);
     if (!open && restoreFocus) btn.focus();
   };
@@ -36922,6 +37448,8 @@ function setStickerRootModalOpen(open) {
     stickerRootReturnFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
     stickerRootModal.classList.add('show');
+    // 设置窗口由浮层栈动态抬高（430+），固定 335 盖不住它；打开时入栈置顶。
+    bringFloatingSurfaceToFront(stickerRootModal);
     const initialFocus = stickerRootServerEnabled
       ? stickerRootInput : document.getElementById('sticker-root-cancel');
     setTimeout(() => initialFocus.focus(), 50);

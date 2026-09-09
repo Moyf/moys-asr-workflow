@@ -589,6 +589,7 @@ class ProjectContractTests(unittest.TestCase):
             "preview": {"subtitle": {
                 "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
                 "speaker_labels": {
+                    "mapping_enabled": True,
                     "enabled": True,
                     "separator": "：",
                     "names": {
@@ -612,6 +613,9 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(
             result.project["preview"]["subtitle"]["speaker_labels"]["separator"],
             "：",
+        )
+        self.assertTrue(
+            result.project["preview"]["subtitle"]["speaker_labels"]["mapping_enabled"],
         )
 
     def test_validate_project_accepts_extension_color_refs(self) -> None:
@@ -662,6 +666,7 @@ class ProjectContractTests(unittest.TestCase):
             "preview": {"subtitle": {
                 "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
                 "speaker_labels": {
+                    "mapping_enabled": "yes",
                     "enabled": "yes",
                     "separator": "s" * 17,
                     "names": {
@@ -677,6 +682,7 @@ class ProjectContractTests(unittest.TestCase):
         paths = {error.path for error in result.errors}
 
         self.assertFalse(result.ok)
+        self.assertIn("$.preview.subtitle.speaker_labels.mapping_enabled", paths)
         self.assertIn("$.preview.subtitle.speaker_labels.enabled", paths)
         self.assertIn("$.preview.subtitle.speaker_labels.separator", paths)
         self.assertIn("$.preview.subtitle.speaker_labels.names.yellow", paths)

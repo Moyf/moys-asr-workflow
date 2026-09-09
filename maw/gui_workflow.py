@@ -46,6 +46,7 @@ class TranscriptionRequest:
     min_len: str = ""
     gap_split: str = ""
     strip_tail_punct: str = ""
+    extra_strong_punct: str = ""
     qwen_audio_context: str = ""
     qwen_audio_hotwords: str = ""
     qwen_audio_hotwords_file: str = ""
@@ -67,6 +68,9 @@ class TranscriptionRequest:
     model_cache_root: str = ""
     device: str = "auto"
     forced_aligner: str = ""
+    openai_prompt: str = ""
+    openai_keywords: tuple[str, ...] = ()
+    openai_diarize: bool = False
     runtime_python: str = ""
     postprocess_plan: dict[str, object] | None = None
     postprocess_llm_settings: dict[str, dict[str, str]] | None = None
@@ -321,6 +325,11 @@ def build_transcribe_command(
         _append_option(command, "--base-url", request.base_url)
         _append_option(command, "--model", request.model)
         _append_option(command, "--language", request.language)
+        _append_option(command, "--prompt", request.openai_prompt)
+        for keyword in request.openai_keywords:
+            _append_option(command, "--keyword", keyword)
+        if request.openai_diarize:
+            command.append("--diarize")
     else:
         _append_option(command, "--model", request.model or DEFAULT_MODEL_ID)
         _append_option(command, "--region", request.region)
@@ -330,6 +339,9 @@ def build_transcribe_command(
         ):
             command.append("--speaker-colors")
         _append_option(command, "--language", request.language)
+        # 共享断句配置里的「额外断句符号」：作为云端转写的强断句符号下发；
+        # 空串跳过，保持命令行与旧版一致。
+        _append_option(command, "--extra-strong-punct", request.extra_strong_punct)
     _append_option(command, "--length-limit", request.length_limit)
     _append_option(command, "--max-len", request.max_len)
     _append_option(command, "--min-len", request.min_len)
