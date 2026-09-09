@@ -29,6 +29,7 @@
     '拖入工程或 SRT 后显示字幕列表': 'Drop a project or SRT to display subtitles',
     '松开以加载工程、媒体或 SRT': 'Drop to load a project, media, or SRT',
     '自动保存': 'Auto-save', '自动保存间隔': 'Auto-save interval', '秒': 'sec', '说话人': 'Speaker',
+    '强调色': 'Accent Color', '自定义颜色': 'Custom color', '自定义': 'Custom', '橙色': 'Orange',
     '显示说话人名称': 'Show speaker names',
     '在预览字幕中显示说话人': 'Show speaker names in preview subtitles',
     '将颜色映射为说话人': 'Map colors to speakers',
@@ -577,7 +578,7 @@
     '清除所有选中': 'Clear selection', '取消选中': 'Deselect', '取消选择': 'Deselect', '请选择至少两个字幕块！': 'Select at least two subtitle blocks!',
     '红': 'Red', '黄': 'Yellow',
     '蓝': 'Blue', '绿': 'Green', '紫': 'Purple',
-    '红色': 'red', '黄色': 'yellow', '蓝色': 'blue', '绿色': 'green', '紫色': 'purple'
+    '红色': 'Red', '黄色': 'Yellow', '蓝色': 'Blue', '绿色': 'Green', '紫色': 'Purple'
   };
 
   const EN_ATTR = {

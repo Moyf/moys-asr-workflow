@@ -2792,6 +2792,19 @@
     return clampInteger(value, fallback, 1, 240);
   }
 
+  const EDITOR_ACCENT_COLOR_VALUES = Object.freeze(['blue', 'red', 'orange', 'custom']);
+  const DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR = '#6ca5e8';
+
+  function normalizeEditorAccentColor(value) {
+    return EDITOR_ACCENT_COLOR_VALUES.includes(value) ? value : 'blue';
+  }
+
+  function normalizeEditorAccentCustomColor(value) {
+    const color = String(value ?? '').trim();
+    return /^#[0-9a-f]{6}$/i.test(color)
+      ? color.toLowerCase() : DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR;
+  }
+
   const DEFAULT_EDITOR_SETTINGS = Object.freeze({
     splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true,
     mainSplitModeOverride: null,
@@ -2816,6 +2829,7 @@
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
+    accentColor: 'blue', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
     waveShapeSource: 'reapeaks',
   });
 
@@ -2912,6 +2926,8 @@
       multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
       theme: ['light', 'dark', 'system'].includes(savedSettings.theme)
         ? savedSettings.theme : 'dark',
+      accentColor: normalizeEditorAccentColor(savedSettings.accentColor),
+      accentColorCustom: normalizeEditorAccentCustomColor(savedSettings.accentColorCustom),
       waveShapeSource: savedSettings.waveShapeSource === 'self' ? 'self' : 'reapeaks',
     };
   }
@@ -5422,6 +5438,10 @@ export default MawDynamicCaptions;
     buildMultiDisplayRows,
     getSrtExportFirstIndex,
     getSrtExportOffset,
+    EDITOR_ACCENT_COLOR_VALUES,
+    DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    normalizeEditorAccentColor,
+    normalizeEditorAccentCustomColor,
     normalizeEditorSettings,
     TIMELINE_TIMEBASE_UNITS,
     DEFAULT_TIMELINE_FPS,

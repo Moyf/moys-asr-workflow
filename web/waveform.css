@@ -566,7 +566,14 @@
   bottom: var(--multi-subtitle-bottom-inset);
   outline-style: dotted;
   outline-color: color-mix(in srgb, var(--cue-color) 50%, var(--wave-cue-mix));
-  background: color-mix(in srgb, var(--cue-color) 10%, var(--wave-cue-mix));
+  background: var(--wave-cue-extension-bg, color-mix(in srgb, var(--cue-color) 10%, var(--wave-cue-mix)));
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"] {
+  background: var(--wave-cue-main-bg, color-mix(in srgb, var(--cue-color) 42%, var(--wave-cue-mix)));
+}
+/* 亮色主题的主字幕默认保持白底，但有颜色映射时不能把 --cue-color 盖掉。 */
+:root[data-theme="light"] .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"].has-subtitle-color {
+  background: color-mix(in srgb, var(--cue-color) 42%, var(--wave-cue-main-bg));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-badge {
   /* 双字幕时 badge 要放在最上方主字幕块之上；单层行继续使用默认 bottom。 */

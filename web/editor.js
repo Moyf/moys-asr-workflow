@@ -6,6 +6,57 @@ let STICKER_URL_PREFIX = __STICKER_URL_PREFIX_JSON__;
 const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
+// 所有非模态浮层共用一个前置栈：最后点击、打开或获得焦点的浮层排在最上面。
+// 起始值高于普通设置弹窗（420），但低于拖拽遮罩和加载层（500/510）。
+const FLOATING_SURFACE_Z_INDEX_BASE = 430;
+const floatingSurfaceStack = [];
+const floatingSurfaceRoots = new WeakSet();
+const floatingSurfaceActivationTargets = new WeakSet();
+
+function floatingSurfaceRoot(surface) {
+  if (!surface) return null;
+  const windowRoot = surface.closest('.editor-settings-window, .gap-remove-panel');
+  if (windowRoot) return windowRoot;
+  return surface.parentElement?.closest('.toolbar .dropdown') || surface;
+}
+
+function floatingSurfaceIsOpen(surface) {
+  if (!surface) return false;
+  if (surface.matches('.settings-panel')) return !surface.hidden;
+  if (surface.matches('.dropdown')) return surface.classList.contains('open');
+  return surface.classList.contains('show');
+}
+
+function syncFloatingSurfaceLayers() {
+  floatingSurfaceStack.forEach((surface, index) => {
+    const zIndex = FLOATING_SURFACE_Z_INDEX_BASE + index;
+    surface.style.zIndex = String(zIndex);
+  });
+}
+
+function bringFloatingSurfaceToFront(surface) {
+  const root = floatingSurfaceRoot(surface);
+  if (!root || !floatingSurfaceRoots.has(root)) return;
+  const currentIndex = floatingSurfaceStack.indexOf(root);
+  if (currentIndex >= 0) floatingSurfaceStack.splice(currentIndex, 1);
+  floatingSurfaceStack.push(root);
+  syncFloatingSurfaceLayers();
+}
+
+function bindFloatingSurfaceActivation(surface) {
+  const root = floatingSurfaceRoot(surface);
+  if (!root) return;
+  if (!floatingSurfaceRoots.has(root)) {
+    floatingSurfaceRoots.add(root);
+    floatingSurfaceStack.push(root);
+  }
+  if (floatingSurfaceActivationTargets.has(surface)) return;
+  const activate = () => bringFloatingSurfaceToFront(root);
+  surface.addEventListener('pointerdown', activate, true);
+  surface.addEventListener('focusin', activate, true);
+  floatingSurfaceActivationTargets.add(surface);
+}
+
 const MAWE_DEBUG_ENABLED = Boolean(
   SERVER_CONFIG?.debug || new URLSearchParams(window.location.search).has('mawe-debug'),
 );
@@ -740,6 +791,9 @@ const DEFAULT_EDITOR_SETTINGS = {
   multiSubtitleShowTrackBadges: false,
   // 界面主题：dark（默认）/ light / system。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
+  // 界面强调色：blue（默认）/ red / orange / custom；自定义颜色单独保存为六位十六进制值。
+  accentColor: 'blue',
+  accentColorCustom: '#6ca5e8',
   // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
   waveShapeSource: 'reapeaks',
 };
@@ -791,6 +845,8 @@ const normalizeClickBehavior = EDITOR_SETTINGS_UTILS.normalizeClickBehavior;
 const normalizeClickTarget = EDITOR_SETTINGS_UTILS.normalizeClickTarget;
 const normalizeKeyboardOperationReferenceMode = EDITOR_SETTINGS_UTILS.normalizeKeyboardOperationReferenceMode;
 const normalizeJklPlaybackMode = EDITOR_SETTINGS_UTILS.normalizeJklPlaybackMode;
+const normalizeEditorAccentColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentColor;
+const normalizeEditorAccentCustomColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentCustomColor;
 const clampAutoSaveInterval = EDITOR_SETTINGS_UTILS.clampAutoSaveInterval;
 const clampCharcountThreshold = EDITOR_SETTINGS_UTILS.clampCharcountThreshold;
 const clampNinjaSlashLength = EDITOR_SETTINGS_UTILS.clampNinjaSlashLength;
@@ -1501,6 +1557,10 @@ const exportSpeakerNamesAsSuffixToggle = document.getElementById('export-speaker
 const exportOpenSubtitleColorSettingsButton = document.getElementById('export-open-subtitle-color-settings');
 const helpToggle = document.getElementById('help-toggle');
 const editorThemeOptions = Array.from(document.querySelectorAll('[data-editor-theme]'));
+const editorAccentOptions = Array.from(document.querySelectorAll('[data-editor-accent]'));
+const editorAccentCustomField = document.getElementById('editor-accent-custom-field');
+const editorAccentCustomInput = document.getElementById('editor-accent-custom');
+const editorAccentCustomValue = document.getElementById('editor-accent-custom-value');
 const helpPanel = document.getElementById('help-panel');
 const helpDragHandle = document.getElementById('help-drag-handle');
 const helpCloseButton = document.getElementById('help-close');
@@ -1735,6 +1795,24 @@ const subtitleExtendManageButton = document.getElementById('subtitle-extend-mana
 const subtitleExtendRunButton = document.getElementById('subtitle-extend-run');
 const subtitleExtendForwardInput = document.getElementById('subtitle-extend-forward-ms');
 const subtitleExtendBackwardInput = document.getElementById('subtitle-extend-backward-ms');
+
+// 先登记所有可独立激活的非模态浮层。嵌套在全局设置窗口里的齿轮弹窗会
+// 自动归到全局设置窗口这一层，点击它们时也会把外层窗口带到最前面。
+[
+  editorSettingsPanel,
+  helpPanel,
+  gapRemovePanel,
+  autoMergePanel,
+  subtitleExtendPanel,
+  mergeJoinSettingsPanel,
+  splitTrimSettingsPanel,
+  cueListSettingsPanel,
+  cueEditorSettingsPanel,
+  waveformSettingsPanel,
+  multiSubtitleSettingsDropdown,
+  ...document.querySelectorAll('.toolbar .dropdown'),
+].forEach(bindFloatingSurfaceActivation);
+
 let gapPreviewRange = null;
 let gapRemovePanelDrag = null;
 let currentCuePanelIdx = -1;
@@ -2038,7 +2116,11 @@ function setMergeJoinSettingsPanelOpen(open) {
   mergeJoinSettingsPanel.hidden = !open;
   mergeJoinSettingsToggle.classList.toggle('active', open);
   mergeJoinSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionMergeJoinSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(mergeJoinSettingsPanel);
+    positionMergeJoinSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionSplitTrimSettingsPanel() {
@@ -2050,7 +2132,11 @@ function setSplitTrimSettingsPanelOpen(open) {
   splitTrimSettingsPanel.hidden = !open;
   splitTrimSettingsToggle.classList.toggle('active', open);
   splitTrimSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionSplitTrimSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(splitTrimSettingsPanel);
+    positionSplitTrimSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function setSettingsPanelOwnerOpen(panel, open) {
@@ -2068,7 +2154,11 @@ function setCueListSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(cueListSettingsPanel, open);
   cueListSettingsToggle.classList.toggle('active', open);
   cueListSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionCueListSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(cueListSettingsPanel);
+    positionCueListSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionCueEditorSettingsPanel() {
@@ -2081,7 +2171,11 @@ function setCueEditorSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(cueEditorSettingsPanel, open);
   cueEditorSettingsToggle.classList.toggle('active', open);
   cueEditorSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionCueEditorSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(cueEditorSettingsPanel);
+    positionCueEditorSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionWaveformSettingsPanel() {
@@ -2094,7 +2188,11 @@ function setWaveformSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(waveformSettingsPanel, open);
   waveformSettingsToggle.classList.toggle('active', open);
   waveformSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionWaveformSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(waveformSettingsPanel);
+    positionWaveformSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function applyCueListDisplaySettings({ preserveCueListScroll = true } = {}) {
@@ -2762,9 +2860,10 @@ if (helpPanel) {
 }
 
 
-// 明暗主题：令牌全部定义在 CSS（:root 暗色 / [data-theme="light"] 亮色），
-// 这里只负责解析偏好、写 <html data-theme>、持久化，以及通知波形重绘画布。
+// 明暗主题与界面强调色：令牌全部定义在 CSS，
+// 这里只负责解析偏好、写 <html> 数据属性、持久化，以及通知波形重绘画布。
 const EDITOR_THEME_VALUES = Object.freeze(['light', 'dark', 'system']);
+const EDITOR_ACCENT_COLOR_DEBOUNCE_MS = 160;
 function normalizeEditorTheme(theme) {
   return EDITOR_THEME_VALUES.includes(theme) ? theme : 'dark';
 }
@@ -2783,6 +2882,50 @@ function refreshEditorThemeOptions(theme) {
     option.setAttribute('aria-pressed', String(active));
   });
 }
+function refreshEditorAccentOptions(accentColor) {
+  const preference = normalizeEditorAccentColor(accentColor);
+  editorAccentOptions.forEach((option) => {
+    const active = option.dataset.editorAccent === preference;
+    option.classList.toggle('active', active);
+    option.setAttribute('aria-pressed', String(active));
+  });
+}
+function applyEditorAccentColor(accentColor, { rerenderWaveform = true } = {}) {
+  const preference = normalizeEditorAccentColor(accentColor);
+  const customColor = normalizeEditorAccentCustomColor(EDITOR_SETTINGS.accentColorCustom);
+  const root = document.documentElement;
+  root.dataset.accent = preference;
+  if (preference === 'custom') root.style.setProperty('--accent-custom', customColor);
+  else root.style.removeProperty('--accent-custom');
+  refreshEditorAccentOptions(preference);
+  if (editorAccentCustomField) editorAccentCustomField.hidden = preference !== 'custom';
+  if (editorAccentCustomInput) editorAccentCustomInput.value = customColor;
+  if (editorAccentCustomValue) editorAccentCustomValue.textContent = customColor;
+  // 波形画布颜色是 JS 读取的令牌快照，强调色切换后同样需要重绘。
+  if (rerenderWaveform && waveformEditor) waveformEditor.render();
+}
+let editorAccentCustomColorTimer = 0;
+let pendingEditorAccentCustomColor = null;
+function flushEditorAccentCustomColor(value = editorAccentCustomInput?.value) {
+  if (editorAccentCustomColorTimer) {
+    window.clearTimeout(editorAccentCustomColorTimer);
+    editorAccentCustomColorTimer = 0;
+  }
+  const customColor = normalizeEditorAccentCustomColor(value);
+  pendingEditorAccentCustomColor = null;
+  updateEditorSettings({ accentColor: 'custom', accentColorCustom: customColor });
+  applyEditorAccentColor('custom');
+}
+function scheduleEditorAccentCustomColor(value) {
+  pendingEditorAccentCustomColor = normalizeEditorAccentCustomColor(value);
+  if (editorAccentCustomColorTimer) window.clearTimeout(editorAccentCustomColorTimer);
+  editorAccentCustomColorTimer = window.setTimeout(() => {
+    editorAccentCustomColorTimer = 0;
+    const customColor = pendingEditorAccentCustomColor;
+    pendingEditorAccentCustomColor = null;
+    if (customColor) flushEditorAccentCustomColor(customColor);
+  }, EDITOR_ACCENT_COLOR_DEBOUNCE_MS);
+}
 function applyTheme(theme, { rerenderWaveform = true } = {}) {
   const preference = normalizeEditorTheme(theme);
   const resolved = resolveEditorTheme(preference);
@@ -2792,6 +2935,7 @@ function applyTheme(theme, { rerenderWaveform = true } = {}) {
   // 画布颜色是 JS 读取的令牌快照，必须全量重绘才能跟随主题
   if (rerenderWaveform && waveformEditor) waveformEditor.render();
 }
+applyEditorAccentColor(EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
 applyTheme(EDITOR_SETTINGS.theme, { rerenderWaveform: false });
 editorThemeOptions.forEach((option) => {
   option.addEventListener('click', () => {
@@ -2799,6 +2943,22 @@ editorThemeOptions.forEach((option) => {
     updateEditorSettings({ theme: next });
     applyTheme(next);
   });
+});
+editorAccentOptions.forEach((option) => {
+  option.addEventListener('click', () => {
+    if (pendingEditorAccentCustomColor !== null) flushEditorAccentCustomColor();
+    const next = normalizeEditorAccentColor(option.dataset.editorAccent);
+    updateEditorSettings({ accentColor: next });
+    applyEditorAccentColor(next);
+  });
+});
+editorAccentCustomInput?.addEventListener('input', () => {
+  const customColor = normalizeEditorAccentCustomColor(editorAccentCustomInput.value);
+  if (editorAccentCustomValue) editorAccentCustomValue.textContent = customColor;
+  scheduleEditorAccentCustomColor(customColor);
+});
+editorAccentCustomInput?.addEventListener('change', () => {
+  flushEditorAccentCustomColor(editorAccentCustomInput.value);
 });
 const editorSystemThemeMedia = typeof window.matchMedia === 'function'
   ? window.matchMedia('(prefers-color-scheme: dark)') : null;
@@ -4053,6 +4213,7 @@ function clearAllGaps() {
 // 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
 function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen }) {
   if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false };
+  bindFloatingSurfaceActivation(panel);
   let drag = null;
 
   function isOpen() { return panel.classList.contains('show'); }
@@ -4112,6 +4273,7 @@ function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, po
     if (typeof onOpen === 'function') onOpen();
     panel.classList.add('show');
     panel.setAttribute('aria-hidden', 'false');
+    bringFloatingSurfaceToFront(panel);
     manageButton?.classList.add('active');
     manageButton?.setAttribute('aria-expanded', 'true');
     requestAnimationFrame(() => {
@@ -4125,6 +4287,7 @@ function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, po
     drag = null;
     manageButton?.classList.remove('active');
     manageButton?.setAttribute('aria-expanded', 'false');
+    syncFloatingSurfaceLayers();
   }
 
   function toggle() { if (isOpen()) close(); else open(); }
@@ -4282,6 +4445,7 @@ function closeGapRemovePanel() {
   gapRemovePanelDrag = null;
   gapRemoveManageButton?.classList.remove('active');
   gapRemoveManageButton?.setAttribute('aria-expanded', 'false');
+  syncFloatingSurfaceLayers();
 }
 
 function openGapRemovePanel() {
@@ -4306,6 +4470,7 @@ function openGapRemovePanel() {
   renderGapRemoveList();
   gapRemovePanel.classList.add('show');
   gapRemovePanel.setAttribute('aria-hidden', 'false');
+  bringFloatingSurfaceToFront(gapRemovePanel);
   gapRemoveManageButton?.classList.add('active');
   gapRemoveManageButton?.setAttribute('aria-expanded', 'true');
   requestAnimationFrame(restoreGapRemovePanelPosition);
@@ -13711,6 +13876,8 @@ function configureRecentProjects() {
     recentProjectsToggle.addEventListener('click', (event) => {
       event.stopPropagation();
       recentProjectsEl.classList.toggle('open');
+      if (recentProjectsEl.classList.contains('open')) bringFloatingSurfaceToFront(recentProjectsEl);
+      else syncFloatingSurfaceLayers();
     });
     document.addEventListener('click', (event) => {
       if (!recentProjectsEl.contains(event.target)) recentProjectsEl.classList.remove('open');
@@ -14921,6 +15088,8 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = nu
       previousPointerPoint = null;
       lastPointInsideOpenWrapper = null;
     }
+    if (open) bringFloatingSurfaceToFront(dd);
+    else syncFloatingSurfaceLayers();
     if (open && positioner) requestAnimationFrame(positioner);
     if (!open && restoreFocus) btn.focus();
   };
