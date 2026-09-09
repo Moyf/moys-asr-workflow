@@ -20539,6 +20539,41 @@ function detachCuePanelFromTrackEdits() {
   resetCuePanelEditState();
 }
 
+// === 迁移字幕的颜色继承 ===
+// 主轨 ↔ 叠加轨互转时颜色标记跟着走：head 保留原色值，ref 物化为自持
+// head（start/end 取段自身范围，与 syncTimelineGroupRanges 对无组员 head 的
+// 语义一致）。叠加轨的 color_ref 只引用叠加轨自身段，因此迁移后的颜色
+// 一律以「单段 head」形式存在，不产生跨轨引用。
+function captureCueColorSnapshot(segment) {
+  if (!segment) return null;
+  if (segment.color?.name) return { name: segment.color.name, value: segment.color.value ?? null };
+  if (segment.color_ref?.name) return { name: segment.color_ref.name, value: null };
+  return null;
+}
+
+function applyCueColorSnapshot(segment, snapshot) {
+  if (!segment || !snapshot?.name) return false;
+  segment.color_ref = null;
+  segment.color = {
+    name: snapshot.name,
+    value: snapshot.value || colorValue(snapshot.name),
+    start: segment.start,
+    end: segment.end,
+  };
+  return true;
+}
+
+// 拖动换轨入口专用的面板分离：不走 commitCuePanelEdit——它会把段钳回
+// 主轨非重叠区间（previousEnd/nextStart 夹逼），与 Shift+拖动「故意重叠」
+// 的换轨意图冲突；文字编辑已在 input 事件实时写入段，这里只清空面板。
+function detachCuePanelDuringDrag() {
+  currentCuePanelIdx = -1;
+  currentCuePanelKind = 'main';
+  currentCuePanelTrackId = null;
+  resetCuePanelEditState();
+  renderCurrentCuePanel();
+}
+
 // 菜单入口：把选中的主轨字幕转为叠加字幕。返回成功迁移的数量。
 function convertMainCuesToOverlay(idxs, { label = '转为叠加字幕', pushHistory = true, silent = false } = {}) {
   const targets = [...new Set(Array.isArray(idxs) ? idxs : [])]
@@ -20547,11 +20582,21 @@ function convertMainCuesToOverlay(idxs, { label = '转为叠加字幕', pushHist
   if (!targets.length) return 0;
   detachCuePanelFromTrackEdits();
   if (pushHistory) pushUndo(label);
+  // 迁移前快照颜色：splitGroupsAtCutPoints 会把切点的 color/color_ref 清空。
+  const colorSnapshots = new Map(targets.map((index) => [index, {
+    segment: DATA.segments[index],
+    snapshot: captureCueColorSnapshot(DATA.segments[index]),
+  }]));
   shiftMainGroupRefsAfterMove(targets);
   let converted = 0;
   // 倒序迁移：主轨下标在移除后仍然稳定。
-  for (let index = targets.length - 1; index >= 0; index -= 1) {
-    if (moveSegmentToOverlayTrack(targets[index]) >= 0) converted += 1;
+  for (let position = targets.length - 1; position >= 0; position -= 1) {
+    const targetIndex = targets[position];
+    const newIndex = moveSegmentToOverlayTrack(targetIndex);
+    if (newIndex < 0) continue;
+    const { segment, snapshot } = colorSnapshots.get(targetIndex);
+    applyCueColorSnapshot(segment, snapshot);
+    converted += 1;
   }
   if (!converted) return 0;
   clearSelection({ silent: true });
@@ -20571,13 +20616,13 @@ function convertMainCuesToOverlay(idxs, { label = '转为叠加字幕', pushHist
 function convertMainCueToOverlayForDrag(index) {
   if (!Number.isInteger(index) || index < 0 || index >= DATA.segments.length) return -1;
   const panelWasHere = currentCuePanelKind === 'main' && currentCuePanelIdx === index;
-  // 拖动中段的时间已被实时改写，而面板输入框仍停留在拖动开始前的位置；
-  // 先把面板刷新到段的当前时间，避免 detach 提交时用陈旧输入覆盖拖动结果。
-  renderCurrentCuePanel();
-  detachCuePanelFromTrackEdits();
+  detachCuePanelDuringDrag();
+  const segment = DATA.segments[index];
+  const colorSnapshot = captureCueColorSnapshot(segment);
   shiftMainGroupRefsAfterMove([index]);
   const newIndex = moveSegmentToOverlayTrack(index);
   if (newIndex < 0) return -1;
+  applyCueColorSnapshot(segment, colorSnapshot);
   const { wasSelected, nextAnchor } = window.AsrEditorUtils.shiftSelectionAfterRemoval(
     selectedIdxs, lastClickedIdx, index,
   );
@@ -20598,12 +20643,18 @@ function convertOverlayCueToMainForDrag(index) {
   const overlay = getOverlayTrack();
   if (!overlay?.segments?.[index]) return -1;
   const panelWasHere = currentCuePanelKind === 'overlay' && currentCuePanelIdx === index;
-  // 与主转叠加的拖动入口同理：先刷新面板到段的当前时间，防止后续
-  // setCuePanelTarget 的提交用陈旧输入把拖动结果写回旧位置。
-  renderCurrentCuePanel();
+  // 与主转叠加的拖动入口同理：面板提交会把段钳回轨道非重叠区间，
+  // 冲突换轨意图；只清空面板目标，不提交任何时间。
+  detachCuePanelDuringDrag();
+  const segment = overlay.segments[index];
+  const colorSnapshot = captureCueColorSnapshot(segment);
+  // 剩下的叠加轨组员按主轨同款「组拆分」语义提升新 head，然后迁移段
+  // 物化自持颜色回到主轨（split 依赖迁移前下标，必须在 splice 前调用）。
+  splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
   resetOverlayGroupRefs(index);
   const newIndex = moveOverlaySegmentToMainTrack(index);
   if (newIndex < 0) return -1;
+  applyCueColorSnapshot(segment, colorSnapshot);
   shiftMainGroupRefsAfterInsert(newIndex);
   const { wasSelected, nextAnchor } = window.AsrEditorUtils.shiftSelectionAfterRemoval(
     selectedOverlayIdxs, lastClickedOverlayIdx, index,
@@ -20623,9 +20674,14 @@ function convertOverlayCueToMain(index) {
   if (!overlay?.segments?.[index]) return false;
   detachCuePanelFromTrackEdits();
   pushUndo('叠加字幕转回主轨');
+  const segment = overlay.segments[index];
+  const colorSnapshot = captureCueColorSnapshot(segment);
+  // 与拖动入口一致：剩余组员先提升新 head，迁移段物化自持颜色。
+  splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
   resetOverlayGroupRefs(index);
   const newIndex = moveOverlaySegmentToMainTrack(index);
   if (newIndex < 0) return false;
+  applyCueColorSnapshot(segment, colorSnapshot);
   shiftMainGroupRefsAfterInsert(newIndex);
   lastClickedOverlayIdx = window.AsrEditorUtils.shiftSelectionAfterRemoval(
     selectedOverlayIdxs, lastClickedOverlayIdx, index,
@@ -29328,7 +29384,7 @@ function applyAutoMergeSnapsWithBindings(snaps) {
 //         首条升级为新 head，后续 ref 指向它。
 //   - 删除场景：cutSet = 被物理删除的 idx；切完后由调用方负责 splice
 //   - 清除场景：cutSet = 被清除 group 字段的 idx；调用方不删除字幕本身
-function splitGroupsAtCutPoints(cutSet, headField, refField) {
+function splitGroupsAtCutPoints(cutSet, headField, refField, segments = DATA.segments) {
   function groupHeadOf(seg, idx) {
     if (seg[headField]) return idx;
     if (seg[refField]) return seg[refField].headIdx;
@@ -29336,7 +29392,7 @@ function splitGroupsAtCutPoints(cutSet, headField, refField) {
   }
   // 1) 收集所有原始 group：headIdx → [members 升序]
   const groups = new Map();
-  DATA.segments.forEach((s, i) => {
+  segments.forEach((s, i) => {
     const g = groupHeadOf(s, i);
     if (g < 0) return;
     if (!groups.has(g)) groups.set(g, []);
@@ -29357,7 +29413,7 @@ function splitGroupsAtCutPoints(cutSet, headField, refField) {
     if (cur.length) sub.push(cur);
 
     // 拿原 head 数据作为新 head 的模板（深拷贝）
-    const oldHead = DATA.segments[oldHeadIdx];
+    const oldHead = segments[oldHeadIdx];
     const template = oldHead ? oldHead[headField] : null;
     if (!template) continue;
 
@@ -29365,8 +29421,8 @@ function splitGroupsAtCutPoints(cutSet, headField, refField) {
       if (!segIdxs.length) return;
       const segHeadIdx = segIdxs[0];
       const segLastIdx = segIdxs[segIdxs.length - 1];
-      const newStart = DATA.segments[segHeadIdx].start;
-      const newEnd = DATA.segments[segLastIdx].end;
+      const newStart = segments[segHeadIdx].start;
+      const newEnd = segments[segLastIdx].end;
 
       if (segNo === 0 && segHeadIdx === oldHeadIdx) {
         // 原 head 还活着且未被切除 → 仅修正其时间范围
@@ -29379,11 +29435,11 @@ function splitGroupsAtCutPoints(cutSet, headField, refField) {
         const promoted = JSON.parse(JSON.stringify(template));
         promoted.start = newStart;
         promoted.end = newEnd;
-        DATA.segments[segHeadIdx][headField] = promoted;
-        DATA.segments[segHeadIdx][refField] = null;
+        segments[segHeadIdx][headField] = promoted;
+        segments[segHeadIdx][refField] = null;
         // 段内其余 ref 改指向新 head
         for (let k = 1; k < segIdxs.length; k++) {
-          const refSeg = DATA.segments[segIdxs[k]];
+          const refSeg = segments[segIdxs[k]];
           if (refSeg[refField]) {
             refSeg[refField].headIdx = segHeadIdx;
           }
@@ -29394,7 +29450,7 @@ function splitGroupsAtCutPoints(cutSet, headField, refField) {
 
   // 把切点位置的 head/ref 字段全部清空（调用方期望的副作用）
   cutSet.forEach(i => {
-    const s = DATA.segments[i];
+    const s = segments[i];
     if (!s) return;
     if (s[headField]) s[headField] = null;
     if (s[refField])  s[refField]  = null;
@@ -32460,6 +32516,35 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     overlayTextEl.dataset.colorStroke = textStroke;
     overlayTextEl.style.webkitTextStroke = textStroke;
     overlayTextEl.style.paintOrder = textStroke ? 'stroke fill' : '';
+  }
+  // 叠加轨预览颜色：与主字幕同一套颜色快照样式（下划线/文字色/描边），
+  // 颜色引用按叠加轨自身段解析（effectiveColorName 传入叠加轨数组）。
+  let overlayTrackSegmentColor = '';
+  if (overlayCueVisible && colorPreviewEnabled) {
+    const overlayColorName = MULTI_SUBTITLE_UTILS.effectiveColorName(
+      overlayCue, getOverlayTrack()?.segments || [],
+    );
+    overlayTrackSegmentColor = overlayColorName ? COLOR_BY_NAME[overlayColorName]?.value || '' : '';
+  }
+  const overlayTrackUnderline = colorStyle === 'underline' ? overlayTrackSegmentColor : '';
+  const overlayTrackTextColor = colorStyle === 'text' && overlayTrackSegmentColor
+    ? overlayTrackSegmentColor : '';
+  const overlayTrackStroke = colorStyle === 'stroke' && overlayTrackSegmentColor
+    ? `.125em ${overlayTrackSegmentColor}` : '';
+  if (overlayTrackTextEl.dataset.colorUnderline !== overlayTrackUnderline) {
+    overlayTrackTextEl.dataset.colorUnderline = overlayTrackUnderline;
+    overlayTrackTextEl.style.textDecorationLine = overlayTrackUnderline ? 'underline' : '';
+    overlayTrackTextEl.style.textDecorationColor = overlayTrackUnderline;
+    overlayTrackTextEl.style.textUnderlineOffset = overlayTrackUnderline ? '0.25em' : '';
+  }
+  if (overlayTrackTextEl.dataset.colorText !== overlayTrackTextColor) {
+    overlayTrackTextEl.dataset.colorText = overlayTrackTextColor;
+    overlayTrackTextEl.style.color = overlayTrackTextColor;
+  }
+  if (overlayTrackTextEl.dataset.colorStroke !== overlayTrackStroke) {
+    overlayTrackTextEl.dataset.colorStroke = overlayTrackStroke;
+    overlayTrackTextEl.style.webkitTextStroke = overlayTrackStroke;
+    overlayTrackTextEl.style.paintOrder = overlayTrackStroke ? 'stroke fill' : '';
   }
   const overlayHidden = !mainVisible && !extensionVisible;
   if (overlayEl.classList.contains('hidden') !== overlayHidden) {
@@ -39358,20 +39443,27 @@ function cleanPunctuation() {
 }
 
 function syncTimelineGroupRanges() {
-  function sync(headField, refField) {
-    DATA.segments.forEach((segment, headIdx) => {
+  function sync(segments, headField, refField) {
+    segments.forEach((segment, headIdx) => {
       const head = segment[headField];
       if (!head) return;
       let end = segment.end;
-      DATA.segments.forEach((candidate) => {
+      segments.forEach((candidate) => {
         if (candidate[refField]?.headIdx === headIdx) end = Math.max(end, candidate.end);
       });
       head.start = segment.start;
       head.end = end;
     });
   }
-  sync('sticker', 'sticker_ref');
-  sync('color', 'color_ref');
+  sync(DATA.segments, 'sticker', 'sticker_ref');
+  sync(DATA.segments, 'color', 'color_ref');
+  // 叠加轨自持 head 的范围随段拖动自动归位：换轨瞬间物化的颜色快照
+  // 记录的是当时的位置，以 onCommitEdit 的这次同步为准。
+  const overlay = getOverlayTrack();
+  if (overlay?.segments?.length) {
+    sync(overlay.segments, 'sticker', 'sticker_ref');
+    sync(overlay.segments, 'color', 'color_ref');
+  }
 }
 
 function seekFromWaveform(timeSec, { dragPreview = false } = {}) {
