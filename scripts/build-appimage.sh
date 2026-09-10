@@ -24,24 +24,27 @@ uv run --group build pyinstaller --noconfirm --clean MAW.spec
 cp "FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"
 
 echo "==> 2/6 准备静态 ffmpeg（BtbN FFmpeg-Builds，固定 autobuild 版本）"
-FFMPEG_VERSION="N-126308-gd411d9e752"
+FFMPEG_VERSION="N-126482-g903325e279"
 FFMPEG_TARBALL="$BUILD_DIR/ffmpeg-${FFMPEG_VERSION}-linux64-gpl.tar.xz"
-FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-28-17-08/ffmpeg-${FFMPEG_VERSION}-linux64-gpl.tar.xz"
-FFMPEG_SHA256="980678387f826c27bc9e8e754e39cc1b1c8573e17a0b97effc148b9eab90bca9"
+FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-09-14-51/ffmpeg-${FFMPEG_VERSION}-linux64-gpl.tar.xz"
+FFMPEG_SHA256="746de35fdafb5d767a33d1068efb4bee5366edd71d60532d223620f40851e6e5"
 FFMPEG_DIR="$BUILD_DIR/ffmpeg-static"
 # 静态版自包含 libstdc++ 依赖，不受 PyInstaller 的 _internal 旧库污染；
 # 动态版 ffmpeg 若打进包内，AppRun 污染环境下照样会 GLIBCXX 报错。
 # BtbN autobuild 固定版本 + 写死 SHA256：版本与校验双固定，完全可复现；
 # 升级时改 FFMPEG_VERSION / FFMPEG_URL / FFMPEG_SHA256 三处即可
-# （checksums 见 https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-28-17-08）。
+# （checksums 见 https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-09-09-14-51）。
+# 注意：BtbN 只保留最近十来天的 dated autobuild，旧 release 会被删除（下载变 404），
+# 需要定期更新这里的 pin。
 if [ ! -x "$FFMPEG_DIR/bin/ffmpeg" ]; then
     if [ ! -f "$FFMPEG_TARBALL" ]; then
         echo "    下载静态 ffmpeg..."
-        curl -sL --retry 3 --retry-delay 2 -o "$FFMPEG_TARBALL" "$FFMPEG_URL"
+        curl -sSfL --retry 3 --retry-delay 2 -o "$FFMPEG_TARBALL" "$FFMPEG_URL"
     fi
     echo "    校验静态 ffmpeg 完整性..."
     if ! echo "$FFMPEG_SHA256  $FFMPEG_TARBALL" | sha256sum -c - >/dev/null; then
-        echo "错误：ffmpeg 下载校验和不匹配（$FFMPEG_TARBALL），已删除请重试。" >&2
+        echo "错误：ffmpeg 下载校验和不匹配（$FFMPEG_TARBALL），已删除。" >&2
+        echo "错误：若 curl 已报 404，说明上游 dated autobuild 被清理，请更新 FFMPEG_VERSION / FFMPEG_URL / FFMPEG_SHA256 后重试。" >&2
         rm -f "$FFMPEG_TARBALL"
         exit 1
     fi
