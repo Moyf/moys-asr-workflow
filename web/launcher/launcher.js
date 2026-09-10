@@ -1134,7 +1134,7 @@
         outputSubfolder: saved.outputSubfolder,
         perVideoSubfolder: saved.perVideoSubfolder,
         attachModelName: saved.attachModelName,
-        appVersion: "1.6.0-beta.2",
+        appVersion: "1.6.0-beta.3",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
