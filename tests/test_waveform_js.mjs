@@ -28,6 +28,24 @@ vm.runInNewContext('globalThis.newArrayBuffer = (size) => new ArrayBuffer(size);
 const helpers = context.window.AsrWaveform.testing;
 const builtinWorkspaces = context.window.AsrWaveform.builtinWorkspaces;
 
+// 失败路径会派发 DOM 事件。waveform.js 跑在 vm 沙箱里，`document` 解析到的是
+// context 而不是 globalThis，所以桩必须装进 context；用 t.after 拆卸，断言中途
+// 抛错也不会把桩泄漏给后面的用例。浏览器里 document 恒在，产品代码无需防御。
+function installSandboxEventStub(t) {
+  const previous = { document: context.document, CustomEvent: context.CustomEvent };
+  const dispatched = [];
+  context.CustomEvent = function FakeCustomEvent(type, options) {
+    this.type = type;
+    this.detail = options && options.detail;
+  };
+  context.document = { dispatchEvent: (event) => dispatched.push(event.type) };
+  t.after(() => {
+    context.document = previous.document;
+    context.CustomEvent = previous.CustomEvent;
+  });
+  return dispatched;
+}
+
 function copyToSandboxArrayBuffer(bytes) {
   const buffer = context.newArrayBuffer(bytes.length);
   new Uint8Array(buffer).set(bytes);
@@ -649,8 +667,27 @@ test('normalizes waveform display settings carried by a layout', () => {
   assert.equal(normalized.waveformMode, 'basic');
   assert.deepEqual(JSON.parse(JSON.stringify(normalized.waveformSettings)), {
     visibleSeconds: 30, secondsPerRow: 20, rowHeight: 144, waveformScale: 6,
+    waveformScaleAuto: true,
     side: 'right', disabledDisplay: 'hidden', showGroupBadges: false, dragPlayhead: false,
   });
+  // waveformScaleAuto 必须恒被显式产出：applyLayoutData 用 Object.assign 增量
+  // 合并，缺字段会让上一个工程的 false 残留到新媒体上（反过来就是静默不缩放）。
+  assert.equal(
+    helpers.normalizeLayoutData({
+      preset: 'custom',
+      waveformSettings: { waveformScale: 2, waveformScaleAuto: false },
+    }).waveformSettings.waveformScaleAuto,
+    false,
+    '用户手调过振幅 → 显式 false',
+  );
+  assert.equal(
+    helpers.normalizeLayoutData({
+      preset: 'custom',
+      waveformSettings: { waveformScale: 2 },
+    }).waveformSettings.waveformScaleAuto,
+    true,
+    '老工程没有这个字段 → 升级后仍走自动缩放',
+  );
 });
 
 
@@ -1022,4 +1059,95 @@ test('activeWaveShape follows the drawn shape so detection uses the same envelop
   assert.equal(c.peaks, ownPeaks);
   // 什么都没有 → null（调用方据此跳过绘制/检测）
   assert.equal(shape.call(stub({ source: 'reapeaks', payload: null, peaks: null })), null);
+});
+
+test('waveformScaleFromLoudness clamps the predicted peak to full scale', () => {
+  const fit = helpers.waveformScaleFromLoudness;
+  const stats = (p95) => ({ schema: helpers.loudnessSchema, p95 });
+  const round2 = (value) => Number(value.toFixed(2));
+  // 0.77 的 RMS 乘上波峰因子 2 会得到 1.54，而峰值不可能超过满量程 1.0。
+  // 不钳住就会把响素材的「预测峰值」算大、振幅画得偏小 —— 这条钳制是本功能
+  // 与直觉相反的地方，钉死它。
+  assert.equal(round2(fit(stats(0.7696), 120)), 1.05);
+  // 中等响度：约 ×1.56，仍远小于历史上预设里写死的 4 / 5.5
+  assert.equal(round2(fit(stats(0.3357), 120)), 1.56);
+  // 安静素材一路放大到振幅上限为止，不无限放大
+  assert.equal(fit(stats(0.02), 120), 6);
+  // 行高不同 → 可用上半高不同，标尺要跟着变（64px 行比 120px 行略小）
+  assert.equal(round2(fit(stats(0.3357), 64)), 1.51);
+  // 全静音与缺数据一律不猜：返回 null 让调用方保持原振幅
+  for (const bad of [0, -1, Number.NaN, undefined, null]) {
+    assert.equal(fit(stats(bad), 120), null, `p95=${bad} 必须返回 null`);
+  }
+  assert.equal(fit(stats(0.3357), 0), null);
+  assert.equal(fit(null, 120), null);
+});
+
+test('loudness auto-fit never overrides an amplitude the user already set', (t) => {
+  const setLoudnessStats = helpers.setLoudnessStats;
+  const fitWaveformScaleToLoudness = helpers.fitWaveformScaleToLoudness;
+  const dispatched = installSandboxEventStub(t);
+  const stats = { schema: helpers.loudnessSchema, p95: 0.3357, max: 0.3357, bin_count: 81 };
+  const make = (auto, scale = 1) => {
+    const self = {
+      loudnessStats: null,
+      settings: { waveformScaleAuto: auto, waveformScale: scale, rowHeight: 120 },
+      labelRenders: 0,
+      redraws: 0,
+      renderWaveformScaleLabel() { self.labelRenders += 1; },
+      redrawWaveformCanvases() { self.redraws += 1; },
+      setStatus() {},
+      // 按钮走的是 this.setLoudnessStats，桩上得有一个真实现
+      setLoudnessStats: (stats) => setLoudnessStats.call(self, stats),
+    };
+    return self;
+  };
+
+  // 未定过振幅 → 自动拟合，且只改视图、不写全局（saveSettings 不在这条路径上）
+  const fresh = make(true);
+  assert.equal(setLoudnessStats.call(fresh, stats), true);
+  assert.equal(Number(fresh.settings.waveformScale.toFixed(2)), 1.56);
+  assert.equal(fresh.redraws, 1);
+
+  // 用户手调过 → 一个字节都不许改
+  const manual = make(false, 4);
+  assert.equal(setLoudnessStats.call(manual, stats), false);
+  assert.equal(manual.settings.waveformScale, 4);
+  assert.equal(manual.redraws, 0);
+  // 但统计量本身要存下来，否则「响度适配」按钮无数据可用
+  assert.ok(manual.loudnessStats, '即使不应用，也要缓存响度统计供按钮使用');
+
+  // schema 不匹配的载荷必须整个拒绝，不能拿半截数据去缩放
+  const wrong = make(true);
+  assert.equal(setLoudnessStats.call(wrong, { schema: 'moy.asr.loudness.v2', p95: 0.5 }), false);
+  assert.equal(wrong.loudnessStats, null);
+
+  // 按钮：把手调状态翻回自动并重新拟合。先走一遍真实的到达顺序 —— 响度数据在
+  // 手调状态下也会先被缓存下来（上面 manual 那条），按钮才有数据可用。
+  const refit = make(false, 4);
+  assert.equal(setLoudnessStats.call(refit, stats), false);
+  assert.equal(fitWaveformScaleToLoudness.call(refit), true);
+  assert.equal(refit.settings.waveformScaleAuto, true);
+  assert.equal(Number(refit.settings.waveformScale.toFixed(2)), 1.56);
+
+  // 没有响度缓存时按钮必须整个失败，并且把标志还原 —— 否则标签会谎称「自动」
+  // 却显示着用户的手调值。
+  const empty = make(false, 4);
+  empty.loudnessStats = null;
+  assert.equal(fitWaveformScaleToLoudness.call(empty), false);
+  assert.equal(empty.settings.waveformScale, 4);
+  assert.equal(empty.settings.waveformScaleAuto, false);
+  // 只有失败那一次该通知编辑器弹提示
+  assert.deepEqual(dispatched, ['asr:waveform-loudness-unavailable']);
+});
+
+test('the amplitude label marks the value as auto-derived', () => {
+  const render = helpers.renderWaveformScaleLabel;
+  const label = (auto, scale) => {
+    const self = { waveformScaleLabel: { textContent: '' }, settings: { waveformScale: scale, waveformScaleAuto: auto } };
+    render.call(self);
+    return self.waveformScaleLabel.textContent;
+  };
+  assert.equal(label(true, 1.5598), '×1.56 自动');
+  assert.equal(label(false, 4), '×4');
 });
