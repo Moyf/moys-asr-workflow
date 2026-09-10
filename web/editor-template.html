@@ -1542,9 +1542,10 @@ __WAVEFORM_CSS__
   <div class="layout-resizer layout-resizer-h1" id="layout-resizer-h1" data-layout-resizer="row-top" title="拖动调整视频与当前字幕高度"></div>
   <div class="layout-resizer layout-resizer-h2" id="layout-resizer-h2" data-layout-resizer="row-middle" title="拖动调整当前字幕与字幕列表高度"></div>
   <div class="layout-drop-preview" id="layout-drop-preview" aria-hidden="true"></div>
-  <div class="cues-container" id="cues-container">
+  <div class="cues-container" id="cues-container" tabindex="0" aria-label="字幕列表">
     <div class="toolbar cue-list-toolbar">
       <span class="info layout-toolbar-label">字幕</span>
+      <button type="button" id="cue-list-follow" aria-pressed="true" title="定位当前播放头并恢复字幕跟随；手动翻看后可再次点击">跟随播放</button>
       <div class="settings-anchor cue-list-settings" id="cue-list-settings">
         <button type="button" id="cue-list-settings-toggle" class="cue-list-settings-toggle" title="字幕列表设置" aria-label="字幕列表设置" aria-expanded="false" aria-controls="cue-list-settings-panel" aria-haspopup="dialog">⚙️</button>
         <div class="settings-panel cue-list-settings-panel" id="cue-list-settings-panel" role="dialog" aria-label="字幕列表设置" hidden>

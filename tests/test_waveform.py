@@ -867,11 +867,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="cue-list-auto-scroll-on-click" checked', page)
         self.assertIn('cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false', page)
         self.assertIn('if (EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll)', page)
-        self.assertIn("const visibleHeight = Math.max(1, visibleBottom - visibleTop);", page)
-        self.assertIn(
-            "const comfortInset = Math.min(120, Math.max(48, visibleHeight * 0.2));",
-            page,
-        )
+        self.assertIn('id="cue-list-follow" aria-pressed="true"', page)
+        self.assertIn('function resumeCueListFollowing()', page)
+        self.assertIn('content-visibility: auto;', page)
         self.assertIn('cueListShowIndex: saved.cueListShowIndex !== false', page)
         self.assertIn('cueListShowTime: saved.cueListShowTime !== false', page)
         self.assertIn('cueListShowSticker: saved.cueListShowSticker !== false', page)

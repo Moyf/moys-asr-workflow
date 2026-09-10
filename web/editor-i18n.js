@@ -9,6 +9,8 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '跟随播放': 'Follow playback',
+    '定位当前播放头并恢复字幕跟随；手动翻看后可再次点击': 'Locate the playhead and resume subtitle following; click again after browsing manually',
     '备份工程': 'Back up project',
     '打开备份文件夹': 'Open backup folder',
     '自动备份间隔（分钟）': 'Backup interval (minutes)',
