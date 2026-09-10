@@ -15359,6 +15359,9 @@ function suggestedProjectName(file = null) {
 }
 
 function applyCanonicalProject(data, filename) {
+  // 原地换工程：在途/已排期的延迟波形载荷（含响度标尺）全部作废，见
+  // deferredReapeaksEpoch 的说明。
+  deferredReapeaksEpoch += 1;
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
@@ -19060,15 +19063,23 @@ function initWaveformEditor() {
   waveformEditor.setLoudnessStats(DATA.loudness || null, { render: false });
 }
 
+// 原地切换工程（打开本地 .mosp / 新建空白 / 导入）会让 DATA 换成一个新工程，
+// 但服务器的 /api/waveform 仍描述它自己绑定的旧工程。每次 applyCanonicalProject
+// 递增该纪元；在途的延迟加载响应据此作废并终止轮询，旧工程的
+// spectral / 波形 / 响度载荷绝不会套到新工程的波形上。
+let deferredReapeaksEpoch = 0;
+
 async function loadDeferredReapeaks() {
   const url = SERVER_CONFIG?.waveformUrl;
   if (!url || !waveformEditor) return;
+  const epoch = deferredReapeaksEpoch;
   try {
     const response = await fetch(url, { cache: 'no-store' });
     const result = await response.json().catch(() => ({}));
+    if (epoch !== deferredReapeaksEpoch) return;
     if (!response.ok || result.ok !== true) throw new Error(result.error || `服务器返回 ${response.status}`);
     if (result.status === 'loading' || result.status === 'pending') {
-      window.setTimeout(() => { void loadDeferredReapeaks(); }, 500);
+      scheduleDeferredReapeaksRetry(500, epoch);
       return;
     }
     if (result.status !== 'ready') return;
@@ -19083,8 +19094,16 @@ async function loadDeferredReapeaks() {
     waveformEditor.setLoudnessStats(DATA.loudness);
     renderAll({ waveform: 'full' });
   } catch (_error) {
-    window.setTimeout(() => { void loadDeferredReapeaks(); }, 1000);
+    scheduleDeferredReapeaksRetry(1000, epoch);
   }
+}
+
+// 重试必须绑定发起时的工程纪元：排期期间原地切换了工程，这次重试就该取消。
+// 否则新纪元的调用会原样接受旧工程的服务器载荷。
+function scheduleDeferredReapeaksRetry(delayMs, epoch) {
+  window.setTimeout(() => {
+    if (epoch === deferredReapeaksEpoch) void loadDeferredReapeaks();
+  }, delayMs);
 }
 
 // Server-editor 页面可能在本地服务退出后继续留在浏览器中。定期复用

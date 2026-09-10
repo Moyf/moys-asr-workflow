@@ -1151,3 +1151,49 @@ test('the amplitude label marks the value as auto-derived', () => {
   assert.equal(label(true, 1.5598), '×1.56 自动');
   assert.equal(label(false, 4), '×4');
 });
+
+test('row height changes refit the active loudness auto-fit', () => {
+  const setRowHeight = helpers.setRowHeight;
+  const setLoudnessStats = helpers.setLoudnessStats;
+  const stats = { schema: helpers.loudnessSchema, p95: 0.3357 };
+  const make = (auto) => {
+    const self = {
+      loudnessStats: null,
+      settings: { rowHeight: 120, waveformScale: 1, waveformScaleAuto: auto },
+      payload: {},
+      multiLayoutCalls: 0,
+      renders: 0,
+      labelRenders: 0,
+      redraws: 0,
+      isMultiMode() { return true; },
+      updateMultiRowLayout() { self.multiLayoutCalls += 1; },
+      render() { self.renders += 1; },
+      renderWaveformScaleLabel() { self.labelRenders += 1; },
+      redrawWaveformCanvases() { self.redraws += 1; },
+      setLoudnessStats: (s, options) => setLoudnessStats.call(self, s, options),
+    };
+    return self;
+  };
+
+  // 自动模式：行高 120 → 64，可用上半高变小，标尺必须按新行高重算（×1.56 → ×1.51）。
+  // render:false 只算标尺，重绘仍走 setRowHeight 自己的布局路径。
+  const auto = make(true);
+  assert.equal(setLoudnessStats.call(auto, stats, { render: false }), true);
+  assert.equal(Number(auto.settings.waveformScale.toFixed(2)), 1.56);
+  assert.equal(setRowHeight.call(auto, 64), true);
+  assert.equal(auto.settings.rowHeight, 64);
+  assert.equal(Number(auto.settings.waveformScale.toFixed(2)), 1.51);
+  assert.equal(auto.multiLayoutCalls, 1, '正常行高布局路径不能被重拟合分支跳过');
+
+  // 手动模式：行高变了也不许动用户调的振幅
+  const manual = make(false);
+  manual.settings.waveformScale = 4;
+  assert.equal(setRowHeight.call(manual, 64), true);
+  assert.equal(manual.settings.waveformScale, 4);
+
+  // 没有响度统计时行高照常工作，谈不上重拟合
+  const noStats = make(true);
+  assert.equal(setRowHeight.call(noStats, 64), true);
+  assert.equal(noStats.settings.waveformScale, 1);
+  assert.equal(noStats.multiLayoutCalls, 1);
+});

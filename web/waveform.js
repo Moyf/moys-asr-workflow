@@ -2110,6 +2110,11 @@
       this.settings.rowHeight = next;
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(next);
       saveSettings(this.settings);
+      // 自动标尺按行高算（可用上半高随行高变），换行高要重拟合；手动模式不动。
+      // render:false：只算标尺和标签，重绘交给下面正常的行高布局路径。
+      if (this.settings.waveformScaleAuto !== false && this.loudnessStats) {
+        this.setLoudnessStats(this.loudnessStats, { render: false });
+      }
       if (this.isMultiMode() && this.payload) {
         this.updateMultiRowLayout();
       } else {
@@ -5821,6 +5826,7 @@
       setLoudnessStats: WaveformEditor.prototype.setLoudnessStats,
       fitWaveformScaleToLoudness: WaveformEditor.prototype.fitWaveformScaleToLoudness,
       renderWaveformScaleLabel: WaveformEditor.prototype.renderWaveformScaleLabel,
+      setRowHeight: WaveformEditor.prototype.setRowHeight,
       buildWaveformEnvelope,
       sampleInterpolatedPeak,
       normalizeLayoutData,
