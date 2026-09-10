@@ -594,9 +594,12 @@ test('list scrolling keys still interrupt following and pending compensation', a
     const before = await page.evaluate(() => {
       renderAll(); return { top: container.scrollTop, generation: cueListScroll.generation };
     });
-    await page.keyboard.press(key);
+    // 给原生滚动一个真实的按住区间；瞬时 keydown/keyup 在 WebKit 下
+    // 可能只移动 1px，不能用它断言浏览器一定已产生可观测的滚动距离。
+    await page.keyboard.press(key, { delay: 80 });
     await page.waitForTimeout(400);
     const after = await playbackState(page);
+    await info.attach(`${key}: input`, { body: JSON.stringify({ before, after }), contentType: 'application/json' });
     expect(after.following).toBe(false);
     expect(Math.abs(after.top - before.top)).toBeGreaterThan(1.5);
     expect(await page.evaluate(() => cueListScroll.generation)).toBeGreaterThan(before.generation);
