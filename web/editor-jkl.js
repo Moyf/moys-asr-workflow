@@ -42,7 +42,7 @@
 
   function refreshJklPlaybackModeUi() {
     const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-    const mode = normalizeJklPlaybackMode(EDITOR_SETTINGS.jklPlaybackMode);
+    const mode = MaweSettings.normalizeJklPlaybackMode(MaweSettings.EDITOR_SETTINGS.jklPlaybackMode);
     const text = JKL_MODE_UI_TEXT[language][mode];
     if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = mode;
     if (jklPlaybackModeHint) jklPlaybackModeHint.textContent = text.hint;
@@ -52,7 +52,7 @@
 
 
   function isJklDirectionMode() {
-    return EDITOR_SETTINGS.jklPlaybackMode === 'direction';
+    return MaweSettings.EDITOR_SETTINGS.jklPlaybackMode === 'direction';
   }
 
 
