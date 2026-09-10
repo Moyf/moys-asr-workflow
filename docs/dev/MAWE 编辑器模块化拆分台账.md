@@ -84,6 +84,13 @@ Batch 2 执行备注：
   editor.js 只留别名块——别名块随 settings 模块迁移（load-time 访问
   `window.AsrEditorUtils.*`，清单序在前，安全）。
 
+### Batch 2 后浏览器层冒烟
+
+`new-project / click-behavior / editor-i18n-save / keyboard-timing` 四个 spec：
+58 passed / 4 failed，4 个失败全部命中预存清单（零新增回归）。
+预重构 Playwright 基线 JSON 存于 `%TEMP%\baseline-e2e.json`（未入库，
+失败标题集合已抄录上表）。
+
 工具备注：
 
 - `split-cluster.mjs` 报告的"editor.js 现为 N 行"不可信（按 kept 文本统计，与
