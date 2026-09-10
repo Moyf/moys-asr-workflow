@@ -4,7 +4,9 @@ Formats supported: RPKM (v1.0), RPKN (v1.1), RPKL (v1.2 float-range).
 
 Spectral peak mipmaps (division factor == -(int)'s') are detected and decoded
 into a versioned ``moy.asr.spectral.v1`` payload that the editor overlays on
-the waveform. Loudness / spectrogram mipmaps are parsed but not exposed yet.
+the waveform. Loudness mipmaps are exposed as whole-file ``moy.asr.loudness.v1``
+statistics (see ``extract_loudness_stats``); spectrogram mipmaps are parsed but
+not exposed yet.
 
 The spectral payload is a *cache* derived from the media's .ReaPeaks file, so
 looking it up must never block the editor: any missing / unreadable /
@@ -19,6 +21,7 @@ generator must never take down transcription at import time.
 from __future__ import annotations
 
 import base64
+import math
 import struct
 import subprocess
 import tempfile
@@ -58,6 +61,7 @@ MAGIC_V12 = b"RPKL"  # v1.2: float-range peaks
 
 SPECTRAL_SCHEMA = "moy.asr.spectral.v1"
 SPECTRAL_ENCODING = "u16-freq-density-base64"
+LOUDNESS_SCHEMA = "moy.asr.loudness.v1"
 
 # REAPER appends one of these to the full media filename (e.g. ICE.wav.ReaPeaks).
 REAPEAKS_SUFFIXES = (".ReaPeaks", ".reapeaks", ".REAPEAKS")
@@ -321,6 +325,9 @@ class ReapeaksFile:
 
     def spectral_mipmaps(self) -> list[MipMap]:
         return [m for m in self.mipmaps if m.kind == "spectral"]
+
+    def loudness_mipmaps(self) -> list[MipMap]:
+        return [m for m in self.mipmaps if m.kind == "loudness"]
 
     def self_wave_mipmaps(self) -> list[MipMap]:
         return [m for m in self.mipmaps if m.kind == "self_wave"]
@@ -641,6 +648,66 @@ def extract_spectral_payload(
     }
 
 
+def _loudness_bin_values(mip: MipMap) -> list[float]:
+    """响度层逐桶电平，跨声道取最大（0..1 线性满量程 RMS）。
+
+    只看声道 0 会让双单声道素材（人声只在右声道）得到一条接近静音的标尺，
+    理由与 ``extract_waveform_payload`` 合并全声道相同；区别是这里每桶是一个
+    幅度标量，所以取 max，而不是 min/max 包络。
+    """
+    bins: list[float] = []
+    for row in mip.loudness:
+        if not row:  # 声道数为 0 的损坏文件：跳过而不是抛 IndexError
+            continue
+        bins.append(max(value for value, _ in row))
+    return bins
+
+
+def extract_loudness_stats(
+    reapeaks_path: Path | str,
+    media_path: Path,
+    *,
+    audio_track: int = 0,
+) -> dict | None:
+    """整文件响度统计（``moy.asr.loudness.v1``），供前端定波形垂直缩放。
+
+    只用最细的那一层（实测 40 桶/秒；粗层 2 桶/秒，对长素材只剩几个采样点，
+    p95 会退化等于 max）。
+
+    刻意只返回**整文件标量**、不返回时序列，因此这里根本不需要时间刻度：响度层
+    的 ``division_factor`` 是 kind token（-114，旧 -108），``abs()`` 出来的 114
+    与采样率毫无关系，拿它当 division 用就是 PR #102 修的那类时间轴漂移。内核
+    里两层响度的 div 恒为 ``sr/40`` 与 ``sr/2``，所以 40/2 桶每秒与采样率无关。
+
+    值是线性满量程 RMS（``sqrt(平方和/样本数)/32768``，见内核 ``loudness.rs``），
+    值域 0..1，**不是 dB、也不是 peak**。同一时刻它恒低于真实峰值（方波相等、
+    正弦约 ×0.71、语音约 ×0.2~0.3），所以按它定标尺会让最响的瞬态画出画框 ——
+    这正是本功能的取舍：要大部分时间不削波，而不是全程不削波。
+    """
+    ra = ReapeaksFile(str(reapeaks_path))
+    layers = ra.loudness_mipmaps()
+    if not layers:
+        return None
+    finest = max(layers, key=lambda mip: mip.peak_count)
+    values = _loudness_bin_values(finest)
+    if not values:
+        return None
+    total = len(values)
+    ordered = sorted(values)
+    rank = min(total, max(1, math.ceil(0.95 * total)))
+    return {
+        "schema": LOUDNESS_SCHEMA,
+        "bin_count": total,
+        "channels": ra.channels,
+        "audio_track": audio_track,
+        "max": ordered[-1],
+        "mean": sum(values) / total,
+        "rms": math.sqrt(sum(value * value for value in values) / total),
+        "p95": ordered[rank - 1],
+        "source": waveform_module.media_signature(media_path),
+    }
+
+
 def _wave_to_int8(value: float | int) -> int:
     """Quantize a .ReaPeaks wave peak to a signed int8 sample (for i8-minmax).
 
@@ -830,6 +897,31 @@ def load_spectral_payload(
             peaks_per_second=peaks_per_second,
             audio_track=hit.audio_track,
         )
+    except (OSError, struct.error, ValueError, IndexError):
+        return None
+
+
+def load_loudness_stats(
+    media_path: Path,
+    *,
+    audio_track: int = 0,
+    default_audio_track: int | None = None,
+) -> dict | None:
+    """Find the media's peaks container and return whole-file loudness stats.
+
+    响度层由生成侧无条件写入（``features`` 恒含 ``"loudness"``），所以不需要
+    spectral 那样的 ``need_spectral`` 候选过滤。缺失 / 损坏 / 与当前媒体指纹
+    不符时一律降级为 None，前端保持它原来的手动振幅。
+    """
+    hit = find_reapeaks_hit(
+        media_path,
+        audio_track=audio_track,
+        default_audio_track=default_audio_track,
+    )
+    if hit is None or not _reapeaks_matches_media(hit.path, media_path):
+        return None
+    try:
+        return extract_loudness_stats(hit.path, media_path, audio_track=hit.audio_track)
     except (OSError, struct.error, ValueError, IndexError):
         return None
 
