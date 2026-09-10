@@ -428,6 +428,7 @@ class LocalEditorServerTests(unittest.TestCase):
                 "segments": [],
                 "spectral": {"marker": "spectral-layer-payload"},
                 "waveform_reapeaks": {"marker": "reapeaks-wave-layer-payload"},
+                "loudness": {"marker": "loudness-layer-payload"},
             },
             json_path=self.root / "layered.mosp",
             media_path=None,
@@ -438,10 +439,12 @@ class LocalEditorServerTests(unittest.TestCase):
         deferred = server_editor.build_server_page(project).decode("utf-8")
         self.assertNotIn("spectral-layer-payload", deferred)
         self.assertNotIn("reapeaks-wave-layer-payload", deferred)
+        self.assertNotIn("loudness-layer-payload", deferred)
 
         inlined = server_editor.build_server_page(project, defer_reapeaks=False).decode("utf-8")
         self.assertIn("spectral-layer-payload", inlined)
         self.assertIn("reapeaks-wave-layer-payload", inlined)
+        self.assertIn("loudness-layer-payload", inlined)
 
     def test_media_less_project_loads_without_a_sticker_directory(self) -> None:
         project_path = self.root / "no-stickers.mosp"
@@ -1460,6 +1463,19 @@ class LocalEditorServerTests(unittest.TestCase):
 
         spectral_payload = {"peak_count": 2, "division": 80}
         reapeaks_wave_payload = {"peak_count": 4, "peaks_per_second": 1000}
+        # 键必须照 moy.asr.loudness.v1 的真实形状给全：服务器加载完成后会按
+        # p95/max 打一行日志，缺键会让后台线程整个死掉、状态永远停在 loading。
+        loudness_payload = {
+            "schema": "moy.asr.loudness.v1",
+            "bin_count": 81,
+            "channels": 1,
+            "audio_track": 0,
+            "max": 0.3357,
+            "mean": 0.3315,
+            "rms": 0.3336,
+            "p95": 0.3357,
+            "source": {"name": "clip.wav", "size": 10, "modified_ms": 1700000000000},
+        }
         loader_started = threading.Event()
         release_loader = threading.Event()
 
@@ -1471,9 +1487,13 @@ class LocalEditorServerTests(unittest.TestCase):
         def waveform_reapeaks_load(*_args: object, **_kwargs: object) -> dict:
             return reapeaks_wave_payload
 
+        def loudness_load(*_args: object, **_kwargs: object) -> dict:
+            return loudness_payload
+
         with (
             mock.patch.object(server_editor.quapeaks, "load_spectral_payload", side_effect=blocking_spectral_load),
             mock.patch.object(server_editor.quapeaks, "load_waveform_payload", side_effect=waveform_reapeaks_load),
+            mock.patch.object(server_editor.quapeaks, "load_loudness_stats", side_effect=loudness_load),
             server_editor.EditorServer(
                 ("127.0.0.1", 0),
                 project,
@@ -1505,6 +1525,8 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertEqual(result["status"], "ready")
                 self.assertEqual(result["spectral"], spectral_payload)
                 self.assertEqual(result["waveform_reapeaks"], reapeaks_wave_payload)
+                # 响度统计走同一条延迟通道：它只是几个标量，但不该挡住首屏。
+                self.assertEqual(result["loudness"], loudness_payload)
             finally:
                 release_loader.set()
                 server.shutdown()
@@ -2108,6 +2130,9 @@ class LocalEditorServerTests(unittest.TestCase):
                     time.sleep(0.05)
                 server.project.data["spectral"] = dict(waveform_payload, schema="moy.asr.spectral.v1")
                 server.project.data["waveform_reapeaks"] = dict(waveform_payload, peak_count=6, data="QUJDRA==")
+                server.project.data["loudness"] = dict(
+                    waveform_payload, schema="moy.asr.loudness.v1", p95=0.3357, max=0.3357,
+                )
 
                 browser_payload = {
                     "media": str(self.media),
@@ -2116,14 +2141,15 @@ class LocalEditorServerTests(unittest.TestCase):
                 }
                 status, _ = post({"project": browser_payload, "filename": None})
                 self.assertEqual(status, 200)
-                # 磁盘干净：三块缓存不得落盘。
+                # 磁盘干净：内联缓存（含 loudness）不得落盘。
                 saved = json.loads(self.project_path.read_text(encoding="utf-8"))
-                for key in ("waveform", "spectral", "waveform_reapeaks"):
+                for key in ("waveform", "spectral", "waveform_reapeaks", "loudness"):
                     self.assertNotIn(key, saved)
-                # 运行态保留原生波形与两层缓存：保存→刷新不丢形状。
+                # 运行态保留原生波形与各层缓存：保存→刷新不丢形状、不丢响度标尺。
                 self.assertEqual(server.project.data["waveform"]["data"], "AQIDBA==")
                 self.assertIn("spectral", server.project.data)
                 self.assertIn("waveform_reapeaks", server.project.data)
+                self.assertIn("loudness", server.project.data)
 
                 # 同媒体换音轨：旧缓存描述的是另一条轨，必须失效。
                 switched = dict(browser_payload, media_metadata={"selected_audio_track": 1})
