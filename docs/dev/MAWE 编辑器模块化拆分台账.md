@@ -48,13 +48,40 @@ audience: 执行本轮拆分的维护者与 agent
 
 预存失败（拆分前就有，不修，修了会掩盖真实回归）：
 
-- （待基线跑完填写）
+- English locale covers the editor shell and recent-project setting stays first
+- Help settings actions open the related waveform and media settings
+- all waveform deletion scenarios
+- dropping a legacy project lets the blank server take over after ID normalization
+- exports source OTIO when media metadata is missing
+- larger subtitle-segment overlap requires an explicit repair direction
+- left and right arrows seek like the media step buttons
+- media seek buttons and arrow keys use the configured seek duration
+- previews text changes and applies the reported item-timing mapping
+- quick start can be skipped and replayed from Help
+- shows independent extension preview controls with yellow defaults
+- shows the installed OCR settings hint and highlights video drops
+- small subtitle-segment overlap can be auto-repaired and saved again
+- waveform marquee scenarios
+
+预存 editor.js 隐式全局写（sloppy 模式雷，所属簇迁移时处理）：
+`editor.js:5946 ms`、`:8393 waveformTimeMs`、`:15808 projectLoadedFromSrt`、
+`:17938 requestedEnd`（行号为 Batch 1 后时点）。
 
 ## 批次记录
 
 | # | 日期 | 内容 | 验证 | 提交 |
 | --- | --- | --- | --- | --- |
-| 0 | 2026-09-10 | 安全网：`scripts/refactor-tools/` 8 件、`tests/test_editor_script_order.mjs`、`tests/test_editor_script_syntax.mjs`、acorn devDep | Node 286 pass；Python 1454 OK；顺序断言在平铺现状上通过 | （本提交） |
+| 0 | 2026-09-10 | 安全网：`scripts/refactor-tools/` 8 件、`tests/test_editor_script_order.mjs`、`tests/test_editor_script_syntax.mjs`、acorn devDep | Node 286 pass；Python 1454 OK；顺序断言在平铺现状上通过 | f669d1e7 |
+| 1 | 2026-09-10 | `MaweHint`（7 符号，280 处引用改写）+ `MaweJklPlayback`（16 符号，42 处改写）；契约测试改按文件名钉 marker；新增 `probe-namespace.mjs` 无头探针 | node --check ×3 过；顺序断言过；Node 286 pass；Python 资产/打包/gui_web 320 OK；blank 临时产物含两模块、0 未解析 token；探针全绿零 pageerror | （本提交） |
+
+工具备注：
+
+- `split-cluster.mjs` 报告的"editor.js 现为 N 行"不可信（按 kept 文本统计，与
+  实际落盘文件有出入），以 `git diff --stat` 为准。
+- codemod 每次运行会折叠 editor.js 中连续 ≥3 个空行为 2 个（`/\n{3,}/`），
+  后续批次的行区间必须重新定位（`list-top-level.mjs` 输出为准）。
+- 门面导出是机械版（原始符号名 + 可变状态访问器）；fork 的语义化门面
+  （如 `getRate`）是他们手工精修的产物，本仓保持机械版以保证行为等价。
 
 ## 已知风险与特例
 

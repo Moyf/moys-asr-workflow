@@ -24,6 +24,8 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor-utils.js",
                 "editor-i18n.js",
                 "waveform.js",
+                "editor-hint.js",
+                "editor-jkl.js",
                 "editor.js",
                 "editor-onboarding.js",
             ),
@@ -31,18 +33,22 @@ class EditorAssetContractTests(unittest.TestCase):
 
     def test_editor_script_payload_follows_manifest_order(self) -> None:
         payload = edit.build_editor_scripts()
+        # 按文件名钉每条清单条目的唯一内容标记；模块继续拆细时同步此表即可，
+        # 不因条目增删导致 zip 错位。
+        markers = {
+            "editor-runtime.js": "// Shared frontend runtime registry.",
+            "gap-remove-core.js": "// Shared gap-remove data and playback helpers",
+            "editor-utils.js": "// Pure editor helpers kept separate",
+            "editor-i18n.js": "(function initMaweI18n(global) {",
+            "waveform.js": "// Framework-neutral waveform runtime.",
+            "editor-hint.js": "(function initMaweHint(global) {",
+            "editor-jkl.js": "(function initMaweJklPlayback(global) {",
+            "editor.js": "const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';",
+            "editor-onboarding.js": "const helpOnboardingButton = document.getElementById('help-onboarding');",
+        }
         previous_index = -1
-        markers = (
-            "// Shared frontend runtime registry.",
-            "// Shared gap-remove data and playback helpers",
-            "// Pure editor helpers kept separate",
-            "(function initMaweI18n(global) {",
-            "// Framework-neutral waveform runtime.",
-            "const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';",
-            "const helpOnboardingButton = document.getElementById('help-onboarding');",
-        )
-        for asset_name, marker in zip(edit.read_editor_script_manifest(), markers):
-            current_index = payload.index(marker)
+        for asset_name in edit.read_editor_script_manifest():
+            current_index = payload.index(markers[asset_name])
             self.assertGreater(current_index, previous_index, asset_name)
             previous_index = current_index
 

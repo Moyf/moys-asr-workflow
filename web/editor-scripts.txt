@@ -5,5 +5,7 @@ gap-remove-core.js
 editor-utils.js
 editor-i18n.js
 waveform.js
+editor-hint.js
+editor-jkl.js
 editor.js
 editor-onboarding.js
