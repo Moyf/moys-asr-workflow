@@ -282,6 +282,29 @@ class LoudnessDegradationTests(unittest.TestCase):
         for key in ("max", "p95", "rms", "mean"):
             self.assertEqual(stats[key], 0.0)
 
+    def test_non_finite_bins_are_dropped(self):
+        """NaN / Inf 必须整桶丢弃，不能混进统计。
+
+        json.dumps 会把非有限值写成裸 NaN/Infinity 字面量，浏览器的
+        JSON.parse 拒收整个 /api/waveform 响应，前端会陷入无限重试；
+        所以必须在提取层丢掉，而不是等到序列化边界才爆。
+        """
+        container = self._loudness_only(
+            [[float("nan"), 0.4, float("inf"), float("-inf"), 0.2]]
+        )
+        stats = quapeaks.extract_loudness_stats(container, self.media)
+        self.assertEqual(stats["bin_count"], 2)
+        self.assertAlmostEqual(stats["max"], 0.4, places=6)
+        self.assertAlmostEqual(stats["p95"], 0.4, places=6)
+        for key in ("mean", "rms", "max", "p95"):
+            self.assertTrue(math.isfinite(stats[key]), key)
+
+    def test_all_non_finite_bins_degrade_to_none(self):
+        """全部桶都非有限等价于没有响度层：None，而不是 NaN 统计。"""
+        container = self._loudness_only([[float("nan")] * 4])
+        self.assertIsNone(quapeaks.extract_loudness_stats(container, self.media))
+        self.assertIsNone(quapeaks.load_loudness_stats(self.media))
+
     def _loudness_only(self, values_per_channel) -> Path:
         path = self.temp_dir / "quiet.wav.ReaPeaks"
         header = struct.pack("<4sBBiii", b"RPKN", 1, 1, 8000, 1700000000, 100)

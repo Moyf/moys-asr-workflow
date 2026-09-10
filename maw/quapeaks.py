@@ -654,12 +654,16 @@ def _loudness_bin_values(mip: MipMap) -> list[float]:
     只看声道 0 会让双单声道素材（人声只在右声道）得到一条接近静音的标尺，
     理由与 ``extract_waveform_payload`` 合并全声道相同；区别是这里每桶是一个
     幅度标量，所以取 max，而不是 min/max 包络。
+
+    NaN / Inf 一律整桶丢弃：损坏文件里的非有限值经 ``json.dumps`` 会变成
+    ``NaN`` 字面量，浏览器 ``JSON.parse`` 拒收整个响应，``/api/waveform``
+    就会陷入无限重试。空行与全非有限行同样跳过。
     """
     bins: list[float] = []
     for row in mip.loudness:
-        if not row:  # 声道数为 0 的损坏文件：跳过而不是抛 IndexError
-            continue
-        bins.append(max(value for value, _ in row))
+        finite = [value for value, _ in row if math.isfinite(value)]
+        if finite:
+            bins.append(max(finite))
     return bins
 
 
