@@ -8,6 +8,7 @@
     "test:headed": "playwright test --project=chromium --headed"
   },
   "devDependencies": {
-    "@playwright/test": "^1.52.0"
+    "@playwright/test": "^1.52.0",
+    "acorn": "^8.18.0"
   }
 }
