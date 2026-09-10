@@ -7,5 +7,9 @@ editor-i18n.js
 waveform.js
 editor-hint.js
 editor-jkl.js
+editor-settings.js
+editor-multi-subtitle-core.js
+editor-gap-remove-data.js
+editor-colors.js
 editor.js
 editor-onboarding.js

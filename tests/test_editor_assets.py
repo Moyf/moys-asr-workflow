@@ -26,6 +26,10 @@ class EditorAssetContractTests(unittest.TestCase):
                 "waveform.js",
                 "editor-hint.js",
                 "editor-jkl.js",
+                "editor-settings.js",
+                "editor-multi-subtitle-core.js",
+                "editor-gap-remove-data.js",
+                "editor-colors.js",
                 "editor.js",
                 "editor-onboarding.js",
             ),
@@ -43,7 +47,11 @@ class EditorAssetContractTests(unittest.TestCase):
             "waveform.js": "// Framework-neutral waveform runtime.",
             "editor-hint.js": "(function initMaweHint(global) {",
             "editor-jkl.js": "(function initMaweJklPlayback(global) {",
-            "editor.js": "const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';",
+            "editor-settings.js": "(function initMaweSettings(global) {",
+            "editor-multi-subtitle-core.js": "(function initMaweMultiSubtitleCore(global) {",
+            "editor-gap-remove-data.js": "(function initMaweGapRemoveData(global) {",
+            "editor-colors.js": "(function initMaweColors(global) {",
+            "editor.js": "'[MAWE][boot] AsrEditorUtils is unavailable; editor scripts are incomplete or out of order'",
             "editor-onboarding.js": "const helpOnboardingButton = document.getElementById('help-onboarding');",
         }
         previous_index = -1
@@ -224,11 +232,10 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("function syncStickerOtioExportMode()", script)
         self.assertIn("portableStickerExportOption.disabled = !available", script)
         self.assertIn("stickerOtioExportMode.value = available", script)
-        self.assertIn("? EDITOR_SETTINGS.stickerOtioExportMode", script)
+        self.assertIn("? MaweSettings.EDITOR_SETTINGS.stickerOtioExportMode", script)
         self.assertIn(": 'original'", script)
-        self.assertIn("stickerOtioExportMode: 'original'", script)
-        self.assertIn("saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original'", script)
-        self.assertIn("updateEditorSettings({ stickerOtioExportMode: stickerOtioExportMode.value })", script)
+        self.assertIn("stickerOtioExportMode: 'original'", edit.read_web_asset("editor-settings.js"))
+        self.assertIn("MaweSettings.updateEditorSettings({ stickerOtioExportMode: stickerOtioExportMode.value })", script)
         # 便携导出能力只在服务器渲染绑定工程时开启；浏览器句柄工程不被服务器
         # 跟踪，解除保存时必须一并关闭，避免把导出写到服务器旧工程目录。
         self.assertIn("SERVER_CONFIG.canPortableStickerExport = false", script)

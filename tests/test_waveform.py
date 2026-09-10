@@ -326,9 +326,11 @@ class EditorAssetTests(unittest.TestCase):
 
     def test_reapeaks_waveform_is_the_default_shape_source(self) -> None:
         editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
+        settings = (ROOT / "web" / "editor-settings.js").read_text(encoding="utf-8")
         template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
-        self.assertIn("waveShapeSource: 'reapeaks'", editor)
+        self.assertIn("waveShapeSource: 'reapeaks'", settings)
+        self.assertIn("getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource", editor)
         self.assertIn("getWaveShapeSource?.() || 'reapeaks'", waveform)
         self.assertIn('<option value="reapeaks" selected>REAPER 波形</option>', template)
         self.assertIn('<option value="self">原生波形</option>', template)
@@ -668,7 +670,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('timelineSnapToFrame: true', page)
         self.assertIn('timelineSnapToFrame: savedSettings.timelineSnapToFrame !== false', page)
         self.assertIn(
-            'getSnapToFrame: () => timelineIsFrameMode() && EDITOR_SETTINGS.timelineSnapToFrame',
+            'getSnapToFrame: () => timelineIsFrameMode() && MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame',
             page,
         )
         self.assertEqual(page.count('id="timeline-timebase"'), 1)
@@ -692,7 +694,7 @@ class EditorAssetTests(unittest.TestCase):
             page,
         )
         self.assertIn(
-            "updateEditorSettings({ timelineTimecodeSeparator: separator });\n"
+            "MaweSettings.updateEditorSettings({ timelineTimecodeSeparator: separator });\n"
             "  refreshTimelineSettingsUi();\n"
             "  waveformEditor?.refreshPointerLine?.();\n"
             "  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，\n"
@@ -866,7 +868,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("container.classList.toggle('hide-cue-sticker'", page)
         self.assertIn('id="cue-list-auto-scroll-on-click" checked', page)
         self.assertIn('cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false', page)
-        self.assertIn('if (EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll)', page)
+        self.assertIn('if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll)', page)
         self.assertIn("const visibleHeight = Math.max(1, visibleBottom - visibleTop);", page)
         self.assertIn(
             "const comfortInset = Math.min(120, Math.max(48, visibleHeight * 0.2));",
@@ -890,7 +892,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。', page)
         self.assertNotIn('altSnapReversal', page)
         self.assertNotIn('cancelSubtitleDragOnEscape', page)
-        self.assertIn('if (EDITOR_SETTINGS.cueEditorCancelOnEscape) cancelCuePanelTextEdit();', page)
+        self.assertIn('if (MaweSettings.EDITOR_SETTINGS.cueEditorCancelOnEscape) cancelCuePanelTextEdit();', page)
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-navigation'", page)
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-sticker'", page)
         self.assertIn('class="toolbar main-toolbar"', page)
@@ -912,8 +914,8 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('.player-wrap.fullscreen-preview .subtitle-overlay span', page)
         self.assertIn("playerWrap?.classList.toggle('fullscreen-preview', document.fullscreenElement === playerWrap);", page)
         self.assertIn("overlayTextEl.style.setProperty(", page)
-        self.assertIn('appearance.font_size || SUBTITLE_DEFAULT_FONT_SIZE', page)
-        self.assertIn('appearance.font_size || EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE', page)
+        self.assertIn('appearance.font_size || MaweSettings.SUBTITLE_DEFAULT_FONT_SIZE', page)
+        self.assertIn('appearance.font_size || MaweSettings.EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE', page)
         self.assertIn('id="merge-join-text-continuous"', page)
         self.assertIn('id="merge-join-text-word"', page)
         self.assertIn('id="subtitle-extend-manage"', page)
@@ -925,9 +927,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('const DEFAULT_LAYOUT_ROWS = [42, 16, 42];', page)
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", page)
         self.assertIn('const projectHasStickers = DATA.segments.some(segment => segment.sticker || segment.sticker_ref);', page)
-        self.assertIn('!EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', page)
+        self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', page)
         self.assertIn("DATA.segments.forEach((seg, i) => cueFragment.appendChild(buildCueEl(seg, i)));", page)
-        self.assertIn("const multiVisible = multiSubtitleVisible();", page)
+        self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", page)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", page)
         self.assertIn('const action = getConfiguredEnterAction(event);', page)

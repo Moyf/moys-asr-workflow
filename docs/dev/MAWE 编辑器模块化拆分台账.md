@@ -72,7 +72,17 @@ audience: 执行本轮拆分的维护者与 agent
 | # | 日期 | 内容 | 验证 | 提交 |
 | --- | --- | --- | --- | --- |
 | 0 | 2026-09-10 | 安全网：`scripts/refactor-tools/` 8 件、`tests/test_editor_script_order.mjs`、`tests/test_editor_script_syntax.mjs`、acorn devDep | Node 286 pass；Python 1454 OK；顺序断言在平铺现状上通过 | f669d1e7 |
-| 1 | 2026-09-10 | `MaweHint`（7 符号，280 处引用改写）+ `MaweJklPlayback`（16 符号，42 处改写）；契约测试改按文件名钉 marker；新增 `probe-namespace.mjs` 无头探针 | node --check ×3 过；顺序断言过；Node 286 pass；Python 资产/打包/gui_web 320 OK；blank 临时产物含两模块、0 未解析 token；探针全绿零 pageerror | （本提交） |
+| 1 | 2026-09-10 | `MaweHint`（7 符号，280 处引用改写）+ `MaweJklPlayback`（16 符号，42 处改写）；契约测试改按文件名钉 marker；新增 `probe-namespace.mjs` 无头探针 | node --check ×3 过；顺序断言过；Node 286 pass；Python 资产/打包/gui_web 320 OK；blank 临时产物含两模块、0 未解析 token；探针全绿零 pageerror | f2537d7d |
+| 2 | 2026-09-10 | `MaweSettings`（52/318）+ `MaweMultiSubtitleCore`（48/363）+ `MaweGapRemoveData`（23/67）+ `MaweColors`（4/15）；调色板注入守卫手工随迁 colors 模块；契约测试断言同步（EDITOR_SETTINGS → MaweSettings.EDITOR_SETTINGS 等） | node --check ×6 过；顺序断言过；Node 286 pass；Python 1454 OK；blank 临时产物 0 未解析 token；探针全绿零 pageerror；隐式全局扫描仅 4 处误报（multi-subtitle 模块延迟写 editor.js 顶层 let，全局词法绑定合法） | （本提交） |
+
+Batch 2 执行备注：
+
+- 多模块批次按"最高行号优先"执行 codemod（settings → multi-subtitle → gap-remove-data →
+  colors），上方区间的行号不受下方删除影响；每次运行前用 `map-fork-module.mjs` 重映射。
+- `map-fork-module.mjs` 改为读工作区 editor.js（含未提交改动），不再读 HEAD。
+- settings 簇与 fork 的差异：main 已把 normalize*/clamp* 收进 editor-utils.js，
+  editor.js 只留别名块——别名块随 settings 模块迁移（load-time 访问
+  `window.AsrEditorUtils.*`，清单序在前，安全）。
 
 工具备注：
 
