@@ -1,0 +1,21 @@
+{
+  "file": "editor-sticker-picker.js",
+  "ns": "MaweStickerPicker",
+  "header": "表情包选择器：网格渲染、分配/清除与时长拓展。",
+  "symbols": [
+    "stickerTargetMode",
+    "stickerTargetIdxs",
+    "openStickerPicker",
+    "renderStickerGrid",
+    "assignSticker",
+    "clearStickerOnTargets",
+    "previewIdx",
+    "openStickerPreview",
+    "removeStickerCascade",
+    "expandStickerTime",
+    "assignColor",
+    "removeColorCascade",
+    "clearColorOnTargets",
+    "toggleDisabled"
+  ]
+}

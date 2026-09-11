@@ -61,6 +61,16 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor-loading-progress.js",
                 "editor-multi-import.js",
                 "editor-media-load.js",
+                "editor-sticker-root.js",
+                "editor-find-replace.js",
+                "editor-text-process.js",
+                "editor-timed-text-edit.js",
+                "editor-sticker-picker.js",
+                "editor-add-cue.js",
+                "editor-bound-drag.js",
+                "editor-context-menus.js",
+                "editor-text-cleanup.js",
+                "editor-waveform-init.js",
                 "editor.js",
                 "editor-onboarding.js",
             ),
@@ -113,6 +123,16 @@ class EditorAssetContractTests(unittest.TestCase):
             "editor-loading-progress.js": "(function initMaweLoadingProgress(global) {",
             "editor-multi-import.js": "(function initMaweMultiImport(global) {",
             "editor-media-load.js": "(function initMaweMediaLoad(global) {",
+            "editor-sticker-root.js": "(function initMaweStickerRoot(global) {",
+            "editor-find-replace.js": "(function initMaweFindReplace(global) {",
+            "editor-text-process.js": "(function initMaweTextProcess(global) {",
+            "editor-timed-text-edit.js": "(function initMaweTimedTextEdit(global) {",
+            "editor-sticker-picker.js": "(function initMaweStickerPicker(global) {",
+            "editor-add-cue.js": "(function initMaweAddCue(global) {",
+            "editor-bound-drag.js": "(function initMaweBoundDrag(global) {",
+            "editor-context-menus.js": "(function initMaweContextMenus(global) {",
+            "editor-text-cleanup.js": "(function initMaweTextCleanup(global) {",
+            "editor-waveform-init.js": "(function initMaweWaveformInit(global) {",
             "editor.js": "'[MAWE][boot] AsrEditorUtils is unavailable; editor scripts are incomplete or out of order'",
             "editor-onboarding.js": "const helpOnboardingButton = document.getElementById('help-onboarding');",
         }
@@ -256,15 +276,16 @@ class EditorAssetContractTests(unittest.TestCase):
     def test_sticker_root_uses_server_validation_without_browser_picker(self) -> None:
         template = edit.read_web_asset("editor-template.html")
         script = edit.read_web_asset("editor.js")
+        sticker_root = edit.read_web_asset("editor-sticker-root.js")
         styles = edit.read_web_asset("editor.css")
         self.assertIn('id="sticker-root-input"', template)
         self.assertIn('id="sticker-root-read"', template)
         self.assertIn('id="sticker-root-status"', template)
         self.assertIn("SERVER_CONFIG.stickerRootUrl", script)
         self.assertIn("MaweBoot.STICKERS.splice(0, MaweBoot.STICKERS.length, ...result.stickers)", script)
-        self.assertIn("let stickerRootHintCard = null", script)
+        self.assertIn("let stickerRootHintCard = null", sticker_root)
         self.assertIn("stickerRootHintCard?.remove()", script)
-        self.assertIn("function setStickerRootModalOpen(open)", script)
+        self.assertIn("function setStickerRootModalOpen(open)", sticker_root)
         self.assertIn("event.key === 'Escape'", script)
         self.assertIn("event.key !== 'Tab'", script)
         self.assertIn("#sticker-root-modal { z-index: 335; }", styles)

@@ -1,0 +1,17 @@
+{
+  "file": "editor-sticker-root.js",
+  "ns": "MaweStickerRoot",
+  "header": "表情包根目录：服务器校验、状态提示与弹窗开关。",
+  "symbols": [
+    "stickerRootModal",
+    "stickerRootInput",
+    "stickerRootRead",
+    "stickerRootStatus",
+    "stickerRootServerEnabled",
+    "stickerRootReturnFocus",
+    "stickerRootHintCard",
+    "setStickerRootStatus",
+    "setStickerRootModalOpen",
+    "flashStickerRootHint"
+  ]
+}

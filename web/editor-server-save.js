@@ -185,7 +185,7 @@
       window.setTimeout(() => cue.classList.remove('validation-target'), 2200);
     }
     MaweCoreState.waveformEditor?.revealTime(segment.start, true);
-    if (MaweMediaPlayback.hasLoadedMedia()) seekFromWaveform(segment.start / 1000);
+    if (MaweMediaPlayback.hasLoadedMedia()) MaweTextCleanup.seekFromWaveform(segment.start / 1000);
   }
 
 

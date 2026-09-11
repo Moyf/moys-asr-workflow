@@ -44,5 +44,15 @@ editor-project-load.js
 editor-loading-progress.js
 editor-multi-import.js
 editor-media-load.js
+editor-sticker-root.js
+editor-find-replace.js
+editor-text-process.js
+editor-timed-text-edit.js
+editor-sticker-picker.js
+editor-add-cue.js
+editor-bound-drag.js
+editor-context-menus.js
+editor-text-cleanup.js
+editor-waveform-init.js
 editor.js
 editor-onboarding.js

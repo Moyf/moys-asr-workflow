@@ -316,11 +316,12 @@ class EditorAssetTests(unittest.TestCase):
         editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
         core_state = (ROOT / "web" / "editor-core-state.js").read_text(encoding="utf-8")
         media_load = (ROOT / "web" / "editor-media-load.js").read_text(encoding="utf-8")
+        waveform_init = (ROOT / "web" / "editor-waveform-init.js").read_text(encoding="utf-8")
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
         self.assertIn("let waveformLoadedFromProject = false;", core_state)
         self.assertIn(
             "MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform",
-            editor,
+            waveform_init,
         )
         self.assertIn("const preserveProjectWaveform = MaweCoreState.waveformLoadedFromProject", media_load)
         self.assertIn("if (MaweCoreState.waveformEditor && !preserveProjectWaveform)", media_load)
@@ -329,10 +330,11 @@ class EditorAssetTests(unittest.TestCase):
     def test_reapeaks_waveform_is_the_default_shape_source(self) -> None:
         editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
         settings = (ROOT / "web" / "editor-settings.js").read_text(encoding="utf-8")
+        waveform_init = (ROOT / "web" / "editor-waveform-init.js").read_text(encoding="utf-8")
         template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
         self.assertIn("waveShapeSource: 'reapeaks'", settings)
-        self.assertIn("getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource", editor)
+        self.assertIn("getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource", waveform_init)
         self.assertIn("getWaveShapeSource?.() || 'reapeaks'", waveform)
         self.assertIn('<option value="reapeaks" selected>REAPER 波形</option>', template)
         self.assertIn('<option value="self">原生波形</option>', template)

@@ -199,11 +199,11 @@
     mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
     mediaElement.addEventListener('seeked', MawePlaybackLoop.update);
     mediaElement.addEventListener('loadedmetadata', () => {
-      notifyAutoLoadedMediaReady(mediaElement);
-      flushPendingMediaSeek(mediaElement);
+      MaweTextCleanup.notifyAutoLoadedMediaReady(mediaElement);
+      MaweTextCleanup.flushPendingMediaSeek(mediaElement);
     });
-    mediaElement.addEventListener('canplay', () => flushPendingMediaSeek(mediaElement));
-    mediaElement.addEventListener('progress', () => flushPendingMediaSeek(mediaElement));
+    mediaElement.addEventListener('canplay', () => MaweTextCleanup.flushPendingMediaSeek(mediaElement));
+    mediaElement.addEventListener('progress', () => MaweTextCleanup.flushPendingMediaSeek(mediaElement));
     mediaElement.addEventListener('play', () => startPlaybackRefresh(mediaElement));
     mediaElement.addEventListener('playing', () => startPlaybackRefresh(mediaElement));
     mediaElement.addEventListener('pause', () => {
@@ -229,8 +229,8 @@
       .forEach((eventName) => mediaElement.addEventListener(eventName, syncMediaControls));
     if (mediaElement.readyState >= 1) {
       queueMicrotask(() => {
-        notifyAutoLoadedMediaReady(mediaElement);
-        flushPendingMediaSeek(mediaElement);
+        MaweTextCleanup.notifyAutoLoadedMediaReady(mediaElement);
+        MaweTextCleanup.flushPendingMediaSeek(mediaElement);
       });
     }
     syncMediaControls();

@@ -126,6 +126,8 @@ Batch 6 执行备注：
 - `fix-e2e-globals.mjs` 需在每批后重跑（导出表随批次增长），幂等。
 - editor-boot.js 手工调到清单首位（token 数据块先于一切消费方）。
 
+| 7 | 2026-09-11 | 十模块：`MaweStickerRoot`(10/35) `MaweFindReplace`(18/18) `MaweTextProcess`(28/25) `MaweTimedTextEdit`(32/27) `MaweStickerPicker`(14/28) `MaweAddCue`(4/5) `MaweBoundDrag`(7/1) `MaweContextMenus`(8/15) `MaweTextCleanup`(5/17) `MaweWaveformInit`(2/2)，共 128 符号；契约断言同步 6 处 | Node --check ×10 过；顺序断言过；Node 286；Python 1458 OK；探针零 pageerror。**待办：本批全量 e2e 尚未跑**（先合并 main 再统一跑） | （本提交） |
+
 Batch 2 执行备注：
 
 - 多模块批次按"最高行号优先"执行 codemod（settings → multi-subtitle → gap-remove-data →
