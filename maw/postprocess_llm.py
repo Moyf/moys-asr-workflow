@@ -450,7 +450,12 @@ def _read_stream_response(
         raise AssertionError("stream callback is required for an SSE response")
     content_parts: list[str] = []
     reasoning_parts: list[str] = []
-    for data in _iter_sse_data(response.iter_lines(decode_unicode=True)):
+    # Read raw bytes and let _iter_sse_data decode as UTF-8 explicitly.
+    # With decode_unicode=True, requests falls back to ISO-8859-1 for
+    # text/event-stream responses without an explicit charset, which mangles
+    # multi-byte UTF-8 (e.g. 0x85 in a Chinese character becomes U+0085 NEL
+    # and splitlines() breaks SSE events mid-JSON).
+    for data in _iter_sse_data(response.iter_lines(decode_unicode=False)):
         if data == "[DONE]":
             break
         try:
