@@ -27,14 +27,14 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
-async function loadAttachedCues(page, autoSnapAdjacentCues) {
-  if (typeof autoSnapAdjacentCues === 'boolean') {
-    await page.addInitScript((enabled) => {
-      localStorage.setItem(
-        'moy.asr.editor.settings.v1',
-        JSON.stringify({ autoSnapAdjacentCues: enabled }),
-      );
-    }, autoSnapAdjacentCues);
+async function loadAttachedCues(page, autoSnapAdjacentCues, adjacentBoundaryMode) {
+  if (typeof autoSnapAdjacentCues === 'boolean' || typeof adjacentBoundaryMode === 'string') {
+    await page.addInitScript(({ autoSnap, boundaryMode }) => {
+      const settings = {};
+      if (typeof autoSnap === 'boolean') settings.autoSnapAdjacentCues = autoSnap;
+      if (typeof boundaryMode === 'string') settings.adjacentBoundaryMode = boundaryMode;
+      localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify(settings));
+    }, { autoSnap: autoSnapAdjacentCues, boundaryMode: adjacentBoundaryMode });
   }
   await page.goto(server.url);
   await page.evaluate(() => {
@@ -249,7 +249,8 @@ test('automatic adjacent snapping is on by default and Alt temporarily disables 
 });
 
 test('automatic adjacent snapping links shared-boundary dragging by default and Alt reverses it', async ({ page }) => {
-  await loadAttachedCues(page);
+  // 传统模式：共享边界手柄的联动/独立由「自动吸附调整相邻字幕」开关决定。
+  await loadAttachedCues(page, true, 'classic');
   const dragSharedBoundary = async (altKey = false) => {
     const handle = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();
     const handleBox = await stableVisibleBoundingBox(page, handle);
@@ -296,9 +297,110 @@ test('automatic adjacent snapping links shared-boundary dragging by default and 
   ]);
 });
 
+test('dual mode links both edges via the seam zone while side handles trim independently', async ({ page }) => {
+  // 新默认（中缝联动）：贴合字幕对的中缝区负责联动拖动；相接侧手柄始终独立。
+  await loadAttachedCues(page);
+  const dragZoneBy = async (deltaMs) => {
+    const zone = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
+    await expect(zone).toBeVisible();
+    await expect(zone).toHaveClass(/at-row-end/);
+    const zoneBox = await zone.boundingBox();
+    const row = zone.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
+    const rowBox = await row.boundingBox();
+    const rowStart = Number(await row.getAttribute('data-start-ms'));
+    const rowEnd = Number(await row.getAttribute('data-end-ms'));
+    expect(zoneBox).not.toBeNull();
+    expect(rowEnd).toBeGreaterThan(rowStart);
+    const startX = zoneBox.x + zoneBox.width / 2;
+    const y = zoneBox.y + zoneBox.height / 2;
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    // 普通中缝点击替换为前后两句（同一字幕可能跨行分片，用下标集合断言）。
+    await expect.poll(() => page.evaluate(() => [
+      ...new Set([...document.querySelectorAll('.waveform-cue-block.selected')]
+        .map((block) => block.dataset.idx)),
+    ].sort())).toEqual(['0', '1']);
+    await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
+    await page.mouse.move(startX + (rowBox.width * deltaMs) / (rowEnd - rowStart), y, { steps: 5 });
+    await page.mouse.up();
+  };
+
+  // 行末中缝也可拖动，两侧边界一起联动，状态栏提示新模式。
+  await page.locator('.cue[data-idx="2"]').click({ modifiers: ['Control'] });
+  await dragZoneBy(-500);
+  await expect(page.locator('#waveform-status'))
+    .toContainText('中缝联动：中缝拖动两侧一起移动');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 9500 },
+    { start: 9500, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+
+  await page.evaluate(() => {
+    DATA.segments[0].end = 10000;
+    DATA.segments[1].start = 10000;
+    renderAll();
+  });
+
+  // 单独拖动 A 的右手柄：只调整当前字幕，相邻字幕保持不动。
+  const handle = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();
+  const handleBox = await stableVisibleBoundingBox(page, handle);
+  const row = handle.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
+  const rowBox = await row.boundingBox();
+  const rowStart = Number(await row.getAttribute('data-start-ms'));
+  const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  const startX = handleBox.x + handleBox.width / 2;
+  const y = handleBox.y + handleBox.height / 2;
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
+  await page.mouse.move(startX + (rowBox.width * -500) / (rowEnd - rowStart), y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 9500 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+});
+
+test('dual-mode extension seam replaces the existing selection with both adjacent cues', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1',
+        role: 'extension',
+        name: 'English',
+        language: 'English',
+        split_mode: 'word',
+        segments: [
+          { id: 'extension-001', start: 5000, end: 10000, text: 'First' },
+          { id: 'extension-002', start: 10000, end: 18000, text: 'Second' },
+          { id: 'extension-003', start: 25000, end: 30000, text: 'Third' },
+        ],
+      }],
+      bindings: [],
+    };
+    renderAll({ waveform: 'full' });
+  });
+
+  await page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="2"]').first()
+    .click({ modifiers: ['Control'] });
+  const zone = page.locator('.waveform-cue-boundary[data-track="extension"][data-left-idx="0"]');
+  await expect(zone).toBeVisible();
+  await zone.click();
+  await expect.poll(() => page.evaluate(() => [
+    ...new Set([...document.querySelectorAll('.waveform-cue-block.selected[data-track="extension"]')]
+      .map((block) => block.dataset.extIdx)),
+  ].sort())).toEqual(['0', '1']);
+});
+
 test('an independent shared-boundary drag can reverse before release', async ({ page }) => {
-  // 该测试验证“自动吸附关闭”时的独立拖动路径，显式关闭开关。
-  await loadAttachedCues(page, false);
+  // 该测试验证传统模式「自动吸附关闭」时的独立拖动路径，显式关闭开关。
+  await loadAttachedCues(page, false, 'classic');
   const handle = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();
   const handleBox = await stableVisibleBoundingBox(page, handle);
   const row = handle.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
@@ -405,9 +507,11 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
     { start: 25000, end: 30000 },
   ]);
 
-  const boundary = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();
+  // 新模式（中缝联动）下，按住中缝拖动区再按 D：共享边界联动移动。
+  const boundary = page.locator('.waveform-cue-boundary').first();
   await expect(boundary).toBeVisible();
-  const boundaryBox = await stableVisibleBoundingBox(page, boundary);
+  const boundaryBox = await boundary.boundingBox();
+  expect(boundaryBox).not.toBeNull();
   await page.mouse.move(boundaryBox.x + boundaryBox.width / 2, boundaryBox.y + boundaryBox.height / 2);
   await page.mouse.down();
   await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);

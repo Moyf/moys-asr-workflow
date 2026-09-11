@@ -1599,6 +1599,10 @@ const timelineSnapToFrameHint = document.getElementById('timeline-snap-to-frame-
 const timelineTimecodeSeparatorInput = document.getElementById('timeline-timecode-separator');
 const timelineTimecodeSeparatorHint = document.getElementById('timeline-timecode-separator-hint');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
+const adjacentBoundaryModeSelect = document.getElementById('adjacent-boundary-mode');
+const adjacentBoundaryModeHintDual = document.getElementById('adjacent-boundary-mode-hint-dual');
+const autoSnapAdjacentCuesRow = document.getElementById('auto-snap-adjacent-cues-row');
+const autoSnapAdjacentCuesHint = document.getElementById('auto-snap-adjacent-cues-hint');
 const replaceModal = document.getElementById('replace-modal');
 const textProcessModal = document.getElementById('text-process-modal');
 const timedTextEditButton = document.getElementById('timed-text-edit-btn');
@@ -2524,6 +2528,8 @@ if (timelineTimecodeSeparatorInput) {
 if (autoSnapAdjacentCuesToggle) {
   autoSnapAdjacentCuesToggle.checked = EDITOR_SETTINGS.autoSnapAdjacentCues;
 }
+if (adjacentBoundaryModeSelect) adjacentBoundaryModeSelect.value = EDITOR_SETTINGS.adjacentBoundaryMode;
+refreshAdjacentBoundaryModeUi();
 if (cueEditorCancelOnEscapeToggle) {
   cueEditorCancelOnEscapeToggle.checked = EDITOR_SETTINGS.cueEditorCancelOnEscape;
 }
@@ -3480,6 +3486,24 @@ timelineTimecodeSeparatorInput?.addEventListener('change', () => {
 });
 autoSnapAdjacentCuesToggle?.addEventListener('change', () => {
   updateEditorSettings({ autoSnapAdjacentCues: autoSnapAdjacentCuesToggle.checked });
+});
+// 贴合字幕边界模式：dual（中缝联动，新默认）/ classic（自动吸附开关 + Alt 反转）。
+// classic 下保留“自动吸附调整相邻字幕”开关；dual 下该开关只影响键盘微调，
+// 鼠标手柄始终独立，联动交给波形上的中缝拖动区，因此隐藏开关行避免误解。
+function refreshAdjacentBoundaryModeUi() {
+  const isDual = EDITOR_SETTINGS.adjacentBoundaryMode === 'dual';
+  // 用内联 display 切换：.editor-settings-item 的 display:inline-flex
+  // 会覆盖 hidden 属性的 UA 样式。
+  if (autoSnapAdjacentCuesRow) autoSnapAdjacentCuesRow.style.display = isDual ? 'none' : '';
+  if (autoSnapAdjacentCuesHint) autoSnapAdjacentCuesHint.style.display = isDual ? 'none' : '';
+  if (adjacentBoundaryModeHintDual) adjacentBoundaryModeHintDual.style.display = isDual ? '' : 'none';
+}
+adjacentBoundaryModeSelect?.addEventListener('change', () => {
+  updateEditorSettings({
+    adjacentBoundaryMode: adjacentBoundaryModeSelect.value === 'classic' ? 'classic' : 'dual',
+  });
+  refreshAdjacentBoundaryModeUi();
+  waveformEditor?.refreshCueOverlay?.();
 });
 cueEditorCancelOnEscapeToggle?.addEventListener('change', () => {
   updateEditorSettings({ cueEditorCancelOnEscape: cueEditorCancelOnEscapeToggle.checked });
@@ -19133,6 +19157,7 @@ function initWaveformEditor() {
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     getAutoSnapAdjacentCues: () => EDITOR_SETTINGS.autoSnapAdjacentCues,
+    getAdjacentBoundaryMode: () => EDITOR_SETTINGS.adjacentBoundaryMode,
     getCueTiming: () => timelineTimingAdapter(),
     getSnapToFrame: () => timelineIsFrameMode() && EDITOR_SETTINGS.timelineSnapToFrame,
     getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
