@@ -1175,6 +1175,14 @@
     return Boolean(altKey) === Boolean(autoSnapAdjacentCues);
   }
 
+  // 相接字幕边界手柄的拖动方式：
+  // - dual（新默认，达芬奇式）：手柄始终独立调整单侧，联动交给中缝拖动区；
+  // - classic（传统）：沿用“自动吸附调整相邻字幕”开关 + Alt 临时反转。
+  function shouldAdjustSharedBoundaryHandleIndependently(altKey, autoSnapAdjacentCues, boundaryMode) {
+    if (boundaryMode === 'dual') return true;
+    return shouldAdjustAdjacentCuesIndependently(altKey, autoSnapAdjacentCues);
+  }
+
   function normalizedIndices(segments, indices) {
     return [...new Set(Array.from(indices || [])
       .map((idx) => Number(idx))
@@ -1689,9 +1697,21 @@
       );
     }
 
-    // 共享边界拖动期间，在「共享边界」状态文本旁提示当前“相邻字幕自动吸附”
-    // 模式；文案按用户设置显示默认模式，Alt 始终是临时反转修饰键。
+    // 相接字幕边界手柄命中时的模式判定：dual 模式下手柄始终独立调整
+    // （联动由中缝拖动区负责）；classic 模式沿用自动吸附开关 + Alt 反转。
+    isSharedBoundaryHandleIndependent(altKey = false) {
+      return shouldAdjustSharedBoundaryHandleIndependently(
+        altKey,
+        this.options.getAutoSnapAdjacentCues?.() === true,
+        this.options.getAdjacentBoundaryMode?.(),
+      );
+    }
+
+    // 共享边界拖动期间，在「共享边界」状态文本旁提示当前的贴合边界模式。
     adjacentSnapModeStatusHint() {
+      if (this.options.getAdjacentBoundaryMode?.() === 'dual') {
+        return '中缝联动：中缝拖动两侧一起移动，手柄只调整单侧字幕。';
+      }
       return this.options.getAutoSnapAdjacentCues?.() === true
         ? '当前为相邻字幕自动吸附模式，按住 Alt 可以临时解除吸附。'
         : '当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。';
@@ -3503,6 +3523,7 @@
         });
         row.appendChild(block);
       }
+      this.appendSharedBoundaryZones(row, startMs, endMs, 'main');
 
       if (!multiLane) return;
       const extensionSegments = this.options.getExtensionSegments?.() || [];
@@ -3558,6 +3579,64 @@
           else this.options.activateExtensionCue?.(index);
         });
         row.appendChild(block);
+      }
+      this.appendSharedBoundaryZones(row, startMs, endMs, 'extension');
+    }
+
+    isSegmentHiddenForDisplay(segment) {
+      return Boolean(
+        segment?.disabled
+        && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden'),
+      );
+    }
+
+    // 新模式（中缝联动）下，为相接的字幕对在中缝处渲染一个可拖动区：
+    // 拖动中缝 = 两侧边界一起联动；相接侧手柄加宽后仍可单侧独立调整。
+    // classic 模式不渲染中缝区，行为与旧版完全一致。
+    appendSharedBoundaryZones(row, startMs, endMs, track = 'main') {
+      if (this.options.getAdjacentBoundaryMode?.() !== 'dual') return;
+      const segments = this.options.getSegments(track);
+      if (!Array.isArray(segments) || segments.length < 2) return;
+      const clock = this.cueTiming();
+      const duration = Math.max(1, endMs - startMs);
+      const firstIndex = Math.max(0, firstCueIndexOverlapping(segments, startMs) - 1);
+      for (let index = firstIndex; index + 1 < segments.length; index += 1) {
+        const left = segments[index];
+        const right = segments[index + 1];
+        if (!left || !right) continue;
+        const leftEnd = clock.getEnd(left);
+        const rightStart = clock.getStart(right);
+        if (!Number.isFinite(leftEnd) || !Number.isFinite(rightStart)) continue;
+        const leftEndMs = clock.toMs(leftEnd);
+        const rightStartMs = clock.toMs(rightStart);
+        if (leftEndMs >= endMs && rightStartMs >= endMs) break;
+        if (Math.abs(leftEnd - rightStart) > clock.snapThreshold) continue;
+        // 帧模式下 getEnd/getStart 返回帧数，行边界是毫秒；定位前统一换算。
+        const seamMs = (leftEndMs + rightStartMs) / 2;
+        if (seamMs <= startMs || seamMs >= endMs) continue;
+        if (this.isSegmentHiddenForDisplay(left) || this.isSegmentHiddenForDisplay(right)) continue;
+        const zone = document.createElement('span');
+        zone.className = 'waveform-cue-boundary';
+        zone.dataset.track = track;
+        zone.dataset.leftIdx = String(index);
+        zone.style.left = `${((seamMs - startMs) / duration) * 100}%`;
+        zone.title = '拖动调整贴合边界（两侧一起移动）；两侧手柄仅调整单侧';
+        zone.addEventListener('pointerdown', (event) => this.beginSharedBoundaryZoneDrag(event, index, row, track));
+        row.appendChild(zone);
+        // 加宽相接侧手柄：中缝区只占中间 8px，加宽后两侧手柄保留约 7px
+        // 独立命中区域，三个区域都有稳定的视觉与命中宽度。
+        const leftBlock = row.querySelector(
+          track === 'extension'
+            ? `.waveform-cue-block[data-track="extension"][data-ext-idx="${index}"]`
+            : `.waveform-cue-block[data-track="main"][data-idx="${index}"]`,
+        );
+        const rightBlock = row.querySelector(
+          track === 'extension'
+            ? `.waveform-cue-block[data-track="extension"][data-ext-idx="${index + 1}"]`
+            : `.waveform-cue-block[data-track="main"][data-idx="${index + 1}"]`,
+        );
+        leftBlock?.classList.add('has-shared-boundary-right');
+        rightBlock?.classList.add('has-shared-boundary-left');
       }
     }
 
@@ -3623,7 +3702,7 @@
       rows.forEach((row) => {
         // 绑定、解绑和字幕时间变化只影响覆盖层；保留已有行与 Canvas，
         // 避免重新采样/绘制波形导致操作出现一帧卡顿。
-        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge')
+        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary')
           .forEach((element) => element.remove());
         this.appendCueBlocks(
           row,
@@ -3638,23 +3717,60 @@
     refreshCueBlocks() {
       const segments = this.options.getSegments('main');
       const extensionSegments = this.options.getExtensionSegments?.() || [];
+      // 共享边界拖动会同时修改两侧字幕：中缝拖动的真实选区已包含前后
+      // 两句；传统模式的手柄联动只选中点击侧，拖动期间两侧块也按选中态
+      // 显示，松开后由真实选区恢复原状。
+      const boundaryDrag = this.drag?.kind === 'resize-boundary' ? this.drag : null;
+      const boundaryDragTrack = boundaryDrag?.track || 'main';
       this.content.querySelectorAll('.waveform-cue-block').forEach((block) => {
         const isExtension = block.dataset.track === 'extension';
-        const segment = isExtension
-          ? extensionSegments[Number(block.dataset.extIdx)]
-          : segments[Number(block.dataset.idx)];
+        const index = isExtension
+          ? Number(block.dataset.extIdx)
+          : Number(block.dataset.idx);
+        const segment = isExtension ? extensionSegments[index] : segments[index];
         const row = block.closest('.waveform-row');
         if (!segment || !row) return;
         this.layoutBlock(block, segment, Number(row.dataset.startMs), Number(row.dataset.endMs));
-        block.classList.toggle('selected', isExtension
-          ? this.options.getExtensionSelection?.().has(Number(block.dataset.extIdx))
-          : this.options.getSelection('main').has(Number(block.dataset.idx)));
+        const linkedToBoundaryDrag = Boolean(
+          boundaryDrag
+          && (isExtension ? 'extension' : 'main') === boundaryDragTrack
+          && (index === boundaryDrag.index || index === boundaryDrag.index + 1),
+        );
+        block.classList.toggle('selected', linkedToBoundaryDrag || (isExtension
+          ? this.options.getExtensionSelection?.().has(index)
+          : this.options.getSelection('main').has(index)));
         const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
         this.setBindingMarker(block, isExtension
           ? bindingMarkerTargets.extension?.has?.(Number(block.dataset.extIdx)) === true
           : bindingMarkerTargets.main?.has?.(Number(block.dataset.idx)) === true);
       });
+      this.refreshBoundaryZones();
       this.positionPlayheads();
+    }
+
+    // 轻量刷新（拖动中）只重建字幕块，不重建中缝区；这里按当前时间
+    // 重新定位已有中缝区，保证拖动过程中中缝始终跟随贴合边界。
+    refreshBoundaryZones() {
+      this.content.querySelectorAll('.waveform-cue-boundary').forEach((zone) => {
+        const row = zone.closest('.waveform-row');
+        if (!row) return;
+        const track = zone.dataset.track === 'extension' ? 'extension' : 'main';
+        const index = Number(zone.dataset.leftIdx);
+        const left = this.options.getSegments(track)[index];
+        const right = this.options.getSegments(track)[index + 1];
+        const clock = this.cueTiming();
+        // 独立拖动让两侧脱离贴合后，中缝区立即移除；重新贴合会在下一次
+        // 完整重建（refreshCueOverlay）时恢复。
+        if (!left || !right || Math.abs(clock.getEnd(left) - clock.getStart(right)) > clock.snapThreshold) {
+          zone.remove();
+          return;
+        }
+        const startMs = Number(row.dataset.startMs);
+        const endMs = Number(row.dataset.endMs);
+        const duration = Math.max(1, endMs - startMs);
+        const seamMs = (clock.toMs(clock.getEnd(left)) + clock.toMs(clock.getStart(right))) / 2;
+        zone.style.left = `${((seamMs - startMs) / duration) * 100}%`;
+      });
     }
 
     refreshCueLabel(index) {
@@ -4432,9 +4548,10 @@
         this.options.splitCueAtTime?.(index, timing.toMs(timing.fromMs(timeMs)));
         return;
       }
-      // 相邻字幕独立调整：命中共享边界手柄时拆开为单侧拖动；Alt 会
-      // 根据“自动吸附调整相邻字幕”开关临时反转这一模式。
-      if (adjacentCueAdjustmentIndependent && targetHandle) {
+      // 相接字幕边界手柄：dual（中缝联动）模式下始终拆开为单侧拖动；
+      // classic 模式按“自动吸附调整相邻字幕”开关决定，Alt 临时反转。
+      const sharedBoundaryHandleIndependent = this.isSharedBoundaryHandleIndependent(event.altKey);
+      if (sharedBoundaryHandleIndependent && targetHandle) {
         const sharedLeft = targetHandle.classList.contains('left')
           && index > 0 && this.isSharedBoundary(event, index - 1, index, row, track);
         const sharedRight = targetHandle.classList.contains('right')
@@ -4593,6 +4710,78 @@
         started: false,
         changed: false,
         independent: true,
+      };
+      event.currentTarget.classList.add('dragging');
+      this.pane.classList.add('cue-drag-active');
+      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
+      window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
+      window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
+      window.addEventListener('pointercancel', this._dragEnd, { once: true });
+    }
+
+    // 中缝拖动区（dual 模式）：按下即开始共享边界联动拖动，两侧边界
+    // 一起移动；plain 点击（未拖动）按点击行为跳转，等价于点击右侧字幕块。
+    beginSharedBoundaryZoneDrag(event, leftIndex, row, track = 'main') {
+      if (event.button !== 0) return;
+      if (this.tool === 'razor') return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.focusWaveform();
+      const segments = this.options.getSegments(track);
+      const rightIndex = leftIndex + 1;
+      if (!segments[leftIndex] || !segments[rightIndex]) return;
+      // Ctrl(Cmd)/Shift 的选择语义与点击右侧字幕块的边界手柄一致。
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
+        if (track === 'extension') this.options.toggleExtensionSelection?.(rightIndex);
+        else this.options.toggleCueSelection?.(rightIndex);
+        return;
+      }
+      if (event.shiftKey) {
+        if (track === 'extension') this.options.selectExtensionRange?.(rightIndex);
+        else this.options.selectCueRange?.(rightIndex);
+        return;
+      }
+      // 选择可能触发行重建，先保存按下瞬间的几何数据（与 beginCueDrag 相同）。
+      const geometry = this.captureRowGeometry(row);
+      // 中缝代表前后两句的贴合边界：点击/拖动都把两句一起选中（追加语义
+      // 与框选/Ctrl 多选一致，含绑定联动），面板聚焦右侧字幕。
+      if (track === 'extension') {
+        this.options.selectExtensionCue?.(leftIndex);
+        this.options.addExtensionSelection?.([rightIndex]);
+        this.options.activateExtensionCue?.(rightIndex);
+      } else {
+        this.options.selectCue(leftIndex);
+        this.options.addCueSelection?.([rightIndex]);
+        this.options.activateCue?.(rightIndex);
+      }
+      const timing = this.cueTiming();
+      const originals = new Map(
+        [leftIndex, rightIndex].map((idx) => [idx, snapshotTiming(segments[idx], timing)]),
+      );
+      this.drag = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        currentClientX: event.clientX,
+        rangeMs: geometry.endMs - geometry.startMs,
+        rowWidth: geometry.width,
+        geometry,
+        kind: 'resize-boundary',
+        track,
+        index: leftIndex,
+        indices: [leftIndex, rightIndex],
+        row,
+        originals,
+        cancelOriginals: new Map(originals),
+        timing,
+        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
+        commitIndices: new Set([leftIndex, rightIndex]),
+        started: false,
+        changed: false,
+        independent: false,
+        allowSqueeze: false,
+        squeezeOriginals: null,
+        altToggleDisabledOnClick: false,
+        seekedOnPointerDown: false,
       };
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
@@ -5606,7 +5795,8 @@
       window.removeEventListener('pointermove', this._dragMove);
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
-      this.content.querySelectorAll('.waveform-cue-block.dragging').forEach((block) => block.classList.remove('dragging'));
+      this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')
+        .forEach((block) => block.classList.remove('dragging'));
       this.pane.classList.remove('cue-drag-active');
       this.drag = null;
       if (event.type === 'pointercancel') {
@@ -5808,6 +5998,7 @@
       roundMs,
       sourceForFile,
       shouldAdjustAdjacentCuesIndependently,
+      shouldAdjustSharedBoundaryHandleIndependently,
       findActiveCueIndex,
       firstCueIndexOverlapping,
       applySharedBoundary,

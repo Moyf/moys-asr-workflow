@@ -263,6 +263,13 @@ test('converts and formats the parallel frame timebase', () => {
   assert.equal(helpers.normalizeEditorSettings({ timelineTimecodeSeparator: ',' }).timelineTimecodeSeparator, ',');
 });
 
+test('normalizes the attached-cue boundary drag mode with dual as the default', () => {
+  assert.equal(helpers.normalizeEditorSettings({}).adjacentBoundaryMode, 'dual');
+  assert.equal(helpers.normalizeEditorSettings({ adjacentBoundaryMode: 'dual' }).adjacentBoundaryMode, 'dual');
+  assert.equal(helpers.normalizeEditorSettings({ adjacentBoundaryMode: 'classic' }).adjacentBoundaryMode, 'classic');
+  assert.equal(helpers.normalizeEditorSettings({ adjacentBoundaryMode: 'invalid' }).adjacentBoundaryMode, 'dual');
+});
+
 test('normalizes optional source video FPS metadata for frame-mode defaults', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
     video_fps: 30000 / 1001,

@@ -353,6 +353,23 @@ test('Alt temporarily reverses the automatic adjacent-cue setting', () => {
 });
 
 
+test('dual boundary mode keeps shared-boundary handles independent; classic falls back to Alt reversal', () => {
+  // dual（新默认，达芬奇式）：相接边界手柄始终独立调整，联动交给中缝拖动区。
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, true, 'dual'), true);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, true, 'dual'), true);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, false, 'dual'), true);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, false, 'dual'), true);
+  // classic（传统）：完全沿用“自动吸附调整相邻字幕”开关 + Alt 临时反转。
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, true, 'classic'), false);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, true, 'classic'), true);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, false, 'classic'), true);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, false, 'classic'), false);
+  // 未知/缺失模式按 classic 处理，保证旧持久化数据行为不变。
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, true, undefined), false);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, true, undefined), true);
+});
+
+
 test('Alt-drag moves only the hit side of a shared boundary, leaving the neighbor untouched', () => {
   // 共享边界在 1000：默认拖动会同时改左侧 end 和右侧 start；Alt 独立拖动只改被命中一侧。
   const segments = [
