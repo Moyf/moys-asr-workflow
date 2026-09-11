@@ -123,6 +123,8 @@
     --wave-cue-text:        #eef6ff;
     --wave-cue-active-mix:  #28547a;
     --wave-cue-handle:      rgba(231, 244, 255, 0.2);
+    --wave-cue-handle-hover: rgba(231, 244, 255, 0.42);
+    --wave-cue-boundary:    color-mix(in srgb, color-mix(in srgb, var(--accent) 55%, #e7f4ff) 45%, transparent);
     --wave-badge-bg:        rgba(0, 0, 0, 0.65);
     --wave-badge-sticker:   #b8d9ff;
     --wave-playhead:        #ff5d67;
@@ -333,6 +335,8 @@
     --wave-cue-text:        #16202c;
     --wave-cue-active-mix:  #a9c8e8;
     --wave-cue-handle:      rgba(32, 52, 80, 0.14);
+    --wave-cue-handle-hover: rgba(32, 52, 80, 0.3);
+    --wave-cue-boundary:    color-mix(in srgb, color-mix(in srgb, var(--accent) 55%, #20344f) 32%, transparent);
     --wave-badge-bg:        rgba(255, 255, 255, 0.82);
     --wave-badge-sticker:   #2f6bb8;
     --wave-playhead:        #e63946;
@@ -1399,6 +1403,8 @@
     font: 11px var(--font-mono);
     background: var(--bg-input);
   }
+  /* 「响度适配」紧跟振幅步进器：它改的就是这一行显示的 ×N。 */
+  .waveform-scale-fit { margin-left: 7px; font-size: 12px; }
   @media (max-width: 420px) {
     .editor-settings-window { width: calc(100vw - 16px); min-width: 0; resize: none; }
     .editor-settings-nav { width: 104px; padding: 8px 6px; }
@@ -2036,6 +2042,8 @@
     content-visibility: auto;
     contain-intrinsic-size: 0 46px;
   }
+  #cue-list-follow { padding: 4px 8px; font-size: 11px; white-space: nowrap; }
+  #cue-list-follow[aria-pressed="false"] { color: var(--accent); border-color: var(--accent); }
   .cue-split-flash {
     position: absolute;
     z-index: 3;

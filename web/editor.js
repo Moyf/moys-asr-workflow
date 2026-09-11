@@ -1246,6 +1246,7 @@ function snapshotEditorSelection() {
   };
 }
 function pushUndo(label, { captureView = false } = {}) {
+  rememberCueListMutation();
   const record = EDITOR_SETTINGS_UTILS.buildHistoryRecord(
     'segments', label, snapshotSegments(), captureView ? snapshotEditorSelection() : null,
   );
@@ -1380,6 +1381,8 @@ function applyHistoryRecord(record) {
   }
   const snapshot = record.segs && Array.isArray(record.segs.segments)
     ? record.segs : { segments: record.segs, multi_subtitle: DATA.multi_subtitle };
+  // 视口属于本次撤销动作，不随历史快照恢复。
+  const cueListAnchor = captureCueListRenderAnchor();
   const previousWaveformStructure = multiSubtitleWaveformStructureKey();
   DATA.segments.length = 0;
   (snapshot.segments || []).forEach(s => DATA.segments.push(s));
@@ -1399,6 +1402,7 @@ function applyHistoryRecord(record) {
     !== multiSubtitleWaveformStructureKey();
   renderAll({
     waveform: structureChanged ? 'full' : 'overlay',
+    cueListAnchor,
   });
   if (record.view) restoreEditorSelection(record.view);
   return true;
@@ -1595,6 +1599,10 @@ const timelineSnapToFrameHint = document.getElementById('timeline-snap-to-frame-
 const timelineTimecodeSeparatorInput = document.getElementById('timeline-timecode-separator');
 const timelineTimecodeSeparatorHint = document.getElementById('timeline-timecode-separator-hint');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
+const adjacentBoundaryModeSelect = document.getElementById('adjacent-boundary-mode');
+const adjacentBoundaryModeHintDual = document.getElementById('adjacent-boundary-mode-hint-dual');
+const autoSnapAdjacentCuesRow = document.getElementById('auto-snap-adjacent-cues-row');
+const autoSnapAdjacentCuesHint = document.getElementById('auto-snap-adjacent-cues-hint');
 const replaceModal = document.getElementById('replace-modal');
 const textProcessModal = document.getElementById('text-process-modal');
 const timedTextEditButton = document.getElementById('timed-text-edit-btn');
@@ -2520,6 +2528,8 @@ if (timelineTimecodeSeparatorInput) {
 if (autoSnapAdjacentCuesToggle) {
   autoSnapAdjacentCuesToggle.checked = EDITOR_SETTINGS.autoSnapAdjacentCues;
 }
+if (adjacentBoundaryModeSelect) adjacentBoundaryModeSelect.value = EDITOR_SETTINGS.adjacentBoundaryMode;
+refreshAdjacentBoundaryModeUi();
 if (cueEditorCancelOnEscapeToggle) {
   cueEditorCancelOnEscapeToggle.checked = EDITOR_SETTINGS.cueEditorCancelOnEscape;
 }
@@ -3476,6 +3486,24 @@ timelineTimecodeSeparatorInput?.addEventListener('change', () => {
 });
 autoSnapAdjacentCuesToggle?.addEventListener('change', () => {
   updateEditorSettings({ autoSnapAdjacentCues: autoSnapAdjacentCuesToggle.checked });
+});
+// 贴合字幕边界模式：dual（中缝联动，新默认）/ classic（自动吸附开关 + Alt 反转）。
+// classic 下保留“自动吸附调整相邻字幕”开关；dual 下该开关只影响键盘微调，
+// 鼠标手柄始终独立，联动交给波形上的中缝拖动区，因此隐藏开关行避免误解。
+function refreshAdjacentBoundaryModeUi() {
+  const isDual = EDITOR_SETTINGS.adjacentBoundaryMode === 'dual';
+  // 用内联 display 切换：.editor-settings-item 的 display:inline-flex
+  // 会覆盖 hidden 属性的 UA 样式。
+  if (autoSnapAdjacentCuesRow) autoSnapAdjacentCuesRow.style.display = isDual ? 'none' : '';
+  if (autoSnapAdjacentCuesHint) autoSnapAdjacentCuesHint.style.display = isDual ? 'none' : '';
+  if (adjacentBoundaryModeHintDual) adjacentBoundaryModeHintDual.style.display = isDual ? '' : 'none';
+}
+adjacentBoundaryModeSelect?.addEventListener('change', () => {
+  updateEditorSettings({
+    adjacentBoundaryMode: adjacentBoundaryModeSelect.value === 'classic' ? 'classic' : 'dual',
+  });
+  refreshAdjacentBoundaryModeUi();
+  waveformEditor?.refreshCueOverlay?.();
 });
 cueEditorCancelOnEscapeToggle?.addEventListener('change', () => {
   updateEditorSettings({ cueEditorCancelOnEscape: cueEditorCancelOnEscapeToggle.checked });
@@ -5160,12 +5188,18 @@ function alignSelectedExtensionSubtitleRanges() {
 }
 
 // === 渲染 ===
-function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) {
+function renderAll({ waveform = 'overlay', preserveCueListScroll = true, cueListAnchor } = {}) {
+  // 旧工程或新增字幕也必须在生成 DOM 前拥有唯一身份；复用工程既有规范化规则。
+  MULTI_SUBTITLE_UTILS.ensureStableSegmentIds(DATA.segments, 'main');
+  (getMultiSubtitleState().tracks || []).forEach(track => {
+    MULTI_SUBTITLE_UTILS.ensureStableSegmentIds(track.segments, `${track.id}-segment`);
+  });
   // 其它编辑入口仍以毫秒修改工程对象；在重绘前把它们投影回当前时间基准，
   // 保证帧模式下保存的数据和下一次帧操作保持一致。
   syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
+  cueListAnchor = preserveCueListScroll
+    ? cueListAnchor || cueListScroll.mutationAnchor || captureCueListRenderAnchor() : null;
   invalidateCueListVisualAnchorRestore();
-  const cueListAnchor = preserveCueListScroll ? captureCueListRenderAnchor() : null;
   stickerOverlayDataVersion += 1;
   // cues-container 同时是字幕列表和停靠模块；重绘列表时不要把布局编辑模式
   // 下的顶部拖拽栏一起清掉。
@@ -5685,6 +5719,7 @@ cuePanelText?.addEventListener('keydown', (event) => {
 cuePanelText?.addEventListener('input', () => {
   const target = getCurrentCuePanelTarget();
   if (!target) return;
+  const cueListAnchor = captureCueListRenderAnchor();
   ensureCuePanelUndo(target.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕');
   const seg = target.segment;
   seg.text = cuePanelText.value.replace(/\r\n?/g, '\n');
@@ -5707,6 +5742,7 @@ cuePanelText?.addEventListener('input', () => {
   if (target.kind === 'extension') waveformEditor?.refreshExtensionCueLabel(target.index, target.trackId);
   else waveformEditor?.refreshCueLabel(target.index);
   refreshSubtitlePreview();
+  restoreCueListRenderAnchor(cueListAnchor);
 });
 cuePanelText?.addEventListener('blur', () => {
   if (cuePanelCanceling) return;
@@ -5830,6 +5866,7 @@ function buildCueEl(seg, idx, { extensionTrack = null } = {}) {
   const isExtension = Boolean(extensionTrack);
   const el = document.createElement('div');
   el.className = multiSubtitleVisible() ? 'cue multi-cue' : 'cue';
+  setCueListIdentity(el, seg, extensionTrack);
   if (isExtension) {
     el.classList.add('multi-extension-cue');
     el.dataset.extIdx = String(idx);
@@ -5939,6 +5976,8 @@ function buildDualCueEl(mainIndex, extensionIndex, track) {
   const extension = extensionIndex == null ? null : track.segments[extensionIndex];
   const el = document.createElement('div');
   el.className = 'cue multi-cue multi-dual-cue';
+  if (main) setCueListIdentity(el, main);
+  if (extension) setCueListIdentity(el, extension, track);
   if (mainIndex != null) {
     el.dataset.mainIdx = String(mainIndex);
     el.dataset.idx = String(mainIndex);
@@ -8337,16 +8376,7 @@ function splitAtCursor(
   }
 
   rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
-  renderAll({ preserveCueListScroll: listFeedback });
-  const leftEl = container.querySelector(`.cue[data-idx="${idx}"]`);
-  const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
-  // 列表来源的拆分（B 键悬停行、列表右键拆分、行内编辑拆分）都发生在当前
-  // 可见的字幕行上，拆分后让左半段留在原字幕的视觉位置；右半段自然排在
-  // 下一行。这样既保留 content-visibility，也不会被懒布局累计误差顶走。
-  // 波形 / 编辑面板等其它来源的拆分结果可能不在列表视口内，仍滚动到新右半段，
-  // 便于在列表中看到拆分结果。
-  if (listFeedback) restoreCueListVisualAnchor(leftEl, cueListAnchor);
-  else if (rightEl) scrollCueToCenter(rightEl);
+  renderAll({ cueListAnchor });
   selectOnly(idx + 1);
   // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
   lastClickedIdx = idx + 1;
@@ -8633,18 +8663,13 @@ function mergeSegments(idxs) {
   const sourceEl = container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
   const cueListAnchor = captureVisibleCueListVisualAnchor(sourceEl);
   commitCuePanelEdit();
+  pushUndo('合并字幕', { captureView: true });
   clearSelection({ silent: true });
-  pushUndo('合并字幕');
   mergeContiguousIndices(sorted);
-  renderAll();
+  renderAll({ cueListAnchor });
   // 合并完成后选中合并结果，方便继续对这句新字幕操作
   selectOnly(sorted[0]);
-  const el = container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
   updateWithoutCueListAutoScroll();
-  // C 合并和 B 拆分一样会重建整张字幕列表；保留首条源字幕的屏幕位置，
-  // 避免主动居中与 content-visibility 行高回填叠加成一次大幅跳动。
-  if (cueListAnchor) restoreCueListVisualAnchor(el, cueListAnchor);
-  else if (el) scrollCueToCenter(el);
   flashHint(`已合并 ${sorted.length} 条`, 'success');
 }
 
@@ -8690,17 +8715,15 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
     getMultiSubtitleState(), id, 'extension', track.id,
   ));
 
+  pushUndo('合并副字幕', { captureView: true });
   clearSelection();
-  pushUndo('合并副字幕');
   removeBindingsForSegmentIds([], oldIds);
   track.segments.splice(sorted[0], sorted.length, merged);
   markMultiSubtitleDirty();
-  renderAll();
+  renderAll({ cueListAnchor });
   selectOnlyExtension(sorted[0]);
   lastClickedExtensionIdx = sorted[0];
   updateWithoutCueListAutoScroll();
-  const el = container.querySelector(`.cue[data-ext-idx="${sorted[0]}"]`);
-  if (cueListAnchor) restoreCueListVisualAnchor(el, cueListAnchor);
   flashHint(
     hadBindings
       ? `已合并 ${sorted.length} 条副字幕，原绑定已解除`
@@ -9071,24 +9094,109 @@ function cueListVisibleBounds() {
   return { containerRect, top, bottom: containerRect.bottom };
 }
 
-let cueListVisualAnchorGeneration = 0;
+// 三种滚动共用一个可取消的操作：布局恢复、主动导航、播放跟随。
+// scroll 事件本身不表示用户输入，懒布局和浏览器边界限制也会触发它。
+const cueListScroll = { generation: 0, frame: 0, owner: null, following: true, playbackKey: null, mutationAnchor: null, layoutAnchor: null };
+const cueListFollowButton = document.getElementById('cue-list-follow');
 
-// 重绘后的补偿只服务于这一轮布局稳定；用户一旦开始新的指针、滚轮或
-// 键盘操作，就让出滚动控制权，避免延迟的 content-visibility 补偿把用户
-// 刚滚到的目标行又拉回旧位置。
-function invalidateCueListVisualAnchorRestore() {
-  cueListVisualAnchorGeneration += 1;
+function invalidateCueListVisualAnchorRestore({ preserveLayoutAnchor = false } = {}) {
+  const previousAnchor = cueListScroll.layoutAnchor;
+  cueListScroll.generation += 1;
+  cancelAnimationFrame(cueListScroll.frame);
+  cueListScroll.frame = 0;
+  cueListScroll.owner = null;
+  cueListScroll.mutationAnchor = null;
+  if (!preserveLayoutAnchor) cueListScroll.layoutAnchor = null;
+  else queueMicrotask(() => {
+    // 同一个输入事件里的新编辑可以承接尚未稳定的阅读位置；单纯点击、
+    // 输入等没有启动新布局操作时，不留下可在以后重新夺权的旧锚点。
+    if (!cueListScroll.owner && cueListScroll.layoutAnchor === previousAnchor) cueListScroll.layoutAnchor = null;
+  });
+  // 同时停止浏览器尚未完成的原生滚动动画。
+  container.scrollTo({ top: container.scrollTop, behavior: 'instant' });
 }
 
-document.addEventListener('pointerdown', invalidateCueListVisualAnchorRestore, true);
-container.addEventListener('wheel', invalidateCueListVisualAnchorRestore, { passive: true });
-container.addEventListener('touchstart', invalidateCueListVisualAnchorRestore, { passive: true });
-document.addEventListener('keydown', invalidateCueListVisualAnchorRestore, true);
+function setCueListFollowing(enabled) {
+  cueListScroll.following = enabled;
+  cueListFollowButton?.setAttribute('aria-pressed', String(enabled));
+}
+
+function interruptCueListFollowing() {
+  invalidateCueListVisualAnchorRestore();
+  setCueListFollowing(false);
+}
+
+document.addEventListener('pointerdown', (event) => {
+  invalidateCueListVisualAnchorRestore({ preserveLayoutAnchor: true });
+  // 直接按在容器空白/滚动条上可能开始拖动；普通行点击仍沿用点击设置。
+  const rect = container.getBoundingClientRect();
+  if (event.target === container || (container.contains(event.target)
+      && event.clientX >= rect.right - 14)) {
+    cueListScroll.layoutAnchor = null;
+    setCueListFollowing(false);
+  }
+}, true);
+container.addEventListener('wheel', interruptCueListFollowing, { passive: true });
+container.addEventListener('touchstart', interruptCueListFollowing, { passive: true });
+document.addEventListener('keydown', (event) => {
+  invalidateCueListVisualAnchorRestore({ preserveLayoutAnchor: true });
+}, true);
+// 等播放、弹窗及目标控件先处理输入；被消费的空格不再误归为列表滚动。
+// 应用自己消费的列表导航在其导航入口交出跟随，其余原生滚动在冒泡时处理。
+document.addEventListener('keydown', (event) => {
+  if (event.defaultPrevented || event.isComposing || editingState || extensionEditingState
+      || isTextEditingTarget(event) || isNativeKeyboardControl(event) || isPlayerKeyboardTarget(event)) return;
+  if (document.querySelector('.modal-mask.show, #ctxmenu.show')
+      || event.target?.closest?.('[role="dialog"], [role="menu"]')) return;
+  if (event.ctrlKey || event.altKey || event.metaKey) return;
+  if (!(container.contains(event.target) || navigationOwner === 'cue-list')) return;
+  if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
+    interruptCueListFollowing();
+  }
+});
+
+function setCueListIdentity(element, segment, track = null) {
+  // 身份写在渲染时的 DOM 上；splice / history 后不能再拿旧下标读新数据。
+  const prefix = track ? 'ext' : 'main';
+  element.dataset[`${prefix}Id`] = segment.id;
+  element.dataset[`${prefix}Start`] = String(segment.start);
+  if (track) element.dataset.trackId = track.id;
+}
+
+function cueListIdentity(element, kind = currentCuePanelKind) {
+  const extension = (kind === 'extension' && element.dataset.extId) || !element.dataset.mainId;
+  return {
+    kind: extension ? 'extension' : 'main',
+    segmentId: extension ? element.dataset.extId : element.dataset.mainId,
+    trackId: extension ? element.dataset.trackId : null,
+    start: Number(extension ? element.dataset.extStart : element.dataset.mainStart),
+  };
+}
 
 function captureCueListVisualAnchor(cueEl) {
   if (!cueEl?.isConnected || cueEl.classList.contains('hidden')) return null;
-  const top = cueEl.getBoundingClientRect().top;
-  return Number.isFinite(top) ? { top } : null;
+  const { containerRect, top, bottom } = cueListVisibleBounds();
+  const rect = cueEl.getBoundingClientRect();
+  if (!Number.isFinite(rect.top)) return null;
+  const pending = cueListScroll.layoutAnchor;
+  const pendingRow = pending && (findCueListRenderAnchor(pending)
+    || findCueListRenderAnchor(pending, { replacement: true }));
+  // 快速连续编辑时，下一次事务承接上一轮的目标视口，而不是把懒布局
+  // 尚未补偿的中间位置当作新的基准。用户导航/滚动已在输入入口清除此值。
+  const correction = pendingRow
+    ? pending.top - (pendingRow.getBoundingClientRect().top - containerRect.top) : 0;
+  const anchor = {
+    ...cueListIdentity(cueEl), top: rect.top - containerRect.top + correction,
+    scrollTop: container.scrollTop,
+  };
+  // 锚点被删除时，优先保持附近存活字幕自己的屏幕位置。
+  anchor.neighbors = [...container.querySelectorAll(':scope > .cue:not(.hidden)')]
+    .filter(element => element !== cueEl)
+    .map(element => ({ element, rect: element.getBoundingClientRect() }))
+    .filter(entry => entry.rect.height > 0 && entry.rect.bottom > top && entry.rect.top < bottom)
+    .sort((a, b) => Math.abs(a.rect.top - rect.top) - Math.abs(b.rect.top - rect.top))
+    .map(entry => ({ ...cueListIdentity(entry.element), top: entry.rect.top - containerRect.top + correction }));
+  return anchor;
 }
 
 function captureVisibleCueListVisualAnchor(cueEl) {
@@ -9101,145 +9209,132 @@ function captureVisibleCueListVisualAnchor(cueEl) {
 
 function captureCueListRenderAnchor() {
   if (!container?.isConnected) return null;
+  const pending = cueListScroll.layoutAnchor;
+  const pendingRow = pending && (findCueListRenderAnchor(pending)
+    || findCueListRenderAnchor(pending, { replacement: true }));
+  if (pendingRow) return captureCueListVisualAnchor(pendingRow);
   const { top, bottom } = cueListVisibleBounds();
   const candidates = [...container.querySelectorAll(':scope > .cue:not(.hidden)')];
-  const visibleCandidates = candidates.filter((element) => {
+  const visible = candidates.filter(element => {
     const rect = element.getBoundingClientRect();
     return rect.height > 0 && rect.bottom > top && rect.top < bottom;
   });
-  const panelIndex = Number(currentCuePanelIdx);
-  const panelSelector = currentCuePanelKind === 'extension'
-    ? `.cue[data-ext-idx="${panelIndex}"]`
-    : `.cue[data-idx="${panelIndex}"]`;
-  const panelCue = Number.isInteger(panelIndex) && panelIndex >= 0
-    ? container.querySelector(panelSelector) : null;
-  const cueEl = visibleCandidates.includes(panelCue) ? panelCue : visibleCandidates[0];
-  const visual = captureCueListVisualAnchor(cueEl);
-  if (!visual) return { scrollTop: container.scrollTop };
-
-  const mainIndex = cueEl.dataset.mainIdx ?? cueEl.dataset.idx;
-  if (mainIndex !== undefined) {
-    const index = Number(mainIndex);
-    const segment = Number.isInteger(index) ? DATA.segments[index] : null;
-    return {
-      ...visual,
-      scrollTop: container.scrollTop,
-      kind: 'main',
-      index,
-      segmentId: segment?.id || null,
-    };
-  }
-
-  const index = Number(cueEl.dataset.extIdx);
-  const track = getActiveExtensionTrack();
-  const segment = Number.isInteger(index) ? track?.segments?.[index] : null;
-  return {
-    ...visual,
-    scrollTop: container.scrollTop,
-    kind: 'extension',
-    index,
-    segmentId: segment?.id || null,
-    trackId: track?.id || null,
-  };
+  // 使用旧 DOM 的选区而不是可能已改变身份的面板下标。
+  const cue = visible.find(element => element.matches('.selected, .selected-extension')
+    || element.querySelector('.selected')) || visible.find(element => element.getBoundingClientRect().top >= top)
+    || visible[0];
+  return captureCueListVisualAnchor(cue) || { scrollTop: container.scrollTop };
 }
 
-function findCueListRenderAnchor(anchor) {
-  if (!anchor || !container?.isConnected) return null;
-  if (anchor.kind === 'extension') {
-    const track = getExtensionTrack(anchor.trackId) || getActiveExtensionTrack();
-    const index = anchor.segmentId
-      ? track?.segments?.findIndex((segment) => segment?.id === anchor.segmentId)
-      : anchor.index;
-    if (!Number.isInteger(index) || index < 0) return null;
-    return container.querySelector(`:scope > .cue[data-ext-idx="${index}"]`);
-  }
+function rememberCueListMutation() {
+  const anchor = captureCueListRenderAnchor();
+  cueListScroll.mutationAnchor = anchor;
+  // 只交给同一个同步编辑事务，未重绘的原地改字不会留下过时视口。
+  queueMicrotask(() => {
+    if (cueListScroll.mutationAnchor === anchor) cueListScroll.mutationAnchor = null;
+  });
+}
 
-  const index = anchor.segmentId
-    ? DATA.segments.findIndex((segment) => segment?.id === anchor.segmentId)
-    : anchor.index;
-  if (!Number.isInteger(index) || index < 0) return null;
-  return container.querySelector(`:scope > .cue[data-idx="${index}"]`);
+function findCueListRenderAnchor(anchor, { replacement = false } = {}) {
+  if (!anchor?.segmentId) return null;
+  return [...container.querySelectorAll(':scope > .cue:not(.hidden)')].find(element => {
+    const identity = cueListIdentity(element, anchor.kind);
+    return identity.kind === anchor.kind && identity.trackId === anchor.trackId
+      && (identity.segmentId === anchor.segmentId
+        || (replacement && identity.start === anchor.start));
+  }) || null;
 }
 
 function restoreCueListRenderAnchor(anchor) {
   if (!anchor) return;
-  restoreCueListVisualAnchor(findCueListRenderAnchor(anchor), anchor);
+  // B 的左段和 C 的首段承接原起点；撤销时同样按这一语义回到源句。
+  let cue = findCueListRenderAnchor(anchor) || findCueListRenderAnchor(anchor, { replacement: true });
+  let target = anchor;
+  if (!cue) {
+    for (const neighbor of anchor.neighbors || []) {
+      cue = findCueListRenderAnchor(neighbor)
+        || findCueListRenderAnchor(neighbor, { replacement: true });
+      if (cue) { target = { ...anchor, ...neighbor }; break; }
+    }
+  }
+  restoreCueListVisualAnchor(cue, target);
 }
 
-function restoreCueListVisualAnchor(cueEl, anchor) {
-  const readVisualTop = () => {
-    if (!cueEl?.isConnected || cueEl.classList.contains('hidden') || !Number.isFinite(anchor?.top)) {
-      return null;
-    }
-    const rect = cueEl.getBoundingClientRect();
-    return rect.height > 0 && Number.isFinite(rect.top) ? rect.top : null;
-  };
-  if (readVisualTop() === null && !Number.isFinite(anchor?.scrollTop)) return;
-  const generation = ++cueListVisualAnchorGeneration;
+function restoreCueListVisualAnchor(cueEl, anchor, owner = 'restore') {
+  invalidateCueListVisualAnchorRestore();
+  cueListScroll.playbackKey = playbackCueListKey();
+  const generation = cueListScroll.generation;
+  cueListScroll.owner = owner;
+  cueListScroll.layoutAnchor = owner === 'restore' ? anchor : null;
   const maxFrames = 12;
-  const epsilon = 0.75;
   let frameCount = 0;
-  let lastManagedScrollTop = container.scrollTop;
-
   const restore = () => {
-    if (generation !== cueListVisualAnchorGeneration) return;
-    // renderAll() 的调用方可能在返回后立即设置 scrollTop（例如显式恢复
-    // 用户位置或执行导航）。这不是 content-visibility 的布局误差，不能
-    // 被后续稳定帧补偿覆盖。
-    if (frameCount > 0 && Math.abs(container.scrollTop - lastManagedScrollTop) > epsilon) return;
-    const visualTop = readVisualTop();
-    if (visualTop !== null) {
-      const delta = visualTop - anchor.top;
-      if (!Number.isFinite(delta)) return;
-      if (Math.abs(delta) > epsilon) {
-        const previousScrollTop = container.scrollTop;
-        container.scrollTop += delta;
-        // 到达列表边界、无法继续补偿时无需再占用后续动画帧。
-        if (Math.abs(container.scrollTop - previousScrollTop) < epsilon) return;
+    if (generation !== cueListScroll.generation) return;
+    if (cueEl?.isConnected && !cueEl.classList.contains('hidden') && Number.isFinite(anchor?.top)) {
+      const { containerRect, top, bottom } = cueListVisibleBounds();
+      const rect = cueEl.getBoundingClientRect();
+      // 文字不得被 sticky 工具栏盖住；行顶部留白可以在工具栏下，避免
+      // 把本来可读的边缘行无谓推移几个像素。内容不足时交给浏览器最小限幅。
+      const paddingTop = Math.max(0, Number.parseFloat(getComputedStyle(cueEl).paddingTop) || 0);
+      const targetTop = Math.max(top - containerRect.top - paddingTop,
+        Math.min(anchor.top, bottom - containerRect.top - 1));
+      const delta = rect.top - containerRect.top - targetTop;
+      if (Number.isFinite(delta) && Math.abs(delta) > 0.5) {
+        container.scrollTo({ top: container.scrollTop + delta, behavior: 'instant' });
       }
-      lastManagedScrollTop = container.scrollTop;
-    } else if (Number.isFinite(anchor.scrollTop)) {
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      container.scrollTop = Math.min(Math.max(0, anchor.scrollTop), maxScrollTop);
-      lastManagedScrollTop = container.scrollTop;
+    } else if (Number.isFinite(anchor?.scrollTop)) {
+      container.scrollTo({ top: anchor.scrollTop, behavior: 'instant' });
     }
-    frameCount += 1;
-    // content-visibility 可能先稳定几帧，再因滚动到新的行而继续回填真实
-    // 高度；短暂覆盖完整观察窗口，避免连续拆分时出现延迟的二次位移。
-    if (frameCount < maxFrames) requestAnimationFrame(restore);
+    // 即使当前帧被边界限幅，也继续这个有界布局窗口。后续行高回填后
+    // 滚动范围可能恢复；用户输入通过 generation 取消，而非猜测 scrollTop。
+    if (cueEl?.isConnected && ++frameCount < maxFrames) cueListScroll.frame = requestAnimationFrame(restore);
+    else { cueListScroll.frame = 0; cueListScroll.owner = null; cueListScroll.layoutAnchor = null; }
   };
-
   restore();
 }
 
-function scrollCueToCenter(cueEl, { behavior = 'smooth' } = {}) {
-  // 显式导航优先于重绘后的延迟补偿；否则一次点击/键盘导航可能刚把目标
-  // 行滚到位，就被上一轮 content-visibility 稳定帧拉回旧锚点。
-  invalidateCueListVisualAnchorRestore();
+function scrollCueToCenter(cueEl, { owner = 'navigate' } = {}) {
   if (!cueEl || cueEl.classList.contains('hidden')) return;
-  const { containerRect: cRect, top: visibleTop, bottom: visibleBottom } = cueListVisibleBounds();
-  const eRect = cueEl.getBoundingClientRect();
-  const visibleHeight = Math.max(1, visibleBottom - visibleTop);
-  const comfortInset = Math.min(120, Math.max(48, visibleHeight * 0.2));
-  // 目标已经处于列表中间的舒适区域时，不再制造一次多余的滚动动画。
-  // 顶部从 sticky 工具栏底部开始计算，避免把字幕滚到工具栏下面。
-  const containerComfortTop = cRect.top + comfortInset;
-  const containerComfortBottom = cRect.bottom - comfortInset;
-  if (
-    eRect.top >= containerComfortTop
-    && eRect.bottom <= containerComfortBottom
-  ) return;
-  const offsetTop = (eRect.top - cRect.top) + container.scrollTop;
-  const visibleTopOffset = visibleTop - cRect.top;
-  const target = offsetTop + eRect.height / 2 - visibleTopOffset - visibleHeight / 2;
-  container.scrollTo({ top: Math.max(0, target), behavior });
+  invalidateCueListVisualAnchorRestore();
+  const { containerRect, top, bottom } = cueListVisibleBounds();
+  const rect = cueEl.getBoundingClientRect();
+  const inset = Math.min(120, Math.max(48, (bottom - top) * 0.2));
+  if (rect.top >= top + inset && rect.bottom <= bottom - inset) return;
+  restoreCueListVisualAnchor(cueEl, {
+    top: top - containerRect.top + Math.max(0, (bottom - top - rect.height) / 2),
+  }, owner);
 }
 function scrollCueIntoViewIfNeeded(cueEl, options) {
   if (!cueEl || cueEl.classList.contains('hidden')) return;
   const { top, bottom } = cueListVisibleBounds();
-  const eRect = cueEl.getBoundingClientRect();
-  if (eRect.top < top || eRect.bottom > bottom) scrollCueToCenter(cueEl, options);
+  const rect = cueEl.getBoundingClientRect();
+  if (rect.top < top || rect.bottom > bottom) scrollCueToCenter(cueEl, options);
 }
+
+function playbackCueListElement() {
+  if (multiSubtitleVisible() && getMultiSubtitleState().display_mode === 'extension') {
+    const segment = extensionSegmentAtTime(player.currentTime * 1000);
+    return segment ? findCueListRenderAnchor({ kind: 'extension', segmentId: segment.id,
+      trackId: getActiveExtensionTrack()?.id }) : null;
+  }
+  const index = findActive(player.currentTime * 1000);
+  return index >= 0 ? container.querySelector(`.cue[data-idx="${index}"]`) : null;
+}
+
+function playbackCueListKey() {
+  const element = playbackCueListElement();
+  if (!element) return null;
+  const identity = cueListIdentity(element,
+    getMultiSubtitleState().display_mode === 'extension' ? 'extension' : 'main');
+  return `${identity.kind}:${identity.trackId || ''}:${identity.segmentId}`;
+}
+
+function resumeCueListFollowing() {
+  invalidateCueListVisualAnchorRestore();
+  setCueListFollowing(true);
+  scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'navigate' });
+}
+cueListFollowButton?.addEventListener('click', resumeCueListFollowing);
 
 // === seek ===
 let seekWarned = false;
@@ -9593,8 +9688,7 @@ function bindCueEvents(el, idx) {
           ? true : previousSuppress;
       }
       if (state?.preserveListScroll) {
-        invalidateCueListVisualAnchorRestore();
-        container.scrollTop = state.listScrollBeforeClick;
+        restoreCueListVisualAnchor(null, { scrollTop: state.listScrollBeforeClick }, 'navigate');
       }
       if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused) togglePlayback();
     }
@@ -9938,11 +10032,16 @@ function bindPlayerEvents(mediaElement) {
   });
   mediaElement.addEventListener('canplay', () => flushPendingMediaSeek(mediaElement));
   mediaElement.addEventListener('progress', () => flushPendingMediaSeek(mediaElement));
-  mediaElement.addEventListener('play', () => startPlaybackRefresh(mediaElement));
+  mediaElement.addEventListener('play', () => {
+    // 开始播放可驱动已启用的跟随，但不会恢复被用户关闭的跟随状态。
+    if (player === mediaElement && cueListScroll.following) cueListScroll.playbackKey = null;
+    startPlaybackRefresh(mediaElement);
+  });
   mediaElement.addEventListener('playing', () => startPlaybackRefresh(mediaElement));
   mediaElement.addEventListener('pause', () => {
     stopPlaybackRefresh(mediaElement);
     if (player !== mediaElement) return;
+    if (cueListScroll.owner === 'follow') invalidateCueListVisualAnchorRestore();
     update();
     waveformEditor?.updatePlayback();
   });
@@ -9987,6 +10086,7 @@ function seekMediaTo(timeSeconds) {
   const targetSeconds = Math.max(0, Math.min(duration, Number(timeSeconds) || 0));
   player.currentTime = targetSeconds;
   update();
+  resumeCueListFollowing();
   waveformEditor?.revealTime(targetSeconds * 1000, true);
   waveformEditor?.updatePlayback();
   syncMediaControls();
@@ -10000,6 +10100,7 @@ mediaSeek?.addEventListener('input', () => {
   if (!hasLoadedMedia()) return;
   player.currentTime = Number(mediaSeek.value) || 0;
   update();
+  resumeCueListFollowing();
   syncMediaControls();
 });
 mediaVolume?.addEventListener('input', () => {
@@ -10108,6 +10209,7 @@ function navigateCueListBoundary(key) {
   if (!target) return false;
   const boundary = renderedCueBoundaryTarget(target, key === 'Home' ? 'first' : 'last');
   if (!boundary) return false;
+  interruptCueListFollowing();
   if (target.kind === 'extension') {
     selectOnlyExtension(boundary.index, target.track);
     lastClickedExtensionIdx = boundary.index;
@@ -10239,6 +10341,7 @@ function switchMultiSubtitleTrack(direction) {
   }
   if (nextIndex < 0) return false;
 
+  interruptCueListFollowing();
   if (wantMain) {
     selectOnly(nextIndex);
     lastClickedIdx = nextIndex;
@@ -11853,21 +11956,27 @@ function previewGapAt(index, timeMs) {
 }
 
 function updateActiveCue(idx) {
-  if (idx === lastActive) return;
-  if (lastActive >= 0) {
+  const changed = idx !== lastActive;
+  if (changed && lastActive >= 0) {
     const prev = container.querySelector(`.cue[data-idx="${lastActive}"]`);
     if (prev) prev.classList.remove('active');
   }
-  if (idx >= 0) {
+  if (changed && idx >= 0) {
     const cur = container.querySelector(`.cue[data-idx="${idx}"]`);
     if (cur) {
       cur.classList.add('active');
-      if (!editingState && !suppressCueListAutoScroll && !waveformPlayheadDragging) {
-        scrollCueIntoViewIfNeeded(cur, { behavior: 'auto' });
-      }
     }
   }
   lastActive = idx;
+  if (!player.paused && cueListScroll.following && !cueListScroll.owner
+      && !editingState && !extensionEditingState && document.activeElement !== cuePanelText
+      && !suppressCueListAutoScroll && !waveformPlayheadDragging) {
+    const key = playbackCueListKey();
+    if (key !== cueListScroll.playbackKey) {
+      cueListScroll.playbackKey = key;
+      scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'follow' });
+    }
+  }
 }
 
 function updatePlaybackFrame() {
@@ -12421,8 +12530,8 @@ function buildGapRemovedRegionsJson() {
 const CANONICAL_PROJECT_FIELDS = new Set([
   'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity',
   'model', 'sticker_root', 'timebase', 'segments', 'multi_subtitle', 'waveform',
-  'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'gap_remove',
-  'script_alignment', 'workspace', 'preview',
+  'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'loudness',
+  'gap_remove', 'script_alignment', 'workspace', 'preview',
 ]);
 let projectExtensionFields = Object.fromEntries(
   Object.entries(DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
@@ -12506,7 +12615,7 @@ function buildJson() {
       end_offset_ms: binding.end_offset_ms || 0,
     })),
   };
-  // 三块波形缓存不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
+  // 波形缓存（含响度统计）不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
   // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
   // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
   const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
@@ -13749,7 +13858,7 @@ function scheduleAutoSave() {
 function hasUnsavedProjectChanges() {
   const multiDirty = Boolean(DATA.multi_subtitle?._dirty)
     || (DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
-  return projectImportDirty || gapRemoveDirty || previewGeometryDirty
+  return inlineEditHasUncommittedText() || projectImportDirty || gapRemoveDirty || previewGeometryDirty
     || DATA.segments.some((segment) => segment._dirty)
     || multiDirty;
 }
@@ -14237,14 +14346,58 @@ function configureWorkspaceTransfer() {
   });
 }
 
-function markProjectSaved(filename, backupName, { silent = false } = {}) {
-  DATA.segments.forEach((segment) => { delete segment._dirty; });
+function projectSaveFingerprint() {
+  return JSON.stringify([DATA.segments, DATA.multi_subtitle, DATA.gap_remove,
+    DATA.preview, gapRemoveDirty, previewGeometryDirty, projectImportDirty]);
+}
+
+function inlineEditHasUncommittedText() {
+  const state = editingState || extensionEditingState;
+  if (!state) return false;
+  const segment = editingState ? DATA.segments[state.idx]
+    : getExtensionTrack(state.trackId)?.segments[state.index];
+  return Boolean(segment && state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd() !== segment.text);
+}
+
+// 保存正在输入的文字，但不结束行内编辑、不替换节点、不移动光标。
+function flushInlineEditsForSave() {
+  const state = editingState || extensionEditingState;
+  if (!state) {
+    if (!cuePanel?.contains(document.activeElement)) commitCuePanelEdit();
+    return;
+  }
+  const extension = Boolean(extensionEditingState);
+  const index = extension ? state.index : state.idx;
+  const track = extension ? getExtensionTrack(state.trackId) : null;
+  const segment = extension ? track?.segments[index] : DATA.segments[index];
+  const text = state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
+  if (!segment || text === segment.text) return;
+  pushUndo(extension ? '编辑副字幕' : '编辑文本');
+  segment.text = text;
+  segment._dirty = true;
+  state.original = text;
+  state.el.classList.add('dirty');
+  if (extension) {
+    markMultiSubtitleDirty();
+    waveformEditor?.refreshExtensionCueLabel(index, state.trackId);
+  } else waveformEditor?.refreshCueLabel(index);
+  syncCuePanelAfterInlineEdit(extension ? 'extension' : 'main', index, state.trackId);
+}
+
+function markProjectSaved(filename, backupName, { silent = false, fingerprint = null } = {}) {
+  // 请求在途时的新编辑继续保持脏状态，失败请求从不进入这里。
+  const unchanged = !inlineEditHasUncommittedText()
+    && (fingerprint === null || fingerprint === projectSaveFingerprint());
   const multi = getMultiSubtitleState();
-  delete multi._dirty;
-  (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { delete segment._dirty; }));
-  gapRemoveDirty = false;
-  previewGeometryDirty = false;
-  projectImportDirty = false;
+  if (unchanged) {
+    DATA.segments.forEach((segment) => { delete segment._dirty; });
+    delete multi._dirty;
+    (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { delete segment._dirty; }));
+    gapRemoveDirty = false;
+    previewGeometryDirty = false;
+    projectImportDirty = false;
+    container.querySelectorAll('.dirty').forEach(element => element.classList.remove('dirty'));
+  }
   FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
   const jsonEl = document.getElementById('json-name');
   if (jsonEl) {
@@ -14252,7 +14405,6 @@ function markProjectSaved(filename, backupName, { silent = false } = {}) {
     jsonEl.title = `点击复制工程文件名：${filename}`;
     jsonEl.classList.remove('empty');
   }
-  renderAll();
   if (!silent) flashHint('保存成功！', 'success');
 }
 
@@ -14263,10 +14415,9 @@ async function saveProjectToServer({ silent = false, backupOnly = false } = {}) 
     return false;
   }
   if (projectSaveInFlight || projectCheckpointInFlight) return false;
-  if (editingState) finishEdit(true);
-  if (extensionEditingState) finishExtensionEdit(true);
-  commitCuePanelEdit();
+  flushInlineEditsForSave();
   const projectJson = buildJson();
+  const fingerprint = projectSaveFingerprint();
   projectSaveInFlight = true;
   try {
     const saveUrl = new URL(SERVER_CONFIG.saveUrl, window.location.href);
@@ -14284,7 +14435,7 @@ async function saveProjectToServer({ silent = false, backupOnly = false } = {}) 
     if (!response.ok || !result.ok) {
       throw new Error(result.error || `服务器返回 ${response.status}`);
     }
-    if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent });
+    if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent, fingerprint });
     return true;
   } catch (error) {
     const detail = error?.message || error;
@@ -14309,16 +14460,15 @@ async function saveProjectToServer({ silent = false, backupOnly = false } = {}) 
 async function saveProjectToHandle({ silent = false } = {}) {
   if (!projectFileHandle) return false;
   if (projectSaveInFlight || projectCheckpointInFlight) return false;
-  if (editingState) finishEdit(true);
-  if (extensionEditingState) finishExtensionEdit(true);
-  commitCuePanelEdit();
+  flushInlineEditsForSave();
   const projectJson = buildJson();
+  const fingerprint = projectSaveFingerprint();
   projectSaveInFlight = true;
   try {
     const writable = await projectFileHandle.createWritable();
     await writable.write(new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
     await writable.close();
-    markProjectSaved(projectFileHandle.name, null, { silent });
+    markProjectSaved(projectFileHandle.name, null, { silent, fingerprint });
     return true;
   } catch (error) {
     flashHint(`保存失败：${error?.message || error}`, 'warning');
@@ -15359,6 +15509,9 @@ function suggestedProjectName(file = null) {
 }
 
 function applyCanonicalProject(data, filename) {
+  // 原地换工程：在途/已排期的延迟波形载荷（含响度标尺）全部作废，见
+  // deferredReapeaksEpoch 的说明。
+  deferredReapeaksEpoch += 1;
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
@@ -15382,6 +15535,9 @@ function applyCanonicalProject(data, filename) {
   DATA.waveform = data.waveform || null;
   DATA.spectral = data.spectral || null;
   DATA.waveform_reapeaks = data.waveform_reapeaks || null;
+  // 响度统计不写进工程文件，所以这里恒为 null：切工程必须先清掉上一个素材的
+  // 标尺，等新媒体的 /api/waveform 回来再拟合。
+  DATA.loudness = data.loudness || null;
   DATA.workspace = data.workspace || null;
   DATA.gap_remove = data.gap_remove || null;
   DATA.script_alignment = data.script_alignment || null;
@@ -15412,6 +15568,7 @@ function applyCanonicalProject(data, filename) {
     waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform, { render: false });
     waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
     waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
+    waveformEditor.setLoudnessStats(DATA.loudness, { render: false });
   }
   updateGapRemoveUi();
   renderAll({ waveform: 'full', preserveCueListScroll: false });
@@ -18812,6 +18969,10 @@ document.addEventListener('asr:waveform-scale-limit', (event) => {
   flashHint(msg);
 });
 
+document.addEventListener('asr:waveform-loudness-unavailable', () => {
+  flashHint('当前媒体没有响度缓存，无法按响度适配', 'warning');
+});
+
 // === cleanPunctuation ===
 function cleanPunctuation() {
   const PUNCT_REPL = '  ';
@@ -18960,9 +19121,13 @@ function initWaveformEditor() {
       const track = getActiveExtensionTrack();
       idxs.forEach((idx) => addExtensionToSelection(idx, track));
     },
-    seek: seekFromWaveform,
+    seek: (timeSec, options = {}) => {
+      seekFromWaveform(timeSec, options);
+      if (!options.dragPreview) resumeCueListFollowing();
+    },
     onPlayheadDragStateChange: (active) => {
       waveformPlayheadDragging = active === true;
+      if (!active) resumeCueListFollowing();
     },
     togglePlayback,
     toggleDisabled: (idxs, track = 'main') => toggleDisabled(idxs, track),
@@ -18992,6 +19157,7 @@ function initWaveformEditor() {
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     getAutoSnapAdjacentCues: () => EDITOR_SETTINGS.autoSnapAdjacentCues,
+    getAdjacentBoundaryMode: () => EDITOR_SETTINGS.adjacentBoundaryMode,
     getCueTiming: () => timelineTimingAdapter(),
     getSnapToFrame: () => timelineIsFrameMode() && EDITOR_SETTINGS.timelineSnapToFrame,
     getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
@@ -19048,30 +19214,51 @@ function initWaveformEditor() {
   waveformEditor.setSpectralPayload(DATA.spectral || null, { render: false });
   waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks || null, { render: false });
   waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform || null, { render: false });
+  // 振幅拟合要在 setLayoutData 之后：得先知道本工程是否已有手调决定。
+  waveformEditor.setLoudnessStats(DATA.loudness || null, { render: false });
 }
+
+// 原地切换工程（打开本地 .mosp / 新建空白 / 导入）会让 DATA 换成一个新工程，
+// 但服务器的 /api/waveform 仍描述它自己绑定的旧工程。每次 applyCanonicalProject
+// 递增该纪元；在途的延迟加载响应据此作废并终止轮询，旧工程的
+// spectral / 波形 / 响度载荷绝不会套到新工程的波形上。
+let deferredReapeaksEpoch = 0;
 
 async function loadDeferredReapeaks() {
   const url = SERVER_CONFIG?.waveformUrl;
   if (!url || !waveformEditor) return;
+  const epoch = deferredReapeaksEpoch;
   try {
     const response = await fetch(url, { cache: 'no-store' });
     const result = await response.json().catch(() => ({}));
+    if (epoch !== deferredReapeaksEpoch) return;
     if (!response.ok || result.ok !== true) throw new Error(result.error || `服务器返回 ${response.status}`);
     if (result.status === 'loading' || result.status === 'pending') {
-      window.setTimeout(() => { void loadDeferredReapeaks(); }, 500);
+      scheduleDeferredReapeaksRetry(500, epoch);
       return;
     }
     if (result.status !== 'ready') return;
-    const hasPayload = Boolean(result.spectral || result.waveform_reapeaks);
+    const hasPayload = Boolean(result.spectral || result.waveform_reapeaks || result.loudness);
     if (!hasPayload) return;
     DATA.spectral = result.spectral || null;
     DATA.waveform_reapeaks = result.waveform_reapeaks || null;
+    DATA.loudness = result.loudness || null;
     waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
     waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
-    renderAll({ waveform: 'full' });
+    // 响度标量可能先于/后于波形到达，setLoudnessStats 自己会决定要不要重绘。
+    waveformEditor.setLoudnessStats(DATA.loudness);
+    waveformEditor.renderSegments();
   } catch (_error) {
-    window.setTimeout(() => { void loadDeferredReapeaks(); }, 1000);
+    scheduleDeferredReapeaksRetry(1000, epoch);
   }
+}
+
+// 重试必须绑定发起时的工程纪元：排期期间原地切换了工程，这次重试就该取消。
+// 否则新纪元的调用会原样接受旧工程的服务器载荷。
+function scheduleDeferredReapeaksRetry(delayMs, epoch) {
+  window.setTimeout(() => {
+    if (epoch === deferredReapeaksEpoch) void loadDeferredReapeaks();
+  }, delayMs);
 }
 
 // Server-editor 页面可能在本地服务退出后继续留在浏览器中。定期复用
@@ -19155,6 +19342,7 @@ const SERVER_STARTUP_LABELS = {
     waveform_unavailable: '波形缓存不可用，继续加载…',
     loading_spectral_cache: '正在读取频谱缓存…',
     loading_reapeaks_waveform: '正在读取 REAPER 波形缓存…',
+    loading_loudness_stats: '正在读取响度统计…',
     waveform_skipped: '已跳过波形处理…',
     finalizing: '正在完成工程加载…',
     ready: '工程加载完成',
@@ -19172,6 +19360,7 @@ const SERVER_STARTUP_LABELS = {
     waveform_unavailable: 'Waveform cache unavailable; continuing…',
     loading_spectral_cache: 'Reading spectral cache…',
     loading_reapeaks_waveform: 'Reading REAPER waveform cache…',
+    loading_loudness_stats: 'Reading loudness stats…',
     waveform_skipped: 'Waveform processing skipped…',
     finalizing: 'Finishing project loading…',
     ready: 'Project loaded',

@@ -8,6 +8,7 @@
   const ENCODING = 'i8-minmax-base64';
   const SPECTRAL_SCHEMA = 'moy.asr.spectral.v1';
   const SPECTRAL_ENCODING = 'u16-freq-density-base64';
+  const LOUDNESS_SCHEMA = 'moy.asr.loudness.v1';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
   const POINTER_DRAG_THRESHOLD_PX = 3;
 
@@ -179,6 +180,10 @@
     layoutTree: DEFAULT_RIGHT_LAYOUT_TREE,
     layoutEditing: false,
     waveformScale: 1,
+    // 振幅是否仍由响度自动决定。跟着工程走，不进 localStorage：
+    // waveformScale 的活跃值存在浏览器全局偏好里，用「等于默认值」或 -1 哨兵
+    // 都无法判断「这个工程还没定过振幅」——新工程拿到的是上个工程留下的数字。
+    waveformScaleAuto: true,
     disabledDisplay: 'dim',
     showGroupBadges: true,
     dragPlayhead: true,
@@ -218,6 +223,8 @@
       preset: 'custom', waveformMode: 'multi',
       waveformSettings: {
         visibleSeconds: 20, secondsPerRow: 10, rowHeight: 120, waveformScale: 4,
+        // 预设自己指定了振幅，就是预设已经替用户做了决定，不能再被响度自动覆盖。
+        waveformScaleAuto: false,
         side: 'left', disabledDisplay: 'dim', showGroupBadges: true, dragPlayhead: true,
       },
       splitPercent: 60, columnPercent: 30, rows: [42, 16, 42], tree: THREE_FOLD_LAYOUT_TREE,
@@ -228,6 +235,7 @@
       preset: 'custom', waveformMode: 'basic',
       waveformSettings: {
         visibleSeconds: 20, secondsPerRow: 10, rowHeight: 120, waveformScale: 5.5,
+        waveformScaleAuto: false,
         side: 'left', disabledDisplay: 'dim', showGroupBadges: true, dragPlayhead: true,
       },
       splitPercent: 60, columnPercent: 36, rows: [42, 18, 40], tree: CINEMA_SCREEN_LAYOUT_TREE,
@@ -578,6 +586,10 @@
         ? { rowHeight: Number(rawWaveformSettings.rowHeight) } : {}),
       ...(Number.isFinite(Number(rawWaveformSettings.waveformScale))
         ? { waveformScale: clampWaveformScale(Number(rawWaveformSettings.waveformScale)) } : {}),
+      // 必须显式产出这个键（而不是缺字段时省略）：applyLayoutData 用
+      // Object.assign 增量合并，省略会让上一个工程的 false 残留到新工程上。
+      // 老工程没写过该字段 → 不等于 false → true，升级后照样吃到自动缩放。
+      waveformScaleAuto: rawWaveformSettings.waveformScaleAuto !== false,
       ...(rawWaveformSettings.side === 'left' || rawWaveformSettings.side === 'right'
         ? { side: rawWaveformSettings.side } : {}),
       ...(rawWaveformSettings.disabledDisplay === 'hidden' || rawWaveformSettings.disabledDisplay === 'dim'
@@ -639,6 +651,10 @@
         layoutTree: layoutData.tree,
         layoutEditing: false,
         waveformScale: clampWaveformScale(Number(parsed.waveformScale) || DEFAULT_SETTINGS.waveformScale),
+        // 刻意不从 localStorage 读：振幅的活跃值是浏览器全局的，而「这个工程
+        // 定过振幅没有」只能跟着工程走。工程 workspace 随后会用 applyLayoutData
+        // 覆盖它，这里给出的是「尚无工程决定」的初值。
+        waveformScaleAuto: true,
         disabledDisplay: parsed.disabledDisplay === 'hidden' ? 'hidden' : 'dim',
         showGroupBadges: parsed.showGroupBadges !== false,
         dragPlayhead: parsed.dragPlayhead !== false,
@@ -969,6 +985,28 @@
     return Math.max(0, Number(height) * 0.36 * clampWaveformScale(scale));
   }
 
+  // ---- 响度 → 振幅标尺 ----------------------------------------------------
+  // 后端 moy.asr.loudness.v1 给的是 0..1 线性满量程 RMS（不是 peak、不是 dB）。
+  // 要把「典型响度」换算成「典型峰值占多少半行高」，还差一个波峰因子。
+  const LOUDNESS_CREST_FACTOR = 2.0; // RMS→峰值，约 +6 dB：正弦 √2 与语音 ~3.5 之间
+  const LOUDNESS_TARGET_FILL = 0.85; // 参考峰值占可用上半高的比例，留 15% 余量
+  const FULL_SCALE = 1.0; // 归一化满量程：预测峰值不可能超过它
+
+  function waveformScaleFromLoudness(stats, height) {
+    const reference = Number(stats && stats.p95);
+    const rowHeight = Number(height);
+    // 全静音（p95<=0）或缺响度层时返回 null：宁可不猜，也不要把振幅拉到上限。
+    if (!Number.isFinite(reference) || reference <= 0) return null;
+    if (!Number.isFinite(rowHeight) || rowHeight <= 0) return null;
+    // 削顶发生在上方：可用高度是 center - 2 = 0.46h - 2，比下方 0.54h - 2 更紧。
+    const headroom = Math.max(1, rowHeight * 0.46 - 2);
+    // 不钳到满量程的话，响素材会算出 >1 的「预测峰值」，把波形画得偏小。
+    const expectedPeak = Math.min(FULL_SCALE, reference * LOUDNESS_CREST_FACTOR);
+    return clampWaveformScale(
+      (LOUDNESS_TARGET_FILL * headroom) / (0.36 * rowHeight * expectedPeak),
+    );
+  }
+
   function sampleInterpolatedPeak(peaks, position, peakCount, target = [0, 0]) {
     if (!peaks || peakCount <= 0) {
       target[0] = 0;
@@ -1135,6 +1173,14 @@
   function shouldAdjustAdjacentCuesIndependently(altKey, autoSnapAdjacentCues) {
     // Alt 始终临时反转自动吸附开关；开关关闭且未按 Alt 时也是独立调整。
     return Boolean(altKey) === Boolean(autoSnapAdjacentCues);
+  }
+
+  // 相接字幕边界手柄的拖动方式：
+  // - dual（新默认，达芬奇式）：手柄始终独立调整单侧，联动交给中缝拖动区；
+  // - classic（传统）：沿用“自动吸附调整相邻字幕”开关 + Alt 临时反转。
+  function shouldAdjustSharedBoundaryHandleIndependently(altKey, autoSnapAdjacentCues, boundaryMode) {
+    if (boundaryMode === 'dual') return true;
+    return shouldAdjustAdjacentCuesIndependently(altKey, autoSnapAdjacentCues);
   }
 
   function normalizedIndices(segments, indices) {
@@ -1545,6 +1591,7 @@
       this.peaks = null;
       this.spectral = null;
       this.reapeaksPayload = null;
+      this.loudnessStats = null;
       this.reapeaksPeaks = null;
       this.player = null;
       this.mediaAvailable = false;
@@ -1613,6 +1660,7 @@
       this.waveformScaleLabel = document.getElementById('waveform-scale-label');
       this.waveformScaleDownButton = document.getElementById('waveform-scale-down');
       this.waveformScaleUpButton = document.getElementById('waveform-scale-up');
+      this.waveformScaleFitButton = document.getElementById('waveform-scale-fit');
       this.secondsPerRowSelect = document.getElementById('waveform-seconds-per-row');
       this.rowHeightSelect = document.getElementById('waveform-row-height');
       this.showGroupBadgesToggle = document.getElementById('waveform-show-group-badges');
@@ -1649,9 +1697,21 @@
       );
     }
 
-    // 共享边界拖动期间，在「共享边界」状态文本旁提示当前“相邻字幕自动吸附”
-    // 模式；文案按用户设置显示默认模式，Alt 始终是临时反转修饰键。
+    // 相接字幕边界手柄命中时的模式判定：dual 模式下手柄始终独立调整
+    // （联动由中缝拖动区负责）；classic 模式沿用自动吸附开关 + Alt 反转。
+    isSharedBoundaryHandleIndependent(altKey = false) {
+      return shouldAdjustSharedBoundaryHandleIndependently(
+        altKey,
+        this.options.getAutoSnapAdjacentCues?.() === true,
+        this.options.getAdjacentBoundaryMode?.(),
+      );
+    }
+
+    // 共享边界拖动期间，在「共享边界」状态文本旁提示当前的贴合边界模式。
     adjacentSnapModeStatusHint() {
+      if (this.options.getAdjacentBoundaryMode?.() === 'dual') {
+        return '中缝联动：中缝拖动两侧一起移动，手柄只调整单侧字幕。';
+      }
       return this.options.getAutoSnapAdjacentCues?.() === true
         ? '当前为相邻字幕自动吸附模式，按住 Alt 可以临时解除吸附。'
         : '当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。';
@@ -1678,6 +1738,7 @@
       document.getElementById('waveform-zoom-out')?.addEventListener('click', () => this.changeZoom(1));
       this.waveformScaleDownButton?.addEventListener('click', () => this.changeWaveformScale(-1));
       this.waveformScaleUpButton?.addEventListener('click', () => this.changeWaveformScale(1));
+      this.waveformScaleFitButton?.addEventListener('click', () => this.fitWaveformScaleToLoudness());
       this.pane.addEventListener('pointerdown', () => {
         this.autoScrolling = false;
         this.autoScrollTarget = null;
@@ -1953,7 +2014,7 @@
         button.classList.toggle('active', button.dataset.waveformMode === this.settings.mode);
       });
       this.windowLabel.textContent = `${this.settings.visibleSeconds} 秒`;
-      if (this.waveformScaleLabel) this.waveformScaleLabel.textContent = `×${parseFloat(this.settings.waveformScale.toFixed(2))}`;
+      if (this.waveformScaleLabel) this.renderWaveformScaleLabel();
       this.secondsPerRowSelect.value = String(this.settings.secondsPerRow);
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
       if (this.sideSelect) this.sideSelect.value = this.settings.side;
@@ -2069,6 +2130,11 @@
       this.settings.rowHeight = next;
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(next);
       saveSettings(this.settings);
+      // 自动标尺按行高算（可用上半高随行高变），换行高要重拟合；手动模式不动。
+      // render:false：只算标尺和标签，重绘交给下面正常的行高布局路径。
+      if (this.settings.waveformScaleAuto !== false && this.loudnessStats) {
+        this.setLoudnessStats(this.loudnessStats, { render: false });
+      }
       if (this.isMultiMode() && this.payload) {
         this.updateMultiRowLayout();
       } else {
@@ -2364,6 +2430,7 @@
           secondsPerRow: this.settings.secondsPerRow,
           rowHeight: this.settings.rowHeight,
           waveformScale: this.settings.waveformScale,
+          waveformScaleAuto: this.settings.waveformScaleAuto !== false,
           side: this.settings.side,
           disabledDisplay: this.settings.disabledDisplay,
           showGroupBadges: this.settings.showGroupBadges !== false,
@@ -2392,7 +2459,9 @@
       const layout = normalizeLayoutData(snapshot.layout);
       this.settings.layout = layout.preset;
       if (layout.waveformMode) this.settings.mode = layout.waveformMode;
-      if (layout.waveformSettings) Object.assign(this.settings, layout.waveformSettings);
+      // 兜底给出 waveformScaleAuto：工程完全没有 waveformSettings 时，必须显式
+      // 回到「未决定」，否则 Object.assign 不写这个键会让上一个工程的 false 残留。
+      Object.assign(this.settings, layout.waveformSettings || { waveformScaleAuto: true });
       this.settings.splitPercent = layout.splitPercent;
       this.settings.layoutColumnPercent = layout.columnPercent;
       this.settings.layoutRows = layout.rows;
@@ -2414,7 +2483,9 @@
       const layout = normalizeLayoutData(value);
       this.settings.layout = layout.preset;
       if (layout.waveformMode) this.settings.mode = layout.waveformMode;
-      if (layout.waveformSettings) Object.assign(this.settings, layout.waveformSettings);
+      // 兜底给出 waveformScaleAuto：工程完全没有 waveformSettings 时，必须显式
+      // 回到「未决定」，否则 Object.assign 不写这个键会让上一个工程的 false 残留。
+      Object.assign(this.settings, layout.waveformSettings || { waveformScaleAuto: true });
       this.settings.splitPercent = layout.splitPercent;
       this.settings.layoutColumnPercent = layout.columnPercent;
       this.settings.layoutRows = layout.rows;
@@ -2457,12 +2528,54 @@
         return;
       }
       this.settings.waveformScale = next;
+      // 用户亲自动了振幅 → 本工程退出自动，响度端点之后不再覆盖它。
+      this.settings.waveformScaleAuto = false;
       saveSettings(this.settings);
-      if (this.waveformScaleLabel) {
-        this.waveformScaleLabel.textContent = `×${parseFloat(next.toFixed(2))}`;
-      }
+      this.renderWaveformScaleLabel();
       // peak 包络按行缓存；连续滚轮由上层 debounce 合并后，这里只清晰重绘一次。
       this.redrawWaveformCanvases();
+    }
+
+    renderWaveformScaleLabel() {
+      if (!this.waveformScaleLabel) return;
+      const value = `×${parseFloat(Number(this.settings.waveformScale).toFixed(2))}`;
+      this.waveformScaleLabel.textContent = this.settings.waveformScaleAuto === false
+        ? value
+        : `${value} ${localizedWaveformMessage('自动', 'auto')}`;
+    }
+
+    setLoudnessStats(stats, { render = true } = {}) {
+      this.loudnessStats = stats && stats.schema === LOUDNESS_SCHEMA ? stats : null;
+      if (!this.loudnessStats) return false;
+      // 用户已手调过振幅就绝不覆盖；「按响度适配」按钮会先把这个标志翻回真。
+      if (this.settings.waveformScaleAuto === false) return false;
+      const fitted = waveformScaleFromLoudness(
+        this.loudnessStats,
+        this.settings.rowHeight,
+      );
+      if (fitted === null) return false;
+      this.settings.waveformScale = fitted;
+      // 自动值刻意不写 saveSettings()：localStorage 里的振幅是浏览器全局偏好，
+      // 为当前素材拟合的值不该污染下一个工程。
+      this.renderWaveformScaleLabel();
+      if (render) this.redrawWaveformCanvases();
+      return true;
+    }
+
+    fitWaveformScaleToLoudness() {
+      const previous = this.settings.waveformScaleAuto;
+      this.settings.waveformScaleAuto = true;
+      if (this.setLoudnessStats(this.loudnessStats)) {
+        this.setStatus(localizedWaveformMessage(
+          `已按响度适配振幅 ×${parseFloat(Number(this.settings.waveformScale).toFixed(2))}`,
+          `Amplitude fitted to loudness ×${parseFloat(Number(this.settings.waveformScale).toFixed(2))}`,
+        ));
+        return true;
+      }
+      // 拟不出来就把标志还原，别让标签谎称「自动」却显示着手调值。
+      this.settings.waveformScaleAuto = previous;
+      document.dispatchEvent(new CustomEvent('asr:waveform-loudness-unavailable'));
+      return false;
     }
 
     scheduleWheelScaleChange() {
@@ -3410,6 +3523,7 @@
         });
         row.appendChild(block);
       }
+      this.appendSharedBoundaryZones(row, startMs, endMs, 'main');
 
       if (!multiLane) return;
       const extensionSegments = this.options.getExtensionSegments?.() || [];
@@ -3465,6 +3579,68 @@
           else this.options.activateExtensionCue?.(index);
         });
         row.appendChild(block);
+      }
+      this.appendSharedBoundaryZones(row, startMs, endMs, 'extension');
+    }
+
+    isSegmentHiddenForDisplay(segment) {
+      return Boolean(
+        segment?.disabled
+        && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden'),
+      );
+    }
+
+    // 新模式（中缝联动）下，为相接的字幕对在中缝处渲染一个可拖动区：
+    // 拖动中缝 = 两侧边界一起联动；相接侧手柄加宽后仍可单侧独立调整。
+    // classic 模式不渲染中缝区，行为与旧版完全一致。
+    appendSharedBoundaryZones(row, startMs, endMs, track = 'main') {
+      if (this.options.getAdjacentBoundaryMode?.() !== 'dual') return;
+      const segments = this.options.getSegments(track);
+      if (!Array.isArray(segments) || segments.length < 2) return;
+      const clock = this.cueTiming();
+      const duration = Math.max(1, endMs - startMs);
+      const firstIndex = Math.max(0, firstCueIndexOverlapping(segments, startMs) - 1);
+      for (let index = firstIndex; index + 1 < segments.length; index += 1) {
+        const left = segments[index];
+        const right = segments[index + 1];
+        if (!left || !right) continue;
+        const leftEnd = clock.getEnd(left);
+        const rightStart = clock.getStart(right);
+        if (!Number.isFinite(leftEnd) || !Number.isFinite(rightStart)) continue;
+        const leftEndMs = clock.toMs(leftEnd);
+        const rightStartMs = clock.toMs(rightStart);
+        if (leftEndMs > endMs && rightStartMs > endMs) break;
+        if (Math.abs(leftEnd - rightStart) > clock.snapThreshold) continue;
+        // 帧模式下 getEnd/getStart 返回帧数，行边界是毫秒；定位前统一换算。
+        const seamMs = (leftEndMs + rightStartMs) / 2;
+        // 每条中缝只由其左侧所在行持有。行末中缝仍要渲染，否则整齐落在
+        // 行边界的相接字幕会失去双侧联动拖动区。
+        if (seamMs <= startMs || seamMs > endMs) continue;
+        if (this.isSegmentHiddenForDisplay(left) || this.isSegmentHiddenForDisplay(right)) continue;
+        const zone = document.createElement('span');
+        zone.className = 'waveform-cue-boundary';
+        zone.dataset.track = track;
+        zone.dataset.leftIdx = String(index);
+        zone.style.left = `${((seamMs - startMs) / duration) * 100}%`;
+        zone.classList.toggle('at-row-end', seamMs === endMs);
+        zone.title = '拖动调整贴合边界（两侧一起移动）；两侧手柄仅调整单侧';
+        zone.addEventListener('pointerdown', (event) => this.beginSharedBoundaryZoneDrag(event, index, row, track));
+        row.appendChild(zone);
+        // 加宽相接侧手柄：中缝区只占中间 8px，加宽后两侧手柄保留约 7px
+        // 独立命中区域，三个区域都有稳定的视觉与命中宽度。
+        const leftBlock = row.querySelector(
+          track === 'extension'
+            ? `.waveform-cue-block[data-track="extension"][data-ext-idx="${index}"]`
+            : `.waveform-cue-block[data-track="main"][data-idx="${index}"]`,
+        );
+        const rightBlock = row.querySelector(
+          track === 'extension'
+            ? `.waveform-cue-block[data-track="extension"][data-ext-idx="${index + 1}"]`
+            : `.waveform-cue-block[data-track="main"][data-idx="${index + 1}"]`,
+        );
+        leftBlock?.classList.add('has-shared-boundary-right');
+        rightBlock?.classList.add('has-shared-boundary-left');
+        if (seamMs === endMs) leftBlock?.classList.add('shared-boundary-at-row-end-right');
       }
     }
 
@@ -3530,7 +3706,7 @@
       rows.forEach((row) => {
         // 绑定、解绑和字幕时间变化只影响覆盖层；保留已有行与 Canvas，
         // 避免重新采样/绘制波形导致操作出现一帧卡顿。
-        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge')
+        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary')
           .forEach((element) => element.remove());
         this.appendCueBlocks(
           row,
@@ -3545,23 +3721,61 @@
     refreshCueBlocks() {
       const segments = this.options.getSegments('main');
       const extensionSegments = this.options.getExtensionSegments?.() || [];
+      // 共享边界拖动会同时修改两侧字幕：中缝拖动的真实选区已包含前后
+      // 两句；传统模式的手柄联动只选中点击侧，拖动期间两侧块也按选中态
+      // 显示，松开后由真实选区恢复原状。
+      const boundaryDrag = this.drag?.kind === 'resize-boundary' ? this.drag : null;
+      const boundaryDragTrack = boundaryDrag?.track || 'main';
       this.content.querySelectorAll('.waveform-cue-block').forEach((block) => {
         const isExtension = block.dataset.track === 'extension';
-        const segment = isExtension
-          ? extensionSegments[Number(block.dataset.extIdx)]
-          : segments[Number(block.dataset.idx)];
+        const index = isExtension
+          ? Number(block.dataset.extIdx)
+          : Number(block.dataset.idx);
+        const segment = isExtension ? extensionSegments[index] : segments[index];
         const row = block.closest('.waveform-row');
         if (!segment || !row) return;
         this.layoutBlock(block, segment, Number(row.dataset.startMs), Number(row.dataset.endMs));
-        block.classList.toggle('selected', isExtension
-          ? this.options.getExtensionSelection?.().has(Number(block.dataset.extIdx))
-          : this.options.getSelection('main').has(Number(block.dataset.idx)));
+        const linkedToBoundaryDrag = Boolean(
+          boundaryDrag
+          && (isExtension ? 'extension' : 'main') === boundaryDragTrack
+          && (index === boundaryDrag.index || index === boundaryDrag.index + 1),
+        );
+        block.classList.toggle('selected', linkedToBoundaryDrag || (isExtension
+          ? this.options.getExtensionSelection?.().has(index)
+          : this.options.getSelection('main').has(index)));
         const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
         this.setBindingMarker(block, isExtension
           ? bindingMarkerTargets.extension?.has?.(Number(block.dataset.extIdx)) === true
           : bindingMarkerTargets.main?.has?.(Number(block.dataset.idx)) === true);
       });
+      this.refreshBoundaryZones();
       this.positionPlayheads();
+    }
+
+    // 轻量刷新（拖动中）只重建字幕块，不重建中缝区；这里按当前时间
+    // 重新定位已有中缝区，保证拖动过程中中缝始终跟随贴合边界。
+    refreshBoundaryZones() {
+      this.content.querySelectorAll('.waveform-cue-boundary').forEach((zone) => {
+        const row = zone.closest('.waveform-row');
+        if (!row) return;
+        const track = zone.dataset.track === 'extension' ? 'extension' : 'main';
+        const index = Number(zone.dataset.leftIdx);
+        const left = this.options.getSegments(track)[index];
+        const right = this.options.getSegments(track)[index + 1];
+        const clock = this.cueTiming();
+        // 独立拖动让两侧脱离贴合后，中缝区立即移除；重新贴合会在下一次
+        // 完整重建（refreshCueOverlay）时恢复。
+        if (!left || !right || Math.abs(clock.getEnd(left) - clock.getStart(right)) > clock.snapThreshold) {
+          zone.remove();
+          return;
+        }
+        const startMs = Number(row.dataset.startMs);
+        const endMs = Number(row.dataset.endMs);
+        const duration = Math.max(1, endMs - startMs);
+        const seamMs = (clock.toMs(clock.getEnd(left)) + clock.toMs(clock.getStart(right))) / 2;
+        zone.style.left = `${((seamMs - startMs) / duration) * 100}%`;
+        zone.classList.toggle('at-row-end', seamMs === endMs);
+      });
     }
 
     refreshCueLabel(index) {
@@ -4339,9 +4553,10 @@
         this.options.splitCueAtTime?.(index, timing.toMs(timing.fromMs(timeMs)));
         return;
       }
-      // 相邻字幕独立调整：命中共享边界手柄时拆开为单侧拖动；Alt 会
-      // 根据“自动吸附调整相邻字幕”开关临时反转这一模式。
-      if (adjacentCueAdjustmentIndependent && targetHandle) {
+      // 相接字幕边界手柄：dual（中缝联动）模式下始终拆开为单侧拖动；
+      // classic 模式按“自动吸附调整相邻字幕”开关决定，Alt 临时反转。
+      const sharedBoundaryHandleIndependent = this.isSharedBoundaryHandleIndependent(event.altKey);
+      if (sharedBoundaryHandleIndependent && targetHandle) {
         const sharedLeft = targetHandle.classList.contains('left')
           && index > 0 && this.isSharedBoundary(event, index - 1, index, row, track);
         const sharedRight = targetHandle.classList.contains('right')
@@ -4500,6 +4715,78 @@
         started: false,
         changed: false,
         independent: true,
+      };
+      event.currentTarget.classList.add('dragging');
+      this.pane.classList.add('cue-drag-active');
+      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
+      window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
+      window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
+      window.addEventListener('pointercancel', this._dragEnd, { once: true });
+    }
+
+    // 中缝拖动区（dual 模式）：按下即开始共享边界联动拖动，两侧边界
+    // 一起移动；plain 点击（未拖动）按点击行为跳转，等价于点击右侧字幕块。
+    beginSharedBoundaryZoneDrag(event, leftIndex, row, track = 'main') {
+      if (event.button !== 0) return;
+      if (this.tool === 'razor') return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.focusWaveform();
+      const segments = this.options.getSegments(track);
+      const rightIndex = leftIndex + 1;
+      if (!segments[leftIndex] || !segments[rightIndex]) return;
+      // Ctrl(Cmd)/Shift 的选择语义与点击右侧字幕块的边界手柄一致。
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
+        if (track === 'extension') this.options.toggleExtensionSelection?.(rightIndex);
+        else this.options.toggleCueSelection?.(rightIndex);
+        return;
+      }
+      if (event.shiftKey) {
+        if (track === 'extension') this.options.selectExtensionRange?.(rightIndex);
+        else this.options.selectCueRange?.(rightIndex);
+        return;
+      }
+      // 选择可能触发行重建，先保存按下瞬间的几何数据（与 beginCueDrag 相同）。
+      const geometry = this.captureRowGeometry(row);
+      // 普通中缝点击替换为相邻两句的选区；Ctrl/Cmd 与 Shift 已在上面保留
+      // 原本的切换和范围选择语义。面板聚焦右侧字幕。
+      if (track === 'extension') {
+        this.options.selectExtensionCue?.(leftIndex);
+        this.options.addExtensionSelection?.([rightIndex]);
+        this.options.activateExtensionCue?.(rightIndex);
+      } else {
+        this.options.selectCue(leftIndex);
+        this.options.addCueSelection?.([rightIndex]);
+        this.options.activateCue?.(rightIndex);
+      }
+      const timing = this.cueTiming();
+      const originals = new Map(
+        [leftIndex, rightIndex].map((idx) => [idx, snapshotTiming(segments[idx], timing)]),
+      );
+      this.drag = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        currentClientX: event.clientX,
+        rangeMs: geometry.endMs - geometry.startMs,
+        rowWidth: geometry.width,
+        geometry,
+        kind: 'resize-boundary',
+        track,
+        index: leftIndex,
+        indices: [leftIndex, rightIndex],
+        row,
+        originals,
+        cancelOriginals: new Map(originals),
+        timing,
+        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
+        commitIndices: new Set([leftIndex, rightIndex]),
+        started: false,
+        changed: false,
+        independent: false,
+        allowSqueeze: false,
+        squeezeOriginals: null,
+        altToggleDisabledOnClick: false,
+        seekedOnPointerDown: false,
       };
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
@@ -5513,7 +5800,8 @@
       window.removeEventListener('pointermove', this._dragMove);
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
-      this.content.querySelectorAll('.waveform-cue-block.dragging').forEach((block) => block.classList.remove('dragging'));
+      this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')
+        .forEach((block) => block.classList.remove('dragging'));
       this.pane.classList.remove('cue-drag-active');
       this.drag = null;
       if (event.type === 'pointercancel') {
@@ -5715,6 +6003,7 @@
       roundMs,
       sourceForFile,
       shouldAdjustAdjacentCuesIndependently,
+      shouldAdjustSharedBoundaryHandleIndependently,
       findActiveCueIndex,
       firstCueIndexOverlapping,
       applySharedBoundary,
@@ -5727,6 +6016,13 @@
       wheelScrollDelta,
       waveformScaleAfterStep,
       waveformAmplitude,
+      waveformScaleFromLoudness,
+      loudnessSchema: LOUDNESS_SCHEMA,
+      // 只做状态机逻辑的单测入口：用 stub 的 this 调用，无需构造 DOM。
+      setLoudnessStats: WaveformEditor.prototype.setLoudnessStats,
+      fitWaveformScaleToLoudness: WaveformEditor.prototype.fitWaveformScaleToLoudness,
+      renderWaveformScaleLabel: WaveformEditor.prototype.renderWaveformScaleLabel,
+      setRowHeight: WaveformEditor.prototype.setRowHeight,
       buildWaveformEnvelope,
       sampleInterpolatedPeak,
       normalizeLayoutData,

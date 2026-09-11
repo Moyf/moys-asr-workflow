@@ -130,7 +130,7 @@ fn media_stem(value: &str) -> String {
         ".paraformer.", ".sensevoice.", ".nano.",
         // 本地化操作后缀（与 output_naming.OPERATION_NAMES 的两种语言带点形式
         // 一致，小写匹配；中文不随大小写变化）。仅识别 zh 界面翻译段
-        // （翻译为中文 / 翻译为英文）与本地化组合标记（双语合一 / 整合）；
+        // （翻译为中文 / 翻译为英文）与本地化组合标记（双语合一 / 整合 / 回填）；
         // .translate-* / .bilingual 英文命名不识别。
         ".postprocess.", ".后处理.",
         ".ocr-dedup.", ".ocr去重.",
@@ -141,7 +141,7 @@ fn media_stem(value: &str) -> String {
         // 旧版 zh 界面「匹配」后缀只读兼容（1.6.0 起改名「文稿匹配」）。
         ".匹配.",
         ".翻译为中文.", ".翻译为英文.",
-        ".双语合一.", ".整合.",
+        ".双语合一.", ".整合.", ".回填.",
         // 媒体工具产物后缀（与 output_naming.MEDIA_SUFFIX_NAMES 一致）。
         ".gap-removed.", ".去空隙.",
         ".subtitled.", ".压字幕.",
@@ -161,7 +161,7 @@ fn media_stem(value: &str) -> String {
         ".proofread", ".校对文本", ".resegment", ".重新断句", ".custom", ".自定义",
         ".匹配",
         ".翻译为中文", ".翻译为英文",
-        ".双语合一", ".整合",
+        ".双语合一", ".整合", ".回填",
         ".gap-removed", ".去空隙",
         ".subtitled", ".压字幕",
         ".audio", ".音频",

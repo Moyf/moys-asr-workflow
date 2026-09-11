@@ -2826,7 +2826,7 @@
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
     mediaSeekStepFrames: 1, cueMoveStepMs: 50, cueMoveStepFrames: 1,
     timelineSnapToFrame: true, timelineTimecodeSeparator: DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
-    hoverSeekPreview: false, autoSnapAdjacentCues: true, ninjaMode: false,
+    hoverSeekPreview: false, autoSnapAdjacentCues: true, adjacentBoundaryMode: 'dual', ninjaMode: false,
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
@@ -2916,6 +2916,8 @@
       timelineTimecodeSeparator: normalizeTimelineTimecodeSeparator(savedSettings.timelineTimecodeSeparator),
       hoverSeekPreview: savedSettings.hoverSeekPreview === true,
       autoSnapAdjacentCues: savedSettings.autoSnapAdjacentCues !== false,
+      // 相接字幕边界拖动方式：dual（中缝联动，达芬奇式，默认）/ classic（自动吸附开关 + Alt 反转）。
+      adjacentBoundaryMode: savedSettings.adjacentBoundaryMode === 'classic' ? 'classic' : 'dual',
       ninjaMode: savedSettings.ninjaMode === true,
       ninjaSound: savedSettings.ninjaSound !== false,
       ninjaSlashEffect: savedSettings.ninjaSlashEffect !== false,

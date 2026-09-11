@@ -171,8 +171,8 @@ def _operation_file_token(operation: str, *, lang: str | None = None) -> str:
     """Return the safe filename segment for an artifact operation.
 
     Operations listed in the naming contract and translation artifacts
-    (``translate-{target}`` with optional ``-bilingual``/``-combined`` marker;
-    both hyphen and underscore bases are recognized) get their localized display
+    (``translate-{target}`` with optional ``-bilingual``/``-combined``/``-backfill``
+    marker; both hyphen and underscore bases are recognized) get their localized display
     name. In the zh UI the marker is localized too, keeping the dot separator
     (``翻译为中文.双语合一``); the en UI keeps the pre-change byte output
     (``translate-zh-bilingual`` / legacy ``translate-zh`` for underscore bases).

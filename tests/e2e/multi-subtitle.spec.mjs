@@ -3485,11 +3485,11 @@ test('keeps bound extensions synced when a main shared boundary is dragged indep
       ],
     },
   };
-  // 该测试验证同轨独立拖动路径，显式关闭自动吸附（默认已开启）。
+  // 该测试验证传统模式同轨独立拖动路径，显式关闭自动吸附（默认已开启）。
   await page.addInitScript(() => {
     localStorage.setItem(
       'moy.asr.editor.settings.v1',
-      JSON.stringify({ autoSnapAdjacentCues: false }),
+      JSON.stringify({ autoSnapAdjacentCues: false, adjacentBoundaryMode: 'classic' }),
     );
   });
   await page.goto(server.url);

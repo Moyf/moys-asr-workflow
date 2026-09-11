@@ -737,7 +737,7 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         region=pick("DASHSCOPE_REGION", "beijing").lower() or "beijing",
         workspace_id=pick("DASHSCOPE_WORKSPACE_ID"),
         language=pick("DASHSCOPE_DEFAULT_LANGUAGE"),
-        gui_lang=_gui_language(pick("MAW_GUI_LANG", "zh")),
+        gui_lang=_gui_language(pick("MAW_GUI_LANG", "")),
         sticker_dir=pick("STICKER_DIR"),
         show_rare_langs=pick("MAW_GUI_SHOW_RARE_LANGS").strip().lower() in ("1", "true", "yes", "on"),
         output_subfolder=_env_bool(pick("MAW_GUI_OUTPUT_SUBFOLDER")),
@@ -835,7 +835,10 @@ def _env_key(line: str) -> str | None:
 
 
 def _gui_language(value: str) -> str:
-    return "en" if value.strip().lower() == "en" else "zh"
+    # 空串表示「用户从未手动设置」，由前端按系统语言自动选择；
+    # 后端消费者（resolve_lang 等）自行回退到默认语言。
+    normalized = value.strip().lower()
+    return normalized if normalized in ("zh", "en") else ""
 
 
 def _gui_theme(value: str | None) -> str | None:
