@@ -26,11 +26,24 @@ DASHSCOPE_PRICE_PER_SECOND: Final[float] = 0.00022
 
 POSTPROCESS_DIR_NAMES: Final[dict[str, str]] = {"zh": "后处理", "en": "postprocess"}
 
-# 操作显示名（per-language）；未列出的 operation 原样使用，不本地化。
+# 工程备份目录（project_backups）。读取端同时兼容两种语言命名。
+BACKUP_DIR_NAMES: Final[dict[str, str]] = {"zh": "备份", "en": "backups"}
+
+# 操作显示名（per-language）。后处理链与工具箱的全部产物 operation 都在此登记，
+# zh 界面输出中文名（与工具箱/自动链的步骤名一致），en 界面保持 ASCII 原名；
+# 未列出的 operation 原样使用，不本地化。固定处理按实际启用的部分细分：
+# 批量替换用 "replace"，简繁转换按方向用 "simplified" / "traditional"，
+# 两者同时启用时以点连接（"replace.traditional"）。
 OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
     "postprocess": {"zh": "后处理", "en": "postprocess"},
     "ocr-dedup": {"zh": "OCR去重", "en": "ocr-dedup"},
-    "match": {"zh": "匹配", "en": "match"},
+    "match": {"zh": "文稿匹配", "en": "match"},
+    "replace": {"zh": "批量替换", "en": "replace"},
+    "simplified": {"zh": "转简体", "en": "simplified"},
+    "traditional": {"zh": "转繁体", "en": "traditional"},
+    "proofread": {"zh": "校对文本", "en": "proofread"},
+    "resegment": {"zh": "重新断句", "en": "resegment"},
+    "custom": {"zh": "自定义", "en": "custom"},
 }
 
 # 媒体工具产物后缀（压制字幕/提取音频/媒体重组）；未列出的后缀原样使用。
@@ -252,12 +265,20 @@ def _ascii_legacy_token(operation: str) -> str:
     return re.sub(r"[^a-z0-9-]+", "-", operation.lower()).strip("-") or operation
 
 
+def backup_directory_name(lang: str | None = None) -> str:
+    """返回工程备份目录按 UI 语言的名称（zh「备份」/ en「backups」）。"""
+    return BACKUP_DIR_NAMES[resolve_lang(lang)]
+
+
 def operation_suffix(operation: str, lang: str | None = None) -> str:
     """返回带前导点的操作后缀，按界面语言本地化。
 
     - 已知 operation（``OPERATION_NAMES``）与翻译产物（``translate-{target}``
       及 bilingual/combined 变体，连字符 / 下划线 base 都识别）：
-      zh 界面产出 ``.后处理`` / ``.翻译为中文`` / ``.翻译为中文.双语合一``；
+      zh 界面产出 ``.后处理`` / ``.文稿匹配`` / ``.校对文本`` /
+      ``.翻译为中文`` / ``.翻译为中文.双语合一``；
+    - 点连接的复合 operation（如固定处理的 ``replace.traditional``）逐段本地化，
+      zh 界面产出 ``.批量替换.转繁体``；
     - en 界面翻译产物保持 operation 原文（``.translate-zh-bilingual`` 等）；下划线
       变体（工具箱 ``translate_zh`` / ``translate_zh-bilingual``）沿用 legacy ASCII
       清洗（``.translate-zh`` / ``.translate-zh-bilingual``），与改动前逐字节一致；
@@ -276,6 +297,9 @@ def operation_suffix(operation: str, lang: str | None = None) -> str:
                     display = f"{display}.{translation_marker_name(marker, lang='zh')}"
                 return f".{display}"
         return f".{_ascii_legacy_token(operation)}"
+    segments = operation.split(".")
+    if len(segments) > 1 and all(segment in OPERATION_NAMES for segment in segments):
+        return "." + ".".join(OPERATION_NAMES[segment].get(language) or segment for segment in segments)
     display = OPERATION_NAMES.get(operation, {}).get(language) or operation
     return f".{display}"
 
@@ -327,6 +351,7 @@ def parse_maw_stat(line: str) -> dict[str, str] | None:
 
 
 __all__ = [
+    "BACKUP_DIR_NAMES",
     "DASHSCOPE_PRICE_PER_SECOND",
     "DEFAULT_LANG",
     "MAW_DIR_NAME",
@@ -336,6 +361,7 @@ __all__ = [
     "POSTPROCESS_DIR_NAMES",
     "TRANSLATION_MARKER_NAMES",
     "TRANSLATION_TARGET_NAMES",
+    "backup_directory_name",
     "estimate_dashscope_cost",
     "format_elapsed",
     "format_maw_stat",

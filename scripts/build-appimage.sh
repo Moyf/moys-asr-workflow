@@ -23,34 +23,56 @@ uv run --group build pyinstaller --noconfirm --clean MAW.spec
 # user-facing FAQ at the AppImage root as well, where users can find it easily.
 cp "FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"
 
-echo "==> 2/6 准备静态 ffmpeg（BtbN FFmpeg-Builds，固定 autobuild 版本）"
-FFMPEG_VERSION="N-126482-g903325e279"
-FFMPEG_TARBALL="$BUILD_DIR/ffmpeg-${FFMPEG_VERSION}-linux64-gpl.tar.xz"
-FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-09-14-51/ffmpeg-${FFMPEG_VERSION}-linux64-gpl.tar.xz"
-FFMPEG_SHA256="746de35fdafb5d767a33d1068efb4bee5366edd71d60532d223620f40851e6e5"
+echo "==> 2/6 准备静态 ffmpeg（BtbN FFmpeg-Builds，latest release 的稳定分支资产）"
+FFMPEG_BRANCH="8.1"
+FFMPEG_ASSET="ffmpeg-n${FFMPEG_BRANCH}-latest-linux64-gpl-${FFMPEG_BRANCH}.tar.xz"
+FFMPEG_TARBALL="$BUILD_DIR/$FFMPEG_ASSET"
+FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/$FFMPEG_ASSET"
+FFMPEG_CHECKSUMS="$BUILD_DIR/btbn-checksums.sha256"
 FFMPEG_DIR="$BUILD_DIR/ffmpeg-static"
 # 静态版自包含 libstdc++ 依赖，不受 PyInstaller 的 _internal 旧库污染；
 # 动态版 ffmpeg 若打进包内，AppRun 污染环境下照样会 GLIBCXX 报错。
-# BtbN autobuild 固定版本 + 写死 SHA256：版本与校验双固定，完全可复现；
-# 升级时改 FFMPEG_VERSION / FFMPEG_URL / FFMPEG_SHA256 三处即可
-# （checksums 见 https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-09-09-14-51）。
-# 注意：BtbN 只保留最近十来天的 dated autobuild，旧 release 会被删除（下载变 404），
-# 需要定期更新这里的 pin。
+# BtbN 只保留最近十来天的 dated autobuild release，写死 dated tag（连同其内
+# N-xxxx 版本与 SHA256）迟早被删成 404，2026-09-10 v1.6.0-beta.3 的 Linux
+# 打包即因此失败。`latest` release 永远存在且始终携带各稳定分支资产，
+# releases/latest/download/<asset> 是永久直链；n8.1 资产跟随 FFmpeg 8.1
+# 稳定分支维护更新，与 Windows（gyan 8.1.2）/ macOS（osxexperts 8.1）大版本
+# 对齐。内容随维护更新，无法写死 SHA256，改为随包下载上游 checksums.sha256
+# 比对完整性（curl --fail 保证 404 / 断流直接报错，不再静默存下错误页），
+# 解压后另校验 ffmpeg 自报版本包含分支号。升级大版本只改 FFMPEG_BRANCH。
 if [ ! -x "$FFMPEG_DIR/bin/ffmpeg" ]; then
-    if [ ! -f "$FFMPEG_TARBALL" ]; then
-        echo "    下载静态 ffmpeg..."
-        curl -sSfL --retry 3 --retry-delay 2 -o "$FFMPEG_TARBALL" "$FFMPEG_URL"
-    fi
-    echo "    校验静态 ffmpeg 完整性..."
-    if ! echo "$FFMPEG_SHA256  $FFMPEG_TARBALL" | sha256sum -c - >/dev/null; then
-        echo "错误：ffmpeg 下载校验和不匹配（$FFMPEG_TARBALL），已删除。" >&2
-        echo "错误：若 curl 已报 404，说明上游 dated autobuild 被清理，请更新 FFMPEG_VERSION / FFMPEG_URL / FFMPEG_SHA256 后重试。" >&2
+    echo "    下载静态 ffmpeg（$FFMPEG_ASSET）..."
+    if ! curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
+            -o "$FFMPEG_TARBALL" "$FFMPEG_URL"; then
+        echo "错误：ffmpeg 下载失败（$FFMPEG_URL）。" >&2
         rm -f "$FFMPEG_TARBALL"
         exit 1
     fi
+    echo "    对照上游 checksums.sha256 校验静态 ffmpeg 完整性..."
+    if ! curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
+            -o "$FFMPEG_CHECKSUMS" \
+            "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/checksums.sha256" \
+        || ! bash "$REPO_ROOT/scripts/verify_sha256.sh" "$FFMPEG_CHECKSUMS" "$FFMPEG_ASSET" "$FFMPEG_TARBALL"; then
+        echo "错误：ffmpeg 完整性校验失败或 checksums.sha256 不可得（$FFMPEG_TARBALL），已删除。" >&2
+        rm -f "$FFMPEG_TARBALL" "$FFMPEG_CHECKSUMS"
+        exit 1
+    fi
+    rm -f "$FFMPEG_CHECKSUMS"
     mkdir -p "$FFMPEG_DIR"
     tar -xf "$FFMPEG_TARBALL" -C "$FFMPEG_DIR" --strip-components=1
     chmod +x "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe"
+fi
+# 资产名固定在 8.1 分支，仍校验二进制自报版本，防同名资产内容异常。
+"$FFMPEG_DIR/bin/ffmpeg" -version 2>&1 | head -n 1 | grep -q "$FFMPEG_BRANCH" || {
+    echo "错误：解压出的 ffmpeg 版本异常（未包含 $FFMPEG_BRANCH）：" >&2
+    "$FFMPEG_DIR/bin/ffmpeg" -version 2>&1 | head -n 1 >&2
+    exit 1
+}
+# 实际打进包的归档哈希写入 SOURCE.txt；复用缓存目录且归档已清理时如实标注。
+if [ -f "$FFMPEG_TARBALL" ]; then
+    FFMPEG_TARBALL_SHA256="$(sha256sum "$FFMPEG_TARBALL" | cut -d ' ' -f1)"
+else
+    FFMPEG_TARBALL_SHA256="unavailable (reused cached ffmpeg-static; archive not kept)"
 fi
 # 放入 PyInstaller onedir 产物：frozen 时 _bundled_ffmpeg_directory() 查
 # sys.executable.parent / ffmpeg / bin（即 dist/MAW/ffmpeg/bin）。BtbN 包内
@@ -80,10 +102,10 @@ grep -q "GNU GENERAL" "$_GPL_TMP" || { rm -f "$_GPL_TMP"; echo "GPL 许可证文
 mv -f "$_GPL_TMP" "$_GPL_TARGET"
 test -s "$_GPL_TARGET"
 cat > "dist/MAW/ffmpeg/SOURCE.txt" <<EOF
-FFmpeg $FFMPEG_VERSION — BtbN FFmpeg-Builds linux64-gpl static build
+FFmpeg n${FFMPEG_BRANCH}-latest (${FFMPEG_BRANCH} stable branch) — BtbN FFmpeg-Builds linux64-gpl static build
 Build provider: https://github.com/BtbN/FFmpeg-Builds
 Original archive: $FFMPEG_URL
-Archive SHA-256: $FFMPEG_SHA256
+Archive SHA-256: $FFMPEG_TARBALL_SHA256
 License: GPL-3.0 (full text in GPLv3.txt)
 Upstream FFmpeg source: https://github.com/FFmpeg/FFmpeg
 This MAW package includes only ffmpeg and ffprobe from the original build.
@@ -146,7 +168,7 @@ cp "$APP_DIR/MAW.desktop" "$APP_DIR/usr/share/applications/MAW.desktop"
 
 echo "==> 4/6 准备 appimagetool"
 if [ ! -x "$APPIMAGE_TOOL" ]; then
-    curl -sL --retry 3 --retry-delay 2 -o "$APPIMAGE_TOOL" "$APPIMAGE_URL"
+    curl --fail --location --silent --show-error --retry 3 --retry-delay 2 -o "$APPIMAGE_TOOL" "$APPIMAGE_URL"
     chmod +x "$APPIMAGE_TOOL"
     # 校验下载的是 ELF 二进制而非 HTML 错误页
     if ! file "$APPIMAGE_TOOL" | grep -q 'ELF'; then

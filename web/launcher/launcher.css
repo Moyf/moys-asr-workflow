@@ -755,6 +755,12 @@ label {
   color: var(--text-muted);
 }
 
+/* 平时不建议开启的步骤：灰斜体并带悬浮说明（见 data-i18n-title）。 */
+.auto-step-row.auto-step-caution .check-field {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .auto-step-status.ready {
   color: #8ecf9b;
 }
