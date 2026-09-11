@@ -123,6 +123,8 @@
     --wave-cue-text:        #eef6ff;
     --wave-cue-active-mix:  #28547a;
     --wave-cue-handle:      rgba(231, 244, 255, 0.2);
+    --wave-cue-handle-hover: rgba(231, 244, 255, 0.42);
+    --wave-cue-boundary:    color-mix(in srgb, color-mix(in srgb, var(--accent) 55%, #e7f4ff) 45%, transparent);
     --wave-badge-bg:        rgba(0, 0, 0, 0.65);
     --wave-badge-sticker:   #b8d9ff;
     --wave-playhead:        #ff5d67;
@@ -333,6 +335,8 @@
     --wave-cue-text:        #16202c;
     --wave-cue-active-mix:  #a9c8e8;
     --wave-cue-handle:      rgba(32, 52, 80, 0.14);
+    --wave-cue-handle-hover: rgba(32, 52, 80, 0.3);
+    --wave-cue-boundary:    color-mix(in srgb, color-mix(in srgb, var(--accent) 55%, #20344f) 32%, transparent);
     --wave-badge-bg:        rgba(255, 255, 255, 0.82);
     --wave-badge-sticker:   #2f6bb8;
     --wave-playhead:        #e63946;

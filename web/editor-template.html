@@ -1472,10 +1472,18 @@ __WAVEFORM_CSS__
                 <option value="hidden">完全隐藏</option>
               </select>
             </label>
-            <label class="toggle editor-settings-item" title="开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动">
+            <label class="editor-settings-item" title="设置相接字幕边界的拖动方式：新模式拖动贴合中缝时两侧联动，传统模式沿用自动吸附开关">
+              贴合字幕边界
+              <select id="adjacent-boundary-mode">
+                <option value="dual" selected>中缝联动（新）</option>
+                <option value="classic">传统模式</option>
+              </select>
+            </label>
+            <small class="settings-panel-hint" id="adjacent-boundary-mode-hint-dual">拖动贴合字幕中间的中缝：两侧边界一起联动；单独拖动左右手柄只调整当前字幕（类似达芬奇）。</small>
+            <label class="toggle editor-settings-item" id="auto-snap-adjacent-cues-row" title="开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动">
               <input type="checkbox" id="auto-snap-adjacent-cues" checked> 自动吸附调整相邻字幕
             </label>
-            <small class="settings-panel-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
+            <small class="settings-panel-hint" id="auto-snap-adjacent-cues-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
             <label class="editor-settings-item" title="B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准">
               快捷键时间基准
               <select id="keyboard-operation-reference">
