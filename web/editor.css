@@ -2036,6 +2036,8 @@
     content-visibility: auto;
     contain-intrinsic-size: 0 46px;
   }
+  #cue-list-follow { padding: 4px 8px; font-size: 11px; white-space: nowrap; }
+  #cue-list-follow[aria-pressed="false"] { color: var(--accent); border-color: var(--accent); }
   .cue-split-flash {
     position: absolute;
     z-index: 3;

@@ -208,11 +208,11 @@ test('default list click keeps a cue already in the middle in place', async ({ p
       return { start, end: start + 1000, text: `Extra ${index}`, items: [] };
     }));
     renderAll();
-    const list = document.getElementById('cues-container');
     const cue = document.querySelector('.cue[data-idx="30"]');
-    list.scrollTop = Math.max(0, cue.offsetTop - list.clientHeight / 2 + cue.offsetHeight / 2);
+    scrollCueToCenter(cue);
   });
-  const before = await page.evaluate(() => document.getElementById('cues-container').scrollTop);
+  await page.waitForFunction(() => !cueListScroll.owner);
+  const before = await page.locator('.cue[data-idx="30"]').evaluate(el => el.getBoundingClientRect().top);
   await page.evaluate(() => {
     const cue = document.querySelector('.cue[data-idx="30"]');
     cue.dispatchEvent(new PointerEvent('pointerdown', {
@@ -221,7 +221,9 @@ test('default list click keeps a cue already in the middle in place', async ({ p
     cue.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
   });
   await expect(page.locator('.cue[data-idx="30"]')).toHaveClass(/selected/);
-  await expect.poll(() => page.evaluate(() => document.getElementById('cues-container').scrollTop)).toBe(before);
+  await expect.poll(() => page.locator('.cue[data-idx="30"]').evaluate(
+    (el, top) => Math.abs(el.getBoundingClientRect().top - top), before,
+  )).toBeLessThan(1.5);
 });
 
 test('default list click selects and seeks to cue start while keeping playback', async ({ page }) => {
@@ -581,7 +583,7 @@ test('B split keeps the source cue visually anchored while lazy rows relayout', 
       };
     });
     renderAll();
-    document.querySelector('.cue[data-idx="56"]').scrollIntoView({ block: 'center' });
+    scrollCueToCenter(document.querySelector('.cue[data-idx="56"]'));
   });
 
   // 只等目标附近的可见行稳定，不能滚遍整张列表预热，否则会掩盖重绘后的
@@ -688,7 +690,7 @@ test('C merge keeps the source cue visually anchored while lazy rows relayout', 
       };
     });
     renderAll();
-    document.querySelector('.cue[data-idx="56"]').scrollIntoView({ block: 'end' });
+    scrollCueToCenter(document.querySelector('.cue[data-idx="56"]'));
   });
 
   const first = page.locator('.cue[data-idx="56"]');
@@ -759,7 +761,7 @@ test('C merge keeps the extension cue visually anchored while lazy rows relayout
     };
     normalizedMultiSubtitleReference = null;
     renderAll();
-    document.querySelector('.cue[data-ext-idx="56"]').scrollIntoView({ block: 'end' });
+    scrollCueToCenter(document.querySelector('.cue[data-ext-idx="56"]'));
   });
 
   const first = page.locator('.cue[data-ext-idx="56"]');
