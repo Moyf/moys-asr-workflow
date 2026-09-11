@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -17,7 +18,9 @@ from maw.local_runtime import (
     model_cache_environment,
     prepare_model_in_process,
     prepare_model_in_runtime,
+    recover_local_runtime_install,
 )
+from maw.runtime_manifest import STATUS_BROKEN, STATUS_INSTALLING, write_runtime_manifest
 from maw.runtimes import LOCAL
 
 
@@ -189,9 +192,37 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertNotEqual(Path(status.path), Path(status.model_cache_path))
         self.assertEqual(Path(environment["HF_HUB_CACHE"]), cache.resolve() / "huggingface" / "hub")
 
+    def test_recover_local_runtime_install_turns_stale_installing_into_broken(self) -> None:
+        """#127 缺陷 1：安装线程死后残留的 installing 标记必须能自愈为 broken。
+
+        install() 开始即写 installing manifest，失败/取消/退出后无人回写时，
+        ``status()`` 会永远停在 installing，UI 既不能取消也不能重装。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "runtime"
+            python = LOCAL.python_path(root)
+            python.parent.mkdir(parents=True, exist_ok=True)
+            python.write_bytes(b"python")
+            write_runtime_manifest(
+                root,
+                status=STATUS_INSTALLING,
+                runtime_version=LOCAL.spec.runtime_version,
+                python_version=LOCAL.spec.python_version,
+            )
+
+            with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(root)}):
+                self.assertTrue(recover_local_runtime_install())
+                self.assertFalse(recover_local_runtime_install())
+                status = managed_runtime_status()
+                manifest = json.loads((root / "runtime.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(status.status, STATUS_BROKEN)
+        self.assertEqual(manifest["status"], STATUS_BROKEN)
+
     # 内嵌流测试固定 win32：install 分支与 python_path 布局在 mac/linux CI 上一致。
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
     def test_install_creates_manifest_after_venv_and_dependency_steps(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "runtime"

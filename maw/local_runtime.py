@@ -61,6 +61,7 @@ __all__ = [
     "resolve_model_cache_root",
     "prepare_model_in_process",
     "prepare_model_in_runtime",
+    "recover_local_runtime_install",
     "runtime_python_path",
 ]
 
@@ -157,6 +158,19 @@ def install_local_runtime(
             model_cache_root=model_cache_root,
         )
     )
+
+
+def recover_local_runtime_install(engine: str = "") -> bool:
+    """安装中断后把残留的 installing 标记改写为 broken（GUI 状态自愈，#127）。
+
+    install() 一开始就写入 installing manifest；若安装线程在完成前失败、被
+    取消或进程退出，标记没人回写，``status()`` 会永远命中 installing 分支，
+    UI 既不能取消也不能重装。与 ``maw.ocr_runtime.recover_ocr_runtime_install``
+    同职责，按 engine 路由到对应托管 Runtime。
+    """
+    if _is_moss_engine(engine):
+        return _moss_runtime().recover_local_runtime_install()
+    return LOCAL.mark_install_aborted()
 
 
 def prepare_model_in_runtime(

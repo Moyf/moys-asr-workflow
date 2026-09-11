@@ -49,7 +49,7 @@ from maw.runtime_manifest import (
     read_runtime_manifest,
     write_runtime_manifest,
 )
-from maw.runtime_mirror_picker import pick_fastest_mirror
+from maw.runtime_mirror_picker import pick_fastest_mirror, probe_index_reachable
 from maw.runtimes import freezer
 
 GET_PIP_SCRIPT: Final = "get-pip.py"
@@ -524,11 +524,25 @@ class ManagedRuntime:
         site_packages = self.site_packages(root)
         fastest_index = pick_fastest_mirror()
         requirements_arg = requirements_file
-        extra_index = spec.extra_index_url
+        extra_index = _resolve_extra_index(spec.extra_index_url)
         if needs_cpu_fallback:
             emit("未检测到 NVIDIA CUDA，改用 CPU 版 Torch……", 25, "dependencies")
             requirements_arg = self.requirements_path(cpu=True)
             extra_index = None
+        if extra_index:
+            # extra index（PyTorch 轮子源）参与每个依赖的候选解析：它不可达时
+            # pip/uv 只会在无关包上报模糊的版本解析错误，甚至重试数小时后才
+            # 整体失败（#127 的 msgpack 案例）。先做轻量探测，失败立刻给出
+            # 可操作提示，把两小时的盲等换成一目了然的失败原因。
+            emit(f"正在检查 PyTorch 依赖源可达性：{extra_index}", 25, "dependencies")
+            if not probe_index_reachable(extra_index):
+                raise self._error(
+                    f"PyTorch 依赖源当前不可达：{extra_index}。"
+                    "GPU 版 Torch 只能从该源安装，pip 解析其他依赖时也会访问它，"
+                    "继续执行只会以无关包的版本解析错误失败。请检查网络或代理后"
+                    "重试；若该源在你的网络环境长期不可达，可设置环境变量 "
+                    "MAW_PYTORCH_INDEX 指向可达的 PyTorch 镜像源。"
+                )
         # 安装方式三分支：unix 打包版 venv 直装（venv 自带 pip，无需 --target）；
         # Windows 打包版 pip --target 定向安装；源码模式 uv 接入开发解释器。
         if frozen and host_venv:
@@ -903,6 +917,19 @@ def _has_cuda() -> bool:
         return result.returncode == 0
     except (subprocess.TimeoutExpired, OSError):
         return False
+
+
+def _resolve_extra_index(extra_index: str | None) -> str | None:
+    """安装期解析 PyTorch extra index；环境变量 MAW_PYTORCH_INDEX 可整源替换。
+
+    download.pytorch.org 没有官方镜像，在部分网络环境长期不可达（#127），
+    而 pip/uv 会用它参与所有依赖的版本解析，把它换成可达镜像是失败时的
+    主要自救手段。frozen 清单带哈希，镜像分发的同版本 wheel 可正常通过校验。
+    """
+    if not extra_index:
+        return extra_index
+    override = os.environ.get("MAW_PYTORCH_INDEX", "").strip()
+    return override or extra_index
 
 
 def _bootstrap_line(emit: RuntimeEvent, percent: int) -> RuntimeLine:
