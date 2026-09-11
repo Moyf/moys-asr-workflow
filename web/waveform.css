@@ -918,6 +918,10 @@
 }
 .waveform-cue-boundary:hover,
 .waveform-cue-boundary.dragging { opacity: 1; }
+/* 行末中缝完整收进所属行，避免被行容器裁掉一半。 */
+.waveform-cue-boundary.at-row-end { transform: translateX(-100%); }
+/* 行末中缝占用最后 8px，左侧字幕的独立右手柄向行内退让，两个操作区不重叠。 */
+.waveform-cue-block.shared-boundary-at-row-end-right .waveform-cue-handle.right { right: 8px; }
 .waveform-basic .waveform-cue-boundary {
   height: 72px;
   min-height: 35px;

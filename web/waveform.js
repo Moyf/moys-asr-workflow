@@ -3609,17 +3609,20 @@
         if (!Number.isFinite(leftEnd) || !Number.isFinite(rightStart)) continue;
         const leftEndMs = clock.toMs(leftEnd);
         const rightStartMs = clock.toMs(rightStart);
-        if (leftEndMs >= endMs && rightStartMs >= endMs) break;
+        if (leftEndMs > endMs && rightStartMs > endMs) break;
         if (Math.abs(leftEnd - rightStart) > clock.snapThreshold) continue;
         // 帧模式下 getEnd/getStart 返回帧数，行边界是毫秒；定位前统一换算。
         const seamMs = (leftEndMs + rightStartMs) / 2;
-        if (seamMs <= startMs || seamMs >= endMs) continue;
+        // 每条中缝只由其左侧所在行持有。行末中缝仍要渲染，否则整齐落在
+        // 行边界的相接字幕会失去双侧联动拖动区。
+        if (seamMs <= startMs || seamMs > endMs) continue;
         if (this.isSegmentHiddenForDisplay(left) || this.isSegmentHiddenForDisplay(right)) continue;
         const zone = document.createElement('span');
         zone.className = 'waveform-cue-boundary';
         zone.dataset.track = track;
         zone.dataset.leftIdx = String(index);
         zone.style.left = `${((seamMs - startMs) / duration) * 100}%`;
+        zone.classList.toggle('at-row-end', seamMs === endMs);
         zone.title = '拖动调整贴合边界（两侧一起移动）；两侧手柄仅调整单侧';
         zone.addEventListener('pointerdown', (event) => this.beginSharedBoundaryZoneDrag(event, index, row, track));
         row.appendChild(zone);
@@ -3637,6 +3640,7 @@
         );
         leftBlock?.classList.add('has-shared-boundary-right');
         rightBlock?.classList.add('has-shared-boundary-left');
+        if (seamMs === endMs) leftBlock?.classList.add('shared-boundary-at-row-end-right');
       }
     }
 
@@ -3770,6 +3774,7 @@
         const duration = Math.max(1, endMs - startMs);
         const seamMs = (clock.toMs(clock.getEnd(left)) + clock.toMs(clock.getStart(right))) / 2;
         zone.style.left = `${((seamMs - startMs) / duration) * 100}%`;
+        zone.classList.toggle('at-row-end', seamMs === endMs);
       });
     }
 
@@ -4743,15 +4748,13 @@
       }
       // 选择可能触发行重建，先保存按下瞬间的几何数据（与 beginCueDrag 相同）。
       const geometry = this.captureRowGeometry(row);
-      // 中缝代表前后两句的贴合边界：点击/拖动都把两句一起选中（追加语义
-      // 与框选/Ctrl 多选一致，含绑定联动），面板聚焦右侧字幕。
+      // 中缝代表前后两句的贴合边界：点击/拖动都把两句追加到现有选区
+      // （与框选/Ctrl 多选一致，含绑定联动），面板聚焦右侧字幕。
       if (track === 'extension') {
-        this.options.selectExtensionCue?.(leftIndex);
-        this.options.addExtensionSelection?.([rightIndex]);
+        this.options.addExtensionSelection?.([leftIndex, rightIndex]);
         this.options.activateExtensionCue?.(rightIndex);
       } else {
-        this.options.selectCue(leftIndex);
-        this.options.addCueSelection?.([rightIndex]);
+        this.options.addCueSelection?.([leftIndex, rightIndex]);
         this.options.activateCue?.(rightIndex);
       }
       const timing = this.cueTiming();

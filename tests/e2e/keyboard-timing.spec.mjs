@@ -300,22 +300,10 @@ test('automatic adjacent snapping links shared-boundary dragging by default and 
 test('dual mode links both edges via the seam zone while side handles trim independently', async ({ page }) => {
   // 新默认（中缝联动）：贴合字幕对的中缝区负责联动拖动；相接侧手柄始终独立。
   await loadAttachedCues(page);
-  // 默认数据的贴合边界（10000）恰好落在波形行边界上，中缝区不在单行内
-  // 渲染；整体平移 1000ms 让 seam 落进行中间，覆盖常规行内场景。
-  await page.evaluate(() => {
-    DATA.segments.forEach((segment) => {
-      segment.start += 1000;
-      segment.end += 1000;
-      (segment.items || []).forEach((item) => {
-        item.start += 1000;
-        item.end += 1000;
-      });
-    });
-    renderAll();
-  });
   const dragZoneBy = async (deltaMs) => {
-    const zone = page.locator('.waveform-cue-boundary').first();
+    const zone = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
     await expect(zone).toBeVisible();
+    await expect(zone).toHaveClass(/at-row-end/);
     const zoneBox = await zone.boundingBox();
     const row = zone.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
     const rowBox = await row.boundingBox();
@@ -327,29 +315,30 @@ test('dual mode links both edges via the seam zone while side handles trim indep
     const y = zoneBox.y + zoneBox.height / 2;
     await page.mouse.move(startX, y);
     await page.mouse.down();
-    // 点击中缝即选中前后两句字幕（同一字幕可能跨行分片，用下标集合断言）。
+    // 点击中缝将前后两句追加至已有选区（同一字幕可能跨行分片，用下标集合断言）。
     await expect.poll(() => page.evaluate(() => [
       ...new Set([...document.querySelectorAll('.waveform-cue-block.selected')]
         .map((block) => block.dataset.idx)),
-    ].sort())).toEqual(['0', '1']);
+    ].sort())).toEqual(['0', '1', '2']);
     await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
     await page.mouse.move(startX + (rowBox.width * deltaMs) / (rowEnd - rowStart), y, { steps: 5 });
     await page.mouse.up();
   };
 
-  // 拖动中缝：两侧边界一起联动，状态栏提示新模式。
+  // 行末中缝也可拖动，两侧边界一起联动，状态栏提示新模式。
+  await page.locator('.cue[data-idx="2"]').click({ modifiers: ['Control'] });
   await dragZoneBy(-500);
   await expect(page.locator('#waveform-status'))
     .toContainText('中缝联动：中缝拖动两侧一起移动');
   await expect.poll(() => readTimings(page)).toEqual([
-    { start: 6000, end: 10500 },
-    { start: 10500, end: 19000 },
-    { start: 26000, end: 31000 },
+    { start: 5000, end: 9500 },
+    { start: 9500, end: 18000 },
+    { start: 25000, end: 30000 },
   ]);
 
   await page.evaluate(() => {
-    DATA.segments[0].end = 11000;
-    DATA.segments[1].start = 11000;
+    DATA.segments[0].end = 10000;
+    DATA.segments[1].start = 10000;
     renderAll();
   });
 
@@ -368,9 +357,9 @@ test('dual mode links both edges via the seam zone while side handles trim indep
   await page.mouse.move(startX + (rowBox.width * -500) / (rowEnd - rowStart), y, { steps: 5 });
   await page.mouse.up();
   await expect.poll(() => readTimings(page)).toEqual([
-    { start: 6000, end: 10500 },
-    { start: 11000, end: 19000 },
-    { start: 26000, end: 31000 },
+    { start: 5000, end: 9500 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
   ]);
 });
 
