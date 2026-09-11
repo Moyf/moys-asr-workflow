@@ -100,7 +100,7 @@
 
 ## 5. 文件与链式处理
 
-处理结果使用原输入目录和操作后缀生成，例如 `clip.proofread.mosp`、`clip.proofread.srt`。同名文件已存在时会追加递增编号。写入采用同目录临时文件加原子替换，且永不覆盖源工程或源 SRT。合并双语时，手动工具箱输出在中文界面为 `clip.翻译为英文.双语合一.mosp` / `clip.翻译为英文.双语合一.srt`（中文目标对应 `.翻译为中文.双语合一`；英文界面为 `clip.translate-en-bilingual.mosp` / `clip.translate-en-bilingual.srt`）；自动后处理最终输出使用 `clip.postprocess.bilingual.mosp` / `clip.postprocess.bilingual.srt`，中文界面下本地化为 `clip.后处理.双语合一.mosp` / `clip.后处理.双语合一.srt`（`.proofread` 等非翻译操作后缀不随界面语言变化；翻译段 `translate-*` 与双语标记会本地化）。只有 SRT 输入时也使用相同的双语合一命名标记。
+处理结果使用原输入目录和操作后缀生成，中文界面为 `clip.校对文本.mosp` / `clip.校对文本.srt`（英文界面为 `clip.proofread.*`）。固定处理的后缀按实际启用的部分细分：只有批量替换为 `批量替换`，只有简繁转换为 `转简体` / `转繁体`，两者都有时组合为 `批量替换.转繁体`（英文界面为 `replace` / `simplified` / `traditional` 及点连接组合）；勾选了固定处理但既无替换规则也未选择转换方向时跳过该步骤，不产出文件。重新断句、自定义同理使用 `重新断句` / `自定义`。同名文件已存在时会追加递增编号。写入采用同目录临时文件加原子替换，且永不覆盖源工程或源 SRT。合并双语时，手动工具箱输出在中文界面为 `clip.翻译为英文.双语合一.mosp` / `clip.翻译为英文.双语合一.srt`（中文目标对应 `.翻译为中文.双语合一`；英文界面为 `clip.translate-en-bilingual.mosp` / `clip.translate-en-bilingual.srt`）；自动后处理最终输出使用 `clip.postprocess.bilingual.mosp` / `clip.postprocess.bilingual.srt`，中文界面下本地化为 `clip.后处理.双语合一.mosp` / `clip.后处理.双语合一.srt`（操作后缀随界面语言本地化，翻译段 `translate-*` 与双语标记同样会本地化）。只有 SRT 输入时也使用相同的双语合一命名标记。
 
 成功后 Launcher 会把生成路径设为下一次工具运行的输入，因此可以按“固定处理 → LLM 校对 → 翻译”等顺序链式处理。固定处理可先批量替换，再做简繁转换；只有 SRT 输入时，如选择工程输出，会创建 `.mosp` 工程。
 

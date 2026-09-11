@@ -9,13 +9,30 @@ import tempfile
 
 from send2trash import send2trash
 
+from maw.output_naming import BACKUP_DIR_NAMES, resolve_lang
 from maw.project_io import strip_inline_caches
 
 
-def backup_directory(project: Path) -> Path:
+def _backup_root(project: Path) -> Path:
     parent = project.parent
-    root = parent if parent.name.endswith("_maw") else parent / "_maw"
-    return root / "backups"
+    return parent if parent.name.endswith("_maw") else parent / "_maw"
+
+
+def backup_directory(project: Path, lang: str | None = None) -> Path:
+    """当前 UI 语言命名的备份目录（zh「备份」/ en「backups」），写入点。"""
+    return _backup_root(project) / BACKUP_DIR_NAMES[resolve_lang(lang)]
+
+
+def backup_directory_candidates(project: Path, lang: str | None = None) -> list[Path]:
+    """按优先级排列的备份目录候选：当前语言命名在前，另一种语言命名兜底。
+
+    供「打开备份文件夹」等读取端兼容用户切换界面语言前的旧目录。
+    """
+    language = resolve_lang(lang)
+    current = BACKUP_DIR_NAMES[language]
+    names = [current, *(name for name in BACKUP_DIR_NAMES.values() if name != current)]
+    root = _backup_root(project)
+    return [root / name for name in names]
 
 
 _VERSION_NAME_RE = re.compile(r"^.+-(\d{4}-\d{2}-\d{2}_\d{6})(?:-(\d{6}))?\.mosp-bak$")

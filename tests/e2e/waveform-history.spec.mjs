@@ -1945,10 +1945,10 @@ test('colored subtitles export per-color SRT files including the uncolored defau
     localStorage.setItem(key, JSON.stringify(saved));
   });
 
-  // 文件名颜色段按界面语言生成：中文 _红色/_蓝色，英文 _red/_blue；default 组两种语言保持原样。
+  // 文件名颜色段按界面语言生成：中文 _红色/_蓝色/_无色，英文 _red/_blue/_default。
   // 用 ?lang= 显式指定界面语言，断言不依赖服务器默认语言。
   const expectedColorFilenames = {
-    zh: ['project_红色.srt', 'project_蓝色.srt', 'project_default.srt'],
+    zh: ['project_红色.srt', 'project_蓝色.srt', 'project_无色.srt'],
     en: ['project_red.srt', 'project_blue.srt', 'project_default.srt'],
   };
   let downloads = [];

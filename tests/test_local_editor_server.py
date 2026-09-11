@@ -60,8 +60,9 @@ class LocalEditorServerTests(unittest.TestCase):
             self.assertEqual(handler.send_json.call_args.args[0], 403)
             opener.assert_not_called()
             handler.read_json_request.return_value = {'requestToken': 'test-token', 'path': str(self.root / 'untrusted')}
-            handler.open_backup_directory()
-            opener.assert_called_once_with(str(self.root / '_maw' / 'backups'))
+            with mock.patch('maw.project_backups.resolve_lang', return_value='zh'):
+                handler.open_backup_directory()
+            opener.assert_called_once_with(str(self.root / '_maw' / '备份'))
             self.assertEqual(handler.send_json.call_args.args[0], 200)
 
     def test_version_backup_does_not_save_or_remember_snapshot(self) -> None:

@@ -15,6 +15,7 @@ from unittest import mock
 from requests.exceptions import HTTPError, RequestException
 
 from maw import gui_config
+from maw import output_naming
 from maw.postprocess import (
     FixedProcessRequest,
     LlmPostprocessRequest,
@@ -152,6 +153,53 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("00:00:00,100 --> 00:00:00,900", first.srt_path.read_text(encoding="utf-8"))
         self.assertEqual(second.source_project_path, first.project_path)
         self.assertNotEqual(second.project_path, first.project_path)
+
+    def test_fixed_process_skips_when_nothing_is_enabled(self) -> None:
+        result = run_fixed_process(FixedProcessRequest(
+            project_path=self.project_path,
+            srt_path=None,
+            output_mode=OutputMode.BOTH,
+            replacements=(),
+            conversion=TextConversion.OFF,
+        ))
+
+        self.assertIsNone(result.project_path)
+        self.assertIsNone(result.srt_path)
+        self.assertTrue(any("跳过" in warning for warning in result.warnings))
+        self.assertEqual(
+            sorted(path.name for path in self.root.glob("clip.*")),
+            ["clip.mosp", "clip.mp4"],
+        )
+
+    def test_fixed_process_suffix_reflects_enabled_parts(self) -> None:
+        with mock.patch.object(output_naming, "resolve_lang", return_value="zh"):
+            replacement_only = run_fixed_process(FixedProcessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.SRT,
+                replacements=(Replacement(source="酒", target="饮料"),),
+                conversion=TextConversion.OFF,
+            ))
+            conversion_only = run_fixed_process(FixedProcessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.SRT,
+                replacements=(),
+                conversion=TextConversion.TO_SIMPLIFIED,
+            ))
+            both = run_fixed_process(FixedProcessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.SRT,
+                replacements=(Replacement(source="酒", target="饮料"),),
+                conversion=TextConversion.TO_TRADITIONAL,
+            ))
+
+        if replacement_only.srt_path is None or conversion_only.srt_path is None or both.srt_path is None:
+            self.fail("enabled fixed processing must create output files")
+        self.assertEqual(replacement_only.srt_path.name, "clip.批量替换.srt")
+        self.assertEqual(conversion_only.srt_path.name, "clip.转简体.srt")
+        self.assertEqual(both.srt_path.name, "clip.批量替换.转繁体.srt")
 
     def test_fixed_process_applies_batch_replacements_then_traditional_conversion(self) -> None:
         project = {
@@ -715,7 +763,8 @@ class PostprocessTests(unittest.TestCase):
                 project_path=self.project_path,
                 srt_path=None,
                 output_mode=OutputMode.SRT,
-                replacements=(),
+                # 空规则现在会跳过固定处理；这里用一条不命中的规则驱动 SRT 输出路径。
+                replacements=(Replacement(source="不会出现的字", target="x"),),
             )
         )
 

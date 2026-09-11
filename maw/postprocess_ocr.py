@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Final, TYPE_CHECKING
 
 from maw.media import VIDEO_EXTENSIONS
+from maw.output_naming import operation_suffix
 from maw.postprocess import OutputMode
 from maw.postprocess_io import (
     _atomic_write,
@@ -495,9 +496,11 @@ def _write_report(rows: Sequence[Mapping[str, object]], source: Path | None, out
 
 def _available_report_path(source: Path, output_directory: Path | None = None) -> Path:
     directory = output_directory.expanduser().resolve() if output_directory is not None else source.parent
-    candidate = directory / f"{source.stem}.{OCR_OPERATION}.csv"
+    # 报告与产物同用操作后缀命名契约，zh 界面为「OCR去重」。
+    token = operation_suffix(OCR_OPERATION).lstrip(".")
+    candidate = directory / f"{source.stem}.{token}.csv"
     counter = 2
     while candidate.exists():
-        candidate = directory / f"{source.stem}.{OCR_OPERATION}-{counter}.csv"
+        candidate = directory / f"{source.stem}.{token}-{counter}.csv"
         counter += 1
     return candidate.resolve()
