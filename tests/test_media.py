@@ -301,13 +301,15 @@ class MediaResolutionTests(unittest.TestCase):
         self.assertEqual(_media_stem("clip.翻译为中文.combined.srt"), "clip")
         self.assertEqual(_media_stem("clip.翻译为英文.srt"), "clip")
         self.assertEqual(_media_stem("clip.后处理.翻译为中文.srt"), "clip")
-        # zh 界面本地化组合标记（双语合一 / 整合）同样剥回原始主名：
+        # zh 界面本地化组合标记（双语合一 / 整合 / 回填）同样剥回原始主名：
         # 作为中段、紧跟翻译段后、或直接顶在扩展名前都覆盖。
         self.assertEqual(_media_stem("clip.翻译为中文.双语合一.mosp"), "clip")
         self.assertEqual(_media_stem("clip.翻译为中文.整合.srt"), "clip")
+        self.assertEqual(_media_stem("clip.翻译为中文.回填.srt"), "clip")
         self.assertEqual(_media_stem("clip.后处理.双语合一.mosp"), "clip")
         self.assertEqual(_media_stem("clip.双语合一.mosp"), "clip")
         self.assertEqual(_media_stem("clip.整合.srt"), "clip")
+        self.assertEqual(_media_stem("clip.回填.srt"), "clip")
         self.assertEqual(_media_stem("clip.双语合一.翻译为中文.srt"), "clip")
         # 英文界面 / 旧版 .translate-* 命名保持不识别（与改动前一致）
         self.assertEqual(_media_stem("clip.translate-zh.mosp"), "clip.translate-zh")

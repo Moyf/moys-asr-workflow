@@ -60,20 +60,22 @@ TRANSLATION_TARGET_NAMES: Final[dict[str, dict[str, str]]] = {
     "en": {"zh": "zh", "en": "en"},
 }
 
-# 翻译产物 operation 形态：translate-{target} 与带 bilingual/combined 标记的变体。
-# 基础段分隔符连字符与下划线都识别（工具箱用下划线 base translate_zh，管线用
-# 连字符 translate-zh；merge_bilingual 在工具箱 base 后追加连字符标记
+# 翻译产物 operation 形态：translate-{target} 与带 bilingual/combined/backfill 标记
+# 的变体。基础段分隔符连字符与下划线都识别（工具箱用下划线 base translate_zh，
+# 管线用连字符 translate-zh；merge_bilingual 在工具箱 base 后追加连字符标记
 # translate_zh-bilingual，故标记分隔符同样两种都接受）。
 # target / marker 不做白名单之外的限定——未知 target 命中模式后由显示层决定回退原文。
 _TRANSLATION_OPERATION_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"^translate[-_]([a-z]+)(?:[-_](bilingual|combined))?$"
+    r"^translate[-_]([a-z]+)(?:[-_](bilingual|combined|backfill))?$"
 )
 
-# 翻译产物的组合标记显示名（per-language）：zh 界面「双语合一 / 整合」，
-# en 界面保持内部 ID（bilingual / combined，用于后缀与回显，文件名 en 输出不经过它）。
+# 翻译产物的组合标记显示名（per-language）：zh 界面「双语合一 / 整合 / 回填」，
+# en 界面保持内部 ID（bilingual / combined / backfill，用于后缀与回显，文件名
+# en 输出不经过它）。
 TRANSLATION_MARKER_NAMES: Final[dict[str, dict[str, str]]] = {
     "bilingual": {"zh": "双语合一", "en": "bilingual"},
     "combined": {"zh": "整合", "en": "combined"},
+    "backfill": {"zh": "回填", "en": "backfill"},
 }
 
 _INVALID_COMPONENT_CHARS: Final[re.Pattern[str]] = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -238,11 +240,11 @@ def postprocess_workspace_candidates(media_path: Path | str, lang: str | None = 
 
 
 def is_translation_operation(operation: str) -> bool:
-    """判断 operation 是否为翻译产物命名（translate-{target}[-bilingual|-combined]）。
+    """判断 operation 是否为翻译产物命名（translate-{target}[-bilingual|-combined|-backfill]）。
 
     连字符与下划线两种分隔符都识别（``translate-zh``、``translate_zh`` 及其带
-    bilingual/combined 标记的变体）。只做形态判断，不校验 target 取值：未知 target
-    （如 ``translate-ja``）也返回 True，由显示层决定是否回退原文。
+    bilingual/combined/backfill 标记的变体）。只做形态判断，不校验 target 取值：
+    未知 target（如 ``translate-ja``）也返回 True，由显示层决定是否回退原文。
     """
     return _TRANSLATION_OPERATION_PATTERN.fullmatch(operation) is not None
 

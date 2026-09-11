@@ -835,6 +835,8 @@ class LauncherApi:
 
     def save_prefs(self, payload: Mapping[str, object]) -> dict[str, object]:
         updates: dict[str, str] = {}
+        if "guiLang" in payload:
+            updates["MAW_GUI_LANG"] = _gui_lang(payload)
         if "modelId" in payload:
             updates["MAW_GUI_LAST_MODEL"] = str(payload.get("modelId") or "")
         if "language" in payload:
@@ -1181,6 +1183,8 @@ class LauncherApi:
                     task_prompt=(str(payload.get("taskPrompt") or "") if "taskPrompt" in payload else None),
                     media_path=_optional_path(payload.get("mediaPath")),
                     merge_bilingual=bool(payload.get("mergeBilingual")),
+                    embed_translations=bool(payload.get("embedTranslations")),
+                    bilingual_line_order=str(payload.get("bilingualLineOrder") or ""),
                 ),
                 complete=complete,
                 on_status=self._emit_postprocess_status,
