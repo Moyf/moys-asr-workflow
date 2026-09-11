@@ -264,6 +264,10 @@ class OperationSuffixTests(unittest.TestCase):
             output_naming.operation_suffix("translate-en-combined", "en"),
             ".translate-en-combined",
         )
+        self.assertEqual(
+            output_naming.operation_suffix("translate-zh-backfill", "en"),
+            ".translate-zh-backfill",
+        )
 
     def test_operation_suffix_underscore_bases_stay_legacy_ascii_in_en(self) -> None:
         # 下划线变体（工具箱）en 界面沿用 legacy ASCII 清洗，输出与改动前逐字节一致。
@@ -302,14 +306,26 @@ class OperationSuffixTests(unittest.TestCase):
         self.assertEqual(output_naming.translation_marker_name("bilingual", "en"), "bilingual")
         self.assertEqual(output_naming.translation_marker_name("combined", "zh"), "整合")
         self.assertEqual(output_naming.translation_marker_name("combined", "en"), "combined")
+        self.assertEqual(output_naming.translation_marker_name("backfill", "zh"), "回填")
+        self.assertEqual(output_naming.translation_marker_name("backfill", "en"), "backfill")
         # 未登记的 marker 原样回退。
         self.assertEqual(output_naming.translation_marker_name("unknown", "zh"), "unknown")
+
+    def test_operation_suffix_localizes_backfill_marker_in_zh(self) -> None:
+        self.assertEqual(output_naming.operation_suffix("translate-zh-backfill", "zh"), ".翻译为中文.回填")
+        self.assertEqual(
+            output_naming.operation_suffix("translate_zh-backfill", "zh"),
+            ".翻译为中文.回填",
+        )
+        self.assertEqual(output_naming.operation_suffix("translate-en-backfill", "zh"), ".翻译为英文.回填")
 
     def test_is_translation_operation_matches_shape_only(self) -> None:
         for operation in (
             "translate-zh",
             "translate-en-bilingual",
             "translate-ja-combined",
+            "translate-zh-backfill",
+            "translate_zh-backfill",
             "translate_zh",
             "translate_en",
             "translate_zh-bilingual",

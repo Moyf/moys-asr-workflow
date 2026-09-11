@@ -1436,6 +1436,7 @@ __WAVEFORM_CSS__
                 <b id="waveform-scale-label">×1.0</b>
                 <button type="button" id="waveform-scale-up" title="增大波形振幅">＋</button>
               </span>
+              <button type="button" id="waveform-scale-fit" class="editor-settings-inline-action waveform-scale-fit" title="按整文件响度重新拟合振幅">响度适配</button>
             </span>
             <label class="editor-settings-item" id="waveform-seconds-per-row-setting">每行长度
               <select id="waveform-seconds-per-row">
@@ -1471,10 +1472,18 @@ __WAVEFORM_CSS__
                 <option value="hidden">完全隐藏</option>
               </select>
             </label>
-            <label class="toggle editor-settings-item" title="开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动">
+            <label class="editor-settings-item" title="设置相接字幕边界的拖动方式：新模式拖动贴合中缝时两侧联动，传统模式沿用自动吸附开关">
+              贴合字幕边界
+              <select id="adjacent-boundary-mode">
+                <option value="dual" selected>中缝联动（新）</option>
+                <option value="classic">传统模式</option>
+              </select>
+            </label>
+            <small class="settings-panel-hint" id="adjacent-boundary-mode-hint-dual">拖动贴合字幕中间的中缝：两侧边界一起联动；单独拖动左右手柄只调整当前字幕（类似达芬奇）。</small>
+            <label class="toggle editor-settings-item" id="auto-snap-adjacent-cues-row" title="开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动">
               <input type="checkbox" id="auto-snap-adjacent-cues" checked> 自动吸附调整相邻字幕
             </label>
-            <small class="settings-panel-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
+            <small class="settings-panel-hint" id="auto-snap-adjacent-cues-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
             <label class="editor-settings-item" title="B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准">
               快捷键时间基准
               <select id="keyboard-operation-reference">
@@ -1542,9 +1551,10 @@ __WAVEFORM_CSS__
   <div class="layout-resizer layout-resizer-h1" id="layout-resizer-h1" data-layout-resizer="row-top" title="拖动调整视频与当前字幕高度"></div>
   <div class="layout-resizer layout-resizer-h2" id="layout-resizer-h2" data-layout-resizer="row-middle" title="拖动调整当前字幕与字幕列表高度"></div>
   <div class="layout-drop-preview" id="layout-drop-preview" aria-hidden="true"></div>
-  <div class="cues-container" id="cues-container">
+  <div class="cues-container" id="cues-container" tabindex="0" aria-label="字幕列表">
     <div class="toolbar cue-list-toolbar">
       <span class="info layout-toolbar-label">字幕</span>
+      <button type="button" id="cue-list-follow" aria-pressed="true" title="定位当前播放头并恢复字幕跟随；手动翻看后可再次点击">跟随播放</button>
       <div class="settings-anchor cue-list-settings" id="cue-list-settings">
         <button type="button" id="cue-list-settings-toggle" class="cue-list-settings-toggle" title="字幕列表设置" aria-label="字幕列表设置" aria-expanded="false" aria-controls="cue-list-settings-panel" aria-haspopup="dialog">⚙️</button>
         <div class="settings-panel cue-list-settings-panel" id="cue-list-settings-panel" role="dialog" aria-label="字幕列表设置" hidden>
