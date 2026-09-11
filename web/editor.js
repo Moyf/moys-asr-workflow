@@ -12506,8 +12506,8 @@ function buildGapRemovedRegionsJson() {
 const CANONICAL_PROJECT_FIELDS = new Set([
   'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity',
   'model', 'sticker_root', 'timebase', 'segments', 'multi_subtitle', 'waveform',
-  'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'gap_remove',
-  'script_alignment', 'workspace', 'preview',
+  'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'loudness',
+  'gap_remove', 'script_alignment', 'workspace', 'preview',
 ]);
 let projectExtensionFields = Object.fromEntries(
   Object.entries(DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
@@ -12591,7 +12591,7 @@ function buildJson() {
       end_offset_ms: binding.end_offset_ms || 0,
     })),
   };
-  // 三块波形缓存不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
+  // 波形缓存（含响度统计）不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
   // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
   // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
   const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
@@ -15485,6 +15485,9 @@ function suggestedProjectName(file = null) {
 }
 
 function applyCanonicalProject(data, filename) {
+  // 原地换工程：在途/已排期的延迟波形载荷（含响度标尺）全部作废，见
+  // deferredReapeaksEpoch 的说明。
+  deferredReapeaksEpoch += 1;
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
@@ -15508,6 +15511,9 @@ function applyCanonicalProject(data, filename) {
   DATA.waveform = data.waveform || null;
   DATA.spectral = data.spectral || null;
   DATA.waveform_reapeaks = data.waveform_reapeaks || null;
+  // 响度统计不写进工程文件，所以这里恒为 null：切工程必须先清掉上一个素材的
+  // 标尺，等新媒体的 /api/waveform 回来再拟合。
+  DATA.loudness = data.loudness || null;
   DATA.workspace = data.workspace || null;
   DATA.gap_remove = data.gap_remove || null;
   DATA.script_alignment = data.script_alignment || null;
@@ -15538,6 +15544,7 @@ function applyCanonicalProject(data, filename) {
     waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform, { render: false });
     waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
     waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
+    waveformEditor.setLoudnessStats(DATA.loudness, { render: false });
   }
   updateGapRemoveUi();
   renderAll({ waveform: 'full', preserveCueListScroll: false });
@@ -18938,6 +18945,10 @@ document.addEventListener('asr:waveform-scale-limit', (event) => {
   flashHint(msg);
 });
 
+document.addEventListener('asr:waveform-loudness-unavailable', () => {
+  flashHint('当前媒体没有响度缓存，无法按响度适配', 'warning');
+});
+
 // === cleanPunctuation ===
 function cleanPunctuation() {
   const PUNCT_REPL = '  ';
@@ -19178,30 +19189,51 @@ function initWaveformEditor() {
   waveformEditor.setSpectralPayload(DATA.spectral || null, { render: false });
   waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks || null, { render: false });
   waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform || null, { render: false });
+  // 振幅拟合要在 setLayoutData 之后：得先知道本工程是否已有手调决定。
+  waveformEditor.setLoudnessStats(DATA.loudness || null, { render: false });
 }
+
+// 原地切换工程（打开本地 .mosp / 新建空白 / 导入）会让 DATA 换成一个新工程，
+// 但服务器的 /api/waveform 仍描述它自己绑定的旧工程。每次 applyCanonicalProject
+// 递增该纪元；在途的延迟加载响应据此作废并终止轮询，旧工程的
+// spectral / 波形 / 响度载荷绝不会套到新工程的波形上。
+let deferredReapeaksEpoch = 0;
 
 async function loadDeferredReapeaks() {
   const url = SERVER_CONFIG?.waveformUrl;
   if (!url || !waveformEditor) return;
+  const epoch = deferredReapeaksEpoch;
   try {
     const response = await fetch(url, { cache: 'no-store' });
     const result = await response.json().catch(() => ({}));
+    if (epoch !== deferredReapeaksEpoch) return;
     if (!response.ok || result.ok !== true) throw new Error(result.error || `服务器返回 ${response.status}`);
     if (result.status === 'loading' || result.status === 'pending') {
-      window.setTimeout(() => { void loadDeferredReapeaks(); }, 500);
+      scheduleDeferredReapeaksRetry(500, epoch);
       return;
     }
     if (result.status !== 'ready') return;
-    const hasPayload = Boolean(result.spectral || result.waveform_reapeaks);
+    const hasPayload = Boolean(result.spectral || result.waveform_reapeaks || result.loudness);
     if (!hasPayload) return;
     DATA.spectral = result.spectral || null;
     DATA.waveform_reapeaks = result.waveform_reapeaks || null;
+    DATA.loudness = result.loudness || null;
     waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
     waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
+    // 响度标量可能先于/后于波形到达，setLoudnessStats 自己会决定要不要重绘。
+    waveformEditor.setLoudnessStats(DATA.loudness);
     waveformEditor.renderSegments();
   } catch (_error) {
-    window.setTimeout(() => { void loadDeferredReapeaks(); }, 1000);
+    scheduleDeferredReapeaksRetry(1000, epoch);
   }
+}
+
+// 重试必须绑定发起时的工程纪元：排期期间原地切换了工程，这次重试就该取消。
+// 否则新纪元的调用会原样接受旧工程的服务器载荷。
+function scheduleDeferredReapeaksRetry(delayMs, epoch) {
+  window.setTimeout(() => {
+    if (epoch === deferredReapeaksEpoch) void loadDeferredReapeaks();
+  }, delayMs);
 }
 
 // Server-editor 页面可能在本地服务退出后继续留在浏览器中。定期复用
@@ -19285,6 +19317,7 @@ const SERVER_STARTUP_LABELS = {
     waveform_unavailable: '波形缓存不可用，继续加载…',
     loading_spectral_cache: '正在读取频谱缓存…',
     loading_reapeaks_waveform: '正在读取 REAPER 波形缓存…',
+    loading_loudness_stats: '正在读取响度统计…',
     waveform_skipped: '已跳过波形处理…',
     finalizing: '正在完成工程加载…',
     ready: '工程加载完成',
@@ -19302,6 +19335,7 @@ const SERVER_STARTUP_LABELS = {
     waveform_unavailable: 'Waveform cache unavailable; continuing…',
     loading_spectral_cache: 'Reading spectral cache…',
     loading_reapeaks_waveform: 'Reading REAPER waveform cache…',
+    loading_loudness_stats: 'Reading loudness stats…',
     waveform_skipped: 'Waveform processing skipped…',
     finalizing: 'Finishing project loading…',
     ready: 'Project loaded',

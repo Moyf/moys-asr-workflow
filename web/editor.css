@@ -1399,6 +1399,8 @@
     font: 11px var(--font-mono);
     background: var(--bg-input);
   }
+  /* 「响度适配」紧跟振幅步进器：它改的就是这一行显示的 ×N。 */
+  .waveform-scale-fit { margin-left: 7px; font-size: 12px; }
   @media (max-width: 420px) {
     .editor-settings-window { width: calc(100vw - 16px); min-width: 0; resize: none; }
     .editor-settings-nav { width: 104px; padding: 8px 6px; }

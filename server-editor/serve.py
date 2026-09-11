@@ -470,6 +470,22 @@ def load_project(
                     f"[reapeaks-wave] 已加载 {reapeaks_wave['peak_count']} peaks "
                     f"({reapeaks_wave['peaks_per_second']}/秒)"
                 )
+
+            report("loading_loudness_stats", 86)
+            # 响度统计：整文件几个标量，用来给波形定垂直缩放（详见
+            # quapeaks.extract_loudness_stats）。它是 .quapeaks 响度层的派生
+            # 缓存，缺失/损坏一律静默降级，编辑器沿用用户原来的手动振幅。
+            loudness = quapeaks.load_loudness_stats(
+                reapeaks_base,
+                audio_track=audio_track,
+                default_audio_track=default_audio_track,
+            )
+            if loudness is not None:
+                data["loudness"] = loudness
+                print(
+                    f"[loudness] {loudness['bin_count']} 桶 "
+                    f"p95={loudness['p95']:.4f} max={loudness['max']:.4f}"
+                )
     else:
         report("waveform_skipped", 60)
 
@@ -511,6 +527,7 @@ def without_deferred_reapeaks(project: ServerProject) -> ServerProject:
     data = dict(project.data)
     data.pop("spectral", None)
     data.pop("waveform_reapeaks", None)
+    data.pop("loudness", None)
     return replace(project, data=data)
 
 
@@ -565,6 +582,7 @@ def build_server_page(
     if defer_reapeaks:
         page_data.pop("spectral", None)
         page_data.pop("waveform_reapeaks", None)
+        page_data.pop("loudness", None)
     if project.media_path:
         media_time_reference = read_bwf_time_reference(
             project.source_media_path or project.media_path,
@@ -796,6 +814,7 @@ class EditorServer(ThreadingHTTPServer):
     def _load_deferred_reapeaks(self, project: ServerProject, generation: int) -> None:
         spectral = None
         reapeaks_wave = None
+        loudness = None
         try:
             reapeaks_base = project.reapeaks_path or project.source_media_path or project.media_path
             if reapeaks_base is not None:
@@ -816,6 +835,16 @@ class EditorServer(ThreadingHTTPServer):
                         f"[reapeaks-wave] 后台加载 {reapeaks_wave['peak_count']} peaks "
                         f"({reapeaks_wave['peaks_per_second']}/秒)"
                     )
+                loudness = quapeaks.load_loudness_stats(
+                    reapeaks_base,
+                    audio_track=project.audio_track,
+                    default_audio_track=project.default_audio_track,
+                )
+                if loudness is not None:
+                    print(
+                        f"[loudness] 后台加载 {loudness['bin_count']} 桶 "
+                        f"p95={loudness['p95']:.4f} max={loudness['max']:.4f}"
+                    )
         except (OSError, ValueError, IndexError, struct.error) as error:
             print(f"[reapeaks] 后台加载失败: {error}", file=sys.stderr)
 
@@ -832,11 +861,16 @@ class EditorServer(ThreadingHTTPServer):
                 data.pop("waveform_reapeaks", None)
             else:
                 data["waveform_reapeaks"] = reapeaks_wave
+            if loudness is None:
+                data.pop("loudness", None)
+            else:
+                data["loudness"] = loudness
             self.project = replace(current_project, data=data)
             self.reapeaks_payload = {
                 key: value for key, value in {
                     "spectral": spectral,
                     "waveform_reapeaks": reapeaks_wave,
+                    "loudness": loudness,
                 }.items() if value is not None
             }
             self.reapeaks_status = "ready"
@@ -1531,7 +1565,7 @@ def export_ograf(project: ServerProject, graphic: dict) -> tuple[bytes, str]:
 def write_project_json(target: Path, project_data: dict) -> Path | None:
     """Atomically write LF JSON and retain the immediately previous file as .bak.
 
-    落盘前剥掉三块内联波形缓存：磁盘工程的波形真源在媒体旁的 ``.quapeaks`` /
+    落盘前剥掉内联波形缓存：磁盘工程的波形真源在媒体旁的 ``.quapeaks`` /
     ``.mopeaks``，写进工程只会被 base64 撑大并在下次加载时"复活"内联。
     ``strip_inline_caches`` 返回副本，调用方持有的运行态工程不受影响，
     页面波形不消失。
@@ -1555,7 +1589,7 @@ def write_project_json(target: Path, project_data: dict) -> Path | None:
 def _restore_runtime_inline_caches(previous: dict | None, incoming: dict) -> None:
     """把运行态里仍属于当前媒体、当前所选音轨的波形缓存合并回保存后的工程。
 
-    浏览器保存不再携带三块缓存，磁盘副本由 :func:`write_project_json` 剥离；
+    浏览器保存不再携带这些缓存，磁盘副本由 :func:`write_project_json` 剥离；
     但运行态若跟着磁盘副本一起丢缓存，保存→刷新后原生波形会被清空，进而被
     ``/api/waveform`` 的 REAPER 峰静默顶替。仅在同一媒体、同一所选音轨时
     恢复：媒体或音轨变了，缓存描述的就是另一个对象，必须失效。incoming

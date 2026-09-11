@@ -8,6 +8,7 @@
   const ENCODING = 'i8-minmax-base64';
   const SPECTRAL_SCHEMA = 'moy.asr.spectral.v1';
   const SPECTRAL_ENCODING = 'u16-freq-density-base64';
+  const LOUDNESS_SCHEMA = 'moy.asr.loudness.v1';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
   const POINTER_DRAG_THRESHOLD_PX = 3;
 
@@ -179,6 +180,10 @@
     layoutTree: DEFAULT_RIGHT_LAYOUT_TREE,
     layoutEditing: false,
     waveformScale: 1,
+    // 振幅是否仍由响度自动决定。跟着工程走，不进 localStorage：
+    // waveformScale 的活跃值存在浏览器全局偏好里，用「等于默认值」或 -1 哨兵
+    // 都无法判断「这个工程还没定过振幅」——新工程拿到的是上个工程留下的数字。
+    waveformScaleAuto: true,
     disabledDisplay: 'dim',
     showGroupBadges: true,
     dragPlayhead: true,
@@ -218,6 +223,8 @@
       preset: 'custom', waveformMode: 'multi',
       waveformSettings: {
         visibleSeconds: 20, secondsPerRow: 10, rowHeight: 120, waveformScale: 4,
+        // 预设自己指定了振幅，就是预设已经替用户做了决定，不能再被响度自动覆盖。
+        waveformScaleAuto: false,
         side: 'left', disabledDisplay: 'dim', showGroupBadges: true, dragPlayhead: true,
       },
       splitPercent: 60, columnPercent: 30, rows: [42, 16, 42], tree: THREE_FOLD_LAYOUT_TREE,
@@ -228,6 +235,7 @@
       preset: 'custom', waveformMode: 'basic',
       waveformSettings: {
         visibleSeconds: 20, secondsPerRow: 10, rowHeight: 120, waveformScale: 5.5,
+        waveformScaleAuto: false,
         side: 'left', disabledDisplay: 'dim', showGroupBadges: true, dragPlayhead: true,
       },
       splitPercent: 60, columnPercent: 36, rows: [42, 18, 40], tree: CINEMA_SCREEN_LAYOUT_TREE,
@@ -578,6 +586,10 @@
         ? { rowHeight: Number(rawWaveformSettings.rowHeight) } : {}),
       ...(Number.isFinite(Number(rawWaveformSettings.waveformScale))
         ? { waveformScale: clampWaveformScale(Number(rawWaveformSettings.waveformScale)) } : {}),
+      // 必须显式产出这个键（而不是缺字段时省略）：applyLayoutData 用
+      // Object.assign 增量合并，省略会让上一个工程的 false 残留到新工程上。
+      // 老工程没写过该字段 → 不等于 false → true，升级后照样吃到自动缩放。
+      waveformScaleAuto: rawWaveformSettings.waveformScaleAuto !== false,
       ...(rawWaveformSettings.side === 'left' || rawWaveformSettings.side === 'right'
         ? { side: rawWaveformSettings.side } : {}),
       ...(rawWaveformSettings.disabledDisplay === 'hidden' || rawWaveformSettings.disabledDisplay === 'dim'
@@ -639,6 +651,10 @@
         layoutTree: layoutData.tree,
         layoutEditing: false,
         waveformScale: clampWaveformScale(Number(parsed.waveformScale) || DEFAULT_SETTINGS.waveformScale),
+        // 刻意不从 localStorage 读：振幅的活跃值是浏览器全局的，而「这个工程
+        // 定过振幅没有」只能跟着工程走。工程 workspace 随后会用 applyLayoutData
+        // 覆盖它，这里给出的是「尚无工程决定」的初值。
+        waveformScaleAuto: true,
         disabledDisplay: parsed.disabledDisplay === 'hidden' ? 'hidden' : 'dim',
         showGroupBadges: parsed.showGroupBadges !== false,
         dragPlayhead: parsed.dragPlayhead !== false,
@@ -967,6 +983,28 @@
 
   function waveformAmplitude(height, scale) {
     return Math.max(0, Number(height) * 0.36 * clampWaveformScale(scale));
+  }
+
+  // ---- 响度 → 振幅标尺 ----------------------------------------------------
+  // 后端 moy.asr.loudness.v1 给的是 0..1 线性满量程 RMS（不是 peak、不是 dB）。
+  // 要把「典型响度」换算成「典型峰值占多少半行高」，还差一个波峰因子。
+  const LOUDNESS_CREST_FACTOR = 2.0; // RMS→峰值，约 +6 dB：正弦 √2 与语音 ~3.5 之间
+  const LOUDNESS_TARGET_FILL = 0.85; // 参考峰值占可用上半高的比例，留 15% 余量
+  const FULL_SCALE = 1.0; // 归一化满量程：预测峰值不可能超过它
+
+  function waveformScaleFromLoudness(stats, height) {
+    const reference = Number(stats && stats.p95);
+    const rowHeight = Number(height);
+    // 全静音（p95<=0）或缺响度层时返回 null：宁可不猜，也不要把振幅拉到上限。
+    if (!Number.isFinite(reference) || reference <= 0) return null;
+    if (!Number.isFinite(rowHeight) || rowHeight <= 0) return null;
+    // 削顶发生在上方：可用高度是 center - 2 = 0.46h - 2，比下方 0.54h - 2 更紧。
+    const headroom = Math.max(1, rowHeight * 0.46 - 2);
+    // 不钳到满量程的话，响素材会算出 >1 的「预测峰值」，把波形画得偏小。
+    const expectedPeak = Math.min(FULL_SCALE, reference * LOUDNESS_CREST_FACTOR);
+    return clampWaveformScale(
+      (LOUDNESS_TARGET_FILL * headroom) / (0.36 * rowHeight * expectedPeak),
+    );
   }
 
   function sampleInterpolatedPeak(peaks, position, peakCount, target = [0, 0]) {
@@ -1545,6 +1583,7 @@
       this.peaks = null;
       this.spectral = null;
       this.reapeaksPayload = null;
+      this.loudnessStats = null;
       this.reapeaksPeaks = null;
       this.player = null;
       this.mediaAvailable = false;
@@ -1613,6 +1652,7 @@
       this.waveformScaleLabel = document.getElementById('waveform-scale-label');
       this.waveformScaleDownButton = document.getElementById('waveform-scale-down');
       this.waveformScaleUpButton = document.getElementById('waveform-scale-up');
+      this.waveformScaleFitButton = document.getElementById('waveform-scale-fit');
       this.secondsPerRowSelect = document.getElementById('waveform-seconds-per-row');
       this.rowHeightSelect = document.getElementById('waveform-row-height');
       this.showGroupBadgesToggle = document.getElementById('waveform-show-group-badges');
@@ -1678,6 +1718,7 @@
       document.getElementById('waveform-zoom-out')?.addEventListener('click', () => this.changeZoom(1));
       this.waveformScaleDownButton?.addEventListener('click', () => this.changeWaveformScale(-1));
       this.waveformScaleUpButton?.addEventListener('click', () => this.changeWaveformScale(1));
+      this.waveformScaleFitButton?.addEventListener('click', () => this.fitWaveformScaleToLoudness());
       this.pane.addEventListener('pointerdown', () => {
         this.autoScrolling = false;
         this.autoScrollTarget = null;
@@ -1953,7 +1994,7 @@
         button.classList.toggle('active', button.dataset.waveformMode === this.settings.mode);
       });
       this.windowLabel.textContent = `${this.settings.visibleSeconds} 秒`;
-      if (this.waveformScaleLabel) this.waveformScaleLabel.textContent = `×${parseFloat(this.settings.waveformScale.toFixed(2))}`;
+      if (this.waveformScaleLabel) this.renderWaveformScaleLabel();
       this.secondsPerRowSelect.value = String(this.settings.secondsPerRow);
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
       if (this.sideSelect) this.sideSelect.value = this.settings.side;
@@ -2069,6 +2110,11 @@
       this.settings.rowHeight = next;
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(next);
       saveSettings(this.settings);
+      // 自动标尺按行高算（可用上半高随行高变），换行高要重拟合；手动模式不动。
+      // render:false：只算标尺和标签，重绘交给下面正常的行高布局路径。
+      if (this.settings.waveformScaleAuto !== false && this.loudnessStats) {
+        this.setLoudnessStats(this.loudnessStats, { render: false });
+      }
       if (this.isMultiMode() && this.payload) {
         this.updateMultiRowLayout();
       } else {
@@ -2364,6 +2410,7 @@
           secondsPerRow: this.settings.secondsPerRow,
           rowHeight: this.settings.rowHeight,
           waveformScale: this.settings.waveformScale,
+          waveformScaleAuto: this.settings.waveformScaleAuto !== false,
           side: this.settings.side,
           disabledDisplay: this.settings.disabledDisplay,
           showGroupBadges: this.settings.showGroupBadges !== false,
@@ -2392,7 +2439,9 @@
       const layout = normalizeLayoutData(snapshot.layout);
       this.settings.layout = layout.preset;
       if (layout.waveformMode) this.settings.mode = layout.waveformMode;
-      if (layout.waveformSettings) Object.assign(this.settings, layout.waveformSettings);
+      // 兜底给出 waveformScaleAuto：工程完全没有 waveformSettings 时，必须显式
+      // 回到「未决定」，否则 Object.assign 不写这个键会让上一个工程的 false 残留。
+      Object.assign(this.settings, layout.waveformSettings || { waveformScaleAuto: true });
       this.settings.splitPercent = layout.splitPercent;
       this.settings.layoutColumnPercent = layout.columnPercent;
       this.settings.layoutRows = layout.rows;
@@ -2414,7 +2463,9 @@
       const layout = normalizeLayoutData(value);
       this.settings.layout = layout.preset;
       if (layout.waveformMode) this.settings.mode = layout.waveformMode;
-      if (layout.waveformSettings) Object.assign(this.settings, layout.waveformSettings);
+      // 兜底给出 waveformScaleAuto：工程完全没有 waveformSettings 时，必须显式
+      // 回到「未决定」，否则 Object.assign 不写这个键会让上一个工程的 false 残留。
+      Object.assign(this.settings, layout.waveformSettings || { waveformScaleAuto: true });
       this.settings.splitPercent = layout.splitPercent;
       this.settings.layoutColumnPercent = layout.columnPercent;
       this.settings.layoutRows = layout.rows;
@@ -2457,12 +2508,54 @@
         return;
       }
       this.settings.waveformScale = next;
+      // 用户亲自动了振幅 → 本工程退出自动，响度端点之后不再覆盖它。
+      this.settings.waveformScaleAuto = false;
       saveSettings(this.settings);
-      if (this.waveformScaleLabel) {
-        this.waveformScaleLabel.textContent = `×${parseFloat(next.toFixed(2))}`;
-      }
+      this.renderWaveformScaleLabel();
       // peak 包络按行缓存；连续滚轮由上层 debounce 合并后，这里只清晰重绘一次。
       this.redrawWaveformCanvases();
+    }
+
+    renderWaveformScaleLabel() {
+      if (!this.waveformScaleLabel) return;
+      const value = `×${parseFloat(Number(this.settings.waveformScale).toFixed(2))}`;
+      this.waveformScaleLabel.textContent = this.settings.waveformScaleAuto === false
+        ? value
+        : `${value} ${localizedWaveformMessage('自动', 'auto')}`;
+    }
+
+    setLoudnessStats(stats, { render = true } = {}) {
+      this.loudnessStats = stats && stats.schema === LOUDNESS_SCHEMA ? stats : null;
+      if (!this.loudnessStats) return false;
+      // 用户已手调过振幅就绝不覆盖；「按响度适配」按钮会先把这个标志翻回真。
+      if (this.settings.waveformScaleAuto === false) return false;
+      const fitted = waveformScaleFromLoudness(
+        this.loudnessStats,
+        this.settings.rowHeight,
+      );
+      if (fitted === null) return false;
+      this.settings.waveformScale = fitted;
+      // 自动值刻意不写 saveSettings()：localStorage 里的振幅是浏览器全局偏好，
+      // 为当前素材拟合的值不该污染下一个工程。
+      this.renderWaveformScaleLabel();
+      if (render) this.redrawWaveformCanvases();
+      return true;
+    }
+
+    fitWaveformScaleToLoudness() {
+      const previous = this.settings.waveformScaleAuto;
+      this.settings.waveformScaleAuto = true;
+      if (this.setLoudnessStats(this.loudnessStats)) {
+        this.setStatus(localizedWaveformMessage(
+          `已按响度适配振幅 ×${parseFloat(Number(this.settings.waveformScale).toFixed(2))}`,
+          `Amplitude fitted to loudness ×${parseFloat(Number(this.settings.waveformScale).toFixed(2))}`,
+        ));
+        return true;
+      }
+      // 拟不出来就把标志还原，别让标签谎称「自动」却显示着手调值。
+      this.settings.waveformScaleAuto = previous;
+      document.dispatchEvent(new CustomEvent('asr:waveform-loudness-unavailable'));
+      return false;
     }
 
     scheduleWheelScaleChange() {
@@ -5727,6 +5820,13 @@
       wheelScrollDelta,
       waveformScaleAfterStep,
       waveformAmplitude,
+      waveformScaleFromLoudness,
+      loudnessSchema: LOUDNESS_SCHEMA,
+      // 只做状态机逻辑的单测入口：用 stub 的 this 调用，无需构造 DOM。
+      setLoudnessStats: WaveformEditor.prototype.setLoudnessStats,
+      fitWaveformScaleToLoudness: WaveformEditor.prototype.fitWaveformScaleToLoudness,
+      renderWaveformScaleLabel: WaveformEditor.prototype.renderWaveformScaleLabel,
+      setRowHeight: WaveformEditor.prototype.setRowHeight,
       buildWaveformEnvelope,
       sampleInterpolatedPeak,
       normalizeLayoutData,
