@@ -43,6 +43,15 @@
       per_video_subfolder_title: "每个视频单独创建子文件夹（默认关闭）：需要先开启「将所有输出文件放入子文件夹」，每个媒体各自使用「视频名_maw」目录",
       attach_model_name: "附加模型名称",
       attach_model_name_title: "附加模型名称（默认开启）：SRT 文件名带上供应商/模型段，如 clip.qwen-audio.srt",
+      settings_notifications: "完成通知",
+      notify_on_complete: "任务完成后发送系统通知",
+      notify_on_complete_title: "任务完成后发送系统通知（默认开启）：单个文件转写完成或批量队列全部结束后提醒",
+      notify_on_complete_hint: "单个文件转写完成或批量队列全部结束后，通过系统通知提醒你；默认开启。",
+      notify_single_title: "转写完成",
+      notify_single_body: "已生成 {name}",
+      notify_batch_title: "批量转写完成",
+      notify_batch_body: "成功 {done} 个，失败 {failed} 个。",
+      notify_batch_body_all: "共 {done} 个文件全部完成。",
       key: "API Key",
       save_key: "存入本地环境",
       key_hint_prefix: "在",
@@ -144,6 +153,15 @@
       per_video_subfolder_title: "Create a separate subfolder per video (off by default): requires “Put all outputs in a subfolder”; each media uses its own “video-name_maw” folder.",
       attach_model_name: "Append model name",
       attach_model_name_title: "Append model name (on by default): SRT filenames carry the provider/model segment, e.g. clip.qwen-audio.srt.",
+      settings_notifications: "Completion notifications",
+      notify_on_complete: "Send a system notification when a task completes",
+      notify_on_complete_title: "Send a system notification when a task completes (on by default): alert when a single file finishes or the whole batch queue ends.",
+      notify_on_complete_hint: "Get a system notification when a single file finishes or the whole batch queue ends. On by default.",
+      notify_single_title: "Transcription complete",
+      notify_single_body: "Generated {name}",
+      notify_batch_title: "Batch transcription complete",
+      notify_batch_body: "{done} succeeded, {failed} failed.",
+      notify_batch_body_all: "All {done} files completed.",
       key: "API Key",
       save_key: "Save locally",
       key_hint_prefix: "Get an API Key from",
@@ -1141,7 +1159,7 @@
   let activeSettingsTab = "general";
 
   function mockApi() {
-    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null, outputSubfolder: false, perVideoSubfolder: false, attachModelName: true };
+    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null, outputSubfolder: false, perVideoSubfolder: false, attachModelName: true, notifyOnComplete: true };
     const chainedPath = (path, operation, fallback) => path
       ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
       : fallback;
@@ -1166,6 +1184,7 @@
         outputSubfolder: saved.outputSubfolder,
         perVideoSubfolder: saved.perVideoSubfolder,
         attachModelName: saved.attachModelName,
+        notifyOnComplete: saved.notifyOnComplete !== false,
         appVersion: "1.6.0-beta.3",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
@@ -1314,7 +1333,7 @@
       get_local_models: async ({ modelId, modelPath }) => ({ ok: true, runtime: state.config?.localRuntime || {}, models: (state.config?.providers.find((item) => item.id === "local")?.models || []).map((model) => ({ ...model, localStatus: { ...(model.localStatus || {}), ...(model.id === modelId && modelPath ? { status: "installed", installed: true, path: modelPath, detail: "已使用指定的模型目录。" } : {}) } })) }),
       prepare_local_model: async ({ modelId }) => { clearTimeout(modelPrepareTimer); modelPrepareTimer = setTimeout(() => { state.config?.providers.find((item) => item.id === "local")?.models.forEach((model) => { if (model.id === modelId) model.localStatus = { ...(model.localStatus || {}), status: "installed", installed: true, runtimeAvailable: true, canPrepare: false, detail: "已检测到本地模型。" }; }); window.MAWLauncher.onBackendEvent({ type: "modelPrepared", modelId }); }, 400); return { ok: true, preparing: true, modelId }; },
       cancel_local_model: async () => { clearTimeout(modelPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
-       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); for (const key of ["outputSubfolder", "perVideoSubfolder", "attachModelName"]) { if (Object.prototype.hasOwnProperty.call(payload, key)) saved[key] = Boolean(payload[key]); } if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
+       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); for (const key of ["outputSubfolder", "perVideoSubfolder", "attachModelName", "notifyOnComplete"]) { if (Object.prototype.hasOwnProperty.call(payload, key)) saved[key] = Boolean(payload[key]); } if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
       open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
       open_runtime_folder: async (payload) => { window.__openedRuntimeFolder = payload; return { ok: true }; },
       open_blank_html: async () => ({ ok: true }),
@@ -1335,6 +1354,7 @@
       run_ocr_dedup: async ({ projectPath, srtPath, outputMode, report }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.srt"), reportPath: report ? "D:\\Demo\\clip.ocr-dedup.csv" : "", warnings: ["OCR 字幕去重完成：新增禁用 1 条，已有禁用 0 条，实际 OCR 1 条，跳过 0 条。"] }),
       run_llm_postprocess: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "llm", "D:\\Demo\\clip.llm.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "llm", "D:\\Demo\\clip.llm.srt"), warnings: [] }),
       run_fixed_process: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "fixed", "D:\\Demo\\clip.fixed.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "fixed", "D:\\Demo\\clip.fixed.srt"), warnings: [] }),
+      send_notification: async () => ({ ok: true, sent: false }),
       run_fixed_replacement: async (payload) => window.MAWLauncher.callBackend("run_fixed_process", payload),
        run_ffconcat_rebuild: async () => ({ ok: true, mediaPath: "D:\\Demo\\clip.gap-removed.mp4" }),
        probe_audio_tracks: async () => ({ ok: true, tracks: [{ audioIndex: 0, streamIndex: 1, codec: "aac", channels: 2, sampleRate: 48000, language: "zh", title: "中文", default: true }, { audioIndex: 1, streamIndex: 2, codec: "aac", channels: 2, sampleRate: 48000, language: "en", title: "English", default: false }] }),
@@ -2448,6 +2468,7 @@
     $("outputSubfolder").checked = Boolean(state.config.outputSubfolder);
     $("perVideoSubfolder").checked = Boolean(state.config.perVideoSubfolder);
     $("attachModelName").checked = state.config.attachModelName !== false;
+    $("notifyOnComplete").checked = state.config.notifyOnComplete !== false;
     if (sectionId) {
       requestAnimationFrame(() => {
         // 只滚动 .settings-scroll 容器；scrollIntoView 会连带滚动 overflow:hidden 的
@@ -2557,7 +2578,37 @@
     refreshStartupState();
   }
 
+  function completionNotificationsEnabled() { return state.config?.notifyOnComplete !== false; }
+  function baseName(path) { const value = String(path || ""); return value.split(/[\\/]/u).pop() || value; }
+  function sendSystemNotification(title, message) {
+    if (!completionNotificationsEnabled()) return;
+    void bridge("send_notification", { title, message });
+  }
+  function notifySingleComplete(result) {
+    const name = baseName(result?.srtPath || result?.jsonPath || "");
+    sendSystemNotification(t("notify_single_title"), t("notify_single_body").replace("{name}", name || "-"));
+  }
+  function notifyBatchComplete(event) {
+    // 用户主动停止不算「完成」，不打扰。
+    if (event.status === "cancelled" || event.cancelled) return;
+    const outcomes = Array.isArray(event.outcomes) ? event.outcomes : [];
+    let done = 0;
+    let failed = 0;
+    outcomes.forEach((outcome) => {
+      if (!outcome || typeof outcome !== "object") return;
+      if (outcome.status === "done") done += 1;
+      else if (outcome.status === "failed") failed += 1;
+    });
+    if (!outcomes.length) done = Number(event.total) || 0; // 静态演示模式没有逐条结果
+    const body = failed > 0
+      ? t("notify_batch_body").replace("{done}", String(done)).replace("{failed}", String(failed))
+      : t("notify_batch_body_all").replace("{done}", String(done));
+    sendSystemNotification(t("notify_batch_title"), body);
+  }
+
   function handleBackendEvent(event) {
+    if (event.type === "done") notifySingleComplete(event.result);
+    if (event.type === "batch_done" || event.type === "batchDone") notifyBatchComplete(event);
     if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) window.MAWLauncher?.onBatchEvent?.(event);
     if (event.type === "emojiFontReady" && event.path) injectEmojiFont(event.path);
     if (event.type === "log") appendLog(event.message, { quietLatest: Boolean(state.localRuntimeInstalling || state.ocrRuntimeInstalling) });
@@ -2783,6 +2834,7 @@
   $("outputSubfolder").addEventListener("change", async () => { await saveOutputPref("outputSubfolder"); syncDefaultOutputPreview(); });
   $("perVideoSubfolder").addEventListener("change", async () => { await saveOutputPref("perVideoSubfolder"); syncDefaultOutputPreview(); });
   $("attachModelName").addEventListener("change", async () => { await saveOutputPref("attachModelName"); syncDefaultOutputPreview(); });
+  $("notifyOnComplete").addEventListener("change", async () => { await saveOutputPref("notifyOnComplete"); });
   $("languageReset").addEventListener("click", () => { const el = $("language"); Array.from(el.options).forEach((o) => { o.selected = false; }); savePrefsDebounced({ language: "" }); });
   $("saveSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; if (current.id === "openai") { state.config.openaiBaseUrl = payload.openaiBaseUrl; state.config.openaiModel = payload.openaiModel; } renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
   $("start").addEventListener("click", async () => { if (!validateLocal()) return; hideErrorNotice(); $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });

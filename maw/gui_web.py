@@ -61,6 +61,7 @@ from maw.local_runtime import (
 )
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import resolve_default_audio_track, resolve_project_media
+from maw.notify import send_system_notification
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import PostprocessFileError, read_project, read_srt
 from maw.project_io import write_mosp
@@ -727,6 +728,7 @@ class LauncherApi:
             "lastModel": config.last_model,
             "lastLanguage": config.last_language,
             "theme": config.theme,
+            "notifyOnComplete": config.notify_on_complete,
             "localRuntime": local_runtime,
             "ocrRuntime": ocr_runtime,
             "ocrModels": ocr_models,
@@ -847,6 +849,7 @@ class LauncherApi:
             ("outputSubfolder", "MAW_GUI_OUTPUT_SUBFOLDER"),
             ("perVideoSubfolder", "MAW_GUI_PER_VIDEO_SUBFOLDER"),
             ("attachModelName", "MAW_GUI_ATTACH_MODEL_NAME"),
+            ("notifyOnComplete", "MAW_GUI_NOTIFY_ON_COMPLETE"),
         ):
             if payload_key in payload:
                 updates[env_key] = "true" if payload.get(payload_key) else "false"
@@ -865,6 +868,17 @@ class LauncherApi:
             except (OSError, UnicodeError, ValueError) as error:
                 return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True, "zoomPercent": zoom_percent}
+
+    def send_notification(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Trigger one native desktop notification on behalf of the Launcher page.
+
+        The frontend owns the copy and the enable/disable preference; this bridge
+        only performs the platform call and never surfaces notification failures
+        as task errors.
+        """
+        title = str(payload.get("title") or "")
+        message = str(payload.get("message") or "")
+        return {"ok": True, "sent": send_system_notification(title, message)}
 
     def save_postprocess_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))

@@ -596,6 +596,25 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(config["perVideoSubfolder"])
         self.assertTrue(config["attachModelName"])
 
+    def test_notify_preference_defaults_on_and_round_trips(self) -> None:
+        """Given the completion-notification toggle, When saved, Then .env and config reflect it."""
+        os.environ.pop("MAW_GUI_NOTIFY_ON_COMPLETE", None)
+        self.assertTrue(self.api.get_config()["notifyOnComplete"])
+
+        result = self.api.save_prefs({"notifyOnComplete": False})
+
+        self.assertTrue(result["ok"])
+        self.assertIn("MAW_GUI_NOTIFY_ON_COMPLETE=false", self.env_path.read_text(encoding="utf-8"))
+        self.assertFalse(self.api.get_config()["notifyOnComplete"])
+
+    def test_send_notification_delegates_to_platform_helper(self) -> None:
+        """Given a completion message, When the page asks for a notification, Then it is sent once."""
+        with mock.patch("maw.gui_web.send_system_notification", return_value=True) as sender:
+            result = self.api.send_notification({"title": "完成", "message": "已生成 a.srt"})
+
+        self.assertEqual(result, {"ok": True, "sent": True})
+        sender.assert_called_once_with("完成", "已生成 a.srt")
+
     def test_save_prefs_persists_theme_and_get_config_restores_it(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("MAW_GUI_THEME", None)
