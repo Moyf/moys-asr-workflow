@@ -315,11 +315,11 @@ test('dual mode links both edges via the seam zone while side handles trim indep
     const y = zoneBox.y + zoneBox.height / 2;
     await page.mouse.move(startX, y);
     await page.mouse.down();
-    // 点击中缝将前后两句追加至已有选区（同一字幕可能跨行分片，用下标集合断言）。
+    // 普通中缝点击替换为前后两句（同一字幕可能跨行分片，用下标集合断言）。
     await expect.poll(() => page.evaluate(() => [
       ...new Set([...document.querySelectorAll('.waveform-cue-block.selected')]
         .map((block) => block.dataset.idx)),
-    ].sort())).toEqual(['0', '1', '2']);
+    ].sort())).toEqual(['0', '1']);
     await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
     await page.mouse.move(startX + (rowBox.width * deltaMs) / (rowEnd - rowStart), y, { steps: 5 });
     await page.mouse.up();
@@ -363,7 +363,7 @@ test('dual mode links both edges via the seam zone while side handles trim indep
   ]);
 });
 
-test('dual-mode extension seam adds both adjacent cues to the existing selection', async ({ page }) => {
+test('dual-mode extension seam replaces the existing selection with both adjacent cues', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
     DATA.multi_subtitle = {
@@ -395,7 +395,7 @@ test('dual-mode extension seam adds both adjacent cues to the existing selection
   await expect.poll(() => page.evaluate(() => [
     ...new Set([...document.querySelectorAll('.waveform-cue-block.selected[data-track="extension"]')]
       .map((block) => block.dataset.extIdx)),
-  ].sort())).toEqual(['0', '1', '2']);
+  ].sort())).toEqual(['0', '1']);
 });
 
 test('an independent shared-boundary drag can reverse before release', async ({ page }) => {

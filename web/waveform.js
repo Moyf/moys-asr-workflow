@@ -4748,13 +4748,15 @@
       }
       // 选择可能触发行重建，先保存按下瞬间的几何数据（与 beginCueDrag 相同）。
       const geometry = this.captureRowGeometry(row);
-      // 中缝代表前后两句的贴合边界：点击/拖动都把两句追加到现有选区
-      // （与框选/Ctrl 多选一致，含绑定联动），面板聚焦右侧字幕。
+      // 普通中缝点击替换为相邻两句的选区；Ctrl/Cmd 与 Shift 已在上面保留
+      // 原本的切换和范围选择语义。面板聚焦右侧字幕。
       if (track === 'extension') {
-        this.options.addExtensionSelection?.([leftIndex, rightIndex]);
+        this.options.selectExtensionCue?.(leftIndex);
+        this.options.addExtensionSelection?.([rightIndex]);
         this.options.activateExtensionCue?.(rightIndex);
       } else {
-        this.options.addCueSelection?.([leftIndex, rightIndex]);
+        this.options.selectCue(leftIndex);
+        this.options.addCueSelection?.([rightIndex]);
         this.options.activateCue?.(rightIndex);
       }
       const timing = this.cueTiming();
