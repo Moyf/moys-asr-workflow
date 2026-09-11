@@ -835,6 +835,8 @@ class LauncherApi:
 
     def save_prefs(self, payload: Mapping[str, object]) -> dict[str, object]:
         updates: dict[str, str] = {}
+        if "guiLang" in payload:
+            updates["MAW_GUI_LANG"] = _gui_lang(payload)
         if "modelId" in payload:
             updates["MAW_GUI_LAST_MODEL"] = str(payload.get("modelId") or "")
         if "language" in payload:

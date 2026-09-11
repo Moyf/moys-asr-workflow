@@ -559,6 +559,12 @@ class GuiWebBridgeTests(unittest.TestCase):
             "# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\nMAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n",
         )
 
+    def test_save_prefs_persists_gui_language(self) -> None:
+        result = self.api.save_prefs({"guiLang": "en"})
+
+        self.assertTrue(result["ok"])
+        self.assertIn("MAW_GUI_LANG=en", self.env_path.read_text(encoding="utf-8"))
+
     def test_save_prefs_persists_file_output_flags_and_get_config_restores_them(self) -> None:
         """Given 文件输出 toggles, When saved, Then .env and bulk config reflect them."""
         for key in ("MAW_GUI_OUTPUT_SUBFOLDER", "MAW_GUI_PER_VIDEO_SUBFOLDER", "MAW_GUI_ATTACH_MODEL_NAME"):
@@ -4693,6 +4699,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="langEn"', page)
         self.assertIn('function systemLanguage()', script)
         self.assertIn('state.lang = state.config.guiLang || systemLanguage();', script)
+        self.assertIn('if (!state.config.guiLang) {', script)
+        self.assertIn('await bridge("save_prefs", { guiLang: state.lang })', script)
         self.assertIn('$("langZh").classList.toggle("active", state.lang === "zh");', script)
         self.assertIn('$("langEn").classList.toggle("active", state.lang === "en");', script)
         self.assertIn('$("langZh").addEventListener("click", () => setLanguage("zh"));', script)
