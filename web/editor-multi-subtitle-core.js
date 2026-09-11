@@ -250,7 +250,7 @@
 
 
 
-  function clampExtensionRange(segment, start, end, duration = waveformEditor?.durationMs || Infinity) {
+  function clampExtensionRange(segment, start, end, duration = MaweCoreState.waveformEditor?.durationMs || Infinity) {
     const safeStart = Math.max(0, Math.round(Number(start) || 0));
     const safeEnd = Math.max(
       safeStart + SUBTITLE_MIN_DURATION_MS,
@@ -281,7 +281,7 @@
 
 
   function getSubtitleTimelineDuration() {
-    const duration = Number(waveformEditor?.durationMs);
+    const duration = Number(MaweCoreState.waveformEditor?.durationMs);
     return Number.isFinite(duration) && duration > 0 ? duration : Infinity;
   }
 
@@ -344,9 +344,9 @@
     const selectedIds = active ? new Set([...selectedExtensionIdxs]
       .map((index) => track.segments[index]?.id)
       .filter(Boolean)) : new Set();
-    const currentId = active && currentCuePanelKind === 'extension'
-      && currentCuePanelTrackId === track.id
-      ? track.segments[currentCuePanelIdx]?.id : null;
+    const currentId = active && MaweCuePanelState.currentCuePanelKind === 'extension'
+      && MaweCuePanelState.currentCuePanelTrackId === track.id
+      ? track.segments[MaweCuePanelState.currentCuePanelIdx]?.id : null;
     const lastClickedId = active ? track.segments[lastClickedExtensionIdx]?.id || null : null;
     return { active, selectedIds, currentId, lastClickedId };
   }
@@ -360,17 +360,17 @@
       const index = track.segments.findIndex((segment) => segment?.id === id);
       if (index >= 0) selectedExtensionIdxs.add(index);
     });
-    if (snapshot.currentId && currentCuePanelKind === 'extension'
-        && currentCuePanelTrackId === track.id) {
-      currentCuePanelIdx = track.segments.findIndex((segment) => segment?.id === snapshot.currentId);
-      if (currentCuePanelIdx < 0) {
-        currentCuePanelKind = 'main';
-        currentCuePanelTrackId = null;
+    if (snapshot.currentId && MaweCuePanelState.currentCuePanelKind === 'extension'
+        && MaweCuePanelState.currentCuePanelTrackId === track.id) {
+      MaweCuePanelState.currentCuePanelIdx = track.segments.findIndex((segment) => segment?.id === snapshot.currentId);
+      if (MaweCuePanelState.currentCuePanelIdx < 0) {
+        MaweCuePanelState.currentCuePanelKind = 'main';
+        MaweCuePanelState.currentCuePanelTrackId = null;
       }
     }
     lastClickedExtensionIdx = snapshot.lastClickedId
       ? track.segments.findIndex((segment) => segment?.id === snapshot.lastClickedId) : -1;
-    selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+    MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   }
 
 

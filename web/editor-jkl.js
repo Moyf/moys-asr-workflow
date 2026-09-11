@@ -65,7 +65,7 @@
     jklReversePlaying = false;
     if (render && wasPlaying) {
       update();
-      waveformEditor?.updatePlayback();
+      MaweCoreState.waveformEditor?.updatePlayback();
     }
     if (render) syncMediaControls();
   }
@@ -74,26 +74,26 @@
 
   function stepJklReversePlayback(timestamp) {
     jklReverseFrameId = 0;
-    if (!jklReversePlaying || !player) return;
+    if (!jklReversePlaying || !MaweCoreState.player) return;
     if (!jklReverseLastTimestamp) jklReverseLastTimestamp = timestamp;
     const elapsed = Math.min(
       0.1,
       Math.max(0, (timestamp - jklReverseLastTimestamp) / 1000),
     );
     jklReverseLastTimestamp = timestamp;
-    const current = Number(player.currentTime);
+    const current = Number(MaweCoreState.player.currentTime);
     const rate = Math.max(0.0625, Math.abs(jklPlaybackRate));
     const next = Number.isFinite(current) ? current - elapsed * rate : 0;
     if (!Number.isFinite(current) || next <= 0) {
-      player.currentTime = 0;
+      MaweCoreState.player.currentTime = 0;
       jklReversePlaying = false;
       jklReverseLastTimestamp = 0;
       update();
-      waveformEditor?.updatePlayback();
+      MaweCoreState.waveformEditor?.updatePlayback();
       syncMediaControls();
       return;
     }
-    player.currentTime = next;
+    MaweCoreState.player.currentTime = next;
     updatePlaybackFrame();
     renderStickerOverlay(next * 1000);
     syncMediaControls();
@@ -109,8 +109,8 @@
     }
     jklReversePlaying = true;
     jklReverseLastTimestamp = 0;
-    player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
-    if (!player.paused) player.pause();
+    MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
+    if (!MaweCoreState.player.paused) MaweCoreState.player.pause();
     if (!jklReverseFrameId) jklReverseFrameId = requestAnimationFrame(stepJklReversePlayback);
     syncMediaControls();
     return true;
@@ -124,8 +124,8 @@
       return false;
     }
     stopJklReversePlayback({ render: false });
-    player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
-    const promise = player.play();
+    MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
+    const promise = MaweCoreState.player.play();
     if (promise && promise.catch) promise.catch(() => {});
     syncMediaControls();
     return true;

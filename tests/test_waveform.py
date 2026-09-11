@@ -314,14 +314,15 @@ class WaveformExtractionTests(unittest.TestCase):
 class EditorAssetTests(unittest.TestCase):
     def test_project_waveform_survives_loading_media(self) -> None:
         editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
+        core_state = (ROOT / "web" / "editor-core-state.js").read_text(encoding="utf-8")
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
-        self.assertIn("let waveformLoadedFromProject = false;", editor)
+        self.assertIn("let waveformLoadedFromProject = false;", core_state)
         self.assertIn(
-            "waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform, { render: false });",
+            "MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(DATA.waveform",
             editor,
         )
-        self.assertIn("const preserveProjectWaveform = waveformLoadedFromProject", editor)
-        self.assertIn("if (waveformEditor && !preserveProjectWaveform)", editor)
+        self.assertIn("const preserveProjectWaveform = MaweCoreState.waveformLoadedFromProject", editor)
+        self.assertIn("if (MaweCoreState.waveformEditor && !preserveProjectWaveform)", editor)
         self.assertIn("getPayload()", waveform)
 
     def test_reapeaks_waveform_is_the_default_shape_source(self) -> None:
@@ -422,9 +423,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="layout-drop-preview"', page)
         self.assertIn('layout-insert-preview', page)
         self.assertIn('insertLayoutModuleAtEdge', page)
-        self.assertIn('const dockHandle = container.querySelector', page)
-        self.assertIn("const cueElements = container.querySelectorAll(':scope > .cue');", page)
-        self.assertIn('onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot)', page)
+        self.assertIn('const dockHandle = MaweCoreState.container.querySelector', page)
+        self.assertIn("const cueElements = MaweCoreState.container.querySelectorAll(':scope > .cue');", page)
+        self.assertIn('onLayoutUndo: (label, snapshot) => MaweHistory.pushLayoutUndo(label, snapshot)', page)
         self.assertIn('this.cues = document.getElementById(\'cues-container\')', page)
         self.assertIn('flex-direction: column;', page)
         self.assertIn("class WaveformEditor", page)
@@ -696,7 +697,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn(
             "MaweSettings.updateEditorSettings({ timelineTimecodeSeparator: separator });\n"
             "  refreshTimelineSettingsUi();\n"
-            "  waveformEditor?.refreshPointerLine?.();\n"
+            "  MaweCoreState.waveformEditor?.refreshPointerLine?.();\n"
             "  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，\n"
             "  // 不必等到下一次字幕编辑操作才看到新格式。\n"
             "  renderAll({ waveform: 'none' });",
@@ -863,9 +864,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('id="export-open-subtitle-color-settings-arrow"', page)
         for field in ('index', 'time', 'charcount'):
             self.assertIn(f'id="cue-list-show-{field}" checked', page)
-            self.assertIn(f"container.classList.toggle('hide-cue-{field}'", page)
+            self.assertIn(f"MaweCoreState.container.classList.toggle('hide-cue-{field}'", page)
         self.assertIn('id="cue-list-show-sticker" checked> 表情包', page)
-        self.assertIn("container.classList.toggle('hide-cue-sticker'", page)
+        self.assertIn("MaweCoreState.container.classList.toggle('hide-cue-sticker'", page)
         self.assertIn('id="cue-list-auto-scroll-on-click" checked', page)
         self.assertIn('cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false', page)
         self.assertIn('if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll)', page)
@@ -912,7 +913,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="overlay-toggle" checked> 预览字幕', page)
         self.assertIn('id="sticker-overlay-toggle"> 预览表情包', page)
         self.assertIn('.player-wrap.fullscreen-preview .subtitle-overlay span', page)
-        self.assertIn("playerWrap?.classList.toggle('fullscreen-preview', document.fullscreenElement === playerWrap);", page)
+        self.assertIn("MaweDom.playerWrap?.classList.toggle('fullscreen-preview', document.fullscreenElement === MaweDom.playerWrap);", page)
         self.assertIn("overlayTextEl.style.setProperty(", page)
         self.assertIn('appearance.font_size || MaweSettings.SUBTITLE_DEFAULT_FONT_SIZE', page)
         self.assertIn('appearance.font_size || MaweSettings.EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE', page)
@@ -934,7 +935,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("cuePanelText?.addEventListener('keydown'", page)
         self.assertIn('const action = getConfiguredEnterAction(event);', page)
         self.assertIn("if (action === 'split') splitCuePanelAtCursor();", page)
-        self.assertIn('if (e.target === cuePanelText) return;', page)
+        self.assertIn('if (e.target === MaweDom.cuePanelText) return;', page)
         self.assertIn('.cue .sticker-slot {\n    flex: 0 1 80px; min-width: 40px;', page)
         self.assertIn('.cue .time {\n    font-size: 11px;', page)
         # 时间码列由字幕列表容器统一切换：宽时单行，窄于 700px 时所有行一起变成两行。
@@ -1098,7 +1099,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("flashHint('请先加载媒体，然后才能预览', 'invalid');", page)
         self.assertIn("flashHint('保存成功！', 'success');", page)
         self.assertIn("当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件", page)
-        self.assertIn('event.composedPath?.().includes(player)', page)
+        self.assertIn('event.composedPath?.().includes(MaweCoreState.player)', page)
         self.assertIn('function isTextEditingTarget(event)', page)
         self.assertIn('function isPlaybackKeyboardTarget(event)', page)
         self.assertIn('if (editingState || isTextEditingTarget(e)) return;', page)

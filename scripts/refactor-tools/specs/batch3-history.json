@@ -1,0 +1,6 @@
+{
+  "file": "editor-history.js",
+  "ns": "MaweHistory",
+  "header": "撤销/重做：历史栈、快照与各类型记录的入栈恢复。",
+  "ranges": [[364, 597]]
+}

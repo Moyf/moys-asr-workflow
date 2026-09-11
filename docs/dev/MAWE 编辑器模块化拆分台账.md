@@ -30,6 +30,9 @@ audience: 执行本轮拆分的维护者与 agent
 6. 严格模式 IIFE 会引爆 sloppy 隐式全局：每批后跑 `scan-implicit-globals.mjs`。
 7. 简写属性 `{ foo }` 改写为 `{ foo: NS.foo }`；解构绑定简写一律报错人工处理。
 8. 门面 setter 硬性不变量：原门面有 set ⇒ 必发布访问器对。
+9. **main 同步节奏**：每 2–3 批 `git fetch origin && git merge origin/main` 一次；
+   冲突解决 = 把 main 对 editor.js 的改动手工搬进对应模块；合并后跑完整验证组合。
+   绝不让分支长期漂移（fork 分支落后 171 提交不可合并就是教训）。
 
 ## 终态蓝图（参照外部阶段一终态，按本仓现状调整）
 
@@ -73,7 +76,18 @@ audience: 执行本轮拆分的维护者与 agent
 | --- | --- | --- | --- | --- |
 | 0 | 2026-09-10 | 安全网：`scripts/refactor-tools/` 8 件、`tests/test_editor_script_order.mjs`、`tests/test_editor_script_syntax.mjs`、acorn devDep | Node 286 pass；Python 1454 OK；顺序断言在平铺现状上通过 | f669d1e7 |
 | 1 | 2026-09-10 | `MaweHint`（7 符号，280 处引用改写）+ `MaweJklPlayback`（16 符号，42 处改写）；契约测试改按文件名钉 marker；新增 `probe-namespace.mjs` 无头探针 | node --check ×3 过；顺序断言过；Node 286 pass；Python 资产/打包/gui_web 320 OK；blank 临时产物含两模块、0 未解析 token；探针全绿零 pageerror | f2537d7d |
-| 2 | 2026-09-10 | `MaweSettings`（52/318）+ `MaweMultiSubtitleCore`（48/363）+ `MaweGapRemoveData`（23/67）+ `MaweColors`（4/15）；调色板注入守卫手工随迁 colors 模块；契约测试断言同步（EDITOR_SETTINGS → MaweSettings.EDITOR_SETTINGS 等） | node --check ×6 过；顺序断言过；Node 286 pass；Python 1454 OK；blank 临时产物 0 未解析 token；探针全绿零 pageerror；隐式全局扫描仅 4 处误报（multi-subtitle 模块延迟写 editor.js 顶层 let，全局词法绑定合法） | （本提交） |
+| 2 | 2026-09-10 | `MaweSettings`（52/318）+ `MaweMultiSubtitleCore`（48/363）+ `MaweGapRemoveData`（23/67）+ `MaweColors`（4/15）；调色板注入守卫手工随迁 colors 模块；契约测试断言同步（EDITOR_SETTINGS → MaweSettings.EDITOR_SETTINGS 等） | node --check ×6 过；顺序断言过；Node 286 pass；Python 1454 OK；blank 临时产物 0 未解析 token；探针全绿零 pageerror；隐式全局扫描仅 4 处误报（multi-subtitle 模块延迟写 editor.js 顶层 let，全局词法绑定合法） | a3e99881 + 72d4e857 |
+| 3 | 2026-09-11 | `MaweDom`（327/1648，295+32 个 main 新增 DOM 常量）、`MaweCuePanelState`（10/114）、`MaweHistory`（20/121）、`MaweCoreState`（9/394）；新增 `check-test-literals.mjs` 测试字面量批量校验；契约断言同步 9 处（container/player/waveformEditor → MaweCoreState.*、DOM 常量 → MaweDom.*、push* → MaweHistory.*） | node --check ×5 过；顺序断言过（load-time 引用清单序全验证）；Node 286 pass；Python 1454 OK；blank 临时产物探针全绿零 pageerror | （本提交） |
+
+Batch 3 执行备注：
+
+- dom 簇实际 327 符号（fork 295），main 新增 32 个 DOM 常量全部随迁；fork 的 7 个
+  旧名（subtitlePreviewSettings 等）在 main 已改名，不迁移。
+- **manifest 插入顺序=执行逆序**：codemod 每次插到 editor.js 正上方，多模块批次
+  中先执行的模块被后执行的挤到更早位置（本批最终序 dom→cue-panel→history→
+  core-state）。契约元组以实际清单为准，勿凭执行顺序推。
+- 跨模块延迟写（history 模块写 editor.js 的 lastClickedIdx 等）经共享全局词法
+  环境解析，合法；扫描器的文件局部启发式对此误报，已知类别。
 
 Batch 2 执行备注：
 

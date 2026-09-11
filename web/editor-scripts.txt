@@ -11,5 +11,9 @@ editor-settings.js
 editor-multi-subtitle-core.js
 editor-gap-remove-data.js
 editor-colors.js
+editor-dom.js
+editor-cue-panel-state.js
+editor-history.js
+editor-core-state.js
 editor.js
 editor-onboarding.js
