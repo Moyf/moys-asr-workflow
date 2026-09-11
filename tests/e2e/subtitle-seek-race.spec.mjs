@@ -111,7 +111,7 @@ test('dragging the waveform playhead crosses multi-row boundaries', async ({ pag
   await page.goto(server.url);
   await waitForMedia(page);
   await page.evaluate(() => {
-    const editor = waveformEditor;
+    const editor = MaweCoreState.waveformEditor;
     editor.settings.mode = 'multi';
     editor.settings.secondsPerRow = 10;
     editor.settings.rowHeight = 120;

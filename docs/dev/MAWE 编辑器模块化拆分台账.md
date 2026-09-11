@@ -103,7 +103,16 @@ IsOpen/syncLayers/bringToFront/bindActivation + createFloatingPanel），并**�
 需要前置依赖的模块必须在跑完后手动调清单序）。editor.js:360 的 boot 注册语句
 经改写为 `MaweFloatingPanel.bindFloatingSurfaceActivation` 后语义不变。
 
-| 4 | 2026-09-11 | 五模块 + 浮层家族前置（见上） | 同 Batch 3 全套 | （本提交） |
+| 4 | 2026-09-11 | 五模块 + 浮层家族前置（见上） | 同 Batch 3 全套 | c0d4f8ad |
+| 5 | 2026-09-11 | 十模块：`MaweMediaPlayback`(14) `MaweKeyboardTargets`(12) `MaweShortcuts`(5) `MaweMergeAdjacent`(1) `MaweAppearance`(37) `MawePreviewGeometry`(17) `MawePlaybackLoop`(13) `MaweStickerOverlay`(16) `MaweExportSrt`(12) `MaweExportTimeline`(31)，共 158 符号；codemod 新增 `symbols` 按符号名定位（行号免疫）；`gen-symbols-spec.mjs` 自动生成 spec；e2e 裸全局 `fix-e2e-globals.mjs` AST 级改写 87 处/11 文件 + 手工修 waveform-history 的 player 换装 3 处 | node --check ×11 过；顺序断言过；Node 286；Python 1454；探针零 pageerror；**全量 e2e 失败标题集合与基线完全一致（14/14，零新增零消失）** | （本提交） |
+
+Batch 5 执行备注：
+
+- `symbols` 定位弥补了行区间在分散符号场景的漂移脆弱性；行区间仍适用于连续块。
+- `fix-e2e-globals.mjs` 的整文件绑定收集会漏改「同文件其他用例里有同名局部变量」
+  的引用（waveform-history 里 4 处局部 `const player` 屏蔽了 2369-2373 的全局
+  swap）——此类需人工改写为访问器形式（`MaweCoreState.player = v`）。
+- e2e 全量在里程碑处串行跑，失败比对用标题集合（`%TEMP%\batch5b-e2e.json`）。
 
 Batch 2 执行备注：
 

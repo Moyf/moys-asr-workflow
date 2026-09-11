@@ -40,6 +40,16 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor-floating-panel.js",
                 "editor-settings-panels.js",
                 "editor-ninja.js",
+                "editor-media-playback.js",
+                "editor-keyboard-targets.js",
+                "editor-shortcuts.js",
+                "editor-merge-adjacent.js",
+                "editor-appearance.js",
+                "editor-preview-geometry.js",
+                "editor-playback-loop.js",
+                "editor-sticker-overlay.js",
+                "editor-export-srt.js",
+                "editor-export-timeline.js",
                 "editor.js",
                 "editor-onboarding.js",
             ),
@@ -71,6 +81,16 @@ class EditorAssetContractTests(unittest.TestCase):
             "editor-floating-panel.js": "(function initMaweFloatingPanel(global) {",
             "editor-settings-panels.js": "(function initMaweSettingsPanels(global) {",
             "editor-ninja.js": "(function initMaweNinja(global) {",
+            "editor-media-playback.js": "(function initMaweMediaPlayback(global) {",
+            "editor-keyboard-targets.js": "(function initMaweKeyboardTargets(global) {",
+            "editor-shortcuts.js": "(function initMaweShortcuts(global) {",
+            "editor-merge-adjacent.js": "(function initMaweMergeAdjacent(global) {",
+            "editor-appearance.js": "(function initMaweAppearance(global) {",
+            "editor-preview-geometry.js": "(function initMawePreviewGeometry(global) {",
+            "editor-playback-loop.js": "(function initMawePlaybackLoop(global) {",
+            "editor-sticker-overlay.js": "(function initMaweStickerOverlay(global) {",
+            "editor-export-srt.js": "(function initMaweExportSrt(global) {",
+            "editor-export-timeline.js": "(function initMaweExportTimeline(global) {",
             "editor.js": "'[MAWE][boot] AsrEditorUtils is unavailable; editor scripts are incomplete or out of order'",
             "editor-onboarding.js": "const helpOnboardingButton = document.getElementById('help-onboarding');",
         }
@@ -239,12 +259,13 @@ class EditorAssetContractTests(unittest.TestCase):
         script = edit.read_web_asset("editor.js")
         self.assertIn('id="sticker-otio-export-mode"', template)
         self.assertIn('option value="portable"', template)
-        self.assertIn("sticker_rel: sticker.rel || ''", script)
+        otio_script = edit.read_web_asset("editor-export-timeline.js")
+        self.assertIn("sticker_rel: sticker.rel || ''", otio_script)
         self.assertIn("sticker_rel: sticker.sticker_rel", script)
         self.assertIn("SERVER_CONFIG?.canPortableStickerExport", script)
         self.assertIn("SERVER_CONFIG?.portableStickerExportUrl", script)
-        self.assertIn("'stickers', buildStickerOtio", script)
-        self.assertIn("'gap-removed-stickers', buildGapRemovedStickerOtio", script)
+        self.assertIn("'stickers', MaweExportTimeline.buildStickerOtio", script)
+        self.assertIn("'gap-removed-stickers', MaweExportTimeline.buildGapRemovedStickerOtio", script)
         self.assertIn("timeline: JSON.parse(payload)", script)
 
     def test_portable_sticker_export_capability_syncs_after_project_binding(self) -> None:

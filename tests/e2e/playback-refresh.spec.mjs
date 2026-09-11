@@ -72,7 +72,7 @@ test('playback refreshes the subtitle preview and playhead without timeupdate', 
     media.currentTime = 0.02;
     renderAll();
     document.getElementById('extension-overlay-toggle').checked = true;
-    update();
+    MawePlaybackLoop.update();
   });
   await expect(page.locator('#overlay-main-text')).toHaveText('First');
   await expect(page.locator('#overlay-extension-text')).toHaveText('First extension');

@@ -42,6 +42,10 @@ const resolvedRanges = (spec.ranges || []).map(([a, b]) => [a, b]);
 if (spec.from) {
   resolvedRanges.push([lineOf(spec.from), lineOf(spec.to || spec.from)]);
 }
+// symbols: 显式符号名清单，逐名定位声明起始行（行号无关，跨批次稳定）。
+for (const name of spec.symbols || []) {
+  resolvedRanges.push([lineOf(name), lineOf(name)]);
+}
 const inRanges = (line) => resolvedRanges.some(([a, b]) => line >= a && line <= b);
 
 // ---- 1. 选出要搬走的顶层声明 ----

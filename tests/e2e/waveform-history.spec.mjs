@@ -48,10 +48,10 @@ async function enableSubtitleOverlayPreview(page) {
 test('removes adjacent corner radii from cue fragments split across waveform rows', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    waveformEditor.settings.mode = 'multi';
-    waveformEditor.settings.secondsPerRow = 5;
-    waveformEditor.multiRange = [-1, -1];
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.mode = 'multi';
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 5;
+    MaweCoreState.waveformEditor.multiRange = [-1, -1];
+    MaweCoreState.waveformEditor.render();
   });
 
   const fragments = await page.evaluate(() => [0, 1].map((rowIndex) => {
@@ -841,7 +841,7 @@ test('C merge keeps the subtitle list at its current position', async ({ page })
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
-    EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
+    MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
     renderAll({ waveform: 'none' });
     const list = document.getElementById('cues-container');
     const target = list.querySelector('.cue[data-idx="30"]');
@@ -1082,13 +1082,13 @@ test('rapid subtitle navigation reuses cached waveform rows', async ({ page }) =
   await page.evaluate(() => {
     // Put all fixture cues inside the cached row band so this test isolates
     // keyboard navigation from the cross-row incremental-render path.
-    waveformEditor.settings.secondsPerRow = 60;
-    waveformEditor.multiRange = [-1, -1];
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 60;
+    MaweCoreState.waveformEditor.multiRange = [-1, -1];
+    MaweCoreState.waveformEditor.render();
 
-    const original = waveformEditor.renderMultiVisible.bind(waveformEditor);
+    const original = MaweCoreState.waveformEditor.renderMultiVisible.bind(MaweCoreState.waveformEditor);
     window.__keyboardWaveformRenderStats = { calls: 0, forced: 0 };
-    waveformEditor.renderMultiVisible = function wrappedRenderMultiVisible(force = false) {
+    MaweCoreState.waveformEditor.renderMultiVisible = function wrappedRenderMultiVisible(force = false) {
       window.__keyboardWaveformRenderStats.calls += 1;
       if (force) window.__keyboardWaveformRenderStats.forced += 1;
       return original(force);
@@ -1153,9 +1153,9 @@ test('Home and End seek the player and reveal the media boundaries', async ({ pa
     return scroll.scrollHeight > scroll.clientHeight;
   })).toBe(true);
   await page.evaluate(() => {
-    waveformEditor.settings.mode = 'multi';
-    waveformEditor.settings.secondsPerRow = 10;
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.mode = 'multi';
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 10;
+    MaweCoreState.waveformEditor.render();
     const scroll = document.getElementById('waveform-scroll');
     scroll.scrollTop = scroll.scrollHeight;
   });
@@ -1334,13 +1334,13 @@ test('hovering a selected subtitle shows the B split hint', async ({ page }) => 
 test('the last multi-row waveform uses the media remainder width', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    waveformEditor.settings.mode = 'multi';
-    waveformEditor.settings.secondsPerRow = 64;
-    waveformEditor.settings.rowHeight = 72;
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.mode = 'multi';
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 64;
+    MaweCoreState.waveformEditor.settings.rowHeight = 72;
+    MaweCoreState.waveformEditor.render();
     const scroll = document.getElementById('waveform-scroll');
     scroll.scrollTop = scroll.scrollHeight;
-    waveformEditor.renderMultiVisible(true);
+    MaweCoreState.waveformEditor.renderMultiVisible(true);
   });
 
   const lastRow = page.locator('.waveform-row[data-row-index="4"]');
@@ -1406,18 +1406,18 @@ test('B and C refresh cue overlays without redrawing cached waveform canvases', 
   await page.goto(server.url);
   await makeFirstCueWordSplittable(page);
   await page.evaluate(() => {
-    waveformEditor.settings.secondsPerRow = 60;
-    waveformEditor.multiRange = [-1, -1];
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 60;
+    MaweCoreState.waveformEditor.multiRange = [-1, -1];
+    MaweCoreState.waveformEditor.render();
     window.__cueOverlayStats = { drawRows: 0, overlayRefreshes: 0 };
     window.__cachedWaveformCanvas = document.querySelector('.waveform-row canvas');
-    const originalDrawRow = waveformEditor.drawRow.bind(waveformEditor);
-    waveformEditor.drawRow = function wrappedDrawRow(...args) {
+    const originalDrawRow = MaweCoreState.waveformEditor.drawRow.bind(MaweCoreState.waveformEditor);
+    MaweCoreState.waveformEditor.drawRow = function wrappedDrawRow(...args) {
       window.__cueOverlayStats.drawRows += 1;
       return originalDrawRow(...args);
     };
-    const originalRefreshCueOverlay = waveformEditor.refreshCueOverlay.bind(waveformEditor);
-    waveformEditor.refreshCueOverlay = function wrappedRefreshCueOverlay(...args) {
+    const originalRefreshCueOverlay = MaweCoreState.waveformEditor.refreshCueOverlay.bind(MaweCoreState.waveformEditor);
+    MaweCoreState.waveformEditor.refreshCueOverlay = function wrappedRefreshCueOverlay(...args) {
       window.__cueOverlayStats.overlayRefreshes += 1;
       return originalRefreshCueOverlay(...args);
     };
@@ -1454,19 +1454,19 @@ test('B and C refresh cue overlays without redrawing cached waveform canvases', 
 test('waveform appearance wheel adjustments wait for input to settle', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    waveformEditor.settings.mode = 'multi';
-    waveformEditor.settings.secondsPerRow = 300;
-    waveformEditor.settings.rowHeight = 96;
-    waveformEditor.settings.waveformScale = 1;
-    waveformEditor.multiRange = [-1, -1];
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.mode = 'multi';
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 300;
+    MaweCoreState.waveformEditor.settings.rowHeight = 96;
+    MaweCoreState.waveformEditor.settings.waveformScale = 1;
+    MaweCoreState.waveformEditor.multiRange = [-1, -1];
+    MaweCoreState.waveformEditor.render();
 
     const row = document.querySelector('.waveform-row[data-row-index="0"]');
     const canvas = row?.querySelector('canvas');
     if (!row || !canvas) throw new Error('没有可测试的波形 Canvas');
     window.__waveformAppearanceStats = { drawRows: 0, canvas };
-    const originalDrawRow = waveformEditor.drawRow.bind(waveformEditor);
-    waveformEditor.drawRow = function wrappedDrawRow(...args) {
+    const originalDrawRow = MaweCoreState.waveformEditor.drawRow.bind(MaweCoreState.waveformEditor);
+    MaweCoreState.waveformEditor.drawRow = function wrappedDrawRow(...args) {
       window.__waveformAppearanceStats.drawRows += 1;
       return originalDrawRow(...args);
     };
@@ -1483,12 +1483,12 @@ test('waveform appearance wheel adjustments wait for input to settle', async ({ 
       }));
     }
     return {
-      scale: waveformEditor.settings.waveformScale,
+      scale: MaweCoreState.waveformEditor.settings.waveformScale,
       drawRows: window.__waveformAppearanceStats.drawRows,
     };
   });
   expect(scaleBefore).toEqual({ scale: 1, drawRows: 0 });
-  await expect.poll(() => page.evaluate(() => waveformEditor.settings.waveformScale)).toBe(2.5);
+  await expect.poll(() => page.evaluate(() => MaweCoreState.waveformEditor.settings.waveformScale)).toBe(2.5);
   await expect.poll(() => page.evaluate(() => window.__waveformAppearanceStats.drawRows > 0)).toBe(true);
 
   await page.evaluate(() => {
@@ -1505,21 +1505,21 @@ test('waveform appearance wheel adjustments wait for input to settle', async ({ 
     }
   });
   expect(await page.evaluate(() => ({
-    rowHeight: waveformEditor.settings.rowHeight,
+    rowHeight: MaweCoreState.waveformEditor.settings.rowHeight,
     drawRows: window.__waveformAppearanceStats.drawRows,
   }))).toEqual({ rowHeight: 96, drawRows: 0 });
-  await expect.poll(() => page.evaluate(() => waveformEditor.settings.rowHeight)).toBe(144);
+  await expect.poll(() => page.evaluate(() => MaweCoreState.waveformEditor.settings.rowHeight)).toBe(144);
   await expect.poll(() => page.evaluate(() => window.__waveformAppearanceStats.drawRows > 0)).toBe(true);
 });
 
 test('spectral color toggle shows pending state and ignores repeated clicks', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    waveformEditor.settings.mode = 'multi';
-    waveformEditor.settings.secondsPerRow = 10;
-    waveformEditor.settings.spectralColor = false;
-    waveformEditor.multiRange = [-1, -1];
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.mode = 'multi';
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 10;
+    MaweCoreState.waveformEditor.settings.spectralColor = false;
+    MaweCoreState.waveformEditor.multiRange = [-1, -1];
+    MaweCoreState.waveformEditor.render();
 
     const peakCount = 1000;
     const bytes = new Uint8Array(peakCount * 4);
@@ -1531,7 +1531,7 @@ test('spectral color toggle shows pending state and ignores repeated clicks', as
     }
     let binary = '';
     for (const byte of bytes) binary += String.fromCharCode(byte);
-    waveformEditor.setSpectralPayload({
+    MaweCoreState.waveformEditor.setSpectralPayload({
       schema: 'moy.asr.spectral.v1',
       encoding: 'u16-freq-density-base64',
       sample_rate: 8000,
@@ -1539,11 +1539,11 @@ test('spectral color toggle shows pending state and ignores repeated clicks', as
       peak_count: peakCount,
       data: btoa(binary),
     }, { render: false });
-    waveformEditor.spectralColorToggle.checked = false;
+    MaweCoreState.waveformEditor.spectralColorToggle.checked = false;
 
     window.__spectralColorStats = { renders: 0 };
-    const originalRender = waveformEditor.render.bind(waveformEditor);
-    waveformEditor.render = function wrappedRender(...args) {
+    const originalRender = MaweCoreState.waveformEditor.render.bind(MaweCoreState.waveformEditor);
+    MaweCoreState.waveformEditor.render = function wrappedRender(...args) {
       window.__spectralColorStats.renders += 1;
       return originalRender(...args);
     };
@@ -1580,7 +1580,7 @@ test('spectral color toggle shows pending state and ignores repeated clicks', as
       ariaBusy: toggle.getAttribute('aria-busy'),
       statusHidden: document.getElementById('waveform-spectral-status').hidden,
       renders: window.__spectralColorStats.renders,
-      setting: waveformEditor.settings.spectralColor,
+      setting: MaweCoreState.waveformEditor.settings.spectralColor,
     };
   })).toEqual({
     checked: true,
@@ -2101,8 +2101,8 @@ test('sticker Resolve and OTIO exports expand references per enabled subtitle', 
       { start: 5000, end: 6000, text: 'disabled', disabled: true, sticker_ref: { name: 'reaction', headIdx: 0 } },
       { start: 7000, end: 8000, text: 'dangling', sticker_ref: { name: 'missing', headIdx: 99 } },
     ];
-    const resolve = JSON.parse(buildResolveJson());
-    const otio = JSON.parse(buildStickerOtio());
+    const resolve = JSON.parse(MaweExportTimeline.buildResolveJson());
+    const otio = JSON.parse(MaweExportTimeline.buildStickerOtio());
     const children = otio.tracks.children[0].children;
     return {
       resolveStickers: resolve.segments.filter((segment) => segment.sticker).map((segment) => [
@@ -2154,7 +2154,7 @@ test('gap-removed OTIO exports subtitle text as clip markers with Resolve colors
       manual_corrections: false,
       gaps: [{ start: 2000, end: 3000, removed: true }],
     };
-    const otio = JSON.parse(buildGapRemovedOtio());
+    const otio = JSON.parse(MaweExportTimeline.buildGapRemovedOtio());
     return otio.tracks.children[0].children.map((clip) => ({
       markers: clip.markers.map((marker) => ({
         name: marker.name,
@@ -2355,7 +2355,7 @@ test('OTIO exports every source audio stream as its own audio track', async ({ p
         },
       ],
     };
-    const payload = JSON.parse(buildSourceOtio());
+    const payload = JSON.parse(MaweExportTimeline.buildSourceOtio());
     const summarizeTracks = (timeline) => timeline.tracks.children.map((track) => ({
       name: track.name,
       kind: track.kind,
@@ -2366,11 +2366,11 @@ test('OTIO exports every source audio stream as its own audio track', async ({ p
       clipName: track.children[0]?.name ?? null,
       referenceName: track.children[0]?.media_references?.DEFAULT_MEDIA?.name ?? null,
     }));
-    const originalPlayer = player;
+    const originalPlayer = MaweCoreState.player;
     const videoPlayer = document.createElement('video');
-    player = videoPlayer;
-    const videoPayload = JSON.parse(buildSourceOtio());
-    player = originalPlayer;
+    MaweCoreState.player = videoPlayer;
+    const videoPayload = JSON.parse(MaweExportTimeline.buildSourceOtio());
+    MaweCoreState.player = originalPlayer;
     return {
       tracks: summarizeTracks(payload),
       videoTracks: summarizeTracks(videoPayload),

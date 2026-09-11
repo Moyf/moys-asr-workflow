@@ -1,0 +1,24 @@
+{
+  "file": "editor-preview-geometry.js",
+  "ns": "MawePreviewGeometry",
+  "header": "预览几何：字幕/表情包预览框的手势拖拽与几何读写。",
+  "symbols": [
+    "setPreviewGeometry",
+    "applyPreviewGeometryToDom",
+    "getStickerGeometry",
+    "setStickerGeometry",
+    "applyStickerGeometryToDom",
+    "refreshPreviewGeometryEditable",
+    "previewGesture",
+    "previewTargetEl",
+    "previewTargetEnabled",
+    "getTargetGeometry",
+    "setTargetGeometry",
+    "playerStageRect",
+    "beginPreviewGesture",
+    "movePreviewGesture",
+    "endPreviewGesture",
+    "bindPreviewBoxPointerEvents",
+    "handlePreviewBoxKeydown"
+  ]
+}

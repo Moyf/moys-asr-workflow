@@ -99,37 +99,37 @@ test('WASD during playback follows the playhead instead of the last selected cue
     renderAll();
   });
   await page.locator('.cue[data-idx="0"]').click();
-  await page.evaluate(() => { player.currentTime = 101; });
+  await page.evaluate(() => { MaweCoreState.player.currentTime = 101; });
   await page.locator('#media-play-toggle').click();
   await expect(page.locator('#media-play-toggle')).toHaveText('⏸');
 
   await page.keyboard.press('a');
   await expect.poll(() => selectedCueIndex(page)).toBe('1');
-  await expect.poll(() => page.evaluate(() => player.currentTime)).toBeLessThan(11);
+  await expect.poll(() => page.evaluate(() => MaweCoreState.player.currentTime)).toBeLessThan(11);
 
   await page.locator('#media-play-toggle').click();
   await page.locator('.cue[data-idx="0"]').click();
-  await page.evaluate(() => { player.currentTime = 20; });
+  await page.evaluate(() => { MaweCoreState.player.currentTime = 20; });
   await page.locator('#media-play-toggle').click();
   await expect(page.locator('#media-play-toggle')).toHaveText('⏸');
 
   await page.keyboard.press('d');
   await expect.poll(() => selectedCueIndex(page)).toBe('2');
-  await expect.poll(() => page.evaluate(() => player.currentTime)).toBeGreaterThan(24);
+  await expect.poll(() => page.evaluate(() => MaweCoreState.player.currentTime)).toBeGreaterThan(24);
 });
 
 test('A/D at the outer cue boundaries still seeks the boundary cue', async ({ page }) => {
   await loadAttachedCues(page);
 
   await page.locator('.cue[data-idx="0"]').click();
-  await page.evaluate(() => { player.currentTime = 20; });
+  await page.evaluate(() => { MaweCoreState.player.currentTime = 20; });
   await page.keyboard.press('a');
-  await expect.poll(() => page.evaluate(() => player.currentTime)).toBeLessThan(6);
+  await expect.poll(() => page.evaluate(() => MaweCoreState.player.currentTime)).toBeLessThan(6);
 
   await page.locator('.cue[data-idx="2"]').click();
-  await page.evaluate(() => { player.currentTime = 1; });
+  await page.evaluate(() => { MaweCoreState.player.currentTime = 1; });
   await page.keyboard.press('d');
-  await expect.poll(() => page.evaluate(() => player.currentTime)).toBeGreaterThan(24);
+  await expect.poll(() => page.evaluate(() => MaweCoreState.player.currentTime)).toBeGreaterThan(24);
 });
 
 test('F seeks and plays a selected extension cue', async ({ page }) => {
@@ -155,7 +155,7 @@ test('F seeks and plays a selected extension cue', async ({ page }) => {
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"]').first();
   await expect(extensionBlock).toBeVisible();
   await extensionBlock.click();
-  await page.evaluate(() => { player.currentTime = 1; });
+  await page.evaluate(() => { MaweCoreState.player.currentTime = 1; });
   await page.keyboard.press('f');
   await page.waitForFunction(() => {
     const media = document.getElementById('player');
@@ -166,7 +166,7 @@ test('F seeks and plays a selected extension cue', async ({ page }) => {
 test('I/O seeks the current cue boundaries and stays paused', async ({ page }) => {
   await loadAttachedCues(page);
   await page.locator('.cue[data-idx="1"]').click();
-  await page.evaluate(() => { player.currentTime = 1; });
+  await page.evaluate(() => { MaweCoreState.player.currentTime = 1; });
   await page.locator('#media-play-toggle').click();
   await page.waitForFunction(() => !document.getElementById('player').paused);
 

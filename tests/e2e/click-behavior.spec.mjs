@@ -757,7 +757,7 @@ test('C merge keeps the extension cue visually anchored while lazy rows relayout
       }],
       bindings: [],
     };
-    normalizedMultiSubtitleReference = null;
+    MaweMultiSubtitleCore.normalizedMultiSubtitleReference = null;
     renderAll();
     document.querySelector('.cue[data-ext-idx="56"]').scrollIntoView({ block: 'end' });
   });

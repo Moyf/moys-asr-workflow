@@ -64,10 +64,10 @@
     const wasPlaying = jklReversePlaying;
     jklReversePlaying = false;
     if (render && wasPlaying) {
-      update();
+      MawePlaybackLoop.update();
       MaweCoreState.waveformEditor?.updatePlayback();
     }
-    if (render) syncMediaControls();
+    if (render) MaweMediaPlayback.syncMediaControls();
   }
 
 
@@ -88,22 +88,22 @@
       MaweCoreState.player.currentTime = 0;
       jklReversePlaying = false;
       jklReverseLastTimestamp = 0;
-      update();
+      MawePlaybackLoop.update();
       MaweCoreState.waveformEditor?.updatePlayback();
-      syncMediaControls();
+      MaweMediaPlayback.syncMediaControls();
       return;
     }
     MaweCoreState.player.currentTime = next;
-    updatePlaybackFrame();
-    renderStickerOverlay(next * 1000);
-    syncMediaControls();
+    MawePlaybackLoop.updatePlaybackFrame();
+    MaweStickerOverlay.renderStickerOverlay(next * 1000);
+    MaweMediaPlayback.syncMediaControls();
     if (jklReversePlaying) jklReverseFrameId = requestAnimationFrame(stepJklReversePlayback);
   }
 
 
 
   function startJklReversePlayback() {
-    if (!hasLoadedMedia()) {
+    if (!MaweMediaPlayback.hasLoadedMedia()) {
       MaweHint.flashHint('请先加载媒体，然后才能预览', 'invalid');
       return false;
     }
@@ -112,14 +112,14 @@
     MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
     if (!MaweCoreState.player.paused) MaweCoreState.player.pause();
     if (!jklReverseFrameId) jklReverseFrameId = requestAnimationFrame(stepJklReversePlayback);
-    syncMediaControls();
+    MaweMediaPlayback.syncMediaControls();
     return true;
   }
 
 
 
   function playJklForward() {
-    if (!hasLoadedMedia()) {
+    if (!MaweMediaPlayback.hasLoadedMedia()) {
       MaweHint.flashHint('请先加载媒体，然后才能预览', 'invalid');
       return false;
     }
@@ -127,7 +127,7 @@
     MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
     const promise = MaweCoreState.player.play();
     if (promise && promise.catch) promise.catch(() => {});
-    syncMediaControls();
+    MaweMediaPlayback.syncMediaControls();
     return true;
   }
 

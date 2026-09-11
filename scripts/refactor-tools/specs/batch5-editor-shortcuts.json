@@ -1,0 +1,12 @@
+{
+  "file": "editor-shortcuts.js",
+  "ns": "MaweShortcuts",
+  "header": "快捷键共用件：拦截提示、空格拦截与播放速率档位格式化。",
+  "symbols": [
+    "showShortcutBlocked",
+    "interceptedSpace",
+    "PLAYBACK_RATE_MIN",
+    "PLAYBACK_RATE_MAX",
+    "fmtRate"
+  ]
+}

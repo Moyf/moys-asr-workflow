@@ -154,8 +154,8 @@ test('assigning and clearing a sticker keeps the subtitle row in place', async (
       text: `Cue ${index + 1}`,
       items: [],
     }));
-    EDITOR_SETTINGS.cueListShowSticker = true;
-    EDITOR_SETTINGS.cueEditorShowSticker = true;
+    MaweSettings.EDITOR_SETTINGS.cueListShowSticker = true;
+    MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker = true;
     segments[0].sticker = {
       name: 'existing', filename: 'existing.png',
       start: segments[0].start, end: segments[0].end,
@@ -211,7 +211,7 @@ test('search filtering keeps the selected subtitle in the same visual position',
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
-    EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
+    MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
     renderAll({ waveform: 'none' });
   });
 
@@ -222,7 +222,7 @@ test('search filtering keeps the selected subtitle in the same visual position',
   const beforeTop = await target.evaluate((element) => element.getBoundingClientRect().top);
 
   await page.evaluate(() => {
-    searchEl.value = 'Keep';
+    MaweDom.searchEl.value = 'Keep';
     applySearch('Keep');
   });
   await expect(page.locator('#visible-count')).toHaveText('20');
@@ -245,7 +245,7 @@ test('search filtering does not jump to the top when the selected subtitle is hi
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
-    EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
+    MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
     renderAll({ waveform: 'none' });
   });
 
@@ -255,7 +255,7 @@ test('search filtering does not jump to the top when the selected subtitle is hi
   await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 
   await page.evaluate(() => {
-    searchEl.value = 'Keep';
+    MaweDom.searchEl.value = 'Keep';
     applySearch('Keep');
   });
   await expect(target).toHaveClass(/hidden/);

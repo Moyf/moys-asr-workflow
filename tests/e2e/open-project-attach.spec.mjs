@@ -76,7 +76,7 @@ test('dropping a legacy project lets the blank server take over after ID normali
   expect(playerSrc).toContain('/media');
 
   await page.evaluate(() => {
-    updateEditorSettings({ autoSaveProject: false });
+    MaweSettings.updateEditorSettings({ autoSaveProject: false });
     scheduleAutoSave();
     scheduleAutoSaveFlush();
   });

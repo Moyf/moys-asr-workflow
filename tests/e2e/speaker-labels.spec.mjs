@@ -41,7 +41,7 @@ async function revealSpeakerCue(page) {
     media.currentTime = 1;
     media.dispatchEvent(new Event('seeked'));
     media.dispatchEvent(new Event('timeupdate'));
-    refreshSubtitlePreview(1000, 0);
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   });
   await expect(page.locator('#overlay')).toBeVisible();
 }
@@ -217,7 +217,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await page.locator('#editor-settings-tab-export').click();
   const exportToggle = page.locator('#export-speaker-labels');
   await expect(exportToggle).toBeChecked();
-  expect(await page.evaluate(() => buildSrt())).toContain('Host"Alpha');
+  expect(await page.evaluate(() => MaweExportSrt.buildSrt())).toContain('Host"Alpha');
   const suffixToggle = page.locator('#export-speaker-names-as-suffix');
   await expect(suffixToggle).not.toBeChecked();
   await suffixToggle.check();
@@ -228,7 +228,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
     const previousColor = DATA.segments[1].color;
     DATA.segments[1].color = { name: 'green' };
     window.showSaveFilePicker = undefined;
-    await downloadColorSrts(false);
+    await MaweExportSrt.downloadColorSrts(false);
     if (previousColor) DATA.segments[1].color = previousColor;
     else delete DATA.segments[1].color;
     return { filenameBase: FILENAME_BASE };
@@ -252,12 +252,12 @@ test('configures preview-only speaker labels and independently controls SRT expo
 
   await exportToggle.uncheck();
   await expect(exportToggle).not.toBeChecked();
-  expect(await page.evaluate(() => buildSrt())).not.toContain('Host"Alpha');
-  expect(await page.evaluate(() => buildSrt())).toContain('Alpha');
+  expect(await page.evaluate(() => MaweExportSrt.buildSrt())).not.toContain('Host"Alpha');
+  expect(await page.evaluate(() => MaweExportSrt.buildSrt())).toContain('Alpha');
 
   await page.locator('#editor-settings-close').click();
   await page.getByRole('button', { name: '保存工程', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => previewGeometryDirty)).toBe(false);
+  await expect.poll(() => page.evaluate(() => MaweAppearance.previewGeometryDirty)).toBe(false);
 
   const onDisk = JSON.parse(readFileSync(projectPath, 'utf-8'));
   expect(onDisk.preview.subtitle.speaker_labels).toEqual({

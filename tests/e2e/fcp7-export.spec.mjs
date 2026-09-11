@@ -233,8 +233,8 @@ test('missing media duration fails the export with no save attempt and no false 
   await page.evaluate(() => {
     DATA.waveform = null;
     // durationMs 是只读 getter：清空 payload 并让媒体时长不可读，导出计划即拒绝构建。
-    if (waveformEditor) waveformEditor.payload = null;
-    Object.defineProperty(player, 'duration', { configurable: true, get: () => Number.NaN });
+    if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.payload = null;
+    Object.defineProperty(MaweCoreState.player, 'duration', { configurable: true, get: () => Number.NaN });
   });
 
   await openFcp7Modal(page);

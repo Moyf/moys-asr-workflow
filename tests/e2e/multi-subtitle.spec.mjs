@@ -667,10 +667,10 @@ test('keeps adjacent corners square on both subtitle lanes across waveform rows'
   await expect(page.locator('.waveform-row.multi-subtitle-row')).not.toHaveCount(0);
 
   await page.evaluate(() => {
-    waveformEditor.settings.mode = 'multi';
-    waveformEditor.settings.secondsPerRow = 5;
-    waveformEditor.multiRange = [-1, -1];
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.mode = 'multi';
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 5;
+    MaweCoreState.waveformEditor.multiRange = [-1, -1];
+    MaweCoreState.waveformEditor.render();
   });
 
   const lanes = await page.evaluate(() => ['main', 'extension'].map((track) => {

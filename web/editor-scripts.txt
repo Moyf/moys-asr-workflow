@@ -21,5 +21,15 @@ editor-display-settings.js
 editor-floating-panel.js
 editor-settings-panels.js
 editor-ninja.js
+editor-media-playback.js
+editor-keyboard-targets.js
+editor-shortcuts.js
+editor-merge-adjacent.js
+editor-appearance.js
+editor-preview-geometry.js
+editor-playback-loop.js
+editor-sticker-overlay.js
+editor-export-srt.js
+editor-export-timeline.js
 editor.js
 editor-onboarding.js
