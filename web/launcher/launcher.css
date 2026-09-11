@@ -796,6 +796,32 @@ label {
 
 .toolbox-translation-options {
   margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+/* 提示语贴近它所属的选项；组与组之间保持 gap 间距（GUI 留白原则）。 */
+.toolbox-translation-options .hint {
+  margin: -4px 0 0;
+}
+
+/* 双语行序与「合并字幕」勾选项同行；勾选后才出现。 */
+.toolbox-merge-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.toolbox-merge-row .check-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.toolbox-merge-row select,
+#autoTranslateBilingualOrder {
+  flex: 0 1 170px;
+  min-width: 0;
 }
 
 .auto-postprocess-summary {
@@ -1726,28 +1752,23 @@ textarea::placeholder {
 
 .toolbox-header {
   position: relative;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 50%) minmax(0, 1fr);
+  align-items: center;
   gap: 16px;
-  padding-inline-end: 44px;
-}
-
-.toolbox-header-copy {
-  flex: 1 1 220px;
-  min-width: 0;
 }
 
 .toolbox-header h2 {
   margin: 0;
   font-size: 16px;
+  white-space: nowrap;
+  justify-self: start;
 }
 
-.toolbox-header-copy p {
-  margin: 5px 0 0;
-  padding-bottom: 7px;
-  color: var(--text-muted);
-  font-size: 13px;
+/* 关闭按钮在抽屉内是普通网格子项（不再是浮动的绝对定位），标签页才能稳定居中。 */
+#toolboxClose {
+  position: static;
+  justify-self: end;
 }
 
 #toolboxClose,
@@ -1765,12 +1786,6 @@ textarea::placeholder {
   font-size: 22px;
   font-weight: 700;
   line-height: 1;
-}
-
-#toolboxClose {
-  position: absolute;
-  top: -3px;
-  right: 0;
 }
 
 #toolboxClose:hover:not(:disabled),
@@ -1968,10 +1983,12 @@ textarea::placeholder {
 }
 
 .toolbox-primary-tabs {
+  width: 100%;
+  min-width: 0;
+  justify-self: center;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
-  margin-top: 12px;
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -2023,59 +2040,18 @@ textarea::placeholder {
   gap: 4px;
 }
 
+.toolbox-tab-list-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .toolbox-utilities-content {
   display: grid;
-  grid-template-columns: minmax(108px, .25fr) minmax(0, 1fr);
   gap: 12px;
-  align-items: stretch;
   margin-top: 12px;
-}
-
-/* 实用工具区左右两列各自独立滚动：激活时 scroller 变 flex 列，
-   utilities 网格占满剩余高度，滚动只发生在两列内部。 */
-.toolbox-drawer.toolbox-utilities-active .toolbox-content {
-  display: flex;
-  flex-direction: column;
-  --toolbox-top-fade: 0px;
-  --toolbox-bottom-fade: 0px;
-  animation: none;
-}
-
-.toolbox-drawer.toolbox-utilities-active .toolbox-utilities-content {
-  flex: 1 1 auto;
-  min-block-size: 0;
-}
-
-/* 左列极少溢出；隐去滚动条，避免经典滚动条在标签右侧长期占位。 */
-.toolbox-utility-tabs {
-  overflow-y: auto;
-  min-block-size: 0;
-  overscroll-behavior: contain;
-  margin-top: 0;
-  padding: 4px;
-  scrollbar-width: none;
-}
-
-.toolbox-utility-tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.toolbox-utility-tab-list {
-  grid-template-columns: 1fr;
-}
-
-.toolbox-utility-tab-list .toolbox-tab {
-  min-height: 36px;
-  padding: 7px 9px;
-  text-align: left;
-  line-height: 1.35;
 }
 
 .toolbox-utility-panels {
   min-width: 0;
-  min-block-size: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .toolbox-utility-panels .toolbox-panel {
@@ -2701,7 +2677,6 @@ code {
 
 @media (max-width:620px) {
   .toolbox-utilities-content {
-    grid-template-columns: minmax(96px, 25%) minmax(0, 1fr);
     gap: 8px;
   }
 }
@@ -2714,15 +2689,21 @@ code {
 
 @media (max-width:460px) {
   .toolbox-header {
-    flex-wrap: wrap;
     gap: 10px 12px;
   }
-  .toolbox-header-copy {
-    flex: 1 1 calc(100% - 48px);
+  .toolbox-header h2 {
+    grid-column: 1;
+    grid-row: 1;
   }
-  .toolbox-beta {
-    flex: 1 1 100%;
-    order: 3;
+  #toolboxClose {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .toolbox-header .toolbox-primary-tabs {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: stretch;
+    max-width: none;
   }
 }
 

@@ -46,8 +46,7 @@
         </div>
       </div>
       <nav class="hero-links" aria-label="links">
-        <button id="settingsButton" class="ghost small" type="button" aria-label="settings" data-i18n-title="settings_title" title="配置">⚙️<span id="settingsDot" class="settings-dot hidden"></span></button>
-        <button id="langToggle" class="ghost small" type="button">English</button>
+        <button id="settingsButton" class="ghost small" type="button" aria-label="settings" data-i18n-title="settings_title" title="配置">⚙️<span data-i18n="settings_button">设置</span><span id="settingsDot" class="settings-dot hidden"></span></button>
       </nav>
       <button id="homeLink" class="text-link hero-home" type="button" data-i18n="project_home">项目官网</button>
     </header>
@@ -193,13 +192,7 @@
               <h3 data-i18n="advanced_params">识别参数</h3>
               <div class="advanced-col">
                 <div id="localDeviceField" class="field hidden"><label for="localDevice" data-i18n="local_device">设备</label><select id="localDevice"><option value="auto" data-i18n="device_auto">自动</option><option value="cpu" data-i18n="device_cpu">CPU</option><option value="cuda" data-i18n="device_cuda">CUDA</option></select></div>
-                <div id="regionField" class="field hidden"><label for="region" data-i18n="region">地域</label><select id="region"></select></div>
-                <div id="workspaceField" class="field hidden">
-                  <label for="workspaceId" data-i18n="workspace">工作空间 ID</label>
-                  <input id="workspaceId" type="text" autocomplete="off">
-                  <p class="hint" data-i18n="workspace_hint">北京地域选填（推荐），新加坡地域必填。</p>
-                  <p id="workspaceIdError" class="field-error"></p>
-                </div>
+                <p id="dashscopeRegionHint" class="hint hidden"><button id="openDashscopeRegionSettings" class="inline-link" type="button" data-i18n="dashscope_region_hint_advanced">如果你不是中国大陆地区的用户，请前往 ⚙️ 设置 → 运行环境 配置百炼地域与业务空间。</button></p>
                 <div id="lengthLimitField" class="field"><label for="lengthLimit" data-i18n="length_limit">时长上限</label><input id="lengthLimit" type="text" placeholder="2m / 30s / 1h" autocomplete="off"></div>
               </div>
             </div>
@@ -411,8 +404,18 @@
               </div>
               <label id="autoTranslateMergeField" class="check-field auto-translate-merge hidden" for="autoTranslateMergeBilingual">
                 <input id="autoTranslateMergeBilingual" type="checkbox">
-                <span data-i18n="auto_merge_bilingual">合并双语字幕</span>
+                <span data-i18n="auto_merge_bilingual">将双语字幕合并为单个字幕</span>
               </label>
+              <select id="autoTranslateBilingualOrder" class="hidden auto-translate-merge">
+                <option value="translation_first" data-i18n="bilingual_order_translation_first">译文在上</option>
+                <option value="original_first" data-i18n="bilingual_order_original_first">原文在上</option>
+              </select>
+              <p id="autoTranslateMergeHint" class="hint auto-translate-merge hidden" data-i18n="merge_bilingual_hint">将双语字幕合并成一个字幕文件，上下换行显示。</p>
+              <label id="autoTranslateBackfillField" class="check-field auto-translate-merge hidden" for="autoTranslateBackfill">
+                <input id="autoTranslateBackfill" type="checkbox">
+                <span data-i18n="auto_backfill_subtitles">只翻译非中文的字幕</span>
+              </label>
+              <p id="autoTranslateBackfillHint" class="hint auto-translate-merge hidden" data-i18n="backfill_subtitles_hint">适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。</p>
             </div>
             <label class="check-field" for="autoPostprocessRetain">
               <input id="autoPostprocessRetain" type="checkbox">
@@ -499,16 +502,13 @@
   <aside id="toolboxDrawer" class="toolbox-drawer hidden" role="dialog" aria-modal="false" aria-labelledby="toolboxTitle">
     <div class="toolbox-sticky">
       <header class="toolbox-header">
-        <div class="toolbox-header-copy">
-          <h2 id="toolboxTitle" data-i18n="toolbox_title">工具箱</h2>
-          <p data-i18n="toolbox_chain_hint">每次生成新文件，并自动作为下一步输入；选择工具后运行。</p>
-        </div>
+        <h2 id="toolboxTitle" data-i18n="toolbox_title">工具箱</h2>
+        <nav id="toolboxPrimaryTabList" class="toolbox-primary-tabs" role="tablist" aria-labelledby="toolboxTitle">
+          <button id="toolboxPostprocessPrimaryTab" class="toolbox-primary-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="toolboxPostprocessView" data-toolbox-section="postprocess" data-i18n="toolbox_group_postprocess">后处理</button>
+          <button id="toolboxUtilitiesPrimaryTab" class="toolbox-primary-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxUtilitiesView" data-toolbox-section="utilities" data-i18n="toolbox_group_utilities">实用工具</button>
+        </nav>
         <button id="toolboxClose" class="ghost small" type="button" aria-label="close">×</button>
       </header>
-      <nav id="toolboxPrimaryTabList" class="toolbox-primary-tabs" role="tablist" aria-labelledby="toolboxTitle">
-        <button id="toolboxPostprocessPrimaryTab" class="toolbox-primary-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="toolboxPostprocessView" data-toolbox-section="postprocess" data-i18n="toolbox_group_postprocess">后处理</button>
-        <button id="toolboxUtilitiesPrimaryTab" class="toolbox-primary-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxUtilitiesView" data-toolbox-section="utilities" data-i18n="toolbox_group_utilities">实用工具</button>
-      </nav>
       <section id="toolboxPostprocessView" class="toolbox-primary-view" role="tabpanel" aria-labelledby="toolboxPostprocessPrimaryTab">
         <div id="toolboxInputDropZone" class="field toolbox-input">
           <div class="toolbox-input-heading">
@@ -519,7 +519,6 @@
             <input id="toolboxInputPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_input_placeholder" placeholder="跟随工程文件，也可拖入 .mosp / .json / .srt">
             <button id="pickToolboxInput" class="ghost" type="button" data-i18n="choose">选择</button>
           </div>
-           <p id="toolboxInputHint" class="hint" data-i18n="toolbox_input_hint">默认跟随「工程文件」并随每次处理更新；手动选择或拖入后以这里为准。</p>
           <p id="toolboxInputPathError" class="field-error"></p>
         </div>
         <div id="toolboxChain" class="toolbox-chain hidden" aria-label="processing artifacts">
@@ -545,15 +544,17 @@
             <input id="toolboxUtilityMediaPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_utility_media_placeholder" placeholder="默认跟随 Launcher 媒体，也可选择或拖入媒体文件">
             <button id="pickToolboxUtilityMedia" class="ghost" type="button" data-i18n="choose">选择</button>
           </div>
-          <p class="hint" data-i18n="toolbox_utility_media_hint">默认跟随 Launcher 媒体；选择或拖入媒体后，以这里为准。清空可恢复跟随。</p>
           <p id="toolboxUtilityMediaPathError" class="field-error"></p>
         </div>
-        <div id="toolboxAudioTrackField" class="field hidden">
-          <label for="toolboxAudioTrack" data-i18n="toolbox_audio_track">音轨</label>
-          <select id="toolboxAudioTrack"></select>
-          <p id="toolboxAudioTrackStatus" class="hint" aria-live="polite" data-i18n="toolbox_audio_track_choose">先选择媒体，MAW 会读取可用音轨。</p>
-          <p id="toolboxAudioTrackError" class="field-error"></p>
-        </div>
+        <nav id="toolboxUtilitiesTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxUtilitiesPrimaryTab">
+          <div class="toolbox-tab-list toolbox-tab-list-5">
+            <button id="toolboxBurnSubtitleTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxBurnSubtitlePanel" data-tool="burnSubtitle" tabindex="-1" data-i18n="toolbox_burn_subtitle">压制字幕</button>
+            <button id="toolboxFfconcatTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" tabindex="-1" data-i18n="toolbox_ffconcat">媒体重组</button>
+            <button id="toolboxAlignmentTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxAlignmentPanel" data-tool="alignment" tabindex="-1" data-i18n="toolbox_alignment">口播对齐</button>
+            <button id="toolboxExtractAudioTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxExtractAudioPanel" data-tool="extractAudio" tabindex="-1" data-i18n="toolbox_extract_audio">提取音频</button>
+            <button id="toolboxWaveformTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxWaveformPanel" data-tool="waveform" data-i18n="toolbox_waveform">生成波形</button>
+          </div>
+        </nav>
       </section>
     </div>
     <div class="toolbox-content">
@@ -574,15 +575,12 @@
         </details>
       </div>
       <div id="toolboxUtilitiesContent" class="toolbox-utilities-content hidden">
-        <nav id="toolboxUtilitiesTabList" class="toolbox-tabs toolbox-utility-tabs" role="tablist" aria-orientation="vertical" aria-labelledby="toolboxUtilitiesPrimaryTab">
-          <div class="toolbox-tab-list toolbox-utility-tab-list">
-            <button id="toolboxAlignmentTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxAlignmentPanel" data-tool="alignment" tabindex="-1" data-i18n="toolbox_alignment">口播对齐</button>
-            <button id="toolboxWaveformTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxWaveformPanel" data-tool="waveform" data-i18n="toolbox_waveform">生成波形</button>
-            <button id="toolboxFfconcatTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" tabindex="-1" data-i18n="toolbox_ffconcat">媒体重组</button>
-            <button id="toolboxBurnSubtitleTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxBurnSubtitlePanel" data-tool="burnSubtitle" tabindex="-1" data-i18n="toolbox_burn_subtitle">压制字幕</button>
-            <button id="toolboxExtractAudioTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxExtractAudioPanel" data-tool="extractAudio" tabindex="-1" data-i18n="toolbox_extract_audio">提取音频</button>
-          </div>
-        </nav>
+        <div id="toolboxAudioTrackField" class="field hidden">
+          <label for="toolboxAudioTrack" data-i18n="toolbox_audio_track">音轨</label>
+          <select id="toolboxAudioTrack"></select>
+          <p id="toolboxAudioTrackStatus" class="hint" aria-live="polite" data-i18n="toolbox_audio_track_choose">先选择媒体，MAW 会读取可用音轨。</p>
+          <p id="toolboxAudioTrackError" class="field-error"></p>
+        </div>
         <div class="toolbox-utility-panels">
       <section id="toolboxWaveformPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxWaveformTab">
         <p class="hint toolbox-panel-hint" data-i18n="toolbox_waveform_hint">仅使用上方媒体生成带内嵌波形的媒体工程，不需要字幕或转写。</p>
@@ -821,10 +819,22 @@
           </div>
         </div>
         <div id="postprocessTranslationOptions" class="toolbox-translation-options hidden">
-          <label class="check-field" for="postprocessMergeBilingual">
-            <input id="postprocessMergeBilingual" type="checkbox">
-            <span data-i18n="toolbox_merge_bilingual">合并双语字幕</span>
+          <div class="toolbox-merge-row">
+            <label class="check-field" for="postprocessMergeBilingual">
+              <input id="postprocessMergeBilingual" type="checkbox">
+              <span data-i18n="toolbox_merge_bilingual">将双语字幕合并为单个字幕</span>
+            </label>
+            <select id="postprocessBilingualOrder" class="hidden">
+              <option value="translation_first" data-i18n="bilingual_order_translation_first">译文在上</option>
+              <option value="original_first" data-i18n="bilingual_order_original_first">原文在上</option>
+            </select>
+          </div>
+          <p class="hint" data-i18n="merge_bilingual_hint">将双语字幕合并成一个字幕文件，上下换行显示。</p>
+          <label class="check-field" for="postprocessBackfill">
+            <input id="postprocessBackfill" type="checkbox">
+            <span data-i18n="toolbox_backfill_subtitles">只翻译非中文的字幕</span>
           </label>
+          <p class="hint" data-i18n="backfill_subtitles_hint">适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。</p>
         </div>
         <p class="toolbox-settings-hint"><span id="postprocessProviderStatus" class="hint"></span> <button id="openLlmSettings" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 API Key</button></p>
       </div>
@@ -975,7 +985,30 @@
         </div>
       </div>
       <div class="settings-section">
+        <h3 data-i18n="settings_file_output">文件输出</h3>
+        <label class="check-field" for="outputSubfolder">
+          <input id="outputSubfolder" type="checkbox" data-i18n-title="output_subfolder_title" title="将所有输出文件放入子文件夹（默认关闭）：SRT、工程与编辑器页面写入媒体旁的 _maw 子目录">
+          <span data-i18n="output_subfolder">将所有输出文件放入子文件夹</span>
+        </label>
+        <label class="check-field" for="perVideoSubfolder">
+          <input id="perVideoSubfolder" type="checkbox" data-i18n-title="per_video_subfolder_title" title="每个视频单独创建子文件夹（默认关闭）：需要先开启「将所有输出文件放入子文件夹」，每个媒体各自使用「视频名_maw」目录">
+          <span data-i18n="per_video_subfolder">每个视频单独创建子文件夹</span>
+        </label>
+        <label class="check-field" for="attachModelName">
+          <input id="attachModelName" type="checkbox" data-i18n-title="attach_model_name_title" title="附加模型名称（默认开启）：SRT 文件名带上供应商/模型段，如 clip.qwen-audio.srt">
+          <span data-i18n="attach_model_name">附加模型名称</span>
+        </label>
+      </div>
+      <div class="settings-section">
         <h3 data-i18n="settings_language">语言</h3>
+        <div class="field">
+          <label data-i18n="settings_interface_language">界面语言</label>
+          <div class="segmented" role="group">
+            <button type="button" class="segment" id="langZh" data-i18n="lang_zh">中文</button>
+            <button type="button" class="segment" id="langEn" data-i18n="lang_en">English</button>
+          </div>
+          <p class="hint" data-i18n="interface_language_hint">首次使用时跟随系统语言；在这里切换会立即保存。</p>
+        </div>
         <label class="check-field" for="showRareLangs">
           <input id="showRareLangs" type="checkbox">
           <span data-i18n="show_rare_langs">显示相对小众的语言</span>
@@ -994,21 +1027,6 @@
           </div>
           <p id="stickerDirError" class="field-error"></p>
         </div>
-      </div>
-      <div class="settings-section">
-        <h3 data-i18n="settings_file_output">文件输出</h3>
-        <label class="check-field" for="outputSubfolder">
-          <input id="outputSubfolder" type="checkbox" data-i18n-title="output_subfolder_title" title="将所有输出文件放入子文件夹（默认关闭）：SRT、工程与编辑器页面写入媒体旁的 _maw 子目录">
-          <span data-i18n="output_subfolder">将所有输出文件放入子文件夹</span>
-        </label>
-        <label class="check-field" for="perVideoSubfolder">
-          <input id="perVideoSubfolder" type="checkbox" data-i18n-title="per_video_subfolder_title" title="每个视频单独创建子文件夹（默认关闭）：需要先开启「将所有输出文件放入子文件夹」，每个媒体各自使用「视频名_maw」目录">
-          <span data-i18n="per_video_subfolder">每个视频单独创建子文件夹</span>
-        </label>
-        <label class="check-field" for="attachModelName">
-          <input id="attachModelName" type="checkbox" data-i18n-title="attach_model_name_title" title="附加模型名称（默认开启）：SRT 文件名带上供应商/模型段，如 clip.qwen-audio.srt">
-          <span data-i18n="attach_model_name">附加模型名称</span>
-        </label>
       </div>
       </section>
       <section id="settingsLlmPanel" class="settings-panel hidden" role="tabpanel" aria-labelledby="settingsLlmTab" data-settings-panel="llm" aria-hidden="true">
@@ -1157,7 +1175,21 @@
           <button id="installLocalRuntime" class="primary small" type="button" data-i18n="local_runtime_install">安装本地模型支持</button>
         </div>
       </div>
-      <div class="settings-section" id="ocrSettingsSection">
+       <div id="dashscopeRegionPanel" class="settings-section hidden">
+         <h3 data-i18n="settings_dashscope_region">百炼地域与业务空间</h3>
+         <div id="regionField" class="field">
+           <label for="region" data-i18n="region">地域</label>
+           <select id="region"></select>
+         </div>
+         <div id="workspaceField" class="field">
+           <label for="workspaceId" data-i18n="workspace">工作空间 ID</label>
+           <input id="workspaceId" type="text" autocomplete="off">
+           <p class="hint" data-i18n="workspace_hint">北京地域选填（推荐），新加坡地域必填。</p>
+           <p id="workspaceIdError" class="field-error"></p>
+         </div>
+         <button id="saveDashscopeRegionSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
+       </div>
+       <div class="settings-section" id="ocrSettingsSection">
         <h3 data-i18n="settings_ocr">OCR 支持</h3>
         <p class="hint" data-i18n="settings_ocr_hint">OCR 识别功能用于去除与画面上的文本重复的字幕，常用于配音游戏实况等视频内容。主程序不预装 OCR 依赖，首次使用时在这里下载独立运行环境。</p>
         <div class="field">
