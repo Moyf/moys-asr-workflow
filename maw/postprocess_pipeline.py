@@ -318,11 +318,6 @@ def validate_plan(
             path = Path(str(step.get("scriptPath") or "")).expanduser()
             if path.suffix.lower() not in SCRIPT_EXTENSIONS or not path.is_file():
                 errors.append({"step": step_id, "field": "postprocessScriptPath", "message": "文稿匹配需要一个存在的 .txt、.md 或 .markdown 文稿文件。"})
-        elif step_id == "replace":
-            has_replacements = bool(_normalize_replacements(step.get("replacements"), trim=bool(step.get("replacementTrim", True))))
-            has_conversion = normalize_text_conversion_mode(step.get("conversion")) is not TextConversion.OFF
-            if not has_replacements and not has_conversion:
-                errors.append({"step": step_id, "field": "postprocessReplacements", "message": "固定处理至少需要一条批量替换规则或一种简繁转换。"})
         elif step_id in {"proofread", "resegment", "translate"}:
             provider_id = str(step.get("providerId") or "deepseek")
             status = _snapshot_provider_status(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
@@ -601,6 +596,12 @@ def run_postprocess_pipeline(
         result = PipelineResult(final_project, final_srt, run_directory, tuple(completed), tuple(warnings), final_translated_srt)
         if not bool(normalized.get("retainIntermediate")):
             shutil.rmtree(run_directory, ignore_errors=True)
+            # 中间产物清掉后，只为这次运行而建的「后处理」根目录如果是空的也一并移除；
+            # 仍有其他运行的目录或用户文件时不动（rmdir 只在空目录时成功）。
+            try:
+                run_directory.parent.rmdir()
+            except OSError:
+                pass
         return result
     except PostprocessCancelled:
         manifest["status"] = "cancelled"

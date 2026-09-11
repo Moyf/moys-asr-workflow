@@ -376,14 +376,14 @@
                 <span id="autoStepReplaceHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoReplace" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
               </div>
-              <div class="auto-step-row" data-auto-step-row="proofread">
-                <label class="check-field" for="autoStepProofread"><input id="autoStepProofread" type="checkbox"><span data-i18n="auto_step_proofread">LLM 校对</span></label>
+              <div class="auto-step-row auto-step-caution" data-auto-step-row="proofread">
+                <label class="check-field" for="autoStepProofread" data-i18n-title="auto_step_proofread_title"><input id="autoStepProofread" type="checkbox"><span data-i18n="auto_step_proofread">LLM 校对</span></label>
                 <span id="autoStepProofreadStatus" class="auto-step-status hint"></span>
                 <span id="autoStepProofreadHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoProofread" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
               </div>
-              <div class="auto-step-row" data-auto-step-row="resegment">
-                <label class="check-field" for="autoStepResegment"><input id="autoStepResegment" type="checkbox"><span data-i18n="auto_step_resegment">重新断句</span></label>
+              <div class="auto-step-row auto-step-caution" data-auto-step-row="resegment">
+                <label class="check-field" for="autoStepResegment" data-i18n-title="auto_step_resegment_title"><input id="autoStepResegment" type="checkbox"><span data-i18n="auto_step_resegment">重新断句</span></label>
                 <span id="autoStepResegmentStatus" class="auto-step-status hint"></span>
                 <span id="autoStepResegmentHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoResegment" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
@@ -812,11 +812,11 @@
           <div class="field">
             <label for="postprocessOperation" data-i18n="toolbox_operation">任务</label>
             <select id="postprocessOperation">
-              <option value="proofread" data-i18n="toolbox_proofread">校对文本</option>
-              <option value="translate_zh" data-i18n="toolbox_translate_zh">翻译成中文</option>
-              <option value="translate_en" data-i18n="toolbox_translate_en">翻译成英文</option>
-              <option value="resegment" data-i18n="toolbox_resegment">重新断句</option>
-              <option value="custom" data-i18n="toolbox_custom">自定义</option>
+                  <option value="translate_zh" data-i18n="toolbox_translate_zh">翻译成中文</option>
+                  <option value="translate_en" data-i18n="toolbox_translate_en">翻译成英文</option>
+                  <option value="proofread" data-i18n="toolbox_proofread">校对文本</option>
+                  <option value="resegment" data-i18n="toolbox_resegment">重新断句</option>
+                  <option value="custom" data-i18n="toolbox_custom">自定义</option>
             </select>
           </div>
         </div>

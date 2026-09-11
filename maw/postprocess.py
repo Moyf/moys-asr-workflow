@@ -140,8 +140,43 @@ class _TranslationRepairBudget:
         self.used += 1
 
 
+# 简繁转换方向对应的产物 operation 名：全部繁体变体共用 "traditional"，
+# 文件名后缀只区分「转简体 / 转繁体」两个方向。
+FIXED_CONVERSION_OPERATIONS: Final[dict[TextConversion, str]] = {
+    TextConversion.TO_SIMPLIFIED: "simplified",
+    TextConversion.TO_TRADITIONAL: "traditional",
+    TextConversion.TO_TRADITIONAL_TW: "traditional",
+    TextConversion.TO_TRADITIONAL_TWP: "traditional",
+    TextConversion.TO_TRADITIONAL_HK: "traditional",
+}
+
+
+def fixed_process_operation(replacements: tuple[Replacement, ...], conversion: TextConversion) -> str:
+    """按固定处理实际启用的部分计算产物 operation。
+
+    批量替换规则非空计 "replace"，转换方向非 off 计对应方向；两者以点连接。
+    都未启用时返回空串，调用方应跳过该步骤，不写出文件也不加后缀。
+    """
+    parts: list[str] = []
+    if any(entry.source for entry in replacements):
+        parts.append("replace")
+    direction = FIXED_CONVERSION_OPERATIONS.get(conversion)
+    if direction is not None:
+        parts.append(direction)
+    return ".".join(parts)
+
+
 def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
+    operation = fixed_process_operation(request.replacements, request.conversion)
+    if not operation:
+        return SubtitleArtifact(
+            source_project_path=source_project,
+            source_srt_path=source_srt,
+            project_path=None,
+            srt_path=None,
+            warnings=("固定处理未启用批量替换或简繁转换，已跳过该步骤。",),
+        )
     segments = _segments(project)
     for segment in segments:
         original = segment.get("text")
@@ -180,7 +215,7 @@ def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
         project,
         source_project,
         source_srt,
-        "replace",
+        operation,
         request.output_mode,
         output_directory=request.output_directory,
         media_path=request.media_path,

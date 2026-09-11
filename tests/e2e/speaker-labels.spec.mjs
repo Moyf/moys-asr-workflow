@@ -238,7 +238,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   expect(downloads).toEqual(expect.arrayContaining([
     `${filenameBase}_Host.srt`,
     `${filenameBase}_SP2.srt`,
-    `${filenameBase}_default.srt`,
+    `${filenameBase}_无色.srt`,
   ]));
   const exportSpeakerHint = page.locator('.editor-settings-field:has(#export-speaker-labels) .editor-settings-hint');
   await expect(exportSpeakerHint).toContainText('在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。');

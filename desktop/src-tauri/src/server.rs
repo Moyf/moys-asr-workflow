@@ -134,7 +134,12 @@ fn media_stem(value: &str) -> String {
         // .translate-* / .bilingual 英文命名不识别。
         ".postprocess.", ".后处理.",
         ".ocr-dedup.", ".ocr去重.",
-        ".match.", ".匹配.",
+        ".match.", ".文稿匹配.",
+        // 固定处理按启用部分细分：批量替换 / 转简体 / 转繁体（可点连接组合）。
+        ".replace.", ".批量替换.", ".simplified.", ".转简体.", ".traditional.", ".转繁体.",
+        ".proofread.", ".校对文本.", ".resegment.", ".重新断句.", ".custom.", ".自定义.",
+        // 旧版 zh 界面「匹配」后缀只读兼容（1.6.0 起改名「文稿匹配」）。
+        ".匹配.",
         ".翻译为中文.", ".翻译为英文.",
         ".双语合一.", ".整合.",
         // 媒体工具产物后缀（与 output_naming.MEDIA_SUFFIX_NAMES 一致）。
@@ -151,7 +156,10 @@ fn media_stem(value: &str) -> String {
     let terminals = [
         ".postprocess", ".后处理",
         ".ocr-dedup", ".ocr去重",
-        ".match", ".匹配",
+        ".match", ".文稿匹配",
+        ".replace", ".批量替换", ".simplified", ".转简体", ".traditional", ".转繁体",
+        ".proofread", ".校对文本", ".resegment", ".重新断句", ".custom", ".自定义",
+        ".匹配",
         ".翻译为中文", ".翻译为英文",
         ".双语合一", ".整合",
         ".gap-removed", ".去空隙",
