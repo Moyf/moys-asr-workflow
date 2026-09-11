@@ -89,6 +89,22 @@ Batch 3 执行备注：
 - 跨模块延迟写（history 模块写 editor.js 的 lastClickedIdx 等）经共享全局词法
   环境解析，合法；扫描器的文件局部启发式对此误报，已知类别。
 
+### Batch 4（2026-09-11）
+
+`MaweSplitTrim`（10/10）+ `MaweSplitMode`（7/7）+ `MaweDisplaySettings`（15/27）+
+`MaweSettingsPanels`（19/40，含 main 新增的编辑器设置窗口 6 符号）+ `MaweNinja`
+（13/14）。验证同前（Node 286 / Python 1454 / 探针零 pageerror）。
+
+**顺序断言首次抓到真违规并修复**：settings-panels 的 main 新增代码在加载期调用
+`createFloatingPanel`（仍在 editor.js）。按 fork 方案把浮层家族整体前置——
+新增 `MaweFloatingPanel` 模块（10/22：z-index 栈状态 + floatingSurfaceRoot/
+IsOpen/syncLayers/bringToFront/bindActivation + createFloatingPanel），并**手工
+把清单条目移到 settings-panels 之前**（codemod 只会插到 editor.js 正上方，
+需要前置依赖的模块必须在跑完后手动调清单序）。editor.js:360 的 boot 注册语句
+经改写为 `MaweFloatingPanel.bindFloatingSurfaceActivation` 后语义不变。
+
+| 4 | 2026-09-11 | 五模块 + 浮层家族前置（见上） | 同 Batch 3 全套 | （本提交） |
+
 Batch 2 执行备注：
 
 - 多模块批次按"最高行号优先"执行 codemod（settings → multi-subtitle → gap-remove-data →

@@ -1,0 +1,6 @@
+{
+  "file": "editor-floating-panel.js",
+  "ns": "MaweFloatingPanel",
+  "header": "非模态浮层前置栈：层级管理、激活绑定与通用浮动面板工厂（settings-panels 加载期依赖）。",
+  "ranges": [[11, 58], [2043, 2169]]
+}

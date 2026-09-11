@@ -6,57 +6,6 @@ let STICKER_URL_PREFIX = __STICKER_URL_PREFIX_JSON__;
 const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
-// 所有非模态浮层共用一个前置栈：最后点击、打开或获得焦点的浮层排在最上面。
-// 起始值高于普通设置弹窗（420），但低于拖拽遮罩和加载层（500/510）。
-const FLOATING_SURFACE_Z_INDEX_BASE = 430;
-const floatingSurfaceStack = [];
-const floatingSurfaceRoots = new WeakSet();
-const floatingSurfaceActivationTargets = new WeakSet();
-
-function floatingSurfaceRoot(surface) {
-  if (!surface) return null;
-  const windowRoot = surface.closest('.editor-settings-window, .gap-remove-panel');
-  if (windowRoot) return windowRoot;
-  return surface.parentElement?.closest('.toolbar .dropdown') || surface;
-}
-
-function floatingSurfaceIsOpen(surface) {
-  if (!surface) return false;
-  if (surface.matches('.settings-panel')) return !surface.hidden;
-  if (surface.matches('.dropdown')) return surface.classList.contains('open');
-  return surface.classList.contains('show');
-}
-
-function syncFloatingSurfaceLayers() {
-  floatingSurfaceStack.forEach((surface, index) => {
-    const zIndex = FLOATING_SURFACE_Z_INDEX_BASE + index;
-    surface.style.zIndex = String(zIndex);
-  });
-}
-
-function bringFloatingSurfaceToFront(surface) {
-  const root = floatingSurfaceRoot(surface);
-  if (!root || !floatingSurfaceRoots.has(root)) return;
-  const currentIndex = floatingSurfaceStack.indexOf(root);
-  if (currentIndex >= 0) floatingSurfaceStack.splice(currentIndex, 1);
-  floatingSurfaceStack.push(root);
-  syncFloatingSurfaceLayers();
-}
-
-function bindFloatingSurfaceActivation(surface) {
-  const root = floatingSurfaceRoot(surface);
-  if (!root) return;
-  if (!floatingSurfaceRoots.has(root)) {
-    floatingSurfaceRoots.add(root);
-    floatingSurfaceStack.push(root);
-  }
-  if (floatingSurfaceActivationTargets.has(surface)) return;
-  const activate = () => bringFloatingSurfaceToFront(root);
-  surface.addEventListener('pointerdown', activate, true);
-  surface.addEventListener('focusin', activate, true);
-  floatingSurfaceActivationTargets.add(surface);
-}
-
 const MAWE_DEBUG_ENABLED = Boolean(
   SERVER_CONFIG?.debug || new URLSearchParams(window.location.search).has('mawe-debug'),
 );
@@ -357,236 +306,13 @@ MaweDom.overlayTextEl.append(MaweDom.overlayMainTextNode);
   MaweDom.multiSubtitleSettingsDropdown,
   document.getElementById('sticker-root-modal'),
   ...document.querySelectorAll('.toolbar .dropdown'),
-].forEach(bindFloatingSurfaceActivation);
-
-const NINJA_SFX_VARIANTS = Object.freeze([
-  'sfx_katana_slash_01.opus',
-  'sfx_katana_slash_02.opus',
-  'sfx_katana_slash_03.opus',
-  'sfx_katana_slash_04.opus',
-]);
-const NINJA_SFX_PLAYERS = new Map();
-const NINJA_SFX_HISTORY = [];
-let ninjaSlashFlashTimer = 0;
-
-function ninjaSfxUrl(fileName) {
-  const baseUrl = NINJA_SFX_BASE_URL || SERVER_CONFIG?.ninjaSfxBaseUrl || 'web/sfx/';
-  try {
-    return new URL(`${baseUrl}${encodeURIComponent(fileName)}`, document.baseURI).href;
-  } catch (_) {
-    return `${baseUrl}${encodeURIComponent(fileName)}`;
-  }
-}
-
-function ninjaSfxType(fileName) {
-  return fileName.endsWith('.opus') ? 'audio/ogg; codecs=opus' : 'audio/ogg';
-}
-
-function createNinjaSfxPlayer(fileName) {
-  if (typeof Audio !== 'function') return null;
-  const player = new Audio();
-  player.preload = 'auto';
-  player.volume = 0.65;
-  const source = document.createElement('source');
-  source.src = ninjaSfxUrl(fileName);
-  source.type = ninjaSfxType(fileName);
-  player.appendChild(source);
-  return player;
-}
-
-function playNinjaSplitSound() {
-  if (!MaweSettings.EDITOR_SETTINGS.ninjaMode || typeof Audio !== 'function') return;
-  const recent = new Set(NINJA_SFX_HISTORY.slice(-2));
-  const available = NINJA_SFX_VARIANTS.map((_, index) => index)
-    .filter((index) => !recent.has(index));
-  const candidates = available.length ? available : NINJA_SFX_VARIANTS.map((_, index) => index);
-  const variantIndex = candidates[Math.floor(Math.random() * candidates.length)];
-  NINJA_SFX_HISTORY.push(variantIndex);
-  if (NINJA_SFX_HISTORY.length > 2) NINJA_SFX_HISTORY.shift();
-  let player = NINJA_SFX_PLAYERS.get(variantIndex);
-  if (!player) {
-    player = createNinjaSfxPlayer(NINJA_SFX_VARIANTS[variantIndex]);
-    if (!player) return;
-    NINJA_SFX_PLAYERS.set(variantIndex, player);
-  }
-  try {
-    player.currentTime = 0;
-  } catch (_) {
-    // 尚未完成解码时 currentTime 可能暂时不可写；播放本身仍可继续尝试。
-  }
-  const playback = player.play();
-  if (playback && typeof playback.catch === 'function') playback.catch(() => {});
-}
-
-function ninjaSplitPointFromRect(rect) {
-  if (!rect) return null;
-  const clientX = Number(rect.left) + Number(rect.width || 0) / 2;
-  const clientY = Number(rect.top) + Number(rect.height || 0) / 2;
-  return Number.isFinite(clientX) && Number.isFinite(clientY) ? { clientX, clientY } : null;
-}
-
-function ninjaSplitPointFromRange(range, root, offset = 0, textLength = 1) {
-  if (range) {
-    try {
-      const collapsed = range.cloneRange();
-      collapsed.collapse(true);
-      const rect = collapsed.getBoundingClientRect();
-      if (rect && (rect.width || rect.height)) return ninjaSplitPointFromRect(rect);
-      const rects = collapsed.getClientRects();
-      if (rects.length) return ninjaSplitPointFromRect(rects[0]);
-    } catch (_) {
-      // 被重绘或脱离 DOM 的 Range 不能再读取几何信息，继续使用元素回退值。
-    }
-  }
-  const rootRect = root?.getBoundingClientRect?.();
-  if (!rootRect) return null;
-  const safeLength = Math.max(1, Number(textLength) || 1);
-  const ratio = Math.max(0, Math.min(1, (Number(offset) || 0) / safeLength));
-  return {
-    clientX: rootRect.left + rootRect.width * ratio,
-    clientY: rootRect.top + rootRect.height / 2,
-  };
-}
-
-function ninjaModalSplitPoint(state, finalCutMs, track = 'main') {
-  // 字幕列表/编辑区唤起的拆分弹窗：刀光保留在列表原位置（cue 内拆分位置）。
-  if (state?.ninjaFromList && state?.feedbackPoint) return state.feedbackPoint;
-  // 波形等其余来源唤起的弹窗：刀光优先落在波形区最终切点上；
-  // force 钳制后 finalCutMs 才是实际位置，找不到波形行时回退打开时的反馈点。
-  if (Number.isFinite(finalCutMs)) {
-    const point = MaweCoreState.waveformEditor?.getSplitPointAtTime?.(finalCutMs, track);
-    if (point) return point;
-  }
-  return state?.feedbackPoint || null;
-}
-
-function triggerNinjaSplitFeedback(splitPoint = null) {
-  if (!MaweSettings.EDITOR_SETTINGS.ninjaMode) return;
-  if (MaweSettings.EDITOR_SETTINGS.ninjaSound !== false) playNinjaSplitSound();
-  if (!MaweSettings.EDITOR_SETTINGS.ninjaSlashEffect || !MaweDom.ninjaSlashFlash) return;
-  // 旋转幅度 0 度 = 完全垂直；N 度 = 在 [-N, N] 内均匀随机，正负决定倾斜方向。
-  const rotateAmplitude = Math.max(0, Math.min(60, Math.round(Number(MaweSettings.EDITOR_SETTINGS.ninjaSlashRotateAmplitude) || 0)));
-  const slashAngle = rotateAmplitude * (Math.random() * 2 - 1);
-  const slashLengthPercent = Math.max(20, Math.min(400, Math.round(Number(MaweSettings.EDITOR_SETTINGS.ninjaSlashLengthPercent) || 80)));
-  // 每次触发都随机化刀光时长，避免连续拆分看起来一模一样。
-  const slashDur = 160 + Math.random() * 70; // 刀光持续时长 [160, 230] ms
-  const slashLinger = 100 + Math.random() * 70; // 刀光淡出余韵 [100, 170] ms
-  const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
-  const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
-  const point = ninjaSplitPointFromRect({
-    left: Number(splitPoint?.clientX),
-    top: Number(splitPoint?.clientY),
-  }) || { clientX: viewportWidth / 2, clientY: viewportHeight / 2 };
-  const slashStyle = MaweDom.ninjaSlashFlash.style;
-  slashStyle.setProperty('--slash-angle', `${slashAngle}deg`);
-  slashStyle.setProperty('--slash-height', `${slashLengthPercent}%`);
-  slashStyle.setProperty('--slash-dur', `${slashDur}ms`);
-  slashStyle.setProperty('--slash-linger', `${slashLinger}ms`);
-  slashStyle.setProperty('--slash-x', `${Math.max(0, Math.min(100, point.clientX / viewportWidth * 100))}%`);
-  slashStyle.setProperty('--slash-y', `${Math.max(0, Math.min(100, point.clientY / viewportHeight * 100))}%`);
-  MaweDom.ninjaSlashFlash.classList.remove('show');
-  // 强制重排，让连续快速拆分也能重新播放 CSS 动画。
-  void MaweDom.ninjaSlashFlash.offsetWidth;
-  MaweDom.ninjaSlashFlash.classList.add('show');
-  clearTimeout(ninjaSlashFlashTimer);
-  // 清理时间必须覆盖刃光扫过与切痕滞留，否则动画放到一半 .show 就被摘掉。
-  ninjaSlashFlashTimer = setTimeout(
-    () => MaweDom.ninjaSlashFlash.classList.remove('show'),
-    slashDur + slashLinger + 120,
-  );
-}
-
-function applyNinjaSettings() {
-  const enabled = MaweSettings.EDITOR_SETTINGS.ninjaMode === true;
-  const slashEnabled = enabled && MaweSettings.EDITOR_SETTINGS.ninjaSlashEffect !== false;
-  if (MaweDom.ninjaModeToggle) MaweDom.ninjaModeToggle.checked = enabled;
-  if (MaweDom.ninjaSoundToggle) MaweDom.ninjaSoundToggle.checked = MaweSettings.EDITOR_SETTINGS.ninjaSound !== false;
-  if (MaweDom.ninjaSlashEffectToggle) MaweDom.ninjaSlashEffectToggle.checked = MaweSettings.EDITOR_SETTINGS.ninjaSlashEffect !== false;
-  if (MaweDom.ninjaSoundField) MaweDom.ninjaSoundField.hidden = !enabled;
-  if (MaweDom.ninjaSlashEffectField) MaweDom.ninjaSlashEffectField.hidden = !enabled;
-  if (MaweDom.ninjaSlashParamsField) MaweDom.ninjaSlashParamsField.hidden = !slashEnabled;
-  if (MaweDom.ninjaSlashLengthInput) MaweDom.ninjaSlashLengthInput.value = String(MaweSettings.EDITOR_SETTINGS.ninjaSlashLengthPercent);
-  if (MaweDom.ninjaSlashRotateInput) MaweDom.ninjaSlashRotateInput.value = String(MaweSettings.EDITOR_SETTINGS.ninjaSlashRotateAmplitude);
-  // SVGElement 不一定实现 HTMLElement.hidden；用属性切换才能真正隐藏原剪刀图标。
-  if (MaweDom.razorToolSvg) {
-    if (enabled) MaweDom.razorToolSvg.setAttribute('hidden', '');
-    else MaweDom.razorToolSvg.removeAttribute('hidden');
-  }
-  if (MaweDom.ninjaRazorIcon) MaweDom.ninjaRazorIcon.hidden = !enabled;
-}
-
-// 全局设置窗口：复用 createFloatingPanel 获得拖动、位置持久化、Esc 关闭与按钮 active 态；
-// 窗口内部用左侧垂直标签页切换不同分区，并记忆用户上次停留的分区。
-const editorSettingsTabs = MaweDom.editorSettingsPanel
-  ? Array.from(MaweDom.editorSettingsPanel.querySelectorAll('.editor-settings-nav-tab'))
-  : [];
-const editorSettingsFloatingPanel = createFloatingPanel({
-  panel: MaweDom.editorSettingsPanel,
-  dragHandle: MaweDom.editorSettingsDragHandle,
-  manageButton: MaweDom.editorSettingsToggle,
-  anchorButton: MaweDom.editorSettingsToggle,
-  positionKey: MaweDom.EDITOR_SETTINGS_WINDOW_POSITION_KEY,
-  // 所有打开路径（按钮点击 / 桥接）都先恢复尺寸与标签页，保证默认分区带上
-  // active 样式，且窗口按实际内容尺寸定位。
-  onOpen: () => {
-    restoreEditorSettingsPanelSize();
-    restoreEditorSettingsActiveTab();
-  },
-});
-
-function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
-  if (!tab) return;
-  for (const item of editorSettingsTabs) {
-    const active = item === tab;
-    item.classList.toggle('active', active);
-    item.setAttribute('aria-selected', String(active));
-    item.tabIndex = active ? 0 : -1;
-    const page = document.getElementById(item.getAttribute('aria-controls') || '');
-    if (page) page.hidden = !active;
-  }
-  if (focus) tab.focus();
-  try {
-    localStorage.setItem(MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
-  } catch (_) {
-    // file:// 隐私模式可能拒绝 localStorage；切换标签页本身不受影响。
-  }
-}
-
-function restoreEditorSettingsActiveTab() {
-  let saved = '';
-  try {
-    saved = localStorage.getItem(MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY) || '';
-  } catch (_) {
-    saved = '';
-  }
-  // 忽略已隐藏的分区（如当前环境不可用的「保存」），回退到第一个可见分区。
-  const tab = editorSettingsTabs.find((item) => item.dataset.settingsTab === saved && !item.hidden)
-    || editorSettingsTabs.find((item) => !item.hidden)
-    || editorSettingsTabs[0];
-  setEditorSettingsActiveTab(tab);
-}
-
-// 浮窗尺寸：与帮助窗口一致，仅在用户拖过右下角缩放手柄后持久化；
-// 未缩放时保持 CSS 默认宽度/自动高度。
-function restoreEditorSettingsPanelSize() {
-  if (!MaweDom.editorSettingsPanel) return;
-  let saved = null;
-  try {
-    saved = JSON.parse(localStorage.getItem(MaweDom.EDITOR_SETTINGS_WINDOW_SIZE_KEY) || 'null');
-  } catch (_) {
-    saved = null;
-  }
-  if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
-  MaweDom.editorSettingsPanel.style.width = `${Math.min(Math.max(460, saved.width), window.innerWidth - 12)}px`;
-  MaweDom.editorSettingsPanel.style.height = `${Math.min(Math.max(280, saved.height), window.innerHeight - 24)}px`;
-}
-let editorSettingsPanelSizeSaveTimer = 0;
+].forEach(MaweFloatingPanel.bindFloatingSurfaceActivation);
 if (MaweDom.editorSettingsPanel) {
   new ResizeObserver(() => {
     if (!MaweDom.editorSettingsPanel.classList.contains('show')) return;
     if (!MaweDom.editorSettingsPanel.style.width && !MaweDom.editorSettingsPanel.style.height) return;
-    clearTimeout(editorSettingsPanelSizeSaveTimer);
-    editorSettingsPanelSizeSaveTimer = setTimeout(() => {
+    clearTimeout(MaweSettingsPanels.editorSettingsPanelSizeSaveTimer);
+    MaweSettingsPanels.editorSettingsPanelSizeSaveTimer = setTimeout(() => {
       const rect = MaweDom.editorSettingsPanel.getBoundingClientRect();
       try {
         localStorage.setItem(MaweDom.EDITOR_SETTINGS_WINDOW_SIZE_KEY, JSON.stringify({
@@ -599,355 +325,9 @@ if (MaweDom.editorSettingsPanel) {
   }).observe(MaweDom.editorSettingsPanel);
 }
 
-function setEditorSettingsPanelOpen(open) {
-  if (!MaweDom.editorSettingsPanel || !MaweDom.editorSettingsToggle) return;
-  if (!open) {
-    setMergeJoinSettingsPanelOpen(false);
-    setSplitTrimSettingsPanelOpen(false);
-    editorSettingsFloatingPanel.close();
-    return;
-  }
-  editorSettingsFloatingPanel.open();
-}
-
-function positionAnchoredSettingsPanel(panel, toggle) {
-  if (!panel || panel.hidden || !toggle) return;
-  const buttonRect = toggle.getBoundingClientRect();
-  const panelWidth = panel.offsetWidth;
-  const panelHeight = panel.offsetHeight;
-  const margin = 8;
-  const left = Math.min(
-    Math.max(margin, buttonRect.right - panelWidth),
-    Math.max(margin, window.innerWidth - panelWidth - margin),
-  );
-  const belowTop = buttonRect.bottom + 6;
-  const aboveTop = buttonRect.top - panelHeight - 6;
-  let top = belowTop;
-  if (belowTop + panelHeight > window.innerHeight - margin && aboveTop >= margin) {
-    top = aboveTop;
-  } else if (belowTop + panelHeight > window.innerHeight - margin) {
-    top = Math.max(margin, window.innerHeight - panelHeight - margin);
-  }
-  panel.style.left = String(left) + 'px';
-  panel.style.top = String(top) + 'px';
-}
-
-function positionMergeJoinSettingsPanel() {
-  positionAnchoredSettingsPanel(MaweDom.mergeJoinSettingsPanel, MaweDom.mergeJoinSettingsToggle);
-}
-
-function setMergeJoinSettingsPanelOpen(open) {
-  if (!MaweDom.mergeJoinSettingsPanel || !MaweDom.mergeJoinSettingsToggle) return;
-  MaweDom.mergeJoinSettingsPanel.hidden = !open;
-  MaweDom.mergeJoinSettingsToggle.classList.toggle('active', open);
-  MaweDom.mergeJoinSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) {
-    bringFloatingSurfaceToFront(MaweDom.mergeJoinSettingsPanel);
-    positionMergeJoinSettingsPanel();
-  }
-  syncFloatingSurfaceLayers();
-}
-
-function positionSplitTrimSettingsPanel() {
-  positionAnchoredSettingsPanel(MaweDom.splitTrimSettingsPanel, MaweDom.splitTrimSettingsToggle);
-}
-
-function setSplitTrimSettingsPanelOpen(open) {
-  if (!MaweDom.splitTrimSettingsPanel || !MaweDom.splitTrimSettingsToggle) return;
-  MaweDom.splitTrimSettingsPanel.hidden = !open;
-  MaweDom.splitTrimSettingsToggle.classList.toggle('active', open);
-  MaweDom.splitTrimSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) {
-    bringFloatingSurfaceToFront(MaweDom.splitTrimSettingsPanel);
-    positionSplitTrimSettingsPanel();
-  }
-  syncFloatingSurfaceLayers();
-}
-
-function setSettingsPanelOwnerOpen(panel, open) {
-  const owner = panel?.closest('.player-wrap, .current-cue-panel, .cues-container, .waveform-pane');
-  owner?.classList.toggle('settings-panel-owner-open', open);
-}
-
-function positionCueListSettingsPanel() {
-  positionAnchoredSettingsPanel(MaweDom.cueListSettingsPanel, MaweDom.cueListSettingsToggle);
-}
-
-function setCueListSettingsPanelOpen(open) {
-  if (!MaweDom.cueListSettingsPanel || !MaweDom.cueListSettingsToggle) return;
-  MaweDom.cueListSettingsPanel.hidden = !open;
-  setSettingsPanelOwnerOpen(MaweDom.cueListSettingsPanel, open);
-  MaweDom.cueListSettingsToggle.classList.toggle('active', open);
-  MaweDom.cueListSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) {
-    bringFloatingSurfaceToFront(MaweDom.cueListSettingsPanel);
-    positionCueListSettingsPanel();
-  }
-  syncFloatingSurfaceLayers();
-}
-
-function positionCueEditorSettingsPanel() {
-  positionAnchoredSettingsPanel(MaweDom.cueEditorSettingsPanel, MaweDom.cueEditorSettingsToggle);
-}
-
-function setCueEditorSettingsPanelOpen(open) {
-  if (!MaweDom.cueEditorSettingsPanel || !MaweDom.cueEditorSettingsToggle) return;
-  MaweDom.cueEditorSettingsPanel.hidden = !open;
-  setSettingsPanelOwnerOpen(MaweDom.cueEditorSettingsPanel, open);
-  MaweDom.cueEditorSettingsToggle.classList.toggle('active', open);
-  MaweDom.cueEditorSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) {
-    bringFloatingSurfaceToFront(MaweDom.cueEditorSettingsPanel);
-    positionCueEditorSettingsPanel();
-  }
-  syncFloatingSurfaceLayers();
-}
-
-function positionWaveformSettingsPanel() {
-  positionAnchoredSettingsPanel(MaweDom.waveformSettingsPanel, MaweDom.waveformSettingsToggle);
-}
-
-function setWaveformSettingsPanelOpen(open) {
-  if (!MaweDom.waveformSettingsPanel || !MaweDom.waveformSettingsToggle) return;
-  MaweDom.waveformSettingsPanel.hidden = !open;
-  setSettingsPanelOwnerOpen(MaweDom.waveformSettingsPanel, open);
-  MaweDom.waveformSettingsToggle.classList.toggle('active', open);
-  MaweDom.waveformSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) {
-    bringFloatingSurfaceToFront(MaweDom.waveformSettingsPanel);
-    positionWaveformSettingsPanel();
-  }
-  syncFloatingSurfaceLayers();
-}
-
-function applyCueListDisplaySettings({ preserveCueListScroll = true } = {}) {
-  const cueListAnchor = preserveCueListScroll ? captureCueListRenderAnchor() : null;
-  MaweDom.cueListShowIndexToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowIndex;
-  MaweDom.cueListShowTimeToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowTime;
-  MaweDom.cueListShowStickerToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowSticker;
-  MaweDom.cueListShowCharcountToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowCharcount;
-  MaweDom.cueListAutoScrollOnClickToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick;
-  MaweDom.cueListKeepSplitVisibleToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListKeepSplitVisible;
-  syncCharCountThresholdInputs(MaweSettings.EDITOR_SETTINGS.cueListCharcountThreshold);
-  MaweDom.hideDisabled = MaweSettings.EDITOR_SETTINGS.cueListHideDisabled;
-  MaweDom.hideDisabledToggle.checked = MaweDom.hideDisabled;
-  MaweCoreState.container.classList.toggle('hide-disabled', MaweDom.hideDisabled);
-  MaweCoreState.container.classList.toggle('hide-cue-index', !MaweSettings.EDITOR_SETTINGS.cueListShowIndex);
-  MaweCoreState.container.classList.toggle('hide-cue-time', !MaweSettings.EDITOR_SETTINGS.cueListShowTime);
-  // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
-  // 分配首个表情包时由本函数根据最新数据直接恢复。
-  const projectHasStickers = DATA.segments.some(segment => segment.sticker || segment.sticker_ref);
-  MaweCoreState.container.classList.toggle('hide-cue-sticker',
-    !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
-  );
-  MaweCoreState.container.classList.toggle('hide-cue-charcount', !MaweSettings.EDITOR_SETTINGS.cueListShowCharcount);
-  restoreCueListRenderAnchor(cueListAnchor);
-}
-
-let previousMultiSubtitlePreviewEnabled = false;
-let waveformRowHeightBeforeMultiSubtitle = null;
-
-function syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled) {
-  if (!MaweCoreState.waveformEditor?.getRowHeight || !MaweCoreState.waveformEditor?.setRowHeight) return;
-  if (enteringEnabled) {
-    waveformRowHeightBeforeMultiSubtitle = MaweCoreState.waveformEditor.getRowHeight();
-    MaweCoreState.waveformEditor.setRowHeight(MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);
-  } else if (leavingEnabled && Number.isFinite(waveformRowHeightBeforeMultiSubtitle)) {
-    const previous = waveformRowHeightBeforeMultiSubtitle;
-    waveformRowHeightBeforeMultiSubtitle = null;
-    MaweCoreState.waveformEditor.setRowHeight(previous);
-  } else if (!enabled) {
-    waveformRowHeightBeforeMultiSubtitle = null;
-  }
-}
-
-function updateMultiSubtitleUi() {
-  const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-  const hasTrack = Boolean(track && Array.isArray(track.segments));
-  const enabled = hasTrack && MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
-  const hasMainSubtitle = DATA.segments.length > 0;
-  const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
-  const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
-  syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
-  refreshMergeJoinModeHint();
-  if (MaweDom.multiSubtitleControls) MaweDom.multiSubtitleControls.hidden = !hasMainSubtitle;
-  if (MaweDom.multiSubtitleSettingsDropdown) {
-    // 齿轮仅在已导入副轨（真正进入多重字幕编辑）时显示；
-    // 已开启但还没有第二条字幕时改在开关右侧显示拖入提示。
-    MaweDom.multiSubtitleSettingsDropdown.hidden = !enabled;
-    if (MaweDom.multiSubtitleSettingsDropdown.hidden) {
-      MaweDom.multiSubtitleSettingsDropdown.classList.remove('open');
-      MaweDom.multiSubtitleSettingsDropdown.querySelector('button[aria-expanded]')
-        ?.setAttribute('aria-expanded', 'false');
-    }
-  }
-  if (MaweDom.multiSubtitleEmptyHint) {
-    // 提示与齿轮互斥：开启但无副轨 → 显示；其余隐藏。
-    MaweDom.multiSubtitleEmptyHint.hidden = !(MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true && !enabled);
-  }
-  if (MaweDom.splitMultiSubtitleSettingsEnabledHint) MaweDom.splitMultiSubtitleSettingsEnabledHint.hidden = !enabled;
-  if (MaweDom.splitMultiSubtitleSettingsDisabledHint) MaweDom.splitMultiSubtitleSettingsDisabledHint.hidden = enabled;
-  if (MaweDom.multiSubtitleToggle) {
-    // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
-    MaweDom.multiSubtitleToggle.checked = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
-    // 没有副轨时仍允许点击，由 change 处理器询问是否现在导入第二条字幕。
-    MaweDom.multiSubtitleToggle.disabled = false;
-  }
-  if (MaweDom.multiSubtitleToggleLabel) {
-    MaweDom.multiSubtitleToggleLabel.classList.remove('disabled');
-    MaweDom.multiSubtitleToggleLabel.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
-  }
-  if (MaweDom.multiSubtitleToggle) MaweDom.multiSubtitleToggle.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
-  if (MaweDom.multiSubtitleDisplayMode) {
-    MaweDom.multiSubtitleDisplayMode.value = MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both';
-    MaweDom.multiSubtitleDisplayMode.hidden = !enabled;
-  }
-  if (MaweDom.multiSubtitleMainLanguageMode) {
-    MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(DATA.segments[0]);
-    MaweDom.multiSubtitleMainLanguageMode.hidden = !enabled;
-  }
-  if (MaweDom.multiSubtitleExtensionLanguageMode) {
-    MaweDom.multiSubtitleExtensionLanguageMode.value = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, track?.segments?.[0]);
-    MaweDom.multiSubtitleExtensionLanguageMode.hidden = !enabled;
-  }
-  if (MaweDom.multiSubtitleExtensionRowHeight) {
-    MaweDom.multiSubtitleExtensionRowHeight.value = String(MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);
-    MaweDom.multiSubtitleExtensionRowHeight.disabled = !enabled;
-  }
-  if (MaweDom.multiSubtitleExtensionRowHeightSetting) {
-    MaweDom.multiSubtitleExtensionRowHeightSetting.hidden = !enabled;
-  }
-  if (MaweDom.multiSubtitleCrossTrackSnapToggle) {
-    MaweDom.multiSubtitleCrossTrackSnapToggle.checked = MaweSettings.EDITOR_SETTINGS.crossTrackSnap;
-    MaweDom.multiSubtitleCrossTrackSnapToggle.disabled = !enabled;
-  }
-  if (MaweDom.multiSubtitleSelectBoundPairToggle) {
-    MaweDom.multiSubtitleSelectBoundPairToggle.checked = MaweSettings.EDITOR_SETTINGS.selectBoundSubtitlePair;
-    MaweDom.multiSubtitleSelectBoundPairToggle.disabled = !enabled;
-  }
-  if (MaweDom.multiSubtitleAutoSyncDurationToggle) {
-    MaweDom.multiSubtitleAutoSyncDurationToggle.checked = MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration;
-    MaweDom.multiSubtitleAutoSyncDurationToggle.disabled = !enabled;
-  }
-  if (MaweDom.multiSubtitleShowTrackBadgesToggle) {
-    MaweDom.multiSubtitleShowTrackBadgesToggle.checked = MaweSettings.EDITOR_SETTINGS.multiSubtitleShowTrackBadges;
-    MaweDom.multiSubtitleShowTrackBadgesToggle.disabled = !enabled;
-  }
-  if (MaweDom.multiSubtitleSwapButton) {
-    const canSwap = enabled && (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).length === 1
-      && DATA.segments.length > 0 && (track?.segments || []).length > 0;
-    MaweDom.multiSubtitleSwapButton.classList.toggle('disabled', !canSwap);
-    MaweDom.multiSubtitleSwapButton.setAttribute('aria-disabled', canSwap ? 'false' : 'true');
-  }
-  if (MaweDom.multiSubtitleWaveformControls) MaweDom.multiSubtitleWaveformControls.hidden = !enabled;
-  if (MaweDom.multiSubtitleAlignButton) MaweDom.multiSubtitleAlignButton.hidden = !enabled;
-  if (MaweDom.extensionOverlayToggleWrap) MaweDom.extensionOverlayToggleWrap.hidden = !enabled;
-  if (MaweDom.extensionSubtitlePreviewTitle) MaweDom.extensionSubtitlePreviewTitle.hidden = !enabled;
-  if (MaweDom.extensionSubtitlePreviewSettings) MaweDom.extensionSubtitlePreviewSettings.hidden = !enabled;
-  if (MaweDom.extensionOverlayToggle) {
-    if (enteringEnabled) MaweSettings.updateEditorSettings({ extensionOverlayEnabled: true });
-    MaweDom.extensionOverlayToggle.checked = enabled
-      ? (enteringEnabled || MaweSettings.EDITOR_SETTINGS.extensionOverlayEnabled)
-      : false;
-  }
-  previousMultiSubtitlePreviewEnabled = enabled;
-  // 「仅看超长」按单轨文本字数筛选；多重字幕开启后主/副两栏合并计数失去筛选意义，
-  // 隐藏入口（含前面的分隔线）。若筛选已激活则一并复位，避免残留不可见的过滤状态。
-  const filterOverButton = document.getElementById('filter-over');
-  if (filterOverButton) {
-    filterOverButton.hidden = enabled;
-    const filterOverSep = document.getElementById('filter-over-sep');
-    if (filterOverSep) filterOverSep.hidden = enabled;
-    if (enabled && filterOverButton.classList.contains('active')) {
-      filterOverButton.classList.remove('active');
-      clearTemporaryVisibleSplitCues();
-      applySearch(MaweDom.searchEl.value);
-    }
-  }
-  MaweCoreState.container.classList.toggle('multi-subtitle-enabled', enabled);
-  MaweCoreState.container.dataset.multiDisplayMode = enabled ? (MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both') : 'main';
-}
-
-function bindCueListDisplayToggle(toggle, key) {
-  toggle.addEventListener('change', () => {
-    MaweSettings.updateEditorSettings({ [key]: toggle.checked });
-    applyCueListDisplaySettings();
-  });
-}
-
-function applyCueEditorDisplaySettings() {
-  MaweDom.cueEditorShowNavigationToggle.checked = MaweSettings.EDITOR_SETTINGS.cueEditorShowNavigation;
-  MaweDom.cueEditorShowTimeActionsToggle.checked = MaweSettings.EDITOR_SETTINGS.cueEditorShowTimeActions;
-  MaweDom.cueEditorShowStickerToggle.checked = MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker;
-  MaweDom.cuePanel.classList.toggle('hide-cue-editor-navigation', !MaweSettings.EDITOR_SETTINGS.cueEditorShowNavigation);
-  MaweDom.cuePanel.classList.toggle('hide-cue-editor-time-actions', !MaweSettings.EDITOR_SETTINGS.cueEditorShowTimeActions);
-  MaweDom.cuePanel.classList.toggle('hide-cue-editor-sticker', !MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker);
-}
-
-const EDITOR_DISPLAY_KEYS = [
-  'cueListShowIndex', 'cueListShowTime', 'cueListShowSticker', 'cueListShowCharcount',
-  'cueEditorShowNavigation', 'cueEditorShowTimeActions', 'cueEditorShowSticker',
-];
-
-function getEditorDisplaySettings() {
-  return Object.fromEntries(EDITOR_DISPLAY_KEYS.map((key) => [key, MaweSettings.EDITOR_SETTINGS[key]]));
-}
-
-function applyEditorDisplaySettings(value) {
-  if (!value || typeof value !== 'object') return;
-  const patch = {};
-  EDITOR_DISPLAY_KEYS.forEach((key) => {
-    if (typeof value[key] === 'boolean') patch[key] = value[key];
-  });
-  if (!Object.keys(patch).length) return;
-  MaweSettings.updateEditorSettings(patch);
-  applyCueListDisplaySettings();
-  applyCueEditorDisplaySettings();
-}
-
-function bindCueEditorDisplayToggle(toggle, key) {
-  toggle.addEventListener('change', () => {
-    MaweSettings.updateEditorSettings({ [key]: toggle.checked });
-    applyCueEditorDisplaySettings();
-  });
-}
-
-// macOS 用 ⌘（Cmd）替代 Ctrl；Win/Linux 仍显示 Ctrl。
-function modKeyLabel() {
-  return window.AsrEditorUtils?.isMacPlatform() ? 'Cmd' : 'Ctrl';
-}
-
-function splitKeyLabel() {
-  return MaweDom.splitKeySel.value === 'enter' ? 'Enter' : `${modKeyLabel()}+Enter`;
-}
-
-function confirmKeyLabel() {
-  return MaweDom.splitKeySel.value === 'enter' ? `${modKeyLabel()}+Enter` : 'Enter';
-}
-
-// 把帮助面板等静态 <kbd data-mod-key> 与「拆分按键」下拉选项文本按平台替换。
-function applyPlatformKeyLabels() {
-  if (modKeyLabel() === 'Ctrl') return;
-  document.querySelectorAll('[data-mod-key]').forEach((el) => {
-    el.textContent = el.textContent.replace(/^Ctrl/, 'Cmd');
-  });
-  if (MaweDom.splitKeySel) {
-    const opt = MaweDom.splitKeySel.querySelector('option[value="ctrl-enter"]');
-    if (opt) opt.textContent = 'Cmd+Enter';
-  }
-}
-
-function refreshSplitKeyHelp() {
-  const label = splitKeyLabel();
-  if (MaweDom.helpSplitKey) MaweDom.helpSplitKey.textContent = label;
-  if (MaweDom.cuePanelSplitKey) MaweDom.cuePanelSplitKey.textContent = label;
-  if (MaweDom.cueEditorSplitKey) MaweDom.cueEditorSplitKey.textContent = label;
-  if (MaweDom.cueEditorConfirmKey) MaweDom.cueEditorConfirmKey.textContent = confirmKeyLabel();
-}
-
 // 切换语言时 i18n 会重置动态文本节点，需重新套用当前拆分按键提示和目标轨道标签。
 document.addEventListener('mawe:languagechange', () => {
-  refreshSplitKeyHelp();
+  MaweSplitMode.refreshSplitKeyHelp();
   renderCurrentCuePanel();
   refreshTimelineSettingsUi();
   refreshMediaSeekStepHelp();
@@ -957,57 +337,12 @@ document.addEventListener('mawe:languagechange', () => {
 MaweDom.splitKeySel.value = MaweSettings.EDITOR_SETTINGS.splitKey;
 if (MaweDom.splitUseWordTimestampsToggle) MaweDom.splitUseWordTimestampsToggle.checked = MaweSettings.EDITOR_SETTINGS.splitUseWordTimestamps;
 if (MaweDom.multiSubtitleSplitAutoSubmit) MaweDom.multiSubtitleSplitAutoSubmit.checked = MaweSettings.EDITOR_SETTINGS.splitAutoSubmit;
-applyPlatformKeyLabels();
-refreshSplitKeyHelp();
+MaweDisplaySettings.applyPlatformKeyLabels();
+MaweSplitMode.refreshSplitKeyHelp();
 if (MaweDom.mergeJoinTextContinuousInput) MaweDom.mergeJoinTextContinuousInput.value = MaweSettings.EDITOR_SETTINGS.mergeJoinTextContinuous;
 if (MaweDom.mergeJoinTextWordInput) MaweDom.mergeJoinTextWordInput.value = MaweSettings.EDITOR_SETTINGS.mergeJoinTextWord;
-// 「合并字幕时插入字符」旁的提示：显示当前主字幕拆分类型（自动检测或已指定），
-// 并提供一键切换。手动指定的类型存入 EDITOR_SETTINGS.mainSplitModeOverride
-// （本地偏好，多重字幕开关无关），同时同步 multi_subtitle.main_split_mode，
-// 与多重字幕菜单的「主字幕语言类型」互为镜像。
-const mergeJoinModeHint = document.getElementById('merge-join-mode-hint');
-const mergeJoinModeText = document.getElementById('merge-join-mode-text');
-const mergeJoinModeSwitch = document.getElementById('merge-join-mode-switch');
-function isConfiguredMainSplitModeOverride(value) {
-  return value === 'word' || value === 'continuous';
-}
-function refreshMergeJoinModeHint() {
-  if (!mergeJoinModeHint || !mergeJoinModeText || !mergeJoinModeSwitch) return;
-  const text = DATA.segments.map((item) => item?.text || '').join('\n');
-  if (!text) {
-    mergeJoinModeHint.hidden = true;
-    return;
-  }
-  const detected = MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
-  const override = MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride;
-  const hasPinned = isConfiguredMainSplitModeOverride(override);
-  mergeJoinModeHint.hidden = false;
-  // 提示不区分「自动检测」与「手动指定」：统一展示当前生效类型；
-  // 用户觉得不对就自己点按钮换。
-  const effective = hasPinned ? override : detected;
-  const other = effective === 'continuous' ? 'word' : 'continuous';
-  mergeJoinModeText.textContent = `当前字幕为「${MaweMultiSubtitleCore.splitModeLabel(effective)}」${MaweMultiSubtitleCore.splitModeExample(effective)}`;
-  // 按钮 title 给出目标类型的语言说明，帮助用户选择。
-  mergeJoinModeSwitch.textContent = `切换为${MaweMultiSubtitleCore.splitModeLabel(other)}`;
-  mergeJoinModeSwitch.title = other === 'word'
-    ? '单词型：英语等西文语言，按空格分隔多个单词'
-    : '字符型：中文、日文等按字符拆分的语言';
-  mergeJoinModeSwitch.dataset.targetMode = other;
-}
-function setMainSubtitleSplitModeBinding(mode) {
-  const next = MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(mode) ? mode : null;
-  if (!next || next === MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride) return;
-  MaweHistory.pushUndo('切换主字幕语言类型');
-  // 本地偏好立即生效；工程内的 main_split_mode 同步写入，
-  // 保证多重字幕菜单与保存后的工程文件读到同一类型。
-  MaweSettings.updateEditorSettings({ mainSplitModeOverride: next });
-  MaweMultiSubtitleCore.getMultiSubtitleState().main_split_mode = next;
-  MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  // renderAll → updateMultiSubtitleUi 会回写多重字幕下拉框并刷新本提示。
-  renderAll({ waveform: 'none' });
-}
-mergeJoinModeSwitch?.addEventListener('click', () => {
-  setMainSubtitleSplitModeBinding(mergeJoinModeSwitch.dataset.targetMode);
+MaweSplitMode.mergeJoinModeSwitch?.addEventListener('click', () => {
+  MaweSplitMode.setMainSubtitleSplitModeBinding(MaweSplitMode.mergeJoinModeSwitch.dataset.targetMode);
 });
 syncAutoMergePanelInputs();
 MaweDom.overlayToggle.checked = MaweSettings.EDITOR_SETTINGS.overlayEnabled;
@@ -1049,7 +384,7 @@ refreshTimelineSettingsUi();
 refreshMediaSeekStepHelp();
 refreshMediaSeekInputStep();
 refreshMediaSeekControlLabels();
-applyNinjaSettings();
+MaweNinja.applyNinjaSettings();
 if (MaweDom.waveformShapeSourceSelect) {
   MaweDom.waveformShapeSourceSelect.value = MaweSettings.EDITOR_SETTINGS.waveShapeSource;
   MaweDom.waveformShapeSourceSelect.addEventListener('change', () => {
@@ -1058,8 +393,8 @@ if (MaweDom.waveformShapeSourceSelect) {
     if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.render();
   });
 }
-applyCueListDisplaySettings({ preserveCueListScroll: false });
-applyCueEditorDisplaySettings();
+MaweDisplaySettings.applyCueListDisplaySettings({ preserveCueListScroll: false });
+MaweDisplaySettings.applyCueEditorDisplaySettings();
 MaweDom.multiSubtitleToggle?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const next = MaweDom.multiSubtitleToggle.checked;
@@ -1139,11 +474,11 @@ MaweDom.multiSubtitleAlignButton?.addEventListener('click', () => {
 applySubtitleAppearance();
 applyExtensionSubtitleAppearance();
 // 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
-editorSettingsTabs.forEach((tab) => {
-  tab.addEventListener('click', () => setEditorSettingsActiveTab(tab));
+MaweSettingsPanels.editorSettingsTabs.forEach((tab) => {
+  tab.addEventListener('click', () => MaweSettingsPanels.setEditorSettingsActiveTab(tab));
   tab.addEventListener('keydown', (event) => {
     // 方向键只在可见分区之间循环；隐藏分区（如不可用的「保存」）不参与导航。
-    const visibleTabs = editorSettingsTabs.filter((item) => !item.hidden);
+    const visibleTabs = MaweSettingsPanels.editorSettingsTabs.filter((item) => !item.hidden);
     const index = visibleTabs.indexOf(tab);
     let next = -1;
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
@@ -1157,29 +492,29 @@ editorSettingsTabs.forEach((tab) => {
     }
     if (next < 0) return;
     event.preventDefault();
-    setEditorSettingsActiveTab(visibleTabs[next], { focus: true });
+    MaweSettingsPanels.setEditorSettingsActiveTab(visibleTabs[next], { focus: true });
   });
 });
-MaweDom.editorSettingsClose?.addEventListener('click', () => setEditorSettingsPanelOpen(false));
+MaweDom.editorSettingsClose?.addEventListener('click', () => MaweSettingsPanels.setEditorSettingsPanelOpen(false));
 MaweDom.mergeJoinSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
-  setMergeJoinSettingsPanelOpen(MaweDom.mergeJoinSettingsPanel?.hidden);
+  MaweSettingsPanels.setMergeJoinSettingsPanelOpen(MaweDom.mergeJoinSettingsPanel?.hidden);
 });
 MaweDom.splitTrimSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
-  setSplitTrimSettingsPanelOpen(MaweDom.splitTrimSettingsPanel?.hidden);
+  MaweSettingsPanels.setSplitTrimSettingsPanelOpen(MaweDom.splitTrimSettingsPanel?.hidden);
 });
 MaweDom.cueListSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
-  setCueListSettingsPanelOpen(MaweDom.cueListSettingsPanel?.hidden);
+  MaweSettingsPanels.setCueListSettingsPanelOpen(MaweDom.cueListSettingsPanel?.hidden);
 });
 MaweDom.waveformSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
-  setWaveformSettingsPanelOpen(MaweDom.waveformSettingsPanel?.hidden);
+  MaweSettingsPanels.setWaveformSettingsPanelOpen(MaweDom.waveformSettingsPanel?.hidden);
 });
 MaweDom.cueEditorSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
-  setCueEditorSettingsPanelOpen(MaweDom.cueEditorSettingsPanel?.hidden);
+  MaweSettingsPanels.setCueEditorSettingsPanelOpen(MaweDom.cueEditorSettingsPanel?.hidden);
 });
 document.addEventListener('pointerdown', (event) => {
   if (temporaryVisibleSplitCueKeys.size) {
@@ -1190,65 +525,65 @@ document.addEventListener('pointerdown', (event) => {
     }
   }
   if (!MaweDom.cueListSettingsPanel?.hidden && !MaweDom.cueListSettings?.contains(event.target)) {
-    setCueListSettingsPanelOpen(false);
+    MaweSettingsPanels.setCueListSettingsPanelOpen(false);
   }
   if (!MaweDom.waveformSettingsPanel?.hidden && !MaweDom.waveformSettings?.contains(event.target)) {
-    setWaveformSettingsPanelOpen(false);
+    MaweSettingsPanels.setWaveformSettingsPanelOpen(false);
   }
   if (!MaweDom.cueEditorSettingsPanel?.hidden && !MaweDom.cueEditorSettings?.contains(event.target)) {
-    setCueEditorSettingsPanelOpen(false);
+    MaweSettingsPanels.setCueEditorSettingsPanelOpen(false);
   }
   if (!MaweDom.mergeJoinSettingsPanel?.hidden && !MaweDom.mergeJoinSettings?.contains(event.target)) {
-    setMergeJoinSettingsPanelOpen(false);
+    MaweSettingsPanels.setMergeJoinSettingsPanelOpen(false);
   }
   if (!MaweDom.splitTrimSettingsPanel?.hidden && !MaweDom.splitTrimSettings?.contains(event.target)) {
-    setSplitTrimSettingsPanelOpen(false);
+    MaweSettingsPanels.setSplitTrimSettingsPanelOpen(false);
   }
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   if (!MaweDom.cueListSettingsPanel?.hidden) {
-    setCueListSettingsPanelOpen(false);
+    MaweSettingsPanels.setCueListSettingsPanelOpen(false);
     MaweDom.cueListSettingsToggle?.focus();
   }
   if (!MaweDom.waveformSettingsPanel?.hidden) {
-    setWaveformSettingsPanelOpen(false);
+    MaweSettingsPanels.setWaveformSettingsPanelOpen(false);
     MaweDom.waveformSettingsToggle?.focus();
   }
   if (!MaweDom.cueEditorSettingsPanel?.hidden) {
-    setCueEditorSettingsPanelOpen(false);
+    MaweSettingsPanels.setCueEditorSettingsPanelOpen(false);
     MaweDom.cueEditorSettingsToggle?.focus();
   }
   if (!MaweDom.mergeJoinSettingsPanel?.hidden) {
-    setMergeJoinSettingsPanelOpen(false);
+    MaweSettingsPanels.setMergeJoinSettingsPanelOpen(false);
     MaweDom.mergeJoinSettingsToggle?.focus();
   }
   if (!MaweDom.splitTrimSettingsPanel?.hidden) {
-    setSplitTrimSettingsPanelOpen(false);
+    MaweSettingsPanels.setSplitTrimSettingsPanelOpen(false);
     MaweDom.splitTrimSettingsToggle?.focus();
   }
 });
-window.addEventListener('resize', positionMergeJoinSettingsPanel);
-window.addEventListener('scroll', positionMergeJoinSettingsPanel, true);
-window.addEventListener('resize', positionSplitTrimSettingsPanel);
-window.addEventListener('scroll', positionSplitTrimSettingsPanel, true);
-window.addEventListener('resize', positionCueListSettingsPanel);
-window.addEventListener('scroll', positionCueListSettingsPanel, true);
-window.addEventListener('resize', positionWaveformSettingsPanel);
-window.addEventListener('scroll', positionWaveformSettingsPanel, true);
-window.addEventListener('resize', positionCueEditorSettingsPanel);
-window.addEventListener('scroll', positionCueEditorSettingsPanel, true);
+window.addEventListener('resize', MaweSettingsPanels.positionMergeJoinSettingsPanel);
+window.addEventListener('scroll', MaweSettingsPanels.positionMergeJoinSettingsPanel, true);
+window.addEventListener('resize', MaweSettingsPanels.positionSplitTrimSettingsPanel);
+window.addEventListener('scroll', MaweSettingsPanels.positionSplitTrimSettingsPanel, true);
+window.addEventListener('resize', MaweSettingsPanels.positionCueListSettingsPanel);
+window.addEventListener('scroll', MaweSettingsPanels.positionCueListSettingsPanel, true);
+window.addEventListener('resize', MaweSettingsPanels.positionWaveformSettingsPanel);
+window.addEventListener('scroll', MaweSettingsPanels.positionWaveformSettingsPanel, true);
+window.addEventListener('resize', MaweSettingsPanels.positionCueEditorSettingsPanel);
+window.addEventListener('scroll', MaweSettingsPanels.positionCueEditorSettingsPanel, true);
 MaweDom.cueListSettings?.closest('.cue-list-toolbar')?.addEventListener(
-  'scroll', positionCueListSettingsPanel,
+  'scroll', MaweSettingsPanels.positionCueListSettingsPanel,
 );
 MaweDom.waveformSettings?.closest('.waveform-toolbar')?.addEventListener(
-  'scroll', positionWaveformSettingsPanel,
+  'scroll', MaweSettingsPanels.positionWaveformSettingsPanel,
 );
 MaweDom.cueEditorSettings?.closest('.cue-editor-toolbar')?.addEventListener(
-  'scroll', positionCueEditorSettingsPanel,
+  'scroll', MaweSettingsPanels.positionCueEditorSettingsPanel,
 );
 // 帮助浮窗：与拼合字幕共用 createFloatingPanel（拖动、位置持久化、Esc 关闭）
-const helpFloatingPanel = createFloatingPanel({
+const helpFloatingPanel = MaweFloatingPanel.createFloatingPanel({
   panel: MaweDom.helpPanel,
   dragHandle: MaweDom.helpDragHandle,
   manageButton: MaweDom.helpToggle,
@@ -1261,14 +596,14 @@ MaweDom.helpCloseButton?.addEventListener('click', () => helpFloatingPanel.close
 MaweDom.helpOpenWaveformSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
-    setWaveformSettingsPanelOpen(true);
+    MaweSettingsPanels.setWaveformSettingsPanelOpen(true);
     MaweDom.waveformSettingsToggle?.focus();
   });
 });
 // 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
 function openEditorSettingsAtTab(tabId) {
-  setEditorSettingsPanelOpen(true);
-  setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
+  MaweSettingsPanels.setEditorSettingsPanelOpen(true);
+  MaweSettingsPanels.setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
 }
 MaweDom.exportOpenSubtitleColorSettingsButton?.addEventListener('click', (event) => {
   event.preventDefault();
@@ -1347,7 +682,7 @@ function openHelpAtTab(tabName) {
 MaweDom.contextualHelpButtons.forEach((button) => {
   button.addEventListener('click', () => {
     if (button.closest('#gap-remove-panel')) closeGapRemovePanel();
-    if (button.closest('#waveform-settings-panel')) setWaveformSettingsPanelOpen(false);
+    if (button.closest('#waveform-settings-panel')) MaweSettingsPanels.setWaveformSettingsPanelOpen(false);
     openHelpAtTab(button.dataset.helpTabTarget);
   });
 });
@@ -1495,7 +830,7 @@ if (editorSystemThemeMedia?.addEventListener) {
 }
 MaweDom.splitKeySel.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ splitKey: MaweDom.splitKeySel.value });
-  refreshSplitKeyHelp();
+  MaweSplitMode.refreshSplitKeyHelp();
 });
 MaweDom.splitUseWordTimestampsToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ splitUseWordTimestamps: MaweDom.splitUseWordTimestampsToggle.checked });
@@ -1509,84 +844,23 @@ if (MaweDom.mergeJoinTextContinuousInput) MaweDom.mergeJoinTextContinuousInput.a
 if (MaweDom.mergeJoinTextWordInput) MaweDom.mergeJoinTextWordInput.addEventListener('input', () => {
   MaweSettings.updateEditorSettings({ mergeJoinTextWord: MaweDom.mergeJoinTextWordInput.value });
 });
-// 拆分移除符号：前 5 个高频符号用勾选 chip，其余走「其他符号」自由文本框
-// （空格分隔）；两者合并后即时持久化并同步给共享工具层。
-const splitTrimSymbolGrid = document.getElementById('split-trim-symbol-grid');
-const splitTrimSymbolsReset = document.getElementById('split-trim-symbols-reset');
-const splitTrimExtraInput = document.getElementById('split-trim-extra-symbols');
-function currentSplitTrimPrimaryChars() {
-  return MULTI_SUBTITLE_UTILS.SPLIT_TRIM_PRIMARY_SYMBOLS.map((option) => option.ch);
-}
-function splitTrimPrimaryCheckedSet() {
-  const primaries = new Set(currentSplitTrimPrimaryChars());
-  return new Set(MaweSettings.EDITOR_SETTINGS.splitTrimSymbols.filter((ch) => primaries.has(ch)));
-}
-function splitTrimExtraSymbols() {
-  const primaries = new Set(currentSplitTrimPrimaryChars());
-  return MaweSettings.EDITOR_SETTINGS.splitTrimSymbols.filter((ch) => !primaries.has(ch));
-}
-function updateSplitTrimSymbolsResetVisibility() {
-  const defaults = MULTI_SUBTITLE_UTILS.DEFAULT_SPLIT_TRIM_SYMBOLS;
-  const current = MaweSettings.EDITOR_SETTINGS.splitTrimSymbols;
-  splitTrimSymbolsReset?.toggleAttribute(
-    'hidden',
-    current.length === defaults.length && defaults.every((ch) => current.includes(ch)),
-  );
-}
-function persistSplitTrimSymbols(nextSymbols) {
-  // 归一化去重并保持顺序：先按传入顺序，chip 前置、文本框追加在后。
-  const normalized = MULTI_SUBTITLE_UTILS.normalizeSplitTrimSymbols(nextSymbols);
-  MaweSettings.updateEditorSettings({ splitTrimSymbols: normalized });
-  MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(normalized);
-  updateSplitTrimSymbolsResetVisibility();
-}
-function renderSplitTrimSymbolGrid() {
-  if (!splitTrimSymbolGrid) return;
-  const checked = splitTrimPrimaryCheckedSet();
-  splitTrimSymbolGrid.replaceChildren();
-  MULTI_SUBTITLE_UTILS.SPLIT_TRIM_PRIMARY_SYMBOLS.forEach((option) => {
-    const label = document.createElement('label');
-    label.title = option.name;
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = checked.has(option.ch);
-    input.value = option.ch;
-    input.addEventListener('change', () => {
-      const next = new Set(splitTrimPrimaryCheckedSet());
-      if (input.checked) next.add(option.ch);
-      else next.delete(option.ch);
-      persistSplitTrimSymbols([...next, ...splitTrimExtraSymbols()]);
-      refreshSplitTrimExtraInput();
-    });
-    const chip = document.createElement('span');
-    chip.textContent = option.ch;
-    label.append(input, chip);
-    splitTrimSymbolGrid.appendChild(label);
-  });
-  updateSplitTrimSymbolsResetVisibility();
-}
-function refreshSplitTrimExtraInput() {
-  if (splitTrimExtraInput && document.activeElement !== splitTrimExtraInput) {
-    splitTrimExtraInput.value = splitTrimExtraSymbols().join(' ');
-  }
-}
-renderSplitTrimSymbolGrid();
-refreshSplitTrimExtraInput();
-splitTrimExtraInput?.addEventListener('change', () => {
-  const extras = MULTI_SUBTITLE_UTILS.parseSplitTrimSymbolInput(splitTrimExtraInput.value);
-  persistSplitTrimSymbols([...splitTrimPrimaryCheckedSet(), ...extras]);
-  refreshSplitTrimExtraInput();
+MaweSplitTrim.renderSplitTrimSymbolGrid();
+MaweSplitTrim.refreshSplitTrimExtraInput();
+MaweSplitTrim.splitTrimExtraInput?.addEventListener('change', () => {
+  const extras = MULTI_SUBTITLE_UTILS.parseSplitTrimSymbolInput(MaweSplitTrim.splitTrimExtraInput.value);
+  MaweSplitTrim.persistSplitTrimSymbols([...MaweSplitTrim.splitTrimPrimaryCheckedSet(), ...extras]);
+  MaweSplitTrim.refreshSplitTrimExtraInput();
 });
-splitTrimSymbolsReset?.addEventListener('click', () => {
+MaweSplitTrim.splitTrimSymbolsReset?.addEventListener('click', () => {
   const defaults = MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(
     [...MULTI_SUBTITLE_UTILS.DEFAULT_SPLIT_TRIM_SYMBOLS],
   );
   MaweSettings.updateEditorSettings({ splitTrimSymbols: defaults });
-  renderSplitTrimSymbolGrid();
-  refreshSplitTrimExtraInput();
+  MaweSplitTrim.renderSplitTrimSymbolGrid();
+  MaweSplitTrim.refreshSplitTrimExtraInput();
 });
 // 拼合字幕工具窗：参数即时持久化；number 输入 change 时把显示值回钳到合法区间。
-const autoMergeFloatingPanel = createFloatingPanel({
+const autoMergeFloatingPanel = MaweFloatingPanel.createFloatingPanel({
   panel: MaweDom.autoMergePanel,
   dragHandle: MaweDom.autoMergeDragHandle,
   manageButton: MaweDom.autoMergeManageButton,
@@ -1636,7 +910,7 @@ MaweDom.autoMergePanel?.querySelectorAll('input[type="number"]').forEach((input)
     input.dispatchEvent(new Event('input', { bubbles: true }));
   }, { passive: false });
 });
-const subtitleExtendFloatingPanel = createFloatingPanel({
+const subtitleExtendFloatingPanel = MaweFloatingPanel.createFloatingPanel({
   panel: MaweDom.subtitleExtendPanel,
   dragHandle: MaweDom.subtitleExtendDragHandle,
   manageButton: MaweDom.subtitleExtendManageButton,
@@ -1658,11 +932,11 @@ MaweDom.subtitleExtendPanel?.querySelectorAll('input[type="number"]').forEach((i
     }
   }, { passive: false });
 });
-bindCueListDisplayToggle(MaweDom.cueListShowIndexToggle, 'cueListShowIndex');
-bindCueListDisplayToggle(MaweDom.cueListShowTimeToggle, 'cueListShowTime');
-bindCueListDisplayToggle(MaweDom.cueListShowStickerToggle, 'cueListShowSticker');
-bindCueListDisplayToggle(MaweDom.cueListShowCharcountToggle, 'cueListShowCharcount');
-bindCueListDisplayToggle(MaweDom.cueListAutoScrollOnClickToggle, 'cueListAutoScrollOnClick');
+MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListShowIndexToggle, 'cueListShowIndex');
+MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListShowTimeToggle, 'cueListShowTime');
+MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListShowStickerToggle, 'cueListShowSticker');
+MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListShowCharcountToggle, 'cueListShowCharcount');
+MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListAutoScrollOnClickToggle, 'cueListAutoScrollOnClick');
 MaweDom.cueListKeepSplitVisibleToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ cueListKeepSplitVisible: MaweDom.cueListKeepSplitVisibleToggle.checked });
   if (!MaweDom.cueListKeepSplitVisibleToggle.checked) clearTemporaryVisibleSplitCues();
@@ -1682,9 +956,9 @@ MaweDom.timedTextEditCharcountThresholdInput?.addEventListener('change', () => {
   syncCharCountThresholdInputs();
   updateTimedTextEditSingleGuide();
 });
-bindCueEditorDisplayToggle(MaweDom.cueEditorShowNavigationToggle, 'cueEditorShowNavigation');
-bindCueEditorDisplayToggle(MaweDom.cueEditorShowTimeActionsToggle, 'cueEditorShowTimeActions');
-bindCueEditorDisplayToggle(MaweDom.cueEditorShowStickerToggle, 'cueEditorShowSticker');
+MaweDisplaySettings.bindCueEditorDisplayToggle(MaweDom.cueEditorShowNavigationToggle, 'cueEditorShowNavigation');
+MaweDisplaySettings.bindCueEditorDisplayToggle(MaweDom.cueEditorShowTimeActionsToggle, 'cueEditorShowTimeActions');
+MaweDisplaySettings.bindCueEditorDisplayToggle(MaweDom.cueEditorShowStickerToggle, 'cueEditorShowSticker');
 MaweDom.exportStartAtZeroToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ exportStartAtZero: MaweDom.exportStartAtZeroToggle.checked });
 });
@@ -2002,14 +1276,14 @@ MaweDom.cueEditorCancelOnEscapeToggle?.addEventListener('change', () => {
 });
 MaweDom.ninjaModeToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ ninjaMode: MaweDom.ninjaModeToggle.checked });
-  applyNinjaSettings();
+  MaweNinja.applyNinjaSettings();
 });
 MaweDom.ninjaSoundToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ ninjaSound: MaweDom.ninjaSoundToggle.checked });
 });
 MaweDom.ninjaSlashEffectToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ ninjaSlashEffect: MaweDom.ninjaSlashEffectToggle.checked });
-  applyNinjaSettings();
+  MaweNinja.applyNinjaSettings();
 });
 MaweDom.ninjaSlashLengthInput?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ ninjaSlashLengthPercent: MaweSettings.clampNinjaSlashLength(MaweDom.ninjaSlashLengthInput.value) });
@@ -2713,135 +1987,6 @@ function clearAllGaps() {
   MaweHint.flashHint('已清理全部空隙区段', 'success');
 }
 
-// 可拖动非模态工具窗（移除静音空隙 / 拼合字幕共用模式）：
-// 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
-function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen }) {
-  if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false };
-  bindFloatingSurfaceActivation(panel);
-  let drag = null;
-
-  function isOpen() { return panel.classList.contains('show'); }
-
-  function setPosition(left, top, { persist = false } = {}) {
-    const rect = panel.getBoundingClientRect();
-    const margin = 6;
-    const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
-    const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
-    const nextLeft = Math.min(maxLeft, Math.max(margin, Math.round(left)));
-    const nextTop = Math.min(maxTop, Math.max(margin, Math.round(top)));
-    panel.style.left = `${nextLeft}px`;
-    panel.style.top = `${nextTop}px`;
-    panel.style.right = 'auto';
-    if (persist) {
-      try {
-        localStorage.setItem(positionKey, JSON.stringify({ left: nextLeft, top: nextTop }));
-      } catch (_) {
-        // file:// 隐私模式可能拒绝 localStorage；拖动本身仍保持可用。
-      }
-    }
-  }
-
-  function restorePosition() {
-    let saved = null;
-    try {
-      saved = JSON.parse(localStorage.getItem(positionKey) || 'null');
-    } catch (_) {
-      saved = null;
-    }
-    if (Number.isFinite(saved?.left) && Number.isFinite(saved?.top)) {
-      setPosition(saved.left, saved.top);
-      return true;
-    }
-    return false;
-  }
-
-  function positionNearAnchor() {
-    if (!anchorButton) return false;
-    const anchorRect = anchorButton.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    const margin = 6;
-    const gap = 6;
-    let left = anchorRect.left;
-    if (left + panelRect.width > window.innerWidth - margin) {
-      left = anchorRect.right - panelRect.width;
-    }
-    let top = anchorRect.bottom + gap;
-    if (top + panelRect.height > window.innerHeight - margin) {
-      top = anchorRect.top - panelRect.height - gap;
-    }
-    setPosition(left, top);
-    return true;
-  }
-
-  function open() {
-    if (typeof onOpen === 'function') onOpen();
-    panel.classList.add('show');
-    panel.setAttribute('aria-hidden', 'false');
-    bringFloatingSurfaceToFront(panel);
-    manageButton?.classList.add('active');
-    manageButton?.setAttribute('aria-expanded', 'true');
-    requestAnimationFrame(() => {
-      if (!restorePosition()) positionNearAnchor();
-    });
-  }
-
-  function close() {
-    panel.classList.remove('show', 'dragging');
-    panel.setAttribute('aria-hidden', 'true');
-    drag = null;
-    manageButton?.classList.remove('active');
-    manageButton?.setAttribute('aria-expanded', 'false');
-    syncFloatingSurfaceLayers();
-  }
-
-  function toggle() { if (isOpen()) close(); else open(); }
-
-  function finishDrag(event) {
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    try {
-      dragHandle?.releasePointerCapture?.(event.pointerId);
-    } catch (_) {
-      // 指针在浏览器窗口外释放时，capture 可能已由浏览器自动清理。
-    }
-    drag = null;
-    panel.classList.remove('dragging');
-    const rect = panel.getBoundingClientRect();
-    setPosition(rect.left, rect.top, { persist: true });
-  }
-
-  dragHandle?.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || event.target.closest('button')) return;
-    const rect = panel.getBoundingClientRect();
-    drag = {
-      pointerId: event.pointerId,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-    };
-    panel.classList.add('dragging');
-    dragHandle.setPointerCapture?.(event.pointerId);
-    event.preventDefault();
-  });
-  dragHandle?.addEventListener('pointermove', (event) => {
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    event.preventDefault();
-    setPosition(event.clientX - drag.offsetX, event.clientY - drag.offsetY);
-  });
-  dragHandle?.addEventListener('pointerup', finishDrag);
-  dragHandle?.addEventListener('pointercancel', finishDrag);
-  manageButton?.addEventListener('click', toggle);
-  window.addEventListener('resize', () => {
-    if (!isOpen()) return;
-    const rect = panel.getBoundingClientRect();
-    setPosition(rect.left, rect.top, { persist: true });
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || !isOpen() || editingState) return;
-    event.preventDefault();
-    close();
-  });
-  return { open, close, toggle, isOpen };
-}
-
 function gapRemovePanelIsOpen() {
   return MaweDom.gapRemovePanel?.classList.contains('show') === true;
 }
@@ -2949,7 +2094,7 @@ function closeGapRemovePanel() {
   MaweCuePanelState.gapRemovePanelDrag = null;
   MaweDom.gapRemoveManageButton?.classList.remove('active');
   MaweDom.gapRemoveManageButton?.setAttribute('aria-expanded', 'false');
-  syncFloatingSurfaceLayers();
+  MaweFloatingPanel.syncFloatingSurfaceLayers();
 }
 
 function openGapRemovePanel() {
@@ -2974,7 +2119,7 @@ function openGapRemovePanel() {
   renderGapRemoveList();
   MaweDom.gapRemovePanel.classList.add('show');
   MaweDom.gapRemovePanel.setAttribute('aria-hidden', 'false');
-  bringFloatingSurfaceToFront(MaweDom.gapRemovePanel);
+  MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.gapRemovePanel);
   MaweDom.gapRemoveManageButton?.classList.add('active');
   MaweDom.gapRemoveManageButton?.setAttribute('aria-expanded', 'true');
   requestAnimationFrame(restoreGapRemovePanelPosition);
@@ -3694,7 +2839,7 @@ function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) 
     rows.forEach((row) => cueFragment.appendChild(buildDualCueEl(row.mainIndex, row.extensionIndex, track)));
   }
   MaweCoreState.container.appendChild(cueFragment);
-  applyCueListDisplaySettings({ preserveCueListScroll: false });
+  MaweDisplaySettings.applyCueListDisplaySettings({ preserveCueListScroll: false });
   refreshColorFilterUi();
   MaweDom.totalCountEl.textContent = multiVisible && displayMode === 'extension'
     ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments.length || 0
@@ -3721,7 +2866,7 @@ function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) 
   }
   renderCurrentCuePanel();
   syncPlayerPlaceholder();
-  updateMultiSubtitleUi();
+  MaweDisplaySettings.updateMultiSubtitleUi();
   updateSubtitleExportUi();
   refreshTimedTextEditButton();
   updateGapRemoveDisableHint();
@@ -6431,7 +5576,7 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
   });
 
   // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
-  triggerNinjaSplitFeedback(ninjaModalSplitPoint(state, splitMs, 'main'));
+  MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'main'));
   if (successMessage) MaweHint.flashHint(successMessage, 'success');
   return true;
 }
@@ -6515,7 +5660,7 @@ function commitExtensionSplit(state, { force = false } = {}) {
     listFeedback: false,
   });
   // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
-  triggerNinjaSplitFeedback(ninjaModalSplitPoint(state, splitMs, 'extension'));
+  MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'extension'));
   MaweHint.flashHint(
     wasBound
       ? '已独立拆分副字幕并解除原绑定'
@@ -6646,7 +5791,7 @@ function confirmLinkedSplit() {
     listFeedback: false,
   });
   // 联动拆分刀光位置由唤起来源决定：列表唤起留在列表，其余落在主轨波形切点。
-  triggerNinjaSplitFeedback(ninjaModalSplitPoint(state, sharedCutMs, 'main'));
+  MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, sharedCutMs, 'main'));
   MaweHint.flashHint('已按同一绝对时间切点联动拆分', 'success');
 }
 
@@ -6668,7 +5813,7 @@ function splitAtCursor(
   preRange.setEnd(range.startContainer, range.startOffset);
   const cursorOffset = preRange.toString().length;
   const fullText = textEl.innerText.replace(/\r\n?/g, '\n');
-  const ninjaFeedbackPoint = feedbackPoint || ninjaSplitPointFromRange(
+  const ninjaFeedbackPoint = feedbackPoint || MaweNinja.ninjaSplitPointFromRange(
     range, textEl, cursorOffset, fullText.length,
   );
   const seg = DATA.segments[idx];
@@ -6853,7 +5998,7 @@ function splitAtCursor(
   lastClickedIdx = idx + 1;
   // 列表来源（B 键悬停等）沿用列表光标坐标；编辑区 Ctrl+Enter 等其余来源
   // 统一回退到波形区实际切点位置，波形上找不到时才用编辑区文字坐标。
-  triggerNinjaSplitFeedback(
+  MaweNinja.triggerNinjaSplitFeedback(
     (listFeedback ? (feedbackPoint || ninjaFeedbackPoint) : null)
       || MaweCoreState.waveformEditor?.getSplitPointAtTime?.(splitMs, 'main')
       || ninjaFeedbackPoint,
@@ -6937,7 +6082,7 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
       : Number.isFinite(listCaretInfo?.offset)
         ? {
           mainOffset: listCaretInfo.offset,
-          feedbackPoint: ninjaSplitPointFromRect(listCaretInfo.rect),
+          feedbackPoint: MaweNinja.ninjaSplitPointFromRect(listCaretInfo.rect),
           ninjaFromList: true,
         }
         : {};
@@ -9384,7 +8529,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     e.stopImmediatePropagation();
     // 先在编辑 DOM 消失前记录列表内光标位置，弹窗提交后的刀光留在原位。
-    const editFeedbackPoint = ninjaSplitPointFromRange(
+    const editFeedbackPoint = MaweNinja.ninjaSplitPointFromRange(
       null, state.textEl, offset, String(state.textEl.innerText || '').length,
     );
     finishExtensionEdit(true);
@@ -9437,7 +8582,7 @@ document.addEventListener('keydown', (e) => {
       const initial = Number.isFinite(context.offset)
         ? {
           extensionOffset: context.offset,
-          feedbackPoint: context.caretRect ? ninjaSplitPointFromRect(context.caretRect) : null,
+          feedbackPoint: context.caretRect ? MaweNinja.ninjaSplitPointFromRect(context.caretRect) : null,
           ninjaFromList: true,
         } : {};
       openExtensionSplitModal(context.idx, null, context.track, initial);
@@ -11001,7 +10146,7 @@ function buildCurrentWorkspaceData() {
   const selectedPreset = currentServerWorkspaceName
     ? `saved:${currentServerWorkspaceName}`
     : currentBuiltinWorkspaceName || workspacePresetSelect?.value || workspace.preset;
-  return { ...workspace, selectedPreset, editorDisplay: getEditorDisplaySettings() };
+  return { ...workspace, selectedPreset, editorDisplay: MaweDisplaySettings.getEditorDisplaySettings() };
 }
 
 function buildResolveJson() {
@@ -12287,8 +11432,8 @@ function configureRecentProjects() {
     MaweDom.recentProjectsToggle.addEventListener('click', (event) => {
       event.stopPropagation();
       MaweDom.recentProjectsEl.classList.toggle('open');
-      if (MaweDom.recentProjectsEl.classList.contains('open')) bringFloatingSurfaceToFront(MaweDom.recentProjectsEl);
-      else syncFloatingSurfaceLayers();
+      if (MaweDom.recentProjectsEl.classList.contains('open')) MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.recentProjectsEl);
+      else MaweFloatingPanel.syncFloatingSurfaceLayers();
     });
     document.addEventListener('click', (event) => {
       if (!MaweDom.recentProjectsEl.contains(event.target)) MaweDom.recentProjectsEl.classList.remove('open');
@@ -12510,7 +11655,7 @@ async function applyWorkspaceSelection(preset) {
     const workspace = getSavedServerWorkspaces()[name];
     if (!workspace) return;
     MaweCoreState.waveformEditor.setLayoutData({ ...workspace, selectedPreset: `saved:${name}` });
-    applyEditorDisplaySettings(workspace.editorDisplay);
+    MaweDisplaySettings.applyEditorDisplaySettings(workspace.editorDisplay);
     restoreWorkspaceNavigation(workspace);
     currentServerWorkspaceName = name;
     currentBuiltinWorkspaceName = '';
@@ -12529,7 +11674,7 @@ async function applyWorkspaceSelection(preset) {
   const layoutPreset = presetWorkspaceHasLayout(savedPreset) ? savedPreset : null;
   if (layoutPreset) MaweCoreState.waveformEditor.setLayoutData(layoutPreset);
   else MaweCoreState.waveformEditor.setLayout(preset);
-  applyEditorDisplaySettings(
+  MaweDisplaySettings.applyEditorDisplaySettings(
     savedPreset?.editorDisplay || window.AsrWaveform?.builtinWorkspaces?.[preset]?.editorDisplay,
   );
   workspacePresetSelect.value = preset;
@@ -12617,7 +11762,7 @@ function configureWorkspaceTransfer() {
       const workspace = data.workspace || data;
       MaweHistory.pushLayoutUndo('导入工作区', MaweCoreState.waveformEditor.getLayoutHistorySnapshot?.());
       MaweCoreState.waveformEditor.setLayoutData(workspace);
-      applyEditorDisplaySettings(workspace?.editorDisplay);
+      MaweDisplaySettings.applyEditorDisplaySettings(workspace?.editorDisplay);
       DATA.workspace = MaweCoreState.waveformEditor.getLayoutData();
       MaweHint.flashHint(`已导入工作区：${file.name}`, 'success');
     } catch (error) {
@@ -12631,7 +11776,7 @@ function configureWorkspaceTransfer() {
     selectedWorkspaceId = workspacePresetSelect.value;
     if (BUILTIN_WORKSPACE_IDS.includes(selectedWorkspaceId)) {
       MaweCoreState.waveformEditor.setLayout(selectedWorkspaceId);
-      applyEditorDisplaySettings(window.AsrWaveform?.builtinWorkspaces?.[selectedWorkspaceId]?.editorDisplay);
+      MaweDisplaySettings.applyEditorDisplaySettings(window.AsrWaveform?.builtinWorkspaces?.[selectedWorkspaceId]?.editorDisplay);
     }
   });
   document.getElementById('layout-edit-toggle')?.addEventListener('click', () => {
@@ -13499,8 +12644,8 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = nu
       previousPointerPoint = null;
       lastPointInsideOpenWrapper = null;
     }
-    if (open) bringFloatingSurfaceToFront(dd);
-    else syncFloatingSurfaceLayers();
+    if (open) MaweFloatingPanel.bringFloatingSurfaceToFront(dd);
+    else MaweFloatingPanel.syncFloatingSurfaceLayers();
     if (open && positioner) requestAnimationFrame(positioner);
     if (!open && restoreFocus) btn.focus();
   };
@@ -13809,7 +12954,7 @@ function applyCanonicalProject(data, filename) {
   lastActive = -1;
   if (MaweCoreState.waveformEditor) {
     MaweCoreState.waveformEditor.setLayoutData(DATA.workspace, { render: false });
-    applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
+    MaweDisplaySettings.applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
     restoreWorkspaceSelection();
     syncWorkspaceControls();
     MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(DATA.waveform, { render: false });
@@ -14756,7 +13901,7 @@ function setStickerRootModalOpen(open) {
       ? document.activeElement : null;
     stickerRootModal.classList.add('show');
     // 设置窗口由浮层栈动态抬高（430+），固定 335 盖不住它；打开时入栈置顶。
-    bringFloatingSurfaceToFront(stickerRootModal);
+    MaweFloatingPanel.bringFloatingSurfaceToFront(stickerRootModal);
     const initialFocus = stickerRootServerEnabled
       ? stickerRootInput : document.getElementById('sticker-root-cancel');
     setTimeout(() => initialFocus.focus(), 50);
@@ -16219,8 +15364,8 @@ function assignSticker(sticker) {
   if (!hadStickers && !MaweSettings.EDITOR_SETTINGS.cueListShowSticker && !MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker
       && confirm('Oi！检测到你添加了表情包，是否需要帮你打开「设置」中的字幕列表/编辑区的表情包显示开关？   ヾ(´･ω･｀)ﾉ')) {
     MaweSettings.updateEditorSettings({ cueListShowSticker: true, cueEditorShowSticker: true });
-    applyCueListDisplaySettings();
-    applyCueEditorDisplaySettings();
+    MaweDisplaySettings.applyCueListDisplaySettings();
+    MaweDisplaySettings.applyCueEditorDisplaySettings();
   }
   refreshStickerAssignmentUi();
   MaweHint.flashHint(`已分配「${sticker.name}」`, 'success');
@@ -17026,7 +16171,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     addItem(`删除 ${targetIdxs.length} 条字幕`, 'Delete', () => {
       deleteSegments(targetIdxs);
     }, { danger: true });
-    addItem('取消选择', `${modKeyLabel()}+D`, () => clearSelection());
+    addItem('取消选择', `${MaweDisplaySettings.modKeyLabel()}+D`, () => clearSelection());
   }
 
   // 调整 ctxmenu 位置（避免溢出）
@@ -17401,7 +16546,7 @@ function initWaveformEditor() {
   });
   MaweCoreState.waveformEditor.attachPlayer(MaweCoreState.player);
   MaweCoreState.waveformEditor.setLayoutData(DATA.workspace || null, { render: false });
-  applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
+  MaweDisplaySettings.applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
   MaweCoreState.waveformEditor.setSpectralPayload(DATA.spectral || null, { render: false });
   MaweCoreState.waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks || null, { render: false });
   MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(DATA.waveform || null, { render: false });
@@ -17722,9 +16867,9 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
   performUndo: MaweHistory.performUndo,
   flashHint: MaweHint.flashHint,
   scrollCueToCenter,
-  setEditorSettingsPanelOpen,
-  modKeyLabel,
-  splitKeyLabel,
+  setEditorSettingsPanelOpen: MaweSettingsPanels.setEditorSettingsPanelOpen,
+  modKeyLabel: MaweDisplaySettings.modKeyLabel,
+  splitKeyLabel: MaweDisplaySettings.splitKeyLabel,
   openHelp: () => helpFloatingPanel.open(),
   openHelpAtTab,
   closeHelp: () => helpFloatingPanel.close(),

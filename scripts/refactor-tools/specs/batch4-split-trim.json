@@ -1,0 +1,6 @@
+{
+  "file": "editor-split-trim.js",
+  "ns": "MaweSplitTrim",
+  "header": "拆分修剪符号表：修剪字符配置、持久化与网格 UI。",
+  "ranges": [[1514, 1568]]
+}
