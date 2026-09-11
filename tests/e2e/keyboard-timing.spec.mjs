@@ -363,6 +363,41 @@ test('dual mode links both edges via the seam zone while side handles trim indep
   ]);
 });
 
+test('dual-mode extension seam adds both adjacent cues to the existing selection', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1',
+        role: 'extension',
+        name: 'English',
+        language: 'English',
+        split_mode: 'word',
+        segments: [
+          { id: 'extension-001', start: 5000, end: 10000, text: 'First' },
+          { id: 'extension-002', start: 10000, end: 18000, text: 'Second' },
+          { id: 'extension-003', start: 25000, end: 30000, text: 'Third' },
+        ],
+      }],
+      bindings: [],
+    };
+    renderAll({ waveform: 'full' });
+  });
+
+  await page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="2"]').first()
+    .click({ modifiers: ['Control'] });
+  const zone = page.locator('.waveform-cue-boundary[data-track="extension"][data-left-idx="0"]');
+  await expect(zone).toBeVisible();
+  await zone.click();
+  await expect.poll(() => page.evaluate(() => [
+    ...new Set([...document.querySelectorAll('.waveform-cue-block.selected[data-track="extension"]')]
+      .map((block) => block.dataset.extIdx)),
+  ].sort())).toEqual(['0', '1', '2']);
+});
+
 test('an independent shared-boundary drag can reverse before release', async ({ page }) => {
   // 该测试验证传统模式「自动吸附关闭」时的独立拖动路径，显式关闭开关。
   await loadAttachedCues(page, false, 'classic');
