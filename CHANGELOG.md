@@ -12,6 +12,7 @@
 ### 🐛 修复
 
 - **Linux 打包不再依赖会被 BtbN 删除的固定 autobuild** ： AppImage 打包此前写死某个 dated autobuild 的下载地址与 SHA256，而 BtbN 只保留最近十来天的 dated release，过期即 404；下载又未开 `--fail`，404 页面会被存成文件并报成「校验和不匹配」，1.6.0-beta.3 的 Linux 打包即因此失败。现改为固定使用 `latest` release 中 FFmpeg 8.1 稳定分支资产的永久直链（与 Windows 的 8.1.2 / macOS 的 8.1 同大版本），开启 curl `--fail`，随包下载上游 `checksums.sha256` 比对完整性，解压后再校验二进制自报版本；实际打进包的归档哈希仍记录在 `ffmpeg/SOURCE.txt`。升级大版本只需改脚本里的 `FFMPEG_BRANCH`。
+- **字幕列表意外滚动** ： 编辑、拆分、合并及撤销重做时保持当前阅读位置，后台保存和波形加载不再重建列表；手动翻看会暂停字幕跟随，可点击「跟随播放」恢复，空格播放／暂停不改变跟随状态。
 
 ## [1.6.0-beta.3] - 2026-09-10
 
