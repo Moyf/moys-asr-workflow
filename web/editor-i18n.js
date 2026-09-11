@@ -863,9 +863,9 @@
 
   // 导出文件名中的技术段（按当前语言映射；中文界面译出，英文界面原样）。
   // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」；
-  // 未标记颜色的默认组用「_无色」而非「_default」。
+  // 未标记颜色的默认组用「_默认」而非「_default」。
   const EXPORT_NAME_SEGMENTS = {
-    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '无色',
+    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '默认',
     'yellow': '黄色', 'green': '绿色', 'red': '红色', 'purple': '紫色', 'blue': '蓝色',
   };
 
