@@ -20,6 +20,7 @@ from scripts.mosp_match_text import (
     AlignmentError,
     MARKDOWN_EXTENSIONS,
     clean_markdown_text,
+    clean_markdown_inline_symbols,
     generate_matched_mosp,
 )
 
@@ -27,6 +28,22 @@ from scripts.mosp_match_text import (
 SCRIPT_EXTENSIONS = frozenset({".txt", *MARKDOWN_EXTENSIONS})
 MIN_MATCH_COVERAGE = 0.55
 DEFAULT_SPLIT_PUNCTUATION = frozenset({"，", "。", ",", ".", "\n"})
+
+
+class MatchCoverageError(ValueError):
+    """Raised when alignment is too uncertain to write a match artifact."""
+
+    def __init__(self, coverage: float, minimum_coverage: float = MIN_MATCH_COVERAGE) -> None:
+        self.coverage = coverage
+        self.minimum_coverage = minimum_coverage
+        super().__init__(
+            f"script and subtitle match coverage is too low ({coverage:.0%}); "
+            f"at least {minimum_coverage:.0%} of the shorter text must match"
+        )
+
+
+class SubtitleMatchError(ValueError):
+    """Raised when a loaded project cannot be used for character matching."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +57,7 @@ class ScriptMatchRequest:
     extra_split_punctuation: tuple[str, ...] = ()
     preserve_punctuation: tuple[str, ...] = ()
     match_mode: str = "script"
+    clean_markdown_symbols: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +91,7 @@ def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
         script_text,
         extra_split_punctuation,
         preserve_punctuation,
+        clean_markdown_symbols=request.clean_markdown_symbols,
     )
     if (
         request.match_mode == "script"
@@ -90,14 +109,14 @@ def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
             project,
             prepared_script,
             DEFAULT_SPLIT_PUNCTUATION | frozenset(request.extra_split_punctuation),
-            DEFAULT_SPLIT_PUNCTUATION | frozenset(request.preserve_punctuation),
+            frozenset(request.preserve_punctuation),
             request.match_mode,
         )
     return write_artifacts(
         matched,
         source_project_path=source_project,
         source_srt_path=source_srt,
-        operation="matched",
+        operation="match",
         write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
         write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
         warnings=(f"文稿来源：{script_path}", punctuation_warning, *warnings),
@@ -110,9 +129,12 @@ def prepare_script_text(
     script_text: str,
     extra_split_punctuation: tuple[str, ...] = (),
     preserve_punctuation: tuple[str, ...] = (),
+    *,
+    clean_markdown_symbols: bool = False,
 ) -> tuple[str, str]:
     """Validate and apply custom manuscript punctuation before matching."""
 
+    prepared_text = clean_markdown_inline_symbols(script_text) if clean_markdown_symbols else script_text
     split_symbols = tuple(symbol for symbol in extra_split_punctuation if symbol)
     preserve_symbols = tuple(symbol for symbol in preserve_punctuation if symbol)
     # 基础断句集（逗号、句号、换行）始终生效；问号和感叹号由额外
@@ -127,8 +149,38 @@ def prepare_script_text(
             "保留符号必须来自额外断句符号：" + "、".join(missing)
         )
     if not split_symbols:
-        return script_text, "未配置额外断句符号。"
-    return script_text, f"额外断句符号：{len(split_symbols)} 个；保留：{len(preserve_symbols)} 个。"
+        return prepared_text, "未配置额外断句符号。"
+    return prepared_text, f"额外断句符号：{len(split_symbols)} 个；保留：{len(preserve_symbols)} 个。"
+
+
+def processed_script_text(
+    script_text: str,
+    *,
+    match_mode: str = "script",
+    extra_split_punctuation: tuple[str, ...] = (),
+    preserve_punctuation: tuple[str, ...] = (),
+    clean_markdown_symbols: bool = True,
+) -> str:
+    """Return the same manuscript representation that matching will consume.
+
+    The Launcher uses this for the manuscript preview so it does not show a
+    different line-break or punctuation interpretation from the actual match.
+    """
+
+    if match_mode not in {"script", "text"}:
+        raise ValueError("不支持的文稿匹配模式")
+    prepared_text, _warning = prepare_script_text(
+        script_text,
+        extra_split_punctuation if match_mode == "script" else (),
+        preserve_punctuation if match_mode == "script" else (),
+        clean_markdown_symbols=clean_markdown_symbols,
+    )
+    normalized_text = prepared_text.replace("\r\n", "\n").replace("\r", "\n")
+    if match_mode == "text":
+        return normalized_text
+    split_punctuation = DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split_punctuation)
+    preserved = frozenset(preserve_punctuation)
+    return "\n".join(_split_script_segments(normalized_text, split_punctuation, preserved))
 
 
 def _has_complete_item_timings(project: JsonDict) -> bool:
@@ -165,7 +217,7 @@ def _match_project_with_character_timings(
     preserve_punctuation: tuple[str, ...],
 ) -> tuple[JsonDict, tuple[str, ...]]:
     split_punctuation = DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split_punctuation)
-    preserved = DEFAULT_SPLIT_PUNCTUATION | frozenset(preserve_punctuation)
+    preserved = frozenset(preserve_punctuation)
     if any(len(symbol) != 1 for symbol in split_punctuation | preserved):
         return _match_project(project, script_text, split_punctuation, preserved, "script")
 
@@ -187,17 +239,14 @@ def _match_project_with_character_timings(
             preserve_punctuation=preserved,
         )
     except AlignmentError as error:
-        raise ValueError(str(error)) from error
+        raise SubtitleMatchError(str(error)) from error
 
     asr_characters = _report_integer(report, "asr_characters")
     manuscript_characters = _report_integer(report, "manuscript_characters")
     matched_characters = _report_integer(report, "matched_characters")
     coverage = matched_characters / max(1, min(asr_characters, manuscript_characters))
     if coverage < MIN_MATCH_COVERAGE:
-        raise ValueError(
-            f"script and subtitle match coverage is too low ({coverage:.0%}); "
-            f"at least {MIN_MATCH_COVERAGE:.0%} of the shorter text must match"
-        )
+        raise MatchCoverageError(coverage)
 
     raw_matched: JsonValue = json.loads(matched_text)
     if not isinstance(raw_matched, dict):
@@ -354,10 +403,7 @@ def _match_project(
         return normalize_project(result), (f"文稿匹配度：100%；已按文稿换行更新 {changed} 个字幕段。",)
 
     if coverage < MIN_MATCH_COVERAGE:
-        raise ValueError(
-            f"script and subtitle match coverage is too low ({coverage:.0%}); "
-            f"at least {MIN_MATCH_COVERAGE:.0%} of the shorter text must match"
-        )
+        raise MatchCoverageError(coverage)
 
     boundaries = _alignment_boundaries(len(source_text), len(script.value), blocks)
     result = copy.deepcopy(project)
@@ -505,11 +551,18 @@ def _split_script_segments(
         if symbol:
             if symbol in preserve_punctuation:
                 current.append(symbol)
+            index += len(symbol)
+            while index < len(text):
+                following = next((candidate for candidate in symbols if text.startswith(candidate, index)), "")
+                if not following:
+                    break
+                if following in preserve_punctuation:
+                    current.append(following)
+                index += len(following)
             value = "".join(current).strip()
             if _normalize_text(value).value:
                 segments.append(value)
             current = []
-            index += len(symbol)
             continue
         current.append(text[index])
         index += 1

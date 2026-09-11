@@ -29,10 +29,21 @@
       settings_language: "语言",
       show_rare_langs: "显示相对小众的语言",
       show_rare_langs_hint: "开启后，「语言」列表显示供应商支持的全部语种；关闭时只显示 8 种常用语言。",
+      settings_file_output: "文件输出",
+      output_subfolder: "将所有输出文件放入子文件夹",
+      output_subfolder_title: "将所有输出文件放入子文件夹（默认关闭）：SRT、工程与编辑器页面写入媒体旁的 _maw 子目录",
+      per_video_subfolder: "每个视频单独创建子文件夹",
+      per_video_subfolder_title: "每个视频单独创建子文件夹（默认关闭）：需要先开启「将所有输出文件放入子文件夹」，每个媒体各自使用「视频名_maw」目录",
+      attach_model_name: "附加模型名称",
+      attach_model_name_title: "附加模型名称（默认开启）：SRT 文件名带上供应商/模型段，如 clip.qwen-audio.srt",
       key: "API Key",
       save_key: "存入本地环境",
       key_hint_prefix: "在",
       key_hint_suffix: "获取 API Key ↗",
+      openai_official: "OpenAI 官方",
+      openrouter: "OpenRouter",
+      openai_key_hint_or: " 或 ",
+      openai_key_hint_suffix: "获取 API Key",
       json_project: "工程文件",
       json_placeholder: "生成工程后会自动填入，也可以手动选择之前的工程",
       server_media: "服务器媒体（可选）",
@@ -112,10 +123,21 @@
       settings_language: "Language",
       show_rare_langs: "Show less common languages",
       show_rare_langs_hint: "When enabled, the language list shows every supported language; otherwise it shows 8 common languages.",
+      settings_file_output: "File output",
+      output_subfolder: "Put all outputs in a subfolder",
+      output_subfolder_title: "Put all outputs in a subfolder (off by default): SRT, project, and editor page go to the _maw subfolder next to the media.",
+      per_video_subfolder: "Create a separate subfolder per video",
+      per_video_subfolder_title: "Create a separate subfolder per video (off by default): requires “Put all outputs in a subfolder”; each media uses its own “video-name_maw” folder.",
+      attach_model_name: "Append model name",
+      attach_model_name_title: "Append model name (on by default): SRT filenames carry the provider/model segment, e.g. clip.qwen-audio.srt.",
       key: "API Key",
       save_key: "Save locally",
       key_hint_prefix: "Get an API Key from",
       key_hint_suffix: "↗",
+      openai_official: "OpenAI official",
+      openrouter: "OpenRouter",
+      openai_key_hint_or: " or ",
+      openai_key_hint_suffix: "↗",
       json_project: "Project file",
       json_placeholder: "Auto-filled after generation, or choose an earlier project",
       server_media: "Server media (optional)",
@@ -170,6 +192,28 @@
     }
   };
   Object.assign(STRINGS.zh, {
+    audio_track: "声音轨道",
+    audio_track_hint: "检测到多个声音轨道，请选择用于转写和波形的轨道。",
+    audio_track_loading: "正在读取声音轨道……",
+    audio_track_probe_failed: "无法读取声音轨道，将使用第一个轨道。",
+    audio_track_number: "音频 #",
+    audio_track_default: "默认",
+    audio_track_channels: "{count} 声道",
+    audio_track_sample_rate: "{rate} kHz",
+    audio_track_id: "ID {id}"
+  });
+  Object.assign(STRINGS.en, {
+    audio_track: "Audio track",
+    audio_track_hint: "Multiple audio tracks were found. Choose the track for transcription and waveform generation.",
+    audio_track_loading: "Reading audio tracks…",
+    audio_track_probe_failed: "Audio tracks could not be read; the first track will be used.",
+    audio_track_number: "Audio #",
+    audio_track_default: "Default",
+    audio_track_channels: "{count} ch",
+    audio_track_sample_rate: "{rate} kHz",
+    audio_track_id: "ID {id}"
+  });
+  Object.assign(STRINGS.zh, {
     toolbox_burn_subtitle: "压制字幕", toolbox_burn_subtitle_hint: "将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。", toolbox_burn_subtitle_input: "字幕文件", toolbox_burn_subtitle_placeholder: "选择或拖入 .srt / .ass / .ssa 字幕", toolbox_burn_subtitle_input_hint: "默认跟随当前的 SRT 输出，也支持手动选择 ASS / SSA。", toolbox_burn_subtitle_invalid: "请选择 .srt、.ass 或 .ssa 字幕文件。", toolbox_burn_done: "字幕压制完成，已切换到新媒体：", toolbox_extract_audio: "提取音频", toolbox_extract_audio_hint: "从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。", toolbox_audio_track: "音轨", toolbox_audio_track_choose: "先选择媒体，MAW 会读取可用音轨。", toolbox_audio_tracks_reading: "正在读取音轨……", toolbox_audio_tracks_found: "已找到 {count} 条音轨。", toolbox_audio_tracks_none: "没有检测到可用音轨。", toolbox_audio_track_item: "音轨", toolbox_audio_track_default: "默认", toolbox_audio_track_invalid: "所选音轨无效，请重新选择。", toolbox_extract_audio_done: "音频提取完成，已切换到新媒体：", toolbox_utility_video_required: "压制字幕需要包含视频画面的媒体文件。", toolbox_status_burning: "正在压制字幕并重新编码视频……", toolbox_status_extracting: "正在提取音频……", toolbox_status_cancelling: "正在停止媒体处理……"
   });
   Object.assign(STRINGS.en, {
@@ -184,11 +228,12 @@
     custom_asr_base_url: "ASR Base URL",
     custom_asr_base_url_placeholder: "例如 https://api.openai.com/v1",
     custom_asr_base_url_hint: "程序会请求该地址下的 /audio/transcriptions，并要求接口返回时间戳。",
-    custom_asr_model: "ASR 模型名",
-    custom_asr_model_placeholder: "例如 whisper-1",
-    custom_asr_model_hint: "填写中转站或服务商控制台提供的模型名。",
+    custom_asr_model: "自定义 ASR 模型名",
+    custom_asr_model_placeholder: "例如 my-custom-model",
+    custom_asr_model_hint: "中转站或服务商的模型名可能不同；请填写控制台提供的完整模型名。",
     custom_asr_base_url_missing: "请填写自定义 ASR Base URL。",
-    custom_asr_model_missing: "请填写自定义 ASR 模型名。"
+    custom_asr_model_missing: "请填写自定义 ASR 模型名。",
+    transcription_model_hint: "请检查模型名称是否与当前接口一致；使用中转站时，请选择“自定义（Custom）”，填写服务商提供的完整模型名。"
   });
   Object.assign(STRINGS.en, {
     test_run: "Quick test",
@@ -199,11 +244,12 @@
     custom_asr_base_url: "ASR Base URL",
     custom_asr_base_url_placeholder: "For example, https://api.openai.com/v1",
     custom_asr_base_url_hint: "MAW calls /audio/transcriptions under this URL and requires timestamped output.",
-    custom_asr_model: "ASR model",
-    custom_asr_model_placeholder: "For example, whisper-1",
-    custom_asr_model_hint: "Enter the model name provided by your relay or service provider.",
+    custom_asr_model: "Custom ASR model name",
+    custom_asr_model_placeholder: "For example, my-custom-model",
+    custom_asr_model_hint: "Relay and service-provider model names may differ; enter the exact model name from its console.",
     custom_asr_base_url_missing: "Enter a custom ASR Base URL.",
-    custom_asr_model_missing: "Enter a custom ASR model name."
+    custom_asr_model_missing: "Enter a custom ASR model name.",
+    transcription_model_hint: "Check that the model name matches this endpoint. If you use a relay, choose Custom and enter the exact model name provided by the service."
   });
   Object.assign(STRINGS.zh, {
     mode_label: "转写模式",
@@ -311,7 +357,9 @@
     auto_step_match: "文稿匹配",
     auto_step_replace: "固定处理",
     auto_step_proofread: "LLM 校对",
+    auto_step_proofread_title: "通常不需要启用，优先使用 ASR 自带的提示词功能。",
     auto_step_resegment: "重新断句",
+    auto_step_resegment_title: "对于长字幕谨慎开启，会很慢而且可能中断。",
     auto_step_ocr: "OCR 字幕去重",
     auto_step_translate: "翻译",
     auto_translate_target: "翻译目标",
@@ -349,6 +397,7 @@
     device_auto: "自动",
     device_cpu: "CPU",
     device_cuda: "CUDA",
+    local_checking: "正在检查本地模型……",
     local_runtime_missing: "本地运行时未安装",
     local_missing: "未检测到本地模型",
     local_partial: "已检测到主模型，但仍缺少组件",
@@ -365,6 +414,7 @@
     local_runtime_install: "安装本地模型支持",
     local_runtime_repair: "修复运行环境",
     local_runtime_cancel: "取消安装",
+    local_runtime_checking: "正在检查本地运行环境……",
     local_runtime_missing: "本地运行环境未安装",
     local_runtime_installing: "正在安装本地运行环境……",
     local_runtime_ready: "本地运行环境已就绪",
@@ -376,7 +426,11 @@
     open_folder_hint: "点击打开所在文件夹",
     local_runtime_install_done: "本地模型支持已安装完成",
     local_runtime_install_failed: "本地运行环境安装失败",
-    local_runtime_cancelled: "本地运行环境安装已取消"
+    local_runtime_cancelled: "本地运行环境安装已取消",
+    settings_local_runtime: "本地模型运行时",
+    local_runtime_view_settings: "在 ⚙️ 设置中查看",
+    local_runtime_path_label: "本地运行环境目录",
+    local_runtime_path_hint: "默认安装到用户目录；可改到空间更充足的磁盘。运行环境与模型缓存分开保存，更改后按新目录重新扫描。"
   });
   Object.assign(STRINGS.en, {
     auto_postprocess_title: "3️⃣ Post-transcription processing (Beta)",
@@ -390,7 +444,9 @@
     auto_step_match: "Script match",
     auto_step_replace: "Fixed processing",
     auto_step_proofread: "LLM proofread",
+    auto_step_proofread_title: "Usually unnecessary; prefer the prompt feature built into your ASR provider.",
     auto_step_resegment: "Resegment",
+    auto_step_resegment_title: "Use with caution on long subtitles: it is slow and may be interrupted.",
     auto_step_ocr: "OCR subtitle dedup",
     auto_step_translate: "Translate",
     auto_translate_target: "Translation target",
@@ -428,6 +484,7 @@
     device_auto: "Auto",
     device_cpu: "CPU",
     device_cuda: "CUDA",
+    local_checking: "Checking the local model…",
     local_runtime_missing: "Local runtime is not installed",
     local_missing: "No local model detected",
     local_partial: "Main model found, but components are missing",
@@ -444,6 +501,7 @@
     local_runtime_install: "Install local model support",
     local_runtime_repair: "Repair runtime",
     local_runtime_cancel: "Cancel installation",
+    local_runtime_checking: "Checking the local runtime…",
     local_runtime_missing: "Local runtime is not installed",
     local_runtime_installing: "Installing the local runtime…",
     local_runtime_ready: "Local runtime is ready",
@@ -455,22 +513,31 @@
     open_folder_hint: "Click to open this folder",
     local_runtime_install_done: "Local model support is ready",
     local_runtime_install_failed: "Local runtime installation failed",
-    local_runtime_cancelled: "Local runtime installation was cancelled"
+    local_runtime_cancelled: "Local runtime installation was cancelled",
+    settings_local_runtime: "Local model runtime",
+    local_runtime_view_settings: "View in ⚙️ Settings",
+    local_runtime_path_label: "Local runtime directory",
+    local_runtime_path_hint: "Installed in your user directory by default; move it to a drive with more space if needed. The runtime and model cache are kept separate; the install status is rescanned for the new directory."
   });
   Object.assign(STRINGS.zh, {
     advanced_params: "识别参数",
     advanced_misc: "其他",
-    generate_spectral: "生成 ReaPeaks 频谱数据",
-    generate_spectral_hint: "默认只生成 ReaPeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。",
-    generate_spectral_title: "为媒体旁的 .ReaPeaks 缓存额外生成频谱层；不影响自研波形。",
+    generate_spectral: "生成 reapeaks 频谱数据",
+    generate_spectral_hint: "默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。",
+    generate_spectral_title: "为媒体旁的 .ReaPeaks 缓存额外生成频谱层；不影响原生波形。",
     segmentation: "字幕切句",
     max_len: "最大字数",
     min_len: "短句合并阈值",
+    max_words: "英文最大单词数",
+    min_words: "英文短句合并阈值（单词）",
     gap_split: "停顿切句（毫秒）",
     max_len_placeholder: "默认 18",
     min_len_placeholder: "默认 5",
+    max_words_placeholder: "默认 13",
+    min_words_placeholder: "默认 3",
     gap_split_placeholder: "默认 800",
-    segmentation_hint: "留空使用默认值（最大字数：18，短句合并阈值：5，停顿切句：800ms）；最大/最小字数主要作用于中文，停顿阈值单位为毫秒。",
+    segmentation_hint: "字符型设置和停顿设置留空使用默认值（最大字数：18、短句合并阈值：5、停顿切句：800ms）；系统会按语言/文本自动选择字符型或单词型规则。",
+    english_segmentation_hint: "在生成英文字幕时，会启用该配置。",
     qwen_audio_options_title: "Qwen 上下文与热词",
     toolbox_group_ocr_video: "视频来源",
     toolbox_group_ocr_region: "识别区域与模型",
@@ -523,22 +590,38 @@
     soniox_context_translation_terms_placeholder: "MRI => 核磁共振\nSt John's => St John's",
     soniox_context_translation_terms_hint: "每行一个 source => target；也可粘贴 translation_terms JSON 数组。",
     soniox_context_count: "当前字符数：{count}/10000",
-    soniox_context_too_long: "Soniox 上下文约限制为 10000 个字符。"
+    soniox_context_too_long: "Soniox 上下文约限制为 10000 个字符。",
+    openai_advanced_title: "OpenAI 转写高级设置",
+    openai_prompt: "Prompt（提示词）",
+    openai_prompt_placeholder: "补充领域背景、专有名词或前文，例如：这是一段关于……的会议记录。",
+    openai_prompt_hint: "补充领域背景、专有名词或前文；Whisper 最多支持 224 tokens。",
+    openai_keywords: "Keywords（关键词）",
+    openai_keywords_placeholder: "OpenAI\nResponses API\n专有名词",
+    openai_keywords_hint: "每行一个词或短语；当前仅对 gpt-transcribe 发送。",
+    openai_diarization_hint: "当前模型会使用 diarized_json 返回带说话人标注的段落；无需额外勾选。",
+    openai_diarization_openrouter_hint: "OpenRouter 不支持 diarize，请改用 OpenAI 官方 Base URL。",
+    openai_keywords_invalid: "OpenAI Keywords 不能包含 < 或 >。",
+    openai_diarize_openrouter_unsupported: "OpenRouter 不支持 gpt-4o-transcribe-diarize，请改用 OpenAI 官方 Base URL。"
   });
   Object.assign(STRINGS.en, {
     advanced_params: "Parameters",
     advanced_misc: "Other",
-    generate_spectral: "Generate ReaPeaks spectral data",
-    generate_spectral_hint: "By default only the ReaPeaks wave layer is generated. Spectral data adds processing time and file size.",
-    generate_spectral_title: "Add a spectral layer to the .ReaPeaks cache beside the media; this does not change the built-in waveform.",
+    generate_spectral: "Generate reapeaks spectral data",
+    generate_spectral_hint: "By default only the reapeaks wave layer is generated. Spectral data adds processing time and file size.",
+    generate_spectral_title: "Add a spectral layer to the .ReaPeaks cache beside the media; this does not change the native waveform.",
     segmentation: "Subtitle segmentation",
     max_len: "Max characters",
     min_len: "Short-phrase merge threshold",
+    max_words: "English max words",
+    min_words: "English short-cue merge threshold (words)",
     gap_split: "Pause split (ms)",
     max_len_placeholder: "Default: 18",
     min_len_placeholder: "Default: 5",
+    max_words_placeholder: "Default: 13",
+    min_words_placeholder: "Default: 3",
     gap_split_placeholder: "Default: 800",
-    segmentation_hint: "Leave blank to use the defaults (max characters: 18, short-cue merge threshold: 5, pause split: 800 ms); character thresholds mainly apply to CJK, and the pause threshold is in milliseconds.",
+    segmentation_hint: "Leave blank to use the defaults for character-mode and pause splitting (max characters: 18, short-cue threshold: 5, pause split: 800 ms); MAW chooses character or word rules from language/text metadata.",
+    english_segmentation_hint: "This configuration is used when generating English subtitles.",
     qwen_audio_options_title: "Qwen context & hotwords",
     toolbox_group_ocr_video: "Video source",
     toolbox_group_ocr_region: "Region & model",
@@ -591,7 +674,18 @@
     soniox_context_translation_terms_placeholder: "MRI => magnetic resonance imaging\nSt John's => St John's",
     soniox_context_translation_terms_hint: "One source => target pair per line; a translation_terms JSON array can also be pasted.",
     soniox_context_count: "Characters: {count}/10000",
-    soniox_context_too_long: "Soniox context is limited to approximately 10,000 characters."
+    soniox_context_too_long: "Soniox context is limited to approximately 10,000 characters.",
+    openai_advanced_title: "OpenAI transcription options",
+    openai_prompt: "Prompt",
+    openai_prompt_placeholder: "Add domain context, proper nouns, or the previous sentence, for example: this is a meeting about…",
+    openai_prompt_hint: "Add domain context, proper nouns, or previous text; Whisper supports up to 224 tokens.",
+    openai_keywords: "Keywords",
+    openai_keywords_placeholder: "OpenAI\nResponses API\nProper noun",
+    openai_keywords_hint: "One term or phrase per line; sent only for gpt-transcribe.",
+    openai_diarization_hint: "This model uses diarized_json to return segments with speaker labels; no extra checkbox is needed.",
+    openai_diarization_openrouter_hint: "OpenRouter does not support diarize. Switch to the official OpenAI Base URL.",
+    openai_keywords_invalid: "OpenAI Keywords cannot contain < or >.",
+    openai_diarize_openrouter_unsupported: "OpenRouter does not support gpt-4o-transcribe-diarize. Switch to the official OpenAI Base URL."
   });
   Object.assign(STRINGS.zh, {
     settings_tablist_label: "设置分类",
@@ -606,7 +700,7 @@
     settings_llm: "LLM 后处理",
     settings_llm_hint: "文稿匹配之外的 LLM 工具会使用这里保存的供应商配置。密钥只保存在本机环境文件。",
     settings_punctuation_title: "断句与标点",
-    settings_punctuation_hint: "文稿匹配与转写后处理共用这里的断句与保留符号。",
+    settings_punctuation_hint: "文稿匹配与转写共用这里的断句与保留符号；额外断句符号在云端转写切句时同样作为强断句符号生效。",
     llm_model: "模型",
     llm_api_key: "API Key",
     llm_custom_provider: "自定义（兼容 OpenAI）",
@@ -620,6 +714,16 @@
     llm_models_loaded: "已获取 {count} 个模型，可在上方快速选择",
     llm_models_empty: "供应商没有返回可用模型。",
     llm_model_choices_title: "展开已获取模型列表",
+    llm_provider_unknown: "当前选择的供应商",
+    llm_builtin_provider_key_guidance: "{provider} 是内置供应商，请使用其官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义（兼容 OpenAI）”，并按该平台官方文档配置 API URL。",
+    llm_http_unauthorized: "认证失败（HTTP 401，{operation}）。当前供应商：{provider}。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
+    llm_http_unauthorized_builtin: "认证失败（HTTP 401，{operation}）。当前供应商：{provider} 官网；请使用官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义（兼容 OpenAI）”，并按该平台官方文档配置 API URL。",
+    llm_http_unauthorized_custom: "认证失败（HTTP 401，{operation}）。当前供应商：自定义（兼容 OpenAI）。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
+    llm_http_forbidden: "供应商拒绝了请求（HTTP 403，{operation}）。当前供应商：{provider}。请核对供应商、API URL 与 API Key 签发方是否一致，并确认账号或模型有权限；不要在错误报告中粘贴 Key。",
+    llm_http_not_found: "接口或模型不存在（HTTP 404，{operation}）。请检查 API URL 的兼容路径和模型 ID；获取模型时还要确认该供应商提供 /models 接口。这个状态通常不是 API Key 问题。",
+    llm_http_rate_limited: "请求被限流或额度暂时耗尽（HTTP 429，{operation}）。请稍后重试，降低请求频率或批次大小，并检查当前供应商的额度与限流策略。",
+    llm_http_connection_operation: "连接测试",
+    llm_http_model_list_operation: "获取模型",
     llm_quick_actions: "快捷功能",
     llm_connection_testing: "正在测试连接……",
     llm_connection_success: "连接成功。",
@@ -647,7 +751,7 @@
     settings_llm: "LLM post-processing",
     settings_llm_hint: "LLM tools use the provider configuration saved here. Keys stay in the local environment file.",
     settings_punctuation_title: "Split & punctuation",
-    settings_punctuation_hint: "Script match and transcription post-processing share these split and preserved symbols.",
+    settings_punctuation_hint: "Script match and transcription share these split and preserved symbols; extra split punctuation also acts as strong break symbols in cloud transcription splitting.",
     llm_model: "Model",
     llm_api_key: "API Key",
     llm_custom_provider: "Custom (OpenAI-compatible)",
@@ -661,6 +765,16 @@
     llm_models_loaded: "Fetched {count} models; choose one above.",
     llm_models_empty: "The provider returned no usable models.",
     llm_model_choices_title: "Show fetched model list",
+    llm_provider_unknown: "the selected provider",
+    llm_builtin_provider_key_guidance: "{provider} is a built-in provider. Use an API key obtained from its official console. If the API key came from a third-party platform, choose Custom (OpenAI-compatible) and configure the API URL according to that platform's official documentation.",
+    llm_http_unauthorized: "Authentication failed (HTTP 401, {operation}). Current provider: {provider}. Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
+    llm_http_unauthorized_builtin: "Authentication failed (HTTP 401, {operation}). Current provider: {provider} official service. Use an API key obtained from its official console. If the API key came from a third-party platform, choose Custom (OpenAI-compatible) and configure the API URL according to that platform's official documentation.",
+    llm_http_unauthorized_custom: "Authentication failed (HTTP 401, {operation}). Current provider: Custom (OpenAI-compatible). Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
+    llm_http_forbidden: "The provider rejected the request (HTTP 403, {operation}). Current provider: {provider}. Compare the provider, API URL, and the issuer of the API key, then confirm that the account or model is allowed; never paste the key into an error report.",
+    llm_http_not_found: "The endpoint or model was not found (HTTP 404, {operation}). Check the compatible API URL path and model ID; when fetching models, confirm that the provider exposes /models. This is usually not an API-key problem.",
+    llm_http_rate_limited: "The request was rate-limited or the quota is temporarily exhausted (HTTP 429, {operation}). Wait and retry, reduce request frequency or batch size, and check the current provider's quota and rate-limit policy.",
+    llm_http_connection_operation: "connection test",
+    llm_http_model_list_operation: "model lookup",
     llm_quick_actions: "Quick actions",
     llm_connection_testing: "Testing connection…",
     llm_connection_success: "Connection successful.",
@@ -678,7 +792,7 @@
   Object.assign(STRINGS.zh, {
     toolbox_open: "打开工具箱", toolbox_title: "工具箱", toolbox_group_postprocess: "后处理", toolbox_group_utilities: "实用工具", toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入。", toolbox_no_media: "未选择媒体", toolbox_input_empty: "未选择文件", toolbox_chain_heading: "处理产物（点击文件名切换输入）", toolbox_resize_width: "调整工具箱宽度", toolbox_resize_height: "调整工具箱高度",
     toolbox_input: "处理文件", toolbox_input_placeholder: "跟随工程文件，也可拖入 .mosp / .json / .srt", toolbox_input_hint: "默认跟随「工程文件」并随每次处理更新；手动选择或拖入后以这里为准。", toolbox_drop_reject: "这里只接受 .mosp / .json / .srt 字幕或工程文件。", toolbox_utility_media: "媒体文件", toolbox_utility_media_placeholder: "默认跟随 Launcher 媒体，也可选择或拖入媒体文件", toolbox_utility_media_hint: "默认跟随 Launcher 媒体；选择或拖入媒体后，以这里为准。清空可恢复跟随。", toolbox_utility_media_reject: "这里仅接受媒体文件。", toolbox_ffconcat_reject: "这里只接受 .ffconcat 文件。",
-     toolbox_waveform: "生成波形", toolbox_waveform_hint: "仅使用上方媒体生成带内嵌波形的媒体工程，不需要字幕或转写；打开编辑器后可扫描静音空隙并导出去空隙 OTIO。", toolbox_generate_waveform: "生成波形文件", toolbox_run_waveform: "生成波形并打开编辑器", toolbox_match: "文稿匹配", toolbox_script: "文稿文件", toolbox_script_placeholder: "UTF-8 .txt / .md 文稿", toolbox_script_hint: "文稿文字会替换字幕文字；原字幕时间保持不变。", toolbox_script_preview: "文稿预览（前 240 字）", toolbox_script_reject: "文稿只支持 .txt / .md / .markdown 文件。", toolbox_split_preview: "拆分预览", toolbox_match_mode: "换行来源", toolbox_match_mode_script: "按文稿换行（默认）", toolbox_match_mode_text: "只更正文本", toolbox_match_mode_hint: "按文稿换行会使用文稿中的换行和断句符号；只更正文本保留现有字幕分段。", toolbox_extra_split_punctuation: "额外断句符号", toolbox_extra_split_punctuation_placeholder: "？\n！\n——\n~", toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，同时对转写后处理的句尾剥除生效。", toolbox_preserve_punctuation: "保留符号", toolbox_preserve_punctuation_placeholder: "？\n！\n~", toolbox_preserve_punctuation_hint: "断句后仍将符号保留在字幕末尾；转写输出的这些尾部符号同样保留，其余默认剥除逗号和句号。", toolbox_preserve_punctuation_invalid: "保留符号必须存在于额外断句符号中：", toolbox_match_hint: "匹配度过低时会停止，不写出可能错配的结果。", toolbox_run_match: "匹配文稿", toolbox_punct_open_settings: "在 ⚙️ 设置中配置断句与保留符号",
+     toolbox_waveform: "生成波形", toolbox_waveform_hint: "仅使用上方媒体生成带内嵌波形的媒体工程，不需要字幕或转写；打开编辑器后可扫描静音空隙并导出去空隙 OTIO。", toolbox_generate_waveform: "生成波形文件", toolbox_run_waveform: "生成波形并打开编辑器", toolbox_match: "文稿匹配", toolbox_script: "文稿文件", toolbox_script_placeholder: "UTF-8 .txt / .md 文稿", toolbox_script_hint: "文稿文字会替换字幕文字；原字幕时间保持不变。", toolbox_clean_markdown_symbols: "自动清理 Markdown 符号", toolbox_clean_markdown_symbols_hint: "匹配前移除粗体、斜体、删除线、行内代码和 ==高亮== 标记，只保留可见文字。", toolbox_script_preview: "文稿预览（前 240 字）", toolbox_script_reject: "文稿只支持 .txt / .md / .markdown 文件。", toolbox_split_preview: "拆分预览", toolbox_match_mode: "换行来源", toolbox_match_mode_script: "按文稿换行（默认）", toolbox_match_mode_text: "只更正文本", toolbox_match_mode_hint: "按文稿换行会使用文稿中的换行和断句符号；只更正文本保留现有字幕分段。", toolbox_extra_split_punctuation: "额外断句符号", toolbox_extra_split_punctuation_placeholder: "？\n！\n——\n~", toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。", toolbox_preserve_punctuation: "保留符号", toolbox_preserve_punctuation_placeholder: "？\n！\n~", toolbox_preserve_punctuation_hint: "断句后仍将符号保留在字幕末尾；转写输出的这些尾部符号同样保留，其余默认剥除逗号和句号。", toolbox_preserve_punctuation_invalid: "保留符号必须存在于额外断句符号中：", toolbox_match_hint: "匹配度过低时会停止，不写出可能错配的结果。", toolbox_run_match: "匹配文稿", toolbox_punct_open_settings: "在 ⚙️ 设置中配置断句与保留符号",
      toolbox_llm: "LLM 处理", toolbox_replace: "固定处理", toolbox_ffconcat: "媒体重组", toolbox_provider: "供应商", toolbox_operation: "任务", toolbox_proofread: "校对文本", toolbox_resegment: "重新断句", toolbox_translate_en: "翻译成英文", toolbox_translate_zh: "翻译成中文", toolbox_merge_bilingual: "合并双语字幕", toolbox_custom: "自定义",
     toolbox_open_settings: "在 ⚙️ 设置中配置 API Key", toolbox_preset_prompt: "预设提示词", toolbox_preset_prompt_hint: "由当前任务决定，不可编辑。", toolbox_prompt: "自定义提示词", toolbox_prompt_placeholder: "例如：保留专有名词，不要使用书面腔。", toolbox_prompt_hint: "可按需追加要求；留空则只使用预设提示词。", toolbox_task_none: "（无）", toolbox_task_proofread: "校对字幕中的错别字、漏字和明显识别错误，不扩写事实。", toolbox_task_resegment: "重新整理句子的字幕拆分。可以合并或拆分连续字幕，但不得删除内容。", toolbox_task_translate_en: "翻译为自然英文。必须保持原字幕的段数、顺序和每段时间范围，一条输入字幕只能对应一条输出字幕；不得合并、拆分或重排相邻字幕。", toolbox_task_translate_zh: "翻译为自然中文。必须保持原字幕的段数、顺序和每段时间范围，一条输入字幕只能对应一条输出字幕；不得合并、拆分或重排相邻字幕。", toolbox_time_hint: "模型只处理带 ID 的文字；本地时间槽始终是时间真源。", toolbox_output: "输出", toolbox_output_both: "工程 + SRT", toolbox_output_project: "仅工程", toolbox_output_srt: "仅 SRT", toolbox_run: "运行处理",
      toolbox_group_fixed_replacements: "批量替换", toolbox_group_fixed_conversion: "简繁转换", toolbox_conversion: "转换方向", toolbox_conversion_off: "不转换", toolbox_conversion_to_simplified: "转为简体", toolbox_conversion_to_traditional: "转为繁体（通用）", toolbox_conversion_to_traditional_tw: "转为繁体（台湾）", toolbox_conversion_to_traditional_twp: "转为繁体（台湾增强）", toolbox_conversion_to_traditional_hk: "转为繁体（香港）", toolbox_conversion_hint: "先执行批量替换，再转换文字；不访问网络。", toolbox_replace_rules: "批量替换规则", toolbox_replace_placeholder: "错别字 => 正确文字\n旧名称 => 新名称", toolbox_replace_separator: "替换分隔符号", toolbox_replace_separator_arrow: "=>", toolbox_replace_separator_comma: "中英文逗号", toolbox_replace_separator_tab: "Tab 制表符", toolbox_replace_separator_custom: "自定义", toolbox_replace_custom_separator: "自定义分隔符", toolbox_replace_trim: "自动去除前后空白", toolbox_replace_preview: "规则预览", toolbox_replace_preview_hint: "输入规则后显示解析结果。", toolbox_replace_preview_empty: "没有识别到有效规则。", toolbox_replace_hint: "每行一条替换规则；修改文本后会移除失真的逐词时间。", toolbox_replace_safe: "分段起止时间保持不变。", toolbox_run_replace: "执行固定处理",
@@ -688,13 +802,15 @@
    Object.assign(STRINGS.en, {
      toolbox_open: "Open toolbox", toolbox_title: "Toolbox", toolbox_group_postprocess: "Post-processing", toolbox_group_utilities: "Utilities", toolbox_chain_hint: "Each run creates a new file and uses it as the next input.", toolbox_no_media: "No media selected", toolbox_input_empty: "No file selected", toolbox_chain_heading: "Artifacts (click a filename to use it as input)", toolbox_resize_width: "Resize toolbox width", toolbox_resize_height: "Resize toolbox height",
     toolbox_input: "File to process", toolbox_input_placeholder: "Follows the project file, or drop a .mosp / .json / .srt", toolbox_input_hint: "Auto-follows the project file and updates after each run; a chosen or dropped file takes priority.", toolbox_drop_reject: "Only .mosp / .json / .srt subtitle or project files can be dropped here.", toolbox_utility_media: "Media file", toolbox_utility_media_placeholder: "Uses Launcher media by default, or choose or drop a media file", toolbox_utility_media_hint: "Uses the Launcher media by default; a chosen or dropped file takes priority. Clear it to follow again.", toolbox_utility_media_reject: "Only media files can be used here.", toolbox_ffconcat_reject: "Only .ffconcat files can be used here.",
-     toolbox_waveform: "Generate waveform", toolbox_waveform_hint: "Use the media above to create an embedded-waveform project; no subtitles or transcription are required. In the editor, scan silence gaps and export a gap-removed OTIO.", toolbox_generate_waveform: "Generate waveform project", toolbox_run_waveform: "Generate waveform and open editor", toolbox_match: "Script match", toolbox_script: "Script file", toolbox_script_placeholder: "UTF-8 .txt / .md script", toolbox_script_hint: "Script text replaces subtitle text; original subtitle timing stays unchanged.", toolbox_script_preview: "Script preview (first 240 chars)", toolbox_script_reject: "Scripts must be .txt, .md, or .markdown files.", toolbox_split_preview: "Split preview", toolbox_match_mode: "Line-break source", toolbox_match_mode_script: "Use manuscript line breaks (default)", toolbox_match_mode_text: "Correct text only", toolbox_match_mode_hint: "Manuscript mode uses line breaks and split symbols; text-only mode keeps the existing cue segmentation.", toolbox_extra_split_punctuation: "Extra split punctuation", toolbox_extra_split_punctuation_placeholder: "?\n!\n--\n~", toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, and also drive tail-punctuation stripping in transcription post-processing.", toolbox_preserve_punctuation: "Preserve punctuation", toolbox_preserve_punctuation_placeholder: "?\n!\n~", toolbox_preserve_punctuation_hint: "Symbols are kept at cue tails after splitting; transcription output keeps these tail symbols too, while commas and periods are stripped by default.", toolbox_preserve_punctuation_invalid: "Preserved symbols must be listed as extra split punctuation:", toolbox_match_hint: "Runs stop when the match is too low to avoid writing a bad alignment.", toolbox_run_match: "Match script", toolbox_punct_open_settings: "Configure split & punctuation marks in ⚙️ Settings",
+     toolbox_waveform: "Generate waveform", toolbox_waveform_hint: "Use the media above to create an embedded-waveform project; no subtitles or transcription are required. In the editor, scan silence gaps and export a gap-removed OTIO.", toolbox_generate_waveform: "Generate waveform project", toolbox_run_waveform: "Generate waveform and open editor", toolbox_match: "Script match", toolbox_script: "Script file", toolbox_script_placeholder: "UTF-8 .txt / .md script", toolbox_script_hint: "Script text replaces subtitle text; original subtitle timing stays unchanged.", toolbox_clean_markdown_symbols: "Clean Markdown formatting automatically", toolbox_clean_markdown_symbols_hint: "Before matching, remove bold, italic, strikethrough, inline-code, and ==highlight== markers while keeping visible text.", toolbox_script_preview: "Script preview (first 240 chars)", toolbox_script_reject: "Scripts must be .txt, .md, or .markdown files.", toolbox_split_preview: "Split preview", toolbox_match_mode: "Line-break source", toolbox_match_mode_script: "Use manuscript line breaks (default)", toolbox_match_mode_text: "Correct text only", toolbox_match_mode_hint: "Manuscript mode uses line breaks and split symbols; text-only mode keeps the existing cue segmentation.", toolbox_extra_split_punctuation: "Extra split punctuation", toolbox_extra_split_punctuation_placeholder: "?\n!\n--\n~", toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, cloud transcription treats them as strong break symbols too, and they also drive tail-punctuation stripping in transcription post-processing.", toolbox_preserve_punctuation: "Preserve punctuation", toolbox_preserve_punctuation_placeholder: "?\n!\n~", toolbox_preserve_punctuation_hint: "Symbols are kept at cue tails after splitting; transcription output keeps these tail symbols too, while commas and periods are stripped by default.", toolbox_preserve_punctuation_invalid: "Preserved symbols must be listed as extra split punctuation:", toolbox_match_hint: "Runs stop when the match is too low to avoid writing a bad alignment.", toolbox_run_match: "Match script", toolbox_punct_open_settings: "Configure split & punctuation marks in ⚙️ Settings",
      toolbox_llm: "LLM", toolbox_replace: "Fixed processing", toolbox_ffconcat: "Media rebuild", toolbox_provider: "Provider", toolbox_operation: "Task", toolbox_proofread: "Proofread text", toolbox_resegment: "Resegment", toolbox_translate_en: "Translate into English", toolbox_translate_zh: "Translate into Chinese", toolbox_merge_bilingual: "Merge bilingual subtitles", toolbox_custom: "Custom",
     toolbox_open_settings: "Configure the API key in ⚙️ Settings", toolbox_preset_prompt: "Preset prompt", toolbox_preset_prompt_hint: "Determined by the current task and cannot be edited.", toolbox_prompt: "Custom prompt", toolbox_prompt_placeholder: "Example: preserve product names and use conversational language.", toolbox_prompt_hint: "Add extra requirements as needed; leave empty to use only the preset prompt.", toolbox_task_none: "(None)", toolbox_task_proofread: "Proofread subtitle typos, omissions, and obvious recognition errors without expanding facts.", toolbox_task_resegment: "Reorganize subtitle sentence breaks. You may merge or split consecutive subtitles, but do not delete content.", toolbox_task_translate_en: "Translate into natural English. Preserve the original cue count, order, and time ranges; each input cue must produce exactly one output cue. Do not merge, split, or reorder adjacent cues.", toolbox_task_translate_zh: "Translate into natural Chinese. Preserve the original cue count, order, and time ranges; each input cue must produce exactly one output cue. Do not merge, split, or reorder adjacent cues.", toolbox_time_hint: "The model edits ID-tagged text only; local time slots remain authoritative.", toolbox_output: "Output", toolbox_output_both: "Project + SRT", toolbox_output_project: "Project only", toolbox_output_srt: "SRT only", toolbox_run: "Run",
       toolbox_group_fixed_replacements: "Batch replacement", toolbox_group_fixed_conversion: "Chinese conversion", toolbox_conversion: "Conversion direction", toolbox_conversion_off: "No conversion", toolbox_conversion_to_simplified: "Convert to Simplified", toolbox_conversion_to_traditional: "Convert to Traditional (General)", toolbox_conversion_to_traditional_tw: "Convert to Traditional (Taiwan)", toolbox_conversion_to_traditional_twp: "Convert to Traditional (Taiwan enhanced)", toolbox_conversion_to_traditional_hk: "Convert to Traditional (Hong Kong)", toolbox_conversion_hint: "Apply batch replacements first, then convert text locally.", toolbox_replace_rules: "Batch replacement rules", toolbox_replace_placeholder: "old text => new text", toolbox_replace_separator: "Replacement separator", toolbox_replace_separator_arrow: "=>", toolbox_replace_separator_comma: "English or Chinese comma", toolbox_replace_separator_tab: "Tab", toolbox_replace_separator_custom: "Custom", toolbox_replace_custom_separator: "Custom separator", toolbox_replace_trim: "Trim surrounding whitespace automatically", toolbox_replace_preview: "Rule preview", toolbox_replace_preview_hint: "Parsed rules will appear here.", toolbox_replace_preview_empty: "No valid rules detected.", toolbox_replace_hint: "One replacement rule per line. Stale word timings are removed when text changes.", toolbox_replace_safe: "Segment start and end times stay unchanged.", toolbox_run_replace: "Run fixed processing",
      toolbox_ffconcat_placeholder: "Choose or drop an FFconcat file; FFmpeg will rebuild the current media from its entries", toolbox_ffconcat_warning: "First use the editor to remove silence gaps, then export an FFconcat file. Only the current media may be referenced; rebuilding creates a new media file without changing subtitle timing.", toolbox_run_media: "Build media", toolbox_ready: "Choose a tool and run it; tools always write new files and never overwrite sources.", toolbox_running: "Processing…", toolbox_status_starting: "Preparing the operation…", toolbox_status_reading: "Reading subtitle files…", toolbox_status_matching: "Matching the script…", toolbox_status_fixed_processing: "Applying fixed processing…", toolbox_status_preparing_llm: "Preparing the LLM…", toolbox_status_llm_batch: "Processing subtitle batch {current}/{total}…", toolbox_status_llm_batch_done: "Completed subtitle batch {current}/{total}.", toolbox_status_reorganizing: "Organizing the model result…", toolbox_status_writing: "Writing the processed files…", toolbox_status_validating_media: "Validating the media list…", toolbox_status_rebuilding_media: "Rebuilding the media…", toolbox_stream_title: "Live model output", toolbox_thinking: "Thinking", toolbox_model_output: "Model output (JSON)", toolbox_stream_batch: "Batch {batch}", toolbox_stream_chars: "{count} chars", toolbox_saved: "LLM settings saved.", toolbox_key_empty: "No saved key for this provider", toolbox_key_loaded: "Loaded key from local environment: {key}", toolbox_chain_match: "[Script match]", toolbox_chain_replace: "[Fixed processing]", toolbox_chain_llm_proofread: "[LLM / Proofread]", toolbox_chain_llm_resegment: "[LLM / Resegment]", toolbox_chain_llm_translate: "[LLM / Translate]", toolbox_chain_llm_custom: "[LLM / Custom]",
       toolbox_need_source: "Choose a project or SRT first.", toolbox_need_script: "Choose a script file.", toolbox_need_rules: "Enter at least one valid batch replacement rule or choose a conversion.", toolbox_need_ffconcat: "Choose an .ffconcat file.", toolbox_need_media: "Choose the current media first.", toolbox_custom_prompt_required: "Enter a custom prompt before running the Custom task.", toolbox_done: "Done. Chained to the new artifact:", toolbox_media_done: "Media rebuilt. Chained to the new media:", toolbox_config_only_hint: "Configure automatic post-processing here; it will run after generation.", toolbox_match_rate: "match rate", toolbox_match_preview_stats: "After applying manuscript line breaks, subtitles: {from} -> {to} ({change})", toolbox_match_preview_too_low: "Mismatch is too large; unable to match. Please check the manuscript.", toolbox_match_preview_failed: "Unable to generate the match preview. Please check the manuscript.", toolbox_alignment: "Speech alignment", toolbox_alignment_hint: "For rough first-pass ASR with stutters, retakes, repeats, or reordered speech. Requires an ASR project and a script; choose takes manually, then export a new project.", toolbox_alignment_input_project: "ASR project", toolbox_alignment_project_placeholder: "Choose or drop an .mosp / .json project", toolbox_alignment_project_hint: "Follows the current Launcher project by default; speech alignment needs ASR timestamps and cannot use SRT alone.", toolbox_alignment_input_script: "Script", toolbox_alignment_script_placeholder: "Choose or drop a UTF-8 .txt / .md script", toolbox_alignment_script_hint: "Each non-empty line is treated as one script line.", toolbox_alignment_input_media: "Media override (optional)", toolbox_alignment_media_placeholder: "Leave empty to use project media, or choose or drop a media file", toolbox_alignment_media_hint: "Without usable project media you can still inspect and export the alignment, but cannot audition it.", toolbox_alignment_notice: "The input project is never overwritten; export creates source.aligned.mosp.", toolbox_run_alignment: "Start and open speech alignment", toolbox_reopen_alignment: "Reopen speech alignment", toolbox_stop_alignment: "Stop server", toolbox_alignment_started: "Speech-alignment server started.", toolbox_alignment_stopped: "Speech-alignment server stopped.", toolbox_alignment_script_missing: "Choose a script file.", toolbox_alignment_project_invalid: "Speech alignment requires an .mosp or .json project.", toolbox_alignment_media_invalid: "Choose a supported media file.", toolbox_status_alignment_starting: "Starting speech-alignment server…", toolbox_status_alignment_stopping: "Stopping speech-alignment server…", toolbox_alignment_open_failed: "Speech alignment started, but the browser could not be opened."
   });
+  Object.assign(STRINGS.zh, { toolbox_script_preview: "处理后文稿预览（前 240 字）" });
+  Object.assign(STRINGS.en, { toolbox_script_preview: "Processed script preview (first 240 chars)" });
   Object.assign(STRINGS.zh, {
     toolbox_ocr_dedup: "OCR 字幕去重", toolbox_ocr_video: "视频画面", toolbox_ocr_video_placeholder: "优先使用工程视频，也可选择视频文件", toolbox_ocr_video_hint: "工程有可用视频时自动使用；独立 SRT 会回退到当前 Launcher 视频；如果当前媒体是音频或无视频，必须选择视频。", toolbox_ocr_video_reject: "请选择支持的视频文件。", toolbox_ocr_region: "画面字幕区", toolbox_ocr_region_full: "100% 完整画面", toolbox_ocr_region_bottom: "底部 30%", toolbox_ocr_region_custom: "自定义百分比区域", toolbox_ocr_region_hint: "缩小处理区域可减少 OCR 输入量。", toolbox_ocr_model: "OCR 模型", toolbox_ocr_model_tiny: "PP-OCRv6 tiny（CPU）", toolbox_ocr_model_small: "PP-OCRv6 small（CPU）", toolbox_ocr_model_hint: "tiny 更快；small 对复杂画面更稳，但会占用更多 CPU 和内存。", toolbox_ocr_x1: "左（X1）%", toolbox_ocr_y1: "上（Y1）%", toolbox_ocr_x2: "右（X2）%", toolbox_ocr_y2: "下（Y2）%", toolbox_ocr_threshold: "相似度阈值", toolbox_ocr_threshold_hint: "参考算法取三种相似度的最高值；默认 0.5。", toolbox_ocr_threshold_invalid: "相似度阈值必须是 0 到 1 之间的数字。", toolbox_ocr_report: "生成 OCR 判定报告（CSV）", toolbox_ocr_hint: "画面文字与字幕高度相似的段会被禁用或从 SRT 移除。", toolbox_run_ocr: "执行 OCR 字幕去重", toolbox_status_ocr_initializing: "正在初始化 OCR 模型……", toolbox_status_ocr_frame: "正在识别第 {current}/{total} 条字幕画面……", toolbox_ocr_report_path: "OCR 报告：", toolbox_chain_ocr: "[OCR 字幕去重]"
   });
@@ -710,6 +826,7 @@
     ocr_runtime_install: "安装 OCR 支持",
     ocr_runtime_repair: "修复 OCR 支持",
     ocr_runtime_cancel: "取消安装",
+    ocr_runtime_checking: "正在检查 OCR 支持……",
     ocr_runtime_missing: "OCR 支持未安装",
     ocr_runtime_installing: "正在安装 OCR 支持……",
     ocr_runtime_ready: "OCR 支持已就绪",
@@ -746,6 +863,7 @@
     ocr_runtime_install: "Install OCR support",
     ocr_runtime_repair: "Repair OCR support",
     ocr_runtime_cancel: "Cancel installation",
+    ocr_runtime_checking: "Checking OCR support…",
     ocr_runtime_missing: "OCR support is not installed",
     ocr_runtime_installing: "Installing OCR support…",
     ocr_runtime_ready: "OCR support is ready",
@@ -778,6 +896,8 @@
       api_key_missing: "请填写 API Key，或先在 ⚙ 配置/密钥区保存。",
       custom_asr_base_url_missing: "请填写自定义 ASR Base URL。",
       custom_asr_model_missing: "请填写自定义 ASR 模型名。",
+      openai_keywords_invalid: "OpenAI Keywords 不能包含 < 或 >。",
+      openai_diarize_openrouter_unsupported: "OpenRouter 不支持 gpt-4o-transcribe-diarize，请改用 OpenAI 官方 Base URL。",
       local_runtime_missing: "本地模型运行时未安装。请先安装本地 ASR 依赖。",
       local_runtime_install_failed: (detail) => `本地运行环境安装失败：${detail || "请查看日志后重试。"}`,
       local_runtime_cancelled: "本地运行环境安装已取消。",
@@ -793,12 +913,18 @@
       ocr_runtime_cancelled: "OCR 运行环境安装已取消。",
       ocr_model_missing: "OCR 模型尚未安装。请打开设置下载安装。",
       ocr_runtime_path_invalid: "OCR 运行环境路径不能是一个文件。",
+    local_runtime_path_invalid: "本地运行环境路径不能是一个文件。",
       workspace_missing: "新加坡地域需要 Workspace ID。",
       context_too_long: "Qwen-Audio 上下文最多 400 个字符。",
       soniox_context_too_long: "Soniox 上下文约限制为 10000 个字符。",
       soniox_context_invalid: "Soniox 上下文格式不正确，请检查高级设置中的填写格式。",
       postprocess_config_invalid: (detail) => `自动后处理配置不完整：${detail || "请打开工具箱完成配置。"}`,
-      postprocess_failed: (detail) => `转写已完成，但自动后处理失败：${detail || "请查看日志。"}`,
+      postprocess_provider_response: (detail) => `后处理服务已返回 HTTP 错误，这不是网络中断；原始转写仍然保留，可从失败步骤重试。${detail ? ` 详细信息：${detail}` : ""}`,
+      postprocess_failed: (detail) => `转写已完成，但自动后处理失败；原始转写仍然保留，可从失败步骤重试：${detail || "请查看日志。"}`,
+      subtitle_invalid: (detail) => `字幕或工程解析失败：${detail || "请检查输入文件格式和时间码，或重新导出字幕。"}`,
+      script_invalid: (detail) => `文稿解析失败：${detail || "请检查文稿是否为 UTF-8 编码的 .txt / .md / .markdown 文件。"}`,
+      match_too_low: (_detail, context) => `文稿与字幕匹配度过低（${Number.isFinite(Number(context?.matchRate)) ? `${Math.round(Number(context.matchRate))}%` : "低于安全阈值"}）；至少需要较短文本的 ${Number.isFinite(Number(context?.minimumMatchRate)) ? `${Math.round(Number(context.minimumMatchRate))}%` : "55%"} 匹配。`,
+      match_invalid: (detail) => `无法完成文稿匹配：${detail || "请检查文稿、字幕和断句设置。"}`,
       postprocess_cancelled: "自动后处理已取消，原始转写产物仍然保留。",
       waveform_unavailable: (detail) => `无法从该媒体生成可用波形：${detail || "请检查 FFmpeg 和媒体文件。"}`,
       waveform_generation_failed: (detail) => `波形工程生成失败：${detail || "请检查媒体与输出目录权限。"}`,
@@ -807,6 +933,7 @@
       media_tool_failed: (detail) => `媒体处理失败：${detail || "请检查 FFmpeg 和输入文件。"}`,
       audio_track_invalid: "所选音轨无效，请重新选择。",
       audio_tracks_missing: "没有检测到可用音轨。",
+      audio_tracks_unavailable: (detail) => `无法读取音轨：${detail || "请检查 FFprobe 和媒体文件。"}`,
       hotwords_file_missing: "请选择存在且为 UTF-8 编码的 .txt 热词文件。",
       output_missing: "请填写 SRT 输出路径。",
       segmentation_invalid: "切句参数无效：请输入整数，并确保最大字数不小于短句合并阈值。",
@@ -831,6 +958,8 @@
       api_key_missing: "Enter an API Key, or save one first in Settings / API key.",
       custom_asr_base_url_missing: "Enter a custom ASR Base URL.",
       custom_asr_model_missing: "Enter a custom ASR model name.",
+      openai_keywords_invalid: "OpenAI Keywords cannot contain < or >.",
+      openai_diarize_openrouter_unsupported: "OpenRouter does not support gpt-4o-transcribe-diarize. Switch to the official OpenAI Base URL.",
       local_runtime_missing: "The local ASR runtime is not installed. Install the local dependencies first.",
       local_runtime_install_failed: (detail) => `Local runtime installation failed: ${detail || "check the log and retry."}`,
       local_runtime_cancelled: "Local runtime installation was cancelled.",
@@ -846,10 +975,16 @@
       ocr_runtime_cancelled: "OCR runtime installation was cancelled.",
       ocr_model_missing: "The OCR model is not installed. Open Settings to download it.",
       ocr_runtime_path_invalid: "The OCR runtime path cannot point to a file.",
+    local_runtime_path_invalid: "The local runtime path cannot point to a file.",
       workspace_missing: "Singapore region requires a Workspace ID.",
       context_too_long: "Qwen-Audio context is limited to 400 characters.",
       soniox_context_too_long: "Soniox context is limited to approximately 10,000 characters.",
       postprocess_config_invalid: (detail) => `Automatic post-processing is not configured: ${detail || "open the toolbox to finish setup."}`,
+      postprocess_provider_response: (detail) => `The post-processing provider returned an HTTP error; this is not a network outage. The original transcription remains available, and you can retry from the failed step.${detail ? ` Details: ${detail}` : ""}`,
+      subtitle_invalid: (detail) => `The subtitle or project could not be parsed: ${detail || "check the input format and timecodes, or export it again."}`,
+      script_invalid: (detail) => `The script could not be parsed: ${detail || "check that it is a UTF-8 .txt, .md, or .markdown file."}`,
+      match_too_low: (_detail, context) => `Script and subtitle match coverage is too low (${Number.isFinite(Number(context?.matchRate)) ? `${Math.round(Number(context.matchRate))}%` : "below the safe threshold"}); at least ${Number.isFinite(Number(context?.minimumMatchRate)) ? `${Math.round(Number(context.minimumMatchRate))}%` : "55%"} of the shorter text must match.`,
+      match_invalid: (detail) => `Unable to match the script: ${detail || "check the script, subtitles, and split settings."}`,
       waveform_unavailable: (detail) => `No usable waveform could be generated: ${detail || "check FFmpeg and the media file."}`,
       waveform_generation_failed: (detail) => `Waveform project generation failed: ${detail || "check the media and output-folder permissions."}`,
       media_tool_busy: "Another media operation is already running. Please wait for it to finish.",
@@ -857,7 +992,8 @@
       media_tool_failed: (detail) => `Media operation failed: ${detail || "check FFmpeg and the input file."}`,
       audio_track_invalid: "The selected audio track is invalid. Choose it again.",
       audio_tracks_missing: "No usable audio tracks were found.",
-      postprocess_failed: (detail) => `Transcription completed, but automatic post-processing failed: ${detail || "check the log."}`,
+      audio_tracks_unavailable: (detail) => `Audio tracks could not be read: ${detail || "check FFprobe and the media file."}`,
+      postprocess_failed: (detail) => `Transcription completed, but automatic post-processing failed. The original transcription remains available, and you can retry from the failed step.${detail ? ` Details: ${detail}` : ""}`,
       postprocess_cancelled: "Automatic post-processing was cancelled; the original transcription remains available.",
       soniox_context_invalid: "Soniox context format is invalid. Check the Advanced options format.",
       hotwords_file_missing: "Choose an existing UTF-8 .txt hotword file.",
@@ -958,14 +1094,26 @@
   const HOTWORD_WEIGHTS = new Set([1, 2, 3, 4, 5, 50]);
   const MAX_HOTWORDS = 2000;
   const MAX_SUPER_HOTWORDS = 50;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false };
+  const OPENAI_ASR_CUSTOM_MODEL_ID = "custom-asr";
+  const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-transcribe", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize", "whisper-large-v3-turbo", "whisper-large-v3"]);
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0 };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
+  let defaultOutputRequest = 0;
+  let ffmpegRequest = 0;
+  let serverStatusRequest = 0;
+  let ocrRuntimeRequest = 0;
+  let localRuntimeRequest = 0;
+  let localModelsRequest = 0;
+  // Runtime and model checks both update localRuntime.  A single revision
+  // prevents an older request of either kind from putting stale status back
+  // after a newer check has already completed.
+  let localStatusRequest = 0;
   let activeSettingsTab = "general";
 
   function mockApi() {
-    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null };
+    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "zh", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null, outputSubfolder: false, perVideoSubfolder: false, attachModelName: true };
     const chainedPath = (path, operation, fallback) => path
       ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
       : fallback;
@@ -987,7 +1135,10 @@
         openaiBaseUrl: saved.openaiBaseUrl,
         openaiModel: saved.openaiModel,
         showRareLangs: saved.showRareLangs || false,
-        appVersion: "1.5.3",
+        outputSubfolder: saved.outputSubfolder,
+        perVideoSubfolder: saved.perVideoSubfolder,
+        attachModelName: saved.attachModelName,
+        appVersion: "1.6.0-beta.3",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
@@ -1015,9 +1166,9 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "yue", "en"],
             models: [
-              { id: "qwen-audio-3.0-asr-flash-filetrans", label: "qwen-audio-3.0-asr（热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
-              { id: "fun-asr", label: "fun-asr（支持说话人）", envKey: "DASHSCOPE_API_KEY", note: "支持说话人分离与词级时间戳", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }] },
-              { id: "qwen3-asr-flash-filetrans", label: "qwen3-asr（准确率更高）", envKey: "DASHSCOPE_API_KEY", note: "", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
+              { id: "qwen-audio-3.0-asr-flash-filetrans", label: "qwen-audio-3.0-asr（热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
+              { id: "fun-asr", label: "fun-asr（支持说话人）", envKey: "DASHSCOPE_API_KEY", note: "支持说话人分离与词级时间戳", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "qwen3-asr-flash-filetrans", label: "qwen3-asr（准确率更高）", envKey: "DASHSCOPE_API_KEY", note: "", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
             ],
             regions: [{ id: "beijing", label: "北京（华北 2，默认）" }, { id: "singapore", label: "新加坡（需要 Workspace ID）" }],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "da", label: "丹麦语 / Danish" }]
@@ -1031,21 +1182,31 @@
             supportsSpeaker: true,
             multiLanguage: true,
             commonLanguages: ["zh", "en", "ja", "ko"],
-            models: [{ id: "stt-async-v5", label: "Soniox Async STT（v5，上下文）", envKey: "SONIOX_API_KEY", note: "支持 general、text、terms 和 translation_terms 上下文", supportsSpeaker: true, supportsContext: true, languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }] }],
+            models: [{ id: "stt-async-v5", label: "Soniox Async STT（v5，上下文）", envKey: "SONIOX_API_KEY", note: "支持 general、text、terms 和 translation_terms 上下文", priceNote: "Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本和输出文本各 $3.50 / 1M。", supportsSpeaker: true, supportsContext: true, languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }] }],
             regions: [],
             languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }]
           },
           {
             id: "openai",
-            label: "自定义 OpenAI 兼容 ASR",
+            label: "OpenAI（及兼容接口）",
             keyUrl: "https://platform.openai.com/api-keys",
+            secondaryKeyUrl: "https://openrouter.ai/keys",
             apiKey: saved.apiKey,
             maskedApiKey: saved.apiKey ? "sk-…demo" : "",
             supportsSpeaker: false,
             multiLanguage: false,
-            note: "默认连接 OpenAI 官方服务，也可填写其他兼容 /audio/transcriptions 的地址；必须返回 segments/words 时间戳。",
+            note: "默认连接 OpenAI 官方服务；OpenRouter 会自动适配预设模型 ID。其他中转站请选择“自定义（Custom）”并填写服务商提供的完整模型名；接口必须返回 segments 或 words 时间戳。",
             commonLanguages: ["", "zh", "en"],
-            models: [{ id: "custom-asr", label: "自定义模型", envKey: "MAW_OPENAI_ASR_API_KEY", note: "模型名和地址在下方填写", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }],
+            models: [
+              { id: "whisper-1", label: "whisper-1", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt；Whisper 提示词最多 224 tokens。", openrouterNote: "OpenRouter 参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。价格和可用能力以 OpenRouter 模型页为准。", priceNote: "OpenAI 官方参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-transcribe", label: "gpt-4o-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt；需由接口返回 segments 或 words 时间戳。", openrouterNote: "OpenRouter 参考价：输入 $2.50 / 1M tokens，输出 $10 / 1M tokens；需由接口返回 segments 或 words 时间戳。", priceNote: "OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-mini-transcribe", label: "gpt-4o-mini-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt；需由接口返回 segments 或 words 时间戳。", openrouterNote: "OpenRouter 参考价：输入 $1.25 / 1M tokens，输出 $5 / 1M tokens；需由接口返回 segments 或 words 时间戳。", priceNote: "OpenAI 官方参考价：输入 $1.25 / 1M audio tokens，输出 $5 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-transcribe", label: "gpt-transcribe（支持关键词）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "OpenAI 官方推荐的文件转写模型；支持 Prompt 和 Keywords，需由接口返回时间戳。", openrouterNote: "OpenRouter 参考价：$0.0045 / 分钟；支持 Prompt、Keywords 和 languages[]，需由接口返回时间戳。", priceNote: "OpenAI 官方参考价：$0.0045 / 分钟。", supportsSpeaker: false, supportsPrompt: true, supportsKeywords: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-transcribe-diarize", label: "gpt-4o-transcribe-diarize（说话人分离）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "OpenAI 官方说话人分离模型；返回段级 speaker 与时间戳，OpenRouter 不支持。", openrouterNote: "OpenRouter 不支持 diarize；请改用 OpenAI 官方 Base URL。", priceNote: "OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens。", supportsSpeaker: true, supportsDiarization: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "whisper-large-v3-turbo", label: "whisper-large-v3-turbo（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.04 / 小时；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "whisper-large-v3", label: "whisper-large-v3（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.0015 / 分钟；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: OPENAI_ASR_CUSTOM_MODEL_ID, label: "自定义（Custom）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "选择后填写自定义 ASR 模型名", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
+            ],
             regions: [],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }]
           },
@@ -1088,7 +1249,28 @@
           }
         ]
       }),
-      default_output: async ({ mediaPath, providerId, modelId, testRun }) => ({ ok: true, path: mediaPath ? mediaPath.replace(/\.[^.\\/]+$/, `${providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))) }${testRun ? "-test" : ""}.srt`) : "" }),
+      default_output: async ({ mediaPath, providerId, modelId, testRun }) => {
+        let path = "";
+        if (mediaPath) {
+          const sep = mediaPath.includes("\\") ? "\\" : "/";
+          const dirIndex = Math.max(mediaPath.lastIndexOf("/"), mediaPath.lastIndexOf("\\"));
+          const dir = dirIndex >= 0 ? mediaPath.slice(0, dirIndex + 1) : "";
+          const stem = mediaPath.slice(dirIndex + 1).replace(/\.[^.\\/]+$/, "");
+          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))));
+          let outputDir = dir;
+          if (saved.outputSubfolder) {
+            const root = saved.perVideoSubfolder ? `${stem}_maw` : "_maw";
+            outputDir = dir ? `${dir}${root}${sep}` : `${root}${sep}`;
+          }
+          path = `${outputDir}${stem}${tag}${testRun ? "-test" : ""}.srt`;
+        }
+        return { ok: true, path };
+      },
+      get_audio_tracks: async ({ mediaPath = "" } = {}) => VIDEO_EXTS.has(ext(mediaPath)) ? ({ ok: true, tracks: [
+        { audioIndex: 0, streamIndex: 1, title: "Mix", channels: 2, sampleRate: 48000, default: true },
+        { audioIndex: 1, streamIndex: 2, title: "Voice", channels: 2, sampleRate: 48000, default: false },
+        { audioIndex: 2, streamIndex: 3, title: "OriginSound", channels: 2, sampleRate: 48000, default: false },
+      ] }) : ({ ok: true, tracks: [] }),
       choose_file: async ({ kind }) => ({ ok: true, path: kind === "json" ? "D:\\Demo\\project.json" : (kind === "subtitle" ? "D:\\Demo\\project.mosp" : (kind === "subtitle-burn" ? "D:\\Demo\\clip.srt" : (kind === "video" ? "D:\\Demo\\clip.mp4" : (kind === "ffconcat" ? "D:\\Demo\\clip.ffconcat" : (kind === "script" ? "D:\\Demo\\script.txt" : (kind === "hotwords" ? "D:\\Demo\\hotwords.txt" : "D:\\Demo\\clip.mp4")))))) }),
       read_script_preview: async () => ({ ok: true, path: "D:\\Demo\\script.txt", preview: "第一行\n第二行", truncated: false }),
       read_hotword_file: async () => ({ ok: true, path: "D:\\Demo\\hotwords.txt", text: "张三\n阿里云百炼\n专业术语\n" }),
@@ -1098,18 +1280,19 @@
       cancel_local_runtime: async () => ({ ok: true }),
       get_ocr_runtime: async () => ({ ok: true, ...(state.config?.ocrRuntime || { status: "missing", ready: false }), models: state.config?.ocrModels || [] }),
       save_ocr_settings: async ({ runtimePath }) => { state.config.ocrRuntime = { ...(state.config.ocrRuntime || {}), path: runtimePath || "D:\\Users\\Demo\\AppData\\Local\\MAW\\ocr-runtime" }; return { ok: true, runtimePath: state.config.ocrRuntime.path, runtime: state.config.ocrRuntime }; },
+  save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { ...(state.config.localRuntime || {}), path: runtimePath || "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime" }; return { ok: true, runtimePath: state.config.localRuntime.path, runtime: state.config.localRuntime }; },
       install_ocr_runtime: async () => { state.config.ocrRuntime = { ...(state.config.ocrRuntime || {}), status: "ready", ready: true, modelInstalled: true, detail: "OCR 模型已安装，可以在工具箱中使用。" }; state.config.ocrModels = (state.config.ocrModels || []).map((model) => ({ ...model, installed: true, status: "installed", detail: state.config.ocrRuntime.detail })); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "ocrRuntimeReady", runtime: state.config.ocrRuntime, models: state.config.ocrModels }), 400); return { ok: true, installing: true }; },
       cancel_ocr_runtime: async () => ({ ok: true }),
       get_local_models: async ({ modelId, modelPath }) => ({ ok: true, runtime: state.config?.localRuntime || {}, models: (state.config?.providers.find((item) => item.id === "local")?.models || []).map((model) => ({ ...model, localStatus: { ...(model.localStatus || {}), ...(model.id === modelId && modelPath ? { status: "installed", installed: true, path: modelPath, detail: "已使用指定的模型目录。" } : {}) } })) }),
       prepare_local_model: async ({ modelId }) => { clearTimeout(modelPrepareTimer); modelPrepareTimer = setTimeout(() => { state.config?.providers.find((item) => item.id === "local")?.models.forEach((model) => { if (model.id === modelId) model.localStatus = { ...(model.localStatus || {}), status: "installed", installed: true, runtimeAvailable: true, canPrepare: false, detail: "已检测到本地模型。" }; }); window.MAWLauncher.onBackendEvent({ type: "modelPrepared", modelId }); }, 400); return { ok: true, preparing: true, modelId }; },
       cancel_local_model: async () => { clearTimeout(modelPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
-       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
+       save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); for (const key of ["outputSubfolder", "perVideoSubfolder", "attachModelName"]) { if (Object.prototype.hasOwnProperty.call(payload, key)) saved[key] = Boolean(payload[key]); } if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
       open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
       open_runtime_folder: async (payload) => { window.__openedRuntimeFolder = payload; return { ok: true }; },
       open_blank_html: async () => ({ ok: true }),
       check_ffmpeg: async () => ({ ok: true, found: true, directory: "D:\\FFmpeg\\bin", ffmpeg: "D:\\FFmpeg\\bin\\ffmpeg.exe", ffprobe: "D:\\FFmpeg\\bin\\ffprobe.exe" }),
       save_ffmpeg_path: async ({ path }) => ({ ok: Boolean(path), found: Boolean(path), directory: path || "", ffmpeg: path || "", ffprobe: path || "" }),
-      choose_folder: async ({ kind } = {}) => ({ ok: true, path: kind === "model-cache" ? "D:\\Models\\MAW" : (kind === "ocr-runtime" ? "D:\\Models\\MAW\\ocr-runtime" : "D:\\Stickers") }),
+      choose_folder: async ({ kind } = {}) => ({ ok: true, path: kind === "model-cache" ? "D:\\Models\\MAW" : (kind === "ocr-runtime" ? "D:\\Models\\MAW\\ocr-runtime" : (kind === "runtime" ? "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime" : "D:\\Stickers")) }),
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
       get_postprocess_settings: async ({ providerId }) => { const apiKey = saved.postprocessApiKeys[providerId] || ""; return { ok: true, providerId, apiKey, maskedApiKey: apiKey ? "sk-…mock" : "" }; },
       save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "Custom (OpenAI-compatible)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
@@ -1120,7 +1303,7 @@
       open_file: async ({ path }) => ({ ok: Boolean(path) }),
       open_containing_folder: async ({ path }) => ({ ok: Boolean(path) }),
       retry_postprocess: async () => ({ ok: false, error: "No failed automatic post-processing run." }),
-      run_script_match: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "matched", "D:\\Demo\\clip.matched.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "matched", "D:\\Demo\\clip.matched.srt"), warnings: [] }),
+      run_script_match: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "match", "D:\\Demo\\clip.match.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "match", "D:\\Demo\\clip.match.srt"), warnings: [] }),
       run_ocr_dedup: async ({ projectPath, srtPath, outputMode, report }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.srt"), reportPath: report ? "D:\\Demo\\clip.ocr-dedup.csv" : "", warnings: ["OCR 字幕去重完成：新增禁用 1 条，已有禁用 0 条，实际 OCR 1 条，跳过 0 条。"] }),
       run_llm_postprocess: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "llm", "D:\\Demo\\clip.llm.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "llm", "D:\\Demo\\clip.llm.srt"), warnings: [] }),
       run_fixed_process: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "fixed", "D:\\Demo\\clip.fixed.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "fixed", "D:\\Demo\\clip.fixed.srt"), warnings: [] }),
@@ -1160,10 +1343,196 @@
 
   const t = (key) => STRINGS[state.lang][key] || key;
   function compactDetail(detail) { return String(detail || "").replace(/\s+/g, " ").trim(); }
-  function errText(code, detail) { const entry = ERROR_TEXT[state.lang][code]; const compact = compactDetail(detail); if (typeof entry === "function") return entry(compact); return entry || compact || t("failed"); }
+  // 后端 status detail 是中文固定文案（就绪/未安装/需修复等），界面语言下应改用本地化文案；
+  // 只有非标准状态的动态信息（如安装失败原因）才原样透传。
+  function runtimeHintText(runtime, readyKey, otherKey) {
+    const fallbackKey = runtime.ready || runtime.status === "ready" ? readyKey : otherKey;
+    return ["ready", "missing", "broken", "installing", "checking"].includes(runtime.status) ? t(fallbackKey) : (runtime.detail || t(fallbackKey));
+  }
+  function localModelHintText(status) {
+    return ["installed", "missing", "checking", "runtime_missing"].includes(status.status) ? t("local_prepare_hint") : (status.detail || t("local_prepare_hint"));
+  }
+  // 供应商 / 模型配置的 label 与 note 由后端（maw/gui_config.py）以中文下发；
+  // 英文界面按稳定 id 映射为英文，id 未收录时回退后端原文。
+  const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (QwenASR / FunASR)", soniox: "Soniox STT", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI (and compatible)", local: "Local models (Beta)", bcut: "Bcut ASR (unofficial · free · experimental)" };
+  const PROVIDER_NOTES_EN = {
+    openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models. For other relays, choose Custom and enter the exact model name they provide. The API must return segments or words timestamps.",
+    tencent: "Requires TENCENT_SECRET_ID and TENCENT_SECRET_KEY; use a COS URL for media larger than 5 MB.",
+    bcut: "Unofficial free endpoint: no API key, Chinese only, 2-hour per-file limit. The endpoint may change, break, or rate-limit at any time; avoid high-frequency calls. For important or batch tasks, prefer the official providers above.",
+  };
+  const MODEL_LABELS_EN = {
+    "qwen-audio-3.0-asr-flash-filetrans": "qwen-audio-3.0-asr (hotwords / context)",
+    "fun-asr": "fun-asr (speaker support)",
+    "qwen3-asr-flash-filetrans": "qwen3-asr (higher accuracy)",
+    "custom-asr": "Custom",
+    "stt-async-v5": "Soniox Async STT (v5, context)",
+    "16k_zh_en_2.0": "Tencent Cloud recorded-file ASR (large model 2.0)",
+    "whisper-1": "whisper-1",
+    "gpt-transcribe": "gpt-transcribe (keyword hints)",
+    "gpt-4o-transcribe": "gpt-4o-transcribe",
+    "gpt-4o-mini-transcribe": "gpt-4o-mini-transcribe",
+    "gpt-4o-transcribe-diarize": "gpt-4o-transcribe-diarize (speaker diarization)",
+    "whisper-large-v3-turbo": "Whisper Large V3 Turbo (OpenRouter)",
+    "whisper-large-v3": "Whisper Large V3 (OpenRouter)",
+    "qwen3-asr-local": "Qwen3-ASR 0.6B (recommended)",
+    "qwen3-asr-1.7b-local": "Qwen3-ASR 1.7B",
+    "fun-asr-nano-local": "Fun-ASR-Nano 2512 (GPU)",
+    "sensevoice-small-local": "SenseVoice Small",
+    "moss-transcribe-diarize-local": "MOSS Transcribe-Diarize 0.9B (segment timestamps only)",
+    "whisper-large-v3-local": "Faster-Whisper large-v3 (experimental)",
+    "bcut-asr": "Bcut ASR (no key / Chinese only)",
+  };
+  const MODEL_NOTES_EN = {
+    "qwen-audio-3.0-asr-flash-filetrans": "Supports instant hotwords, context, and speaker diarization.",
+    "fun-asr": "Supports speaker diarization and word-level timestamps.",
+    "whisper-1": "Supports Prompt; Whisper prompts are limited to 224 tokens.",
+    "gpt-transcribe": "OpenAI's recommended file transcription model; supports Prompt and Keywords and requires timestamped output.",
+    "gpt-4o-transcribe": "Supports Prompt and requires timestamped output.",
+    "gpt-4o-mini-transcribe": "Supports Prompt and requires timestamped output.",
+    "gpt-4o-transcribe-diarize": "OpenAI's speaker-diarization model; returns speaker-labeled segments. OpenRouter does not support it.",
+    "custom-asr": "Fill in your custom ASR model name after selecting this.",
+    "stt-async-v5": "Supports general, text, terms, and translation_terms context.",
+    "16k_zh_en_2.0": "Enter the SecretId here; configure SecretKey in the local .env.",
+    "qwen3-asr-local": "Runs locally; the first preparation downloads Qwen3-ASR and the Forced Aligner.",
+    "qwen3-asr-1.7b-local": "Higher recognition quality; shares the Qwen3 Forced Aligner with 0.6B.",
+    "fun-asr-nano-local": "LLM-ASR approach with FSMN-VAD by default; Chinese, English, Japanese, and Chinese dialects; CUDA recommended.",
+    "funasr-local": "Runs locally; uses the FunASR upstream model cache.",
+    "sensevoice-small-local": "Multilingual local recognition with FSMN-VAD by default; runs on CPU or GPU.",
+    "moss-transcribe-diarize-local": "End-to-end transcription with speaker diarization; segment timestamps only, no word-level timecodes; requires a separate Transformers 5.x runtime; CUDA recommended.",
+    "whisper-large-v3-local": "OpenAI Whisper multilingual local recognition; the CTranslate2 runtime bundles VAD and has no speaker diarization. GPU use requires installing CUDA 12 and cuDNN 9 yourself; otherwise it falls back to CPU.",
+    "bcut-asr": "Millisecond per-character timestamps; no API key required.",
+  };
+  const MODEL_PRICING_NOTES_EN = {
+    "qwen-audio-3.0-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
+    "fun-asr": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
+    "qwen3-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
+    "stt-async-v5": "Soniox reference price: about $0.10/hour for async file transcription; token-based pricing with $1.50 / 1M audio input tokens and $3.50 / 1M input-text and output-text tokens.",
+    "16k_zh_en_2.0": "Tencent Cloud reference price: CNY 0.8/hour for recorded-file ASR large model 2.0 on pay-as-you-go; a 60-hour prepaid pack is CNY 48.",
+    "whisper-1": "OpenAI official reference price: $0.006/minute; the endpoint must return segments or words timestamps.",
+    "gpt-transcribe": "OpenAI official reference price: $0.0045/minute.",
+    "gpt-4o-transcribe": "OpenAI official reference price: $2.50 / 1M audio input tokens and $10 / 1M audio output tokens; the endpoint must return timestamps.",
+    "gpt-4o-mini-transcribe": "OpenAI official reference price: $1.25 / 1M audio input tokens and $5 / 1M audio output tokens; the endpoint must return timestamps.",
+    "gpt-4o-transcribe-diarize": "OpenAI official reference price: $2.50 / 1M audio input tokens and $10 / 1M audio output tokens.",
+  };
+  const MODEL_OPENROUTER_NOTES_EN = {
+    "whisper-1": "OpenRouter reference price: $0.006/minute; the endpoint must return segments or words timestamps. Prices and capabilities can change.",
+    "gpt-transcribe": "OpenRouter reference price: $0.0045/minute; supports Prompt, Keywords, and languages[] and requires timestamped output.",
+    "gpt-4o-transcribe": "OpenRouter reference price: $2.50 / 1M input tokens and $10 / 1M output tokens; the endpoint must return timestamps.",
+    "gpt-4o-mini-transcribe": "OpenRouter reference price: $1.25 / 1M input tokens and $5 / 1M output tokens; the endpoint must return timestamps.",
+    "whisper-large-v3-turbo": "OpenRouter reference price: $0.04/hour; the endpoint must return segments or words timestamps.",
+    "whisper-large-v3": "OpenRouter reference price: $0.0015/minute; the endpoint must return segments or words timestamps.",
+    "gpt-4o-transcribe-diarize": "OpenRouter does not support diarize; switch to the official OpenAI Base URL.",
+  };
+  const REGION_LABELS_EN = { beijing: "Beijing (China North 2, default)", singapore: "Singapore (Workspace ID required)" };
+  const LANGUAGE_LABELS_EN = { "": "Auto detect", zh: "Chinese", yue: "Cantonese", en: "English", ja: "Japanese", de: "German", ko: "Korean", ru: "Russian", fr: "French", pt: "Portuguese", ar: "Arabic", it: "Italian", es: "Spanish", hi: "Hindi", id: "Indonesian", th: "Thai", tr: "Turkish", uk: "Ukrainian", vi: "Vietnamese", cs: "Czech", da: "Danish", fil: "Filipino", fi: "Finnish", is: "Icelandic", ms: "Malay", no: "Norwegian", pl: "Polish", sv: "Swedish", nl: "Dutch", el: "Greek", hu: "Hungarian", ro: "Romanian", bg: "Bulgarian", hr: "Croatian", sk: "Slovak", sl: "Slovenian", sw: "Swahili", tl: "Tagalog", ta: "Tamil", te: "Telugu", ur: "Urdu", cy: "Welsh", af: "Afrikaans", sq: "Albanian", az: "Azerbaijani", eu: "Basque", be: "Belarusian", bn: "Bengali", bs: "Bosnian", ca: "Catalan", et: "Estonian", gl: "Galician", gu: "Gujarati", he: "Hebrew", kn: "Kannada", kk: "Kazakh", lv: "Latvian", lt: "Lithuanian", mk: "Macedonian", ml: "Malayalam", mr: "Marathi", fa: "Persian", pa: "Punjabi", sr: "Serbian" };
+  function localizedSelectLabel(selectId, item) {
+    if (state.lang !== "en") return item.label;
+    const map = { provider: PROVIDER_LABELS_EN, model: MODEL_LABELS_EN, region: REGION_LABELS_EN, language: LANGUAGE_LABELS_EN }[selectId];
+    return map?.[item.id] || item.label;
+  }
+  function providerNoteText(providerItem) { return state.lang === "en" ? (PROVIDER_NOTES_EN[providerItem.id] || providerItem.note) : providerItem.note; }
+  function isOpenRouterBaseUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return false;
+    try {
+      const url = new URL(/^[a-z][a-z\d+.-]*:\/\//iu.test(raw) ? raw : `https://${raw}`);
+      return ["openrouter.ai", "www.openrouter.ai"].includes(url.hostname.toLowerCase().replace(/^www\./u, ""));
+    } catch (_error) {
+      return false;
+    }
+  }
+  function isOpenAiOfficialBaseUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return false;
+    try {
+      const url = new URL(/^[a-z][a-z\d+.-]*:\/\//iu.test(raw) ? raw : `https://${raw}`);
+      return url.hostname.toLowerCase().replace(/^www\./u, "") === "api.openai.com";
+    } catch (_error) {
+      return false;
+    }
+  }
+  function modelNoteText(modelItem) {
+    const openRouterNote = modelItem.openrouterNote || "";
+    const baseUrl = $("openaiBaseUrl")?.value || state.config?.openaiBaseUrl;
+    const isOpenai = isOpenAiProvider();
+    const isOpenRouter = isOpenai && isOpenRouterBaseUrl(baseUrl);
+    if (isOpenRouter && openRouterNote) return state.lang === "en" ? (MODEL_OPENROUTER_NOTES_EN[modelItem.id] || openRouterNote) : openRouterNote;
+    const note = state.lang === "en" ? (MODEL_NOTES_EN[modelItem.id] || modelItem.note) : modelItem.note;
+    if (isOpenai && !isOpenAiOfficialBaseUrl(baseUrl)) return note;
+    const priceNote = state.lang === "en" ? (MODEL_PRICING_NOTES_EN[modelItem.id] || modelItem.priceNote) : modelItem.priceNote;
+    return [note, priceNote].filter(Boolean).join(state.lang === "en" ? "; " : "；");
+  }
+  function llmProviderLabel(providerId) {
+    const id = String(providerId || "").trim();
+    const item = state.config?.postprocessProviders?.find((candidate) => candidate.id === id);
+    if (id === "custom" && item?.displayName) return item.displayName;
+    const labels = state.lang === "en"
+      ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen", custom: "Custom (OpenAI-compatible)" }
+      : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen", custom: "自定义（兼容 OpenAI）" };
+    return labels[id] || item?.label || t("llm_provider_unknown");
+  }
+  function llmBuiltInProviderKeyGuidance(context = {}) {
+    const providerId = String(context?.providerId || "").trim();
+    if (!["deepseek", "zhipu", "qwen"].includes(providerId)) return "";
+    return t("llm_builtin_provider_key_guidance")
+      .replaceAll("{provider}", llmProviderLabel(providerId));
+  }
+  function llmHttpErrorText(status, context = {}) {
+    const numericStatus = Number(status);
+    const providerId = String(context?.providerId || "").trim();
+    const keys = { 401: "llm_http_unauthorized", 403: "llm_http_forbidden", 404: "llm_http_not_found", 429: "llm_http_rate_limited" };
+    const key = numericStatus === 401 && ["deepseek", "zhipu", "qwen"].includes(providerId)
+      ? "llm_http_unauthorized_builtin"
+      : (numericStatus === 401 && providerId === "custom" ? "llm_http_unauthorized_custom" : keys[numericStatus]);
+    if (!key) return "";
+    const isModelList = String(context?.operation || "").toLowerCase().includes("model");
+    const operation = t(isModelList ? "llm_http_model_list_operation" : "llm_http_connection_operation");
+    return t(key)
+      .replaceAll("{provider}", llmProviderLabel(context?.providerId))
+      .replaceAll("{operation}", operation);
+  }
+  function errText(code, detail, context = {}) {
+    const compact = compactDetail(detail);
+    const builtInGuidance = ["postprocess_connection_failed", "postprocess_models_failed"].includes(code) && !Number.isInteger(Number(context?.httpStatus))
+      ? llmBuiltInProviderKeyGuidance(context)
+      : "";
+    const modelGuidance = code === "transcription_failed"
+      && $("provider")?.value === "openai"
+      && /(model|response[_ ]?format|verbose_json|timestamp)/iu.test(compact)
+      && !/(自定义（Custom）|choose Custom|exact model name)/iu.test(compact)
+      ? t("transcription_model_hint")
+      : "";
+    if (["postprocess_connection_failed", "postprocess_models_failed"].includes(code)) {
+      const guidance = llmHttpErrorText(context?.httpStatus, context);
+      if (guidance) return [guidance, builtInGuidance].filter(Boolean).join(" ");
+    }
+    const entry = ERROR_TEXT[state.lang][code];
+    const message = typeof entry === "function" ? entry(compact, context) : (entry || compact || t("failed"));
+    return [message, modelGuidance, builtInGuidance].filter(Boolean).join(" ");
+  }
   const ext = (path) => (path.match(/\.[^.\\/]+$/)?.[0] || "").toLowerCase();
   const provider = () => state.config.providers.find((item) => item.id === $("provider").value) || state.config.providers[0];
   const selectedModel = () => provider().models.find((item) => item.id === $("model").value) || provider().models[0];
+  const isOpenAiProvider = () => provider()?.id === "openai";
+  const isCustomOpenAiModel = () => isOpenAiProvider() && selectedModel()?.id === OPENAI_ASR_CUSTOM_MODEL_ID;
+  function customOpenAiModelDraft() {
+    if (state.config && state.config.openaiCustomModel !== undefined) return String(state.config.openaiCustomModel || "").trim();
+    const saved = String(state.config?.openaiModel || "").trim();
+    return OPENAI_ASR_OFFICIAL_MODEL_IDS.has(saved) ? "" : saved;
+  }
+  function syncOpenAiFields() {
+    const openai = isOpenAiProvider();
+    const custom = isCustomOpenAiModel();
+    $("customAsrFields").classList.toggle("hidden", !openai);
+    $("openaiModelField").classList.toggle("hidden", !custom);
+    if (custom) {
+      const current = $("openaiModel").value.trim();
+      const saved = customOpenAiModelDraft();
+      const draft = current && !OPENAI_ASR_OFFICIAL_MODEL_IDS.has(current) ? current : saved;
+      $("openaiModel").value = draft;
+      state.config.openaiCustomModel = draft;
+    }
+  }
   function appendMessageText(container, text) {
     String(text).split("\n").forEach((part, index) => {
       if (index > 0) container.append(document.createElement("br"));
@@ -1379,6 +1748,13 @@
   function resolveTheme() { if (state.theme === "light" || state.theme === "dark") return state.theme; return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
   function applyTheme() { if (resolveTheme() === "light") document.documentElement.dataset.theme = "light"; else delete document.documentElement.dataset.theme; $("themeLight").classList.toggle("active", state.theme === "light"); $("themeDark").classList.toggle("active", state.theme === "dark"); $("themeSystem").classList.toggle("active", state.theme === "system"); }
   function setTheme(pref) { if (!isThemePreference(pref)) return; state.theme = pref; storeTheme(pref); applyTheme(); void bridge("save_prefs", { theme: pref }).then((result) => { if (result.ok) { if (state.config) state.config.theme = pref; } else applyErrorResult(result); }); }
+  function revealLauncher() {
+    state.initializing = false;
+    const shell = document.querySelector(".shell");
+    shell?.removeAttribute("inert");
+    shell?.setAttribute("aria-busy", "false");
+    document.body.classList.add("launcher-ready");
+  }
 
   // keycap 表情（1️⃣ 等）依赖彩色 emoji 字体：后端把 Noto Color Emoji 缓存到本机
   // 后提供 file:// URI，这里注入 @font-face；注入一次即可，重复事件会被跳过。
@@ -1412,12 +1788,31 @@
   }
 
   function setRunning(running) { state.running = running; $("progress").classList.toggle("hidden", !running); $("start").classList.toggle("hidden", running); $("stop").classList.toggle("hidden", !running); $("start").disabled = running; $("stop").disabled = !running; setStatus(running ? t("running") : t("ready")); }
-  function fillSelect(id, items, value) { const el = $(id); el.innerHTML = ""; items.forEach((item) => el.add(new Option(item.label, item.id))); el.value = value ?? ""; }
+  function fillSelect(id, items, value) { const el = $(id); el.innerHTML = ""; items.forEach((item) => el.add(new Option(localizedSelectLabel(id, item), item.id))); el.value = value ?? ""; }
+  function refillSelectLabels() {
+    // 语言切换后，后端下发的下拉选项（供应商/模型/地域/语言）与说明行需要按新语言重建。
+    if (!state.config) return;
+    const current = provider();
+    fillSelect("provider", state.config.providers, $("provider").value);
+    fillSelect("model", current.models, $("model").value);
+    fillSelect("region", current.regions, $("region").value || state.config.region || "beijing");
+    const el = $("language");
+    const showRare = Boolean(state.config.showRareLangs);
+    const commons = current.commonLanguages || [];
+    const available = selectedModel().languages?.length ? selectedModel().languages : current.languages;
+    const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available;
+    const selected = el.multiple ? Array.from(el.selectedOptions).map((option) => option.value) : (el.value ? [el.value] : []);
+    fillSelect("language", visible, "");
+    if (el.multiple) Array.from(el.options).forEach((option) => { option.selected = selected.includes(option.value); });
+    else el.value = selected[0] || "";
+    $("providerNote").textContent = providerNoteText(current);
+    $("modelNote").textContent = modelNoteText(selectedModel());
+  }
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
-  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
-  function formPayload() { return { providerId: $("provider").value, modelId: $("model").value, mediaPath: $("mediaPath").value.trim(), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel: $("openaiModel").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit").value.trim(), maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
+  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
+  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit").value.trim(), maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
     const button = $("openMawe");
@@ -1430,14 +1825,37 @@
     $("stopServer").disabled = state.serverStarting || state.serverStopping;
   }
   async function stopEditorServer() { if (state.serverStopping) return; state.serverStopping = true; renderServerButton(); try { const result = await bridge("stop_server", serverPayload()); if (!result.ok) { applyErrorResult(result); return; } state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; setStatus(t("ready")); } finally { state.serverStopping = false; renderServerButton(); } }
-  async function checkExistingServer(prefix = "") { const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); }
+  async function checkExistingServer(prefix = "") { const requestId = ++serverStatusRequest; const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (requestId !== serverStatusRequest) return result; if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); }
   function syncHtmlMenu() { const enabled = $("generateHtml").checked; $("openHtml").classList.toggle("hidden", !enabled); $("openHtml").disabled = enabled && !state.result?.htmlPath; }
   function renderChevron(id) { const arrow = $(id).querySelector(".chevron"); if (arrow) arrow.textContent = $(id).classList.contains("collapsed") ? "▸" : "▾"; }
   function renderStickerCurrent() { $("stickerCurrent").textContent = state.config?.stickerDir || t("unset"); $("stickerDir").value = state.config?.stickerDir || ""; }
   async function saveStickerDirectory(path) { $("stickerDir").value = path; const result = await bridge("save_sticker_dir", { path }); setError("stickerDir", result.ok ? "" : errText(result.code, result.detail || result.error)); if (result.ok) { state.config.stickerDir = result.stickerDir; renderStickerCurrent(); setStatus(t("saved")); } else setStatus(errText(result.code, result.detail || result.error)); return result; }
+  function renderKeyHint() {
+    const current = provider();
+    const isOpenai = current?.id === "openai";
+    $("openKeyUrl").textContent = isOpenai ? t("openai_official") : (current?.label || "");
+    $("openKeyHintOr")?.classList.toggle("hidden", !isOpenai);
+    const openRouterLink = $("openRouterKeyUrl");
+    if (openRouterLink) {
+      openRouterLink.textContent = t("openrouter");
+      openRouterLink.classList.toggle("hidden", !isOpenai);
+    }
+    const suffix = $("keyHintSuffix");
+    if (suffix) suffix.textContent = t(isOpenai ? "openai_key_hint_suffix" : "key_hint_suffix");
+  }
   function renderKeyStatus() { const masked = state.config && !isLocalProvider() ? provider().maskedApiKey : ""; $("keyStatus").textContent = masked ? t("key_loaded").replace("{key}", masked) : t("key_empty"); }
   function syncQwenAudioOptions(model) { const enabled = provider().id === "qwen" && Boolean(model?.supportsContext || model?.supportsHotwords); $("qwenAudioOptions").classList.toggle("hidden", !enabled); $("qwenAudioContextField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsContext)); $("qwenAudioHotwordsSection").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsHotwords)); syncQwenAudioHotwordsMode(); }
   function syncSonioxContextOptions(model) { const enabled = provider().id === "soniox" && Boolean(model?.supportsContext); $("sonioxContextOptions").classList.toggle("hidden", !enabled); }
+  function syncOpenAiAdvancedOptions(model) {
+    const openai = isOpenAiProvider();
+    const baseUrl = $("openaiBaseUrl")?.value || state.config?.openaiBaseUrl;
+    const diarize = Boolean(openai && model?.supportsDiarization);
+    $("openaiAdvancedOptions").classList.toggle("hidden", !(openai && (model?.supportsPrompt || model?.supportsKeywords || diarize)));
+    $("openaiPromptField").classList.toggle("hidden", !(openai && model?.supportsPrompt));
+    $("openaiKeywordsField").classList.toggle("hidden", !(openai && model?.supportsKeywords));
+    $("openaiDiarizationField").classList.toggle("hidden", !diarize);
+    $("openaiDiarizationUnsupported").classList.toggle("visible", diarize && isOpenRouterBaseUrl(baseUrl));
+  }
   function renderPromptCharacterCount() { const count = Array.from($("qwenAudioContext").value).length; const counter = $("qwenAudioContextCount"); counter.textContent = t("qwen_audio_context_count").replace("{count}", String(count)); counter.classList.toggle("over-limit", count > 400); }
   function renderSonioxContextCharacterCount() { const value = [$("sonioxContextGeneral").value, $("sonioxContextText").value, $("sonioxContextTerms").value, $("sonioxContextTranslationTerms").value].join("\n"); const count = Array.from(value).length; const counter = $("sonioxContextCount"); counter.textContent = t("soniox_context_count").replace("{count}", String(count)); counter.classList.toggle("over-limit", count > 10000); }
   function splitHotwordEntries(value, ignoreComments = false) { return String(value || "").split(/[\n,，;；]+/u).map((word) => word.trim()).filter((word) => word && (!ignoreComments || !word.startsWith("#"))); }
@@ -1447,7 +1865,7 @@
   function renderHotwordWarnings(value = $("qwenAudioHotwords").value, weight = Number($("qwenAudioHotwordWeight").value), ignoreComments = false) { const warning = $("qwenAudioHotwordsWarning"); const issues = collectHotwordWarnings(value, weight, ignoreComments); if (!issues.length) { warning.textContent = ""; warning.classList.remove("visible"); return; } const details = issues.slice(0, 5).map((issue) => t("qwen_audio_hotword_warning_item").replace("{label}", hotwordWarningLabel(issue)).replace("{reason}", t(`qwen_audio_hotword_issue_${issue.code}`))); if (issues.length > details.length) details.push(t("qwen_audio_hotword_warning_more")); warning.textContent = `${t("qwen_audio_hotwords_warning").replace("{count}", String(issues.length))}\n${details.join("\n")}`; warning.classList.add("visible"); }
   function syncQwenAudioHotwordsMode() { const fileMode = $("qwenAudioHotwordsMode").value === "file"; $("qwenAudioHotwordsTextField").classList.toggle("hidden", fileMode); $("qwenAudioHotwordsFileField").classList.toggle("hidden", !fileMode); renderHotwordWarnings(fileMode ? "" : $("qwenAudioHotwords").value, Number($("qwenAudioHotwordWeight").value)); }
   function setHotwordsMode(mode) { $("qwenAudioHotwordsMode").value = mode; $("qwenAudioHotwordsModeText").classList.toggle("active", mode === "text"); $("qwenAudioHotwordsModeFile").classList.toggle("active", mode === "file"); syncQwenAudioHotwordsMode(); }
-  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["mediaPath", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "localModelCachePath", "localModelPath", "ocrRuntimePath", "ffmpegPath", "stickerDir", "toolboxInputDropZone", "toolboxUtilityMediaDropZone", "toolboxBurnSubtitleDropZone", "toolboxFfconcatDropZone", "toolboxAlignmentProjectDropZone", "toolboxAlignmentScriptDropZone", "ocrVideoPathField", "postprocessScriptPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
+  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["mediaPath", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "localModelCachePath", "localModelPath", "localRuntimePath", "ocrRuntimePath", "ffmpegPath", "stickerDir", "toolboxInputDropZone", "toolboxUtilityMediaDropZone", "toolboxBurnSubtitleDropZone", "toolboxFfconcatDropZone", "toolboxAlignmentProjectDropZone", "toolboxAlignmentScriptDropZone", "ocrVideoPathField", "postprocessScriptPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
   function setQwenAudioHotwordsFile(path) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return false; } $("qwenAudioHotwordsFile").value = path; setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); return true; }
   async function loadHotwordFile(path, appendToText = false) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); clearDropState(); return; } const result = await bridge("read_hotword_file", { path }); if (!result.ok) { applyErrorResult(result, false); clearDropState(); return; } if (appendToText) { const incoming = String(result.text || "").trim(); if (incoming) { const current = $("qwenAudioHotwords").value.trimEnd(); $("qwenAudioHotwords").value = current ? `${current}\n${incoming}` : incoming; } setHotwordsMode("text"); renderHotwordWarnings($("qwenAudioHotwords").value); setStatus(t("qwen_audio_hotwords_loaded")); } else { setQwenAudioHotwordsFile(result.path || path); renderHotwordWarnings(String(result.text || ""), Number($("qwenAudioHotwordWeight").value), true); } clearDropState(); }
   function isLocalProvider() { return provider()?.kind === "local" || provider()?.id === "local"; }
@@ -1457,7 +1875,6 @@
     container.textContent = "";
     const entries = [
       { label: t("local_runtime_path"), path: runtime.path || "", payload: { kind: "runtime", modelId: $("model").value } },
-      { label: t("local_model_cache_path"), path: runtime.modelCachePath || "", payload: { kind: "model-cache" } },
     ].filter((entry) => entry.path);
     for (const entry of entries) {
       const line = document.createElement("span");
@@ -1479,10 +1896,31 @@
     }
     container.classList.toggle("hidden", !entries.length);
   }
+  function renderLocalModelCachePathLine(runtime) {
+    // 模型缓存链接跟随主页面「模型保存目录」的说明文字，不放在设置运行时区块里。
+    const container = $("localModelCachePathLine");
+    container.textContent = "";
+    const path = runtime.modelCachePath || "";
+    container.classList.toggle("hidden", !path);
+    if (!path) return;
+    container.append(document.createTextNode(t("local_model_cache_path")));
+    const link = document.createElement("a");
+    link.href = "#";
+    link.className = "inline-link runtime-path-link";
+    link.textContent = path;
+    link.title = t("open_folder_hint");
+    link.addEventListener("click", async (event) => {
+      event.preventDefault();
+      const result = await bridge("open_runtime_folder", { kind: "model-cache" });
+      if (!result.ok) setStatus(result.detail || result.error || t("failed"));
+      else setStatus(t("saved"));
+    });
+    container.append(link);
+  }
   function renderOcrRuntimeHint(runtime) {
     const container = $("ocrRuntimeHint");
     container.replaceChildren();
-    const detail = runtime.detail || (runtime.ready ? t("ocr_runtime_ready") : t("settings_ocr_hint"));
+    const detail = runtimeHintText(runtime, "ocr_runtime_ready", "settings_ocr_hint");
     if (detail) appendMessageText(container, detail);
     if (!runtime.path) return;
     if (detail) container.append(document.createElement("br"));
@@ -1503,14 +1941,20 @@
   function renderLocalRuntime() {
     if (!isLocalProvider()) return;
     const runtime = state.config.localRuntime || {};
-    const installing = state.localRuntimeInstalling;
-    const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing", installing: "local_runtime_installing" }[runtime.status] || "local_runtime_missing");
+    const installing = state.localRuntimeInstalling || runtime.status === "installing";
+    const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing", checking: "local_runtime_checking", installing: "local_runtime_installing" }[runtime.status] || "local_runtime_missing");
     renderLocalRuntimePaths(runtime);
+    renderLocalModelCachePathLine(runtime);
     const target = $("localRuntimeStatus");
     // 实时流水只保留在进度条下方的 ProgressMessage 行，避免上下双显同一句。
     target.textContent = t(key);
     target.className = `local-status ${installing ? "warn" : (runtime.ready ? "ready" : "warn")}`;
-    $("localRuntimeHint").textContent = runtime.detail || (runtime.ready ? t("local_runtime_ready_hint") : t("local_runtime_hint"));
+    // 高级选项里的检测结果行与 Runtime 面板状态保持一致。
+    const checkStatus = $("localRuntimeCheckStatus");
+    checkStatus.textContent = target.textContent;
+    checkStatus.className = target.className;
+    $("localRuntimeHint").textContent = runtimeHintText(runtime, "local_runtime_ready_hint", "local_runtime_hint");
+    $("localRuntimePath").value = runtime.path || $("localRuntimePath").value || "";
     $("localModelCachePath").value = state.config.modelCacheRoot || runtime.modelCachePath || $("localModelCachePath").value || "";
     const button = $("installLocalRuntime");
     button.disabled = false;
@@ -1524,8 +1968,8 @@
   }
   function renderOcrRuntime() {
     const runtime = state.config?.ocrRuntime || {};
-    const installing = state.ocrRuntimeInstalling;
-    const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing", installing: "ocr_runtime_installing" }[runtime.status] || "ocr_runtime_missing");
+    const installing = state.ocrRuntimeInstalling || runtime.status === "installing";
+    const key = installing ? "ocr_runtime_installing" : ({ ready: "ocr_runtime_ready", broken: "ocr_runtime_broken", missing: "ocr_runtime_missing", checking: "ocr_runtime_checking", installing: "ocr_runtime_installing" }[runtime.status] || "ocr_runtime_missing");
     const target = $("ocrRuntimeStatus");
     // 与 localRuntime 一致：状态行固定文案，实时流水只在进度条下方。
     target.textContent = t(key);
@@ -1544,7 +1988,9 @@
     window.MAWLauncher?.onOcrRuntimeChanged?.();
   }
   async function refreshOcrRuntime() {
+    const requestId = ++ocrRuntimeRequest;
     const result = await bridge("get_ocr_runtime");
+    if (requestId !== ocrRuntimeRequest) return result;
     if (!result.ok) { applyErrorResult(result); return result; }
     state.config.ocrRuntime = result;
     state.config.ocrModels = result.models || state.config.ocrModels || [];
@@ -1552,8 +1998,10 @@
     return result;
   }
   async function saveOcrRuntimePath(path) {
+    const requestId = ++ocrRuntimeRequest;
     const value = String(path || "").trim();
     const result = await bridge("save_ocr_settings", { runtimePath: value });
+    if (requestId !== ocrRuntimeRequest) return result;
     if (!result.ok) {
       applyErrorResult(result);
       return result;
@@ -1565,16 +2013,29 @@
     setStatus(t("saved"));
     return result;
   }
+  async function saveLocalRuntimePath(path) {
+    const requestId = ++localRuntimeRequest;
+    const value = String(path || "").trim();
+    const result = await bridge("save_local_settings", { runtimePath: value });
+    if (requestId !== localRuntimeRequest) return result;
+    if (!result.ok) { applyErrorResult(result); return result; }
+    state.config.localRuntime = result.runtime || state.config.localRuntime || {};
+    renderLocalRuntime();
+    if (isLocalProvider()) void refreshLocalModels();
+    setError("localRuntimePath", "");
+    setStatus(t("saved"));
+    return result;
+  }
   function renderLocalModelStatus() {
     if (!isLocalProvider()) { $("model").disabled = false; return; }
     const status = localStatus();
     const preparing = state.localPreparing;
     const target = $("localModelStatus");
-    const key = status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing" }[status.status] || "local_missing");
+    const key = status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing", checking: "local_checking" }[status.status] || "local_missing");
     // 与 runtime 面板一致：preparing 状态行固定"正在准备"文案，实时流水只在进度条下方。
     target.textContent = t(preparing ? "local_prepare_running" : key);
     target.className = `local-status ${preparing ? "warn" : (status.status === "installed" ? "ready" : "warn")}`;
-    $("localModelHint").textContent = status.detail || t("local_prepare_hint");
+    $("localModelHint").textContent = localModelHintText(status);
     $("localModelPath").value = status.path || $("localModelPath").value || "";
     const canPrepare = Boolean(status.canPrepare) && !preparing;
     const button = $("prepareLocalModel");
@@ -1594,7 +2055,11 @@
   }
   async function refreshLocalRuntime() {
     if (!isLocalProvider()) return;
+    const requestId = ++localRuntimeRequest;
+    const statusRequestId = ++localStatusRequest;
+    const modelId = $("model").value;
     const result = await bridge("get_local_runtime", { modelId: $("model").value });
+    if (requestId !== localRuntimeRequest || statusRequestId !== localStatusRequest || !isLocalProvider() || $("model").value !== modelId) return result;
     if (!result.ok) { applyErrorResult(result); return result; }
     state.config.localRuntime = result;
     state.config.modelCacheRoot = result.modelCachePath || state.config.modelCacheRoot || "";
@@ -1603,7 +2068,12 @@
   }
   async function refreshLocalModels() {
     if (!isLocalProvider()) return;
-    const result = await bridge("get_local_models", { modelId: $("model").value, modelPath: $("localModelPath").value.trim() });
+    const requestId = ++localModelsRequest;
+    const statusRequestId = ++localStatusRequest;
+    const modelId = $("model").value;
+    const modelPath = $("localModelPath").value.trim();
+    const result = await bridge("get_local_models", { modelId, modelPath });
+    if (requestId !== localModelsRequest || statusRequestId !== localStatusRequest || !isLocalProvider() || $("model").value !== modelId || $("localModelPath").value.trim() !== modelPath) return result;
     if (!result.ok) { applyErrorResult(result); return result; }
     if (result.runtime) {
       state.config.localRuntime = result.runtime;
@@ -1631,25 +2101,24 @@
       return result;
     }
     state.config.modelCacheRoot = result.modelCacheRoot || value;
-    await refreshLocalRuntime();
     await refreshLocalModels();
     setError("localModelCachePath", "");
     setStatus(t("saved"));
     return result;
   }
-  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); window.MAWLauncher?.onLanguageChanged?.(); }
-  function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const customAsr = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.toggle("hidden", customAsr); $("customAsrFields").classList.toggle("hidden", !customAsr); if (customAsr) { $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("openaiModel").value = state.config.openaiModel || "whisper-1"; } $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelPanel").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; $("openKeyUrl").textContent = current.label; $("providerNote").textContent = current.note || ""; $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); $("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0); renderKeyStatus(); syncWorkspace(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); void refreshLocalModels(); } }
-  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncLocalModelPath(model); $("modelNote").textContent = model.note || ""; applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); renderLocalModelStatus(); syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
+  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langToggle").textContent = t("other_language"); $("demoBadge").textContent = t("demo_mode"); renderAudioTracks(); if (state.audioTracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint"); renderKeyHint(); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); refillSelectLabels(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); window.MAWLauncher?.onLanguageChanged?.(); }
+  function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelPanel").classList.toggle("hidden", !local); $("localRuntimeCheckField").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); $("providerNote").textContent = providerNoteText(current); $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); $("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0); renderKeyStatus(); syncWorkspace(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) void refreshLocalModels(); } }
+  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); $("modelNote").textContent = modelNoteText(model); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
   function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
   function languageValue() { const el = $("language"); if (el.multiple) return Array.from(el.selectedOptions).map((o) => o.value).filter(Boolean).join(","); return el.value; }
   function syncWorkspace() { $("workspaceField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || provider().regions.length === 0); }
   function syncAdvancedParamsGroup() { const group = $("advancedParamsGroup"); group.classList.toggle("hidden", !Array.from(group.querySelectorAll(".field")).some((field) => !field.classList.contains("hidden"))); }
   function appendTestSuffix(path) { const value = String(path || "").trim(); if (!value || /-test(?=\.[^./\\]+$)/iu.test(value)) return value; const separator = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")); const dot = value.lastIndexOf("."); if (dot <= separator) return `${value}-test`; return `${value.slice(0, dot)}-test${value.slice(dot)}`; }
   function removeTestSuffix(path) { return String(path || "").replace(/-test(?=\.[^./\\]+$)/iu, ""); }
-  function syncTestRun() { const on = $("testRun").checked; $("testRunHint").classList.toggle("hidden", !on); $("lengthLimit").disabled = on; if (state.srtAuto) { void syncDefaultOutput(); return; } const current = $("srtPath").value.trim(); if (on) { const next = appendTestSuffix(current); state.testSuffixAdded = Boolean(current && next !== current); $("srtPath").value = next; } else if (state.testSuffixAdded) { $("srtPath").value = removeTestSuffix(current); state.testSuffixAdded = false; } }
+  function syncTestRun() { const on = $("testRun").checked; $("testRunHint").classList.toggle("hidden", !on); $("lengthLimit").disabled = on; if (state.srtAuto) { if (!state.initializing) void syncDefaultOutput(); return; } const current = $("srtPath").value.trim(); if (on) { const next = appendTestSuffix(current); state.testSuffixAdded = Boolean(current && next !== current); $("srtPath").value = next; } else if (state.testSuffixAdded) { $("srtPath").value = removeTestSuffix(current); state.testSuffixAdded = false; } }
   function savePrefsDebounced(payload) { clearTimeout(prefsTimer); prefsTimer = setTimeout(() => bridge("save_prefs", payload), 300); }
   function normalizeZoomPercent(value) { const parsed = Number(value); if (!Number.isFinite(parsed)) return ZOOM_DEFAULT; return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(parsed / ZOOM_STEP) * ZOOM_STEP)); }
-  function applyZoomPercent(value) { const zoomPercent = normalizeZoomPercent(value); document.documentElement.style.zoom = `${zoomPercent}%`; state.config.zoomPercent = zoomPercent; return zoomPercent; }
+  function applyZoomPercent(value) { const zoomPercent = normalizeZoomPercent(value); document.documentElement.style.zoom = `${zoomPercent}%`; document.documentElement.style.setProperty("--launcher-shell-height", `${100 / (zoomPercent / 100)}dvh`); state.config.zoomPercent = zoomPercent; return zoomPercent; }
   function viewportPixelsToPage(value) { return value / (normalizeZoomPercent(state.config?.zoomPercent) / 100); }
   function persistZoomPercent(value) { const zoomPercent = applyZoomPercent(value); savePrefsDebounced({ zoomPercent }); }
   function handleZoomWheel(event) { if (!event.ctrlKey) return; const direction = Math.sign(event.deltaY); if (!direction) return; event.preventDefault(); const zoomPercent = applyZoomPercent(state.config.zoomPercent - direction * ZOOM_STEP); savePrefsDebounced({ zoomPercent }); }
@@ -1660,12 +2129,102 @@
     event.preventDefault();
     persistZoomPercent(event.key === "0" ? ZOOM_DEFAULT : state.config.zoomPercent + direction * ZOOM_STEP);
   }
-  async function syncDefaultOutput() { const result = await bridge("default_output", { mediaPath: $("mediaPath").value.trim(), providerId: $("provider").value, modelId: $("model").value, testRun: $("testRun").checked }); const path = result.ok ? result.path : ""; $("srtPath").placeholder = path; if (state.srtAuto) { $("srtPath").value = path; if (path) setError("srtPath", ""); setOutputNotice(result.renamed ? t("output_collision") : ""); } else setOutputNotice(""); }
+  async function syncDefaultOutput() { const requestId = ++defaultOutputRequest; const result = await bridge("default_output", { mediaPath: $("mediaPath").value.trim(), providerId: $("provider").value, modelId: $("model").value, testRun: $("testRun").checked }); if (requestId !== defaultOutputRequest) return result; const path = result.ok ? result.path : ""; $("srtPath").placeholder = path; if (state.srtAuto) { $("srtPath").value = path; if (path) setError("srtPath", ""); setOutputNotice(result.renamed ? t("output_collision") : ""); } else setOutputNotice(""); return result; }
   function syncFlvHints() {
     $("mediaPathFlvHint")?.classList.toggle("hidden", ext($("mediaPath").value.trim()) !== ".flv");
     $("serverMediaFlvHint")?.classList.toggle("hidden", ext($("serverMediaPath").value.trim()) !== ".flv");
   }
-  function setMedia(path) { $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); window.MAWLauncher?.onMediaPathChanged?.(); }
+  function audioTrackIndex(track) {
+    const value = Number(track?.audioIndex ?? track?.index);
+    return Number.isInteger(value) && value >= 0 ? value : null;
+  }
+  function audioTrackIsDefault(track) {
+    return Boolean(track?.default ?? track?.isDefault);
+  }
+  function audioTrackOptionLabel(track) {
+    const index = audioTrackIndex(track);
+    const parts = [`${t("audio_track_number")}${(index ?? 0) + 1}`];
+    if (track.title) parts.push(String(track.title));
+    if (track.language) parts.push(String(track.language).toUpperCase());
+    if (Number.isInteger(track.channels) && track.channels > 0) parts.push(t("audio_track_channels").replace("{count}", String(track.channels)));
+    if (Number.isInteger(track.sampleRate) && track.sampleRate > 0) parts.push(t("audio_track_sample_rate").replace("{rate}", String(Math.round(track.sampleRate / 100) / 10)));
+    if (track.streamIndex !== undefined && track.streamIndex !== null && String(track.streamIndex) !== "") parts.push(t("audio_track_id").replace("{id}", String(track.streamIndex)));
+    if (audioTrackIsDefault(track)) parts.push(t("audio_track_default"));
+    return parts.join(" · ");
+  }
+  function renderAudioTracks(tracks = state.audioTracks) {
+    const field = $("audioTrackField");
+    const select = $("audioTrack");
+    if (!field || !select) return;
+    const validTracks = Array.isArray(tracks) ? tracks.filter((track) => audioTrackIndex(track) !== null) : [];
+    const multiple = validTracks.length > 1;
+    field.classList.toggle("hidden", !multiple);
+    select.disabled = !multiple;
+    select.innerHTML = "";
+    if (!multiple) return;
+    validTracks.forEach((track) => select.add(new Option(audioTrackOptionLabel(track), String(audioTrackIndex(track)))));
+    const defaultTrack = validTracks.find(audioTrackIsDefault) || validTracks[0];
+    const selected = Number.isInteger(state.audioTrack) && validTracks.some((track) => audioTrackIndex(track) === state.audioTrack)
+      ? state.audioTrack
+      : (audioTrackIndex(defaultTrack) ?? 0);
+    state.audioTrack = Number(selected);
+    select.value = String(state.audioTrack);
+  }
+  function showAudioTrackLoading() {
+    const field = $("audioTrackField");
+    const select = $("audioTrack");
+    if (!field || !select) return;
+    field.classList.remove("hidden");
+    select.disabled = true;
+    select.innerHTML = "";
+    select.add(new Option(t("audio_track_loading"), ""));
+    $("audioTrackHint").textContent = t("audio_track_loading");
+  }
+  async function refreshAudioTracks(path) {
+    const value = String(path || "").trim();
+    const key = audioTrackPathKey(value);
+    const token = ++state.audioTrackProbeToken;
+    state.audioTrackPath = key;
+    state.audioTracks = [];
+    state.audioTrack = null;
+    if (!value || !VIDEO_EXTS.has(ext(value))) {
+      renderAudioTracks([]);
+      return;
+    }
+    showAudioTrackLoading();
+    const result = await bridge("get_audio_tracks", { mediaPath: value });
+    if (token !== state.audioTrackProbeToken || key !== audioTrackPathKey($("mediaPath").value)) return;
+    const tracks = result?.ok && Array.isArray(result.tracks) ? result.tracks : [];
+    state.audioTracks = tracks;
+    renderAudioTracks(tracks);
+    if (!result.ok && tracks.length === 0) $("audioTrackHint").textContent = t("audio_track_probe_failed");
+    else if (tracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint");
+  }
+  function scheduleAudioTrackProbe(path) {
+    clearTimeout(state.audioTrackProbeTimer);
+    const value = String(path || "").trim();
+    state.audioTrackProbeToken += 1;
+    state.audioTrackPath = audioTrackPathKey(value);
+    state.audioTracks = [];
+    state.audioTrack = null;
+    if (VIDEO_EXTS.has(ext(value))) showAudioTrackLoading();
+    else renderAudioTracks([]);
+    if (!value || !VIDEO_EXTS.has(ext(value))) return;
+    state.audioTrackProbeTimer = window.setTimeout(() => { void refreshAudioTracks(value); }, 280);
+  }
+  function audioTrackPathKey(path) { return String(path || "").trim().replace(/[\\/]+/gu, "\\").toLocaleLowerCase(); }
+  function getAudioTrackForMedia(path) {
+    const value = String(path || "").trim();
+    if (audioTrackPathKey(value) !== state.audioTrackPath || state.audioTracks.length <= 1 || !Number.isInteger(state.audioTrack)) return null;
+    return state.audioTrack;
+  }
+  function getDefaultAudioTrackForMedia(path) {
+    const value = String(path || "").trim();
+    if (audioTrackPathKey(value) !== state.audioTrackPath || state.audioTracks.length <= 1) return 0;
+    const defaultTrack = state.audioTracks.find(audioTrackIsDefault) || state.audioTracks[0];
+    return audioTrackIndex(defaultTrack) ?? 0;
+  }
+  function setMedia(path, { refreshOcrVideo = false } = {}) { clearTimeout(state.audioTrackProbeTimer); $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); void refreshAudioTracks(path); window.MAWLauncher?.onMediaPathChanged?.({ refreshOcrVideo }); }
   function setDroppedPath(field, path, eventType = "input") {
     const value = String(path || "").trim();
     const input = $(field);
@@ -1685,9 +2244,17 @@
   }
   function setJsonPath(path) { $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); window.MAWLauncher?.onProjectPathChanged?.(); }
   function applyErrorResult(result, logDetail = true) { const detail = result.detail || result.error || ""; const message = errText(result.code, detail); const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message); if (result.field) setError(result.field, fieldMessage); if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer(); if (result.postprocessStep) window.MAWLauncher?.openAutoPostprocessStep?.(result.postprocessStep, result.field); else if (result.field === "autoPostprocessEnabled") $("autoPostprocessCard")?.scrollIntoView({ behavior: "smooth", block: "start" }); setStatus(message); if (logDetail && detail) appendLog(`[detail] ${detail}`); showErrorNotice(message, result.code || "", detail); }
-  function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); return true; }
-  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (provider().id === "openai" && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
-  function fail(field, message) { setError(field, message); setStatus(message); const input = $(field); if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" }); return false; }
+  function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["maxWords", 1], ["minWords", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); if (data.maxWords && data.minWords && Number(data.maxWords) < Number(data.minWords)) return fail("maxWords", errText("segmentation_invalid", "")); return true; }
+  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (isCustomOpenAiModel() && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().id === "openai" && selectedModel().supportsKeywords && /[<>]/u.test(data.openaiKeywords)) return fail("openaiKeywords", errText("openai_keywords_invalid", "")); if (provider().id === "openai" && selectedModel().supportsDiarization && isOpenRouterBaseUrl(data.openaiBaseUrl)) return fail("model", errText("openai_diarize_openrouter_unsupported", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
+  function fail(field, message) {
+    setError(field, message);
+    setStatus(message);
+    const input = $(field);
+    const settingsSection = input?.closest?.(".settings-section");
+    if (settingsSection?.id) openSettings(settingsSection.id, field);
+    if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" });
+    return false;
+  }
   function toggle(id) { $(id).classList.toggle("collapsed"); renderChevron(id); }
   function setupScrollbarFlash() {
     const VISIBLE_MS = 900;
@@ -1711,7 +2278,7 @@
     const suffix = ext(value);
     if (target === "media") {
       if (MEDIA_EXTS.has(suffix)) {
-        setMedia(value);
+        setMedia(value, { refreshOcrVideo: true });
         setStatus(t("media"));
       } else setError("mediaPath", mediaDropError());
       return;
@@ -1724,6 +2291,7 @@
     const pathTargets = {
       localModelCache: ["localModelCachePath", "change"],
       localModel: ["localModelPath", "input"],
+      localRuntime: ["localRuntimePath", "change"],
       ocrRuntime: ["ocrRuntimePath", "change"],
       ffmpeg: ["ffmpegPath", "input"],
       stickerDir: ["stickerDir", "change"],
@@ -1795,14 +2363,14 @@
       return;
     }
     if (MEDIA_EXTS.has(suffix)) {
-      setMedia(value);
+      setMedia(value, { refreshOcrVideo: true });
       setStatus(t("media"));
       return;
     }
     setError("mediaPath", mediaDropError());
   }
   async function refreshServerMedia() { const jsonPath = $("jsonPath").value.trim(); const result = await bridge("check_server_media", { jsonPath }); state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists); $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath); return result; }
-  async function refreshFfmpeg() { const result = await bridge("check_ffmpeg"); $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
+  async function refreshFfmpeg() { const requestId = ++ffmpegRequest; const result = await bridge("check_ffmpeg"); if (requestId !== ffmpegRequest) return result; $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
   function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
   function selectSettingsTab(tabName) {
     const tabs = [...document.querySelectorAll("[data-settings-tab]")];
@@ -1848,9 +2416,16 @@
     void refreshOcrRuntime();
     renderStickerCurrent();
     $("showRareLangs").checked = Boolean(state.config.showRareLangs);
+    $("outputSubfolder").checked = Boolean(state.config.outputSubfolder);
+    $("perVideoSubfolder").checked = Boolean(state.config.perVideoSubfolder);
+    $("attachModelName").checked = state.config.attachModelName !== false;
     if (sectionId) {
       requestAnimationFrame(() => {
-        $(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        // 只滚动 .settings-scroll 容器；scrollIntoView 会连带滚动 overflow:hidden 的
+        // .modal-card，把标题和标签页顶出视野，区块位于容器顶部时表现为下坠一小段。
+        const section = $(sectionId);
+        const scroll = section?.closest(".settings-scroll");
+        if (section && scroll) scroll.scrollTo({ top: Math.max(0, section.offsetTop - scroll.offsetTop), behavior: "smooth" });
         if (focusId) requestAnimationFrame(() => $(focusId)?.focus());
       });
     }
@@ -1863,6 +2438,7 @@
     const projectPath = $("jsonPath").value.trim();
     const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
     if ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath)) { await bridge("open_url", { url: currentUrl }); return; }
+    serverStatusRequest += 1;
     state.serverStarting = true;
     renderServerButton();
     try {
@@ -1893,7 +2469,27 @@
     }
   }
 
+  function refreshStartupState() {
+    const tasks = [
+      ["default output", syncDefaultOutput()],
+      ["FFmpeg", refreshFfmpeg()],
+      ["server", checkExistingServer()],
+      ["OCR", refreshOcrRuntime()],
+    ];
+    if (isLocalProvider()) {
+      tasks.push(["local models", refreshLocalModels()]);
+    }
+    void Promise.allSettled(tasks.map(([, task]) => task)).then((results) => {
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          appendLog(`[init:${tasks[index][0]}] ${result.reason?.message || result.reason}`);
+        }
+      });
+    });
+  }
+
   async function init() {
+    state.initializing = true;
     const realApi = await waitForBackend();
     api = realApi || mockApi();
     window.MAWLauncher.backend = realApi ? "real" : "mock";
@@ -1912,14 +2508,19 @@
     applyTheme();
     state.config.zoomPercent = applyZoomPercent(state.config.zoomPercent);
     window.MAWLauncher.config = state.config;
-    const emojiFont = await bridge("get_emoji_font_path");
-    if (emojiFont && emojiFont.ok && emojiFont.path) injectEmojiFont(emojiFont.path);
+    void bridge("get_emoji_font_path").then((emojiFont) => {
+      if (emojiFont && emojiFont.ok && emojiFont.path) injectEmojiFont(emojiFont.path);
+    });
     state.lang = state.config.guiLang || "zh";
     fillSelect("provider", state.config.providers, state.config.providerId || "qwen");
     applyProvider(false);
     $("workspaceId").value = state.config.workspaceId || "";
-    syncWorkspace(); syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage(); refreshFfmpeg();
-    appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled."); setStatus(t("ready")); await checkExistingServer(); window.dispatchEvent(new CustomEvent("mawlauncherready"));
+    syncWorkspace(); syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage();
+    appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled.");
+    setStatus(t("ready"));
+    revealLauncher();
+    window.dispatchEvent(new CustomEvent("mawlauncherready"));
+    refreshStartupState();
   }
 
   function handleBackendEvent(event) {
@@ -1954,53 +2555,70 @@
       appendLog(t("local_prepare_cancelled"));
     }
     if (event.type === "localRuntimeProgress") {
-      state.localRuntimeInstalling = true;
-      state.localRuntimeProgress = Number(event.percent || 0);
-      state.localRuntimeProgressMessage = event.message || "";
-      renderLocalRuntime();
+      const runtime = state.config?.localRuntime || {};
+      if (state.localRuntimeInstalling || runtime.status === "installing") {
+        state.localRuntimeProgress = Number(event.percent || 0);
+        state.localRuntimeProgressMessage = event.message || "";
+        renderLocalRuntime();
+      }
     }
     if (event.type === "localRuntimeReady") {
+      const runtime = state.config?.localRuntime || {};
+      const wasInstalling = state.localRuntimeInstalling || runtime.status === "installing";
       state.localRuntimeInstalling = false;
       state.localRuntimeProgress = 100;
       state.localRuntimeProgressMessage = "";
-      state.config.localRuntime = event.runtime || { status: "ready", ready: true };
       renderLocalRuntime();
-      void refreshLocalModels();
-      setStatus(t("local_runtime_install_done"));
-      appendLog(t("local_runtime_install_done"));
+      if (wasInstalling) {
+        void refreshLocalModels();
+        setStatus(t("local_runtime_install_done"));
+        appendLog(t("local_runtime_install_done"));
+      }
     }
     if (event.type === "localRuntimeCancelled") {
+      const runtime = state.config?.localRuntime || {};
+      const wasInstalling = state.localRuntimeInstalling || runtime.status === "installing";
       state.localRuntimeInstalling = false;
       state.localRuntimeProgressMessage = "";
-      void refreshLocalRuntime();
       renderLocalRuntime();
-      setStatus(t("local_runtime_cancelled"));
-      appendLog(t("local_runtime_cancelled"));
+      if (wasInstalling) {
+        void refreshLocalModels();
+        setStatus(t("local_runtime_cancelled"));
+        appendLog(t("local_runtime_cancelled"));
+      }
     }
     if (event.type === "ocrRuntimeProgress") {
-      state.ocrRuntimeInstalling = true;
-      state.ocrRuntimeProgress = Number(event.percent || 0);
-      state.ocrRuntimeProgressMessage = event.message || "";
-      renderOcrRuntime();
+      const runtime = state.config?.ocrRuntime || {};
+      if (state.ocrRuntimeInstalling || runtime.status === "installing") {
+        state.ocrRuntimeProgress = Number(event.percent || 0);
+        state.ocrRuntimeProgressMessage = event.message || "";
+        renderOcrRuntime();
+      }
     }
     if (event.type === "ocrRuntimeReady") {
+      const runtime = state.config?.ocrRuntime || {};
+      const wasInstalling = state.ocrRuntimeInstalling || runtime.status === "installing";
       state.ocrRuntimeInstalling = false;
       state.ocrRuntimeProgress = 100;
       state.ocrRuntimeProgressMessage = "";
-      state.config.ocrRuntime = event.runtime || { status: "ready", ready: true };
-      state.config.ocrModels = event.models || state.config.ocrModels || [];
       renderOcrRuntime();
-      void refreshOcrRuntime();
-      setStatus(t("ocr_runtime_install_done"));
-      appendLog(t("ocr_runtime_install_done"));
+      if (wasInstalling) {
+        void refreshOcrRuntime();
+        setStatus(t("ocr_runtime_install_done"));
+        appendLog(t("ocr_runtime_install_done"));
+      }
     }
     if (event.type === "ocrRuntimeCancelled") {
+      const runtime = state.config?.ocrRuntime || {};
+      const wasInstalling = state.ocrRuntimeInstalling || runtime.status === "installing";
       state.ocrRuntimeInstalling = false;
       state.ocrRuntimeProgressMessage = "";
-      void refreshOcrRuntime();
       renderOcrRuntime();
-      setStatus(t("ocr_runtime_cancelled"));
-      appendLog(t("ocr_runtime_cancelled"));
+      if (wasInstalling) {
+        void refreshOcrRuntime();
+        setStatus(t("ocr_runtime_cancelled"));
+        appendLog(t("ocr_runtime_cancelled"));
+      }
     }
     if (event.type === "error" && event.code === "local_prepare_failed") {
       state.localPreparing = false;
@@ -2010,22 +2628,35 @@
       $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     if (event.type === "error" && ["local_runtime_install_failed", "local_runtime_cancelled"].includes(event.code)) {
-      state.localRuntimeInstalling = false;
-      state.localRuntimeProgressMessage = "";
-      void refreshLocalRuntime();
-      renderLocalRuntime();
-      if (event.code === "local_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const runtime = state.config?.localRuntime || {};
+      if (state.localRuntimeInstalling || runtime.status === "installing") {
+        state.localRuntimeInstalling = false;
+        state.localRuntimeProgressMessage = "";
+        void refreshLocalModels();
+        renderLocalRuntime();
+        if (event.code === "local_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        return;
+      }
     }
     if (event.type === "error" && ["ocr_runtime_install_failed", "ocr_runtime_cancelled"].includes(event.code)) {
-      state.ocrRuntimeInstalling = false;
-      state.ocrRuntimeProgressMessage = "";
-      void refreshOcrRuntime();
-      renderOcrRuntime();
-      if (event.code === "ocr_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const runtime = state.config?.ocrRuntime || {};
+      if (state.ocrRuntimeInstalling || runtime.status === "installing") {
+        state.ocrRuntimeInstalling = false;
+        state.ocrRuntimeProgressMessage = "";
+        void refreshOcrRuntime();
+        renderOcrRuntime();
+        if (event.code === "ocr_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        return;
+      }
     }
     if (event.type === "error") {
       setRunning(false);
       $("retryPostprocess")?.classList.toggle("hidden", !event.canRetry);
+      if (event.originalSrtPath) $("srtPath").value = String(event.originalSrtPath);
+      if (event.originalProjectPath) $("jsonPath").value = String(event.originalProjectPath);
+      if (event.originalSrtPath || event.originalProjectPath) $("openFolder")?.classList.remove("hidden");
       const detail = event.detail || event.message || "";
       const message = event.code ? errText(event.code, detail) : detail || t("failed");
       // 友好提示归错误卡片、status 与复制报告的结构化字段所有；日志只保留后端原始 detail。
@@ -2051,7 +2682,7 @@
     if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart: hideErrorNotice, onBatchError: (result) => applyErrorResult(result, false), onLanguageChanged() {}, onProjectPathChanged() {}, onMediaPathChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart: hideErrorNotice, onBatchError: (result) => applyErrorResult(result, false), onLanguageChanged() {}, onProjectPathChanged() {}, onMediaPathChanged() {} };
 
   $("langToggle").addEventListener("click", async () => { state.lang = state.lang === "zh" ? "en" : "zh"; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (!result.ok) applyErrorResult(result); });
   $("themeLight").addEventListener("click", () => setTheme("light")); $("themeDark").addEventListener("click", () => setTheme("dark")); $("themeSystem").addEventListener("click", () => setTheme("system"));
@@ -2071,17 +2702,19 @@
     const action = $("errorNotice").dataset.action;
     if (action === "ffmpeg-settings") openSettings("ffmpegSettingsSection", "ffmpegPath");
   });
-  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
+  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("region").addEventListener("change", syncWorkspace); $("audioTrack").addEventListener("change", () => { const value = Number($("audioTrack").value); if (Number.isInteger(value) && value >= 0) state.audioTrack = value; }); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
   $("testRun").addEventListener("change", syncTestRun);
+  $("openaiModel").addEventListener("input", () => { if (isCustomOpenAiModel()) state.config.openaiCustomModel = $("openaiModel").value.trim(); });
   $("generateHtml").addEventListener("change", syncHtmlMenu);
-  $("mediaPath").addEventListener("input", () => { setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); }); $("srtPath").addEventListener("input", () => { state.srtAuto = false; state.testSuffixAdded = false; setError("srtPath", ""); setOutputNotice(""); });
+  $("mediaPath").addEventListener("input", () => { setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); scheduleAudioTrackProbe($("mediaPath").value); }); $("srtPath").addEventListener("input", () => { state.srtAuto = false; state.testSuffixAdded = false; setError("srtPath", ""); setOutputNotice(""); });
   $("pickMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (!result.ok) return; if (!MEDIA_EXTS.has(ext(result.path))) { setError("mediaPath", mediaDropError()); return; } setMedia(result.path); });
   $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });
   $("pickJson").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "json" }); if (result.ok) setJsonPath(result.path); });
   $("jsonPath").addEventListener("input", () => setError("jsonPath", "")); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) setServerMedia(result.path || ""); });
-  ["apiKey", "openaiBaseUrl", "openaiModel", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
+  ["apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") { $("modelNote").textContent = modelNoteText(selectedModel()); syncOpenAiAdvancedOptions(selectedModel()); } if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") { $("modelNote").textContent = modelNoteText(selectedModel()); syncOpenAiAdvancedOptions(selectedModel()); } if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
   $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
   $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
+  $("openRouterKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().secondaryKeyUrl || "https://openrouter.ai/keys" }));
   $("pickLocalModelPath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "model" }); if (result.ok) { $("localModelPath").value = result.path; state.localModelPaths[selectedModel().id] = result.path; setError("localModelPath", ""); await refreshLocalModels(); } });
   $("pickLocalModelCachePath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "model-cache" }); if (result.ok) { $("localModelCachePath").value = result.path; await saveLocalModelCache(result.path); } });
   $("localModelCachePath").addEventListener("input", () => setError("localModelCachePath", ""));
@@ -2089,11 +2722,15 @@
   $("pickOcrRuntimePath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "ocr-runtime" }); if (result.ok) { $("ocrRuntimePath").value = result.path; await saveOcrRuntimePath(result.path); } });
   $("ocrRuntimePath").addEventListener("input", () => setError("ocrRuntimePath", ""));
   $("ocrRuntimePath").addEventListener("change", async () => { await saveOcrRuntimePath($("ocrRuntimePath").value); });
+  $("pickLocalRuntimePath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "runtime" }); if (result.ok) { $("localRuntimePath").value = result.path; await saveLocalRuntimePath(result.path); } });
+  $("localRuntimePath").addEventListener("input", () => setError("localRuntimePath", ""));
+  $("localRuntimePath").addEventListener("change", async () => { await saveLocalRuntimePath($("localRuntimePath").value); });
   $("refreshOcrRuntime").addEventListener("click", async () => { $("refreshOcrRuntime").disabled = true; try { await refreshOcrRuntime(); } finally { $("refreshOcrRuntime").disabled = false; } });
-  $("installOcrRuntime").addEventListener("click", async () => { if (state.ocrRuntimeInstalling) { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: state.config.ocrRuntime?.status === "broken" }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
+  $("installOcrRuntime").addEventListener("click", async () => { const runtime = state.config?.ocrRuntime || {}; if (state.ocrRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: state.config.ocrRuntime?.status === "broken" }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
   $("localModelPath").addEventListener("input", () => { setError("localModelPath", ""); if (isLocalProvider()) { state.localModelPaths[selectedModel().id] = $("localModelPath").value.trim(); void refreshLocalModels(); } });
   $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocalRuntime").disabled = true; try { await refreshLocalRuntime(); await refreshLocalModels(); } finally { $("refreshLocalRuntime").disabled = false; } });
-  $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localRuntimeInstalling) { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
+  $("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });
+  $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; const runtime = state.config?.localRuntime || {}; if (state.localRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
   $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
   $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
   $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));
@@ -2104,6 +2741,11 @@
   $("pickStickerDir").addEventListener("click", async () => { const result = await bridge("choose_folder"); if (result.ok) await saveStickerDirectory(result.path); });
   $("stickerDir").addEventListener("change", async () => { const path = $("stickerDir").value.trim(); if (path) await saveStickerDirectory(path); });
   $("showRareLangs").addEventListener("change", async () => { state.config.showRareLangs = $("showRareLangs").checked; applyProviderLanguages(provider(), selectedModel()); const result = await bridge("save_prefs", { showRareLangs: state.config.showRareLangs }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); });
+  const syncDefaultOutputPreview = () => { if (!state.initializing) void syncDefaultOutput(); };
+  const saveOutputPref = async (key) => { const on = $(key).checked; state.config[key] = on; const result = await bridge("save_prefs", { [key]: on }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); };
+  $("outputSubfolder").addEventListener("change", async () => { await saveOutputPref("outputSubfolder"); syncDefaultOutputPreview(); });
+  $("perVideoSubfolder").addEventListener("change", async () => { await saveOutputPref("perVideoSubfolder"); syncDefaultOutputPreview(); });
+  $("attachModelName").addEventListener("change", async () => { await saveOutputPref("attachModelName"); syncDefaultOutputPreview(); });
   $("languageReset").addEventListener("click", () => { const el = $("language"); Array.from(el.options).forEach((o) => { o.selected = false; }); savePrefsDebounced({ language: "" }); });
   $("saveSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; if (current.id === "openai") { state.config.openaiBaseUrl = payload.openaiBaseUrl; state.config.openaiModel = payload.openaiModel; } renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
   $("start").addEventListener("click", async () => { if (!validateLocal()) return; hideErrorNotice(); $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });
@@ -2119,6 +2761,7 @@
   bindDropField("serverMediaPath", "serverMedia");
   bindDropField("localModelCachePath", "localModelCache");
   bindDropField("localModelPath", "localModel");
+  bindDropField("localRuntimePath", "localRuntime");
   bindDropField("ocrRuntimePath", "ocrRuntime");
   bindDropField("ffmpegPath", "ffmpeg");
   bindDropField("stickerDir", "stickerDir");
@@ -2153,7 +2796,14 @@
   window.addEventListener("resize", syncFixedFooterClearance);
   const footer = document.querySelector(".actions");
   if (footer && window.ResizeObserver) new ResizeObserver(syncFixedFooterClearance).observe(footer);
-  document.addEventListener("DOMContentLoaded", init);
+  document.addEventListener("DOMContentLoaded", () => {
+    void init().catch((error) => {
+      const message = error && error.message ? error.message : String(error);
+      appendLog(`[init] ${message}`);
+      setStatus(message);
+      revealLauncher();
+    });
+  });
   document.addEventListener("keydown", handleZoomKeydown);
   document.addEventListener("wheel", handleZoomWheel, { passive: false });
 })();

@@ -38,6 +38,18 @@ class LocalRuntimeTests(unittest.TestCase):
                 Path(__file__).resolve().parents[1] / "maw" / "ffmpeg.py",
                 package_root / "ffmpeg.py",
             )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "language.py",
+                package_root / "language.py",
+            )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "output_naming.py",
+                package_root / "output_naming.py",
+            )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "media.py",
+                package_root / "media.py",
+            )
             (package_root / "console.py").write_text(
                 "def configure_utf8_stdio():\n"
                 "    pass\n",
@@ -81,6 +93,39 @@ class LocalRuntimeTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("usage:", result.stdout.lower())
+
+    def test_local_entry_imports_without_rust_kernel(self) -> None:
+        """Issue 96 回归：托管 Runtime 未装 Rust 波形内核（reapeaks）时，转写入口必须可导入。
+
+        MOSS 用独立的 ``local-runtime-moss`` 环境跑 ``local-runtime`` 脚本镜像，该环境
+        的依赖清单里没有 ``reapeaks``。此前入口经 ``maw.local_asr`` → 共享 API 模块 →
+        ``edit.py`` → ``maw.quapeaks`` 在导入期就 ModuleNotFoundError，模型根本没机会加载。
+        """
+        repo_root = Path(__file__).resolve().parents[1]
+        driver = (
+            "import sys\n"
+            f"sys.path.insert(0, {str(repo_root)!r})\n"
+            # 改名后内核包叫 quapeaks；这里若还屏蔽 reapeaks，测试等于在验证
+            # "缺一个已经不存在的包时仍可导入"，真正要保的场景没有覆盖到。
+            "sys.modules['quapeaks'] = None\n"
+            "import generate_subtitle_local\n"
+            "print('MAW_LOCAL_ENTRY_IMPORT_OK')\n"
+        )
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
+
+        result = subprocess.run(
+            [sys.executable, "-c", driver],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=environment,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("MAW_LOCAL_ENTRY_IMPORT_OK", result.stdout)
 
     def test_runtime_worker_imports_maw_when_started_by_file_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -161,7 +206,7 @@ class LocalRuntimeTests(unittest.TestCase):
             def fake_run(command: list[str], **_kwargs: object) -> int:
                 if "install" in command:
                     packages = root / "site-packages"
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
                         (packages / name).mkdir(parents=True, exist_ok=True)
                 return 0
 

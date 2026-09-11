@@ -75,3 +75,18 @@
 - ⚙️ 设置模态为 `#settingsModal` + `.settings-scroll` 内若干 `.settings-section`；"打开设置并滚动"先例为 `openOcrSettings` → `window.MAWLauncher.openSettings("ocrSettingsSection")`。
 - Python 侧符号集原本四处独立定义：`generate_subtitle_qwen_api.py:615-616`（STRONG/WEAK，函数内局部）、`maw/local_asr.py` `_LOCAL_TAIL_PUNCT`、`scripts/mosp_match_text.py:22-24`、`maw/postprocess_match.py:29`；本次仅统一"保留符号 → 转写剥尾集"推导，切句内部逻辑不动。
 - server-editor 的设置存储为固定 schema（工作区/最近工程），无通用任意配置端点；本配置不经过它。
+
+## 2026-09-10 文稿匹配预览与错误提示续项
+
+| 编号 | 范围 | 需求摘要 | 类型 | 状态 |
+| --- | --- | --- | --- | --- |
+| 1 | 预览 | 文稿预览复用实际断句、句尾标点清理和 Markdown 清理结果 | 修改 | 已修复 |
+| 2 | 输出 | 匹配结果默认剥除逗号/句号，并把 `matched` 改为按界面语言本地化的 `匹配` / `match` | 修改 | 已修复 |
+| 3 | 错误 | 非法字幕/工程解析、文稿解析与低匹配度使用独立错误码和中英文提示 | 修改 | 已修复 |
+| 4 | 刷新 | 匹配成功后重新计算并刷新预览，丢弃过期的异步预览结果 | 修改 | 已修复 |
+
+处理结论：后端使用结构化 `MatchCoverageError` 和输入文件错误分类；前端成功切换产物后重新请求处理后文稿预览和拆分预览，低匹配错误会显示实际百分比与 55% 门槛。未生成 `blank-editor.html`，因为本项只修改 Launcher 源码。
+
+验证记录：`tests.test_postprocess_match`、`tests.test_gui_web`、`tests.test_postprocess_pipeline`、`tests.test_postprocess_io` 共 332 项通过（跳过 1 项）；Python 编译、两个 Launcher 脚本 `node --check` 与 `git diff --check` 通过。
+
+补充复核：全量 `unittest discover` 共 1453 项，其中本项相关测试未失败；全量结果有 4 个失败、7 个错误，均集中在并行 WIP 的媒体缓存 / `mopeaks` / `quapeaks` 路径契约（当前写入 `_maw` 与既有测试期望不一致），不涉及本项改动文件。

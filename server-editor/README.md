@@ -41,7 +41,9 @@ uv run python server-editor\serve.py D:\path\project.json --port 0 --no-open
 %LOCALAPPDATA%\MAW\server-editor-settings.json
 ```
 
-该文件仅包含开关和最近工程的 JSON 路径/名称；工程本身仍保留原位置。升级时，如果新文件不存在，服务器会只读回退到旧的 `%LOCALAPPDATA%\Moy\moys-asr-workflow\server-editor-settings.json`；后续保存只写入新位置。不存在、损坏或媒体已移动的记录都不会触发目录扫描；自动恢复失败会提示原因并启动空白编辑器。
+该文件仅包含开关、最近工程的 JSON 路径/名称和本机编辑器引导状态；工程本身仍保留原位置。升级时，如果新文件不存在，服务器会只读回退到旧的 `%LOCALAPPDATA%\Moy\moys-asr-workflow\server-editor-settings.json`；后续保存只写入新位置。不存在、损坏或媒体已移动的记录都不会触发目录扫描；自动恢复失败会提示原因并启动空白编辑器。
+
+浏览器的 `localStorage` 按 localhost 端口隔离。服务器版的「快速上手」完成/跳过状态因此改由这个用户级文件保存，换用新的端口后不会重复弹出；自包含的 `file://` 编辑器仍使用自己的浏览器存储。
 
 如果用 JSON 工程路径启动，工具栏会额外出现「保存工程」和「另存为…」：
 
@@ -58,7 +60,7 @@ uv run python server-editor\serve.py D:\path\project.json --port 0 --no-open
 
 在服务器版中打开或拖入工程时，服务器会先尝试接管：浏览器拿不到工程的真实路径，但工程记录的 `media` 是绝对路径，服务器可按它定位媒体同目录下的同名工程文件；段落内容一致时接管该工程——关联媒体自动加载（含波形）、「保存工程」立即可用，并记入最近工程。接管失败（媒体已移动、同目录没有同名工程或内容不一致）时回退为便携流程：提示手动选择关联媒体，改动用「导出工程」下载。
 
-停止服务：在运行命令的终端按 `Ctrl+C`。修改 `web/` 下前端源码后直接刷新浏览器即可，不需要维护第二份前端；若也要更新自包含版，仍执行：
+停止服务：在运行命令的终端按 `Ctrl+C`。修改 `web/` 下前端源码后直接刷新浏览器即可，不需要维护第二份前端；日常开发不要自动更新自包含版，只有版本发布前或明确指定时才执行：
 
 ```powershell
 uv run python edit.py --blank

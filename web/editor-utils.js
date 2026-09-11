@@ -20,10 +20,88 @@
     'Noto Sans CJK SC': 'Noto Sans CJK 简体中文',
     'Noto Serif CJK SC': 'Noto Serif CJK 简体中文',
   });
+  const PROJECT_SCHEMA = 'moy.asr.project.v1';
+
+  function supportsProjectSchema(project) {
+    if (!project || typeof project !== 'object' || Array.isArray(project)) return false;
+    return project.schema === undefined || project.schema === PROJECT_SCHEMA;
+  }
 
   function subtitleFontFamilyDisplayName(family, language) {
     if (language !== 'zh' || typeof family !== 'string') return family;
     return SUBTITLE_FONT_FAMILY_DISPLAY_NAMES_ZH[family] || family;
+  }
+
+  const SPEAKER_LABEL_COLORS = Object.freeze([
+    'yellow', 'green', 'red', 'purple', 'blue',
+  ]);
+  const DEFAULT_SPEAKER_LABELS = Object.freeze({
+    yellow: 'SP1',
+    green: 'SP2',
+    red: 'SP3',
+    purple: 'SP4',
+    blue: 'SP5',
+  });
+  const SPEAKER_LABEL_MAX_LENGTH = 64;
+  const DEFAULT_SPEAKER_LABEL_SEPARATOR = '：';
+  const SPEAKER_LABEL_SEPARATOR_MAX_LENGTH = 16;
+
+  function normalizeSpeakerLabel(value, fallback = '') {
+    if (typeof value !== 'string') return fallback;
+    const normalized = value
+      .replace(/[\u0000-\u001f\u007f]/gu, ' ')
+      .replace(/\s+/gu, ' ')
+      .trim();
+    return normalized.length <= SPEAKER_LABEL_MAX_LENGTH ? normalized : fallback;
+  }
+
+  function normalizeSpeakerLabels(value) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    return Object.fromEntries(SPEAKER_LABEL_COLORS.map((color) => [
+      color,
+      Object.prototype.hasOwnProperty.call(source, color)
+        ? normalizeSpeakerLabel(source[color], DEFAULT_SPEAKER_LABELS[color])
+        : DEFAULT_SPEAKER_LABELS[color],
+    ]));
+  }
+
+  function normalizeSpeakerLabelSeparator(value) {
+    if (typeof value !== 'string') return DEFAULT_SPEAKER_LABEL_SEPARATOR;
+    const normalized = value.replace(/[\u0000-\u001f\u007f]/g, '');
+    return normalized.length <= SPEAKER_LABEL_SEPARATOR_MAX_LENGTH
+      ? normalized
+      : DEFAULT_SPEAKER_LABEL_SEPARATOR;
+  }
+
+  function normalizeSpeakerLabelSettings(value) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const hasMappingEnabled = Object.prototype.hasOwnProperty.call(source, 'mapping_enabled');
+    return {
+      // 旧工程没有独立的映射开关时，沿用原来的 enabled 语义，避免升级后
+      // 已配置的说话人名称突然失效；新工程则默认关闭颜色到说话人的映射。
+      mapping_enabled: hasMappingEnabled ? source.mapping_enabled === true : source.enabled === true,
+      enabled: source.enabled === true,
+      separator: normalizeSpeakerLabelSeparator(source.separator),
+      names: normalizeSpeakerLabels(source.names),
+    };
+  }
+
+  function speakerLabelForSegment(segment, segments, labels) {
+    const colorName = effectiveColorName(segment, segments);
+    if (!colorName) return '';
+    return normalizeSpeakerLabels(labels)[colorName] || '';
+  }
+
+  function formatSpeakerLabelledText(
+    text,
+    segment,
+    segments,
+    labels,
+    separator = DEFAULT_SPEAKER_LABEL_SEPARATOR,
+  ) {
+    const content = String(text ?? '');
+    const label = speakerLabelForSegment(segment, segments, labels);
+    return label ? `${label}${normalizeSpeakerLabelSeparator(separator)}${content}` : content;
   }
 
   // SRT files commonly come from Windows subtitle tools, which may save them
@@ -2012,6 +2090,50 @@
     return fixed;
   }
 
+  // 帧模式下，多个字词可能因为帧率取整而落在同一帧。它们的 frame
+  // 字段可以合法地重合，但保存用的毫秒兼容字段仍必须保持在字幕段内、
+  // 按 item 顺序排列；不能交给通用修复器按 100ms 向后扩张。
+  // 尽量保留帧投影出的毫秒范围，发生碰撞时只压缩到段内剩余空间。
+  function normalizeFrameItemTimingRanges(segment) {
+    if (!segment || typeof segment !== 'object' || !Array.isArray(segment.items)) return 0;
+    const segmentStart = Math.round(Number(segment.start));
+    const segmentEnd = Math.round(Number(segment.end));
+    if (!Number.isFinite(segmentStart) || !Number.isFinite(segmentEnd)
+        || segmentEnd < segmentStart) return 0;
+
+    const items = segment.items.filter((item) => item && typeof item === 'object');
+    const minimumDuration = segmentEnd - segmentStart >= items.length ? 1 : 0;
+    let previousItemEnd = segmentStart;
+    let processed = 0;
+    let fixed = 0;
+    segment.items.forEach((item) => {
+      if (!item || typeof item !== 'object') return;
+      const rawStart = Number(item.start);
+      const rawEnd = Number(item.end);
+      const candidateStart = Number.isFinite(rawStart)
+        ? Math.round(rawStart) : previousItemEnd;
+      const candidateEnd = Number.isFinite(rawEnd)
+        ? Math.round(rawEnd) : candidateStart;
+      const remainingItems = items.length - processed - 1;
+      const latestEnd = segmentEnd - minimumDuration * remainingItems;
+      const latestStart = latestEnd - minimumDuration;
+      const itemStart = Math.min(
+        Math.max(candidateStart, previousItemEnd, segmentStart),
+        latestStart,
+      );
+      const itemEnd = Math.min(
+        Math.max(candidateEnd, itemStart + minimumDuration),
+        latestEnd,
+      );
+      if (item.start !== itemStart || item.end !== itemEnd) fixed += 1;
+      item.start = itemStart;
+      item.end = itemEnd;
+      previousItemEnd = itemEnd;
+      processed += 1;
+    });
+    return fixed;
+  }
+
   function timedItemsFitSegmentRange(segment, start, end) {
     const items = Array.isArray(segment?.items) ? segment.items : null;
     if (!items) return true;
@@ -2514,6 +2636,175 @@
     if (edge === 'start') return text.replace(activeStartTrimPattern, '');
     return text.replace(activeEndTrimPattern, '');
   }
+
+  // 字幕编辑的时间基准。工程仍以整数毫秒保存兼容字段；帧字段是按工程
+  // FPS 计算的平行时间轴，用于需要逐帧定位的编辑操作。
+  const TIMELINE_TIMEBASE_UNITS = Object.freeze(['milliseconds', 'frames']);
+  const DEFAULT_TIMELINE_FPS = 30;
+  const DEFAULT_TIMELINE_TIMECODE_SEPARATOR = ':';
+  const MIN_TIMELINE_FPS = 1;
+  const MAX_TIMELINE_FPS = 240;
+
+  function normalizeTimelineFps(value, fallback = DEFAULT_TIMELINE_FPS) {
+    const fallbackValue = Number.isFinite(Number(fallback))
+      ? Number(fallback) : DEFAULT_TIMELINE_FPS;
+    const numeric = Number(value);
+    const safe = Number.isFinite(numeric) ? numeric : fallbackValue;
+    return Math.min(
+      MAX_TIMELINE_FPS,
+      Math.max(MIN_TIMELINE_FPS, Math.round(safe * 1000) / 1000),
+    );
+  }
+
+  function normalizeTimelineTimecodeSeparator(value, fallback = DEFAULT_TIMELINE_TIMECODE_SEPARATOR) {
+    const fallbackCandidate = Array.from(String(fallback ?? '').trim())[0] || '';
+    const safeFallback = fallbackCandidate && !/[\p{Letter}\p{Number}\s]/u.test(fallbackCandidate)
+      ? fallbackCandidate : DEFAULT_TIMELINE_TIMECODE_SEPARATOR;
+    const candidate = Array.from(String(value ?? '').trim())[0] || '';
+    return candidate && !/[\p{Letter}\p{Number}\s]/u.test(candidate) ? candidate : safeFallback;
+  }
+
+  function normalizeTimelineTimebase(value, fallback = {}) {
+    const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const fallbackRaw = fallback && typeof fallback === 'object' ? fallback : {};
+    const fallbackUnit = TIMELINE_TIMEBASE_UNITS.includes(fallbackRaw.unit)
+      ? fallbackRaw.unit : 'milliseconds';
+    return {
+      unit: TIMELINE_TIMEBASE_UNITS.includes(raw.unit) ? raw.unit : fallbackUnit,
+      fps: normalizeTimelineFps(raw.fps, fallbackRaw.fps ?? DEFAULT_TIMELINE_FPS),
+    };
+  }
+
+  function normalizeMediaMetadata(value) {
+    if (value == null) return null;
+    if (typeof value !== 'object' || Array.isArray(value)) return null;
+    const hasFps = value.video_fps !== undefined;
+    const fps = value.video_fps;
+    if (hasFps && (typeof fps !== 'number' || !Number.isFinite(fps)
+        || fps < MIN_TIMELINE_FPS || fps > MAX_TIMELINE_FPS)) return null;
+    if (value.video_fps_ratio !== undefined
+        && (!hasFps || typeof value.video_fps_ratio !== 'string' || !value.video_fps_ratio.trim())) return null;
+    const hasAudioTracks = value.audio_tracks !== undefined;
+    if (hasAudioTracks && !Array.isArray(value.audio_tracks)) return null;
+    const hasSelectedAudioTrack = value.selected_audio_track !== undefined;
+    if (hasSelectedAudioTrack
+        && (!Number.isInteger(value.selected_audio_track) || value.selected_audio_track < 0)) return null;
+    if (!hasFps && !hasAudioTracks && !hasSelectedAudioTrack) return null;
+    const metadata = {};
+    if (hasFps) metadata.video_fps = normalizeTimelineFps(fps);
+    if (typeof value.video_fps_ratio === 'string') {
+      metadata.video_fps_ratio = value.video_fps_ratio.trim();
+    }
+    if (hasAudioTracks) {
+      const audioTracks = value.audio_tracks.map((track, index) => {
+        if (!track || typeof track !== 'object' || Array.isArray(track)) return null;
+        const streamIndex = track.stream_index;
+        if (!Number.isInteger(streamIndex) || streamIndex < 0) return null;
+        const audioIndex = track.audio_index === undefined ? index : track.audio_index;
+        if (!Number.isInteger(audioIndex) || audioIndex < 0) return null;
+        const normalized = { audio_index: audioIndex, stream_index: streamIndex };
+        for (const field of ['codec', 'language', 'title']) {
+          if (track[field] !== undefined && typeof track[field] !== 'string') return null;
+          if (typeof track[field] === 'string') normalized[field] = track[field].trim();
+        }
+        for (const field of ['channels', 'sample_rate']) {
+          if (track[field] !== undefined && track[field] !== null
+              && (!Number.isInteger(track[field]) || track[field] <= 0)) return null;
+          normalized[field] = track[field] ?? null;
+        }
+        if (track.default !== undefined && typeof track.default !== 'boolean') return null;
+        normalized.default = track.default === true;
+        return normalized;
+      });
+      if (audioTracks.some((track) => track === null)) return null;
+      metadata.audio_tracks = audioTracks;
+    }
+    if (hasSelectedAudioTrack) metadata.selected_audio_track = value.selected_audio_track;
+    return metadata;
+  }
+
+  function frameNumberFromMilliseconds(value, fps = DEFAULT_TIMELINE_FPS) {
+    const numeric = Number(value);
+    const rate = normalizeTimelineFps(fps);
+    return Number.isFinite(numeric) ? Math.max(0, Math.round(numeric * rate / 1000)) : 0;
+  }
+
+  function millisecondsFromFrameNumber(value, fps = DEFAULT_TIMELINE_FPS) {
+    const frame = Number(value);
+    const rate = normalizeTimelineFps(fps);
+    return Number.isFinite(frame) ? Math.max(0, Math.round(frame * 1000 / rate)) : 0;
+  }
+
+  function nominalTimecodeFps(fps = DEFAULT_TIMELINE_FPS) {
+    return Math.max(1, Math.round(normalizeTimelineFps(fps)));
+  }
+
+  function formatFrameTimecode(
+    value,
+    fps = DEFAULT_TIMELINE_FPS,
+    separator = DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+  ) {
+    const nominalFps = nominalTimecodeFps(fps);
+    const totalFrames = Math.max(0, Math.round(Number(value) || 0));
+    const frame = totalFrames % nominalFps;
+    const totalSeconds = Math.floor(totalFrames / nominalFps);
+    const seconds = totalSeconds % 60;
+    const minutes = Math.floor(totalSeconds / 60) % 60;
+    const hours = Math.floor(totalSeconds / 3600);
+    const pad = (number, width) => String(number).padStart(width, '0');
+    return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(seconds, 2)}${
+      normalizeTimelineTimecodeSeparator(separator)
+    }${pad(frame, 2)}`;
+  }
+
+  function formatTimelineTimecode(
+    valueMs,
+    fps = DEFAULT_TIMELINE_FPS,
+    separator = DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+  ) {
+    return formatFrameTimecode(frameNumberFromMilliseconds(valueMs, fps), fps, separator);
+  }
+
+  function parseFrameTimecode(
+    value,
+    fps = DEFAULT_TIMELINE_FPS,
+    separator = DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+  ) {
+    const raw = String(value || '').trim();
+    const frameSeparator = normalizeTimelineTimecodeSeparator(separator);
+    const escapedSeparator = escapeSplitTrimPatternSource(frameSeparator);
+    const match = new RegExp(
+      '^(\\d+):(\\d{2}):(\\d{2})\\s*(?:' + escapedSeparator
+        + '|;|,|/)\\s*(\\d{1,3})\\s*F?$',
+      'iu',
+    ).exec(raw);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    const seconds = Number(match[3]);
+    const frame = Number(match[4]);
+    const nominalFps = nominalTimecodeFps(fps);
+    if (minutes >= 60 || seconds >= 60 || frame >= nominalFps) return null;
+    return (((hours * 60 + minutes) * 60) + seconds) * nominalFps + frame;
+  }
+
+  function clampTimelineFrameStep(value, fallback = 1) {
+    return clampInteger(value, fallback, 1, 240);
+  }
+
+  const EDITOR_ACCENT_COLOR_VALUES = Object.freeze(['blue', 'red', 'orange', 'custom']);
+  const DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR = '#6ca5e8';
+
+  function normalizeEditorAccentColor(value) {
+    return EDITOR_ACCENT_COLOR_VALUES.includes(value) ? value : 'blue';
+  }
+
+  function normalizeEditorAccentCustomColor(value) {
+    const color = String(value ?? '').trim();
+    return /^#[0-9a-f]{6}$/i.test(color)
+      ? color.toLowerCase() : DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR;
+  }
+
   const DEFAULT_EDITOR_SETTINGS = Object.freeze({
     splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true,
     mainSplitModeOverride: null,
@@ -2527,13 +2818,19 @@
     mergeJoinTextContinuous: '', mergeJoinTextWord: ' ',
     autoMergeGapMs: 200, autoMergeSnapDirection: 'backward', autoMergeShortCount: 3,
     autoMergeAbsorbShort: true, autoMergeAbsorbDirection: 'previous', exportColorUnified: true,
-    autoSaveProject: true, autoSaveIntervalSeconds: 30, stickerOverlayEnabled: false,
+    exportSpeakerLabels: false, exportSpeakerNamesAsSuffix: false,
+    autoSaveProject: true, autoSaveIntervalSeconds: 30, projectBackupEnabled: true,
+    stickerOverlayEnabled: false,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
+    otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
-    cueMoveStepMs: 50, hoverSeekPreview: false, autoSnapAdjacentCues: true, ninjaMode: false,
+    mediaSeekStepFrames: 1, cueMoveStepMs: 50, cueMoveStepFrames: 1,
+    timelineSnapToFrame: true, timelineTimecodeSeparator: DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+    hoverSeekPreview: false, autoSnapAdjacentCues: true, ninjaMode: false,
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
+    accentColor: 'blue', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
     waveShapeSource: 'reapeaks',
   });
 
@@ -2592,10 +2889,19 @@
       autoMergeAbsorbShort: savedSettings.autoMergeAbsorbShort !== false,
       autoMergeAbsorbDirection: savedSettings.autoMergeAbsorbDirection === 'next' ? 'next' : 'previous',
       exportColorUnified: savedSettings.exportColorUnified !== false,
+      exportSpeakerLabels: savedSettings.exportSpeakerLabels === true,
+      exportSpeakerNamesAsSuffix: savedSettings.exportSpeakerNamesAsSuffix === true,
       autoSaveProject: savedSettings.autoSaveProject !== false,
       autoSaveIntervalSeconds: clampInteger(savedSettings.autoSaveIntervalSeconds, 30, 5, 3600),
+      projectBackupEnabled: savedSettings.projectBackupEnabled !== false,
+      projectBackupMinutes: clampInteger(savedSettings.projectBackupMinutes, 5, 1, 1440),
+      projectBackupLimit: clampInteger(savedSettings.projectBackupLimit, 20, 1, 1000),
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
       stickerOtioExportMode: savedSettings.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
+      // 时间线 OTIO 导出选项：默认同时导出 SRT、合并表情包轨、写入字幕标记。
+      otioExportIncludeSrt: savedSettings.otioExportIncludeSrt !== false,
+      otioExportIncludeStickers: savedSettings.otioExportIncludeStickers !== false,
+      otioExportIncludeMarkers: savedSettings.otioExportIncludeMarkers !== false,
       clickBehavior: ['select-only', 'select-and-seek', 'select-and-play'].includes(savedSettings.clickBehavior)
         ? savedSettings.clickBehavior : 'select-and-seek',
       clickTarget: ['cue-start', 'pointer'].includes(savedSettings.clickTarget) ? savedSettings.clickTarget : 'pointer',
@@ -2603,7 +2909,11 @@
       jklPlaybackMode: ['speed', 'direction'].includes(savedSettings.jklPlaybackMode)
         ? savedSettings.jklPlaybackMode : 'direction',
       mediaSeekStepMs: clampInteger(mediaSeekStepMs, 1000, 10, 60000),
+      mediaSeekStepFrames: clampTimelineFrameStep(savedSettings.mediaSeekStepFrames, 1),
       cueMoveStepMs: clampInteger(savedSettings.cueMoveStepMs, 50, 10, 2000),
+      cueMoveStepFrames: clampTimelineFrameStep(savedSettings.cueMoveStepFrames, 1),
+      timelineSnapToFrame: savedSettings.timelineSnapToFrame !== false,
+      timelineTimecodeSeparator: normalizeTimelineTimecodeSeparator(savedSettings.timelineTimecodeSeparator),
       hoverSeekPreview: savedSettings.hoverSeekPreview === true,
       autoSnapAdjacentCues: savedSettings.autoSnapAdjacentCues !== false,
       ninjaMode: savedSettings.ninjaMode === true,
@@ -2615,7 +2925,10 @@
       selectBoundSubtitlePair: savedSettings.selectBoundSubtitlePair !== false,
       multiSubtitleAutoSyncDuration: savedSettings.multiSubtitleAutoSyncDuration !== false,
       multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
-      theme: savedSettings.theme === 'light' ? 'light' : 'dark',
+      theme: ['light', 'dark', 'system'].includes(savedSettings.theme)
+        ? savedSettings.theme : 'dark',
+      accentColor: normalizeEditorAccentColor(savedSettings.accentColor),
+      accentColorCustom: normalizeEditorAccentCustomColor(savedSettings.accentColorCustom),
       waveShapeSource: savedSettings.waveShapeSource === 'self' ? 'self' : 'reapeaks',
     };
   }
@@ -2707,6 +3020,27 @@
       }
       return [mapped];
     });
+  }
+
+  // 「填充区间空隙」：以一个时间点为锚点，取左右两侧最近的「已激活」空隙作为
+  // 边界，返回需要完全填充为单一空隙的区间。未激活空隙不作为边界，落在区间
+  // 内时会被直接吞掉；锚点落在已激活空隙内时返回该空隙本身；锚点位于所有
+  // 已激活空隙之前/之后时，边界向时间轴开头/结尾（durationMs）拓展。
+  function resolveGapFillRange(gaps, pointMs, durationMs = 0) {
+    const normalized = normalizeGapRemoveGaps(gaps).filter((gap) => gap.removed !== false);
+    if (!normalized.length) return null;
+    const point = Number(pointMs);
+    if (!Number.isFinite(point)) return null;
+    const containing = normalized.find((gap) => gap.start <= point && gap.end >= point);
+    if (containing) return { start: containing.start, end: containing.end };
+    const previous = [...normalized].reverse().find((gap) => gap.end <= point) || null;
+    const next = normalized.find((gap) => gap.start >= point) || null;
+    const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+    if (!next && duration <= 0) return null;
+    const start = previous ? previous.start : 0;
+    const end = next ? next.end : duration;
+    if (end <= start) return null;
+    return { start, end };
   }
 
   const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
@@ -3064,8 +3398,66 @@
     return multiSubtitle;
   }
 
-  // 交换主轨与当前唯一副轨。副轨保留可选的 items，
-  // 但不携带表情包和颜色分组等主轨专属字段。
+  function copySubtitleColorFields(source, target) {
+    if (!source || !target) return;
+    if (source.color != null) target.color = cloneJsonValue(source.color);
+    if (source.color_ref != null) target.color_ref = cloneJsonValue(source.color_ref);
+  }
+
+  // 把 sourceSegments 中按绑定关系找到的颜色组写入 targetSegments。
+  // target 的 headIdx 不能直接复用 source 下标：交换后两条字幕的数组长度和顺序
+  // 可能不同，因此每个目标颜色组都在目标数组中重新选择最早的一条作为 head。
+  function mapBoundSubtitleColors(sourceSegments, targetSegments, sourceToTarget) {
+    if (!Array.isArray(sourceSegments) || !Array.isArray(targetSegments)
+        || !(sourceToTarget instanceof Map)) return 0;
+    const groups = new Map();
+    sourceSegments.forEach((segment, sourceIndex) => {
+      const sourceHeadIndex = segment?.color
+        ? sourceIndex
+        : Number.isInteger(segment?.color_ref?.headIdx) ? segment.color_ref.headIdx : null;
+      const sourceHead = Number.isInteger(sourceHeadIndex)
+        ? sourceSegments[sourceHeadIndex]?.color
+        : null;
+      const targetIndex = sourceToTarget.get(sourceIndex);
+      if (!sourceHead || typeof sourceHead !== 'object'
+          || !Number.isInteger(targetIndex) || !targetSegments[targetIndex]) return;
+      const group = groups.get(sourceHeadIndex) || {
+        sourceHead,
+        targetIndexes: [],
+      };
+      group.targetIndexes.push(targetIndex);
+      groups.set(sourceHeadIndex, group);
+    });
+
+    let mappedCount = 0;
+    groups.forEach(({ sourceHead, targetIndexes }) => {
+      const uniqueTargetIndexes = [...new Set(targetIndexes)].sort((left, right) => left - right);
+      if (!uniqueTargetIndexes.length) return;
+      const targetHeadIndex = uniqueTargetIndexes[0];
+      const targetLastIndex = uniqueTargetIndexes[uniqueTargetIndexes.length - 1];
+      const mappedHead = cloneJsonValue(sourceHead) || {};
+      if (Number.isFinite(Number(targetSegments[targetHeadIndex]?.start))) {
+        mappedHead.start = targetSegments[targetHeadIndex].start;
+      }
+      if (Number.isFinite(Number(targetSegments[targetLastIndex]?.end))) {
+        mappedHead.end = targetSegments[targetLastIndex].end;
+      }
+      uniqueTargetIndexes.forEach((targetIndex, memberIndex) => {
+        const target = targetSegments[targetIndex];
+        target.color = null;
+        target.color_ref = null;
+        if (memberIndex === 0) {
+          target.color = mappedHead;
+        } else {
+          target.color_ref = { name: mappedHead.name, headIdx: targetHeadIndex };
+        }
+        mappedCount++;
+      });
+    });
+    return mappedCount;
+  }
+
+  // 交换主轨与当前唯一副轨。副轨保留可选的 items 和颜色信息，
   // 绑定关系按端点整体交换，并在新主轨写入后重新计算 offset。
   function swapMainAndExtensionSubtitle(project, trackId = null) {
     if (!project || typeof project !== 'object' || !Array.isArray(project.segments)) {
@@ -3085,6 +3477,32 @@
     const oldMainSplitMode = multi.main_split_mode;
     const oldExtensionSplitMode = track.split_mode;
     const nextMain = oldExtension.map((segment) => ({ ...segment }));
+    const oldMainIndexById = new Map(oldMain.map((segment, index) => [stableId(segment?.id), index]));
+    const oldExtensionIndexById = new Map(
+      oldExtension.map((segment, index) => [stableId(segment?.id), index]),
+    );
+    const mainToExtensionIndex = new Map();
+    (multi.bindings || []).forEach((binding) => {
+      if (binding.track_id !== track.id) return;
+      const sourceIds = Array.isArray(binding.main_segment_ids)
+        ? binding.main_segment_ids : [];
+      const targetIds = Array.isArray(binding.extension_segment_ids)
+        ? binding.extension_segment_ids : [];
+      const pairCount = Math.min(sourceIds.length, targetIds.length);
+      for (let pairIndex = 0; pairIndex < pairCount; pairIndex++) {
+        const sourceIndex = oldMainIndexById.get(stableId(sourceIds[pairIndex]));
+        const targetIndex = oldExtensionIndexById.get(stableId(targetIds[pairIndex]));
+        if (Number.isInteger(sourceIndex) && Number.isInteger(targetIndex)
+            && !mainToExtensionIndex.has(sourceIndex)) {
+          mainToExtensionIndex.set(sourceIndex, targetIndex);
+        }
+      }
+    });
+    const mappedColorCount = mapBoundSubtitleColors(
+      oldMain,
+      nextMain,
+      mainToExtensionIndex,
+    );
     const nextExtension = oldMain.map((segment) => {
       const copy = {
         id: stableId(segment.id),
@@ -3095,6 +3513,7 @@
       if (Array.isArray(segment.items)) {
         copy.items = segment.items.map((item) => ({ ...item }));
       }
+      copySubtitleColorFields(segment, copy);
       if (segment._dirty) copy._dirty = true;
       return copy;
     });
@@ -3120,6 +3539,7 @@
       mainCount: project.segments.length,
       extensionCount: track.segments.length,
       bindingCount,
+      mappedColorCount,
     };
   }
 
@@ -3338,6 +3758,12 @@
       ? options.firstEnabledIndex
       : getSrtExportFirstIndex(source, alignFirstStart);
     const keepDisabledPlaceholder = options.keepDisabledPlaceholder === true && !colorName;
+    const speakerLabels = options.speakerLabelsEnabled === true
+      ? normalizeSpeakerLabels(options.speakerLabels)
+      : null;
+    const speakerLabelSeparator = options.speakerLabelsEnabled === true
+      ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
+      : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const parts = [];
     let outputIndex = 0;
     source.forEach((segment, sourceIndex) => {
@@ -3356,7 +3782,11 @@
       outputIndex += 1;
       parts.push(String(outputIndex));
       parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
-      parts.push(disabled ? '' : String(segment.text || ''));
+      parts.push(disabled ? '' : speakerLabels
+        ? formatSpeakerLabelledText(
+          segment.text, segment, source, speakerLabels, speakerLabelSeparator,
+        )
+        : String(segment.text || ''));
       parts.push('');
     });
     return parts.join('\n');
@@ -4927,7 +5357,20 @@ export default MawDynamicCaptions;
   }
 
   window.AsrEditorUtils = {
+    PROJECT_SCHEMA,
+    supportsProjectSchema,
     subtitleFontFamilyDisplayName,
+    SPEAKER_LABEL_COLORS,
+    DEFAULT_SPEAKER_LABELS,
+    SPEAKER_LABEL_MAX_LENGTH,
+    DEFAULT_SPEAKER_LABEL_SEPARATOR,
+    SPEAKER_LABEL_SEPARATOR_MAX_LENGTH,
+    normalizeSpeakerLabel,
+    normalizeSpeakerLabels,
+    normalizeSpeakerLabelSeparator,
+    normalizeSpeakerLabelSettings,
+    speakerLabelForSegment,
+    formatSpeakerLabelledText,
     decodeSubtitleText,
     parseBwfTimeReference,
     readBwfTimeReferenceFromFile,
@@ -4952,6 +5395,7 @@ export default MawDynamicCaptions;
     isShortSubtitleText,
     normalizeSegmentTimings,
     normalizeItemTimingRanges,
+    normalizeFrameItemTimingRanges,
     repairSegmentOverlap,
     planAutoMerge,
     applyAutoMergeSnaps,
@@ -4995,7 +5439,26 @@ export default MawDynamicCaptions;
     buildMultiDisplayRows,
     getSrtExportFirstIndex,
     getSrtExportOffset,
+    EDITOR_ACCENT_COLOR_VALUES,
+    DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    normalizeEditorAccentColor,
+    normalizeEditorAccentCustomColor,
     normalizeEditorSettings,
+    TIMELINE_TIMEBASE_UNITS,
+    DEFAULT_TIMELINE_FPS,
+    DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
+    MIN_TIMELINE_FPS,
+    MAX_TIMELINE_FPS,
+    normalizeTimelineFps,
+    normalizeTimelineTimecodeSeparator,
+    normalizeTimelineTimebase,
+    normalizeMediaMetadata,
+    frameNumberFromMilliseconds,
+    millisecondsFromFrameNumber,
+    formatFrameTimecode,
+    formatTimelineTimecode,
+    parseFrameTimecode,
+    clampTimelineFrameStep,
     normalizeMultiSubtitleRowHeight,
     normalizeClickBehavior,
     normalizeClickTarget,
@@ -5050,6 +5513,7 @@ export default MawDynamicCaptions;
     mapGapRemovedTime,
     buildGapRemovedIntervals,
     buildGapRemovedDynamicSegments,
+    resolveGapFillRange,
     EXPORT_FRAME_PROFILES,
     resolveExportFrameProfile,
     exportMsToFrames,

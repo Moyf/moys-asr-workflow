@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import {
   cleanupTempDir,
   findFreePort,
-  generateBlankEditor,
+  buildPortableBlankEditor,
   generateWav,
   makeTempDir,
   startStaticServer,
@@ -23,7 +23,7 @@ let mediaPath;
 test.beforeAll(async () => {
   tempDir = makeTempDir('new-project');
   mediaPath = generateWav(join(tempDir, 'clip.wav'), 0.25);
-  const portablePath = generateBlankEditor(join(tempDir, 'blank.html'));
+  const portablePath = buildPortableBlankEditor(join(tempDir, 'blank.html'));
   server = await startStaticServer(portablePath, await findFreePort());
   const makeLocalhost = async (name, config) => {
     const path = join(tempDir, name);

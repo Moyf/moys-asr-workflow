@@ -19,6 +19,10 @@ SUBTITLE_BACKGROUND_ALPHA_MIN = 0.0
 SUBTITLE_BACKGROUND_ALPHA_MAX = 1.0
 SUBTITLE_BACKGROUND_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
 SUBTITLE_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+SUBTITLE_COLOR_STYLES = frozenset({"underline", "text", "shadow", "stroke"})
+SPEAKER_LABEL_COLORS = ("yellow", "green", "red", "purple", "blue")
+SPEAKER_LABEL_MAX_LENGTH = 64
+SPEAKER_LABEL_SEPARATOR_MAX_LENGTH = 16
 
 
 def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
@@ -45,6 +49,9 @@ def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
                 else:
                     values[field] = float(value)
             issues.extend(_validate_subtitle_style(subtitle, "$.preview.subtitle"))
+            issues.extend(_validate_speaker_label_settings(
+                subtitle.get("speaker_labels"), "$.preview.subtitle.speaker_labels",
+            ))
             if len(values) == 4:
                 if values["x"] + values["width"] > 1:
                     issues.append(("$.preview.subtitle", "x + width must be <= 1"))
@@ -57,6 +64,44 @@ def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
             issues.append(("$.preview.extension_subtitle", "must be an object or null"))
         else:
             issues.extend(_validate_subtitle_style(extension_subtitle, "$.preview.extension_subtitle"))
+    return tuple(issues)
+
+
+def _validate_speaker_label_settings(value: JsonValue, path: str) -> tuple[ValidationIssue, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, dict):
+        return ((path, "must be an object or null"),)
+
+    issues: list[ValidationIssue] = []
+    if "mapping_enabled" in value and not isinstance(value.get("mapping_enabled"), bool):
+        issues.append((f"{path}.mapping_enabled", "must be a boolean"))
+    if "enabled" in value and not isinstance(value.get("enabled"), bool):
+        issues.append((f"{path}.enabled", "must be a boolean"))
+    if "separator" in value:
+        separator = value.get("separator")
+        if (not isinstance(separator, str) or len(separator) > SPEAKER_LABEL_SEPARATOR_MAX_LENGTH
+                or any(ord(char) < 0x20 or ord(char) == 0x7F for char in separator)):
+            issues.append((
+                f"{path}.separator",
+                "must be a string up to 16 characters without control characters",
+            ))
+    names = value.get("names")
+    if names is None:
+        return tuple(issues)
+    if not isinstance(names, dict):
+        issues.append((f"{path}.names", "must be an object or null"))
+        return tuple(issues)
+    for color in SPEAKER_LABEL_COLORS:
+        if color not in names:
+            continue
+        label = names.get(color)
+        if (not isinstance(label, str) or len(label) > SPEAKER_LABEL_MAX_LENGTH
+                or any(ord(char) < 0x20 or ord(char) == 0x7F for char in label)):
+            issues.append((
+                f"{path}.names.{color}",
+                "must be a string up to 64 characters without control characters",
+            ))
     return tuple(issues)
 
 
@@ -90,6 +135,13 @@ def _validate_subtitle_style(value: JsonDict, path: str) -> tuple[ValidationIssu
         color = value.get("color")
         if not isinstance(color, str) or SUBTITLE_COLOR_RE.fullmatch(color) is None:
             issues.append((f"{path}.color", "must be a six-digit hexadecimal color"))
+    color_style = value.get("color_style")
+    if "color_style" in value and (
+            not isinstance(color_style, str) or color_style not in SUBTITLE_COLOR_STYLES):
+        issues.append((
+            f"{path}.color_style",
+            "must be one of underline, text, shadow, or stroke",
+        ))
     return tuple(issues)
 
 

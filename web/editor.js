@@ -6,6 +6,57 @@ let STICKER_URL_PREFIX = __STICKER_URL_PREFIX_JSON__;
 const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
+// 所有非模态浮层共用一个前置栈：最后点击、打开或获得焦点的浮层排在最上面。
+// 起始值高于普通设置弹窗（420），但低于拖拽遮罩和加载层（500/510）。
+const FLOATING_SURFACE_Z_INDEX_BASE = 430;
+const floatingSurfaceStack = [];
+const floatingSurfaceRoots = new WeakSet();
+const floatingSurfaceActivationTargets = new WeakSet();
+
+function floatingSurfaceRoot(surface) {
+  if (!surface) return null;
+  const windowRoot = surface.closest('.editor-settings-window, .gap-remove-panel');
+  if (windowRoot) return windowRoot;
+  return surface.parentElement?.closest('.toolbar .dropdown') || surface;
+}
+
+function floatingSurfaceIsOpen(surface) {
+  if (!surface) return false;
+  if (surface.matches('.settings-panel')) return !surface.hidden;
+  if (surface.matches('.dropdown')) return surface.classList.contains('open');
+  return surface.classList.contains('show');
+}
+
+function syncFloatingSurfaceLayers() {
+  floatingSurfaceStack.forEach((surface, index) => {
+    const zIndex = FLOATING_SURFACE_Z_INDEX_BASE + index;
+    surface.style.zIndex = String(zIndex);
+  });
+}
+
+function bringFloatingSurfaceToFront(surface) {
+  const root = floatingSurfaceRoot(surface);
+  if (!root || !floatingSurfaceRoots.has(root)) return;
+  const currentIndex = floatingSurfaceStack.indexOf(root);
+  if (currentIndex >= 0) floatingSurfaceStack.splice(currentIndex, 1);
+  floatingSurfaceStack.push(root);
+  syncFloatingSurfaceLayers();
+}
+
+function bindFloatingSurfaceActivation(surface) {
+  const root = floatingSurfaceRoot(surface);
+  if (!root) return;
+  if (!floatingSurfaceRoots.has(root)) {
+    floatingSurfaceRoots.add(root);
+    floatingSurfaceStack.push(root);
+  }
+  if (floatingSurfaceActivationTargets.has(surface)) return;
+  const activate = () => bringFloatingSurfaceToFront(root);
+  surface.addEventListener('pointerdown', activate, true);
+  surface.addEventListener('focusin', activate, true);
+  floatingSurfaceActivationTargets.add(surface);
+}
+
 const MAWE_DEBUG_ENABLED = Boolean(
   SERVER_CONFIG?.debug || new URLSearchParams(window.location.search).has('mawe-debug'),
 );
@@ -109,7 +160,7 @@ function splitModeLabel(mode) {
   return mode === 'continuous' ? '字符型' : '单词型';
 }
 function splitModeExample(mode) {
-  return mode === 'continuous' ? '（适用于中文、日文等）' : '（适用于英文、俄文等）';
+  return mode === 'continuous' ? '（适用于中文、日文等语言）' : '（适用于英文、俄文等语言）';
 }
 
 // 合并多条字幕时按「字符型/单词型」取对应连接符：中文直接拼接，西文默认空格。
@@ -682,13 +733,24 @@ const DEFAULT_EDITOR_SETTINGS = {
   autoMergeAbsorbDirection: 'previous',
   // 按颜色导出 SRT：统一导出先选择一个 SRT 文件名作为前缀。
   exportColorUnified: true,
+  // 导出 SRT 时是否按字幕颜色附加说话人名称（仅本地偏好）。
+  exportSpeakerLabels: false,
+  // 按颜色导出 SRT 时是否优先使用颜色映射的说话人名称作为文件名后缀（仅本地偏好）。
+  exportSpeakerNamesAsSuffix: false,
   // 自动保存仅对绑定工程的 localhost 服务器版生效。
   autoSaveProject: true,
   autoSaveIntervalSeconds: 30,
+  projectBackupEnabled: true,
+  projectBackupMinutes: 5,
+  projectBackupLimit: 20,
   // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
   stickerOverlayEnabled: false,
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
   stickerOtioExportMode: 'original',
+  // 时间线 OTIO / OTIOZ 导出选项：同时导出 SRT、合并表情包轨、写入字幕标记（默认全开）。
+  otioExportIncludeSrt: true,
+  otioExportIncludeStickers: true,
+  otioExportIncludeMarkers: true,
   // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
@@ -698,8 +760,13 @@ const DEFAULT_EDITOR_SETTINGS = {
   jklPlaybackMode: 'direction',
   // 媒体控制按钮与无选中字幕时左右方向键的跳转幅度。
   mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
+  mediaSeekStepFrames: 1,
   // 选中字幕后用方向键 / A-D 微调时间的幅度。
   cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
+  cueMoveStepFrames: 1,
+  // 帧模式下是否让波形鼠标指针吸附到最近帧（默认开启）；时间码分隔符默认使用冒号。
+  timelineSnapToFrame: true,
+  timelineTimecodeSeparator: ':',
   // 鼠标位置自动预览：暂停时指针在波形上移动即把画面定位到指针时间（默认关闭）。
   hoverSeekPreview: false,
   // 是否默认让同轨相邻字幕随边界调整一起联动；Alt 始终临时反转该行为。
@@ -722,8 +789,11 @@ const DEFAULT_EDITOR_SETTINGS = {
   multiSubtitleAutoSyncDuration: true,
   // 多重字幕波形是否显示主/副轨道编号徽标。
   multiSubtitleShowTrackBadges: false,
-  // 界面主题：dark（默认）/ light。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
+  // 界面主题：dark（默认）/ light / system。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
+  // 界面强调色：blue（默认）/ red / orange / custom；自定义颜色单独保存为六位十六进制值。
+  accentColor: 'blue',
+  accentColorCustom: '#6ca5e8',
   // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
   waveShapeSource: 'reapeaks',
 };
@@ -738,6 +808,8 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
+const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
+const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
   yahei: '"Microsoft YaHei", "PingFang SC", sans-serif',
@@ -762,6 +834,9 @@ function readEditorSettings() {
     cueEditorCancelOnEscape: saved.cueEditorCancelOnEscape === true,
     autoSnapAdjacentCues: saved.autoSnapAdjacentCues !== false,
     stickerOtioExportMode: saved.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
+    otioExportIncludeSrt: saved.otioExportIncludeSrt !== false,
+    otioExportIncludeStickers: saved.otioExportIncludeStickers !== false,
+    otioExportIncludeMarkers: saved.otioExportIncludeMarkers !== false,
   });
 }
 
@@ -770,6 +845,8 @@ const normalizeClickBehavior = EDITOR_SETTINGS_UTILS.normalizeClickBehavior;
 const normalizeClickTarget = EDITOR_SETTINGS_UTILS.normalizeClickTarget;
 const normalizeKeyboardOperationReferenceMode = EDITOR_SETTINGS_UTILS.normalizeKeyboardOperationReferenceMode;
 const normalizeJklPlaybackMode = EDITOR_SETTINGS_UTILS.normalizeJklPlaybackMode;
+const normalizeEditorAccentColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentColor;
+const normalizeEditorAccentCustomColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentCustomColor;
 const clampAutoSaveInterval = EDITOR_SETTINGS_UTILS.clampAutoSaveInterval;
 const clampCharcountThreshold = EDITOR_SETTINGS_UTILS.clampCharcountThreshold;
 const clampNinjaSlashLength = EDITOR_SETTINGS_UTILS.clampNinjaSlashLength;
@@ -790,8 +867,239 @@ function saveEditorSettings(settings) {
 }
 
 const EDITOR_SETTINGS = readEditorSettings();
+const normalizeTimelineTimebase = EDITOR_SETTINGS_UTILS.normalizeTimelineTimebase;
+const normalizeTimelineFps = EDITOR_SETTINGS_UTILS.normalizeTimelineFps;
+const normalizeTimelineTimecodeSeparator = EDITOR_SETTINGS_UTILS.normalizeTimelineTimecodeSeparator;
+const normalizeMediaMetadata = EDITOR_SETTINGS_UTILS.normalizeMediaMetadata;
+const DEFAULT_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.DEFAULT_TIMELINE_FPS;
+const frameNumberFromMilliseconds = EDITOR_SETTINGS_UTILS.frameNumberFromMilliseconds;
+const millisecondsFromFrameNumber = EDITOR_SETTINGS_UTILS.millisecondsFromFrameNumber;
+const formatFrameTimecode = EDITOR_SETTINGS_UTILS.formatFrameTimecode;
+const formatTimelineTimecode = EDITOR_SETTINGS_UTILS.formatTimelineTimecode;
+const parseFrameTimecode = EDITOR_SETTINGS_UTILS.parseFrameTimecode;
+const MIN_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.MIN_TIMELINE_FPS;
+const MAX_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.MAX_TIMELINE_FPS;
 // 把用户配置的拆分移除符号同步给共享工具层；设置面板修改时也会同步。
 MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(EDITOR_SETTINGS.splitTrimSymbols);
+
+const TIMELINE_ROUND_MS = 10;
+
+function roundTimelineMilliseconds(value) {
+  return Math.round(Number(value) / TIMELINE_ROUND_MS) * TIMELINE_ROUND_MS;
+}
+
+function hasValidFramePair(value) {
+  return !!value
+    && Number.isInteger(value.start_frame)
+    && Number.isInteger(value.end_frame)
+    && value.start_frame >= 0
+    && value.end_frame > value.start_frame;
+}
+
+function syncTimeRangeObjectTimebase(value, timebase, { preferFrames = false, frameBounds = null } = {}) {
+  if (!value || typeof value !== 'object') return null;
+  const frameMode = timebase.unit === 'frames';
+  const hasFrames = hasValidFramePair(value);
+  const rawStartMs = Number(value.start);
+  const rawEndMs = Number(value.end);
+  let startFrame = hasFrames && preferFrames
+    ? value.start_frame : frameNumberFromMilliseconds(rawStartMs, timebase.fps);
+  let endFrame = hasFrames && preferFrames
+    ? value.end_frame : frameNumberFromMilliseconds(rawEndMs, timebase.fps);
+  if (!Number.isInteger(startFrame) || startFrame < 0) startFrame = 0;
+  if (!Number.isInteger(endFrame) || endFrame <= startFrame) endFrame = startFrame + 1;
+
+  if (frameMode) {
+    if (frameBounds && Number.isInteger(frameBounds.start) && Number.isInteger(frameBounds.end)) {
+      const lower = Math.max(0, frameBounds.start);
+      const upper = Math.max(lower + 1, frameBounds.end);
+      startFrame = Math.min(Math.max(startFrame, lower), upper - 1);
+      endFrame = Math.min(Math.max(endFrame, startFrame + 1), upper);
+      if (endFrame <= startFrame) {
+        startFrame = Math.max(lower, upper - 1);
+        endFrame = upper;
+      }
+    }
+    value.start_frame = startFrame;
+    value.end_frame = endFrame;
+    value.start = millisecondsFromFrameNumber(startFrame, timebase.fps);
+    value.end = millisecondsFromFrameNumber(endFrame, timebase.fps);
+  } else {
+    const startMs = Number.isFinite(rawStartMs)
+      ? Math.max(0, Math.round(rawStartMs)) : millisecondsFromFrameNumber(startFrame, timebase.fps);
+    const endMs = Number.isFinite(rawEndMs)
+      ? Math.max(startMs + 1, Math.round(rawEndMs)) : millisecondsFromFrameNumber(endFrame, timebase.fps);
+    value.start = startMs;
+    value.end = Math.max(startMs + 1, endMs);
+    value.start_frame = frameNumberFromMilliseconds(value.start, timebase.fps);
+    value.end_frame = Math.max(
+      value.start_frame + 1,
+      frameNumberFromMilliseconds(value.end, timebase.fps),
+    );
+  }
+  return { startFrame: value.start_frame, endFrame: value.end_frame };
+}
+
+function syncSegmentTimebase(segment, timebase, { preferFrames = false, minimumStartFrame = 0 } = {}) {
+  if (!segment || typeof segment !== 'object') return;
+  const range = syncTimeRangeObjectTimebase(segment, timebase, { preferFrames });
+  if (timebase.unit === 'frames') {
+    const startFrame = Math.max(minimumStartFrame, segment.start_frame);
+    const endFrame = Math.max(startFrame + 1, segment.end_frame);
+    segment.start_frame = startFrame;
+    segment.end_frame = endFrame;
+    segment.start = millisecondsFromFrameNumber(startFrame, timebase.fps);
+    segment.end = millisecondsFromFrameNumber(endFrame, timebase.fps);
+  }
+  if (!Array.isArray(segment.items)) return range;
+  const frameBounds = timebase.unit === 'frames'
+    ? { start: segment.start_frame, end: segment.end_frame } : null;
+  segment.items.forEach((item) => {
+    syncTimeRangeObjectTimebase(item, timebase, { preferFrames, frameBounds });
+  });
+  if (timebase.unit === 'frames') {
+    window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);
+  }
+  return range;
+}
+
+function syncTrackTimebase(segments, timebase, { preferFrames = false } = {}) {
+  if (!Array.isArray(segments)) return;
+  let previousEndFrame = 0;
+  segments.forEach((segment) => {
+    syncSegmentTimebase(segment, timebase, {
+      preferFrames,
+      minimumStartFrame: timebase.unit === 'frames' ? previousEndFrame : 0,
+    });
+    if (timebase.unit === 'frames' && Number.isInteger(segment?.end_frame)) {
+      previousEndFrame = segment.end_frame;
+    }
+  });
+}
+
+function projectTimebase(project = DATA) {
+  return normalizeTimelineTimebase(project?.timebase);
+}
+
+function hasExplicitTimelineFps(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const fps = Number(value.fps);
+  if (!Number.isFinite(fps) || fps < MIN_TIMELINE_FPS || fps > MAX_TIMELINE_FPS) return false;
+  // A non-default FPS or an already-frame-based project represents an
+  // explicit choice.  A saved millisecond project with the historical 30 FPS
+  // default can still adopt the source media FPS on its first frame switch.
+  return value.unit === 'frames' || fps !== DEFAULT_TIMELINE_FPS;
+}
+
+function projectMediaVideoFps(project = DATA) {
+  return normalizeMediaMetadata(project?.media_metadata)?.video_fps ?? null;
+}
+
+let timelineFpsManuallySet = hasExplicitTimelineFps(DATA.timebase);
+
+function syncProjectTimebase(project = DATA, { preferFrames = false } = {}) {
+  if (!project || typeof project !== 'object') return normalizeTimelineTimebase();
+  const timebase = projectTimebase(project);
+  project.timebase = { ...timebase };
+  syncTrackTimebase(project.segments, timebase, { preferFrames });
+  const tracks = project.multi_subtitle?.tracks;
+  if (Array.isArray(tracks)) {
+    tracks.forEach((track) => syncTrackTimebase(track?.segments, timebase, { preferFrames }));
+  }
+  return timebase;
+}
+
+function syncProjectTimebaseAndBindingOffsets(project = DATA, options = {}) {
+  const timebase = syncProjectTimebase(project, options);
+  if (project && typeof project === 'object') {
+    MULTI_SUBTITLE_UTILS.rebuildBindingOffsets(project.multi_subtitle, project.segments);
+  }
+  return timebase;
+}
+
+function timelineIsFrameMode() {
+  return projectTimebase().unit === 'frames';
+}
+
+function timelineMinimumDurationMs() {
+  const timebase = projectTimebase();
+  if (timebase.unit !== 'frames') return SUBTITLE_MIN_DURATION_MS;
+  const minimumFrames = Math.max(1, Math.ceil(SUBTITLE_MIN_DURATION_MS * timebase.fps / 1000));
+  return millisecondsFromFrameNumber(minimumFrames, timebase.fps);
+}
+
+function timelineMinimumDurationValue() {
+  const timebase = projectTimebase();
+  return timebase.unit === 'frames'
+    ? Math.max(1, Math.ceil(SUBTITLE_MIN_DURATION_MS * timebase.fps / 1000))
+    : SUBTITLE_MIN_DURATION_MS;
+}
+
+function timelineTimingAdapter() {
+  const timebase = projectTimebase();
+  const frameMode = timebase.unit === 'frames';
+  const minimumDuration = timelineMinimumDurationValue();
+  const snapThreshold = frameMode
+    ? Math.max(1, Math.round(80 * timebase.fps / 1000)) : 80;
+  if (!frameMode) {
+    return {
+      unit: 'milliseconds',
+      fps: timebase.fps,
+      minDuration: minimumDuration,
+      snapThreshold,
+      round: roundTimelineMilliseconds,
+      getStart: (segment) => Number(segment?.start),
+      getEnd: (segment) => Number(segment?.end),
+      setStart: (segment, value) => { segment.start = roundTimelineMilliseconds(value); },
+      setEnd: (segment, value) => { segment.end = roundTimelineMilliseconds(value); },
+      getItemStart: (item) => Number(item?.start),
+      getItemEnd: (item) => Number(item?.end),
+      setItemStart: (item, value) => { item.start = roundTimelineMilliseconds(value); },
+      setItemEnd: (item, value) => { item.end = roundTimelineMilliseconds(value); },
+      fromMs: (value) => Number(value),
+      toMs: (value) => Number(value),
+      format: formatTimelineMilliseconds,
+    };
+  }
+  const readFrame = (value, frameField, msField) => Number.isInteger(value?.[frameField])
+    ? value[frameField] : frameNumberFromMilliseconds(value?.[msField], timebase.fps);
+  const writeFrame = (value, frameField, msField, frame) => {
+    const next = Math.max(0, Math.round(Number(frame)));
+    value[frameField] = next;
+    value[msField] = millisecondsFromFrameNumber(next, timebase.fps);
+  };
+  return {
+    unit: 'frames',
+    fps: timebase.fps,
+    minDuration: minimumDuration,
+    snapThreshold,
+    round: (value) => Math.round(Number(value)),
+    getStart: (segment) => readFrame(segment, 'start_frame', 'start'),
+    getEnd: (segment) => readFrame(segment, 'end_frame', 'end'),
+    setStart: (segment, value) => writeFrame(segment, 'start_frame', 'start', value),
+    setEnd: (segment, value) => writeFrame(segment, 'end_frame', 'end', value),
+    getItemStart: (item) => readFrame(item, 'start_frame', 'start'),
+    getItemEnd: (item) => readFrame(item, 'end_frame', 'end'),
+    setItemStart: (item, value) => writeFrame(item, 'start_frame', 'start', value),
+    setItemEnd: (item, value) => writeFrame(item, 'end_frame', 'end', value),
+    fromMs: (value) => frameNumberFromMilliseconds(value, timebase.fps),
+    toMs: (value) => millisecondsFromFrameNumber(value, timebase.fps),
+    format: (value) => formatFrameTimecode(
+      value,
+      timebase.fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    ),
+  };
+}
+
+function formatTimelineMilliseconds(ms) {
+  const safe = Math.max(0, Math.round(Number(ms) || 0));
+  const s = safe / 1000;
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2, '0')}:${(s - m * 60).toFixed(3).padStart(6, '0')}`;
+}
+
+syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase?.unit === 'frames' });
 
 // 标记颜色：5 种基础色，用于给字幕分组着色。
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
@@ -895,7 +1203,9 @@ function isMediaFile(file) {
   return Boolean(file) && (file.type.startsWith('video/') || file.type.startsWith('audio/') || MEDIA_FILE_RE.test(file.name));
 }
 function isReapeaksFile(file) {
-  return Boolean(file) && /\.reapeaks$/i.test(file.name);
+  // .quapeaks 是 MAW 自有容器（改名自 reapeaks 内核）：浏览器直读必须同样认它，
+  // 否则服务端读得到、用户在浏览器里打开却报「不支持的文件」。
+  return Boolean(file) && /\.(?:reapeaks|quapeaks)$/i.test(file.name);
 }
 
 // === 统一撤销/重做 ===
@@ -963,6 +1273,7 @@ function snapshotPreviewState() {
   return {
     overlay: !!overlayToggle.checked,
     subtitle: { ...getPreviewGeometry(), ...getSubtitleAppearance() },
+    speakerLabels: getSpeakerLabelSettings(),
     extensionOverlay: !!extensionOverlayToggle?.checked,
     extensionSubtitle: { ...getStoredExtensionSubtitleAppearance() },
     sticker: { ...getStickerGeometry() },
@@ -977,6 +1288,7 @@ function applyPreviewState(state) {
     updateEditorSettings({ extensionOverlayEnabled: state.extensionOverlay });
   }
   if (state.subtitle) setPreviewGeometry(state.subtitle, { markDirty: true, replaceAppearance: true });
+  if (state.speakerLabels) setSpeakerLabelSettings(state.speakerLabels, { markDirty: true });
   if (state.extensionSubtitle) restoreExtensionSubtitleAppearance(state.extensionSubtitle, { markDirty: true });
   if (state.sticker) setStickerGeometry(state.sticker, { markDirty: true });
   refreshPreviewGeometryEditable();
@@ -1151,6 +1463,9 @@ const totalCountEl = document.getElementById('total-count');
 const selCountEl = document.getElementById('sel-count');
 const overlayEl = document.getElementById('overlay');
 const overlayTextEl = document.getElementById('overlay-main-text');
+const overlayMainSpeakerLabelEl = document.getElementById('overlay-main-speaker-label');
+const overlayMainTextNode = document.createTextNode('');
+overlayTextEl.append(overlayMainTextNode);
 const overlayExtensionTextEl = document.getElementById('overlay-extension-text');
 const overlayToggle = document.getElementById('overlay-toggle');
 const extensionOverlayToggleWrap = document.getElementById('extension-overlay-toggle-wrap');
@@ -1165,7 +1480,21 @@ const subtitleBackgroundAlphaInput = document.getElementById('subtitle-backgroun
 const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
+const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
+const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
+const subtitleSpeakerMappingEnabledInput = document.getElementById('subtitle-speaker-mapping-enabled');
+const subtitleSpeakerLabelsToggle = document.getElementById('subtitle-speaker-labels-enabled-wrap');
+const subtitleSpeakerLabelsEnabledInput = document.getElementById('subtitle-speaker-labels-enabled');
+const subtitleSpeakerLabelsSettings = document.getElementById('subtitle-speaker-labels-settings');
+const subtitleSpeakerLabelSeparatorInput = document.getElementById('subtitle-speaker-label-separator');
+const subtitleSpeakerLabelInputs = Object.fromEntries(
+  (window.AsrEditorUtils.SPEAKER_LABEL_COLORS || []).map((color) => [
+    color,
+    document.getElementById(`subtitle-speaker-label-${color}`),
+  ]),
+);
 const extensionSubtitlePreviewSettings = document.getElementById('extension-subtitle-preview-settings');
+const extensionSubtitlePreviewTitle = document.getElementById('extension-subtitle-preview-title');
 const extensionSubtitleFontSizeSelect = document.getElementById('extension-subtitle-font-size');
 const extensionSubtitleFontFamilySelect = document.getElementById('extension-subtitle-font-family');
 const extensionSubtitleColorInput = document.getElementById('extension-subtitle-color');
@@ -1178,6 +1507,8 @@ const mediaPlayToggle = document.getElementById('media-play-toggle');
 const mediaStepBack = document.getElementById('media-step-back');
 const mediaStepForward = document.getElementById('media-step-forward');
 const mediaSeekStepInput = document.getElementById('media-seek-step');
+const mediaSeekStepUnit = document.getElementById('media-seek-step-unit');
+const mediaSeekStepHint = document.getElementById('media-seek-step-hint');
 let mediaSeekInputLastValue = EDITOR_SETTINGS.mediaSeekStepMs;
 const mediaCurrentTime = document.getElementById('media-current-time');
 const mediaDuration = document.getElementById('media-duration');
@@ -1221,8 +1552,15 @@ const razorToolSvg = razorToolButton?.querySelector('svg');
 const ninjaRazorIcon = razorToolButton?.querySelector('.ninja-razor-icon');
 const ninjaSlashFlash = document.getElementById('ninja-slash-flash');
 const exportColorUnifiedToggle = document.getElementById('export-color-unified');
+const exportSpeakerLabelsToggle = document.getElementById('export-speaker-labels');
+const exportSpeakerNamesAsSuffixToggle = document.getElementById('export-speaker-names-as-suffix');
+const exportOpenSubtitleColorSettingsButton = document.getElementById('export-open-subtitle-color-settings');
 const helpToggle = document.getElementById('help-toggle');
-const themeToggle = document.getElementById('theme-toggle');
+const editorThemeOptions = Array.from(document.querySelectorAll('[data-editor-theme]'));
+const editorAccentOptions = Array.from(document.querySelectorAll('[data-editor-accent]'));
+const editorAccentCustomField = document.getElementById('editor-accent-custom-field');
+const editorAccentCustomInput = document.getElementById('editor-accent-custom');
+const editorAccentCustomValue = document.getElementById('editor-accent-custom-value');
 const helpPanel = document.getElementById('help-panel');
 const helpDragHandle = document.getElementById('help-drag-handle');
 const helpCloseButton = document.getElementById('help-close');
@@ -1231,9 +1569,6 @@ const cueEditorSplitKey = document.getElementById('cue-editor-split-key');
 const cueEditorConfirmKey = document.getElementById('cue-editor-confirm-key');
 const helpTabButtons = Array.from(document.querySelectorAll('[data-help-tab]'));
 const helpTabPanels = Array.from(document.querySelectorAll('[data-help-tab-panel]'));
-const helpAdvancedToggle = document.getElementById('help-advanced-toggle');
-const helpAdvancedTabs = document.getElementById('help-advanced-tabs');
-const helpAdvancedTabButtons = Array.from(helpAdvancedTabs?.querySelectorAll('[data-help-tab]') || []);
 const helpOpenWaveformSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-waveform-settings]'));
 const helpOpenMediaSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-media-settings]'));
 const helpOpenGapRemovePanelButton = document.getElementById('help-open-gap-remove-panel');
@@ -1250,6 +1585,15 @@ const jklPlaybackModeHint = document.getElementById('jkl-playback-mode-hint');
 const hoverSeekPreviewToggle = document.getElementById('hover-seek-preview');
 const helpJklMode = document.getElementById('help-jkl-mode');
 const cueMoveStepInput = document.getElementById('cue-move-step');
+const cueMoveStepUnit = document.getElementById('cue-move-step-unit');
+const cueMoveStepHint = document.getElementById('cue-move-step-hint');
+const timelineTimebaseSelect = document.getElementById('timeline-timebase');
+const timelineFpsInput = document.getElementById('timeline-fps');
+const timelineTimebaseHint = document.getElementById('timeline-timebase-hint');
+const timelineSnapToFrameToggle = document.getElementById('timeline-snap-to-frame');
+const timelineSnapToFrameHint = document.getElementById('timeline-snap-to-frame-hint');
+const timelineTimecodeSeparatorInput = document.getElementById('timeline-timecode-separator');
+const timelineTimecodeSeparatorHint = document.getElementById('timeline-timecode-separator-hint');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
 const replaceModal = document.getElementById('replace-modal');
 const textProcessModal = document.getElementById('text-process-modal');
@@ -1332,6 +1676,10 @@ const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-rem
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
+const multiSubtitleSettingsToggle = document.getElementById('multi-subtitle-settings-toggle');
+const splitMultiSubtitleSettingsEnabledHint = document.getElementById('split-multi-subtitle-settings-enabled');
+const splitMultiSubtitleSettingsDisabledHint = document.getElementById('split-multi-subtitle-settings-disabled');
+const splitMultiSubtitleSettingsLink = document.getElementById('split-multi-subtitle-settings-link');
 // 已开启多重字幕但尚未加载第二条字幕时的开关右侧提示。
 const multiSubtitleEmptyHint = document.getElementById('multi-subtitle-empty-hint');
 const multiSubtitleSwapButton = document.getElementById('multi-subtitle-swap');
@@ -1377,9 +1725,6 @@ const mergeJoinSettingsPanel = document.getElementById('merge-join-settings-pane
 const splitTrimSettings = document.getElementById('split-trim-settings');
 const splitTrimSettingsToggle = document.getElementById('split-trim-settings-toggle');
 const splitTrimSettingsPanel = document.getElementById('split-trim-settings-panel');
-const subtitlePreviewSettings = document.getElementById('subtitle-preview-settings');
-const subtitlePreviewSettingsToggle = document.getElementById('subtitle-preview-settings-toggle');
-const subtitlePreviewSettingsPanel = document.getElementById('subtitle-preview-settings-panel');
 const cueEditorSettings = document.getElementById('cue-editor-settings');
 const cueEditorSettingsToggle = document.getElementById('cue-editor-settings-toggle');
 const cueEditorSettingsPanel = document.getElementById('cue-editor-settings-panel');
@@ -1425,6 +1770,11 @@ const gapRemoveList = document.getElementById('gap-remove-list');
 const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 const HELP_PANEL_SIZE_KEY = 'moy.asr.help.panel.size.v1';
+const EDITOR_SETTINGS_WINDOW_POSITION_KEY = 'moy.asr.editor.settings.window.v1';
+const EDITOR_SETTINGS_WINDOW_SIZE_KEY = 'moy.asr.editor.settings.window_size.v1';
+const EDITOR_SETTINGS_WINDOW_TAB_KEY = 'moy.asr.editor.settings.window_tab.v1';
+const editorSettingsClose = document.getElementById('editor-settings-close');
+const editorSettingsDragHandle = document.getElementById('editor-settings-drag-handle');
 
 const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
@@ -1445,6 +1795,27 @@ const subtitleExtendManageButton = document.getElementById('subtitle-extend-mana
 const subtitleExtendRunButton = document.getElementById('subtitle-extend-run');
 const subtitleExtendForwardInput = document.getElementById('subtitle-extend-forward-ms');
 const subtitleExtendBackwardInput = document.getElementById('subtitle-extend-backward-ms');
+
+// 先登记所有可独立激活的非模态浮层。嵌套在全局设置窗口里的齿轮弹窗会
+// 自动归到全局设置窗口这一层，点击它们时也会把外层窗口带到最前面。
+// 表情包根目录弹窗从全局设置窗口打开，同样入栈，打开时动态置顶盖住窗口
+//（CSS 的 335 只是 JS 初始化前的静态兜底）。
+[
+  editorSettingsPanel,
+  helpPanel,
+  gapRemovePanel,
+  autoMergePanel,
+  subtitleExtendPanel,
+  mergeJoinSettingsPanel,
+  splitTrimSettingsPanel,
+  cueListSettingsPanel,
+  cueEditorSettingsPanel,
+  waveformSettingsPanel,
+  multiSubtitleSettingsDropdown,
+  document.getElementById('sticker-root-modal'),
+  ...document.querySelectorAll('.toolbar .dropdown'),
+].forEach(bindFloatingSurfaceActivation);
+
 let gapPreviewRange = null;
 let gapRemovePanelDrag = null;
 let currentCuePanelIdx = -1;
@@ -1454,7 +1825,6 @@ let cuePanelUndoPushed = false;
 let cuePanelUndoRecord = null;
 let cuePanelTextEditSnapshot = null;
 let cuePanelCanceling = false;
-let editorSettingsPanelFrame = 0;
 
 function resetCuePanelEditState() {
   cuePanelUndoPushed = false;
@@ -1623,23 +1993,99 @@ function applyNinjaSettings() {
   if (ninjaRazorIcon) ninjaRazorIcon.hidden = !enabled;
 }
 
+// 全局设置窗口：复用 createFloatingPanel 获得拖动、位置持久化、Esc 关闭与按钮 active 态；
+// 窗口内部用左侧垂直标签页切换不同分区，并记忆用户上次停留的分区。
+const editorSettingsTabs = editorSettingsPanel
+  ? Array.from(editorSettingsPanel.querySelectorAll('.editor-settings-nav-tab'))
+  : [];
+const editorSettingsFloatingPanel = createFloatingPanel({
+  panel: editorSettingsPanel,
+  dragHandle: editorSettingsDragHandle,
+  manageButton: editorSettingsToggle,
+  anchorButton: editorSettingsToggle,
+  positionKey: EDITOR_SETTINGS_WINDOW_POSITION_KEY,
+  // 所有打开路径（按钮点击 / 桥接）都先恢复尺寸与标签页，保证默认分区带上
+  // active 样式，且窗口按实际内容尺寸定位。
+  onOpen: () => {
+    restoreEditorSettingsPanelSize();
+    restoreEditorSettingsActiveTab();
+  },
+});
+
+function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
+  if (!tab) return;
+  for (const item of editorSettingsTabs) {
+    const active = item === tab;
+    item.classList.toggle('active', active);
+    item.setAttribute('aria-selected', String(active));
+    item.tabIndex = active ? 0 : -1;
+    const page = document.getElementById(item.getAttribute('aria-controls') || '');
+    if (page) page.hidden = !active;
+  }
+  if (focus) tab.focus();
+  try {
+    localStorage.setItem(EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
+  } catch (_) {
+    // file:// 隐私模式可能拒绝 localStorage；切换标签页本身不受影响。
+  }
+}
+
+function restoreEditorSettingsActiveTab() {
+  let saved = '';
+  try {
+    saved = localStorage.getItem(EDITOR_SETTINGS_WINDOW_TAB_KEY) || '';
+  } catch (_) {
+    saved = '';
+  }
+  // 忽略已隐藏的分区（如当前环境不可用的「保存」），回退到第一个可见分区。
+  const tab = editorSettingsTabs.find((item) => item.dataset.settingsTab === saved && !item.hidden)
+    || editorSettingsTabs.find((item) => !item.hidden)
+    || editorSettingsTabs[0];
+  setEditorSettingsActiveTab(tab);
+}
+
+// 浮窗尺寸：与帮助窗口一致，仅在用户拖过右下角缩放手柄后持久化；
+// 未缩放时保持 CSS 默认宽度/自动高度。
+function restoreEditorSettingsPanelSize() {
+  if (!editorSettingsPanel) return;
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY) || 'null');
+  } catch (_) {
+    saved = null;
+  }
+  if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
+  editorSettingsPanel.style.width = `${Math.min(Math.max(460, saved.width), window.innerWidth - 12)}px`;
+  editorSettingsPanel.style.height = `${Math.min(Math.max(280, saved.height), window.innerHeight - 24)}px`;
+}
+let editorSettingsPanelSizeSaveTimer = 0;
+if (editorSettingsPanel) {
+  new ResizeObserver(() => {
+    if (!editorSettingsPanel.classList.contains('show')) return;
+    if (!editorSettingsPanel.style.width && !editorSettingsPanel.style.height) return;
+    clearTimeout(editorSettingsPanelSizeSaveTimer);
+    editorSettingsPanelSizeSaveTimer = setTimeout(() => {
+      const rect = editorSettingsPanel.getBoundingClientRect();
+      try {
+        localStorage.setItem(EDITOR_SETTINGS_WINDOW_SIZE_KEY, JSON.stringify({
+          width: Math.round(rect.width), height: Math.round(rect.height),
+        }));
+      } catch (_) {
+        // file:// 隐私模式下 localStorage 可能被拒；缩放本身仍可用。
+      }
+    }, 250);
+  }).observe(editorSettingsPanel);
+}
+
 function setEditorSettingsPanelOpen(open) {
   if (!editorSettingsPanel || !editorSettingsToggle) return;
   if (!open) {
     setMergeJoinSettingsPanelOpen(false);
     setSplitTrimSettingsPanelOpen(false);
+    editorSettingsFloatingPanel.close();
+    return;
   }
-  editorSettingsToggle.classList.toggle('active', open);
-  editorSettingsToggle.setAttribute('aria-expanded', String(open));
-  // 先让按钮状态绘制出来，再展开/收起文档流中的大面板，避免布局重排把高亮拖后。
-  cancelAnimationFrame(editorSettingsPanelFrame);
-  editorSettingsPanelFrame = requestAnimationFrame(() => {
-    editorSettingsPanelFrame = requestAnimationFrame(() => {
-      editorSettingsPanelFrame = 0;
-      if (editorSettingsToggle.getAttribute('aria-expanded') !== String(open)) return;
-      editorSettingsPanel.hidden = !open;
-    });
-  });
+  editorSettingsFloatingPanel.open();
 }
 
 function positionAnchoredSettingsPanel(panel, toggle) {
@@ -1673,7 +2119,11 @@ function setMergeJoinSettingsPanelOpen(open) {
   mergeJoinSettingsPanel.hidden = !open;
   mergeJoinSettingsToggle.classList.toggle('active', open);
   mergeJoinSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionMergeJoinSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(mergeJoinSettingsPanel);
+    positionMergeJoinSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionSplitTrimSettingsPanel() {
@@ -1685,25 +2135,16 @@ function setSplitTrimSettingsPanelOpen(open) {
   splitTrimSettingsPanel.hidden = !open;
   splitTrimSettingsToggle.classList.toggle('active', open);
   splitTrimSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionSplitTrimSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(splitTrimSettingsPanel);
+    positionSplitTrimSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function setSettingsPanelOwnerOpen(panel, open) {
   const owner = panel?.closest('.player-wrap, .current-cue-panel, .cues-container, .waveform-pane');
   owner?.classList.toggle('settings-panel-owner-open', open);
-}
-
-function positionSubtitlePreviewSettingsPanel() {
-  positionAnchoredSettingsPanel(subtitlePreviewSettingsPanel, subtitlePreviewSettingsToggle);
-}
-
-function setSubtitlePreviewSettingsPanelOpen(open) {
-  if (!subtitlePreviewSettingsPanel || !subtitlePreviewSettingsToggle) return;
-  subtitlePreviewSettingsPanel.hidden = !open;
-  setSettingsPanelOwnerOpen(subtitlePreviewSettingsPanel, open);
-  subtitlePreviewSettingsToggle.classList.toggle('active', open);
-  subtitlePreviewSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionSubtitlePreviewSettingsPanel();
 }
 
 function positionCueListSettingsPanel() {
@@ -1716,7 +2157,11 @@ function setCueListSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(cueListSettingsPanel, open);
   cueListSettingsToggle.classList.toggle('active', open);
   cueListSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionCueListSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(cueListSettingsPanel);
+    positionCueListSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionCueEditorSettingsPanel() {
@@ -1729,7 +2174,11 @@ function setCueEditorSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(cueEditorSettingsPanel, open);
   cueEditorSettingsToggle.classList.toggle('active', open);
   cueEditorSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionCueEditorSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(cueEditorSettingsPanel);
+    positionCueEditorSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function positionWaveformSettingsPanel() {
@@ -1742,7 +2191,11 @@ function setWaveformSettingsPanelOpen(open) {
   setSettingsPanelOwnerOpen(waveformSettingsPanel, open);
   waveformSettingsToggle.classList.toggle('active', open);
   waveformSettingsToggle.setAttribute('aria-expanded', String(open));
-  if (open) positionWaveformSettingsPanel();
+  if (open) {
+    bringFloatingSurfaceToFront(waveformSettingsPanel);
+    positionWaveformSettingsPanel();
+  }
+  syncFloatingSurfaceLayers();
 }
 
 function applyCueListDisplaySettings({ preserveCueListScroll = true } = {}) {
@@ -1810,6 +2263,8 @@ function updateMultiSubtitleUi() {
     // 提示与齿轮互斥：开启但无副轨 → 显示；其余隐藏。
     multiSubtitleEmptyHint.hidden = !(getMultiSubtitleState().enabled === true && !enabled);
   }
+  if (splitMultiSubtitleSettingsEnabledHint) splitMultiSubtitleSettingsEnabledHint.hidden = !enabled;
+  if (splitMultiSubtitleSettingsDisabledHint) splitMultiSubtitleSettingsDisabledHint.hidden = enabled;
   if (multiSubtitleToggle) {
     // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
     multiSubtitleToggle.checked = getMultiSubtitleState().enabled === true;
@@ -1865,6 +2320,7 @@ function updateMultiSubtitleUi() {
   if (multiSubtitleWaveformControls) multiSubtitleWaveformControls.hidden = !enabled;
   if (multiSubtitleAlignButton) multiSubtitleAlignButton.hidden = !enabled;
   if (extensionOverlayToggleWrap) extensionOverlayToggleWrap.hidden = !enabled;
+  if (extensionSubtitlePreviewTitle) extensionSubtitlePreviewTitle.hidden = !enabled;
   if (extensionSubtitlePreviewSettings) extensionSubtitlePreviewSettings.hidden = !enabled;
   if (extensionOverlayToggle) {
     if (enteringEnabled) updateEditorSettings({ extensionOverlayEnabled: true });
@@ -1873,6 +2329,19 @@ function updateMultiSubtitleUi() {
       : false;
   }
   previousMultiSubtitlePreviewEnabled = enabled;
+  // 「仅看超长」按单轨文本字数筛选；多重字幕开启后主/副两栏合并计数失去筛选意义，
+  // 隐藏入口（含前面的分隔线）。若筛选已激活则一并复位，避免残留不可见的过滤状态。
+  const filterOverButton = document.getElementById('filter-over');
+  if (filterOverButton) {
+    filterOverButton.hidden = enabled;
+    const filterOverSep = document.getElementById('filter-over-sep');
+    if (filterOverSep) filterOverSep.hidden = enabled;
+    if (enabled && filterOverButton.classList.contains('active')) {
+      filterOverButton.classList.remove('active');
+      clearTemporaryVisibleSplitCues();
+      applySearch(searchEl.value);
+    }
+  }
   container.classList.toggle('multi-subtitle-enabled', enabled);
   container.dataset.multiDisplayMode = enabled ? (getMultiSubtitleState().display_mode || 'both') : 'main';
 }
@@ -1958,6 +2427,7 @@ function refreshSplitKeyHelp() {
 document.addEventListener('mawe:languagechange', () => {
   refreshSplitKeyHelp();
   renderCurrentCuePanel();
+  refreshTimelineSettingsUi();
   refreshMediaSeekStepHelp();
   refreshMediaSeekControlLabels();
 });
@@ -1994,7 +2464,7 @@ function refreshMergeJoinModeHint() {
   // 用户觉得不对就自己点按钮换。
   const effective = hasPinned ? override : detected;
   const other = effective === 'continuous' ? 'word' : 'continuous';
-  mergeJoinModeText.textContent = `当前为「${splitModeLabel(effective)}」${splitModeExample(effective)}`;
+  mergeJoinModeText.textContent = `当前字幕为「${splitModeLabel(effective)}」${splitModeExample(effective)}`;
   // 按钮 title 给出目标类型的语言说明，帮助用户选择。
   mergeJoinModeSwitch.textContent = `切换为${splitModeLabel(other)}`;
   mergeJoinModeSwitch.title = other === 'word'
@@ -2023,6 +2493,10 @@ if (extensionOverlayToggle) extensionOverlayToggle.checked = false;
 exportStartAtZeroToggle.checked = EDITOR_SETTINGS.exportStartAtZero;
 if (selectGroupMembersToggle) selectGroupMembersToggle.checked = EDITOR_SETTINGS.selectGroupMembers;
 if (exportColorUnifiedToggle) exportColorUnifiedToggle.checked = EDITOR_SETTINGS.exportColorUnified;
+if (exportSpeakerLabelsToggle) exportSpeakerLabelsToggle.checked = EDITOR_SETTINGS.exportSpeakerLabels;
+if (exportSpeakerNamesAsSuffixToggle) {
+  exportSpeakerNamesAsSuffixToggle.checked = EDITOR_SETTINGS.exportSpeakerNamesAsSuffix;
+}
 if (autoSaveProjectToggle) autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
 if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.autoSaveIntervalSeconds);
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
@@ -2035,12 +2509,21 @@ if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = EDITOR_SETTINGS.jklPlay
 if (hoverSeekPreviewToggle) hoverSeekPreviewToggle.checked = EDITOR_SETTINGS.hoverSeekPreview;
 if (mediaSeekStepInput) mediaSeekStepInput.value = String(EDITOR_SETTINGS.mediaSeekStepMs);
 if (cueMoveStepInput) cueMoveStepInput.value = String(EDITOR_SETTINGS.cueMoveStepMs);
+if (timelineTimebaseSelect) timelineTimebaseSelect.value = projectTimebase().unit;
+if (timelineFpsInput) timelineFpsInput.value = String(projectTimebase().fps);
+if (timelineSnapToFrameToggle) timelineSnapToFrameToggle.checked = EDITOR_SETTINGS.timelineSnapToFrame;
+if (timelineTimecodeSeparatorInput) {
+  timelineTimecodeSeparatorInput.value = normalizeTimelineTimecodeSeparator(
+    EDITOR_SETTINGS.timelineTimecodeSeparator,
+  );
+}
 if (autoSnapAdjacentCuesToggle) {
   autoSnapAdjacentCuesToggle.checked = EDITOR_SETTINGS.autoSnapAdjacentCues;
 }
 if (cueEditorCancelOnEscapeToggle) {
   cueEditorCancelOnEscapeToggle.checked = EDITOR_SETTINGS.cueEditorCancelOnEscape;
 }
+refreshTimelineSettingsUi();
 refreshMediaSeekStepHelp();
 refreshMediaSeekInputStep();
 refreshMediaSeekControlLabels();
@@ -2134,7 +2617,29 @@ multiSubtitleAlignButton?.addEventListener('click', () => {
 });
 applySubtitleAppearance();
 applyExtensionSubtitleAppearance();
-editorSettingsToggle?.addEventListener('click', () => setEditorSettingsPanelOpen(editorSettingsPanel?.hidden));
+// 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
+editorSettingsTabs.forEach((tab) => {
+  tab.addEventListener('click', () => setEditorSettingsActiveTab(tab));
+  tab.addEventListener('keydown', (event) => {
+    // 方向键只在可见分区之间循环；隐藏分区（如不可用的「保存」）不参与导航。
+    const visibleTabs = editorSettingsTabs.filter((item) => !item.hidden);
+    const index = visibleTabs.indexOf(tab);
+    let next = -1;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      next = (index + 1) % visibleTabs.length;
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      next = (index - 1 + visibleTabs.length) % visibleTabs.length;
+    } else if (event.key === 'Home') {
+      next = 0;
+    } else if (event.key === 'End') {
+      next = visibleTabs.length - 1;
+    }
+    if (next < 0) return;
+    event.preventDefault();
+    setEditorSettingsActiveTab(visibleTabs[next], { focus: true });
+  });
+});
+editorSettingsClose?.addEventListener('click', () => setEditorSettingsPanelOpen(false));
 mergeJoinSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setMergeJoinSettingsPanelOpen(mergeJoinSettingsPanel?.hidden);
@@ -2142,10 +2647,6 @@ mergeJoinSettingsToggle?.addEventListener('click', (event) => {
 splitTrimSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   setSplitTrimSettingsPanelOpen(splitTrimSettingsPanel?.hidden);
-});
-subtitlePreviewSettingsToggle?.addEventListener('click', (event) => {
-  event.stopPropagation();
-  setSubtitlePreviewSettingsPanelOpen(subtitlePreviewSettingsPanel?.hidden);
 });
 cueListSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
@@ -2167,9 +2668,6 @@ document.addEventListener('pointerdown', (event) => {
       applySearch(searchEl.value);
     }
   }
-  if (!subtitlePreviewSettingsPanel?.hidden && !subtitlePreviewSettings?.contains(event.target)) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-  }
   if (!cueListSettingsPanel?.hidden && !cueListSettings?.contains(event.target)) {
     setCueListSettingsPanelOpen(false);
   }
@@ -2188,10 +2686,6 @@ document.addEventListener('pointerdown', (event) => {
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  if (!subtitlePreviewSettingsPanel?.hidden) {
-    setSubtitlePreviewSettingsPanelOpen(false);
-    subtitlePreviewSettingsToggle?.focus();
-  }
   if (!cueListSettingsPanel?.hidden) {
     setCueListSettingsPanelOpen(false);
     cueListSettingsToggle?.focus();
@@ -2217,17 +2711,12 @@ window.addEventListener('resize', positionMergeJoinSettingsPanel);
 window.addEventListener('scroll', positionMergeJoinSettingsPanel, true);
 window.addEventListener('resize', positionSplitTrimSettingsPanel);
 window.addEventListener('scroll', positionSplitTrimSettingsPanel, true);
-window.addEventListener('resize', positionSubtitlePreviewSettingsPanel);
-window.addEventListener('scroll', positionSubtitlePreviewSettingsPanel, true);
 window.addEventListener('resize', positionCueListSettingsPanel);
 window.addEventListener('scroll', positionCueListSettingsPanel, true);
 window.addEventListener('resize', positionWaveformSettingsPanel);
 window.addEventListener('scroll', positionWaveformSettingsPanel, true);
 window.addEventListener('resize', positionCueEditorSettingsPanel);
 window.addEventListener('scroll', positionCueEditorSettingsPanel, true);
-subtitlePreviewSettings?.closest('.player-toolbar')?.addEventListener(
-  'scroll', positionSubtitlePreviewSettingsPanel,
-);
 cueListSettings?.closest('.cue-list-toolbar')?.addEventListener(
   'scroll', positionCueListSettingsPanel,
 );
@@ -2255,11 +2744,26 @@ helpOpenWaveformSettingsButtons.forEach((button) => {
     waveformSettingsToggle?.focus();
   });
 });
+// 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
+function openEditorSettingsAtTab(tabId) {
+  setEditorSettingsPanelOpen(true);
+  setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
+}
+exportOpenSubtitleColorSettingsButton?.addEventListener('click', (event) => {
+  event.preventDefault();
+  openEditorSettingsAtTab('editor-settings-tab-subtitle-color');
+});
+splitMultiSubtitleSettingsLink?.addEventListener('click', (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!multiSubtitleVisible()) return;
+  multiSubtitleSettingsToggle?.click();
+  multiSubtitleSettingsToggle?.focus();
+});
 helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
-    setSubtitlePreviewSettingsPanelOpen(true);
-    subtitlePreviewSettingsToggle?.focus();
+    openEditorSettingsAtTab('editor-settings-tab-subtitle-preview');
   });
 });
 helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {
@@ -2271,30 +2775,12 @@ function visibleHelpTabButtons() {
   return helpTabButtons.filter((button) => !button.closest('[hidden]'));
 }
 
-function setHelpAdvancedTabsOpen(open, { focus = false } = {}) {
-  if (!helpAdvancedTabs || !helpAdvancedToggle) return;
-  const nextOpen = Boolean(open);
-  if (!nextOpen && helpAdvancedTabButtons.some((button) => button.getAttribute('aria-selected') === 'true')) {
-    selectHelpTab('basic');
-  }
-  helpAdvancedTabs.hidden = !nextOpen;
-  helpAdvancedToggle.setAttribute('aria-expanded', String(nextOpen));
-  helpAdvancedToggle.classList.toggle('is-active', nextOpen);
-  if (focus) {
-    const activeButton = helpAdvancedTabButtons.find((button) => button.getAttribute('aria-selected') === 'true');
-    (activeButton || helpAdvancedTabButtons[0])?.focus();
-  }
-}
-
 function selectHelpTab(tabName, { focus = false } = {}) {
   const activeButton = helpTabButtons.find((button) => button.dataset.helpTab === tabName);
   if (!activeButton) return;
-  if (helpAdvancedTabButtons.includes(activeButton) && helpAdvancedTabs?.hidden) {
-    setHelpAdvancedTabsOpen(true);
-  }
   helpTabButtons.forEach((button) => {
     const active = button === activeButton;
-    button.classList.toggle('is-active', active);
+    button.classList.toggle('active', active);
     button.setAttribute('aria-selected', String(active));
     button.tabIndex = active ? 0 : -1;
   });
@@ -2305,10 +2791,6 @@ function selectHelpTab(tabName, { focus = false } = {}) {
   });
   if (focus) activeButton.focus();
 }
-
-helpAdvancedToggle?.addEventListener('click', () => {
-  setHelpAdvancedTabsOpen(helpAdvancedTabs?.hidden === true);
-});
 
 helpTabButtons.forEach((button) => {
   button.addEventListener('click', () => selectHelpTab(button.dataset.helpTab));
@@ -2358,7 +2840,7 @@ function restoreHelpPanelSize() {
     saved = null;
   }
   if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
-  helpPanel.style.width = `${Math.min(Math.max(320, saved.width), window.innerWidth - 12)}px`;
+  helpPanel.style.width = `${Math.min(Math.max(400, saved.width), window.innerWidth - 12)}px`;
   helpPanel.style.height = `${Math.min(Math.max(240, saved.height), window.innerHeight - 12)}px`;
 }
 let helpPanelSizeSaveTimer = 0;
@@ -2381,32 +2863,116 @@ if (helpPanel) {
 }
 
 
-// 明暗主题：令牌全部定义在 CSS（:root 暗色 / [data-theme="light"] 亮色），
-// 这里只负责写 <html data-theme>、持久化、同步按钮，以及通知波形重绘画布。
-// 按钮显示的是「目标主题」（与相邻 🌐 语言按钮同一约定）：暗色时显示 🌖（点击转亮）。
-// title 用中文源串，英文界面由 i18n 的属性 MutationObserver 自动翻译。
-function refreshThemeToggle(theme) {
-  if (!themeToggle) return;
-  const toLight = theme !== 'light';
-  themeToggle.textContent = toLight ? '🌖' : '🌘';
-  const title = toLight ? '切换到亮色主题' : '切换到暗色主题';
-  themeToggle.title = title;
-  themeToggle.setAttribute('aria-label', title);
+// 明暗主题与界面强调色：令牌全部定义在 CSS，
+// 这里只负责解析偏好、写 <html> 数据属性、持久化，以及通知波形重绘画布。
+const EDITOR_THEME_VALUES = Object.freeze(['light', 'dark', 'system']);
+const EDITOR_ACCENT_COLOR_DEBOUNCE_MS = 160;
+function normalizeEditorTheme(theme) {
+  return EDITOR_THEME_VALUES.includes(theme) ? theme : 'dark';
+}
+function resolveEditorTheme(theme) {
+  const preference = normalizeEditorTheme(theme);
+  if (preference !== 'system') return preference;
+  const media = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  return media ? (media.matches ? 'dark' : 'light') : 'dark';
+}
+function refreshEditorThemeOptions(theme) {
+  const preference = normalizeEditorTheme(theme);
+  editorThemeOptions.forEach((option) => {
+    const active = option.dataset.editorTheme === preference;
+    option.classList.toggle('active', active);
+    option.setAttribute('aria-pressed', String(active));
+  });
+}
+function refreshEditorAccentOptions(accentColor) {
+  const preference = normalizeEditorAccentColor(accentColor);
+  editorAccentOptions.forEach((option) => {
+    const active = option.dataset.editorAccent === preference;
+    option.classList.toggle('active', active);
+    option.setAttribute('aria-pressed', String(active));
+  });
+}
+function applyEditorAccentColor(accentColor, { rerenderWaveform = true } = {}) {
+  const preference = normalizeEditorAccentColor(accentColor);
+  const customColor = normalizeEditorAccentCustomColor(EDITOR_SETTINGS.accentColorCustom);
+  const root = document.documentElement;
+  root.dataset.accent = preference;
+  if (preference === 'custom') root.style.setProperty('--accent-custom', customColor);
+  else root.style.removeProperty('--accent-custom');
+  refreshEditorAccentOptions(preference);
+  if (editorAccentCustomField) editorAccentCustomField.hidden = preference !== 'custom';
+  if (editorAccentCustomInput) editorAccentCustomInput.value = customColor;
+  if (editorAccentCustomValue) editorAccentCustomValue.textContent = customColor;
+  // 波形画布颜色是 JS 读取的令牌快照，强调色切换后同样需要重绘。
+  if (rerenderWaveform && waveformEditor) waveformEditor.render();
+}
+let editorAccentCustomColorTimer = 0;
+let pendingEditorAccentCustomColor = null;
+function flushEditorAccentCustomColor(value = editorAccentCustomInput?.value) {
+  if (editorAccentCustomColorTimer) {
+    window.clearTimeout(editorAccentCustomColorTimer);
+    editorAccentCustomColorTimer = 0;
+  }
+  const customColor = normalizeEditorAccentCustomColor(value);
+  pendingEditorAccentCustomColor = null;
+  updateEditorSettings({ accentColor: 'custom', accentColorCustom: customColor });
+  applyEditorAccentColor('custom');
+}
+function scheduleEditorAccentCustomColor(value) {
+  pendingEditorAccentCustomColor = normalizeEditorAccentCustomColor(value);
+  if (editorAccentCustomColorTimer) window.clearTimeout(editorAccentCustomColorTimer);
+  editorAccentCustomColorTimer = window.setTimeout(() => {
+    editorAccentCustomColorTimer = 0;
+    const customColor = pendingEditorAccentCustomColor;
+    pendingEditorAccentCustomColor = null;
+    if (customColor) flushEditorAccentCustomColor(customColor);
+  }, EDITOR_ACCENT_COLOR_DEBOUNCE_MS);
 }
 function applyTheme(theme, { rerenderWaveform = true } = {}) {
-  const next = theme === 'light' ? 'light' : 'dark';
-  if (next === 'light') document.documentElement.dataset.theme = 'light';
+  const preference = normalizeEditorTheme(theme);
+  const resolved = resolveEditorTheme(preference);
+  if (resolved === 'light') document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;
-  refreshThemeToggle(next);
+  refreshEditorThemeOptions(preference);
   // 画布颜色是 JS 读取的令牌快照，必须全量重绘才能跟随主题
   if (rerenderWaveform && waveformEditor) waveformEditor.render();
 }
+applyEditorAccentColor(EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
 applyTheme(EDITOR_SETTINGS.theme, { rerenderWaveform: false });
-themeToggle?.addEventListener('click', () => {
-  const next = EDITOR_SETTINGS.theme === 'light' ? 'dark' : 'light';
-  updateEditorSettings({ theme: next });
-  applyTheme(next);
+editorThemeOptions.forEach((option) => {
+  option.addEventListener('click', () => {
+    const next = normalizeEditorTheme(option.dataset.editorTheme);
+    updateEditorSettings({ theme: next });
+    applyTheme(next);
+  });
 });
+editorAccentOptions.forEach((option) => {
+  option.addEventListener('click', () => {
+    if (pendingEditorAccentCustomColor !== null) flushEditorAccentCustomColor();
+    const next = normalizeEditorAccentColor(option.dataset.editorAccent);
+    updateEditorSettings({ accentColor: next });
+    applyEditorAccentColor(next);
+  });
+});
+editorAccentCustomInput?.addEventListener('input', () => {
+  const customColor = normalizeEditorAccentCustomColor(editorAccentCustomInput.value);
+  if (editorAccentCustomValue) editorAccentCustomValue.textContent = customColor;
+  scheduleEditorAccentCustomColor(customColor);
+});
+editorAccentCustomInput?.addEventListener('change', () => {
+  flushEditorAccentCustomColor(editorAccentCustomInput.value);
+});
+const editorSystemThemeMedia = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+const refreshEditorSystemTheme = () => {
+  if (EDITOR_SETTINGS.theme === 'system') applyTheme('system');
+};
+if (editorSystemThemeMedia?.addEventListener) {
+  editorSystemThemeMedia.addEventListener('change', refreshEditorSystemTheme);
+} else {
+  editorSystemThemeMedia?.addListener?.(refreshEditorSystemTheme);
+}
 splitKeySel.addEventListener('change', () => {
   updateEditorSettings({ splitKey: splitKeySel.value });
   refreshSplitKeyHelp();
@@ -2608,6 +3174,12 @@ selectGroupMembersToggle?.addEventListener('change', () => {
 exportColorUnifiedToggle?.addEventListener('change', () => {
   updateEditorSettings({ exportColorUnified: exportColorUnifiedToggle.checked });
 });
+exportSpeakerLabelsToggle?.addEventListener('change', () => {
+  updateEditorSettings({ exportSpeakerLabels: exportSpeakerLabelsToggle.checked });
+});
+exportSpeakerNamesAsSuffixToggle?.addEventListener('change', () => {
+  updateEditorSettings({ exportSpeakerNamesAsSuffix: exportSpeakerNamesAsSuffixToggle.checked });
+});
 clickBehaviorSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickBehavior: normalizeClickBehavior(clickBehaviorSelect.value) });
   refreshClickBehaviorHint();
@@ -2633,15 +3205,204 @@ jklPlaybackModeSelect?.addEventListener('change', () => {
 hoverSeekPreviewToggle?.addEventListener('change', () => {
   updateEditorSettings({ hoverSeekPreview: hoverSeekPreviewToggle.checked });
 });
-function refreshMediaSeekInputStep(value = EDITOR_SETTINGS.mediaSeekStepMs) {
-  if (mediaSeekStepInput) mediaSeekStepInput.step = String(mediaSeekStepForValue(value));
+function timelineMediaSeekStepValue() {
+  return timelineIsFrameMode()
+    ? EDITOR_SETTINGS.mediaSeekStepFrames : EDITOR_SETTINGS.mediaSeekStepMs;
+}
+
+function timelineCueMoveStepValue() {
+  return timelineIsFrameMode()
+    ? EDITOR_SETTINGS.cueMoveStepFrames : EDITOR_SETTINGS.cueMoveStepMs;
+}
+
+function timelineValueToMilliseconds(value) {
+  const timebase = projectTimebase();
+  return timebase.unit === 'frames'
+    ? millisecondsFromFrameNumber(value, timebase.fps) : Number(value);
+}
+
+function timelineFrameAlignedMilliseconds(valueMs) {
+  const numeric = Number(valueMs);
+  if (!Number.isFinite(numeric) || !timelineIsFrameMode()) return numeric;
+  const timebase = projectTimebase();
+  return millisecondsFromFrameNumber(
+    frameNumberFromMilliseconds(numeric, timebase.fps),
+    timebase.fps,
+  );
+}
+
+function timelineUiText(zh, en) {
+  return window.MAWE_I18N?.language === 'en' ? en : zh;
+}
+
+function timelineMediaSeekStepMilliseconds() {
+  return timelineValueToMilliseconds(timelineMediaSeekStepValue());
+}
+
+function timelineHasSubtitleData() {
+  return (Array.isArray(DATA?.segments) && DATA.segments.length > 0)
+    || (Array.isArray(DATA?.multi_subtitle?.tracks)
+      && DATA.multi_subtitle.tracks.some((track) => Array.isArray(track?.segments)
+        && track.segments.length > 0));
+}
+
+function confirmTimelineFrameRemap(current, nextUnit, nextFps) {
+  const enteringFrames = current.unit !== 'frames' && nextUnit === 'frames';
+  const changingFrameRate = current.unit === 'frames' && current.fps !== nextFps;
+  if ((!enteringFrames && !changingFrameRate) || !timelineHasSubtitleData()) return true;
+  const message = enteringFrames
+    ? timelineUiText(
+      `切换到帧时间基准（${nextFps} FPS）会批量将当前工程的所有字幕段、字词和副字幕时间映射到最近帧，并重写毫秒兼容值。原始的非帧对齐毫秒值无法在切回毫秒时恢复。是否继续？`,
+      `Switching to the frame timebase (${nextFps} FPS) will remap all subtitle segments, word timings, and secondary subtitle timings to frame boundaries and rewrite the compatible millisecond values. Original non-frame-aligned millisecond values cannot be restored when switching back. Continue?`,
+    )
+    : timelineUiText(
+      `将 FPS 从 ${current.fps} 改为 ${nextFps} 会批量重新映射当前工程的所有字幕段、字词和副字幕时间，并重写毫秒兼容值。原始的非帧对齐毫秒值无法恢复。是否继续？`,
+      `Changing FPS from ${current.fps} to ${nextFps} will remap all subtitle segments, word timings, and secondary subtitle timings and rewrite the compatible millisecond values. Original non-frame-aligned millisecond values cannot be restored. Continue?`,
+    );
+  return window.confirm(message);
+}
+
+function refreshTimelineSettingsUi() {
+  const timebase = projectTimebase();
+  const frameMode = timebase.unit === 'frames';
+  const separator = normalizeTimelineTimecodeSeparator(EDITOR_SETTINGS.timelineTimecodeSeparator);
+  if (timelineTimebaseSelect) timelineTimebaseSelect.value = timebase.unit;
+  if (timelineFpsInput) timelineFpsInput.value = String(timebase.fps);
+  if (timelineSnapToFrameToggle) {
+    timelineSnapToFrameToggle.checked = frameMode && EDITOR_SETTINGS.timelineSnapToFrame;
+    timelineSnapToFrameToggle.disabled = !frameMode;
+  }
+  if (timelineTimecodeSeparatorInput) timelineTimecodeSeparatorInput.value = separator;
+  if (mediaSeekStepInput) {
+    mediaSeekStepInput.min = frameMode ? '1' : String(MEDIA_SEEK_STEP_MIN_MS);
+    mediaSeekStepInput.max = frameMode ? '240' : String(MEDIA_SEEK_STEP_MAX_MS);
+    mediaSeekStepInput.step = frameMode ? '1' : String(mediaSeekStepForValue(EDITOR_SETTINGS.mediaSeekStepMs));
+    mediaSeekStepInput.value = String(timelineMediaSeekStepValue());
+  }
+  if (cueMoveStepInput) {
+    cueMoveStepInput.min = frameMode ? '1' : String(CUE_MOVE_STEP_MIN_MS);
+    cueMoveStepInput.max = frameMode ? '240' : String(CUE_MOVE_STEP_MAX_MS);
+    cueMoveStepInput.step = frameMode ? '1' : '10';
+    cueMoveStepInput.value = String(timelineCueMoveStepValue());
+  }
+  if (mediaSeekStepUnit) mediaSeekStepUnit.textContent = frameMode ? 'F' : 'ms';
+  if (cueMoveStepUnit) cueMoveStepUnit.textContent = frameMode ? 'F' : 'ms';
+  if (mediaSeekStepHint) {
+    mediaSeekStepHint.textContent = frameMode
+      ? timelineUiText(
+        `控制按钮和左右方向键的每次跳转帧数（当前 FPS：${timebase.fps}）。`,
+        `Number of frames jumped by the controls and left/right arrow keys (current FPS: ${timebase.fps}).`,
+      )
+      : timelineUiText(
+        '控制按钮和左右方向键的每次跳转时长（单位：ms）。',
+        'Duration for each jump from the controls and left/right arrow keys (unit: ms).',
+      );
+  }
+  if (cueMoveStepHint) {
+    cueMoveStepHint.textContent = frameMode
+      ? timelineUiText(
+        '方向键和按住字幕块/边界时按帧微调；具体用法详见帮助的「微调字幕」区。',
+        'Arrow keys and A/D fine-tune frame by frame while holding a cue/block or boundary; see the “Subtitle fine-tuning” section in Help for details.',
+      )
+      : timelineUiText(
+        '具体用法详见帮助的「微调字幕」区。',
+        'See the “Subtitle fine-tuning” section in Help for details.',
+      );
+  }
+  if (timelineTimebaseHint) {
+    timelineTimebaseHint.textContent = frameMode
+      ? timelineUiText(
+        `帧模式使用 HH:MM:SS${separator}FF 显示，FF 为当前秒内的帧号；当前 FPS：${timebase.fps}。`,
+        `Frame mode uses HH:MM:SS${separator}FF, where FF is the frame number within the current second; current FPS: ${timebase.fps}.`,
+      )
+      : timelineUiText(
+        '毫秒模式保持原有时间编辑方式。切换为帧模式后，拖动、方向键和 A/D 微调都会按帧执行。',
+        'Millisecond mode keeps the existing timing behavior. Switching to frame mode makes dragging, arrow keys, and A/D fine-tuning operate frame by frame.',
+      );
+  }
+  if (timelineSnapToFrameHint) {
+    timelineSnapToFrameHint.textContent = frameMode
+      ? timelineUiText(
+        '启用后，波形鼠标指针会吸附到最近的帧位置。',
+        'When enabled, the waveform pointer snaps to the nearest frame.',
+      )
+      : timelineUiText(
+        '仅帧模式生效；切换到帧模式后可启用。',
+        'Only active in frame mode; switch to frame mode to enable it.',
+      );
+  }
+  if (timelineTimecodeSeparatorHint) {
+    timelineTimecodeSeparatorHint.textContent = timelineUiText(
+      `帧时间码示例：HH:MM:SS${separator}FF；只替换秒与帧之间的分隔符。`,
+      `Frame timecode example: HH:MM:SS${separator}FF; only the separator between seconds and frames changes.`,
+    );
+  }
+  mediaSeekInputLastValue = timelineMediaSeekStepValue();
+  refreshMediaSeekStepHelp();
+  refreshMediaSeekControlLabels();
+}
+
+function setTimelineTimebase(patch = {}) {
+  const current = projectTimebase();
+  const nextUnit = patch.unit === 'frames' || patch.unit === 'milliseconds'
+    ? patch.unit : current.unit;
+  const hasFpsPatch = Object.prototype.hasOwnProperty.call(patch, 'fps');
+  const mediaDefaultFps = !timelineFpsManuallySet
+    && !hasFpsPatch
+    && current.unit !== 'frames'
+    && nextUnit === 'frames'
+    ? projectMediaVideoFps()
+    : null;
+  const nextFps = mediaDefaultFps ?? normalizeTimelineFps(patch.fps, current.fps);
+  if (current.unit === nextUnit && current.fps === nextFps) {
+    if (hasFpsPatch) timelineFpsManuallySet = true;
+    refreshTimelineSettingsUi();
+    return;
+  }
+  if (!confirmTimelineFrameRemap(current, nextUnit, nextFps)) {
+    refreshTimelineSettingsUi();
+    return;
+  }
+  if (hasFpsPatch) timelineFpsManuallySet = true;
+  // 先按旧时间基准把当前工程的双份时间值同步，再决定新 FPS 下是否保留帧号。
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: current.unit === 'frames' });
+  DATA.timebase = { unit: nextUnit, fps: nextFps };
+  // 变更 FPS 时保持媒体中的实际时间位置，再按新 FPS 重算独立帧字段；
+  // 否则同一个帧号会因 FPS 改变而把字幕整体提前或推后。
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
+  projectImportDirty = true;
+  refreshTimelineSettingsUi();
+  renderAll({ waveform: 'full' });
+  scheduleAutoSaveFlush();
+  const description = nextUnit === 'frames'
+    ? timelineUiText(`已切换到帧时间基准（${nextFps} FPS）`, `Switched to frame timebase (${nextFps} FPS)`)
+    : timelineUiText('已切换到毫秒时间基准', 'Switched to millisecond timebase');
+  flashHint(description, 'success');
+}
+
+function refreshMediaSeekInputStep(value = timelineMediaSeekStepValue()) {
+  if (!mediaSeekStepInput) return;
+  if (timelineIsFrameMode()) {
+    mediaSeekStepInput.min = '1';
+    mediaSeekStepInput.max = '240';
+    mediaSeekStepInput.step = '1';
+  } else {
+    mediaSeekStepInput.min = String(MEDIA_SEEK_STEP_MIN_MS);
+    mediaSeekStepInput.max = String(MEDIA_SEEK_STEP_MAX_MS);
+    mediaSeekStepInput.step = String(mediaSeekStepForValue(value));
+  }
 }
 
 function commitMediaSeekStepInput(value, { rewriteInput = true } = {}) {
-  const normalized = clampMediaSeekStepMs(value);
+  const frameMode = timelineIsFrameMode();
+  const normalized = frameMode
+    ? EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(value, 1)
+    : clampMediaSeekStepMs(value);
   if (rewriteInput && mediaSeekStepInput) mediaSeekStepInput.value = String(normalized);
   mediaSeekInputLastValue = normalized;
-  updateEditorSettings({ mediaSeekStepMs: normalized });
+  updateEditorSettings(frameMode
+    ? { mediaSeekStepFrames: normalized }
+    : { mediaSeekStepMs: normalized });
   refreshMediaSeekInputStep(normalized);
   refreshMediaSeekStepHelp();
   refreshMediaSeekControlLabels();
@@ -2649,6 +3410,11 @@ function commitMediaSeekStepInput(value, { rewriteInput = true } = {}) {
 
 function adjustMediaSeekStepInput(direction) {
   if (!mediaSeekStepInput) return;
+  if (timelineIsFrameMode()) {
+    const current = EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(mediaSeekStepInput.value, 1);
+    commitMediaSeekStepInput(Math.min(240, Math.max(1, current + (direction < 0 ? -1 : 1))));
+    return;
+  }
   const current = clampMediaSeekStepMs(mediaSeekStepInput.value);
   commitMediaSeekStepInput(nextMediaSeekStepValue(current, direction));
 }
@@ -2669,6 +3435,10 @@ mediaSeekStepInput?.addEventListener('wheel', (event) => {
 mediaSeekStepInput?.addEventListener('input', () => {
   const raw = mediaSeekStepInput.value.trim();
   if (!raw) return;
+  if (timelineIsFrameMode()) {
+    commitMediaSeekStepInput(raw, { rewriteInput: false });
+    return;
+  }
   const value = normalizeNativeMediaSeekStepValue(raw, mediaSeekInputLastValue);
   if (value === null) return;
   commitMediaSeekStepInput(value, { rewriteInput: value !== Number(raw) });
@@ -2677,9 +3447,32 @@ mediaSeekStepInput?.addEventListener('change', () => {
   commitMediaSeekStepInput(mediaSeekStepInput.value);
 });
 cueMoveStepInput?.addEventListener('change', () => {
-  const value = clampCueMoveStepMs(cueMoveStepInput.value);
+  const frameMode = timelineIsFrameMode();
+  const value = frameMode
+    ? EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(cueMoveStepInput.value, 1)
+    : clampCueMoveStepMs(cueMoveStepInput.value);
   cueMoveStepInput.value = String(value);
-  updateEditorSettings({ cueMoveStepMs: value });
+  updateEditorSettings(frameMode ? { cueMoveStepFrames: value } : { cueMoveStepMs: value });
+});
+timelineTimebaseSelect?.addEventListener('change', () => {
+  setTimelineTimebase({ unit: timelineTimebaseSelect.value });
+});
+timelineFpsInput?.addEventListener('change', () => {
+  setTimelineTimebase({ fps: timelineFpsInput.value });
+});
+timelineSnapToFrameToggle?.addEventListener('change', () => {
+  updateEditorSettings({ timelineSnapToFrame: timelineSnapToFrameToggle.checked });
+  waveformEditor?.refreshPointerLine?.();
+});
+timelineTimecodeSeparatorInput?.addEventListener('change', () => {
+  const separator = normalizeTimelineTimecodeSeparator(timelineTimecodeSeparatorInput.value);
+  timelineTimecodeSeparatorInput.value = separator;
+  updateEditorSettings({ timelineTimecodeSeparator: separator });
+  refreshTimelineSettingsUi();
+  waveformEditor?.refreshPointerLine?.();
+  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，
+  // 不必等到下一次字幕编辑操作才看到新格式。
+  renderAll({ waveform: 'none' });
 });
 autoSnapAdjacentCuesToggle?.addEventListener('change', () => {
   updateEditorSettings({ autoSnapAdjacentCues: autoSnapAdjacentCuesToggle.checked });
@@ -2758,6 +3551,79 @@ subtitleColorInput?.addEventListener('change', () => {
 subtitleColorUnderlineInput?.addEventListener('change', () => {
   pushPreviewUndo('切换预览字幕颜色下划线', snapshotPreviewState());
   setSubtitleAppearance({ color_underline: subtitleColorUnderlineInput.checked });
+  update();
+});
+subtitleColorStyleSelect?.addEventListener('change', () => {
+  pushPreviewUndo('调整预览字幕颜色样式', snapshotPreviewState());
+  setSubtitleAppearance({ color_style: subtitleColorStyleSelect.value });
+  update();
+});
+const speakerLabelUndoColors = new Set();
+let speakerLabelSeparatorUndo = false;
+function applySpeakerLabelInput(color, { finalize = false } = {}) {
+  const input = subtitleSpeakerLabelInputs[color];
+  if (!input) return;
+  if (!speakerLabelUndoColors.has(color)) {
+    pushPreviewUndo('重命名说话人', snapshotPreviewState());
+    speakerLabelUndoColors.add(color);
+  }
+  const current = getSpeakerLabelSettings();
+  setSpeakerLabelSettings({
+    ...current,
+    names: { ...current.names, [color]: input.value },
+  });
+  if (finalize) {
+    speakerLabelUndoColors.delete(color);
+    input.value = getSpeakerLabelSettings().names[color] || '';
+  }
+  update();
+}
+Object.entries(subtitleSpeakerLabelInputs).forEach(([color, input]) => {
+  input?.addEventListener('input', () => applySpeakerLabelInput(color));
+  input?.addEventListener('change', () => applySpeakerLabelInput(color, { finalize: true }));
+});
+function applySpeakerLabelSeparatorInput({ finalize = false } = {}) {
+  const input = subtitleSpeakerLabelSeparatorInput;
+  if (!input) return;
+  if (!speakerLabelSeparatorUndo) {
+    pushPreviewUndo('调整说话人分隔符', snapshotPreviewState());
+    speakerLabelSeparatorUndo = true;
+  }
+  const current = getSpeakerLabelSettings();
+  setSpeakerLabelSettings({ ...current, separator: input.value });
+  if (finalize) {
+    speakerLabelSeparatorUndo = false;
+    input.value = getSpeakerLabelSettings().separator;
+  }
+  update();
+}
+subtitleSpeakerLabelSeparatorInput?.addEventListener('input', () => applySpeakerLabelSeparatorInput());
+subtitleSpeakerLabelSeparatorInput?.addEventListener(
+  'change',
+  () => applySpeakerLabelSeparatorInput({ finalize: true }),
+);
+subtitleSpeakerMappingEnabledInput?.addEventListener('change', () => {
+  const previous = snapshotPreviewState();
+  previous.speakerLabels.mapping_enabled = !subtitleSpeakerMappingEnabledInput.checked;
+  pushPreviewUndo('切换颜色说话人映射', previous);
+  setSpeakerLabelSettings({
+    ...getSpeakerLabelSettings(),
+    mapping_enabled: subtitleSpeakerMappingEnabledInput.checked,
+  });
+  update();
+});
+subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
+  const previous = snapshotPreviewState();
+  previous.speakerLabels.enabled = !subtitleSpeakerLabelsEnabledInput.checked;
+  pushPreviewUndo('切换说话人名称预览', previous);
+  setSpeakerLabelSettings({
+    ...getSpeakerLabelSettings(),
+    enabled: subtitleSpeakerLabelsEnabledInput.checked,
+  });
+  // 显示开关改变时同步 SRT 附加选项；导出开关仍可在全局设置中独立调整。
+  const speakerLabelsEnabled = subtitleSpeakerLabelsEnabledInput.checked;
+  updateEditorSettings({ exportSpeakerLabels: speakerLabelsEnabled });
+  if (exportSpeakerLabelsToggle) exportSpeakerLabelsToggle.checked = speakerLabelsEnabled;
   update();
 });
 extensionSubtitleFontSizeSelect?.addEventListener('change', () => {
@@ -3240,6 +4106,34 @@ function addGapAtWaveformTime(timeMs) {
   return true;
 }
 
+function fillGapRangeAtWaveformTime(timeMs) {
+  const gaps = getGapRemoveGaps();
+  if (!gaps.some((gap) => gap.removed !== false)) {
+    flashHint('当前没有已激活的空隙，无法填充区间空隙', 'invalid');
+    return false;
+  }
+  const range = window.AsrEditorUtils.resolveGapFillRange(gaps, timeMs, gapRemoveMediaDurationMs());
+  if (!range) {
+    flashHint('媒体时长尚不可用；请先加载媒体后再填充区间空隙', 'invalid');
+    return false;
+  }
+  const state = getGapRemoveData(true);
+  const sourceGaps = window.AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
+  const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, range.start, range.end, true);
+  if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
+    flashHint('该位置已经是已移除的空隙', 'invalid');
+    return false;
+  }
+  pushGapRemoveUndo('填充区间空隙');
+  state.detector = 'audio_gate';
+  commitManualGapRemoveChange(
+    state,
+    [{ start: range.start, end: range.end, removed: true }],
+  );
+  flashHint(`已填充并合并为 ${formatGapRemoveTotal(range.end - range.start)} 静音空隙`, 'success');
+  return true;
+}
+
 function translateManualGap(index, deltaMs, mode = 'move') {
   const state = getGapRemoveData(false);
   if (!state) return false;
@@ -3322,6 +4216,7 @@ function clearAllGaps() {
 // 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
 function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen }) {
   if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false };
+  bindFloatingSurfaceActivation(panel);
   let drag = null;
 
   function isOpen() { return panel.classList.contains('show'); }
@@ -3381,6 +4276,7 @@ function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, po
     if (typeof onOpen === 'function') onOpen();
     panel.classList.add('show');
     panel.setAttribute('aria-hidden', 'false');
+    bringFloatingSurfaceToFront(panel);
     manageButton?.classList.add('active');
     manageButton?.setAttribute('aria-expanded', 'true');
     requestAnimationFrame(() => {
@@ -3394,6 +4290,7 @@ function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, po
     drag = null;
     manageButton?.classList.remove('active');
     manageButton?.setAttribute('aria-expanded', 'false');
+    syncFloatingSurfaceLayers();
   }
 
   function toggle() { if (isOpen()) close(); else open(); }
@@ -3551,6 +4448,7 @@ function closeGapRemovePanel() {
   gapRemovePanelDrag = null;
   gapRemoveManageButton?.classList.remove('active');
   gapRemoveManageButton?.setAttribute('aria-expanded', 'false');
+  syncFloatingSurfaceLayers();
 }
 
 function openGapRemovePanel() {
@@ -3575,6 +4473,7 @@ function openGapRemovePanel() {
   renderGapRemoveList();
   gapRemovePanel.classList.add('show');
   gapRemovePanel.setAttribute('aria-hidden', 'false');
+  bringFloatingSurfaceToFront(gapRemovePanel);
   gapRemoveManageButton?.classList.add('active');
   gapRemoveManageButton?.setAttribute('aria-expanded', 'true');
   requestAnimationFrame(restoreGapRemovePanelPosition);
@@ -4262,6 +5161,9 @@ function alignSelectedExtensionSubtitleRanges() {
 
 // === 渲染 ===
 function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) {
+  // 其它编辑入口仍以毫秒修改工程对象；在重绘前把它们投影回当前时间基准，
+  // 保证帧模式下保存的数据和下一次帧操作保持一致。
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   invalidateCueListVisualAnchorRestore();
   const cueListAnchor = preserveCueListScroll ? captureCueListRenderAnchor() : null;
   stickerOverlayDataVersion += 1;
@@ -4329,6 +5231,19 @@ function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) 
 function parsePanelTime(value, fallback) {
   const raw = String(value || '').trim();
   if (!raw) return fallback;
+  const timebase = projectTimebase();
+  if (timebase.unit === 'frames') {
+    const timecodeFrames = parseFrameTimecode(
+      raw,
+      timebase.fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    );
+    if (timecodeFrames !== null) return millisecondsFromFrameNumber(timecodeFrames, timebase.fps);
+    if (/^\d+(?:\.\d+)?\s*F?$/iu.test(raw)) {
+      return millisecondsFromFrameNumber(Number.parseFloat(raw), timebase.fps);
+    }
+    return fallback;
+  }
   if (/^\d+(?:\.\d+)?$/.test(raw)) return Math.round(Number(raw) * 1000);
   const parts = raw.split(':').map(Number);
   if (parts.some((part) => !Number.isFinite(part))) return fallback;
@@ -4438,19 +5353,23 @@ function commitCuePanelEdit() {
   const nextText = cuePanelText.value.replace(/\r\n?/g, '\n');
   const oldStart = seg.start;
   const oldEnd = seg.end;
+  const minimumDurationMs = timelineMinimumDurationMs();
   const requestedStart = parsePanelTime(cuePanelStart.value, oldStart);
-  const requestedDuration = Math.max(100, parsePanelTime(cuePanelDuration.value, oldEnd - oldStart));
+  const requestedDuration = Math.max(
+    minimumDurationMs,
+    parsePanelTime(cuePanelDuration.value, oldEnd - oldStart),
+  );
   const previousEnd = idx > 0 ? segments[idx - 1].end : 0;
   const nextStart = idx + 1 < segments.length ? segments[idx + 1].start : (waveformEditor?.durationMs || oldEnd);
-  if (nextStart - previousEnd < 100) {
+  if (nextStart - previousEnd < minimumDurationMs) {
     flashHint('相邻字幕之间不足 100ms，无法调整当前字幕', 'warning');
     renderCurrentCuePanel();
     resetCuePanelEditState();
     return false;
   }
-  const newStart = Math.max(previousEnd, Math.min(requestedStart, nextStart - 100));
+  const newStart = Math.max(previousEnd, Math.min(requestedStart, nextStart - minimumDurationMs));
   const newEnd = Math.min(nextStart, newStart + requestedDuration);
-  if (newEnd - newStart < 100) {
+  if (newEnd - newStart < minimumDurationMs) {
     flashHint('字幕时长不能小于 100ms', 'warning');
     renderCurrentCuePanel();
     resetCuePanelEditState();
@@ -4464,16 +5383,16 @@ function commitCuePanelEdit() {
   ensureCuePanelUndo();
   seg.text = nextText;
   seg.start = newStart;
-  seg.end = Math.max(newStart + 100, newEnd);
+  seg.end = Math.max(newStart + minimumDurationMs, newEnd);
   if (seg.end > nextStart) {
     seg.end = nextStart;
-    seg.start = Math.max(previousEnd, seg.end - 100);
+    seg.start = Math.max(previousEnd, seg.end - minimumDurationMs);
   }
   if (target.kind === 'main') {
     seg.items = remapPanelItems(seg.items, oldStart, oldEnd, seg.start, seg.end);
   }
   seg._dirty = true;
-  const timingChanged = newStart !== oldStart || newEnd !== oldEnd;
+  const timingChanged = seg.start !== oldStart || seg.end !== oldEnd;
   if (target.kind === 'main') {
     if (timingChanged) {
       const syncPatch = { oldStart, oldEnd, mode: 'range' };
@@ -4540,7 +5459,13 @@ function renderCurrentCuePanel() {
   }
   if (document.activeElement !== cuePanelText || !cuePanelUndoPushed) cuePanelText.value = seg.text || '';
   cuePanelStart.value = fmtShort(seg.start);
-  cuePanelDuration.value = ((seg.end - seg.start) / 1000).toFixed(3);
+  cuePanelDuration.value = timelineIsFrameMode()
+    ? formatTimelineTimecode(
+      seg.end - seg.start,
+      projectTimebase().fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    )
+    : ((seg.end - seg.start) / 1000).toFixed(3);
   const splitMode = target.kind === 'extension'
     ? getExtensionSubtitleSplitMode(target.track, seg)
     : getMainSubtitleSplitMode(seg);
@@ -5032,6 +5957,13 @@ function buildDualCueEl(mainIndex, extensionIndex, track) {
 }
 
 function fmtShort(ms) {
+  if (timelineIsFrameMode()) {
+    return formatTimelineTimecode(
+      ms,
+      projectTimebase().fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    );
+  }
   const s = ms / 1000;
   const m = Math.floor(s / 60);
   return `${String(m).padStart(2,'0')}:${(s - m * 60).toFixed(3).padStart(6,'0')}`;
@@ -5268,7 +6200,7 @@ function renderColorFilterMenu() {
   });
   const selectFilteredBtn = document.createElement('button');
   selectFilteredBtn.type = 'button';
-  selectFilteredBtn.className = 'dropdown-item color-filter-clear';
+  selectFilteredBtn.className = 'dropdown-item color-filter-select-all';
   selectFilteredBtn.textContent = '全选过滤结果';
   selectFilteredBtn.hidden = !colorFilterSelection;
   selectFilteredBtn.addEventListener('click', () => selectAllFilteredCues());
@@ -7484,6 +8416,9 @@ function flashSplitFeedback({ index, track = 'main', splitMs, feedbackPoint = nu
 function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const el = container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!el) return false;
+  if (Number.isFinite(waveformTimeMs)) {
+    waveformTimeMs = timelineFrameAlignedMilliseconds(waveformTimeMs);
+  }
   // 从非编辑态按 B / 右键拆分时，startEdit() 可能让当前行先发生一次布局
   // 变化；锚点必须取自用户按键前看到的位置，而不是临时编辑态的位置。
   const cueListAnchor = Number.isFinite(waveformTimeMs)
@@ -8872,6 +9807,13 @@ function hasLoadedMedia() {
 }
 
 function formatMediaTime(seconds) {
+  if (timelineIsFrameMode()) {
+    return formatTimelineTimecode(
+      (Number(seconds) || 0) * 1000,
+      projectTimebase().fps,
+      EDITOR_SETTINGS.timelineTimecodeSeparator,
+    );
+  }
   const total = Math.max(0, Math.floor(Number(seconds) || 0));
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
@@ -8880,19 +9822,20 @@ function formatMediaTime(seconds) {
   return hours ? `${hours}:${pad(minutes)}:${pad(remaining)}` : `${pad(minutes)}:${pad(remaining)}`;
 }
 
-function mediaSeekStepLabel(milliseconds) {
-  return `${milliseconds}ms`;
+function mediaSeekStepLabel(value = timelineMediaSeekStepValue()) {
+  return timelineIsFrameMode() ? `${value}F` : `${value}ms`;
 }
 
 function refreshMediaSeekStepHelp() {
-  if (helpMediaSeekStep) helpMediaSeekStep.textContent = mediaSeekStepLabel(EDITOR_SETTINGS.mediaSeekStepMs);
+  if (helpMediaSeekStep) helpMediaSeekStep.textContent = mediaSeekStepLabel();
 }
 
 function refreshMediaSeekControlLabels() {
-  const milliseconds = EDITOR_SETTINGS.mediaSeekStepMs;
+  const value = timelineMediaSeekStepValue();
+  const unit = timelineIsFrameMode() ? 'F' : 'ms';
   const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  const backLabel = language === 'en' ? `Back ${milliseconds}ms` : `后退 ${milliseconds}ms`;
-  const forwardLabel = language === 'en' ? `Forward ${milliseconds}ms` : `前进 ${milliseconds}ms`;
+  const backLabel = language === 'en' ? `Back ${value}${unit}` : `后退 ${value}${unit}`;
+  const forwardLabel = language === 'en' ? `Forward ${value}${unit}` : `前进 ${value}${unit}`;
   if (mediaStepBack) {
     mediaStepBack.setAttribute('aria-label', backLabel);
     mediaStepBack.title = backLabel;
@@ -9051,8 +9994,8 @@ function seekMediaTo(timeSeconds) {
 }
 
 mediaPlayToggle?.addEventListener('click', togglePlayback);
-mediaStepBack?.addEventListener('click', () => seekMediaBy(-EDITOR_SETTINGS.mediaSeekStepMs / 1000));
-mediaStepForward?.addEventListener('click', () => seekMediaBy(EDITOR_SETTINGS.mediaSeekStepMs / 1000));
+mediaStepBack?.addEventListener('click', () => seekMediaBy(-timelineMediaSeekStepMilliseconds() / 1000));
+mediaStepForward?.addEventListener('click', () => seekMediaBy(timelineMediaSeekStepMilliseconds() / 1000));
 mediaSeek?.addEventListener('input', () => {
   if (!hasLoadedMedia()) return;
   player.currentTime = Number(mediaSeek.value) || 0;
@@ -9114,15 +10057,15 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (selected.size > 0 && waveformEditor) {
-    const deltaMs = direction * EDITOR_SETTINGS.cueMoveStepMs;
+    const deltaTime = direction * timelineCueMoveStepValue();
     if (commandKey) {
       if (e.shiftKey) {
-        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'end', e.altKey, activeTrack);
+        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaTime, 'end', e.altKey, activeTrack);
       } else {
-        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaMs, 'start', e.altKey, activeTrack);
+        waveformEditor.adjustSelectedBoundaryByKeyboard(deltaTime, 'start', e.altKey, activeTrack);
       }
     } else {
-      waveformEditor.adjustSelectedByKeyboard(deltaMs, e.altKey, activeTrack);
+      waveformEditor.adjustSelectedByKeyboard(deltaTime, e.altKey, activeTrack);
     }
     e.preventDefault();
     e.stopPropagation();
@@ -9132,7 +10075,7 @@ document.addEventListener('keydown', (e) => {
   if (!hasLoadedMedia()) return;
   e.preventDefault();
   e.stopPropagation();
-  seekMediaBy(direction * EDITOR_SETTINGS.mediaSeekStepMs / 1000);
+  seekMediaBy(direction * timelineMediaSeekStepMilliseconds() / 1000);
 }, true);
 
 function renderedCueBoundaryTarget(target, boundary) {
@@ -9487,7 +10430,7 @@ document.addEventListener('keydown', (e) => {
   const heldCueKey = (!e.shiftKey || key === 'a' || key === 'd')
     && waveformEditor?.handleHeldCueKey?.(
       direction,
-      direction * EDITOR_SETTINGS.cueMoveStepMs,
+      direction * timelineCueMoveStepValue(),
       { shiftKey: e.shiftKey, altKey: e.altKey, snap: key === 'a' || key === 'd' },
     );
   if (heldCueKey) {
@@ -9859,6 +10802,36 @@ document.addEventListener('keydown', (e) => {
   if (player.paused) togglePlayback();
 });
 
+function seekCurrentCueBoundary(boundary) {
+  const target = getCurrentCuePanelTarget();
+  const timeMs = Number(target?.segment?.[boundary]);
+  const duration = Number(player?.duration);
+  if (!target || !Number.isFinite(timeMs) || !hasLoadedMedia()
+      || !Number.isFinite(duration) || duration <= 0) return false;
+  stopJklReversePlayback({ render: false });
+  player.pause();
+  return seekMediaTo(timeMs / 1000);
+}
+
+// I/O：跳到当前字幕的开头/结尾并保持暂停。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'i' && e.key !== 'I' && e.key !== 'o' && e.key !== 'O') return;
+  if (editingState || extensionEditingState || e.repeat || isTextEditingTarget(e)) return;
+  if (replaceModal.classList.contains('show')) return;
+  if (stickerModal.classList.contains('show')) return;
+  if (stickerPreviewModal.classList.contains('show')) return;
+  if (projectMediaModal.classList.contains('show')) return;
+  if (multiSubtitleSplitModal?.classList.contains('show')) return;
+  if (multiSubtitleImportModal?.classList.contains('show')) return;
+  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+  if (ctxmenu.classList.contains('show')) return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const boundary = e.key.toLowerCase() === 'i' ? 'start' : 'end';
+  if (!seekCurrentCueBoundary(boundary)) return;
+  e.preventDefault();
+  e.stopPropagation();
+});
+
 // N：仅在鼠标位于波形行时，从指针音频位置创建字幕；创建后单选新字幕，
 // 切换当前字幕面板并聚焦面板文本框。
 document.addEventListener('keydown', (e) => {
@@ -10170,6 +11143,8 @@ document.addEventListener('pointerdown', (e) => {
 // AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
 const GEO_UTILS = window.AsrEditorUtils;
 let previewGeometryDirty = false;
+// 启动早期生成的自定义字体选项先用原始名称占位；共享工具层就绪后立即统一本地化。
+relabelSubtitleFontFamilyOptions();
 
 function getPreviewGeometry() {
   return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.subtitle);
@@ -10247,7 +11222,10 @@ function subtitleFontFamilyOptionExists(select, value) {
 }
 function subtitleFontFamilyDisplayName(family) {
   const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  return GEO_UTILS.subtitleFontFamilyDisplayName(family, language);
+  // 启动早期 applySubtitleAppearance() 会先生成自定义字体选项，此时
+  // GEO_UTILS 别名（文件后部才初始化）尚处于暂时性死区；直接读共享工具层，
+  // 不可用时先用原始字体名占位，别名就绪后由 relabelSubtitleFontFamilyOptions 统一本地化。
+  return window.AsrEditorUtils?.subtitleFontFamilyDisplayName(family, language) ?? family;
 }
 function relabelSubtitleFontFamilyOptions() {
   [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
@@ -10260,6 +11238,10 @@ function normalizeSubtitleColor(value) {
   if (typeof value !== 'string') return null;
   const color = value.trim().toLowerCase();
   return /^#[0-9a-f]{6}$/i.test(color) ? color : null;
+}
+function normalizeSubtitleColorStyle(value) {
+  return typeof value === 'string' && SUBTITLE_COLOR_STYLE_VALUES.includes(value)
+    ? value : null;
 }
 function normalizeSubtitleAppearance(value) {
   const result = {};
@@ -10276,6 +11258,8 @@ function normalizeSubtitleAppearance(value) {
   if (backgroundAlpha !== null) result.background_alpha = backgroundAlpha;
   const color = normalizeSubtitleColor(value?.color);
   if (color) result.color = color;
+  const colorStyle = normalizeSubtitleColorStyle(value?.color_style);
+  if (colorStyle) result.color_style = colorStyle;
   if (value?.color_underline === false) result.color_underline = false;
   return result;
 }
@@ -10285,7 +11269,41 @@ function getSubtitleAppearance(value = DATA.preview?.subtitle) {
     ...result,
     color: result.color || DEFAULT_SUBTITLE_COLOR,
     color_underline: result.color_underline !== false,
+    color_style: result.color_style || DEFAULT_SUBTITLE_COLOR_STYLE,
   };
+}
+function getSpeakerLabelSettings(value = DATA.preview?.subtitle?.speaker_labels) {
+  // applySubtitleAppearance() runs during the early boot sequence, before the
+  // preview-geometry section initializes its later GEO_UTILS alias.
+  return EDITOR_SETTINGS_UTILS.normalizeSpeakerLabelSettings(value);
+}
+function syncSpeakerLabelControls(settings = getSpeakerLabelSettings()) {
+  const mappingEnabled = settings.mapping_enabled === true;
+  if (subtitleSpeakerMappingEnabledInput) {
+    subtitleSpeakerMappingEnabledInput.checked = mappingEnabled;
+  }
+  if (subtitleSpeakerLabelsToggle) {
+    subtitleSpeakerLabelsToggle.hidden = !mappingEnabled;
+  }
+  if (subtitleSpeakerLabelsEnabledInput) {
+    subtitleSpeakerLabelsEnabledInput.checked = settings.enabled;
+  }
+  if (subtitleSpeakerLabelsSettings) {
+    subtitleSpeakerLabelsSettings.dataset.mappingEnabled = mappingEnabled ? 'true' : 'false';
+    subtitleSpeakerLabelsSettings.dataset.enabled = settings.enabled ? 'true' : 'false';
+    subtitleSpeakerLabelsSettings.hidden = !mappingEnabled;
+  }
+  Object.entries(subtitleSpeakerLabelInputs).forEach(([color, input]) => {
+    if (input && document.activeElement !== input) input.value = settings.names[color] || '';
+  });
+  if (subtitleSpeakerLabelSeparatorInput && document.activeElement !== subtitleSpeakerLabelSeparatorInput) {
+    subtitleSpeakerLabelSeparatorInput.value = settings.separator;
+  }
+  document.querySelectorAll('[data-speaker-label-swatch]').forEach((swatch) => {
+    const color = swatch.dataset.speakerLabelSwatch;
+    const value = COLOR_BY_NAME[color]?.value;
+    if (value) swatch.style.backgroundColor = value;
+  });
 }
 function getStoredExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
   return normalizeSubtitleAppearance(value);
@@ -10320,6 +11338,12 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   if (subtitleColorUnderlineInput) {
     subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
+  if (subtitleColorStyleSelect) {
+    subtitleColorStyleSelect.value = appearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
+  }
+  if (subtitleColorStyleControl) {
+    subtitleColorStyleControl.hidden = appearance.color_underline === false;
+  }
   if (subtitleFontFamilySelect) {
     subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
     const family = appearance.font_family || 'default';
@@ -10346,6 +11370,7 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
     }
   }
   if (subtitleColorInput) subtitleColorInput.value = appearance.color || DEFAULT_SUBTITLE_COLOR;
+  syncSpeakerLabelControls();
 }
 function syncExtensionSubtitleAppearanceControls() {
   const stored = getStoredExtensionSubtitleAppearance();
@@ -10392,6 +11417,10 @@ function applySubtitleAppearance(value = DATA.preview?.subtitle) {
     || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
   overlayTextEl.style.backgroundColor = hasCustomBackground ? subtitleBackgroundCss(appearance) : '';
   overlayTextEl.style.color = appearance.color || DEFAULT_SUBTITLE_COLOR;
+  // The preview refresh caches the effective text color in a dataset value.
+  // Applying the stored base appearance resets the inline color, so invalidate
+  // that cache and let the next refresh reapply a color-snapshot style.
+  delete overlayTextEl.dataset.colorText;
   syncSubtitleAppearanceControls(appearance);
 }
 function applyExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
@@ -10443,11 +11472,32 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
     if (patch.color_underline) delete next.color_underline;
     else next.color_underline = false;
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'color_style')) {
+    const colorStyle = normalizeSubtitleColorStyle(patch.color_style);
+    if (colorStyle) next.color_style = colorStyle;
+  }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
-  DATA.preview.subtitle = { ...getPreviewGeometry(), ...next };
+  DATA.preview.subtitle = {
+    ...getPreviewGeometry(),
+    ...next,
+    speaker_labels: getSpeakerLabelSettings(),
+  };
   if (markDirty) previewGeometryDirty = true;
   applySubtitleAppearance(DATA.preview.subtitle);
   return next;
+}
+
+function setSpeakerLabelSettings(value, { markDirty = true } = {}) {
+  const settings = getSpeakerLabelSettings(value);
+  if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
+  DATA.preview.subtitle = {
+    ...getPreviewGeometry(),
+    ...getSubtitleAppearance(),
+    speaker_labels: settings,
+  };
+  if (markDirty) previewGeometryDirty = true;
+  applySubtitleAppearance(DATA.preview.subtitle);
+  return settings;
 }
 function collectSubtitleLocalFontFamilies(fontData) {
   const families = new Map();
@@ -10578,9 +11628,13 @@ function setPreviewGeometry(geo, { markDirty = true, replaceAppearance = false }
   const clamped = GEO_UTILS.clampPreviewGeometry(GEO_UTILS.normalizePreviewGeometry(geo));
   const appearance = replaceAppearance
     ? getSubtitleAppearance(geo)
-    : { ...getSubtitleAppearance(), ...getSubtitleAppearance(geo) };
+    : { ...getSubtitleAppearance(), ...normalizeSubtitleAppearance(geo) };
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
-  DATA.preview.subtitle = { ...clamped, ...appearance };
+  DATA.preview.subtitle = {
+    ...clamped,
+    ...appearance,
+    speaker_labels: getSpeakerLabelSettings(),
+  };
   if (markDirty) previewGeometryDirty = true;
   applyPreviewGeometryToDom(clamped);
   applySubtitleAppearance(DATA.preview.subtitle);
@@ -10857,25 +11911,79 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (overlayExtensionTextEl.classList.contains('hidden') === extensionVisible) {
     overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
   }
-  const mainText = mainVisible ? (seg.text || '') : '';
+  const subtitleAppearance = getSubtitleAppearance();
+  const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
+  const colorStyle = subtitleAppearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
+  const mainSubtitleColor = subtitleAppearance.color || DEFAULT_SUBTITLE_COLOR;
+  const speakerLabels = getSpeakerLabelSettings();
+  const mainColorName = mainVisible && seg
+    ? MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments)
+    : null;
+  const speakerLabel = mainVisible && speakerLabels.mapping_enabled && speakerLabels.enabled
+    ? window.AsrEditorUtils.speakerLabelForSegment(
+      seg, DATA.segments, speakerLabels.names,
+    )
+    : '';
+  const speakerLabelVisible = Boolean(speakerLabel && mainColorName && COLOR_BY_NAME[mainColorName]);
+  const speakerLabelColor = speakerLabelVisible
+    ? colorPreviewEnabled && colorStyle === 'stroke'
+      ? mainSubtitleColor
+      : COLOR_BY_NAME[mainColorName].value
+    : '';
+  const speakerLabelText = speakerLabelVisible
+    ? `${speakerLabel}${speakerLabels.separator}`
+    : '';
+  const mainText = mainVisible ? String(seg.text || '') : '';
   const extensionText = extensionVisible ? (extension.text || '') : '';
-  if (mainVisible && overlayTextEl.textContent !== mainText) overlayTextEl.textContent = mainText;
+  if (overlayMainSpeakerLabelEl.classList.contains('hidden') === speakerLabelVisible) {
+    overlayMainSpeakerLabelEl.classList.toggle('hidden', !speakerLabelVisible);
+  }
+  if (overlayMainSpeakerLabelEl.textContent !== speakerLabelText) {
+    overlayMainSpeakerLabelEl.textContent = speakerLabelText;
+  }
+  if (overlayMainSpeakerLabelEl.dataset.color !== speakerLabelColor) {
+    overlayMainSpeakerLabelEl.dataset.color = speakerLabelColor;
+    overlayMainSpeakerLabelEl.style.color = speakerLabelColor;
+  }
+  if (overlayMainTextNode.nodeValue !== mainText) overlayMainTextNode.nodeValue = mainText;
   if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
     overlayExtensionTextEl.textContent = extensionText;
   }
-  // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref）给预览文字加下划线。
-  // dataset 记录上次应用的颜色，避免播放刷新每帧都写内联样式。
-  const colorUnderlineEnabled = DATA.preview?.subtitle?.color_underline !== false;
-  let colorUnderline = '';
-  if (mainVisible && colorUnderlineEnabled && seg) {
+  // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
+  // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
+  // 播放刷新每帧都写内联样式。
+  let previewSegmentColor = '';
+  if (mainVisible && colorPreviewEnabled && seg) {
     const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
-    colorUnderline = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
+    previewSegmentColor = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
   }
+  const colorUnderline = colorPreviewEnabled
+    && colorStyle === 'underline'
+    ? previewSegmentColor : '';
+  const textColor = colorPreviewEnabled
+    && colorStyle === 'text'
+    && previewSegmentColor
+    ? previewSegmentColor
+    : mainSubtitleColor;
+  const textStroke = colorPreviewEnabled
+    && colorStyle === 'stroke'
+    && previewSegmentColor
+    ? `.125em ${previewSegmentColor}`
+    : '';
   if (overlayTextEl.dataset.colorUnderline !== colorUnderline) {
     overlayTextEl.dataset.colorUnderline = colorUnderline;
     overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
     overlayTextEl.style.textDecorationColor = colorUnderline;
     overlayTextEl.style.textUnderlineOffset = colorUnderline ? '0.25em' : '';
+  }
+  if (overlayTextEl.dataset.colorText !== textColor) {
+    overlayTextEl.dataset.colorText = textColor;
+    overlayTextEl.style.color = textColor;
+  }
+  if (overlayTextEl.dataset.colorStroke !== textStroke) {
+    overlayTextEl.dataset.colorStroke = textStroke;
+    overlayTextEl.style.webkitTextStroke = textStroke;
+    overlayTextEl.style.paintOrder = textStroke ? 'stroke fill' : '';
   }
   const overlayHidden = !mainVisible && !extensionVisible;
   if (overlayEl.classList.contains('hidden') !== overlayHidden) {
@@ -11063,6 +12171,16 @@ overlayToggle.addEventListener('change', () => {
 // 程序内开关（不暴露 GUI）：导出 SRT 时保留禁用项的时间轴序号但内容替换为空白
 let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
+function speakerLabelExportOptions() {
+  const settings = getSpeakerLabelSettings();
+  return {
+    speakerLabelsEnabled: EDITOR_SETTINGS.exportSpeakerLabels === true
+      && settings.mapping_enabled === true,
+    speakerLabels: settings.names,
+    speakerLabelSeparator: settings.separator,
+  };
+}
+
 function buildSrt() {
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
@@ -11072,6 +12190,7 @@ function buildSrt() {
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
 }
@@ -11090,6 +12209,7 @@ function buildAss() {
 
 function buildExtensionSrt(track = getActiveExtensionTrack()) {
   return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
 }
@@ -11109,6 +12229,7 @@ function buildGapRemovedSrt() {
     firstEnabledIndex,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
     ensurePositiveDuration: true,
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
 }
@@ -11133,6 +12254,25 @@ function updateSubtitleExportUi() {
   }
 }
 
+function safeColorExportFilenameSuffix(value, fallback) {
+  const normalized = String(value ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, '_')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/[. ]+$/g, '')
+    .trim();
+  return normalized || fallback;
+}
+
+function colorExportFilenameSuffix(color, speakerSettings = getSpeakerLabelSettings()) {
+  const colorSuffix = window.MAWE_I18N?.exportTag?.(color.name) || color.name;
+  if (!EDITOR_SETTINGS.exportSpeakerNamesAsSuffix
+      || speakerSettings.mapping_enabled !== true
+      || color.name === 'default') {
+    return colorSuffix;
+  }
+  return safeColorExportFilenameSuffix(speakerSettings.names?.[color.name], colorSuffix);
+}
+
 async function downloadColorSrts(gapRemoved = false) {
   if (editingState) finishEdit(true);
   const colors = usedSubtitleColors();
@@ -11149,7 +12289,8 @@ async function downloadColorSrts(gapRemoved = false) {
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  const gapSuffix = gapRemoved ? '_gap-removed' : '';
+  const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
+  const speakerSettings = getSpeakerLabelSettings();
   const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
     colorName: color.name,
     timeOffset: 0,
@@ -11159,6 +12300,7 @@ async function downloadColorSrts(gapRemoved = false) {
       ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
       : undefined,
     ensurePositiveDuration: gapRemoved,
+    ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
   let filenameBase = `${FILENAME_BASE}${gapSuffix}`;
@@ -11179,7 +12321,7 @@ async function downloadColorSrts(gapRemoved = false) {
     }
   }
   for (const color of colors) {
-    const filename = `${filenameBase}_${color.name}.srt`;
+    const filename = `${filenameBase}_${colorExportFilenameSuffix(color, speakerSettings)}.srt`;
     if (EDITOR_SETTINGS.exportColorUnified) {
       const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -11276,20 +12418,36 @@ function buildGapRemovedRegionsJson() {
   }, null, 2);
 }
 
+const CANONICAL_PROJECT_FIELDS = new Set([
+  'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity',
+  'model', 'sticker_root', 'timebase', 'segments', 'multi_subtitle', 'waveform',
+  'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'gap_remove',
+  'script_alignment', 'workspace', 'preview',
+]);
+let projectExtensionFields = Object.fromEntries(
+  Object.entries(DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+);
+
 function buildJson() {
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const repairedTimingCount = repairCurrentProjectTimings();
   if (repairedTimingCount > 0) {
     flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
   }
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
   const out = {
+    schema: window.AsrEditorUtils.PROJECT_SCHEMA,
+    ...projectExtensionFields,
     media: DATA.media || '',
     language: DATA.language || '',
     model: DATA.model || '',
     sticker_root: STICKER_ROOT || '',
+    timebase: { ...projectTimebase() },
     segments: DATA.segments.map(s => {
       const o = {
         id: s.id,
         start: s.start, end: s.end, text: s.text,
+        start_frame: s.start_frame, end_frame: s.end_frame,
         items: s.items || [],
         sticker: s.sticker || null,
         sticker_ref: s.sticker_ref || null,
@@ -11303,6 +12461,11 @@ function buildJson() {
       return o;
     }),
   };
+  if (typeof DATA.language_source === 'string') out.language_source = DATA.language_source;
+  if (typeof DATA.split_mode === 'string') out.split_mode = DATA.split_mode;
+  if (typeof DATA.timestamp_granularity === 'string') {
+    out.timestamp_granularity = DATA.timestamp_granularity;
+  }
   const multi = getMultiSubtitleState();
   out.multi_subtitle = {
     schema: multi.schema || MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
@@ -11322,9 +12485,13 @@ function buildJson() {
           id: segment.id,
           start: segment.start,
           end: segment.end,
+          start_frame: segment.start_frame,
+          end_frame: segment.end_frame,
           text: segment.text || '',
         };
         if (Array.isArray(segment.items)) outSegment.items = segment.items;
+        if (segment.color != null) outSegment.color = segment.color;
+        if (segment.color_ref != null) outSegment.color_ref = segment.color_ref;
         if (segment._dirty) outSegment._dirty = true;
         if (segment.disabled) outSegment.disabled = true;
         return outSegment;
@@ -11339,15 +12506,23 @@ function buildJson() {
       end_offset_ms: binding.end_offset_ms || 0,
     })),
   };
-  if (DATA.waveform) out.waveform = DATA.waveform;
-  if (DATA.spectral) out.spectral = DATA.spectral;
-  if (DATA.waveform_reapeaks) out.waveform_reapeaks = DATA.waveform_reapeaks;
+  // 三块波形缓存不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
+  // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
+  // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
+  const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
+  if (mediaMetadata) out.media_metadata = mediaMetadata;
   if (DATA.gap_remove) out.gap_remove = normalizedGapRemoveData(DATA.gap_remove);
   if (DATA.script_alignment) out.script_alignment = DATA.script_alignment;
   const workspace = buildCurrentWorkspaceData();
   if (workspace) out.workspace = workspace;
   // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
-  const preview = { subtitle: { ...getPreviewGeometry(), ...getSubtitleAppearance() } };
+  const preview = {
+    subtitle: {
+      ...getPreviewGeometry(),
+      ...getSubtitleAppearance(),
+      speaker_labels: getSpeakerLabelSettings(),
+    },
+  };
   if (getActiveExtensionTrack() || DATA.preview?.extension_subtitle) {
     preview.extension_subtitle = { ...getStoredExtensionSubtitleAppearance() };
   }
@@ -11570,23 +12745,117 @@ function mediaTargetUrl() {
   return '';
 }
 
+function otioAudioTrackMetadata(audioTrack, fallbackIndex = 0) {
+  if (!audioTrack || !Number.isInteger(audioTrack.stream_index) || audioTrack.stream_index < 0) {
+    return {};
+  }
+  const audioIndex = otioAudioTrackIndex(audioTrack, fallbackIndex);
+  const metadata = {
+    audio_track_index: audioIndex,
+    audio_stream_index: audioTrack.stream_index,
+  };
+  for (const field of ['codec', 'language', 'title']) {
+    if (audioTrack[field]) metadata[field] = audioTrack[field];
+  }
+  if (Number.isInteger(audioTrack.channels) && audioTrack.channels > 0) {
+    metadata.channels = audioTrack.channels;
+  }
+  if (Number.isInteger(audioTrack.sample_rate) && audioTrack.sample_rate > 0) {
+    metadata.sample_rate = audioTrack.sample_rate;
+  }
+  if (audioTrack.default === true) metadata.default = true;
+  return { moy: metadata };
+}
+
+function otioAudioTrackIndex(audioTrack, fallbackIndex = 0) {
+  return Number.isInteger(audioTrack?.audio_index) && audioTrack.audio_index >= 0
+    ? audioTrack.audio_index : fallbackIndex;
+}
+
+function otioAudioTrackName(audioTrack, index, total) {
+  if (total <= 1) return '音频';
+  const details = [audioTrack?.title, audioTrack?.language]
+    .filter((value, detailIndex, values) => value && values.indexOf(value) === detailIndex)
+    .join(' · ');
+  return `音频 ${index + 1}${details ? ` · ${details}` : ''}`;
+}
+
+function otioMediaName(targetUrl) {
+  const raw = String(targetUrl || '').split(/[?#]/, 1)[0].replace(/[\\/]+$/, '');
+  const candidate = raw.split(/[\\/]/).pop() || '';
+  if (!candidate) return '';
+  try {
+    return decodeURIComponent(candidate);
+  } catch {
+    return candidate;
+  }
+}
+
+function resolveOtioAudioType(audioTrack) {
+  if (audioTrack?.channels === 1) return 'Mono';
+  if (audioTrack?.channels === 2) return 'Stereo';
+  return null;
+}
+
+function resolveOtioTrackMetadata(kind, audioTrack) {
+  if (kind === 'Video') {
+    return { Resolve_OTIO: { Locked: false } };
+  }
+  const audioType = resolveOtioAudioType(audioTrack);
+  return {
+    Resolve_OTIO: {
+      ...(audioType ? { 'Audio Type': audioType } : {}),
+      Locked: false,
+      SoloOn: false,
+    },
+  };
+}
+
+function resolveOtioClipMetadata(kind, audioTrack, audioTrackIndex, linkGroupId = 1) {
+  const resolveMetadata = { 'Link Group ID': linkGroupId };
+  if (kind === 'Audio') {
+    const sourceTrackId = otioAudioTrackIndex(audioTrack, audioTrackIndex);
+    const channels = Number.isInteger(audioTrack?.channels) && audioTrack.channels > 0
+      ? audioTrack.channels : 0;
+    if (channels > 0) {
+      resolveMetadata.Channels = Array.from({ length: channels }, (_, sourceChannelId) => ({
+        'Source Channel ID': sourceChannelId,
+        'Source Track ID': sourceTrackId,
+      }));
+    }
+  }
+  return { Resolve_OTIO: resolveMetadata };
+}
+
 function buildTimelineMediaClip(
   interval, index, kind, targetUrl, sourceStartFrame, sourceDurationFrames,
-  { includeSubtitleMarkers = false, gapRemoved = false } = {},
+  {
+    includeSubtitleMarkers = false,
+    gapRemoved = false,
+    audioTrack = null,
+    audioTrackIndex = 0,
+    clipName = '',
+  } = {},
 ) {
   const startFrame = msToOtioFrames(interval.start);
   const endFrame = msToOtioFrames(interval.end);
   const durationFrames = Math.max(1, endFrame - startFrame);
-  return {
-    OTIO_SCHEMA: 'Clip.2',
-    metadata: gapRemoved ? {
+  const audioMetadata = otioAudioTrackMetadata(audioTrack, audioTrackIndex);
+  const clipMetadata = {
+    ...(gapRemoved ? {
       moy: {
         gap_remove_source_start_ms: interval.start,
         gap_remove_source_end_ms: interval.end,
         gap_remove_sequence_index: index,
+        ...(audioMetadata.moy || {}),
       },
-    } : {},
-    name: `${kind} ${index + 1}`,
+    } : audioMetadata),
+    ...resolveOtioClipMetadata(kind, audioTrack, audioTrackIndex, index + 1),
+  };
+  return {
+    OTIO_SCHEMA: 'Clip.2',
+    metadata: clipMetadata,
+    name: clipName || `${kind} ${index + 1}`,
     source_range: otioTimeRange(sourceStartFrame + startFrame, durationFrames),
     effects: [],
     markers: includeSubtitleMarkers
@@ -11597,8 +12866,8 @@ function buildTimelineMediaClip(
     media_references: {
       DEFAULT_MEDIA: {
         OTIO_SCHEMA: 'ExternalReference.1',
-        metadata: {},
-        name: '',
+        metadata: audioMetadata,
+        name: clipName,
         available_range: otioTimeRange(sourceStartFrame, sourceDurationFrames),
         available_image_bounds: null,
         target_url: targetUrl,
@@ -11608,7 +12877,11 @@ function buildTimelineMediaClip(
   };
 }
 
-function buildTimelineOtio({ gapRemoved = false } = {}) {
+function buildTimelineOtio({
+  gapRemoved = false,
+  includeStickers = false,
+  includeSubtitleMarkers = true,
+} = {}) {
   const removed = gapRemoved ? getRemovedGapRanges() : [];
   if (gapRemoved && !removed.length) {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
@@ -11636,12 +12909,30 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
   }
   const sourceDurationFrames = Math.max(1, msToOtioFrames(durationMs));
   const sourceStartFrame = mediaStartOtioFrames();
+  const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
+  const audioMetadata = Array.isArray(mediaMetadata?.audio_tracks)
+    ? mediaMetadata.audio_tracks : null;
+  const clipName = otioMediaName(targetUrl);
+  const audioEntries = audioMetadata === null
+    ? [{ audioTrack: null, index: 0 }]
+    : audioMetadata.map((audioTrack, index) => ({ audioTrack, index }));
+  const audioSpecs = audioEntries.length || player?.tagName !== 'AUDIO'
+    ? audioEntries.map(({ audioTrack, index }) => ({
+      name: otioAudioTrackName(audioTrack, index, audioEntries.length),
+      kind: 'Audio',
+      audioTrack,
+      audioTrackIndex: index,
+    }))
+    : [{ name: '音频', kind: 'Audio', audioTrack: null, audioTrackIndex: 0 }];
   const trackSpecs = player?.tagName === 'AUDIO'
-    ? [{ name: '音频', kind: 'Audio' }]
-    : [{ name: '视频', kind: 'Video' }, { name: '音频', kind: 'Audio' }];
-  const tracks = trackSpecs.map((track) => ({
+    ? audioSpecs
+    : [{ name: '视频', kind: 'Video', audioTrack: null, audioTrackIndex: 0 }, ...audioSpecs];
+  const tracks = trackSpecs.map((track, trackIndex) => ({
     OTIO_SCHEMA: 'Track.1',
-    metadata: {},
+    metadata: {
+      ...otioAudioTrackMetadata(track.audioTrack, track.audioTrackIndex),
+      ...resolveOtioTrackMetadata(track.kind, track.audioTrack),
+    },
     name: track.name,
     source_range: null,
     effects: [],
@@ -11651,24 +12942,55 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
     children: intervals.map((interval, index) => buildTimelineMediaClip(
       interval,
       index,
-      track.name,
+      track.kind,
       targetUrl,
       sourceStartFrame,
       sourceDurationFrames,
       {
-        includeSubtitleMarkers: track.kind === 'Video' || trackSpecs.length === 1,
+        includeSubtitleMarkers: includeSubtitleMarkers && (
+          track.kind === 'Video'
+          || (track.kind === 'Audio' && player?.tagName === 'AUDIO' && trackIndex === 0)
+        ),
         gapRemoved,
+        audioTrack: track.audioTrack,
+        audioTrackIndex: track.audioTrackIndex,
+        clipName,
       },
     )),
     kind: track.kind,
   }));
+  // 勾选「时间线包含表情包」时，把表情包作为叠加视频轨合并进同一个 OTIO 时间线；
+  // 没有表情包时静默跳过，仅保留时间线本体。
+  if (includeStickers) {
+    const collected = collectStickerOtioEntries(removed);
+    if (collected.error) {
+      flashHint(collected.error, 'warning');
+      return null;
+    }
+    if (collected.entries.length) {
+      const stickerTrack = buildStickerOtioTrack(collected.entries);
+      if (stickerTrack.error) {
+        flashHint(stickerTrack.error, 'warning');
+        return null;
+      }
+      tracks.push(stickerTrack.track);
+    }
+  }
   const metadata = {
     moy: {
       source_media: targetUrl,
+      ...(audioMetadata !== null ? {
+        audio_tracks: audioMetadata.map((audioTrack, index) => ({
+          ...otioAudioTrackMetadata(audioTrack, index).moy,
+        })),
+      } : {}),
       ...(gapRemoved ? {
         gap_remove_schema: GAP_REMOVE_SCHEMA,
         removed_gaps_ms: removed,
       } : {}),
+    },
+    Resolve_OTIO: {
+      'Resolve OTIO Meta Version': '1.0',
     },
   };
   return JSON.stringify({
@@ -11691,11 +13013,19 @@ function buildTimelineOtio({ gapRemoved = false } = {}) {
 }
 
 function buildSourceOtio() {
-  return buildTimelineOtio({ gapRemoved: false });
+  return buildTimelineOtio({
+    gapRemoved: false,
+    includeStickers: EDITOR_SETTINGS.otioExportIncludeStickers,
+    includeSubtitleMarkers: EDITOR_SETTINGS.otioExportIncludeMarkers,
+  });
 }
 
 function buildGapRemovedOtio() {
-  return buildTimelineOtio({ gapRemoved: true });
+  return buildTimelineOtio({
+    gapRemoved: true,
+    includeStickers: EDITOR_SETTINGS.otioExportIncludeStickers,
+    includeSubtitleMarkers: EDITOR_SETTINGS.otioExportIncludeMarkers,
+  });
 }
 
 function stickerOtioName(sticker, absPath) {
@@ -11764,7 +13094,9 @@ function collectStickerOtioEntries(removed) {
   return { entries };
 }
 
-function buildStickerOtioTimeline(stickers, timelineName) {
+// 把表情包条目构建为一条可放进任意时间线 Stack 的单层视频轨（Gap 填充 + 图片 Clip）。
+// stickers 会被就地排序；时间重叠时返回 { error }，由调用方决定中止还是跳过。
+function buildStickerOtioTrack(stickers) {
   stickers.sort((a, b) => (a.startMs - b.startMs) || (a.endMs - b.endMs) || (a.idx - b.idx));
   const children = [];
   let cursor = 0;
@@ -11818,6 +13150,25 @@ function buildStickerOtioTimeline(stickers, timelineName) {
     cursor = startFrame + durationFrames;
   }
   return {
+    track: {
+      OTIO_SCHEMA: 'Track.1',
+      metadata: {},
+      name: '表情包',
+      source_range: null,
+      effects: [],
+      markers: [],
+      enabled: true,
+      color: null,
+      children,
+      kind: 'Video',
+    },
+  };
+}
+
+function buildStickerOtioTimeline(stickers, timelineName) {
+  const result = buildStickerOtioTrack(stickers);
+  if (result.error) return result;
+  return {
     json: JSON.stringify({
       OTIO_SCHEMA: 'Timeline.1',
       metadata: {},
@@ -11832,18 +13183,7 @@ function buildStickerOtioTimeline(stickers, timelineName) {
         markers: [],
         enabled: true,
         color: null,
-        children: [{
-          OTIO_SCHEMA: 'Track.1',
-          metadata: {},
-          name: '表情包',
-          source_range: null,
-          effects: [],
-          markers: [],
-          enabled: true,
-          color: null,
-          children,
-          kind: 'Video',
-        }],
+        children: [result.track],
       },
     }, null, 4),
   };
@@ -11912,10 +13252,10 @@ async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
   const tr = (s) => window.MAWE_I18N?.translateText?.(s) || s;
   if (editingState) finishEdit(true);
   const payload = buildTimeline();
-  if (!payload) return;
+  if (!payload) return false;
   if (!SERVER_CONFIG?.canOtozTimelineExport || !SERVER_CONFIG?.otiozTimelineExportUrl) {
     flashHint(tr('当前工程无法导出时间线 OTIOZ（需要以 server-editor 打开并绑定工程文件）'), 'warning');
-    return;
+    return false;
   }
   flashHint(tr('正在生成时间线 OTIOZ 打包工程…'));
   try {
@@ -11934,11 +13274,12 @@ async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
     }
     const blob = await response.blob();
     flashHint(tr('时间线 OTIOZ 已生成，媒体已打包进 zip'), 'success');
-    await downloadFile(blob, filename, 'application/zip', {
+    return Boolean(await downloadFile(blob, filename, 'application/zip', {
       desc: description, types: { 'application/zip': ['.otioz'] },
-    });
+    }));
   } catch (error) {
     flashHint(`${tr('时间线 OTIOZ 导出失败')}：${error.message || error}`, 'warning');
+    return false;
   }
 }
 
@@ -12309,10 +13650,56 @@ function configureServerSaveControls() {
     saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
   }
   syncStickerOtioExportMode();
+  syncProjectBackupControls();
 }
 
 let autoSaveTimer = null;
+let projectBackupTimer = null;
+function syncProjectBackupControls() {
+  const available = serverProjectSavingEnabled() && !projectFileHandle;
+  const enabled = document.getElementById('project-backup-enabled');
+  const minutes = document.getElementById('project-backup-minutes');
+  const limit = document.getElementById('project-backup-limit');
+  enabled.checked = EDITOR_SETTINGS.projectBackupEnabled;
+  enabled.disabled = !available;
+  document.getElementById('project-backup-open').disabled = !available;
+  minutes.value = EDITOR_SETTINGS.projectBackupMinutes;
+  limit.value = EDITOR_SETTINGS.projectBackupLimit;
+  minutes.disabled = limit.disabled = !available || !enabled.checked;
+  document.getElementById('project-backup-unavailable').hidden = available;
+  if (projectBackupTimer !== null) window.clearInterval(projectBackupTimer);
+  projectBackupTimer = null;
+  if (available && enabled.checked) {
+    projectBackupTimer = window.setInterval(() => {
+      void saveProjectToServer({ silent: true, backupOnly: true });
+    }, EDITOR_SETTINGS.projectBackupMinutes * 60000);
+  }
+}
+for (const [id, key, fallback, max] of [
+  ['project-backup-enabled', 'projectBackupEnabled', true, 0],
+  ['project-backup-minutes', 'projectBackupMinutes', 5, 1440],
+  ['project-backup-limit', 'projectBackupLimit', 20, 1000],
+]) {
+  document.getElementById(id)?.addEventListener('change', (event) => {
+    const value = max ? Math.min(max, Math.max(1, Math.round(Number(event.target.value) || fallback))) : event.target.checked;
+    updateEditorSettings({ [key]: value });
+    syncProjectBackupControls();
+  });
+}
 let autoSaveFlushTimer = null;
+document.getElementById('project-backup-open')?.addEventListener('click', async () => {
+  if (!serverProjectSavingEnabled() || projectFileHandle) return;
+  try {
+    const response = await fetch(new URL('/api/project/backups/open', window.location.href), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || response.status);
+  } catch (error) {
+    flashHint(`打开备份文件夹失败：${error.message || error}`, 'warning');
+  }
+});
 let projectSaveInFlight = false;
 const EDIT_SAVE_DEBOUNCE_MS = 400;
 
@@ -12334,6 +13721,9 @@ function scheduleAutoSave() {
     // 服务器绑定工程或浏览器保存对话框（句柄模式）任一可用时都可自动保存。
     const available = Boolean(SERVER_CONFIG?.saveUrl || window.showSaveFilePicker);
     serverAutoSaveSettings.hidden = !available;
+    // 自动保存不可用时隐藏「保存」标签页，避免设置窗口出现空白分区。
+    const saveTab = document.getElementById('editor-settings-tab-save');
+    if (saveTab) saveTab.hidden = !available;
     if (!available) return;
   const sync = () => {
     autoSaveProjectToggle.checked = EDITOR_SETTINGS.autoSaveProject;
@@ -12494,6 +13884,8 @@ function configureRecentProjects() {
     recentProjectsToggle.addEventListener('click', (event) => {
       event.stopPropagation();
       recentProjectsEl.classList.toggle('open');
+      if (recentProjectsEl.classList.contains('open')) bringFloatingSurfaceToFront(recentProjectsEl);
+      else syncFloatingSurfaceLayers();
     });
     document.addEventListener('click', (event) => {
       if (!recentProjectsEl.contains(event.target)) recentProjectsEl.classList.remove('open');
@@ -12864,7 +14256,8 @@ function markProjectSaved(filename, backupName, { silent = false } = {}) {
   if (!silent) flashHint('保存成功！', 'success');
 }
 
-async function saveProjectToServer({ silent = false } = {}) {
+async function saveProjectToServer({ silent = false, backupOnly = false } = {}) {
+  if (backupOnly && (projectFileHandle || !EDITOR_SETTINGS.projectBackupEnabled)) return false;
   if (!serverProjectSavingEnabled()) {
     if (!silent) flashHint('当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件', 'invalid');
     return false;
@@ -12880,13 +14273,18 @@ async function saveProjectToServer({ silent = false } = {}) {
     const response = await fetch(saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project: JSON.parse(projectJson), filename: null }),
+      body: JSON.stringify({
+        project: JSON.parse(projectJson), filename: null,
+        backupOnly,
+        backupLimit: EDITOR_SETTINGS.projectBackupEnabled && (backupOnly || !silent)
+          ? EDITOR_SETTINGS.projectBackupLimit : null,
+      }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) {
       throw new Error(result.error || `服务器返回 ${response.status}`);
     }
-    markProjectSaved(result.filename, result.backup, { silent });
+    if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent });
     return true;
   } catch (error) {
     const detail = error?.message || error;
@@ -12894,7 +14292,7 @@ async function saveProjectToServer({ silent = false } = {}) {
     // A stale browser tab can outlive the localhost process (the browser reports
     // ERR_CONNECTION_REFUSED). Offer a real file save so Ctrl+S never strands
     // completed edits, while making clear that the bound JSON was not overwritten.
-    if (error instanceof TypeError
+    if (!silent && error instanceof TypeError
         && confirm('无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？')) {
       const saved = await downloadFile(projectJson, `${FILENAME_BASE}.mosp`, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
@@ -13153,7 +14551,7 @@ async function exportLottieDynamicCaptions() {
     const blob = await response.blob();
     closeLottieExportModal();
     const suffix = extension ? '_extension' : '';
-    const gapSuffix = gapRemoved ? '_gap-removed' : '';
+    const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
     const saved = await downloadFile(
       blob,
       `${FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.lottie`,
@@ -13272,7 +14670,7 @@ async function exportOgrafDynamicCaptions() {
     const blob = await response.blob();
     closeOgrafExportModal();
     const suffix = extension ? '_extension' : '';
-    const gapSuffix = gapRemoved ? '_gap-removed' : '';
+    const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
     const saved = await downloadFile(
       blob,
       `${FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.ograf.zip`,
@@ -13411,14 +14809,14 @@ async function exportStickerOtio(kind, buildTimeline, filename, description) {
 document.getElementById('download-sticker-otio')?.addEventListener('click', () => {
   if (stickerExportBlocked('download-sticker-otio')) return;
   exportStickerOtio(
-    'stickers', buildStickerOtio, `${FILENAME_BASE}_stickers.otio`, 'OTIO 工程文件'
+    'stickers', buildStickerOtio, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, 'OTIO 工程文件'
   );
 });
 document.getElementById('download-gap-removed-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedSrt();
   if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_gap-removed.srt`, 'text/plain', {
+    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
       desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
     });
   }
@@ -13427,42 +14825,66 @@ document.getElementById('download-gap-removed-color-srt')?.addEventListener('cli
 document.getElementById('download-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildSourceOtio();
-  if (payload) {
-    await downloadFile(payload, FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
-      desc: 'OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  if (!payload) return;
+  await downloadFile(payload, FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
+    desc: 'OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  });
+  if (EDITOR_SETTINGS.otioExportIncludeSrt) {
+    await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+      desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
     });
   }
 });
 document.getElementById('download-otioz')?.addEventListener('click', async () => {
-  await exportTimelineOtioz(
+  const saved = await exportTimelineOtioz(
     'source',
     buildSourceOtio,
     FILENAME_BASE + '.otioz',
     'OTIOZ 打包工程',
   );
+  if (saved && EDITOR_SETTINGS.otioExportIncludeSrt) {
+    await downloadFile(buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+      desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
+    });
+  }
 });
 document.getElementById('download-gap-removed-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedOtio();
-  if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_gap-removed.otio`, 'application/vnd.opentimelineio+json', {
-      desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
-    });
+  if (!payload) return;
+  await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
+    desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  });
+  if (EDITOR_SETTINGS.otioExportIncludeSrt) {
+    const srtPayload = buildGapRemovedSrt();
+    if (srtPayload) {
+      await downloadFile(srtPayload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+        desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
+      });
+    }
   }
 });
 document.getElementById('download-gap-removed-otioz')?.addEventListener('click', async () => {
-  await exportTimelineOtioz(
+  const saved = await exportTimelineOtioz(
     'gap-removed',
     buildGapRemovedOtio,
-    `${FILENAME_BASE}_gap-removed.otioz`,
+    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otioz`,
     '去空隙时间线 OTIOZ 打包工程',
   );
+  if (saved && EDITOR_SETTINGS.otioExportIncludeSrt) {
+    const srtPayload = buildGapRemovedSrt();
+    if (srtPayload) {
+      await downloadFile(srtPayload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+        desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
+      });
+    }
+  }
 });
 document.getElementById('download-gap-removed-ffconcat')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedFfconcat();
   if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_gap-removed.ffconcat`, 'text/plain', {
+    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ffconcat`, 'text/plain', {
       desc: 'FFconcat 剪辑计划', types: { 'text/plain': ['.ffconcat'] }
     });
   }
@@ -13471,7 +14893,7 @@ document.getElementById('download-gap-removed-regions-json')?.addEventListener('
   if (editingState) finishEdit(true);
   const payload = buildGapRemovedRegionsJson();
   if (payload) {
-    await downloadFile(payload, `${FILENAME_BASE}_gap-removed.keep-regions.json`, 'application/json', {
+    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.keep-regions.json`, 'application/json', {
       desc: '去空隙保留区域 JSON', types: { 'application/json': ['.json'] }
     });
   }
@@ -13480,7 +14902,7 @@ document.getElementById('download-gap-removed-sticker-otio')?.addEventListener('
   if (stickerExportBlocked('download-gap-removed-sticker-otio')) return;
   await exportStickerOtio(
     'gap-removed-stickers', buildGapRemovedStickerOtio,
-    `${FILENAME_BASE}_gap-removed-stickers.otio`, '去空隙表情包 OTIO 工程'
+    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, '去空隙表情包 OTIO 工程'
   );
 });
 document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener('click', async () => {
@@ -13493,16 +14915,48 @@ document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener(
   }
   await exportStickerOtoz(
     'gap-removed-stickers', buildGapRemovedStickerOtio,
-    `${FILENAME_BASE}_gap-removed-stickers.otioz`, '去空隙表情包 OTIOZ 打包工程'
+    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '去空隙表情包 OTIOZ 打包工程'
   );
 });
 document.getElementById('download-sticker-otioz')?.addEventListener('click', async () => {
   if (stickerExportBlocked('download-sticker-otioz')) return;
   await exportStickerOtoz(
     'stickers', buildStickerOtio,
-    `${FILENAME_BASE}_stickers.otioz`, '表情包 OTIOZ 打包工程'
+    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '表情包 OTIOZ 打包工程'
   );
 });
+
+// 时间线 OTIO / OTIOZ 导出选项：两个 OTIO 子菜单（原始 / 去空隙）共享同一份设置，
+// 任一处勾选立即持久化并同步另一处；导出时由 buildSourceOtio / buildGapRemovedOtio 读取。
+const OTIO_EXPORT_OPTION_KEYS = {
+  srt: 'otioExportIncludeSrt',
+  stickers: 'otioExportIncludeStickers',
+  markers: 'otioExportIncludeMarkers',
+};
+const otioExportOptionInputs = [
+  ...document.querySelectorAll('input[data-otio-export-option]'),
+];
+
+function syncOtioExportOptionInputs() {
+  otioExportOptionInputs.forEach((input) => {
+    const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
+    if (key) input.checked = Boolean(EDITOR_SETTINGS[key]);
+  });
+}
+
+otioExportOptionInputs.forEach((input) => {
+  input.addEventListener('change', () => {
+    const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
+    if (!key) return;
+    updateEditorSettings({ [key]: input.checked });
+    syncOtioExportOptionInputs();
+    // 鼠标点击切换后立即交还焦点：焦点留在子菜单内的复选框上会让悬停关闭
+    // 逻辑（wrapper.contains(document.activeElement)）一直误判指针仍在菜单内，
+    // 导致二级菜单不再自动收起。键盘切换（:focus-visible）保持焦点不受影响。
+    if (!input.matches(':focus-visible')) input.blur();
+  });
+});
+syncOtioExportOptionInputs();
 
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
 updateStickerExportButtons();
@@ -13642,6 +15096,8 @@ function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = nu
       previousPointerPoint = null;
       lastPointInsideOpenWrapper = null;
     }
+    if (open) bringFloatingSurfaceToFront(dd);
+    else syncFloatingSurfaceLayers();
     if (open && positioner) requestAnimationFrame(positioner);
     if (!open && restoreFocus) btn.focus();
   };
@@ -13889,7 +15345,12 @@ function resetLoadedMedia() {
 }
 
 function buildBlankProject() {
-  return { media: '', language: '', model: '', segments: [] };
+  return {
+    schema: window.AsrEditorUtils.PROJECT_SCHEMA,
+    media: '', language: '', model: '',
+    timebase: { unit: 'milliseconds', fps: 30 },
+    segments: [],
+  };
 }
 
 function suggestedProjectName(file = null) {
@@ -13903,9 +15364,20 @@ function applyCanonicalProject(data, filename) {
   currentCuePanelTrackId = null;
   resetCuePanelEditState();
   resetLoadedMedia();
+  projectExtensionFields = Object.fromEntries(
+    Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+  );
+  DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
   DATA.media = typeof data.media === 'string' ? data.media : '';
   DATA.language = data.language || '';
+  DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
+  DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
+  DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
+    ? data.timestamp_granularity : undefined;
   DATA.model = data.model || '';
+  DATA.timebase = normalizeTimelineTimebase(data.timebase);
+  timelineFpsManuallySet = hasExplicitTimelineFps(data.timebase);
+  DATA.media_metadata = normalizeMediaMetadata(data.media_metadata);
   DATA.media_time_reference = data.media_time_reference || null;
   DATA.waveform = data.waveform || null;
   DATA.spectral = data.spectral || null;
@@ -13927,6 +15399,7 @@ function applyCanonicalProject(data, filename) {
   DATA.segments.length = 0;
   data.segments.forEach((segment) => DATA.segments.push(segment));
   DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, DATA.segments);
+  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase.unit === 'frames' });
   editorHistory.clear();
   updateUndoRedoButtons();
   clearSelection();
@@ -14042,12 +15515,26 @@ async function ensureProjectCheckpointForImport(file, { usePicker = true } = {})
 
 function isMawProject(data) {
   if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
+  if (data.media_metadata !== undefined && data.media_metadata !== null
+      && !normalizeMediaMetadata(data.media_metadata)) return false;
+  if (data.timebase !== undefined) {
+    const timebase = data.timebase;
+    if (!timebase || typeof timebase !== 'object' || Array.isArray(timebase)
+        || (timebase.unit !== 'milliseconds' && timebase.unit !== 'frames')
+        || typeof timebase.fps !== 'number' || !Number.isFinite(timebase.fps)
+        || timebase.fps < MIN_TIMELINE_FPS || timebase.fps > MAX_TIMELINE_FPS) return false;
+  }
+  const hasOptionalFramePair = (value) => {
+    const hasStart = Object.prototype.hasOwnProperty.call(value || {}, 'start_frame');
+    const hasEnd = Object.prototype.hasOwnProperty.call(value || {}, 'end_frame');
+    return (!hasStart && !hasEnd) || hasValidFramePair(value);
+  };
   let previousEnd = 0;
   return data.segments.every((segment) => {
     if (!segment || typeof segment !== 'object'
         || !Number.isInteger(segment.start) || !Number.isInteger(segment.end)
         || segment.start < 0 || segment.end <= segment.start || segment.start < previousEnd
-        || typeof segment.text !== 'string') return false;
+        || typeof segment.text !== 'string' || !hasOptionalFramePair(segment)) return false;
     previousEnd = segment.end;
     if (!Array.isArray(segment.items)) return segment.items === undefined;
     let itemEnd = segment.start;
@@ -14055,7 +15542,8 @@ function isMawProject(data) {
       if (!item || typeof item !== 'object'
           || !Number.isInteger(item.start) || !Number.isInteger(item.end)
           || item.start < segment.start || item.end > segment.end || item.end <= item.start
-          || item.start < itemEnd || typeof item.text !== 'string') return false;
+          || item.start < itemEnd || typeof item.text !== 'string'
+          || !hasOptionalFramePair(item)) return false;
       itemEnd = item.end;
       return true;
     });
@@ -14419,12 +15907,21 @@ async function openProjectFile(file, options = {}) {
     const text = await readFileTextWithProgress(file);
     updateEditorLoading(60, `正在解析工程 ${file.name}…`);
     const data = JSON.parse(text);
+    if (data && typeof data === 'object' && !Array.isArray(data)
+        && Object.prototype.hasOwnProperty.call(data, 'schema')
+        && !window.AsrEditorUtils.supportsProjectSchema(data)) {
+      flashHint('不支持的工程格式版本，请使用新版 MAW 打开。', 'warning');
+      return false;
+    }
     // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
     if (data && Array.isArray(data.segments)) {
+      data.timebase = normalizeTimelineTimebase(data.timebase);
+      MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(data);
+      syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
       window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
       window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
-      MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(data);
       normalizeProjectTimings(data);
+      syncProjectTimebaseAndBindingOffsets(data, { preferFrames: false });
     }
     if (!isMawProject(data)) {
       flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
@@ -14782,10 +16279,10 @@ async function loadReapeaksFile(file) {
     waveformEditor.setReapeaksWaveform(parsed.waveform);
     waveformEditor.setSpectralPayload(parsed.spectral);
     waveformEditor.setMediaAvailable(false);
-    flashHint(`已加载 ReaPeaks 缓存：${file.name}`, 'success');
+    flashHint(`已加载 reapeaks 缓存：${file.name}`, 'success');
     return true;
   } catch (error) {
-    flashHint(`加载 ReaPeaks 失败：${error.message || error}`, 'warning');
+    flashHint(`加载 reapeaks 失败：${error.message || error}`, 'warning');
     return false;
   }
 }
@@ -14855,6 +16352,8 @@ function setStickerRootModalOpen(open) {
     stickerRootReturnFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
     stickerRootModal.classList.add('show');
+    // 设置窗口由浮层栈动态抬高（430+），固定 335 盖不住它；打开时入栈置顶。
+    bringFloatingSurfaceToFront(stickerRootModal);
     const initialFocus = stickerRootServerEnabled
       ? stickerRootInput : document.getElementById('sticker-root-cancel');
     setTimeout(() => initialFocus.focus(), 50);
@@ -16560,6 +18059,8 @@ function addExtensionRangeFromWaveform(
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
   if (!track?.segments) { flashHint('当前没有可用的副字幕轨', 'invalid'); return; }
+  requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
+  requestedEnd = timelineFrameAlignedMilliseconds(requestedEnd);
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return;
@@ -16611,6 +18112,8 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
   }
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
+  requestedEnd = timelineFrameAlignedMilliseconds(requestedEnd);
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return;
@@ -16654,6 +18157,7 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
 function addCueAtWaveformTime(timeMs, clickX, clickY) {
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  timeMs = timelineFrameAlignedMilliseconds(timeMs);
   if (findWaveformCueAtTime(timeMs) >= 0) {
     flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
     return;
@@ -16680,6 +18184,7 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
 function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = getActiveExtensionTrack()) {
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  timeMs = timelineFrameAlignedMilliseconds(timeMs);
   if (!track || !Array.isArray(track.segments)) {
     flashHint('当前没有可用的副字幕轨', 'invalid');
     return;
@@ -16750,6 +18255,8 @@ function ensureBoundDragOriginal(drag, index, target) {
       target,
       start: target.start,
       end: target.end,
+      start_frame: target.start_frame,
+      end_frame: target.end_frame,
       items: Array.isArray(target.items)
         ? target.items.map((item) => ({ ...item })) : target.items,
     });
@@ -16764,6 +18271,8 @@ function snapshotBoundDragTrack(track) {
       segment,
       start: segment.start,
       end: segment.end,
+      start_frame: segment.start_frame,
+      end_frame: segment.end_frame,
       items: Array.isArray(segment.items)
         ? segment.items.map((item) => ({ ...item })) : segment.items,
     })),
@@ -16790,6 +18299,10 @@ function restoreBoundDragTimelineOriginals(drag) {
     track.segments = segments.map((entry) => {
       entry.segment.start = entry.start;
       entry.segment.end = entry.end;
+      if (entry.start_frame === undefined) delete entry.segment.start_frame;
+      else entry.segment.start_frame = entry.start_frame;
+      if (entry.end_frame === undefined) delete entry.segment.end_frame;
+      else entry.segment.end_frame = entry.end_frame;
       entry.segment.items = Array.isArray(entry.items)
         ? entry.items.map((item) => ({ ...item })) : entry.items;
       return entry.segment;
@@ -16835,22 +18348,24 @@ function syncBoundCueDrag(drag) {
     const { target, binding } = bound;
     const targetOriginal = ensureBoundDragOriginal(drag, index, target);
     const source = sourceSegments[index];
+    const sourceOriginalStart = Number(sourceOriginal.startMs ?? sourceOriginal.start);
+    const sourceOriginalEnd = Number(sourceOriginal.endMs ?? sourceOriginal.end);
     let nextStart = targetOriginal.start;
     let nextEnd = targetOriginal.end;
     if (drag.kind === 'move') {
-      const delta = source.start - sourceOriginal.start;
+      const delta = source.start - sourceOriginalStart;
       nextStart = targetOriginal.start + delta;
       nextEnd = targetOriginal.end + delta;
     } else if (drag.kind === 'resize-left') {
-      nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
+      nextStart = targetOriginal.start + (source.start - sourceOriginalStart);
     } else if (drag.kind === 'resize-right') {
-      nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
+      nextEnd = targetOriginal.end + (source.end - sourceOriginalEnd);
     } else if (drag.kind === 'resize-boundary') {
-      if (index === drag.index) nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
-      else nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
+      if (index === drag.index) nextEnd = targetOriginal.end + (source.end - sourceOriginalEnd);
+      else nextStart = targetOriginal.start + (source.start - sourceOriginalStart);
     } else if (drag.kind === 'resize-boundary-independent') {
-      if (drag.edge === 'start') nextStart = targetOriginal.start + (source.start - sourceOriginal.start);
-      else nextEnd = targetOriginal.end + (source.end - sourceOriginal.end);
+      if (drag.edge === 'start') nextStart = targetOriginal.start + (source.start - sourceOriginalStart);
+      else nextEnd = targetOriginal.end + (source.end - sourceOriginalEnd);
     }
     if (nextEnd <= nextStart) nextEnd = nextStart + SUBTITLE_MIN_DURATION_MS;
 
@@ -16919,25 +18434,29 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
     }
     ctxmenu.appendChild(it);
   }
+  function addSep() {
+    const sep = document.createElement('div');
+    sep.className = 'sep';
+    ctxmenu.appendChild(sep);
+  }
   const mainIdx = findWaveformCueAtTime(timeMs, DATA.segments);
   const extensionTrack = getActiveExtensionTrack();
   const extensionIdx = findWaveformCueAtTime(timeMs, extensionTrack?.segments);
   if (effectiveTrack === 'extension') {
     addItem(
       '创建副字幕',
-      '',
+      'N',
       () => addExtensionAtWaveformTime(timeMs, clickX, clickY, extensionTrack),
       extensionIdx >= 0,
     );
   } else {
     addItem(
       '创建字幕',
-      '',
+      'N',
       () => addCueAtWaveformTime(timeMs, clickX, clickY),
       mainIdx >= 0,
     );
   }
-  addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));
   if (Array.isArray(DATA.segments) && DATA.segments.length) {
     addItem(
       '按音频位置拆分主字幕',
@@ -16946,13 +18465,19 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       mainIdx < 0,
     );
   }
-  if (Array.isArray(extensionTrack?.segments) && extensionTrack.segments.length) {
+  // 拆分副字幕是多重字幕编辑动作；关闭多重字幕（副轨数据保留但不再参与编辑）时不提供。
+  if (multiSubtitleVisible() && Array.isArray(extensionTrack?.segments) && extensionTrack.segments.length) {
     addItem(
       '按音频位置拆分副字幕',
       '',
       () => openExtensionSplitModal(extensionIdx, timeMs, extensionTrack),
       extensionIdx < 0,
     );
+  }
+  addSep();
+  addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));
+  if (getGapRemoveGaps().some((gap) => gap.removed !== false)) {
+    addItem('填充区间空隙', '', () => fillGapRangeAtWaveformTime(timeMs));
   }
 
   ctxmenu.classList.add('show');
@@ -17467,6 +18992,8 @@ function initWaveformEditor() {
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     getAutoSnapAdjacentCues: () => EDITOR_SETTINGS.autoSnapAdjacentCues,
+    getCueTiming: () => timelineTimingAdapter(),
+    getSnapToFrame: () => timelineIsFrameMode() && EDITOR_SETTINGS.timelineSnapToFrame,
     getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
     // JKL 倒放靠逐帧回退实现，媒体元素本身处于暂停态；倒放期间同样视为播放中。
     getHoverSeekPreview: () => EDITOR_SETTINGS.hoverSeekPreview && !jklReversePlaying,
@@ -17622,7 +19149,13 @@ const SERVER_STARTUP_LABELS = {
     reading_project: '正在读取工程…',
     validating_project: '正在校验工程…',
     preparing_media: '正在准备媒体…',
-    preparing_waveform: '正在生成波形…',
+    loading_waveform_cache: '正在读取波形缓存…',
+    generating_waveform: '未找到可用缓存，正在生成波形…',
+    waveform_ready: '波形已就绪…',
+    waveform_unavailable: '波形缓存不可用，继续加载…',
+    loading_spectral_cache: '正在读取频谱缓存…',
+    loading_reapeaks_waveform: '正在读取 REAPER 波形缓存…',
+    waveform_skipped: '已跳过波形处理…',
     finalizing: '正在完成工程加载…',
     ready: '工程加载完成',
     error: '工程加载失败',
@@ -17633,7 +19166,13 @@ const SERVER_STARTUP_LABELS = {
     reading_project: 'Reading project…',
     validating_project: 'Validating project…',
     preparing_media: 'Preparing media…',
-    preparing_waveform: 'Generating waveform…',
+    loading_waveform_cache: 'Reading waveform cache…',
+    generating_waveform: 'No usable cache found; generating waveform…',
+    waveform_ready: 'Waveform ready…',
+    waveform_unavailable: 'Waveform cache unavailable; continuing…',
+    loading_spectral_cache: 'Reading spectral cache…',
+    loading_reapeaks_waveform: 'Reading REAPER waveform cache…',
+    waveform_skipped: 'Waveform processing skipped…',
     finalizing: 'Finishing project loading…',
     ready: 'Project loaded',
     error: 'Project loading failed',
@@ -17711,7 +19250,7 @@ async function handleDroppedFiles(files) {
   const srtFile = files.find(isSrtFile);
   let stagedSrtSegments = null;
   if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
-    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / ReaPeaks）', 'warning');
+    flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / reapeaks）', 'warning');
     return;
   }
   if (jsonFile) {
@@ -17796,8 +19335,10 @@ window.addEventListener('drop', (e) => {
 // === 启动 ===
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase?.unit === 'frames' });
 const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
 const repairedTimingCount = normalizeProjectTimings(DATA);
+syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
 maweDebug('boot:begin', {
   server: Boolean(SERVER_CONFIG),
   segments: Array.isArray(DATA.segments) ? DATA.segments.length : null,

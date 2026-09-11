@@ -9,6 +9,12 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '备份工程': 'Back up project',
+    '打开备份文件夹': 'Open backup folder',
+    '自动备份间隔（分钟）': 'Backup interval (minutes)',
+    '最大保存版本数': 'Maximum versions',
+    '开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/备份（英文界面为 backups）。': 'Create scheduled and manual-save snapshots; remove the oldest versions above the limit. Backups are stored in the project’s _maw/backups folder.',
+    '工程备份需要本地 Server 绑定工程；浏览器另存为的文件不支持目录备份。': 'Project backups require a project bound to the local server. Files selected with browser Save As do not support directory backups.',
     '撤销': 'Undo', '重做': 'Redo', '↶ 撤销': '↶ Undo', '↷ 重做': '↷ Redo',
     '新建工程': 'New project', '创建并保存一个空白工程': 'Create and save a blank project',
     '当前有未保存的改动，是否确定新建工程？将丢失未保存内容。': 'There are unsaved changes. Create a new project and discard them?',
@@ -22,7 +28,14 @@
     '拖入媒体后显示波形': 'Drop media to display its waveform',
     '拖入工程或 SRT 后显示字幕列表': 'Drop a project or SRT to display subtitles',
     '松开以加载工程、媒体或 SRT': 'Drop to load a project, media, or SRT',
-    '自动保存': 'Auto-save', '自动保存间隔': 'Auto-save interval', '秒': 'sec',
+    '自动保存': 'Auto-save', '自动保存间隔': 'Auto-save interval', '秒': 'sec', '说话人': 'Speaker',
+    '强调色': 'Accent Color', '自定义颜色': 'Custom color', '自定义': 'Custom', '橙色': 'Orange',
+    '显示说话人名称': 'Show speaker names',
+    '在预览字幕中显示说话人': 'Show speaker names in preview subtitles',
+    '将颜色映射为说话人': 'Map colors to speakers',
+    '分隔符': 'Separator',
+    '导出时附加说话人名称': 'Include speaker names when exporting',
+    '字幕预览中的说话人名称开启后会自动勾选；导出 SRT 时会附加对应名称及分隔符，只影响导出的 SRT，不会改动工程里的字幕文本。': 'This is checked automatically when speaker names are enabled in the subtitle preview; exported SRT includes the matching name and separator, while the project subtitle text remains unchanged.',
     '导出字幕': 'Export subtitles', '导出字幕 ▾': 'Export subtitles ▾',
     '导出完整字幕': 'Export full subtitles', '导出完整字幕（SRT）': 'Export full subtitles (SRT)',
     '导出完整字幕（SRT/ASS）或按颜色分别导出字幕': 'Export full subtitles (SRT/ASS) or separate files by color',
@@ -33,6 +46,12 @@
     '导出工程': 'Export project', '导出去空隙版本 ▾': 'Export gap-removed version ▾',
     '字幕 SRT': 'Subtitle SRT', '时间线 OTIO 工程': 'Timeline OTIO project', '时间线 OTIOZ 打包工程': 'Timeline OTIOZ bundle',
     '表情包 OTIO 工程': 'Sticker OTIO project', '表情包 OTIOZ 打包工程': 'Sticker OTIOZ bundle',
+    '同时导出 SRT 字幕': 'Also export SRT subtitles',
+    '导出时间线 OTIO 的同时保存对应的 SRT 字幕文件': 'Save the matching SRT subtitle file alongside the timeline OTIO export',
+    '时间线包含表情包': 'Timeline includes stickers',
+    '把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO': 'Merge stickers into the same OTIO project as an overlay video track; no separate sticker OTIO export needed',
+    '将字幕内容作为标记写入': 'Write subtitle text as markers',
+    '把每条字幕的文本与时间作为标记写入时间线片段': 'Write each subtitle text and timing as markers on the timeline clips',
     'OpenTimeline': 'OpenTimeline', 'OpenTimelineIO': 'OpenTimelineIO', 'OTIO': 'OTIO', '数据': 'Data', '数据文件': 'Data files',
     '彩蛋': 'Easter eggs', '动态图形': 'Dynamic graphics',
     '导出时间线模式': 'Export timeline mode', '去空隙时间线': 'Gap-removed timeline', '原始时间线': 'Source timeline',
@@ -113,9 +132,9 @@
     '正在生成表情包 OTIOZ 打包工程…': 'Generating sticker OTIOZ bundle…',
     'OTIOZ 已生成，图片已打包进 zip': 'OTIOZ generated; images are packed into the zip',
     '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除': 'No silent gaps removed yet; scan with "Remove silent gaps" first',
-    '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
+    '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '字幕样式': 'Subtitle style', '字幕颜色': 'Subtitle colors', '界面': 'Interface', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
     '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '主轨': 'Main track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
-    '拆分与合并': 'Split and merge', '拆分与合并配置': 'Split and merge settings', '波形形状来源': 'Waveform shape source', '自研波形': 'Self-built waveform', 'ReaPeaks 波形层': 'ReaPeaks waveform layer',
+    '拆分与合并': 'Split and merge', '拆分与合并配置': 'Split and merge settings', '波形形状来源': 'Waveform shape source', '原生波形': 'Native waveform', 'REAPER 波形': 'REAPER waveform',
     '显示方式': 'Display mode', '语言类型': 'Language type', '字幕语言类型': 'Subtitle language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
     '开启后显示副轨、双列列表和绑定操作；关闭只隐藏副字幕数据，不删除': 'Show the secondary track, two-column list, and binding actions; turning it off only hides secondary data',
     '启用多重字幕时使用的波形行高度': 'Waveform row height used when multiple subtitles are enabled', '请拖入第二个 srt 字幕以开启多重字幕功能': 'Drop a second SRT subtitle to enable multiple subtitles', '请拖入第二条字幕以开启多重字幕编辑': 'Drop a second subtitle to enable multi-subtitle editing', '是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）': 'Import the second subtitle? (You can also drop a subtitle or project file into the editor later)', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。': 'When the current project has more than one subtitle, you can enable multiple-subtitle mode for bilingual subtitle editing and similar workflows.',
@@ -143,13 +162,16 @@
     '主字幕调整时副字幕只跟随；冲突时优先限制副字幕，必要时保留重叠，不会缩短主字幕': 'When the main subtitle changes, the secondary subtitle only follows; conflicts limit the secondary subtitle first without shortening the main subtitle',
     '主字幕调整时副字幕只跟随；冲突时优先限制副字幕，不会缩短主字幕': 'When the main subtitle changes, the secondary subtitle only follows; conflicts limit the secondary subtitle first without shortening the main subtitle',
     '副字幕调整时受主字幕轨道边界限制，主字幕没有可用空间时无法继续拖动': 'When the secondary subtitle changes, the main-track boundaries limit the operation; dragging stops when the main track has no room',
-    '字体大小': 'Font size', '字幕大小': 'Font size', '主字幕大小': 'Main subtitle size', '副字幕大小': 'Secondary subtitle size',
+    '字体大小': 'Font size', '文字大小': 'Font size', '颜色与说话人': 'Colors and speakers',
     '自动（响应式）': 'Auto (responsive)', '自动（比主字幕小一号）': 'Auto (two px smaller than main)', '字体': 'Font',
     '主字幕字体': 'Main subtitle font', '副字幕字体': 'Secondary subtitle font', '默认无衬线': 'Default sans-serif',
     '主字幕颜色': 'Main subtitle color', '副字幕颜色': 'Secondary subtitle color',
     '微软雅黑 / 苹方': 'Microsoft YaHei / PingFang', '黑体': 'SimHei', '宋体': 'SimSun', 'Arial / Segoe UI': 'Arial / Segoe UI',
     '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)',
     '文字颜色': 'Text color', '背景颜色': 'Background color', '背景不透明度': 'Background opacity',
+    '颜色样式': 'Color style', '预览字幕颜色样式': 'Subtitle color preview style',
+    '选择按字幕颜色快照应用到预览字幕的样式': 'Choose how the subtitle color snapshot is applied to the preview',
+    '下划线': 'Underline', '描边': 'Stroke',
     '背景色': 'Background color', '不透明度': 'Opacity',
     '副字幕背景色': 'Secondary subtitle background color',
     '只影响播放器画面内的字幕预览，不改变字幕文本或时间': 'Only affects subtitle preview in the player; it does not change subtitle text or timing',
@@ -163,11 +185,24 @@
     '调整播放器画面内副字幕预览的背景色': 'Adjust the background color used by the secondary subtitle preview in the player',
     '调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the secondary subtitle preview background opacity in the player; set it to 0 to hide the background',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
-    '媒体': 'Media', '媒体设置': 'Media settings', '预览字幕': 'Subtitle preview', '预览字幕样式': 'Subtitle preview style', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
-    '播放预览': 'Playback preview', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
-    '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '每次跳转时长': 'Seek duration per action', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)',
+    '媒体': 'Media', '外观': 'Appearance', '语言': 'Language', '主题': 'Theme', '明亮模式': 'Light mode', '暗色模式': 'Dark mode', '跟随系统': 'Follow System', '预览字幕': 'Subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
+    '视频预览': 'Video preview', '播放控制': 'Playback controls', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
+    '在播放器画面内预览主字幕': 'Preview the main subtitle in the player', '在波形区悬停鼠标时，播放器自动预览指针位置的画面': 'While hovering the waveform, the player automatically previews the frame at the pointer',
+    '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '每次跳转时长': 'Seek duration per action', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '媒体控制按钮和左右方向键每次跳转的时间幅度': 'Time amount to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的每次跳转时长（单位：ms）': 'Duration for each jump from the controls and left/right arrow keys (unit: ms)', '控制按钮和左右方向键的每次跳转时长。': 'Time amount for each jump from the controls and left/right arrow keys.',
+    '时间基准': 'Timebase', '时间单位': 'Time unit', '毫秒': 'Milliseconds', '帧': 'Frames',
+    '吸附到帧': 'Snap to frame', '时间码分隔符': 'Timecode separator',
+    '毫秒模式保持原有时间编辑方式。切换为帧模式后，拖动、方向键和 A/D 微调都会按帧执行。': 'Millisecond mode keeps the existing timing behavior. Switching to frame mode makes dragging, arrow keys, and A/D fine-tuning operate frame by frame.',
+    '仅帧模式生效；切换到帧模式后可启用。': 'Only active in frame mode; switch to frame mode to enable it.',
+    '帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。': 'Frame timecode example: HH:MM:SS:FF; only the separator between seconds and frames changes.',
     '频谱颜色': 'Spectral colors', '正在应用频谱颜色…': 'Applying spectral colors…', '正在关闭频谱颜色…': 'Removing spectral colors…',
-    '预览字幕颜色': 'Color underline', '按字幕颜色快照给预览文字加下划线，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本': 'Underline the preview text with each subtitle color snapshot to tell colored subtitles apart; only affects the in-player preview, never subtitle text',
+    '预览字幕颜色': 'Subtitle color preview', '按字幕颜色快照给预览字幕应用所选颜色样式，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本': 'Apply the selected subtitle color style to the preview using each subtitle color snapshot; only affects the in-player preview, never subtitle text',
+    '开启颜色到说话人名称的映射；开启后可在下方显示名称并编辑颜色对应的说话人名称': 'Enable the color-to-speaker mapping; after enabling, show and edit the speaker names below',
+    '打开字幕颜色设置': 'Open subtitle color settings',
+    '在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。': 'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
+    '🤓👆 你可以在': '🤓👆 You can configure color-to-speaker names in',
+    '中配置颜色对应的说话人名。': ' settings.',
+    '使用说话人名称作为后缀': 'Use speaker name as suffix',
+    '勾选后按说话人名称生成彩色字幕文件名后缀；没有对应名称时回退为颜色': 'When enabled, use the speaker name as the colored subtitle filename suffix; fall back to the color when no name is mapped',
     '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
     '全屏': 'Fullscreen', '退出全屏': 'Exit fullscreen',
@@ -175,7 +210,7 @@
     '字数阈值': 'Character threshold', '仅看超长': 'Long only', '字幕列表设置': 'Subtitle list settings',
     '拆分后临时保留显示': 'Temporarily keep split results visible', '点击字幕后自动滚动': 'Auto-scroll after clicking a subtitle', '显示内容': 'Displayed content',
     '当前': 'Current', '已选': 'Selected', '波形': 'Waveform', '音频波形区': 'Audio waveform', '波形设置': 'Waveform settings', '波形轨道徽标（开启后）：': 'Waveform track badges (when enabled):', '使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形': 'Color the waveform using the spectral cache by dominant frequency; when disabled, use the original solid-color waveform',
-    '多行': 'Multi-row', '基础': 'Basic', '隐藏': 'Hidden',
+    '多行': 'Multi-row', '基础': 'Basic', '工程与输出': 'Project & output', '扩展功能': 'Extensions', '隐藏': 'Hidden',
     '选择': 'Select', '分割': 'Razor', '移除静音空隙': 'Remove silent gaps',
     '跳过空隙': 'Skip gaps', '播放时跳过空隙': 'Skip gaps during playback', '未扫描空隙': 'Gaps not scanned', '工作区': 'Workspace',
     '拼合字幕': 'Snap subtitles', '拼合参数': 'Snap parameters',
@@ -300,6 +335,7 @@
     '选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。': 'When enabled, export all color groups as filename_color; otherwise each color opens its own save dialog.',
     'Oi！检测到你添加了表情包，是否需要帮你打开「设置」中的字幕列表/编辑区的表情包显示开关？   ヾ(´･ω･｀)ﾉ': 'Oi! You added a sticker. Would you like to enable sticker display in the subtitle list and editor under Settings?   ヾ(´･ω･｀)ﾉ',
     'SRT 首条从 0 开始': 'Start the first SRT cue at 0',
+    'SRT 首条字幕起始时间从 0 开始': 'Start the first SRT subtitle at 0',
     '只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴': 'Only move the first exported subtitle to 00:00; keep its end time and all later timecodes unchanged in the project and OTIO',
     '导入字幕': 'Import subtitles', '请选择你要执行的行为：': 'Choose what to do:',
     '替换当前字幕': 'Replace current subtitles', '作为多重字幕': 'Add as multiple subtitles', '导入': 'Import',
@@ -346,7 +382,7 @@
     '进入字幕编辑区（仅单选时）': 'Focus subtitle editor (single selection only)', '退出字幕编辑区（文本编辑时）': 'Exit subtitle editor (while editing)', '清除字幕选择（非编辑状态）': 'Clear subtitle selection (when not editing)',
     '选中所有字幕': 'Select all subtitles', '选中所有字幕（非编辑状态）': 'Select all subtitles (when not editing)',
     '右键': 'Right-click', '通用': 'General', '基础操作': 'Basic operations', '快捷操作': 'Shortcuts', '字幕操作': 'Subtitle actions', '波形区': 'Waveform area', '波形区字幕操作': 'Waveform subtitle actions',
-    '进阶': 'Advanced', '常用帮助分类': 'Common help categories', '进阶帮助分类': 'Advanced help categories',
+    '进阶': 'Advanced', '帮助分区': 'Help sections',
     '鼠标操作': 'Mouse actions', '选择操作': 'Selection', '编辑操作': 'Editing actions', '快捷功能': 'Quick actions', '切换工具': 'Switch tools',
     '处理范围': 'Scope', '查找并批量替换字幕文本': 'Find and batch-replace subtitle text',
     '集中编辑字幕文本，可预览拆分、合并和字词时间码映射': 'Edit subtitle text in one place and preview split, merge, and word-timing mappings',
@@ -388,7 +424,10 @@
     '无选中时前后跳转': 'Seek back/forward with no selection',
     '无选中时前后跳转（时长：': 'Seek back/forward with no selection (duration:',
     '在波形区或播放器跳转到媒体开头/结尾': 'Seek to the start/end of the media from the waveform or player',
-    '可在媒体区的': 'Use the', '⚙️设置': '⚙️ settings', '中调整 JKL 按键模式，或是跳转的时长。': 'to adjust the JKL key mode and seek duration.',
+    '⚙️设置': '⚙️ settings',
+    '预览开关、鼠标位置预览、JKL 按键模式和跳转时长可在': 'Adjust preview toggles, the pointer-position preview, JKL playback mode, and seek duration in',
+    '的「视频预览」中调整。': ' under “Video preview”.',
+    '配置颜色对应的说话人名称；留空可隐藏该颜色的名称。仅影响预览，不改变字幕文本。': 'Configure the speaker name for each color; leave a name blank to hide that color’s name. Affects the preview only, never subtitle text.',
     '选中字幕时': 'With subtitles selected:', '选中字幕时：': 'With subtitles selected:',
     '按键微调字幕': 'Fine-tuning subtitles with keys', '选中字幕': 'With a subtitle selected',
     '微调移动字幕': 'Fine-tune subtitle movement', '将字幕起点/终点贴到前一条结尾/后一条开头': 'Snap the subtitle start/end to the previous end/next start',
@@ -412,11 +451,15 @@
     '注：微调幅度可在波形区的': 'Note: Adjust the fine-tuning amount in the waveform area’s',
     '中调节，默认 50ms': 'to adjust it; the default is 50 ms',
     '其他': 'Other',
+    '字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行': 'Time unit used for subtitle editing; after switching to frames, dragging, arrow keys, and A/D fine-tuning operate frame by frame',
+    '帧时间基准的帧率；帧模式会按此 FPS 保存并显示帧时间码': 'Frame rate for the frame timebase; frame mode saves and displays frame timecodes at this FPS',
     '字幕按键微调幅度': 'Subtitle keyboard adjustment amount',
+    '选中字幕时，方向键和按住字幕块/边界时的每次调整幅度': 'Adjustment amount for arrow keys when a subtitle is selected and A/D while holding a cue/block boundary',
     '具体用法详见帮助的「微调字幕」区': 'See the “Subtitle fine-tuning” tab in Help for details',
     '上一条字幕': 'Previous subtitle', '下一条字幕': 'Next subtitle',
     '向前多选': 'Extend selection backward', '向后多选': 'Extend selection forward',
     '跳转并播放选中字幕': 'Seek to and play selected subtitle',
+    '跳到当前字幕开头/结尾并保持暂停': 'Seek to the current subtitle start/end and stay paused',
     '倍速 ×0.5/重置/×2': 'Speed ×0.5/reset/×2',
     '双击波形': 'Double-click waveform', '右键波形背景': 'Right-click waveform background',
     '在鼠标位置创建字幕（仅波形）': 'Create a subtitle at the pointer (waveform only)',
@@ -429,6 +472,9 @@
     '已取消新增字幕': 'Subtitle creation canceled',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '增加静音区段': 'Add silent region',
+    '填充区间空隙': 'Fill range into one gap',
+    '当前没有已激活的空隙，无法填充区间空隙': 'No active gaps available; nothing to fill',
+    '媒体时长尚不可用；请先加载媒体后再填充区间空隙': 'Media duration is unavailable; load media before filling the gap range',
     '空隙区段操作方式设为「中键拖动」时：': 'When gap region operation is “Middle-button drag”:',
     '增加恢复区段': 'Add restored region', '切换移除/保留': 'Toggle removed/kept',
     '恢复区段': 'Restore region', '移除区段': 'Remove region', '清理该区段': 'Clear this region',
@@ -532,7 +578,7 @@
     '清除所有选中': 'Clear selection', '取消选中': 'Deselect', '取消选择': 'Deselect', '请选择至少两个字幕块！': 'Select at least two subtitle blocks!',
     '红': 'Red', '黄': 'Yellow',
     '蓝': 'Blue', '绿': 'Green', '紫': 'Purple',
-    '红色': 'red', '黄色': 'yellow', '蓝色': 'blue', '绿色': 'green', '紫色': 'purple'
+    '红色': 'Red', '黄色': 'Yellow', '蓝色': 'Blue', '绿色': 'Green', '紫色': 'Purple'
   };
 
   const EN_ATTR = {
@@ -542,6 +588,13 @@
     '波形显示模式': 'Waveform display mode',
     '打开更多文件': 'Open more files',
     '导出或导入工作区配置': 'Export or import workspace configuration',
+    '媒体控制按钮和左右方向键每次跳转的时间幅度': 'Time amount to jump with the media controls and left/right arrow keys',
+    '帧率 FPS': 'Frame rate FPS',
+    '字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行': 'Time unit used for subtitle editing; after switching to frames, dragging, arrow keys, and A/D fine-tuning operate frame by frame',
+    '帧时间基准的帧率；帧模式会按此 FPS 保存并显示帧时间码': 'Frame rate for the frame timebase; frame mode saves and displays frame timecodes at this FPS',
+    '帧模式下把波形鼠标指针吸附到最近的帧；毫秒模式下不生效': 'Snap the waveform pointer to the nearest frame in frame mode; inactive in millisecond mode',
+    '帧时间码中秒与帧之间的分隔符；只使用一个非字母数字符号': 'Separator between seconds and frames in the frame timecode; use one non-alphanumeric symbol',
+    '选中字幕时，方向键和按住字幕块/边界时的每次调整幅度': 'Adjustment amount for arrow keys when a subtitle is selected and A/D while holding a cue/block boundary',
     '只影响播放器画面内的字幕预览，不改变字幕文本或时间': 'Only affects subtitle preview in the player; subtitle text and timing are unchanged',
     '选择播放器画面内字幕预览使用的字体族': 'Choose the font family used by the subtitle preview in the player',
     '读取本机已安装的字体': 'Read fonts installed on this computer',
@@ -549,11 +602,25 @@
     '字幕背景色': 'Subtitle background color',
     '调整播放器画面内字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the subtitle preview background opacity in the player; 0 hides the background',
     '字幕背景不透明度': 'Subtitle background opacity',
-    '波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层（缺数据时自动回退自研缓存）；需要时可切回自研': 'Waveform shape source: use the finest wave layer beside the media from .ReaPeaks by default (falls back to the self-built cache when missing); switch back to self-built when needed',
+    '波形形状来源：默认使用媒体旁 .ReaPeaks 的最细 wave 层（缺数据时自动回退原生缓存）；需要时可切回原生': 'Waveform shape source: use the finest wave layer beside the media from .ReaPeaks by default (falls back to the native waveform cache when missing); switch back to native when needed',
     '选择播放器画面内副字幕预览使用的字体族': 'Choose the font family used by the secondary subtitle preview in the player',
     '选择播放器画面内主字幕预览的颜色': 'Choose the color of the main subtitle preview in the player',
     '调整播放器画面内副字幕预览的背景色': 'Adjust the secondary subtitle preview background color in the player',
     '选择播放器画面内副字幕预览的颜色': 'Choose the color of the secondary subtitle preview in the player',
+    '开启字幕预览中的说话人名称后默认勾选；导出 SRT 时在字幕前附加对应名称及分隔符，可手动关闭': 'Checked by default when speaker names are enabled in the subtitle preview; add the matching name and separator before each subtitle in exported SRT, and turn it off manually when needed',
+    '在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本': 'Show the speaker name for each color before the subtitle in the player preview; preview only, subtitle text is unchanged',
+    '配置颜色对应的说话人名称；留空可隐藏该颜色的名称。分隔符默认「：」，支持空格和英文引号。仅影响预览，不改变字幕文本。': 'Configure the speaker name for each color; leave a name empty to hide it. The separator defaults to “：” and supports spaces or English quotation marks. Preview only, subtitle text is unchanged.',
+    '设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号': 'Set the separator between the speaker name and subtitle text; the default is “：”, and spaces or English quotation marks are also supported',
+    '设置黄色对应的说话人名称': 'Set the speaker name for yellow',
+    '设置绿色对应的说话人名称': 'Set the speaker name for green',
+    '设置红色对应的说话人名称': 'Set the speaker name for red',
+    '设置紫色对应的说话人名称': 'Set the speaker name for purple',
+    '设置蓝色对应的说话人名称': 'Set the speaker name for blue',
+    '黄色对应的说话人名称': 'Speaker name for yellow',
+    '绿色对应的说话人名称': 'Speaker name for green',
+    '红色对应的说话人名称': 'Speaker name for red',
+    '紫色对应的说话人名称': 'Speaker name for purple',
+    '蓝色对应的说话人名称': 'Speaker name for blue',
     '字幕预览设置': 'Subtitle preview settings',
     '点击复制工程文件名': 'Click to copy the project file name',
     '点击替换；右键删除': 'Click to replace; right-click to remove',
@@ -583,7 +650,8 @@
     '过滤字幕…': 'Filter subtitles…', '清空': 'Clear', '正在加载…': 'Loading…',
     '只显示超过阈值的字幕（再次点击关闭）': 'Show only subtitles over the threshold (click again to turn off)',
     '查看鼠标操作与键盘快捷键': 'View mouse and keyboard shortcuts',
-    '展开编辑器通用设置': 'Open editor general settings', '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
+    '打开全局设置窗口': 'Open the global settings window', '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
+    '全局设置': 'Global settings', '关闭全局设置窗口': 'Close the global settings window', '设置分区': 'Settings sections',
     '选中字幕时，方向键和按住字幕块/边界时的 A/D 每次调整的毫秒数': 'Milliseconds adjusted per arrow-key press or A/D press while holding a subtitle block or edge',
     '关闭（Esc）': 'Close (Esc)',
     '关闭纯文本编辑': 'Close plain text editor',
@@ -714,7 +782,11 @@
       'When enabled, cues split automatically at usable word timings; otherwise the split dialog opens for manual splitting.',
     '开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分。':
       'When enabled, split automatically using available timecodes; otherwise the split dialog opens for manual splitting.',
-    '语言类型会影响拆分面板的分隔判断，以及合并时是否插入空格等。': 'Language type affects split-boundary decisions and whether spaces are inserted when merging.',
+    '语言类型会影响拆分面板的分隔判断（英文会按单词拆）、计数的规则，以及合并时是否插入空格等。': 'Language type affects split-boundary decisions (English splits by word), character counting rules, and whether spaces are inserted when merging.',
+    '对于双语字幕，可以在': 'For dual-track subtitles, configure each track\'s language type in ',
+    '多重字幕的设置': 'multiple-subtitle settings', '中单独配置两种字幕的语言类型。': ' separately.',
+    '对于双语字幕，可以在多重字幕的设置（需要先启用多重字幕）中单独配置两种字幕的语言类型。': 'For dual-track subtitles, configure each track\'s language type in multiple-subtitle settings (enable multiple subtitles first).',
+    '打开多重字幕设置': 'Open multiple-subtitle settings',
     '配置合并字幕时插入字符': 'Configure characters inserted when merging subtitles', '配置合并字符': 'Configure merge separator', '配置拆分标点': 'Configure split punctuation',
     '合并字幕时插入字符': 'Text inserted when merging subtitles',
     '留空则直接拼接': 'Leave empty to join directly', '默认一个空格': 'Defaults to one space',
@@ -729,7 +801,7 @@
     '全角逗号': 'Fullwidth comma', '句号': 'Period', '顿号': 'Enumerated comma',
     '全角感叹号': 'Fullwidth exclamation mark', '全角问号': 'Fullwidth question mark',
     '单词型：英语等西文语言，按空格分隔多个单词': 'Word-based: Latin-script languages such as English, where words are separated by spaces',
-    '适用于英文、俄文等': 'for English, Russian, and similar languages', '适用于中文、日文等': 'for Chinese, Japanese, and similar languages',
+    '适用于英文、俄文等语言': 'for English, Russian, and similar languages', '适用于中文、日文等语言': 'for Chinese, Japanese, and similar languages',
     '字符型：中文、日文等按字符拆分的语言': 'Character-based: languages such as Chinese and Japanese, split per character',
   };
 
@@ -788,6 +860,19 @@
   }
 
   let language = readLanguage();
+
+  // 导出文件名中的技术段（按当前语言映射；中文界面译出，英文界面原样）。
+  // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」；
+  // 未标记颜色的默认组用「_无色」而非「_default」。
+  const EXPORT_NAME_SEGMENTS = {
+    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '无色',
+    'yellow': '黄色', 'green': '绿色', 'red': '红色', 'purple': '紫色', 'blue': '蓝色',
+  };
+
+  function exportTag(segment) {
+    if (language !== ZH) return segment;
+    return EXPORT_NAME_SEGMENTS[segment] || segment;
+  }
 
   function translateText(value, lang = language) {
     const text = String(value ?? '');
@@ -876,6 +961,9 @@
     // flashHint：已移除 N 段音量空隙，共 6秒（占比 2.1%）
     match = /^已移除\s+(\d+)\s+段音量空隙，共\s+(.+)$/.exec(text);
     if (match) return `Removed ${match[1]} loudness gaps, ${translateText(match[2], EN)} total`;
+    // flashHint：已填充并合并为 6秒（占比 2.1%）静音空隙
+    match = /^已填充并合并为\s+(.+)\s+静音空隙$/.exec(text);
+    if (match) return `Filled and merged into ${translateText(match[1], EN)} of silent gaps`;
     // 波形状态：12:34.567 · 缓存波形（未加载媒体）
     match = /^(.+?)\s+·\s+缓存波形（未加载媒体）$/.exec(text);
     if (match) return `${match[1]} · cached waveform (no media loaded)`;
@@ -943,11 +1031,11 @@
     match = /^已交换主副字幕：主轨\s+(\d+)\s+条，副轨\s+(\d+)\s+条$/.exec(text);
     if (match) return `Swapped main and secondary subtitles: ${match[1]} main, ${match[2]} secondary`;
     // 合并连接设置旁的主字幕类型提示与切换按钮 title（目标类型语言说明）
-    match = /^当前为「(.+)」(?:（(.+)）)?$/.exec(text);
+    match = /^当前字幕为「(.+)」(?:（(.+)）)?$/.exec(text);
     if (match) {
       const mode = translateText(match[1], EN);
       const example = match[2] ? translateText(match[2], EN) : '';
-      return `Current: ${mode}${example ? ` (${example})` : ''}`;
+      return `Current subtitle: ${mode}${example ? ` (${example})` : ''}`;
     }
     match = /^切换为(单词型|字符型)$/.exec(text);
     if (match) return `Switch to ${translateText(match[1], EN)}`;
@@ -1104,6 +1192,7 @@
   global.MAWE_I18N = {
     get language() { return language; },
     applyLanguage,
+    exportTag,
     start,
     translateText,
     validateTranslationKeys,

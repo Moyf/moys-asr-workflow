@@ -619,8 +619,39 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: MAW-*
+          # 不要使用仓库已有的 assets/ 目录：上传时用 glob 会把源素材
+          # （launcher.jpg、maw.icns、screenshot*.jpg 等）一起传进 Release。
+          path: release-artifacts
+          merge-multiple: true
+
       - name: Prepare release notes from CHANGELOG
-        run: python3 scripts/prepare_release_notes.py --tag "${{ github.ref_name }}" --output release-notes.md
+        shell: bash
+        run: |
+          set -euo pipefail
+          Tag="${{ github.ref_name }}"
+          # 用产物文件是否齐全判定失败平台；Windows 构建失败时 publish 不会运行
+          Failed=()
+          check_platform() {
+            local platform="$1"; shift
+            local file
+            for file in "$@"; do
+              if [ ! -f "release-artifacts/$file" ]; then
+                Failed+=("$platform")
+                return
+              fi
+            done
+          }
+          check_platform macos "MAW-macOS-arm64-$Tag.zip" "MAW-lite-macOS-arm64-$Tag.zip"
+          check_platform linux "MAW-Linux-x86_64-$Tag.AppImage"
+          Args=(--tag "$Tag" --output release-notes.md)
+          if [ "${#Failed[@]}" -gt 0 ]; then
+            Args+=(--failed "$(IFS=,; echo "${Failed[*]}")")
+          fi
+          python3 scripts/prepare_release_notes.py "${Args[@]}"
 
       - name: Append incomplete-build warning
         if: ${{ needs.build-aux.result == 'failure' }}
@@ -633,15 +664,6 @@ jobs:
           Windows 构建成功，但 macOS / Linux 构建未全部成功，本次 Release 仅包含成功平台的安装包。
           开发者请查看本次 Actions 运行日志排查失败平台。
           EOF
-
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v7
-        with:
-          pattern: MAW-*
-          # 不要使用仓库已有的 assets/ 目录：上传时用 glob 会把源素材
-          # （launcher.jpg、maw.icns、screenshot*.jpg 等）一起传进 Release。
-          path: release-artifacts
-          merge-multiple: true
 
       - name: Create or update GitHub Release
         env:

@@ -478,24 +478,20 @@ export async function startStaticServer(filePath, port) {
 }
 
 // ---------------------------------------------------------------------------
-// Generate blank-editor.html via edit.py --blank.
+// Build a portable blank editor from the current web/ sources (edit.py --blank).
+// The committed blank-editor.html is refreshed only before a release, so specs
+// that exercise the portable page must build the current sources instead of
+// copying a possibly stale artifact.
 // ---------------------------------------------------------------------------
-export function generateBlankEditor(outputPath) {
-  const args = ['edit.py', '--blank', '-o', outputPath];
-  try {
-    execFileSync(PYTHON_RUNNER.command, pythonCommandArgs(args), {
-      cwd: process.cwd(),
-      encoding: 'utf-8',
-      timeout: 30000,
-      windowsHide: true,
-    });
-  } catch (error) {
-    if (!configuredPython && (error?.code === 'ENOENT' || error?.status === 127)) {
-      throw new Error(
-        `E2E requires uv to run the project Python environment. Run "uv sync" first, or set MAW_E2E_PYTHON explicitly. Original error: ${error.message}`,
-      );
-    }
-    throw error;
+export function buildPortableBlankEditor(outputPath) {
+  const { command, prefixArgs } = PYTHON_RUNNER;
+  execFileSync(
+    command,
+    [...prefixArgs, 'edit.py', '--blank', '--output', outputPath],
+    { cwd: process.cwd(), windowsHide: true, stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+  if (!existsSync(outputPath)) {
+    throw new Error(`Failed to build portable blank editor: ${outputPath}`);
   }
   return outputPath;
 }

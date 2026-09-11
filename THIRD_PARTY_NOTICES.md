@@ -4,11 +4,12 @@
 
 | Component | Purpose | License / terms |
 |---|---|---|
+| [Send2Trash](https://github.com/arsenetar/send2trash) | Move expired project backups to the system recycle bin | BSD-3-Clause |
 | [requests](https://requests.readthedocs.io/) | HTTP requests to the ASR API | Apache-2.0 |
 | [jieba](https://github.com/fxsjy/jieba) | Chinese subtitle segmentation | MIT |
 | [fontTools](https://github.com/fonttools/fonttools) | Convert installed font outlines into font-independent Lottie vector glyphs | MIT |
 | [opencc-python-reimplemented](https://github.com/yichen0831/opencc-python) / [OpenCC](https://github.com/BYVoid/OpenCC) | Local Simplified/Traditional Chinese conversion in the post-processing toolbox | Apache-2.0 |
-| [reapeaks](https://pypi.org/project/reapeaks/) | Rust kernel that generates the `.ReaPeaks` waveform/spectral cache beside media files | MIT OR Apache-2.0 |
+| [quapeaks](https://pypi.org/project/quapeaks/) | Rust kernel that generates the `.quapeaks` peak container (REAPER-compatible `RPKN` layout plus MAW's own waveform layer) beside media files; renamed from `reapeaks-rs` | MIT OR Apache-2.0 |
 | [RapidOCR](https://github.com/RapidAI/RapidOCR) / PP-OCRv6 | Local CPU OCR for the 「OCR 字幕去重」 toolbox; the frozen bundle includes the PP-OCRv6 tiny model files | Apache-2.0; bundled model files remain subject to upstream model terms |
 | [ONNX Runtime](https://onnxruntime.ai/) | CPU inference runtime for RapidOCR | MIT |
 | [Pillow](https://python-pillow.github.io/) | Decode, crop, and resize video frames before OCR | HPND |
@@ -24,6 +25,10 @@
 | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) / [CTranslate2](https://github.com/OpenNMT/CTranslate2) | Optional local Whisper speech-recognition runtime (MIT) | MIT; not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
 | Alibaba Cloud Model Studio / Qwen ASR | Speech recognition API | External service; subject to Alibaba Cloud terms, billing, and privacy policy |
 | [Soniox](https://soniox.com/) | Speech recognition API | External service; subject to Soniox terms, billing, and privacy policy |
+| [OpenAI](https://openai.com/) | Speech recognition API | External service; subject to OpenAI terms, billing, and privacy policy |
+| Tencent Cloud Recording File Recognition | Speech recognition API | External service; subject to Tencent Cloud terms, billing, and privacy policy |
+| Volcengine / Doubao Speech Recognition | Speech recognition API | External service; subject to Volcengine terms, billing, and privacy policy |
+| [OpenRouter](https://openrouter.ai/) | OpenAI-compatible API router used for ASR models | External service; subject to OpenRouter and the selected upstream provider's terms, billing, and privacy policy |
 | [DeepSeek](https://www.deepseek.com/) / [Zhipu Coding Plan](https://open.bigmodel.cn/) / Alibaba Cloud Model Studio Qwen / custom OpenAI-compatible endpoint | Optional subtitle text post-processing in the Launcher toolbox | External services; subject to the selected provider's terms, billing, and privacy policy |
 
 The `web/` editor, Python scripts, and documentation in this repository are distributed under the repository's `AGPL-3.0-only` license unless a file states otherwise.

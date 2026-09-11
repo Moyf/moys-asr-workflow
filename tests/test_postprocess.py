@@ -8,24 +8,31 @@ import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import final
 from unittest import mock
 
+from requests.exceptions import HTTPError, RequestException
+
+from maw import gui_config
+from maw import output_naming
 from maw.postprocess import (
     FixedProcessRequest,
     LlmPostprocessRequest,
     MAX_TRANSLATION_REPAIR_REQUESTS_PER_BATCH,
     OutputMode,
+    PostprocessStepError,
     Replacement,
     ReplacementRequest,
     run_fixed_process,
     apply_llm_groups,
+    merge_bilingual_project,
     run_fixed_replacement,
     run_llm_postprocess,
 )
 from maw.postprocess_ffmpeg import AudioTrack, BurnSubtitleRequest, ExtractAudioRequest, FfconcatRequest, parse_ffconcat, probe_audio_tracks, run_burn_subtitles, run_extract_audio, run_ffconcat_rebuild
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
-from maw.postprocess_llm import LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
+from maw.postprocess_llm import MAX_PROVIDER_DIAGNOSTIC_CHARS, LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict, JsonValue
 from maw.text_conversion import TextConversion
 
@@ -96,6 +103,16 @@ class PostprocessTests(unittest.TestCase):
             json.dumps(sample_project(self.media), ensure_ascii=False),
             encoding="utf-8",
         )
+        # 让本类所有命名断言在确定性的 en 界面下运行（不依赖开发者 .env）：
+        # 工具箱 operation（下划线 base）的 en 文件名保持改动前 legacy ASCII，
+        # 现有断言（clip.translate-en-bilingual.* 等）因此继续逐字节成立。
+        self._language_patch = mock.patch.object(
+            gui_config,
+            "effective_config",
+            return_value=SimpleNamespace(gui_lang="en"),
+        )
+        self._language_patch.start()
+        self.addCleanup(self._language_patch.stop)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -136,6 +153,53 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("00:00:00,100 --> 00:00:00,900", first.srt_path.read_text(encoding="utf-8"))
         self.assertEqual(second.source_project_path, first.project_path)
         self.assertNotEqual(second.project_path, first.project_path)
+
+    def test_fixed_process_skips_when_nothing_is_enabled(self) -> None:
+        result = run_fixed_process(FixedProcessRequest(
+            project_path=self.project_path,
+            srt_path=None,
+            output_mode=OutputMode.BOTH,
+            replacements=(),
+            conversion=TextConversion.OFF,
+        ))
+
+        self.assertIsNone(result.project_path)
+        self.assertIsNone(result.srt_path)
+        self.assertTrue(any("跳过" in warning for warning in result.warnings))
+        self.assertEqual(
+            sorted(path.name for path in self.root.glob("clip.*")),
+            ["clip.mosp", "clip.mp4"],
+        )
+
+    def test_fixed_process_suffix_reflects_enabled_parts(self) -> None:
+        with mock.patch.object(output_naming, "resolve_lang", return_value="zh"):
+            replacement_only = run_fixed_process(FixedProcessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.SRT,
+                replacements=(Replacement(source="酒", target="饮料"),),
+                conversion=TextConversion.OFF,
+            ))
+            conversion_only = run_fixed_process(FixedProcessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.SRT,
+                replacements=(),
+                conversion=TextConversion.TO_SIMPLIFIED,
+            ))
+            both = run_fixed_process(FixedProcessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.SRT,
+                replacements=(Replacement(source="酒", target="饮料"),),
+                conversion=TextConversion.TO_TRADITIONAL,
+            ))
+
+        if replacement_only.srt_path is None or conversion_only.srt_path is None or both.srt_path is None:
+            self.fail("enabled fixed processing must create output files")
+        self.assertEqual(replacement_only.srt_path.name, "clip.批量替换.srt")
+        self.assertEqual(conversion_only.srt_path.name, "clip.转简体.srt")
+        self.assertEqual(both.srt_path.name, "clip.批量替换.转繁体.srt")
 
     def test_fixed_process_applies_batch_replacements_then_traditional_conversion(self) -> None:
         project = {
@@ -699,7 +763,8 @@ class PostprocessTests(unittest.TestCase):
                 project_path=self.project_path,
                 srt_path=None,
                 output_mode=OutputMode.SRT,
-                replacements=(),
+                # 空规则现在会跳过固定处理；这里用一条不命中的规则驱动 SRT 输出路径。
+                replacements=(Replacement(source="不会出现的字", target="x"),),
             )
         )
 
@@ -712,12 +777,14 @@ class PostprocessTests(unittest.TestCase):
         project = sample_project(self.media)
         segments = project_segments(project)
         segments[0]["disabled"] = True
+        segments.append({"start": 2400, "end": 3000, "text": " \n"})
 
         rendered = render_srt(project)
 
         self.assertNotIn("酒很好喝", rendered)
         self.assertIn("1\n00:00:01,200 --> 00:00:02,200\n下一句", rendered)
         self.assertNotIn("\n2\n", rendered)
+        self.assertNotIn("00:00:02,400 --> 00:00:03,000", rendered)
 
     def test_srt_output_is_written_as_utf8_with_bom(self) -> None:
         target = self.root / "captions.srt"
@@ -750,6 +817,76 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual(_chat_endpoint("http://localhost:11434/v1"), "http://localhost:11434/v1/chat/completions")
         with self.assertRaises(LlmClientError):
             _ = _chat_endpoint("http://example.com/v1")
+
+    def test_llm_http_400_is_provider_response_with_bounded_redacted_diagnostic(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="sk-test",
+            base_url="https://example.com/v1",
+            model="custom-model",
+        )
+        response = mock.Mock()
+        response.status_code = 400
+        response.json.return_value = {
+            "error": {
+                "message": "invalid request: Bearer bearer-example-secret sk-example-secret " + ("detail " * 100),
+                "code": "invalid_request_error",
+                "prompt": "full subtitle payload that must not be retained",
+            },
+        }
+        response.raise_for_status.side_effect = HTTPError("400 Client Error")
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.post.return_value = response
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            with self.assertRaises(LlmClientError) as raised:
+                _ = complete_subtitle_groups(settings, "Return JSON.", [{"id": "c0001", "text": "原文"}])
+
+        error = raised.exception
+        self.assertEqual(error.category, "provider_response")
+        self.assertEqual(error.status_code, 400)
+        self.assertIn("HTTP 400", str(error))
+        self.assertIn("not a network outage", str(error))
+        self.assertIn("invalid request", error.diagnostic)
+        self.assertNotIn("bearer-example-secret", error.diagnostic)
+        self.assertNotIn("sk-example-secret", error.diagnostic)
+        self.assertNotIn("full subtitle payload", error.diagnostic)
+        self.assertLessEqual(len(error.diagnostic), MAX_PROVIDER_DIAGNOSTIC_CHARS)
+        session.post.assert_called_once()
+
+    def test_llm_network_error_redacts_endpoint_and_authorization(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="api-key-secret",
+            base_url="https://api.example.test/v1",
+            model="custom-model",
+        )
+        transport_error = RequestException(
+            "request failed for https://api.example.test/v1/chat/completions?api_key=query-secret "
+            "Authorization: Bearer bearer-secret token=token-secret"
+        )
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.post.side_effect = transport_error
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            with self.assertRaises(LlmClientError) as raised:
+                _ = complete_subtitle_groups(settings, "Return JSON.", [{"id": "c0001", "text": "原文"}])
+
+        error = raised.exception
+        self.assertEqual(error.category, "network")
+        for secret in (
+            "api-key-secret",
+            "https://api.example.test/v1/chat/completions?api_key=query-secret",
+            "query-secret",
+            "bearer-secret",
+            "token-secret",
+        ):
+            self.assertNotIn(secret, str(error))
+            self.assertNotIn(secret, error.diagnostic)
+        self.assertIn("network request failed", str(error))
+        session.post.assert_called_once()
 
     def test_reasoning_modes_normalize_and_map_by_provider(self) -> None:
         self.assertEqual(LlmSettings("custom", "key", "https://example.com", "local").reasoning_mode, "off")
@@ -916,6 +1053,35 @@ class PostprocessTests(unittest.TestCase):
         )
         response.raise_for_status.assert_called_once_with()
 
+    def test_llm_connection_http_errors_keep_status_without_echoing_request_details(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="test-only-key",
+            base_url="https://example.com/v1",
+            model="custom-model",
+        )
+
+        for status_code in (401, 403):
+            with self.subTest(status_code=status_code):
+                response = mock.Mock(status_code=status_code)
+                response.raise_for_status.side_effect = HTTPError(
+                    f"HTTP {status_code} for url: https://example.com/v1?api_key=test-only-key",
+                    response=response,
+                )
+                session = mock.MagicMock()
+                session.__enter__.return_value = session
+                session.post.return_value = response
+
+                with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+                    with self.assertRaises(LlmClientError) as context:
+                        check_llm_connection(settings)
+
+                self.assertEqual(context.exception.status_code, status_code)
+                self.assertEqual(context.exception.operation, "connection test")
+                self.assertIn(f"HTTP {status_code}", str(context.exception))
+                self.assertNotIn("test-only-key", str(context.exception))
+                self.assertNotIn("https://example.com", str(context.exception))
+
     def test_llm_model_listing_parses_openai_compatible_response(self) -> None:
         settings = LlmSettings(
             provider_id="custom",
@@ -946,6 +1112,35 @@ class PostprocessTests(unittest.TestCase):
             timeout=(10, 30),
         )
         response.raise_for_status.assert_called_once_with()
+
+    def test_llm_model_listing_http_errors_keep_status_without_echoing_request_details(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="test-only-key",
+            base_url="https://example.com/v1",
+            model="manual-model",
+        )
+
+        for status_code in (404, 429):
+            with self.subTest(status_code=status_code):
+                response = mock.Mock(status_code=status_code)
+                response.raise_for_status.side_effect = HTTPError(
+                    f"HTTP {status_code} for url: https://example.com/v1?api_key=test-only-key",
+                    response=response,
+                )
+                session = mock.MagicMock()
+                session.__enter__.return_value = session
+                session.get.return_value = response
+
+                with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+                    with self.assertRaises(LlmClientError) as context:
+                        list_llm_models(settings)
+
+                self.assertEqual(context.exception.status_code, status_code)
+                self.assertEqual(context.exception.operation, "model list")
+                self.assertIn(f"HTTP {status_code}", str(context.exception))
+                self.assertNotIn("test-only-key", str(context.exception))
+                self.assertNotIn("https://example.com", str(context.exception))
 
     def test_llm_model_listing_accepts_models_name_shape_and_rejects_empty(self) -> None:
         settings = LlmSettings("custom", "sk-test", "https://example.com/v1/chat/completions", "manual-model")
@@ -1048,6 +1243,42 @@ class PostprocessTests(unittest.TestCase):
                 ),
                 complete=complete,
             )
+
+    def test_llm_translation_repair_preserves_provider_error_metadata(self) -> None:
+        provider_error = LlmClientError(
+            "LLM provider returned HTTP 401: unauthorized. This is a provider response, not a network outage.",
+            category="provider_response",
+            status_code=401,
+            diagnostic="unauthorized",
+            operation="completion",
+        )
+        calls = 0
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return {"groups": [{"id": "c0001", "text": "第一句"}]}
+            raise provider_error
+
+        with self.assertRaises(PostprocessStepError) as raised:
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="translate_en",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
+
+        error = raised.exception
+        self.assertEqual(error.category, "provider_response")
+        self.assertEqual(error.status_code, 401)
+        self.assertEqual(error.diagnostic, "unauthorized")
+        self.assertEqual(error.operation, "completion")
+        self.assertIn("c0002", str(error))
 
     def test_llm_runner_reports_progress_stages(self) -> None:
         statuses: list[tuple[str, dict[str, int]]] = []
@@ -1180,6 +1411,7 @@ class PostprocessTests(unittest.TestCase):
             "tracks": [{"id": "old-extension", "segments": []}],
             "bindings": [],
         }
+        source["extensionSegments"] = [{"start": 100, "end": 900, "text": "旧版副轨"}]
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         result = run_llm_postprocess(
             LlmPostprocessRequest(
@@ -1206,11 +1438,199 @@ class PostprocessTests(unittest.TestCase):
             ["酒很好喝\nThe wine is delicious.", "下一句\nThe next sentence."],
         )
         self.assertTrue(all("items" not in segment for segment in merged))
+        self.assertNotIn("extensionSegments", read_project(result.project_path))
         self.assertEqual(merged[0]["speaker"], "speaker-1")
         self.assertEqual(merged[1]["color"], project_segments(read_project(self.project_path))[1]["color"])
         self.assertIsNone(result.translated_srt_path)
+        self.assertEqual(result.project_path.name, "clip.translate-en-bilingual.mosp")
+        self.assertEqual(result.srt_path.name, "clip.translate-en-bilingual.srt")
         self.assertIn("酒很好喝\nThe wine is delicious.", result.srt_path.read_text(encoding="utf-8"))
         self.assertIn("已将原始文本和翻译文本合并", "\n".join(result.warnings))
+
+    def test_bilingual_merge_output_names_localize_in_zh_ui(self) -> None:
+        # 工具箱双语产物在 zh 界面命名 .翻译为中文.双语合一（operation 保持
+        # translate_zh-bilingual 内部 ID，仅文件名显示本地化）。
+        with mock.patch.object(
+            gui_config,
+            "effective_config",
+            return_value=SimpleNamespace(gui_lang="zh"),
+        ):
+            result = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.BOTH,
+                    operation="translate_zh",
+                    custom_prompt="",
+                    merge_bilingual=True,
+                ),
+                complete=lambda _prompt, _cues: {
+                    "groups": [
+                        {"id": "c0001", "text": "红酒非常美味。"},
+                        {"id": "c0002", "text": "这是下一句。"},
+                    ]
+                },
+            )
+        if result.project_path is None or result.srt_path is None:
+            self.fail("both output mode must create project and SRT files")
+        self.assertEqual(result.project_path.name, "clip.翻译为中文.双语合一.mosp")
+        self.assertEqual(result.srt_path.name, "clip.翻译为中文.双语合一.srt")
+        self.assertIn("红酒非常美味。\n酒很好喝", result.srt_path.read_text(encoding="utf-8"))
+
+    def test_bilingual_merge_drops_empty_cues_and_legacy_extension_segments(self) -> None:
+        source = {
+            "segments": [
+                {"id": "main-1", "start": 0, "end": 1000, "text": "原文一"},
+                {"id": "main-2", "start": 1000, "end": 2000, "text": " "},
+                {"id": "main-3", "start": 2000, "end": 3000, "text": "仅原文"},
+                {"id": "main-4", "start": 3000, "end": 4000, "text": ""},
+            ],
+            "extensionSegments": [{"start": 0, "end": 1000, "text": "旧版副轨"}],
+            "multi_subtitle": {"enabled": True, "tracks": [], "bindings": []},
+        }
+        translated = {
+            "segments": [
+                {"id": "main-1", "start": 0, "end": 1000, "text": "译文一"},
+                {"id": "main-2", "start": 1000, "end": 2000, "text": ""},
+                {"id": "main-3", "start": 2000, "end": 3000, "text": " "},
+                {"id": "main-4", "start": 3000, "end": 4000, "text": "仅译文"},
+            ],
+        }
+
+        merged = merge_bilingual_project(source, translated, translation_target="zh")
+
+        segments = project_segments(merged)
+        self.assertEqual(
+            [segment["text"] for segment in segments],
+            ["译文一\n原文一", "仅原文", "仅译文"],
+        )
+        self.assertNotIn("multi_subtitle", merged)
+        self.assertNotIn("extensionSegments", merged)
+        rendered = render_srt(merged)
+        self.assertEqual(rendered.count("-->"), 3)
+        self.assertNotIn("\n\n\n", rendered)
+
+    def test_bilingual_project_output_blocks_retranslation_and_marks_bilingual_suffix(self) -> None:
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.BOTH,
+                operation="translate_en",
+                custom_prompt="",
+                merge_bilingual=True,
+            ),
+            complete=lambda _prompt, cues: {
+                "groups": [{"id": cue["id"], "text": f"Translation {cue['id']}"} for cue in cues]
+            },
+        )
+
+        if result.project_path is None or result.srt_path is None:
+            self.fail("both output mode must create project and SRT files")
+        self.assertEqual(result.project_path.name, "clip.translate-en-bilingual.mosp")
+        self.assertEqual(result.srt_path.name, "clip.translate-en-bilingual.srt")
+        with self.assertRaisesRegex(ValueError, "双语字幕命名规则"):
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=result.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="translate_zh",
+                    custom_prompt="",
+                ),
+                complete=lambda _prompt, _cues: self.fail("bilingual project must not be translated again"),
+            )
+
+    def test_bilingual_srt_input_blocks_retranslation_and_marks_bilingual_suffix(self) -> None:
+        source_srt = self.root / "captions.srt"
+        source_srt.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\n原文\n",
+            encoding="utf-8",
+        )
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=None,
+                srt_path=source_srt,
+                output_mode=OutputMode.BOTH,
+                operation="translate_en",
+                custom_prompt="",
+                media_path=self.media,
+                merge_bilingual=True,
+            ),
+            complete=lambda _prompt, cues: {
+                "groups": [{"id": cue["id"], "text": "Translation"} for cue in cues]
+            },
+        )
+
+        if result.project_path is None or result.srt_path is None:
+            self.fail("both output mode must create project and SRT files")
+        self.assertEqual(result.project_path.name, "captions.translate-en-bilingual.mosp")
+        self.assertEqual(result.srt_path.name, "captions.translate-en-bilingual.srt")
+        with self.assertRaisesRegex(ValueError, "双语字幕命名规则"):
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=None,
+                    srt_path=result.srt_path,
+                    output_mode=OutputMode.SRT,
+                    operation="translate_zh",
+                    custom_prompt="",
+                ),
+                complete=lambda _prompt, _cues: self.fail("bilingual SRT must not be translated again"),
+            )
+
+    def test_bilingual_marker_does_not_match_a_longer_filename_token(self) -> None:
+        source = self.root / "captions.bilingualish.srt"
+        source.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\n原文\n",
+            encoding="utf-8",
+        )
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=None,
+                srt_path=source,
+                output_mode=OutputMode.SRT,
+                operation="translate_en",
+                custom_prompt="",
+                merge_bilingual=True,
+            ),
+            complete=lambda _prompt, cues: {
+                "groups": [{"id": cue["id"], "text": "Translation"} for cue in cues]
+            },
+        )
+
+        self.assertIsNotNone(result.srt_path)
+        self.assertEqual(result.srt_path.name, "captions.bilingualish.translate-en-bilingual.srt")
+
+    def test_llm_chinese_translation_is_first_when_bilingual_subtitles_are_merged(self) -> None:
+        source = read_project(self.project_path)
+        source["segments"][0]["text"] = "The wine is delicious."
+        source["segments"][1]["text"] = "The next sentence."
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.JSON,
+                operation="translate_zh",
+                custom_prompt="",
+                merge_bilingual=True,
+            ),
+            complete=lambda _prompt, _cues: {
+                "groups": [
+                    {"id": "c0001", "text": "酒很好喝"},
+                    {"id": "c0002", "text": "下一句"},
+                ]
+            },
+        )
+
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        merged = project_segments(read_project(result.project_path))
+        self.assertEqual(
+            [segment["text"] for segment in merged],
+            ["酒很好喝\nThe wine is delicious.", "下一句\nThe next sentence."],
+        )
 
     def test_llm_translation_does_not_write_when_every_group_is_invalid(self) -> None:
         def complete(_system_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
@@ -1488,6 +1908,78 @@ class PostprocessTests(unittest.TestCase):
                 complete=lambda _prompt, _cues: {"groups": []},
             )
 
+    def test_llm_translation_rejects_chinese_named_previous_translation_as_input(self) -> None:
+        # zh 界面产出的 .翻译为中文 / .翻译为英文 命名再次翻译时同样被拦截，
+        # 含本地化组合标记（.双语合一 / .整合）的新命名。
+        for name, operation in (
+            ("source.翻译为中文.mosp", "translate_zh"),
+            ("source.翻译为中文.bilingual.mosp", "translate_zh"),
+            ("source.翻译为中文.双语合一.mosp", "translate_zh"),
+            ("source.翻译为中文.整合.mosp", "translate_zh"),
+            ("source.翻译为英文.mosp", "translate_en"),
+            ("source.翻译为中文.combined.mosp", "translate_zh"),
+        ):
+            with self.subTest(name=name):
+                translated_path = self.root / name
+                translated_path.write_text(json.dumps(sample_project(self.media), ensure_ascii=False), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "请选择最初的原字幕工程"):
+                    _ = run_llm_postprocess(
+                        LlmPostprocessRequest(
+                            project_path=translated_path,
+                            srt_path=None,
+                            output_mode=OutputMode.JSON,
+                            operation=operation,
+                            custom_prompt="",
+                        ),
+                        complete=lambda _prompt, _cues: self.fail("已翻译文件不应再请求翻译模型"),
+                    )
+
+    def test_llm_translation_guard_blocks_localized_bilingual_marker_for_any_target(self) -> None:
+        # 双语合一标记（本地化 zh 命名）与旧 bilingual 标记一样，在任意翻译方向
+        # 都触发「双语字幕命名规则」拦截（不依赖目标语言段）。
+        for name, operation in (
+            ("source.翻译为中文.双语合一.mosp", "translate_zh"),
+            ("source.翻译为中文.双语合一.mosp", "translate_en"),
+            ("source.翻译为英文.双语合一.mosp", "translate_zh"),
+            ("source.translate-zh.bilingual.mosp", "translate_en"),
+        ):
+            with self.subTest(name=name):
+                translated_path = self.root / name
+                translated_path.write_text(json.dumps(sample_project(self.media), ensure_ascii=False), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "双语字幕命名规则"):
+                    _ = run_llm_postprocess(
+                        LlmPostprocessRequest(
+                            project_path=translated_path,
+                            srt_path=None,
+                            output_mode=OutputMode.JSON,
+                            operation=operation,
+                            custom_prompt="",
+                        ),
+                        complete=lambda _prompt, _cues: self.fail("双语产物不应再请求翻译模型"),
+                    )
+
+    def test_llm_translation_guard_also_matches_old_english_names_in_zh_interface(self) -> None:
+        # 旧英文命名（历史 / 他人分享）在任意界面下对同方向翻译都被拦截：
+        # .translate-zh 纯段与带 bilingual 组合变体。
+        for name, operation in (
+            ("source.translate-zh.mosp", "translate_zh"),
+            ("source.translate-zh.bilingual.mosp", "translate_zh"),
+        ):
+            with self.subTest(name=name):
+                translated_path = self.root / name
+                translated_path.write_text(json.dumps(sample_project(self.media), ensure_ascii=False), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "请选择最初的原字幕工程"):
+                    _ = run_llm_postprocess(
+                        LlmPostprocessRequest(
+                            project_path=translated_path,
+                            srt_path=None,
+                            output_mode=OutputMode.JSON,
+                            operation=operation,
+                            custom_prompt="",
+                        ),
+                        complete=lambda _prompt, _cues: self.fail("旧英文命名的已翻译文件也应被拦截"),
+                    )
+
     def test_llm_translation_does_not_write_partial_output_after_missing_cue_retries(self) -> None:
         before = set(self.root.iterdir())
 
@@ -1611,6 +2103,10 @@ class FfconcatTests(unittest.TestCase):
         self.root = Path(self.temp_dir.name)
         self.media = self.root / "clip.mp4"
         _ = self.media.write_bytes(b"media")
+        # 媒体工具产物后缀断言按英文原样运行，隔离真实 .env 的界面语言
+        lang_patcher = mock.patch("maw.output_naming.resolve_lang", return_value="en")
+        lang_patcher.start()
+        self.addCleanup(lang_patcher.stop)
         self.concat = self.root / "clip_gap-removed.ffconcat"
         normalized = self.media.as_posix().replace("'", "'\\''")
         concat_text = "".join(
@@ -1665,6 +2161,25 @@ class FfconcatTests(unittest.TestCase):
         self.assertIn(str(self.concat.resolve()), command)
         self.assertEqual(result.media_path.name, "clip.gap-removed.mp4")
 
+    def test_ffconcat_output_suffix_localizes_for_chinese_ui(self) -> None:
+        """中文界面下媒体重组产物后缀为「去空隙」。"""
+        completed = mock.Mock(returncode=0, stderr="")
+
+        def create_output(command: list[str], **_kwargs: object) -> mock.Mock:
+            _ = Path(command[-1]).write_bytes(b"rebuilt")
+            return completed
+
+        with (
+            mock.patch("maw.output_naming.resolve_lang", return_value="zh"),
+            mock.patch("maw.postprocess_ffmpeg.subprocess.run", side_effect=create_output),
+        ):
+            result = run_ffconcat_rebuild(
+                FfconcatRequest(media_path=self.media, ffconcat_path=self.concat),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        self.assertEqual(result.media_path.name, "clip.去空隙.mp4")
+
     def test_ffconcat_rebuild_rejects_success_without_output_file(self) -> None:
         completed = mock.Mock(returncode=0, stderr="")
 
@@ -1699,6 +2214,10 @@ class MediaToolTests(unittest.TestCase):
         self.subtitle = self.root / "clip.srt"
         _ = self.media.write_bytes(b"media")
         _ = self.subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+        # 媒体工具产物后缀断言按英文原样运行，隔离真实 .env 的界面语言
+        lang_patcher = mock.patch("maw.output_naming.resolve_lang", return_value="en")
+        lang_patcher.start()
+        self.addCleanup(lang_patcher.stop)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -1729,7 +2248,7 @@ class MediaToolTests(unittest.TestCase):
             stdout=json.dumps({
                 "streams": [
                     {"index": 1, "codec_name": "aac", "channels": 2, "sample_rate": "48000", "tags": {"language": "zh", "title": "中文"}, "disposition": {"default": 1}},
-                    {"index": 2, "codec_name": "aac", "channels": 2, "sample_rate": "44100", "tags": {"language": "en"}, "disposition": {"default": 0}},
+                    {"index": 2, "codec_name": "aac", "channels": 2, "sample_rate": "44100", "tags": {"language": "en", "name": "Voice"}, "disposition": {"default": 0}},
                 ],
             }),
         )
@@ -1739,12 +2258,33 @@ class MediaToolTests(unittest.TestCase):
 
         self.assertEqual(tracks, (
             AudioTrack(0, 1, "aac", 2, 48000, "zh", "中文", True),
-            AudioTrack(1, 2, "aac", 2, 44100, "en", "", False),
+            AudioTrack(1, 2, "aac", 2, 44100, "en", "Voice", False),
         ))
         command = run.call_args.args[0]
         self.assertIn("-select_streams", command)
         self.assertIn("a", command)
+        self.assertIn(
+            "stream=index,codec_name,channels,sample_rate:stream_tags=language,title,name,handler_name:stream_disposition=default",
+            command,
+        )
         self.assertIn(str(self.media.resolve()), command)
+
+    def test_probe_audio_tracks_falls_back_from_title_to_name_and_handler_name(self) -> None:
+        completed = mock.Mock(
+            returncode=0,
+            stderr="",
+            stdout=json.dumps({
+                "streams": [
+                    {"index": 1, "tags": {"name": "Mix"}, "disposition": {"default": 1}},
+                    {"index": 2, "tags": {"handler_name": "OriginSound"}, "disposition": {"default": 0}},
+                ],
+            }),
+        )
+
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=completed):
+            tracks = probe_audio_tracks(self.media, ffprobe_path=Path("ffprobe"))
+
+        self.assertEqual([track.title for track in tracks], ["Mix", "OriginSound"])
 
     def test_burn_subtitles_reencodes_to_new_mp4_and_uses_subtitles_filter(self) -> None:
         with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:

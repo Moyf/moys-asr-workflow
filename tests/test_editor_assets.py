@@ -126,6 +126,32 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn(".server-connection-banner", styles)
         self.assertIn(".server-connection-banner[hidden]", styles)
 
+    def test_server_startup_labels_distinguish_waveform_cache_and_generation(self) -> None:
+        script = edit.read_web_asset("editor.js")
+        for label in (
+            "loading_waveform_cache: '正在读取波形缓存…'",
+            "generating_waveform: '未找到可用缓存，正在生成波形…'",
+            "waveform_ready: '波形已就绪…'",
+            "loading_spectral_cache: '正在读取频谱缓存…'",
+            "loading_reapeaks_waveform: '正在读取 REAPER 波形缓存…'",
+            "loading_waveform_cache: 'Reading waveform cache…'",
+            "generating_waveform: 'No usable cache found; generating waveform…'",
+        ):
+            self.assertIn(label, script)
+        self.assertNotIn("preparing_waveform: '正在生成波形…'", script)
+
+    def test_hint_stack_stays_above_floating_surfaces(self) -> None:
+        styles = edit.read_web_asset("editor.css")
+        hint_stack = styles[styles.index("#hint-stack {"):styles.index("  .hint-card {", styles.index("#hint-stack {"))]
+        self.assertIn("z-index: 490", hint_stack)
+
+    def test_server_onboarding_uses_user_settings_across_random_ports(self) -> None:
+        script = edit.read_web_asset("editor-onboarding.js")
+        self.assertIn("serverOnboardingPersistenceEnabled", script)
+        self.assertIn("SERVER_CONFIG.onboardingStatus", script)
+        self.assertIn("body: JSON.stringify({ onboardingStatus: status })", script)
+        self.assertIn("keepalive: true", script)
+
     def test_new_project_action_precedes_open_project(self) -> None:
         template = edit.read_web_asset("editor-template.html")
         self.assertIn('id="new-project"', template)
@@ -162,7 +188,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("function setStickerRootModalOpen(open)", script)
         self.assertIn("event.key === 'Escape'", script)
         self.assertIn("event.key !== 'Tab'", script)
-        self.assertIn("#sticker-root-modal { z-index: 280; }", styles)
+        self.assertIn("#sticker-root-modal { z-index: 335; }", styles)
         self.assertIn("width: min(540px, calc(100vw - 32px))", styles)
         for removed in (
             "showDirectoryPicker",

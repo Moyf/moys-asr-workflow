@@ -275,7 +275,6 @@
 .layout-custom .current-cue-panel {
   min-height: max-content;
   overflow: hidden;
-  padding-top: 30px;
 }
 .layout-custom .layout-module-slot[data-layout-module="panel"],
 .layout-custom .layout-child:has(.layout-module-slot[data-layout-module="panel"]) {
@@ -299,12 +298,17 @@
   overflow-x: hidden;
 }
 .layout-custom .layout-resizer { display: none; }
+/* 拖动分隔条默认隐形，悬停/拖动时才浮现，避免常驻线条切割面板。 */
 .layout-split-divider {
   position: relative;
   z-index: 35;
   flex: 0 0 7px;
   background: transparent;
+  opacity: 0;
+  transition: opacity .12s;
 }
+.layout-split-divider:hover,
+.layout-split-divider.dragging { opacity: 1; }
 .layout-split-divider::after {
   content: "";
   position: absolute;
@@ -315,9 +319,9 @@
 .layout-split-divider:hover::after,
 .layout-split-divider.dragging::after { background: var(--accent); }
 .layout-split-divider-row { cursor: col-resize; }
-.layout-split-divider-row::after { top: 0; bottom: 0; left: 2px; width: 3px; }
+.layout-split-divider-row::after { top: 0; bottom: 0; left: 2px; width: 2px; }
 .layout-split-divider-column { cursor: row-resize; }
-.layout-split-divider-column::after { left: 0; right: 0; top: 2px; height: 3px; }
+.layout-split-divider-column::after { left: 0; right: 0; top: 2px; height: 2px; }
 
 .waveform-pane {
   --waveform-content-top: var(--panel-toolbar-h);
@@ -398,7 +402,11 @@
   position: relative;
   z-index: 50;
   background: transparent;
+  opacity: 0;
+  transition: opacity .12s;
 }
+.layout-resizer:hover,
+.layout-resizer.dragging { opacity: 1; }
 .layout-resizer::after {
   content: "";
   position: absolute;
@@ -409,10 +417,10 @@
 .layout-resizer:hover::after,
 .layout-resizer.dragging::after { background: var(--accent); }
 .layout-resizer-v { grid-column: 2; grid-row: 1 / 6; cursor: col-resize; }
-.layout-resizer-v::after { top: 0; bottom: 0; left: 2px; width: 3px; }
+.layout-resizer-v::after { top: 0; bottom: 0; left: 2px; width: 2px; }
 .layout-resizer-h1 { grid-column: 1; grid-row: 2; cursor: row-resize; }
 .layout-resizer-h2 { grid-column: 1; grid-row: 4; cursor: row-resize; }
-.layout-resizer-h1::after, .layout-resizer-h2::after { left: 0; right: 0; top: 2px; height: 3px; }
+.layout-resizer-h1::after, .layout-resizer-h2::after { left: 0; right: 0; top: 2px; height: 2px; }
 .layout-wave-right .layout-resizer-v,
 .layout-wave-right .layout-resizer-h1,
 .layout-wave-right .layout-resizer-h2 { display: block; }
@@ -562,7 +570,14 @@
   bottom: var(--multi-subtitle-bottom-inset);
   outline-style: dotted;
   outline-color: color-mix(in srgb, var(--cue-color) 50%, var(--wave-cue-mix));
-  background: color-mix(in srgb, var(--cue-color) 10%, var(--wave-cue-mix));
+  background: var(--wave-cue-extension-bg, color-mix(in srgb, var(--cue-color) 10%, var(--wave-cue-mix)));
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"] {
+  background: var(--wave-cue-main-bg, color-mix(in srgb, var(--cue-color) 42%, var(--wave-cue-mix)));
+}
+/* 亮色主题的主字幕默认保持白底，但有颜色映射时不能把 --cue-color 盖掉。 */
+:root[data-theme="light"] .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"].has-subtitle-color {
+  background: color-mix(in srgb, var(--cue-color) 42%, var(--wave-cue-main-bg));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-badge {
   /* 双字幕时 badge 要放在最上方主字幕块之上；单层行继续使用默认 bottom。 */

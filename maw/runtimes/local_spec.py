@@ -38,7 +38,7 @@ LOCAL_SPEC = RuntimeSpec(
     # MAW 主程序的 GUI / OpenCC / 字体工具依赖。
     requirements_group="local",
     verify_command=_VERIFY_COMMAND,
-    package_dirs=("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"),
+    package_dirs=("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"),
     worker_module="maw.local_runtime_worker",
     message_prefix="本地运行环境",
     feature_label="本地模型",

@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import json
+import math
 import os
 import re
 import struct
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.output_naming import MEDIA_SUFFIX_NAMES, OPERATION_NAMES, TRANSLATION_MARKER_NAMES, TRANSLATION_TARGET_NAMES, maw_root
 
 
 class MediaStatus(str, Enum):
@@ -87,6 +92,205 @@ def read_bwf_time_reference(path: Path) -> dict[str, int] | None:
     return None
 
 
+def find_ffprobe(configured_path: str | os.PathLike[str] | None = None) -> Path | None:
+    """Find FFprobe through the shared application-wide resolver."""
+    return resolve_ffmpeg_tool("ffprobe", configured_path)
+
+
+def _parse_probe_frame_rate(value: object) -> tuple[float, str] | None:
+    raw = str(value or "").strip()
+    if not raw or raw.upper() in {"N/A", "NA"}:
+        return None
+    try:
+        ratio = Fraction(raw)
+    except (OverflowError, ValueError, ZeroDivisionError):
+        return None
+    if ratio <= 0:
+        return None
+    fps = float(ratio)
+    if not math.isfinite(fps) or not 1.0 <= fps <= 240.0:
+        return None
+    return fps, f"{ratio.numerator}/{ratio.denominator}"
+
+
+def probe_video_fps(
+    path: Path | str,
+    *,
+    ffprobe_path: str | os.PathLike[str] | None = None,
+) -> dict[str, float | str] | None:
+    """Read a local video's frame rate as optional project metadata.
+
+    ``avg_frame_rate`` is preferred because it is the most useful constant
+    rate for the editor's frame-to-millisecond mapping; ``r_frame_rate`` is a
+    fallback for files where FFprobe cannot calculate an average.  A missing
+    FFprobe executable, an audio-only input, an invalid rate, or any probe
+    failure simply returns ``None`` so metadata enrichment never blocks ASR.
+    """
+
+    source = Path(path).expanduser()
+    if source.suffix.lower() not in VIDEO_EXTENSIONS:
+        return None
+    try:
+        if not source.is_file():
+            return None
+    except OSError:
+        return None
+
+    executable = find_ffprobe(ffprobe_path)
+    if executable is None:
+        return None
+    command = [
+        str(executable), "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=avg_frame_rate,r_frame_rate",
+        "-of", "json", str(source),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+            timeout=10,
+        )
+        payload = json.loads(result.stdout or "")
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError):
+        return None
+
+    streams = payload.get("streams") if isinstance(payload, dict) else None
+    stream = streams[0] if isinstance(streams, list) and streams else None
+    if not isinstance(stream, dict):
+        return None
+    for key in ("avg_frame_rate", "r_frame_rate"):
+        parsed = _parse_probe_frame_rate(stream.get(key))
+        if parsed is not None:
+            fps, ratio = parsed
+            return {"video_fps": fps, "video_fps_ratio": ratio}
+    return None
+
+
+def _parse_probe_integer(value: object, *, minimum: int = 0) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and re.fullmatch(r"\d+", value.strip()):
+        parsed = int(value.strip())
+    else:
+        return None
+    return parsed if parsed >= minimum else None
+
+
+def probe_audio_tracks(
+    path: Path | str,
+    *,
+    ffprobe_path: str | os.PathLike[str] | None = None,
+) -> list[dict[str, Any]] | None:
+    """Read the source media's audio streams as optional project metadata.
+
+    ``audio_index`` is the zero-based order among audio streams while
+    ``stream_index`` is FFmpeg's stream index in the original container.  A
+    successful probe with no audio streams returns an empty list; an absent
+    FFprobe executable or any probe failure returns ``None`` so metadata
+    enrichment never blocks project generation.
+    """
+
+    source = Path(path).expanduser()
+    if source.suffix.lower() not in MEDIA_EXTENSIONS:
+        return None
+    try:
+        if not source.is_file():
+            return None
+    except OSError:
+        return None
+
+    executable = find_ffprobe(ffprobe_path)
+    if executable is None:
+        return None
+    command = [
+        str(executable), "-v", "error",
+        "-select_streams", "a",
+        "-show_entries",
+        "stream=index,codec_name,channels,sample_rate:stream_tags=language,title,name,handler_name:stream_disposition=default",
+        "-of", "json", str(source),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+            timeout=10,
+        )
+        payload = json.loads(result.stdout or "")
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError):
+        return None
+
+    streams = payload.get("streams") if isinstance(payload, Mapping) else None
+    if not isinstance(streams, list):
+        return None
+    tracks: list[dict[str, Any]] = []
+    for stream in streams:
+        if not isinstance(stream, Mapping):
+            continue
+        stream_index = _parse_probe_integer(stream.get("index"))
+        if stream_index is None:
+            continue
+        tags = stream.get("tags") if isinstance(stream.get("tags"), Mapping) else {}
+        disposition = stream.get("disposition") if isinstance(stream.get("disposition"), Mapping) else {}
+        channels = _parse_probe_integer(stream.get("channels"), minimum=1)
+        sample_rate = _parse_probe_integer(stream.get("sample_rate"), minimum=1)
+        default_value = _parse_probe_integer(disposition.get("default"))
+        tracks.append({
+            "audio_index": len(tracks),
+            "stream_index": stream_index,
+            "codec": str(stream.get("codec_name") or "").strip(),
+            "channels": channels,
+            "sample_rate": sample_rate,
+            "language": str(tags.get("language") or "").strip(),
+            "title": _first_nonempty_tag(tags, "title", "name", "handler_name"),
+            "default": default_value == 1,
+        })
+    return tracks
+
+
+def resolve_default_audio_track(
+    path: Path | str,
+    explicit: int | None,
+    *,
+    ffprobe_path: str | os.PathLike[str] | None = None,
+) -> int:
+    """Resolve the container default audio index, falling back to index 0."""
+    if explicit is not None:
+        if not isinstance(explicit, int) or isinstance(explicit, bool) or explicit < 0:
+            raise ValueError("default audio track must be a non-negative integer")
+        return explicit
+    tracks = probe_audio_tracks(path, ffprobe_path=ffprobe_path) or []
+    for track in tracks:
+        if track.get("default") is True:
+            value = track.get("audio_index")
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                return value
+    return 0
+
+
+def _first_nonempty_tag(tags: Mapping[object, object], *names: str) -> str:
+    """Return the first non-empty FFprobe stream tag, tolerating key casing."""
+    normalized = {
+        str(key).strip().casefold(): value
+        for key, value in tags.items()
+    }
+    for name in names:
+        value = str(normalized.get(name.casefold()) or "").strip()
+        if value:
+            return value
+    return ""
+
+
 @dataclass(frozen=True, slots=True)
 class MediaResolution:
     status: MediaStatus
@@ -132,14 +336,15 @@ def find_ffmpeg(configured_path: str | os.PathLike[str] | None = None) -> Path |
 def _conversion_output_path(source: Path, cache_dir: Path | None = None) -> Path:
     """Return the persistent playback file for a source.
 
-    Production conversions live beside the source (``clip.flv`` ->
-    ``clip.mp4``), so reopening a project can reuse the result.  ``cache_dir``
-    remains available for isolated tests and callers that explicitly want a
-    separate cache root.
+    By default the conversion cache lives in the source's ``_maw`` directory
+    (per-video naming when that preference is on), so ``clip.flv`` converts to
+    ``<媒体目录>/_maw/clip.mp4`` and reopening a project reuses the result.
+    ``cache_dir`` remains available for isolated tests and callers that
+    explicitly want a separate cache root.
     """
 
     if cache_dir is None:
-        return source.with_suffix(".mp4")
+        cache_dir = maw_root(source)
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"{source.stem}.mp4"
 
@@ -195,6 +400,13 @@ def convert_media_for_browser(
     source = source.expanduser().resolve()
     if source.suffix.lower() not in CONVERSION_EXTENSIONS:
         return source
+    if cache_dir is None:
+        # 旧版把转换缓存写在媒体旁（clip.flv -> clip.mp4）：存在且有效时直接
+        # 复用，不复制也不迁移，让老工程在升级后仍命中既有缓存。
+        legacy = source.with_suffix(".mp4")
+        _cleanup_conversion_temp_files(legacy)
+        if _valid_media_file(legacy):
+            return legacy
     output = _conversion_output_path(source, cache_dir)
     _cleanup_conversion_temp_files(output)
     if _valid_media_file(output):
@@ -263,16 +475,58 @@ def _path_from_value(value: str, base_dir: Path, *, cwd_relative: bool = False) 
     return (Path.cwd() if cwd_relative else base_dir / path).resolve()
 
 
+# ASR 引擎输出的命名后缀（小写、带前导与尾随点，用于文件名中段的标记）。
+_MEDIA_ASR_TAGS = (
+    ".qwen3-asr.", ".qwen3-asr-api.", ".funasr.", ".glm-asr.",
+    ".paraformer.", ".sensevoice.", ".nano.",
+)
+
+# 操作后缀（output_naming.OPERATION_NAMES 两种语言的带点形式 + zh 界面翻译段
+# 显示名 + 本地化组合标记，小写后匹配）：后处理 / OCR 去重 / 文稿匹配 /
+# 批量替换 / 转简体 / 转繁体 / 校对文本 / 重新断句 / 自定义 / 翻译产出的
+# 派生文件形如 `<原始主名>.<操作名>.<扩展名>`，查找同主名媒体时必须把末尾的操作段
+# 剥掉，否则 `clip.OCR去重.mp4` 找不到原始 `clip.*`。中文不随 lower() 变化，英文
+# 部分按小写匹配，因此这里统一存小写。翻译段只登记 zh 界面名（翻译为中文 /
+# 翻译为英文），组合标记只登记 zh 界面名（双语合一 / 整合）；英文界面与旧版
+# `.translate-*` / `.bilingual` 命名不识别，保持既有行为。
+_MEDIA_TRANSLATION_NAMES = tuple(
+    f"翻译为{target_name}".lower()
+    for target_name in TRANSLATION_TARGET_NAMES["zh"].values()
+)
+_MEDIA_MARKER_NAMES = tuple(
+    marker_names["zh"].lower()
+    for marker_names in TRANSLATION_MARKER_NAMES.values()
+)
+# 旧版 zh 界面操作名（只读兼容，不再产出）：文稿匹配曾用「匹配」。
+_MEDIA_LEGACY_OPERATION_NAMES: Final[tuple[str, ...]] = ("匹配",)
+_MEDIA_OPERATION_NAMES = tuple(
+    name.lower()
+    for operation in OPERATION_NAMES
+    for name in (OPERATION_NAMES[operation]["zh"], OPERATION_NAMES[operation]["en"])
+) + _MEDIA_TRANSLATION_NAMES + _MEDIA_MARKER_NAMES + _MEDIA_LEGACY_OPERATION_NAMES + tuple(
+    name.lower()
+    for suffix in MEDIA_SUFFIX_NAMES
+    for name in (MEDIA_SUFFIX_NAMES[suffix]["zh"], MEDIA_SUFFIX_NAMES[suffix]["en"])
+)
+_MEDIA_OPERATION_TAGS = tuple(f".{name}." for name in _MEDIA_OPERATION_NAMES)
+_MEDIA_OPERATION_TERMINALS = tuple(f".{name}" for name in _MEDIA_OPERATION_NAMES)
+
+# 中段标记沿用既有的「任意位置截断」语义；ASR 引擎标记只以中段形式出现，
+# 操作标记既可能出现在中段（后处理中间产物带双语后缀等），也可能作为
+# 主名末尾的一段直接顶在扩展名前。
+_MEDIA_STEM_TAGS = _MEDIA_ASR_TAGS + _MEDIA_OPERATION_TAGS
+
+
 def _media_stem(value: str) -> str:
     stem = Path(value).stem
     lowered = stem.lower()
-    for tag in (
-        ".qwen3-asr.", ".qwen3-asr-api.", ".funasr.", ".glm-asr.",
-        ".paraformer.", ".sensevoice.", ".nano.",
-    ):
+    for tag in _MEDIA_STEM_TAGS:
         index = lowered.find(tag)
         if index >= 0:
             return lowered[:index]
+    for terminal in _MEDIA_OPERATION_TERMINALS:
+        if lowered.endswith(terminal):
+            return lowered[: -len(terminal)]
     return lowered
 
 

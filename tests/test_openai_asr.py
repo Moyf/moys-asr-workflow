@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -16,6 +18,7 @@ from generate_subtitle_openai_api import (
     normalize_base_url,
     parse_timestamped_response,
     request_transcription,
+    _strip_trailing_punct,
     transcription_url,
 )
 
@@ -86,13 +89,14 @@ class OpenAiAsrTests(unittest.TestCase):
         })
 
         self.assertEqual(result["language"], "zh")
+        self.assertEqual(result["timestamp_granularity"], "word")
         self.assertEqual(result["items"][0]["start"], 100)
         self.assertEqual(result["items"][1]["end"], 1200)
 
     def test_western_words_keep_spaces_in_generated_segments(self) -> None:
         result = parse_timestamped_response({
             "text": "The beach was quiet.",
-            "language": "en",
+            "language": "English",
             "words": [
                 {"word": "The", "start": 0.0, "end": 0.2},
                 {"word": "beach", "start": 0.2, "end": 0.5},
@@ -101,6 +105,8 @@ class OpenAiAsrTests(unittest.TestCase):
             ],
         })
 
+        self.assertEqual(result["language"], "en")
+        self.assertEqual(result["timestamp_granularity"], "word")
         segments = _segments_from_result(result, max_len=18, min_len=3, gap_split=800)
 
         self.assertEqual(segments[0]["text"], "The beach was quiet.")
@@ -112,7 +118,118 @@ class OpenAiAsrTests(unittest.TestCase):
             "segments": [{"start": 0, "end": 2.5, "text": "hello"}],
         })
 
-        self.assertEqual(result["segments"], [{"start": 0, "end": 2500, "text": "hello", "items": []}])
+        self.assertEqual(result["segments"], [{"start": 0, "end": 2500, "text": "hello"}])
+        self.assertEqual(result["timestamp_granularity"], "segment")
+
+    def test_parse_timestamped_long_seconds_and_explicit_milliseconds(self) -> None:
+        result = parse_timestamped_response({
+            "segments": [
+                {"start": 10_799.5, "end": 10_800, "text": "last seconds"},
+                {"start_ms": 10_800_000, "end_ms": 10_800_500, "text": "explicit ms"},
+            ],
+        })
+
+        self.assertEqual(
+            result["segments"],
+            [
+                {"start": 10_799_500, "end": 10_800_000, "text": "last seconds"},
+                {"start": 10_800_000, "end": 10_800_500, "text": "explicit ms"},
+            ],
+        )
+        self.assertEqual(result["timestamp_granularity"], "segment")
+
+    def test_parse_timestamped_mixed_segments_preserves_sentence_fallback(self) -> None:
+        result = parse_timestamped_response({
+            "text": "Hello world. Fallback sentence.",
+            "segments": [
+                {
+                    "start": 0,
+                    "end": 1,
+                    "text": "Hello world.",
+                    "words": [
+                        {"word": "Hello", "start": 0, "end": 0.4},
+                        {"word": "world.", "start": 0.4, "end": 1},
+                    ],
+                },
+                {"start": 1.2, "end": 2, "text": "Fallback sentence."},
+            ],
+        })
+
+        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(len(result["items"]), 2)
+        self.assertEqual(result["segments"][0]["items"], result["items"])
+        self.assertNotIn("items", result["segments"][1])
+        self.assertEqual(
+            [segment["text"] for segment in _segments_from_result(
+                result, max_len=18, min_len=3, gap_split=800,
+            )],
+            ["Hello world.", "Fallback sentence."],
+        )
+
+    def test_parse_timestamped_segment_range_contains_nested_words(self) -> None:
+        result = parse_timestamped_response({
+            "text": "范围修复 后续回退",
+            "segments": [
+                {
+                    "start": 0.2,
+                    "end": 0.7,
+                    "text": "范围修复",
+                    "words": [
+                        {"word": "范围", "start": 0.1, "end": 0.4},
+                        {"word": "修复", "start": 0.4, "end": 0.9},
+                    ],
+                },
+                {"start": 1.0, "end": 1.2, "text": "后续回退"},
+            ],
+        })
+
+        sentence = result["segments"][0]
+        self.assertEqual((sentence["start"], sentence["end"]), (100, 900))
+        self.assertTrue(
+            all(sentence["start"] <= item["start"] < item["end"] <= sentence["end"]
+                for item in sentence["items"])
+        )
+
+    def test_parse_timestamped_invalid_top_level_word_uses_valid_envelope(self) -> None:
+        result = parse_timestamped_response({
+            "text": "The missing word",
+            "words": [
+                {"word": "The", "start": 0, "end": 0.3},
+                {"word": "missing", "start": 0.3, "end": 0.3},
+                {"word": "word", "start": 0.6, "end": 0.9},
+            ],
+        })
+
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["segments"], [{
+            "start": 0,
+            "end": 900,
+            "text": "The missing word",
+        }])
+        self.assertEqual(result["timestamp_granularity"], "segment")
+
+    def test_parse_timestamped_unranged_mixed_segment_preserves_all_text(self) -> None:
+        result = parse_timestamped_response({
+            "text": "The timed word The unranged sentence",
+            "segments": [
+                {
+                    "start": 0,
+                    "end": 1,
+                    "text": "The timed word",
+                    "words": [{"word": "The", "start": 0, "end": 1}],
+                },
+                {"text": "The unranged sentence"},
+            ],
+        })
+
+        self.assertEqual(result["text"], "The timed word The unranged sentence")
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["segments"], [{
+            "start": 0,
+            "end": 1000,
+            "text": "The timed word The unranged sentence",
+        }])
+        self.assertEqual(result["timestamp_granularity"], "segment")
 
     def test_parse_timestamped_response_derives_missing_top_level_text(self) -> None:
         result = parse_timestamped_response({
@@ -123,6 +240,40 @@ class OpenAiAsrTests(unittest.TestCase):
         })
 
         self.assertEqual(result["text"], "The beach")
+
+    def test_parse_timestamped_response_derives_all_sentence_text_when_top_level_text_is_missing(self) -> None:
+        result = parse_timestamped_response({
+            "segments": [
+                {
+                    "start": 0,
+                    "end": 1,
+                    "text": "Hello world.",
+                    "words": [
+                        {"word": "Hello", "start": 0, "end": 0.4},
+                        {"word": "world.", "start": 0.4, "end": 1},
+                    ],
+                },
+                {"start": 1.2, "end": 2, "text": "Fallback sentence."},
+            ],
+        })
+
+        self.assertEqual(result["text"], "Hello world. Fallback sentence.")
+
+    def test_strip_trailing_punct_removes_punctuation_only_items(self) -> None:
+        segments = [{
+            "start": 0,
+            "end": 1000,
+            "text": "你好。",
+            "items": [
+                {"text": "你好", "start": 0, "end": 900},
+                {"text": "。", "start": 900, "end": 1000},
+            ],
+        }]
+
+        _strip_trailing_punct(segments, "，。")
+
+        self.assertEqual(segments[0]["text"], "你好")
+        self.assertEqual(segments[0]["items"], [{"text": "你好", "start": 0, "end": 900}])
 
     def test_parse_text_only_response_is_rejected(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "没有返回 segments/words 时间戳"):
@@ -157,6 +308,211 @@ class OpenAiAsrTests(unittest.TestCase):
                 ["segment", "word"],
             )
             self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer sk-test")
+
+    def test_request_transcription_sends_gpt_transcribe_prompt_keywords_and_languages(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "clip.wav"
+            audio_path.write_bytes(b"audio")
+            response = mock.Mock(ok=True)
+            response.json.return_value = {
+                "text": "hello",
+                "segments": [{"start": 0, "end": 1, "text": "hello"}],
+            }
+
+            with mock.patch("generate_subtitle_openai_api.requests.post", return_value=response) as post:
+                request_transcription(
+                    audio_path,
+                    base_url="https://api.openai.com/v1",
+                    api_key="sk-test",
+                    model="openai/gpt-transcribe",
+                    language="en,zh",
+                    prompt="A product meeting.",
+                    keywords=("OpenAI", "MAW"),
+                )
+
+            data = post.call_args.kwargs["data"]
+            self.assertIn(("prompt", "A product meeting."), data)
+            self.assertEqual(
+                [value for key, value in data if key == "keywords[]"],
+                ["OpenAI", "MAW"],
+            )
+            self.assertEqual(
+                [value for key, value in data if key == "languages[]"],
+                ["en", "zh"],
+            )
+            self.assertNotIn(("language", "en,zh"), data)
+
+    def test_request_transcription_rejects_invalid_keyword_characters(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "clip.wav"
+            audio_path.write_bytes(b"audio")
+
+            with self.assertRaisesRegex(RuntimeError, "不能包含"):
+                request_transcription(
+                    audio_path,
+                    base_url="https://api.openai.com/v1",
+                    api_key="sk-test",
+                    model="gpt-transcribe",
+                    language=None,
+                    keywords=("bad<keyword",),
+                )
+
+    def test_request_transcription_uses_diarized_json_and_preserves_speakers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "clip.wav"
+            audio_path.write_bytes(b"audio")
+            response = mock.Mock(ok=True)
+            response.json.return_value = {
+                "text": "Hello world",
+                "segments": [
+                    {"start": 0, "end": 1.2, "text": "Hello", "speaker": "A"},
+                    {"start": 1.2, "end": 2.5, "text": "world", "speaker": "B"},
+                ],
+            }
+
+            with mock.patch("generate_subtitle_openai_api.requests.post", return_value=response) as post:
+                result = request_transcription(
+                    audio_path,
+                    base_url="https://api.openai.com/v1",
+                    api_key="sk-test",
+                    model="gpt-4o-transcribe-diarize",
+                    language="en",
+                    diarize=True,
+                )
+
+            data = post.call_args.kwargs["data"]
+            self.assertIn(("response_format", "diarized_json"), data)
+            self.assertIn(("chunking_strategy", "auto"), data)
+            self.assertNotIn(("response_format", "verbose_json"), data)
+            self.assertNotIn(("timestamp_granularities[]", "segment"), data)
+            self.assertEqual(
+                [segment["speaker"] for segment in result["segments"]],
+                ["A", "B"],
+            )
+
+    def test_request_transcription_rejects_prompt_and_keywords_for_diarize(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "clip.wav"
+            audio_path.write_bytes(b"audio")
+
+            with self.assertRaisesRegex(RuntimeError, "不支持 prompt 或 keywords"):
+                request_transcription(
+                    audio_path,
+                    base_url="https://api.openai.com/v1",
+                    api_key="sk-test",
+                    model="gpt-4o-transcribe-diarize",
+                    language=None,
+                    prompt="context",
+                    diarize=True,
+                )
+
+    def test_request_transcription_explains_model_name_for_compatibility_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "clip.wav"
+            audio_path.write_bytes(b"audio")
+            response = mock.Mock(ok=False, status_code=400)
+            response.json.return_value = {
+                "error": {
+                    "message": 'The selected model does not support response_format "verbose_json".'
+                }
+            }
+
+            with mock.patch("generate_subtitle_openai_api.requests.post", return_value=response):
+                with self.assertRaisesRegex(RuntimeError, "自定义（Custom）"):
+                    request_transcription(
+                        audio_path,
+                        base_url="https://openrouter.ai/api/v1",
+                        api_key="sk-test",
+                        model="whisper-1",
+                        language=None,
+                    )
+
+
+class OpenAiCliOutputNamingTests(unittest.TestCase):
+    """OpenAI 兼容 CLI：默认名不注入段；MAW_STAT；debug-raw 落盘分支。"""
+
+    def _run(self, extra_args, *, explicit_output=None, debug_raw=False):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "你好", "language": "zh"}
+            if debug_raw:
+                result["_raw_response"] = {"text": "你好"}
+            argv = ["generate_subtitle_openai_api.py", str(media)]
+            if explicit_output is not None:
+                argv += ["-o", str(explicit_output)]
+            argv += extra_args
+            segments = [{"start": 0, "end": 1000, "text": "你好"}]
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [100.0, 200.0, 212.3, 300.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            with mock.patch("sys.argv", argv), \
+                 mock.patch(
+                     "generate_subtitle_openai_api._prepare_audio",
+                     return_value=(str(root / "audio.wav"), 100.0),
+                 ), \
+                 mock.patch("generate_subtitle_openai_api.request_transcription", return_value=result), \
+                 mock.patch("generate_subtitle_openai_api._segments_from_result", return_value=segments), \
+                 mock.patch("generate_subtitle_openai_api.time.perf_counter", side_effect=fake_perf), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_openai_api import main
+
+                main()
+                names = sorted(path.name for path in root.glob("*.srt"))
+            return names, stdout.getvalue()
+
+    @staticmethod
+    def _stat_line(stdout):
+        for line in stdout.splitlines():
+            if line.startswith("MAW_STAT rtf="):
+                return line
+        return None
+
+    def test_default_name_stays_plain_and_stat_is_emitted(self) -> None:
+        names, stdout = self._run([])
+
+        self.assertEqual(names, ["20-走廊.srt"])
+        self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
+
+    def test_debug_raw_default_goes_into_maw_dir(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "你好", "language": "zh", "_raw_response": {"text": "你好"}}
+            segments = [{"start": 0, "end": 1000, "text": "你好"}]
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [100.0, 200.0, 212.3, 300.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            with mock.patch(
+                "sys.argv", ["generate_subtitle_openai_api.py", str(media), "--debug-raw"]
+            ), mock.patch(
+                "generate_subtitle_openai_api._prepare_audio",
+                return_value=(str(root / "audio.wav"), 100.0),
+            ), mock.patch("generate_subtitle_openai_api.request_transcription", return_value=result), \
+                 mock.patch("generate_subtitle_openai_api._segments_from_result", return_value=segments), \
+                 mock.patch("generate_subtitle_openai_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_openai_api import main
+
+                main()
+
+            maw_dir = root / "_maw"
+            raw_files = sorted(maw_dir.glob("*.asr-response.json")) if maw_dir.exists() else []
+            self.assertEqual(len(raw_files), 1)
+            self.assertIn(".asr-response.json", raw_files[0].name)
 
 
 if __name__ == "__main__":

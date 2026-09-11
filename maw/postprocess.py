@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import copy
 import difflib
+import re
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+from maw.output_naming import TRANSLATION_TARGET_NAMES, translation_marker_name
 from maw.postprocess_io import SubtitleArtifact, read_project, read_srt, write_artifacts
 from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
@@ -57,6 +59,25 @@ class LlmPostprocessRequest:
     merge_bilingual: bool = False
 
 
+class PostprocessStepError(RuntimeError):
+    """A bounded error from one LLM post-processing step."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        category: str = "",
+        status_code: int | None = None,
+        diagnostic: str = "",
+        operation: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.category = category
+        self.status_code = status_code
+        self.diagnostic = diagnostic
+        self.operation = operation
+
+
 LlmComplete = Callable[[str, list[dict[str, JsonValue]]], Mapping[str, JsonValue]]
 LlmStatus = Callable[[str, Mapping[str, int]], None]
 
@@ -79,6 +100,13 @@ MAX_LLM_INPUT_CHARS_PER_REQUEST: Final = 4000
 MAX_LLM_WARNING_TEXT_CHARS: Final = 240
 MAX_SINGLE_CUE_TRANSLATION_ATTEMPTS: Final = 2
 MAX_TRANSLATION_REPAIR_REQUESTS_PER_BATCH: Final = 32
+# 双语合一产物在文件名中的标记 ID 与其 zh 界面显示名（双语合一）都识别：
+# 旧版英文命名（clip.translate-zh-bilingual / 中间产物带 .bilingual 段）与 zh 界面
+# 本地化命名（clip.翻译为中文.双语合一 等）再次进入翻译时必须被拦截。
+BILINGUAL_ARTIFACT_MARKER: Final = "bilingual"
+BILINGUAL_ARTIFACT_PATTERN: Final = re.compile(
+    rf"(?:^|[.-])(?:{re.escape(BILINGUAL_ARTIFACT_MARKER)}|{re.escape(translation_marker_name('bilingual', lang='zh'))})(?:-\d+)?$"
+)
 TIMING_FIELDS: Final = ("start", "end", "text", "items")
 ONE_TO_ONE_TRANSLATION_OPERATIONS: Final = frozenset({"translate_en", "translate_zh"})
 
@@ -112,8 +140,43 @@ class _TranslationRepairBudget:
         self.used += 1
 
 
+# 简繁转换方向对应的产物 operation 名：全部繁体变体共用 "traditional"，
+# 文件名后缀只区分「转简体 / 转繁体」两个方向。
+FIXED_CONVERSION_OPERATIONS: Final[dict[TextConversion, str]] = {
+    TextConversion.TO_SIMPLIFIED: "simplified",
+    TextConversion.TO_TRADITIONAL: "traditional",
+    TextConversion.TO_TRADITIONAL_TW: "traditional",
+    TextConversion.TO_TRADITIONAL_TWP: "traditional",
+    TextConversion.TO_TRADITIONAL_HK: "traditional",
+}
+
+
+def fixed_process_operation(replacements: tuple[Replacement, ...], conversion: TextConversion) -> str:
+    """按固定处理实际启用的部分计算产物 operation。
+
+    批量替换规则非空计 "replace"，转换方向非 off 计对应方向；两者以点连接。
+    都未启用时返回空串，调用方应跳过该步骤，不写出文件也不加后缀。
+    """
+    parts: list[str] = []
+    if any(entry.source for entry in replacements):
+        parts.append("replace")
+    direction = FIXED_CONVERSION_OPERATIONS.get(conversion)
+    if direction is not None:
+        parts.append(direction)
+    return ".".join(parts)
+
+
 def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
+    operation = fixed_process_operation(request.replacements, request.conversion)
+    if not operation:
+        return SubtitleArtifact(
+            source_project_path=source_project,
+            source_srt_path=source_srt,
+            project_path=None,
+            srt_path=None,
+            warnings=("固定处理未启用批量替换或简繁转换，已跳过该步骤。",),
+        )
     segments = _segments(project)
     for segment in segments:
         original = segment.get("text")
@@ -152,7 +215,7 @@ def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
         project,
         source_project,
         source_srt,
-        "replace",
+        operation,
         request.output_mode,
         output_directory=request.output_directory,
         media_path=request.media_path,
@@ -177,7 +240,7 @@ def run_llm_postprocess(
     custom = request.custom_prompt.strip()
     strict_translation = request.operation in ONE_TO_ONE_TRANSLATION_OPERATIONS
     if strict_translation:
-        _reject_recursive_translation_input(source_project, request.operation)
+        _reject_recursive_translation_input(source_project, source_srt, request.operation)
     item_aware_resegment = request.operation == "resegment" and _has_complete_items(project)
     system_prompt = _protocol_prompt(
         operation_prompt,
@@ -224,8 +287,9 @@ def run_llm_postprocess(
             except RuntimeError as error:
                 first_id = batch[0]["id"] if batch else "?"
                 last_id = batch[-1]["id"] if batch else "?"
-                raise RuntimeError(
-                    f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}"
+                raise _postprocess_step_error(
+                    f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}",
+                    error,
                 ) from error
             clean_response, batch_skipped, batch_warnings, response_mode = _sanitize_llm_response(
                 response,
@@ -297,15 +361,21 @@ def run_llm_postprocess(
         )
     if len(batches) > 1:
         warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
+    output_operation = request.operation
     if request.merge_bilingual and strict_translation:
-        processed = merge_bilingual_project(project, processed)
+        processed = merge_bilingual_project(
+            project,
+            processed,
+            translation_target="zh" if request.operation == "translate_zh" else "en",
+        )
+        output_operation = f"{request.operation}-{BILINGUAL_ARTIFACT_MARKER}"
         warnings = ("已将原始文本和翻译文本合并为单条双语字幕。", *warnings)
     _notify_status(on_status, "toolbox_status_writing")
     return _write(
         processed,
         source_project,
         source_srt,
-        request.operation,
+        output_operation,
         request.output_mode,
         warnings,
         output_directory=request.output_directory,
@@ -313,8 +383,13 @@ def run_llm_postprocess(
     )
 
 
-def merge_bilingual_project(source_project: JsonDict, translated_project: JsonDict) -> JsonDict:
-    """Combine matching source and translated cues into one subtitle track."""
+def merge_bilingual_project(
+    source_project: JsonDict,
+    translated_project: JsonDict,
+    *,
+    translation_target: str,
+) -> JsonDict:
+    """Combine matching cues, placing the Chinese translation first for ``zh``."""
 
     source_segments = _segments(source_project)
     translated_segments = _segments(translated_project)
@@ -333,8 +408,19 @@ def merge_bilingual_project(source_project: JsonDict, translated_project: JsonDi
         translated_text = translated.get("text")
         if not isinstance(source_text, str) or not isinstance(translated_text, str):
             raise ValueError(f"第 {index} 条字幕缺少有效的原始文本或翻译文本。")
+        source_has_text = bool(source_text.strip())
+        translated_has_text = bool(translated_text.strip())
+        if not source_has_text and not translated_has_text:
+            continue
         merged = copy.deepcopy(source)
-        merged["text"] = f"{source_text}\n{translated_text}"
+        if not source_has_text:
+            merged["text"] = translated_text
+        elif not translated_has_text:
+            merged["text"] = source_text
+        elif translation_target == "zh":
+            merged["text"] = f"{translated_text}\n{source_text}"
+        else:
+            merged["text"] = f"{source_text}\n{translated_text}"
         _ = merged.pop("items", None)
         merged_segments.append(merged)
 
@@ -344,12 +430,26 @@ def merge_bilingual_project(source_project: JsonDict, translated_project: JsonDi
     # an older extension track into the final project if the input was already
     # a multi-subtitle project.
     merged_project.pop("multi_subtitle", None)
+    merged_project.pop("extensionSegments", None)
     return normalize_project(merged_project)
 
 
 def _notify_status(on_status: LlmStatus | None, key: str, **details: int) -> None:
     if on_status is not None:
         on_status(key, details)
+
+
+def _postprocess_step_error(message: str, error: BaseException) -> PostprocessStepError:
+    status_code = getattr(error, "status_code", None)
+    if not isinstance(status_code, int):
+        status_code = None
+    return PostprocessStepError(
+        message,
+        category=str(getattr(error, "category", "") or ""),
+        status_code=status_code,
+        diagnostic=str(getattr(error, "diagnostic", "") or ""),
+        operation=str(getattr(error, "operation", "") or ""),
+    )
 
 
 def apply_llm_groups(project: JsonDict, response: Mapping[str, JsonValue]) -> JsonDict:
@@ -414,8 +514,9 @@ def _complete_strict_translation_batch(
         first_id = batch[0]["id"] if batch else "?"
         last_id = batch[-1]["id"] if batch else "?"
         label = "遗漏字幕重试" if is_repair else "处理"
-        raise RuntimeError(
-            f"第 {batch_number}/{total_batches} 批{label}（{first_id}–{last_id}）失败：{error}"
+        raise _postprocess_step_error(
+            f"第 {batch_number}/{total_batches} 批{label}（{first_id}–{last_id}）失败：{error}",
+            error,
         ) from error
     clean_response, skipped, warnings, response_mode = _sanitize_llm_response(
         response,
@@ -463,8 +564,9 @@ def _complete_strict_translation_batch(
             repair_response = complete(_missing_translation_retry_prompt(system_prompt), missing_batch)
         except RuntimeError as error:
             cue_id = missing_batch[0]["id"]
-            raise RuntimeError(
-                f"第 {batch_number}/{total_batches} 批遗漏字幕重试（{cue_id}）失败：{error}"
+            raise _postprocess_step_error(
+                f"第 {batch_number}/{total_batches} 批遗漏字幕重试（{cue_id}）失败：{error}",
+                error,
             ) from error
         repaired, remaining, repair_warnings, repaired_mode = _sanitize_llm_response(
             repair_response,
@@ -512,18 +614,33 @@ def _merge_translation_response_parts(
     }
 
 
-def _reject_recursive_translation_input(source_project: Path | None, operation: str) -> None:
+def _reject_recursive_translation_input(
+    source_project: Path | None,
+    source_srt: Path | None,
+    operation: str,
+) -> None:
     """Apply a filename-convention guard, not content-based translation detection."""
-    if source_project is None:
-        return
-    target = "translate-en" if operation == "translate_en" else "translate-zh"
-    if f".{target}" in source_project.stem.lower():
-        language = "英文" if operation == "translate_en" else "中文"
-        message = (
-            f"当前文件名符合已生成的{language}翻译工程命名规则（{source_project.name}）。"
-            "请选择最初的原字幕工程再执行翻译，避免把残缺或已翻译结果再次处理。"
-        )
-        raise ValueError(message)
+    language = "zh" if operation == "translate_zh" else "en"
+    language_label = "中文" if language == "zh" else "英文"
+    markers = (
+        f".translate-{language}",
+        f".翻译为{TRANSLATION_TARGET_NAMES['zh'][language]}",
+    )
+    source_paths = tuple(path for path in (source_project, source_srt) if path is not None)
+    for source in source_paths:
+        stem = source.stem.lower()
+        if BILINGUAL_ARTIFACT_PATTERN.search(stem):
+            message = (
+                f"当前文件名符合已生成的双语字幕命名规则（{source.name}）。"
+                "请选择最初的原字幕工程或 SRT，再执行翻译，避免把双语结果再次处理。"
+            )
+            raise ValueError(message)
+        if any(marker in stem for marker in markers):
+            message = (
+                f"当前文件名符合已生成的{language_label}翻译命名规则（{source.name}）。"
+                "请选择最初的原字幕工程或 SRT，再执行翻译，避免把残缺或已翻译结果再次处理。"
+            )
+            raise ValueError(message)
 
 
 def _cue_number(source_id: str) -> str:

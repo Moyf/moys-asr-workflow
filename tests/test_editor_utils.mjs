@@ -21,6 +21,12 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+test('accepts legacy and current project schemas but rejects unknown versions', () => {
+  assert.equal(helpers.supportsProjectSchema({ segments: [] }), true);
+  assert.equal(helpers.supportsProjectSchema({ schema: helpers.PROJECT_SCHEMA, segments: [] }), true);
+  assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v2', segments: [] }), false);
+});
+
 // XML assertions are part of the Node unit suite, but still need a Python
 // subprocess. Keep it on the same locked project environment as E2E instead
 // of silently selecting whichever python.exe happens to be on PATH.
@@ -172,11 +178,160 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(settings.mediaSeekStepMs, 2000);
   assert.equal(settings.cueMoveStepMs, 10);
   assert.equal(settings.theme, 'light');
+  assert.equal(helpers.normalizeEditorSettings({ theme: 'system' }).theme, 'system');
+  assert.equal(helpers.normalizeEditorSettings({ theme: 'invalid' }).theme, 'dark');
+  assert.equal(settings.accentColor, 'blue');
+  assert.equal(settings.accentColorCustom, '#6ca5e8');
+  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'red' }).accentColor, 'red');
+  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'orange' }).accentColor, 'orange');
+  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'invalid' }).accentColor, 'blue');
+  assert.equal(
+    helpers.normalizeEditorSettings({ accentColor: 'custom', accentColorCustom: '#A1b2C3' }).accentColorCustom,
+    '#a1b2c3',
+  );
+  assert.equal(helpers.normalizeEditorSettings({ accentColorCustom: 'invalid' }).accentColorCustom, '#6ca5e8');
   assert.equal(settings.stickerOtioExportMode, 'portable');
   assert.equal(settings.autoMergeShortCount, 20);
+  assert.equal(settings.autoSaveProject, true);
+  assert.equal(settings.projectBackupEnabled, true);
+  assert.equal(
+    helpers.normalizeEditorSettings({ projectBackupEnabled: false }).projectBackupEnabled,
+    false,
+  );
+  assert.equal(settings.exportSpeakerNamesAsSuffix, false);
+  assert.equal(
+    helpers.normalizeEditorSettings({ exportSpeakerNamesAsSuffix: true }).exportSpeakerNamesAsSuffix,
+    true,
+  );
   assert.equal(settings.waveShapeSource, 'reapeaks');
   assert.equal(helpers.normalizeEditorSettings({ waveShapeSource: 'self' }).waveShapeSource, 'self');
   assert.equal(helpers.normalizeEditorSettings({ waveShapeSource: 'invalid' }).waveShapeSource, 'reapeaks');
+});
+
+test('normalizes timeline OTIO export options and defaults them to enabled', () => {
+  const defaults = helpers.normalizeEditorSettings({});
+  assert.equal(defaults.otioExportIncludeSrt, true);
+  assert.equal(defaults.otioExportIncludeStickers, true);
+  assert.equal(defaults.otioExportIncludeMarkers, true);
+  const disabled = helpers.normalizeEditorSettings({
+    otioExportIncludeSrt: false,
+    otioExportIncludeStickers: false,
+    otioExportIncludeMarkers: false,
+  });
+  assert.equal(disabled.otioExportIncludeSrt, false);
+  assert.equal(disabled.otioExportIncludeStickers, false);
+  assert.equal(disabled.otioExportIncludeMarkers, false);
+  // 只有显式 false 会关闭选项；其它假值一律回退为默认勾选，避免损坏的持久化数据关闭导出能力。
+  const repaired = helpers.normalizeEditorSettings({
+    otioExportIncludeSrt: 0,
+    otioExportIncludeStickers: null,
+    otioExportIncludeMarkers: undefined,
+  });
+  assert.equal(repaired.otioExportIncludeSrt, true);
+  assert.equal(repaired.otioExportIncludeStickers, true);
+  assert.equal(repaired.otioExportIncludeMarkers, true);
+});
+
+test('converts and formats the parallel frame timebase', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.normalizeTimelineTimebase({ unit: 'frames', fps: 29.97 }),
+  )), { unit: 'frames', fps: 29.97 });
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.normalizeTimelineTimebase({ unit: 'invalid', fps: 999 }),
+  )), { unit: 'milliseconds', fps: 240 });
+  assert.equal(helpers.frameNumberFromMilliseconds(1000, 30), 30);
+  assert.equal(helpers.millisecondsFromFrameNumber(21, 30), 700);
+  assert.equal(helpers.formatFrameTimecode(36, 30), '00:00:01:06');
+  assert.equal(helpers.formatFrameTimecode(36, 30, ';'), '00:00:01;06');
+  assert.equal(helpers.formatTimelineTimecode(1200, 30), '00:00:01:06');
+  assert.equal(helpers.formatTimelineTimecode(1200, 30, ','), '00:00:01,06');
+  assert.equal(helpers.parseFrameTimecode('01:20:12 / 21F', 30), 144381);
+  assert.equal(helpers.parseFrameTimecode('01:20:12,21F', 30, ','), 144381);
+  assert.equal(helpers.parseFrameTimecode('00:00:01:30', 30), null);
+  assert.equal(helpers.normalizeTimelineTimecodeSeparator(' ; '), ';');
+  assert.equal(helpers.normalizeTimelineTimecodeSeparator('A'), ':');
+  const settings = helpers.normalizeEditorSettings({ mediaSeekStepFrames: 0, cueMoveStepFrames: 999 });
+  assert.equal(settings.mediaSeekStepFrames, 1);
+  assert.equal(settings.cueMoveStepFrames, 240);
+  assert.equal(settings.timelineSnapToFrame, true);
+  assert.equal(helpers.normalizeEditorSettings({ timelineSnapToFrame: false }).timelineSnapToFrame, false);
+  assert.equal(settings.timelineTimecodeSeparator, ':');
+  assert.equal(helpers.normalizeEditorSettings({
+    timelineSnapToFrame: true,
+    timelineTimecodeSeparator: ',',
+  }).timelineSnapToFrame, true);
+  assert.equal(helpers.normalizeEditorSettings({ timelineTimecodeSeparator: ',' }).timelineTimecodeSeparator, ',');
+});
+
+test('normalizes optional source video FPS metadata for frame-mode defaults', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
+    video_fps: 30000 / 1001,
+    video_fps_ratio: '30000/1001',
+  }))), {
+    video_fps: 29.97,
+    video_fps_ratio: '30000/1001',
+  });
+  assert.equal(helpers.normalizeMediaMetadata(undefined), null);
+  assert.equal(helpers.normalizeMediaMetadata({ video_fps: 300 }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ video_fps: 30, video_fps_ratio: '' }), null);
+});
+
+test('normalizes source audio track metadata independently from video FPS', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
+    audio_tracks: [
+      {
+        audio_index: 0, stream_index: 1, codec: 'aac', language: '', title: '',
+        channels: 2, sample_rate: 48000, default: true,
+      },
+      {
+        audio_index: 1, stream_index: 4, codec: '', language: 'en', title: '',
+        channels: 1, sample_rate: 44100,
+      },
+    ],
+  }))), {
+    audio_tracks: [
+      {
+        audio_index: 0,
+        stream_index: 1,
+        codec: 'aac',
+        language: '',
+        title: '',
+        channels: 2,
+        sample_rate: 48000,
+        default: true,
+      },
+      {
+        audio_index: 1,
+        stream_index: 4,
+        codec: '',
+        language: 'en',
+        title: '',
+        channels: 1,
+        sample_rate: 44100,
+        default: false,
+      },
+    ],
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({ audio_tracks: [] }))), {
+    audio_tracks: [],
+  });
+  assert.equal(helpers.normalizeMediaMetadata({ audio_tracks: [{ stream_index: -1 }] }), null);
+});
+
+test('normalizes the persisted selected audio track', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
+    selected_audio_track: 2,
+  }))), {
+    selected_audio_track: 2,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
+    video_fps: 30,
+    selected_audio_track: 1,
+  }))), { video_fps: 30, selected_audio_track: 1 });
+  assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: -1 }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: 1.5 }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ selected_audio_track: true }), null);
+  assert.equal(helpers.normalizeMediaMetadata({}), null);
 });
 
 test('falls back to default split trim symbols and keeps single characters from free input', () => {
@@ -333,6 +488,35 @@ test('keeps restored gaps visible in the single-layer display view', () => {
     { start: 180, end: 220, removed: false },
     { start: 220, end: 250, removed: true },
   ]);
+});
+
+test('resolves the gap-fill range from the nearest gaps around a point', () => {
+  const gaps = [
+    { start: 100, end: 150, removed: true },
+    { start: 300, end: 350, removed: true },
+  ];
+  const fill = (point, duration) => JSON.parse(JSON.stringify(helpers.resolveGapFillRange(gaps, point, duration)));
+  assert.deepEqual(fill(200, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(120, 1000), { start: 100, end: 150 });
+  assert.deepEqual(fill(50, 1000), { start: 0, end: 150 });
+  assert.deepEqual(fill(500, 1000), { start: 300, end: 1000 });
+});
+
+test('gap-fill range ignores restored boundaries, swallows them, and guards invalid input', () => {
+  const gaps = [
+    { start: 100, end: 150, removed: true },
+    { start: 180, end: 220, removed: false },
+    { start: 300, end: 350, removed: true },
+  ];
+  const fill = (point, duration) => JSON.parse(JSON.stringify(helpers.resolveGapFillRange(gaps, point, duration)));
+  assert.deepEqual(fill(260, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(160, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(200, 1000), { start: 100, end: 350 });
+  assert.deepEqual(fill(120, 1000), { start: 100, end: 150 });
+  assert.equal(helpers.resolveGapFillRange([], 200, 1000), null);
+  assert.equal(helpers.resolveGapFillRange(gaps, Number.NaN, 1000), null);
+  assert.equal(helpers.resolveGapFillRange([{ start: 100, end: 150, removed: false }], 200, 1000), null);
+  assert.equal(helpers.resolveGapFillRange([{ start: 100, end: 150 }], 500, 0), null);
 });
 
 test('projects overlapping enabled and restored ranges into one non-overlapping layer', () => {
@@ -1077,7 +1261,24 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('保存成功！', 'en'), 'Saved!');
   assert.equal(i18n.translateText('字幕忍者', 'en'), 'Subtitle Ninja');
   assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
-  assert.equal(i18n.translateText('字幕大小', 'en'), 'Font size');
+  assert.equal(i18n.translateText('文字大小', 'en'), 'Font size');
+  assert.equal(i18n.translateText('界面', 'en'), 'Interface');
+  assert.equal(i18n.translateText('媒体', 'en'), 'Media');
+  assert.equal(i18n.translateText('外观', 'en'), 'Appearance');
+  assert.equal(i18n.translateText('语言', 'en'), 'Language');
+  assert.equal(i18n.translateText('主题', 'en'), 'Theme');
+  assert.equal(i18n.translateText('明亮模式', 'en'), 'Light mode');
+  assert.equal(i18n.translateText('暗色模式', 'en'), 'Dark mode');
+  assert.equal(i18n.translateText('跟随系统', 'en'), 'Follow System');
+  assert.equal(i18n.translateText('强调色', 'en'), 'Accent Color');
+  assert.equal(i18n.translateText('蓝色', 'en'), 'Blue');
+  assert.equal(i18n.translateText('红色', 'en'), 'Red');
+  assert.equal(i18n.translateText('橙色', 'en'), 'Orange');
+  assert.equal(i18n.translateText('自定义', 'en'), 'Custom');
+  assert.equal(i18n.translateText('自定义颜色', 'en'), 'Custom color');
+  assert.equal(i18n.translateText('视频预览', 'en'), 'Video preview');
+  assert.equal(i18n.translateText('播放控制', 'en'), 'Playback controls');
+  assert.equal(i18n.translateText('颜色样式', 'en'), 'Color style');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
   assert.equal(i18n.translateText('空隙检测与调整', 'en'), 'Gap detection and adjustment');
   assert.equal(i18n.translateText('进一步收缩空隙', 'en'), 'Shrink gaps further');
@@ -1176,6 +1377,64 @@ test('translates adjacent adjustment and current-cue operation settings to Engli
   assert.equal(
     i18n.translateText('关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。', 'en'),
     'When disabled, Esc keeps text changes; when enabled, it restores the text from before editing.',
+  );
+});
+
+
+test('translates timeline timebase settings to English', () => {
+  assert.equal(i18n.translateText('时间基准', 'en'), 'Timebase');
+  assert.equal(i18n.translateText('时间单位', 'en'), 'Time unit');
+  assert.equal(i18n.translateText('毫秒', 'en'), 'Milliseconds');
+  assert.equal(i18n.translateText('帧', 'en'), 'Frames');
+  assert.equal(i18n.translateText('吸附到帧', 'en'), 'Snap to frame');
+  assert.equal(i18n.translateText('时间码分隔符', 'en'), 'Timecode separator');
+  assert.equal(
+    i18n.translateText('仅帧模式生效；切换到帧模式后可启用。', 'en'),
+    'Only active in frame mode; switch to frame mode to enable it.',
+  );
+  assert.equal(
+    i18n.translateText('帧时间码示例：HH:MM:SS:FF；只替换秒与帧之间的分隔符。', 'en'),
+    'Frame timecode example: HH:MM:SS:FF; only the separator between seconds and frames changes.',
+  );
+  assert.equal(
+    i18n.translateText('字幕编辑使用的时间单位；切换为帧后，拖动、方向键和 A/D 微调都按帧执行', 'en'),
+    'Time unit used for subtitle editing; after switching to frames, dragging, arrow keys, and A/D fine-tuning operate frame by frame',
+  );
+  assert.equal(
+    i18n.translateText('帧率 FPS', 'en'),
+    'Frame rate FPS',
+  );
+  assert.equal(
+    i18n.translateText('帧模式下把波形鼠标指针吸附到最近的帧；毫秒模式下不生效', 'en'),
+    'Snap the waveform pointer to the nearest frame in frame mode; inactive in millisecond mode',
+  );
+  assert.equal(
+    i18n.translateText('帧时间码中秒与帧之间的分隔符；只使用一个非字母数字符号', 'en'),
+    'Separator between seconds and frames in the frame timecode; use one non-alphanumeric symbol',
+  );
+});
+
+test('translates speaker label separator settings to English', () => {
+  assert.equal(i18n.translateText('分隔符', 'en'), 'Separator');
+  assert.equal(i18n.translateText('字幕颜色', 'en'), 'Subtitle colors');
+  assert.equal(i18n.translateText('说话人', 'en'), 'Speaker');
+  assert.equal(i18n.translateText('颜色与说话人', 'en'), 'Colors and speakers');
+  assert.equal(i18n.translateText('将颜色映射为说话人', 'en'), 'Map colors to speakers');
+  assert.equal(i18n.translateText('在预览字幕中显示说话人', 'en'), 'Show speaker names in preview subtitles');
+  assert.equal(i18n.translateText('使用说话人名称作为后缀', 'en'), 'Use speaker name as suffix');
+  assert.equal(
+    i18n.translateText('在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。', 'en'),
+    'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
+  );
+  assert.equal(i18n.translateText('🤓👆 你可以在', 'en'), '🤓👆 You can configure color-to-speaker names in');
+  assert.equal(i18n.translateText('中配置颜色对应的说话人名。', 'en'), ' settings.');
+  assert.equal(
+    i18n.translateText('设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号', 'en'),
+    'Set the separator between the speaker name and subtitle text; the default is “：”, and spaces or English quotation marks are also supported',
+  );
+  assert.equal(
+    i18n.translateText('配置颜色对应的说话人名称；留空可隐藏该颜色的名称。分隔符默认「：」，支持空格和英文引号。仅影响预览，不改变字幕文本。', 'en'),
+    'Configure the speaker name for each color; leave a name empty to hide it. The separator defaults to “：” and supports spaces or English quotation marks. Preview only, subtitle text is unchanged.',
   );
 });
 
@@ -2430,6 +2689,121 @@ test('repairs a one-ms rounded item overlap before persistence', () => {
   assert.equal(segments[0].items[1].start, 66051);
 });
 
+test('keeps frame-projected item timings inside their fixed subtitle segment', () => {
+  const segment = {
+    start: 73383,
+    end: 73842,
+    items: [
+      { start: 73383, end: 73425 },
+      { start: 73425, end: 73467 },
+      { start: 73467, end: 73509 },
+      { start: 73509, end: 73509 },
+      { start: 73509, end: 73592 },
+      { start: 73592, end: 73634 },
+      { start: 73634, end: 73675 },
+      { start: 73675, end: 73717 },
+      { start: 73717, end: 73759 },
+      { start: 73759, end: 73801 },
+      { start: 73801, end: 73842 },
+      { start: 73801, end: 73842 },
+    ],
+  };
+
+  const fixed = helpers.normalizeFrameItemTimingRanges(segment);
+
+  assert.ok(fixed > 0);
+  let previousEnd = segment.start;
+  segment.items.forEach((item) => {
+    assert.ok(item.start >= segment.start);
+    assert.ok(item.end <= segment.end);
+    assert.ok(item.end > item.start);
+    assert.ok(item.start >= previousEnd);
+    previousEnd = item.end;
+  });
+  assert.equal(segment.end, 73842);
+});
+
+for (const { label, fps } of [
+  { label: '23.976', fps: 23.976 },
+  { label: '24', fps: 24 },
+  { label: '25', fps: 25 },
+  { label: '29.97', fps: 29.97 },
+  { label: '30', fps: 30 },
+  { label: '50', fps: 50 },
+  { label: '59.94', fps: 59.94 },
+  { label: '60', fps: 60 },
+]) {
+  test(`remaps and splits dense word timings safely at ${label} FPS`, () => {
+    const words = Array.from({ length: 48 }, (_, index) => `w${String(index).padStart(2, '0')}`);
+    const sourceStart = 1000;
+    const sourceEnd = 3000;
+    const toFrameRange = (start, end) => {
+      const startFrame = helpers.frameNumberFromMilliseconds(start, fps);
+      const endFrame = Math.max(
+        startFrame + 1,
+        helpers.frameNumberFromMilliseconds(end, fps),
+      );
+      return {
+        start: helpers.millisecondsFromFrameNumber(startFrame, fps),
+        end: helpers.millisecondsFromFrameNumber(endFrame, fps),
+        start_frame: startFrame,
+        end_frame: endFrame,
+      };
+    };
+    const segmentRange = toFrameRange(sourceStart, sourceEnd);
+    const segment = {
+      ...segmentRange,
+      text: words.join(' '),
+      // 20ms 的字词让低帧率下出现真实的同帧碰撞，模拟切换到帧模式后的投影结果。
+      items: words.map((text, index) => ({
+        text,
+        ...toFrameRange(sourceStart + index * 20, sourceStart + (index + 1) * 20),
+      })),
+    };
+    const originalFramePairs = segment.items.map(({ start_frame, end_frame }) => [
+      start_frame, end_frame,
+    ]);
+    const originalSegmentRange = [segment.start, segment.end];
+
+    helpers.normalizeFrameItemTimingRanges(segment);
+
+    assert.deepEqual([segment.start, segment.end], originalSegmentRange);
+    assert.deepEqual(
+      segment.items.map(({ start_frame, end_frame }) => [start_frame, end_frame]),
+      originalFramePairs,
+    );
+    assert.ok(Number.isInteger(segment.start_frame));
+    assert.ok(Number.isInteger(segment.end_frame));
+    assert.ok(segment.end_frame > segment.start_frame);
+    let previousEnd = segment.start;
+    segment.items.forEach((item) => {
+      assert.ok(Number.isInteger(item.start_frame));
+      assert.ok(Number.isInteger(item.end_frame));
+      assert.ok(item.start_frame >= segment.start_frame);
+      assert.ok(item.end_frame <= segment.end_frame);
+      assert.ok(item.end_frame > item.start_frame);
+      assert.ok(item.start >= segment.start);
+      assert.ok(item.end <= segment.end);
+      assert.ok(item.end > item.start);
+      assert.ok(item.start >= previousEnd);
+      previousEnd = item.end;
+    });
+
+    const legalOffsets = helpers.subtitleSplitOffsets(segment.text, 'word');
+    assert.equal(legalOffsets.length, words.length - 1);
+    for (let index = 1; index < words.length; index += 1) {
+      const offset = segment.text.indexOf(words[index]);
+      const leftItem = segment.items[index - 1];
+      const rightItem = segment.items[index];
+      const targetMs = (leftItem.end + rightItem.start) / 2;
+      assert.equal(helpers.splitCharOffsetAtTime(segment, targetMs), offset);
+      const parts = helpers.splitSubtitleText(segment.text, offset, 'word');
+      assert.ok(parts?.left);
+      assert.ok(parts?.right);
+    }
+  });
+}
+
 test('repairs item overlap without hiding a real subtitle-segment overlap', () => {
   const segments = [
     { start: 0, end: 1000, text: '第一句', items: [{ start: 0, end: 600 }] },
@@ -2689,6 +3063,69 @@ test('resolves referenced subtitle colors from their head when available', () =>
 });
 
 
+test('normalizes speaker label settings with defaults and safe names', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeSpeakerLabelSettings({
+    enabled: true,
+    separator: ' ',
+    names: {
+      yellow: '  Host\nOne  ',
+      green: '',
+      red: 'r'.repeat(helpers.SPEAKER_LABEL_MAX_LENGTH + 1),
+      purple: 42,
+      blue: 'Guest',
+    },
+  }))), {
+    mapping_enabled: true,
+    enabled: true,
+    separator: ' ',
+    names: {
+      yellow: 'Host One',
+      green: '',
+      red: 'SP3',
+      purple: 'SP4',
+      blue: 'Guest',
+    },
+  });
+  assert.equal(helpers.normalizeSpeakerLabelSettings({}).mapping_enabled, false);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: true }).mapping_enabled, true);
+  assert.equal(
+    helpers.normalizeSpeakerLabelSettings({ enabled: true, mapping_enabled: false }).mapping_enabled,
+    false,
+  );
+});
+
+
+test('normalizes speaker label separators without trimming spaces', () => {
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(undefined), '：');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(''), '');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(' '), ' ');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator('"'), '"');
+  assert.equal(helpers.normalizeSpeakerLabelSeparator(' \n"'), ' "');
+  assert.equal(
+    helpers.normalizeSpeakerLabelSeparator('s'.repeat(helpers.SPEAKER_LABEL_SEPARATOR_MAX_LENGTH + 1)),
+    '：',
+  );
+});
+
+
+test('formats speaker names from subtitle colors without changing plain text', () => {
+  const segments = [
+    { color: { name: 'yellow' } },
+    { color_ref: { name: 'yellow', headIdx: 0 } },
+    { color: { name: 'blue' } },
+    {},
+  ];
+  const labels = { yellow: '主持人', blue: '' };
+
+  assert.equal(helpers.formatSpeakerLabelledText('第一句', segments[0], segments, labels), '主持人：第一句');
+  assert.equal(helpers.formatSpeakerLabelledText('第二句', segments[1], segments, labels), '主持人：第二句');
+  assert.equal(helpers.formatSpeakerLabelledText('第一句', segments[0], segments, labels, ' '), '主持人 第一句');
+  assert.equal(helpers.formatSpeakerLabelledText('第二句', segments[1], segments, labels, '"'), '主持人"第二句');
+  assert.equal(helpers.formatSpeakerLabelledText('第三句', segments[2], segments, labels), '第三句');
+  assert.equal(helpers.formatSpeakerLabelledText('普通句', segments[3], segments, labels), '普通句');
+});
+
+
 test('shifts color and sticker references when a subtitle is inserted', () => {
   const segments = [
     { color: { name: 'blue' }, sticker: { name: 'blue-sticker' } },
@@ -2739,6 +3176,56 @@ test('builds a color SRT on the shared full-export timeline and excludes disable
     '2',
     '1500ms --> 2300ms',
     'member',
+    '',
+  ].join('\n'));
+});
+
+test('optionally prefixes configured speaker names in SRT output', () => {
+  const segments = [
+    { start: 0, end: 1000, text: 'yellow line', color: { name: 'yellow' } },
+    { start: 1200, end: 2200, text: 'green line', color: { name: 'green' } },
+    { start: 2400, end: 3400, text: 'disabled', disabled: true, color: { name: 'red' } },
+  ];
+  const options = {
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host', green: 'Guest', red: 'Editor' },
+    formatTime: (timeMs) => `${timeMs}ms`,
+  };
+
+  assert.equal(helpers.buildSrtPayload(segments, options), [
+    '1',
+    '0ms --> 1000ms',
+    'Host：yellow line',
+    '',
+    '2',
+    '1200ms --> 2200ms',
+    'Guest：green line',
+    '',
+  ].join('\n'));
+  assert.equal(helpers.buildSrtPayload(segments, {
+    ...options,
+    speakerLabelSeparator: ' ',
+  }), [
+    '1',
+    '0ms --> 1000ms',
+    'Host yellow line',
+    '',
+    '2',
+    '1200ms --> 2200ms',
+    'Guest green line',
+    '',
+  ].join('\n'));
+  assert.equal(helpers.buildSrtPayload(segments, {
+    ...options,
+    speakerLabelsEnabled: false,
+  }), [
+    '1',
+    '0ms --> 1000ms',
+    'yellow line',
+    '',
+    '2',
+    '1200ms --> 2200ms',
+    'green line',
     '',
   ].join('\n'));
 });
@@ -4154,6 +4641,11 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
     segments: [{
       id: 'main-001', start: 0, end: 1000, text: 'English',
       items: [{ start: 0, end: 1000, text: 'English' }],
+      color: { name: 'yellow', value: '#c4a019', start: 0, end: 2200 },
+    }, {
+      id: 'main-002', start: 1200, end: 2200, text: 'English two',
+      items: [{ start: 1200, end: 2200, text: 'English two' }],
+      color: null, color_ref: { name: 'yellow', headIdx: 0 },
     }],
     multi_subtitle: {
       enabled: true,
@@ -4164,11 +4656,18 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
         segments: [{
           id: 'translation-001', start: 40, end: 960, text: '中文',
           items: [{ start: 40, end: 960, text: '中文' }],
+        }, {
+          id: 'translation-002', start: 1240, end: 2160, text: '中文二',
+          items: [{ start: 1240, end: 2160, text: '中文二' }],
         }],
       }],
       bindings: [{
         id: 'binding-001', track_id: 'translation',
         main_segment_ids: ['main-001'], extension_segment_ids: ['translation-001'],
+        start_offset_ms: 40, end_offset_ms: -40,
+      }, {
+        id: 'binding-002', track_id: 'translation',
+        main_segment_ids: ['main-002'], extension_segment_ids: ['translation-002'],
         start_offset_ms: 40, end_offset_ms: -40,
       }],
     },
@@ -4176,6 +4675,11 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
 
   const result = helpers.swapMainAndExtensionSubtitle(project, 'translation');
   assert.equal(result.swapped, true);
+  assert.equal(result.mappedColorCount, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(project.segments.map(({ color, color_ref }) => ({ color, color_ref })))), [
+    { color: { name: 'yellow', value: '#c4a019', start: 40, end: 2160 }, color_ref: null },
+    { color: null, color_ref: { name: 'yellow', headIdx: 0 } },
+  ]);
   assert.equal(project.segments[0].text, '中文');
   assert.deepEqual(JSON.parse(JSON.stringify(project.segments[0].items)), [
     { start: 40, end: 960, text: '中文' },
@@ -4183,6 +4687,10 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
   assert.equal(project.multi_subtitle.tracks[0].segments[0].text, 'English');
   assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments[0].items)), [
     { start: 0, end: 1000, text: 'English' },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments.map(({ color, color_ref }) => ({ color, color_ref })))), [
+    { color: { name: 'yellow', value: '#c4a019', start: 0, end: 2200 } },
+    { color_ref: { name: 'yellow', headIdx: 0 } },
   ]);
   assert.equal(project.multi_subtitle.main_split_mode, 'continuous');
   assert.equal(project.multi_subtitle.tracks[0].split_mode, 'word');
@@ -4196,10 +4704,21 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
   assert.deepEqual(JSON.parse(JSON.stringify(project.segments)), [{
     id: 'main-001', start: 0, end: 1000, text: 'English',
     items: [{ start: 0, end: 1000, text: 'English' }],
+    color: { name: 'yellow', value: '#c4a019', start: 0, end: 2200 },
+    color_ref: null,
+  }, {
+    id: 'main-002', start: 1200, end: 2200, text: 'English two',
+    items: [{ start: 1200, end: 2200, text: 'English two' }],
+    color: null, color_ref: { name: 'yellow', headIdx: 0 },
   }]);
   assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments)), [{
     id: 'translation-001', start: 40, end: 960, text: '中文',
     items: [{ start: 40, end: 960, text: '中文' }],
+    color: { name: 'yellow', value: '#c4a019', start: 40, end: 2160 },
+  }, {
+    id: 'translation-002', start: 1240, end: 2160, text: '中文二',
+    items: [{ start: 1240, end: 2160, text: '中文二' }],
+    color_ref: { name: 'yellow', headIdx: 0 },
   }]);
 });
 
