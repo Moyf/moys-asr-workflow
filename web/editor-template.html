@@ -1626,10 +1626,12 @@ __WAVEFORM_CSS__
       <option value="60">60 fps</option>
       <option value="60000/1001">60000/1001 fps</option>
     </select>
-    <label for="fcp7-export-subtitle-tracks">导出副字幕轨</label>
+    <label for="fcp7-export-subtitle-tracks">导出字幕轨</label>
     <select id="fcp7-export-subtitle-tracks">
       <option value="main" selected>主轨字幕</option>
       <option value="main_and_extension">主轨与副轨字幕</option>
+      <option value="overlay">叠加轨字幕</option>
+      <option value="all">全部字幕轨（各占一轨）</option>
     </select>
     <label class="row" for="fcp7-export-native-text">
       <input type="checkbox" id="fcp7-export-native-text"> 写入原生字幕文本对象

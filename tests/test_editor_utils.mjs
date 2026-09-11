@@ -3180,6 +3180,34 @@ test('builds a color SRT on the shared full-export timeline and excludes disable
   ].join('\n'));
 });
 
+test('resolves overlay color references through per-track contexts in merged exports', () => {
+  // 合并数组里叠加段的 color_ref.headIdx 指向叠加轨自身下标；
+  // 没有按轨上下文时会错解析到主轨 head，导致按色过滤丢失叠加字幕。
+  const main = [{ start: 0, end: 1000, text: 'main red', color: { name: 'red' } }];
+  const overlay = [
+    { start: 200, end: 400, text: 'overlay blue head', color: { name: 'blue' } },
+    { start: 500, end: 700, text: 'overlay blue ref', color_ref: { name: 'blue', headIdx: 0 } },
+  ];
+  const merged = helpers.mergeMainAndOverlaySegments(main, overlay);
+  const overlaySet = new Set(overlay);
+  const resolver = (segment) => (overlaySet.has(segment) ? overlay : main);
+  const blueSrt = helpers.buildSrtPayload(merged, {
+    colorName: 'blue',
+    colorContextResolver: resolver,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  });
+  assert.ok(blueSrt.includes('overlay blue head'));
+  assert.ok(blueSrt.includes('overlay blue ref'));
+  assert.ok(!blueSrt.includes('main red'));
+  const redSrt = helpers.buildSrtPayload(merged, {
+    colorName: 'red',
+    colorContextResolver: resolver,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  });
+  assert.ok(redSrt.includes('main red'));
+  assert.ok(!redSrt.includes('overlay blue'));
+});
+
 test('optionally prefixes configured speaker names in SRT output', () => {
   const segments = [
     { start: 0, end: 1000, text: 'yellow line', color: { name: 'yellow' } },
@@ -3766,9 +3794,11 @@ test('normalizes closed FPS and track choices without guessing unsupported value
     assert.equal(helpers.normalizeExportOptions({ fps }).fps, String(fps));
   }
   assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'main_and_extension' }).subtitleTracks, 'main_and_extension');
+  assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'overlay' }).subtitleTracks, 'overlay');
+  assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'all' }).subtitleTracks, 'all');
   assert.throws(() => helpers.normalizeExportOptions({ fps: 29.97 }), /unsupported export FPS/);
   assert.throws(() => helpers.normalizeExportOptions({ dropFrame: true }), /drop-frame/);
-  assert.throws(() => helpers.normalizeExportOptions({ subtitleTracks: 'all' }), /unsupported subtitle tracks/);
+  assert.throws(() => helpers.normalizeExportOptions({ subtitleTracks: 'bogus' }), /unsupported subtitle tracks/);
   assert.throws(() => helpers.normalizeExportOptions([]), /export options must be an object/);
   assert.throws(() => helpers.normalizeExportOptions({ unknownOption: true }), /unknown export option: unknownOption/);
 });
@@ -4005,6 +4035,66 @@ test('selects main, extension, and both subtitle tracks in XML and SRT', () => {
     assert.equal((xml.match(/<clipitem id="text-/g) || []).length, subtitleTracks === 'main' ? 1 : 2);
     assert.equal(parseSrt(srt).length, subtitleTracks === 'main' ? 1 : 2);
   }
+});
+
+test('exports the overlay track as its own cues, text track, and sticker tracks', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 5000 },
+    sticker_root: 'C:/stickers',
+    segments: [{ start: 100, end: 300, text: 'main' }],
+    overlay_track: {
+      enabled: true,
+      segments: [
+        { start: 400, end: 700, text: 'overlay one', sticker: { name: 'cat', rel: 'cat.png', width: 320, height: 240 } },
+        { start: 800, end: 1100, text: 'overlay two', sticker_ref: { name: 'cat', headIdx: 0 } },
+      ],
+    },
+  }, { mode: 'source' });
+  assert.equal(plan.cues.overlay.length, 2);
+  assert.equal(plan.cues.overlay[0].text, 'overlay one');
+  assert.equal(plan.overlayStickers.length, 2);
+  assert.equal(plan.overlayStickers[0].track, 'overlay');
+  assert.equal(plan.overlayStickers[0].path, 'C:/stickers/cat.png');
+  assert.equal(plan.overlayStickers[1].path, 'C:/stickers/cat.png');
+
+  // 叠加轨字幕独立成轨；主轨 stickers 与叠加轨 stickers 各用各的轨道。
+  const xml = helpers.serializeFcp7Xml(plan, { subtitleTracks: 'all', nativeTextObjects: true });
+  assert.equal((xml.match(/<clipitem id="text-main-/g) || []).length, 1);
+  assert.equal((xml.match(/<clipitem id="text-overlay-/g) || []).length, 2);
+  assert.ok(xml.includes('<name>MAW native text - overlay</name>'));
+  assert.ok(xml.includes('clipitem id="overlay-sticker-clip-1"'));
+  assert.ok(xml.includes('<name>MAW sticker - cat</name>'));
+  assert.equal((xml.match(/<track>/g) || []).length >= 4, true);
+  // 仅叠加轨 / 映射 SRT 选择。
+  const overlayOnlyXml = helpers.serializeFcp7Xml(plan, { subtitleTracks: 'overlay', nativeTextObjects: true });
+  assert.equal((overlayOnlyXml.match(/<clipitem id="text-/g) || []).length, 2);
+  const overlaySrt = helpers.serializeMappedSrt(plan, { subtitleTracks: 'overlay' });
+  assert.equal(parseSrt(overlaySrt).length, 2);
+  // 关闭叠加轨（schema：enabled=false 不导出）→ 没有叠加 cue，也没有表情包。
+  const disabledPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 5000 },
+    segments: [{ start: 100, end: 300, text: 'main' }],
+    overlay_track: { enabled: false, segments: [{ start: 400, end: 700, text: 'hidden' }] },
+  }, { mode: 'source' });
+  assert.equal(disabledPlan.cues.overlay.length, 0);
+  assert.equal(disabledPlan.overlayStickers.length, 0);
+});
+
+test('buildAssPayload writes overlay cues on layer 1 anchored to the top', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main' }],
+    { overlaySegments: [
+      { start: 150, end: 350, text: 'overlay' },
+      { start: 400, end: 200, text: 'invalid' },
+      { start: 500, end: 600, text: 'skip me', disabled: true },
+    ] },
+  );
+  const dialogueLines = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogueLines.length, 2);
+  assert.match(dialogueLines[0], /^Dialogue: 0,/);
+  assert.ok(!dialogueLines[0].includes('\\an8'));
+  assert.match(dialogueLines[1], /^Dialogue: 1,/);
+  assert.ok(dialogueLines[1].includes('{\\an8}overlay'));
 });
 
 test('reports malformed intervals, missing sticker paths, and stale serializer warnings', () => {

@@ -56,8 +56,10 @@
     '彩蛋': 'Easter eggs', '动态图形': 'Dynamic graphics',
     '导出时间线模式': 'Export timeline mode', '去空隙时间线': 'Gap-removed timeline', '原始时间线': 'Source timeline',
     '导出帧率': 'Export frame rate', '写入原生字幕文本对象': 'Write native subtitle text objects',
-    '导出副字幕轨': 'Export secondary subtitle track', '主轨字幕': 'Main-track subtitles',
+    '导出副字幕轨': 'Export secondary subtitle track', '导出字幕轨': 'Export subtitle tracks',
+    '主轨字幕': 'Main-track subtitles',
     '主轨与副轨字幕': 'Main and secondary subtitles', '导出文件名': 'Export filename',
+    '叠加轨字幕': 'Overlay-track subtitles', '全部字幕轨（各占一轨）': 'All subtitle tracks (one track each)',
     '去除间隙': 'Remove gaps',
     '勾选后将字幕和字词时间映射到去除静音空隙后的压缩时间线。': 'Map caption and word timing to the compressed timeline after removing silent gaps.',
     '选择引用原始表情包素材；选择便携模式时，服务器会将素材复制到工程同目录。': 'Reference the original sticker files, or have the server copy them beside the project in portable mode.',
@@ -133,7 +135,7 @@
     'OTIOZ 已生成，图片已打包进 zip': 'OTIOZ generated; images are packed into the zip',
     '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除': 'No silent gaps removed yet; scan with "Remove silent gaps" first',
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '字幕样式': 'Subtitle style', '字幕颜色': 'Subtitle colors', '界面': 'Interface', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
-    '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '叠加字幕': 'Overlay subtitles', '显示独立叠加字幕轨；它不会与多重字幕建立绑定关系': 'Show the independent overlay subtitle track; it does not create bindings with multiple subtitles', '转为叠加字幕': 'Convert to overlay', '转回主轨': 'Move to main track', '删除此叠加字幕': 'Delete overlay subtitle', '编辑文本': 'Edit text', '已转回主轨': 'Moved to the main track', '已调整叠加字幕时间': 'Adjusted overlay subtitle timing', '主轨': 'Main track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
+    '多重字幕': 'Multiple subtitles', '多重字幕设置': 'Multiple-subtitle settings', '叠加字幕': 'Overlay subtitles', '显示独立叠加字幕轨；它不会与多重字幕建立绑定关系': 'Show the independent overlay subtitle track; it does not create bindings with multiple subtitles',     '转为叠加字幕': 'Convert to overlay', '转回主轨': 'Move to main track', '删除此叠加字幕': 'Delete overlay subtitle', '编辑文本': 'Edit text', '拆分此叠加字幕': 'Split this overlay subtitle', '已转回主轨': 'Moved to the main track', '已调整叠加字幕时间': 'Adjusted overlay subtitle timing', '主轨': 'Main track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
     '拆分与合并': 'Split and merge', '拆分与合并配置': 'Split and merge settings', '波形形状来源': 'Waveform shape source', '原生波形': 'Native waveform', 'REAPER 波形': 'REAPER waveform',
     '显示方式': 'Display mode', '语言类型': 'Language type', '字幕语言类型': 'Subtitle language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在多重字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the multiple-subtitle waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
     '开启后显示副轨、双列列表和绑定操作；关闭只隐藏副字幕数据，不删除': 'Show the secondary track, two-column list, and binding actions; turning it off only hides secondary data',
@@ -568,7 +570,7 @@
     '按音频位置拆分副字幕': 'Split secondary subtitle at audio position',
     '按文字位置拆分': 'Split at text position', '跳转到字幕并播放': 'Seek to subtitle and play',
     '分配表情包…': 'Assign sticker…', '删除表情包': 'Remove sticker',
-    '标记颜色': 'Mark color', '清除颜色': 'Clear color',
+    '标记颜色': 'Mark color', '清除颜色': 'Clear color', '已清除颜色': 'Color cleared',
     '切换主字幕语言类型': 'Change main subtitle language type',
     '启用此条': 'Enable this subtitle', '禁用此条': 'Disable this subtitle',
     '删除字幕': 'Delete subtitle', '拓展表情包时长': 'Extend sticker duration',
@@ -1082,6 +1084,11 @@
     if (match) return `All linked subtitles set to ${translateText(match[1])}`;
     match = /^已将字幕设为「(.+)」$/.exec(text);
     if (match) return `Subtitle set to ${translateText(match[1])}`;
+    match = /^已将\s*(\d+)\s*条字幕设为「(.+)」$/.exec(text);
+    if (match) {
+      const label = translateText(match[2]);
+      return `${match[1]} subtitle${match[1] === '1' ? '' : 's'} set to ${label}`;
+    }
     if (text === '无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？') {
       return 'The local editor server is unavailable. Export the project file instead so your changes are not lost?';
     }

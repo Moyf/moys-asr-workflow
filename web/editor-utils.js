@@ -3849,12 +3849,17 @@
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const parts = [];
     let outputIndex = 0;
+    // 颜色/说话人解析上下文：合并导出（主轨 + 叠加轨）时，叠加段的
+    // color_ref 指向叠加轨自身数组，不能在合并后的大数组里按下标解析。
+    const colorContextResolver = typeof options.colorContextResolver === 'function'
+      ? options.colorContextResolver : () => source;
     source.forEach((segment, sourceIndex) => {
       if (!segment) return;
       const disabled = segment.disabled === true;
       if (disabled && !keepDisabledPlaceholder) return;
+      const colorContext = colorContextResolver(segment) || source;
       if (!disabled && colorName) {
-        const effectiveName = effectiveColorName(segment, source);
+        const effectiveName = effectiveColorName(segment, colorContext);
         const matches = colorName === 'default' ? !effectiveName : effectiveName === colorName;
         if (!matches) return;
       }
@@ -3867,7 +3872,7 @@
       parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
       parts.push(disabled ? '' : speakerLabels
         ? formatSpeakerLabelledText(
-          segment.text, segment, source, speakerLabels, speakerLabelSeparator,
+          segment.text, segment, colorContext, speakerLabels, speakerLabelSeparator,
         )
         : String(segment.text || ''));
       parts.push('');
@@ -3957,6 +3962,7 @@
       : getSrtExportFirstIndex(source, alignFirstStart);
     const events = [];
 
+    // 主轨事件：Layer 0，底部居中（Default 样式自带对齐）。
     source.forEach((segment, sourceIndex) => {
       if (!segment || segment.disabled === true) return;
       const rawStart = normalizeAssTimeMs(mapTime(segment.start));
@@ -3968,6 +3974,21 @@
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
       events.push(
         `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Default,,0,0,0,,${escapeAssText(segment.text)}`,
+      );
+    });
+
+    // 叠加轨事件：Layer 1 + \an8 顶部居中，允许与主轨 Dialogue 时间重叠，
+    // 播放器（libass/VSFilter）会按 Layer 叠放渲染。
+    const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
+    overlaySource.forEach((segment) => {
+      if (!segment || segment.disabled === true) return;
+      const rawStart = normalizeAssTimeMs(mapTime(segment.start));
+      const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
+      if (rawEnd <= rawStart) return;
+      const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
+      const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+      events.push(
+        `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Default,,0,0,0,,{\\an8}${escapeAssText(segment.text)}`,
       );
     });
 
@@ -4042,7 +4063,7 @@
     return exportMsToFrames(ms, policy.profile, rounding);
   }
 
-  const EXPORT_SUBTITLE_TRACKS = Object.freeze(['main', 'extension', 'both', 'main_and_extension']);
+  const EXPORT_SUBTITLE_TRACKS = Object.freeze(['main', 'extension', 'overlay', 'both', 'main_and_extension', 'all']);
   const EXPORT_INVALID_NAME_CHARS = /[\\/<>:"|?*\u0000-\u001f]/g;
   const EXPORT_NAME_EXTENSIONS = new Set([
     '.mosp', '.json', '.srt', '.txt', '.ass', '.vtt', '.xml', '.ffconcat', '.otio', '.otioz',
@@ -4228,6 +4249,10 @@
     const warnings = [];
     if (mode === 'gap_removed' && !gaps.some((gap) => gap.removed)) warnings.push({ code: 'no_removed_gaps' });
     const projectSegments = Array.isArray(project.segments) ? project.segments : [];
+    // schema §1.5：叠加轨 enabled=false 时保留数据但不显示也不导出。
+    const projectOverlaySegments = project.overlay_track?.enabled === true
+      && Array.isArray(project.overlay_track.segments)
+      ? project.overlay_track.segments : [];
     const schemaExtension = Array.isArray(project.multi_subtitle?.tracks)
       ? project.multi_subtitle.tracks.flatMap((track) => Array.isArray(track?.segments) ? track.segments : [])
       : [];
@@ -4259,7 +4284,11 @@
         startMs: mappedStart, endMs: mappedEnd,
       };
     }).filter(Boolean);
-    const cues = { main: projectCues(projectSegments, 'main'), extension: projectCues(projectExtension, 'extension') };
+    const cues = {
+      main: projectCues(projectSegments, 'main'),
+      extension: projectCues(projectExtension, 'extension'),
+      overlay: projectCues(projectOverlaySegments, 'overlay'),
+    };
     const stickers = [];
     const stickerHeads = new Set();
     const stickerRoot = String(project.sticker_root || project.stickerRoot || '').trim().replace(/[\\/]$/, '');
@@ -4269,56 +4298,66 @@
         || rawPath.startsWith('/') || rawPath.startsWith('file://')) return rawPath;
       return `${stickerRoot}/${rawPath.replace(/^[\\/]+/, '')}`;
     };
-    projectSegments.forEach((segment, index) => {
-      const reference = segment?.sticker_ref;
-      const source = segment?.sticker || (reference && projectSegments[reference.headIdx]?.sticker);
-      if (reference && Number.isInteger(reference.headIdx)) {
-        const head = projectSegments[reference.headIdx];
-        if (!head?.sticker || head.disabled || reference.headIdx === index) {
-          warnings.push({ code: 'dangling_sticker_reference', index, headIdx: reference.headIdx });
-          return;
-        } else {
-          const headName = String(head.sticker.name || head.sticker.filename || '').replace(/\.[^.]+$/, '');
-          if (reference.name && headName && reference.name !== headName) {
-            warnings.push({ code: 'stale_sticker_reference', index, headIdx: reference.headIdx });
+    // 收集一条轨的表情包：ref 在所在轨数组内解析 head（叠加轨的 ref 只引用
+    // 叠加轨自身段）。track 用于区分主轨 stickers 与叠加轨 overlayStickers。
+    const collectStickers = (segments, track, output) => {
+      const heads = new Set();
+      segments.forEach((segment, index) => {
+        const reference = segment?.sticker_ref;
+        const source = segment?.sticker || (reference && segments[reference.headIdx]?.sticker);
+        if (reference && Number.isInteger(reference.headIdx)) {
+          const head = segments[reference.headIdx];
+          if (!head?.sticker || head.disabled || reference.headIdx === index) {
+            warnings.push({ code: 'dangling_sticker_reference', track, index, headIdx: reference.headIdx });
+            return;
+          } else {
+            const headName = String(head.sticker.name || head.sticker.filename || '').replace(/\.[^.]+$/, '');
+            if (reference.name && headName && reference.name !== headName) {
+              warnings.push({ code: 'stale_sticker_reference', track, index, headIdx: reference.headIdx });
+            }
           }
         }
-      }
-      if (!source || segment.disabled || (segment.sticker && stickerHeads.has(index))) return;
-      if (segment.sticker) stickerHeads.add(index);
-      const timing = segment.sticker || segment;
-      const stickerStart = Number(timing.start);
-      const stickerEnd = Number(timing.end);
-      const rawStart = Math.round(Number.isFinite(stickerStart) ? stickerStart : Number(segment.start) || 0);
-      const rawEnd = Math.round(Number.isFinite(stickerEnd) ? stickerEnd : Number(segment.end) || 0);
-      const start = Math.min(durationMs, Math.max(0, rawStart));
-      const end = Math.min(durationMs, Math.max(start, rawEnd));
-      if (end <= start || mapSourceToOutput(end) <= mapSourceToOutput(start)) {
-        warnings.push({ code: 'fully_removed_sticker', index });
-        return;
-      }
-      const resolvedStickerPath = resolveStickerPath(source);
-      if (!resolvedStickerPath) {
-        warnings.push({ code: 'missing_sticker_path', index });
-        return;
-      }
-      if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_sticker_to_duration', index });
-      stickers.push({
-        headIndex: index, name: String(source.name || ''),
-        path: resolvedStickerPath, width: Number.isInteger(source.width) ? source.width : 720,
-        height: Number.isInteger(source.height) ? source.height : 480,
-        sourceStartMs: start, sourceEndMs: end,
-        startMs: mapSourceToOutput(start), endMs: mapSourceToOutput(end),
+        if (!source || segment.disabled || (segment.sticker && heads.has(index))) return;
+        if (segment.sticker) heads.add(index);
+        const timing = segment.sticker || segment;
+        const stickerStart = Number(timing.start);
+        const stickerEnd = Number(timing.end);
+        const rawStart = Math.round(Number.isFinite(stickerStart) ? stickerStart : Number(segment.start) || 0);
+        const rawEnd = Math.round(Number.isFinite(stickerEnd) ? stickerEnd : Number(segment.end) || 0);
+        const start = Math.min(durationMs, Math.max(0, rawStart));
+        const end = Math.min(durationMs, Math.max(start, rawEnd));
+        if (end <= start || mapSourceToOutput(end) <= mapSourceToOutput(start)) {
+          warnings.push({ code: 'fully_removed_sticker', track, index });
+          return;
+        }
+        const resolvedStickerPath = resolveStickerPath(source);
+        if (!resolvedStickerPath) {
+          warnings.push({ code: 'missing_sticker_path', track, index });
+          return;
+        }
+        if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_sticker_to_duration', track, index });
+        output.push({
+          headIndex: index, track, name: String(source.name || ''),
+          path: resolvedStickerPath, width: Number.isInteger(source.width) ? source.width : 720,
+          height: Number.isInteger(source.height) ? source.height : 480,
+          sourceStartMs: start, sourceEndMs: end,
+          startMs: mapSourceToOutput(start), endMs: mapSourceToOutput(end),
+        });
       });
-    });
-    if (cues.main.length === 0 && cues.extension.length === 0) warnings.push({ code: 'no_enabled_cues' });
+    };
+    collectStickers(projectSegments, 'main', stickers);
+    const overlayStickers = [];
+    collectStickers(projectOverlaySegments, 'overlay', overlayStickers);
+    if (cues.main.length === 0 && cues.extension.length === 0 && cues.overlay.length === 0) {
+      warnings.push({ code: 'no_enabled_cues' });
+    }
     warnings.sort((left, right) => left.code.localeCompare(right.code) || (left.index ?? 0) - (right.index ?? 0));
     const plan = {
       media: { path: mediaPath, type: String(media?.type || 'video'), durationMs },
       mode, sourceDurationMs: durationMs, keptIntervals, outputDurationMs,
       mapping: { mode, sourceDurationMs: durationMs, outputDurationMs, gaps },
       framePolicy: { profile: frameProfile, rounding: ['floor', 'ceil'], dropFrame: false },
-      cues, stickers, warnings, frameProfile,
+      cues, stickers, overlayStickers, warnings, frameProfile,
       subtitleFontFamily: premiereFontFamily(project.preview?.subtitle?.font_family),
     };
     Object.defineProperties(plan, {
@@ -4347,7 +4386,7 @@
       throw new Error('empty export interval');
     }
     const outputDuration = plan.outputDurationMs;
-    const cueLists = [plan.cues?.main, plan.cues?.extension].filter(Array.isArray);
+    const cueLists = [plan.cues?.main, plan.cues?.extension, plan.cues?.overlay].filter(Array.isArray);
     if (cueLists.flat().some((cue) => cue.startMs < 0 || cue.endMs > outputDuration || cue.endMs <= cue.startMs)) {
       throw new Error('export cue outside output duration');
     }
@@ -4372,7 +4411,12 @@
 
   function selectedSubtitleTracks(plan, subtitleTracks) {
     const selected = subtitleTracks === 'main_and_extension' || subtitleTracks === 'both'
-      ? ['main', 'extension'] : subtitleTracks === 'extension' ? ['extension'] : ['main'];
+      ? ['main', 'extension']
+      : subtitleTracks === 'all'
+        ? ['main', 'extension', 'overlay']
+        : subtitleTracks === 'overlay'
+          ? ['overlay']
+          : subtitleTracks === 'extension' ? ['extension'] : ['main'];
     return selected.flatMap((track) => Array.isArray(plan.cues?.[track]) ? plan.cues[track] : []);
   }
 
@@ -4556,23 +4600,31 @@
     }) : [];
     const videoTracks = hasVideo ? [`<track>${sourceTracks.join('')}</track>`] : [];
     const stickerFileIds = new Map();
-    const stickerTracks = hasVideo ? (Array.isArray(exportPlan.stickers) ? exportPlan.stickers : []).map((sticker, index) => {
-      if (!String(sticker.path || '').trim()) return '';
-      const stickerKey = String(sticker.path);
-      const fileId = stickerFileIds.get(stickerKey) || `file-sticker-${stickerFileIds.size + 1}`;
-      const defineFile = !stickerFileIds.has(stickerKey);
-      stickerFileIds.set(stickerKey, fileId);
-      const clip = fcpClipItem({
-        id: `sticker-clip-${index + 1}`, fileId, name: `MAW sticker - ${sticker.name || index + 1}`,
-        path: sticker.path, width: sticker.width, height: sticker.height, sourceStartMs: 0,
-        sourceEndMs: Math.max(1, sticker.endMs - sticker.startMs),
-        startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'sticker', track: `sticker-${index + 1}`,
-        defineFile, encodeDriveColon: true,
-      });
-      return `<track>${clip}</track>`;
-    }).filter(Boolean) : [];
+    const buildStickerTracks = (list, trackPrefix, clipPrefix) => (Array.isArray(list) ? list : [])
+      .map((sticker, index) => {
+        if (!String(sticker.path || '').trim()) return '';
+        const stickerKey = `${trackPrefix}:${String(sticker.path)}`;
+        const fileId = stickerFileIds.get(stickerKey) || `file-${trackPrefix}-${stickerFileIds.size + 1}`;
+        const defineFile = !stickerFileIds.has(stickerKey);
+        stickerFileIds.set(stickerKey, fileId);
+        const clip = fcpClipItem({
+          id: `${clipPrefix}-clip-${index + 1}`, fileId, name: `MAW sticker - ${sticker.name || index + 1}`,
+          path: sticker.path, width: sticker.width, height: sticker.height, sourceStartMs: 0,
+          sourceEndMs: Math.max(1, sticker.endMs - sticker.startMs),
+          startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'sticker', track: `${trackPrefix}-${index + 1}`,
+          defineFile, encodeDriveColon: true,
+        });
+        return `<track>${clip}</track>`;
+      }).filter(Boolean);
+    const stickerTracks = hasVideo
+      ? buildStickerTracks(exportPlan.stickers, 'sticker', 'sticker')
+        .concat(buildStickerTracks(exportPlan.overlayStickers, 'overlay-sticker', 'overlay-sticker'))
+      : [];
     const textTracks = nativeTextObjects && hasVideo ? (subtitleTracks === 'main_and_extension' || subtitleTracks === 'both'
-      ? ['main', 'extension'] : subtitleTracks === 'extension' ? ['extension'] : ['main']).map((track) => {
+      ? ['main', 'extension']
+      : subtitleTracks === 'all'
+        ? ['main', 'extension', 'overlay']
+        : subtitleTracks === 'overlay' ? ['overlay'] : subtitleTracks === 'extension' ? ['extension'] : ['main']).map((track) => {
       const cues = selectedSubtitleTracks(exportPlan, track);
       const generators = cues.map((cue, index) => {
         const range = fcpTimeRange(cue.startMs, cue.endMs, exportPlan);

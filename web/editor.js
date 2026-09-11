@@ -232,6 +232,24 @@ function applyCueColorSnapshot(segment, snapshot) {
   return true;
 }
 
+// 表情包继承：与颜色同理。ref 迁移时需要 head 的完整素材数据（文件名、
+// 尺寸等），因此快照按所在轨数组解析并深拷贝；应用时物化为自持 head，
+// 时间范围改写为段自身范围，避免跨轨引用。
+function captureCueStickerSnapshot(segments, index) {
+  const segment = segments?.[index];
+  if (!segment) return null;
+  if (segment.sticker) return JSON.parse(JSON.stringify(segment.sticker));
+  const head = segments[segment.sticker_ref?.headIdx];
+  return head?.sticker ? JSON.parse(JSON.stringify(head.sticker)) : null;
+}
+
+function applyCueStickerSnapshot(segment, snapshot) {
+  if (!segment || !snapshot) return false;
+  segment.sticker_ref = null;
+  segment.sticker = { ...snapshot, start: segment.start, end: segment.end };
+  return true;
+}
+
 // 拖动换轨入口专用的面板分离：不走 commitCuePanelEdit——它会把段钳回
 // 主轨非重叠区间（previousEnd/nextStart 夹逼），与 Shift+拖动「故意重叠」
 // 的换轨意图冲突；文字编辑已在 input 事件实时写入段，这里只清空面板。
@@ -251,10 +269,12 @@ function convertMainCuesToOverlay(idxs, { label = '转为叠加字幕', pushHist
   if (!targets.length) return 0;
   detachCuePanelFromTrackEdits();
   if (pushHistory) pushUndo(label);
-  // 迁移前快照颜色：splitGroupsAtCutPoints 会把切点的 color/color_ref 清空。
+  // 迁移前快照颜色与表情包：splitGroupsAtCutPoints 会把切点的
+  // color/color_ref/sticker/sticker_ref 清空，迁移后按快照物化回段上。
   const colorSnapshots = new Map(targets.map((index) => [index, {
     segment: DATA.segments[index],
-    snapshot: captureCueColorSnapshot(DATA.segments[index]),
+    color: captureCueColorSnapshot(DATA.segments[index]),
+    sticker: captureCueStickerSnapshot(DATA.segments, index),
   }]));
   shiftMainGroupRefsAfterMove(targets);
   let converted = 0;
@@ -263,8 +283,9 @@ function convertMainCuesToOverlay(idxs, { label = '转为叠加字幕', pushHist
     const targetIndex = targets[position];
     const newIndex = moveSegmentToOverlayTrack(targetIndex);
     if (newIndex < 0) continue;
-    const { segment, snapshot } = colorSnapshots.get(targetIndex);
-    applyCueColorSnapshot(segment, snapshot);
+    const { segment, color, sticker } = colorSnapshots.get(targetIndex);
+    applyCueColorSnapshot(segment, color);
+    applyCueStickerSnapshot(segment, sticker);
     converted += 1;
   }
   if (!converted) return 0;
@@ -288,10 +309,12 @@ function convertMainCueToOverlayForDrag(index) {
   detachCuePanelDuringDrag();
   const segment = DATA.segments[index];
   const colorSnapshot = captureCueColorSnapshot(segment);
+  const stickerSnapshot = captureCueStickerSnapshot(DATA.segments, index);
   shiftMainGroupRefsAfterMove([index]);
   const newIndex = moveSegmentToOverlayTrack(index);
   if (newIndex < 0) return -1;
   applyCueColorSnapshot(segment, colorSnapshot);
+  applyCueStickerSnapshot(segment, stickerSnapshot);
   const { wasSelected, nextAnchor } = window.AsrEditorUtils.shiftSelectionAfterRemoval(
     selectedIdxs, lastClickedIdx, index,
   );
@@ -317,13 +340,16 @@ function convertOverlayCueToMainForDrag(index) {
   detachCuePanelDuringDrag();
   const segment = overlay.segments[index];
   const colorSnapshot = captureCueColorSnapshot(segment);
+  const stickerSnapshot = captureCueStickerSnapshot(overlay.segments, index);
   // 剩下的叠加轨组员按主轨同款「组拆分」语义提升新 head，然后迁移段
-  // 物化自持颜色回到主轨（split 依赖迁移前下标，必须在 splice 前调用）。
+  // 物化自持颜色/表情回到主轨（split 依赖迁移前下标，必须在 splice 前调用）。
   splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
+  splitGroupsAtCutPoints(new Set([index]), 'sticker', 'sticker_ref', overlay.segments);
   resetOverlayGroupRefs(index);
   const newIndex = moveOverlaySegmentToMainTrack(index);
   if (newIndex < 0) return -1;
   applyCueColorSnapshot(segment, colorSnapshot);
+  applyCueStickerSnapshot(segment, stickerSnapshot);
   shiftMainGroupRefsAfterInsert(newIndex);
   const { wasSelected, nextAnchor } = window.AsrEditorUtils.shiftSelectionAfterRemoval(
     selectedOverlayIdxs, lastClickedOverlayIdx, index,
@@ -345,12 +371,15 @@ function convertOverlayCueToMain(index) {
   pushUndo('叠加字幕转回主轨');
   const segment = overlay.segments[index];
   const colorSnapshot = captureCueColorSnapshot(segment);
-  // 与拖动入口一致：剩余组员先提升新 head，迁移段物化自持颜色。
+  const stickerSnapshot = captureCueStickerSnapshot(overlay.segments, index);
+  // 与拖动入口一致：剩余组员先提升新 head，迁移段物化自持颜色/表情。
   splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
+  splitGroupsAtCutPoints(new Set([index]), 'sticker', 'sticker_ref', overlay.segments);
   resetOverlayGroupRefs(index);
   const newIndex = moveOverlaySegmentToMainTrack(index);
   if (newIndex < 0) return false;
   applyCueColorSnapshot(segment, colorSnapshot);
+  applyCueStickerSnapshot(segment, stickerSnapshot);
   shiftMainGroupRefsAfterInsert(newIndex);
   lastClickedOverlayIdx = window.AsrEditorUtils.shiftSelectionAfterRemoval(
     selectedOverlayIdxs, lastClickedOverlayIdx, index,
@@ -1741,6 +1770,11 @@ const overlayMainTextNode = document.createTextNode('');
 overlayTextEl.append(overlayMainTextNode);
 const overlayExtensionTextEl = document.getElementById('overlay-extension-text');
 const overlayTrackTextEl = document.getElementById('overlay-track-text');
+// 叠加轨预览的说话人标签：结构与主字幕预览一致（彩色标签 span + 文本节点）。
+const overlayTrackSpeakerLabelEl = document.createElement('span');
+overlayTrackSpeakerLabelEl.className = 'subtitle-speaker-label hidden';
+const overlayTrackTextNode = document.createTextNode('');
+overlayTrackTextEl?.append(overlayTrackSpeakerLabelEl, overlayTrackTextNode);
 const overlayToggle = document.getElementById('overlay-toggle');
 const extensionOverlayToggleWrap = document.getElementById('extension-overlay-toggle-wrap');
 const extensionOverlayToggle = document.getElementById('extension-overlay-toggle');
@@ -5970,8 +6004,13 @@ function navigateCuePanel(direction) {
 function splitCuePanelAtCursor() {
   const target = getCurrentCuePanelTarget();
   if (!target) return;
-  if (target.kind === 'overlay') return;
-  const cursorOffset = cuePanelText.selectionStart;
+  if (target.kind === 'overlay') {
+    commitCuePanelEdit();
+    const cursorOffset = cuePanelText.selectionStart;
+    const splitTime = splitTimeForTextOffset(target.segment, cursorOffset);
+    openOverlaySplitModal(target.index, splitTime);
+    return;
+  }
   if (target.kind === 'extension') {
     const splitTime = splitTimeForTextOffset(target.segment, cursorOffset);
     commitCuePanelEdit();
@@ -6057,10 +6096,12 @@ cuePanelDuration?.addEventListener('change', () => commitCuePanelEdit());
 cuePanelAddSticker?.addEventListener('click', () => {
   const target = getCurrentCuePanelTarget();
   if (target?.kind === 'main') openStickerPicker([target.index], false);
+  else if (target?.kind === 'overlay') openStickerPicker([target.index], false, { overlay: true });
 });
 cuePanelSticker?.addEventListener('click', () => {
   const target = getCurrentCuePanelTarget();
   if (target?.kind === 'main') openStickerPicker([target.index], false);
+  else if (target?.kind === 'overlay') openStickerPicker([target.index], false, { overlay: true });
 });
 cuePanelSticker?.addEventListener('contextmenu', (event) => {
   event.preventDefault();
@@ -6124,7 +6165,7 @@ function updateCueColorPresentation(el, colorBar, seg) {
   }
 }
 
-function updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack = null } = {}) {
+function updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack = null, overlayTrack = false } = {}) {
   if (!el || !slotEl || !seg) return;
   const isExtension = Boolean(extensionTrack);
   slotEl.classList.remove('ref');
@@ -6136,7 +6177,7 @@ function updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack = n
     img.title = seg.sticker.name || '表情包';
     img.addEventListener('click', (event) => {
       event.stopPropagation();
-      if (!isExtension) openStickerPreview(idx);
+      if (!isExtension) openStickerPreview(idx, { overlay: overlayTrack });
     });
     const nameEl = document.createElement('div');
     nameEl.className = 'sname';
@@ -6155,11 +6196,14 @@ function updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack = n
       event.stopPropagation();
       if (!Number.isInteger(headIndex) || headIndex < 0) return;
       const head = container.querySelector(
-        isExtension ? `.cue[data-ext-idx="${headIndex}"]` : `.cue[data-idx="${headIndex}"]`,
+        isExtension ? `.cue[data-ext-idx="${headIndex}"]`
+          : overlayTrack ? `.overlay-track-cue[data-overlay-idx="${headIndex}"]`
+            : `.cue[data-idx="${headIndex}"]`,
       );
       if (!head) return;
       scrollCueToCenter(head);
       if (isExtension) selectOnlyExtension(headIndex, extensionTrack);
+      else if (overlayTrack) selectOverlayCueRow(headIndex);
       else selectOnly(headIndex);
     });
     slotEl.appendChild(refEl);
@@ -6208,7 +6252,7 @@ function buildCueEl(seg, idx, { extensionTrack = null, overlayTrack = false } = 
   // 表情包槽位
   const slotEl = document.createElement('span');
   slotEl.className = 'sticker-slot';
-  updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack });
+  updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack, overlayTrack });
 
   const textEl = document.createElement('span');
   textEl.className = 'text';
@@ -8003,9 +8047,11 @@ function renderLinkedSplitText(state) {
       ? '选择主字幕拆分点'
       : state.kind === 'extension'
         ? '选择副字幕拆分点'
-        : state.mainInteractive
-          ? '分别选择主字幕和副字幕拆分点'
-          : '主字幕按时间码定位，选择副字幕拆分点';
+        : state.kind === 'overlay'
+          ? '选择叠加字幕拆分点'
+          : state.mainInteractive
+            ? '分别选择主字幕和副字幕拆分点'
+            : '主字幕按时间码定位，选择副字幕拆分点';
   }
   renderSplitLane(state, 'main');
   renderSplitLane(state, 'extension');
@@ -8062,7 +8108,9 @@ function isSplitAutoSubmitEnabled() {
 function splitAutoSubmitReady(state) {
   if (!state?.valid) return false;
   if (state.kind === 'main') return splitLaneLocked(state, 'main');
-  if (state.kind === 'extension') return splitLaneLocked(state, 'extension');
+  if (state.kind === 'extension' || state.kind === 'overlay') {
+    return splitLaneLocked(state, 'extension');
+  }
   // 字词时间码已固定主轨切点时，主轨没有可交互的确认步骤。
   const mainReady = !state.mainInteractive || splitLaneLocked(state, 'main');
   return mainReady && splitLaneLocked(state, 'extension');
@@ -8096,14 +8144,20 @@ function renderSplitMeta(text, state) {
   multiSubtitleSplitMeta.appendChild(hintEl);
 }
 
+// 拆分弹窗状态对应的轨：叠加轨拆分复用副轨弹窗机制，但轨解析走叠加轨。
+function splitStateTrack(state) {
+  if (state?.kind === 'overlay') return getOverlayTrack();
+  return getExtensionTrack(state?.trackId);
+}
+
 function updateLinkedSplitPreview(offset, lane = 'extension') {
   const state = pendingLinkedSplit;
   if (!state) return false;
-  const track = getExtensionTrack(state.trackId);
+  const track = splitStateTrack(state);
   const main = state.mainIndex >= 0 ? DATA.segments[state.mainIndex] : null;
   const extension = extensionSegmentById(state.extensionId, track);
   const mainOnly = state.kind === 'main';
-  const extensionOnly = state.kind === 'extension';
+  const extensionOnly = state.kind === 'extension' || state.kind === 'overlay';
   if ((!mainOnly && !extensionOnly && !main) || (!mainOnly && !extension)) return false;
 
   if (lane === 'main' && main) {
@@ -8406,6 +8460,88 @@ function commitExtensionSplit(state, { force = false } = {}) {
   return true;
 }
 
+// 叠加轨拆分：复用副轨的独立拆分弹窗机制（单 lane、无主副联动），
+// 但组引用（颜色/表情包）按主轨拆分规则在叠加轨数组内维护。
+function openOverlaySplitModal(index, timeMs, initial = {}) {
+  const track = getOverlayTrack();
+  const segment = track?.segments?.[index];
+  if (!segment) return false;
+  if (segment.end - segment.start < SUBTITLE_MIN_DURATION_MS * 2) {
+    flashHint('叠加字幕总时长不足 200ms，无法拆分', 'warning');
+    return false;
+  }
+  const state = extensionOnlySplitState(index, track, { timeMs, ...initial });
+  if (!state) {
+    flashHint('这条叠加字幕没有可用的文字边界', 'invalid');
+    return false;
+  }
+  state.kind = 'overlay';
+  state.feedbackPoint = state.feedbackPoint
+    || waveformEditor?.getSplitPointAtTime?.(timeMs, 'extension') || null;
+  pendingLinkedSplit = state;
+  multiSubtitleSplitModal?.classList.add('show');
+  renderLinkedSplitText(state);
+  return true;
+}
+
+function commitOverlaySplit(state, { force = false, successMessage = '已按选择的断点拆分叠加字幕' } = {}) {
+  const track = getOverlayTrack();
+  const overlayIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
+  const segment = track?.segments?.[overlayIndex];
+  if (!track || overlayIndex < 0 || !segment) return false;
+  const splitMs = force
+    ? forceSplitCutForSegments([segment], state.extensionCutMs)
+    : state.extensionCutMs;
+  if (!Number.isFinite(splitMs)) {
+    flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
+    return false;
+  }
+  const pair = buildSplitPair(
+    segment,
+    state.offset,
+    splitMs,
+    segment.id || `overlay-${overlayIndex}`,
+    true,
+    state.extensionMode,
+    {
+      preserveCutMs: force || Number.isFinite(state.fixedCutMs),
+      forceCut: force,
+    },
+  );
+  if (!pair) return false;
+  pushUndo('拆分叠加字幕', { captureView: true });
+  clearSelection({ commitCuePanel: false });
+  track.segments.splice(overlayIndex, 1, pair.left, pair.right);
+  // 组引用维护与主轨拆分一致：替换下标之后的引用右移一格，
+  // 左半继承 head 时右半以 ref 指回它；其余指向旧 head 的引用仍有效。
+  for (let index = overlayIndex + 2; index < track.segments.length; index++) {
+    const item = track.segments[index];
+    if (item.sticker_ref?.headIdx > overlayIndex) item.sticker_ref.headIdx += 1;
+    if (item.color_ref?.headIdx > overlayIndex) item.color_ref.headIdx += 1;
+  }
+  if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: overlayIndex };
+  if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: overlayIndex };
+  track._dirty = true;
+  closeLinkedSplitModal();
+  clearSelection({ commitCuePanel: false });
+  renderAll();
+  selectedOverlayIdxs.clear();
+  selectedOverlayIdxs.add(overlayIndex + 1);
+  lastClickedOverlayIdx = overlayIndex + 1;
+  setCuePanelTarget('overlay', overlayIndex + 1);
+  updateWithoutCueListAutoScroll();
+  flashSplitFeedback({
+    index: overlayIndex,
+    track: 'overlay',
+    splitMs,
+    feedbackPoint: null,
+    listFeedback: false,
+  });
+  triggerNinjaSplitFeedback(ninjaModalSplitPoint(state, splitMs, 'overlay'));
+  if (successMessage) flashHint(successMessage, 'success');
+  return true;
+}
+
 function confirmLinkedSplit() {
   const state = pendingLinkedSplit;
   if (!state) return;
@@ -8442,6 +8578,10 @@ function confirmLinkedSplit() {
   }
   if (state.kind === 'extension') {
     commitExtensionSplit(state, { force });
+    return;
+  }
+  if (state.kind === 'overlay') {
+    commitOverlaySplit(state, { force });
     return;
   }
   const track = getExtensionTrack(state.trackId);
@@ -9089,6 +9229,69 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
       : `已合并 ${sorted.length} 条副字幕`,
     'success',
   );
+  return true;
+}
+
+// 只合并叠加轨连续字幕。叠加轨的分组（颜色/表情包）引用叠加轨自身段，
+// 合并语义与主轨一致：全部成员同组时继承，混合组不继承。
+function mergeOverlaySegments(idxs) {
+  const track = getOverlayTrack();
+  if (!track || !idxs?.length) return false;
+  const sorted = [...new Set(idxs)].sort((a, b) => a - b);
+  if (sorted.length < 2) {
+    flashHint('请选择至少两个叠加字幕块！', 'invalid');
+    return false;
+  }
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] !== sorted[i - 1] + 1) {
+      flashHint('选中的叠加字幕必须连续', 'invalid');
+      return false;
+    }
+  }
+  const segments = sorted.map((index) => track.segments[index]).filter(Boolean);
+  if (segments.length !== sorted.length) return false;
+  const sourceEl = container.querySelector(`.overlay-track-cue[data-overlay-idx="${sorted[0]}"]`);
+  const cueListAnchor = captureVisibleCueListVisualAnchor(sourceEl);
+  const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
+    track.segments, sorted, 'sticker', 'sticker_ref',
+  );
+  const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
+    track.segments, sorted, 'color', 'color_ref',
+  );
+  const merged = {
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+      track.segments,
+      `${segments[0].id || track.id}-merged`,
+      'overlay',
+    ),
+    start: segments[0].start,
+    end: segments[segments.length - 1].end,
+    text: window.AsrEditorUtils.joinSegmentTexts(
+      segments,
+      mergeJoinSeparatorForMode(getMainSubtitleSplitMode({ text: segments.map((s) => s.text || '').join('\n') })),
+    ),
+    items: segments.flatMap((segment) => segment.items || []),
+    sticker: stickerGroup.head,
+    sticker_ref: stickerGroup.ref,
+    color: colorGroup.head,
+    color_ref: colorGroup.ref,
+    disabled: !!segments[0].disabled,
+    _dirty: true,
+  };
+  if (Array.isArray(merged.items) && merged.items.length === 0) merged.items = null;
+  clearSelection();
+  pushUndo('合并叠加字幕');
+  track.segments.splice(sorted[0], sorted.length, merged);
+  track._dirty = true;
+  renderAll();
+  selectedOverlayIdxs.clear();
+  selectedOverlayIdxs.add(sorted[0]);
+  lastClickedOverlayIdx = sorted[0];
+  setCuePanelTarget('overlay', sorted[0]);
+  updateWithoutCueListAutoScroll();
+  const el = container.querySelector(`.overlay-track-cue[data-overlay-idx="${sorted[0]}"]`);
+  if (cueListAnchor) restoreCueListVisualAnchor(el, cueListAnchor);
+  flashHint(`已合并 ${sorted.length} 条叠加字幕`, 'success');
   return true;
 }
 
@@ -10878,13 +11081,18 @@ document.addEventListener('keydown', (e) => {
 function mergeAdjacentSubtitle(direction) {
   const target = getCurrentCuePanelTarget();
   const extension = target?.kind === 'extension';
+  const overlay = target?.kind === 'overlay';
   const track = extension ? target.track : null;
-  const segments = extension ? track?.segments || [] : DATA.segments;
+  const segments = extension
+    ? track?.segments || []
+    : overlay ? (getOverlayTrack()?.segments || []) : DATA.segments;
   let index = Number.isInteger(target?.index) ? target.index : -1;
   if (index < 0) {
-    const selected = extension ? selectedExtensionIdxs : selectedIdxs;
+    const selected = extension ? selectedExtensionIdxs
+      : overlay ? selectedOverlayIdxs : selectedIdxs;
     if (selected.size === 1) index = [...selected][0];
-    else index = extension ? lastClickedExtensionIdx : lastClickedIdx;
+    else index = extension ? lastClickedExtensionIdx
+      : overlay ? lastClickedOverlayIdx : lastClickedIdx;
   }
   const neighbor = index + direction;
   if (!segments[index] || !segments[neighbor]) {
@@ -10893,6 +11101,7 @@ function mergeAdjacentSubtitle(direction) {
   }
   const indices = direction < 0 ? [neighbor, index] : [index, neighbor];
   if (extension) return mergeExtensionSegments(indices, track);
+  if (overlay) return mergeOverlaySegments(indices);
   mergeSegments(indices);
   return true;
 }
@@ -10986,8 +11195,13 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  if (selectedIdxs.size === 0) return;
+  if (selectedIdxs.size === 0 && selectedOverlayIdxs.size === 0) return;
   e.preventDefault();
+  if (selectedOverlayIdxs.size > 0) {
+    const overlayIdxs = [...selectedOverlayIdxs].sort((x, y) => x - y);
+    openStickerPicker(overlayIdxs, overlayIdxs.length > 1, { overlay: true });
+    return;
+  }
   const idxs = [...selectedIdxs].sort((x, y) => x - y);
   openStickerPicker(idxs, idxs.length > 1);
 });
@@ -11010,8 +11224,18 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  if (selectedIdxs.size === 0) return;
+  if (selectedIdxs.size === 0 && selectedOverlayIdxs.size === 0) return;
   e.preventDefault();
+  if (selectedOverlayIdxs.size > 0) {
+    const overlayIdxs = [...selectedOverlayIdxs].sort((x, y) => x - y);
+    if (e.key === '0') {
+      clearOverlayColorOnTargets(overlayIdxs);
+      return;
+    }
+    const overlayColor = COLOR_PALETTE[Number(e.key) - 1];
+    if (overlayColor) assignOverlayColor(overlayIdxs, overlayColor.name);
+    return;
+  }
   const idxs = [...selectedIdxs].sort((x, y) => x - y);
   if (e.key === '0') {
     clearColorOnTargets(idxs);
@@ -12340,8 +12564,40 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     overlayExtensionTextEl.textContent = extensionText;
   }
   const overlayCueText = overlayCueVisible ? String(overlayCue.text || '') : '';
-  if (overlayTrackTextEl.textContent !== overlayCueText) {
-    overlayTrackTextEl.textContent = overlayCueText;
+  // 叠加轨说话人标签：颜色→说话人映射按叠加轨自身数组解析，与主字幕同源。
+  const overlayColorContext = getOverlayTrack()?.segments || [];
+  const overlaySpeakerLabel = overlayCueVisible
+    && speakerLabels.mapping_enabled && speakerLabels.enabled
+    ? window.AsrEditorUtils.speakerLabelForSegment(
+      overlayCue, overlayColorContext, speakerLabels.names,
+    )
+    : '';
+  const overlaySpeakerColorName = overlayCueVisible
+    ? MULTI_SUBTITLE_UTILS.effectiveColorName(overlayCue, overlayColorContext)
+    : null;
+  const overlaySpeakerLabelVisible = Boolean(
+    overlaySpeakerLabel && overlaySpeakerColorName && COLOR_BY_NAME[overlaySpeakerColorName],
+  );
+  const overlaySpeakerLabelColor = overlaySpeakerLabelVisible
+    ? colorPreviewEnabled && colorStyle === 'stroke'
+      ? mainSubtitleColor
+      : COLOR_BY_NAME[overlaySpeakerColorName].value
+    : '';
+  const overlaySpeakerLabelText = overlaySpeakerLabelVisible
+    ? `${overlaySpeakerLabel}${speakerLabels.separator}`
+    : '';
+  if (overlayTrackSpeakerLabelEl.classList.contains('hidden') === overlaySpeakerLabelVisible) {
+    overlayTrackSpeakerLabelEl.classList.toggle('hidden', !overlaySpeakerLabelVisible);
+  }
+  if (overlayTrackSpeakerLabelEl.textContent !== overlaySpeakerLabelText) {
+    overlayTrackSpeakerLabelEl.textContent = overlaySpeakerLabelText;
+  }
+  if (overlayTrackSpeakerLabelEl.dataset.color !== overlaySpeakerLabelColor) {
+    overlayTrackSpeakerLabelEl.dataset.color = overlaySpeakerLabelColor;
+    overlayTrackSpeakerLabelEl.style.color = overlaySpeakerLabelColor;
+  }
+  if (overlayTrackTextNode.nodeValue !== overlayCueText) {
+    overlayTrackTextNode.nodeValue = overlayCueText;
   }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
   // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
@@ -12491,18 +12747,23 @@ function rebuildStickerIntervals() {
   if (stickerIntervalCacheVersion === stickerOverlayDataVersion) return;
   const intervals = [];
   const boundaries = new Set();
-  DATA.segments.forEach((seg) => {
-    if (seg.disabled) return;
-    const source = seg.sticker || DATA.segments[seg.sticker_ref?.headIdx]?.sticker;
-    if (!source) return;
-    const head = DATA.segments[seg.sticker_ref?.headIdx] || seg;
-    const start = Number(source.start ?? head.start);
-    const end = Number(source.end ?? head.end);
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return;
-    intervals.push({ start, end, source, key: source.filename || source.name });
-    boundaries.add(start);
-    boundaries.add(end);
-  });
+  // 收集一条轨的表情包区间：ref 在所在轨数组内解析 head。
+  const collect = (segments) => {
+    segments.forEach((seg) => {
+      if (seg.disabled) return;
+      const source = seg.sticker || segments[seg.sticker_ref?.headIdx]?.sticker;
+      if (!source) return;
+      const head = segments[seg.sticker_ref?.headIdx] || seg;
+      const start = Number(source.start ?? head.start);
+      const end = Number(source.end ?? head.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return;
+      intervals.push({ start, end, source, key: source.filename || source.name });
+      boundaries.add(start);
+      boundaries.add(end);
+    });
+  };
+  collect(DATA.segments);
+  collect(getOverlayTrack()?.segments || []);
   stickerIntervals = intervals;
   stickerIntervalBoundaries = [...boundaries].sort((a, b) => a - b);
   stickerIntervalCacheVersion = stickerOverlayDataVersion;
@@ -12604,10 +12865,27 @@ function speakerLabelExportOptions() {
   };
 }
 
+// 合并导出池：主轨 + 叠加轨按 start 归并。叠加段的 color_ref 指向叠加轨
+// 自身数组，不能在合并后的大数组里按下标解析，因此同时返回归属集合，
+// 由 colorContextResolver 提供每条段的颜色/说话人解析上下文。
+function mergedExportSegments() {
+  const overlaySegments = overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [];
+  if (!overlaySegments.length) {
+    return { segments: DATA.segments, overlaySet: new Set(), overlaySegments };
+  }
+  return {
+    segments: MULTI_SUBTITLE_UTILS.mergeMainAndOverlaySegments(DATA.segments, overlaySegments),
+    overlaySet: new Set(overlaySegments),
+    overlaySegments,
+  };
+}
+
+function exportColorContextResolver(overlaySet, overlaySegments) {
+  return (segment) => (overlaySet.has(segment) ? overlaySegments : DATA.segments);
+}
+
 function buildSrt() {
-  const segments = overlayTrackVisible()
-    ? MULTI_SUBTITLE_UTILS.mergeMainAndOverlaySegments(DATA.segments, getOverlayTrack().segments)
-    : DATA.segments;
+  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     segments,
     EDITOR_SETTINGS.exportStartAtZero,
@@ -12616,12 +12894,14 @@ function buildSrt() {
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
+    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
     ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
 }
 
 function buildAss() {
+  const { overlaySegments } = mergedExportSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
@@ -12630,6 +12910,7 @@ function buildAss() {
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     appearance: getSubtitleAppearance(),
+    overlaySegments,
   });
 }
 
@@ -12646,23 +12927,27 @@ function buildGapRemovedSrt() {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
     return null;
   }
+  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    DATA.segments,
+    segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
-  return window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+  return window.AsrEditorUtils.buildSrtPayload(segments, {
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
     ensurePositiveDuration: true,
+    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
     ...speakerLabelExportOptions(),
     formatTime: fmtSrtTime,
   });
 }
 
 function usedSubtitleColors() {
-  const names = new Set(DATA.segments.filter((segment) => !segment.disabled).map((segment) => (
-    window.AsrEditorUtils.effectiveColorName(segment, DATA.segments) || 'default'
+  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+  const resolveColor = exportColorContextResolver(overlaySet, overlaySegments);
+  const names = new Set(segments.filter((segment) => !segment.disabled).map((segment) => (
+    window.AsrEditorUtils.effectiveColorName(segment, resolveColor(segment)) || 'default'
   )).filter((name) => name === 'default' || COLOR_BY_NAME[name]));
   return [
     ...COLOR_PALETTE.filter((color) => names.has(color.name)),
@@ -12711,17 +12996,19 @@ async function downloadColorSrts(gapRemoved = false) {
     flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
     return;
   }
+  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    DATA.segments,
+    segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
   const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
   const speakerSettings = getSpeakerLabelSettings();
-  const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+  const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(segments, {
     colorName: color.name,
     timeOffset: 0,
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
+    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
     mapTime: gapRemoved
       ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
       : undefined,
@@ -13136,7 +13423,7 @@ const OTIO_MARKER_COLORS = Object.freeze({
 });
 const OTIO_DEFAULT_MARKER_COLOR = 'WHITE';
 
-function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0) {
+function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0, segments = DATA.segments, colorContext = segments) {
   const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
   const intervalEndMs = Math.max(
     intervalStartMs,
@@ -13146,7 +13433,7 @@ function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0) {
   const clipEndFrame = msToOtioFrames(intervalEndMs);
   if (clipEndFrame <= clipStartFrame) return [];
 
-  return DATA.segments.flatMap((segment) => {
+  return segments.flatMap((segment) => {
     if (!segment || segment.disabled) return [];
     const segmentStartMs = Number(segment.start);
     const segmentEndMs = Number(segment.end);
@@ -13162,7 +13449,7 @@ function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0) {
     const markerEndFrame = sourceStartFrame + msToOtioFrames(endMs);
     if (markerEndFrame <= markerStartFrame) return [];
 
-    const colorName = window.AsrEditorUtils.effectiveColorName(segment, DATA.segments);
+    const colorName = window.AsrEditorUtils.effectiveColorName(segment, colorContext);
     return [{
       OTIO_SCHEMA: 'Marker.2',
       metadata: {},
@@ -13331,6 +13618,39 @@ function buildTimelineMediaClip(
   };
 }
 
+// 叠加字幕独立轨道：每段一个 Gap 承载 Marker（OTIO 没有文本轨原语，
+// 与主轨字幕的 clip 标记同构但互不混写；颜色按叠加轨自身数组解析）。
+// 标记时间沿用主轨标记的绝对媒体坐标约定。
+function buildOverlaySubtitleOtioTrack(overlaySegments, intervals, sourceStartFrame) {
+  const children = intervals.map((interval, index) => ({
+    OTIO_SCHEMA: 'Gap.1',
+    metadata: { moy: { asr_track: 'overlay', interval_index: index } },
+    name: '',
+    source_range: otioTimeRange(
+      0,
+      Math.max(1, msToOtioFrames(interval.end) - msToOtioFrames(interval.start)),
+    ),
+    effects: [],
+    markers: buildGapRemovedSubtitleMarkers(interval, sourceStartFrame, overlaySegments, overlaySegments),
+    enabled: true,
+    color: null,
+  })).filter((gap) => gap.markers.length > 0 || gap.source_range.duration.value > 1);
+  return {
+    track: {
+      OTIO_SCHEMA: 'Track.1',
+      metadata: { moy: { asr_track: 'overlay' } },
+      name: '叠加字幕',
+      source_range: null,
+      effects: [],
+      markers: [],
+      enabled: true,
+      color: null,
+      children,
+      kind: 'Video',
+    },
+  };
+}
+
 function buildTimelineOtio({
   gapRemoved = false,
   includeStickers = false,
@@ -13430,6 +13750,31 @@ function buildTimelineOtio({
       tracks.push(stickerTrack.track);
     }
   }
+  // 叠加轨独立导出：字幕以「叠加字幕」标记轨写入（与主轨 clip 标记分开），
+  // 表情包在「叠加表情」视频轨（与主轨表情包轨分开）；轨道为空时静默跳过。
+  const overlaySegments = DATA.overlay_track?.enabled === true
+    ? (DATA.overlay_track?.segments || []) : [];
+  if (overlaySegments.length) {
+    if (includeSubtitleMarkers) {
+      const overlayMarkerTrack = buildOverlaySubtitleOtioTrack(overlaySegments, intervals, sourceStartFrame);
+      if (overlayMarkerTrack.children.length) tracks.push(overlayMarkerTrack.track);
+    }
+    if (includeStickers) {
+      const collected = collectStickerOtioEntries(removed, overlaySegments);
+      if (collected.error) {
+        flashHint(collected.error, 'warning');
+        return null;
+      }
+      if (collected.entries.length) {
+        const stickerTrack = buildStickerOtioTrack(collected.entries, '叠加表情');
+        if (stickerTrack.error) {
+          flashHint(stickerTrack.error, 'warning');
+          return null;
+        }
+        tracks.push(stickerTrack.track);
+      }
+    }
+  }
   const metadata = {
     moy: {
       source_media: targetUrl,
@@ -13511,13 +13856,13 @@ function buildStickerOtio() {
 // 收集表情包条目；当传入 removed gaps 时，把每条表情包的时间映射到去空隙后的时间线，
 // 并跳过完全落在空隙内、映射后时长归零的条目。removed 为空数组时退化为原始时间线。
 // 表情包必须有真实磁盘路径（服务器 OTIO/OTIOZ 均按 sticker_rel 读盘）。
-function collectStickerOtioEntries(removed) {
+function collectStickerOtioEntries(removed, segments = DATA.segments) {
   const entries = [];
-  for (let idx = 0; idx < DATA.segments.length; idx++) {
-    const seg = DATA.segments[idx];
+  for (let idx = 0; idx < segments.length; idx++) {
+    const seg = segments[idx];
     if (seg.disabled) continue;
     const headIdx = seg.sticker_ref?.headIdx;
-    const head = Number.isInteger(headIdx) ? DATA.segments[headIdx] : null;
+    const head = Number.isInteger(headIdx) ? segments[headIdx] : null;
     if (seg.sticker_ref && (!head || head.disabled || headIdx >= idx)) continue;
     const sticker = seg.sticker || head?.sticker;
     if (!sticker) continue;
@@ -13550,7 +13895,8 @@ function collectStickerOtioEntries(removed) {
 
 // 把表情包条目构建为一条可放进任意时间线 Stack 的单层视频轨（Gap 填充 + 图片 Clip）。
 // stickers 会被就地排序；时间重叠时返回 { error }，由调用方决定中止还是跳过。
-function buildStickerOtioTrack(stickers) {
+// 主轨与叠加轨各建一条轨，轨道名由调用方传入。
+function buildStickerOtioTrack(stickers, trackName = '表情包') {
   stickers.sort((a, b) => (a.startMs - b.startMs) || (a.endMs - b.endMs) || (a.idx - b.idx));
   const children = [];
   let cursor = 0;
@@ -13607,7 +13953,7 @@ function buildStickerOtioTrack(stickers) {
     track: {
       OTIO_SCHEMA: 'Track.1',
       metadata: {},
-      name: '表情包',
+      name: trackName,
       source_range: null,
       effects: [],
       markers: [],
@@ -14852,9 +15198,19 @@ function openFcp7ExportModal() {
   if (extensionEditingState) finishExtensionEdit(true);
   commitCuePanelEdit();
   const extensionAvailable = Boolean(getActiveExtensionTrack());
+  const overlayAvailable = overlayTrackVisible();
   const extensionOption = fcp7ExportSubtitleTracks.querySelector('option[value="main_and_extension"]');
   extensionOption.disabled = !extensionAvailable;
-  if (!extensionAvailable) fcp7ExportSubtitleTracks.value = 'main';
+  const overlayOption = fcp7ExportSubtitleTracks.querySelector('option[value="overlay"]');
+  overlayOption.disabled = !overlayAvailable;
+  const allOption = fcp7ExportSubtitleTracks.querySelector('option[value="all"]');
+  allOption.disabled = !extensionAvailable && !overlayAvailable;
+  if (!extensionAvailable && fcp7ExportSubtitleTracks.value === 'main_and_extension') {
+    fcp7ExportSubtitleTracks.value = 'main';
+  }
+  if (!overlayAvailable && ['overlay', 'all'].includes(fcp7ExportSubtitleTracks.value)) {
+    fcp7ExportSubtitleTracks.value = 'main';
+  }
   fcp7ExportNativeText.checked = false;
   fcp7ExportModal.classList.add('show');
   fcp7ExportTimelineMode.focus();
@@ -18205,16 +18561,18 @@ timedTextEditApply?.addEventListener('click', () => {
 // === 表情包 ===
 let stickerTargetMode = null;  // 'single' | 'multi'
 let stickerTargetIdxs = [];     // 要分配的 segment indexes
+let stickerTargetTrack = 'main'; // 'main' | 'overlay'：分配目标所在轨
 
-function openStickerPicker(idxs, isMulti) {
+function openStickerPicker(idxs, isMulti, { overlay = false } = {}) {
   if (!STICKERS.length) {
     flashHint('没有可用的表情包，请先用🦊按钮配置表情包文件夹', 'invalid');
     return;
   }
   stickerTargetMode = isMulti ? 'multi' : 'single';
   stickerTargetIdxs = idxs;
+  stickerTargetTrack = overlay ? 'overlay' : 'main';
   document.getElementById('sticker-modal-title').textContent =
-    isMulti ? `分配表情包到 ${idxs.length} 条字幕（跨时间）` : `分配表情包到第 ${idxs[0] + 1} 条`;
+    isMulti ? `分配表情包到 ${idxs.length} 条字幕（跨时间）` : `分配表情包到${overlay ? '叠加字幕' : '第'} ${idxs[0] + 1}${overlay ? '' : ' 条'}`;
   renderStickerGrid('');
   document.getElementById('sticker-filter').value = '';
   stickerModal.classList.add('show');
@@ -18242,32 +18600,36 @@ function renderStickerGrid(filter) {
 }
 
 function assignSticker(sticker) {
-  const hadStickers = DATA.segments.some((segment) => segment.sticker || segment.sticker_ref);
+  const segments = stickerTargetTrack === 'overlay'
+    ? (getOverlayTrack()?.segments || null) : DATA.segments;
+  if (!segments) return;
+  const hadStickers = DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)
+    || (getOverlayTrack()?.segments || []).some((segment) => segment.sticker || segment.sticker_ref);
   pushUndo('分配表情包');
   if (stickerTargetMode === 'multi' && stickerTargetIdxs.length > 1) {
     const sorted = [...stickerTargetIdxs].sort((a, b) => a - b);
     const headIdx = sorted[0];
     // 每条字幕都是一个独立的时间实例；head 只负责保存素材，不能把多条字幕
     // 的时间范围合并成一条，否则 XML/OTIO 会把中间的引用压成连续长片段。
-    DATA.segments[headIdx].sticker = {
-      ...sticker, start: DATA.segments[headIdx].start, end: DATA.segments[headIdx].end,
+    segments[headIdx].sticker = {
+      ...sticker, start: segments[headIdx].start, end: segments[headIdx].end,
     };
-    DATA.segments[headIdx].sticker_ref = null;
+    segments[headIdx].sticker_ref = null;
     // 后续条：sticker_ref 标记，便于显示和导航
     for (let i = 1; i < sorted.length; i++) {
-      DATA.segments[sorted[i]].sticker = null;
-      DATA.segments[sorted[i]].sticker_ref = { name: sticker.name, headIdx };
+      segments[sorted[i]].sticker = null;
+      segments[sorted[i]].sticker_ref = { name: sticker.name, headIdx };
     }
   } else {
     const idx = stickerTargetIdxs[0];
     // 如果当前条已经是 head（被其他 ref 引用），同步更新所有引用 idx 的 ref.name
-    DATA.segments.forEach(s => {
+    segments.forEach(s => {
       if (s.sticker_ref && s.sticker_ref.headIdx === idx) {
         s.sticker_ref.name = sticker.name;
       }
     });
-    DATA.segments[idx].sticker = { ...sticker };
-    DATA.segments[idx].sticker_ref = null;
+    segments[idx].sticker = { ...sticker };
+    segments[idx].sticker_ref = null;
   }
   stickerModal.classList.remove('show');
   if (!hadStickers && !EDITOR_SETTINGS.cueListShowSticker && !EDITOR_SETTINGS.cueEditorShowSticker
@@ -18298,10 +18660,16 @@ stickerModal?.addEventListener('click', (e) => { if (e.target === stickerModal) 
 
 // 表情包预览 modal
 let previewIdx = -1;
-function openStickerPreview(idx) {
-  const seg = DATA.segments[idx];
-  if (!seg.sticker) return;
+let previewTrack = 'main';
+function stickerSegmentsForTrack(track) {
+  return track === 'overlay' ? (getOverlayTrack()?.segments || []) : DATA.segments;
+}
+function openStickerPreview(idx, { overlay = false } = {}) {
+  const segments = stickerSegmentsForTrack(overlay ? 'overlay' : 'main');
+  const seg = segments[idx];
+  if (!seg?.sticker) return;
   previewIdx = idx;
+  previewTrack = overlay ? 'overlay' : 'main';
   document.getElementById('sticker-preview-img').src = stickerUrl(seg.sticker);
   document.getElementById('sticker-preview-name').textContent = seg.sticker.name;
   stickerPreviewModal.classList.add('show');
@@ -18311,7 +18679,7 @@ stickerPreviewModal?.addEventListener('click', (e) => { if (e.target === sticker
 document.getElementById('sticker-preview-delete')?.addEventListener('click', () => {
   if (previewIdx < 0) return;
   // 如果删除的是 head，要把所有引用它的 sticker_ref 也清掉
-  removeStickerCascade(previewIdx);
+  removeStickerCascade(previewIdx, { overlay: previewTrack === 'overlay' });
   stickerPreviewModal.classList.remove('show');
   renderAll();
   flashHint('已删除', 'success');
@@ -18320,15 +18688,18 @@ document.getElementById('sticker-preview-delete')?.addEventListener('click', () 
 // 删除表情包时级联清理引用：
 // - 如果 idx 是 head，清掉所有 headIdx===idx 的 sticker_ref
 // - 如果 idx 是 ref，仅清自己（不影响 head）
-function removeStickerCascade(idx) {
+function removeStickerCascade(idx, { overlay = false } = {}) {
   pushUndo('删除表情包');
   // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
-  splitGroupsAtCutPoints(new Set([idx]), 'sticker', 'sticker_ref');
+  splitGroupsAtCutPoints(
+    new Set([idx]), 'sticker', 'sticker_ref',
+    overlay ? (getOverlayTrack()?.segments || []) : DATA.segments,
+  );
 }
 document.getElementById('sticker-preview-replace')?.addEventListener('click', () => {
   if (previewIdx < 0) return;
   stickerPreviewModal.classList.remove('show');
-  openStickerPicker([previewIdx], false);
+  openStickerPicker([previewIdx], false, { overlay: previewTrack === 'overlay' });
 });
 
 // 拓展表情包时间到多选范围
@@ -18417,6 +18788,62 @@ function assignColor(idxs, colorName) {
     : `已将字幕设为「${def.label}色」`, 'success');
 }
 
+// === 叠加轨的颜色标记 ===
+// 叠加段的颜色组只引用叠加轨自身段；这里按「单段自持 head」分配，
+// 不产生跨轨引用，也不走主轨的组拆分逻辑。
+function assignOverlayColor(idxs, colorName) {
+  const overlay = getOverlayTrack();
+  const def = COLOR_BY_NAME[colorName];
+  if (!overlay || !def) return;
+  const targets = [...new Set(idxs)].filter((index) => Number.isInteger(index) && overlay.segments[index]);
+  if (!targets.length) return;
+  pushUndo('标记颜色');
+  targets.forEach((index) => {
+    const segment = overlay.segments[index];
+    segment.color = { name: colorName, value: def.value, start: segment.start, end: segment.end };
+    segment.color_ref = null;
+    segment._dirty = true;
+  });
+  overlay._dirty = true;
+  refreshColorAssignmentUi();
+  scheduleAutoSaveFlush();
+  flashHint(targets.length === 1
+    ? `已将字幕设为「${def.label}色」`
+    : `已将 ${targets.length} 条字幕设为「${def.label}色」`, 'success');
+}
+
+function clearOverlayColorOnTargets(idxs) {
+  const overlay = getOverlayTrack();
+  if (!overlay) return;
+  const targets = [...new Set(idxs)].filter((index) => Number.isInteger(index) && overlay.segments[index]);
+  if (!targets.length) return;
+  pushUndo('清除颜色');
+  targets.forEach((index) => {
+    const segment = overlay.segments[index];
+    if (!segment) return;
+    segment.color = null;
+    segment.color_ref = null;
+    segment._dirty = true;
+  });
+  overlay._dirty = true;
+  refreshColorAssignmentUi();
+  scheduleAutoSaveFlush();
+  flashHint('已清除颜色', 'success');
+}
+
+function clearOverlaySticker(index) {
+  const overlay = getOverlayTrack();
+  const segment = overlay?.segments?.[index];
+  if (!segment || (!segment.sticker && !segment.sticker_ref)) return;
+  segment.sticker = null;
+  segment.sticker_ref = null;
+  segment._dirty = true;
+  overlay._dirty = true;
+  renderAll({ waveform: 'full' });
+  scheduleAutoSaveFlush();
+  flashHint('已删除', 'success');
+}
+
 // 删除颜色（级联清理）：
 //   - idx 是 head: 清自己 + 所有 headIdx===idx 的 ref
 //   - idx 是 ref: 仅清自己
@@ -18437,11 +18864,15 @@ function clearColorOnTargets(idxs) {
 // 统一切换语义：目标全部禁用 → 全部启用；否则全部禁用
 // 单条时即"切换这一条的状态"（Alt+点击 / 右键菜单均走这里）
 function toggleDisabled(idxs, track = 'main', { successDetail = null } = {}) {
+  const overlayTrackObj = track === 'overlay' ? getOverlayTrack() : null;
   const extensionTrack = track === 'extension'
     ? getActiveExtensionTrack()
     : (track?.segments ? track : null);
+  const isOverlay = Boolean(overlayTrackObj);
   const isExtension = Boolean(extensionTrack);
-  const segments = isExtension ? extensionTrack.segments : DATA.segments;
+  const segments = isOverlay ? overlayTrackObj.segments
+    : isExtension ? extensionTrack.segments
+    : DATA.segments;
   const validIdxs = [...new Set(idxs.filter((index) => Number.isInteger(index) && segments[index]))];
   if (!validIdxs.length) return;
   pushUndo('切换禁用');
@@ -18475,22 +18906,30 @@ function toggleDisabled(idxs, track = 'main', { successDetail = null } = {}) {
   renderAll();
   // 隐藏开关开启时，刚禁用的项需从选中集移除（保持状态一致）
   if (hideDisabled && !allDisabled) {
-    const mainDisabled = isExtension ? new Set() : new Set(validIdxs);
-    const extensionDisabled = isExtension
-      ? new Map([[extensionTrack, new Set(validIdxs)]])
-      : boundExtensionTargets;
-    mainDisabled.forEach((index) => {
-      selectedIdxs.delete(index);
-      container.querySelector(`.cue[data-idx="${index}"]`)?.classList.remove('selected');
-    });
-    extensionDisabled.forEach((indexes) => indexes.forEach((index) => {
-      selectedExtensionIdxs.delete(index);
-      container.querySelectorAll(
-        `.multi-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
-      ).forEach((el) => el.classList.remove('selected'));
-    }));
-    updateMultiSelectionClasses();
-    selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+    if (isOverlay) {
+      validIdxs.forEach((index) => {
+        selectedOverlayIdxs.delete(index);
+        container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.remove('selected');
+      });
+    } else {
+      const mainDisabled = new Set();
+      if (!isExtension) validIdxs.forEach((index) => mainDisabled.add(index));
+      const extensionDisabled = isExtension
+        ? new Map([[extensionTrack, new Set(validIdxs)]])
+        : boundExtensionTargets;
+      mainDisabled.forEach((index) => {
+        selectedIdxs.delete(index);
+        container.querySelector(`.cue[data-idx="${index}"]`)?.classList.remove('selected');
+      });
+      extensionDisabled.forEach((indexes) => indexes.forEach((index) => {
+        selectedExtensionIdxs.delete(index);
+        container.querySelectorAll(
+          `.multi-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
+        ).forEach((el) => el.classList.remove('selected'));
+      }));
+      updateMultiSelectionClasses();
+      selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+    }
   }
   const action = allDisabled ? '启用' : '禁用';
   const extensionCount = [...boundExtensionTargets.values()]
@@ -19100,7 +19539,8 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
 // 叠加字幕块的右键菜单：转回主轨 / 删除。叠加轨不参与拆分合并与绑定。
 function showOverlayContextMenu(x, y, index) {
   const overlay = getOverlayTrack();
-  if (!overlay?.segments?.[index]) return;
+  const segment = overlay?.segments?.[index];
+  if (!segment) return;
   ctxmenu.innerHTML = '';
   const addItem = (label, fn, opts = {}) => {
     const it = document.createElement('div');
@@ -19120,7 +19560,60 @@ function showOverlayContextMenu(x, y, index) {
     setCuePanelTarget('overlay', index);
     focusCuePanelText(index, 'overlay');
   });
+  if (EDITOR_SETTINGS.clickBehavior === 'select-only') {
+    addItem('跳转并播放', () => {
+      seekFromWaveform(segment.start / 1000);
+      if (player.paused) togglePlayback();
+    });
+  }
+  addItem('拆分此叠加字幕', () => openOverlaySplitModal(index, null));
   addItem('转回主轨', () => convertOverlayCueToMain(index));
+  addSep();
+  // 组 2：外观（表情包与颜色），交互与主字幕菜单对齐（1~5 快捷键同源）。
+  addItem('分配表情包…', () => openStickerPicker([index], false, { overlay: true }));
+  if (segment.sticker || segment.sticker_ref) {
+    addItem('删除表情包', () => clearOverlaySticker(index));
+  }
+  const colorRow = document.createElement('div');
+  colorRow.className = 'item';
+  colorRow.style.cssText = 'cursor:default;display:block;';
+  colorRow.addEventListener('click', (e) => e.stopPropagation());
+  const colorHead = document.createElement('div');
+  colorHead.style.cssText = 'display:flex;align-items:center;';
+  const colorLabel = document.createElement('span');
+  colorLabel.textContent = '标记颜色';
+  colorHead.appendChild(colorLabel);
+  const colorRangeHint = document.createElement('kbd');
+  colorRangeHint.textContent = '1~5';
+  colorRangeHint.style.marginLeft = 'auto';
+  colorHead.appendChild(colorRangeHint);
+  colorRow.appendChild(colorHead);
+  const swatches = document.createElement('div');
+  swatches.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
+  COLOR_PALETTE.forEach((c, colorIndex) => {
+    const swatch = document.createElement('span');
+    swatch.title = `${c.label}色（按 ${colorIndex + 1}）`;
+    swatch.style.cssText = `width:22px;height:22px;border-radius:50%;background:${c.value};border:1px solid rgba(255,255,255,.25);cursor:pointer;display:inline-block;box-sizing:border-box;flex:0 0 auto;`;
+    swatch.addEventListener('mouseenter', () => swatch.style.transform = 'scale(1.15)');
+    swatch.addEventListener('mouseleave', () => swatch.style.transform = '');
+    swatch.addEventListener('click', (e) => {
+      e.stopPropagation();
+      ctxmenu.classList.remove('show');
+      assignOverlayColor([index], c.name);
+    });
+    swatches.appendChild(swatch);
+  });
+  colorRow.appendChild(swatches);
+  ctxmenu.appendChild(colorRow);
+  if (segment.color || segment.color_ref) {
+    addItem('清除颜色', () => clearOverlayColorOnTargets([index]), { danger: true });
+  }
+  addSep();
+  // 组 3：状态与删除（Alt+点击波形块亦可切换，此处为菜单入口）
+  addItem(
+    segment.disabled ? '启用此条' : '禁用此条',
+    () => toggleDisabled([index], 'overlay'),
+  );
   addSep();
   addItem('删除此叠加字幕', () => deleteOverlayCues([index]), { danger: true });
   ctxmenu.classList.add('show');
@@ -19529,6 +20022,9 @@ function initWaveformEditor() {
     // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径；
     // 有可靠主轨字词时间码时沿用字词锚点，否则在弹窗中保留指针的绝对切点。
     splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),
+    splitOverlayCueAtTime: (idx, timeMs) => openOverlaySplitModal(
+      idx, Number.isFinite(timeMs) ? timelineFrameAlignedMilliseconds(timeMs) : timeMs,
+    ),
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     getAutoSnapAdjacentCues: () => EDITOR_SETTINGS.autoSnapAdjacentCues,

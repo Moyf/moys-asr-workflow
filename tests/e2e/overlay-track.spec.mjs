@@ -400,6 +400,83 @@ test('keeps the cue color on a Shift+drag conversion and colors the overlay prev
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
+test('exports overlay cues through the ASS and per-color SRT paths', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main red', color: { name: 'red' } }],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 500, end: 1500, text: 'overlay blue', color: { name: 'blue' } }],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
+
+  // ASS：叠加轨以 Layer 1 + \an8 顶部对齐写入，允许与主轨时间重叠。
+  const ass = await page.evaluate(() => buildAss());
+  const dialogueLines = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  expect(dialogueLines).toHaveLength(2);
+  expect(dialogueLines[0]).toMatch(/^Dialogue: 0,/);
+  expect(dialogueLines[0]).toContain('main red');
+  expect(dialogueLines[1]).toMatch(/^Dialogue: 1,/);
+  expect(dialogueLines[1]).toContain('{\\an8}overlay blue');
+
+  // 按颜色拆分导出：颜色池包含叠加轨颜色；合并 SRT 含两条轨的文本。
+  const colors = await page.evaluate(() => usedSubtitleColors().map((color) => color.name));
+  expect(colors).toEqual(expect.arrayContaining(['red', 'blue']));
+  const srt = await page.evaluate(() => buildSrt());
+  expect(srt).toContain('main red');
+  expect(srt).toContain('overlay blue');
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
+test('splits and merges overlay cues with group marks following', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 0, end: 2000, text: 'hello world', color: { name: 'red' } }],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
+
+  // 拆分：叠加轨复用副轨拆分弹窗（单 lane），提交后颜色组随拆分继承。
+  const opened = await page.evaluate(() => {
+    setCuePanelTarget('overlay', 0);
+    return openOverlaySplitModal(0, 1000);
+  });
+  expect(opened).toBe(true);
+  await expect(page.locator('#multi-subtitle-split-modal.show')).toBeVisible();
+  await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择叠加字幕拆分点');
+  await page.evaluate(() => confirmLinkedSplit());
+
+  const afterSplit = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(afterSplit.overlay_track.segments).toHaveLength(2);
+  expect(afterSplit.overlay_track.segments[0].text).toContain('hello');
+  expect(afterSplit.overlay_track.segments[1].text).toContain('world');
+  expect(afterSplit.overlay_track.segments[0].color).toMatchObject({ name: 'red' });
+  expect(afterSplit.overlay_track.segments[1].color_ref).toMatchObject({ name: 'red', headIdx: 0 });
+
+  // 合并：同组的两条叠加字幕合并后继承该组。
+  await page.evaluate(() => setCuePanelTarget('overlay', 0));
+  await page.evaluate(() => mergeAdjacentSubtitle(1));
+  const afterMerge = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(afterMerge.overlay_track.segments).toHaveLength(1);
+  expect(afterMerge.overlay_track.segments[0].text).toContain('hello');
+  expect(afterMerge.overlay_track.segments[0].text).toContain('world');
+  expect(afterMerge.overlay_track.segments[0].color).toMatchObject({ name: 'red' });
+  expect(afterMerge.overlay_track.segments[0].color_ref).toBeNull();
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
 test('keeps color group references valid through an overlay round trip', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
@@ -492,6 +569,70 @@ test('places the overlay lane above the main lane in multi-subtitle rows', async
   });
   expect(lanes.overlay.bottom).toBeLessThanOrEqual(lanes.main.top + 1);
   expect(lanes.main.bottom).toBeLessThanOrEqual(lanes.extension.top + 1);
+});
+
+test('assigns colors and disabled state to overlay cues with main-track parity', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 200, end: 1800, text: 'overlay cue' }],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
+
+  // 数字键 3：给叠加字幕标记第 3 号颜色（调色板顺序取自页面自身）
+  const paletteName = await page.evaluate(() => COLOR_PALETTE[2].name);
+  await page.locator('.overlay-track-cue').click();
+  await page.keyboard.press('3');
+  const afterKey = await page.evaluate(() => {
+    const segment = DATA.overlay_track.segments[0];
+    return {
+      color: segment.color?.name || null,
+      ref: segment.color_ref,
+      colorStart: segment.color?.start,
+      colorEnd: segment.color?.end,
+      segStart: segment.start,
+      segEnd: segment.end,
+    };
+  });
+  expect(afterKey.color).toBe(paletteName);
+  expect(afterKey.ref).toBeNull();
+  // 颜色范围取叠加段自身（自持 head，不跨轨引用）
+  expect(afterKey.colorStart).toBe(afterKey.segStart);
+  expect(afterKey.colorEnd).toBe(afterKey.segEnd);
+
+  // 右键菜单：色板点击换色，0 清除
+  await page.locator('.overlay-track-cue').click({ button: 'right', force: true });
+  await expect(page.locator('#ctxmenu.show')).toBeVisible();
+  await expect(page.locator('#ctxmenu .item', { hasText: '分配表情包…' })).toBeVisible();
+  await expect(page.locator('#ctxmenu .item', { hasText: '转回主轨' })).toBeVisible();
+  await page.locator('#ctxmenu .item', { hasText: '标记颜色' }).locator('span[title]').first().click();
+  const firstPalette = await page.evaluate(() => COLOR_PALETTE[0].name);
+  await expect.poll(() => page.evaluate(() => DATA.overlay_track.segments[0].color?.name)).toBe(firstPalette);
+  await page.locator('.overlay-track-cue').click();
+  await page.keyboard.press('0');
+  await expect.poll(() => page.evaluate(() => DATA.overlay_track.segments[0].color)).toBeNull();
+
+  // 右键禁用/启用
+  await page.locator('.overlay-track-cue').click({ button: 'right', force: true });
+  await expect(page.locator('#ctxmenu.show')).toBeVisible();
+  await page.getByText('禁用此条', { exact: true }).click();
+  const afterDisable = await page.evaluate(() => DATA.overlay_track.segments[0].disabled);
+  expect(afterDisable).toBe(true);
+  await page.locator('.overlay-track-cue').click({ button: 'right', force: true });
+  await expect(page.locator('#ctxmenu.show')).toBeVisible();
+  await page.getByText('启用此条', { exact: true }).click();
+  await expect.poll(() => page.evaluate(() => DATA.overlay_track.segments[0].disabled)).toBe(false);
+
+  // 波形上 Alt+点击叠加块：切换禁用（track 参数直传叠加轨）
+  await page.locator('.waveform-cue-block.waveform-overlay-block').click({ modifiers: ['Alt'] });
+  await expect.poll(() => page.evaluate(() => DATA.overlay_track.segments[0].disabled)).toBe(true);
+  await page.locator('.waveform-cue-block.waveform-overlay-block').click({ modifiers: ['Alt'] });
+  await expect.poll(() => page.evaluate(() => DATA.overlay_track.segments[0].disabled)).toBe(false);
 });
 
 test('moves an overlay cue back to the main track from the list context menu with multi-subtitle on', async ({ page }) => {
