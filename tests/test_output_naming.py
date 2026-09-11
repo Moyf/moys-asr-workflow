@@ -181,8 +181,33 @@ class OperationSuffixTests(unittest.TestCase):
         self.assertEqual(output_naming.operation_suffix("postprocess", "en"), ".postprocess")
         self.assertEqual(output_naming.operation_suffix("ocr-dedup", "zh"), ".OCR去重")
         self.assertEqual(output_naming.operation_suffix("ocr-dedup", "en"), ".ocr-dedup")
-        self.assertEqual(output_naming.operation_suffix("match", "zh"), ".匹配")
+        self.assertEqual(output_naming.operation_suffix("match", "zh"), ".文稿匹配")
         self.assertEqual(output_naming.operation_suffix("match", "en"), ".match")
+        self.assertEqual(output_naming.operation_suffix("replace", "zh"), ".批量替换")
+        self.assertEqual(output_naming.operation_suffix("replace", "en"), ".replace")
+        self.assertEqual(output_naming.operation_suffix("simplified", "zh"), ".转简体")
+        self.assertEqual(output_naming.operation_suffix("simplified", "en"), ".simplified")
+        self.assertEqual(output_naming.operation_suffix("traditional", "zh"), ".转繁体")
+        self.assertEqual(output_naming.operation_suffix("traditional", "en"), ".traditional")
+        self.assertEqual(
+            output_naming.operation_suffix("replace.traditional", "zh"),
+            ".批量替换.转繁体",
+        )
+        self.assertEqual(
+            output_naming.operation_suffix("replace.traditional", "en"),
+            ".replace.traditional",
+        )
+        # 复合段里只要有一个未知段就整体走未知回退，不做部分本地化。
+        self.assertEqual(
+            output_naming.operation_suffix("replace.unknown-op", "zh"),
+            ".replace.unknown-op",
+        )
+        self.assertEqual(output_naming.operation_suffix("proofread", "zh"), ".校对文本")
+        self.assertEqual(output_naming.operation_suffix("proofread", "en"), ".proofread")
+        self.assertEqual(output_naming.operation_suffix("resegment", "zh"), ".重新断句")
+        self.assertEqual(output_naming.operation_suffix("resegment", "en"), ".resegment")
+        self.assertEqual(output_naming.operation_suffix("custom", "zh"), ".自定义")
+        self.assertEqual(output_naming.operation_suffix("custom", "en"), ".custom")
 
     def test_operation_suffix_unknown_operation_keeps_original(self) -> None:
         self.assertEqual(output_naming.operation_suffix("translate", "zh"), ".translate")

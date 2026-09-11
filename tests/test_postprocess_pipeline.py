@@ -600,15 +600,48 @@ class PostprocessPipelineTests(unittest.TestCase):
             ffmpeg_path=None,
             cancel_event=Event(),
             on_event=events.append,
+            ui_language="zh",
         )
 
         self.assertTrue(result.project_path.is_file())
         self.assertTrue(result.srt_path.is_file())
         self.assertIsNone(result.translated_srt_path)
         self.assertFalse(result.run_directory.exists())
+        # 中间产物清理后，只为这次运行而建的「后处理」根目录也一并移除。
+        self.assertFalse((self.root / "_maw" / "后处理").exists())
         self.assertIn('"text": "错字"', self.project.read_text(encoding="utf-8"))
         self.assertIn("正字", result.srt_path.read_text(encoding="utf-8"))
         self.assertEqual([event["stage"] for event in events if event["stage"] in {"step_start", "step_done"}], ["step_start", "step_done"])
+
+    def test_pipeline_skips_replace_step_when_nothing_is_enabled(self) -> None:
+        result = run_postprocess_pipeline(
+            self.plan({"id": "replace", "enabled": True, "replacements": [], "conversion": "off"}),
+            media_path=self.media,
+            project_path=self.project,
+            srt_path=self.srt,
+            env_path=self.env_path,
+            ffmpeg_path=None,
+            cancel_event=Event(),
+            ui_language="zh",
+        )
+
+        # 步骤被跳过：不产出带后缀的新文件，链路继续用上一步的产物发布最终结果。
+        self.assertTrue(result.project_path.is_file())
+        self.assertFalse((self.root / "clip.批量替换.srt").exists())
+        self.assertFalse((self.root / "clip.replace.srt").exists())
+        self.assertTrue(any("跳过" in warning for warning in result.warnings))
+        self.assertFalse((self.root / "_maw" / "后处理").exists())
+
+    def test_validation_allows_replace_step_with_no_rules(self) -> None:
+        plan, errors = validate_plan(
+            self.plan({"id": "replace", "enabled": True, "replacements": [], "conversion": "off"}),
+            env_path=self.env_path,
+            media_path=self.media,
+            ffmpeg_path=None,
+        )
+
+        self.assertEqual(errors, ())
+        self.assertEqual([step["id"] for step in plan["steps"] if step["id"] == "replace"], ["replace"])
 
     def test_pipeline_accepts_ocr_as_the_last_step(self) -> None:
         video = self.root / "clip.mp4"

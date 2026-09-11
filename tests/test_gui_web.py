@@ -1245,7 +1245,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         output_srt = Path(str(result["srtPath"]))
         self.assertTrue(output_project.is_file())
         self.assertTrue(output_srt.is_file())
-        self.assertTrue(output_project.name.startswith("clip.匹配"))
+        self.assertTrue(output_project.name.startswith("clip.文稿匹配"))
         self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "旧句")
         self.assertNotIn("旧句。", output_srt.read_text(encoding="utf-8"))
 
@@ -4054,7 +4054,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
-        values = ("proofread", "translate_zh", "translate_en", "resegment", "custom")
+        values = ("translate_zh", "translate_en", "proofread", "resegment", "custom")
         positions = [page.index(f'<option value="{value}"') for value in values]
         self.assertEqual(positions, sorted(positions))
         self.assertIn('id="postprocessTaskPrompt"', page)
