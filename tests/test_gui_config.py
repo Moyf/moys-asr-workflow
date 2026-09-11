@@ -51,6 +51,21 @@ class GuiConfigTests(unittest.TestCase):
 
         self.assertEqual(resolved.theme, "system")
 
+    def test_effective_config_distinguishes_automatic_and_saved_gui_language(self) -> None:
+        """Given absent or saved language preferences, When resolved, Then preserve that distinction."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                automatic = gui_config.effective_config(env_path)
+
+            _ = env_path.write_text("MAW_GUI_LANG=en\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {}, clear=True):
+                saved = gui_config.effective_config(env_path)
+
+        self.assertEqual(automatic.gui_lang, "")
+        self.assertEqual(saved.gui_lang, "en")
+
     def test_default_env_path_keeps_repo_root_for_source_on_macos(self) -> None:
         with mock.patch.object(app_paths.sys, "platform", "darwin"):
             self.assertEqual(gui_config.default_env_path(), ROOT / ".env")

@@ -76,7 +76,26 @@
     const display = $("postprocessTaskPrompt");
     display.textContent = prompt || t("toolbox_task_none");
     display.classList.toggle("empty", !prompt);
-    $("postprocessTranslationOptions")?.classList.toggle("hidden", !["translate_zh", "translate_en"].includes(operation));
+    const translateOperation = ["translate_zh", "translate_en"].includes(operation);
+    $("postprocessTranslationOptions")?.classList.toggle("hidden", !translateOperation);
+    if (translateOperation) {
+      // 切换翻译目标时行序回到该目标的默认（中文目标译文在上，英文目标原文在上）。
+      $("postprocessBilingualOrder").value = operation === "translate_en" ? "original_first" : "translation_first";
+    }
+    $("postprocessBilingualOrder")?.classList.toggle("hidden", !(translateOperation && $("postprocessMergeBilingual")?.checked));
+    updateBackfillLabels();
+  }
+
+  function updateBackfillLabels() {
+    // 回填选项文案跟随翻译目标：非中文 / 非英文。
+    const autoTarget = $("autoTranslateTarget")?.value || "zh";
+    const autoKey = autoTarget === "en" ? "auto_backfill_subtitles_en_target" : "auto_backfill_subtitles";
+    const autoLabel = document.querySelector('[data-i18n="auto_backfill_subtitles"]');
+    if (autoLabel) autoLabel.textContent = t(autoKey);
+    const toolboxTarget = $("postprocessOperation")?.value === "translate_en" ? "en" : "zh";
+    const toolboxKey = toolboxTarget === "en" ? "toolbox_backfill_subtitles_en_target" : "toolbox_backfill_subtitles";
+    const toolboxLabel = document.querySelector('[data-i18n="toolbox_backfill_subtitles"]');
+    if (toolboxLabel) toolboxLabel.textContent = t(toolboxKey);
   }
 
   function loadLlmPrompts() {
@@ -330,7 +349,7 @@
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "ocr", enabled: false, videoPath: "", videoPathMode: "", regionMode: "full", regionX1: 0, regionY1: 0, regionX2: 100, regionY2: 100, threshold: 0.5, report: false },
-        { id: "translate", enabled: false, providerId: "deepseek", target: "zh", mergeBilingual: false, customPrompt: "" },
+        { id: "translate", enabled: false, providerId: "deepseek", target: "zh", mergeBilingual: false, embedTranslations: false, bilingualLineOrder: "", customPrompt: "" },
       ],
     };
   }
@@ -494,7 +513,6 @@
     name.textContent = hasPath ? fileName(path) : t("toolbox_input_empty");
     name.title = path;
     name.classList.toggle("empty", !hasPath);
-    $("toolboxInputHint")?.classList.toggle("hidden", hasPath);
   }
 
   function syncUtilityMediaName() {
@@ -631,7 +649,8 @@
   }
 
   function activeToolboxView() {
-    return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesContent");
+    // 两个分区的 tab 导航都位于各自的 primary view 内。
+    return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");
   }
 
   function selectToolboxSection(section) {
@@ -665,7 +684,7 @@
     });
     $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess");
     $("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities");
-    $("toolboxAudioTrackField").classList.toggle("hidden", !["waveform", "extractAudio"].includes(tool));
+    $("toolboxAudioTrackField").classList.toggle("hidden", !(section === "utilities" && ["waveform", "extractAudio"].includes(tool)));
     $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || !$("toolboxChainList").children.length);
     const configOnly = toolboxOpenMode === "auto-config";
     $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly);
@@ -1348,7 +1367,7 @@
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
         { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: ocrVideoManual ? $("ocrVideoPath").value.trim() : "", videoPathMode: ocrVideoManual ? "manual" : "auto", ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
-        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId, target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), customPrompt: getLlmPrompt(autoLlmOperation("translate")) },
+        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId, target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), embedTranslations: Boolean($("autoTranslateBackfill")?.checked), bilingualLineOrder: $("autoTranslateBilingualOrder")?.value || "", customPrompt: getLlmPrompt(autoLlmOperation("translate")) },
       ],
     };
   }
@@ -1420,8 +1439,12 @@
     const enabled = Boolean($("autoPostprocessEnabled")?.checked);
     $("autoPostprocessOptions")?.classList.toggle("hidden", !enabled);
     const translateEnabled = Boolean($("autoStepTranslate")?.checked);
-    $("autoTranslateTargetField")?.classList.toggle("hidden", !translateEnabled);
-    $("autoTranslateMergeField")?.classList.toggle("hidden", !translateEnabled);
+  $("autoTranslateTargetField")?.classList.toggle("hidden", !translateEnabled);
+  $("autoTranslateMergeField")?.classList.toggle("hidden", !translateEnabled);
+  $("autoTranslateMergeHint")?.classList.toggle("hidden", !translateEnabled);
+  $("autoTranslateBilingualOrder")?.classList.toggle("hidden", !(translateEnabled && $("autoTranslateMergeBilingual")?.checked));
+  $("autoTranslateBackfillField")?.classList.toggle("hidden", !translateEnabled);
+  $("autoTranslateBackfillHint")?.classList.toggle("hidden", !translateEnabled);
     const summary = $("autoPostprocessSummary");
     if (!summary) return;
     if (!enabled) {
@@ -1560,6 +1583,11 @@
     const translate = byId.get("translate") || {};
     $("autoTranslateTarget").value = String(translate.target || "zh");
     $("autoTranslateMergeBilingual").checked = Boolean(translate.mergeBilingual);
+    const savedOrder = String(translate.bilingualLineOrder || "");
+    $("autoTranslateBilingualOrder").value = ["translation_first", "original_first"].includes(savedOrder)
+      ? savedOrder
+      : (String(translate.target || "zh") === "en" ? "original_first" : "translation_first");
+    $("autoTranslateBackfill").checked = Boolean(translate.embedTranslations) && !Boolean(translate.mergeBilingual);
     const translatePrompt = byId.get("translate")?.customPrompt;
     if (typeof translatePrompt === "string") llmPrompts[autoLlmOperation("translate")] = translatePrompt;
     saveLlmPrompts();
@@ -1567,6 +1595,7 @@
     renderOcrRegion();
     if (plan.enabled && !AUTO_STEP_ORDER.some((stepId) => $(AUTO_STEP_CHECKBOXES[stepId]).checked)) setAutoStepsExpanded(true);
     renderAutoPostprocessState();
+    updateBackfillLabels();
   }
 
   function initializeAutoPostprocess() {
@@ -1792,6 +1821,8 @@
         providerId: item.id,
         reasoningMode: $("llmReasoningMode").value,
         mergeBilingual: Boolean($("postprocessMergeBilingual")?.checked),
+        embedTranslations: Boolean($("postprocessBackfill")?.checked),
+        bilingualLineOrder: $("postprocessBilingualOrder")?.value || "",
       });
       if (result.ok) applySubtitleResult(result, { kind: "llm", operation });
       else {
@@ -2206,8 +2237,28 @@
   });
   $("autoTranslateTarget").addEventListener("change", () => {
     if (["translate_zh", "translate_en"].includes(activeLlmOperation)) switchLlmOperation(autoLlmOperation("translate"));
+    // 切换翻译目标时行序回到该目标的默认，回填文案跟随目标语言。
+    $("autoTranslateBilingualOrder").value = $("autoTranslateTarget").value === "en" ? "original_first" : "translation_first";
+    updateBackfillLabels();
   });
-  $("autoTranslateMergeBilingual").addEventListener("change", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("autoTranslateMergeBilingual").addEventListener("change", () => {
+    if ($("autoTranslateMergeBilingual").checked) $("autoTranslateBackfill").checked = false;
+    renderAutoPostprocessState();
+    persistAutoPlanSoon();
+  });
+  $("autoTranslateBackfill").addEventListener("change", () => {
+    if ($("autoTranslateBackfill").checked) $("autoTranslateMergeBilingual").checked = false;
+    renderAutoPostprocessState();
+    persistAutoPlanSoon();
+  });
+  $("postprocessMergeBilingual").addEventListener("change", () => {
+    if ($("postprocessMergeBilingual").checked) $("postprocessBackfill").checked = false;
+    renderTaskPrompt();
+  });
+  $("postprocessBackfill").addEventListener("change", () => {
+    if ($("postprocessBackfill").checked) $("postprocessMergeBilingual").checked = false;
+    renderTaskPrompt();
+  });
   AUTO_STEP_ORDER.forEach((stepId) => {
     const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
     checkbox.addEventListener("change", () => {
@@ -2260,6 +2311,7 @@
     renderAlignmentAction();
     renderMediaToolAction();
     renderAutoPostprocessState();
+    updateBackfillLabels();
   };
   window.MAWLauncher.onProjectPathChanged = () => {
     if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();

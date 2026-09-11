@@ -24,6 +24,7 @@ from maw.postprocess import (
     PostprocessStepError,
     Replacement,
     ReplacementRequest,
+    _is_already_target_language,
     run_fixed_process,
     apply_llm_groups,
     merge_bilingual_project,
@@ -1382,27 +1383,115 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("规范格式中每个 group", prompts[0])
         self.assertIn("多个 source_ids 一律无效", prompts[0])
 
-    def test_llm_translation_drops_items_even_when_text_is_unchanged(self) -> None:
+    def test_llm_translation_prefilters_cues_already_in_target_language(self) -> None:
+        # 混合语言工程翻译到中文：中文句不再发送给模型，逐字节保留（含逐词
+        # 时间码）；英文句正常翻译。
+        source = read_project(self.project_path)
+        source["segments"][1]["text"] = "This line is English."
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        requested_cues: list[list[str]] = []
+
+        def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            requested_cues.append([str(cue["id"]) for cue in cues])
+            return {
+                "groups": [
+                    {"id": cue["id"], "text": f"译文 {cue['id']}"}
+                    for cue in cues
+                ]
+            }
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.BOTH,
+                operation="translate_zh",
+                custom_prompt="",
+            ),
+            complete=complete,
+        )
+
+        if result.project_path is None:
+            self.fail("output mode must create a project")
+        self.assertEqual(requested_cues, [["c0002"]])
+        translated = project_segments(read_project(result.project_path))
+        self.assertEqual([segment["text"] for segment in translated], ["酒很好喝", "译文 c0002"])
+        self.assertEqual(
+            segment_items(translated[0]),
+            segment_items(project_segments(read_project(self.project_path))[0]),
+        )
+        self.assertIn("已是中文的字幕；这些字幕未发送给模型", "\n".join(result.warnings))
+
+    def test_llm_translation_sends_latin_cues_when_translating_to_english(self) -> None:
+        source = read_project(self.project_path)
+        source["segments"][1]["text"] = "This line is English."
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        requested_cues: list[list[str]] = []
+
+        def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            requested_cues.append([str(cue["id"]) for cue in cues])
+            return {
+                "groups": [
+                    {"id": cue["id"], "text": f"Translation {cue['id']}"}
+                    for cue in cues
+                ]
+            }
+
         result = run_llm_postprocess(
             LlmPostprocessRequest(
                 project_path=self.project_path,
                 srt_path=None,
                 output_mode=OutputMode.JSON,
-                operation="translate_zh",
+                operation="translate_en",
                 custom_prompt="",
             ),
-            complete=lambda _prompt, _cues: {
-                "groups": [
-                    {"id": "c0001", "text": "酒很好喝"},
-                    {"id": "c0002", "text": "下一句"},
-                ]
-            },
+            complete=complete,
         )
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
+        self.assertEqual(requested_cues, [["c0001", "c0002"]])
         translated = project_segments(read_project(result.project_path))
-        self.assertTrue(all("items" not in segment for segment in translated))
+        self.assertEqual([segment["text"] for segment in translated], ["Translation c0001", "Translation c0002"])
+        self.assertNotIn("已是英文的字幕", "\n".join(result.warnings))
+
+    def test_llm_translation_errors_when_every_cue_is_already_target_language(self) -> None:
+        def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
+            self.fail("no request should be sent when every cue is already in the target language")
+
+        before = set(self.root.iterdir())
+        with self.assertRaisesRegex(ValueError, "所有非空字幕已经是中文"):
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="translate_zh",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
+        self.assertEqual(set(self.root.iterdir()), before)
+
+    def test_is_already_target_language_script_heuristics(self) -> None:
+        cases: tuple[tuple[str, str, bool], ...] = (
+            ("你好，世界。", "translate_zh", True),
+            ("hello world", "translate_zh", False),
+            ("你好 hello", "translate_zh", False),
+            ("你好 hello world foo bar", "translate_zh", False),
+            ("3.5", "translate_zh", True),
+            ("これは日本語です", "translate_zh", False),
+            ("hello Привет", "translate_zh", False),
+            ("hello world", "translate_en", False),
+            ("Hola como estas", "translate_en", False),
+            ("你好", "translate_en", False),
+            ("你好 hello", "translate_en", False),
+            ("3.5", "translate_en", True),
+            ("こんにちは", "translate_en", False),
+        )
+        for text, operation, expected in cases:
+            with self.subTest(text=text, operation=operation):
+                self.assertEqual(_is_already_target_language(text, operation), expected)
 
     def test_llm_translation_can_merge_source_and_translation_into_one_subtitle(self) -> None:
         source = read_project(self.project_path)
@@ -1450,6 +1539,10 @@ class PostprocessTests(unittest.TestCase):
     def test_bilingual_merge_output_names_localize_in_zh_ui(self) -> None:
         # 工具箱双语产物在 zh 界面命名 .翻译为中文.双语合一（operation 保持
         # translate_zh-bilingual 内部 ID，仅文件名显示本地化）。
+        source = read_project(self.project_path)
+        source["segments"][0]["text"] = "The wine is delicious."
+        source["segments"][1]["text"] = "The next sentence."
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         with mock.patch.object(
             gui_config,
             "effective_config",
@@ -1475,7 +1568,7 @@ class PostprocessTests(unittest.TestCase):
             self.fail("both output mode must create project and SRT files")
         self.assertEqual(result.project_path.name, "clip.翻译为中文.双语合一.mosp")
         self.assertEqual(result.srt_path.name, "clip.翻译为中文.双语合一.srt")
-        self.assertIn("红酒非常美味。\n酒很好喝", result.srt_path.read_text(encoding="utf-8"))
+        self.assertIn("红酒非常美味。\nThe wine is delicious.", result.srt_path.read_text(encoding="utf-8"))
 
     def test_bilingual_merge_drops_empty_cues_and_legacy_extension_segments(self) -> None:
         source = {
@@ -1509,6 +1602,135 @@ class PostprocessTests(unittest.TestCase):
         rendered = render_srt(merged)
         self.assertEqual(rendered.count("-->"), 3)
         self.assertNotIn("\n\n\n", rendered)
+
+    def test_bilingual_merge_keeps_single_copy_when_translation_equals_source(self) -> None:
+        # 目标语言预过滤保留的句子（翻译与原文相同）在双语合并时不产生重复行。
+        source = {
+            "segments": [
+                {"id": "main-1", "start": 0, "end": 1000, "text": "原文一"},
+                {"id": "main-2", "start": 1000, "end": 2000, "text": "原文二"},
+            ],
+        }
+        translated = {
+            "segments": [
+                {"id": "main-1", "start": 0, "end": 1000, "text": "译文一"},
+                {"id": "main-2", "start": 1000, "end": 2000, "text": "原文二"},
+            ],
+        }
+
+        merged = merge_bilingual_project(source, translated, translation_target="zh")
+
+        segments = project_segments(merged)
+        self.assertEqual(
+            [segment["text"] for segment in segments],
+            ["译文一\n原文一", "原文二"],
+        )
+
+    def test_bilingual_merge_line_order_overrides_target_default(self) -> None:
+        source = {"segments": [{"id": "main-1", "start": 0, "end": 1000, "text": "原文"}]}
+        translated = {"segments": [{"id": "main-1", "start": 0, "end": 1000, "text": "译文"}]}
+
+        # 空行序跟随历史默认：中文目标译文在上，英文目标原文在上。
+        self.assertEqual(
+            project_segments(merge_bilingual_project(source, translated, translation_target="zh"))[0]["text"],
+            "译文\n原文",
+        )
+        self.assertEqual(
+            project_segments(merge_bilingual_project(source, translated, translation_target="en"))[0]["text"],
+            "原文\n译文",
+        )
+        self.assertEqual(
+            project_segments(merge_bilingual_project(source, translated, translation_target="zh", line_order="original_first"))[0]["text"],
+            "原文\n译文",
+        )
+        self.assertEqual(
+            project_segments(merge_bilingual_project(source, translated, translation_target="en", line_order="translation_first"))[0]["text"],
+            "译文\n原文",
+        )
+        with self.assertRaisesRegex(ValueError, "双语行序"):
+            _ = merge_bilingual_project(source, translated, translation_target="zh", line_order="sideways")
+
+    def test_llm_translation_can_backfill_translations_into_one_subtitle(self) -> None:
+        # 回填模式：7中3英 → 翻译成中文 → 单条 10 句全中文（这里等价的最小
+        # 用例：中文句逐字节保留并保留逐词时间码，英文句替换为译文）。
+        source = read_project(self.project_path)
+        source["segments"][1]["text"] = "This line is English."
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(
+                project_path=self.project_path,
+                srt_path=None,
+                output_mode=OutputMode.BOTH,
+                operation="translate_zh",
+                custom_prompt="",
+                embed_translations=True,
+            ),
+            complete=lambda _prompt, cues: {
+                "groups": [
+                    {"id": cue["id"], "text": f"译文 {cue['id']}"}
+                    for cue in cues
+                ]
+            },
+        )
+
+        if result.project_path is None or result.srt_path is None:
+            self.fail("both output mode must create project and SRT files")
+        embedded = project_segments(read_project(result.project_path))
+        self.assertEqual([segment["text"] for segment in embedded], ["酒很好喝", "译文 c0002"])
+        self.assertEqual(
+            segment_items(embedded[0]),
+            segment_items(project_segments(read_project(self.project_path))[0]),
+        )
+        self.assertTrue(all("items" not in segment for segment in embedded[1:]))
+        self.assertNotIn("multi_subtitle", read_project(result.project_path))
+        self.assertEqual(result.project_path.name, "clip.translate-zh-backfill.mosp")
+        self.assertEqual(result.srt_path.name, "clip.translate-zh-backfill.srt")
+        self.assertIn("已将翻译结果回填进原字幕", "\n".join(result.warnings))
+        self.assertIn("已是中文的字幕", "\n".join(result.warnings))
+
+    def test_llm_translation_backfill_output_names_localize_in_zh_ui(self) -> None:
+        source = read_project(self.project_path)
+        source["segments"][1]["text"] = "This line is English."
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        with mock.patch.object(
+            gui_config,
+            "effective_config",
+            return_value=SimpleNamespace(gui_lang="zh"),
+        ):
+            result = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.SRT,
+                    operation="translate_zh",
+                    custom_prompt="",
+                    embed_translations=True,
+                ),
+                complete=lambda _prompt, cues: {
+                    "groups": [
+                        {"id": cue["id"], "text": f"译文 {cue['id']}"}
+                        for cue in cues
+                    ]
+                },
+            )
+
+        self.assertIsNotNone(result.srt_path)
+        self.assertEqual(result.srt_path.name, "clip.翻译为中文.回填.srt")
+
+    def test_llm_translation_rejects_merge_bilingual_and_backfill_together(self) -> None:
+        with self.assertRaisesRegex(ValueError, "不能同时启用"):
+            _ = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="translate_zh",
+                    custom_prompt="",
+                    merge_bilingual=True,
+                    embed_translations=True,
+                ),
+                complete=lambda _prompt, _cues: self.fail("互斥选项不应请求翻译模型"),
+            )
 
     def test_bilingual_project_output_blocks_retranslation_and_marks_bilingual_suffix(self) -> None:
         result = run_llm_postprocess(
@@ -1643,7 +1865,7 @@ class PostprocessTests(unittest.TestCase):
                     project_path=self.project_path,
                     srt_path=None,
                     output_mode=OutputMode.JSON,
-                    operation="translate_zh",
+                    operation="translate_en",
                     custom_prompt="",
                 ),
                 complete=complete,
@@ -1674,7 +1896,7 @@ class PostprocessTests(unittest.TestCase):
                 project_path=self.project_path,
                 srt_path=None,
                 output_mode=OutputMode.BOTH,
-                operation="translate_zh",
+                operation="translate_en",
                 custom_prompt="",
             ),
             complete=complete,
@@ -1916,8 +2138,10 @@ class PostprocessTests(unittest.TestCase):
             ("source.翻译为中文.bilingual.mosp", "translate_zh"),
             ("source.翻译为中文.双语合一.mosp", "translate_zh"),
             ("source.翻译为中文.整合.mosp", "translate_zh"),
+            ("source.翻译为中文.回填.mosp", "translate_zh"),
             ("source.翻译为英文.mosp", "translate_en"),
             ("source.翻译为中文.combined.mosp", "translate_zh"),
+            ("source.translate-zh-backfill.mosp", "translate_zh"),
         ):
             with self.subTest(name=name):
                 translated_path = self.root / name
@@ -1995,7 +2219,7 @@ class PostprocessTests(unittest.TestCase):
                     project_path=self.project_path,
                     srt_path=None,
                     output_mode=OutputMode.BOTH,
-                    operation="translate_zh",
+                    operation="translate_en",
                     custom_prompt="",
                 ),
                 complete=complete,
@@ -2009,7 +2233,7 @@ class PostprocessTests(unittest.TestCase):
             {
                 "start": index * 1000,
                 "end": (index + 1) * 1000,
-                "text": f"cue {index + 1}",
+                "text": f"第 {index + 1} 句",
             }
             for index in range(40)
         )
