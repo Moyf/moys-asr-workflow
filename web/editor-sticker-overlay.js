@@ -56,11 +56,11 @@
     if (stickerIntervalCacheVersion === stickerOverlayDataVersion) return;
     const intervals = [];
     const boundaries = new Set();
-    DATA.segments.forEach((seg) => {
+    MaweBoot.DATA.segments.forEach((seg) => {
       if (seg.disabled) return;
-      const source = seg.sticker || DATA.segments[seg.sticker_ref?.headIdx]?.sticker;
+      const source = seg.sticker || MaweBoot.DATA.segments[seg.sticker_ref?.headIdx]?.sticker;
       if (!source) return;
-      const head = DATA.segments[seg.sticker_ref?.headIdx] || seg;
+      const head = MaweBoot.DATA.segments[seg.sticker_ref?.headIdx] || seg;
       const start = Number(source.start ?? head.start);
       const end = Number(source.end ?? head.end);
       if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return;

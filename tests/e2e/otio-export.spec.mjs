@@ -55,7 +55,7 @@ test('exports source OTIO when media metadata is missing', async ({ page }) => {
     });
   });
   await page.goto(server.url);
-  await page.evaluate(() => { DATA.media_metadata = null; });
+  await page.evaluate(() => { MaweBoot.DATA.media_metadata = null; });
 
   await page.locator('#extra-export-btn').click();
   await page.locator('[aria-controls="extra-otio-menu"]').hover();

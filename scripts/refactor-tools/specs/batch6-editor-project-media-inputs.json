@@ -1,0 +1,14 @@
+{
+  "file": "editor-project-media-inputs.js",
+  "ns": "MaweProjectMediaInputs",
+  "header": "工程与媒体文件输入：input 元素、Blob URL 与媒体选择弹窗。",
+  "symbols": [
+    "openProjectFileInput",
+    "loadMediaFileInput",
+    "loadSrtFileInput",
+    "currentMediaBlobUrl",
+    "pendingProjectMediaSelection",
+    "closeProjectMediaModal",
+    "showProjectMediaModal"
+  ]
+}

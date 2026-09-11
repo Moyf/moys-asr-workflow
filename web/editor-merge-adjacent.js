@@ -11,7 +11,7 @@
     const target = getCurrentCuePanelTarget();
     const extension = target?.kind === 'extension';
     const track = extension ? target.track : null;
-    const segments = extension ? track?.segments || [] : DATA.segments;
+    const segments = extension ? track?.segments || [] : MaweBoot.DATA.segments;
     let index = Number.isInteger(target?.index) ? target.index : -1;
     if (index < 0) {
       const selected = extension ? selectedExtensionIdxs : selectedIdxs;

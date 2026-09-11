@@ -44,13 +44,13 @@ test('playback refreshes the subtitle preview and playhead without timeupdate', 
   });
 
   await page.evaluate(() => {
-    DATA.segments.splice(
+    MaweBoot.DATA.segments.splice(
       0,
-      DATA.segments.length,
+      MaweBoot.DATA.segments.length,
       { start: 0, end: 100, text: 'First', items: [] },
       { start: 100, end: 10000, text: 'Second', items: [] },
     );
-    DATA.multi_subtitle = {
+    MaweBoot.DATA.multi_subtitle = {
       schema: 'moy.asr.multi_subtitle.v1',
       enabled: true,
       display_mode: 'both',

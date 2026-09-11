@@ -36,7 +36,7 @@
 
   function refreshMergeJoinModeHint() {
     if (!mergeJoinModeHint || !mergeJoinModeText || !mergeJoinModeSwitch) return;
-    const text = DATA.segments.map((item) => item?.text || '').join('\n');
+    const text = MaweBoot.DATA.segments.map((item) => item?.text || '').join('\n');
     if (!text) {
       mergeJoinModeHint.hidden = true;
       return;

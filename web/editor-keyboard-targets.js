@@ -151,8 +151,8 @@
     let nextIndex = -1;
     if (wantMain) {
       const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(current.index, current.track);
-      nextIndex = boundSegmentIndex(binding, binding?.main_segment_ids, DATA.segments);
-      if (nextIndex < 0) nextIndex = nearestSubtitleIndex(DATA.segments, current.segment, 'main');
+      nextIndex = boundSegmentIndex(binding, binding?.main_segment_ids, MaweBoot.DATA.segments);
+      if (nextIndex < 0) nextIndex = nearestSubtitleIndex(MaweBoot.DATA.segments, current.segment, 'main');
     } else {
       const binding = MaweMultiSubtitleCore.bindingForMainIndex(current.index);
       const bindingTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.track_id) : null;

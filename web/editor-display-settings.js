@@ -23,7 +23,7 @@
     MaweCoreState.container.classList.toggle('hide-cue-time', !MaweSettings.EDITOR_SETTINGS.cueListShowTime);
     // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
     // 分配首个表情包时由本函数根据最新数据直接恢复。
-    const projectHasStickers = DATA.segments.some(segment => segment.sticker || segment.sticker_ref);
+    const projectHasStickers = MaweBoot.DATA.segments.some(segment => segment.sticker || segment.sticker_ref);
     MaweCoreState.container.classList.toggle('hide-cue-sticker',
       !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
     );
@@ -60,7 +60,7 @@
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
     const hasTrack = Boolean(track && Array.isArray(track.segments));
     const enabled = hasTrack && MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
-    const hasMainSubtitle = DATA.segments.length > 0;
+    const hasMainSubtitle = MaweBoot.DATA.segments.length > 0;
     const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
     const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
     syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
@@ -98,7 +98,7 @@
       MaweDom.multiSubtitleDisplayMode.hidden = !enabled;
     }
     if (MaweDom.multiSubtitleMainLanguageMode) {
-      MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(DATA.segments[0]);
+      MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]);
       MaweDom.multiSubtitleMainLanguageMode.hidden = !enabled;
     }
     if (MaweDom.multiSubtitleExtensionLanguageMode) {
@@ -130,7 +130,7 @@
     }
     if (MaweDom.multiSubtitleSwapButton) {
       const canSwap = enabled && (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).length === 1
-        && DATA.segments.length > 0 && (track?.segments || []).length > 0;
+        && MaweBoot.DATA.segments.length > 0 && (track?.segments || []).length > 0;
       MaweDom.multiSubtitleSwapButton.classList.toggle('disabled', !canSwap);
       MaweDom.multiSubtitleSwapButton.setAttribute('aria-disabled', canSwap ? 'false' : 'true');
     }

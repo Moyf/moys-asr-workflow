@@ -42,7 +42,7 @@
   function findActive(tMs) {
     // 相邻字幕共用边界时，右侧字幕的 start 优先；处于时间间隙时保留
     // 前一条字幕作为当前项，和原有列表高亮语义一致。
-    return findActiveSegmentIndex(DATA.segments, tMs);
+    return findActiveSegmentIndex(MaweBoot.DATA.segments, tMs);
   }
 
 
@@ -133,7 +133,7 @@
 
   function refreshSubtitlePreview(tMs = MaweCoreState.player.currentTime * 1000, idx = findActive(tMs)) {
     // 编辑字幕文本时只刷新播放器预览，避免每输入一个字都触发字幕列表的自动滚动。
-    const seg = idx >= 0 ? DATA.segments[idx] : null;
+    const seg = idx >= 0 ? MaweBoot.DATA.segments[idx] : null;
     const mainVisible = !!MaweDom.overlayToggle.checked && isSubtitlePreviewActive(seg, tMs);
     const extension = extensionSegmentAtTime(tMs, idx);
     const extensionVisible = !!MaweDom.extensionOverlayToggle?.checked && !!extension;
@@ -151,11 +151,11 @@
     const mainSubtitleColor = subtitleAppearance.color || MaweSettings.DEFAULT_SUBTITLE_COLOR;
     const speakerLabels = getSpeakerLabelSettings();
     const mainColorName = mainVisible && seg
-      ? window.AsrEditorUtils.effectiveColorName(seg, DATA.segments)
+      ? window.AsrEditorUtils.effectiveColorName(seg, MaweBoot.DATA.segments)
       : null;
     const speakerLabel = mainVisible && speakerLabels.mapping_enabled && speakerLabels.enabled
       ? window.AsrEditorUtils.speakerLabelForSegment(
-        seg, DATA.segments, speakerLabels.names,
+        seg, MaweBoot.DATA.segments, speakerLabels.names,
       )
       : '';
     const speakerLabelVisible = Boolean(speakerLabel && mainColorName && MaweColors.COLOR_BY_NAME[mainColorName]);
@@ -188,7 +188,7 @@
     // 播放刷新每帧都写内联样式。
     let previewSegmentColor = '';
     if (mainVisible && colorPreviewEnabled && seg) {
-      const colorName = window.AsrEditorUtils.effectiveColorName(seg, DATA.segments);
+      const colorName = window.AsrEditorUtils.effectiveColorName(seg, MaweBoot.DATA.segments);
       previewSegmentColor = colorName ? MaweColors.COLOR_BY_NAME[colorName]?.value || '' : '';
     }
     const colorUnderline = colorPreviewEnabled

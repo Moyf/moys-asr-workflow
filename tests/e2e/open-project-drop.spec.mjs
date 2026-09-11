@@ -141,11 +141,11 @@ test('opening an unknown project schema is rejected without replacing the curren
   };
 
   await page.goto(server.url);
-  const before = await page.evaluate(() => JSON.stringify(DATA));
+  const before = await page.evaluate(() => JSON.stringify(MaweBoot.DATA));
   await dropFiles(page, [spec]);
 
   await expect(page.locator('#hint-stack .hint-warning')).toContainText('不支持的工程格式版本');
-  expect(await page.evaluate(() => JSON.stringify(DATA))).toBe(before);
+  expect(await page.evaluate(() => JSON.stringify(MaweBoot.DATA))).toBe(before);
 });
 
 test('dropping a project over an existing project asks before offering open or extension choices', async ({ page }) => {

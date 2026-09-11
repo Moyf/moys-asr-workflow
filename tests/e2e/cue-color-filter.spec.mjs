@@ -46,7 +46,7 @@ async function waitEditorReady(page) {
 
 async function paintFirstSegmentRed(page) {
   await page.evaluate((segmentEndMs) => {
-    const segment = DATA.segments[0];
+    const segment = MaweBoot.DATA.segments[0];
     segment.color = {
       name: 'red', value: '#e74c3c', start: segment.start,
       end: Math.max(segment.end, segment.start) || segmentEndMs,
@@ -65,7 +65,7 @@ test('color filter button appears only for projects with colored subtitles', asy
 test('clicking a row shows only that color; checkboxes multi-select; clear restores all', async ({ page }) => {
   await waitEditorReady(page);
   await paintFirstSegmentRed(page);
-  const total = await page.evaluate(() => DATA.segments.length);
+  const total = await page.evaluate(() => MaweBoot.DATA.segments.length);
 
   await page.locator('#color-filter-btn').click();
   const rows = page.locator('#color-filter-menu .color-filter-item');
@@ -107,7 +107,7 @@ test('assigning a color keeps the subtitle list at its current scroll position',
       text: `Cue ${index + 1}`,
       items: [],
     }));
-    DATA.segments.splice(0, DATA.segments.length, ...segments);
+    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...segments);
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
@@ -134,7 +134,7 @@ test('assigning a color keeps the subtitle list at its current scroll position',
     element.querySelector('.cue[data-idx="30"]')?.getBoundingClientRect().top
   ))).toBe(before.targetTop);
   await expect(target).toHaveClass(/has-color/);
-  await expect.poll(() => page.evaluate(() => DATA.segments[30].color?.name)).toBe('red');
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[30].color?.name)).toBe('red');
 
   await page.keyboard.press('0');
   await expect(target).toHaveAttribute('data-color-update-sentinel', 'preserve');
@@ -142,7 +142,7 @@ test('assigning a color keeps the subtitle list at its current scroll position',
     element.querySelector('.cue[data-idx="30"]')?.getBoundingClientRect().top
   ))).toBe(before.targetTop);
   await expect(target).not.toHaveClass(/has-color/);
-  await expect.poll(() => page.evaluate(() => DATA.segments[30].color)).toBe(null);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[30].color)).toBe(null);
 });
 
 test('assigning and clearing a sticker keeps the subtitle row in place', async ({ page }) => {
@@ -160,7 +160,7 @@ test('assigning and clearing a sticker keeps the subtitle row in place', async (
       name: 'existing', filename: 'existing.png',
       start: segments[0].start, end: segments[0].end,
     };
-    DATA.segments.splice(0, DATA.segments.length, ...segments);
+    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...segments);
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
@@ -207,7 +207,7 @@ test('search filtering keeps the selected subtitle in the same visual position',
       text: index % 2 === 0 ? `Keep ${index + 1}` : `Other ${index + 1}`,
       items: [],
     }));
-    DATA.segments.splice(0, DATA.segments.length, ...segments);
+    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...segments);
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
@@ -241,7 +241,7 @@ test('search filtering does not jump to the top when the selected subtitle is hi
       text: index % 2 === 0 ? `Keep ${index + 1}` : `Other ${index + 1}`,
       items: [],
     }));
-    DATA.segments.splice(0, DATA.segments.length, ...segments);
+    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...segments);
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
@@ -356,7 +356,7 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   await expect(hintText).toHaveText('当前字幕为「字符型」（适用于中文、日文等语言）');
   await expect(switchButton).toHaveText('切换为单词型');
   await expect(multiSelect).toHaveValue('continuous');
-  expect(await page.evaluate(() => DATA.multi_subtitle.main_split_mode)).toBe('continuous');
+  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.main_split_mode)).toBe('continuous');
 
   // 再点一次切回单词型。
   await switchButton.click();

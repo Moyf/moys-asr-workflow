@@ -26,7 +26,7 @@
 
 
   function ninjaSfxUrl(fileName) {
-    const baseUrl = NINJA_SFX_BASE_URL || SERVER_CONFIG?.ninjaSfxBaseUrl || 'web/sfx/';
+    const baseUrl = MaweBoot.NINJA_SFX_BASE_URL || MaweBoot.SERVER_CONFIG?.ninjaSfxBaseUrl || 'web/sfx/';
     try {
       return new URL(`${baseUrl}${encodeURIComponent(fileName)}`, document.baseURI).href;
     } catch (_) {

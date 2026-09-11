@@ -264,8 +264,8 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
   });
 
   await page.evaluate(() => {
-    DATA.segments[0].end = DATA.segments[1].start + 1;
-    DATA.segments[0]._dirty = true;
+    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 1;
+    MaweBoot.DATA.segments[0]._dirty = true;
     renderAll({ waveform: 'overlay' });
   });
   await page.keyboard.press('Control+s');
@@ -278,7 +278,7 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
   ));
   await hint.locator('.hint-project-repair-auto').click();
   expect((await retry).ok()).toBe(true);
-  await expect.poll(() => page.evaluate(() => DATA.segments[1].start)).toBe(50001);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[1].start)).toBe(50001);
   await expect(page.locator('.hint-card').last()).toContainText('保存成功！');
   expect(saveAttempts).toBe(2);
 });
@@ -301,8 +301,8 @@ test('larger subtitle-segment overlap requires an explicit repair direction', as
     });
   });
   await page.evaluate(() => {
-    DATA.segments[0].end = DATA.segments[1].start + 2000;
-    DATA.segments[0]._dirty = true;
+    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 2000;
+    MaweBoot.DATA.segments[0]._dirty = true;
     renderAll({ waveform: 'overlay' });
   });
 

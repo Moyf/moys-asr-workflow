@@ -38,9 +38,9 @@ async function loadAttachedCues(page, autoSnapAdjacentCues) {
   }
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.segments.splice(
+    MaweBoot.DATA.segments.splice(
       0,
-      DATA.segments.length,
+      MaweBoot.DATA.segments.length,
       { start: 5000, end: 10000, text: 'First', items: [{ start: 5000, end: 10000, text: 'First' }] },
       { start: 10000, end: 18000, text: 'Second', items: [{ start: 10000, end: 18000, text: 'Second' }] },
       { start: 25000, end: 30000, text: 'Third', items: [{ start: 25000, end: 30000, text: 'Third' }] },
@@ -50,7 +50,7 @@ async function loadAttachedCues(page, autoSnapAdjacentCues) {
 }
 
 function readTimings(page) {
-  return page.evaluate(() => DATA.segments.map(({ start, end }) => ({ start, end })));
+  return page.evaluate(() => MaweBoot.DATA.segments.map(({ start, end }) => ({ start, end })));
 }
 
 async function selectedCueIndex(page) {
@@ -93,9 +93,9 @@ async function moveWaveformPointerToTime(page, blockLocator, timeMs) {
 test('WASD during playback follows the playhead instead of the last selected cue', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
-    DATA.segments[2].start = 100000;
-    DATA.segments[2].end = 110000;
-    DATA.segments[2].items = [{ start: 100000, end: 110000, text: 'Third' }];
+    MaweBoot.DATA.segments[2].start = 100000;
+    MaweBoot.DATA.segments[2].end = 110000;
+    MaweBoot.DATA.segments[2].items = [{ start: 100000, end: 110000, text: 'Third' }];
     renderAll();
   });
   await page.locator('.cue[data-idx="0"]').click();
@@ -135,7 +135,7 @@ test('A/D at the outer cue boundaries still seeks the boundary cue', async ({ pa
 test('F seeks and plays a selected extension cue', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
-    DATA.multi_subtitle = {
+    MaweBoot.DATA.multi_subtitle = {
       schema: 'moy.asr.multi_subtitle.v1',
       enabled: true,
       display_mode: 'both',
@@ -283,8 +283,8 @@ test('automatic adjacent snapping links shared-boundary dragging by default and 
   ]);
 
   await page.evaluate(() => {
-    DATA.segments[0].end = 10000;
-    DATA.segments[1].start = 10000;
+    MaweBoot.DATA.segments[0].end = 10000;
+    MaweBoot.DATA.segments[1].start = 10000;
     renderAll();
   });
   // Alt 临时反转：只移动当前字幕的边界，相邻字幕保持不动。
@@ -315,11 +315,11 @@ test('an independent shared-boundary drag can reverse before release', async ({ 
   await page.mouse.down();
   await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
   await page.mouse.move(startX + deltaX, y, { steps: 5 });
-  await expect.poll(() => page.evaluate(() => DATA.segments[0].end)).toBe(9500);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(9500);
 
   // 回到按下时的共享边界；旧逻辑会把 9500 当成单向上限，无法回到 10000。
   await page.mouse.move(startX, y, { steps: 5 });
-  await expect.poll(() => page.evaluate(() => DATA.segments[0].end)).toBe(10000);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(10000);
   await page.mouse.up();
   await expect.poll(() => readTimings(page)).toEqual([
     { start: 5000, end: 10000 },
@@ -344,8 +344,8 @@ test('explicit Shift snapping remains available when automatic adjacent snapping
   // Shift 贴合是显式命令；这里显式关闭自动吸附，验证其不受开关影响。
   await loadAttachedCues(page, false);
   await page.evaluate(() => {
-    DATA.segments[0].end = 9000;
-    DATA.segments[1].start = 10000;
+    MaweBoot.DATA.segments[0].end = 9000;
+    MaweBoot.DATA.segments[1].start = 10000;
     renderAll();
   });
   await page.locator('.cue[data-idx="1"]').click();
@@ -360,10 +360,10 @@ test('explicit Shift snapping remains available when automatic adjacent snapping
 test('Shift+arrow keys snap selected subtitle boundaries to neighbors', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
-    DATA.segments[0].end = 9000;
-    DATA.segments[1].start = 10000;
-    DATA.segments[1].end = 18000;
-    DATA.segments[2].start = 20000;
+    MaweBoot.DATA.segments[0].end = 9000;
+    MaweBoot.DATA.segments[1].start = 10000;
+    MaweBoot.DATA.segments[1].end = 18000;
+    MaweBoot.DATA.segments[2].start = 20000;
     renderAll();
   });
   await page.locator('.cue[data-idx="1"]').click();
@@ -446,10 +446,10 @@ test('A also compresses an attached preceding cue', async ({ page }) => {
 test('Shift+A/D on a held subtitle snaps its outer boundaries to neighbors', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
-    DATA.segments[0].end = 9000;
-    DATA.segments[1].start = 10000;
-    DATA.segments[1].end = 18000;
-    DATA.segments[2].start = 20000;
+    MaweBoot.DATA.segments[0].end = 9000;
+    MaweBoot.DATA.segments[1].start = 10000;
+    MaweBoot.DATA.segments[1].end = 18000;
+    MaweBoot.DATA.segments[2].start = 20000;
     renderAll();
   });
   await page.locator('#editor-settings-toggle').click();

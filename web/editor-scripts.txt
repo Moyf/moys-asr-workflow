@@ -1,5 +1,8 @@
 # MAWE editor scripts are inlined in this order by edit.py and the Tauri build.
 # Keep runtime/bootstrap modules before the modules that consume their exports.
+# editor-boot.js owns the template-injected project/sticker/server tokens and
+# must stay first among the editor modules.
+editor-boot.js
 editor-runtime.js
 gap-remove-core.js
 editor-utils.js
@@ -31,5 +34,15 @@ editor-playback-loop.js
 editor-sticker-overlay.js
 editor-export-srt.js
 editor-export-timeline.js
+editor-server-save.js
+editor-workspaces.js
+editor-project-save.js
+editor-dynamic-exports.js
+editor-export-menus.js
+editor-project-media-inputs.js
+editor-project-load.js
+editor-loading-progress.js
+editor-multi-import.js
+editor-media-load.js
 editor.js
 editor-onboarding.js

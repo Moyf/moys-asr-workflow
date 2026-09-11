@@ -114,6 +114,18 @@ Batch 5 执行备注：
   swap）——此类需人工改写为访问器形式（`MaweCoreState.player = v`）。
 - e2e 全量在里程碑处串行跑，失败比对用标题集合（`%TEMP%\batch5b-e2e.json`）。
 
+| 6 | 2026-09-11 | **main 同步**：merge origin/main（54de21c3 本地化产物命名，零冲突）；十一模块：`MaweBoot`(10/596，模板 token 数据块，清单置首) + `MaweServerSave`(27) `MaweWorkspaces`(23) `MaweProjectSave`(8) `MaweDynamicExports`(17) `MaweExportMenus`(4) `MaweProjectMediaInputs`(7) `MaweProjectLoad`(14→12) `MaweLoadingProgress`(9) `MaweMultiImport`(11) `MaweMediaLoad`(4)；e2e 二次改写 148 处/15 文件；删除 projectLoadedFromSrt 死赋值（指南 §4.5 类）；契约断言同步 ~15 处 | Node 286；Python 1458 OK；顺序断言过；探针零 pageerror；e2e 冒烟 149 过/5 失败全为基线 | （本提交） |
+
+Batch 6 执行备注：
+
+- **boot 修复语句必须留在 editor.js**：fork 把 `repairedGroupReferenceCount`/
+  `repairedTimingCount` 两条顶层 const 并入了 project-load 模块，但它们原本位于
+  editor.js 两次 `syncProjectTimebaseAndBindingOffsets` **之间**（先按 frames 同步
+  →修复→再普通同步），提升到模块加载期会改变启动语义且其依赖仍在 editor.js
+  （顺序断言当场拦截）。已还原到 editor.js 原位并从模块/门面/spec 中移除。
+- `fix-e2e-globals.mjs` 需在每批后重跑（导出表随批次增长），幂等。
+- editor-boot.js 手工调到清单首位（token 数据块先于一切消费方）。
+
 Batch 2 执行备注：
 
 - 多模块批次按"最高行号优先"执行 codemod（settings → multi-subtitle → gap-remove-data →

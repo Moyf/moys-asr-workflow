@@ -18,7 +18,7 @@
 
 
   function getPreviewGeometry() {
-    return GEO_UTILS.normalizePreviewGeometry(DATA.preview?.subtitle);
+    return GEO_UTILS.normalizePreviewGeometry(MaweBoot.DATA.preview?.subtitle);
   }
 
 
@@ -166,7 +166,7 @@
   }
 
 
-  function getSubtitleAppearance(value = DATA.preview?.subtitle) {
+  function getSubtitleAppearance(value = MaweBoot.DATA.preview?.subtitle) {
     const result = normalizeSubtitleAppearance(value);
     return {
       ...result,
@@ -177,7 +177,7 @@
   }
 
 
-  function getStoredExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
+  function getStoredExtensionSubtitleAppearance(value = MaweBoot.DATA.preview?.extension_subtitle) {
     return normalizeSubtitleAppearance(value);
   }
 
@@ -188,7 +188,7 @@
   }
 
 
-  function getExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
+  function getExtensionSubtitleAppearance(value = MaweBoot.DATA.preview?.extension_subtitle) {
     const result = getStoredExtensionSubtitleAppearance(value);
     return {
       ...result,
@@ -290,7 +290,7 @@
   }
 
 
-  function applySubtitleAppearance(value = DATA.preview?.subtitle) {
+  function applySubtitleAppearance(value = MaweBoot.DATA.preview?.subtitle) {
     const appearance = getSubtitleAppearance(value);
     MaweDom.overlayTextEl.style.setProperty(
       '--subtitle-preview-font-size',
@@ -309,7 +309,7 @@
   }
 
 
-  function applyExtensionSubtitleAppearance(value = DATA.preview?.extension_subtitle) {
+  function applyExtensionSubtitleAppearance(value = MaweBoot.DATA.preview?.extension_subtitle) {
     const appearance = getExtensionSubtitleAppearance(value);
     MaweDom.overlayExtensionTextEl.style.setProperty(
       '--subtitle-preview-font-size',
@@ -364,14 +364,14 @@
       const colorStyle = normalizeSubtitleColorStyle(patch.color_style);
       if (colorStyle) next.color_style = colorStyle;
     }
-    if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
-    DATA.preview.subtitle = {
+    if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
+    MaweBoot.DATA.preview.subtitle = {
       ...getPreviewGeometry(),
       ...next,
       speaker_labels: getSpeakerLabelSettings(),
     };
     if (markDirty) previewGeometryDirty = true;
-    applySubtitleAppearance(DATA.preview.subtitle);
+    applySubtitleAppearance(MaweBoot.DATA.preview.subtitle);
     return next;
   }
 
@@ -494,22 +494,22 @@
       const color = normalizeSubtitleColor(patch.color);
       if (color) next.color = color;
     }
-    if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
-    if (Object.keys(next).length) DATA.preview.extension_subtitle = next;
-    else delete DATA.preview.extension_subtitle;
+    if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
+    if (Object.keys(next).length) MaweBoot.DATA.preview.extension_subtitle = next;
+    else delete MaweBoot.DATA.preview.extension_subtitle;
     if (markDirty) previewGeometryDirty = true;
-    applyExtensionSubtitleAppearance(DATA.preview.extension_subtitle);
+    applyExtensionSubtitleAppearance(MaweBoot.DATA.preview.extension_subtitle);
     return next;
   }
 
 
   function restoreExtensionSubtitleAppearance(value, { markDirty = true } = {}) {
     const next = normalizeSubtitleAppearance(value);
-    if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
-    if (Object.keys(next).length) DATA.preview.extension_subtitle = next;
-    else delete DATA.preview.extension_subtitle;
+    if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
+    if (Object.keys(next).length) MaweBoot.DATA.preview.extension_subtitle = next;
+    else delete MaweBoot.DATA.preview.extension_subtitle;
     if (markDirty) previewGeometryDirty = true;
-    applyExtensionSubtitleAppearance(DATA.preview.extension_subtitle);
+    applyExtensionSubtitleAppearance(MaweBoot.DATA.preview.extension_subtitle);
   }
 
   global.MaweAppearance = Object.freeze({

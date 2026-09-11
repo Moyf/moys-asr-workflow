@@ -19,6 +19,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertEqual(
             edit.read_editor_script_manifest(),
             (
+                "editor-boot.js",
                 "editor-runtime.js",
                 "gap-remove-core.js",
                 "editor-utils.js",
@@ -50,6 +51,16 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor-sticker-overlay.js",
                 "editor-export-srt.js",
                 "editor-export-timeline.js",
+                "editor-server-save.js",
+                "editor-workspaces.js",
+                "editor-project-save.js",
+                "editor-dynamic-exports.js",
+                "editor-export-menus.js",
+                "editor-project-media-inputs.js",
+                "editor-project-load.js",
+                "editor-loading-progress.js",
+                "editor-multi-import.js",
+                "editor-media-load.js",
                 "editor.js",
                 "editor-onboarding.js",
             ),
@@ -91,6 +102,17 @@ class EditorAssetContractTests(unittest.TestCase):
             "editor-sticker-overlay.js": "(function initMaweStickerOverlay(global) {",
             "editor-export-srt.js": "(function initMaweExportSrt(global) {",
             "editor-export-timeline.js": "(function initMaweExportTimeline(global) {",
+            "editor-boot.js": "(function initMaweBoot(global) {",
+            "editor-server-save.js": "(function initMaweServerSave(global) {",
+            "editor-workspaces.js": "(function initMaweWorkspaces(global) {",
+            "editor-project-save.js": "(function initMaweProjectSave(global) {",
+            "editor-dynamic-exports.js": "(function initMaweDynamicExports(global) {",
+            "editor-export-menus.js": "(function initMaweExportMenus(global) {",
+            "editor-project-media-inputs.js": "(function initMaweProjectMediaInputs(global) {",
+            "editor-project-load.js": "(function initMaweProjectLoad(global) {",
+            "editor-loading-progress.js": "(function initMaweLoadingProgress(global) {",
+            "editor-multi-import.js": "(function initMaweMultiImport(global) {",
+            "editor-media-load.js": "(function initMaweMediaLoad(global) {",
             "editor.js": "'[MAWE][boot] AsrEditorUtils is unavailable; editor scripts are incomplete or out of order'",
             "editor-onboarding.js": "const helpOnboardingButton = document.getElementById('help-onboarding');",
         }
@@ -213,6 +235,9 @@ class EditorAssetContractTests(unittest.TestCase):
 
     def test_editor_sources_expose_checkpointed_import_contract(self) -> None:
         script = edit.read_web_asset("editor.js")
+        project_load = edit.read_web_asset("editor-project-load.js")
+        project_save = edit.read_web_asset("editor-project-save.js")
+        server_save = edit.read_web_asset("editor-server-save.js")
         for seam in (
             "function buildBlankProject()",
             "function suggestedProjectName(",
@@ -220,13 +245,13 @@ class EditorAssetContractTests(unittest.TestCase):
             "async function ensureProjectCheckpointForImport(",
             "function applyCanonicalProject(",
         ):
-            self.assertIn(seam, script)
-        self.assertIn("let projectFileHandle = null", script)
-        self.assertIn("function saveProjectToHandle(", script)
-        self.assertIn("function saveCurrentProject(", script)
-        self.assertIn("function detachServerProjectSaving(", script)
+            self.assertIn(seam, project_load)
+        self.assertIn("let projectFileHandle = null", server_save)
+        self.assertIn("function saveProjectToHandle(", project_save)
+        self.assertIn("function saveCurrentProject(", project_save)
+        self.assertIn("function detachServerProjectSaving(", project_load)
         self.assertNotIn("SERVER_CONFIG.createUrl", script)
-        self.assertNotIn("!projectLoadedFromSrt", script)
+        self.assertNotIn("!projectLoadedFromSrt", script + project_load + project_save + server_save)
 
     def test_sticker_root_uses_server_validation_without_browser_picker(self) -> None:
         template = edit.read_web_asset("editor-template.html")
@@ -236,7 +261,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn('id="sticker-root-read"', template)
         self.assertIn('id="sticker-root-status"', template)
         self.assertIn("SERVER_CONFIG.stickerRootUrl", script)
-        self.assertIn("STICKERS.splice(0, STICKERS.length, ...result.stickers)", script)
+        self.assertIn("MaweBoot.STICKERS.splice(0, MaweBoot.STICKERS.length, ...result.stickers)", script)
         self.assertIn("let stickerRootHintCard = null", script)
         self.assertIn("stickerRootHintCard?.remove()", script)
         self.assertIn("function setStickerRootModalOpen(open)", script)
@@ -279,13 +304,13 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("MaweSettings.updateEditorSettings({ stickerOtioExportMode: stickerOtioExportMode.value })", script)
         # 便携导出能力只在服务器渲染绑定工程时开启；浏览器句柄工程不被服务器
         # 跟踪，解除保存时必须一并关闭，避免把导出写到服务器旧工程目录。
-        self.assertIn("SERVER_CONFIG.canPortableStickerExport = false", script)
+        self.assertIn("MaweBoot.SERVER_CONFIG.canPortableStickerExport = false", edit.read_web_asset("editor-project-load.js"))
         self.assertNotIn("SERVER_CONFIG.canPortableStickerExport = true", script)
         self.assertIn("if (!syncStickerOtioExportMode())", script)
-        self.assertIn("function configureServerSaveControls()", script)
+        self.assertIn("function configureServerSaveControls()", edit.read_web_asset("editor-server-save.js"))
         # 同步统一收敛在 configureServerSaveControls 末尾：保存目标变化
         # （服务器绑定 / 浏览器句柄 / 解除）都流经它重算便携导出可用性。
-        self.assertEqual(script.count("syncStickerOtioExportMode();"), 1)
+        self.assertEqual(edit.read_web_asset("editor-server-save.js").count("syncStickerOtioExportMode();"), 1)
         self.assertNotIn("const portableStickerExportEnabled", script)
 
     def test_generated_page_contains_registered_modules_in_order(self) -> None:

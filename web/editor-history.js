@@ -27,7 +27,7 @@
   function snapshotSegments() {
     // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记；多字幕数据与主轨
     // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
-    return window.AsrEditorUtils.buildSegmentsHistorySnapshot(DATA.segments, MaweMultiSubtitleCore.getMultiSubtitleState());
+    return window.AsrEditorUtils.buildSegmentsHistorySnapshot(MaweBoot.DATA.segments, MaweMultiSubtitleCore.getMultiSubtitleState());
   }
 
 
@@ -37,7 +37,7 @@
       ? MaweMultiSubtitleCore.getExtensionTrack(MaweCuePanelState.currentCuePanelTrackId) : null;
     return {
       mainIds: [...selectedIdxs]
-        .map((index) => DATA.segments[index]?.id)
+        .map((index) => MaweBoot.DATA.segments[index]?.id)
         .filter(Boolean),
       extensionTrackId: extensionTrack?.id || null,
       extensionIds: extensionTrack
@@ -47,8 +47,8 @@
       panelTrackId: panelTrack?.id || MaweCuePanelState.currentCuePanelTrackId || null,
       panelId: MaweCuePanelState.currentCuePanelKind === 'extension'
         ? panelTrack?.segments?.[MaweCuePanelState.currentCuePanelIdx]?.id || null
-        : DATA.segments[MaweCuePanelState.currentCuePanelIdx]?.id || null,
-      lastMainId: DATA.segments[lastClickedIdx]?.id || null,
+        : MaweBoot.DATA.segments[MaweCuePanelState.currentCuePanelIdx]?.id || null,
+      lastMainId: MaweBoot.DATA.segments[lastClickedIdx]?.id || null,
       lastExtensionId: extensionTrack?.segments?.[lastClickedExtensionIdx]?.id || null,
     };
   }
@@ -73,7 +73,7 @@
 
   function pushGapRemoveUndo(label) {
     editorHistory.push(window.AsrEditorUtils.buildHistoryRecord('gap_remove', label, {
-      gapRemove: DATA.gap_remove,
+      gapRemove: MaweBoot.DATA.gap_remove,
       gapRemoveDirty,
     }));
     updateUndoRedoButtons();
@@ -124,7 +124,7 @@
     }
     if (kind === 'gap_remove') {
       return window.AsrEditorUtils.buildHistoryRecord('gap_remove', label, {
-        gapRemove: DATA.gap_remove,
+        gapRemove: MaweBoot.DATA.gap_remove,
         gapRemoveDirty,
       });
     }
@@ -142,7 +142,7 @@
     selectedIdxs.clear();
     selectedExtensionIdxs.clear();
     const mainIds = new Set(snapshot.mainIds || []);
-    DATA.segments.forEach((segment, index) => {
+    MaweBoot.DATA.segments.forEach((segment, index) => {
       if (mainIds.has(segment?.id)) selectedIdxs.add(index);
     });
     const extensionTrack = MaweMultiSubtitleCore.getExtensionTrack(snapshot.extensionTrackId) || MaweMultiSubtitleCore.getActiveExtensionTrack();
@@ -153,7 +153,7 @@
       });
     }
     lastClickedIdx = snapshot.lastMainId
-      ? DATA.segments.findIndex((segment) => segment?.id === snapshot.lastMainId) : -1;
+      ? MaweBoot.DATA.segments.findIndex((segment) => segment?.id === snapshot.lastMainId) : -1;
     lastClickedExtensionIdx = extensionTrack && snapshot.lastExtensionId
       ? extensionTrack.segments.findIndex((segment) => segment?.id === snapshot.lastExtensionId) : -1;
     const panelTrack = snapshot.panelTrackId ? MaweMultiSubtitleCore.getExtensionTrack(snapshot.panelTrackId) : null;
@@ -168,7 +168,7 @@
     } else if (snapshot.panelKind === 'main' && snapshot.panelId) {
       MaweCuePanelState.currentCuePanelKind = 'main';
       MaweCuePanelState.currentCuePanelTrackId = null;
-      MaweCuePanelState.currentCuePanelIdx = DATA.segments.findIndex((segment) => segment?.id === snapshot.panelId);
+      MaweCuePanelState.currentCuePanelIdx = MaweBoot.DATA.segments.findIndex((segment) => segment?.id === snapshot.panelId);
     }
     if (MaweCuePanelState.currentCuePanelIdx < 0) {
       MaweCuePanelState.currentCuePanelKind = 'main';
@@ -190,11 +190,11 @@
         MaweHint.flashHint('工作区恢复失败：波形模块尚未加载', 'warning');
         return false;
       }
-      DATA.workspace = MaweCoreState.waveformEditor.getLayoutData();
+      MaweBoot.DATA.workspace = MaweCoreState.waveformEditor.getLayoutData();
       return true;
     }
     if (record.kind === 'gap_remove') {
-      DATA.gap_remove = record.gapRemove;
+      MaweBoot.DATA.gap_remove = record.gapRemove;
       gapRemoveDirty = record.gapRemoveDirty;
       updateGapRemoveUi();
       return true;
@@ -204,11 +204,11 @@
       return true;
     }
     const snapshot = record.segs && Array.isArray(record.segs.segments)
-      ? record.segs : { segments: record.segs, multi_subtitle: DATA.multi_subtitle };
+      ? record.segs : { segments: record.segs, multi_subtitle: MaweBoot.DATA.multi_subtitle };
     const previousWaveformStructure = MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
-    DATA.segments.length = 0;
-    (snapshot.segments || []).forEach(s => DATA.segments.push(s));
-    DATA.multi_subtitle = snapshot.multi_subtitle || {
+    MaweBoot.DATA.segments.length = 0;
+    (snapshot.segments || []).forEach(s => MaweBoot.DATA.segments.push(s));
+    MaweBoot.DATA.multi_subtitle = snapshot.multi_subtitle || {
       schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
     };
     MaweMultiSubtitleCore.normalizeMultiSubtitleState();

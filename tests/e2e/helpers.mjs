@@ -275,7 +275,7 @@ export function testSegments() {
 // opt into this two-word shape only in split-specific scenarios.
 export async function makeFirstCueWordSplittable(page) {
   await page.evaluate(() => {
-    const segment = DATA.segments[0];
+    const segment = MaweBoot.DATA.segments[0];
     segment.text = 'Alpha Bravo';
     segment.items = [
       { start: segment.start, end: 4000, text: 'Alpha' },

@@ -15,20 +15,20 @@
 
 
   function buildCurrentWorkspaceData() {
-    const workspace = MaweCoreState.waveformEditor?.getLayoutData?.() || DATA.workspace;
+    const workspace = MaweCoreState.waveformEditor?.getLayoutData?.() || MaweBoot.DATA.workspace;
     if (!workspace) return workspace;
-    const selectedPreset = currentServerWorkspaceName
-      ? `saved:${currentServerWorkspaceName}`
-      : currentBuiltinWorkspaceName || workspacePresetSelect?.value || workspace.preset;
+    const selectedPreset = MaweWorkspaces.currentServerWorkspaceName
+      ? `saved:${MaweWorkspaces.currentServerWorkspaceName}`
+      : MaweWorkspaces.currentBuiltinWorkspaceName || MaweWorkspaces.workspacePresetSelect?.value || workspace.preset;
     return { ...workspace, selectedPreset, editorDisplay: MaweDisplaySettings.getEditorDisplaySettings() };
   }
 
 
 
   function buildResolveJson() {
-    const segments = DATA.segments.map((seg, idx) => {
+    const segments = MaweBoot.DATA.segments.map((seg, idx) => {
       const headIdx = seg.sticker_ref?.headIdx;
-      const head = Number.isInteger(headIdx) ? DATA.segments[headIdx] : null;
+      const head = Number.isInteger(headIdx) ? MaweBoot.DATA.segments[headIdx] : null;
       const validStickerRef = !seg.sticker_ref || (head && !head.disabled && headIdx < idx);
       const headSticker = !seg.disabled && validStickerRef ? seg.sticker || head?.sticker : null;
       const sticker = headSticker ? { ...headSticker, start: seg.start, end: seg.end } : null;
@@ -58,9 +58,9 @@
     return JSON.stringify({
       schema: 'moy.asr_subtitle_editor.resolve.v1',
       source: 'moys-asr-workflow',
-      filename_base: FILENAME_BASE,
-      media: DATA.media || '',
-      sticker_root: STICKER_ROOT || '',
+      filename_base: MaweBoot.FILENAME_BASE,
+      media: MaweBoot.DATA.media || '',
+      sticker_root: MaweBoot.STICKER_ROOT || '',
       color_palette: MaweColors.COLOR_PALETTE,
       segments,
     }, null, 2);
@@ -98,7 +98,7 @@
 
 
   function mediaStartOtioFrames() {
-    const reference = DATA.media_time_reference;
+    const reference = MaweBoot.DATA.media_time_reference;
     const sampleRate = Number(reference?.sample_rate);
     const samples = Number(reference?.time_reference_samples);
     if (!Number.isFinite(sampleRate) || sampleRate <= 0
@@ -133,7 +133,7 @@
     const clipEndFrame = msToOtioFrames(intervalEndMs);
     if (clipEndFrame <= clipStartFrame) return [];
 
-    return DATA.segments.flatMap((segment) => {
+    return MaweBoot.DATA.segments.flatMap((segment) => {
       if (!segment || segment.disabled) return [];
       const segmentStartMs = Number(segment.start);
       const segmentEndMs = Number(segment.end);
@@ -149,7 +149,7 @@
       const markerEndFrame = sourceStartFrame + msToOtioFrames(endMs);
       if (markerEndFrame <= markerStartFrame) return [];
 
-      const colorName = window.AsrEditorUtils.effectiveColorName(segment, DATA.segments);
+      const colorName = window.AsrEditorUtils.effectiveColorName(segment, MaweBoot.DATA.segments);
       return [{
         OTIO_SCHEMA: 'Marker.2',
         metadata: {},
@@ -181,7 +181,7 @@
 
 
   function mediaTargetUrl() {
-    const media = String(DATA.media || '').trim();
+    const media = String(MaweBoot.DATA.media || '').trim();
     if (/^file:\/\//i.test(media) || /^[A-Za-z]:[\\/]/.test(media) || media.startsWith('/')) {
       return stickerTargetUrl(media);
     }
@@ -276,7 +276,7 @@
     }
     const sourceDurationFrames = Math.max(1, msToOtioFrames(durationMs));
     const sourceStartFrame = mediaStartOtioFrames();
-    const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
+    const mediaMetadata = normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
     const audioMetadata = Array.isArray(mediaMetadata?.audio_tracks)
       ? mediaMetadata.audio_tracks : null;
     const clipName = otioMediaName(targetUrl);
@@ -363,7 +363,7 @@
     return JSON.stringify({
       OTIO_SCHEMA: 'Timeline.1',
       metadata,
-      name: gapRemoved ? `${FILENAME_BASE}_去空隙` : FILENAME_BASE,
+      name: gapRemoved ? `${MaweBoot.FILENAME_BASE}_去空隙` : MaweBoot.FILENAME_BASE,
       global_start_time: otioTime(0),
       tracks: {
         OTIO_SCHEMA: 'Stack.1',
@@ -421,7 +421,7 @@
       MaweHint.flashHint('没有任何表情包，无法导出 OTIO', 'invalid');
       return null;
     }
-    const result = buildStickerOtioTimeline(collected.entries, `${FILENAME_BASE}_表情包`);
+    const result = buildStickerOtioTimeline(collected.entries, `${MaweBoot.FILENAME_BASE}_表情包`);
     if (result.error) {
       MaweHint.flashHint(result.error, 'warning');
       return null;
@@ -436,11 +436,11 @@
   // 表情包必须有真实磁盘路径（服务器 OTIO/OTIOZ 均按 sticker_rel 读盘）。
   function collectStickerOtioEntries(removed) {
     const entries = [];
-    for (let idx = 0; idx < DATA.segments.length; idx++) {
-      const seg = DATA.segments[idx];
+    for (let idx = 0; idx < MaweBoot.DATA.segments.length; idx++) {
+      const seg = MaweBoot.DATA.segments[idx];
       if (seg.disabled) continue;
       const headIdx = seg.sticker_ref?.headIdx;
-      const head = Number.isInteger(headIdx) ? DATA.segments[headIdx] : null;
+      const head = Number.isInteger(headIdx) ? MaweBoot.DATA.segments[headIdx] : null;
       if (seg.sticker_ref && (!head || head.disabled || headIdx >= idx)) continue;
       const sticker = seg.sticker || head?.sticker;
       if (!sticker) continue;
@@ -514,7 +514,7 @@
       MaweHint.flashHint('没有落在保留区间内的表情包，无法导出去空隙表情包 OTIO', 'invalid');
       return null;
     }
-    const result = buildStickerOtioTimeline(collected.entries, `${FILENAME_BASE}_去空隙表情包`);
+    const result = buildStickerOtioTimeline(collected.entries, `${MaweBoot.FILENAME_BASE}_去空隙表情包`);
     if (result.error) {
       MaweHint.flashHint(result.error, 'warning');
       return null;
@@ -531,17 +531,17 @@
     if (editingState) finishEdit(true);
     const payload = buildTimeline();
     if (!payload) return;
-    if (!SERVER_CONFIG?.canOtozStickerExport || !SERVER_CONFIG?.otiozStickerExportUrl) {
+    if (!MaweBoot.SERVER_CONFIG?.canOtozStickerExport || !MaweBoot.SERVER_CONFIG?.otiozStickerExportUrl) {
       MaweHint.flashHint(tr('当前工程无法导出表情包 OTIOZ（需要以 server-editor 打开并绑定工程文件）'), 'warning');
       return;
     }
     MaweHint.flashHint(tr('正在生成表情包 OTIOZ 打包工程…'));
     try {
-      const response = await fetch(new URL(SERVER_CONFIG.otiozStickerExportUrl, window.location.href), {
+      const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.otiozStickerExportUrl, window.location.href), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          requestToken: SERVER_CONFIG.requestToken,
+          requestToken: MaweBoot.SERVER_CONFIG.requestToken,
           kind,
           timeline: JSON.parse(payload),
         }),
@@ -567,17 +567,17 @@
     if (editingState) finishEdit(true);
     const payload = buildTimeline();
     if (!payload) return false;
-    if (!SERVER_CONFIG?.canOtozTimelineExport || !SERVER_CONFIG?.otiozTimelineExportUrl) {
+    if (!MaweBoot.SERVER_CONFIG?.canOtozTimelineExport || !MaweBoot.SERVER_CONFIG?.otiozTimelineExportUrl) {
       MaweHint.flashHint(tr('当前工程无法导出时间线 OTIOZ（需要以 server-editor 打开并绑定工程文件）'), 'warning');
       return false;
     }
     MaweHint.flashHint(tr('正在生成时间线 OTIOZ 打包工程…'));
     try {
-      const response = await fetch(new URL(SERVER_CONFIG.otiozTimelineExportUrl, window.location.href), {
+      const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.otiozTimelineExportUrl, window.location.href), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          requestToken: SERVER_CONFIG.requestToken,
+          requestToken: MaweBoot.SERVER_CONFIG.requestToken,
           kind,
           timeline: JSON.parse(payload),
         }),
@@ -605,7 +605,7 @@
 
   function updateTimelineOtiozExportButtons() {
     const available = Boolean(
-      SERVER_CONFIG?.canOtozTimelineExport && SERVER_CONFIG?.otiozTimelineExportUrl,
+      MaweBoot.SERVER_CONFIG?.canOtozTimelineExport && MaweBoot.SERVER_CONFIG?.otiozTimelineExportUrl,
     );
     TIMELINE_OTIOZ_BUTTONS.forEach((id) => {
       const button = document.getElementById(id);
@@ -615,7 +615,7 @@
       button.setAttribute('aria-disabled', available ? 'false' : 'true');
       button.title = available
         ? button.dataset.originalTitle
-        : translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ');
+        : MaweProjectSave.translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ');
     });
   }
 
@@ -629,7 +629,7 @@
 
 
   function updateStickerExportButtons() {
-    const serverOk = !!(SERVER_CONFIG?.canOtozStickerExport && SERVER_CONFIG?.otiozStickerExportUrl);
+    const serverOk = !!(MaweBoot.SERVER_CONFIG?.canOtozStickerExport && MaweBoot.SERVER_CONFIG?.otiozStickerExportUrl);
     // title 只写中文原文，i18n 的 translateAttributes 会按当前语言翻译（避免双真源）
     const apply = (ids, disabled, reason) => {
       ids.forEach((id) => {

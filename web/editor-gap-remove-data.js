@@ -71,7 +71,7 @@
 
 
   function getGapRemoveData(create = false) {
-    const source = DATA.gap_remove;
+    const source = MaweBoot.DATA.gap_remove;
     if (!source && !create) {
       normalizedGapRemoveReference = null;
       normalizedGapRemoveCache = null;

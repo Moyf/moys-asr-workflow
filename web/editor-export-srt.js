@@ -15,10 +15,10 @@
 
   function buildSrt() {
     const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-      DATA.segments,
+      MaweBoot.DATA.segments,
       MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     );
-    return window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+    return window.AsrEditorUtils.buildSrtPayload(MaweBoot.DATA.segments, {
       alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
       firstEnabledIndex,
       keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
@@ -45,10 +45,10 @@
       return null;
     }
     const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-      DATA.segments,
+      MaweBoot.DATA.segments,
       MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     );
-    return window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+    return window.AsrEditorUtils.buildSrtPayload(MaweBoot.DATA.segments, {
       alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
       firstEnabledIndex,
       mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
@@ -61,8 +61,8 @@
 
 
   function usedSubtitleColors() {
-    const names = new Set(DATA.segments.filter((segment) => !segment.disabled).map((segment) => (
-      window.AsrEditorUtils.effectiveColorName(segment, DATA.segments) || 'default'
+    const names = new Set(MaweBoot.DATA.segments.filter((segment) => !segment.disabled).map((segment) => (
+      window.AsrEditorUtils.effectiveColorName(segment, MaweBoot.DATA.segments) || 'default'
     )).filter((name) => name === 'default' || MaweColors.COLOR_BY_NAME[name]));
     return [
       ...MaweColors.COLOR_PALETTE.filter((color) => names.has(color.name)),
@@ -97,12 +97,12 @@
       return;
     }
     const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-      DATA.segments,
+      MaweBoot.DATA.segments,
       MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     );
     const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
     const speakerSettings = getSpeakerLabelSettings();
-    const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(DATA.segments, {
+    const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(MaweBoot.DATA.segments, {
       colorName: color.name,
       timeOffset: 0,
       alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
@@ -114,7 +114,7 @@
       ...speakerLabelExportOptions(),
       formatTime: fmtSrtTime,
     });
-    let filenameBase = `${FILENAME_BASE}${gapSuffix}`;
+    let filenameBase = `${MaweBoot.FILENAME_BASE}${gapSuffix}`;
     // 浏览器不允许从一个文件句柄取得其父目录，因此不再请求文件夹权限。
     // 先让用户选择一个 SRT 文件名，并把该名称（不含 .srt）作为所有颜色文件的前缀。
     if (MaweSettings.EDITOR_SETTINGS.exportColorUnified && window.showSaveFilePicker) {
@@ -179,7 +179,7 @@
     const source = Array.isArray(segments) ? segments : [];
     const sourceDurationMs = MaweCoreState.waveformEditor?.durationMs
       || Math.round(Number(MaweCoreState.player?.duration) * 1000)
-      || DATA.waveform?.duration_ms
+      || MaweBoot.DATA.waveform?.duration_ms
       || 0;
     if (!gapRemoved) {
       return { segments: source, durationMs: sourceDurationMs };
@@ -199,7 +199,7 @@
 
 
   function gapRemovedMediaReference() {
-    return String(DATA.media || '').trim();
+    return String(MaweBoot.DATA.media || '').trim();
   }
 
 

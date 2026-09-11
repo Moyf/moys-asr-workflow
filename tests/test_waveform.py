@@ -315,14 +315,15 @@ class EditorAssetTests(unittest.TestCase):
     def test_project_waveform_survives_loading_media(self) -> None:
         editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
         core_state = (ROOT / "web" / "editor-core-state.js").read_text(encoding="utf-8")
+        media_load = (ROOT / "web" / "editor-media-load.js").read_text(encoding="utf-8")
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
         self.assertIn("let waveformLoadedFromProject = false;", core_state)
         self.assertIn(
-            "MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(DATA.waveform",
+            "MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform",
             editor,
         )
-        self.assertIn("const preserveProjectWaveform = MaweCoreState.waveformLoadedFromProject", editor)
-        self.assertIn("if (MaweCoreState.waveformEditor && !preserveProjectWaveform)", editor)
+        self.assertIn("const preserveProjectWaveform = MaweCoreState.waveformLoadedFromProject", media_load)
+        self.assertIn("if (MaweCoreState.waveformEditor && !preserveProjectWaveform)", media_load)
         self.assertIn("getPayload()", waveform)
 
     def test_reapeaks_waveform_is_the_default_shape_source(self) -> None:
@@ -707,7 +708,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', page)
         self.assertIn(
             'function buildJson() {\n'
-            '  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });',
+            '  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
             page,
         )
         self.assertIn('id="help-media-seek-step"', page)
@@ -927,7 +928,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('播放时跳过空隙', page)
         self.assertIn('const DEFAULT_LAYOUT_ROWS = [42, 16, 42];', page)
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", page)
-        self.assertIn('const projectHasStickers = DATA.segments.some(segment => segment.sticker || segment.sticker_ref);', page)
+        self.assertIn('const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref);', page)
         self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', page)
         self.assertIn("DATA.segments.forEach((seg, i) => cueFragment.appendChild(buildCueEl(seg, i)));", page)
         self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", page)

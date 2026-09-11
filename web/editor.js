@@ -1,29 +1,4 @@
-const DATA = __DATA_JSON__;
-let FILENAME_BASE = __FILENAME_BASE_JSON__;
-const STICKERS = __STICKERS_JSON__;
-let STICKER_ROOT = __STICKER_ROOT_JSON__;  // 表情包根目录的绝对路径（无尾斜杠）
-let STICKER_URL_PREFIX = __STICKER_URL_PREFIX_JSON__;
-const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
-const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
-const MAWE_DEBUG_ENABLED = Boolean(
-  SERVER_CONFIG?.debug || new URLSearchParams(window.location.search).has('mawe-debug'),
-);
-function maweDebug(stage, details = {}) {
-  if (MAWE_DEBUG_ENABLED) console.debug(`[MAWE][${stage}]`, details);
-}
-function maweDomContractCheck() {
-  const requiredIds = [
-    'player', 'player-empty', 'cues-container', 'cues-empty', 'filter-over',
-    'hide-disabled-toggle', 'waveform-scroll', 'waveform-content',
-  ];
-  const missing = requiredIds.filter((id) => !document.getElementById(id));
-  if (missing.length) {
-    console.error('[MAWE][boot] editor DOM contract is incomplete', { missing });
-  }
-  maweDebug('boot:dom-contract', { checked: requiredIds.length, missing });
-  return missing;
-}
 window.addEventListener('error', (event) => {
   const details = {
     message: event.message,
@@ -47,7 +22,7 @@ if (!window.AsrEditorUtils) {
 
 const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
-maweDomContractCheck();
+MaweBoot.maweDomContractCheck();
 
 MaweMultiSubtitleCore.normalizeMultiSubtitleState();
 const normalizeTimelineTimebase = EDITOR_SETTINGS_UTILS.normalizeTimelineTimebase;
@@ -160,7 +135,7 @@ function syncTrackTimebase(segments, timebase, { preferFrames = false } = {}) {
   });
 }
 
-function projectTimebase(project = DATA) {
+function projectTimebase(project = MaweBoot.DATA) {
   return normalizeTimelineTimebase(project?.timebase);
 }
 
@@ -174,13 +149,13 @@ function hasExplicitTimelineFps(value) {
   return value.unit === 'frames' || fps !== DEFAULT_TIMELINE_FPS;
 }
 
-function projectMediaVideoFps(project = DATA) {
+function projectMediaVideoFps(project = MaweBoot.DATA) {
   return normalizeMediaMetadata(project?.media_metadata)?.video_fps ?? null;
 }
 
-let timelineFpsManuallySet = hasExplicitTimelineFps(DATA.timebase);
+let timelineFpsManuallySet = hasExplicitTimelineFps(MaweBoot.DATA.timebase);
 
-function syncProjectTimebase(project = DATA, { preferFrames = false } = {}) {
+function syncProjectTimebase(project = MaweBoot.DATA, { preferFrames = false } = {}) {
   if (!project || typeof project !== 'object') return normalizeTimelineTimebase();
   const timebase = projectTimebase(project);
   project.timebase = { ...timebase };
@@ -192,7 +167,7 @@ function syncProjectTimebase(project = DATA, { preferFrames = false } = {}) {
   return timebase;
 }
 
-function syncProjectTimebaseAndBindingOffsets(project = DATA, options = {}) {
+function syncProjectTimebaseAndBindingOffsets(project = MaweBoot.DATA, options = {}) {
   const timebase = syncProjectTimebase(project, options);
   if (project && typeof project === 'object') {
     MULTI_SUBTITLE_UTILS.rebuildBindingOffsets(project.multi_subtitle, project.segments);
@@ -282,7 +257,7 @@ function formatTimelineMilliseconds(ms) {
   return `${String(m).padStart(2, '0')}:${(s - m * 60).toFixed(3).padStart(6, '0')}`;
 }
 
-syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase?.unit === 'frames' });
+syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
 if (MaweHistory.undoBtn) MaweHistory.undoBtn.addEventListener('click', () => MaweHistory.performUndo());
 if (MaweHistory.redoBtn) MaweHistory.redoBtn.addEventListener('click', () => MaweHistory.performRedo());
 MaweHistory.updateUndoRedoButtons();
@@ -410,8 +385,8 @@ MaweDom.multiSubtitleToggle?.addEventListener('change', () => {
   // 用户取消导入也保持开启，之后仍可拖入 SRT 或重新走导入流程。
   if (!confirm(MaweMultiSubtitleCore.MULTI_SUBTITLE_IMPORT_PROMPT)) return;
   MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
-  loadSrtFileInput.value = '';
-  loadSrtFileInput.click();
+  MaweProjectMediaInputs.loadSrtFileInput.value = '';
+  MaweProjectMediaInputs.loadSrtFileInput.click();
 });
 MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
@@ -466,7 +441,7 @@ MaweDom.multiSubtitleShowTrackBadgesToggle?.addEventListener('change', () => {
   MaweCoreState.waveformEditor?.render?.();
 });
 MaweDom.multiSubtitleSwapButton?.addEventListener('click', () => {
-  swapMainAndExtensionSubtitles();
+  MaweMultiImport.swapMainAndExtensionSubtitles();
 });
 MaweDom.multiSubtitleAlignButton?.addEventListener('click', () => {
   alignSelectedExtensionSubtitleRanges();
@@ -1034,9 +1009,9 @@ function timelineMediaSeekStepMilliseconds() {
 }
 
 function timelineHasSubtitleData() {
-  return (Array.isArray(DATA?.segments) && DATA.segments.length > 0)
-    || (Array.isArray(DATA?.multi_subtitle?.tracks)
-      && DATA.multi_subtitle.tracks.some((track) => Array.isArray(track?.segments)
+  return (Array.isArray(MaweBoot.DATA?.segments) && MaweBoot.DATA.segments.length > 0)
+    || (Array.isArray(MaweBoot.DATA?.multi_subtitle?.tracks)
+      && MaweBoot.DATA.multi_subtitle.tracks.some((track) => Array.isArray(track?.segments)
         && track.segments.length > 0));
 }
 
@@ -1159,15 +1134,15 @@ function setTimelineTimebase(patch = {}) {
   }
   if (hasFpsPatch) timelineFpsManuallySet = true;
   // 先按旧时间基准把当前工程的双份时间值同步，再决定新 FPS 下是否保留帧号。
-  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: current.unit === 'frames' });
-  DATA.timebase = { unit: nextUnit, fps: nextFps };
+  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: current.unit === 'frames' });
+  MaweBoot.DATA.timebase = { unit: nextUnit, fps: nextFps };
   // 变更 FPS 时保持媒体中的实际时间位置，再按新 FPS 重算独立帧字段；
   // 否则同一个帧号会因 FPS 改变而把字幕整体提前或推后。
-  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
-  projectImportDirty = true;
+  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+  MaweServerSave.projectImportDirty = true;
   refreshTimelineSettingsUi();
   renderAll({ waveform: 'full' });
-  scheduleAutoSaveFlush();
+  MaweServerSave.scheduleAutoSaveFlush();
   const description = nextUnit === 'frames'
     ? timelineUiText(`已切换到帧时间基准（${nextFps} FPS）`, `Switched to frame timebase (${nextFps} FPS)`)
     : timelineUiText('已切换到毫秒时间基准', 'Switched to millisecond timebase');
@@ -1530,7 +1505,7 @@ function setGapRemoveData(
       payload.gaps,
     );
   }
-  DATA.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(payload);
+  MaweBoot.DATA.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(payload);
   MaweCuePanelState.gapPreviewRange = null;
   if (dirty) MaweHistory.gapRemoveDirty = true;
   updateGapRemoveUi();
@@ -1559,7 +1534,7 @@ function gapRemoveTotalMs(gaps) {
 function gapRemoveMediaDurationMs() {
   const candidates = [
     MaweCoreState.waveformEditor?.durationMs,
-    DATA.waveform?.duration_ms,
+    MaweBoot.DATA.waveform?.duration_ms,
     Number(MaweCoreState.player?.duration) * 1000,
   ];
   const duration = candidates.find((value) => Number.isFinite(Number(value)) && Number(value) > 0);
@@ -1605,14 +1580,14 @@ function renderGapRemoveList() {
 function updateGapRemoveDisableHint() {
   if (!MaweDom.gapRemoveDisableHint) return;
   const matches = window.AsrEditorUtils.findGapRemoveDisableMatches(
-    DATA.segments,
+    MaweBoot.DATA.segments,
     MaweGapRemoveData.getGapRemoveGaps(),
     {
       coveragePercent: MaweGapRemoveData.clampGapRemoveDisableCoverage(MaweDom.gapRemoveDisableCoverage?.value),
       remainingMs: MaweGapRemoveData.clampGapRemoveDisableRemaining(MaweDom.gapRemoveDisableRemaining?.value),
     },
   );
-  const count = matches.filter(({ index }) => !DATA.segments[index]?.disabled).length;
+  const count = matches.filter(({ index }) => !MaweBoot.DATA.segments[index]?.disabled).length;
   MaweDom.gapRemoveDisableHint.textContent = `禁用位于空隙范围内的字幕（当前有 ${count} 条未禁用）`;
 }
 
@@ -1776,13 +1751,13 @@ function commitGapRemoveDisableSettings() {
 function disableSubtitlesInRemovedGaps() {
   const settings = commitGapRemoveDisableSettings();
   const matches = window.AsrEditorUtils.findGapRemoveDisableMatches(
-    DATA.segments,
+    MaweBoot.DATA.segments,
     MaweGapRemoveData.getGapRemoveGaps(),
     settings,
   );
   const targetIndexes = matches
     .map((match) => match.index)
-    .filter((index) => !DATA.segments[index]?.disabled);
+    .filter((index) => !MaweBoot.DATA.segments[index]?.disabled);
   if (!targetIndexes.length) {
     const message = matches.length ? '符合条件的字幕已全部禁用' : '没有符合条件的字幕';
     MaweHint.flashHint(
@@ -2228,12 +2203,12 @@ MaweDom.gapRemoveSkipPlayback?.addEventListener('change', () => {
 function stickerUrl(sticker) {
   if (!sticker) return '';
   if (sticker.rel) {
-    if (STICKER_URL_PREFIX) {
-      const url = `${STICKER_URL_PREFIX.replace(/\/$/, '')}/${sticker.rel.split('/').map(encodeURIComponent).join('/')}`;
+    if (MaweBoot.STICKER_URL_PREFIX) {
+      const url = `${MaweBoot.STICKER_URL_PREFIX.replace(/\/$/, '')}/${sticker.rel.split('/').map(encodeURIComponent).join('/')}`;
       return MaweStickerOverlay.stickerAssetRevision ? `${url}?root=${MaweStickerOverlay.stickerAssetRevision}` : url;
     }
-    if (!STICKER_ROOT) return sticker.rel;
-    let root = STICKER_ROOT;
+    if (!MaweBoot.STICKER_ROOT) return sticker.rel;
+    let root = MaweBoot.STICKER_ROOT;
     if (root.startsWith('file://')) return root.replace(/\/+$/, '') + '/' + sticker.rel;
     let prefix = root.startsWith('/') ? 'file://' : 'file:///';
     return prefix + root.replace(/\/+$/, '') + '/' + sticker.rel;
@@ -2245,11 +2220,11 @@ function stickerUrl(sticker) {
 // 合成表情包文件的操作系统绝对路径（用于导出表情包 OTIO）。
 function stickerAbsPath(sticker) {
   if (!sticker) return '';
-  if (sticker.rel && STICKER_ROOT) {
+  if (sticker.rel && MaweBoot.STICKER_ROOT) {
     // 去掉可能的 file:// 前缀，保留纯 OS 路径
-    let root = STICKER_ROOT.replace(/^file:\/+/, '');
+    let root = MaweBoot.STICKER_ROOT.replace(/^file:\/+/, '');
     // POSIX: 重新加上前导 /
-    if (STICKER_ROOT.startsWith('file:///') && !root.startsWith('/') && !/^[A-Za-z]:/.test(root)) {
+    if (MaweBoot.STICKER_ROOT.startsWith('file:///') && !root.startsWith('/') && !/^[A-Za-z]:/.test(root)) {
       root = '/' + root;
     }
     return root.replace(/\/+$/, '') + '/' + sticker.rel;
@@ -2269,7 +2244,7 @@ let pendingExtensionBinding = null;
 function isHiddenDisabled(idx, track = 'main') {
   const segments = track === 'extension'
     ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
-    : (track?.segments || DATA.segments);
+    : (track?.segments || MaweBoot.DATA.segments);
   return MaweDom.hideDisabled && !!(segments[idx] && segments[idx].disabled);
 }
 
@@ -2324,7 +2299,7 @@ function updateMultiSelectionClasses() {
 }
 
 function addMainIndexToSelection(index) {
-  if (!Number.isInteger(index) || !DATA.segments[index] || isHiddenDisabled(index)) return;
+  if (!Number.isInteger(index) || !MaweBoot.DATA.segments[index] || isHiddenDisabled(index)) return;
   selectedIdxs.add(index);
   const el = MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`);
   if (el) el.classList.add('selected');
@@ -2352,7 +2327,7 @@ function syncBoundSelection(kind, index, track = MaweMultiSubtitleCore.getActive
   const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(index, track);
   if (!binding) return;
   (binding.main_segment_ids || []).forEach((id) => {
-    const mainIndex = DATA.segments.findIndex((segment) => segment?.id === id);
+    const mainIndex = MaweBoot.DATA.segments.findIndex((segment) => segment?.id === id);
     if (mainIndex >= 0) addMainIndexToSelection(mainIndex);
   });
 }
@@ -2506,7 +2481,7 @@ function addExtensionToSelection(index, track = MaweMultiSubtitleCore.getActiveE
 function selectAll() {
   commitCuePanelEdit();
   clearSelection({ silent: true });
-  DATA.segments.forEach((_, idx) => {
+  MaweBoot.DATA.segments.forEach((_, idx) => {
     if (isHiddenDisabled(idx)) return;
     selectedIdxs.add(idx);
     syncBoundSelection('main', idx);
@@ -2522,7 +2497,7 @@ function selectAll() {
   updateMultiSelectionClasses();
   MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-  const last = DATA.segments.length - 1;
+  const last = MaweBoot.DATA.segments.length - 1;
   if (last >= 0 && selectedIdxs.has(last)) {
     setCurrentCuePanelIndex(last);
     return;
@@ -2547,7 +2522,7 @@ function selectAll() {
 // 返回与 idx 同属一个表情包/颜色分组的全部字幕下标（含 idx 自身）。
 // head 持有 sticker/color，成员持 sticker_ref/color_ref 指向 head。
 function groupMemberIdxs(idx) {
-  const seg = DATA.segments[idx];
+  const seg = MaweBoot.DATA.segments[idx];
   if (!seg) return [idx];
   const heads = new Set();
   if (seg.sticker) heads.add(idx);
@@ -2556,7 +2531,7 @@ function groupMemberIdxs(idx) {
   else if (seg.color_ref) heads.add(seg.color_ref.headIdx);
   if (!heads.size) return [idx];
   const members = [];
-  DATA.segments.forEach((s, i) => {
+  MaweBoot.DATA.segments.forEach((s, i) => {
     const sHead = s.sticker ? i : (s.sticker_ref ? s.sticker_ref.headIdx : null);
     const cHead = s.color ? i : (s.color_ref ? s.color_ref.headIdx : null);
     if ((sHead !== null && heads.has(sHead)) || (cHead !== null && heads.has(cHead))) {
@@ -2609,7 +2584,7 @@ function overlappingMainIndexesForExtension(extension) {
   const start = Number(extension?.start);
   const end = Number(extension?.end);
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
-  return DATA.segments.map((main, mainIndex) => ({ main, mainIndex }))
+  return MaweBoot.DATA.segments.map((main, mainIndex) => ({ main, mainIndex }))
     .filter(({ main }) => Number(main?.start) < end && Number(main?.end) > start)
     .map(({ mainIndex }) => mainIndex);
 }
@@ -2622,7 +2597,7 @@ function beginPendingExtensionBinding(index, track = MaweMultiSubtitleCore.getAc
   if (unbound.length) {
     // 有多个候选时仍优先选择时间最早且尚未绑定的主字幕，避免每次绑定都要手动点选。
     const mainIndex = unbound.slice().sort((left, right) => (
-      Number(DATA.segments[left]?.start) - Number(DATA.segments[right]?.start) || left - right
+      Number(MaweBoot.DATA.segments[left]?.start) - Number(MaweBoot.DATA.segments[right]?.start) || left - right
     ))[0];
     selectOnly(mainIndex);
     selectOnlyExtension(index, track, true, true);
@@ -2651,7 +2626,7 @@ function bindSelectedSubtitlePair({ successMessage = null } = {}) {
   const mainIndex = [...selectedIdxs][0];
   const extensionIndex = [...selectedExtensionIdxs][0];
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-  const main = DATA.segments[mainIndex];
+  const main = MaweBoot.DATA.segments[mainIndex];
   const extension = track?.segments?.[extensionIndex];
   if (!main || !extension) return;
   const replacedBinding = MaweMultiSubtitleCore.bindingForMainIndex(mainIndex);
@@ -2675,7 +2650,7 @@ function bindSelectedSubtitlePair({ successMessage = null } = {}) {
 function unbindSelectedSubtitlePair() {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const ids = new Set();
-  selectedIdxs.forEach((index) => { if (DATA.segments[index]?.id) ids.add(DATA.segments[index].id); });
+  selectedIdxs.forEach((index) => { if (MaweBoot.DATA.segments[index]?.id) ids.add(MaweBoot.DATA.segments[index].id); });
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   selectedExtensionIdxs.forEach((index) => { if (track?.segments[index]?.id) ids.add(track.segments[index].id); });
   if (!ids.size) return;
@@ -2793,7 +2768,7 @@ function alignSelectedExtensionSubtitleRanges() {
 function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) {
   // 其它编辑入口仍以毫秒修改工程对象；在重绘前把它们投影回当前时间基准，
   // 保证帧模式下保存的数据和下一次帧操作保持一致。
-  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
+  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
   invalidateCueListVisualAnchorRestore();
   const cueListAnchor = preserveCueListScroll ? captureCueListRenderAnchor() : null;
   MaweStickerOverlay.stickerOverlayDataVersion += 1;
@@ -2806,20 +2781,20 @@ function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) 
   if (dockHandle) MaweCoreState.container.appendChild(dockHandle);
   if (cueListToolbar) MaweCoreState.container.appendChild(cueListToolbar);
   if (emptyState) {
-    emptyState.classList.toggle('hidden', DATA.segments.length > 0);
+    emptyState.classList.toggle('hidden', MaweBoot.DATA.segments.length > 0);
     MaweCoreState.container.appendChild(emptyState);
   }
   const cueFragment = document.createDocumentFragment();
   const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();
   const displayMode = MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both';
   if (!multiVisible || displayMode === 'main') {
-    DATA.segments.forEach((seg, i) => cueFragment.appendChild(buildCueEl(seg, i)));
+    MaweBoot.DATA.segments.forEach((seg, i) => cueFragment.appendChild(buildCueEl(seg, i)));
   } else if (displayMode === 'extension') {
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
     track.segments.forEach((seg, i) => cueFragment.appendChild(buildExtensionCueEl(seg, i, track)));
   } else {
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    const rows = MULTI_SUBTITLE_UTILS.buildMultiDisplayRows(DATA.segments, track.segments, MaweMultiSubtitleCore.getMultiSubtitleState().bindings);
+    const rows = MULTI_SUBTITLE_UTILS.buildMultiDisplayRows(MaweBoot.DATA.segments, track.segments, MaweMultiSubtitleCore.getMultiSubtitleState().bindings);
     rows.forEach((row) => cueFragment.appendChild(buildDualCueEl(row.mainIndex, row.extensionIndex, track)));
   }
   MaweCoreState.container.appendChild(cueFragment);
@@ -2827,7 +2802,7 @@ function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) 
   refreshColorFilterUi();
   MaweDom.totalCountEl.textContent = multiVisible && displayMode === 'extension'
     ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments.length || 0
-    : DATA.segments.length;
+    : MaweBoot.DATA.segments.length;
   // buildCueEl/buildMultiCueColumn 已经按当前搜索词生成了文本；这里仅
   // 计算隐藏状态和数量，避免长工程 renderAll() 再逐行重建一遍文本节点。
   applySearch(MaweDom.searchEl.value, { refreshText: false, preserveCueListScroll: false });
@@ -2907,7 +2882,7 @@ function getCurrentCuePanelTarget() {
       ? { kind: 'extension', index, trackId: track.id, track, segment }
       : null;
   }
-  const segment = DATA.segments[index];
+  const segment = MaweBoot.DATA.segments[index];
   return segment ? { kind: 'main', index, trackId: null, track: null, segment } : null;
 }
 
@@ -2937,7 +2912,7 @@ function setCuePanelTarget(kind, index, trackId = null) {
     } else {
       nextTrackId = track.id;
     }
-  } else if (!DATA.segments[nextIndex]) {
+  } else if (!MaweBoot.DATA.segments[nextIndex]) {
     nextIndex = -1;
   }
   if (
@@ -2978,7 +2953,7 @@ function commitCuePanelEdit() {
   const target = getCurrentCuePanelTarget();
   const seg = target?.segment;
   if (!target || !seg) { MaweCuePanelState.resetCuePanelEditState(); return false; }
-  const segments = target.kind === 'extension' ? target.track.segments : DATA.segments;
+  const segments = target.kind === 'extension' ? target.track.segments : MaweBoot.DATA.segments;
   const idx = target.index;
   const nextText = MaweDom.cuePanelText.value.replace(/\r\n?/g, '\n');
   const oldStart = seg.start;
@@ -3049,7 +3024,7 @@ function commitCuePanelEdit() {
   }
   MaweMultiSubtitleCore.syncBindingOffsets();
   MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  scheduleAutoSaveFlush();
+  MaweServerSave.scheduleAutoSaveFlush();
   MaweCuePanelState.resetCuePanelEditState();
   renderAll();
   MawePlaybackLoop.updateWithoutCueListAutoScroll();
@@ -3121,7 +3096,7 @@ function renderCurrentCuePanel() {
     MaweDom.cuePanelSticker.textContent = window.MAWE_I18N?.translateText?.('暂无表情包') || '暂无表情包';
     MaweDom.cuePanelSticker.title = window.MAWE_I18N?.translateText?.('点击添加表情包') || '点击添加表情包';
   }
-  const segments = target.kind === 'extension' ? target.track.segments : DATA.segments;
+  const segments = target.kind === 'extension' ? target.track.segments : MaweBoot.DATA.segments;
   const previous = window.AsrEditorUtils.findAdjacentCueIndex(segments, idx, -1, MaweDom.hideDisabled);
   const next = window.AsrEditorUtils.findAdjacentCueIndex(segments, idx, 1, MaweDom.hideDisabled);
   MaweDom.cuePanelPrev.disabled = previous < 0;
@@ -3238,13 +3213,13 @@ function navigateCuePanel(direction) {
   if (!target) return;
   commitCuePanelEdit();
   const next = window.AsrEditorUtils.findAdjacentCueIndex(
-    target.kind === 'extension' ? target.track.segments : DATA.segments,
+    target.kind === 'extension' ? target.track.segments : MaweBoot.DATA.segments,
     target.index,
     direction,
     MaweDom.hideDisabled,
   );
   if (next < 0) return;
-  const segments = target.kind === 'extension' ? target.track.segments : DATA.segments;
+  const segments = target.kind === 'extension' ? target.track.segments : MaweBoot.DATA.segments;
   if (target.kind === 'extension') {
     selectOnlyExtension(next);
     lastClickedExtensionIdx = next;
@@ -3320,7 +3295,7 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
   seg.text = MaweDom.cuePanelText.value.replace(/\r\n?/g, '\n');
   seg._dirty = true;
   if (target.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  scheduleAutoSaveFlush();
+  MaweServerSave.scheduleAutoSaveFlush();
   const splitMode = target.kind === 'extension'
     ? MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(target.track, seg)
     : MaweMultiSubtitleCore.getMainSubtitleSplitMode(seg);
@@ -3565,7 +3540,7 @@ function buildExtensionCueEl(seg, idx, track) {
 }
 
 function buildDualCueEl(mainIndex, extensionIndex, track) {
-  const main = mainIndex == null ? null : DATA.segments[mainIndex];
+  const main = mainIndex == null ? null : MaweBoot.DATA.segments[mainIndex];
   const extension = extensionIndex == null ? null : track.segments[extensionIndex];
   const el = document.createElement('div');
   el.className = 'cue multi-cue multi-dual-cue';
@@ -3698,7 +3673,7 @@ function temporaryVisibleSplitCueKeysForElement(element) {
     : (element.dataset.idx != null ? Number(element.dataset.idx) : -1);
   const extensionIndex = element.dataset.extIdx != null ? Number(element.dataset.extIdx) : -1;
   if (Number.isInteger(mainIndex) && mainIndex >= 0) {
-    const key = splitCueVisibilityKey('main', DATA.segments[mainIndex]);
+    const key = splitCueVisibilityKey('main', MaweBoot.DATA.segments[mainIndex]);
     if (key) keys.push(key);
   }
   const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
@@ -3741,7 +3716,7 @@ function releaseTemporaryVisibleSplitCuesUnless(kind, index, track = null) {
   if (!temporaryVisibleSplitCueKeys.size) return;
   const segments = kind === 'extension'
     ? (track?.segments || MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
-    : DATA.segments;
+    : MaweBoot.DATA.segments;
   const segment = segments[index];
   const key = splitCueVisibilityKey(kind, segment, kind === 'extension' ? track?.id : null);
   if (key && temporaryVisibleSplitCueKeys.has(key)) return;
@@ -3757,7 +3732,7 @@ function refreshAllCharCounts() {
     const cntEl = el.querySelector('.charcount');
     const segment = Number.isInteger(extensionIdx) && extensionTrack
       ? extensionTrack.segments[extensionIdx]
-      : (Number.isInteger(idx) ? DATA.segments[idx] : null);
+      : (Number.isInteger(idx) ? MaweBoot.DATA.segments[idx] : null);
     const mode = Number.isInteger(extensionIdx) && extensionTrack
       ? MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(extensionTrack, segment)
       : MaweMultiSubtitleCore.getMainSubtitleSplitMode(segment);
@@ -3777,7 +3752,7 @@ let colorFilterUsageCache = new Map();
 
 function effectiveCueColorKey(mainSeg) {
   if (!mainSeg) return COLOR_FILTER_DEFAULT_KEY;
-  return MULTI_SUBTITLE_UTILS.effectiveColorName(mainSeg, DATA.segments) || COLOR_FILTER_DEFAULT_KEY;
+  return MULTI_SUBTITLE_UTILS.effectiveColorName(mainSeg, MaweBoot.DATA.segments) || COLOR_FILTER_DEFAULT_KEY;
 }
 
 // 双列 / 仅副轨显示模式下，列表行不携带颜色条：按钮隐藏且过滤暂停生效，
@@ -3789,7 +3764,7 @@ function colorFilterSuspended() {
 
 function collectProjectColorUsage() {
   const counts = new Map();
-  DATA.segments.forEach((seg) => {
+  MaweBoot.DATA.segments.forEach((seg) => {
     const key = effectiveCueColorKey(seg);
     counts.set(key, (counts.get(key) || 0) + 1);
   });
@@ -3859,7 +3834,7 @@ function selectAllFilteredCues() {
   }
   commitCuePanelEdit();
   clearSelection({ silent: true });
-  DATA.segments.forEach((seg, idx) => {
+  MaweBoot.DATA.segments.forEach((seg, idx) => {
     if (isHiddenDisabled(idx)) return;
     if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
     selectedIdxs.add(idx);
@@ -3930,7 +3905,7 @@ function refreshCueColorRows() {
       ? Number(el.dataset.idx)
       : (el.dataset.mainIdx != null ? Number(el.dataset.mainIdx) : -1);
     const segment = Number.isInteger(mainIndex) && mainIndex >= 0
-      ? DATA.segments[mainIndex]
+      ? MaweBoot.DATA.segments[mainIndex]
       : null;
     if (segment) updateCueColorPresentation(el, colorBar, segment);
   });
@@ -3945,7 +3920,7 @@ function refreshCueStickerRows() {
     const index = Number(isExtension ? el.dataset.extIdx : (el.dataset.idx ?? el.dataset.mainIdx));
     const segment = isExtension
       ? (Number.isInteger(index) ? extensionTrack?.segments?.[index] : null)
-      : (Number.isInteger(index) && index >= 0 ? DATA.segments[index] : null);
+      : (Number.isInteger(index) && index >= 0 ? MaweBoot.DATA.segments[index] : null);
     if (segment) {
       updateCueStickerPresentation(el, slotEl, segment, index, {
         extensionTrack: isExtension ? extensionTrack : null,
@@ -3958,7 +3933,7 @@ function refreshStickerAssignmentUi() {
   // 表情包分配只改变行内槽位和预览素材，不改变字幕行的数量、顺序或时间；
   // 原地更新可以避免 renderAll() 替换列表节点后产生滚动闪烁。
   refreshCueStickerRows();
-  const projectHasStickers = DATA.segments.some((segment) => segment.sticker || segment.sticker_ref);
+  const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref);
   MaweCoreState.container.classList.toggle('hide-cue-sticker',
     !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
   );
@@ -4005,7 +3980,7 @@ function positionColorFilterMenu() {
   colorFilterMenu.style.left = `${left}px`;
   colorFilterMenu.style.top = `${top}px`;
 }
-bindToolbarExportDropdown(
+MaweExportMenus.bindToolbarExportDropdown(
   'color-filter-dropdown', 'color-filter-btn', 'color-filter-menu',
   positionColorFilterMenu,
 );
@@ -4027,7 +4002,7 @@ function applySearch(query, { refreshText = true, preserveCueListScroll = true }
         ? Number(el.dataset.mainIdx)
         : (el.dataset.idx != null ? Number(el.dataset.idx) : -1);
       const extIdx = el.dataset.extIdx != null ? Number(el.dataset.extIdx) : -1;
-      const mainSeg = Number.isInteger(mainIdx) && mainIdx >= 0 ? DATA.segments[mainIdx] : null;
+      const mainSeg = Number.isInteger(mainIdx) && mainIdx >= 0 ? MaweBoot.DATA.segments[mainIdx] : null;
       const extensionSeg = Number.isInteger(extIdx) && extIdx >= 0 && extensionTrack
         ? extensionTrack.segments[extIdx] : null;
       const searchableText = [mainSeg?.text, extensionSeg?.text].filter(Boolean).join('\n');
@@ -4159,7 +4134,7 @@ function finishExtensionEdit(save) {
       segment.text = nextText;
       segment._dirty = true;
       MaweMultiSubtitleCore.markMultiSubtitleDirty();
-      scheduleAutoSaveFlush();
+      MaweServerSave.scheduleAutoSaveFlush();
     }
   }
   if (segment) {
@@ -4256,7 +4231,7 @@ function startEdit(el, idx, clickX, clickY, { deferCaret = false } = {}) {
   hideCueSplitPreview();
   const textEl = el.querySelector('.text');
   if (!textEl) return;
-  const seg = DATA.segments[idx];
+  const seg = MaweBoot.DATA.segments[idx];
   let caretCharOffset = null;
   if (typeof clickX === 'number' && typeof clickY === 'number') {
     caretCharOffset = caretCharFromPoint(textEl, clickX, clickY);
@@ -4345,16 +4320,16 @@ function finishEdit(save) {
     const newText = textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
     if (newText !== original) {
       MaweHistory.pushUndo('编辑文本');
-      DATA.segments[idx].text = newText;
-      DATA.segments[idx]._dirty = true;
+      MaweBoot.DATA.segments[idx].text = newText;
+      MaweBoot.DATA.segments[idx]._dirty = true;
       el.classList.add('dirty');
-      scheduleAutoSaveFlush();
+      MaweServerSave.scheduleAutoSaveFlush();
     }
   }
-  setTextHtml(textEl, DATA.segments[idx].text, MaweDom.searchEl.value);
+  setTextHtml(textEl, MaweBoot.DATA.segments[idx].text, MaweDom.searchEl.value);
   const cntEl = el.querySelector('.charcount');
   if (cntEl) applyCharCount(
-    cntEl, DATA.segments[idx].text, MaweMultiSubtitleCore.getMainSubtitleSplitMode(DATA.segments[idx]),
+    cntEl, MaweBoot.DATA.segments[idx].text, MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[idx]),
   );
   MaweCoreState.waveformEditor?.refreshCueLabel(idx);
   syncCuePanelAfterInlineEdit('main', idx);
@@ -4703,7 +4678,7 @@ function buildSplitPair(
 }
 
  function linkedSplitState(mainIndex, initial = {}) {
-  const main = DATA.segments[mainIndex];
+  const main = MaweBoot.DATA.segments[mainIndex];
   const binding = MaweMultiSubtitleCore.bindingForMainIndex(mainIndex);
   const track = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.track_id) : null;
   const extension = binding ? MaweMultiSubtitleCore.extensionSegmentById(binding.extension_segment_ids?.[0], track) : null;
@@ -4772,7 +4747,7 @@ function buildSplitPair(
 }
 
 function mainWaveformSplitState(mainIndex, initial = {}) {
-  const main = DATA.segments[mainIndex];
+  const main = MaweBoot.DATA.segments[mainIndex];
   if (!main) return null;
   const mainMode = MaweMultiSubtitleCore.getMainSubtitleSplitMode(main);
   const hasMainWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
@@ -4860,7 +4835,7 @@ function splitLaneKeyboardInteractive(state, lane) {
 }
 
 function splitLaneSegment(state, lane) {
-  if (lane === 'main') return state?.mainIndex >= 0 ? DATA.segments[state.mainIndex] : null;
+  if (lane === 'main') return state?.mainIndex >= 0 ? MaweBoot.DATA.segments[state.mainIndex] : null;
   return MaweMultiSubtitleCore.extensionSegmentById(state?.extensionId, MaweMultiSubtitleCore.getExtensionTrack(state?.trackId));
 }
 
@@ -5086,7 +5061,7 @@ function updateSplitLaneVisual(state, lane) {
 function renderSplitLane(state, lane) {
   const { laneEl, textEl } = splitLaneElements(lane);
   if (!laneEl || !textEl) return;
-  const main = DATA.segments[state?.mainIndex];
+  const main = MaweBoot.DATA.segments[state?.mainIndex];
   const track = MaweMultiSubtitleCore.getExtensionTrack(state?.trackId);
   const extension = MaweMultiSubtitleCore.extensionSegmentById(state?.extensionId, track);
   const isMain = lane === 'main';
@@ -5348,7 +5323,7 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
   const state = pendingLinkedSplit;
   if (!state) return false;
   const track = MaweMultiSubtitleCore.getExtensionTrack(state.trackId);
-  const main = state.mainIndex >= 0 ? DATA.segments[state.mainIndex] : null;
+  const main = state.mainIndex >= 0 ? MaweBoot.DATA.segments[state.mainIndex] : null;
   const extension = MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track);
   const mainOnly = state.kind === 'main';
   const extensionOnly = state.kind === 'extension';
@@ -5510,7 +5485,7 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
   // 再为“拆分”建立快照，确保一次撤销能回到拆分前的完整字幕状态。
   commitCuePanelEdit();
   const mainIndex = state.mainIndex;
-  const main = DATA.segments[mainIndex];
+  const main = MaweBoot.DATA.segments[mainIndex];
   if (!main) return false;
   const splitMs = force
     ? forceSplitCutForSegments([main], state.cutMs)
@@ -5536,9 +5511,9 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
   MaweHistory.pushUndo('拆分字幕', { captureView: true });
   clearSelection({ commitCuePanel: false });
   MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], []);
-  DATA.segments.splice(mainIndex, 1, pair.left, pair.right);
-  for (let index = mainIndex + 2; index < DATA.segments.length; index++) {
-    const segment = DATA.segments[index];
+  MaweBoot.DATA.segments.splice(mainIndex, 1, pair.left, pair.right);
+  for (let index = mainIndex + 2; index < MaweBoot.DATA.segments.length; index++) {
+    const segment = MaweBoot.DATA.segments[index];
     if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
     if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
   }
@@ -5567,7 +5542,7 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
 
 // 降级路径：副轨无法形成合法拆分时，只拆主轨并解除与副字幕的绑定。
 function commitLinkedSplitMainOnly(state) {
-  const main = DATA.segments[state.mainIndex];
+  const main = MaweBoot.DATA.segments[state.mainIndex];
   if (!main) return false;
   let force = false;
   if (!state.mainTimingValid) {
@@ -5695,7 +5670,7 @@ function confirmLinkedSplit() {
   const track = MaweMultiSubtitleCore.getExtensionTrack(state.trackId);
   const mainIndex = state.mainIndex;
   const extensionIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
-  const main = DATA.segments[mainIndex];
+  const main = MaweBoot.DATA.segments[mainIndex];
   const extension = track?.segments?.[extensionIndex];
   const sharedCutMs = Number(state.cutMs);
   if (!Number.isFinite(sharedCutMs)
@@ -5731,11 +5706,11 @@ function confirmLinkedSplit() {
   const oldExtensionId = extension.id;
   MaweHistory.pushUndo('联动拆分字幕', { captureView: true });
   MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], [oldExtensionId]);
-  DATA.segments.splice(mainIndex, 1, mainPair.left, mainPair.right);
+  MaweBoot.DATA.segments.splice(mainIndex, 1, mainPair.left, mainPair.right);
   if (track) track.segments.splice(extensionIndex, 1, extensionPair.left, extensionPair.right);
   // 主轨数组增加了一项，沿用原有表情包/颜色 headIdx 维护规则。
-  for (let index = mainIndex + 2; index < DATA.segments.length; index++) {
-    const segment = DATA.segments[index];
+  for (let index = mainIndex + 2; index < MaweBoot.DATA.segments.length; index++) {
+    const segment = MaweBoot.DATA.segments[index];
     if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
     if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
   }
@@ -5800,7 +5775,7 @@ function splitAtCursor(
   const ninjaFeedbackPoint = feedbackPoint || MaweNinja.ninjaSplitPointFromRange(
     range, textEl, cursorOffset, fullText.length,
   );
-  const seg = DATA.segments[idx];
+  const seg = MaweBoot.DATA.segments[idx];
 
   if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
     finishEdit(false);
@@ -5955,14 +5930,14 @@ function splitAtCursor(
   // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
   // 只移除这条关系，保留隐藏的副字幕供用户重新绑定。
   MaweMultiSubtitleCore.removeBindingsForSegmentIds([seg.id], []);
-  DATA.segments.splice(idx, 1, leftSeg, rightSeg);
+  MaweBoot.DATA.segments.splice(idx, 1, leftSeg, rightSeg);
 
   // 修正所有 *_ref.headIdx：在 idx 之后的引用都右移 1
   // 但 leftSeg 在 idx 位置仍是 head（如果它有 sticker/color），rightSeg 的 ref.headIdx=idx 正好对应 leftSeg
-  for (let i = idx + 2; i < DATA.segments.length; i++) {
-    const sref = DATA.segments[i].sticker_ref;
+  for (let i = idx + 2; i < MaweBoot.DATA.segments.length; i++) {
+    const sref = MaweBoot.DATA.segments[i].sticker_ref;
     if (sref && sref.headIdx > idx) sref.headIdx += 1;
-    const cref = DATA.segments[i].color_ref;
+    const cref = MaweBoot.DATA.segments[i].color_ref;
     if (cref && cref.headIdx > idx) cref.headIdx += 1;
   }
 
@@ -6060,7 +6035,7 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
   const listCaretInfo = Number.isFinite(waveformTimeMs)
     ? null : caretInfoFromPoint(el.querySelector('.text'), x, y);
   if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
-    notifyMainSplitTimestampFallback(DATA.segments[idx]);
+    notifyMainSplitTimestampFallback(MaweBoot.DATA.segments[idx]);
     const initial = Number.isFinite(waveformTimeMs)
       ? { timeMs: waveformTimeMs }
       : Number.isFinite(listCaretInfo?.offset)
@@ -6078,12 +6053,12 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
     return false;
   }
   if (Number.isFinite(waveformTimeMs)) {
-    if (!shouldUseMainSplitTimestamps(DATA.segments[idx])) {
-      notifyMainSplitTimestampFallback(DATA.segments[idx]);
+    if (!shouldUseMainSplitTimestamps(MaweBoot.DATA.segments[idx])) {
+      notifyMainSplitTimestampFallback(MaweBoot.DATA.segments[idx]);
       openMainWaveformSplitModal(idx, waveformTimeMs);
       return false;
     }
-    const segment = DATA.segments[idx];
+    const segment = MaweBoot.DATA.segments[idx];
     const cursorOffset = splitOffsetNearTime(
       segment,
       waveformTimeMs,
@@ -6119,7 +6094,7 @@ function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
 // 把 DATA.segments 中连续下标 sorted 合并为一条，并维护 group 引用与组时间范围。
 // 不做参数校验、撤销与渲染，由调用方负责（mergeSegments / autoMergeSegments 共用）。
 function mergeContiguousIndices(sorted) {
-  const segs = sorted.map(i => DATA.segments[i]);
+  const segs = sorted.map(i => MaweBoot.DATA.segments[i]);
   const mergeStart = segs[0]?.start;
   const mergeEnd = segs[segs.length - 1]?.end;
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
@@ -6147,10 +6122,10 @@ function mergeContiguousIndices(sorted) {
   const extensionMergeSegments = extensionMergeIndices.map((index) => extensionTrack.segments[index]);
   const oldExtensionIds = extensionMergeSegments.map((segment) => segment.id).filter(Boolean);
   const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
-    DATA.segments, sorted, 'sticker', 'sticker_ref',
+    MaweBoot.DATA.segments, sorted, 'sticker', 'sticker_ref',
   );
   const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
-    DATA.segments, sorted, 'color', 'color_ref',
+    MaweBoot.DATA.segments, sorted, 'color', 'color_ref',
   );
   const commonSpeaker = segs[0].speaker != null
     && segs.every((segment) => segment.speaker === segs[0].speaker)
@@ -6158,7 +6133,7 @@ function mergeContiguousIndices(sorted) {
     : null;
   const merged = {
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
-      DATA.segments, `${segs[0].id || 'main'}-merged`, 'main',
+      MaweBoot.DATA.segments, `${segs[0].id || 'main'}-merged`, 'main',
     ),
     start: segs[0].start,
     end: segs[segs.length - 1].end,
@@ -6210,7 +6185,7 @@ function mergeContiguousIndices(sorted) {
     splitGroupsAtCutPoints(mergeSet, 'color', 'color_ref');
   }
 
-  DATA.segments.splice(sorted[0], sorted.length, merged);
+  MaweBoot.DATA.segments.splice(sorted[0], sorted.length, merged);
   if (extensionTrack && extensionMergeIndices.length) {
     for (let i = extensionMergeIndices.length - 1; i >= 0; i--) {
       extensionTrack.segments.splice(extensionMergeIndices[i], 1);
@@ -6241,7 +6216,7 @@ function mergeContiguousIndices(sorted) {
       ref.headIdx -= removedCount;
     }
   }
-  DATA.segments.forEach((segment) => {
+  MaweBoot.DATA.segments.forEach((segment) => {
     remapRef(segment.sticker_ref);
     remapRef(segment.color_ref);
   });
@@ -6363,7 +6338,7 @@ function extendSubtitleRanges() {
   const indices = hasSelection ? [...selectedIdxs] : [];
   if (editingState) finishEdit(false);
   commitCuePanelEdit();
-  const plan = window.AsrEditorUtils.planSubtitleExtension(DATA.segments, indices, {
+  const plan = window.AsrEditorUtils.planSubtitleExtension(MaweBoot.DATA.segments, indices, {
     forwardMs,
     backwardMs,
     durationMs: MaweMultiSubtitleCore.getSubtitleTimelineDuration(),
@@ -6373,7 +6348,7 @@ function extendSubtitleRanges() {
     let linkedChanged = false;
     const changedSegments = [];
     plan.changes.forEach((change) => {
-      const segment = DATA.segments[change.index];
+      const segment = MaweBoot.DATA.segments[change.index];
       if (!segment || !change.changed) return;
       const syncPatch = { oldStart: segment.start, oldEnd: segment.end, mode: 'range' };
       // 这里的 items 绝对时间码保持原样，延长只改变字幕段的外壳范围。
@@ -6387,7 +6362,7 @@ function extendSubtitleRanges() {
     syncTimelineGroupRanges();
     if (linkedChanged || MaweMultiSubtitleCore.multiSubtitleVisible()) MaweMultiSubtitleCore.markMultiSubtitleDirty();
     MaweMultiSubtitleCore.syncBindingOffsets();
-    scheduleAutoSaveFlush();
+    MaweServerSave.scheduleAutoSaveFlush();
     renderAll();
     MawePlaybackLoop.updateWithoutCueListAutoScroll();
   }
@@ -6419,7 +6394,7 @@ function syncAutoMergeAbsorbFields() {
 // 一键处理整段工程：相邻间隔不超过 autoMergeGapMs 时按吸附方向拼接；
 // 过短的字幕（中文 < N 字 / 英文 < N 词）按吸收方向并入相邻字幕。
 function autoMergeSegments() {
-  const plan = window.AsrEditorUtils.planAutoMerge(DATA.segments, {
+  const plan = window.AsrEditorUtils.planAutoMerge(MaweBoot.DATA.segments, {
     gapMs: MaweSettings.EDITOR_SETTINGS.autoMergeGapMs,
     snapDirection: MaweSettings.EDITOR_SETTINGS.autoMergeSnapDirection,
     absorbShort: MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbShort,
@@ -6455,11 +6430,11 @@ function applyAutoMergeSnapsWithBindings(snaps) {
   let changed = 0;
   let linkedChanged = false;
   (Array.isArray(snaps) ? snaps : []).forEach((snap) => {
-    const segment = DATA.segments[snap?.index];
+    const segment = MaweBoot.DATA.segments[snap?.index];
     if (!segment || !Number.isFinite(snap?.time)) return;
     const oldStart = segment.start;
     const oldEnd = segment.end;
-    const snapChanged = window.AsrEditorUtils.applyAutoMergeSnaps(DATA.segments, [snap]);
+    const snapChanged = window.AsrEditorUtils.applyAutoMergeSnaps(MaweBoot.DATA.segments, [snap]);
     if (!snapChanged) return;
     changed += snapChanged;
     linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(segment, {
@@ -6489,7 +6464,7 @@ function splitGroupsAtCutPoints(cutSet, headField, refField) {
   }
   // 1) 收集所有原始 group：headIdx → [members 升序]
   const groups = new Map();
-  DATA.segments.forEach((s, i) => {
+  MaweBoot.DATA.segments.forEach((s, i) => {
     const g = groupHeadOf(s, i);
     if (g < 0) return;
     if (!groups.has(g)) groups.set(g, []);
@@ -6510,7 +6485,7 @@ function splitGroupsAtCutPoints(cutSet, headField, refField) {
     if (cur.length) sub.push(cur);
 
     // 拿原 head 数据作为新 head 的模板（深拷贝）
-    const oldHead = DATA.segments[oldHeadIdx];
+    const oldHead = MaweBoot.DATA.segments[oldHeadIdx];
     const template = oldHead ? oldHead[headField] : null;
     if (!template) continue;
 
@@ -6518,8 +6493,8 @@ function splitGroupsAtCutPoints(cutSet, headField, refField) {
       if (!segIdxs.length) return;
       const segHeadIdx = segIdxs[0];
       const segLastIdx = segIdxs[segIdxs.length - 1];
-      const newStart = DATA.segments[segHeadIdx].start;
-      const newEnd = DATA.segments[segLastIdx].end;
+      const newStart = MaweBoot.DATA.segments[segHeadIdx].start;
+      const newEnd = MaweBoot.DATA.segments[segLastIdx].end;
 
       if (segNo === 0 && segHeadIdx === oldHeadIdx) {
         // 原 head 还活着且未被切除 → 仅修正其时间范围
@@ -6532,11 +6507,11 @@ function splitGroupsAtCutPoints(cutSet, headField, refField) {
         const promoted = JSON.parse(JSON.stringify(template));
         promoted.start = newStart;
         promoted.end = newEnd;
-        DATA.segments[segHeadIdx][headField] = promoted;
-        DATA.segments[segHeadIdx][refField] = null;
+        MaweBoot.DATA.segments[segHeadIdx][headField] = promoted;
+        MaweBoot.DATA.segments[segHeadIdx][refField] = null;
         // 段内其余 ref 改指向新 head
         for (let k = 1; k < segIdxs.length; k++) {
-          const refSeg = DATA.segments[segIdxs[k]];
+          const refSeg = MaweBoot.DATA.segments[segIdxs[k]];
           if (refSeg[refField]) {
             refSeg[refField].headIdx = segHeadIdx;
           }
@@ -6547,7 +6522,7 @@ function splitGroupsAtCutPoints(cutSet, headField, refField) {
 
   // 把切点位置的 head/ref 字段全部清空（调用方期望的副作用）
   cutSet.forEach(i => {
-    const s = DATA.segments[i];
+    const s = MaweBoot.DATA.segments[i];
     if (!s) return;
     if (s[headField]) s[headField] = null;
     if (s[refField])  s[refField]  = null;
@@ -6567,7 +6542,7 @@ function splitGroupsAtCutPoints(cutSet, headField, refField) {
 function deleteSegments(idxs) {
   if (!idxs.length) return;
   const sorted = [...new Set(idxs)].sort((a, b) => a - b);
-  if (sorted.length === DATA.segments.length) {
+  if (sorted.length === MaweBoot.DATA.segments.length) {
     MaweHint.flashHint('不能删除全部字幕', 'warning');
     return;
   }
@@ -6582,7 +6557,7 @@ function deleteSegments(idxs) {
   MaweCuePanelState.resetCuePanelEditState();
   MaweHistory.pushUndo(`删除 ${sorted.length} 条字幕`);
   const pairedExtensionIndices = new Set();
-  const pairedMainIds = sorted.map((index) => DATA.segments[index]?.id).filter(Boolean);
+  const pairedMainIds = sorted.map((index) => MaweBoot.DATA.segments[index]?.id).filter(Boolean);
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const extensionTrack = MaweMultiSubtitleCore.multiSubtitleVisible() ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
   (multi.bindings || []).forEach((binding) => {
@@ -6605,7 +6580,7 @@ function deleteSegments(idxs) {
   splitGroupsAtCutPoints(removeSet, 'color',   'color_ref');
 
   // ---- 兜底：清"指向被删 idx 但没被规划"的残余 ref（理论上 splitGroups 已处理）----
-  DATA.segments.forEach((s, i) => {
+  MaweBoot.DATA.segments.forEach((s, i) => {
     if (removeSet.has(i)) return;
     if (s.sticker_ref && removeSet.has(s.sticker_ref.headIdx)) {
       s.sticker_ref = null;
@@ -6617,7 +6592,7 @@ function deleteSegments(idxs) {
 
   // ---- 倒序 splice 实际删除 ----
   for (let i = sorted.length - 1; i >= 0; i--) {
-    DATA.segments.splice(sorted[i], 1);
+    MaweBoot.DATA.segments.splice(sorted[i], 1);
   }
 
   // ---- 修正剩余 *_ref.headIdx：减去"前面被删的数量"----
@@ -6626,7 +6601,7 @@ function deleteSegments(idxs) {
     for (const r of sorted) { if (r < ref.headIdx) shift++; else break; }
     if (shift) ref.headIdx -= shift;
   }
-  DATA.segments.forEach(s => {
+  MaweBoot.DATA.segments.forEach(s => {
     if (s.sticker_ref) shiftHeadIdx(s.sticker_ref);
     if (s.color_ref)   shiftHeadIdx(s.color_ref);
   });
@@ -6668,7 +6643,7 @@ function deleteExtensionSegments(indices, track = MaweMultiSubtitleCore.getActiv
     );
     if (!binding) return;
     const mainId = binding.main_segment_ids?.[0];
-    const mainIndex = DATA.segments.findIndex((segment) => segment.id === mainId);
+    const mainIndex = MaweBoot.DATA.segments.findIndex((segment) => segment.id === mainId);
     if (mainIndex >= 0) pairedMainIndices.add(mainIndex);
     unboundIds.delete(id);
   });
@@ -6750,7 +6725,7 @@ function captureCueListRenderAnchor() {
   const mainIndex = cueEl.dataset.mainIdx ?? cueEl.dataset.idx;
   if (mainIndex !== undefined) {
     const index = Number(mainIndex);
-    const segment = Number.isInteger(index) ? DATA.segments[index] : null;
+    const segment = Number.isInteger(index) ? MaweBoot.DATA.segments[index] : null;
     return {
       ...visual,
       scrollTop: MaweCoreState.container.scrollTop,
@@ -6785,7 +6760,7 @@ function findCueListRenderAnchor(anchor) {
   }
 
   const index = anchor.segmentId
-    ? DATA.segments.findIndex((segment) => segment?.id === anchor.segmentId)
+    ? MaweBoot.DATA.segments.findIndex((segment) => segment?.id === anchor.segmentId)
     : anchor.index;
   if (!Number.isInteger(index) || index < 0) return null;
   return MaweCoreState.container.querySelector(`:scope > .cue[data-idx="${index}"]`);
@@ -6947,7 +6922,7 @@ function scheduleCueSplitPreview(idx, clientX, clientY, kind = 'main', trackId =
           + `.multi-extension-cue[data-ext-idx="${request.idx}"]`,
       )
       : MaweCoreState.container.querySelector(`.cue[data-idx="${request.idx}"]`);
-    const segment = isExtension ? track?.segments?.[request.idx] : DATA.segments[request.idx];
+    const segment = isExtension ? track?.segments?.[request.idx] : MaweBoot.DATA.segments[request.idx];
     const textEl = cue?.querySelector('.text');
     const text = String(segment?.text || '');
     if (!cue || !segment || !textEl || text.length < 2 || segment.end - segment.start < 200) {
@@ -7013,7 +6988,7 @@ function getPointerBoundaryEditTarget(context) {
   if (!mainIndices.length && !extensionIndices.length) {
     const extension = context.track === 'extension' && MaweMultiSubtitleCore.multiSubtitleVisible();
     const track = extension ? MaweMultiSubtitleCore.getExtensionTrack(context.trackId) : null;
-    const segments = extension ? track?.segments : DATA.segments;
+    const segments = extension ? track?.segments : MaweBoot.DATA.segments;
     const index = findWaveformCueAtTime(context.timeMs, segments);
     if (index < 0 || !segments?.[index]) return null;
     return {
@@ -7045,7 +7020,7 @@ function getPointerBoundaryEditTarget(context) {
   if (extensionIndices.length !== 1 || extensionIndices[0] !== panelTarget.index) return null;
   const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(panelTarget.index, panelTarget.track);
   const boundMainIndices = (binding?.main_segment_ids || [])
-    .map((id) => DATA.segments.findIndex((segment) => segment?.id === id))
+    .map((id) => MaweBoot.DATA.segments.findIndex((segment) => segment?.id === id))
     .filter((index) => index >= 0);
   const mainMatchesBinding = mainIndices.length === 0
     || (boundMainIndices.length === 1
@@ -7210,14 +7185,14 @@ function bindCueEvents(el, idx) {
     if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll) {
       scrollCueToCenter(el);
     }
-    MaweCoreState.waveformEditor?.revealTime(DATA.segments[idx].start, true);
+    MaweCoreState.waveformEditor?.revealTime(MaweBoot.DATA.segments[idx].start, true);
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') {
       // 默认只跳转不改动播放状态；“选中并跳转（自动播放）”会在暂停时启动播放。
       const previousSuppress = MawePlaybackLoop.suppressCueListAutoScroll;
       MawePlaybackLoop.suppressCueListAutoScroll = state?.preserveListScroll
         ? true : !MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick;
       try {
-        seekFromWaveform(DATA.segments[idx].start / 1000);
+        seekFromWaveform(MaweBoot.DATA.segments[idx].start / 1000);
       } finally {
         MawePlaybackLoop.suppressCueListAutoScroll = state?.preserveListScroll
           ? true : previousSuppress;
@@ -7571,7 +7546,7 @@ document.addEventListener('keydown', (e) => {
   const panelTarget = getCurrentCuePanelTarget();
   const extensionTarget = panelTarget?.kind === 'extension';
   const extensionTrack = extensionTarget ? panelTarget.track : null;
-  const segments = extensionTarget ? extensionTrack.segments : DATA.segments;
+  const segments = extensionTarget ? extensionTrack.segments : MaweBoot.DATA.segments;
   const wasPlaying = !MaweCoreState.player.paused;
   const heldCueKey = (!e.shiftKey || key === 'a' || key === 'd')
     && MaweCoreState.waveformEditor?.handleHeldCueKey?.(
@@ -7916,7 +7891,7 @@ document.addEventListener('keydown', (e) => {
   const target = getCurrentCuePanelTarget();
   const extensionTarget = target?.kind === 'extension';
   const selected = extensionTarget ? selectedExtensionIdxs : selectedIdxs;
-  const segments = extensionTarget ? target.track.segments : DATA.segments;
+  const segments = extensionTarget ? target.track.segments : MaweBoot.DATA.segments;
   if (!selected.size) return;
   const first = Math.min(...selected);
   const segment = segments[first];
@@ -8144,7 +8119,7 @@ document.addEventListener('keydown', (e) => {
   const activeCuePanel = getCurrentCuePanelTarget();
   const operationReference = keyboardOperationReference();
   const pointerMainIndex = operationReference
-    ? findWaveformCueAtTime(operationReference.timeMs, DATA.segments) : -1;
+    ? findWaveformCueAtTime(operationReference.timeMs, MaweBoot.DATA.segments) : -1;
   const activeExtensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const pointerExtensionIndex = operationReference?.track === 'extension'
     ? findWaveformCueAtTime(operationReference.timeMs, MaweMultiSubtitleCore.getExtensionTrack(operationReference.trackId)?.segments) : -1;
@@ -8207,14 +8182,14 @@ document.addEventListener('keydown', (e) => {
   // 1) 字幕列表：需要单选 + 悬停提供文字位置
   if (selectedIdxs.size === 1) {
     const context = hoveredSelectedCueContext();
-    if (context && DATA.segments[context.idx]) {
+    if (context && MaweBoot.DATA.segments[context.idx]) {
       splitAt(context.idx, context.x, context.y, null);
       return;
     }
   }
   // 2) 波形：指针音频位置
   if (operationReference?.source === 'pointer' || operationReference?.track === 'extension') {
-    const idx = findWaveformCueAtTime(operationReference.timeMs, DATA.segments);
+    const idx = findWaveformCueAtTime(operationReference.timeMs, MaweBoot.DATA.segments);
     if (idx >= 0) {
       splitAt(idx, 0, 0, operationReference.timeMs);
       return;
@@ -8233,7 +8208,7 @@ document.addEventListener('keydown', (e) => {
   }
   // 3) 播放头位置
   const timeMs = operationReference?.timeMs ?? Math.round(MaweCoreState.player.currentTime * 1000);
-  const idx = DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
+  const idx = MaweBoot.DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
   if (idx >= 0) {
     splitAt(idx, 0, 0, timeMs);
     return;
@@ -8266,7 +8241,7 @@ function normalizeSubtitleColorStyle(value) {
   return typeof value === 'string' && MaweSettings.SUBTITLE_COLOR_STYLE_VALUES.includes(value)
     ? value : null;
 }
-function getSpeakerLabelSettings(value = DATA.preview?.subtitle?.speaker_labels) {
+function getSpeakerLabelSettings(value = MaweBoot.DATA.preview?.subtitle?.speaker_labels) {
   // applySubtitleAppearance() runs during the early boot sequence, before the
   // preview-geometry section initializes its later GEO_UTILS alias.
   return EDITOR_SETTINGS_UTILS.normalizeSpeakerLabelSettings(value);
@@ -8302,14 +8277,14 @@ function syncSpeakerLabelControls(settings = getSpeakerLabelSettings()) {
 
 function setSpeakerLabelSettings(value, { markDirty = true } = {}) {
   const settings = getSpeakerLabelSettings(value);
-  if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
-  DATA.preview.subtitle = {
+  if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
+  MaweBoot.DATA.preview.subtitle = {
     ...MaweAppearance.getPreviewGeometry(),
     ...MaweAppearance.getSubtitleAppearance(),
     speaker_labels: settings,
   };
   if (markDirty) MaweAppearance.previewGeometryDirty = true;
-  MaweAppearance.applySubtitleAppearance(DATA.preview.subtitle);
+  MaweAppearance.applySubtitleAppearance(MaweBoot.DATA.preview.subtitle);
   return settings;
 }
 MaweAppearance.initializeSubtitleFontFamilyScanner();
@@ -8386,10 +8361,10 @@ function speakerLabelExportOptions() {
 
 function buildAss() {
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    DATA.segments,
+    MaweBoot.DATA.segments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
-  return window.AsrEditorUtils.buildAssPayload(DATA.segments, {
+  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     appearance: MaweAppearance.getSubtitleAppearance(),
@@ -8422,25 +8397,25 @@ const CANONICAL_PROJECT_FIELDS = new Set([
   'script_alignment', 'workspace', 'preview',
 ]);
 let projectExtensionFields = Object.fromEntries(
-  Object.entries(DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+  Object.entries(MaweBoot.DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
 );
 
 function buildJson() {
-  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
+  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
   const repairedTimingCount = repairCurrentProjectTimings();
   if (repairedTimingCount > 0) {
     MaweHint.flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
   }
-  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
+  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
   const out = {
     schema: window.AsrEditorUtils.PROJECT_SCHEMA,
     ...projectExtensionFields,
-    media: DATA.media || '',
-    language: DATA.language || '',
-    model: DATA.model || '',
-    sticker_root: STICKER_ROOT || '',
+    media: MaweBoot.DATA.media || '',
+    language: MaweBoot.DATA.language || '',
+    model: MaweBoot.DATA.model || '',
+    sticker_root: MaweBoot.STICKER_ROOT || '',
     timebase: { ...projectTimebase() },
-    segments: DATA.segments.map(s => {
+    segments: MaweBoot.DATA.segments.map(s => {
       const o = {
         id: s.id,
         start: s.start, end: s.end, text: s.text,
@@ -8458,10 +8433,10 @@ function buildJson() {
       return o;
     }),
   };
-  if (typeof DATA.language_source === 'string') out.language_source = DATA.language_source;
-  if (typeof DATA.split_mode === 'string') out.split_mode = DATA.split_mode;
-  if (typeof DATA.timestamp_granularity === 'string') {
-    out.timestamp_granularity = DATA.timestamp_granularity;
+  if (typeof MaweBoot.DATA.language_source === 'string') out.language_source = MaweBoot.DATA.language_source;
+  if (typeof MaweBoot.DATA.split_mode === 'string') out.split_mode = MaweBoot.DATA.split_mode;
+  if (typeof MaweBoot.DATA.timestamp_granularity === 'string') {
+    out.timestamp_granularity = MaweBoot.DATA.timestamp_granularity;
   }
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   out.multi_subtitle = {
@@ -8469,7 +8444,7 @@ function buildJson() {
     enabled: multi.enabled === true,
     display_mode: multi.display_mode || 'both',
     main_split_mode: MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(multi.main_split_mode)
-      ? multi.main_split_mode : MaweMultiSubtitleCore.getMainSubtitleSplitMode(DATA.segments[0]),
+      ? multi.main_split_mode : MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]),
     tracks: (multi.tracks || []).map((track) => ({
       id: track.id,
       role: 'extension',
@@ -8506,10 +8481,10 @@ function buildJson() {
   // 三块波形缓存不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
   // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
   // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
-  const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
+  const mediaMetadata = normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
   if (mediaMetadata) out.media_metadata = mediaMetadata;
-  if (DATA.gap_remove) out.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(DATA.gap_remove);
-  if (DATA.script_alignment) out.script_alignment = DATA.script_alignment;
+  if (MaweBoot.DATA.gap_remove) out.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(MaweBoot.DATA.gap_remove);
+  if (MaweBoot.DATA.script_alignment) out.script_alignment = MaweBoot.DATA.script_alignment;
   const workspace = MaweExportTimeline.buildCurrentWorkspaceData();
   if (workspace) out.workspace = workspace;
   // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
@@ -8520,7 +8495,7 @@ function buildJson() {
       speaker_labels: getSpeakerLabelSettings(),
     },
   };
-  if (MaweMultiSubtitleCore.getActiveExtensionTrack() || DATA.preview?.extension_subtitle) {
+  if (MaweMultiSubtitleCore.getActiveExtensionTrack() || MaweBoot.DATA.preview?.extension_subtitle) {
     preview.extension_subtitle = { ...MaweAppearance.getStoredExtensionSubtitleAppearance() };
   }
   out.preview = preview;
@@ -8566,7 +8541,7 @@ function repairTimingGroup(segments) {
 }
 
 function repairCurrentProjectTimings() {
-  const main = repairTimingGroup(DATA.segments);
+  const main = repairTimingGroup(MaweBoot.DATA.segments);
   const extension = (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).reduce((result, track) => {
     const repaired = repairTimingGroup(track?.segments);
     result.fixed += repaired.fixed;
@@ -8735,286 +8710,9 @@ function buildStickerOtioTrack(stickers) {
     },
   };
 }
-
-let projectImportDirty = false;
-let projectCheckpointed = Boolean(SERVER_CONFIG?.canSave)
-  || !document.getElementById('json-name')?.classList.contains('empty');
-let projectCheckpointInFlight = false;
-// 浏览器「新建工程 / 另存为」选择的文件由页面持有 FileSystemFileHandle 持续写回；
-// Server 绑定的工程仍由服务器按真实路径原子保存，且优先级高于句柄。
-let projectFileHandle = null;
-
-function serverProjectSavingEnabled() {
-  return !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl && SERVER_CONFIG.canSave);
-}
-
-function projectSaveTargetEnabled() {
-  return serverProjectSavingEnabled() || projectFileHandle !== null;
-}
-
-function parseProjectValidationTarget(detail) {
-  const value = String(detail || '');
-  const mainMatch = /^\$\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
-  const extensionMatch = /^\$\.multi_subtitle\.tracks\[(\d+)\]\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
-  if (!mainMatch && !extensionMatch) return null;
-  const kind = mainMatch ? 'main' : 'extension';
-  const trackIndex = extensionMatch ? Number(extensionMatch[1]) : null;
-  const segmentIndex = Number(mainMatch ? mainMatch[1] : extensionMatch[2]);
-  const itemValue = mainMatch ? mainMatch[2] : extensionMatch[3];
-  const itemIndex = itemValue === undefined ? null : Number(itemValue);
-  const track = extensionMatch ? MaweMultiSubtitleCore.getMultiSubtitleState().tracks?.[trackIndex] : null;
-  const segments = kind === 'main' ? DATA.segments : (track?.segments || []);
-  const segment = segments[segmentIndex];
-  if (!segment) return null;
-  const item = itemIndex === null
-    ? null
-    : (Array.isArray(segment.items) ? segment.items[itemIndex] : null);
-  return {
-    kind,
-    trackIndex,
-    track,
-    segments,
-    segmentIndex,
-    itemIndex,
-    segment,
-    item: item && typeof item === 'object' ? item : null,
-  };
-}
-
-function validationPreviewText(target) {
-  const value = target.item?.text ?? target.segment.text;
-  if (typeof value === 'string') return value || '（空）';
-  try {
-    return JSON.stringify(target.item || target.segment);
-  } catch (_) {
-    return '（无法预览）';
-  }
-}
-
-function projectSegmentOverlap(target) {
-  const segments = target?.segments;
-  const currentIndex = Number(target?.segmentIndex);
-  if (!Array.isArray(segments) || !Number.isInteger(currentIndex) || currentIndex <= 0) return null;
-  const previous = segments[currentIndex - 1];
-  const current = segments[currentIndex];
-  const previousEnd = Number(previous?.end);
-  const currentStart = Number(current?.start);
-  const overlapMs = Math.round(previousEnd - currentStart);
-  if (!previous || !current || !Number.isFinite(overlapMs) || overlapMs <= 0) return null;
-  return {
-    previousIndex: currentIndex - 1,
-    currentIndex,
-    previous,
-    current,
-    overlapMs,
-  };
-}
-
-function repairProjectSegmentOverlap(target, mode, card) {
-  const segments = target?.segments;
-  const currentIndex = Number(target?.segmentIndex);
-  if (!Array.isArray(segments)) return false;
-  let previewSegments;
-  try {
-    previewSegments = JSON.parse(JSON.stringify(segments));
-  } catch (_) {
-    MaweHint.flashHint('无法准备时间范围修复，请先关闭提示后手动调整字幕边界', 'warning');
-    return false;
-  }
-  const preview = window.AsrEditorUtils.repairSegmentOverlap(previewSegments, currentIndex, mode);
-  if (!preview?.changed) {
-    MaweHint.flashHint('当前字幕边界已经发生变化，请重新保存并查看最新的校验提示', 'warning');
-    return false;
-  }
-
-  MaweHistory.pushUndo('修复字幕时间重叠', { captureView: true });
-  const result = window.AsrEditorUtils.repairSegmentOverlap(segments, currentIndex, mode);
-  if (!result?.changed) {
-    MaweHint.flashHint('当前字幕边界已经发生变化，修复未应用', 'warning');
-    return false;
-  }
-  const changedSegments = (result.changedIndices || [])
-    .map((index) => segments[index])
-    .filter(Boolean);
-  if (target.kind === 'main') MaweMultiSubtitleCore.markMainSegmentsDirty(changedSegments);
-  else changedSegments.forEach((segment) => { segment._dirty = true; });
-  MaweMultiSubtitleCore.syncBindingOffsets();
-  if (target.kind === 'extension' || MaweMultiSubtitleCore.getMultiSubtitleState().tracks?.length) {
-    MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
-  }
-  renderAll({ waveform: 'overlay' });
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  MaweHistory.updateUndoRedoButtons();
-  MaweHint.dismissHintCard(card);
-  const suffix = result.itemsCleared
-    ? '，已清除受影响字幕的字词时间码'
-    : '';
-  MaweHint.flashHint(`已修复字幕时间重叠${suffix}，正在重新保存`, result.itemsCleared ? 'warning' : 'success');
-  window.setTimeout(() => { void saveCurrentProject({ silent: false }); }, 0);
-  return true;
-}
-
-function focusProjectValidationTarget(target) {
-  const { segmentIndex, segment } = target || {};
-  const segments = target?.segments || DATA.segments;
-  if (!segment || !segments[segmentIndex]) return;
-
-  // 校验错误不能因为用户当前的筛选状态而再次变得不可见。
-  if (MaweDom.hideDisabled && segment.disabled) {
-    MaweDom.hideDisabled = false;
-    MaweDom.hideDisabledToggle.checked = false;
-    MaweCoreState.container.classList.remove('hide-disabled');
-  }
-  const cueSelector = target.kind === 'extension'
-    ? `.cue[data-ext-idx="${segmentIndex}"]`
-    : `.cue[data-idx="${segmentIndex}"]`;
-  const cueBeforeFilter = MaweCoreState.container.querySelector(cueSelector);
-  if (cueBeforeFilter?.classList.contains('hidden')) {
-    MaweDom.searchEl.value = '';
-    refreshSearchClearVisibility();
-    const filterOver = document.getElementById('filter-over');
-    if (filterOver?.classList.contains('active')) filterOver.classList.remove('active');
-    applySearch('');
-  }
-
-  if (target.kind === 'extension') {
-    selectOnlyExtension(segmentIndex, target.track || MaweMultiSubtitleCore.getActiveExtensionTrack());
-    lastClickedExtensionIdx = segmentIndex;
-  } else {
-    selectOnly(segmentIndex);
-    lastClickedIdx = segmentIndex;
-  }
-  const cue = MaweCoreState.container.querySelector(cueSelector);
-  if (cue) {
-    cue.classList.remove('validation-target');
-    // 重新触发一次短暂的高亮，即使用户连续点击多个错误提示也能看出目标。
-    void cue.offsetWidth;
-    cue.classList.add('validation-target');
-    scrollCueToCenter(cue);
-    window.setTimeout(() => cue.classList.remove('validation-target'), 2200);
-  }
-  MaweCoreState.waveformEditor?.revealTime(segment.start, true);
-  if (MaweMediaPlayback.hasLoadedMedia()) seekFromWaveform(segment.start / 1000);
-}
-
-function showProjectSaveError(detail) {
-  const target = parseProjectValidationTarget(detail);
-  if (!target) {
-    MaweHint.flashHint(`保存失败：${detail}`, 'warning');
-    return;
-  }
-
-  MaweHint.flashHint('', 'warning', {
-    durationMs: 12000,
-    contentBuilder: (card) => {
-      card.classList.add('hint-project-error');
-
-      const header = document.createElement('div');
-      header.className = 'hint-project-header';
-      const title = document.createElement('strong');
-      title.textContent = '保存失败';
-      const close = document.createElement('button');
-      close.type = 'button';
-      close.className = 'hint-close';
-      close.setAttribute('aria-label', '关闭提示');
-      close.textContent = '×';
-      close.addEventListener('click', () => MaweHint.dismissHintCard(card));
-      header.append(title, close);
-
-      const detailEl = document.createElement('code');
-      detailEl.className = 'hint-project-detail';
-      detailEl.textContent = String(detail || '未知校验错误');
-
-      const location = document.createElement('div');
-      location.className = 'hint-project-location';
-      location.textContent = target.itemIndex === null
-        ? `第 ${target.segmentIndex + 1} 条字幕`
-        : `第 ${target.segmentIndex + 1} 条字幕 · item ${target.itemIndex + 1}`;
-
-      const previewLabel = document.createElement('div');
-      previewLabel.className = 'hint-project-preview-label';
-      previewLabel.textContent = target.itemIndex === null ? '字幕内容' : 'item 内容';
-      const preview = document.createElement('div');
-      preview.className = 'hint-project-preview-value';
-      preview.textContent = validationPreviewText(target);
-
-      const overlapElements = [];
-      const overlap = projectSegmentOverlap(target);
-      if (overlap) {
-        const conflict = document.createElement('div');
-        conflict.className = 'hint-project-conflict';
-        conflict.textContent = `第 ${overlap.previousIndex + 1} 条字幕结束于 ${fmtShort(overlap.previous.end)}，第 ${overlap.currentIndex + 1} 条字幕开始于 ${fmtShort(overlap.current.start)}，重叠 ${overlap.overlapMs}ms。`;
-
-        const repairDescription = document.createElement('div');
-        repairDescription.className = 'hint-project-repair-description';
-        repairDescription.textContent = overlap.overlapMs <= MaweMultiSubtitleCore.PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS
-          ? `这是小于等于 ${MaweMultiSubtitleCore.PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS}ms 的边界误差，可以安全把后句起点吸附到前句终点。`
-          : `重叠超过 ${MaweMultiSubtitleCore.PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS}ms，请确认要保留哪一侧的时间边界；修复后会自动再次保存。`;
-
-        const repairActions = document.createElement('div');
-        repairActions.className = 'hint-project-actions';
-        const addRepairButton = (className, text, mode) => {
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.className = `hint-project-action ${className}`;
-          button.textContent = text;
-          button.addEventListener('click', () => {
-            button.disabled = true;
-            if (!repairProjectSegmentOverlap(target, mode, card)) button.disabled = false;
-          });
-          repairActions.appendChild(button);
-        };
-        if (overlap.overlapMs <= MaweMultiSubtitleCore.PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS) {
-          addRepairButton(
-            'hint-project-repair-auto',
-            `自动修复：推迟第 ${overlap.currentIndex + 1} 条字幕（${overlap.overlapMs}ms）`,
-            'shift-current',
-          );
-        } else {
-          addRepairButton('hint-project-repair-trim', '缩短前一句', 'trim-previous');
-          addRepairButton('hint-project-repair-shift', '推迟后一句', 'shift-current');
-        }
-        overlapElements.push(conflict, repairDescription, repairActions);
-      }
-
-      const action = document.createElement('button');
-      action.type = 'button';
-      action.className = 'hint-project-action';
-      action.textContent = `定位到第 ${target.segmentIndex + 1} 条字幕`;
-      action.addEventListener('click', () => {
-        focusProjectValidationTarget(target);
-        MaweHint.dismissHintCard(card);
-      });
-
-      card.append(header, detailEl, location, previewLabel, preview, ...overlapElements, action);
-    },
-  });
-}
-
-function configureServerSaveControls() {
-  const hasServer = !!(SERVER_CONFIG && SERVER_CONFIG.saveUrl);
-  // 浏览器持有工程句柄时同样显示保存控件；服务器绑定优先于句柄。
-  if (MaweDom.saveProjectDropdown) MaweDom.saveProjectDropdown.hidden = !(hasServer || projectFileHandle !== null);
-  [MaweDom.saveProjectButton, document.getElementById('save-project-menu-btn')].forEach((button) => {
-    if (!button) return;
-    button.disabled = !projectSaveTargetEnabled();
-     if (!projectSaveTargetEnabled()) button.title = '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件';
-  });
-  if (MaweDom.saveProjectButton && projectSaveTargetEnabled()) {
-    MaweDom.saveProjectButton.title = '保存回当前工程文件（Ctrl(Cmd)+S）';
-  }
-  // 另存为走系统文件对话框，不依赖服务器绑定，始终可用。
-  if (MaweDom.saveProjectAsButton) {
-    MaweDom.saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
-  }
-  syncStickerOtioExportMode();
-  syncProjectBackupControls();
-}
-
-let autoSaveTimer = null;
 let projectBackupTimer = null;
 function syncProjectBackupControls() {
-  const available = serverProjectSavingEnabled() && !projectFileHandle;
+  const available = MaweServerSave.serverProjectSavingEnabled() && !MaweServerSave.projectFileHandle;
   const enabled = document.getElementById('project-backup-enabled');
   const minutes = document.getElementById('project-backup-minutes');
   const limit = document.getElementById('project-backup-limit');
@@ -9029,7 +8727,7 @@ function syncProjectBackupControls() {
   projectBackupTimer = null;
   if (available && enabled.checked) {
     projectBackupTimer = window.setInterval(() => {
-      void saveProjectToServer({ silent: true, backupOnly: true });
+      void MaweProjectSave.saveProjectToServer({ silent: true, backupOnly: true });
     }, MaweSettings.EDITOR_SETTINGS.projectBackupMinutes * 60000);
   }
 }
@@ -9044,13 +8742,12 @@ for (const [id, key, fallback, max] of [
     syncProjectBackupControls();
   });
 }
-let autoSaveFlushTimer = null;
 document.getElementById('project-backup-open')?.addEventListener('click', async () => {
-  if (!serverProjectSavingEnabled() || projectFileHandle) return;
+  if (!MaweServerSave.serverProjectSavingEnabled() || MaweServerSave.projectFileHandle) return;
   try {
     const response = await fetch(new URL('/api/project/backups/open', window.location.href), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken }),
+      body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken }),
     });
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || response.status);
@@ -9058,1055 +8755,109 @@ document.getElementById('project-backup-open')?.addEventListener('click', async 
     MaweHint.flashHint(`打开备份文件夹失败：${error.message || error}`, 'warning');
   }
 });
-let projectSaveInFlight = false;
-const EDIT_SAVE_DEBOUNCE_MS = 400;
-
-function scheduleAutoSave() {
-  if (autoSaveTimer !== null) {
-    window.clearInterval(autoSaveTimer);
-    autoSaveTimer = null;
-  }
-  if (!projectSaveTargetEnabled() || !MaweSettings.EDITOR_SETTINGS.autoSaveProject) return;
-  autoSaveTimer = window.setInterval(() => {
-    if (hasUnsavedProjectChanges() && !projectSaveInFlight && !projectCheckpointInFlight) {
-      void saveCurrentProject({ silent: true });
-    }
-  }, MaweSettings.EDITOR_SETTINGS.autoSaveIntervalSeconds * 1000);
-}
-
-  function configureServerAutoSave() {
-    if (!MaweDom.serverAutoSaveSettings || !MaweDom.autoSaveProjectToggle || !MaweDom.autoSaveIntervalField || !MaweDom.autoSaveIntervalInput) return;
-    // 服务器绑定工程或浏览器保存对话框（句柄模式）任一可用时都可自动保存。
-    const available = Boolean(SERVER_CONFIG?.saveUrl || window.showSaveFilePicker);
-    MaweDom.serverAutoSaveSettings.hidden = !available;
-    // 自动保存不可用时隐藏「保存」标签页，避免设置窗口出现空白分区。
-    const saveTab = document.getElementById('editor-settings-tab-save');
-    if (saveTab) saveTab.hidden = !available;
-    if (!available) return;
-  const sync = () => {
-    MaweDom.autoSaveProjectToggle.checked = MaweSettings.EDITOR_SETTINGS.autoSaveProject;
-    MaweDom.autoSaveIntervalInput.value = String(MaweSettings.EDITOR_SETTINGS.autoSaveIntervalSeconds);
-    MaweDom.autoSaveIntervalField.hidden = !MaweSettings.EDITOR_SETTINGS.autoSaveProject;
-    MaweDom.autoSaveProjectToggle.disabled = false;
-    MaweDom.autoSaveIntervalInput.disabled = !MaweSettings.EDITOR_SETTINGS.autoSaveProject;
-  };
-  sync();
-  MaweDom.autoSaveProjectToggle.addEventListener('change', () => {
-    MaweSettings.updateEditorSettings({ autoSaveProject: MaweDom.autoSaveProjectToggle.checked });
-    sync();
-    scheduleAutoSave();
-  });
-  MaweDom.autoSaveIntervalInput.addEventListener('change', () => {
-    MaweSettings.updateEditorSettings({ autoSaveIntervalSeconds: MaweSettings.clampAutoSaveInterval(MaweDom.autoSaveIntervalInput.value) });
-    sync();
-    scheduleAutoSave();
-  });
-  scheduleAutoSave();
-}
-
-function hasUnsavedProjectChanges() {
-  const multiDirty = Boolean(DATA.multi_subtitle?._dirty)
-    || (DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
-  return projectImportDirty || MaweHistory.gapRemoveDirty || MaweAppearance.previewGeometryDirty
-    || DATA.segments.some((segment) => segment._dirty)
-    || multiDirty;
-}
-
-// 文字编辑先写入页面内存，避免每个按键都请求服务器；失焦后短暂防抖保存，
-// 这样点击其它字幕或刷新页面时不会因为 30 秒定时保存尚未到点而丢失刚完成的修改。
-function scheduleAutoSaveFlush() {
-  if (autoSaveFlushTimer !== null) {
-    window.clearTimeout(autoSaveFlushTimer);
-    autoSaveFlushTimer = null;
-  }
-  if (!projectSaveTargetEnabled() || !MaweSettings.EDITOR_SETTINGS.autoSaveProject) return;
-  autoSaveFlushTimer = window.setTimeout(() => {
-    autoSaveFlushTimer = null;
-    if (hasUnsavedProjectChanges() && !projectSaveInFlight) {
-      void saveCurrentProject({ silent: true });
-    }
-  }, EDIT_SAVE_DEBOUNCE_MS);
-}
-
-async function openRecentProject(project) {
-  if (!SERVER_CONFIG?.recentProjectsUrl) return;
-  if (hasUnsavedProjectChanges()
-      && !confirm('当前有未保存的改动，是否确定打开最近工程？将丢失未保存内容。')) {
-    return;
-  }
-  try {
-    const response = await fetch(SERVER_CONFIG.recentProjectsUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: project.path }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) {
-      const error = new Error(result.error || `服务器返回 ${response.status}`);
-      error.missing = result.missing === true;
-      throw error;
-    }
-    window.location.reload();
-  } catch (error) {
-    if (error?.missing) {
-      project.exists = false;
-      markRecentProjectMissing(project);
-    }
-    MaweHint.flashHint(`打开工程失败：${error.message || error}`, 'warning');
-  }
-}
-
-// 浏览器文件选择器拿不到工程的真实路径，但 MAW 工程记录的媒体是绝对路径。
-// 把工程名与内容交给服务器，由它定位同目录同名工程并接管：
-// 成功后整页刷新，由服务器渲染出自动加载媒体且可直接保存的状态。
-// 任何失败都静默回退为「手动选择媒体」的便携流程。
-async function attachProjectToServer(fileName, projectData) {
-  try {
-    const response = await fetch(SERVER_CONFIG.attachUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileName, project: projectData }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) return false;
-    window.location.reload();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function renderMissingRecentProjectItem(item, project) {
-  item.className = 'dropdown-item is-missing';
-  item.style.cursor = 'not-allowed';
-  item.replaceChildren();
-  const label = document.createElement('span');
-  label.className = 'recent-project-name';
-  label.textContent = project.name;
-  item.appendChild(label);
-  const badge = document.createElement('span');
-  badge.className = 'recent-project-badge is-missing';
-  badge.textContent = '已失效';
-  item.appendChild(badge);
-  item.title = `工程路径失效：${project.path}`;
-}
-
-function markRecentProjectMissing(project) {
-  if (!MaweDom.recentProjectsList || !project || typeof project.path !== 'string') return;
-  const item = Array.from(MaweDom.recentProjectsList.children)
-    .find((candidate) => candidate.dataset.projectPath === project.path);
-  if (item) renderMissingRecentProjectItem(item, project);
-}
-
-function configureRecentProjects() {
-  if (!SERVER_CONFIG?.recentProjectsUrl || !MaweDom.recentProjectsEl || !MaweDom.recentProjectsToggle
-      || !MaweDom.recentProjectsMenu || !MaweDom.recentProjectsList) {
-    return;
-  }
-  const projects = Array.isArray(SERVER_CONFIG.recentProjects) ? SERVER_CONFIG.recentProjects : [];
-  MaweDom.recentProjectsEl.hidden = false;
-  MaweDom.recentProjectsList.replaceChildren();
-  if (MaweDom.recentProjectsSeparator) MaweDom.recentProjectsSeparator.hidden = !projects.length;
-  projects.forEach((project, index) => {
-    if (!project || typeof project.path !== 'string' || typeof project.name !== 'string') return;
-    const item = document.createElement('div');
-    item.dataset.projectPath = project.path;
-    if (project.exists === false) {
-      renderMissingRecentProjectItem(item, project);
-    } else {
-      item.className = 'dropdown-item';
-      // 工程名与其它项一致占正文；「上次打开」只作为右侧徽标标记，不写进名字
-      const label = document.createElement('span');
-      label.className = 'recent-project-name';
-      label.textContent = project.name;
-      item.appendChild(label);
-      if (index === 0) {
-        const badge = document.createElement('span');
-        badge.className = 'recent-project-badge';
-        badge.textContent = '上次打开';
-        item.appendChild(badge);
-      }
-      item.title = project.path;
-    }
-    item.addEventListener('click', () => {
-      MaweDom.recentProjectsEl.classList.remove('open');
-      if (item.classList.contains('is-missing')) {
-        MaweHint.flashHint('工程路径失效，文件可能已被移动或删除', 'warning');
-        return;
-      }
-      openRecentProject(project);
-    });
-    MaweDom.recentProjectsList.appendChild(item);
-  });
-  if (MaweDom.recentProjectsEl.dataset.listenersBound !== 'true') {
-    MaweDom.recentProjectsToggle.addEventListener('click', (event) => {
-      event.stopPropagation();
-      MaweDom.recentProjectsEl.classList.toggle('open');
-      if (MaweDom.recentProjectsEl.classList.contains('open')) MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.recentProjectsEl);
-      else MaweFloatingPanel.syncFloatingSurfaceLayers();
-    });
-    document.addEventListener('click', (event) => {
-      if (!MaweDom.recentProjectsEl.contains(event.target)) MaweDom.recentProjectsEl.classList.remove('open');
-    });
-    MaweDom.recentProjectsEl.dataset.listenersBound = 'true';
-  }
-}
-
-function configureServerProjectSettings() {
-  if (!SERVER_CONFIG?.settingsUrl || !MaweDom.serverProjectSettingsEl || !MaweDom.autoOpenLastProjectToggle) return;
-  MaweDom.serverProjectSettingsEl.hidden = false;
-  MaweDom.autoOpenLastProjectToggle.checked = SERVER_CONFIG.autoOpenLastProject !== false;
-  if (MaweDom.autoOpenLastProjectToggle.dataset.listenersBound !== 'true') {
-    MaweDom.autoOpenLastProjectToggle.addEventListener('change', async () => {
-      const enabled = MaweDom.autoOpenLastProjectToggle.checked;
-      MaweDom.autoOpenLastProjectToggle.disabled = true;
-      try {
-        const response = await fetch(SERVER_CONFIG.settingsUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ autoOpenLastProject: enabled }),
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.ok) {
-          throw new Error(result.error || `服务器返回 ${response.status}`);
-        }
-        SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject;
-      } catch (error) {
-        MaweDom.autoOpenLastProjectToggle.checked = SERVER_CONFIG.autoOpenLastProject !== false;
-        MaweHint.flashHint(`保存设置失败：${error.message || error}`, 'warning');
-      } finally {
-        MaweDom.autoOpenLastProjectToggle.disabled = false;
-      }
-    });
-    MaweDom.autoOpenLastProjectToggle.dataset.listenersBound = 'true';
-  }
-}
-
-// === 工作区库：服务器版可把工作区（窗口布局 + 显示状态）保存到本机设置，跨工程复用 ===
-const BUILTIN_WORKSPACE_IDS = window.AsrWaveform?.builtinWorkspaceIds || ['classic', 'wave-right', 'three-fold', 'cinema'];
-let currentServerWorkspaceName = '';
-let currentBuiltinWorkspaceName = '';
-const workspacePresetSelect = document.getElementById('workspace-preset');
-const saveWorkspaceButton = document.getElementById('workspace-save');
-const saveWorkspaceAsButton = document.getElementById('workspace-save-as');
-const deleteWorkspaceButton = document.getElementById('workspace-delete');
-
-function getSavedServerWorkspaces() {
-  return SERVER_CONFIG?.savedWorkspaces && typeof SERVER_CONFIG.savedWorkspaces === 'object'
-    ? SERVER_CONFIG.savedWorkspaces : {};
-}
-
-function getSavedPresetWorkspaces() {
-  return SERVER_CONFIG?.presetWorkspaces && typeof SERVER_CONFIG.presetWorkspaces === 'object'
-    ? SERVER_CONFIG.presetWorkspaces : {};
-}
-
-// 覆盖可能只存导航状态（后端自动创建），没有布局数据；只有含 navigation
-// 以外字段的覆盖才能作为布局来源，否则退回内置默认布局。
-function presetWorkspaceHasLayout(workspace) {
-  return Boolean(workspace) && Object.keys(workspace).some((key) => key !== 'navigation');
-}
-
-function currentWorkspaceDisplayName() {
-  const selected = workspacePresetSelect?.selectedOptions?.[0];
-  return selected?.textContent?.trim() || currentServerWorkspaceName || currentBuiltinWorkspaceName || '当前工作区';
-}
-
-function refreshWorkspaceSelect() {
-  if (!workspacePresetSelect) return;
-  const workspaces = getSavedServerWorkspaces();
-  workspacePresetSelect.querySelector('optgroup[data-saved-workspaces]')?.remove();
-  const names = Object.keys(workspaces).sort((a, b) => a.localeCompare(b, 'zh-CN'));
-  if (names.length) {
-    const group = document.createElement('optgroup');
-    group.label = '已保存工作区';
-    group.dataset.savedWorkspaces = 'true';
-    names.forEach((name) => group.append(new Option(name, `saved:${name}`)));
-    workspacePresetSelect.append(group);
-  }
-  if (currentServerWorkspaceName && workspaces[currentServerWorkspaceName]) {
-    workspacePresetSelect.value = `saved:${currentServerWorkspaceName}`;
-  }
-}
-
-function syncWorkspaceControls() {
-  const hasServerLibrary = Boolean(SERVER_CONFIG?.settingsUrl && MaweCoreState.waveformEditor);
-  const isEditing = MaweCoreState.waveformEditor?.isCustomLayout?.() === true;
-  const hasCustomWorkspace = Boolean(currentServerWorkspaceName && getSavedServerWorkspaces()[currentServerWorkspaceName]);
-  const hasBuiltinWorkspace = Boolean(currentBuiltinWorkspaceName);
-  if (saveWorkspaceButton) saveWorkspaceButton.hidden = !hasServerLibrary || !isEditing || (!hasCustomWorkspace && !hasBuiltinWorkspace);
-  if (saveWorkspaceAsButton) saveWorkspaceAsButton.hidden = !hasServerLibrary || !isEditing;
-  if (deleteWorkspaceButton) deleteWorkspaceButton.hidden = !hasServerLibrary || !isEditing || !hasCustomWorkspace;
-}
-
-function restoreWorkspaceSelection() {
-  const selectedPreset = DATA.workspace?.selectedPreset;
-  if (typeof selectedPreset !== 'string' || !workspacePresetSelect) return;
-  if (selectedPreset.startsWith('saved:')) {
-    const name = selectedPreset.slice('saved:'.length);
-    if (getSavedServerWorkspaces()[name]) {
-      currentServerWorkspaceName = name;
-      currentBuiltinWorkspaceName = '';
-      refreshWorkspaceSelect();
-    }
-    return;
-  }
-  if (BUILTIN_WORKSPACE_IDS.includes(selectedPreset)) {
-    currentServerWorkspaceName = '';
-    currentBuiltinWorkspaceName = selectedPreset;
-    workspacePresetSelect.value = selectedPreset;
-  }
-}
-
-async function updateServerWorkspaceSettings(payload) {
-  const response = await fetch(SERVER_CONFIG.settingsUrl, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-  });
-  const result = await response.json();
-  if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
-  SERVER_CONFIG.savedWorkspaces = result.savedWorkspaces || {};
-  SERVER_CONFIG.presetWorkspaces = result.presetWorkspaces || {};
-  SERVER_CONFIG.activeWorkspaceName = result.activeWorkspaceName || '';
-  SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject !== false;
-  return result;
-}
-
-function currentWorkspaceNavigation() {
-  const snapshot = MaweCoreState.waveformEditor?.getNavigationSnapshot?.();
-  const cueListScrollTop = Math.max(0, Math.round(Number(MaweCoreState.container?.scrollTop) || 0));
-  return {
-    ...(snapshot || {}),
-    cueListScrollTop,
-  };
-}
-
-async function saveWorkspaceNavigation(target) {
-  if (!target || !SERVER_CONFIG?.settingsUrl || !MaweCoreState.waveformEditor) return;
-  const navigation = currentWorkspaceNavigation();
-  try {
-    const result = await updateServerWorkspaceSettings({
-      updateWorkspaceNavigation: { ...target, navigation },
-    });
-    SERVER_CONFIG.savedWorkspaces = result.savedWorkspaces || {};
-    SERVER_CONFIG.presetWorkspaces = result.presetWorkspaces || {};
-  } catch (error) {
-    MaweHint.flashHint(`记住工作区导航失败：${error.message || error}`, 'warning');
-  }
-}
-
-function restoreWorkspaceNavigation(workspace) {
-  MaweCoreState.waveformEditor?.restoreNavigation?.(workspace?.navigation);
-}
-
-async function saveCurrentWorkspace({ saveAs }) {
-  if (!MaweCoreState.waveformEditor || !SERVER_CONFIG?.settingsUrl) return;
-  let name = currentServerWorkspaceName;
-  if (saveAs) {
-    name = prompt('请输入工作区名称：', '我的工作区')?.trim() || '';
-    if (!name) return;
-  }
-  if (!name && !currentBuiltinWorkspaceName) return;
-  const displayName = saveAs ? name : currentWorkspaceDisplayName();
-  const button = saveAs ? saveWorkspaceAsButton : saveWorkspaceButton;
-  if (button) button.disabled = true;
-  try {
-    const workspace = MaweExportTimeline.buildCurrentWorkspaceData();
-    if (saveAs) {
-      await updateServerWorkspaceSettings({ saveWorkspace: { name, workspace, overwrite: false } });
-      SERVER_CONFIG.savedWorkspaces = { ...getSavedServerWorkspaces(), [name]: workspace };
-      currentServerWorkspaceName = name;
-      currentBuiltinWorkspaceName = '';
-    } else if (currentServerWorkspaceName) {
-      await updateServerWorkspaceSettings({ saveWorkspace: { name, workspace, overwrite: true } });
-      SERVER_CONFIG.savedWorkspaces = { ...getSavedServerWorkspaces(), [name]: workspace };
-    } else {
-      await updateServerWorkspaceSettings({ savePresetWorkspace: { preset: currentBuiltinWorkspaceName, workspace } });
-      SERVER_CONFIG.presetWorkspaces = { ...getSavedPresetWorkspaces(), [currentBuiltinWorkspaceName]: workspace };
-    }
-    refreshWorkspaceSelect();
-    syncWorkspaceControls();
-    MaweHint.flashHint(saveAs ? `已另存工作区：${displayName}` : `已保存工作区：${displayName}`, 'success');
-  } catch (error) {
-    MaweHint.flashHint(`保存工作区失败：${error.message || error}`, 'warning');
-  } finally {
-    if (button) button.disabled = false;
-  }
-}
-
-async function deleteCurrentServerWorkspace() {
-  const name = currentServerWorkspaceName;
-  if (!name || !SERVER_CONFIG?.settingsUrl || !confirm(`确定删除工作区「${name}」吗？`)) return;
-  deleteWorkspaceButton.disabled = true;
-  try {
-    await updateServerWorkspaceSettings({ deleteWorkspaceName: name });
-    currentServerWorkspaceName = '';
-    refreshWorkspaceSelect();
-    syncWorkspaceControls();
-    MaweHint.flashHint(`已删除工作区：${name}`, 'success');
-  } catch (error) {
-    MaweHint.flashHint(`删除工作区失败：${error.message || error}`, 'warning');
-  } finally {
-    deleteWorkspaceButton.disabled = false;
-  }
-}
-
-// 应用一次下拉选择：saved:* 从本机库恢复；内置 id 优先用本机覆盖版，否则用默认定义。
-// 工作区 = 窗口布局 + 显示状态，切换时同时恢复该工作区保存的显示开关。
-async function applyWorkspaceSelection(preset) {
-  const previousTarget = currentServerWorkspaceName
-    ? { name: currentServerWorkspaceName }
-    : currentBuiltinWorkspaceName ? { preset: currentBuiltinWorkspaceName } : null;
-  if (previousTarget && (preset !== `saved:${currentServerWorkspaceName}`
-      && preset !== currentBuiltinWorkspaceName)) {
-    await saveWorkspaceNavigation(previousTarget);
-  }
-  if (preset.startsWith('saved:')) {
-    const name = preset.slice('saved:'.length);
-    const workspace = getSavedServerWorkspaces()[name];
-    if (!workspace) return;
-    MaweCoreState.waveformEditor.setLayoutData({ ...workspace, selectedPreset: `saved:${name}` });
-    MaweDisplaySettings.applyEditorDisplaySettings(workspace.editorDisplay);
-    restoreWorkspaceNavigation(workspace);
-    currentServerWorkspaceName = name;
-    currentBuiltinWorkspaceName = '';
-    refreshWorkspaceSelect();
-    syncWorkspaceControls();
-    void updateServerWorkspaceSettings({ activeWorkspaceName: name }).catch((error) => {
-      MaweHint.flashHint(`记住工作区失败：${error.message || error}`, 'warning');
-    });
-    MaweHint.flashHint(`已应用工作区：${name}`, 'success');
-    return;
-  }
-  if (!BUILTIN_WORKSPACE_IDS.includes(preset)) return;
-  currentServerWorkspaceName = '';
-  currentBuiltinWorkspaceName = preset;
-  const savedPreset = getSavedPresetWorkspaces()[preset];
-  const layoutPreset = presetWorkspaceHasLayout(savedPreset) ? savedPreset : null;
-  if (layoutPreset) MaweCoreState.waveformEditor.setLayoutData(layoutPreset);
-  else MaweCoreState.waveformEditor.setLayout(preset);
-  MaweDisplaySettings.applyEditorDisplaySettings(
-    savedPreset?.editorDisplay || window.AsrWaveform?.builtinWorkspaces?.[preset]?.editorDisplay,
-  );
-  workspacePresetSelect.value = preset;
-  restoreWorkspaceNavigation(savedPreset);
-  refreshWorkspaceSelect();
-  syncWorkspaceControls();
-  void updateServerWorkspaceSettings({ activeWorkspaceName: '' }).catch((error) => {
-    MaweHint.flashHint(`记住工作区失败：${error.message || error}`, 'warning');
-  });
-}
-
-function configureServerWorkspaceLibrary() {
-  if (!SERVER_CONFIG?.settingsUrl || !MaweCoreState.waveformEditor) return;
-  const savedSelection = DATA.workspace?.selectedPreset;
-  currentServerWorkspaceName = typeof savedSelection === 'string' && savedSelection.startsWith('saved:')
-    && getSavedServerWorkspaces()[savedSelection.slice('saved:'.length)]
-    ? savedSelection.slice('saved:'.length)
-    : !savedSelection && getSavedServerWorkspaces()[SERVER_CONFIG.activeWorkspaceName]
-      ? SERVER_CONFIG.activeWorkspaceName : '';
-  const initialPreset = typeof savedSelection === 'string' && !savedSelection.startsWith('saved:')
-    ? savedSelection : DATA.workspace?.preset;
-  currentBuiltinWorkspaceName = currentServerWorkspaceName ? ''
-    : BUILTIN_WORKSPACE_IDS.includes(initialPreset) ? initialPreset : 'wave-right';
-  if (!savedSelection && currentBuiltinWorkspaceName && presetWorkspaceHasLayout(getSavedPresetWorkspaces()[currentBuiltinWorkspaceName])) {
-    MaweCoreState.waveformEditor.setLayoutData(getSavedPresetWorkspaces()[currentBuiltinWorkspaceName]);
-    if (workspacePresetSelect) workspacePresetSelect.value = currentBuiltinWorkspaceName;
-  }
-  refreshWorkspaceSelect();
-  restoreWorkspaceSelection();
-  if (workspacePresetSelect?.dataset.listenersBound !== 'true') {
-    workspacePresetSelect?.addEventListener('change', () => applyWorkspaceSelection(workspacePresetSelect.value));
-    document.getElementById('layout-edit-toggle')?.addEventListener('click', () => {
-      // 拖放编辑只改窗口排列，不改变下拉框当前选中的工作区名称。
-      if (currentServerWorkspaceName) refreshWorkspaceSelect();
-      else if (currentBuiltinWorkspaceName && workspacePresetSelect) workspacePresetSelect.value = currentBuiltinWorkspaceName;
-      syncWorkspaceControls();
-    });
-    document.getElementById('layout-reset')?.addEventListener('click', () => {
-      const preset = currentBuiltinWorkspaceName;
-      if (preset) {
-        MaweCoreState.waveformEditor.setLayout(preset);
-        void updateServerWorkspaceSettings({ resetPresetWorkspace: preset }).then(() => {
-          MaweHint.flashHint(`已恢复「${preset}」默认工作区`, 'success');
-        }).catch((error) => {
-          MaweHint.flashHint(`重置工作区失败：${error.message || error}`, 'warning');
-        });
-      }
-      syncWorkspaceControls();
-    });
-    saveWorkspaceButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: false }); });
-    saveWorkspaceAsButton?.addEventListener('click', () => { void saveCurrentWorkspace({ saveAs: true }); });
-    deleteWorkspaceButton?.addEventListener('click', () => { void deleteCurrentServerWorkspace(); });
-    workspacePresetSelect.dataset.listenersBound = 'true';
-   }
-   const initialWorkspace = currentServerWorkspaceName
-     ? getSavedServerWorkspaces()[currentServerWorkspaceName]
-     : getSavedPresetWorkspaces()[currentBuiltinWorkspaceName];
-   restoreWorkspaceNavigation(initialWorkspace || DATA.workspace);
-   syncWorkspaceControls();
-}
-
-function configureWorkspaceTransfer() {
-  if (!MaweCoreState.waveformEditor) return;
-  // 「工作区配置 ▾」在服务器版与单文件版都可用，便于以文件显式备份/迁移工作区。
-  const transferDropdown = document.getElementById('workspace-transfer-dropdown');
-  const exportButton = document.getElementById('workspace-export');
-  const importButton = document.getElementById('workspace-import');
-  const importFile = document.getElementById('workspace-import-file');
-  if (transferDropdown) transferDropdown.hidden = false;
-  exportButton?.addEventListener('click', async () => {
-    await MaweExportTimeline.downloadFile(MaweExportTimeline.buildWorkspaceJson(), `${FILENAME_BASE}.workspace.json`, 'application/json', {
-      desc: '编辑器工作区文件', types: { 'application/json': ['.workspace.json', '.json'] },
-    });
-  });
-  importButton?.addEventListener('click', () => {
-    if (!importFile) return;
-    importFile.value = '';
-    importFile.click();
-  });
-  importFile?.addEventListener('change', async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      const data = JSON.parse(await file.text());
-      const workspace = data.workspace || data;
-      MaweHistory.pushLayoutUndo('导入工作区', MaweCoreState.waveformEditor.getLayoutHistorySnapshot?.());
-      MaweCoreState.waveformEditor.setLayoutData(workspace);
-      MaweDisplaySettings.applyEditorDisplaySettings(workspace?.editorDisplay);
-      DATA.workspace = MaweCoreState.waveformEditor.getLayoutData();
-      MaweHint.flashHint(`已导入工作区：${file.name}`, 'success');
-    } catch (error) {
-      MaweHint.flashHint(`工作区导入失败：${error.message || error}`, 'warning');
-    }
-  });
-  if (SERVER_CONFIG?.settingsUrl) return;  // 服务器版的下拉选择由工作区库接管
-  // 单文件编辑器不承诺 file:// 间的浏览器存储；内置工作区与显式文件迁移最可靠。
-  let selectedWorkspaceId = workspacePresetSelect?.value || 'wave-right';
-  workspacePresetSelect?.addEventListener('change', () => {
-    selectedWorkspaceId = workspacePresetSelect.value;
-    if (BUILTIN_WORKSPACE_IDS.includes(selectedWorkspaceId)) {
-      MaweCoreState.waveformEditor.setLayout(selectedWorkspaceId);
-      MaweDisplaySettings.applyEditorDisplaySettings(window.AsrWaveform?.builtinWorkspaces?.[selectedWorkspaceId]?.editorDisplay);
-    }
-  });
-  document.getElementById('layout-edit-toggle')?.addEventListener('click', () => {
-    // 拖放编辑只改窗口排列，不改变下拉框当前选中的工作区名称。
-    if (workspacePresetSelect) workspacePresetSelect.value = selectedWorkspaceId;
-  });
-}
-
-function markProjectSaved(filename, backupName, { silent = false } = {}) {
-  DATA.segments.forEach((segment) => { delete segment._dirty; });
-  const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
-  delete multi._dirty;
-  (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { delete segment._dirty; }));
-  MaweHistory.gapRemoveDirty = false;
-  MaweAppearance.previewGeometryDirty = false;
-  projectImportDirty = false;
-  FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
-  const jsonEl = document.getElementById('json-name');
-  if (jsonEl) {
-    jsonEl.textContent = filename;
-    jsonEl.title = `点击复制工程文件名：${filename}`;
-    jsonEl.classList.remove('empty');
-  }
-  renderAll();
-  if (!silent) MaweHint.flashHint('保存成功！', 'success');
-}
-
-async function saveProjectToServer({ silent = false, backupOnly = false } = {}) {
-  if (backupOnly && (projectFileHandle || !MaweSettings.EDITOR_SETTINGS.projectBackupEnabled)) return false;
-  if (!serverProjectSavingEnabled()) {
-    if (!silent) MaweHint.flashHint('当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件', 'invalid');
-    return false;
-  }
-  if (projectSaveInFlight || projectCheckpointInFlight) return false;
-  if (editingState) finishEdit(true);
-  if (extensionEditingState) finishExtensionEdit(true);
-  commitCuePanelEdit();
-  const projectJson = buildJson();
-  projectSaveInFlight = true;
-  try {
-    const saveUrl = new URL(SERVER_CONFIG.saveUrl, window.location.href);
-    const response = await fetch(saveUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        project: JSON.parse(projectJson), filename: null,
-        backupOnly,
-        backupLimit: MaweSettings.EDITOR_SETTINGS.projectBackupEnabled && (backupOnly || !silent)
-          ? MaweSettings.EDITOR_SETTINGS.projectBackupLimit : null,
-      }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) {
-      throw new Error(result.error || `服务器返回 ${response.status}`);
-    }
-    if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent });
-    return true;
-  } catch (error) {
-    const detail = error?.message || error;
-    showProjectSaveError(detail);
-    // A stale browser tab can outlive the localhost process (the browser reports
-    // ERR_CONNECTION_REFUSED). Offer a real file save so Ctrl+S never strands
-    // completed edits, while making clear that the bound JSON was not overwritten.
-    if (!silent && error instanceof TypeError
-        && confirm('无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？')) {
-      const saved = await MaweExportTimeline.downloadFile(projectJson, `${FILENAME_BASE}.mosp`, 'application/json', {
-        desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
-      });
-      if (saved) MaweHint.flashHint('服务器未连接；工程已导出为 .mosp，请重新打开该文件后继续', 'success');
-    }
-    return false;
-  } finally {
-    projectSaveInFlight = false;
-  }
-}
-
-// 把当前工程写回页面持有的浏览器文件句柄（新建工程 / 另存为选定的目标）。
-async function saveProjectToHandle({ silent = false } = {}) {
-  if (!projectFileHandle) return false;
-  if (projectSaveInFlight || projectCheckpointInFlight) return false;
-  if (editingState) finishEdit(true);
-  if (extensionEditingState) finishExtensionEdit(true);
-  commitCuePanelEdit();
-  const projectJson = buildJson();
-  projectSaveInFlight = true;
-  try {
-    const writable = await projectFileHandle.createWritable();
-    await writable.write(new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
-    await writable.close();
-    markProjectSaved(projectFileHandle.name, null, { silent });
-    return true;
-  } catch (error) {
-    MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
-    return false;
-  } finally {
-    projectSaveInFlight = false;
-  }
-}
-
-// 统一保存入口：句柄目标优先（最近一次新建/另存为选定的文件），否则写回服务器绑定工程。
-async function saveCurrentProject({ silent = false } = {}) {
-  if (projectFileHandle) return saveProjectToHandle({ silent });
-  return saveProjectToServer({ silent });
-}
-
-// 另存为：打开系统文件浏览对话框把工程文件保存到用户选择的位置。
-// 与「导出工程」的区别：保存成功后当前工程名跟随新文件（标题、导出默认名随之更新），
-// 且后续 Ctrl(Cmd)+S / 自动保存都写回这个新选定的文件。
-async function saveProjectAsToFile() {
-  if (editingState) finishEdit(true);
-  if (extensionEditingState) finishExtensionEdit(true);
-  commitCuePanelEdit();
-  const suggested = `${FILENAME_BASE}.mosp`;
-  // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
-  if (!window.showSaveFilePicker) {
-    await MaweExportTimeline.downloadFile(buildJson(), suggested, 'application/json', {
-      desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
-    });
-    return;
-  }
-  try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: suggested,
-      types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
-    });
-    const writable = await handle.createWritable();
-    await writable.write(new Blob([buildJson()], { type: 'application/json;charset=utf-8' }));
-    await writable.close();
-    projectFileHandle = handle;
-    markProjectSaved(handle.name, null);
-    configureServerSaveControls();
-    scheduleAutoSave();
-  } catch (error) {
-    if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
-    MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
-  }
-}
-
-const mediaNameEl = document.getElementById('media-name');
-if (mediaNameEl && !mediaNameEl.classList.contains('empty')) {
-  mediaNameEl.addEventListener('click', () => {
-    const name = mediaNameEl.textContent.trim();
+if (MaweProjectSave.mediaNameEl && !MaweProjectSave.mediaNameEl.classList.contains('empty')) {
+  MaweProjectSave.mediaNameEl.addEventListener('click', () => {
+    const name = MaweProjectSave.mediaNameEl.textContent.trim();
     if (name) MaweExportTimeline.copyText(name, `已复制媒体名：${name}`);
   });
 }
-
-const jsonNameEl = document.getElementById('json-name');
-if (jsonNameEl && !jsonNameEl.classList.contains('empty')) {
-  jsonNameEl.addEventListener('click', () => {
-    const name = jsonNameEl.textContent.trim();
+if (MaweProjectSave.jsonNameEl && !MaweProjectSave.jsonNameEl.classList.contains('empty')) {
+  MaweProjectSave.jsonNameEl.addEventListener('click', () => {
+    const name = MaweProjectSave.jsonNameEl.textContent.trim();
     if (name) MaweExportTimeline.copyText(name, `已复制：${name}`);
   });
 }
 
-function translatedEditorText(text) {
-  return window.MAWE_I18N?.translateText?.(text) || text;
-}
-
-function closeFcp7ExportModal() {
-  MaweDom.fcp7ExportModal.classList.remove('show');
-}
-
-function openFcp7ExportModal() {
-  if (editingState) finishEdit(true);
-  if (extensionEditingState) finishExtensionEdit(true);
-  commitCuePanelEdit();
-  const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
-  const extensionOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="main_and_extension"]');
-  extensionOption.disabled = !extensionAvailable;
-  if (!extensionAvailable) MaweDom.fcp7ExportSubtitleTracks.value = 'main';
-  MaweDom.fcp7ExportNativeText.checked = false;
-  MaweDom.fcp7ExportModal.classList.add('show');
-  MaweDom.fcp7ExportTimelineMode.focus();
-}
-
-async function exportFcp7Xml() {
-  MaweDom.fcp7ExportConfirm.disabled = true;
-  try {
-    const durationMs = MaweCoreState.waveformEditor?.durationMs
-      || Math.round(Number(MaweCoreState.player?.duration) * 1000)
-      || DATA.waveform?.duration_ms
-      || 0;
-    const options = window.AsrEditorUtils.normalizeExportOptions({
-      timelineMode: MaweDom.fcp7ExportTimelineMode.value,
-      fps: MaweDom.fcp7ExportFps.value,
-      subtitleTracks: MaweDom.fcp7ExportSubtitleTracks.value,
-      nativeTextObjects: MaweDom.fcp7ExportNativeText.checked,
-      baseName: FILENAME_BASE,
-    });
-    const plan = window.AsrEditorUtils.buildProjectExportPlan(DATA, {
-      ...options,
-      durationMs: Math.round(durationMs),
-    });
-    const [artifact] = window.AsrEditorUtils.buildFcp7ExportArtifacts(plan, options);
-    closeFcp7ExportModal();
-    const result = await MaweExportTimeline.downloadFile(
-      artifact.content,
-      artifact.filename,
-      artifact.mime,
-      { desc: 'FCP 7 XML', types: { 'application/xml': ['.xml'] } },
-       { detailed: true },
-    );
-    const messages = {
-      saved: ['FCP 7 XML 已保存', 'success'],
-      dispatched: ['FCP 7 XML 下载已发起', 'success'],
-      cancelled: ['FCP 7 XML 保存已取消', 'invalid'],
-      failed: ['FCP 7 XML 保存失败', 'warning'],
-    };
-    const [message, type] = messages[result.status] || messages.failed;
-    MaweHint.flashHint(translatedEditorText(message), type);
-  } catch (error) {
-    MaweHint.flashHint(`${translatedEditorText('FCP 7 XML 导出失败')}：${error.message}`, 'warning');
-  } finally {
-    MaweDom.fcp7ExportConfirm.disabled = false;
-  }
-}
-
-document.getElementById('download-fcp7-export')?.addEventListener('click', openFcp7ExportModal);
-MaweDom.fcp7ExportCancel?.addEventListener('click', closeFcp7ExportModal);
-MaweDom.fcp7ExportConfirm?.addEventListener('click', () => { void exportFcp7Xml(); });
+document.getElementById('download-fcp7-export')?.addEventListener('click', MaweDynamicExports.openFcp7ExportModal);
+MaweDom.fcp7ExportCancel?.addEventListener('click', MaweDynamicExports.closeFcp7ExportModal);
+MaweDom.fcp7ExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportFcp7Xml(); });
 MaweDom.fcp7ExportModal?.addEventListener('click', (event) => {
-  if (event.target === MaweDom.fcp7ExportModal) closeFcp7ExportModal();
+  if (event.target === MaweDom.fcp7ExportModal) MaweDynamicExports.closeFcp7ExportModal();
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape' || !MaweDom.fcp7ExportModal.classList.contains('show')) return;
   event.preventDefault();
   event.stopPropagation();
-  closeFcp7ExportModal();
+  MaweDynamicExports.closeFcp7ExportModal();
 }, true);
 
-function lottieExportAvailable() {
-  return Boolean(SERVER_CONFIG?.canLottieExport && SERVER_CONFIG?.lottieExportUrl);
-}
-
-function updateLottieExportButton() {
-  const button = document.getElementById('download-lottie');
-  if (!button) return;
-  if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
-  const disabled = !lottieExportAvailable();
-  button.classList.toggle('sticker-disabled', disabled);
-  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
-  button.title = disabled
-    ? translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕')
-    : button.dataset.originalTitle;
-}
-
-function lottieExportBlocked() {
-  if (lottieExportAvailable()) return false;
-  const message = '当前模式不可用：动态字幕 .lottie 导出需要以 server-editor 打开并绑定工程文件';
-  MaweHint.flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
-  return true;
-}
-
-function closeLottieExportModal() {
-  MaweDom.lottieExportModal?.classList.remove('show');
-}
-
-function openLottieExportModal() {
-  if (lottieExportBlocked()) return;
-  if (editingState) finishEdit(true);
-  if (extensionEditingState) finishExtensionEdit(true);
-  commitCuePanelEdit();
-  const extensionOption = MaweDom.lottieExportTrack?.querySelector('option[value="extension"]');
-  const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
-  if (extensionOption) extensionOption.disabled = !extensionAvailable;
-  if (!extensionAvailable && MaweDom.lottieExportTrack) MaweDom.lottieExportTrack.value = 'main';
-  MaweDom.lottieExportModal?.classList.add('show');
-  MaweDom.lottieExportTrack?.focus();
-}
-
-function lottieExportCanvasSize() {
-  const match = /^(\d+)x(\d+)$/u.exec(MaweDom.lottieExportResolution?.value || '');
-  if (!match) return { width: 1920, height: 1080 };
-  return { width: Number(match[1]), height: Number(match[2]) };
-}
-
-async function exportLottieDynamicCaptions() {
-  if (lottieExportBlocked()) return;
-  MaweDom.lottieExportConfirm.disabled = true;
-  try {
-    const extension = MaweDom.lottieExportTrack?.value === 'extension';
-    const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
-    const sourceSegments = extension ? track?.segments : DATA.segments;
-    if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
-      !segment?.disabled && String(segment?.text || '').trim()
-    ))) {
-      throw new Error(translatedEditorText(
-        extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
-      ));
-    }
-    const gapRemoved = MaweDom.lottieExportGapRemoved?.checked === true;
-    const exportData = MaweExportSrt.buildDynamicCaptionExportData(sourceSegments, gapRemoved);
-    if (!exportData) return;
-    const { segments, durationMs } = exportData;
-    if (!segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
-      throw new Error(translatedEditorText(
-        extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
-      ));
-    }
-    const size = lottieExportCanvasSize();
-    const appearance = extension ? MaweAppearance.getExtensionSubtitleAppearance() : MaweAppearance.getSubtitleAppearance();
-    const animation = window.AsrEditorUtils.buildLottieAnimation(segments, {
-      durationMs: Math.round(durationMs),
-      fps: MaweDom.lottieExportFps?.value || '30',
-      renderMode: MaweDom.lottieExportRenderMode?.value || 'text',
-      width: size.width,
-      height: size.height,
-      subtitle: { ...MaweAppearance.getPreviewGeometry(), ...appearance },
-    });
-    MaweHint.flashHint(translatedEditorText('正在生成动态字幕 .lottie…'));
-    const response = await fetch(new URL(SERVER_CONFIG.lottieExportUrl, window.location.href), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, animation }),
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || `服务器返回 ${response.status}`);
-    }
-    const blob = await response.blob();
-    closeLottieExportModal();
-    const suffix = extension ? '_extension' : '';
-    const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
-    const saved = await MaweExportTimeline.downloadFile(
-      blob,
-      `${FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.lottie`,
-      'application/zip+dotlottie',
-      { desc: 'Lottie 动态字幕', types: { 'application/zip+dotlottie': ['.lottie'] } },
-    );
-    if (saved) MaweHint.flashHint(translatedEditorText('动态字幕 .lottie 已生成'), 'success');
-  } catch (error) {
-    MaweHint.flashHint(`${translatedEditorText('动态字幕 .lottie 导出失败')}：${error.message || error}`, 'warning');
-  } finally {
-    MaweDom.lottieExportConfirm.disabled = false;
-  }
-}
-
-document.getElementById('download-lottie')?.addEventListener('click', openLottieExportModal);
-MaweDom.lottieExportCancel?.addEventListener('click', closeLottieExportModal);
-MaweDom.lottieExportConfirm?.addEventListener('click', () => { void exportLottieDynamicCaptions(); });
+document.getElementById('download-lottie')?.addEventListener('click', MaweDynamicExports.openLottieExportModal);
+MaweDom.lottieExportCancel?.addEventListener('click', MaweDynamicExports.closeLottieExportModal);
+MaweDom.lottieExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportLottieDynamicCaptions(); });
 MaweDom.lottieExportModal?.addEventListener('click', (event) => {
-  if (event.target === MaweDom.lottieExportModal) closeLottieExportModal();
+  if (event.target === MaweDom.lottieExportModal) MaweDynamicExports.closeLottieExportModal();
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape' || !MaweDom.lottieExportModal?.classList.contains('show')) return;
   event.preventDefault();
   event.stopPropagation();
-  closeLottieExportModal();
+  MaweDynamicExports.closeLottieExportModal();
 }, true);
 
-function ografExportAvailable() {
-  return Boolean(SERVER_CONFIG?.canOgrafExport && SERVER_CONFIG?.ografExportUrl);
-}
-
-function updateOgrafExportButton() {
-  const button = document.getElementById('download-ograf');
-  if (!button) return;
-  if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
-  const disabled = !ografExportAvailable();
-  button.classList.toggle('sticker-disabled', disabled);
-  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
-  button.title = disabled
-    ? translatedEditorText('服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出动态字幕')
-    : button.dataset.originalTitle;
-}
-
-function ografExportBlocked() {
-  if (ografExportAvailable()) return false;
-  const message = '当前模式不可用：OGraf 动态字幕导出需要以 server-editor 打开并绑定工程文件';
-  MaweHint.flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
-  return true;
-}
-
-function closeOgrafExportModal() {
-  MaweDom.ografExportModal?.classList.remove('show');
-}
-
-function openOgrafExportModal() {
-  if (ografExportBlocked()) return;
-  if (editingState) finishEdit(true);
-  if (extensionEditingState) finishExtensionEdit(true);
-  commitCuePanelEdit();
-  const extensionOption = MaweDom.ografExportTrack?.querySelector('option[value="extension"]');
-  const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
-  if (extensionOption) extensionOption.disabled = !extensionAvailable;
-  if (!extensionAvailable && MaweDom.ografExportTrack) MaweDom.ografExportTrack.value = 'main';
-  MaweDom.ografExportModal?.classList.add('show');
-  MaweDom.ografExportTrack?.focus();
-}
-
-function ografExportCanvasSize() {
-  const match = /^(\d+)x(\d+)$/u.exec(MaweDom.ografExportResolution?.value || '');
-  if (!match) return { width: 1920, height: 1080 };
-  return { width: Number(match[1]), height: Number(match[2]) };
-}
-
-async function exportOgrafDynamicCaptions() {
-  if (ografExportBlocked()) return;
-  MaweDom.ografExportConfirm.disabled = true;
-  try {
-    const extension = MaweDom.ografExportTrack?.value === 'extension';
-    const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
-    const sourceSegments = extension ? track?.segments : DATA.segments;
-    if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
-      !segment?.disabled && String(segment?.text || '').trim()
-    ))) {
-      throw new Error(translatedEditorText(
-        extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
-      ));
-    }
-    const gapRemoved = MaweDom.ografExportGapRemoved?.checked === true;
-    const exportData = MaweExportSrt.buildDynamicCaptionExportData(sourceSegments, gapRemoved);
-    if (!exportData) return;
-    const { segments, durationMs } = exportData;
-    if (!segments.some((segment) => !segment?.disabled && String(segment?.text || '').trim())) {
-      throw new Error(translatedEditorText(
-        extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
-      ));
-    }
-    const size = ografExportCanvasSize();
-    const appearance = extension ? MaweAppearance.getExtensionSubtitleAppearance() : MaweAppearance.getSubtitleAppearance();
-    const graphic = window.AsrEditorUtils.buildOgrafGraphic(segments, {
-      durationMs: Math.round(durationMs),
-      fps: MaweDom.ografExportFps?.value || '30',
-      width: size.width,
-      height: size.height,
-      subtitle: { ...MaweAppearance.getPreviewGeometry(), ...appearance },
-    });
-    MaweHint.flashHint(translatedEditorText('正在生成动态字幕 .ograf.zip…'));
-    const response = await fetch(new URL(SERVER_CONFIG.ografExportUrl, window.location.href), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, graphic }),
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || `服务器返回 ${response.status}`);
-    }
-    const blob = await response.blob();
-    closeOgrafExportModal();
-    const suffix = extension ? '_extension' : '';
-    const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
-    const saved = await MaweExportTimeline.downloadFile(
-      blob,
-      `${FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.ograf.zip`,
-      'application/zip',
-      { desc: 'OGraf 动态字幕', types: { 'application/zip': ['.zip'] } },
-    );
-    if (saved) MaweHint.flashHint(translatedEditorText('动态字幕 .ograf.zip 已生成；请先解压'), 'success');
-  } catch (error) {
-    MaweHint.flashHint(`${translatedEditorText('动态字幕 .ograf.zip 导出失败')}：${error.message || error}`, 'warning');
-  } finally {
-    MaweDom.ografExportConfirm.disabled = false;
-  }
-}
-
-document.getElementById('download-ograf')?.addEventListener('click', openOgrafExportModal);
-MaweDom.ografExportCancel?.addEventListener('click', closeOgrafExportModal);
-MaweDom.ografExportConfirm?.addEventListener('click', () => { void exportOgrafDynamicCaptions(); });
+document.getElementById('download-ograf')?.addEventListener('click', MaweDynamicExports.openOgrafExportModal);
+MaweDom.ografExportCancel?.addEventListener('click', MaweDynamicExports.closeOgrafExportModal);
+MaweDom.ografExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportOgrafDynamicCaptions(); });
 MaweDom.ografExportModal?.addEventListener('click', (event) => {
-  if (event.target === MaweDom.ografExportModal) closeOgrafExportModal();
+  if (event.target === MaweDom.ografExportModal) MaweDynamicExports.closeOgrafExportModal();
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape' || !MaweDom.ografExportModal?.classList.contains('show')) return;
   event.preventDefault();
   event.stopPropagation();
-  closeOgrafExportModal();
+  MaweDynamicExports.closeOgrafExportModal();
 }, true);
 
 MaweDom.downloadMultiSrtButton?.addEventListener('click', async () => {
   if (extensionEditingState) finishExtensionEdit(true);
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   if (!track) return;
-  await MaweExportTimeline.downloadFile(MaweExportSrt.buildExtensionSrt(track), `${FILENAME_BASE}_extension.srt`, 'text/plain', {
+  await MaweExportTimeline.downloadFile(MaweExportSrt.buildExtensionSrt(track), `${MaweBoot.FILENAME_BASE}_extension.srt`, 'text/plain', {
     desc: '副字幕 SRT 文件', types: { 'text/plain': ['.srt'] },
   });
 });
 document.getElementById('download-full-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
-  await MaweExportTimeline.downloadFile(MaweExportSrt.buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+  await MaweExportTimeline.downloadFile(MaweExportSrt.buildSrt(), `${MaweBoot.FILENAME_BASE}.srt`, 'text/plain', {
     desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
   });
 });
 document.getElementById('download-full-ass')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
-  await MaweExportTimeline.downloadFile(buildAss(), `${FILENAME_BASE}.ass`, 'text/plain', {
+  await MaweExportTimeline.downloadFile(buildAss(), `${MaweBoot.FILENAME_BASE}.ass`, 'text/plain', {
     desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
   });
 });
 document.getElementById('download-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(false));
 document.getElementById('download-plain-text')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
-  await MaweExportTimeline.downloadFile(window.AsrEditorUtils.buildPlainTextPayload(DATA.segments), `${FILENAME_BASE}.txt`, 'text/plain', {
+  await MaweExportTimeline.downloadFile(window.AsrEditorUtils.buildPlainTextPayload(MaweBoot.DATA.segments), `${MaweBoot.FILENAME_BASE}.txt`, 'text/plain', {
     desc: '纯文本字幕文件', types: { 'text/plain': ['.txt'] }
   });
 });
 document.getElementById('download-json')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
-  await MaweExportTimeline.downloadFile(buildJson(), `${FILENAME_BASE}.mosp`, 'application/json', {
+  await MaweExportTimeline.downloadFile(buildJson(), `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
     desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
   });
 });
-MaweDom.saveProjectButton?.addEventListener('click', () => saveCurrentProject());
-MaweDom.saveProjectAsButton?.addEventListener('click', () => saveProjectAsToFile());
+MaweDom.saveProjectButton?.addEventListener('click', () => MaweProjectSave.saveCurrentProject());
+MaweDom.saveProjectAsButton?.addEventListener('click', () => MaweProjectSave.saveProjectAsToFile());
 // Project-level save shortcuts intentionally override the browser page-save
 // command. finishEdit() inside saveProjectToServer commits an active text edit.
 document.addEventListener('keydown', (event) => {
   if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 's') return;
   event.preventDefault();
   if (event.shiftKey) {
-    void saveProjectAsToFile();
+    void MaweProjectSave.saveProjectAsToFile();
   } else {
-    void saveCurrentProject();
+    void MaweProjectSave.saveCurrentProject();
   }
 });
 document.getElementById('download-resolve-json')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = MaweExportTimeline.buildResolveJson();
   if (payload) {
-    await MaweExportTimeline.downloadFile(payload, `${FILENAME_BASE}_resolve.json`, 'application/json', {
+    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_resolve.json`, 'application/json', {
       desc: 'Resolve JSON', types: { 'application/json': ['.json'] }
     });
   }
@@ -10116,7 +8867,7 @@ const portableStickerExportOption = stickerOtioExportMode?.querySelector('option
 
 function syncStickerOtioExportMode() {
   const available = Boolean(
-    SERVER_CONFIG?.canPortableStickerExport && SERVER_CONFIG?.portableStickerExportUrl
+    MaweBoot.SERVER_CONFIG?.canPortableStickerExport && MaweBoot.SERVER_CONFIG?.portableStickerExportUrl
   );
   if (portableStickerExportOption) portableStickerExportOption.disabled = !available;
   if (stickerOtioExportMode) {
@@ -10147,11 +8898,11 @@ async function exportStickerOtio(kind, buildTimeline, filename, description) {
   }
   MaweHint.flashHint('正在生成便携表情包 OTIO 文件夹…');
   try {
-    const response = await fetch(new URL(SERVER_CONFIG.portableStickerExportUrl, window.location.href), {
+    const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.portableStickerExportUrl, window.location.href), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        requestToken: SERVER_CONFIG.requestToken,
+        requestToken: MaweBoot.SERVER_CONFIG.requestToken,
         kind,
         timeline: JSON.parse(payload),
       }),
@@ -10167,14 +8918,14 @@ async function exportStickerOtio(kind, buildTimeline, filename, description) {
 document.getElementById('download-sticker-otio')?.addEventListener('click', () => {
   if (MaweExportTimeline.stickerExportBlocked('download-sticker-otio')) return;
   exportStickerOtio(
-    'stickers', MaweExportTimeline.buildStickerOtio, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, 'OTIO 工程文件'
+    'stickers', MaweExportTimeline.buildStickerOtio, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, 'OTIO 工程文件'
   );
 });
 document.getElementById('download-gap-removed-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = MaweExportSrt.buildGapRemovedSrt();
   if (payload) {
-    await MaweExportTimeline.downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
       desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
     });
   }
@@ -10184,11 +8935,11 @@ document.getElementById('download-otio')?.addEventListener('click', async () => 
   if (editingState) finishEdit(true);
   const payload = MaweExportTimeline.buildSourceOtio();
   if (!payload) return;
-  await MaweExportTimeline.downloadFile(payload, FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
+  await MaweExportTimeline.downloadFile(payload, MaweBoot.FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
     desc: 'OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
   });
   if (MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
-    await MaweExportTimeline.downloadFile(MaweExportSrt.buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+    await MaweExportTimeline.downloadFile(MaweExportSrt.buildSrt(), `${MaweBoot.FILENAME_BASE}.srt`, 'text/plain', {
       desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
     });
   }
@@ -10197,11 +8948,11 @@ document.getElementById('download-otioz')?.addEventListener('click', async () =>
   const saved = await MaweExportTimeline.exportTimelineOtioz(
     'source',
     MaweExportTimeline.buildSourceOtio,
-    FILENAME_BASE + '.otioz',
+    MaweBoot.FILENAME_BASE + '.otioz',
     'OTIOZ 打包工程',
   );
   if (saved && MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
-    await MaweExportTimeline.downloadFile(MaweExportSrt.buildSrt(), `${FILENAME_BASE}.srt`, 'text/plain', {
+    await MaweExportTimeline.downloadFile(MaweExportSrt.buildSrt(), `${MaweBoot.FILENAME_BASE}.srt`, 'text/plain', {
       desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
     });
   }
@@ -10210,13 +8961,13 @@ document.getElementById('download-gap-removed-otio')?.addEventListener('click', 
   if (editingState) finishEdit(true);
   const payload = MaweExportTimeline.buildGapRemovedOtio();
   if (!payload) return;
-  await MaweExportTimeline.downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
+  await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
     desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
   });
   if (MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
     const srtPayload = MaweExportSrt.buildGapRemovedSrt();
     if (srtPayload) {
-      await MaweExportTimeline.downloadFile(srtPayload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+      await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
         desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
       });
     }
@@ -10226,13 +8977,13 @@ document.getElementById('download-gap-removed-otioz')?.addEventListener('click',
   const saved = await MaweExportTimeline.exportTimelineOtioz(
     'gap-removed',
     MaweExportTimeline.buildGapRemovedOtio,
-    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otioz`,
+    `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otioz`,
     '去空隙时间线 OTIOZ 打包工程',
   );
   if (saved && MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
     const srtPayload = MaweExportSrt.buildGapRemovedSrt();
     if (srtPayload) {
-      await MaweExportTimeline.downloadFile(srtPayload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+      await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
         desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
       });
     }
@@ -10242,7 +8993,7 @@ document.getElementById('download-gap-removed-ffconcat')?.addEventListener('clic
   if (editingState) finishEdit(true);
   const payload = MaweExportSrt.buildGapRemovedFfconcat();
   if (payload) {
-    await MaweExportTimeline.downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ffconcat`, 'text/plain', {
+    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ffconcat`, 'text/plain', {
       desc: 'FFconcat 剪辑计划', types: { 'text/plain': ['.ffconcat'] }
     });
   }
@@ -10251,7 +9002,7 @@ document.getElementById('download-gap-removed-regions-json')?.addEventListener('
   if (editingState) finishEdit(true);
   const payload = MaweExportSrt.buildGapRemovedRegionsJson();
   if (payload) {
-    await MaweExportTimeline.downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.keep-regions.json`, 'application/json', {
+    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.keep-regions.json`, 'application/json', {
       desc: '去空隙保留区域 JSON', types: { 'application/json': ['.json'] }
     });
   }
@@ -10260,7 +9011,7 @@ document.getElementById('download-gap-removed-sticker-otio')?.addEventListener('
   if (MaweExportTimeline.stickerExportBlocked('download-gap-removed-sticker-otio')) return;
   await exportStickerOtio(
     'gap-removed-stickers', MaweExportTimeline.buildGapRemovedStickerOtio,
-    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, '去空隙表情包 OTIO 工程'
+    `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, '去空隙表情包 OTIO 工程'
   );
 });
 document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener('click', async () => {
@@ -10273,14 +9024,14 @@ document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener(
   }
   await MaweExportTimeline.exportStickerOtoz(
     'gap-removed-stickers', MaweExportTimeline.buildGapRemovedStickerOtio,
-    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '去空隙表情包 OTIOZ 打包工程'
+    `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '去空隙表情包 OTIOZ 打包工程'
   );
 });
 document.getElementById('download-sticker-otioz')?.addEventListener('click', async () => {
   if (MaweExportTimeline.stickerExportBlocked('download-sticker-otioz')) return;
   await MaweExportTimeline.exportStickerOtoz(
     'stickers', MaweExportTimeline.buildStickerOtio,
-    `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '表情包 OTIOZ 打包工程'
+    `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '表情包 OTIOZ 打包工程'
   );
 });
 
@@ -10319,339 +9070,28 @@ syncOtioExportOptionInputs();
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
 MaweExportTimeline.updateStickerExportButtons();
 MaweExportTimeline.updateTimelineOtiozExportButtons();
-updateLottieExportButton();
-updateOgrafExportButton();
-
-// === 工具栏导出下拉菜单 ===
-const SUBMENU_CLOSE_DELAY_MS = 160;
-const SUBMENU_AIM_TOLERANCE_PX = 8;
-
-function bindToolbarExportDropdown(dropdownId, buttonId, menuId, positioner = null) {
-  const dd = document.getElementById(dropdownId);
-  const btn = document.getElementById(buttonId);
-  const menu = document.getElementById(menuId);
-  if (!dd || !btn || !menu) return;
-  const submenuWrappers = [...menu.children].filter((item) => item.classList.contains('dropdown-submenu'));
-  const submenuCloseTimers = new WeakMap();
-  let pendingSubmenuSwitch = null;
-  let lastPointerPoint = null;
-  let previousPointerPoint = null;
-  let lastPointInsideOpenWrapper = null;
-  const directItems = (container) => [...container.children].flatMap((child) => {
-    if (child.classList.contains('dropdown-item')) {
-      return child.classList.contains('disabled') || child.hidden ? [] : [child];
-    }
-    if (!child.classList.contains('dropdown-submenu')) return [];
-    const toggle = child.querySelector(':scope > .dropdown-submenu-toggle');
-    return toggle && !toggle.classList.contains('disabled') && !toggle.hidden ? [toggle] : [];
-  });
-  const pointerPoint = (event) => {
-    if (!event || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null;
-    return { x: event.clientX, y: event.clientY };
-  };
-  const clearPendingSubmenuSwitch = () => {
-    if (!pendingSubmenuSwitch) return;
-    clearTimeout(pendingSubmenuSwitch.timer);
-    pendingSubmenuSwitch = null;
-  };
-  const openSubmenu = () => submenuWrappers.find((wrapper) => wrapper.classList.contains('open'));
-  const pointInTriangle = (point, a, b, c) => {
-    const sign = (p1, p2, p3) => (
-      (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
-    );
-    const first = sign(point, a, b);
-    const second = sign(point, b, c);
-    const third = sign(point, c, a);
-    const hasNegative = first < 0 || second < 0 || third < 0;
-    const hasPositive = first > 0 || second > 0 || third > 0;
-    return !(hasNegative && hasPositive);
-  };
-  const shouldDelaySubmenuSwitch = (wrapper, point, previousPoint) => {
-    const active = openSubmenu();
-    const apex = previousPoint || lastPointInsideOpenWrapper;
-    if (!active || active === wrapper || !point || !apex) return false;
-    const submenu = active.querySelector(':scope > .dropdown-submenu-menu');
-    if (!submenu) return false;
-    const activeRect = active.getBoundingClientRect();
-    const submenuRect = submenu.getBoundingClientRect();
-    const opensLeft = submenuRect.right <= activeRect.left + SUBMENU_AIM_TOLERANCE_PX;
-    const opensRight = submenuRect.left >= activeRect.right - SUBMENU_AIM_TOLERANCE_PX;
-    if (!opensLeft && !opensRight) return false;
-    const direction = opensLeft ? -1 : 1;
-    if ((direction < 0 && point.x > apex.x + SUBMENU_AIM_TOLERANCE_PX)
-      || (direction > 0 && point.x < apex.x - SUBMENU_AIM_TOLERANCE_PX)) return false;
-    const edgeX = direction < 0 ? submenuRect.right : submenuRect.left;
-    return pointInTriangle(
-      point,
-      apex,
-      { x: edgeX, y: submenuRect.top - SUBMENU_AIM_TOLERANCE_PX },
-      { x: edgeX, y: submenuRect.bottom + SUBMENU_AIM_TOLERANCE_PX },
-    );
-  };
-  const clearSubmenuClose = (wrapper) => {
-    const timer = submenuCloseTimers.get(wrapper);
-    if (timer) {
-      clearTimeout(timer);
-      submenuCloseTimers.delete(wrapper);
-    }
-  };
-  const closeSubmenu = (wrapper) => {
-    clearSubmenuClose(wrapper);
-    if (wrapper.classList.contains('open')) lastPointInsideOpenWrapper = null;
-    wrapper.classList.remove('open');
-    wrapper.querySelector(':scope > .dropdown-submenu-toggle')
-      ?.setAttribute('aria-expanded', 'false');
-  };
-  const closeSubmenus = () => {
-    submenuWrappers.forEach(closeSubmenu);
-  };
-  const scheduleSubmenuSwitch = (wrapper) => {
-    // menu-aim：鼠标进入同级菜单项时，沿当前子菜单近侧边缘的三角通道移动，先保留当前菜单。
-    clearPendingSubmenuSwitch();
-    const active = openSubmenu();
-    if (active && active !== wrapper) clearSubmenuClose(active);
-    const timer = setTimeout(() => {
-      if (!pendingSubmenuSwitch || pendingSubmenuSwitch.wrapper !== wrapper) return;
-      pendingSubmenuSwitch = null;
-      if (wrapper.matches(':hover') || wrapper.contains(document.activeElement)) {
-        setSubmenuOpen(wrapper, true);
-      }
-    }, SUBMENU_CLOSE_DELAY_MS);
-    pendingSubmenuSwitch = { wrapper, timer };
-  };
-  const setSubmenuOpen = (wrapper, open, focusFirst = false) => {
-    if (!wrapper) return;
-    const toggle = wrapper.querySelector(':scope > .dropdown-submenu-toggle');
-    const submenu = wrapper.querySelector(':scope > .dropdown-submenu-menu');
-    if (!toggle || !submenu) return;
-    clearSubmenuClose(wrapper);
-    if (open) {
-      clearPendingSubmenuSwitch();
-      submenuWrappers.forEach((other) => {
-        if (other !== wrapper) closeSubmenu(other);
-      });
-    }
-    wrapper.classList.toggle('open', open);
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open && focusFirst) directItems(submenu)[0]?.focus();
-  };
-  const scheduleSubmenuClose = (wrapper) => {
-    clearSubmenuClose(wrapper);
-    const timer = setTimeout(() => {
-      submenuCloseTimers.delete(wrapper);
-      if (!wrapper.matches(':hover') && !wrapper.contains(document.activeElement)) {
-        closeSubmenu(wrapper);
-      }
-    }, SUBMENU_CLOSE_DELAY_MS);
-    submenuCloseTimers.set(wrapper, timer);
-  };
-  const setOpen = (open, { restoreFocus = false } = {}) => {
-    dd.classList.toggle('open', open);
-    if (btn.hasAttribute('aria-expanded')) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (!open) {
-      closeSubmenus();
-      lastPointerPoint = null;
-      previousPointerPoint = null;
-      lastPointInsideOpenWrapper = null;
-    }
-    if (open) MaweFloatingPanel.bringFloatingSurfaceToFront(dd);
-    else MaweFloatingPanel.syncFloatingSurfaceLayers();
-    if (open && positioner) requestAnimationFrame(positioner);
-    if (!open && restoreFocus) btn.focus();
-  };
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    document.querySelectorAll('.toolbar .dropdown.open').forEach((other) => {
-      if (other !== dd) {
-        other.classList.remove('open');
-        other.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');
-        other.querySelectorAll('.dropdown-submenu').forEach((submenu) => {
-          submenu.classList.remove('open');
-          submenu.querySelector('.dropdown-submenu-toggle')?.setAttribute('aria-expanded', 'false');
-        });
-      }
-    });
-    setOpen(!dd.classList.contains('open'));
-  });
-  btn.addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    setOpen(true);
-    const items = directItems(menu);
-    items[e.key === 'ArrowDown' ? 0 : items.length - 1]?.focus();
-  });
-  submenuWrappers.forEach((wrapper) => {
-    const submenu = wrapper.querySelector(':scope > .dropdown-submenu-menu');
-    const keepOpen = (event) => {
-      const point = pointerPoint(event);
-      const sameAsLastPoint = point && lastPointerPoint
-        && point.x === lastPointerPoint.x && point.y === lastPointerPoint.y;
-      const previousPoint = point
-        ? (sameAsLastPoint ? previousPointerPoint : lastPointerPoint)
-        : null;
-      if (point && !sameAsLastPoint) previousPointerPoint = lastPointerPoint;
-      if (point) lastPointerPoint = point;
-      if (point && shouldDelaySubmenuSwitch(wrapper, point, previousPoint)) {
-        scheduleSubmenuSwitch(wrapper);
-        return;
-      }
-      setSubmenuOpen(wrapper, true);
-      if (point) lastPointInsideOpenWrapper = point;
-    };
-    const deferClose = (event) => {
-      if (pendingSubmenuSwitch?.wrapper === wrapper
-        && (!event?.relatedTarget || !wrapper.contains(event.relatedTarget))) {
-        clearPendingSubmenuSwitch();
-        const active = openSubmenu();
-        if (active && active !== wrapper) scheduleSubmenuClose(active);
-      }
-      scheduleSubmenuClose(wrapper);
-    };
-    wrapper.addEventListener('pointerenter', keepOpen);
-    wrapper.addEventListener('pointerleave', deferClose);
-    wrapper.addEventListener('focusin', keepOpen);
-    wrapper.addEventListener('focusout', (e) => {
-      if (!e.relatedTarget || !wrapper.contains(e.relatedTarget)) deferClose();
-    });
-    submenu?.addEventListener('pointerenter', keepOpen);
-    submenu?.addEventListener('pointerleave', deferClose);
-  });
-  menu.addEventListener('pointermove', (event) => {
-    const point = pointerPoint(event);
-    if (!point) return;
-    if (!lastPointerPoint || point.x !== lastPointerPoint.x || point.y !== lastPointerPoint.y) {
-      previousPointerPoint = lastPointerPoint;
-    }
-    lastPointerPoint = point;
-    const active = openSubmenu();
-    if (active?.contains(event.target)) lastPointInsideOpenWrapper = point;
-  });
-  menu.addEventListener('click', (e) => {
-    const item = e.target.closest('.dropdown-item');
-    if (!item || !menu.contains(item)) return;
-    if (item.classList.contains('dropdown-submenu-toggle')) {
-      e.stopPropagation();
-      const wrapper = item.closest('.dropdown-submenu');
-      setSubmenuOpen(wrapper, !wrapper.classList.contains('open'));
-      return;
-    }
-    setOpen(false);
-  });
-  menu.addEventListener('keydown', (e) => {
-    const item = e.target.closest('.dropdown-item');
-    if (!item || !menu.contains(item)) return;
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      setOpen(false, { restoreFocus: true });
-      return;
-    }
-    const submenuWrapper = item.closest('.dropdown-submenu');
-    const submenu = submenuWrapper?.querySelector(':scope > .dropdown-submenu-menu');
-    if (e.key === 'ArrowRight' && item.classList.contains('dropdown-submenu-toggle')) {
-      e.preventDefault();
-      setSubmenuOpen(submenuWrapper, true, true);
-      return;
-    }
-    if (e.key === 'ArrowLeft' && submenuWrapper && !item.classList.contains('dropdown-submenu-toggle')) {
-      e.preventDefault();
-      setSubmenuOpen(submenuWrapper, false);
-      submenuWrapper.querySelector(':scope > .dropdown-submenu-toggle')?.focus();
-      return;
-    }
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const container = submenu && submenu.contains(item) ? submenu : menu;
-      const items = directItems(container);
-      const index = items.indexOf(item);
-      if (index < 0 || !items.length) return;
-      const offset = e.key === 'ArrowDown' ? 1 : -1;
-      items[(index + offset + items.length) % items.length].focus();
-      return;
-    }
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      item.click();
-      if (!item.classList.contains('dropdown-submenu-toggle')) btn.focus();
-    }
-  });
-  document.addEventListener('click', (e) => {
-    if (!dd.contains(e.target)) setOpen(false);
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && dd.classList.contains('open')) {
-      e.preventDefault();
-      setOpen(false, { restoreFocus: true });
-    }
-  });
-  if (positioner) {
-    window.addEventListener('resize', positioner);
-    window.addEventListener('scroll', positioner, true);
-    dd.closest('.cue-list-toolbar, .toolbar')?.addEventListener('scroll', positioner);
-  }
-}
-bindToolbarExportDropdown('subtitle-export-dropdown', 'subtitle-export-btn', 'subtitle-export-menu');
-bindToolbarExportDropdown('gap-removed-export-dropdown', 'gap-removed-export-btn', 'gap-removed-export-menu');
-bindToolbarExportDropdown('extra-export-dropdown', 'extra-export-btn', 'extra-export-menu');
-bindToolbarExportDropdown('open-project-dropdown', 'open-project-menu-btn', 'open-project-menu');
-bindToolbarExportDropdown('save-project-dropdown', 'save-project-menu-btn', 'save-project-menu');
-bindToolbarExportDropdown('workspace-transfer-dropdown', 'workspace-transfer-btn', 'workspace-transfer-menu');
-bindToolbarExportDropdown('multi-subtitle-settings-dropdown', 'multi-subtitle-settings-toggle', 'multi-subtitle-settings-menu');
-function positionBatchOperationsMenu() {
-  const dropdown = document.getElementById('batch-operations-dropdown');
-  const button = document.getElementById('batch-operations-btn');
-  const menu = document.getElementById('batch-operations-menu');
-  if (!dropdown?.classList.contains('open') || !button || !menu) return;
-  const buttonRect = button.getBoundingClientRect();
-  const menuWidth = menu.offsetWidth;
-  const menuHeight = menu.offsetHeight;
-  const margin = 8;
-  const left = Math.min(
-    Math.max(margin, buttonRect.left),
-    Math.max(margin, window.innerWidth - menuWidth - margin),
-  );
-  const belowTop = buttonRect.bottom + 6;
-  const aboveTop = buttonRect.top - menuHeight - 6;
-  let top = belowTop;
-  if (belowTop + menuHeight > window.innerHeight - margin && aboveTop >= margin) {
-    top = aboveTop;
-  } else if (belowTop + menuHeight > window.innerHeight - margin) {
-    top = Math.max(margin, window.innerHeight - menuHeight - margin);
-  }
-  menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
-}
-bindToolbarExportDropdown(
+MaweDynamicExports.updateLottieExportButton();
+MaweDynamicExports.updateOgrafExportButton();
+MaweExportMenus.bindToolbarExportDropdown('subtitle-export-dropdown', 'subtitle-export-btn', 'subtitle-export-menu');
+MaweExportMenus.bindToolbarExportDropdown('gap-removed-export-dropdown', 'gap-removed-export-btn', 'gap-removed-export-menu');
+MaweExportMenus.bindToolbarExportDropdown('extra-export-dropdown', 'extra-export-btn', 'extra-export-menu');
+MaweExportMenus.bindToolbarExportDropdown('open-project-dropdown', 'open-project-menu-btn', 'open-project-menu');
+MaweExportMenus.bindToolbarExportDropdown('save-project-dropdown', 'save-project-menu-btn', 'save-project-menu');
+MaweExportMenus.bindToolbarExportDropdown('workspace-transfer-dropdown', 'workspace-transfer-btn', 'workspace-transfer-menu');
+MaweExportMenus.bindToolbarExportDropdown('multi-subtitle-settings-dropdown', 'multi-subtitle-settings-toggle', 'multi-subtitle-settings-menu');
+MaweExportMenus.bindToolbarExportDropdown(
   'batch-operations-dropdown', 'batch-operations-btn', 'batch-operations-menu',
-  positionBatchOperationsMenu,
+  MaweExportMenus.positionBatchOperationsMenu,
 );
 
-// === 打开工程 ===
-const openProjectFileInput = document.getElementById('open-project-file');
-const loadMediaFileInput = document.getElementById('load-media-file');
-const loadSrtFileInput = document.getElementById('load-srt-file');
-let currentMediaBlobUrl = null;  // 跟踪 blob URL，便于切换时 revoke 防泄漏
-let pendingProjectMediaSelection = null;
-
-function closeProjectMediaModal(clearPending = false) {
-  MaweDom.projectMediaModal.classList.remove('show');
-  if (clearPending) pendingProjectMediaSelection = null;
-  setTimeout(() => window.MAWE_ONBOARDING?.scheduleStart(), 0);
-}
-
-function showProjectMediaModal() {
-  MaweDom.projectMediaModal.classList.add('show');
-  MaweDom.projectMediaSelectButton.focus();
-}
-
 MaweDom.projectMediaSelectButton.addEventListener('click', () => {
-  closeProjectMediaModal(false);
-  loadMediaFileInput.value = '';
-  loadMediaFileInput.click();
+  MaweProjectMediaInputs.closeProjectMediaModal(false);
+  MaweProjectMediaInputs.loadMediaFileInput.value = '';
+  MaweProjectMediaInputs.loadMediaFileInput.click();
 });
 
 MaweDom.projectMediaLaterButton.addEventListener('click', () => {
-  closeProjectMediaModal(true);
+  MaweProjectMediaInputs.closeProjectMediaModal(true);
   MaweHint.flashHint('可稍后点击“加载媒体”选择关联媒体', 'invalid');
 });
 
@@ -10666,761 +9106,107 @@ document.addEventListener('keydown', (event) => {
   MaweDom.projectMediaLaterButton.click();
 }, true);
 
-function updateUnloadedMediaLabel(mediaPath) {
-  const mediaName = window.AsrEditorUtils.fileBasename(mediaPath);
-  const mediaNameEl = document.getElementById('media-name');
-  if (!mediaNameEl) return;
-  if (!mediaName) {
-    mediaNameEl.textContent = '未加载媒体';
-    mediaNameEl.title = '';
-    mediaNameEl.classList.add('empty');
-    mediaNameEl.onclick = null;
-    return;
-  }
-  mediaNameEl.textContent = `未加载：${mediaName}`;
-  mediaNameEl.title = `工程关联媒体：${mediaPath}`;
-  mediaNameEl.classList.add('empty');
-  mediaNameEl.onclick = () => MaweExportTimeline.copyText(mediaPath, `已复制媒体路径：${mediaPath}`);
-}
-
-function resetLoadedMedia() {
-  if (currentMediaBlobUrl) URL.revokeObjectURL(currentMediaBlobUrl);
-  currentMediaBlobUrl = null;
-  const oldPlayer = MaweCoreState.player;
-  try { oldPlayer?.pause(); } catch (_) {}
-  const emptyPlayer = document.createElement('audio');
-  emptyPlayer.id = 'player';
-  emptyPlayer.preload = 'metadata';
-  emptyPlayer.style.cssText = 'width:100%;display:block;';
-  oldPlayer?.parentNode?.replaceChild(emptyPlayer, oldPlayer);
-  MaweCoreState.player = emptyPlayer;
-  MaweMediaPlayback.bindPlayerEvents(MaweCoreState.player);
-  seekWarned = false;
-  pendingMediaSeekTimeSec = null;
-  autoLoadedMediaReadyNotified = false;
-  MaweCoreState.waveformEditor?.attachPlayer(MaweCoreState.player);
-  MaweMediaPlayback.syncPlayerPlaceholder();
-}
-
-function buildBlankProject() {
-  return {
-    schema: window.AsrEditorUtils.PROJECT_SCHEMA,
-    media: '', language: '', model: '',
-    timebase: { unit: 'milliseconds', fps: 30 },
-    segments: [],
-  };
-}
-
-function suggestedProjectName(file = null) {
-  const stem = file?.name?.replace(/\.[^.]+$/i, '').trim();
-  return `${stem || 'untitled'}.mosp`;
-}
-
-function applyCanonicalProject(data, filename) {
-  MaweCuePanelState.currentCuePanelIdx = -1;
-  MaweCuePanelState.currentCuePanelKind = 'main';
-  MaweCuePanelState.currentCuePanelTrackId = null;
-  MaweCuePanelState.resetCuePanelEditState();
-  resetLoadedMedia();
-  projectExtensionFields = Object.fromEntries(
-    Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
-  );
-  DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
-  DATA.media = typeof data.media === 'string' ? data.media : '';
-  DATA.language = data.language || '';
-  DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
-  DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
-  DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
-    ? data.timestamp_granularity : undefined;
-  DATA.model = data.model || '';
-  DATA.timebase = normalizeTimelineTimebase(data.timebase);
-  timelineFpsManuallySet = hasExplicitTimelineFps(data.timebase);
-  DATA.media_metadata = normalizeMediaMetadata(data.media_metadata);
-  DATA.media_time_reference = data.media_time_reference || null;
-  DATA.waveform = data.waveform || null;
-  DATA.spectral = data.spectral || null;
-  DATA.waveform_reapeaks = data.waveform_reapeaks || null;
-  DATA.workspace = data.workspace || null;
-  DATA.gap_remove = data.gap_remove || null;
-  DATA.script_alignment = data.script_alignment || null;
-  DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
-  MaweHistory.gapRemoveDirty = false;
-  MaweAppearance.previewGeometryDirty = false;
-  projectImportDirty = false;
-  // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。
-  projectFileHandle = null;
-  MawePreviewGeometry.setPreviewGeometry(MaweAppearance.getPreviewGeometry(), { markDirty: false });
-  MaweAppearance.applyExtensionSubtitleAppearance(DATA.preview?.extension_subtitle);
-  MawePreviewGeometry.setStickerGeometry(MawePreviewGeometry.getStickerGeometry(), { markDirty: false });
-  MawePreviewGeometry.refreshPreviewGeometryEditable();
-  if (data.sticker_root) STICKER_ROOT = data.sticker_root;
-  DATA.segments.length = 0;
-  data.segments.forEach((segment) => DATA.segments.push(segment));
-  DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, DATA.segments);
-  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase.unit === 'frames' });
-  MaweHistory.editorHistory.clear();
-  MaweHistory.updateUndoRedoButtons();
-  clearSelection();
-  MawePlaybackLoop.lastActive = -1;
-  if (MaweCoreState.waveformEditor) {
-    MaweCoreState.waveformEditor.setLayoutData(DATA.workspace, { render: false });
-    MaweDisplaySettings.applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
-    restoreWorkspaceSelection();
-    syncWorkspaceControls();
-    MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(DATA.waveform, { render: false });
-    MaweCoreState.waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
-    MaweCoreState.waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
-  }
-  updateGapRemoveUi();
-  renderAll({ waveform: 'full', preserveCueListScroll: false });
-  MawePlaybackLoop.refreshSubtitlePreview(0, -1);
-  updateUnloadedMediaLabel(DATA.media);
-  FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
-  const jsonEl = document.getElementById('json-name');
-  if (jsonEl) {
-    jsonEl.textContent = filename;
-    jsonEl.title = `点击复制工程文件名：${filename}`;
-    jsonEl.classList.remove('empty');
-    jsonEl.onclick = () => MaweExportTimeline.copyText(filename, `已复制：${filename}`);
-  }
-  projectCheckpointed = true;
-  configureServerSaveControls();
-  scheduleAutoSave();
-}
-
-// 新建工程：浏览器原生保存对话框选择位置，页面持有句柄持续写回。
-// 不再经过服务器 helper；服务器绑定的旧工程在创建成功后解除保存，避免串写。
-async function createProjectCheckpoint(project, suggestedName) {
-  if (projectCheckpointInFlight || projectSaveInFlight) {
-    MaweHint.flashHint('工程正在保存，请稍候再试', 'warning');
-    return false;
-  }
-  projectCheckpointInFlight = true;
-  try {
-    if (!window.showSaveFilePicker || !navigator.userActivation?.isActive) {
-      // 检查点只用于确认后续导入可以继续；无用户手势时不能弹出保存对话框，
-      // 直接建立内存工程检查点，后续仍通过显式导出保存。
-      applyCanonicalProject(project, suggestedName);
-      detachServerProjectSaving();
-      return true;
-    }
-    const handle = await window.showSaveFilePicker({
-      suggestedName,
-      types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
-    });
-    const writable = await handle.createWritable();
-    await writable.write(new Blob([JSON.stringify(project, null, 2)], { type: 'application/json;charset=utf-8' }));
-    await writable.close();
-    applyCanonicalProject(project, handle.name);
-    projectFileHandle = handle;
-    // detachServerProjectSaving 内部会刷新保存控件并重启自动保存。
-    detachServerProjectSaving();
-    return true;
-  } catch (error) {
-    if (error && error.name === 'AbortError') return false;  // 用户取消保存对话框
-    if (error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) {
-      try {
-        const saved = await MaweExportTimeline.downloadFile(
-          JSON.stringify(project, null, 2),
-          suggestedName,
-          'application/json',
-          { desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] } },
-          { usePicker: false },
-        );
-        if (saved) {
-          applyCanonicalProject(project, suggestedName);
-          detachServerProjectSaving();
-          return true;
-        }
-      } catch (fallbackError) {
-        MaweHint.flashHint(`创建工程失败：${fallbackError.message || fallbackError}`, 'warning');
-        return false;
-      }
-    }
-    MaweHint.flashHint(`创建工程失败：${error.message || error}`, 'warning');
-    return false;
-  } finally {
-    projectCheckpointInFlight = false;
-  }
-}
-
-// 浏览器自行管理的工程（句柄或下载创建）不能再写回服务器绑定的旧工程文件，
-// 便携表情包 OTIO 也随之退回引用原始素材（服务器已不跟踪当前工程）。
-function detachServerProjectSaving() {
-  if (SERVER_CONFIG) {
-    SERVER_CONFIG.canSave = false;
-    SERVER_CONFIG.canPortableStickerExport = false;
-    SERVER_CONFIG.canLottieExport = false;
-    SERVER_CONFIG.canOgrafExport = false;
-  }
-  configureServerSaveControls();
-  updateLottieExportButton();
-  updateOgrafExportButton();
-  scheduleAutoSave();
-}
-
-async function ensureProjectCheckpointForImport(file, { usePicker = true } = {}) {
-  if (projectCheckpointed) return true;
-  if (usePicker && window.showSaveFilePicker) {
-    return createProjectCheckpoint(buildBlankProject(), suggestedProjectName(file));
-  }
-  // Drag/drop imports are asynchronous by the time they reach here; do not
-  // open a save picker as part of importing a subtitle.
-  applyCanonicalProject(buildBlankProject(), suggestedProjectName(file));
-  detachServerProjectSaving();
-  return true;
-}
-
-function isMawProject(data) {
-  if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
-  if (data.media_metadata !== undefined && data.media_metadata !== null
-      && !normalizeMediaMetadata(data.media_metadata)) return false;
-  if (data.timebase !== undefined) {
-    const timebase = data.timebase;
-    if (!timebase || typeof timebase !== 'object' || Array.isArray(timebase)
-        || (timebase.unit !== 'milliseconds' && timebase.unit !== 'frames')
-        || typeof timebase.fps !== 'number' || !Number.isFinite(timebase.fps)
-        || timebase.fps < MIN_TIMELINE_FPS || timebase.fps > MAX_TIMELINE_FPS) return false;
-  }
-  const hasOptionalFramePair = (value) => {
-    const hasStart = Object.prototype.hasOwnProperty.call(value || {}, 'start_frame');
-    const hasEnd = Object.prototype.hasOwnProperty.call(value || {}, 'end_frame');
-    return (!hasStart && !hasEnd) || hasValidFramePair(value);
-  };
-  let previousEnd = 0;
-  return data.segments.every((segment) => {
-    if (!segment || typeof segment !== 'object'
-        || !Number.isInteger(segment.start) || !Number.isInteger(segment.end)
-        || segment.start < 0 || segment.end <= segment.start || segment.start < previousEnd
-        || typeof segment.text !== 'string' || !hasOptionalFramePair(segment)) return false;
-    previousEnd = segment.end;
-    if (!Array.isArray(segment.items)) return segment.items === undefined;
-    let itemEnd = segment.start;
-    return segment.items.every((item) => {
-      if (!item || typeof item !== 'object'
-          || !Number.isInteger(item.start) || !Number.isInteger(item.end)
-          || item.start < segment.start || item.end > segment.end || item.end <= item.start
-          || item.start < itemEnd || typeof item.text !== 'string'
-          || !hasOptionalFramePair(item)) return false;
-      itemEnd = item.end;
-      return true;
-    });
-  });
-}
-
-function parseSrtTimestamp(value) {
-  const match = /^(\d+):(\d{2}):(\d{2})[,.](\d{1,3})$/.exec(value.trim());
-  if (!match) return null;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  const seconds = Number(match[3]);
-  const milliseconds = Number(match[4].padEnd(3, '0'));
-  if (minutes >= 60 || seconds >= 60) return null;
-  return (((hours * 60 + minutes) * 60) + seconds) * 1000 + milliseconds;
-}
-
-function parseSrtSegments(text) {
-  const blocks = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim().split(/\n{2,}/);
-  const segments = [];
-  for (const block of blocks) {
-    const lines = block.split('\n');
-    if (/^\d+$/.test(lines[0]?.trim() || '')) lines.shift();
-    const timing = /^\s*(.+?)\s*-->\s*(.+?)(?:\s+.*)?$/.exec(lines.shift() || '');
-    if (!timing) throw new Error('缺少有效时间码');
-    const start = parseSrtTimestamp(timing[1]);
-    const end = parseSrtTimestamp(timing[2]);
-    const cueText = lines.join('\n').trim();
-    if (start === null || end === null || end <= start || !cueText) throw new Error('包含无效字幕段');
-    const previous = segments[segments.length - 1];
-    if (previous && start < previous.end) throw new Error('字幕时间重叠');
-    segments.push({ start, end, text: cueText });
-  }
-  if (!segments.length) throw new Error('没有可导入的字幕');
-  return segments;
-}
-
-function replaceMainTrack(segments, displayName = '字幕') {
-  // 导入/替换主轨是字幕编辑操作，保留替换前的主轨和多字幕状态，
-  // 这样用户可以用 Ctrl(Cmd)+Z 回到替换前，而不影响后续重做。
-  // 先提交当前编辑区，再替换 DATA；否则 clearSelection() 在替换后提交旧面板
-  // 文本时，会把旧字幕写回新导入的同一下标，表现为“导入后又变回旧值”。
-  commitCuePanelEdit();
-  MaweCuePanelState.currentCuePanelIdx = -1;
-  MaweCuePanelState.currentCuePanelKind = 'main';
-  MaweCuePanelState.currentCuePanelTrackId = null;
-  MaweCuePanelState.resetCuePanelEditState();
-  MaweHistory.pushUndo('替换字幕');
-  DATA.segments.length = 0;
-  (segments || []).forEach((segment) => DATA.segments.push({ ...segment }));
-  DATA.multi_subtitle = {
-    schema: MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
-    enabled: false,
-    display_mode: 'both',
-    tracks: [],
-    bindings: [],
-  };
-  MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(DATA);
-  DATA.gap_remove = null;
-  MaweHistory.gapRemoveDirty = false;
-  projectImportDirty = true;
-  MaweHistory.updateUndoRedoButtons();
-  clearSelection({ commitCuePanel: false });
-  MawePlaybackLoop.lastActive = -1;
-  updateGapRemoveUi();
-  renderAll({ preserveCueListScroll: false });
-  FILENAME_BASE = displayName.replace(/\.[^.]+$/i, '');
-  const jsonEl = document.getElementById('json-name');
-  if (jsonEl) {
-    jsonEl.textContent = `导入字幕：${displayName}`;
-    jsonEl.title = 'SRT 字幕只能通过导出下载保存为工程文件';
-    jsonEl.classList.add('empty');
-  }
-  configureServerSaveControls();
-  scheduleAutoSave();
-  MaweHint.flashHint(`已加载字幕：${displayName}（${DATA.segments.length} 条）`, 'success');
-  return true;
-}
-
-const editorLoading = document.getElementById('editor-loading');
-const editorLoadingLabel = document.getElementById('editor-loading-label');
-const editorLoadingProgress = document.getElementById('editor-loading-progress');
-const editorLoadingProgressValue = document.getElementById('editor-loading-progress-value');
-let editorLoadingDepth = 0;
-
-function updateEditorLoading(progress, label = null) {
-  if (!editorLoading || editorLoadingDepth <= 0) return;
-  const value = Math.max(0, Math.min(100, Math.round(Number(progress) || 0)));
-  if (label) editorLoadingLabel.textContent = label;
-  editorLoadingProgress.value = value;
-  editorLoadingProgressValue.textContent = `${value}%`;
-}
-
-function beginEditorLoading(label, progress = 0) {
-  if (!editorLoading) return () => {};
-  editorLoadingDepth += 1;
-  editorLoading.hidden = false;
-  updateEditorLoading(progress, label);
-  return () => {
-    editorLoadingDepth = Math.max(0, editorLoadingDepth - 1);
-    if (!editorLoadingDepth) editorLoading.hidden = true;
-  };
-}
-
-async function readFileTextWithProgress(file) {
-  updateEditorLoading(20, `正在读取 ${file?.name || '文件'}…`);
-  return window.AsrEditorUtils.decodeSubtitleText(await file.arrayBuffer());
-}
-
-async function parseSubtitleImportFile(file) {
-  const finishLoading = beginEditorLoading(`正在读取字幕 ${file.name}…`, 5);
-  try {
-    if (isSrtFile(file)) return parseSrtSegments(await readFileTextWithProgress(file));
-    const data = JSON.parse(await readFileTextWithProgress(file));
-    if (!data || !Array.isArray(data.segments)) throw new Error('缺少有效 segments 数组');
-    const sourceSegments = data.segments.map((segment) => {
-      const copy = {
-        start: segment.start,
-        end: segment.end,
-        text: typeof segment.text === 'string' ? segment.text : '',
-      };
-      if (Array.isArray(segment.items)) {
-        copy.items = segment.items.map((item) => ({ ...item }));
-      }
-      return copy;
-    });
-    window.AsrEditorUtils.normalizeSegmentTimings(sourceSegments);
-    const validSegments = sourceSegments.filter((segment) => segment.text.trim());
-    if (!validSegments.length) {
-      throw new Error('副字幕没有可导入的有效文本或时间码');
-    }
-    return validSegments;
-  } finally {
-    finishLoading();
-  }
-}
-
-let pendingMultiImport = null;
-
-function closeMultiSubtitleImportModal() {
-  MaweDom.multiSubtitleImportModal?.classList.remove('show');
-  pendingMultiImport = null;
-  if (MaweDom.multiSubtitleImportChoiceActions) MaweDom.multiSubtitleImportChoiceActions.hidden = false;
-  if (MaweDom.multiSubtitleImportResultActions) MaweDom.multiSubtitleImportResultActions.hidden = false;
-  if (MaweDom.multiSubtitleImportResultConfirm) MaweDom.multiSubtitleImportResultConfirm.disabled = true;
-  [MaweDom.multiSubtitleImportReplace, MaweDom.multiSubtitleImportExtension].forEach((button) => {
-    button?.setAttribute('aria-pressed', 'false');
-  });
-}
-
-function renderMultiImportPreview(match = null, segments = []) {
-  if (!MaweDom.multiSubtitleImportPreview) return;
-  if (!match) {
-    MaweDom.multiSubtitleImportPreview.hidden = true;
-    MaweDom.multiSubtitleImportPreview.innerHTML = `<div class="summary">共 ${segments.length} 条待导入字幕</div>`;
-    return;
-  }
-  MaweDom.multiSubtitleImportPreview.hidden = false;
-  MaweDom.multiSubtitleImportPreview.innerHTML = [
-    `<div class="summary">副字幕 ${segments.length} 条 · 自动绑定 ${match.matches.length} 条</div>`,
-    `<div>未绑定 ${match.unmatchedExtension.length} 条 · 主轨未绑定 ${match.unmatchedMain.length} 条 · 冲突 ${match.conflicts} 组</div>`,
-    `<div class="warning">时间容差：${match.tolerance_ms}ms。未绑定字幕会保留，可稍后手动绑定。</div>`,
-  ].join('');
-}
-
-function renderMainImportPreview(pending) {
-  if (!MaweDom.multiSubtitleImportPreview) return;
-  MaweDom.multiSubtitleImportPreview.hidden = false;
-  MaweDom.multiSubtitleImportPreview.innerHTML = [
-    `<div class="summary">将替换当前主字幕</div>`,
-    `<div>${escapeHtml(pending.file.name)} · ${pending.segments.length} 条字幕</div>`,
-    '<div>导入后仍可使用撤销恢复当前字幕。</div>',
-  ].join('');
-}
-
-function renderProjectImportPreview(pending) {
-  if (!MaweDom.multiSubtitleImportPreview) return;
-  const itemCount = pending.segments.reduce((count, segment) => (
-    count + (Array.isArray(segment.items) ? segment.items.length : 0)
-  ), 0);
-  MaweDom.multiSubtitleImportPreview.hidden = false;
-  MaweDom.multiSubtitleImportPreview.innerHTML = [
-    `<div class="summary">工程字幕 ${pending.segments.length} 条${itemCount ? ` · 字词时间码 ${itemCount} 项` : ''}</div>`,
-    `<div>${escapeHtml(pending.file.name)}</div>`,
-    '<div>打开工程会替换当前工程；使用工程字幕作为副字幕只导入字幕和可选字词时间码。</div>',
-  ].join('');
-}
-
-async function showMultiSubtitleImportChoice(file, segments, options = {}) {
-  const existingTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
-  const projectFile = options.projectFile || null;
-  const projectImport = Boolean(projectFile);
-  pendingMultiImport = {
-    file,
-    segments,
-    existingTrackId: existingTrack?.id || null,
-    match: null,
-    choice: null,
-    projectFile,
-    projectMediaFile: options.projectMediaFile || null,
-    projectImport,
-  };
-  if (MaweDom.multiSubtitleImportDescription) MaweDom.multiSubtitleImportDescription.textContent = '请选择你要执行的行为：';
-  if (MaweDom.multiSubtitleImportReplace) {
-    MaweDom.multiSubtitleImportReplace.textContent = projectImport
-      ? '打开工程' : (existingTrack ? '替换副轨' : '替换当前字幕');
-  }
-  if (MaweDom.multiSubtitleImportExtension) {
-    MaweDom.multiSubtitleImportExtension.hidden = projectImport ? false : Boolean(existingTrack);
-    MaweDom.multiSubtitleImportExtension.textContent = projectImport
-      ? '使用工程字幕作为副字幕' : '作为多重字幕';
-  }
-  if (MaweDom.multiSubtitleImportChoiceActions) MaweDom.multiSubtitleImportChoiceActions.hidden = false;
-  if (MaweDom.multiSubtitleImportResultActions) MaweDom.multiSubtitleImportResultActions.hidden = false;
-  if (MaweDom.multiSubtitleImportResultConfirm) MaweDom.multiSubtitleImportResultConfirm.disabled = true;
-  [MaweDom.multiSubtitleImportReplace, MaweDom.multiSubtitleImportExtension].forEach((button) => {
-    button?.setAttribute('aria-pressed', 'false');
-  });
-  if (projectImport) renderProjectImportPreview(pendingMultiImport);
-  else renderMultiImportPreview(null, segments);
-  MaweDom.multiSubtitleImportModal?.classList.add('show');
-  // 工程文件必须明确选择“打开”或“作为副字幕”；SRT 保持原有默认导入路径。
-  if (!projectImport) prepareMultiSubtitleImport();
-  (projectImport ? MaweDom.multiSubtitleImportReplace
-    : (existingTrack ? MaweDom.multiSubtitleImportReplace : MaweDom.multiSubtitleImportExtension))?.focus();
-}
-
-function prepareMultiSubtitleImport() {
-  const pending = pendingMultiImport;
-  if (!pending) return;
-  pending.choice = pending.existingTrackId ? 'replace-extension' : 'extension';
-  const match = MULTI_SUBTITLE_UTILS.matchSubtitleSegments(
-    DATA.segments,
-    pending.segments,
-    MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
-  );
-  pending.match = match;
-  renderMultiImportPreview(match, pending.segments);
-  if (MaweDom.multiSubtitleImportReplace) {
-    MaweDom.multiSubtitleImportReplace.setAttribute('aria-pressed', pending.choice === 'replace-extension' ? 'true' : 'false');
-  }
-  if (MaweDom.multiSubtitleImportExtension) {
-    MaweDom.multiSubtitleImportExtension.setAttribute('aria-pressed', pending.choice === 'extension' ? 'true' : 'false');
-  }
-  if (MaweDom.multiSubtitleImportResultConfirm) MaweDom.multiSubtitleImportResultConfirm.disabled = false;
-}
-
-function commitMultiSubtitleImport() {
-  const pending = pendingMultiImport;
-  if (!pending) return false;
-  const match = pending.match || MULTI_SUBTITLE_UTILS.matchSubtitleSegments(
-    DATA.segments, pending.segments, MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
-  );
-  const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
-  const replacing = Boolean(pending.existingTrackId);
-  const oldTrack = replacing ? MaweMultiSubtitleCore.getExtensionTrack(pending.existingTrackId) : null;
-  const trackId = oldTrack?.id || MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
-    multi.tracks || [], 'extension-1', 'extension',
-  );
-  const extensionSegments = pending.segments.map((segment, index) => ({
-    ...segment,
-    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
-      pending.segments.slice(0, index), `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
-    ),
-    _dirty: true,
-  }));
-  const track = {
-    id: trackId,
-    role: 'extension',
-    name: pending.file.name.replace(/\.[^.]+$/i, '') || '副字幕',
-    language: '',
-    source_name: pending.file.name,
-    split_mode: MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(
-      extensionSegments.map((segment) => segment.text).join('\n'),
-    ),
-    segments: extensionSegments,
-  };
-  MaweHistory.pushUndo(replacing ? '替换副字幕' : '导入多重字幕');
-  if (replacing) {
-    const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
-    multi.bindings = (multi.bindings || []).filter((binding) => (
-      binding.track_id !== trackId && !binding.extension_segment_ids?.some((id) => oldIds.has(id))
-    ));
-    const oldIndex = multi.tracks.findIndex((candidate) => candidate.id === trackId);
-    if (oldIndex >= 0) multi.tracks.splice(oldIndex, 1, track);
-    else multi.tracks.push(track);
-  } else {
-    multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
-  }
-  match.matches.forEach((candidate) => {
-    const main = DATA.segments[candidate.mainIndex];
-    const extension = extensionSegments[candidate.extensionIndex];
-    if (main && extension) multi.bindings.push(
-      MULTI_SUBTITLE_UTILS.buildSubtitleBinding(main, extension, trackId),
-    );
-  });
-  multi.enabled = true;
-  multi.display_mode = multi.display_mode || 'both';
-  MaweMultiSubtitleCore.markMainSegmentsDirty(DATA.segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
-  MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  closeMultiSubtitleImportModal();
-  clearSelection();
-  // 导入可能首次创建副字幕 lane，必须重建波形行结构。
-  renderAll({ waveform: 'full' });
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  MaweHint.flashHint(`已导入副字幕：绑定 ${match.matches.length} 条，未绑定 ${match.unmatchedExtension.length} 条`, 'success');
-  return true;
-}
-
-function swapMainAndExtensionSubtitles() {
-  const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
-  const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-  if (!multi.enabled) {
-    MaweHint.flashHint('请先开启多重字幕', 'invalid');
-    return false;
-  }
-  if ((multi.tracks || []).length !== 1) {
-    MaweHint.flashHint('当前只支持交换唯一的副字幕轨', 'invalid');
-    return false;
-  }
-  if (!track?.segments?.length || !DATA.segments.length) {
-    MaweHint.flashHint('主字幕和副字幕都不能为空', 'invalid');
-    return false;
-  }
-  MaweHistory.pushUndo('交换主副字幕');
-  const result = MULTI_SUBTITLE_UTILS.swapMainAndExtensionSubtitle(DATA, track.id);
-  if (!result.swapped) {
-    MaweHint.flashHint('交换主副字幕失败', 'warning');
-    return false;
-  }
-  MaweMultiSubtitleCore.markMainSegmentsDirty(DATA.segments);
-  MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  clearSelection();
-  renderAll({ waveform: 'full' });
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  MaweHint.flashHint(`已交换主副字幕：主轨 ${result.mainCount} 条，副轨 ${result.extensionCount} 条`, 'success');
-  return true;
-}
-
-async function openSrtFile(file) {
-  const finishLoading = beginEditorLoading(`正在读取字幕 ${file.name}…`, 5);
-  try {
-    const segments = parseSrtSegments(await readFileTextWithProgress(file));
-    updateEditorLoading(75, `正在载入字幕 ${file.name}…`);
-    if (!await ensureProjectCheckpointForImport(file)) return false;
-    const imported = replaceMainTrack(segments, file.name);
-    if (imported && projectSaveTargetEnabled()) await saveCurrentProject({ silent: true });
-    return imported;
-  } catch (error) {
-    MaweHint.flashHint(`加载字幕失败：${error.message || error}`, 'warning');
-    return false;
-  } finally {
-    finishLoading();
-  }
-}
-
-async function openProjectFile(file, options = {}) {
-  const suppressMediaPrompt = options.suppressMediaPrompt === true;
-  const finishLoading = beginEditorLoading(`正在读取工程 ${file.name}…`, 5);
-  try {
-    const text = await readFileTextWithProgress(file);
-    updateEditorLoading(60, `正在解析工程 ${file.name}…`);
-    const data = JSON.parse(text);
-    if (data && typeof data === 'object' && !Array.isArray(data)
-        && Object.prototype.hasOwnProperty.call(data, 'schema')
-        && !window.AsrEditorUtils.supportsProjectSchema(data)) {
-      MaweHint.flashHint('不支持的工程格式版本，请使用新版 MAW 打开。', 'warning');
-      return false;
-    }
-    // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
-    if (data && Array.isArray(data.segments)) {
-      data.timebase = normalizeTimelineTimebase(data.timebase);
-      MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(data);
-      syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
-      window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
-      window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
-      normalizeProjectTimings(data);
-      syncProjectTimebaseAndBindingOffsets(data, { preferFrames: false });
-    }
-    if (!isMawProject(data)) {
-      MaweHint.flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
-      return false;
-    }
-    applyCanonicalProject(data, file.name);
-    // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
-    MaweExportTimeline.updateStickerExportButtons();
-    projectLoadedFromSrt = false;
-    const expectedName = window.AsrEditorUtils.fileBasename(DATA.media);
-    // 服务器版：浏览器拿不到工程真实路径，但工程记录的媒体是绝对路径。
-    // 先让服务器按它定位同目录同名工程并接管（自动加载媒体、允许 Ctrl(Cmd)+S 保存）；
-    // 接管失败（媒体已移动 / 同名工程缺失 / 内容不一致）再回退为手动选择媒体。
-    if (expectedName && SERVER_CONFIG?.attachUrl) {
-      updateEditorLoading(85, '正在连接本地编辑器服务器…');
-      if (await attachProjectToServer(file.name, data)) return true;
-    }
-    // 工程未被服务器接管（无媒体可定位 / 接管失败）：服务器仍绑定旧工程，
-    // 当前内容不能再写回它；后续保存退化为「导出工程」，直到重新经服务器打开。
-    if (SERVER_CONFIG?.saveUrl) detachServerProjectSaving();
-    if (expectedName && !suppressMediaPrompt) {
-      pendingProjectMediaSelection = { projectReady: true };
-      showProjectMediaModal();
-    }
-    MaweHint.flashHint(expectedName
-      ? `已加载工程：${file.name}（${suppressMediaPrompt ? '正在加载关联媒体' : `等待选择关联媒体：${expectedName}`}）`
-      : `已加载工程：${file.name}（${DATA.segments.length} 条字幕）`);
-    return true;
-  } catch (error) {
-    pendingProjectMediaSelection = null;
-    MaweHint.flashHint(error instanceof SyntaxError
-      ? '打开了错误的文件，请使用 MAW 生成的工程文件。'
-      : `加载失败：${error.message}`, 'warning');
-    console.error(error);
-    return false;
-  } finally {
-    finishLoading();
-  }
-}
-
 document.getElementById('new-project')?.addEventListener('click', async () => {
-  if (hasUnsavedProjectChanges()
+  if (MaweServerSave.hasUnsavedProjectChanges()
       && !confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return;
-  await createProjectCheckpoint(buildBlankProject(), suggestedProjectName());
+  await MaweProjectLoad.createProjectCheckpoint(MaweProjectLoad.buildBlankProject(), MaweProjectLoad.suggestedProjectName());
 });
 
 document.getElementById('open-project')?.addEventListener('click', () => {
-  if (hasUnsavedProjectChanges()) {
+  if (MaweServerSave.hasUnsavedProjectChanges()) {
     if (!confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
   }
-  openProjectFileInput.value = '';
-  openProjectFileInput.click();
+  MaweProjectMediaInputs.openProjectFileInput.value = '';
+  MaweProjectMediaInputs.openProjectFileInput.click();
 });
 
-openProjectFileInput.addEventListener('change', async (e) => {
+MaweProjectMediaInputs.openProjectFileInput.addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
   if (!file || !isJsonFile(file)) {
     MaweHint.flashHint('请选择一个 .mosp 或 .json 工程文件。', 'invalid');
     return;
   }
-  await openProjectFile(file);
+  await MaweMultiImport.openProjectFile(file);
 });
 
 // === 加载媒体 ===
 // 通过浏览器文件选择器选本地媒体（视频/音频），用 blob URL 替换播放器源。
 // 如果媒体类型与当前播放器标签不一致（video<->audio），会原地替换整个 <video>/<audio> 元素。
 document.getElementById('load-media')?.addEventListener('click', () => {
-  pendingProjectMediaSelection = null;
-  loadMediaFileInput.value = '';
-  loadMediaFileInput.click();
+  MaweProjectMediaInputs.pendingProjectMediaSelection = null;
+  MaweProjectMediaInputs.loadMediaFileInput.value = '';
+  MaweProjectMediaInputs.loadMediaFileInput.click();
 });
 document.getElementById('load-srt')?.addEventListener('click', () => {
   MaweMultiSubtitleCore.pendingSrtImportAsExtension = false;
-  if (hasUnsavedProjectChanges()
+  if (MaweServerSave.hasUnsavedProjectChanges()
       && !confirm('当前有未保存的改动，是否确定加载字幕？将替换当前字幕。')) return;
-  loadSrtFileInput.value = '';
-  loadSrtFileInput.click();
+  MaweProjectMediaInputs.loadSrtFileInput.value = '';
+  MaweProjectMediaInputs.loadSrtFileInput.click();
 });
 
-loadSrtFileInput.addEventListener('change', async (event) => {
+MaweProjectMediaInputs.loadSrtFileInput.addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
   const importAsExtension = MaweMultiSubtitleCore.pendingSrtImportAsExtension;
   MaweMultiSubtitleCore.pendingSrtImportAsExtension = false;
   if (!file) return;
   if (importAsExtension) {
     try {
-      const segments = await parseSubtitleImportFile(file);
-      await showMultiSubtitleImportChoice(file, segments);
+      const segments = await MaweLoadingProgress.parseSubtitleImportFile(file);
+      await MaweMultiImport.showMultiSubtitleImportChoice(file, segments);
     } catch (error) {
       MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
     }
     return;
   }
-  await openSrtFile(file);
+  await MaweMultiImport.openSrtFile(file);
 });
 
-MaweDom.multiSubtitleImportResultCancel?.addEventListener('click', closeMultiSubtitleImportModal);
-MaweDom.multiSubtitleImportExtension?.addEventListener('click', prepareMultiSubtitleImport);
+MaweDom.multiSubtitleImportResultCancel?.addEventListener('click', MaweMultiImport.closeMultiSubtitleImportModal);
+MaweDom.multiSubtitleImportExtension?.addEventListener('click', MaweMultiImport.prepareMultiSubtitleImport);
 MaweDom.multiSubtitleImportReplace?.addEventListener('click', () => {
-  const pending = pendingMultiImport;
+  const pending = MaweMultiImport.pendingMultiImport;
   if (!pending) return;
   if (pending.projectImport) {
     pending.choice = 'open-project';
     pending.match = null;
     MaweDom.multiSubtitleImportReplace?.setAttribute('aria-pressed', 'true');
     MaweDom.multiSubtitleImportExtension?.setAttribute('aria-pressed', 'false');
-    renderProjectImportPreview(pending);
+    MaweMultiImport.renderProjectImportPreview(pending);
     if (MaweDom.multiSubtitleImportResultConfirm) MaweDom.multiSubtitleImportResultConfirm.disabled = false;
     return;
   }
   if (pending.existingTrackId) {
-    prepareMultiSubtitleImport();
+    MaweMultiImport.prepareMultiSubtitleImport();
     return;
   }
   pending.choice = 'replace-main';
   pending.match = null;
   if (MaweDom.multiSubtitleImportReplace) MaweDom.multiSubtitleImportReplace.setAttribute('aria-pressed', 'true');
   if (MaweDom.multiSubtitleImportExtension) MaweDom.multiSubtitleImportExtension.setAttribute('aria-pressed', 'false');
-  renderMainImportPreview(pending);
+  MaweMultiImport.renderMainImportPreview(pending);
   if (MaweDom.multiSubtitleImportResultConfirm) MaweDom.multiSubtitleImportResultConfirm.disabled = false;
 });
 MaweDom.multiSubtitleImportResultConfirm?.addEventListener('click', async () => {
-  const pending = pendingMultiImport;
+  const pending = MaweMultiImport.pendingMultiImport;
   if (!pending?.choice) return;
   if (pending.choice === 'open-project') {
     const { projectFile, projectMediaFile } = pending;
-    closeMultiSubtitleImportModal();
-    const opened = await openProjectFile(projectFile, { suppressMediaPrompt: Boolean(projectMediaFile) });
-    if (opened && projectMediaFile) await loadMediaFile(projectMediaFile);
+    MaweMultiImport.closeMultiSubtitleImportModal();
+    const opened = await MaweMultiImport.openProjectFile(projectFile, { suppressMediaPrompt: Boolean(projectMediaFile) });
+    if (opened && projectMediaFile) await MaweMediaLoad.loadMediaFile(projectMediaFile);
     return;
   }
   if (pending.choice === 'replace-main') {
     const { segments, file } = pending;
-    closeMultiSubtitleImportModal();
-    replaceMainTrack(segments, file.name);
+    MaweMultiImport.closeMultiSubtitleImportModal();
+    MaweProjectLoad.replaceMainTrack(segments, file.name);
     return;
   }
-  commitMultiSubtitleImport();
+  MaweMultiImport.commitMultiSubtitleImport();
 });
 MaweDom.multiSubtitleImportModal?.addEventListener('click', (event) => {
-  if (event.target === MaweDom.multiSubtitleImportModal) closeMultiSubtitleImportModal();
+  if (event.target === MaweDom.multiSubtitleImportModal) MaweMultiImport.closeMultiSubtitleImportModal();
 });
 MaweDom.multiSubtitleSplitCancel?.addEventListener('click', closeLinkedSplitModal);
 MaweDom.multiSubtitleSplitConfirm?.addEventListener('click', confirmLinkedSplit);
@@ -11438,7 +9224,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape' || !MaweDom.multiSubtitleImportModal?.classList.contains('show')) return;
   event.preventDefault();
   event.stopPropagation();
-  closeMultiSubtitleImportModal();
+  MaweMultiImport.closeMultiSubtitleImportModal();
 }, true);
 // 拆分弹窗的键盘流：Tab 切换主/副 lane，WASD 或方向键移动 ✂️，
 // Space 确认/取消确认断点；捕获阶段拦截，避免触发全局的选字幕与播放快捷键。
@@ -11507,189 +9293,20 @@ document.addEventListener('keydown', (event) => {
   updateLinkedSplitPreview(nextOffset, lane);
 }, true);
 
-async function loadMediaFile(file) {
-  if (!file) return;
-  const finishLoading = beginEditorLoading(`正在加载媒体 ${file.name}…`, 5);
-  try {
-  MaweJklPlayback.stopJklReversePlayback({ render: false });
-  const preserveProjectWaveform = MaweCoreState.waveformLoadedFromProject
-    && Boolean(MaweCoreState.waveformEditor?.getPayload?.());
-  const url = URL.createObjectURL(file);
-  const isVideo = file.type.startsWith('video/') ||
-    /\.(mp4|mkv|avi|mov|wmv|flv|webm|ts|m4v)$/i.test(file.name);
-  const oldPlayer = document.getElementById('player');
-  const wantTag = isVideo ? 'VIDEO' : 'AUDIO';
-  const oldParent = oldPlayer.parentNode;
-  const previousSource = oldPlayer.querySelector('source')?.src || oldPlayer.currentSrc || oldPlayer.src || '';
-  let candidatePlayer = oldPlayer;
-
-  if (oldPlayer.tagName === wantTag) {
-    // 同类型：直接换 src，最简最安全
-    const src = oldPlayer.querySelector('source');
-    if (src) src.src = url; else oldPlayer.src = url;
-    oldPlayer.load();
-  } else {
-    // 不同类型：替换整个元素
-    const newPlayer = document.createElement(isVideo ? 'video' : 'audio');
-    newPlayer.id = 'player';
-    newPlayer.preload = 'metadata';
-    if (isVideo) {
-      newPlayer.style.cssText = 'width:100%;background:#000;display:block;';
-    } else {
-      newPlayer.style.cssText = 'width:100%;display:block;';
-    }
-    const source = document.createElement('source');
-    source.src = url;
-    newPlayer.appendChild(source);
-    oldPlayer.parentNode.replaceChild(newPlayer, oldPlayer);
-    candidatePlayer = newPlayer;
-    // 重新绑定全局引用与事件
-    MaweCoreState.player = newPlayer;
-    MaweMediaPlayback.bindPlayerEvents(MaweCoreState.player);
-    seekWarned = false;  // 新媒体重新探测 seek 能力
-    pendingMediaSeekTimeSec = null;
-    autoLoadedMediaReadyNotified = false;
-  }
-
-  try {
-    updateEditorLoading(45, `正在读取媒体信息 ${file.name}…`);
-    await waitForMediaMetadata(candidatePlayer, file);
-  } catch (error) {
-    if (candidatePlayer !== oldPlayer && oldParent) {
-      oldParent.replaceChild(oldPlayer, candidatePlayer);
-      MaweCoreState.player = oldPlayer;
-      MaweCoreState.waveformEditor?.attachPlayer(MaweCoreState.player);
-    } else if (previousSource) {
-      const previous = oldPlayer.querySelector('source');
-      if (previous) previous.src = previousSource; else oldPlayer.src = previousSource;
-      oldPlayer.load();
-    } else {
-      oldPlayer.removeAttribute('src');
-      oldPlayer.querySelector('source')?.removeAttribute('src');
-    }
-    URL.revokeObjectURL(url);
-    MaweMediaPlayback.syncPlayerPlaceholder();
-    MaweHint.flashHint(error.message || `媒体加载失败：${file.name}`, 'warning');
-    return false;
-  }
-
-  let mediaTimeReference = null;
-  try {
-    mediaTimeReference = await window.AsrEditorUtils.readBwfTimeReferenceFromFile(file);
-  } catch (_) {
-    // BWF metadata is optional; an unreadable header must not block playback.
-  }
-
-  if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.attachPlayer(MaweCoreState.player);
-  MaweMediaPlayback.syncPlayerPlaceholder();
-  // 部分浏览器会在 load() 完成前暂时不给 currentSrc；文件既已由用户选定，立即恢复彩色波形。
-  MaweCoreState.waveformEditor?.setMediaAvailable(true);
-
-  // 释放旧 blob URL（不会影响 file:// 加载的原始媒体——那不是 blob URL）
-  if (currentMediaBlobUrl) URL.revokeObjectURL(currentMediaBlobUrl);
-  currentMediaBlobUrl = url;
-
-  // 更新标题区媒体名 + FILENAME_BASE（用文件名去扩展名作为导出基名）
-  const stem = file.name.replace(/\.[^.]+$/, '');
-  FILENAME_BASE = stem;
-  DATA.media = file.name;
-  DATA.media_time_reference = mediaTimeReference;
-  const mnEl = document.getElementById('media-name');
-  if (mnEl) {
-    mnEl.textContent = file.name;
-    mnEl.title = `点击复制媒体名：${file.name}`;
-    mnEl.classList.remove('empty');
-    mnEl.onclick = () => MaweExportTimeline.copyText(file.name, `已复制媒体名：${file.name}`);
-  }
-
-  MawePlaybackLoop.lastActive = -1;
-  MaweHint.flashHint(translatedEditorText(`已加载媒体：${file.name}`), 'success');
-  if (MaweCoreState.waveformEditor && !preserveProjectWaveform) {
-    try {
-      DATA.spectral = null;
-      DATA.waveform_reapeaks = null;
-      MaweCoreState.waveformEditor.setSpectralPayload(null);
-      MaweCoreState.waveformEditor.setReapeaksWaveform(null);
-      updateEditorLoading(75, `正在生成波形 ${file.name}…`);
-      await MaweCoreState.waveformEditor.processFile(file);
-    } catch (error) {
-      MaweHint.flashHint(error.message || String(error), 'warning');
-    }
-  }
-  updateEditorLoading(100, `媒体加载完成：${file.name}`);
-  updateGapRemoveUi();
-  return true;
-  } finally {
-    finishLoading();
-  }
-}
-
-async function loadReapeaksFile(file) {
-  if (!file || !MaweCoreState.isReapeaksFile(file) || !MaweCoreState.waveformEditor) return false;
-  try {
-    const parsed = window.AsrWaveform.testing.decodeReapeaksFile(
-      await file.arrayBuffer(),
-      { name: file.name, size: file.size, modified_ms: file.lastModified },
-    );
-    if (!parsed?.waveform) throw new Error('无法解析 .ReaPeaks 文件或文件不包含 wave 层');
-    DATA.waveform_reapeaks = parsed.waveform;
-    DATA.spectral = parsed.spectral;
-    MaweCoreState.waveformEditor.setReapeaksWaveform(parsed.waveform);
-    MaweCoreState.waveformEditor.setSpectralPayload(parsed.spectral);
-    MaweCoreState.waveformEditor.setMediaAvailable(false);
-    MaweHint.flashHint(`已加载 reapeaks 缓存：${file.name}`, 'success');
-    return true;
-  } catch (error) {
-    MaweHint.flashHint(`加载 reapeaks 失败：${error.message || error}`, 'warning');
-    return false;
-  }
-}
-
-function waitForMediaMetadata(mediaElement, file) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const timeout = window.setTimeout(() => finish(new Error(mediaLoadErrorMessage(file))), 8000);
-    const cleanup = () => {
-      window.clearTimeout(timeout);
-      mediaElement.removeEventListener('loadedmetadata', onLoaded);
-      mediaElement.removeEventListener('error', onError);
-    };
-    const finish = (error) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      if (error) reject(error); else resolve();
-    };
-    const onLoaded = () => finish();
-    const onError = () => finish(new Error(mediaLoadErrorMessage(file)));
-    mediaElement.addEventListener('loadedmetadata', onLoaded, { once: true });
-    mediaElement.addEventListener('error', onError, { once: true });
-    if (mediaElement.readyState >= 1) queueMicrotask(onLoaded);
-  });
-}
-
-function mediaLoadErrorMessage(file) {
-  const name = String(file?.name || '媒体文件');
-  if (/\.flv$/i.test(name)) {
-    return `无法播放 ${name}：当前浏览器未能解码 FLV，请先用 FFmpeg 转成 MP4。`;
-  }
-  return `无法播放 ${name}：浏览器不支持该媒体格式或编码。`;
-}
-
-loadMediaFileInput.addEventListener('change', async (e) => {
+MaweProjectMediaInputs.loadMediaFileInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  if (!pendingProjectMediaSelection && !await ensureProjectCheckpointForImport(file)) return;
-  pendingProjectMediaSelection = null;
-  const imported = await loadMediaFile(file);
+  if (!MaweProjectMediaInputs.pendingProjectMediaSelection && !await MaweProjectLoad.ensureProjectCheckpointForImport(file)) return;
+  MaweProjectMediaInputs.pendingProjectMediaSelection = null;
+  const imported = await MaweMediaLoad.loadMediaFile(file);
   if (imported) {
-    projectImportDirty = true;
-    if (projectSaveTargetEnabled()) await saveCurrentProject({ silent: true });
+    MaweServerSave.projectImportDirty = true;
+    if (MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
   }
 });
 
-loadMediaFileInput.addEventListener('cancel', () => {
-  pendingProjectMediaSelection = null;
+MaweProjectMediaInputs.loadMediaFileInput.addEventListener('cancel', () => {
+  MaweProjectMediaInputs.pendingProjectMediaSelection = null;
 });
 
 // === 表情包根目录配置 ===
@@ -11697,7 +9314,7 @@ const stickerRootModal = document.getElementById('sticker-root-modal');
 const stickerRootInput = document.getElementById('sticker-root-input');
 const stickerRootRead = document.getElementById('sticker-root-read');
 const stickerRootStatus = document.getElementById('sticker-root-status');
-const stickerRootServerEnabled = Boolean(SERVER_CONFIG?.stickerRootUrl);
+const stickerRootServerEnabled = Boolean(MaweBoot.SERVER_CONFIG?.stickerRootUrl);
 let stickerRootReturnFocus = null;
 let stickerRootHintCard = null;
 
@@ -11724,7 +9341,7 @@ function setStickerRootModalOpen(open) {
 
 document.getElementById('sticker-root-confirm')?.addEventListener('click', () => {
   const newRoot = stickerRootInput.value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
-  STICKER_ROOT = newRoot;
+  MaweBoot.STICKER_ROOT = newRoot;
   MaweExportTimeline.updateStickerExportButtons();
   stickerRootModal.classList.remove('show');
   stickerRootReturnFocus?.focus();
@@ -11745,10 +9362,10 @@ if (!stickerRootServerEnabled) {
 }
 
 document.getElementById('sticker-root-btn')?.addEventListener('click', () => {
-  stickerRootInput.value = STICKER_ROOT || '';
+  stickerRootInput.value = MaweBoot.STICKER_ROOT || '';
   setStickerRootStatus(stickerRootServerEnabled
-    ? (STICKER_ROOT
-      ? `当前路径已读取 ${Number(SERVER_CONFIG.initialStickerCount) || STICKERS.length} 张图片。可输入 Windows、macOS 或 Linux 绝对路径。`
+    ? (MaweBoot.STICKER_ROOT
+      ? `当前路径已读取 ${Number(MaweBoot.SERVER_CONFIG.initialStickerCount) || MaweBoot.STICKERS.length} 张图片。可输入 Windows、macOS 或 Linux 绝对路径。`
       : '请输入绝对路径，例如 C:\\Media\\Stickers、/Users/name/Stickers 或 /home/name/Stickers。')
     : '仅 Server 编辑器可以读取和验证表情包绝对路径。');
   setStickerRootModalOpen(true);
@@ -11787,19 +9404,19 @@ stickerRootRead.addEventListener('click', async () => {
   stickerRootInput.disabled = true;
   setStickerRootStatus('正在读取并验证表情包目录…');
   try {
-    const response = await fetch(new URL(SERVER_CONFIG.stickerRootUrl, window.location.href), {
+    const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.stickerRootUrl, window.location.href), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestToken: SERVER_CONFIG.requestToken, path }),
+      body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, path }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
-    STICKERS.splice(0, STICKERS.length, ...result.stickers);
-    STICKER_ROOT = result.root;
-    SERVER_CONFIG.initialStickerCount = result.count;
+    MaweBoot.STICKERS.splice(0, MaweBoot.STICKERS.length, ...result.stickers);
+    MaweBoot.STICKER_ROOT = result.root;
+    MaweBoot.SERVER_CONFIG.initialStickerCount = result.count;
     stickerRootInput.value = result.root;
     MaweStickerOverlay.stickerAssetRevision += 1;
-    projectImportDirty = true;
+    MaweServerSave.projectImportDirty = true;
     renderAll();
     setStickerRootStatus(`路径有效，已读取 ${result.count} 张图片。`);
     flashStickerRootHint(`表情包根目录已更新，读取 ${result.count} 张图片`, 'success');
@@ -11831,15 +9448,15 @@ let replaceSelectionSnapshot = [];
 function normalizeBatchSelection(indexes) {
   const candidates = Array.isArray(indexes) ? indexes : [...selectedIdxs];
   return [...new Set(candidates
-    .filter((index) => Number.isInteger(index) && index >= 0 && index < DATA.segments.length))]
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length))]
     .sort((a, b) => a - b);
 }
 
 function getReplaceTargets() {
   if (replaceScope && replaceScope.length) {
-    return replaceScope.map(i => DATA.segments[i]).filter(Boolean);
+    return replaceScope.map(i => MaweBoot.DATA.segments[i]).filter(Boolean);
   }
-  return DATA.segments;
+  return MaweBoot.DATA.segments;
 }
 
 function buildReplaceRegex() {
@@ -11862,9 +9479,9 @@ function updatePreview() {
     return;
   }
   const targetIndexes = replaceScope && replaceScope.length
-    ? replaceScope : DATA.segments.map((_, index) => index);
+    ? replaceScope : MaweBoot.DATA.segments.map((_, index) => index);
   const result = window.AsrEditorUtils.buildReplacementPreview(
-    DATA.segments,
+    MaweBoot.DATA.segments,
     targetIndexes,
     find,
     replaceInput.value,
@@ -11906,7 +9523,7 @@ function refreshScopeInfo() {
     replaceScopeInfo.style.color = '#d4a04a';
   } else {
     replaceModalTitle.textContent = '批量替换';
-    replaceScopeInfo.textContent = `范围：全部 ${DATA.segments.length} 条字幕`;
+    replaceScopeInfo.textContent = `范围：全部 ${MaweBoot.DATA.segments.length} 条字幕`;
     replaceScopeInfo.style.color = '#888';
   }
 }
@@ -12007,13 +9624,13 @@ function textProcessSelectionTargets() {
 }
 
 function textProcessAllTargets() {
-  return DATA.segments.map((_, index) => ({ kind: 'main', index }));
+  return MaweBoot.DATA.segments.map((_, index) => ({ kind: 'main', index }));
 }
 
 function textProcessTargetSegments(target) {
   return target?.kind === 'extension'
     ? MaweMultiSubtitleCore.getExtensionTrack(target.trackId)?.segments || []
-    : DATA.segments;
+    : MaweBoot.DATA.segments;
 }
 
 function textProcessTargetLabel(target) {
@@ -12053,7 +9670,7 @@ function refreshTextProcessScopeInfo() {
   const selected = textProcessScope && textProcessScope.length;
   textProcessScopeInfo.textContent = selected
     ? `范围：仅选中的 ${textProcessScope.length} 条字幕`
-    : `范围：全部 ${DATA.segments.length} 条字幕`;
+    : `范围：全部 ${MaweBoot.DATA.segments.length} 条字幕`;
   textProcessScopeInfo.classList.toggle('selected', Boolean(selected));
 }
 
@@ -12120,7 +9737,7 @@ function closeTextProcessModal() {
 }
 
 function openTextProcessModal() {
-  if (!DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
+  if (!MaweBoot.DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
     MaweHint.flashHint('当前没有可处理的字幕', 'invalid');
     return;
   }
@@ -12184,12 +9801,12 @@ textProcessConfirm?.addEventListener('click', () => {
       return;
     }
     if (!mainDraftTexts) {
-      mainDraftTexts = DATA.segments.map((segment) => String(segment?.text || ''));
+      mainDraftTexts = MaweBoot.DATA.segments.map((segment) => String(segment?.text || ''));
     }
     mainDraftTexts[row.index] = row.after;
   });
   const nextMainSegments = mainDraftTexts
-    ? window.AsrEditorUtils.applyTimedTextEdit(DATA.segments, mainDraftTexts)
+    ? window.AsrEditorUtils.applyTimedTextEdit(MaweBoot.DATA.segments, mainDraftTexts)
     : null;
   const nextExtensionSegments = [];
   for (const draft of extensionDrafts.values()) {
@@ -12206,8 +9823,8 @@ textProcessConfirm?.addEventListener('click', () => {
   }
   MaweHistory.pushUndo('文本处理');
   if (nextMainSegments) {
-    DATA.segments.splice(0, DATA.segments.length, ...nextMainSegments);
-    MaweMultiSubtitleCore.markMainSegmentsDirty(DATA.segments);
+    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...nextMainSegments);
+    MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments);
   }
   nextExtensionSegments.forEach(({ track, segments }) => {
     track.segments.splice(0, track.segments.length, ...segments);
@@ -12215,7 +9832,7 @@ textProcessConfirm?.addEventListener('click', () => {
   });
   if (nextExtensionSegments.length) MaweMultiSubtitleCore.markMultiSubtitleDirty();
   MaweMultiSubtitleCore.syncBindingOffsets();
-  scheduleAutoSaveFlush();
+  MaweServerSave.scheduleAutoSaveFlush();
   closeTextProcessModal();
   renderAll({ waveform: 'overlay' });
   MawePlaybackLoop.updateWithoutCueListAutoScroll();
@@ -12225,7 +9842,7 @@ textProcessConfirm?.addEventListener('click', () => {
 
 // === 纯文本编辑（支持调整字幕行结构的 MVP） ===
 function timedTextEditSegments(kind) {
-  return kind === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [] : DATA.segments;
+  return kind === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [] : MaweBoot.DATA.segments;
 }
 
 function timedTextEditSourceSelection(kind, showDisabled = false) {
@@ -12735,7 +10352,7 @@ function loadTimedTextEditTrack(kind, { showDisabled = false } = {}) {
 
 function refreshTimedTextEditButton() {
   if (!MaweDom.timedTextEditButton) return;
-  const hasMain = DATA.segments.length > 0;
+  const hasMain = MaweBoot.DATA.segments.length > 0;
   const hasExtension = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length);
   MaweDom.timedTextEditButton.disabled = !hasMain && !hasExtension;
 }
@@ -12889,7 +10506,7 @@ function applyTimedTextEditSegments(
       // 与删除字幕相同的分组语义：来源行离开后，颜色 / 表情包组在切点处拆开。
       splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
       splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
-      DATA.segments.forEach((segment, index) => {
+      MaweBoot.DATA.segments.forEach((segment, index) => {
         if (removeSet.has(index)) return;
         if (segment.sticker_ref && removeSet.has(segment.sticker_ref.headIdx)) {
           segment.sticker_ref = null;
@@ -12920,11 +10537,11 @@ function applyTimedTextEditSegments(
       }
       if (shift) ref.headIdx -= shift;
     };
-    DATA.segments.forEach((segment) => {
+    MaweBoot.DATA.segments.forEach((segment) => {
       if (segment.sticker_ref) shiftHeadIdx(segment.sticker_ref);
       if (segment.color_ref) shiftHeadIdx(segment.color_ref);
     });
-    window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
+    window.AsrEditorUtils.repairGroupReferenceIndices(MaweBoot.DATA.segments);
     if (extensionTrack && pairedExtensionIndices.size) {
       [...pairedExtensionIndices].sort((a, b) => b - a)
         .forEach((index) => extensionTrack.segments.splice(index, 1));
@@ -12942,7 +10559,7 @@ function requestCloseTimedTextEdit() {
 }
 
 function openTimedTextEdit() {
-  if (!DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
+  if (!MaweBoot.DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
     MaweHint.flashHint('当前没有可编辑的字幕', 'invalid');
     return;
   }
@@ -13108,7 +10725,7 @@ let stickerTargetMode = null;  // 'single' | 'multi'
 let stickerTargetIdxs = [];     // 要分配的 segment indexes
 
 function openStickerPicker(idxs, isMulti) {
-  if (!STICKERS.length) {
+  if (!MaweBoot.STICKERS.length) {
     MaweHint.flashHint('没有可用的表情包，请先用🦊按钮配置表情包文件夹', 'invalid');
     return;
   }
@@ -13126,7 +10743,7 @@ function renderStickerGrid(filter) {
   const grid = document.getElementById('sticker-grid');
   grid.innerHTML = '';
   const f = filter.trim().toLowerCase();
-  STICKERS.forEach((s, i) => {
+  MaweBoot.STICKERS.forEach((s, i) => {
     const it = document.createElement('div');
     it.className = 'sticker-item';
     if (f && !s.name.toLowerCase().includes(f) && !s.filename.toLowerCase().includes(f)) {
@@ -13143,32 +10760,32 @@ function renderStickerGrid(filter) {
 }
 
 function assignSticker(sticker) {
-  const hadStickers = DATA.segments.some((segment) => segment.sticker || segment.sticker_ref);
+  const hadStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref);
   MaweHistory.pushUndo('分配表情包');
   if (stickerTargetMode === 'multi' && stickerTargetIdxs.length > 1) {
     const sorted = [...stickerTargetIdxs].sort((a, b) => a - b);
     const headIdx = sorted[0];
     // 每条字幕都是一个独立的时间实例；head 只负责保存素材，不能把多条字幕
     // 的时间范围合并成一条，否则 XML/OTIO 会把中间的引用压成连续长片段。
-    DATA.segments[headIdx].sticker = {
-      ...sticker, start: DATA.segments[headIdx].start, end: DATA.segments[headIdx].end,
+    MaweBoot.DATA.segments[headIdx].sticker = {
+      ...sticker, start: MaweBoot.DATA.segments[headIdx].start, end: MaweBoot.DATA.segments[headIdx].end,
     };
-    DATA.segments[headIdx].sticker_ref = null;
+    MaweBoot.DATA.segments[headIdx].sticker_ref = null;
     // 后续条：sticker_ref 标记，便于显示和导航
     for (let i = 1; i < sorted.length; i++) {
-      DATA.segments[sorted[i]].sticker = null;
-      DATA.segments[sorted[i]].sticker_ref = { name: sticker.name, headIdx };
+      MaweBoot.DATA.segments[sorted[i]].sticker = null;
+      MaweBoot.DATA.segments[sorted[i]].sticker_ref = { name: sticker.name, headIdx };
     }
   } else {
     const idx = stickerTargetIdxs[0];
     // 如果当前条已经是 head（被其他 ref 引用），同步更新所有引用 idx 的 ref.name
-    DATA.segments.forEach(s => {
+    MaweBoot.DATA.segments.forEach(s => {
       if (s.sticker_ref && s.sticker_ref.headIdx === idx) {
         s.sticker_ref.name = sticker.name;
       }
     });
-    DATA.segments[idx].sticker = { ...sticker };
-    DATA.segments[idx].sticker_ref = null;
+    MaweBoot.DATA.segments[idx].sticker = { ...sticker };
+    MaweBoot.DATA.segments[idx].sticker_ref = null;
   }
   MaweDom.stickerModal.classList.remove('show');
   if (!hadStickers && !MaweSettings.EDITOR_SETTINGS.cueListShowSticker && !MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker
@@ -13200,7 +10817,7 @@ MaweDom.stickerModal?.addEventListener('click', (e) => { if (e.target === MaweDo
 // 表情包预览 modal
 let previewIdx = -1;
 function openStickerPreview(idx) {
-  const seg = DATA.segments[idx];
+  const seg = MaweBoot.DATA.segments[idx];
   if (!seg.sticker) return;
   previewIdx = idx;
   document.getElementById('sticker-preview-img').src = stickerUrl(seg.sticker);
@@ -13239,16 +10856,16 @@ function expandStickerTime(idxs) {
   // 找选中范围内的 sticker：优先取 head；如果只有 ref，从 ref 回溯到原 head
   let sourceSticker = null;
   for (const i of sorted) {
-    if (DATA.segments[i].sticker) {
-      sourceSticker = DATA.segments[i].sticker;
+    if (MaweBoot.DATA.segments[i].sticker) {
+      sourceSticker = MaweBoot.DATA.segments[i].sticker;
       break;
     }
   }
   if (!sourceSticker) {
     for (const i of sorted) {
-      const ref = DATA.segments[i].sticker_ref;
-      if (ref && DATA.segments[ref.headIdx]?.sticker) {
-        sourceSticker = DATA.segments[ref.headIdx].sticker;
+      const ref = MaweBoot.DATA.segments[i].sticker_ref;
+      if (ref && MaweBoot.DATA.segments[ref.headIdx]?.sticker) {
+        sourceSticker = MaweBoot.DATA.segments[ref.headIdx].sticker;
         break;
       }
     }
@@ -13259,18 +10876,18 @@ function expandStickerTime(idxs) {
   }
   MaweHistory.pushUndo('拓展表情包时长');
   const sticker = { ...sourceSticker };
-  sticker.start = DATA.segments[sorted[0]].start;
-  sticker.end = DATA.segments[sorted[sorted.length - 1]].end;
+  sticker.start = MaweBoot.DATA.segments[sorted[0]].start;
+  sticker.end = MaweBoot.DATA.segments[sorted[sorted.length - 1]].end;
   // 清除范围内所有 sticker / sticker_ref
   sorted.forEach(i => {
-    DATA.segments[i].sticker = null;
-    DATA.segments[i].sticker_ref = null;
+    MaweBoot.DATA.segments[i].sticker = null;
+    MaweBoot.DATA.segments[i].sticker_ref = null;
   });
   // head：放完整 sticker；后续：放 sticker_ref
   const headIdx = sorted[0];
-  DATA.segments[headIdx].sticker = sticker;
+  MaweBoot.DATA.segments[headIdx].sticker = sticker;
   for (let k = 1; k < sorted.length; k++) {
-    DATA.segments[sorted[k]].sticker_ref = { name: sticker.name, headIdx };
+    MaweBoot.DATA.segments[sorted[k]].sticker_ref = { name: sticker.name, headIdx };
   }
   renderAll();
   MaweHint.flashHint(`已拓展到 ${sorted.length} 条`, 'success');
@@ -13288,30 +10905,30 @@ function assignColor(idxs, colorName) {
   if (sorted.length === 1) {
     const idx = sorted[0];
     // 如果当前条已经是 head，同步更新所有引用 idx 的 ref.name
-    DATA.segments.forEach(s => {
+    MaweBoot.DATA.segments.forEach(s => {
       if (s.color_ref && s.color_ref.headIdx === idx) {
         s.color_ref.name = colorName;
       }
     });
-    DATA.segments[idx].color = {
+    MaweBoot.DATA.segments[idx].color = {
       name: colorName, value: def.value,
-      start: DATA.segments[idx].start, end: DATA.segments[idx].end,
+      start: MaweBoot.DATA.segments[idx].start, end: MaweBoot.DATA.segments[idx].end,
     };
-    DATA.segments[idx].color_ref = null;
+    MaweBoot.DATA.segments[idx].color_ref = null;
   } else {
     const headIdx = sorted[0];
-    const start = DATA.segments[headIdx].start;
-    const end = DATA.segments[sorted[sorted.length - 1]].end;
-    DATA.segments[headIdx].color = { name: colorName, value: def.value, start, end };
-    DATA.segments[headIdx].color_ref = null;
+    const start = MaweBoot.DATA.segments[headIdx].start;
+    const end = MaweBoot.DATA.segments[sorted[sorted.length - 1]].end;
+    MaweBoot.DATA.segments[headIdx].color = { name: colorName, value: def.value, start, end };
+    MaweBoot.DATA.segments[headIdx].color_ref = null;
     for (let k = 1; k < sorted.length; k++) {
-      DATA.segments[sorted[k]].color = null;
-      DATA.segments[sorted[k]].color_ref = { name: colorName, headIdx };
+      MaweBoot.DATA.segments[sorted[k]].color = null;
+      MaweBoot.DATA.segments[sorted[k]].color_ref = { name: colorName, headIdx };
     }
   }
   // 单条修改 lead（其 color_ref 成员仍指向它）或多选统一分配时，视为整组联动修改
   const isUnifiedGroup = sorted.length > 1
-    || DATA.segments.some((s) => s.color_ref && s.color_ref.headIdx === sorted[0]);
+    || MaweBoot.DATA.segments.some((s) => s.color_ref && s.color_ref.headIdx === sorted[0]);
   refreshColorAssignmentUi();
   MaweHint.flashHint(isUnifiedGroup
     ? `已将关联字幕统一设为「${def.label}色」`
@@ -13342,7 +10959,7 @@ function toggleDisabled(idxs, track = 'main', { successDetail = null } = {}) {
     ? MaweMultiSubtitleCore.getActiveExtensionTrack()
     : (track?.segments ? track : null);
   const isExtension = Boolean(extensionTrack);
-  const segments = isExtension ? extensionTrack.segments : DATA.segments;
+  const segments = isExtension ? extensionTrack.segments : MaweBoot.DATA.segments;
   const validIdxs = [...new Set(idxs.filter((index) => Number.isInteger(index) && segments[index]))];
   if (!validIdxs.length) return;
   MaweHistory.pushUndo('切换禁用');
@@ -13475,14 +11092,14 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-  if (DATA.segments.some((segment) => start < segment.end && end > segment.start)) {
+  if (MaweBoot.DATA.segments.some((segment) => start < segment.end && end > segment.start)) {
     MaweHint.flashHint('拖动范围包含已有字幕，无法新增字幕', 'warning');
     return;
   }
-  const insertAt = DATA.segments.findIndex((segment) => segment.start > start);
-  const index = insertAt < 0 ? DATA.segments.length : insertAt;
-  const previousEnd = index > 0 ? DATA.segments[index - 1].end : 0;
-  const nextStart = index < DATA.segments.length ? DATA.segments[index].start : duration;
+  const insertAt = MaweBoot.DATA.segments.findIndex((segment) => segment.start > start);
+  const index = insertAt < 0 ? MaweBoot.DATA.segments.length : insertAt;
+  const previousEnd = index > 0 ? MaweBoot.DATA.segments[index - 1].end : 0;
+  const nextStart = index < MaweBoot.DATA.segments.length ? MaweBoot.DATA.segments[index].start : duration;
   const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(start / 10) * 10));
   const safeEnd = Math.min(nextStart, Math.max(safeStart, Math.round(end / 10) * 10));
   if (safeEnd - safeStart < 100) {
@@ -13491,15 +11108,15 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
   }
   commitCuePanelEdit();
   MaweHistory.pushUndo('新增字幕');
-  DATA.segments.splice(index, 0, {
-    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(DATA.segments, `main-${index + 1}`, 'main'),
+  MaweBoot.DATA.segments.splice(index, 0, {
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(MaweBoot.DATA.segments, `main-${index + 1}`, 'main'),
     start: safeStart,
     end: safeEnd,
     text: '',
     items: [],
     _dirty: true,
   });
-  window.AsrEditorUtils.shiftGroupReferenceIndices(DATA.segments, index, 1);
+  window.AsrEditorUtils.shiftGroupReferenceIndices(MaweBoot.DATA.segments, index, 1);
   clearSelection({ silent: true });
   renderAll({ preserveCueListScroll: false });
   selectOnly(index);
@@ -13520,10 +11137,10 @@ function addCueAtWaveformTime(timeMs, clickX, clickY) {
     MaweHint.flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
     return;
   }
-  const insertAt = DATA.segments.findIndex((segment) => segment.start > timeMs);
-  const index = insertAt < 0 ? DATA.segments.length : insertAt;
-  const previousEnd = index > 0 ? DATA.segments[index - 1].end : 0;
-  const nextStart = index < DATA.segments.length ? DATA.segments[index].start : duration;
+  const insertAt = MaweBoot.DATA.segments.findIndex((segment) => segment.start > timeMs);
+  const index = insertAt < 0 ? MaweBoot.DATA.segments.length : insertAt;
+  const previousEnd = index > 0 ? MaweBoot.DATA.segments[index - 1].end : 0;
+  const nextStart = index < MaweBoot.DATA.segments.length ? MaweBoot.DATA.segments[index].start : duration;
   if (timeMs < previousEnd) {
     MaweHint.flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
     return;
@@ -13693,7 +11310,7 @@ function syncBoundCueDrag(drag) {
   if (!drag || drag.track !== 'main' || !MaweMultiSubtitleCore.multiSubtitleVisible()) return;
   ensureBoundDragTimelineOriginals(drag);
   if (drag.allowSqueeze) restoreBoundDragTimelineOriginals(drag);
-  const sourceSegments = DATA.segments;
+  const sourceSegments = MaweBoot.DATA.segments;
   if (!drag.boundOriginals) drag.boundOriginals = new Map();
 
   const boundEntries = drag.indices.map((index) => ({
@@ -13761,10 +11378,10 @@ function syncBoundCueDrag(drag) {
   MaweMultiSubtitleCore.syncBindingOffsets();
 }
 
-function findWaveformCueAtTime(timeMs, segments = DATA.segments) {
+function findWaveformCueAtTime(timeMs, segments = MaweBoot.DATA.segments) {
   const time = Number(timeMs);
   if (!Number.isFinite(time)) return -1;
-  const list = Array.isArray(segments) ? segments : DATA.segments;
+  const list = Array.isArray(segments) ? segments : MaweBoot.DATA.segments;
   return list.findIndex((segment) => {
     const start = Number(segment?.start);
     const end = Number(segment?.end);
@@ -13797,7 +11414,7 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
     sep.className = 'sep';
     MaweDom.ctxmenu.appendChild(sep);
   }
-  const mainIdx = findWaveformCueAtTime(timeMs, DATA.segments);
+  const mainIdx = findWaveformCueAtTime(timeMs, MaweBoot.DATA.segments);
   const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const extensionIdx = findWaveformCueAtTime(timeMs, extensionTrack?.segments);
   if (effectiveTrack === 'extension') {
@@ -13815,7 +11432,7 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       mainIdx >= 0,
     );
   }
-  if (Array.isArray(DATA.segments) && DATA.segments.length) {
+  if (Array.isArray(MaweBoot.DATA.segments) && MaweBoot.DATA.segments.length) {
     addItem(
       '按音频位置拆分主字幕',
       'B',
@@ -13909,7 +11526,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     MaweDom.ctxmenu.appendChild(row);
     // 「清除颜色」项：仅当选中范围内有颜色时显示
     const hasColorInRange = targets.some(i =>
-      DATA.segments[i].color || DATA.segments[i].color_ref);
+      MaweBoot.DATA.segments[i].color || MaweBoot.DATA.segments[i].color_ref);
     if (hasColorInRange) {
       addItem('清除颜色', '0', () => clearColorOnTargets(targets), { danger: true });
     }
@@ -13926,14 +11543,14 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only') {
       addItem('跳转并播放', 'F', () => {
-        seekFromWaveform(DATA.segments[idx].start / 1000);
+        seekFromWaveform(MaweBoot.DATA.segments[idx].start / 1000);
         if (MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
       });
     }
     addSep();
     // 组 2：外观（表情包与颜色）
     addItem('分配表情包…', 'T', () => openStickerPicker([idx], false));
-    if (DATA.segments[idx].sticker || DATA.segments[idx].sticker_ref) {
+    if (MaweBoot.DATA.segments[idx].sticker || MaweBoot.DATA.segments[idx].sticker_ref) {
       addItem('删除表情包', '', () => {
         removeStickerCascade(idx);
         renderAll();
@@ -13944,7 +11561,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     addSep();
     // 组 3：状态与删除
     addItem(
-      DATA.segments[idx].disabled ? '启用此条' : '禁用此条',
+      MaweBoot.DATA.segments[idx].disabled ? '启用此条' : '禁用此条',
       'Alt+点击',
       () => toggleDisabled([idx])
     );
@@ -13964,7 +11581,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     addSep();
     // 组 2：外观（表情包与颜色）；「拓展表情包时长」仅在范围内已有表情包时显示
     const hasStickerInRange = targetIdxs.some(i =>
-      DATA.segments[i].sticker || DATA.segments[i].sticker_ref);
+      MaweBoot.DATA.segments[i].sticker || MaweBoot.DATA.segments[i].sticker_ref);
     if (hasStickerInRange) {
       addItem('拓展表情包时长', '', () => expandStickerTime(targetIdxs));
     }
@@ -13972,7 +11589,7 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
     addColorSubmenu(targetIdxs);
     addSep();
     // 组 3：状态与删除
-    const _disabledInSel = targetIdxs.filter(i => DATA.segments[i].disabled).length;
+    const _disabledInSel = targetIdxs.filter(i => MaweBoot.DATA.segments[i].disabled).length;
     addItem(
       _disabledInSel === targetIdxs.length ? '启用选中' : '禁用选中',
       '',
@@ -14128,7 +11745,7 @@ document.addEventListener('asr:waveform-scale-limit', (event) => {
 function cleanPunctuation() {
   const PUNCT_REPL = '  ';
   const REPLACE_INSIDE = /[，。]/g;
-  for (const seg of DATA.segments) {
+  for (const seg of MaweBoot.DATA.segments) {
     if (!seg.text) continue;
     let t = seg.text;
     while (t.length && (t.endsWith('，') || t.endsWith('。'))) t = t.slice(0, -1);
@@ -14149,11 +11766,11 @@ function cleanPunctuation() {
 
 function syncTimelineGroupRanges() {
   function sync(headField, refField) {
-    DATA.segments.forEach((segment, headIdx) => {
+    MaweBoot.DATA.segments.forEach((segment, headIdx) => {
       const head = segment[headField];
       if (!head) return;
       let end = segment.end;
-      DATA.segments.forEach((candidate) => {
+      MaweBoot.DATA.segments.forEach((candidate) => {
         if (candidate[refField]?.headIdx === headIdx) end = Math.max(end, candidate.end);
       });
       head.start = segment.start;
@@ -14188,9 +11805,9 @@ function seekFromWaveform(timeSec, { dragPreview = false } = {}) {
 }
 
 function notifyAutoLoadedMediaReady(mediaElement) {
-  if (mediaElement !== MaweCoreState.player || autoLoadedMediaReadyNotified || !SERVER_CONFIG?.autoLoadedMediaName) return;
+  if (mediaElement !== MaweCoreState.player || autoLoadedMediaReadyNotified || !MaweBoot.SERVER_CONFIG?.autoLoadedMediaName) return;
   autoLoadedMediaReadyNotified = true;
-  MaweHint.flashHint(translatedEditorText(`已加载媒体：${SERVER_CONFIG.autoLoadedMediaName}`), 'success');
+  MaweHint.flashHint(MaweProjectSave.translatedEditorText(`已加载媒体：${MaweBoot.SERVER_CONFIG.autoLoadedMediaName}`), 'success');
 }
 
 function flushPendingMediaSeek(mediaElement) {
@@ -14207,12 +11824,12 @@ function initWaveformEditor() {
   }
   MaweCoreState.waveformEditor = window.AsrWaveform.create({
     getSegments: (track = 'main') => track === 'extension'
-      ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []) : DATA.segments,
+      ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []) : MaweBoot.DATA.segments,
     getExtensionSegments: (trackId = null) => MaweMultiSubtitleCore.getExtensionTrack(trackId)?.segments || [],
     getCrossTrackSnapTargets: (track = 'main') => {
       if (!MaweMultiSubtitleCore.multiSubtitleVisible() || !MaweSettings.EDITOR_SETTINGS.crossTrackSnap) return [];
       const otherSegments = track === 'extension'
-        ? DATA.segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
+        ? MaweBoot.DATA.segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
       return otherSegments.flatMap((segment) => [segment?.start, segment?.end])
         .filter((timeMs) => Number.isFinite(Number(timeMs)))
         .map((timeMs) => Number(timeMs));
@@ -14317,7 +11934,7 @@ function initWaveformEditor() {
       let linkedChanged = false;
       if (kind === 'resize-boundary-pointer' && track === 'main' && !independent) {
         const targetIndex = Number.isInteger(details?.targetIndex) ? details.targetIndex : idxs[0];
-        const main = DATA.segments[targetIndex];
+        const main = MaweBoot.DATA.segments[targetIndex];
         const original = details?.original;
         if (main && original) {
           linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(main, {
@@ -14333,7 +11950,7 @@ function initWaveformEditor() {
       // 原本位于目标前面的字幕保留右侧区间而落到目标之后，保存时违反顺序契约。
       if (MaweMultiSubtitleCore.multiSubtitleVisible()) MaweMultiSubtitleCore.sortExtensionTrackSegments(MaweMultiSubtitleCore.getActiveExtensionTrack());
       MaweMultiSubtitleCore.syncBindingOffsets();
-      MaweMultiSubtitleCore.markMainSegmentsDirty(track === 'main' ? idxs.map((idx) => DATA.segments[idx]).filter(Boolean) : []);
+      MaweMultiSubtitleCore.markMainSegmentsDirty(track === 'main' ? idxs.map((idx) => MaweBoot.DATA.segments[idx]).filter(Boolean) : []);
       if (linkedChanged || MaweMultiSubtitleCore.multiSubtitleVisible() || track === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
       renderAll();
       MawePlaybackLoop.updateWithoutCueListAutoScroll();
@@ -14350,20 +11967,20 @@ function initWaveformEditor() {
             : `已调整第 ${idxs[0] + 1} 条字幕时间`);
     },
     onPayload: (payload) => {
-      DATA.waveform = payload;
+      MaweBoot.DATA.waveform = payload;
       MaweCoreState.waveformLoadedFromProject = false;
     },
   });
   MaweCoreState.waveformEditor.attachPlayer(MaweCoreState.player);
-  MaweCoreState.waveformEditor.setLayoutData(DATA.workspace || null, { render: false });
-  MaweDisplaySettings.applyEditorDisplaySettings(DATA.workspace?.editorDisplay);
-  MaweCoreState.waveformEditor.setSpectralPayload(DATA.spectral || null, { render: false });
-  MaweCoreState.waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks || null, { render: false });
-  MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(DATA.waveform || null, { render: false });
+  MaweCoreState.waveformEditor.setLayoutData(MaweBoot.DATA.workspace || null, { render: false });
+  MaweDisplaySettings.applyEditorDisplaySettings(MaweBoot.DATA.workspace?.editorDisplay);
+  MaweCoreState.waveformEditor.setSpectralPayload(MaweBoot.DATA.spectral || null, { render: false });
+  MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks || null, { render: false });
+  MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform || null, { render: false });
 }
 
 async function loadDeferredReapeaks() {
-  const url = SERVER_CONFIG?.waveformUrl;
+  const url = MaweBoot.SERVER_CONFIG?.waveformUrl;
   if (!url || !MaweCoreState.waveformEditor) return;
   try {
     const response = await fetch(url, { cache: 'no-store' });
@@ -14376,10 +11993,10 @@ async function loadDeferredReapeaks() {
     if (result.status !== 'ready') return;
     const hasPayload = Boolean(result.spectral || result.waveform_reapeaks);
     if (!hasPayload) return;
-    DATA.spectral = result.spectral || null;
-    DATA.waveform_reapeaks = result.waveform_reapeaks || null;
-    MaweCoreState.waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
-    MaweCoreState.waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
+    MaweBoot.DATA.spectral = result.spectral || null;
+    MaweBoot.DATA.waveform_reapeaks = result.waveform_reapeaks || null;
+    MaweCoreState.waveformEditor.setSpectralPayload(MaweBoot.DATA.spectral, { render: false });
+    MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks, { render: false });
     renderAll({ waveform: 'full' });
   } catch (_error) {
     window.setTimeout(() => { void loadDeferredReapeaks(); }, 1000);
@@ -14398,7 +12015,7 @@ let serverConnectionCheckInFlight = false;
 let serverConnectionFailureCount = 0;
 
 function serverConnectionCheckUrl() {
-  return SERVER_CONFIG?.healthUrl || SERVER_CONFIG?.startupStatusUrl || '';
+  return MaweBoot.SERVER_CONFIG?.healthUrl || MaweBoot.SERVER_CONFIG?.startupStatusUrl || '';
 }
 
 function renderServerConnectionBanner(disconnected) {
@@ -14498,18 +12115,18 @@ function serverStartupLabel(stage) {
 }
 
 async function loadServerStartup() {
-  const url = SERVER_CONFIG?.startupStatusUrl;
-  const status = SERVER_CONFIG?.startupStatus;
+  const url = MaweBoot.SERVER_CONFIG?.startupStatusUrl;
+  const status = MaweBoot.SERVER_CONFIG?.startupStatus;
   if (!url || status === 'ready') return;
   if (status === 'error') {
-    const detail = SERVER_CONFIG.startupError || serverStartupLabel('error');
+    const detail = MaweBoot.SERVER_CONFIG.startupError || serverStartupLabel('error');
     MaweHint.flashHint(`${serverStartupLabel('error')}：${detail}`, 'warning');
     return;
   }
 
-  const finishLoading = beginEditorLoading(
-    serverStartupLabel(SERVER_CONFIG.startupStage),
-    SERVER_CONFIG.startupProgress,
+  const finishLoading = MaweLoadingProgress.beginEditorLoading(
+    serverStartupLabel(MaweBoot.SERVER_CONFIG.startupStage),
+    MaweBoot.SERVER_CONFIG.startupProgress,
   );
   const poll = async () => {
     try {
@@ -14519,7 +12136,7 @@ async function loadServerStartup() {
         throw new Error(result.error || `服务器返回 ${response.status}`);
       }
       if (result.status === 'ready') {
-        updateEditorLoading(100, serverStartupLabel('ready'));
+        MaweLoadingProgress.updateEditorLoading(100, serverStartupLabel('ready'));
         finishLoading();
         // 页面中的 DATA、媒体标签和保存能力都由服务端工程一起渲染；
         // 工程准备好后刷新一次即可无竞态地接管完整工程和波形。
@@ -14534,7 +12151,7 @@ async function loadServerStartup() {
         );
         return;
       }
-      updateEditorLoading(result.progress, serverStartupLabel(result.stage));
+      MaweLoadingProgress.updateEditorLoading(result.progress, serverStartupLabel(result.stage));
       window.setTimeout(() => { void poll(); }, 500);
     } catch (_error) {
       window.setTimeout(() => { void poll(); }, 1000);
@@ -14554,7 +12171,7 @@ function isSrtFile(f) {
 }
 async function handleDroppedFiles(files) {
   if (!files.length) return;
-  const finishLoading = beginEditorLoading('正在处理拖入文件…', 2);
+  const finishLoading = MaweLoadingProgress.beginEditorLoading('正在处理拖入文件…', 2);
   try {
   const mediaFile = files.find(MaweCoreState.isMediaFile);
   const reapeaksFile = files.find(MaweCoreState.isReapeaksFile);
@@ -14566,12 +12183,12 @@ async function handleDroppedFiles(files) {
     return;
   }
   if (jsonFile) {
-    if (DATA.segments.length > 0) {
-      if (hasUnsavedProjectChanges()
+    if (MaweBoot.DATA.segments.length > 0) {
+      if (MaweServerSave.hasUnsavedProjectChanges()
           && !confirm('当前有未保存的改动，是否继续处理此工程文件？选择“打开工程”仍会替换当前工程。')) return;
       try {
-        const segments = await parseSubtitleImportFile(jsonFile);
-        await showMultiSubtitleImportChoice(jsonFile, segments, {
+        const segments = await MaweLoadingProgress.parseSubtitleImportFile(jsonFile);
+        await MaweMultiImport.showMultiSubtitleImportChoice(jsonFile, segments, {
           projectFile: jsonFile,
           projectMediaFile: mediaFile,
         });
@@ -14581,42 +12198,42 @@ async function handleDroppedFiles(files) {
       return;
     }
     // 工程与媒体一起拖入时，媒体随工程自动加载，不再弹窗要求重选。
-    const opened = await openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
-    if (opened && mediaFile) await loadMediaFile(mediaFile);
+    const opened = await MaweMultiImport.openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
+    if (opened && mediaFile) await MaweMediaLoad.loadMediaFile(mediaFile);
     return;
   }
   if (reapeaksFile && !mediaFile && !srtFile) {
-    await loadReapeaksFile(reapeaksFile);
+    await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
     return;
   }
-  if (srtFile && DATA.segments.length === 0) {
+  if (srtFile && MaweBoot.DATA.segments.length === 0) {
     try {
-      stagedSrtSegments = parseSrtSegments(await readFileTextWithProgress(srtFile));
+      stagedSrtSegments = MaweProjectLoad.parseSrtSegments(await MaweLoadingProgress.readFileTextWithProgress(srtFile));
     } catch (error) {
       MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
       return;
     }
   }
-  if ((mediaFile || srtFile) && !await ensureProjectCheckpointForImport(mediaFile || srtFile, { usePicker: false })) return;
+  if ((mediaFile || srtFile) && !await MaweProjectLoad.ensureProjectCheckpointForImport(mediaFile || srtFile, { usePicker: false })) return;
   if (mediaFile) {
-    const imported = await loadMediaFile(mediaFile);
-    if (imported) projectImportDirty = true;
+    const imported = await MaweMediaLoad.loadMediaFile(mediaFile);
+    if (imported) MaweServerSave.projectImportDirty = true;
   }
-  if (reapeaksFile) await loadReapeaksFile(reapeaksFile);
+  if (reapeaksFile) await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
   if (srtFile) {
-    if (DATA.segments.length > 0) {
+    if (MaweBoot.DATA.segments.length > 0) {
       try {
-        const segments = await parseSubtitleImportFile(srtFile);
-        await showMultiSubtitleImportChoice(srtFile, segments);
+        const segments = await MaweLoadingProgress.parseSubtitleImportFile(srtFile);
+        await MaweMultiImport.showMultiSubtitleImportChoice(srtFile, segments);
       } catch (error) {
         MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
       }
     } else {
-      replaceMainTrack(stagedSrtSegments, srtFile.name);
+      MaweProjectLoad.replaceMainTrack(stagedSrtSegments, srtFile.name);
     }
   }
-  if ((mediaFile || srtFile) && projectSaveTargetEnabled()) await saveCurrentProject({ silent: true });
-  updateEditorLoading(100, '文件加载完成');
+  if ((mediaFile || srtFile) && MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
+  MaweLoadingProgress.updateEditorLoading(100, '文件加载完成');
   } finally {
     finishLoading();
   }
@@ -14647,28 +12264,28 @@ window.addEventListener('drop', (e) => {
 // === 启动 ===
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
-syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: DATA.timebase?.unit === 'frames' });
-const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(DATA.segments);
-const repairedTimingCount = normalizeProjectTimings(DATA);
-syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
-maweDebug('boot:begin', {
-  server: Boolean(SERVER_CONFIG),
-  segments: Array.isArray(DATA.segments) ? DATA.segments.length : null,
-  media: DATA.media || '',
-  recentProjects: SERVER_CONFIG?.recentProjects?.length || 0,
+syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
+const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(MaweBoot.DATA.segments);
+const repairedTimingCount = normalizeProjectTimings(MaweBoot.DATA);
+syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+MaweBoot.maweDebug('boot:begin', {
+  server: Boolean(MaweBoot.SERVER_CONFIG),
+  segments: Array.isArray(MaweBoot.DATA.segments) ? MaweBoot.DATA.segments.length : null,
+  media: MaweBoot.DATA.media || '',
+  recentProjects: MaweBoot.SERVER_CONFIG?.recentProjects?.length || 0,
 });
 cleanPunctuation();
-configureServerSaveControls();
-configureServerAutoSave();
-configureRecentProjects();
-configureServerProjectSettings();
+MaweServerSave.configureServerSaveControls();
+MaweServerSave.configureServerAutoSave();
+MaweServerSave.configureRecentProjects();
+MaweServerSave.configureServerProjectSettings();
 initWaveformEditor();
-configureServerWorkspaceLibrary();
-configureWorkspaceTransfer();
-MaweDom.totalCountEl.textContent = DATA.segments.length;
+MaweWorkspaces.configureServerWorkspaceLibrary();
+MaweWorkspaces.configureWorkspaceTransfer();
+MaweDom.totalCountEl.textContent = MaweBoot.DATA.segments.length;
 // 新手引导通过这个窄桥接访问编辑器核心状态；引导本身在 editor-onboarding.js 中按需初始化。
 window.MAWE_EDITOR_BRIDGE = Object.freeze({
-  get data() { return DATA; },
+  get data() { return MaweBoot.DATA; },
   get selectedIdxs() { return selectedIdxs; },
   get currentCuePanelIdx() { return MaweCuePanelState.currentCuePanelIdx; },
   get container() { return MaweCoreState.container; },
@@ -14686,10 +12303,10 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
 });
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 renderAll({ waveform: 'full' });
-maweDebug('boot:complete', {
+MaweBoot.maweDebug('boot:complete', {
   renderedSegments: MaweCoreState.container?.querySelectorAll?.('.cue-row')?.length || 0,
   recentProjectsVisible: MaweDom.recentProjectsEl ? !MaweDom.recentProjectsEl.hidden : false,
-  mediaName: mediaNameEl?.textContent || '',
+  mediaName: MaweProjectSave.mediaNameEl?.textContent || '',
   placeholderVisible: MaweDom.playerEmpty ? !MaweDom.playerEmpty.hidden : null,
 });
 updateGapRemoveUi();
@@ -14700,7 +12317,7 @@ if (repairedTimingCount > 0) {
 }
 void loadServerStartup();
 startServerConnectionMonitor();
-if (SERVER_CONFIG?.startupStatus !== 'loading') void loadDeferredReapeaks();
+if (MaweBoot.SERVER_CONFIG?.startupStatus !== 'loading') void loadDeferredReapeaks();
 
 document.getElementById('filter-over')?.addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('active');
@@ -14719,7 +12336,7 @@ MaweDom.hideDisabledToggle?.addEventListener('change', () => {
   if (MaweDom.hideDisabled) {
     // 清理选中集中的禁用项（隐藏了但还留在选中集会造成状态不一致）
     [...selectedIdxs].forEach(i => {
-      if (DATA.segments[i]?.disabled) {
+      if (MaweBoot.DATA.segments[i]?.disabled) {
         selectedIdxs.delete(i);
         const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
         if (el) el.classList.remove('selected');
@@ -14739,5 +12356,5 @@ MaweDom.hideDisabledToggle?.addEventListener('change', () => {
 
 // 离开提示
 window.addEventListener('beforeunload', (e) => {
-  if (hasUnsavedProjectChanges()) { e.preventDefault(); e.returnValue = ''; }
+  if (MaweServerSave.hasUnsavedProjectChanges()) { e.preventDefault(); e.returnValue = ''; }
 });
