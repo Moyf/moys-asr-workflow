@@ -15,7 +15,7 @@
     '打开备份文件夹': 'Open backup folder',
     '自动备份间隔（分钟）': 'Backup interval (minutes)',
     '最大保存版本数': 'Maximum versions',
-    '开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/backups。': 'Create scheduled and manual-save snapshots; remove the oldest versions above the limit. Backups are stored in the project’s _maw/backups folder.',
+    '开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/备份（英文界面为 backups）。': 'Create scheduled and manual-save snapshots; remove the oldest versions above the limit. Backups are stored in the project’s _maw/backups folder.',
     '工程备份需要本地 Server 绑定工程；浏览器另存为的文件不支持目录备份。': 'Project backups require a project bound to the local server. Files selected with browser Save As do not support directory backups.',
     '撤销': 'Undo', '重做': 'Redo', '↶ 撤销': '↶ Undo', '↷ 重做': '↷ Redo',
     '新建工程': 'New project', '创建并保存一个空白工程': 'Create and save a blank project',
@@ -864,9 +864,10 @@
   let language = readLanguage();
 
   // 导出文件名中的技术段（按当前语言映射；中文界面译出，英文界面原样）。
-  // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」。
+  // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」；
+  // 未标记颜色的默认组用「_无色」而非「_default」。
   const EXPORT_NAME_SEGMENTS = {
-    'gap-removed': '去空隙', 'stickers': '表情包',
+    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '无色',
     'yellow': '黄色', 'green': '绿色', 'red': '红色', 'purple': '紫色', 'blue': '蓝色',
   };
 

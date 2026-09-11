@@ -44,21 +44,45 @@ class PostprocessOutputNamingTests(unittest.TestCase):
         )
         self.assertEqual(
             _available_output(source, "match", ".srt", lang="zh").name,
-            "clip.匹配.srt",
+            "clip.文稿匹配.srt",
         )
         self.assertEqual(
             _available_output(source, "match", ".srt", lang="en").name,
             "clip.match.srt",
+        )
+        self.assertEqual(
+            _available_output(source, "proofread", ".srt", lang="zh").name,
+            "clip.校对文本.srt",
+        )
+        self.assertEqual(
+            _available_output(source, "proofread", ".srt", lang="en").name,
+            "clip.proofread.srt",
+        )
+        self.assertEqual(
+            _available_output(source, "replace", ".srt", lang="zh").name,
+            "clip.批量替换.srt",
+        )
+        self.assertEqual(
+            _available_output(source, "resegment", ".srt", lang="zh").name,
+            "clip.重新断句.srt",
+        )
+        self.assertEqual(
+            _available_output(source, "custom", ".srt", lang="zh").name,
+            "clip.自定义.srt",
+        )
+        self.assertEqual(
+            _available_output(source, "replace.traditional", ".srt", lang="zh").name,
+            "clip.批量替换.转繁体.srt",
+        )
+        self.assertEqual(
+            _available_output(source, "replace.traditional", ".srt", lang="en").name,
+            "clip.replace.traditional.srt",
         )
 
     def test_available_output_unknown_operation_keeps_legacy_ascii_token(self) -> None:
         source = self.project_path
         for lang in ("zh", "en"):
             # 不在命名契约内、也不是翻译形态的 operation 两种界面都走 legacy ASCII。
-            self.assertEqual(
-                _available_output(source, "proofread", ".srt", lang=lang).name,
-                "clip.proofread.srt",
-            )
             self.assertEqual(
                 _available_output(source, "custom-op", ".srt", lang=lang).name,
                 "clip.custom-op.srt",
@@ -193,13 +217,13 @@ class PostprocessOutputNamingTests(unittest.TestCase):
                 project,
                 source_project_path=self.project_path,
                 source_srt_path=None,
-                operation="proofread",
+                operation="custom-op",
                 write_project=True,
                 write_srt=True,
                 output_directory=output_directory,
             )
-        self.assertEqual(artifact.project_path.name, "clip.proofread.mosp")
-        self.assertEqual(artifact.srt_path.name, "clip.proofread.srt")
+        self.assertEqual(artifact.project_path.name, "clip.custom-op.mosp")
+        self.assertEqual(artifact.srt_path.name, "clip.custom-op.srt")
 
     def test_write_artifacts_localizes_translation_operation_file_names(self) -> None:
         output_directory = self.root / "out"

@@ -176,12 +176,15 @@ def _operation_file_token(operation: str, *, lang: str | None = None) -> str:
     name. In the zh UI the marker is localized too, keeping the dot separator
     (``翻译为中文.双语合一``); the en UI keeps the pre-change byte output
     (``translate-zh-bilingual`` / legacy ``translate-zh`` for underscore bases).
-    Operations that fall outside both groups keep the legacy ASCII cleaning so
-    unrelated names do not change shape.
+    Dot-joined compound operations (fixed processing's ``replace.traditional``)
+    are localized segment by segment. Operations that fall outside these groups
+    keep the legacy ASCII cleaning so unrelated names do not change shape.
     """
+    segments = operation.split(".")
+    if len(segments) > 1 and all(segment in OPERATION_NAMES for segment in segments):
+        return ".".join(_known_operation_token(segment, lang=lang) for segment in segments)
     if operation in OPERATION_NAMES:
-        display = operation_suffix(operation, lang=lang).lstrip(".")
-        return re.sub(r"[^\w-]+", "-", display, flags=re.UNICODE).strip("-") or "processed"
+        return _known_operation_token(operation, lang=lang)
     if is_translation_operation(operation):
         display = operation_suffix(operation, lang=lang).lstrip(".")
         # zh 界面翻译段以点分隔本地化标记（翻译为中文.双语合一），点必须保留；
@@ -189,6 +192,11 @@ def _operation_file_token(operation: str, *, lang: str | None = None) -> str:
         # 结果与改动前逐字节一致。
         return re.sub(r"[^\w.-]+", "-", display, flags=re.UNICODE).strip(".-") or "processed"
     return re.sub(r"[^a-z0-9-]+", "-", operation.lower()).strip("-") or "processed"
+
+
+def _known_operation_token(operation: str, *, lang: str | None = None) -> str:
+    display = operation_suffix(operation, lang=lang).lstrip(".")
+    return re.sub(r"[^\w-]+", "-", display, flags=re.UNICODE).strip("-") or "processed"
 
 
 def _atomic_write(path: Path, text: str) -> None:

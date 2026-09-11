@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.output_naming import MEDIA_SUFFIX_NAMES, OPERATION_NAMES, TRANSLATION_MARKER_NAMES, TRANSLATION_TARGET_NAMES, maw_root
@@ -482,7 +482,8 @@ _MEDIA_ASR_TAGS = (
 )
 
 # 操作后缀（output_naming.OPERATION_NAMES 两种语言的带点形式 + zh 界面翻译段
-# 显示名 + 本地化组合标记，小写后匹配）：后处理 / OCR 去重 / 匹配 / 翻译产出的
+# 显示名 + 本地化组合标记，小写后匹配）：后处理 / OCR 去重 / 文稿匹配 /
+# 批量替换 / 转简体 / 转繁体 / 校对文本 / 重新断句 / 自定义 / 翻译产出的
 # 派生文件形如 `<原始主名>.<操作名>.<扩展名>`，查找同主名媒体时必须把末尾的操作段
 # 剥掉，否则 `clip.OCR去重.mp4` 找不到原始 `clip.*`。中文不随 lower() 变化，英文
 # 部分按小写匹配，因此这里统一存小写。翻译段只登记 zh 界面名（翻译为中文 /
@@ -496,11 +497,13 @@ _MEDIA_MARKER_NAMES = tuple(
     marker_names["zh"].lower()
     for marker_names in TRANSLATION_MARKER_NAMES.values()
 )
+# 旧版 zh 界面操作名（只读兼容，不再产出）：文稿匹配曾用「匹配」。
+_MEDIA_LEGACY_OPERATION_NAMES: Final[tuple[str, ...]] = ("匹配",)
 _MEDIA_OPERATION_NAMES = tuple(
     name.lower()
     for operation in OPERATION_NAMES
     for name in (OPERATION_NAMES[operation]["zh"], OPERATION_NAMES[operation]["en"])
-) + _MEDIA_TRANSLATION_NAMES + _MEDIA_MARKER_NAMES + tuple(
+) + _MEDIA_TRANSLATION_NAMES + _MEDIA_MARKER_NAMES + _MEDIA_LEGACY_OPERATION_NAMES + tuple(
     name.lower()
     for suffix in MEDIA_SUFFIX_NAMES
     for name in (MEDIA_SUFFIX_NAMES[suffix]["zh"], MEDIA_SUFFIX_NAMES[suffix]["en"])

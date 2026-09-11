@@ -48,7 +48,7 @@ mimetypes.add_type("audio/ogg", ".opus")
 import edit  # noqa: E402
 from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import quapeaks  # noqa: E402
-from maw.project_backups import backup_directory, write_backup  # noqa: E402
+from maw.project_backups import backup_directory_candidates, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
@@ -1689,7 +1689,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             project = self.editor_server.project.json_path
             if project is None:
                 raise ValueError("当前服务器没有绑定工程文件")
-            directory = backup_directory(project)
+            candidates = backup_directory_candidates(project)
+            directory = next((candidate for candidate in candidates if candidate.is_dir()), candidates[0])
             directory.mkdir(parents=True, exist_ok=True)
             if directory.is_symlink() or directory.resolve() != directory.absolute():
                 raise ValueError("备份目录不能通过链接指向其他位置")
