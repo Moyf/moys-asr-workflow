@@ -1098,13 +1098,26 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('id="toolboxPostprocessView" class="toolbox-primary-view" role="tabpanel"', html)
         self.assertIn('id="toolboxUtilitiesView" class="toolbox-primary-view hidden" role="tabpanel"', html)
         self.assertIn('id="toolboxUtilitiesContent" class="toolbox-utilities-content hidden"', utilities_html)
-        self.assertIn('aria-orientation="vertical"', utilities_html)
+        self.assertNotIn('aria-orientation="vertical"', utilities_html)
         self.assertLess(utility_panels, alignment_panel)
         self.assertLess(alignment_close, ffconcat_panel)
         for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab"):
             self.assertIn(f'id="{tab_id}"', postprocess_html)
         for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
             self.assertIn(f'id="{tab_id}"', utilities_html)
+        self.assertLess(html.index('id="toolboxBurnSubtitleTab"'), html.index('id="toolboxFfconcatTab"'))
+        self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxAlignmentTab"'))
+        self.assertLess(html.index('id="toolboxAlignmentTab"'), html.index('id="toolboxExtractAudioTab"'))
+        self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
+        # 实用工具记住上次选择的工具；从未选择时回退到第一项（压制字幕）。
+        self.assertIn(
+            'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");',
+            script,
+        )
+        self.assertIn(
+            'return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");',
+            script,
+        )
         self.assertNotIn('id="toolboxWaveformTab"', postprocess_html)
         self.assertNotIn('id="toolboxFfconcatTab"', postprocess_html)
         self.assertIn('toolbox_title: "工具箱"', strings)
@@ -1172,7 +1185,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('data-tool="alignment"', page)
         alignment_tab = page.index('id="toolboxAlignmentTab"')
         self.assertLess(alignment_tab, page.index('id="toolboxWaveformTab"'))
-        self.assertLess(alignment_tab, page.index('id="toolboxFfconcatTab"'))
+        self.assertGreater(alignment_tab, page.index('id="toolboxFfconcatTab"'))
         self.assertIn('data-tool-action="alignment"', page)
         self.assertIn('toolbox_alignment: "口播对齐"', launcher_script)
         self.assertIn('toolbox_alignment: "Speech alignment"', launcher_script)
@@ -1191,12 +1204,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });", postprocess_script)
         self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
         self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
-        self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  grid-template-columns: minmax(108px, .25fr) minmax(0, 1fr);', styles)
-        self.assertIn('.toolbox-utility-tab-list {\n  grid-template-columns: 1fr;\n}', styles)
+        self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  gap: 12px;', styles)
+        self.assertIn('.toolbox-tab-list-5 {\n  grid-template-columns: repeat(5, minmax(0, 1fr));\n}', styles)
         self.assertIn('$("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
-        self.assertIn('.toolbox-drawer.toolbox-utilities-active .toolbox-content {\n  display: flex;\n  flex-direction: column;', styles)
-        self.assertIn('.toolbox-utility-tabs {\n  overflow-y: auto;\n  min-block-size: 0;\n  overscroll-behavior: contain;\n  margin-top: 0;\n  padding: 4px;\n  scrollbar-width: none;\n}', styles)
-        self.assertIn('.toolbox-utility-panels {\n  min-width: 0;\n  min-block-size: 0;\n  overflow-y: auto;', styles)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
 
     def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
@@ -1534,6 +1544,31 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         request = process.call_args.args[0]
         self.assertTrue(request.merge_bilingual)
+
+    def test_llm_bridge_forwards_backfill_embed_option(self) -> None:
+        artifact = SimpleNamespace(
+            source_project_path=None,
+            source_srt_path=None,
+            project_path=None,
+            srt_path=None,
+            translated_srt_path=None,
+            warnings=(),
+        )
+        with mock.patch("maw.gui_web.process_llm_postprocess", return_value=artifact) as process:
+            result = self.api.run_llm_postprocess({
+                "operation": "translate_zh",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "customPrompt": "",
+                "embedTranslations": True,
+            })
+
+        self.assertTrue(result["ok"])
+        request = process.call_args.args[0]
+        self.assertTrue(request.embed_translations)
+        self.assertFalse(request.merge_bilingual)
 
     def test_llm_bridge_classifies_provider_http_error_without_exposing_secrets(self) -> None:
         provider_error = LlmClientError(
@@ -3942,6 +3977,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("run_llm_postprocess"', script)
         self.assertIn('mergeBilingual: Boolean($("postprocessMergeBilingual")?.checked)', script)
         self.assertIn('mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked)', script)
+        self.assertIn('embedTranslations: Boolean($("postprocessBackfill")?.checked)', script)
+        self.assertIn('embedTranslations: Boolean($("autoTranslateBackfill")?.checked)', script)
+        self.assertIn('bilingualLineOrder: $("postprocessBilingualOrder")?.value', script)
+        self.assertIn('bilingualLineOrder: $("autoTranslateBilingualOrder")?.value', script)
+        self.assertIn('id="postprocessBilingualOrder"', page)
+        self.assertIn('id="autoTranslateBilingualOrder"', page)
+        self.assertIn('data-i18n="toolbox_backfill_subtitles"', page)
+        self.assertIn('data-i18n="auto_backfill_subtitles"', page)
         self.assertIn('bridge("run_fixed_process"', script)
         self.assertIn('value="to_traditional_tw"', page)
         self.assertIn('value="to_traditional_twp"', page)
@@ -4112,13 +4155,13 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertLess(chain, chain_list)
         self.assertLess(sticky, primary_tabs)
         self.assertLess(primary_tabs, postprocess_view)
+        self.assertLess(utilities_view, utilities_tabs)
+        self.assertLess(utilities_tabs, content)
         self.assertLess(primary_tabs, utilities_view)
         self.assertLess(postprocess_view, utilities_view)
         self.assertLess(postprocess_tabs, content)
-        self.assertLess(content, utilities_tabs)
         self.assertLess(content, progress)
         self.assertLess(progress, result)
-        self.assertIn('data-i18n="toolbox_chain_hint">每次生成新文件，并自动作为下一步输入；选择工具后运行。</p>', page)
         self.assertIn('id="toolboxResult" class="toolbox-result hidden"', page)
         self.assertIn('result.classList.remove("hidden")', script)
         self.assertLess(result, match_panel)
@@ -4582,7 +4625,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="segmentationField" class="segmentation-settings-fields"', page)
         self.assertIn('id="advancedParamsGroup" class="adv-group"', page)
         self.assertIn("function syncAdvancedParamsGroup()", script)
-        self.assertIn("syncWorkspace(); syncAdvancedParamsGroup();", script)
+        self.assertIn("syncAdvancedParamsGroup();", script)
         self.assertIn('id="qwenAudioOptions" class="adv-group qwen-audio-options hidden"', page)
         self.assertIn('id="sonioxContextOptions" class="adv-group soniox-context-options hidden"', page)
         self.assertIn('data-i18n="advanced_params"', page)
@@ -4615,26 +4658,45 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".advanced-col {\n  display: grid;\n  grid-template-columns: 1fr 1fr;", stylesheet)
         self.assertNotIn("display: contents", stylesheet)
 
-    def test_regional_fields_are_temporarily_hidden_for_domestic_launcher(self) -> None:
+    def test_qwen_regional_settings_live_in_runtime_with_advanced_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
-        self.assertIn('id="regionField" class="field hidden"', page)
-        self.assertIn('id="workspaceField" class="field hidden"', page)
+        runtime_panel = page.index('data-settings-panel="runtime"')
+        dashscope_panel = page.index('id="dashscopeRegionPanel"')
+        ocr_section = page.index('id="ocrSettingsSection"')
+
+        self.assertLess(runtime_panel, dashscope_panel)
+        self.assertLess(dashscope_panel, ocr_section)
+        self.assertIn('id="regionField" class="field"', page)
+        self.assertIn('id="workspaceField" class="field"', page)
+        self.assertIn('id="saveDashscopeRegionSettings"', page)
         self.assertIn("北京地域选填（推荐），新加坡地域必填。", page)
-        self.assertIn(
-            "const SHOW_REGIONAL_FIELDS = false;",
-            script,
-        )
-        self.assertIn(
-            '$("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0);',
-            script,
-        )
-        self.assertIn(
-            '$("workspaceField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || provider().regions.length === 0);',
-            script,
-        )
+        self.assertIn('id="dashscopeRegionHint"', page)
+        self.assertIn('id="openDashscopeRegionSettings"', page)
+        self.assertIn('$("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen");', script)
+        self.assertIn('$("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen");', script)
+        self.assertIn('$("openDashscopeRegionSettings").addEventListener("click", () => openSettings("dashscopeRegionPanel"));', script)
+        self.assertIn('$("saveDashscopeRegionSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload);', script)
+        self.assertNotIn("SHOW_REGIONAL_FIELDS", script)
+        self.assertNotIn("syncWorkspace", script)
         self.assertIn('data.region === "singapore" && !data.workspaceId', script)
+
+    def test_launcher_language_setting_uses_saved_or_system_preference(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertNotIn('id="langToggle"', page)
+        self.assertIn('id="settingsButton"', page)
+        self.assertIn('data-i18n="settings_button"', page)
+        self.assertIn('id="langZh"', page)
+        self.assertIn('id="langEn"', page)
+        self.assertIn('function systemLanguage()', script)
+        self.assertIn('state.lang = state.config.guiLang || systemLanguage();', script)
+        self.assertIn('$("langZh").classList.toggle("active", state.lang === "zh");', script)
+        self.assertIn('$("langEn").classList.toggle("active", state.lang === "en");', script)
+        self.assertIn('$("langZh").addEventListener("click", () => setLanguage("zh"));', script)
+        self.assertIn('$("langEn").addEventListener("click", () => setLanguage("en"));', script)
 
     def test_launcher_section_titles_share_emoji_numbering_and_size(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

@@ -1181,6 +1181,8 @@ class LauncherApi:
                     task_prompt=(str(payload.get("taskPrompt") or "") if "taskPrompt" in payload else None),
                     media_path=_optional_path(payload.get("mediaPath")),
                     merge_bilingual=bool(payload.get("mergeBilingual")),
+                    embed_translations=bool(payload.get("embedTranslations")),
+                    bilingual_line_order=str(payload.get("bilingualLineOrder") or ""),
                 ),
                 complete=complete,
                 on_status=self._emit_postprocess_status,
