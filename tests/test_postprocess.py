@@ -1422,7 +1422,7 @@ class PostprocessTests(unittest.TestCase):
         )
         self.assertIn("已是中文的字幕；这些字幕未发送给模型", "\n".join(result.warnings))
 
-    def test_llm_translation_prefilter_skips_english_cues_when_translating_to_english(self) -> None:
+    def test_llm_translation_sends_latin_cues_when_translating_to_english(self) -> None:
         source = read_project(self.project_path)
         source["segments"][1]["text"] = "This line is English."
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
@@ -1450,10 +1450,10 @@ class PostprocessTests(unittest.TestCase):
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
-        self.assertEqual(requested_cues, [["c0001"]])
+        self.assertEqual(requested_cues, [["c0001", "c0002"]])
         translated = project_segments(read_project(result.project_path))
-        self.assertEqual([segment["text"] for segment in translated], ["Translation c0001", "This line is English."])
-        self.assertIn("已是英文的字幕", "\n".join(result.warnings))
+        self.assertEqual([segment["text"] for segment in translated], ["Translation c0001", "Translation c0002"])
+        self.assertNotIn("已是英文的字幕", "\n".join(result.warnings))
 
     def test_llm_translation_errors_when_every_cue_is_already_target_language(self) -> None:
         def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
@@ -1482,7 +1482,8 @@ class PostprocessTests(unittest.TestCase):
             ("3.5", "translate_zh", True),
             ("これは日本語です", "translate_zh", False),
             ("hello Привет", "translate_zh", False),
-            ("hello world", "translate_en", True),
+            ("hello world", "translate_en", False),
+            ("Hola como estas", "translate_en", False),
             ("你好", "translate_en", False),
             ("你好 hello", "translate_en", False),
             ("3.5", "translate_en", True),

@@ -718,9 +718,9 @@ def _merge_translation_response_parts(
 def _is_already_target_language(text: str, operation: str) -> bool:
     """判断一条字幕是否已是翻译目标语言（或不含可翻译文字），无需发送给模型。
 
-    纯字符脚本启发式：中文按 CJK 统一表意文字（不含假名/谚文）计数，英文按
-    拉丁字母计数。出现中英之外的其他文字（假名、谚文、西里尔字母等）时一律
-    交给模型处理，避免误跳过。
+    纯字符脚本启发式只可靠地识别中文；没有可识别中文或出现其他文字（假名、
+    谚文、西里尔字母、拉丁文字等）时一律交给模型处理，避免把西语、法语等
+    拉丁文字误认为英文。
     """
     letters = len(_ANY_LETTER_PATTERN.findall(text))
     cjk = len(_CJK_CHAR_PATTERN.findall(text))
@@ -728,7 +728,7 @@ def _is_already_target_language(text: str, operation: str) -> bool:
     if letters > cjk + latin:
         return False
     if operation == "translate_en":
-        return cjk == 0
+        return cjk == 0 and latin == 0
     if cjk == 0:
         return latin == 0
     return cjk / (cjk + latin) >= CJK_TARGET_RATIO_THRESHOLD
