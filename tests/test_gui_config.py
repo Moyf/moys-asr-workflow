@@ -508,6 +508,22 @@ class GuiConfigTests(unittest.TestCase):
             self.assertTrue(config.per_video_subfolder)
             self.assertFalse(config.attach_model_name)
 
+    def test_effective_config_parses_notify_on_complete_default_on(self) -> None:
+        """Given the completion-notification toggle, When resolved, Then it defaults on and follows env."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertTrue(gui_config.effective_config(env_path).notify_on_complete)
+
+            _ = env_path.write_text("MAW_GUI_NOTIFY_ON_COMPLETE=false\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertFalse(gui_config.effective_config(env_path).notify_on_complete)
+
+            _ = env_path.write_text("MAW_GUI_NOTIFY_ON_COMPLETE=on\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertTrue(gui_config.effective_config(env_path).notify_on_complete)
+
     def test_effective_config_file_output_flags_prefer_system_environment(self) -> None:
         """Given process env differs from .env, When resolved, Then process env wins."""
         with tempfile.TemporaryDirectory() as temp_dir:

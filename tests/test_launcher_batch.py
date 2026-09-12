@@ -397,7 +397,10 @@ class BatchApiTests(unittest.TestCase):
                 assert worker is not None
                 worker.join(timeout=5)
                 self.assertIsNone(api.batch_worker)
-                self.assertTrue(any(call.args[0].get("type") == "batch_done" and call.args[0].get("status") == "failed" and "worker exploded" in str(call.args[0].get("error")) for call in emit.call_args_list))
+                failed_events = [call.args[0] for call in emit.call_args_list if call.args[0].get("type") == "batch_done" and call.args[0].get("status") == "failed"]
+                self.assertTrue(failed_events)
+                self.assertEqual(failed_events[-1]["total"], 1)
+                self.assertIn("worker exploded", str(failed_events[-1].get("error")))
             api.shutdown()
 
     def test_batch_default_manifest_path_avoids_existing_file(self) -> None:

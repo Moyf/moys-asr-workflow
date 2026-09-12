@@ -126,6 +126,8 @@ class EffectiveConfig:
     model_cache_root: str = ""
     zoom_percent: int = 100
     theme: str | None = None
+    # 任务完成后是否发送系统通知（Launcher「通用 → 完成通知」，默认开启）。
+    notify_on_complete: bool = True
 
 
 REGIONS: Final[tuple[tuple[str, str], ...]] = (
@@ -748,6 +750,7 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         model_cache_root=pick("MAW_MODEL_CACHE_ROOT").strip(),
         zoom_percent=normalize_zoom_percent(pick("MAW_GUI_ZOOM_PERCENT", "100")),
         theme=_gui_theme(pick_optional("MAW_GUI_THEME")),
+        notify_on_complete=_env_bool(pick("MAW_GUI_NOTIFY_ON_COMPLETE"), default=True),
     )
 
 
