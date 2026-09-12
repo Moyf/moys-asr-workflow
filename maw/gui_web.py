@@ -2087,6 +2087,7 @@ class LauncherApi:
                     "status": "failed",
                     "error": str(error),
                     "outcomes": [],
+                    "total": len(items),
                     "manifestPath": str(manifest_path),
                 }
             )

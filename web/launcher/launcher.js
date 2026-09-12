@@ -50,6 +50,7 @@
       notify_single_title: "转写完成",
       notify_single_body: "已生成 {name}",
       notify_batch_title: "批量转写完成",
+      notify_batch_failed_title: "批量转写失败",
       notify_batch_body: "成功 {done} 个，失败 {failed} 个。",
       notify_batch_body_all: "共 {done} 个文件全部完成。",
       key: "API Key",
@@ -160,6 +161,7 @@
       notify_single_title: "Transcription complete",
       notify_single_body: "Generated {name}",
       notify_batch_title: "Batch transcription complete",
+      notify_batch_failed_title: "Batch transcription failed",
       notify_batch_body: "{done} succeeded, {failed} failed.",
       notify_batch_body_all: "All {done} files completed.",
       key: "API Key",
@@ -2599,11 +2601,28 @@
       if (outcome.status === "done") done += 1;
       else if (outcome.status === "failed") failed += 1;
     });
-    if (!outcomes.length) done = Number(event.total) || 0; // 静态演示模式没有逐条结果
+    if (!outcomes.length) {
+      // worker 异常可能没有产出 outcomes；沿用已收到的逐条事件，并把
+      // 尚未落到终态的当前批次条目按失败计入，不能误报为「全部完成」。
+      const total = Number(event.total) || Number(state.progress.total) || 0;
+      done = Number(state.progress.done) || 0;
+      failed = Number(state.progress.failed) || 0;
+      if (event.status === "failed") {
+        failed += Math.max(0, total - done - failed);
+        if (!failed && !done) failed = 1;
+      } else if (!done && !failed) {
+        // 静态演示模式没有逐条结果。
+        done = total;
+      }
+    } else if (event.status === "failed") {
+      const total = Number(event.total) || Number(state.progress.total) || 0;
+      failed += Math.max(0, total - done - failed);
+      if (!failed && !done) failed = 1;
+    }
     const body = failed > 0
       ? t("notify_batch_body").replace("{done}", String(done)).replace("{failed}", String(failed))
       : t("notify_batch_body_all").replace("{done}", String(done));
-    sendSystemNotification(t("notify_batch_title"), body);
+    sendSystemNotification(event.status === "failed" ? t("notify_batch_failed_title") : t("notify_batch_title"), body);
   }
 
   function handleBackendEvent(event) {
