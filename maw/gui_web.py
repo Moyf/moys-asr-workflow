@@ -591,6 +591,7 @@ class LauncherApi:
         self.local_prepare_worker: threading.Thread | None = None
         self.local_runtime_cancel_event: Event | None = None
         self.local_runtime_worker: threading.Thread | None = None
+        self.local_runtime_worker_engine = ""
         self._emoji_font_worker: threading.Thread | None = None
         self.ocr_runtime_cancel_event: Event | None = None
         self.ocr_runtime_worker: threading.Thread | None = None
@@ -664,7 +665,12 @@ class LauncherApi:
         """
         status = managed_runtime_status(model_cache_root, engine=engine)
         worker = self.local_runtime_worker
-        if getattr(status, "status", "") == "installing" and not (worker and worker.is_alive()):
+        requested_is_moss = str(engine or "").strip().casefold() == "moss"
+        worker_engine = str(getattr(self, "local_runtime_worker_engine", "") or "").strip().casefold()
+        worker_is_for_runtime = bool(worker and worker.is_alive()) and (
+            (worker_engine == "moss") == requested_is_moss
+        )
+        if getattr(status, "status", "") == "installing" and not worker_is_for_runtime:
             recover_local_runtime_install(engine)
             status = managed_runtime_status(model_cache_root, engine=engine)
         return status
@@ -2268,6 +2274,7 @@ class LauncherApi:
         model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
         engine = model.engine if model else ""
         self.local_runtime_cancel_event = Event()
+        self.local_runtime_worker_engine = engine
         self.pump.start()
         self.local_runtime_worker = threading.Thread(
             target=self._local_runtime_main,
