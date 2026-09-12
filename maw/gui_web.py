@@ -57,6 +57,7 @@ from maw.local_runtime import (
     LocalRuntimeStatus,
     install_local_runtime,
     managed_runtime_status,
+    recover_local_runtime_install,
     resolve_model_cache_root,
 )
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
@@ -590,6 +591,7 @@ class LauncherApi:
         self.local_prepare_worker: threading.Thread | None = None
         self.local_runtime_cancel_event: Event | None = None
         self.local_runtime_worker: threading.Thread | None = None
+        self.local_runtime_worker_engine = ""
         self._emoji_font_worker: threading.Thread | None = None
         self.ocr_runtime_cancel_event: Event | None = None
         self.ocr_runtime_worker: threading.Thread | None = None
@@ -652,6 +654,25 @@ class LauncherApi:
         if getattr(status, "status", "") == "installing" and not (worker and worker.is_alive()):
             recover_ocr_runtime_install(runtime_root)
             status = managed_ocr_runtime_status(runtime_root)
+        return status
+
+    def _local_runtime_status(self, model_cache_root: str, engine: str = "") -> LocalRuntimeStatus:
+        """带「安装中断自愈」的 local/MOSS 运行时状态（与 _ocr_runtime_status 对称，#127）。
+
+        install() 一开始就把 runtime.json 写成 installing；安装线程已死（上次
+        失败/取消/退出残留）而标记没人回写时，状态会永远停在 installing，
+        UI 既不能取消也不能重装。读取前先把陈旧标记改写为 broken 再返回。
+        """
+        status = managed_runtime_status(model_cache_root, engine=engine)
+        worker = self.local_runtime_worker
+        requested_is_moss = str(engine or "").strip().casefold() == "moss"
+        worker_engine = str(getattr(self, "local_runtime_worker_engine", "") or "").strip().casefold()
+        worker_is_for_runtime = bool(worker and worker.is_alive()) and (
+            (worker_engine == "moss") == requested_is_moss
+        )
+        if getattr(status, "status", "") == "installing" and not worker_is_for_runtime:
+            recover_local_runtime_install(engine)
+            status = managed_runtime_status(model_cache_root, engine=engine)
         return status
 
     def get_config(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
@@ -2156,7 +2177,7 @@ class LauncherApi:
         runtime_by_engine: dict[str, LocalRuntimeStatus] = {}
         for model in visible_models:
             if model.engine not in runtime_by_engine:
-                runtime_by_engine[model.engine] = managed_runtime_status(model_cache_root, engine=model.engine)
+                runtime_by_engine[model.engine] = self._local_runtime_status(model_cache_root, engine=model.engine)
         return {
             "ok": True,
             "runtime": runtime_by_engine[selected_model.engine].to_payload(),
@@ -2176,7 +2197,7 @@ class LauncherApi:
         requested_model = str((_payload or {}).get("modelId") or "")
         model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
         engine = model.engine if model else ""
-        return {"ok": True, **managed_runtime_status(model_cache_root, engine=engine).to_payload()}
+        return {"ok": True, **self._local_runtime_status(model_cache_root, engine=engine).to_payload()}
 
     def get_ocr_runtime(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         status = self._ocr_runtime_status()
@@ -2216,7 +2237,7 @@ class LauncherApi:
             os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
         else:
             os.environ["MAW_LOCAL_RUNTIME_ROOT"] = str(candidate)
-        status = managed_runtime_status(effective_config(self.paths.env_path).model_cache_root)
+        status = self._local_runtime_status(effective_config(self.paths.env_path).model_cache_root)
         return {"ok": True, "runtimePath": status.path, "runtime": status.to_payload()}
 
     def install_ocr_runtime(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
@@ -2253,6 +2274,7 @@ class LauncherApi:
         model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
         engine = model.engine if model else ""
         self.local_runtime_cancel_event = Event()
+        self.local_runtime_worker_engine = engine
         self.pump.start()
         self.local_runtime_worker = threading.Thread(
             target=self._local_runtime_main,
@@ -2286,7 +2308,7 @@ class LauncherApi:
             requested_model = str(values.get("modelId") or "")
             model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
             engine = model.engine if model else ""
-            directory = Path(managed_runtime_status(model_cache_root, engine=engine).path)
+            directory = Path(self._local_runtime_status(model_cache_root, engine=engine).path)
         else:
             return {"ok": False, "error": "未知的运行时目录类型。"}
         if not directory.is_dir():
@@ -2768,10 +2790,12 @@ class LauncherApi:
             self._emit({"type": "localRuntimeReady", "runtime": status.to_payload()})
         except LocalRuntimeCancelled as error:
             if cancel_event.is_set():
+                recover_local_runtime_install(engine)
                 self._emit({"type": "localRuntimeCancelled"})
             else:
                 self._emit({"type": "error", "code": "local_runtime_cancelled", "field": "model", "detail": str(error)})
         except (LocalRuntimeError, OSError) as error:
+            recover_local_runtime_install(engine)
             if not cancel_event.is_set():
                 self._emit({"type": "error", "code": "local_runtime_install_failed", "field": "model", "detail": str(error)})
         finally:

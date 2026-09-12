@@ -76,6 +76,11 @@ def install_local_runtime(
     )
 
 
+def recover_local_runtime_install() -> bool:
+    """清除 MOSS 安装中断后残留的 installing 标记（改写为 broken，#127）。"""
+    return MOSS.mark_install_aborted()
+
+
 __all__ = [
     "MOSS_PACKAGE_DIRS",
     "MOSS_PYTHON_VERSION",
@@ -86,5 +91,6 @@ __all__ = [
     "default_runtime_root",
     "install_local_runtime",
     "managed_runtime_status",
+    "recover_local_runtime_install",
     "runtime_python_path",
 ]
