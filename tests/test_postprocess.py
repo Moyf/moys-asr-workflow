@@ -1027,6 +1027,44 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual(request.kwargs["json"]["thinking_budget"], 16384)
         response.close.assert_called_once_with()
 
+    def test_llm_streaming_decodes_sse_bytes_as_utf8_without_charset(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="sk-test",
+            base_url="https://example.com/v1",
+            model="custom-model",
+        )
+        content_json = json.dumps({"groups": [{"id": "c0001", "text": "进入"}]}, ensure_ascii=False)
+        payload = json.dumps({"choices": [{"delta": {"content": content_json}}]}, ensure_ascii=False)
+        raw = f"data: {payload}\n\ndata: [DONE]\n\n".encode("utf-8")
+        self.assertIn(0x85, raw)  # 0x85 inside 进/入 becomes NEL when mis-decoded as Latin-1.
+
+        def fake_iter_lines(*, decode_unicode: bool) -> list[bytes] | list[str]:
+            if decode_unicode:
+                # Simulates requests' ISO-8859-1 fallback for text/* without charset.
+                return raw.decode("latin-1").splitlines()
+            return raw.splitlines()
+
+        response = mock.Mock()
+        response.iter_lines.side_effect = fake_iter_lines
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.post.return_value = response
+        deltas: list[tuple[str, str]] = []
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            result = complete_subtitle_groups(
+                settings,
+                "Return JSON.",
+                [{"id": "c0001", "text": "原文"}],
+                on_delta=lambda kind, text: deltas.append((kind, text)),
+            )
+
+        response.iter_lines.assert_called_once_with(decode_unicode=False)
+        self.assertEqual(result, {"groups": [{"id": "c0001", "text": "进入"}]})
+        self.assertEqual(deltas, [("content", content_json)])
+        response.close.assert_called_once_with()
+
     def test_llm_connection_sends_minimal_request(self) -> None:
         settings = LlmSettings(
             provider_id="custom",
