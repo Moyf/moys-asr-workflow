@@ -107,6 +107,19 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" --engine funasr
 
 不指定 `-o` 时，默认输出名带引擎标识段，如 Qwen3-ASR 为 `example.qwen-asr-local.srt`、FunASR 为 `example.funasr-local.srt`；不需要标识段时可加 `--no-model-tag`，需要把实时率写进文件名时可加 `--rtf-tag`（如 `example.funasr-local.0.12x.srt`，实时率越小越快）。
 
+## 安装源与环境变量
+
+在 Launcher 里安装本地运行环境时，普通依赖从自动测速选出的 PyPI 镜像拉取；有 NVIDIA 显卡时，GPU 版 Torch 还会额外使用 `https://download.pytorch.org/whl/cu130`。该 PyTorch 源没有官方镜像，且部分网络环境无法直连——它不可达时整个安装都会失败。两个环境变量可以兜底：
+
+- `MAW_PYTORCH_INDEX`：整源替换 PyTorch 源（例如指向镜像站提供的 pytorch-wheels 目录，以镜像站实际提供的 CUDA 版本目录为准）。
+- `MAW_PIP_INDEX`：逗号分隔的 URL 列表，覆盖 PyPI 镜像候选（想保留内置镜像就把它们一并写进去）。
+
+```powershell
+$env:MAW_PYTORCH_INDEX = "https://mirrors.aliyun.com/pytorch-wheels/cu130"
+```
+
+安装开始时 MAW 会先探测 PyTorch 源是否可达，不可达会立即给出明确的失败提示，而不会让安装挂上几个小时后以无关依赖的版本解析错误收场。
+
 ## 热词
 
 Qwen3-ASR 将热词作为上游的 `context` 提示传入，能帮助识别专有名词，但不是保证命中的硬约束。直接传入热词时可重复使用 `--hotword`：

@@ -31,13 +31,14 @@ from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessEr
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
+from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError  # noqa: E402
 from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
 from maw.postprocess import PostprocessStepError  # noqa: E402
 from maw.postprocess_io import read_project  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.postprocess_pipeline import PostprocessPipelineError, save_postprocess_plan  # noqa: E402
 from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
-from maw.runtimes import OCR  # noqa: E402
+from maw.runtimes import LOCAL, OCR  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
 
 
@@ -179,6 +180,109 @@ class GuiWebBridgeTests(unittest.TestCase):
         manifest = json.loads((runtime_root / "runtime.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["status"], "broken")
         self.assertIn("ocrRuntimeCancelled", "".join(self.window.scripts))
+
+    def test_get_local_runtime_recovers_a_stale_install_marker(self) -> None:
+        """#127 缺陷 1：安装线程已死而标记残留时，状态查询要自愈出可操作状态。"""
+        runtime_root = self.root / "local-runtime"
+        python = LOCAL.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            result = self.api.get_local_runtime({"modelId": "qwen3-asr-local"})
+
+        self.assertEqual(result["status"], "broken")
+
+    def test_local_runtime_recovery_distinguishes_live_other_engine_worker(self) -> None:
+        """MOSS 安装存活时，不应阻止恢复另一个运行时的陈旧标记。"""
+        runtime_root = self.root / "local-runtime"
+        python = LOCAL.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+        self.api.local_runtime_worker_engine = "moss"
+        self.api.local_runtime_worker = mock.Mock()
+        self.api.local_runtime_worker.is_alive.return_value = True
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            result = self.api.get_local_runtime({"modelId": "qwen3-asr-local"})
+
+        self.assertEqual(result["status"], "broken")
+
+    def test_local_runtime_status_stays_installing_for_live_same_engine_worker(self) -> None:
+        """正在安装本运行时期间，状态查询不能提前把 manifest 改成 broken。"""
+        runtime_root = self.root / "local-runtime"
+        python = LOCAL.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+        self.api.local_runtime_worker_engine = "qwen-asr"
+        self.api.local_runtime_worker = mock.Mock()
+        self.api.local_runtime_worker.is_alive.return_value = True
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            result = self.api.get_local_runtime({"modelId": "qwen3-asr-local"})
+
+        self.assertEqual(result["status"], "installing")
+
+    def test_local_runtime_cancel_cleans_marker_before_emitting_cancelled(self) -> None:
+        runtime_root = self.root / "local-runtime"
+        python = LOCAL.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+        cancel_event = threading.Event()
+        cancel_event.set()
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            with mock.patch("maw.gui_web.install_local_runtime", side_effect=LocalRuntimeCancelled("cancelled")):
+                self.api._local_runtime_main(False, str(self.root / "models"), "qwen-asr", cancel_event)
+
+        manifest = json.loads((runtime_root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["status"], "broken")
+        self.assertIn("localRuntimeCancelled", "".join(self.window.scripts))
+
+    def test_local_runtime_failure_cleans_marker_before_emitting_error(self) -> None:
+        """#127 缺陷 1：安装失败必须回写标记，否则 UI 永远卡在「正在安装中」。"""
+        runtime_root = self.root / "local-runtime"
+        python = LOCAL.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            with mock.patch("maw.gui_web.install_local_runtime", side_effect=LocalRuntimeError("boom")):
+                self.api._local_runtime_main(False, str(self.root / "models"), "qwen-asr", threading.Event())
+
+        manifest = json.loads((runtime_root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["status"], "broken")
+        self.assertIn("local_runtime_install_failed", "".join(self.window.scripts))
 
     def test_get_config_falls_back_from_hidden_tencent_provider(self) -> None:
         _ = self.env_path.write_text("MAW_GUI_LAST_MODEL=16k_zh_en_2.0\n", encoding="utf-8")

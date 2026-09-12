@@ -16,11 +16,13 @@ from maw.runtime_mirror_picker import (
     DEFAULT_SOURCES,
     FALLBACK_SOURCE,
     _main,
+    _open_index_root,
     _parse_simple_links,
     _pick_fastest,
     candidate_sources,
     measure_sources,
     pick_fastest_mirror,
+    probe_index_reachable,
 )
 
 
@@ -144,6 +146,49 @@ class MeasureOneTests(unittest.TestCase):
         self.assertFalse(item["ok"])
         self.assertIn("HTTP 404", item["error"])
         self.assertEqual(open_mock.call_count, 1)
+
+
+class ProbeIndexReachableTests(unittest.TestCase):
+    """#127 缺陷 2 的前置探测：只回答「主机现在能否应答」，不做源测速。"""
+
+    def test_2xx_is_reachable_with_verified_context(self) -> None:
+        with mock.patch("maw.runtime_mirror_picker._open_index_root") as open_mock:
+            open_mock.return_value = _FakeResponse(body=b"ok")
+            self.assertTrue(probe_index_reachable("https://download.pytorch.org/whl/cu130"))
+        self.assertEqual(open_mock.call_count, 1)
+        self.assertTrue(open_mock.call_args.kwargs["use_verified_context"])
+
+    def test_http_error_still_counts_as_reachable(self) -> None:
+        # 404/403 等任何 HTTP 应答都证明主机在线；pip 自己会再判断路径与内容
+        http_error = urllib.error.HTTPError("https://x/whl/cu130/", 404, "Not Found", None, None)
+        with mock.patch("maw.runtime_mirror_picker._open_index_root") as open_mock:
+            open_mock.side_effect = http_error
+            self.assertTrue(probe_index_reachable("https://x/whl/cu130"))
+        self.assertEqual(open_mock.call_count, 1)
+
+    def test_certificate_error_retries_with_unverified_context(self) -> None:
+        cert_error = ssl.SSLCertVerificationError("unable to get local issuer certificate")
+        with mock.patch("maw.runtime_mirror_picker._open_index_root") as open_mock:
+            open_mock.side_effect = [cert_error, _FakeResponse(body=b"ok")]
+            self.assertTrue(probe_index_reachable("https://badcert.example/whl/cu130"))
+        self.assertEqual(open_mock.call_count, 2)
+        self.assertTrue(open_mock.mock_calls[0].kwargs["use_verified_context"])
+        self.assertFalse(open_mock.mock_calls[1].kwargs["use_verified_context"])
+
+    def test_timeout_is_not_reachable_and_not_retried(self) -> None:
+        timeout_error = urllib.error.URLError(TimeoutError("timed out"))
+        with mock.patch("maw.runtime_mirror_picker._open_index_root") as open_mock:
+            open_mock.side_effect = timeout_error
+            self.assertFalse(probe_index_reachable("https://slow.example/whl/cu130"))
+        self.assertEqual(open_mock.call_count, 1)
+
+    def test_open_index_root_requests_index_page_with_trailing_slash(self) -> None:
+        fake_opener = mock.MagicMock()
+        with mock.patch("maw.runtime_mirror_picker.urllib.request.build_opener", return_value=fake_opener):
+            _open_index_root("https://x/whl/cu130", 5.0, use_verified_context=True)
+        request = fake_opener.open.call_args.args[0]
+        self.assertEqual(request.full_url, "https://x/whl/cu130/")
+        self.assertEqual(fake_opener.open.call_args.kwargs["timeout"], 5.0)
 
 
 class MeasureSourcesTests(unittest.TestCase):

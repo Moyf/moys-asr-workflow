@@ -84,6 +84,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
     # python_path 布局在 mac/linux CI 上与 Windows 一致。
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
     def test_local_install_uses_requirements_mirror_and_cu130_extra_index(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "local-runtime"
@@ -119,6 +120,75 @@ class RuntimeInstallCommandTests(unittest.TestCase):
             self.assertIn(PYTORCH_INDEX, install_command)
             # verify 命令是 python -c 自检
             self.assertTrue(any("import jieba" in str(arg) for arg in verify_command))
+
+    @mock.patch("maw.runtimes.base.probe_index_reachable", return_value=False)
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    def test_install_fails_fast_when_pytorch_index_unreachable(self, probe: mock.MagicMock) -> None:
+        """#127 缺陷 2：PyTorch 源不可达时立刻失败并给出可操作提示。
+
+        pip/uv 会用 extra index 参与所有依赖的候选解析，源不可达时只会以
+        无关包（issue 里的 msgpack）的 "from versions: none" 收场。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "local-runtime"
+            requirements_txt = Path(temp_dir) / "requirements-local.txt"
+            requirements_txt.write_text("funasr==1.4.2\nmsgpack==1.0.3\n", encoding="utf-8")
+            calls: list[list[str]] = []
+
+            def fake_run(command: list[str], **_kwargs: object) -> int:
+                calls.append(command)
+                return 0
+
+            with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+                with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
+                    with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
+                        with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
+                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
+                                    with self.assertRaises(LocalRuntimeError) as context:
+                                        LOCAL.install(runtime_root=root)
+
+        probe.assert_called_once_with(PYTORCH_INDEX)
+        # 依赖安装整体没有开始（只有 get-pip 一段先跑）
+        self.assertEqual(len(calls), 1)
+        self.assertIn("MAW_PYTORCH_INDEX", str(context.exception))
+        self.assertIn("download.pytorch.org", str(context.exception))
+
+    @mock.patch("maw.runtimes.base.probe_index_reachable", return_value=True)
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    def test_extra_index_env_override_swaps_pytorch_source(self, _probe: mock.MagicMock) -> None:
+        """#127 缺陷 2：MAW_PYTORCH_INDEX 可把 PyTorch 源整源替换为可达镜像。"""
+        mirror = "https://mirrors.aliyun.com/pytorch-wheels/cu130"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "local-runtime"
+            requirements_txt = Path(temp_dir) / "requirements-local.txt"
+            requirements_txt.write_text("funasr==1.4.2\nqwen-asr==0.0.6\n", encoding="utf-8")
+            calls: list[list[str]] = []
+
+            def fake_run(command: list[str], **_kwargs: object) -> int:
+                calls.append(command)
+                if "install" in command:
+                    site = root / "site-packages"
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                        (site / name).mkdir(parents=True, exist_ok=True)
+                return 0
+
+            with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+                with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
+                    with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
+                        with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
+                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
+                                    with mock.patch.dict(os.environ, {"MAW_PYTORCH_INDEX": mirror}):
+                                        status = LOCAL.install(runtime_root=root)
+
+            install_command = calls[1]
+            self.assertTrue(status.ready)
+            self.assertIn("--extra-index-url", install_command)
+            self.assertIn(mirror, install_command)
+            self.assertNotIn(PYTORCH_INDEX, install_command)
 
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
@@ -208,6 +278,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
 
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
     def test_moss_install_uses_frozen_txt_and_cu130_extra_index(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "local-runtime-moss"
@@ -249,6 +320,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
 class SourceModeInstallTests(unittest.TestCase):
     """源码模式（非打包）安装：零下载，直接复用开发环境的 uv 与解释器。"""
 
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
     def test_source_mode_installs_via_uv_into_target_without_bootstrap(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "local-runtime-moss"
@@ -354,6 +426,7 @@ class VenvRuntimeInstallTests(unittest.TestCase):
             site = self._venv_site_packages(root)
             self.assertEqual(LOCAL.site_packages(root), site)
 
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
     def test_venv_install_uses_host_python_without_bootstrap_assets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "local-runtime"
