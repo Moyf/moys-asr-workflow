@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import dataclass
-from typing import TypeGuard, final
+from typing import Final, TypeGuard, final
 
 from maw.project_preview import JsonDict, JsonValue, clamped_preview, validate_preview
+from maw.language import LANGUAGE_SOURCES, SPLIT_MODES, TIMESTAMP_GRANULARITIES
 
 # Python 3.11 has no typing.override; basedpyright's override marker is therefore
 # disabled for this compatibility module.
 # pyright: reportImplicitOverride=false
 
 MIN_SEGMENT_DURATION_MS = 100
+PROJECT_SCHEMA: Final = "moy.asr.project.v1"
+TIMELINE_TIMEBASE_UNITS = frozenset({"milliseconds", "frames"})
+MIN_TIMELINE_FPS = 1.0
+MAX_TIMELINE_FPS = 240.0
 MULTI_SUBTITLE_SCHEMA = "moy.asr.multi_subtitle.v1"
 MULTI_SUBTITLE_DISPLAY_MODES = frozenset({"main", "extension", "both"})
 MULTI_SUBTITLE_SPLIT_MODES = frozenset({"continuous", "word"})
@@ -210,6 +216,12 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
         errors.append(ProjectValidationError("$", "must be an object"))
         return {"segments": []}
     normalized = copy.deepcopy(project)
+    schema = normalized.get("schema")
+    if "schema" in normalized and schema != PROJECT_SCHEMA:
+        errors.append(ProjectValidationError("$.schema", f"must be {PROJECT_SCHEMA}"))
+    normalized["schema"] = PROJECT_SCHEMA
+    _validate_timebase(normalized, errors)
+    _validate_media_metadata(normalized, errors)
     segments = normalized.get("segments")
     if not isinstance(segments, list):
         errors.append(ProjectValidationError("$.segments", "must be an array"))
@@ -233,9 +245,116 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
         if _valid_segment_time(segment) and _is_int_ms(end):
             previous_end = end
     _validate_head_refs(segments, errors)
+    _validate_transcription_metadata(normalized, errors)
     _normalize_multi_subtitle(normalized, segments, errors)
     errors.extend(ProjectValidationError(path, message) for path, message in validate_preview(normalized))
     return normalized
+
+
+def _validate_timebase(project: JsonDict, errors: list[ProjectValidationError]) -> None:
+    """Validate the optional parallel frame timeline without breaking legacy files."""
+    if "timebase" not in project:
+        return
+    timebase = project.get("timebase")
+    if not isinstance(timebase, dict):
+        errors.append(ProjectValidationError("$.timebase", "must be an object"))
+        return
+    unit = timebase.get("unit")
+    if unit not in TIMELINE_TIMEBASE_UNITS:
+        errors.append(ProjectValidationError("$.timebase.unit", "must be milliseconds or frames"))
+    fps = timebase.get("fps")
+    if type(fps) not in (int, float) or not math.isfinite(float(fps)):
+        errors.append(ProjectValidationError("$.timebase.fps", "must be a finite number"))
+    elif not MIN_TIMELINE_FPS <= float(fps) <= MAX_TIMELINE_FPS:
+        errors.append(
+            ProjectValidationError(
+                "$.timebase.fps",
+                f"must be between {MIN_TIMELINE_FPS:g} and {MAX_TIMELINE_FPS:g}",
+            )
+        )
+
+
+def _validate_media_metadata(project: JsonDict, errors: list[ProjectValidationError]) -> None:
+    """Validate optional source-media metadata without affecting legacy files."""
+    if "media_metadata" not in project:
+        return
+    metadata = project.get("media_metadata")
+    if not isinstance(metadata, dict):
+        errors.append(ProjectValidationError("$.media_metadata", "must be an object"))
+        return
+    if "video_fps" in metadata:
+        fps = metadata.get("video_fps")
+        if type(fps) not in (int, float) or not math.isfinite(float(fps)):
+            errors.append(ProjectValidationError("$.media_metadata.video_fps", "must be a finite number"))
+        elif not MIN_TIMELINE_FPS <= float(fps) <= MAX_TIMELINE_FPS:
+            errors.append(
+                ProjectValidationError(
+                    "$.media_metadata.video_fps",
+                    f"must be between {MIN_TIMELINE_FPS:g} and {MAX_TIMELINE_FPS:g}",
+                )
+            )
+    if "video_fps_ratio" in metadata:
+        ratio = metadata.get("video_fps_ratio")
+        if not isinstance(ratio, str) or not ratio.strip():
+            errors.append(
+                ProjectValidationError(
+                    "$.media_metadata.video_fps_ratio",
+                    "must be a non-empty string",
+                )
+            )
+    if "selected_audio_track" in metadata:
+        selected_audio_track = metadata.get("selected_audio_track")
+        if type(selected_audio_track) is not int or selected_audio_track < 0:
+            errors.append(
+                ProjectValidationError(
+                    "$.media_metadata.selected_audio_track",
+                    "must be a non-negative integer",
+                )
+            )
+    if "audio_tracks" in metadata:
+        audio_tracks = metadata.get("audio_tracks")
+        if not isinstance(audio_tracks, list):
+            errors.append(ProjectValidationError("$.media_metadata.audio_tracks", "must be an array"))
+            return
+        for index, track in enumerate(audio_tracks):
+            path = f"$.media_metadata.audio_tracks[{index}]"
+            if not isinstance(track, dict):
+                errors.append(ProjectValidationError(path, "must be an object"))
+                continue
+            stream_index = track.get("stream_index")
+            if type(stream_index) is not int or stream_index < 0:
+                errors.append(ProjectValidationError(f"{path}.stream_index", "must be a non-negative integer"))
+            audio_index = track.get("audio_index")
+            if audio_index is not None and (type(audio_index) is not int or audio_index < 0):
+                errors.append(ProjectValidationError(f"{path}.audio_index", "must be a non-negative integer"))
+            for field in ("codec", "language", "title"):
+                if field in track and not isinstance(track[field], str):
+                    errors.append(ProjectValidationError(f"{path}.{field}", "must be a string"))
+            for field in ("channels", "sample_rate"):
+                value = track.get(field)
+                if value is not None and (type(value) is not int or value <= 0):
+                    errors.append(ProjectValidationError(f"{path}.{field}", "must be a positive integer or null"))
+            if "default" in track and not isinstance(track["default"], bool):
+                errors.append(ProjectValidationError(f"{path}.default", "must be a boolean"))
+
+
+def _validate_transcription_metadata(
+    project: JsonDict,
+    errors: list[ProjectValidationError],
+) -> None:
+    """Validate optional ASR metadata without changing legacy project values."""
+    for field in ("language", "language_source", "split_mode", "timestamp_granularity"):
+        if field in project and not isinstance(project[field], str):
+            errors.append(ProjectValidationError(f"$.{field}", "must be a string"))
+    language_source = project.get("language_source")
+    if isinstance(language_source, str) and language_source not in LANGUAGE_SOURCES:
+        errors.append(ProjectValidationError("$.language_source", "must be detected, hint, inferred, or unknown"))
+    split_mode = project.get("split_mode")
+    if isinstance(split_mode, str) and split_mode not in SPLIT_MODES:
+        errors.append(ProjectValidationError("$.split_mode", "must be continuous or word"))
+    timestamp_granularity = project.get("timestamp_granularity")
+    if isinstance(timestamp_granularity, str) and timestamp_granularity not in TIMESTAMP_GRANULARITIES:
+        errors.append(ProjectValidationError("$.timestamp_granularity", "must be char, word, segment, or unknown"))
 
 
 def _is_stable_id(value: JsonValue) -> bool:
@@ -386,6 +505,7 @@ def _normalize_multi_subtitle(
                 errors.append(ProjectValidationError(segment_path, "must be an object"))
                 continue
             _validate_extension_segment(segment, segment_path, previous_end, errors)
+            _validate_ref_pair(raw_segments, segment_index, segment_path, "color", "color_ref", errors)
             segment_id = segment.get("id")
             if isinstance(track_id, str) and _is_stable_id(segment_id):
                 extension_ids[track_id].add(segment_id.strip())
@@ -493,6 +613,33 @@ def _single_binding_id(
     return value[0]
 
 
+def _validate_frame_pair(
+    value: JsonDict,
+    path: str,
+    errors: list[ProjectValidationError],
+) -> None:
+    """Validate optional frame projections while keeping millisecond fields required."""
+    has_start = "start_frame" in value
+    has_end = "end_frame" in value
+    if not has_start and not has_end:
+        return
+    if has_start != has_end:
+        errors.append(ProjectValidationError(path, "start_frame and end_frame must be provided together"))
+        return
+    start = value.get("start_frame")
+    end = value.get("end_frame")
+    if type(start) is not int:
+        errors.append(ProjectValidationError(f"{path}.start_frame", "must be a non-negative integer"))
+    elif start < 0:
+        errors.append(ProjectValidationError(f"{path}.start_frame", "must be non-negative"))
+    if type(end) is not int:
+        errors.append(ProjectValidationError(f"{path}.end_frame", "must be a non-negative integer"))
+    elif end < 0:
+        errors.append(ProjectValidationError(f"{path}.end_frame", "must be non-negative"))
+    if type(start) is int and type(end) is int and end <= start:
+        errors.append(ProjectValidationError(f"{path}.end_frame", "must be greater than start_frame"))
+
+
 def _validate_extension_segment(
     segment: JsonDict,
     path: str,
@@ -514,6 +661,7 @@ def _validate_extension_segment(
             errors.append(ProjectValidationError(f"{path}.start", "must be >= previous segment end"))
     if not isinstance(segment.get("text"), str):
         errors.append(ProjectValidationError(f"{path}.text", "must be a string"))
+    _validate_frame_pair(segment, path, errors)
     # Extension subtitles may come from a project or from a main-track swap.
     # Items are optional, but when present they must follow the same timing
     # contract as main-track items so the data survives a later swap back.
@@ -541,6 +689,7 @@ def _validate_segment(
             errors.append(ProjectValidationError(f"{path}.start", "must be >= previous segment end"))
     if not isinstance(segment.get("text"), str):
         errors.append(ProjectValidationError(f"{path}.text", "must be a string"))
+    _validate_frame_pair(segment, path, errors)
     if "speaker" in segment and (not isinstance(segment["speaker"], str) or not segment["speaker"].strip()):
         errors.append(ProjectValidationError(f"{path}.speaker", "must be a non-empty string"))
     _validate_items(segment, path, errors)
@@ -574,6 +723,7 @@ def _validate_item(
 ) -> None:
     start = item.get("start")
     end = item.get("end")
+    _validate_frame_pair(item, path, errors)
     if not isinstance(item.get("text"), str):
         errors.append(ProjectValidationError(f"{path}.text", "must be a string"))
     if not _is_int_ms(start):

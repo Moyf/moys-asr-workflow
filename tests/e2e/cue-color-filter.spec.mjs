@@ -267,6 +267,7 @@ test('split trim chips and extra input drive shared trim behavior and persist', 
   await page.evaluate(() => {
     window.MAWE_EDITOR_BRIDGE.setEditorSettingsPanelOpen(true);
   });
+  await page.locator('#editor-settings-tab-split-merge').click();
   const settingsToggle = page.locator('#split-trim-settings-toggle');
   const settingsPanel = page.locator('#split-trim-settings-panel');
   const grid = page.locator('#split-trim-symbol-grid');
@@ -322,38 +323,44 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   await page.evaluate(() => {
     window.MAWE_EDITOR_BRIDGE.setEditorSettingsPanelOpen(true);
   });
+  await page.locator('#editor-settings-tab-split-merge').click();
   const hintText = page.locator('#merge-join-mode-text');
   const switchButton = page.locator('#merge-join-mode-switch');
   const multiSelect = page.locator('#multi-subtitle-main-language-mode');
-  const languageTypeGroup = page.locator('.split-language-type-field');
+  const languageTypeGroup = page.locator('.split-language-type-group');
+  const languageTypeHeading = page.locator('#split-language-type-title');
+  const multiSubtitleSettingsLink = page.locator('#split-multi-subtitle-settings-link');
+  const multiSubtitleSettingsDisabledHint = page.locator('#split-multi-subtitle-settings-disabled');
 
-  await expect(languageTypeGroup.locator('#split-language-type-title')).toHaveText('字幕语言类型');
-  expect(await hintText.evaluate((element) => Boolean(element.closest('.split-language-type-field')))).toBe(true);
+  await expect(languageTypeHeading).toHaveText('字幕语言类型');
+  await expect(multiSubtitleSettingsLink).toBeHidden();
+  await expect(multiSubtitleSettingsDisabledHint).toHaveText('对于双语字幕，可以在多重字幕的设置（需要先启用多重字幕）中单独配置两种字幕的语言类型。');
+  expect(await hintText.evaluate((element) => Boolean(element.closest('.split-language-type-group')))).toBe(true);
   expect(await hintText.evaluate((element) => Boolean(element.closest('.merge-join-settings-field')))).toBe(false);
   expect(await page.evaluate(() => {
-    const language = document.querySelector('.split-language-type-field');
     const merge = document.querySelector('.merge-join-settings-field');
-    return Boolean(language && merge
-      && (language.compareDocumentPosition(merge) & Node.DOCUMENT_POSITION_FOLLOWING));
+    const language = document.querySelector('.split-language-type-group');
+    return Boolean(merge && language
+      && (merge.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING));
   })).toBe(true);
   await expect(hintText).toHaveClass(/editor-settings-item/);
 
   // 英文工程 → 自动检测为单词型；短提示 + 统一的「切换为」按钮。
-  await expect(hintText).toHaveText('当前为「单词型」（适用于英文、俄文等）');
+  await expect(hintText).toHaveText('当前字幕为「单词型」（适用于英文、俄文等语言）');
   await expect(switchButton).toHaveText('切换为字符型');
   // 与多重字幕菜单的「主字幕语言类型」共享同一状态（下拉框此时是检测值）。
   await expect(multiSelect).toHaveValue('word');
 
   // 点击 → 指定为字符型；提示统一样式并同步多重字幕下拉框。
   await switchButton.click();
-  await expect(hintText).toHaveText('当前为「字符型」（适用于中文、日文等）');
+  await expect(hintText).toHaveText('当前字幕为「字符型」（适用于中文、日文等语言）');
   await expect(switchButton).toHaveText('切换为单词型');
   await expect(multiSelect).toHaveValue('continuous');
   expect(await page.evaluate(() => DATA.multi_subtitle.main_split_mode)).toBe('continuous');
 
   // 再点一次切回单词型。
   await switchButton.click();
-  await expect(hintText).toHaveText('当前为「单词型」（适用于英文、俄文等）');
+  await expect(hintText).toHaveText('当前字幕为「单词型」（适用于英文、俄文等语言）');
   await expect(multiSelect).toHaveValue('word');
 
   const mergeSettingsToggle = page.locator('#merge-join-settings-toggle');

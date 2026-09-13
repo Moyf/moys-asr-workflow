@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -17,7 +18,9 @@ from maw.local_runtime import (
     model_cache_environment,
     prepare_model_in_process,
     prepare_model_in_runtime,
+    recover_local_runtime_install,
 )
+from maw.runtime_manifest import STATUS_BROKEN, STATUS_INSTALLING, write_runtime_manifest
 from maw.runtimes import LOCAL
 
 
@@ -37,6 +40,18 @@ class LocalRuntimeTests(unittest.TestCase):
             shutil.copyfile(
                 Path(__file__).resolve().parents[1] / "maw" / "ffmpeg.py",
                 package_root / "ffmpeg.py",
+            )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "language.py",
+                package_root / "language.py",
+            )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "output_naming.py",
+                package_root / "output_naming.py",
+            )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "media.py",
+                package_root / "media.py",
             )
             (package_root / "console.py").write_text(
                 "def configure_utf8_stdio():\n"
@@ -81,6 +96,39 @@ class LocalRuntimeTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("usage:", result.stdout.lower())
+
+    def test_local_entry_imports_without_rust_kernel(self) -> None:
+        """Issue 96 回归：托管 Runtime 未装 Rust 波形内核（reapeaks）时，转写入口必须可导入。
+
+        MOSS 用独立的 ``local-runtime-moss`` 环境跑 ``local-runtime`` 脚本镜像，该环境
+        的依赖清单里没有 ``reapeaks``。此前入口经 ``maw.local_asr`` → 共享 API 模块 →
+        ``edit.py`` → ``maw.quapeaks`` 在导入期就 ModuleNotFoundError，模型根本没机会加载。
+        """
+        repo_root = Path(__file__).resolve().parents[1]
+        driver = (
+            "import sys\n"
+            f"sys.path.insert(0, {str(repo_root)!r})\n"
+            # 改名后内核包叫 quapeaks；这里若还屏蔽 reapeaks，测试等于在验证
+            # "缺一个已经不存在的包时仍可导入"，真正要保的场景没有覆盖到。
+            "sys.modules['quapeaks'] = None\n"
+            "import generate_subtitle_local\n"
+            "print('MAW_LOCAL_ENTRY_IMPORT_OK')\n"
+        )
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
+
+        result = subprocess.run(
+            [sys.executable, "-c", driver],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=environment,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("MAW_LOCAL_ENTRY_IMPORT_OK", result.stdout)
 
     def test_runtime_worker_imports_maw_when_started_by_file_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -144,9 +192,37 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertNotEqual(Path(status.path), Path(status.model_cache_path))
         self.assertEqual(Path(environment["HF_HUB_CACHE"]), cache.resolve() / "huggingface" / "hub")
 
+    def test_recover_local_runtime_install_turns_stale_installing_into_broken(self) -> None:
+        """#127 缺陷 1：安装线程死后残留的 installing 标记必须能自愈为 broken。
+
+        install() 开始即写 installing manifest，失败/取消/退出后无人回写时，
+        ``status()`` 会永远停在 installing，UI 既不能取消也不能重装。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "runtime"
+            python = LOCAL.python_path(root)
+            python.parent.mkdir(parents=True, exist_ok=True)
+            python.write_bytes(b"python")
+            write_runtime_manifest(
+                root,
+                status=STATUS_INSTALLING,
+                runtime_version=LOCAL.spec.runtime_version,
+                python_version=LOCAL.spec.python_version,
+            )
+
+            with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(root)}):
+                self.assertTrue(recover_local_runtime_install())
+                self.assertFalse(recover_local_runtime_install())
+                status = managed_runtime_status()
+                manifest = json.loads((root / "runtime.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(status.status, STATUS_BROKEN)
+        self.assertEqual(manifest["status"], STATUS_BROKEN)
+
     # 内嵌流测试固定 win32：install 分支与 python_path 布局在 mac/linux CI 上一致。
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
     def test_install_creates_manifest_after_venv_and_dependency_steps(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "runtime"
@@ -161,7 +237,7 @@ class LocalRuntimeTests(unittest.TestCase):
             def fake_run(command: list[str], **_kwargs: object) -> int:
                 if "install" in command:
                     packages = root / "site-packages"
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "reapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
                         (packages / name).mkdir(parents=True, exist_ok=True)
                 return 0
 

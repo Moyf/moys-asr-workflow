@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import {
   cleanupTempDir,
   findFreePort,
-  generateBlankEditor,
+  buildPortableBlankEditor,
   generateProjectJson,
   generateWav,
   makeTempDir,
@@ -25,7 +25,7 @@ test.beforeAll(async () => {
   // 短媒体即可：只验证加载链路，不校验波形时长一致性。
   generateWav(mediaPath, 5);
   generateProjectJson(projectPath);
-  server = await startStaticServer(generateBlankEditor(join(tempDir, 'blank.html')), await findFreePort());
+  server = await startStaticServer(buildPortableBlankEditor(join(tempDir, 'blank.html')), await findFreePort());
 });
 
 test.afterAll(async () => {
@@ -42,6 +42,12 @@ function dropFiles(page, files) {
     }
     return dt;
   }, files).then((dataTransfer) => page.dispatchEvent('body', 'drop', { dataTransfer }));
+}
+
+// 33c6d8cc 起 buildJson 无条件写入派生的 start_frame/end_frame（毫秒字段是
+// 语义真源，帧字段随保存重新计算）；深比较只保留毫秒语义字段。
+function stripDerivedFrameFields(items) {
+  return items.map(({ start_frame, end_frame, ...item }) => item);
 }
 
 function projectSpec(name = 'project.json') {
@@ -92,6 +98,54 @@ test('opening and serializing a project preserves script alignment metadata', as
 
   const serialized = await page.evaluate(() => JSON.parse(buildJson()));
   expect(serialized.script_alignment).toEqual(scriptAlignment);
+});
+
+test('opening and serializing a legacy project adds v1 and preserves transcription metadata', async ({ page }) => {
+  const project = {
+    media: '',
+    language: 'en',
+    language_source: 'detected',
+    split_mode: 'word',
+    timestamp_granularity: 'segment',
+    future_optional_metadata: { producer: 'research-build' },
+    segments: [{ start: 100, end: 1900, text: 'metadata' }],
+  };
+  const spec = {
+    name: 'metadata.mosp',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  };
+
+  await page.goto(server.url);
+  await dropFiles(page, [spec]);
+  await expect(page.locator('#json-name')).toHaveText('metadata.mosp');
+
+  const serialized = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(serialized.schema).toBe('moy.asr.project.v1');
+  expect(serialized.language_source).toBe('detected');
+  expect(serialized.split_mode).toBe('word');
+  expect(serialized.timestamp_granularity).toBe('segment');
+  expect(serialized.future_optional_metadata).toEqual({ producer: 'research-build' });
+});
+
+test('opening an unknown project schema is rejected without replacing the current project', async ({ page }) => {
+  const futureProject = {
+    schema: 'moy.asr.project.v2',
+    media: '',
+    segments: [{ start: 100, end: 1900, text: 'future' }],
+  };
+  const spec = {
+    name: 'future.mosp',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(futureProject), 'utf8').toString('base64'),
+  };
+
+  await page.goto(server.url);
+  const before = await page.evaluate(() => JSON.stringify(DATA));
+  await dropFiles(page, [spec]);
+
+  await expect(page.locator('#hint-stack .hint-warning')).toContainText('不支持的工程格式版本');
+  expect(await page.evaluate(() => JSON.stringify(DATA))).toBe(before);
 });
 
 test('dropping a project over an existing project asks before offering open or extension choices', async ({ page }) => {
@@ -153,7 +207,7 @@ test('can use a dropped project subtitle as an extension and preserve optional i
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
   const imported = await page.evaluate(() => JSON.parse(buildJson()));
-  expect(imported.multi_subtitle.tracks[0].segments[0].items).toEqual([
+  expect(stripDerivedFrameFields(imported.multi_subtitle.tracks[0].segments[0].items)).toEqual([
     { text: '带字词时间码的副字幕', start: 100, end: 1900 },
   ]);
 
@@ -166,7 +220,7 @@ test('can use a dropped project subtitle as an extension and preserve optional i
   await page.locator('#multi-subtitle-swap').click();
 
   const roundTripped = await page.evaluate(() => JSON.parse(buildJson()));
-  expect(roundTripped.multi_subtitle.tracks[0].segments[0].items).toEqual([
+  expect(stripDerivedFrameFields(roundTripped.multi_subtitle.tracks[0].segments[0].items)).toEqual([
     { text: '带字词时间码的副字幕', start: 100, end: 1900 },
   ]);
 });

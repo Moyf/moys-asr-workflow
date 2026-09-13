@@ -174,7 +174,10 @@ def _taskkill_process_tree(pid: int) -> bool:
         result = subprocess.run(
             ["taskkill", "/PID", str(pid), "/T", "/F"],
             capture_output=True,
-            text=True,
+            # taskkill 输出走 ANSI 代码页（如 zh-CN 的 GBK）；默认 UTF-8 模式
+            # 解码会抛 UnicodeDecodeError 打断 reader 线程。
+            encoding="mbcs",
+            errors="replace",
             check=False,
             startupinfo=startupinfo(),
             creationflags=creationflags(),

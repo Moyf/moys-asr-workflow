@@ -10,7 +10,7 @@ on:
       - "docs/**"
       - "edit.py"
       - "web/**"
-      - "maw/reapeaks.py"
+      - "maw/quapeaks.py"
       - "maw/**"
       - ".github/workflows/deploy-editor-pages.yml"
   workflow_dispatch:
@@ -74,6 +74,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p website/dist/editor
+          # Deployment-only artifact build; local development does not refresh
+          # the repository-root blank-editor.html by default.
           uv run --no-sync python edit.py --blank -o website/dist/editor/index.html
           touch website/dist/.nojekyll
 

@@ -28,10 +28,10 @@ _LOG_FILE_PATTERN = "maw-*.log"
 # traceback 意外把凭据写入日志。
 _SECRET_PATTERN = re.compile(r"sk-[A-Za-z0-9_-]{4,}")
 _SECRET_ASSIGNMENT_PATTERN = re.compile(
-    r'''(?i)(\b[\w.-]*(?:api[-_ ]?key|access[-_ ]?token|secret(?:[-_ ]?(?:key|id))?|password)\b\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;]+)'''
+    r'''(?i)(["']?\b[\w.-]*(?:api[-_ ]?key|(?:access[-_ ]?)?token|secret(?:[-_ ]?(?:key|id))?|password)\b["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;]+)'''
 )
 _BEARER_PATTERN = re.compile(
-    r'''(?i)(\bauthorization\s*[:=]\s*bearer\s+|\bbearer\s*(?::|=|\s)\s*)("[^"]*"|'[^']*'|[^\s,;]+)'''
+    r'''(?i)(["']?\bauthorization\b["']?\s*[:=]\s*bearer\s+|\bbearer\s*(?::|=|\s)\s*)("[^"]*"|'[^']*'|[^\s,;]+)'''
 )
 _SENSITIVE_KEYS = ("key", "secret", "token", "password")
 

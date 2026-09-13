@@ -89,13 +89,22 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="输出路径：第一个是 SRT，第二个可选路径是 .mosp；省略时按输入自动命名",
     )
     parser.add_argument("--mosp", dest="mosp_output", help="单独指定 .mosp 工程输出路径（等价于 -o SRT MOSP 的第二个路径）")
-    parser.add_argument("--provider", choices=("qwen", "soniox", "tencent", "bcut"), default="qwen", help="ASR 供应商（默认 qwen；tencent 为腾讯云录音文件识别）")
+    parser.add_argument(
+        "--provider",
+        choices=("qwen", "soniox", "doubao", "tencent", "openai", "bcut"),
+        default="qwen",
+        help="ASR 供应商（默认 qwen；openai 为 OpenAI 兼容接口）",
+    )
     parser.add_argument("--model", help="覆盖当前供应商的 ASR 模型")
+    parser.add_argument("--base-url", help="OpenAI 兼容 ASR Base URL（仅适用于 --provider openai；默认读取 .env）")
     parser.add_argument("--max-len", type=int, help="每条字幕最大字数")
     parser.add_argument("--min-len", type=int, help="句号间最短字数")
+    parser.add_argument("--max-words", type=int, help="英文每条字幕最大单词数")
+    parser.add_argument("--min-words", type=int, help="英文短句合并阈值（单词数）")
     parser.add_argument("--language", help="语言提示；Soniox 可写逗号分隔的多个语言")
     parser.add_argument("--keep-punct", action="store_true", help="保留字幕末尾的逗号和句号")
     parser.add_argument("--strip-tail-punct", help="句尾剥除的标点集合；传空串禁用剥除")
+    parser.add_argument("--extra-strong-punct", help="额外强断句符号集合（每个字符并入强断句符号）")
     parser.add_argument("--gap-split", type=int, help="静音切句阈值（毫秒）")
     parser.add_argument("--speaker", action="store_true", help="开启说话人分离")
     parser.add_argument("--speaker-colors", action="store_true", help="开启说话人分离并写入字幕颜色快照")
@@ -116,7 +125,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--workspace-id", help="Qwen Workspace ID；也可放在 .env")
     parser.add_argument("--file-url", help="Qwen 已上传文件的公网/OSS URL")
     parser.add_argument("--vocabulary-id", help="Qwen 预编译词表 ID")
-    parser.add_argument("--hotword", action="append", help="Qwen 即时热词；可重复传入")
+    parser.add_argument("--hotword", action="append", help="Qwen/豆包 即时热词；可重复传入")
     parser.add_argument("--hotword-file", help="Qwen 即时热词 UTF-8 文本文件")
     parser.add_argument("--hotword-weight", help="Qwen 即时热词权重（1-5 或 50）")
     parser.add_argument("--context", help="Qwen-Audio context，最多 400 字符")
@@ -200,6 +209,28 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
         parser.error("请在 -o/--output 的第二个路径和 --mosp 中选择一个工程输出路径")
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
+    if args.base_url and args.provider != "openai":
+        parser.error("--base-url 仅适用于 --provider openai")
+    if args.provider == "openai" and (
+        any(
+            value is not None
+            for value in (
+                args.region,
+                args.workspace_id,
+                args.file_url,
+                args.vocabulary_id,
+                args.hotword_file,
+                args.hotword_weight,
+                args.context,
+                args.context_file,
+                args.soniox_context_json,
+            )
+        )
+        or args.hotword
+        or args.speaker
+        or args.speaker_colors
+    ):
+        parser.error("--provider openai 仅支持 --base-url、--model、--language 和通用字幕参数")
     if args.provider == "soniox" and (
         any(
             value is not None
@@ -217,6 +248,16 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
         or args.hotword
     ):
         parser.error("--provider soniox 不支持 Qwen 专用的地域、词表、热词、context 或 file-url 参数")
+    if args.provider == "doubao" and (
+        any(
+            value is not None for value in (
+                args.region, args.workspace_id, args.file_url, args.vocabulary_id,
+                args.hotword_file, args.hotword_weight, args.context,
+                args.context_file, args.soniox_context_json,
+            )
+        )
+    ):
+        parser.error("--provider doubao 仅支持 --model、--language、--hotword 和通用字幕参数")
     if args.provider == "tencent" and (
         any(
             value is not None for value in (
@@ -304,10 +345,17 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
         result.extend(["--max-len", str(args.max_len)])
     if args.min_len is not None:
         result.extend(["--min-len", str(args.min_len)])
+    if args.max_words is not None:
+        result.extend(["--max-words", str(args.max_words)])
+    if args.min_words is not None:
+        result.extend(["--min-words", str(args.min_words)])
     for flag, value in (
         ("--language", args.language),
+        ("--base-url", args.base_url if args.provider == "openai" else None),
         ("--gap-split", args.gap_split),
         ("--strip-tail-punct", args.strip_tail_punct),
+        # 目前仅 Qwen 云端脚本支持额外强断句符号，其他供应商不下发。
+        ("--extra-strong-punct", args.extra_strong_punct if args.provider == "qwen" else None),
         ("--length-limit", args.length_limit),
         ("--model", args.model),
         ("--stickers", args.stickers),
@@ -344,6 +392,10 @@ def _invoke_generator(provider: str, argv: Sequence[str]) -> int:
         import generate_subtitle_soniox_api as generator
 
         script_name = "generate_subtitle_soniox_api.py"
+    elif provider == "doubao":
+        import generate_subtitle_doubao_api as generator
+
+        script_name = "generate_subtitle_doubao_api.py"
     elif provider == "bcut":
         import generate_subtitle_bcut_api as generator
 
@@ -352,6 +404,10 @@ def _invoke_generator(provider: str, argv: Sequence[str]) -> int:
         import generate_subtitle_tencent_api as generator
 
         script_name = "generate_subtitle_tencent_api.py"
+    elif provider == "openai":
+        import generate_subtitle_openai_api as generator
+
+        script_name = "generate_subtitle_openai_api.py"
     else:
         import generate_subtitle_qwen_api as generator
 
@@ -376,6 +432,8 @@ def _run_server(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
             args.model,
             args.max_len is not None,
             args.min_len is not None,
+            args.max_words is not None,
+            args.min_words is not None,
             args.language,
             args.keep_punct,
             args.gap_split is not None,
@@ -388,6 +446,7 @@ def _run_server(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
             args.html,
             args.no_html,
             args.debug,
+            args.base_url,
             args.region,
             args.workspace_id,
             args.file_url,
@@ -470,6 +529,8 @@ def _run_stop_server(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             args.model,
             args.max_len is not None,
             args.min_len is not None,
+            args.max_words is not None,
+            args.min_words is not None,
             args.language,
             args.keep_punct,
             args.gap_split is not None,
@@ -482,6 +543,7 @@ def _run_stop_server(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             args.html,
             args.no_html,
             args.debug,
+            args.base_url,
             args.region,
             args.workspace_id,
             args.file_url,

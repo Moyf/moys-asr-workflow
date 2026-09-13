@@ -22,8 +22,35 @@ const gapCoreSource = fs.readFileSync(new URL('../web/gap-remove-core.js', impor
 vm.runInNewContext(gapCoreSource, context);
 const source = fs.readFileSync(new URL('../web/waveform.js', import.meta.url), 'utf8');
 vm.runInNewContext(source, context);
+// 供 .ReaPeaks 二进制 fixture 使用：必须在沙箱 realm 内创建 ArrayBuffer，
+// 否则 decodeReapeaksFile 的 `instanceof ArrayBuffer` 入参校验会拒掉它。
+vm.runInNewContext('globalThis.newArrayBuffer = (size) => new ArrayBuffer(size);', context);
 const helpers = context.window.AsrWaveform.testing;
 const builtinWorkspaces = context.window.AsrWaveform.builtinWorkspaces;
+
+// 失败路径会派发 DOM 事件。waveform.js 跑在 vm 沙箱里，`document` 解析到的是
+// context 而不是 globalThis，所以桩必须装进 context；用 t.after 拆卸，断言中途
+// 抛错也不会把桩泄漏给后面的用例。浏览器里 document 恒在，产品代码无需防御。
+function installSandboxEventStub(t) {
+  const previous = { document: context.document, CustomEvent: context.CustomEvent };
+  const dispatched = [];
+  context.CustomEvent = function FakeCustomEvent(type, options) {
+    this.type = type;
+    this.detail = options && options.detail;
+  };
+  context.document = { dispatchEvent: (event) => dispatched.push(event.type) };
+  t.after(() => {
+    context.document = previous.document;
+    context.CustomEvent = previous.CustomEvent;
+  });
+  return dispatched;
+}
+
+function copyToSandboxArrayBuffer(bytes) {
+  const buffer = context.newArrayBuffer(bytes.length);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
 
 
 test('decodes compact signed min/max peaks', () => {
@@ -326,6 +353,23 @@ test('Alt temporarily reverses the automatic adjacent-cue setting', () => {
 });
 
 
+test('dual boundary mode keeps shared-boundary handles independent; classic falls back to Alt reversal', () => {
+  // dual（新默认，达芬奇式）：相接边界手柄始终独立调整，联动交给中缝拖动区。
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, true, 'dual'), true);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, true, 'dual'), true);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, false, 'dual'), true);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, false, 'dual'), true);
+  // classic（传统）：完全沿用“自动吸附调整相邻字幕”开关 + Alt 临时反转。
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, true, 'classic'), false);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, true, 'classic'), true);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, false, 'classic'), true);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, false, 'classic'), false);
+  // 未知/缺失模式按 classic 处理，保证旧持久化数据行为不变。
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, true, undefined), false);
+  assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, true, undefined), true);
+});
+
+
 test('Alt-drag moves only the hit side of a shared boundary, leaving the neighbor untouched', () => {
   // 共享边界在 1000：默认拖动会同时改左侧 end 和右侧 start；Alt 独立拖动只改被命中一侧。
   const segments = [
@@ -400,6 +444,90 @@ test('keyboard movement ripples an attached following cue but Alt leaves it fixe
   ]);
   const blocked = helpers.applyMoveStep(independent, [0], 100, 4000, { sticky: false });
   assert.equal(blocked.changed, false);
+});
+
+
+test('snaps pointer time only when frame snapping is enabled', () => {
+  const frameTiming = helpers.resolveTiming({
+    unit: 'frames',
+    fromMs: (value) => Math.round(Number(value) * 30 / 1000),
+    toMs: (value) => Math.round(Number(value) * 1000 / 30),
+  });
+  assert.equal(helpers.snapPointerTimeToTimingGrid(716, frameTiming, true), 700);
+  assert.equal(helpers.snapPointerTimeToTimingGrid(716, frameTiming, false), 716);
+  assert.equal(helpers.snapPointerTimeToTimingGrid(716, { unit: 'milliseconds' }, true), 716);
+});
+
+
+test('uses 100ms or current-FPS spacing for the two-second waveform grid', () => {
+  assert.equal(helpers.waveformGridStepMs({ unit: 'milliseconds' }), 100);
+  assert.equal(helpers.waveformGridStepMs({ unit: 'frames', fps: 25 }), 40);
+  assert.equal(helpers.waveformGridStepMs({ unit: 'frames', fps: 29.97 }), 1000 / 29.97);
+});
+
+
+test('runs cue movement and boundary remapping on an independent frame timeline', () => {
+  const frameTiming = helpers.resolveTiming({
+    unit: 'frames',
+    minDuration: 3,
+    snapThreshold: 2,
+    round: Math.round,
+    getStart: (segment) => segment.start_frame,
+    getEnd: (segment) => segment.end_frame,
+    setStart: (segment, value) => { segment.start_frame = Math.round(value); },
+    setEnd: (segment, value) => { segment.end_frame = Math.round(value); },
+    getItemStart: (item) => item.start_frame,
+    getItemEnd: (item) => item.end_frame,
+    setItemStart: (item, value) => { item.start_frame = Math.round(value); },
+    setItemEnd: (item, value) => { item.end_frame = Math.round(value); },
+    fromMs: (value) => Math.round(Number(value) * 30 / 1000),
+    toMs: (value) => Math.round(Number(value) * 1000 / 30),
+    format: (value) => `${value}F`,
+  });
+  assert.equal(frameTiming.unit, 'frames');
+
+  const moved = [
+    {
+      start: 0, end: 1000, start_frame: 0, end_frame: 30,
+      items: [{ text: 'A', start: 0, end: 1000, start_frame: 0, end_frame: 30 }],
+    },
+    {
+      start: 1000, end: 2000, start_frame: 30, end_frame: 60,
+      items: [{ text: 'B', start: 1000, end: 2000, start_frame: 30, end_frame: 60 }],
+    },
+  ];
+  const move = helpers.applyMoveStep(moved, [0], 1, 90, {
+    sticky: true,
+    minDuration: 3,
+    timing: frameTiming,
+  });
+  assert.equal(move.appliedDelta, 1);
+  assert.equal(moved[0].start_frame, 1);
+  assert.equal(moved[0].end_frame, 31);
+  assert.equal(moved[1].start_frame, 31);
+  assert.equal(moved[1].end_frame, 60);
+  assert.equal(moved[0].items[0].start_frame, 1);
+  assert.equal(moved[1].items[0].start_frame, 31);
+
+  const boundary = [
+    {
+      start: 0, end: 1000, start_frame: 0, end_frame: 30,
+      items: [{ text: 'A', start: 0, end: 1000, start_frame: 0, end_frame: 30 }],
+    },
+    {
+      start: 1000, end: 2000, start_frame: 30, end_frame: 60,
+      items: [{ text: 'B', start: 1000, end: 2000, start_frame: 30, end_frame: 60 }],
+    },
+  ];
+  helpers.applyBoundaryStep(boundary, 0, 'end', 2, 90, {
+    sticky: true,
+    minDuration: 3,
+    timing: frameTiming,
+  });
+  assert.equal(boundary[0].end_frame, 32);
+  assert.equal(boundary[1].start_frame, 32);
+  assert.equal(boundary[0].items[0].end_frame, 32);
+  assert.equal(boundary[1].items[0].start_frame, 32);
 });
 
 
@@ -556,8 +684,27 @@ test('normalizes waveform display settings carried by a layout', () => {
   assert.equal(normalized.waveformMode, 'basic');
   assert.deepEqual(JSON.parse(JSON.stringify(normalized.waveformSettings)), {
     visibleSeconds: 30, secondsPerRow: 20, rowHeight: 144, waveformScale: 6,
+    waveformScaleAuto: true,
     side: 'right', disabledDisplay: 'hidden', showGroupBadges: false, dragPlayhead: false,
   });
+  // waveformScaleAuto 必须恒被显式产出：applyLayoutData 用 Object.assign 增量
+  // 合并，缺字段会让上一个工程的 false 残留到新媒体上（反过来就是静默不缩放）。
+  assert.equal(
+    helpers.normalizeLayoutData({
+      preset: 'custom',
+      waveformSettings: { waveformScale: 2, waveformScaleAuto: false },
+    }).waveformSettings.waveformScaleAuto,
+    false,
+    '用户手调过振幅 → 显式 false',
+  );
+  assert.equal(
+    helpers.normalizeLayoutData({
+      preset: 'custom',
+      waveformSettings: { waveformScale: 2 },
+    }).waveformSettings.waveformScaleAuto,
+    true,
+    '老工程没有这个字段 → 升级后仍走自动缩放',
+  );
 });
 
 
@@ -765,4 +912,305 @@ test('maps spectral freq/density to a valid hsl color', () => {
   const noisy = helpers.freqColor(1000, 0, 16383);
   const tonal = helpers.freqColor(1000, 16383, 16383);
   assert.ok(parseFloat(tonal.match(/hsl\([^,]+, ([\d.]+)%/)[1]) > parseFloat(noisy.match(/hsl\([^,]+, ([\d.]+)%/)[1]));
+});
+
+
+// ---- 波形时间轴契约 ----------------------------------------------------
+// 回归：.ReaPeaks 的 bin 率是 sample_rate / division，多数采样率下是分数。
+// 一旦把它 round 成整数当刻度用，整条时间轴被按比例缩放，错位随时长线性累积。
+
+function buildReapeaksBuffer({ sampleRate, division, peaks, channels = 1, channelAmplitudes = null }) {
+  // ArrayBuffer 必须在被测代码所在的 realm 里创建：decodeReapeaksFile 用
+  // `instanceof ArrayBuffer` 做入参校验，跨 realm 的 buffer 会被直接拒掉。
+  const amplitudes = channelAmplitudes || Array.from({ length: channels }, () => 500);
+  const bytesPerPeak = 18 + 8 + peaks * channels * 4;
+  const buffer = context.newArrayBuffer(bytesPerPeak);
+  const view = new DataView(buffer);
+  const writeChars = (offset, text) => {
+    for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+  writeChars(0, 'RPKN');
+  view.setUint8(4, channels);       // channels
+  view.setUint8(5, 1);              // mipmap count（只放一个 wave 层）
+  view.setInt32(6, sampleRate, true);
+  view.setInt32(10, 1700000000, true);
+  view.setInt32(14, 1234, true);
+  view.setInt32(18, division, true);
+  view.setInt32(22, peaks, true);
+  let at = 26;
+  for (let i = 0; i < peaks; i++) {
+    for (let c = 0; c < channels; c++) {
+      // 最后一个峰放大，作为"合并/取单声道"的判别标记
+      const amplitude = (i === peaks - 1 ? amplitudes[c] * 24 : amplitudes[c]);
+      view.setInt16(at, amplitude, true);   // max
+      at += 2;
+      view.setInt16(at, -amplitude, true);  // min
+      at += 2;
+    }
+  }
+  return buffer;
+}
+
+
+test('publishes the fractional reapeaks bin rate instead of rounding it away', () => {
+  const { waveform } = helpers.decodeReapeaksFile(
+    buildReapeaksBuffer({ sampleRate: 16000, division: 53, peaks: 9057 }),
+    { name: 'a.wav', size: 1234, modified_ms: 1700000000000 },
+  );
+  assert.equal(waveform.sample_rate, 16000);
+  assert.equal(waveform.division, 53);
+  assert.equal(waveform.peak_count, 9057);
+  // 16000 / 53 = 301.886792…，绝不能被取整成 302
+  assert.notEqual(waveform.peaks_per_second, 302);
+  assert.ok(Math.abs(waveform.peaks_per_second - 16000 / 53) < 1e-6);
+  assert.equal(helpers.peaksRateOf(waveform), 16000 / 53);
+});
+
+test('keeps an integer rate as an integer when the division is exact', () => {
+  assert.equal(helpers.publishPeakRate(48000, 160), 300);
+  assert.equal(helpers.publishPeakRate(8000, 80), 100);
+  assert.ok(Number.isInteger(helpers.publishPeakRate(8000, 80)));
+  const { waveform } = helpers.decodeReapeaksFile(
+    buildReapeaksBuffer({ sampleRate: 8000, division: 80, peaks: 3 }),
+  );
+  assert.equal(waveform.peaks_per_second, 100);
+});
+
+test('peaksRateOf falls back to peaks_per_second for legacy payloads', () => {
+  assert.equal(helpers.peaksRateOf({ peaks_per_second: 100 }), 100);
+  assert.equal(helpers.peaksRateOf({ sample_rate: 16000, division: 53, peaks_per_second: 302 }), 16000 / 53);
+  // 半个精确率字段（缺失或非法）视为无刻度，不退回近似值
+  assert.equal(helpers.peaksRateOf({ sample_rate: 16000, division: 0, peaks_per_second: 100 }), 0);
+  assert.equal(helpers.peaksRateOf({ sample_rate: 16000, peaks_per_second: 100 }), 0);
+  assert.equal(helpers.peaksRateOf({}), 0);
+  assert.equal(helpers.peaksRateOf(null), 0);
+});
+
+test('a peak index maps back to its own sample position without drift', () => {
+  const { waveform } = helpers.decodeReapeaksFile(
+    buildReapeaksBuffer({ sampleRate: 16000, division: 53, peaks: 9057 }),
+  );
+  const rate = helpers.peaksRateOf(waveform);
+  const last = waveform.peak_count - 1;
+  const trueMs = (last * waveform.division / waveform.sample_rate) * 1000;
+  assert.ok(Math.abs(last / rate * 1000 - trueMs) <= 1000 / rate);
+  // 钉住取整的代价：用整数 302 当刻度，30 s 处已经偏 10 ms 以上
+  assert.ok(Math.abs(last / 302 * 1000 - trueMs) > 10);
+});
+
+test('decodePayload scales by the exact-rate pair when one is present', () => {
+  const base = {
+    schema: 'moy.asr.waveform.v1',
+    encoding: 'i8-minmax-base64',
+    peak_count: 1,
+    duration_ms: 10,
+    data: Buffer.from([0xf6, 0x0a]).toString('base64'),
+  };
+  assert.ok(helpers.decodePayload({ ...base, peaks_per_second: 100 }));
+  assert.ok(helpers.decodePayload({ ...base, peaks_per_second: 301.886792, sample_rate: 16000, division: 53 }));
+  // 精确率在场时就是刻度，近似值只是后备
+  assert.ok(helpers.decodePayload({ ...base, peaks_per_second: 0, sample_rate: 16000, division: 53 }));
+  assert.equal(helpers.decodePayload({ ...base, peaks_per_second: 0 }), null);
+  assert.equal(helpers.decodePayload({ ...base, peaks_per_second: 0, sample_rate: 16000 }), null);
+  assert.equal(helpers.decodePayload({ ...base, peaks_per_second: 100, sample_rate: 16000, division: 0 }), null);
+});
+
+test('decodes a stereo .ReaPeaks by merging channels, not by picking one', () => {
+  // 广播/游戏音频里常见的"双单声道"：人声只在右声道。只取某一声道会画出一条直线。
+  const decoded = helpers.decodeReapeaksFile(
+    buildReapeaksBuffer({
+      sampleRate: 48000, division: 160, peaks: 4, channels: 2, channelAmplitudes: [0, 500],
+    }),
+  );
+  assert.ok(decoded, 'stereo .ReaPeaks 应可解析');
+  const peaks = helpers.decodePayload(decoded.waveform);
+  assert.ok(peaks, '合并后的载荷必须能通过校验');
+  // 峰 0：左声道静默、右声道 500 → 合并后仍有能量（取单声道时会是 0）
+  assert.ok(peaks[1] > 0, `右声道内容必须被合并进来，峰 0 max=${peaks[1]}`);
+  // 峰 3（放大 24 倍）应比峰 0 更强
+  assert.ok(peaks[7] > peaks[1]);
+});
+
+test('decodes the real QPK1 self-wave fixtures', () => {
+  for (const name of ['tone_selfwave.wav.quapeaks', 'tone_stereo_selfwave.wav.quapeaks']) {
+    const bytes = fs.readFileSync(new URL(`test_data/${name}`, import.meta.url));
+    const decoded = helpers.decodeReapeaksFile(copyToSandboxArrayBuffer(bytes));
+    assert.ok(decoded?.waveform, `${name} should expose a waveform`);
+    assert.ok(helpers.decodePayload(decoded.waveform), `${name} waveform payload should validate`);
+  }
+});
+
+test('rejects an unknown QPK container version', () => {
+  const bytes = fs.readFileSync(new URL('test_data/tone_selfwave.wav.quapeaks', import.meta.url));
+  const unknown = Buffer.from(bytes);
+  unknown[3] = '2'.charCodeAt(0);
+  assert.equal(helpers.decodeReapeaksFile(copyToSandboxArrayBuffer(unknown)), null);
+});
+
+test('activeWaveShape follows the drawn shape so detection uses the same envelope', () => {
+  const shape = helpers.activeWaveShape;
+  const ownPayload = { peaks_per_second: 100, peak_count: 10, duration_ms: 100 };
+  const rpPayload = { sample_rate: 16000, division: 53, peaks_per_second: 301.886792, peak_count: 9057, duration_ms: 30003 };
+  const ownPeaks = new Int8Array(20);
+  const rpPeaks = new Int8Array(18114);
+  const stub = (over) => ({
+    options: { getWaveShapeSource: () => over.source },
+    payload: over.payload,
+    peaks: over.peaks,
+    reapeaksPayload: over.rpPayload,
+    reapeaksPeaks: over.rpPeaks,
+  });
+  // 默认用 reapeaks 形状：刻度跟着切成 301.8868，检测也读同一份峰
+  const a = shape.call(stub({ source: 'reapeaks', payload: ownPayload, peaks: ownPeaks, rpPayload, rpPeaks }));
+  assert.equal(a.payload, rpPayload);
+  assert.equal(a.peaks, rpPeaks);
+  assert.equal(a.peaksPerSecond, 16000 / 53);
+  assert.equal(a.peakCount, 9057);
+  // 切回自研：10 ms 一格
+  const b = shape.call(stub({ source: 'builtin', payload: ownPayload, peaks: ownPeaks, rpPayload, rpPeaks }));
+  assert.equal(b.payload, ownPayload);
+  assert.equal(b.peaksPerSecond, 100);
+  // 没有 .ReaPeaks 时自动回退，不能返回 null 让面板空掉
+  const c = shape.call(stub({ source: 'reapeaks', payload: ownPayload, peaks: ownPeaks, rpPayload: null, rpPeaks: null }));
+  assert.equal(c.payload, ownPayload);
+  assert.equal(c.peaks, ownPeaks);
+  // 什么都没有 → null（调用方据此跳过绘制/检测）
+  assert.equal(shape.call(stub({ source: 'reapeaks', payload: null, peaks: null })), null);
+});
+
+test('waveformScaleFromLoudness clamps the predicted peak to full scale', () => {
+  const fit = helpers.waveformScaleFromLoudness;
+  const stats = (p95) => ({ schema: helpers.loudnessSchema, p95 });
+  const round2 = (value) => Number(value.toFixed(2));
+  // 0.77 的 RMS 乘上波峰因子 2 会得到 1.54，而峰值不可能超过满量程 1.0。
+  // 不钳住就会把响素材的「预测峰值」算大、振幅画得偏小 —— 这条钳制是本功能
+  // 与直觉相反的地方，钉死它。
+  assert.equal(round2(fit(stats(0.7696), 120)), 1.05);
+  // 中等响度：约 ×1.56，仍远小于历史上预设里写死的 4 / 5.5
+  assert.equal(round2(fit(stats(0.3357), 120)), 1.56);
+  // 安静素材一路放大到振幅上限为止，不无限放大
+  assert.equal(fit(stats(0.02), 120), 6);
+  // 行高不同 → 可用上半高不同，标尺要跟着变（64px 行比 120px 行略小）
+  assert.equal(round2(fit(stats(0.3357), 64)), 1.51);
+  // 全静音与缺数据一律不猜：返回 null 让调用方保持原振幅
+  for (const bad of [0, -1, Number.NaN, undefined, null]) {
+    assert.equal(fit(stats(bad), 120), null, `p95=${bad} 必须返回 null`);
+  }
+  assert.equal(fit(stats(0.3357), 0), null);
+  assert.equal(fit(null, 120), null);
+});
+
+test('loudness auto-fit never overrides an amplitude the user already set', (t) => {
+  const setLoudnessStats = helpers.setLoudnessStats;
+  const fitWaveformScaleToLoudness = helpers.fitWaveformScaleToLoudness;
+  const dispatched = installSandboxEventStub(t);
+  const stats = { schema: helpers.loudnessSchema, p95: 0.3357, max: 0.3357, bin_count: 81 };
+  const make = (auto, scale = 1) => {
+    const self = {
+      loudnessStats: null,
+      settings: { waveformScaleAuto: auto, waveformScale: scale, rowHeight: 120 },
+      labelRenders: 0,
+      redraws: 0,
+      renderWaveformScaleLabel() { self.labelRenders += 1; },
+      redrawWaveformCanvases() { self.redraws += 1; },
+      setStatus() {},
+      // 按钮走的是 this.setLoudnessStats，桩上得有一个真实现
+      setLoudnessStats: (stats) => setLoudnessStats.call(self, stats),
+    };
+    return self;
+  };
+
+  // 未定过振幅 → 自动拟合，且只改视图、不写全局（saveSettings 不在这条路径上）
+  const fresh = make(true);
+  assert.equal(setLoudnessStats.call(fresh, stats), true);
+  assert.equal(Number(fresh.settings.waveformScale.toFixed(2)), 1.56);
+  assert.equal(fresh.redraws, 1);
+
+  // 用户手调过 → 一个字节都不许改
+  const manual = make(false, 4);
+  assert.equal(setLoudnessStats.call(manual, stats), false);
+  assert.equal(manual.settings.waveformScale, 4);
+  assert.equal(manual.redraws, 0);
+  // 但统计量本身要存下来，否则「响度适配」按钮无数据可用
+  assert.ok(manual.loudnessStats, '即使不应用，也要缓存响度统计供按钮使用');
+
+  // schema 不匹配的载荷必须整个拒绝，不能拿半截数据去缩放
+  const wrong = make(true);
+  assert.equal(setLoudnessStats.call(wrong, { schema: 'moy.asr.loudness.v2', p95: 0.5 }), false);
+  assert.equal(wrong.loudnessStats, null);
+
+  // 按钮：把手调状态翻回自动并重新拟合。先走一遍真实的到达顺序 —— 响度数据在
+  // 手调状态下也会先被缓存下来（上面 manual 那条），按钮才有数据可用。
+  const refit = make(false, 4);
+  assert.equal(setLoudnessStats.call(refit, stats), false);
+  assert.equal(fitWaveformScaleToLoudness.call(refit), true);
+  assert.equal(refit.settings.waveformScaleAuto, true);
+  assert.equal(Number(refit.settings.waveformScale.toFixed(2)), 1.56);
+
+  // 没有响度缓存时按钮必须整个失败，并且把标志还原 —— 否则标签会谎称「自动」
+  // 却显示着用户的手调值。
+  const empty = make(false, 4);
+  empty.loudnessStats = null;
+  assert.equal(fitWaveformScaleToLoudness.call(empty), false);
+  assert.equal(empty.settings.waveformScale, 4);
+  assert.equal(empty.settings.waveformScaleAuto, false);
+  // 只有失败那一次该通知编辑器弹提示
+  assert.deepEqual(dispatched, ['asr:waveform-loudness-unavailable']);
+});
+
+test('the amplitude label marks the value as auto-derived', () => {
+  const render = helpers.renderWaveformScaleLabel;
+  const label = (auto, scale) => {
+    const self = { waveformScaleLabel: { textContent: '' }, settings: { waveformScale: scale, waveformScaleAuto: auto } };
+    render.call(self);
+    return self.waveformScaleLabel.textContent;
+  };
+  assert.equal(label(true, 1.5598), '×1.56 自动');
+  assert.equal(label(false, 4), '×4');
+});
+
+test('row height changes refit the active loudness auto-fit', () => {
+  const setRowHeight = helpers.setRowHeight;
+  const setLoudnessStats = helpers.setLoudnessStats;
+  const stats = { schema: helpers.loudnessSchema, p95: 0.3357 };
+  const make = (auto) => {
+    const self = {
+      loudnessStats: null,
+      settings: { rowHeight: 120, waveformScale: 1, waveformScaleAuto: auto },
+      payload: {},
+      multiLayoutCalls: 0,
+      renders: 0,
+      labelRenders: 0,
+      redraws: 0,
+      isMultiMode() { return true; },
+      updateMultiRowLayout() { self.multiLayoutCalls += 1; },
+      render() { self.renders += 1; },
+      renderWaveformScaleLabel() { self.labelRenders += 1; },
+      redrawWaveformCanvases() { self.redraws += 1; },
+      setLoudnessStats: (s, options) => setLoudnessStats.call(self, s, options),
+    };
+    return self;
+  };
+
+  // 自动模式：行高 120 → 64，可用上半高变小，标尺必须按新行高重算（×1.56 → ×1.51）。
+  // render:false 只算标尺，重绘仍走 setRowHeight 自己的布局路径。
+  const auto = make(true);
+  assert.equal(setLoudnessStats.call(auto, stats, { render: false }), true);
+  assert.equal(Number(auto.settings.waveformScale.toFixed(2)), 1.56);
+  assert.equal(setRowHeight.call(auto, 64), true);
+  assert.equal(auto.settings.rowHeight, 64);
+  assert.equal(Number(auto.settings.waveformScale.toFixed(2)), 1.51);
+  assert.equal(auto.multiLayoutCalls, 1, '正常行高布局路径不能被重拟合分支跳过');
+
+  // 手动模式：行高变了也不许动用户调的振幅
+  const manual = make(false);
+  manual.settings.waveformScale = 4;
+  assert.equal(setRowHeight.call(manual, 64), true);
+  assert.equal(manual.settings.waveformScale, 4);
+
+  // 没有响度统计时行高照常工作，谈不上重拟合
+  const noStats = make(true);
+  assert.equal(setRowHeight.call(noStats, 64), true);
+  assert.equal(noStats.settings.waveformScale, 1);
+  assert.equal(noStats.multiLayoutCalls, 1);
 });

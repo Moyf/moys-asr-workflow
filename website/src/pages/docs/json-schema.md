@@ -21,12 +21,35 @@ source: "JSON_SCHEMA.md"
 
 ```json
 {
+  "schema": "moy.asr.project.v1",
   "media": "...",
-  "language": "...",
+  "language": "en",
+  "language_source": "detected",
+  "split_mode": "word",
+  "timestamp_granularity": "word",
   "model": "...",
+  "media_metadata": {
+    "video_fps": 29.97002997002997,
+    "video_fps_ratio": "30000/1001",
+    "selected_audio_track": 0,
+    "audio_tracks": [
+      {
+        "audio_index": 0,
+        "stream_index": 1,
+        "codec": "aac",
+        "channels": 2,
+        "sample_rate": 48000,
+        "language": "zh",
+        "title": "中文",
+        "default": true
+      }
+    ]
+  },
+  "timebase": { "unit": "milliseconds", "fps": 30 },
   "sticker_root": "...",
   "waveform": { ... },
   "gap_remove": { ... },
+  "script_alignment": { ... },
   "workspace": { ... },
   "preview": { ... },
   "segments": [ ... ]
@@ -35,15 +58,28 @@ source: "JSON_SCHEMA.md"
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
+| `schema` | `string` | 否（写出时必填） | 当前值为 `moy.asr.project.v1`。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
 | `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可）。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
-| `language` | `string` | 否 | 语言代码，如 `Chinese`、`English`。仅用于显示 |
+| `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。仅用于显示与选择切句计量方式 |
+| `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知） |
+| `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
+| `timestamp_granularity` | `string` | 否 | 时间码粒度：`char`、`word`、`segment` 或 `unknown`。只有整段 start/end 的模型使用 `segment`；这类工程的字幕段可以没有 `items` |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
+| `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、非负整数 `selected_audio_track` 和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
+| `timebase` | `object` | 否 | 字幕编辑时间基准：`unit` 为 `milliseconds` 或 `frames`，`fps` 范围为 1–240。缺失时按毫秒模式兼容读取 |
 | `sticker_root` | `string` | 否 | 表情包根目录绝对路径。打开工程时会覆盖编辑器内的 `STICKER_ROOT` |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
+| `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
 | `workspace` | `object` | 否 | 编辑器工作区：四个功能区的窗口布局与显示状态；不影响字幕和波形缓存。服务器版也可使用独立的本机命名工作区库跨工程复用 |
-| `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（拓展字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
+| `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（副字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
+
+`media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在全局设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
+
+`media_metadata.audio_tracks` 是从源容器读取的音轨清单。`audio_index` 是音频流内部的从 0 开始顺序，`stream_index` 是源容器中的 FFmpeg stream index；其余字段用于保留编码、声道、采样率、语言、标题和默认标记。`media_metadata.selected_audio_track` 保存本工程转写时实际选择的零基音轨，编辑器重新打开工程时优先恢复该选择；旧工程没有此字段时，从已有波形载荷恢复，仍无记录则使用容器默认轨（没有 default disposition 时为索引 0）。编辑器导出 OTIO 时会为每条清单建立独立的 `Audio` 轨道，在达芬奇使用的 `Resolve_OTIO.Channels` 中写入源音轨/声道映射，并在 `moy` 元数据中保留对应的 stream index。旧工程缺少音轨清单时继续生成一条兼容的音频轨道。
+
+`timebase` 是字幕编辑器的时间基准，不改变媒体本身的时间单位。`unit: "milliseconds"` 保持旧行为；`unit: "frames"` 时，拖动、边界调整、方向键和 A/D 微调使用独立的帧字段，`fps` 决定帧与实际媒体时间的换算。为兼容旧工具，`start` / `end` 及字词时间码仍始终保存为整数毫秒；帧模式额外保存成对的 `start_frame` / `end_frame` 字段。帧时间码显示采用较通行的非丢帧格式 `HH:MM:SS:FF`，其中 `FF` 是当前秒内的帧号。
 
 ### 1.0 工程文件扩展名
 
@@ -55,16 +91,19 @@ source: "JSON_SCHEMA.md"
 
 ### 1.1 waveform 波形缓存
 
-`waveform` 不是工程真源，而是从媒体派生的性能缓存。第三方生成 JSON 时可以完全省略；编辑器加载媒体后会补算。
+`waveform` 不是工程真源，而是从媒体派生的性能缓存。第三方生成 JSON 时可以完全省略；编辑器加载媒体后会补算。**生成器与编辑器保存不再把波形缓存写进工程文件**：旧工程里已有的内联缓存仍被读取，保存后自然消失。
 
 ```json
 {
   "schema": "moy.asr.waveform.v1",
   "encoding": "i8-minmax-base64",
   "peaks_per_second": 100,
+  "sample_rate": 1000,
+  "division": 10,
   "peak_count": 123456,
   "duration_ms": 1234560,
   "data": "base64 编码的 [min,max] int8 峰值对",
+  "audio_track": 0,
   "source": {
     "name": "audio.wav",
     "size": 987654321,
@@ -74,11 +113,14 @@ source: "JSON_SCHEMA.md"
 ```
 
 - `data` 每个峰占 2 字节：有符号 int8 的最小值、最大值，整体再做 base64。
+- **时间刻度**：第 i 个峰覆盖 `[i × division / sample_rate, (i+1) × division / sample_rate)` 秒。做"峰值序号 ↔ 毫秒"换算时必须用 `sample_rate / division`；`peaks_per_second` 只是给人看的近似值。老缓存可以没有这两个字段（此时退化为 `peaks_per_second`），但只要出现一个就必须成对且合法，否则视为无效载荷。
+- `.ReaPeaks` 派生的载荷里 `sample_rate / division` 多数情况下是**分数**（16 kHz 媒体 `division=53` → 301.8868 峰/秒）。把它取整当刻度会按比例缩放整条时间轴，错位随媒体时长线性累积。
 - `source` 用于缓存失效；媒体文件名、字节大小或最后修改时间变化时会重新计算。
+- `audio_track` 可选，表示生成缓存时使用的、从 0 开始的音频流顺序；缺失时按 0 兼容。`waveform`、`spectral` 和 `waveform_reapeaks` 必须使用同一值。容器默认轨使用无音轨后缀的 `<媒体名>.<后缀>`；其他轨（包括默认轨不是 0 时的索引 0）使用 `<媒体名>.track-N.<后缀>`，N 为从 1 开始的显示编号。读取非默认轨时优先使用精确缓存；缓存缺失时先尝试为所选轨重建，只有重建失败才临时显示无后缀的默认轨缓存。
 - 默认密度 100 峰/秒。三小时音频约产生 108 万峰、2.88 MB base64 字符串。
 - 未识别的 `schema` / `encoding` 会被忽略，不阻止工程加载。
-- Qwen/Soniox/必剪/本地命令行生成器默认不内嵌波形；加 `--with-waveform` 时可在转写生成工程文件时把同一 payload 写入顶层 `waveform`，并在媒体旁生成只含 wave 层的 `.ReaPeaks` 缓存。GUI 转写默认开启该模式。
-- 编辑器首次打开缺少有效 `waveform` 的工程时，仍可能在媒体旁写入 `<媒体名>.waveform.json` sidecar；它使用同一 `source` 签名，可被后续工程复用。sidecar 不属于字幕真源，删除后可重新提取。
+- Qwen/Soniox/必剪/本地命令行生成器默认不生成波形缓存；加 `--with-waveform` 时在媒体旁生成包含 wave 层与自研波形层的 `.quapeaks` 缓存。payload 只保留在运行态，**不再写入工程文件**。GUI 转写默认开启该模式。
+- 编辑器首次打开缺少有效 `waveform` 的工程时，读取顺序为：工程内联（旧工程）→ 所选轨有效 `.quapeaks` 自研波形层 → 所选轨有效 `.mopeaks` → FFmpeg 重新提取；所选轨重抽失败后才临时显示默认轨缓存。重抽产物按上述默认轨命名规则写入 `<媒体名>.mopeaks` 或 `<媒体名>.track-N.mopeaks`。落点跟随「将所有输出放入子文件夹」设置：默认在媒体旁，勾选后进入对应 `_maw`；读取端各位置都会找。`.mopeaks` 是 `moy.asr.waveform.v1` 峰数据的二进制容器：全局头与 `.quapeaks` / `.ReaPeaks` 同布局（18 B），层 token 与自研层同值（`div = -(int)'m'`），仅 magic 为 `MPK` + 版本字节。不属于字幕真源，删除后可重新提取。**旧的 `<媒体名>.waveform.json` sidecar 已彻底移除，不再写也不再读。**
 
 ### 1.1a spectral 频谱缓存（可选）
 
@@ -92,6 +134,7 @@ source: "JSON_SCHEMA.md"
   "division": 2400,
   "peak_count": 72000,
   "data": "base64 编码的 [freq,density] uint16 对",
+  "audio_track": 0,
   "source": {
     "name": "audio.wav",
     "size": 987654321,
@@ -102,28 +145,36 @@ source: "JSON_SCHEMA.md"
 
 - `data` 每个频谱采样占 4 字节：主频 uint16（低 15 位有效，0–32767）、密度 uint16（低 14 位有效，0–16383），整体再做 base64。
 - `division` 是时间对齐用的每采样样本数：`sample_rate / division` 即每秒频谱采样数。`sample_rate`、`source` 与主波形一致。
-- **生成时机**：转写生成工程时，`--with-waveform` 在媒体旁自动生成 `<媒体名>.ReaPeaks` 的 wave 层（GUI 默认开启）；只有同时勾选 Launcher 的“生成 ReaPeaks 频谱数据”或传入 `--with-spectral`，才额外执行频谱 FFT 并写入 spectral 层。`--with-spectral` 必须与 `--with-waveform` 一起使用。服务器只读取已有的 `.ReaPeaks`，不负责生成。生成由 Rust 内核（`reapeaks`）承担，经 ffmpeg 解码媒体；缺少 ffmpeg 或解码失败时打日志跳过。numpy 不参与 `.ReaPeaks` 生成（仅 OCR 后处理路径 lazy import）。
+- **生成时机**：转写生成工程时，`--with-waveform` 在媒体旁自动生成 `<媒体名>.ReaPeaks` 的 wave 层（GUI 默认开启）；只有同时勾选 Launcher 的“生成 reapeaks 频谱数据”或传入 `--with-spectral`，才额外执行频谱 FFT 并写入 spectral 层。`--with-spectral` 必须与 `--with-waveform` 一起使用。服务器只读取已有的 peaks 容器（`.quapeaks` 优先，REAPER 原生 `.ReaPeaks` 照读），不负责生成。生成由 Rust 内核（`quapeaks`，改名自 `reapeaks`）承担，经 ffmpeg 解码媒体；缺少 ffmpeg 或解码失败时打日志跳过。numpy 不参与 `.ReaPeaks` 生成（仅 OCR 后处理路径 lazy import）。
 - 解析器读取 REAPER 的 `RPKN`/`RPKL` 文件，取匹配 `peaks_per_second` 分辨率的 spectral 层（`-(int)'s'` 标记）；无 spectral 层、文件缺失或损坏时静默降级，不影响编辑器。
 - 未识别的 `schema` / `encoding` 会被忽略。浏览器端在 `decodeSpectralPayload` 校验这两字段与 `data` 长度（`peak_count * 4`）。
+- **与主波形层的对齐关系**：第 i 个频谱采样与第 i 个峰是同一时刻，两者共用 `division`，**不需要任何索引偏移**。频谱层的 `peak_count` 通常比配对的 wave 层少若干（44.1 kHz 真机文件少 7、16 kHz 少 25），因为末尾的 FFT 窗口填不满——缺口在尾部而非头部（用已知时刻的窄带脉冲实测：48 kHz 下频谱响应中心 bin 4207.5，wave 层最强 bin 4207）。因此这段尾部只是不上色，编辑器按索引越界处理，不得据此平移染色层。
+- 多声道媒体取声道 0 的主频/密度，服务端与浏览器端一致。
 
 ### 1.1b waveform_reapeaks 波形层（可选）
 
-`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它是**默认的波形形状来源**：编辑器默认使用本字段绘制包络，没有可用 `.ReaPeaks` 时自动回退自研 `waveform`（1000 Hz 重采样）；用户可在波形设置中手动切换两种来源。
+`waveform_reapeaks` 是 `.ReaPeaks` 最细 wave 层转成的 `moy.asr.waveform.v1` payload（字段与 §1.1 完全一致）。它是**默认的波形形状来源**：编辑器默认使用本字段绘制包络，没有可用 `.ReaPeaks` 时自动回退原生 `waveform`（1000 Hz 重采样）；用户可在波形设置中手动切换两种来源。
 
 ```json
 {
   "schema": "moy.asr.waveform.v1",
   "encoding": "i8-minmax-base64",
-  "peaks_per_second": 300,
-  "peak_count": 1500,
-  "duration_ms": 5000,
+  "peaks_per_second": 301.886792,
+  "sample_rate": 16000,
+  "division": 53,
+  "peak_count": 1510,
+  "duration_ms": 5006,
   "data": "base64 的 [min,max] int8 对",
+  "audio_track": 0,
   "source": { "name": "audio.wav", "size": 441044, "modified_ms": 1786328355571 }
 }
 ```
 
-- 由服务器加载媒体时从 `find_reapeaks` 找到的 `.ReaPeaks` 解析最细 wave 层得到；`peaks_per_second = sample_rate / division`（约 300 峰/秒）。
-- 缺失 `.ReaPeaks` 或没有 wave 层时该字段不出现，编辑器回退自研波形。
+- 由服务器加载媒体时从 `find_reapeaks` 找到的 `.ReaPeaks` 解析最细 wave 层得到；刻度是 `sample_rate / division`（约 300 峰/秒），整除时 `peaks_per_second` 写成整数，否则写成精确比率（保留 6 位小数），**绝不取整**——取整会把整条时间轴按比例缩放，错位随媒体时长线性累积。
+- `.ReaPeaks` 永远描述"被解码的那份文件"。因此缓存生成一律优先解码工程记录的源媒体本身，不使用本地 ASR 的 16 kHz 单声道提取音频或 `--length-limit` 截断片段；头部 provenance 是源媒体的 `(mtime, size)` 双因子，任一不符即视为过期并重建。
+- **多声道合并**：本载荷把 `.ReaPeaks` 各声道合并成一条包络（min 取各声道最小、max 取各声道最大），与浏览器端 `decodeReapeaksFile` 完全一致。只取单一声道会让"双单声道"素材（人声只在右声道）画成直线。
+- 当前形状来源被切换时，波形绘制与「按音量移除空隙」的检测共用同一份包络，不会出现"看到的是一条曲线、按另一条曲线判断"。
+- 缺失 `.ReaPeaks` 或没有 wave 层时该字段不出现，编辑器回退原生波形。
 - 与 `spectral` 同源，均为 `.ReaPeaks` 派生的可丢弃缓存，非真源。
 - 没有 `spectral` 数据时，编辑器会自动取消并禁用“频谱颜色”开关；后台读到合法频谱后重新启用该开关。
 
@@ -191,10 +242,10 @@ source: "JSON_SCHEMA.md"
 {
   "schema": "moy.asr.gap_remove.v1",
   "detector": "audio_gate",
-  "minimum_ms": 400,
-  "threshold_db": -28,
+  "minimum_ms": 500,
+  "threshold_db": -24,
   "hysteresis_db": 2,
-  "lead_in_ms": 120,
+  "lead_in_ms": 40,
   "lead_out_ms": 80,
   "skip_playback": true,
   "manual_corrections": false,
@@ -202,23 +253,111 @@ source: "JSON_SCHEMA.md"
   "disable_coverage_percent": 80,
   "disable_remaining_ms": 300,
   "gaps": [
-    { "start": 1280, "end": 2440, "removed": true },
-    { "start": 6120, "end": 7050, "removed": false }
-  ]
+    {
+      "start": 1280,
+      "end": 2440,
+      "removed": true,
+      "source": "audio_gate",
+      "origins": ["audio_gate"]
+    },
+    {
+      "start": 6120,
+      "end": 7050,
+      "removed": false,
+      "source": "audio_gate",
+      "origins": ["audio_gate", "manual"]
+    }
+  ],
+  "provenance": {
+    "schema": "moy.asr.gap_provenance.v1",
+    "sources": {
+      "script_alignment": [],
+      "audio_gate": [
+        { "id": "silence-001", "start": 1280, "end": 2440 }
+      ]
+    },
+    "manual_overrides": [
+      { "id": "manual-001", "start": 6120, "end": 7050, "removed": false }
+    ],
+    "legacy": []
+  }
 }
 ```
 
 - `detector` 固定为 `audio_gate`：扫描波形峰值包络，声音高于 `threshold_db` 时打开 gate，低于 `threshold_db - hysteresis_db` 后才关闭；不会用字幕之间的时间差推断空隙。
-- `minimum_ms` 的允许范围是 100–60000，单位为毫秒；默认 400。判定基于应用前/后端预留后的最终移除区间，预留吃完整段时不纳入移除。
-- `threshold_db` 的范围是 -96–0，默认 -28；`hysteresis_db` 的范围是 0–30，默认 2。比如阈值 -28、滞回 2 时，声音达到 -28 才算有声，低于 -30 才重新算静音。建议使用 1–3dB；过高会延迟回到静音。滞回位于「空隙检测与调整」折叠区内。
-- `lead_in_ms` / `lead_out_ms` 是每段空隙两侧保留的静音毫秒数，范围 0–2000，默认前端 120、后端 80。扫描得到的原始静音区间会在起点加 `lead_in_ms`、终点减 `lead_out_ms` 后再写入 `gaps`，避免剪掉空隙后两句贴得太急；预留后的区间短于 `minimum_ms` 时整段保留。这两个值在扫描生成空隙时继续生效；对已有结果点击「进一步收缩空隙」时，会再次按当前值向内调整现有区间，是额外的可撤销微调。
-- `manual_corrections` 表示当前结果是否包含人工修正。Alt+左键切换整段、边界拖动、Alt+整体拖动、Ctrl/Cmd+复制拖动、中键范围操作和“全部恢复”都会设为 `true`；重新扫描前会要求确认，扫描成功后重置为 `false`。
-- `operation_mode` 控制人工修正交互：`none` 仅保留 Alt+点击整段切换，`boundary_drag` 在 hover 空隙时显示左右边界手柄，`middle_drag` 默认用中键增加静音、按住 Alt 才恢复声音，`boundary_and_middle`（界面显示「边界与中键」）同时启用边界手柄和中键范围操作；当前界面默认 `boundary_drag`。边界拖入另一段空隙时会直接合并两段。
+- `gaps[*].source` 和 `gaps[*].origins` 是根据 `provenance` 派生的可读字段：`source` 表示唯一的初始自动来源；`origins` 列出当前区间的全部贡献来源。多个自动来源重叠时 `source` 为 `null`；只有人工覆盖时才为 `manual`。它们不是来源真源，旧客户端可以忽略。
+- `provenance` 是可选的来源真源，当前来源层为 `script_alignment`、`audio_gate` 与 `manual_overrides`；`legacy` 是兼容读取字段，启用的旧范围会迁入 `audio_gate`，旧的 `removed: false` 范围会迁入 `manual_overrides`，规范化输出中的 `legacy` 为空数组。支持它的新客户端据此分层重扫和重建最终 `gaps`。
+- `minimum_ms` 的允许范围是 100–60000，单位为毫秒；默认 500。判定基于应用前/后端预留后的最终移除区间，预留吃完整段时不纳入移除。
+- `threshold_db` 的范围是 -96–0，默认 -24；`hysteresis_db` 的范围是 0–30，默认 2。比如阈值 -24、滞回 2 时，声音达到 -24 才算有声，低于 -26 才重新算静音。建议使用 1–3dB；过高会延迟回到静音。滞回位于「空隙检测与调整」折叠区内。
+- `lead_in_ms` / `lead_out_ms` 是每段空隙两侧保留的静音毫秒数，范围 0–2000，默认前端 40、后端 80。扫描得到的原始静音区间会在起点加 `lead_in_ms`、终点减 `lead_out_ms` 后再写入 `gaps`，避免剪掉空隙后两句贴得太急；预留后的区间短于 `minimum_ms` 时整段保留。这两个值在扫描生成空隙时继续生效；对已有结果点击「收缩空隙」时，会再次按当前值向内调整现有区间，是额外的可撤销微调。
+- `manual_corrections` 表示当前结果是否包含人工修正。新客户端根据 `provenance.manual_overrides` 是否为空维护它；旧客户端仍可把它当作全局摘要。Alt+左键切换整段、Ctrl/Cmd+复制拖动、中键范围操作和“全部恢复”都会留下普通人工覆盖；整体拖动会留下 `operation: "move"` 的内部记录，保存 `base_start`/`base_end` 和 `target_start`/`target_end`，重复拖动时更新原记录；旧移动目标被后续操作从中间覆盖时，记录可使用 `target_ranges` 保存剩余目标片段。边界拖动会留下 `operation: "boundary_resize"` 的内部记录，保存 `edge`、`base`、`boundary` 与可选 `cleared_ranges`。两类记录都直接调整同一条 Gap 的范围，不会在原位置追加 `removed: false` 恢复块；重新扫描不会删除这些人工调整。
+- `operation: "move"` 移动的是用户看到的整条 Gap：先清除原可见范围，再把相同状态放到固定长度的目标范围。通常使用 `target_start`/`target_end`；旧移动目标被后续操作从中间覆盖时，使用可选 `target_ranges` 保存剩余片段（可以为空以继续清除 base）。同状态的被覆盖 Gap 会被吸收，`removed` 状态不同的 Gap 只缩小其重叠部分，因此相邻的 active/inactive Gap 仍是独立对象。普通 `removed: false` 仍然表示用户明确保留、但不参与跳过的恢复区。
+- `removed: false` 的恢复区段仍保留在时间轴上，但不参与播放跳过、去空隙导出或“禁用空隙内字幕”；“清理区段”则从来源层删除选中范围内的记录，不留下恢复覆盖，因此之后重新扫描可能再次生成同一段静音 Gap。
+- `operation_mode` 控制人工修正交互：`none` 仅保留 Alt+点击整段切换，`boundary_drag` 在 hover 空隙时显示左右边界手柄，`middle_drag` 默认用中键增加静音、按住 Alt 才恢复声音，`boundary_and_middle`（界面显示「边界与中键」）同时启用边界手柄和中键范围操作；当前界面默认 `boundary_drag`。边界只移动被点中的 Gap，不会联动相邻 Gap；向内缩小启用或未激活 Gap 时，被让出的边缘会从最终投影清除，未激活 Gap 不会凭此产生启用 Gap。向外覆盖另一段时，完整覆盖会清理整段，部分覆盖只裁掉相交范围，并在 `cleared_ranges` 中保留已覆盖范围以防回拖时旧 Gap 复活。重复拖动同一边界会更新已有的 `boundary_resize` 记录。
 - `disable_coverage_percent` 与 `disable_remaining_ms` 是“禁用空隙内字幕”设置，均为可选字段，缺失时默认分别为 80% 和 300ms。执行“禁用字幕”时，编辑器先把所有 `removed: true` 空隙合并，再筛选空隙覆盖字幕时长达到该比例、且未被覆盖的剩余字幕时长不超过该阈值的主字幕；完全落在空隙内的字幕会命中。该操作只设置字幕的 `disabled` 标记，不改写起止时间，并可通过撤销恢复。
-- 「空隙检测与调整」中的「进一步收缩空隙」是对现有 `audio_gate` 空隙的额外处理：每段起点增加当前 `lead_in_ms`，终点减少当前 `lead_out_ms`；被预留量完全吃掉的区间会丢弃，其他区间保留原有 `removed` 状态。它只修改 `gaps`、标记 `manual_corrections`，不改写字幕起止时间；重复点击会继续收缩，且每次都可撤销。
+- 「空隙检测与调整」中的「收缩空隙」是对现有 `audio_gate` 空隙的额外处理：每段起点增加当前 `lead_in_ms`，终点减少当前 `lead_out_ms`；被预留量完全吃掉的区间会丢弃，其他区间保留原有 `removed` 状态。它直接重写 `provenance.sources.audio_gate` 的区间并据此重建 `gaps`，不新增 `manual_overrides`，也不因此标记 `manual_corrections`；已有人工覆盖仍然保留。不改写字幕起止时间；重复点击会继续收缩，且每次都可撤销。
 - 扫描不会移除开头或结尾的素材。
-- 波形将 `removed: true` 画为橙色斜纹、`removed: false` 画为灰蓝斜纹；左键仅跳转播放头，Alt+左键才在两种状态间切换。
-- 旧版按字幕间隔扫描的结果会保留在工程中，但为避免误删已停用；重新扫描后会写入 `detector: "audio_gate"`。
+- 波形将 `removed: true` 画为橙色斜纹、`removed: false` 画为灰蓝斜纹；边界把手和整体/边界拖动预览使用蓝色表示正在进行人工修改；左键仅跳转播放头，Alt+左键才在两种状态间切换。
+- 旧工程没有 provenance、或使用 `legacy_subtitle_gap` detector 时，现有 `removed: true` 范围会按 `audio_gate` 迁入并继续启用，`removed: false` 范围迁为人工恢复；重新扫描和「收缩空隙」都会处理迁入的自动静音范围。
+
+### 1.3a script_alignment 录制对齐记录
+
+`script_alignment` 是录制对齐 Server 写入的可选诊断与选择记录，不替代 `segments` 或 `gap_remove`。候选、选择和 Extra 范围可以包含 `sourceSlices`，用于记录一个源字幕段内的 item 子范围：
+
+```json
+{
+  "sourceCueIndex": 19,
+  "sourceCueId": "main-020",
+  "start": 46390,
+  "end": 48230,
+  "itemStart": 0,
+  "itemEnd": 12,
+  "sourceText": "目前支持画面上的这些模型"
+}
+```
+
+选中的 `incomplete` 候选默认不会进入保留区间；用户明确手动启用后，选择记录会保留原始 `incomplete` 分类。完整的 `match` 候选默认进入保留区间；用户也可以手动禁用当前已采用的候选，让它从保留区间中移除。两类覆盖都会保留在选择记录中：
+
+```json
+{
+  "candidateActions": {
+    "candidate-001-01": "keep",
+    "candidate-002-01": "discard"
+  },
+  "manuallyEnabledCandidateIds": ["candidate-001-01"],
+  "manuallyEnabledLineIds": ["line-001"],
+  "manuallyDisabledCandidateIds": ["candidate-002-01"],
+  "manuallyDisabledLineIds": ["line-002"],
+  "blockedIncompleteLineIds": []
+}
+```
+
+`candidateActions` 只记录用户对已选候选的显式覆盖：`incomplete` 使用 `keep` 手动启用，完整 `match` 使用 `discard` 手动禁用；`manuallyEnabledCandidateIds` 表示实际解除自动禁用的候选，`manuallyDisabledCandidateIds` 表示从默认保留中排除的完整候选，`blockedIncompleteLineIds` 表示仍会被禁用的不完整文稿行。这样可以区分识别结果、自动建议和用户确认。
+
+当源段只有部分 item 被采用时，导出的工程会在相应 item 边界拆分字幕段；未采用部分设置 `disabled: true`，其间的时间同时写入 `gap_remove.gaps`。没有有效 `items` 时，录制对齐工具退回到源字幕段边界。
+
+候选和已选记录还可以包含 `internalSkips`，表示一个 take 内部自动识别出的重复源段：
+
+```json
+{
+  "kind": "skip-source",
+  "reasonCode": "repetition",
+  "sourceText": "双语字幕",
+  "sourceSlices": [{
+    "sourceCueIndex": 5,
+    "sourceCueId": "main-006",
+    "start": 16309,
+    "end": 17030,
+    "itemStart": 0,
+    "itemEnd": 4,
+    "sourceText": "双语字幕"
+  }]
+}
+```
+
+当前 MVP 只在相邻的完整源字幕段之间启用这一规则：文本归一化后完全相同，或具有足够长的共同开头并且后一个片段前有明显停顿。规则既适用于候选内部，也适用于候选外的连续未认领片段；默认舍弃前一个、保留后一个，因此不会把近似改口错误地列为新的 Alternative。导出时会从候选的保留范围扣除 `internalSkips`，相应字幕段设为 `disabled: true`，时间写入 `gap_remove.gaps`。
+
+候选的 `alternativeGroupId` 表示同一文稿行的局部录制组；相邻候选之间默认最多相隔 `10000ms`，且最多跨过 `8` 个源字幕段，限制值记录在对齐结果的 `settings.alternativeMaxGapMs` 与 `settings.alternativeMaxCues` 中。不同组的完整命中不会自动作为 `Alternative` 禁用，而会以 `kind: "extra"`、`reasonCode: "distant-match"` 进入可确认范围，默认保留。
 
 ### 1.4 preview 预览呈现
 
@@ -226,7 +365,10 @@ source: "JSON_SCHEMA.md"
 
 ```json
 {
-  "subtitle": { "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei", "color": "#ffffff" },
+  "subtitle": {
+    "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei", "color": "#ffffff",
+    "speaker_labels": { "enabled": true, "names": { "yellow": "SP1", "green": "SP2", "red": "SP3", "purple": "SP4", "blue": "SP5" } }
+  },
   "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#ffd34d" },
   "sticker": { "x": 0.73, "y": 0.04, "width": 0.24, "height": 0.3 }
 }
@@ -242,16 +384,19 @@ source: "JSON_SCHEMA.md"
 | `font_family` | `string` | 否 | 字幕预览字体族：内置键 `default`、`yahei`、`hei`、`song`、`sans`，或本机字体族名称（最长 128 个字符） |
 | `background_color` | `string` | 否 | 字幕预览背景色，6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `background_alpha` | `number` | 否 | 字幕预览背景不透明度，范围 `[0, 1]`；缺失时使用 `0.65`，设为 `0` 时隐藏背景 |
-| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，拓展字幕默认黄色 `#ffd34d` |
-| `color_underline` | `boolean` | 否 | 播放预览按字幕颜色快照给文字加下划线以区分不同颜色的字幕；缺失时视为 `true`（默认开启），设为 `false` 时关闭下划线。编辑器仅在关闭时写入该字段 |
-| `preview.extension_subtitle` | `object` | 否 | 拓展字幕样式；同样支持 `font_size`、`font_family`、`color`，没有字号时默认比主字幕小 2px |
+| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#ffd34d` |
+| `color_underline` | `boolean` | 否 | 播放预览是否按字幕颜色快照应用颜色样式；缺失时视为 `true`（默认开启），设为 `false` 时关闭颜色预览。保留该字段以兼容旧工程 |
+| `color_style` | `string` | 否 | 颜色预览样式：`underline`（下划线，默认）、`text`（文字颜色）、`shadow`（阴影）或 `stroke`（描边） |
+| `speaker_labels` | `object` | 否 | 说话人标签预览设置；颜色默认对应 `SP1`～`SP5`，只显示在预览中，不修改 `segments[*].text` |
+| `preview.extension_subtitle` | `object` | 否 | 副字幕样式；同样支持 `font_size`、`font_family`、`color`，没有字号时默认比主字幕小 2px |
 
 ### 约束
 
 - `x`、`y`、`width`、`height` 四个字段都必须是数字（不接受字符串、布尔），且落在 `[0, 1]`。
 - 若存在 `font_size`，必须是 `[12, 96]` 内的数字；若存在 `font_family`，必须是内置字体键或非空本机字体族名称，最长 128 个字符，不能包含控制字符；若存在 `background_color`，必须是 `#RRGGBB` 格式；若存在 `background_alpha`，必须是 `[0, 1]` 内的数字。
-- 若存在 `color`，必须是 `#RRGGBB` 六位十六进制颜色；拓展字幕样式不包含独立几何，沿用 `preview.subtitle` 的预览框。
-- 若存在 `color_underline`，必须是布尔值；其他取值视为缺失并按默认 `true` 处理。
+- 若存在 `color`，必须是 `#RRGGBB` 六位十六进制颜色；副字幕样式不包含独立几何，沿用 `preview.subtitle` 的预览框。
+- 若存在 `color_underline`，必须是布尔值；其他取值视为缺失并按默认 `true` 处理；若存在 `color_style`，必须是 `underline`、`text`、`shadow` 或 `stroke`，其他取值视为缺失并按默认 `underline` 处理。
+- 若存在 `speaker_labels`，必须是对象；其中 `enabled`（如存在）必须是布尔值，`names`（如存在）必须是对象，五种颜色的名称必须是长度不超过 64 且不含控制字符的字符串；名称允许为空以隐藏该颜色的标签。编辑器的“导出时附加说话人名称”选项开启时，SRT 会在字幕前附加对应名称。
 - 盒子必须留在播放器内：`x + width <= 1` 且 `y + height <= 1`。
 - 编辑器额外强制最小可读尺寸 `width >= 0.20`、`height >= 0.08`（这是编辑器 UX 钳制，非数据契约的硬校验；导入时会被编辑器再钳制）。
 - `preview` 缺失或 `preview.subtitle` 缺失时按**旧工程**处理，编辑器使用默认几何 `{ x: 0.1, y: 0.76, width: 0.8, height: 0.16 }`——字幕带占 76%→92%（底部留 8%），宽度 80% 居中。
@@ -260,7 +405,7 @@ source: "JSON_SCHEMA.md"
 
 ### 1.5 multi_subtitle 多重字幕
 
-`multi_subtitle` 是可选的双语字幕扩展结构。旧工程缺失该字段时，编辑器按关闭状态加载；保存时会补写关闭的空结构。顶层 `segments` 始终是主轨真源，扩展字幕只放在 `tracks[*].segments` 中。
+`multi_subtitle` 是可选的双语字幕结构。旧工程缺失该字段时，编辑器按关闭状态加载；保存时会补写关闭的空结构。顶层 `segments` 始终是主轨真源，副字幕只放在 `tracks[*].segments` 中。
 
 ```json
 {
@@ -309,12 +454,14 @@ source: "JSON_SCHEMA.md"
 | `tracks[i].language` | string | 否 | 语言或语言代码 |
 | `tracks[i].split_mode` | string | 否 | 副字幕语言类型：`continuous`（字符型）或 `word`（单词型）；用于近似拆分和字数统计 |
 | `tracks[i].source_name` | string | 否 | 来源文件名，不保存绝对路径 |
-| `tracks[i].segments` | array | 是 | 扩展字幕段；每段至少有段级时间码和文本，`items` 可选 |
-| `tracks[i].segments[j].id` | string | 是 | 扩展字幕稳定 ID |
+| `tracks[i].segments` | array | 是 | 副字幕段；每段至少有段级时间码和文本，`items` 可选 |
+| `tracks[i].segments[j].id` | string | 是 | 副字幕稳定 ID |
 | `tracks[i].segments[j].start/end` | int | 是 | 非负整数毫秒，`start < end` |
-| `tracks[i].segments[j].text` | string | 是 | 扩展字幕文本 |
+| `tracks[i].segments[j].text` | string | 是 | 副字幕文本 |
 | `tracks[i].segments[j].items` | array | 否 | 可选字词时间码；结构和主轨 `segments[i].items` 相同 |
-| `tracks[i].segments[j].disabled` | bool | 否 | 禁用该扩展字幕；预览、隐藏禁用项和扩展 SRT 导出会跳过它 |
+| `tracks[i].segments[j].disabled` | bool | 否 | 禁用该副字幕；预览、隐藏禁用项和副字幕 SRT 导出会跳过它 |
+| `tracks[i].segments[j].color` | object\|null | 否 | 副字幕颜色标记 head；结构和主轨 `segments[i].color` 相同 |
+| `tracks[i].segments[j].color_ref` | object\|null | 否 | 副字幕后续段引用的颜色；`headIdx` 指向同一 `tracks[i].segments` 数组中的 head |
 | `bindings` | array | 否 | 主轨与扩展轨的绑定关系 |
 | `bindings[i].track_id` | string | 是 | 指向扩展轨 ID |
 | `bindings[i].main_segment_ids` | array | 是 | MVP 必须恰好一个主轨 ID |
@@ -327,6 +474,7 @@ source: "JSON_SCHEMA.md"
 - 主轨和扩展轨段均使用不重复的稳定字符串 ID；当前规范化会为缺失 ID 的输入补齐，并在导出/保存时写入。主轨按 `main-001`、扩展轨按 `<track-id>-segment-001` 的顺序生成；如果生成值与后续显式 ID 冲突，会使用确定性的 `-generated` 后缀。浏览器与 Python 服务端使用同一规则。
 - 当前 MVP 强制每个绑定一对一；数组形式保留给未来一对多关系，但当前校验要求数组长度均为 1，且一个端点不能重复绑定。
 - 自动导入按段级时间码匹配：时间区间有交集，且开始/结束时间差均不超过 `300ms`；冲突选择总差值最小的候选。未匹配段保留，可手动绑定。
+- 副字幕段也可以保存 `color` / `color_ref`；其中 `color_ref.headIdx` 是当前副字幕数组中的 0-based 整数下标，并且必须指向更早的颜色 head。交换主副字幕时，编辑器按绑定关系将主轨颜色映射到新的主轨，同时保留移到副轨的原主轨颜色信息。
 - SRT 导入没有字词时间码，因此扩展段通常不带 `items`；mosp/json 导入和主副交换可以带上可选 `items`，保存、加载和再次交换时保留它们。
 - `continuous`（字符型）允许字符边界，`word`（单词型）只允许空格或安全标点附近的边界，禁止拆碎单词。切分时会清理断点两侧相邻的中英文逗号、句号及空白；两种模式也分别决定字数统计规则。
 - `enabled: false` 时工程仍保留轨道、绑定、语言类型和 ID；主轨 SRT 导出语义不变，扩展轨使用独立 SRT 导出。
@@ -342,6 +490,8 @@ source: "JSON_SCHEMA.md"
   "id": "main-001",
   "start": 1234,
   "end": 5678,
+  "start_frame": 37,
+  "end_frame": 170,
   "text": "字幕文本",
   "items": [ ... ],
   "speaker": "1",
@@ -358,6 +508,8 @@ source: "JSON_SCHEMA.md"
 | `id` | `string` | **必填** | 主字幕稳定 ID；输入缺失时规范化为 `main-001`、`main-002` 等确定性 ID |
 | `start` | `int` | **必填** | 段起始时间，**单位毫秒** |
 | `end` | `int` | **必填** | 段结束时间，**单位毫秒**，要求 `end > start` |
+| `start_frame` | `int` | 否 | 与 `end_frame` 成对出现的帧起始编号；`timebase.unit` 为 `frames` 时由编辑器使用 |
+| `end_frame` | `int` | 否 | 与 `start_frame` 成对出现的帧结束编号，要求 `end_frame > start_frame` |
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
 | `disabled` | `bool` | 否 | 禁用该字幕；预览、隐藏禁用项和默认导出会跳过它 |
@@ -370,7 +522,9 @@ source: "JSON_SCHEMA.md"
 
 ### 关键约束
 
-- `start` / `end` / `items[*].start` / `items[*].end` 全部是**整数毫秒**（不是秒、不是字符串、不是浮点）
+- `start` / `end` / `items[*].start` / `items[*].end` 全部是**整数毫秒**（不是秒、不是字符串、不是浮点）；它们是兼容时间字段
+- `start_frame` / `end_frame` 与 `items[*].start_frame` / `items[*].end_frame` 是可选的独立帧字段，必须成对出现并为非负整数，结束帧大于起始帧
+- 进入帧模式后，编辑器以帧字段为操作真源，同时更新毫秒投影；切换 FPS 会保留实际媒体时间并重新计算帧编号
 - `segments` 建议按时间升序排列，且 `segments[i].end <= segments[i+1].start`
 - 代码不强校验时间重叠，但重叠会导致播放器跳转/高亮行为异常
 - `items` 首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`
@@ -387,6 +541,8 @@ source: "JSON_SCHEMA.md"
   "text": "字",
   "start": 1234,
   "end": 1300,
+  "start_frame": 37,
+  "end_frame": 39,
   "speaker": "1"
 }
 ```
@@ -396,6 +552,8 @@ source: "JSON_SCHEMA.md"
 | `text` | `string` | 是 | 单字或单词。**所有 item 的 `text` 拼接后应等于所属 segment 的 `text`**（标点也应包含在内，编辑器拆分时会按需剥掉） |
 | `start` | `int` | 是 | 该字/词起始时间（毫秒） |
 | `end` | `int` | 是 | 该字/词结束时间（毫秒） |
+| `start_frame` | `int` | 否 | 独立帧起始编号，与 `end_frame` 成对出现 |
+| `end_frame` | `int` | 否 | 独立帧结束编号，与 `start_frame` 成对出现 |
 | `speaker` | `string` | 否 | 该字/词的说话人标签（非空字符串），保存供应商返回的 opaque ID |
 
 ### 生成建议
@@ -444,7 +602,7 @@ source: "JSON_SCHEMA.md"
 }
 ```
 
-`headIdx` 是 `segments` 数组里的整数下标（0-based），指向同属一个表情包的 head 段。拆分/合并/删除时编辑器会自动维护这个索引。
+`headIdx` 是当前字幕数组里的整数下标（0-based），指向同属一个表情包的 head 段：主轨使用顶层 `segments`，副字幕使用对应的 `tracks[i].segments`。拆分/合并/删除时编辑器会自动维护这个索引。
 
 ### 4.3 color head
 
@@ -467,6 +625,8 @@ source: "JSON_SCHEMA.md"
 ```json
 { "name": "red", "headIdx": 5 }
 ```
+
+`headIdx` 使用当前字幕数组的 0-based 下标；主轨颜色引用查找顶层 `segments`，副字幕颜色引用查找所属的 `tracks[i].segments`。交换主副字幕时，编辑器会按绑定关系重建新主轨的颜色组索引，并保留移到副字幕的原主轨颜色字段。
 
 ---
 
@@ -539,7 +699,7 @@ source: "JSON_SCHEMA.md"
 
 1. 输出必须是合法 UTF-8 JSON，顶层为 object，含 segments 数组（必需）
 2. 每个 segment 必须有 start、end、text 三个字段
-3. 时间单位统一为毫秒整数（不是秒、不是字符串、不是浮点）
+3. `start` / `end` 及 items 时间字段统一为毫秒整数（不是秒、不是字符串、不是浮点）；如使用帧模式，再提供成对的帧字段和 `timebase`
 4. start < end，且 segments 按时间升序排列
 5. items 数组每项 {text, start, end}；所有 item 的 text 拼接后应等于 segment.text
 6. items 首项 start = segment.start，末项 end = segment.end
@@ -593,12 +753,17 @@ uv run python edit.py your_generated.mosp
 | `segments` | array | ✅ | 字幕段数组 |
 | `segments[i].start` | int | ✅ | 毫秒 |
 | `segments[i].end` | int | ✅ | 毫秒 |
+| `timebase` | object | ❌ | `{unit: milliseconds\|frames, fps: 1–240}` |
+| `segments[i].start_frame` | int | ❌ | 帧编号，与 `end_frame` 成对 |
+| `segments[i].end_frame` | int | ❌ | 帧编号，与 `start_frame` 成对 |
 | `segments[i].text` | string | ✅ | 显示文本 |
 | `segments[i].items` | array | 推荐 | 字级时间戳，可 `[]` |
 | `segments[i].disabled` | bool | ❌ | 禁用该字幕 |
 | `segments[i].items[k].text` | string | ✅ | 单字/词 |
 | `segments[i].items[k].start` | int | ✅ | 毫秒 |
 | `segments[i].items[k].end` | int | ✅ | 毫秒 |
+| `segments[i].items[k].start_frame` | int | ❌ | 帧编号，与 `end_frame` 成对 |
+| `segments[i].items[k].end_frame` | int | ❌ | 帧编号，与 `start_frame` 成对 |
 | `segments[i].items[k].speaker` | string | ❌ | 说话人 opaque ID |
 | `segments[i].speaker` | string | ❌ | 段内统一说话人才写入 |
 | `segments[i].sticker` | object\|null | ❌ | 表情包 head |
@@ -623,7 +788,10 @@ uv run python edit.py your_generated.mosp
 | `preview.subtitle.background_color` | string | ❌ | 6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `preview.subtitle.background_alpha` | number | ❌ | 不透明度 `[0,1]`；缺失时使用 `0.65`，设为 `0` 时隐藏字幕背景 |
 | `preview.subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#ffffff` |
-| `preview.extension_subtitle` | object | ❌ | 拓展字幕样式；沿用主字幕预览框 |
+| `preview.subtitle.speaker_labels` | object | ❌ | 说话人标签预览设置；默认关闭，名称默认为黄/绿/红/紫/蓝对应 `SP1`～`SP5` |
+| `preview.subtitle.speaker_labels.enabled` | boolean | ❌ | 开启后在播放器预览字幕前显示对应颜色的说话人名称；不修改字幕文本 |
+| `preview.subtitle.speaker_labels.names.<color>` | string | ❌ | 颜色对应名称，最长 64 个字符；允许为空；`<color>` 为 `yellow` / `green` / `red` / `purple` / `blue` |
+| `preview.extension_subtitle` | object | ❌ | 副字幕样式；沿用主字幕预览框 |
 | `preview.extension_subtitle.font_size` | number | ❌ | px，范围 `[12,96]`；缺失时默认比主字幕小 2px |
 | `preview.extension_subtitle.font_family` | string | ❌ | `default` / `yahei` / `hei` / `song` / `sans` |
 | `preview.extension_subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#ffd34d` |
@@ -635,8 +803,13 @@ uv run python edit.py your_generated.mosp
 
 ## 九、版本与兼容
 
+- 顶层 `schema` 当前为 `moy.asr.project.v1`；所有生成器、编辑器和服务器写出的工程都会带上该值
+- 没有顶层 `schema` 的历史工程按 v1 兼容读取，并在规范化或保存时补写当前值
+- 当前客户端拒绝加载未知的顶层工程版本，且不会用旧结构覆盖原工程
+- v1 内允许新增可选字段及不改变既有语义的向后兼容调整；编辑器保存时保留不认识的顶层字段
+- 删除字段、改变既有字段的单位或语义、调整为不兼容结构，或要求强制迁移时才升级到 v2
 - 本规范与 `edit.py` / `generate_subtitle_qwen_api.py` 当前实现同步
 - 设计决策（字级时间戳为何重要、长音频切片策略等）见 `CHANGELOG.md`
-- 字段命名保持向后兼容：新增字段不会破坏旧 JSON 加载
+- 字段命名保持向后兼容：新增可选字段不会破坏旧 JSON 加载
 - 旧编辑器会忽略新增的 `waveform` 字段；新编辑器可加载完全不含该字段的旧工程
-- 删除字段会触发兼容性记录到 `CHANGELOG.md`
+- 不兼容变更必须升级顶层 schema，并记录到 `CHANGELOG.md`

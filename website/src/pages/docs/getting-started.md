@@ -27,13 +27,13 @@ MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 W
 1. [下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)。默认下载带 FFmpeg 的 `MAW-Windows-x64-v*.zip`；如果已安装 `ffmpeg` / `ffprobe`，也可以选择体积更小的 `MAW-lite-Windows-x64-v*.zip`，macOS 下载对应的 `MAW.app` 或 `MAW-lite.app`。
 2. 解压并启动 `MAW.exe` 或 `MAW.app`。
 3. 在 Launcher 配置转写服务的 API Key，选择媒体并点击生成。
-4. 在 MAWE 中检查、编辑字幕，导出 SRT 或其他格式。
+4. 在 MAWE 中检查、编辑字幕，导出 SRT、ASS 或其他格式。
 
 第一次使用、API 配置、编辑和排错：请从[完整工作流](../workflow/)开始。
 
 ## 核心能力
 
-- 使用 Qwen / Fun-ASR / Soniox / 腾讯云录音文件识别转写，生成 SRT 与 `.mosp` 工程。
+- 使用 Qwen / Fun-ASR / Soniox / 腾讯云录音文件识别，或 OpenAI（及兼容接口）转写，生成 SRT 与 `.mosp` 工程。
 - MAWE Server 编辑器支持波形定位、拆分合并、静音空隙处理、画面预览和多种导出格式。
 - MAWE 支持可选的多重字幕：拖入第二条字幕作为副轨，支持主副字幕交换、绑定/解绑、联动编辑、跨轨道吸附，以及 `G` / `Shift+G` / `H` / `B` 快捷操作。
 - 公开 CLI 可用于批处理和 AI 自动化，详见[命令行文档](../cli/)。
@@ -56,7 +56,7 @@ MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 W
 ## 重要说明
 
 - 选择云端服务转写时，媒体会直接上传到对应服务商；MAW 没有自己的云端服务器，也不会代管 API Key。
-- `.mosp` 工程是字幕真源；SRT 适合交付，但不会保留全部字级时间码、波形、颜色和其他工程数据。
+- `.mosp` 工程是字幕真源；SRT 适合普通交付，ASS 可保留主字幕预览选择的字体、字号和文字颜色，但两者都不会保留全部字级时间码、波形和其他工程数据。
 - 费用、数据保留和服务可用性以服务商当前政策为准，详见[ASR 服务与配置](../providers/)。
 - [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
 

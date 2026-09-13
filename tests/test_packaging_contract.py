@@ -146,8 +146,11 @@ class PackagingContractTests(unittest.TestCase):
         self.assertNotIn("sv_ttk", spec)
         self.assertIn("generate_subtitle_qwen_api", spec)
         self.assertIn("generate_subtitle_soniox_api", spec)
+        self.assertIn("generate_subtitle_doubao_api", spec)
         self.assertIn("generate_subtitle_bcut_api", spec)
+        self.assertIn("generate_subtitle_openai_api", spec)
         self.assertIn("maw.soniox", spec)
+        self.assertIn("maw.doubao", spec)
         self.assertIn("local-runtime", spec)
         self.assertIn('"app_paths.py"), "local-runtime/maw"', spec)
         self.assertIn("local_runtime_worker.py", spec)
@@ -311,7 +314,7 @@ class PackagingContractTests(unittest.TestCase):
         local_dependencies = set(project["dependency-groups"]["local"])
         self.assertIn("jieba>=0.42", local_dependencies)
         self.assertIn("requests>=2.28", local_dependencies)
-        self.assertIn("reapeaks>=0.3.1", local_dependencies)
+        self.assertIn("quapeaks>=2026.0.0", local_dependencies)
         self.assertFalse(any(value.startswith("pywebview") for value in local_dependencies))
         self.assertFalse(any(value.startswith("opencc-") for value in local_dependencies))
         self.assertFalse(any(value.startswith("fonttools") for value in local_dependencies))
@@ -340,6 +343,40 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("maw/qwen_audio.py", bundled_paths)
         for relative_path in sorted(bundled_paths):
             self.assertIn(_local_runtime_spec_entry(relative_path), spec)
+
+    def test_local_runtime_stays_out_of_the_editor_stack(self) -> None:
+        """Given local ASR entrypoints, When the import graph is built, Then the editor generator is absent.
+
+        Issue 96：转写 CLI 只需要「默认表情包目录」这一项配置，它过去住在 edit.py 里，
+        于是每个转写入口都连带导入整个编辑器和 Rust 波形内核；依赖清单不含该内核的
+        托管 Runtime（MOSS）在加载模型之前就 ModuleNotFoundError。
+        """
+        graph = _local_runtime_import_graph()
+
+        self.assertNotIn("edit", graph)
+        self.assertIn("maw.stickers", graph)
+
+    def test_rust_quapeaks_kernel_is_imported_only_at_the_call_site(self) -> None:
+        """Given managed runtimes may lack the Rust kernel, When the parser module is read, Then its import is lazy."""
+        # 打包缺模块属于"源码跑得好、产物一开就崩"：media_cache 在模块级导入
+        # maw.mopeaks，spec 漏了它，本地 ASR worker 会在波形阶段 ImportError，
+        # 而现有导入图检查只覆盖 OCR runtime 那条链，抓不到。
+        spec = read_text("MAW.spec")
+        self.assertIn(
+            '(str(ROOT / "maw" / "mopeaks.py"), "local-runtime/maw")', spec
+        )
+        self.assertIn('"maw.mopeaks"', spec)
+        source = read_text("maw/quapeaks.py")
+        tree = ast.parse(source)
+        top_level: set[str] = set()
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.Import):
+                top_level.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                top_level.add(node.module)
+
+        self.assertNotIn("quapeaks", top_level)
+        self.assertIn("import quapeaks as rust_generate", source)
 
     def test_ocr_runtime_bundles_every_local_import_dependency(self) -> None:
         """Given the OCR worker entrypoint, When packaging is read, Then its local imports are copied beside it."""
@@ -438,7 +475,25 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn('https://www.gnu.org/licenses/gpl-3.0.txt', script)
         self.assertIn('raw.githubusercontent.com/spdx/license-list-data', script)
         self.assertIn('Build provider: https://github.com/BtbN/FFmpeg-Builds', script)
-        self.assertIn('Archive SHA-256: $FFMPEG_SHA256', script)
+        self.assertIn('Archive SHA-256: $FFMPEG_TARBALL_SHA256', script)
+
+    def test_appimage_build_pins_btbn_rolling_latest_not_dated_autobuild(self) -> None:
+        """Given the AppImage build script, When it downloads BtbN ffmpeg, Then it uses the permanent latest-release asset with upstream checksum verification instead of a dated pin that upstream prunes."""
+        script = read_text("scripts/build-appimage.sh")
+
+        self.assertIn("releases/latest/download/$FFMPEG_ASSET", script)
+        self.assertIn("releases/latest/download/checksums.sha256", script)
+        self.assertIn(
+            'bash "$REPO_ROOT/scripts/verify_sha256.sh" "$FFMPEG_CHECKSUMS" "$FFMPEG_ASSET" "$FFMPEG_TARBALL"',
+            script,
+        )
+        # 上游清单只写裸文件名，sha256sum -c 按当前目录解析，而归档落在 build-appimage/
+        # 子目录，必然报 No such file or directory（2026-09-10 Linux 打包即因此失败）。
+        self.assertNotIn("sha256sum -c", script)
+        self.assertIn("curl --fail --location --silent --show-error", script)
+        self.assertIn('| grep -q "$FFMPEG_BRANCH"', script)
+        self.assertNotIn("/releases/download/autobuild-", script)
+        self.assertNotIn("FFMPEG_SHA256=", script)
 
     def test_local_build_script_invokes_uv_and_pyinstaller_for_maw_onedir(self) -> None:
         """Given a Windows developer build, When the script is read, Then it builds dist/MAW/MAW.exe."""

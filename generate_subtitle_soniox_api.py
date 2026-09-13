@@ -23,16 +23,18 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from edit import get_default_sticker_dir
+from maw.stickers import get_default_sticker_dir
 from generate_subtitle_qwen_api import (
-    LANGUAGE_MAP,
     extract_audio,
     generate_srt,
     get_duration_sec,
     parse_duration,
+    WESTERN_MAX_WORDS,
+    WESTERN_MIN_WORDS,
 )
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
+from maw.project_io import write_mosp
 from maw.project import repair_segment_durations, validate_project
 from maw.soniox import (
     MAX_AUDIO_SECONDS,
@@ -44,6 +46,14 @@ from maw.soniox import (
     transcribe,
 )
 from maw.media_cache import embed_media_caches, merge_media_caches
+from maw.media import resolve_default_audio_track
+from maw.output_naming import format_elapsed, format_maw_stat, maw_root
+from maw.language import (
+    normalize_language_code,
+    resolve_language,
+    split_mode_for_text,
+    timestamp_granularity_for_items,
+)
 
 
 def _language_hints(raw: str | None) -> list[str]:
@@ -54,7 +64,10 @@ def _language_hints(raw: str | None) -> list[str]:
     for part in raw.split(","):
         key = part.strip().lower()
         if key:
-            hints.append(LANGUAGE_MAP.get(key, key))
+            canonical = normalize_language_code(key)
+            # Soniox calls Filipino ``tl``; keep the project-facing canonical
+            # code as ``fil`` while sending the provider's accepted hint.
+            hints.append("tl" if canonical == "fil" else canonical or key)
     return hints
 
 
@@ -73,6 +86,8 @@ def main():
         "--min-len", type=int, default=5,
         help="句号间最短字数，不足则合并（默认 5；仅 CJK 内容生效）",
     )
+    parser.add_argument("--max-words", type=int, default=WESTERN_MAX_WORDS, help="英文单条字幕最大单词数")
+    parser.add_argument("--min-words", type=int, default=WESTERN_MIN_WORDS, help="英文短句合并阈值（单词数）")
     parser.add_argument(
         "--language", default=None,
         help="语言提示，逗号分隔（如 zh,en 或 Chinese；默认自动识别）",
@@ -103,8 +118,13 @@ def main():
     )
     parser.add_argument(
         "--with-waveform", action="store_true",
-        help="将波形峰值数据嵌入工程文件（GUI 转写默认开启）",
+        help="在媒体旁生成 .quapeaks 波形缓存（不再写进工程文件；GUI 转写默认开启）",
     )
+    parser.add_argument(
+        "--audio-track", type=int, default=0,
+        help="使用第几个音频轨道（从 0 开始，默认 0）",
+    )
+    parser.add_argument("--default-audio-track", type=int, help=argparse.SUPPRESS)
     parser.add_argument(
         "--with-spectral", action="store_true",
         help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
@@ -137,9 +157,21 @@ def main():
         "--debug-raw", action="store_true",
         help="保存 Soniox transcript API 返回的完整原始 JSON，用于排查解析和时间码",
     )
+    parser.add_argument(
+        "--no-model-tag", action="store_true",
+        help="默认输出文件名不附加供应商标识段（默认附加 soniox）",
+    )
     args = parser.parse_args()
+    if args.audio_track < 0:
+        parser.error("--audio-track 必须是非负整数")
+    if args.default_audio_track is not None and args.default_audio_track < 0:
+        parser.error("--default-audio-track 必须是非负整数")
     if args.with_spectral and not args.with_waveform:
         parser.error("--with-spectral 需要同时指定 --with-waveform")
+    if args.max_len < 1 or args.min_len < 1 or args.max_words < 1 or args.min_words < 1 or args.gap_split < 0:
+        parser.error("字幕切分参数无效")
+    if args.max_len < args.min_len or args.max_words < args.min_words:
+        parser.error("最大值不能小于对应的短句合并阈值")
 
     input_path = Path(args.input)
     if not input_path.exists():
@@ -156,6 +188,11 @@ def main():
     ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config.get("ffmpeg_path"))
     ffmpeg_path = ffmpeg_tools.ffmpeg
     ffprobe_path = ffmpeg_tools.ffprobe
+    default_audio_track = resolve_default_audio_track(
+        input_path,
+        args.default_audio_track,
+        ffprobe_path=ffprobe_path,
+    )
     print(f"[准备] 已载入 Soniox 转写配置（模型: {args.model or config['model']}）")
 
     try:
@@ -181,6 +218,7 @@ def main():
                 audio_path,
                 duration_limit=video_limit,
                 ffmpeg_path=ffmpeg_path,
+                audio_track=args.audio_track,
             )
             print("[媒体] 正在读取提取后音频时长...")
             duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
@@ -213,6 +251,7 @@ def main():
                 limited_path,
                 duration_limit=limit_sec,
                 ffmpeg_path=ffmpeg_path,
+                audio_track=0,
             )
             audio_path = limited_path
             duration = limit_sec
@@ -220,6 +259,7 @@ def main():
             print(f"[info] 已截取前 {lm}分{ls}秒用于测试")
 
         print("[soniox] 本地媒体准备完成，开始连接 Soniox...")
+        print(f"转写开始: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         t0 = time.perf_counter()
         result = transcribe(
             audio_path, config,
@@ -230,6 +270,7 @@ def main():
             capture_raw=args.debug_raw,
         )
         elapsed = time.perf_counter() - t0
+        print(f"转写结束: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
         raw_response = result.pop("_raw_response", None)
         if not result or not result.get("text"):
@@ -247,7 +288,10 @@ def main():
             print(f"first 5 items: {items[:5]}")
             print("--- end debug ---\n")
 
-        if not items:
+        if result.get("timestamp_granularity") == "segment" and result.get("segments"):
+            print("[解析] 云端词级时间码不完整，保留可用的句级时间范围...")
+            segments = [dict(segment) for segment in result["segments"]]
+        elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")
             segments = [{"start": 0, "end": int(duration * 1000), "text": result["text"]}]
         else:
@@ -255,6 +299,8 @@ def main():
             segments = build_segments(
                 items, max_len=args.max_len, min_len=args.min_len,
                 gap_split_ms=args.gap_split,
+                max_words=args.max_words, min_words=args.min_words,
+                split_mode=split_mode_for_text(result.get("text", ""), result.get("language")),
             )
             print(f"[解析] 字幕整理完成：{len(segments)} 条。")
 
@@ -276,6 +322,8 @@ def main():
                 source_media_path=input_path,
                 generate_spectral=args.with_spectral,
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
+                audio_track=args.audio_track if is_video else 0,
+                default_audio_track=default_audio_track if is_video else 0,
             )
 
     if enable_speaker:
@@ -299,12 +347,12 @@ def main():
                     seg_items[k]["text"] = seg_items[k]["text"].rstrip(args.strip_tail_punct)
                     if seg_items[k]["text"]:
                         break
+                    seg_items.pop(k)
                     k -= 1
 
     print(f"[输出] 正在生成 SRT（{len(segments)} 条字幕）...")
     srt_content = generate_srt(segments)
 
-    em, es = divmod(int(elapsed), 60)
     if duration > 0:
         rtf = elapsed / duration
         speed = (1 / rtf) if rtf > 0 else 0
@@ -312,10 +360,13 @@ def main():
         rtf = 0
         speed = 0
     if not args.output:
-        speed_tag = f"{speed:.1f}x" if speed else "na"
         ts_prefix = f"[{datetime.now().strftime('%y%m%d%H%M')}]"
+        name_parts = []
+        if not args.no_model_tag:
+            name_parts.append("soniox")
+        suffix = f".{'.'.join(name_parts)}" if name_parts else ""
         output_path = output_path.with_name(
-            f"{ts_prefix}{output_path.stem}.soniox.{speed_tag}.srt"
+            f"{ts_prefix}{output_path.stem}{suffix}.srt"
         )
 
     output_path.write_text(srt_content, encoding="utf-8")
@@ -324,28 +375,45 @@ def main():
     if args.debug_raw:
         if raw_response is None:
             raise RuntimeError("调试模式未获得 Soniox transcript 原始返回数据")
-        raw_path = output_path.with_suffix(".asr-response.json")
+        raw_path = (
+            maw_root(input_path) / f"{output_path.stem}.asr-response.json"
+            if not args.output
+            else output_path.with_suffix(".asr-response.json")
+        )
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
         with raw_path.open("w", encoding="utf-8", newline="\n") as raw_file:
             json.dump(raw_response, raw_file, ensure_ascii=False, indent=2)
             raw_file.write("\n")
         print(f"[调试] Soniox transcript 原始返回已保存到: {raw_path}")
+    print(f"转写耗时: {format_elapsed(elapsed)}")
     if duration > 0:
-        print(f"处理用时: {em}分{es}秒 | 实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
-    else:
-        print(f"处理用时: {em}分{es}秒")
+        print(f"媒体时长: {format_elapsed(duration)}")
+        print(f"转写时长为媒体时长的 {rtf:.2f} 倍")
+        print(f"实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
 
     if args.json_out:
+        language, language_source = resolve_language(
+            result.get("language"),
+            args.language,
+            str(result.get("text") or ""),
+        )
+        split_mode = split_mode_for_text(str(result.get("text") or ""), language)
         json_path = output_path.with_suffix(".mosp")
         json_data = {
             "media": str(input_path),
-            "language": result.get("language", ""),
+            "language": language,
+            "language_source": language_source,
+            "split_mode": split_mode,
+            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
+                result.get("items") or [], split_mode, has_segments=bool(segments)
+            ),
             "model": f"soniox-{args.model or config['model']}",
             "segments": [
                 {
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": seg["text"],
-                    "items": seg.get("items", []),
+                    **({"items": seg["items"]} if "items" in seg else {}),
                     **({"speaker": seg["speaker"]} if seg.get("speaker") else {}),
                     **({"color": seg["color"]} if seg.get("color") else {}),
                     **({"color_ref": seg["color_ref"]} if seg.get("color_ref") else {}),
@@ -362,8 +430,12 @@ def main():
             for err in check.errors[:10]:
                 print(f"  {err.path}: {err.message}")
         print("[输出] 正在写入工程文件...")
-        json_path.write_text(
-            json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
+        write_mosp(
+            json_path,
+            json_data,
+            media_path=input_path,
+            ffprobe_path=ffprobe_path,
+            selected_audio_track=args.audio_track if is_video else 0,
         )
         print(f"工程文件已保存到: {json_path}")
 
@@ -384,6 +456,10 @@ def main():
                     subprocess.run(cmd, check=True)
                 except subprocess.CalledProcessError as e:
                     print(f"[警告] edit.py 失败 (exit {e.returncode})")
+
+    maw_stat = format_maw_stat(rtf)
+    if maw_stat:
+        print(maw_stat)
 
 
 if __name__ == "__main__":

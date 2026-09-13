@@ -10,7 +10,7 @@ import {
   cleanupTempDir,
   DURATION_MS,
   findFreePort,
-  generateBlankEditor,
+  buildPortableBlankEditor,
   generateProjectJson,
   generateWav,
   makeTempDir,
@@ -237,7 +237,7 @@ test.describe('portable HTML', () => {
     blankHtmlPath = join(portableDir, 'blank-editor.html');
     generateWav(portableWavPath, DURATION_MS / 1000);
     generateProjectJson(portableProjectPath);
-    generateBlankEditor(blankHtmlPath);
+    buildPortableBlankEditor(blankHtmlPath);
     portableStaticServer = await startStaticServer(blankHtmlPath, await findFreePort());
   });
 

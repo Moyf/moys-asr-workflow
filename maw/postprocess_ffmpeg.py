@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Callable, Final, Mapping
 
 from maw.gui_platform import creationflags, release_process_tree, startupinfo, terminate_process_tree
+from maw.output_naming import media_suffix
 
 
 ALLOWED_DIRECTIVES: Final = frozenset({"ffconcat", "file", "inpoint", "outpoint", "duration"})
@@ -192,7 +193,7 @@ def probe_audio_tracks(media_path: Path, *, ffprobe_path: Path) -> tuple[AudioTr
         "-select_streams",
         "a",
         "-show_entries",
-        "stream=index,codec_name,channels,sample_rate:stream_tags=language,title:stream_disposition=default",
+        "stream=index,codec_name,channels,sample_rate:stream_tags=language,title,name,handler_name:stream_disposition=default",
         "-of",
         "json",
         str(media),
@@ -240,7 +241,7 @@ def probe_audio_tracks(media_path: Path, *, ffprobe_path: Path) -> tuple[AudioTr
                 channels=_integer_or_none(stream.get("channels")),
                 sample_rate=_integer_or_none(stream.get("sample_rate")),
                 language=str(tags.get("language") or "").strip(),
-                title=str(tags.get("title") or "").strip(),
+                title=_first_nonempty_tag(tags, "title", "name", "handler_name"),
                 default=bool(_integer_or_none(disposition.get("default")) or 0),
             )
         )
@@ -378,10 +379,11 @@ def _resolve_file_directive(base: Path, raw_value: str) -> Path:
 
 def _available_media_output(media: Path, *, suffix: str = "gap-removed", extension: str | None = None) -> Path:
     output_extension = extension or media.suffix
-    candidate = media.with_name(f"{media.stem}.{suffix}{output_extension}")
+    display_suffix = media_suffix(suffix)
+    candidate = media.with_name(f"{media.stem}.{display_suffix}{output_extension}")
     counter = 2
     while candidate.exists():
-        candidate = media.with_name(f"{media.stem}.{suffix}-{counter}{output_extension}")
+        candidate = media.with_name(f"{media.stem}.{display_suffix}-{counter}{output_extension}")
         counter += 1
     return candidate.resolve()
 
@@ -405,6 +407,19 @@ def _integer_or_none(value: object) -> int | None:
         return int(str(value))
     except (TypeError, ValueError):
         return None
+
+
+def _first_nonempty_tag(tags: Mapping[object, object], *names: str) -> str:
+    """Return the first non-empty stream tag, tolerating FFprobe key casing."""
+    normalized = {
+        str(key).strip().casefold(): value
+        for key, value in tags.items()
+    }
+    for name in names:
+        value = str(normalized.get(name.casefold()) or "").strip()
+        if value:
+            return value
+    return ""
 
 
 def _escape_filter_value(value: str) -> str:

@@ -8,7 +8,7 @@
 
 ## GitHub Pages
 
-GitHub Actions 在 `website/` 中运行 `npm ci`、同步当前仓库 docs、`npm run build`，然后把 `website/dist/` 发布到 Pages；再将 `blank-editor.html` 生成为 `website/dist/editor/index.html`。项目站点使用 `BASE_PATH=/moys-asr-workflow` 和对应的 `SITE_URL`，Astro 内部链接必须经过 `sitePath()`。
+GitHub Actions 在 `website/` 中运行 `npm ci`、同步当前仓库 docs、`npm run build`，然后把 `website/dist/` 发布到 Pages；部署产物阶段会另外将 `blank-editor.html` 生成为 `website/dist/editor/index.html`。这属于部署时的显式产物构建，不改变本地日常开发默认不生成根目录空白 HTML 的规则。项目站点使用 `BASE_PATH=/moys-asr-workflow` 和对应的 `SITE_URL`，Astro 内部链接必须经过 `sitePath()`。
 
 ## 镜像策略
 

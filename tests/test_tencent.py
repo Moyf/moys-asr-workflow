@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import base64
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from maw.speaker import apply_speaker_colors
@@ -40,7 +43,86 @@ class TencentProviderTests(unittest.TestCase):
             {"text": "你", "start": 10, "end": 300, "speaker": "2"},
             {"text": "好。", "start": 300, "end": 800, "speaker": "2"},
         ])
+        self.assertEqual(result["timestamp_granularity"], "char")
         self.assertEqual(result["sentences"][0]["speaker"], "2")
+
+    def test_parse_result_derives_word_granularity_for_latin_text(self) -> None:
+        result = parse_result({
+            "ResultDetail": [{
+                "FinalSentence": "hello world",
+                "StartMs": 0,
+                "EndMs": 800,
+                "Words": [
+                    {"Word": "hello", "OffsetStartMs": 0, "OffsetEndMs": 400},
+                    {"Word": " world", "OffsetStartMs": 400, "OffsetEndMs": 800},
+                ],
+            }],
+        })
+
+        self.assertEqual(result["timestamp_granularity"], "word")
+
+    def test_parse_result_marks_non_mapping_word_as_sentence_fallback(self) -> None:
+        result = parse_result({
+            "ResultDetail": [{
+                "FinalSentence": "整句回退",
+                "StartMs": 100,
+                "EndMs": 900,
+                "Words": [
+                    {"Word": "整句", "OffsetStartMs": 100, "OffsetEndMs": 500},
+                    "malformed-word",
+                    {"Word": "回退", "OffsetStartMs": 500, "OffsetEndMs": 900},
+                ],
+            }],
+        })
+
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(result["sentences"], [{
+            "start": 100,
+            "end": 900,
+            "text": "整句回退",
+        }])
+
+    def test_parse_result_expands_sentence_range_to_contain_word_items(self) -> None:
+        result = parse_result({
+            "ResultDetail": [{
+                "FinalSentence": "范围修复",
+                "StartMs": 200,
+                "EndMs": 700,
+                "Words": [
+                    {"Word": "范围", "OffsetStartMs": 100, "OffsetEndMs": 400},
+                    {"Word": "修复", "OffsetStartMs": 400, "OffsetEndMs": 900},
+                ],
+            }],
+        })
+
+        sentence = result["sentences"][0]
+        self.assertEqual((sentence["start"], sentence["end"]), (100, 900))
+        self.assertTrue(
+            all(sentence["start"] <= item["start"] < item["end"] <= sentence["end"]
+                for item in sentence["items"])
+        )
+
+    def test_parse_result_does_not_drop_unranged_mixed_sentence(self) -> None:
+        result = parse_result({
+            "ResultDetail": [
+                {
+                    "FinalSentence": "有时间码",
+                    "StartMs": 0,
+                    "EndMs": 600,
+                    "Words": [
+                        {"Word": "有", "OffsetStartMs": 0, "OffsetEndMs": 300},
+                        {"Word": "时间码", "OffsetStartMs": 300, "OffsetEndMs": 600},
+                    ],
+                },
+                {"FinalSentence": "没有可用范围", "Words": [{"Word": "没有"}]},
+            ],
+        })
+
+        self.assertEqual(result["text"], "有时间码没有可用范围")
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["sentences"], [])
+        self.assertEqual(result["timestamp_granularity"], "unknown")
 
     def test_submit_task_uses_base64_for_small_local_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -120,6 +202,99 @@ class TencentProviderTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(TimeoutError, "task_id=7"):
                 poll_task(7, config, on_status=lambda _message: None)
+
+
+class TencentCliOutputNamingTests(unittest.TestCase):
+    """腾讯云 CLI：默认名不注入段；MAW_STAT/debug-raw。"""
+
+    def _run(self, extra_args, *, debug_raw=False, explicit_output=None):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh"}
+            if debug_raw:
+                result["_raw_response"] = {"Result": []}
+            argv = ["generate_subtitle_tencent_api.py", str(media)]
+            if explicit_output is not None:
+                argv += ["-o", str(explicit_output)]
+            argv += extra_args
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            config = {"secret_id": "id", "secret_key": "key", "engine": "16k_zh"}
+            with mock.patch("sys.argv", argv), \
+                 mock.patch("generate_subtitle_tencent_api.load_config", return_value=config), \
+                 mock.patch(
+                     "generate_subtitle_tencent_api.resolve_ffmpeg_tools",
+                     return_value=SimpleNamespace(ffmpeg="ffmpeg", ffprobe="ffprobe"),
+                 ), \
+                 mock.patch("generate_subtitle_tencent_api.get_duration_sec", return_value=1000.0), \
+                 mock.patch("generate_subtitle_tencent_api.shutil.copy2"), \
+                 mock.patch("generate_subtitle_tencent_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_tencent_api.time.perf_counter", side_effect=fake_perf), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_tencent_api import main
+
+                code = main()
+                names = sorted(path.name for path in root.glob("*.srt"))
+            self.assertEqual(code, 0)
+            return names, stdout.getvalue()
+
+    @staticmethod
+    def _stat_line(stdout):
+        for line in stdout.splitlines():
+            if line.startswith("MAW_STAT rtf="):
+                return line
+        return None
+
+    def test_default_name_stays_plain_and_stat_is_emitted(self) -> None:
+        names, stdout = self._run([])
+
+        self.assertEqual(names, ["20-走廊.srt"])
+        self.assertEqual(self._stat_line(stdout), "MAW_STAT rtf=0.123")
+
+    def test_debug_raw_default_goes_into_maw_dir(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "20-走廊.mp3"
+            media.write_bytes(b"media")
+            result = {"text": "测试", "language": "zh", "_raw_response": {"Result": []}}
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            values = [1000.0, 1123.0]
+
+            def fake_perf():
+                return values.pop(0) if values else 0.0
+
+            config = {"secret_id": "id", "secret_key": "key", "engine": "16k_zh"}
+            with mock.patch(
+                "sys.argv", ["generate_subtitle_tencent_api.py", str(media), "--debug-raw"]
+            ), mock.patch("generate_subtitle_tencent_api.load_config", return_value=config), \
+                 mock.patch(
+                     "generate_subtitle_tencent_api.resolve_ffmpeg_tools",
+                     return_value=SimpleNamespace(ffmpeg="ffmpeg", ffprobe="ffprobe"),
+                 ), \
+                 mock.patch("generate_subtitle_tencent_api.get_duration_sec", return_value=1000.0), \
+                 mock.patch("generate_subtitle_tencent_api.shutil.copy2"), \
+                 mock.patch("generate_subtitle_tencent_api.transcribe", return_value=result), \
+                 mock.patch("generate_subtitle_tencent_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from generate_subtitle_tencent_api import main
+
+                self.assertEqual(main(), 0)
+
+            maw_dir = root / "_maw"
+            raw_files = sorted(maw_dir.glob("*.asr-response.json")) if maw_dir.exists() else []
+            self.assertEqual(len(raw_files), 1)
+            self.assertIn(".asr-response.json", raw_files[0].name)
 
 
 if __name__ == "__main__":

@@ -121,6 +121,78 @@ test('playback follows the playhead within the visible multi-row waveform', asyn
   await page.evaluate(() => document.getElementById('player').pause());
 });
 
+test('video preview tab owns preview toggles and playback controls', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await expect(page.locator('#editor-settings-tab-subtitle-preview')).toHaveText('视频预览');
+
+  const structure = await page.evaluate(() => ({
+    controlsParent: document.getElementById('playback-controls-title')?.parentElement?.id,
+    controlsInGeneral: document.getElementById('editor-settings-page-general')
+      ?.contains(document.getElementById('playback-controls-title')),
+    controlsInVideoPreview: document.getElementById('editor-settings-page-subtitle-preview')
+      ?.contains(document.getElementById('playback-controls-title')),
+    // 所有设置页必须是 .editor-settings-pages 的直接子元素；一旦某个页面少写
+    // 闭合标签，后续页面会被嵌进隐藏页，切标签时表现为「空白」。
+    pagesAreSiblings: [...document.querySelectorAll('.editor-settings-page')]
+      .every((element) => element.parentElement?.classList.contains('editor-settings-pages')),
+  }));
+  expect(structure).toEqual({
+    controlsParent: 'editor-settings-page-subtitle-preview',
+    controlsInGeneral: false,
+    controlsInVideoPreview: true,
+    pagesAreSiblings: true,
+  });
+
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await expect(page.locator('#editor-settings-page-subtitle-preview')).toBeVisible();
+  await expect(page.locator('#playback-controls-title')).toBeVisible();
+  await expect(page.locator('#overlay-toggle')).toBeVisible();
+  await expect(page.locator('#hover-seek-preview')).toBeVisible();
+  await expect(page.locator('#jkl-playback-mode')).toBeVisible();
+
+  await page.locator('#editor-settings-tab-general').click();
+  await expect(page.locator('#playback-controls-title')).toBeHidden();
+  await expect(page.locator('#jkl-playback-mode')).toBeHidden();
+});
+
+test('settings and help navigation scroll independently when panels are short', async ({ page }) => {
+  await page.goto(server.url);
+
+  await page.locator('#editor-settings-toggle').click();
+  const settingsPanel = page.locator('#editor-settings-panel');
+  await settingsPanel.evaluate((element) => { element.style.height = '280px'; });
+  const settingsNav = settingsPanel.locator('.editor-settings-nav');
+  const settingsNavState = await settingsNav.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      overflowY: style.overflowY,
+      overflowX: style.overflowX,
+      canScroll: element.scrollHeight > element.clientHeight,
+    };
+  });
+  expect(settingsNavState).toEqual({ overflowY: 'auto', overflowX: 'hidden', canScroll: true });
+  await settingsNav.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  expect(await settingsNav.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await page.locator('#editor-settings-close').click();
+
+  await page.locator('#help-toggle').click();
+  const helpPanel = page.locator('#help-panel');
+  await helpPanel.evaluate((element) => { element.style.height = '240px'; });
+  const helpNav = helpPanel.locator('.editor-settings-nav');
+  const helpNavState = await helpNav.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      overflowY: style.overflowY,
+      overflowX: style.overflowX,
+      canScroll: element.scrollHeight > element.clientHeight,
+    };
+  });
+  expect(helpNavState).toEqual({ overflowY: 'auto', overflowX: 'hidden', canScroll: true });
+  await helpNav.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  expect(await helpNav.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});
+
 test('JKL direction mode drives the timeline backward and forward', async ({ page }) => {
   await page.goto(server.url);
   await page.waitForFunction(() => {
@@ -128,7 +200,8 @@ test('JKL direction mode drives the timeline backward and forward', async ({ pag
     return media.readyState >= 1 && Number.isFinite(media.duration) && media.duration > 0;
   });
 
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
   await expect(page.locator('#jkl-playback-mode')).toHaveValue('direction');
   await expect(page.locator('#jkl-playback-mode-hint')).toContainText('J 倒放');
 
@@ -178,9 +251,9 @@ test('JKL direction mode drives the timeline backward and forward', async ({ pag
   }, pausedForwardAt)).toBeGreaterThan(0.1);
 
   await page.keyboard.press('k');
-  await expect(page.locator('#subtitle-preview-settings-panel')).toBeVisible();
+  await expect(page.locator('#editor-settings-panel')).toBeVisible();
   await page.locator('#jkl-playback-mode').selectOption('speed');
-  await page.locator('#subtitle-preview-settings-toggle').click();
+  await page.locator('#editor-settings-close').click();
   await page.keyboard.press('j');
   await expect.poll(() => page.evaluate(() => document.getElementById('player').playbackRate)).toBe(0.5);
 });
