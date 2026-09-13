@@ -307,6 +307,11 @@ class GuiConfigTests(unittest.TestCase):
         self.assertIn("SECRET_KEY", provider.note)
         self.assertIn("0.8", provider.models[0].price_note)
 
+    def test_provider_registry_contains_doubao_api_key_url(self) -> None:
+        provider = gui_config.provider_by_id("doubao")
+
+        self.assertEqual(provider.key_url, "https://console.volcengine.com/speech/new/setting/apikeys")
+
     def test_provider_registry_contains_custom_openai_compatible_asr(self) -> None:
         provider = gui_config.provider_by_id("openai")
 
