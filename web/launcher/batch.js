@@ -39,10 +39,27 @@
     return { ...event, type };
   }
 
-  function setItemStatus(item, status, detail = "") {
+  function itemErrorText(code, detail) {
+    const raw = String(detail || "");
+    const translate = window.MAWLauncher?.errorText;
+    if (!code || typeof translate !== "function") return raw;
+    return translate(code, raw) || raw;
+  }
+
+  function setItemDetail(item, detail = "", code = "") {
+    const raw = String(detail || "");
+    const effectiveCode = String(code || item.errorCode || "");
+    if (effectiveCode) item.errorCode = effectiveCode;
+    if (!effectiveCode && !raw) return;
+    const friendly = itemErrorText(effectiveCode, raw) || raw;
+    item.detail = friendly;
+    item.rawDetail = friendly !== raw && !friendly.includes(raw) ? raw : "";
+  }
+
+  function setItemStatus(item, status, detail = "", code = "") {
     const previousStatus = item.status;
     item.status = status || item.status;
-    if (detail) item.detail = detail;
+    setItemDetail(item, detail, code);
     if ((previousStatus === "running" || previousStatus === "queued") && ["done", "failed", "cancelled", "skipped"].includes(item.status)) {
       state.progress.finished += 1;
       if (item.status === "done") state.progress.done += 1;
@@ -122,7 +139,7 @@
         const summary = document.createElement("summary");
         summary.textContent = item.status === "failed" ? t("batch_error_details") : t("batch_log_details");
         const log = document.createElement("pre");
-        log.textContent = [item.detail, ...item.logs].filter(Boolean).join("\n");
+        log.textContent = [item.detail, item.rawDetail ? `[detail] ${item.rawDetail}` : "", ...item.logs].filter(Boolean).join("\n");
         details.append(summary, log);
         details.open = expandedDetails.has(item.id);
         body.append(details);
@@ -166,7 +183,7 @@
         return;
       }
       existing.add(key);
-      state.items.push({ id: `batch-${state.nextId}`, index: state.items.length, mediaPath, status: "queued", detail: "", logs: [], result: null });
+      state.items.push({ id: `batch-${state.nextId}`, index: state.items.length, mediaPath, status: "queued", detail: "", rawDetail: "", errorCode: "", logs: [], result: null });
       state.nextId += 1;
     });
     renderQueue();
@@ -235,7 +252,7 @@
       $("status").textContent = t("batch_complete");
       return;
     }
-    itemsToRun.forEach((item) => { item.status = "queued"; item.detail = ""; item.logs = []; item.result = null; });
+    itemsToRun.forEach((item) => { item.status = "queued"; item.detail = ""; item.rawDetail = ""; item.errorCode = ""; item.logs = []; item.result = null; });
     state.progress = { total: itemsToRun.length, finished: 0, done: 0, failed: 0 };
     state.running = true;
     state.cancelling = false;
@@ -306,12 +323,13 @@
       const nested = event.item && typeof event.item === "object" ? event.item : {};
       item.result = event.result || nested.result || ((event.srtPath || event.jsonPath || event.htmlPath) ? { srtPath: event.srtPath || "", jsonPath: event.jsonPath || "", htmlPath: event.htmlPath || "" } : item.result);
       const detail = event.error || event.detail || nested.error || nested.detail || "";
+      const code = event.code || nested.code || "";
       const nextStatus = event.status || nested.status || (item.result ? "done" : item.status);
       if (nextStatus === "running") {
         $("status").textContent = t("batch_progress").replace("{current}", String(item.index + 1)).replace("{total}", String(state.progress.total)).replace("{name}", fileName(item.mediaPath));
         window.MAWLauncher.appendLog?.($("status").textContent);
       }
-      setItemStatus(item, nextStatus, detail);
+      setItemStatus(item, nextStatus, detail, code);
       return;
     }
     if (event.type === "batchDone") {
@@ -328,13 +346,13 @@
         const htmlPath = outcome.htmlPath || outcome.html_path || result.htmlPath || result.html_path || "";
         if (srtPath || jsonPath || htmlPath) item.result = { srtPath, jsonPath, htmlPath };
         item.status = outcome.status || item.status;
-        item.detail = outcome.error || outcome.detail || item.detail;
+        setItemDetail(item, outcome.error || outcome.detail || "", outcome.code || "");
       });
       // batchDone 是终态真源：未被 outcomes 覆盖、仍停在 queued/running 的行必须落到终态。
       state.items.forEach((item) => {
         if (item.status !== "queued" && item.status !== "running") return;
         item.status = cancelled ? "cancelled" : "failed";
-        if (!cancelled && !item.detail) item.detail = t("batch_outcome_missing");
+        if (!cancelled && !item.detail) setItemDetail(item, t("batch_outcome_missing"));
       });
       state.running = false;
       state.cancelling = false;
