@@ -184,7 +184,7 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" -ll 2m --j
 
 ## 用豆包语音识别转写（火山引擎，可选，支持说话人与热词）
 
-在[火山引擎语音控制台](https://console.volcengine.com/speech/new/experience/asr)开通「大模型录音文件识别」并获取单一 `VOLC_API_KEY`（新版控制台，无需 AppID）后：
+在[火山引擎 API Key 管理](https://console.volcengine.com/speech/new/setting/apikeys)获取单一 `VOLC_API_KEY`（新版控制台，无需 AppID）后：
 
 ```powershell
 uv run python generate_subtitle_doubao_api.py "D:\Videos\example.mp4" -ll 2m --json

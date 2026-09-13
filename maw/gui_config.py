@@ -597,7 +597,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="doubao",
         label="豆包语音识别（火山引擎）",
-        key_url="https://console.volcengine.com/speech/new/experience/asr",
+        key_url="https://console.volcengine.com/speech/new/setting/apikeys",
         models=DOUBAO_MODELS,
         regions=(),
         languages=DOUBAO_LANGUAGES,
