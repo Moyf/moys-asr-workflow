@@ -2467,6 +2467,16 @@ class LauncherApi:
             return _error_result("stickerDir", "config_save_failed", f"{self.paths.env_path}: {error}")
         return {"ok": True, "stickerDir": str(path)}
 
+    def open_sticker_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Open the configured sticker root after rechecking that it is a directory."""
+        value = str(effective_config(self.paths.env_path).sticker_dir or "").strip()
+        if not value:
+            return _error_result("", "sticker_dir_invalid")
+        directory = Path(value).expanduser()
+        if not directory.is_dir():
+            return _error_result("", "sticker_dir_invalid", str(directory))
+        return _open_existing_path(directory.resolve())
+
     def shutdown(self) -> None:
         self.cancel_transcription()
         self.cancel_batch_transcription()

@@ -58,7 +58,7 @@ notepad .env
 DASHSCOPE_API_KEY=sk-你的密钥
 ```
 
-北京地域默认使用 `DASHSCOPE_REGION=beijing`；`DASHSCOPE_WORKSPACE_ID` 在北京选填，填写后会使用官方推荐的业务空间专属域名。新加坡地域改为 `singapore` 并必须填写 Workspace ID。Launcher 选择 Qwen 后，可在「⚙️ 设置 → 运行环境 → 百炼地域与业务空间」修改这两项；高级选项也提供跳转入口。界面语言首次启动时跟随系统语言（中文系统为中文，其他语言为英文），之后可在「⚙️ 设置 → 通用 → 语言」手动切换并保存。环境变量优先于 `.env`。密钥申请和地域说明以[官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)为准。
+北京地域默认使用 `DASHSCOPE_REGION=beijing`；`DASHSCOPE_WORKSPACE_ID` 在北京选填，填写后会使用官方推荐的业务空间专属域名。新加坡地域改为 `singapore` 并必须填写 Workspace ID。Launcher 选择 Qwen 后，可在「⚙️ 设置 → AI 模型配置」底部的「阿里云百炼地域与业务空间」中修改这两项；高级选项也提供跳转入口。界面语言首次启动时跟随系统语言（中文系统为中文，其他语言为英文），之后可在「⚙️ 设置 → 通用 → 语言」手动切换并保存。环境变量优先于 `.env`。密钥申请和地域说明以[官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)为准。
 
 ## 2. 先跑小样本
 
@@ -310,7 +310,7 @@ Launcher「配置 → 通用 → 文件输出」可以调整最终产物的位�
 
 - **将所有输出文件放入子文件夹**（默认关）：开启后 SRT / `.mosp` 也写入 `_maw`。
 - **每个视频单独创建子文件夹**（默认关）：开启后子文件夹以视频命名，如 `视频名_maw`，每个媒体相互独立。
-- **附加模型名称**（默认开）：关闭后 SRT 文件名不再含供应商/模型段（`clip.qwen-audio.srt` → `clip.srt`）。
+- **在输出文件名中附加模型名称**（默认关）：开启后 SRT 文件名带上供应商/模型段（`clip.srt` → `clip.qwen-audio.srt`）。
 
 Launcher「配置 → 通用 → 完成通知」默认开启：单个文件转写完成或整批队列全部结束时，会发送一条系统通知（Windows 气泡提示 / macOS 通知中心 / Linux `notify-send`）；批量通知会汇总成功／失败数量，异常终止会显示失败提醒；关闭后不再提醒。手动停止批量任务不算完成，不会提醒。
 

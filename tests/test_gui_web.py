@@ -698,7 +698,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertFalse(config["outputSubfolder"])
         self.assertFalse(config["perVideoSubfolder"])
-        self.assertTrue(config["attachModelName"])
+        self.assertFalse(config["attachModelName"])
 
     def test_notify_preference_defaults_on_and_round_trips(self) -> None:
         """Given the completion-notification toggle, When saved, Then .env and config reflect it."""
@@ -2933,6 +2933,26 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["stickerDir"], str(stickers))
         self.assertIn(f"STICKER_DIR={stickers}", self.env_path.read_text(encoding="utf-8"))
 
+    def test_open_sticker_folder_opens_the_configured_directory(self) -> None:
+        stickers = self.root / "stickers"
+        stickers.mkdir()
+        with mock.patch("maw.gui_web.effective_config", return_value=SimpleNamespace(sticker_dir=str(stickers))):
+            with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opener:
+                result = self.api.open_sticker_folder()
+
+        self.assertEqual(result, {"ok": True})
+        opener.assert_called_once_with(stickers.resolve())
+
+    def test_open_sticker_folder_rejects_a_missing_configured_directory(self) -> None:
+        missing = self.root / "missing-stickers"
+        with mock.patch("maw.gui_web.effective_config", return_value=SimpleNamespace(sticker_dir=str(missing))):
+            with mock.patch("maw.gui_web._open_existing_path") as opener:
+                result = self.api.open_sticker_folder()
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "sticker_dir_invalid")
+        opener.assert_not_called()
+
     @unittest.skipUnless(os.name == "nt", "os.startfile 仅 Windows 可用；os.name 补丁会让 pathlib 选择 WindowsPath")
     def test_open_output_folder_uses_startfile_on_windows(self) -> None:
         folder = self.root / "out"
@@ -4529,9 +4549,14 @@ class LauncherAssetContractTests(unittest.TestCase):
     def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
         self.assertNotIn('id="saveStickerDir"', page)
         self.assertIn('if (result.ok) await saveStickerDirectory(result.path);', script)
+        self.assertIn('id="stickerCurrent" class="inline-link runtime-path-link"', page)
+        self.assertIn('$("stickerCurrent").addEventListener("click", async () => { const result = await bridge("open_sticker_folder")', script)
+        self.assertIn('button.disabled = !path', script)
+        self.assertIn('def open_sticker_folder(', backend)
 
     def test_ffmpeg_save_distinguishes_write_failure_from_missing_tools(self) -> None:
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
@@ -4602,6 +4627,19 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="refreshServerStatus"', page)
         self.assertNotIn('state.serverRunning ? t("server_stop")', script)
 
+    def test_launcher_hero_links_include_project_home_and_tutorial_video(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('<div class="hero-home-links">', page)
+        self.assertIn('id="homeLink" class="text-link" type="button" data-i18n="project_home">项目官网', page)
+        self.assertIn('id="tutorialVideoLink" class="text-link" type="button" data-i18n="tutorial_video">教程视频', page)
+        self.assertLess(page.index('id="homeLink"'), page.index('id="tutorialVideoLink"'))
+        self.assertIn('tutorial_video: "教程视频"', script)
+        self.assertIn('tutorial_video: "Tutorial video"', script)
+        self.assertIn('const TUTORIAL_VIDEO_URL = "https://www.bilibili.com/video/BV1S9bZ6pEHg";', script)
+        self.assertIn("$(\"tutorialVideoLink\").addEventListener(\"click\", () => bridge(\"open_url\", { url: TUTORIAL_VIDEO_URL }));", script)
+
     def test_workspace_requests_sync_server_config_from_response(self) -> None:
         script = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
 
@@ -4665,9 +4703,20 @@ class LauncherAssetContractTests(unittest.TestCase):
     def test_language_filter_hint_is_available_to_single_language_providers(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="languageFilterHint"', page)
-        self.assertIn('language_filter_hint: "默认仅显示常用语言', script)
+        self.assertIn('id="openLanguageSettings"', page)
+        self.assertIn('language_filter_hint_prefix: "默认仅显示常用语言', script)
+        self.assertIn('language_filter_hint_link: "设置"', script)
+        self.assertIn('language_filter_hint_suffix: "」中开启。"', script)
+        self.assertIn('id="settingsLanguageSection"', page)
+        self.assertLess(page.index('id="settingsLanguageSection"'), page.index('data-i18n="settings_file_output"'))
+        self.assertNotIn('data-i18n="interface_language_hint"', page)
+        self.assertIn('data-i18n="show_rare_langs_hint"', page)
+        self.assertIn('show_rare_langs_hint: "开启后，「语言」列表显示供应商支持的全部语种', script)
+        self.assertIn(".settings-language-switch {\n  margin-bottom: 14px;", stylesheet)
+        self.assertIn('$("openLanguageSettings").addEventListener("click", () => openSettings("settingsLanguageSection"));', script)
         self.assertIn('$("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0);', script)
         self.assertIn("const selectedModel = () =>", script)
         self.assertIn("applyProviderLanguages(provider(), selectedModel())", script)
@@ -4785,24 +4834,35 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
         self.assertIn('$("languageGroup").classList.toggle("hidden", current.supportsLanguage === false)', script)
         self.assertIn(".advanced-col {\n  display: grid;\n  grid-template-columns: 1fr 1fr;", stylesheet)
+        self.assertIn(".advanced-col #dashscopeRegionHint {\n  grid-column: 1 / -1;\n}", stylesheet)
         self.assertNotIn("display: contents", stylesheet)
 
-    def test_qwen_regional_settings_live_in_runtime_with_advanced_link(self) -> None:
+    def test_qwen_regional_settings_live_at_bottom_of_llm_with_advanced_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
-        runtime_panel = page.index('data-settings-panel="runtime"')
+        llm_panel = page.index('data-settings-panel="llm"')
         dashscope_panel = page.index('id="dashscopeRegionPanel"')
+        processing_panel = page.index('data-settings-panel="processing"')
+        runtime_panel = page.index('data-settings-panel="runtime"')
         ocr_section = page.index('id="ocrSettingsSection"')
+        llm_panel_end = page.index('</section>', dashscope_panel)
 
-        self.assertLess(runtime_panel, dashscope_panel)
-        self.assertLess(dashscope_panel, ocr_section)
+        self.assertLess(llm_panel, dashscope_panel)
+        self.assertLess(dashscope_panel, llm_panel_end)
+        self.assertLess(dashscope_panel, processing_panel)
+        self.assertLess(runtime_panel, ocr_section)
         self.assertIn('id="regionField" class="field"', page)
         self.assertIn('id="workspaceField" class="field"', page)
         self.assertIn('id="saveDashscopeRegionSettings"', page)
+        self.assertIn('data-i18n="settings_dashscope_region">阿里云百炼地域与业务空间</h3>', page)
         self.assertIn("北京地域选填（推荐），新加坡地域必填。", page)
         self.assertIn('id="dashscopeRegionHint"', page)
         self.assertIn('id="openDashscopeRegionSettings"', page)
+        self.assertIn('data-i18n="dashscope_region_hint_prefix">如果你不是中国大陆地区的用户，请前往 </span>', page)
+        self.assertIn('data-i18n="dashscope_region_hint_link">⚙️ 设置 → 运行环境</button>', page)
+        self.assertIn('data-i18n="dashscope_region_hint_suffix"> 配置阿里云百炼地域与业务空间。</span>', page)
+        self.assertNotIn('data-i18n="dashscope_region_hint_advanced"', page)
         self.assertIn('$("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen");', script)
         self.assertIn('$("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen");', script)
         self.assertIn('$("openDashscopeRegionSettings").addEventListener("click", () => openSettings("dashscopeRegionPanel"));', script)
@@ -4810,6 +4870,16 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertNotIn("SHOW_REGIONAL_FIELDS", script)
         self.assertNotIn("syncWorkspace", script)
         self.assertIn('data.region === "singapore" && !data.workspaceId', script)
+
+    def test_length_limit_is_not_exposed_in_launcher_ui(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertNotIn('id="lengthLimitField"', page)
+        self.assertNotIn('id="lengthLimit"', page)
+        self.assertIn('lengthLimit: $("lengthLimit")?.value.trim() || ""', script)
+        self.assertIn('const lengthLimit = $("lengthLimit"); if (lengthLimit) lengthLimit.disabled = on;', script)
+        self.assertIn('$("lengthLimitField")?.classList.toggle("hidden", !SHOW_LENGTH_LIMIT_FIELD);', script)
 
     def test_launcher_language_setting_uses_saved_or_system_preference(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -5047,10 +5117,25 @@ class LauncherAssetContractTests(unittest.TestCase):
 
         self.assertIn('openAutoStep(stepId, "", { highlightConnection: true });', script)
         self.assertIn('function setTestConnectionAttention(attention)', script)
-        self.assertIn('setTestConnectionAttention(true);', script)
+        self.assertIn('setTestConnectionAttention(Boolean(hasApiKey && hasBaseUrl && hasModel && !item?.verified));', script)
         self.assertIn('setTestConnectionAttention(false);', script)
         self.assertIn('id="testLlmConnection"', page)
         self.assertIn('.primary.attention', stylesheet)
+        self.assertIn('animation: attention-pulse 1.6s ease-out infinite;', stylesheet)
+        self.assertIn('@media (prefers-reduced-motion: reduce)', stylesheet)
+
+    def test_launcher_separates_auto_translation_hints_from_toolbox_hints(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn('data-i18n="settings_tab_llm">AI 模型配置</button>', page)
+        self.assertIn('settings_tab_llm: "AI 模型配置"', launcher_script)
+        self.assertIn('data-i18n="auto_backfill_subtitles_hint">当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。</p>', page)
+        self.assertIn('auto_backfill_subtitles_hint: "当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。"', launcher_script)
+        self.assertIn('data-i18n="backfill_subtitles_hint">适用于仅有少量语音需要翻译的情况', page)
+        self.assertIn('$("autoTranslateMergeHint")?.classList.toggle("hidden", !(translateEnabled && !mergeBilingual));', postprocess_script)
+        self.assertIn('$("autoTranslateBilingualOrder")?.classList.toggle("hidden", !(translateEnabled && mergeBilingual));', postprocess_script)
 
     def test_launcher_refreshes_auto_postprocess_state_after_ocr_install(self) -> None:
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
@@ -5099,7 +5184,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('.settings-tab.active:focus-visible {', stylesheet)
         self.assertIn('.settings-modal-card {', stylesheet)
         self.assertIn('scrollbar-gutter: stable;', stylesheet)
-        self.assertIn('settings_tab_llm: "大语言模型（AI）"', script)
+        self.assertIn('settings_tab_llm: "AI 模型配置"', script)
 
 
 @final

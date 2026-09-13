@@ -954,25 +954,25 @@ class GuiWorkflowTests(unittest.TestCase):
     def test_default_srt_path_uses_provider_tag(self) -> None:
         from maw.gui_workflow import default_srt_path
 
-        self.assertEqual(default_srt_path(Path("clip.mp4")).name, "clip.qwen-audio.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), attach_model_name=True).name, "clip.qwen-audio.srt")
         self.assertEqual(
-            default_srt_path(Path("clip.mp4"), model="fun-asr").name,
+            default_srt_path(Path("clip.mp4"), model="fun-asr", attach_model_name=True).name,
             "clip.fun-asr.srt",
         )
         self.assertEqual(
-            default_srt_path(Path("clip.mp4"), model="qwen3-asr-flash-filetrans").name,
+            default_srt_path(Path("clip.mp4"), model="qwen3-asr-flash-filetrans", attach_model_name=True).name,
             "clip.qwen3-asr-api.srt",
         )
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="soniox").name, "clip.soniox.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="soniox", attach_model_name=True).name, "clip.soniox.srt")
         self.assertEqual(
-            default_srt_path(Path("clip.mp4"), test_run=True).name,
+            default_srt_path(Path("clip.mp4"), test_run=True, attach_model_name=True).name,
             "clip.qwen-audio-test.srt",
         )
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="qwen3-asr-local").name, "clip.qwen-asr-local.srt")
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="qwen3-asr-1.7b-local").name, "clip.qwen3-asr-1.7b-local.srt")
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="sensevoice-small-local").name, "clip.sensevoice-local.srt")
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="fun-asr-nano-local").name, "clip.funasr-local.srt")
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="funasr-local").name, "clip.funasr-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="qwen3-asr-local", attach_model_name=True).name, "clip.qwen-asr-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="qwen3-asr-1.7b-local", attach_model_name=True).name, "clip.qwen3-asr-1.7b-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="sensevoice-small-local", attach_model_name=True).name, "clip.sensevoice-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="fun-asr-nano-local", attach_model_name=True).name, "clip.funasr-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="funasr-local", attach_model_name=True).name, "clip.funasr-local.srt")
 
     def test_default_srt_path_attach_model_name_off_drops_all_tags(self) -> None:
         from maw.gui_workflow import default_srt_path

@@ -90,6 +90,26 @@ test('cloud ASR models show provider-specific price hints', async ({ page }) => 
   await expect(page.locator('#modelNote')).toContainText('OpenAI 官方参考价');
 });
 
+test('project and tutorial hero links open their configured URLs', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    window.__openedUrls = [];
+    window.open = (url) => {
+      window.__openedUrls.push(String(url));
+      return null;
+    };
+  });
+
+  await page.locator('#homeLink').click();
+  await page.locator('#tutorialVideoLink').click();
+
+  await expect.poll(() => page.evaluate(() => window.__openedUrls)).toEqual([
+    'https://github.com/Moyf/moys-asr-workflow',
+    'https://www.bilibili.com/video/BV1S9bZ6pEHg',
+  ]);
+});
+
 test('OCR video source follows a newly dropped video media', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxOcrTab').click();
@@ -170,15 +190,18 @@ test('waveform tool sends the selected and container-default audio tracks', asyn
 
 test('translation merge option follows manual and automatic translation controls', async ({ page }) => {
   await openLauncher(page);
+  await page.evaluate(() => document.getElementById('langZh').click());
   await page.locator('#toolboxLlmTab').click();
 
   const manualOptions = page.locator('#postprocessTranslationOptions');
+  await page.locator('#postprocessOperation').selectOption('proofread');
   await expect(manualOptions).toBeHidden();
   await expect(page.locator('#postprocessMergeBilingual')).not.toBeChecked();
 
   await page.locator('#postprocessOperation').selectOption('translate_en');
   await expect(manualOptions).toBeVisible();
   await expect(page.locator('#postprocessMergeBilingual')).not.toBeChecked();
+  await expect(page.locator('#postprocessTranslationOptions [data-i18n="backfill_subtitles_hint"]')).toHaveText('适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。');
   await page.locator('#postprocessOperation').selectOption('proofread');
   await expect(manualOptions).toBeHidden();
   await page.locator('#toolboxClose').click();
@@ -198,17 +221,60 @@ test('translation merge option follows manual and automatic translation controls
   await expect(page.locator('#autoTranslateTargetField')).toBeVisible();
   await expect(page.locator('#autoTranslateMergeField')).toBeVisible();
   await expect(page.locator('#autoTranslateMergeBilingual')).not.toBeChecked();
+  await expect(page.locator('#autoTranslateMergeHint')).toBeVisible();
+  await expect(page.locator('#autoTranslateBilingualOrder')).toBeHidden();
+  await expect(page.locator('#autoTranslateBackfillHint')).toHaveText('当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。');
 
   await page.locator('#autoTranslateMergeBilingual').check();
+  await expect(page.locator('#autoTranslateMergeHint')).toBeHidden();
+  await expect(page.locator('#autoTranslateBilingualOrder')).toBeVisible();
   await expect.poll(() => page.evaluate(() => {
     const plans = window.__savedPlans || [];
     const latest = plans[plans.length - 1];
     return latest?.steps?.find((step) => step.id === 'translate')?.mergeBilingual;
   })).toBe(true);
 
+  await page.locator('#autoTranslateMergeBilingual').uncheck();
+  await expect(page.locator('#autoTranslateMergeHint')).toBeVisible();
+  await expect(page.locator('#autoTranslateBilingualOrder')).toBeHidden();
+
   await page.locator('#autoStepTranslate').uncheck();
   await expect(page.locator('#autoTranslateTargetField')).toBeHidden();
   await expect(page.locator('#autoTranslateMergeField')).toBeHidden();
+});
+
+test('automatic LLM setup highlights test connection until clicked', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    const provider = window.MAWLauncher.config.postprocessProviders.find((item) => item.id === 'deepseek');
+    Object.assign(provider, {
+      verified: false,
+      hasApiKey: true,
+      hasBaseUrl: true,
+      hasModel: true,
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+    });
+  });
+
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#autoStepTranslate').click();
+  await expect(page.locator('#autoStepTranslate')).not.toBeChecked();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#testLlmConnection')).toHaveClass(/attention/);
+  await expect.poll(() => page.locator('#testLlmConnection').evaluate((element) => getComputedStyle(element).animationIterationCount)).toBe('infinite');
+
+  await page.evaluate(() => {
+    window.MAWLauncher.callBackend = async (method) => (
+      method === 'test_postprocess_connection'
+        ? { ok: true, saved: true, verified: true, maskedApiKey: 'sk-…mock' }
+        : { ok: true }
+    );
+  });
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#testLlmConnection')).not.toHaveClass(/attention/);
 });
 
 test('Utilities use a vertical tab rail with arrow-key navigation', async ({ page }) => {
@@ -242,6 +308,8 @@ test('Utilities use a vertical tab rail with arrow-key navigation', async ({ pag
 test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+
   await page.locator('#settingsButton').click();
 
   const tabs = page.locator('#settingsTabList [role="tab"]');
@@ -249,7 +317,7 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
   await expect(page.locator('#settingsTabList')).toHaveAttribute('aria-label', '设置分类');
   await expect(page.locator('#settingsGeneralPanel')).toBeVisible();
   await expect(page.locator('#settingsLlmPanel')).toBeHidden();
-  await expect(page.locator('#settingsLlmTab')).toHaveText('大语言模型（AI）');
+  await expect(page.locator('#settingsLlmTab')).toHaveText('AI 模型配置');
 
   const settingsCard = page.locator('#settingsModal .settings-modal-card');
   const initialCard = await settingsCard.boundingBox();
@@ -290,6 +358,41 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
   });
   expect(tabLayout.columns).toBe(2);
   expect(tabLayout.overflow).toBe(false);
+});
+
+test('Qwen regional settings use a narrow advanced link and live at the bottom of LLM settings', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+
+  await page.locator('#provider').selectOption('qwen');
+  await page.locator('#advancedToggle').click();
+  const regionalHint = page.locator('#dashscopeRegionHint');
+  await expect(regionalHint).toBeVisible();
+  expect(await regionalHint.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { gridColumnStart: style.gridColumnStart, gridColumnEnd: style.gridColumnEnd };
+  })).toEqual({ gridColumnStart: '1', gridColumnEnd: '-1' });
+  await expect(regionalHint.locator('button')).toHaveCount(1);
+  await expect(regionalHint.locator('button')).toHaveText('⚙️ 设置 → 运行环境');
+  await expect(regionalHint).toContainText('配置阿里云百炼地域与业务空间。');
+  await page.locator('#openDashscopeRegionSettings').click();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'false');
+  await expect(page.locator('#dashscopeRegionPanel')).toBeVisible();
+  await expect(page.locator('#dashscopeRegionPanel h3')).toHaveText('阿里云百炼地域与业务空间');
+  expect(await page.locator('#dashscopeRegionPanel').evaluate((element) => element.parentElement?.id)).toBe('settingsLlmPanel');
+});
+
+test('Launcher keeps the length limit backend-only', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+
+  await expect(page.locator('#lengthLimitField')).toHaveCount(0);
+  await expect(page.locator('#lengthLimit')).toHaveCount(0);
+  await page.locator('#testRun').check();
+  await expect(page.locator('#status')).toBeVisible();
 });
 
 test('segmentation settings live under Processing and validation opens that tab', async ({ page }) => {

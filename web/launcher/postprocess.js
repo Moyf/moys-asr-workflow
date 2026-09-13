@@ -1439,12 +1439,13 @@
     const enabled = Boolean($("autoPostprocessEnabled")?.checked);
     $("autoPostprocessOptions")?.classList.toggle("hidden", !enabled);
     const translateEnabled = Boolean($("autoStepTranslate")?.checked);
-  $("autoTranslateTargetField")?.classList.toggle("hidden", !translateEnabled);
-  $("autoTranslateMergeField")?.classList.toggle("hidden", !translateEnabled);
-  $("autoTranslateMergeHint")?.classList.toggle("hidden", !translateEnabled);
-  $("autoTranslateBilingualOrder")?.classList.toggle("hidden", !(translateEnabled && $("autoTranslateMergeBilingual")?.checked));
-  $("autoTranslateBackfillField")?.classList.toggle("hidden", !translateEnabled);
-  $("autoTranslateBackfillHint")?.classList.toggle("hidden", !translateEnabled);
+    const mergeBilingual = Boolean($("autoTranslateMergeBilingual")?.checked);
+    $("autoTranslateTargetField")?.classList.toggle("hidden", !translateEnabled);
+    $("autoTranslateMergeField")?.classList.toggle("hidden", !translateEnabled);
+    $("autoTranslateMergeHint")?.classList.toggle("hidden", !(translateEnabled && !mergeBilingual));
+    $("autoTranslateBilingualOrder")?.classList.toggle("hidden", !(translateEnabled && mergeBilingual));
+    $("autoTranslateBackfillField")?.classList.toggle("hidden", !translateEnabled);
+    $("autoTranslateBackfillHint")?.classList.toggle("hidden", !translateEnabled);
     const summary = $("autoPostprocessSummary");
     if (!summary) return;
     if (!enabled) {
@@ -1514,7 +1515,12 @@
       const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
         ? invalidField
         : (item?.hasApiKey === false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
-      if (highlightConnection) setTestConnectionAttention(true);
+      if (highlightConnection) {
+        const hasApiKey = item?.hasApiKey || item?.maskedApiKey || $("llmApiKey")?.value.trim();
+        const hasBaseUrl = item?.hasBaseUrl || item?.baseUrl || $("llmBaseUrl")?.value.trim();
+        const hasModel = item?.hasModel || item?.model || $("llmModel")?.value.trim();
+        setTestConnectionAttention(Boolean(hasApiKey && hasBaseUrl && hasModel && !item?.verified));
+      }
       window.MAWLauncher.openSettings("llmSettingsSection", focusId);
       return;
     }
@@ -1722,6 +1728,7 @@
   }
 
   async function testConnection() {
+    setTestConnectionAttention(false);
     setSettingsSaveStatus(t("llm_connection_testing"), "", 0);
     $("testLlmConnection").disabled = true;
     $("getLlmModels").disabled = true;
@@ -1754,7 +1761,6 @@
     } catch (error) {
       setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
     } finally {
-      setTestConnectionAttention(false);
       $("testLlmConnection").disabled = busy;
       $("getLlmModels").disabled = busy;
     }
@@ -2271,7 +2277,7 @@
       renderAutoPostprocessState();
       persistAutoPlanSoon();
     });
-    $(`configureAuto${stepId[0].toUpperCase()}${stepId.slice(1)}`).addEventListener("click", () => openAutoStep(stepId));
+    $(`configureAuto${stepId[0].toUpperCase()}${stepId.slice(1)}`).addEventListener("click", () => openAutoStep(stepId, "", { highlightConnection: true }));
   });
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", () => {
     syncPaths();

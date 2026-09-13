@@ -20,7 +20,7 @@ srt/mosp/edit.html；批量清单与 GUI 侧 edit.html 进 `_maw`；前端镜像
 
 | 项 | 处理 |
 |---|---|
-| 4 个 GUI 开关 | `MAW_GUI_OUTPUT_SUBFOLDER` / `MAW_GUI_PER_VIDEO_SUBFOLDER` / `MAW_GUI_ATTACH_MODEL_NAME`(默认 true) / `MAW_GUI_ATTACH_RTF_RATE` 全部 bool；env 空值按默认。 |
+| 4 个 GUI 开关 | `MAW_GUI_OUTPUT_SUBFOLDER` / `MAW_GUI_PER_VIDEO_SUBFOLDER` / `MAW_GUI_ATTACH_MODEL_NAME`(默认 false) / `MAW_GUI_ATTACH_RTF_RATE` 全部 bool；env 空值按默认。 |
 | GUI edit.html | 只要提供 `media_path`，一律落 `output_naming.maw_root(media)`（含 output_subfolder 关闭时）；不给 media_path 的调用保持旧行为（HTML 在 srt 旁），兼容测试与波形工程。 |
 | RTF 重命名 | 仅 `run_transcription` 内部：`_require_output` 通过后、html 生成前，若 `effective_config().attach_rtf_rate` 且子进程 stdout 有有效 `MAW_STAT rtf=`，用 `unique_output_path` 把 srt/mosp 重命名为 `<stem>.<0.12x>`；html 随后渲染到重命名后的 _maw 路径。raw `.asr-response.json` 保持转写前 stem 命名（debug 开关独立控制）。 |
 | 批量 manifest | 默认目录改为 `output_naming.maw_root(first_request.media_path)`（mkdir parents）；显式 `manifestPath` 不变。 |
@@ -28,7 +28,7 @@ srt/mosp/edit.html；批量清单与 GUI 侧 edit.html 进 `_maw`；前端镜像
 
 ## 清单
 
-- [x] gui_config：4 字段 + `_env_bool` 读取（默认 output_subfolder/per_video/rtf=false，attach=true）
+- [x] gui_config：4 字段 + `_env_bool` 读取（默认 output_subfolder/per_video/rtf=false，attach=false）
 - [x] gui_web：save_prefs 写 4 键、get_config 下发 4 字段、批量 manifest 默认落 maw_root、unique/_artifact/_batch_unique 带 media
 - [x] gui_workflow：default_srt_path 四象限 + per-video；build_output_paths/unique_output_path 可选 media；run_transcription RTF 重命名 + html mkdir
 - [x] launcher_batch：run_batch 唯一化带 media，重命名路径流入 outcome
