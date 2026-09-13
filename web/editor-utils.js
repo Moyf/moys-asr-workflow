@@ -2678,6 +2678,13 @@
   function normalizeMediaMetadata(value) {
     if (value == null) return null;
     if (typeof value !== 'object' || Array.isArray(value)) return null;
+    const hasVideoWidth = value.video_width !== undefined;
+    const hasVideoHeight = value.video_height !== undefined;
+    const hasVideoDimensions = hasVideoWidth || hasVideoHeight;
+    if (hasVideoWidth !== hasVideoHeight) return null;
+    if (hasVideoDimensions
+        && (!Number.isInteger(value.video_width) || value.video_width <= 0
+          || !Number.isInteger(value.video_height) || value.video_height <= 0)) return null;
     const hasFps = value.video_fps !== undefined;
     const fps = value.video_fps;
     if (hasFps && (typeof fps !== 'number' || !Number.isFinite(fps)
@@ -2689,8 +2696,12 @@
     const hasSelectedAudioTrack = value.selected_audio_track !== undefined;
     if (hasSelectedAudioTrack
         && (!Number.isInteger(value.selected_audio_track) || value.selected_audio_track < 0)) return null;
-    if (!hasFps && !hasAudioTracks && !hasSelectedAudioTrack) return null;
+    if (!hasFps && !hasAudioTracks && !hasSelectedAudioTrack && !hasVideoDimensions) return null;
     const metadata = {};
+    if (hasVideoDimensions) {
+      metadata.video_width = value.video_width;
+      metadata.video_height = value.video_height;
+    }
     if (hasFps) metadata.video_fps = normalizeTimelineFps(fps);
     if (typeof value.video_fps_ratio === 'string') {
       metadata.video_fps_ratio = value.video_fps_ratio.trim();
@@ -3797,6 +3808,20 @@
   const ASS_DEFAULT_FONT_FAMILY = 'Arial';
   const ASS_DEFAULT_FONT_SIZE = 18;
   const ASS_DEFAULT_COLOR = '#ffffff';
+  const ASS_DEFAULT_PLAY_RES_X = 1920;
+  const ASS_DEFAULT_PLAY_RES_Y = 1080;
+  const ASS_REFERENCE_PLAY_RES_Y = 1080;
+  const ASS_COLOR_STYLE_NAMES = Object.freeze(['yellow', 'green', 'red', 'purple', 'blue']);
+  // The editor injects window.ASR_EDITOR_PALETTE from maw/colors.py before
+  // this module runs. Keep a small fallback so the utility remains usable in
+  // standalone tests and integrations that do not render the full template.
+  const ASS_FALLBACK_COLOR_PALETTE = Object.freeze([
+    Object.freeze({ name: 'yellow', value: '#c4a019' }),
+    Object.freeze({ name: 'green', value: '#66bb6a' }),
+    Object.freeze({ name: 'red', value: '#f07f6f' }),
+    Object.freeze({ name: 'purple', value: '#bf89e6' }),
+    Object.freeze({ name: 'blue', value: '#61a7fa' }),
+  ]);
   const ASS_STYLE_FORMAT = 'Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding';
   const ASS_EVENT_FORMAT = 'Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text';
 
@@ -3855,6 +3880,63 @@
     return Math.min(512, Math.max(1, Math.round(numeric)));
   }
 
+  function resolveAssFontSize(value, playResY) {
+    const numericPreviewSize = Number(value);
+    const previewSize = Number.isFinite(numericPreviewSize) && numericPreviewSize > 0
+      ? numericPreviewSize : ASS_DEFAULT_FONT_SIZE;
+    const numericPlayResY = Number(playResY);
+    const scale = Number.isFinite(numericPlayResY) && numericPlayResY > 0
+      ? numericPlayResY / ASS_REFERENCE_PLAY_RES_Y : 1;
+    return normalizeAssFontSize(previewSize * scale);
+  }
+
+  function normalizeAssDimension(value, fallback) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
+    return Math.min(65535, Math.max(1, Math.round(numeric)));
+  }
+
+  function normalizeAssPlayResolution(width, height) {
+    const numericWidth = Number(width);
+    const numericHeight = Number(height);
+    if (!Number.isFinite(numericWidth) || numericWidth <= 0
+        || !Number.isFinite(numericHeight) || numericHeight <= 0) {
+      return { width: ASS_DEFAULT_PLAY_RES_X, height: ASS_DEFAULT_PLAY_RES_Y };
+    }
+    return {
+      width: normalizeAssDimension(numericWidth, ASS_DEFAULT_PLAY_RES_X),
+      height: normalizeAssDimension(numericHeight, ASS_DEFAULT_PLAY_RES_Y),
+    };
+  }
+
+  function normalizeAssHeaderValue(value, fallback = 'MAW') {
+    const normalized = String(value ?? '')
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return normalized || fallback;
+  }
+
+  function normalizeAssEventField(value) {
+    return String(value ?? '')
+      .replace(/[\r\n,]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function normalizeAssColorStyles(value) {
+    const injected = Array.isArray(window.ASR_EDITOR_PALETTE)
+      ? window.ASR_EDITOR_PALETTE : ASS_FALLBACK_COLOR_PALETTE;
+    const source = Array.isArray(value) ? value : injected;
+    const byName = new Map(source
+      .filter((entry) => entry && typeof entry.name === 'string')
+      .map((entry) => [entry.name, entry.value]));
+    return ASS_COLOR_STYLE_NAMES.map((name) => ({
+      name,
+      value: assColorFromHex(byName.get(name)),
+    }));
+  }
+
   function buildAssPayload(segments, options = {}) {
     const source = Array.isArray(segments) ? segments : [];
     const appearance = options.appearance && typeof options.appearance === 'object'
@@ -3862,8 +3944,17 @@
     const fontFamily = normalizeAssFontFamily(
       appearance.font_family ?? options.fontFamily,
     );
-    const fontSize = normalizeAssFontSize(appearance.font_size ?? options.fontSize);
+    const mediaMetadata = options.mediaMetadata && typeof options.mediaMetadata === 'object'
+      ? options.mediaMetadata : {};
+    const resolution = normalizeAssPlayResolution(
+      options.playResX ?? options.videoWidth ?? mediaMetadata.video_width,
+      options.playResY ?? options.videoHeight ?? mediaMetadata.video_height,
+    );
+    const previewFontSize = appearance.font_size ?? options.fontSize;
+    const fontSize = resolveAssFontSize(previewFontSize, resolution.height);
     const primaryColor = assColorFromHex(appearance.color ?? options.color);
+    const title = normalizeAssHeaderValue(options.title ?? options.projectName);
+    const colorStyles = normalizeAssColorStyles(options.colorStyles);
     const numericTimeOffset = Number(options.timeOffset);
     const timeOffset = Number.isFinite(numericTimeOffset)
       ? Math.max(0, Math.round(numericTimeOffset)) : 0;
@@ -3891,22 +3982,28 @@
       // an imported/edited cue is shorter than that precision.
       const startCentiseconds = Math.max(0, Math.round(start / 10));
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+      const speakerName = speakerLabels
+        ? speakerLabelForSegment(segment, source, speakerLabels) : '';
       const text = speakerLabels
         ? formatSpeakerLabelledText(
           segment.text, segment, source, speakerLabels, speakerLabelSeparator,
         )
         : String(segment.text ?? '');
+      const colorName = effectiveColorName(segment, source);
+      const styleName = ASS_COLOR_STYLE_NAMES.includes(colorName)
+        ? colorName.toUpperCase() : 'Default';
       events.push(
-        `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Default,,0,0,0,,${escapeAssText(text)}`,
+        `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${styleName},${normalizeAssEventField(speakerName)},0,0,0,,${escapeAssText(text)}`,
       );
     });
 
     return [
       '[Script Info]',
       '; Script generated by MAW',
+      `Title: ${title}`,
       'ScriptType: v4.00+',
-      'PlayResX: 1920',
-      'PlayResY: 1080',
+      `PlayResX: ${resolution.width}`,
+      `PlayResY: ${resolution.height}`,
       'WrapStyle: 0',
       'ScaledBorderAndShadow: yes',
       'YCbCr Matrix: None',
@@ -3914,6 +4011,9 @@
       '[V4+ Styles]',
       `Format: ${ASS_STYLE_FORMAT}`,
       `Style: Default,${fontFamily},${fontSize},${primaryColor},${primaryColor},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`,
+      ...colorStyles.map((style) => (
+        `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.value},${style.value},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`
+      )),
       '',
       '[Events]',
       `Format: ${ASS_EVENT_FORMAT}`,
@@ -5507,6 +5607,11 @@ export default MawDynamicCaptions;
     repairGroupReferenceIndices,
     buildSrtPayload,
     normalizeAssFontFamily,
+    normalizeAssFontSize,
+    resolveAssFontSize,
+    normalizeAssPlayResolution,
+    normalizeAssHeaderValue,
+    ASS_COLOR_STYLE_NAMES,
     assColorFromHex,
     formatAssTime,
     escapeAssText,

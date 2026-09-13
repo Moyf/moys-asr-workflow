@@ -274,13 +274,19 @@ test('normalizes optional source video FPS metadata for frame-mode defaults', ()
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
     video_fps: 30000 / 1001,
     video_fps_ratio: '30000/1001',
+    video_width: 3840,
+    video_height: 2160,
   }))), {
     video_fps: 29.97,
     video_fps_ratio: '30000/1001',
+    video_width: 3840,
+    video_height: 2160,
   });
   assert.equal(helpers.normalizeMediaMetadata(undefined), null);
   assert.equal(helpers.normalizeMediaMetadata({ video_fps: 300 }), null);
   assert.equal(helpers.normalizeMediaMetadata({ video_fps: 30, video_fps_ratio: '' }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ video_width: 1920 }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ video_width: 0, video_height: 1080 }), null);
 });
 
 test('normalizes source audio track metadata independently from video FPS', () => {
@@ -1449,7 +1455,10 @@ test('translates speaker label separator settings to English', () => {
 });
 
 test('translates OTIOZ export labels, mode hints and dynamic messages to English', () => {
-  assert.equal(i18n.translateText('完整字幕（SRT）', 'en'), 'Full subtitles (SRT)');
+  assert.equal(i18n.translateText('完整 SRT 字幕', 'en'), 'Full SRT subtitles');
+  assert.equal(i18n.translateText('按颜色拆分导出 SRT 字幕', 'en'), 'Export SRT subtitles split by color');
+  assert.equal(i18n.translateText('带样式的 ASS 字幕', 'en'), 'Styled ASS subtitles');
+  assert.equal(i18n.translateText('SRT 字幕', 'en'), 'SRT subtitles');
   assert.equal(i18n.translateText('表情包 OTIO 工程', 'en'), 'Sticker OTIO project');
   assert.equal(i18n.translateText('表情包 OTIOZ 打包工程', 'en'), 'Sticker OTIOZ bundle');
   assert.equal(i18n.translateText('时间线 OTIO 工程', 'en'), 'Timeline OTIO project');
@@ -3038,10 +3047,49 @@ test('builds ASS subtitles with the selected font, size, color and safe text', (
   assert.equal(helpers.formatAssTime(Infinity), '0:00:00.00');
   assert.equal(helpers.formatAssTime(3723456), '1:02:03.46');
   assert.match(ass, /\[Script Info\][\s\S]*\[V4\+ Styles\][\s\S]*\[Events\]/);
+  assert.match(ass, /PlayResX: 1920[\s\S]*PlayResY: 1080/);
   assert.match(ass, /Style: Default,Microsoft YaHei,32,&H00563412,&H00563412,/);
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:03\.46,Default,,0,0,0,,你好\\NHello, \\{tag\\}\\\\path/);
   assert.match(ass, /Dialogue: 0,0:00:05\.00,0:00:05\.01,Default,,0,0,0,,later/);
   assert.doesNotMatch(ass, /disabled/);
+});
+
+test('builds ASS metadata and five palette styles at the source video resolution', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
+    { start: 1200, end: 2200, text: 'plain line' },
+  ], {
+    title: 'project-name',
+    mediaMetadata: { video_width: 3840, video_height: 2160 },
+    appearance: { font_size: 32, font_family: 'sans', color: '#ffffff' },
+  });
+
+  assert.match(ass, /Title: project-name/);
+  assert.match(ass, /PlayResX: 3840[\s\S]*PlayResY: 2160/);
+  assert.match(ass, /Style: Default,Arial,64,/);
+  assert.match(ass, /Style: YELLOW,Arial,64,&H0019A0C4,&H0019A0C4,/);
+  assert.match(ass, /Style: GREEN,Arial,64,&H006ABB66,&H006ABB66,/);
+  assert.match(ass, /Style: RED,Arial,64,&H006F7FF0,&H006F7FF0,/);
+  assert.match(ass, /Style: PURPLE,Arial,64,&H00E689BF,&H00E689BF,/);
+  assert.match(ass, /Style: BLUE,Arial,64,&H00FAA761,&H00FAA761,/);
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
+  assert.match(ass, /Dialogue: 0,0:00:01\.20,0:00:02\.20,Default,,0,0,0,,plain line/);
+});
+
+test('converts the responsive default ASS font size at the source video resolution', () => {
+  const segments = [{ start: 0, end: 1000, text: 'auto size' }];
+  const metadata = { video_width: 3840, video_height: 2160 };
+  const withoutStoredSize = helpers.buildAssPayload(segments, {
+    mediaMetadata: metadata,
+    appearance: { font_size: null },
+  });
+  const explicitAuto = helpers.buildAssPayload(segments, {
+    mediaMetadata: metadata,
+    fontSize: 'auto',
+  });
+
+  assert.match(withoutStoredSize, /Style: Default,Arial,36,/);
+  assert.match(explicitAuto, /Style: Default,Arial,36,/);
 });
 
 test('optionally prefixes configured speaker names in ASS output', () => {
@@ -3057,8 +3105,8 @@ test('optionally prefixes configured speaker names in ASS output', () => {
   });
 
   assert.deepEqual(ass.split('\n').filter((line) => line.startsWith('Dialogue:')), [
-    'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,Host yellow line',
-    'Dialogue: 0,0:00:01.20,0:00:02.20,Default,,0,0,0,,Guest green line',
+    'Dialogue: 0,0:00:00.00,0:00:01.00,YELLOW,Host,0,0,0,,Host yellow line',
+    'Dialogue: 0,0:00:01.20,0:00:02.20,GREEN,Guest,0,0,0,,Guest green line',
     'Dialogue: 0,0:00:02.40,0:00:03.40,Default,,0,0,0,,plain line',
   ]);
 });

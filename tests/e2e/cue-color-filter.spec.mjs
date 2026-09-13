@@ -62,6 +62,16 @@ test('color filter button appears only for projects with colored subtitles', asy
   await expect(page.locator('#color-filter-btn')).toBeVisible();
 });
 
+test('colored subtitle indexes remain readable against tinted rows', async ({ page }) => {
+  await waitEditorReady(page);
+  await paintFirstSegmentRed(page);
+
+  await expect(page.locator('.cue[data-idx="0"] .index')).toHaveCSS(
+    'color',
+    'rgb(168, 177, 192)',
+  );
+});
+
 test('clicking a row shows only that color; checkboxes multi-select; clear restores all', async ({ page }) => {
   await waitEditorReady(page);
   await paintFirstSegmentRed(page);

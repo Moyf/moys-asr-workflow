@@ -1,5 +1,8 @@
 const DATA = __DATA_JSON__;
 let FILENAME_BASE = __FILENAME_BASE_JSON__;
+// 导出文件名前缀会随媒体切换变化；ASS 的 Title 必须跟随当前工程文件名，
+// 因此单独保留工程名，避免加载媒体或导入字幕时把 Title 改成媒体名。
+let PROJECT_NAME = FILENAME_BASE;
 const STICKERS = __STICKERS_JSON__;
 let STICKER_ROOT = __STICKER_ROOT_JSON__;  // 表情包根目录的绝对路径（无尾斜杠）
 let STICKER_URL_PREFIX = __STICKER_URL_PREFIX_JSON__;
@@ -995,6 +998,31 @@ function projectMediaVideoFps(project = DATA) {
   return normalizeMediaMetadata(project?.media_metadata)?.video_fps ?? null;
 }
 
+function captureProjectVideoDimensions(mediaElement) {
+  if (!mediaElement || mediaElement !== player || mediaElement.tagName !== 'VIDEO') return false;
+  const width = Number(mediaElement.videoWidth);
+  const height = Number(mediaElement.videoHeight);
+  if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) return false;
+  const current = normalizeMediaMetadata(DATA.media_metadata) || {};
+  if (current.video_width === width && current.video_height === height) return false;
+  DATA.media_metadata = { ...current, video_width: width, video_height: height };
+  projectImportDirty = true;
+  scheduleAutoSaveFlush();
+  return true;
+}
+
+function clearProjectVideoDimensions() {
+  const current = normalizeMediaMetadata(DATA.media_metadata);
+  if (!current || (current.video_width === undefined && current.video_height === undefined)) return false;
+  const next = { ...current };
+  delete next.video_width;
+  delete next.video_height;
+  DATA.media_metadata = Object.keys(next).length ? next : null;
+  projectImportDirty = true;
+  scheduleAutoSaveFlush();
+  return true;
+}
+
 let timelineFpsManuallySet = hasExplicitTimelineFps(DATA.timebase);
 
 function syncProjectTimebase(project = DATA, { preferFrames = false } = {}) {
@@ -1116,6 +1144,33 @@ const COLOR_PALETTE = window.ASR_EDITOR_PALETTE.map((c) => ({
 }));
 const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
+
+function currentAssVideoResolution() {
+  const metadata = normalizeMediaMetadata(DATA.media_metadata);
+  if (metadata?.video_width && metadata?.video_height) {
+    return { width: metadata.video_width, height: metadata.video_height };
+  }
+  const width = Number(player?.videoWidth);
+  const height = Number(player?.videoHeight);
+  if (player?.tagName === 'VIDEO'
+      && Number.isInteger(width) && width > 0
+      && Number.isInteger(height) && height > 0) {
+    return { width, height };
+  }
+  return null;
+}
+
+function assExportOptions(appearance = getSubtitleAppearance()) {
+  const resolution = currentAssVideoResolution();
+  return {
+    title: PROJECT_NAME || FILENAME_BASE || 'MAW',
+    mediaMetadata: normalizeMediaMetadata(DATA.media_metadata),
+    playResX: resolution?.width,
+    playResY: resolution?.height,
+    colorStyles: COLOR_PALETTE,
+    appearance,
+  };
+}
 
 const DEFAULT_GAP_REMOVE_MIN_MS = 400;
 const DEFAULT_GAP_REMOVE_THRESHOLD_DB = -28;
@@ -1680,7 +1735,9 @@ const gapRemovedExportDropdown = document.getElementById('gap-removed-export-dro
 const downloadMultiSrtButton = document.getElementById('download-multi-srt');
 const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown');
 const downloadColorSrtItem = document.getElementById('download-color-srt');
+const subtitleExportSeparator = document.getElementById('subtitle-export-separator');
 const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-removed-color-srt');
+const gapRemovedSubtitleExportSeparator = document.getElementById('gap-removed-subtitle-export-separator');
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
@@ -10027,6 +10084,7 @@ function bindPlayerEvents(mediaElement) {
   mediaElement.addEventListener('timeupdate', update);
   mediaElement.addEventListener('seeked', update);
   mediaElement.addEventListener('loadedmetadata', () => {
+    captureProjectVideoDimensions(mediaElement);
     notifyAutoLoadedMediaReady(mediaElement);
     flushPendingMediaSeek(mediaElement);
   });
@@ -10062,6 +10120,7 @@ function bindPlayerEvents(mediaElement) {
     .forEach((eventName) => mediaElement.addEventListener(eventName, syncMediaControls));
   if (mediaElement.readyState >= 1) {
     queueMicrotask(() => {
+      captureProjectVideoDimensions(mediaElement);
       notifyAutoLoadedMediaReady(mediaElement);
       flushPendingMediaSeek(mediaElement);
     });
@@ -12310,10 +12369,10 @@ function buildAss() {
     EDITOR_SETTINGS.exportStartAtZero,
   );
   return window.AsrEditorUtils.buildAssPayload(DATA.segments, {
+    ...assExportOptions(),
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     ...speakerLabelExportOptions(),
-    appearance: getSubtitleAppearance(),
   });
 }
 
@@ -12344,6 +12403,25 @@ function buildGapRemovedSrt() {
   });
 }
 
+function buildGapRemovedAss() {
+  const removed = getRemovedGapRanges();
+  if (!removed.length) {
+    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    return null;
+  }
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    DATA.segments,
+    EDITOR_SETTINGS.exportStartAtZero,
+  );
+  return window.AsrEditorUtils.buildAssPayload(DATA.segments, {
+    ...assExportOptions(),
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+    ...speakerLabelExportOptions(),
+  });
+}
+
 function usedSubtitleColors() {
   const names = new Set(DATA.segments.filter((segment) => !segment.disabled).map((segment) => (
     window.AsrEditorUtils.effectiveColorName(segment, DATA.segments) || 'default'
@@ -12357,7 +12435,9 @@ function usedSubtitleColors() {
 function updateSubtitleExportUi() {
   const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
   if (downloadColorSrtItem) downloadColorSrtItem.hidden = !hasColors;
+  if (subtitleExportSeparator) subtitleExportSeparator.hidden = !hasColors;
   if (downloadGapRemovedColorSrtItem) downloadGapRemovedColorSrtItem.hidden = !hasColors;
+  if (gapRemovedSubtitleExportSeparator) gapRemovedSubtitleExportSeparator.hidden = !hasColors;
   if (subtitleExportDropdown) subtitleExportDropdown.hidden = false;
   if (downloadMultiSrtButton) {
     downloadMultiSrtButton.hidden = !(multiSubtitleVisible() && getActiveExtensionTrack()?.segments?.length);
@@ -14349,7 +14429,7 @@ function configureWorkspaceTransfer() {
 
 function projectSaveFingerprint() {
   return JSON.stringify([DATA.segments, DATA.multi_subtitle, DATA.gap_remove,
-    DATA.preview, gapRemoveDirty, previewGeometryDirty, projectImportDirty]);
+    DATA.preview, DATA.media_metadata, gapRemoveDirty, previewGeometryDirty, projectImportDirty]);
 }
 
 function inlineEditHasUncommittedText() {
@@ -14399,7 +14479,8 @@ function markProjectSaved(filename, backupName, { silent = false, fingerprint = 
     projectImportDirty = false;
     container.querySelectorAll('.dirty').forEach(element => element.classList.remove('dirty'));
   }
-  FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
+  PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
+  FILENAME_BASE = PROJECT_NAME;
   const jsonEl = document.getElementById('json-name');
   if (jsonEl) {
     jsonEl.textContent = filename;
@@ -14973,6 +15054,15 @@ document.getElementById('download-gap-removed-srt')?.addEventListener('click', a
   }
 });
 document.getElementById('download-gap-removed-color-srt')?.addEventListener('click', () => downloadColorSrts(true));
+document.getElementById('download-gap-removed-ass')?.addEventListener('click', async () => {
+  if (editingState) finishEdit(true);
+  const payload = buildGapRemovedAss();
+  if (payload) {
+    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, 'text/plain', {
+      desc: '去空隙带样式 ASS 字幕', types: { 'text/plain': ['.ass'] }
+    });
+  }
+});
 document.getElementById('download-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildSourceOtio();
@@ -15575,7 +15665,8 @@ function applyCanonicalProject(data, filename) {
   renderAll({ waveform: 'full', preserveCueListScroll: false });
   refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(DATA.media);
-  FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
+  PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
+  FILENAME_BASE = PROJECT_NAME;
   const jsonEl = document.getElementById('json-name');
   if (jsonEl) {
     jsonEl.textContent = filename;
@@ -16373,6 +16464,9 @@ async function loadMediaFile(file) {
     return false;
   }
 
+  if (isVideo) captureProjectVideoDimensions(candidatePlayer);
+  else clearProjectVideoDimensions();
+
   let mediaTimeReference = null;
   try {
     mediaTimeReference = await window.AsrEditorUtils.readBwfTimeReferenceFromFile(file);
@@ -16389,7 +16483,8 @@ async function loadMediaFile(file) {
   if (currentMediaBlobUrl) URL.revokeObjectURL(currentMediaBlobUrl);
   currentMediaBlobUrl = url;
 
-  // 更新标题区媒体名 + FILENAME_BASE（用文件名去扩展名作为导出基名）
+  // 更新标题区媒体名 + FILENAME_BASE（用文件名去扩展名作为导出基名）。
+  // PROJECT_NAME 保持不变，ASS Title 仍指向当前工程。
   const stem = file.name.replace(/\.[^.]+$/, '');
   FILENAME_BASE = stem;
   DATA.media = file.name;
