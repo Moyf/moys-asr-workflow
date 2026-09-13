@@ -1428,7 +1428,10 @@ test('translates speaker label separator settings to English', () => {
   assert.equal(i18n.translateText('颜色与说话人', 'en'), 'Colors and speakers');
   assert.equal(i18n.translateText('将颜色映射为说话人', 'en'), 'Map colors to speakers');
   assert.equal(i18n.translateText('在预览字幕中显示说话人', 'en'), 'Show speaker names in preview subtitles');
-  assert.equal(i18n.translateText('使用说话人名称作为后缀', 'en'), 'Use speaker name as suffix');
+  assert.equal(
+    i18n.translateText('使用说话人名称替代颜色后缀', 'en'),
+    'Use speaker name instead of the color suffix',
+  );
   assert.equal(
     i18n.translateText('在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。', 'en'),
     'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
@@ -3039,6 +3042,25 @@ test('builds ASS subtitles with the selected font, size, color and safe text', (
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:03\.46,Default,,0,0,0,,你好\\NHello, \\{tag\\}\\\\path/);
   assert.match(ass, /Dialogue: 0,0:00:05\.00,0:00:05\.01,Default,,0,0,0,,later/);
   assert.doesNotMatch(ass, /disabled/);
+});
+
+test('optionally prefixes configured speaker names in ASS output', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'yellow line', color: { name: 'yellow' } },
+    { start: 1200, end: 2200, text: 'green line', color: { name: 'green' } },
+    { start: 2400, end: 3400, text: 'plain line' },
+    { start: 3600, end: 4600, text: 'disabled', color: { name: 'red' }, disabled: true },
+  ], {
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host', green: 'Guest', red: 'Editor' },
+    speakerLabelSeparator: ' ',
+  });
+
+  assert.deepEqual(ass.split('\n').filter((line) => line.startsWith('Dialogue:')), [
+    'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,Host yellow line',
+    'Dialogue: 0,0:00:01.20,0:00:02.20,Default,,0,0,0,,Guest green line',
+    'Dialogue: 0,0:00:02.40,0:00:03.40,Default,,0,0,0,,plain line',
+  ]);
 });
 
 

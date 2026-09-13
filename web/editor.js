@@ -12312,6 +12312,7 @@ function buildAss() {
   return window.AsrEditorUtils.buildAssPayload(DATA.segments, {
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
+    ...speakerLabelExportOptions(),
     appearance: getSubtitleAppearance(),
   });
 }
