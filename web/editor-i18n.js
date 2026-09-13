@@ -203,7 +203,7 @@
     '在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。': 'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
     '🤓👆 你可以在': '🤓👆 You can configure color-to-speaker names in',
     '中配置颜色对应的说话人名。': ' settings.',
-    '使用说话人名称作为后缀': 'Use speaker name as suffix',
+    '使用说话人名称替代颜色后缀': 'Use speaker name instead of the color suffix',
     '勾选后按说话人名称生成彩色字幕文件名后缀；没有对应名称时回退为颜色': 'When enabled, use the speaker name as the colored subtitle filename suffix; fall back to the color when no name is mapped',
     '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',

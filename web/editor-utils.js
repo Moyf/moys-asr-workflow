@@ -3874,6 +3874,12 @@
     const firstEnabledIndex = Number.isInteger(options.firstEnabledIndex)
       ? options.firstEnabledIndex
       : getSrtExportFirstIndex(source, alignFirstStart);
+    const speakerLabels = options.speakerLabelsEnabled === true
+      ? normalizeSpeakerLabels(options.speakerLabels)
+      : null;
+    const speakerLabelSeparator = options.speakerLabelsEnabled === true
+      ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
+      : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
 
     source.forEach((segment, sourceIndex) => {
@@ -3885,8 +3891,13 @@
       // an imported/edited cue is shorter than that precision.
       const startCentiseconds = Math.max(0, Math.round(start / 10));
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+      const text = speakerLabels
+        ? formatSpeakerLabelledText(
+          segment.text, segment, source, speakerLabels, speakerLabelSeparator,
+        )
+        : String(segment.text ?? '');
       events.push(
-        `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Default,,0,0,0,,${escapeAssText(segment.text)}`,
+        `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Default,,0,0,0,,${escapeAssText(text)}`,
       );
     });
 
