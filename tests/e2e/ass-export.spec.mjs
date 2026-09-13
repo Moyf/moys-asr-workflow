@@ -92,7 +92,7 @@ test('exports ASS with the current font, size, color and enabled subtitle text',
 
   await page.locator('#editor-settings-close').click();
   await page.locator('#subtitle-export-btn').click();
-  await expect(page.locator('#download-full-ass')).toHaveText('完整字幕（ASS）');
+  await expect(page.locator('#download-full-ass')).toHaveText('带样式的 ASS 字幕');
   await page.locator('#download-full-ass').click();
 
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
@@ -105,4 +105,107 @@ test('exports ASS with the current font, size, color and enabled subtitle text',
     'Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,第一行\\NSecond, \\{literal\\}\\\\path',
   );
   expect(save.content).not.toContain('不应导出');
+});
+
+test('writes the project title, source resolution, palette styles and speaker names to ASS', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    DATA.media_metadata = { video_width: 3840, video_height: 2160 };
+    DATA.segments = [
+      { start: 0, end: 1000, text: 'red line', items: [], color: { name: 'red', value: '#f07f6f' } },
+      { start: 1200, end: 2200, text: 'plain line', items: [] },
+    ];
+    DATA.preview.subtitle = {
+      ...DATA.preview.subtitle,
+      font_size: 32,
+      font_family: 'sans',
+      color: '#ffffff',
+      speaker_labels: {
+        mapping_enabled: true,
+        enabled: true,
+        separator: '：',
+        names: { yellow: '主持', green: '嘉宾', red: '旁白', purple: '现场', blue: '字幕' },
+      },
+    };
+    EDITOR_SETTINGS.exportSpeakerLabels = true;
+    renderAll();
+  });
+
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-ass').click();
+
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const save = await page.evaluate(() => window.__exportSaves[0]);
+  expect(save.content).toContain('Title: project');
+  expect(save.content).toContain('PlayResX: 3840');
+  expect(save.content).toContain('PlayResY: 2160');
+  expect(save.content).toContain('Style: Default,Arial,64,');
+  expect(save.content).toContain('Style: YELLOW,Arial,64,&H0019A0C4,&H0019A0C4,');
+  expect(save.content).toContain('Style: GREEN,Arial,64,&H006ABB66,&H006ABB66,');
+  expect(save.content).toContain('Style: RED,Arial,64,&H006F7FF0,&H006F7FF0,');
+  expect(save.content).toContain('Style: PURPLE,Arial,64,&H00E689BF,&H00E689BF,');
+  expect(save.content).toContain('Style: BLUE,Arial,64,&H00FAA761,&H00FAA761,');
+  expect(save.content).toContain('Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,旁白：red line');
+});
+
+test('groups SRT, color-split SRT and styled ASS exports in order', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 1000, end: 2500 };
+    renderAll();
+  });
+
+  await page.locator('#subtitle-export-btn').click();
+  await expect(page.locator('#subtitle-export-separator')).toBeVisible();
+  await expect(page.locator('#subtitle-export-menu > .dropdown-item:visible').allTextContents())
+    .resolves.toEqual(['完整 SRT 字幕', '按颜色拆分导出 SRT 字幕', '带样式的 ASS 字幕']);
+});
+
+test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    DATA.segments.length = 0;
+    DATA.segments.push(
+      { id: 'before-gap', start: 1000, end: 2000, text: 'before gap', items: [], color: { name: 'red', value: '#e74c3c', start: 1000, end: 2000 } },
+      { id: 'after-gap', start: 4000, end: 5000, text: 'after gap', items: [] },
+    );
+    DATA.gap_remove = {
+      schema: 'moy.asr.gap_remove.v1',
+      detector: 'audio_gate',
+      minimum_ms: 500,
+      threshold_db: -24,
+      hysteresis_db: 2,
+      lead_in_ms: 40,
+      lead_out_ms: 80,
+      skip_playback: true,
+      operation_mode: 'boundary_drag',
+      manual_corrections: false,
+      gaps: [{ start: 2000, end: 3000, removed: true }],
+    };
+    updateGapRemoveUi();
+    renderAll();
+  });
+
+  await page.locator('#gap-removed-export-btn').click();
+  await expect(page.locator('#gap-removed-subtitle-export-separator')).toBeVisible();
+  await expect(page.locator('#gap-removed-export-menu > .dropdown-item:visible').allTextContents())
+    .resolves.toEqual(['SRT 字幕', '按颜色拆分导出 SRT 字幕', '带样式的 ASS 字幕']);
+  await expect(page.locator('#gap-removed-otio-menu').locator('xpath=preceding-sibling::*[1]'))
+    .toHaveText('OpenTimelineIO');
+
+  await page.locator('#download-gap-removed-ass').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const save = await page.evaluate(() => window.__exportSaves[0]);
+  expect(save.suggestedName).toBe('project_去空隙.ass');
+  expect(save.content).toContain(
+    'Dialogue: 0,0:00:01.00,0:00:02.00,RED,,0,0,0,,before gap',
+  );
+  expect(save.content).toContain(
+    'Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,after gap',
+  );
 });

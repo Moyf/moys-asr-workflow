@@ -2088,6 +2088,9 @@
   }
   .cue.has-color { background: color-mix(in srgb, var(--color-bar, #777) 30%, transparent); }
   .cue.has-color:hover { background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--bg-raised)); }
+  /* 彩色行的半透明底色会压低原本面向中性底色的淡色序号；提高到次要文字色，
+     保留序号的辅助层级，同时保证颜色行仍能快速定位编号。active/disabled 状态在下方覆盖。 */
+  .cue.has-color .index { color: var(--text-secondary); }
   /* 悬停反馈与下拉/右键菜单一致：accent 淡蓝 + 中性内描边；选中（琥珀）与激活（蓝）行仍各自优先。 */
   .cue:hover {
     background: var(--cue-hover-bg);

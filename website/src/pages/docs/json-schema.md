@@ -31,6 +31,8 @@ source: "JSON_SCHEMA.md"
   "media_metadata": {
     "video_fps": 29.97002997002997,
     "video_fps_ratio": "30000/1001",
+    "video_width": 3840,
+    "video_height": 2160,
     "selected_audio_track": 0,
     "audio_tracks": [
       {
@@ -66,7 +68,7 @@ source: "JSON_SCHEMA.md"
 | `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
 | `timestamp_granularity` | `string` | 否 | 时间码粒度：`char`、`word`、`segment` 或 `unknown`。只有整段 start/end 的模型使用 `segment`；这类工程的字幕段可以没有 `items` |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
-| `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、非负整数 `selected_audio_track` 和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
+| `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、成对的正整数 `video_width` / `video_height`、非负整数 `selected_audio_track` 和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
 | `timebase` | `object` | 否 | 字幕编辑时间基准：`unit` 为 `milliseconds` 或 `frames`，`fps` 范围为 1–240。缺失时按毫秒模式兼容读取 |
 | `sticker_root` | `string` | 否 | 表情包根目录绝对路径。打开工程时会覆盖编辑器内的 `STICKER_ROOT` |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
@@ -76,6 +78,8 @@ source: "JSON_SCHEMA.md"
 | `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（副字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
 
 `media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在全局设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
+
+`media_metadata.video_width` / `video_height` 是源视频的实际像素尺寸，由生成工程时的 FFprobe 或浏览器加载视频后的 `HTMLVideoElement.videoWidth` / `videoHeight` 补齐；两个字段必须同时存在。ASS 导出会优先使用这组尺寸作为 `PlayResX` / `PlayResY`，缺失时使用当前浏览器视频尺寸，仍不可用则回退到 1920×1080。旧工程缺少这些字段时不影响读取。
 
 `media_metadata.audio_tracks` 是从源容器读取的音轨清单。`audio_index` 是音频流内部的从 0 开始顺序，`stream_index` 是源容器中的 FFmpeg stream index；其余字段用于保留编码、声道、采样率、语言、标题和默认标记。`media_metadata.selected_audio_track` 保存本工程转写时实际选择的零基音轨，编辑器重新打开工程时优先恢复该选择；旧工程没有此字段时，从已有波形载荷恢复，仍无记录则使用容器默认轨（没有 default disposition 时为索引 0）。编辑器导出 OTIO 时会为每条清单建立独立的 `Audio` 轨道，在达芬奇使用的 `Resolve_OTIO.Channels` 中写入源音轨/声道映射，并在 `moy` 元数据中保留对应的 stream index。旧工程缺少音轨清单时继续生成一条兼容的音频轨道。
 

@@ -282,6 +282,27 @@ def _validate_media_metadata(project: JsonDict, errors: list[ProjectValidationEr
     if not isinstance(metadata, dict):
         errors.append(ProjectValidationError("$.media_metadata", "must be an object"))
         return
+    has_video_width = "video_width" in metadata
+    has_video_height = "video_height" in metadata
+    if has_video_width != has_video_height:
+        missing = "video_height" if has_video_width else "video_width"
+        errors.append(
+            ProjectValidationError(
+                f"$.media_metadata.{missing}",
+                "must be provided together with the other video dimension",
+            )
+        )
+    for field in ("video_width", "video_height"):
+        if field not in metadata:
+            continue
+        value = metadata.get(field)
+        if type(value) is not int or value <= 0:
+            errors.append(
+                ProjectValidationError(
+                    f"$.media_metadata.{field}",
+                    "must be a positive integer",
+                )
+            )
     if "video_fps" in metadata:
         fps = metadata.get("video_fps")
         if type(fps) not in (int, float) or not math.isfinite(float(fps)):
