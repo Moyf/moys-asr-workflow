@@ -120,7 +120,7 @@ class EffectiveConfig:
     # output_naming.subfolder_prefs() 直接读取这两个字段。
     output_subfolder: bool = False
     per_video_subfolder: bool = False
-    attach_model_name: bool = True
+    attach_model_name: bool = False
     last_model: str | None = None
     last_language: str | None = None
     model_cache_root: str = ""
@@ -744,7 +744,7 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         show_rare_langs=pick("MAW_GUI_SHOW_RARE_LANGS").strip().lower() in ("1", "true", "yes", "on"),
         output_subfolder=_env_bool(pick("MAW_GUI_OUTPUT_SUBFOLDER")),
         per_video_subfolder=_env_bool(pick("MAW_GUI_PER_VIDEO_SUBFOLDER")),
-        attach_model_name=_env_bool(pick("MAW_GUI_ATTACH_MODEL_NAME"), default=True),
+        attach_model_name=_env_bool(pick("MAW_GUI_ATTACH_MODEL_NAME"), default=False),
         last_model=pick_optional("MAW_GUI_LAST_MODEL"),
         last_language=pick_optional("MAW_GUI_LAST_LANGUAGE"),
         model_cache_root=pick("MAW_MODEL_CACHE_ROOT").strip(),

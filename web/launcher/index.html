@@ -48,7 +48,10 @@
       <nav class="hero-links" aria-label="links">
         <button id="settingsButton" class="ghost small" type="button" aria-label="settings" data-i18n-title="settings_title" title="配置">⚙️<span data-i18n="settings_button">设置</span><span id="settingsDot" class="settings-dot hidden"></span></button>
       </nav>
-      <button id="homeLink" class="text-link hero-home" type="button" data-i18n="project_home">项目官网</button>
+      <div class="hero-home-links">
+        <button id="homeLink" class="text-link" type="button" data-i18n="project_home">项目官网</button>
+        <button id="tutorialVideoLink" class="text-link" type="button" data-i18n="tutorial_video">教程视频</button>
+      </div>
     </header>
 
     <section id="mediaCard" class="card drop-card" aria-labelledby="mediaTitle">
@@ -192,8 +195,7 @@
               <h3 data-i18n="advanced_params">识别参数</h3>
               <div class="advanced-col">
                 <div id="localDeviceField" class="field hidden"><label for="localDevice" data-i18n="local_device">设备</label><select id="localDevice"><option value="auto" data-i18n="device_auto">自动</option><option value="cpu" data-i18n="device_cpu">CPU</option><option value="cuda" data-i18n="device_cuda">CUDA</option></select></div>
-                <p id="dashscopeRegionHint" class="hint hidden"><button id="openDashscopeRegionSettings" class="inline-link" type="button" data-i18n="dashscope_region_hint_advanced">如果你不是中国大陆地区的用户，请前往 ⚙️ 设置 → 运行环境 配置百炼地域与业务空间。</button></p>
-                <div id="lengthLimitField" class="field"><label for="lengthLimit" data-i18n="length_limit">时长上限</label><input id="lengthLimit" type="text" placeholder="2m / 30s / 1h" autocomplete="off"></div>
+                <p id="dashscopeRegionHint" class="hint hidden"><span data-i18n="dashscope_region_hint_prefix">如果你不是中国大陆地区的用户，请前往 </span><button id="openDashscopeRegionSettings" class="inline-link" type="button" data-i18n="dashscope_region_hint_link">⚙️ 设置 → 运行环境</button><span data-i18n="dashscope_region_hint_suffix"> 配置阿里云百炼地域与业务空间。</span></p>
               </div>
             </div>
             <div id="languageGroup" class="adv-group">
@@ -204,7 +206,7 @@
                   <div class="language-side">
                     <div class="lang-actions"><button id="languageReset" class="ghost small hidden" type="button" data-i18n="language_reset">重置（自动识别）</button></div>
                     <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）。</p>
-                    <p id="languageFilterHint" class="hint hint-top-spaced hidden" data-i18n="language_filter_hint">默认仅显示常用语言，其余可在「配置」中开启。</p>
+                    <p id="languageFilterHint" class="hint hint-top-spaced hidden"><span data-i18n="language_filter_hint_prefix">默认仅显示常用语言，其余可在「</span><button id="openLanguageSettings" class="inline-link" type="button" data-i18n="language_filter_hint_link">设置</button><span data-i18n="language_filter_hint_suffix">」中开启。</span></p>
                   </div>
                 </div>
               </div>
@@ -415,13 +417,13 @@
                 <input id="autoTranslateBackfill" type="checkbox">
                 <span data-i18n="auto_backfill_subtitles">只翻译非中文的字幕</span>
               </label>
-              <p id="autoTranslateBackfillHint" class="hint auto-translate-merge hidden" data-i18n="backfill_subtitles_hint">适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。</p>
+              <p id="autoTranslateBackfillHint" class="hint auto-translate-merge hidden" data-i18n="auto_backfill_subtitles_hint">当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。</p>
             </div>
             <label class="check-field" for="autoPostprocessRetain">
               <input id="autoPostprocessRetain" type="checkbox">
               <span data-i18n="auto_retain_intermediate">保留中间产物</span>
             </label>
-            <p class="hint hint-top-spaced" data-i18n="auto_retain_hint">默认不保留；中间文件统一放在媒体目录的 MAW-Postprocess 子文件夹中。失败或取消时会保留以便排查。</p>
+            <p class="hint hint-top-spaced" data-i18n="auto_retain_hint">勾选后将保留处理过程中每一个步骤的产物；否则只留最终产物。任务失败时会自动保留以排查问题。</p>
           </div>
         </div>
       </div>
@@ -970,7 +972,7 @@
       </header>
       <nav id="settingsTabList" class="settings-tabs" role="tablist" aria-labelledby="launcherSettingsTitle" data-i18n-aria-label="settings_tablist_label">
         <button id="settingsGeneralTab" class="settings-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="settingsGeneralPanel" data-settings-tab="general" data-i18n="settings_tab_general">通用</button>
-        <button id="settingsLlmTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsLlmPanel" data-settings-tab="llm" data-i18n="settings_tab_llm">大语言模型（AI）</button>
+        <button id="settingsLlmTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsLlmPanel" data-settings-tab="llm" data-i18n="settings_tab_llm">AI 模型配置</button>
         <button id="settingsProcessingTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsProcessingPanel" data-settings-tab="processing" data-i18n="settings_tab_processing">断句与标点</button>
         <button id="settingsRuntimeTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsRuntimePanel" data-settings-tab="runtime" data-i18n="settings_tab_runtime">运行环境</button>
       </nav>
@@ -984,6 +986,20 @@
           <button type="button" class="segment" id="themeSystem" data-i18n="theme_system">跟随系统设置</button>
         </div>
       </div>
+      <div id="settingsLanguageSection" class="settings-section">
+        <h3 data-i18n="settings_language">语言</h3>
+        <div class="settings-language-switch">
+          <div class="segmented" role="group" data-i18n-aria-label="settings_interface_language" aria-label="界面语言">
+            <button type="button" class="segment" id="langZh" data-i18n="lang_zh">中文</button>
+            <button type="button" class="segment" id="langEn" data-i18n="lang_en">English</button>
+          </div>
+        </div>
+        <label class="check-field" for="showRareLangs">
+          <input id="showRareLangs" type="checkbox">
+          <span data-i18n="show_rare_langs">显示相对小众的语言</span>
+        </label>
+        <p class="hint" data-i18n="show_rare_langs_hint">开启后，「语言」列表显示供应商支持的全部语种；关闭时只显示 8 种常用语言。</p>
+      </div>
       <div class="settings-section">
         <h3 data-i18n="settings_file_output">文件输出</h3>
         <label class="check-field" for="outputSubfolder">
@@ -995,8 +1011,8 @@
           <span data-i18n="per_video_subfolder">每个视频单独创建子文件夹</span>
         </label>
         <label class="check-field" for="attachModelName">
-          <input id="attachModelName" type="checkbox" data-i18n-title="attach_model_name_title" title="附加模型名称（默认开启）：SRT 文件名带上供应商/模型段，如 clip.qwen-audio.srt">
-          <span data-i18n="attach_model_name">附加模型名称</span>
+          <input id="attachModelName" type="checkbox" data-i18n-title="attach_model_name_title" title="在输出文件名中附加模型名称（默认关闭）：开启后，SRT 文件名带上供应商/模型段，如 clip.qwen-audio.srt">
+          <span data-i18n="attach_model_name">在输出文件名中附加模型名称</span>
         </label>
       </div>
       <div class="settings-section">
@@ -1008,25 +1024,9 @@
         <p class="hint" data-i18n="notify_on_complete_hint">单个文件转写完成或批量队列全部结束后，通过系统通知提醒你；默认开启。</p>
       </div>
       <div class="settings-section">
-        <h3 data-i18n="settings_language">语言</h3>
-        <div class="field">
-          <label data-i18n="settings_interface_language">界面语言</label>
-          <div class="segmented" role="group">
-            <button type="button" class="segment" id="langZh" data-i18n="lang_zh">中文</button>
-            <button type="button" class="segment" id="langEn" data-i18n="lang_en">English</button>
-          </div>
-          <p class="hint" data-i18n="interface_language_hint">首次使用时跟随系统语言；在这里切换会立即保存。</p>
-        </div>
-        <label class="check-field" for="showRareLangs">
-          <input id="showRareLangs" type="checkbox">
-          <span data-i18n="show_rare_langs">显示相对小众的语言</span>
-        </label>
-        <p class="hint" data-i18n="show_rare_langs_hint">开启后，「语言」列表显示供应商支持的全部语种；关闭时只显示 8 种常用语言。</p>
-      </div>
-      <div class="settings-section">
         <h3 data-i18n="settings_stickers">默认表情包路径</h3>
         <p class="hint" data-i18n="stickers_explain">表情包根目录供 HTML 编辑器使用；支持嵌套子目录（如 大狗/、Nox/ 等）。</p>
-        <p class="hint"><span data-i18n="current_value">当前</span>：<code id="stickerCurrent">未设置</code></p>
+        <p class="hint"><span data-i18n="current_value">当前</span>：<button id="stickerCurrent" class="inline-link runtime-path-link" type="button" data-i18n-title="open_folder_hint" title="点击打开所在文件夹">未设置</button></p>
         <div class="field">
           <label for="stickerDir" data-i18n="sticker_dir">表情包根目录</label>
           <div class="path-row">
@@ -1099,6 +1099,20 @@
           <p id="llmBaseUrlError" class="field-error"></p>
           <p class="hint" data-i18n="llm_base_url_hint">远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。</p>
         </div>
+      </div>
+      <div id="dashscopeRegionPanel" class="settings-section hidden">
+        <h3 data-i18n="settings_dashscope_region">阿里云百炼地域与业务空间</h3>
+        <div id="regionField" class="field">
+          <label for="region" data-i18n="region">地域</label>
+          <select id="region"></select>
+        </div>
+        <div id="workspaceField" class="field">
+          <label for="workspaceId" data-i18n="workspace">工作空间 ID</label>
+          <input id="workspaceId" type="text" autocomplete="off">
+          <p class="hint" data-i18n="workspace_hint">北京地域选填（推荐），新加坡地域必填。</p>
+          <p id="workspaceIdError" class="field-error"></p>
+        </div>
+        <button id="saveDashscopeRegionSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
       </div>
       </section>
       <section id="settingsProcessingPanel" class="settings-panel hidden" role="tabpanel" aria-labelledby="settingsProcessingTab" data-settings-panel="processing" aria-hidden="true">
@@ -1183,20 +1197,6 @@
           <button id="installLocalRuntime" class="primary small" type="button" data-i18n="local_runtime_install">安装本地模型支持</button>
         </div>
       </div>
-       <div id="dashscopeRegionPanel" class="settings-section hidden">
-         <h3 data-i18n="settings_dashscope_region">百炼地域与业务空间</h3>
-         <div id="regionField" class="field">
-           <label for="region" data-i18n="region">地域</label>
-           <select id="region"></select>
-         </div>
-         <div id="workspaceField" class="field">
-           <label for="workspaceId" data-i18n="workspace">工作空间 ID</label>
-           <input id="workspaceId" type="text" autocomplete="off">
-           <p class="hint" data-i18n="workspace_hint">北京地域选填（推荐），新加坡地域必填。</p>
-           <p id="workspaceIdError" class="field-error"></p>
-         </div>
-         <button id="saveDashscopeRegionSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
-       </div>
        <div class="settings-section" id="ocrSettingsSection">
         <h3 data-i18n="settings_ocr">OCR 支持</h3>
         <p class="hint" data-i18n="settings_ocr_hint">OCR 识别功能用于去除与画面上的文本重复的字幕，常用于配音游戏实况等视频内容。主程序不预装 OCR 依赖，首次使用时在这里下载独立运行环境。</p>

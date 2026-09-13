@@ -494,7 +494,7 @@ class GuiConfigTests(unittest.TestCase):
                 config = gui_config.effective_config(env_path)
             self.assertFalse(config.output_subfolder)
             self.assertFalse(config.per_video_subfolder)
-            self.assertTrue(config.attach_model_name)
+            self.assertFalse(config.attach_model_name)
 
             _ = env_path.write_text(
                 "MAW_GUI_OUTPUT_SUBFOLDER=true\n"

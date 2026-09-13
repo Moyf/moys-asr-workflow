@@ -925,6 +925,10 @@ label {
   align-items: start;
 }
 
+.advanced-col #dashscopeRegionHint {
+  grid-column: 1 / -1;
+}
+
 .segmentation-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1303,7 +1307,14 @@ textarea::placeholder {
   background: var(--amber-soft);
   color: var(--amber-hover);
   box-shadow: 0 0 0 2px var(--amber-soft);
+}
+
+.ghost.attention {
   animation: attention-pulse 1.6s ease-out 1;
+}
+
+.primary.attention {
+  animation: attention-pulse 1.6s ease-out infinite;
 }
 
 .primary {
@@ -2567,6 +2578,10 @@ textarea::placeholder {
   font-size: 13px;
 }
 
+.settings-language-switch {
+  margin-bottom: 14px;
+}
+
 code {
   color: var(--text-secondary);
   font-family: var(--font-mono);
@@ -2592,6 +2607,12 @@ code {
   }
   100% {
     box-shadow: 0 0 0 0 rgba(212, 154, 74, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary.attention {
+    animation: none;
   }
 }
 
@@ -2786,10 +2807,15 @@ textarea.scrolling {
   background-clip: padding-box;
 }
 
-.hero-home {
+.hero-home-links {
   position: absolute;
   right: 14px;
   bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 #settingsButton {
