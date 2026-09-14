@@ -99,7 +99,7 @@ test('exports ASS with the current font, size, color and enabled subtitle text',
   const save = await page.evaluate(() => window.__exportSaves[0]);
   expect(save.suggestedName).toMatch(/\.ass$/);
   expect(save.content).toContain(
-    'Style: Default,SimHei,40,&H00EFAB12,&H00EFAB12,',
+    'Style: Default,SimHei,160,&H00EFAB12,&H00EFAB12,',
   );
   expect(save.content).toContain(
     'Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,第一行\\NSecond, \\{literal\\}\\\\path',
@@ -141,12 +141,12 @@ test('writes the project title, source resolution, palette styles and speaker na
   expect(save.content).toContain('Title: project');
   expect(save.content).toContain('PlayResX: 3840');
   expect(save.content).toContain('PlayResY: 2160');
-  expect(save.content).toContain('Style: Default,Arial,64,');
-  expect(save.content).toContain('Style: YELLOW,Arial,64,&H0019A0C4,&H0019A0C4,');
-  expect(save.content).toContain('Style: GREEN,Arial,64,&H006ABB66,&H006ABB66,');
-  expect(save.content).toContain('Style: RED,Arial,64,&H006F7FF0,&H006F7FF0,');
-  expect(save.content).toContain('Style: PURPLE,Arial,64,&H00E689BF,&H00E689BF,');
-  expect(save.content).toContain('Style: BLUE,Arial,64,&H00FAA761,&H00FAA761,');
+  expect(save.content).toContain('Style: Default,Arial,256,');
+  expect(save.content).toContain('Style: YELLOW,Arial,256,&H0019A0C4,&H0019A0C4,');
+  expect(save.content).toContain('Style: GREEN,Arial,256,&H006ABB66,&H006ABB66,');
+  expect(save.content).toContain('Style: RED,Arial,256,&H006F7FF0,&H006F7FF0,');
+  expect(save.content).toContain('Style: PURPLE,Arial,256,&H00E689BF,&H00E689BF,');
+  expect(save.content).toContain('Style: BLUE,Arial,256,&H00FAA761,&H00FAA761,');
   expect(save.content).toContain('Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,旁白：red line');
 });
 
