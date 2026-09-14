@@ -184,15 +184,21 @@ editor.js 余量构成：111 个顶层声明（75 函数 + 36 变量，属 appen
 
 ### 阶段一收尾待办（下一会话）
 
-1. append 扫尾：111 个声明按归属并入既有模块（fork 用 append 模式处理了 24 个）。
-2. boot 接线连续切段：465 条语句按接线域切段为 N 个模块，三判据自证
-   （AST 无切断 / 拼回逐字节同 / 装配 AST 同）。
+1. ~~append 扫尾~~ ✅ 2026-09-14 完成：editor-timeline（42 符号）、editor-speaker-labels（8）
+   两个新模块 + 10 个既有模块 append 共 64 符号归位。editor.js 余 9 个顶层声明
+   （boot 别名、PROJECT_NAME、boot 修复常量）。editor.js 3,074 行。
+   - 教训①：append 进浮动面板模块的 load-time 实例自引用
+     `MaweFloatingPanel.createFloatingPanel` 会撞上"门面未定义"——模块内自引用
+     必须用裸名（探针 + 顺序断言双捕获）。
+   - 教训②：`onOpen: MaweXxx.fn` 这类加载期函数引用需包成箭头延迟调用。
+2. boot 接线连续切段：约 460 条顶层语句按接线域切段（三判据自证）。
 3. 第二注入方核查：`server-editor/serve.py:52` 的 GAP_REMOVE_CORE_PATH 硬编码
    路径在阶段二移动 gap-remove-core.js 时必须同步。
 4. 消费方子目录支持：edit.py:210 与 Tauri build.rs 的 `path.name != entry` 校验
    在阶段二前须放开（拒绝 `..`/反斜杠/绝对路径，允许 `a/b.js`）。
 5. 运维：`npm install --no-save` 会互相同步修剪 ts-morph/acorn-walk——install 后
    须 `npm install --no-save ts-morph acorn-walk` 重装。
+6. ~~e2e 归因~~ ✅ append 后失败集 39 ⊂ 纯 main 40（我方归零）。
 
 | 7 | 2026-09-11 | 十模块：`MaweStickerRoot`(10/35) `MaweFindReplace`(18/18) `MaweTextProcess`(28/25) `MaweTimedTextEdit`(32/27) `MaweStickerPicker`(14/28) `MaweAddCue`(4/5) `MaweBoundDrag`(7/1) `MaweContextMenus`(8/15) `MaweTextCleanup`(5/17) `MaweWaveformInit`(2/2)，共 128 符号；契约断言同步 6 处 | Node --check ×10 过；顺序断言过；Node 286；Python 1458 OK；探针零 pageerror。**待办：本批全量 e2e 尚未跑**（先合并 main 再统一跑） | （本提交） |
 
