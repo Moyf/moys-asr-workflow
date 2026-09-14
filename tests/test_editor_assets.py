@@ -94,6 +94,8 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor-nav-preview.js",
                 "editor-cue-events.js",
                 "editor-cue-list-anchor.js",
+                "editor-timeline.js",
+                "editor-speaker-labels.js",
                 "editor.js",
                 "editor-onboarding.js",
             ),
@@ -154,6 +156,8 @@ class EditorAssetContractTests(unittest.TestCase):
             "editor-sticker-otio-export.js": "(function initMaweStickerOtioExport(global) {",
             "editor-json-repair.js": "(function initMaweJsonRepair(global) {",
             "editor-help-panel.js": "(function initMaweHelpPanel(global) {",
+            "editor-timeline.js": "(function initMaweTimeline(global) {",
+            "editor-speaker-labels.js": "(function initMaweSpeakerLabels(global) {",
             "editor-theme.js": "(function initMaweTheme(global) {",
             "editor-gap-remove-ui.js": "(function initMaweGapRemoveUi(global) {",
             "editor-selection.js": "(function initMaweSelection(global) {",
@@ -354,7 +358,7 @@ class EditorAssetContractTests(unittest.TestCase):
         otio_script = edit.read_web_asset("editor-export-timeline.js")
         sticker_otio = edit.read_web_asset("editor-sticker-otio-export.js")
         self.assertIn("sticker_rel: sticker.rel || ''", otio_script)
-        self.assertIn("sticker_rel: sticker.sticker_rel", script)
+        self.assertIn("sticker_rel: sticker.sticker_rel", edit.read_web_asset("editor-export-timeline.js"))
         self.assertIn("MaweBoot.SERVER_CONFIG?.canPortableStickerExport", sticker_otio)
         self.assertIn("MaweBoot.SERVER_CONFIG?.portableStickerExportUrl", sticker_otio)
         self.assertIn("'stickers', MaweExportTimeline.buildStickerOtio", script)

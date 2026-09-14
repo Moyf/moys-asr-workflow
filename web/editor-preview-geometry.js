@@ -16,7 +16,7 @@
     MaweBoot.DATA.preview.subtitle = {
       ...clamped,
       ...appearance,
-      speaker_labels: getSpeakerLabelSettings(),
+      speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
     };
     if (markDirty) MaweAppearance.previewGeometryDirty = true;
     applyPreviewGeometryToDom(clamped);

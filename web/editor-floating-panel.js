@@ -205,7 +205,29 @@
     return { open, close, toggle, isOpen };
   }
 
+
+  // 拼合字幕工具窗：参数即时持久化；number 输入 change 时把显示值回钳到合法区间。
+  const autoMergeFloatingPanel = createFloatingPanel({
+    panel: MaweDom.autoMergePanel,
+    dragHandle: MaweDom.autoMergeDragHandle,
+    manageButton: MaweDom.autoMergeManageButton,
+    anchorButton: MaweDom.autoMergeManageButton,
+    positionKey: MaweDom.AUTO_MERGE_PANEL_POSITION_KEY,
+    onOpen: () => MaweSegmentOps.syncAutoMergePanelInputs(),
+  });
+
+
+  const subtitleExtendFloatingPanel = createFloatingPanel({
+    panel: MaweDom.subtitleExtendPanel,
+    dragHandle: MaweDom.subtitleExtendDragHandle,
+    manageButton: MaweDom.subtitleExtendManageButton,
+    anchorButton: MaweDom.subtitleExtendManageButton,
+    positionKey: MaweDom.SUBTITLE_EXTEND_PANEL_POSITION_KEY,
+  });
+
   global.MaweFloatingPanel = Object.freeze({
+    autoMergeFloatingPanel,
+    subtitleExtendFloatingPanel,
     FLOATING_SURFACE_Z_INDEX_BASE,
     floatingSurfaceStack,
     floatingSurfaceRoots,

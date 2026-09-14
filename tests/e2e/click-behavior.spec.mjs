@@ -211,7 +211,7 @@ test('default list click keeps a cue already in the middle in place', async ({ p
     const cue = document.querySelector('.cue[data-idx="30"]');
     MaweCueListAnchor.scrollCueToCenter(cue);
   });
-  await page.waitForFunction(() => !cueListScroll.owner);
+  await page.waitForFunction(() => !MaweCueListAnchor.cueListScroll.owner);
   const before = await page.locator('.cue[data-idx="30"]').evaluate(el => el.getBoundingClientRect().top);
   await page.evaluate(() => {
     const cue = document.querySelector('.cue[data-idx="30"]');

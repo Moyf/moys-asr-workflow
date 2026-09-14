@@ -182,7 +182,151 @@
     if (rect.top < top || rect.bottom > bottom) scrollCueToCenter(cueEl, options);
   }
 
+
+
+  // 三种滚动共用一个可取消的操作：布局恢复、主动导航、播放跟随。
+  // scroll 事件本身不表示用户输入，懒布局和浏览器边界限制也会触发它。
+  const cueListScroll = { generation: 0, frame: 0, owner: null, following: true, playbackKey: null, mutationAnchor: null, layoutAnchor: null };
+
+
+  const cueListFollowButton = document.getElementById('cue-list-follow');
+
+
+
+  function setCueListFollowing(enabled) {
+    cueListScroll.following = enabled;
+    cueListFollowButton?.setAttribute('aria-pressed', String(enabled));
+  }
+
+
+
+  function interruptCueListFollowing() {
+    MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
+    setCueListFollowing(false);
+  }
+
+
+
+  function setCueListIdentity(element, segment, track = null) {
+    // 身份写在渲染时的 DOM 上；splice / history 后不能再拿旧下标读新数据。
+    const prefix = track ? 'ext' : 'main';
+    element.dataset[`${prefix}Id`] = segment.id;
+    element.dataset[`${prefix}Start`] = String(segment.start);
+    if (track) element.dataset.trackId = track.id;
+  }
+
+
+
+  function cueListIdentity(element, kind = MaweCuePanelState.currentCuePanelKind) {
+    const extension = (kind === 'extension' && element.dataset.extId) || !element.dataset.mainId;
+    return {
+      kind: extension ? 'extension' : 'main',
+      segmentId: extension ? element.dataset.extId : element.dataset.mainId,
+      trackId: extension ? element.dataset.trackId : null,
+      start: Number(extension ? element.dataset.extStart : element.dataset.mainStart),
+    };
+  }
+
+
+
+  function rememberCueListMutation() {
+    const anchor = MaweCueListAnchor.captureCueListRenderAnchor();
+    cueListScroll.mutationAnchor = anchor;
+    // 只交给同一个同步编辑事务，未重绘的原地改字不会留下过时视口。
+    queueMicrotask(() => {
+      if (cueListScroll.mutationAnchor === anchor) cueListScroll.mutationAnchor = null;
+    });
+  }
+
+
+
+  function playbackCueListElement() {
+    if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.getMultiSubtitleState().display_mode === 'extension') {
+      const segment = MawePlaybackLoop.extensionSegmentAtTime(MaweCoreState.player.currentTime * 1000);
+      return segment ? MaweCueListAnchor.findCueListRenderAnchor({ kind: 'extension', segmentId: segment.id,
+        trackId: MaweMultiSubtitleCore.getActiveExtensionTrack()?.id }) : null;
+    }
+    const index = MawePlaybackLoop.findActive(MaweCoreState.player.currentTime * 1000);
+    return index >= 0 ? MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`) : null;
+  }
+
+
+
+  function playbackCueListKey() {
+    const element = playbackCueListElement();
+    if (!element) return null;
+    const identity = cueListIdentity(element,
+      MaweMultiSubtitleCore.getMultiSubtitleState().display_mode === 'extension' ? 'extension' : 'main');
+    return `${identity.kind}:${identity.trackId || ''}:${identity.segmentId}`;
+  }
+
+
+
+  function resumeCueListFollowing() {
+    MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
+    setCueListFollowing(true);
+    MaweCueListAnchor.scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'navigate' });
+  }
+
+
+
+  function renderedCueBoundaryTarget(target, boundary) {
+    const selector = target?.kind === 'extension'
+      ? '.multi-dual-cue[data-ext-idx], .multi-extension-cue[data-ext-idx]'
+      : '.cue[data-idx], .multi-dual-cue[data-main-idx]';
+    const track = target?.kind === 'extension' ? target.track : 'main';
+    const indexes = [...MaweCoreState.container.querySelectorAll(selector)]
+      .filter((cue) => !cue.classList.contains('hidden'))
+      .map((cue) => Number(target?.kind === 'extension'
+        ? cue.dataset.extIdx
+        : cue.dataset.idx ?? cue.dataset.mainIdx))
+      .filter((index, position, values) => (
+        Number.isInteger(index)
+        && !MaweSelection.isHiddenDisabled(index, track)
+        && values.indexOf(index) === position
+      ));
+    const index = boundary === 'first' ? indexes[0] : indexes[indexes.length - 1];
+    if (!Number.isInteger(index)) return null;
+    const cue = MaweCoreState.container.querySelector(
+      target?.kind === 'extension'
+        ? `.multi-dual-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`
+        : `.cue[data-idx="${index}"], .multi-dual-cue[data-main-idx="${index}"]`,
+    );
+    return cue ? { cue, index } : null;
+  }
+
+
+
+  function navigateCueListBoundary(key) {
+    const target = MaweCuePanel.getCurrentCuePanelTarget();
+    if (!target) return false;
+    const boundary = renderedCueBoundaryTarget(target, key === 'Home' ? 'first' : 'last');
+    if (!boundary) return false;
+    interruptCueListFollowing();
+    if (target.kind === 'extension') {
+      MaweSelection.selectOnlyExtension(boundary.index, target.track);
+      MaweSelection.lastClickedExtensionIdx = boundary.index;
+    } else {
+      MaweSelection.selectOnly(boundary.index);
+      MaweSelection.lastClickedIdx = boundary.index;
+    }
+    MaweCueListAnchor.scrollCueToCenter(boundary.cue);
+    return true;
+  }
+
   global.MaweCueListAnchor = Object.freeze({
+    cueListScroll,
+    cueListFollowButton,
+    setCueListFollowing,
+    interruptCueListFollowing,
+    setCueListIdentity,
+    cueListIdentity,
+    rememberCueListMutation,
+    playbackCueListElement,
+    playbackCueListKey,
+    resumeCueListFollowing,
+    renderedCueBoundaryTarget,
+    navigateCueListBoundary,
     cueListVisibleBounds,
     invalidateCueListVisualAnchorRestore,
     captureCueListVisualAnchor,

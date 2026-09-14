@@ -256,7 +256,21 @@
     return { ...cueListPointer, el, track, offset: caret?.offset ?? null, caretRect: caret?.rect ?? null };
   }
 
+
+
+  function seekCurrentCueBoundary(boundary) {
+    const target = MaweCuePanel.getCurrentCuePanelTarget();
+    const timeMs = Number(target?.segment?.[boundary]);
+    const duration = Number(MaweCoreState.player?.duration);
+    if (!target || !Number.isFinite(timeMs) || !MaweMediaPlayback.hasLoadedMedia()
+        || !Number.isFinite(duration) || duration <= 0) return false;
+    MaweJklPlayback.stopJklReversePlayback({ render: false });
+    MaweCoreState.player.pause();
+    return MaweMediaPlayback.seekMediaTo(timeMs / 1000);
+  }
+
   global.MaweNavPreview = Object.freeze({
+    seekCurrentCueBoundary,
     get seekWarned() { return seekWarned; },
     set seekWarned(v) { seekWarned = v; },
     get pendingMediaSeekTimeSec() { return pendingMediaSeekTimeSec; },

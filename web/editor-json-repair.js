@@ -8,12 +8,12 @@
 
 
   function buildJson() {
-    syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+    MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
     const repairedTimingCount = repairCurrentProjectTimings();
     if (repairedTimingCount > 0) {
       MaweHint.flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
     }
-    syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+    MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
     const out = {
       schema: window.AsrEditorUtils.PROJECT_SCHEMA,
       ...projectExtensionFields,
@@ -21,7 +21,7 @@
       language: MaweBoot.DATA.language || '',
       model: MaweBoot.DATA.model || '',
       sticker_root: MaweBoot.STICKER_ROOT || '',
-      timebase: { ...projectTimebase() },
+      timebase: { ...MaweTimeline.projectTimebase() },
       segments: MaweBoot.DATA.segments.map(s => {
         const o = {
           id: s.id,
@@ -88,7 +88,7 @@
     // 波形缓存（含响度统计）不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
     // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
     // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
-    const mediaMetadata = normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
+    const mediaMetadata = MaweTimeline.normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
     if (mediaMetadata) out.media_metadata = mediaMetadata;
     if (MaweBoot.DATA.gap_remove) out.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(MaweBoot.DATA.gap_remove);
     if (MaweBoot.DATA.script_alignment) out.script_alignment = MaweBoot.DATA.script_alignment;
@@ -99,7 +99,7 @@
       subtitle: {
         ...MaweAppearance.getPreviewGeometry(),
         ...MaweAppearance.getSubtitleAppearance(),
-        speaker_labels: getSpeakerLabelSettings(),
+        speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
       },
     };
     if (MaweMultiSubtitleCore.getActiveExtensionTrack() || MaweBoot.DATA.preview?.extension_subtitle) {

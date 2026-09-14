@@ -95,13 +95,13 @@ cur.classList.add('active');
 }
 }
 lastActive = idx;
-if (!MaweCoreState.player.paused && cueListScroll.following && !cueListScroll.owner
+if (!MaweCoreState.player.paused && MaweCueListAnchor.cueListScroll.following && !MaweCueListAnchor.cueListScroll.owner
 && !MaweInlineEdit.editingState && !MaweInlineEdit.extensionEditingState && document.activeElement !== MaweDom.cuePanelText
 && !suppressCueListAutoScroll && !waveformPlayheadDragging) {
-const key = playbackCueListKey();
-if (key !== cueListScroll.playbackKey) {
-cueListScroll.playbackKey = key;
-MaweCueListAnchor.scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'follow' });
+const key = MaweCueListAnchor.playbackCueListKey();
+if (key !== MaweCueListAnchor.cueListScroll.playbackKey) {
+MaweCueListAnchor.cueListScroll.playbackKey = key;
+MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListElement(), { owner: 'follow' });
 }
 }
 }
@@ -155,7 +155,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: '
     const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
     const colorStyle = subtitleAppearance.color_style || MaweSettings.DEFAULT_SUBTITLE_COLOR_STYLE;
     const mainSubtitleColor = subtitleAppearance.color || MaweSettings.DEFAULT_SUBTITLE_COLOR;
-    const speakerLabels = getSpeakerLabelSettings();
+    const speakerLabels = MaweSpeakerLabels.getSpeakerLabelSettings();
     const mainColorName = mainVisible && seg
       ? window.AsrEditorUtils.effectiveColorName(seg, MaweBoot.DATA.segments)
       : null;

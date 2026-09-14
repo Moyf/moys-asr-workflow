@@ -294,7 +294,7 @@ for (const mode of ['main', 'extension', 'both']) {
     await page.waitForFunction(() => !MaweCoreState.player.paused && MaweCoreState.player.currentTime > 2.1);
     await page.waitForTimeout(350);
     expect(await page.evaluate(() => {
-      const rect = playbackCueListElement().getBoundingClientRect();
+      const rect = MaweCueListAnchor.playbackCueListElement().getBoundingClientRect();
       const bounds = MaweCueListAnchor.cueListVisibleBounds(); return rect.top >= bounds.top && rect.bottom <= bounds.bottom;
     })).toBe(true);
     const list = await page.locator('#cues-container').boundingBox();
@@ -314,7 +314,7 @@ for (const mode of ['main', 'extension', 'both']) {
     await page.waitForTimeout(350);
     await expect(page.locator('#cue-list-follow')).toHaveAttribute('aria-pressed', 'true');
     expect(await page.evaluate(() => {
-      const rect = playbackCueListElement().getBoundingClientRect();
+      const rect = MaweCueListAnchor.playbackCueListElement().getBoundingClientRect();
       const bounds = MaweCueListAnchor.cueListVisibleBounds(); return rect.top >= bounds.top && rect.bottom <= bounds.bottom;
     })).toBe(true);
     // Both click settings run through real clicks; paused seeked/timeupdate cannot override them.
@@ -350,10 +350,10 @@ test('wheel scrollbar keyboard and rapid actions cancel old compensation', async
       await page.keyboard.press('PageDown');
     }
     await page.waitForTimeout(400);
-    const state = await page.evaluate(() => ({ top: MaweCoreState.container.scrollTop, owner: cueListScroll.owner,
-      following: cueListScroll.following }));
+    const state = await page.evaluate(() => ({ top: MaweCoreState.container.scrollTop, owner: MaweCueListAnchor.cueListScroll.owner,
+      following: MaweCueListAnchor.cueListScroll.following }));
     await page.waitForTimeout(2100);
-    expect(await page.evaluate(() => cueListScroll.owner)).toBe(null);
+    expect(await page.evaluate(() => MaweCueListAnchor.cueListScroll.owner)).toBe(null);
     expect(state.following).toBe(false);
     expect(Math.abs(await page.evaluate(() => MaweCoreState.container.scrollTop) - state.top)).toBeLessThan(1.5);
     await info.attach(input, { body: JSON.stringify(state), contentType: 'application/json' });
@@ -396,9 +396,9 @@ async function observeSpacePlayback(page) {
 async function playbackState(page) {
   return page.evaluate(() => {
     const bounds = MaweCueListAnchor.cueListVisibleBounds();
-    const active = playbackCueListElement();
+    const active = MaweCueListAnchor.playbackCueListElement();
     const rect = active?.getBoundingClientRect();
-    return { following: cueListScroll.following, paused: MaweCoreState.player.paused, time: MaweCoreState.player.currentTime,
+    return { following: MaweCueListAnchor.cueListScroll.following, paused: MaweCoreState.player.paused, time: MaweCoreState.player.currentTime,
       top: MaweCoreState.container.scrollTop, events: window.spacePlaybackEvents || [],
       activeId: active?.dataset.mainId || active?.dataset.extId,
       activeVisible: Boolean(rect && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1) };
@@ -592,7 +592,7 @@ test('list scrolling keys still interrupt following and pending compensation', a
     await page.waitForTimeout(350);
     await page.locator('#cues-container').focus();
     const before = await page.evaluate(() => {
-      MaweCuePanel.renderAll(); return { top: MaweCoreState.container.scrollTop, generation: cueListScroll.generation };
+      MaweCuePanel.renderAll(); return { top: MaweCoreState.container.scrollTop, generation: MaweCueListAnchor.cueListScroll.generation };
     });
     // 给原生滚动一个真实的按住区间；瞬时 keydown/keyup 在 WebKit 下
     // 可能只移动 1px，不能用它断言浏览器一定已产生可观测的滚动距离。
@@ -602,11 +602,11 @@ test('list scrolling keys still interrupt following and pending compensation', a
     await info.attach(`${key}: input`, { body: JSON.stringify({ before, after }), contentType: 'application/json' });
     expect(after.following).toBe(false);
     expect(Math.abs(after.top - before.top)).toBeGreaterThan(1.5);
-    expect(await page.evaluate(() => cueListScroll.generation)).toBeGreaterThan(before.generation);
+    expect(await page.evaluate(() => MaweCueListAnchor.cueListScroll.generation)).toBeGreaterThan(before.generation);
     await page.waitForTimeout(2100);
     const late = await playbackState(page);
     expect(Math.abs(late.top - after.top)).toBeLessThan(1.5);
-    expect(await page.evaluate(() => cueListScroll.owner)).toBe(null);
+    expect(await page.evaluate(() => MaweCueListAnchor.cueListScroll.owner)).toBe(null);
     await info.attach(key, { body: JSON.stringify({ before, after, late }), contentType: 'application/json' });
   }
 });
@@ -706,10 +706,10 @@ test.describe('touch interruption', () => {
     await open(page);
     await position(page, 75);
     const list = await page.locator('#cues-container').boundingBox();
-    const generation = await page.evaluate(() => { MaweCuePanel.renderAll(); return cueListScroll.generation; });
+    const generation = await page.evaluate(() => { MaweCuePanel.renderAll(); return MaweCueListAnchor.cueListScroll.generation; });
     await page.touchscreen.tap(list.x + list.width / 2, list.y + list.height / 2);
-    expect(await page.evaluate(() => cueListScroll.generation)).toBeGreaterThan(generation);
-    expect(await page.evaluate(() => cueListScroll.following)).toBe(false);
+    expect(await page.evaluate(() => MaweCueListAnchor.cueListScroll.generation)).toBeGreaterThan(generation);
+    expect(await page.evaluate(() => MaweCueListAnchor.cueListScroll.following)).toBe(false);
     await page.waitForTimeout(350);
     const before = await visual(page, 75);
     await stable(page, before, 75, 'touch interruption', info);

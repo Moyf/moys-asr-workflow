@@ -18,8 +18,8 @@
     const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
     if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
     if (!track?.segments) { MaweHint.flashHint('当前没有可用的副字幕轨', 'invalid'); return; }
-    requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
-    requestedEnd = timelineFrameAlignedMilliseconds(requestedEnd);
+    requestedStart = MaweTimeline.timelineFrameAlignedMilliseconds(requestedStart);
+    requestedEnd = MaweTimeline.timelineFrameAlignedMilliseconds(requestedEnd);
     const start = Math.min(requestedStart, requestedEnd);
     const end = Math.max(requestedStart, requestedEnd);
     if (!Number.isFinite(start) || !Number.isFinite(end)) return;
@@ -73,8 +73,8 @@
     }
     const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
     if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
-    requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
-    requestedEnd = timelineFrameAlignedMilliseconds(requestedEnd);
+    requestedStart = MaweTimeline.timelineFrameAlignedMilliseconds(requestedStart);
+    requestedEnd = MaweTimeline.timelineFrameAlignedMilliseconds(requestedEnd);
     const start = Math.min(requestedStart, requestedEnd);
     const end = Math.max(requestedStart, requestedEnd);
     if (!Number.isFinite(start) || !Number.isFinite(end)) return;
@@ -120,7 +120,7 @@
   function addCueAtWaveformTime(timeMs, clickX, clickY) {
     const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
     if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
-    timeMs = timelineFrameAlignedMilliseconds(timeMs);
+    timeMs = MaweTimeline.timelineFrameAlignedMilliseconds(timeMs);
     if (MaweContextMenus.findWaveformCueAtTime(timeMs) >= 0) {
       MaweHint.flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
       return;
@@ -149,7 +149,7 @@
   function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
     const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
     if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
-    timeMs = timelineFrameAlignedMilliseconds(timeMs);
+    timeMs = MaweTimeline.timelineFrameAlignedMilliseconds(timeMs);
     if (!track || !Array.isArray(track.segments)) {
       MaweHint.flashHint('当前没有可用的副字幕轨', 'invalid');
       return;

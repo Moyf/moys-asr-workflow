@@ -83,7 +83,7 @@
     addSep();
     addItem('添加空隙', '', () => MaweGapRemoveUi.addGapAtWaveformTime(timeMs));
     if (MaweGapRemoveData.getGapRemoveGaps().some((gap) => gap.removed !== false)) {
-      addItem('填充区间空隙', '', () => fillGapRangeAtWaveformTime(timeMs));
+      addItem('填充区间空隙', '', () => MaweGapRemoveUi.fillGapRangeAtWaveformTime(timeMs));
     }
 
     MaweDom.ctxmenu.classList.add('show');

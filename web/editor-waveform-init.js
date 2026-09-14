@@ -81,11 +81,11 @@
       },
       seek: (timeSec, options = {}) => {
         MaweTextCleanup.seekFromWaveform(timeSec, options);
-        if (!options.dragPreview) resumeCueListFollowing();
+        if (!options.dragPreview) MaweCueListAnchor.resumeCueListFollowing();
       },
       onPlayheadDragStateChange: (active) => {
         MawePlaybackLoop.waveformPlayheadDragging = active === true;
-        if (!active) resumeCueListFollowing();
+        if (!active) MaweCueListAnchor.resumeCueListFollowing();
       },
       togglePlayback: MaweMediaPlayback.togglePlayback,
       toggleDisabled: (idxs, track = 'main') => MaweStickerPicker.toggleDisabled(idxs, track),
@@ -116,8 +116,8 @@
       getClickTarget: () => MaweSettings.EDITOR_SETTINGS.clickTarget,
       getAutoSnapAdjacentCues: () => MaweSettings.EDITOR_SETTINGS.autoSnapAdjacentCues,
       getAdjacentBoundaryMode: () => MaweSettings.EDITOR_SETTINGS.adjacentBoundaryMode,
-      getCueTiming: () => timelineTimingAdapter(),
-      getSnapToFrame: () => timelineIsFrameMode() && MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame,
+      getCueTiming: () => MaweTimeline.timelineTimingAdapter(),
+      getSnapToFrame: () => MaweTimeline.timelineIsFrameMode() && MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame,
       getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource,
       // JKL 倒放靠逐帧回退实现，媒体元素本身处于暂停态；倒放期间同样视为播放中。
       getHoverSeekPreview: () => MaweSettings.EDITOR_SETTINGS.hoverSeekPreview && !MaweJklPlayback.jklReversePlaying,

@@ -11,7 +11,7 @@
     const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
     if (!el) return false;
     if (Number.isFinite(waveformTimeMs)) {
-      waveformTimeMs = timelineFrameAlignedMilliseconds(waveformTimeMs);
+      waveformTimeMs = MaweTimeline.timelineFrameAlignedMilliseconds(waveformTimeMs);
     }
     // 从非编辑态按 B / 右键拆分时，startEdit() 可能让当前行先发生一次布局
     // 变化；锚点必须取自用户按键前看到的位置，而不是临时编辑态的位置。

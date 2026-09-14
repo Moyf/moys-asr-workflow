@@ -231,7 +231,15 @@
     MaweFloatingPanel.syncFloatingSurfaceLayers();
   }
 
+
+  // 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
+  function openEditorSettingsAtTab(tabId) {
+    MaweSettingsPanels.setEditorSettingsPanelOpen(true);
+    MaweSettingsPanels.setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
+  }
+
   global.MaweSettingsPanels = Object.freeze({
+    openEditorSettingsAtTab,
     editorSettingsTabs,
     editorSettingsFloatingPanel,
     setEditorSettingsActiveTab,

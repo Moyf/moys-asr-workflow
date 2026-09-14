@@ -666,7 +666,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('const MEDIA_SEEK_STEP_MIN_MS = 10;', page)
         self.assertIn('mediaSeekStepForValue', page)
         self.assertIn('nextMediaSeekStepValue', page)
-        self.assertIn('seekMediaBy(-timelineMediaSeekStepMilliseconds() / 1000)', page)
+        self.assertIn('seekMediaBy(-MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000)', page)
         self.assertIn('id="timeline-timebase"', page)
         self.assertIn('id="timeline-fps"', page)
         self.assertIn('id="timeline-snap-to-frame"', page)
@@ -674,7 +674,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('timelineSnapToFrame: true', page)
         self.assertIn('timelineSnapToFrame: savedSettings.timelineSnapToFrame !== false', page)
         self.assertIn(
-            'getSnapToFrame: () => timelineIsFrameMode() && MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame',
+            'getSnapToFrame: () => MaweTimeline.timelineIsFrameMode() && MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame',
             page,
         )
         self.assertEqual(page.count('id="timeline-timebase"'), 1)
@@ -689,17 +689,17 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("rowGrid: get('--wave-row-grid'", page)
         self.assertIn('timeline-settings-field', editor_settings_panel)
         self.assertNotIn('timeline-settings-field', page[waveform_pane_start:])
-        self.assertIn('function confirmTimelineFrameRemap(current, nextUnit, nextFps)', page)
+        self.assertIn('function confirmTimelineFrameRemap(current, nextUnit, nextFps)', edit.read_web_asset("editor-timeline.js"))
         self.assertIn(
             'if (!confirmTimelineFrameRemap(current, nextUnit, nextFps)) {\n'
-            '    refreshTimelineSettingsUi();\n'
-            '    return;\n'
-            '  }',
-            page,
+            '      refreshTimelineSettingsUi();\n'
+            '      return;\n'
+            '    }',
+            edit.read_web_asset("editor-timeline.js"),
         )
         self.assertIn(
             "MaweSettings.updateEditorSettings({ timelineTimecodeSeparator: separator });\n"
-            "  refreshTimelineSettingsUi();\n"
+            "  MaweTimeline.refreshTimelineSettingsUi();\n"
             "  MaweCoreState.waveformEditor?.refreshPointerLine?.();\n"
             "  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，\n"
             "  // 不必等到下一次字幕编辑操作才看到新格式。\n"
@@ -710,7 +710,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', page)
         self.assertIn(
             'function buildJson() {\n'
-            '    syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
+            '    MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
             edit.read_web_asset("editor-json-repair.js"),
         )
         self.assertIn('id="help-media-seek-step"', page)

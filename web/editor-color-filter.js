@@ -262,7 +262,7 @@
     }
     MaweCoreState.waveformEditor?.refreshCueOverlay?.();
     MawePlaybackLoop.refreshSubtitlePreview();
-    updateSubtitleExportUi();
+    MaweExportSrt.updateSubtitleExportUi();
   }
 
 

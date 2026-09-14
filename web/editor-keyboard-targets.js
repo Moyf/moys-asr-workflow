@@ -104,7 +104,7 @@
     }
 if (nextIndex < 0) return false;
 
-interruptCueListFollowing();
+MaweCueListAnchor.interruptCueListFollowing();
 if (wantMain) {
 MaweSelection.selectOnly(nextIndex);
 MaweSelection.lastClickedIdx = nextIndex;

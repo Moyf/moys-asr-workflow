@@ -25,263 +25,10 @@ const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
 MaweBoot.maweDomContractCheck();
 
 MaweMultiSubtitleCore.normalizeMultiSubtitleState();
-const normalizeTimelineTimebase = EDITOR_SETTINGS_UTILS.normalizeTimelineTimebase;
-const normalizeTimelineFps = EDITOR_SETTINGS_UTILS.normalizeTimelineFps;
-const normalizeTimelineTimecodeSeparator = EDITOR_SETTINGS_UTILS.normalizeTimelineTimecodeSeparator;
-const normalizeMediaMetadata = EDITOR_SETTINGS_UTILS.normalizeMediaMetadata;
-const DEFAULT_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.DEFAULT_TIMELINE_FPS;
-const frameNumberFromMilliseconds = EDITOR_SETTINGS_UTILS.frameNumberFromMilliseconds;
-const millisecondsFromFrameNumber = EDITOR_SETTINGS_UTILS.millisecondsFromFrameNumber;
-const formatFrameTimecode = EDITOR_SETTINGS_UTILS.formatFrameTimecode;
-const formatTimelineTimecode = EDITOR_SETTINGS_UTILS.formatTimelineTimecode;
-const parseFrameTimecode = EDITOR_SETTINGS_UTILS.parseFrameTimecode;
-const MIN_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.MIN_TIMELINE_FPS;
-const MAX_TIMELINE_FPS = EDITOR_SETTINGS_UTILS.MAX_TIMELINE_FPS;
 // 把用户配置的拆分移除符号同步给共享工具层；设置面板修改时也会同步。
 MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(MaweSettings.EDITOR_SETTINGS.splitTrimSymbols);
 
-const TIMELINE_ROUND_MS = 10;
-
-function roundTimelineMilliseconds(value) {
-  return Math.round(Number(value) / TIMELINE_ROUND_MS) * TIMELINE_ROUND_MS;
-}
-
-function hasValidFramePair(value) {
-  return !!value
-    && Number.isInteger(value.start_frame)
-    && Number.isInteger(value.end_frame)
-    && value.start_frame >= 0
-    && value.end_frame > value.start_frame;
-}
-
-function syncTimeRangeObjectTimebase(value, timebase, { preferFrames = false, frameBounds = null } = {}) {
-  if (!value || typeof value !== 'object') return null;
-  const frameMode = timebase.unit === 'frames';
-  const hasFrames = hasValidFramePair(value);
-  const rawStartMs = Number(value.start);
-  const rawEndMs = Number(value.end);
-  let startFrame = hasFrames && preferFrames
-    ? value.start_frame : frameNumberFromMilliseconds(rawStartMs, timebase.fps);
-  let endFrame = hasFrames && preferFrames
-    ? value.end_frame : frameNumberFromMilliseconds(rawEndMs, timebase.fps);
-  if (!Number.isInteger(startFrame) || startFrame < 0) startFrame = 0;
-  if (!Number.isInteger(endFrame) || endFrame <= startFrame) endFrame = startFrame + 1;
-
-  if (frameMode) {
-    if (frameBounds && Number.isInteger(frameBounds.start) && Number.isInteger(frameBounds.end)) {
-      const lower = Math.max(0, frameBounds.start);
-      const upper = Math.max(lower + 1, frameBounds.end);
-      startFrame = Math.min(Math.max(startFrame, lower), upper - 1);
-      endFrame = Math.min(Math.max(endFrame, startFrame + 1), upper);
-      if (endFrame <= startFrame) {
-        startFrame = Math.max(lower, upper - 1);
-        endFrame = upper;
-      }
-    }
-    value.start_frame = startFrame;
-    value.end_frame = endFrame;
-    value.start = millisecondsFromFrameNumber(startFrame, timebase.fps);
-    value.end = millisecondsFromFrameNumber(endFrame, timebase.fps);
-  } else {
-    const startMs = Number.isFinite(rawStartMs)
-      ? Math.max(0, Math.round(rawStartMs)) : millisecondsFromFrameNumber(startFrame, timebase.fps);
-    const endMs = Number.isFinite(rawEndMs)
-      ? Math.max(startMs + 1, Math.round(rawEndMs)) : millisecondsFromFrameNumber(endFrame, timebase.fps);
-    value.start = startMs;
-    value.end = Math.max(startMs + 1, endMs);
-    value.start_frame = frameNumberFromMilliseconds(value.start, timebase.fps);
-    value.end_frame = Math.max(
-      value.start_frame + 1,
-      frameNumberFromMilliseconds(value.end, timebase.fps),
-    );
-  }
-  return { startFrame: value.start_frame, endFrame: value.end_frame };
-}
-
-function syncSegmentTimebase(segment, timebase, { preferFrames = false, minimumStartFrame = 0 } = {}) {
-  if (!segment || typeof segment !== 'object') return;
-  const range = syncTimeRangeObjectTimebase(segment, timebase, { preferFrames });
-  if (timebase.unit === 'frames') {
-    const startFrame = Math.max(minimumStartFrame, segment.start_frame);
-    const endFrame = Math.max(startFrame + 1, segment.end_frame);
-    segment.start_frame = startFrame;
-    segment.end_frame = endFrame;
-    segment.start = millisecondsFromFrameNumber(startFrame, timebase.fps);
-    segment.end = millisecondsFromFrameNumber(endFrame, timebase.fps);
-  }
-  if (!Array.isArray(segment.items)) return range;
-  const frameBounds = timebase.unit === 'frames'
-    ? { start: segment.start_frame, end: segment.end_frame } : null;
-  segment.items.forEach((item) => {
-    syncTimeRangeObjectTimebase(item, timebase, { preferFrames, frameBounds });
-  });
-  if (timebase.unit === 'frames') {
-    window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);
-  }
-  return range;
-}
-
-function syncTrackTimebase(segments, timebase, { preferFrames = false } = {}) {
-  if (!Array.isArray(segments)) return;
-  let previousEndFrame = 0;
-  segments.forEach((segment) => {
-    syncSegmentTimebase(segment, timebase, {
-      preferFrames,
-      minimumStartFrame: timebase.unit === 'frames' ? previousEndFrame : 0,
-    });
-    if (timebase.unit === 'frames' && Number.isInteger(segment?.end_frame)) {
-      previousEndFrame = segment.end_frame;
-    }
-  });
-}
-
-function projectTimebase(project = MaweBoot.DATA) {
-  return normalizeTimelineTimebase(project?.timebase);
-}
-
-function hasExplicitTimelineFps(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const fps = Number(value.fps);
-  if (!Number.isFinite(fps) || fps < MIN_TIMELINE_FPS || fps > MAX_TIMELINE_FPS) return false;
-  // A non-default FPS or an already-frame-based project represents an
-  // explicit choice.  A saved millisecond project with the historical 30 FPS
-  // default can still adopt the source media FPS on its first frame switch.
-  return value.unit === 'frames' || fps !== DEFAULT_TIMELINE_FPS;
-}
-
-function projectMediaVideoFps(project = MaweBoot.DATA) {
-  return normalizeMediaMetadata(project?.media_metadata)?.video_fps ?? null;
-}
-
-let timelineFpsManuallySet = hasExplicitTimelineFps(MaweBoot.DATA.timebase);
-function captureProjectVideoDimensions(mediaElement) {
-  if (!mediaElement || mediaElement !== MaweCoreState.player || mediaElement.tagName !== 'VIDEO') return false;
-  const width = Number(mediaElement.videoWidth);
-  const height = Number(mediaElement.videoHeight);
-  if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) return false;
-  const current = normalizeMediaMetadata(MaweBoot.DATA.media_metadata) || {};
-  if (current.video_width === width && current.video_height === height) return false;
-  MaweBoot.DATA.media_metadata = { ...current, video_width: width, video_height: height };
-  MaweServerSave.projectImportDirty = true;
-  MaweServerSave.scheduleAutoSaveFlush();
-  return true;
-}
-
-function clearProjectVideoDimensions() {
-  const current = normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
-  if (!current || (current.video_width === undefined && current.video_height === undefined)) return false;
-  const next = { ...current };
-  delete next.video_width;
-  delete next.video_height;
-  MaweBoot.DATA.media_metadata = Object.keys(next).length ? next : null;
-  MaweServerSave.projectImportDirty = true;
-  MaweServerSave.scheduleAutoSaveFlush();
-  return true;
-}
-
-function syncProjectTimebase(project = MaweBoot.DATA, { preferFrames = false } = {}) {
-  if (!project || typeof project !== 'object') return normalizeTimelineTimebase();
-  const timebase = projectTimebase(project);
-  project.timebase = { ...timebase };
-  syncTrackTimebase(project.segments, timebase, { preferFrames });
-  const tracks = project.multi_subtitle?.tracks;
-  if (Array.isArray(tracks)) {
-    tracks.forEach((track) => syncTrackTimebase(track?.segments, timebase, { preferFrames }));
-  }
-  return timebase;
-}
-
-function syncProjectTimebaseAndBindingOffsets(project = MaweBoot.DATA, options = {}) {
-  const timebase = syncProjectTimebase(project, options);
-  if (project && typeof project === 'object') {
-    MULTI_SUBTITLE_UTILS.rebuildBindingOffsets(project.multi_subtitle, project.segments);
-  }
-  return timebase;
-}
-
-function timelineIsFrameMode() {
-  return projectTimebase().unit === 'frames';
-}
-
-function timelineMinimumDurationMs() {
-  const timebase = projectTimebase();
-  if (timebase.unit !== 'frames') return MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
-  const minimumFrames = Math.max(1, Math.ceil(MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * timebase.fps / 1000));
-  return millisecondsFromFrameNumber(minimumFrames, timebase.fps);
-}
-
-function timelineMinimumDurationValue() {
-  const timebase = projectTimebase();
-  return timebase.unit === 'frames'
-    ? Math.max(1, Math.ceil(MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * timebase.fps / 1000))
-    : MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
-}
-
-function timelineTimingAdapter() {
-  const timebase = projectTimebase();
-  const frameMode = timebase.unit === 'frames';
-  const minimumDuration = timelineMinimumDurationValue();
-  const snapThreshold = frameMode
-    ? Math.max(1, Math.round(80 * timebase.fps / 1000)) : 80;
-  if (!frameMode) {
-    return {
-      unit: 'milliseconds',
-      fps: timebase.fps,
-      minDuration: minimumDuration,
-      snapThreshold,
-      round: roundTimelineMilliseconds,
-      getStart: (segment) => Number(segment?.start),
-      getEnd: (segment) => Number(segment?.end),
-      setStart: (segment, value) => { segment.start = roundTimelineMilliseconds(value); },
-      setEnd: (segment, value) => { segment.end = roundTimelineMilliseconds(value); },
-      getItemStart: (item) => Number(item?.start),
-      getItemEnd: (item) => Number(item?.end),
-      setItemStart: (item, value) => { item.start = roundTimelineMilliseconds(value); },
-      setItemEnd: (item, value) => { item.end = roundTimelineMilliseconds(value); },
-      fromMs: (value) => Number(value),
-      toMs: (value) => Number(value),
-      format: formatTimelineMilliseconds,
-    };
-  }
-  const readFrame = (value, frameField, msField) => Number.isInteger(value?.[frameField])
-    ? value[frameField] : frameNumberFromMilliseconds(value?.[msField], timebase.fps);
-  const writeFrame = (value, frameField, msField, frame) => {
-    const next = Math.max(0, Math.round(Number(frame)));
-    value[frameField] = next;
-    value[msField] = millisecondsFromFrameNumber(next, timebase.fps);
-  };
-  return {
-    unit: 'frames',
-    fps: timebase.fps,
-    minDuration: minimumDuration,
-    snapThreshold,
-    round: (value) => Math.round(Number(value)),
-    getStart: (segment) => readFrame(segment, 'start_frame', 'start'),
-    getEnd: (segment) => readFrame(segment, 'end_frame', 'end'),
-    setStart: (segment, value) => writeFrame(segment, 'start_frame', 'start', value),
-    setEnd: (segment, value) => writeFrame(segment, 'end_frame', 'end', value),
-    getItemStart: (item) => readFrame(item, 'start_frame', 'start'),
-    getItemEnd: (item) => readFrame(item, 'end_frame', 'end'),
-    setItemStart: (item, value) => writeFrame(item, 'start_frame', 'start', value),
-    setItemEnd: (item, value) => writeFrame(item, 'end_frame', 'end', value),
-    fromMs: (value) => frameNumberFromMilliseconds(value, timebase.fps),
-    toMs: (value) => millisecondsFromFrameNumber(value, timebase.fps),
-    format: (value) => formatFrameTimecode(
-      value,
-      timebase.fps,
-      MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator,
-    ),
-  };
-}
-
-function formatTimelineMilliseconds(ms) {
-  const safe = Math.max(0, Math.round(Number(ms) || 0));
-  const s = safe / 1000;
-  const m = Math.floor(s / 60);
-  return `${String(m).padStart(2, '0')}:${(s - m * 60).toFixed(3).padStart(6, '0')}`;
-}
-
-syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
+MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
 if (MaweHistory.undoBtn) MaweHistory.undoBtn.addEventListener('click', () => MaweHistory.performUndo());
 if (MaweHistory.redoBtn) MaweHistory.redoBtn.addEventListener('click', () => MaweHistory.performRedo());
 MaweHistory.updateUndoRedoButtons();
@@ -328,7 +75,7 @@ if (MaweDom.editorSettingsPanel) {
 document.addEventListener('mawe:languagechange', () => {
   MaweSplitMode.refreshSplitKeyHelp();
   MaweCuePanel.renderCurrentCuePanel();
-  refreshTimelineSettingsUi();
+  MaweTimeline.refreshTimelineSettingsUi();
   MaweMediaPlayback.refreshMediaSeekStepHelp();
   MaweMediaPlayback.refreshMediaSeekControlLabels();
 });
@@ -365,11 +112,11 @@ if (MaweJklPlayback.jklPlaybackModeSelect) MaweJklPlayback.jklPlaybackModeSelect
 if (MaweDom.hoverSeekPreviewToggle) MaweDom.hoverSeekPreviewToggle.checked = MaweSettings.EDITOR_SETTINGS.hoverSeekPreview;
 if (MaweDom.mediaSeekStepInput) MaweDom.mediaSeekStepInput.value = String(MaweSettings.EDITOR_SETTINGS.mediaSeekStepMs);
 if (MaweDom.cueMoveStepInput) MaweDom.cueMoveStepInput.value = String(MaweSettings.EDITOR_SETTINGS.cueMoveStepMs);
-if (MaweDom.timelineTimebaseSelect) MaweDom.timelineTimebaseSelect.value = projectTimebase().unit;
-if (MaweDom.timelineFpsInput) MaweDom.timelineFpsInput.value = String(projectTimebase().fps);
+if (MaweDom.timelineTimebaseSelect) MaweDom.timelineTimebaseSelect.value = MaweTimeline.projectTimebase().unit;
+if (MaweDom.timelineFpsInput) MaweDom.timelineFpsInput.value = String(MaweTimeline.projectTimebase().fps);
 if (MaweDom.timelineSnapToFrameToggle) MaweDom.timelineSnapToFrameToggle.checked = MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame;
 if (MaweDom.timelineTimecodeSeparatorInput) {
-  MaweDom.timelineTimecodeSeparatorInput.value = normalizeTimelineTimecodeSeparator(
+  MaweDom.timelineTimecodeSeparatorInput.value = MaweTimeline.normalizeTimelineTimecodeSeparator(
     MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator,
   );
 }
@@ -380,8 +127,8 @@ if (MaweDom.cueEditorCancelOnEscapeToggle) {
   MaweDom.cueEditorCancelOnEscapeToggle.checked = MaweSettings.EDITOR_SETTINGS.cueEditorCancelOnEscape;
 }
 if (MaweDom.adjacentBoundaryModeSelect) MaweDom.adjacentBoundaryModeSelect.value = MaweSettings.EDITOR_SETTINGS.adjacentBoundaryMode;
-refreshAdjacentBoundaryModeUi();
-refreshTimelineSettingsUi();
+MaweTimeline.refreshAdjacentBoundaryModeUi();
+MaweTimeline.refreshTimelineSettingsUi();
 MaweMediaPlayback.refreshMediaSeekStepHelp();
 MaweMediaStep.refreshMediaSeekInputStep();
 MaweMediaPlayback.refreshMediaSeekControlLabels();
@@ -592,14 +339,9 @@ MaweDom.helpOpenWaveformSettingsButtons.forEach((button) => {
     MaweDom.waveformSettingsToggle?.focus();
   });
 });
-// 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
-function openEditorSettingsAtTab(tabId) {
-  MaweSettingsPanels.setEditorSettingsPanelOpen(true);
-  MaweSettingsPanels.setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
-}
 MaweDom.exportOpenSubtitleColorSettingsButton?.addEventListener('click', (event) => {
   event.preventDefault();
-  openEditorSettingsAtTab('editor-settings-tab-subtitle-color');
+  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-color');
 });
 MaweDom.splitMultiSubtitleSettingsLink?.addEventListener('click', (event) => {
   event.preventDefault();
@@ -611,7 +353,7 @@ MaweDom.splitMultiSubtitleSettingsLink?.addEventListener('click', (event) => {
 MaweDom.helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
-    openEditorSettingsAtTab('editor-settings-tab-subtitle-preview');
+    MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-preview');
   });
 });
 MaweDom.helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {
@@ -670,107 +412,35 @@ if (MaweDom.helpPanel) {
     }, 250);
   }).observe(MaweDom.helpPanel);
 }
-
-// 明暗主题与界面强调色：令牌全部定义在 CSS，
-// 这里只负责解析偏好、写 <html> 数据属性、持久化，以及通知波形重绘画布。
-const EDITOR_THEME_VALUES = Object.freeze(['light', 'dark', 'system']);
-const EDITOR_ACCENT_COLOR_DEBOUNCE_MS = 160;
-function normalizeEditorTheme(theme) {
-  return EDITOR_THEME_VALUES.includes(theme) ? theme : 'dark';
-}
-function resolveEditorTheme(theme) {
-  const preference = normalizeEditorTheme(theme);
-  if (preference !== 'system') return preference;
-  const media = typeof window.matchMedia === 'function'
-    ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-  return media ? (media.matches ? 'dark' : 'light') : 'dark';
-}
-function refreshEditorThemeOptions(theme) {
-  const preference = normalizeEditorTheme(theme);
-  MaweDom.editorThemeOptions.forEach((option) => {
-    const active = option.dataset.editorTheme === preference;
-    option.classList.toggle('active', active);
-    option.setAttribute('aria-pressed', String(active));
-  });
-}
-function refreshEditorAccentOptions(accentColor) {
-  const preference = MaweSettings.normalizeEditorAccentColor(accentColor);
-  MaweDom.editorAccentOptions.forEach((option) => {
-    const active = option.dataset.editorAccent === preference;
-    option.classList.toggle('active', active);
-    option.setAttribute('aria-pressed', String(active));
-  });
-}
-function applyEditorAccentColor(accentColor, { rerenderWaveform = true } = {}) {
-  const preference = MaweSettings.normalizeEditorAccentColor(accentColor);
-  const customColor = MaweSettings.normalizeEditorAccentCustomColor(MaweSettings.EDITOR_SETTINGS.accentColorCustom);
-  const root = document.documentElement;
-  root.dataset.accent = preference;
-  if (preference === 'custom') root.style.setProperty('--accent-custom', customColor);
-  else root.style.removeProperty('--accent-custom');
-  refreshEditorAccentOptions(preference);
-  if (MaweDom.editorAccentCustomField) MaweDom.editorAccentCustomField.hidden = preference !== 'custom';
-  if (MaweDom.editorAccentCustomInput) MaweDom.editorAccentCustomInput.value = customColor;
-  if (MaweDom.editorAccentCustomValue) MaweDom.editorAccentCustomValue.textContent = customColor;
-  // 波形画布颜色是 JS 读取的令牌快照，强调色切换后同样需要重绘。
-  if (rerenderWaveform && MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.render();
-}
-let editorAccentCustomColorTimer = 0;
-let pendingEditorAccentCustomColor = null;
-function flushEditorAccentCustomColor(value = MaweDom.editorAccentCustomInput?.value) {
-  if (editorAccentCustomColorTimer) {
-    window.clearTimeout(editorAccentCustomColorTimer);
-    editorAccentCustomColorTimer = 0;
-  }
-  const customColor = MaweSettings.normalizeEditorAccentCustomColor(value);
-  pendingEditorAccentCustomColor = null;
-  MaweSettings.updateEditorSettings({ accentColor: 'custom', accentColorCustom: customColor });
-  applyEditorAccentColor('custom');
-}
-function scheduleEditorAccentCustomColor(value) {
-  pendingEditorAccentCustomColor = MaweSettings.normalizeEditorAccentCustomColor(value);
-  if (editorAccentCustomColorTimer) window.clearTimeout(editorAccentCustomColorTimer);
-  editorAccentCustomColorTimer = window.setTimeout(() => {
-    editorAccentCustomColorTimer = 0;
-    const customColor = pendingEditorAccentCustomColor;
-    pendingEditorAccentCustomColor = null;
-    if (customColor) flushEditorAccentCustomColor(customColor);
-  }, EDITOR_ACCENT_COLOR_DEBOUNCE_MS);
-}
-applyEditorAccentColor(MaweSettings.EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
+MaweTheme.applyEditorAccentColor(MaweSettings.EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
 MaweTheme.applyTheme(MaweSettings.EDITOR_SETTINGS.theme, { rerenderWaveform: false });
 MaweDom.editorThemeOptions.forEach((option) => {
   option.addEventListener('click', () => {
-    const next = normalizeEditorTheme(option.dataset.editorTheme);
+    const next = MaweTheme.normalizeEditorTheme(option.dataset.editorTheme);
     MaweSettings.updateEditorSettings({ theme: next });
     MaweTheme.applyTheme(next);
   });
 });
 MaweDom.editorAccentOptions.forEach((option) => {
   option.addEventListener('click', () => {
-    if (pendingEditorAccentCustomColor !== null) flushEditorAccentCustomColor();
+    if (MaweTheme.pendingEditorAccentCustomColor !== null) MaweTheme.flushEditorAccentCustomColor();
     const next = MaweSettings.normalizeEditorAccentColor(option.dataset.editorAccent);
     MaweSettings.updateEditorSettings({ accentColor: next });
-    applyEditorAccentColor(next);
+    MaweTheme.applyEditorAccentColor(next);
   });
 });
 MaweDom.editorAccentCustomInput?.addEventListener('input', () => {
   const customColor = MaweSettings.normalizeEditorAccentCustomColor(MaweDom.editorAccentCustomInput.value);
   if (MaweDom.editorAccentCustomValue) MaweDom.editorAccentCustomValue.textContent = customColor;
-  scheduleEditorAccentCustomColor(customColor);
+  MaweTheme.scheduleEditorAccentCustomColor(customColor);
 });
 MaweDom.editorAccentCustomInput?.addEventListener('change', () => {
-  flushEditorAccentCustomColor(MaweDom.editorAccentCustomInput.value);
+  MaweTheme.flushEditorAccentCustomColor(MaweDom.editorAccentCustomInput.value);
 });
-const editorSystemThemeMedia = typeof window.matchMedia === 'function'
-  ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-const refreshEditorSystemTheme = () => {
-  if (MaweSettings.EDITOR_SETTINGS.theme === 'system') MaweTheme.applyTheme('system');
-};
-if (editorSystemThemeMedia?.addEventListener) {
-  editorSystemThemeMedia.addEventListener('change', refreshEditorSystemTheme);
+if (MaweTheme.editorSystemThemeMedia?.addEventListener) {
+  MaweTheme.editorSystemThemeMedia.addEventListener('change', MaweTheme.refreshEditorSystemTheme);
 } else {
-  editorSystemThemeMedia?.addListener?.(refreshEditorSystemTheme);
+  MaweTheme.editorSystemThemeMedia?.addListener?.(MaweTheme.refreshEditorSystemTheme);
 }
 MaweDom.splitKeySel.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ splitKey: MaweDom.splitKeySel.value });
@@ -803,16 +473,7 @@ MaweSplitTrim.splitTrimSymbolsReset?.addEventListener('click', () => {
   MaweSplitTrim.renderSplitTrimSymbolGrid();
   MaweSplitTrim.refreshSplitTrimExtraInput();
 });
-// 拼合字幕工具窗：参数即时持久化；number 输入 change 时把显示值回钳到合法区间。
-const autoMergeFloatingPanel = MaweFloatingPanel.createFloatingPanel({
-  panel: MaweDom.autoMergePanel,
-  dragHandle: MaweDom.autoMergeDragHandle,
-  manageButton: MaweDom.autoMergeManageButton,
-  anchorButton: MaweDom.autoMergeManageButton,
-  positionKey: MaweDom.AUTO_MERGE_PANEL_POSITION_KEY,
-  onOpen: MaweSegmentOps.syncAutoMergePanelInputs,
-});
-MaweDom.autoMergeCloseButton?.addEventListener('click', () => autoMergeFloatingPanel.close());
+MaweDom.autoMergeCloseButton?.addEventListener('click', () => MaweFloatingPanel.autoMergeFloatingPanel.close());
 MaweDom.autoMergeRunButton?.addEventListener('click', MaweSegmentOps.autoMergeSegments);
 MaweDom.autoMergeGapMsInput?.addEventListener('input', () => {
   MaweSettings.updateEditorSettings({ autoMergeGapMs: MaweSettings.clampAutoMergeGapMs(MaweDom.autoMergeGapMsInput.value) });
@@ -854,14 +515,7 @@ MaweDom.autoMergePanel?.querySelectorAll('input[type="number"]').forEach((input)
     input.dispatchEvent(new Event('input', { bubbles: true }));
   }, { passive: false });
 });
-const subtitleExtendFloatingPanel = MaweFloatingPanel.createFloatingPanel({
-  panel: MaweDom.subtitleExtendPanel,
-  dragHandle: MaweDom.subtitleExtendDragHandle,
-  manageButton: MaweDom.subtitleExtendManageButton,
-  anchorButton: MaweDom.subtitleExtendManageButton,
-  positionKey: MaweDom.SUBTITLE_EXTEND_PANEL_POSITION_KEY,
-});
-MaweDom.subtitleExtendCloseButton?.addEventListener('click', () => subtitleExtendFloatingPanel.close());
+MaweDom.subtitleExtendCloseButton?.addEventListener('click', () => MaweFloatingPanel.subtitleExtendFloatingPanel.close());
 MaweDom.subtitleExtendRunButton?.addEventListener('click', MaweSegmentOps.extendSubtitleRanges);
 MaweDom.subtitleExtendPanel?.querySelectorAll('input[type="number"]').forEach((input) => {
   input.addEventListener('wheel', (event) => {
@@ -943,180 +597,6 @@ MaweJklPlayback.jklPlaybackModeSelect?.addEventListener('change', () => {
 MaweDom.hoverSeekPreviewToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ hoverSeekPreview: MaweDom.hoverSeekPreviewToggle.checked });
 });
-function timelineMediaSeekStepValue() {
-  return timelineIsFrameMode()
-    ? MaweSettings.EDITOR_SETTINGS.mediaSeekStepFrames : MaweSettings.EDITOR_SETTINGS.mediaSeekStepMs;
-}
-
-function timelineCueMoveStepValue() {
-  return timelineIsFrameMode()
-    ? MaweSettings.EDITOR_SETTINGS.cueMoveStepFrames : MaweSettings.EDITOR_SETTINGS.cueMoveStepMs;
-}
-
-function timelineValueToMilliseconds(value) {
-  const timebase = projectTimebase();
-  return timebase.unit === 'frames'
-    ? millisecondsFromFrameNumber(value, timebase.fps) : Number(value);
-}
-
-function timelineFrameAlignedMilliseconds(valueMs) {
-  const numeric = Number(valueMs);
-  if (!Number.isFinite(numeric) || !timelineIsFrameMode()) return numeric;
-  const timebase = projectTimebase();
-  return millisecondsFromFrameNumber(
-    frameNumberFromMilliseconds(numeric, timebase.fps),
-    timebase.fps,
-  );
-}
-
-function timelineUiText(zh, en) {
-  return window.MAWE_I18N?.language === 'en' ? en : zh;
-}
-
-function timelineMediaSeekStepMilliseconds() {
-  return timelineValueToMilliseconds(timelineMediaSeekStepValue());
-}
-
-function timelineHasSubtitleData() {
-  return (Array.isArray(MaweBoot.DATA?.segments) && MaweBoot.DATA.segments.length > 0)
-    || (Array.isArray(MaweBoot.DATA?.multi_subtitle?.tracks)
-      && MaweBoot.DATA.multi_subtitle.tracks.some((track) => Array.isArray(track?.segments)
-        && track.segments.length > 0));
-}
-
-function confirmTimelineFrameRemap(current, nextUnit, nextFps) {
-  const enteringFrames = current.unit !== 'frames' && nextUnit === 'frames';
-  const changingFrameRate = current.unit === 'frames' && current.fps !== nextFps;
-  if ((!enteringFrames && !changingFrameRate) || !timelineHasSubtitleData()) return true;
-  const message = enteringFrames
-    ? timelineUiText(
-      `切换到帧时间基准（${nextFps} FPS）会批量将当前工程的所有字幕段、字词和副字幕时间映射到最近帧，并重写毫秒兼容值。原始的非帧对齐毫秒值无法在切回毫秒时恢复。是否继续？`,
-      `Switching to the frame timebase (${nextFps} FPS) will remap all subtitle segments, word timings, and secondary subtitle timings to frame boundaries and rewrite the compatible millisecond values. Original non-frame-aligned millisecond values cannot be restored when switching back. Continue?`,
-    )
-    : timelineUiText(
-      `将 FPS 从 ${current.fps} 改为 ${nextFps} 会批量重新映射当前工程的所有字幕段、字词和副字幕时间，并重写毫秒兼容值。原始的非帧对齐毫秒值无法恢复。是否继续？`,
-      `Changing FPS from ${current.fps} to ${nextFps} will remap all subtitle segments, word timings, and secondary subtitle timings and rewrite the compatible millisecond values. Original non-frame-aligned millisecond values cannot be restored. Continue?`,
-    );
-  return window.confirm(message);
-}
-
-function refreshTimelineSettingsUi() {
-  const timebase = projectTimebase();
-  const frameMode = timebase.unit === 'frames';
-  const separator = normalizeTimelineTimecodeSeparator(MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator);
-  if (MaweDom.timelineTimebaseSelect) MaweDom.timelineTimebaseSelect.value = timebase.unit;
-  if (MaweDom.timelineFpsInput) MaweDom.timelineFpsInput.value = String(timebase.fps);
-  if (MaweDom.timelineSnapToFrameToggle) {
-    MaweDom.timelineSnapToFrameToggle.checked = frameMode && MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame;
-    MaweDom.timelineSnapToFrameToggle.disabled = !frameMode;
-  }
-  if (MaweDom.timelineTimecodeSeparatorInput) MaweDom.timelineTimecodeSeparatorInput.value = separator;
-  if (MaweDom.mediaSeekStepInput) {
-    MaweDom.mediaSeekStepInput.min = frameMode ? '1' : String(MaweSettings.MEDIA_SEEK_STEP_MIN_MS);
-    MaweDom.mediaSeekStepInput.max = frameMode ? '240' : String(MaweSettings.MEDIA_SEEK_STEP_MAX_MS);
-    MaweDom.mediaSeekStepInput.step = frameMode ? '1' : String(MaweSettings.mediaSeekStepForValue(MaweSettings.EDITOR_SETTINGS.mediaSeekStepMs));
-    MaweDom.mediaSeekStepInput.value = String(timelineMediaSeekStepValue());
-  }
-  if (MaweDom.cueMoveStepInput) {
-    MaweDom.cueMoveStepInput.min = frameMode ? '1' : String(MaweSettings.CUE_MOVE_STEP_MIN_MS);
-    MaweDom.cueMoveStepInput.max = frameMode ? '240' : String(MaweSettings.CUE_MOVE_STEP_MAX_MS);
-    MaweDom.cueMoveStepInput.step = frameMode ? '1' : '10';
-    MaweDom.cueMoveStepInput.value = String(timelineCueMoveStepValue());
-  }
-  if (MaweDom.mediaSeekStepUnit) MaweDom.mediaSeekStepUnit.textContent = frameMode ? 'F' : 'ms';
-  if (MaweDom.cueMoveStepUnit) MaweDom.cueMoveStepUnit.textContent = frameMode ? 'F' : 'ms';
-  if (MaweDom.mediaSeekStepHint) {
-    MaweDom.mediaSeekStepHint.textContent = frameMode
-      ? timelineUiText(
-        `控制按钮和左右方向键的每次跳转帧数（当前 FPS：${timebase.fps}）。`,
-        `Number of frames jumped by the controls and left/right arrow keys (current FPS: ${timebase.fps}).`,
-      )
-      : timelineUiText(
-        '控制按钮和左右方向键的每次跳转时长（单位：ms）。',
-        'Duration for each jump from the controls and left/right arrow keys (unit: ms).',
-      );
-  }
-  if (MaweDom.cueMoveStepHint) {
-    MaweDom.cueMoveStepHint.textContent = frameMode
-      ? timelineUiText(
-        '方向键和按住字幕块/边界时按帧微调；具体用法详见帮助的「微调字幕」区。',
-        'Arrow keys and A/D fine-tune frame by frame while holding a cue/block or boundary; see the “Subtitle fine-tuning” section in Help for details.',
-      )
-      : timelineUiText(
-        '具体用法详见帮助的「微调字幕」区。',
-        'See the “Subtitle fine-tuning” section in Help for details.',
-      );
-  }
-  if (MaweDom.timelineTimebaseHint) {
-    MaweDom.timelineTimebaseHint.textContent = frameMode
-      ? timelineUiText(
-        `帧模式使用 HH:MM:SS${separator}FF 显示，FF 为当前秒内的帧号；当前 FPS：${timebase.fps}。`,
-        `Frame mode uses HH:MM:SS${separator}FF, where FF is the frame number within the current second; current FPS: ${timebase.fps}.`,
-      )
-      : timelineUiText(
-        '毫秒模式保持原有时间编辑方式。切换为帧模式后，拖动、方向键和 A/D 微调都会按帧执行。',
-        'Millisecond mode keeps the existing timing behavior. Switching to frame mode makes dragging, arrow keys, and A/D fine-tuning operate frame by frame.',
-      );
-  }
-  if (MaweDom.timelineSnapToFrameHint) {
-    MaweDom.timelineSnapToFrameHint.textContent = frameMode
-      ? timelineUiText(
-        '启用后，波形鼠标指针会吸附到最近的帧位置。',
-        'When enabled, the waveform pointer snaps to the nearest frame.',
-      )
-      : timelineUiText(
-        '仅帧模式生效；切换到帧模式后可启用。',
-        'Only active in frame mode; switch to frame mode to enable it.',
-      );
-  }
-  if (MaweDom.timelineTimecodeSeparatorHint) {
-    MaweDom.timelineTimecodeSeparatorHint.textContent = timelineUiText(
-      `帧时间码示例：HH:MM:SS${separator}FF；只替换秒与帧之间的分隔符。`,
-      `Frame timecode example: HH:MM:SS${separator}FF; only the separator between seconds and frames changes.`,
-    );
-  }
-  MaweDom.mediaSeekInputLastValue = timelineMediaSeekStepValue();
-  MaweMediaPlayback.refreshMediaSeekStepHelp();
-  MaweMediaPlayback.refreshMediaSeekControlLabels();
-}
-
-function setTimelineTimebase(patch = {}) {
-  const current = projectTimebase();
-  const nextUnit = patch.unit === 'frames' || patch.unit === 'milliseconds'
-    ? patch.unit : current.unit;
-  const hasFpsPatch = Object.prototype.hasOwnProperty.call(patch, 'fps');
-  const mediaDefaultFps = !timelineFpsManuallySet
-    && !hasFpsPatch
-    && current.unit !== 'frames'
-    && nextUnit === 'frames'
-    ? projectMediaVideoFps()
-    : null;
-  const nextFps = mediaDefaultFps ?? normalizeTimelineFps(patch.fps, current.fps);
-  if (current.unit === nextUnit && current.fps === nextFps) {
-    if (hasFpsPatch) timelineFpsManuallySet = true;
-    refreshTimelineSettingsUi();
-    return;
-  }
-  if (!confirmTimelineFrameRemap(current, nextUnit, nextFps)) {
-    refreshTimelineSettingsUi();
-    return;
-  }
-  if (hasFpsPatch) timelineFpsManuallySet = true;
-  // 先按旧时间基准把当前工程的双份时间值同步，再决定新 FPS 下是否保留帧号。
-  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: current.unit === 'frames' });
-  MaweBoot.DATA.timebase = { unit: nextUnit, fps: nextFps };
-  // 变更 FPS 时保持媒体中的实际时间位置，再按新 FPS 重算独立帧字段；
-  // 否则同一个帧号会因 FPS 改变而把字幕整体提前或推后。
-  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
-  MaweServerSave.projectImportDirty = true;
-  refreshTimelineSettingsUi();
-  MaweCuePanel.renderAll({ waveform: 'full' });
-  MaweServerSave.scheduleAutoSaveFlush();
-  const description = nextUnit === 'frames'
-    ? timelineUiText(`已切换到帧时间基准（${nextFps} FPS）`, `Switched to frame timebase (${nextFps} FPS)`)
-    : timelineUiText('已切换到毫秒时间基准', 'Switched to millisecond timebase');
-  MaweHint.flashHint(description, 'success');
-}
 
 MaweDom.mediaSeekStepInput?.addEventListener('keydown', (event) => {
   if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
@@ -1134,7 +614,7 @@ MaweDom.mediaSeekStepInput?.addEventListener('wheel', (event) => {
 MaweDom.mediaSeekStepInput?.addEventListener('input', () => {
   const raw = MaweDom.mediaSeekStepInput.value.trim();
   if (!raw) return;
-  if (timelineIsFrameMode()) {
+  if (MaweTimeline.timelineIsFrameMode()) {
     MaweMediaStep.commitMediaSeekStepInput(raw, { rewriteInput: false });
     return;
   }
@@ -1146,7 +626,7 @@ MaweDom.mediaSeekStepInput?.addEventListener('change', () => {
   MaweMediaStep.commitMediaSeekStepInput(MaweDom.mediaSeekStepInput.value);
 });
 MaweDom.cueMoveStepInput?.addEventListener('change', () => {
-  const frameMode = timelineIsFrameMode();
+  const frameMode = MaweTimeline.timelineIsFrameMode();
   const value = frameMode
     ? EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(MaweDom.cueMoveStepInput.value, 1)
     : MaweSettings.clampCueMoveStepMs(MaweDom.cueMoveStepInput.value);
@@ -1154,20 +634,20 @@ MaweDom.cueMoveStepInput?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings(frameMode ? { cueMoveStepFrames: value } : { cueMoveStepMs: value });
 });
 MaweDom.timelineTimebaseSelect?.addEventListener('change', () => {
-  setTimelineTimebase({ unit: MaweDom.timelineTimebaseSelect.value });
+  MaweTimeline.setTimelineTimebase({ unit: MaweDom.timelineTimebaseSelect.value });
 });
 MaweDom.timelineFpsInput?.addEventListener('change', () => {
-  setTimelineTimebase({ fps: MaweDom.timelineFpsInput.value });
+  MaweTimeline.setTimelineTimebase({ fps: MaweDom.timelineFpsInput.value });
 });
 MaweDom.timelineSnapToFrameToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ timelineSnapToFrame: MaweDom.timelineSnapToFrameToggle.checked });
   MaweCoreState.waveformEditor?.refreshPointerLine?.();
 });
 MaweDom.timelineTimecodeSeparatorInput?.addEventListener('change', () => {
-  const separator = normalizeTimelineTimecodeSeparator(MaweDom.timelineTimecodeSeparatorInput.value);
+  const separator = MaweTimeline.normalizeTimelineTimecodeSeparator(MaweDom.timelineTimecodeSeparatorInput.value);
   MaweDom.timelineTimecodeSeparatorInput.value = separator;
   MaweSettings.updateEditorSettings({ timelineTimecodeSeparator: separator });
-  refreshTimelineSettingsUi();
+  MaweTimeline.refreshTimelineSettingsUi();
   MaweCoreState.waveformEditor?.refreshPointerLine?.();
   // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，
   // 不必等到下一次字幕编辑操作才看到新格式。
@@ -1176,22 +656,11 @@ MaweDom.timelineTimecodeSeparatorInput?.addEventListener('change', () => {
 MaweDom.autoSnapAdjacentCuesToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ autoSnapAdjacentCues: MaweDom.autoSnapAdjacentCuesToggle.checked });
 });
-// 贴合字幕边界模式：dual（中缝联动，新默认）/ classic（自动吸附开关 + Alt 反转）。
-// classic 下保留“自动吸附调整相邻字幕”开关；dual 下该开关只影响键盘微调，
-// 鼠标手柄始终独立，联动交给波形上的中缝拖动区，因此隐藏开关行避免误解。
-function refreshAdjacentBoundaryModeUi() {
-  const isDual = MaweSettings.EDITOR_SETTINGS.adjacentBoundaryMode === 'dual';
-  // 用内联 display 切换：.editor-settings-item 的 display:inline-flex
-  // 会覆盖 hidden 属性的 UA 样式。
-  if (MaweDom.autoSnapAdjacentCuesRow) MaweDom.autoSnapAdjacentCuesRow.style.display = isDual ? 'none' : '';
-  if (MaweDom.autoSnapAdjacentCuesHint) MaweDom.autoSnapAdjacentCuesHint.style.display = isDual ? 'none' : '';
-  if (MaweDom.adjacentBoundaryModeHintDual) MaweDom.adjacentBoundaryModeHintDual.style.display = isDual ? '' : 'none';
-}
 MaweDom.adjacentBoundaryModeSelect?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({
     adjacentBoundaryMode: MaweDom.adjacentBoundaryModeSelect.value === 'classic' ? 'classic' : 'dual',
   });
-  refreshAdjacentBoundaryModeUi();
+  MaweTimeline.refreshAdjacentBoundaryModeUi();
   MaweCoreState.waveformEditor?.refreshCueOverlay?.();
 });
 MaweDom.cueEditorCancelOnEscapeToggle?.addEventListener('change', () => {
@@ -1251,56 +720,21 @@ MaweDom.subtitleColorStyleSelect?.addEventListener('change', () => {
   MaweAppearance.setSubtitleAppearance({ color_style: MaweDom.subtitleColorStyleSelect.value });
   MawePlaybackLoop.update();
 });
-const speakerLabelUndoColors = new Set();
-let speakerLabelSeparatorUndo = false;
-function applySpeakerLabelInput(color, { finalize = false } = {}) {
-  const input = MaweDom.subtitleSpeakerLabelInputs[color];
-  if (!input) return;
-  if (!speakerLabelUndoColors.has(color)) {
-    MaweHistory.pushPreviewUndo('重命名说话人', MaweHistory.snapshotPreviewState());
-    speakerLabelUndoColors.add(color);
-  }
-  const current = getSpeakerLabelSettings();
-  setSpeakerLabelSettings({
-    ...current,
-    names: { ...current.names, [color]: input.value },
-  });
-  if (finalize) {
-    speakerLabelUndoColors.delete(color);
-    input.value = getSpeakerLabelSettings().names[color] || '';
-  }
-  MawePlaybackLoop.update();
-}
 Object.entries(MaweDom.subtitleSpeakerLabelInputs).forEach(([color, input]) => {
-  input?.addEventListener('input', () => applySpeakerLabelInput(color));
-  input?.addEventListener('change', () => applySpeakerLabelInput(color, { finalize: true }));
+  input?.addEventListener('input', () => MaweSpeakerLabels.applySpeakerLabelInput(color));
+  input?.addEventListener('change', () => MaweSpeakerLabels.applySpeakerLabelInput(color, { finalize: true }));
 });
-function applySpeakerLabelSeparatorInput({ finalize = false } = {}) {
-  const input = MaweDom.subtitleSpeakerLabelSeparatorInput;
-  if (!input) return;
-  if (!speakerLabelSeparatorUndo) {
-    MaweHistory.pushPreviewUndo('调整说话人分隔符', MaweHistory.snapshotPreviewState());
-    speakerLabelSeparatorUndo = true;
-  }
-  const current = getSpeakerLabelSettings();
-  setSpeakerLabelSettings({ ...current, separator: input.value });
-  if (finalize) {
-    speakerLabelSeparatorUndo = false;
-    input.value = getSpeakerLabelSettings().separator;
-  }
-  MawePlaybackLoop.update();
-}
-MaweDom.subtitleSpeakerLabelSeparatorInput?.addEventListener('input', () => applySpeakerLabelSeparatorInput());
+MaweDom.subtitleSpeakerLabelSeparatorInput?.addEventListener('input', () => MaweSpeakerLabels.applySpeakerLabelSeparatorInput());
 MaweDom.subtitleSpeakerLabelSeparatorInput?.addEventListener(
   'change',
-  () => applySpeakerLabelSeparatorInput({ finalize: true }),
+  () => MaweSpeakerLabels.applySpeakerLabelSeparatorInput({ finalize: true }),
 );
 MaweDom.subtitleSpeakerMappingEnabledInput?.addEventListener('change', () => {
   const previous = MaweHistory.snapshotPreviewState();
   previous.speakerLabels.mapping_enabled = !MaweDom.subtitleSpeakerMappingEnabledInput.checked;
   MaweHistory.pushPreviewUndo('切换颜色说话人映射', previous);
-  setSpeakerLabelSettings({
-    ...getSpeakerLabelSettings(),
+  MaweSpeakerLabels.setSpeakerLabelSettings({
+    ...MaweSpeakerLabels.getSpeakerLabelSettings(),
     mapping_enabled: MaweDom.subtitleSpeakerMappingEnabledInput.checked,
   });
   MawePlaybackLoop.update();
@@ -1309,8 +743,8 @@ MaweDom.subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
   const previous = MaweHistory.snapshotPreviewState();
   previous.speakerLabels.enabled = !MaweDom.subtitleSpeakerLabelsEnabledInput.checked;
   MaweHistory.pushPreviewUndo('切换说话人名称预览', previous);
-  setSpeakerLabelSettings({
-    ...getSpeakerLabelSettings(),
+  MaweSpeakerLabels.setSpeakerLabelSettings({
+    ...MaweSpeakerLabels.getSpeakerLabelSettings(),
     enabled: MaweDom.subtitleSpeakerLabelsEnabledInput.checked,
   });
   // 显示开关改变时同步 SRT 附加选项；导出开关仍可在全局设置中独立调整。
@@ -1356,34 +790,6 @@ MaweBehaviorHints.refreshKeyboardOperationReferenceHint();
 document.addEventListener('mawe:languagechange', MaweBehaviorHints.refreshKeyboardOperationReferenceHint);
 MaweJklPlayback.refreshJklPlaybackModeUi();
 document.addEventListener('mawe:languagechange', MaweJklPlayback.refreshJklPlaybackModeUi);
-
-function fillGapRangeAtWaveformTime(timeMs) {
-  const gaps = MaweGapRemoveData.getGapRemoveGaps();
-  if (!gaps.some((gap) => gap.removed !== false)) {
-    MaweHint.flashHint('当前没有已激活的空隙，无法填充区间空隙', 'invalid');
-    return false;
-  }
-  const range = window.AsrEditorUtils.resolveGapFillRange(gaps, timeMs, MaweGapRemoveUi.gapRemoveMediaDurationMs());
-  if (!range) {
-    MaweHint.flashHint('媒体时长尚不可用；请先加载媒体后再填充区间空隙', 'invalid');
-    return false;
-  }
-  const state = MaweGapRemoveData.getGapRemoveData(true);
-  const sourceGaps = window.AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
-  const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, range.start, range.end, true);
-  if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
-    MaweHint.flashHint('该位置已经是已移除的空隙', 'invalid');
-    return false;
-  }
-  MaweHistory.pushGapRemoveUndo('填充区间空隙');
-  state.detector = 'audio_gate';
-  MaweGapRemoveUi.commitManualGapRemoveChange(
-    state,
-    [{ start: range.start, end: range.end, removed: true }],
-  );
-  MaweHint.flashHint(`已填充并合并为 ${MaweGapRemoveUi.formatGapRemoveTotal(range.end - range.start)} 静音空隙`, 'success');
-  return true;
-}
 
 MaweDom.gapRemoveDragHandle?.addEventListener('pointerdown', (event) => {
   if (event.button !== 0 || event.target.closest('button')) return;
@@ -1553,33 +959,18 @@ document.getElementById('search-clear')?.addEventListener('click', () => {
   MaweDom.searchEl.focus({ preventScroll: true });
 });
 
-// 三种滚动共用一个可取消的操作：布局恢复、主动导航、播放跟随。
-// scroll 事件本身不表示用户输入，懒布局和浏览器边界限制也会触发它。
-const cueListScroll = { generation: 0, frame: 0, owner: null, following: true, playbackKey: null, mutationAnchor: null, layoutAnchor: null };
-const cueListFollowButton = document.getElementById('cue-list-follow');
-
-function setCueListFollowing(enabled) {
-  cueListScroll.following = enabled;
-  cueListFollowButton?.setAttribute('aria-pressed', String(enabled));
-}
-
-function interruptCueListFollowing() {
-  MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
-  setCueListFollowing(false);
-}
-
 document.addEventListener('pointerdown', (event) => {
   MaweCueListAnchor.invalidateCueListVisualAnchorRestore({ preserveLayoutAnchor: true });
   // 直接按在容器空白/滚动条上可能开始拖动；普通行点击仍沿用点击设置。
   const rect = MaweCoreState.container.getBoundingClientRect();
   if (event.target === MaweCoreState.container || (MaweCoreState.container.contains(event.target)
       && event.clientX >= rect.right - 14)) {
-    cueListScroll.layoutAnchor = null;
-    setCueListFollowing(false);
+    MaweCueListAnchor.cueListScroll.layoutAnchor = null;
+    MaweCueListAnchor.setCueListFollowing(false);
   }
 }, true);
-MaweCoreState.container.addEventListener('wheel', interruptCueListFollowing, { passive: true });
-MaweCoreState.container.addEventListener('touchstart', interruptCueListFollowing, { passive: true });
+MaweCoreState.container.addEventListener('wheel', MaweCueListAnchor.interruptCueListFollowing, { passive: true });
+MaweCoreState.container.addEventListener('touchstart', MaweCueListAnchor.interruptCueListFollowing, { passive: true });
 document.addEventListener('keydown', (event) => {
   MaweCueListAnchor.invalidateCueListVisualAnchorRestore({ preserveLayoutAnchor: true });
 }, true);
@@ -1593,61 +984,10 @@ document.addEventListener('keydown', (event) => {
   if (event.ctrlKey || event.altKey || event.metaKey) return;
   if (!(MaweCoreState.container.contains(event.target) || MaweNavPreview.navigationOwner === 'cue-list')) return;
   if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
-    interruptCueListFollowing();
+    MaweCueListAnchor.interruptCueListFollowing();
   }
 });
-
-function setCueListIdentity(element, segment, track = null) {
-  // 身份写在渲染时的 DOM 上；splice / history 后不能再拿旧下标读新数据。
-  const prefix = track ? 'ext' : 'main';
-  element.dataset[`${prefix}Id`] = segment.id;
-  element.dataset[`${prefix}Start`] = String(segment.start);
-  if (track) element.dataset.trackId = track.id;
-}
-
-function cueListIdentity(element, kind = MaweCuePanelState.currentCuePanelKind) {
-  const extension = (kind === 'extension' && element.dataset.extId) || !element.dataset.mainId;
-  return {
-    kind: extension ? 'extension' : 'main',
-    segmentId: extension ? element.dataset.extId : element.dataset.mainId,
-    trackId: extension ? element.dataset.trackId : null,
-    start: Number(extension ? element.dataset.extStart : element.dataset.mainStart),
-  };
-}
-
-function rememberCueListMutation() {
-  const anchor = MaweCueListAnchor.captureCueListRenderAnchor();
-  cueListScroll.mutationAnchor = anchor;
-  // 只交给同一个同步编辑事务，未重绘的原地改字不会留下过时视口。
-  queueMicrotask(() => {
-    if (cueListScroll.mutationAnchor === anchor) cueListScroll.mutationAnchor = null;
-  });
-}
-
-function playbackCueListElement() {
-  if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.getMultiSubtitleState().display_mode === 'extension') {
-    const segment = MawePlaybackLoop.extensionSegmentAtTime(MaweCoreState.player.currentTime * 1000);
-    return segment ? MaweCueListAnchor.findCueListRenderAnchor({ kind: 'extension', segmentId: segment.id,
-      trackId: MaweMultiSubtitleCore.getActiveExtensionTrack()?.id }) : null;
-  }
-  const index = MawePlaybackLoop.findActive(MaweCoreState.player.currentTime * 1000);
-  return index >= 0 ? MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`) : null;
-}
-
-function playbackCueListKey() {
-  const element = playbackCueListElement();
-  if (!element) return null;
-  const identity = cueListIdentity(element,
-    MaweMultiSubtitleCore.getMultiSubtitleState().display_mode === 'extension' ? 'extension' : 'main');
-  return `${identity.kind}:${identity.trackId || ''}:${identity.segmentId}`;
-}
-
-function resumeCueListFollowing() {
-  MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
-  setCueListFollowing(true);
-  MaweCueListAnchor.scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'navigate' });
-}
-cueListFollowButton?.addEventListener('click', resumeCueListFollowing);
+MaweCueListAnchor.cueListFollowButton?.addEventListener('click', MaweCueListAnchor.resumeCueListFollowing);
 // 导出文件名标题（main #124/ASS 导出新增）：初始取工程名，保存后随文件名更新。
 let PROJECT_NAME = MaweBoot.FILENAME_BASE;
 
@@ -1755,13 +1095,13 @@ document.addEventListener('keydown', (e) => {
 });
 
 MaweDom.mediaPlayToggle?.addEventListener('click', MaweMediaPlayback.togglePlayback);
-MaweDom.mediaStepBack?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(-timelineMediaSeekStepMilliseconds() / 1000));
-MaweDom.mediaStepForward?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(timelineMediaSeekStepMilliseconds() / 1000));
+MaweDom.mediaStepBack?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(-MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));
+MaweDom.mediaStepForward?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));
 MaweDom.mediaSeek?.addEventListener('input', () => {
 if (!MaweMediaPlayback.hasLoadedMedia()) return;
 MaweCoreState.player.currentTime = Number(MaweDom.mediaSeek.value) || 0;
 MawePlaybackLoop.update();
-resumeCueListFollowing();
+MaweCueListAnchor.resumeCueListFollowing();
 MaweMediaPlayback.syncMediaControls();
 });
 MaweDom.mediaVolume?.addEventListener('input', () => {
@@ -1819,7 +1159,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (selected.size > 0 && MaweCoreState.waveformEditor) {
-    const deltaTime = direction * timelineCueMoveStepValue();
+    const deltaTime = direction * MaweTimeline.timelineCueMoveStepValue();
     if (commandKey) {
       if (e.shiftKey) {
         MaweCoreState.waveformEditor.adjustSelectedBoundaryByKeyboard(deltaTime, 'end', e.altKey, activeTrack);
@@ -1837,50 +1177,8 @@ document.addEventListener('keydown', (e) => {
   if (!MaweMediaPlayback.hasLoadedMedia()) return;
   e.preventDefault();
   e.stopPropagation();
-  MaweMediaPlayback.seekMediaBy(direction * timelineMediaSeekStepMilliseconds() / 1000);
+  MaweMediaPlayback.seekMediaBy(direction * MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000);
 }, true);
-
-function renderedCueBoundaryTarget(target, boundary) {
-  const selector = target?.kind === 'extension'
-    ? '.multi-dual-cue[data-ext-idx], .multi-extension-cue[data-ext-idx]'
-    : '.cue[data-idx], .multi-dual-cue[data-main-idx]';
-  const track = target?.kind === 'extension' ? target.track : 'main';
-  const indexes = [...MaweCoreState.container.querySelectorAll(selector)]
-    .filter((cue) => !cue.classList.contains('hidden'))
-    .map((cue) => Number(target?.kind === 'extension'
-      ? cue.dataset.extIdx
-      : cue.dataset.idx ?? cue.dataset.mainIdx))
-    .filter((index, position, values) => (
-      Number.isInteger(index)
-      && !MaweSelection.isHiddenDisabled(index, track)
-      && values.indexOf(index) === position
-    ));
-  const index = boundary === 'first' ? indexes[0] : indexes[indexes.length - 1];
-  if (!Number.isInteger(index)) return null;
-  const cue = MaweCoreState.container.querySelector(
-    target?.kind === 'extension'
-      ? `.multi-dual-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`
-      : `.cue[data-idx="${index}"], .multi-dual-cue[data-main-idx="${index}"]`,
-  );
-  return cue ? { cue, index } : null;
-}
-
-function navigateCueListBoundary(key) {
-  const target = MaweCuePanel.getCurrentCuePanelTarget();
-  if (!target) return false;
-  const boundary = renderedCueBoundaryTarget(target, key === 'Home' ? 'first' : 'last');
-  if (!boundary) return false;
-  interruptCueListFollowing();
-  if (target.kind === 'extension') {
-    MaweSelection.selectOnlyExtension(boundary.index, target.track);
-    MaweSelection.lastClickedExtensionIdx = boundary.index;
-  } else {
-    MaweSelection.selectOnly(boundary.index);
-    MaweSelection.lastClickedIdx = boundary.index;
-  }
-  MaweCueListAnchor.scrollCueToCenter(boundary.cue);
-  return true;
-}
 
 // Home/End：字幕列表最近拥有导航时选择当前轨道首尾；波形、播放器或尚未
 // 确定区域时跳转媒体首尾。文本输入、普通按钮和模态窗口保留原生行为。
@@ -1895,7 +1193,7 @@ document.addEventListener('keydown', (e) => {
       || MaweDom.multiSubtitleImportModal?.classList.contains('show')
       || document.getElementById('sticker-root-modal').classList.contains('show')
       || MaweDom.ctxmenu.classList.contains('show')) return;
-  if (MaweNavPreview.navigationOwner === 'cue-list' && navigateCueListBoundary(e.key)) {
+  if (MaweNavPreview.navigationOwner === 'cue-list' && MaweCueListAnchor.navigateCueListBoundary(e.key)) {
     e.preventDefault();
     e.stopPropagation();
     return;
@@ -2040,7 +1338,7 @@ document.addEventListener('keydown', (e) => {
   const heldCueKey = (!e.shiftKey || key === 'a' || key === 'd')
     && MaweCoreState.waveformEditor?.handleHeldCueKey?.(
       direction,
-      direction * timelineCueMoveStepValue(),
+      direction * MaweTimeline.timelineCueMoveStepValue(),
       { shiftKey: e.shiftKey, altKey: e.altKey, snap: key === 'a' || key === 'd' },
     );
   if (heldCueKey) {
@@ -2389,17 +1687,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
 });
 
-function seekCurrentCueBoundary(boundary) {
-  const target = MaweCuePanel.getCurrentCuePanelTarget();
-  const timeMs = Number(target?.segment?.[boundary]);
-  const duration = Number(MaweCoreState.player?.duration);
-  if (!target || !Number.isFinite(timeMs) || !MaweMediaPlayback.hasLoadedMedia()
-      || !Number.isFinite(duration) || duration <= 0) return false;
-  MaweJklPlayback.stopJklReversePlayback({ render: false });
-  MaweCoreState.player.pause();
-  return MaweMediaPlayback.seekMediaTo(timeMs / 1000);
-}
-
 // I/O：跳到当前字幕的开头/结尾并保持暂停。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'i' && e.key !== 'I' && e.key !== 'o' && e.key !== 'O') return;
@@ -2414,7 +1701,7 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   const boundary = e.key.toLowerCase() === 'i' ? 'start' : 'end';
-  if (!seekCurrentCueBoundary(boundary)) return;
+  if (!MaweNavPreview.seekCurrentCueBoundary(boundary)) return;
   e.preventDefault();
   e.stopPropagation();
 });
@@ -2726,56 +2013,6 @@ document.addEventListener('pointerdown', (e) => {
 }, true);
 // 启动早期生成的自定义字体选项先用原始名称占位；共享工具层就绪后立即统一本地化。
 MaweAppearance.relabelSubtitleFontFamilyOptions();
-function normalizeSubtitleColorStyle(value) {
-  return typeof value === 'string' && MaweSettings.SUBTITLE_COLOR_STYLE_VALUES.includes(value)
-    ? value : null;
-}
-function getSpeakerLabelSettings(value = MaweBoot.DATA.preview?.subtitle?.speaker_labels) {
-  // applySubtitleAppearance() runs during the early boot sequence, before the
-  // preview-geometry section initializes its later GEO_UTILS alias.
-  return EDITOR_SETTINGS_UTILS.normalizeSpeakerLabelSettings(value);
-}
-function syncSpeakerLabelControls(settings = getSpeakerLabelSettings()) {
-  const mappingEnabled = settings.mapping_enabled === true;
-  if (MaweDom.subtitleSpeakerMappingEnabledInput) {
-    MaweDom.subtitleSpeakerMappingEnabledInput.checked = mappingEnabled;
-  }
-  if (MaweDom.subtitleSpeakerLabelsToggle) {
-    MaweDom.subtitleSpeakerLabelsToggle.hidden = !mappingEnabled;
-  }
-  if (MaweDom.subtitleSpeakerLabelsEnabledInput) {
-    MaweDom.subtitleSpeakerLabelsEnabledInput.checked = settings.enabled;
-  }
-  if (MaweDom.subtitleSpeakerLabelsSettings) {
-    MaweDom.subtitleSpeakerLabelsSettings.dataset.mappingEnabled = mappingEnabled ? 'true' : 'false';
-    MaweDom.subtitleSpeakerLabelsSettings.dataset.enabled = settings.enabled ? 'true' : 'false';
-    MaweDom.subtitleSpeakerLabelsSettings.hidden = !mappingEnabled;
-  }
-  Object.entries(MaweDom.subtitleSpeakerLabelInputs).forEach(([color, input]) => {
-    if (input && document.activeElement !== input) input.value = settings.names[color] || '';
-  });
-  if (MaweDom.subtitleSpeakerLabelSeparatorInput && document.activeElement !== MaweDom.subtitleSpeakerLabelSeparatorInput) {
-    MaweDom.subtitleSpeakerLabelSeparatorInput.value = settings.separator;
-  }
-  document.querySelectorAll('[data-speaker-label-swatch]').forEach((swatch) => {
-    const color = swatch.dataset.speakerLabelSwatch;
-    const value = MaweColors.COLOR_BY_NAME[color]?.value;
-    if (value) swatch.style.backgroundColor = value;
-  });
-}
-
-function setSpeakerLabelSettings(value, { markDirty = true } = {}) {
-  const settings = getSpeakerLabelSettings(value);
-  if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
-  MaweBoot.DATA.preview.subtitle = {
-    ...MaweAppearance.getPreviewGeometry(),
-    ...MaweAppearance.getSubtitleAppearance(),
-    speaker_labels: settings,
-  };
-  if (markDirty) MaweAppearance.previewGeometryDirty = true;
-  MaweAppearance.applySubtitleAppearance(MaweBoot.DATA.preview.subtitle);
-  return settings;
-}
 MaweAppearance.initializeSubtitleFontFamilyScanner();
 MawePreviewGeometry.bindPreviewBoxPointerEvents(MaweDom.overlayEl, 'subtitle');
 MaweDom.overlayEl.addEventListener('keydown', (event) => MawePreviewGeometry.handlePreviewBoxKeydown(event, 'subtitle'));
@@ -2838,140 +2075,6 @@ MaweDom.overlayToggle.addEventListener('change', () => {
   else MawePlaybackLoop.update();
 });
 
-function speakerLabelExportOptions() {
-  const settings = getSpeakerLabelSettings();
-  return {
-    speakerLabelsEnabled: MaweSettings.EDITOR_SETTINGS.exportSpeakerLabels === true
-      && settings.mapping_enabled === true,
-    speakerLabels: settings.names,
-    speakerLabelSeparator: settings.separator,
-  };
-}
-
-function currentAssVideoResolution() {
-  const metadata = window.AsrEditorUtils.normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
-  if (metadata?.video_width && metadata?.video_height) {
-    return { width: metadata.video_width, height: metadata.video_height };
-  }
-  const width = Number(MaweCoreState.player?.videoWidth);
-  const height = Number(MaweCoreState.player?.videoHeight);
-  if (MaweCoreState.player?.tagName === 'VIDEO'
-    && Number.isInteger(width) && width > 0
-    && Number.isInteger(height) && height > 0) {
-    return { width, height };
-  }
-  return null;
-}
-
-function assExportOptions(appearance = MaweAppearance.getSubtitleAppearance()) {
-  const resolution = currentAssVideoResolution();
-  return {
-    title: PROJECT_NAME || MaweBoot.FILENAME_BASE || 'MAW',
-    mediaMetadata: window.AsrEditorUtils.normalizeMediaMetadata(MaweBoot.DATA.media_metadata),
-    playResX: resolution?.width,
-    playResY: resolution?.height,
-    colorStyles: MaweColors.COLOR_PALETTE,
-    appearance,
-  };
-}
-
-function buildAss() {
-  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    MaweBoot.DATA.segments,
-    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-  );
-  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
-    ...assExportOptions(),
-    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-    firstEnabledIndex,
-    ...speakerLabelExportOptions(),
-  });
-}
-
-function buildExtensionSrt(track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
-  return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
-    ...speakerLabelExportOptions(),
-    formatTime: MaweCueElements.fmtSrtTime,
-  });
-}
-
-function buildGapRemovedSrt() {
-  const removed = MaweGapRemoveData.getRemovedGapRanges();
-  if (!removed.length) {
-    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
-    return null;
-  }
-  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    MaweBoot.DATA.segments,
-    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-  );
-  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
-    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-    firstEnabledIndex,
-    appearance: MaweAppearance.getSubtitleAppearance(),
-  });
-}
-
-function buildGapRemovedAss() {
-  const removed = MaweGapRemoveData.getRemovedGapRanges();
-  if (!removed.length) {
-    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
-    return null;
-  }
-  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    MaweBoot.DATA.segments,
-    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-  );
-  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
-    ...assExportOptions(),
-    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-    firstEnabledIndex,
-    mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
-    ...speakerLabelExportOptions(),
-  });
-}
-
-function usedSubtitleColors() {
-  const names = new Set(MaweBoot.DATA.segments.filter((segment) => !segment.disabled).map((segment) => (
-    window.AsrEditorUtils.effectiveColorName(segment, MaweBoot.DATA.segments) || 'default'
-  )).filter((name) => name === 'default' || MaweColors.COLOR_BY_NAME[name]));
-  return [
-    ...MaweColors.COLOR_PALETTE.filter((color) => names.has(color.name)),
-    ...(names.has('default') ? [{ name: 'default', label: '默认' }] : []),
-  ];
-}
-
-function updateSubtitleExportUi() {
-  const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
-  if (MaweDom.downloadColorSrtItem) MaweDom.downloadColorSrtItem.hidden = !hasColors;
-  if (MaweDom.subtitleExportSeparator) MaweDom.subtitleExportSeparator.hidden = !hasColors;
-  if (MaweDom.downloadGapRemovedColorSrtItem) MaweDom.downloadGapRemovedColorSrtItem.hidden = !hasColors;
-  if (MaweDom.gapRemovedSubtitleExportSeparator) MaweDom.gapRemovedSubtitleExportSeparator.hidden = !hasColors;
-  if (MaweDom.subtitleExportDropdown) MaweDom.subtitleExportDropdown.hidden = false;
-  if (MaweDom.downloadMultiSrtButton) {
-    MaweDom.downloadMultiSrtButton.hidden = !(MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length);
-  }
-}
-
-function safeColorExportFilenameSuffix(value, fallback) {
-  const normalized = String(value ?? '')
-    .replace(/[\u0000-\u001f\u007f]/g, '_')
-    .replace(/[\\/:*?"<>|]/g, '_')
-    .replace(/[. ]+$/g, '')
-    .trim();
-  return normalized || fallback;
-}
-
-function colorExportFilenameSuffix(color, speakerSettings = getSpeakerLabelSettings()) {
-  const colorSuffix = window.MAWE_I18N?.exportTag?.(color.name) || color.name;
-  if (!MaweSettings.EDITOR_SETTINGS.exportSpeakerNamesAsSuffix
-      || speakerSettings.mapping_enabled !== true
-      || color.name === 'default') {
-    return colorSuffix;
-  }
-  return safeColorExportFilenameSuffix(speakerSettings.names?.[color.name], colorSuffix);
-}
-
 const CANONICAL_PROJECT_FIELDS = new Set([
   'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity',
   'model', 'sticker_root', 'timebase', 'segments', 'multi_subtitle', 'waveform',
@@ -2981,159 +2084,6 @@ const CANONICAL_PROJECT_FIELDS = new Set([
 let projectExtensionFields = Object.fromEntries(
   Object.entries(MaweBoot.DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
 );
-
-function otioAudioTrackMetadata(audioTrack, fallbackIndex = 0) {
-  if (!audioTrack || !Number.isInteger(audioTrack.stream_index) || audioTrack.stream_index < 0) {
-    return {};
-  }
-  const audioIndex = otioAudioTrackIndex(audioTrack, fallbackIndex);
-  const metadata = {
-    audio_track_index: audioIndex,
-    audio_stream_index: audioTrack.stream_index,
-  };
-  for (const field of ['codec', 'language', 'title']) {
-    if (audioTrack[field]) metadata[field] = audioTrack[field];
-  }
-  if (Number.isInteger(audioTrack.channels) && audioTrack.channels > 0) {
-    metadata.channels = audioTrack.channels;
-  }
-  if (Number.isInteger(audioTrack.sample_rate) && audioTrack.sample_rate > 0) {
-    metadata.sample_rate = audioTrack.sample_rate;
-  }
-  if (audioTrack.default === true) metadata.default = true;
-  return { moy: metadata };
-}
-
-function otioAudioTrackIndex(audioTrack, fallbackIndex = 0) {
-  return Number.isInteger(audioTrack?.audio_index) && audioTrack.audio_index >= 0
-    ? audioTrack.audio_index : fallbackIndex;
-}
-
-function otioAudioTrackName(audioTrack, index, total) {
-  if (total <= 1) return '音频';
-  const details = [audioTrack?.title, audioTrack?.language]
-    .filter((value, detailIndex, values) => value && values.indexOf(value) === detailIndex)
-    .join(' · ');
-  return `音频 ${index + 1}${details ? ` · ${details}` : ''}`;
-}
-
-function otioMediaName(targetUrl) {
-  const raw = String(targetUrl || '').split(/[?#]/, 1)[0].replace(/[\\/]+$/, '');
-  const candidate = raw.split(/[\\/]/).pop() || '';
-  if (!candidate) return '';
-  try {
-    return decodeURIComponent(candidate);
-  } catch {
-    return candidate;
-  }
-}
-
-function resolveOtioAudioType(audioTrack) {
-  if (audioTrack?.channels === 1) return 'Mono';
-  if (audioTrack?.channels === 2) return 'Stereo';
-  return null;
-}
-
-function resolveOtioTrackMetadata(kind, audioTrack) {
-  if (kind === 'Video') {
-    return { Resolve_OTIO: { Locked: false } };
-  }
-  const audioType = resolveOtioAudioType(audioTrack);
-  return {
-    Resolve_OTIO: {
-      ...(audioType ? { 'Audio Type': audioType } : {}),
-      Locked: false,
-      SoloOn: false,
-    },
-  };
-}
-
-function resolveOtioClipMetadata(kind, audioTrack, audioTrackIndex, linkGroupId = 1) {
-  const resolveMetadata = { 'Link Group ID': linkGroupId };
-  if (kind === 'Audio') {
-    const sourceTrackId = otioAudioTrackIndex(audioTrack, audioTrackIndex);
-    const channels = Number.isInteger(audioTrack?.channels) && audioTrack.channels > 0
-      ? audioTrack.channels : 0;
-    if (channels > 0) {
-      resolveMetadata.Channels = Array.from({ length: channels }, (_, sourceChannelId) => ({
-        'Source Channel ID': sourceChannelId,
-        'Source Track ID': sourceTrackId,
-      }));
-    }
-  }
-  return { Resolve_OTIO: resolveMetadata };
-}
-
-// 把表情包条目构建为一条可放进任意时间线 Stack 的单层视频轨（Gap 填充 + 图片 Clip）。
-// stickers 会被就地排序；时间重叠时返回 { error }，由调用方决定中止还是跳过。
-function buildStickerOtioTrack(stickers) {
-  stickers.sort((a, b) => (a.startMs - b.startMs) || (a.endMs - b.endMs) || (a.idx - b.idx));
-  const children = [];
-  let cursor = 0;
-  for (const sticker of stickers) {
-    const startFrame = MaweExportTimeline.msToOtioFrames(sticker.startMs);
-    const endFrame = MaweExportTimeline.msToOtioFrames(sticker.endMs);
-    const durationFrames = Math.max(1, endFrame - startFrame);
-    if (startFrame < cursor) {
-      return { error: `表情包时间重叠，无法导出单轨 OTIO：${sticker.name}` };
-    }
-    if (startFrame > cursor) {
-      children.push({
-        OTIO_SCHEMA: 'Gap.1',
-        metadata: {},
-        name: '',
-        source_range: MaweExportTimeline.otioTimeRange(0, startFrame - cursor),
-        effects: [],
-        markers: [],
-        enabled: true,
-        color: null,
-      });
-    }
-    children.push({
-      OTIO_SCHEMA: 'Clip.2',
-      metadata: {
-        moy: {
-          asr_segment_index: sticker.idx,
-          start_ms: Math.round(sticker.startMs),
-          end_ms: Math.round(sticker.endMs),
-          sticker_rel: sticker.sticker_rel,
-        },
-      },
-      name: sticker.name,
-      source_range: MaweExportTimeline.otioTimeRange(0, durationFrames),
-      effects: [],
-      markers: [],
-      enabled: true,
-      color: null,
-      media_references: {
-        DEFAULT_MEDIA: {
-          OTIO_SCHEMA: 'ExternalReference.1',
-          metadata: {},
-          name: '',
-          available_range: null,
-          available_image_bounds: null,
-          target_url: sticker.targetUrl || MaweExportTimeline.stickerTargetUrl(sticker.absPath),
-        },
-      },
-      active_media_reference_key: 'DEFAULT_MEDIA',
-    });
-    cursor = startFrame + durationFrames;
-  }
-  return {
-    track: {
-      OTIO_SCHEMA: 'Track.1',
-      metadata: {},
-      name: '表情包',
-      source_range: null,
-      effects: [],
-      markers: [],
-      enabled: true,
-      color: null,
-      children,
-      kind: 'Video',
-    },
-  };
-}
 let projectBackupTimer = null;
 function syncProjectBackupControls() {
   const available = MaweServerSave.serverProjectSavingEnabled() && !MaweServerSave.projectFileHandle;
@@ -3235,7 +2185,7 @@ MaweDom.downloadMultiSrtButton?.addEventListener('click', async () => {
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   if (!track) return;
-  await MaweExportTimeline.downloadFile(buildExtensionSrt(track), `${MaweBoot.FILENAME_BASE}_extension.srt`, 'text/plain', {
+  await MaweExportTimeline.downloadFile(MaweExportSrt.buildExtensionSrt(track), `${MaweBoot.FILENAME_BASE}_extension.srt`, 'text/plain', {
     desc: '副字幕 SRT 文件', types: { 'text/plain': ['.srt'] },
   });
 });
@@ -3247,7 +2197,7 @@ document.getElementById('download-full-srt')?.addEventListener('click', async ()
 });
 document.getElementById('download-full-ass')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  await MaweExportTimeline.downloadFile(buildAss(), `${MaweBoot.FILENAME_BASE}.ass`, 'text/plain', {
+  await MaweExportTimeline.downloadFile(MaweExportSrt.buildAss(), `${MaweBoot.FILENAME_BASE}.ass`, 'text/plain', {
     desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
   });
 });
@@ -3299,7 +2249,7 @@ document.getElementById('download-sticker-otio')?.addEventListener('click', () =
 });
 document.getElementById('download-gap-removed-srt')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  const payload = buildGapRemovedSrt();
+  const payload = MaweExportSrt.buildGapRemovedSrt();
   if (payload) {
     await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
       desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
@@ -3309,7 +2259,7 @@ document.getElementById('download-gap-removed-srt')?.addEventListener('click', a
 document.getElementById('download-gap-removed-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(true));
 document.getElementById('download-gap-removed-ass')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  const payload = buildGapRemovedAss();
+  const payload = MaweExportSrt.buildGapRemovedAss();
   if (payload) {
     await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, 'text/plain', {
       desc: '去空隙带样式 ASS 字幕', types: { 'text/plain': ['.ass'] }
@@ -3350,7 +2300,7 @@ document.getElementById('download-gap-removed-otio')?.addEventListener('click', 
     desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
   });
   if (MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
-    const srtPayload = buildGapRemovedSrt();
+    const srtPayload = MaweExportSrt.buildGapRemovedSrt();
     if (srtPayload) {
       await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
         desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
@@ -3366,7 +2316,7 @@ document.getElementById('download-gap-removed-otioz')?.addEventListener('click',
     '去空隙时间线 OTIOZ 打包工程',
   );
   if (saved && MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
-    const srtPayload = buildGapRemovedSrt();
+    const srtPayload = MaweExportSrt.buildGapRemovedSrt();
     if (srtPayload) {
       await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
         desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
@@ -3420,37 +2370,19 @@ document.getElementById('download-sticker-otioz')?.addEventListener('click', asy
   );
 });
 
-// 时间线 OTIO / OTIOZ 导出选项：两个 OTIO 子菜单（原始 / 去空隙）共享同一份设置，
-// 任一处勾选立即持久化并同步另一处；导出时由 buildSourceOtio / buildGapRemovedOtio 读取。
-const OTIO_EXPORT_OPTION_KEYS = {
-  srt: 'otioExportIncludeSrt',
-  stickers: 'otioExportIncludeStickers',
-  markers: 'otioExportIncludeMarkers',
-};
-const otioExportOptionInputs = [
-  ...document.querySelectorAll('input[data-otio-export-option]'),
-];
-
-function syncOtioExportOptionInputs() {
-  otioExportOptionInputs.forEach((input) => {
-    const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
-    if (key) input.checked = Boolean(MaweSettings.EDITOR_SETTINGS[key]);
-  });
-}
-
-otioExportOptionInputs.forEach((input) => {
+MaweExportTimeline.otioExportOptionInputs.forEach((input) => {
   input.addEventListener('change', () => {
-    const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
+    const key = MaweExportTimeline.OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
     if (!key) return;
     MaweSettings.updateEditorSettings({ [key]: input.checked });
-    syncOtioExportOptionInputs();
+    MaweExportTimeline.syncOtioExportOptionInputs();
     // 鼠标点击切换后立即交还焦点：焦点留在子菜单内的复选框上会让悬停关闭
     // 逻辑（wrapper.contains(document.activeElement)）一直误判指针仍在菜单内，
     // 导致二级菜单不再自动收起。键盘切换（:focus-visible）保持焦点不受影响。
     if (!input.matches(':focus-visible')) input.blur();
   });
 });
-syncOtioExportOptionInputs();
+MaweExportTimeline.syncOtioExportOptionInputs();
 
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
 MaweExportTimeline.updateStickerExportButtons();
@@ -4134,10 +3066,10 @@ window.addEventListener('drop', (e) => {
 // === 启动 ===
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
-syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
+MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
 const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(MaweBoot.DATA.segments);
 const repairedTimingCount = MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA);
-syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
 MaweBoot.maweDebug('boot:begin', {
   server: Boolean(MaweBoot.SERVER_CONFIG),
   segments: Array.isArray(MaweBoot.DATA.segments) ? MaweBoot.DATA.segments.length : null,

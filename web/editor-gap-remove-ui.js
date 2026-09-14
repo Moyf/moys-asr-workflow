@@ -680,7 +680,38 @@
     if (rect) setGapRemovePanelPosition(rect.left, rect.top, { persist: true });
   }
 
+
+
+  function fillGapRangeAtWaveformTime(timeMs) {
+    const gaps = MaweGapRemoveData.getGapRemoveGaps();
+    if (!gaps.some((gap) => gap.removed !== false)) {
+      MaweHint.flashHint('当前没有已激活的空隙，无法填充区间空隙', 'invalid');
+      return false;
+    }
+    const range = window.AsrEditorUtils.resolveGapFillRange(gaps, timeMs, MaweGapRemoveUi.gapRemoveMediaDurationMs());
+    if (!range) {
+      MaweHint.flashHint('媒体时长尚不可用；请先加载媒体后再填充区间空隙', 'invalid');
+      return false;
+    }
+    const state = MaweGapRemoveData.getGapRemoveData(true);
+    const sourceGaps = window.AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
+    const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, range.start, range.end, true);
+    if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
+      MaweHint.flashHint('该位置已经是已移除的空隙', 'invalid');
+      return false;
+    }
+    MaweHistory.pushGapRemoveUndo('填充区间空隙');
+    state.detector = 'audio_gate';
+    MaweGapRemoveUi.commitManualGapRemoveChange(
+      state,
+      [{ start: range.start, end: range.end, removed: true }],
+    );
+    MaweHint.flashHint(`已填充并合并为 ${MaweGapRemoveUi.formatGapRemoveTotal(range.end - range.start)} 静音空隙`, 'success');
+    return true;
+  }
+
   global.MaweGapRemoveUi = Object.freeze({
+    fillGapRangeAtWaveformTime,
     setGapRemoveData,
     commitManualGapRemoveChange,
     gapRemoveTotalMs,

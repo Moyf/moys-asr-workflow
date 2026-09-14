@@ -16,9 +16,9 @@
     });
     // 其它编辑入口仍以毫秒修改工程对象；在重绘前把它们投影回当前时间基准，
     // 保证帧模式下保存的数据和下一次帧操作保持一致。
-    syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+    MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
     cueListAnchor = preserveCueListScroll
-      ? cueListAnchor || cueListScroll.mutationAnchor || MaweCueListAnchor.captureCueListRenderAnchor() : null;
+      ? cueListAnchor || MaweCueListAnchor.cueListScroll.mutationAnchor || MaweCueListAnchor.captureCueListRenderAnchor() : null;
     MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
     MaweStickerOverlay.stickerOverlayDataVersion += 1;
     // cues-container 同时是字幕列表和停靠模块；重绘列表时不要把布局编辑模式
@@ -75,7 +75,7 @@
     renderCurrentCuePanel();
     MaweMediaPlayback.syncPlayerPlaceholder();
     MaweDisplaySettings.updateMultiSubtitleUi();
-    updateSubtitleExportUi();
+    MaweExportSrt.updateSubtitleExportUi();
     MaweTimedTextEdit.refreshTimedTextEditButton();
     MaweGapRemoveUi.updateGapRemoveDisableHint();
     window.MAWE_ONBOARDING?.afterRender();
@@ -87,16 +87,16 @@
   function parsePanelTime(value, fallback) {
     const raw = String(value || '').trim();
     if (!raw) return fallback;
-    const timebase = projectTimebase();
+    const timebase = MaweTimeline.projectTimebase();
     if (timebase.unit === 'frames') {
-      const timecodeFrames = parseFrameTimecode(
+      const timecodeFrames = MaweTimeline.parseFrameTimecode(
         raw,
         timebase.fps,
         MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator,
       );
-      if (timecodeFrames !== null) return millisecondsFromFrameNumber(timecodeFrames, timebase.fps);
+      if (timecodeFrames !== null) return MaweTimeline.millisecondsFromFrameNumber(timecodeFrames, timebase.fps);
       if (/^\d+(?:\.\d+)?\s*F?$/iu.test(raw)) {
-        return millisecondsFromFrameNumber(Number.parseFloat(raw), timebase.fps);
+        return MaweTimeline.millisecondsFromFrameNumber(Number.parseFloat(raw), timebase.fps);
       }
       return fallback;
     }
@@ -225,7 +225,7 @@
     const nextText = MaweDom.cuePanelText.value.replace(/\r\n?/g, '\n');
     const oldStart = seg.start;
     const oldEnd = seg.end;
-    const minimumDurationMs = timelineMinimumDurationMs();
+    const minimumDurationMs = MaweTimeline.timelineMinimumDurationMs();
     const requestedStart = parsePanelTime(MaweDom.cuePanelStart.value, oldStart);
     const requestedDuration = Math.max(
       minimumDurationMs,
@@ -333,10 +333,10 @@
     }
     if (document.activeElement !== MaweDom.cuePanelText || !MaweCuePanelState.cuePanelUndoPushed) MaweDom.cuePanelText.value = seg.text || '';
     MaweDom.cuePanelStart.value = MaweCueElements.fmtShort(seg.start);
-    MaweDom.cuePanelDuration.value = timelineIsFrameMode()
-      ? formatTimelineTimecode(
+    MaweDom.cuePanelDuration.value = MaweTimeline.timelineIsFrameMode()
+      ? MaweTimeline.formatTimelineTimecode(
         seg.end - seg.start,
-        projectTimebase().fps,
+        MaweTimeline.projectTimebase().fps,
         MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator,
       )
       : ((seg.end - seg.start) / 1000).toFixed(3);

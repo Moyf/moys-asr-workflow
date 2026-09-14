@@ -250,7 +250,7 @@
       }
     }
     if (MaweDom.subtitleColorInput) MaweDom.subtitleColorInput.value = appearance.color || MaweSettings.DEFAULT_SUBTITLE_COLOR;
-    syncSpeakerLabelControls();
+    MaweSpeakerLabels.syncSpeakerLabelControls();
   }
 
 
@@ -368,7 +368,7 @@
     MaweBoot.DATA.preview.subtitle = {
       ...getPreviewGeometry(),
       ...next,
-      speaker_labels: getSpeakerLabelSettings(),
+      speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
     };
     if (markDirty) previewGeometryDirty = true;
     applySubtitleAppearance(MaweBoot.DATA.preview.subtitle);
@@ -512,7 +512,14 @@
     applyExtensionSubtitleAppearance(MaweBoot.DATA.preview.extension_subtitle);
   }
 
+
+  function normalizeSubtitleColorStyle(value) {
+    return typeof value === 'string' && MaweSettings.SUBTITLE_COLOR_STYLE_VALUES.includes(value)
+      ? value : null;
+  }
+
   global.MaweAppearance = Object.freeze({
+    normalizeSubtitleColorStyle,
     GEO_UTILS,
     get previewGeometryDirty() { return previewGeometryDirty; },
     set previewGeometryDirty(v) { previewGeometryDirty = v; },

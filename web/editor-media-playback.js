@@ -57,10 +57,10 @@
 
 
   function formatMediaTime(seconds) {
-    if (timelineIsFrameMode()) {
-      return formatTimelineTimecode(
+    if (MaweTimeline.timelineIsFrameMode()) {
+      return MaweTimeline.formatTimelineTimecode(
         (Number(seconds) || 0) * 1000,
-        projectTimebase().fps,
+        MaweTimeline.projectTimebase().fps,
         MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator,
       );
     }
@@ -74,8 +74,8 @@
 
 
 
-  function mediaSeekStepLabel(value = timelineMediaSeekStepValue()) {
-    return timelineIsFrameMode() ? `${value}F` : `${value}ms`;
+  function mediaSeekStepLabel(value = MaweTimeline.timelineMediaSeekStepValue()) {
+    return MaweTimeline.timelineIsFrameMode() ? `${value}F` : `${value}ms`;
   }
 
 
@@ -87,8 +87,8 @@
 
 
   function refreshMediaSeekControlLabels() {
-    const value = timelineMediaSeekStepValue();
-    const unit = timelineIsFrameMode() ? 'F' : 'ms';
+    const value = MaweTimeline.timelineMediaSeekStepValue();
+    const unit = MaweTimeline.timelineIsFrameMode() ? 'F' : 'ms';
     const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
     const backLabel = language === 'en' ? `Back ${value}${unit}` : `后退 ${value}${unit}`;
     const forwardLabel = language === 'en' ? `Forward ${value}${unit}` : `前进 ${value}${unit}`;
@@ -206,14 +206,14 @@
     mediaElement.addEventListener('progress', () => MaweTextCleanup.flushPendingMediaSeek(mediaElement));
 mediaElement.addEventListener('play', () => {
   // 开始播放可驱动已启用的跟随，但不会恢复被用户关闭的跟随状态。
-  if (MaweCoreState.player === mediaElement && cueListScroll.following) cueListScroll.playbackKey = null;
+  if (MaweCoreState.player === mediaElement && MaweCueListAnchor.cueListScroll.following) MaweCueListAnchor.cueListScroll.playbackKey = null;
   startPlaybackRefresh(mediaElement);
 });
 mediaElement.addEventListener('playing', () => startPlaybackRefresh(mediaElement));
 mediaElement.addEventListener('pause', () => {
 stopPlaybackRefresh(mediaElement);
 if (MaweCoreState.player !== mediaElement) return;
-if (cueListScroll.owner === 'follow') MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
+if (MaweCueListAnchor.cueListScroll.owner === 'follow') MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
 MawePlaybackLoop.update();
       MaweCoreState.waveformEditor?.updatePlayback();
     });
@@ -262,7 +262,7 @@ MawePlaybackLoop.update();
     const targetSeconds = Math.max(0, Math.min(duration, Number(timeSeconds) || 0));
 MaweCoreState.player.currentTime = targetSeconds;
 MawePlaybackLoop.update();
-resumeCueListFollowing();
+MaweCueListAnchor.resumeCueListFollowing();
 MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     MaweCoreState.waveformEditor?.updatePlayback();
     syncMediaControls();

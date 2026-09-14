@@ -7,9 +7,9 @@
 
 
 
-  function refreshMediaSeekInputStep(value = timelineMediaSeekStepValue()) {
+  function refreshMediaSeekInputStep(value = MaweTimeline.timelineMediaSeekStepValue()) {
     if (!MaweDom.mediaSeekStepInput) return;
-    if (timelineIsFrameMode()) {
+    if (MaweTimeline.timelineIsFrameMode()) {
       MaweDom.mediaSeekStepInput.min = '1';
       MaweDom.mediaSeekStepInput.max = '240';
       MaweDom.mediaSeekStepInput.step = '1';
@@ -23,7 +23,7 @@
 
 
   function commitMediaSeekStepInput(value, { rewriteInput = true } = {}) {
-    const frameMode = timelineIsFrameMode();
+    const frameMode = MaweTimeline.timelineIsFrameMode();
     const normalized = frameMode
       ? window.AsrEditorUtils.clampTimelineFrameStep(value, 1)
       : MaweSettings.clampMediaSeekStepMs(value);
@@ -41,7 +41,7 @@
 
   function adjustMediaSeekStepInput(direction) {
     if (!MaweDom.mediaSeekStepInput) return;
-    if (timelineIsFrameMode()) {
+    if (MaweTimeline.timelineIsFrameMode()) {
       const current = window.AsrEditorUtils.clampTimelineFrameStep(MaweDom.mediaSeekStepInput.value, 1);
       commitMediaSeekStepInput(Math.min(240, Math.max(1, current + (direction < 0 ? -1 : 1))));
       return;

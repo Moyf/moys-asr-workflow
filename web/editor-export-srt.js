@@ -18,7 +18,7 @@
       alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
       firstEnabledIndex,
       keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
-      ...speakerLabelExportOptions(),
+      ...MaweSpeakerLabels.speakerLabelExportOptions(),
       formatTime: MaweCueElements.fmtSrtTime,
     });
   }
@@ -48,7 +48,7 @@
       MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     );
     const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
-    const speakerSettings = getSpeakerLabelSettings();
+    const speakerSettings = MaweSpeakerLabels.getSpeakerLabelSettings();
     const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(MaweBoot.DATA.segments, {
       colorName: color.name,
       timeOffset: 0,
@@ -58,7 +58,7 @@
         ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
         : undefined,
       ensurePositiveDuration: gapRemoved,
-      ...speakerLabelExportOptions(),
+      ...MaweSpeakerLabels.speakerLabelExportOptions(),
       formatTime: MaweCueElements.fmtSrtTime,
     });
     let filenameBase = `${MaweBoot.FILENAME_BASE}${gapSuffix}`;
@@ -176,7 +176,161 @@
     }, null, 2);
   }
 
+
+
+  function currentAssVideoResolution() {
+    const metadata = window.AsrEditorUtils.normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
+    if (metadata?.video_width && metadata?.video_height) {
+      return { width: metadata.video_width, height: metadata.video_height };
+    }
+    const width = Number(MaweCoreState.player?.videoWidth);
+    const height = Number(MaweCoreState.player?.videoHeight);
+    if (MaweCoreState.player?.tagName === 'VIDEO'
+      && Number.isInteger(width) && width > 0
+      && Number.isInteger(height) && height > 0) {
+      return { width, height };
+    }
+    return null;
+  }
+
+
+
+  function assExportOptions(appearance = MaweAppearance.getSubtitleAppearance()) {
+    const resolution = currentAssVideoResolution();
+    return {
+      title: PROJECT_NAME || MaweBoot.FILENAME_BASE || 'MAW',
+      mediaMetadata: window.AsrEditorUtils.normalizeMediaMetadata(MaweBoot.DATA.media_metadata),
+      playResX: resolution?.width,
+      playResY: resolution?.height,
+      colorStyles: MaweColors.COLOR_PALETTE,
+      appearance,
+    };
+  }
+
+
+
+  function buildAss() {
+    const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+      MaweBoot.DATA.segments,
+      MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    );
+    return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+      ...assExportOptions(),
+      alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+      firstEnabledIndex,
+      ...MaweSpeakerLabels.speakerLabelExportOptions(),
+    });
+  }
+
+
+
+  function buildExtensionSrt(track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
+    return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+      ...MaweSpeakerLabels.speakerLabelExportOptions(),
+      formatTime: MaweCueElements.fmtSrtTime,
+    });
+  }
+
+
+
+  function buildGapRemovedSrt() {
+    const removed = MaweGapRemoveData.getRemovedGapRanges();
+    if (!removed.length) {
+      MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+      return null;
+    }
+    const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+      MaweBoot.DATA.segments,
+      MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    );
+    return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+      alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+      firstEnabledIndex,
+      appearance: MaweAppearance.getSubtitleAppearance(),
+    });
+  }
+
+
+
+  function buildGapRemovedAss() {
+    const removed = MaweGapRemoveData.getRemovedGapRanges();
+    if (!removed.length) {
+      MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+      return null;
+    }
+    const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+      MaweBoot.DATA.segments,
+      MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    );
+    return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+      ...assExportOptions(),
+      alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+      firstEnabledIndex,
+      mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+      ...MaweSpeakerLabels.speakerLabelExportOptions(),
+    });
+  }
+
+
+
+  function usedSubtitleColors() {
+    const names = new Set(MaweBoot.DATA.segments.filter((segment) => !segment.disabled).map((segment) => (
+      window.AsrEditorUtils.effectiveColorName(segment, MaweBoot.DATA.segments) || 'default'
+    )).filter((name) => name === 'default' || MaweColors.COLOR_BY_NAME[name]));
+    return [
+      ...MaweColors.COLOR_PALETTE.filter((color) => names.has(color.name)),
+      ...(names.has('default') ? [{ name: 'default', label: '默认' }] : []),
+    ];
+  }
+
+
+
+  function updateSubtitleExportUi() {
+    const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
+    if (MaweDom.downloadColorSrtItem) MaweDom.downloadColorSrtItem.hidden = !hasColors;
+    if (MaweDom.subtitleExportSeparator) MaweDom.subtitleExportSeparator.hidden = !hasColors;
+    if (MaweDom.downloadGapRemovedColorSrtItem) MaweDom.downloadGapRemovedColorSrtItem.hidden = !hasColors;
+    if (MaweDom.gapRemovedSubtitleExportSeparator) MaweDom.gapRemovedSubtitleExportSeparator.hidden = !hasColors;
+    if (MaweDom.subtitleExportDropdown) MaweDom.subtitleExportDropdown.hidden = false;
+    if (MaweDom.downloadMultiSrtButton) {
+      MaweDom.downloadMultiSrtButton.hidden = !(MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length);
+    }
+  }
+
+
+
+  function safeColorExportFilenameSuffix(value, fallback) {
+    const normalized = String(value ?? '')
+      .replace(/[\u0000-\u001f\u007f]/g, '_')
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .replace(/[. ]+$/g, '')
+      .trim();
+    return normalized || fallback;
+  }
+
+
+
+  function colorExportFilenameSuffix(color, speakerSettings = MaweSpeakerLabels.getSpeakerLabelSettings()) {
+    const colorSuffix = window.MAWE_I18N?.exportTag?.(color.name) || color.name;
+    if (!MaweSettings.EDITOR_SETTINGS.exportSpeakerNamesAsSuffix
+        || speakerSettings.mapping_enabled !== true
+        || color.name === 'default') {
+      return colorSuffix;
+    }
+    return safeColorExportFilenameSuffix(speakerSettings.names?.[color.name], colorSuffix);
+  }
+
   global.MaweExportSrt = Object.freeze({
+    currentAssVideoResolution,
+    assExportOptions,
+    buildAss,
+    buildExtensionSrt,
+    buildGapRemovedSrt,
+    buildGapRemovedAss,
+    usedSubtitleColors,
+    updateSubtitleExportUi,
+    safeColorExportFilenameSuffix,
+    colorExportFilenameSuffix,
     get EXPORT_KEEP_DISABLED_PLACEHOLDER() { return EXPORT_KEEP_DISABLED_PLACEHOLDER; },
     set EXPORT_KEEP_DISABLED_PLACEHOLDER(v) { EXPORT_KEEP_DISABLED_PLACEHOLDER = v; },
     buildSrt,

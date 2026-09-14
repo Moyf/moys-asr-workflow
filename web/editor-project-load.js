@@ -85,9 +85,9 @@ MaweCuePanelState.currentCuePanelIdx = -1;
     MaweBoot.DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
       ? data.timestamp_granularity : undefined;
     MaweBoot.DATA.model = data.model || '';
-    MaweBoot.DATA.timebase = normalizeTimelineTimebase(data.timebase);
-    timelineFpsManuallySet = hasExplicitTimelineFps(data.timebase);
-    MaweBoot.DATA.media_metadata = normalizeMediaMetadata(data.media_metadata);
+    MaweBoot.DATA.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
+    MaweTimeline.timelineFpsManuallySet = MaweTimeline.hasExplicitTimelineFps(data.timebase);
+    MaweBoot.DATA.media_metadata = MaweTimeline.normalizeMediaMetadata(data.media_metadata);
     MaweBoot.DATA.media_time_reference = data.media_time_reference || null;
     MaweBoot.DATA.waveform = data.waveform || null;
     MaweBoot.DATA.spectral = data.spectral || null;
@@ -112,7 +112,7 @@ MaweBoot.DATA.workspace = data.workspace || null;
     MaweBoot.DATA.segments.length = 0;
     data.segments.forEach((segment) => MaweBoot.DATA.segments.push(segment));
     MaweBoot.DATA.multi_subtitle = window.AsrEditorUtils.normalizeMultiSubtitle(data.multi_subtitle, MaweBoot.DATA.segments);
-    syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
+    MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
     MaweHistory.editorHistory.clear();
     MaweHistory.updateUndoRedoButtons();
     MaweSelection.clearSelection();
@@ -238,18 +238,18 @@ MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: 
   function isMawProject(data) {
     if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
     if (data.media_metadata !== undefined && data.media_metadata !== null
-        && !normalizeMediaMetadata(data.media_metadata)) return false;
+        && !MaweTimeline.normalizeMediaMetadata(data.media_metadata)) return false;
     if (data.timebase !== undefined) {
       const timebase = data.timebase;
       if (!timebase || typeof timebase !== 'object' || Array.isArray(timebase)
           || (timebase.unit !== 'milliseconds' && timebase.unit !== 'frames')
           || typeof timebase.fps !== 'number' || !Number.isFinite(timebase.fps)
-          || timebase.fps < MIN_TIMELINE_FPS || timebase.fps > MAX_TIMELINE_FPS) return false;
+          || timebase.fps < MaweTimeline.MIN_TIMELINE_FPS || timebase.fps > MaweTimeline.MAX_TIMELINE_FPS) return false;
     }
     const hasOptionalFramePair = (value) => {
       const hasStart = Object.prototype.hasOwnProperty.call(value || {}, 'start_frame');
       const hasEnd = Object.prototype.hasOwnProperty.call(value || {}, 'end_frame');
-      return (!hasStart && !hasEnd) || hasValidFramePair(value);
+      return (!hasStart && !hasEnd) || MaweTimeline.hasValidFramePair(value);
     };
     let previousEnd = 0;
     return data.segments.every((segment) => {

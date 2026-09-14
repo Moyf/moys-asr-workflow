@@ -55,7 +55,7 @@
 
 
   function pushUndo(label, { captureView = false } = {}) {
-    rememberCueListMutation();
+    MaweCueListAnchor.rememberCueListMutation();
     const record = window.AsrEditorUtils.buildHistoryRecord(
       'segments', label, snapshotSegments(), captureView ? snapshotEditorSelection() : null,
     );
@@ -91,7 +91,7 @@
     return {
       overlay: !!MaweDom.overlayToggle.checked,
       subtitle: { ...MaweAppearance.getPreviewGeometry(), ...MaweAppearance.getSubtitleAppearance() },
-      speakerLabels: getSpeakerLabelSettings(),
+      speakerLabels: MaweSpeakerLabels.getSpeakerLabelSettings(),
       extensionOverlay: !!MaweDom.extensionOverlayToggle?.checked,
       extensionSubtitle: { ...MaweAppearance.getStoredExtensionSubtitleAppearance() },
       sticker: { ...MawePreviewGeometry.getStickerGeometry() },
@@ -108,7 +108,7 @@
       MaweSettings.updateEditorSettings({ extensionOverlayEnabled: state.extensionOverlay });
     }
     if (state.subtitle) MawePreviewGeometry.setPreviewGeometry(state.subtitle, { markDirty: true, replaceAppearance: true });
-    if (state.speakerLabels) setSpeakerLabelSettings(state.speakerLabels, { markDirty: true });
+    if (state.speakerLabels) MaweSpeakerLabels.setSpeakerLabelSettings(state.speakerLabels, { markDirty: true });
     if (state.extensionSubtitle) MaweAppearance.restoreExtensionSubtitleAppearance(state.extensionSubtitle, { markDirty: true });
     if (state.sticker) MawePreviewGeometry.setStickerGeometry(state.sticker, { markDirty: true });
     MawePreviewGeometry.refreshPreviewGeometryEditable();

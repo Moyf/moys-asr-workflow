@@ -261,13 +261,13 @@
       }
       // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
       if (data && Array.isArray(data.segments)) {
-        data.timebase = normalizeTimelineTimebase(data.timebase);
+        data.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
         window.AsrEditorUtils.normalizeMultiSubtitleProject(data);
-        syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
+        MaweTimeline.syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
         window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
         window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
         MaweJsonRepair.normalizeProjectTimings(data);
-        syncProjectTimebaseAndBindingOffsets(data, { preferFrames: false });
+        MaweTimeline.syncProjectTimebaseAndBindingOffsets(data, { preferFrames: false });
       }
       if (!MaweProjectLoad.isMawProject(data)) {
         MaweHint.flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');

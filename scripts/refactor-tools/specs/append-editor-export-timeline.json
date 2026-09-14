@@ -1,0 +1,19 @@
+{
+    "symbols":  [
+                    "otioAudioTrackMetadata",
+                    "otioAudioTrackIndex",
+                    "otioAudioTrackName",
+                    "otioMediaName",
+                    "resolveOtioAudioType",
+                    "resolveOtioTrackMetadata",
+                    "resolveOtioClipMetadata",
+                    "buildStickerOtioTrack",
+                    "OTIO_EXPORT_OPTION_KEYS",
+                    "otioExportOptionInputs",
+                    "syncOtioExportOptionInputs"
+                ],
+    "ns":  "MaweExportTimeline",
+    "header":  "append ??????????????",
+    "file":  "editor-export-timeline.js",
+    "append":  true
+}

@@ -276,7 +276,7 @@
     }
     const sourceDurationFrames = Math.max(1, msToOtioFrames(durationMs));
     const sourceStartFrame = mediaStartOtioFrames();
-    const mediaMetadata = normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
+    const mediaMetadata = MaweTimeline.normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
     const audioMetadata = Array.isArray(mediaMetadata?.audio_tracks)
       ? mediaMetadata.audio_tracks : null;
     const clipName = otioMediaName(targetUrl);
@@ -705,7 +705,211 @@
     );
   }
 
+
+
+  function otioAudioTrackMetadata(audioTrack, fallbackIndex = 0) {
+    if (!audioTrack || !Number.isInteger(audioTrack.stream_index) || audioTrack.stream_index < 0) {
+      return {};
+    }
+    const audioIndex = otioAudioTrackIndex(audioTrack, fallbackIndex);
+    const metadata = {
+      audio_track_index: audioIndex,
+      audio_stream_index: audioTrack.stream_index,
+    };
+    for (const field of ['codec', 'language', 'title']) {
+      if (audioTrack[field]) metadata[field] = audioTrack[field];
+    }
+    if (Number.isInteger(audioTrack.channels) && audioTrack.channels > 0) {
+      metadata.channels = audioTrack.channels;
+    }
+    if (Number.isInteger(audioTrack.sample_rate) && audioTrack.sample_rate > 0) {
+      metadata.sample_rate = audioTrack.sample_rate;
+    }
+    if (audioTrack.default === true) metadata.default = true;
+    return { moy: metadata };
+  }
+
+
+
+  function otioAudioTrackIndex(audioTrack, fallbackIndex = 0) {
+    return Number.isInteger(audioTrack?.audio_index) && audioTrack.audio_index >= 0
+      ? audioTrack.audio_index : fallbackIndex;
+  }
+
+
+
+  function otioAudioTrackName(audioTrack, index, total) {
+    if (total <= 1) return '音频';
+    const details = [audioTrack?.title, audioTrack?.language]
+      .filter((value, detailIndex, values) => value && values.indexOf(value) === detailIndex)
+      .join(' · ');
+    return `音频 ${index + 1}${details ? ` · ${details}` : ''}`;
+  }
+
+
+
+  function otioMediaName(targetUrl) {
+    const raw = String(targetUrl || '').split(/[?#]/, 1)[0].replace(/[\\/]+$/, '');
+    const candidate = raw.split(/[\\/]/).pop() || '';
+    if (!candidate) return '';
+    try {
+      return decodeURIComponent(candidate);
+    } catch {
+      return candidate;
+    }
+  }
+
+
+
+  function resolveOtioAudioType(audioTrack) {
+    if (audioTrack?.channels === 1) return 'Mono';
+    if (audioTrack?.channels === 2) return 'Stereo';
+    return null;
+  }
+
+
+
+  function resolveOtioTrackMetadata(kind, audioTrack) {
+    if (kind === 'Video') {
+      return { Resolve_OTIO: { Locked: false } };
+    }
+    const audioType = resolveOtioAudioType(audioTrack);
+    return {
+      Resolve_OTIO: {
+        ...(audioType ? { 'Audio Type': audioType } : {}),
+        Locked: false,
+        SoloOn: false,
+      },
+    };
+  }
+
+
+
+  function resolveOtioClipMetadata(kind, audioTrack, audioTrackIndex, linkGroupId = 1) {
+    const resolveMetadata = { 'Link Group ID': linkGroupId };
+    if (kind === 'Audio') {
+      const sourceTrackId = otioAudioTrackIndex(audioTrack, audioTrackIndex);
+      const channels = Number.isInteger(audioTrack?.channels) && audioTrack.channels > 0
+        ? audioTrack.channels : 0;
+      if (channels > 0) {
+        resolveMetadata.Channels = Array.from({ length: channels }, (_, sourceChannelId) => ({
+          'Source Channel ID': sourceChannelId,
+          'Source Track ID': sourceTrackId,
+        }));
+      }
+    }
+    return { Resolve_OTIO: resolveMetadata };
+  }
+
+
+
+  // 把表情包条目构建为一条可放进任意时间线 Stack 的单层视频轨（Gap 填充 + 图片 Clip）。
+  // stickers 会被就地排序；时间重叠时返回 { error }，由调用方决定中止还是跳过。
+  function buildStickerOtioTrack(stickers) {
+    stickers.sort((a, b) => (a.startMs - b.startMs) || (a.endMs - b.endMs) || (a.idx - b.idx));
+    const children = [];
+    let cursor = 0;
+    for (const sticker of stickers) {
+      const startFrame = MaweExportTimeline.msToOtioFrames(sticker.startMs);
+      const endFrame = MaweExportTimeline.msToOtioFrames(sticker.endMs);
+      const durationFrames = Math.max(1, endFrame - startFrame);
+      if (startFrame < cursor) {
+        return { error: `表情包时间重叠，无法导出单轨 OTIO：${sticker.name}` };
+      }
+      if (startFrame > cursor) {
+        children.push({
+          OTIO_SCHEMA: 'Gap.1',
+          metadata: {},
+          name: '',
+          source_range: MaweExportTimeline.otioTimeRange(0, startFrame - cursor),
+          effects: [],
+          markers: [],
+          enabled: true,
+          color: null,
+        });
+      }
+      children.push({
+        OTIO_SCHEMA: 'Clip.2',
+        metadata: {
+          moy: {
+            asr_segment_index: sticker.idx,
+            start_ms: Math.round(sticker.startMs),
+            end_ms: Math.round(sticker.endMs),
+            sticker_rel: sticker.sticker_rel,
+          },
+        },
+        name: sticker.name,
+        source_range: MaweExportTimeline.otioTimeRange(0, durationFrames),
+        effects: [],
+        markers: [],
+        enabled: true,
+        color: null,
+        media_references: {
+          DEFAULT_MEDIA: {
+            OTIO_SCHEMA: 'ExternalReference.1',
+            metadata: {},
+            name: '',
+            available_range: null,
+            available_image_bounds: null,
+            target_url: sticker.targetUrl || MaweExportTimeline.stickerTargetUrl(sticker.absPath),
+          },
+        },
+        active_media_reference_key: 'DEFAULT_MEDIA',
+      });
+      cursor = startFrame + durationFrames;
+    }
+    return {
+      track: {
+        OTIO_SCHEMA: 'Track.1',
+        metadata: {},
+        name: '表情包',
+        source_range: null,
+        effects: [],
+        markers: [],
+        enabled: true,
+        color: null,
+        children,
+        kind: 'Video',
+      },
+    };
+  }
+
+
+
+  // 时间线 OTIO / OTIOZ 导出选项：两个 OTIO 子菜单（原始 / 去空隙）共享同一份设置，
+  // 任一处勾选立即持久化并同步另一处；导出时由 buildSourceOtio / buildGapRemovedOtio 读取。
+  const OTIO_EXPORT_OPTION_KEYS = {
+    srt: 'otioExportIncludeSrt',
+    stickers: 'otioExportIncludeStickers',
+    markers: 'otioExportIncludeMarkers',
+  };
+
+
+  const otioExportOptionInputs = [
+    ...document.querySelectorAll('input[data-otio-export-option]'),
+  ];
+
+
+
+  function syncOtioExportOptionInputs() {
+    otioExportOptionInputs.forEach((input) => {
+      const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
+      if (key) input.checked = Boolean(MaweSettings.EDITOR_SETTINGS[key]);
+    });
+  }
+
   global.MaweExportTimeline = Object.freeze({
+    otioAudioTrackMetadata,
+    otioAudioTrackIndex,
+    otioAudioTrackName,
+    otioMediaName,
+    resolveOtioAudioType,
+    resolveOtioTrackMetadata,
+    resolveOtioClipMetadata,
+    buildStickerOtioTrack,
+    OTIO_EXPORT_OPTION_KEYS,
+    otioExportOptionInputs,
+    syncOtioExportOptionInputs,
     buildWorkspaceJson,
     buildCurrentWorkspaceData,
     buildResolveJson,

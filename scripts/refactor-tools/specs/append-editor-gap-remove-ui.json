@@ -1,0 +1,9 @@
+{
+    "symbols":  [
+                    "fillGapRangeAtWaveformTime"
+                ],
+    "ns":  "MaweGapRemoveUi",
+    "header":  "append ??????????????",
+    "file":  "editor-gap-remove-ui.js",
+    "append":  true
+}

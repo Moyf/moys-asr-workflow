@@ -109,7 +109,7 @@
     const isExtension = Boolean(extensionTrack);
     const el = document.createElement('div');
     el.className = MaweMultiSubtitleCore.multiSubtitleVisible() ? 'cue multi-cue' : 'cue';
-    setCueListIdentity(el, seg, extensionTrack);
+    MaweCueListAnchor.setCueListIdentity(el, seg, extensionTrack);
     if (isExtension) {
       el.classList.add('multi-extension-cue');
       el.dataset.extIdx = String(idx);
@@ -227,8 +227,8 @@
     const extension = extensionIndex == null ? null : track.segments[extensionIndex];
     const el = document.createElement('div');
     el.className = 'cue multi-cue multi-dual-cue';
-    if (main) setCueListIdentity(el, main);
-    if (extension) setCueListIdentity(el, extension, track);
+    if (main) MaweCueListAnchor.setCueListIdentity(el, main);
+    if (extension) MaweCueListAnchor.setCueListIdentity(el, extension, track);
     if (mainIndex != null) {
       el.dataset.mainIdx = String(mainIndex);
       el.dataset.idx = String(mainIndex);
@@ -249,10 +249,10 @@
 
 
   function fmtShort(ms) {
-    if (timelineIsFrameMode()) {
-      return formatTimelineTimecode(
+    if (MaweTimeline.timelineIsFrameMode()) {
+      return MaweTimeline.formatTimelineTimecode(
         ms,
-        projectTimebase().fps,
+        MaweTimeline.projectTimebase().fps,
         MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator,
       );
     }
