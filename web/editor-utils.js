@@ -32,6 +32,46 @@
     return SUBTITLE_FONT_FAMILY_DISPLAY_NAMES_ZH[family] || family;
   }
 
+  // 字体输入框（datalist 搜索）与存储值之间的双向映射。
+  // 预设内置字体以 key 存储；本机字体以真实字体族名存储——datalist 展示的
+  // 本地化别名（如「微软雅黑」）提交时必须还原，否则浏览器无法解析该名称。
+  const SUBTITLE_FONT_FAMILY_PRESETS = Object.freeze([
+    { key: 'default', label: '默认无衬线' },
+    { key: 'yahei', label: '微软雅黑 / 苹方' },
+    { key: 'hei', label: '黑体' },
+    { key: 'song', label: '宋体' },
+    { key: 'sans', label: 'Arial / Segoe UI' },
+  ]);
+
+  function subtitleFontFamilyStoredToInput(family, {
+    presets = SUBTITLE_FONT_FAMILY_PRESETS,
+    presetLabel = (preset) => preset.label,
+    familyDisplay = (candidate) => candidate,
+  } = {}) {
+    const key = family || 'default';
+    const preset = presets.find((item) => item.key === key);
+    if (preset) return presetLabel(preset);
+    return familyDisplay(key);
+  }
+
+  function subtitleFontFamilyInputToStored(text, {
+    presets = SUBTITLE_FONT_FAMILY_PRESETS,
+    presetLabel = (preset) => preset.label,
+    localFamilies = [],
+    familyDisplay = (candidate) => candidate,
+  } = {}) {
+    const value = String(text || '').trim();
+    if (!value) return 'default';
+    const preset = presets.find((item) => (
+      item.label === value || item.key === value || presetLabel(item) === value
+    ));
+    if (preset) return preset.key;
+    const family = (Array.isArray(localFamilies) ? localFamilies : []).find((candidate) => (
+      candidate === value || familyDisplay(candidate) === value
+    ));
+    return family || value;
+  }
+
   const SPEAKER_LABEL_COLORS = Object.freeze([
     'yellow', 'green', 'red', 'purple', 'blue',
   ]);
@@ -6107,6 +6147,9 @@ export default MawDynamicCaptions;
     PROJECT_SCHEMA,
     supportsProjectSchema,
     subtitleFontFamilyDisplayName,
+  SUBTITLE_FONT_FAMILY_PRESETS,
+  subtitleFontFamilyStoredToInput,
+  subtitleFontFamilyInputToStored,
     SPEAKER_LABEL_COLORS,
     DEFAULT_SPEAKER_LABELS,
     SPEAKER_LABEL_MAX_LENGTH,

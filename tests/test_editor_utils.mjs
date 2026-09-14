@@ -27,6 +27,43 @@ test('accepts legacy and current project schemas but rejects unknown versions', 
   assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v2', segments: [] }), false);
 });
 
+test('maps searchable font input text back to stored family keys', () => {
+  const presets = helpers.SUBTITLE_FONT_FAMILY_PRESETS;
+  const presetLabel = (preset) => preset.label;
+  const familyDisplay = (family) => helpers.subtitleFontFamilyDisplayName(family, 'zh');
+  const localFamilies = ['Microsoft YaHei', 'Microsoft YaHei UI', 'PingFang SC', 'Fira Code'];
+
+  assert.equal(helpers.subtitleFontFamilyInputToStored('黑体', { presets, presetLabel }), 'hei');
+  assert.equal(helpers.subtitleFontFamilyInputToStored('默认无衬线', { presets, presetLabel }), 'default');
+  // datalist 展示的本地化别名必须还原成真实字体族名，浏览器才能解析选中字体。
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('微软雅黑', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Microsoft YaHei',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('Fira Code', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Fira Code',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('Some Unknown Font', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Some Unknown Font',
+  );
+  assert.equal(helpers.subtitleFontFamilyInputToStored('   ', { presets, presetLabel }), 'default');
+  assert.equal(helpers.subtitleFontFamilyInputToStored('yahei', { presets, presetLabel }), 'yahei');
+
+  // 存储值 → 输入框展示：预设显示本地化标签，本机字体显示别名。
+  assert.equal(helpers.subtitleFontFamilyStoredToInput('hei', { presetLabel }), '黑体');
+  assert.equal(helpers.subtitleFontFamilyStoredToInput('default', { presetLabel }), '默认无衬线');
+  assert.equal(
+    helpers.subtitleFontFamilyStoredToInput('Microsoft YaHei', { presetLabel, familyDisplay }),
+    '微软雅黑',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyStoredToInput('Fira Code', { presetLabel, familyDisplay }),
+    'Fira Code',
+  );
+});
+
 test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
   assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');

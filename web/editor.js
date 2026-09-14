@@ -819,18 +819,9 @@ const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke'
 const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
 const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
 const DEFAULT_ASS_COLOR_STYLE = 'text';
-// 字体输入框用 datalist 提供搜索：预设内置字体 + 扫描到的本机字体，
-// 输入文本即可过滤。存储值仍是内置键或本机字体族名。
-// 这些声明必须在文件头部：启动早期 applySubtitleAppearanceControls 就会
-// 通过 subtitleFontFamilyStoredToInput 读取预设，声明靠后会触发 TDZ。
-const SUBTITLE_FONT_FAMILY_PRESETS = Object.freeze([
-  { key: 'default', label: '默认无衬线' },
-  { key: 'yahei', label: '微软雅黑 / 苹方' },
-  { key: 'hei', label: '黑体' },
-  { key: 'song', label: '宋体' },
-  { key: 'sans', label: 'Arial / Segoe UI' },
-]);
-// ASS 字体建议追加的常见内置字体；扫描到的本机字体由 datalist 动态合并。
+// 字体输入框用 datalist 提供搜索（映射逻辑在 editor-utils 的
+// subtitleFontFamilyStoredToInput / subtitleFontFamilyInputToStored）；
+// 扫描到的本机字体会由 datalist 动态合并，无需预设常量参与启动期渲染。
 const ASS_BUILTIN_FONT_SUGGESTIONS = Object.freeze([
   'Arial', 'Microsoft YaHei', 'SimHei', 'SimSun', 'Segoe UI', 'Verdana', 'Times New Roman',
 ]);
@@ -12138,27 +12129,28 @@ function subtitleFontFamilyDisplayName(family) {
 function subtitleFontFamilyPresetLabel(preset) {
   return window.MAWE_I18N?.translateText?.(preset.label) || preset.label;
 }
+function subtitleFontFamilyMappingOptions() {
+  return {
+    presetLabel: subtitleFontFamilyPresetLabel,
+    familyDisplay: subtitleFontFamilyDisplayName,
+  };
+}
 function subtitleFontFamilyStoredToInput(family) {
-  const key = family || 'default';
-  const preset = SUBTITLE_FONT_FAMILY_PRESETS.find((item) => item.key === key);
-  if (preset) return subtitleFontFamilyPresetLabel(preset);
-  return subtitleFontFamilyDisplayName(key);
+  return window.AsrEditorUtils.subtitleFontFamilyStoredToInput(family, subtitleFontFamilyMappingOptions());
 }
 function subtitleFontFamilyInputToStored(text) {
-  const value = String(text || '').trim();
-  if (!value) return 'default';
-  const preset = SUBTITLE_FONT_FAMILY_PRESETS.find((item) => (
-    item.label === value || item.key === value || subtitleFontFamilyPresetLabel(item) === value
-  ));
-  if (preset) return preset.key;
-  return value;
+  // 本地化显示名（如「微软雅黑」）要还原成真实字体族名，浏览器才能解析。
+  return window.AsrEditorUtils.subtitleFontFamilyInputToStored(text, {
+    ...subtitleFontFamilyMappingOptions(),
+    localFamilies: subtitleLocalFontFamilies,
+  });
 }
 function rebuildSubtitleFontFamilyDatalist() {
   const datalist = document.getElementById('subtitle-font-family-options');
   if (!datalist) return;
   datalist.replaceChildren();
   const fragment = document.createDocumentFragment();
-  SUBTITLE_FONT_FAMILY_PRESETS.forEach((preset) => {
+  window.AsrEditorUtils.SUBTITLE_FONT_FAMILY_PRESETS.forEach((preset) => {
     const option = document.createElement('option');
     option.value = subtitleFontFamilyPresetLabel(preset);
     fragment.append(option);
