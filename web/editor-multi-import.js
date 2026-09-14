@@ -266,7 +266,7 @@
         syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
         window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
         window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
-        normalizeProjectTimings(data);
+        MaweJsonRepair.normalizeProjectTimings(data);
         syncProjectTimebaseAndBindingOffsets(data, { preferFrames: false });
       }
       if (!MaweProjectLoad.isMawProject(data)) {

@@ -154,6 +154,21 @@ main 并入 #124（字幕列表跟随/贴合边界模式/cue-list 锚点重构�
 getAdjacentBoundaryMode 选项、recolor ×1 = assignColor 修复未随迁）**已全部修复**，
 回归清零。Python 1549 OK（2 失败为 main 侧预存）、Node 293 OK、探针零 pageerror。
 
+| 8 | 2026-09-14 | 九模块：`MaweHelpPanel`(6) `MaweTheme`(1) `MaweMediaStep`(3) `MaweAppearanceInputs`(6) `MaweBehaviorHints`(4) `MaweServerConnection`(15) `MaweDragDrop`(5) `MaweStickerOtioExport`(4) `MaweJsonRepair`(5)，共 49 符号；契约断言同步 5 处（sticker-otio/server-connection/json-repair 迁移） | node --check ×10 过；顺序断言过；Node 293；Python 1549（唯一失败 = main 侧预存 bcut 测试，已在纯 main 复现）；探针零 pageerror；e2e 全量（后台模式）失败集 = main 失败集 + 0 | （本提交） |
+
+**已知运维坑**：`npm install --no-save` 会修剪之前 --no-save 装的包（ts-morph 被
+acorn-walk 安装连带清除）——每次 npm install 后重装
+`npm install --no-save ts-morph acorn-walk`。长命令防卡死流程见
+`docs/AGENT_LONG_COMMAND_GUIDE.md`。
+
+### 剩余工作
+
+- 阶段一收尾：append 模式扫尾（editor.js 剩余零散符号并入既有模块）+ boot 接线
+  连续切段 + e2e 全局改写终扫。
+- 阶段二：目录结构化（77→N 个 100% rename）。
+- 阶段三：巨型 IIFE 拆解（utils/waveform/split/timed-edit/i18n/gap-remove 等，
+  三层差分）+ 第二注入方（serve.py gap-remove 前缀拼接）。
+
 | 7 | 2026-09-11 | 十模块：`MaweStickerRoot`(10/35) `MaweFindReplace`(18/18) `MaweTextProcess`(28/25) `MaweTimedTextEdit`(32/27) `MaweStickerPicker`(14/28) `MaweAddCue`(4/5) `MaweBoundDrag`(7/1) `MaweContextMenus`(8/15) `MaweTextCleanup`(5/17) `MaweWaveformInit`(2/2)，共 128 符号；契约断言同步 6 处 | Node --check ×10 过；顺序断言过；Node 286；Python 1458 OK；探针零 pageerror。**待办：本批全量 e2e 尚未跑**（先合并 main 再统一跑） | （本提交） |
 
 Batch 2 执行备注：

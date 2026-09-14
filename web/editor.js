@@ -179,7 +179,6 @@ function clearProjectVideoDimensions() {
   return true;
 }
 
-
 function syncProjectTimebase(project = MaweBoot.DATA, { preferFrames = false } = {}) {
   if (!project || typeof project !== 'object') return normalizeTimelineTimebase();
   const timebase = projectTimebase(project);
@@ -384,7 +383,7 @@ if (MaweDom.adjacentBoundaryModeSelect) MaweDom.adjacentBoundaryModeSelect.value
 refreshAdjacentBoundaryModeUi();
 refreshTimelineSettingsUi();
 MaweMediaPlayback.refreshMediaSeekStepHelp();
-refreshMediaSeekInputStep();
+MaweMediaStep.refreshMediaSeekInputStep();
 MaweMediaPlayback.refreshMediaSeekControlLabels();
 MaweNinja.applyNinjaSettings();
 if (MaweDom.waveformShapeSourceSelect) {
@@ -584,17 +583,8 @@ MaweDom.waveformSettings?.closest('.waveform-toolbar')?.addEventListener(
 MaweDom.cueEditorSettings?.closest('.cue-editor-toolbar')?.addEventListener(
   'scroll', MaweSettingsPanels.positionCueEditorSettingsPanel,
 );
-// 帮助浮窗：与拼合字幕共用 createFloatingPanel（拖动、位置持久化、Esc 关闭）
-const helpFloatingPanel = MaweFloatingPanel.createFloatingPanel({
-  panel: MaweDom.helpPanel,
-  dragHandle: MaweDom.helpDragHandle,
-  manageButton: MaweDom.helpToggle,
-  anchorButton: MaweDom.helpToggle,
-  positionKey: MaweDom.HELP_PANEL_POSITION_KEY,
-  onOpen: restoreHelpPanelSize,
-});
 // 帮助是非模态浮窗；鼠标点击后的按钮焦点由统一的快捷键焦点处理释放。
-MaweDom.helpCloseButton?.addEventListener('click', () => helpFloatingPanel.close());
+MaweDom.helpCloseButton?.addEventListener('click', () => MaweHelpPanel.helpFloatingPanel.close());
 MaweDom.helpOpenWaveformSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
@@ -629,31 +619,11 @@ MaweDom.helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {
   openGapRemovePanel();
   MaweDom.gapRemoveManageButton?.focus();
 });
-function visibleHelpTabButtons() {
-  return MaweDom.helpTabButtons.filter((button) => !button.closest('[hidden]'));
-}
-
-function selectHelpTab(tabName, { focus = false } = {}) {
-  const activeButton = MaweDom.helpTabButtons.find((button) => button.dataset.helpTab === tabName);
-  if (!activeButton) return;
-  MaweDom.helpTabButtons.forEach((button) => {
-    const active = button === activeButton;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-selected', String(active));
-    button.tabIndex = active ? 0 : -1;
-  });
-  MaweDom.helpTabPanels.forEach((panel) => {
-    const active = panel.dataset.helpTabPanel === tabName;
-    panel.hidden = !active;
-    panel.setAttribute('aria-hidden', String(!active));
-  });
-  if (focus) activeButton.focus();
-}
 
 MaweDom.helpTabButtons.forEach((button) => {
-  button.addEventListener('click', () => selectHelpTab(button.dataset.helpTab));
+  button.addEventListener('click', () => MaweHelpPanel.selectHelpTab(button.dataset.helpTab));
   button.addEventListener('keydown', (event) => {
-    const availableButtons = visibleHelpTabButtons();
+    const availableButtons = MaweHelpPanel.visibleHelpTabButtons();
     const index = availableButtons.indexOf(button);
     if (index < 0) return;
     let nextIndex = index;
@@ -670,44 +640,25 @@ MaweDom.helpTabButtons.forEach((button) => {
     }
     event.preventDefault();
     event.stopPropagation();
-    selectHelpTab(availableButtons[nextIndex].dataset.helpTab, { focus: true });
+    MaweHelpPanel.selectHelpTab(availableButtons[nextIndex].dataset.helpTab, { focus: true });
   });
 });
 if (MaweDom.helpTabButtons.length && MaweDom.helpTabPanels.length) {
-  selectHelpTab(MaweDom.helpTabButtons.find((button) => button.getAttribute('aria-selected') === 'true')?.dataset.helpTab || MaweDom.helpTabButtons[0].dataset.helpTab);
-}
-function openHelpAtTab(tabName) {
-  if (!MaweDom.helpTabButtons.some((button) => button.dataset.helpTab === tabName)) return;
-  selectHelpTab(tabName);
-  helpFloatingPanel.open();
+  MaweHelpPanel.selectHelpTab(MaweDom.helpTabButtons.find((button) => button.getAttribute('aria-selected') === 'true')?.dataset.helpTab || MaweDom.helpTabButtons[0].dataset.helpTab);
 }
 MaweDom.contextualHelpButtons.forEach((button) => {
   button.addEventListener('click', () => {
     if (button.closest('#gap-remove-panel')) closeGapRemovePanel();
     if (button.closest('#waveform-settings-panel')) MaweSettingsPanels.setWaveformSettingsPanelOpen(false);
-    openHelpAtTab(button.dataset.helpTabTarget);
+    MaweHelpPanel.openHelpAtTab(button.dataset.helpTabTarget);
   });
 });
-// 浮窗尺寸：仅在用户拖过右下角缩放手柄后持久化；未缩放时保持 CSS 默认宽度/自动高度
-function restoreHelpPanelSize() {
-  if (!MaweDom.helpPanel) return;
-  let saved = null;
-  try {
-    saved = JSON.parse(localStorage.getItem(MaweDom.HELP_PANEL_SIZE_KEY) || 'null');
-  } catch (_) {
-    saved = null;
-  }
-  if (!Number.isFinite(saved?.width) || !Number.isFinite(saved?.height)) return;
-  MaweDom.helpPanel.style.width = `${Math.min(Math.max(400, saved.width), window.innerWidth - 12)}px`;
-  MaweDom.helpPanel.style.height = `${Math.min(Math.max(240, saved.height), window.innerHeight - 12)}px`;
-}
-let helpPanelSizeSaveTimer = 0;
 if (MaweDom.helpPanel) {
   new ResizeObserver(() => {
     if (!MaweDom.helpPanel.classList.contains('show')) return;
     if (!MaweDom.helpPanel.style.width && !MaweDom.helpPanel.style.height) return;
-    clearTimeout(helpPanelSizeSaveTimer);
-    helpPanelSizeSaveTimer = setTimeout(() => {
+    clearTimeout(MaweHelpPanel.helpPanelSizeSaveTimer);
+    MaweHelpPanel.helpPanelSizeSaveTimer = setTimeout(() => {
       const rect = MaweDom.helpPanel.getBoundingClientRect();
       try {
         localStorage.setItem(MaweDom.HELP_PANEL_SIZE_KEY, JSON.stringify({
@@ -786,22 +737,13 @@ function scheduleEditorAccentCustomColor(value) {
     if (customColor) flushEditorAccentCustomColor(customColor);
   }, EDITOR_ACCENT_COLOR_DEBOUNCE_MS);
 }
-function applyTheme(theme, { rerenderWaveform = true } = {}) {
-  const preference = normalizeEditorTheme(theme);
-  const resolved = resolveEditorTheme(preference);
-  if (resolved === 'light') document.documentElement.dataset.theme = 'light';
-  else delete document.documentElement.dataset.theme;
-  refreshEditorThemeOptions(preference);
-  // 画布颜色是 JS 读取的令牌快照，必须全量重绘才能跟随主题
-  if (rerenderWaveform && MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.render();
-}
 applyEditorAccentColor(MaweSettings.EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
-applyTheme(MaweSettings.EDITOR_SETTINGS.theme, { rerenderWaveform: false });
+MaweTheme.applyTheme(MaweSettings.EDITOR_SETTINGS.theme, { rerenderWaveform: false });
 MaweDom.editorThemeOptions.forEach((option) => {
   option.addEventListener('click', () => {
     const next = normalizeEditorTheme(option.dataset.editorTheme);
     MaweSettings.updateEditorSettings({ theme: next });
-    applyTheme(next);
+    MaweTheme.applyTheme(next);
   });
 });
 MaweDom.editorAccentOptions.forEach((option) => {
@@ -823,7 +765,7 @@ MaweDom.editorAccentCustomInput?.addEventListener('change', () => {
 const editorSystemThemeMedia = typeof window.matchMedia === 'function'
   ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 const refreshEditorSystemTheme = () => {
-  if (MaweSettings.EDITOR_SETTINGS.theme === 'system') applyTheme('system');
+  if (MaweSettings.EDITOR_SETTINGS.theme === 'system') MaweTheme.applyTheme('system');
 };
 if (editorSystemThemeMedia?.addEventListener) {
   editorSystemThemeMedia.addEventListener('change', refreshEditorSystemTheme);
@@ -978,7 +920,7 @@ MaweDom.exportSpeakerNamesAsSuffixToggle?.addEventListener('change', () => {
 });
 MaweDom.clickBehaviorSelect?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ clickBehavior: MaweSettings.normalizeClickBehavior(MaweDom.clickBehaviorSelect.value) });
-  refreshClickBehaviorHint();
+  MaweBehaviorHints.refreshClickBehaviorHint();
 });
 MaweDom.clickTargetSelect?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ clickTarget: MaweSettings.normalizeClickTarget(MaweDom.clickTargetSelect.value) });
@@ -986,7 +928,7 @@ MaweDom.clickTargetSelect?.addEventListener('change', () => {
 MaweDom.keyboardOperationReferenceSelect?.addEventListener('change', () => {
   const mode = MaweSettings.normalizeKeyboardOperationReferenceMode(MaweDom.keyboardOperationReferenceSelect.value);
   MaweSettings.updateEditorSettings({ keyboardOperationReference: mode });
-  refreshKeyboardOperationReferenceHint();
+  MaweBehaviorHints.refreshKeyboardOperationReferenceHint();
 });
 MaweJklPlayback.jklPlaybackModeSelect?.addEventListener('change', () => {
   const wasReversePlaying = MaweJklPlayback.jklReversePlaying;
@@ -1176,71 +1118,32 @@ function setTimelineTimebase(patch = {}) {
   MaweHint.flashHint(description, 'success');
 }
 
-function refreshMediaSeekInputStep(value = timelineMediaSeekStepValue()) {
-  if (!MaweDom.mediaSeekStepInput) return;
-  if (timelineIsFrameMode()) {
-    MaweDom.mediaSeekStepInput.min = '1';
-    MaweDom.mediaSeekStepInput.max = '240';
-    MaweDom.mediaSeekStepInput.step = '1';
-  } else {
-    MaweDom.mediaSeekStepInput.min = String(MaweSettings.MEDIA_SEEK_STEP_MIN_MS);
-    MaweDom.mediaSeekStepInput.max = String(MaweSettings.MEDIA_SEEK_STEP_MAX_MS);
-    MaweDom.mediaSeekStepInput.step = String(MaweSettings.mediaSeekStepForValue(value));
-  }
-}
-
-function commitMediaSeekStepInput(value, { rewriteInput = true } = {}) {
-  const frameMode = timelineIsFrameMode();
-  const normalized = frameMode
-    ? EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(value, 1)
-    : MaweSettings.clampMediaSeekStepMs(value);
-  if (rewriteInput && MaweDom.mediaSeekStepInput) MaweDom.mediaSeekStepInput.value = String(normalized);
-  MaweDom.mediaSeekInputLastValue = normalized;
-  MaweSettings.updateEditorSettings(frameMode
-    ? { mediaSeekStepFrames: normalized }
-    : { mediaSeekStepMs: normalized });
-  refreshMediaSeekInputStep(normalized);
-  MaweMediaPlayback.refreshMediaSeekStepHelp();
-  MaweMediaPlayback.refreshMediaSeekControlLabels();
-}
-
-function adjustMediaSeekStepInput(direction) {
-  if (!MaweDom.mediaSeekStepInput) return;
-  if (timelineIsFrameMode()) {
-    const current = EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(MaweDom.mediaSeekStepInput.value, 1);
-    commitMediaSeekStepInput(Math.min(240, Math.max(1, current + (direction < 0 ? -1 : 1))));
-    return;
-  }
-  const current = MaweSettings.clampMediaSeekStepMs(MaweDom.mediaSeekStepInput.value);
-  commitMediaSeekStepInput(MaweSettings.nextMediaSeekStepValue(current, direction));
-}
-
 MaweDom.mediaSeekStepInput?.addEventListener('keydown', (event) => {
   if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
   event.preventDefault();
   event.stopPropagation();
-  adjustMediaSeekStepInput(event.key === 'ArrowUp' ? 1 : -1);
+  MaweMediaStep.adjustMediaSeekStepInput(event.key === 'ArrowUp' ? 1 : -1);
 });
 MaweDom.mediaSeekStepInput?.addEventListener('wheel', (event) => {
   if (!event.deltaY) return;
   event.preventDefault();
   event.stopPropagation();
   MaweDom.mediaSeekStepInput.focus({ preventScroll: true });
-  adjustMediaSeekStepInput(event.deltaY < 0 ? 1 : -1);
+  MaweMediaStep.adjustMediaSeekStepInput(event.deltaY < 0 ? 1 : -1);
 }, { passive: false });
 MaweDom.mediaSeekStepInput?.addEventListener('input', () => {
   const raw = MaweDom.mediaSeekStepInput.value.trim();
   if (!raw) return;
   if (timelineIsFrameMode()) {
-    commitMediaSeekStepInput(raw, { rewriteInput: false });
+    MaweMediaStep.commitMediaSeekStepInput(raw, { rewriteInput: false });
     return;
   }
   const value = MaweSettings.normalizeNativeMediaSeekStepValue(raw, MaweDom.mediaSeekInputLastValue);
   if (value === null) return;
-  commitMediaSeekStepInput(value, { rewriteInput: value !== Number(raw) });
+  MaweMediaStep.commitMediaSeekStepInput(value, { rewriteInput: value !== Number(raw) });
 });
 MaweDom.mediaSeekStepInput?.addEventListener('change', () => {
-  commitMediaSeekStepInput(MaweDom.mediaSeekStepInput.value);
+  MaweMediaStep.commitMediaSeekStepInput(MaweDom.mediaSeekStepInput.value);
 });
 MaweDom.cueMoveStepInput?.addEventListener('change', () => {
   const frameMode = timelineIsFrameMode();
@@ -1322,34 +1225,10 @@ MaweDom.subtitleFontFamilySelect?.addEventListener('change', () => {
   MaweHistory.pushPreviewUndo('调整字幕字体', MaweHistory.snapshotPreviewState());
   MaweAppearance.setSubtitleAppearance({ font_family: MaweDom.subtitleFontFamilySelect.value });
 });
-let subtitleBackgroundColorUndoPushed = false;
-function applySubtitleBackgroundColorInput({ finalize = false } = {}) {
-  if (!MaweDom.subtitleBackgroundColorInput) return;
-  if (!subtitleBackgroundColorUndoPushed) {
-    MaweHistory.pushPreviewUndo('调整字幕背景色', MaweHistory.snapshotPreviewState());
-    subtitleBackgroundColorUndoPushed = true;
-  }
-  MaweAppearance.setSubtitleAppearance({ background_color: MaweDom.subtitleBackgroundColorInput.value });
-  if (finalize) subtitleBackgroundColorUndoPushed = false;
-}
-MaweDom.subtitleBackgroundColorInput?.addEventListener('input', () => applySubtitleBackgroundColorInput());
-MaweDom.subtitleBackgroundColorInput?.addEventListener('change', () => applySubtitleBackgroundColorInput({ finalize: true }));
-let subtitleBackgroundAlphaUndoPushed = false;
-function applySubtitleBackgroundAlphaInput({ finalize = false } = {}) {
-  if (!MaweDom.subtitleBackgroundAlphaInput) return;
-  if (!subtitleBackgroundAlphaUndoPushed) {
-    MaweHistory.pushPreviewUndo('调整字幕背景不透明度', MaweHistory.snapshotPreviewState());
-    subtitleBackgroundAlphaUndoPushed = true;
-  }
-  const alpha = Number(MaweDom.subtitleBackgroundAlphaInput.value);
-  if (MaweDom.subtitleBackgroundAlphaValue && Number.isFinite(alpha)) {
-    MaweDom.subtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
-  }
-  MaweAppearance.setSubtitleAppearance({ background_alpha: alpha });
-  if (finalize) subtitleBackgroundAlphaUndoPushed = false;
-}
-MaweDom.subtitleBackgroundAlphaInput?.addEventListener('input', () => applySubtitleBackgroundAlphaInput());
-MaweDom.subtitleBackgroundAlphaInput?.addEventListener('change', () => applySubtitleBackgroundAlphaInput({ finalize: true }));
+MaweDom.subtitleBackgroundColorInput?.addEventListener('input', () => MaweAppearanceInputs.applySubtitleBackgroundColorInput());
+MaweDom.subtitleBackgroundColorInput?.addEventListener('change', () => MaweAppearanceInputs.applySubtitleBackgroundColorInput({ finalize: true }));
+MaweDom.subtitleBackgroundAlphaInput?.addEventListener('input', () => MaweAppearanceInputs.applySubtitleBackgroundAlphaInput());
+MaweDom.subtitleBackgroundAlphaInput?.addEventListener('change', () => MaweAppearanceInputs.applySubtitleBackgroundAlphaInput({ finalize: true }));
 MaweDom.subtitleFontFamilyScanButton?.addEventListener('click', () => {
   void MaweAppearance.scanSubtitleLocalFonts();
 });
@@ -1461,22 +1340,8 @@ MaweDom.extensionSubtitleBackgroundColorInput?.addEventListener('change', () => 
   MaweAppearance.setExtensionSubtitleAppearance({ background_color: MaweDom.extensionSubtitleBackgroundColorInput.value });
   MawePlaybackLoop.update();
 });
-let extensionSubtitleBackgroundAlphaUndoPushed = false;
-function applyExtensionSubtitleBackgroundAlphaInput({ finalize = false } = {}) {
-  if (!MaweDom.extensionSubtitleBackgroundAlphaInput) return;
-  if (!extensionSubtitleBackgroundAlphaUndoPushed) {
-    MaweHistory.pushPreviewUndo('调整副字幕背景不透明度', MaweHistory.snapshotPreviewState());
-    extensionSubtitleBackgroundAlphaUndoPushed = true;
-  }
-  const alpha = Number(MaweDom.extensionSubtitleBackgroundAlphaInput.value);
-  if (MaweDom.extensionSubtitleBackgroundAlphaValue && Number.isFinite(alpha)) {
-    MaweDom.extensionSubtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
-  }
-  MaweAppearance.setExtensionSubtitleAppearance({ background_alpha: alpha });
-  if (finalize) extensionSubtitleBackgroundAlphaUndoPushed = false;
-}
-MaweDom.extensionSubtitleBackgroundAlphaInput?.addEventListener('input', () => applyExtensionSubtitleBackgroundAlphaInput());
-MaweDom.extensionSubtitleBackgroundAlphaInput?.addEventListener('change', () => applyExtensionSubtitleBackgroundAlphaInput({ finalize: true }));
+MaweDom.extensionSubtitleBackgroundAlphaInput?.addEventListener('input', () => MaweAppearanceInputs.applyExtensionSubtitleBackgroundAlphaInput());
+MaweDom.extensionSubtitleBackgroundAlphaInput?.addEventListener('change', () => MaweAppearanceInputs.applyExtensionSubtitleBackgroundAlphaInput({ finalize: true }));
 MaweDom.extensionOverlayToggle?.addEventListener('change', () => {
   const previous = MaweHistory.snapshotPreviewState();
   previous.extensionOverlay = !MaweDom.extensionOverlayToggle.checked;
@@ -1485,52 +1350,10 @@ MaweDom.extensionOverlayToggle?.addEventListener('change', () => {
   MawePreviewGeometry.refreshPreviewGeometryEditable();
   MawePlaybackLoop.update();
 });
-const CLICK_BEHAVIOR_HINTS = {
-  zh: {
-    'select-and-seek': '暂停时只跳转，不自动播放；播放中跳转后继续播放。',
-    'select-only': '只选中，不改变播放位置；可用 F 或右键菜单跳转并播放。',
-    'select-and-play': '跳转到字幕起点，并在暂停时自动开始播放。',
-  },
-  en: {
-    'select-and-seek': 'When paused, seek without starting playback; while playing, keep playing after seeking.',
-    'select-only': 'Select only without changing the playhead; use F or the context menu to seek and play.',
-    'select-and-play': 'Seek to the subtitle start and start playback when paused.',
-  },
-};
-function refreshClickBehaviorHint() {
-  const hint = document.getElementById('click-behavior-hint');
-  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  if (hint) {
-    hint.textContent = CLICK_BEHAVIOR_HINTS[language][MaweSettings.EDITOR_SETTINGS.clickBehavior];
-    hint.hidden = false;
-  }
-  if (MaweDom.clickTargetField) {
-    MaweDom.clickTargetField.hidden = MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only';
-  }
-}
-refreshClickBehaviorHint();
-document.addEventListener('mawe:languagechange', refreshClickBehaviorHint);
-
-const KEYBOARD_OPERATION_REFERENCE_HINTS = {
-  zh: {
-    pointer: 'B/Z/X/N 使用鼠标所在波形位置；波形外不执行时间操作。',
-    playhead: 'B/Z/X/N 使用当前播放头位置；无当前字幕目标时使用主轨。',
-  },
-  en: {
-    pointer: 'B/Z/X/N use the mouse position in the waveform; outside it, timing actions do nothing.',
-    playhead: 'B/Z/X/N use the current playhead; when no cue target is active, they use the main track.',
-  },
-};
-function refreshKeyboardOperationReferenceHint() {
-  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  const mode = MaweSettings.normalizeKeyboardOperationReferenceMode(MaweSettings.EDITOR_SETTINGS.keyboardOperationReference);
-  if (MaweDom.keyboardOperationReferenceSelect) MaweDom.keyboardOperationReferenceSelect.value = mode;
-  if (MaweDom.keyboardOperationReferenceHint) {
-    MaweDom.keyboardOperationReferenceHint.textContent = KEYBOARD_OPERATION_REFERENCE_HINTS[language][mode];
-  }
-}
-refreshKeyboardOperationReferenceHint();
-document.addEventListener('mawe:languagechange', refreshKeyboardOperationReferenceHint);
+MaweBehaviorHints.refreshClickBehaviorHint();
+document.addEventListener('mawe:languagechange', MaweBehaviorHints.refreshClickBehaviorHint);
+MaweBehaviorHints.refreshKeyboardOperationReferenceHint();
+document.addEventListener('mawe:languagechange', MaweBehaviorHints.refreshKeyboardOperationReferenceHint);
 MaweJklPlayback.refreshJklPlaybackModeUi();
 document.addEventListener('mawe:languagechange', MaweJklPlayback.refreshJklPlaybackModeUi);
 
@@ -8649,164 +8472,6 @@ let projectExtensionFields = Object.fromEntries(
   Object.entries(MaweBoot.DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
 );
 
-function buildJson() {
-  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
-  const repairedTimingCount = repairCurrentProjectTimings();
-  if (repairedTimingCount > 0) {
-    MaweHint.flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
-  }
-  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
-  const out = {
-    schema: window.AsrEditorUtils.PROJECT_SCHEMA,
-    ...projectExtensionFields,
-    media: MaweBoot.DATA.media || '',
-    language: MaweBoot.DATA.language || '',
-    model: MaweBoot.DATA.model || '',
-    sticker_root: MaweBoot.STICKER_ROOT || '',
-    timebase: { ...projectTimebase() },
-    segments: MaweBoot.DATA.segments.map(s => {
-      const o = {
-        id: s.id,
-        start: s.start, end: s.end, text: s.text,
-        start_frame: s.start_frame, end_frame: s.end_frame,
-        items: s.items || [],
-        sticker: s.sticker || null,
-        sticker_ref: s.sticker_ref || null,
-        color: s.color || null,
-        color_ref: s.color_ref || null,
-      };
-      // 持久化"已改动"标记，便于二次打开时仍能识别脏行 / 离开提醒等
-      if (s._dirty) o._dirty = true;
-      // 持久化"禁用"标记（未禁用的不写字段，加载时默认 undefined=falsy 兼容旧工程）
-      if (s.disabled) o.disabled = true;
-      return o;
-    }),
-  };
-  if (typeof MaweBoot.DATA.language_source === 'string') out.language_source = MaweBoot.DATA.language_source;
-  if (typeof MaweBoot.DATA.split_mode === 'string') out.split_mode = MaweBoot.DATA.split_mode;
-  if (typeof MaweBoot.DATA.timestamp_granularity === 'string') {
-    out.timestamp_granularity = MaweBoot.DATA.timestamp_granularity;
-  }
-  const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
-  out.multi_subtitle = {
-    schema: multi.schema || MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
-    enabled: multi.enabled === true,
-    display_mode: multi.display_mode || 'both',
-    main_split_mode: MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(multi.main_split_mode)
-      ? multi.main_split_mode : MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]),
-    tracks: (multi.tracks || []).map((track) => ({
-      id: track.id,
-      role: 'extension',
-      name: track.name || '副字幕',
-      language: track.language || '',
-      split_mode: track.split_mode || 'word',
-      source_name: track.source_name || '',
-      segments: (track.segments || []).map((segment) => {
-        const outSegment = {
-          id: segment.id,
-          start: segment.start,
-          end: segment.end,
-          start_frame: segment.start_frame,
-          end_frame: segment.end_frame,
-          text: segment.text || '',
-        };
-        if (Array.isArray(segment.items)) outSegment.items = segment.items;
-        if (segment.color != null) outSegment.color = segment.color;
-        if (segment.color_ref != null) outSegment.color_ref = segment.color_ref;
-        if (segment._dirty) outSegment._dirty = true;
-        if (segment.disabled) outSegment.disabled = true;
-        return outSegment;
-      }),
-    })),
-    bindings: (multi.bindings || []).map((binding) => ({
-      id: binding.id,
-      track_id: binding.track_id,
-      main_segment_ids: [...(binding.main_segment_ids || [])],
-      extension_segment_ids: [...(binding.extension_segment_ids || [])],
-      start_offset_ms: binding.start_offset_ms || 0,
-      end_offset_ms: binding.end_offset_ms || 0,
-    })),
-  };
-  // 波形缓存（含响度统计）不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
-  // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
-  // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
-  const mediaMetadata = normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
-  if (mediaMetadata) out.media_metadata = mediaMetadata;
-  if (MaweBoot.DATA.gap_remove) out.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(MaweBoot.DATA.gap_remove);
-  if (MaweBoot.DATA.script_alignment) out.script_alignment = MaweBoot.DATA.script_alignment;
-  const workspace = MaweExportTimeline.buildCurrentWorkspaceData();
-  if (workspace) out.workspace = workspace;
-  // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
-  const preview = {
-    subtitle: {
-      ...MaweAppearance.getPreviewGeometry(),
-      ...MaweAppearance.getSubtitleAppearance(),
-      speaker_labels: getSpeakerLabelSettings(),
-    },
-  };
-  if (MaweMultiSubtitleCore.getActiveExtensionTrack() || MaweBoot.DATA.preview?.extension_subtitle) {
-    preview.extension_subtitle = { ...MaweAppearance.getStoredExtensionSubtitleAppearance() };
-  }
-  out.preview = preview;
-  return JSON.stringify(out, null, 2);
-}
-
-// 保存/导出前的最后一道时间码兜底。波形拖动会把词时间码按像素取整，
-// 极短词可能因此出现 1ms 的前后重叠；打开工程时的修复不足以覆盖这种
-// “打开后编辑、随后保存”的路径。主轨和所有副字幕轨统一使用同一规则。
-function normalizeProjectTimings(project, { repairSegmentRanges = true } = {}) {
-  if (!project || typeof project !== 'object') return 0;
-  const normalize = repairSegmentRanges
-    ? window.AsrEditorUtils.normalizeSegmentTimings
-    : window.AsrEditorUtils.normalizeItemTimingRanges;
-  let fixed = normalize(project.segments);
-  const tracks = project.multi_subtitle?.tracks;
-  if (Array.isArray(tracks)) {
-    tracks.forEach((track) => {
-      fixed += normalize(track?.segments);
-    });
-  }
-  return fixed;
-}
-
-function timingRepairSignature(segment) {
-  return JSON.stringify({
-    start: segment?.start,
-    end: segment?.end,
-    items: Array.isArray(segment?.items)
-      ? segment.items.map((item) => ({ text: item?.text, start: item?.start, end: item?.end }))
-      : null,
-  });
-}
-
-function repairTimingGroup(segments) {
-  const source = Array.isArray(segments) ? segments : [];
-  const before = source.map((segment) => timingRepairSignature(segment));
-  const fixed = window.AsrEditorUtils.normalizeItemTimingRanges(source);
-  const changed = source.filter((segment, index) => (
-    timingRepairSignature(segment) !== before[index]
-  ));
-  return { fixed, changed };
-}
-
-function repairCurrentProjectTimings() {
-  const main = repairTimingGroup(MaweBoot.DATA.segments);
-  const extension = (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).reduce((result, track) => {
-    const repaired = repairTimingGroup(track?.segments);
-    result.fixed += repaired.fixed;
-    result.changed.push(...repaired.changed);
-    return result;
-  }, { fixed: 0, changed: [] });
-  const fixed = main.fixed + extension.fixed;
-  if (fixed > 0) {
-    MaweMultiSubtitleCore.markMainSegmentsDirty(main.changed);
-    extension.changed.forEach((segment) => { segment._dirty = true; });
-    if (main.changed.length || extension.changed.length) MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
-    MaweMultiSubtitleCore.syncBindingOffsets();
-  }
-  return fixed;
-}
-
 function otioAudioTrackMetadata(audioTrack, fallbackIndex = 0) {
   if (!audioTrack || !Number.isInteger(audioTrack.stream_index) || audioTrack.stream_index < 0) {
     return {};
@@ -9085,7 +8750,7 @@ document.getElementById('download-plain-text')?.addEventListener('click', async 
 });
 document.getElementById('download-json')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
-  await MaweExportTimeline.downloadFile(buildJson(), `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
+  await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson(), `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
     desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
   });
 });
@@ -9111,62 +8776,14 @@ document.getElementById('download-resolve-json')?.addEventListener('click', asyn
     });
   }
 });
-const stickerOtioExportMode = document.getElementById('sticker-otio-export-mode');
-const portableStickerExportOption = stickerOtioExportMode?.querySelector('option[value="portable"]');
 
-function syncStickerOtioExportMode() {
-  const available = Boolean(
-    MaweBoot.SERVER_CONFIG?.canPortableStickerExport && MaweBoot.SERVER_CONFIG?.portableStickerExportUrl
-  );
-  if (portableStickerExportOption) portableStickerExportOption.disabled = !available;
-  if (stickerOtioExportMode) {
-    stickerOtioExportMode.value = available
-      ? MaweSettings.EDITOR_SETTINGS.stickerOtioExportMode
-      : 'original';
-  }
-  return available;
-}
-
-stickerOtioExportMode?.addEventListener('change', () => {
-  MaweSettings.updateEditorSettings({ stickerOtioExportMode: stickerOtioExportMode.value });
+MaweStickerOtioExport.stickerOtioExportMode?.addEventListener('change', () => {
+  MaweSettings.updateEditorSettings({ stickerOtioExportMode: MaweStickerOtioExport.stickerOtioExportMode.value });
 });
-
-async function exportStickerOtio(kind, buildTimeline, filename, description) {
-  if (editingState) finishEdit(true);
-  const payload = buildTimeline();
-  if (!payload) return;
-  if (stickerOtioExportMode?.value !== 'portable') {
-    await MaweExportTimeline.downloadFile(payload, filename, 'application/vnd.opentimelineio+json', {
-      desc: description, types: { 'application/vnd.opentimelineio+json': ['.otio'] }
-    });
-    return;
-  }
-  if (!syncStickerOtioExportMode()) {
-    MaweHint.flashHint('当前工程无法导出便携表情包 OTIO 文件夹', 'warning');
-    return;
-  }
-  MaweHint.flashHint('正在生成便携表情包 OTIO 文件夹…');
-  try {
-    const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.portableStickerExportUrl, window.location.href), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requestToken: MaweBoot.SERVER_CONFIG.requestToken,
-        kind,
-        timeline: JSON.parse(payload),
-      }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
-    MaweHint.flashHint(`已生成 ${result.folderPath}，复制 ${result.stickerCount} 张表情包`, 'success');
-  } catch (error) {
-    MaweHint.flashHint(`便携表情包 OTIO 导出失败：${error.message || error}`, 'warning');
-  }
-}
 
 document.getElementById('download-sticker-otio')?.addEventListener('click', () => {
   if (MaweExportTimeline.stickerExportBlocked('download-sticker-otio')) return;
-  exportStickerOtio(
+  MaweStickerOtioExport.exportStickerOtio(
     'stickers', MaweExportTimeline.buildStickerOtio, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, 'OTIO 工程文件'
   );
 });
@@ -9267,7 +8884,7 @@ document.getElementById('download-gap-removed-regions-json')?.addEventListener('
 });
 document.getElementById('download-gap-removed-sticker-otio')?.addEventListener('click', async () => {
   if (MaweExportTimeline.stickerExportBlocked('download-gap-removed-sticker-otio')) return;
-  await exportStickerOtio(
+  await MaweStickerOtioExport.exportStickerOtio(
     'gap-removed-stickers', MaweExportTimeline.buildGapRemovedStickerOtio,
     `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, '去空隙表情包 OTIO 工程'
   );
@@ -9380,7 +8997,7 @@ document.getElementById('open-project')?.addEventListener('click', () => {
 
 MaweProjectMediaInputs.openProjectFileInput.addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
-  if (!file || !isJsonFile(file)) {
+  if (!file || !MaweDragDrop.isJsonFile(file)) {
     MaweHint.flashHint('请选择一个 .mosp 或 .json 工程文件。', 'invalid');
     return;
   }
@@ -9978,264 +9595,30 @@ document.addEventListener('asr:waveform-loudness-unavailable', () => {
   MaweHint.flashHint('当前媒体没有响度缓存，无法按响度适配', 'warning');
 });
 
-// Server-editor 页面可能在本地服务退出后继续留在浏览器中。定期复用
-// startup-status 这个轻量 JSON 接口：断联时保留页面里的编辑内容，并显示
-// 持久横幅；服务恢复后自动清掉横幅，不刷新页面，避免覆盖未保存的改动。
-const SERVER_CONNECTION_CHECK_INTERVAL_MS = 2000;
-const SERVER_CONNECTION_REQUEST_TIMEOUT_MS = 1500;
-const SERVER_CONNECTION_FAILURE_THRESHOLD = 2;
-const serverConnectionBanner = document.getElementById('server-connection-banner');
-let serverConnectionCheckTimer = 0;
-let serverConnectionCheckInFlight = false;
-let serverConnectionFailureCount = 0;
-
-function serverConnectionCheckUrl() {
-  return MaweBoot.SERVER_CONFIG?.healthUrl || MaweBoot.SERVER_CONFIG?.startupStatusUrl || '';
-}
-
-function renderServerConnectionBanner(disconnected) {
-  if (serverConnectionBanner) serverConnectionBanner.hidden = !disconnected;
-}
-
-function scheduleServerConnectionCheck(delayMs = SERVER_CONNECTION_CHECK_INTERVAL_MS) {
-  if (!serverConnectionCheckUrl()) return;
-  if (serverConnectionCheckTimer) window.clearTimeout(serverConnectionCheckTimer);
-  serverConnectionCheckTimer = window.setTimeout(() => {
-    serverConnectionCheckTimer = 0;
-    void checkServerConnection();
-  }, Math.max(0, delayMs));
-}
-
-async function checkServerConnection() {
-  const url = serverConnectionCheckUrl();
-  if (!url || serverConnectionCheckInFlight) return;
-  serverConnectionCheckInFlight = true;
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), SERVER_CONNECTION_REQUEST_TIMEOUT_MS);
-  let healthy = false;
-  try {
-    const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
-    const result = await response.json().catch(() => null);
-    healthy = response.ok && result?.ok === true;
-  } catch (_error) {
-    // A refused/aborted local request is the expected signal that the server disappeared.
-  } finally {
-    window.clearTimeout(timeout);
-    serverConnectionCheckInFlight = false;
-  }
-
-  if (healthy) {
-    serverConnectionFailureCount = 0;
-    renderServerConnectionBanner(false);
-  } else {
-    serverConnectionFailureCount += 1;
-    if (serverConnectionFailureCount >= SERVER_CONNECTION_FAILURE_THRESHOLD) {
-      renderServerConnectionBanner(true);
-    }
-  }
-  scheduleServerConnectionCheck();
-}
-
-function startServerConnectionMonitor() {
-  if (!serverConnectionBanner || !serverConnectionCheckUrl()) return;
-  renderServerConnectionBanner(false);
-  void checkServerConnection();
-}
-
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) scheduleServerConnectionCheck(0);
+  if (!document.hidden) MaweServerConnection.scheduleServerConnectionCheck(0);
 });
-window.addEventListener('online', () => scheduleServerConnectionCheck(0));
-
-const SERVER_STARTUP_LABELS = {
-  zh: {
-    starting: '正在启动编辑器…',
-    reading_project: '正在读取工程…',
-    validating_project: '正在校验工程…',
-    preparing_media: '正在准备媒体…',
-    loading_waveform_cache: '正在读取波形缓存…',
-    generating_waveform: '未找到可用缓存，正在生成波形…',
-    waveform_ready: '波形已就绪…',
-    waveform_unavailable: '波形缓存不可用，继续加载…',
-    loading_spectral_cache: '正在读取频谱缓存…',
-    loading_reapeaks_waveform: '正在读取 REAPER 波形缓存…',
-    loading_loudness_stats: '正在读取响度统计…',
-    waveform_skipped: '已跳过波形处理…',
-    finalizing: '正在完成工程加载…',
-    ready: '工程加载完成',
-    error: '工程加载失败',
-    preparing: '正在准备工程…',
-  },
-  en: {
-    starting: 'Starting editor…',
-    reading_project: 'Reading project…',
-    validating_project: 'Validating project…',
-    preparing_media: 'Preparing media…',
-    loading_waveform_cache: 'Reading waveform cache…',
-    generating_waveform: 'No usable cache found; generating waveform…',
-    waveform_ready: 'Waveform ready…',
-    waveform_unavailable: 'Waveform cache unavailable; continuing…',
-    loading_spectral_cache: 'Reading spectral cache…',
-    loading_reapeaks_waveform: 'Reading REAPER waveform cache…',
-    loading_loudness_stats: 'Reading loudness stats…',
-    waveform_skipped: 'Waveform processing skipped…',
-    finalizing: 'Finishing project loading…',
-    ready: 'Project loaded',
-    error: 'Project loading failed',
-    preparing: 'Preparing project…',
-  },
-};
-
-function serverStartupLabel(stage) {
-  const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-  return SERVER_STARTUP_LABELS[language][stage] || SERVER_STARTUP_LABELS[language].preparing;
-}
-
-async function loadServerStartup() {
-  const url = MaweBoot.SERVER_CONFIG?.startupStatusUrl;
-  const status = MaweBoot.SERVER_CONFIG?.startupStatus;
-  if (!url || status === 'ready') return;
-  if (status === 'error') {
-    const detail = MaweBoot.SERVER_CONFIG.startupError || serverStartupLabel('error');
-    MaweHint.flashHint(`${serverStartupLabel('error')}：${detail}`, 'warning');
-    return;
-  }
-
-  const finishLoading = MaweLoadingProgress.beginEditorLoading(
-    serverStartupLabel(MaweBoot.SERVER_CONFIG.startupStage),
-    MaweBoot.SERVER_CONFIG.startupProgress,
-  );
-  const poll = async () => {
-    try {
-      const response = await fetch(url, { cache: 'no-store' });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || result.ok !== true) {
-        throw new Error(result.error || `服务器返回 ${response.status}`);
-      }
-      if (result.status === 'ready') {
-        MaweLoadingProgress.updateEditorLoading(100, serverStartupLabel('ready'));
-        finishLoading();
-        // 页面中的 DATA、媒体标签和保存能力都由服务端工程一起渲染；
-        // 工程准备好后刷新一次即可无竞态地接管完整工程和波形。
-        window.location.reload();
-        return;
-      }
-      if (result.status === 'error') {
-        finishLoading();
-        MaweHint.flashHint(
-          `${serverStartupLabel('error')}：${result.error || serverStartupLabel('error')}`,
-          'warning',
-        );
-        return;
-      }
-      MaweLoadingProgress.updateEditorLoading(result.progress, serverStartupLabel(result.stage));
-      window.setTimeout(() => { void poll(); }, 500);
-    } catch (_error) {
-      window.setTimeout(() => { void poll(); }, 1000);
-    }
-  };
-  await poll();
-}
-
-// === Drag & Drop：拖入视频/音频/JSON/SRT 自动加载 ===
-const dragOverlay = document.getElementById('drag-overlay');
-function isJsonFile(f) {
-  const name = f.name.toLowerCase();
-  return f.type === 'application/json' || name.endsWith('.json') || name.endsWith('.mosp');
-}
-function isSrtFile(f) {
-  return f.name.toLowerCase().endsWith('.srt');
-}
-async function handleDroppedFiles(files) {
-  if (!files.length) return;
-  const finishLoading = MaweLoadingProgress.beginEditorLoading('正在处理拖入文件…', 2);
-  try {
-  const mediaFile = files.find(MaweCoreState.isMediaFile);
-  const reapeaksFile = files.find(MaweCoreState.isReapeaksFile);
-  const jsonFile = files.find(isJsonFile);
-  const srtFile = files.find(isSrtFile);
-  let stagedSrtSegments = null;
-  if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
-    MaweHint.flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / reapeaks）', 'warning');
-    return;
-  }
-  if (jsonFile) {
-    if (MaweBoot.DATA.segments.length > 0) {
-      if (MaweServerSave.hasUnsavedProjectChanges()
-          && !confirm('当前有未保存的改动，是否继续处理此工程文件？选择“打开工程”仍会替换当前工程。')) return;
-      try {
-        const segments = await MaweLoadingProgress.parseSubtitleImportFile(jsonFile);
-        await MaweMultiImport.showMultiSubtitleImportChoice(jsonFile, segments, {
-          projectFile: jsonFile,
-          projectMediaFile: mediaFile,
-        });
-      } catch (error) {
-        MaweHint.flashHint(`导入工程字幕失败：${error.message || error}`, 'warning');
-      }
-      return;
-    }
-    // 工程与媒体一起拖入时，媒体随工程自动加载，不再弹窗要求重选。
-    const opened = await MaweMultiImport.openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
-    if (opened && mediaFile) await MaweMediaLoad.loadMediaFile(mediaFile);
-    return;
-  }
-  if (reapeaksFile && !mediaFile && !srtFile) {
-    await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
-    return;
-  }
-  if (srtFile && MaweBoot.DATA.segments.length === 0) {
-    try {
-      stagedSrtSegments = MaweProjectLoad.parseSrtSegments(await MaweLoadingProgress.readFileTextWithProgress(srtFile));
-    } catch (error) {
-      MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
-      return;
-    }
-  }
-  if ((mediaFile || srtFile) && !await MaweProjectLoad.ensureProjectCheckpointForImport(mediaFile || srtFile, { usePicker: false })) return;
-  if (mediaFile) {
-    const imported = await MaweMediaLoad.loadMediaFile(mediaFile);
-    if (imported) MaweServerSave.projectImportDirty = true;
-  }
-  if (reapeaksFile) await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
-  if (srtFile) {
-    if (MaweBoot.DATA.segments.length > 0) {
-      try {
-        const segments = await MaweLoadingProgress.parseSubtitleImportFile(srtFile);
-        await MaweMultiImport.showMultiSubtitleImportChoice(srtFile, segments);
-      } catch (error) {
-        MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
-      }
-    } else {
-      MaweProjectLoad.replaceMainTrack(stagedSrtSegments, srtFile.name);
-    }
-  }
-  if ((mediaFile || srtFile) && MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
-  MaweLoadingProgress.updateEditorLoading(100, '文件加载完成');
-  } finally {
-    finishLoading();
-  }
-}
-let dragCounter = 0;  // dragenter/leave 计数，避免子元素进出导致遮罩闪烁
+window.addEventListener('online', () => MaweServerConnection.scheduleServerConnectionCheck(0));  // dragenter/leave 计数，避免子元素进出导致遮罩闪烁
 window.addEventListener('dragenter', (e) => {
   if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
   e.preventDefault();
-  dragCounter++;
-  if (dragCounter === 1) dragOverlay.classList.add('show');
+  MaweDragDrop.dragCounter++;
+  if (MaweDragDrop.dragCounter === 1) MaweDragDrop.dragOverlay.classList.add('show');
 });
 window.addEventListener('dragover', (e) => {
   if (e.dataTransfer && e.dataTransfer.types.includes('Files')) e.preventDefault();
 });
 window.addEventListener('dragleave', (e) => {
   if (!e.dataTransfer) return;
-  dragCounter--;
-  if (dragCounter <= 0) { dragCounter = 0; dragOverlay.classList.remove('show'); }
+  MaweDragDrop.dragCounter--;
+  if (MaweDragDrop.dragCounter <= 0) { MaweDragDrop.dragCounter = 0; MaweDragDrop.dragOverlay.classList.remove('show'); }
 });
 window.addEventListener('drop', (e) => {
   if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
   e.preventDefault();
-  dragCounter = 0;
-  dragOverlay.classList.remove('show');
-  void handleDroppedFiles(Array.from(e.dataTransfer.files));
+  MaweDragDrop.dragCounter = 0;
+  MaweDragDrop.dragOverlay.classList.remove('show');
+  void MaweDragDrop.handleDroppedFiles(Array.from(e.dataTransfer.files));
 });
 
 // === 启动 ===
@@ -10243,7 +9626,7 @@ window.addEventListener('drop', (e) => {
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
 syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
 const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(MaweBoot.DATA.segments);
-const repairedTimingCount = normalizeProjectTimings(MaweBoot.DATA);
+const repairedTimingCount = MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA);
 syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
 MaweBoot.maweDebug('boot:begin', {
   server: Boolean(MaweBoot.SERVER_CONFIG),
@@ -10274,9 +9657,9 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
   setEditorSettingsPanelOpen: MaweSettingsPanels.setEditorSettingsPanelOpen,
   modKeyLabel: MaweDisplaySettings.modKeyLabel,
   splitKeyLabel: MaweDisplaySettings.splitKeyLabel,
-  openHelp: () => helpFloatingPanel.open(),
-  openHelpAtTab,
-  closeHelp: () => helpFloatingPanel.close(),
+  openHelp: () => MaweHelpPanel.helpFloatingPanel.open(),
+  openHelpAtTab: MaweHelpPanel.openHelpAtTab,
+  closeHelp: () => MaweHelpPanel.helpFloatingPanel.close(),
 });
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 renderAll({ waveform: 'full' });
@@ -10292,8 +9675,8 @@ if (repairedTimingCount > 0) {
 } else if (repairedGroupReferenceCount > 0) {
   MaweHint.flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`, 'warning');
 }
-void loadServerStartup();
-startServerConnectionMonitor();
+void MaweServerConnection.loadServerStartup();
+MaweServerConnection.startServerConnectionMonitor();
 if (MaweBoot.SERVER_CONFIG?.startupStatus !== 'loading') void MaweWaveformInit.loadDeferredReapeaks();
 
 document.getElementById('filter-over')?.addEventListener('click', (e) => {

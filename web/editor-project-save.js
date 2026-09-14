@@ -80,7 +80,7 @@ if (!silent) MaweHint.flashHint('保存成功！', 'success');
     }
 if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
 flushInlineEditsForSave();
-const projectJson = buildJson();
+const projectJson = MaweJsonRepair.buildJson();
 const fingerprint = projectSaveFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
@@ -127,7 +127,7 @@ const saveUrl = new URL(MaweBoot.SERVER_CONFIG.saveUrl, window.location.href);
     if (!MaweServerSave.projectFileHandle) return false;
 if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
 flushInlineEditsForSave();
-const projectJson = buildJson();
+const projectJson = MaweJsonRepair.buildJson();
 const fingerprint = projectSaveFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
@@ -164,7 +164,7 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
     const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
     if (!window.showSaveFilePicker) {
-      await MaweExportTimeline.downloadFile(buildJson(), suggested, 'application/json', {
+      await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson(), suggested, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
       });
       return;
@@ -175,7 +175,7 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
         types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
       });
       const writable = await handle.createWritable();
-      await writable.write(new Blob([buildJson()], { type: 'application/json;charset=utf-8' }));
+      await writable.write(new Blob([MaweJsonRepair.buildJson()], { type: 'application/json;charset=utf-8' }));
       await writable.close();
       MaweServerSave.projectFileHandle = handle;
       markProjectSaved(handle.name, null);

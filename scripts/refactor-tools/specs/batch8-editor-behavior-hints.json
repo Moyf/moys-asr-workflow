@@ -1,0 +1,11 @@
+{
+  "file": "editor-behavior-hints.js",
+  "ns": "MaweBehaviorHints",
+  "header": "行为提示：点击行为与键盘操作参考的文案刷新。",
+  "symbols": [
+    "CLICK_BEHAVIOR_HINTS",
+    "refreshClickBehaviorHint",
+    "KEYBOARD_OPERATION_REFERENCE_HINTS",
+    "refreshKeyboardOperationReferenceHint"
+  ]
+}

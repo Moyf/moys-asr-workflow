@@ -1,0 +1,11 @@
+{
+  "file": "editor-sticker-otio-export.js",
+  "ns": "MaweStickerOtioExport",
+  "header": "表情包 OTIO 导出：便携模式同步与导出入口。",
+  "symbols": [
+    "stickerOtioExportMode",
+    "portableStickerExportOption",
+    "syncStickerOtioExportMode",
+    "exportStickerOtio"
+  ]
+}

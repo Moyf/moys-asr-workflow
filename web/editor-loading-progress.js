@@ -56,7 +56,7 @@
   async function parseSubtitleImportFile(file) {
     const finishLoading = beginEditorLoading(`正在读取字幕 ${file.name}…`, 5);
     try {
-      if (isSrtFile(file)) return MaweProjectLoad.parseSrtSegments(await readFileTextWithProgress(file));
+      if (MaweDragDrop.isSrtFile(file)) return MaweProjectLoad.parseSrtSegments(await readFileTextWithProgress(file));
       const data = JSON.parse(await readFileTextWithProgress(file));
       if (!data || !Array.isArray(data.segments)) throw new Error('缺少有效 segments 数组');
       const sourceSegments = data.segments.map((segment) => {

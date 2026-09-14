@@ -54,5 +54,14 @@ editor-bound-drag.js
 editor-context-menus.js
 editor-text-cleanup.js
 editor-waveform-init.js
+editor-media-step.js
+editor-appearance-inputs.js
+editor-behavior-hints.js
+editor-server-connection.js
+editor-drag-drop.js
+editor-sticker-otio-export.js
+editor-json-repair.js
+editor-help-panel.js
+editor-theme.js
 editor.js
 editor-onboarding.js
