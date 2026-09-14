@@ -3806,7 +3806,11 @@
   }
 
   const ASS_DEFAULT_FONT_FAMILY = 'Arial';
-  const ASS_DEFAULT_FONT_SIZE = 18;
+  const ASS_DEFAULT_PREVIEW_FONT_SIZE = 18;
+  const ASS_AUTO_FONT_SIZE_1080P = 72;
+  // Fullscreen preview doubles the CSS size; Subtitle Edit calibration maps
+  // that 36px default preview to ASS 72 at 1080p, hence the 4x ratio here.
+  const ASS_PREVIEW_TO_ASS_SCALE = ASS_AUTO_FONT_SIZE_1080P / ASS_DEFAULT_PREVIEW_FONT_SIZE;
   const ASS_DEFAULT_COLOR = '#ffffff';
   const ASS_DEFAULT_PLAY_RES_X = 1920;
   const ASS_DEFAULT_PLAY_RES_Y = 1080;
@@ -3876,18 +3880,18 @@
 
   function normalizeAssFontSize(value) {
     const numeric = Number(value);
-    if (!Number.isFinite(numeric) || numeric <= 0) return ASS_DEFAULT_FONT_SIZE;
+    if (!Number.isFinite(numeric) || numeric <= 0) return ASS_AUTO_FONT_SIZE_1080P;
     return Math.min(512, Math.max(1, Math.round(numeric)));
   }
 
   function resolveAssFontSize(value, playResY) {
     const numericPreviewSize = Number(value);
     const previewSize = Number.isFinite(numericPreviewSize) && numericPreviewSize > 0
-      ? numericPreviewSize : ASS_DEFAULT_FONT_SIZE;
+      ? numericPreviewSize : ASS_DEFAULT_PREVIEW_FONT_SIZE;
     const numericPlayResY = Number(playResY);
     const scale = Number.isFinite(numericPlayResY) && numericPlayResY > 0
       ? numericPlayResY / ASS_REFERENCE_PLAY_RES_Y : 1;
-    return normalizeAssFontSize(previewSize * scale);
+    return normalizeAssFontSize(previewSize * ASS_PREVIEW_TO_ASS_SCALE * scale);
   }
 
   function normalizeAssDimension(value, fallback) {
