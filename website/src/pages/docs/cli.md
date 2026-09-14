@@ -58,7 +58,7 @@ MAW_OPENAI_ASR_BASE_URL=https://api.openai.com/v1
 MAW_OPENAI_ASR_MODEL=whisper-1
 ```
 
-Windows Release 包会优先读取 `MAW.exe` 同目录的 `.env`；该文件不存在时回退到 `%LOCALAPPDATA%\MAW\.env`。macOS / Linux 也优先读取应用程序同目录的 `.env`，再回退到对应的 MAW 用户数据目录；源码方式继续读取仓库根 `.env`。环境变量优先于 `.env`。API Key 的申请方式见 [ASR 服务与配置](../providers/) 和[阿里云官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)。
+Windows Release 包会优先读取 `MAW.exe` 同目录的 `.env`；该文件不存在时回退到 `%LOCALAPPDATA%\MAW\.env`。macOS / Linux 也优先读取应用程序同目录的 `.env`，再回退到对应的 MAW 用户数据目录；源码方式继续读取仓库根 `.env`。环境变量优先于 `.env`。API Key 的获取或查看方式见 [ASR 服务与配置](../providers/) 和[阿里云百炼](https://platform.qianwenai.com/home/)。
 
 ### PowerShell 路径
 

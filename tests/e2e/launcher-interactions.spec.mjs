@@ -277,6 +277,111 @@ test('automatic LLM setup highlights test connection until clicked', async ({ pa
   await expect(page.locator('#testLlmConnection')).not.toHaveClass(/attention/);
 });
 
+test('system notifications are disabled by default and announce enabling', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+
+  await expect(page.locator('#notifyOnComplete')).not.toBeChecked();
+  await page.locator('#settingsButton').click();
+  await page.locator('#notifyOnComplete').check();
+
+  await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([
+    { title: '系统通知已启用', message: '之后任务完成或失败时会提醒你。' },
+  ]);
+
+  await page.locator('#notifyOnComplete').uncheck();
+  await expect.poll(() => page.evaluate(() => (window.__mockNotifications || []).length)).toBe(1);
+});
+
+test('single transcription notifications report completion and failure', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+  await page.evaluate(() => {
+    window.MAWLauncher.config.notifyOnComplete = true;
+    window.__mockNotifications = [];
+  });
+
+  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.locator('#srtPath').fill('D:\\Demo\\clip.srt');
+  await page.locator('#apiKey').fill('sk-mock-key');
+  await page.locator('#start').click();
+  await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([
+    { title: '转写完成', message: '已生成 clip.srt' },
+  ]);
+
+  await page.evaluate(() => { window.__mockNotifications = []; });
+  await page.locator('#start').click();
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+    type: 'error', code: 'transcription_failed', detail: 'service exploded',
+  }));
+  await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([
+    {
+      title: '转写失败',
+      message: '文件 clip.mp4 处理失败：转写失败，本次任务已停止。请查看日志后修正问题，再重新尝试。 service exploded',
+    },
+  ]);
+
+  // The delayed mock completion is a late event after failure and must not notify again.
+  await page.waitForTimeout(1_000);
+  await expect.poll(() => page.evaluate(() => (window.__mockNotifications || []).length)).toBe(1);
+});
+
+test('batch failure notifications summarize outcomes', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+  await page.evaluate(() => {
+    window.MAWLauncher.config.notifyOnComplete = true;
+    window.__mockNotifications = [];
+    window.MAWLauncher.callBackend = async () => ({ ok: true });
+  });
+  await page.locator('#batchMode').click();
+  await page.evaluate(() => {
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: { files: [{ path: 'D:\\Demo\\first.mp3' }, { path: 'D:\\Demo\\second.mp3' }] },
+    });
+    document.getElementById('mediaCard').dispatchEvent(drop);
+  });
+  await page.locator('#startBatch').click();
+
+  await page.evaluate(() => {
+    window.MAWLauncher.onBackendEvent({ type: 'batch_started', total: 2 });
+    window.MAWLauncher.onBackendEvent({
+      type: 'batch_done',
+      status: 'failed',
+      total: 2,
+      outcomes: [{ id: 'batch-1', status: 'done', srtPath: 'D:\\Demo\\first.srt' }],
+    });
+  });
+
+  await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([
+    { title: '批量转写失败', message: '成功 1 个，失败 1 个。' },
+  ]);
+});
+
+test('cancelling a transcription stays quiet', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+  await page.evaluate(() => {
+    window.MAWLauncher.config.notifyOnComplete = true;
+    window.__mockNotifications = [];
+  });
+
+  await page.locator('#mediaPath').fill('D:\\Demo\\cancelled.mp4');
+  await page.locator('#srtPath').fill('D:\\Demo\\cancelled.srt');
+  await page.locator('#apiKey').fill('sk-mock-key');
+  await page.locator('#start').click();
+  await page.locator('#stop').click();
+  await expect(page.locator('#status')).toHaveText('转写已停止。');
+  await page.waitForTimeout(1_000);
+
+  await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([]);
+});
+
 test('Utilities use a vertical tab rail with arrow-key navigation', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxUtilitiesPrimaryTab').click();

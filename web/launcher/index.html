@@ -153,7 +153,7 @@
           <button id="saveSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
         </div>
         <p id="keyStatus" class="hint">未配置密钥</p>
-        <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">阿里云百炼</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取 API Key ↗</span></p>
+        <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">阿里云百炼</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取或查看 API Key ↗</span></p>
         <p id="apiKeyError" class="field-error"></p>
       </div>
       <div id="localRuntimeCheckField" class="field hidden"><div class="local-status-row"><p id="localRuntimeCheckStatus" class="local-status" aria-live="polite"></p><button id="openLocalRuntimeSettings" class="inline-link" type="button" data-i18n="local_runtime_view_settings">在 ⚙️ 设置中查看</button></div></div>
@@ -1019,10 +1019,10 @@
       <div class="settings-section">
         <h3 data-i18n="settings_notifications">完成通知</h3>
         <label class="check-field" for="notifyOnComplete">
-          <input id="notifyOnComplete" type="checkbox" data-i18n-title="notify_on_complete_title" title="任务完成后发送系统通知（默认开启）：单个文件转写完成或批量队列全部结束后提醒">
+          <input id="notifyOnComplete" type="checkbox" data-i18n-title="notify_on_complete_title" title="任务完成后发送系统通知（默认关闭）：单个文件转写完成或批量队列全部结束后提醒；失败时也会提醒">
           <span data-i18n="notify_on_complete">任务完成后发送系统通知</span>
         </label>
-        <p class="hint" data-i18n="notify_on_complete_hint">单个文件转写完成或批量队列全部结束后，通过系统通知提醒你；默认开启。</p>
+        <p class="hint" data-i18n="notify_on_complete_hint">任务完成或失败时，通过系统通知提醒你；默认关闭。</p>
       </div>
       <div class="settings-section">
         <h3 data-i18n="settings_stickers">默认表情包路径</h3>
