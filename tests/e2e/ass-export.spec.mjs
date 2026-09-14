@@ -130,7 +130,7 @@ test('writes the project title, source resolution, palette styles and speaker na
       },
     };
     MaweSettings.EDITOR_SETTINGS.exportSpeakerLabels = true;
-    renderAll();
+    MaweCuePanel.renderAll();
   });
 
   await page.locator('#subtitle-export-btn').click();
@@ -155,7 +155,7 @@ test('groups SRT, color-split SRT and styled ASS exports in order', async ({ pag
   await page.goto(server.url);
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 1000, end: 2500 };
-    renderAll();
+    MaweCuePanel.renderAll();
   });
 
   await page.locator('#subtitle-export-btn').click();
@@ -187,8 +187,8 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
       manual_corrections: false,
       gaps: [{ start: 2000, end: 3000, removed: true }],
     };
-    updateGapRemoveUi();
-    renderAll();
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll();
   });
 
   await page.locator('#gap-removed-export-btn').click();

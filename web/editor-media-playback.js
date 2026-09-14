@@ -213,7 +213,7 @@ mediaElement.addEventListener('playing', () => startPlaybackRefresh(mediaElement
 mediaElement.addEventListener('pause', () => {
 stopPlaybackRefresh(mediaElement);
 if (MaweCoreState.player !== mediaElement) return;
-if (cueListScroll.owner === 'follow') invalidateCueListVisualAnchorRestore();
+if (cueListScroll.owner === 'follow') MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
 MawePlaybackLoop.update();
       MaweCoreState.waveformEditor?.updatePlayback();
     });

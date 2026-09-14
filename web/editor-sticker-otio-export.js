@@ -29,7 +29,7 @@
 
 
   async function exportStickerOtio(kind, buildTimeline, filename, description) {
-    if (editingState) finishEdit(true);
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     const payload = buildTimeline();
     if (!payload) return;
     if (stickerOtioExportMode?.value !== 'portable') {

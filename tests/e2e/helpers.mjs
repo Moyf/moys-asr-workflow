@@ -281,7 +281,7 @@ export async function makeFirstCueWordSplittable(page) {
       { start: segment.start, end: 4000, text: 'Alpha' },
       { start: 4000, end: segment.end, text: 'Bravo' },
     ];
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 }
 

@@ -33,7 +33,7 @@
       const headSticker = !seg.disabled && validStickerRef ? seg.sticker || head?.sticker : null;
       const sticker = headSticker ? { ...headSticker, start: seg.start, end: seg.end } : null;
       if (sticker) {
-        const absPath = stickerAbsPath(sticker);
+        const absPath = MaweSelection.stickerAbsPath(sticker);
         if (absPath) sticker.abs_path = absPath;
       }
       const colorName = seg.color?.name || seg.color_ref?.name || null;
@@ -444,7 +444,7 @@
       if (seg.sticker_ref && (!head || head.disabled || headIdx >= idx)) continue;
       const sticker = seg.sticker || head?.sticker;
       if (!sticker) continue;
-      const absPath = stickerAbsPath(sticker);
+      const absPath = MaweSelection.stickerAbsPath(sticker);
       if (!absPath) {
         return { error: '表情包缺少真实磁盘路径；请先设置实际表情包根目录后再导出 OTIO' };
       }
@@ -528,7 +528,7 @@
   // 需要 server-editor 模式 + 已绑定工程 + 已校验的表情包根目录（与便携文件夹导出同源）。
   async function exportStickerOtoz(kind, buildTimeline, filename, description) {
     const tr = (s) => window.MAWE_I18N?.translateText?.(s) || s;
-    if (editingState) finishEdit(true);
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     const payload = buildTimeline();
     if (!payload) return;
     if (!MaweBoot.SERVER_CONFIG?.canOtozStickerExport || !MaweBoot.SERVER_CONFIG?.otiozStickerExportUrl) {
@@ -564,7 +564,7 @@
 
   async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
     const tr = (s) => window.MAWE_I18N?.translateText?.(s) || s;
-    if (editingState) finishEdit(true);
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     const payload = buildTimeline();
     if (!payload) return false;
     if (!MaweBoot.SERVER_CONFIG?.canOtozTimelineExport || !MaweBoot.SERVER_CONFIG?.otiozTimelineExportUrl) {

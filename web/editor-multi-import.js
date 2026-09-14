@@ -46,7 +46,7 @@
     MaweDom.multiSubtitleImportPreview.hidden = false;
     MaweDom.multiSubtitleImportPreview.innerHTML = [
       `<div class="summary">将替换当前主字幕</div>`,
-      `<div>${escapeHtml(pending.file.name)} · ${pending.segments.length} 条字幕</div>`,
+      `<div>${MaweCueElements.escapeHtml(pending.file.name)} · ${pending.segments.length} 条字幕</div>`,
       '<div>导入后仍可使用撤销恢复当前字幕。</div>',
     ].join('');
   }
@@ -61,7 +61,7 @@
     MaweDom.multiSubtitleImportPreview.hidden = false;
     MaweDom.multiSubtitleImportPreview.innerHTML = [
       `<div class="summary">工程字幕 ${pending.segments.length} 条${itemCount ? ` · 字词时间码 ${itemCount} 项` : ''}</div>`,
-      `<div>${escapeHtml(pending.file.name)}</div>`,
+      `<div>${MaweCueElements.escapeHtml(pending.file.name)}</div>`,
       '<div>打开工程会替换当前工程；使用工程字幕作为副字幕只导入字幕和可选字词时间码。</div>',
     ].join('');
   }
@@ -185,9 +185,9 @@
     MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     closeMultiSubtitleImportModal();
-    clearSelection();
+    MaweSelection.clearSelection();
     // 导入可能首次创建副字幕 lane，必须重建波形行结构。
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
     MawePlaybackLoop.updateWithoutCueListAutoScroll();
     MaweHint.flashHint(`已导入副字幕：绑定 ${match.matches.length} 条，未绑定 ${match.unmatchedExtension.length} 条`, 'success');
     return true;
@@ -218,8 +218,8 @@
     }
     MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments);
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    clearSelection();
-    renderAll({ waveform: 'full' });
+    MaweSelection.clearSelection();
+    MaweCuePanel.renderAll({ waveform: 'full' });
     MawePlaybackLoop.updateWithoutCueListAutoScroll();
     MaweHint.flashHint(`已交换主副字幕：主轨 ${result.mainCount} 条，副轨 ${result.extensionCount} 条`, 'success');
     return true;

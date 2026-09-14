@@ -43,7 +43,7 @@
         it.classList.add('hidden');
       }
       const img = document.createElement('img');
-      img.src = stickerUrl(s); img.alt = s.name;
+      img.src = MaweSelection.stickerUrl(s); img.alt = s.name;
       const nameEl = document.createElement('div');
       nameEl.className = 'sname'; nameEl.textContent = s.name;
       it.appendChild(img); it.appendChild(nameEl);
@@ -89,7 +89,7 @@
       MaweDisplaySettings.applyCueListDisplaySettings();
       MaweDisplaySettings.applyCueEditorDisplaySettings();
     }
-    refreshStickerAssignmentUi();
+    MaweColorFilter.refreshStickerAssignmentUi();
     MaweHint.flashHint(`已分配「${sticker.name}」`, 'success');
   }
 
@@ -98,9 +98,9 @@
   function clearStickerOnTargets() {
     MaweHistory.pushUndo('清除表情包');
     // 一次性切除所有目标 idx，触发组拆分
-    splitGroupsAtCutPoints(new Set(stickerTargetIdxs), 'sticker', 'sticker_ref');
+    MaweSegmentOps.splitGroupsAtCutPoints(new Set(stickerTargetIdxs), 'sticker', 'sticker_ref');
     MaweDom.stickerModal.classList.remove('show');
-    refreshStickerAssignmentUi();
+    MaweColorFilter.refreshStickerAssignmentUi();
     MaweHint.flashHint('已清除', 'success');
   }
 
@@ -114,7 +114,7 @@
     const seg = MaweBoot.DATA.segments[idx];
     if (!seg.sticker) return;
     previewIdx = idx;
-    document.getElementById('sticker-preview-img').src = stickerUrl(seg.sticker);
+    document.getElementById('sticker-preview-img').src = MaweSelection.stickerUrl(seg.sticker);
     document.getElementById('sticker-preview-name').textContent = seg.sticker.name;
     MaweDom.stickerPreviewModal.classList.add('show');
   }
@@ -127,7 +127,7 @@
   function removeStickerCascade(idx) {
     MaweHistory.pushUndo('删除表情包');
     // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
-    splitGroupsAtCutPoints(new Set([idx]), 'sticker', 'sticker_ref');
+    MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'sticker', 'sticker_ref');
   }
 
 
@@ -172,7 +172,7 @@
     for (let k = 1; k < sorted.length; k++) {
       MaweBoot.DATA.segments[sorted[k]].sticker_ref = { name: sticker.name, headIdx };
     }
-    renderAll();
+    MaweCuePanel.renderAll();
     MaweHint.flashHint(`已拓展到 ${sorted.length} 条`, 'success');
   }
 
@@ -205,7 +205,7 @@
       // 选区可能只包含已有颜色组的一部分。先在选中项处切开旧组，
       // 让未选中的成员保留原颜色，并避免旧 head 被降级后仍被外部 ref 指向。
       // （main 218ee1e0 修复，合并时补录；splitGroupsAtCutPoints 为 editor.js 全局。）
-      splitGroupsAtCutPoints(new Set(sorted), 'color', 'color_ref');
+      MaweSegmentOps.splitGroupsAtCutPoints(new Set(sorted), 'color', 'color_ref');
       const start = MaweBoot.DATA.segments[headIdx].start;
       const end = MaweBoot.DATA.segments[sorted[sorted.length - 1]].end;
       MaweBoot.DATA.segments[headIdx].color = { name: colorName, value: def.value, start, end };
@@ -218,7 +218,7 @@
     // 单条修改 lead（其 color_ref 成员仍指向它）或多选统一分配时，视为整组联动修改
     const isUnifiedGroup = sorted.length > 1
       || MaweBoot.DATA.segments.some((s) => s.color_ref && s.color_ref.headIdx === sorted[0]);
-    refreshColorAssignmentUi();
+    MaweColorFilter.refreshColorAssignmentUi();
     MaweHint.flashHint(isUnifiedGroup
       ? `已将关联字幕统一设为「${def.label}色」`
       : `已将字幕设为「${def.label}色」`, 'success');
@@ -231,7 +231,7 @@
   //   - idx 是 ref: 仅清自己
   function removeColorCascade(idx) {
     // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
-    splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
+    MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
   }
 
 
@@ -239,8 +239,8 @@
   function clearColorOnTargets(idxs) {
     MaweHistory.pushUndo('清除颜色');
     // 一次性切除所有目标 idx，触发组拆分
-    splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
-    refreshColorAssignmentUi();
+    MaweSegmentOps.splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
+    MaweColorFilter.refreshColorAssignmentUi();
     MaweHint.flashHint('已清除颜色', 'success');
   }
 
@@ -285,7 +285,7 @@
       });
     }
     if (isExtension || boundExtensionTargets.size) MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    renderAll();
+    MaweCuePanel.renderAll();
     // 隐藏开关开启时，刚禁用的项需从选中集移除（保持状态一致）
     if (MaweDom.hideDisabled && !allDisabled) {
       const mainDisabled = isExtension ? new Set() : new Set(validIdxs);
@@ -293,17 +293,17 @@
         ? new Map([[extensionTrack, new Set(validIdxs)]])
         : boundExtensionTargets;
       mainDisabled.forEach((index) => {
-        selectedIdxs.delete(index);
+        MaweSelection.selectedIdxs.delete(index);
         MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`)?.classList.remove('selected');
       });
       extensionDisabled.forEach((indexes) => indexes.forEach((index) => {
-        selectedExtensionIdxs.delete(index);
+        MaweSelection.selectedExtensionIdxs.delete(index);
         MaweCoreState.container.querySelectorAll(
           `.multi-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
         ).forEach((el) => el.classList.remove('selected'));
       }));
-      updateMultiSelectionClasses();
-      MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+      MaweSelection.updateMultiSelectionClasses();
+      MaweDom.selCountEl.textContent = String(MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size);
     }
     const action = allDisabled ? '启用' : '禁用';
     const extensionCount = [...boundExtensionTargets.values()]

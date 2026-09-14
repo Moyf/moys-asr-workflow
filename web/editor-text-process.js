@@ -55,12 +55,12 @@
 
 
   function textProcessSelectionTargets() {
-    const targets = [...selectedIdxs]
+    const targets = [...MaweSelection.selectedIdxs]
       .sort((a, b) => a - b)
       .map((index) => ({ kind: 'main', index }));
     const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
     if (extensionTrack) {
-      [...selectedExtensionIdxs]
+      [...MaweSelection.selectedExtensionIdxs]
         .sort((a, b) => a - b)
         .forEach((index) => targets.push({
           kind: 'extension',
@@ -213,7 +213,7 @@
       MaweHint.flashHint('当前没有可处理的字幕', 'invalid');
       return;
     }
-    if (editingState) finishEdit(true);
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     textProcessSelectionSnapshot = textProcessSelectionTargets();
     textProcessSelectedOnlyCb.checked = textProcessSelectionSnapshot.length > 0;
     refreshTextProcessSelectionControl();

@@ -45,7 +45,7 @@ async function loadAttachedCues(page, autoSnapAdjacentCues, adjacentBoundaryMode
       { start: 10000, end: 18000, text: 'Second', items: [{ start: 10000, end: 18000, text: 'Second' }] },
       { start: 25000, end: 30000, text: 'Third', items: [{ start: 25000, end: 30000, text: 'Third' }] },
     );
-    renderAll();
+    MaweCuePanel.renderAll();
   });
 }
 
@@ -96,7 +96,7 @@ test('WASD during playback follows the playhead instead of the last selected cue
     MaweBoot.DATA.segments[2].start = 100000;
     MaweBoot.DATA.segments[2].end = 110000;
     MaweBoot.DATA.segments[2].items = [{ start: 100000, end: 110000, text: 'Third' }];
-    renderAll();
+    MaweCuePanel.renderAll();
   });
   await page.locator('.cue[data-idx="0"]').click();
   await page.evaluate(() => { MaweCoreState.player.currentTime = 101; });
@@ -149,7 +149,7 @@ test('F seeks and plays a selected extension cue', async ({ page }) => {
       }],
       bindings: [],
     };
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"]').first();
@@ -286,7 +286,7 @@ test('automatic adjacent snapping links shared-boundary dragging by default and 
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].end = 10000;
     MaweBoot.DATA.segments[1].start = 10000;
-    renderAll();
+    MaweCuePanel.renderAll();
   });
   // Alt 临时反转：只移动当前字幕的边界，相邻字幕保持不动。
   await dragSharedBoundary(true);
@@ -339,7 +339,7 @@ test('dual mode links both edges via the seam zone while side handles trim indep
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].end = 10000;
     MaweBoot.DATA.segments[1].start = 10000;
-    renderAll();
+    MaweCuePanel.renderAll();
   });
 
   // 单独拖动 A 的右手柄：只调整当前字幕，相邻字幕保持不动。
@@ -384,7 +384,7 @@ test('dual-mode extension seam replaces the existing selection with both adjacen
       }],
       bindings: [],
     };
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   await page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="2"]').first()
@@ -448,7 +448,7 @@ test('explicit Shift snapping remains available when automatic adjacent snapping
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].end = 9000;
     MaweBoot.DATA.segments[1].start = 10000;
-    renderAll();
+    MaweCuePanel.renderAll();
   });
   await page.locator('.cue[data-idx="1"]').click();
   await page.keyboard.press('Shift+ArrowLeft');
@@ -466,7 +466,7 @@ test('Shift+arrow keys snap selected subtitle boundaries to neighbors', async ({
     MaweBoot.DATA.segments[1].start = 10000;
     MaweBoot.DATA.segments[1].end = 18000;
     MaweBoot.DATA.segments[2].start = 20000;
-    renderAll();
+    MaweCuePanel.renderAll();
   });
   await page.locator('.cue[data-idx="1"]').click();
 
@@ -554,7 +554,7 @@ test('Shift+A/D on a held subtitle snaps its outer boundaries to neighbors', asy
     MaweBoot.DATA.segments[1].start = 10000;
     MaweBoot.DATA.segments[1].end = 18000;
     MaweBoot.DATA.segments[2].start = 20000;
-    renderAll();
+    MaweCuePanel.renderAll();
   });
   await page.locator('#editor-settings-toggle').click();
   // 关闭设置窗口：浮动窗口悬浮在波形区上方，避免按住拖动被窗口拦截。
@@ -601,7 +601,7 @@ test('Z/X place selected or pointer-hit subtitle boundaries at the waveform poin
     { start: 25000, end: 30000 },
   ]);
 
-  await page.evaluate(() => clearSelection());
+  await page.evaluate(() => MaweSelection.clearSelection());
   await moveWaveformPointerToTime(page, block, 7500);
   await page.keyboard.press('z');
   await expect.poll(() => readTimings(page)).toEqual([

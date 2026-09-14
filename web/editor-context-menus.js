@@ -67,7 +67,7 @@
       addItem(
         '按音频位置拆分主字幕',
         'B',
-        () => splitFromContextMenu(mainIdx, clickX, clickY, timeMs),
+        () => MaweSplitContext.splitFromContextMenu(mainIdx, clickX, clickY, timeMs),
         mainIdx < 0,
       );
     }
@@ -76,12 +76,12 @@
       addItem(
         '按音频位置拆分副字幕',
         '',
-        () => openExtensionSplitModal(extensionIdx, timeMs, extensionTrack),
+        () => MaweSplitCore.openExtensionSplitModal(extensionIdx, timeMs, extensionTrack),
         extensionIdx < 0,
       );
     }
     addSep();
-    addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));
+    addItem('添加空隙', '', () => MaweGapRemoveUi.addGapAtWaveformTime(timeMs));
     if (MaweGapRemoveData.getGapRemoveGaps().some((gap) => gap.removed !== false)) {
       addItem('填充区间空隙', '', () => fillGapRangeAtWaveformTime(timeMs));
     }
@@ -105,12 +105,12 @@
     ctxLastClickX = x; ctxLastClickY = y;
     MaweDom.ctxmenu.innerHTML = '';
     // 当前条不在选中里 → 立刻选中（但不改变多选）
-    const isMulti = selectedIdxs.size > 1 && selectedIdxs.has(idx);
-    if (!isMulti && (!selectedIdxs.has(idx) || selectedIdxs.size !== 1)) {
-      selectOnly(idx);
-      lastClickedIdx = idx;
+    const isMulti = MaweSelection.selectedIdxs.size > 1 && MaweSelection.selectedIdxs.has(idx);
+    if (!isMulti && (!MaweSelection.selectedIdxs.has(idx) || MaweSelection.selectedIdxs.size !== 1)) {
+      MaweSelection.selectOnly(idx);
+      MaweSelection.lastClickedIdx = idx;
     }
-    const targetIdxs = isMulti ? [...selectedIdxs] : [idx];
+    const targetIdxs = isMulti ? [...MaweSelection.selectedIdxs] : [idx];
 
     function addItem(label, kbd, fn, opts = {}) {
       const it = document.createElement('div');
@@ -174,7 +174,7 @@
         : '按文字位置拆分';
       // 「按音频位置拆分」对应波形上的 B；「按文字位置拆分」对应列表内悬停已选行时的 B。
       const splitKbd = 'B';
-      addItem(splitLabel, splitKbd, () => splitFromContextMenu(idx, x, y, waveformTimeMs));
+      addItem(splitLabel, splitKbd, () => MaweSplitContext.splitFromContextMenu(idx, x, y, waveformTimeMs));
       // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
       if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only') {
         addItem('跳转并播放', 'F', () => {
@@ -188,7 +188,7 @@
       if (MaweBoot.DATA.segments[idx].sticker || MaweBoot.DATA.segments[idx].sticker_ref) {
         addItem('删除表情包', '', () => {
           MaweStickerPicker.removeStickerCascade(idx);
-          renderAll();
+          MaweCuePanel.renderAll();
           MaweHint.flashHint('已删除', 'success');
         }, { danger: true });
       }
@@ -201,17 +201,17 @@
         () => MaweStickerPicker.toggleDisabled([idx])
       );
       addItem('删除字幕', 'Delete', () => {
-        deleteSegments([idx]);
+        MaweSegmentOps.deleteSegments([idx]);
       }, { danger: true });
       if (MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
         addItem('解绑', 'Shift+G', () => {
-          selectOnly(idx);
-          unbindSelectedSubtitlePair();
+          MaweSelection.selectOnly(idx);
+          MaweBindingAlign.unbindSelectedSubtitlePair();
         });
       }
     } else {
       // 组 1：合并与批量文本操作
-      addItem(`合并 ${targetIdxs.length} 条字幕`, 'C', () => mergeSegments(targetIdxs));
+      addItem(`合并 ${targetIdxs.length} 条字幕`, 'C', () => MaweSegmentOps.mergeSegments(targetIdxs));
       addItem('批量替换选中字幕…', '', () => MaweFindReplace.openReplaceModal(targetIdxs));
       addSep();
       // 组 2：外观（表情包与颜色）；「拓展表情包时长」仅在范围内已有表情包时显示
@@ -231,9 +231,9 @@
         () => MaweStickerPicker.toggleDisabled(targetIdxs)
       );
       addItem(`删除 ${targetIdxs.length} 条字幕`, 'Delete', () => {
-        deleteSegments(targetIdxs);
+        MaweSegmentOps.deleteSegments(targetIdxs);
       }, { danger: true });
-      addItem('取消选择', `${MaweDisplaySettings.modKeyLabel()}+D`, () => clearSelection());
+      addItem('取消选择', `${MaweDisplaySettings.modKeyLabel()}+D`, () => MaweSelection.clearSelection());
     }
 
     // 调整 ctxmenu 位置（避免溢出）
@@ -272,12 +272,12 @@
       MaweDom.ctxmenu.appendChild(item);
     };
     const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(index, track);
-    addItem('在鼠标位置拆分', () => openExtensionSplitModal(index, timeMs, track), false, false, 'B');
-    const extensionSelectionOnly = selectedExtensionIdxs.size > 1
-      && selectedExtensionIdxs.has(index);
+    addItem('在鼠标位置拆分', () => MaweSplitCore.openExtensionSplitModal(index, timeMs, track), false, false, 'B');
+    const extensionSelectionOnly = MaweSelection.selectedExtensionIdxs.size > 1
+      && MaweSelection.selectedExtensionIdxs.has(index);
     addItem(
       '合并副字幕块',
-      () => mergeExtensionSegments([...selectedExtensionIdxs], track),
+      () => MaweSegmentOps.mergeExtensionSegments([...MaweSelection.selectedExtensionIdxs], track),
       false,
       !extensionSelectionOnly,
       'C',
@@ -289,28 +289,28 @@
       false,
       'Alt+点击',
     );
-    addItem('删除副字幕', () => deleteExtensionSegments([index]), true);
-    if (binding) addItem('对齐主字幕时间范围', () => alignExtensionToMainTimeRange(index, track), false, false, 'H');
+    addItem('删除副字幕', () => MaweSegmentOps.deleteExtensionSegments([index]), true);
+    if (binding) addItem('对齐主字幕时间范围', () => MaweBindingAlign.alignExtensionToMainTimeRange(index, track), false, false, 'H');
     if (binding) addItem('解绑', () => {
-      selectOnlyExtension(index);
-      unbindSelectedSubtitlePair();
+      MaweSelection.selectOnlyExtension(index);
+      MaweBindingAlign.unbindSelectedSubtitlePair();
     }, false, false, 'Shift+G');
     if (binding) {
       // 一对一关系已经存在时，必须先解绑，避免用户误以为点击后会静默换绑。
       addItem('重新绑定需先解绑', null, false, true);
     } else {
-      if (selectedIdxs.size === 1) {
+      if (MaweSelection.selectedIdxs.size === 1) {
         addItem('与选中的主字幕绑定', () => {
           // 右键不会触发副字幕的普通 pointerdown；先补上副轨选择，
           // 再复用顶部「绑定」操作。这里是用户明确保留主字幕后发起的绑定，
           // 因此保留主字幕选区，作为有意的直接绑定/替换入口。
-          selectOnlyExtension(index, track, true, true);
-          bindSelectedSubtitlePair();
+          MaweSelection.selectOnlyExtension(index, track, true, true);
+          MaweBindingAlign.bindSelectedSubtitlePair();
         }, false, false, 'G');
       }
       // 即使当前还保留着一条主字幕选区，也保留自动匹配入口，方便按时间
       // 选择最早的未绑定主字幕；明确绑定选中项则使用上面的入口。
-      addItem('绑定到主字幕', () => beginPendingExtensionBinding(index, track), false, false, 'G');
+      addItem('绑定到主字幕', () => MaweBindingAlign.beginPendingExtensionBinding(index, track), false, false, 'G');
     }
     MaweDom.ctxmenu.classList.add('show');
     const rect = MaweDom.ctxmenu.getBoundingClientRect();
@@ -336,11 +336,11 @@
       });
       MaweDom.ctxmenu.appendChild(item);
     };
-    addItem(gap.removed === false ? '移除区段' : '恢复区段', () => toggleGapRemoved(index));
+    addItem(gap.removed === false ? '移除区段' : '恢复区段', () => MaweGapRemoveUi.toggleGapRemoved(index));
     const separator = document.createElement('div');
     separator.className = 'sep';
     MaweDom.ctxmenu.appendChild(separator);
-    addItem('清理空隙', () => clearGap(index), { danger: true });
+    addItem('清理空隙', () => MaweGapRemoveUi.clearGap(index), { danger: true });
 
     MaweDom.ctxmenu.classList.add('show');
     const rect = MaweDom.ctxmenu.getBoundingClientRect();

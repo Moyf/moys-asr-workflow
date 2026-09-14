@@ -13,21 +13,21 @@ MaweBoot.DATA.preview, MaweHistory.gapRemoveDirty, MaweAppearance.previewGeometr
 }
 
 function inlineEditHasUncommittedText() {
-const state = editingState || extensionEditingState;
+const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
 if (!state) return false;
-const segment = editingState ? MaweBoot.DATA.segments[state.idx]
+const segment = MaweInlineEdit.editingState ? MaweBoot.DATA.segments[state.idx]
 : MaweMultiSubtitleCore.getExtensionTrack(state.trackId)?.segments[state.index];
 return Boolean(segment && state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd() !== segment.text);
 }
 
 // 保存正在输入的文字，但不结束行内编辑、不替换节点、不移动光标。
 function flushInlineEditsForSave() {
-const state = editingState || extensionEditingState;
+const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
 if (!state) {
-if (!MaweDom.cuePanel?.contains(document.activeElement)) commitCuePanelEdit();
+if (!MaweDom.cuePanel?.contains(document.activeElement)) MaweCuePanel.commitCuePanelEdit();
 return;
 }
-const extension = Boolean(extensionEditingState);
+const extension = Boolean(MaweInlineEdit.extensionEditingState);
 const index = extension ? state.index : state.idx;
 const track = extension ? MaweMultiSubtitleCore.getExtensionTrack(state.trackId) : null;
 const segment = extension ? track?.segments[index] : MaweBoot.DATA.segments[index];
@@ -42,7 +42,7 @@ if (extension) {
 MaweMultiSubtitleCore.markMultiSubtitleDirty();
 MaweCoreState.waveformEditor?.refreshExtensionCueLabel(index, state.trackId);
 } else MaweCoreState.waveformEditor?.refreshCueLabel(index);
-syncCuePanelAfterInlineEdit(extension ? 'extension' : 'main', index, state.trackId);
+MaweInlineEdit.syncCuePanelAfterInlineEdit(extension ? 'extension' : 'main', index, state.trackId);
 }
 
 function markProjectSaved(filename, backupName, { silent = false, fingerprint = null } = {}) {
@@ -158,9 +158,9 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
   // 与「导出工程」的区别：保存成功后当前工程名跟随新文件（标题、导出默认名随之更新），
   // 且后续 Ctrl(Cmd)+S / 自动保存都写回这个新选定的文件。
   async function saveProjectAsToFile() {
-    if (editingState) finishEdit(true);
-    if (extensionEditingState) finishExtensionEdit(true);
-    commitCuePanelEdit();
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+    if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
+    MaweCuePanel.commitCuePanelEdit();
     const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
     if (!window.showSaveFilePicker) {

@@ -53,12 +53,12 @@
 
   function seekFromWaveform(timeSec, { dragPreview = false } = {}) {
     const seekableEnd = MaweCoreState.player.seekable.length ? MaweCoreState.player.seekable.end(MaweCoreState.player.seekable.length - 1) : 0;
-    if (seekableEnd <= 0 && !seekWarned) {
+    if (seekableEnd <= 0 && !MaweNavPreview.seekWarned) {
       if (MaweCoreState.player.readyState < 1 || MaweCoreState.player.networkState === HTMLMediaElement.NETWORK_LOADING) {
-        pendingMediaSeekTimeSec = timeSec;
+        MaweNavPreview.pendingMediaSeekTimeSec = timeSec;
         return;
       }
-      seekWarned = true;
+      MaweNavPreview.seekWarned = true;
       MaweHint.flashHint('媒体尚不可 seek；请等待加载完成或用 file:// 直接打开 HTML', 'warning');
     }
     try {
@@ -77,17 +77,17 @@
 
 
   function notifyAutoLoadedMediaReady(mediaElement) {
-    if (mediaElement !== MaweCoreState.player || autoLoadedMediaReadyNotified || !MaweBoot.SERVER_CONFIG?.autoLoadedMediaName) return;
-    autoLoadedMediaReadyNotified = true;
+    if (mediaElement !== MaweCoreState.player || MaweNavPreview.autoLoadedMediaReadyNotified || !MaweBoot.SERVER_CONFIG?.autoLoadedMediaName) return;
+    MaweNavPreview.autoLoadedMediaReadyNotified = true;
     MaweHint.flashHint(MaweProjectSave.translatedEditorText(`已加载媒体：${MaweBoot.SERVER_CONFIG.autoLoadedMediaName}`), 'success');
   }
 
 
 
   function flushPendingMediaSeek(mediaElement) {
-    if (mediaElement !== MaweCoreState.player || pendingMediaSeekTimeSec === null) return;
-    const timeSec = pendingMediaSeekTimeSec;
-    pendingMediaSeekTimeSec = null;
+    if (mediaElement !== MaweCoreState.player || MaweNavPreview.pendingMediaSeekTimeSec === null) return;
+    const timeSec = MaweNavPreview.pendingMediaSeekTimeSec;
+    MaweNavPreview.pendingMediaSeekTimeSec = null;
     seekFromWaveform(timeSec);
   }
 

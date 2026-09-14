@@ -80,6 +80,20 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor-json-repair.js",
                 "editor-help-panel.js",
                 "editor-theme.js",
+                "editor-gap-remove-ui.js",
+                "editor-selection.js",
+                "editor-binding-align.js",
+                "editor-cue-panel.js",
+                "editor-cue-elements.js",
+                "editor-color-filter.js",
+                "editor-search.js",
+                "editor-inline-edit.js",
+                "editor-split-core.js",
+                "editor-split-context.js",
+                "editor-segment-ops.js",
+                "editor-nav-preview.js",
+                "editor-cue-events.js",
+                "editor-cue-list-anchor.js",
                 "editor.js",
                 "editor-onboarding.js",
             ),
@@ -141,6 +155,20 @@ class EditorAssetContractTests(unittest.TestCase):
             "editor-json-repair.js": "(function initMaweJsonRepair(global) {",
             "editor-help-panel.js": "(function initMaweHelpPanel(global) {",
             "editor-theme.js": "(function initMaweTheme(global) {",
+            "editor-gap-remove-ui.js": "(function initMaweGapRemoveUi(global) {",
+            "editor-selection.js": "(function initMaweSelection(global) {",
+            "editor-binding-align.js": "(function initMaweBindingAlign(global) {",
+            "editor-cue-panel.js": "(function initMaweCuePanel(global) {",
+            "editor-cue-elements.js": "(function initMaweCueElements(global) {",
+            "editor-color-filter.js": "(function initMaweColorFilter(global) {",
+            "editor-search.js": "(function initMaweSearch(global) {",
+            "editor-inline-edit.js": "(function initMaweInlineEdit(global) {",
+            "editor-split-core.js": "(function initMaweSplitCore(global) {",
+            "editor-split-context.js": "(function initMaweSplitContext(global) {",
+            "editor-segment-ops.js": "(function initMaweSegmentOps(global) {",
+            "editor-nav-preview.js": "(function initMaweNavPreview(global) {",
+            "editor-cue-events.js": "(function initMaweCueEvents(global) {",
+            "editor-cue-list-anchor.js": "(function initMaweCueListAnchor(global) {",
             "editor-sticker-root.js": "(function initMaweStickerRoot(global) {",
             "editor-find-replace.js": "(function initMaweFindReplace(global) {",
             "editor-text-process.js": "(function initMaweTextProcess(global) {",
@@ -202,7 +230,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertNotIn("underlying", core)
 
     def test_editor_overall_gap_move_uses_shared_provenance_operation(self) -> None:
-        script = edit.read_web_asset("editor.js")
+        script = edit.read_web_asset("editor-gap-remove-ui.js")
         start = script.index("function translateManualGap(")
         end = script.index("function resizeManualGapBoundary(", start)
         section = script[start:end]
@@ -210,7 +238,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertNotIn("original.start, end: original.end, removed: false", section)
 
     def test_shrink_gaps_replaces_audio_source_without_manual_override(self) -> None:
-        script = edit.read_web_asset("editor.js")
+        script = edit.read_web_asset("editor-gap-remove-ui.js")
         start = script.index("function shrinkExistingGaps()")
         end = script.index("function readGapRemoveDisableSettings()", start)
         section = script[start:end]

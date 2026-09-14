@@ -30,9 +30,9 @@
 
 
   function currentTimedTextEditKind() {
-    const panelTarget = getCurrentCuePanelTarget?.();
+    const panelTarget = MaweCuePanel.getCurrentCuePanelTarget?.();
     if (panelTarget?.kind === 'extension' && panelTarget.track?.segments?.length) return 'extension';
-    if (selectedIdxs.size === 0 && selectedExtensionIdxs.size > 0
+    if (MaweSelection.selectedIdxs.size === 0 && MaweSelection.selectedExtensionIdxs.size > 0
         && MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) return 'extension';
     return 'main';
   }
@@ -110,7 +110,7 @@
     if (reportRow.timingChanged) {
       const timing = document.createElement('div');
       timing.className = 'timed-text-edit-timing-change';
-      timing.textContent = `时间范围：${fmtSrtTime(reportRow.beforeStart)} – ${fmtSrtTime(reportRow.beforeEnd)} → ${fmtSrtTime(reportRow.afterStart)} – ${fmtSrtTime(reportRow.afterEnd)}`;
+      timing.textContent = `时间范围：${MaweCueElements.fmtSrtTime(reportRow.beforeStart)} – ${MaweCueElements.fmtSrtTime(reportRow.beforeEnd)} → ${MaweCueElements.fmtSrtTime(reportRow.afterStart)} – ${MaweCueElements.fmtSrtTime(reportRow.afterEnd)}`;
       diffElement.appendChild(timing);
     }
     if (reportRow.timingEstimated) {
@@ -196,7 +196,7 @@
       if (row.timingChanged) {
         const timing = document.createElement('div');
         timing.className = 'timed-text-edit-timing-change';
-        timing.textContent = `时间范围：${fmtSrtTime(row.beforeStart)} – ${fmtSrtTime(row.beforeEnd)} → ${fmtSrtTime(row.afterStart)} – ${fmtSrtTime(row.afterEnd)}`;
+        timing.textContent = `时间范围：${MaweCueElements.fmtSrtTime(row.beforeStart)} – ${MaweCueElements.fmtSrtTime(row.beforeEnd)} → ${MaweCueElements.fmtSrtTime(row.afterStart)} – ${MaweCueElements.fmtSrtTime(row.afterEnd)}`;
         item.appendChild(timing);
       }
       if (row.timingEstimated) {
@@ -245,7 +245,7 @@
       const time = document.createElement('span');
       time.className = 'timed-text-edit-row-time';
       time.textContent = segment
-        ? `${fmtSrtTime(segment.start)}\n${fmtSrtTime(segment.end)}` : '—\n—';
+        ? `${MaweCueElements.fmtSrtTime(segment.start)}\n${MaweCueElements.fmtSrtTime(segment.end)}` : '—\n—';
       const coverage = document.createElement('span');
       const coverageData = window.AsrEditorUtils.timedTextItemCoverage(
         textValue, segment?.items,
@@ -318,9 +318,9 @@
     MaweDom.timedTextEditSingleTextarea.hidden = !single;
     MaweDom.timedTextEditSingleHint.hidden = !single || !MaweDom.timedTextEditDraft.singleLineError;
     if (single) {
-      syncCharCountThresholdInputs();
+      MaweCueElements.syncCharCountThresholdInputs();
       MaweDom.timedTextEditSingleTextarea.value = MaweDom.timedTextEditDraft.singleText;
-      updateTimedTextEditSingleGuide();
+      MaweCueElements.updateTimedTextEditSingleGuide();
     }
   }
 
@@ -729,8 +729,8 @@
 
       if (removedIndexList.length) {
         // 与删除字幕相同的分组语义：来源行离开后，颜色 / 表情包组在切点处拆开。
-        splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
-        splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
+        MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
+        MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
         MaweBoot.DATA.segments.forEach((segment, index) => {
           if (removeSet.has(index)) return;
           if (segment.sticker_ref && removeSet.has(segment.sticker_ref.headIdx)) {
@@ -744,12 +744,12 @@
     }
 
     // 结构发生变化后，旧下标选中态和字幕编辑面板都必须失效，避免渲染后指向相邻字幕。
-    clearSelection({ silent: true });
+    MaweSelection.clearSelection({ silent: true });
     MaweCuePanelState.currentCuePanelKind = 'main';
     MaweCuePanelState.currentCuePanelIdx = -1;
     MaweCuePanelState.currentCuePanelTrackId = null;
-    lastClickedIdx = -1;
-    lastClickedExtensionIdx = -1;
+    MaweSelection.lastClickedIdx = -1;
+    MaweSelection.lastClickedExtensionIdx = -1;
     MawePlaybackLoop.lastActive = -1;
     targetSegments.splice(0, targetSegments.length, ...publishedSegments);
 
@@ -792,7 +792,7 @@
       MaweHint.flashHint('当前没有可编辑的字幕', 'invalid');
       return;
     }
-    if (editingState) finishEdit(true);
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     MaweDom.timedTextEditReturnFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
     loadTimedTextEditTrack(currentTimedTextEditKind());

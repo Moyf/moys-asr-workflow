@@ -182,7 +182,7 @@ test('list click auto-scroll can be disabled without disabling seek', async ({ p
       const start = index * 5000;
       return { start, end: start + 1000, text: `Extra ${index}`, items: [] };
     }));
-    renderAll();
+    MaweCuePanel.renderAll();
     document.getElementById('cues-container').scrollTop = 0;
   });
   const target = page.locator('.cue[data-idx="30"]');
@@ -207,9 +207,9 @@ test('default list click keeps a cue already in the middle in place', async ({ p
       const start = index * 5000;
       return { start, end: start + 1000, text: `Extra ${index}`, items: [] };
     }));
-    renderAll();
+    MaweCuePanel.renderAll();
     const cue = document.querySelector('.cue[data-idx="30"]');
-    scrollCueToCenter(cue);
+    MaweCueListAnchor.scrollCueToCenter(cue);
   });
   await page.waitForFunction(() => !cueListScroll.owner);
   const before = await page.locator('.cue[data-idx="30"]').evaluate(el => el.getBoundingClientRect().top);
@@ -500,7 +500,7 @@ test('Enter focuses the current subtitle editor after list or waveform clicks', 
   const rowBox = await page.locator('.waveform-row').nth(1).boundingBox();
   await page.mouse.click(rowBox.x + rowBox.width * 0.95, rowBox.y + rowBox.height / 2);
   // 空白处点击会清除选择；不经过列表重新选中第一条（区域仍停留在波形）
-  await page.evaluate(() => selectOnly(0));
+  await page.evaluate(() => MaweSelection.selectOnly(0));
   await page.keyboard.press('Enter');
   await expect(cue).not.toHaveClass(/editing/);
   await expect(panelText).toBeFocused();
@@ -582,8 +582,8 @@ test('B split keeps the source cue visually anchored while lazy rows relayout', 
         items: [],
       };
     });
-    renderAll();
-    scrollCueToCenter(document.querySelector('.cue[data-idx="56"]'));
+    MaweCuePanel.renderAll();
+    MaweCueListAnchor.scrollCueToCenter(document.querySelector('.cue[data-idx="56"]'));
   });
 
   // 只等目标附近的可见行稳定，不能滚遍整张列表预热，否则会掩盖重绘后的
@@ -689,8 +689,8 @@ test('C merge keeps the source cue visually anchored while lazy rows relayout', 
         items: [],
       };
     });
-    renderAll();
-    scrollCueToCenter(document.querySelector('.cue[data-idx="56"]'));
+    MaweCuePanel.renderAll();
+    MaweCueListAnchor.scrollCueToCenter(document.querySelector('.cue[data-idx="56"]'));
   });
 
   const first = page.locator('.cue[data-idx="56"]');
@@ -760,8 +760,8 @@ test('C merge keeps the extension cue visually anchored while lazy rows relayout
       bindings: [],
     };
     MaweMultiSubtitleCore.normalizedMultiSubtitleReference = null;
-    renderAll();
-    scrollCueToCenter(document.querySelector('.cue[data-ext-idx="56"]'));
+    MaweCuePanel.renderAll();
+    MaweCueListAnchor.scrollCueToCenter(document.querySelector('.cue[data-ext-idx="56"]'));
   });
 
   const first = page.locator('.cue[data-ext-idx="56"]');
@@ -793,7 +793,7 @@ test('B flashes a yellow marker after splitting at the waveform pointer without 
   await page.goto(server.url);
   // 默认主字幕按单词模式拆分；'Alpha' 单词内无词边界，先改造成两词再测拆分闪光。
   await makeFirstCueWordSplittable(page);
-  await page.evaluate(() => clearSelection());
+  await page.evaluate(() => MaweSelection.clearSelection());
   await expect(page.locator('.cue.selected')).toHaveCount(0);
 
   const waveformCue = page.locator('.waveform-cue-block[data-idx="0"]').first();

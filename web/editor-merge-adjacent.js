@@ -8,15 +8,15 @@
 
 
   function mergeAdjacentSubtitle(direction) {
-    const target = getCurrentCuePanelTarget();
+    const target = MaweCuePanel.getCurrentCuePanelTarget();
     const extension = target?.kind === 'extension';
     const track = extension ? target.track : null;
     const segments = extension ? track?.segments || [] : MaweBoot.DATA.segments;
     let index = Number.isInteger(target?.index) ? target.index : -1;
     if (index < 0) {
-      const selected = extension ? selectedExtensionIdxs : selectedIdxs;
+      const selected = extension ? MaweSelection.selectedExtensionIdxs : MaweSelection.selectedIdxs;
       if (selected.size === 1) index = [...selected][0];
-      else index = extension ? lastClickedExtensionIdx : lastClickedIdx;
+      else index = extension ? MaweSelection.lastClickedExtensionIdx : MaweSelection.lastClickedIdx;
     }
     const neighbor = index + direction;
     if (!segments[index] || !segments[neighbor]) {
@@ -24,8 +24,8 @@
       return false;
     }
     const indices = direction < 0 ? [neighbor, index] : [index, neighbor];
-    if (extension) return mergeExtensionSegments(indices, track);
-    mergeSegments(indices);
+    if (extension) return MaweSegmentOps.mergeExtensionSegments(indices, track);
+    MaweSegmentOps.mergeSegments(indices);
     return true;
   }
 

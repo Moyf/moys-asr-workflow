@@ -131,7 +131,7 @@
     if (target.kind === 'extension' || MaweMultiSubtitleCore.getMultiSubtitleState().tracks?.length) {
       MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
     }
-    renderAll({ waveform: 'overlay' });
+    MaweCuePanel.renderAll({ waveform: 'overlay' });
     MawePlaybackLoop.updateWithoutCueListAutoScroll();
     MaweHistory.updateUndoRedoButtons();
     MaweHint.dismissHintCard(card);
@@ -162,18 +162,18 @@
     const cueBeforeFilter = MaweCoreState.container.querySelector(cueSelector);
     if (cueBeforeFilter?.classList.contains('hidden')) {
       MaweDom.searchEl.value = '';
-      refreshSearchClearVisibility();
+      MaweSearch.refreshSearchClearVisibility();
       const filterOver = document.getElementById('filter-over');
       if (filterOver?.classList.contains('active')) filterOver.classList.remove('active');
-      applySearch('');
+      MaweSearch.applySearch('');
     }
 
     if (target.kind === 'extension') {
-      selectOnlyExtension(segmentIndex, target.track || MaweMultiSubtitleCore.getActiveExtensionTrack());
-      lastClickedExtensionIdx = segmentIndex;
+      MaweSelection.selectOnlyExtension(segmentIndex, target.track || MaweMultiSubtitleCore.getActiveExtensionTrack());
+      MaweSelection.lastClickedExtensionIdx = segmentIndex;
     } else {
-      selectOnly(segmentIndex);
-      lastClickedIdx = segmentIndex;
+      MaweSelection.selectOnly(segmentIndex);
+      MaweSelection.lastClickedIdx = segmentIndex;
     }
     const cue = MaweCoreState.container.querySelector(cueSelector);
     if (cue) {
@@ -181,7 +181,7 @@
       // 重新触发一次短暂的高亮，即使用户连续点击多个错误提示也能看出目标。
       void cue.offsetWidth;
       cue.classList.add('validation-target');
-      scrollCueToCenter(cue);
+      MaweCueListAnchor.scrollCueToCenter(cue);
       window.setTimeout(() => cue.classList.remove('validation-target'), 2200);
     }
     MaweCoreState.waveformEditor?.revealTime(segment.start, true);
@@ -236,7 +236,7 @@
         if (overlap) {
           const conflict = document.createElement('div');
           conflict.className = 'hint-project-conflict';
-          conflict.textContent = `第 ${overlap.previousIndex + 1} 条字幕结束于 ${fmtShort(overlap.previous.end)}，第 ${overlap.currentIndex + 1} 条字幕开始于 ${fmtShort(overlap.current.start)}，重叠 ${overlap.overlapMs}ms。`;
+          conflict.textContent = `第 ${overlap.previousIndex + 1} 条字幕结束于 ${MaweCueElements.fmtShort(overlap.previous.end)}，第 ${overlap.currentIndex + 1} 条字幕开始于 ${MaweCueElements.fmtShort(overlap.current.start)}，重叠 ${overlap.overlapMs}ms。`;
 
           const repairDescription = document.createElement('div');
           repairDescription.className = 'hint-project-repair-description';

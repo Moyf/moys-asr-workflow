@@ -192,7 +192,7 @@ test('F seeks directly to the selected subtitle without an intermediate row-end 
   const clickY = box.y + box.height / 2;
   await page.mouse.move(clickX, clickY);
   await page.mouse.down();
-  await page.evaluate(() => renderAll());
+  await page.evaluate(() => MaweCuePanel.renderAll());
   await page.mouse.up();
   await page.keyboard.press('f');
 
@@ -224,7 +224,7 @@ test('waveform subtitle click keeps its time when the row is rebuilt before poin
 
   await page.mouse.move(clickX, clickY);
   await page.mouse.down();
-  await page.evaluate(() => renderAll());
+  await page.evaluate(() => MaweCuePanel.renderAll());
   await page.mouse.up();
 
   await page.waitForFunction((expected) => {

@@ -198,7 +198,7 @@
       setPosition(rect.left, rect.top, { persist: true });
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || !isOpen() || editingState) return;
+      if (event.key !== 'Escape' || !isOpen() || MaweInlineEdit.editingState) return;
       event.preventDefault();
       close();
     });

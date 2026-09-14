@@ -38,7 +38,7 @@ test('blank waveform click keeps its time when the row is rebuilt before pointer
       { start: 60000, end: 62000, text: 'Next row first cue', items: [] },
       { start: 67000, end: 68000, text: 'Next row second cue', items: [] },
     );
-    renderAll();
+    MaweCuePanel.renderAll();
   });
 
   await page.evaluate(() => {

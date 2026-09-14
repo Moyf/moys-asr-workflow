@@ -703,7 +703,7 @@ class EditorAssetTests(unittest.TestCase):
             "  MaweCoreState.waveformEditor?.refreshPointerLine?.();\n"
             "  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，\n"
             "  // 不必等到下一次字幕编辑操作才看到新格式。\n"
-            "  renderAll({ waveform: 'none' });",
+            "  MaweCuePanel.renderAll({ waveform: 'none' });",
             page,
         )
         self.assertIn('function syncProjectTimebaseAndBindingOffsets(', page)
@@ -895,7 +895,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。', page)
         self.assertNotIn('altSnapReversal', page)
         self.assertNotIn('cancelSubtitleDragOnEscape', page)
-        self.assertIn('if (MaweSettings.EDITOR_SETTINGS.cueEditorCancelOnEscape) cancelCuePanelTextEdit();', page)
+        self.assertIn('if (MaweSettings.EDITOR_SETTINGS.cueEditorCancelOnEscape) MaweCuePanel.cancelCuePanelTextEdit();', page)
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-navigation'", page)
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-sticker'", page)
         self.assertIn('class="toolbar main-toolbar"', page)
@@ -931,12 +931,12 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", page)
         self.assertIn('const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref);', page)
         self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', page)
-        self.assertIn("DATA.segments.forEach((seg, i) => cueFragment.appendChild(buildCueEl(seg, i)));", page)
+        self.assertIn("MaweBoot.DATA.segments.forEach((seg, i) => cueFragment.appendChild(MaweCueElements.buildCueEl(seg, i)));", page)
         self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", page)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", page)
-        self.assertIn('const action = getConfiguredEnterAction(event);', page)
-        self.assertIn("if (action === 'split') splitCuePanelAtCursor();", page)
+        self.assertIn('const action = MaweCueEvents.getConfiguredEnterAction(event);', page)
+        self.assertIn("if (action === 'split') MaweCuePanel.splitCuePanelAtCursor();", page)
         self.assertIn('if (e.target === MaweDom.cuePanelText) return;', page)
         self.assertIn('.cue .sticker-slot {\n    flex: 0 1 80px; min-width: 40px;', page)
         self.assertIn('.cue .time {\n    font-size: 11px;', page)
@@ -1034,7 +1034,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("schema: 'moy.asr.gap_removed_keep_regions.v1'", page)
         self.assertIn('waveform-gap-block', page)
         self.assertIn('waveform-gap-handle', page)
-        self.assertIn("addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));", page)
+        self.assertIn("addItem('添加空隙', '', () => MaweGapRemoveUi.addGapAtWaveformTime(timeMs));", page)
         self.assertIn('function addGapAtWaveformTime(timeMs)', page)
         self.assertIn('moveGapRemoveRange', page)
         self.assertIn('copyGapRemoveRange', page)
@@ -1067,7 +1067,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertLess(extra_menu.index('id="download-plain-text"'), extra_menu.index('id="download-resolve-json"'))
         self.assertIn('showGapContextMenu?.(event.clientX, event.clientY, index)', page)
         self.assertIn("gap.removed === false ? '移除区段' : '恢复区段'", page)
-        self.assertIn("addItem('清理空隙', () => clearGap(index), { danger: true });", page)
+        self.assertIn("addItem('清理空隙', () => MaweGapRemoveUi.clearGap(index), { danger: true });", page)
         self.assertIn('id="waveform-pane" aria-label="音频波形" tabindex="-1"', page)
         self.assertIn("this.pane.addEventListener('pointerdown', () => {", page)
         self.assertIn("this.autoScrollTarget = null;", page)
@@ -1104,7 +1104,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('event.composedPath?.().includes(MaweCoreState.player)', page)
         self.assertIn('function isTextEditingTarget(event)', page)
         self.assertIn('function isPlaybackKeyboardTarget(event)', page)
-        self.assertIn('if (editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;', page)
+        self.assertIn('if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;', page)
         self.assertIn('let interceptedSpace = false;', page)
         self.assertIn('e.stopImmediatePropagation();', page)
         self.assertIn('width: 74px; aspect-ratio: 1;', page)

@@ -51,7 +51,7 @@ async function paintFirstSegmentRed(page) {
       name: 'red', value: '#e74c3c', start: segment.start,
       end: Math.max(segment.end, segment.start) || segmentEndMs,
     };
-    renderAll({ waveform: 'none' });
+    MaweCuePanel.renderAll({ waveform: 'none' });
   }, FIRST_SEGMENT_END_MS);
 }
 
@@ -158,7 +158,7 @@ test('assigning a color keeps the subtitle list at its current scroll position',
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
-    renderAll({ waveform: 'none' });
+    MaweCuePanel.renderAll({ waveform: 'none' });
   });
 
   const target = page.locator('.cue[data-idx="30"]');
@@ -211,7 +211,7 @@ test('assigning and clearing a sticker keeps the subtitle row in place', async (
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
-    renderAll({ waveform: 'none' });
+    MaweCuePanel.renderAll({ waveform: 'none' });
   });
 
   const target = page.locator('.cue[data-idx="30"]');
@@ -259,7 +259,7 @@ test('search filtering keeps the selected subtitle in the same visual position',
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
     MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
-    renderAll({ waveform: 'none' });
+    MaweCuePanel.renderAll({ waveform: 'none' });
   });
 
   const target = page.locator('.cue[data-idx="20"]');
@@ -270,7 +270,7 @@ test('search filtering keeps the selected subtitle in the same visual position',
 
   await page.evaluate(() => {
     MaweDom.searchEl.value = 'Keep';
-    applySearch('Keep');
+    MaweSearch.applySearch('Keep');
   });
   await expect(page.locator('#visible-count')).toHaveText('20');
   await expect(target).not.toHaveClass(/hidden/);
@@ -293,7 +293,7 @@ test('search filtering does not jump to the top when the selected subtitle is hi
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
     MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
-    renderAll({ waveform: 'none' });
+    MaweCuePanel.renderAll({ waveform: 'none' });
   });
 
   const target = page.locator('.cue[data-idx="21"]');
@@ -303,7 +303,7 @@ test('search filtering does not jump to the top when the selected subtitle is hi
 
   await page.evaluate(() => {
     MaweDom.searchEl.value = 'Keep';
-    applySearch('Keep');
+    MaweSearch.applySearch('Keep');
   });
   await expect(target).toHaveClass(/hidden/);
   await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);

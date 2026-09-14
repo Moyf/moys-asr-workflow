@@ -56,7 +56,7 @@
   function nearestSubtitleIndex(segments, source, track = 'main') {
     const candidates = (segments || [])
       .map((segment, index) => ({ segment, index }))
-      .filter(({ segment, index }) => segment && !isHiddenDisabled(index, track));
+      .filter(({ segment, index }) => segment && !MaweSelection.isHiddenDisabled(index, track));
     candidates.sort((left, right) => {
       const leftOverlap = subtitleTemporalOverlap(left.segment, source);
       const rightOverlap = subtitleTemporalOverlap(right.segment, source);
@@ -81,7 +81,7 @@
 
   function switchMultiSubtitleTrack(direction) {
     if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return false;
-    const current = getCurrentCuePanelTarget();
+    const current = MaweCuePanel.getCurrentCuePanelTarget();
     if (!current) return false;
     const wantMain = direction < 0;
     if ((wantMain && current.kind === 'main') || (!wantMain && current.kind === 'extension')) return false;
@@ -106,18 +106,18 @@ if (nextIndex < 0) return false;
 
 interruptCueListFollowing();
 if (wantMain) {
-selectOnly(nextIndex);
-lastClickedIdx = nextIndex;
+MaweSelection.selectOnly(nextIndex);
+MaweSelection.lastClickedIdx = nextIndex;
     } else {
-      selectOnlyExtension(nextIndex, extensionTrack);
-      lastClickedExtensionIdx = nextIndex;
+      MaweSelection.selectOnlyExtension(nextIndex, extensionTrack);
+      MaweSelection.lastClickedExtensionIdx = nextIndex;
     }
     const cue = MaweCoreState.container.querySelector(
       wantMain
         ? `.cue[data-idx="${nextIndex}"], .multi-dual-cue[data-main-idx="${nextIndex}"]`
         : `.multi-dual-cue[data-ext-idx="${nextIndex}"], .multi-extension-cue[data-ext-idx="${nextIndex}"]`,
     );
-    if (cue) scrollCueIntoViewIfNeeded(cue);
+    if (cue) MaweCueListAnchor.scrollCueIntoViewIfNeeded(cue);
     return true;
   }
 

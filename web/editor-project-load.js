@@ -38,9 +38,9 @@
     oldPlayer?.parentNode?.replaceChild(emptyPlayer, oldPlayer);
     MaweCoreState.player = emptyPlayer;
     MaweMediaPlayback.bindPlayerEvents(MaweCoreState.player);
-    seekWarned = false;
-    pendingMediaSeekTimeSec = null;
-    autoLoadedMediaReadyNotified = false;
+    MaweNavPreview.seekWarned = false;
+    MaweNavPreview.pendingMediaSeekTimeSec = null;
+    MaweNavPreview.autoLoadedMediaReadyNotified = false;
     MaweCoreState.waveformEditor?.attachPlayer(MaweCoreState.player);
     MaweMediaPlayback.syncPlayerPlaceholder();
   }
@@ -115,7 +115,7 @@ MaweBoot.DATA.workspace = data.workspace || null;
     syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
     MaweHistory.editorHistory.clear();
     MaweHistory.updateUndoRedoButtons();
-    clearSelection();
+    MaweSelection.clearSelection();
     MawePlaybackLoop.lastActive = -1;
     if (MaweCoreState.waveformEditor) {
       MaweCoreState.waveformEditor.setLayoutData(MaweBoot.DATA.workspace, { render: false });
@@ -127,8 +127,8 @@ MaweBoot.DATA.workspace = data.workspace || null;
 MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks, { render: false });
 MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: false });
 }
-    updateGapRemoveUi();
-    renderAll({ waveform: 'full', preserveCueListScroll: false });
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
     MawePlaybackLoop.refreshSubtitlePreview(0, -1);
     updateUnloadedMediaLabel(MaweBoot.DATA.media);
     MaweBoot.FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
@@ -314,7 +314,7 @@ MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: 
     // 这样用户可以用 Ctrl(Cmd)+Z 回到替换前，而不影响后续重做。
     // 先提交当前编辑区，再替换 DATA；否则 clearSelection() 在替换后提交旧面板
     // 文本时，会把旧字幕写回新导入的同一下标，表现为“导入后又变回旧值”。
-    commitCuePanelEdit();
+    MaweCuePanel.commitCuePanelEdit();
     MaweCuePanelState.currentCuePanelIdx = -1;
     MaweCuePanelState.currentCuePanelKind = 'main';
     MaweCuePanelState.currentCuePanelTrackId = null;
@@ -334,10 +334,10 @@ MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: 
     MaweHistory.gapRemoveDirty = false;
     MaweServerSave.projectImportDirty = true;
     MaweHistory.updateUndoRedoButtons();
-    clearSelection({ commitCuePanel: false });
+    MaweSelection.clearSelection({ commitCuePanel: false });
     MawePlaybackLoop.lastActive = -1;
-    updateGapRemoveUi();
-    renderAll({ preserveCueListScroll: false });
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll({ preserveCueListScroll: false });
     MaweBoot.FILENAME_BASE = displayName.replace(/\.[^.]+$/i, '');
     const jsonEl = document.getElementById('json-name');
     if (jsonEl) {

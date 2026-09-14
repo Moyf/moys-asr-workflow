@@ -266,7 +266,7 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 1;
     MaweBoot.DATA.segments[0]._dirty = true;
-    renderAll({ waveform: 'overlay' });
+    MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
   await page.keyboard.press('Control+s');
   const hint = page.locator('.hint-project-error');
@@ -303,7 +303,7 @@ test('larger subtitle-segment overlap requires an explicit repair direction', as
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 2000;
     MaweBoot.DATA.segments[0]._dirty = true;
-    renderAll({ waveform: 'overlay' });
+    MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
 
   await page.keyboard.press('Control+s');

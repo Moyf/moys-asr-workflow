@@ -171,7 +171,7 @@
       }
       target.start = resolved.start;
       target.end = resolved.end;
-      target.items = remapPanelItems(
+      target.items = MaweCuePanel.remapPanelItems(
         targetOriginal.items,
         targetOriginal.start,
         targetOriginal.end,

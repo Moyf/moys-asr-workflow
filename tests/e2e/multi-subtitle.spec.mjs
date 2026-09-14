@@ -1896,7 +1896,7 @@ test('retries a short linked split with B before forcing both tracks to 100ms', 
       { start: 1000, end: 1050, text: 'One' },
       { start: 1050, end: 5000, text: 'Two' },
     ];
-    renderAll({ waveform: 'none' });
+    MaweCuePanel.renderAll({ waveform: 'none' });
   });
 
   const mainText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text');
@@ -1978,7 +1978,7 @@ test('keeps the subtitle-list caret position as the linked main split point', as
       { text: '颗卫星上搭载了一颗', start: 1000, end: main.end },
     ];
     MaweBoot.DATA.multi_subtitle.main_split_mode = 'continuous';
-    renderAll({ waveform: 'none' });
+    MaweCuePanel.renderAll({ waveform: 'none' });
   });
 
   const mainText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text');
@@ -2254,7 +2254,7 @@ test('Shift+arrow snaps selected main and secondary cues in multiple-subtitle mo
     const extension = MaweBoot.DATA.multi_subtitle.tracks[0].segments;
     extension[0].end = 2400;
     extension[1].start = 3000;
-    renderAll();
+    MaweCuePanel.renderAll();
   });
 
   await page.locator('.multi-cue-column.main').filter({ hasText: 'Second line.' }).click();
@@ -3534,7 +3534,7 @@ test('keeps bound extensions synced when a main shared boundary is dragged indep
     MaweBoot.DATA.segments[1].start = 2000;
     MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end = 2000;
     MaweBoot.DATA.multi_subtitle.tracks[0].segments[1].start = 2000;
-    renderAll();
+    MaweCuePanel.renderAll();
   });
 
   await dragHandleBy(

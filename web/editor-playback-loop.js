@@ -96,12 +96,12 @@ cur.classList.add('active');
 }
 lastActive = idx;
 if (!MaweCoreState.player.paused && cueListScroll.following && !cueListScroll.owner
-&& !editingState && !extensionEditingState && document.activeElement !== MaweDom.cuePanelText
+&& !MaweInlineEdit.editingState && !MaweInlineEdit.extensionEditingState && document.activeElement !== MaweDom.cuePanelText
 && !suppressCueListAutoScroll && !waveformPlayheadDragging) {
 const key = playbackCueListKey();
 if (key !== cueListScroll.playbackKey) {
 cueListScroll.playbackKey = key;
-scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'follow' });
+MaweCueListAnchor.scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'follow' });
 }
 }
 }
@@ -127,7 +127,7 @@ scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'follow' });
       MaweCoreState.player.currentTime = skippedGap.end / 1000;
       return;
     }
-    const nowLabel = fmtShort(tMs);
+    const nowLabel = MaweCueElements.fmtShort(tMs);
     if (MaweDom.nowEl.textContent !== nowLabel) MaweDom.nowEl.textContent = nowLabel;
     const idx = findActive(tMs);
     updateActiveCue(idx);
@@ -253,7 +253,7 @@ scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'follow' });
       MaweCoreState.player.currentTime = skippedGap.end / 1000;
       return;
     }
-    MaweDom.nowEl.textContent = fmtShort(tMs);
+    MaweDom.nowEl.textContent = MaweCueElements.fmtShort(tMs);
     const idx = findActive(tMs);
     updateActiveCue(idx);
     refreshSubtitlePreview(tMs, idx);

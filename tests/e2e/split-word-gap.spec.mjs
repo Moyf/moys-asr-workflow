@@ -77,7 +77,7 @@ async function injectSegment(page, segment) {
   await expect(page.locator('.cue[data-idx="0"] .text')).toBeVisible();
   await page.evaluate((value) => {
     MaweBoot.DATA.segments[0] = value;
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   }, segment);
 }
 

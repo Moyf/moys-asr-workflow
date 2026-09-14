@@ -8,14 +8,14 @@
 
 
   function applyCueListDisplaySettings({ preserveCueListScroll = true } = {}) {
-    const cueListAnchor = preserveCueListScroll ? captureCueListRenderAnchor() : null;
+    const cueListAnchor = preserveCueListScroll ? MaweCueListAnchor.captureCueListRenderAnchor() : null;
     MaweDom.cueListShowIndexToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowIndex;
     MaweDom.cueListShowTimeToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowTime;
     MaweDom.cueListShowStickerToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowSticker;
     MaweDom.cueListShowCharcountToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowCharcount;
     MaweDom.cueListAutoScrollOnClickToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick;
     MaweDom.cueListKeepSplitVisibleToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListKeepSplitVisible;
-    syncCharCountThresholdInputs(MaweSettings.EDITOR_SETTINGS.cueListCharcountThreshold);
+    MaweCueElements.syncCharCountThresholdInputs(MaweSettings.EDITOR_SETTINGS.cueListCharcountThreshold);
     MaweDom.hideDisabled = MaweSettings.EDITOR_SETTINGS.cueListHideDisabled;
     MaweDom.hideDisabledToggle.checked = MaweDom.hideDisabled;
     MaweCoreState.container.classList.toggle('hide-disabled', MaweDom.hideDisabled);
@@ -28,7 +28,7 @@
       !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
     );
     MaweCoreState.container.classList.toggle('hide-cue-charcount', !MaweSettings.EDITOR_SETTINGS.cueListShowCharcount);
-    restoreCueListRenderAnchor(cueListAnchor);
+    MaweCueListAnchor.restoreCueListRenderAnchor(cueListAnchor);
   }
 
 
@@ -155,8 +155,8 @@
       if (filterOverSep) filterOverSep.hidden = enabled;
       if (enabled && filterOverButton.classList.contains('active')) {
         filterOverButton.classList.remove('active');
-        clearTemporaryVisibleSplitCues();
-        applySearch(MaweDom.searchEl.value);
+        MaweCueElements.clearTemporaryVisibleSplitCues();
+        MaweSearch.applySearch(MaweDom.searchEl.value);
       }
     }
     MaweCoreState.container.classList.toggle('multi-subtitle-enabled', enabled);

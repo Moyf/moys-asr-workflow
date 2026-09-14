@@ -46,9 +46,9 @@
       // 重新绑定全局引用与事件
       MaweCoreState.player = newPlayer;
       MaweMediaPlayback.bindPlayerEvents(MaweCoreState.player);
-      seekWarned = false;  // 新媒体重新探测 seek 能力
-      pendingMediaSeekTimeSec = null;
-      autoLoadedMediaReadyNotified = false;
+      MaweNavPreview.seekWarned = false;  // 新媒体重新探测 seek 能力
+      MaweNavPreview.pendingMediaSeekTimeSec = null;
+      MaweNavPreview.autoLoadedMediaReadyNotified = false;
     }
 
     try {
@@ -117,7 +117,7 @@
       }
     }
     MaweLoadingProgress.updateEditorLoading(100, `媒体加载完成：${file.name}`);
-    updateGapRemoveUi();
+    MaweGapRemoveUi.updateGapRemoveUi();
     return true;
     } finally {
       finishLoading();

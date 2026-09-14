@@ -41,13 +41,13 @@ test('checked sticker column stays collapsed until the project contains a sticke
 
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].sticker = { name: 'test', filename: 'test.png' };
-    renderAll();
+    MaweCuePanel.renderAll();
   });
   await expect(cueList).not.toHaveClass(/hide-cue-sticker/);
 
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].sticker = null;
-    renderAll();
+    MaweCuePanel.renderAll();
   });
   await expect(cueList).toHaveClass(/hide-cue-sticker/);
 });

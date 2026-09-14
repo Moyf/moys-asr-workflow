@@ -69,7 +69,7 @@
     MaweMultiSubtitleCore.getMultiSubtitleState().main_split_mode = next;
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     // renderAll → updateMultiSubtitleUi 会回写多重字幕下拉框并刷新本提示。
-    renderAll({ waveform: 'none' });
+    MaweCuePanel.renderAll({ waveform: 'none' });
   }
 
   global.MaweSplitMode = Object.freeze({

@@ -127,7 +127,7 @@
     if (renderedStickerOverlayEnabled && renderedStickerSignature === signature) return;
     stickerOverlayContent.replaceChildren(...stickers.map((sticker) => {
       const img = document.createElement('img');
-      img.src = stickerUrl(sticker);
+      img.src = MaweSelection.stickerUrl(sticker);
       img.alt = sticker.name;
       img.title = sticker.name;
       return img;

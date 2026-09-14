@@ -169,8 +169,8 @@
         if (index >= 0 && bindingTrack === track) extension.add(index);
       });
     };
-    selectedIdxs.forEach((index) => addBindingTargets(bindingForMainIndex(index)));
-    selectedExtensionIdxs.forEach((index) => addBindingTargets(bindingForExtensionIndex(index, track)));
+    MaweSelection.selectedIdxs.forEach((index) => addBindingTargets(bindingForMainIndex(index)));
+    MaweSelection.selectedExtensionIdxs.forEach((index) => addBindingTargets(bindingForExtensionIndex(index, track)));
     return { main, extension };
   }
 
@@ -322,7 +322,7 @@
     const safe = clampExtensionRange(null, start, end);
     segment.start = safe.start;
     segment.end = safe.end;
-    segment.items = remapPanelItems(
+    segment.items = MaweCuePanel.remapPanelItems(
       segment.items,
       Number.isFinite(oldStart) ? oldStart : safe.start,
       Number.isFinite(oldEnd) ? oldEnd : safe.end,
@@ -341,13 +341,13 @@
   function extensionTrackSelectionSnapshot(track) {
     if (!track) return null;
     const active = getActiveExtensionTrack()?.id === track.id;
-    const selectedIds = active ? new Set([...selectedExtensionIdxs]
+    const selectedIds = active ? new Set([...MaweSelection.selectedExtensionIdxs]
       .map((index) => track.segments[index]?.id)
       .filter(Boolean)) : new Set();
     const currentId = active && MaweCuePanelState.currentCuePanelKind === 'extension'
       && MaweCuePanelState.currentCuePanelTrackId === track.id
       ? track.segments[MaweCuePanelState.currentCuePanelIdx]?.id : null;
-    const lastClickedId = active ? track.segments[lastClickedExtensionIdx]?.id || null : null;
+    const lastClickedId = active ? track.segments[MaweSelection.lastClickedExtensionIdx]?.id || null : null;
     return { active, selectedIds, currentId, lastClickedId };
   }
 
@@ -355,10 +355,10 @@
 
   function restoreExtensionTrackSelection(track, snapshot) {
     if (!track || !snapshot?.active) return;
-    selectedExtensionIdxs.clear();
+    MaweSelection.selectedExtensionIdxs.clear();
     snapshot.selectedIds.forEach((id) => {
       const index = track.segments.findIndex((segment) => segment?.id === id);
-      if (index >= 0) selectedExtensionIdxs.add(index);
+      if (index >= 0) MaweSelection.selectedExtensionIdxs.add(index);
     });
     if (snapshot.currentId && MaweCuePanelState.currentCuePanelKind === 'extension'
         && MaweCuePanelState.currentCuePanelTrackId === track.id) {
@@ -368,9 +368,9 @@
         MaweCuePanelState.currentCuePanelTrackId = null;
       }
     }
-    lastClickedExtensionIdx = snapshot.lastClickedId
+    MaweSelection.lastClickedExtensionIdx = snapshot.lastClickedId
       ? track.segments.findIndex((segment) => segment?.id === snapshot.lastClickedId) : -1;
-    MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
+    MaweDom.selCountEl.textContent = String(MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size);
   }
 
 
@@ -613,7 +613,7 @@
       || constrained.end !== desiredMainEnd;
     const nextStart = oldStart + (constrained.start - main.start);
     const nextEnd = oldEnd + (constrained.end - main.end);
-    extension.items = remapPanelItems(extension.items, oldStart, oldEnd, nextStart, nextEnd);
+    extension.items = MaweCuePanel.remapPanelItems(extension.items, oldStart, oldEnd, nextStart, nextEnd);
     extension.start = nextStart;
     extension.end = nextEnd;
     main.start = constrained.start;

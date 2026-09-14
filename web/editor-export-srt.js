@@ -19,7 +19,7 @@
       firstEnabledIndex,
       keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
       ...speakerLabelExportOptions(),
-      formatTime: fmtSrtTime,
+      formatTime: MaweCueElements.fmtSrtTime,
     });
   }
 
@@ -32,7 +32,7 @@
   
 
   async function downloadColorSrts(gapRemoved = false) {
-    if (editingState) finishEdit(true);
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     const colors = usedSubtitleColors();
     const removed = gapRemoved ? MaweGapRemoveData.getRemovedGapRanges() : [];
     if (!colors.length) {
@@ -59,7 +59,7 @@
         : undefined,
       ensurePositiveDuration: gapRemoved,
       ...speakerLabelExportOptions(),
-      formatTime: fmtSrtTime,
+      formatTime: MaweCueElements.fmtSrtTime,
     });
     let filenameBase = `${MaweBoot.FILENAME_BASE}${gapSuffix}`;
     // 浏览器不允许从一个文件句柄取得其父目录，因此不再请求文件夹权限。

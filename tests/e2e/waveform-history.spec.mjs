@@ -129,8 +129,8 @@ test('gap click does not show drag styling until the pointer moves', async ({ pa
       manual_corrections: false,
       gaps: [{ start: 12000, end: 12500, removed: true }],
     };
-    updateGapRemoveUi();
-    renderAll({ waveform: 'full' });
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   const block = page.locator('.waveform-gap-block[data-gap-index="0"]').first();
@@ -173,8 +173,8 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
         manual_corrections: false,
         gaps: nextGaps,
       };
-      updateGapRemoveUi();
-      renderAll({ waveform: 'full' });
+      MaweGapRemoveUi.updateGapRemoveUi();
+      MaweCuePanel.renderAll({ waveform: 'full' });
     }, { nextGaps: gaps, nextMode: operationMode });
   };
 
@@ -385,8 +385,8 @@ test('disables subtitles by removed-gap coverage and remaining duration threshol
         { start: 3000, end: 3500, removed: false },
       ],
     };
-    updateGapRemoveUi();
-    renderAll({ waveform: 'full' });
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   await page.locator('#gap-remove-manage').click();
@@ -441,8 +441,8 @@ test('shrinks existing gaps from the gap settings padding', async ({ page }) => 
         { start: 3000, end: 3400, removed: false },
       ],
     };
-    updateGapRemoveUi();
-    renderAll({ waveform: 'full' });
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   await page.locator('#gap-remove-manage').click();
@@ -663,7 +663,7 @@ test('manual text split keeps malformed item timing inside both cues and restore
   };
   await page.evaluate((segment) => {
     MaweBoot.DATA.segments[0] = segment;
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   }, original);
 
   const text = page.locator('.cue[data-idx="0"] .text');
@@ -739,7 +739,7 @@ test('manual text split keeps malformed item timing inside both cues and restore
   ));
   await page.evaluate((segments) => {
     MaweBoot.DATA.segments = segments.map((segment) => JSON.parse(JSON.stringify(segment)));
-    renderAll();
+    MaweCuePanel.renderAll();
   }, testSegments());
   await page.keyboard.press('Control+s');
   expect((await restoreResponse).ok()).toBe(true);
@@ -842,7 +842,7 @@ test('C merge keeps the subtitle list at its current position', async ({ page })
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
     MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
-    renderAll({ waveform: 'none' });
+    MaweCuePanel.renderAll({ waveform: 'none' });
     const list = document.getElementById('cues-container');
     const target = list.querySelector('.cue[data-idx="30"]');
     list.scrollTop = Math.max(
@@ -918,7 +918,7 @@ test('retries an inline split with B or Enter and clamps both halves to 100ms', 
       { start: segment.start, end: segment.start + 50, text: 'Alpha' },
       { start: segment.start + 50, end: segment.end, text: 'Bravo' },
     ];
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   const cue = page.locator('.cue[data-idx="0"]');
@@ -1276,7 +1276,7 @@ test('Home and End keep extension cue-list navigation on the exact track', async
       }],
       bindings: [],
     };
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
   const extensionCue = page.locator(
     '.multi-dual-cue[data-ext-idx="1"] .multi-cue-column.extension',
@@ -1290,12 +1290,12 @@ test('Home and End keep extension cue-list navigation on the exact track', async
 
   await page.keyboard.press('Home');
   await expect(page.locator('.multi-dual-cue[data-ext-idx="0"]')).toHaveClass(/selected/);
-  expect(await page.evaluate(() => getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
+  expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
 
   await page.keyboard.press('End');
   await expect(page.locator('.multi-dual-cue[data-ext-idx="2"]')).toHaveClass(/selected/);
-  expect(await page.evaluate(() => getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
+  expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
 });
 
@@ -1367,7 +1367,7 @@ test('requires a second B in the split dialog before forcing a short-side cut', 
       { start: segment.start, end: segment.start + 50, text: 'Alpha' },
       { start: segment.start + 50, end: segment.end, text: 'Bravo' },
     ];
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   const row = page.locator('.waveform-row').first();
@@ -1893,7 +1893,7 @@ test('C merges a common group and Shift+A/D extends the subtitle selection', asy
       MaweBoot.DATA.segments[index].color_ref = { name: 'red', headIdx: 0 };
       MaweBoot.DATA.segments[index].sticker_ref = { name: 'reaction', headIdx: 0 };
     }
-    renderAll();
+    MaweCuePanel.renderAll();
   });
 
   await cues.nth(1).locator('.text').click();
@@ -1958,7 +1958,7 @@ test('colored subtitles export per-color SRT files including the uncolored defau
       MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
       MaweBoot.DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
       MaweBoot.DATA.segments[2].color = { name: 'blue', value: '#168cff', start: 100000, end: 108000 };
-      renderAll();
+      MaweCuePanel.renderAll();
       window.showSaveFilePicker = undefined;
     });
 
@@ -2002,7 +2002,7 @@ test('subtitle export keeps a stable menu and hides colors without enabled color
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 8000 };
     MaweBoot.DATA.segments[0].disabled = true;
-    renderAll();
+    MaweCuePanel.renderAll();
   });
   await expect(page.locator('#subtitle-export-dropdown')).toBeVisible();
   await expect(page.locator('#download-color-srt')).toBeHidden();
@@ -2021,8 +2021,8 @@ test('subtitle export keeps a stable menu and hides colors without enabled color
       manual_corrections: false,
       gaps: [{ start: 1000, end: 1600, removed: true }],
     };
-    updateGapRemoveUi();
-    renderAll();
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll();
   });
   await expect(page.locator('#gap-removed-export-dropdown')).toBeVisible();
   await page.locator('#gap-removed-export-btn').click();
@@ -2219,8 +2219,8 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
         manual_corrections: false,
         gaps: [{ start: 20000, end: 30000, removed: true }],
       };
-      updateGapRemoveUi();
-      renderAll();
+      MaweGapRemoveUi.updateGapRemoveUi();
+      MaweCuePanel.renderAll();
       window.showSaveFilePicker = undefined;
     });
 
@@ -2271,8 +2271,8 @@ test('server media loads from the resolved project path and OTIO keeps its absol
         { start: 21560, end: 21940, removed: true },
       ],
     };
-    updateGapRemoveUi();
-    renderAll();
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll();
     window.showSaveFilePicker = undefined;
   });
   const downloadPromise = page.waitForEvent('download');

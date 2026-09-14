@@ -1,0 +1,28 @@
+{
+  "file": "editor-cue-panel.js",
+  "ns": "MaweCuePanel",
+  "header": "当前字幕面板：renderAll 协调、目标切换与时间/items 重映射。",
+  "symbols": [
+    "renderAll",
+    "parsePanelTime",
+    "remapPanelItems",
+    "getCurrentCuePanelTarget",
+    "getCuePanelTextElement",
+    "setCuePanelTarget",
+    "setCurrentCuePanelIndex",
+    "setCurrentCuePanelExtensionIndex",
+    "ensureCuePanelUndo",
+    "commitCuePanelEdit",
+    "renderCurrentCuePanel",
+    "focusCuePanelText",
+    "dirtyFlagSnapshot",
+    "restoreDirtyFlag",
+    "captureCuePanelTextEditSnapshot",
+    "restoreCuePanelTextEditSnapshot",
+    "discardPendingCuePanelUndo",
+    "cancelCuePanelTextEdit",
+    "exitCuePanelEdit",
+    "navigateCuePanel",
+    "splitCuePanelAtCursor"
+  ]
+}

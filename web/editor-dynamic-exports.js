@@ -14,9 +14,9 @@
 
 
   function openFcp7ExportModal() {
-    if (editingState) finishEdit(true);
-    if (extensionEditingState) finishExtensionEdit(true);
-    commitCuePanelEdit();
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+    if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
+    MaweCuePanel.commitCuePanelEdit();
     const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
     const extensionOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="main_and_extension"]');
     extensionOption.disabled = !extensionAvailable;
@@ -109,9 +109,9 @@
 
   function openLottieExportModal() {
     if (lottieExportBlocked()) return;
-    if (editingState) finishEdit(true);
-    if (extensionEditingState) finishExtensionEdit(true);
-    commitCuePanelEdit();
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+    if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
+    MaweCuePanel.commitCuePanelEdit();
     const extensionOption = MaweDom.lottieExportTrack?.querySelector('option[value="extension"]');
     const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
     if (extensionOption) extensionOption.disabled = !extensionAvailable;
@@ -230,9 +230,9 @@
 
   function openOgrafExportModal() {
     if (ografExportBlocked()) return;
-    if (editingState) finishEdit(true);
-    if (extensionEditingState) finishExtensionEdit(true);
-    commitCuePanelEdit();
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+    if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
+    MaweCuePanel.commitCuePanelEdit();
     const extensionOption = MaweDom.ografExportTrack?.querySelector('option[value="extension"]');
     const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
     if (extensionOption) extensionOption.disabled = !extensionAvailable;

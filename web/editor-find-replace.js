@@ -45,7 +45,7 @@
 
 
   function normalizeBatchSelection(indexes) {
-    const candidates = Array.isArray(indexes) ? indexes : [...selectedIdxs];
+    const candidates = Array.isArray(indexes) ? indexes : [...MaweSelection.selectedIdxs];
     return [...new Set(candidates
       .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length))]
       .sort((a, b) => a - b);
@@ -150,9 +150,9 @@
 
 
   function openReplaceModal(scope) {
-    if (editingState) finishEdit(true);
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     replaceSelectionSnapshot = normalizeBatchSelection(
-      Array.isArray(scope) && scope.length ? scope : [...selectedIdxs],
+      Array.isArray(scope) && scope.length ? scope : [...MaweSelection.selectedIdxs],
     );
     replaceSelectedOnlyCb.checked = replaceSelectionSnapshot.length > 0;
     refreshReplaceSelectionControl();

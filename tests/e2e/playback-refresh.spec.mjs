@@ -70,7 +70,7 @@ test('playback refreshes the subtitle preview and playhead without timeupdate', 
     };
     const media = document.getElementById('player');
     media.currentTime = 0.02;
-    renderAll();
+    MaweCuePanel.renderAll();
     document.getElementById('extension-overlay-toggle').checked = true;
     MawePlaybackLoop.update();
   });
