@@ -267,7 +267,7 @@ class GuiConfigTests(unittest.TestCase):
         provider = gui_config.PROVIDERS[0]
 
         self.assertEqual(provider.id, "qwen")
-        self.assertIn("aliyun", provider.key_url)
+        self.assertEqual(provider.key_url, "https://platform.qianwenai.com/home/")
         self.assertEqual(provider.models[0].id, "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(provider.regions[0][0], "beijing")
         self.assertEqual(provider.languages[0][0], "")
@@ -513,13 +513,13 @@ class GuiConfigTests(unittest.TestCase):
             self.assertTrue(config.per_video_subfolder)
             self.assertFalse(config.attach_model_name)
 
-    def test_effective_config_parses_notify_on_complete_default_on(self) -> None:
-        """Given the completion-notification toggle, When resolved, Then it defaults on and follows env."""
+    def test_effective_config_parses_notify_on_complete_default_off(self) -> None:
+        """Given the completion-notification toggle, When resolved, Then it defaults off and follows env."""
         with tempfile.TemporaryDirectory() as temp_dir:
             env_path = Path(temp_dir) / ".env"
 
             with mock.patch.dict(os.environ, {}, clear=True):
-                self.assertTrue(gui_config.effective_config(env_path).notify_on_complete)
+                self.assertFalse(gui_config.effective_config(env_path).notify_on_complete)
 
             _ = env_path.write_text("MAW_GUI_NOTIFY_ON_COMPLETE=false\n", encoding="utf-8")
             with mock.patch.dict(os.environ, {}, clear=True):

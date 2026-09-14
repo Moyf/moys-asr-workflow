@@ -105,7 +105,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(config["localRuntime"]["status"], "checking")
         self.assertEqual(config["ocrRuntime"]["status"], "checking")
         self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
-        self.assertEqual(config["providers"][0]["keyUrl"], "https://help.aliyun.com/zh/model-studio/get-api-key")
+        self.assertEqual(config["providers"][0]["keyUrl"], "https://platform.qianwenai.com/home/")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
         self.assertEqual(len(config["providers"][1]["commonLanguages"]), 8)
@@ -700,16 +700,16 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(config["perVideoSubfolder"])
         self.assertFalse(config["attachModelName"])
 
-    def test_notify_preference_defaults_on_and_round_trips(self) -> None:
+    def test_notify_preference_defaults_off_and_round_trips(self) -> None:
         """Given the completion-notification toggle, When saved, Then .env and config reflect it."""
         os.environ.pop("MAW_GUI_NOTIFY_ON_COMPLETE", None)
-        self.assertTrue(self.api.get_config()["notifyOnComplete"])
+        self.assertFalse(self.api.get_config()["notifyOnComplete"])
 
-        result = self.api.save_prefs({"notifyOnComplete": False})
+        result = self.api.save_prefs({"notifyOnComplete": True})
 
         self.assertTrue(result["ok"])
-        self.assertIn("MAW_GUI_NOTIFY_ON_COMPLETE=false", self.env_path.read_text(encoding="utf-8"))
-        self.assertFalse(self.api.get_config()["notifyOnComplete"])
+        self.assertIn("MAW_GUI_NOTIFY_ON_COMPLETE=true", self.env_path.read_text(encoding="utf-8"))
+        self.assertTrue(self.api.get_config()["notifyOnComplete"])
 
     def test_send_notification_delegates_to_platform_helper(self) -> None:
         """Given a completion message, When the page asks for a notification, Then it is sent once."""
