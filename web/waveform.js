@@ -4423,6 +4423,7 @@
       // Ctrl(Cmd)+click toggles selection without starting a drag
       if (event.ctrlKey || event.metaKey) {
         if (track === 'extension') this.options.toggleExtensionSelection?.(index);
+        else if (track === 'overlay') this.options.toggleOverlaySelection?.(index);
         else this.options.toggleCueSelection?.(index);
         return;
       }

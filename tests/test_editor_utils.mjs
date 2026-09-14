@@ -4179,6 +4179,19 @@ test('rejects serializer input that lacks media path, duration, or frame profile
   assert.throws(() => helpers.serializeFcp7Xml({ ...plan, frameProfile: null }), /frame profile/);
 });
 
+test('rejects export plans whose overlay stickers fall outside the output duration', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 }, segments: [],
+  }, { mode: 'source' });
+  assert.throws(
+    () => helpers.serializeMappedSrt({ ...plan, overlayStickers: [{ startMs: 0, endMs: 1200 }] }),
+    /export sticker outside output duration/,
+  );
+  assert.doesNotThrow(() => helpers.serializeMappedSrt({
+    ...plan, overlayStickers: [{ startMs: 0, endMs: 800 }],
+  }, { subtitleTracks: 'main' }));
+});
+
 test('translates every project-export option, outcome, and warning key in both locales', () => {
   const keys = [
     '导出时间线模式', '去空隙时间线', '原始时间线', '导出帧率', '写入原生字幕文本对象',

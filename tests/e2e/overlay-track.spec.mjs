@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test';
-import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
@@ -677,4 +676,95 @@ test('moves an overlay cue back to the main track from the list context menu wit
   expect(exported.segments.map((segment) => segment.id)).toEqual(['main-001', 'overlay-001', 'main-002']);
   expect(exported.overlay_track?.segments || []).toHaveLength(0);
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
+test('splits an overlapping SRT into main and overlay tracks on import', async ({ page }) => {
+  const dualLayerSrt = [
+    '1', '00:00:00,000 --> 00:00:02,000', '第一层一', '',
+    '2', '00:00:00,500 --> 00:00:01,800', '第二层重叠', '',
+    '3', '00:00:03,000 --> 00:00:04,000', '第一层二', '',
+  ].join('\n');
+  await page.goto(server.url);
+  await page.evaluate((text) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File([text], 'dual.srt', { type: 'text/plain' }));
+    document.body.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
+  }, dualLayerSrt);
+  await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
+  await expect(page.locator('.cue[data-idx]')).toHaveCount(2);
+
+  const exported = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(exported.segments.map((segment) => segment.text)).toEqual(['第一层一', '第一层二']);
+  expect(exported.overlay_track.enabled).toBe(true);
+  expect(exported.overlay_track.segments.map((segment) => segment.text)).toEqual(['第二层重叠']);
+});
+
+test('rejects a third overlapping layer with a clear error', async ({ page }) => {
+  const tripleLayerSrt = [
+    '1', '00:00:00,000 --> 00:00:02,000', '主轨字幕', '',
+    '2', '00:00:00,500 --> 00:00:01,800', '叠加字幕', '',
+    '3', '00:00:01,000 --> 00:00:01,500', '第三层字幕', '',
+  ].join('\n');
+  await page.goto(server.url);
+  await page.evaluate((text) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File([text], 'triple.srt', { type: 'text/plain' }));
+    document.body.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
+  }, tripleLayerSrt);
+  await expect(page.locator('.hint-card', { hasText: '第三层重叠' })).toBeVisible();
+  await expect(page.locator('.overlay-track-cue')).toHaveCount(0);
+  await expect(page.locator('.cue[data-idx]')).toHaveCount(0);
+});
+
+test('clears a stale overlay track when a plain SRT replaces the main track', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 200, end: 1800, text: 'stale overlay' }],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    window.__assignLog = [];
+    let track = DATA.overlay_track ?? null;
+    Object.defineProperty(DATA, 'overlay_track', {
+      configurable: true,
+      get() { return track; },
+      set(next) {
+        window.__assignLog.push({
+          kind: 'assign',
+          enabled: next?.enabled ?? null,
+          count: next?.segments?.length ?? null,
+          stack: new Error().stack?.split('\n').slice(2, 5).join(' | '),
+        });
+        track = next;
+      },
+    });
+    setInterval(() => {
+      if (track && track.enabled !== window.__lastEnabled) {
+        window.__assignLog.push({ kind: 'enabled-flip', enabled: track.enabled });
+        window.__lastEnabled = track.enabled;
+      }
+    }, 40);
+  });
+  await dropProject(page, project);
+  await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
+
+  const plainSrt = ['1', '00:00:00,000 --> 00:00:02,000', 'fresh cue', ''].join('\n');
+  await page.evaluate((text) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File([text], 'plain.srt', { type: 'text/plain' }));
+    document.body.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
+  }, plainSrt);
+  await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
+  await page.locator('#multi-subtitle-import-replace').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  await expect(page.locator('.overlay-track-cue')).toHaveCount(0);
+  const exported = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(exported.segments.map((segment) => segment.text)).toEqual(['fresh cue']);
+  expect(exported.overlay_track.enabled).toBe(false);
+  expect(exported.overlay_track.segments).toHaveLength(0);
 });

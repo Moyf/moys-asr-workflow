@@ -571,6 +571,7 @@
     '按文字位置拆分': 'Split at text position', '跳转到字幕并播放': 'Seek to subtitle and play',
     '分配表情包…': 'Assign sticker…', '删除表情包': 'Remove sticker',
     '标记颜色': 'Mark color', '清除颜色': 'Clear color', '已清除颜色': 'Color cleared',
+    '正在加载工程…': 'Loading project…',
     '切换主字幕语言类型': 'Change main subtitle language type',
     '启用此条': 'Enable this subtitle', '禁用此条': 'Disable this subtitle',
     '删除字幕': 'Delete subtitle', '拓展表情包时长': 'Extend sticker duration',

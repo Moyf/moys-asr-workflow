@@ -4390,7 +4390,9 @@
     if (cueLists.flat().some((cue) => cue.startMs < 0 || cue.endMs > outputDuration || cue.endMs <= cue.startMs)) {
       throw new Error('export cue outside output duration');
     }
-    if ((Array.isArray(plan.stickers) ? plan.stickers : []).some((sticker) => (
+    // 主轨与叠加轨的表情包导出计划共用同一条时间校验，非法计划不允许过校验关。
+    const stickerLists = [plan.stickers, plan.overlayStickers].filter(Array.isArray);
+    if (stickerLists.flat().some((sticker) => (
       sticker.startMs < 0 || sticker.endMs > outputDuration || sticker.endMs <= sticker.startMs
     ))) throw new Error('export sticker outside output duration');
     return plan;
