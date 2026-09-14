@@ -178,9 +178,9 @@ test('assigning and clearing a sticker keeps the subtitle row in place', async (
   });
 
   await page.evaluate(() => {
-    stickerTargetMode = 'single';
-    stickerTargetIdxs = [30];
-    assignSticker({ name: 'reaction', filename: 'reaction.png' });
+    MaweStickerPicker.stickerTargetMode = 'single';
+    MaweStickerPicker.stickerTargetIdxs = [30];
+    MaweStickerPicker.assignSticker({ name: 'reaction', filename: 'reaction.png' });
   });
 
   await expect(target).toHaveAttribute('data-sticker-update-sentinel', 'preserve');
@@ -189,8 +189,8 @@ test('assigning and clearing a sticker keeps the subtitle row in place', async (
     .toBe(beforeTop);
 
   await page.evaluate(() => {
-    stickerTargetIdxs = [30];
-    clearStickerOnTargets();
+    MaweStickerPicker.stickerTargetIdxs = [30];
+    MaweStickerPicker.clearStickerOnTargets();
   });
   await expect(target).toHaveAttribute('data-sticker-update-sentinel', 'preserve');
   await expect(target.locator('.sticker-slot')).toBeEmpty();

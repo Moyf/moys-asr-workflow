@@ -37,9 +37,10 @@
   function navigateCueListBoundary(key) {
     const target = getCurrentCuePanelTarget();
     if (!target) return false;
-    const boundary = renderedCueBoundaryTarget(target, key === 'Home' ? 'first' : 'last');
-    if (!boundary) return false;
-    if (target.kind === 'extension') {
+const boundary = renderedCueBoundaryTarget(target, key === 'Home' ? 'first' : 'last');
+if (!boundary) return false;
+interruptCueListFollowing();
+if (target.kind === 'extension') {
       selectOnlyExtension(boundary.index, target.track);
       lastClickedExtensionIdx = boundary.index;
     } else {
@@ -163,11 +164,12 @@
         nextIndex = nearestSubtitleIndex(extensionTrack?.segments, current.segment, 'extension');
       }
     }
-    if (nextIndex < 0) return false;
+if (nextIndex < 0) return false;
 
-    if (wantMain) {
-      selectOnly(nextIndex);
-      lastClickedIdx = nextIndex;
+interruptCueListFollowing();
+if (wantMain) {
+selectOnly(nextIndex);
+lastClickedIdx = nextIndex;
     } else {
       selectOnlyExtension(nextIndex, extensionTrack);
       lastClickedExtensionIdx = nextIndex;

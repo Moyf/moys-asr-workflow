@@ -54,11 +54,11 @@ async function revealOverlay(page) {
 }
 
 function readGeometry(page) {
-  return page.evaluate(() => JSON.parse(JSON.stringify(DATA.preview.subtitle)));
+  return page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.preview.subtitle)));
 }
 
 function readSegments(page) {
-  return page.evaluate(() => DATA.segments.map((s) => ({
+  return page.evaluate(() => MaweBoot.DATA.segments.map((s) => ({
     start: s.start,
     end: s.end,
     text: s.text,

@@ -55,6 +55,7 @@
 
 
   function pushUndo(label, { captureView = false } = {}) {
+    rememberCueListMutation();
     const record = window.AsrEditorUtils.buildHistoryRecord(
       'segments', label, snapshotSegments(), captureView ? snapshotEditorSelection() : null,
     );
@@ -203,9 +204,11 @@
       applyPreviewState(record.preview);
       return true;
     }
-    const snapshot = record.segs && Array.isArray(record.segs.segments)
-      ? record.segs : { segments: record.segs, multi_subtitle: MaweBoot.DATA.multi_subtitle };
-    const previousWaveformStructure = MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
+const snapshot = record.segs && Array.isArray(record.segs.segments)
+? record.segs : { segments: record.segs, multi_subtitle: MaweBoot.DATA.multi_subtitle };
+// 视口属于本次撤销动作，不随历史快照恢复。
+const cueListAnchor = captureCueListRenderAnchor();
+const previousWaveformStructure = MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
     MaweBoot.DATA.segments.length = 0;
     (snapshot.segments || []).forEach(s => MaweBoot.DATA.segments.push(s));
     MaweBoot.DATA.multi_subtitle = snapshot.multi_subtitle || {
@@ -222,9 +225,10 @@
     MawePlaybackLoop.lastActive = -1;
     const structureChanged = previousWaveformStructure
       !== MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
-    renderAll({
-      waveform: structureChanged ? 'full' : 'overlay',
-    });
+renderAll({
+waveform: structureChanged ? 'full' : 'overlay',
+cueListAnchor,
+});
     if (record.view) restoreEditorSelection(record.view);
     return true;
   }

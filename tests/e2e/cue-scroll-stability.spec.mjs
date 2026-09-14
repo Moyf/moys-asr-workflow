@@ -23,7 +23,7 @@ async function open(page, options = {}) {
     cueListAutoScrollOnClick: false, clickBehavior: 'select-only', splitAutoSubmit: false,
   })));
   await page.goto(server.url);
-  await page.waitForFunction(() => typeof renderAll === 'function' && DATA.segments.length > 0);
+  await page.waitForFunction(() => typeof renderAll === 'function' && MaweBoot.DATA.segments.length > 0);
   await page.locator('#editor-loading').waitFor({ state: 'hidden' }).catch(() => {});
 }
 
@@ -48,7 +48,7 @@ for (const mode of ['main', 'extension', 'both']) {
         await page.locator(textSelector(index + 1, kind, mode)).click({ modifiers: ['Shift'] });
         // Long unbound dual rows can make the second click expose only the
         // bottom of the source row. Explicitly place that source below the toolbar.
-        await page.evaluate(({ index, kind }) => scrollCueToCenter(container.querySelector(
+        await page.evaluate(({ index, kind }) => scrollCueToCenter(MaweCoreState.container.querySelector(
           `.cue[data-${kind === 'main' ? 'idx' : 'ext-idx'}="${index}"]`)), { index, kind });
         await page.waitForTimeout(300);
         const original = await visual(page, index, kind);
@@ -92,10 +92,10 @@ for (const mode of ['main', 'extension', 'both']) {
         await stable(page, beforeEdit, index, 'inline edit', info, kind);
         await page.locator(selector).click();
         const nearby = await page.evaluate(({ index, kind }) => {
-          const source = container.querySelector(`.cue[data-${kind === 'main' ? 'idx' : 'ext-idx'}="${index}"]`);
+          const source = MaweCoreState.container.querySelector(`.cue[data-${kind === 'main' ? 'idx' : 'ext-idx'}="${index}"]`);
           const origin = source.getBoundingClientRect().top;
-          const bounds = container.getBoundingClientRect();
-          return [...container.querySelectorAll(':scope > .cue')].filter(el => el !== source)
+          const bounds = MaweCoreState.container.getBoundingClientRect();
+          return [...MaweCoreState.container.querySelectorAll(':scope > .cue')].filter(el => el !== source)
             .map(el => ({ id: el.dataset.mainId || el.dataset.extId,
               key: el.dataset.mainId ? 'mainId' : 'extId', top: el.getBoundingClientRect().top - bounds.top,
               distance: Math.abs(el.getBoundingClientRect().top - origin) }))
@@ -108,8 +108,8 @@ for (const mode of ['main', 'extension', 'both']) {
         });
         await page.waitForTimeout(350);
         const readNeighbors = () => page.evaluate(nearby => nearby.map(old => {
-          const row = [...container.querySelectorAll(':scope > .cue')].find(el => el.dataset[old.key] === old.id);
-          return row ? { ...old, now: row.getBoundingClientRect().top - container.getBoundingClientRect().top } : null;
+          const row = [...MaweCoreState.container.querySelectorAll(':scope > .cue')].find(el => el.dataset[old.key] === old.id);
+          return row ? { ...old, now: row.getBoundingClientRect().top - MaweCoreState.container.getBoundingClientRect().top } : null;
         }).filter(Boolean), nearby);
         const afterDelete = await readNeighbors();
         await page.waitForTimeout(2100);
@@ -120,7 +120,7 @@ for (const mode of ['main', 'extension', 'both']) {
         expect(Math.max(...lateDelete.map((row, i) => Math.abs(row.now - afterDelete[i].now))))
           .toBeLessThan(1.5);
         expect(Math.min(...lateDelete.map(row => Math.abs(row.now - row.top)))).toBeLessThan(1.5);
-        expect(await page.evaluate(({ kind, id }) => (kind === 'main' ? DATA.segments : getActiveExtensionTrack().segments)
+        expect(await page.evaluate(({ kind, id }) => (kind === 'main' ? MaweBoot.DATA.segments : MaweMultiSubtitleCore.getActiveExtensionTrack().segments)
           .some(s => s.id === id), { kind, id: beforeEdit.id })).toBe(false);
       });
     }
@@ -136,7 +136,7 @@ test('undo after browsing keeps current viewport and restores selection identity
   const before = await visual(page, 25);
   await page.keyboard.press(undoKey);
   await stable(page, before, 25, 'undo after browsing', info);
-  const state = await page.evaluate(() => ({ selected: [...selectedIdxs].map(i => DATA.segments[i]?.id),
+  const state = await page.evaluate(() => ({ selected: [...selectedIdxs].map(i => MaweBoot.DATA.segments[i]?.id),
     panel: getCurrentCuePanelTarget()?.segment?.id || null }));
   expect(state.selected.every(Boolean)).toBe(true);
 });
@@ -146,15 +146,15 @@ test('background saves and delayed waveform preserve nodes focus selection and l
   await position(page, 100);
   await page.locator('.cue[data-idx="100"] .text').click();
   await page.evaluate(() => {
-    window.originalRows = [...container.querySelectorAll(':scope > .cue')];
+    window.originalRows = [...MaweCoreState.container.querySelectorAll(':scope > .cue')];
     window.listRebuilds = 0;
     new MutationObserver(records => {
       listRebuilds += records.filter(r => [...r.removedNodes].some(n => n.classList?.contains('cue'))).length;
-    }).observe(container, { childList: true });
-    DATA.segments[100]._dirty = true;
-    scheduleAutoSave();
-    cuePanelText.focus({ preventScroll: true });
-    cuePanelText.setSelectionRange(1, 3);
+    }).observe(MaweCoreState.container, { childList: true });
+    MaweBoot.DATA.segments[100]._dirty = true;
+    MaweServerSave.scheduleAutoSave();
+    MaweDom.cuePanelText.focus({ preventScroll: true });
+    MaweDom.cuePanelText.setSelectionRange(1, 3);
   });
   const before = await visual(page, 100);
   const start = Date.now();
@@ -163,8 +163,8 @@ test('background saves and delayed waveform preserve nodes focus selection and l
   expect(Date.now() - start).toBeGreaterThan(28000);
   await stable(page, before, 100, 'default 30s save', info);
   expect(await page.evaluate(() => ({ rebuilds: listRebuilds, same: originalRows.every(n => n.isConnected),
-    focus: document.activeElement === cuePanelText, range: [cuePanelText.selectionStart, cuePanelText.selectionEnd],
-    selected: [...selectedIdxs], dirty: hasUnsavedProjectChanges() }))).toEqual({
+    focus: document.activeElement === MaweDom.cuePanelText, range: [MaweDom.cuePanelText.selectionStart, MaweDom.cuePanelText.selectionEnd],
+    selected: [...selectedIdxs], dirty: MaweServerSave.hasUnsavedProjectChanges() }))).toEqual({
     rebuilds: 0, same: true, focus: true, range: [1, 3], selected: [100], dirty: false,
   });
   await page.locator('#cue-panel-text').fill('合成失焦保存');
@@ -178,20 +178,20 @@ test('background saves and delayed waveform preserve nodes focus selection and l
     await new Promise(resolve => { releaseWaveform = resolve; });
     await route.fulfill({ json: { ok: true, status: 'ready', waveform_reapeaks: server.project.waveform } });
   });
-  await page.evaluate(() => { SERVER_CONFIG.waveformUrl = '/synthetic-delayed-waveform'; void loadDeferredReapeaks();
-    cuePanelText.focus({ preventScroll: true }); cuePanelText.setSelectionRange(0, 2); });
+  await page.evaluate(() => { MaweBoot.SERVER_CONFIG.waveformUrl = '/synthetic-delayed-waveform'; void MaweWaveformInit.loadDeferredReapeaks();
+    MaweDom.cuePanelText.focus({ preventScroll: true }); MaweDom.cuePanelText.setSelectionRange(0, 2); });
   await expect.poll(() => Boolean(releaseWaveform)).toBe(true);
   releaseWaveform();
-  await page.waitForFunction(() => Boolean(waveformEditor.reapeaksPayload));
+  await page.waitForFunction(() => Boolean(MaweCoreState.waveformEditor.reapeaksPayload));
   await stable(page, before, 100, 'deferred waveform', info);
   expect(await page.evaluate(() => listRebuilds)).toBe(0);
   expect(await page.evaluate(() => originalRows.every(n => n.isConnected))).toBe(true);
-  expect(await page.evaluate(() => document.activeElement === cuePanelText)).toBe(true);
+  expect(await page.evaluate(() => document.activeElement === MaweDom.cuePanelText)).toBe(true);
 
   await page.route('**/api/project', route => route.fulfill({ status: 500, json: { ok: false, error: '合成保存失败' } }));
-  await page.evaluate(() => { DATA.segments[100]._dirty = true; });
-  expect(await page.evaluate(() => saveCurrentProject({ silent: true }))).toBe(false);
-  expect(await page.evaluate(() => hasUnsavedProjectChanges())).toBe(true);
+  await page.evaluate(() => { MaweBoot.DATA.segments[100]._dirty = true; });
+  expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }))).toBe(false);
+  expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(true);
   expect(await page.evaluate(() => listRebuilds)).toBe(0);
 });
 
@@ -206,7 +206,7 @@ test('save in flight retains newer edits and inline caret', async ({ page }, inf
     await new Promise(resolve => { releaseSave = resolve; });
     await route.continue();
   });
-  await page.evaluate(() => { window.pendingSave = saveCurrentProject({ silent: true }); });
+  await page.evaluate(() => { window.pendingSave = MaweProjectSave.saveCurrentProject({ silent: true }); });
   await expect.poll(() => Boolean(releaseSave)).toBe(true);
   await page.keyboard.insertText('在途新改字');
   const before = await visual(page, 75);
@@ -216,7 +216,7 @@ test('save in flight retains newer edits and inline caret', async ({ page }, inf
   await stable(page, before, 75, 'in-flight edit', info);
   expect(await page.evaluate(() => ({ node: getSelection().anchorNode.textContent, offset: getSelection().anchorOffset }))).toEqual(caret);
   expect(await text.getAttribute('contenteditable')).toBe('plaintext-only');
-  expect(await page.evaluate(() => hasUnsavedProjectChanges())).toBe(true);
+  expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(true);
 });
 
 for (const mode of ['main', 'extension']) {
@@ -228,11 +228,11 @@ for (const mode of ['main', 'extension']) {
     const row = page.locator(textSelector(75, kind, mode));
     await row.dblclick();
     await page.keyboard.insertText('仅备份合成文字');
-    await page.evaluate(() => updateEditorSettings({ projectBackupEnabled: true, projectBackupLimit: 1000 }));
+    await page.evaluate(() => MaweSettings.updateEditorSettings({ projectBackupEnabled: true, projectBackupLimit: 1000 }));
     const before = await visual(page, 75, kind);
     const caret = await page.evaluate(() => ({ node: getSelection().anchorNode.textContent, offset: getSelection().anchorOffset }));
     const response = page.waitForResponse(r => r.url().endsWith('/api/project') && r.request().method() === 'POST');
-    expect(await page.evaluate(() => saveProjectToServer({ silent: true, backupOnly: true }))).toBe(true);
+    expect(await page.evaluate(() => MaweProjectSave.saveProjectToServer({ silent: true, backupOnly: true }))).toBe(true);
     const saved = await response;
     expect(saved.ok()).toBe(true);
     const result = await saved.json();
@@ -241,12 +241,12 @@ for (const mode of ['main', 'extension']) {
     const backup = JSON.parse(readFileSync(join(server.directory, '_maw', 'backups', result.backup), 'utf8'));
     const segments = mode === 'main' ? backup.segments : backup.multi_subtitle.tracks[0].segments;
     expect(segments[75].text).toContain('仅备份合成文字');
-    expect(await page.evaluate(() => hasUnsavedProjectChanges())).toBe(true);
+    expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(true);
     expect(await row.getAttribute('contenteditable')).toBe('plaintext-only');
     expect(await page.evaluate(() => ({ node: getSelection().anchorNode.textContent, offset: getSelection().anchorOffset }))).toEqual(caret);
     await stable(page, before, 75, 'backup without changing live viewport', info, kind);
-    expect(await page.evaluate(() => saveCurrentProject({ silent: true }))).toBe(true);
-    expect(await page.evaluate(() => hasUnsavedProjectChanges())).toBe(false);
+    expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }))).toBe(true);
+    expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(false);
   });
 }
 
@@ -254,26 +254,26 @@ test('thousand-row lazy layout and rebuild performance', async ({ page }, info) 
   await open(page, { count: 1000 });
   await position(page, 975);
   const result = await page.evaluate(async () => {
-    const rows = [...container.querySelectorAll(':scope > .cue')];
+    const rows = [...MaweCoreState.container.querySelectorAll(':scope > .cue')];
     let rebuilds = 0;
     const observer = new MutationObserver(records => {
       rebuilds += records.filter(r => [...r.removedNodes].some(n => n.classList?.contains('cue'))).length;
     });
-    observer.observe(container, { childList: true });
+    observer.observe(MaweCoreState.container, { childList: true });
     const times = [];
     for (let i = 0; i < 5; i++) {
       const start = performance.now(); renderAll({ waveform: 'none' }); times.push(performance.now() - start);
       await new Promise(resolve => setTimeout(resolve, 250));
     }
     const editRebuilds = rebuilds;
-    const savedStart = performance.now(); markProjectSaved('synthetic.mosp', null, { silent: true });
+    const savedStart = performance.now(); MaweProjectSave.markProjectSaved('synthetic.mosp', null, { silent: true });
     const saveMs = performance.now() - savedStart;
     await new Promise(resolve => setTimeout(resolve, 300));
     observer.disconnect();
     return { count: rows.length, lazy: getComputedStyle(rows[0]).contentVisibility,
-      liveLazy: getComputedStyle(container.querySelector('.cue')).contentVisibility,
+      liveLazy: getComputedStyle(MaweCoreState.container.querySelector('.cue')).contentVisibility,
       editRebuilds, saveRebuilds: rebuilds - editRebuilds, times, saveMs,
-      skipped: [...container.querySelectorAll('.cue .text')].filter(el => !el.checkVisibility({ contentVisibilityAuto: true })).length };
+      skipped: [...MaweCoreState.container.querySelectorAll('.cue .text')].filter(el => !el.checkVisibility({ contentVisibilityAuto: true })).length };
   });
   await info.attach('performance', { body: JSON.stringify(result), contentType: 'application/json' });
   expect(result.count).toBe(1000);
@@ -287,11 +287,11 @@ for (const mode of ['main', 'extension', 'both']) {
     await open(page, { mode });
     const kind = mode === 'extension' ? 'extension' : 'main';
     // WebKit honors preload=metadata and may not buffer audio until a real play gesture.
-    await page.waitForFunction(() => player.readyState >= 1);
+    await page.waitForFunction(() => MaweCoreState.player.readyState >= 1);
     await position(page, 75, kind);
-    await page.evaluate(() => { player.muted = true; player.currentTime = 2.05; lastActive = -1; });
+    await page.evaluate(() => { MaweCoreState.player.muted = true; MaweCoreState.player.currentTime = 2.05; MawePlaybackLoop.lastActive = -1; });
     await page.locator('#media-play-toggle').click();
-    await page.waitForFunction(() => !player.paused && player.currentTime > 2.1);
+    await page.waitForFunction(() => !MaweCoreState.player.paused && MaweCoreState.player.currentTime > 2.1);
     await page.waitForTimeout(350);
     expect(await page.evaluate(() => {
       const rect = playbackCueListElement().getBoundingClientRect();
@@ -302,13 +302,13 @@ for (const mode of ['main', 'extension', 'both']) {
     await page.mouse.wheel(0, 650);
     await expect(page.locator('#cue-list-follow')).toHaveAttribute('aria-pressed', 'false');
     await page.waitForTimeout(400);
-    const manual = await page.evaluate(() => container.scrollTop);
+    const manual = await page.evaluate(() => MaweCoreState.container.scrollTop);
     await page.waitForTimeout(2400);
-    expect(Math.abs(await page.evaluate(() => container.scrollTop) - manual)).toBeLessThan(1.5);
-    await page.evaluate(() => { player.pause(); player.currentTime = 190; });
+    expect(Math.abs(await page.evaluate(() => MaweCoreState.container.scrollTop) - manual)).toBeLessThan(1.5);
+    await page.evaluate(() => { MaweCoreState.player.pause(); MaweCoreState.player.currentTime = 190; });
     await page.waitForTimeout(500);
-    expect(Math.abs(await page.evaluate(() => container.scrollTop) - manual)).toBeLessThan(1.5);
-    await page.evaluate(async () => { await player.play(); player.pause(); });
+    expect(Math.abs(await page.evaluate(() => MaweCoreState.container.scrollTop) - manual)).toBeLessThan(1.5);
+    await page.evaluate(async () => { await MaweCoreState.player.play(); MaweCoreState.player.pause(); });
     await expect(page.locator('#cue-list-follow')).toHaveAttribute('aria-pressed', 'false');
     await page.locator('#cue-list-follow').click();
     await page.waitForTimeout(350);
@@ -319,11 +319,11 @@ for (const mode of ['main', 'extension', 'both']) {
     })).toBe(true);
     // Both click settings run through real clicks; paused seeked/timeupdate cannot override them.
     await position(page, 75, kind);
-    await page.evaluate(() => updateEditorSettings({ cueListAutoScrollOnClick: false, clickBehavior: 'select-and-seek' }));
+    await page.evaluate(() => MaweSettings.updateEditorSettings({ cueListAutoScrollOnClick: false, clickBehavior: 'select-and-seek' }));
     const before = await visual(page, 75, kind);
     await page.locator(textSelector(75, kind, mode)).click();
     await stable(page, before, 75, 'click scrolling off', info, kind);
-    await page.evaluate(() => updateEditorSettings({ cueListAutoScrollOnClick: true }));
+    await page.evaluate(() => MaweSettings.updateEditorSettings({ cueListAutoScrollOnClick: true }));
     await page.locator(textSelector(77, kind, mode)).click();
     await page.waitForTimeout(350);
     const after = await visual(page, 77, kind);
@@ -350,19 +350,19 @@ test('wheel scrollbar keyboard and rapid actions cancel old compensation', async
       await page.keyboard.press('PageDown');
     }
     await page.waitForTimeout(400);
-    const state = await page.evaluate(() => ({ top: container.scrollTop, owner: cueListScroll.owner,
+    const state = await page.evaluate(() => ({ top: MaweCoreState.container.scrollTop, owner: cueListScroll.owner,
       following: cueListScroll.following }));
     await page.waitForTimeout(2100);
     expect(await page.evaluate(() => cueListScroll.owner)).toBe(null);
     expect(state.following).toBe(false);
-    expect(Math.abs(await page.evaluate(() => container.scrollTop) - state.top)).toBeLessThan(1.5);
+    expect(Math.abs(await page.evaluate(() => MaweCoreState.container.scrollTop) - state.top)).toBeLessThan(1.5);
     await info.attach(input, { body: JSON.stringify(state), contentType: 'application/json' });
   }
   await position(page, 75);
   await page.evaluate(() => {
     mergeSegments([75, 76]);
-    performUndo(); performRedo(); performUndo();
-    scrollCueToCenter(container.querySelector('.cue[data-idx="20"]'));
+    MaweHistory.performUndo(); MaweHistory.performRedo(); MaweHistory.performUndo();
+    scrollCueToCenter(MaweCoreState.container.querySelector('.cue[data-idx="20"]'));
   });
   await page.waitForTimeout(350);
   const before = await visual(page, 20);
@@ -371,9 +371,9 @@ test('wheel scrollbar keyboard and rapid actions cancel old compensation', async
 
 async function position(page, index = 100, kind = 'main') {
   await page.evaluate(({ index, kind }) => {
-    player.pause();
+    MaweCoreState.player.pause();
     clearSelection({ silent: true });
-    const row = container.querySelector(kind === 'main' ? `.cue[data-idx="${index}"]` : `.cue[data-ext-idx="${index}"]`);
+    const row = MaweCoreState.container.querySelector(kind === 'main' ? `.cue[data-idx="${index}"]` : `.cue[data-ext-idx="${index}"]`);
     row.scrollIntoView({ block: 'center' });
   }, { index, kind });
   await page.waitForTimeout(400);
@@ -386,8 +386,8 @@ async function observeSpacePlayback(page) {
     if (window.spacePlaybackEvents) return;
     window.spacePlaybackEvents = [];
     for (const type of ['play', 'playing', 'pause', 'seeking', 'seeked']) {
-      player.addEventListener(type, () => spacePlaybackEvents.push({
-        type, time: player.currentTime, paused: player.paused, readyState: player.readyState,
+      MaweCoreState.player.addEventListener(type, () => spacePlaybackEvents.push({
+        type, time: MaweCoreState.player.currentTime, paused: MaweCoreState.player.paused, readyState: MaweCoreState.player.readyState,
       }));
     }
   });
@@ -398,8 +398,8 @@ async function playbackState(page) {
     const bounds = cueListVisibleBounds();
     const active = playbackCueListElement();
     const rect = active?.getBoundingClientRect();
-    return { following: cueListScroll.following, paused: player.paused, time: player.currentTime,
-      top: container.scrollTop, events: window.spacePlaybackEvents || [],
+    return { following: cueListScroll.following, paused: MaweCoreState.player.paused, time: MaweCoreState.player.currentTime,
+      top: MaweCoreState.container.scrollTop, events: window.spacePlaybackEvents || [],
       activeId: active?.dataset.mainId || active?.dataset.extId,
       activeVisible: Boolean(rect && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1) };
   });
@@ -440,10 +440,10 @@ for (const mode of ['main', 'extension', 'both']) {
   for (const autoScroll of [false, true]) {
     test(`space input playback matrix ${mode} click scroll ${autoScroll}`, async ({ page }, info) => {
       await open(page, { mode });
-      await page.waitForFunction(() => player.readyState >= 1);
+      await page.waitForFunction(() => MaweCoreState.player.readyState >= 1);
       await page.evaluate(autoScroll => {
-        player.muted = true; player.playbackRate = 8;
-        updateEditorSettings({ cueListAutoScrollOnClick: autoScroll });
+        MaweCoreState.player.muted = true; MaweCoreState.player.playbackRate = 8;
+        MaweSettings.updateEditorSettings({ cueListAutoScrollOnClick: autoScroll });
       }, autoScroll);
       const kind = mode === 'extension' ? 'extension' : 'main';
       await page.locator(textSelector(0, kind, mode)).click();
@@ -558,8 +558,8 @@ test('space input split modal keeps lane shortcuts and list ownership', async ({
 
 test('space input repeats and focused playback controls preserve prior following', async ({ page }, info) => {
   await open(page);
-  await page.waitForFunction(() => player.readyState >= 1);
-  await page.evaluate(() => { player.muted = true; });
+  await page.waitForFunction(() => MaweCoreState.player.readyState >= 1);
+  await page.evaluate(() => { MaweCoreState.player.muted = true; });
   await observeSpacePlayback(page);
   await page.locator('.cue[data-idx="0"] .text').click();
   await page.keyboard.down('Space');
@@ -587,12 +587,12 @@ test('list scrolling keys still interrupt following and pending compensation', a
   for (const key of ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'End', 'Home']) {
     await position(page, 75);
     await page.locator('.cue[data-idx="75"] .text').click();
-    await page.evaluate(() => { player.currentTime = 150.05; });
+    await page.evaluate(() => { MaweCoreState.player.currentTime = 150.05; });
     await page.locator('#cue-list-follow').click();
     await page.waitForTimeout(350);
     await page.locator('#cues-container').focus();
     const before = await page.evaluate(() => {
-      renderAll(); return { top: container.scrollTop, generation: cueListScroll.generation };
+      renderAll(); return { top: MaweCoreState.container.scrollTop, generation: cueListScroll.generation };
     });
     // 给原生滚动一个真实的按住区间；瞬时 keydown/keyup 在 WebKit 下
     // 可能只移动 1px，不能用它断言浏览器一定已产生可观测的滚动距离。
@@ -613,10 +613,10 @@ test('list scrolling keys still interrupt following and pending compensation', a
 
 async function visual(page, index, kind = 'main') {
   return page.evaluate(({ index, kind }) => {
-    const row = container.querySelector(kind === 'main' ? `.cue[data-idx="${index}"]` : `.cue[data-ext-idx="${index}"]`);
-    const segment = kind === 'main' ? DATA.segments[index] : getActiveExtensionTrack().segments[index];
-    return { id: segment.id, top: row.getBoundingClientRect().top - container.getBoundingClientRect().top,
-      scrollTop: container.scrollTop, text: segment.text, start: segment.start, end: segment.end };
+    const row = MaweCoreState.container.querySelector(kind === 'main' ? `.cue[data-idx="${index}"]` : `.cue[data-ext-idx="${index}"]`);
+    const segment = kind === 'main' ? MaweBoot.DATA.segments[index] : MaweMultiSubtitleCore.getActiveExtensionTrack().segments[index];
+    return { id: segment.id, top: row.getBoundingClientRect().top - MaweCoreState.container.getBoundingClientRect().top,
+      scrollTop: MaweCoreState.container.scrollTop, text: segment.text, start: segment.start, end: segment.end };
   }, { index, kind });
 }
 
@@ -654,15 +654,15 @@ test('original near-end merge and undo regression', async ({ page }, info) => {
 test('legacy rows receive stable identities before merge rendering', async ({ page }, info) => {
   await open(page);
   await page.evaluate(() => {
-    DATA.segments = DATA.segments.map(({ id, ...segment }) => segment);
+    MaweBoot.DATA.segments = MaweBoot.DATA.segments.map(({ id, ...segment }) => segment);
     renderAll();
   });
-  expect(await page.evaluate(() => new Set(DATA.segments.map(s => s.id)).size)).toBe(107);
+  expect(await page.evaluate(() => new Set(MaweBoot.DATA.segments.map(s => s.id)).size)).toBe(107);
   await position(page, 100);
   const before = await visual(page, 100);
   await page.evaluate(() => mergeSegments([100, 101]));
   await stable(page, before, 100, 'legacy identity merge', info);
-  await page.evaluate(() => performUndo());
+  await page.evaluate(() => MaweHistory.performUndo());
   await stable(page, before, 100, 'legacy identity undo', info);
 });
 
@@ -678,23 +678,23 @@ for (const mode of ['main', 'extension', 'both']) {
     const before = await visual(page, 75, kind);
     const expectedSelection = await page.evaluate(kind => ({
       ids: [...(kind === 'main' ? selectedIdxs : selectedExtensionIdxs)].map(i =>
-        (kind === 'main' ? DATA.segments : getActiveExtensionTrack().segments)[i].id),
+        (kind === 'main' ? MaweBoot.DATA.segments : MaweMultiSubtitleCore.getActiveExtensionTrack().segments)[i].id),
       panelId: getCurrentCuePanelTarget().segment.id,
     }), kind);
     for (let i = 0; i < 3; i++) {
       await page.evaluate(kind => kind === 'main' ? mergeSegments([75, 76]) : mergeExtensionSegments([75, 76]), kind);
       await page.waitForTimeout(25);
-      await page.evaluate(() => performUndo());
+      await page.evaluate(() => MaweHistory.performUndo());
       expect(await page.evaluate(kind => ({
         ids: [...(kind === 'main' ? selectedIdxs : selectedExtensionIdxs)].map(i =>
-          (kind === 'main' ? DATA.segments : getActiveExtensionTrack().segments)[i].id),
+          (kind === 'main' ? MaweBoot.DATA.segments : MaweMultiSubtitleCore.getActiveExtensionTrack().segments)[i].id),
         panelId: getCurrentCuePanelTarget().segment.id,
       }), kind)).toEqual(expectedSelection);
       await page.waitForTimeout(25);
-      await page.evaluate(() => performRedo());
+      await page.evaluate(() => MaweHistory.performRedo());
       expect(await page.evaluate(() => getCurrentCuePanelTarget().segment.id)).toContain('-merged');
       await page.waitForTimeout(25);
-      await page.evaluate(() => performUndo());
+      await page.evaluate(() => MaweHistory.performUndo());
     }
     await stable(page, before, 75, 'repeated asynchronous history', info, kind);
   });
@@ -736,7 +736,7 @@ test('paired dual tracks keep their source during split merge and history', asyn
   }
   await page.locator('#multi-subtitle-split-confirm').click();
   await stable(page, before, 75, 'paired B', info);
-  expect(await page.evaluate(() => [DATA.segments.length, getActiveExtensionTrack().segments.length])).toEqual([108, 108]);
+  expect(await page.evaluate(() => [MaweBoot.DATA.segments.length, MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length])).toEqual([108, 108]);
   await page.keyboard.press(undoKey);
   await stable(page, before, 75, 'paired undo B', info);
   await page.locator(selector).click();
@@ -744,8 +744,8 @@ test('paired dual tracks keep their source during split merge and history', asyn
   const mergeBefore = await visual(page, 75);
   await page.keyboard.press('c');
   await stable(page, mergeBefore, 75, 'paired C', info);
-  expect(await page.evaluate(() => [DATA.segments.length, getActiveExtensionTrack().segments.length])).toEqual([106, 106]);
+  expect(await page.evaluate(() => [MaweBoot.DATA.segments.length, MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length])).toEqual([106, 106]);
   await page.keyboard.press(undoKey);
   await stable(page, mergeBefore, 75, 'paired undo C', info);
-  expect(await page.evaluate(() => getMultiSubtitleState().bindings.length)).toBe(107);
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().bindings.length)).toBe(107);
 });

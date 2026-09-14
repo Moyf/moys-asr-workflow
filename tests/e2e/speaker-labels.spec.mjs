@@ -35,7 +35,7 @@ test.afterAll(async () => {
 
 async function revealSpeakerCue(page) {
   await page.evaluate(() => {
-    const segment = DATA.segments[0];
+    const segment = MaweBoot.DATA.segments[0];
     segment.color = { name: 'yellow' };
     const media = document.getElementById('player');
     media.currentTime = 1;
@@ -125,7 +125,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#overlay-main-speaker-label')).toHaveText('Host：');
   await expect(page.locator('#overlay-main-speaker-label')).toBeVisible();
   await expect(page.locator('#overlay-main-text')).toHaveText('Host：Alpha');
-  expect(await page.evaluate(() => DATA.segments[0].text)).toBe('Alpha');
+  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('Alpha');
 
   await page.locator('#subtitle-color-style').selectOption('text');
   await expect(page.locator('#subtitle-color-style')).toHaveValue('text');
@@ -225,13 +225,13 @@ test('configures preview-only speaker labels and independently controls SRT expo
   const collectDownload = (download) => downloads.push(download.suggestedFilename());
   page.on('download', collectDownload);
   const { filenameBase } = await page.evaluate(async () => {
-    const previousColor = DATA.segments[1].color;
-    DATA.segments[1].color = { name: 'green' };
+    const previousColor = MaweBoot.DATA.segments[1].color;
+    MaweBoot.DATA.segments[1].color = { name: 'green' };
     window.showSaveFilePicker = undefined;
     await MaweExportSrt.downloadColorSrts(false);
-    if (previousColor) DATA.segments[1].color = previousColor;
-    else delete DATA.segments[1].color;
-    return { filenameBase: FILENAME_BASE };
+    if (previousColor) MaweBoot.DATA.segments[1].color = previousColor;
+    else delete MaweBoot.DATA.segments[1].color;
+    return { filenameBase: MaweBoot.FILENAME_BASE };
   });
   await expect.poll(() => downloads.length).toBe(3);
   page.off('download', collectDownload);

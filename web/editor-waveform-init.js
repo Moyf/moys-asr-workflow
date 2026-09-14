@@ -79,9 +79,13 @@
         const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
         idxs.forEach((idx) => addExtensionToSelection(idx, track));
       },
-      seek: MaweTextCleanup.seekFromWaveform,
+      seek: (timeSec, options = {}) => {
+        MaweTextCleanup.seekFromWaveform(timeSec, options);
+        if (!options.dragPreview) resumeCueListFollowing();
+      },
       onPlayheadDragStateChange: (active) => {
         MawePlaybackLoop.waveformPlayheadDragging = active === true;
+        if (!active) resumeCueListFollowing();
       },
       togglePlayback: MaweMediaPlayback.togglePlayback,
       toggleDisabled: (idxs, track = 'main') => MaweStickerPicker.toggleDisabled(idxs, track),
@@ -167,36 +171,59 @@
     MaweCoreState.waveformEditor.setSpectralPayload(MaweBoot.DATA.spectral || null, { render: false });
     MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks || null, { render: false });
     MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform || null, { render: false });
+    // 振幅拟合要在 setLayoutData 之后：得先知道本工程是否已有手调决定。
+    MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness || null, { render: false });
   }
 
 
 
+  // 原地切换工程（打开本地 .mosp / 新建空白 / 导入）会让 DATA 换成一个新工程，
+  // 但服务器的 /api/waveform 仍描述它自己绑定的旧工程。每次 applyCanonicalProject
+  // 递增该纪元；在途的延迟加载响应据此作废并终止轮询，旧工程的
+  // spectral / 波形 / 响度载荷绝不会套到新工程的波形上。
+  let deferredReapeaksEpoch = 0;
+
+  // 重试必须绑定发起时的工程纪元：排期期间原地切换了工程，这次重试就该取消。
+  // 否则新纪元的调用会原样接受旧工程的服务器载荷。
+  function scheduleDeferredReapeaksRetry(delayMs, epoch) {
+    window.setTimeout(() => {
+      if (epoch === deferredReapeaksEpoch) void loadDeferredReapeaks();
+    }, delayMs);
+  }
+
   async function loadDeferredReapeaks() {
     const url = MaweBoot.SERVER_CONFIG?.waveformUrl;
     if (!url || !MaweCoreState.waveformEditor) return;
+    const epoch = deferredReapeaksEpoch;
     try {
       const response = await fetch(url, { cache: 'no-store' });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok !== true) throw new Error(result.error || `服务器返回 ${response.status}`);
       if (result.status === 'loading' || result.status === 'pending') {
-        window.setTimeout(() => { void loadDeferredReapeaks(); }, 500);
+        scheduleDeferredReapeaksRetry(500, epoch);
         return;
       }
+      if (epoch !== deferredReapeaksEpoch) return;
       if (result.status !== 'ready') return;
-      const hasPayload = Boolean(result.spectral || result.waveform_reapeaks);
+      const hasPayload = Boolean(result.spectral || result.waveform_reapeaks || result.loudness);
       if (!hasPayload) return;
       MaweBoot.DATA.spectral = result.spectral || null;
       MaweBoot.DATA.waveform_reapeaks = result.waveform_reapeaks || null;
+      MaweBoot.DATA.loudness = result.loudness || null;
       MaweCoreState.waveformEditor.setSpectralPayload(MaweBoot.DATA.spectral, { render: false });
       MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks, { render: false });
-      renderAll({ waveform: 'full' });
+      // 响度标量可能先于/后于波形到达，setLoudnessStats 自己会决定要不要重绘。
+      MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness);
+      MaweCoreState.waveformEditor.renderSegments();
     } catch (_error) {
-      window.setTimeout(() => { void loadDeferredReapeaks(); }, 1000);
+      scheduleDeferredReapeaksRetry(1000, epoch);
     }
   }
 
   global.MaweWaveformInit = Object.freeze({
     initWaveformEditor,
-    loadDeferredReapeaks
+    loadDeferredReapeaks,
+    get deferredReapeaksEpoch() { return deferredReapeaksEpoch; },
+    set deferredReapeaksEpoch(v) { deferredReapeaksEpoch = v; }
   });
 })(typeof window !== 'undefined' ? window : globalThis);

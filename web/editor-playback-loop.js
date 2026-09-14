@@ -82,23 +82,29 @@
 
 
 
-  function updateActiveCue(idx) {
-    if (idx === lastActive) return;
-    if (lastActive >= 0) {
-      const prev = MaweCoreState.container.querySelector(`.cue[data-idx="${lastActive}"]`);
-      if (prev) prev.classList.remove('active');
-    }
-    if (idx >= 0) {
-      const cur = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
-      if (cur) {
-        cur.classList.add('active');
-        if (!editingState && !suppressCueListAutoScroll && !waveformPlayheadDragging) {
-          scrollCueIntoViewIfNeeded(cur, { behavior: 'auto' });
-        }
-      }
-    }
-    lastActive = idx;
-  }
+function updateActiveCue(idx) {
+const changed = idx !== lastActive;
+if (changed && lastActive >= 0) {
+const prev = MaweCoreState.container.querySelector(`.cue[data-idx="${lastActive}"]`);
+if (prev) prev.classList.remove('active');
+}
+if (changed && idx >= 0) {
+const cur = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
+if (cur) {
+cur.classList.add('active');
+}
+}
+lastActive = idx;
+if (!MaweCoreState.player.paused && cueListScroll.following && !cueListScroll.owner
+&& !editingState && !extensionEditingState && document.activeElement !== MaweDom.cuePanelText
+&& !suppressCueListAutoScroll && !waveformPlayheadDragging) {
+const key = playbackCueListKey();
+if (key !== cueListScroll.playbackKey) {
+cueListScroll.playbackKey = key;
+scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'follow' });
+}
+}
+}
 
 
 

@@ -371,7 +371,7 @@
   function hasUnsavedProjectChanges() {
     const multiDirty = Boolean(MaweBoot.DATA.multi_subtitle?._dirty)
       || (MaweBoot.DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
-    return projectImportDirty || MaweHistory.gapRemoveDirty || MaweAppearance.previewGeometryDirty
+    return MaweProjectSave.inlineEditHasUncommittedText() || projectImportDirty || MaweHistory.gapRemoveDirty || MaweAppearance.previewGeometryDirty
       || MaweBoot.DATA.segments.some((segment) => segment._dirty)
       || multiDirty;
   }

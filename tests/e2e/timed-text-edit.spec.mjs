@@ -136,10 +136,10 @@ test('previews text changes and applies the reported item-timing mapping', async
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
   await expect(page.locator('#cues-container .cue[data-idx="0"]')).toHaveClass(/dirty/);
   const state = await page.evaluate(() => ({
-    texts: DATA.segments.map((segment) => segment.text),
-    items: DATA.segments.map((segment) => segment.items),
-    ranges: DATA.segments.map((segment) => [segment.start, segment.end]),
-    dirty: DATA.segments.map((segment) => Boolean(segment._dirty)),
+    texts: MaweBoot.DATA.segments.map((segment) => segment.text),
+    items: MaweBoot.DATA.segments.map((segment) => segment.items),
+    ranges: MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end]),
+    dirty: MaweBoot.DATA.segments.map((segment) => Boolean(segment._dirty)),
   }));
   expect(state.texts).toEqual(['就是那颗', 'abXc', 'disabled']);
   expect(state.ranges).toEqual([[0, 1000], [1200, 2200], [2300, 2800]]);
@@ -180,8 +180,8 @@ test('shows disabled subtitles on demand without replacing hidden cues', async (
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
 
   const state = await page.evaluate(() => ({
-    texts: DATA.segments.map((segment) => segment.text),
-    disabled: DATA.segments.map((segment) => Boolean(segment.disabled)),
+    texts: MaweBoot.DATA.segments.map((segment) => segment.text),
+    disabled: MaweBoot.DATA.segments.map((segment) => Boolean(segment.disabled)),
   }));
   expect(state.texts).toEqual(['就是那颗！', 'abc', 'disabled']);
   expect(state.disabled).toEqual([false, false, true]);
