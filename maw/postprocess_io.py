@@ -46,7 +46,12 @@ def read_project(path: Path) -> JsonDict:
     return normalize_project(raw)
 
 
-def read_srt(path: Path) -> JsonDict:
+def read_srt(path: Path, *, strict: bool = False) -> JsonDict:
+    """解析 SRT 为工程 JSON。
+
+    ``strict=True`` 时不允许任何重叠（用于文稿匹配等需要顺序 cue 的场景）；
+    默认（非 strict）允许第二层落入叠加轨，第三层并发才报错。
+    """
     source = path.expanduser().resolve()
     if not source.is_file() or source.suffix.lower() != ".srt":
         raise PostprocessFileError(source, "subtitle must be an existing .srt file")
@@ -75,6 +80,8 @@ def read_srt(path: Path) -> JsonDict:
         end = _parse_srt_time(right_parts[0], source, cue_index)
         if start < previous_start or end <= start:
             raise PostprocessFileError(source, f"cue {cue_index} has overlapping or invalid timing")
+        if strict and not _fits_track(segments, start, end):
+            raise PostprocessFileError(source, f"cue {cue_index} has overlapping timing")
         cue = {"start": start, "end": end, "text": "\n".join(lines[timing_index + 1 :]).strip()}
         if _fits_track(segments, start, end):
             segments.append(cue)

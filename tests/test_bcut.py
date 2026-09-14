@@ -809,8 +809,7 @@ class GuiWorkflowTests(unittest.TestCase):
         )
 
     def test_default_srt_path_uses_bcut_tag(self) -> None:
-        path = gui_workflow.default_srt_path(Path("clip.mp4"), provider="bcut", model="bcut-asr")
-
+        path = gui_workflow.default_srt_path(Path("clip.mp4"), provider="bcut", model="bcut-asr", attach_model_name=True)
         self.assertEqual(path.name, "clip.bcut.srt")
 
     def test_build_command_uses_bcut_script_without_language_or_model(self) -> None:
