@@ -2849,6 +2849,7 @@
     mainSplitModeOverride: null,
     splitTrimSymbols: [...DEFAULT_SPLIT_TRIM_SYMBOLS],
     overlayEnabled: true, extensionOverlayEnabled: true, assMode: false, multiSubtitleRowHeight: 168,
+    subtitleColorPaletteEnabled: false,
     exportStartAtZero: false, cueListShowIndex: true, cueListShowTime: true,
     cueListShowSticker: true, cueListShowCharcount: true, cueListAutoScrollOnClick: true,
     cueListKeepSplitVisible: true, cueListHideDisabled: false, cueListCharcountThreshold: 16,
@@ -2901,6 +2902,8 @@
       extensionOverlayEnabled: savedSettings.extensionOverlayEnabled !== false,
       // ASS 字幕模式是预览偏好，默认关闭以保持旧版 CSS 预览行为。
       assMode: savedSettings.assMode === true,
+      // 自定义五色开关：关闭时一律使用内置色值（自定义值保留以便再次开启）。
+      subtitleColorPaletteEnabled: savedSettings.subtitleColorPaletteEnabled === true,
       multiSubtitleRowHeight: EDITOR_SETTING_ROW_HEIGHTS.includes(Number(savedSettings.multiSubtitleRowHeight))
         ? Number(savedSettings.multiSubtitleRowHeight) : 168,
       exportStartAtZero: savedSettings.exportStartAtZero === true,
@@ -4519,13 +4522,20 @@
         font_size: appearance.font_size ?? options.fontSize,
         color: appearance.color ?? options.color,
       }, resolution);
-    // A library style stores the native ASS font size.  Only the legacy
-    // appearance-based export below uses the responsive preview calibration.
-    const fontSize = normalizeAssFontSize(baseStyle.fontSize);
+    // A library style stores its font size against the shared 1080p reference
+    // (the ASS preview scales by the same reference).  Export must rescale it
+    // to the target PlayResY, or a 4K project renders subtitles half size.
+    // The legacy appearance-based style below is already calibrated by
+    // resolveAssFontSize and must not be scaled again.
+    const fontSize = profile
+      ? normalizeAssFontSize(baseStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
+      : normalizeAssFontSize(baseStyle.fontSize);
     const title = normalizeAssHeaderValue(options.title ?? options.projectName);
     const colorStyles = normalizeAssColorStyles(options.colorStyles);
     const colorPreviewEnabled = appearance.color_underline !== false;
-    const colorStyle = normalizeAssColorStyle(appearance.color_style) || 'text';
+    // ASS 的颜色映射由 ass_color_style 驱动（text / stroke / none），
+    // 与 CSS 预览的 color_style（underline / text / stroke）是两套语义。
+    const colorStyle = normalizeAssColorStyle(appearance.ass_color_style) || 'text';
     const assMode = Boolean(profile);
     const numericTimeOffset = Number(options.timeOffset);
     const timeOffset = Number.isFinite(numericTimeOffset)

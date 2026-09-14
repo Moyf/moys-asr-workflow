@@ -190,7 +190,7 @@
     '调整播放器画面内副字幕预览的背景色': 'Adjust the background color used by the secondary subtitle preview in the player',
     '调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the secondary subtitle preview background opacity in the player; set it to 0 to hide the background',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
-    'ASS 样式库': 'ASS style library', '用户级配置 · Editor / Launcher 共用': 'User-level config · shared by Editor / Launcher',
+    'ASS 样式库': 'ASS style library',
     '样式库正在加载…': 'Loading the style library…', 'SRT 默认': 'SRT default', '无逐句动画': 'No per-cue animations',
     'ASS 字幕模式': 'ASS subtitle mode',
     '开启后，播放器预览尽量按当前 ASS 默认方案渲染；关闭时保持原有预览效果': 'When enabled, the player approximates the current ASS default profile; when disabled, the original preview is kept',
@@ -228,18 +228,13 @@
     '使用本地副本，服务器同步失败': 'Using a local copy; server sync failed',
     '已开启 ASS 字幕模式预览': 'ASS subtitle preview enabled', '已恢复原有字幕预览': 'Original subtitle preview restored',
     '已保存到本机用户级配置；Launcher 与 Editor 共享。': 'Saved to local user-level config; shared by Launcher and Editor.',
-    '样式库存储状态读取中…': 'Reading style-library storage status…', '便携模式 · 仅当前浏览器保存': 'Portable mode · saved only in this browser',
     '样式库将根据打开方式保存。': 'The style library is saved according to how the Editor was opened.',
     '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。': 'Portable Editor saves only to this browser; open it in server-editor to share it with Launcher.',
     '颜色字幕样式': 'Color caption style', '作为字幕颜色': 'As text color', '作为描边颜色': 'As outline color', '无影响': 'No effect',
-    '自定义五色': 'Custom five colors', '恢复内置色值': 'Restore built-in colors',
+    '自定义颜色色值': 'Custom color values', '恢复默认': 'Restore defaults', '使用预览字体': 'Use preview font',
     '自定义颜色会同步用于字幕列表、波形、预览和 ASS 导出；恢复默认即可使用内置色值。': 'Custom colors apply to the subtitle list, waveform, preview, and ASS export; restore defaults to use the built-in values.',
     '已恢复内置字幕颜色': 'Built-in subtitle colors restored',
     '基础样式': 'Basic style', '拓展样式': 'Extended style', '边框与阴影': 'Border and shadow', '对齐': 'Alignment',
-    '样式和 ASS 方案': 'Styles and ASS profiles', '样式与 ASS 方案说明': 'Styles and ASS profiles explainer',
-    '决定字幕怎么画：字体、颜色、描边、对齐和边距等。': 'determine how captions are drawn: font, colors, outline, alignment, margins, and more.',
-    'ASS 方案': 'ASS profiles',
-    '决定导出怎么用：选择一个样式，并附加逐句动画；它是导出时的组合配置。': 'determine how exports use them: pick a style and attach per-cue animations; a profile is the export-time combination.',
     '媒体': 'Media', '外观': 'Appearance', '语言': 'Language', '主题': 'Theme', '明亮模式': 'Light mode', '暗色模式': 'Dark mode', '跟随系统': 'Follow System', '预览字幕': 'Subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
     '视频预览': 'Video preview', '播放控制': 'Playback controls', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
     '在播放器画面内预览主字幕': 'Preview the main subtitle in the player', '在波形区悬停鼠标时，播放器自动预览指针位置的画面': 'While hovering the waveform, the player automatically previews the frame at the pointer',
@@ -1051,6 +1046,8 @@
     if (match) return `Save failed: ${match[1]}`;
     match = /^本地已保存，服务器同步失败：(.+)$/.exec(text);
     if (match) return `Saved locally; server sync failed: ${translateText(match[1], EN)}`;
+    match = /^已将 ASS 字体设为「(.+)」$/.exec(text);
+    if (match) return `ASS font set to "${match[1]}"`;
     match = /^打开工程失败：(.+)$/.exec(text);
     if (match) return `Could not open project: ${match[1]}`;
     match = /^服务器返回\s+(.+)$/.exec(text);

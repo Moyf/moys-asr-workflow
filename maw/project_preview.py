@@ -19,9 +19,10 @@ SUBTITLE_BACKGROUND_ALPHA_MIN = 0.0
 SUBTITLE_BACKGROUND_ALPHA_MAX = 1.0
 SUBTITLE_BACKGROUND_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
 SUBTITLE_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
-# 当前值：text（作为字幕颜色）、stroke（作为描边颜色）、none（无影响）。
-# underline / shadow 是历史值：仅保留读取兼容，读取方按 text 处理，不再写入。
-SUBTITLE_COLOR_STYLES = frozenset({"text", "stroke", "none", "underline", "shadow"})
+# CSS 预览的颜色样式（历史值 shadow 仅保留读取兼容）；
+# ASS 的颜色映射是独立字段 ass_color_style（text / stroke / none）。
+SUBTITLE_COLOR_STYLES = frozenset({"underline", "text", "shadow", "stroke"})
+SUBTITLE_ASS_COLOR_STYLES = frozenset({"text", "stroke", "none"})
 SPEAKER_LABEL_COLORS = ("yellow", "green", "red", "purple", "blue")
 SPEAKER_LABEL_MAX_LENGTH = 64
 SPEAKER_LABEL_SEPARATOR_MAX_LENGTH = 16
@@ -142,7 +143,14 @@ def _validate_subtitle_style(value: JsonDict, path: str) -> tuple[ValidationIssu
             not isinstance(color_style, str) or color_style not in SUBTITLE_COLOR_STYLES):
         issues.append((
             f"{path}.color_style",
-            "must be one of text, stroke, or none (legacy underline and shadow are accepted)",
+            "must be one of underline, text, shadow, or stroke",
+        ))
+    ass_color_style = value.get("ass_color_style")
+    if "ass_color_style" in value and (
+            not isinstance(ass_color_style, str) or ass_color_style not in SUBTITLE_ASS_COLOR_STYLES):
+        issues.append((
+            f"{path}.ass_color_style",
+            "must be one of text, stroke, or none",
         ))
     return tuple(issues)
 

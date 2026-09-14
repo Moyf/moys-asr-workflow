@@ -813,8 +813,28 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
-const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
-const DEFAULT_SUBTITLE_COLOR_STYLE = 'text';
+// CSS 预览的颜色样式（工程 color_style）；ASS 的颜色映射是独立字段
+// ass_color_style（text / stroke / none），两者语义不同。
+const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
+const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
+const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
+const DEFAULT_ASS_COLOR_STYLE = 'text';
+// 字体输入框用 datalist 提供搜索：预设内置字体 + 扫描到的本机字体，
+// 输入文本即可过滤。存储值仍是内置键或本机字体族名。
+// 这些声明必须在文件头部：启动早期 applySubtitleAppearanceControls 就会
+// 通过 subtitleFontFamilyStoredToInput 读取预设，声明靠后会触发 TDZ。
+const SUBTITLE_FONT_FAMILY_PRESETS = Object.freeze([
+  { key: 'default', label: '默认无衬线' },
+  { key: 'yahei', label: '微软雅黑 / 苹方' },
+  { key: 'hei', label: '黑体' },
+  { key: 'song', label: '宋体' },
+  { key: 'sans', label: 'Arial / Segoe UI' },
+]);
+// ASS 字体建议追加的常见内置字体；扫描到的本机字体由 datalist 动态合并。
+const ASS_BUILTIN_FONT_SUGGESTIONS = Object.freeze([
+  'Arial', 'Microsoft YaHei', 'SimHei', 'SimSun', 'Segoe UI', 'Verdana', 'Times New Roman',
+]);
+let subtitleLocalFontFamilies = [];
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
   yahei: '"Microsoft YaHei", "PingFang SC", sans-serif',
@@ -1341,10 +1361,8 @@ const COLOR_PALETTE_DEFAULTS = Object.fromEntries(
   window.ASR_EDITOR_PALETTE.map((color) => [color.name, color.value]),
 );
 function buildEditorColorPalette() {
-  const configured = normalizeSubtitleColorPalette(
-    EDITOR_SETTINGS.subtitleColorPalette,
-    COLOR_PALETTE_DEFAULTS,
-  );
+  // 自定义五色关闭时（subtitleColorPaletteEnabled ≠ true）一律使用内置色值。
+  const configured = currentSubtitleColorPalette();
   return window.ASR_EDITOR_PALETTE.map((c) => ({
     name: c.name,
     label: COLOR_LABELS[c.name] || c.name,
@@ -1760,7 +1778,7 @@ const extensionOverlayToggleWrap = document.getElementById('extension-overlay-to
 const extensionOverlayToggle = document.getElementById('extension-overlay-toggle');
 const stickerOverlayToggle = document.getElementById('sticker-overlay-toggle');
 const subtitleFontSizeSelect = document.getElementById('subtitle-font-size');
-const subtitleFontFamilySelect = document.getElementById('subtitle-font-family');
+const subtitleFontFamilyInput = document.getElementById('subtitle-font-family');
 const subtitleFontFamilyScanButton = document.getElementById('subtitle-font-family-scan');
 const subtitleFontFamilyStatus = document.getElementById('subtitle-font-family-status');
 const subtitleBackgroundColorInput = document.getElementById('subtitle-background-color');
@@ -1770,6 +1788,9 @@ const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
 const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
 const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
+const assColorStyleSelect = document.getElementById('ass-color-style');
+const subtitleColorPaletteEnabledInput = document.getElementById('subtitle-color-palette-enabled');
+const subtitleColorPaletteGrid = document.getElementById('subtitle-color-palette-grid');
 const subtitleColorPaletteNames = window.AsrEditorUtils.EDITOR_SUBTITLE_COLOR_NAMES || [
   'yellow', 'green', 'red', 'purple', 'blue',
 ];
@@ -2096,7 +2117,7 @@ const assStyleDragHandle = document.getElementById('ass-style-drag-handle');
 const assStyleWindowClose = document.getElementById('ass-style-window-close');
 const assStyleWindowCloseFooter = document.getElementById('ass-style-window-close-footer');
 const assStyleLibraryStatus = document.getElementById('ass-style-library-status');
-const assStyleWindowEyebrow = document.getElementById('ass-style-window-eyebrow');
+const assStyleUsePreviewFontButton = document.getElementById('ass-style-use-preview-font');
 const assStyleCount = document.getElementById('ass-style-count');
 const assProfileCount = document.getElementById('ass-profile-count');
 const assStyleList = document.getElementById('ass-style-list');
@@ -2382,12 +2403,6 @@ function updateAssStyleLibraryStatus() {
   assStyleLibraryStatus.textContent = window.MAWE_I18N?.translateText?.(status) || status;
   assStyleLibraryStatus.dataset.state = !usesServerStorage && assStyleLibraryStatusState === 'success'
     ? 'local' : assStyleLibraryStatusState;
-  if (assStyleWindowEyebrow) {
-    const eyebrow = usesServerStorage
-      ? '用户级配置 · Editor / Launcher 共用'
-      : '便携模式 · 仅当前浏览器保存';
-    assStyleWindowEyebrow.textContent = window.MAWE_I18N?.translateText?.(eyebrow) || eyebrow;
-  }
   if (assStyleLibraryPathHint) {
     const pathHint = !usesServerStorage
       ? '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。'
@@ -2723,6 +2738,23 @@ assStyleSaveButton?.addEventListener('click', () => {
 });
 assSrtDefaultStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('srtBurnStyleId', assSrtDefaultStyleSelect.value));
 assDefaultProfileSelect?.addEventListener('change', () => updateAssStyleAssignment('assExportProfileId', assDefaultProfileSelect.value));
+// 「使用预览字体」：把「设置 → 字幕样式」当前预览字体映射成具体字体族，
+// 应用到正在编辑的 ASS 样式；内置键映射为 ASS 最常用的对应字体名。
+const PREVIEW_FONT_KEY_TO_ASS_NAME = Object.freeze({
+  default: 'Microsoft YaHei',
+  yahei: 'Microsoft YaHei',
+  hei: 'SimHei',
+  song: 'SimSun',
+  sans: 'Arial',
+});
+assStyleUsePreviewFontButton?.addEventListener('click', () => {
+  const family = getSubtitleAppearance().font_family || 'default';
+  const fontName = PREVIEW_FONT_KEY_TO_ASS_NAME[family] || family;
+  const input = document.getElementById('ass-style-font-name');
+  if (input) input.value = fontName;
+  updateAssStyleField('fontName', fontName);
+  flashHint(`已将 ASS 字体设为「${fontName}」`, 'success');
+});
 assStyleList?.addEventListener('contextmenu', (event) => {
   const button = event.target.closest('[data-ass-selection-kind="style"]');
   if (!button) return;
@@ -4291,9 +4323,21 @@ subtitleFontSizeSelect?.addEventListener('change', () => {
   pushPreviewUndo('调整字幕字号', snapshotPreviewState());
   setSubtitleAppearance({ font_size: value === 'auto' ? null : Number(value) });
 });
-subtitleFontFamilySelect?.addEventListener('change', () => {
+subtitleFontFamilyInput?.addEventListener('change', () => {
   pushPreviewUndo('调整字幕字体', snapshotPreviewState());
-  setSubtitleAppearance({ font_family: subtitleFontFamilySelect.value });
+  setSubtitleAppearance({ font_family: subtitleFontFamilyInputToStored(subtitleFontFamilyInput.value) });
+  syncSubtitleAppearanceControls();
+});
+assColorStyleSelect?.addEventListener('change', () => {
+  pushPreviewUndo('调整 ASS 颜色字幕样式', snapshotPreviewState());
+  setSubtitleAppearance({ ass_color_style: assColorStyleSelect.value });
+  update();
+});
+subtitleColorPaletteEnabledInput?.addEventListener('change', () => {
+  updateEditorSettings({ subtitleColorPaletteEnabled: subtitleColorPaletteEnabledInput.checked });
+  syncSubtitleColorPaletteControls();
+  refreshSubtitleColorPalettePresentation();
+  if (!subtitleColorPaletteEnabledInput.checked) flashHint('已恢复内置字幕颜色', 'success');
 });
 let subtitleBackgroundColorUndoPushed = false;
 function applySubtitleBackgroundColorInput({ finalize = false } = {}) {
@@ -12091,12 +12135,67 @@ function subtitleFontFamilyDisplayName(family) {
   // 不可用时先用原始字体名占位，别名就绪后由 relabelSubtitleFontFamilyOptions 统一本地化。
   return window.AsrEditorUtils?.subtitleFontFamilyDisplayName(family, language) ?? family;
 }
+function subtitleFontFamilyPresetLabel(preset) {
+  return window.MAWE_I18N?.translateText?.(preset.label) || preset.label;
+}
+function subtitleFontFamilyStoredToInput(family) {
+  const key = family || 'default';
+  const preset = SUBTITLE_FONT_FAMILY_PRESETS.find((item) => item.key === key);
+  if (preset) return subtitleFontFamilyPresetLabel(preset);
+  return subtitleFontFamilyDisplayName(key);
+}
+function subtitleFontFamilyInputToStored(text) {
+  const value = String(text || '').trim();
+  if (!value) return 'default';
+  const preset = SUBTITLE_FONT_FAMILY_PRESETS.find((item) => (
+    item.label === value || item.key === value || subtitleFontFamilyPresetLabel(item) === value
+  ));
+  if (preset) return preset.key;
+  return value;
+}
+function rebuildSubtitleFontFamilyDatalist() {
+  const datalist = document.getElementById('subtitle-font-family-options');
+  if (!datalist) return;
+  datalist.replaceChildren();
+  const fragment = document.createDocumentFragment();
+  SUBTITLE_FONT_FAMILY_PRESETS.forEach((preset) => {
+    const option = document.createElement('option');
+    option.value = subtitleFontFamilyPresetLabel(preset);
+    fragment.append(option);
+  });
+  subtitleLocalFontFamilies.forEach((family) => {
+    const option = document.createElement('option');
+    option.value = subtitleFontFamilyDisplayName(family);
+    fragment.append(option);
+  });
+  datalist.append(fragment);
+}
+function rebuildAssFontNameDatalist() {
+  const datalist = document.getElementById('ass-font-name-options');
+  if (!datalist) return;
+  datalist.replaceChildren();
+  const fragment = document.createDocumentFragment();
+  ASS_BUILTIN_FONT_SUGGESTIONS.forEach((name) => {
+    const option = document.createElement('option');
+    option.value = name;
+    fragment.append(option);
+  });
+  subtitleLocalFontFamilies.forEach((family) => {
+    const option = document.createElement('option');
+    option.value = family;
+    fragment.append(option);
+  });
+  datalist.append(fragment);
+}
 function relabelSubtitleFontFamilyOptions() {
-  [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
+  [extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
     Array.from(select.querySelectorAll('option[data-local-font="true"], option[data-generated="true"]')).forEach((option) => {
       option.textContent = subtitleFontFamilyDisplayName(option.value);
     });
   });
+  rebuildSubtitleFontFamilyDatalist();
+  rebuildAssFontNameDatalist();
+  syncSubtitleAppearanceControls();
 }
 function normalizeSubtitleColor(value) {
   if (typeof value !== 'string') return null;
@@ -12104,8 +12203,11 @@ function normalizeSubtitleColor(value) {
   return /^#[0-9a-f]{6}$/i.test(color) ? color : null;
 }
 function normalizeSubtitleColorStyle(value) {
-  if (value === 'underline') return 'text';
   return typeof value === 'string' && SUBTITLE_COLOR_STYLE_VALUES.includes(value)
+    ? value : null;
+}
+function normalizeAssColorStyleValue(value) {
+  return typeof value === 'string' && ASS_COLOR_STYLE_VALUES.includes(value)
     ? value : null;
 }
 function normalizeSubtitleAppearance(value) {
@@ -12125,6 +12227,8 @@ function normalizeSubtitleAppearance(value) {
   if (color) result.color = color;
   const colorStyle = normalizeSubtitleColorStyle(value?.color_style);
   if (colorStyle) result.color_style = colorStyle;
+  const assColorStyle = normalizeAssColorStyleValue(value?.ass_color_style);
+  if (assColorStyle) result.ass_color_style = assColorStyle;
   if (value?.color_underline === false) result.color_underline = false;
   return result;
 }
@@ -12135,6 +12239,7 @@ function getSubtitleAppearance(value = DATA.preview?.subtitle) {
     color: result.color || DEFAULT_SUBTITLE_COLOR,
     color_underline: result.color_underline !== false,
     color_style: result.color_style || DEFAULT_SUBTITLE_COLOR_STYLE,
+    ass_color_style: result.ass_color_style || DEFAULT_ASS_COLOR_STYLE,
   };
 }
 function getSpeakerLabelSettings(value = DATA.preview?.subtitle?.speaker_labels) {
@@ -12209,19 +12314,11 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   if (subtitleColorStyleControl) {
     subtitleColorStyleControl.hidden = appearance.color_underline === false;
   }
-  if (subtitleFontFamilySelect) {
-    subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
-    const family = appearance.font_family || 'default';
-    if (family !== 'default' && !isBuiltInSubtitleFontFamily(family)
-        && !subtitleFontFamilyOptionExists(subtitleFontFamilySelect, family)) {
-      const option = document.createElement('option');
-      option.value = family;
-      option.textContent = subtitleFontFamilyDisplayName(family);
-      option.dataset.generated = 'true';
-      subtitleFontFamilySelect.append(option);
-    }
-    subtitleFontFamilySelect.value = family;
-    if (subtitleFontFamilySelect.value !== family) subtitleFontFamilySelect.value = 'default';
+  if (assColorStyleSelect) {
+    assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
+  }
+  if (subtitleFontFamilyInput && document.activeElement !== subtitleFontFamilyInput) {
+    subtitleFontFamilyInput.value = subtitleFontFamilyStoredToInput(appearance.font_family || 'default');
   }
   if (subtitleBackgroundColorInput) {
     subtitleBackgroundColorInput.value = appearance.background_color
@@ -12240,6 +12337,10 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
 }
 
 function currentSubtitleColorPalette() {
+  // 开关关闭时不读取自定义值，统一回落到内置五色。
+  if (EDITOR_SETTINGS.subtitleColorPaletteEnabled !== true) {
+    return normalizeSubtitleColorPalette(null, COLOR_PALETTE_DEFAULTS);
+  }
   return normalizeSubtitleColorPalette(
     EDITOR_SETTINGS.subtitleColorPalette,
     COLOR_PALETTE_DEFAULTS,
@@ -12248,6 +12349,9 @@ function currentSubtitleColorPalette() {
 
 function syncSubtitleColorPaletteControls() {
   const palette = currentSubtitleColorPalette();
+  const customEnabled = EDITOR_SETTINGS.subtitleColorPaletteEnabled === true;
+  if (subtitleColorPaletteEnabledInput) subtitleColorPaletteEnabledInput.checked = customEnabled;
+  if (subtitleColorPaletteGrid) subtitleColorPaletteGrid.hidden = !customEnabled;
   subtitleColorPaletteNames.forEach((name) => {
     const value = palette[name];
     const colorInput = subtitleColorPaletteColorInputs[name];
@@ -12410,6 +12514,10 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
     const colorStyle = normalizeSubtitleColorStyle(patch.color_style);
     if (colorStyle) next.color_style = colorStyle;
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'ass_color_style')) {
+    const assColorStyle = normalizeAssColorStyleValue(patch.ass_color_style);
+    if (assColorStyle) next.ass_color_style = assColorStyle;
+  }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = {
     ...getPreviewGeometry(),
@@ -12446,9 +12554,9 @@ function collectSubtitleLocalFontFamilies(fontData) {
   }));
 }
 function replaceSubtitleLocalFontOptions(families) {
-  const selects = [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean);
-  if (!selects.length) return;
-  selects.forEach((select) => {
+  subtitleLocalFontFamilies = Array.isArray(families) ? families : [];
+  const select = extensionSubtitleFontFamilySelect;
+  if (select) {
     select.querySelectorAll(
       'option[data-local-font="true"], option[data-generated="true"]',
     ).forEach((option) => option.remove());
@@ -12464,10 +12572,11 @@ function replaceSubtitleLocalFontOptions(families) {
       existing.add(family);
     });
     select.append(fragment);
-  });
+  }
+  rebuildSubtitleFontFamilyDatalist();
+  rebuildAssFontNameDatalist();
   syncSubtitleAppearanceControls();
   syncExtensionSubtitleAppearanceControls();
-  relabelSubtitleFontFamilyOptions();
 }
 function initializeSubtitleFontFamilyScanner() {
   if (!subtitleFontFamilyScanButton) return;
@@ -12878,7 +12987,7 @@ function assPreviewStyleVariant(style, segment, segments, appearance) {
   return window.AsrEditorUtils.assStyleVariant(
     style,
     paletteValue,
-    appearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE,
+    appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE,
   );
 }
 
@@ -13070,8 +13179,8 @@ function applyAssSubtitlePreview({ tMs, segment, extension, mainColorName, speak
   if (speakerLabelVisible) {
     const colorEnabled = appearance.color_underline !== false;
     const paletteColor = colorEnabled && COLOR_BY_NAME[mainColorName]?.value;
-    const colorStyle = appearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
-    const labelColor = colorEnabled && colorStyle === 'text'
+    const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
+    const labelColor = colorEnabled && assColorStyle === 'text'
       ? paletteColor || animatedMainStyle.primaryColor
       : animatedMainStyle.primaryColor;
     overlayMainSpeakerLabelEl.style.color = labelColor;
@@ -13115,9 +13224,9 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     : '';
   const speakerLabelVisible = Boolean(speakerLabel && mainColorName && COLOR_BY_NAME[mainColorName]);
   const speakerLabelColor = speakerLabelVisible
-    ? colorPreviewEnabled && colorStyle === 'text'
-      ? COLOR_BY_NAME[mainColorName].value
-      : mainSubtitleColor
+    ? colorPreviewEnabled && colorStyle === 'stroke'
+      ? mainSubtitleColor
+      : COLOR_BY_NAME[mainColorName].value
     : '';
   const speakerLabelText = speakerLabelVisible
     ? `${speakerLabel}${speakerLabels.separator}`
@@ -13158,7 +13267,9 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
     previewSegmentColor = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
   }
-  const colorUnderline = '';
+  const colorUnderline = colorPreviewEnabled
+    && colorStyle === 'underline'
+    ? previewSegmentColor : '';
   const textColor = colorPreviewEnabled
     && colorStyle === 'text'
     && previewSegmentColor

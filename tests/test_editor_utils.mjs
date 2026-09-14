@@ -40,13 +40,17 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');
   assert.equal(i18n.translateText('作为描边颜色', 'en'), 'As outline color');
   assert.equal(i18n.translateText('无影响', 'en'), 'No effect');
-  assert.equal(i18n.translateText('自定义五色', 'en'), 'Custom five colors');
-  assert.equal(i18n.translateText('恢复内置色值', 'en'), 'Restore built-in colors');
+  assert.equal(i18n.translateText('自定义颜色色值', 'en'), 'Custom color values');
+  assert.equal(i18n.translateText('恢复默认', 'en'), 'Restore defaults');
+  assert.equal(i18n.translateText('使用预览字体', 'en'), 'Use preview font');
+  assert.equal(
+    i18n.translateText('已将 ASS 字体设为「SimHei」', 'en'),
+    'ASS font set to "SimHei"',
+  );
   assert.equal(i18n.translateText('基础样式', 'en'), 'Basic style');
   assert.equal(i18n.translateText('拓展样式', 'en'), 'Extended style');
   assert.equal(i18n.translateText('边框与阴影', 'en'), 'Border and shadow');
   assert.equal(i18n.translateText('对齐', 'en'), 'Alignment');
-  assert.equal(i18n.translateText('样式和 ASS 方案', 'en'), 'Styles and ASS profiles');
   assert.equal(i18n.translateText('黄字幕颜色十六进制值', 'en'), 'Yellow subtitle color hex value');
   assert.equal(
     i18n.translateText('本地已保存，服务器同步失败：HTTP 503', 'en'),
@@ -230,6 +234,15 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(settings.assMode, false);
   assert.equal(helpers.normalizeEditorSettings({ assMode: true }).assMode, true);
   assert.equal(helpers.normalizeEditorSettings({ assMode: 1 }).assMode, false);
+  assert.equal(settings.subtitleColorPaletteEnabled, false);
+  assert.equal(
+    helpers.normalizeEditorSettings({ subtitleColorPaletteEnabled: true }).subtitleColorPaletteEnabled,
+    true,
+  );
+  assert.equal(
+    helpers.normalizeEditorSettings({ subtitleColorPaletteEnabled: 1 }).subtitleColorPaletteEnabled,
+    false,
+  );
   assert.equal(settings.autoSaveProject, true);
   assert.equal(settings.projectBackupEnabled, true);
   assert.equal(
@@ -3196,7 +3209,7 @@ test('keeps speaker labels in the base colour when ASS palette colours are strok
   ], {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },
     assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
-    appearance: { color_underline: true, color_style: 'stroke' },
+    appearance: { color_underline: true, ass_color_style: 'stroke' },
     speakerLabelsEnabled: true,
     speakerLabels: { yellow: 'Host' },
     speakerLabelSeparator: '：',
