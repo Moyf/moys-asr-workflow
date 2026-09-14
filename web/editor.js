@@ -6847,6 +6847,9 @@ function refreshStickerAssignmentUi() {
     !EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
   );
   stickerOverlayDataVersion += 1;
+  // 表情包变化影响波形块上的 🦊 徽章分组；颜色走 updateCueColorPresentation
+  // 自行刷新，徽章需要整层重建才会重新计数。
+  waveformEditor?.refreshCueOverlay?.();
   renderCurrentCuePanel();
   refreshSubtitlePreview();
 }
