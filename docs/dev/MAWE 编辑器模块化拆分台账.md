@@ -126,6 +126,34 @@ Batch 6 执行备注：
 - `fix-e2e-globals.mjs` 需在每批后重跑（导出表随批次增长），幂等。
 - editor-boot.js 手工调到清单首位（token 数据块先于一切消费方）。
 
+## 第二次 main 同步（2026-09-14，origin/main @ 218ee1e0，24 提交）
+
+main 并入 #124（字幕列表跟随/贴合边界模式/cue-list 锚点重构）、#126（波形响度
+自动定标）、#107（跨工程媒体定位）、ASS 样式导出、launcher 通知等。合并要点：
+
+- editor.js 20+13 处 delete/modify 冲突，按"已迁移区域取我方、常驻区域取对方"
+  逐块解决；main 对**已迁移函数**的语义改动逐个移植进 9 个模块文件（保存指纹
+  projectSaveFingerprint/inlineEditHasUncommittedText/flushInlineEditsForSave、
+  播放跟随链、响度标尺 deferredReapeaksEpoch、ASS 导出选项等）。
+- **合并期三类典型丢单**：① main 新增函数定义落在已搬空区域（assExportOptions/
+  currentAssVideoResolution/PROJECT_NAME）；② main 新增 DOM 常量落在旧 DOM 块
+  （adjacent×4、separator×2，补录进 MaweDom）；③ main 对模块内旧副本的修改
+  （assignColor 的 218ee1e0 修复）。另发现并清除 6 个"main 新版回到 editor.js +
+  模块旧副本"的重复声明。
+- 新工具：`ns-rewrite-editor.mjs`（acorn 作用域链 NS 改写，修复了参数默认值
+  误判绑定与简写属性启发式在模板串误判两个 bug）、`check-missing-symbols.mjs`
+  （main 1425 顶层符号全数确认有承载）、`check-dup-decls.mjs`、`compare-fn.mjs`
+  （NS 归一化逐函数对比）、`run-e2e-bg.ps1`/`poll-e2e.ps1`（后台运行+轮询，
+  解决长命令假死与孤儿进程堆积问题）。
+
+### 归因结论（对照 worktree 实测）
+
+纯 main @ 218ee1e0 自身 e2e 失败 40 项（launcher 通知/错误处理大片、C 合并锚点
+24px 漂移、bcut 默认命名测试与实现不同步等，均为 main 侧 WIP 状态）；本分支同套
+件失败 43 项，其中 39 项与 main 重合，4 项我方回归（dual seam ×3 = 缺
+getAdjacentBoundaryMode 选项、recolor ×1 = assignColor 修复未随迁）**已全部修复**，
+回归清零。Python 1549 OK（2 失败为 main 侧预存）、Node 293 OK、探针零 pageerror。
+
 | 7 | 2026-09-11 | 十模块：`MaweStickerRoot`(10/35) `MaweFindReplace`(18/18) `MaweTextProcess`(28/25) `MaweTimedTextEdit`(32/27) `MaweStickerPicker`(14/28) `MaweAddCue`(4/5) `MaweBoundDrag`(7/1) `MaweContextMenus`(8/15) `MaweTextCleanup`(5/17) `MaweWaveformInit`(2/2)，共 128 符号；契约断言同步 6 处 | Node --check ×10 过；顺序断言过；Node 286；Python 1458 OK；探针零 pageerror。**待办：本批全量 e2e 尚未跑**（先合并 main 再统一跑） | （本提交） |
 
 Batch 2 执行备注：
