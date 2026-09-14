@@ -5,73 +5,23 @@
 (function initMaweKeyboardTargets(global) {
   'use strict';
 
+  
 
-
-  function renderedCueBoundaryTarget(target, boundary) {
-    const selector = target?.kind === 'extension'
-      ? '.multi-dual-cue[data-ext-idx], .multi-extension-cue[data-ext-idx]'
-      : '.cue[data-idx], .multi-dual-cue[data-main-idx]';
-    const track = target?.kind === 'extension' ? target.track : 'main';
-    const indexes = [...MaweCoreState.container.querySelectorAll(selector)]
-      .filter((cue) => !cue.classList.contains('hidden'))
-      .map((cue) => Number(target?.kind === 'extension'
-        ? cue.dataset.extIdx
-        : cue.dataset.idx ?? cue.dataset.mainIdx))
-      .filter((index, position, values) => (
-        Number.isInteger(index)
-        && !isHiddenDisabled(index, track)
-        && values.indexOf(index) === position
-      ));
-    const index = boundary === 'first' ? indexes[0] : indexes[indexes.length - 1];
-    if (!Number.isInteger(index)) return null;
-    const cue = MaweCoreState.container.querySelector(
-      target?.kind === 'extension'
-        ? `.multi-dual-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`
-        : `.cue[data-idx="${index}"], .multi-dual-cue[data-main-idx="${index}"]`,
-    );
-    return cue ? { cue, index } : null;
-  }
-
-
-
-  function navigateCueListBoundary(key) {
-    const target = getCurrentCuePanelTarget();
-    if (!target) return false;
-const boundary = renderedCueBoundaryTarget(target, key === 'Home' ? 'first' : 'last');
-if (!boundary) return false;
-interruptCueListFollowing();
-if (target.kind === 'extension') {
-      selectOnlyExtension(boundary.index, target.track);
-      lastClickedExtensionIdx = boundary.index;
-    } else {
-      selectOnly(boundary.index);
-      lastClickedIdx = boundary.index;
-    }
-    scrollCueToCenter(boundary.cue);
-    return true;
-  }
-
-
+  
 
   function isSpaceKey(e) {
     return e.key === ' ' || e.code === 'Space';
   }
 
-
-
   const TEXT_INPUT_TYPES = new Set([
     'text', 'search', 'email', 'url', 'tel', 'password', 'number',
   ]);
-
-
 
   function isPlayerKeyboardTarget(event) {
     return event.target === MaweCoreState.player
       || document.activeElement === MaweCoreState.player
       || event.composedPath?.().includes(MaweCoreState.player);
   }
-
-
 
   function isTextEditingTarget(event) {
     const target = event.target;
@@ -86,30 +36,22 @@ if (target.kind === 'extension') {
     return TEXT_INPUT_TYPES.has(input.type);
   }
 
-
-
   function isPlaybackKeyboardTarget(event) {
     const target = event.target;
     return isPlayerKeyboardTarget(event)
       || (target instanceof Element && Boolean(target.closest('#media-controls, .player-stage')));
   }
 
-
-
   function isNativeKeyboardControl(event) {
     const target = event.target instanceof Element ? event.target : document.activeElement;
     return Boolean(target?.closest?.('button, input, select, textarea, a'));
   }
-
-
 
   function subtitleTemporalOverlap(left, right) {
     if (!left || !right) return 0;
     return Math.max(0, Math.min(Number(left.end), Number(right.end))
       - Math.max(Number(left.start), Number(right.start)));
   }
-
-
 
   function nearestSubtitleIndex(segments, source, track = 'main') {
     const candidates = (segments || [])
@@ -129,8 +71,6 @@ if (target.kind === 'extension') {
     return candidates[0]?.index ?? -1;
   }
 
-
-
   function boundSegmentIndex(binding, ids, segments) {
     for (const id of ids || []) {
       const index = (segments || []).findIndex((segment) => segment?.id === id);
@@ -138,8 +78,6 @@ if (target.kind === 'extension') {
     }
     return -1;
   }
-
-
 
   function switchMultiSubtitleTrack(direction) {
     if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return false;
@@ -184,8 +122,6 @@ lastClickedIdx = nextIndex;
   }
 
   global.MaweKeyboardTargets = Object.freeze({
-    renderedCueBoundaryTarget,
-    navigateCueListBoundary,
     isSpaceKey,
     TEXT_INPUT_TYPES,
     isPlayerKeyboardTarget,

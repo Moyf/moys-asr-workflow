@@ -2877,7 +2877,7 @@ function renderAll({ waveform = 'overlay', preserveCueListScroll = true, cueList
   renderCurrentCuePanel();
   MaweMediaPlayback.syncPlayerPlaceholder();
   MaweDisplaySettings.updateMultiSubtitleUi();
-  MaweExportSrt.updateSubtitleExportUi();
+  updateSubtitleExportUi();
   MaweTimedTextEdit.refreshTimedTextEditButton();
   updateGapRemoveDisableHint();
   window.MAWE_ONBOARDING?.afterRender();
@@ -4011,7 +4011,7 @@ function refreshColorAssignmentUi() {
   }
   MaweCoreState.waveformEditor?.refreshCueOverlay?.();
   MawePlaybackLoop.refreshSubtitlePreview();
-  MaweExportSrt.updateSubtitleExportUi();
+  updateSubtitleExportUi();
 }
 
 renderColorFilterMenu();
@@ -6962,6 +6962,8 @@ cueListFollowButton?.addEventListener('click', resumeCueListFollowing);
 let seekWarned = false;
 let pendingMediaSeekTimeSec = null;
 let autoLoadedMediaReadyNotified = false;
+// 导出文件名标题（main #124/ASS 导出新增）：初始取工程名，保存后随文件名更新。
+let PROJECT_NAME = MaweBoot.FILENAME_BASE;
 let cueListPointer = null;
 // 最后一次指针按下所在的编辑区域：cue-list / waveform。
 // Enter（原地编辑 vs 聚焦字幕编辑区）据此分发；指针坐标由 cueListPointer /
@@ -7560,7 +7562,7 @@ document.addEventListener('keydown', (e) => {
       || MaweDom.multiSubtitleImportModal?.classList.contains('show')
       || document.getElementById('sticker-root-modal').classList.contains('show')
       || MaweDom.ctxmenu.classList.contains('show')) return;
-  if (navigationOwner === 'cue-list' && MaweKeyboardTargets.navigateCueListBoundary(e.key)) {
+  if (navigationOwner === 'cue-list' && navigateCueListBoundary(e.key)) {
     e.preventDefault();
     e.stopPropagation();
     return;
@@ -8513,6 +8515,33 @@ function speakerLabelExportOptions() {
   };
 }
 
+function currentAssVideoResolution() {
+  const metadata = window.AsrEditorUtils.normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
+  if (metadata?.video_width && metadata?.video_height) {
+    return { width: metadata.video_width, height: metadata.video_height };
+  }
+  const width = Number(MaweCoreState.player?.videoWidth);
+  const height = Number(MaweCoreState.player?.videoHeight);
+  if (MaweCoreState.player?.tagName === 'VIDEO'
+    && Number.isInteger(width) && width > 0
+    && Number.isInteger(height) && height > 0) {
+    return { width, height };
+  }
+  return null;
+}
+
+function assExportOptions(appearance = MaweAppearance.getSubtitleAppearance()) {
+  const resolution = currentAssVideoResolution();
+  return {
+    title: PROJECT_NAME || MaweBoot.FILENAME_BASE || 'MAW',
+    mediaMetadata: window.AsrEditorUtils.normalizeMediaMetadata(MaweBoot.DATA.media_metadata),
+    playResX: resolution?.width,
+    playResY: resolution?.height,
+    colorStyles: MaweColors.COLOR_PALETTE,
+    appearance,
+  };
+}
+
 function buildAss() {
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     MaweBoot.DATA.segments,
@@ -8582,9 +8611,9 @@ function usedSubtitleColors() {
 function updateSubtitleExportUi() {
   const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
   if (MaweDom.downloadColorSrtItem) MaweDom.downloadColorSrtItem.hidden = !hasColors;
-  if (subtitleExportSeparator) subtitleExportSeparator.hidden = !hasColors;
+  if (MaweDom.subtitleExportSeparator) MaweDom.subtitleExportSeparator.hidden = !hasColors;
   if (MaweDom.downloadGapRemovedColorSrtItem) MaweDom.downloadGapRemovedColorSrtItem.hidden = !hasColors;
-  if (gapRemovedSubtitleExportSeparator) gapRemovedSubtitleExportSeparator.hidden = !hasColors;
+  if (MaweDom.gapRemovedSubtitleExportSeparator) MaweDom.gapRemovedSubtitleExportSeparator.hidden = !hasColors;
   if (MaweDom.subtitleExportDropdown) MaweDom.subtitleExportDropdown.hidden = false;
   if (MaweDom.downloadMultiSrtButton) {
     MaweDom.downloadMultiSrtButton.hidden = !(MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length);
@@ -9031,7 +9060,7 @@ MaweDom.downloadMultiSrtButton?.addEventListener('click', async () => {
   if (extensionEditingState) finishExtensionEdit(true);
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   if (!track) return;
-  await MaweExportTimeline.downloadFile(MaweExportSrt.buildExtensionSrt(track), `${MaweBoot.FILENAME_BASE}_extension.srt`, 'text/plain', {
+  await MaweExportTimeline.downloadFile(buildExtensionSrt(track), `${MaweBoot.FILENAME_BASE}_extension.srt`, 'text/plain', {
     desc: '副字幕 SRT 文件', types: { 'text/plain': ['.srt'] },
   });
 });
@@ -9143,7 +9172,7 @@ document.getElementById('download-sticker-otio')?.addEventListener('click', () =
 });
 document.getElementById('download-gap-removed-srt')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
-  const payload = MaweExportSrt.buildGapRemovedSrt();
+  const payload = buildGapRemovedSrt();
   if (payload) {
     await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
       desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
@@ -9194,7 +9223,7 @@ document.getElementById('download-gap-removed-otio')?.addEventListener('click', 
     desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
   });
   if (MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
-    const srtPayload = MaweExportSrt.buildGapRemovedSrt();
+    const srtPayload = buildGapRemovedSrt();
     if (srtPayload) {
       await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
         desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
@@ -9210,7 +9239,7 @@ document.getElementById('download-gap-removed-otioz')?.addEventListener('click',
     '去空隙时间线 OTIOZ 打包工程',
   );
   if (saved && MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
-    const srtPayload = MaweExportSrt.buildGapRemovedSrt();
+    const srtPayload = buildGapRemovedSrt();
     if (srtPayload) {
       await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
         desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }

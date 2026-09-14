@@ -59,7 +59,8 @@ MaweAppearance.previewGeometryDirty = false;
 MaweServerSave.projectImportDirty = false;
 MaweCoreState.container.querySelectorAll('.dirty').forEach(element => element.classList.remove('dirty'));
 }
-MaweBoot.FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
+PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
+MaweBoot.FILENAME_BASE = PROJECT_NAME;
 const jsonEl = document.getElementById('json-name');
 if (jsonEl) {
 jsonEl.textContent = filename;

@@ -632,6 +632,10 @@
 
   const downloadColorSrtItem = document.getElementById('download-color-srt');
 
+  // 配色 SRT 分组分隔线（main 新增 DOM 常量，合并时补录）。
+  const subtitleExportSeparator = document.getElementById('subtitle-export-separator');
+  const gapRemovedSubtitleExportSeparator = document.getElementById('gap-removed-subtitle-export-separator');
+
 
   const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-removed-color-srt');
 
@@ -1215,6 +1219,8 @@
     downloadMultiSrtButton,
     subtitleExportDropdown,
     downloadColorSrtItem,
+    subtitleExportSeparator,
+    gapRemovedSubtitleExportSeparator,
     downloadGapRemovedColorSrtItem,
     multiSubtitleControls,
     multiSubtitleToggleLabel,
