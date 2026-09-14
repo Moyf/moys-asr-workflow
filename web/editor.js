@@ -9957,74 +9957,6 @@ function captureCueListRenderAnchor() {
     const rect = element.getBoundingClientRect();
     return rect.height > 0 && rect.bottom > top && rect.top < bottom;
   });
-<<<<<<< HEAD
-  const panelIndex = Number(currentCuePanelIdx);
-  const panelSelector = currentCuePanelKind === 'extension'
-    ? `.cue[data-ext-idx="${panelIndex}"]`
-    : `.cue[data-idx="${panelIndex}"]`;
-  const panelCue = Number.isInteger(panelIndex) && panelIndex >= 0
-    ? container.querySelector(panelSelector) : null;
-  const cueEl = visibleCandidates.includes(panelCue) ? panelCue : visibleCandidates[0];
-  const visual = captureCueListVisualAnchor(cueEl);
-  if (!visual) return { scrollTop: container.scrollTop };
-
-  const overlayIndex = Number(cueEl.dataset.overlayIdx);
-  if (cueEl.dataset.overlayIdx != null && Number.isInteger(overlayIndex)) {
-    const overlaySegments = getOverlayTrack()?.segments || [];
-    return {
-      ...visual,
-      scrollTop: container.scrollTop,
-      kind: 'overlay',
-      index: overlayIndex,
-      segmentId: overlaySegments[overlayIndex]?.id || null,
-    };
-  }
-
-  const mainIndex = cueEl.dataset.mainIdx ?? cueEl.dataset.idx;
-  if (mainIndex !== undefined) {
-    const index = Number(mainIndex);
-    const segment = Number.isInteger(index) ? DATA.segments[index] : null;
-    return {
-      ...visual,
-      scrollTop: container.scrollTop,
-      kind: 'main',
-      index,
-      segmentId: segment?.id || null,
-    };
-  }
-
-  const index = Number(cueEl.dataset.extIdx);
-  const track = getActiveExtensionTrack();
-  const segment = Number.isInteger(index) ? track?.segments?.[index] : null;
-  return {
-    ...visual,
-    scrollTop: container.scrollTop,
-    kind: 'extension',
-    index,
-    segmentId: segment?.id || null,
-    trackId: track?.id || null,
-  };
-}
-
-function findCueListRenderAnchor(anchor) {
-  if (!anchor || !container?.isConnected) return null;
-  if (anchor.kind === 'extension') {
-    const track = getExtensionTrack(anchor.trackId) || getActiveExtensionTrack();
-    const index = anchor.segmentId
-      ? track?.segments?.findIndex((segment) => segment?.id === anchor.segmentId)
-      : anchor.index;
-    if (!Number.isInteger(index) || index < 0) return null;
-    return container.querySelector(`:scope > .cue[data-ext-idx="${index}"]`);
-  }
-  if (anchor.kind === 'overlay') {
-    const overlaySegments = getOverlayTrack()?.segments || [];
-    const index = anchor.segmentId
-      ? overlaySegments.findIndex((segment) => segment?.id === anchor.segmentId)
-      : anchor.index;
-    if (!Number.isInteger(index) || index < 0) return null;
-    return container.querySelector(`:scope > .cue[data-overlay-idx="${index}"]`);
-  }
-=======
   // 使用旧 DOM 的选区而不是可能已改变身份的面板下标。
   const cue = visible.find(element => element.matches('.selected, .selected-extension')
     || element.querySelector('.selected')) || visible.find(element => element.getBoundingClientRect().top >= top)
@@ -10040,7 +9972,6 @@ function rememberCueListMutation() {
     if (cueListScroll.mutationAnchor === anchor) cueListScroll.mutationAnchor = null;
   });
 }
->>>>>>> main
 
 function findCueListRenderAnchor(anchor, { replacement = false } = {}) {
   if (!anchor?.segmentId) return null;
@@ -13594,7 +13525,6 @@ function buildJson() {
       end_offset_ms: binding.end_offset_ms || 0,
     })),
   };
-<<<<<<< HEAD
   const overlay = getOverlayTrack();
   if (overlay?.enabled === true || overlay?.segments?.length) {
     out.overlay_track = {
@@ -14923,13 +14853,9 @@ function scheduleAutoSave() {
 function hasUnsavedProjectChanges() {
   const multiDirty = Boolean(DATA.multi_subtitle?._dirty)
     || (DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
-<<<<<<< HEAD
   const overlayDirty = Boolean(DATA.overlay_track?._dirty)
     || DATA.overlay_track?.segments?.some((segment) => segment._dirty);
-  return projectImportDirty || gapRemoveDirty || previewGeometryDirty
-=======
   return inlineEditHasUncommittedText() || projectImportDirty || gapRemoveDirty || previewGeometryDirty
->>>>>>> main
     || DATA.segments.some((segment) => segment._dirty)
     || multiDirty || overlayDirty;
 }
