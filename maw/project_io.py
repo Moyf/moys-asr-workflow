@@ -13,13 +13,15 @@ from maw.project import PROJECT_SCHEMA
 # 工程级波形缓存键。生成端把它们合并进运行态工程供页面即时使用，落盘边界
 # （serialize_mosp / server 保存）统一剥掉：缓存真源是媒体旁的 .quapeaks /
 # .mopeaks，写进工程只会让文件被 base64 撑大 33% 且每次保存"复活"。
-INLINE_CACHE_KEYS: tuple[str, ...] = ("waveform", "spectral", "waveform_reapeaks")
+# loudness（整文件响度标量）同样是 reapeaks 响度层的运行态派生物，随保存
+# 一并恢复/剥离，编辑器据此自动定波形振幅。
+INLINE_CACHE_KEYS: tuple[str, ...] = ("waveform", "spectral", "waveform_reapeaks", "loudness")
 
 
 def strip_inline_caches(project: Mapping[str, Any]) -> dict[str, Any]:
     """Return a shallow copy without the inline waveform cache payloads.
 
-    只移除顶层三键，绝不触碰入参对象：server 的运行态工程与落盘副本共用
+    只移除顶层这几个键，绝不触碰入参对象：server 的运行态工程与落盘副本共用
     同一个 dict，在这里原地删除会让页面波形当场消失。
     """
     stripped = dict(project)

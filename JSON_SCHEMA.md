@@ -169,6 +169,31 @@
 - 与 `spectral` 同源，均为 `.ReaPeaks` 派生的可丢弃缓存，非真源。
 - 没有 `spectral` 数据时，编辑器会自动取消并禁用“频谱颜色”开关；后台读到合法频谱后重新启用该开关。
 
+#### 1.1c loudness 整文件响度统计（仅运行态）
+
+`.quapeaks` / `.ReaPeaks` 的响度层会汇总成几个**整文件标量**，服务器经 `GET /api/waveform` 的 `loudness` 字段下发，编辑器据此给波形定垂直缩放（振幅）。
+
+```json
+{
+  "schema": "moy.asr.loudness.v1",
+  "bin_count": 81,
+  "channels": 1,
+  "audio_track": 0,
+  "max": 0.3357,
+  "mean": 0.3315,
+  "rms": 0.3336,
+  "p95": 0.3357,
+  "source": { "name": "audio.wav", "size": 441044, "modified_ms": 1786328355571 }
+}
+```
+
+- **不进工程文件。** 它是响度层的派生缓存，和 `spectral`、`waveform_reapeaks` 一样只活在运行态；`buildJson()` 通过 `CANONICAL_PROJECT_FIELDS` 把它排除在保存之外，因此切换工程时该字段恒被重置为 `null`，再由新媒体的 `/api/waveform` 重新拟合。
+- **四个量都是 0..1 的线性满量程 RMS**（内核按 `sqrt(平方和/样本数)/32768` 写入），既不是 dB 也不是 peak。同一时刻 RMS 恒低于真实峰值（方波相等、正弦约 ×0.71、语音约 ×0.2~0.3），所以按它定的标尺会让最响的瞬态画出画框 —— 这是刻意的取舍：目标是**大部分时间不削波**，而不是全程不削波。若按 wave 层 `max|peak|` 定标尺，一次瞬态就会把整条波形压扁。
+- `p95` 是逐桶电平的第 95 百分位（nearest-rank），当前编辑器用它定缩放；`max` / `mean` / `rms` 一并下发，换口径只是改前端一个常量。
+- **刻意没有任何时间刻度字段。** 响度层头部的 `division_factor` 是 kind token（`-114`，旧 `-108`），`abs()` 出来的 114 与采样率无关，拿它当 division 就会重演时间轴按比例漂移。只发标量则根本不需要刻度：细层实测恒为 40 桶/秒、粗层 2 桶/秒（内核里 div 恒为 `sr/40` 与 `sr/2`），与采样率无关。
+- 统计取**最细那一层**（桶数最多者），粗层在长素材上只剩几个采样点、`p95` 会退化等于 `max`。**跨声道逐桶取 max**：只看声道 0 会让"双单声道"素材（人声只在右声道）得到一条接近静音的标尺。
+- 读不出时该字段不出现（`extract_*` 允许抛 `struct.error`，`load_loudness_stats` 永不抛），编辑器保持用户原来的手动振幅，不做任何猜测。
+
 ### 1.2 workspace 工作区
 
 `workspace` 使用独立 schema `moy.asr.editor.workspace.v1`。一个工作区 = **窗口布局**（“视频、当前字幕编辑区、字幕列表、波形”四个功能区的停靠方式与尺寸）+ **显示状态**（波形显示模式与偏好、字幕列表/编辑区的显示开关）。保存或恢复工作区时两部分一起生效。
@@ -179,7 +204,7 @@
   "preset": "custom",
   "selectedPreset": "cinema",
   "waveformMode": "basic",
-  "waveformSettings": { "visibleSeconds": 20, "secondsPerRow": 10, "rowHeight": 120, "waveformScale": 1, "side": "left", "disabledDisplay": "dim", "showGroupBadges": true, "dragPlayhead": true },
+  "waveformSettings": { "visibleSeconds": 20, "secondsPerRow": 10, "rowHeight": 120, "waveformScale": 1, "waveformScaleAuto": true, "side": "left", "disabledDisplay": "dim", "showGroupBadges": true, "dragPlayhead": true },
   "editorDisplay": { "cueListShowIndex": true, "cueListShowTime": true, "cueListShowSticker": false, "cueListShowCharcount": true, "cueEditorShowNavigation": false, "cueEditorShowTimeActions": true, "cueEditorShowSticker": false },
   "splitPercent": 60,
   "columnPercent": 58,
@@ -215,7 +240,8 @@
 - `preset` 是**渲染器**，决定这份窗口布局如何绘制：`classic`（标准堆叠网格）、`wave-right`（右侧整列波形网格）或 `custom`（由 `tree` 渲染；「字幕列表编辑」「大荧幕布局」与用户自定义工作区都走这条路）。未知值回退到 `wave-right`。
 - `selectedPreset` 记录用户最后在**工作区下拉框**选择的项：内置工作区为 `classic` / `wave-right` / `three-fold` / `cinema`（大荧幕布局），本机命名工作区为 `saved:<名称>`。它与 `tree` 一起保存，使内部以 `custom` 渲染的工作区在重开工程后仍显示用户所见的名称。
 - `waveformMode` 可为 `multi`（多行）或 `basic`（单行）。工作区中存在该字段时随恢复一并切换；缺失时保持当前浏览器设置。
-- `waveformSettings` 保存波形区数值与显示偏好：基础模式窗口长度、多行每行长度及高度、振幅、左右侧、禁用字幕显示、分组徽章与拖动播放头。字段缺失时保持浏览器本机设置。
+- `waveformSettings` 保存波形区数值与显示偏好：基础模式窗口长度、多行每行长度及高度、振幅、振幅是否仍由响度自动决定、左右侧、禁用字幕显示、分组徽章与拖动播放头。字段缺失时保持浏览器本机设置。
+- `waveformScaleAuto` 决定编辑器要不要用媒体响度统计给波形定垂直缩放：**缺失按 `true` 处理**，让老工程升级后也能吃到自动缩放；只有用户在波形设置里手动调过振幅才写 `false`，此后不再覆盖他调的值。它必须落在这个**工程内**的 workspace 块里而不是浏览器偏好：`waveformScale` 的活跃值同时存在 `localStorage`，是跨工程共享的，所以"等于默认值"和"哨兵值"都无法判断*本*工程是否已定过振幅。
 - `editorDisplay` 保存“字幕列表显示”和“字幕编辑显示”两组开关。它只包含工作区可见性，不包含导出、自动保存或快捷键等全局偏好。
 - `splitPercent` 是 classic 网格中多行波形与字幕列表比例，范围会被限制在 35–75；它与工作区一起导出，因此拖动后可撤销、复用。
 - `columnPercent` 是 `custom` 渲染器最外层左右分栏的比例，范围会被限制在 30–75。

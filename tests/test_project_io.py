@@ -182,7 +182,7 @@ class ProjectIoTests(unittest.TestCase):
 
 
 class InlineCacheStripTests(unittest.TestCase):
-    """工程去内联：三块波形缓存只活在运行态，落盘边界统一剥离。"""
+    """工程去内联：各层波形缓存（含响度统计）只活在运行态，落盘边界统一剥离。"""
 
     def test_serialize_mosp_strips_inline_caches_and_keeps_input_intact(self) -> None:
         payload = {
@@ -193,6 +193,17 @@ class InlineCacheStripTests(unittest.TestCase):
             "peaks_per_second": 100,
             "duration_ms": 10,
         }
+        loudness = {
+            "schema": "moy.asr.loudness.v1",
+            "bin_count": 81,
+            "channels": 1,
+            "audio_track": 0,
+            "max": 0.3357,
+            "mean": 0.3315,
+            "rms": 0.3336,
+            "p95": 0.3357,
+            "source": {"name": "clip.wav", "size": 10, "modified_ms": 1700000000000},
+        }
         project = {
             "media": "clip.mp4",
             "segments": [],
@@ -200,6 +211,7 @@ class InlineCacheStripTests(unittest.TestCase):
             "waveform": payload,
             "spectral": payload,
             "waveform_reapeaks": payload,
+            "loudness": loudness,
         }
 
         text = serialize_mosp(project)

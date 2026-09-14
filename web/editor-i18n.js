@@ -9,6 +9,8 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '跟随播放': 'Follow playback',
+    '定位当前播放头并恢复字幕跟随；手动翻看后可再次点击': 'Locate the playhead and resume subtitle following; click again after browsing manually',
     '备份工程': 'Back up project',
     '打开备份文件夹': 'Open backup folder',
     '自动备份间隔（分钟）': 'Backup interval (minutes)',
@@ -664,6 +666,9 @@
     '放大时间轴': 'Zoom in', '缩小时间轴': 'Zoom out',
     '增大波形振幅': 'Increase waveform amplitude',
     '减小波形振幅': 'Decrease waveform amplitude',
+    '响度适配': 'Fit by loudness',
+    '按整文件响度重新拟合振幅': 'Refit the amplitude from the file-wide loudness',
+    '当前媒体没有响度缓存，无法按响度适配': 'No loudness cache for this media; cannot fit by loudness',
     '选择一条字幕开始编辑…': 'Select a subtitle to start editing…',
     '要查找的内容': 'Text to find', '替换后的内容': 'Replacement text',
     '按文件名过滤...': 'Filter by filename…',
