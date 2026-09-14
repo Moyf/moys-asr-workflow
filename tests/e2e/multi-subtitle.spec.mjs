@@ -2231,7 +2231,7 @@ test('keeps extension selection, timing, disabled, and hide shortcuts in parity 
 
   await extensionColumn.click({ modifiers: ['Alt'] });
   await expect(extensionColumn).toHaveClass(/disabled/);
-  const saved = await page.evaluate(() => JSON.parse(buildJson()));
+  const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(saved.multi_subtitle.tracks[0].segments[0].disabled).toBe(true);
 
   await page.locator('#cue-list-settings-toggle').click();
