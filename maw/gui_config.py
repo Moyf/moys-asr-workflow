@@ -120,12 +120,14 @@ class EffectiveConfig:
     # output_naming.subfolder_prefs() 直接读取这两个字段。
     output_subfolder: bool = False
     per_video_subfolder: bool = False
-    attach_model_name: bool = True
+    attach_model_name: bool = False
     last_model: str | None = None
     last_language: str | None = None
     model_cache_root: str = ""
     zoom_percent: int = 100
     theme: str | None = None
+    # 任务完成后是否发送系统通知（Launcher「通用 → 完成通知」，默认关闭）。
+    notify_on_complete: bool = False
 
 
 REGIONS: Final[tuple[tuple[str, str], ...]] = (
@@ -574,7 +576,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="qwen",
         label="阿里云百炼（QwenASR / FunASR）",
-        key_url="https://help.aliyun.com/zh/model-studio/get-api-key",
+        key_url="https://platform.qianwenai.com/home/",
         models=QWEN_MODELS,
         regions=REGIONS,
         languages=LANGUAGES,
@@ -595,7 +597,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="doubao",
         label="豆包语音识别（火山引擎）",
-        key_url="https://console.volcengine.com/speech/new/experience/asr",
+        key_url="https://console.volcengine.com/speech/new/setting/apikeys",
         models=DOUBAO_MODELS,
         regions=(),
         languages=DOUBAO_LANGUAGES,
@@ -737,17 +739,18 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         region=pick("DASHSCOPE_REGION", "beijing").lower() or "beijing",
         workspace_id=pick("DASHSCOPE_WORKSPACE_ID"),
         language=pick("DASHSCOPE_DEFAULT_LANGUAGE"),
-        gui_lang=_gui_language(pick("MAW_GUI_LANG", "zh")),
+        gui_lang=_gui_language(pick("MAW_GUI_LANG", "")),
         sticker_dir=pick("STICKER_DIR"),
         show_rare_langs=pick("MAW_GUI_SHOW_RARE_LANGS").strip().lower() in ("1", "true", "yes", "on"),
         output_subfolder=_env_bool(pick("MAW_GUI_OUTPUT_SUBFOLDER")),
         per_video_subfolder=_env_bool(pick("MAW_GUI_PER_VIDEO_SUBFOLDER")),
-        attach_model_name=_env_bool(pick("MAW_GUI_ATTACH_MODEL_NAME"), default=True),
+        attach_model_name=_env_bool(pick("MAW_GUI_ATTACH_MODEL_NAME"), default=False),
         last_model=pick_optional("MAW_GUI_LAST_MODEL"),
         last_language=pick_optional("MAW_GUI_LAST_LANGUAGE"),
         model_cache_root=pick("MAW_MODEL_CACHE_ROOT").strip(),
         zoom_percent=normalize_zoom_percent(pick("MAW_GUI_ZOOM_PERCENT", "100")),
         theme=_gui_theme(pick_optional("MAW_GUI_THEME")),
+        notify_on_complete=_env_bool(pick("MAW_GUI_NOTIFY_ON_COMPLETE"), default=False),
     )
 
 
@@ -835,7 +838,10 @@ def _env_key(line: str) -> str | None:
 
 
 def _gui_language(value: str) -> str:
-    return "en" if value.strip().lower() == "en" else "zh"
+    # 空串表示「用户从未手动设置」，由前端按系统语言自动选择；
+    # 后端消费者（resolve_lang 等）自行回退到默认语言。
+    normalized = value.strip().lower()
+    return normalized if normalized in ("zh", "en") else ""
 
 
 def _gui_theme(value: str | None) -> str | None:

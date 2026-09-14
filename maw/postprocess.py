@@ -57,6 +57,8 @@ class LlmPostprocessRequest:
     output_directory: Path | None = None
     media_path: Path | None = None
     merge_bilingual: bool = False
+    embed_translations: bool = False
+    bilingual_line_order: str = ""
 
 
 class PostprocessStepError(RuntimeError):
@@ -100,15 +102,28 @@ MAX_LLM_INPUT_CHARS_PER_REQUEST: Final = 4000
 MAX_LLM_WARNING_TEXT_CHARS: Final = 240
 MAX_SINGLE_CUE_TRANSLATION_ATTEMPTS: Final = 2
 MAX_TRANSLATION_REPAIR_REQUESTS_PER_BATCH: Final = 32
-# 双语合一产物在文件名中的标记 ID 与其 zh 界面显示名（双语合一）都识别：
-# 旧版英文命名（clip.translate-zh-bilingual / 中间产物带 .bilingual 段）与 zh 界面
-# 本地化命名（clip.翻译为中文.双语合一 等）再次进入翻译时必须被拦截。
+# 翻译组合产物（双语合一 / 回填）在文件名中的标记 ID 与 zh 界面显示名都识别：
+# 旧版英文命名（clip.translate-zh-bilingual / clip.translate-zh-backfill / 中间产物带
+# .bilingual 段）与 zh 界面本地化命名（clip.翻译为中文.双语合一 / .回填 等）再次进入
+# 翻译时必须被拦截。
 BILINGUAL_ARTIFACT_MARKER: Final = "bilingual"
-BILINGUAL_ARTIFACT_PATTERN: Final = re.compile(
-    rf"(?:^|[.-])(?:{re.escape(BILINGUAL_ARTIFACT_MARKER)}|{re.escape(translation_marker_name('bilingual', lang='zh'))})(?:-\d+)?$"
+BACKFILL_ARTIFACT_MARKER: Final = "backfill"
+_TRANSLATION_COMBINED_MARKER_NAMES: Final[tuple[str, ...]] = tuple(
+    name
+    for marker in (BILINGUAL_ARTIFACT_MARKER, BACKFILL_ARTIFACT_MARKER)
+    for name in (marker, translation_marker_name(marker, lang="zh"))
+)
+BILINGUAL_ARTIFACT_PATTERN: Final[re.Pattern[str]] = re.compile(
+    rf"(?:^|[.-])(?:{'|'.join(re.escape(name) for name in _TRANSLATION_COMBINED_MARKER_NAMES)})(?:-\d+)?$"
 )
 TIMING_FIELDS: Final = ("start", "end", "text", "items")
 ONE_TO_ONE_TRANSLATION_OPERATIONS: Final = frozenset({"translate_en", "translate_zh"})
+# 目标语言预过滤阈值：一条字幕的中文字符（不含假名/谚文等）占「中文 + 拉丁字母」
+# 的比例达到该值时，视为已是中文，翻译到中文时不再发送给模型。
+CJK_TARGET_RATIO_THRESHOLD: Final[float] = 0.7
+_CJK_CHAR_PATTERN: Final[re.Pattern[str]] = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+_LATIN_CHAR_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z]")
+_ANY_LETTER_PATTERN: Final[re.Pattern[str]] = re.compile(r"[^\W\d_]", re.UNICODE)
 
 
 @dataclass(slots=True)
@@ -240,6 +255,8 @@ def run_llm_postprocess(
     custom = request.custom_prompt.strip()
     strict_translation = request.operation in ONE_TO_ONE_TRANSLATION_OPERATIONS
     if strict_translation:
+        if request.merge_bilingual and request.embed_translations:
+            raise ValueError("「将双语字幕合并为单个字幕」与「只翻译非中文（英文）的字幕」不能同时启用，请只选择一个输出方式。")
         _reject_recursive_translation_input(source_project, source_srt, request.operation)
     item_aware_resegment = request.operation == "resegment" and _has_complete_items(project)
     system_prompt = _protocol_prompt(
@@ -250,6 +267,7 @@ def run_llm_postprocess(
     )
     cues = _llm_cues(project, include_items=item_aware_resegment)
     preserved_blank_source_ids: set[str] = set()
+    preserved_target_source_ids: set[str] = set()
     if strict_translation:
         preserved_blank_source_ids = {
             str(cue["id"])
@@ -258,7 +276,20 @@ def run_llm_postprocess(
         }
         if preserved_blank_source_ids:
             cues = [cue for cue in cues if str(cue["id"]) not in preserved_blank_source_ids]
+        if cues:
+            preserved_target_source_ids = {
+                str(cue["id"])
+                for cue in cues
+                if _is_already_target_language(str(cue.get("text") or ""), request.operation)
+            }
+            if preserved_target_source_ids:
+                cues = [cue for cue in cues if str(cue["id"]) not in preserved_target_source_ids]
         if not cues:
+            if preserved_target_source_ids:
+                target_name = TRANSLATION_TARGET_NAMES["zh"]["zh" if request.operation == "translate_zh" else "en"]
+                raise ValueError(
+                    f"所有非空字幕已经是{target_name}，没有需要翻译的内容，未写出输出产物。"
+                )
             raise ValueError("工程没有可翻译的非空字幕，未写出输出产物。")
     batches = _llm_batches(cues)
     _notify_status(on_status, "toolbox_status_preparing_llm")
@@ -336,13 +367,13 @@ def run_llm_postprocess(
     elif item_aware_resegment:
         raise ValueError("LLM 分批返回了不一致的字词边界协议，未写出输出产物。")
     else:
-        application_skipped_source_ids = skipped_source_ids | preserved_blank_source_ids
+        application_skipped_source_ids = skipped_source_ids | preserved_blank_source_ids | preserved_target_source_ids
         processed, warnings = _apply_llm_groups_with_warnings(
             project,
             response,
             strict_translation=strict_translation,
             skipped_source_ids=application_skipped_source_ids,
-            preserve_skipped_source_ids=preserved_blank_source_ids,
+            preserve_skipped_source_ids=preserved_blank_source_ids | preserved_target_source_ids,
             preserve_items_on_equal_text=not strict_translation,
             drop_items=strict_translation,
         )
@@ -359,6 +390,12 @@ def run_llm_postprocess(
             f"翻译时已跳过并原样保留 {len(preserved_blank_source_ids)} 条空字幕；这些字幕未发送给模型。",
             *warnings,
         )
+    if preserved_target_source_ids:
+        target_name = TRANSLATION_TARGET_NAMES["zh"]["zh" if request.operation == "translate_zh" else "en"]
+        warnings = (
+            f"翻译时已跳过并原样保留 {len(preserved_target_source_ids)} 条已是{target_name}的字幕；这些字幕未发送给模型。",
+            *warnings,
+        )
     if len(batches) > 1:
         warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
     output_operation = request.operation
@@ -367,9 +404,14 @@ def run_llm_postprocess(
             project,
             processed,
             translation_target="zh" if request.operation == "translate_zh" else "en",
+            line_order=request.bilingual_line_order,
         )
         output_operation = f"{request.operation}-{BILINGUAL_ARTIFACT_MARKER}"
         warnings = ("已将原始文本和翻译文本合并为单条双语字幕。", *warnings)
+    elif request.embed_translations and strict_translation:
+        processed = embed_translated_project(project, processed)
+        output_operation = f"{request.operation}-{BACKFILL_ARTIFACT_MARKER}"
+        warnings = ("已将翻译结果回填进原字幕，输出为单条字幕。", *warnings)
     _notify_status(on_status, "toolbox_status_writing")
     return _write(
         processed,
@@ -383,13 +425,31 @@ def run_llm_postprocess(
     )
 
 
+BILINGUAL_LINE_ORDERS: Final[frozenset[str]] = frozenset({"", "translation_first", "original_first"})
+
+
 def merge_bilingual_project(
     source_project: JsonDict,
     translated_project: JsonDict,
     *,
     translation_target: str,
+    line_order: str = "",
 ) -> JsonDict:
-    """Combine matching cues, placing the Chinese translation first for ``zh``."""
+    """Combine matching cues into stacked two-line bilingual subtitles.
+
+    ``line_order`` 控制上下行序：空串跟随历史默认（翻译成中文时译文在上，
+    翻译成英文时原文在上），``translation_first`` 强制译文在上，
+    ``original_first`` 强制原文在上。
+    """
+
+    if line_order not in BILINGUAL_LINE_ORDERS:
+        raise ValueError("双语行序必须是「译文在上」或「原文在上」。")
+    if line_order == "translation_first":
+        translation_first = True
+    elif line_order == "original_first":
+        translation_first = False
+    else:
+        translation_first = translation_target == "zh"
 
     source_segments = _segments(source_project)
     translated_segments = _segments(translated_project)
@@ -417,7 +477,10 @@ def merge_bilingual_project(
             merged["text"] = translated_text
         elif not translated_has_text:
             merged["text"] = source_text
-        elif translation_target == "zh":
+        elif translated_text.strip() == source_text.strip():
+            # 目标语言预过滤保留的句子，翻译与原文相同；堆叠会出现重复行。
+            merged["text"] = source_text
+        elif translation_first:
             merged["text"] = f"{translated_text}\n{source_text}"
         else:
             merged["text"] = f"{source_text}\n{translated_text}"
@@ -432,6 +495,44 @@ def merge_bilingual_project(
     merged_project.pop("multi_subtitle", None)
     merged_project.pop("extensionSegments", None)
     return normalize_project(merged_project)
+
+
+def embed_translated_project(source_project: JsonDict, translated_project: JsonDict) -> JsonDict:
+    """把翻译结果回填进原字幕：译句替换对应原文，其余句子逐字节保留。
+
+    与 merge_bilingual_project 的双语堆叠不同，补译回填只输出单条字幕：翻译
+    结果与原文相同的句子（含目标语言预过滤保留的句子）完整保留原段（含字词
+    时间码）；发生翻译的句子替换文本并丢弃字词时间码。
+    """
+
+    source_segments = _segments(source_project)
+    translated_segments = _segments(translated_project)
+    if len(source_segments) != len(translated_segments):
+        raise ValueError("翻译回填要求翻译前后保持相同的字幕段数。")
+
+    embedded_segments: list[JsonValue] = []
+    for index, (source, translated) in enumerate(zip(source_segments, translated_segments, strict=True), 1):
+        if (
+            source.get("id") != translated.get("id")
+            or source.get("start") != translated.get("start")
+            or source.get("end") != translated.get("end")
+        ):
+            raise ValueError(f"第 {index} 条翻译结果未保持原字幕时间范围或稳定 ID，无法回填。")
+        source_text = source.get("text")
+        translated_text = translated.get("text")
+        if not isinstance(source_text, str) or not isinstance(translated_text, str):
+            raise ValueError(f"第 {index} 条字幕缺少有效的原文或翻译文本。")
+        merged = copy.deepcopy(source)
+        if translated_text.strip() and translated_text != source_text:
+            merged["text"] = translated_text
+            _ = merged.pop("items", None)
+        embedded_segments.append(merged)
+
+    embedded_project = copy.deepcopy(source_project)
+    embedded_project["segments"] = embedded_segments
+    embedded_project.pop("multi_subtitle", None)
+    embedded_project.pop("extensionSegments", None)
+    return normalize_project(embedded_project)
 
 
 def _notify_status(on_status: LlmStatus | None, key: str, **details: int) -> None:
@@ -612,6 +713,25 @@ def _merge_translation_response_parts(
             if str(cue["id"]) in groups_by_source_id
         ]
     }
+
+
+def _is_already_target_language(text: str, operation: str) -> bool:
+    """判断一条字幕是否已是翻译目标语言（或不含可翻译文字），无需发送给模型。
+
+    纯字符脚本启发式只可靠地识别中文；没有可识别中文或出现其他文字（假名、
+    谚文、西里尔字母、拉丁文字等）时一律交给模型处理，避免把西语、法语等
+    拉丁文字误认为英文。
+    """
+    letters = len(_ANY_LETTER_PATTERN.findall(text))
+    cjk = len(_CJK_CHAR_PATTERN.findall(text))
+    latin = len(_LATIN_CHAR_PATTERN.findall(text))
+    if letters > cjk + latin:
+        return False
+    if operation == "translate_en":
+        return cjk == 0 and latin == 0
+    if cjk == 0:
+        return latin == 0
+    return cjk / (cjk + latin) >= CJK_TARGET_RATIO_THRESHOLD
 
 
 def _reject_recursive_translation_input(

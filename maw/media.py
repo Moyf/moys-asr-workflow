@@ -117,13 +117,14 @@ def probe_video_fps(
     path: Path | str,
     *,
     ffprobe_path: str | os.PathLike[str] | None = None,
-) -> dict[str, float | str] | None:
-    """Read a local video's frame rate as optional project metadata.
+) -> dict[str, float | int | str] | None:
+    """Read a local video's frame rate and dimensions as project metadata.
 
     ``avg_frame_rate`` is preferred because it is the most useful constant
     rate for the editor's frame-to-millisecond mapping; ``r_frame_rate`` is a
-    fallback for files where FFprobe cannot calculate an average.  A missing
-    FFprobe executable, an audio-only input, an invalid rate, or any probe
+    fallback for files where FFprobe cannot calculate an average.  Width and
+    height are included when FFprobe reports a valid video stream. A missing
+    FFprobe executable, an audio-only input, invalid metadata, or any probe
     failure simply returns ``None`` so metadata enrichment never blocks ASR.
     """
 
@@ -142,7 +143,7 @@ def probe_video_fps(
     command = [
         str(executable), "-v", "error",
         "-select_streams", "v:0",
-        "-show_entries", "stream=avg_frame_rate,r_frame_rate",
+        "-show_entries", "stream=width,height,avg_frame_rate,r_frame_rate",
         "-of", "json", str(source),
     ]
     try:
@@ -163,12 +164,18 @@ def probe_video_fps(
     stream = streams[0] if isinstance(streams, list) and streams else None
     if not isinstance(stream, dict):
         return None
+    metadata: dict[str, float | int | str] = {}
     for key in ("avg_frame_rate", "r_frame_rate"):
         parsed = _parse_probe_frame_rate(stream.get(key))
         if parsed is not None:
             fps, ratio = parsed
-            return {"video_fps": fps, "video_fps_ratio": ratio}
-    return None
+            metadata.update(video_fps=fps, video_fps_ratio=ratio)
+            break
+    width = _parse_probe_integer(stream.get("width"), minimum=1)
+    height = _parse_probe_integer(stream.get("height"), minimum=1)
+    if width is not None and height is not None:
+        metadata.update(video_width=width, video_height=height)
+    return metadata or None
 
 
 def _parse_probe_integer(value: object, *, minimum: int = 0) -> int | None:

@@ -67,7 +67,7 @@ notepad .env
 DASHSCOPE_API_KEY=sk-你的密钥
 ```
 
-北京地域默认使用 `DASHSCOPE_REGION=beijing`；`DASHSCOPE_WORKSPACE_ID` 在北京选填，填写后会使用官方推荐的业务空间专属域名。新加坡地域改为 `singapore` 并必须填写 Workspace ID。Launcher 目前面向国内用户隐藏地域和 Workspace 控件；如需海外地域或专属域名，请通过 CLI / `.env` 配置。环境变量优先于 `.env`。密钥申请和地域说明以[官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)为准。
+北京地域默认使用 `DASHSCOPE_REGION=beijing`；`DASHSCOPE_WORKSPACE_ID` 在北京选填，填写后会使用官方推荐的业务空间专属域名。新加坡地域改为 `singapore` 并必须填写 Workspace ID。Launcher 目前面向国内用户隐藏地域和 Workspace 控件；如需海外地域或专属域名，请通过 CLI / `.env` 配置。环境变量优先于 `.env`。密钥获取或查看和地域说明以[阿里云百炼](https://platform.qianwenai.com/home/)为准。
 
 ## 2. 先跑小样本
 
@@ -298,7 +298,7 @@ Launcher「配置 → 通用 → 文件输出」可以调整最终产物的位�
 
 - **将所有输出文件放入子文件夹**（默认关）：开启后 SRT / `.mosp` 也写入 `_maw`。
 - **每个视频单独创建子文件夹**（默认关）：开启后子文件夹以视频命名，如 `视频名_maw`，每个媒体相互独立。
-- **附加模型名称**（默认开）：关闭后 SRT 文件名不再含供应商/模型段（`clip.qwen-audio.srt` → `clip.srt`）。
+- **在输出文件名中附加模型名称**（默认关）：开启后 SRT 文件名带上供应商/模型段（`clip.srt` → `clip.qwen-audio.srt`）。
 
 转写过程会在 Launcher 日志输出起止时间码、转写耗时与媒体时长；开启自动后处理时还会汇总全程总用时与各步骤耗时。实时率（RTF）= 转写耗时 ÷ 媒体原长，`0.12x` 表示耗时为原长的 0.12 倍，数值越小越快；使用阿里云百炼服务时日志会附带按 `0.00022 元/秒` 估算的费用。命令行转写 CLI 的输出见 [CLI.md](../cli/)。
 
@@ -413,7 +413,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 - 可拖动波形中的字幕块或边缘微调时间；相邻字幕共享边界时会保持连续。
 - 播放器内的字幕预览可直接拖动；悬停或聚焦后拖动八个手柄可缩放。方向键移动，`Shift` 加速移动，`Alt + 方向键` 调整尺寸。几何保存在工程 `preview.subtitle`，不会改变字幕时间。
 - “移除静音空隙”只建立可逆的压缩时间线，不修改原媒体和原字幕时间。
-- 常规 SRT 或 ASS 通过工具栏导出；ASS 会把主字幕预览当前选中的字体、字号和文字颜色写入默认样式。若启用了空隙移除，可选择去空隙 SRT、OTIO、FFconcat 或保留区域 JSON。
+- 常规 SRT 或 ASS 通过工具栏导出；ASS 会把主字幕预览当前选中的字体、字号和文字颜色写入样式，并按工程记录的源视频宽高写入 `PlayResX` / `PlayResY`，五种字幕颜色写入对应样式，启用说话人导出时写入 ASS `Name` 字段。若启用了空隙移除，可选择去空隙 SRT、带样式 ASS、OTIO、FFconcat 或保留区域 JSON。
 - 去空隙 OTIO 会把启用字幕作为保留媒体 clip 上的 marker，名称为字幕内容；字幕颜色映射为 Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE`，跨越被移除空隙的字幕按保留区间拆分，无颜色时使用白色默认标记。marker 的 `marked_range` 使用媒体源坐标，与 clip 的 `source_range` 和外部引用的 `available_range` 保持一致；带 BWF `bext.time_reference` 的 WAV 会保留非零媒体起点，避免 Resolve 导入后片段内容错位。Resolve 的可用颜色参考还包括 Blue、Cyan、Green、Yellow、Red、Pink、Purple、Fuchsia、Rose、Lavender、Sky、Mint、Lemon、Sand、Cocoa、Cream；当前 MAW 使用其中五色。
 
 完整 JSON 约束在 [JSON_SCHEMA.md](../json-schema/)。若你打算用其他 ASR 或 LLM 生成工程，至少保证顶层有 `segments`，时间全部是整数毫秒。

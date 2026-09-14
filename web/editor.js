@@ -154,6 +154,31 @@ function projectMediaVideoFps(project = MaweBoot.DATA) {
 }
 
 let timelineFpsManuallySet = hasExplicitTimelineFps(MaweBoot.DATA.timebase);
+function captureProjectVideoDimensions(mediaElement) {
+  if (!mediaElement || mediaElement !== MaweCoreState.player || mediaElement.tagName !== 'VIDEO') return false;
+  const width = Number(mediaElement.videoWidth);
+  const height = Number(mediaElement.videoHeight);
+  if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) return false;
+  const current = normalizeMediaMetadata(MaweBoot.DATA.media_metadata) || {};
+  if (current.video_width === width && current.video_height === height) return false;
+  MaweBoot.DATA.media_metadata = { ...current, video_width: width, video_height: height };
+  MaweServerSave.projectImportDirty = true;
+  MaweServerSave.scheduleAutoSaveFlush();
+  return true;
+}
+
+function clearProjectVideoDimensions() {
+  const current = normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
+  if (!current || (current.video_width === undefined && current.video_height === undefined)) return false;
+  const next = { ...current };
+  delete next.video_width;
+  delete next.video_height;
+  MaweBoot.DATA.media_metadata = Object.keys(next).length ? next : null;
+  MaweServerSave.projectImportDirty = true;
+  MaweServerSave.scheduleAutoSaveFlush();
+  return true;
+}
+
 
 function syncProjectTimebase(project = MaweBoot.DATA, { preferFrames = false } = {}) {
   if (!project || typeof project !== 'object') return normalizeTimelineTimebase();
@@ -355,6 +380,8 @@ if (MaweDom.autoSnapAdjacentCuesToggle) {
 if (MaweDom.cueEditorCancelOnEscapeToggle) {
   MaweDom.cueEditorCancelOnEscapeToggle.checked = MaweSettings.EDITOR_SETTINGS.cueEditorCancelOnEscape;
 }
+if (MaweDom.adjacentBoundaryModeSelect) MaweDom.adjacentBoundaryModeSelect.value = MaweSettings.EDITOR_SETTINGS.adjacentBoundaryMode;
+refreshAdjacentBoundaryModeUi();
 refreshTimelineSettingsUi();
 MaweMediaPlayback.refreshMediaSeekStepHelp();
 refreshMediaSeekInputStep();
@@ -1245,6 +1272,24 @@ MaweDom.timelineTimecodeSeparatorInput?.addEventListener('change', () => {
 });
 MaweDom.autoSnapAdjacentCuesToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ autoSnapAdjacentCues: MaweDom.autoSnapAdjacentCuesToggle.checked });
+});
+// 贴合字幕边界模式：dual（中缝联动，新默认）/ classic（自动吸附开关 + Alt 反转）。
+// classic 下保留“自动吸附调整相邻字幕”开关；dual 下该开关只影响键盘微调，
+// 鼠标手柄始终独立，联动交给波形上的中缝拖动区，因此隐藏开关行避免误解。
+function refreshAdjacentBoundaryModeUi() {
+  const isDual = MaweSettings.EDITOR_SETTINGS.adjacentBoundaryMode === 'dual';
+  // 用内联 display 切换：.editor-settings-item 的 display:inline-flex
+  // 会覆盖 hidden 属性的 UA 样式。
+  if (MaweDom.autoSnapAdjacentCuesRow) MaweDom.autoSnapAdjacentCuesRow.style.display = isDual ? 'none' : '';
+  if (MaweDom.autoSnapAdjacentCuesHint) MaweDom.autoSnapAdjacentCuesHint.style.display = isDual ? 'none' : '';
+  if (MaweDom.adjacentBoundaryModeHintDual) MaweDom.adjacentBoundaryModeHintDual.style.display = isDual ? '' : 'none';
+}
+MaweDom.adjacentBoundaryModeSelect?.addEventListener('change', () => {
+  MaweSettings.updateEditorSettings({
+    adjacentBoundaryMode: MaweDom.adjacentBoundaryModeSelect.value === 'classic' ? 'classic' : 'dual',
+  });
+  refreshAdjacentBoundaryModeUi();
+  MaweCoreState.waveformEditor?.refreshCueOverlay?.();
 });
 MaweDom.cueEditorCancelOnEscapeToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ cueEditorCancelOnEscape: MaweDom.cueEditorCancelOnEscapeToggle.checked });
@@ -8474,10 +8519,76 @@ function buildAss() {
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
   return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+    ...assExportOptions(),
+    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    ...speakerLabelExportOptions(),
+  });
+}
+
+function buildExtensionSrt(track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
+  return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+    ...speakerLabelExportOptions(),
+    formatTime: fmtSrtTime,
+  });
+}
+
+function buildGapRemovedSrt() {
+  const removed = MaweGapRemoveData.getRemovedGapRanges();
+  if (!removed.length) {
+    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    return null;
+  }
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    MaweBoot.DATA.segments,
+    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+  );
+  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     appearance: MaweAppearance.getSubtitleAppearance(),
   });
+}
+
+function buildGapRemovedAss() {
+  const removed = MaweGapRemoveData.getRemovedGapRanges();
+  if (!removed.length) {
+    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    return null;
+  }
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    MaweBoot.DATA.segments,
+    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+  );
+  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+    ...assExportOptions(),
+    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+    ...speakerLabelExportOptions(),
+  });
+}
+
+function usedSubtitleColors() {
+  const names = new Set(MaweBoot.DATA.segments.filter((segment) => !segment.disabled).map((segment) => (
+    window.AsrEditorUtils.effectiveColorName(segment, MaweBoot.DATA.segments) || 'default'
+  )).filter((name) => name === 'default' || MaweColors.COLOR_BY_NAME[name]));
+  return [
+    ...MaweColors.COLOR_PALETTE.filter((color) => names.has(color.name)),
+    ...(names.has('default') ? [{ name: 'default', label: '默认' }] : []),
+  ];
+}
+
+function updateSubtitleExportUi() {
+  const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
+  if (MaweDom.downloadColorSrtItem) MaweDom.downloadColorSrtItem.hidden = !hasColors;
+  if (subtitleExportSeparator) subtitleExportSeparator.hidden = !hasColors;
+  if (MaweDom.downloadGapRemovedColorSrtItem) MaweDom.downloadGapRemovedColorSrtItem.hidden = !hasColors;
+  if (gapRemovedSubtitleExportSeparator) gapRemovedSubtitleExportSeparator.hidden = !hasColors;
+  if (MaweDom.subtitleExportDropdown) MaweDom.subtitleExportDropdown.hidden = false;
+  if (MaweDom.downloadMultiSrtButton) {
+    MaweDom.downloadMultiSrtButton.hidden = !(MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length);
+  }
 }
 
 function safeColorExportFilenameSuffix(value, fallback) {
@@ -9040,6 +9151,15 @@ document.getElementById('download-gap-removed-srt')?.addEventListener('click', a
   }
 });
 document.getElementById('download-gap-removed-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(true));
+document.getElementById('download-gap-removed-ass')?.addEventListener('click', async () => {
+  if (editingState) finishEdit(true);
+  const payload = buildGapRemovedAss();
+  if (payload) {
+    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, 'text/plain', {
+      desc: '去空隙带样式 ASS 字幕', types: { 'text/plain': ['.ass'] }
+    });
+  }
+});
 document.getElementById('download-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = MaweExportTimeline.buildSourceOtio();

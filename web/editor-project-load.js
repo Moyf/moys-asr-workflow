@@ -65,8 +65,11 @@
 
 
 
-  function applyCanonicalProject(data, filename) {
-    MaweCuePanelState.currentCuePanelIdx = -1;
+function applyCanonicalProject(data, filename) {
+// 原地换工程：在途/已排期的延迟波形载荷（含响度标尺）全部作废，见
+// MaweWaveformInit.deferredReapeaksEpoch 的说明。
+MaweWaveformInit.deferredReapeaksEpoch += 1;
+MaweCuePanelState.currentCuePanelIdx = -1;
     MaweCuePanelState.currentCuePanelKind = 'main';
     MaweCuePanelState.currentCuePanelTrackId = null;
     MaweCuePanelState.resetCuePanelEditState();
@@ -88,8 +91,11 @@
     MaweBoot.DATA.media_time_reference = data.media_time_reference || null;
     MaweBoot.DATA.waveform = data.waveform || null;
     MaweBoot.DATA.spectral = data.spectral || null;
-    MaweBoot.DATA.waveform_reapeaks = data.waveform_reapeaks || null;
-    MaweBoot.DATA.workspace = data.workspace || null;
+MaweBoot.DATA.waveform_reapeaks = data.waveform_reapeaks || null;
+// 响度统计不写进工程文件，所以这里恒为 null：切工程必须先清掉上一个素材的
+// 标尺，等新媒体的 /api/waveform 回来再拟合。
+MaweBoot.DATA.loudness = data.loudness || null;
+MaweBoot.DATA.workspace = data.workspace || null;
     MaweBoot.DATA.gap_remove = data.gap_remove || null;
     MaweBoot.DATA.script_alignment = data.script_alignment || null;
     MaweBoot.DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
@@ -118,8 +124,9 @@
       MaweWorkspaces.syncWorkspaceControls();
       MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform, { render: false });
       MaweCoreState.waveformEditor.setSpectralPayload(MaweBoot.DATA.spectral, { render: false });
-      MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks, { render: false });
-    }
+MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks, { render: false });
+MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: false });
+}
     updateGapRemoveUi();
     renderAll({ waveform: 'full', preserveCueListScroll: false });
     MawePlaybackLoop.refreshSubtitlePreview(0, -1);

@@ -476,7 +476,7 @@ def _require_api_key(config: dict) -> str:
         raise SystemExit(
             "[错误] 未配置 VOLC_API_KEY。请在 .env 文件填入（参考 .env.example），\n"
             "       或设置系统环境变量 VOLC_API_KEY。\n"
-            "       API Key 申请：https://console.volcengine.com/speech/new/experience/asr"
+            "       API Key 申请：https://console.volcengine.com/speech/new/setting/apikeys"
         )
     return api_key
 

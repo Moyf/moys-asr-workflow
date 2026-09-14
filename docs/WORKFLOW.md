@@ -58,7 +58,7 @@ notepad .env
 DASHSCOPE_API_KEY=sk-你的密钥
 ```
 
-北京地域默认使用 `DASHSCOPE_REGION=beijing`；`DASHSCOPE_WORKSPACE_ID` 在北京选填，填写后会使用官方推荐的业务空间专属域名。新加坡地域改为 `singapore` 并必须填写 Workspace ID。Launcher 目前面向国内用户隐藏地域和 Workspace 控件；如需海外地域或专属域名，请通过 CLI / `.env` 配置。环境变量优先于 `.env`。密钥申请和地域说明以[官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)为准。
+北京地域默认使用 `DASHSCOPE_REGION=beijing`；`DASHSCOPE_WORKSPACE_ID` 在北京选填，填写后会使用官方推荐的业务空间专属域名。新加坡地域改为 `singapore` 并必须填写 Workspace ID。Launcher 选择 Qwen 后，可在「⚙️ 设置 → AI 模型配置」底部的「阿里云百炼地域与业务空间」中修改这两项；高级选项也提供跳转入口。界面语言首次启动时跟随系统语言（中文系统为中文，其他语言为英文），之后可在「⚙️ 设置 → 通用 → 语言」手动切换并保存。环境变量优先于 `.env`。密钥获取或查看和地域说明以[阿里云百炼](https://platform.qianwenai.com/home/)为准。
 
 ## 2. 先跑小样本
 
@@ -184,7 +184,7 @@ uv run python generate_subtitle_soniox_api.py "D:\Videos\example.mp4" -ll 2m --j
 
 ## 用豆包语音识别转写（火山引擎，可选，支持说话人与热词）
 
-在[火山引擎语音控制台](https://console.volcengine.com/speech/new/experience/asr)开通「大模型录音文件识别」并获取单一 `VOLC_API_KEY`（新版控制台，无需 AppID）后：
+在[火山引擎 API Key 管理](https://console.volcengine.com/speech/new/setting/apikeys)获取单一 `VOLC_API_KEY`（新版控制台，无需 AppID）后：
 
 ```powershell
 uv run python generate_subtitle_doubao_api.py "D:\Videos\example.mp4" -ll 2m --json
@@ -310,7 +310,9 @@ Launcher「配置 → 通用 → 文件输出」可以调整最终产物的位�
 
 - **将所有输出文件放入子文件夹**（默认关）：开启后 SRT / `.mosp` 也写入 `_maw`。
 - **每个视频单独创建子文件夹**（默认关）：开启后子文件夹以视频命名，如 `视频名_maw`，每个媒体相互独立。
-- **附加模型名称**（默认开）：关闭后 SRT 文件名不再含供应商/模型段（`clip.qwen-audio.srt` → `clip.srt`）。
+- **在输出文件名中附加模型名称**（默认关）：开启后 SRT 文件名带上供应商/模型段（`clip.srt` → `clip.qwen-audio.srt`）。
+
+Launcher「配置 → 通用 → 完成通知」默认关闭：启用后，单个文件转写完成或失败、整批队列全部结束或异常终止时，会发送一条系统通知（Windows 气泡提示 / macOS 通知中心 / Linux `notify-send`）；批量通知会汇总成功／失败数量。启用开关时会先发送一条“系统通知已启用”提示；手动停止批量任务不算完成，不会提醒。
 
 转写过程会在 Launcher 日志输出起止时间码、转写耗时与媒体时长；开启自动后处理时还会汇总全程总用时与各步骤耗时。实时率（RTF）= 转写耗时 ÷ 媒体原长，`0.12x` 表示耗时为原长的 0.12 倍，数值越小越快；使用阿里云百炼服务时日志会附带按 `0.00022 元/秒` 估算的费用。命令行转写 CLI 的输出见 [CLI.md](CLI.md)。
 
@@ -389,7 +391,7 @@ Launcher 右下角的圆形按钮会打开工具箱。工具箱的标题、一�
 
 ### LLM 处理
 
-LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 OpenAI-compatible 接口，可执行中英翻译、校对、重新断句或自定义文字任务。任务下拉框的顺序是「翻译成中文 → 翻译成英文 → 校对文本 → 重新断句 → 自定义」。选择翻译任务后还可以勾选「合并双语字幕」，把每条字幕写成单轨双语格式；翻译成中文时中文在上、外文在下，翻译成英文时原文在上、英文在下。选择输出模式后可以生成新工程、新 SRT，或同时生成两者；合并产物会带 `.bilingual` 后缀，后续翻译会拦截工程和 SRT 输入。
+LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 OpenAI-compatible 接口，可执行中英翻译、校对、重新断句或自定义文字任务。任务下拉框的顺序是「翻译成中文 → 翻译成英文 → 校对文本 → 重新断句 → 自定义」。选择翻译任务后还有两个互斥的输出选项：「将双语字幕合并为单个字幕」把每条字幕写成单轨双语格式（上下换行显示），行序默认翻译成中文时译文在上、翻译成英文时原文在上，可用「双语行序」强制译文在上或原文在上；「只翻译非中文（英文）的字幕」把翻译结果直接替换进原字幕对应句子，只输出单条字幕，适合仅有少量语音需要翻译的情况（如 7 句中文 + 3 句英文翻译成中文得到 10 句全中文）。发送模型前，已是目标语言的字幕会自动跳过并原样保留。选择输出模式后可以生成新工程、新 SRT，或同时生成两者；合并产物会带 `.bilingual` 后缀、回填产物带 `.backfill`（中文界面 `.回填`）后缀，后续翻译会拦截工程和 SRT 输入。
 
 - 选择前四项任务时，上方「预设提示词」会显示该任务的只读说明；选择「自定义」时显示「（无）」。下方「自定义提示词」始终可编辑，切换任务只更新上方预设，不会改动用户已经填写的文字；留空时只使用任务预设。
 
@@ -397,7 +399,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 - 模型只能返回 cue ID 的分组与新文字；本地程序检查 ID 是否完整、连续且顺序不变，再使用本地时间槽生成结果。
 - 合并字幕时，新段使用第一段的开始时间和最后一段的结束时间；拆分单段时，本地在原时间槽内分配正时长，模型不能指定时间。
 - 文字改变后，旧的逐词 `items` 会被移除；重新断句后，可能错位的贴纸和颜色引用也会被移除。`segments` 仍是字幕与时间的真源。
-- 「合并双语字幕」会保留原始字幕的时间范围和安全元数据，移除无法对应双行文字的逐词时间码并跳过空 cue；自动后处理中的翻译前后独立结果会作为中间产物，不再额外发布译文副轨，最终文件名在中文界面为 `*.后处理.bilingual.*`、英文界面为 `*.postprocess.bilingual.*`。
+- 「将双语字幕合并为单个字幕」会保留原始字幕的时间范围和安全元数据，移除无法对应双行文字的逐词时间码并跳过空 cue；「只翻译非中文（英文）的字幕」中未发生翻译的句子逐字节保留（含逐词时间码）。自动后处理中的翻译前后独立结果会作为中间产物，不再额外发布译文副轨，最终文件名在中文界面为 `*.后处理.bilingual.*` / `*.后处理.回填.*`、英文界面为 `*.postprocess.bilingual.*` / `*.postprocess.backfill.*`。
 
 供应商 API Key、URL 和模型可在 Launcher 右上角的 `⚙️ 配置` →「LLM 后处理」中保存到本机 `.env`；工具箱 LLM 面板提供快捷链接跳转到这里。界面和 bridge 结果只显示掩码，不会把完整 Key 写入工程或日志。留空已经保存过的 Key 输入框并再次保存 URL/模型时，原 Key 会保留。「测试连接」只使用当前表单值发送最小请求，不会写入配置；保存成功后显示的「LLM 设置已保存。」只是短暂的状态反馈。字幕文字会发送到所选 LLM 供应商，请根据素材敏感程度和供应商的数据政策决定是否使用。完整机器协议见 [LLM_POSTPROCESS_PROTOCOL.md](LLM_POSTPROCESS_PROTOCOL.md)。
 
@@ -425,7 +427,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 - 可拖动波形中的字幕块或边缘微调时间；相邻字幕共享边界时会保持连续。
 - 播放器内的字幕预览可直接拖动；悬停或聚焦后拖动八个手柄可缩放。方向键移动，`Shift` 加速移动，`Alt + 方向键` 调整尺寸。几何保存在工程 `preview.subtitle`，不会改变字幕时间。
 - “移除静音空隙”只建立可逆的压缩时间线，不修改原媒体和原字幕时间。
-- 常规 SRT 或 ASS 通过工具栏导出；ASS 会把主字幕预览当前选中的字体、字号和文字颜色写入默认样式。若启用了空隙移除，可选择去空隙 SRT、OTIO、FFconcat 或保留区域 JSON。
+- 常规 SRT 或 ASS 通过工具栏导出；ASS 会把主字幕预览当前选中的字体、字号和文字颜色写入样式，并按工程记录的源视频宽高写入 `PlayResX` / `PlayResY`，五种字幕颜色写入对应样式，启用说话人导出时写入 ASS `Name` 字段。若启用了空隙移除，可选择去空隙 SRT、带样式 ASS、OTIO、FFconcat 或保留区域 JSON。
 - 去空隙 OTIO 会把启用字幕作为保留媒体 clip 上的 marker，名称为字幕内容；字幕颜色映射为 Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE`，跨越被移除空隙的字幕按保留区间拆分，无颜色时使用白色默认标记。marker 的 `marked_range` 使用媒体源坐标，与 clip 的 `source_range` 和外部引用的 `available_range` 保持一致；带 BWF `bext.time_reference` 的 WAV 会保留非零媒体起点，避免 Resolve 导入后片段内容错位。Resolve 的可用颜色参考还包括 Blue、Cyan、Green、Yellow、Red、Pink、Purple、Fuchsia、Rose、Lavender、Sky、Mint、Lemon、Sand、Cocoa、Cream；当前 MAW 使用其中五色。
 
 完整 JSON 约束在 [JSON_SCHEMA.md](../JSON_SCHEMA.md)。若你打算用其他 ASR 或 LLM 生成工程，至少保证顶层有 `segments`，时间全部是整数毫秒。

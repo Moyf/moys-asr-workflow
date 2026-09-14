@@ -82,7 +82,10 @@ class ProjectIoTests(unittest.TestCase):
             self.assertEqual(saved["media_metadata"]["selected_audio_track"], 2)
 
     def test_existing_media_metadata_is_preserved_without_reprobing(self) -> None:
-        existing = {"video_fps": 24, "video_fps_ratio": "24/1"}
+        existing = {
+            "video_fps": 24, "video_fps_ratio": "24/1",
+            "video_width": 1920, "video_height": 1080,
+        }
         project = {
             "media": "clip.mp4",
             "segments": [],
@@ -123,7 +126,10 @@ class ProjectIoTests(unittest.TestCase):
         project = {
             "media": str(media),
             "segments": [],
-            "media_metadata": {"video_fps": 24.0, "video_fps_ratio": "24/1"},
+            "media_metadata": {
+                "video_fps": 24.0, "video_fps_ratio": "24/1",
+                "video_width": 1920, "video_height": 1080,
+            },
         }
 
         with mock.patch("maw.project_io.probe_video_fps") as video_probe:

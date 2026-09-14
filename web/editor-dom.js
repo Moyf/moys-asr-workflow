@@ -396,6 +396,11 @@
 
   const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
 
+  // 贴合字幕边界模式（main #124 新增 DOM 常量，合并时补录）。
+  const adjacentBoundaryModeSelect = document.getElementById('adjacent-boundary-mode');
+  const adjacentBoundaryModeHintDual = document.getElementById('adjacent-boundary-mode-hint-dual');
+  const autoSnapAdjacentCuesRow = document.getElementById('auto-snap-adjacent-cues-row');
+  const autoSnapAdjacentCuesHint = document.getElementById('auto-snap-adjacent-cues-hint');
 
   const replaceModal = document.getElementById('replace-modal');
 
@@ -1126,6 +1131,10 @@
     timelineTimecodeSeparatorInput,
     timelineTimecodeSeparatorHint,
     autoSnapAdjacentCuesToggle,
+    adjacentBoundaryModeSelect,
+    adjacentBoundaryModeHintDual,
+    autoSnapAdjacentCuesRow,
+    autoSnapAdjacentCuesHint,
     replaceModal,
     textProcessModal,
     timedTextEditButton,

@@ -198,6 +198,8 @@ class ProjectContractTests(unittest.TestCase):
             "media_metadata": {
                 "video_fps": 30000 / 1001,
                 "video_fps_ratio": "30000/1001",
+                "video_width": 3840,
+                "video_height": 2160,
             },
             "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
         }
@@ -206,6 +208,41 @@ class ProjectContractTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual(result.project["media_metadata"], project["media_metadata"])
+
+    def test_validate_project_accepts_video_dimensions_without_video_fps(self) -> None:
+        project = {
+            "media_metadata": {"video_width": 1920, "video_height": 1080},
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.project["media_metadata"], project["media_metadata"])
+
+    def test_validate_project_reports_invalid_video_dimensions(self) -> None:
+        project = {
+            "media_metadata": {"video_width": 0, "video_height": "1080"},
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.media_metadata.video_width", paths)
+        self.assertIn("$.media_metadata.video_height", paths)
+
+    def test_validate_project_requires_video_dimensions_as_a_pair(self) -> None:
+        project = {
+            "media_metadata": {"video_width": 1920},
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+        }
+
+        result = validate_project(project)
+
+        self.assertFalse(result.ok)
+        self.assertIn("$.media_metadata.video_height", {error.path for error in result.errors})
 
     def test_validate_project_accepts_audio_track_inventory_without_video_fps(self) -> None:
         project = {
