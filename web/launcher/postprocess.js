@@ -62,6 +62,7 @@
   let scriptPreviewRequest = 0;
   let splitPreviewRequest = 0;
   let srtBurnStyleName = "";
+  let srtBurnStyleResolved = false;
   let assStyleLibraryRequest = 0;
 
   function t(key) {
@@ -1901,6 +1902,8 @@
   function renderBurnSubtitleStyle() {
     const element = $("toolboxBurnSubtitleStyle");
     if (!element) return;
+    // 首次读取完成前保持占位，避免闪现「无法读取」造成误解。
+    if (!srtBurnStyleResolved) return;
     const styleText = srtBurnStyleName
       ? t("toolbox_burn_subtitle_style").replace("{name}", srtBurnStyleName)
       : t("toolbox_burn_subtitle_style_unavailable");
@@ -1922,6 +1925,7 @@
     const styleId = result?.assignments?.srtBurnStyleId || "default";
     const style = styles.find((candidate) => candidate?.id === styleId);
     srtBurnStyleName = style?.name ? String(style.name) : "";
+    srtBurnStyleResolved = true;
     renderBurnSubtitleStyle();
   }
 

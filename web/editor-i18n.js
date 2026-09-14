@@ -231,6 +231,15 @@
     '样式库存储状态读取中…': 'Reading style-library storage status…', '便携模式 · 仅当前浏览器保存': 'Portable mode · saved only in this browser',
     '样式库将根据打开方式保存。': 'The style library is saved according to how the Editor was opened.',
     '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。': 'Portable Editor saves only to this browser; open it in server-editor to share it with Launcher.',
+    '颜色字幕样式': 'Color caption style', '作为字幕颜色': 'As text color', '作为描边颜色': 'As outline color', '无影响': 'No effect',
+    '自定义五色': 'Custom five colors', '恢复内置色值': 'Restore built-in colors',
+    '自定义颜色会同步用于字幕列表、波形、预览和 ASS 导出；恢复默认即可使用内置色值。': 'Custom colors apply to the subtitle list, waveform, preview, and ASS export; restore defaults to use the built-in values.',
+    '已恢复内置字幕颜色': 'Built-in subtitle colors restored',
+    '基础样式': 'Basic style', '拓展样式': 'Extended style', '边框与阴影': 'Border and shadow', '对齐': 'Alignment',
+    '样式和 ASS 方案': 'Styles and ASS profiles', '样式与 ASS 方案说明': 'Styles and ASS profiles explainer',
+    '决定字幕怎么画：字体、颜色、描边、对齐和边距等。': 'determine how captions are drawn: font, colors, outline, alignment, margins, and more.',
+    'ASS 方案': 'ASS profiles',
+    '决定导出怎么用：选择一个样式，并附加逐句动画；它是导出时的组合配置。': 'determine how exports use them: pick a style and attach per-cue animations; a profile is the export-time combination.',
     '媒体': 'Media', '外观': 'Appearance', '语言': 'Language', '主题': 'Theme', '明亮模式': 'Light mode', '暗色模式': 'Dark mode', '跟随系统': 'Follow System', '预览字幕': 'Subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
     '视频预览': 'Video preview', '播放控制': 'Playback controls', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
     '在播放器画面内预览主字幕': 'Preview the main subtitle in the player', '在波形区悬停鼠标时，播放器自动预览指针位置的画面': 'While hovering the waveform, the player automatically previews the frame at the pointer',
@@ -853,6 +862,12 @@
     '单词型：英语等西文语言，按空格分隔多个单词': 'Word-based: Latin-script languages such as English, where words are separated by spaces',
     '适用于英文、俄文等语言': 'for English, Russian, and similar languages', '适用于中文、日文等语言': 'for Chinese, Japanese, and similar languages',
     '字符型：中文、日文等按字符拆分的语言': 'Character-based: languages such as Chinese and Japanese, split per character',
+    'ASS 样式': 'ASS styles', '样式与方案列表': 'Styles and profiles', 'ASS 对齐位置': 'ASS alignment position',
+    '黄字幕颜色': 'Yellow subtitle color', '绿字幕颜色': 'Green subtitle color', '红字幕颜色': 'Red subtitle color',
+    '紫字幕颜色': 'Purple subtitle color', '蓝字幕颜色': 'Blue subtitle color',
+    '黄字幕颜色十六进制值': 'Yellow subtitle color hex value', '绿字幕颜色十六进制值': 'Green subtitle color hex value',
+    '红字幕颜色十六进制值': 'Red subtitle color hex value', '紫字幕颜色十六进制值': 'Purple subtitle color hex value',
+    '蓝字幕颜色十六进制值': 'Blue subtitle color hex value',
   };
 
   const textOriginals = new WeakMap();

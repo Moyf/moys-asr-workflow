@@ -61,12 +61,14 @@ test('configures preview-only speaker labels and independently controls SRT expo
     .toHaveCount(1);
   await expect(page.locator('#subtitle-color-underline')).toBeChecked();
   await expect(page.locator('#subtitle-color-style-control')).toBeVisible();
-  await expect(page.locator('#subtitle-color-style')).toHaveValue('underline');
+  await expect(page.locator('#subtitle-color-style')).toHaveValue('text');
   const colorStyleWidth = await page.locator('#subtitle-color-style').evaluate((element) => element.getBoundingClientRect().width);
   expect(colorStyleWidth).toBeLessThan(220);
   await expect(page.locator('#subtitle-color-style option[value="both"]')).toHaveCount(0);
   await expect(page.locator('#subtitle-color-style option[value="shadow"]')).toHaveCount(0);
+  await expect(page.locator('#subtitle-color-style option[value="underline"]')).toHaveCount(0);
   await expect(page.locator('#subtitle-color-style option[value="stroke"]')).toHaveCount(1);
+  await expect(page.locator('#subtitle-color-style option[value="none"]')).toHaveCount(1);
   await expect(page.locator('#subtitle-speaker-mapping-enabled')).not.toBeChecked();
   await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeHidden();
   await expect(page.locator('#subtitle-speaker-labels-enabled')).not.toBeChecked();
@@ -172,8 +174,10 @@ test('configures preview-only speaker labels and independently controls SRT expo
     };
   });
   expect(strokeLabelColors.label).toBe(strokeLabelColors.mainText);
-  await page.locator('#subtitle-color-style').selectOption('underline');
-  await expect(page.locator('#overlay-main-speaker-label')).toHaveCSS('color', 'rgb(196, 160, 25)');
+  // 「无影响」：颜色快照不参与预览，说话人标签回退到字幕默认颜色。
+  await page.locator('#subtitle-color-style').selectOption('none');
+  await expect(page.locator('#subtitle-color-style')).toHaveValue('none');
+  await expect(page.locator('#overlay-main-speaker-label')).toHaveCSS('color', 'rgb(255, 255, 255)');
   await page.locator('#subtitle-color-style').selectOption('stroke');
   await page.locator('#subtitle-color-underline').uncheck();
   await expect(page.locator('#subtitle-color-style-control')).toBeHidden();

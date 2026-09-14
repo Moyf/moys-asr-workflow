@@ -743,6 +743,22 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn("$.preview.subtitle.background_alpha", paths)
         self.assertIn("$.preview.subtitle.color_style", paths)
 
+    def test_validate_project_accepts_current_and_legacy_color_styles(self) -> None:
+        # 当前值：text / stroke / none；历史值 underline / shadow 保留读取兼容。
+        for color_style in ("text", "stroke", "none", "underline", "shadow"):
+            project = {
+                "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+                "preview": {"subtitle": {
+                    "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
+                    "color_style": color_style,
+                }},
+            }
+
+            result = validate_project(project)
+
+            self.assertTrue(result.ok, color_style)
+            self.assertEqual(result.project["preview"]["subtitle"]["color_style"], color_style)
+
     def test_validate_project_rejects_non_object_preview(self) -> None:
         project = {
             "segments": [{"start": 0, "end": 1000, "text": "hi"}],

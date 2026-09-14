@@ -446,7 +446,10 @@ def _subtitle_filter(
         assignments = library.get("assignments")
         style_id = assignments.get("srtBurnStyleId") if isinstance(assignments, Mapping) else "default"
         style = find_ass_style(library, style_id)
-    force_style = ass_style_force_style(style)
+    # force_style 内部的逗号/等号是 ASS 样式语法层；整个表达式还要作为
+    # 单引号 filter 参数再转义一层，否则 O'Brien 这类字体会截断引号、
+    # 破坏整个 -vf 滤镜链。
+    force_style = _escape_filter_value(ass_style_force_style(style))
     return f"subtitles=filename='{filename}':force_style='{force_style}'"
 
 

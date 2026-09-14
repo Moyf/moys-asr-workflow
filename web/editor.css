@@ -1681,8 +1681,8 @@
     .ass-style-window { width: calc(100vw - 12px); min-width: 0; height: calc(100vh - 24px); min-height: 0; }
     .ass-style-window-body { flex-direction: column; }
     .ass-style-library-sidebar { display: grid; flex: 0 0 auto; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 9px; max-height: 218px; padding: 10px; border-right: 0; border-bottom: 1px solid var(--border-subtle); }
-  .ass-style-library-sidebar > .ass-style-section-heading,
-  .ass-style-library-sidebar > .ass-style-list-actions,
+    .ass-style-library-sidebar > .ass-style-section-heading,
+    .ass-style-library-sidebar > .ass-style-list-actions,
     .ass-style-library-sidebar > .ass-style-concepts,
     .ass-style-library-sidebar > .ass-style-assignment-card { min-width: 0; }
     .ass-style-library-sidebar > .ass-profile-heading { grid-column: 2; grid-row: 1; }

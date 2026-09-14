@@ -2072,7 +2072,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         """Persist the shared user-level style library used by Editor and Launcher."""
         try:
             request = self.read_json_request(max_bytes=MAX_ASS_STYLE_LIBRARY_BYTES)
+            # 共享样式库会覆盖用户级配置；与其它状态变更接口一样要求页面请求令牌，
+            # 防止任意网页用 CORS-safelisted POST 直接改写本机 ass-styles.json。
+            self._check_request_token(request)
             library = save_ass_style_library(request)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return

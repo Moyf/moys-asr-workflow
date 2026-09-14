@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -127,8 +129,64 @@ class AssStyleLibraryTests(unittest.TestCase):
         srt_filter = _subtitle_filter(Path("caption.srt"), style)
         ass_filter = _subtitle_filter(Path("caption.ass"), style)
         self.assertIn("subtitles=filename='caption.srt'", srt_filter)
-        self.assertIn("force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00563412", srt_filter)
+        # force_style 整体位于单引号 filter 参数内，样式字段的 `=`/`,` 在
+        # filter 语法层会被转义；libass 收到的是还原后的原始样式串。
+        self.assertIn(
+            r"force_style='FontName\=Arial\,FontSize\=24\,PrimaryColour\=&H00563412",
+            srt_filter,
+        )
         self.assertEqual(ass_filter, "ass=filename='caption.ass'")
+
+    def test_srt_filter_escapes_filter_metacharacters_in_font_names(self) -> None:
+        style = {"fontName": "O'Brien", "fontSize": 24}
+
+        srt_filter = _subtitle_filter(Path("caption.srt"), style)
+
+        # `'` 不转义会提前结束 filter 参数的单引号，整个 -vf 滤镜链都会解析失败。
+        self.assertIn(r"FontName\=O\'Brien", srt_filter)
+        self.assertNotIn("FontName=O'Brien", srt_filter)
+
+    def test_srt_filter_force_style_round_trips_through_filter_parsing(self) -> None:
+        import re
+
+        style = {
+            "fontName": "O'Brien: Test, [Font]=Name",
+            "fontSize": 24,
+        }
+        expected_force_style = ass_style_force_style(style)
+        srt_filter = _subtitle_filter(Path("caption.srt"), style)
+
+        # 按 FFmpeg av_get_token 的规则拆分滤镜参数：单引号包裹 + 反斜杠转义，
+        # 解析结果必须还原出未转义的 force_style 值。
+        match = re.search(r"force_style='((?:[^'\\]|\\.)*)'", srt_filter)
+        self.assertIsNotNone(match)
+        parsed = re.sub(r"\\(.)", r"\1", match.group(1))
+        self.assertEqual(parsed, expected_force_style)
+
+    def test_srt_filter_with_special_font_name_parses_in_real_ffmpeg(self) -> None:
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            self.skipTest("ffmpeg 不在 PATH 上，跳过真实滤镜解析验证")
+
+        style = {"fontName": "O'Brien", "fontSize": 24}
+        with tempfile.TemporaryDirectory() as directory:
+            subtitle = Path(directory) / "caption.srt"
+            subtitle.write_text(
+                "1\n00:00:00,000 --> 00:00:00,400\n样式\n",
+                encoding="utf-8",
+            )
+            command = [
+                ffmpeg, "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "color=black:s=320x180:d=0.5",
+                "-vf", _subtitle_filter(subtitle, style),
+                "-frames:v", "1", "-f", "null", "-",
+            ]
+            # 生产路径以字幕所在目录为 cwd 且只传文件名，这里保持一致。
+            result = subprocess.run(command, capture_output=True, text=True, cwd=directory)
+        self.assertEqual(
+            result.returncode, 0,
+            f"ffmpeg filter 解析失败：{result.stderr.strip()}",
+        )
 
     def test_srt_filter_loads_the_shared_default_slot_when_style_is_omitted(self) -> None:
         library = normalize_ass_style_library({
@@ -139,7 +197,7 @@ class AssStyleLibraryTests(unittest.TestCase):
         with mock.patch("maw.postprocess_ffmpeg.load_ass_style_library", return_value=library):
             srt_filter = _subtitle_filter(Path("caption.srt"))
 
-        self.assertIn("FontName=SimHei,FontSize=28", srt_filter)
+        self.assertIn(r"FontName\=SimHei\,FontSize\=28", srt_filter)
 
 
 if __name__ == "__main__":

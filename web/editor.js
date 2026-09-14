@@ -880,6 +880,8 @@ let assStyleLibrarySaveTimer = 0;
 let assStyleLibraryLoadPromise = null;
 let assStyleLibraryDirty = false;
 let assStyleLibraryRevision = 0;
+let assStyleLibrarySaveInFlight = false;
+let assStyleLibraryInFlightRevision = 0;
 
 function readLocalAssStyleLibrary() {
   try {
@@ -927,8 +929,53 @@ function scheduleAssStyleLibrarySave() {
   }, 220);
 }
 
+function assStyleLibraryRequestBody(normalized) {
+  // 与其他本机写入接口一致：服务器会校验页面请求令牌，缺失时返回 403。
+  return { ...normalized, requestToken: SERVER_CONFIG?.requestToken || '' };
+}
+
+function assStyleLibraryPostOptions(body, { keepalive = false } = {}) {
+  return {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(assStyleLibraryRequestBody(body)),
+    ...(keepalive ? { keepalive: true } : {}),
+  };
+}
+
+// 离开页面（刷新/关闭/跳转、切后台）时 debounce 定时器可能还没触发；
+// dirty 的最后改动要用 keepalive 请求立刻发出，否则重新打开时会
+// 被服务器上的旧样式覆盖。已有请求在途且携带同一修订时无需重复发送；
+// 在途请求携带更旧修订时仍要 flush，但不清除 dirty，页面回来后再补一次
+// 常规保存，避免两个在途写入在服务器端乱序覆盖。
+function flushAssStyleLibraryOnUnload() {
+  clearTimeout(assStyleLibrarySaveTimer);
+  assStyleLibrarySaveTimer = 0;
+  if (!assStyleLibraryDirty || !assStyleLibraryUsesServerStorage()) return;
+  if (assStyleLibrarySaveInFlight && assStyleLibraryInFlightRevision === assStyleLibraryRevision) return;
+  const normalized = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  try {
+    void fetch(new URL(SERVER_CONFIG.assStylesUrl, window.location.href),
+      assStyleLibraryPostOptions(normalized, { keepalive: true }))
+      .catch(() => { /* 页面正在卸载，失败时保留本地副本即可 */ });
+    if (!assStyleLibrarySaveInFlight) assStyleLibraryDirty = false;
+  } catch (_) {
+    // URL 或请求构造失败时保留 dirty 标记；页面已在卸载流程中，无法再重试。
+  }
+}
+window.addEventListener('pagehide', flushAssStyleLibraryOnUnload);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    flushAssStyleLibraryOnUnload();
+  } else if (assStyleLibraryDirty && !assStyleLibrarySaveTimer && assStyleLibraryUsesServerStorage()) {
+    // 切后台时的 flush 可能保留了 dirty（存在在途旧修订写入）；回到前台后补一次常规保存。
+    scheduleAssStyleLibrarySave();
+  }
+});
+
 async function persistAssStyleLibrary() {
   clearTimeout(assStyleLibrarySaveTimer);
+  assStyleLibrarySaveTimer = 0;
   const revision = assStyleLibraryRevision;
   const normalized = setAssStyleLibrary(ASS_STYLE_LIBRARY, { persistLocal: true });
   if (!assStyleLibraryUsesServerStorage()) {
@@ -940,12 +987,11 @@ async function persistAssStyleLibrary() {
     syncAssStyleManager?.();
     return normalized;
   }
+  assStyleLibrarySaveInFlight = true;
+  assStyleLibraryInFlightRevision = revision;
   try {
-    const response = await fetch(new URL(SERVER_CONFIG.assStylesUrl, window.location.href), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(normalized),
-    });
+    const response = await fetch(new URL(SERVER_CONFIG.assStylesUrl, window.location.href),
+      assStyleLibraryPostOptions(normalized));
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (revision === assStyleLibraryRevision) {
@@ -965,8 +1011,11 @@ async function persistAssStyleLibrary() {
   } catch (error) {
     // 本地副本仍然可用；状态会在管理窗中明确显示为未同步。
     ASS_STYLE_LIBRARY_READY = false;
-    updateAssStyleLibraryStatus?.(`本地已保存，服务器同步失败：${error?.message || '未知错误'}`, 'warning');
+    setAssStyleLibraryStatus(`本地已保存，服务器同步失败：${error?.message || '未知错误'}`, 'warning');
     return normalized;
+  } finally {
+    assStyleLibrarySaveInFlight = false;
+    assStyleLibraryInFlightRevision = 0;
   }
 }
 
@@ -1732,6 +1781,11 @@ const subtitleColorPaletteColorInputs = Object.fromEntries(
 const subtitleColorPaletteHexInputs = Object.fromEntries(
   subtitleColorPaletteNames.map((name) => [
     name, document.getElementById(`subtitle-color-palette-${name}-hex`),
+  ]),
+);
+const subtitleColorPaletteSwatches = Object.fromEntries(
+  subtitleColorPaletteNames.map((name) => [
+    name, document.querySelector(`[data-subtitle-palette-swatch="${name}"]`),
   ]),
 );
 const subtitleColorPaletteResetButton = document.getElementById('subtitle-color-palette-reset');
@@ -12198,8 +12252,11 @@ function syncSubtitleColorPaletteControls() {
     const value = palette[name];
     const colorInput = subtitleColorPaletteColorInputs[name];
     const hexInput = subtitleColorPaletteHexInputs[name];
+    const swatch = subtitleColorPaletteSwatches[name];
     if (colorInput && document.activeElement !== colorInput) colorInput.value = value;
     if (hexInput && document.activeElement !== hexInput) hexInput.value = value;
+    // 色块是用户感知自定义五色的主要位置，保存/重绘后要和色值控件一起刷新。
+    if (swatch) swatch.style.backgroundColor = value;
   });
 }
 

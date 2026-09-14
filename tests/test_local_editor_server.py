@@ -1796,10 +1796,23 @@ class LocalEditorServerTests(unittest.TestCase):
                         "assProfiles": [{"id": "studio-profile", "name": "Studio", "styleId": "studio"}],
                         "assignments": {"srtBurnStyleId": "studio", "assExportProfileId": "studio-profile"},
                     }
-                    status, saved = request("/api/ass-styles", custom)
+
+                    # 共享样式库是用户级配置：缺失或错误的请求令牌都不能改写。
+                    status, forbidden = request("/api/ass-styles", custom)
+                    self.assertEqual(status, 403)
+                    self.assertFalse(forbidden["ok"])
+
+                    wrong_token = {**custom, "requestToken": "wrong"}
+                    status, forbidden = request("/api/ass-styles", wrong_token)
+                    self.assertEqual(status, 403)
+                    self.assertFalse(forbidden["ok"])
+                    self.assertFalse(style_path.is_file())
+
+                    status, saved = request("/api/ass-styles", {**custom, "requestToken": server.request_token})
                     self.assertEqual(status, 200)
                     self.assertEqual(saved["assignments"]["srtBurnStyleId"], "studio")
                     self.assertTrue(style_path.is_file())
+                    self.assertNotIn("requestToken", saved)
 
                     status, loaded = request("/api/ass-styles")
                     self.assertEqual(status, 200)

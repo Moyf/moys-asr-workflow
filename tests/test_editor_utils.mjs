@@ -36,6 +36,18 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('2 个样式 · 3 个 ASS 方案', 'en'), '2 styles · 3 ASS profiles');
   assert.equal(i18n.translateText('SRT 默认', 'en'), 'SRT default');
   assert.equal(i18n.translateText('Studio · 无逐句动画', 'en'), 'Studio · No per-cue animations');
+  assert.equal(i18n.translateText('颜色字幕样式', 'en'), 'Color caption style');
+  assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');
+  assert.equal(i18n.translateText('作为描边颜色', 'en'), 'As outline color');
+  assert.equal(i18n.translateText('无影响', 'en'), 'No effect');
+  assert.equal(i18n.translateText('自定义五色', 'en'), 'Custom five colors');
+  assert.equal(i18n.translateText('恢复内置色值', 'en'), 'Restore built-in colors');
+  assert.equal(i18n.translateText('基础样式', 'en'), 'Basic style');
+  assert.equal(i18n.translateText('拓展样式', 'en'), 'Extended style');
+  assert.equal(i18n.translateText('边框与阴影', 'en'), 'Border and shadow');
+  assert.equal(i18n.translateText('对齐', 'en'), 'Alignment');
+  assert.equal(i18n.translateText('样式和 ASS 方案', 'en'), 'Styles and ASS profiles');
+  assert.equal(i18n.translateText('黄字幕颜色十六进制值', 'en'), 'Yellow subtitle color hex value');
   assert.equal(
     i18n.translateText('本地已保存，服务器同步失败：HTTP 503', 'en'),
     'Saved locally; server sync failed: HTTP 503',
