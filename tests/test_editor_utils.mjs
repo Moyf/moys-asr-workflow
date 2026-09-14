@@ -27,6 +27,29 @@ test('accepts legacy and current project schemas but rejects unknown versions', 
   assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v2', segments: [] }), false);
 });
 
+test('translates the ASS style manager labels and dynamic summaries', () => {
+  assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
+  assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');
+  assert.equal(i18n.translateText('\\fade', 'en'), '\\fade');
+  assert.equal(i18n.translateText('\\move', 'en'), '\\move');
+  assert.equal(i18n.translateText('\\t', 'en'), '\\t');
+  assert.equal(i18n.translateText('2 个样式 · 3 个 ASS 方案', 'en'), '2 styles · 3 ASS profiles');
+  assert.equal(i18n.translateText('SRT 默认', 'en'), 'SRT default');
+  assert.equal(i18n.translateText('Studio · 无逐句动画', 'en'), 'Studio · No per-cue animations');
+  assert.equal(
+    i18n.translateText('本地已保存，服务器同步失败：HTTP 503', 'en'),
+    'Saved locally; server sync failed: HTTP 503',
+  );
+  assert.equal(
+    i18n.translateText('仅保存在当前浏览器（便携模式）', 'en'),
+    'Saved only in this browser (portable mode)',
+  );
+  assert.equal(
+    i18n.translateText('便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。', 'en'),
+    'Portable Editor saves only to this browser; open it in server-editor to share it with Launcher.',
+  );
+});
+
 // XML assertions are part of the Node unit suite, but still need a Python
 // subprocess. Keep it on the same locked project environment as E2E instead
 // of silently selecting whichever python.exe happens to be on PATH.
@@ -192,6 +215,9 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(helpers.normalizeEditorSettings({ accentColorCustom: 'invalid' }).accentColorCustom, '#6ca5e8');
   assert.equal(settings.stickerOtioExportMode, 'portable');
   assert.equal(settings.autoMergeShortCount, 20);
+  assert.equal(settings.assMode, false);
+  assert.equal(helpers.normalizeEditorSettings({ assMode: true }).assMode, true);
+  assert.equal(helpers.normalizeEditorSettings({ assMode: 1 }).assMode, false);
   assert.equal(settings.autoSaveProject, true);
   assert.equal(settings.projectBackupEnabled, true);
   assert.equal(
@@ -3074,6 +3100,132 @@ test('builds ASS metadata and five palette styles at the source video resolution
   assert.match(ass, /Style: BLUE,Arial,64,&H00FAA761,&H00FAA761,/);
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
   assert.match(ass, /Dialogue: 0,0:00:01\.20,0:00:02\.20,Default,,0,0,0,,plain line/);
+});
+
+test('normalizes ASS libraries without corrupting comma-delimited animation tags', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [{ id: 'motion', name: 'Motion' }],
+    assProfiles: [{
+      id: 'motion-profile', styleId: 'motion',
+      animations: { t: { enabled: true, tags: String.raw`{\pos(10,20)\clip(0,0,100,100)}` } },
+    }],
+  });
+  const profile = helpers.assProfileForId(library, 'motion-profile');
+
+  assert.equal(
+    profile.animations.t.tags,
+    String.raw`\pos(10,20)\clip(0,0,100,100)`,
+  );
+  assert.equal(
+    helpers.assAnimationOverrideTags(profile),
+    String.raw`\t(0,1000,1,\pos(10,20)\clip(0,0,100,100))`,
+  );
+});
+
+test('keeps complex ASS animation time ranges monotonic and within bounds', () => {
+  const animations = helpers.normalizeAssAnimations({
+    fade: { t1: 900, t2: -10, t3: 70000, t4: 2 },
+    move: { t1: 800, t2: 20 },
+    t: { startMs: 700, endMs: -5, accel: 0, tags: '' },
+  });
+
+  assert.deepEqual(JSON.parse(JSON.stringify({
+    fade: [animations.fade.t1, animations.fade.t2, animations.fade.t3, animations.fade.t4],
+    move: [animations.move.t1, animations.move.t2],
+    transform: [animations.t.startMs, animations.t.endMs, animations.t.accel],
+  })), {
+    fade: [900, 900, 60000, 60000],
+    move: [800, 800],
+    transform: [700, 700, 0.01],
+  });
+});
+
+test('uses the selected ASS profile style and adds every configured animation to each cue', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [{
+      id: 'caption', name: 'Caption', fontName: 'Microsoft YaHei', fontSize: 30,
+      primaryColor: '#123456', outlineColor: '#654321', outline: 4,
+      bold: true, underline: true,
+    }],
+    assProfiles: [{
+      id: 'animated', name: 'Animated', styleId: 'caption',
+      animations: {
+        fad: { enabled: true, inMs: 120, outMs: 240 },
+        move: { enabled: true, x1: 100, y1: 200, x2: 300, y2: 400, t1: 50, t2: 900 },
+        t: { enabled: true, startMs: 10, endMs: 800, accel: 1.5, tags: String.raw`\fs42\pos(10,20)` },
+      },
+    }],
+  });
+  const profile = helpers.assProfileForId(library, 'animated');
+  const style = helpers.assStyleForId(library, profile.styleId);
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+    { start: 1200, end: 2200, text: '第二句' },
+  ], {
+    assProfile: profile,
+    assStyle: style,
+    appearance: { color_underline: false },
+    mediaMetadata: { video_width: 1920, video_height: 1080 },
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host' },
+    speakerLabelSeparator: '：',
+  });
+
+  assert.match(ass, /Style: Default,Microsoft YaHei,30,\&H00563412,[^\n]*,-1,0,-1,0,100,100,0,0,1,4,0,2,10,10,40,1/);
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 2);
+  assert.match(dialogue[0], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
+  assert.match(dialogue[1], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}第二句/);
+});
+
+test('keeps speaker labels in the base colour when ASS palette colours are strokes', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: true, color_style: 'stroke' },
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host' },
+    speakerLabelSeparator: '：',
+  });
+
+  assert.match(ass, /Style: YELLOW,Arial,18,[^\n]*,&H0019A0C4/);
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,YELLOW,Host,0,0,0,,\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
+});
+
+test('previews ASS fade, movement, and transform timing at the cue playhead', () => {
+  const profile = {
+    animations: {
+      fad: { enabled: true, inMs: 200, outMs: 200 },
+      move: { enabled: true, x1: 10, y1: 20, x2: 110, y2: 220, t1: 100, t2: 900 },
+      t: { enabled: true, startMs: 200, endMs: 800, accel: 2, tags: String.raw`\fs40\bord6` },
+    },
+  };
+  const state = helpers.assPreviewAnimationState(profile, 500, 1000, {
+    playResX: 1920, playResY: 1080, stageWidth: 960, stageHeight: 540,
+  });
+  assert.equal(state.opacity, 1);
+  assert.equal(state.moveX, 60);
+  assert.equal(state.moveY, 120);
+  assert.equal(state.moveOffsetX, 25);
+  assert.equal(state.moveOffsetY, 50);
+  assert.equal(state.transformProgress, 0.25);
+  const animatedStyle = helpers.assPreviewStyleAt(
+    { fontSize: 20, outline: 2 },
+    profile.animations.t.tags,
+    state.transformProgress,
+  );
+  assert.deepEqual(
+    {
+      fontSize: animatedStyle.fontSize,
+      outline: animatedStyle.outline,
+      rotationX: animatedStyle.rotationX,
+      rotationY: animatedStyle.rotationY,
+      alpha: animatedStyle.alpha,
+    },
+    { fontSize: 25, outline: 3, rotationX: 0, rotationY: 0, alpha: 0 },
+  );
 });
 
 test('converts the responsive default ASS font size at the source video resolution', () => {

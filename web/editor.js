@@ -701,6 +701,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   overlayEnabled: true,
   // 多重字幕开启时，副字幕预览默认自动显示。
   extensionOverlayEnabled: true,
+  // ASS 字幕模式只改变播放器预览，默认关闭以保持原有 CSS 预览。
+  assMode: false,
   // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
   multiSubtitleRowHeight: 168,
   exportStartAtZero: false,
@@ -870,6 +872,154 @@ function saveEditorSettings(settings) {
 }
 
 const EDITOR_SETTINGS = readEditorSettings();
+const ASS_STYLE_LIBRARY_STORAGE_KEY = 'moy.asr.ass.styles.v1';
+let ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
+let ASS_STYLE_LIBRARY_READY = false;
+let assStyleLibrarySaveTimer = 0;
+let assStyleLibraryLoadPromise = null;
+let assStyleLibraryDirty = false;
+let assStyleLibraryRevision = 0;
+
+function readLocalAssStyleLibrary() {
+  try {
+    return window.AsrEditorUtils.normalizeAssStyleLibrary(
+      JSON.parse(localStorage.getItem(ASS_STYLE_LIBRARY_STORAGE_KEY) || 'null'),
+    );
+  } catch (_) {
+    return window.AsrEditorUtils.defaultAssStyleLibrary();
+  }
+}
+
+function writeLocalAssStyleLibrary(library) {
+  try {
+    localStorage.setItem(
+      ASS_STYLE_LIBRARY_STORAGE_KEY,
+      JSON.stringify(window.AsrEditorUtils.normalizeAssStyleLibrary(library)),
+    );
+  } catch (_) {
+    // file:// 隐私模式可能拒绝 localStorage；当前页面仍可继续使用样式。
+  }
+}
+
+function setAssStyleLibrary(value, { persistLocal = false } = {}) {
+  ASS_STYLE_LIBRARY = window.AsrEditorUtils.normalizeAssStyleLibrary(value);
+  if (persistLocal) writeLocalAssStyleLibrary(ASS_STYLE_LIBRARY);
+  return ASS_STYLE_LIBRARY;
+}
+
+function assStyleLibrarySummary() {
+  return `${ASS_STYLE_LIBRARY.styles.length} 个样式 · ${ASS_STYLE_LIBRARY.assProfiles.length} 个 ASS 方案`;
+}
+
+function updateAssStyleLibrarySummary() {
+  if (assStyleSummary) {
+    const summary = assStyleLibrarySummary();
+    assStyleSummary.textContent = window.MAWE_I18N?.translateText?.(summary) || summary;
+  }
+}
+
+function scheduleAssStyleLibrarySave() {
+  assStyleLibraryDirty = true;
+  clearTimeout(assStyleLibrarySaveTimer);
+  assStyleLibrarySaveTimer = setTimeout(() => {
+    void persistAssStyleLibrary();
+  }, 220);
+}
+
+async function persistAssStyleLibrary() {
+  clearTimeout(assStyleLibrarySaveTimer);
+  const revision = assStyleLibraryRevision;
+  const normalized = setAssStyleLibrary(ASS_STYLE_LIBRARY, { persistLocal: true });
+  if (!assStyleLibraryUsesServerStorage()) {
+    if (revision === assStyleLibraryRevision) {
+      assStyleLibraryDirty = false;
+      ASS_STYLE_LIBRARY_READY = true;
+    }
+    setAssStyleLibraryStatus('', 'success');
+    syncAssStyleManager?.();
+    return normalized;
+  }
+  try {
+    const response = await fetch(new URL(SERVER_CONFIG.assStylesUrl, window.location.href), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(normalized),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (revision === assStyleLibraryRevision) {
+      setAssStyleLibrary(payload, { persistLocal: true });
+      assStyleLibraryDirty = false;
+      ASS_STYLE_LIBRARY_READY = true;
+      setAssStyleLibraryStatus('', 'success');
+    } else {
+      // A newer edit was made while this request was in flight.  Keep the
+      // current local state and let its debounced save publish the newer
+      // revision instead of rolling the form back to an older response.
+      ASS_STYLE_LIBRARY_READY = false;
+      setAssStyleLibraryStatus('本地有更新改动，等待再次同步', 'warning');
+    }
+    syncAssStyleManager?.();
+    return ASS_STYLE_LIBRARY;
+  } catch (error) {
+    // 本地副本仍然可用；状态会在管理窗中明确显示为未同步。
+    ASS_STYLE_LIBRARY_READY = false;
+    updateAssStyleLibraryStatus?.(`本地已保存，服务器同步失败：${error?.message || '未知错误'}`, 'warning');
+    return normalized;
+  }
+}
+
+async function loadAssStyleLibrary({ force = false } = {}) {
+  if (assStyleLibraryLoadPromise) return assStyleLibraryLoadPromise;
+  if (force && assStyleLibraryDirty) {
+    // The manager may be reopened while a debounced save is pending.  A
+    // forced read must never replace those unsaved edits with the old file.
+    syncAssStyleManager?.();
+    refreshSubtitlePreview?.();
+    return ASS_STYLE_LIBRARY;
+  }
+  setAssStyleLibrary(readLocalAssStyleLibrary());
+  setAssStyleLibraryStatus('正在加载…', 'pending');
+  assStyleLibraryLoadPromise = (async () => {
+    if (!assStyleLibraryUsesServerStorage()) {
+      ASS_STYLE_LIBRARY_READY = true;
+      setAssStyleLibraryStatus('', 'success');
+      syncAssStyleManager?.();
+      refreshSubtitlePreview?.();
+      assStyleLibraryLoadPromise = null;
+      return ASS_STYLE_LIBRARY;
+    }
+    try {
+      const response = await fetch(new URL(SERVER_CONFIG.assStylesUrl, window.location.href), {
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      if (!assStyleLibraryDirty) {
+        setAssStyleLibrary(payload, { persistLocal: true });
+        ASS_STYLE_LIBRARY_READY = true;
+        setAssStyleLibraryStatus('', 'success');
+      } else {
+        // A form edit happened while GET was in flight.  The local edit is
+        // authoritative until its own POST succeeds.
+        ASS_STYLE_LIBRARY_READY = false;
+        setAssStyleLibraryStatus('本地有更新改动，等待再次同步', 'warning');
+      }
+    } catch (_) {
+      // localhost 服务暂不可用时沿用本地副本；下次打开编辑器会再次尝试读取。
+      ASS_STYLE_LIBRARY_READY = false;
+      setAssStyleLibraryStatus('使用本地副本，服务器同步失败', 'warning');
+    }
+    syncAssStyleManager?.();
+    refreshSubtitlePreview?.();
+    // Do not cache either a successful or failed request: each subsequent
+    // manager open can observe changes made by another Editor or Launcher.
+    assStyleLibraryLoadPromise = null;
+    return ASS_STYLE_LIBRARY;
+  })();
+  return assStyleLibraryLoadPromise;
+}
+
 const normalizeTimelineTimebase = EDITOR_SETTINGS_UTILS.normalizeTimelineTimebase;
 const normalizeTimelineFps = EDITOR_SETTINGS_UTILS.normalizeTimelineFps;
 const normalizeTimelineTimecodeSeparator = EDITOR_SETTINGS_UTILS.normalizeTimelineTimecodeSeparator;
@@ -1160,8 +1310,14 @@ function currentAssVideoResolution() {
   return null;
 }
 
+const ASS_PREVIEW_REFERENCE_HEIGHT = Number(window.AsrEditorUtils.ASS_REFERENCE_PLAY_RES_Y) || 1080;
+
 function assExportOptions(appearance = getSubtitleAppearance()) {
   const resolution = currentAssVideoResolution();
+  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const profileId = library.assignments?.assExportProfileId || 'ass';
+  const assProfile = window.AsrEditorUtils.assProfileForId(library, profileId);
+  const assStyle = window.AsrEditorUtils.assStyleForId(library, assProfile.styleId);
   return {
     title: PROJECT_NAME || FILENAME_BASE || 'MAW',
     mediaMetadata: normalizeMediaMetadata(DATA.media_metadata),
@@ -1169,6 +1325,8 @@ function assExportOptions(appearance = getSubtitleAppearance()) {
     playResY: resolution?.height,
     colorStyles: COLOR_PALETTE,
     appearance,
+    assProfile,
+    assStyle,
   };
 }
 
@@ -1504,6 +1662,7 @@ function historyGuarded() {
       || stickerModal.classList.contains('show')
       || stickerPreviewModal.classList.contains('show')
       || projectMediaModal.classList.contains('show')
+      || assStyleWindow?.classList.contains('show')
       || document.getElementById('sticker-root-modal').classList.contains('show');
 }
 const undoBtn = document.getElementById('undo-btn');
@@ -1541,6 +1700,9 @@ const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
 const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
 const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
+const assModeToggle = document.getElementById('ass-mode-toggle');
+const assStyleManagerOpenButton = document.getElementById('ass-style-manager-open');
+const assStyleSummary = document.getElementById('ass-style-summary');
 const subtitleSpeakerMappingEnabledInput = document.getElementById('subtitle-speaker-mapping-enabled');
 const subtitleSpeakerLabelsToggle = document.getElementById('subtitle-speaker-labels-enabled-wrap');
 const subtitleSpeakerLabelsEnabledInput = document.getElementById('subtitle-speaker-labels-enabled');
@@ -1840,6 +2002,34 @@ const EDITOR_SETTINGS_WINDOW_SIZE_KEY = 'moy.asr.editor.settings.window_size.v1'
 const EDITOR_SETTINGS_WINDOW_TAB_KEY = 'moy.asr.editor.settings.window_tab.v1';
 const editorSettingsClose = document.getElementById('editor-settings-close');
 const editorSettingsDragHandle = document.getElementById('editor-settings-drag-handle');
+const assStyleWindow = document.getElementById('ass-style-window');
+const assStyleDragHandle = document.getElementById('ass-style-drag-handle');
+const assStyleWindowClose = document.getElementById('ass-style-window-close');
+const assStyleWindowCloseFooter = document.getElementById('ass-style-window-close-footer');
+const assStyleLibraryStatus = document.getElementById('ass-style-library-status');
+const assStyleWindowEyebrow = document.getElementById('ass-style-window-eyebrow');
+const assStyleCount = document.getElementById('ass-style-count');
+const assProfileCount = document.getElementById('ass-profile-count');
+const assStyleList = document.getElementById('ass-style-list');
+const assProfileList = document.getElementById('ass-profile-list');
+const assStyleNewButton = document.getElementById('ass-style-new');
+const assStyleDuplicateButton = document.getElementById('ass-style-duplicate');
+const assProfileNewButton = document.getElementById('ass-profile-new');
+const assSrtDefaultStyleSelect = document.getElementById('ass-srt-default-style');
+const assDefaultProfileSelect = document.getElementById('ass-ass-default-profile');
+const assStyleForm = document.getElementById('ass-style-form');
+const assProfileForm = document.getElementById('ass-profile-form');
+const assProfileStyleSelect = document.getElementById('ass-profile-style-id');
+const assStyleEditorEmpty = document.getElementById('ass-style-editor-empty');
+const assStyleFormTitle = document.getElementById('ass-style-form-title');
+const assProfileFormTitle = document.getElementById('ass-profile-form-title');
+const assStyleBuiltinBadge = document.getElementById('ass-style-builtin-badge');
+const assProfileBuiltinBadge = document.getElementById('ass-profile-builtin-badge');
+const assStylePreviewSample = document.getElementById('ass-style-preview-sample');
+const assProfilePreviewSummary = document.getElementById('ass-profile-preview-summary');
+const assStyleSaveButton = document.getElementById('ass-style-save');
+const assStyleDeleteButton = document.getElementById('ass-style-delete');
+const assStyleLibraryPathHint = document.getElementById('ass-style-library-path-hint');
 
 const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
@@ -1867,6 +2057,7 @@ const subtitleExtendBackwardInput = document.getElementById('subtitle-extend-bac
 //（CSS 的 335 只是 JS 初始化前的静态兜底）。
 [
   editorSettingsPanel,
+  assStyleWindow,
   helpPanel,
   gapRemovePanel,
   autoMergePanel,
@@ -2075,6 +2266,418 @@ const editorSettingsFloatingPanel = createFloatingPanel({
     restoreEditorSettingsPanelSize();
     restoreEditorSettingsActiveTab();
   },
+});
+
+const ASS_STYLE_WINDOW_POSITION_KEY = 'moy.asr.ass_style.window.v1';
+let assStyleManagerSelection = { kind: 'style', id: 'ass' };
+let assStyleLibraryStatusText = '';
+let assStyleLibraryStatusState = 'idle';
+
+function assStyleLibraryUsesServerStorage() {
+  return Boolean(SERVER_CONFIG?.assStylesUrl);
+}
+
+function setAssStyleLibraryStatus(text, state = 'idle') {
+  assStyleLibraryStatusText = String(text || '');
+  assStyleLibraryStatusState = state;
+  updateAssStyleLibraryStatus();
+}
+
+function updateAssStyleLibraryStatus() {
+  if (!assStyleLibraryStatus) return;
+  const usesServerStorage = assStyleLibraryUsesServerStorage();
+  const fallback = usesServerStorage
+    ? (ASS_STYLE_LIBRARY_READY ? '已与用户级配置同步' : '使用本地副本，尚未同步')
+    : '仅保存在当前浏览器（便携模式）';
+  const status = assStyleLibraryStatusText || fallback;
+  assStyleLibraryStatus.textContent = window.MAWE_I18N?.translateText?.(status) || status;
+  assStyleLibraryStatus.dataset.state = !usesServerStorage && assStyleLibraryStatusState === 'success'
+    ? 'local' : assStyleLibraryStatusState;
+  if (assStyleWindowEyebrow) {
+    const eyebrow = usesServerStorage
+      ? '用户级配置 · Editor / Launcher 共用'
+      : '便携模式 · 仅当前浏览器保存';
+    assStyleWindowEyebrow.textContent = window.MAWE_I18N?.translateText?.(eyebrow) || eyebrow;
+  }
+  if (assStyleLibraryPathHint) {
+    const pathHint = !usesServerStorage
+      ? '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。'
+      : ASS_STYLE_LIBRARY_READY
+        ? '已保存到本机用户级配置；Launcher 与 Editor 共享。'
+        : '当前使用本地副本；服务器恢复后可再次点击保存同步。';
+    assStyleLibraryPathHint.textContent = window.MAWE_I18N?.translateText?.(pathHint) || pathHint;
+  }
+}
+
+function assStyleManagerClone(value) {
+  try { return JSON.parse(JSON.stringify(value)); } catch (_) { return null; }
+}
+
+function assStyleManagerId(prefix, items) {
+  const existing = new Set((Array.isArray(items) ? items : []).map((item) => String(item?.id || '')));
+  let id = '';
+  do {
+    id = `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  } while (existing.has(id));
+  return id.slice(0, 64);
+}
+
+function selectedAssStyle() {
+  const id = assStyleManagerSelection.kind === 'style' ? assStyleManagerSelection.id : '';
+  return window.AsrEditorUtils.assStyleForId(ASS_STYLE_LIBRARY, id || 'ass');
+}
+
+function selectedAssProfile() {
+  const id = assStyleManagerSelection.kind === 'profile' ? assStyleManagerSelection.id : '';
+  return window.AsrEditorUtils.assProfileForId(ASS_STYLE_LIBRARY, id || 'ass');
+}
+
+function assStyleManagerSetSelection(kind, id) {
+  const collection = kind === 'profile' ? ASS_STYLE_LIBRARY.assProfiles : ASS_STYLE_LIBRARY.styles;
+  const item = (Array.isArray(collection) ? collection : []).find((candidate) => candidate?.id === id);
+  if (!item) return;
+  assStyleManagerSelection = { kind, id };
+  syncAssStyleManager({ force: true });
+}
+
+function appendAssStyleOption(select, value, label) {
+  if (!select) return;
+  select.append(new Option(label, value));
+}
+
+function renderAssStyleList(list, items, kind, selectedId) {
+  if (!list) return;
+  list.replaceChildren();
+  list.setAttribute('aria-busy', 'false');
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'option');
+    button.dataset.assSelectionKind = kind;
+    button.dataset.assSelectionId = String(item.id || '');
+    button.setAttribute('aria-selected', String(item.id || '') === selectedId ? 'true' : 'false');
+    const label = document.createElement('span');
+    label.className = 'ass-style-list-label';
+    label.textContent = String(item.name || item.id || '未命名');
+    button.append(label);
+    if (item.builtin) {
+      const badge = document.createElement('span');
+      badge.className = 'ass-style-list-badge';
+      badge.textContent = '内置';
+      button.append(badge);
+    }
+    button.addEventListener('click', () => assStyleManagerSetSelection(kind, item.id));
+    list.append(button);
+  });
+}
+
+function assStyleFormValue(field) {
+  if (!field) return null;
+  if (field.type === 'checkbox') return field.checked;
+  if (field.type === 'number') return field.value === '' ? null : Number(field.value);
+  return field.value;
+}
+
+function updateAssStyleManagerLibrary(mutator, { persist = true } = {}) {
+  const next = assStyleManagerClone(ASS_STYLE_LIBRARY);
+  if (!next) return;
+  mutator(next);
+  assStyleLibraryRevision += 1;
+  setAssStyleLibrary(next, { persistLocal: true });
+  if (persist) scheduleAssStyleLibrarySave();
+  syncAssStyleManager();
+  refreshSubtitlePreview?.();
+}
+
+function setNestedAssProfileValue(profile, path, value) {
+  const [group, field] = String(path || '').split('.', 2);
+  if (!group || !field || !profile.animations?.[group]) return;
+  profile.animations[group] = { ...profile.animations[group], [field]: value };
+}
+
+function updateAssStyleField(field, value) {
+  const styleId = assStyleManagerSelection.kind === 'style' ? assStyleManagerSelection.id : '';
+  if (!styleId) return;
+  updateAssStyleManagerLibrary((library) => {
+    library.styles = library.styles.map((style) => style.id === styleId
+      ? { ...style, [field]: value } : style);
+  });
+}
+
+function updateAssProfileField(path, value) {
+  const profileId = assStyleManagerSelection.kind === 'profile' ? assStyleManagerSelection.id : '';
+  if (!profileId) return;
+  updateAssStyleManagerLibrary((library) => {
+    library.assProfiles = library.assProfiles.map((profile) => {
+      if (profile.id !== profileId) return profile;
+      const next = { ...profile, animations: assStyleManagerClone(profile.animations) };
+      if (path === 'name' || path === 'styleId') next[path] = value;
+      else setNestedAssProfileValue(next, path, value);
+      return next;
+    });
+  });
+}
+
+function syncAssStyleForm(style) {
+  if (!assStyleForm) return;
+  const safeStyle = window.AsrEditorUtils.normalizeAssStyle(style);
+  if (assStyleFormTitle) assStyleFormTitle.textContent = safeStyle.name;
+  if (assStyleBuiltinBadge) assStyleBuiltinBadge.hidden = !safeStyle.builtin;
+  assStyleForm.querySelectorAll('[data-ass-style-field]').forEach((field) => {
+    if (document.activeElement === field) return;
+    const value = safeStyle[field.dataset.assStyleField];
+    if (field.type === 'checkbox') field.checked = value === true;
+    else if (value !== undefined && value !== null) field.value = String(value);
+  });
+  if (assStylePreviewSample) {
+    const preview = safeStyle;
+    assStylePreviewSample.textContent = 'Aa 字幕预览 / 字幕样例';
+    assStylePreviewSample.style.fontFamily = subtitleFontFamilyCss(preview.fontName);
+    assStylePreviewSample.style.fontSize = `${Math.min(42, Math.max(14, Number(preview.fontSize) || 24))}px`;
+    assStylePreviewSample.style.fontWeight = preview.bold ? '700' : '400';
+    assStylePreviewSample.style.fontStyle = preview.italic ? 'italic' : 'normal';
+    assStylePreviewSample.style.textDecorationLine = [preview.underline ? 'underline' : '', preview.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
+    assStylePreviewSample.style.color = preview.primaryColor;
+    assStylePreviewSample.style.webkitTextStroke = preview.outline > 0 ? `${Math.min(8, preview.outline)}px ${preview.outlineColor}` : '';
+    assStylePreviewSample.style.paintOrder = preview.outline > 0 ? 'stroke fill' : '';
+    assStylePreviewSample.style.textShadow = preview.shadow > 0 ? `${preview.shadow}px ${preview.shadow}px 0 ${preview.backColor}` : 'none';
+    assStylePreviewSample.style.letterSpacing = `${preview.spacing}px`;
+    assStylePreviewSample.style.transform = `scale(${Number(preview.scaleX) / 100 || 1}, ${Number(preview.scaleY) / 100 || 1}) rotate(${Number(preview.angle) || 0}deg)`;
+    assStylePreviewSample.style.background = Number(preview.borderStyle) === 3 ? preview.backColor : 'transparent';
+  }
+}
+
+function syncAssProfileForm(profile) {
+  if (!assProfileForm) return;
+  const safeProfile = window.AsrEditorUtils.normalizeAssProfile(profile);
+  if (assProfileFormTitle) assProfileFormTitle.textContent = safeProfile.name;
+  if (assProfileBuiltinBadge) assProfileBuiltinBadge.hidden = !safeProfile.builtin;
+  assProfileForm.querySelectorAll('[data-ass-profile-field]').forEach((field) => {
+    if (document.activeElement === field) return;
+    const value = safeProfile[field.dataset.assProfileField];
+    if (value !== undefined && value !== null) field.value = String(value);
+  });
+  assProfileForm.querySelectorAll('[data-ass-animation]').forEach((field) => {
+    const path = field.dataset.assAnimation;
+    const [group, key] = path.split('.', 2);
+    const value = safeProfile.animations?.[group]?.[key];
+    if (document.activeElement !== field && value !== undefined) {
+      if (field.type === 'checkbox') field.checked = value === true;
+      else field.value = String(value);
+    }
+    field.disabled = key !== 'enabled' && safeProfile.animations?.[group]?.enabled !== true;
+  });
+  if (assProfilePreviewSummary) {
+    const tags = window.AsrEditorUtils.assAnimationOverrideTags(safeProfile);
+    const style = window.AsrEditorUtils.assStyleForId(ASS_STYLE_LIBRARY, safeProfile.styleId);
+    const summary = `${style.name} · ${tags || '无逐句动画'}`;
+    assProfilePreviewSummary.textContent = window.MAWE_I18N?.translateText?.(summary) || summary;
+  }
+}
+
+function syncAssStyleManager({ force = false } = {}) {
+  if (!assStyleWindow) return;
+  ASS_STYLE_LIBRARY = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const styles = ASS_STYLE_LIBRARY.styles || [];
+  const profiles = ASS_STYLE_LIBRARY.assProfiles || [];
+  const selectedCollection = assStyleManagerSelection.kind === 'profile' ? profiles : styles;
+  if (!selectedCollection.some((item) => item.id === assStyleManagerSelection.id)) {
+    assStyleManagerSelection = assStyleManagerSelection.kind === 'profile'
+      ? { kind: 'profile', id: profiles[0]?.id || 'ass' }
+      : { kind: 'style', id: styles[0]?.id || 'ass' };
+  }
+  if (assStyleCount) assStyleCount.textContent = String(styles.length);
+  if (assProfileCount) assProfileCount.textContent = String(profiles.length);
+  updateAssStyleLibrarySummary();
+  renderAssStyleList(assStyleList, styles, 'style', assStyleManagerSelection.kind === 'style' ? assStyleManagerSelection.id : '');
+  renderAssStyleList(assProfileList, profiles, 'profile', assStyleManagerSelection.kind === 'profile' ? assStyleManagerSelection.id : '');
+  if (assSrtDefaultStyleSelect) {
+    const active = ASS_STYLE_LIBRARY.assignments?.srtBurnStyleId || 'default';
+    assSrtDefaultStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(assSrtDefaultStyleSelect, style.id, style.name));
+    assSrtDefaultStyleSelect.value = active;
+  }
+  if (assDefaultProfileSelect) {
+    const active = ASS_STYLE_LIBRARY.assignments?.assExportProfileId || 'ass';
+    assDefaultProfileSelect.replaceChildren();
+    profiles.forEach((profile) => appendAssStyleOption(assDefaultProfileSelect, profile.id, profile.name));
+    assDefaultProfileSelect.value = active;
+  }
+  if (assProfileStyleSelect) {
+    const selectedProfile = selectedAssProfile();
+    assProfileStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(assProfileStyleSelect, style.id, style.name));
+    assProfileStyleSelect.value = selectedProfile.styleId;
+  }
+  const isStyle = assStyleManagerSelection.kind === 'style';
+  if (assStyleEditorEmpty) assStyleEditorEmpty.hidden = selectedCollection.length > 0;
+  if (assStyleForm) assStyleForm.hidden = !isStyle;
+  if (assProfileForm) assProfileForm.hidden = isStyle;
+  if (assStyleDeleteButton) {
+    const selected = selectedCollection.find((item) => item.id === assStyleManagerSelection.id);
+    assStyleDeleteButton.disabled = !selected || selected.builtin === true;
+    assStyleDeleteButton.title = selected?.builtin ? '内置条目不能删除' : '删除当前条目';
+  }
+  if (isStyle) syncAssStyleForm(selectedAssStyle());
+  else syncAssProfileForm(selectedAssProfile());
+  updateAssStyleLibraryStatus();
+  if (force) assStyleWindow.querySelector('.ass-style-editor')?.scrollTo({ top: 0 });
+}
+
+function createAssStyle() {
+  if ((ASS_STYLE_LIBRARY.styles || []).length >= 64) {
+    flashHint('样式数量已达到上限（64 个）', 'warning');
+    return;
+  }
+  const id = assStyleManagerId('style', ASS_STYLE_LIBRARY.styles);
+  updateAssStyleManagerLibrary((library) => {
+    library.styles.push({
+      ...assStyleManagerClone(window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE),
+      id, name: '新样式', builtin: false,
+    });
+  }, { persist: false });
+  assStyleManagerSelection = { kind: 'style', id };
+  scheduleAssStyleLibrarySave();
+  syncAssStyleManager({ force: true });
+}
+
+function duplicateAssStyle() {
+  const source = selectedAssStyle();
+  if (!source || (ASS_STYLE_LIBRARY.styles || []).length >= 64) {
+    flashHint('无法复制样式：已达到数量上限', 'warning');
+    return;
+  }
+  const id = assStyleManagerId('style', ASS_STYLE_LIBRARY.styles);
+  updateAssStyleManagerLibrary((library) => {
+    library.styles.push({ ...assStyleManagerClone(source), id, name: `${source.name} 副本`, builtin: false });
+  }, { persist: false });
+  assStyleManagerSelection = { kind: 'style', id };
+  scheduleAssStyleLibrarySave();
+  syncAssStyleManager({ force: true });
+}
+
+function createAssProfile() {
+  if ((ASS_STYLE_LIBRARY.assProfiles || []).length >= 64) {
+    flashHint('ASS 方案数量已达到上限（64 个）', 'warning');
+    return;
+  }
+  const id = assStyleManagerId('profile', ASS_STYLE_LIBRARY.assProfiles);
+  updateAssStyleManagerLibrary((library) => {
+    library.assProfiles.push({
+      ...assStyleManagerClone(window.AsrEditorUtils.ASS_DEFAULT_PROFILE),
+      id, name: '新 ASS 方案', builtin: false,
+      animations: assStyleManagerClone(window.AsrEditorUtils.ASS_DEFAULT_ANIMATIONS),
+    });
+  }, { persist: false });
+  assStyleManagerSelection = { kind: 'profile', id };
+  scheduleAssStyleLibrarySave();
+  syncAssStyleManager({ force: true });
+}
+
+function deleteSelectedAssEntry() {
+  const { kind, id } = assStyleManagerSelection;
+  const collection = kind === 'profile' ? ASS_STYLE_LIBRARY.assProfiles : ASS_STYLE_LIBRARY.styles;
+  const item = collection?.find((candidate) => candidate.id === id);
+  if (!item || item.builtin) {
+    flashHint('内置条目不能删除；可以直接修改其参数', 'warning');
+    return;
+  }
+  if (!confirm(`确定删除“${item.name}”吗？`)) return;
+  updateAssStyleManagerLibrary((library) => {
+    if (kind === 'profile') {
+      library.assProfiles = library.assProfiles.filter((profile) => profile.id !== id);
+      if (library.assignments.assExportProfileId === id) library.assignments.assExportProfileId = 'ass';
+    } else {
+      library.styles = library.styles.filter((style) => style.id !== id);
+      library.assProfiles = library.assProfiles.map((profile) => ({
+        ...profile, styleId: profile.styleId === id ? 'ass' : profile.styleId,
+      }));
+      if (library.assignments.srtBurnStyleId === id) library.assignments.srtBurnStyleId = 'default';
+    }
+  });
+  assStyleManagerSelection = kind === 'profile' ? { kind: 'profile', id: 'ass' } : { kind: 'style', id: 'ass' };
+  syncAssStyleManager({ force: true });
+}
+
+function updateAssStyleAssignment(slot, value) {
+  updateAssStyleManagerLibrary((library) => {
+    library.assignments = { ...(library.assignments || {}), [slot]: value };
+  });
+  refreshSubtitlePreview?.();
+}
+
+const assStyleFloatingPanel = createFloatingPanel({
+  panel: assStyleWindow,
+  dragHandle: assStyleDragHandle,
+  manageButton: assStyleManagerOpenButton,
+  anchorButton: assStyleManagerOpenButton,
+  positionKey: ASS_STYLE_WINDOW_POSITION_KEY,
+  onOpen: () => {
+    syncAssStyleManager({ force: true });
+    void loadAssStyleLibrary({ force: true });
+  },
+});
+assStyleWindowClose?.addEventListener('click', () => assStyleFloatingPanel.close());
+assStyleWindowCloseFooter?.addEventListener('click', () => assStyleFloatingPanel.close());
+assStyleNewButton?.addEventListener('click', createAssStyle);
+assStyleDuplicateButton?.addEventListener('click', duplicateAssStyle);
+assProfileNewButton?.addEventListener('click', createAssProfile);
+assStyleDeleteButton?.addEventListener('click', deleteSelectedAssEntry);
+assStyleSaveButton?.addEventListener('click', () => {
+  setAssStyleLibraryStatus(
+    assStyleLibraryUsesServerStorage() ? '正在保存用户级样式库…' : '正在保存到当前浏览器…',
+    'pending',
+  );
+  void persistAssStyleLibrary();
+});
+assSrtDefaultStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('srtBurnStyleId', assSrtDefaultStyleSelect.value));
+assDefaultProfileSelect?.addEventListener('change', () => updateAssStyleAssignment('assExportProfileId', assDefaultProfileSelect.value));
+assStyleList?.addEventListener('contextmenu', (event) => {
+  const button = event.target.closest('[data-ass-selection-kind="style"]');
+  if (!button) return;
+  event.preventDefault();
+  assStyleManagerSetSelection('style', button.dataset.assSelectionId);
+  deleteSelectedAssEntry();
+});
+assProfileList?.addEventListener('contextmenu', (event) => {
+  const button = event.target.closest('[data-ass-selection-kind="profile"]');
+  if (!button) return;
+  event.preventDefault();
+  assStyleManagerSetSelection('profile', button.dataset.assSelectionId);
+  deleteSelectedAssEntry();
+});
+assStyleForm?.addEventListener('input', (event) => {
+  const field = event.target.closest('[data-ass-style-field]');
+  if (!field) return;
+  updateAssStyleField(field.dataset.assStyleField, assStyleFormValue(field));
+});
+assStyleForm?.addEventListener('change', (event) => {
+  const field = event.target.closest('[data-ass-style-field]');
+  if (field) updateAssStyleField(field.dataset.assStyleField, assStyleFormValue(field));
+});
+assProfileForm?.addEventListener('input', (event) => {
+  const field = event.target.closest('[data-ass-profile-field], [data-ass-animation]');
+  if (!field) return;
+  const path = field.dataset.assProfileField || field.dataset.assAnimation;
+  updateAssProfileField(path, assStyleFormValue(field));
+});
+assProfileForm?.addEventListener('change', (event) => {
+  const field = event.target.closest('[data-ass-profile-field], [data-ass-animation]');
+  if (field) updateAssProfileField(field.dataset.assProfileField || field.dataset.assAnimation, assStyleFormValue(field));
+});
+
+function syncAssModeControl() {
+  if (!assModeToggle) return;
+  assModeToggle.checked = EDITOR_SETTINGS.assMode === true;
+  assModeToggle.setAttribute('aria-checked', String(assModeToggle.checked));
+}
+
+assModeToggle?.addEventListener('change', () => {
+  updateEditorSettings({ assMode: assModeToggle.checked });
+  syncAssModeControl();
+  refreshPreviewGeometryEditable();
+  refreshSubtitlePreview();
+  flashHint(assModeToggle.checked ? '已开启 ASS 字幕模式预览' : '已恢复原有字幕预览', 'success');
 });
 
 function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
@@ -2495,6 +3098,8 @@ document.addEventListener('mawe:languagechange', () => {
   refreshTimelineSettingsUi();
   refreshMediaSeekStepHelp();
   refreshMediaSeekControlLabels();
+  updateAssStyleLibrarySummary();
+  updateAssStyleLibraryStatus();
 });
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
@@ -2684,6 +3289,9 @@ multiSubtitleAlignButton?.addEventListener('click', () => {
 });
 applySubtitleAppearance();
 applyExtensionSubtitleAppearance();
+syncAssModeControl();
+syncAssStyleManager();
+void loadAssStyleLibrary();
 // 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
 editorSettingsTabs.forEach((tab) => {
   tab.addEventListener('click', () => setEditorSettingsActiveTab(tab));
@@ -11838,7 +12446,11 @@ function applyStickerGeometryToDom(geo) {
 }
 // 只有当对应预览开关开启时才允许几何编辑（关闭时字幕盒完全隐藏、表情包盒不拦截指针）。
 function refreshPreviewGeometryEditable() {
-  overlayEl.classList.toggle('geometry-enabled', !!overlayToggle.checked || !!extensionOverlayToggle?.checked);
+  const assMode = EDITOR_SETTINGS.assMode === true;
+  overlayEl.classList.toggle(
+    'geometry-enabled',
+    !assMode && (!!overlayToggle.checked || !!extensionOverlayToggle?.checked),
+  );
   stickerOverlayLayer.classList.toggle('geometry-enabled', !!stickerOverlayToggle?.checked);
 }
 
@@ -12065,6 +12677,251 @@ function updatePlaybackFrame() {
   waveformEditor?.updatePlayback();
 }
 
+function assPreviewAlignment(value) {
+  const alignment = Math.min(9, Math.max(1, Math.round(Number(value) || 2)));
+  const column = (alignment - 1) % 3;
+  const row = Math.floor((alignment - 1) / 3);
+  return {
+    x: column / 2,
+    y: row === 0 ? 1 : row === 1 ? 0.5 : 0,
+    alignItems: column === 0 ? 'flex-start' : column === 1 ? 'center' : 'flex-end',
+    justifyContent: row === 0 ? 'flex-end' : row === 1 ? 'center' : 'flex-start',
+    textAlign: column === 0 ? 'left' : column === 1 ? 'center' : 'right',
+  };
+}
+
+function assPreviewMetrics() {
+  const resolution = currentAssVideoResolution()
+    || { width: 1920, height: 1080 };
+  const rect = playerStage?.getBoundingClientRect?.();
+  const stageWidth = Math.max(1, Number(rect?.width) || Number(playerStage?.clientWidth) || resolution.width);
+  const stageHeight = Math.max(1, Number(rect?.height) || Number(playerStage?.clientHeight) || resolution.height);
+  return {
+    resolution,
+    stageWidth,
+    stageHeight,
+    scaleX: stageWidth / resolution.width,
+    scaleY: stageHeight / resolution.height,
+  };
+}
+
+function assPreviewStyleVariant(style, segment, segments, appearance) {
+  const colorEnabled = appearance.color_underline !== false;
+  const colorName = segment
+    ? MULTI_SUBTITLE_UTILS.effectiveColorName(segment, segments) : null;
+  const paletteValue = colorEnabled ? COLOR_BY_NAME[colorName]?.value : '';
+  if (!paletteValue || typeof window.AsrEditorUtils.assStyleVariant !== 'function') return style;
+  return window.AsrEditorUtils.assStyleVariant(
+    style,
+    paletteValue,
+    appearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE,
+  );
+}
+
+function assPreviewAnimatedStyle(style, profile, animationState) {
+  if (animationState.transformProgress === null) return style;
+  const tags = profile?.animations?.t?.tags || '';
+  return window.AsrEditorUtils.assPreviewStyleAt(style, tags, animationState.transformProgress);
+}
+
+function applyAssPreviewElement(element, style, animationState, metrics, alignment, margins) {
+  if (!element) return;
+  const scaleX = metrics.scaleX;
+  const scaleY = metrics.scaleY;
+  // Style-library font sizes use the same 1080p reference as ASS export.
+  // Export scales the value to PlayResY; applying the inverse stage scale here
+  // keeps a 4K source visually consistent with its exported ASS rendering.
+  const fontSize = Math.max(1, Number(style.fontSize) || 18)
+    * metrics.stageHeight / ASS_PREVIEW_REFERENCE_HEIGHT;
+  const opacity = Math.max(0, Math.min(1,
+    Number(animationState.opacity) * (1 - Math.max(0, Math.min(255, Number(style.alpha) || 0)) / 255),
+  ));
+  const outline = Math.max(0, Number(style.outline) || 0) * scaleY;
+  const shadow = Math.max(0, Number(style.shadow) || 0) * scaleY;
+  const spacing = (Number(style.spacing) || 0) * scaleY;
+  const borderBox = Number(style.borderStyle) === 3;
+  const transform = [];
+  const move = style.__assMove;
+  if (move) {
+    element.style.position = 'absolute';
+    element.style.left = `${move.x * metrics.scaleX}px`;
+    element.style.top = `${move.y * metrics.scaleY}px`;
+    transform.push(`translate(${-alignment.x * 100}%, ${-alignment.y * 100}%)`);
+  } else {
+    element.style.position = '';
+    element.style.left = '';
+    element.style.top = '';
+  }
+  transform.push(`scale(${Math.max(0, Number(style.scaleX) || 100) / 100}, ${Math.max(0, Number(style.scaleY) || 100) / 100})`);
+  if (Number(style.rotationX) || Number(style.rotationY)) transform.push('perspective(600px)');
+  if (Number(style.rotationX)) transform.push(`rotateX(${Number(style.rotationX)}deg)`);
+  if (Number(style.rotationY)) transform.push(`rotateY(${Number(style.rotationY)}deg)`);
+  if (Number(style.angle)) transform.push(`rotateZ(${Number(style.angle)}deg)`);
+  element.style.fontFamily = subtitleFontFamilyCss(style.fontName);
+  element.style.fontSize = `${fontSize}px`;
+  element.style.fontWeight = style.bold ? '700' : '400';
+  element.style.fontStyle = style.italic ? 'italic' : 'normal';
+  element.style.textDecorationLine = [style.underline ? 'underline' : '', style.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
+  element.style.textDecorationColor = style.primaryColor;
+  element.style.textUnderlineOffset = style.underline ? '0.16em' : '';
+  element.style.color = style.primaryColor;
+  element.style.webkitTextStroke = outline > 0 ? `${outline}px ${style.outlineColor}` : '';
+  element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
+  element.style.textShadow = !borderBox && shadow > 0
+    ? `${shadow}px ${shadow}px 0 ${style.backColor}` : 'none';
+  element.style.letterSpacing = `${spacing}px`;
+  element.style.lineHeight = 'normal';
+  element.style.maxWidth = `calc(100% - ${Math.max(0, margins.left + margins.right)}px)`;
+  element.style.padding = borderBox
+    ? `${Math.max(1, 4 * scaleY)}px ${Math.max(1, 8 * scaleX)}px`
+    : `${Math.max(1, scaleY)}px ${Math.max(1, 2 * scaleX)}px`;
+  element.style.backgroundColor = borderBox ? style.backColor : 'transparent';
+  element.style.borderRadius = '0';
+  element.style.opacity = String(opacity);
+  element.style.transformOrigin = `${alignment.x * 100}% ${alignment.y * 100}%`;
+  element.style.transform = transform.join(' ') || 'none';
+}
+
+function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fallbackColor) {
+  if (!element) return;
+  [
+    'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
+    'text-decoration-color', 'text-underline-offset', 'color', ' -webkit-text-stroke',
+    '-webkit-text-stroke', 'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
+    'max-width', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
+    'left', 'top', 'transform-origin', 'transform',
+  ].forEach((property) => element.style.removeProperty(property.trim()));
+  element.style.setProperty(
+    '--subtitle-preview-font-size',
+    `${appearance.font_size || fallbackSize}px`,
+  );
+  element.style.fontFamily = subtitleFontFamilyCss(appearance.font_family);
+  const hasCustomBackground = Object.prototype.hasOwnProperty.call(appearance, 'background_color')
+    || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
+  element.style.backgroundColor = hasCustomBackground ? subtitleBackgroundCss(appearance) : '';
+  element.style.color = appearance.color || fallbackColor;
+}
+
+function restoreCssSubtitlePreview() {
+  overlayEl.removeAttribute('data-ass-mode');
+  overlayEl.classList.remove('ass-preview-active');
+  delete overlayTextEl.dataset.colorUnderline;
+  delete overlayTextEl.dataset.colorText;
+  delete overlayTextEl.dataset.colorStroke;
+  delete overlayMainSpeakerLabelEl.dataset.color;
+  ['align-items', 'justify-content', 'text-align', 'padding', 'box-sizing'].forEach((property) => {
+    overlayEl.style.removeProperty(property);
+  });
+  applyPreviewGeometryToDom(getPreviewGeometry());
+  restoreCssSubtitlePreviewElement(
+    overlayTextEl,
+    getSubtitleAppearance(),
+    SUBTITLE_DEFAULT_FONT_SIZE,
+    DEFAULT_SUBTITLE_COLOR,
+  );
+  restoreCssSubtitlePreviewElement(
+    overlayExtensionTextEl,
+    getExtensionSubtitleAppearance(),
+    EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE,
+    DEFAULT_EXTENSION_SUBTITLE_COLOR,
+  );
+  ['color', '-webkit-text-stroke', 'paint-order', 'text-decoration-color'].forEach((property) => {
+    overlayMainSpeakerLabelEl.style.removeProperty(property);
+  });
+}
+
+function applyAssSubtitlePreview({ tMs, segment, extension, mainColorName, speakerLabelVisible }) {
+  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const profile = window.AsrEditorUtils.assProfileForId(
+    library,
+    library.assignments?.assExportProfileId || 'ass',
+  );
+  const baseStyle = window.AsrEditorUtils.assStyleForId(library, profile.styleId);
+  const metrics = assPreviewMetrics();
+  const alignment = assPreviewAlignment(baseStyle.alignment);
+  const margins = {
+    left: Math.max(0, Number(baseStyle.marginL) || 0) * metrics.scaleX,
+    right: Math.max(0, Number(baseStyle.marginR) || 0) * metrics.scaleX,
+    vertical: Math.max(0, Number(baseStyle.marginV) || 0) * metrics.scaleY,
+  };
+  const appearance = getSubtitleAppearance();
+  const extensionSegments = getActiveExtensionTrack()?.segments || [];
+  const mainStyle = assPreviewStyleVariant(baseStyle, segment, DATA.segments, appearance);
+  const extensionStyle = assPreviewStyleVariant(
+    baseStyle,
+    extension,
+    extensionSegments,
+    appearance,
+  );
+  const mainDuration = Math.max(1, Number(segment?.end) - Number(segment?.start) || 1);
+  const extensionDuration = Math.max(1, Number(extension?.end) - Number(extension?.start) || 1);
+  const mainAnimation = window.AsrEditorUtils.assPreviewAnimationState(
+    profile,
+    Math.max(0, Number(tMs) - Number(segment?.start || 0)),
+    mainDuration,
+    {
+      playResX: metrics.resolution.width,
+      playResY: metrics.resolution.height,
+      stageWidth: metrics.stageWidth,
+      stageHeight: metrics.stageHeight,
+    },
+  );
+  const extensionAnimation = window.AsrEditorUtils.assPreviewAnimationState(
+    profile,
+    Math.max(0, Number(tMs) - Number(extension?.start || 0)),
+    extensionDuration,
+    {
+      playResX: metrics.resolution.width,
+      playResY: metrics.resolution.height,
+      stageWidth: metrics.stageWidth,
+      stageHeight: metrics.stageHeight,
+    },
+  );
+  const animationGroup = profile.animations || {};
+  const withMove = (style, state) => ({
+    ...assPreviewAnimatedStyle(style, profile, state),
+    __assMove: animationGroup.move?.enabled ? { x: state.moveX, y: state.moveY } : null,
+  });
+  const animatedMainStyle = withMove(mainStyle, mainAnimation);
+  const animatedExtensionStyle = withMove(extensionStyle, extensionAnimation);
+
+  overlayEl.dataset.assMode = 'true';
+  overlayEl.classList.add('ass-preview-active');
+  // ASS 的坐标系覆盖整个 PlayRes 画布；旧版 CSS 预览保存的自定义字幕盒
+  // 只在 CSS 模式下生效，否则会把 Alignment / Margin 的语义再次套一层。
+  overlayEl.style.left = '0';
+  overlayEl.style.top = '0';
+  overlayEl.style.right = 'auto';
+  overlayEl.style.bottom = 'auto';
+  overlayEl.style.width = '100%';
+  overlayEl.style.height = '100%';
+  overlayEl.style.alignItems = alignment.alignItems;
+  overlayEl.style.justifyContent = alignment.justifyContent;
+  overlayEl.style.textAlign = alignment.textAlign;
+  overlayEl.style.boxSizing = 'border-box';
+  overlayEl.style.padding = `${margins.vertical}px ${margins.right}px ${margins.vertical}px ${margins.left}px`;
+  applyAssPreviewElement(overlayTextEl, animatedMainStyle, mainAnimation, metrics, alignment, margins);
+  applyAssPreviewElement(overlayExtensionTextEl, animatedExtensionStyle, extensionAnimation, metrics, alignment, margins);
+
+  if (speakerLabelVisible) {
+    const colorEnabled = appearance.color_underline !== false;
+    const paletteColor = colorEnabled && COLOR_BY_NAME[mainColorName]?.value;
+    const colorStyle = appearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
+    const labelColor = colorEnabled && colorStyle === 'text'
+      ? paletteColor || animatedMainStyle.primaryColor
+      : animatedMainStyle.primaryColor;
+    overlayMainSpeakerLabelEl.style.color = labelColor;
+    overlayMainSpeakerLabelEl.style.webkitTextStroke = animatedMainStyle.outline > 0
+      ? `${animatedMainStyle.outline * metrics.scaleY}px ${animatedMainStyle.outlineColor}` : '';
+    overlayMainSpeakerLabelEl.style.paintOrder = animatedMainStyle.outline > 0 ? 'stroke fill' : '';
+    overlayMainSpeakerLabelEl.style.textDecorationColor = labelColor;
+  } else {
+    ['color', '-webkit-text-stroke', 'paint-order', 'text-decoration-color'].forEach((property) => {
+      overlayMainSpeakerLabelEl.style.removeProperty(property);
+    });
+  }
+}
+
 function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActive(tMs)) {
   // 编辑字幕文本时只刷新播放器预览，避免每输入一个字都触发字幕列表的自动滚动。
   const seg = idx >= 0 ? DATA.segments[idx] : null;
@@ -12117,6 +12974,18 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
     overlayExtensionTextEl.textContent = extensionText;
   }
+  const assMode = EDITOR_SETTINGS.assMode === true;
+  if (assMode) {
+    applyAssSubtitlePreview({
+      tMs,
+      segment: mainVisible ? seg : null,
+      extension: extensionVisible ? extension : null,
+      mainColorName,
+      speakerLabelVisible,
+    });
+  } else if (overlayEl.dataset.assMode === 'true') {
+    restoreCssSubtitlePreview();
+  }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
   // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
   // 播放刷新每帧都写内联样式。
@@ -12138,17 +13007,17 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     && previewSegmentColor
     ? `.125em ${previewSegmentColor}`
     : '';
-  if (overlayTextEl.dataset.colorUnderline !== colorUnderline) {
+  if (!assMode && overlayTextEl.dataset.colorUnderline !== colorUnderline) {
     overlayTextEl.dataset.colorUnderline = colorUnderline;
     overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
     overlayTextEl.style.textDecorationColor = colorUnderline;
     overlayTextEl.style.textUnderlineOffset = colorUnderline ? '0.25em' : '';
   }
-  if (overlayTextEl.dataset.colorText !== textColor) {
+  if (!assMode && overlayTextEl.dataset.colorText !== textColor) {
     overlayTextEl.dataset.colorText = textColor;
     overlayTextEl.style.color = textColor;
   }
-  if (overlayTextEl.dataset.colorStroke !== textStroke) {
+  if (!assMode && overlayTextEl.dataset.colorStroke !== textStroke) {
     overlayTextEl.dataset.colorStroke = textStroke;
     overlayTextEl.style.webkitTextStroke = textStroke;
     overlayTextEl.style.paintOrder = textStroke ? 'stroke fill' : '';

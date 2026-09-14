@@ -483,7 +483,10 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('具体用法详见帮助的「微调字幕」区', page)
         waveform_pane_start = page.index('<section class="waveform-pane"')
         editor_settings = page[page.index('id="editor-settings-panel"'):waveform_pane_start]
-        editor_settings_panel_end = page.index('</section>\n\n<input type="file" id="open-project-file"', page.index('id="editor-settings-panel"'))
+        editor_settings_panel_end = page.index(
+            '</section>\n\n<aside class="editor-settings-window ass-style-window"',
+            page.index('id="editor-settings-panel"'),
+        )
         editor_settings_panel = page[page.index('id="editor-settings-panel"'):editor_settings_panel_end]
         self.assertNotIn('音频波形区', editor_settings)
         self.assertNotIn('静音空隙', editor_settings)

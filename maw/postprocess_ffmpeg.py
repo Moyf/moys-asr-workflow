@@ -15,6 +15,7 @@ from typing import Callable, Final, Mapping
 
 from maw.gui_platform import creationflags, release_process_tree, startupinfo, terminate_process_tree
 from maw.output_naming import media_suffix
+from maw.ass_styles import ass_style_force_style, find_ass_style, load_ass_style_library
 
 
 ALLOWED_DIRECTIVES: Final = frozenset({"ffconcat", "file", "inpoint", "outpoint", "duration"})
@@ -68,6 +69,9 @@ class AudioTrack:
 class BurnSubtitleRequest:
     media_path: Path
     subtitle_path: Path
+    # Optional normalized style supplied by a caller; when omitted, the
+    # shared user-level SRT default slot is loaded automatically.
+    srt_style: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,7 +277,7 @@ def run_burn_subtitles(
         "-i",
         str(media),
         "-vf",
-        _subtitle_filter(subtitle),
+        _subtitle_filter(subtitle, request.srt_style),
         "-map",
         "0:v:0",
         "-map",
@@ -429,11 +433,20 @@ def _escape_filter_value(value: str) -> str:
     return escaped
 
 
-def _subtitle_filter(subtitle: Path) -> str:
+def _subtitle_filter(
+    subtitle: Path,
+    srt_style: Mapping[str, object] | None = None,
+) -> str:
     filename = _escape_filter_value(subtitle.name)
     if subtitle.suffix.lower() in {".ass", ".ssa"}:
         return f"ass=filename='{filename}'"
-    force_style = "Fontname=Arial,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=40"
+    style = srt_style
+    if style is None:
+        library = load_ass_style_library()
+        assignments = library.get("assignments")
+        style_id = assignments.get("srtBurnStyleId") if isinstance(assignments, Mapping) else "default"
+        style = find_ass_style(library, style_id)
+    force_style = ass_style_force_style(style)
     return f"subtitles=filename='{filename}':force_style='{force_style}'"
 
 
