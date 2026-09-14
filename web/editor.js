@@ -18195,6 +18195,9 @@ function assignColor(idxs, colorName) {
     DATA.segments[idx].color_ref = null;
   } else {
     const headIdx = sorted[0];
+    // 选区可能只包含已有颜色组的一部分。先在选中项处切开旧组，
+    // 让未选中的成员保留原颜色，并避免旧 head 被降级后仍被外部 ref 指向。
+    splitGroupsAtCutPoints(new Set(sorted), 'color', 'color_ref');
     const start = DATA.segments[headIdx].start;
     const end = DATA.segments[sorted[sorted.length - 1]].end;
     DATA.segments[headIdx].color = { name: colorName, value: def.value, start, end };

@@ -55,6 +55,43 @@ async function paintFirstSegmentRed(page) {
   }, FIRST_SEGMENT_END_MS);
 }
 
+test('recoloring part of an existing color group keeps the remaining head valid', async ({ page }) => {
+  await waitEditorReady(page);
+
+  const state = await page.evaluate(() => {
+    DATA.segments.splice(
+      0,
+      DATA.segments.length,
+      {
+        start: 0, end: 1000, text: 'existing red', items: [],
+        color: { name: 'red', value: '#f07f6f', start: 0, end: 1000 },
+      },
+      {
+        start: 1000, end: 2000, text: 'purple head', items: [],
+        color: { name: 'purple', value: '#bf89e6', start: 1000, end: 3000 },
+      },
+      {
+        start: 2000, end: 3000, text: 'purple tail', items: [],
+        color: null, color_ref: { name: 'purple', headIdx: 1 },
+      },
+    );
+    assignColor([0, 1], 'red');
+    return DATA.segments.map((segment) => ({
+      text: segment.text,
+      colorName: segment.color?.name || null,
+      colorRef: segment.color_ref
+        ? { name: segment.color_ref.name, headIdx: segment.color_ref.headIdx }
+        : null,
+    }));
+  });
+
+  expect(state).toEqual([
+    { text: 'existing red', colorName: 'red', colorRef: null },
+    { text: 'purple head', colorName: null, colorRef: { name: 'red', headIdx: 0 } },
+    { text: 'purple tail', colorName: 'purple', colorRef: null },
+  ]);
+});
+
 test('color filter button appears only for projects with colored subtitles', async ({ page }) => {
   await waitEditorReady(page);
   await expect(page.locator('#color-filter-btn')).toBeHidden();
