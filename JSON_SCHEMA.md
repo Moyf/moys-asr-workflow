@@ -41,10 +41,10 @@
   "waveform": { ... },
   "gap_remove": { ... },
   "script_alignment": { ... },
-   "workspace": { ... },
-   "preview": { ... },
-   "overlay_track": { ... },
-   "segments": [ ... ]
+  "workspace": { ... },
+  "preview": { ... },
+  "overlay_track": { ... },
+  "segments": [ ... ]
 }
 ```
 
