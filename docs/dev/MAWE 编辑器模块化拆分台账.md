@@ -169,6 +169,31 @@ acorn-walk 安装连带清除）——每次 npm install 后重装
 - 阶段三：巨型 IIFE 拆解（utils/waveform/split/timed-edit/i18n/gap-remove 等，
   三层差分）+ 第二注入方（serve.py gap-remove 前缀拼接）。
 
+## 阶段一模块提取完成（2026-09-14，Batch 9+10）
+
+| 9 | 2026-09-14 | 八模块：`MaweGapRemoveUi`(37) `MaweSelection`(24) `MaweBindingAlign`(9) `MaweCuePanel`(21) `MaweCueElements`(25) `MaweColorFilter`(22) `MaweSearch`(4) `MaweInlineEdit`(12)，共 154 符号 | 语法/顺序/Python/探针全绿 | 9c09695a |
+| 10 | 2026-09-14 | 六模块：`MaweSplitCore`(53) `MaweSplitContext`(1) `MaweSegmentOps`(12) `MaweCueListAnchor`(10) `MaweNavPreview`(19) `MaweCueEvents`(3)，共 98 符号；契约断言重指向 9 处 | 同上全绿 | 9c09695a |
+
+**全量 e2e 归因**（对照 worktree）：我们 40 / 纯 main 40，失败集仅各差 1 项对向
+偶发（我们多 1 条 double-click 光标用例 = 隔离时序偶发（单跑通过）；main 多
+"all waveform deletion scenarios" = 同类时序偶发）。**阶段一模块提取完成：
+editor.js 18,523 → 4,078 行（-78%），77 个清单条目，失败集与 main 等价。**
+
+editor.js 余量构成：111 个顶层声明（75 函数 + 36 变量，属 append 扫尾对象）+
+465 条顶层语句（= boot 接线，按指南 §6.6 连续切段处理）。
+
+### 阶段一收尾待办（下一会话）
+
+1. append 扫尾：111 个声明按归属并入既有模块（fork 用 append 模式处理了 24 个）。
+2. boot 接线连续切段：465 条语句按接线域切段为 N 个模块，三判据自证
+   （AST 无切断 / 拼回逐字节同 / 装配 AST 同）。
+3. 第二注入方核查：`server-editor/serve.py:52` 的 GAP_REMOVE_CORE_PATH 硬编码
+   路径在阶段二移动 gap-remove-core.js 时必须同步。
+4. 消费方子目录支持：edit.py:210 与 Tauri build.rs 的 `path.name != entry` 校验
+   在阶段二前须放开（拒绝 `..`/反斜杠/绝对路径，允许 `a/b.js`）。
+5. 运维：`npm install --no-save` 会互相同步修剪 ts-morph/acorn-walk——install 后
+   须 `npm install --no-save ts-morph acorn-walk` 重装。
+
 | 7 | 2026-09-11 | 十模块：`MaweStickerRoot`(10/35) `MaweFindReplace`(18/18) `MaweTextProcess`(28/25) `MaweTimedTextEdit`(32/27) `MaweStickerPicker`(14/28) `MaweAddCue`(4/5) `MaweBoundDrag`(7/1) `MaweContextMenus`(8/15) `MaweTextCleanup`(5/17) `MaweWaveformInit`(2/2)，共 128 符号；契约断言同步 6 处 | Node --check ×10 过；顺序断言过；Node 286；Python 1458 OK；探针零 pageerror。**待办：本批全量 e2e 尚未跑**（先合并 main 再统一跑） | （本提交） |
 
 Batch 2 执行备注：
