@@ -244,9 +244,16 @@
   };
   // 调色板数值唯一来源于 maw/speaker.py，渲染时注入 window.ASR_EDITOR_PALETTE；
   // Node 测试等无注入环境回退为空表（colorForSegment 走存储值兜底）。
-  const PALETTE = Object.fromEntries(
+  let PALETTE = Object.fromEntries(
     ((typeof window !== 'undefined' && window.ASR_EDITOR_PALETTE) || []).map((c) => [c.name, c.value]),
   );
+
+  function setColorPalette(value) {
+    const entries = Array.isArray(value) ? value : [];
+    PALETTE = Object.fromEntries(entries
+      .filter((entry) => entry && typeof entry.name === 'string' && typeof entry.value === 'string')
+      .map((entry) => [entry.name, entry.value]));
+  }
 
   function clamp(value, low, high) {
     return Math.max(low, Math.min(high, value));
@@ -5984,6 +5991,7 @@
     create(options) {
       return new WaveformEditor(options);
     },
+    setColorPalette,
     builtinWorkspaceIds: BUILTIN_WORKSPACE_IDS,
     builtinWorkspaces: BUILTIN_WORKSPACES,
     testing: {

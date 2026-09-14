@@ -813,8 +813,8 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
-const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
-const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
+const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
+const DEFAULT_SUBTITLE_COLOR_STYLE = 'text';
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
   yahei: '"Microsoft YaHei", "PingFang SC", sans-serif',
@@ -852,6 +852,7 @@ const normalizeKeyboardOperationReferenceMode = EDITOR_SETTINGS_UTILS.normalizeK
 const normalizeJklPlaybackMode = EDITOR_SETTINGS_UTILS.normalizeJklPlaybackMode;
 const normalizeEditorAccentColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentColor;
 const normalizeEditorAccentCustomColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentCustomColor;
+const normalizeSubtitleColorPalette = EDITOR_SETTINGS_UTILS.normalizeSubtitleColorPalette;
 const clampAutoSaveInterval = EDITOR_SETTINGS_UTILS.clampAutoSaveInterval;
 const clampCharcountThreshold = EDITOR_SETTINGS_UTILS.clampCharcountThreshold;
 const clampNinjaSlashLength = EDITOR_SETTINGS_UTILS.clampNinjaSlashLength;
@@ -1287,12 +1288,32 @@ const COLOR_LABELS = { yellow: '黄', green: '绿', red: '红', purple: '紫', b
 if (!Array.isArray(window.ASR_EDITOR_PALETTE) || !window.ASR_EDITOR_PALETTE.length) {
   throw new Error('调色板未注入：缺少 window.ASR_EDITOR_PALETTE（检查 edit.py / serve.py 渲染管线）');
 }
-const COLOR_PALETTE = window.ASR_EDITOR_PALETTE.map((c) => ({
-  name: c.name,
-  label: COLOR_LABELS[c.name] || c.name,
-  value: c.value,
-}));
-const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
+const COLOR_PALETTE_DEFAULTS = Object.fromEntries(
+  window.ASR_EDITOR_PALETTE.map((color) => [color.name, color.value]),
+);
+function buildEditorColorPalette() {
+  const configured = normalizeSubtitleColorPalette(
+    EDITOR_SETTINGS.subtitleColorPalette,
+    COLOR_PALETTE_DEFAULTS,
+  );
+  return window.ASR_EDITOR_PALETTE.map((c) => ({
+    name: c.name,
+    label: COLOR_LABELS[c.name] || c.name,
+    value: configured[c.name] || c.value,
+  }));
+}
+let COLOR_PALETTE = buildEditorColorPalette();
+let COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
+function rebuildEditorColorPalette() {
+  EDITOR_SETTINGS.subtitleColorPalette = normalizeSubtitleColorPalette(
+    EDITOR_SETTINGS.subtitleColorPalette,
+    COLOR_PALETTE_DEFAULTS,
+  );
+  COLOR_PALETTE = buildEditorColorPalette();
+  COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
+  window.AsrWaveform?.setColorPalette?.(COLOR_PALETTE);
+}
+window.AsrWaveform?.setColorPalette?.(COLOR_PALETTE);
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
 
 function currentAssVideoResolution() {
@@ -1700,6 +1721,20 @@ const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
 const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
 const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
+const subtitleColorPaletteNames = window.AsrEditorUtils.EDITOR_SUBTITLE_COLOR_NAMES || [
+  'yellow', 'green', 'red', 'purple', 'blue',
+];
+const subtitleColorPaletteColorInputs = Object.fromEntries(
+  subtitleColorPaletteNames.map((name) => [
+    name, document.getElementById(`subtitle-color-palette-${name}`),
+  ]),
+);
+const subtitleColorPaletteHexInputs = Object.fromEntries(
+  subtitleColorPaletteNames.map((name) => [
+    name, document.getElementById(`subtitle-color-palette-${name}-hex`),
+  ]),
+);
+const subtitleColorPaletteResetButton = document.getElementById('subtitle-color-palette-reset');
 const assModeToggle = document.getElementById('ass-mode-toggle');
 const assStyleManagerOpenButton = document.getElementById('ass-style-manager-open');
 const assStyleSummary = document.getElementById('ass-style-summary');
@@ -2374,6 +2409,7 @@ function renderAssStyleList(list, items, kind, selectedId) {
 function assStyleFormValue(field) {
   if (!field) return null;
   if (field.type === 'checkbox') return field.checked;
+  if (field.type === 'radio') return field.checked ? field.value : null;
   if (field.type === 'number') return field.value === '' ? null : Number(field.value);
   return field.value;
 }
@@ -2427,13 +2463,14 @@ function syncAssStyleForm(style) {
     if (document.activeElement === field) return;
     const value = safeStyle[field.dataset.assStyleField];
     if (field.type === 'checkbox') field.checked = value === true;
+    else if (field.type === 'radio') field.checked = String(value) === field.value;
     else if (value !== undefined && value !== null) field.value = String(value);
   });
   if (assStylePreviewSample) {
     const preview = safeStyle;
     assStylePreviewSample.textContent = 'Aa 字幕预览 / 字幕样例';
     assStylePreviewSample.style.fontFamily = subtitleFontFamilyCss(preview.fontName);
-    assStylePreviewSample.style.fontSize = `${Math.min(42, Math.max(14, Number(preview.fontSize) || 24))}px`;
+    assStylePreviewSample.style.fontSize = `${Math.max(14, Number(preview.fontSize) || 24)}px`;
     assStylePreviewSample.style.fontWeight = preview.bold ? '700' : '400';
     assStylePreviewSample.style.fontStyle = preview.italic ? 'italic' : 'normal';
     assStylePreviewSample.style.textDecorationLine = [preview.underline ? 'underline' : '', preview.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
@@ -2649,11 +2686,14 @@ assProfileList?.addEventListener('contextmenu', (event) => {
 assStyleForm?.addEventListener('input', (event) => {
   const field = event.target.closest('[data-ass-style-field]');
   if (!field) return;
+  if (field.type === 'radio' && !field.checked) return;
   updateAssStyleField(field.dataset.assStyleField, assStyleFormValue(field));
 });
 assStyleForm?.addEventListener('change', (event) => {
   const field = event.target.closest('[data-ass-style-field]');
-  if (field) updateAssStyleField(field.dataset.assStyleField, assStyleFormValue(field));
+  if (field && (field.type !== 'radio' || field.checked)) {
+    updateAssStyleField(field.dataset.assStyleField, assStyleFormValue(field));
+  }
 });
 assProfileForm?.addEventListener('input', (event) => {
   const field = event.target.closest('[data-ass-profile-field], [data-ass-animation]');
@@ -6466,7 +6506,7 @@ function updateCueColorPresentation(el, colorBar, seg) {
   el.style.removeProperty('--color-bar');
 
   if (seg.color) {
-    const value = seg.color.value || colorValue(seg.color.name);
+    const value = colorValue(seg.color.name);
     colorBar.classList.add('has-color');
     colorBar.style.setProperty('--color-bar', value);
     el.classList.add('has-color');
@@ -12010,6 +12050,7 @@ function normalizeSubtitleColor(value) {
   return /^#[0-9a-f]{6}$/i.test(color) ? color : null;
 }
 function normalizeSubtitleColorStyle(value) {
+  if (value === 'underline') return 'text';
   return typeof value === 'string' && SUBTITLE_COLOR_STYLE_VALUES.includes(value)
     ? value : null;
 }
@@ -12141,7 +12182,73 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   }
   if (subtitleColorInput) subtitleColorInput.value = appearance.color || DEFAULT_SUBTITLE_COLOR;
   syncSpeakerLabelControls();
+  syncSubtitleColorPaletteControls();
 }
+
+function currentSubtitleColorPalette() {
+  return normalizeSubtitleColorPalette(
+    EDITOR_SETTINGS.subtitleColorPalette,
+    COLOR_PALETTE_DEFAULTS,
+  );
+}
+
+function syncSubtitleColorPaletteControls() {
+  const palette = currentSubtitleColorPalette();
+  subtitleColorPaletteNames.forEach((name) => {
+    const value = palette[name];
+    const colorInput = subtitleColorPaletteColorInputs[name];
+    const hexInput = subtitleColorPaletteHexInputs[name];
+    if (colorInput && document.activeElement !== colorInput) colorInput.value = value;
+    if (hexInput && document.activeElement !== hexInput) hexInput.value = value;
+  });
+}
+
+function refreshSubtitleColorPalettePresentation() {
+  rebuildEditorColorPalette();
+  renderAll({ waveform: 'none' });
+  waveformEditor?.renderSegments?.();
+  refreshSubtitlePreview();
+}
+
+function setSubtitleColorPaletteValue(name, value) {
+  if (!subtitleColorPaletteNames.includes(name)) return;
+  const current = currentSubtitleColorPalette();
+  const next = normalizeSubtitleColorPalette(
+    { ...current, [name]: value },
+    COLOR_PALETTE_DEFAULTS,
+  );
+  if (next[name] === current[name]) {
+    syncSubtitleColorPaletteControls();
+    return;
+  }
+  updateEditorSettings({ subtitleColorPalette: next });
+  syncSubtitleColorPaletteControls();
+  refreshSubtitleColorPalettePresentation();
+}
+
+subtitleColorPaletteNames.forEach((name) => {
+  const colorInput = subtitleColorPaletteColorInputs[name];
+  const hexInput = subtitleColorPaletteHexInputs[name];
+  colorInput?.addEventListener('change', () => {
+    setSubtitleColorPaletteValue(name, colorInput.value);
+  });
+  hexInput?.addEventListener('input', () => {
+    if (/^#[0-9a-f]{6}$/iu.test(hexInput.value.trim())) {
+      setSubtitleColorPaletteValue(name, hexInput.value);
+    }
+  });
+  hexInput?.addEventListener('change', () => {
+    setSubtitleColorPaletteValue(name, hexInput.value);
+  });
+});
+
+subtitleColorPaletteResetButton?.addEventListener('click', () => {
+  updateEditorSettings({ subtitleColorPalette: { ...COLOR_PALETTE_DEFAULTS } });
+  syncSubtitleColorPaletteControls();
+  refreshSubtitleColorPalettePresentation();
+  flashHint('已恢复内置字幕颜色', 'success');
+});
+
 function syncExtensionSubtitleAppearanceControls() {
   const stored = getStoredExtensionSubtitleAppearance();
   const appearance = getExtensionSubtitleAppearance();
@@ -12951,9 +13058,9 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     : '';
   const speakerLabelVisible = Boolean(speakerLabel && mainColorName && COLOR_BY_NAME[mainColorName]);
   const speakerLabelColor = speakerLabelVisible
-    ? colorPreviewEnabled && colorStyle === 'stroke'
-      ? mainSubtitleColor
-      : COLOR_BY_NAME[mainColorName].value
+    ? colorPreviewEnabled && colorStyle === 'text'
+      ? COLOR_BY_NAME[mainColorName].value
+      : mainSubtitleColor
     : '';
   const speakerLabelText = speakerLabelVisible
     ? `${speakerLabel}${speakerLabels.separator}`
@@ -12994,9 +13101,7 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, DATA.segments);
     previewSegmentColor = colorName ? COLOR_BY_NAME[colorName]?.value || '' : '';
   }
-  const colorUnderline = colorPreviewEnabled
-    && colorStyle === 'underline'
-    ? previewSegmentColor : '';
+  const colorUnderline = '';
   const textColor = colorPreviewEnabled
     && colorStyle === 'text'
     && previewSegmentColor

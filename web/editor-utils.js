@@ -2806,6 +2806,34 @@
   const EDITOR_ACCENT_COLOR_VALUES = Object.freeze(['blue', 'red', 'orange', 'custom']);
   const DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR = '#6ca5e8';
 
+  const EDITOR_SUBTITLE_COLOR_NAMES = Object.freeze([
+    'yellow', 'green', 'red', 'purple', 'blue',
+  ]);
+  const DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE = Object.freeze({
+    yellow: '#c4a019',
+    green: '#66bb6a',
+    red: '#f07f6f',
+    purple: '#bf89e6',
+    blue: '#61a7fa',
+  });
+
+  function normalizeSubtitleColorPalette(value, fallback = DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE) {
+    const source = Array.isArray(value)
+      ? Object.fromEntries(value
+        .filter((entry) => entry && typeof entry.name === 'string')
+        .map((entry) => [entry.name, entry.value]))
+      : value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const defaults = fallback && typeof fallback === 'object' && !Array.isArray(fallback)
+      ? fallback : DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE;
+    return Object.fromEntries(EDITOR_SUBTITLE_COLOR_NAMES.map((name) => {
+      const candidate = String(source[name] ?? '').trim().toLowerCase();
+      const defaultValue = String(defaults[name] || DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE[name]);
+      const normalizedDefault = /^#[0-9a-f]{6}$/iu.test(defaultValue)
+        ? defaultValue.toLowerCase() : DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE[name];
+      return [name, /^#[0-9a-f]{6}$/iu.test(candidate) ? candidate : normalizedDefault];
+    }));
+  }
+
   function normalizeEditorAccentColor(value) {
     return EDITOR_ACCENT_COLOR_VALUES.includes(value) ? value : 'blue';
   }
@@ -2842,6 +2870,7 @@
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
     accentColor: 'blue', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    subtitleColorPalette: { ...DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE },
     waveShapeSource: 'reapeaks',
   });
 
@@ -2944,6 +2973,7 @@
         ? savedSettings.theme : 'dark',
       accentColor: normalizeEditorAccentColor(savedSettings.accentColor),
       accentColorCustom: normalizeEditorAccentCustomColor(savedSettings.accentColorCustom),
+      subtitleColorPalette: normalizeSubtitleColorPalette(savedSettings.subtitleColorPalette),
       waveShapeSource: savedSettings.waveShapeSource === 'self' ? 'self' : 'reapeaks',
     };
   }
@@ -3836,9 +3866,10 @@
   const ASS_STYLE_LIBRARY_MAX_NAME_LENGTH = 80;
   const ASS_STYLE_LIBRARY_MAX_FONT_LENGTH = 128;
   const ASS_STYLE_LIBRARY_MAX_TRANSFORM_LENGTH = 512;
-  const ASS_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
+  const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
 
   function normalizeAssColorStyle(value) {
+    if (value === 'underline') return 'text';
     return typeof value === 'string' && ASS_COLOR_STYLE_VALUES.includes(value) ? value : null;
   }
 
@@ -4488,13 +4519,13 @@
         font_size: appearance.font_size ?? options.fontSize,
         color: appearance.color ?? options.color,
       }, resolution);
-    const fontSize = profile
-      ? resolveAssFontSize(baseStyle.fontSize, resolution.height)
-      : baseStyle.fontSize;
+    // A library style stores the native ASS font size.  Only the legacy
+    // appearance-based export below uses the responsive preview calibration.
+    const fontSize = normalizeAssFontSize(baseStyle.fontSize);
     const title = normalizeAssHeaderValue(options.title ?? options.projectName);
     const colorStyles = normalizeAssColorStyles(options.colorStyles);
     const colorPreviewEnabled = appearance.color_underline !== false;
-    const colorStyle = normalizeAssColorStyle(appearance.color_style) || 'underline';
+    const colorStyle = normalizeAssColorStyle(appearance.color_style) || 'text';
     const assMode = Boolean(profile);
     const numericTimeOffset = Number(options.timeOffset);
     const timeOffset = Number.isFinite(numericTimeOffset)
@@ -4531,7 +4562,7 @@
         )
         : String(segment.text ?? '');
       const colorName = effectiveColorName(segment, source);
-      const assColorGroupsSupported = !assMode || colorStyle !== 'underline';
+      const assColorGroupsSupported = colorStyle === 'text' || colorStyle === 'stroke';
       const styleName = colorPreviewEnabled && assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
         ? colorName.toUpperCase() : 'Default';
       const styleForEvent = assMode && styleName !== 'Default'
@@ -4570,20 +4601,42 @@
       '',
       '[V4+ Styles]',
       `Format: ${ASS_STYLE_FORMAT}`,
-      ...(assMode
+        ...(assMode
         ? [
           assStyleLine(baseStyle, 'Default', fontSize),
-          ...colorStyles.map((color) => assStyleLine(
-            assStyleVariant(baseStyle, color.value, colorStyle),
-            color.name.toUpperCase(),
-            fontSize,
-          )),
+          ...(colorStyle === 'text' || colorStyle === 'stroke'
+            ? colorStyles.map((color) => assStyleLine(
+              assStyleVariant(baseStyle, color.value, colorStyle),
+              color.name.toUpperCase(),
+              fontSize,
+            ))
+            : []),
         ]
         : [
           `Style: Default,${fontFamily},${fontSize},${assColorFromHex(appearance.color ?? options.color)},${assColorFromHex(appearance.color ?? options.color)},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`,
-          ...colorStyles.map((style) => (
-            `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.assValue},${style.assValue},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`
-          )),
+          ...(colorStyle === 'text'
+            ? colorStyles.map((style) => (
+              `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.assValue},${style.assValue},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`
+            ))
+            : colorStyle === 'stroke'
+              ? colorStyles.map((style) => assStyleLine(
+                assStyleVariant({
+                  ...ASS_DEFAULT_ASS_STYLE,
+                  fontName: fontFamily,
+                  fontSize,
+                  primaryColor: appearance.color ?? options.color,
+                  outlineColor: '#000000',
+                  outline: 2,
+                  shadow: 0,
+                  alignment: 2,
+                  marginL: 10,
+                  marginR: 10,
+                  marginV: 40,
+                }, style.value, colorStyle),
+                style.name.toUpperCase(),
+                fontSize,
+              ))
+              : []),
         ]),
       '',
       '[Events]',
@@ -6125,6 +6178,9 @@ export default MawDynamicCaptions;
     getSrtExportOffset,
     EDITOR_ACCENT_COLOR_VALUES,
     DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    EDITOR_SUBTITLE_COLOR_NAMES,
+    DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE,
+    normalizeSubtitleColorPalette,
     normalizeEditorAccentColor,
     normalizeEditorAccentCustomColor,
     normalizeEditorSettings,
