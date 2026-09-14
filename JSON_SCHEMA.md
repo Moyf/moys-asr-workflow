@@ -22,6 +22,8 @@
   "media_metadata": {
     "video_fps": 29.97002997002997,
     "video_fps_ratio": "30000/1001",
+    "video_width": 3840,
+    "video_height": 2160,
     "selected_audio_track": 0,
     "audio_tracks": [
       {
@@ -57,7 +59,7 @@
 | `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
 | `timestamp_granularity` | `string` | 否 | 时间码粒度：`char`、`word`、`segment` 或 `unknown`。只有整段 start/end 的模型使用 `segment`；这类工程的字幕段可以没有 `items` |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
-| `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、非负整数 `selected_audio_track` 和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
+| `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、成对的正整数 `video_width` / `video_height`、非负整数 `selected_audio_track` 和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
 | `timebase` | `object` | 否 | 字幕编辑时间基准：`unit` 为 `milliseconds` 或 `frames`，`fps` 范围为 1–240。缺失时按毫秒模式兼容读取 |
 | `sticker_root` | `string` | 否 | 表情包根目录绝对路径。打开工程时会覆盖编辑器内的 `STICKER_ROOT` |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
@@ -67,6 +69,8 @@
 | `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（副字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
 
 `media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在全局设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
+
+`media_metadata.video_width` / `video_height` 是源视频的实际像素尺寸，由生成工程时的 FFprobe 或浏览器加载视频后的 `HTMLVideoElement.videoWidth` / `videoHeight` 补齐；两个字段必须同时存在。ASS 导出会优先使用这组尺寸作为 `PlayResX` / `PlayResY`，缺失时使用当前浏览器视频尺寸，仍不可用则回退到 1920×1080。旧工程缺少这些字段时不影响读取。
 
 `media_metadata.audio_tracks` 是从源容器读取的音轨清单。`audio_index` 是音频流内部的从 0 开始顺序，`stream_index` 是源容器中的 FFmpeg stream index；其余字段用于保留编码、声道、采样率、语言、标题和默认标记。`media_metadata.selected_audio_track` 保存本工程转写时实际选择的零基音轨，编辑器重新打开工程时优先恢复该选择；旧工程没有此字段时，从已有波形载荷恢复，仍无记录则使用容器默认轨（没有 default disposition 时为索引 0）。编辑器导出 OTIO 时会为每条清单建立独立的 `Audio` 轨道，在达芬奇使用的 `Resolve_OTIO.Channels` 中写入源音轨/声道映射，并在 `moy` 元数据中保留对应的 stream index。旧工程缺少音轨清单时继续生成一条兼容的音频轨道。
 
@@ -169,6 +173,31 @@
 - 与 `spectral` 同源，均为 `.ReaPeaks` 派生的可丢弃缓存，非真源。
 - 没有 `spectral` 数据时，编辑器会自动取消并禁用“频谱颜色”开关；后台读到合法频谱后重新启用该开关。
 
+#### 1.1c loudness 整文件响度统计（仅运行态）
+
+`.quapeaks` / `.ReaPeaks` 的响度层会汇总成几个**整文件标量**，服务器经 `GET /api/waveform` 的 `loudness` 字段下发，编辑器据此给波形定垂直缩放（振幅）。
+
+```json
+{
+  "schema": "moy.asr.loudness.v1",
+  "bin_count": 81,
+  "channels": 1,
+  "audio_track": 0,
+  "max": 0.3357,
+  "mean": 0.3315,
+  "rms": 0.3336,
+  "p95": 0.3357,
+  "source": { "name": "audio.wav", "size": 441044, "modified_ms": 1786328355571 }
+}
+```
+
+- **不进工程文件。** 它是响度层的派生缓存，和 `spectral`、`waveform_reapeaks` 一样只活在运行态；`buildJson()` 通过 `CANONICAL_PROJECT_FIELDS` 把它排除在保存之外，因此切换工程时该字段恒被重置为 `null`，再由新媒体的 `/api/waveform` 重新拟合。
+- **四个量都是 0..1 的线性满量程 RMS**（内核按 `sqrt(平方和/样本数)/32768` 写入），既不是 dB 也不是 peak。同一时刻 RMS 恒低于真实峰值（方波相等、正弦约 ×0.71、语音约 ×0.2~0.3），所以按它定的标尺会让最响的瞬态画出画框 —— 这是刻意的取舍：目标是**大部分时间不削波**，而不是全程不削波。若按 wave 层 `max|peak|` 定标尺，一次瞬态就会把整条波形压扁。
+- `p95` 是逐桶电平的第 95 百分位（nearest-rank），当前编辑器用它定缩放；`max` / `mean` / `rms` 一并下发，换口径只是改前端一个常量。
+- **刻意没有任何时间刻度字段。** 响度层头部的 `division_factor` 是 kind token（`-114`，旧 `-108`），`abs()` 出来的 114 与采样率无关，拿它当 division 就会重演时间轴按比例漂移。只发标量则根本不需要刻度：细层实测恒为 40 桶/秒、粗层 2 桶/秒（内核里 div 恒为 `sr/40` 与 `sr/2`），与采样率无关。
+- 统计取**最细那一层**（桶数最多者），粗层在长素材上只剩几个采样点、`p95` 会退化等于 `max`。**跨声道逐桶取 max**：只看声道 0 会让"双单声道"素材（人声只在右声道）得到一条接近静音的标尺。
+- 读不出时该字段不出现（`extract_*` 允许抛 `struct.error`，`load_loudness_stats` 永不抛），编辑器保持用户原来的手动振幅，不做任何猜测。
+
 ### 1.2 workspace 工作区
 
 `workspace` 使用独立 schema `moy.asr.editor.workspace.v1`。一个工作区 = **窗口布局**（“视频、当前字幕编辑区、字幕列表、波形”四个功能区的停靠方式与尺寸）+ **显示状态**（波形显示模式与偏好、字幕列表/编辑区的显示开关）。保存或恢复工作区时两部分一起生效。
@@ -179,7 +208,7 @@
   "preset": "custom",
   "selectedPreset": "cinema",
   "waveformMode": "basic",
-  "waveformSettings": { "visibleSeconds": 20, "secondsPerRow": 10, "rowHeight": 120, "waveformScale": 1, "side": "left", "disabledDisplay": "dim", "showGroupBadges": true, "dragPlayhead": true },
+  "waveformSettings": { "visibleSeconds": 20, "secondsPerRow": 10, "rowHeight": 120, "waveformScale": 1, "waveformScaleAuto": true, "side": "left", "disabledDisplay": "dim", "showGroupBadges": true, "dragPlayhead": true },
   "editorDisplay": { "cueListShowIndex": true, "cueListShowTime": true, "cueListShowSticker": false, "cueListShowCharcount": true, "cueEditorShowNavigation": false, "cueEditorShowTimeActions": true, "cueEditorShowSticker": false },
   "splitPercent": 60,
   "columnPercent": 58,
@@ -215,7 +244,8 @@
 - `preset` 是**渲染器**，决定这份窗口布局如何绘制：`classic`（标准堆叠网格）、`wave-right`（右侧整列波形网格）或 `custom`（由 `tree` 渲染；「字幕列表编辑」「大荧幕布局」与用户自定义工作区都走这条路）。未知值回退到 `wave-right`。
 - `selectedPreset` 记录用户最后在**工作区下拉框**选择的项：内置工作区为 `classic` / `wave-right` / `three-fold` / `cinema`（大荧幕布局），本机命名工作区为 `saved:<名称>`。它与 `tree` 一起保存，使内部以 `custom` 渲染的工作区在重开工程后仍显示用户所见的名称。
 - `waveformMode` 可为 `multi`（多行）或 `basic`（单行）。工作区中存在该字段时随恢复一并切换；缺失时保持当前浏览器设置。
-- `waveformSettings` 保存波形区数值与显示偏好：基础模式窗口长度、多行每行长度及高度、振幅、左右侧、禁用字幕显示、分组徽章与拖动播放头。字段缺失时保持浏览器本机设置。
+- `waveformSettings` 保存波形区数值与显示偏好：基础模式窗口长度、多行每行长度及高度、振幅、振幅是否仍由响度自动决定、左右侧、禁用字幕显示、分组徽章与拖动播放头。字段缺失时保持浏览器本机设置。
+- `waveformScaleAuto` 决定编辑器要不要用媒体响度统计给波形定垂直缩放：**缺失按 `true` 处理**，让老工程升级后也能吃到自动缩放；只有用户在波形设置里手动调过振幅才写 `false`，此后不再覆盖他调的值。它必须落在这个**工程内**的 workspace 块里而不是浏览器偏好：`waveformScale` 的活跃值同时存在 `localStorage`，是跨工程共享的，所以"等于默认值"和"哨兵值"都无法判断*本*工程是否已定过振幅。
 - `editorDisplay` 保存“字幕列表显示”和“字幕编辑显示”两组开关。它只包含工作区可见性，不包含导出、自动保存或快捷键等全局偏好。
 - `splitPercent` 是 classic 网格中多行波形与字幕列表比例，范围会被限制在 35–75；它与工作区一起导出，因此拖动后可撤销、复用。
 - `columnPercent` 是 `custom` 渲染器最外层左右分栏的比例，范围会被限制在 30–75。
@@ -358,7 +388,7 @@
 {
   "subtitle": {
     "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei", "color": "#ffffff",
-    "speaker_labels": { "enabled": true, "separator": "：", "names": { "yellow": "SP1", "green": "SP2", "red": "SP3", "purple": "SP4", "blue": "SP5" } }
+    "speaker_labels": { "mapping_enabled": true, "enabled": true, "separator": "：", "names": { "yellow": "SP1", "green": "SP2", "red": "SP3", "purple": "SP4", "blue": "SP5" } }
   },
   "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#ffd34d" },
   "sticker": { "x": 0.73, "y": 0.04, "width": 0.24, "height": 0.3 }
@@ -378,7 +408,7 @@
 | `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#ffd34d` |
 | `color_underline` | `boolean` | 否 | 播放预览是否按字幕颜色快照应用颜色样式；缺失时视为 `true`（默认开启），设为 `false` 时关闭颜色预览。保留该字段以兼容旧工程 |
 | `color_style` | `string` | 否 | 颜色预览样式：`underline`（下划线，默认）、`text`（文字颜色）、`shadow`（阴影）或 `stroke`（描边） |
-| `speaker_labels` | `object` | 否 | 说话人标签预览设置；颜色默认对应 `SP1`～`SP5`，只显示在预览中，不修改 `segments[*].text` |
+| `speaker_labels` | `object` | 否 | 颜色到说话人的映射与标签预览设置；颜色默认对应 `SP1`～`SP5`，只显示在预览中，不修改 `segments[*].text` |
 | `preview.extension_subtitle` | `object` | 否 | 副字幕样式；同样支持 `font_size`、`font_family`、`color`，没有字号时默认比主字幕小 2px |
 
 ### 约束
@@ -387,7 +417,7 @@
 - 若存在 `font_size`，必须是 `[12, 96]` 内的数字；若存在 `font_family`，必须是内置字体键或非空本机字体族名称，最长 128 个字符，不能包含控制字符；若存在 `background_color`，必须是 `#RRGGBB` 格式；若存在 `background_alpha`，必须是 `[0, 1]` 内的数字。
 - 若存在 `color`，必须是 `#RRGGBB` 六位十六进制颜色；副字幕样式不包含独立几何，沿用 `preview.subtitle` 的预览框。
 - 若存在 `color_underline`，必须是布尔值；其他取值视为缺失并按默认 `true` 处理；若存在 `color_style`，必须是 `underline`、`text`、`shadow` 或 `stroke`，其他取值视为缺失并按默认 `underline` 处理。
-- 若存在 `speaker_labels`，必须是对象；其中 `enabled`（如存在）必须是布尔值，`separator`（如存在）必须是长度不超过 16 且不含控制字符的字符串（允许为空或空格），`names`（如存在）必须是对象，五种颜色的名称必须是长度不超过 64 且不含控制字符的字符串；名称允许为空以隐藏该颜色的标签。编辑器的“导出时附加说话人名称”选项开启时，SRT 会在字幕前附加对应名称及分隔符。
+- 若存在 `speaker_labels`，必须是对象；其中 `mapping_enabled`、`enabled`（如存在）必须是布尔值，`separator`（如存在）必须是长度不超过 16 且不含控制字符的字符串（允许为空或空格），`names`（如存在）必须是对象，五种颜色的名称必须是长度不超过 64 且不含控制字符的字符串；名称允许为空以隐藏该颜色的标签。编辑器的“将颜色映射为说话人”开启后，预览和“导出时附加说话人名称”可以使用这些映射。
 - 盒子必须留在播放器内：`x + width <= 1` 且 `y + height <= 1`。
 - 编辑器额外强制最小可读尺寸 `width >= 0.20`、`height >= 0.08`（这是编辑器 UX 钳制，非数据契约的硬校验；导入时会被编辑器再钳制）。
 - `preview` 缺失或 `preview.subtitle` 缺失时按**旧工程**处理，编辑器使用默认几何 `{ x: 0.1, y: 0.76, width: 0.8, height: 0.16 }`——字幕带占 76%→92%（底部留 8%），宽度 80% 居中。
@@ -779,7 +809,8 @@ uv run python edit.py your_generated.mosp
 | `preview.subtitle.background_color` | string | ❌ | 6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `preview.subtitle.background_alpha` | number | ❌ | 不透明度 `[0,1]`；缺失时使用 `0.65`，设为 `0` 时隐藏字幕背景 |
 | `preview.subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#ffffff` |
-| `preview.subtitle.speaker_labels` | object | ❌ | 说话人标签预览设置；默认关闭，名称默认为黄/绿/红/紫/蓝对应 `SP1`～`SP5` |
+| `preview.subtitle.speaker_labels` | object | ❌ | 颜色到说话人的映射与标签预览设置；默认关闭，名称默认为黄/绿/红/紫/蓝对应 `SP1`～`SP5` |
+| `preview.subtitle.speaker_labels.mapping_enabled` | boolean | ❌ | 是否启用颜色到说话人的映射；关闭时不显示映射配置，也不在预览和导出中使用说话人名称 |
 | `preview.subtitle.speaker_labels.enabled` | boolean | ❌ | 开启后在播放器预览字幕前显示对应颜色的说话人名称；不修改字幕文本 |
 | `preview.subtitle.speaker_labels.separator` | string | ❌ | 说话人名称与字幕内容之间的分隔符，默认 `：`；最长 16 个字符，允许为空、空格或英文引号，不含控制字符 |
 | `preview.subtitle.speaker_labels.names.<color>` | string | ❌ | 颜色对应名称，最长 64 个字符；允许为空；`<color>` 为 `yellow` / `green` / `red` / `purple` / `blue` |

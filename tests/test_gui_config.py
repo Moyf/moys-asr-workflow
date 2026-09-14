@@ -51,6 +51,21 @@ class GuiConfigTests(unittest.TestCase):
 
         self.assertEqual(resolved.theme, "system")
 
+    def test_effective_config_distinguishes_automatic_and_saved_gui_language(self) -> None:
+        """Given absent or saved language preferences, When resolved, Then preserve that distinction."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                automatic = gui_config.effective_config(env_path)
+
+            _ = env_path.write_text("MAW_GUI_LANG=en\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {}, clear=True):
+                saved = gui_config.effective_config(env_path)
+
+        self.assertEqual(automatic.gui_lang, "")
+        self.assertEqual(saved.gui_lang, "en")
+
     def test_default_env_path_keeps_repo_root_for_source_on_macos(self) -> None:
         with mock.patch.object(app_paths.sys, "platform", "darwin"):
             self.assertEqual(gui_config.default_env_path(), ROOT / ".env")
@@ -252,7 +267,7 @@ class GuiConfigTests(unittest.TestCase):
         provider = gui_config.PROVIDERS[0]
 
         self.assertEqual(provider.id, "qwen")
-        self.assertIn("aliyun", provider.key_url)
+        self.assertEqual(provider.key_url, "https://platform.qianwenai.com/home/")
         self.assertEqual(provider.models[0].id, "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(provider.regions[0][0], "beijing")
         self.assertEqual(provider.languages[0][0], "")
@@ -265,6 +280,7 @@ class GuiConfigTests(unittest.TestCase):
         self.assertTrue(provider.models[0].supports_speaker)
         self.assertTrue(provider.models[1].supports_speaker)
         self.assertFalse(provider.models[2].supports_speaker)
+        self.assertIn("0.00022", provider.models[0].price_note)
 
     def test_provider_registry_contains_soniox_with_speaker_support(self) -> None:
         """Given the provider registry, When inspected, Then Soniox is registered with speaker support and no regions."""
@@ -278,6 +294,7 @@ class GuiConfigTests(unittest.TestCase):
         self.assertTrue(provider.supports_speaker)
         self.assertTrue(provider.multi_language)
         self.assertTrue(provider.models[0].supports_context)
+        self.assertIn("0.10", provider.models[0].price_note)
 
     def test_provider_registry_contains_tencent_recording_recognition(self) -> None:
         provider = gui_config.provider_by_id("tencent")
@@ -288,6 +305,12 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(provider.models[0].env_key, "TENCENT_SECRET_ID")
         self.assertEqual(provider.regions, ())
         self.assertIn("SECRET_KEY", provider.note)
+        self.assertIn("0.8", provider.models[0].price_note)
+
+    def test_provider_registry_contains_doubao_api_key_url(self) -> None:
+        provider = gui_config.provider_by_id("doubao")
+
+        self.assertEqual(provider.key_url, "https://console.volcengine.com/speech/new/setting/apikeys")
 
     def test_provider_registry_contains_custom_openai_compatible_asr(self) -> None:
         provider = gui_config.provider_by_id("openai")
@@ -296,14 +319,55 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_BASE_URL, "https://api.openai.com/v1")
         self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_MODEL, "whisper-1")
         self.assertEqual(provider.key_url, "https://platform.openai.com/api-keys")
+        self.assertEqual(provider.secondary_key_url, "https://openrouter.ai/keys")
         self.assertEqual(
             [model.id for model in provider.models],
-            ["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "custom-asr"],
+            [
+                "whisper-1",
+                "gpt-4o-transcribe",
+                "gpt-4o-mini-transcribe",
+                "gpt-transcribe",
+                "gpt-4o-transcribe-diarize",
+                "whisper-large-v3-turbo",
+                "whisper-large-v3",
+                "custom-asr",
+            ],
         )
         self.assertEqual(provider.models[-1].label, "自定义（Custom）")
         self.assertEqual(provider.models[0].env_key, "MAW_OPENAI_ASR_API_KEY")
         self.assertEqual(provider.regions, ())
         self.assertIn("时间戳", provider.note)
+        self.assertIn("OpenRouter", provider.models[0].openrouter_note)
+        self.assertIn("0.006", provider.models[0].price_note)
+        self.assertTrue(provider.models[0].supports_prompt)
+        self.assertTrue(provider.models[3].supports_prompt)
+        self.assertTrue(provider.models[3].supports_keywords)
+        self.assertTrue(provider.models[4].supports_diarization)
+        self.assertTrue(provider.models[4].supports_speaker)
+        self.assertIn("不支持", provider.models[4].openrouter_note)
+
+    def test_openrouter_prefixes_builtin_openai_models_only(self) -> None:
+        self.assertTrue(gui_config.is_openrouter_base_url("https://openrouter.ai/api/v1"))
+        self.assertTrue(gui_config.is_openrouter_base_url("openrouter.ai/v1"))
+        self.assertTrue(gui_config.is_openrouter_base_url("https://www.openrouter.ai"))
+        self.assertFalse(gui_config.is_openrouter_base_url("https://relay.example/v1"))
+
+        self.assertEqual(
+            gui_config.openai_model_for_base_url("https://openrouter.ai/api/v1", "whisper-1"),
+            "openai/whisper-1",
+        )
+        self.assertEqual(
+            gui_config.openai_model_for_base_url("https://openrouter.ai/api/v1", "gpt-transcribe"),
+            "openai/gpt-transcribe",
+        )
+        self.assertEqual(
+            gui_config.openai_model_for_base_url("https://api.openai.com/v1", "whisper-1"),
+            "whisper-1",
+        )
+        self.assertEqual(
+            gui_config.openai_model_for_base_url("https://openrouter.ai/api/v1", "relay/custom-model"),
+            "relay/custom-model",
+        )
 
     def test_provider_registry_contains_local_models_without_api_key(self) -> None:
         provider = gui_config.provider_by_id("local")
@@ -435,7 +499,7 @@ class GuiConfigTests(unittest.TestCase):
                 config = gui_config.effective_config(env_path)
             self.assertFalse(config.output_subfolder)
             self.assertFalse(config.per_video_subfolder)
-            self.assertTrue(config.attach_model_name)
+            self.assertFalse(config.attach_model_name)
 
             _ = env_path.write_text(
                 "MAW_GUI_OUTPUT_SUBFOLDER=true\n"
@@ -448,6 +512,22 @@ class GuiConfigTests(unittest.TestCase):
             self.assertTrue(config.output_subfolder)
             self.assertTrue(config.per_video_subfolder)
             self.assertFalse(config.attach_model_name)
+
+    def test_effective_config_parses_notify_on_complete_default_off(self) -> None:
+        """Given the completion-notification toggle, When resolved, Then it defaults off and follows env."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertFalse(gui_config.effective_config(env_path).notify_on_complete)
+
+            _ = env_path.write_text("MAW_GUI_NOTIFY_ON_COMPLETE=false\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertFalse(gui_config.effective_config(env_path).notify_on_complete)
+
+            _ = env_path.write_text("MAW_GUI_NOTIFY_ON_COMPLETE=on\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertTrue(gui_config.effective_config(env_path).notify_on_complete)
 
     def test_effective_config_file_output_flags_prefer_system_environment(self) -> None:
         """Given process env differs from .env, When resolved, Then process env wins."""

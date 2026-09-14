@@ -15,6 +15,7 @@ maw/local_runtime.py / maw/ocr_runtime.py import 使用。
 可导入 API:
   pick_fastest_mirror(timeout=5.0) -> str       # 最快镜像 base URL，全失败兜底官方源
   measure_sources(timeout=5.0) -> list[dict]    # 每源: url/latency_ms/bytes_per_sec/ok/error
+  probe_index_reachable(url, timeout=10.0) -> bool  # 任意 pip 索引（如 PyTorch 源）当前是否可达
 
 候选源: 官方 + 国内常用镜像，可用环境变量 MAW_PIP_INDEX（逗号分隔 URL）
 覆盖（想"追加"就把需要的默认源一并写进去）。
@@ -100,6 +101,38 @@ def _open_probe(source: str, timeout: float, *, use_verified_context: bool):
         _probe_url(source), headers={"User-Agent": _USER_AGENT}
     )
     return opener.open(request, timeout=timeout)
+
+
+def _open_index_root(url: str, timeout: float, *, use_verified_context: bool):
+    """对索引根页面发起 GET（证书校验失败时由调用方退回不校验上下文重试）。"""
+    context = _make_ssl_context(verify=use_verified_context)
+    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=context))
+    request = urllib.request.Request(
+        _normalize_base(url) + "/", headers={"User-Agent": _USER_AGENT}
+    )
+    return opener.open(request, timeout=timeout)
+
+
+def probe_index_reachable(url: str, timeout: float = 10.0) -> bool:
+    """轻量探测任一 pip 索引（如 PyTorch extra index）当前是否可达。
+
+    与源测速不同，这里只回答「主机现在能否应答」：任何 HTTP 响应（含
+    404/403）都算可达；证书校验失败会退回不校验上下文再试一次，避免把
+    证书链问题误判为网络不通（与 _measure_one 的兜底策略一致）。
+    """
+    for use_verified_context in (True, False):
+        try:
+            with _open_index_root(url, timeout, use_verified_context=use_verified_context) as response:
+                response.read(_FIRST_CHUNK_BYTES)
+                return True
+        except urllib.error.HTTPError:
+            # 有 HTTP 应答（含 404/403）即证明主机在线，索引路径对不对是另一回事
+            return True
+        except Exception as exc:  # noqa: BLE001 - 探测只关心可达性，一切异常折成 False
+            if use_verified_context and _is_cert_error(exc):
+                continue
+            return False
+    return False
 
 
 def _error_label(exc: BaseException) -> str:

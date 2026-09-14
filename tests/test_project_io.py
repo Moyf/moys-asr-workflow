@@ -82,7 +82,10 @@ class ProjectIoTests(unittest.TestCase):
             self.assertEqual(saved["media_metadata"]["selected_audio_track"], 2)
 
     def test_existing_media_metadata_is_preserved_without_reprobing(self) -> None:
-        existing = {"video_fps": 24, "video_fps_ratio": "24/1"}
+        existing = {
+            "video_fps": 24, "video_fps_ratio": "24/1",
+            "video_width": 1920, "video_height": 1080,
+        }
         project = {
             "media": "clip.mp4",
             "segments": [],
@@ -123,7 +126,10 @@ class ProjectIoTests(unittest.TestCase):
         project = {
             "media": str(media),
             "segments": [],
-            "media_metadata": {"video_fps": 24.0, "video_fps_ratio": "24/1"},
+            "media_metadata": {
+                "video_fps": 24.0, "video_fps_ratio": "24/1",
+                "video_width": 1920, "video_height": 1080,
+            },
         }
 
         with mock.patch("maw.project_io.probe_video_fps") as video_probe:
@@ -182,7 +188,7 @@ class ProjectIoTests(unittest.TestCase):
 
 
 class InlineCacheStripTests(unittest.TestCase):
-    """工程去内联：三块波形缓存只活在运行态，落盘边界统一剥离。"""
+    """工程去内联：各层波形缓存（含响度统计）只活在运行态，落盘边界统一剥离。"""
 
     def test_serialize_mosp_strips_inline_caches_and_keeps_input_intact(self) -> None:
         payload = {
@@ -193,6 +199,17 @@ class InlineCacheStripTests(unittest.TestCase):
             "peaks_per_second": 100,
             "duration_ms": 10,
         }
+        loudness = {
+            "schema": "moy.asr.loudness.v1",
+            "bin_count": 81,
+            "channels": 1,
+            "audio_track": 0,
+            "max": 0.3357,
+            "mean": 0.3315,
+            "rms": 0.3336,
+            "p95": 0.3357,
+            "source": {"name": "clip.wav", "size": 10, "modified_ms": 1700000000000},
+        }
         project = {
             "media": "clip.mp4",
             "segments": [],
@@ -200,6 +217,7 @@ class InlineCacheStripTests(unittest.TestCase):
             "waveform": payload,
             "spectral": payload,
             "waveform_reapeaks": payload,
+            "loudness": loudness,
         }
 
         text = serialize_mosp(project)

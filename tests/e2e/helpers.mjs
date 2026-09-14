@@ -2,7 +2,7 @@
 // Deterministic synthetic WAV + project JSON generated at runtime; no committed media.
 // Event/process/port-based lifecycle — no arbitrary sleeps for correctness.
 import { execFileSync, spawn } from 'node:child_process';
-import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync, copyFileSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
@@ -478,14 +478,20 @@ export async function startStaticServer(filePath, port) {
 }
 
 // ---------------------------------------------------------------------------
-// Use the repository portable artifact. It is refreshed only before a release
-// or when explicitly requested; E2E setup must not regenerate it by default.
+// Build a portable blank editor from the current web/ sources (edit.py --blank).
+// The committed blank-editor.html is refreshed only before a release, so specs
+// that exercise the portable page must build the current sources instead of
+// copying a possibly stale artifact.
 // ---------------------------------------------------------------------------
-export function copyPortableBlankEditor(outputPath) {
-  const sourcePath = join(process.cwd(), 'blank-editor.html');
-  if (!existsSync(sourcePath)) {
-    throw new Error(`Committed portable editor is missing: ${sourcePath}`);
+export function buildPortableBlankEditor(outputPath) {
+  const { command, prefixArgs } = PYTHON_RUNNER;
+  execFileSync(
+    command,
+    [...prefixArgs, 'edit.py', '--blank', '--output', outputPath],
+    { cwd: process.cwd(), windowsHide: true, stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+  if (!existsSync(outputPath)) {
+    throw new Error(`Failed to build portable blank editor: ${outputPath}`);
   }
-  copyFileSync(sourcePath, outputPath);
   return outputPath;
 }

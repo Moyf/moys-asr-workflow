@@ -20,22 +20,52 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
-test('OpenAI ASR exposes official models and a conditional Custom model input', async ({ page }) => {
+test('OpenAI ASR exposes official and OpenRouter models with a conditional Custom input', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#provider').selectOption('openai');
 
   await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI（及兼容接口）');
   await expect(page.locator('#model')).toHaveValue('whisper-1');
-  await expect(page.locator('#model option')).toHaveCount(4);
+  await expect(page.locator('#model option')).toHaveCount(8);
   expect(await page.locator('#model option').allTextContents()).toEqual([
     'whisper-1',
     'gpt-4o-transcribe',
     'gpt-4o-mini-transcribe',
+    'gpt-transcribe（支持关键词）',
+    'gpt-4o-transcribe-diarize（说话人分离）',
+    'whisper-large-v3-turbo（OpenRouter）',
+    'whisper-large-v3（OpenRouter）',
     '自定义（Custom）',
   ]);
   await expect(page.locator('#openaiModelField')).toBeHidden();
   await expect(page.locator('#openKeyUrl')).toHaveText('OpenAI 官方');
+  await expect(page.locator('#openKeyHintOr')).toHaveText(' 或 ');
+  await expect(page.locator('#openRouterKeyUrl')).toHaveText('OpenRouter');
   await expect(page.locator('#keyHintSuffix')).toHaveText('获取 API Key');
+
+  await page.locator('#openaiBaseUrl').fill('https://openrouter.ai/api/v1');
+  await expect(page.locator('#modelNote')).toContainText('OpenRouter 参考价');
+  await page.locator('#openaiBaseUrl').fill('https://api.openai.com/v1');
+  await expect(page.locator('#modelNote')).not.toContainText('OpenRouter 参考价');
+  await expect(page.locator('#modelNote')).toContainText('OpenAI 官方参考价');
+  await page.locator('#openaiBaseUrl').fill('https://relay.example/v1');
+  await expect(page.locator('#modelNote')).not.toContainText('参考价');
+
+  await page.locator('#openaiBaseUrl').fill('https://api.openai.com/v1');
+  await page.locator('#model').selectOption('gpt-transcribe');
+  await page.locator('#advancedToggle').click();
+  await expect(page.locator('#openaiAdvancedOptions')).toBeVisible();
+  await expect(page.locator('#openaiPromptField')).toBeVisible();
+  await expect(page.locator('#openaiKeywordsField')).toBeVisible();
+  await expect(page.locator('#openaiDiarizationField')).toBeHidden();
+
+  await page.locator('#model').selectOption('gpt-4o-transcribe-diarize');
+  await expect(page.locator('#openaiPromptField')).toBeHidden();
+  await expect(page.locator('#openaiKeywordsField')).toBeHidden();
+  await expect(page.locator('#openaiDiarizationField')).toBeVisible();
+  await expect(page.locator('#openaiDiarizationUnsupported')).toBeHidden();
+  await page.locator('#openaiBaseUrl').fill('https://openrouter.ai/api/v1');
+  await expect(page.locator('#openaiDiarizationUnsupported')).toBeVisible();
 
   await page.locator('#model').selectOption('custom-asr');
   await expect(page.locator('#openaiModelField')).toBeVisible();
@@ -45,6 +75,39 @@ test('OpenAI ASR exposes official models and a conditional Custom model input', 
   await expect(page.locator('#openaiModelField')).toBeHidden();
   await page.locator('#model').selectOption('custom-asr');
   await expect(page.locator('#openaiModel')).toHaveValue('my-custom-model');
+});
+
+test('cloud ASR models show provider-specific price hints', async ({ page }) => {
+  await openLauncher(page);
+
+  await page.locator('#provider').selectOption('qwen');
+  await expect(page.locator('#modelNote')).toContainText('阿里云百炼参考价');
+
+  await page.locator('#provider').selectOption('soniox');
+  await expect(page.locator('#modelNote')).toContainText('Soniox 参考价');
+
+  await page.locator('#provider').selectOption('openai');
+  await expect(page.locator('#modelNote')).toContainText('OpenAI 官方参考价');
+});
+
+test('project and tutorial hero links open their configured URLs', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    window.__openedUrls = [];
+    window.open = (url) => {
+      window.__openedUrls.push(String(url));
+      return null;
+    };
+  });
+
+  await page.locator('#homeLink').click();
+  await page.locator('#tutorialVideoLink').click();
+
+  await expect.poll(() => page.evaluate(() => window.__openedUrls)).toEqual([
+    'https://github.com/Moyf/moys-asr-workflow',
+    'https://www.bilibili.com/video/BV1S9bZ6pEHg',
+  ]);
 });
 
 test('OCR video source follows a newly dropped video media', async ({ page }) => {
@@ -127,15 +190,18 @@ test('waveform tool sends the selected and container-default audio tracks', asyn
 
 test('translation merge option follows manual and automatic translation controls', async ({ page }) => {
   await openLauncher(page);
+  await page.evaluate(() => document.getElementById('langZh').click());
   await page.locator('#toolboxLlmTab').click();
 
   const manualOptions = page.locator('#postprocessTranslationOptions');
+  await page.locator('#postprocessOperation').selectOption('proofread');
   await expect(manualOptions).toBeHidden();
   await expect(page.locator('#postprocessMergeBilingual')).not.toBeChecked();
 
   await page.locator('#postprocessOperation').selectOption('translate_en');
   await expect(manualOptions).toBeVisible();
   await expect(page.locator('#postprocessMergeBilingual')).not.toBeChecked();
+  await expect(page.locator('#postprocessTranslationOptions [data-i18n="backfill_subtitles_hint"]')).toHaveText('适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。');
   await page.locator('#postprocessOperation').selectOption('proofread');
   await expect(manualOptions).toBeHidden();
   await page.locator('#toolboxClose').click();
@@ -155,17 +221,165 @@ test('translation merge option follows manual and automatic translation controls
   await expect(page.locator('#autoTranslateTargetField')).toBeVisible();
   await expect(page.locator('#autoTranslateMergeField')).toBeVisible();
   await expect(page.locator('#autoTranslateMergeBilingual')).not.toBeChecked();
+  await expect(page.locator('#autoTranslateMergeHint')).toBeVisible();
+  await expect(page.locator('#autoTranslateBilingualOrder')).toBeHidden();
+  await expect(page.locator('#autoTranslateBackfillHint')).toHaveText('当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。');
 
   await page.locator('#autoTranslateMergeBilingual').check();
+  await expect(page.locator('#autoTranslateMergeHint')).toBeHidden();
+  await expect(page.locator('#autoTranslateBilingualOrder')).toBeVisible();
   await expect.poll(() => page.evaluate(() => {
     const plans = window.__savedPlans || [];
     const latest = plans[plans.length - 1];
     return latest?.steps?.find((step) => step.id === 'translate')?.mergeBilingual;
   })).toBe(true);
 
+  await page.locator('#autoTranslateMergeBilingual').uncheck();
+  await expect(page.locator('#autoTranslateMergeHint')).toBeVisible();
+  await expect(page.locator('#autoTranslateBilingualOrder')).toBeHidden();
+
   await page.locator('#autoStepTranslate').uncheck();
   await expect(page.locator('#autoTranslateTargetField')).toBeHidden();
   await expect(page.locator('#autoTranslateMergeField')).toBeHidden();
+});
+
+test('automatic LLM setup highlights test connection until clicked', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    const provider = window.MAWLauncher.config.postprocessProviders.find((item) => item.id === 'deepseek');
+    Object.assign(provider, {
+      verified: false,
+      hasApiKey: true,
+      hasBaseUrl: true,
+      hasModel: true,
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+    });
+  });
+
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#autoStepTranslate').click();
+  await expect(page.locator('#autoStepTranslate')).not.toBeChecked();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#testLlmConnection')).toHaveClass(/attention/);
+  await expect.poll(() => page.locator('#testLlmConnection').evaluate((element) => getComputedStyle(element).animationIterationCount)).toBe('infinite');
+
+  await page.evaluate(() => {
+    window.MAWLauncher.callBackend = async (method) => (
+      method === 'test_postprocess_connection'
+        ? { ok: true, saved: true, verified: true, maskedApiKey: 'sk-…mock' }
+        : { ok: true }
+    );
+  });
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#testLlmConnection')).not.toHaveClass(/attention/);
+});
+
+test('system notifications are disabled by default and announce enabling', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+
+  await expect(page.locator('#notifyOnComplete')).not.toBeChecked();
+  await page.locator('#settingsButton').click();
+  await page.locator('#notifyOnComplete').check();
+
+  await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([
+    { title: '系统通知已启用', message: '之后任务完成或失败时会提醒你。' },
+  ]);
+
+  await page.locator('#notifyOnComplete').uncheck();
+  await expect.poll(() => page.evaluate(() => (window.__mockNotifications || []).length)).toBe(1);
+});
+
+test('single transcription notifications report completion and failure', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+  await page.evaluate(() => {
+    window.MAWLauncher.config.notifyOnComplete = true;
+    window.__mockNotifications = [];
+  });
+
+  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.locator('#srtPath').fill('D:\\Demo\\clip.srt');
+  await page.locator('#apiKey').fill('sk-mock-key');
+  await page.locator('#start').click();
+  await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([
+    { title: '转写完成', message: '已生成 clip.srt' },
+  ]);
+
+  await page.evaluate(() => { window.__mockNotifications = []; });
+  await page.locator('#start').click();
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+    type: 'error', code: 'transcription_failed', detail: 'service exploded',
+  }));
+  await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([
+    {
+      title: '转写失败',
+      message: '文件 clip.mp4 处理失败：转写失败，本次任务已停止。请查看日志后修正问题，再重新尝试。 service exploded',
+    },
+  ]);
+
+  // The delayed mock completion is a late event after failure and must not notify again.
+  await page.waitForTimeout(1_000);
+  await expect.poll(() => page.evaluate(() => (window.__mockNotifications || []).length)).toBe(1);
+});
+
+test('batch failure notifications summarize outcomes', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+  await page.evaluate(() => {
+    window.MAWLauncher.config.notifyOnComplete = true;
+    window.__mockNotifications = [];
+    window.MAWLauncher.callBackend = async () => ({ ok: true });
+  });
+  await page.locator('#batchMode').click();
+  await page.evaluate(() => {
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: { files: [{ path: 'D:\\Demo\\first.mp3' }, { path: 'D:\\Demo\\second.mp3' }] },
+    });
+    document.getElementById('mediaCard').dispatchEvent(drop);
+  });
+  await page.locator('#startBatch').click();
+
+  await page.evaluate(() => {
+    window.MAWLauncher.onBackendEvent({ type: 'batch_started', total: 2 });
+    window.MAWLauncher.onBackendEvent({
+      type: 'batch_done',
+      status: 'failed',
+      total: 2,
+      outcomes: [{ id: 'batch-1', status: 'done', srtPath: 'D:\\Demo\\first.srt' }],
+    });
+  });
+
+  await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([
+    { title: '批量转写失败', message: '成功 1 个，失败 1 个。' },
+  ]);
+});
+
+test('cancelling a transcription stays quiet', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+  await page.evaluate(() => {
+    window.MAWLauncher.config.notifyOnComplete = true;
+    window.__mockNotifications = [];
+  });
+
+  await page.locator('#mediaPath').fill('D:\\Demo\\cancelled.mp4');
+  await page.locator('#srtPath').fill('D:\\Demo\\cancelled.srt');
+  await page.locator('#apiKey').fill('sk-mock-key');
+  await page.locator('#start').click();
+  await page.locator('#stop').click();
+  await expect(page.locator('#status')).toHaveText('转写已停止。');
+  await page.waitForTimeout(1_000);
+
+  await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([]);
 });
 
 test('Utilities use a vertical tab rail with arrow-key navigation', async ({ page }) => {
@@ -199,6 +413,8 @@ test('Utilities use a vertical tab rail with arrow-key navigation', async ({ pag
 test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+
   await page.locator('#settingsButton').click();
 
   const tabs = page.locator('#settingsTabList [role="tab"]');
@@ -206,7 +422,7 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
   await expect(page.locator('#settingsTabList')).toHaveAttribute('aria-label', '设置分类');
   await expect(page.locator('#settingsGeneralPanel')).toBeVisible();
   await expect(page.locator('#settingsLlmPanel')).toBeHidden();
-  await expect(page.locator('#settingsLlmTab')).toHaveText('大语言模型（AI）');
+  await expect(page.locator('#settingsLlmTab')).toHaveText('AI 模型配置');
 
   const settingsCard = page.locator('#settingsModal .settings-modal-card');
   const initialCard = await settingsCard.boundingBox();
@@ -370,6 +586,41 @@ test('update download can be cancelled and leaves the settings action recoverabl
   await page.locator('#updateCancel').click();
   await expect(page.locator('#updateCancel')).toBeHidden();
   await expect(page.locator('#updateSettingsStatus')).toContainText('更新下载已取消');
+});
+
+test('Qwen regional settings use a narrow advanced link and live at the bottom of LLM settings', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => document.getElementById('langZh').click());
+
+  await page.locator('#provider').selectOption('qwen');
+  await page.locator('#advancedToggle').click();
+  const regionalHint = page.locator('#dashscopeRegionHint');
+  await expect(regionalHint).toBeVisible();
+  expect(await regionalHint.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { gridColumnStart: style.gridColumnStart, gridColumnEnd: style.gridColumnEnd };
+  })).toEqual({ gridColumnStart: '1', gridColumnEnd: '-1' });
+  await expect(regionalHint.locator('button')).toHaveCount(1);
+  await expect(regionalHint.locator('button')).toHaveText('⚙️ 设置 → 运行环境');
+  await expect(regionalHint).toContainText('配置阿里云百炼地域与业务空间。');
+  await page.locator('#openDashscopeRegionSettings').click();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'false');
+  await expect(page.locator('#dashscopeRegionPanel')).toBeVisible();
+  await expect(page.locator('#dashscopeRegionPanel h3')).toHaveText('阿里云百炼地域与业务空间');
+  expect(await page.locator('#dashscopeRegionPanel').evaluate((element) => element.parentElement?.id)).toBe('settingsLlmPanel');
+});
+
+test('Launcher keeps the length limit backend-only', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+
+  await expect(page.locator('#lengthLimitField')).toHaveCount(0);
+  await expect(page.locator('#lengthLimit')).toHaveCount(0);
+  await page.locator('#testRun').check();
+  await expect(page.locator('#status')).toBeVisible();
 });
 
 test('segmentation settings live under Processing and validation opens that tab', async ({ page }) => {
@@ -809,6 +1060,7 @@ test('error reports copy safe details and support file URL fallback', async ({ p
   await page.evaluate(() => {
     window.MAWLauncher.appendLog('child output: duration probe failed');
     window.MAWLauncher.appendLog('Authorization: Bearer secret-bearer-token');
+    window.MAWLauncher.appendLog('TOKEN=token-secret OPENAI_API_TOKEN=openai-token {"api_key":"json-secret"}');
     window.__copiedReports = [];
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -833,6 +1085,9 @@ test('error reports copy safe details and support file URL fallback', async ({ p
   expect(report).toContain('[detail] unrelated child detail');
   expect(report).not.toContain('[error] 转写失败，本次任务已停止。请查看日志后修正问题，再重新尝试。');
   expect(report).not.toContain('secret-bearer-token');
+  expect(report).not.toContain('token-secret');
+  expect(report).not.toContain('openai-token');
+  expect(report).not.toContain('json-secret');
   expect(report.match(/详细信息: backend detail/g)?.length).toBe(1);
   expect(report.match(/\[detail\] backend detail/g)?.length).toBe(2);
   const expectedVersion = await page.locator('#appVersion').evaluate((element) => element.textContent.trim().replace(/^v/u, ''));
@@ -857,6 +1112,40 @@ test('error reports copy safe details and support file URL fallback', async ({ p
   await page.locator('#errorNoticeClose').click();
   await expect(page.locator('#errorNotice')).toBeHidden();
   await expect(page.locator('#errorNoticeCopy')).toHaveText('复制错误报告');
+});
+
+test('server timeout diagnostics are visible and copied with the error report', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    window.__copiedReports = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text) => window.__copiedReports.push(text) },
+    });
+    window.MAWLauncher.onBackendEvent({
+      type: 'error',
+      code: 'server_no_response',
+      detail: 'http://127.0.0.1:8250/',
+      diagnostics: {
+        processState: 'running',
+        pid: 4321,
+        lastProbe: 'Connection refused',
+        startupLogTail: 'MAWE started\n[http] probe pending',
+      },
+    });
+  });
+  await expect(page.locator('#errorNoticeDiagnostics')).toBeVisible();
+  await expect(page.locator('#errorNoticeDiagnostics')).toContainText('进程状态: 仍在运行');
+  await expect(page.locator('#errorNoticeDiagnostics')).toContainText('PID: 4321');
+  await expect(page.locator('#errorNoticeDiagnostics')).toContainText('最后探测: Connection refused');
+  await expect(page.locator('#errorNoticeDiagnostics')).toContainText('启动日志尾部: MAWE started');
+  await page.locator('#errorNoticeCopy').click();
+  await expect(page.locator('#errorNoticeCopy')).toHaveText('已复制');
+  const report = await page.evaluate(() => window.__copiedReports[0]);
+  expect(report).toContain('诊断信息:');
+  expect(report).toContain('PID: 4321');
+  expect(report).toContain('Connection refused');
 });
 
 test('unknown errors stay generic and do not expose FFmpeg actions', async ({ page }) => {

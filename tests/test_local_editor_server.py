@@ -60,8 +60,9 @@ class LocalEditorServerTests(unittest.TestCase):
             self.assertEqual(handler.send_json.call_args.args[0], 403)
             opener.assert_not_called()
             handler.read_json_request.return_value = {'requestToken': 'test-token', 'path': str(self.root / 'untrusted')}
-            handler.open_backup_directory()
-            opener.assert_called_once_with(str(self.root / '_maw' / 'backups'))
+            with mock.patch('maw.project_backups.resolve_lang', return_value='zh'):
+                handler.open_backup_directory()
+            opener.assert_called_once_with(str(self.root / '_maw' / '备份'))
             self.assertEqual(handler.send_json.call_args.args[0], 200)
 
     def test_version_backup_does_not_save_or_remember_snapshot(self) -> None:
@@ -278,7 +279,7 @@ class LocalEditorServerTests(unittest.TestCase):
         }
 
         def load_project_in_background(progress: server_editor.ProjectLoadProgressCallback) -> server_editor.ServerProject:
-            progress("preparing_waveform", 50)
+            progress("loading_waveform_cache", 40)
             load_started.set()
             release_load.wait(timeout=3)
             return server_editor.load_project(
@@ -300,7 +301,7 @@ class LocalEditorServerTests(unittest.TestCase):
                     with urllib.request.urlopen(f"{base_url}/api/startup-status", timeout=2) as response:
                         status = json.loads(response.read())
                     self.assertEqual(status["status"], "loading")
-                    self.assertEqual(status["stage"], "preparing_waveform")
+                    self.assertEqual(status["stage"], "loading_waveform_cache")
 
                     with urllib.request.urlopen(base_url, timeout=2) as response:
                         page = response.read().decode("utf-8")
@@ -321,6 +322,76 @@ class LocalEditorServerTests(unittest.TestCase):
                     release_load.set()
                     server.shutdown()
                     thread.join(timeout=2)
+
+    def test_project_load_reports_distinct_waveform_cache_and_generation_phases(self) -> None:
+        waveform = {
+            "schema": "moy.asr.waveform.v1",
+            "encoding": "i8-minmax-base64",
+            "peaks_per_second": 100,
+            "peak_count": 1,
+            "duration_ms": 10,
+            "data": "AIA=",
+        }
+        events: list[tuple[str, int]] = []
+
+        def load_waveform(*_args: object, **kwargs: object) -> tuple[dict, bool]:
+            callback = kwargs["on_progress"]
+            assert callable(callback)
+            callback("generating")
+            return waveform, True
+
+        with mock.patch.object(server_editor.edit, "load_or_extract_waveform", side_effect=load_waveform):
+            server_editor.load_project(
+                self.project_path,
+                None,
+                str(self.stickers),
+                no_waveform=False,
+                load_reapeaks=False,
+                peaks_per_second=100,
+                progress=lambda stage, value: events.append((stage, value)),
+            )
+
+        self.assertEqual(
+            events,
+            [
+                ("reading_project", 5),
+                ("validating_project", 20),
+                ("preparing_media", 35),
+                ("loading_waveform_cache", 40),
+                ("generating_waveform", 50),
+                ("waveform_ready", 60),
+                ("finalizing", 95),
+            ],
+        )
+
+    def test_project_load_cache_hit_does_not_report_waveform_generation(self) -> None:
+        waveform = {
+            "schema": "moy.asr.waveform.v1",
+            "encoding": "i8-minmax-base64",
+            "peaks_per_second": 100,
+            "peak_count": 1,
+            "duration_ms": 10,
+            "data": "AIA=",
+        }
+        events: list[tuple[str, int]] = []
+        with mock.patch.object(
+            server_editor.edit,
+            "load_or_extract_waveform",
+            return_value=(waveform, False),
+        ):
+            server_editor.load_project(
+                self.project_path,
+                None,
+                str(self.stickers),
+                no_waveform=False,
+                load_reapeaks=False,
+                peaks_per_second=100,
+                progress=lambda stage, value: events.append((stage, value)),
+            )
+
+        self.assertNotIn(("generating_waveform", 50), events)
+        self.assertIn(("loading_waveform_cache", 40), events)
+        self.assertIn(("waveform_ready", 60), events)
 
     def test_initial_project_load_error_keeps_server_available(self) -> None:
         project = server_editor.load_blank_project(str(self.stickers))
@@ -436,6 +507,30 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="media-name" title="">未加载媒体</span>', page)
         self.assertIn('"canSave": true', page)
 
+    def test_startup_page_shows_project_loading_overlay_before_javascript_runs(self) -> None:
+        project = server_editor.ServerProject(
+            data={"segments": []},
+            json_path=self.root / "loading.mosp",
+            media_path=None,
+            sticker_root=None,
+            stickers=[],
+        )
+
+        loading = server_editor.build_server_page(
+            project,
+            startup_status={
+                "status": "loading",
+                "stage": "reading_project",
+                "progress": 5,
+                "error": "",
+            },
+        ).decode("utf-8")
+        ready = server_editor.build_server_page(project).decode("utf-8")
+
+        self.assertIn('id="editor-loading" aria-live="polite"', loading)
+        self.assertIn('id="editor-loading-label">正在加载工程…</div>', loading)
+        self.assertIn('id="editor-loading" hidden aria-live="polite"', ready)
+
     def test_build_server_page_defers_reapeaks_layers_to_waveform_endpoint(self) -> None:
         """延迟加载开启时页面不内联频谱 / reapeaks 层；关闭时（--no-waveform）仍保留内联。"""
         project = server_editor.ServerProject(
@@ -443,6 +538,7 @@ class LocalEditorServerTests(unittest.TestCase):
                 "segments": [],
                 "spectral": {"marker": "spectral-layer-payload"},
                 "waveform_reapeaks": {"marker": "reapeaks-wave-layer-payload"},
+                "loudness": {"marker": "loudness-layer-payload"},
             },
             json_path=self.root / "layered.mosp",
             media_path=None,
@@ -453,10 +549,12 @@ class LocalEditorServerTests(unittest.TestCase):
         deferred = server_editor.build_server_page(project).decode("utf-8")
         self.assertNotIn("spectral-layer-payload", deferred)
         self.assertNotIn("reapeaks-wave-layer-payload", deferred)
+        self.assertNotIn("loudness-layer-payload", deferred)
 
         inlined = server_editor.build_server_page(project, defer_reapeaks=False).decode("utf-8")
         self.assertIn("spectral-layer-payload", inlined)
         self.assertIn("reapeaks-wave-layer-payload", inlined)
+        self.assertIn("loudness-layer-payload", inlined)
 
     def test_media_less_project_loads_without_a_sticker_directory(self) -> None:
         project_path = self.root / "no-stickers.mosp"
@@ -494,6 +592,48 @@ class LocalEditorServerTests(unittest.TestCase):
                 no_waveform=True,
                 peaks_per_second=100,
             )
+
+    def test_relative_media_reference_survives_loading_for_future_saves(self) -> None:
+        bundle = self.root / "成片"
+        bundle.mkdir()
+        media = bundle / "处理后.mp4"
+        media.write_bytes(b"media")
+        project_path = bundle / "处理后.mosp"
+        project_path.write_text(
+            json.dumps({"media": media.name, "segments": []}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        project = server_editor.load_project(
+            project_path,
+            None,
+            str(self.stickers),
+            no_waveform=True,
+            peaks_per_second=100,
+        )
+
+        self.assertEqual(project.media_path, media.resolve())
+        self.assertEqual(project.data["media"], media.name)
+
+    def test_local_name_fallback_repairs_a_stale_relative_reference(self) -> None:
+        media = self.root / "新名字.mp4"
+        media.write_bytes(b"media")
+        project_path = self.root / "新名字.mosp"
+        project_path.write_text(
+            json.dumps({"media": "旧名字.mp4", "segments": []}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        project = server_editor.load_project(
+            project_path,
+            None,
+            str(self.stickers),
+            no_waveform=True,
+            peaks_per_second=100,
+        )
+
+        self.assertEqual(project.media_path, media.resolve())
+        self.assertEqual(project.data["media"], media.name)
 
     def test_project_sticker_root_wins_over_launcher_root(self) -> None:
         project_root = self.root / "project-stickers"
@@ -836,7 +976,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
         self.assertIn('"name": "clip.json"}], "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
-        self.assertIn('"activeWorkspaceName": ""};', page)
+        self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""};', page)
         desktop_page = server_editor.build_server_page(
             project,
             server_editor.replace(settings, onboarding_status="completed"),
@@ -844,6 +984,11 @@ class LocalEditorServerTests(unittest.TestCase):
         ).decode("utf-8")
         self.assertIn('"desktopMode": true', desktop_page)
         self.assertIn('"onboardingStatus": "completed"', desktop_page)
+        completed_page = server_editor.build_server_page(
+            project,
+            server_editor.replace(settings, onboarding_status="completed"),
+        ).decode("utf-8")
+        self.assertIn('"onboardingStatus": "completed"', completed_page)
         self.assertIn('id="save-project"', page)
         self.assertIn('id="save-project-as"', page)
         self.assertIn('id="save-project-dropdown"', page)
@@ -859,6 +1004,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="auto-save-project" checked', page)
         self.assertIn('id="auto-save-interval"', page)
         self.assertIn('id="project-backup-enabled"', page)
+        self.assertIn('id="project-backup-enabled" checked', page)
         self.assertIn('> 备份工程</label>', page)
         self.assertLess(page.index('id="editor-settings-page-export"'), page.index('id="server-auto-save-settings"'))
         self.assertLess(page.index('id="server-auto-save-settings"'), page.index('id="project-backup-settings"'))
@@ -1683,6 +1829,19 @@ class LocalEditorServerTests(unittest.TestCase):
 
         spectral_payload = {"peak_count": 2, "division": 80}
         reapeaks_wave_payload = {"peak_count": 4, "peaks_per_second": 1000}
+        # 键必须照 moy.asr.loudness.v1 的真实形状给全：服务器加载完成后会按
+        # p95/max 打一行日志，缺键会让后台线程整个死掉、状态永远停在 loading。
+        loudness_payload = {
+            "schema": "moy.asr.loudness.v1",
+            "bin_count": 81,
+            "channels": 1,
+            "audio_track": 0,
+            "max": 0.3357,
+            "mean": 0.3315,
+            "rms": 0.3336,
+            "p95": 0.3357,
+            "source": {"name": "clip.wav", "size": 10, "modified_ms": 1700000000000},
+        }
         loader_started = threading.Event()
         release_loader = threading.Event()
 
@@ -1694,9 +1853,13 @@ class LocalEditorServerTests(unittest.TestCase):
         def waveform_reapeaks_load(*_args: object, **_kwargs: object) -> dict:
             return reapeaks_wave_payload
 
+        def loudness_load(*_args: object, **_kwargs: object) -> dict:
+            return loudness_payload
+
         with (
             mock.patch.object(server_editor.quapeaks, "load_spectral_payload", side_effect=blocking_spectral_load),
             mock.patch.object(server_editor.quapeaks, "load_waveform_payload", side_effect=waveform_reapeaks_load),
+            mock.patch.object(server_editor.quapeaks, "load_loudness_stats", side_effect=loudness_load),
             server_editor.EditorServer(
                 ("127.0.0.1", 0),
                 project,
@@ -1728,6 +1891,8 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertEqual(result["status"], "ready")
                 self.assertEqual(result["spectral"], spectral_payload)
                 self.assertEqual(result["waveform_reapeaks"], reapeaks_wave_payload)
+                # 响度统计走同一条延迟通道：它只是几个标量，但不该挡住首屏。
+                self.assertEqual(result["loudness"], loudness_payload)
             finally:
                 release_loader.set()
                 server.shutdown()
@@ -1812,6 +1977,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertNotIn(paths[0].resolve(), [item.path for item in settings.recent_projects])
 
         settings_path = self.root / "server-editor-settings.json"
+        settings = server_editor.replace(settings, onboarding_status="completed")
         server_editor.write_server_settings(settings_path, settings)
         saved = settings_path.read_bytes()
         self.assertNotIn(b"\r\n", saved)
@@ -2334,6 +2500,9 @@ class LocalEditorServerTests(unittest.TestCase):
                     time.sleep(0.05)
                 server.project.data["spectral"] = dict(waveform_payload, schema="moy.asr.spectral.v1")
                 server.project.data["waveform_reapeaks"] = dict(waveform_payload, peak_count=6, data="QUJDRA==")
+                server.project.data["loudness"] = dict(
+                    waveform_payload, schema="moy.asr.loudness.v1", p95=0.3357, max=0.3357,
+                )
 
                 browser_payload = {
                     "media": str(self.media),
@@ -2342,14 +2511,15 @@ class LocalEditorServerTests(unittest.TestCase):
                 }
                 status, _ = post({"project": browser_payload, "filename": None})
                 self.assertEqual(status, 200)
-                # 磁盘干净：三块缓存不得落盘。
+                # 磁盘干净：内联缓存（含 loudness）不得落盘。
                 saved = json.loads(self.project_path.read_text(encoding="utf-8"))
-                for key in ("waveform", "spectral", "waveform_reapeaks"):
+                for key in ("waveform", "spectral", "waveform_reapeaks", "loudness"):
                     self.assertNotIn(key, saved)
-                # 运行态保留原生波形与两层缓存：保存→刷新不丢形状。
+                # 运行态保留原生波形与各层缓存：保存→刷新不丢形状、不丢响度标尺。
                 self.assertEqual(server.project.data["waveform"]["data"], "AQIDBA==")
                 self.assertIn("spectral", server.project.data)
                 self.assertIn("waveform_reapeaks", server.project.data)
+                self.assertIn("loudness", server.project.data)
 
                 # 同媒体换音轨：旧缓存描述的是另一条轨，必须失效。
                 switched = dict(browser_payload, media_metadata={"selected_audio_track": 1})

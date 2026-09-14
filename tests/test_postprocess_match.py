@@ -7,7 +7,8 @@ from pathlib import Path
 
 from maw.postprocess import OutputMode
 from maw.postprocess_io import read_project
-from maw.postprocess_match import ScriptMatchRequest, prepare_script_text, run_script_match
+from maw.postprocess_match import MatchCoverageError, ScriptMatchRequest, prepare_script_text, processed_script_text, run_script_match
+from scripts.mosp_match_text import clean_markdown_inline_symbols
 
 
 class ScriptMatchTests(unittest.TestCase):
@@ -57,11 +58,13 @@ class ScriptMatchTests(unittest.TestCase):
         project = read_project(result.project_path)
         segments = project["segments"]
         self.assertEqual(project["custom_metadata"], {"keep": True})
-        self.assertEqual(segments[0]["text"], "今天好，")
-        self.assertEqual(segments[0]["items"], [{"start": 0, "end": 500, "text": "今天好，"}])
-        self.assertEqual(segments[1]["text"], "天气。")
+        self.assertEqual(segments[0]["text"], "今天好")
+        self.assertEqual(segments[0]["items"], [{"start": 0, "end": 500, "text": "今天好"}])
+        self.assertEqual(segments[1]["text"], "天气")
         self.assertEqual([(item["start"], item["end"]) for item in segments], [(0, 1000), (1000, 2000)])
-        self.assertIn("今天好，", result.srt_path.read_text(encoding="utf-8"))
+        rendered = result.srt_path.read_text(encoding="utf-8")
+        self.assertIn("今天好\n", rendered)
+        self.assertNotIn("今天好，", rendered)
 
     def test_disabled_segments_are_not_consumed_by_script_match(self) -> None:
         self.project_path.write_text(
@@ -125,7 +128,7 @@ class ScriptMatchTests(unittest.TestCase):
         segments = read_project(result.project_path)["segments"]
         self.assertEqual(segments[0]["text"], "保留")
         self.assertEqual(segments[0]["items"][0]["text"], "保留")
-        self.assertEqual(segments[1]["text"], "错。")
+        self.assertEqual(segments[1]["text"], "错")
         self.assertEqual(segments[2]["text"], "字")
         self.assertEqual(
             [(item["start"], item["end"]) for item in segments[1]["items"]],
@@ -139,7 +142,7 @@ class ScriptMatchTests(unittest.TestCase):
         )
         self.script_path.write_text("文稿丁戊己", encoding="utf-8")
 
-        with self.assertRaisesRegex(ValueError, "match coverage is too low"):
+        with self.assertRaisesRegex(MatchCoverageError, "match coverage is too low"):
             run_script_match(
                 ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.BOTH)
             )
@@ -206,6 +209,53 @@ class ScriptMatchTests(unittest.TestCase):
         self.assertEqual(text, "甲？乙！丙~")
         self.assertIn("额外断句符号：3 个", warning)
 
+    def test_clean_markdown_inline_symbols_keeps_visible_text(self) -> None:
+        self.assertEqual(
+            clean_markdown_inline_symbols("**粗体** *斜体* ***粗斜体*** __粗体__ ___粗斜体___ _斜体_ ~~删除~~ ==高亮== `代码`"),
+            "粗体 斜体 粗斜体 粗体 粗斜体 斜体 删除 高亮 代码",
+        )
+
+    def test_processed_script_text_matches_default_split_and_punctuation_policy(self) -> None:
+        self.assertEqual(
+            processed_script_text(
+                "第一句，第二句？第三句。",
+                extra_split_punctuation=("？",),
+                preserve_punctuation=("？",),
+            ),
+            "第一句\n第二句？\n第三句",
+        )
+
+    def test_script_match_can_disable_or_enable_markdown_cleanup(self) -> None:
+        self.project_path.write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "这样"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        self.script_path.write_text("**这样**", encoding="utf-8")
+
+        cleaned = run_script_match(
+            ScriptMatchRequest(
+                self.project_path,
+                None,
+                self.script_path,
+                OutputMode.JSON,
+                clean_markdown_symbols=True,
+            )
+        )
+        assert cleaned.project_path is not None
+        self.assertEqual(read_project(cleaned.project_path)["segments"][0]["text"], "这样")
+
+        preserved = run_script_match(
+            ScriptMatchRequest(
+                self.project_path,
+                None,
+                self.script_path,
+                OutputMode.JSON,
+                clean_markdown_symbols=False,
+            )
+        )
+        assert preserved.project_path is not None
+        self.assertEqual(read_project(preserved.project_path)["segments"][0]["text"], "**这样**")
+
     def test_preserved_punctuation_may_use_default_split_symbols(self) -> None:
         # 基础断句集（逗号、句号、换行）始终生效。
         text, warning = prepare_script_text("甲，乙。", (), ("，", "。"))
@@ -242,7 +292,7 @@ class ScriptMatchTests(unittest.TestCase):
 
         assert result.project_path is not None
         segments = read_project(result.project_path)["segments"]
-        self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙。丁"])
+        self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙丁"])
 
     def test_text_only_mode_preserves_existing_cue_segmentation(self) -> None:
         self.project_path.write_text(
@@ -339,7 +389,7 @@ class ScriptMatchTests(unittest.TestCase):
         segments = project["segments"]
         self.assertEqual(
             [(segment["start"], segment["end"], segment["text"]) for segment in segments],
-            [(0, 500, "甲。"), (500, 1500, "乙丙，"), (1500, 2000, "丁")],
+            [(0, 500, "甲"), (500, 1500, "乙丙"), (1500, 2000, "丁")],
         )
         self.assertEqual(
             [(item["start"], item["end"]) for item in segments[1]["items"]],

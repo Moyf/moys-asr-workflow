@@ -22,12 +22,10 @@ const ONBOARDING_STEP_COUNT = 3;
 function serverOnboardingPersistenceEnabled() {
   return typeof SERVER_CONFIG !== 'undefined'
     && Boolean(
-      SERVER_CONFIG?.desktopMode
-      && SERVER_CONFIG?.settingsUrl
+      SERVER_CONFIG?.settingsUrl
       && Object.prototype.hasOwnProperty.call(SERVER_CONFIG, 'onboardingStatus'),
     );
 }
-
   const editor = window.MAWE_EDITOR_BRIDGE;
   const {
     data: DATA,
@@ -82,7 +80,8 @@ function saveOnboardingStatus(status) {
     // file:// 隐私模式下可能拒绝 localStorage；本次页面仍可继续引导。
   }
   if (!serverOnboardingPersistenceEnabled()) return;
-  // MOSE starts a new random localhost port on every launch.  Keep the
+  // Keep Server/MOSE onboarding state outside origin-scoped browser storage so
+  // changing the localhost port does not show the guide again.  Keep the
   // current renderer in sync immediately, then persist the terminal state in
   // the shared per-user settings file through the server API.  ``keepalive``
   // lets a just-finished onboarding save survive the renderer closing.

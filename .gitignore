@@ -59,3 +59,4 @@ build-appimage/
 
 # Local reference material. Never package or commit these files.
 /ref/
+/output/playwright/cue-scroll

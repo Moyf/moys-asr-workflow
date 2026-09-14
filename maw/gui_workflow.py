@@ -68,6 +68,9 @@ class TranscriptionRequest:
     model_cache_root: str = ""
     device: str = "auto"
     forced_aligner: str = ""
+    openai_prompt: str = ""
+    openai_keywords: tuple[str, ...] = ()
+    openai_diarize: bool = False
     runtime_python: str = ""
     postprocess_plan: dict[str, object] | None = None
     postprocess_llm_settings: dict[str, dict[str, str]] | None = None
@@ -175,6 +178,7 @@ def unique_output_path(srt_path: Path, media_path: Path | None = None) -> Path:
 PROVIDER_SRT_TAGS: Final = {
     "qwen": ".qwen3-asr-api",
     "soniox": ".soniox",
+    "doubao": ".doubao",
     "local": ".qwen-asr-local",
     "bcut": ".bcut",
     "tencent": ".tencent-asr",
@@ -223,7 +227,7 @@ def default_srt_path(
 ) -> Path:
     """媒体对应的默认 SRT 输出路径。
 
-    - ``attach_model_name``：为 None 时读取用户配置（默认附加模型/供应商段）；
+    - ``attach_model_name``：为 None 时读取用户配置（默认不附加模型/供应商段）；
       False 产出 ``<stem>.srt``。
     - ``subfolder``：为 None 时读取用户配置；True 时落入
       ``output_naming.maw_root(media)``（共享 ``_maw`` 或每视频子目录）。
@@ -254,6 +258,7 @@ def build_transcribe_command(
     is_tencent = request.provider == "tencent"
     is_bcut = request.provider == "bcut"
     is_openai = request.provider == "openai"
+    is_doubao = request.provider == "doubao"
     is_local = request.provider == "local"
     if is_local:
         script_name = "generate_subtitle_local.py"
@@ -263,6 +268,8 @@ def build_transcribe_command(
         script_name = "generate_subtitle_tencent_api.py"
     elif is_openai:
         script_name = "generate_subtitle_openai_api.py"
+    elif is_doubao:
+        script_name = "generate_subtitle_doubao_api.py"
     else:
         script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
     script = Path(__file__).resolve().parents[1] / script_name
@@ -278,6 +285,8 @@ def build_transcribe_command(
             command = [exe, "--transcribe-tencent"]
         elif is_openai:
             command = [exe, "--transcribe-openai"]
+        elif is_doubao:
+            command = [exe, "--transcribe-doubao"]
         else:
             command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
     else:
@@ -315,6 +324,11 @@ def build_transcribe_command(
         _append_option(command, "--language", request.language)
         if request.speaker_colors:
             command.append("--speaker-colors")
+    elif is_doubao:
+        _append_option(command, "--model", request.model)
+        _append_option(command, "--language", request.language)
+        if request.speaker_colors:
+            command.append("--speaker-colors")
     elif is_bcut:
         # 必剪接口无语言/模型/说话人参数，这里一律不下发
         pass
@@ -322,6 +336,11 @@ def build_transcribe_command(
         _append_option(command, "--base-url", request.base_url)
         _append_option(command, "--model", request.model)
         _append_option(command, "--language", request.language)
+        _append_option(command, "--prompt", request.openai_prompt)
+        for keyword in request.openai_keywords:
+            _append_option(command, "--keyword", keyword)
+        if request.openai_diarize:
+            command.append("--diarize")
     else:
         _append_option(command, "--model", request.model or DEFAULT_MODEL_ID)
         _append_option(command, "--region", request.region)
@@ -599,6 +618,9 @@ def _child_environment(
     if provider == "soniox":
         if api_key:
             env["SONIOX_API_KEY"] = api_key
+    elif provider == "doubao":
+        if api_key:
+            env["VOLC_API_KEY"] = api_key
     elif provider == "bcut":
         pass  # 必剪为非官方免 Key 接口，无需注入凭据
     elif provider == "tencent":

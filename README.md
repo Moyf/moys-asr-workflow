@@ -26,7 +26,7 @@ Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版�
 
 ## 核心能力
 
-- 使用 Qwen / Fun-ASR / Soniox / 腾讯云录音文件识别，或 OpenAI（及兼容接口）转写，生成 SRT 与 `.mosp` 工程。
+- 使用 Qwen / Fun-ASR / Soniox / 腾讯云录音文件识别 / 豆包（火山引擎），或 OpenAI（及兼容接口）转写，生成 SRT 与 `.mosp` 工程。
 - MAWE Server 编辑器支持波形定位、拆分合并、静音空隙处理、画面预览和多种导出格式。
 - Windows 套件提供优先使用的 MOSE Electron 独立编辑器；它与 MAW 共用同一 Server、`.mosp` 工程、波形、媒体和导出契约。Launcher 找不到 MOSE 时会自动回退到 Server 版。
 - MAWE 支持可选的多重字幕：拖入第二条字幕作为副轨，支持主副字幕交换、绑定/解绑、联动编辑、跨轨道吸附，以及 `G` / `Shift+G` / `H` / `B` 快捷操作。
@@ -50,7 +50,7 @@ Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版�
 ## 重要说明
 
 - 选择云端服务转写时，媒体会直接上传到对应服务商；MAW 没有自己的云端服务器，也不会代管 API Key。
-- `.mosp` 工程是字幕真源；SRT 适合普通交付，ASS 可保留主字幕预览选择的字体、字号和文字颜色，但两者都不会保留全部字级时间码、波形和其他工程数据。
+- `.mosp` 工程是字幕真源；SRT 适合普通交付，ASS 会保留主字幕预览选择的字体、字号和文字颜色，并按工程记录的源视频分辨率设置脚本坐标；两者都不会保留全部字级时间码、波形和其他工程数据。
 - 官方 MAW + MOSE 套件中的目录必须保持 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe` 的相对关系；MOSE 不能脱离同套件的 `MAW.exe` 单独运行。`.mosp` 关联指向 `MAW.exe --open-project`，双击工程会先完成更新检查再打开 MOSE；关联只在当前用户范围生效，不会强制覆盖 Windows 的已有默认应用选择。旧 `.json` 仍兼容打开但不建立系统关联。
 - 费用、数据保留和服务可用性以服务商当前政策为准，详见[ASR 服务与配置](docs/PROVIDERS.md)。
 - [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)

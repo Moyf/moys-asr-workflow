@@ -74,6 +74,8 @@ def _validate_speaker_label_settings(value: JsonValue, path: str) -> tuple[Valid
         return ((path, "must be an object or null"),)
 
     issues: list[ValidationIssue] = []
+    if "mapping_enabled" in value and not isinstance(value.get("mapping_enabled"), bool):
+        issues.append((f"{path}.mapping_enabled", "must be a boolean"))
     if "enabled" in value and not isinstance(value.get("enabled"), bool):
         issues.append((f"{path}.enabled", "must be a boolean"))
     if "separator" in value:
