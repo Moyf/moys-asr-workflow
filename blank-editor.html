@@ -755,11 +755,18 @@
     align-items: center; justify-content: center;
     pointer-events: none;
   }
-  /* img 元素收缩到图像实际尺寸（max 约束 + contain），阴影/背景贴合图像而不是撑满整个几何盒 */
+  /* img 元素不收缩：多个表情包按原始高度垂直堆叠（同字幕预览的行堆叠），
+     超出层高向下延伸；单个表情包（:only-child）维持原有 contain 行为不溢出 */
   #sticker-overlay-layer .sticker-overlay-content img {
-    flex: 0 1 auto; min-height: 0; max-width: 100%; max-height: 100%;
+    flex: 0 0 auto; max-width: 100%;
     object-fit: contain; border-radius: var(--radius-sm);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); background: rgba(0,0,0,0.35);
+  }
+  #sticker-overlay-layer .sticker-overlay-content img:only-child {
+    max-height: 100%;
+  }
+  #sticker-overlay-layer .sticker-overlay-content img:not(:only-child) {
+    max-height: 50%;
   }
 
   /* === Toolbar === */
@@ -4356,23 +4363,23 @@
 }
 
 /* === 独立叠加字幕轨的波形块 ===
-   高度与主字幕块一致（35px），位置紧贴主字幕块正上方：
-   单层行主块 bottom 7px + 高 35px，叠加块 bottom 48px；
-   基础模式主块加高为 max(35px, min(72px, 40%))，叠加块随之抬高；
-   多重字幕行主字幕在上一格（bottom = inset + lane + gap），叠加块再往上一层。
-   注意 height/line-height 不能用含百分比的 --multi-subtitle-lane-height：
-   line-height 的百分比按自身字号解析，calc 会算出负值导致文字高度为 0。 */
+   bottom 固定取波形行高的一半：主字幕（与其徽章）占下半区，叠加字幕占上半区，
+   互不遮挡，也直观表达「最多上下两层」。多重字幕行主字幕在上一格、副字幕
+   贴底，叠加块位于 50% 线、仍在主字幕格之上。高度与主字幕块一致（35px）。
+   行高不足 84px（50% 线放不下 35px 块）时由 JS 加 overlay-cover-mode：
+   叠加块直接盖在主字幕块上方（同位覆盖、z-index 置顶），此时不渲染叠加徽章。 */
 .waveform-cue-block.waveform-overlay-block {
-  bottom: calc(7px + 35px + 6px);
+  bottom: 50%;
   height: 35px;
   line-height: 35px;
   z-index: 7;
 }
-.waveform-basic .waveform-cue-block.waveform-overlay-block {
-  bottom: calc(7px + max(35px, min(72px, 40%)) + 6px);
+.waveform-cue-block.waveform-overlay-block.overlay-cover-mode {
+  bottom: 7px;
 }
-.waveform-row.multi-subtitle-row .waveform-cue-block.waveform-overlay-block {
-  bottom: calc(var(--multi-subtitle-bottom-inset) + (var(--multi-subtitle-lane-height) * 2) + var(--multi-subtitle-lane-gap) + 6px);
+/* 叠加块的徽章：挂在叠加块（bottom 50% + 高 35px）上方，避免与下半区徽章混叠。 */
+.waveform-cue-badge.waveform-overlay-cue-badge {
+  bottom: calc(50% + 37px + var(--badge-stack-index, 0) * 16px);
 }
 </style>
 </head>
@@ -14096,6 +14103,7 @@ export default MawDynamicCaptions;
     '按文字位置拆分': 'Split at text position', '跳转到字幕并播放': 'Seek to subtitle and play',
     '分配表情包…': 'Assign sticker…', '删除表情包': 'Remove sticker',
     '标记颜色': 'Mark color', '清除颜色': 'Clear color', '已清除颜色': 'Color cleared',
+    '正在加载工程…': 'Loading project…',
     '切换主字幕语言类型': 'Change main subtitle language type',
     '启用此条': 'Enable this subtitle', '禁用此条': 'Disable this subtitle',
     '删除字幕': 'Delete subtitle', '拓展表情包时长': 'Extend sticker duration',
@@ -18167,11 +18175,17 @@ export default MawDynamicCaptions;
         row.appendChild(block);
       }
 
-      // 独立叠加轨：与主/副字幕互不绑定，绘制在主字幕块上方（青绿描边）。
-      // 不参与框选与键盘导航；交互为点击选中、双击编辑、拖动移动与右键菜单。
+      // 独立叠加轨：与主/副字幕互不绑定，绘制在主字幕块上方（bottom 50% 独立一层）。
+      // 交互为点击选中、双击编辑、拖动移动、右键菜单；badge 与主块同款，挂在叠加块上方。
       const overlaySegments = this.options.getSegments('overlay') || [];
       if (overlaySegments.length) {
         const overlaySelected = this.options.getOverlaySelection?.() || new Set();
+        const overlayBadges = this.settings.showGroupBadges !== false
+          ? computeGroupBadges(overlaySegments) : null;
+        // 行高不足（50% 线放不下 35px 叠加块 + 7px 底边距）时叠加块直接盖在
+        // 主字幕块上方，此时不渲染叠加徽章，避免与下半区徽章混叠。
+        const rowHeightPx = Number.parseFloat(row.style.height) || 0;
+        const overlayCoverMode = rowHeightPx > 0 && rowHeightPx < 84;
         const activeOverlayIndex = findActiveCueIndex(overlaySegments, now);
         const firstOverlayIndex = firstCueIndexOverlapping(overlaySegments, startMs);
         for (let index = firstOverlayIndex; index < overlaySegments.length; index += 1) {
@@ -18187,6 +18201,7 @@ export default MawDynamicCaptions;
           block.dataset.end = String(segment.end);
           // 外观与主字幕块一致：沿用字幕自身的颜色快照，不做轨道特殊配色。
           block.style.setProperty('--cue-color', colorForSegment(segment));
+          if (overlayCoverMode) block.classList.add('overlay-cover-mode');
           if (overlaySelected.has(index)) block.classList.add('selected');
           if (segment.disabled) block.classList.add('disabled');
           if (index === activeOverlayIndex && isActiveCueVisualHit(overlaySegments, index, now)) block.classList.add('active');
@@ -18206,6 +18221,25 @@ export default MawDynamicCaptions;
             block.appendChild(rightHandle);
           }
           this.layoutBlock(block, segment, startMs, endMs, row);
+          // cover 模式（行高不足）下叠加块盖住主块与徽章区，不渲染叠加徽章。
+          const overlayBadgesForIndex = !overlayCoverMode && this.settings.showGroupBadges !== false
+            ? overlayBadges?.get(index) : null;
+          if (overlayBadgesForIndex?.length) {
+            const badgeDuration = Math.max(1, endMs - startMs);
+            const badgeVisibleStart = Math.max(startMs, segment.start);
+            const badgeVisibleEnd = Math.min(endMs, segment.end);
+            const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration) * this.content.clientWidth;
+            if (blockWidthPx >= 24) overlayBadgesForIndex.forEach((badge, badgeIndex) => {
+              const badgeEl = document.createElement('span');
+              badgeEl.className = 'waveform-cue-badge waveform-overlay-cue-badge';
+              badgeEl.textContent = badge.type === 'sticker' && badge.total === 1
+                ? '🦊'
+                : `${badge.type === 'color' ? '🎨' : '🦊'} ${badge.ordinal}/${badge.total}`;
+              badgeEl.style.left = `${((badgeVisibleStart - startMs) / badgeDuration) * 100}%`;
+              badgeEl.style.setProperty('--badge-stack-index', String(badgeIndex));
+              row.appendChild(badgeEl);
+            });
+          }
           block.addEventListener('pointerdown', (event) => this.beginCueDrag(event, index, row, 'overlay'));
           block.addEventListener('contextmenu', (event) => {
             event.preventDefault();
@@ -27553,6 +27587,9 @@ function refreshStickerAssignmentUi() {
     !EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
   );
   stickerOverlayDataVersion += 1;
+  // 表情包变化影响波形块上的 🦊 徽章分组；颜色走 updateCueColorPresentation
+  // 自行刷新，徽章需要整层重建才会重新计数。
+  waveformEditor?.refreshCueOverlay?.();
   renderCurrentCuePanel();
   refreshSubtitlePreview();
 }

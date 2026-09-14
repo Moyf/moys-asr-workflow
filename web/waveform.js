@@ -3411,11 +3411,17 @@
         row.appendChild(block);
       }
 
-      // 独立叠加轨：与主/副字幕互不绑定，绘制在主字幕块上方（青绿描边）。
-      // 不参与框选与键盘导航；交互为点击选中、双击编辑、拖动移动与右键菜单。
+      // 独立叠加轨：与主/副字幕互不绑定，绘制在主字幕块上方（bottom 50% 独立一层）。
+      // 交互为点击选中、双击编辑、拖动移动、右键菜单；badge 与主块同款，挂在叠加块上方。
       const overlaySegments = this.options.getSegments('overlay') || [];
       if (overlaySegments.length) {
         const overlaySelected = this.options.getOverlaySelection?.() || new Set();
+        const overlayBadges = this.settings.showGroupBadges !== false
+          ? computeGroupBadges(overlaySegments) : null;
+        // 行高不足（50% 线放不下 35px 叠加块 + 7px 底边距）时叠加块直接盖在
+        // 主字幕块上方，此时不渲染叠加徽章，避免与下半区徽章混叠。
+        const rowHeightPx = Number.parseFloat(row.style.height) || 0;
+        const overlayCoverMode = rowHeightPx > 0 && rowHeightPx < 84;
         const activeOverlayIndex = findActiveCueIndex(overlaySegments, now);
         const firstOverlayIndex = firstCueIndexOverlapping(overlaySegments, startMs);
         for (let index = firstOverlayIndex; index < overlaySegments.length; index += 1) {
@@ -3431,6 +3437,7 @@
           block.dataset.end = String(segment.end);
           // 外观与主字幕块一致：沿用字幕自身的颜色快照，不做轨道特殊配色。
           block.style.setProperty('--cue-color', colorForSegment(segment));
+          if (overlayCoverMode) block.classList.add('overlay-cover-mode');
           if (overlaySelected.has(index)) block.classList.add('selected');
           if (segment.disabled) block.classList.add('disabled');
           if (index === activeOverlayIndex && isActiveCueVisualHit(overlaySegments, index, now)) block.classList.add('active');
@@ -3450,6 +3457,25 @@
             block.appendChild(rightHandle);
           }
           this.layoutBlock(block, segment, startMs, endMs, row);
+          // cover 模式（行高不足）下叠加块盖住主块与徽章区，不渲染叠加徽章。
+          const overlayBadgesForIndex = !overlayCoverMode && this.settings.showGroupBadges !== false
+            ? overlayBadges?.get(index) : null;
+          if (overlayBadgesForIndex?.length) {
+            const badgeDuration = Math.max(1, endMs - startMs);
+            const badgeVisibleStart = Math.max(startMs, segment.start);
+            const badgeVisibleEnd = Math.min(endMs, segment.end);
+            const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration) * this.content.clientWidth;
+            if (blockWidthPx >= 24) overlayBadgesForIndex.forEach((badge, badgeIndex) => {
+              const badgeEl = document.createElement('span');
+              badgeEl.className = 'waveform-cue-badge waveform-overlay-cue-badge';
+              badgeEl.textContent = badge.type === 'sticker' && badge.total === 1
+                ? '🦊'
+                : `${badge.type === 'color' ? '🎨' : '🦊'} ${badge.ordinal}/${badge.total}`;
+              badgeEl.style.left = `${((badgeVisibleStart - startMs) / badgeDuration) * 100}%`;
+              badgeEl.style.setProperty('--badge-stack-index', String(badgeIndex));
+              row.appendChild(badgeEl);
+            });
+          }
           block.addEventListener('pointerdown', (event) => this.beginCueDrag(event, index, row, 'overlay'));
           block.addEventListener('contextmenu', (event) => {
             event.preventDefault();

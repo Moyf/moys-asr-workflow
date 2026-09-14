@@ -634,6 +634,85 @@ test('assigns colors and disabled state to overlay cues with main-track parity',
   await expect.poll(() => page.evaluate(() => DATA.overlay_track.segments[0].disabled)).toBe(false);
 });
 
+test('falls back to covering the main block when the row is too short for the overlay lane', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 200, end: 1800, text: 'overlay cue' }],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).toHaveCount(1);
+
+  // 默认行高（120px）足够：叠加块在 50% 线，不进入覆盖模式。
+  await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).not.toHaveClass(/overlay-cover-mode/);
+
+  // 行高切到最小档 64px：50% 线放不下叠加块 → 盖在主字幕块上方。
+  await page.locator('#waveform-row-height').selectOption('64');
+  const coverBlock = page.locator('.waveform-cue-block.waveform-overlay-block.overlay-cover-mode');
+  await expect(coverBlock).toHaveCount(1);
+  const geometry = await page.evaluate(() => {
+    const overlay = document.querySelector('.waveform-cue-block.waveform-overlay-block').getBoundingClientRect();
+    const main = document.querySelector('.waveform-cue-block[data-track="main"]').getBoundingClientRect();
+    return { sameBottom: Math.abs(overlay.bottom - main.bottom) < 2, overlayCoversMain: overlay.top <= main.top };
+  });
+  expect(geometry.sameBottom).toBe(true);
+  expect(geometry.overlayCoversMain).toBe(true);
+
+  // 行高恢复 120px：回到 50% 分层
+  await page.locator('#waveform-row-height').selectOption('120');
+  await expect(page.locator('.waveform-cue-block.waveform-overlay-block.overlay-cover-mode')).toHaveCount(0);
+});
+
+test('renders overlay group badges above the overlay lane at the row midpoint', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    overlay_track: {
+      enabled: true,
+      segments: [
+        { id: 'overlay-001', start: 0, end: 900, text: 'overlay one', color: { name: 'red' } },
+        { id: 'overlay-002', start: 1000, end: 1900, text: 'overlay two', color_ref: { name: 'red', headIdx: 0 } },
+      ],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).toHaveCount(2);
+  await expect(page.locator('.waveform-cue-badge.waveform-overlay-cue-badge')).toHaveCount(2);
+
+  // 徽章挂在叠加块上方：徽章底边不低于叠加块顶边（bottom 50% 线之上）。
+  const geometry = await page.evaluate(() => {
+    const row = document.querySelector('.waveform-row');
+    const rowRect = row.getBoundingClientRect();
+    const badge = document.querySelector('.waveform-cue-badge.waveform-overlay-cue-badge').getBoundingClientRect();
+    const overlay = document.querySelector('.waveform-cue-block.waveform-overlay-block').getBoundingClientRect();
+    const main = document.querySelector('.waveform-cue-block[data-track="main"]').getBoundingClientRect();
+    return {
+      badgeAboveOverlay: badge.bottom <= overlay.top + 1,
+      badgeAboveMain: badge.bottom <= main.top + 1,
+      overlayAtMidline: Math.abs((overlay.bottom - rowRect.top) - rowRect.height / 2) < rowRect.height * 0.25,
+      badgeText: document.querySelector('.waveform-cue-badge.waveform-overlay-cue-badge').textContent,
+    };
+  });
+  expect(geometry.badgeAboveOverlay).toBe(true);
+  expect(geometry.badgeAboveMain).toBe(true);
+  expect(geometry.overlayAtMidline).toBe(true);
+  expect(geometry.badgeText).toContain('1/2');
+
+  // 添加表情包后徽章自动刷新（清色 → 🎨 徽章消失，🦊 徽章不受影响）
+  await page.evaluate(() => {
+    const segment = DATA.overlay_track.segments[0];
+    segment.color = null;
+    segment.color_ref = null;
+    refreshStickerAssignmentUi();
+  });
+  await expect(page.locator('.waveform-cue-badge.waveform-overlay-cue-badge')).toHaveCount(0);
+});
+
 test('moves an overlay cue back to the main track from the list context menu with multi-subtitle on', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
