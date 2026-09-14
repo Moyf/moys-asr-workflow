@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.output_naming import MEDIA_SUFFIX_NAMES, OPERATION_NAMES, TRANSLATION_MARKER_NAMES, TRANSLATION_TARGET_NAMES, maw_root
@@ -117,13 +117,14 @@ def probe_video_fps(
     path: Path | str,
     *,
     ffprobe_path: str | os.PathLike[str] | None = None,
-) -> dict[str, float | str] | None:
-    """Read a local video's frame rate as optional project metadata.
+) -> dict[str, float | int | str] | None:
+    """Read a local video's frame rate and dimensions as project metadata.
 
     ``avg_frame_rate`` is preferred because it is the most useful constant
     rate for the editor's frame-to-millisecond mapping; ``r_frame_rate`` is a
-    fallback for files where FFprobe cannot calculate an average.  A missing
-    FFprobe executable, an audio-only input, an invalid rate, or any probe
+    fallback for files where FFprobe cannot calculate an average.  Width and
+    height are included when FFprobe reports a valid video stream. A missing
+    FFprobe executable, an audio-only input, invalid metadata, or any probe
     failure simply returns ``None`` so metadata enrichment never blocks ASR.
     """
 
@@ -142,7 +143,7 @@ def probe_video_fps(
     command = [
         str(executable), "-v", "error",
         "-select_streams", "v:0",
-        "-show_entries", "stream=avg_frame_rate,r_frame_rate",
+        "-show_entries", "stream=width,height,avg_frame_rate,r_frame_rate",
         "-of", "json", str(source),
     ]
     try:
@@ -163,12 +164,18 @@ def probe_video_fps(
     stream = streams[0] if isinstance(streams, list) and streams else None
     if not isinstance(stream, dict):
         return None
+    metadata: dict[str, float | int | str] = {}
     for key in ("avg_frame_rate", "r_frame_rate"):
         parsed = _parse_probe_frame_rate(stream.get(key))
         if parsed is not None:
             fps, ratio = parsed
-            return {"video_fps": fps, "video_fps_ratio": ratio}
-    return None
+            metadata.update(video_fps=fps, video_fps_ratio=ratio)
+            break
+    width = _parse_probe_integer(stream.get("width"), minimum=1)
+    height = _parse_probe_integer(stream.get("height"), minimum=1)
+    if width is not None and height is not None:
+        metadata.update(video_width=width, video_height=height)
+    return metadata or None
 
 
 def _parse_probe_integer(value: object, *, minimum: int = 0) -> int | None:
@@ -482,7 +489,8 @@ _MEDIA_ASR_TAGS = (
 )
 
 # 操作后缀（output_naming.OPERATION_NAMES 两种语言的带点形式 + zh 界面翻译段
-# 显示名 + 本地化组合标记，小写后匹配）：后处理 / OCR 去重 / 匹配 / 翻译产出的
+# 显示名 + 本地化组合标记，小写后匹配）：后处理 / OCR 去重 / 文稿匹配 /
+# 批量替换 / 转简体 / 转繁体 / 校对文本 / 重新断句 / 自定义 / 翻译产出的
 # 派生文件形如 `<原始主名>.<操作名>.<扩展名>`，查找同主名媒体时必须把末尾的操作段
 # 剥掉，否则 `clip.OCR去重.mp4` 找不到原始 `clip.*`。中文不随 lower() 变化，英文
 # 部分按小写匹配，因此这里统一存小写。翻译段只登记 zh 界面名（翻译为中文 /
@@ -496,11 +504,13 @@ _MEDIA_MARKER_NAMES = tuple(
     marker_names["zh"].lower()
     for marker_names in TRANSLATION_MARKER_NAMES.values()
 )
+# 旧版 zh 界面操作名（只读兼容，不再产出）：文稿匹配曾用「匹配」。
+_MEDIA_LEGACY_OPERATION_NAMES: Final[tuple[str, ...]] = ("匹配",)
 _MEDIA_OPERATION_NAMES = tuple(
     name.lower()
     for operation in OPERATION_NAMES
     for name in (OPERATION_NAMES[operation]["zh"], OPERATION_NAMES[operation]["en"])
-) + _MEDIA_TRANSLATION_NAMES + _MEDIA_MARKER_NAMES + tuple(
+) + _MEDIA_TRANSLATION_NAMES + _MEDIA_MARKER_NAMES + _MEDIA_LEGACY_OPERATION_NAMES + tuple(
     name.lower()
     for suffix in MEDIA_SUFFIX_NAMES
     for name in (MEDIA_SUFFIX_NAMES[suffix]["zh"], MEDIA_SUFFIX_NAMES[suffix]["en"])
@@ -552,10 +562,13 @@ def _classify_existing(
     )
 
 
-def _same_name_candidates(project_path: Path, data: dict[str, Any]) -> tuple[Path, ...]:
-    raw_media = data.get("media")
-    source_name = Path(str(raw_media)).name if isinstance(raw_media, str) and raw_media.strip() else project_path.name
-    expected_stem = _media_stem(source_name)
+def _portable_path_name(value: str) -> str:
+    """从 POSIX 或 Windows 风格的工程路径中取得文件名。"""
+
+    return Path(value.replace("\\", "/")).name
+
+
+def _same_name_candidates(project_path: Path, expected_stem: str) -> tuple[Path, ...]:
     if not expected_stem:
         return ()
     try:
@@ -570,6 +583,32 @@ def _same_name_candidates(project_path: Path, data: dict[str, Any]) -> tuple[Pat
         and _media_stem(path.name) == expected_stem
     ]
     return tuple(sorted(candidates, key=lambda path: path.name.casefold()))
+
+
+def _classify_candidates(
+    project_path: Path,
+    candidates: tuple[Path, ...],
+    requested: Path | None,
+) -> MediaResolution | None:
+    if not candidates:
+        return None
+    if requested and requested.suffix.lower() == ".flv":
+        mp4_candidates = tuple(path for path in candidates if path.suffix.lower() == ".mp4")
+        if len(mp4_candidates) == 1:
+            return _classify_existing(project_path, mp4_candidates[0], requested_path=requested)
+    if any(path.suffix.lower() == ".flv" for path in candidates):
+        mp4_candidates = tuple(path for path in candidates if path.suffix.lower() == ".mp4")
+        if len(mp4_candidates) == 1:
+            return _classify_existing(project_path, mp4_candidates[0], requested_path=requested)
+    if len(candidates) == 1:
+        return _classify_existing(project_path, candidates[0], requested_path=requested)
+    return MediaResolution(
+        MediaStatus.CONFLICT,
+        project_path,
+        requested_path=requested,
+        candidates=candidates,
+        message="工程目录存在多个同名媒体文件，请手动指定一个",
+    )
 
 
 def resolve_project_media(
@@ -602,25 +641,23 @@ def resolve_project_media(
             paired = _paired_mp4(requested)
             return _classify_existing(project_path, paired or requested, requested_path=requested)
 
-    candidates = _same_name_candidates(project_path, data)
-    if requested and requested.suffix.lower() == ".flv":
-        mp4_candidates = tuple(path for path in candidates if path.suffix.lower() == ".mp4")
-        if len(mp4_candidates) == 1:
-            return _classify_existing(project_path, mp4_candidates[0], requested_path=requested)
-    if any(path.suffix.lower() == ".flv" for path in candidates):
-        mp4_candidates = tuple(path for path in candidates if path.suffix.lower() == ".mp4")
-        if len(mp4_candidates) == 1:
-            return _classify_existing(project_path, mp4_candidates[0], requested_path=requested)
-    if len(candidates) == 1:
-        return _classify_existing(project_path, candidates[0], requested_path=requested)
-    if len(candidates) > 1:
-        return MediaResolution(
-            MediaStatus.CONFLICT,
+    candidate_stems: list[str] = []
+    if isinstance(raw_media, str) and raw_media.strip():
+        referenced_stem = _media_stem(_portable_path_name(raw_media.strip()))
+        if referenced_stem:
+            candidate_stems.append(referenced_stem)
+    project_stem = _media_stem(project_path.name)
+    if project_stem and project_stem not in candidate_stems:
+        candidate_stems.append(project_stem)
+
+    for expected_stem in candidate_stems:
+        resolution = _classify_candidates(
             project_path,
-            requested_path=requested,
-            candidates=candidates,
-            message="工程目录存在多个同名媒体文件，请手动指定一个",
+            _same_name_candidates(project_path, expected_stem),
+            requested,
         )
+        if resolution is not None:
+            return resolution
     return MediaResolution(
         MediaStatus.MISSING,
         project_path,

@@ -5,14 +5,20 @@ import unittest
 from unittest.mock import patch
 from datetime import datetime
 
-from maw.project_backups import backup_directory, write_backup
+from maw.project_backups import backup_directory, backup_directory_candidates, write_backup
 
 
 class BackupTests(unittest.TestCase):
     def test_locations(self):
-        self.assertEqual(backup_directory(Path('folder/a.mosp')), Path('folder/_maw/backups'))
-        for folder in ('_maw', 'clip_maw'):
-            self.assertEqual(backup_directory(Path(folder) / 'a.mosp'), Path(folder) / 'backups')
+        with patch('maw.project_backups.resolve_lang', return_value='zh'):
+            self.assertEqual(backup_directory(Path('folder/a.mosp')), Path('folder/_maw/备份'))
+            for folder in ('_maw', 'clip_maw'):
+                self.assertEqual(backup_directory(Path(folder) / 'a.mosp'), Path(folder) / '备份')
+        with patch('maw.project_backups.resolve_lang', return_value='en'):
+            self.assertEqual(backup_directory(Path('folder/a.mosp')), Path('folder/_maw/backups'))
+            # 当前语言命名在前，另一种语言命名兜底（兼容切换界面语言前的旧目录）。
+            candidates = backup_directory_candidates(Path('folder/a.mosp'))
+            self.assertEqual(candidates, [Path('folder/_maw/backups'), Path('folder/_maw/备份')])
 
     def test_collision_retention_and_project_isolation(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -32,7 +32,7 @@ from maw.gui_workflow import (  # noqa: E402
     run_transcription,
 )
 from maw.gui_platform import _terminate_registered_job, terminate_process_tree  # noqa: E402
-from maw_gui import _is_ffmpeg_missing_error, _startup_error_log_path  # noqa: E402
+from maw_gui import _is_ffmpeg_missing_error, _startup_error_log_path, _write_startup_error_log  # noqa: E402
 
 
 def _write_bwf_wav(path: Path, sample_rate: int, time_reference_samples: int) -> None:
@@ -954,25 +954,25 @@ class GuiWorkflowTests(unittest.TestCase):
     def test_default_srt_path_uses_provider_tag(self) -> None:
         from maw.gui_workflow import default_srt_path
 
-        self.assertEqual(default_srt_path(Path("clip.mp4")).name, "clip.qwen-audio.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), attach_model_name=True).name, "clip.qwen-audio.srt")
         self.assertEqual(
-            default_srt_path(Path("clip.mp4"), model="fun-asr").name,
+            default_srt_path(Path("clip.mp4"), model="fun-asr", attach_model_name=True).name,
             "clip.fun-asr.srt",
         )
         self.assertEqual(
-            default_srt_path(Path("clip.mp4"), model="qwen3-asr-flash-filetrans").name,
+            default_srt_path(Path("clip.mp4"), model="qwen3-asr-flash-filetrans", attach_model_name=True).name,
             "clip.qwen3-asr-api.srt",
         )
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="soniox").name, "clip.soniox.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="soniox", attach_model_name=True).name, "clip.soniox.srt")
         self.assertEqual(
-            default_srt_path(Path("clip.mp4"), test_run=True).name,
+            default_srt_path(Path("clip.mp4"), test_run=True, attach_model_name=True).name,
             "clip.qwen-audio-test.srt",
         )
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="qwen3-asr-local").name, "clip.qwen-asr-local.srt")
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="qwen3-asr-1.7b-local").name, "clip.qwen3-asr-1.7b-local.srt")
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="sensevoice-small-local").name, "clip.sensevoice-local.srt")
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="fun-asr-nano-local").name, "clip.funasr-local.srt")
-        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="funasr-local").name, "clip.funasr-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="qwen3-asr-local", attach_model_name=True).name, "clip.qwen-asr-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="qwen3-asr-1.7b-local", attach_model_name=True).name, "clip.qwen3-asr-1.7b-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="sensevoice-small-local", attach_model_name=True).name, "clip.sensevoice-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="fun-asr-nano-local", attach_model_name=True).name, "clip.funasr-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="funasr-local", attach_model_name=True).name, "clip.funasr-local.srt")
 
     def test_default_srt_path_attach_model_name_off_drops_all_tags(self) -> None:
         from maw.gui_workflow import default_srt_path
@@ -1226,6 +1226,21 @@ class GuiWorkflowTests(unittest.TestCase):
                 maw_gui._startup_error_fallback_log_path(),
                 self.root / "LocalAppData" / "MAW" / "logs" / "launcher-startup.log",
             )
+
+    def test_startup_error_log_redacts_secret_assignments(self) -> None:
+        import maw_gui
+
+        target = self.root / "launcher-startup.log"
+        error = RuntimeError("DASHSCOPE_API_KEY=dash-secret Authorization: Bearer bearer-secret")
+        with mock.patch.object(maw_gui, "_startup_error_log_path", return_value=target), mock.patch.object(
+            maw_gui, "_startup_error_fallback_log_path", return_value=target
+        ):
+            self.assertEqual(_write_startup_error_log(error), target)
+
+        content = target.read_text(encoding="utf-8")
+        self.assertNotIn("dash-secret", content)
+        self.assertNotIn("bearer-secret", content)
+        self.assertIn("[REDACTED]", content)
 
     def test_entrypoint_debug_aliases_configure_launcher_debug_modes(self) -> None:
         import maw_gui

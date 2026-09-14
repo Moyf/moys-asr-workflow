@@ -21,10 +21,12 @@ from typing import Final
 from maw.gui_config import load_env
 from maw.output_naming import format_elapsed, operation_suffix, postprocess_workspace, resolve_lang, sanitize_component, translation_marker_name
 from maw.postprocess import (
+    BILINGUAL_LINE_ORDERS,
     FixedProcessRequest,
     LlmPostprocessRequest,
     OutputMode,
     Replacement,
+    embed_translated_project,
     merge_bilingual_project,
     run_fixed_process,
     run_llm_postprocess,
@@ -75,12 +77,13 @@ def default_postprocess_plan() -> dict[str, object]:
                 "matchMode": "script",
                 "extraSplitPunctuation": list(DEFAULT_EXTRA_SPLIT_PUNCTUATION),
                 "preservePunctuation": ["？", "！"],
+                "cleanMarkdownSymbols": True,
             },
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
             {"id": "ocr", "enabled": False, "videoPath": "", "videoPathMode": "", "regionMode": "full", "regionX1": 0, "regionY1": 0, "regionX2": 100, "regionY2": 100, "threshold": 0.5, "report": False},
-            {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "customPrompt": ""},
+            {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "embedTranslations": False, "bilingualLineOrder": "", "customPrompt": ""},
         ],
     }
 
@@ -127,12 +130,18 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = str(value or "zh") if str(value or "zh") in TRANSLATION_TARGETS else "zh"
             elif key == "mergeBilingual":
                 step[key] = bool(value)
+            elif key == "embedTranslations":
+                step[key] = bool(value)
+            elif key == "bilingualLineOrder":
+                step[key] = str(value or "") if str(value or "") in BILINGUAL_LINE_ORDERS else ""
             elif key in {"regionX1", "regionY1", "regionX2", "regionY2", "threshold"}:
                 step[key] = _number_or_default(value, step[key])
             elif key == "report":
                 step[key] = bool(value)
             elif key == "matchMode":
                 step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
+            elif key == "cleanMarkdownSymbols":
+                step[key] = bool(value)
             elif key == "videoPathMode":
                 mode = str(value or "").strip()
                 step[key] = mode if mode in {"", "auto", "manual"} else ""
@@ -315,11 +324,6 @@ def validate_plan(
             path = Path(str(step.get("scriptPath") or "")).expanduser()
             if path.suffix.lower() not in SCRIPT_EXTENSIONS or not path.is_file():
                 errors.append({"step": step_id, "field": "postprocessScriptPath", "message": "文稿匹配需要一个存在的 .txt、.md 或 .markdown 文稿文件。"})
-        elif step_id == "replace":
-            has_replacements = bool(_normalize_replacements(step.get("replacements"), trim=bool(step.get("replacementTrim", True))))
-            has_conversion = normalize_text_conversion_mode(step.get("conversion")) is not TextConversion.OFF
-            if not has_replacements and not has_conversion:
-                errors.append({"step": step_id, "field": "postprocessReplacements", "message": "固定处理至少需要一条批量替换规则或一种简繁转换。"})
         elif step_id in {"proofread", "resegment", "translate"}:
             provider_id = str(step.get("providerId") or "deepseek")
             status = _snapshot_provider_status(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
@@ -333,6 +337,8 @@ def validate_plan(
                 errors.append({"step": step_id, "field": "llmModel", "message": "LLM 连接尚未验证，请在设置中点击“测试连接”。"})
             if step_id == "translate" and str(step.get("target") or "zh") not in TRANSLATION_TARGETS:
                 errors.append({"step": step_id, "field": "autoTranslateTarget", "message": "翻译目标必须是中文或英文。"})
+            if step_id == "translate" and bool(step.get("mergeBilingual")) and bool(step.get("embedTranslations")):
+                errors.append({"step": step_id, "field": "autoTranslateMergeBilingual", "message": "「将双语字幕合并为单个字幕」与「只翻译非中文（英文）的字幕」不能同时启用，请只选择一个输出方式。"})
         elif step_id == "ocr":
             video_text = str(step.get("videoPath") or "").strip()
             video = Path(video_text).expanduser() if video_text else media_path
@@ -454,12 +460,14 @@ def run_postprocess_pipeline(
     current_translated_srt: Path | None = None
     translation_target: str | None = None
     bilingual_output = False
+    embed_output = False
     resume_count = max(0, resume_from)
     manifest_steps = manifest.get("steps")
     for previous_index, previous_step in enumerate(steps[:resume_count]):
         if str(previous_step.get("id") or "") == "translate":
             translation_target = str(previous_step.get("target") or "zh")
             bilingual_output = bool(previous_step.get("mergeBilingual"))
+            embed_output = bool(previous_step.get("embedTranslations")) and not bilingual_output
             previous_manifest_step = (
                 manifest_steps[previous_index]
                 if isinstance(manifest_steps, list) and previous_index < len(manifest_steps)
@@ -501,6 +509,7 @@ def run_postprocess_pipeline(
                 if step_id == "translate":
                     translation_target = str(step.get("target") or "zh")
                     bilingual_output = bool(step.get("mergeBilingual"))
+                    embed_output = bool(step.get("embedTranslations")) and not bilingual_output
                     if bool(step.get("mergeBilingual")):
                         # Keep the standalone translation in the run directory
                         # as an inspectable intermediate; only the merged
@@ -508,6 +517,20 @@ def run_postprocess_pipeline(
                         translation_intermediate_project = artifact.project_path
                         translation_intermediate_srt = artifact.srt_path
                         artifact = _merge_bilingual_subtitles(
+                            source_project_path=current_project,
+                            source_srt_path=current_srt,
+                            translated_artifact=artifact,
+                            target=str(step.get("target") or "zh"),
+                            line_order=str(step.get("bilingualLineOrder") or ""),
+                            output_directory=run_directory,
+                            media_path=media_path,
+                        )
+                    elif embed_output:
+                        # 回填单语：翻译结果替换原字幕对应句子，只发布单条字幕；
+                        # 独立翻译产物与双语路径一样保留为可检查的中间产物。
+                        translation_intermediate_project = artifact.project_path
+                        translation_intermediate_srt = artifact.srt_path
+                        artifact = _embed_translated_subtitles(
                             source_project_path=current_project,
                             source_srt_path=current_srt,
                             translated_artifact=artifact,
@@ -576,6 +599,7 @@ def run_postprocess_pipeline(
             translated_srt=current_translated_srt,
             translation_target=translation_target,
             bilingual=bilingual_output,
+            backfill=embed_output,
             ui_language=language,
         )
         manifest["status"] = "done"
@@ -598,6 +622,12 @@ def run_postprocess_pipeline(
         result = PipelineResult(final_project, final_srt, run_directory, tuple(completed), tuple(warnings), final_translated_srt)
         if not bool(normalized.get("retainIntermediate")):
             shutil.rmtree(run_directory, ignore_errors=True)
+            # 中间产物清掉后，只为这次运行而建的「后处理」根目录如果是空的也一并移除；
+            # 仍有其他运行的目录或用户文件时不动（rmdir 只在空目录时成功）。
+            try:
+                run_directory.parent.rmdir()
+            except OSError:
+                pass
         return result
     except PostprocessCancelled:
         manifest["status"] = "cancelled"
@@ -650,6 +680,7 @@ def _run_step(
             match_mode=str(step.get("matchMode") or "script"),
             extra_split_punctuation=tuple(str(value) for value in step.get("extraSplitPunctuation", ()) if str(value)),
             preserve_punctuation=tuple(str(value) for value in step.get("preservePunctuation", ()) if str(value)),
+            clean_markdown_symbols=step.get("cleanMarkdownSymbols", True) is not False,
         ))
     if step_id == "replace":
         replacements = tuple(
@@ -730,6 +761,7 @@ def _run_step(
         custom_prompt=str(step.get("customPrompt") or "").strip(),
         output_directory=output_directory,
         media_path=media_path,
+        bilingual_line_order=str(step.get("bilingualLineOrder") or ""),
     ), complete=complete, on_status=on_status)
 
 
@@ -832,8 +864,21 @@ def _attach_translation_track(
         track_suffix += 1
 
     extension_segments: list[dict[str, object]] = []
-    for index, translated in enumerate(translated_segments, 1):
+    extension_bindings: list[tuple[int, dict[str, object], dict[str, object]]] = []
+    for index, (source, translated) in enumerate(zip(source_segments, translated_segments, strict=True), 1):
+        assert isinstance(source, dict)
         assert isinstance(translated, dict)
+        source_text = source.get("text")
+        translated_text = translated.get("text")
+        if (
+            isinstance(source_text, str)
+            and isinstance(translated_text, str)
+            and translated_text.strip()
+            and translated_text.strip() == source_text.strip()
+        ):
+            # 目标语言预过滤保留的句子：译文与主字幕相同，副轨再放一份只会
+            # 造成重复显示，跳过该句的副轨段与绑定（空↔空字幕保持原有占位行为）。
+            continue
         extension_segment: dict[str, object] = {
             "id": f"{track_id}-segment-{index:03d}",
             "start": translated["start"],
@@ -843,6 +888,7 @@ def _attach_translation_track(
         if translated.get("disabled") is True:
             extension_segment["disabled"] = True
         extension_segments.append(extension_segment)
+        extension_bindings.append((index, source, extension_segment))
 
     tracks.append({
         "id": track_id,
@@ -861,8 +907,7 @@ def _attach_translation_track(
         for main_id in (binding.get("main_segment_ids") or [])
     }
     used_binding_ids = {str(binding.get("id")) for binding in bindings if isinstance(binding, dict) and binding.get("id")}
-    for index, (source, extension) in enumerate(zip(source_segments, extension_segments, strict=True), 1):
-        assert isinstance(source, dict)
+    for index, source, extension in extension_bindings:
         main_id = str(source["id"])
         if main_id in used_main_ids:
             continue
@@ -882,10 +927,16 @@ def _attach_translation_track(
         })
         used_main_ids.add(main_id)
 
+    skipped_identical = len(source_segments) - len(extension_segments)
     warnings = (
         *translated_artifact.warnings,
         "翻译结果已作为副字幕保存，主字幕保留翻译前版本。",
     )
+    if skipped_identical:
+        warnings = (
+            *warnings,
+            f"副字幕仅包含与主字幕不同的 {len(extension_segments)} 条译文；与主字幕相同的 {skipped_identical} 条未重复添加。",
+        )
     combined_artifact = write_artifacts(
         combined,
         source_project_path=source_project_path,
@@ -913,6 +964,7 @@ def _merge_bilingual_subtitles(
     source_srt_path: Path,
     translated_artifact: SubtitleArtifact,
     target: str,
+    line_order: str = "",
     output_directory: Path,
     media_path: Path | None = None,
 ) -> SubtitleArtifact:
@@ -926,6 +978,7 @@ def _merge_bilingual_subtitles(
         source_project,
         translated_project,
         translation_target=target,
+        line_order=line_order,
     )
     warnings = (
         *translated_artifact.warnings,
@@ -948,6 +1001,50 @@ def _merge_bilingual_subtitles(
         project_path=merged_artifact.project_path,
         srt_path=merged_artifact.srt_path,
         warnings=merged_artifact.warnings,
+    )
+
+
+def _embed_translated_subtitles(
+    *,
+    source_project_path: Path,
+    source_srt_path: Path,
+    translated_artifact: SubtitleArtifact,
+    target: str,
+    output_directory: Path,
+    media_path: Path | None = None,
+) -> SubtitleArtifact:
+    """Publish a single-track artifact with translations backfilled into the source cues.
+
+    与双语路径一样，独立翻译产物留在 run 目录作为可检查的中间产物；最终只发布
+    回填后的单条字幕。目标语言预过滤保留的句子逐字节保留原文。
+    """
+
+    if translated_artifact.project_path is None or translated_artifact.srt_path is None:
+        raise ValueError("翻译步骤没有生成完整的工程和 SRT 产物。")
+    source_project = read_project(source_project_path)
+    translated_project = read_project(translated_artifact.project_path)
+    embedded = embed_translated_project(source_project, translated_project)
+    warnings = (
+        *translated_artifact.warnings,
+        "翻译前后的独立字幕已保留为中间产物，最终输出为回填后的单条字幕。",
+    )
+    embedded_artifact = write_artifacts(
+        embedded,
+        source_project_path=source_project_path,
+        source_srt_path=source_srt_path,
+        operation=f"translate-{target}-backfill",
+        write_project=True,
+        write_srt=True,
+        warnings=warnings,
+        output_directory=output_directory,
+        media_path=media_path,
+    )
+    return SubtitleArtifact(
+        source_project_path=embedded_artifact.source_project_path,
+        source_srt_path=embedded_artifact.source_srt_path,
+        project_path=embedded_artifact.project_path,
+        srt_path=embedded_artifact.srt_path,
+        warnings=embedded_artifact.warnings,
     )
 
 
@@ -977,15 +1074,17 @@ def _publish_final(
     translated_srt: Path | None = None,
     translation_target: str | None = None,
     bilingual: bool = False,
+    backfill: bool = False,
     ui_language: str | None = None,
 ) -> tuple[Path, Path, Path | None]:
     source_srt = source_srt.expanduser().resolve()
     source_project = source_project.expanduser().resolve()
     suffix = source_project.suffix.lower() if source_project.suffix.lower() in {".mosp", ".json"} else ".mosp"
-    bilingual_suffix = (
-        f".{translation_marker_name('bilingual', lang=ui_language)}" if bilingual else ""
+    combined_marker = "bilingual" if bilingual else ("backfill" if backfill else "")
+    combined_suffix = (
+        f".{translation_marker_name(combined_marker, lang=ui_language)}" if combined_marker else ""
     )
-    base = source_srt.with_name(f"{source_srt.stem}{operation_suffix('postprocess', lang=ui_language)}{bilingual_suffix}")
+    base = source_srt.with_name(f"{source_srt.stem}{operation_suffix('postprocess', lang=ui_language)}{combined_suffix}")
     counter = 1
     while True:
         marker = "" if counter == 1 else f"-{counter}"

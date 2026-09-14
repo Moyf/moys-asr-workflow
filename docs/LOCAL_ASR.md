@@ -92,7 +92,7 @@ uv run python generate_subtitle_local.py "D:\Videos\meeting.mp4" `
   --engine moss --length-limit 30s --device cuda --speaker-colors --json
 ```
 
-`--model` 可以指定上游模型 ID，`--model-path` 可以指定已经下载好的本地模型目录。Qwen3-ASR 0.6B 和 1.7B 都默认加载 `Qwen/Qwen3-ForcedAligner-0.6B`，以输出可编辑字幕所需的词级时间戳；它不是可选增强。SenseVoice 默认配合 FSMN-VAD 并保留句级时间戳，Fun-ASR-Nano 默认配合 FSMN-VAD 请求句级时间戳；如果上游返回字符级时间戳，MAW 会再按标点和静音切分，否则至少按 VAD 语音区间生成字幕。默认 `--device auto` 会优先使用 CUDA；如需排查兼容性或没有 NVIDIA GPU，可显式传入 `--device cpu`。第一次验证建议加 `--length-limit 30s`。
+`--model` 可以指定上游模型 ID，`--model-path` 可以指定已经下载好的本地模型目录。Qwen3-ASR 0.6B 和 1.7B 都默认加载 `Qwen/Qwen3-ForcedAligner-0.6B`，以输出可编辑字幕所需的词级时间戳；它不是可选增强。SenseVoice 默认配合 FSMN-VAD 并保留句级时间戳，Fun-ASR-Nano 默认配合 FSMN-VAD 请求句级时间戳；如果上游返回字符级时间戳，MAW 会再按标点和静音切分，否则至少按 VAD 语音区间生成字幕。默认 `--device auto` 会优先使用 CUDA；Apple Silicon 上的 Qwen3-ASR 会在无 CUDA 时自动使用 MPS，初始化失败则回退 CPU，其他本地引擎保持原有 CPU/CUDA 逻辑。如需排查兼容性，可显式传入 `--device cpu`。第一次验证建议加 `--length-limit 30s`。
 
 不使用 Launcher 时，也可以通过环境变量指定统一的模型缓存根目录：
 
@@ -106,6 +106,19 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" --engine funasr
 `--json` 会同时生成 `.mosp` 工程；默认还会生成便携 `.edit.html`，如不需要可加 `--no-html`。`--with-waveform` 只能与 `--json` 一起使用。
 
 不指定 `-o` 时，默认输出名带引擎标识段，如 Qwen3-ASR 为 `example.qwen-asr-local.srt`、FunASR 为 `example.funasr-local.srt`；不需要标识段时可加 `--no-model-tag`，需要把实时率写进文件名时可加 `--rtf-tag`（如 `example.funasr-local.0.12x.srt`，实时率越小越快）。
+
+## 安装源与环境变量
+
+在 Launcher 里安装本地运行环境时，普通依赖从自动测速选出的 PyPI 镜像拉取；有 NVIDIA 显卡时，GPU 版 Torch 还会额外使用 `https://download.pytorch.org/whl/cu130`。该 PyTorch 源没有官方镜像，且部分网络环境无法直连——它不可达时整个安装都会失败。两个环境变量可以兜底：
+
+- `MAW_PYTORCH_INDEX`：整源替换 PyTorch 源（例如指向镜像站提供的 pytorch-wheels 目录，以镜像站实际提供的 CUDA 版本目录为准）。
+- `MAW_PIP_INDEX`：逗号分隔的 URL 列表，覆盖 PyPI 镜像候选（想保留内置镜像就把它们一并写进去）。
+
+```powershell
+$env:MAW_PYTORCH_INDEX = "https://mirrors.aliyun.com/pytorch-wheels/cu130"
+```
+
+安装开始时 MAW 会先探测 PyTorch 源是否可达，不可达会立即给出明确的失败提示，而不会让安装挂上几个小时后以无关依赖的版本解析错误收场。
 
 ## 热词
 

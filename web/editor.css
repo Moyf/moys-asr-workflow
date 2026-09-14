@@ -123,6 +123,8 @@
     --wave-cue-text:        #eef6ff;
     --wave-cue-active-mix:  #28547a;
     --wave-cue-handle:      rgba(231, 244, 255, 0.2);
+    --wave-cue-handle-hover: rgba(231, 244, 255, 0.42);
+    --wave-cue-boundary:    color-mix(in srgb, color-mix(in srgb, var(--accent) 55%, #e7f4ff) 45%, transparent);
     --wave-badge-bg:        rgba(0, 0, 0, 0.65);
     --wave-badge-sticker:   #b8d9ff;
     --wave-playhead:        #ff5d67;
@@ -333,6 +335,8 @@
     --wave-cue-text:        #16202c;
     --wave-cue-active-mix:  #a9c8e8;
     --wave-cue-handle:      rgba(32, 52, 80, 0.14);
+    --wave-cue-handle-hover: rgba(32, 52, 80, 0.3);
+    --wave-cue-boundary:    color-mix(in srgb, color-mix(in srgb, var(--accent) 55%, #20344f) 32%, transparent);
     --wave-badge-bg:        rgba(255, 255, 255, 0.82);
     --wave-badge-sticker:   #2f6bb8;
     --wave-playhead:        #e63946;
@@ -1416,6 +1420,8 @@
     font: 11px var(--font-mono);
     background: var(--bg-input);
   }
+  /* 「响度适配」紧跟振幅步进器：它改的就是这一行显示的 ×N。 */
+  .waveform-scale-fit { margin-left: 7px; font-size: 12px; }
   @media (max-width: 420px) {
     .editor-settings-window { width: calc(100vw - 16px); min-width: 0; resize: none; }
     .editor-settings-nav { width: 104px; padding: 8px 6px; }
@@ -2053,6 +2059,8 @@
     content-visibility: auto;
     contain-intrinsic-size: 0 46px;
   }
+  #cue-list-follow { padding: 4px 8px; font-size: 11px; white-space: nowrap; }
+  #cue-list-follow[aria-pressed="false"] { color: var(--accent); border-color: var(--accent); }
   .cue-split-flash {
     position: absolute;
     z-index: 3;
@@ -2097,6 +2105,9 @@
   }
   .cue.has-color { background: color-mix(in srgb, var(--color-bar, #777) 30%, transparent); }
   .cue.has-color:hover { background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--bg-raised)); }
+  /* 彩色行的半透明底色会压低原本面向中性底色的淡色序号；提高到次要文字色，
+     保留序号的辅助层级，同时保证颜色行仍能快速定位编号。active/disabled 状态在下方覆盖。 */
+  .cue.has-color .index { color: var(--text-secondary); }
   /* 悬停反馈与下拉/右键菜单一致：accent 淡蓝 + 中性内描边；选中（琥珀）与激活（蓝）行仍各自优先。 */
   .cue:hover {
     background: var(--cue-hover-bg);
@@ -3047,9 +3058,10 @@
   }
 
   /* === 右上角提示卡片（flashHint）===
-     最多 3 条垂直堆叠，新提示出现在下方；fade in/out 由 JS 驱动 */
+     最多 3 条垂直堆叠，新提示出现在下方；fade in/out 由 JS 驱动。
+     置于非模态浮层栈（430+）之上，但保留给拖拽遮罩和加载层（500/510）。 */
   #hint-stack {
-    position: fixed; top: 16px; right: 16px; z-index: 300;
+    position: fixed; top: 16px; right: 16px; z-index: 490;
     display: flex; flex-direction: column; gap: 8px;
     max-width: 380px;
   }

@@ -48,7 +48,7 @@ mimetypes.add_type("audio/ogg", ".opus")
 import edit  # noqa: E402
 from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import quapeaks  # noqa: E402
-from maw.project_backups import backup_directory, write_backup  # noqa: E402
+from maw.project_backups import backup_directory_candidates, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
@@ -65,6 +65,7 @@ from maw.project_io import (  # noqa: E402
 from maw.media import (  # noqa: E402
     MEDIA_EXTENSIONS,
     MediaConversionError,
+    MediaResolution,
     MediaResolutionError,
     MediaStatus,
     convert_media_for_browser,
@@ -80,6 +81,7 @@ from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # no
 
 MAX_RECENT_PROJECTS = 10
 BUILTIN_WORKSPACE_IDS = frozenset({"classic", "wave-right", "three-fold", "cinema"})
+ONBOARDING_STATUSES = frozenset({"completed", "skipped"})
 PRPROJ_CAPABILITY = {
     "ok": False,
     "capability": "prproj",
@@ -138,6 +140,7 @@ class ServerSettings:
     saved_workspaces: dict[str, dict[str, object]] = field(default_factory=dict)
     preset_workspaces: dict[str, dict[str, object]] = field(default_factory=dict)
     active_workspace_name: str = ""
+    onboarding_status: str = ""
 
 
 class SaveProjectError(ValueError):
@@ -231,12 +234,18 @@ def read_server_settings(path: Path) -> ServerSettings:
             if name in BUILTIN_WORKSPACE_IDS and isinstance(workspace, dict):
                 preset_workspaces[name] = copy.deepcopy(workspace)
     active_workspace_name = payload.get("active_workspace_name")
+    onboarding_status = payload.get("onboarding_status")
     return ServerSettings(
         auto_open_last_project=payload.get("auto_open_last_project") is not False,
         recent_projects=tuple(projects),
         saved_workspaces=saved_workspaces,
         preset_workspaces=preset_workspaces,
         active_workspace_name=active_workspace_name if active_workspace_name in saved_workspaces else "",
+        onboarding_status=(
+            onboarding_status
+            if isinstance(onboarding_status, str) and onboarding_status in ONBOARDING_STATUSES
+            else ""
+        ),
     )
 
 
@@ -250,6 +259,7 @@ def write_server_settings(path: Path, settings: ServerSettings) -> None:
         "saved_workspaces": settings.saved_workspaces,
         "preset_workspaces": settings.preset_workspaces,
         "active_workspace_name": settings.active_workspace_name,
+        "onboarding_status": settings.onboarding_status,
     }
     fd, temp_name = tempfile.mkstemp(prefix=f".{path.stem}.", suffix=".tmp", dir=path.parent)
     try:
@@ -306,6 +316,29 @@ def resolve_media_path(json_path: Path, data: dict, explicit_media: str | None) 
         raise MediaResolutionError(resolution)
     assert resolution.resolved_path is not None
     return resolution.resolved_path
+
+
+def _loaded_media_reference(
+    json_path: Path,
+    media_value: object,
+    source_media_path: Path,
+    resolution: MediaResolution,
+    explicit_media: str | None,
+) -> str:
+    """保留有效的便携引用，并修复已经触发同目录兜底的引用。"""
+
+    if explicit_media is not None:
+        return str(source_media_path)
+    if (
+        isinstance(media_value, str)
+        and media_value.strip()
+        and resolution.requested_path is not None
+        and resolution.requested_path.is_file()
+    ):
+        return media_value.strip()
+    if source_media_path.parent == json_path.parent:
+        return source_media_path.name
+    return str(source_media_path)
 
 
 def load_project(
@@ -391,8 +424,14 @@ def load_project(
         except MediaConversionError as error:
             raise MediaConversionError(f"{error}（源文件：{source_media_path}）") from error
         print(f"[media] 已为浏览器准备播放缓存: {media_path}")
-    # 保存时应沿用实际被服务器加载的媒体；这也会把 -m 覆盖的路径同步回工程。
-    data["media"] = str(source_media_path)
+    # 同目录工程保留相对引用以便整套移动；显式 -m 覆盖和目录外媒体仍记录绝对路径。
+    data["media"] = _loaded_media_reference(
+        json_path,
+        media_value,
+        source_media_path,
+        resolution,
+        explicit_media,
+    )
     # 旧工程可能没有源音轨清单；在加载时补探测，确保 OTIO 导出不会只
     # 看见容器中的第一条音频流。探测失败时继续按旧工程兼容路径导出。
     data = normalize_project(enrich_project_media_metadata(data, media_path=source_media_path))
@@ -405,7 +444,12 @@ def load_project(
     # 请求路径（requested_path）查找，否则会漏读源媒体旁的缓存。
     reapeaks_base = resolution.requested_path or source_media_path
     if not no_waveform:
-        report("preparing_waveform", 50)
+        report("loading_waveform_cache", 40)
+
+        def report_waveform_progress(stage: str) -> None:
+            if stage == "generating":
+                report("generating_waveform", 50)
+
         try:
             # 波形 sidecar 是"源媒体身份"的缓存：以 source_media_path（工程里
             # data["media"] 记的就是它）为键，_maw 由 waveform_sidecar_path 按
@@ -418,15 +462,19 @@ def load_project(
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
                 audio_track=audio_track,
                 default_audio_track=default_audio_track,
+                on_progress=report_waveform_progress,
             )
             data["waveform"] = waveform
             state = "已提取" if extracted else "使用缓存"
             print(f"[waveform] {state}: {waveform['peak_count']} peaks ({waveform['peaks_per_second']}/秒)")
+            report("waveform_ready", 60)
         except (edit.WaveformError, ValueError) as error:
             data.pop("waveform", None)
             print(f"[waveform] 警告: {error}；编辑器仍可正常使用")
+            report("waveform_unavailable", 60)
 
         if load_reapeaks:
+            report("loading_spectral_cache", 70)
             # 频谱缓存：源媒体旁存在 .ReaPeaks 时读取并内联下发，供波形染色。
             # 缺失/损坏/无 spectral 层一律静默降级，不影响编辑器。
             spectral = quapeaks.load_spectral_payload(
@@ -439,6 +487,7 @@ def load_project(
                 data["spectral"] = spectral
                 print(f"[spectral] 已加载 {spectral['peak_count']} 频谱点 (div={spectral['division']})")
 
+            report("loading_reapeaks_waveform", 82)
             # reapeaks 波形层：最细 wave 层作为可选的波形形状来源（编辑器设置里切换）。
             reapeaks_wave = quapeaks.load_waveform_payload(
                 reapeaks_base,
@@ -451,6 +500,24 @@ def load_project(
                     f"[reapeaks-wave] 已加载 {reapeaks_wave['peak_count']} peaks "
                     f"({reapeaks_wave['peaks_per_second']}/秒)"
                 )
+
+            report("loading_loudness_stats", 86)
+            # 响度统计：整文件几个标量，用来给波形定垂直缩放（详见
+            # quapeaks.extract_loudness_stats）。它是 .quapeaks 响度层的派生
+            # 缓存，缺失/损坏一律静默降级，编辑器沿用用户原来的手动振幅。
+            loudness = quapeaks.load_loudness_stats(
+                reapeaks_base,
+                audio_track=audio_track,
+                default_audio_track=default_audio_track,
+            )
+            if loudness is not None:
+                data["loudness"] = loudness
+                print(
+                    f"[loudness] {loudness['bin_count']} 桶 "
+                    f"p95={loudness['p95']:.4f} max={loudness['max']:.4f}"
+                )
+    else:
+        report("waveform_skipped", 60)
 
     report("finalizing", 95)
     return ServerProject(
@@ -490,6 +557,7 @@ def without_deferred_reapeaks(project: ServerProject) -> ServerProject:
     data = dict(project.data)
     data.pop("spectral", None)
     data.pop("waveform_reapeaks", None)
+    data.pop("loudness", None)
     return replace(project, data=data)
 
 
@@ -544,6 +612,7 @@ def build_server_page(
     if defer_reapeaks:
         page_data.pop("spectral", None)
         page_data.pop("waveform_reapeaks", None)
+        page_data.pop("loudness", None)
     if project.media_path:
         media_time_reference = read_bwf_time_reference(
             project.source_media_path or project.media_path,
@@ -600,6 +669,7 @@ def build_server_page(
             "savedWorkspaces": settings.saved_workspaces,
             "presetWorkspaces": settings.preset_workspaces,
             "activeWorkspaceName": settings.active_workspace_name,
+            "onboardingStatus": settings.onboarding_status,
         }, ensure_ascii=False),
         app_version=html.escape(f"v{edit.get_app_version()}"),
         json_display=html.escape(json_display),
@@ -774,6 +844,7 @@ class EditorServer(ThreadingHTTPServer):
     def _load_deferred_reapeaks(self, project: ServerProject, generation: int) -> None:
         spectral = None
         reapeaks_wave = None
+        loudness = None
         try:
             reapeaks_base = project.reapeaks_path or project.source_media_path or project.media_path
             if reapeaks_base is not None:
@@ -794,6 +865,16 @@ class EditorServer(ThreadingHTTPServer):
                         f"[reapeaks-wave] 后台加载 {reapeaks_wave['peak_count']} peaks "
                         f"({reapeaks_wave['peaks_per_second']}/秒)"
                     )
+                loudness = quapeaks.load_loudness_stats(
+                    reapeaks_base,
+                    audio_track=project.audio_track,
+                    default_audio_track=project.default_audio_track,
+                )
+                if loudness is not None:
+                    print(
+                        f"[loudness] 后台加载 {loudness['bin_count']} 桶 "
+                        f"p95={loudness['p95']:.4f} max={loudness['max']:.4f}"
+                    )
         except (OSError, ValueError, IndexError, struct.error) as error:
             print(f"[reapeaks] 后台加载失败: {error}", file=sys.stderr)
 
@@ -810,11 +891,16 @@ class EditorServer(ThreadingHTTPServer):
                 data.pop("waveform_reapeaks", None)
             else:
                 data["waveform_reapeaks"] = reapeaks_wave
+            if loudness is None:
+                data.pop("loudness", None)
+            else:
+                data["loudness"] = loudness
             self.project = replace(current_project, data=data)
             self.reapeaks_payload = {
                 key: value for key, value in {
                     "spectral": spectral,
                     "waveform_reapeaks": reapeaks_wave,
+                    "loudness": loudness,
                 }.items() if value is not None
             }
             self.reapeaks_status = "ready"
@@ -894,6 +980,13 @@ class EditorServer(ThreadingHTTPServer):
             if name and name not in self.settings.saved_workspaces:
                 raise ValueError("工作区不存在")
             self.settings = replace(self.settings, active_workspace_name=name)
+            self.persist_settings()
+
+    def set_onboarding_status(self, status: str) -> None:
+        if not isinstance(status, str) or status not in ONBOARDING_STATUSES:
+            raise ValueError("新手引导状态不正确")
+        with self.settings_lock:
+            self.settings = replace(self.settings, onboarding_status=status)
             self.persist_settings()
 
     def update_workspace_navigation(
@@ -1502,7 +1595,7 @@ def export_ograf(project: ServerProject, graphic: dict) -> tuple[bytes, str]:
 def write_project_json(target: Path, project_data: dict) -> Path | None:
     """Atomically write LF JSON and retain the immediately previous file as .bak.
 
-    落盘前剥掉三块内联波形缓存：磁盘工程的波形真源在媒体旁的 ``.quapeaks`` /
+    落盘前剥掉内联波形缓存：磁盘工程的波形真源在媒体旁的 ``.quapeaks`` /
     ``.mopeaks``，写进工程只会被 base64 撑大并在下次加载时"复活"内联。
     ``strip_inline_caches`` 返回副本，调用方持有的运行态工程不受影响，
     页面波形不消失。
@@ -1526,7 +1619,7 @@ def write_project_json(target: Path, project_data: dict) -> Path | None:
 def _restore_runtime_inline_caches(previous: dict | None, incoming: dict) -> None:
     """把运行态里仍属于当前媒体、当前所选音轨的波形缓存合并回保存后的工程。
 
-    浏览器保存不再携带三块缓存，磁盘副本由 :func:`write_project_json` 剥离；
+    浏览器保存不再携带这些缓存，磁盘副本由 :func:`write_project_json` 剥离；
     但运行态若跟着磁盘副本一起丢缓存，保存→刷新后原生波形会被清空，进而被
     ``/api/waveform`` 的 REAPER 峰静默顶替。仅在同一媒体、同一所选音轨时
     恢复：媒体或音轨变了，缓存描述的就是另一个对象，必须失效。incoming
@@ -1660,7 +1753,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             project = self.editor_server.project.json_path
             if project is None:
                 raise ValueError("当前服务器没有绑定工程文件")
-            directory = backup_directory(project)
+            candidates = backup_directory_candidates(project)
+            directory = next((candidate for candidate in candidates if candidate.is_dir()), candidates[0])
             directory.mkdir(parents=True, exist_ok=True)
             if directory.is_symlink() or directory.resolve() != directory.absolute():
                 raise ValueError("备份目录不能通过链接指向其他位置")
@@ -1962,6 +2056,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "savedWorkspaces": settings.saved_workspaces,
             "presetWorkspaces": settings.preset_workspaces,
             "activeWorkspaceName": settings.active_workspace_name,
+            "onboardingStatus": settings.onboarding_status,
         })
 
     def _apply_settings_request(self, request: dict[str, object]) -> bool:
@@ -2013,6 +2108,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if not isinstance(active_workspace_name, str):
                 raise ValueError("activeWorkspaceName 必须是字符串")
             self.editor_server.set_active_workspace(active_workspace_name)
+            return True
+        onboarding_status = request.get("onboardingStatus")
+        if onboarding_status is not None:
+            if not isinstance(onboarding_status, str):
+                raise ValueError("onboardingStatus 必须是字符串")
+            self.editor_server.set_onboarding_status(onboarding_status)
             return True
         update_navigation = request.get("updateWorkspaceNavigation")
         if update_navigation is not None:

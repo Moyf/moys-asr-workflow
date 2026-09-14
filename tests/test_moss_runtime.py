@@ -14,7 +14,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from maw.local_runtime import LocalRuntimeError, install_local_runtime, managed_runtime_status
+from maw.local_runtime import (
+    LocalRuntimeError,
+    install_local_runtime,
+    managed_runtime_status,
+    recover_local_runtime_install as recover_local_runtime_install_via_local,
+)
 from maw.moss_runtime import (
     MOSS_PACKAGE_DIRS,
     MOSS_PYTHON_VERSION,
@@ -23,6 +28,7 @@ from maw.moss_runtime import (
     MOSS_RUNTIME_VERSION,
     MOSS_VERIFY_IMPORT,
     default_runtime_root,
+    recover_local_runtime_install,
     runtime_python_path,
 )
 from maw.runtimes import MOSS
@@ -137,11 +143,34 @@ class MossRuntimeStatusTests(unittest.TestCase):
         self.assertFalse(status.ready)
         self.assertEqual(status.runtime_version, "2")
 
+    def test_recover_install_turns_stale_installing_manifest_into_broken(self) -> None:
+        """#127 缺陷 1：MOSS 安装中断后的 installing 残留同样要能自愈为 broken。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "runtime"
+            python = runtime_python_path(root)
+            python.parent.mkdir(parents=True, exist_ok=True)
+            python.write_bytes(b"python")
+            (root / "runtime.json").write_text(
+                '{"status": "installing", "runtimeVersion": "1"}\n',
+                encoding="utf-8",
+                newline="\n",
+            )
+
+            with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(root)}):
+                self.assertTrue(recover_local_runtime_install())
+                self.assertFalse(recover_local_runtime_install())
+                # local_runtime 的 engine 路由入口同样能触发 MOSS 的恢复
+                self.assertFalse(recover_local_runtime_install_via_local(engine="moss"))
+                status = managed_runtime_status(engine="moss")
+
+        self.assertEqual(status.status, "broken")
+
 
 class MossRuntimeInstallTests(unittest.TestCase):
     # 内嵌流测试固定 win32：委托链与布局在 mac/linux CI 上一致。
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
     def test_install_delegates_to_embedded_runtime_with_frozen_txt(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "local-runtime-moss"

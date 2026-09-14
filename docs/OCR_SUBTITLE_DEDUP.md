@@ -11,16 +11,16 @@
 3. 回到工具箱，在「处理文件」中选择工程或 SRT。默认会跟随 Launcher 当前工程或 SRT，也可以手动选择其他 `.mosp`、`.json` 或 `.srt` 文件。
 4. 确认「视频画面」输入。未明确指定时会跟随 Launcher 当前视频，拖入新视频后也会自动更新；独立 SRT 同样回退到当前视频。只有选择、拖入或输入独立视频后才会固定画面来源；如果当前媒体是音频或没有可用视频，必须额外选择一个视频。
 5. 选择 OCR 模型（tiny 更快，small 对复杂画面更稳）、画面字幕区和相似度阈值，点击「执行 OCR 字幕去重」。
-6. 在「输出」中选择「工程 + SRT」「仅工程」或「仅 SRT」。原文件不会被覆盖，结果会使用 `ocr-dedup` 操作后缀。
+6. 在「输出」中选择「工程 + SRT」「仅工程」或「仅 SRT」。原文件不会被覆盖，结果会使用 `ocr-dedup` 操作后缀（中文界面为 `OCR去重`）。
 
-例如，输入 `clip.mosp` 和 `clip.srt` 后，默认会生成：
+例如，输入 `clip.mosp` 和 `clip.srt` 后，英文界面默认会生成：
 
 ```text
 clip.ocr-dedup.mosp
 clip.ocr-dedup.srt
 ```
 
-如果文件已经存在，会自动追加编号，例如 `clip.ocr-dedup-2.srt`。
+中文界面为 `clip.OCR去重.mosp` / `clip.OCR去重.srt`。如果文件已经存在，会自动追加编号，例如 `clip.ocr-dedup-2.srt`。
 
 ## 处理规则
 
@@ -58,13 +58,13 @@ clip.ocr-dedup.srt
 
 ## OCR 报告
 
-勾选「生成 OCR 判定报告（CSV）」后，会额外生成：
+勾选「生成 OCR 判定报告（CSV）」后，会额外生成（英文界面）：
 
 ```text
 clip.ocr-dedup.csv
 ```
 
-报告使用 UTF-8 BOM，方便直接用 Excel 打开中文内容。报告包含：
+中文界面为 `clip.OCR去重.csv`。报告使用 UTF-8 BOM，方便直接用 Excel 打开中文内容。报告包含：
 
 - 字幕序号、开始/结束时间和时长；
 - 处理状态，例如 `disabled`、`kept`、`existing_disabled`、`skipped`、`frame_failed`、`ocr_failed`；

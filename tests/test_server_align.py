@@ -7,10 +7,12 @@ import threading
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from maw.project import PROJECT_SCHEMA
+from maw.waveform import media_signature
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +25,108 @@ SPEC.loader.exec_module(SERVER)
 
 
 class ServerAlignTests(unittest.TestCase):
+    def test_load_state_reads_quapeaks_waveform_for_runtime_gap_detection(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project_path = root / "source.mosp"
+            script_path = root / "script.txt"
+            media_path = root / "recording.wav"
+            media_path.write_bytes(b"media placeholder")
+            project_path.write_text(json.dumps({
+                "media": str(media_path),
+                "media_metadata": {
+                    "audio_tracks": [
+                        {"audio_index": 0, "stream_index": 1, "default": True},
+                        {"audio_index": 1, "stream_index": 2, "default": False},
+                    ],
+                    "selected_audio_track": 1,
+                },
+                "segments": [
+                    {"id": "s1", "start": 0, "end": 1000, "text": "hello", "items": []},
+                ],
+            }), encoding="utf-8")
+            script_path.write_text("hello\n", encoding="utf-8")
+            waveform = {
+                "schema": "moy.asr.waveform.v1",
+                "encoding": "i8-minmax-base64",
+                "peaks_per_second": 100,
+                "peak_count": 1,
+                "duration_ms": 10,
+                "audio_track": 1,
+                "data": "AIA=",
+                "source": media_signature(media_path),
+            }
+
+            with (
+                mock.patch.object(SERVER.quapeaks, "load_self_wave_payload", return_value=waveform) as load_self,
+                mock.patch.object(SERVER.quapeaks, "load_waveform_payload") as load_wave,
+            ):
+                state = SERVER.load_state(project_path, script_path, None)
+
+            self.assertEqual(state.project["waveform"], waveform)
+            self.assertTrue(state.payload()["waveform"]["available"])
+            load_self.assert_called_once_with(
+                media_path.resolve(), audio_track=1, default_audio_track=0,
+            )
+            load_wave.assert_not_called()
+
+    def test_load_state_falls_back_to_quapeaks_wave_layer(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project_path = root / "source.mosp"
+            script_path = root / "script.txt"
+            media_path = root / "recording.wav"
+            media_path.write_bytes(b"media placeholder")
+            project_path.write_text(json.dumps({
+                "media": str(media_path),
+                "segments": [
+                    {"id": "s1", "start": 0, "end": 1000, "text": "hello", "items": []},
+                ],
+            }), encoding="utf-8")
+            script_path.write_text("hello\n", encoding="utf-8")
+            waveform = {
+                "schema": "moy.asr.waveform.v1",
+                "encoding": "i8-minmax-base64",
+                "peaks_per_second": 300,
+                "peak_count": 1,
+                "duration_ms": 10,
+                "audio_track": 0,
+                "data": "AIA=",
+                "source": media_signature(media_path),
+            }
+
+            with (
+                mock.patch.object(SERVER.quapeaks, "load_self_wave_payload", return_value=None),
+                mock.patch.object(SERVER.quapeaks, "load_waveform_payload", return_value=waveform) as load_wave,
+            ):
+                state = SERVER.load_state(project_path, script_path, None)
+
+            self.assertEqual(state.project["waveform"], waveform)
+            load_wave.assert_called_once_with(
+                media_path.resolve(), audio_track=0, default_audio_track=0,
+            )
+
+    def test_write_project_does_not_persist_runtime_waveform_cache(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_path = root / "source.mosp"
+            waveform = {
+                "schema": "moy.asr.waveform.v1",
+                "encoding": "i8-minmax-base64",
+                "peaks_per_second": 100,
+                "peak_count": 1,
+                "duration_ms": 10,
+                "data": "AIA=",
+            }
+
+            output_path = SERVER.write_project(
+                source_path,
+                {"schema": PROJECT_SCHEMA, "segments": [], "waveform": waveform},
+            )
+
+            saved = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertNotIn("waveform", saved)
+
     def test_rendered_page_inlines_gap_core_and_playback_contract(self) -> None:
         page = SERVER.render_page().decode("utf-8")
         self.assertNotIn("/* __GAP_REMOVE_CORE_JS__ */", page)
@@ -45,6 +149,7 @@ class ServerAlignTests(unittest.TestCase):
         self.assertNotIn("isPreviewingGap(gap, now)", page)
         self.assertIn("let waveformMode = 'multi';", page)
         self.assertIn('data-waveform-mode="multi">多行</button>', page)
+        self.assertIn("没有可用波形缓存（工程内嵌或媒体旁 .quapeaks）", page)
         self.assertIn("function previewGapAt(timeMs, gap = null)", page)
         self.assertIn("seekTimeline(time, current);", page)
         self.assertIn("if (event.button === 0 && event.altKey)", page)

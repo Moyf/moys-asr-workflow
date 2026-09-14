@@ -14,6 +14,7 @@ import math
 import subprocess
 import sys
 from array import array
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from maw.ffmpeg import resolve_ffmpeg_tool
 WAVEFORM_SCHEMA = "moy.asr.waveform.v1"
 WAVEFORM_ENCODING = "i8-minmax-base64"
 DEFAULT_PEAKS_PER_SECOND = 100
+WaveformProgressCallback = Callable[[str], None]
 
 
 class WaveformError(RuntimeError):
@@ -317,6 +319,7 @@ def load_or_extract_waveform(
     ffmpeg_bin: str | None = None,
     audio_track: int = 0,
     default_audio_track: int | None = None,
+    on_progress: WaveformProgressCallback | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Return cached peaks when valid, otherwise extract a fresh payload."""
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
@@ -370,6 +373,8 @@ def load_or_extract_waveform(
     )
     if fallback is None and container_payload is not None:
         fallback = container_payload
+    if on_progress is not None:
+        on_progress("generating")
     try:
         payload = extract_waveform(
             media_path,

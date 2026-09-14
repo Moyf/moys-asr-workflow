@@ -263,17 +263,30 @@ test('converts and formats the parallel frame timebase', () => {
   assert.equal(helpers.normalizeEditorSettings({ timelineTimecodeSeparator: ',' }).timelineTimecodeSeparator, ',');
 });
 
+test('normalizes the attached-cue boundary drag mode with dual as the default', () => {
+  assert.equal(helpers.normalizeEditorSettings({}).adjacentBoundaryMode, 'dual');
+  assert.equal(helpers.normalizeEditorSettings({ adjacentBoundaryMode: 'dual' }).adjacentBoundaryMode, 'dual');
+  assert.equal(helpers.normalizeEditorSettings({ adjacentBoundaryMode: 'classic' }).adjacentBoundaryMode, 'classic');
+  assert.equal(helpers.normalizeEditorSettings({ adjacentBoundaryMode: 'invalid' }).adjacentBoundaryMode, 'dual');
+});
+
 test('normalizes optional source video FPS metadata for frame-mode defaults', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeMediaMetadata({
     video_fps: 30000 / 1001,
     video_fps_ratio: '30000/1001',
+    video_width: 3840,
+    video_height: 2160,
   }))), {
     video_fps: 29.97,
     video_fps_ratio: '30000/1001',
+    video_width: 3840,
+    video_height: 2160,
   });
   assert.equal(helpers.normalizeMediaMetadata(undefined), null);
   assert.equal(helpers.normalizeMediaMetadata({ video_fps: 300 }), null);
   assert.equal(helpers.normalizeMediaMetadata({ video_fps: 30, video_fps_ratio: '' }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ video_width: 1920 }), null);
+  assert.equal(helpers.normalizeMediaMetadata({ video_width: 0, video_height: 1080 }), null);
 });
 
 test('normalizes source audio track metadata independently from video FPS', () => {
@@ -1421,7 +1434,10 @@ test('translates speaker label separator settings to English', () => {
   assert.equal(i18n.translateText('颜色与说话人', 'en'), 'Colors and speakers');
   assert.equal(i18n.translateText('将颜色映射为说话人', 'en'), 'Map colors to speakers');
   assert.equal(i18n.translateText('在预览字幕中显示说话人', 'en'), 'Show speaker names in preview subtitles');
-  assert.equal(i18n.translateText('使用说话人名称作为后缀', 'en'), 'Use speaker name as suffix');
+  assert.equal(
+    i18n.translateText('使用说话人名称替代颜色后缀', 'en'),
+    'Use speaker name instead of the color suffix',
+  );
   assert.equal(
     i18n.translateText('在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。', 'en'),
     'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
@@ -1439,7 +1455,10 @@ test('translates speaker label separator settings to English', () => {
 });
 
 test('translates OTIOZ export labels, mode hints and dynamic messages to English', () => {
-  assert.equal(i18n.translateText('完整字幕（SRT）', 'en'), 'Full subtitles (SRT)');
+  assert.equal(i18n.translateText('完整 SRT 字幕', 'en'), 'Full SRT subtitles');
+  assert.equal(i18n.translateText('按颜色拆分导出 SRT 字幕', 'en'), 'Export SRT subtitles split by color');
+  assert.equal(i18n.translateText('带样式的 ASS 字幕', 'en'), 'Styled ASS subtitles');
+  assert.equal(i18n.translateText('SRT 字幕', 'en'), 'SRT subtitles');
   assert.equal(i18n.translateText('表情包 OTIO 工程', 'en'), 'Sticker OTIO project');
   assert.equal(i18n.translateText('表情包 OTIOZ 打包工程', 'en'), 'Sticker OTIOZ bundle');
   assert.equal(i18n.translateText('时间线 OTIO 工程', 'en'), 'Timeline OTIO project');
@@ -3028,10 +3047,70 @@ test('builds ASS subtitles with the selected font, size, color and safe text', (
   assert.equal(helpers.formatAssTime(Infinity), '0:00:00.00');
   assert.equal(helpers.formatAssTime(3723456), '1:02:03.46');
   assert.match(ass, /\[Script Info\][\s\S]*\[V4\+ Styles\][\s\S]*\[Events\]/);
-  assert.match(ass, /Style: Default,Microsoft YaHei,32,&H00563412,&H00563412,/);
+  assert.match(ass, /PlayResX: 1920[\s\S]*PlayResY: 1080/);
+  assert.match(ass, /Style: Default,Microsoft YaHei,128,&H00563412,&H00563412,/);
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:03\.46,Default,,0,0,0,,你好\\NHello, \\{tag\\}\\\\path/);
   assert.match(ass, /Dialogue: 0,0:00:05\.00,0:00:05\.01,Default,,0,0,0,,later/);
   assert.doesNotMatch(ass, /disabled/);
+});
+
+test('builds ASS metadata and five palette styles at the source video resolution', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
+    { start: 1200, end: 2200, text: 'plain line' },
+  ], {
+    title: 'project-name',
+    mediaMetadata: { video_width: 3840, video_height: 2160 },
+    appearance: { font_size: 32, font_family: 'sans', color: '#ffffff' },
+  });
+
+  assert.match(ass, /Title: project-name/);
+  assert.match(ass, /PlayResX: 3840[\s\S]*PlayResY: 2160/);
+  assert.match(ass, /Style: Default,Arial,256,/);
+  assert.match(ass, /Style: YELLOW,Arial,256,&H0019A0C4,&H0019A0C4,/);
+  assert.match(ass, /Style: GREEN,Arial,256,&H006ABB66,&H006ABB66,/);
+  assert.match(ass, /Style: RED,Arial,256,&H006F7FF0,&H006F7FF0,/);
+  assert.match(ass, /Style: PURPLE,Arial,256,&H00E689BF,&H00E689BF,/);
+  assert.match(ass, /Style: BLUE,Arial,256,&H00FAA761,&H00FAA761,/);
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
+  assert.match(ass, /Dialogue: 0,0:00:01\.20,0:00:02\.20,Default,,0,0,0,,plain line/);
+});
+
+test('converts the responsive default ASS font size at the source video resolution', () => {
+  const segments = [{ start: 0, end: 1000, text: 'auto size' }];
+  const metadata = { video_width: 3840, video_height: 2160 };
+  const withoutStoredSize = helpers.buildAssPayload(segments, {
+    mediaMetadata: metadata,
+    appearance: { font_size: null },
+  });
+  const explicitAuto = helpers.buildAssPayload(segments, {
+    mediaMetadata: metadata,
+    fontSize: 'auto',
+  });
+
+  assert.equal(helpers.resolveAssFontSize(null, 1080), 72);
+  assert.equal(helpers.resolveAssFontSize(32, 1080), 128);
+  assert.match(withoutStoredSize, /Style: Default,Arial,144,/);
+  assert.match(explicitAuto, /Style: Default,Arial,144,/);
+});
+
+test('optionally prefixes configured speaker names in ASS output', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'yellow line', color: { name: 'yellow' } },
+    { start: 1200, end: 2200, text: 'green line', color: { name: 'green' } },
+    { start: 2400, end: 3400, text: 'plain line' },
+    { start: 3600, end: 4600, text: 'disabled', color: { name: 'red' }, disabled: true },
+  ], {
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host', green: 'Guest', red: 'Editor' },
+    speakerLabelSeparator: ' ',
+  });
+
+  assert.deepEqual(ass.split('\n').filter((line) => line.startsWith('Dialogue:')), [
+    'Dialogue: 0,0:00:00.00,0:00:01.00,YELLOW,Host,0,0,0,,Host yellow line',
+    'Dialogue: 0,0:00:01.20,0:00:02.20,GREEN,Guest,0,0,0,,Guest green line',
+    'Dialogue: 0,0:00:02.40,0:00:03.40,Default,,0,0,0,,plain line',
+  ]);
 });
 
 

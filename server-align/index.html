@@ -3042,7 +3042,7 @@
 
   async function loadWaveform() {
     if (!state.waveform?.available) {
-      $('#waveform-hint').textContent = 'mosp 没有内嵌波形；候选块仍可使用，导出后可在 MAWE 重新扫描。';
+      $('#waveform-hint').textContent = '没有可用波形缓存（工程内嵌或媒体旁 .quapeaks）；候选块仍可使用，导出后可在 MAWE 重新扫描。';
       return;
     }
     try {

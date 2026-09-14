@@ -31,12 +31,14 @@ from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessEr
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
+from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError  # noqa: E402
 from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
 from maw.postprocess import PostprocessStepError  # noqa: E402
+from maw.postprocess_io import read_project  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.postprocess_pipeline import PostprocessPipelineError, save_postprocess_plan  # noqa: E402
 from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
-from maw.runtimes import OCR  # noqa: E402
+from maw.runtimes import LOCAL, OCR  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
 
 
@@ -103,7 +105,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(config["localRuntime"]["status"], "checking")
         self.assertEqual(config["ocrRuntime"]["status"], "checking")
         self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
-        self.assertEqual(config["providers"][0]["keyUrl"], "https://help.aliyun.com/zh/model-studio/get-api-key")
+        self.assertEqual(config["providers"][0]["keyUrl"], "https://platform.qianwenai.com/home/")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
         self.assertEqual(len(config["providers"][1]["commonLanguages"]), 8)
@@ -178,6 +180,109 @@ class GuiWebBridgeTests(unittest.TestCase):
         manifest = json.loads((runtime_root / "runtime.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["status"], "broken")
         self.assertIn("ocrRuntimeCancelled", "".join(self.window.scripts))
+
+    def test_get_local_runtime_recovers_a_stale_install_marker(self) -> None:
+        """#127 缺陷 1：安装线程已死而标记残留时，状态查询要自愈出可操作状态。"""
+        runtime_root = self.root / "local-runtime"
+        python = LOCAL.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            result = self.api.get_local_runtime({"modelId": "qwen3-asr-local"})
+
+        self.assertEqual(result["status"], "broken")
+
+    def test_local_runtime_recovery_distinguishes_live_other_engine_worker(self) -> None:
+        """MOSS 安装存活时，不应阻止恢复另一个运行时的陈旧标记。"""
+        runtime_root = self.root / "local-runtime"
+        python = LOCAL.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+        self.api.local_runtime_worker_engine = "moss"
+        self.api.local_runtime_worker = mock.Mock()
+        self.api.local_runtime_worker.is_alive.return_value = True
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            result = self.api.get_local_runtime({"modelId": "qwen3-asr-local"})
+
+        self.assertEqual(result["status"], "broken")
+
+    def test_local_runtime_status_stays_installing_for_live_same_engine_worker(self) -> None:
+        """正在安装本运行时期间，状态查询不能提前把 manifest 改成 broken。"""
+        runtime_root = self.root / "local-runtime"
+        python = LOCAL.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+        self.api.local_runtime_worker_engine = "qwen-asr"
+        self.api.local_runtime_worker = mock.Mock()
+        self.api.local_runtime_worker.is_alive.return_value = True
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            result = self.api.get_local_runtime({"modelId": "qwen3-asr-local"})
+
+        self.assertEqual(result["status"], "installing")
+
+    def test_local_runtime_cancel_cleans_marker_before_emitting_cancelled(self) -> None:
+        runtime_root = self.root / "local-runtime"
+        python = LOCAL.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+        cancel_event = threading.Event()
+        cancel_event.set()
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            with mock.patch("maw.gui_web.install_local_runtime", side_effect=LocalRuntimeCancelled("cancelled")):
+                self.api._local_runtime_main(False, str(self.root / "models"), "qwen-asr", cancel_event)
+
+        manifest = json.loads((runtime_root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["status"], "broken")
+        self.assertIn("localRuntimeCancelled", "".join(self.window.scripts))
+
+    def test_local_runtime_failure_cleans_marker_before_emitting_error(self) -> None:
+        """#127 缺陷 1：安装失败必须回写标记，否则 UI 永远卡在「正在安装中」。"""
+        runtime_root = self.root / "local-runtime"
+        python = LOCAL.python_path(runtime_root)
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_bytes(b"python")
+        write_runtime_manifest(
+            runtime_root,
+            status=STATUS_INSTALLING,
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            with mock.patch("maw.gui_web.install_local_runtime", side_effect=LocalRuntimeError("boom")):
+                self.api._local_runtime_main(False, str(self.root / "models"), "qwen-asr", threading.Event())
+
+        manifest = json.loads((runtime_root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["status"], "broken")
+        self.assertIn("local_runtime_install_failed", "".join(self.window.scripts))
 
     def test_get_config_falls_back_from_hidden_tencent_provider(self) -> None:
         _ = self.env_path.write_text("MAW_GUI_LAST_MODEL=16k_zh_en_2.0\n", encoding="utf-8")
@@ -558,6 +663,12 @@ class GuiWebBridgeTests(unittest.TestCase):
             "# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\nMAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n",
         )
 
+    def test_save_prefs_persists_gui_language(self) -> None:
+        result = self.api.save_prefs({"guiLang": "en"})
+
+        self.assertTrue(result["ok"])
+        self.assertIn("MAW_GUI_LANG=en", self.env_path.read_text(encoding="utf-8"))
+
     def test_save_prefs_persists_file_output_flags_and_get_config_restores_them(self) -> None:
         """Given 文件输出 toggles, When saved, Then .env and bulk config reflect them."""
         for key in ("MAW_GUI_OUTPUT_SUBFOLDER", "MAW_GUI_PER_VIDEO_SUBFOLDER", "MAW_GUI_ATTACH_MODEL_NAME"):
@@ -587,7 +698,26 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertFalse(config["outputSubfolder"])
         self.assertFalse(config["perVideoSubfolder"])
-        self.assertTrue(config["attachModelName"])
+        self.assertFalse(config["attachModelName"])
+
+    def test_notify_preference_defaults_off_and_round_trips(self) -> None:
+        """Given the completion-notification toggle, When saved, Then .env and config reflect it."""
+        os.environ.pop("MAW_GUI_NOTIFY_ON_COMPLETE", None)
+        self.assertFalse(self.api.get_config()["notifyOnComplete"])
+
+        result = self.api.save_prefs({"notifyOnComplete": True})
+
+        self.assertTrue(result["ok"])
+        self.assertIn("MAW_GUI_NOTIFY_ON_COMPLETE=true", self.env_path.read_text(encoding="utf-8"))
+        self.assertTrue(self.api.get_config()["notifyOnComplete"])
+
+    def test_send_notification_delegates_to_platform_helper(self) -> None:
+        """Given a completion message, When the page asks for a notification, Then it is sent once."""
+        with mock.patch("maw.gui_web.send_system_notification", return_value=True) as sender:
+            result = self.api.send_notification({"title": "完成", "message": "已生成 a.srt"})
+
+        self.assertEqual(result, {"ok": True, "sent": True})
+        sender.assert_called_once_with("完成", "已生成 a.srt")
 
     def test_save_prefs_persists_theme_and_get_config_restores_it(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=False):
@@ -1097,13 +1227,26 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('id="toolboxPostprocessView" class="toolbox-primary-view" role="tabpanel"', html)
         self.assertIn('id="toolboxUtilitiesView" class="toolbox-primary-view hidden" role="tabpanel"', html)
         self.assertIn('id="toolboxUtilitiesContent" class="toolbox-utilities-content hidden"', utilities_html)
-        self.assertIn('aria-orientation="vertical"', utilities_html)
+        self.assertNotIn('aria-orientation="vertical"', utilities_html)
         self.assertLess(utility_panels, alignment_panel)
         self.assertLess(alignment_close, ffconcat_panel)
         for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab"):
             self.assertIn(f'id="{tab_id}"', postprocess_html)
         for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
             self.assertIn(f'id="{tab_id}"', utilities_html)
+        self.assertLess(html.index('id="toolboxBurnSubtitleTab"'), html.index('id="toolboxFfconcatTab"'))
+        self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxAlignmentTab"'))
+        self.assertLess(html.index('id="toolboxAlignmentTab"'), html.index('id="toolboxExtractAudioTab"'))
+        self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
+        # 实用工具记住上次选择的工具；从未选择时回退到第一项（压制字幕）。
+        self.assertIn(
+            'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");',
+            script,
+        )
+        self.assertIn(
+            'return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");',
+            script,
+        )
         self.assertNotIn('id="toolboxWaveformTab"', postprocess_html)
         self.assertNotIn('id="toolboxFfconcatTab"', postprocess_html)
         self.assertIn('toolbox_title: "工具箱"', strings)
@@ -1171,7 +1314,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('data-tool="alignment"', page)
         alignment_tab = page.index('id="toolboxAlignmentTab"')
         self.assertLess(alignment_tab, page.index('id="toolboxWaveformTab"'))
-        self.assertLess(alignment_tab, page.index('id="toolboxFfconcatTab"'))
+        self.assertGreater(alignment_tab, page.index('id="toolboxFfconcatTab"'))
         self.assertIn('data-tool-action="alignment"', page)
         self.assertIn('toolbox_alignment: "口播对齐"', launcher_script)
         self.assertIn('toolbox_alignment: "Speech alignment"', launcher_script)
@@ -1190,12 +1333,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });", postprocess_script)
         self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
         self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
-        self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  grid-template-columns: minmax(108px, .25fr) minmax(0, 1fr);', styles)
-        self.assertIn('.toolbox-utility-tab-list {\n  grid-template-columns: 1fr;\n}', styles)
+        self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  gap: 12px;', styles)
+        self.assertIn('.toolbox-tab-list-5 {\n  grid-template-columns: repeat(5, minmax(0, 1fr));\n}', styles)
         self.assertIn('$("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
-        self.assertIn('.toolbox-drawer.toolbox-utilities-active .toolbox-content {\n  display: flex;\n  flex-direction: column;', styles)
-        self.assertIn('.toolbox-utility-tabs {\n  overflow-y: auto;\n  min-block-size: 0;\n  overscroll-behavior: contain;\n  margin-top: 0;\n  padding: 4px;\n  scrollbar-width: none;\n}', styles)
-        self.assertIn('.toolbox-utility-panels {\n  min-width: 0;\n  min-block-size: 0;\n  overflow-y: auto;', styles)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
 
     def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
@@ -1244,7 +1384,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         output_srt = Path(str(result["srtPath"]))
         self.assertTrue(output_project.is_file())
         self.assertTrue(output_srt.is_file())
-        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "旧句。")
+        self.assertTrue(output_project.name.startswith("clip.文稿匹配"))
+        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "旧句")
+        self.assertNotIn("旧句。", output_srt.read_text(encoding="utf-8"))
 
     def test_script_preview_returns_bounded_utf8_text(self) -> None:
         script = self.root / "preview.txt"
@@ -1271,14 +1413,53 @@ class GuiWebBridgeTests(unittest.TestCase):
         result = self.api.read_script_preview({"path": str(script)})
 
         self.assertTrue(result["ok"])
-        self.assertEqual(result["preview"], "标题\n正文\n")
+        self.assertEqual(result["preview"], "标题\n正文")
         self.assertFalse(result["truncated"])
+
+    def test_markdown_script_preview_can_clean_inline_symbols(self) -> None:
+        script = self.root / "inline-preview.md"
+        script.write_text("**粗体**\n==高亮==\n", encoding="utf-8")
+
+        cleaned = self.api.read_script_preview({"path": str(script)})
+        preserved = self.api.read_script_preview({"path": str(script), "cleanMarkdownSymbols": False})
+
+        self.assertEqual(cleaned["preview"].rstrip("\n"), "粗体\n高亮")
+        self.assertEqual(preserved["preview"].rstrip("\n"), "**粗体**\n==高亮==")
+
+    def test_script_preview_uses_processed_split_and_tail_punctuation(self) -> None:
+        script = self.root / "processed-preview.txt"
+        script.write_text("第一句，第二句？第三句。", encoding="utf-8")
+
+        result = self.api.read_script_preview({
+            "path": str(script),
+            "extraSplitPunctuation": ["？"],
+            "preservePunctuation": ["？"],
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["preview"], "第一句\n第二句？\n第三句")
+
+    def test_script_match_bridge_forwards_markdown_cleanup_setting(self) -> None:
+        project = self.root / "clip.mosp"
+        script = self.root / "inline-match.md"
+        project.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "这样"}]}), encoding="utf-8")
+        script.write_text("**这样**", encoding="utf-8")
+
+        preserved = self.api.run_script_match({
+            "projectPath": str(project),
+            "scriptPath": str(script),
+            "outputMode": "project",
+            "cleanMarkdownSymbols": False,
+        })
+
+        self.assertTrue(preserved["ok"])
+        self.assertIn("**这样**", read_project(Path(preserved["projectPath"]))["segments"][0]["text"])
 
     def test_script_match_preview_returns_split_text(self) -> None:
         project = self.root / "clip.mosp"
         script = self.root / "preview.txt"
         project.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "甲乙"}]}), encoding="utf-8")
-        script.write_text("甲\n乙", encoding="utf-8")
+        script.write_text("**甲**\n==乙==", encoding="utf-8")
 
         result = self.api.preview_script_match({"projectPath": str(project), "scriptPath": str(script)})
 
@@ -1287,6 +1468,53 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["matchRate"], 100)
         self.assertEqual(result["originalSegmentCount"], 1)
         self.assertEqual(result["matchedSegmentCount"], 2)
+
+        preserved = self.api.preview_script_match({
+            "projectPath": str(project),
+            "scriptPath": str(script),
+            "cleanMarkdownSymbols": False,
+        })
+
+        self.assertTrue(preserved["ok"])
+        self.assertEqual(preserved["preview"], "1. **甲**\n2. ==乙==")
+
+    def test_match_preview_distinguishes_invalid_subtitle_from_low_match(self) -> None:
+        malformed = self.root / "malformed.srt"
+        malformed.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\n甲\n\n2\n00:00:00,900 --> 00:00:02,000\n乙\n",
+            encoding="utf-8",
+        )
+        script = self.root / "valid.txt"
+        script.write_text("甲乙", encoding="utf-8")
+
+        result = self.api.preview_script_match({"srtPath": str(malformed), "scriptPath": str(script)})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["errorCode"], "subtitle_invalid")
+
+        run_result = self.api.run_script_match({
+            "srtPath": str(malformed),
+            "scriptPath": str(script),
+            "outputMode": "both",
+        })
+        self.assertFalse(run_result["ok"])
+        self.assertEqual(run_result["code"], "subtitle_invalid")
+
+    def test_script_match_bridge_returns_structured_low_match_error(self) -> None:
+        project = self.root / "low-match.mosp"
+        script = self.root / "low-match.txt"
+        project.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "字幕甲乙丙"}]}), encoding="utf-8")
+        script.write_text("文稿丁戊己", encoding="utf-8")
+
+        result = self.api.run_script_match({
+            "projectPath": str(project),
+            "scriptPath": str(script),
+            "outputMode": "both",
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "match_too_low")
+        self.assertEqual(result["minimumMatchRate"], 55)
 
     def test_ocr_dedup_bridge_forwards_video_region_threshold_and_report(self) -> None:
         project = self.root / "clip.mosp"
@@ -1445,6 +1673,31 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         request = process.call_args.args[0]
         self.assertTrue(request.merge_bilingual)
+
+    def test_llm_bridge_forwards_backfill_embed_option(self) -> None:
+        artifact = SimpleNamespace(
+            source_project_path=None,
+            source_srt_path=None,
+            project_path=None,
+            srt_path=None,
+            translated_srt_path=None,
+            warnings=(),
+        )
+        with mock.patch("maw.gui_web.process_llm_postprocess", return_value=artifact) as process:
+            result = self.api.run_llm_postprocess({
+                "operation": "translate_zh",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "customPrompt": "",
+                "embedTranslations": True,
+            })
+
+        self.assertTrue(result["ok"])
+        request = process.call_args.args[0]
+        self.assertTrue(request.embed_translations)
+        self.assertFalse(request.merge_bilingual)
 
     def test_llm_bridge_classifies_provider_http_error_without_exposing_secrets(self) -> None:
         provider_error = LlmClientError(
@@ -2267,12 +2520,60 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "port")
         self.assertEqual(result["code"], "server_no_response")
-        self.assertIn("启动超时", result["detail"])
-        self.assertIn("child stalled before binding port", result["detail"])
+        self.assertEqual(result["detail"], "http://127.0.0.1:9876/")
+        self.assertEqual(result["diagnostics"]["startupLogTail"], "child stalled before binding port")
         persisted_log = next(log_directory.glob("maw-*.log")).read_text(encoding="utf-8")
         self.assertIn("server_no_response", persisted_log)
         self.assertIn("child stalled before binding port", persisted_log)
         open_browser.assert_not_called()
+
+    def test_start_server_includes_bounded_diagnostics_when_process_stays_alive(self) -> None:
+        project = self.root / "project.json"
+        media = self.root / "clip.mp4"
+        project.write_text(json.dumps({"media": str(media), "segments": []}), encoding="utf-8")
+        media.write_bytes(b"media")
+
+        class RunningProcess:
+            pid = 4321
+            returncode = None
+
+            def poll(self) -> int | None:
+                return None
+
+            def terminate(self) -> None:
+                self.returncode = -15
+
+            def wait(self, timeout: float | None = None) -> int:
+                return self.returncode or 0
+
+        def spawn(*_args, **kwargs):
+            kwargs["stdout"].write((
+                "MAWE 已启动\n"
+                "[project] 等待工程加载\n"
+                "Authorization: Bearer secret-token\n"
+            ).encode("utf-8"))
+            kwargs["stdout"].flush()
+            return RunningProcess()
+
+        with mock.patch("maw.gui_web.subprocess.Popen", side_effect=spawn):
+            with mock.patch("maw.gui_web._wait_for_server", return_value=False):
+                with mock.patch("maw.gui_web._probe_server", return_value=(False, "Connection refused")):
+                    with mock.patch("maw.gui_web.terminate_process_tree"):
+                        with mock.patch("maw.gui_web.release_process_tree"):
+                            result = self.api.start_server({"jsonPath": str(project), "mediaPath": str(media), "port": "9876"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "server_no_response")
+        self.assertEqual(result["detail"], "http://127.0.0.1:9876/")
+        self.assertEqual(
+            result["diagnostics"],
+            {
+                "processState": "running",
+                "pid": 4321,
+                "lastProbe": "Connection refused",
+                "startupLogTail": "MAWE 已启动\n[project] 等待工程加载\nAuthorization: Bearer [REDACTED]",
+            },
+        )
 
     def test_packaged_server_child_resets_pyinstaller_environment(self) -> None:
         project = self.root / "project.json"
@@ -2314,7 +2615,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                 return 2
 
         def spawn(*_args, **kwargs):
-            kwargs["stdout"].write(b"Traceback: FLV conversion failed\nffmpeg is unavailable\n")
+            kwargs["stdout"].write(b"Traceback: FLV conversion failed\nTOKEN=server-secret\nffmpeg is unavailable\n")
             kwargs["stdout"].flush()
             return FailedProcess()
 
@@ -2326,6 +2627,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["code"], "server_start_failed")
         self.assertIn("进程退出码 2", result["detail"])
         self.assertIn("FLV conversion failed", result["detail"])
+        self.assertNotIn("server-secret", result["detail"])
 
     def test_start_server_reports_code_when_project_json_is_missing(self) -> None:
         """Given missing project JSON, When starting server, Then json_not_found code is returned."""
@@ -2368,6 +2670,16 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(calls, ["wait", "wait"])
+
+    def test_server_probe_treats_http_client_errors_as_reachable(self) -> None:
+        from maw.gui_web import _probe_server
+
+        error = HTTPError("http://127.0.0.1:9876/", 404, "Not found", {}, None)
+        with mock.patch("maw.gui_web.urlopen", side_effect=error):
+            ready, detail = _probe_server("http://127.0.0.1:9876/")
+
+        self.assertTrue(ready)
+        self.assertEqual(detail, "HTTP 404")
 
     def test_start_server_returns_existing_server_url_without_spawning(self) -> None:
         """Given a responding port, When starting server, Then it reports the existing server instead of spawning."""
@@ -2679,6 +2991,26 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["stickerDir"], str(stickers))
         self.assertIn(f"STICKER_DIR={stickers}", self.env_path.read_text(encoding="utf-8"))
+
+    def test_open_sticker_folder_opens_the_configured_directory(self) -> None:
+        stickers = self.root / "stickers"
+        stickers.mkdir()
+        with mock.patch("maw.gui_web.effective_config", return_value=SimpleNamespace(sticker_dir=str(stickers))):
+            with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opener:
+                result = self.api.open_sticker_folder()
+
+        self.assertEqual(result, {"ok": True})
+        opener.assert_called_once_with(stickers.resolve())
+
+    def test_open_sticker_folder_rejects_a_missing_configured_directory(self) -> None:
+        missing = self.root / "missing-stickers"
+        with mock.patch("maw.gui_web.effective_config", return_value=SimpleNamespace(sticker_dir=str(missing))):
+            with mock.patch("maw.gui_web._open_existing_path") as opener:
+                result = self.api.open_sticker_folder()
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "sticker_dir_invalid")
+        opener.assert_not_called()
 
     @unittest.skipUnless(os.name == "nt", "os.startfile 仅 Windows 可用；os.name 补丁会让 pathlib 选择 WindowsPath")
     def test_open_output_folder_uses_startfile_on_windows(self) -> None:
@@ -3853,6 +4185,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("run_llm_postprocess"', script)
         self.assertIn('mergeBilingual: Boolean($("postprocessMergeBilingual")?.checked)', script)
         self.assertIn('mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked)', script)
+        self.assertIn('embedTranslations: Boolean($("postprocessBackfill")?.checked)', script)
+        self.assertIn('embedTranslations: Boolean($("autoTranslateBackfill")?.checked)', script)
+        self.assertIn('bilingualLineOrder: $("postprocessBilingualOrder")?.value', script)
+        self.assertIn('bilingualLineOrder: $("autoTranslateBilingualOrder")?.value', script)
+        self.assertIn('id="postprocessBilingualOrder"', page)
+        self.assertIn('id="autoTranslateBilingualOrder"', page)
+        self.assertIn('data-i18n="toolbox_backfill_subtitles"', page)
+        self.assertIn('data-i18n="auto_backfill_subtitles"', page)
         self.assertIn('bridge("run_fixed_process"', script)
         self.assertIn('value="to_traditional_tw"', page)
         self.assertIn('value="to_traditional_twp"', page)
@@ -3965,7 +4305,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
-        values = ("proofread", "translate_zh", "translate_en", "resegment", "custom")
+        values = ("translate_zh", "translate_en", "proofread", "resegment", "custom")
         positions = [page.index(f'<option value="{value}"') for value in values]
         self.assertEqual(positions, sorted(positions))
         self.assertIn('id="postprocessTaskPrompt"', page)
@@ -4023,13 +4363,13 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertLess(chain, chain_list)
         self.assertLess(sticky, primary_tabs)
         self.assertLess(primary_tabs, postprocess_view)
+        self.assertLess(utilities_view, utilities_tabs)
+        self.assertLess(utilities_tabs, content)
         self.assertLess(primary_tabs, utilities_view)
         self.assertLess(postprocess_view, utilities_view)
         self.assertLess(postprocess_tabs, content)
-        self.assertLess(content, utilities_tabs)
         self.assertLess(content, progress)
         self.assertLess(progress, result)
-        self.assertIn('data-i18n="toolbox_chain_hint">每次生成新文件，并自动作为下一步输入；选择工具后运行。</p>', page)
         self.assertIn('id="toolboxResult" class="toolbox-result hidden"', page)
         self.assertIn('result.classList.remove("hidden")', script)
         self.assertLess(result, match_panel)
@@ -4165,9 +4505,13 @@ class LauncherAssetContractTests(unittest.TestCase):
         launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"] },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
             script,
         )
+        self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)
+        self.assertIn('match_too_low: (_detail, context) => `文稿与字幕匹配度过低', launcher_script)
+        self.assertIn('else setResult(postprocessErrorText(result), "error");', script)
+        self.assertIn('void refreshScriptPreview();', script)
         self.assertIn(
             'toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。"',
             launcher_script,
@@ -4176,6 +4520,15 @@ class LauncherAssetContractTests(unittest.TestCase):
             'toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, cloud transcription treats them as strong break symbols too, and they also drive tail-punctuation stripping in transcription post-processing."',
             launcher_script,
         )
+
+    def test_launcher_match_markdown_cleanup_is_shared_by_previews_and_runs(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn('<input id="postprocessCleanMarkdownSymbols" type="checkbox" checked>', page)
+        self.assertIn("cleanMarkdownSymbols: $(\"postprocessCleanMarkdownSymbols\").checked", script)
+        self.assertIn("cleanMarkdownSymbols: Boolean($(\"postprocessCleanMarkdownSymbols\")?.checked)", script)
+        self.assertIn('$("postprocessCleanMarkdownSymbols").addEventListener("input"', script)
 
     def test_launcher_hero_shows_the_bundled_brand_icon(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -4255,9 +4608,14 @@ class LauncherAssetContractTests(unittest.TestCase):
     def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
         self.assertNotIn('id="saveStickerDir"', page)
         self.assertIn('if (result.ok) await saveStickerDirectory(result.path);', script)
+        self.assertIn('id="stickerCurrent" class="inline-link runtime-path-link"', page)
+        self.assertIn('$("stickerCurrent").addEventListener("click", async () => { const result = await bridge("open_sticker_folder")', script)
+        self.assertIn('button.disabled = !path', script)
+        self.assertIn('def open_sticker_folder(', backend)
 
     def test_ffmpeg_save_distinguishes_write_failure_from_missing_tools(self) -> None:
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
@@ -4328,6 +4686,19 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="refreshServerStatus"', page)
         self.assertNotIn('state.serverRunning ? t("server_stop")', script)
 
+    def test_launcher_hero_links_include_project_home_and_tutorial_video(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertIn('<div class="hero-home-links">', page)
+        self.assertIn('id="homeLink" class="text-link" type="button" data-i18n="project_home">项目官网', page)
+        self.assertIn('id="tutorialVideoLink" class="text-link" type="button" data-i18n="tutorial_video">教程视频', page)
+        self.assertLess(page.index('id="homeLink"'), page.index('id="tutorialVideoLink"'))
+        self.assertIn('tutorial_video: "教程视频"', script)
+        self.assertIn('tutorial_video: "Tutorial video"', script)
+        self.assertIn('const TUTORIAL_VIDEO_URL = "https://www.bilibili.com/video/BV1S9bZ6pEHg";', script)
+        self.assertIn("$(\"tutorialVideoLink\").addEventListener(\"click\", () => bridge(\"open_url\", { url: TUTORIAL_VIDEO_URL }));", script)
+
     def test_workspace_requests_sync_server_config_from_response(self) -> None:
         script = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
 
@@ -4391,9 +4762,20 @@ class LauncherAssetContractTests(unittest.TestCase):
     def test_language_filter_hint_is_available_to_single_language_providers(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="languageFilterHint"', page)
-        self.assertIn('language_filter_hint: "默认仅显示常用语言', script)
+        self.assertIn('id="openLanguageSettings"', page)
+        self.assertIn('language_filter_hint_prefix: "默认仅显示常用语言', script)
+        self.assertIn('language_filter_hint_link: "设置"', script)
+        self.assertIn('language_filter_hint_suffix: "」中开启。"', script)
+        self.assertIn('id="settingsLanguageSection"', page)
+        self.assertLess(page.index('id="settingsLanguageSection"'), page.index('data-i18n="settings_file_output"'))
+        self.assertNotIn('data-i18n="interface_language_hint"', page)
+        self.assertIn('data-i18n="show_rare_langs_hint"', page)
+        self.assertIn('show_rare_langs_hint: "开启后，「语言」列表显示供应商支持的全部语种', script)
+        self.assertIn(".settings-language-switch {\n  margin-bottom: 14px;", stylesheet)
+        self.assertIn('$("openLanguageSettings").addEventListener("click", () => openSettings("settingsLanguageSection"));', script)
         self.assertIn('$("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0);', script)
         self.assertIn("const selectedModel = () =>", script)
         self.assertIn("applyProviderLanguages(provider(), selectedModel())", script)
@@ -4480,7 +4862,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="segmentationField" class="segmentation-settings-fields"', page)
         self.assertIn('id="advancedParamsGroup" class="adv-group"', page)
         self.assertIn("function syncAdvancedParamsGroup()", script)
-        self.assertIn("syncWorkspace(); syncAdvancedParamsGroup();", script)
+        self.assertIn("syncAdvancedParamsGroup();", script)
         self.assertIn('id="qwenAudioOptions" class="adv-group qwen-audio-options hidden"', page)
         self.assertIn('id="sonioxContextOptions" class="adv-group soniox-context-options hidden"', page)
         self.assertIn('data-i18n="advanced_params"', page)
@@ -4511,28 +4893,70 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
         self.assertIn('$("languageGroup").classList.toggle("hidden", current.supportsLanguage === false)', script)
         self.assertIn(".advanced-col {\n  display: grid;\n  grid-template-columns: 1fr 1fr;", stylesheet)
+        self.assertIn(".advanced-col #dashscopeRegionHint {\n  grid-column: 1 / -1;\n}", stylesheet)
         self.assertNotIn("display: contents", stylesheet)
 
-    def test_regional_fields_are_temporarily_hidden_for_domestic_launcher(self) -> None:
+    def test_qwen_regional_settings_live_at_bottom_of_llm_with_advanced_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
-        self.assertIn('id="regionField" class="field hidden"', page)
-        self.assertIn('id="workspaceField" class="field hidden"', page)
+        llm_panel = page.index('data-settings-panel="llm"')
+        dashscope_panel = page.index('id="dashscopeRegionPanel"')
+        processing_panel = page.index('data-settings-panel="processing"')
+        runtime_panel = page.index('data-settings-panel="runtime"')
+        ocr_section = page.index('id="ocrSettingsSection"')
+        llm_panel_end = page.index('</section>', dashscope_panel)
+
+        self.assertLess(llm_panel, dashscope_panel)
+        self.assertLess(dashscope_panel, llm_panel_end)
+        self.assertLess(dashscope_panel, processing_panel)
+        self.assertLess(runtime_panel, ocr_section)
+        self.assertIn('id="regionField" class="field"', page)
+        self.assertIn('id="workspaceField" class="field"', page)
+        self.assertIn('id="saveDashscopeRegionSettings"', page)
+        self.assertIn('data-i18n="settings_dashscope_region">阿里云百炼地域与业务空间</h3>', page)
         self.assertIn("北京地域选填（推荐），新加坡地域必填。", page)
-        self.assertIn(
-            "const SHOW_REGIONAL_FIELDS = false;",
-            script,
-        )
-        self.assertIn(
-            '$("regionField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || current.regions.length === 0);',
-            script,
-        )
-        self.assertIn(
-            '$("workspaceField").classList.toggle("hidden", !SHOW_REGIONAL_FIELDS || provider().regions.length === 0);',
-            script,
-        )
+        self.assertIn('id="dashscopeRegionHint"', page)
+        self.assertIn('id="openDashscopeRegionSettings"', page)
+        self.assertIn('data-i18n="dashscope_region_hint_prefix">如果你不是中国大陆地区的用户，请前往 </span>', page)
+        self.assertIn('data-i18n="dashscope_region_hint_link">⚙️ 设置 → 运行环境</button>', page)
+        self.assertIn('data-i18n="dashscope_region_hint_suffix"> 配置阿里云百炼地域与业务空间。</span>', page)
+        self.assertNotIn('data-i18n="dashscope_region_hint_advanced"', page)
+        self.assertIn('$("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen");', script)
+        self.assertIn('$("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen");', script)
+        self.assertIn('$("openDashscopeRegionSettings").addEventListener("click", () => openSettings("dashscopeRegionPanel"));', script)
+        self.assertIn('$("saveDashscopeRegionSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload);', script)
+        self.assertNotIn("SHOW_REGIONAL_FIELDS", script)
+        self.assertNotIn("syncWorkspace", script)
         self.assertIn('data.region === "singapore" && !data.workspaceId', script)
+
+    def test_length_limit_is_not_exposed_in_launcher_ui(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertNotIn('id="lengthLimitField"', page)
+        self.assertNotIn('id="lengthLimit"', page)
+        self.assertIn('lengthLimit: $("lengthLimit")?.value.trim() || ""', script)
+        self.assertIn('const lengthLimit = $("lengthLimit"); if (lengthLimit) lengthLimit.disabled = on;', script)
+        self.assertIn('$("lengthLimitField")?.classList.toggle("hidden", !SHOW_LENGTH_LIMIT_FIELD);', script)
+
+    def test_launcher_language_setting_uses_saved_or_system_preference(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        self.assertNotIn('id="langToggle"', page)
+        self.assertIn('id="settingsButton"', page)
+        self.assertIn('data-i18n="settings_button"', page)
+        self.assertIn('id="langZh"', page)
+        self.assertIn('id="langEn"', page)
+        self.assertIn('function systemLanguage()', script)
+        self.assertIn('state.lang = state.config.guiLang || systemLanguage();', script)
+        self.assertIn('if (!state.config.guiLang) {', script)
+        self.assertIn('await bridge("save_prefs", { guiLang: state.lang })', script)
+        self.assertIn('$("langZh").classList.toggle("active", state.lang === "zh");', script)
+        self.assertIn('$("langEn").classList.toggle("active", state.lang === "en");', script)
+        self.assertIn('$("langZh").addEventListener("click", () => setLanguage("zh"));', script)
+        self.assertIn('$("langEn").addEventListener("click", () => setLanguage("en"));', script)
 
     def test_launcher_section_titles_share_emoji_numbering_and_size(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -4752,10 +5176,25 @@ class LauncherAssetContractTests(unittest.TestCase):
 
         self.assertIn('openAutoStep(stepId, "", { highlightConnection: true });', script)
         self.assertIn('function setTestConnectionAttention(attention)', script)
-        self.assertIn('setTestConnectionAttention(true);', script)
+        self.assertIn('setTestConnectionAttention(Boolean(hasApiKey && hasBaseUrl && hasModel && !item?.verified));', script)
         self.assertIn('setTestConnectionAttention(false);', script)
         self.assertIn('id="testLlmConnection"', page)
         self.assertIn('.primary.attention', stylesheet)
+        self.assertIn('animation: attention-pulse 1.6s ease-out infinite;', stylesheet)
+        self.assertIn('@media (prefers-reduced-motion: reduce)', stylesheet)
+
+    def test_launcher_separates_auto_translation_hints_from_toolbox_hints(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn('data-i18n="settings_tab_llm">AI 模型配置</button>', page)
+        self.assertIn('settings_tab_llm: "AI 模型配置"', launcher_script)
+        self.assertIn('data-i18n="auto_backfill_subtitles_hint">当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。</p>', page)
+        self.assertIn('auto_backfill_subtitles_hint: "当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。"', launcher_script)
+        self.assertIn('data-i18n="backfill_subtitles_hint">适用于仅有少量语音需要翻译的情况', page)
+        self.assertIn('$("autoTranslateMergeHint")?.classList.toggle("hidden", !(translateEnabled && !mergeBilingual));', postprocess_script)
+        self.assertIn('$("autoTranslateBilingualOrder")?.classList.toggle("hidden", !(translateEnabled && mergeBilingual));', postprocess_script)
 
     def test_launcher_refreshes_auto_postprocess_state_after_ocr_install(self) -> None:
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
@@ -4804,7 +5243,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('.settings-tab.active:focus-visible {', stylesheet)
         self.assertIn('.settings-modal-card {', stylesheet)
         self.assertIn('scrollbar-gutter: stable;', stylesheet)
-        self.assertIn('settings_tab_llm: "大语言模型（AI）"', script)
+        self.assertIn('settings_tab_llm: "AI 模型配置"', script)
 
 
 @final

@@ -1934,7 +1934,7 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
         raise SystemExit(
             "[错误] 未配置 DASHSCOPE_API_KEY。请在 .env 文件填入（参考 .env.example），\n"
             "       或设置系统环境变量 DASHSCOPE_API_KEY。\n"
-            "       API Key 申请：https://help.aliyun.com/zh/model-studio/get-api-key"
+            "       获取或查看 API Key：https://platform.qianwenai.com/home/"
         )
 
     print(f"[准备] 开始云端转写（模型: {model}）")

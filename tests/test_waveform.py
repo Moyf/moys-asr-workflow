@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 import edit  # noqa: E402
 from maw import gui_config  # noqa: E402
 from maw import mopeaks  # noqa: E402
+from maw import quapeaks  # noqa: E402
 from maw import waveform as waveform_module  # noqa: E402
 
 
@@ -116,6 +117,34 @@ class WaveformExtractionTests(unittest.TestCase):
         extractor.assert_not_called()
         self.assertFalse(extracted)
         self.assertEqual(cached["data"], payload["data"])
+
+    def test_waveform_progress_notifies_before_cache_miss_extraction(self) -> None:
+        payload = {
+            "schema": waveform_module.WAVEFORM_SCHEMA,
+            "encoding": waveform_module.WAVEFORM_ENCODING,
+            "peaks_per_second": 100,
+            "peak_count": 1,
+            "duration_ms": 10,
+            "data": "AAA=",
+            "source": waveform_module.media_signature(self.media_path),
+        }
+        progress: list[str] = []
+
+        with (
+            mock.patch.object(quapeaks, "load_self_wave_payload", return_value=None),
+            mock.patch.object(mopeaks, "load_mopeaks_hit", return_value=None),
+            mock.patch.object(waveform_module, "extract_waveform", return_value=payload),
+            mock.patch.object(mopeaks, "save_mopeaks"),
+        ):
+            cached, extracted = waveform_module.load_or_extract_waveform(
+                None,
+                self.media_path,
+                on_progress=progress.append,
+            )
+
+        self.assertIs(cached, payload)
+        self.assertTrue(extracted)
+        self.assertEqual(progress, ["generating"])
 
     def test_default_track_cache_is_used_only_after_selected_track_extraction_fails(self) -> None:
         payload = {
@@ -838,11 +867,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="cue-list-auto-scroll-on-click" checked', page)
         self.assertIn('cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false', page)
         self.assertIn('if (EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll)', page)
-        self.assertIn("const visibleHeight = Math.max(1, visibleBottom - visibleTop);", page)
-        self.assertIn(
-            "const comfortInset = Math.min(120, Math.max(48, visibleHeight * 0.2));",
-            page,
-        )
+        self.assertIn('id="cue-list-follow" aria-pressed="true"', page)
+        self.assertIn('function resumeCueListFollowing()', page)
+        self.assertIn('content-visibility: auto;', page)
         self.assertIn('cueListShowIndex: saved.cueListShowIndex !== false', page)
         self.assertIn('cueListShowTime: saved.cueListShowTime !== false', page)
         self.assertIn('cueListShowSticker: saved.cueListShowSticker !== false', page)
@@ -1200,6 +1227,16 @@ class EditorAssetTests(unittest.TestCase):
             ".editor-workspace.layout-wave-right > .cues-container,\n"
             ".layout-custom .cues-container {\n"
             "  overflow-y: auto;",
+            styles,
+        )
+        resizer_start = styles.index(".layout-resizer {")
+        resizer_end = styles.index(".layout-resizer::after {", resizer_start)
+        resizer_styles = styles[resizer_start:resizer_end]
+        self.assertIn("opacity: 0", resizer_styles)
+        self.assertIn(".layout-resizer:hover,\n.layout-resizer.dragging { opacity: 1; }", styles)
+        self.assertIn(".layout-resizer-v::after { top: 0; bottom: 0; left: 2px; width: 2px; }", styles)
+        self.assertIn(
+            ".layout-resizer-h1::after, .layout-resizer-h2::after { left: 0; right: 0; top: 2px; height: 2px; }",
             styles,
         )
 

@@ -9,11 +9,13 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '跟随播放': 'Follow playback',
+    '定位当前播放头并恢复字幕跟随；手动翻看后可再次点击': 'Locate the playhead and resume subtitle following; click again after browsing manually',
     '备份工程': 'Back up project',
     '打开备份文件夹': 'Open backup folder',
     '自动备份间隔（分钟）': 'Backup interval (minutes)',
     '最大保存版本数': 'Maximum versions',
-    '开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/backups。': 'Create scheduled and manual-save snapshots; remove the oldest versions above the limit. Backups are stored in the project’s _maw/backups folder.',
+    '开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/备份（英文界面为 backups）。': 'Create scheduled and manual-save snapshots; remove the oldest versions above the limit. Backups are stored in the project’s _maw/backups folder.',
     '工程备份需要本地 Server 绑定工程；浏览器另存为的文件不支持目录备份。': 'Project backups require a project bound to the local server. Files selected with browser Save As do not support directory backups.',
     '撤销': 'Undo', '重做': 'Redo', '↶ 撤销': '↶ Undo', '↷ 重做': '↷ Redo',
     '新建工程': 'New project', '创建并保存一个空白工程': 'Create and save a blank project',
@@ -37,14 +39,17 @@
     '导出时附加说话人名称': 'Include speaker names when exporting',
     '字幕预览中的说话人名称开启后会自动勾选；导出 SRT 时会附加对应名称及分隔符，只影响导出的 SRT，不会改动工程里的字幕文本。': 'This is checked automatically when speaker names are enabled in the subtitle preview; exported SRT includes the matching name and separator, while the project subtitle text remains unchanged.',
     '导出字幕': 'Export subtitles', '导出字幕 ▾': 'Export subtitles ▾',
+    '导出 SRT/ASS 字幕或按颜色拆分导出 SRT 字幕': 'Export SRT/ASS subtitles or split SRT subtitles by color',
     '导出完整字幕': 'Export full subtitles', '导出完整字幕（SRT）': 'Export full subtitles (SRT)',
     '导出完整字幕（SRT/ASS）或按颜色分别导出字幕': 'Export full subtitles (SRT/ASS) or separate files by color',
     '完整字幕（SRT）': 'Full subtitles (SRT)', '完整字幕（ASS）': 'Full subtitles (ASS)',
+    '完整 SRT 字幕': 'Full SRT subtitles', '带样式的 ASS 字幕': 'Styled ASS subtitles',
     '导出副字幕': 'Export secondary subtitles', '导出当前副字幕轨（SRT）': 'Export the current secondary subtitle track (SRT)',
     '按颜色导出字幕': 'Export by color', '按颜色导出字幕（SRT）': 'Export by color (SRT)',
+    '按颜色拆分导出 SRT 字幕': 'Export SRT subtitles split by color',
     '导出纯文本（TXT）': 'Export plain text (TXT)',
     '导出工程': 'Export project', '导出去空隙版本 ▾': 'Export gap-removed version ▾',
-    '字幕 SRT': 'Subtitle SRT', '时间线 OTIO 工程': 'Timeline OTIO project', '时间线 OTIOZ 打包工程': 'Timeline OTIOZ bundle',
+    '字幕 SRT': 'Subtitle SRT', 'SRT 字幕': 'SRT subtitles', '时间线 OTIO 工程': 'Timeline OTIO project', '时间线 OTIOZ 打包工程': 'Timeline OTIOZ bundle',
     '表情包 OTIO 工程': 'Sticker OTIO project', '表情包 OTIOZ 打包工程': 'Sticker OTIOZ bundle',
     '同时导出 SRT 字幕': 'Also export SRT subtitles',
     '导出时间线 OTIO 的同时保存对应的 SRT 字幕文件': 'Save the matching SRT subtitle file alongside the timeline OTIO export',
@@ -203,7 +208,7 @@
     '在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。': 'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
     '🤓👆 你可以在': '🤓👆 You can configure color-to-speaker names in',
     '中配置颜色对应的说话人名。': ' settings.',
-    '使用说话人名称作为后缀': 'Use speaker name as suffix',
+    '使用说话人名称替代颜色后缀': 'Use speaker name instead of the color suffix',
     '勾选后按说话人名称生成彩色字幕文件名后缀；没有对应名称时回退为颜色': 'When enabled, use the speaker name as the colored subtitle filename suffix; fall back to the color when no name is mapped',
     '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
@@ -267,7 +272,7 @@
     '已保存工作区': 'Saved workspaces',
     '保存工作区': 'Save workspace', '另存为工作区': 'Save workspace as', '删除工作区': 'Delete workspace',
     '工作区配置 ▾': 'Workspace configuration ▾', '导出工作区配置': 'Export workspace configuration', '导入工作区配置': 'Import workspace configuration',
-    '🔧 设置': '🔧 Settings', '⚙️ 全局设置': '⚙️ Global settings', '字幕时间调整': 'Subtitle timing adjustment', '自动吸附调整相邻字幕': 'Automatically snap-adjust adjacent subtitles', '开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动': 'When enabled, dragging or fine-tuning adjacent cues on the same track links them by default; hold Alt to temporarily separate them. When disabled, they adjust independently by default; hold Alt to temporarily link them.', '关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。': 'When disabled, adjacent cues adjust independently by default; hold Alt to temporarily link them. When enabled, linking is the default; hold Alt to temporarily separate them.', '操作': 'Behavior', 'Esc 取消编辑': 'Esc cancels editing', '开启后，按 Esc 会恢复当前字幕编辑前的文本；关闭后按 Esc 保留文本改动并退出编辑': 'When enabled, Esc restores the text from before editing; when disabled, Esc keeps text changes and exits editing.', '关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。': 'When disabled, Esc keeps text changes; when enabled, it restores the text from before editing.', '快捷键时间基准': 'Keyboard operation reference', 'B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准': 'B/Z/X/N keyboard operations use the pointer position or current playhead as their time reference', '🤔 帮助': '🤔 Help',
+    '🔧 设置': '🔧 Settings', '⚙️ 全局设置': '⚙️ Global settings', '字幕时间调整': 'Subtitle timing adjustment', '自动吸附调整相邻字幕': 'Automatically snap-adjust adjacent subtitles', '开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动': 'When enabled, dragging or fine-tuning adjacent cues on the same track links them by default; hold Alt to temporarily separate them. When disabled, they adjust independently by default; hold Alt to temporarily link them.', '关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。': 'When disabled, adjacent cues adjust independently by default; hold Alt to temporarily link them. When enabled, linking is the default; hold Alt to temporarily separate them.', '贴合字幕边界': 'Attached-cue boundary', '中缝联动（新）': 'Seam link (new)', '传统模式': 'Classic', '设置相接字幕边界的拖动方式：新模式拖动贴合中缝时两侧联动，传统模式沿用自动吸附开关': 'Choose how attached-cue boundaries react to dragging: the new mode links both sides when you drag the seam between attached cues; the classic mode follows the auto-snap toggle.', '拖动贴合字幕中间的中缝：两侧边界一起联动；单独拖动左右手柄只调整当前字幕（类似达芬奇）。': 'Drag the seam between attached cues to move both edges together; drag either side handle to trim only that cue (similar to DaVinci Resolve).', '操作': 'Behavior', 'Esc 取消编辑': 'Esc cancels editing', '开启后，按 Esc 会恢复当前字幕编辑前的文本；关闭后按 Esc 保留文本改动并退出编辑': 'When enabled, Esc restores the text from before editing; when disabled, Esc keeps text changes and exits editing.', '关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。': 'When disabled, Esc keeps text changes; when enabled, it restores the text from before editing.', '快捷键时间基准': 'Keyboard operation reference', 'B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准': 'B/Z/X/N keyboard operations use the pointer position or current playhead as their time reference', '🤔 帮助': '🤔 Help',
     '等待波形数据': 'Waiting for waveform data', '波形处理': 'Waveform processing',
     '扫描参数': 'Scan parameters',
     '按波形音量扫描内部空隙，不改写原时间轴': 'Scan internal gaps from waveform volume without changing the original timeline',
@@ -667,6 +672,9 @@
     '放大时间轴': 'Zoom in', '缩小时间轴': 'Zoom out',
     '增大波形振幅': 'Increase waveform amplitude',
     '减小波形振幅': 'Decrease waveform amplitude',
+    '响度适配': 'Fit by loudness',
+    '按整文件响度重新拟合振幅': 'Refit the amplitude from the file-wide loudness',
+    '当前媒体没有响度缓存，无法按响度适配': 'No loudness cache for this media; cannot fit by loudness',
     '选择一条字幕开始编辑…': 'Select a subtitle to start editing…',
     '要查找的内容': 'Text to find', '替换后的内容': 'Replacement text',
     '按文件名过滤...': 'Filter by filename…',
@@ -735,6 +743,7 @@
     '导出应用当前空隙移除结果的字幕、时间线或保留区域计划': 'Export subtitles, timelines, or kept regions using the current gap-removal result',
     '按移除静音空隙后的时间轴导出字幕；原工程时间不变': 'Export subtitles on the gap-removed timeline; project timing stays unchanged',
     '按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕': 'Export one subtitle file per used color on the gap-removed timeline',
+    '按移除静音空隙后的时间轴导出带样式的 ASS 字幕；原工程时间不变': 'Export styled ASS subtitles on the gap-removed timeline; project timing stays unchanged',
     '导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用': 'Export a gap-removed OTIO timeline for compatible editing tools',
     '导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制': 'Export kept intervals for FFmpeg concat; stream-copy cut accuracy depends on keyframes and packets',
     '以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取': 'Export all kept source-media regions in milliseconds',
@@ -865,9 +874,10 @@
   let language = readLanguage();
 
   // 导出文件名中的技术段（按当前语言映射；中文界面译出，英文界面原样）。
-  // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」。
+  // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」；
+  // 未标记颜色的默认组用「_默认」而非「_default」。
   const EXPORT_NAME_SEGMENTS = {
-    'gap-removed': '去空隙', 'stickers': '表情包',
+    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '默认',
     'yellow': '黄色', 'green': '绿色', 'red': '红色', 'purple': '紫色', 'blue': '蓝色',
   };
 

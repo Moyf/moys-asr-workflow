@@ -1945,10 +1945,10 @@ test('colored subtitles export per-color SRT files including the uncolored defau
     localStorage.setItem(key, JSON.stringify(saved));
   });
 
-  // 文件名颜色段按界面语言生成：中文 _红色/_蓝色，英文 _red/_blue；default 组两种语言保持原样。
+  // 文件名颜色段按界面语言生成：中文 _红色/_蓝色/_默认，英文 _red/_blue/_default。
   // 用 ?lang= 显式指定界面语言，断言不依赖服务器默认语言。
   const expectedColorFilenames = {
-    zh: ['project_红色.srt', 'project_蓝色.srt', 'project_default.srt'],
+    zh: ['project_红色.srt', 'project_蓝色.srt', 'project_默认.srt'],
     en: ['project_red.srt', 'project_blue.srt', 'project_default.srt'],
   };
   let downloads = [];
@@ -1997,6 +1997,7 @@ test('subtitle export keeps a stable menu and hides colors without enabled color
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#download-full-srt')).toBeVisible();
   await expect(page.locator('#download-color-srt')).toBeHidden();
+  await expect(page.locator('#subtitle-export-separator')).toBeHidden();
 
   await page.evaluate(() => {
     DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 8000 };
@@ -2026,6 +2027,7 @@ test('subtitle export keeps a stable menu and hides colors without enabled color
   await expect(page.locator('#gap-removed-export-dropdown')).toBeVisible();
   await page.locator('#gap-removed-export-btn').click();
   await expect(page.locator('#download-gap-removed-color-srt')).toBeHidden();
+  await expect(page.locator('#gap-removed-subtitle-export-separator')).toBeHidden();
 });
 
 test('nested export menus preserve pointer reachability and keyboard focus', async ({ page }) => {

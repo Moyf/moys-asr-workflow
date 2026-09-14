@@ -83,6 +83,7 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual(plan["steps"][0]["matchMode"], "script")
         self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["？", "！", ","])
         self.assertEqual(plan["steps"][0]["preservePunctuation"], ["？", "！"])
+        self.assertTrue(plan["steps"][0]["cleanMarkdownSymbols"])
 
     def test_normalize_plan_migrates_legacy_preserved_question_marks(self) -> None:
         plan = default_postprocess_plan()
@@ -107,6 +108,20 @@ class PostprocessPipelineTests(unittest.TestCase):
         ocr = next(step for step in normalized["steps"] if step["id"] == "ocr")
         self.assertEqual(ocr["videoPathMode"], "")
 
+    def test_normalize_plan_sanitizes_bilingual_line_order(self) -> None:
+        plan = default_postprocess_plan()
+        plan["steps"] = [{"id": "translate", "enabled": True, "target": "zh", "bilingualLineOrder": "sideways"}]
+
+        normalized = normalize_plan(plan)
+
+        translate = next(step for step in normalized["steps"] if step["id"] == "translate")
+        self.assertEqual(translate["bilingualLineOrder"], "")
+
+        plan["steps"][0]["bilingualLineOrder"] = "original_first"
+        normalized = normalize_plan(plan)
+        translate = next(step for step in normalized["steps"] if step["id"] == "translate")
+        self.assertEqual(translate["bilingualLineOrder"], "original_first")
+
     def test_match_mode_is_preserved_when_normalizing_plan(self) -> None:
         plan = default_postprocess_plan()
         plan["enabled"] = True
@@ -118,6 +133,14 @@ class PostprocessPipelineTests(unittest.TestCase):
 
         self.assertEqual(errors, ())
         self.assertEqual(normalized["steps"][0]["matchMode"], "text")
+
+    def test_markdown_cleanup_setting_is_preserved_when_normalizing_plan(self) -> None:
+        plan = default_postprocess_plan()
+        plan["steps"] = [{"id": "match", "enabled": True, "cleanMarkdownSymbols": False}]
+
+        normalized = normalize_plan(plan)
+
+        self.assertFalse(normalized["steps"][0]["cleanMarkdownSymbols"])
 
     def test_validation_allows_conversion_without_replacement_rules(self) -> None:
         plan, errors = validate_plan(self.plan(self.conversion_step()), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
@@ -449,6 +472,137 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual(step_manifest["translationIntermediateProjectPath"], str((result.run_directory / translated_project.name).resolve()))
         self.assertEqual(step_manifest["translationIntermediateSrtPath"], str((result.run_directory / translated_srt.name).resolve()))
 
+    def test_translation_embed_publishes_single_track_and_keeps_translation_intermediate(self) -> None:
+        # 回填单语：译文替换对应原文（与主字幕相同的句子逐字节保留），最终只
+        # 发布单条字幕；独立翻译产物保留为中间产物。
+        translated_project = self.root / "translated.mosp"
+        translated_srt = self.root / "translated.srt"
+        translated_project.write_text(
+            json.dumps({
+                "segments": [
+                    {"start": 0, "end": 1000, "text": "Translation one"},
+                    {"start": 1100, "end": 2000, "text": "保留"},
+                ]
+            }),
+            encoding="utf-8",
+        )
+        translated_srt.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\nTranslation one\n\n2\n00:00:01,100 --> 00:00:02,000\n保留\n",
+            encoding="utf-8",
+        )
+
+        def fake_translate(request: LlmPostprocessRequest, *, complete: object, on_status: object) -> SubtitleArtifact:
+            del complete, on_status
+            output_directory = request.output_directory
+            if not isinstance(output_directory, Path):
+                raise AssertionError("translation request should contain an output directory")
+            output_project = output_directory / translated_project.name
+            output_srt = output_directory / translated_srt.name
+            output_project.write_text(translated_project.read_text(encoding="utf-8"), encoding="utf-8")
+            output_srt.write_text(translated_srt.read_text(encoding="utf-8"), encoding="utf-8")
+            return SubtitleArtifact(request.project_path, request.srt_path, output_project, output_srt)
+
+        translate_step = {
+            "id": "translate",
+            "enabled": True,
+            "providerId": "deepseek",
+            "target": "en",
+            "embedTranslations": True,
+            "customPrompt": "",
+        }
+        with mock.patch("maw.postprocess_pipeline.run_llm_postprocess", side_effect=fake_translate):
+            result = run_postprocess_pipeline(
+                self.plan(translate_step, retain=True),
+                media_path=self.media,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=None,
+                cancel_event=Event(),
+                llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}},
+                ui_language="en",
+            )
+
+        embedded = json.loads(result.project_path.read_text(encoding="utf-8"))
+        self.assertEqual([segment["text"] for segment in embedded["segments"]], ["Translation one", "保留"])
+        self.assertNotIn("multi_subtitle", embedded)
+        self.assertIsNone(result.translated_srt_path)
+        self.assertEqual(result.project_path.name, "clip.postprocess.backfill.mosp")
+        self.assertEqual(result.srt_path.name, "clip.postprocess.backfill.srt")
+        # zh 界面终稿回填命名本地化：.后处理.回填（en 保持 .postprocess.backfill）。
+        zh_project, zh_srt, zh_translated = _publish_final(
+            self.project,
+            self.srt,
+            result.project_path,
+            result.srt_path,
+            translated_srt=None,
+            translation_target="en",
+            backfill=True,
+            ui_language="zh",
+        )
+        self.assertEqual(zh_project.name, "clip.后处理.回填.mosp")
+        self.assertEqual(zh_srt.name, "clip.后处理.回填.srt")
+        self.assertIsNone(zh_translated)
+        self.assertTrue((result.run_directory / translated_srt.name).is_file())
+        manifest = json.loads((result.run_directory / "manifest.json").read_text(encoding="utf-8"))
+        self.assertNotIn("finalTranslatedSrtPath", manifest)
+        step_manifest = manifest["steps"][0]
+        self.assertEqual(step_manifest["translationIntermediateProjectPath"], str((result.run_directory / translated_project.name).resolve()))
+        self.assertEqual(step_manifest["translationIntermediateSrtPath"], str((result.run_directory / translated_srt.name).resolve()))
+
+    def test_attach_translation_track_skips_extension_segments_identical_to_main(self) -> None:
+        # 副轨去重：译文与主字幕相同的句子不再重复进入副轨与绑定。
+        translated_project = self.root / "translated.mosp"
+        translated_srt = self.root / "translated.srt"
+        translated_project.write_text(
+            json.dumps({
+                "segments": [
+                    {"id": "main-001", "start": 0, "end": 1000, "text": "Translation one"},
+                    {"id": "main-002", "start": 1100, "end": 2000, "text": "保留"},
+                ]
+            }),
+            encoding="utf-8",
+        )
+        translated_srt.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\nTranslation one\n\n2\n00:00:01,100 --> 00:00:02,000\n保留\n",
+            encoding="utf-8",
+        )
+        artifact = SubtitleArtifact(self.project, self.srt, translated_project, translated_srt)
+
+        result = _attach_translation_track(
+            source_project_path=self.project,
+            source_srt_path=self.srt,
+            translated_artifact=artifact,
+            target="en",
+            output_directory=self.root,
+        )
+
+        combined = json.loads(result.project_path.read_text(encoding="utf-8"))
+        track = combined["multi_subtitle"]["tracks"][0]
+        self.assertEqual([segment["text"] for segment in track["segments"]], ["Translation one"])
+        self.assertEqual([binding["main_segment_ids"] for binding in combined["multi_subtitle"]["bindings"]], [["main-001"]])
+        self.assertIn("未重复添加", "\n".join(result.warnings))
+
+    def test_validation_rejects_bilingual_and_embed_together(self) -> None:
+        translate_step = {
+            "id": "translate",
+            "enabled": True,
+            "providerId": "deepseek",
+            "target": "en",
+            "mergeBilingual": True,
+            "embedTranslations": True,
+            "customPrompt": "",
+        }
+        _plan, errors = validate_plan(
+            self.plan(translate_step),
+            env_path=self.env_path,
+            media_path=self.media,
+            ffmpeg_path=None,
+            llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}},
+        )
+
+        self.assertEqual([error["field"] for error in errors], ["autoTranslateMergeBilingual"])
+
     def test_chinese_translation_merge_puts_translation_first(self) -> None:
         translated_project = self.root / "translated.mosp"
         translated_srt = self.root / "translated.srt"
@@ -591,15 +745,48 @@ class PostprocessPipelineTests(unittest.TestCase):
             ffmpeg_path=None,
             cancel_event=Event(),
             on_event=events.append,
+            ui_language="zh",
         )
 
         self.assertTrue(result.project_path.is_file())
         self.assertTrue(result.srt_path.is_file())
         self.assertIsNone(result.translated_srt_path)
         self.assertFalse(result.run_directory.exists())
+        # 中间产物清理后，只为这次运行而建的「后处理」根目录也一并移除。
+        self.assertFalse((self.root / "_maw" / "后处理").exists())
         self.assertIn('"text": "错字"', self.project.read_text(encoding="utf-8"))
         self.assertIn("正字", result.srt_path.read_text(encoding="utf-8"))
         self.assertEqual([event["stage"] for event in events if event["stage"] in {"step_start", "step_done"}], ["step_start", "step_done"])
+
+    def test_pipeline_skips_replace_step_when_nothing_is_enabled(self) -> None:
+        result = run_postprocess_pipeline(
+            self.plan({"id": "replace", "enabled": True, "replacements": [], "conversion": "off"}),
+            media_path=self.media,
+            project_path=self.project,
+            srt_path=self.srt,
+            env_path=self.env_path,
+            ffmpeg_path=None,
+            cancel_event=Event(),
+            ui_language="zh",
+        )
+
+        # 步骤被跳过：不产出带后缀的新文件，链路继续用上一步的产物发布最终结果。
+        self.assertTrue(result.project_path.is_file())
+        self.assertFalse((self.root / "clip.批量替换.srt").exists())
+        self.assertFalse((self.root / "clip.replace.srt").exists())
+        self.assertTrue(any("跳过" in warning for warning in result.warnings))
+        self.assertFalse((self.root / "_maw" / "后处理").exists())
+
+    def test_validation_allows_replace_step_with_no_rules(self) -> None:
+        plan, errors = validate_plan(
+            self.plan({"id": "replace", "enabled": True, "replacements": [], "conversion": "off"}),
+            env_path=self.env_path,
+            media_path=self.media,
+            ffmpeg_path=None,
+        )
+
+        self.assertEqual(errors, ())
+        self.assertEqual([step["id"] for step in plan["steps"] if step["id"] == "replace"], ["replace"])
 
     def test_pipeline_accepts_ocr_as_the_last_step(self) -> None:
         video = self.root / "clip.mp4"
