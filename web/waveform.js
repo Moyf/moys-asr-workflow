@@ -148,7 +148,7 @@
   const ROOT_EDGE_DROP_MAX_PX = 48;
   const ZOOM_PRESETS = [2, 5, 10, 20, 30, 60];
   const ROW_PRESETS = [2, 5, 10, 20, 30];
-  const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168];
+  const ROW_HEIGHT_PRESETS = [64, 80, 96, 120, 144, 168, 192];
   const ROW_GAP = 10;
   const SPLIT_FLASH_DURATION_MS = 720;
   // 多行波形保留视口前后少量行，字幕快捷键跨行时可以直接复用已绘制的行。
