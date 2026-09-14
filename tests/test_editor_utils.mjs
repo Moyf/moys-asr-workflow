@@ -3048,7 +3048,7 @@ test('builds ASS subtitles with the selected font, size, color and safe text', (
   assert.equal(helpers.formatAssTime(3723456), '1:02:03.46');
   assert.match(ass, /\[Script Info\][\s\S]*\[V4\+ Styles\][\s\S]*\[Events\]/);
   assert.match(ass, /PlayResX: 1920[\s\S]*PlayResY: 1080/);
-  assert.match(ass, /Style: Default,Microsoft YaHei,32,&H00563412,&H00563412,/);
+  assert.match(ass, /Style: Default,Microsoft YaHei,128,&H00563412,&H00563412,/);
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:03\.46,Default,,0,0,0,,你好\\NHello, \\{tag\\}\\\\path/);
   assert.match(ass, /Dialogue: 0,0:00:05\.00,0:00:05\.01,Default,,0,0,0,,later/);
   assert.doesNotMatch(ass, /disabled/);
@@ -3066,12 +3066,12 @@ test('builds ASS metadata and five palette styles at the source video resolution
 
   assert.match(ass, /Title: project-name/);
   assert.match(ass, /PlayResX: 3840[\s\S]*PlayResY: 2160/);
-  assert.match(ass, /Style: Default,Arial,64,/);
-  assert.match(ass, /Style: YELLOW,Arial,64,&H0019A0C4,&H0019A0C4,/);
-  assert.match(ass, /Style: GREEN,Arial,64,&H006ABB66,&H006ABB66,/);
-  assert.match(ass, /Style: RED,Arial,64,&H006F7FF0,&H006F7FF0,/);
-  assert.match(ass, /Style: PURPLE,Arial,64,&H00E689BF,&H00E689BF,/);
-  assert.match(ass, /Style: BLUE,Arial,64,&H00FAA761,&H00FAA761,/);
+  assert.match(ass, /Style: Default,Arial,256,/);
+  assert.match(ass, /Style: YELLOW,Arial,256,&H0019A0C4,&H0019A0C4,/);
+  assert.match(ass, /Style: GREEN,Arial,256,&H006ABB66,&H006ABB66,/);
+  assert.match(ass, /Style: RED,Arial,256,&H006F7FF0,&H006F7FF0,/);
+  assert.match(ass, /Style: PURPLE,Arial,256,&H00E689BF,&H00E689BF,/);
+  assert.match(ass, /Style: BLUE,Arial,256,&H00FAA761,&H00FAA761,/);
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
   assert.match(ass, /Dialogue: 0,0:00:01\.20,0:00:02\.20,Default,,0,0,0,,plain line/);
 });
@@ -3088,8 +3088,10 @@ test('converts the responsive default ASS font size at the source video resoluti
     fontSize: 'auto',
   });
 
-  assert.match(withoutStoredSize, /Style: Default,Arial,36,/);
-  assert.match(explicitAuto, /Style: Default,Arial,36,/);
+  assert.equal(helpers.resolveAssFontSize(null, 1080), 72);
+  assert.equal(helpers.resolveAssFontSize(32, 1080), 128);
+  assert.match(withoutStoredSize, /Style: Default,Arial,144,/);
+  assert.match(explicitAuto, /Style: Default,Arial,144,/);
 });
 
 test('optionally prefixes configured speaker names in ASS output', () => {
