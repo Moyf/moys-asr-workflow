@@ -49,10 +49,14 @@
       attach_model_name_title: "在输出文件名中附加模型名称（默认关闭）：开启后，SRT 文件名带上供应商/模型段，如 clip.qwen-audio.srt",
       settings_notifications: "完成通知",
       notify_on_complete: "任务完成后发送系统通知",
-      notify_on_complete_title: "任务完成后发送系统通知（默认开启）：单个文件转写完成或批量队列全部结束后提醒",
-      notify_on_complete_hint: "单个文件转写完成或批量队列全部结束后，通过系统通知提醒你；默认开启。",
+      notify_on_complete_title: "任务完成后发送系统通知（默认关闭）：单个文件转写完成或批量队列全部结束后提醒；失败时也会提醒",
+      notify_on_complete_hint: "任务完成或失败时，通过系统通知提醒你；默认关闭。",
+      notify_enabled_title: "系统通知已启用",
+      notify_enabled_body: "之后任务完成或失败时会提醒你。",
       notify_single_title: "转写完成",
       notify_single_body: "已生成 {name}",
+      notify_single_failed_title: "转写失败",
+      notify_single_failed_body: "文件 {name} 处理失败：{error}",
       notify_batch_title: "批量转写完成",
       notify_batch_failed_title: "批量转写失败",
       notify_batch_body: "成功 {done} 个，失败 {failed} 个。",
@@ -60,7 +64,7 @@
       key: "API Key",
       save_key: "存入本地环境",
       key_hint_prefix: "在",
-      key_hint_suffix: "获取 API Key ↗",
+      key_hint_suffix: "获取或查看 API Key ↗",
       openai_official: "OpenAI 官方",
       openrouter: "OpenRouter",
       openai_key_hint_or: " 或 ",
@@ -164,17 +168,21 @@
       attach_model_name_title: "Append the model name to output filenames (off by default): when enabled, SRT filenames carry the provider/model segment, e.g. clip.qwen-audio.srt.",
       settings_notifications: "Completion notifications",
       notify_on_complete: "Send a system notification when a task completes",
-      notify_on_complete_title: "Send a system notification when a task completes (on by default): alert when a single file finishes or the whole batch queue ends.",
-      notify_on_complete_hint: "Get a system notification when a single file finishes or the whole batch queue ends. On by default.",
+      notify_on_complete_title: "Send a system notification when a task completes (off by default): alert when a single file finishes or the whole batch queue ends; failures are also reported.",
+      notify_on_complete_hint: "Get a system notification when a task completes or fails. Off by default.",
+      notify_enabled_title: "System notifications enabled",
+      notify_enabled_body: "You will be notified when a task completes or fails.",
       notify_single_title: "Transcription complete",
       notify_single_body: "Generated {name}",
+      notify_single_failed_title: "Transcription failed",
+      notify_single_failed_body: "Failed to process {name}: {error}",
       notify_batch_title: "Batch transcription complete",
       notify_batch_failed_title: "Batch transcription failed",
       notify_batch_body: "{done} succeeded, {failed} failed.",
       notify_batch_body_all: "All {done} files completed.",
       key: "API Key",
       save_key: "Save locally",
-      key_hint_prefix: "Get an API Key from",
+      key_hint_prefix: "Get or view an API Key from",
       key_hint_suffix: "↗",
       openai_official: "OpenAI official",
       openrouter: "OpenRouter",
@@ -1193,7 +1201,7 @@
   const MAX_SUPER_HOTWORDS = 50;
   const OPENAI_ASR_CUSTOM_MODEL_ID = "custom-asr";
   const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-transcribe", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize", "whisper-large-v3-turbo", "whisper-large-v3"]);
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0 };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
@@ -1210,7 +1218,7 @@
   let activeSettingsTab = "general";
 
   function mockApi() {
-    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null, outputSubfolder: false, perVideoSubfolder: false, attachModelName: false, notifyOnComplete: true };
+    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null, outputSubfolder: false, perVideoSubfolder: false, attachModelName: false, notifyOnComplete: false };
     const chainedPath = (path, operation, fallback) => path
       ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
       : fallback;
@@ -1235,7 +1243,7 @@
         outputSubfolder: saved.outputSubfolder,
         perVideoSubfolder: saved.perVideoSubfolder,
         attachModelName: saved.attachModelName,
-        notifyOnComplete: saved.notifyOnComplete !== false,
+        notifyOnComplete: saved.notifyOnComplete === true,
         appVersion: "1.6.0-beta.3",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
@@ -1257,7 +1265,7 @@
           {
             id: "qwen",
             label: "阿里云百炼（QwenASR / FunASR）",
-            keyUrl: "https://help.aliyun.com/zh/model-studio/get-api-key",
+            keyUrl: "https://platform.qianwenai.com/home/",
             apiKey: saved.apiKey,
             maskedApiKey: saved.apiKey ? "sk-…demo" : "",
             supportsSpeaker: true,
@@ -1417,7 +1425,7 @@
       run_ocr_dedup: async ({ projectPath, srtPath, outputMode, report }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.srt"), reportPath: report ? "D:\\Demo\\clip.ocr-dedup.csv" : "", warnings: ["OCR 字幕去重完成：新增禁用 1 条，已有禁用 0 条，实际 OCR 1 条，跳过 0 条。"] }),
       run_llm_postprocess: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "llm", "D:\\Demo\\clip.llm.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "llm", "D:\\Demo\\clip.llm.srt"), warnings: [] }),
       run_fixed_process: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "fixed", "D:\\Demo\\clip.fixed.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "fixed", "D:\\Demo\\clip.fixed.srt"), warnings: [] }),
-      send_notification: async () => ({ ok: true, sent: false }),
+      send_notification: async ({ title, message } = {}) => { window.__mockNotifications = [...(window.__mockNotifications || []), { title: String(title || ""), message: String(message || "") }]; return { ok: true, sent: false }; },
       run_fixed_replacement: async (payload) => window.MAWLauncher.callBackend("run_fixed_process", payload),
        run_ffconcat_rebuild: async () => ({ ok: true, mediaPath: "D:\\Demo\\clip.gap-removed.mp4" }),
        probe_audio_tracks: async () => ({ ok: true, tracks: [{ audioIndex: 0, streamIndex: 1, codec: "aac", channels: 2, sampleRate: 48000, language: "zh", title: "中文", default: true }, { audioIndex: 1, streamIndex: 2, codec: "aac", channels: 2, sampleRate: 48000, language: "en", title: "English", default: false }] }),
@@ -2572,7 +2580,7 @@
     $("outputSubfolder").checked = Boolean(state.config.outputSubfolder);
     $("perVideoSubfolder").checked = Boolean(state.config.perVideoSubfolder);
     $("attachModelName").checked = state.config.attachModelName !== false;
-    $("notifyOnComplete").checked = state.config.notifyOnComplete !== false;
+    $("notifyOnComplete").checked = state.config.notifyOnComplete === true;
     if (sectionId) {
       requestAnimationFrame(() => {
         // 只滚动 .settings-scroll 容器；scrollIntoView 会连带滚动 overflow:hidden 的
@@ -2682,19 +2690,43 @@
     refreshStartupState();
   }
 
-  function completionNotificationsEnabled() { return state.config?.notifyOnComplete !== false; }
+  function completionNotificationsEnabled() { return state.config?.notifyOnComplete === true; }
   function baseName(path) { const value = String(path || ""); return value.split(/[\\/]/u).pop() || value; }
+  function resetBatchNotification(total = 0) {
+    state.batchNotification = { total: Number(total) || 0, done: 0, failed: 0, statuses: new Map() };
+  }
   function sendSystemNotification(title, message) {
     if (!completionNotificationsEnabled()) return;
     void bridge("send_notification", { title, message });
   }
   function notifySingleComplete(result) {
+    if (!state.running) return;
     const name = baseName(result?.srtPath || result?.jsonPath || "");
     sendSystemNotification(t("notify_single_title"), t("notify_single_body").replace("{name}", name || "-"));
   }
+  function rememberBatchNotificationEvent(event) {
+    const notification = state.batchNotification;
+    if (!notification) return;
+    const nested = event.item && typeof event.item === "object" ? event.item : {};
+    const status = event.status || nested.status || "";
+    if (!["done", "failed", "cancelled", "skipped"].includes(status)) return;
+    const key = String(event.itemId ?? event.id ?? nested.itemId ?? nested.id ?? (event.index ?? nested.index ?? ""));
+    if (!key) return;
+    const previous = notification.statuses.get(key);
+    if (previous === status) return;
+    if (previous === "done") notification.done -= 1;
+    if (previous === "failed") notification.failed -= 1;
+    notification.statuses.set(key, status);
+    if (status === "done") notification.done += 1;
+    if (status === "failed") notification.failed += 1;
+  }
   function notifyBatchComplete(event) {
+    if (!state.batchNotification) return;
     // 用户主动停止不算「完成」，不打扰。
-    if (event.status === "cancelled" || event.cancelled) return;
+    if (event.status === "cancelled" || event.cancelled) {
+      state.batchNotification = null;
+      return;
+    }
     const outcomes = Array.isArray(event.outcomes) ? event.outcomes : [];
     let done = 0;
     let failed = 0;
@@ -2706,9 +2738,9 @@
     if (!outcomes.length) {
       // worker 异常可能没有产出 outcomes；沿用已收到的逐条事件，并把
       // 尚未落到终态的当前批次条目按失败计入，不能误报为「全部完成」。
-      const total = Number(event.total) || Number(state.progress.total) || 0;
-      done = Number(state.progress.done) || 0;
-      failed = Number(state.progress.failed) || 0;
+      const total = Number(event.total) || Number(state.batchNotification?.total) || 0;
+      done = Number(state.batchNotification?.done) || 0;
+      failed = Number(state.batchNotification?.failed) || 0;
       if (event.status === "failed") {
         failed += Math.max(0, total - done - failed);
         if (!failed && !done) failed = 1;
@@ -2717,19 +2749,39 @@
         done = total;
       }
     } else if (event.status === "failed") {
-      const total = Number(event.total) || Number(state.progress.total) || 0;
+      const total = Number(event.total) || Number(state.batchNotification?.total) || 0;
       failed += Math.max(0, total - done - failed);
       if (!failed && !done) failed = 1;
     }
     const body = failed > 0
       ? t("notify_batch_body").replace("{done}", String(done)).replace("{failed}", String(failed))
       : t("notify_batch_body_all").replace("{done}", String(done));
-    sendSystemNotification(event.status === "failed" ? t("notify_batch_failed_title") : t("notify_batch_title"), body);
+    sendSystemNotification(failed > 0 || event.status === "failed" ? t("notify_batch_failed_title") : t("notify_batch_title"), body);
+    state.batchNotification = null;
+  }
+
+  function notifySingleFailure(event) {
+    if (!state.running || ["transcription_cancelled", "postprocess_cancelled"].includes(event.code)) return;
+    const name = baseName($("mediaPath")?.value || event.originalSrtPath || event.originalProjectPath || "");
+    const rawDetail = redactSensitive(compactDetail(event.detail || event.message || ""));
+    const friendly = event.code ? errText(event.code, rawDetail, event) : rawDetail || t("failed");
+    const error = [friendly, rawDetail && friendly !== rawDetail && !friendly.includes(rawDetail) ? rawDetail : ""]
+      .filter(Boolean)
+      .join(" ") || t("failed");
+    const body = t("notify_single_failed_body")
+      .replace("{name}", name || "-")
+      .replace("{error}", error);
+    sendSystemNotification(t("notify_single_failed_title"), body);
   }
 
   function handleBackendEvent(event) {
+    if (event.type === "batch_started" || event.type === "batchStarted") {
+      resetBatchNotification(event.total);
+    }
+    if (event.type === "batch_item" || event.type === "batchItem") rememberBatchNotificationEvent(event);
     if (event.type === "done") notifySingleComplete(event.result);
     if (event.type === "batch_done" || event.type === "batchDone") notifyBatchComplete(event);
+    if (event.type === "error") notifySingleFailure(event);
     if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) window.MAWLauncher?.onBatchEvent?.(event);
     if (event.type === "emojiFontReady" && event.path) injectEmojiFont(event.path);
     if (event.type === "log") appendLog(event.message, { quietLatest: Boolean(state.localRuntimeInstalling || state.ocrRuntimeInstalling) });
@@ -2890,7 +2942,7 @@
     if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart: hideErrorNotice, onBatchError: (result) => applyErrorResult(result, false), onLanguageChanged() {}, onProjectPathChanged() {}, onMediaPathChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onMediaPathChanged() {} };
 
   $("langZh").addEventListener("click", () => setLanguage("zh"));
   $("langEn").addEventListener("click", () => setLanguage("en"));
@@ -2956,11 +3008,11 @@
   $("stickerCurrent").addEventListener("click", async () => { const result = await bridge("open_sticker_folder"); if (!result.ok) setStatus(errText(result.code, result.detail || result.error)); });
   $("showRareLangs").addEventListener("change", async () => { state.config.showRareLangs = $("showRareLangs").checked; applyProviderLanguages(provider(), selectedModel()); const result = await bridge("save_prefs", { showRareLangs: state.config.showRareLangs }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); });
   const syncDefaultOutputPreview = () => { if (!state.initializing) void syncDefaultOutput(); };
-  const saveOutputPref = async (key) => { const on = $(key).checked; state.config[key] = on; const result = await bridge("save_prefs", { [key]: on }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); };
+  const saveOutputPref = async (key) => { const on = $(key).checked; const previous = Boolean(state.config[key]); const result = await bridge("save_prefs", { [key]: on }); if (result.ok) { state.config[key] = on; setStatus(t("saved")); } else { $(key).checked = previous; state.config[key] = previous; applyErrorResult(result); } return result; };
   $("outputSubfolder").addEventListener("change", async () => { await saveOutputPref("outputSubfolder"); syncDefaultOutputPreview(); });
   $("perVideoSubfolder").addEventListener("change", async () => { await saveOutputPref("perVideoSubfolder"); syncDefaultOutputPreview(); });
   $("attachModelName").addEventListener("change", async () => { await saveOutputPref("attachModelName"); syncDefaultOutputPreview(); });
-  $("notifyOnComplete").addEventListener("change", async () => { await saveOutputPref("notifyOnComplete"); });
+  $("notifyOnComplete").addEventListener("change", async () => { const wasEnabled = completionNotificationsEnabled(); const result = await saveOutputPref("notifyOnComplete"); if (result.ok && !wasEnabled && completionNotificationsEnabled()) sendSystemNotification(t("notify_enabled_title"), t("notify_enabled_body")); });
   $("languageReset").addEventListener("click", () => { const el = $("language"); Array.from(el.options).forEach((o) => { o.selected = false; }); savePrefsDebounced({ language: "" }); });
   $("saveSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; if (current.id === "openai") { state.config.openaiBaseUrl = payload.openaiBaseUrl; state.config.openaiModel = payload.openaiModel; } renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
   $("start").addEventListener("click", async () => { if (!validateLocal()) return; hideErrorNotice(); $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });

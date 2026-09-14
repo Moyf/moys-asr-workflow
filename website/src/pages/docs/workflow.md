@@ -67,7 +67,7 @@ notepad .env
 DASHSCOPE_API_KEY=sk-你的密钥
 ```
 
-北京地域默认使用 `DASHSCOPE_REGION=beijing`；`DASHSCOPE_WORKSPACE_ID` 在北京选填，填写后会使用官方推荐的业务空间专属域名。新加坡地域改为 `singapore` 并必须填写 Workspace ID。Launcher 目前面向国内用户隐藏地域和 Workspace 控件；如需海外地域或专属域名，请通过 CLI / `.env` 配置。环境变量优先于 `.env`。密钥申请和地域说明以[官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)为准。
+北京地域默认使用 `DASHSCOPE_REGION=beijing`；`DASHSCOPE_WORKSPACE_ID` 在北京选填，填写后会使用官方推荐的业务空间专属域名。新加坡地域改为 `singapore` 并必须填写 Workspace ID。Launcher 目前面向国内用户隐藏地域和 Workspace 控件；如需海外地域或专属域名，请通过 CLI / `.env` 配置。环境变量优先于 `.env`。密钥获取或查看和地域说明以[阿里云百炼](https://platform.qianwenai.com/home/)为准。
 
 ## 2. 先跑小样本
 
