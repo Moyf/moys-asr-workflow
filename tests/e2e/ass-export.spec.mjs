@@ -112,13 +112,13 @@ test('writes the project title, source resolution, palette styles and speaker na
   await stubSavePicker(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.media_metadata = { video_width: 3840, video_height: 2160 };
-    DATA.segments = [
+    MaweBoot.DATA.media_metadata = { video_width: 3840, video_height: 2160 };
+    MaweBoot.DATA.segments = [
       { start: 0, end: 1000, text: 'red line', items: [], color: { name: 'red', value: '#f07f6f' } },
       { start: 1200, end: 2200, text: 'plain line', items: [] },
     ];
-    DATA.preview.subtitle = {
-      ...DATA.preview.subtitle,
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
       font_size: 32,
       font_family: 'sans',
       color: '#ffffff',
@@ -129,7 +129,7 @@ test('writes the project title, source resolution, palette styles and speaker na
         names: { yellow: '主持', green: '嘉宾', red: '旁白', purple: '现场', blue: '字幕' },
       },
     };
-    EDITOR_SETTINGS.exportSpeakerLabels = true;
+    MaweSettings.EDITOR_SETTINGS.exportSpeakerLabels = true;
     renderAll();
   });
 
@@ -154,7 +154,7 @@ test('groups SRT, color-split SRT and styled ASS exports in order', async ({ pag
   await disableOnboarding(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 1000, end: 2500 };
+    MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 1000, end: 2500 };
     renderAll();
   });
 
@@ -169,12 +169,12 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   await stubSavePicker(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.segments.length = 0;
-    DATA.segments.push(
+    MaweBoot.DATA.segments.length = 0;
+    MaweBoot.DATA.segments.push(
       { id: 'before-gap', start: 1000, end: 2000, text: 'before gap', items: [], color: { name: 'red', value: '#e74c3c', start: 1000, end: 2000 } },
       { id: 'after-gap', start: 4000, end: 5000, text: 'after gap', items: [] },
     );
-    DATA.gap_remove = {
+    MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
       minimum_ms: 500,

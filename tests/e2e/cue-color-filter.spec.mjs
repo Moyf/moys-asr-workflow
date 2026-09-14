@@ -59,9 +59,9 @@ test('recoloring part of an existing color group keeps the remaining head valid'
   await waitEditorReady(page);
 
   const state = await page.evaluate(() => {
-    DATA.segments.splice(
+    MaweBoot.DATA.segments.splice(
       0,
-      DATA.segments.length,
+      MaweBoot.DATA.segments.length,
       {
         start: 0, end: 1000, text: 'existing red', items: [],
         color: { name: 'red', value: '#f07f6f', start: 0, end: 1000 },
@@ -75,8 +75,8 @@ test('recoloring part of an existing color group keeps the remaining head valid'
         color: null, color_ref: { name: 'purple', headIdx: 1 },
       },
     );
-    assignColor([0, 1], 'red');
-    return DATA.segments.map((segment) => ({
+    MaweStickerPicker.assignColor([0, 1], 'red');
+    return MaweBoot.DATA.segments.map((segment) => ({
       text: segment.text,
       colorName: segment.color?.name || null,
       colorRef: segment.color_ref

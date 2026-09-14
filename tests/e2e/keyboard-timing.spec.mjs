@@ -337,8 +337,8 @@ test('dual mode links both edges via the seam zone while side handles trim indep
   ]);
 
   await page.evaluate(() => {
-    DATA.segments[0].end = 10000;
-    DATA.segments[1].start = 10000;
+    MaweBoot.DATA.segments[0].end = 10000;
+    MaweBoot.DATA.segments[1].start = 10000;
     renderAll();
   });
 
@@ -366,7 +366,7 @@ test('dual mode links both edges via the seam zone while side handles trim indep
 test('dual-mode extension seam replaces the existing selection with both adjacent cues', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
-    DATA.multi_subtitle = {
+    MaweBoot.DATA.multi_subtitle = {
       schema: 'moy.asr.multi_subtitle.v1',
       enabled: true,
       display_mode: 'both',

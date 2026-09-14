@@ -115,6 +115,7 @@
       getClickBehavior: () => MaweSettings.EDITOR_SETTINGS.clickBehavior,
       getClickTarget: () => MaweSettings.EDITOR_SETTINGS.clickTarget,
       getAutoSnapAdjacentCues: () => MaweSettings.EDITOR_SETTINGS.autoSnapAdjacentCues,
+      getAdjacentBoundaryMode: () => MaweSettings.EDITOR_SETTINGS.adjacentBoundaryMode,
       getCueTiming: () => timelineTimingAdapter(),
       getSnapToFrame: () => timelineIsFrameMode() && MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame,
       getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource,
