@@ -1056,3 +1056,78 @@ test('Ctrl+drag on a main cue block creates an overlay subtitle; Ctrl+click keep
   expect(afterCreate.segments.map((segment) => segment.id)).toEqual(['main-001', 'main-002']);
   expect(afterCreate.overlay_track.segments[1]).toMatchObject({ start: 3200, end: 4000 });
 });
+
+test('keeps overlay cue and boundary drags realtime while badge-bearing cues exist', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [
+      { id: 'main-001', start: 100, end: 1600, text: 'red head', color: { name: 'red' } },
+      { id: 'main-002', start: 2000, end: 3600, text: 'red member', color_ref: { name: 'red', headIdx: 0 } },
+    ],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 5200, end: 6800, text: 'overlay cue' }],
+    },
+    waveform: generateWaveformPayload(12000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.waveform-cue-block.waveform-overlay-block[data-overlay-idx="0"]')).toBeVisible();
+  // 颜色组徽章存在时，refreshCueBlocks 曾因未定义变量中途抛错，
+  // 导致排在徽章块之后的叠加块拖动中不跟随、松手才跳位。
+  await expect(page.locator('.waveform-cue-badge').first()).toBeVisible();
+
+  const overlayBlock = page.locator('.waveform-cue-block.waveform-overlay-block[data-overlay-idx="0"]');
+
+  // 边界拖动：松手前块宽度必须已经跟随指针。
+  const handle = overlayBlock.locator('.waveform-cue-handle.right');
+  const handleBox = await handle.boundingBox();
+  const beforeWidth = await overlayBlock.evaluate((el) => el.getBoundingClientRect().width);
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 120, handleBox.y + handleBox.height / 2, { steps: 10 });
+  await page.waitForFunction(
+    (previousWidth) => {
+      const block = document.querySelector('.waveform-cue-block.waveform-overlay-block');
+      return block && block.getBoundingClientRect().width > previousWidth + 50;
+    },
+    beforeWidth,
+  );
+  await page.mouse.up();
+
+  // 移动拖动：松手前块位置必须已经跟随指针。
+  const box = await overlayBlock.boundingBox();
+  const beforeLeft = await overlayBlock.evaluate((el) => el.getBoundingClientRect().left);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 180, box.y + box.height / 2, { steps: 10 });
+  await page.waitForFunction(
+    (previousLeft) => {
+      const block = document.querySelector('.waveform-cue-block.waveform-overlay-block');
+      return block && block.getBoundingClientRect().left > previousLeft + 100;
+    },
+    beforeLeft,
+  );
+  await page.mouse.up();
+
+  // 徽章跟随块实时移动：拖动带颜色徽章的主字幕，徽章松手前同步移动。
+  const memberBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]');
+  const memberBadge = page.locator('.waveform-cue-badge[data-seg-id="main-002"]').first();
+  await expect(memberBadge).toBeVisible();
+  const beforeBadgeLeft = await memberBadge.evaluate((el) => el.getBoundingClientRect().left);
+  const memberBox = await memberBlock.boundingBox();
+  await page.mouse.move(memberBox.x + memberBox.width / 2, memberBox.y + memberBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(memberBox.x + memberBox.width / 2 + 120, memberBox.y + memberBox.height / 2, { steps: 10 });
+  await page.waitForFunction(
+    (previousLeft) => {
+      const badge = document.querySelector('.waveform-cue-badge[data-seg-id="main-002"]');
+      return badge && badge.getBoundingClientRect().left > previousLeft + 50;
+    },
+    beforeBadgeLeft,
+  );
+  await page.mouse.up();
+
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});

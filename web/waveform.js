@@ -3847,7 +3847,7 @@
           const badgeRowStart = Number(row.dataset.startMs);
           const badgeRowDur = Math.max(1, Number(row.dataset.endMs) - badgeRowStart);
           const visibleStart = Math.max(badgeRowStart, segment.start);
-          badge.style.left = `${((visibleStart - badgeRowStart) / badgeDur) * 100}%`;
+          badge.style.left = `${((visibleStart - badgeRowStart) / badgeRowDur) * 100}%`;
         });
         const linkedToBoundaryDrag = Boolean(
           boundaryDrag
