@@ -296,7 +296,7 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   expect(afterOut.segments[0].color).toMatchObject({ name: 'red', start: 1000, end: 1900 });
   expect(afterOut.segments[0].color_ref).toBeNull();
 
-  // 转回主轨：颜色同样跟随（数据层直调，菜单点击路径已有用例覆盖）。
+  // 转为主字幕：颜色同样跟随（数据层直调，菜单点击路径已有用例覆盖）。
   const reverted = await page.evaluate(() => convertOverlayCueToMain(0));
   expect(reverted).toBe(true);
   const afterBack = await page.evaluate(() => JSON.parse(buildJson()));
@@ -414,14 +414,16 @@ test('exports overlay cues through the ASS and per-color SRT paths', async ({ pa
   await dropProject(page, project);
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
 
-  // ASS：叠加轨以 Layer 1 + \an8 顶部对齐写入，允许与主轨时间重叠。
+  // ASS：叠加轨以 Layer 1 写入，底部对齐 + MarginV = 80 + fontSize 使其渲染在主字幕上方。
   const ass = await page.evaluate(() => buildAss());
   const dialogueLines = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(dialogueLines).toHaveLength(2);
   expect(dialogueLines[0]).toMatch(/^Dialogue: 0,/);
   expect(dialogueLines[0]).toContain('main red');
   expect(dialogueLines[1]).toMatch(/^Dialogue: 1,/);
-  expect(dialogueLines[1]).toContain('{\\an8}overlay blue');
+  expect(dialogueLines[1]).toContain('overlay blue');
+  expect(dialogueLines[1]).not.toContain('\\an8');
+  expect(dialogueLines[1]).toMatch(/,0,0,\d+,,/);
 
   // 按颜色拆分导出：颜色池包含叠加轨颜色；合并 SRT 含两条轨的文本。
   const colors = await page.evaluate(() => usedSubtitleColors().map((color) => color.name));
@@ -476,6 +478,69 @@ test('splits and merges overlay cues with group marks following', async ({ page 
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
+test('raises the sticker overlay content while an overlay sticker is displayed', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [{
+      id: 'main-001', start: 0, end: 1000, text: 'main cue',
+      sticker: { name: 'main sticker', filename: 'main.png', rel: 'main.png' },
+    }],
+    overlay_track: {
+      enabled: true,
+      segments: [{
+        id: 'overlay-001', start: 1500, end: 2500, text: 'overlay cue',
+        sticker: { name: 'overlay sticker', filename: 'overlay.png', rel: 'overlay.png' },
+      }],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
+
+  const readState = () => page.evaluate(() => {
+    const layer = document.getElementById('sticker-overlay-layer');
+    const content = layer.querySelector('.sticker-overlay-content');
+    return {
+      hasClass: content.classList.contains('has-overlay-sticker'),
+      ratio: content.getBoundingClientRect().height / Math.max(1, layer.getBoundingClientRect().height),
+      images: content.querySelectorAll('img').length,
+    };
+  });
+
+  // 主轨表情包区间：正常 100%，不加 class。
+  await page.evaluate(() => {
+    document.getElementById('sticker-overlay-toggle').checked = true;
+    player.currentTime = 0.5;
+    update();
+  });
+  let state = await readState();
+  expect(state.hasClass).toBe(false);
+  expect(state.images).toBe(1);
+  expect(state.ratio).toBeCloseTo(1, 1);
+
+  // 叠加表情包区间：加 class 且内容区加高到 200%。
+  await page.evaluate(() => {
+    player.currentTime = 2;
+    update();
+  });
+  state = await readState();
+  expect(state.hasClass).toBe(true);
+  expect(state.images).toBe(1);
+  expect(state.ratio).toBeCloseTo(2, 1);
+
+  // 空档区间：没有表情包显示，class 撤回。
+  await page.evaluate(() => {
+    player.currentTime = 1.2;
+    update();
+  });
+  state = await readState();
+  expect(state.hasClass).toBe(false);
+  expect(state.images).toBe(0);
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
 test('keeps color group references valid through an overlay round trip', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
@@ -501,7 +566,7 @@ test('keeps color group references valid through an overlay round trip', async (
   expect(await page.evaluate(() => JSON.parse(buildJson()).segments.map((s) => s.id)))
     .toEqual(['head-1', 'member-1', 'member-3', 'tail-1']);
 
-  // 经叠加轨右键「转回主轨」：headIdx 按插入位置整体平移，不能出现悬空引用。
+  // 经叠加轨右键「转为主字幕」：headIdx 按插入位置整体平移，不能出现悬空引用。
   // 右键验证叠加行菜单可开、条目齐全；实际回转走数据层直调——
   // E2E 里菜单项点击与列表重渲染存在难以稳定的时序竞态，
   // 真实鼠标路径已在本地浏览器手动 QA 中验证（含撤销与导出）。
@@ -510,7 +575,7 @@ test('keeps color group references valid through an overlay round trip', async (
   await page.waitForTimeout(200);
   await overlayRow.click({ button: 'right', force: true });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
-  await expect(page.locator('#ctxmenu .item', { hasText: '转回主轨' })).toBeVisible();
+  await expect(page.locator('#ctxmenu .item', { hasText: '转为主字幕' })).toBeVisible();
   await page.keyboard.press('Escape');
   const reverted = await page.evaluate(() => {
     const ok = convertOverlayCueToMain(0);
@@ -604,11 +669,13 @@ test('assigns colors and disabled state to overlay cues with main-track parity',
   expect(afterKey.colorStart).toBe(afterKey.segStart);
   expect(afterKey.colorEnd).toBe(afterKey.segEnd);
 
-  // 右键菜单：色板点击换色，0 清除
+  // 右键菜单：色板点击换色，0 清除。叠加段（200-1800）与主轨字幕重叠，
+  // 「转为主字幕」此时应置灰禁用。
   await page.locator('.overlay-track-cue').click({ button: 'right', force: true });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
   await expect(page.locator('#ctxmenu .item', { hasText: '分配表情包…' })).toBeVisible();
-  await expect(page.locator('#ctxmenu .item', { hasText: '转回主轨' })).toBeVisible();
+  await expect(page.locator('#ctxmenu .item', { hasText: '转为主字幕' })).toBeVisible();
+  await expect(page.locator('#ctxmenu .item', { hasText: '转为主字幕' })).toHaveClass(/disabled/);
   await page.locator('#ctxmenu .item', { hasText: '标记颜色' }).locator('span[title]').first().click();
   const firstPalette = await page.evaluate(() => COLOR_PALETTE[0].name);
   await expect.poll(() => page.evaluate(() => DATA.overlay_track.segments[0].color?.name)).toBe(firstPalette);
@@ -733,7 +800,7 @@ test('moves an overlay cue back to the main track from the list context menu wit
     },
     overlay_track: {
       enabled: true,
-      segments: [{ id: 'overlay-001', start: 200, end: 1800, text: 'overlay cue' }],
+      segments: [{ id: 'overlay-001', start: 2000, end: 2400, text: 'overlay cue' }],
     },
     waveform: generateWaveformPayload(6000),
   };
@@ -742,18 +809,50 @@ test('moves an overlay cue back to the main track from the list context menu wit
   await expect(page.locator('.waveform-row.multi-subtitle-row').first()).toBeVisible();
   await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
 
-  // 真实点击路径：右键叠加行 → 转回主轨（用户报告此路径不生效）。
+  // 真实点击路径：右键叠加行 → 转为主字幕（用户报告此路径不生效）。
+  // 叠加段位于两条主字幕之间的空隙（2000-2400），转换入口可用。
   const overlayRow = page.locator('.overlay-track-cue[data-overlay-idx="0"]');
   await overlayRow.click({ button: 'right', force: true });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
-  await expect(page.locator('#ctxmenu .item', { hasText: '转回主轨' })).toBeVisible();
-  await page.getByText('转回主轨', { exact: true }).click();
+  await expect(page.locator('#ctxmenu .item', { hasText: '转为主字幕' })).toBeVisible();
+  await expect(page.locator('#ctxmenu .item', { hasText: '转为主字幕' })).not.toHaveClass(/disabled/);
+  await page.getByText('转为主字幕', { exact: true }).click();
   await expect(page.locator('.overlay-track-cue')).toHaveCount(0);
   await expect(page.locator('.cue[data-idx="1"]')).toContainText('overlay cue');
 
   const exported = await page.evaluate(() => JSON.parse(buildJson()));
   expect(exported.segments.map((segment) => segment.id)).toEqual(['main-001', 'overlay-001', 'main-002']);
   expect(exported.overlay_track?.segments || []).toHaveLength(0);
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
+test('disables converting an overlay cue to main while the main track occupies the range', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 200, end: 1800, text: 'overlay cue' }],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
+
+  // 主轨同一时间段已有字幕：菜单项置灰，点击不产生转换。
+  const overlayRow = page.locator('.overlay-track-cue[data-overlay-idx="0"]');
+  await overlayRow.click({ button: 'right', force: true });
+  await expect(page.locator('#ctxmenu.show')).toBeVisible();
+  const convertItem = page.locator('#ctxmenu .item', { hasText: '转为主字幕' });
+  await expect(convertItem).toBeVisible();
+  await expect(convertItem).toHaveClass(/disabled/);
+  await convertItem.click({ force: true });
+  await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
+  const exported = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(exported.segments.map((segment) => segment.id)).toEqual(['main-001']);
+  expect(exported.overlay_track.segments).toHaveLength(1);
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
@@ -846,4 +945,114 @@ test('clears a stale overlay track when a plain SRT replaces the main track', as
   expect(exported.segments.map((segment) => segment.text)).toEqual(['fresh cue']);
   expect(exported.overlay_track.enabled).toBe(false);
   expect(exported.overlay_track.segments).toHaveLength(0);
+});
+
+test('Ctrl+drag over an occupied main cue creates an overlay subtitle', async ({ page }) => {
+  const project = {
+    segments: [
+      { id: 'main-001', start: 0, end: 2000, text: 'first cue' },
+      { id: 'main-002', start: 2200, end: 4200, text: 'second cue' },
+    ],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 500, end: 1500, text: 'overlay cue' }],
+    },
+    waveform: generateWaveformPayload(6000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]')).toBeVisible();
+  await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).toHaveCount(1);
+
+  // 在主字幕占用的时间范围上方按住 Ctrl 拖动：创建的不是主字幕，
+  // 而是落入叠加轨、与主字幕时间重叠的叠加字幕。
+  const rowGeometry = await page.evaluate(() => {
+    const row = document.querySelector('.waveform-cue-block[data-track="main"]').closest('.waveform-row');
+    const rect = row.getBoundingClientRect();
+    const startMs = Number(row.dataset.startMs);
+    const endMs = Number(row.dataset.endMs);
+    const timeToX = (timeMs) => rect.left + ((timeMs - startMs) / (endMs - startMs)) * rect.width;
+    return {
+      nearTopY: rect.top + 8,
+      occupiedStartX: timeToX(2600),
+      occupiedEndX: timeToX(3800),
+      blankStartX: timeToX(4600),
+      blankEndX: timeToX(4900),
+    };
+  });
+  await page.keyboard.down('Control');
+  await page.mouse.move(rowGeometry.occupiedStartX, rowGeometry.nearTopY);
+  await page.mouse.down();
+  await page.mouse.move(rowGeometry.occupiedEndX, rowGeometry.nearTopY, { steps: 12 });
+  await expect(page.locator('.waveform-cue-block.waveform-create-preview.waveform-overlay-block')).toBeVisible();
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).toHaveCount(2);
+  // 新建叠加字幕（空文本）在列表中按搜索规则隐藏，选中态看波形块与面板。
+  await expect(page.locator('.waveform-cue-block.waveform-overlay-block[data-overlay-idx="1"]')).toHaveClass(/selected/);
+  await expect(page.locator('#cue-panel-target')).toHaveText('叠加字幕');
+  const afterCreate = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(afterCreate.segments.map((segment) => segment.id)).toEqual(['main-001', 'main-002']);
+  expect(afterCreate.overlay_track.segments[1]).toMatchObject({ start: 2600, end: 3800 });
+
+  // 空白处的 Ctrl+拖动保持原语义：仍创建主字幕。
+  await page.keyboard.down('Control');
+  await page.mouse.move(rowGeometry.blankStartX, rowGeometry.nearTopY);
+  await page.mouse.down();
+  await page.mouse.move(rowGeometry.blankEndX, rowGeometry.nearTopY, { steps: 8 });
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+  await expect.poll(() => page.evaluate(() => JSON.parse(buildJson()).segments.length)).toBe(3);
+});
+
+test('Ctrl+drag on a main cue block creates an overlay subtitle; Ctrl+click keeps multi-select', async ({ page }) => {
+  const project = {
+    segments: [
+      { id: 'main-001', start: 0, end: 2000, text: 'first cue' },
+      { id: 'main-002', start: 2200, end: 4200, text: 'second cue' },
+    ],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 500, end: 1500, text: 'overlay cue' }],
+    },
+    waveform: generateWaveformPayload(6000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]')).toBeVisible();
+
+  // Ctrl+点击（无位移）仍是多选，不创建字幕。
+  const firstBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
+  await page.keyboard.down('Control');
+  await firstBlock.click();
+  await page.keyboard.up('Control');
+  await expect(firstBlock).toHaveClass(/selected|active/);
+  await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).toHaveCount(1);
+
+  // 在主字幕块上按住 Ctrl 拖动：从按下位置在叠加轨创建字幕。
+  const rowGeometry = await page.evaluate(() => {
+    const row = document.querySelector('.waveform-cue-block[data-track="main"]').closest('.waveform-row');
+    const rect = row.getBoundingClientRect();
+    const startMs = Number(row.dataset.startMs);
+    const endMs = Number(row.dataset.endMs);
+    const timeToX = (timeMs) => rect.left + ((timeMs - startMs) / (endMs - startMs)) * rect.width;
+    return { blockEndX: timeToX(4000) };
+  });
+  const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]');
+  const box = await block.boundingBox();
+  const centerY = box.y + box.height / 2;
+  await page.keyboard.down('Control');
+  await page.mouse.move(box.x + box.width / 2, centerY);
+  await page.mouse.down();
+  await page.mouse.move(rowGeometry.blockEndX, centerY, { steps: 12 });
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).toHaveCount(2);
+  await expect(page.locator('.waveform-cue-block.waveform-overlay-block[data-overlay-idx="1"]')).toHaveClass(/selected/);
+  await expect(page.locator('#cue-panel-target')).toHaveText('叠加字幕');
+  const afterCreate = await page.evaluate(() => JSON.parse(buildJson()));
+  expect(afterCreate.segments.map((segment) => segment.id)).toEqual(['main-001', 'main-002']);
+  expect(afterCreate.overlay_track.segments[1]).toMatchObject({ start: 3200, end: 4000 });
 });

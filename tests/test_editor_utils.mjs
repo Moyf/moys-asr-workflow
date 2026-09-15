@@ -4175,7 +4175,7 @@ test('buildAssPayload writes overlay cues on layer 1 anchored to the top', () =>
   assert.match(dialogueLines[0], /^Dialogue: 0,/);
   assert.ok(!dialogueLines[0].includes('\\an8'));
   assert.match(dialogueLines[1], /^Dialogue: 1,/);
-  assert.ok(dialogueLines[1].includes('{\\an8}overlay'));
+  assert.ok(!dialogueLines[1].includes('\\an8'));
 });
 
 test('reports malformed intervals, missing sticker paths, and stale serializer warnings', () => {

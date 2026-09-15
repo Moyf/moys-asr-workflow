@@ -5040,6 +5040,8 @@
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>
           <span class="help-break" aria-hidden="true"></span>
+          <span><kbd data-mod-key>Ctrl+拖拽已有字幕</kbd> 启用「叠加字幕」后在叠加轨创建</span>
+          <span class="help-break" aria-hidden="true"></span>
           <span class="help-important"><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
         </div>
       </section>
@@ -12018,9 +12020,10 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       );
     });
 
-    // 叠加轨事件：Layer 1 + \an8 顶部居中，允许与主轨 Dialogue 时间重叠，
-    // 播放器（libass/VSFilter）会按 Layer 叠放渲染。
+    // 叠加轨事件：与主字幕同为底部对齐（Alignment=2），MarginV = 80 + fontSize
+    // 使叠加字幕渲染在主字幕正上方；继承颜色样式（如有）。
     const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
+    const overlayMarginV = 80 + fontSize;
     overlaySource.forEach((segment) => {
       if (!segment || segment.disabled === true) return;
       const rawStart = normalizeAssTimeMs(mapTime(segment.start));
@@ -12028,8 +12031,9 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       if (rawEnd <= rawStart) return;
       const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+      const overlayStyleName = segment.color?.name ? segment.color.name.toUpperCase() : 'Default';
       events.push(
-        `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Default,,0,0,0,,{\\an8}${escapeAssText(segment.text)}`,
+        `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${overlayStyleName},,0,0,${overlayMarginV},,${escapeAssText(segment.text)}`,
       );
     });
 
@@ -12046,9 +12050,9 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       '',
       '[V4+ Styles]',
       `Format: ${ASS_STYLE_FORMAT}`,
-      `Style: Default,${fontFamily},${fontSize},${primaryColor},${primaryColor},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`,
+      `Style: Default,${fontFamily},${fontSize},${primaryColor},${primaryColor},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1`,
       ...colorStyles.map((style) => (
-        `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.value},${style.value},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`
+        `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.value},${style.value},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1`
       )),
       '',
       '[Events]',
@@ -14211,11 +14215,20 @@ export default MawDynamicCaptions;
     '双击波形': 'Double-click waveform', '右键波形背景': 'Right-click waveform background',
     '在鼠标位置创建字幕（仅波形）': 'Create a subtitle at the pointer (waveform only)',
     'Ctrl+拖拽空白处': 'Ctrl+drag blank area', '拖动创建指定时长字幕': 'Drag to create a subtitle with a specified duration',
+    'Ctrl+拖拽已有字幕': 'Ctrl+drag an existing subtitle', '启用「叠加字幕」后在叠加轨创建': 'Create on the overlay track when “Overlay subtitles” is enabled',
     '创建字幕': 'Create subtitle', '新增字幕': 'Create subtitle',
+    '创建叠加字幕': 'Create overlay subtitle', '新增叠加字幕': 'Create overlay subtitle',
     '该空白区域不足 100ms，无法新增字幕': 'The blank range is shorter than 100 ms; cannot create a subtitle',
+    '该空白区域不足 100ms，无法新增叠加字幕': 'The blank range is shorter than 100 ms; cannot create an overlay subtitle',
     '这里没有足够的空白区域': 'There is not enough blank space here',
     '该位置已有字幕，无法新增字幕': 'A subtitle already exists at this position; cannot create another one',
     '拖动范围包含已有字幕，无法新增字幕': 'The dragged range contains an existing subtitle; cannot create a new one',
+    '拖动范围包含已有叠加字幕，无法新增叠加字幕': 'The dragged range contains an existing overlay subtitle; cannot create a new one',
+    '当前位置已有叠加字幕': 'An overlay subtitle already exists at this position',
+    '当前没有可用的叠加字幕轨': 'No overlay subtitle track is available',
+    '转为主字幕': 'Convert to main subtitle',
+    '已转为主字幕': 'Converted to main subtitle',
+    '叠加字幕转为主字幕': 'Convert overlay subtitle to main',
     '已取消新增字幕': 'Subtitle creation canceled',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '增加静音区段': 'Add silent region',
@@ -14813,6 +14826,8 @@ export default MawDynamicCaptions;
     if (match) return `Auto-repaired ${match[1]} zero-length timings (100 ms minimum)`;
     match = /^已新增第\s*(\d+)\s*条字幕$/.exec(text);
     if (match) return `Created subtitle ${match[1]}`;
+    match = /^已新增第\s*(\d+)\s*条叠加字幕$/.exec(text);
+    if (match) return `Created overlay subtitle ${match[1]}`;
     match = /^删除\s+(\d+)\s+条字幕$/.exec(text);
     if (match) return `Delete ${match[1]} subtitles`;
     match = /^已将关联字幕统一设为「(.+)」$/.exec(text);
@@ -18780,6 +18795,7 @@ export default MawDynamicCaptions;
       const segments = this.options.getSegments('main');
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const overlaySegments = this.options.getSegments('overlay') || [];
+      const overlaySelected = this.options.getOverlaySelection?.() || new Set();
       // 共享边界拖动会同时修改两侧字幕：中缝拖动的真实选区已包含前后
       // 两句；传统模式的手柄联动只选中点击侧，拖动期间两侧块也按选中态
       // 显示，松开后由真实选区恢复原状。
@@ -19278,7 +19294,7 @@ export default MawDynamicCaptions;
       return Number.isFinite(boundary) ? boundary : requestedMs;
     }
 
-    beginBlockedCueCreateDrag(event, index, track = 'main') {
+    beginBlockedCueCreateDrag(event, index, track = 'main', row = null) {
       const target = event.currentTarget;
       const pointerId = event.pointerId;
       const startX = event.clientX;
@@ -19300,6 +19316,12 @@ export default MawDynamicCaptions;
         if (dx * dx + dy * dy < 16) return;
         moved = true;
         cleanup();
+        // 叠加轨启用时，在主轨字幕上按住拖动 = 从按下位置在叠加轨创建字幕：
+        // 复用空白处的创建拖动（锚点为按下时间），叠加轨同轨占用仍拒绝。
+        if (track === 'main' && row && this.options.getOverlayCreateEnabled?.() === true) {
+          this.beginCreateCueDrag(event, row, 'overlay');
+          return;
+        }
         this.options.onCueCreateRejected?.('occupied');
       };
       const onUp = () => {
@@ -21649,7 +21671,7 @@ function convertOverlayCueToMain(index) {
   const overlay = getOverlayTrack();
   if (!overlay?.segments?.[index]) return false;
   detachCuePanelFromTrackEdits();
-  pushUndo('叠加字幕转回主轨');
+  pushUndo('叠加字幕转为主字幕');
   const segment = overlay.segments[index];
   const colorSnapshot = captureCueColorSnapshot(segment);
   const stickerSnapshot = captureCueStickerSnapshot(overlay.segments, index);
@@ -21667,7 +21689,7 @@ function convertOverlayCueToMain(index) {
   ).nextAnchor;
   renderAll({ waveform: 'full' });
   scheduleAutoSaveFlush();
-  flashHint('已转回主轨', 'success');
+  flashHint('已转为主字幕', 'success');
   return true;
 }
 
@@ -40780,6 +40802,10 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
     addExtensionRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY);
     return;
   }
+  if (track === 'overlay') {
+    addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY);
+    return;
+  }
   const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
   if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
   requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
@@ -40822,6 +40848,89 @@ function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, t
   setTimeout(() => focusCuePanelText(index), 0);
   waveformEditor?.revealTime(safeStart, true);
   flashHint(`已新增第 ${index + 1} 条字幕`, 'success');
+}
+
+// 叠加轨创建入口：与主轨不同，允许与主字幕时间重叠（这正是叠加轨的用途）；
+// 只要求不与叠加轨自身已有段重叠，范围夹进相邻叠加段之间。
+function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
+  const overlay = getOverlayTrack();
+  if (!overlay || !Array.isArray(overlay.segments)) {
+    flashHint('当前没有可用的叠加字幕轨', 'invalid');
+    return;
+  }
+  const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
+  if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
+  requestedEnd = timelineFrameAlignedMilliseconds(requestedEnd);
+  const start = Math.min(requestedStart, requestedEnd);
+  const end = Math.max(requestedStart, requestedEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+  if (overlay.segments.some((segment) => start < Number(segment?.end) && end > Number(segment?.start))) {
+    flashHint('拖动范围包含已有叠加字幕，无法新增叠加字幕', 'warning');
+    return;
+  }
+  const insertAt = overlay.segments.findIndex((segment) => Number(segment.start) > start);
+  const index = insertAt < 0 ? overlay.segments.length : insertAt;
+  const previousEnd = index > 0 ? Number(overlay.segments[index - 1].end) : 0;
+  const nextStart = index < overlay.segments.length ? Number(overlay.segments[index].start) : duration;
+  const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(start / 10) * 10));
+  const safeEnd = Math.min(nextStart, Math.max(safeStart, Math.round(end / 10) * 10));
+  if (safeEnd - safeStart < 100) {
+    flashHint('该空白区域不足 100ms，无法新增叠加字幕', 'warning');
+    return;
+  }
+  commitCuePanelEdit();
+  pushUndo('新增叠加字幕');
+  overlay.segments.splice(index, 0, {
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(overlay.segments, `overlay-${index + 1}`, 'overlay'),
+    start: safeStart,
+    end: safeEnd,
+    text: '',
+    items: [],
+    _dirty: true,
+  });
+  overlay._dirty = true;
+  clearSelection({ silent: true });
+  renderAll({ preserveCueListScroll: false });
+  selectOverlayCueRow(index);
+  setTimeout(() => focusCuePanelText(index, 'overlay'), 0);
+  waveformEditor?.revealTime(safeStart, true);
+  scheduleAutoSaveFlush();
+  flashHint(`已新增第 ${index + 1} 条叠加字幕`, 'success');
+}
+
+// 右键菜单 / 后续菜单入口：在指针时间点创建一条默认时长的叠加字幕，
+// 范围夹进叠加轨相邻段之间（主轨是否占用不参与判断）。
+function addOverlayAtWaveformTime(timeMs, clickX, clickY) {
+  const overlay = getOverlayTrack();
+  if (!overlay || !Array.isArray(overlay.segments)) {
+    flashHint('当前没有可用的叠加字幕轨', 'invalid');
+    return;
+  }
+  const duration = waveformEditor?.durationMs || (Number.isFinite(player.duration) ? player.duration * 1000 : 0);
+  if (!duration) { flashHint('媒体时长尚未加载', 'invalid'); return; }
+  timeMs = timelineFrameAlignedMilliseconds(timeMs);
+  if (findWaveformCueAtTime(timeMs, overlay.segments) >= 0) {
+    flashHint('当前位置已有叠加字幕', 'invalid');
+    return;
+  }
+  const insertAt = overlay.segments.findIndex((segment) => Number(segment.start) > timeMs);
+  const index = insertAt < 0 ? overlay.segments.length : insertAt;
+  const previousEnd = index > 0 ? Number(overlay.segments[index - 1].end) : 0;
+  const nextStart = index < overlay.segments.length ? Number(overlay.segments[index].start) : duration;
+  const gap = nextStart - previousEnd;
+  if (gap < 100) {
+    flashHint('这里没有足够的空白区域', 'warning');
+    return;
+  }
+  const start = Math.max(previousEnd, Math.min(Math.round(timeMs / 10) * 10, nextStart - 100));
+  const end = Math.min(nextStart, start + 1000);
+  const adjustedStart = end - start >= 100 ? start : Math.max(previousEnd, nextStart - 1000);
+  if (end - adjustedStart < 100) {
+    flashHint('这里没有足够的空白区域', 'warning');
+    return;
+  }
+  addOverlayRangeFromWaveform(adjustedStart, end, clickX, clickY);
 }
 
 function addCueAtWaveformTime(timeMs, clickX, clickY) {
@@ -41126,6 +41235,16 @@ function showWaveformBlankMenu(timeMs, clickX, clickY, track = 'main') {
       () => addCueAtWaveformTime(timeMs, clickX, clickY),
       mainIdx >= 0,
     );
+    // 叠加轨启用时提供「创建叠加字幕」：主字幕占用的时间点也能创建
+    // （落叠加轨），与主字幕共存；同时间点已有叠加字幕时置灰。
+    if (getOverlayTrack()?.enabled === true) {
+      addItem(
+        '创建叠加字幕',
+        '',
+        () => addOverlayAtWaveformTime(timeMs, clickX, clickY),
+        findWaveformCueAtTime(timeMs, getOverlayTrack()?.segments) >= 0,
+      );
+    }
   }
   if (Array.isArray(DATA.segments) && DATA.segments.length) {
     addItem(
@@ -41313,11 +41432,15 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
   ctxmenu.style.top = ny + 'px';
 }
 
-// 叠加字幕块的右键菜单：转回主轨 / 删除。叠加轨不参与拆分合并与绑定。
+// 叠加字幕块的右键菜单：转为主字幕 / 删除。叠加轨不参与拆分合并与绑定。
 function showOverlayContextMenu(x, y, index) {
   const overlay = getOverlayTrack();
   const segment = overlay?.segments?.[index];
   if (!segment) return;
+  // 主轨同时间段已有字幕时，转回去会产生主轨重叠，置灰禁用；
+  // 只把该条叠加段的时间范围与主轨比对，相邻贴合（端点相接）不算占用。
+  const mainOccupied = DATA.segments.some((main) =>
+    Number(main?.start) < Number(segment?.end) && Number(main?.end) > Number(segment?.start));
   ctxmenu.innerHTML = '';
   const addItem = (label, fn, opts = {}) => {
     const it = document.createElement('div');
@@ -41344,7 +41467,7 @@ function showOverlayContextMenu(x, y, index) {
     });
   }
   addItem('拆分此叠加字幕', () => openOverlaySplitModal(index, null));
-  addItem('转回主轨', () => convertOverlayCueToMain(index));
+  addItem('转为主字幕', () => convertOverlayCueToMain(index), { disabled: mainOccupied });
   addSep();
   // 组 2：外观（表情包与颜色），交互与主字幕菜单对齐（1~5 快捷键同源）。
   addItem('分配表情包…', () => openStickerPicker([index], false, { overlay: true }));
@@ -41801,6 +41924,9 @@ function initWaveformEditor() {
     addCueRange: (startMs, endMs, x, y, track = 'main') => (
       addCueRangeFromWaveform(startMs, endMs, x, y, track)
     ),
+    // 叠加轨启用（勾选「叠加字幕」）时，主轨占用位置按 Ctrl(Cmd)+拖动可
+    // 直接创建叠加字幕；由波形侧改道创建轨道，这里只提供开关状态。
+    getOverlayCreateEnabled: () => getOverlayTrack()?.enabled === true,
     onCueCreateRejected: (reason) => {
       if (reason === 'too-short') flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
       if (reason === 'occupied') flashHint('该位置已有字幕，无法新增字幕', 'warning');

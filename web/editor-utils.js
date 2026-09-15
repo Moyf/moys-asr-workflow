@@ -4090,9 +4090,10 @@
       );
     });
 
-    // 叠加轨事件：Layer 1 + \an8 顶部居中，允许与主轨 Dialogue 时间重叠，
-    // 播放器（libass/VSFilter）会按 Layer 叠放渲染。
+    // 叠加轨事件：与主字幕同为底部对齐（Alignment=2），MarginV = 80 + fontSize
+    // 使叠加字幕渲染在主字幕正上方；继承颜色样式（如有）。
     const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
+    const overlayMarginV = 80 + fontSize;
     overlaySource.forEach((segment) => {
       if (!segment || segment.disabled === true) return;
       const rawStart = normalizeAssTimeMs(mapTime(segment.start));
@@ -4100,8 +4101,9 @@
       if (rawEnd <= rawStart) return;
       const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+      const overlayStyleName = segment.color?.name ? segment.color.name.toUpperCase() : 'Default';
       events.push(
-        `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Default,,0,0,0,,{\\an8}${escapeAssText(segment.text)}`,
+        `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${overlayStyleName},,0,0,${overlayMarginV},,${escapeAssText(segment.text)}`,
       );
     });
 
@@ -4118,9 +4120,9 @@
       '',
       '[V4+ Styles]',
       `Format: ${ASS_STYLE_FORMAT}`,
-      `Style: Default,${fontFamily},${fontSize},${primaryColor},${primaryColor},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`,
+      `Style: Default,${fontFamily},${fontSize},${primaryColor},${primaryColor},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1`,
       ...colorStyles.map((style) => (
-        `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.value},${style.value},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`
+        `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.value},${style.value},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1`
       )),
       '',
       '[Events]',
