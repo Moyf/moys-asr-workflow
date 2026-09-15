@@ -92,6 +92,60 @@ test('recoloring part of an existing color group keeps the remaining head valid'
   ]);
 });
 
+test('detaches a cue from a color group while keeping its color and limiting the menu', async ({ page }) => {
+  await waitEditorReady(page);
+
+  const setColorGroup = async () => page.evaluate(() => {
+    DATA.segments.splice(
+      0,
+      DATA.segments.length,
+      { start: 0, end: 1000, text: '黄色1', items: [] },
+      { start: 1000, end: 2000, text: '黄色2', items: [] },
+      { start: 2000, end: 3000, text: '黄色3', items: [] },
+    );
+    assignColor([0, 1, 2], 'yellow');
+    return DATA.segments.map(({ color, color_ref }) => ({
+      color: color ? { ...color } : null,
+      color_ref: color_ref ? { ...color_ref } : null,
+    }));
+  });
+  const detachItem = page.locator('#ctxmenu .item > span')
+    .filter({ hasText: /^从颜色组中脱离$/u }).locator('..');
+
+  // 中间 cue 脱离：前半组保留原 head，后半组提升为新 head。
+  await setColorGroup();
+  await page.locator('.cue[data-idx="1"]').click({ button: 'right' });
+  await expect(detachItem).toBeVisible();
+  await detachItem.click();
+  expect(await page.evaluate(() => DATA.segments.map(({ color, color_ref }) => ({
+    color: color ? { name: color.name, start: color.start, end: color.end } : null,
+    color_ref: color_ref ? { ...color_ref } : null,
+  })))).toEqual([
+    { color: { name: 'yellow', start: 0, end: 1000 }, color_ref: null },
+    { color: { name: 'yellow', start: 1000, end: 2000 }, color_ref: null },
+    { color: { name: 'yellow', start: 2000, end: 3000 }, color_ref: null },
+  ]);
+  await page.locator('.cue[data-idx="1"]').click({ button: 'right' });
+  await expect(detachItem).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // 组头脱离：组头本身变为独立颜色，剩余成员整体提升新 head。
+  await setColorGroup();
+  await page.locator('.cue[data-idx="0"]').click({ button: 'right' });
+  await expect(detachItem).toBeVisible();
+  await detachItem.click();
+  expect(await page.evaluate(() => DATA.segments.map(({ color, color_ref }) => ({
+    color: color ? { name: color.name, start: color.start, end: color.end } : null,
+    color_ref: color_ref ? { ...color_ref } : null,
+  })))).toEqual([
+    { color: { name: 'yellow', start: 0, end: 1000 }, color_ref: null },
+    { color: { name: 'yellow', start: 1000, end: 3000 }, color_ref: null },
+    { color: null, color_ref: { name: 'yellow', headIdx: 1 } },
+  ]);
+  await page.locator('.cue[data-idx="0"]').click({ button: 'right' });
+  await expect(detachItem).toHaveCount(0);
+});
+
 test('color filter button appears only for projects with colored subtitles', async ({ page }) => {
   await waitEditorReady(page);
   await expect(page.locator('#color-filter-btn')).toBeHidden();

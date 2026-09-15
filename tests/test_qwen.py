@@ -8,6 +8,7 @@ from unittest import mock
 
 from generate_subtitle_qwen_api import (
     build_interpolated_items,
+    build_interpolated_word_items,
     build_segments_from_api_sentences,
     configure_extra_strong_punct,
     extract_audio,
@@ -312,6 +313,16 @@ class QwenInterpolatedItemsTests(unittest.TestCase):
         self.assertEqual(single[0]["start"], 800)
         self.assertEqual(single[0]["end"], 801)
 
+    def test_word_items_keep_whitespace_and_interpolate(self) -> None:
+        items = build_interpolated_word_items("hello world, again.", 0, 4000)
+        self.assertEqual([item["text"] for item in items], ["hello", " world,", " again."])
+        self.assertEqual("".join(item["text"] for item in items), "hello world, again.")
+        self.assertEqual(items[0]["start"], 0)
+        self.assertEqual(items[-1]["end"], 4000)
+        for prev, nxt in zip(items, items[1:]):
+            self.assertLess(prev["start"], prev["end"])
+            self.assertEqual(prev["end"], nxt["start"])
+
 
 class QwenCoarseSplitTests(unittest.TestCase):
     def test_short_segment_passes_through_untouched(self) -> None:
@@ -364,6 +375,28 @@ class QwenCoarseSplitTests(unittest.TestCase):
         segment = {"start": 0, "end": 3000, "text": "one two three four five"}
         pieces = split_coarse_segment(segment, max_len=5, min_len=1, gap_split_ms=0, max_words=13, split_mode="word")
         self.assertEqual(len(pieces), 1)
+
+    def test_itemless_word_mode_splits_at_word_boundaries(self) -> None:
+        text = "one two three four five six seven eight nine ten eleven twelve thirteen"
+        segment = {"start": 0, "end": 13_000, "text": text}
+        pieces = split_coarse_segment(
+            segment,
+            max_len=5,
+            min_len=1,
+            gap_split_ms=0,
+            max_words=3,
+            min_words=1,
+            split_mode="word",
+        )
+        self.assertGreater(len(pieces), 1)
+        self.assertEqual("".join(piece["text"] for piece in pieces), text)
+        for piece in pieces:
+            self.assertNotIn("items", piece)
+            self.assertLessEqual(len(piece["text"].split()), 3)
+        self.assertEqual(pieces[0]["start"], 0)
+        self.assertEqual(pieces[-1]["end"], 13_000)
+        for prev, nxt in zip(pieces, pieces[1:]):
+            self.assertLessEqual(prev["end"], nxt["start"])
 
 
 class QwenMixedDemotionTests(unittest.TestCase):

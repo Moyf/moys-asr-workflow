@@ -892,8 +892,18 @@
   background: var(--wave-cue-handle);
   cursor: ew-resize;
 }
-.waveform-cue-handle.left { left: 0; border-radius: 3px 0 0 3px; }
-.waveform-cue-handle.right { right: 0; border-radius: 0 3px 3px 0; }
+/* assets/cursors/left-boundary.svg 内嵌副本；热点位于竖线中央。 */
+.waveform-cue-handle.left {
+  left: 0;
+  border-radius: 3px 0 0 3px;
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M3%2016l5-4v3h7v2H8v3z%20M15%2010h2v12h-2z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
+}
+/* assets/cursors/right-boundary.svg 内嵌副本；热点位于竖线中央。 */
+.waveform-cue-handle.right {
+  right: 0;
+  border-radius: 0 3px 3px 0;
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M15%2010h2v12h-2z%20M17%2015h7v-3l5%204-5%204v-3h-7z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
+}
 /* 手柄悬停反馈：加亮提示「这里是单侧调整手柄」，与中缝区的 hover 亮度区分。 */
 .waveform-cue-handle:hover { background: var(--wave-cue-handle-hover); }
 /* 中缝联动模式：相接侧手柄加宽，让「手柄（单侧调整）— 中缝（联动拖动）
@@ -913,7 +923,8 @@
   background: var(--wave-cue-boundary);
   opacity: 0.5;
   transition: opacity 0.12s ease;
-  cursor: col-resize;
+  /* assets/cursors/shared-boundary.svg 内嵌副本，兼容便携 HTML；热点位于中央。 */
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M2%2016l5-4v3h4v2H7v3z%20M13%2010h2v12h-2z%20M17%2010h2v12h-2z%20M21%2015h4v-3l5%204-5%204v-3h-4z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
   touch-action: none;
 }
 .waveform-cue-boundary:hover,

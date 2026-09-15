@@ -1227,6 +1227,11 @@
   :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="blue"] { background: #3874c9; }
   :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="red"] { background: #c84545; }
   :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="orange"] { background: #d9834a; }
+  .editor-settings-accent-option.active .editor-settings-accent-swatch {
+    background: #fff;
+    border-color: rgba(0, 0, 0, 0.42);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
+  }
   .editor-settings-custom-color {
     display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px;
   }
