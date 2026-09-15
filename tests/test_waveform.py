@@ -733,6 +733,8 @@ class EditorAssetTests(unittest.TestCase):
             '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd data-mod-key>Ctrl+拖拽已有字幕</kbd> 启用「叠加字幕」后在叠加轨创建</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span class="help-important"><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>',
             page,
         )
