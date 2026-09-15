@@ -72,6 +72,31 @@
     return family || value;
   }
 
+  // combobox 下拉选项：按显示名合并预设与本机字体并去重。
+  // 预设与扫描结果经常重叠（如 Arial / Microsoft YaHei），去重时保留先出现的项。
+  function mergeFontFamilyOptions(entries) {
+    const seen = new Set();
+    const result = [];
+    (Array.isArray(entries) ? entries : []).forEach((entry) => {
+      const value = typeof entry?.value === 'string' ? entry.value.trim() : '';
+      if (!value) return;
+      const label = typeof entry?.label === 'string' && entry.label.trim()
+        ? entry.label.trim() : value;
+      const key = label.toLocaleLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      result.push({ value, label });
+    });
+    return result;
+  }
+
+  function filterFontFamilyOptions(entries, query) {
+    const normalized = String(query || '').trim().toLocaleLowerCase();
+    const source = Array.isArray(entries) ? entries : [];
+    if (!normalized) return source;
+    return source.filter((entry) => entry.label.toLocaleLowerCase().includes(normalized));
+  }
+
   const SPEAKER_LABEL_COLORS = Object.freeze([
     'yellow', 'green', 'red', 'purple', 'blue',
   ]);
@@ -3880,7 +3905,16 @@
     return parts.join('\n');
   }
 
-  const ASS_DEFAULT_FONT_FAMILY = 'Arial';
+  // ASS 默认字体按操作系统选择：Arial 对中文没有合适的字形回退，
+  // 中文系统下默认字体应直接落到系统自带的 CJK 无衬线字体。
+  function assDefaultFontFamily() {
+    const nav = globalThis.navigator;
+    const source = `${nav?.platform || ''} ${nav?.userAgent || ''}`.toLowerCase();
+    if (/win/.test(source)) return 'Microsoft YaHei';
+    if (/\bmac|iphone|ipad/.test(source)) return 'PingFang SC';
+    return 'Noto Sans CJK SC';
+  }
+  const ASS_DEFAULT_FONT_FAMILY = assDefaultFontFamily();
   const ASS_DEFAULT_PREVIEW_FONT_SIZE = 18;
   const ASS_AUTO_FONT_SIZE_1080P = 72;
   // Fullscreen preview doubles the CSS size; Subtitle Edit calibration maps
@@ -3943,11 +3977,13 @@
     marginV: 40,
     encoding: 1,
   });
-  // ASS 默认样式：字号按 1080p 参考基准 72，垂直边距放宽到 80；
-  // SRT 压制默认样式保持 18/40。
+  // ASS 默认样式：字体按操作系统选择、默认加粗，字号按 1080p 参考基准 72，
+  // 垂直边距放宽到 80；SRT 压制默认样式保持 Arial 18/40 不加粗。
   const ASS_DEFAULT_ASS_STYLE = Object.freeze({
     ...ASS_DEFAULT_STYLE,
-    id: 'ass', name: 'ASS',
+    id: 'ass', name: 'ASS 默认样式',
+    fontName: ASS_DEFAULT_FONT_FAMILY,
+    bold: true,
     fontSize: 72, marginV: 80,
   });
   const ASS_DEFAULT_ANIMATIONS = Object.freeze({
@@ -3962,7 +3998,7 @@
     t: Object.freeze({ enabled: false, startMs: 0, endMs: 1000, accel: 1, tags: '' }),
   });
   const ASS_DEFAULT_PROFILE = Object.freeze({
-    id: 'ass', name: 'ASS', builtin: true, styleId: 'ass',
+    id: 'ass', name: 'ASS 输出方案', builtin: true, styleId: 'ass',
     animations: ASS_DEFAULT_ANIMATIONS,
   });
 
@@ -4022,7 +4058,7 @@
       id: resolvedId,
       name: normalizeAssLibraryText(source.name, fallback.name || '样式'),
       builtin: Boolean(fallback.builtin),
-      fontName: normalizeAssLibraryText(source.fontName, fallback.fontName || 'Arial', ASS_STYLE_LIBRARY_MAX_FONT_LENGTH),
+      fontName: normalizeAssLibraryText(source.fontName, fallback.fontName || ASS_DEFAULT_FONT_FAMILY, ASS_STYLE_LIBRARY_MAX_FONT_LENGTH),
       fontSize: normalizeAssLibraryNumber(source.fontSize, fallback.fontSize || 18, 1, 512),
       primaryColor: normalizeAssLibraryColor(source.primaryColor, fallback.primaryColor || '#ffffff'),
       secondaryColor: normalizeAssLibraryColor(source.secondaryColor, fallback.secondaryColor || '#ffffff'),
@@ -4138,6 +4174,14 @@
       });
     }
     const styles = [...styleMap.values()].slice(0, 64);
+    // 内置条目若仍使用旧默认名，迁移到当前默认名；用户自定义过的名字不动。
+    const legacyBuiltinStyleNames = { ass: 'ASS' };
+    styles.forEach((style) => {
+      const legacy = legacyBuiltinStyleNames[style.id];
+      if (legacy && style.name === legacy) {
+        style.name = (style.id === 'ass' ? ASS_DEFAULT_ASS_STYLE : ASS_DEFAULT_STYLE).name;
+      }
+    });
     const profileMap = new Map([
       ['ass', normalizeAssProfile(ASS_DEFAULT_PROFILE, ASS_DEFAULT_PROFILE, 'ass')],
     ]);
@@ -4157,6 +4201,12 @@
       ...profile,
       styleId: styleIds.has(profile.styleId) ? profile.styleId : 'ass',
     }));
+    // 内置方案旧默认名迁移（同上，用户自定义过的名字不动）。
+    profiles.forEach((profile) => {
+      if (profile.id === 'ass' && profile.name === 'ASS') {
+        profile.name = ASS_DEFAULT_PROFILE.name;
+      }
+    });
     const assignments = source.assignments && typeof source.assignments === 'object'
       ? source.assignments : {};
     const srtBurnStyleId = styleIds.has(normalizeAssStyleId(assignments.srtBurnStyleId))
@@ -6155,6 +6205,8 @@ export default MawDynamicCaptions;
   SUBTITLE_FONT_FAMILY_PRESETS,
   subtitleFontFamilyStoredToInput,
   subtitleFontFamilyInputToStored,
+  mergeFontFamilyOptions,
+  filterFontFamilyOptions,
     SPEAKER_LABEL_COLORS,
     DEFAULT_SPEAKER_LABELS,
     SPEAKER_LABEL_MAX_LENGTH,

@@ -970,9 +970,12 @@ __WAVEFORM_CSS__
         </label>
         <label class="subtitle-preview-setting-row" title="选择播放器画面内字幕预览使用的字体族；输入可筛选可用字体">
           <span>字体</span>
-          <input type="text" id="subtitle-font-family" list="subtitle-font-family-options" autocomplete="off" spellcheck="false" placeholder="默认无衬线">
+          <div class="font-combobox" id="subtitle-font-family-picker">
+            <input type="text" id="subtitle-font-family" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="subtitle-font-family-options" placeholder="默认无衬线">
+            <button type="button" class="font-combobox-toggle" id="subtitle-font-family-toggle" tabindex="-1" aria-label="展开字体列表"></button>
+            <div class="font-combobox-options" id="subtitle-font-family-options" role="listbox" aria-label="可选字体" hidden></div>
+          </div>
         </label>
-        <datalist id="subtitle-font-family-options"></datalist>
         <div class="subtitle-preview-font-scan">
           <button type="button" id="subtitle-font-family-scan" title="读取本机已安装的字体">读取本机字体</button>
           <span id="subtitle-font-family-status" class="subtitle-preview-font-scan-status" role="status" aria-live="polite">点击读取本机字体（首次需要授权）</span>
@@ -1055,6 +1058,7 @@ __WAVEFORM_CSS__
           <input type="checkbox" id="subtitle-color-underline" checked aria-label="预览字幕颜色">
           预览字幕颜色
         </label>
+        <small class="editor-settings-hint" id="subtitle-color-ass-mode-hint" hidden>当前由 <button type="button" class="ass-mode-hint-link" id="ass-mode-hint-link">ASS 字幕模式</button> 控制预览样式</small>
         <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
           <span>颜色样式</span>
           <select id="subtitle-color-style" aria-label="预览字幕颜色样式">
@@ -1390,7 +1394,6 @@ __WAVEFORM_CSS__
     </aside>
     <main class="ass-style-editor" aria-live="polite">
       <div class="ass-style-editor-toolbar">
-        <span class="ass-style-form-kicker">STYLE / PROFILE</span>
         <button type="button" id="ass-style-delete" title="删除当前样式或方案">删除当前</button>
       </div>
       <div class="ass-style-editor-empty" id="ass-style-editor-empty" hidden>从左侧选择一个样式或 ASS 方案。</div>
@@ -1410,6 +1413,7 @@ __WAVEFORM_CSS__
             <label class="ass-style-field">描边宽度<input type="number" id="ass-style-outline" data-ass-style-field="outline" min="0" max="100" step="1"></label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-bold" data-ass-style-field="bold"> 加粗</label>
           </div>
+          <small class="editor-settings-hint">有颜色的字幕会使用对应颜色覆盖主色/描边，取决于「字幕样式」中的设置。</small>
         </section>
         <section class="ass-style-form-section ass-style-extended-section" aria-labelledby="ass-style-extended-heading">
           <div class="ass-style-subheading" id="ass-style-extended-heading">拓展样式</div>
@@ -1417,10 +1421,13 @@ __WAVEFORM_CSS__
             <div class="ass-style-field ass-style-field-wide ass-style-font-field">
               <label for="ass-style-font-name">字体</label>
               <div class="ass-style-font-row">
-                <input type="text" id="ass-style-font-name" data-ass-style-field="fontName" maxlength="128" autocomplete="off" spellcheck="false" list="ass-font-name-options" placeholder="Arial">
+                <div class="font-combobox" id="ass-style-font-picker">
+                  <input type="text" id="ass-style-font-name" data-ass-style-field="fontName" maxlength="128" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="ass-font-name-options" placeholder="Arial">
+                  <button type="button" class="font-combobox-toggle" id="ass-style-font-toggle" tabindex="-1" aria-label="展开字体列表"></button>
+                  <div class="font-combobox-options" id="ass-font-name-options" role="listbox" aria-label="可选字体" hidden></div>
+                </div>
                 <button type="button" id="ass-style-use-preview-font" title="将「字幕样式」中的预览字体应用到 ASS 字体">使用预览字体</button>
               </div>
-              <datalist id="ass-font-name-options"></datalist>
             </div>
             <label class="ass-style-field">字号<input type="number" id="ass-style-font-size" data-ass-style-field="fontSize" min="1" max="512" step="1"></label>
             <label class="ass-style-field">字距<input type="number" id="ass-style-spacing" data-ass-style-field="spacing" min="-100" max="100" step="1"><span class="ass-style-unit">px</span></label>
@@ -1428,9 +1435,6 @@ __WAVEFORM_CSS__
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-italic" data-ass-style-field="italic"> 斜体</label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-underline" data-ass-style-field="underline"> 下划线</label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-strike-out" data-ass-style-field="strikeOut"> 删除线</label>
-            <label class="ass-style-field">横向缩放<input type="number" id="ass-style-scale-x" data-ass-style-field="scaleX" min="0" max="1000" step="1"><span class="ass-style-unit">%</span></label>
-            <label class="ass-style-field">纵向缩放<input type="number" id="ass-style-scale-y" data-ass-style-field="scaleY" min="0" max="1000" step="1"><span class="ass-style-unit">%</span></label>
-            <label class="ass-style-field">旋转<input type="number" id="ass-style-angle" data-ass-style-field="angle" min="-360" max="360" step="1"><span class="ass-style-unit">°</span></label>
           </div>
           <div class="ass-style-subheading ass-style-subheading-nested" id="ass-style-border-shadow-heading">边框与阴影</div>
           <div class="ass-style-fields ass-style-fields-border-shadow" aria-labelledby="ass-style-border-shadow-heading">
@@ -1457,6 +1461,11 @@ __WAVEFORM_CSS__
               <label class="ass-style-field">左边距<input type="number" id="ass-style-margin-l" data-ass-style-field="marginL" min="0" max="9999" step="1"></label>
               <label class="ass-style-field">右边距<input type="number" id="ass-style-margin-r" data-ass-style-field="marginR" min="0" max="9999" step="1"></label>
               <label class="ass-style-field">垂直边距<input type="number" id="ass-style-margin-v" data-ass-style-field="marginV" min="0" max="9999" step="1"></label>
+            </div>
+            <div class="ass-style-fields ass-style-fields-scale-stack">
+              <label class="ass-style-field">横向缩放<input type="number" id="ass-style-scale-x" data-ass-style-field="scaleX" min="0" max="1000" step="1"><span class="ass-style-unit">%</span></label>
+              <label class="ass-style-field">纵向缩放<input type="number" id="ass-style-scale-y" data-ass-style-field="scaleY" min="0" max="1000" step="1"><span class="ass-style-unit">%</span></label>
+              <label class="ass-style-field">旋转<input type="number" id="ass-style-angle" data-ass-style-field="angle" min="-360" max="360" step="1"><span class="ass-style-unit">°</span></label>
             </div>
           </div>
         </section>

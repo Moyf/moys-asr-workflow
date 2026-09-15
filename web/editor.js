@@ -819,9 +819,9 @@ const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke'
 const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
 const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
 const DEFAULT_ASS_COLOR_STYLE = 'text';
-// 字体输入框用 datalist 提供搜索（映射逻辑在 editor-utils 的
+// 字体输入框用 combobox 下拉提供筛选（映射逻辑在 editor-utils 的
 // subtitleFontFamilyStoredToInput / subtitleFontFamilyInputToStored）；
-// 扫描到的本机字体会由 datalist 动态合并，无需预设常量参与启动期渲染。
+// 扫描到的本机字体会由下拉列表动态合并，无需预设常量参与启动期渲染。
 const ASS_BUILTIN_FONT_SUGGESTIONS = Object.freeze([
   'Arial', 'Microsoft YaHei', 'SimHei', 'SimSun', 'Segoe UI', 'Verdana', 'Times New Roman',
 ]);
@@ -1770,6 +1770,12 @@ const extensionOverlayToggle = document.getElementById('extension-overlay-toggle
 const stickerOverlayToggle = document.getElementById('sticker-overlay-toggle');
 const subtitleFontSizeSelect = document.getElementById('subtitle-font-size');
 const subtitleFontFamilyInput = document.getElementById('subtitle-font-family');
+const subtitleFontFamilyToggle = document.getElementById('subtitle-font-family-toggle');
+const subtitleFontFamilyOptions = document.getElementById('subtitle-font-family-options');
+// combobox 实例容器必须声明在启动早期的 relabelSubtitleFontFamilyOptions()
+// 调用（模块求值 ~12000 行）之前，否则惰性创建赋值会踩暂时性死区。
+let subtitleFontFamilyCombobox = null;
+let assFontNameCombobox = null;
 const subtitleFontFamilyScanButton = document.getElementById('subtitle-font-family-scan');
 const subtitleFontFamilyStatus = document.getElementById('subtitle-font-family-status');
 const subtitleBackgroundColorInput = document.getElementById('subtitle-background-color');
@@ -1777,6 +1783,8 @@ const subtitleBackgroundAlphaInput = document.getElementById('subtitle-backgroun
 const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
+const subtitleColorAssModeHint = document.getElementById('subtitle-color-ass-mode-hint');
+const subtitleColorAssModeHintLink = document.getElementById('ass-mode-hint-link');
 const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
 const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
 const assColorStyleSelect = document.getElementById('ass-color-style');
@@ -2109,6 +2117,8 @@ const assStyleWindowClose = document.getElementById('ass-style-window-close');
 const assStyleWindowCloseFooter = document.getElementById('ass-style-window-close-footer');
 const assStyleLibraryStatus = document.getElementById('ass-style-library-status');
 const assStyleUsePreviewFontButton = document.getElementById('ass-style-use-preview-font');
+const assStyleFontToggle = document.getElementById('ass-style-font-toggle');
+const assStyleFontOptions = document.getElementById('ass-font-name-options');
 const assStyleCount = document.getElementById('ass-style-count');
 const assProfileCount = document.getElementById('ass-profile-count');
 const assStyleList = document.getElementById('ass-style-list');
@@ -2653,6 +2663,24 @@ function duplicateAssStyle() {
   syncAssStyleManager({ force: true });
 }
 
+function duplicateAssProfile() {
+  const source = selectedAssProfile();
+  if (!source || (ASS_STYLE_LIBRARY.assProfiles || []).length >= 64) {
+    flashHint('无法复制方案：已达到数量上限', 'warning');
+    return;
+  }
+  const id = assStyleManagerId('profile', ASS_STYLE_LIBRARY.assProfiles);
+  updateAssStyleManagerLibrary((library) => {
+    library.assProfiles.push({
+      ...assStyleManagerClone(source),
+      id, name: `${source.name} 副本`, builtin: false,
+    });
+  }, { persist: false });
+  assStyleManagerSelection = { kind: 'profile', id };
+  scheduleAssStyleLibrarySave();
+  syncAssStyleManager({ force: true });
+}
+
 function createAssProfile() {
   if ((ASS_STYLE_LIBRARY.assProfiles || []).length >= 64) {
     flashHint('ASS 方案数量已达到上限（64 个）', 'warning');
@@ -2746,20 +2774,46 @@ assStyleUsePreviewFontButton?.addEventListener('click', () => {
   updateAssStyleField('fontName', fontName);
   flashHint(`已将 ASS 字体设为「${fontName}」`, 'success');
 });
-assStyleList?.addEventListener('contextmenu', (event) => {
-  const button = event.target.closest('[data-ass-selection-kind="style"]');
+// 样式/方案列表右键菜单：创建副本 / 重命名 / 删除（内置条目的删除不可选）。
+function showAssListContextMenu(event, kind) {
+  const button = event.target.closest(`[data-ass-selection-kind="${kind}"]`);
   if (!button) return;
   event.preventDefault();
-  assStyleManagerSetSelection('style', button.dataset.assSelectionId);
-  deleteSelectedAssEntry();
-});
-assProfileList?.addEventListener('contextmenu', (event) => {
-  const button = event.target.closest('[data-ass-selection-kind="profile"]');
-  if (!button) return;
-  event.preventDefault();
-  assStyleManagerSetSelection('profile', button.dataset.assSelectionId);
-  deleteSelectedAssEntry();
-});
+  assStyleManagerSetSelection(kind, button.dataset.assSelectionId);
+  const collection = kind === 'profile' ? ASS_STYLE_LIBRARY.assProfiles : ASS_STYLE_LIBRARY.styles;
+  const item = collection?.find((candidate) => candidate.id === button.dataset.assSelectionId);
+  if (!item) return;
+  ctxmenu.innerHTML = '';
+  const addItem = (label, fn, { danger = false, disabled = false } = {}) => {
+    const element = document.createElement('div');
+    element.className = `item${danger ? ' danger' : ''}${disabled ? ' disabled' : ''}`;
+    const text = document.createElement('span');
+    text.textContent = label;
+    element.appendChild(text);
+    if (!disabled) element.addEventListener('click', () => {
+      ctxmenu.classList.remove('show');
+      fn();
+    });
+    ctxmenu.appendChild(element);
+  };
+  addItem('创建副本', () => (kind === 'profile' ? duplicateAssProfile() : duplicateAssStyle()));
+  addItem('重命名', () => {
+    const input = document.getElementById(kind === 'profile' ? 'ass-profile-name' : 'ass-style-name');
+    if (!input) return;
+    input.focus();
+    input.select();
+    input.scrollIntoView({ block: 'center', inline: 'nearest' });
+  });
+  addItem('删除', () => deleteSelectedAssEntry(), { danger: true, disabled: item.builtin === true });
+  ctxmenu.classList.add('show');
+  const rect = ctxmenu.getBoundingClientRect();
+  const nx = Math.max(4, Math.min(event.clientX, window.innerWidth - rect.width - 4));
+  const ny = Math.max(4, Math.min(event.clientY, window.innerHeight - rect.height - 4));
+  ctxmenu.style.left = `${nx}px`;
+  ctxmenu.style.top = `${ny}px`;
+}
+assStyleList?.addEventListener('contextmenu', (event) => showAssListContextMenu(event, 'style'));
+assProfileList?.addEventListener('contextmenu', (event) => showAssListContextMenu(event, 'profile'));
 assStyleForm?.addEventListener('input', (event) => {
   const field = event.target.closest('[data-ass-style-field]');
   if (!field) return;
@@ -2783,7 +2837,15 @@ assProfileForm?.addEventListener('change', (event) => {
   if (field) updateAssProfileField(field.dataset.assProfileField || field.dataset.assAnimation, assStyleFormValue(field));
 });
 
+function syncAssModeDependentControls() {
+  // ASS 字幕模式接管预览样式后，「预览字幕颜色」不再参与预览，禁用并提示跳转。
+  const assMode = EDITOR_SETTINGS.assMode === true;
+  if (subtitleColorUnderlineInput) subtitleColorUnderlineInput.disabled = assMode;
+  if (subtitleColorAssModeHint) subtitleColorAssModeHint.hidden = !assMode;
+}
+
 function syncAssModeControl() {
+  syncAssModeDependentControls();
   if (!assModeToggle) return;
   assModeToggle.checked = EDITOR_SETTINGS.assMode === true;
   assModeToggle.setAttribute('aria-checked', String(assModeToggle.checked));
@@ -4374,6 +4436,10 @@ subtitleColorUnderlineInput?.addEventListener('change', () => {
   pushPreviewUndo('切换预览字幕颜色下划线', snapshotPreviewState());
   setSubtitleAppearance({ color_underline: subtitleColorUnderlineInput.checked });
   update();
+});
+// 提示中的「ASS 字幕模式」是链接：跳到设置窗口的「字幕样式」tab。
+subtitleColorAssModeHintLink?.addEventListener('click', () => {
+  openEditorSettingsAtTab('editor-settings-tab-subtitle-style');
 });
 subtitleColorStyleSelect?.addEventListener('change', () => {
   pushPreviewUndo('调整预览字幕颜色样式', snapshotPreviewState());
@@ -12145,39 +12211,119 @@ function subtitleFontFamilyInputToStored(text) {
     localFamilies: subtitleLocalFontFamilies,
   });
 }
-function rebuildSubtitleFontFamilyDatalist() {
-  const datalist = document.getElementById('subtitle-font-family-options');
-  if (!datalist) return;
-  datalist.replaceChildren();
-  const fragment = document.createDocumentFragment();
-  window.AsrEditorUtils.SUBTITLE_FONT_FAMILY_PRESETS.forEach((preset) => {
-    const option = document.createElement('option');
-    option.value = subtitleFontFamilyPresetLabel(preset);
-    fragment.append(option);
+// 字体 combobox：文本输入 + 可筛选下拉列表，交互对齐 Launcher「模型」输入框。
+// getEntries() 返回 [{ value, label }]；选项点击写入 label 并派发 change，
+// 由既有映射（subtitleFontFamilyInputToStored / assStyleForm change 委托）落库。
+// 实例惰性创建：启动早期（relabelSubtitleFontFamilyOptions 于模块求值时被调用）
+// 也可能触发重建，惰性创建避免引用后置声明造成暂时性死区。
+function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
+  if (!input || !options) return { refresh() {}, setOpen() {} };
+  let open = false;
+  function render(query = '') {
+    const entries = window.AsrEditorUtils.filterFontFamilyOptions(
+      window.AsrEditorUtils.mergeFontFamilyOptions(getEntries()),
+      query,
+    );
+    options.replaceChildren();
+    if (!entries.length) {
+      const empty = document.createElement('span');
+      empty.className = 'font-combobox-empty';
+      empty.textContent = '无匹配字体';
+      options.append(empty);
+    }
+    entries.forEach((entry) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'font-combobox-option';
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', String(entry.label === input.value.trim()));
+      option.textContent = entry.label;
+      option.addEventListener('mousedown', (event) => event.preventDefault());
+      option.addEventListener('click', () => {
+        input.value = entry.label;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        setOpen(false);
+        input.focus();
+      });
+      options.append(option);
+    });
+  }
+  function setOpen(next, query = '') {
+    open = Boolean(next);
+    input.setAttribute('aria-expanded', String(open));
+    if (open) render(query);
+    options.hidden = !open;
+  }
+  input.addEventListener('focus', () => setOpen(true));
+  input.addEventListener('input', () => setOpen(true, input.value));
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') setOpen(false);
   });
-  subtitleLocalFontFamilies.forEach((family) => {
-    const option = document.createElement('option');
-    option.value = subtitleFontFamilyDisplayName(family);
-    fragment.append(option);
+  if (toggle) {
+    toggle.addEventListener('mousedown', (event) => event.preventDefault());
+    toggle.addEventListener('click', () => setOpen(!open));
+  }
+  document.addEventListener('click', (event) => {
+    if (open && !event.target?.closest?.('.font-combobox')) setOpen(false);
   });
-  datalist.append(fragment);
+  return {
+    refresh() {
+      if (open) render(input.value);
+    },
+    setOpen,
+  };
 }
-function rebuildAssFontNameDatalist() {
-  const datalist = document.getElementById('ass-font-name-options');
-  if (!datalist) return;
-  datalist.replaceChildren();
-  const fragment = document.createDocumentFragment();
-  ASS_BUILTIN_FONT_SUGGESTIONS.forEach((name) => {
-    const option = document.createElement('option');
-    option.value = name;
-    fragment.append(option);
+function subtitleFontFamilyComboboxEntries() {
+  const entries = window.AsrEditorUtils.SUBTITLE_FONT_FAMILY_PRESETS.map((preset) => {
+    const label = subtitleFontFamilyPresetLabel(preset);
+    return { value: label, label };
   });
   subtitleLocalFontFamilies.forEach((family) => {
-    const option = document.createElement('option');
-    option.value = family;
-    fragment.append(option);
+    const label = subtitleFontFamilyDisplayName(family);
+    entries.push({ value: label, label });
   });
-  datalist.append(fragment);
+  return entries;
+}
+function assFontNameComboboxEntries() {
+  const entries = ASS_BUILTIN_FONT_SUGGESTIONS.map((name) => ({ value: name, label: name }));
+  subtitleLocalFontFamilies.forEach((family) => {
+    entries.push({ value: family, label: family });
+  });
+  return entries;
+}
+function getSubtitleFontFamilyCombobox() {
+  if (!subtitleFontFamilyCombobox) {
+    subtitleFontFamilyCombobox = createFontFamilyCombobox({
+      input: subtitleFontFamilyInput,
+      toggle: subtitleFontFamilyToggle,
+      options: subtitleFontFamilyOptions,
+      getEntries: subtitleFontFamilyComboboxEntries,
+    });
+  }
+  return subtitleFontFamilyCombobox;
+}
+function getAssFontNameCombobox() {
+  if (!assFontNameCombobox) {
+    const assStyleFontNameInput = document.getElementById('ass-style-font-name');
+    // 占位符跟随按操作系统选择的 ASS 默认字体，不再固定 Arial。
+    if (assStyleFontNameInput) {
+      const assDefaultFontName = window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE?.fontName;
+      if (assDefaultFontName) assStyleFontNameInput.placeholder = assDefaultFontName;
+    }
+    assFontNameCombobox = createFontFamilyCombobox({
+      input: assStyleFontNameInput,
+      toggle: assStyleFontToggle,
+      options: assStyleFontOptions,
+      getEntries: assFontNameComboboxEntries,
+    });
+  }
+  return assFontNameCombobox;
+}
+function rebuildSubtitleFontFamilyOptions() {
+  getSubtitleFontFamilyCombobox().refresh();
+}
+function rebuildAssFontNameOptions() {
+  getAssFontNameCombobox().refresh();
 }
 function relabelSubtitleFontFamilyOptions() {
   [extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
@@ -12185,8 +12331,8 @@ function relabelSubtitleFontFamilyOptions() {
       option.textContent = subtitleFontFamilyDisplayName(option.value);
     });
   });
-  rebuildSubtitleFontFamilyDatalist();
-  rebuildAssFontNameDatalist();
+  rebuildSubtitleFontFamilyOptions();
+  rebuildAssFontNameOptions();
   syncSubtitleAppearanceControls();
 }
 function normalizeSubtitleColor(value) {
@@ -12297,6 +12443,7 @@ function syncSubtitleFontSizeSelect(select, sizeValue) {
 }
 function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   syncSubtitleFontSizeSelect(subtitleFontSizeSelect, appearance.font_size);
+  syncAssModeDependentControls();
   if (subtitleColorUnderlineInput) {
     subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
@@ -12565,8 +12712,8 @@ function replaceSubtitleLocalFontOptions(families) {
     });
     select.append(fragment);
   }
-  rebuildSubtitleFontFamilyDatalist();
-  rebuildAssFontNameDatalist();
+  rebuildSubtitleFontFamilyOptions();
+  rebuildAssFontNameOptions();
   syncSubtitleAppearanceControls();
   syncExtensionSubtitleAppearanceControls();
 }
@@ -12971,10 +13118,10 @@ function assPreviewMetrics() {
 }
 
 function assPreviewStyleVariant(style, segment, segments, appearance) {
-  const colorEnabled = appearance.color_underline !== false;
+  // ASS 预览的颜色映射只跟随 ass_color_style；color_underline 只控制 CSS 预览。
   const colorName = segment
     ? MULTI_SUBTITLE_UTILS.effectiveColorName(segment, segments) : null;
-  const paletteValue = colorEnabled ? COLOR_BY_NAME[colorName]?.value : '';
+  const paletteValue = COLOR_BY_NAME[colorName]?.value || '';
   if (!paletteValue || typeof window.AsrEditorUtils.assStyleVariant !== 'function') return style;
   return window.AsrEditorUtils.assStyleVariant(
     style,
@@ -13169,10 +13316,10 @@ function applyAssSubtitlePreview({ tMs, segment, extension, mainColorName, speak
   applyAssPreviewElement(overlayExtensionTextEl, animatedExtensionStyle, extensionAnimation, metrics, alignment, margins);
 
   if (speakerLabelVisible) {
-    const colorEnabled = appearance.color_underline !== false;
-    const paletteColor = colorEnabled && COLOR_BY_NAME[mainColorName]?.value;
+    // 与导出 assEventText 一致：text 模式标签跟随调色板颜色，其余保持基础色。
+    const paletteColor = COLOR_BY_NAME[mainColorName]?.value;
     const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
-    const labelColor = colorEnabled && assColorStyle === 'text'
+    const labelColor = assColorStyle === 'text'
       ? paletteColor || animatedMainStyle.primaryColor
       : animatedMainStyle.primaryColor;
     overlayMainSpeakerLabelEl.style.color = labelColor;

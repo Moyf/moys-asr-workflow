@@ -11,6 +11,7 @@ import copy
 import json
 import math
 import os
+import platform
 import re
 import tempfile
 import uuid
@@ -93,6 +94,17 @@ def _bool(value: object, fallback: bool = False) -> bool:
     return value if isinstance(value, bool) else fallback
 
 
+def _default_ass_font_name() -> str:
+    """ASS 默认字体按操作系统选择：Arial 缺少合适的中文形，容易发虚。"""
+
+    system = platform.system()
+    if system == "Windows":
+        return "Microsoft YaHei"
+    if system == "Darwin":
+        return "PingFang SC"
+    return "Noto Sans CJK SC"
+
+
 def _id(value: object, fallback: str = "") -> str:
     candidate = str(value or "").strip().lower()
     return candidate if _ID_RE.fullmatch(candidate) else fallback
@@ -133,9 +145,12 @@ def _style_defaults(style_id: str, name: str) -> dict[str, object]:
 
 
 DEFAULT_SRT_STYLE: Final[dict[str, object]] = _style_defaults("default", "SRT 默认")
-# ASS 默认样式：字号按 1080p 参考基准 72，垂直边距放宽到 80。
+# ASS 默认样式：字体按操作系统选择、默认加粗，字号按 1080p 参考基准 72，
+# 垂直边距放宽到 80。
 DEFAULT_ASS_STYLE: Final[dict[str, object]] = {
-    **_style_defaults("ass", "ASS"),
+    **_style_defaults("ass", "ASS 默认样式"),
+    "fontName": _default_ass_font_name(),
+    "bold": True,
     "fontSize": 72,
     "marginV": 80,
 }
@@ -177,10 +192,16 @@ def _animation_defaults() -> dict[str, object]:
 
 DEFAULT_ASS_PROFILE: Final[dict[str, object]] = {
     "id": "ass",
-    "name": "ASS",
+    "name": "ASS 输出方案",
     "builtin": True,
     "styleId": "ass",
     "animations": _animation_defaults(),
+}
+
+# 内置条目的旧默认名：归一化时改名到当前默认，用户自定义过的名字不动。
+_LEGACY_BUILTIN_NAMES: Final[dict[tuple[str, str], str]] = {
+    ("style", "ass"): "ASS",
+    ("profile", "ass"): "ASS",
 }
 
 
@@ -317,6 +338,13 @@ def normalize_ass_style_library(payload: object) -> dict[str, object]:
             if style_id not in {"default", "ass"}:
                 normalized["builtin"] = False
             style_map[style_id] = normalized
+    # 内置条目若仍使用旧默认名，迁移到当前默认名；用户自定义过的名字不动。
+    for entry in (*style_map.values(),):
+        legacy = _LEGACY_BUILTIN_NAMES.get(("style", str(entry.get("id"))))
+        if legacy and entry.get("name") == legacy:
+            default_entry = {"default": DEFAULT_SRT_STYLE, "ass": DEFAULT_ASS_STYLE}.get(str(entry.get("id")))
+            if default_entry:
+                entry["name"] = default_entry["name"]
     styles = [style_map["default"], style_map["ass"]]
     styles.extend(style for style_id, style in style_map.items() if style_id not in {"default", "ass"})
     result["styles"] = styles[:MAX_STYLE_COUNT]
@@ -335,6 +363,10 @@ def normalize_ass_style_library(payload: object) -> dict[str, object]:
             if profile_id != "ass":
                 normalized["builtin"] = False
             profile_map[profile_id] = normalized
+    for entry in profile_map.values():
+        legacy = _LEGACY_BUILTIN_NAMES.get(("profile", str(entry.get("id"))))
+        if legacy and entry.get("name") == legacy:
+            entry["name"] = DEFAULT_ASS_PROFILE["name"]
     style_ids = {str(style.get("id")) for style in result["styles"] if isinstance(style, Mapping)}
     profiles = []
     for profile in list(profile_map.values())[:MAX_PROFILE_COUNT]:

@@ -19,6 +19,9 @@
 | 已修复 | 对齐改为 3×3 单选矩阵 | `web/editor-template.html`、`web/editor.css` | 结构断言 + 页面截图确认 |
 | 已修复 | 样式库标题简化、左侧列表错乱、字体输入可搜索、「使用预览字体」按钮（第二轮反馈） | 窗口只保留「ASS 样式库」标题并移除说明块；≤760px 侧栏双列网格显式定位修复交错；字体输入改为 datalist 搜索（映射逻辑在 `web/editor-utils.js`，本机字体本地化别名提交时还原为真实族名）；「使用预览字体」把预览字体映射为具体字体名写入 ASS 样式 | `tests.test_editor_utils.mjs` 映射回归、e2e 全部通过、页面截图确认 |
 | 已修复 | 导出字号未按 PlayResY 换算（e2e 发现） | 库样式字号按 1080p 参考存储，导出时按 `PlayResY / 1080` 换算（`web/editor-utils.js`）；legacy 外观导出分支不重复换算 | e2e `ass-export.spec.mjs`（4K 断言 36 = 18 × 2160/1080）通过 |
+| 已修复 | 字体列表不对：参考 Launcher「模型」输入框，改为文本输入框 + 可筛选下拉列表 | 字体输入改为 combobox（文本框 + 内嵌下拉按钮 + 按输入过滤的选项列表，选项按显示名去重，修复 Arial 重复项）；外观字体与样式库 ASS 字体两个输入框统一；过滤/去重纯函数在 `web/editor-utils.js`；实例惰性创建，避免启动早期调用踩暂时性死区 | `node --test tests\test_editor_utils.mjs`（去重/过滤回归）、e2e `multi-subtitle.spec.mjs`（扫描字体 combobox 交互 ×2）、`subtitle-preview-boot.spec.mjs`（启动无 pageerror）通过；浏览器实测下拉过滤（「黑」→ 微软雅黑/黑体、黑体）与选项点击落库 |
+| 已修复 | 启用「ASS 字幕模式」时禁用「预览字幕颜色」并提示跳转 | 勾选 ASS 模式后该开关禁用，下方显示「当前由 ASS 字幕模式 控制预览样式」，其中「ASS 字幕模式」是链接，点击跳到设置窗口「字幕样式」tab（`web/editor-template.html`、`web/editor.css`、`web/editor.js`）；配套把 ASS 预览颜色映射从 `color_underline` 闸门解耦（预览侧两处，与既有导出侧契约一致） | Chromium 实测：ASS 模式开 → 开关禁用+提示显示，点链接跳「字幕样式」，关 → 恢复；e2e `speaker-labels.spec.mjs` 回归通过 |
+| 已修复 | 默认 ASS 字体改用系统字体（按操作系统），且默认勾选「粗体」 | `web/editor-utils.js` 与 `maw/ass_styles.py` 的 ASS 默认样式改为运行时按 OS 选择字体（Windows → Microsoft YaHei，macOS → PingFang SC，其余 → Noto Sans CJK SC）并默认加粗（`Bold=-1`）；SRT 压制默认样式保持 Arial/不加粗；ASS 字体输入框占位符同步；legacy 外观导出的 'default' 字体键同样映射到 OS 字体 | e2e `ass-export.spec.mjs`（默认字体从页面读取断言，平台无关）通过；Chromium 实测样式库默认样式 Microsoft YaHei + 粗体勾选、占位符同步 |
 
 ## 仅说明
 

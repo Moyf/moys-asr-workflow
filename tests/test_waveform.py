@@ -1088,9 +1088,10 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="subtitle-font-size"', page)
         self.assertIn('id="subtitle-font-family"', page)
         self.assertIn('id="subtitle-font-family-scan"', page)
-        # 字体选框带 datalist 搜索；ASS 样式库可一键应用预览字体。
-        self.assertIn('list="subtitle-font-family-options"', page)
+        # 字体输入框是 combobox（文本输入 + 可筛选下拉列表）；ASS 样式库可一键应用预览字体。
         self.assertIn('id="subtitle-font-family-options"', page)
+        self.assertIn('role="combobox"', page)
+        self.assertIn('class="font-combobox-toggle"', page)
         self.assertIn('id="ass-font-name-options"', page)
         self.assertIn('id="ass-style-use-preview-font"', page)
         self.assertIn('id="subtitle-background-color"', page)
