@@ -1465,7 +1465,7 @@ class LauncherApi:
             return {"ok": False, "preview": "", "errorCode": "missing_source"}
         try:
             try:
-                project = read_project(project_path) if project_path is not None else read_srt(srt_path)
+                project = read_project(project_path) if project_path is not None else read_srt(srt_path, strict=True)
             except (PostprocessFileError, ProjectValidationFailed) as error:
                 return {"ok": False, "preview": "", "errorCode": "subtitle_invalid", "code": "subtitle_invalid", "detail": str(error)}
             try:
