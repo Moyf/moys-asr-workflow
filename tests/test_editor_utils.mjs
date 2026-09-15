@@ -1452,6 +1452,8 @@ test('translates speaker label separator settings to English', () => {
     i18n.translateText('配置颜色对应的说话人名称；留空可隐藏该颜色的名称。分隔符默认「：」，支持空格和英文引号。仅影响预览，不改变字幕文本。', 'en'),
     'Configure the speaker name for each color; leave a name empty to hide it. The separator defaults to “：” and supports spaces or English quotation marks. Preview only, subtitle text is unchanged.',
   );
+  assert.equal(i18n.translateText('从颜色组中脱离', 'en'), 'Detach from color group');
+  assert.equal(i18n.translateText('已从颜色组中脱离', 'en'), 'Detached from color group');
 });
 
 test('translates OTIOZ export labels, mode hints and dynamic messages to English', () => {
