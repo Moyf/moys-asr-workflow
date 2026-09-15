@@ -443,6 +443,8 @@
     server_already_running: "🌐 当前字幕编辑服务器已在运行中：",
     server_address: "🌐 当前服务器地址：",
     server_start_hint: "请点击「启动字幕服务器」",
+    server_disconnected: "⚠️ 字幕编辑服务器已断开，请点击「启动字幕编辑器」重新启动。",
+    server_reconnected: "✅ 字幕编辑服务器已恢复：",
     server_no_response_hint: "编辑器服务器没有响应，请检查端口或下方状态。",
     server_start_failed_hint: "编辑器服务器启动失败，请查看下方状态和日志。",
     open_editor: "🚀 打开字幕编辑器",
@@ -539,6 +541,8 @@
     server_already_running: "🌐 A subtitle editor server is already running: ",
     server_address: "🌐 Current server address: ",
     server_start_hint: "click \"Launch Subtitle Editor\"",
+    server_disconnected: "⚠️ The subtitle editor server disconnected. Click \"Start Editor\" to restart it.",
+    server_reconnected: "✅ The subtitle editor server is back: ",
     server_no_response_hint: "The editor server did not respond. Check the port or the status below.",
     server_start_failed_hint: "The editor server failed to start. Check the status and logs below.",
     open_editor: "🚀 Open Subtitle Editor",
@@ -1189,6 +1193,8 @@
   const MAX_SUPER_HOTWORDS = 50;
   const OPENAI_ASR_CUSTOM_MODEL_ID = "custom-asr";
   const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-transcribe", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize", "whisper-large-v3-turbo", "whisper-large-v3"]);
+  const SERVER_STATUS_MONITOR_INTERVAL_MS = 2000;
+  const SERVER_STATUS_MONITOR_FAILURE_THRESHOLD = 2;
   const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
   const dragState = { depth: 0 };
   let api = null;
@@ -1196,6 +1202,11 @@
   let defaultOutputRequest = 0;
   let ffmpegRequest = 0;
   let serverStatusRequest = 0;
+  let serverStatusMonitorTimer = 0;
+  let serverStatusMonitorInFlight = false;
+  let serverStatusMonitorEnabled = false;
+  let serverStatusMonitorFailureCount = 0;
+  let serverStatusMonitorState = "idle";
   let ocrRuntimeRequest = 0;
   let localRuntimeRequest = 0;
   let localModelsRequest = 0;
@@ -1232,7 +1243,7 @@
         perVideoSubfolder: saved.perVideoSubfolder,
         attachModelName: saved.attachModelName,
         notifyOnComplete: saved.notifyOnComplete === true,
-        appVersion: "1.6.0-beta.3",
+        appVersion: "1.6.0-beta.4",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
@@ -1859,6 +1870,77 @@
     link.addEventListener("click", (event) => { event.preventDefault(); bridge("open_url", { url }); });
     status.append(link);
   }
+  function currentServerPort() { return $("port").value || "8250"; }
+  function stopServerStatusMonitor() {
+    serverStatusMonitorEnabled = false;
+    serverStatusMonitorState = "idle";
+    serverStatusMonitorFailureCount = 0;
+    if (serverStatusMonitorTimer) {
+      window.clearTimeout(serverStatusMonitorTimer);
+      serverStatusMonitorTimer = 0;
+    }
+  }
+  function scheduleServerStatusMonitor(delayMs = SERVER_STATUS_MONITOR_INTERVAL_MS) {
+    if (!serverStatusMonitorEnabled || serverStatusMonitorTimer) return;
+    serverStatusMonitorTimer = window.setTimeout(() => {
+      serverStatusMonitorTimer = 0;
+      void monitorServerStatus();
+    }, Math.max(0, delayMs));
+  }
+  function startServerStatusMonitor() {
+    serverStatusMonitorEnabled = true;
+    serverStatusMonitorState = "connected";
+    serverStatusMonitorFailureCount = 0;
+    scheduleServerStatusMonitor();
+  }
+  function handleServerStatusMonitorHealthy(result) {
+    const wasDisconnected = serverStatusMonitorState === "disconnected";
+    serverStatusMonitorFailureCount = 0;
+    serverStatusMonitorState = "connected";
+    if (!wasDisconnected) return;
+    state.serverRunning = false;
+    state.serverProjectPath = "";
+    state.detectedServerUrl = result.url;
+    setServerStatus(result.url, true, t("server_reconnected"));
+    renderServerButton();
+  }
+  function handleServerStatusMonitorFailure() {
+    serverStatusMonitorFailureCount += 1;
+    if (serverStatusMonitorFailureCount < SERVER_STATUS_MONITOR_FAILURE_THRESHOLD || serverStatusMonitorState === "disconnected") return;
+    serverStatusMonitorState = "disconnected";
+    const wasActive = Boolean(state.serverRunning || state.detectedServerUrl);
+    state.serverRunning = false;
+    state.serverProjectPath = "";
+    state.detectedServerUrl = "";
+    if (wasActive) setStatus(t("server_disconnected"));
+    renderServerButton();
+  }
+  async function monitorServerStatus() {
+    if (!serverStatusMonitorEnabled) return;
+    if (serverStatusMonitorInFlight) {
+      scheduleServerStatusMonitor();
+      return;
+    }
+    const requestId = ++serverStatusRequest;
+    const port = currentServerPort();
+    serverStatusMonitorInFlight = true;
+    let result;
+    try {
+      const callBackend = window.MAWLauncher?.callBackend || bridge;
+      result = await callBackend("get_server_status", serverPayload());
+    } catch (_error) {
+      result = { ok: false };
+    } finally {
+      serverStatusMonitorInFlight = false;
+    }
+    if (!serverStatusMonitorEnabled || requestId !== serverStatusRequest || port !== currentServerPort()) {
+      scheduleServerStatusMonitor();
+      return;
+    }
+    if (result?.ok && result.running && result.url) handleServerStatusMonitorHealthy(result);
+    else handleServerStatusMonitorFailure();
+    scheduleServerStatusMonitor();
+  }
   // latest（顶部黄字）常驻展示最新日志行；quietLatest 供 runtime 安装过程
   // 使用——那段时间逐行 [runtime] 输出已在自动滚动的列表与面板进度区出现，
   // 黄字再显示同一行会相邻重复。
@@ -1948,8 +2030,8 @@
     $("stopServer").classList.toggle("hidden", !state.serverRunning && !state.detectedServerUrl);
     $("stopServer").disabled = state.serverStarting || state.serverStopping;
   }
-  async function stopEditorServer() { if (state.serverStopping) return; state.serverStopping = true; renderServerButton(); try { const result = await bridge("stop_server", serverPayload()); if (!result.ok) { applyErrorResult(result); return; } state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; setStatus(t("ready")); } finally { state.serverStopping = false; renderServerButton(); } }
-  async function checkExistingServer(prefix = "") { const requestId = ++serverStatusRequest; const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (requestId !== serverStatusRequest) return result; if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); }
+  async function stopEditorServer() { if (state.serverStopping) return; state.serverStopping = true; renderServerButton(); try { const result = await bridge("stop_server", serverPayload()); if (!result.ok) { applyErrorResult(result); return; } stopServerStatusMonitor(); state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; setStatus(t("ready")); } finally { state.serverStopping = false; renderServerButton(); } }
+  async function checkExistingServer(prefix = "") { const requestId = ++serverStatusRequest; const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (requestId !== serverStatusRequest) return result; if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return result; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); startServerStatusMonitor(); return result; }
   function syncHtmlMenu() { const enabled = $("generateHtml").checked; $("openHtml").classList.toggle("hidden", !enabled); $("openHtml").disabled = enabled && !state.result?.htmlPath; }
   function renderChevron(id) { const arrow = $(id).querySelector(".chevron"); if (arrow) arrow.textContent = $(id).classList.contains("collapsed") ? "▸" : "▾"; }
   function renderStickerCurrent() { const path = String(state.config?.stickerDir || "").trim(); const button = $("stickerCurrent"); button.textContent = path || t("unset"); button.disabled = !path; $("stickerDir").value = path; }
@@ -2597,6 +2679,7 @@
         renderServerButton();
         if (result.url) {
           setServerStatus(result.url, Boolean(result.serverAlreadyRunning));
+          startServerStatusMonitor();
           await bridge("open_url", { url: result.url });
         } else setStatus(t("ready"));
       } else {
@@ -2950,7 +3033,7 @@
   $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });
   $("pickJson").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "json" }); if (result.ok) setJsonPath(result.path); });
   $("jsonPath").addEventListener("input", () => setError("jsonPath", "")); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) setServerMedia(result.path || ""); });
-  ["apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") { $("modelNote").textContent = modelNoteText(selectedModel()); syncOpenAiAdvancedOptions(selectedModel()); } if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") { $("modelNote").textContent = modelNoteText(selectedModel()); syncOpenAiAdvancedOptions(selectedModel()); } if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
+  ["apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") { $("modelNote").textContent = modelNoteText(selectedModel()); syncOpenAiAdvancedOptions(selectedModel()); } if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { stopServerStatusMonitor(); state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") { $("modelNote").textContent = modelNoteText(selectedModel()); syncOpenAiAdvancedOptions(selectedModel()); } if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
   $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
   $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
   $("openRouterKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().secondaryKeyUrl || "https://openrouter.ai/keys" }));
