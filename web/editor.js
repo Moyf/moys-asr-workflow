@@ -18174,6 +18174,49 @@ function expandStickerTime(idxs) {
 // === 标记颜色 ===
 // 数据结构与表情包同构：head 持完整 color，后续条持 color_ref（仅 name + headIdx）
 // 单选 → 设为 head；多选 → 第一条为 head，时间跨整个范围，后续为 ref
+function colorGroupHeadIndex(idx) {
+  const segment = DATA.segments[idx];
+  if (!segment) return -1;
+
+  const refHeadIdx = Number(segment.color_ref?.headIdx);
+  if (segment.color_ref
+      && Number.isInteger(refHeadIdx)
+      && refHeadIdx >= 0
+      && refHeadIdx < DATA.segments.length
+      && refHeadIdx !== idx
+      && DATA.segments[refHeadIdx]?.color) {
+    return refHeadIdx;
+  }
+
+  if (!segment.color) return -1;
+  return DATA.segments.some((candidate, candidateIdx) => (
+    candidateIdx !== idx
+    && candidate?.color_ref
+    && Number(candidate.color_ref.headIdx) === idx
+  )) ? idx : -1;
+}
+
+function detachColorFromGroup(idx) {
+  const segment = DATA.segments[idx];
+  const headIdx = colorGroupHeadIndex(idx);
+  const groupColor = headIdx >= 0 ? DATA.segments[headIdx]?.color : null;
+  if (!segment || !groupColor) return false;
+
+  // 先复制颜色；拆分组时原 head 的时间范围可能会被收缩。
+  const detachedColor = {
+    ...groupColor,
+    start: segment.start,
+    end: segment.end,
+  };
+  pushUndo('从颜色组中脱离');
+  splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
+  segment.color = detachedColor;
+  segment.color_ref = null;
+  refreshColorAssignmentUi();
+  flashHint('已从颜色组中脱离', 'success');
+  return true;
+}
+
 function assignColor(idxs, colorName) {
   if (!idxs.length) return;
   const def = COLOR_BY_NAME[colorName];
@@ -18839,6 +18882,9 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
+    if (colorGroupHeadIndex(idx) >= 0) {
+      addItem('从颜色组中脱离', '', () => detachColorFromGroup(idx));
+    }
     addSep();
     // 组 3：状态与删除
     addItem(
