@@ -155,6 +155,8 @@
     --wave-cue-text:        #eef6ff;
     --wave-cue-active-mix:  #28547a;
     --wave-cue-handle:      rgba(231, 244, 255, 0.2);
+    --wave-cue-handle-hover: rgba(231, 244, 255, 0.42);
+    --wave-cue-boundary:    color-mix(in srgb, color-mix(in srgb, var(--accent) 55%, #e7f4ff) 45%, transparent);
     --wave-badge-bg:        rgba(0, 0, 0, 0.65);
     --wave-badge-sticker:   #b8d9ff;
     --wave-playhead:        #ff5d67;
@@ -365,6 +367,8 @@
     --wave-cue-text:        #16202c;
     --wave-cue-active-mix:  #a9c8e8;
     --wave-cue-handle:      rgba(32, 52, 80, 0.14);
+    --wave-cue-handle-hover: rgba(32, 52, 80, 0.3);
+    --wave-cue-boundary:    color-mix(in srgb, color-mix(in srgb, var(--accent) 55%, #20344f) 32%, transparent);
     --wave-badge-bg:        rgba(255, 255, 255, 0.82);
     --wave-badge-sticker:   #2f6bb8;
     --wave-playhead:        #e63946;
@@ -1238,6 +1242,11 @@
   :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="blue"] { background: #3874c9; }
   :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="red"] { background: #c84545; }
   :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="orange"] { background: #d9834a; }
+  .editor-settings-accent-option.active .editor-settings-accent-swatch {
+    background: #fff;
+    border-color: rgba(0, 0, 0, 0.42);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
+  }
   .editor-settings-custom-color {
     display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px;
   }
@@ -1431,6 +1440,8 @@
     font: 11px var(--font-mono);
     background: var(--bg-input);
   }
+  /* 「响度适配」紧跟振幅步进器：它改的就是这一行显示的 ×N。 */
+  .waveform-scale-fit { margin-left: 7px; font-size: 12px; }
   @media (max-width: 420px) {
     .editor-settings-window { width: calc(100vw - 16px); min-width: 0; resize: none; }
     .editor-settings-nav { width: 104px; padding: 8px 6px; }
@@ -2068,6 +2079,8 @@
     content-visibility: auto;
     contain-intrinsic-size: 0 46px;
   }
+  #cue-list-follow { padding: 4px 8px; font-size: 11px; white-space: nowrap; }
+  #cue-list-follow[aria-pressed="false"] { color: var(--accent); border-color: var(--accent); }
   .cue-split-flash {
     position: absolute;
     z-index: 3;
@@ -2112,6 +2125,9 @@
   }
   .cue.has-color { background: color-mix(in srgb, var(--color-bar, #777) 30%, transparent); }
   .cue.has-color:hover { background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--bg-raised)); }
+  /* 彩色行的半透明底色会压低原本面向中性底色的淡色序号；提高到次要文字色，
+     保留序号的辅助层级，同时保证颜色行仍能快速定位编号。active/disabled 状态在下方覆盖。 */
+  .cue.has-color .index { color: var(--text-secondary); }
   /* 悬停反馈与下拉/右键菜单一致：accent 淡蓝 + 中性内描边；选中（琥珀）与激活（蓝）行仍各自优先。 */
   .cue:hover {
     background: var(--cue-hover-bg);
@@ -3399,6 +3415,7 @@
 /* 分割工具下字幕块显示拆分光标，提示点击即拆分 */
 .waveform-pane.tool-razor .waveform-cue-block { cursor: crosshair; }
 .waveform-pane.tool-razor .waveform-cue-handle { cursor: crosshair; }
+.waveform-pane.tool-razor .waveform-cue-boundary { cursor: crosshair; }
 .waveform-setting {
   display: inline-flex;
   align-items: center;
@@ -4231,8 +4248,55 @@
   background: var(--wave-cue-handle);
   cursor: ew-resize;
 }
-.waveform-cue-handle.left { left: 0; border-radius: 3px 0 0 3px; }
-.waveform-cue-handle.right { right: 0; border-radius: 0 3px 3px 0; }
+/* assets/cursors/left-boundary.svg 内嵌副本；热点位于竖线中央。 */
+.waveform-cue-handle.left {
+  left: 0;
+  border-radius: 3px 0 0 3px;
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M3%2016l5-4v3h7v2H8v3z%20M15%2010h2v12h-2z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
+}
+/* assets/cursors/right-boundary.svg 内嵌副本；热点位于竖线中央。 */
+.waveform-cue-handle.right {
+  right: 0;
+  border-radius: 0 3px 3px 0;
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M15%2010h2v12h-2z%20M17%2015h7v-3l5%204-5%204v-3h-7z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
+}
+/* 手柄悬停反馈：加亮提示「这里是单侧调整手柄」，与中缝区的 hover 亮度区分。 */
+.waveform-cue-handle:hover { background: var(--wave-cue-handle-hover); }
+/* 中缝联动模式：相接侧手柄加宽，让「手柄（单侧调整）— 中缝（联动拖动）
+   — 手柄」三个命中区域都有约 7px 的稳定宽度。 */
+.waveform-cue-block.has-shared-boundary-right .waveform-cue-handle.right { width: 11px; }
+.waveform-cue-block.has-shared-boundary-left .waveform-cue-handle.left { width: 11px; }
+/* 中缝拖动区：仅 dual 模式渲染，骑在贴合边界上；拖动 = 两侧边界联动。
+   默认半透明保持低调，悬停/拖动时恢复到完全不透明以突出反馈。 */
+.waveform-cue-boundary {
+  position: absolute;
+  bottom: 7px;
+  height: 35px;
+  width: 8px;
+  z-index: 7;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: var(--wave-cue-boundary);
+  opacity: 0.5;
+  transition: opacity 0.12s ease;
+  /* assets/cursors/shared-boundary.svg 内嵌副本，兼容便携 HTML；热点位于中央。 */
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M2%2016l5-4v3h4v2H7v3z%20M13%2010h2v12h-2z%20M17%2010h2v12h-2z%20M21%2015h4v-3l5%204-5%204v-3h-4z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
+  touch-action: none;
+}
+.waveform-cue-boundary:hover,
+.waveform-cue-boundary.dragging { opacity: 1; }
+/* 行末中缝完整收进所属行，避免被行容器裁掉一半。 */
+.waveform-cue-boundary.at-row-end { transform: translateX(-100%); }
+/* 行末中缝占用最后 8px，左侧字幕的独立右手柄向行内退让，两个操作区不重叠。 */
+.waveform-cue-block.shared-boundary-at-row-end-right .waveform-cue-handle.right { right: 8px; }
+.waveform-basic .waveform-cue-boundary {
+  height: 72px;
+  min-height: 35px;
+  max-height: 40%;
+}
+.waveform-row.multi-subtitle-row .waveform-cue-boundary {
+  height: var(--multi-subtitle-lane-height);
+}
 .waveform-cue-label { pointer-events: none; }
 .waveform-binding-marker {
   position: absolute;
@@ -4344,7 +4408,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.6.0-beta.3</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.6.0-beta.4</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="server-connection-banner" id="server-connection-banner" hidden role="alert" aria-live="assertive">
@@ -4456,19 +4520,22 @@
   <span class="right-group">
     <button type="button" id="download-multi-srt" hidden title="导出当前副字幕轨（SRT）">导出副字幕</button>
     <span class="dropdown" id="subtitle-export-dropdown">
-      <button id="subtitle-export-btn" title="导出完整字幕（SRT/ASS）或按颜色分别导出字幕" aria-expanded="false" aria-controls="subtitle-export-menu" aria-haspopup="menu">导出字幕 ▾</button>
+      <button id="subtitle-export-btn" title="导出 SRT/ASS 字幕或按颜色拆分导出 SRT 字幕" aria-expanded="false" aria-controls="subtitle-export-menu" aria-haspopup="menu">导出字幕 ▾</button>
       <div class="dropdown-menu" id="subtitle-export-menu" role="menu">
-        <div class="dropdown-item" id="download-full-srt" role="menuitem" tabindex="0">完整字幕（SRT）</div>
-        <div class="dropdown-item" id="download-full-ass" role="menuitem" tabindex="0">完整字幕（ASS）</div>
-        <div class="dropdown-item" id="download-color-srt" role="menuitem" tabindex="0" hidden>按颜色导出字幕</div>
+        <div class="dropdown-item" id="download-full-srt" role="menuitem" tabindex="0">完整 SRT 字幕</div>
+        <div class="dropdown-item" id="download-color-srt" role="menuitem" tabindex="0" hidden>按颜色拆分导出 SRT 字幕</div>
+        <div class="dropdown-separator" id="subtitle-export-separator" role="separator" hidden></div>
+        <div class="dropdown-item" id="download-full-ass" role="menuitem" tabindex="0">带样式的 ASS 字幕</div>
       </div>
     </span>
     <button id="download-json">导出工程</button>
     <span class="dropdown gap-removed-export-dropdown" id="gap-removed-export-dropdown" hidden>
       <button id="gap-removed-export-btn" title="导出应用当前空隙移除结果的字幕、时间线或保留区域计划" aria-expanded="false" aria-controls="gap-removed-export-menu" aria-haspopup="menu">导出去空隙版本 ▾</button>
       <div class="dropdown-menu" id="gap-removed-export-menu" role="menu">
-        <div class="dropdown-item" id="download-gap-removed-srt" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出字幕；原工程时间不变">字幕 SRT</div>
-        <div class="dropdown-item" id="download-gap-removed-color-srt" role="menuitem" tabindex="0" hidden title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">按颜色导出字幕</div>
+        <div class="dropdown-item" id="download-gap-removed-srt" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出字幕；原工程时间不变">SRT 字幕</div>
+        <div class="dropdown-item" id="download-gap-removed-color-srt" role="menuitem" tabindex="0" hidden title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">按颜色拆分导出 SRT 字幕</div>
+        <div class="dropdown-separator" id="gap-removed-subtitle-export-separator" role="separator" hidden></div>
+        <div class="dropdown-item" id="download-gap-removed-ass" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出带样式的 ASS 字幕；原工程时间不变">带样式的 ASS 字幕</div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-otio-menu">OpenTimelineIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-otio-menu" role="menu">
@@ -5521,7 +5588,7 @@
     </label>
     <small class="editor-settings-hint">选中时，会将所有不同颜色的字幕按「文件名_颜色」格式统一导出；否则每个颜色都会弹出单独的保存框。</small>
     <label class="toggle editor-settings-item" title="勾选后按说话人名称生成彩色字幕文件名后缀；没有对应名称时回退为颜色">
-      <input type="checkbox" id="export-speaker-names-as-suffix"> 使用说话人名称作为后缀
+      <input type="checkbox" id="export-speaker-names-as-suffix"> 使用说话人名称替代颜色后缀
     </label>
     </div>
     <div class="editor-settings-field">
@@ -5554,7 +5621,7 @@
       <label class="editor-settings-item">自动备份间隔（分钟）<span class="gap-remove-number-control"><input id="project-backup-minutes" type="number" min="1" max="1440" step="1" value="5"></span></label>
       <label class="editor-settings-item">最大保存版本数<span class="gap-remove-number-control"><input id="project-backup-limit" type="number" min="1" max="1000" step="1" value="20"></span></label>
       <div class="editor-settings-field"><button type="button" id="project-backup-open">打开备份文件夹</button></div>
-      <small class="editor-settings-hint">开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/backups。</small>
+      <small class="editor-settings-hint">开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/备份（英文界面为 backups）。</small>
       <small class="editor-settings-hint" id="project-backup-unavailable">工程备份需要本地 Server 绑定工程；浏览器另存为的文件不支持目录备份。</small>
     </div>
   </div>
@@ -5742,6 +5809,7 @@
                 <b id="waveform-scale-label">×1.0</b>
                 <button type="button" id="waveform-scale-up" title="增大波形振幅">＋</button>
               </span>
+              <button type="button" id="waveform-scale-fit" class="editor-settings-inline-action waveform-scale-fit" title="按整文件响度重新拟合振幅">响度适配</button>
             </span>
             <label class="editor-settings-item" id="waveform-seconds-per-row-setting">每行长度
               <select id="waveform-seconds-per-row">
@@ -5777,10 +5845,18 @@
                 <option value="hidden">完全隐藏</option>
               </select>
             </label>
-            <label class="toggle editor-settings-item" title="开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动">
+            <label class="editor-settings-item" title="设置相接字幕边界的拖动方式：新模式拖动贴合中缝时两侧联动，传统模式沿用自动吸附开关">
+              贴合字幕边界
+              <select id="adjacent-boundary-mode">
+                <option value="dual" selected>中缝联动（新）</option>
+                <option value="classic">传统模式</option>
+              </select>
+            </label>
+            <small class="settings-panel-hint" id="adjacent-boundary-mode-hint-dual">拖动贴合字幕中间的中缝：两侧边界一起联动；单独拖动左右手柄只调整当前字幕（类似达芬奇）。</small>
+            <label class="toggle editor-settings-item" id="auto-snap-adjacent-cues-row" title="开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动">
               <input type="checkbox" id="auto-snap-adjacent-cues" checked> 自动吸附调整相邻字幕
             </label>
-            <small class="settings-panel-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
+            <small class="settings-panel-hint" id="auto-snap-adjacent-cues-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
             <label class="editor-settings-item" title="B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准">
               快捷键时间基准
               <select id="keyboard-operation-reference">
@@ -5848,9 +5924,10 @@
   <div class="layout-resizer layout-resizer-h1" id="layout-resizer-h1" data-layout-resizer="row-top" title="拖动调整视频与当前字幕高度"></div>
   <div class="layout-resizer layout-resizer-h2" id="layout-resizer-h2" data-layout-resizer="row-middle" title="拖动调整当前字幕与字幕列表高度"></div>
   <div class="layout-drop-preview" id="layout-drop-preview" aria-hidden="true"></div>
-  <div class="cues-container" id="cues-container">
+  <div class="cues-container" id="cues-container" tabindex="0" aria-label="字幕列表">
     <div class="toolbar cue-list-toolbar">
       <span class="info layout-toolbar-label">字幕</span>
+      <button type="button" id="cue-list-follow" aria-pressed="true" title="定位当前播放头并恢复字幕跟随；手动翻看后可再次点击">跟随播放</button>
       <div class="settings-anchor cue-list-settings" id="cue-list-settings">
         <button type="button" id="cue-list-settings-toggle" class="cue-list-settings-toggle" title="字幕列表设置" aria-label="字幕列表设置" aria-expanded="false" aria-controls="cue-list-settings-panel" aria-haspopup="dialog">⚙️</button>
         <div class="settings-panel cue-list-settings-panel" id="cue-list-settings-panel" role="dialog" aria-label="字幕列表设置" hidden>
@@ -10467,6 +10544,13 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
   function normalizeMediaMetadata(value) {
     if (value == null) return null;
     if (typeof value !== 'object' || Array.isArray(value)) return null;
+    const hasVideoWidth = value.video_width !== undefined;
+    const hasVideoHeight = value.video_height !== undefined;
+    const hasVideoDimensions = hasVideoWidth || hasVideoHeight;
+    if (hasVideoWidth !== hasVideoHeight) return null;
+    if (hasVideoDimensions
+        && (!Number.isInteger(value.video_width) || value.video_width <= 0
+          || !Number.isInteger(value.video_height) || value.video_height <= 0)) return null;
     const hasFps = value.video_fps !== undefined;
     const fps = value.video_fps;
     if (hasFps && (typeof fps !== 'number' || !Number.isFinite(fps)
@@ -10478,8 +10562,12 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     const hasSelectedAudioTrack = value.selected_audio_track !== undefined;
     if (hasSelectedAudioTrack
         && (!Number.isInteger(value.selected_audio_track) || value.selected_audio_track < 0)) return null;
-    if (!hasFps && !hasAudioTracks && !hasSelectedAudioTrack) return null;
+    if (!hasFps && !hasAudioTracks && !hasSelectedAudioTrack && !hasVideoDimensions) return null;
     const metadata = {};
+    if (hasVideoDimensions) {
+      metadata.video_width = value.video_width;
+      metadata.video_height = value.video_height;
+    }
     if (hasFps) metadata.video_fps = normalizeTimelineFps(fps);
     if (typeof value.video_fps_ratio === 'string') {
       metadata.video_fps_ratio = value.video_fps_ratio.trim();
@@ -10615,7 +10703,7 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
     mediaSeekStepFrames: 1, cueMoveStepMs: 50, cueMoveStepFrames: 1,
     timelineSnapToFrame: true, timelineTimecodeSeparator: DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
-    hoverSeekPreview: false, autoSnapAdjacentCues: true, ninjaMode: false,
+    hoverSeekPreview: false, autoSnapAdjacentCues: true, adjacentBoundaryMode: 'dual', ninjaMode: false,
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
@@ -10705,6 +10793,8 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       timelineTimecodeSeparator: normalizeTimelineTimecodeSeparator(savedSettings.timelineTimecodeSeparator),
       hoverSeekPreview: savedSettings.hoverSeekPreview === true,
       autoSnapAdjacentCues: savedSettings.autoSnapAdjacentCues !== false,
+      // 相接字幕边界拖动方式：dual（中缝联动，达芬奇式，默认）/ classic（自动吸附开关 + Alt 反转）。
+      adjacentBoundaryMode: savedSettings.adjacentBoundaryMode === 'classic' ? 'classic' : 'dual',
       ninjaMode: savedSettings.ninjaMode === true,
       ninjaSound: savedSettings.ninjaSound !== false,
       ninjaSlashEffect: savedSettings.ninjaSlashEffect !== false,
@@ -11582,8 +11672,26 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
   }
 
   const ASS_DEFAULT_FONT_FAMILY = 'Arial';
-  const ASS_DEFAULT_FONT_SIZE = 18;
+  const ASS_DEFAULT_PREVIEW_FONT_SIZE = 18;
+  const ASS_AUTO_FONT_SIZE_1080P = 72;
+  // Fullscreen preview doubles the CSS size; Subtitle Edit calibration maps
+  // that 36px default preview to ASS 72 at 1080p, hence the 4x ratio here.
+  const ASS_PREVIEW_TO_ASS_SCALE = ASS_AUTO_FONT_SIZE_1080P / ASS_DEFAULT_PREVIEW_FONT_SIZE;
   const ASS_DEFAULT_COLOR = '#ffffff';
+  const ASS_DEFAULT_PLAY_RES_X = 1920;
+  const ASS_DEFAULT_PLAY_RES_Y = 1080;
+  const ASS_REFERENCE_PLAY_RES_Y = 1080;
+  const ASS_COLOR_STYLE_NAMES = Object.freeze(['yellow', 'green', 'red', 'purple', 'blue']);
+  // The editor injects window.ASR_EDITOR_PALETTE from maw/colors.py before
+  // this module runs. Keep a small fallback so the utility remains usable in
+  // standalone tests and integrations that do not render the full template.
+  const ASS_FALLBACK_COLOR_PALETTE = Object.freeze([
+    Object.freeze({ name: 'yellow', value: '#c4a019' }),
+    Object.freeze({ name: 'green', value: '#66bb6a' }),
+    Object.freeze({ name: 'red', value: '#f07f6f' }),
+    Object.freeze({ name: 'purple', value: '#bf89e6' }),
+    Object.freeze({ name: 'blue', value: '#61a7fa' }),
+  ]);
   const ASS_STYLE_FORMAT = 'Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding';
   const ASS_EVENT_FORMAT = 'Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text';
 
@@ -11638,8 +11746,65 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
 
   function normalizeAssFontSize(value) {
     const numeric = Number(value);
-    if (!Number.isFinite(numeric) || numeric <= 0) return ASS_DEFAULT_FONT_SIZE;
+    if (!Number.isFinite(numeric) || numeric <= 0) return ASS_AUTO_FONT_SIZE_1080P;
     return Math.min(512, Math.max(1, Math.round(numeric)));
+  }
+
+  function resolveAssFontSize(value, playResY) {
+    const numericPreviewSize = Number(value);
+    const previewSize = Number.isFinite(numericPreviewSize) && numericPreviewSize > 0
+      ? numericPreviewSize : ASS_DEFAULT_PREVIEW_FONT_SIZE;
+    const numericPlayResY = Number(playResY);
+    const scale = Number.isFinite(numericPlayResY) && numericPlayResY > 0
+      ? numericPlayResY / ASS_REFERENCE_PLAY_RES_Y : 1;
+    return normalizeAssFontSize(previewSize * ASS_PREVIEW_TO_ASS_SCALE * scale);
+  }
+
+  function normalizeAssDimension(value, fallback) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
+    return Math.min(65535, Math.max(1, Math.round(numeric)));
+  }
+
+  function normalizeAssPlayResolution(width, height) {
+    const numericWidth = Number(width);
+    const numericHeight = Number(height);
+    if (!Number.isFinite(numericWidth) || numericWidth <= 0
+        || !Number.isFinite(numericHeight) || numericHeight <= 0) {
+      return { width: ASS_DEFAULT_PLAY_RES_X, height: ASS_DEFAULT_PLAY_RES_Y };
+    }
+    return {
+      width: normalizeAssDimension(numericWidth, ASS_DEFAULT_PLAY_RES_X),
+      height: normalizeAssDimension(numericHeight, ASS_DEFAULT_PLAY_RES_Y),
+    };
+  }
+
+  function normalizeAssHeaderValue(value, fallback = 'MAW') {
+    const normalized = String(value ?? '')
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return normalized || fallback;
+  }
+
+  function normalizeAssEventField(value) {
+    return String(value ?? '')
+      .replace(/[\r\n,]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function normalizeAssColorStyles(value) {
+    const injected = Array.isArray(window.ASR_EDITOR_PALETTE)
+      ? window.ASR_EDITOR_PALETTE : ASS_FALLBACK_COLOR_PALETTE;
+    const source = Array.isArray(value) ? value : injected;
+    const byName = new Map(source
+      .filter((entry) => entry && typeof entry.name === 'string')
+      .map((entry) => [entry.name, entry.value]));
+    return ASS_COLOR_STYLE_NAMES.map((name) => ({
+      name,
+      value: assColorFromHex(byName.get(name)),
+    }));
   }
 
   function buildAssPayload(segments, options = {}) {
@@ -11649,8 +11814,17 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     const fontFamily = normalizeAssFontFamily(
       appearance.font_family ?? options.fontFamily,
     );
-    const fontSize = normalizeAssFontSize(appearance.font_size ?? options.fontSize);
+    const mediaMetadata = options.mediaMetadata && typeof options.mediaMetadata === 'object'
+      ? options.mediaMetadata : {};
+    const resolution = normalizeAssPlayResolution(
+      options.playResX ?? options.videoWidth ?? mediaMetadata.video_width,
+      options.playResY ?? options.videoHeight ?? mediaMetadata.video_height,
+    );
+    const previewFontSize = appearance.font_size ?? options.fontSize;
+    const fontSize = resolveAssFontSize(previewFontSize, resolution.height);
     const primaryColor = assColorFromHex(appearance.color ?? options.color);
+    const title = normalizeAssHeaderValue(options.title ?? options.projectName);
+    const colorStyles = normalizeAssColorStyles(options.colorStyles);
     const numericTimeOffset = Number(options.timeOffset);
     const timeOffset = Number.isFinite(numericTimeOffset)
       ? Math.max(0, Math.round(numericTimeOffset)) : 0;
@@ -11661,6 +11835,12 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     const firstEnabledIndex = Number.isInteger(options.firstEnabledIndex)
       ? options.firstEnabledIndex
       : getSrtExportFirstIndex(source, alignFirstStart);
+    const speakerLabels = options.speakerLabelsEnabled === true
+      ? normalizeSpeakerLabels(options.speakerLabels)
+      : null;
+    const speakerLabelSeparator = options.speakerLabelsEnabled === true
+      ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
+      : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
 
     source.forEach((segment, sourceIndex) => {
@@ -11672,17 +11852,28 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       // an imported/edited cue is shorter than that precision.
       const startCentiseconds = Math.max(0, Math.round(start / 10));
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+      const speakerName = speakerLabels
+        ? speakerLabelForSegment(segment, source, speakerLabels) : '';
+      const text = speakerLabels
+        ? formatSpeakerLabelledText(
+          segment.text, segment, source, speakerLabels, speakerLabelSeparator,
+        )
+        : String(segment.text ?? '');
+      const colorName = effectiveColorName(segment, source);
+      const styleName = ASS_COLOR_STYLE_NAMES.includes(colorName)
+        ? colorName.toUpperCase() : 'Default';
       events.push(
-        `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Default,,0,0,0,,${escapeAssText(segment.text)}`,
+        `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${styleName},${normalizeAssEventField(speakerName)},0,0,0,,${escapeAssText(text)}`,
       );
     });
 
     return [
       '[Script Info]',
       '; Script generated by MAW',
+      `Title: ${title}`,
       'ScriptType: v4.00+',
-      'PlayResX: 1920',
-      'PlayResY: 1080',
+      `PlayResX: ${resolution.width}`,
+      `PlayResY: ${resolution.height}`,
       'WrapStyle: 0',
       'ScaledBorderAndShadow: yes',
       'YCbCr Matrix: None',
@@ -11690,6 +11881,9 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       '[V4+ Styles]',
       `Format: ${ASS_STYLE_FORMAT}`,
       `Style: Default,${fontFamily},${fontSize},${primaryColor},${primaryColor},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`,
+      ...colorStyles.map((style) => (
+        `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.value},${style.value},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`
+      )),
       '',
       '[Events]',
       `Format: ${ASS_EVENT_FORMAT}`,
@@ -13283,6 +13477,11 @@ export default MawDynamicCaptions;
     repairGroupReferenceIndices,
     buildSrtPayload,
     normalizeAssFontFamily,
+    normalizeAssFontSize,
+    resolveAssFontSize,
+    normalizeAssPlayResolution,
+    normalizeAssHeaderValue,
+    ASS_COLOR_STYLE_NAMES,
     assColorFromHex,
     formatAssTime,
     escapeAssText,
@@ -13349,11 +13548,13 @@ export default MawDynamicCaptions;
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '跟随播放': 'Follow playback',
+    '定位当前播放头并恢复字幕跟随；手动翻看后可再次点击': 'Locate the playhead and resume subtitle following; click again after browsing manually',
     '备份工程': 'Back up project',
     '打开备份文件夹': 'Open backup folder',
     '自动备份间隔（分钟）': 'Backup interval (minutes)',
     '最大保存版本数': 'Maximum versions',
-    '开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/backups。': 'Create scheduled and manual-save snapshots; remove the oldest versions above the limit. Backups are stored in the project’s _maw/backups folder.',
+    '开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/备份（英文界面为 backups）。': 'Create scheduled and manual-save snapshots; remove the oldest versions above the limit. Backups are stored in the project’s _maw/backups folder.',
     '工程备份需要本地 Server 绑定工程；浏览器另存为的文件不支持目录备份。': 'Project backups require a project bound to the local server. Files selected with browser Save As do not support directory backups.',
     '撤销': 'Undo', '重做': 'Redo', '↶ 撤销': '↶ Undo', '↷ 重做': '↷ Redo',
     '新建工程': 'New project', '创建并保存一个空白工程': 'Create and save a blank project',
@@ -13377,14 +13578,17 @@ export default MawDynamicCaptions;
     '导出时附加说话人名称': 'Include speaker names when exporting',
     '字幕预览中的说话人名称开启后会自动勾选；导出 SRT 时会附加对应名称及分隔符，只影响导出的 SRT，不会改动工程里的字幕文本。': 'This is checked automatically when speaker names are enabled in the subtitle preview; exported SRT includes the matching name and separator, while the project subtitle text remains unchanged.',
     '导出字幕': 'Export subtitles', '导出字幕 ▾': 'Export subtitles ▾',
+    '导出 SRT/ASS 字幕或按颜色拆分导出 SRT 字幕': 'Export SRT/ASS subtitles or split SRT subtitles by color',
     '导出完整字幕': 'Export full subtitles', '导出完整字幕（SRT）': 'Export full subtitles (SRT)',
     '导出完整字幕（SRT/ASS）或按颜色分别导出字幕': 'Export full subtitles (SRT/ASS) or separate files by color',
     '完整字幕（SRT）': 'Full subtitles (SRT)', '完整字幕（ASS）': 'Full subtitles (ASS)',
+    '完整 SRT 字幕': 'Full SRT subtitles', '带样式的 ASS 字幕': 'Styled ASS subtitles',
     '导出副字幕': 'Export secondary subtitles', '导出当前副字幕轨（SRT）': 'Export the current secondary subtitle track (SRT)',
     '按颜色导出字幕': 'Export by color', '按颜色导出字幕（SRT）': 'Export by color (SRT)',
+    '按颜色拆分导出 SRT 字幕': 'Export SRT subtitles split by color',
     '导出纯文本（TXT）': 'Export plain text (TXT)',
     '导出工程': 'Export project', '导出去空隙版本 ▾': 'Export gap-removed version ▾',
-    '字幕 SRT': 'Subtitle SRT', '时间线 OTIO 工程': 'Timeline OTIO project', '时间线 OTIOZ 打包工程': 'Timeline OTIOZ bundle',
+    '字幕 SRT': 'Subtitle SRT', 'SRT 字幕': 'SRT subtitles', '时间线 OTIO 工程': 'Timeline OTIO project', '时间线 OTIOZ 打包工程': 'Timeline OTIOZ bundle',
     '表情包 OTIO 工程': 'Sticker OTIO project', '表情包 OTIOZ 打包工程': 'Sticker OTIOZ bundle',
     '同时导出 SRT 字幕': 'Also export SRT subtitles',
     '导出时间线 OTIO 的同时保存对应的 SRT 字幕文件': 'Save the matching SRT subtitle file alongside the timeline OTIO export',
@@ -13541,7 +13745,7 @@ export default MawDynamicCaptions;
     '在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。': 'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
     '🤓👆 你可以在': '🤓👆 You can configure color-to-speaker names in',
     '中配置颜色对应的说话人名。': ' settings.',
-    '使用说话人名称作为后缀': 'Use speaker name as suffix',
+    '使用说话人名称替代颜色后缀': 'Use speaker name instead of the color suffix',
     '勾选后按说话人名称生成彩色字幕文件名后缀；没有对应名称时回退为颜色': 'When enabled, use the speaker name as the colored subtitle filename suffix; fall back to the color when no name is mapped',
     '播放': 'Play', '暂停': 'Pause', '后退 1000ms': 'Back 1000ms', '前进 1000ms': 'Forward 1000ms',
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
@@ -13605,7 +13809,7 @@ export default MawDynamicCaptions;
     '已保存工作区': 'Saved workspaces',
     '保存工作区': 'Save workspace', '另存为工作区': 'Save workspace as', '删除工作区': 'Delete workspace',
     '工作区配置 ▾': 'Workspace configuration ▾', '导出工作区配置': 'Export workspace configuration', '导入工作区配置': 'Import workspace configuration',
-    '🔧 设置': '🔧 Settings', '⚙️ 全局设置': '⚙️ Global settings', '字幕时间调整': 'Subtitle timing adjustment', '自动吸附调整相邻字幕': 'Automatically snap-adjust adjacent subtitles', '开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动': 'When enabled, dragging or fine-tuning adjacent cues on the same track links them by default; hold Alt to temporarily separate them. When disabled, they adjust independently by default; hold Alt to temporarily link them.', '关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。': 'When disabled, adjacent cues adjust independently by default; hold Alt to temporarily link them. When enabled, linking is the default; hold Alt to temporarily separate them.', '操作': 'Behavior', 'Esc 取消编辑': 'Esc cancels editing', '开启后，按 Esc 会恢复当前字幕编辑前的文本；关闭后按 Esc 保留文本改动并退出编辑': 'When enabled, Esc restores the text from before editing; when disabled, Esc keeps text changes and exits editing.', '关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。': 'When disabled, Esc keeps text changes; when enabled, it restores the text from before editing.', '快捷键时间基准': 'Keyboard operation reference', 'B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准': 'B/Z/X/N keyboard operations use the pointer position or current playhead as their time reference', '🤔 帮助': '🤔 Help',
+    '🔧 设置': '🔧 Settings', '⚙️ 全局设置': '⚙️ Global settings', '字幕时间调整': 'Subtitle timing adjustment', '自动吸附调整相邻字幕': 'Automatically snap-adjust adjacent subtitles', '开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动': 'When enabled, dragging or fine-tuning adjacent cues on the same track links them by default; hold Alt to temporarily separate them. When disabled, they adjust independently by default; hold Alt to temporarily link them.', '关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。': 'When disabled, adjacent cues adjust independently by default; hold Alt to temporarily link them. When enabled, linking is the default; hold Alt to temporarily separate them.', '贴合字幕边界': 'Attached-cue boundary', '中缝联动（新）': 'Seam link (new)', '传统模式': 'Classic', '设置相接字幕边界的拖动方式：新模式拖动贴合中缝时两侧联动，传统模式沿用自动吸附开关': 'Choose how attached-cue boundaries react to dragging: the new mode links both sides when you drag the seam between attached cues; the classic mode follows the auto-snap toggle.', '拖动贴合字幕中间的中缝：两侧边界一起联动；单独拖动左右手柄只调整当前字幕（类似达芬奇）。': 'Drag the seam between attached cues to move both edges together; drag either side handle to trim only that cue (similar to DaVinci Resolve).', '操作': 'Behavior', 'Esc 取消编辑': 'Esc cancels editing', '开启后，按 Esc 会恢复当前字幕编辑前的文本；关闭后按 Esc 保留文本改动并退出编辑': 'When enabled, Esc restores the text from before editing; when disabled, Esc keeps text changes and exits editing.', '关闭后按 Esc 保留文本改动；开启后恢复编辑前的文本。': 'When disabled, Esc keeps text changes; when enabled, it restores the text from before editing.', '快捷键时间基准': 'Keyboard operation reference', 'B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准': 'B/Z/X/N keyboard operations use the pointer position or current playhead as their time reference', '🤔 帮助': '🤔 Help',
     '等待波形数据': 'Waiting for waveform data', '波形处理': 'Waveform processing',
     '扫描参数': 'Scan parameters',
     '按波形音量扫描内部空隙，不改写原时间轴': 'Scan internal gaps from waveform volume without changing the original timeline',
@@ -13909,6 +14113,7 @@ export default MawDynamicCaptions;
     '按文字位置拆分': 'Split at text position', '跳转到字幕并播放': 'Seek to subtitle and play',
     '分配表情包…': 'Assign sticker…', '删除表情包': 'Remove sticker',
     '标记颜色': 'Mark color', '清除颜色': 'Clear color',
+    '从颜色组中脱离': 'Detach from color group', '已从颜色组中脱离': 'Detached from color group',
     '切换主字幕语言类型': 'Change main subtitle language type',
     '启用此条': 'Enable this subtitle', '禁用此条': 'Disable this subtitle',
     '删除字幕': 'Delete subtitle', '拓展表情包时长': 'Extend sticker duration',
@@ -14004,6 +14209,9 @@ export default MawDynamicCaptions;
     '放大时间轴': 'Zoom in', '缩小时间轴': 'Zoom out',
     '增大波形振幅': 'Increase waveform amplitude',
     '减小波形振幅': 'Decrease waveform amplitude',
+    '响度适配': 'Fit by loudness',
+    '按整文件响度重新拟合振幅': 'Refit the amplitude from the file-wide loudness',
+    '当前媒体没有响度缓存，无法按响度适配': 'No loudness cache for this media; cannot fit by loudness',
     '选择一条字幕开始编辑…': 'Select a subtitle to start editing…',
     '要查找的内容': 'Text to find', '替换后的内容': 'Replacement text',
     '按文件名过滤...': 'Filter by filename…',
@@ -14072,6 +14280,7 @@ export default MawDynamicCaptions;
     '导出应用当前空隙移除结果的字幕、时间线或保留区域计划': 'Export subtitles, timelines, or kept regions using the current gap-removal result',
     '按移除静音空隙后的时间轴导出字幕；原工程时间不变': 'Export subtitles on the gap-removed timeline; project timing stays unchanged',
     '按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕': 'Export one subtitle file per used color on the gap-removed timeline',
+    '按移除静音空隙后的时间轴导出带样式的 ASS 字幕；原工程时间不变': 'Export styled ASS subtitles on the gap-removed timeline; project timing stays unchanged',
     '导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用': 'Export a gap-removed OTIO timeline for compatible editing tools',
     '导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制': 'Export kept intervals for FFmpeg concat; stream-copy cut accuracy depends on keyframes and packets',
     '以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取': 'Export all kept source-media regions in milliseconds',
@@ -14202,9 +14411,10 @@ export default MawDynamicCaptions;
   let language = readLanguage();
 
   // 导出文件名中的技术段（按当前语言映射；中文界面译出，英文界面原样）。
-  // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」。
+  // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」；
+  // 未标记颜色的默认组用「_默认」而非「_default」。
   const EXPORT_NAME_SEGMENTS = {
-    'gap-removed': '去空隙', 'stickers': '表情包',
+    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '默认',
     'yellow': '黄色', 'green': '绿色', 'red': '红色', 'purple': '紫色', 'blue': '蓝色',
   };
 
@@ -14556,6 +14766,7 @@ export default MawDynamicCaptions;
   const ENCODING = 'i8-minmax-base64';
   const SPECTRAL_SCHEMA = 'moy.asr.spectral.v1';
   const SPECTRAL_ENCODING = 'u16-freq-density-base64';
+  const LOUDNESS_SCHEMA = 'moy.asr.loudness.v1';
   const WORKSPACE_SCHEMA = 'moy.asr.editor.workspace.v1';
   const POINTER_DRAG_THRESHOLD_PX = 3;
 
@@ -14727,6 +14938,10 @@ export default MawDynamicCaptions;
     layoutTree: DEFAULT_RIGHT_LAYOUT_TREE,
     layoutEditing: false,
     waveformScale: 1,
+    // 振幅是否仍由响度自动决定。跟着工程走，不进 localStorage：
+    // waveformScale 的活跃值存在浏览器全局偏好里，用「等于默认值」或 -1 哨兵
+    // 都无法判断「这个工程还没定过振幅」——新工程拿到的是上个工程留下的数字。
+    waveformScaleAuto: true,
     disabledDisplay: 'dim',
     showGroupBadges: true,
     dragPlayhead: true,
@@ -14766,6 +14981,8 @@ export default MawDynamicCaptions;
       preset: 'custom', waveformMode: 'multi',
       waveformSettings: {
         visibleSeconds: 20, secondsPerRow: 10, rowHeight: 120, waveformScale: 4,
+        // 预设自己指定了振幅，就是预设已经替用户做了决定，不能再被响度自动覆盖。
+        waveformScaleAuto: false,
         side: 'left', disabledDisplay: 'dim', showGroupBadges: true, dragPlayhead: true,
       },
       splitPercent: 60, columnPercent: 30, rows: [42, 16, 42], tree: THREE_FOLD_LAYOUT_TREE,
@@ -14776,6 +14993,7 @@ export default MawDynamicCaptions;
       preset: 'custom', waveformMode: 'basic',
       waveformSettings: {
         visibleSeconds: 20, secondsPerRow: 10, rowHeight: 120, waveformScale: 5.5,
+        waveformScaleAuto: false,
         side: 'left', disabledDisplay: 'dim', showGroupBadges: true, dragPlayhead: true,
       },
       splitPercent: 60, columnPercent: 36, rows: [42, 18, 40], tree: CINEMA_SCREEN_LAYOUT_TREE,
@@ -15126,6 +15344,10 @@ export default MawDynamicCaptions;
         ? { rowHeight: Number(rawWaveformSettings.rowHeight) } : {}),
       ...(Number.isFinite(Number(rawWaveformSettings.waveformScale))
         ? { waveformScale: clampWaveformScale(Number(rawWaveformSettings.waveformScale)) } : {}),
+      // 必须显式产出这个键（而不是缺字段时省略）：applyLayoutData 用
+      // Object.assign 增量合并，省略会让上一个工程的 false 残留到新工程上。
+      // 老工程没写过该字段 → 不等于 false → true，升级后照样吃到自动缩放。
+      waveformScaleAuto: rawWaveformSettings.waveformScaleAuto !== false,
       ...(rawWaveformSettings.side === 'left' || rawWaveformSettings.side === 'right'
         ? { side: rawWaveformSettings.side } : {}),
       ...(rawWaveformSettings.disabledDisplay === 'hidden' || rawWaveformSettings.disabledDisplay === 'dim'
@@ -15187,6 +15409,10 @@ export default MawDynamicCaptions;
         layoutTree: layoutData.tree,
         layoutEditing: false,
         waveformScale: clampWaveformScale(Number(parsed.waveformScale) || DEFAULT_SETTINGS.waveformScale),
+        // 刻意不从 localStorage 读：振幅的活跃值是浏览器全局的，而「这个工程
+        // 定过振幅没有」只能跟着工程走。工程 workspace 随后会用 applyLayoutData
+        // 覆盖它，这里给出的是「尚无工程决定」的初值。
+        waveformScaleAuto: true,
         disabledDisplay: parsed.disabledDisplay === 'hidden' ? 'hidden' : 'dim',
         showGroupBadges: parsed.showGroupBadges !== false,
         dragPlayhead: parsed.dragPlayhead !== false,
@@ -15517,6 +15743,28 @@ export default MawDynamicCaptions;
     return Math.max(0, Number(height) * 0.36 * clampWaveformScale(scale));
   }
 
+  // ---- 响度 → 振幅标尺 ----------------------------------------------------
+  // 后端 moy.asr.loudness.v1 给的是 0..1 线性满量程 RMS（不是 peak、不是 dB）。
+  // 要把「典型响度」换算成「典型峰值占多少半行高」，还差一个波峰因子。
+  const LOUDNESS_CREST_FACTOR = 2.0; // RMS→峰值，约 +6 dB：正弦 √2 与语音 ~3.5 之间
+  const LOUDNESS_TARGET_FILL = 0.85; // 参考峰值占可用上半高的比例，留 15% 余量
+  const FULL_SCALE = 1.0; // 归一化满量程：预测峰值不可能超过它
+
+  function waveformScaleFromLoudness(stats, height) {
+    const reference = Number(stats && stats.p95);
+    const rowHeight = Number(height);
+    // 全静音（p95<=0）或缺响度层时返回 null：宁可不猜，也不要把振幅拉到上限。
+    if (!Number.isFinite(reference) || reference <= 0) return null;
+    if (!Number.isFinite(rowHeight) || rowHeight <= 0) return null;
+    // 削顶发生在上方：可用高度是 center - 2 = 0.46h - 2，比下方 0.54h - 2 更紧。
+    const headroom = Math.max(1, rowHeight * 0.46 - 2);
+    // 不钳到满量程的话，响素材会算出 >1 的「预测峰值」，把波形画得偏小。
+    const expectedPeak = Math.min(FULL_SCALE, reference * LOUDNESS_CREST_FACTOR);
+    return clampWaveformScale(
+      (LOUDNESS_TARGET_FILL * headroom) / (0.36 * rowHeight * expectedPeak),
+    );
+  }
+
   function sampleInterpolatedPeak(peaks, position, peakCount, target = [0, 0]) {
     if (!peaks || peakCount <= 0) {
       target[0] = 0;
@@ -15683,6 +15931,14 @@ export default MawDynamicCaptions;
   function shouldAdjustAdjacentCuesIndependently(altKey, autoSnapAdjacentCues) {
     // Alt 始终临时反转自动吸附开关；开关关闭且未按 Alt 时也是独立调整。
     return Boolean(altKey) === Boolean(autoSnapAdjacentCues);
+  }
+
+  // 相接字幕边界手柄的拖动方式：
+  // - dual（新默认，达芬奇式）：手柄始终独立调整单侧，联动交给中缝拖动区；
+  // - classic（传统）：沿用“自动吸附调整相邻字幕”开关 + Alt 临时反转。
+  function shouldAdjustSharedBoundaryHandleIndependently(altKey, autoSnapAdjacentCues, boundaryMode) {
+    if (boundaryMode === 'dual') return true;
+    return shouldAdjustAdjacentCuesIndependently(altKey, autoSnapAdjacentCues);
   }
 
   function normalizedIndices(segments, indices) {
@@ -16093,6 +16349,7 @@ export default MawDynamicCaptions;
       this.peaks = null;
       this.spectral = null;
       this.reapeaksPayload = null;
+      this.loudnessStats = null;
       this.reapeaksPeaks = null;
       this.player = null;
       this.mediaAvailable = false;
@@ -16161,6 +16418,7 @@ export default MawDynamicCaptions;
       this.waveformScaleLabel = document.getElementById('waveform-scale-label');
       this.waveformScaleDownButton = document.getElementById('waveform-scale-down');
       this.waveformScaleUpButton = document.getElementById('waveform-scale-up');
+      this.waveformScaleFitButton = document.getElementById('waveform-scale-fit');
       this.secondsPerRowSelect = document.getElementById('waveform-seconds-per-row');
       this.rowHeightSelect = document.getElementById('waveform-row-height');
       this.showGroupBadgesToggle = document.getElementById('waveform-show-group-badges');
@@ -16197,9 +16455,21 @@ export default MawDynamicCaptions;
       );
     }
 
-    // 共享边界拖动期间，在「共享边界」状态文本旁提示当前“相邻字幕自动吸附”
-    // 模式；文案按用户设置显示默认模式，Alt 始终是临时反转修饰键。
+    // 相接字幕边界手柄命中时的模式判定：dual 模式下手柄始终独立调整
+    // （联动由中缝拖动区负责）；classic 模式沿用自动吸附开关 + Alt 反转。
+    isSharedBoundaryHandleIndependent(altKey = false) {
+      return shouldAdjustSharedBoundaryHandleIndependently(
+        altKey,
+        this.options.getAutoSnapAdjacentCues?.() === true,
+        this.options.getAdjacentBoundaryMode?.(),
+      );
+    }
+
+    // 共享边界拖动期间，在「共享边界」状态文本旁提示当前的贴合边界模式。
     adjacentSnapModeStatusHint() {
+      if (this.options.getAdjacentBoundaryMode?.() === 'dual') {
+        return '中缝联动：中缝拖动两侧一起移动，手柄只调整单侧字幕。';
+      }
       return this.options.getAutoSnapAdjacentCues?.() === true
         ? '当前为相邻字幕自动吸附模式，按住 Alt 可以临时解除吸附。'
         : '当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。';
@@ -16226,6 +16496,7 @@ export default MawDynamicCaptions;
       document.getElementById('waveform-zoom-out')?.addEventListener('click', () => this.changeZoom(1));
       this.waveformScaleDownButton?.addEventListener('click', () => this.changeWaveformScale(-1));
       this.waveformScaleUpButton?.addEventListener('click', () => this.changeWaveformScale(1));
+      this.waveformScaleFitButton?.addEventListener('click', () => this.fitWaveformScaleToLoudness());
       this.pane.addEventListener('pointerdown', () => {
         this.autoScrolling = false;
         this.autoScrollTarget = null;
@@ -16501,7 +16772,7 @@ export default MawDynamicCaptions;
         button.classList.toggle('active', button.dataset.waveformMode === this.settings.mode);
       });
       this.windowLabel.textContent = `${this.settings.visibleSeconds} 秒`;
-      if (this.waveformScaleLabel) this.waveformScaleLabel.textContent = `×${parseFloat(this.settings.waveformScale.toFixed(2))}`;
+      if (this.waveformScaleLabel) this.renderWaveformScaleLabel();
       this.secondsPerRowSelect.value = String(this.settings.secondsPerRow);
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(this.settings.rowHeight);
       if (this.sideSelect) this.sideSelect.value = this.settings.side;
@@ -16617,6 +16888,11 @@ export default MawDynamicCaptions;
       this.settings.rowHeight = next;
       if (this.rowHeightSelect) this.rowHeightSelect.value = String(next);
       saveSettings(this.settings);
+      // 自动标尺按行高算（可用上半高随行高变），换行高要重拟合；手动模式不动。
+      // render:false：只算标尺和标签，重绘交给下面正常的行高布局路径。
+      if (this.settings.waveformScaleAuto !== false && this.loudnessStats) {
+        this.setLoudnessStats(this.loudnessStats, { render: false });
+      }
       if (this.isMultiMode() && this.payload) {
         this.updateMultiRowLayout();
       } else {
@@ -16912,6 +17188,7 @@ export default MawDynamicCaptions;
           secondsPerRow: this.settings.secondsPerRow,
           rowHeight: this.settings.rowHeight,
           waveformScale: this.settings.waveformScale,
+          waveformScaleAuto: this.settings.waveformScaleAuto !== false,
           side: this.settings.side,
           disabledDisplay: this.settings.disabledDisplay,
           showGroupBadges: this.settings.showGroupBadges !== false,
@@ -16940,7 +17217,9 @@ export default MawDynamicCaptions;
       const layout = normalizeLayoutData(snapshot.layout);
       this.settings.layout = layout.preset;
       if (layout.waveformMode) this.settings.mode = layout.waveformMode;
-      if (layout.waveformSettings) Object.assign(this.settings, layout.waveformSettings);
+      // 兜底给出 waveformScaleAuto：工程完全没有 waveformSettings 时，必须显式
+      // 回到「未决定」，否则 Object.assign 不写这个键会让上一个工程的 false 残留。
+      Object.assign(this.settings, layout.waveformSettings || { waveformScaleAuto: true });
       this.settings.splitPercent = layout.splitPercent;
       this.settings.layoutColumnPercent = layout.columnPercent;
       this.settings.layoutRows = layout.rows;
@@ -16962,7 +17241,9 @@ export default MawDynamicCaptions;
       const layout = normalizeLayoutData(value);
       this.settings.layout = layout.preset;
       if (layout.waveformMode) this.settings.mode = layout.waveformMode;
-      if (layout.waveformSettings) Object.assign(this.settings, layout.waveformSettings);
+      // 兜底给出 waveformScaleAuto：工程完全没有 waveformSettings 时，必须显式
+      // 回到「未决定」，否则 Object.assign 不写这个键会让上一个工程的 false 残留。
+      Object.assign(this.settings, layout.waveformSettings || { waveformScaleAuto: true });
       this.settings.splitPercent = layout.splitPercent;
       this.settings.layoutColumnPercent = layout.columnPercent;
       this.settings.layoutRows = layout.rows;
@@ -17005,12 +17286,54 @@ export default MawDynamicCaptions;
         return;
       }
       this.settings.waveformScale = next;
+      // 用户亲自动了振幅 → 本工程退出自动，响度端点之后不再覆盖它。
+      this.settings.waveformScaleAuto = false;
       saveSettings(this.settings);
-      if (this.waveformScaleLabel) {
-        this.waveformScaleLabel.textContent = `×${parseFloat(next.toFixed(2))}`;
-      }
+      this.renderWaveformScaleLabel();
       // peak 包络按行缓存；连续滚轮由上层 debounce 合并后，这里只清晰重绘一次。
       this.redrawWaveformCanvases();
+    }
+
+    renderWaveformScaleLabel() {
+      if (!this.waveformScaleLabel) return;
+      const value = `×${parseFloat(Number(this.settings.waveformScale).toFixed(2))}`;
+      this.waveformScaleLabel.textContent = this.settings.waveformScaleAuto === false
+        ? value
+        : `${value} ${localizedWaveformMessage('自动', 'auto')}`;
+    }
+
+    setLoudnessStats(stats, { render = true } = {}) {
+      this.loudnessStats = stats && stats.schema === LOUDNESS_SCHEMA ? stats : null;
+      if (!this.loudnessStats) return false;
+      // 用户已手调过振幅就绝不覆盖；「按响度适配」按钮会先把这个标志翻回真。
+      if (this.settings.waveformScaleAuto === false) return false;
+      const fitted = waveformScaleFromLoudness(
+        this.loudnessStats,
+        this.settings.rowHeight,
+      );
+      if (fitted === null) return false;
+      this.settings.waveformScale = fitted;
+      // 自动值刻意不写 saveSettings()：localStorage 里的振幅是浏览器全局偏好，
+      // 为当前素材拟合的值不该污染下一个工程。
+      this.renderWaveformScaleLabel();
+      if (render) this.redrawWaveformCanvases();
+      return true;
+    }
+
+    fitWaveformScaleToLoudness() {
+      const previous = this.settings.waveformScaleAuto;
+      this.settings.waveformScaleAuto = true;
+      if (this.setLoudnessStats(this.loudnessStats)) {
+        this.setStatus(localizedWaveformMessage(
+          `已按响度适配振幅 ×${parseFloat(Number(this.settings.waveformScale).toFixed(2))}`,
+          `Amplitude fitted to loudness ×${parseFloat(Number(this.settings.waveformScale).toFixed(2))}`,
+        ));
+        return true;
+      }
+      // 拟不出来就把标志还原，别让标签谎称「自动」却显示着手调值。
+      this.settings.waveformScaleAuto = previous;
+      document.dispatchEvent(new CustomEvent('asr:waveform-loudness-unavailable'));
+      return false;
     }
 
     scheduleWheelScaleChange() {
@@ -17933,11 +18256,13 @@ export default MawDynamicCaptions;
         if (segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
+          leftHandle.title = localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)');
           block.appendChild(leftHandle);
         }
         if (segment.end <= endMs) {
           const rightHandle = document.createElement('span');
           rightHandle.className = 'waveform-cue-handle right';
+          rightHandle.title = localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
           block.appendChild(rightHandle);
         }
         this.layoutBlock(block, segment, startMs, endMs, row);
@@ -17958,6 +18283,7 @@ export default MawDynamicCaptions;
         });
         row.appendChild(block);
       }
+      this.appendSharedBoundaryZones(row, startMs, endMs, 'main');
 
       if (!multiLane) return;
       const extensionSegments = this.options.getExtensionSegments?.() || [];
@@ -17990,11 +18316,13 @@ export default MawDynamicCaptions;
         if (segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
+          leftHandle.title = localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)');
           block.appendChild(leftHandle);
         }
         if (segment.end <= endMs) {
           const rightHandle = document.createElement('span');
           rightHandle.className = 'waveform-cue-handle right';
+          rightHandle.title = localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
           block.appendChild(rightHandle);
         }
         this.layoutBlock(block, segment, startMs, endMs, row);
@@ -18013,6 +18341,68 @@ export default MawDynamicCaptions;
           else this.options.activateExtensionCue?.(index);
         });
         row.appendChild(block);
+      }
+      this.appendSharedBoundaryZones(row, startMs, endMs, 'extension');
+    }
+
+    isSegmentHiddenForDisplay(segment) {
+      return Boolean(
+        segment?.disabled
+        && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden'),
+      );
+    }
+
+    // 新模式（中缝联动）下，为相接的字幕对在中缝处渲染一个可拖动区：
+    // 拖动中缝 = 两侧边界一起联动；相接侧手柄加宽后仍可单侧独立调整。
+    // classic 模式不渲染中缝区，行为与旧版完全一致。
+    appendSharedBoundaryZones(row, startMs, endMs, track = 'main') {
+      if (this.options.getAdjacentBoundaryMode?.() !== 'dual') return;
+      const segments = this.options.getSegments(track);
+      if (!Array.isArray(segments) || segments.length < 2) return;
+      const clock = this.cueTiming();
+      const duration = Math.max(1, endMs - startMs);
+      const firstIndex = Math.max(0, firstCueIndexOverlapping(segments, startMs) - 1);
+      for (let index = firstIndex; index + 1 < segments.length; index += 1) {
+        const left = segments[index];
+        const right = segments[index + 1];
+        if (!left || !right) continue;
+        const leftEnd = clock.getEnd(left);
+        const rightStart = clock.getStart(right);
+        if (!Number.isFinite(leftEnd) || !Number.isFinite(rightStart)) continue;
+        const leftEndMs = clock.toMs(leftEnd);
+        const rightStartMs = clock.toMs(rightStart);
+        if (leftEndMs > endMs && rightStartMs > endMs) break;
+        if (Math.abs(leftEnd - rightStart) > clock.snapThreshold) continue;
+        // 帧模式下 getEnd/getStart 返回帧数，行边界是毫秒；定位前统一换算。
+        const seamMs = (leftEndMs + rightStartMs) / 2;
+        // 每条中缝只由其左侧所在行持有。行末中缝仍要渲染，否则整齐落在
+        // 行边界的相接字幕会失去双侧联动拖动区。
+        if (seamMs <= startMs || seamMs > endMs) continue;
+        if (this.isSegmentHiddenForDisplay(left) || this.isSegmentHiddenForDisplay(right)) continue;
+        const zone = document.createElement('span');
+        zone.className = 'waveform-cue-boundary';
+        zone.dataset.track = track;
+        zone.dataset.leftIdx = String(index);
+        zone.style.left = `${((seamMs - startMs) / duration) * 100}%`;
+        zone.classList.toggle('at-row-end', seamMs === endMs);
+        zone.title = '拖动调整贴合边界（两侧一起移动）';
+        zone.addEventListener('pointerdown', (event) => this.beginSharedBoundaryZoneDrag(event, index, row, track));
+        row.appendChild(zone);
+        // 加宽相接侧手柄：中缝区只占中间 8px，加宽后两侧手柄保留约 7px
+        // 独立命中区域，三个区域都有稳定的视觉与命中宽度。
+        const leftBlock = row.querySelector(
+          track === 'extension'
+            ? `.waveform-cue-block[data-track="extension"][data-ext-idx="${index}"]`
+            : `.waveform-cue-block[data-track="main"][data-idx="${index}"]`,
+        );
+        const rightBlock = row.querySelector(
+          track === 'extension'
+            ? `.waveform-cue-block[data-track="extension"][data-ext-idx="${index + 1}"]`
+            : `.waveform-cue-block[data-track="main"][data-idx="${index + 1}"]`,
+        );
+        leftBlock?.classList.add('has-shared-boundary-right');
+        rightBlock?.classList.add('has-shared-boundary-left');
+        if (seamMs === endMs) leftBlock?.classList.add('shared-boundary-at-row-end-right');
       }
     }
 
@@ -18078,7 +18468,7 @@ export default MawDynamicCaptions;
       rows.forEach((row) => {
         // 绑定、解绑和字幕时间变化只影响覆盖层；保留已有行与 Canvas，
         // 避免重新采样/绘制波形导致操作出现一帧卡顿。
-        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge')
+        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary')
           .forEach((element) => element.remove());
         this.appendCueBlocks(
           row,
@@ -18093,23 +18483,61 @@ export default MawDynamicCaptions;
     refreshCueBlocks() {
       const segments = this.options.getSegments('main');
       const extensionSegments = this.options.getExtensionSegments?.() || [];
+      // 共享边界拖动会同时修改两侧字幕：中缝拖动的真实选区已包含前后
+      // 两句；传统模式的手柄联动只选中点击侧，拖动期间两侧块也按选中态
+      // 显示，松开后由真实选区恢复原状。
+      const boundaryDrag = this.drag?.kind === 'resize-boundary' ? this.drag : null;
+      const boundaryDragTrack = boundaryDrag?.track || 'main';
       this.content.querySelectorAll('.waveform-cue-block').forEach((block) => {
         const isExtension = block.dataset.track === 'extension';
-        const segment = isExtension
-          ? extensionSegments[Number(block.dataset.extIdx)]
-          : segments[Number(block.dataset.idx)];
+        const index = isExtension
+          ? Number(block.dataset.extIdx)
+          : Number(block.dataset.idx);
+        const segment = isExtension ? extensionSegments[index] : segments[index];
         const row = block.closest('.waveform-row');
         if (!segment || !row) return;
         this.layoutBlock(block, segment, Number(row.dataset.startMs), Number(row.dataset.endMs));
-        block.classList.toggle('selected', isExtension
-          ? this.options.getExtensionSelection?.().has(Number(block.dataset.extIdx))
-          : this.options.getSelection('main').has(Number(block.dataset.idx)));
+        const linkedToBoundaryDrag = Boolean(
+          boundaryDrag
+          && (isExtension ? 'extension' : 'main') === boundaryDragTrack
+          && (index === boundaryDrag.index || index === boundaryDrag.index + 1),
+        );
+        block.classList.toggle('selected', linkedToBoundaryDrag || (isExtension
+          ? this.options.getExtensionSelection?.().has(index)
+          : this.options.getSelection('main').has(index)));
         const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
         this.setBindingMarker(block, isExtension
           ? bindingMarkerTargets.extension?.has?.(Number(block.dataset.extIdx)) === true
           : bindingMarkerTargets.main?.has?.(Number(block.dataset.idx)) === true);
       });
+      this.refreshBoundaryZones();
       this.positionPlayheads();
+    }
+
+    // 轻量刷新（拖动中）只重建字幕块，不重建中缝区；这里按当前时间
+    // 重新定位已有中缝区，保证拖动过程中中缝始终跟随贴合边界。
+    refreshBoundaryZones() {
+      this.content.querySelectorAll('.waveform-cue-boundary').forEach((zone) => {
+        const row = zone.closest('.waveform-row');
+        if (!row) return;
+        const track = zone.dataset.track === 'extension' ? 'extension' : 'main';
+        const index = Number(zone.dataset.leftIdx);
+        const left = this.options.getSegments(track)[index];
+        const right = this.options.getSegments(track)[index + 1];
+        const clock = this.cueTiming();
+        // 独立拖动让两侧脱离贴合后，中缝区立即移除；重新贴合会在下一次
+        // 完整重建（refreshCueOverlay）时恢复。
+        if (!left || !right || Math.abs(clock.getEnd(left) - clock.getStart(right)) > clock.snapThreshold) {
+          zone.remove();
+          return;
+        }
+        const startMs = Number(row.dataset.startMs);
+        const endMs = Number(row.dataset.endMs);
+        const duration = Math.max(1, endMs - startMs);
+        const seamMs = (clock.toMs(clock.getEnd(left)) + clock.toMs(clock.getStart(right))) / 2;
+        zone.style.left = `${((seamMs - startMs) / duration) * 100}%`;
+        zone.classList.toggle('at-row-end', seamMs === endMs);
+      });
     }
 
     refreshCueLabel(index) {
@@ -18887,9 +19315,10 @@ export default MawDynamicCaptions;
         this.options.splitCueAtTime?.(index, timing.toMs(timing.fromMs(timeMs)));
         return;
       }
-      // 相邻字幕独立调整：命中共享边界手柄时拆开为单侧拖动；Alt 会
-      // 根据“自动吸附调整相邻字幕”开关临时反转这一模式。
-      if (adjacentCueAdjustmentIndependent && targetHandle) {
+      // 相接字幕边界手柄：dual（中缝联动）模式下始终拆开为单侧拖动；
+      // classic 模式按“自动吸附调整相邻字幕”开关决定，Alt 临时反转。
+      const sharedBoundaryHandleIndependent = this.isSharedBoundaryHandleIndependent(event.altKey);
+      if (sharedBoundaryHandleIndependent && targetHandle) {
         const sharedLeft = targetHandle.classList.contains('left')
           && index > 0 && this.isSharedBoundary(event, index - 1, index, row, track);
         const sharedRight = targetHandle.classList.contains('right')
@@ -19048,6 +19477,78 @@ export default MawDynamicCaptions;
         started: false,
         changed: false,
         independent: true,
+      };
+      event.currentTarget.classList.add('dragging');
+      this.pane.classList.add('cue-drag-active');
+      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
+      window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
+      window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
+      window.addEventListener('pointercancel', this._dragEnd, { once: true });
+    }
+
+    // 中缝拖动区（dual 模式）：按下即开始共享边界联动拖动，两侧边界
+    // 一起移动；plain 点击（未拖动）按点击行为跳转，等价于点击右侧字幕块。
+    beginSharedBoundaryZoneDrag(event, leftIndex, row, track = 'main') {
+      if (event.button !== 0) return;
+      if (this.tool === 'razor') return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.focusWaveform();
+      const segments = this.options.getSegments(track);
+      const rightIndex = leftIndex + 1;
+      if (!segments[leftIndex] || !segments[rightIndex]) return;
+      // Ctrl(Cmd)/Shift 的选择语义与点击右侧字幕块的边界手柄一致。
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
+        if (track === 'extension') this.options.toggleExtensionSelection?.(rightIndex);
+        else this.options.toggleCueSelection?.(rightIndex);
+        return;
+      }
+      if (event.shiftKey) {
+        if (track === 'extension') this.options.selectExtensionRange?.(rightIndex);
+        else this.options.selectCueRange?.(rightIndex);
+        return;
+      }
+      // 选择可能触发行重建，先保存按下瞬间的几何数据（与 beginCueDrag 相同）。
+      const geometry = this.captureRowGeometry(row);
+      // 普通中缝点击替换为相邻两句的选区；Ctrl/Cmd 与 Shift 已在上面保留
+      // 原本的切换和范围选择语义。面板聚焦右侧字幕。
+      if (track === 'extension') {
+        this.options.selectExtensionCue?.(leftIndex);
+        this.options.addExtensionSelection?.([rightIndex]);
+        this.options.activateExtensionCue?.(rightIndex);
+      } else {
+        this.options.selectCue(leftIndex);
+        this.options.addCueSelection?.([rightIndex]);
+        this.options.activateCue?.(rightIndex);
+      }
+      const timing = this.cueTiming();
+      const originals = new Map(
+        [leftIndex, rightIndex].map((idx) => [idx, snapshotTiming(segments[idx], timing)]),
+      );
+      this.drag = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        currentClientX: event.clientX,
+        rangeMs: geometry.endMs - geometry.startMs,
+        rowWidth: geometry.width,
+        geometry,
+        kind: 'resize-boundary',
+        track,
+        index: leftIndex,
+        indices: [leftIndex, rightIndex],
+        row,
+        originals,
+        cancelOriginals: new Map(originals),
+        timing,
+        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
+        commitIndices: new Set([leftIndex, rightIndex]),
+        started: false,
+        changed: false,
+        independent: false,
+        allowSqueeze: false,
+        squeezeOriginals: null,
+        altToggleDisabledOnClick: false,
+        seekedOnPointerDown: false,
       };
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
@@ -20061,7 +20562,8 @@ export default MawDynamicCaptions;
       window.removeEventListener('pointermove', this._dragMove);
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
-      this.content.querySelectorAll('.waveform-cue-block.dragging').forEach((block) => block.classList.remove('dragging'));
+      this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')
+        .forEach((block) => block.classList.remove('dragging'));
       this.pane.classList.remove('cue-drag-active');
       this.drag = null;
       if (event.type === 'pointercancel') {
@@ -20263,6 +20765,7 @@ export default MawDynamicCaptions;
       roundMs,
       sourceForFile,
       shouldAdjustAdjacentCuesIndependently,
+      shouldAdjustSharedBoundaryHandleIndependently,
       findActiveCueIndex,
       firstCueIndexOverlapping,
       applySharedBoundary,
@@ -20275,6 +20778,13 @@ export default MawDynamicCaptions;
       wheelScrollDelta,
       waveformScaleAfterStep,
       waveformAmplitude,
+      waveformScaleFromLoudness,
+      loudnessSchema: LOUDNESS_SCHEMA,
+      // 只做状态机逻辑的单测入口：用 stub 的 this 调用，无需构造 DOM。
+      setLoudnessStats: WaveformEditor.prototype.setLoudnessStats,
+      fitWaveformScaleToLoudness: WaveformEditor.prototype.fitWaveformScaleToLoudness,
+      renderWaveformScaleLabel: WaveformEditor.prototype.renderWaveformScaleLabel,
+      setRowHeight: WaveformEditor.prototype.setRowHeight,
       buildWaveformEnvelope,
       sampleInterpolatedPeak,
       normalizeLayoutData,
@@ -20301,6 +20811,9 @@ export default MawDynamicCaptions;
 
 const DATA = {"segments": [], "media": "", "language": "", "model": ""};
 let FILENAME_BASE = "untitled";
+// 导出文件名前缀会随媒体切换变化；ASS 的 Title 必须跟随当前工程文件名，
+// 因此单独保留工程名，避免加载媒体或导入字幕时把 Title 改成媒体名。
+let PROJECT_NAME = FILENAME_BASE;
 const STICKERS = [];
 let STICKER_ROOT = "";  // 表情包根目录的绝对路径（无尾斜杠）
 let STICKER_URL_PREFIX = "";
@@ -21296,6 +21809,31 @@ function projectMediaVideoFps(project = DATA) {
   return normalizeMediaMetadata(project?.media_metadata)?.video_fps ?? null;
 }
 
+function captureProjectVideoDimensions(mediaElement) {
+  if (!mediaElement || mediaElement !== player || mediaElement.tagName !== 'VIDEO') return false;
+  const width = Number(mediaElement.videoWidth);
+  const height = Number(mediaElement.videoHeight);
+  if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) return false;
+  const current = normalizeMediaMetadata(DATA.media_metadata) || {};
+  if (current.video_width === width && current.video_height === height) return false;
+  DATA.media_metadata = { ...current, video_width: width, video_height: height };
+  projectImportDirty = true;
+  scheduleAutoSaveFlush();
+  return true;
+}
+
+function clearProjectVideoDimensions() {
+  const current = normalizeMediaMetadata(DATA.media_metadata);
+  if (!current || (current.video_width === undefined && current.video_height === undefined)) return false;
+  const next = { ...current };
+  delete next.video_width;
+  delete next.video_height;
+  DATA.media_metadata = Object.keys(next).length ? next : null;
+  projectImportDirty = true;
+  scheduleAutoSaveFlush();
+  return true;
+}
+
 let timelineFpsManuallySet = hasExplicitTimelineFps(DATA.timebase);
 
 function syncProjectTimebase(project = DATA, { preferFrames = false } = {}) {
@@ -21417,6 +21955,33 @@ const COLOR_PALETTE = window.ASR_EDITOR_PALETTE.map((c) => ({
 }));
 const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
+
+function currentAssVideoResolution() {
+  const metadata = normalizeMediaMetadata(DATA.media_metadata);
+  if (metadata?.video_width && metadata?.video_height) {
+    return { width: metadata.video_width, height: metadata.video_height };
+  }
+  const width = Number(player?.videoWidth);
+  const height = Number(player?.videoHeight);
+  if (player?.tagName === 'VIDEO'
+      && Number.isInteger(width) && width > 0
+      && Number.isInteger(height) && height > 0) {
+    return { width, height };
+  }
+  return null;
+}
+
+function assExportOptions(appearance = getSubtitleAppearance()) {
+  const resolution = currentAssVideoResolution();
+  return {
+    title: PROJECT_NAME || FILENAME_BASE || 'MAW',
+    mediaMetadata: normalizeMediaMetadata(DATA.media_metadata),
+    playResX: resolution?.width,
+    playResY: resolution?.height,
+    colorStyles: COLOR_PALETTE,
+    appearance,
+  };
+}
 
 const DEFAULT_GAP_REMOVE_MIN_MS = 400;
 const DEFAULT_GAP_REMOVE_THRESHOLD_DB = -28;
@@ -21547,6 +22112,7 @@ function snapshotEditorSelection() {
   };
 }
 function pushUndo(label, { captureView = false } = {}) {
+  rememberCueListMutation();
   const record = EDITOR_SETTINGS_UTILS.buildHistoryRecord(
     'segments', label, snapshotSegments(), captureView ? snapshotEditorSelection() : null,
   );
@@ -21681,6 +22247,8 @@ function applyHistoryRecord(record) {
   }
   const snapshot = record.segs && Array.isArray(record.segs.segments)
     ? record.segs : { segments: record.segs, multi_subtitle: DATA.multi_subtitle };
+  // 视口属于本次撤销动作，不随历史快照恢复。
+  const cueListAnchor = captureCueListRenderAnchor();
   const previousWaveformStructure = multiSubtitleWaveformStructureKey();
   DATA.segments.length = 0;
   (snapshot.segments || []).forEach(s => DATA.segments.push(s));
@@ -21700,6 +22268,7 @@ function applyHistoryRecord(record) {
     !== multiSubtitleWaveformStructureKey();
   renderAll({
     waveform: structureChanged ? 'full' : 'overlay',
+    cueListAnchor,
   });
   if (record.view) restoreEditorSelection(record.view);
   return true;
@@ -21896,6 +22465,10 @@ const timelineSnapToFrameHint = document.getElementById('timeline-snap-to-frame-
 const timelineTimecodeSeparatorInput = document.getElementById('timeline-timecode-separator');
 const timelineTimecodeSeparatorHint = document.getElementById('timeline-timecode-separator-hint');
 const autoSnapAdjacentCuesToggle = document.getElementById('auto-snap-adjacent-cues');
+const adjacentBoundaryModeSelect = document.getElementById('adjacent-boundary-mode');
+const adjacentBoundaryModeHintDual = document.getElementById('adjacent-boundary-mode-hint-dual');
+const autoSnapAdjacentCuesRow = document.getElementById('auto-snap-adjacent-cues-row');
+const autoSnapAdjacentCuesHint = document.getElementById('auto-snap-adjacent-cues-hint');
 const replaceModal = document.getElementById('replace-modal');
 const textProcessModal = document.getElementById('text-process-modal');
 const timedTextEditButton = document.getElementById('timed-text-edit-btn');
@@ -21973,7 +22546,9 @@ const gapRemovedExportDropdown = document.getElementById('gap-removed-export-dro
 const downloadMultiSrtButton = document.getElementById('download-multi-srt');
 const subtitleExportDropdown = document.getElementById('subtitle-export-dropdown');
 const downloadColorSrtItem = document.getElementById('download-color-srt');
+const subtitleExportSeparator = document.getElementById('subtitle-export-separator');
 const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-removed-color-srt');
+const gapRemovedSubtitleExportSeparator = document.getElementById('gap-removed-subtitle-export-separator');
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
@@ -22821,6 +23396,8 @@ if (timelineTimecodeSeparatorInput) {
 if (autoSnapAdjacentCuesToggle) {
   autoSnapAdjacentCuesToggle.checked = EDITOR_SETTINGS.autoSnapAdjacentCues;
 }
+if (adjacentBoundaryModeSelect) adjacentBoundaryModeSelect.value = EDITOR_SETTINGS.adjacentBoundaryMode;
+refreshAdjacentBoundaryModeUi();
 if (cueEditorCancelOnEscapeToggle) {
   cueEditorCancelOnEscapeToggle.checked = EDITOR_SETTINGS.cueEditorCancelOnEscape;
 }
@@ -23777,6 +24354,24 @@ timelineTimecodeSeparatorInput?.addEventListener('change', () => {
 });
 autoSnapAdjacentCuesToggle?.addEventListener('change', () => {
   updateEditorSettings({ autoSnapAdjacentCues: autoSnapAdjacentCuesToggle.checked });
+});
+// 贴合字幕边界模式：dual（中缝联动，新默认）/ classic（自动吸附开关 + Alt 反转）。
+// classic 下保留“自动吸附调整相邻字幕”开关；dual 下该开关只影响键盘微调，
+// 鼠标手柄始终独立，联动交给波形上的中缝拖动区，因此隐藏开关行避免误解。
+function refreshAdjacentBoundaryModeUi() {
+  const isDual = EDITOR_SETTINGS.adjacentBoundaryMode === 'dual';
+  // 用内联 display 切换：.editor-settings-item 的 display:inline-flex
+  // 会覆盖 hidden 属性的 UA 样式。
+  if (autoSnapAdjacentCuesRow) autoSnapAdjacentCuesRow.style.display = isDual ? 'none' : '';
+  if (autoSnapAdjacentCuesHint) autoSnapAdjacentCuesHint.style.display = isDual ? 'none' : '';
+  if (adjacentBoundaryModeHintDual) adjacentBoundaryModeHintDual.style.display = isDual ? '' : 'none';
+}
+adjacentBoundaryModeSelect?.addEventListener('change', () => {
+  updateEditorSettings({
+    adjacentBoundaryMode: adjacentBoundaryModeSelect.value === 'classic' ? 'classic' : 'dual',
+  });
+  refreshAdjacentBoundaryModeUi();
+  waveformEditor?.refreshCueOverlay?.();
 });
 cueEditorCancelOnEscapeToggle?.addEventListener('change', () => {
   updateEditorSettings({ cueEditorCancelOnEscape: cueEditorCancelOnEscapeToggle.checked });
@@ -25461,12 +26056,18 @@ function alignSelectedExtensionSubtitleRanges() {
 }
 
 // === 渲染 ===
-function renderAll({ waveform = 'overlay', preserveCueListScroll = true } = {}) {
+function renderAll({ waveform = 'overlay', preserveCueListScroll = true, cueListAnchor } = {}) {
+  // 旧工程或新增字幕也必须在生成 DOM 前拥有唯一身份；复用工程既有规范化规则。
+  MULTI_SUBTITLE_UTILS.ensureStableSegmentIds(DATA.segments, 'main');
+  (getMultiSubtitleState().tracks || []).forEach(track => {
+    MULTI_SUBTITLE_UTILS.ensureStableSegmentIds(track.segments, `${track.id}-segment`);
+  });
   // 其它编辑入口仍以毫秒修改工程对象；在重绘前把它们投影回当前时间基准，
   // 保证帧模式下保存的数据和下一次帧操作保持一致。
   syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });
+  cueListAnchor = preserveCueListScroll
+    ? cueListAnchor || cueListScroll.mutationAnchor || captureCueListRenderAnchor() : null;
   invalidateCueListVisualAnchorRestore();
-  const cueListAnchor = preserveCueListScroll ? captureCueListRenderAnchor() : null;
   stickerOverlayDataVersion += 1;
   // cues-container 同时是字幕列表和停靠模块；重绘列表时不要把布局编辑模式
   // 下的顶部拖拽栏一起清掉。
@@ -25986,6 +26587,7 @@ cuePanelText?.addEventListener('keydown', (event) => {
 cuePanelText?.addEventListener('input', () => {
   const target = getCurrentCuePanelTarget();
   if (!target) return;
+  const cueListAnchor = captureCueListRenderAnchor();
   ensureCuePanelUndo(target.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕');
   const seg = target.segment;
   seg.text = cuePanelText.value.replace(/\r\n?/g, '\n');
@@ -26008,6 +26610,7 @@ cuePanelText?.addEventListener('input', () => {
   if (target.kind === 'extension') waveformEditor?.refreshExtensionCueLabel(target.index, target.trackId);
   else waveformEditor?.refreshCueLabel(target.index);
   refreshSubtitlePreview();
+  restoreCueListRenderAnchor(cueListAnchor);
 });
 cuePanelText?.addEventListener('blur', () => {
   if (cuePanelCanceling) return;
@@ -26131,6 +26734,7 @@ function buildCueEl(seg, idx, { extensionTrack = null } = {}) {
   const isExtension = Boolean(extensionTrack);
   const el = document.createElement('div');
   el.className = multiSubtitleVisible() ? 'cue multi-cue' : 'cue';
+  setCueListIdentity(el, seg, extensionTrack);
   if (isExtension) {
     el.classList.add('multi-extension-cue');
     el.dataset.extIdx = String(idx);
@@ -26240,6 +26844,8 @@ function buildDualCueEl(mainIndex, extensionIndex, track) {
   const extension = extensionIndex == null ? null : track.segments[extensionIndex];
   const el = document.createElement('div');
   el.className = 'cue multi-cue multi-dual-cue';
+  if (main) setCueListIdentity(el, main);
+  if (extension) setCueListIdentity(el, extension, track);
   if (mainIndex != null) {
     el.dataset.mainIdx = String(mainIndex);
     el.dataset.idx = String(mainIndex);
@@ -28638,16 +29244,7 @@ function splitAtCursor(
   }
 
   rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
-  renderAll({ preserveCueListScroll: listFeedback });
-  const leftEl = container.querySelector(`.cue[data-idx="${idx}"]`);
-  const rightEl = container.querySelector(`.cue[data-idx="${idx + 1}"]`);
-  // 列表来源的拆分（B 键悬停行、列表右键拆分、行内编辑拆分）都发生在当前
-  // 可见的字幕行上，拆分后让左半段留在原字幕的视觉位置；右半段自然排在
-  // 下一行。这样既保留 content-visibility，也不会被懒布局累计误差顶走。
-  // 波形 / 编辑面板等其它来源的拆分结果可能不在列表视口内，仍滚动到新右半段，
-  // 便于在列表中看到拆分结果。
-  if (listFeedback) restoreCueListVisualAnchor(leftEl, cueListAnchor);
-  else if (rightEl) scrollCueToCenter(rightEl);
+  renderAll({ cueListAnchor });
   selectOnly(idx + 1);
   // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
   lastClickedIdx = idx + 1;
@@ -28934,18 +29531,13 @@ function mergeSegments(idxs) {
   const sourceEl = container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
   const cueListAnchor = captureVisibleCueListVisualAnchor(sourceEl);
   commitCuePanelEdit();
+  pushUndo('合并字幕', { captureView: true });
   clearSelection({ silent: true });
-  pushUndo('合并字幕');
   mergeContiguousIndices(sorted);
-  renderAll();
+  renderAll({ cueListAnchor });
   // 合并完成后选中合并结果，方便继续对这句新字幕操作
   selectOnly(sorted[0]);
-  const el = container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
   updateWithoutCueListAutoScroll();
-  // C 合并和 B 拆分一样会重建整张字幕列表；保留首条源字幕的屏幕位置，
-  // 避免主动居中与 content-visibility 行高回填叠加成一次大幅跳动。
-  if (cueListAnchor) restoreCueListVisualAnchor(el, cueListAnchor);
-  else if (el) scrollCueToCenter(el);
   flashHint(`已合并 ${sorted.length} 条`, 'success');
 }
 
@@ -28991,17 +29583,15 @@ function mergeExtensionSegments(idxs, track = getActiveExtensionTrack()) {
     getMultiSubtitleState(), id, 'extension', track.id,
   ));
 
+  pushUndo('合并副字幕', { captureView: true });
   clearSelection();
-  pushUndo('合并副字幕');
   removeBindingsForSegmentIds([], oldIds);
   track.segments.splice(sorted[0], sorted.length, merged);
   markMultiSubtitleDirty();
-  renderAll();
+  renderAll({ cueListAnchor });
   selectOnlyExtension(sorted[0]);
   lastClickedExtensionIdx = sorted[0];
   updateWithoutCueListAutoScroll();
-  const el = container.querySelector(`.cue[data-ext-idx="${sorted[0]}"]`);
-  if (cueListAnchor) restoreCueListVisualAnchor(el, cueListAnchor);
   flashHint(
     hadBindings
       ? `已合并 ${sorted.length} 条副字幕，原绑定已解除`
@@ -29372,24 +29962,109 @@ function cueListVisibleBounds() {
   return { containerRect, top, bottom: containerRect.bottom };
 }
 
-let cueListVisualAnchorGeneration = 0;
+// 三种滚动共用一个可取消的操作：布局恢复、主动导航、播放跟随。
+// scroll 事件本身不表示用户输入，懒布局和浏览器边界限制也会触发它。
+const cueListScroll = { generation: 0, frame: 0, owner: null, following: true, playbackKey: null, mutationAnchor: null, layoutAnchor: null };
+const cueListFollowButton = document.getElementById('cue-list-follow');
 
-// 重绘后的补偿只服务于这一轮布局稳定；用户一旦开始新的指针、滚轮或
-// 键盘操作，就让出滚动控制权，避免延迟的 content-visibility 补偿把用户
-// 刚滚到的目标行又拉回旧位置。
-function invalidateCueListVisualAnchorRestore() {
-  cueListVisualAnchorGeneration += 1;
+function invalidateCueListVisualAnchorRestore({ preserveLayoutAnchor = false } = {}) {
+  const previousAnchor = cueListScroll.layoutAnchor;
+  cueListScroll.generation += 1;
+  cancelAnimationFrame(cueListScroll.frame);
+  cueListScroll.frame = 0;
+  cueListScroll.owner = null;
+  cueListScroll.mutationAnchor = null;
+  if (!preserveLayoutAnchor) cueListScroll.layoutAnchor = null;
+  else queueMicrotask(() => {
+    // 同一个输入事件里的新编辑可以承接尚未稳定的阅读位置；单纯点击、
+    // 输入等没有启动新布局操作时，不留下可在以后重新夺权的旧锚点。
+    if (!cueListScroll.owner && cueListScroll.layoutAnchor === previousAnchor) cueListScroll.layoutAnchor = null;
+  });
+  // 同时停止浏览器尚未完成的原生滚动动画。
+  container.scrollTo({ top: container.scrollTop, behavior: 'instant' });
 }
 
-document.addEventListener('pointerdown', invalidateCueListVisualAnchorRestore, true);
-container.addEventListener('wheel', invalidateCueListVisualAnchorRestore, { passive: true });
-container.addEventListener('touchstart', invalidateCueListVisualAnchorRestore, { passive: true });
-document.addEventListener('keydown', invalidateCueListVisualAnchorRestore, true);
+function setCueListFollowing(enabled) {
+  cueListScroll.following = enabled;
+  cueListFollowButton?.setAttribute('aria-pressed', String(enabled));
+}
+
+function interruptCueListFollowing() {
+  invalidateCueListVisualAnchorRestore();
+  setCueListFollowing(false);
+}
+
+document.addEventListener('pointerdown', (event) => {
+  invalidateCueListVisualAnchorRestore({ preserveLayoutAnchor: true });
+  // 直接按在容器空白/滚动条上可能开始拖动；普通行点击仍沿用点击设置。
+  const rect = container.getBoundingClientRect();
+  if (event.target === container || (container.contains(event.target)
+      && event.clientX >= rect.right - 14)) {
+    cueListScroll.layoutAnchor = null;
+    setCueListFollowing(false);
+  }
+}, true);
+container.addEventListener('wheel', interruptCueListFollowing, { passive: true });
+container.addEventListener('touchstart', interruptCueListFollowing, { passive: true });
+document.addEventListener('keydown', (event) => {
+  invalidateCueListVisualAnchorRestore({ preserveLayoutAnchor: true });
+}, true);
+// 等播放、弹窗及目标控件先处理输入；被消费的空格不再误归为列表滚动。
+// 应用自己消费的列表导航在其导航入口交出跟随，其余原生滚动在冒泡时处理。
+document.addEventListener('keydown', (event) => {
+  if (event.defaultPrevented || event.isComposing || editingState || extensionEditingState
+      || isTextEditingTarget(event) || isNativeKeyboardControl(event) || isPlayerKeyboardTarget(event)) return;
+  if (document.querySelector('.modal-mask.show, #ctxmenu.show')
+      || event.target?.closest?.('[role="dialog"], [role="menu"]')) return;
+  if (event.ctrlKey || event.altKey || event.metaKey) return;
+  if (!(container.contains(event.target) || navigationOwner === 'cue-list')) return;
+  if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
+    interruptCueListFollowing();
+  }
+});
+
+function setCueListIdentity(element, segment, track = null) {
+  // 身份写在渲染时的 DOM 上；splice / history 后不能再拿旧下标读新数据。
+  const prefix = track ? 'ext' : 'main';
+  element.dataset[`${prefix}Id`] = segment.id;
+  element.dataset[`${prefix}Start`] = String(segment.start);
+  if (track) element.dataset.trackId = track.id;
+}
+
+function cueListIdentity(element, kind = currentCuePanelKind) {
+  const extension = (kind === 'extension' && element.dataset.extId) || !element.dataset.mainId;
+  return {
+    kind: extension ? 'extension' : 'main',
+    segmentId: extension ? element.dataset.extId : element.dataset.mainId,
+    trackId: extension ? element.dataset.trackId : null,
+    start: Number(extension ? element.dataset.extStart : element.dataset.mainStart),
+  };
+}
 
 function captureCueListVisualAnchor(cueEl) {
   if (!cueEl?.isConnected || cueEl.classList.contains('hidden')) return null;
-  const top = cueEl.getBoundingClientRect().top;
-  return Number.isFinite(top) ? { top } : null;
+  const { containerRect, top, bottom } = cueListVisibleBounds();
+  const rect = cueEl.getBoundingClientRect();
+  if (!Number.isFinite(rect.top)) return null;
+  const pending = cueListScroll.layoutAnchor;
+  const pendingRow = pending && (findCueListRenderAnchor(pending)
+    || findCueListRenderAnchor(pending, { replacement: true }));
+  // 快速连续编辑时，下一次事务承接上一轮的目标视口，而不是把懒布局
+  // 尚未补偿的中间位置当作新的基准。用户导航/滚动已在输入入口清除此值。
+  const correction = pendingRow
+    ? pending.top - (pendingRow.getBoundingClientRect().top - containerRect.top) : 0;
+  const anchor = {
+    ...cueListIdentity(cueEl), top: rect.top - containerRect.top + correction,
+    scrollTop: container.scrollTop,
+  };
+  // 锚点被删除时，优先保持附近存活字幕自己的屏幕位置。
+  anchor.neighbors = [...container.querySelectorAll(':scope > .cue:not(.hidden)')]
+    .filter(element => element !== cueEl)
+    .map(element => ({ element, rect: element.getBoundingClientRect() }))
+    .filter(entry => entry.rect.height > 0 && entry.rect.bottom > top && entry.rect.top < bottom)
+    .sort((a, b) => Math.abs(a.rect.top - rect.top) - Math.abs(b.rect.top - rect.top))
+    .map(entry => ({ ...cueListIdentity(entry.element), top: entry.rect.top - containerRect.top + correction }));
+  return anchor;
 }
 
 function captureVisibleCueListVisualAnchor(cueEl) {
@@ -29402,145 +30077,132 @@ function captureVisibleCueListVisualAnchor(cueEl) {
 
 function captureCueListRenderAnchor() {
   if (!container?.isConnected) return null;
+  const pending = cueListScroll.layoutAnchor;
+  const pendingRow = pending && (findCueListRenderAnchor(pending)
+    || findCueListRenderAnchor(pending, { replacement: true }));
+  if (pendingRow) return captureCueListVisualAnchor(pendingRow);
   const { top, bottom } = cueListVisibleBounds();
   const candidates = [...container.querySelectorAll(':scope > .cue:not(.hidden)')];
-  const visibleCandidates = candidates.filter((element) => {
+  const visible = candidates.filter(element => {
     const rect = element.getBoundingClientRect();
     return rect.height > 0 && rect.bottom > top && rect.top < bottom;
   });
-  const panelIndex = Number(currentCuePanelIdx);
-  const panelSelector = currentCuePanelKind === 'extension'
-    ? `.cue[data-ext-idx="${panelIndex}"]`
-    : `.cue[data-idx="${panelIndex}"]`;
-  const panelCue = Number.isInteger(panelIndex) && panelIndex >= 0
-    ? container.querySelector(panelSelector) : null;
-  const cueEl = visibleCandidates.includes(panelCue) ? panelCue : visibleCandidates[0];
-  const visual = captureCueListVisualAnchor(cueEl);
-  if (!visual) return { scrollTop: container.scrollTop };
-
-  const mainIndex = cueEl.dataset.mainIdx ?? cueEl.dataset.idx;
-  if (mainIndex !== undefined) {
-    const index = Number(mainIndex);
-    const segment = Number.isInteger(index) ? DATA.segments[index] : null;
-    return {
-      ...visual,
-      scrollTop: container.scrollTop,
-      kind: 'main',
-      index,
-      segmentId: segment?.id || null,
-    };
-  }
-
-  const index = Number(cueEl.dataset.extIdx);
-  const track = getActiveExtensionTrack();
-  const segment = Number.isInteger(index) ? track?.segments?.[index] : null;
-  return {
-    ...visual,
-    scrollTop: container.scrollTop,
-    kind: 'extension',
-    index,
-    segmentId: segment?.id || null,
-    trackId: track?.id || null,
-  };
+  // 使用旧 DOM 的选区而不是可能已改变身份的面板下标。
+  const cue = visible.find(element => element.matches('.selected, .selected-extension')
+    || element.querySelector('.selected')) || visible.find(element => element.getBoundingClientRect().top >= top)
+    || visible[0];
+  return captureCueListVisualAnchor(cue) || { scrollTop: container.scrollTop };
 }
 
-function findCueListRenderAnchor(anchor) {
-  if (!anchor || !container?.isConnected) return null;
-  if (anchor.kind === 'extension') {
-    const track = getExtensionTrack(anchor.trackId) || getActiveExtensionTrack();
-    const index = anchor.segmentId
-      ? track?.segments?.findIndex((segment) => segment?.id === anchor.segmentId)
-      : anchor.index;
-    if (!Number.isInteger(index) || index < 0) return null;
-    return container.querySelector(`:scope > .cue[data-ext-idx="${index}"]`);
-  }
+function rememberCueListMutation() {
+  const anchor = captureCueListRenderAnchor();
+  cueListScroll.mutationAnchor = anchor;
+  // 只交给同一个同步编辑事务，未重绘的原地改字不会留下过时视口。
+  queueMicrotask(() => {
+    if (cueListScroll.mutationAnchor === anchor) cueListScroll.mutationAnchor = null;
+  });
+}
 
-  const index = anchor.segmentId
-    ? DATA.segments.findIndex((segment) => segment?.id === anchor.segmentId)
-    : anchor.index;
-  if (!Number.isInteger(index) || index < 0) return null;
-  return container.querySelector(`:scope > .cue[data-idx="${index}"]`);
+function findCueListRenderAnchor(anchor, { replacement = false } = {}) {
+  if (!anchor?.segmentId) return null;
+  return [...container.querySelectorAll(':scope > .cue:not(.hidden)')].find(element => {
+    const identity = cueListIdentity(element, anchor.kind);
+    return identity.kind === anchor.kind && identity.trackId === anchor.trackId
+      && (identity.segmentId === anchor.segmentId
+        || (replacement && identity.start === anchor.start));
+  }) || null;
 }
 
 function restoreCueListRenderAnchor(anchor) {
   if (!anchor) return;
-  restoreCueListVisualAnchor(findCueListRenderAnchor(anchor), anchor);
+  // B 的左段和 C 的首段承接原起点；撤销时同样按这一语义回到源句。
+  let cue = findCueListRenderAnchor(anchor) || findCueListRenderAnchor(anchor, { replacement: true });
+  let target = anchor;
+  if (!cue) {
+    for (const neighbor of anchor.neighbors || []) {
+      cue = findCueListRenderAnchor(neighbor)
+        || findCueListRenderAnchor(neighbor, { replacement: true });
+      if (cue) { target = { ...anchor, ...neighbor }; break; }
+    }
+  }
+  restoreCueListVisualAnchor(cue, target);
 }
 
-function restoreCueListVisualAnchor(cueEl, anchor) {
-  const readVisualTop = () => {
-    if (!cueEl?.isConnected || cueEl.classList.contains('hidden') || !Number.isFinite(anchor?.top)) {
-      return null;
-    }
-    const rect = cueEl.getBoundingClientRect();
-    return rect.height > 0 && Number.isFinite(rect.top) ? rect.top : null;
-  };
-  if (readVisualTop() === null && !Number.isFinite(anchor?.scrollTop)) return;
-  const generation = ++cueListVisualAnchorGeneration;
+function restoreCueListVisualAnchor(cueEl, anchor, owner = 'restore') {
+  invalidateCueListVisualAnchorRestore();
+  cueListScroll.playbackKey = playbackCueListKey();
+  const generation = cueListScroll.generation;
+  cueListScroll.owner = owner;
+  cueListScroll.layoutAnchor = owner === 'restore' ? anchor : null;
   const maxFrames = 12;
-  const epsilon = 0.75;
   let frameCount = 0;
-  let lastManagedScrollTop = container.scrollTop;
-
   const restore = () => {
-    if (generation !== cueListVisualAnchorGeneration) return;
-    // renderAll() 的调用方可能在返回后立即设置 scrollTop（例如显式恢复
-    // 用户位置或执行导航）。这不是 content-visibility 的布局误差，不能
-    // 被后续稳定帧补偿覆盖。
-    if (frameCount > 0 && Math.abs(container.scrollTop - lastManagedScrollTop) > epsilon) return;
-    const visualTop = readVisualTop();
-    if (visualTop !== null) {
-      const delta = visualTop - anchor.top;
-      if (!Number.isFinite(delta)) return;
-      if (Math.abs(delta) > epsilon) {
-        const previousScrollTop = container.scrollTop;
-        container.scrollTop += delta;
-        // 到达列表边界、无法继续补偿时无需再占用后续动画帧。
-        if (Math.abs(container.scrollTop - previousScrollTop) < epsilon) return;
+    if (generation !== cueListScroll.generation) return;
+    if (cueEl?.isConnected && !cueEl.classList.contains('hidden') && Number.isFinite(anchor?.top)) {
+      const { containerRect, top, bottom } = cueListVisibleBounds();
+      const rect = cueEl.getBoundingClientRect();
+      // 文字不得被 sticky 工具栏盖住；行顶部留白可以在工具栏下，避免
+      // 把本来可读的边缘行无谓推移几个像素。内容不足时交给浏览器最小限幅。
+      const paddingTop = Math.max(0, Number.parseFloat(getComputedStyle(cueEl).paddingTop) || 0);
+      const targetTop = Math.max(top - containerRect.top - paddingTop,
+        Math.min(anchor.top, bottom - containerRect.top - 1));
+      const delta = rect.top - containerRect.top - targetTop;
+      if (Number.isFinite(delta) && Math.abs(delta) > 0.5) {
+        container.scrollTo({ top: container.scrollTop + delta, behavior: 'instant' });
       }
-      lastManagedScrollTop = container.scrollTop;
-    } else if (Number.isFinite(anchor.scrollTop)) {
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      container.scrollTop = Math.min(Math.max(0, anchor.scrollTop), maxScrollTop);
-      lastManagedScrollTop = container.scrollTop;
+    } else if (Number.isFinite(anchor?.scrollTop)) {
+      container.scrollTo({ top: anchor.scrollTop, behavior: 'instant' });
     }
-    frameCount += 1;
-    // content-visibility 可能先稳定几帧，再因滚动到新的行而继续回填真实
-    // 高度；短暂覆盖完整观察窗口，避免连续拆分时出现延迟的二次位移。
-    if (frameCount < maxFrames) requestAnimationFrame(restore);
+    // 即使当前帧被边界限幅，也继续这个有界布局窗口。后续行高回填后
+    // 滚动范围可能恢复；用户输入通过 generation 取消，而非猜测 scrollTop。
+    if (cueEl?.isConnected && ++frameCount < maxFrames) cueListScroll.frame = requestAnimationFrame(restore);
+    else { cueListScroll.frame = 0; cueListScroll.owner = null; cueListScroll.layoutAnchor = null; }
   };
-
   restore();
 }
 
-function scrollCueToCenter(cueEl, { behavior = 'smooth' } = {}) {
-  // 显式导航优先于重绘后的延迟补偿；否则一次点击/键盘导航可能刚把目标
-  // 行滚到位，就被上一轮 content-visibility 稳定帧拉回旧锚点。
-  invalidateCueListVisualAnchorRestore();
+function scrollCueToCenter(cueEl, { owner = 'navigate' } = {}) {
   if (!cueEl || cueEl.classList.contains('hidden')) return;
-  const { containerRect: cRect, top: visibleTop, bottom: visibleBottom } = cueListVisibleBounds();
-  const eRect = cueEl.getBoundingClientRect();
-  const visibleHeight = Math.max(1, visibleBottom - visibleTop);
-  const comfortInset = Math.min(120, Math.max(48, visibleHeight * 0.2));
-  // 目标已经处于列表中间的舒适区域时，不再制造一次多余的滚动动画。
-  // 顶部从 sticky 工具栏底部开始计算，避免把字幕滚到工具栏下面。
-  const containerComfortTop = cRect.top + comfortInset;
-  const containerComfortBottom = cRect.bottom - comfortInset;
-  if (
-    eRect.top >= containerComfortTop
-    && eRect.bottom <= containerComfortBottom
-  ) return;
-  const offsetTop = (eRect.top - cRect.top) + container.scrollTop;
-  const visibleTopOffset = visibleTop - cRect.top;
-  const target = offsetTop + eRect.height / 2 - visibleTopOffset - visibleHeight / 2;
-  container.scrollTo({ top: Math.max(0, target), behavior });
+  invalidateCueListVisualAnchorRestore();
+  const { containerRect, top, bottom } = cueListVisibleBounds();
+  const rect = cueEl.getBoundingClientRect();
+  const inset = Math.min(120, Math.max(48, (bottom - top) * 0.2));
+  if (rect.top >= top + inset && rect.bottom <= bottom - inset) return;
+  restoreCueListVisualAnchor(cueEl, {
+    top: top - containerRect.top + Math.max(0, (bottom - top - rect.height) / 2),
+  }, owner);
 }
 function scrollCueIntoViewIfNeeded(cueEl, options) {
   if (!cueEl || cueEl.classList.contains('hidden')) return;
   const { top, bottom } = cueListVisibleBounds();
-  const eRect = cueEl.getBoundingClientRect();
-  if (eRect.top < top || eRect.bottom > bottom) scrollCueToCenter(cueEl, options);
+  const rect = cueEl.getBoundingClientRect();
+  if (rect.top < top || rect.bottom > bottom) scrollCueToCenter(cueEl, options);
 }
+
+function playbackCueListElement() {
+  if (multiSubtitleVisible() && getMultiSubtitleState().display_mode === 'extension') {
+    const segment = extensionSegmentAtTime(player.currentTime * 1000);
+    return segment ? findCueListRenderAnchor({ kind: 'extension', segmentId: segment.id,
+      trackId: getActiveExtensionTrack()?.id }) : null;
+  }
+  const index = findActive(player.currentTime * 1000);
+  return index >= 0 ? container.querySelector(`.cue[data-idx="${index}"]`) : null;
+}
+
+function playbackCueListKey() {
+  const element = playbackCueListElement();
+  if (!element) return null;
+  const identity = cueListIdentity(element,
+    getMultiSubtitleState().display_mode === 'extension' ? 'extension' : 'main');
+  return `${identity.kind}:${identity.trackId || ''}:${identity.segmentId}`;
+}
+
+function resumeCueListFollowing() {
+  invalidateCueListVisualAnchorRestore();
+  setCueListFollowing(true);
+  scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'navigate' });
+}
+cueListFollowButton?.addEventListener('click', resumeCueListFollowing);
 
 // === seek ===
 let seekWarned = false;
@@ -29894,8 +30556,7 @@ function bindCueEvents(el, idx) {
           ? true : previousSuppress;
       }
       if (state?.preserveListScroll) {
-        invalidateCueListVisualAnchorRestore();
-        container.scrollTop = state.listScrollBeforeClick;
+        restoreCueListVisualAnchor(null, { scrollTop: state.listScrollBeforeClick }, 'navigate');
       }
       if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused) togglePlayback();
     }
@@ -30234,16 +30895,22 @@ function bindPlayerEvents(mediaElement) {
   mediaElement.addEventListener('timeupdate', update);
   mediaElement.addEventListener('seeked', update);
   mediaElement.addEventListener('loadedmetadata', () => {
+    captureProjectVideoDimensions(mediaElement);
     notifyAutoLoadedMediaReady(mediaElement);
     flushPendingMediaSeek(mediaElement);
   });
   mediaElement.addEventListener('canplay', () => flushPendingMediaSeek(mediaElement));
   mediaElement.addEventListener('progress', () => flushPendingMediaSeek(mediaElement));
-  mediaElement.addEventListener('play', () => startPlaybackRefresh(mediaElement));
+  mediaElement.addEventListener('play', () => {
+    // 开始播放可驱动已启用的跟随，但不会恢复被用户关闭的跟随状态。
+    if (player === mediaElement && cueListScroll.following) cueListScroll.playbackKey = null;
+    startPlaybackRefresh(mediaElement);
+  });
   mediaElement.addEventListener('playing', () => startPlaybackRefresh(mediaElement));
   mediaElement.addEventListener('pause', () => {
     stopPlaybackRefresh(mediaElement);
     if (player !== mediaElement) return;
+    if (cueListScroll.owner === 'follow') invalidateCueListVisualAnchorRestore();
     update();
     waveformEditor?.updatePlayback();
   });
@@ -30264,6 +30931,7 @@ function bindPlayerEvents(mediaElement) {
     .forEach((eventName) => mediaElement.addEventListener(eventName, syncMediaControls));
   if (mediaElement.readyState >= 1) {
     queueMicrotask(() => {
+      captureProjectVideoDimensions(mediaElement);
       notifyAutoLoadedMediaReady(mediaElement);
       flushPendingMediaSeek(mediaElement);
     });
@@ -30288,6 +30956,7 @@ function seekMediaTo(timeSeconds) {
   const targetSeconds = Math.max(0, Math.min(duration, Number(timeSeconds) || 0));
   player.currentTime = targetSeconds;
   update();
+  resumeCueListFollowing();
   waveformEditor?.revealTime(targetSeconds * 1000, true);
   waveformEditor?.updatePlayback();
   syncMediaControls();
@@ -30301,6 +30970,7 @@ mediaSeek?.addEventListener('input', () => {
   if (!hasLoadedMedia()) return;
   player.currentTime = Number(mediaSeek.value) || 0;
   update();
+  resumeCueListFollowing();
   syncMediaControls();
 });
 mediaVolume?.addEventListener('input', () => {
@@ -30409,6 +31079,7 @@ function navigateCueListBoundary(key) {
   if (!target) return false;
   const boundary = renderedCueBoundaryTarget(target, key === 'Home' ? 'first' : 'last');
   if (!boundary) return false;
+  interruptCueListFollowing();
   if (target.kind === 'extension') {
     selectOnlyExtension(boundary.index, target.track);
     lastClickedExtensionIdx = boundary.index;
@@ -30540,6 +31211,7 @@ function switchMultiSubtitleTrack(direction) {
   }
   if (nextIndex < 0) return false;
 
+  interruptCueListFollowing();
   if (wantMain) {
     selectOnly(nextIndex);
     lastClickedIdx = nextIndex;
@@ -32154,21 +32826,27 @@ function previewGapAt(index, timeMs) {
 }
 
 function updateActiveCue(idx) {
-  if (idx === lastActive) return;
-  if (lastActive >= 0) {
+  const changed = idx !== lastActive;
+  if (changed && lastActive >= 0) {
     const prev = container.querySelector(`.cue[data-idx="${lastActive}"]`);
     if (prev) prev.classList.remove('active');
   }
-  if (idx >= 0) {
+  if (changed && idx >= 0) {
     const cur = container.querySelector(`.cue[data-idx="${idx}"]`);
     if (cur) {
       cur.classList.add('active');
-      if (!editingState && !suppressCueListAutoScroll && !waveformPlayheadDragging) {
-        scrollCueIntoViewIfNeeded(cur, { behavior: 'auto' });
-      }
     }
   }
   lastActive = idx;
+  if (!player.paused && cueListScroll.following && !cueListScroll.owner
+      && !editingState && !extensionEditingState && document.activeElement !== cuePanelText
+      && !suppressCueListAutoScroll && !waveformPlayheadDragging) {
+    const key = playbackCueListKey();
+    if (key !== cueListScroll.playbackKey) {
+      cueListScroll.playbackKey = key;
+      scrollCueIntoViewIfNeeded(playbackCueListElement(), { owner: 'follow' });
+    }
+  }
 }
 
 function updatePlaybackFrame() {
@@ -32502,9 +33180,10 @@ function buildAss() {
     EDITOR_SETTINGS.exportStartAtZero,
   );
   return window.AsrEditorUtils.buildAssPayload(DATA.segments, {
+    ...assExportOptions(),
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
-    appearance: getSubtitleAppearance(),
+    ...speakerLabelExportOptions(),
   });
 }
 
@@ -32535,6 +33214,25 @@ function buildGapRemovedSrt() {
   });
 }
 
+function buildGapRemovedAss() {
+  const removed = getRemovedGapRanges();
+  if (!removed.length) {
+    flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    return null;
+  }
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    DATA.segments,
+    EDITOR_SETTINGS.exportStartAtZero,
+  );
+  return window.AsrEditorUtils.buildAssPayload(DATA.segments, {
+    ...assExportOptions(),
+    alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+    ...speakerLabelExportOptions(),
+  });
+}
+
 function usedSubtitleColors() {
   const names = new Set(DATA.segments.filter((segment) => !segment.disabled).map((segment) => (
     window.AsrEditorUtils.effectiveColorName(segment, DATA.segments) || 'default'
@@ -32548,7 +33246,9 @@ function usedSubtitleColors() {
 function updateSubtitleExportUi() {
   const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
   if (downloadColorSrtItem) downloadColorSrtItem.hidden = !hasColors;
+  if (subtitleExportSeparator) subtitleExportSeparator.hidden = !hasColors;
   if (downloadGapRemovedColorSrtItem) downloadGapRemovedColorSrtItem.hidden = !hasColors;
+  if (gapRemovedSubtitleExportSeparator) gapRemovedSubtitleExportSeparator.hidden = !hasColors;
   if (subtitleExportDropdown) subtitleExportDropdown.hidden = false;
   if (downloadMultiSrtButton) {
     downloadMultiSrtButton.hidden = !(multiSubtitleVisible() && getActiveExtensionTrack()?.segments?.length);
@@ -32722,8 +33422,8 @@ function buildGapRemovedRegionsJson() {
 const CANONICAL_PROJECT_FIELDS = new Set([
   'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity',
   'model', 'sticker_root', 'timebase', 'segments', 'multi_subtitle', 'waveform',
-  'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'gap_remove',
-  'script_alignment', 'workspace', 'preview',
+  'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'loudness',
+  'gap_remove', 'script_alignment', 'workspace', 'preview',
 ]);
 let projectExtensionFields = Object.fromEntries(
   Object.entries(DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
@@ -32807,7 +33507,7 @@ function buildJson() {
       end_offset_ms: binding.end_offset_ms || 0,
     })),
   };
-  // 三块波形缓存不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
+  // 波形缓存（含响度统计）不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
   // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
   // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
   const mediaMetadata = normalizeMediaMetadata(DATA.media_metadata);
@@ -34050,7 +34750,7 @@ function scheduleAutoSave() {
 function hasUnsavedProjectChanges() {
   const multiDirty = Boolean(DATA.multi_subtitle?._dirty)
     || (DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
-  return projectImportDirty || gapRemoveDirty || previewGeometryDirty
+  return inlineEditHasUncommittedText() || projectImportDirty || gapRemoveDirty || previewGeometryDirty
     || DATA.segments.some((segment) => segment._dirty)
     || multiDirty;
 }
@@ -34538,22 +35238,66 @@ function configureWorkspaceTransfer() {
   });
 }
 
-function markProjectSaved(filename, backupName, { silent = false } = {}) {
-  DATA.segments.forEach((segment) => { delete segment._dirty; });
+function projectSaveFingerprint() {
+  return JSON.stringify([DATA.segments, DATA.multi_subtitle, DATA.gap_remove,
+    DATA.preview, DATA.media_metadata, gapRemoveDirty, previewGeometryDirty, projectImportDirty]);
+}
+
+function inlineEditHasUncommittedText() {
+  const state = editingState || extensionEditingState;
+  if (!state) return false;
+  const segment = editingState ? DATA.segments[state.idx]
+    : getExtensionTrack(state.trackId)?.segments[state.index];
+  return Boolean(segment && state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd() !== segment.text);
+}
+
+// 保存正在输入的文字，但不结束行内编辑、不替换节点、不移动光标。
+function flushInlineEditsForSave() {
+  const state = editingState || extensionEditingState;
+  if (!state) {
+    if (!cuePanel?.contains(document.activeElement)) commitCuePanelEdit();
+    return;
+  }
+  const extension = Boolean(extensionEditingState);
+  const index = extension ? state.index : state.idx;
+  const track = extension ? getExtensionTrack(state.trackId) : null;
+  const segment = extension ? track?.segments[index] : DATA.segments[index];
+  const text = state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
+  if (!segment || text === segment.text) return;
+  pushUndo(extension ? '编辑副字幕' : '编辑文本');
+  segment.text = text;
+  segment._dirty = true;
+  state.original = text;
+  state.el.classList.add('dirty');
+  if (extension) {
+    markMultiSubtitleDirty();
+    waveformEditor?.refreshExtensionCueLabel(index, state.trackId);
+  } else waveformEditor?.refreshCueLabel(index);
+  syncCuePanelAfterInlineEdit(extension ? 'extension' : 'main', index, state.trackId);
+}
+
+function markProjectSaved(filename, backupName, { silent = false, fingerprint = null } = {}) {
+  // 请求在途时的新编辑继续保持脏状态，失败请求从不进入这里。
+  const unchanged = !inlineEditHasUncommittedText()
+    && (fingerprint === null || fingerprint === projectSaveFingerprint());
   const multi = getMultiSubtitleState();
-  delete multi._dirty;
-  (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { delete segment._dirty; }));
-  gapRemoveDirty = false;
-  previewGeometryDirty = false;
-  projectImportDirty = false;
-  FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
+  if (unchanged) {
+    DATA.segments.forEach((segment) => { delete segment._dirty; });
+    delete multi._dirty;
+    (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { delete segment._dirty; }));
+    gapRemoveDirty = false;
+    previewGeometryDirty = false;
+    projectImportDirty = false;
+    container.querySelectorAll('.dirty').forEach(element => element.classList.remove('dirty'));
+  }
+  PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
+  FILENAME_BASE = PROJECT_NAME;
   const jsonEl = document.getElementById('json-name');
   if (jsonEl) {
     jsonEl.textContent = filename;
     jsonEl.title = `点击复制工程文件名：${filename}`;
     jsonEl.classList.remove('empty');
   }
-  renderAll();
   if (!silent) flashHint('保存成功！', 'success');
 }
 
@@ -34564,10 +35308,9 @@ async function saveProjectToServer({ silent = false, backupOnly = false } = {}) 
     return false;
   }
   if (projectSaveInFlight || projectCheckpointInFlight) return false;
-  if (editingState) finishEdit(true);
-  if (extensionEditingState) finishExtensionEdit(true);
-  commitCuePanelEdit();
+  flushInlineEditsForSave();
   const projectJson = buildJson();
+  const fingerprint = projectSaveFingerprint();
   projectSaveInFlight = true;
   try {
     const saveUrl = new URL(SERVER_CONFIG.saveUrl, window.location.href);
@@ -34585,7 +35328,7 @@ async function saveProjectToServer({ silent = false, backupOnly = false } = {}) 
     if (!response.ok || !result.ok) {
       throw new Error(result.error || `服务器返回 ${response.status}`);
     }
-    if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent });
+    if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent, fingerprint });
     return true;
   } catch (error) {
     const detail = error?.message || error;
@@ -34610,16 +35353,15 @@ async function saveProjectToServer({ silent = false, backupOnly = false } = {}) 
 async function saveProjectToHandle({ silent = false } = {}) {
   if (!projectFileHandle) return false;
   if (projectSaveInFlight || projectCheckpointInFlight) return false;
-  if (editingState) finishEdit(true);
-  if (extensionEditingState) finishExtensionEdit(true);
-  commitCuePanelEdit();
+  flushInlineEditsForSave();
   const projectJson = buildJson();
+  const fingerprint = projectSaveFingerprint();
   projectSaveInFlight = true;
   try {
     const writable = await projectFileHandle.createWritable();
     await writable.write(new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
     await writable.close();
-    markProjectSaved(projectFileHandle.name, null, { silent });
+    markProjectSaved(projectFileHandle.name, null, { silent, fingerprint });
     return true;
   } catch (error) {
     flashHint(`保存失败：${error?.message || error}`, 'warning');
@@ -35123,6 +35865,15 @@ document.getElementById('download-gap-removed-srt')?.addEventListener('click', a
   }
 });
 document.getElementById('download-gap-removed-color-srt')?.addEventListener('click', () => downloadColorSrts(true));
+document.getElementById('download-gap-removed-ass')?.addEventListener('click', async () => {
+  if (editingState) finishEdit(true);
+  const payload = buildGapRemovedAss();
+  if (payload) {
+    await downloadFile(payload, `${FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, 'text/plain', {
+      desc: '去空隙带样式 ASS 字幕', types: { 'text/plain': ['.ass'] }
+    });
+  }
+});
 document.getElementById('download-otio')?.addEventListener('click', async () => {
   if (editingState) finishEdit(true);
   const payload = buildSourceOtio();
@@ -35660,6 +36411,9 @@ function suggestedProjectName(file = null) {
 }
 
 function applyCanonicalProject(data, filename) {
+  // 原地换工程：在途/已排期的延迟波形载荷（含响度标尺）全部作废，见
+  // deferredReapeaksEpoch 的说明。
+  deferredReapeaksEpoch += 1;
   currentCuePanelIdx = -1;
   currentCuePanelKind = 'main';
   currentCuePanelTrackId = null;
@@ -35683,6 +36437,9 @@ function applyCanonicalProject(data, filename) {
   DATA.waveform = data.waveform || null;
   DATA.spectral = data.spectral || null;
   DATA.waveform_reapeaks = data.waveform_reapeaks || null;
+  // 响度统计不写进工程文件，所以这里恒为 null：切工程必须先清掉上一个素材的
+  // 标尺，等新媒体的 /api/waveform 回来再拟合。
+  DATA.loudness = data.loudness || null;
   DATA.workspace = data.workspace || null;
   DATA.gap_remove = data.gap_remove || null;
   DATA.script_alignment = data.script_alignment || null;
@@ -35713,12 +36470,14 @@ function applyCanonicalProject(data, filename) {
     waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform, { render: false });
     waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
     waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
+    waveformEditor.setLoudnessStats(DATA.loudness, { render: false });
   }
   updateGapRemoveUi();
   renderAll({ waveform: 'full', preserveCueListScroll: false });
   refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(DATA.media);
-  FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
+  PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
+  FILENAME_BASE = PROJECT_NAME;
   const jsonEl = document.getElementById('json-name');
   if (jsonEl) {
     jsonEl.textContent = filename;
@@ -36516,6 +37275,9 @@ async function loadMediaFile(file) {
     return false;
   }
 
+  if (isVideo) captureProjectVideoDimensions(candidatePlayer);
+  else clearProjectVideoDimensions();
+
   let mediaTimeReference = null;
   try {
     mediaTimeReference = await window.AsrEditorUtils.readBwfTimeReferenceFromFile(file);
@@ -36532,7 +37294,8 @@ async function loadMediaFile(file) {
   if (currentMediaBlobUrl) URL.revokeObjectURL(currentMediaBlobUrl);
   currentMediaBlobUrl = url;
 
-  // 更新标题区媒体名 + FILENAME_BASE（用文件名去扩展名作为导出基名）
+  // 更新标题区媒体名 + FILENAME_BASE（用文件名去扩展名作为导出基名）。
+  // PROJECT_NAME 保持不变，ASS Title 仍指向当前工程。
   const stem = file.name.replace(/\.[^.]+$/, '');
   FILENAME_BASE = stem;
   DATA.media = file.name;
@@ -38222,6 +38985,49 @@ function expandStickerTime(idxs) {
 // === 标记颜色 ===
 // 数据结构与表情包同构：head 持完整 color，后续条持 color_ref（仅 name + headIdx）
 // 单选 → 设为 head；多选 → 第一条为 head，时间跨整个范围，后续为 ref
+function colorGroupHeadIndex(idx) {
+  const segment = DATA.segments[idx];
+  if (!segment) return -1;
+
+  const refHeadIdx = Number(segment.color_ref?.headIdx);
+  if (segment.color_ref
+      && Number.isInteger(refHeadIdx)
+      && refHeadIdx >= 0
+      && refHeadIdx < DATA.segments.length
+      && refHeadIdx !== idx
+      && DATA.segments[refHeadIdx]?.color) {
+    return refHeadIdx;
+  }
+
+  if (!segment.color) return -1;
+  return DATA.segments.some((candidate, candidateIdx) => (
+    candidateIdx !== idx
+    && candidate?.color_ref
+    && Number(candidate.color_ref.headIdx) === idx
+  )) ? idx : -1;
+}
+
+function detachColorFromGroup(idx) {
+  const segment = DATA.segments[idx];
+  const headIdx = colorGroupHeadIndex(idx);
+  const groupColor = headIdx >= 0 ? DATA.segments[headIdx]?.color : null;
+  if (!segment || !groupColor) return false;
+
+  // 先复制颜色；拆分组时原 head 的时间范围可能会被收缩。
+  const detachedColor = {
+    ...groupColor,
+    start: segment.start,
+    end: segment.end,
+  };
+  pushUndo('从颜色组中脱离');
+  splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
+  segment.color = detachedColor;
+  segment.color_ref = null;
+  refreshColorAssignmentUi();
+  flashHint('已从颜色组中脱离', 'success');
+  return true;
+}
+
 function assignColor(idxs, colorName) {
   if (!idxs.length) return;
   const def = COLOR_BY_NAME[colorName];
@@ -38243,6 +39049,9 @@ function assignColor(idxs, colorName) {
     DATA.segments[idx].color_ref = null;
   } else {
     const headIdx = sorted[0];
+    // 选区可能只包含已有颜色组的一部分。先在选中项处切开旧组，
+    // 让未选中的成员保留原颜色，并避免旧 head 被降级后仍被外部 ref 指向。
+    splitGroupsAtCutPoints(new Set(sorted), 'color', 'color_ref');
     const start = DATA.segments[headIdx].start;
     const end = DATA.segments[sorted[sorted.length - 1]].end;
     DATA.segments[headIdx].color = { name: colorName, value: def.value, start, end };
@@ -38884,6 +39693,9 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
+    if (colorGroupHeadIndex(idx) >= 0) {
+      addItem('从颜色组中脱离', '', () => detachColorFromGroup(idx));
+    }
     addSep();
     // 组 3：状态与删除
     addItem(
@@ -39113,6 +39925,10 @@ document.addEventListener('asr:waveform-scale-limit', (event) => {
   flashHint(msg);
 });
 
+document.addEventListener('asr:waveform-loudness-unavailable', () => {
+  flashHint('当前媒体没有响度缓存，无法按响度适配', 'warning');
+});
+
 // === cleanPunctuation ===
 function cleanPunctuation() {
   const PUNCT_REPL = '  ';
@@ -39261,9 +40077,13 @@ function initWaveformEditor() {
       const track = getActiveExtensionTrack();
       idxs.forEach((idx) => addExtensionToSelection(idx, track));
     },
-    seek: seekFromWaveform,
+    seek: (timeSec, options = {}) => {
+      seekFromWaveform(timeSec, options);
+      if (!options.dragPreview) resumeCueListFollowing();
+    },
     onPlayheadDragStateChange: (active) => {
       waveformPlayheadDragging = active === true;
+      if (!active) resumeCueListFollowing();
     },
     togglePlayback,
     toggleDisabled: (idxs, track = 'main') => toggleDisabled(idxs, track),
@@ -39293,6 +40113,7 @@ function initWaveformEditor() {
     getClickBehavior: () => EDITOR_SETTINGS.clickBehavior,
     getClickTarget: () => EDITOR_SETTINGS.clickTarget,
     getAutoSnapAdjacentCues: () => EDITOR_SETTINGS.autoSnapAdjacentCues,
+    getAdjacentBoundaryMode: () => EDITOR_SETTINGS.adjacentBoundaryMode,
     getCueTiming: () => timelineTimingAdapter(),
     getSnapToFrame: () => timelineIsFrameMode() && EDITOR_SETTINGS.timelineSnapToFrame,
     getWaveShapeSource: () => EDITOR_SETTINGS.waveShapeSource,
@@ -39349,30 +40170,51 @@ function initWaveformEditor() {
   waveformEditor.setSpectralPayload(DATA.spectral || null, { render: false });
   waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks || null, { render: false });
   waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform || null, { render: false });
+  // 振幅拟合要在 setLayoutData 之后：得先知道本工程是否已有手调决定。
+  waveformEditor.setLoudnessStats(DATA.loudness || null, { render: false });
 }
+
+// 原地切换工程（打开本地 .mosp / 新建空白 / 导入）会让 DATA 换成一个新工程，
+// 但服务器的 /api/waveform 仍描述它自己绑定的旧工程。每次 applyCanonicalProject
+// 递增该纪元；在途的延迟加载响应据此作废并终止轮询，旧工程的
+// spectral / 波形 / 响度载荷绝不会套到新工程的波形上。
+let deferredReapeaksEpoch = 0;
 
 async function loadDeferredReapeaks() {
   const url = SERVER_CONFIG?.waveformUrl;
   if (!url || !waveformEditor) return;
+  const epoch = deferredReapeaksEpoch;
   try {
     const response = await fetch(url, { cache: 'no-store' });
     const result = await response.json().catch(() => ({}));
+    if (epoch !== deferredReapeaksEpoch) return;
     if (!response.ok || result.ok !== true) throw new Error(result.error || `服务器返回 ${response.status}`);
     if (result.status === 'loading' || result.status === 'pending') {
-      window.setTimeout(() => { void loadDeferredReapeaks(); }, 500);
+      scheduleDeferredReapeaksRetry(500, epoch);
       return;
     }
     if (result.status !== 'ready') return;
-    const hasPayload = Boolean(result.spectral || result.waveform_reapeaks);
+    const hasPayload = Boolean(result.spectral || result.waveform_reapeaks || result.loudness);
     if (!hasPayload) return;
     DATA.spectral = result.spectral || null;
     DATA.waveform_reapeaks = result.waveform_reapeaks || null;
+    DATA.loudness = result.loudness || null;
     waveformEditor.setSpectralPayload(DATA.spectral, { render: false });
     waveformEditor.setReapeaksWaveform(DATA.waveform_reapeaks, { render: false });
-    renderAll({ waveform: 'full' });
+    // 响度标量可能先于/后于波形到达，setLoudnessStats 自己会决定要不要重绘。
+    waveformEditor.setLoudnessStats(DATA.loudness);
+    waveformEditor.renderSegments();
   } catch (_error) {
-    window.setTimeout(() => { void loadDeferredReapeaks(); }, 1000);
+    scheduleDeferredReapeaksRetry(1000, epoch);
   }
+}
+
+// 重试必须绑定发起时的工程纪元：排期期间原地切换了工程，这次重试就该取消。
+// 否则新纪元的调用会原样接受旧工程的服务器载荷。
+function scheduleDeferredReapeaksRetry(delayMs, epoch) {
+  window.setTimeout(() => {
+    if (epoch === deferredReapeaksEpoch) void loadDeferredReapeaks();
+  }, delayMs);
 }
 
 // Server-editor 页面可能在本地服务退出后继续留在浏览器中。定期复用
@@ -39456,6 +40298,7 @@ const SERVER_STARTUP_LABELS = {
     waveform_unavailable: '波形缓存不可用，继续加载…',
     loading_spectral_cache: '正在读取频谱缓存…',
     loading_reapeaks_waveform: '正在读取 REAPER 波形缓存…',
+    loading_loudness_stats: '正在读取响度统计…',
     waveform_skipped: '已跳过波形处理…',
     finalizing: '正在完成工程加载…',
     ready: '工程加载完成',
@@ -39473,6 +40316,7 @@ const SERVER_STARTUP_LABELS = {
     waveform_unavailable: 'Waveform cache unavailable; continuing…',
     loading_spectral_cache: 'Reading spectral cache…',
     loading_reapeaks_waveform: 'Reading REAPER waveform cache…',
+    loading_loudness_stats: 'Reading loudness stats…',
     waveform_skipped: 'Waveform processing skipped…',
     finalizing: 'Finishing project loading…',
     ready: 'Project loaded',
