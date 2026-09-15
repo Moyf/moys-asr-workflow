@@ -1,11 +1,86 @@
 ---
 title: MAWE 编辑器模块化拆分台账
 created_at: 2026-09-10
-status: in_progress
+updated_at: 2026-09-14
+status: phase1-shipped
 audience: 执行本轮拆分的维护者与 agent
 ---
 
 # MAWE 编辑器模块化拆分台账
+
+> **状态（2026-09-14）**：阶段一（模块提取 + append 扫尾）完成，已开 PR 合入
+> main。本台账保留为合并后开发（阶段二/三）的执行手册；恢复开发时先读
+> §剩余工作 与 §合并后计划。
+
+## 合并后计划（PR 合入 main 之后的执行顺序）
+
+> 每一步都是**短分支 + 独立 PR**，从最新 main 切出；合并节奏遵循
+> 《MAWE 前端渐进式重构企划案》的"小批次、短分支、阶段合并"。
+
+### Step 1 · boot 接线连续切段（阶段一收官）
+
+- 对象：editor.js 剩余 ~460 条顶层语句（3,074 行）。
+- 方法：指南 §6.6 连续切段——按接线域（媒体控制/键盘/导出菜单/启动序列…）
+  切成 ~30 个模块；**段间顺序即注册顺序**，不做任何"合理整理"。
+- 自证三判据：① AST 逐条断言顶层语句无一被切断、各段无缝覆盖全文件；
+  ② 去掉段头注释按序拼回，与原文件逐字节相同；③ 从清单复刻装配拼接，
+  与原文件逐语句 AST 相同。
+- 出口：editor.js ≤ 1,000 行（企划案理想值），顶层裸声明归零。
+
+### Step 2 · 目录结构化（阶段二）
+
+- 前置（在拆分之前做，顺序敏感）：
+  1. `edit.py:210` 与 `desktop/src-tauri/build.rs` 的 `path.name != entry` 清单
+     校验放开为：允许 `a/b.js` 相对子路径；拒绝 `..`、反斜杠、绝对路径、非 `.js`。
+  2. `server-editor/serve.py:52` 的 `GAP_REMOVE_CORE_PATH` 随新路径同步。
+- 方法：全部模块 `git mv` 入子目录树（100% rename 证据是验收），
+  `editor-scripts.txt` 同步相对路径；目录布局纯粹用于导航，**顺序仍由清单独占**。
+- 建议树（在 fork 布局基础上按本仓模块命名调整）：
+
+  ```text
+  web/
+    editor-scripts.txt / editor-template.html / *.css
+    shared/gap-remove-core.js          # 双端共用（对齐页注入）
+    editor/boot/                       # boot / runtime / utils / i18n / onboarding
+    editor/state/                      # core-state / cue-panel-state / settings / history / workspaces / colors / multi-subtitle-core
+    editor/dom/                        # dom / floating-panel / help-panel / theme / ninja
+    editor/media/                      # media-playback / media-step / media-load / waveform-init
+    editor/cues/                       # cue-panel / cue-elements / cue-events / inline-edit / selection / binding-align / search / color-filter / merge-adjacent / segment-ops
+    editor/split/                      # split-core / split-context / split-trim / split-mode / add-cue / bound-drag
+    editor/export/                     # export-srt / export-timeline / dynamic-exports / export-menus / sticker-otio-export / json-repair / speaker-labels
+    editor/io/                         # project-load / project-save / project-media-inputs / drag-drop / loading-progress / multi-import / server-save / server-connection / workspaces
+    editor/ui/                         # preview-geometry / appearance-inputs / behavior-hints / settings-panels / display-settings / sticker-root / sticker-picker / sticker-overlay / context-menus / text-process / timed-text-edit / find-replace / text-cleanup / nav-preview / timeline / hint / jkl / gap-remove-data / gap-remove-ui
+  ```
+
+- 验收：清单级全量语法测试 + 顺序断言 + Python 全量 + 探针；无行为改动。
+
+### Step 3 · 巨型 IIFE 拆解（阶段三，按模块逐个短分支）
+
+- 判定标准：单文件单 IIFE 且 ≥800 行才动（行数只是提示）。
+- 首批候选（按 fork 顺序）：editor-utils(5.4k) → waveform(5.5k) → gap-remove-core(1.4k)
+  → split-core → timed-text-edit → i18n → cue-elements。
+- 标准模式：`namespace.js`（唯一所有者，块首）+ 各模块 `Object.assign` 发布 +
+  可变状态 `defineProperty` 访问器 + `compat-surface.js`（块尾，按原文字面量
+  重建历史出口）。**类成员用原型混入（`Reflect.ownKeys` + 描述符复制），
+  禁用 `Object.assign`**。
+- 验证：三层差分（结构/源码/行为）零差异 + dryrun 产物 sha256 与落盘一致；
+  每块完成后差分工具公共部分若有改动需复跑已完成块。
+- 第二注入方：gap-remove-core 在阶段二移动后，serve.py 注入源改为
+  `read_editor_scripts_under(...)` 按清单前缀拼接 + 占位符唯一性校验。
+
+### Step 4 · 收尾
+
+- 对照 main 侧 40 个预存 e2e 失败（launcher 错误处理、C 合并锚点 24px、
+  bcut 命名测试等）单独建 issue，与拆分无关，不在拆分分支修。
+- 发布检查时统一重生成 `blank-editor.html`（本轮全程未重生成）。
+- `docs/DEVELOPMENT.md` 补充 web/ 源码地图与验证命令。
+
+### 运维备忘
+
+- `npm install --no-save ts-morph acorn-walk`：任何 npm install 后需重装
+  （--no-save 包会互相修剪）。
+- 长命令防卡死：见 `docs/AGENT_LONG_COMMAND_GUIDE.md`（后台启动 + 轮询 +
+  超时后清孤儿进程）。
 
 本台账记录在最新 `main` 上把 `web/editor.js` 平铺单体拆为特征模块的执行过程。
 方法论与工具借鉴外部分支 `drunkenQCat/moys-asr-workflow:refactor/explode-js`
