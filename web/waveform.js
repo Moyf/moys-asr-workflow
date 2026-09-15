@@ -3264,6 +3264,8 @@
         }
         // Ctrl(Cmd)+左键拖动空白处：按拖动范围创建一条指定时长字幕。
         // 命中字幕块或静音空隙时保留各自已有的选择/边界操作。
+        // 叠加轨启用时，主轨被占用的位置不再直接拒绝：改为把创建拖动转入
+        // 叠加轨（叠加字幕允许与主字幕时间重叠）；叠加轨同轨仍不重叠。
         if (
           event.button === 0 &&
           (event.ctrlKey || event.metaKey) &&
@@ -3271,12 +3273,21 @@
           !event.altKey &&
           !event.target.closest('.waveform-cue-block, .waveform-gap-block')
         ) {
-          const track = this.trackAtPoint(event.clientX, event.clientY, row);
-          if (this.isCueTimeOccupied(this.pointerTimeMs(event, row), track)) {
-            event.preventDefault();
-            event.stopPropagation();
-            this.options.onCueCreateRejected?.('occupied');
-            return;
+          let track = this.trackAtPoint(event.clientX, event.clientY, row);
+          const pointerMs = this.pointerTimeMs(event, row);
+          if (this.isCueTimeOccupied(pointerMs, track)) {
+            if (
+              track === 'main' &&
+              this.options.getOverlayCreateEnabled?.() === true &&
+              !this.isCueTimeOccupied(pointerMs, 'overlay')
+            ) {
+              track = 'overlay';
+            } else {
+              event.preventDefault();
+              event.stopPropagation();
+              this.options.onCueCreateRejected?.('occupied');
+              return;
+            }
           }
           event.preventDefault();
           event.stopPropagation();
@@ -3492,6 +3503,7 @@
               : `${badge.type === 'color' ? '🎨' : '🦊'} ${badge.ordinal}/${badge.total}`;
             badgeEl.style.left = `${((badgeVisibleStart - startMs) / badgeDuration) * 100}%`;
             badgeEl.style.setProperty('--badge-stack-index', String(badgeIndex));
+            badgeEl.dataset.segId = segment.id;
             row.appendChild(badgeEl);
           });
         }
@@ -3589,6 +3601,7 @@
                 : `${badge.type === 'color' ? '🎨' : '🦊'} ${badge.ordinal}/${badge.total}`;
               badgeEl.style.left = `${((badgeVisibleStart - startMs) / badgeDuration) * 100}%`;
               badgeEl.style.setProperty('--badge-stack-index', String(badgeIndex));
+              badgeEl.dataset.segId = segment.id;
               row.appendChild(badgeEl);
             });
           }
@@ -3828,6 +3841,13 @@
         const row = block.closest('.waveform-row');
         if (!segment || !row) return;
         this.layoutBlock(block, segment, Number(row.dataset.startMs), Number(row.dataset.endMs));
+        // badge 位置跟随块移动（同一 segment 的 badge 挂在同一 row 上）
+        row.querySelectorAll(`.waveform-cue-badge[data-seg-id="${segment.id}"]`).forEach((badge) => {
+          const badgeRowStart = Number(row.dataset.startMs);
+          const badgeRowDur = Math.max(1, Number(row.dataset.endMs) - badgeRowStart);
+          const visibleStart = Math.max(badgeRowStart, segment.start);
+          badge.style.left = `${((visibleStart - badgeRowStart) / badgeDur) * 100}%`;
+        });
         const linkedToBoundaryDrag = Boolean(
           boundaryDrag
           && (isExtension ? 'extension' : 'main') === boundaryDragTrack
@@ -4148,6 +4168,15 @@
           drag.preview.className = 'waveform-cue-block waveform-create-preview';
           drag.preview.dataset.track = track;
           if (track === 'extension') drag.preview.style.setProperty('--cue-color', '#7a9fc5');
+          if (track === 'overlay') {
+            // 叠加字幕创建虚影落在叠加轨 lane（上半区），与正式叠加块同位；
+            // 行高不足 84px 时同样切 cover 模式，直接盖在主字幕块上方。
+            drag.preview.classList.add('waveform-overlay-block');
+            const rowHeightPx = Number.parseFloat(row.style.height) || 0;
+            if (rowHeightPx > 0 && rowHeightPx < 84) {
+              drag.preview.classList.add('overlay-cover-mode');
+            }
+          }
           const label = document.createElement('span');
           label.className = 'waveform-cue-label';
           drag.preview.appendChild(label);
@@ -4288,7 +4317,7 @@
       return Number.isFinite(boundary) ? boundary : requestedMs;
     }
 
-    beginBlockedCueCreateDrag(event, index, track = 'main') {
+    beginBlockedCueCreateDrag(event, index, track = 'main', row = null) {
       const target = event.currentTarget;
       const pointerId = event.pointerId;
       const startX = event.clientX;
@@ -4310,6 +4339,12 @@
         if (dx * dx + dy * dy < 16) return;
         moved = true;
         cleanup();
+        // 叠加轨启用时，在主轨字幕上按住拖动 = 从按下位置在叠加轨创建字幕：
+        // 复用空白处的创建拖动（锚点为按下时间），叠加轨同轨占用仍拒绝。
+        if (track === 'main' && row && this.options.getOverlayCreateEnabled?.() === true) {
+          this.beginCreateCueDrag(event, row, 'overlay');
+          return;
+        }
         this.options.onCueCreateRejected?.('occupied');
       };
       const onUp = () => {
@@ -4638,10 +4673,11 @@
       // 字幕块会阻止 pointerdown 冒泡到 pane；主动接管焦点，确保按住
       // 字幕块/边界后，左手 A/D 不会仍被设置输入框等控件拦截。
       this.focusWaveform();
-      // Ctrl(Cmd)+点击字幕仍保留多选；只有真正移动形成拖动时才视为
-      // “在已有字幕上创建”，并直接拒绝，不启动普通字幕拖动或创建预览。
+      // Ctrl(Cmd)+点击字幕仍保留多选；真正移动形成拖动时视为
+      // “在已有字幕上创建”：叠加轨启用时主轨字幕改为转入叠加轨创建，
+      // 其余情况直接拒绝，不启动普通字幕拖动或创建预览。
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
-        return this.beginBlockedCueCreateDrag(event, index, track);
+        return this.beginBlockedCueCreateDrag(event, index, track, row);
       }
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
       // 主轨与叠加轨均可拆分；叠加轨走编辑器的叠加拆分弹窗。

@@ -13023,7 +13023,7 @@ let activeStickerCacheUntil = -Infinity;
 let activeStickerCache = [];
 let renderedStickerSignature = null;
 let renderedStickerOverlayEnabled = false;
-let renderedStickerHasOverlay = false;
+let activeStickerHasOverlay = false;
 
 function rebuildStickerIntervals() {
   if (stickerIntervalCacheVersion === stickerOverlayDataVersion) return;
@@ -13056,6 +13056,7 @@ function rebuildStickerIntervals() {
   activeStickerCacheTime = -Infinity;
   activeStickerCacheUntil = -Infinity;
   activeStickerCache = [];
+  activeStickerHasOverlay = false;
 }
 
 function activeStickersAt(tMs) {
@@ -13073,7 +13074,7 @@ function activeStickersAt(tMs) {
   });
   // 当前时刻是否有叠加轨表情包在显示（同名素材在主轨同时显示时也算——
   // 预览层展示的就是这张图，叠加归属用于决定预览内容区是否加高）。
-  renderedStickerHasOverlay = stickerIntervals.some((interval) => (
+  activeStickerHasOverlay = stickerIntervals.some((interval) => (
     interval.track === 'overlay'
     && time >= interval.start && time <= interval.end
     && found.has(interval.key)
@@ -13099,16 +13100,22 @@ function activeStickersAt(tMs) {
 function renderStickerOverlay(tMs) {
   const enabled = Boolean(stickerOverlayToggle?.checked);
   if (!enabled) {
-    if (renderedStickerOverlayEnabled || stickerOverlayContent.childElementCount) {
+    if (renderedStickerOverlayEnabled || stickerOverlayContent.childElementCount
+      || stickerOverlayContent.classList.contains('has-overlay-sticker')) {
       stickerOverlayContent.replaceChildren();
+      stickerOverlayContent.classList.remove('has-overlay-sticker');
     }
     renderedStickerOverlayEnabled = false;
     renderedStickerSignature = null;
     return;
   }
   const stickers = activeStickersAt(tMs);
-  const signature = stickers.map((sticker) => sticker.filename || sticker.name).join('\u0001');
+  // 签名带上叠加归属：同名素材的显示集合不变但叠加状态翻转时也要切换 class。
+  const signature = `${activeStickerHasOverlay ? 'O' : ''}\u0001${
+    stickers.map((sticker) => sticker.filename || sticker.name).join('\u0001')
+  }`;
   if (renderedStickerOverlayEnabled && renderedStickerSignature === signature) return;
+  stickerOverlayContent.classList.toggle('has-overlay-sticker', activeStickerHasOverlay);
   stickerOverlayContent.replaceChildren(...stickers.map((sticker) => {
     const img = document.createElement('img');
     img.src = stickerUrl(sticker);
@@ -20522,6 +20529,9 @@ function initWaveformEditor() {
     addCueRange: (startMs, endMs, x, y, track = 'main') => (
       addCueRangeFromWaveform(startMs, endMs, x, y, track)
     ),
+    // 叠加轨启用（勾选「叠加字幕」）时，主轨占用位置按 Ctrl(Cmd)+拖动可
+    // 直接创建叠加字幕；由波形侧改道创建轨道，这里只提供开关状态。
+    getOverlayCreateEnabled: () => getOverlayTrack()?.enabled === true,
     onCueCreateRejected: (reason) => {
       if (reason === 'too-short') flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
       if (reason === 'occupied') flashHint('该位置已有字幕，无法新增字幕', 'warning');
