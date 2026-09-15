@@ -3943,7 +3943,13 @@
     marginV: 40,
     encoding: 1,
   });
-  const ASS_DEFAULT_ASS_STYLE = Object.freeze({ ...ASS_DEFAULT_STYLE, id: 'ass', name: 'ASS' });
+  // ASS 默认样式：字号按 1080p 参考基准 72，垂直边距放宽到 80；
+  // SRT 压制默认样式保持 18/40。
+  const ASS_DEFAULT_ASS_STYLE = Object.freeze({
+    ...ASS_DEFAULT_STYLE,
+    id: 'ass', name: 'ASS',
+    fontSize: 72, marginV: 80,
+  });
   const ASS_DEFAULT_ANIMATIONS = Object.freeze({
     fad: Object.freeze({ enabled: false, inMs: 250, outMs: 250 }),
     fade: Object.freeze({
@@ -4518,16 +4524,16 @@
   }
 
   function assEventText({ segment, text, speakerName, speakerLabelSeparator, colorName,
-    colorStyles, style, colorStyle, colorPreviewEnabled, speakerLabels, assMode }) {
+    colorStyles, style, colorStyle, speakerLabels, assMode }) {
     const content = String(text ?? '');
     if (!speakerLabels || !speakerName) return escapeAssText(content);
     const paletteSpeakerColor = colorStyles.find((item) => item.name === colorName)?.value
       || style.primaryColor;
     // ASS can reproduce the existing text-colour mapping and stroke-colour
     // mapping, but a coloured underline is not representable without also
-    // changing the glyph colour.  Keep the speaker label in the effective
-    // base colour whenever the palette is disabled or underline mode is used.
-    const speakerColor = colorPreviewEnabled && colorStyle === 'text'
+    // changing the glyph colour.  In stroke mode keep the speaker label in
+    // the effective base colour so only the outline follows the palette.
+    const speakerColor = colorStyle === 'text'
       ? paletteSpeakerColor : style.primaryColor;
     // The event style already carries the effective ASS text colour.  Reusing
     // the speaker palette here would also colour the whole cue when the old
@@ -4572,9 +4578,9 @@
       : normalizeAssFontSize(baseStyle.fontSize);
     const title = normalizeAssHeaderValue(options.title ?? options.projectName);
     const colorStyles = normalizeAssColorStyles(options.colorStyles);
-    const colorPreviewEnabled = appearance.color_underline !== false;
-    // ASS 的颜色映射由 ass_color_style 驱动（text / stroke / none），
-    // 与 CSS 预览的 color_style（underline / text / stroke）是两套语义。
+    // ASS 的颜色映射只由 ass_color_style 驱动（text / stroke / none），与 CSS
+    // 预览的 color_style（underline / text / stroke）和 color_underline 开关
+    // 是两套语义；color_underline 只控制 CSS 预览，不参与 ASS 导出。
     const colorStyle = normalizeAssColorStyle(appearance.ass_color_style) || 'text';
     const assMode = Boolean(profile);
     const numericTimeOffset = Number(options.timeOffset);
@@ -4613,7 +4619,7 @@
         : String(segment.text ?? '');
       const colorName = effectiveColorName(segment, source);
       const assColorGroupsSupported = colorStyle === 'text' || colorStyle === 'stroke';
-      const styleName = colorPreviewEnabled && assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
+      const styleName = assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
         ? colorName.toUpperCase() : 'Default';
       const styleForEvent = assMode && styleName !== 'Default'
         ? assStyleVariant(baseStyle, colorStyles.find((item) => item.name === colorName)?.value || '#ffffff', colorStyle)
@@ -4627,7 +4633,6 @@
         colorStyles,
         style: styleForEvent,
         colorStyle,
-        colorPreviewEnabled,
         speakerLabels,
         assMode,
       });

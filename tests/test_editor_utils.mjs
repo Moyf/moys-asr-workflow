@@ -3233,11 +3233,35 @@ test('uses the selected ASS profile style and adds every configured animation to
     speakerLabelSeparator: '：',
   });
 
-  assert.match(ass, /Style: Default,Microsoft YaHei,30,\&H00563412,[^\n]*,-1,0,-1,0,100,100,0,0,1,4,0,2,10,10,40,1/);
+  assert.match(ass, /Style: Default,Microsoft YaHei,30,\&H00563412,[^\n]*,-1,0,-1,0,100,100,0,0,1,4,0,2,10,10,80,1/);
   const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   assert.equal(dialogue.length, 2);
-  assert.match(dialogue[0], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
+  // color_underline 只控制 CSS 预览；ASS 导出的颜色映射不受它影响。
+  assert.match(dialogue[0], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}\{\\c&H0019A0C4&\}Host：\{\\c&H0019A0C4&\}你好/);
   assert.match(dialogue[1], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}第二句/);
+});
+
+test('keeps ASS palette colours applied when the CSS colour preview toggle is off', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: false, ass_color_style: 'text' },
+  });
+
+  assert.match(ass, /Style: RED,Arial,72,&H006F7FF0,&H006F7FF0,[^\n]*/);
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
+
+  const noneAss = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: false, ass_color_style: 'none' },
+  });
+  assert.doesNotMatch(noneAss, /Style: RED,/);
+  assert.match(noneAss, /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,,0,0,0,,red line/);
 });
 
 test('keeps speaker labels in the base colour when ASS palette colours are strokes', () => {
@@ -3252,7 +3276,7 @@ test('keeps speaker labels in the base colour when ASS palette colours are strok
     speakerLabelSeparator: '：',
   });
 
-  assert.match(ass, /Style: YELLOW,Arial,18,[^\n]*,&H0019A0C4/);
+  assert.match(ass, /Style: YELLOW,Arial,72,[^\n]*,&H0019A0C4/);
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,YELLOW,Host,0,0,0,,\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
 });
 

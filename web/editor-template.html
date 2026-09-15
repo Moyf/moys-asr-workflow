@@ -932,6 +932,9 @@ __WAVEFORM_CSS__
         <input type="checkbox" id="ass-mode-toggle"> ASS 字幕模式
       </label>
       <small class="editor-settings-hint">关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览。</small>
+      <div class="ass-manager-open-row">
+        <button type="button" id="ass-style-manager-open" class="editor-settings-inline-action ass-style-manager-open" title="打开 ASS 样式库">🎨 管理 ASS 样式</button>
+      </div>
       <label class="subtitle-preview-setting-row ass-color-style-row" title="选择 ASS 导出和预览中，颜色字幕的应用方式；「无影响」时所有颜色字幕使用统一样式">
         <span>颜色字幕样式</span>
         <select id="ass-color-style" aria-label="ASS 颜色字幕样式">
@@ -940,7 +943,6 @@ __WAVEFORM_CSS__
           <option value="none">无影响</option>
         </select>
       </label>
-      <button type="button" id="ass-style-manager-open" class="editor-settings-inline-action ass-style-manager-open" title="打开 ASS 样式库">🎨 管理 ASS 样式</button>
       <small class="editor-settings-hint" id="ass-style-summary">样式库正在加载…</small>
     </div>
   </div>
@@ -1457,7 +1459,7 @@ __WAVEFORM_CSS__
               <label class="ass-style-field">垂直边距<input type="number" id="ass-style-margin-v" data-ass-style-field="marginV" min="0" max="9999" step="1"></label>
             </div>
           </div>
-        </div>
+        </section>
         <div class="ass-style-preview-card"><span class="ass-style-preview-label">ASS 预览</span><span id="ass-style-preview-sample">Aa 字幕预览 / 字幕样例</span></div>
       </section>
       <section class="ass-style-form" id="ass-profile-form" aria-labelledby="ass-profile-form-title" hidden>

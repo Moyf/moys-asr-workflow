@@ -104,7 +104,7 @@ test('exports ASS from the default profile style and keeps enabled subtitle text
   // 工程没有视频分辨率元数据，PlayRes 回退 1920×1080；
   // 默认方案关联的库样式（Arial 18 @1080p 参考）按 1:1 输出。
   expect(save.content).toContain(
-    'Style: Default,Arial,18,&H00FFFFFF,&H00FFFFFF,',
+    'Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,',
   );
   expect(save.content).not.toContain('SimHei');
   expect(save.content).not.toContain('#12abef');
@@ -149,12 +149,12 @@ test('writes the project title, source resolution, palette styles and speaker na
   expect(save.content).toContain('PlayResX: 3840');
   expect(save.content).toContain('PlayResY: 2160');
   // 库样式字号按 1080p 参考存储，导出时换算到 PlayResY：18 × 2160/1080 = 36。
-  expect(save.content).toContain('Style: Default,Arial,36,');
-  expect(save.content).toContain('Style: YELLOW,Arial,36,&H0019A0C4,&H0019A0C4,');
-  expect(save.content).toContain('Style: GREEN,Arial,36,&H006ABB66,&H006ABB66,');
-  expect(save.content).toContain('Style: RED,Arial,36,&H006F7FF0,&H006F7FF0,');
-  expect(save.content).toContain('Style: PURPLE,Arial,36,&H00E689BF,&H00E689BF,');
-  expect(save.content).toContain('Style: BLUE,Arial,36,&H00FAA761,&H00FAA761,');
+  expect(save.content).toContain('Style: Default,Arial,144,');
+  expect(save.content).toContain('Style: YELLOW,Arial,144,&H0019A0C4,&H0019A0C4,');
+  expect(save.content).toContain('Style: GREEN,Arial,144,&H006ABB66,&H006ABB66,');
+  expect(save.content).toContain('Style: RED,Arial,144,&H006F7FF0,&H006F7FF0,');
+  expect(save.content).toContain('Style: PURPLE,Arial,144,&H00E689BF,&H00E689BF,');
+  expect(save.content).toContain('Style: BLUE,Arial,144,&H00FAA761,&H00FAA761,');
   expect(save.content).toContain(
     'Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,{\\c&H006F7FF0&}旁白：{\\c&H006F7FF0&}red line',
   );

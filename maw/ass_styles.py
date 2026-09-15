@@ -133,9 +133,11 @@ def _style_defaults(style_id: str, name: str) -> dict[str, object]:
 
 
 DEFAULT_SRT_STYLE: Final[dict[str, object]] = _style_defaults("default", "SRT 默认")
+# ASS 默认样式：字号按 1080p 参考基准 72，垂直边距放宽到 80。
 DEFAULT_ASS_STYLE: Final[dict[str, object]] = {
     **_style_defaults("ass", "ASS"),
-    "fontSize": 18,
+    "fontSize": 72,
+    "marginV": 80,
 }
 
 
