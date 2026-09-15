@@ -913,7 +913,7 @@
   background: var(--wave-cue-boundary);
   opacity: 0.5;
   transition: opacity 0.12s ease;
-  cursor: ew-resize;
+  cursor: col-resize;
   touch-action: none;
 }
 .waveform-cue-boundary:hover,
