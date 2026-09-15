@@ -727,6 +727,11 @@
     align-items: center; justify-content: center;
     pointer-events: none;
   }
+  /* 显示叠加轨表情包时内容区临时加高到 200%：叠加与主轨表情包共用一个
+     预览层，加高给垂直堆叠留出空间；关闭/切走叠加表情包后恢复 100%。 */
+  #sticker-overlay-layer .sticker-overlay-content.has-overlay-sticker {
+    height: 200%;
+  }
   /* img 元素不收缩：多个表情包按原始高度垂直堆叠（同字幕预览的行堆叠），
      超出层高向下延伸；单个表情包（:only-child）维持原有 contain 行为不溢出 */
   #sticker-overlay-layer .sticker-overlay-content img {

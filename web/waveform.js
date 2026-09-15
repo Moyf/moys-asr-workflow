@@ -3819,6 +3819,7 @@
       const segments = this.options.getSegments('main');
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const overlaySegments = this.options.getSegments('overlay') || [];
+      const overlaySelected = this.options.getOverlaySelection?.() || new Set();
       // 共享边界拖动会同时修改两侧字幕：中缝拖动的真实选区已包含前后
       // 两句；传统模式的手柄联动只选中点击侧，拖动期间两侧块也按选中态
       // 显示，松开后由真实选区恢复原状。
