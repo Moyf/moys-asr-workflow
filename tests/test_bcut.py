@@ -6,7 +6,6 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import mock
 
 import requests
@@ -810,12 +809,23 @@ class GuiWorkflowTests(unittest.TestCase):
         )
 
     def test_default_srt_path_uses_bcut_tag(self) -> None:
-        # attach_model_name 默认关闭且从用户配置读取；显式 mock 保证测试不依赖本机配置。
-        config = SimpleNamespace(attach_model_name=True, output_subfolder=False)
-        with mock.patch("maw.gui_workflow.effective_config", return_value=config):
-            path = gui_workflow.default_srt_path(Path("clip.mp4"), provider="bcut", model="bcut-asr")
+        path = gui_workflow.default_srt_path(
+            Path("clip.mp4"),
+            provider="bcut",
+            model="bcut-asr",
+            attach_model_name=True,
+        )
 
         self.assertEqual(path.name, "clip.bcut.srt")
+        self.assertEqual(
+            gui_workflow.default_srt_path(
+                Path("clip.mp4"),
+                provider="bcut",
+                model="bcut-asr",
+                attach_model_name=False,
+            ).name,
+            "clip.srt",
+        )
 
     def test_build_command_uses_bcut_script_without_language_or_model(self) -> None:
         command = gui_workflow.build_transcribe_command(

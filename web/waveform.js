@@ -3505,11 +3505,13 @@
         if (segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
+          leftHandle.title = localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)');
           block.appendChild(leftHandle);
         }
         if (segment.end <= endMs) {
           const rightHandle = document.createElement('span');
           rightHandle.className = 'waveform-cue-handle right';
+          rightHandle.title = localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
           block.appendChild(rightHandle);
         }
         this.layoutBlock(block, segment, startMs, endMs, row);
@@ -3563,11 +3565,13 @@
         if (segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
+          leftHandle.title = localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)');
           block.appendChild(leftHandle);
         }
         if (segment.end <= endMs) {
           const rightHandle = document.createElement('span');
           rightHandle.className = 'waveform-cue-handle right';
+          rightHandle.title = localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
           block.appendChild(rightHandle);
         }
         this.layoutBlock(block, segment, startMs, endMs, row);
@@ -3630,7 +3634,7 @@
         zone.dataset.leftIdx = String(index);
         zone.style.left = `${((seamMs - startMs) / duration) * 100}%`;
         zone.classList.toggle('at-row-end', seamMs === endMs);
-        zone.title = '拖动调整贴合边界（两侧一起移动）；两侧手柄仅调整单侧';
+        zone.title = '拖动调整贴合边界（两侧一起移动）';
         zone.addEventListener('pointerdown', (event) => this.beginSharedBoundaryZoneDrag(event, index, row, track));
         row.appendChild(zone);
         // 加宽相接侧手柄：中缝区只占中间 8px，加宽后两侧手柄保留约 7px
