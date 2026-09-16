@@ -478,6 +478,63 @@ test('splits and merges overlay cues with group marks following', async ({ page 
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
+test('batch merge via C key inherits color groups and rejects skipped middle cues', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    overlay_track: {
+      enabled: true,
+      segments: [
+        { id: 'overlay-001', start: 0, end: 800, text: '甲', color_ref: { name: 'red', headIdx: 1 } },
+        { id: 'overlay-002', start: 900, end: 1600, text: '乙', color: { name: 'red' } },
+        { id: 'overlay-003', start: 1700, end: 2400, text: '丙', color_ref: { name: 'red', headIdx: 1 } },
+      ],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.overlay-track-cue[data-overlay-idx="2"]')).toHaveCount(1);
+
+  // 跳过中间段（选 0 和 2）按 C：必须按下标连续拒绝；三段原样保留且保持
+  // 有序（否则保存后会违反相邻段 end <= next.start 的契约，工程无法再打开）。
+  await page.evaluate(() => {
+    setCuePanelTarget('overlay', 0);
+    selectedOverlayIdxs.clear();
+    selectedOverlayIdxs.add(0);
+    selectedOverlayIdxs.add(2);
+  });
+  await page.keyboard.press('c');
+  await expect(page.locator('.hint-card').last()).toContainText('选中的叠加字幕必须连续');
+  const unchanged = await page.evaluate(() => JSON.parse(buildJson()).overlay_track.segments);
+  expect(unchanged.map((segment) => segment.text)).toEqual(['甲', '乙', '丙']);
+  for (let i = 1; i < unchanged.length; i++) {
+    expect(unchanged[i].start).toBeGreaterThanOrEqual(unchanged[i - 1].end);
+  }
+
+  // 全选三段（全员指向乙段红组）按 C：与 Ctrl/Cmd+Shift+A / D 同语义，
+  // 合并结果继承红色 head，不再像旧实现那样把组标记整个丢掉。
+  await page.evaluate(() => {
+    setCuePanelTarget('overlay', 0);
+    selectedOverlayIdxs.clear();
+    selectedOverlayIdxs.add(0);
+    selectedOverlayIdxs.add(1);
+    selectedOverlayIdxs.add(2);
+  });
+  await page.keyboard.press('c');
+  const merged = await page.evaluate(() => JSON.parse(buildJson()).overlay_track.segments);
+  expect(merged).toHaveLength(1);
+  expect(merged[0].start).toBe(0);
+  expect(merged[0].end).toBe(2400);
+  expect(merged[0].text).toContain('甲');
+  expect(merged[0].text).toContain('乙');
+  expect(merged[0].text).toContain('丙');
+  expect(merged[0].color).toMatchObject({ name: 'red' });
+  expect(merged[0].color_ref).toBeNull();
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
 test('raises the sticker overlay content while an overlay sticker is displayed', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));

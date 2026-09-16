@@ -20654,43 +20654,14 @@ function assignOverlayColor(idxs, colorName) {
     : `已将 ${targets.length} 条字幕设为「${def.label}色」`, 'success');
 }
 
+// C 键批量合并：复用 Ctrl/Cmd+Shift+A / D 的 mergeOverlaySegments，共享
+// 「下标连续」校验与颜色/表情包组继承语义。旧实现只延长首段自带的标记、
+// 且仅按时间连续校验：混合组会丢标记，跳过中间段的合并会留下被新段覆盖
+// 的旧段，保存后违反相邻段 end <= next.start 的契约导致工程无法再打开。
 function mergeOverlayCues(idxs) {
-  const overlay = getOverlayTrack();
-  const sorted = [...new Set(idxs)]
-    .filter((index) => Number.isInteger(index) && overlay?.segments?.[index])
-    .sort((a, b) => a - b);
-  if (!overlay || sorted.length < 2) return;
-  for (let i = 1; i < sorted.length; i++) {
-    if (overlay.segments[sorted[i - 1]].end > overlay.segments[sorted[i]].start) {
-      flashHint('只能合并时间连续的叠加字幕', 'warning');
-      return;
-    }
-  }
   detachCuePanelFromTrackEdits();
-  pushUndo('合并叠加字幕');
-  const first = overlay.segments[sorted[0]];
-  const last = overlay.segments[sorted[sorted.length - 1]];
-  if (first.color && first.color.end != null) first.color.end = last.end;
-  if (first.sticker && first.sticker.end != null) first.sticker.end = last.end;
-  first.text = sorted.map((index) => overlay.segments[index].text || '').join('\n');
-  first.end = last.end;
-  if (Array.isArray(first.items)) {
-    first.items = sorted.flatMap((index) => (
-      Array.isArray(overlay.segments[index].items) ? overlay.segments[index].items : []
-    ));
-  }
-  first._dirty = true;
-  for (let i = sorted.length - 1; i >= 1; i--) {
-    resetOverlayGroupRefs(sorted[i]);
-    overlay.segments.splice(sorted[i], 1);
-  }
-  overlay._dirty = true;
-  selectedOverlayIdxs.clear();
-  selectedOverlayIdxs.add(sorted[0]);
-  lastClickedOverlayIdx = sorted[0];
-  renderAll({ waveform: 'full' });
+  if (!mergeOverlaySegments(idxs)) return;
   scheduleAutoSaveFlush();
-  flashHint(`已合并 ${sorted.length} 条叠加字幕`, 'success');
 }
 
 function clearOverlayColorOnTargets(idxs) {
