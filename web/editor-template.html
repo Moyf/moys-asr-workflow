@@ -82,6 +82,12 @@ __WAVEFORM_CSS__
     <button type="button" id="redo-btn" title="重做 (Ctrl(Cmd)+Shift+Z)" disabled>↷ 重做</button>
   </span>
   <span class="sep"></span>
+  <label class="overlay-track-toggle" id="overlay-track-controls" hidden
+         title="显示独立叠加字幕轨；它不会与多重字幕建立绑定关系">
+    <input type="checkbox" id="overlay-track-toggle">
+    叠加字幕
+  </label>
+  <span class="sep overlay-track-separator" id="overlay-track-separator" hidden></span>
   <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
     <label class="multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
            title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
@@ -610,6 +616,8 @@ __WAVEFORM_CSS__
           <span class="help-important"><kbd>N</kbd> 在鼠标位置创建字幕（仅波形）</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd data-mod-key>Ctrl+拖拽已有字幕</kbd> 启用「叠加字幕」后在叠加轨创建</span>
           <span class="help-break" aria-hidden="true"></span>
           <span class="help-important"><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>
         </div>
@@ -1320,7 +1328,7 @@ __WAVEFORM_CSS__
     <div class="player-stage">
       __MEDIA_HTML__
           <div class="player-empty" id="player-empty">拖入工程、媒体或 SRT 开始编辑</div>
-      <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 显示控制点，Esc 退出。"><span id="overlay-main-text"><span id="overlay-main-speaker-label" class="subtitle-speaker-label hidden"></span></span><span id="overlay-extension-text" class="subtitle-extension-text hidden"></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
+      <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 显示控制点，Esc 退出。"><span id="overlay-track-text" class="subtitle-overlay-track-text hidden"></span><span id="overlay-main-text"><span id="overlay-main-speaker-label" class="subtitle-speaker-label hidden"></span></span><span id="overlay-extension-text" class="subtitle-extension-text hidden"></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
     </div>
     <div class="media-controls" id="media-controls" role="group" aria-label="媒体播放控制">
       <button type="button" id="media-play-toggle" aria-label="播放" title="播放">▶</button>
@@ -1458,6 +1466,7 @@ __WAVEFORM_CSS__
                 <option value="120" selected>120 px</option>
                 <option value="144">144 px</option>
                 <option value="168">168 px</option>
+                <option value="192">192 px</option>
               </select>
             </label>
             <label class="toggle editor-settings-item" title="在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号">
@@ -1633,10 +1642,12 @@ __WAVEFORM_CSS__
       <option value="60">60 fps</option>
       <option value="60000/1001">60000/1001 fps</option>
     </select>
-    <label for="fcp7-export-subtitle-tracks">导出副字幕轨</label>
+    <label for="fcp7-export-subtitle-tracks">导出字幕轨</label>
     <select id="fcp7-export-subtitle-tracks">
       <option value="main" selected>主轨字幕</option>
       <option value="main_and_extension">主轨与副轨字幕</option>
+      <option value="overlay">叠加轨字幕</option>
+      <option value="all">全部字幕轨（各占一轨）</option>
     </select>
     <label class="row" for="fcp7-export-native-text">
       <input type="checkbox" id="fcp7-export-native-text"> 写入原生字幕文本对象

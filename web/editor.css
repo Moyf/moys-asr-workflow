@@ -671,6 +671,16 @@
     background: transparent;
     text-shadow: none;
   }
+  /* 独立叠加字幕轨的预览行：外观沿用主字幕预览样式，仅独立控制显隐。 */
+  /* 独立叠加字幕轨的预览行：绝对定位悬浮在预览框上沿之外，
+     不参与 .subtitle-overlay 的 flex 布局——主/副字幕的位置不受影响。 */
+  .subtitle-overlay .subtitle-overlay-track-text {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
   .subtitle-overlay.hidden { display: none; }
   /* 几何编辑盒（字幕预览 / 表情包预览共用）：
      点击聚焦 / 控制点编辑 / 正在拖动缩放时显示实线框与方形手柄；hover 不显示。 */
@@ -717,11 +727,23 @@
     align-items: center; justify-content: center;
     pointer-events: none;
   }
-  /* img 元素收缩到图像实际尺寸（max 约束 + contain），阴影/背景贴合图像而不是撑满整个几何盒 */
+  /* 显示叠加轨表情包时内容区临时加高到 200%：叠加与主轨表情包共用一个
+     预览层，加高给垂直堆叠留出空间；关闭/切走叠加表情包后恢复 100%。 */
+  #sticker-overlay-layer .sticker-overlay-content.has-overlay-sticker {
+    height: 200%;
+  }
+  /* img 元素不收缩：多个表情包按原始高度垂直堆叠（同字幕预览的行堆叠），
+     超出层高向下延伸；单个表情包（:only-child）维持原有 contain 行为不溢出 */
   #sticker-overlay-layer .sticker-overlay-content img {
-    flex: 0 1 auto; min-height: 0; max-width: 100%; max-height: 100%;
+    flex: 0 0 auto; max-width: 100%;
     object-fit: contain; border-radius: var(--radius-sm);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); background: rgba(0,0,0,0.35);
+  }
+  #sticker-overlay-layer .sticker-overlay-content img:only-child {
+    max-height: 100%;
+  }
+  #sticker-overlay-layer .sticker-overlay-content img:not(:only-child) {
+    max-height: 50%;
   }
 
   /* === Toolbar === */
@@ -2334,6 +2356,17 @@
 
   .multi-subtitle-controls { display: inline-flex; align-items: center; gap: 6px; }
   .multi-subtitle-controls[hidden] { display: none; }
+  .overlay-track-toggle {
+    display: inline-flex; align-items: center; gap: 6px; min-height: var(--control-h);
+    padding: 3px 8px; border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    background: var(--btn-bg); color: var(--btn-text); font-size: 12px;
+  }
+  .overlay-track-toggle[hidden] { display: none; }
+  .overlay-track-toggle:has(input:checked) {
+    border-color: var(--accent); background: var(--accent-tint);
+  }
+  /* 叠加字幕行不做配色区分，外观与主字幕保持一致；
+     .overlay-track-cue 类仅承载行为挂钩与测试选择器。 */
   .multi-subtitle-controls select { min-height: var(--control-h); }
   .multi-subtitle-controls button { min-height: var(--control-h); }
   .multi-subtitle-main-toggle {
