@@ -988,8 +988,6 @@ document.addEventListener('keydown', (event) => {
   }
 });
 MaweCueListAnchor.cueListFollowButton?.addEventListener('click', MaweCueListAnchor.resumeCueListFollowing);
-// 导出文件名标题（main #124/ASS 导出新增）：初始取工程名，保存后随文件名更新。
-let PROJECT_NAME = MaweBoot.FILENAME_BASE;
 
 // 等待绑定时，点击主/副字幕本身交给各自的选择事件处理；其它空白或
 // 非字幕区域视为取消，避免用户进入等待状态后无从退出。

@@ -131,7 +131,8 @@ MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: 
     MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
     MawePlaybackLoop.refreshSubtitlePreview(0, -1);
     updateUnloadedMediaLabel(MaweBoot.DATA.media);
-    MaweBoot.FILENAME_BASE = filename.replace(/\.(json|mosp)$/i, '');
+    MaweBoot.PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
+    MaweBoot.FILENAME_BASE = MaweBoot.PROJECT_NAME;
     const jsonEl = document.getElementById('json-name');
     if (jsonEl) {
       jsonEl.textContent = filename;

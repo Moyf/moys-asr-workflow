@@ -23,13 +23,13 @@
     });
   }
 
-  
 
-  
 
-  
 
-  
+
+
+
+
 
   async function downloadColorSrts(gapRemoved = false) {
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
@@ -198,7 +198,7 @@
   function assExportOptions(appearance = MaweAppearance.getSubtitleAppearance()) {
     const resolution = currentAssVideoResolution();
     return {
-      title: PROJECT_NAME || MaweBoot.FILENAME_BASE || 'MAW',
+      title: MaweBoot.PROJECT_NAME || MaweBoot.FILENAME_BASE || 'MAW',
       mediaMetadata: window.AsrEditorUtils.normalizeMediaMetadata(MaweBoot.DATA.media_metadata),
       playResX: resolution?.width,
       playResY: resolution?.height,
@@ -243,10 +243,13 @@
       MaweBoot.DATA.segments,
       MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     );
-    return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+    return window.AsrEditorUtils.buildSrtPayload(MaweBoot.DATA.segments, {
       alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
       firstEnabledIndex,
-      appearance: MaweAppearance.getSubtitleAppearance(),
+      mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+      ensurePositiveDuration: true,
+      ...MaweSpeakerLabels.speakerLabelExportOptions(),
+      formatTime: MaweCueElements.fmtSrtTime,
     });
   }
 

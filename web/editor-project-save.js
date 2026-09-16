@@ -7,10 +7,10 @@
 
 
 
-function projectSaveFingerprint() {
-return JSON.stringify([MaweBoot.DATA.segments, MaweBoot.DATA.multi_subtitle, MaweBoot.DATA.gap_remove,
-MaweBoot.DATA.preview, MaweHistory.gapRemoveDirty, MaweAppearance.previewGeometryDirty, MaweServerSave.projectImportDirty]);
-}
+  function projectSaveFingerprint() {
+    return JSON.stringify([MaweBoot.DATA.segments, MaweBoot.DATA.multi_subtitle, MaweBoot.DATA.gap_remove,
+      MaweBoot.DATA.preview, MaweBoot.DATA.media_metadata, MaweHistory.gapRemoveDirty, MaweAppearance.previewGeometryDirty, MaweServerSave.projectImportDirty]);
+  }
 
 function inlineEditHasUncommittedText() {
 const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
@@ -59,8 +59,8 @@ MaweAppearance.previewGeometryDirty = false;
 MaweServerSave.projectImportDirty = false;
 MaweCoreState.container.querySelectorAll('.dirty').forEach(element => element.classList.remove('dirty'));
 }
-PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
-MaweBoot.FILENAME_BASE = PROJECT_NAME;
+MaweBoot.PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
+MaweBoot.FILENAME_BASE = MaweBoot.PROJECT_NAME;
 const jsonEl = document.getElementById('json-name');
 if (jsonEl) {
 jsonEl.textContent = filename;

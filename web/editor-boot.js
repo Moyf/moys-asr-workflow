@@ -50,10 +50,16 @@
     return missing;
   }
 
+  // 导出标题用的工程名：初始取工程名，保存/切工程时随文件名更新（PR #136 评审：
+  // 归到 boot 单一所有者，避免 editor.js 全局可变绑定被多模块读写）。
+  let PROJECT_NAME = FILENAME_BASE;
+
   global.MaweBoot = Object.freeze({
     DATA,
     get FILENAME_BASE() { return FILENAME_BASE; },
     set FILENAME_BASE(v) { FILENAME_BASE = v; },
+    get PROJECT_NAME() { return PROJECT_NAME; },
+    set PROJECT_NAME(v) { PROJECT_NAME = v; },
     STICKERS,
     get STICKER_ROOT() { return STICKER_ROOT; },
     set STICKER_ROOT(v) { STICKER_ROOT = v; },

@@ -199,6 +199,7 @@
     mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
     mediaElement.addEventListener('seeked', MawePlaybackLoop.update);
     mediaElement.addEventListener('loadedmetadata', () => {
+      MaweTimeline.captureProjectVideoDimensions(mediaElement);
       MaweTextCleanup.notifyAutoLoadedMediaReady(mediaElement);
       MaweTextCleanup.flushPendingMediaSeek(mediaElement);
     });
@@ -234,6 +235,7 @@ MawePlaybackLoop.update();
       .forEach((eventName) => mediaElement.addEventListener(eventName, syncMediaControls));
     if (mediaElement.readyState >= 1) {
       queueMicrotask(() => {
+        MaweTimeline.captureProjectVideoDimensions(mediaElement);
         MaweTextCleanup.notifyAutoLoadedMediaReady(mediaElement);
         MaweTextCleanup.flushPendingMediaSeek(mediaElement);
       });

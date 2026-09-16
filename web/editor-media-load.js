@@ -73,6 +73,9 @@
       return false;
     }
 
+    if (isVideo) MaweTimeline.captureProjectVideoDimensions(candidatePlayer);
+    else MaweTimeline.clearProjectVideoDimensions();
+
     let mediaTimeReference = null;
     try {
       mediaTimeReference = await window.AsrEditorUtils.readBwfTimeReferenceFromFile(file);

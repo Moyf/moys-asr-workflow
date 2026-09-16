@@ -5,9 +5,9 @@
 (function initMaweKeyboardTargets(global) {
   'use strict';
 
-  
 
-  
+
+
 
   function isSpaceKey(e) {
     return e.key === ' ' || e.code === 'Space';
