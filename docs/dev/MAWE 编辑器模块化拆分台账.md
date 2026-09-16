@@ -82,6 +82,29 @@ audience: 执行本轮拆分的维护者与 agent
 - 长命令防卡死：见 `docs/AGENT_LONG_COMMAND_GUIDE.md`（后台启动 + 轮询 +
   超时后清孤儿进程）。
 
+## 并行开发经验吸收（2026-09-16，参考外部 ChatGPT 对话「AI时代大型重构并行开发经验」）
+
+对照外部经验（Legacy Monolith Extraction + Strangler Fig 思想）与本仓三轮
+main 合并的实际代价，确认四条进合并后流程的原则：
+
+1. **迁移必须高频小粒度直接进主干**（"extract foo() → merge → extract bar()
+   → merge"），禁止再出现长驻分支。本 PR 三轮合并的 33+28 处冲突与 72 项符号
+   重放就是"三周拆完一次性 merge"的结构性代价。剩余阶段（boot 切段/目录化/
+   IIFE 拆解）一律短分支、合完即删。
+2. **冻结入口、新功能反向推动拆分**：PR 合并后 `web/editor.js` 即为冻结的
+   legacy 入口——新业务代码禁止直接加入（写进 AGENTS.md）；新功能直接写进
+   所属模块，让业务开发本身推动边界细化（Strangler Fig 单文件版）。
+3. **符号级重放工具是结构性冲突的机械化出口**：`tools/merge-flow.mjs`
+   （来自 drunkenQCat，见 `docs/dev/符号级合并重放工作流.md`）把"上游改单体、
+   本仓拆模块"的冲突解决降为 REPLAY/REMOVE/KEEP 审计。注意事项：①工具从
+   HEAD 读取并**回写全部模块文件**——若 git 合并已自动带入共享文件
+   （editor-utils/i18n 等）的新内容，会被 HEAD 旧版覆盖，跑完必须
+   `git checkout origin/main -- <共享文件>` 恢复或复查；②工具输出必须完整
+   落盘（`> log 2>&1`），绝不能接 `Select-Object -First N` 提前断管。
+4. **机械拆分与人工清理分开 review**（Airbnb codemod 经验）：本 PR 只做
+   物理拆分，语义整理（状态所有者、单向依赖）留给后续独立 PR，降低 review
+   面积。
+
 本台账记录在最新 `main` 上把 `web/editor.js` 平铺单体拆为特征模块的执行过程。
 方法论与工具借鉴外部分支 `drunkenQCat/moys-asr-workflow:refactor/explode-js`
 （其完整方法沉淀见该分支的 `docs/dev/编辑器模块化拆分指南.md`，工具在
