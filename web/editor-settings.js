@@ -103,115 +103,117 @@
   }
 
 
-  const DEFAULT_EDITOR_SETTINGS = {
-    splitKey: 'enter',
-    splitUseWordTimestamps: true,
-    // 主字幕拆分类型手动指定偏好：word / continuous / null（跟随工程与检测）。
-    mainSplitModeOverride: null,
-    // 拆分弹窗中选完所有需要确认的断点后自动提交。
-    splitAutoSubmit: true,
-    overlayEnabled: true,
-    // 多重字幕开启时，副字幕预览默认自动显示。
-    extensionOverlayEnabled: true,
-    // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
-    multiSubtitleRowHeight: 168,
-    exportStartAtZero: false,
-    cueListShowIndex: true,
-    cueListShowTime: true,
-    cueListShowSticker: true,
-    cueListShowCharcount: true,
-    // 字幕列表普通点击是否把目标字幕滚动到列表中央。
-    cueListAutoScrollOnClick: true,
-    // “仅看超长”开启时，拆分结果是否暂时保留在列表中，直到焦点离开。
-    cueListKeepSplitVisible: true,
-    // 字幕列表是否隐藏禁用字幕。
-    cueListHideDisabled: false,
-    // “仅看超长”与字数标记使用的字符阈值。
-    cueListCharcountThreshold: 16,
-    cueEditorShowNavigation: false,
-    cueEditorShowTimeActions: false,
-    cueEditorShowSticker: false,
-    // 当前字幕编辑区按 Esc 时，是否放弃文本改动并恢复编辑前内容。
-    cueEditorCancelOnEscape: false,
-    selectGroupMembers: false,
-    // 合并字幕时各段文本之间插入的连接符（默认两个空格；留空则直接拼接）。
-    mergeJoinText: '',
-    // 拼合字幕：相邻间隔不超过该毫秒值时延长字幕时长并拼合（0 表示不处理间隔）。
-    autoMergeGapMs: 200,
-    // 拼合字幕：backward 向前拓展（默认，后方字幕起点前拓）/ forward 向后拓展（前方字幕终点后延）。
-    autoMergeSnapDirection: 'backward',
-    // 拼合字幕：中文少于 N 个字 / 英文少于 N 个词的字幕并入相邻字幕。
-    autoMergeShortCount: 3,
-    // 拼合字幕：是否吸收过短字幕（默认开启；关闭后只拼合间隔）。
-    autoMergeAbsorbShort: true,
-    // 拼合字幕：previous 向前吸收（默认，并入上一条）/ next 向后吸收（并入下一条）。
-    autoMergeAbsorbDirection: 'previous',
-    // 按颜色导出 SRT：统一导出先选择一个 SRT 文件名作为前缀。
-    exportColorUnified: true,
-    // 导出 SRT 时是否按字幕颜色附加说话人名称（仅本地偏好）。
-    exportSpeakerLabels: false,
-    // 按颜色导出 SRT 时是否优先使用颜色映射的说话人名称作为文件名后缀（仅本地偏好）。
-    exportSpeakerNamesAsSuffix: false,
-    // 自动保存仅对绑定工程的 localhost 服务器版生效。
-    autoSaveProject: true,
-    autoSaveIntervalSeconds: 30,
-    projectBackupEnabled: true,
-    projectBackupMinutes: 5,
-    projectBackupLimit: 20,
-    // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
-    stickerOverlayEnabled: false,
-    // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
-    stickerOtioExportMode: 'original',
-    // 时间线 OTIO / OTIOZ 导出选项：同时导出 SRT、合并表情包轨、写入字幕标记（默认全开）。
-    otioExportIncludeSrt: true,
-    otioExportIncludeStickers: true,
-    otioExportIncludeMarkers: true,
-    // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
-    clickBehavior: 'select-and-seek',
-    // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
-    clickTarget: 'pointer',
-    keyboardOperationReference: 'pointer',
-    // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
-    jklPlaybackMode: 'direction',
-    // 媒体控制按钮与无选中字幕时左右方向键的跳转幅度。
-    mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
-    mediaSeekStepFrames: 1,
-    // 选中字幕后用方向键 / A-D 微调时间的幅度。
-    cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
-    cueMoveStepFrames: 1,
-    // 帧模式下是否让波形鼠标指针吸附到最近帧（默认开启）；时间码分隔符默认使用冒号。
-    timelineSnapToFrame: true,
-    timelineTimecodeSeparator: ':',
-    // 鼠标位置自动预览：暂停时指针在波形上移动即把画面定位到指针时间（默认关闭）。
-    hoverSeekPreview: false,
-    // 是否默认让同轨相邻字幕随边界调整一起联动；Alt 始终临时反转该行为。
-    autoSnapAdjacentCues: true,
-    // 娱乐彩蛋：成功拆分时的音效与刀光反馈，并把分割工具图标换成 🔪。
-    ninjaMode: false,
-    // 字幕忍者的拆分音效开关；忍者开关开启后才在设置中显示。
-    ninjaSound: true,
-    // 字幕忍者的可选视觉反馈；忍者开关开启后才在设置中显示。
-    ninjaSlashEffect: true,
-    // 刀光长度：视口高度百分比（默认 80，范围 20–400）。
-    ninjaSlashLengthPercent: 80,
-    // 刀光随机旋转幅度：0 度完全垂直，N 度表示在 [-N, N] 内随机倾斜（默认 6，范围 0–60）。
-    ninjaSlashRotateAmplitude: 6,
-    // 多重字幕拖动时是否把另一条轨道的起止边界加入吸附目标。
-    crossTrackSnap: true,
-    // 选中主/副字幕时，是否同时选中绑定的另一条字幕。
-    selectBoundSubtitlePair: true,
-    // G 绑定后是否自动把副字幕时间范围同步到主字幕（等同随后按 H）。
-    multiSubtitleAutoSyncDuration: true,
-    // 多重字幕波形是否显示主/副轨道编号徽标。
-    multiSubtitleShowTrackBadges: false,
-    // 界面主题：dark（默认）/ light / system。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
-    theme: 'dark',
-    // 界面强调色：blue（默认）/ red / orange / custom；自定义颜色单独保存为六位十六进制值。
-    accentColor: 'blue',
-    accentColorCustom: '#6ca5e8',
-    // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
-    waveShapeSource: 'reapeaks',
-  };
+  DEFAULT_EDITOR_SETTINGS = {
+  splitKey: 'enter',
+  splitUseWordTimestamps: true,
+  // 主字幕拆分类型手动指定偏好：word / continuous / null（跟随工程与检测）。
+  mainSplitModeOverride: null,
+  // 拆分弹窗中选完所有需要确认的断点后自动提交。
+  splitAutoSubmit: true,
+  overlayEnabled: true,
+  // 多重字幕开启时，副字幕预览默认自动显示。
+  extensionOverlayEnabled: true,
+  // ASS 字幕模式只改变播放器预览，默认关闭以保持原有 CSS 预览。
+  assMode: false,
+  // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
+  multiSubtitleRowHeight: 168,
+  exportStartAtZero: false,
+  cueListShowIndex: true,
+  cueListShowTime: true,
+  cueListShowSticker: true,
+  cueListShowCharcount: true,
+  // 字幕列表普通点击是否把目标字幕滚动到列表中央。
+  cueListAutoScrollOnClick: true,
+  // “仅看超长”开启时，拆分结果是否暂时保留在列表中，直到焦点离开。
+  cueListKeepSplitVisible: true,
+  // 字幕列表是否隐藏禁用字幕。
+  cueListHideDisabled: false,
+  // “仅看超长”与字数标记使用的字符阈值。
+  cueListCharcountThreshold: 16,
+  cueEditorShowNavigation: false,
+  cueEditorShowTimeActions: false,
+  cueEditorShowSticker: false,
+  // 当前字幕编辑区按 Esc 时，是否放弃文本改动并恢复编辑前内容。
+  cueEditorCancelOnEscape: false,
+  selectGroupMembers: false,
+  // 合并字幕时各段文本之间插入的连接符（默认两个空格；留空则直接拼接）。
+  mergeJoinText: '',
+  // 拼合字幕：相邻间隔不超过该毫秒值时延长字幕时长并拼合（0 表示不处理间隔）。
+  autoMergeGapMs: 200,
+  // 拼合字幕：backward 向前拓展（默认，后方字幕起点前拓）/ forward 向后拓展（前方字幕终点后延）。
+  autoMergeSnapDirection: 'backward',
+  // 拼合字幕：中文少于 N 个字 / 英文少于 N 个词的字幕并入相邻字幕。
+  autoMergeShortCount: 3,
+  // 拼合字幕：是否吸收过短字幕（默认开启；关闭后只拼合间隔）。
+  autoMergeAbsorbShort: true,
+  // 拼合字幕：previous 向前吸收（默认，并入上一条）/ next 向后吸收（并入下一条）。
+  autoMergeAbsorbDirection: 'previous',
+  // 按颜色导出 SRT：统一导出先选择一个 SRT 文件名作为前缀。
+  exportColorUnified: true,
+  // 导出 SRT 时是否按字幕颜色附加说话人名称（仅本地偏好）。
+  exportSpeakerLabels: false,
+  // 按颜色导出 SRT 时是否优先使用颜色映射的说话人名称作为文件名后缀（仅本地偏好）。
+  exportSpeakerNamesAsSuffix: false,
+  // 自动保存仅对绑定工程的 localhost 服务器版生效。
+  autoSaveProject: true,
+  autoSaveIntervalSeconds: 30,
+  projectBackupEnabled: true,
+  projectBackupMinutes: 5,
+  projectBackupLimit: 20,
+  // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
+  stickerOverlayEnabled: false,
+  // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
+  stickerOtioExportMode: 'original',
+  // 时间线 OTIO / OTIOZ 导出选项：同时导出 SRT、合并表情包轨、写入字幕标记（默认全开）。
+  otioExportIncludeSrt: true,
+  otioExportIncludeStickers: true,
+  otioExportIncludeMarkers: true,
+  // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
+  clickBehavior: 'select-and-seek',
+  // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
+  clickTarget: 'pointer',
+  keyboardOperationReference: 'pointer',
+  // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
+  jklPlaybackMode: 'direction',
+  // 媒体控制按钮与无选中字幕时左右方向键的跳转幅度。
+  mediaSeekStepMs: DEFAULT_MEDIA_SEEK_STEP_MS,
+  mediaSeekStepFrames: 1,
+  // 选中字幕后用方向键 / A-D 微调时间的幅度。
+  cueMoveStepMs: DEFAULT_CUE_MOVE_STEP_MS,
+  cueMoveStepFrames: 1,
+  // 帧模式下是否让波形鼠标指针吸附到最近帧（默认开启）；时间码分隔符默认使用冒号。
+  timelineSnapToFrame: true,
+  timelineTimecodeSeparator: ':',
+  // 鼠标位置自动预览：暂停时指针在波形上移动即把画面定位到指针时间（默认关闭）。
+  hoverSeekPreview: false,
+  // 是否默认让同轨相邻字幕随边界调整一起联动；Alt 始终临时反转该行为。
+  autoSnapAdjacentCues: true,
+  // 娱乐彩蛋：成功拆分时的音效与刀光反馈，并把分割工具图标换成 🔪。
+  ninjaMode: false,
+  // 字幕忍者的拆分音效开关；忍者开关开启后才在设置中显示。
+  ninjaSound: true,
+  // 字幕忍者的可选视觉反馈；忍者开关开启后才在设置中显示。
+  ninjaSlashEffect: true,
+  // 刀光长度：视口高度百分比（默认 80，范围 20–400）。
+  ninjaSlashLengthPercent: 80,
+  // 刀光随机旋转幅度：0 度完全垂直，N 度表示在 [-N, N] 内随机倾斜（默认 6，范围 0–60）。
+  ninjaSlashRotateAmplitude: 6,
+  // 多重字幕拖动时是否把另一条轨道的起止边界加入吸附目标。
+  crossTrackSnap: true,
+  // 选中主/副字幕时，是否同时选中绑定的另一条字幕。
+  selectBoundSubtitlePair: true,
+  // G 绑定后是否自动把副字幕时间范围同步到主字幕（等同随后按 H）。
+  multiSubtitleAutoSyncDuration: true,
+  // 多重字幕波形是否显示主/副轨道编号徽标。
+  multiSubtitleShowTrackBadges: false,
+  // 界面主题：dark（默认）/ light / system。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
+  theme: 'dark',
+  // 界面强调色：blue（默认）/ red / orange / custom；自定义颜色单独保存为六位十六进制值。
+  accentColor: 'blue',
+  accentColorCustom: '#6ca5e8',
+  // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
+  waveShapeSource: 'reapeaks',
+}
 
 
   const SUBTITLE_FONT_SIZE_MIN = 12;

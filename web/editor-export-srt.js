@@ -200,16 +200,22 @@
 
 
   function assExportOptions(appearance = MaweAppearance.getSubtitleAppearance()) {
-    const resolution = currentAssVideoResolution();
-    return {
-      title: MaweBoot.PROJECT_NAME || MaweBoot.FILENAME_BASE || 'MAW',
-      mediaMetadata: window.AsrEditorUtils.normalizeMediaMetadata(MaweBoot.DATA.media_metadata),
-      playResX: resolution?.width,
-      playResY: resolution?.height,
-      colorStyles: MaweColors.COLOR_PALETTE,
-      appearance,
-    };
-  }
+  const resolution = currentAssVideoResolution();
+  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const profileId = library.assignments?.assExportProfileId || 'ass';
+  const assProfile = window.AsrEditorUtils.assProfileForId(library, profileId);
+  const assStyle = window.AsrEditorUtils.assStyleForId(library, assProfile.styleId);
+  return {
+    title: MaweBoot.PROJECT_NAME || MaweBoot.FILENAME_BASE || 'MAW',
+    mediaMetadata: MaweTimeline.normalizeMediaMetadata(MaweBoot.DATA.media_metadata),
+    playResX: resolution?.width,
+    playResY: resolution?.height,
+    colorStyles: MaweColors.COLOR_PALETTE,
+    appearance,
+    assProfile,
+    assStyle,
+  };
+}
 
 
 

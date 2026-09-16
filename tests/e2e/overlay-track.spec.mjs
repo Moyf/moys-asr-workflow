@@ -478,6 +478,63 @@ test('splits and merges overlay cues with group marks following', async ({ page 
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
+test('batch merge via C key inherits color groups and rejects skipped middle cues', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    overlay_track: {
+      enabled: true,
+      segments: [
+        { id: 'overlay-001', start: 0, end: 800, text: '甲', color_ref: { name: 'red', headIdx: 1 } },
+        { id: 'overlay-002', start: 900, end: 1600, text: '乙', color: { name: 'red' } },
+        { id: 'overlay-003', start: 1700, end: 2400, text: '丙', color_ref: { name: 'red', headIdx: 1 } },
+      ],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.overlay-track-cue[data-overlay-idx="2"]')).toHaveCount(1);
+
+  // 跳过中间段（选 0 和 2）按 C：必须按下标连续拒绝；三段原样保留且保持
+  // 有序（否则保存后会违反相邻段 end <= next.start 的契约，工程无法再打开）。
+  await page.evaluate(() => {
+    setCuePanelTarget('overlay', 0);
+    selectedOverlayIdxs.clear();
+    selectedOverlayIdxs.add(0);
+    selectedOverlayIdxs.add(2);
+  });
+  await page.keyboard.press('c');
+  await expect(page.locator('.hint-card').last()).toContainText('选中的叠加字幕必须连续');
+  const unchanged = await page.evaluate(() => JSON.parse(buildJson()).overlay_track.segments);
+  expect(unchanged.map((segment) => segment.text)).toEqual(['甲', '乙', '丙']);
+  for (let i = 1; i < unchanged.length; i++) {
+    expect(unchanged[i].start).toBeGreaterThanOrEqual(unchanged[i - 1].end);
+  }
+
+  // 全选三段（全员指向乙段红组）按 C：与 Ctrl/Cmd+Shift+A / D 同语义，
+  // 合并结果继承红色 head，不再像旧实现那样把组标记整个丢掉。
+  await page.evaluate(() => {
+    setCuePanelTarget('overlay', 0);
+    selectedOverlayIdxs.clear();
+    selectedOverlayIdxs.add(0);
+    selectedOverlayIdxs.add(1);
+    selectedOverlayIdxs.add(2);
+  });
+  await page.keyboard.press('c');
+  const merged = await page.evaluate(() => JSON.parse(buildJson()).overlay_track.segments);
+  expect(merged).toHaveLength(1);
+  expect(merged[0].start).toBe(0);
+  expect(merged[0].end).toBe(2400);
+  expect(merged[0].text).toContain('甲');
+  expect(merged[0].text).toContain('乙');
+  expect(merged[0].text).toContain('丙');
+  expect(merged[0].color).toMatchObject({ name: 'red' });
+  expect(merged[0].color_ref).toBeNull();
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
 test('raises the sticker overlay content while an overlay sticker is displayed', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
@@ -714,6 +771,13 @@ test('falls back to covering the main block when the row is too short for the ov
   await dropProject(page, project);
   await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).toHaveCount(1);
 
+  // 「每行高度」位于波形设置面板，且只在多行波形模式下可用（基础模式下隐藏）。
+  // 先在工具栏切多行模式再打开面板：面板外点击（含模式按钮）会关闭面板。
+  await page.locator('[data-waveform-mode="multi"]').click();
+  await page.locator('#waveform-settings-toggle').click();
+  await expect(page.locator('#waveform-settings-panel')).toBeVisible();
+  await expect(page.locator('#waveform-row-height-setting')).toBeVisible();
+
   // 默认行高（120px）足够：叠加块在 50% 线，不进入覆盖模式。
   await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).not.toHaveClass(/overlay-cover-mode/);
 
@@ -943,8 +1007,11 @@ test('clears a stale overlay track when a plain SRT replaces the main track', as
   await expect(page.locator('.overlay-track-cue')).toHaveCount(0);
   const exported = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(exported.segments.map((segment) => segment.text)).toEqual(['fresh cue']);
-  expect(exported.overlay_track.enabled).toBe(false);
-  expect(exported.overlay_track.segments).toHaveLength(0);
+  // JSON_SCHEMA §1.5：overlay_track 是可选字段。替换后的轨已禁用且为空，
+  // buildJson 会整个省略该键（避免每个普通工程都带一堆空字段噪声）；
+  // 加载端 normalizeOverlayTrack(undefined) 同样回到禁用空轨，语义一致。
+  expect(exported.overlay_track?.enabled ?? false).toBe(false);
+  expect(exported.overlay_track?.segments ?? []).toHaveLength(0);
 });
 
 test('Ctrl+drag over an occupied main cue creates an overlay subtitle', async ({ page }) => {

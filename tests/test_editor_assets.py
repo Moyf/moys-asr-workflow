@@ -323,6 +323,17 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertNotIn("SERVER_CONFIG.createUrl", script)
         self.assertNotIn("!projectLoadedFromSrt", script + project_load + project_save + server_save)
 
+    def test_ass_style_library_saves_require_token_and_flush_before_unload(self) -> None:
+        script = edit.read_web_asset("editor.js")
+        # 共享样式库写入必须携带页面请求令牌（服务器 403 契约见 test_local_editor_server）。
+        self.assertIn("requestToken: SERVER_CONFIG?.requestToken || ''", script)
+        # debounce 定时器在刷新/关闭/切后台时不保证触发；dirty 状态必须用
+        # keepalive 请求在 pagehide / visibilitychange 时补发最后一次修改。
+        self.assertIn("function flushAssStyleLibraryOnUnload()", script)
+        self.assertIn("keepalive: true", script)
+        self.assertIn("window.addEventListener('pagehide', flushAssStyleLibraryOnUnload)", script)
+        self.assertIn("if (document.visibilityState === 'hidden') {\n    flushAssStyleLibraryOnUnload();", script)
+
     def test_sticker_root_uses_server_validation_without_browser_picker(self) -> None:
         template = edit.read_web_asset("editor-template.html")
         script = edit.read_web_asset("editor.js")

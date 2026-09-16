@@ -197,6 +197,20 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   if (extensionVisible && MaweDom.overlayExtensionTextEl.textContent !== extensionText) {
     MaweDom.overlayExtensionTextEl.textContent = extensionText;
   }
+  const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
+  if (assMode) {
+    applyAssSubtitlePreview({
+      tMs,
+      segment: mainVisible ? seg : null,
+      extension: extensionVisible ? extension : null,
+      overlay: overlayCueVisible ? overlayCue : null,
+      overlaySegments: getOverlayTrack()?.segments || [],
+      mainColorName,
+      speakerLabelVisible,
+    });
+  } else if (MaweDom.overlayEl.dataset.assMode === 'true') {
+    restoreCssSubtitlePreview();
+  }
   const overlayCueText = overlayCueVisible ? String(overlayCue.text || '') : '';
   // 叠加轨说话人标签：颜色→说话人映射按叠加轨自身数组解析，与主字幕同源。
   const overlayColorContext = getOverlayTrack()?.segments || [];
@@ -254,25 +268,27 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     && previewSegmentColor
     ? `.125em ${previewSegmentColor}`
     : '';
-  if (MaweDom.overlayTextEl.dataset.colorUnderline !== colorUnderline) {
+  if (!assMode && MaweDom.overlayTextEl.dataset.colorUnderline !== colorUnderline) {
     MaweDom.overlayTextEl.dataset.colorUnderline = colorUnderline;
     MaweDom.overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
     MaweDom.overlayTextEl.style.textDecorationColor = colorUnderline;
     MaweDom.overlayTextEl.style.textUnderlineOffset = colorUnderline ? '0.25em' : '';
   }
-  if (MaweDom.overlayTextEl.dataset.colorText !== textColor) {
+  if (!assMode && MaweDom.overlayTextEl.dataset.colorText !== textColor) {
     MaweDom.overlayTextEl.dataset.colorText = textColor;
     MaweDom.overlayTextEl.style.color = textColor;
   }
-  if (MaweDom.overlayTextEl.dataset.colorStroke !== textStroke) {
+  if (!assMode && MaweDom.overlayTextEl.dataset.colorStroke !== textStroke) {
     MaweDom.overlayTextEl.dataset.colorStroke = textStroke;
     MaweDom.overlayTextEl.style.webkitTextStroke = textStroke;
     MaweDom.overlayTextEl.style.paintOrder = textStroke ? 'stroke fill' : '';
   }
   // 叠加轨预览颜色：与主字幕同一套颜色快照样式（下划线/文字色/描边），
   // 颜色引用按叠加轨自身段解析（effectiveColorName 传入叠加轨数组）。
+  // ASS 模式下叠加轨外观由 applyAssOverlayTrackPreview 按 ass_color_style
+  // 接管，这里不再写 CSS 颜色，避免两套语义互相覆盖。
   let overlayTrackSegmentColor = '';
-  if (overlayCueVisible && colorPreviewEnabled) {
+  if (!assMode && overlayCueVisible && colorPreviewEnabled) {
     const overlayColorName = MULTI_SUBTITLE_UTILS.effectiveColorName(
       overlayCue, getOverlayTrack()?.segments || [],
     );
@@ -283,17 +299,17 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     ? overlayTrackSegmentColor : '';
   const overlayTrackStroke = colorStyle === 'stroke' && overlayTrackSegmentColor
     ? `.125em ${overlayTrackSegmentColor}` : '';
-  if (overlayTrackTextEl.dataset.colorUnderline !== overlayTrackUnderline) {
+  if (!assMode && overlayTrackTextEl.dataset.colorUnderline !== overlayTrackUnderline) {
     overlayTrackTextEl.dataset.colorUnderline = overlayTrackUnderline;
     overlayTrackTextEl.style.textDecorationLine = overlayTrackUnderline ? 'underline' : '';
     overlayTrackTextEl.style.textDecorationColor = overlayTrackUnderline;
     overlayTrackTextEl.style.textUnderlineOffset = overlayTrackUnderline ? '0.25em' : '';
   }
-  if (overlayTrackTextEl.dataset.colorText !== overlayTrackTextColor) {
+  if (!assMode && overlayTrackTextEl.dataset.colorText !== overlayTrackTextColor) {
     overlayTrackTextEl.dataset.colorText = overlayTrackTextColor;
     overlayTrackTextEl.style.color = overlayTrackTextColor;
   }
-  if (overlayTrackTextEl.dataset.colorStroke !== overlayTrackStroke) {
+  if (!assMode && overlayTrackTextEl.dataset.colorStroke !== overlayTrackStroke) {
     overlayTrackTextEl.dataset.colorStroke = overlayTrackStroke;
     overlayTrackTextEl.style.webkitTextStroke = overlayTrackStroke;
     overlayTrackTextEl.style.paintOrder = overlayTrackStroke ? 'stroke fill' : '';

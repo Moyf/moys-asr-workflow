@@ -1,25 +1,50 @@
-# 轮询后台 e2e：输出存活状态 / 完成后的 pass-fail 摘要与新增失败清单。
-# 用法: .\poll-e2e.ps1 -Tag "merge3" [-Baseline]
+# 查询后台 E2E（run-e2e-bg.ps1 启动）的状态并汇总结果。
+# 每次调用都是秒级命令，适合每 2-4 分钟轮询一次；任何一次超时/中止后，
+# 先清孤儿 node/chromium 进程再重跑（见 docs/AGENT_LONG_COMMAND_GUIDE.md）。
+[CmdletBinding()]
 param(
-  [string]$Tag = "run",
-  [switch]$Baseline
+    # 缺省时读取 latest.txt 指向的最近一次运行目录。
+    [string] $RunDir
 )
-$report = Join-Path $env:TEMP "e2e-$Tag.json"
-$log = Join-Path $env:TEMP "e2e-$Tag.log"
-$pidFile = Join-Path $env:TEMP "e2e-$Tag.pid"
-$procId = (Get-Content $pidFile -ErrorAction SilentlyContinue)
-$alive = $false
-if ($procId) { $alive = [bool](Get-Process -Id $procId -ErrorAction SilentlyContinue) }
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$runRoot = Join-Path ([System.IO.Path]::GetTempPath()) "maw-e2e-bg"
+if (-not $RunDir) {
+    $latest = Join-Path $runRoot "latest.txt"
+    if (-not (Test-Path -LiteralPath $latest)) {
+        throw "没有找到后台运行记录（$latest）。先用 run-e2e-bg.ps1 启动。"
+    }
+    $RunDir = (Get-Content -LiteralPath $latest -Raw).Trim()
+}
+
+$metaPath = Join-Path $RunDir "meta.json"
+$logPath = Join-Path $RunDir "e2e-run.log"
+$reportPath = Join-Path $RunDir "e2e-report.json"
+if (-not (Test-Path -LiteralPath $metaPath)) {
+    throw "运行目录缺少 meta.json：$RunDir"
+}
+$meta = Get-Content -LiteralPath $metaPath -Raw | ConvertFrom-Json
+
+$alive = [bool](Get-Process -Id $meta.pid -ErrorAction SilentlyContinue)
+
+if (Test-Path -LiteralPath $logPath) {
+    Write-Output "--- 日志尾部 ---"
+    Get-Content -LiteralPath $logPath -Tail 3 -ErrorAction SilentlyContinue | ForEach-Object { Write-Output $_ }
+}
+
 if ($alive) {
-  $tail = (Get-Content $log -Tail 1 -ErrorAction SilentlyContinue)
-  Write-Output "RUNNING pid=$procId 日志尾: $tail"
-  exit 0
+    Write-Output ("状态: 运行中 (PID {0})" -f $meta.pid)
+    exit 0
 }
-if (-not (Test-Path $report) -or (Get-Item $report).Length -lt 10) {
-  Write-Output "已结束但报告缺失；日志尾部:"
-  Get-Content $log -Tail 10 -ErrorAction SilentlyContinue
-  exit 1
+
+Write-Output "状态: 已结束"
+if (-not (Test-Path -LiteralPath $reportPath)) {
+    Write-Output "未找到 JSON 报告，进程可能异常退出。完整日志: $logPath"
+    exit 1
 }
-$jsonPath = $report
-$summary = node -e "const r=require(process.argv[1]); const fails=[]; let total=0; for(const s of r.suites){const walk=(x)=>{if(!x)return; if(x.specs)for(const sp of x.specs){total++; if(sp.ok===false)fails.push(sp.title)} (x.suites||[]).forEach(walk)}; walk(s)}; let base=[]; if(process.argv[2]==='1'){const b=require(process.env.TEMP+'/baseline-e2e.json'); for(const s of b.suites){const walk=(x)=>{if(!x)return; if(x.specs)for(const sp of x.specs){if(sp.ok===false)base.push(sp.title)} (x.suites||[]).forEach(walk)}; walk(s)}}; const newF=fails.filter(f=>!base.includes(f)); console.log('总数 '+total+' 失败 '+fails.length+' 基线 '+base.length+' 新增 '+newF.length); newF.slice(0,20).forEach(f=>console.log(' - '+f)); if(newF.length>20)console.log(' ...共 '+newF.length)" $jsonPath $(if ($Baseline) { '1' } else { '0' }) 2>&1
-Write-Output "完成。$summary"
+# 报告可能远超 PS 5.1 ConvertFrom-Json 的体积上限：交给 node 读文件路径汇总，
+# 绝不把报告内容塞进 argv（会撞 32K 命令行长度上限）。
+node (Join-Path $PSScriptRoot "summarize-e2e-report.mjs") $reportPath
+exit $LASTEXITCODE

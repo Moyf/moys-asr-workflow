@@ -129,12 +129,15 @@
 
 
   function relabelSubtitleFontFamilyOptions() {
-    [MaweDom.subtitleFontFamilySelect, MaweDom.extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
-      Array.from(select.querySelectorAll('option[data-local-font="true"], option[data-generated="true"]')).forEach((option) => {
-        option.textContent = subtitleFontFamilyDisplayName(option.value);
-      });
+  [MaweDom.extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
+    Array.from(select.querySelectorAll('option[data-local-font="true"], option[data-generated="true"]')).forEach((option) => {
+      option.textContent = subtitleFontFamilyDisplayName(option.value);
     });
-  }
+  });
+  rebuildSubtitleFontFamilyOptions();
+  rebuildAssFontNameOptions();
+  syncSubtitleAppearanceControls();
+}
 
 
   function normalizeSubtitleColor(value) {
@@ -145,36 +148,39 @@
 
 
   function normalizeSubtitleAppearance(value) {
-    const result = {};
-    const fontSize = value && typeof value.font_size === 'number' && Number.isFinite(value.font_size)
-      ? Math.round(value.font_size) : null;
-    if (fontSize !== null && fontSize >= MaweSettings.SUBTITLE_FONT_SIZE_MIN && fontSize <= MaweSettings.SUBTITLE_FONT_SIZE_MAX) {
-      result.font_size = fontSize;
-    }
-    const fontFamily = normalizeSubtitleFontFamilyName(value?.font_family);
-    if (fontFamily) result.font_family = fontFamily;
-    const backgroundColor = normalizeSubtitleBackgroundColor(value?.background_color);
-    if (backgroundColor) result.background_color = backgroundColor;
-    const backgroundAlpha = normalizeSubtitleBackgroundAlpha(value?.background_alpha);
-    if (backgroundAlpha !== null) result.background_alpha = backgroundAlpha;
-    const color = normalizeSubtitleColor(value?.color);
-    if (color) result.color = color;
-    const colorStyle = normalizeSubtitleColorStyle(value?.color_style);
-    if (colorStyle) result.color_style = colorStyle;
-    if (value?.color_underline === false) result.color_underline = false;
-    return result;
+  const result = {};
+  const fontSize = value && typeof value.font_size === 'number' && Number.isFinite(value.font_size)
+    ? Math.round(value.font_size) : null;
+  if (fontSize !== null && fontSize >= MaweSettings.SUBTITLE_FONT_SIZE_MIN && fontSize <= MaweSettings.SUBTITLE_FONT_SIZE_MAX) {
+    result.font_size = fontSize;
   }
+  const fontFamily = normalizeSubtitleFontFamilyName(value?.font_family);
+  if (fontFamily) result.font_family = fontFamily;
+  const backgroundColor = normalizeSubtitleBackgroundColor(value?.background_color);
+  if (backgroundColor) result.background_color = backgroundColor;
+  const backgroundAlpha = normalizeSubtitleBackgroundAlpha(value?.background_alpha);
+  if (backgroundAlpha !== null) result.background_alpha = backgroundAlpha;
+  const color = normalizeSubtitleColor(value?.color);
+  if (color) result.color = color;
+  const colorStyle = normalizeSubtitleColorStyle(value?.color_style);
+  if (colorStyle) result.color_style = colorStyle;
+  const assColorStyle = normalizeAssColorStyleValue(value?.ass_color_style);
+  if (assColorStyle) result.ass_color_style = assColorStyle;
+  if (value?.color_underline === false) result.color_underline = false;
+  return result;
+}
 
 
   function getSubtitleAppearance(value = MaweBoot.DATA.preview?.subtitle) {
-    const result = normalizeSubtitleAppearance(value);
-    return {
-      ...result,
-      color: result.color || MaweSettings.DEFAULT_SUBTITLE_COLOR,
-      color_underline: result.color_underline !== false,
-      color_style: result.color_style || MaweSettings.DEFAULT_SUBTITLE_COLOR_STYLE,
-    };
-  }
+  const result = normalizeSubtitleAppearance(value);
+  return {
+    ...result,
+    color: result.color || MaweSettings.DEFAULT_SUBTITLE_COLOR,
+    color_underline: result.color_underline !== false,
+    color_style: result.color_style || MaweSettings.DEFAULT_SUBTITLE_COLOR_STYLE,
+    ass_color_style: result.ass_color_style || DEFAULT_ASS_COLOR_STYLE,
+  };
+}
 
 
   function getStoredExtensionSubtitleAppearance(value = MaweBoot.DATA.preview?.extension_subtitle) {
@@ -214,44 +220,38 @@
 
 
   function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
-    syncSubtitleFontSizeSelect(MaweDom.subtitleFontSizeSelect, appearance.font_size);
-    if (MaweDom.subtitleColorUnderlineInput) {
-      MaweDom.subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
-    }
-    if (MaweDom.subtitleColorStyleSelect) {
-      MaweDom.subtitleColorStyleSelect.value = appearance.color_style || MaweSettings.DEFAULT_SUBTITLE_COLOR_STYLE;
-    }
-    if (MaweDom.subtitleColorStyleControl) {
-      MaweDom.subtitleColorStyleControl.hidden = appearance.color_underline === false;
-    }
-    if (MaweDom.subtitleFontFamilySelect) {
-      MaweDom.subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
-      const family = appearance.font_family || 'default';
-      if (family !== 'default' && !isBuiltInSubtitleFontFamily(family)
-          && !subtitleFontFamilyOptionExists(MaweDom.subtitleFontFamilySelect, family)) {
-        const option = document.createElement('option');
-        option.value = family;
-        option.textContent = subtitleFontFamilyDisplayName(family);
-        option.dataset.generated = 'true';
-        MaweDom.subtitleFontFamilySelect.append(option);
-      }
-      MaweDom.subtitleFontFamilySelect.value = family;
-      if (MaweDom.subtitleFontFamilySelect.value !== family) MaweDom.subtitleFontFamilySelect.value = 'default';
-    }
-    if (MaweDom.subtitleBackgroundColorInput) {
-      MaweDom.subtitleBackgroundColorInput.value = appearance.background_color
-        || MaweSettings.SUBTITLE_BACKGROUND_COLOR_DEFAULT;
-    }
-    if (MaweDom.subtitleBackgroundAlphaInput) {
-      const alpha = appearance.background_alpha ?? MaweSettings.SUBTITLE_BACKGROUND_ALPHA_DEFAULT;
-      MaweDom.subtitleBackgroundAlphaInput.value = String(alpha);
-      if (MaweDom.subtitleBackgroundAlphaValue) {
-        MaweDom.subtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
-      }
-    }
-    if (MaweDom.subtitleColorInput) MaweDom.subtitleColorInput.value = appearance.color || MaweSettings.DEFAULT_SUBTITLE_COLOR;
-    MaweSpeakerLabels.syncSpeakerLabelControls();
+  syncSubtitleFontSizeSelect(MaweDom.subtitleFontSizeSelect, appearance.font_size);
+  syncAssModeDependentControls();
+  if (MaweDom.subtitleColorUnderlineInput) {
+    MaweDom.subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
+  if (MaweDom.subtitleColorStyleSelect) {
+    MaweDom.subtitleColorStyleSelect.value = appearance.color_style || MaweSettings.DEFAULT_SUBTITLE_COLOR_STYLE;
+  }
+  if (MaweDom.subtitleColorStyleControl) {
+    MaweDom.subtitleColorStyleControl.hidden = appearance.color_underline === false;
+  }
+  if (assColorStyleSelect) {
+    assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
+  }
+  if (subtitleFontFamilyInput && document.activeElement !== subtitleFontFamilyInput) {
+    subtitleFontFamilyInput.value = subtitleFontFamilyStoredToInput(appearance.font_family || 'default');
+  }
+  if (MaweDom.subtitleBackgroundColorInput) {
+    MaweDom.subtitleBackgroundColorInput.value = appearance.background_color
+      || MaweSettings.SUBTITLE_BACKGROUND_COLOR_DEFAULT;
+  }
+  if (MaweDom.subtitleBackgroundAlphaInput) {
+    const alpha = appearance.background_alpha ?? MaweSettings.SUBTITLE_BACKGROUND_ALPHA_DEFAULT;
+    MaweDom.subtitleBackgroundAlphaInput.value = String(alpha);
+    if (MaweDom.subtitleBackgroundAlphaValue) {
+      MaweDom.subtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
+    }
+  }
+  if (MaweDom.subtitleColorInput) MaweDom.subtitleColorInput.value = appearance.color || MaweSettings.DEFAULT_SUBTITLE_COLOR;
+  MaweSpeakerLabels.syncSpeakerLabelControls();
+  syncSubtitleColorPaletteControls();
+}
 
 
   function syncExtensionSubtitleAppearanceControls() {
@@ -326,54 +326,58 @@
 
 
   function setSubtitleAppearance(patch, { markDirty = true } = {}) {
-    const next = { ...getSubtitleAppearance() };
-    if (Object.prototype.hasOwnProperty.call(patch, 'font_size')) {
-      if (patch.font_size === null || patch.font_size === 'auto') delete next.font_size;
-      else Object.assign(next, normalizeSubtitleAppearance({ font_size: patch.font_size }));
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'font_family')) {
-      if (!patch.font_family || patch.font_family === 'default') delete next.font_family;
-      else Object.assign(next, normalizeSubtitleAppearance({ font_family: patch.font_family }));
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'background_color')) {
-      const backgroundColor = normalizeSubtitleBackgroundColor(patch.background_color);
-      if (!backgroundColor || backgroundColor === MaweSettings.SUBTITLE_BACKGROUND_COLOR_DEFAULT) {
-        delete next.background_color;
-      } else {
-        next.background_color = backgroundColor;
-      }
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'background_alpha')) {
-      const backgroundAlpha = normalizeSubtitleBackgroundAlpha(patch.background_alpha);
-      if (backgroundAlpha === null || backgroundAlpha === MaweSettings.SUBTITLE_BACKGROUND_ALPHA_DEFAULT) {
-        delete next.background_alpha;
-      } else {
-        next.background_alpha = backgroundAlpha;
-      }
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
-      const color = normalizeSubtitleColor(patch.color);
-      if (color) next.color = color;
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'color_underline')) {
-      // true 是默认值，不落盘；只在关闭时写入 color_underline: false。
-      if (patch.color_underline) delete next.color_underline;
-      else next.color_underline = false;
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, 'color_style')) {
-      const colorStyle = normalizeSubtitleColorStyle(patch.color_style);
-      if (colorStyle) next.color_style = colorStyle;
-    }
-    if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
-    MaweBoot.DATA.preview.subtitle = {
-      ...getPreviewGeometry(),
-      ...next,
-      speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
-    };
-    if (markDirty) previewGeometryDirty = true;
-    applySubtitleAppearance(MaweBoot.DATA.preview.subtitle);
-    return next;
+  const next = { ...getSubtitleAppearance() };
+  if (Object.prototype.hasOwnProperty.call(patch, 'font_size')) {
+    if (patch.font_size === null || patch.font_size === 'auto') delete next.font_size;
+    else Object.assign(next, normalizeSubtitleAppearance({ font_size: patch.font_size }));
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'font_family')) {
+    if (!patch.font_family || patch.font_family === 'default') delete next.font_family;
+    else Object.assign(next, normalizeSubtitleAppearance({ font_family: patch.font_family }));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'background_color')) {
+    const backgroundColor = normalizeSubtitleBackgroundColor(patch.background_color);
+    if (!backgroundColor || backgroundColor === MaweSettings.SUBTITLE_BACKGROUND_COLOR_DEFAULT) {
+      delete next.background_color;
+    } else {
+      next.background_color = backgroundColor;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'background_alpha')) {
+    const backgroundAlpha = normalizeSubtitleBackgroundAlpha(patch.background_alpha);
+    if (backgroundAlpha === null || backgroundAlpha === MaweSettings.SUBTITLE_BACKGROUND_ALPHA_DEFAULT) {
+      delete next.background_alpha;
+    } else {
+      next.background_alpha = backgroundAlpha;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
+    const color = normalizeSubtitleColor(patch.color);
+    if (color) next.color = color;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'color_underline')) {
+    // true 是默认值，不落盘；只在关闭时写入 color_underline: false。
+    if (patch.color_underline) delete next.color_underline;
+    else next.color_underline = false;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'color_style')) {
+    const colorStyle = normalizeSubtitleColorStyle(patch.color_style);
+    if (colorStyle) next.color_style = colorStyle;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'ass_color_style')) {
+    const assColorStyle = normalizeAssColorStyleValue(patch.ass_color_style);
+    if (assColorStyle) next.ass_color_style = assColorStyle;
+  }
+  if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
+  MaweBoot.DATA.preview.subtitle = {
+    ...getPreviewGeometry(),
+    ...next,
+    speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
+  };
+  if (markDirty) previewGeometryDirty = true;
+  applySubtitleAppearance(MaweBoot.DATA.preview.subtitle);
+  return next;
+}
 
 
   function collectSubtitleLocalFontFamilies(fontData) {
@@ -391,29 +395,30 @@
 
 
   function replaceSubtitleLocalFontOptions(families) {
-    const selects = [MaweDom.subtitleFontFamilySelect, MaweDom.extensionSubtitleFontFamilySelect].filter(Boolean);
-    if (!selects.length) return;
-    selects.forEach((select) => {
-      select.querySelectorAll(
-        'option[data-local-font="true"], option[data-generated="true"]',
-      ).forEach((option) => option.remove());
-      const existing = new Set(Array.from(select.options, (option) => option.value));
-      const fragment = document.createDocumentFragment();
-      families.forEach((family) => {
-        if (existing.has(family)) return;
-        const option = document.createElement('option');
-        option.value = family;
-        option.textContent = subtitleFontFamilyDisplayName(family);
-        option.dataset.localFont = 'true';
-        fragment.append(option);
-        existing.add(family);
-      });
-      select.append(fragment);
+  subtitleLocalFontFamilies = Array.isArray(families) ? families : [];
+  const select = MaweDom.extensionSubtitleFontFamilySelect;
+  if (select) {
+    select.querySelectorAll(
+      'option[data-local-font="true"], option[data-generated="true"]',
+    ).forEach((option) => option.remove());
+    const existing = new Set(Array.from(select.options, (option) => option.value));
+    const fragment = document.createDocumentFragment();
+    families.forEach((family) => {
+      if (existing.has(family)) return;
+      const option = document.createElement('option');
+      option.value = family;
+      option.textContent = subtitleFontFamilyDisplayName(family);
+      option.dataset.localFont = 'true';
+      fragment.append(option);
+      existing.add(family);
     });
-    syncSubtitleAppearanceControls();
-    syncExtensionSubtitleAppearanceControls();
-    relabelSubtitleFontFamilyOptions();
+    select.append(fragment);
   }
+  rebuildSubtitleFontFamilyOptions();
+  rebuildAssFontNameOptions();
+  syncSubtitleAppearanceControls();
+  syncExtensionSubtitleAppearanceControls();
+}
 
 
   function initializeSubtitleFontFamilyScanner() {

@@ -69,9 +69,13 @@
 
   // 只有当对应预览开关开启时才允许几何编辑（关闭时字幕盒完全隐藏、表情包盒不拦截指针）。
   function refreshPreviewGeometryEditable() {
-    MaweDom.overlayEl.classList.toggle('geometry-enabled', !!MaweDom.overlayToggle.checked || !!MaweDom.extensionOverlayToggle?.checked);
-    MaweStickerOverlay.stickerOverlayLayer.classList.toggle('geometry-enabled', !!MaweDom.stickerOverlayToggle?.checked);
-  }
+  const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
+  MaweDom.overlayEl.classList.toggle(
+    'geometry-enabled',
+    !assMode && (!!MaweDom.overlayToggle.checked || !!MaweDom.extensionOverlayToggle?.checked),
+  );
+  MaweStickerOverlay.stickerOverlayLayer.classList.toggle('geometry-enabled', !!MaweDom.stickerOverlayToggle?.checked);
+}
 
 
 

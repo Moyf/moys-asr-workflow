@@ -27,6 +27,134 @@ test('accepts legacy and current project schemas but rejects unknown versions', 
   assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v2', segments: [] }), false);
 });
 
+test('maps searchable font input text back to stored family keys', () => {
+  const presets = helpers.SUBTITLE_FONT_FAMILY_PRESETS;
+  const presetLabel = (preset) => preset.label;
+  const familyDisplay = (family) => helpers.subtitleFontFamilyDisplayName(family, 'zh');
+  const localFamilies = ['Microsoft YaHei', 'Microsoft YaHei UI', 'PingFang SC', 'Fira Code'];
+
+  assert.equal(helpers.subtitleFontFamilyInputToStored('黑体', { presets, presetLabel }), 'hei');
+  assert.equal(helpers.subtitleFontFamilyInputToStored('默认无衬线', { presets, presetLabel }), 'default');
+  // datalist 展示的本地化别名必须还原成真实字体族名，浏览器才能解析选中字体。
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('微软雅黑', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Microsoft YaHei',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('Fira Code', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Fira Code',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('Some Unknown Font', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Some Unknown Font',
+  );
+  assert.equal(helpers.subtitleFontFamilyInputToStored('   ', { presets, presetLabel }), 'default');
+  assert.equal(helpers.subtitleFontFamilyInputToStored('yahei', { presets, presetLabel }), 'yahei');
+
+  // 存储值 → 输入框展示：预设显示本地化标签，本机字体显示别名。
+  assert.equal(helpers.subtitleFontFamilyStoredToInput('hei', { presetLabel }), '黑体');
+  assert.equal(helpers.subtitleFontFamilyStoredToInput('default', { presetLabel }), '默认无衬线');
+  assert.equal(
+    helpers.subtitleFontFamilyStoredToInput('Microsoft YaHei', { presetLabel, familyDisplay }),
+    '微软雅黑',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyStoredToInput('Fira Code', { presetLabel, familyDisplay }),
+    'Fira Code',
+  );
+});
+
+test('merges and filters font combobox dropdown options without duplicates', () => {
+  const merged = helpers.mergeFontFamilyOptions([
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Microsoft YaHei', label: '微软雅黑' },
+    { value: 'SimSun', label: '宋体' },
+    // 本机扫描与内置建议同名重复（如 Arial / 宋体）：按显示名去重，保留先出现项。
+    { value: 'Arial', label: 'Arial' },
+    { value: 'SimSun', label: '宋体' },
+    { value: 'arial black', label: 'ARIAL' },
+    { value: '  ' },
+    null,
+  ]);
+  // merge 结果（及其数组）在 vm 沙箱里创建，先摊开成宿主数组再断言，避免跨 realm 原型差异。
+  assert.deepEqual(Array.from(merged, (entry) => ({ ...entry })), [
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Microsoft YaHei', label: '微软雅黑' },
+    { value: 'SimSun', label: '宋体' },
+  ]);
+
+  // 空输入与非法项安全返回。
+  assert.equal(helpers.mergeFontFamilyOptions().length, 0);
+  assert.deepEqual(
+    Array.from(helpers.mergeFontFamilyOptions([null, { value: 'Fira' }]), (entry) => ({ ...entry })),
+    [{ value: 'Fira', label: 'Fira' }],
+  );
+
+  const entries = [
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Microsoft YaHei', label: '微软雅黑' },
+    { value: 'Fira Code', label: 'Fira Code' },
+  ];
+  assert.equal(helpers.filterFontFamilyOptions(entries, ''), entries);
+  assert.equal(helpers.filterFontFamilyOptions(entries, '   '), entries);
+  assert.deepEqual(
+    helpers.filterFontFamilyOptions(entries, '雅黑'),
+    [{ value: 'Microsoft YaHei', label: '微软雅黑' }],
+  );
+  assert.deepEqual(
+    helpers.filterFontFamilyOptions(entries, 'fira'),
+    [{ value: 'Fira Code', label: 'Fira Code' }],
+  );
+  assert.deepEqual(
+    helpers.filterFontFamilyOptions(entries, '不存在的字体'),
+    [],
+  );
+  assert.equal(helpers.filterFontFamilyOptions(undefined, 'arial').length, 0);
+});
+
+test('translates the ASS style manager labels and dynamic summaries', () => {
+  assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
+  assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');
+  assert.equal(i18n.translateText('\\fade', 'en'), '\\fade');
+  assert.equal(i18n.translateText('\\move', 'en'), '\\move');
+  assert.equal(i18n.translateText('\\t', 'en'), '\\t');
+  assert.equal(i18n.translateText('2 个样式 · 3 个 ASS 方案', 'en'), '2 styles · 3 ASS profiles');
+  assert.equal(i18n.translateText('SRT 默认', 'en'), 'SRT default');
+  assert.equal(i18n.translateText('工具箱的「烧录字幕」功能会使用这里选中的样式。', 'en'), 'The Toolbox “Burn subtitles” feature uses the style selected here.');
+  assert.equal(i18n.translateText('需要启用 ASS 字幕模式来预览效果。', 'en'), 'Enable ASS subtitle mode to preview this style.');
+  assert.equal(i18n.translateText('当前已启用。', 'en'), 'Currently enabled.');
+  assert.equal(i18n.translateText('当前未启用。', 'en'), 'Currently disabled.');
+  assert.equal(i18n.translateText('Studio · 无逐句动画', 'en'), 'Studio · No per-cue animations');
+  assert.equal(i18n.translateText('颜色字幕样式', 'en'), 'Color caption style');
+  assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');
+  assert.equal(i18n.translateText('作为描边颜色', 'en'), 'As outline color');
+  assert.equal(i18n.translateText('无影响', 'en'), 'No effect');
+  assert.equal(i18n.translateText('自定义颜色色值', 'en'), 'Custom color values');
+  assert.equal(i18n.translateText('恢复默认', 'en'), 'Restore defaults');
+  assert.equal(i18n.translateText('使用预览字体', 'en'), 'Use preview font');
+  assert.equal(
+    i18n.translateText('已将 ASS 字体设为「SimHei」', 'en'),
+    'ASS font set to "SimHei"',
+  );
+  assert.equal(i18n.translateText('基础样式', 'en'), 'Basic style');
+  assert.equal(i18n.translateText('拓展样式', 'en'), 'Extended style');
+  assert.equal(i18n.translateText('边框与阴影', 'en'), 'Border and shadow');
+  assert.equal(i18n.translateText('对齐', 'en'), 'Alignment');
+  assert.equal(i18n.translateText('黄字幕颜色十六进制值', 'en'), 'Yellow subtitle color hex value');
+  assert.equal(
+    i18n.translateText('本地已保存，服务器同步失败：HTTP 503', 'en'),
+    'Saved locally; server sync failed: HTTP 503',
+  );
+  assert.equal(
+    i18n.translateText('仅保存在当前浏览器（便携模式）', 'en'),
+    'Saved only in this browser (portable mode)',
+  );
+  assert.equal(
+    i18n.translateText('便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。', 'en'),
+    'Portable Editor saves only to this browser; open it in server-editor to share it with Launcher.',
+  );
+});
+
 // XML assertions are part of the Node unit suite, but still need a Python
 // subprocess. Keep it on the same locked project environment as E2E instead
 // of silently selecting whichever python.exe happens to be on PATH.
@@ -192,6 +320,18 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(helpers.normalizeEditorSettings({ accentColorCustom: 'invalid' }).accentColorCustom, '#6ca5e8');
   assert.equal(settings.stickerOtioExportMode, 'portable');
   assert.equal(settings.autoMergeShortCount, 20);
+  assert.equal(settings.assMode, false);
+  assert.equal(helpers.normalizeEditorSettings({ assMode: true }).assMode, true);
+  assert.equal(helpers.normalizeEditorSettings({ assMode: 1 }).assMode, false);
+  assert.equal(settings.subtitleColorPaletteEnabled, false);
+  assert.equal(
+    helpers.normalizeEditorSettings({ subtitleColorPaletteEnabled: true }).subtitleColorPaletteEnabled,
+    true,
+  );
+  assert.equal(
+    helpers.normalizeEditorSettings({ subtitleColorPaletteEnabled: 1 }).subtitleColorPaletteEnabled,
+    false,
+  );
   assert.equal(settings.autoSaveProject, true);
   assert.equal(settings.projectBackupEnabled, true);
   assert.equal(
@@ -3068,6 +3208,7 @@ test('builds ASS metadata and five palette styles at the source video resolution
 
   assert.match(ass, /Title: project-name/);
   assert.match(ass, /PlayResX: 3840[\s\S]*PlayResY: 2160/);
+  // 无 assProfile 时走 legacy 外观导出：预览字体键 'sans' 固定映射 Arial。
   assert.match(ass, /Style: Default,Arial,256,/);
   assert.match(ass, /Style: YELLOW,Arial,256,&H0019A0C4,&H0019A0C4,/);
   assert.match(ass, /Style: GREEN,Arial,256,&H006ABB66,&H006ABB66,/);
@@ -3076,6 +3217,177 @@ test('builds ASS metadata and five palette styles at the source video resolution
   assert.match(ass, /Style: BLUE,Arial,256,&H00FAA761,&H00FAA761,/);
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
   assert.match(ass, /Dialogue: 0,0:00:01\.20,0:00:02\.20,Default,,0,0,0,,plain line/);
+});
+
+test('migrates legacy builtin names while preserving custom names', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [
+      { id: 'ass', name: 'ASS' },
+      { id: 'default', name: 'SRT 默认' },
+    ],
+    assProfiles: [{ id: 'ass', name: 'ASS' }],
+  });
+  assert.equal(helpers.assStyleForId(library, 'ass').name, 'ASS 默认样式');
+  assert.equal(helpers.assProfileForId(library, 'ass').name, 'ASS 输出方案');
+  assert.equal(helpers.assStyleForId(library, 'default').name, 'SRT 默认');
+
+  // 用户自定义过的名字不被迁移覆盖。
+  const renamed = helpers.normalizeAssStyleLibrary({
+    styles: [{ id: 'ass', name: '我的字幕样式' }],
+    assProfiles: [{ id: 'ass', name: '我的方案' }],
+  });
+  assert.equal(helpers.assStyleForId(renamed, 'ass').name, '我的字幕样式');
+  assert.equal(helpers.assProfileForId(renamed, 'ass').name, '我的方案');
+});
+
+test('normalizes ASS libraries without corrupting comma-delimited animation tags', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [{ id: 'motion', name: 'Motion' }],
+    assProfiles: [{
+      id: 'motion-profile', styleId: 'motion',
+      animations: { t: { enabled: true, tags: String.raw`{\pos(10,20)\clip(0,0,100,100)}` } },
+    }],
+  });
+  const profile = helpers.assProfileForId(library, 'motion-profile');
+
+  assert.equal(
+    profile.animations.t.tags,
+    String.raw`\pos(10,20)\clip(0,0,100,100)`,
+  );
+  assert.equal(
+    helpers.assAnimationOverrideTags(profile),
+    String.raw`\t(0,1000,1,\pos(10,20)\clip(0,0,100,100))`,
+  );
+});
+
+test('keeps complex ASS animation time ranges monotonic and within bounds', () => {
+  const animations = helpers.normalizeAssAnimations({
+    fade: { t1: 900, t2: -10, t3: 70000, t4: 2 },
+    move: { t1: 800, t2: 20 },
+    t: { startMs: 700, endMs: -5, accel: 0, tags: '' },
+  });
+
+  assert.deepEqual(JSON.parse(JSON.stringify({
+    fade: [animations.fade.t1, animations.fade.t2, animations.fade.t3, animations.fade.t4],
+    move: [animations.move.t1, animations.move.t2],
+    transform: [animations.t.startMs, animations.t.endMs, animations.t.accel],
+  })), {
+    fade: [900, 900, 60000, 60000],
+    move: [800, 800],
+    transform: [700, 700, 0.01],
+  });
+});
+
+test('uses the selected ASS profile style and adds every configured animation to each cue', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [{
+      id: 'caption', name: 'Caption', fontName: 'Microsoft YaHei', fontSize: 30,
+      primaryColor: '#123456', outlineColor: '#654321', outline: 4,
+      bold: true, underline: true,
+    }],
+    assProfiles: [{
+      id: 'animated', name: 'Animated', styleId: 'caption',
+      animations: {
+        fad: { enabled: true, inMs: 120, outMs: 240 },
+        move: { enabled: true, x1: 100, y1: 200, x2: 300, y2: 400, t1: 50, t2: 900 },
+        t: { enabled: true, startMs: 10, endMs: 800, accel: 1.5, tags: String.raw`\fs42\pos(10,20)` },
+      },
+    }],
+  });
+  const profile = helpers.assProfileForId(library, 'animated');
+  const style = helpers.assStyleForId(library, profile.styleId);
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+    { start: 1200, end: 2200, text: '第二句' },
+  ], {
+    assProfile: profile,
+    assStyle: style,
+    appearance: { color_underline: false },
+    mediaMetadata: { video_width: 1920, video_height: 1080 },
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host' },
+    speakerLabelSeparator: '：',
+  });
+
+  assert.match(ass, /Style: Default,Microsoft YaHei,30,\&H00563412,[^\n]*,-1,0,-1,0,100,100,0,0,1,4,0,2,10,10,80,1/);
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 2);
+  // color_underline 只控制 CSS 预览；ASS 导出的颜色映射不受它影响。
+  assert.match(dialogue[0], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}\{\\c&H0019A0C4&\}Host：\{\\c&H0019A0C4&\}你好/);
+  assert.match(dialogue[1], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}第二句/);
+});
+
+test('keeps ASS palette colours applied when the CSS colour preview toggle is off', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: false, ass_color_style: 'text' },
+  });
+
+  assert.match(ass, new RegExp(`Style: RED,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},72,&H006F7FF0,&H006F7FF0,[^\\n]*`));
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
+
+  const noneAss = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: false, ass_color_style: 'none' },
+  });
+  assert.doesNotMatch(noneAss, /Style: RED,/);
+  assert.match(noneAss, /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,,0,0,0,,red line/);
+});
+
+test('keeps speaker labels in the base colour when ASS palette colours are strokes', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: true, ass_color_style: 'stroke' },
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host' },
+    speakerLabelSeparator: '：',
+  });
+
+  assert.match(ass, new RegExp(`Style: YELLOW,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},72,[^\\n]*,&H0019A0C4`));
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,YELLOW,Host,0,0,0,,\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
+});
+
+test('previews ASS fade, movement, and transform timing at the cue playhead', () => {
+  const profile = {
+    animations: {
+      fad: { enabled: true, inMs: 200, outMs: 200 },
+      move: { enabled: true, x1: 10, y1: 20, x2: 110, y2: 220, t1: 100, t2: 900 },
+      t: { enabled: true, startMs: 200, endMs: 800, accel: 2, tags: String.raw`\fs40\bord6` },
+    },
+  };
+  const state = helpers.assPreviewAnimationState(profile, 500, 1000, {
+    playResX: 1920, playResY: 1080, stageWidth: 960, stageHeight: 540,
+  });
+  assert.equal(state.opacity, 1);
+  assert.equal(state.moveX, 60);
+  assert.equal(state.moveY, 120);
+  assert.equal(state.moveOffsetX, 25);
+  assert.equal(state.moveOffsetY, 50);
+  assert.equal(state.transformProgress, 0.25);
+  const animatedStyle = helpers.assPreviewStyleAt(
+    { fontSize: 20, outline: 2 },
+    profile.animations.t.tags,
+    state.transformProgress,
+  );
+  assert.deepEqual(
+    {
+      fontSize: animatedStyle.fontSize,
+      outline: animatedStyle.outline,
+      rotationX: animatedStyle.rotationX,
+      rotationY: animatedStyle.rotationY,
+      alpha: animatedStyle.alpha,
+    },
+    { fontSize: 25, outline: 3, rotationX: 0, rotationY: 0, alpha: 0 },
+  );
 });
 
 test('converts the responsive default ASS font size at the source video resolution', () => {
@@ -3092,8 +3404,8 @@ test('converts the responsive default ASS font size at the source video resoluti
 
   assert.equal(helpers.resolveAssFontSize(null, 1080), 72);
   assert.equal(helpers.resolveAssFontSize(32, 1080), 128);
-  assert.match(withoutStoredSize, /Style: Default,Arial,144,/);
-  assert.match(explicitAuto, /Style: Default,Arial,144,/);
+  assert.match(withoutStoredSize, new RegExp(`Style: Default,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},144,`));
+  assert.match(explicitAuto, new RegExp(`Style: Default,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},144,`));
 });
 
 test('optionally prefixes configured speaker names in ASS output', () => {
@@ -4176,6 +4488,33 @@ test('buildAssPayload writes overlay cues on layer 1 anchored to the top', () =>
   assert.ok(!dialogueLines[0].includes('\\an8'));
   assert.match(dialogueLines[1], /^Dialogue: 1,/);
   assert.ok(!dialogueLines[1].includes('\\an8'));
+});
+
+test('buildAssPayload anchors overlay cues to the active main style margin', () => {
+  // legacy 导出（无样式库方案）：主字幕底边距固定 80，
+  // 叠加轨 MarginV = 80 + 默认字号 72（1080p）。
+  const legacy = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main' }],
+    { overlaySegments: [{ start: 150, end: 350, text: 'overlay' }] },
+  );
+  const legacyOverlay = legacy.split('\n').find((line) => line.startsWith('Dialogue: 1,'));
+  assert.ok(legacyOverlay.includes(',0,0,152,,'));
+
+  // ASS 模式：主字幕垂直边距来自样式库（用户可改），叠加轨跟随，
+  // 不再固定 80；默认样式行同步携带该边距。
+  const styled = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main' }],
+    {
+      assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+      assStyle: { id: 'ass', fontSize: 72, marginV: 120, primaryColor: '#ffffff', outlineColor: '#000000', outline: 2 },
+      overlaySegments: [{ start: 150, end: 350, text: 'overlay' }],
+      appearance: {},
+    },
+  );
+  const styledOverlay = styled.split('\n').find((line) => line.startsWith('Dialogue: 1,'));
+  assert.ok(styledOverlay.includes(',0,0,192,,'));
+  const defaultStyleLine = styled.split('\n').find((line) => line.startsWith('Style: Default,'));
+  assert.ok(defaultStyleLine.endsWith(',10,10,120,1'));
 });
 
 test('reports malformed intervals, missing sticker paths, and stale serializer warnings', () => {

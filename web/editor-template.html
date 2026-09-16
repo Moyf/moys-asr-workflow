@@ -933,6 +933,27 @@ __WAVEFORM_CSS__
   </div>
   </div>
   <div class="editor-settings-page" id="editor-settings-page-subtitle-style" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-style" hidden>
+  <span class="editor-settings-group-heading" id="ass-preview-mode-title">ASS 字幕模式</span>
+  <div class="editor-settings-group ass-preview-mode-group" role="group" aria-labelledby="ass-preview-mode-title">
+    <div class="editor-settings-sub-group">
+      <label class="toggle editor-settings-item" title="开启后，播放器预览尽量按当前 ASS 默认方案渲染；关闭时保持原有预览效果">
+        <input type="checkbox" id="ass-mode-toggle"> ASS 字幕模式
+      </label>
+      <small class="editor-settings-hint">关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览。</small>
+      <div class="ass-manager-open-row">
+        <button type="button" id="ass-style-manager-open" class="editor-settings-inline-action ass-style-manager-open" title="打开 ASS 样式库">🎨 管理 ASS 样式</button>
+      </div>
+      <label class="subtitle-preview-setting-row ass-color-style-row" title="选择 ASS 导出和预览中，颜色字幕的应用方式；「无影响」时所有颜色字幕使用统一样式">
+        <span>颜色字幕样式</span>
+        <select id="ass-color-style" aria-label="ASS 颜色字幕样式">
+          <option value="text" selected>作为字幕颜色</option>
+          <option value="stroke">作为描边颜色</option>
+          <option value="none">无影响</option>
+        </select>
+      </label>
+      <small class="editor-settings-hint" id="ass-style-summary">样式库正在加载…</small>
+    </div>
+  </div>
   <span class="editor-settings-group-heading" id="subtitle-preview-style-title">主字幕</span>
   <div class="editor-settings-group subtitle-preview-style-group" id="main-subtitle-preview-settings" role="group" aria-labelledby="subtitle-preview-style-title">
     <div class="subtitle-preview-settings-fields">
@@ -955,15 +976,13 @@ __WAVEFORM_CSS__
             <option value="96">96 px</option>
           </select>
         </label>
-        <label class="subtitle-preview-setting-row" title="选择播放器画面内字幕预览使用的字体族">
+        <label class="subtitle-preview-setting-row" title="选择播放器画面内字幕预览使用的字体族；输入可筛选可用字体">
           <span>字体</span>
-          <select id="subtitle-font-family">
-            <option value="default" selected>默认无衬线</option>
-            <option value="yahei">微软雅黑 / 苹方</option>
-            <option value="hei">黑体</option>
-            <option value="song">宋体</option>
-            <option value="sans">Arial / Segoe UI</option>
-          </select>
+          <div class="font-combobox" id="subtitle-font-family-picker">
+            <input type="text" id="subtitle-font-family" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="subtitle-font-family-options" placeholder="默认无衬线">
+            <button type="button" class="font-combobox-toggle" id="subtitle-font-family-toggle" tabindex="-1" aria-label="展开字体列表"></button>
+            <div class="font-combobox-options" id="subtitle-font-family-options" role="listbox" aria-label="可选字体" hidden></div>
+          </div>
         </label>
         <div class="subtitle-preview-font-scan">
           <button type="button" id="subtitle-font-family-scan" title="读取本机已安装的字体">读取本机字体</button>
@@ -1047,6 +1066,7 @@ __WAVEFORM_CSS__
           <input type="checkbox" id="subtitle-color-underline" checked aria-label="预览字幕颜色">
           预览字幕颜色
         </label>
+        <small class="editor-settings-hint" id="subtitle-color-ass-mode-hint" hidden>当前由 <button type="button" class="ass-mode-hint-link" id="ass-mode-hint-link">ASS 字幕模式</button> 控制预览样式</small>
         <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
           <span>颜色样式</span>
           <select id="subtitle-color-style" aria-label="预览字幕颜色样式">
@@ -1055,6 +1075,36 @@ __WAVEFORM_CSS__
             <option value="stroke">描边</option>
           </select>
         </label>
+        <div class="subtitle-color-palette-section" role="group" aria-label="自定义颜色色值">
+          <label class="toggle editor-settings-item" title="开启后可自定义五种字幕颜色；关闭时使用内置色值">
+            <input type="checkbox" id="subtitle-color-palette-enabled" aria-label="自定义颜色色值">
+            自定义颜色色值
+          </label>
+          <small class="editor-settings-hint">自定义颜色会同步用于字幕列表、波形、预览和 ASS 导出；恢复默认即可使用内置色值。</small>
+          <div class="subtitle-color-palette-grid" id="subtitle-color-palette-grid" hidden>
+            <label class="subtitle-color-palette-field" data-subtitle-palette-name="yellow">
+              <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="yellow"></span>黄</span>
+              <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-yellow" data-subtitle-palette-color="yellow" value="#c4a019" aria-label="黄字幕颜色"><input type="text" id="subtitle-color-palette-yellow-hex" data-subtitle-palette-hex="yellow" value="#c4a019" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="黄字幕颜色十六进制值"></span>
+            </label>
+            <label class="subtitle-color-palette-field" data-subtitle-palette-name="green">
+              <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="green"></span>绿</span>
+              <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-green" data-subtitle-palette-color="green" value="#66bb6a" aria-label="绿字幕颜色"><input type="text" id="subtitle-color-palette-green-hex" data-subtitle-palette-hex="green" value="#66bb6a" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="绿字幕颜色十六进制值"></span>
+            </label>
+            <label class="subtitle-color-palette-field" data-subtitle-palette-name="red">
+              <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="red"></span>红</span>
+              <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-red" data-subtitle-palette-color="red" value="#f07f6f" aria-label="红字幕颜色"><input type="text" id="subtitle-color-palette-red-hex" data-subtitle-palette-hex="red" value="#f07f6f" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="红字幕颜色十六进制值"></span>
+            </label>
+            <label class="subtitle-color-palette-field" data-subtitle-palette-name="purple">
+              <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="purple"></span>紫</span>
+              <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-purple" data-subtitle-palette-color="purple" value="#bf89e6" aria-label="紫字幕颜色"><input type="text" id="subtitle-color-palette-purple-hex" data-subtitle-palette-hex="purple" value="#bf89e6" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="紫字幕颜色十六进制值"></span>
+            </label>
+            <label class="subtitle-color-palette-field" data-subtitle-palette-name="blue">
+              <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="blue"></span>蓝</span>
+              <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-blue" data-subtitle-palette-color="blue" value="#61a7fa" aria-label="蓝字幕颜色"><input type="text" id="subtitle-color-palette-blue-hex" data-subtitle-palette-hex="blue" value="#61a7fa" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="蓝字幕颜色十六进制值"></span>
+            </label>
+            <button type="button" class="subtitle-color-palette-reset" id="subtitle-color-palette-reset">恢复默认</button>
+          </div>
+        </div>
     </div>
   </div>
   <span class="editor-settings-group-heading" id="subtitle-speaker-settings-title">说话人</span>
@@ -1318,6 +1368,173 @@ __WAVEFORM_CSS__
     </div>
   </div>
 </section>
+
+<aside class="editor-settings-window ass-style-window" id="ass-style-window" role="dialog" aria-modal="false" aria-label="ASS 样式库" aria-hidden="true">
+  <header class="editor-settings-window-header ass-style-window-header" id="ass-style-drag-handle">
+    <span class="editor-settings-window-title">ASS 样式库</span>
+    <span class="ass-style-library-status" id="ass-style-library-status" role="status" aria-live="polite">正在加载…</span>
+    <button type="button" class="editor-settings-window-close" id="ass-style-window-close" title="关闭（Esc）" aria-label="关闭 ASS 样式库">×</button>
+  </header>
+  <div class="ass-style-window-body">
+    <aside class="ass-style-library-sidebar" aria-label="样式与方案列表">
+      <div class="ass-style-section-heading"><span>样式</span><span class="ass-style-section-count" id="ass-style-count">0</span></div>
+      <div class="ass-style-list" id="ass-style-list" role="listbox" aria-label="ASS 样式"></div>
+      <div class="ass-style-list-actions">
+        <button type="button" id="ass-style-new">＋ 新建样式</button>
+        <button type="button" id="ass-style-duplicate">复制当前</button>
+      </div>
+      <div class="ass-style-section-heading ass-profile-heading"><span>ASS 输出方案</span><span class="ass-style-section-count" id="ass-profile-count">0</span></div>
+      <div class="ass-style-list" id="ass-profile-list" role="listbox" aria-label="ASS 输出方案"></div>
+      <div class="ass-style-list-actions ass-profile-list-actions">
+        <button type="button" id="ass-profile-new">＋ 新建方案</button>
+      </div>
+      <div class="ass-style-assignment-card">
+        <div class="ass-style-section-heading"><span>默认槽位</span></div>
+        <label class="ass-style-assignment-row" for="ass-srt-default-style">
+          <span>使用样式</span>
+          <select id="ass-srt-default-style" aria-label="SRT 默认烧录样式"></select>
+        </label>
+        <small>工具箱的「烧录字幕」功能会使用这里选中的样式。</small>
+        <label class="ass-style-assignment-row" for="ass-ass-default-profile">ASS 导出
+          <select id="ass-ass-default-profile" aria-label="ASS 导出默认方案"></select>
+        </label>
+        <small>ASS 导出使用此方案及其动画。</small>
+      </div>
+    </aside>
+    <main class="ass-style-editor" aria-live="polite">
+      <div class="ass-style-editor-empty" id="ass-style-editor-empty" hidden>从左侧选择一个样式或 ASS 方案。</div>
+      <section class="ass-style-form" id="ass-style-form" aria-labelledby="ass-style-form-title">
+        <div class="ass-style-form-header">
+          <div class="ass-style-form-heading">
+            <span class="ass-style-form-kicker">STYLE</span>
+            <div class="ass-style-form-title-row">
+              <h3 id="ass-style-form-title">样式</h3>
+              <span class="ass-style-srt-hint" id="ass-style-srt-hint" hidden>这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。</span>
+              <span class="ass-style-preview-mode-hint" id="ass-style-preview-mode-hint" data-ass-style-preview-hint>
+                <span class="ass-style-preview-mode-hint-prefix"></span><span class="ass-style-preview-mode-hint-status"></span>
+              </span>
+            </div>
+          </div>
+          <div class="ass-style-form-header-side">
+            <span class="ass-style-builtin-badge" id="ass-style-builtin-badge" hidden>内置</span>
+            <span class="ass-style-delete-slot" id="ass-style-delete-slot">
+              <button type="button" class="ass-style-delete" id="ass-style-delete" title="删除当前样式或方案">删除当前</button>
+            </span>
+          </div>
+        </div>
+        <div class="ass-style-fields ass-style-fields-main">
+          <label class="ass-style-field ass-style-field-wide">名称<input type="text" id="ass-style-name" data-ass-style-field="name" maxlength="80" autocomplete="off"></label>
+        </div>
+        <section class="ass-style-form-section" aria-labelledby="ass-style-basic-heading">
+          <div class="ass-style-subheading" id="ass-style-basic-heading">基础样式</div>
+          <div class="ass-style-fields ass-style-fields-basic">
+            <label class="ass-style-color-field">主色<input type="color" id="ass-style-primary-color" data-ass-style-field="primaryColor"></label>
+            <label class="ass-style-color-field">描边<input type="color" id="ass-style-outline-color" data-ass-style-field="outlineColor"></label>
+            <label class="ass-style-field">描边宽度<input type="number" id="ass-style-outline" data-ass-style-field="outline" min="0" max="100" step="1"></label>
+            <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-bold" data-ass-style-field="bold"> 加粗</label>
+          </div>
+          <small class="editor-settings-hint">有颜色的字幕会使用对应颜色覆盖主色/描边，取决于 <button type="button" class="ass-style-settings-link" id="ass-style-settings-link" title="打开全局设置中的字幕样式">字幕样式</button> 中的设置。</small>
+        </section>
+        <section class="ass-style-form-section ass-style-extended-section" aria-labelledby="ass-style-extended-heading">
+          <div class="ass-style-subheading" id="ass-style-extended-heading">拓展样式</div>
+          <div class="ass-style-fields ass-style-fields-extended">
+            <div class="ass-style-field ass-style-field-wide ass-style-font-field">
+              <label for="ass-style-font-name">字体</label>
+              <div class="ass-style-font-row">
+                <div class="font-combobox" id="ass-style-font-picker">
+                  <input type="text" id="ass-style-font-name" data-ass-style-field="fontName" maxlength="128" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="ass-font-name-options" placeholder="Arial">
+                  <button type="button" class="font-combobox-toggle" id="ass-style-font-toggle" tabindex="-1" aria-label="展开字体列表"></button>
+                  <div class="font-combobox-options" id="ass-font-name-options" role="listbox" aria-label="可选字体" hidden></div>
+                </div>
+                <button type="button" id="ass-style-use-preview-font" title="将「字幕样式」中的预览字体应用到 ASS 字体">使用预览字体</button>
+              </div>
+            </div>
+            <label class="ass-style-field">字号<input type="number" id="ass-style-font-size" data-ass-style-field="fontSize" min="1" max="512" step="1"></label>
+            <label class="ass-style-field">字距<input type="number" id="ass-style-spacing" data-ass-style-field="spacing" min="-100" max="100" step="1"><span class="ass-style-unit">px</span></label>
+            <label class="ass-style-color-field">次色<input type="color" id="ass-style-secondary-color" data-ass-style-field="secondaryColor"></label>
+            <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-italic" data-ass-style-field="italic"> 斜体</label>
+            <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-underline" data-ass-style-field="underline"> 下划线</label>
+            <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-strike-out" data-ass-style-field="strikeOut"> 删除线</label>
+          </div>
+          <div class="ass-style-subheading ass-style-subheading-nested" id="ass-style-border-shadow-heading">边框与阴影</div>
+          <div class="ass-style-fields ass-style-fields-border-shadow" aria-labelledby="ass-style-border-shadow-heading">
+            <label class="ass-style-field">边框样式<select id="ass-style-border-style" data-ass-style-field="borderStyle"><option value="1">描边</option><option value="3">不透明底框</option></select></label>
+            <label class="ass-style-color-field">阴影/背景<input type="color" id="ass-style-back-color" data-ass-style-field="backColor"></label>
+            <label class="ass-style-field">阴影宽度<input type="number" id="ass-style-shadow" data-ass-style-field="shadow" min="0" max="100" step="1"></label>
+          </div>
+          <div class="ass-style-layout-row">
+            <fieldset class="ass-style-alignment-field" id="ass-style-alignment">
+              <legend>对齐</legend>
+              <div class="ass-style-alignment-matrix" role="radiogroup" aria-label="ASS 对齐位置">
+                <label title="左上"><input type="radio" name="ass-style-alignment" value="7" data-ass-style-field="alignment" aria-label="左上"><span aria-hidden="true">↖</span></label>
+                <label title="中上"><input type="radio" name="ass-style-alignment" value="8" data-ass-style-field="alignment" aria-label="中上"><span aria-hidden="true">↑</span></label>
+                <label title="右上"><input type="radio" name="ass-style-alignment" value="9" data-ass-style-field="alignment" aria-label="右上"><span aria-hidden="true">↗</span></label>
+                <label title="左中"><input type="radio" name="ass-style-alignment" value="4" data-ass-style-field="alignment" aria-label="左中"><span aria-hidden="true">←</span></label>
+                <label title="中中"><input type="radio" name="ass-style-alignment" value="5" data-ass-style-field="alignment" aria-label="中中"><span aria-hidden="true">•</span></label>
+                <label title="右中"><input type="radio" name="ass-style-alignment" value="6" data-ass-style-field="alignment" aria-label="右中"><span aria-hidden="true">→</span></label>
+                <label title="左下"><input type="radio" name="ass-style-alignment" value="1" data-ass-style-field="alignment" aria-label="左下"><span aria-hidden="true">↙</span></label>
+                <label title="中下"><input type="radio" name="ass-style-alignment" value="2" data-ass-style-field="alignment" aria-label="中下"><span aria-hidden="true">↓</span></label>
+                <label title="右下"><input type="radio" name="ass-style-alignment" value="3" data-ass-style-field="alignment" aria-label="右下"><span aria-hidden="true">↘</span></label>
+              </div>
+            </fieldset>
+            <div class="ass-style-fields ass-style-fields-margins">
+              <label class="ass-style-field">左边距<input type="number" id="ass-style-margin-l" data-ass-style-field="marginL" min="0" max="9999" step="1"></label>
+              <label class="ass-style-field">右边距<input type="number" id="ass-style-margin-r" data-ass-style-field="marginR" min="0" max="9999" step="1"></label>
+              <label class="ass-style-field">垂直边距<input type="number" id="ass-style-margin-v" data-ass-style-field="marginV" min="0" max="9999" step="1"></label>
+            </div>
+            <div class="ass-style-fields ass-style-fields-scale-stack">
+              <label class="ass-style-field">横向缩放<input type="number" id="ass-style-scale-x" data-ass-style-field="scaleX" min="0" max="1000" step="1"><span class="ass-style-unit">%</span></label>
+              <label class="ass-style-field">纵向缩放<input type="number" id="ass-style-scale-y" data-ass-style-field="scaleY" min="0" max="1000" step="1"><span class="ass-style-unit">%</span></label>
+              <label class="ass-style-field">旋转<input type="number" id="ass-style-angle" data-ass-style-field="angle" min="-360" max="360" step="1"><span class="ass-style-unit">°</span></label>
+            </div>
+          </div>
+        </section>
+        <div class="ass-style-preview-card"><span class="ass-style-preview-label">ASS 预览</span><span id="ass-style-preview-sample">Aa 字幕预览 / 字幕样例</span></div>
+      </section>
+      <section class="ass-style-form" id="ass-profile-form" aria-labelledby="ass-profile-form-title" hidden>
+        <div class="ass-style-form-header">
+          <div><span class="ass-style-form-kicker">PROFILE</span><h3 id="ass-profile-form-title">ASS 输出方案</h3></div>
+          <div class="ass-style-form-header-side">
+            <span class="ass-style-builtin-badge" id="ass-profile-builtin-badge" hidden>内置</span>
+            <span class="ass-style-delete-slot" id="ass-profile-delete-slot"></span>
+          </div>
+        </div>
+        <div class="ass-style-fields ass-style-fields-main">
+          <label class="ass-style-field ass-style-field-wide">名称<input type="text" id="ass-profile-name" data-ass-profile-field="name" maxlength="80" autocomplete="off"></label>
+          <label class="ass-style-field ass-style-field-wide">使用样式<select id="ass-profile-style-id" data-ass-profile-field="styleId"></select></label>
+        </div>
+        <div class="ass-style-subheading">逐句动画（导出时自动添加到每一句）</div>
+        <div class="ass-animation-card">
+          <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-fad-enabled" data-ass-animation="fad.enabled"> <code>\fad</code> 淡入淡出</label>
+          <div class="ass-animation-fields"><label>淡入<input type="number" id="ass-animation-fad-in" data-ass-animation="fad.inMs" min="0" max="60000" step="10"><span>ms</span></label><label>淡出<input type="number" id="ass-animation-fad-out" data-ass-animation="fad.outMs" min="0" max="60000" step="10"><span>ms</span></label></div>
+          <small>最常用的整句淡入淡出，预览和导出均支持。</small>
+        </div>
+        <details class="ass-animation-card ass-animation-advanced">
+          <summary><code>\fade</code> 复杂淡入淡出</summary>
+          <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-fade-enabled" data-ass-animation="fade.enabled"> 启用</label>
+          <div class="ass-animation-fields ass-animation-grid"><label>α1<input type="number" data-ass-animation="fade.alpha1" min="0" max="255" step="1"></label><label>α2<input type="number" data-ass-animation="fade.alpha2" min="0" max="255" step="1"></label><label>α3<input type="number" data-ass-animation="fade.alpha3" min="0" max="255" step="1"></label><label>t1<input type="number" data-ass-animation="fade.t1" min="0" max="60000" step="10"><span>ms</span></label><label>t2<input type="number" data-ass-animation="fade.t2" min="0" max="60000" step="10"><span>ms</span></label><label>t3<input type="number" data-ass-animation="fade.t3" min="0" max="60000" step="10"><span>ms</span></label><label>t4<input type="number" data-ass-animation="fade.t4" min="0" max="60000" step="10"><span>ms</span></label></div>
+        </details>
+        <details class="ass-animation-card ass-animation-advanced">
+          <summary><code>\move</code> 位移</summary>
+          <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-move-enabled" data-ass-animation="move.enabled"> 启用</label>
+          <div class="ass-animation-fields ass-animation-grid"><label>x1<input type="number" data-ass-animation="move.x1" min="-65535" max="65535" step="1"></label><label>y1<input type="number" data-ass-animation="move.y1" min="-65535" max="65535" step="1"></label><label>x2<input type="number" data-ass-animation="move.x2" min="-65535" max="65535" step="1"></label><label>y2<input type="number" data-ass-animation="move.y2" min="-65535" max="65535" step="1"></label><label>t1<input type="number" data-ass-animation="move.t1" min="0" max="60000" step="10"><span>ms</span></label><label>t2<input type="number" data-ass-animation="move.t2" min="0" max="60000" step="10"><span>ms</span></label></div>
+        </details>
+        <details class="ass-animation-card ass-animation-advanced">
+          <summary><code>\t</code> 变换</summary>
+          <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-t-enabled" data-ass-animation="t.enabled"> 启用</label>
+          <div class="ass-animation-fields ass-animation-grid"><label>开始<input type="number" data-ass-animation="t.startMs" min="0" max="60000" step="10"><span>ms</span></label><label>结束<input type="number" data-ass-animation="t.endMs" min="0" max="60000" step="10"><span>ms</span></label><label>加速度<input type="number" data-ass-animation="t.accel" min="0.01" max="100" step="0.1"></label></div>
+          <label class="ass-style-field ass-style-transform-tags">ASS 标签（不含大括号）<input type="text" data-ass-animation="t.tags" maxlength="512" placeholder="例如 \fs36\bord4；不要填写大括号" autocomplete="off" spellcheck="false"></label>
+          <small>支持任意 ASS 标签导出；浏览器预览会尽量模拟常见的字号、缩放、旋转、颜色和描边变换。</small>
+        </details>
+        <div class="ass-style-preview-card"><span class="ass-style-preview-label">当前方案</span><span id="ass-profile-preview-summary">未选择</span></div>
+      </section>
+    </main>
+  </div>
+  <footer class="ass-style-window-footer">
+    <span id="ass-style-library-path-hint">样式库将根据打开方式保存。</span>
+    <div><button type="button" id="ass-style-save" class="primary">保存样式库</button><button type="button" id="ass-style-window-close-footer">完成</button></div>
+  </footer>
+</aside>
 
 <input type="file" id="open-project-file" accept=".json,.mosp,application/json" style="display:none">
 <input type="file" id="load-media-file" accept="video/*,audio/*" style="display:none">

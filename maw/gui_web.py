@@ -22,6 +22,7 @@ from threading import Event, Lock
 from typing import BinaryIO, Final, final
 
 from maw.app_paths import default_emoji_font_path
+from maw.ass_styles import find_ass_style, load_ass_style_library
 from maw.ffmpeg import FfmpegTools, media_duration_seconds, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
 from maw.gui_config import (
@@ -1300,10 +1301,15 @@ class LauncherApi:
             return _error_result("toolboxBurnSubtitlePath", "media_tool_busy", "Another media operation is already running.")
         self._emit_postprocess_status("toolbox_status_burning")
         try:
+            style_library = load_ass_style_library()
+            assignments = style_library.get("assignments")
+            style_id = assignments.get("srtBurnStyleId") if isinstance(assignments, Mapping) else "default"
+            srt_style = find_ass_style(style_library, style_id)
             result = process_burn_subtitles(
                 BurnSubtitleRequest(
                     media_path=Path(str(payload.get("mediaPath") or "")),
                     subtitle_path=Path(str(payload.get("subtitlePath") or "")),
+                    srt_style=srt_style,
                 ),
                 ffmpeg_path=tools.ffmpeg,
                 cancel_event=cancel_event,
@@ -1321,7 +1327,13 @@ class LauncherApi:
             "sourceMediaPath": str(result.source_media_path),
             "subtitlePath": str(result.subtitle_path),
             "mediaPath": str(result.media_path),
+            "srtStyleName": str(srt_style.get("name") or "SRT 默认"),
         }
+
+    def get_ass_style_library(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Expose the shared style library to Launcher UI integrations."""
+
+        return {"ok": True, **load_ass_style_library()}
 
     def run_extract_audio(self, payload: Mapping[str, object]) -> dict[str, object]:
         tools = _postprocess_ffmpeg_tools(self.paths.env_path)

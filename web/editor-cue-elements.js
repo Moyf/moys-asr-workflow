@@ -8,56 +8,56 @@
 
 
   function updateCueColorPresentation(el, colorBar, seg) {
-    if (!el || !colorBar || !seg) return;
+  if (!el || !colorBar || !seg) return;
 
-    // 颜色组可能在不重建字幕行的情况下从 head 变成 ref（或反过来）。
-    // 绑定一次委托式处理器，之后只更新 class / style / data，不替换节点。
-    if (!colorBar.dataset.colorRefHandlerBound) {
-      colorBar.addEventListener('click', (event) => {
-        if (!colorBar.classList.contains('is-ref')) return;
-        event.stopPropagation();
-        const row = colorBar.closest('.cue');
-        const headIndex = Number(colorBar.dataset.colorRefHeadIdx);
-        if (!Number.isInteger(headIndex) || headIndex < 0) return;
-        const isExtension = row?.dataset.extIdx != null && row?.dataset.idx == null;
-        const head = MaweCoreState.container.querySelector(
-          isExtension ? `.cue[data-ext-idx="${headIndex}"]` : `.cue[data-idx="${headIndex}"]`,
-        );
-        if (!head) return;
-        MaweCueListAnchor.scrollCueToCenter(head);
-        if (isExtension) MaweSelection.selectOnlyExtension(headIndex);
-        else MaweSelection.selectOnly(headIndex);
-      });
-      colorBar.dataset.colorRefHandlerBound = 'true';
-    }
-
-    colorBar.classList.remove('has-color', 'is-ref');
-    colorBar.style.removeProperty('--color-bar');
-    colorBar.style.removeProperty('cursor');
-    colorBar.removeAttribute('title');
-    delete colorBar.dataset.colorRefHeadIdx;
-    el.classList.remove('has-color');
-    el.style.removeProperty('--color-bar');
-
-    if (seg.color) {
-      const value = seg.color.value || MaweColors.colorValue(seg.color.name);
-      colorBar.classList.add('has-color');
-      colorBar.style.setProperty('--color-bar', value);
-      el.classList.add('has-color');
-      el.style.setProperty('--color-bar', value);
-      colorBar.title = `颜色：${seg.color.name}`;
-    } else if (seg.color_ref) {
-      const value = MaweColors.colorValue(seg.color_ref.name);
-      const headIndex = Number(seg.color_ref.headIdx);
-      colorBar.classList.add('is-ref');
-      colorBar.style.setProperty('--color-bar', value);
-      colorBar.dataset.colorRefHeadIdx = String(headIndex);
-      el.classList.add('has-color');
-      el.style.setProperty('--color-bar', value);
-      colorBar.title = `↑ 属于第 ${headIndex + 1} 条的颜色（${seg.color_ref.name}）`;
-      colorBar.style.cursor = 'pointer';
-    }
+  // 颜色组可能在不重建字幕行的情况下从 head 变成 ref（或反过来）。
+  // 绑定一次委托式处理器，之后只更新 class / style / data，不替换节点。
+  if (!colorBar.dataset.colorRefHandlerBound) {
+    colorBar.addEventListener('click', (event) => {
+      if (!colorBar.classList.contains('is-ref')) return;
+      event.stopPropagation();
+      const row = colorBar.closest('.cue');
+      const headIndex = Number(colorBar.dataset.colorRefHeadIdx);
+      if (!Number.isInteger(headIndex) || headIndex < 0) return;
+      const isExtension = row?.dataset.extIdx != null && row?.dataset.idx == null;
+      const head = MaweCoreState.container.querySelector(
+        isExtension ? `.cue[data-ext-idx="${headIndex}"]` : `.cue[data-idx="${headIndex}"]`,
+      );
+      if (!head) return;
+      MaweCueListAnchor.scrollCueToCenter(head);
+      if (isExtension) MaweSelection.selectOnlyExtension(headIndex);
+      else MaweSelection.selectOnly(headIndex);
+    });
+    colorBar.dataset.colorRefHandlerBound = 'true';
   }
+
+  colorBar.classList.remove('has-color', 'is-ref');
+  colorBar.style.removeProperty('--color-bar');
+  colorBar.style.removeProperty('cursor');
+  colorBar.removeAttribute('title');
+  delete colorBar.dataset.colorRefHeadIdx;
+  el.classList.remove('has-color');
+  el.style.removeProperty('--color-bar');
+
+  if (seg.color) {
+    const value = MaweColors.colorValue(seg.color.name);
+    colorBar.classList.add('has-color');
+    colorBar.style.setProperty('--color-bar', value);
+    el.classList.add('has-color');
+    el.style.setProperty('--color-bar', value);
+    colorBar.title = `颜色：${seg.color.name}`;
+  } else if (seg.color_ref) {
+    const value = MaweColors.colorValue(seg.color_ref.name);
+    const headIndex = Number(seg.color_ref.headIdx);
+    colorBar.classList.add('is-ref');
+    colorBar.style.setProperty('--color-bar', value);
+    colorBar.dataset.colorRefHeadIdx = String(headIndex);
+    el.classList.add('has-color');
+    el.style.setProperty('--color-bar', value);
+    colorBar.title = `↑ 属于第 ${headIndex + 1} 条的颜色（${seg.color_ref.name}）`;
+    colorBar.style.cursor = 'pointer';
+  }
+}
 
 
 
@@ -133,7 +133,7 @@
 
   const indexEl = document.createElement('span');
   indexEl.className = 'index';
-  indexEl.textContent = isOverlay ? `叠加字幕 ${idx + 1}` : String(idx + 1);
+  indexEl.textContent = isOverlay ? `叠${idx + 1}` : String(idx + 1);
 
   const timeEl = document.createElement('span');
   timeEl.className = 'time';

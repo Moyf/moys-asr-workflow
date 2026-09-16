@@ -122,39 +122,42 @@
 
 
   function syncMediaControls() {
-    MaweDom.playerWrap?.classList.toggle('fullscreen-preview', document.fullscreenElement === MaweDom.playerWrap);
-    refreshMediaSeekControlLabels();
-    if (!MaweDom.mediaPlayToggle || !MaweCoreState.player) return;
-    const hasMedia = hasLoadedMedia();
-    const duration = Number.isFinite(MaweCoreState.player.duration) && MaweCoreState.player.duration > 0 ? MaweCoreState.player.duration : 0;
-    const current = Number.isFinite(MaweCoreState.player.currentTime) ? Math.max(0, MaweCoreState.player.currentTime) : 0;
-    const active = hasMedia && (MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused);
-    MaweDom.mediaPlayToggle.disabled = !hasMedia;
-    MaweDom.mediaStepBack.disabled = !hasMedia;
-    MaweDom.mediaStepForward.disabled = !hasMedia;
-    MaweDom.mediaSeek.disabled = !hasMedia || !duration;
-    MaweDom.mediaVolume.disabled = !hasMedia;
-    MaweDom.mediaPlaybackRate.disabled = !hasMedia;
-    MaweDom.mediaFullscreen.disabled = !hasMedia || typeof MaweDom.playerWrap?.requestFullscreen !== 'function';
-    MaweDom.mediaPlayToggle.textContent = active ? '⏸' : '▶';
-    const playbackLabel = active ? '暂停' : '播放';
-    MaweDom.mediaPlayToggle.setAttribute('aria-label', playbackLabel);
-    MaweDom.mediaPlayToggle.title = playbackLabel;
-    MaweDom.mediaCurrentTime.textContent = formatMediaTime(current);
-    MaweDom.mediaDuration.textContent = formatMediaTime(duration);
-    MaweDom.mediaSeek.max = String(duration);
-    MaweDom.mediaSeek.value = String(duration ? Math.min(duration, current) : 0);
-    if (Number.isFinite(MaweCoreState.player.volume)) MaweDom.mediaVolume.value = String(MaweCoreState.player.volume);
-    if (Number.isFinite(MaweCoreState.player.playbackRate)) {
-      const displayedRate = MaweJklPlayback.isJklDirectionMode() && MaweJklPlayback.jklPlaybackRate < 0
-        ? MaweJklPlayback.jklPlaybackRate
-        : MaweCoreState.player.playbackRate;
-      syncPlaybackRateOption(displayedRate);
-    }
-    const fullscreenLabel = document.fullscreenElement ? '退出全屏' : '全屏';
-    MaweDom.mediaFullscreen.setAttribute('aria-label', fullscreenLabel);
-    MaweDom.mediaFullscreen.title = fullscreenLabel;
+  const fullscreenPreview = Boolean(MaweDom.playerWrap && document.fullscreenElement === MaweDom.playerWrap);
+  const wasFullscreenPreview = MaweDom.playerWrap?.classList.contains('fullscreen-preview') === true;
+  MaweDom.playerWrap?.classList.toggle('fullscreen-preview', fullscreenPreview);
+  if (fullscreenPreview !== wasFullscreenPreview) scheduleAssSubtitlePreviewRefresh();
+  refreshMediaSeekControlLabels();
+  if (!MaweDom.mediaPlayToggle || !MaweCoreState.player) return;
+  const hasMedia = hasLoadedMedia();
+  const duration = Number.isFinite(MaweCoreState.player.duration) && MaweCoreState.player.duration > 0 ? MaweCoreState.player.duration : 0;
+  const current = Number.isFinite(MaweCoreState.player.currentTime) ? Math.max(0, MaweCoreState.player.currentTime) : 0;
+  const active = hasMedia && (MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused);
+  MaweDom.mediaPlayToggle.disabled = !hasMedia;
+  MaweDom.mediaStepBack.disabled = !hasMedia;
+  MaweDom.mediaStepForward.disabled = !hasMedia;
+  MaweDom.mediaSeek.disabled = !hasMedia || !duration;
+  MaweDom.mediaVolume.disabled = !hasMedia;
+  MaweDom.mediaPlaybackRate.disabled = !hasMedia;
+  MaweDom.mediaFullscreen.disabled = !hasMedia || typeof MaweDom.playerWrap?.requestFullscreen !== 'function';
+  MaweDom.mediaPlayToggle.textContent = active ? '⏸' : '▶';
+  const playbackLabel = active ? '暂停' : '播放';
+  MaweDom.mediaPlayToggle.setAttribute('aria-label', playbackLabel);
+  MaweDom.mediaPlayToggle.title = playbackLabel;
+  MaweDom.mediaCurrentTime.textContent = formatMediaTime(current);
+  MaweDom.mediaDuration.textContent = formatMediaTime(duration);
+  MaweDom.mediaSeek.max = String(duration);
+  MaweDom.mediaSeek.value = String(duration ? Math.min(duration, current) : 0);
+  if (Number.isFinite(MaweCoreState.player.volume)) MaweDom.mediaVolume.value = String(MaweCoreState.player.volume);
+  if (Number.isFinite(MaweCoreState.player.playbackRate)) {
+    const displayedRate = MaweJklPlayback.isJklDirectionMode() && MaweJklPlayback.jklPlaybackRate < 0
+      ? MaweJklPlayback.jklPlaybackRate
+      : MaweCoreState.player.playbackRate;
+    syncPlaybackRateOption(displayedRate);
   }
+  const fullscreenLabel = document.fullscreenElement ? '退出全屏' : '全屏';
+  MaweDom.mediaFullscreen.setAttribute('aria-label', fullscreenLabel);
+  MaweDom.mediaFullscreen.title = fullscreenLabel;
+}
 
 
 

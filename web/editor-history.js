@@ -306,18 +306,19 @@
 
   // modal 或文本输入聚焦时不触发全局撤销/重做（让浏览器/输入框自己处理）
   function historyGuarded() {
-    const a = document.activeElement;
-    if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) {
-      return true;
-    }
-    return MaweDom.replaceModal.classList.contains('show')
-        || MaweDom.textProcessModal.classList.contains('show')
-        || MaweDom.timedTextEditModal.classList.contains('show')
-        || MaweDom.stickerModal.classList.contains('show')
-        || MaweDom.stickerPreviewModal.classList.contains('show')
-        || MaweDom.projectMediaModal.classList.contains('show')
-        || document.getElementById('sticker-root-modal').classList.contains('show');
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) {
+    return true;
   }
+  return MaweDom.replaceModal.classList.contains('show')
+      || MaweDom.textProcessModal.classList.contains('show')
+      || MaweDom.timedTextEditModal.classList.contains('show')
+      || MaweDom.stickerModal.classList.contains('show')
+      || MaweDom.stickerPreviewModal.classList.contains('show')
+      || MaweDom.projectMediaModal.classList.contains('show')
+      || assStyleWindow?.classList.contains('show')
+      || document.getElementById('sticker-root-modal').classList.contains('show');
+}
 
 
   const undoBtn = document.getElementById('undo-btn');
