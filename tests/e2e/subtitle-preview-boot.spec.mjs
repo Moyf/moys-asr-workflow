@@ -52,8 +52,7 @@ test('a custom preview font family boots without GEO_UTILS TDZ errors', async ({
 
   await page.locator('#editor-settings-toggle').click();
   await page.locator('#editor-settings-tab-subtitle-style').click();
-  await expect(page.locator('#subtitle-font-family')).toHaveValue('Microsoft YaHei');
-  // 共享工具层就绪后，启动期占位的自定义字体选项会被统一本地化。
-  await expect(page.locator('#subtitle-font-family option:checked')).toHaveText('微软雅黑');
+  // 启动期占位是原始族名；共享工具层就绪后统一本地化为「微软雅黑」。
+  await expect(page.locator('#subtitle-font-family')).toHaveValue('微软雅黑');
   expect(bootErrors).toEqual([]);
 });
