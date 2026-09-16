@@ -1494,8 +1494,10 @@
   // 后端 status detail 是中文固定文案（就绪/未安装/需修复等），界面语言下应改用本地化文案；
   // 只有非标准状态的动态信息（如安装失败原因）才原样透传。
   function runtimeHintText(runtime, readyKey, otherKey) {
+    // 后端 detail 是运行环境的具体说明（如「OCR 模型已安装，可以在工具箱中
+    // 使用。」），优先展示；缺失时才回退到界面 i18n 文案。
     const fallbackKey = runtime.ready || runtime.status === "ready" ? readyKey : otherKey;
-    return ["ready", "missing", "broken", "installing", "checking"].includes(runtime.status) ? t(fallbackKey) : (runtime.detail || t(fallbackKey));
+    return runtime.detail || t(fallbackKey);
   }
   function localModelHintText(status) {
     return ["installed", "missing", "checking", "runtime_missing"].includes(status.status) ? t("local_prepare_hint") : (status.detail || t("local_prepare_hint"));
