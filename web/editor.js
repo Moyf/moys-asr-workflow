@@ -7226,7 +7226,7 @@ function buildCueEl(seg, idx, { extensionTrack = null, overlayTrack = false } = 
 
   const indexEl = document.createElement('span');
   indexEl.className = 'index';
-  indexEl.textContent = isOverlay ? `叠加字幕 ${idx + 1}` : String(idx + 1);
+  indexEl.textContent = isOverlay ? `叠${idx + 1}` : String(idx + 1);
 
   const timeEl = document.createElement('span');
   timeEl.className = 'time';
