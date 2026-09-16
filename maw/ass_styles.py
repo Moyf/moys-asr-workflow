@@ -154,6 +154,17 @@ DEFAULT_ASS_STYLE: Final[dict[str, object]] = {
     "fontSize": 72,
     "marginV": 80,
 }
+# ASS 副字幕默认样式：多重字幕的副语言轨在 ASS 导出与预览中共用一个样式
+# （副字幕不支持颜色分组）；默认沿用 CSS 预览的副字幕黄色，字号约主样式
+# 的 75%，垂直边距按「主边距 80 + 1.2 × 主字号 72」固化在主字幕上方。
+DEFAULT_ASS_EXTENSION_STYLE: Final[dict[str, object]] = {
+    **_style_defaults("ass-extension", "ASS 副字幕样式"),
+    "fontName": _default_ass_font_name(),
+    "bold": True,
+    "primaryColor": "#ffd34d",
+    "fontSize": 54,
+    "marginV": 166,
+}
 
 
 def _animation_defaults() -> dict[str, object]:
@@ -302,16 +313,21 @@ def _normalize_profile(raw: object, fallback: Mapping[str, object], *, profile_i
 
 
 def default_ass_style_library() -> dict[str, object]:
-    """Return a fresh v1 library containing the two protected built-ins."""
+    """Return a fresh v1 library containing the protected built-ins."""
 
     return {
         "schema": ASS_STYLE_LIBRARY_SCHEMA,
         "version": 1,
-        "styles": [_copy(DEFAULT_SRT_STYLE), _copy(DEFAULT_ASS_STYLE)],
+        "styles": [
+            _copy(DEFAULT_SRT_STYLE),
+            _copy(DEFAULT_ASS_STYLE),
+            _copy(DEFAULT_ASS_EXTENSION_STYLE),
+        ],
         "assProfiles": [_copy(DEFAULT_ASS_PROFILE)],
         "assignments": {
             "srtBurnStyleId": "default",
             "assExportProfileId": "ass",
+            "assExtensionStyleId": "ass-extension",
         },
     }
 
@@ -321,9 +337,15 @@ def normalize_ass_style_library(payload: object) -> dict[str, object]:
 
     source = payload if isinstance(payload, Mapping) else {}
     result = default_ass_style_library()
+    builtin_styles: Final[dict[str, dict[str, object]]] = {
+        "default": DEFAULT_SRT_STYLE,
+        "ass": DEFAULT_ASS_STYLE,
+        "ass-extension": DEFAULT_ASS_EXTENSION_STYLE,
+    }
     style_map: dict[str, dict[str, object]] = {
         "default": _copy(DEFAULT_SRT_STYLE),
         "ass": _copy(DEFAULT_ASS_STYLE),
+        "ass-extension": _copy(DEFAULT_ASS_EXTENSION_STYLE),
     }
     raw_styles = source.get("styles")
     if isinstance(raw_styles, Sequence) and not isinstance(raw_styles, (str, bytes, bytearray)):
@@ -335,18 +357,18 @@ def normalize_ass_style_library(payload: object) -> dict[str, object]:
                 continue
             fallback = style_map.get(style_id, {**DEFAULT_ASS_STYLE, "id": style_id, "name": "自定义样式", "builtin": False})
             normalized = _normalize_style(raw, fallback, style_id=style_id)
-            if style_id not in {"default", "ass"}:
+            if style_id not in builtin_styles:
                 normalized["builtin"] = False
             style_map[style_id] = normalized
     # 内置条目若仍使用旧默认名，迁移到当前默认名；用户自定义过的名字不动。
     for entry in (*style_map.values(),):
         legacy = _LEGACY_BUILTIN_NAMES.get(("style", str(entry.get("id"))))
         if legacy and entry.get("name") == legacy:
-            default_entry = {"default": DEFAULT_SRT_STYLE, "ass": DEFAULT_ASS_STYLE}.get(str(entry.get("id")))
+            default_entry = builtin_styles.get(str(entry.get("id")))
             if default_entry:
                 entry["name"] = default_entry["name"]
-    styles = [style_map["default"], style_map["ass"]]
-    styles.extend(style for style_id, style in style_map.items() if style_id not in {"default", "ass"})
+    styles = [style_map["default"], style_map["ass"], style_map["ass-extension"]]
+    styles.extend(style for style_id, style in style_map.items() if style_id not in builtin_styles)
     result["styles"] = styles[:MAX_STYLE_COUNT]
 
     profile_map: dict[str, dict[str, object]] = {"ass": _copy(DEFAULT_ASS_PROFILE)}
@@ -377,14 +399,18 @@ def normalize_ass_style_library(payload: object) -> dict[str, object]:
     assignments = source.get("assignments") if isinstance(source.get("assignments"), Mapping) else {}
     style_assignment = _id(assignments.get("srtBurnStyleId"), "default")
     profile_assignment = _id(assignments.get("assExportProfileId"), "ass")
+    extension_assignment = _id(assignments.get("assExtensionStyleId"), "ass-extension")
     if style_assignment not in style_ids:
         style_assignment = "default"
     profile_ids = {str(profile.get("id")) for profile in result["assProfiles"] if isinstance(profile, Mapping)}
     if profile_assignment not in profile_ids:
         profile_assignment = "ass"
+    if extension_assignment not in style_ids:
+        extension_assignment = "ass-extension"
     result["assignments"] = {
         "srtBurnStyleId": style_assignment,
         "assExportProfileId": profile_assignment,
+        "assExtensionStyleId": extension_assignment,
     }
     return result
 

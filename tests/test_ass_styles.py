@@ -31,11 +31,42 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertEqual(library["assignments"], {
             "srtBurnStyleId": "default",
             "assExportProfileId": "ass",
+            "assExtensionStyleId": "ass-extension",
         })
-        self.assertEqual([style["id"] for style in library["styles"]], ["default", "ass"])
+        self.assertEqual(
+            [style["id"] for style in library["styles"]],
+            ["default", "ass", "ass-extension"],
+        )
         self.assertEqual([profile["id"] for profile in library["assProfiles"]], ["ass"])
         self.assertTrue(library["styles"][0]["builtin"])
         self.assertTrue(library["assProfiles"][0]["builtin"])
+
+    def test_extension_style_slot_is_protected_and_repaired(self) -> None:
+        # 旧版库没有 ass-extension 槽位：归一化补齐内置副字幕样式，
+        # 用户对它的自定义会保留，非法槽位回退内置。
+        normalized = normalize_ass_style_library({
+            "styles": [
+                {"id": "ass-extension", "name": "我的副字幕", "fontSize": 60, "marginV": 200},
+            ],
+            "assignments": {"assExtensionStyleId": "not a style!"},
+        })
+        extension = find_ass_style(normalized, "ass-extension")
+        self.assertEqual(extension["name"], "我的副字幕")
+        self.assertEqual(extension["fontSize"], 60)
+        self.assertEqual(extension["marginV"], 200)
+        self.assertTrue(extension["builtin"])
+        self.assertIn("ass-extension", [style["id"] for style in normalized["styles"]])
+        self.assertEqual(normalized["assignments"]["assExtensionStyleId"], "ass-extension")
+
+        fallback = normalize_ass_style_library({})
+        self.assertEqual(
+            fallback["assignments"]["assExtensionStyleId"],
+            "ass-extension",
+        )
+        default_extension = find_ass_style(fallback, "ass-extension")
+        self.assertEqual(default_extension["primaryColor"], "#ffd34d")
+        self.assertEqual(default_extension["fontSize"], 54)
+        self.assertEqual(default_extension["marginV"], 166)
 
     def test_normalization_repairs_entries_and_preserves_ass_tag_commas(self) -> None:
         normalized = normalize_ass_style_library({
