@@ -4074,6 +4074,18 @@
     bold: true,
     fontSize: 72, marginV: 80,
   });
+  // ASS 副字幕默认样式：多重字幕的副语言轨在 ASS 导出与预览中共用一个
+  // 样式（副字幕不支持颜色分组）；默认沿用 CSS 预览的副字幕黄色，字号约
+  // 主样式的 75%，垂直边距按「主边距 80 + 1.2 × 主字号 72」固化在主字幕
+  // 上方，与叠加字幕的默认锚定公式一致。
+  const ASS_DEFAULT_EXTENSION_STYLE = Object.freeze({
+    ...ASS_DEFAULT_STYLE,
+    id: 'ass-extension', name: 'ASS 副字幕样式',
+    fontName: ASS_DEFAULT_FONT_FAMILY,
+    bold: true,
+    primaryColor: '#ffd34d',
+    fontSize: 54, marginV: 166,
+  });
   const ASS_DEFAULT_ANIMATIONS = Object.freeze({
     fad: Object.freeze({ enabled: false, inMs: 250, outMs: 250 }),
     fade: Object.freeze({
@@ -4238,9 +4250,13 @@
     return {
       schema: ASS_STYLE_LIBRARY_SCHEMA,
       version: 1,
-      styles: [cloneJsonValue(ASS_DEFAULT_STYLE), cloneJsonValue(ASS_DEFAULT_ASS_STYLE)],
+      styles: [
+        cloneJsonValue(ASS_DEFAULT_STYLE),
+        cloneJsonValue(ASS_DEFAULT_ASS_STYLE),
+        cloneJsonValue(ASS_DEFAULT_EXTENSION_STYLE),
+      ],
       assProfiles: [cloneJsonValue(ASS_DEFAULT_PROFILE)],
-      assignments: { srtBurnStyleId: 'default', assExportProfileId: 'ass' },
+      assignments: { srtBurnStyleId: 'default', assExportProfileId: 'ass', assExtensionStyleId: 'ass-extension' },
     };
   }
 
@@ -4249,6 +4265,7 @@
     const styleMap = new Map([
       ['default', normalizeAssStyle(ASS_DEFAULT_STYLE, ASS_DEFAULT_STYLE, 'default')],
       ['ass', normalizeAssStyle(ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_ASS_STYLE, 'ass')],
+      ['ass-extension', normalizeAssStyle(ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_EXTENSION_STYLE, 'ass-extension')],
     ]);
     if (Array.isArray(source.styles)) {
       source.styles.forEach((raw) => {
@@ -4257,7 +4274,7 @@
         if (!id) return;
         const fallback = styleMap.get(id) || { ...ASS_DEFAULT_ASS_STYLE, id, name: '自定义样式', builtin: false };
         const normalized = normalizeAssStyle(raw, fallback, id);
-        if (id !== 'default' && id !== 'ass') normalized.builtin = false;
+        if (id !== 'default' && id !== 'ass' && id !== 'ass-extension') normalized.builtin = false;
         styleMap.set(id, normalized);
       });
     }
@@ -4302,12 +4319,14 @@
     const profileIds = new Set(profiles.map((profile) => profile.id));
     const assExportProfileId = profileIds.has(normalizeAssStyleId(assignments.assExportProfileId))
       ? normalizeAssStyleId(assignments.assExportProfileId) : 'ass';
+    const assExtensionStyleId = styleIds.has(normalizeAssStyleId(assignments.assExtensionStyleId))
+      ? normalizeAssStyleId(assignments.assExtensionStyleId) : 'ass-extension';
     return {
       schema: ASS_STYLE_LIBRARY_SCHEMA,
       version: 1,
       styles,
       assProfiles: profiles.length ? profiles : [normalizeAssProfile(ASS_DEFAULT_PROFILE)],
-      assignments: { srtBurnStyleId, assExportProfileId },
+      assignments: { srtBurnStyleId, assExportProfileId, assExtensionStyleId },
     };
   }
 
@@ -4354,7 +4373,7 @@
     return `Style: ${values.join(',')}`;
   }
 
-  function assAnimationOverrideTags(profile) {
+  function assAnimationOverrideTags(profile, { includeMove = true } = {}) {
     const animations = normalizeAssAnimations(profile?.animations);
     const tags = [];
     // libass/playback behaviour is undefined when both fade forms are present.
@@ -4366,7 +4385,9 @@
     } else if (animations.fad.enabled) {
       tags.push(`\\fad(${animations.fad.inMs},${animations.fad.outMs})`);
     }
-    if (animations.move.enabled) {
+    // \move 的坐标是主字幕画布上的绝对 PlayRes 坐标；叠加轨的锚定由
+    // MarginV 堆叠负责，不跟随 move（includeMove: false 时省略）。
+    if (includeMove && animations.move.enabled) {
       const { x1, y1, x2, y2, t1, t2 } = animations.move;
       tags.push(`\\move(${x1},${y1},${x2},${y2},${t1},${t2})`);
     }
@@ -4738,6 +4759,9 @@
       ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
+    // 颜色样式只有在 ASS 能表达（text / stroke）时才生成调色板样式；
+    // none 模式下主轨与叠加轨一起回落 Default。
+    const assColorGroupsSupported = colorStyle === 'text' || colorStyle === 'stroke';
 
     // 主轨事件：Layer 0，底部居中（Default 样式自带对齐）。
     source.forEach((segment, sourceIndex) => {
@@ -4757,7 +4781,6 @@
         )
         : String(segment.text ?? '');
       const colorName = effectiveColorName(segment, source);
-      const assColorGroupsSupported = colorStyle === 'text' || colorStyle === 'stroke';
       const styleName = assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
         ? colorName.toUpperCase() : 'Default';
       const styleForEvent = assMode && styleName !== 'Default'
@@ -4782,12 +4805,75 @@
       );
     });
 
-    // 叠加轨事件：与主字幕同为底部对齐（Alignment=2），MarginV = 主字幕
-    // 垂直边距 + fontSize 使叠加字幕渲染在主字幕正上方；继承颜色样式（如有）。
-    // ASS 模式下主字幕边距来自样式库（用户可改），legacy 模式固定 80。
+    // 副字幕轨（多重字幕）：所有副字幕共用一个样式（不支持颜色分组），
+    // 事件引用独立 Extension 样式，边距/对齐完全由该样式决定。
+    // \fad/\fade/\t 逐句应用；\move 的绝对坐标只属于主字幕。
+    const extensionSource = Array.isArray(options.extensionSegments)
+      ? options.extensionSegments : [];
+    const hasExtensionCues = extensionSource.some((segment) => segment && segment.disabled !== true);
+    const extensionStyle = assMode && options.assExtensionStyle && typeof options.assExtensionStyle === 'object'
+      ? normalizeAssStyle(options.assExtensionStyle, ASS_DEFAULT_EXTENSION_STYLE, options.assExtensionStyle.id || 'ass-extension')
+      : null;
+    const extensionScaledFontSize = extensionStyle
+      ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
+      : 0;
+    const extensionAnimationTags = assMode && extensionStyle
+      ? assAnimationOverrideTags(profile, { includeMove: false }) : '';
+    if (assMode && extensionStyle) {
+      extensionSource.forEach((segment) => {
+        if (!segment || segment.disabled === true) return;
+        const rawStart = normalizeAssTimeMs(mapTime(segment.start));
+        const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
+        if (rawEnd <= rawStart) return;
+        const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
+        const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+        const extensionText = extensionAnimationTags
+          ? `{${extensionAnimationTags}}${escapeAssText(segment.text)}` : escapeAssText(segment.text);
+        events.push(
+          `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Extension,,0,0,0,,${extensionText}`,
+        );
+      });
+    }
+
+    // 叠加轨事件：引用独立的 Overlay 样式（字段与主字幕样式完全一致，
+    // 仅把 MarginV 固化为算好的锚定结果），事件行不再携带边距覆盖。颜色
+    // 映射与主字幕一致（none 模式一起回落）；\fad/\fade/\t 逐句应用，
+    // \move 的绝对坐标只属于主字幕。锚定公式固定为「下方最近一层字幕的
+    // 垂直边距 + 1.2 × 该层字号」：有副字幕时叠在副字幕上方，否则叠在主
+    // 字幕上方（1.2 倍在两层文字之间留出空档）。ASS 模式下各层边距来自
+    // 样式库（用户可改），legacy 模式主字幕固定 80。
     const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
-    const overlayMarginV = (assMode
-      ? Math.max(0, Number(baseStyle.marginV) || 0) : 80) + fontSize;
+    const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true);
+    const overlayAnimationTags = assMode
+      ? assAnimationOverrideTags(profile, { includeMove: false }) : '';
+    const overlayMarginV = assMode
+      ? (extensionStyle && hasExtensionCues
+        ? Math.max(0, Number(extensionStyle.marginV) || 0) + Math.round(1.2 * extensionScaledFontSize)
+        : Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize))
+      : 80 + Math.round(1.2 * fontSize);
+    const overlayBaseStyle = assMode ? baseStyle : {
+      ...ASS_DEFAULT_ASS_STYLE,
+      fontName: fontFamily,
+      fontSize,
+      primaryColor: appearance.color ?? options.color,
+      outlineColor: '#000000',
+      outline: 2,
+      shadow: 0,
+      alignment: 2,
+      marginL: 10,
+      marginR: 10,
+    };
+    const overlayStyleFor = (colorName) => {
+      const variant = assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
+        ? assStyleVariant(overlayBaseStyle,
+          colorStyles.find((item) => item.name === colorName)?.value || '#ffffff', colorStyle)
+        : overlayBaseStyle;
+      return { ...variant, marginV: overlayMarginV };
+    };
+    const overlayStyleNameFor = (colorName) => (
+      assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
+        ? `Overlay ${colorName.toUpperCase()}` : 'Overlay'
+    );
     overlaySource.forEach((segment) => {
       if (!segment || segment.disabled === true) return;
       const rawStart = normalizeAssTimeMs(mapTime(segment.start));
@@ -4795,9 +4881,11 @@
       if (rawEnd <= rawStart) return;
       const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
-      const overlayStyleName = segment.color?.name ? segment.color.name.toUpperCase() : 'Default';
+      const overlayColorName = effectiveColorName(segment, overlaySource);
+      const overlayText = overlayAnimationTags
+        ? `{${overlayAnimationTags}}${escapeAssText(segment.text)}` : escapeAssText(segment.text);
       events.push(
-        `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${overlayStyleName},,0,0,${overlayMarginV},,${escapeAssText(segment.text)}`,
+        `Dialogue: 2,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${overlayStyleNameFor(overlayColorName)},,0,0,0,,${overlayText}`,
       );
     });
 
@@ -4823,6 +4911,23 @@
               color.name.toUpperCase(),
               fontSize,
             ))
+            : []),
+          // 副字幕：独立样式，边距/对齐/字号完全由该样式决定。
+          ...(extensionStyle && hasExtensionCues
+            ? [assStyleLine(extensionStyle, 'Extension', extensionScaledFontSize)]
+            : []),
+          // 叠加字幕：字段复用主字幕样式，MarginV 固化为链式锚定结果。
+          ...(hasOverlayCues
+            ? [
+              assStyleLine(overlayStyleFor(null), 'Overlay', fontSize),
+              ...(colorStyle === 'text' || colorStyle === 'stroke'
+                ? colorStyles.map((color) => assStyleLine(
+                  overlayStyleFor(color.name),
+                  `Overlay ${color.name.toUpperCase()}`,
+                  fontSize,
+                ))
+                : []),
+            ]
             : []),
         ]
         : [
@@ -4850,6 +4955,19 @@
                 fontSize,
               ))
               : []),
+          // legacy 叠加样式：同样固化为算好的锚定边距（80 + 1.2 × 字号）。
+          ...(hasOverlayCues
+            ? [
+              assStyleLine(overlayStyleFor(null), 'Overlay', fontSize),
+              ...(colorStyle === 'text' || colorStyle === 'stroke'
+                ? colorStyles.map((color) => assStyleLine(
+                  overlayStyleFor(color.name),
+                  `Overlay ${color.name.toUpperCase()}`,
+                  fontSize,
+                ))
+                : []),
+            ]
+            : []),
         ]),
       '',
       '[Events]',
@@ -6501,6 +6619,7 @@ export default MawDynamicCaptions;
     ASS_STYLE_LIBRARY_SCHEMA,
     ASS_DEFAULT_STYLE,
     ASS_DEFAULT_ASS_STYLE,
+    ASS_DEFAULT_EXTENSION_STYLE,
     ASS_DEFAULT_ANIMATIONS,
     ASS_DEFAULT_PROFILE,
     normalizeAssStyle,
