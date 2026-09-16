@@ -103,7 +103,7 @@
   }
 
 
-  DEFAULT_EDITOR_SETTINGS = {
+  const DEFAULT_EDITOR_SETTINGS = {
   splitKey: 'enter',
   splitUseWordTimestamps: true,
   // 主字幕拆分类型手动指定偏好：word / continuous / null（跟随工程与检测）。

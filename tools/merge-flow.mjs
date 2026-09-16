@@ -70,11 +70,14 @@ function declarationRecords(source, ast) {
         statementStart: statement.start, statementEnd: statement.end, multi: false,
       });
     } else if (statement.type === 'VariableDeclaration') {
+      // raw 必须取整条语句（含 const/let/var 关键字）：变量重放若丢失声明关键字，
+      // 严格模式 IIFE 下裸赋值会在加载期抛 ReferenceError。
+      const statementRaw = source.slice(statement.start, statement.end);
       for (const declarator of statement.declarations) for (const name of patternNames(declarator.id)) {
         out.set(name, {
-          name, raw: source.slice(declarator.start, declarator.end), norm: normalize(source.slice(declarator.start, declarator.end)),
-          start: declarator.start, end: declarator.end, statementStart: statement.start, statementEnd: statement.end,
-          multi: statement.declarations.length > 1,
+          name, raw: statementRaw,
+          norm: normalize(statementRaw), start: declarator.start, end: declarator.end,
+          statementStart: statement.start, statementEnd: statement.end, multi: statement.declarations.length > 1,
         });
       }
     }

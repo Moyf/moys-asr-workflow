@@ -250,7 +250,7 @@
   }
   if (MaweDom.subtitleColorInput) MaweDom.subtitleColorInput.value = appearance.color || MaweSettings.DEFAULT_SUBTITLE_COLOR;
   MaweSpeakerLabels.syncSpeakerLabelControls();
-  syncSubtitleColorPaletteControls();
+  MaweColors.syncSubtitleColorPaletteControls();
 }
 
 

@@ -326,7 +326,7 @@ class EditorAssetContractTests(unittest.TestCase):
     def test_ass_style_library_saves_require_token_and_flush_before_unload(self) -> None:
         script = edit.read_web_asset("editor.js")
         # 共享样式库写入必须携带页面请求令牌（服务器 403 契约见 test_local_editor_server）。
-        self.assertIn("requestToken: SERVER_CONFIG?.requestToken || ''", script)
+        self.assertIn("requestToken: MaweBoot.SERVER_CONFIG?.requestToken || ''", script)
         # debounce 定时器在刷新/关闭/切后台时不保证触发；dirty 状态必须用
         # keepalive 请求在 pagehide / visibilitychange 时补发最后一次修改。
         self.assertIn("function flushAssStyleLibraryOnUnload()", script)
