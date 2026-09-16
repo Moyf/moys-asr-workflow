@@ -3159,8 +3159,12 @@
   const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
     segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览',
   });
-  function buildSegmentsHistorySnapshot(segments, multiSubtitle) {
-    return { segments: cloneJsonValue(segments), multi_subtitle: cloneJsonValue(multiSubtitle) };
+  function buildSegmentsHistorySnapshot(segments, multiSubtitle, overlayTrack = null) {
+    return {
+      segments: cloneJsonValue(segments),
+      multi_subtitle: cloneJsonValue(multiSubtitle),
+      overlay_track: cloneJsonValue(overlayTrack),
+    };
   }
   function buildHistoryRecord(kind, label, payload, view = null) {
     const recordKind = Object.prototype.hasOwnProperty.call(HISTORY_RECORD_DEFAULT_LABELS, kind)
@@ -3237,6 +3241,62 @@
     let candidate = `${base}-${suffix}`;
     while (used.has(candidate)) candidate = `${base}-${suffix++}`;
     return candidate;
+  }
+
+  function normalizeOverlayTrack(value) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const rawSegments = Array.isArray(source.segments) ? source.segments : [];
+    const segments = rawSegments
+      .filter((segment) => segment && typeof segment === 'object')
+      .map((segment) => {
+        const copy = { ...segment };
+        if (Array.isArray(copy.items)) copy.items = copy.items.map((item) => ({ ...item }));
+        else delete copy.items;
+        return copy;
+      });
+    ensureStableSegmentIds(segments, 'overlay');
+    return { enabled: source.enabled === true, segments };
+  }
+
+  function mergeMainAndOverlaySegments(mainSegments, overlaySegments) {
+    const main = Array.isArray(mainSegments) ? mainSegments : [];
+    const overlay = Array.isArray(overlaySegments) ? overlaySegments : [];
+    return [
+      ...main.map((segment, index) => ({ segment, trackOrder: 0, index })),
+      ...overlay.map((segment, index) => ({ segment, trackOrder: 1, index })),
+    ].sort((left, right) => (
+      Number(left.segment?.start) - Number(right.segment?.start)
+      || left.trackOrder - right.trackOrder
+      || left.index - right.index
+    )).map(({ segment }) => segment);
+  }
+
+  // === 叠加字幕轨的段落迁移 ===
+  // 主轨与叠加轨是两条互不绑定的时间轴；把段落从一条轨移到另一条轨时保持
+  // 目标轨按 start 升序（同 start 时插到既有段之后），返回段在新轨中的下标。
+  // 原地修改传入数组——编辑器以 DATA.segments / DATA.overlay_track 为真源。
+  function insertSegmentByStart(trackSegments, segment) {
+    const list = Array.isArray(trackSegments) ? trackSegments : [];
+    const start = Number(segment?.start);
+    let insertAt = list.length;
+    for (let index = 0; index < list.length; index += 1) {
+      if (Number(list[index]?.start) > start) {
+        insertAt = index;
+        break;
+      }
+    }
+    list.splice(insertAt, 0, segment);
+    return insertAt;
+  }
+
+  function moveSegmentBetweenTracks(sourceSegments, targetSegments, index) {
+    const source = Array.isArray(sourceSegments) ? sourceSegments : [];
+    const target = Array.isArray(targetSegments) ? targetSegments : [];
+    if (!Number.isInteger(index) || index < 0 || index >= source.length) return -1;
+    const segment = source[index];
+    if (!segment || typeof segment !== 'object') return -1;
+    source.splice(index, 1);
+    return insertSegmentByStart(target, segment);
   }
 
   function normalizeMultiSubtitle(value, mainSegments = []) {
@@ -3331,6 +3391,7 @@
   function normalizeMultiSubtitleProject(project) {
     if (!project || typeof project !== 'object') return project;
     ensureStableSegmentIds(project.segments, 'main');
+    project.overlay_track = normalizeOverlayTrack(project.overlay_track);
     project.multi_subtitle = normalizeMultiSubtitle(project.multi_subtitle, project.segments);
     return project;
   }
@@ -3856,6 +3917,28 @@
     return repaired;
   }
 
+  // 从字幕数组移除/迁出下标 index 的段后同步选择状态：该下标移出选中集，
+  // 其后的选中项与 Shift 范围锚点前移一位，避免选中状态落到后面的字幕上。
+  // selection 是会被原地修改的 Set；返回 { wasSelected, nextAnchor }。
+  function shiftSelectionAfterRemoval(selection, anchorIndex, removedIndex) {
+    // 用 Object.prototype.toString 判断 Set，兼容 vm 等跨 realm 环境。
+    if (Object.prototype.toString.call(selection) !== '[object Set]' || !Number.isInteger(removedIndex)) {
+      return { wasSelected: false, nextAnchor: Number.isInteger(anchorIndex) ? anchorIndex : -1 };
+    }
+    const wasSelected = selection.has(removedIndex);
+    selection.delete(removedIndex);
+    [...selection].forEach((idx) => {
+      if (idx > removedIndex) {
+        selection.delete(idx);
+        selection.add(idx - 1);
+      }
+    });
+    const anchor = Number.isInteger(anchorIndex) ? anchorIndex : -1;
+    const nextAnchor = anchor === removedIndex ? -1
+      : anchor > removedIndex ? anchor - 1 : anchor;
+    return { wasSelected, nextAnchor };
+  }
+
   function buildSrtPayload(segments, options = {}) {
     const source = Array.isArray(segments) ? segments : [];
     const colorName = typeof options.colorName === 'string' ? options.colorName : null;
@@ -3879,12 +3962,17 @@
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const parts = [];
     let outputIndex = 0;
+    // 颜色/说话人解析上下文：合并导出（主轨 + 叠加轨）时，叠加段的
+    // color_ref 指向叠加轨自身数组，不能在合并后的大数组里按下标解析。
+    const colorContextResolver = typeof options.colorContextResolver === 'function'
+      ? options.colorContextResolver : () => source;
     source.forEach((segment, sourceIndex) => {
       if (!segment) return;
       const disabled = segment.disabled === true;
       if (disabled && !keepDisabledPlaceholder) return;
+      const colorContext = colorContextResolver(segment) || source;
       if (!disabled && colorName) {
-        const effectiveName = effectiveColorName(segment, source);
+        const effectiveName = effectiveColorName(segment, colorContext);
         const matches = colorName === 'default' ? !effectiveName : effectiveName === colorName;
         if (!matches) return;
       }
@@ -3897,7 +3985,7 @@
       parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
       parts.push(disabled ? '' : speakerLabels
         ? formatSpeakerLabelledText(
-          segment.text, segment, source, speakerLabels, speakerLabelSeparator,
+          segment.text, segment, colorContext, speakerLabels, speakerLabelSeparator,
         )
         : String(segment.text || ''));
       parts.push('');
@@ -4651,6 +4739,7 @@
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
 
+    // 主轨事件：Layer 0，底部居中（Default 样式自带对齐）。
     source.forEach((segment, sourceIndex) => {
       if (!segment || segment.disabled === true) return;
       const rawStart = normalizeAssTimeMs(mapTime(segment.start));
@@ -4693,6 +4782,25 @@
       );
     });
 
+    // 叠加轨事件：与主字幕同为底部对齐（Alignment=2），MarginV = 主字幕
+    // 垂直边距 + fontSize 使叠加字幕渲染在主字幕正上方；继承颜色样式（如有）。
+    // ASS 模式下主字幕边距来自样式库（用户可改），legacy 模式固定 80。
+    const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
+    const overlayMarginV = (assMode
+      ? Math.max(0, Number(baseStyle.marginV) || 0) : 80) + fontSize;
+    overlaySource.forEach((segment) => {
+      if (!segment || segment.disabled === true) return;
+      const rawStart = normalizeAssTimeMs(mapTime(segment.start));
+      const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
+      if (rawEnd <= rawStart) return;
+      const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
+      const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+      const overlayStyleName = segment.color?.name ? segment.color.name.toUpperCase() : 'Default';
+      events.push(
+        `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${overlayStyleName},,0,0,${overlayMarginV},,${escapeAssText(segment.text)}`,
+      );
+    });
+
     return [
       '[Script Info]',
       '; Script generated by MAW',
@@ -4706,7 +4814,7 @@
       '',
       '[V4+ Styles]',
       `Format: ${ASS_STYLE_FORMAT}`,
-        ...(assMode
+      ...(assMode
         ? [
           assStyleLine(baseStyle, 'Default', fontSize),
           ...(colorStyle === 'text' || colorStyle === 'stroke'
@@ -4718,10 +4826,10 @@
             : []),
         ]
         : [
-          `Style: Default,${fontFamily},${fontSize},${assColorFromHex(appearance.color ?? options.color)},${assColorFromHex(appearance.color ?? options.color)},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`,
+          `Style: Default,${fontFamily},${fontSize},${assColorFromHex(appearance.color ?? options.color)},${assColorFromHex(appearance.color ?? options.color)},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1`,
           ...(colorStyle === 'text'
             ? colorStyles.map((style) => (
-              `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.assValue},${style.assValue},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`
+              `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.assValue},${style.assValue},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1`
             ))
             : colorStyle === 'stroke'
               ? colorStyles.map((style) => assStyleLine(
@@ -4736,7 +4844,7 @@
                   alignment: 2,
                   marginL: 10,
                   marginR: 10,
-                  marginV: 40,
+                  marginV: 80,
                 }, style.value, colorStyle),
                 style.name.toUpperCase(),
                 fontSize,
@@ -4801,7 +4909,7 @@
     return exportMsToFrames(ms, policy.profile, rounding);
   }
 
-  const EXPORT_SUBTITLE_TRACKS = Object.freeze(['main', 'extension', 'both', 'main_and_extension']);
+  const EXPORT_SUBTITLE_TRACKS = Object.freeze(['main', 'extension', 'overlay', 'both', 'main_and_extension', 'all']);
   const EXPORT_INVALID_NAME_CHARS = /[\\/<>:"|?*\u0000-\u001f]/g;
   const EXPORT_NAME_EXTENSIONS = new Set([
     '.mosp', '.json', '.srt', '.txt', '.ass', '.vtt', '.xml', '.ffconcat', '.otio', '.otioz',
@@ -4987,6 +5095,10 @@
     const warnings = [];
     if (mode === 'gap_removed' && !gaps.some((gap) => gap.removed)) warnings.push({ code: 'no_removed_gaps' });
     const projectSegments = Array.isArray(project.segments) ? project.segments : [];
+    // schema §1.5：叠加轨 enabled=false 时保留数据但不显示也不导出。
+    const projectOverlaySegments = project.overlay_track?.enabled === true
+      && Array.isArray(project.overlay_track.segments)
+      ? project.overlay_track.segments : [];
     const schemaExtension = Array.isArray(project.multi_subtitle?.tracks)
       ? project.multi_subtitle.tracks.flatMap((track) => Array.isArray(track?.segments) ? track.segments : [])
       : [];
@@ -5018,7 +5130,11 @@
         startMs: mappedStart, endMs: mappedEnd,
       };
     }).filter(Boolean);
-    const cues = { main: projectCues(projectSegments, 'main'), extension: projectCues(projectExtension, 'extension') };
+    const cues = {
+      main: projectCues(projectSegments, 'main'),
+      extension: projectCues(projectExtension, 'extension'),
+      overlay: projectCues(projectOverlaySegments, 'overlay'),
+    };
     const stickers = [];
     const stickerHeads = new Set();
     const stickerRoot = String(project.sticker_root || project.stickerRoot || '').trim().replace(/[\\/]$/, '');
@@ -5028,56 +5144,66 @@
         || rawPath.startsWith('/') || rawPath.startsWith('file://')) return rawPath;
       return `${stickerRoot}/${rawPath.replace(/^[\\/]+/, '')}`;
     };
-    projectSegments.forEach((segment, index) => {
-      const reference = segment?.sticker_ref;
-      const source = segment?.sticker || (reference && projectSegments[reference.headIdx]?.sticker);
-      if (reference && Number.isInteger(reference.headIdx)) {
-        const head = projectSegments[reference.headIdx];
-        if (!head?.sticker || head.disabled || reference.headIdx === index) {
-          warnings.push({ code: 'dangling_sticker_reference', index, headIdx: reference.headIdx });
-          return;
-        } else {
-          const headName = String(head.sticker.name || head.sticker.filename || '').replace(/\.[^.]+$/, '');
-          if (reference.name && headName && reference.name !== headName) {
-            warnings.push({ code: 'stale_sticker_reference', index, headIdx: reference.headIdx });
+    // 收集一条轨的表情包：ref 在所在轨数组内解析 head（叠加轨的 ref 只引用
+    // 叠加轨自身段）。track 用于区分主轨 stickers 与叠加轨 overlayStickers。
+    const collectStickers = (segments, track, output) => {
+      const heads = new Set();
+      segments.forEach((segment, index) => {
+        const reference = segment?.sticker_ref;
+        const source = segment?.sticker || (reference && segments[reference.headIdx]?.sticker);
+        if (reference && Number.isInteger(reference.headIdx)) {
+          const head = segments[reference.headIdx];
+          if (!head?.sticker || head.disabled || reference.headIdx === index) {
+            warnings.push({ code: 'dangling_sticker_reference', track, index, headIdx: reference.headIdx });
+            return;
+          } else {
+            const headName = String(head.sticker.name || head.sticker.filename || '').replace(/\.[^.]+$/, '');
+            if (reference.name && headName && reference.name !== headName) {
+              warnings.push({ code: 'stale_sticker_reference', track, index, headIdx: reference.headIdx });
+            }
           }
         }
-      }
-      if (!source || segment.disabled || (segment.sticker && stickerHeads.has(index))) return;
-      if (segment.sticker) stickerHeads.add(index);
-      const timing = segment.sticker || segment;
-      const stickerStart = Number(timing.start);
-      const stickerEnd = Number(timing.end);
-      const rawStart = Math.round(Number.isFinite(stickerStart) ? stickerStart : Number(segment.start) || 0);
-      const rawEnd = Math.round(Number.isFinite(stickerEnd) ? stickerEnd : Number(segment.end) || 0);
-      const start = Math.min(durationMs, Math.max(0, rawStart));
-      const end = Math.min(durationMs, Math.max(start, rawEnd));
-      if (end <= start || mapSourceToOutput(end) <= mapSourceToOutput(start)) {
-        warnings.push({ code: 'fully_removed_sticker', index });
-        return;
-      }
-      const resolvedStickerPath = resolveStickerPath(source);
-      if (!resolvedStickerPath) {
-        warnings.push({ code: 'missing_sticker_path', index });
-        return;
-      }
-      if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_sticker_to_duration', index });
-      stickers.push({
-        headIndex: index, name: String(source.name || ''),
-        path: resolvedStickerPath, width: Number.isInteger(source.width) ? source.width : 720,
-        height: Number.isInteger(source.height) ? source.height : 480,
-        sourceStartMs: start, sourceEndMs: end,
-        startMs: mapSourceToOutput(start), endMs: mapSourceToOutput(end),
+        if (!source || segment.disabled || (segment.sticker && heads.has(index))) return;
+        if (segment.sticker) heads.add(index);
+        const timing = segment.sticker || segment;
+        const stickerStart = Number(timing.start);
+        const stickerEnd = Number(timing.end);
+        const rawStart = Math.round(Number.isFinite(stickerStart) ? stickerStart : Number(segment.start) || 0);
+        const rawEnd = Math.round(Number.isFinite(stickerEnd) ? stickerEnd : Number(segment.end) || 0);
+        const start = Math.min(durationMs, Math.max(0, rawStart));
+        const end = Math.min(durationMs, Math.max(start, rawEnd));
+        if (end <= start || mapSourceToOutput(end) <= mapSourceToOutput(start)) {
+          warnings.push({ code: 'fully_removed_sticker', track, index });
+          return;
+        }
+        const resolvedStickerPath = resolveStickerPath(source);
+        if (!resolvedStickerPath) {
+          warnings.push({ code: 'missing_sticker_path', track, index });
+          return;
+        }
+        if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_sticker_to_duration', track, index });
+        output.push({
+          headIndex: index, track, name: String(source.name || ''),
+          path: resolvedStickerPath, width: Number.isInteger(source.width) ? source.width : 720,
+          height: Number.isInteger(source.height) ? source.height : 480,
+          sourceStartMs: start, sourceEndMs: end,
+          startMs: mapSourceToOutput(start), endMs: mapSourceToOutput(end),
+        });
       });
-    });
-    if (cues.main.length === 0 && cues.extension.length === 0) warnings.push({ code: 'no_enabled_cues' });
+    };
+    collectStickers(projectSegments, 'main', stickers);
+    const overlayStickers = [];
+    collectStickers(projectOverlaySegments, 'overlay', overlayStickers);
+    if (cues.main.length === 0 && cues.extension.length === 0 && cues.overlay.length === 0) {
+      warnings.push({ code: 'no_enabled_cues' });
+    }
     warnings.sort((left, right) => left.code.localeCompare(right.code) || (left.index ?? 0) - (right.index ?? 0));
     const plan = {
       media: { path: mediaPath, type: String(media?.type || 'video'), durationMs },
       mode, sourceDurationMs: durationMs, keptIntervals, outputDurationMs,
       mapping: { mode, sourceDurationMs: durationMs, outputDurationMs, gaps },
       framePolicy: { profile: frameProfile, rounding: ['floor', 'ceil'], dropFrame: false },
-      cues, stickers, warnings, frameProfile,
+      cues, stickers, overlayStickers, warnings, frameProfile,
       subtitleFontFamily: premiereFontFamily(project.preview?.subtitle?.font_family),
     };
     Object.defineProperties(plan, {
@@ -5106,11 +5232,13 @@
       throw new Error('empty export interval');
     }
     const outputDuration = plan.outputDurationMs;
-    const cueLists = [plan.cues?.main, plan.cues?.extension].filter(Array.isArray);
+    const cueLists = [plan.cues?.main, plan.cues?.extension, plan.cues?.overlay].filter(Array.isArray);
     if (cueLists.flat().some((cue) => cue.startMs < 0 || cue.endMs > outputDuration || cue.endMs <= cue.startMs)) {
       throw new Error('export cue outside output duration');
     }
-    if ((Array.isArray(plan.stickers) ? plan.stickers : []).some((sticker) => (
+    // 主轨与叠加轨的表情包导出计划共用同一条时间校验，非法计划不允许过校验关。
+    const stickerLists = [plan.stickers, plan.overlayStickers].filter(Array.isArray);
+    if (stickerLists.flat().some((sticker) => (
       sticker.startMs < 0 || sticker.endMs > outputDuration || sticker.endMs <= sticker.startMs
     ))) throw new Error('export sticker outside output duration');
     return plan;
@@ -5131,7 +5259,12 @@
 
   function selectedSubtitleTracks(plan, subtitleTracks) {
     const selected = subtitleTracks === 'main_and_extension' || subtitleTracks === 'both'
-      ? ['main', 'extension'] : subtitleTracks === 'extension' ? ['extension'] : ['main'];
+      ? ['main', 'extension']
+      : subtitleTracks === 'all'
+        ? ['main', 'extension', 'overlay']
+        : subtitleTracks === 'overlay'
+          ? ['overlay']
+          : subtitleTracks === 'extension' ? ['extension'] : ['main'];
     return selected.flatMap((track) => Array.isArray(plan.cues?.[track]) ? plan.cues[track] : []);
   }
 
@@ -5315,23 +5448,31 @@
     }) : [];
     const videoTracks = hasVideo ? [`<track>${sourceTracks.join('')}</track>`] : [];
     const stickerFileIds = new Map();
-    const stickerTracks = hasVideo ? (Array.isArray(exportPlan.stickers) ? exportPlan.stickers : []).map((sticker, index) => {
-      if (!String(sticker.path || '').trim()) return '';
-      const stickerKey = String(sticker.path);
-      const fileId = stickerFileIds.get(stickerKey) || `file-sticker-${stickerFileIds.size + 1}`;
-      const defineFile = !stickerFileIds.has(stickerKey);
-      stickerFileIds.set(stickerKey, fileId);
-      const clip = fcpClipItem({
-        id: `sticker-clip-${index + 1}`, fileId, name: `MAW sticker - ${sticker.name || index + 1}`,
-        path: sticker.path, width: sticker.width, height: sticker.height, sourceStartMs: 0,
-        sourceEndMs: Math.max(1, sticker.endMs - sticker.startMs),
-        startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'sticker', track: `sticker-${index + 1}`,
-        defineFile, encodeDriveColon: true,
-      });
-      return `<track>${clip}</track>`;
-    }).filter(Boolean) : [];
+    const buildStickerTracks = (list, trackPrefix, clipPrefix) => (Array.isArray(list) ? list : [])
+      .map((sticker, index) => {
+        if (!String(sticker.path || '').trim()) return '';
+        const stickerKey = `${trackPrefix}:${String(sticker.path)}`;
+        const fileId = stickerFileIds.get(stickerKey) || `file-${trackPrefix}-${stickerFileIds.size + 1}`;
+        const defineFile = !stickerFileIds.has(stickerKey);
+        stickerFileIds.set(stickerKey, fileId);
+        const clip = fcpClipItem({
+          id: `${clipPrefix}-clip-${index + 1}`, fileId, name: `MAW sticker - ${sticker.name || index + 1}`,
+          path: sticker.path, width: sticker.width, height: sticker.height, sourceStartMs: 0,
+          sourceEndMs: Math.max(1, sticker.endMs - sticker.startMs),
+          startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'sticker', track: `${trackPrefix}-${index + 1}`,
+          defineFile, encodeDriveColon: true,
+        });
+        return `<track>${clip}</track>`;
+      }).filter(Boolean);
+    const stickerTracks = hasVideo
+      ? buildStickerTracks(exportPlan.stickers, 'sticker', 'sticker')
+        .concat(buildStickerTracks(exportPlan.overlayStickers, 'overlay-sticker', 'overlay-sticker'))
+      : [];
     const textTracks = nativeTextObjects && hasVideo ? (subtitleTracks === 'main_and_extension' || subtitleTracks === 'both'
-      ? ['main', 'extension'] : subtitleTracks === 'extension' ? ['extension'] : ['main']).map((track) => {
+      ? ['main', 'extension']
+      : subtitleTracks === 'all'
+        ? ['main', 'extension', 'overlay']
+        : subtitleTracks === 'overlay' ? ['overlay'] : subtitleTracks === 'extension' ? ['extension'] : ['main']).map((track) => {
       const cues = selectedSubtitleTracks(exportPlan, track);
       const generators = cues.map((cue, index) => {
         const range = fcpTimeRange(cue.startMs, cue.endMs, exportPlan);
@@ -6263,6 +6404,9 @@ export default MawDynamicCaptions;
     uniqueStableSegmentId,
     normalizeMultiSubtitle,
     normalizeMultiSubtitleProject,
+    normalizeOverlayTrack,
+    mergeMainAndOverlaySegments,
+    moveSegmentBetweenTracks,
     detectSubtitleSplitMode,
     isWordSplitConnector,
     SPLIT_TRIM_PRIMARY_SYMBOLS,
@@ -6342,6 +6486,7 @@ export default MawDynamicCaptions;
     effectiveColorName,
     shiftGroupReferenceIndices,
     repairGroupReferenceIndices,
+    shiftSelectionAfterRemoval,
     buildSrtPayload,
     normalizeAssFontFamily,
     normalizeAssFontSize,
