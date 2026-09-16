@@ -3261,6 +3261,34 @@ test('builds a color SRT on the shared full-export timeline and excludes disable
   ].join('\n'));
 });
 
+test('resolves overlay color references through per-track contexts in merged exports', () => {
+  // 合并数组里叠加段的 color_ref.headIdx 指向叠加轨自身下标；
+  // 没有按轨上下文时会错解析到主轨 head，导致按色过滤丢失叠加字幕。
+  const main = [{ start: 0, end: 1000, text: 'main red', color: { name: 'red' } }];
+  const overlay = [
+    { start: 200, end: 400, text: 'overlay blue head', color: { name: 'blue' } },
+    { start: 500, end: 700, text: 'overlay blue ref', color_ref: { name: 'blue', headIdx: 0 } },
+  ];
+  const merged = helpers.mergeMainAndOverlaySegments(main, overlay);
+  const overlaySet = new Set(overlay);
+  const resolver = (segment) => (overlaySet.has(segment) ? overlay : main);
+  const blueSrt = helpers.buildSrtPayload(merged, {
+    colorName: 'blue',
+    colorContextResolver: resolver,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  });
+  assert.ok(blueSrt.includes('overlay blue head'));
+  assert.ok(blueSrt.includes('overlay blue ref'));
+  assert.ok(!blueSrt.includes('main red'));
+  const redSrt = helpers.buildSrtPayload(merged, {
+    colorName: 'red',
+    colorContextResolver: resolver,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  });
+  assert.ok(redSrt.includes('main red'));
+  assert.ok(!redSrt.includes('overlay blue'));
+});
+
 test('optionally prefixes configured speaker names in SRT output', () => {
   const segments = [
     { start: 0, end: 1000, text: 'yellow line', color: { name: 'yellow' } },
@@ -3847,9 +3875,11 @@ test('normalizes closed FPS and track choices without guessing unsupported value
     assert.equal(helpers.normalizeExportOptions({ fps }).fps, String(fps));
   }
   assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'main_and_extension' }).subtitleTracks, 'main_and_extension');
+  assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'overlay' }).subtitleTracks, 'overlay');
+  assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'all' }).subtitleTracks, 'all');
   assert.throws(() => helpers.normalizeExportOptions({ fps: 29.97 }), /unsupported export FPS/);
   assert.throws(() => helpers.normalizeExportOptions({ dropFrame: true }), /drop-frame/);
-  assert.throws(() => helpers.normalizeExportOptions({ subtitleTracks: 'all' }), /unsupported subtitle tracks/);
+  assert.throws(() => helpers.normalizeExportOptions({ subtitleTracks: 'bogus' }), /unsupported subtitle tracks/);
   assert.throws(() => helpers.normalizeExportOptions([]), /export options must be an object/);
   assert.throws(() => helpers.normalizeExportOptions({ unknownOption: true }), /unknown export option: unknownOption/);
 });
@@ -4088,6 +4118,66 @@ test('selects main, extension, and both subtitle tracks in XML and SRT', () => {
   }
 });
 
+test('exports the overlay track as its own cues, text track, and sticker tracks', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 5000 },
+    sticker_root: 'C:/stickers',
+    segments: [{ start: 100, end: 300, text: 'main' }],
+    overlay_track: {
+      enabled: true,
+      segments: [
+        { start: 400, end: 700, text: 'overlay one', sticker: { name: 'cat', rel: 'cat.png', width: 320, height: 240 } },
+        { start: 800, end: 1100, text: 'overlay two', sticker_ref: { name: 'cat', headIdx: 0 } },
+      ],
+    },
+  }, { mode: 'source' });
+  assert.equal(plan.cues.overlay.length, 2);
+  assert.equal(plan.cues.overlay[0].text, 'overlay one');
+  assert.equal(plan.overlayStickers.length, 2);
+  assert.equal(plan.overlayStickers[0].track, 'overlay');
+  assert.equal(plan.overlayStickers[0].path, 'C:/stickers/cat.png');
+  assert.equal(plan.overlayStickers[1].path, 'C:/stickers/cat.png');
+
+  // 叠加轨字幕独立成轨；主轨 stickers 与叠加轨 stickers 各用各的轨道。
+  const xml = helpers.serializeFcp7Xml(plan, { subtitleTracks: 'all', nativeTextObjects: true });
+  assert.equal((xml.match(/<clipitem id="text-main-/g) || []).length, 1);
+  assert.equal((xml.match(/<clipitem id="text-overlay-/g) || []).length, 2);
+  assert.ok(xml.includes('<name>MAW native text - overlay</name>'));
+  assert.ok(xml.includes('clipitem id="overlay-sticker-clip-1"'));
+  assert.ok(xml.includes('<name>MAW sticker - cat</name>'));
+  assert.equal((xml.match(/<track>/g) || []).length >= 4, true);
+  // 仅叠加轨 / 映射 SRT 选择。
+  const overlayOnlyXml = helpers.serializeFcp7Xml(plan, { subtitleTracks: 'overlay', nativeTextObjects: true });
+  assert.equal((overlayOnlyXml.match(/<clipitem id="text-/g) || []).length, 2);
+  const overlaySrt = helpers.serializeMappedSrt(plan, { subtitleTracks: 'overlay' });
+  assert.equal(parseSrt(overlaySrt).length, 2);
+  // 关闭叠加轨（schema：enabled=false 不导出）→ 没有叠加 cue，也没有表情包。
+  const disabledPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 5000 },
+    segments: [{ start: 100, end: 300, text: 'main' }],
+    overlay_track: { enabled: false, segments: [{ start: 400, end: 700, text: 'hidden' }] },
+  }, { mode: 'source' });
+  assert.equal(disabledPlan.cues.overlay.length, 0);
+  assert.equal(disabledPlan.overlayStickers.length, 0);
+});
+
+test('buildAssPayload writes overlay cues on layer 1 anchored to the top', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main' }],
+    { overlaySegments: [
+      { start: 150, end: 350, text: 'overlay' },
+      { start: 400, end: 200, text: 'invalid' },
+      { start: 500, end: 600, text: 'skip me', disabled: true },
+    ] },
+  );
+  const dialogueLines = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogueLines.length, 2);
+  assert.match(dialogueLines[0], /^Dialogue: 0,/);
+  assert.ok(!dialogueLines[0].includes('\\an8'));
+  assert.match(dialogueLines[1], /^Dialogue: 1,/);
+  assert.ok(!dialogueLines[1].includes('\\an8'));
+});
+
 test('reports malformed intervals, missing sticker paths, and stale serializer warnings', () => {
   const plan = helpers.buildProjectExportPlan({
     media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
@@ -4168,6 +4258,19 @@ test('rejects serializer input that lacks media path, duration, or frame profile
     media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 }, segments: [],
   }, { mode: 'source' });
   assert.throws(() => helpers.serializeFcp7Xml({ ...plan, frameProfile: null }), /frame profile/);
+});
+
+test('rejects export plans whose overlay stickers fall outside the output duration', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 }, segments: [],
+  }, { mode: 'source' });
+  assert.throws(
+    () => helpers.serializeMappedSrt({ ...plan, overlayStickers: [{ startMs: 0, endMs: 1200 }] }),
+    /export sticker outside output duration/,
+  );
+  assert.doesNotThrow(() => helpers.serializeMappedSrt({
+    ...plan, overlayStickers: [{ startMs: 0, endMs: 800 }],
+  }, { subtitleTracks: 'main' }));
 });
 
 test('translates every project-export option, outcome, and warning key in both locales', () => {
@@ -4697,6 +4800,122 @@ test('normalizes legacy multi-subtitle data with stable IDs and preserves option
   ]);
   assert.equal(project.multi_subtitle.display_mode, 'both');
   assert.equal(project.multi_subtitle.main_split_mode, 'continuous');
+});
+
+
+test('normalizes an enabled overlay track with stable IDs without creating a bilingual track', () => {
+  const project = {
+    segments: [{ start: 0, end: 1000, text: '主字幕' }],
+    overlay_track: {
+      enabled: true,
+      segments: [{ start: 400, end: 800, text: '叠加字幕' }],
+    },
+  };
+
+  helpers.normalizeMultiSubtitleProject(project);
+
+  assert.equal(project.overlay_track.enabled, true);
+  assert.equal(project.overlay_track.segments[0].id, 'overlay-001');
+  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks)), []);
+});
+
+
+test('merges main and overlay cues by start time with main track tie priority', () => {
+  const merged = helpers.mergeMainAndOverlaySegments(
+    [
+      { start: 0, end: 1000, text: '主一' },
+      { start: 2000, end: 3000, text: '主二' },
+    ],
+    [
+      { start: 500, end: 1500, text: '叠一' },
+      { start: 2000, end: 2500, text: '叠二' },
+    ],
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(merged.map((segment) => segment.text))), [
+    '主一', '叠一', '主二', '叠二',
+  ]);
+});
+
+
+test('includes overlay track data in a segment history snapshot', () => {
+  const snapshot = helpers.buildSegmentsHistorySnapshot(
+    [{ text: '主字幕' }],
+    { enabled: false },
+    { enabled: true, segments: [{ text: '叠加字幕' }] },
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.overlay_track)), {
+    enabled: true, segments: [{ text: '叠加字幕' }],
+  });
+});
+
+
+test('moves a segment between main and overlay tracks keeping target start order', () => {
+  const main = [
+    { id: 'a', start: 0, end: 1000 },
+    { id: 'b', start: 2000, end: 3000 },
+  ];
+  const overlay = [{ id: 'o1', start: 500, end: 1200 }];
+
+  // 主轨 index 0（start 0）应插到 overlay 的 start 500 之前。
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, 0), 0);
+  assert.equal(main.length, 1);
+  assert.equal(main[0].id, 'b');
+  assert.deepEqual(overlay.map((segment) => segment.id), ['a', 'o1']);
+
+  // 越界与无效下标安全返回 -1，不改动两侧数组。
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, 5), -1);
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, -1), -1);
+  assert.equal(main.length, 1);
+  assert.equal(overlay.length, 2);
+
+  // 反向：把 overlay 的 'a' 移回主轨，应按 start 升序插到 'b' 之前。
+  assert.equal(helpers.moveSegmentBetweenTracks(overlay, main, 0), 0);
+  assert.deepEqual(main.map((segment) => segment.id), ['a', 'b']);
+  assert.deepEqual(overlay.map((segment) => segment.id), ['o1']);
+
+  // 同 start 时插到既有段之后，保持目标轨稳定排序。
+  const target = [{ id: 't1', start: 1000, end: 1500 }];
+  assert.equal(helpers.moveSegmentBetweenTracks([main[1]], target, 0), 1);
+  assert.deepEqual(target.map((segment) => segment.id), ['t1', 'b']);
+});
+
+
+test('shifts selection sets and the range anchor after a cue is removed', () => {
+  // 被移除的下标本身被选中：移出选中集，其后选中项前移一位（5 前移为 4），
+  // 锚点在被移除下标之后时同样前移（5 前移为 4）。
+  const selection = new Set([1, 3, 5]);
+  const result = helpers.shiftSelectionAfterRemoval(selection, 5, 3);
+  assert.equal(result.wasSelected, true);
+  assert.deepEqual([...selection].sort(), [1, 4]);
+  assert.equal(result.nextAnchor, 4);
+
+  // 锚点正好是被移除的下标：锚点清空为 -1，避免 Shift 范围选悬空。
+  const anchorSelection = new Set([2, 7]);
+  const anchorReset = helpers.shiftSelectionAfterRemoval(anchorSelection, 2, 2);
+  assert.equal(anchorReset.wasSelected, true);
+  assert.deepEqual([...anchorSelection].sort(), [6]);
+  assert.equal(anchorReset.nextAnchor, -1);
+
+  // 被移除的下标未被选中：选中集仅做前移（4 前移为 3），锚点不变。
+  const untouched = new Set([0, 4]);
+  const notSelected = helpers.shiftSelectionAfterRemoval(untouched, 1, 2);
+  assert.equal(notSelected.wasSelected, false);
+  assert.deepEqual([...untouched].sort(), [0, 3]);
+  assert.equal(notSelected.nextAnchor, 1);
+
+  // 锚点与选中项都在被移除下标之前：完全不受影响。
+  const before = new Set([0, 1]);
+  const unchanged = helpers.shiftSelectionAfterRemoval(before, 1, 4);
+  assert.equal(unchanged.wasSelected, false);
+  assert.deepEqual([...before].sort(), [0, 1]);
+  assert.equal(unchanged.nextAnchor, 1);
+
+  // 非法输入不抛错：返回未选中与原锚点。
+  const invalid = helpers.shiftSelectionAfterRemoval(null, 3, Number.NaN);
+  assert.equal(invalid.wasSelected, false);
+  assert.equal(invalid.nextAnchor, 3);
 });
 
 

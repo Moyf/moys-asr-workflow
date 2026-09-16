@@ -649,5 +649,5 @@ def _load_input(project_path: Path | None, srt_path: Path | None) -> tuple[JsonD
         return read_project(resolved), resolved, srt_path.expanduser().resolve() if srt_path else None
     if srt_path is not None:
         resolved = srt_path.expanduser().resolve()
-        return read_srt(resolved), None, resolved
+        return read_srt(resolved, strict=True), None, resolved
     raise ValueError("a project or SRT input is required")
