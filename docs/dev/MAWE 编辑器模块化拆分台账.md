@@ -125,6 +125,40 @@ main 合并的实际代价，确认四条进合并后流程的原则：
   PR 43 失败 vs 纯 main(3de81a86) 44 失败，**逐 test ID 比对仅我们失败=0**，
   main 独有 1 条（OTIO metadata missing）在本树上通过。
 
+## 第四次 main 同步（2026-09-16 晚，origin/main @ 5837aa61，6 提交）
+
+main 并入 ASS 样式库（#135：自定义五色调色板、ASS 预览模式、样式库管理）、
+叠加块行高刷新（5837aa61）、C 合并叠加路径复用（c2f12351）等。
+
+- merge-flow：REPLAY 16 / CONFLICT 0（含 DEFAULT_EDITOR_SETTINGS、
+  COLOR_PALETTE 两个变量 + 14 个函数）；24 处冲突按矩阵+重放解决。
+- **merge-flow 变量重放缺陷（已修工具根因）**：`declarationRecords` 对变量
+  声明的 raw 只取 declarator 文本，重放丢失 `const/let` 关键字 → 严格模式
+  IIFE 下裸赋值 ReferenceError。第三轮全函数重放未触发；本轮触发两处
+  （settings 的 DEFAULT_EDITOR_SETTINGS、colors 的 COLOR_PALETTE）。
+  工具已改为取整条语句文本（tools/merge-flow.mjs declarationRecords）。
+- **调色板家族整体迁入 MaweColors**（main #135 让调色板可变 + 带 DOM 控件）：
+  COLOR_PALETTE/COLOR_BY_NAME 改 let + accessor，家族函数
+  （build/rebuild/current/sync/refresh/setSubtitleColorPaletteValue）与
+  7 个 DOM 常量全部归模块；入口仅留监听器接线（NS 限定）。
+- **ns-rewrite 误替换重现 9 处**（同第三轮 bug：局部 `start` →
+  `MAWE_I18N.start`、局部 `snapshotSegments` → `MaweHistory.snapshotSegments`）
+  ——merge-flow 重建入口用 main 原文，随后 ns-rewrite 重跑时旧 bug 重现；
+  第三轮的数据修复被覆盖。数据已再次修复；**审计防线**：
+  `audit-replayed-fns.mjs` + e2e 独有失败比对。工具根因尚未定位（当前文件
+  形态下不触发，幂等安全），下一轮合并后必须跑审计器。
+- main 新合入 e2e 的裸全局 34 处已迁移（fix-e2e-globals 幂等重跑）。
+- 维护者把 run-e2e-bg/poll-e2e 重写为三件套（maw-e2e-bg 运行目录 +
+  latest.txt + summarize-e2e-report），add/add 冲突取 main 版。
+- **归因（双跑）**：本树 49 vs main@5837aa61 43，交集 43；独有 6 个回归
+  （overlay 拖动×2、C 合并、双击光标、ASS 说话人、禁用显示）**全部修复**
+  （ns-rewrite 9 处 + e2e 迁移 34 处）；修复后单测全绿。**待办：修复后
+  未重跑全量 e2e（下一 agent 先跑一轮 `run-e2e-bg.ps1` + 与
+  `%TEMP%\maincheck5-fails.txt`(43 项基线) 比对，确认仅我们失败=0）。**
+- 验证状态：Ruff 全过；Node 315/0；Python 1576 OK；顺序断言过；探针零
+  pageerror（连续抓到并修复三处：settings 变量关键字、appearance 跨模块
+  裸调用——探针是这类加载期错误的第一道防线）。
+
 本台账记录在最新 `main` 上把 `web/editor.js` 平铺单体拆为特征模块的执行过程。
 方法论与工具借鉴外部分支 `drunkenQCat/moys-asr-workflow:refactor/explode-js`
 （其完整方法沉淀见该分支的 `docs/dev/编辑器模块化拆分指南.md`，工具在
