@@ -954,9 +954,10 @@ __WAVEFORM_CSS__
       <small class="editor-settings-hint" id="ass-style-summary">样式库正在加载…</small>
     </div>
   </div>
+  <small class="editor-settings-hint" id="subtitle-style-ass-mode-hint" hidden>当前预览样式由 <button type="button" class="ass-mode-hint-link" id="subtitle-style-ass-mode-link">ASS 字幕模式</button> 控制</small>
   <span class="editor-settings-group-heading" id="subtitle-preview-style-title">主字幕</span>
   <div class="editor-settings-group subtitle-preview-style-group" id="main-subtitle-preview-settings" role="group" aria-labelledby="subtitle-preview-style-title">
-    <div class="subtitle-preview-settings-fields">
+    <div class="subtitle-preview-settings-fields" id="main-subtitle-css-fields">
         <label class="subtitle-preview-setting-row" title="只影响播放器画面内的字幕预览，不改变字幕文本或时间">
           <span>文字大小</span>
           <select id="subtitle-font-size">
@@ -1006,10 +1007,16 @@ __WAVEFORM_CSS__
           </div>
         </label>
     </div>
+    <div class="subtitle-preview-settings-fields" id="main-ass-style-fields" hidden>
+        <label class="subtitle-preview-setting-row" title="ASS 字幕模式下主字幕使用的样式；即当前 ASS 输出方案关联的样式，与样式库中的选择同步">
+          <span>使用 ASS 样式</span>
+          <select id="main-ass-style-select" aria-label="主字幕 ASS 样式"></select>
+        </label>
+    </div>
   </div>
   <span class="editor-settings-group-heading" id="extension-subtitle-preview-title" hidden>副字幕</span>
   <div class="editor-settings-group subtitle-preview-style-group" id="extension-subtitle-preview-settings" role="group" aria-labelledby="extension-subtitle-preview-title" hidden>
-    <div class="subtitle-preview-settings-fields">
+    <div class="subtitle-preview-settings-fields" id="extension-subtitle-css-fields">
         <label class="subtitle-preview-setting-row" title="只影响播放器画面内的副字幕预览">
           <span>文字大小</span>
           <select id="extension-subtitle-font-size">
@@ -1055,6 +1062,12 @@ __WAVEFORM_CSS__
             <input id="extension-subtitle-background-alpha" type="range" min="0" max="1" step="0.01" value="0.65" aria-label="背景不透明度">
             <output id="extension-subtitle-background-alpha-value" for="extension-subtitle-background-alpha">65%</output>
           </div>
+        </label>
+    </div>
+    <div class="subtitle-preview-settings-fields" id="extension-ass-style-fields" hidden>
+        <label class="subtitle-preview-setting-row" title="ASS 字幕模式下副字幕使用的样式；多重字幕的副字幕共用一个样式，与样式库「副字幕样式」槽位同步">
+          <span>使用 ASS 样式</span>
+          <select id="extension-ass-style-select" aria-label="副字幕 ASS 样式"></select>
         </label>
     </div>
   </div>
@@ -1399,6 +1412,11 @@ __WAVEFORM_CSS__
           <select id="ass-ass-default-profile" aria-label="ASS 导出默认方案"></select>
         </label>
         <small>ASS 导出使用此方案及其动画。</small>
+        <label class="ass-style-assignment-row" for="ass-extension-default-style" id="ass-extension-style-row" hidden>
+          <span>副字幕样式</span>
+          <select id="ass-extension-default-style" aria-label="ASS 副字幕默认样式"></select>
+        </label>
+        <small id="ass-extension-style-hint" hidden>多重字幕的副字幕在 ASS 导出与「ASS 字幕模式」预览中共用此样式。</small>
       </div>
     </aside>
     <main class="ass-style-editor" aria-live="polite">

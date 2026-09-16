@@ -432,6 +432,13 @@ function multiSubtitleVisible() {
   return getMultiSubtitleState().enabled === true && Boolean(getActiveExtensionTrack());
 }
 
+// 多重字幕关闭时轨道数据仍保留在工程里，但副字幕不参与 ASS 预览与导出；
+// 与 multiSubtitleVisible() 的开合语义保持一致。
+function activeExtensionSegments() {
+  if (getMultiSubtitleState().enabled !== true) return [];
+  return getActiveExtensionTrack()?.segments || [];
+}
+
 function isConfiguredSubtitleSplitMode(value) {
   return MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(value);
 }
@@ -1700,6 +1707,9 @@ function assExportOptions(appearance = getSubtitleAppearance()) {
   const profileId = library.assignments?.assExportProfileId || 'ass';
   const assProfile = window.AsrEditorUtils.assProfileForId(library, profileId);
   const assStyle = window.AsrEditorUtils.assStyleForId(library, assProfile.styleId);
+  const assExtensionStyle = window.AsrEditorUtils.assStyleForId(
+    library, library.assignments?.assExtensionStyleId || 'ass-extension',
+  );
   return {
     title: PROJECT_NAME || FILENAME_BASE || 'MAW',
     mediaMetadata: normalizeMediaMetadata(DATA.media_metadata),
@@ -1709,6 +1719,7 @@ function assExportOptions(appearance = getSubtitleAppearance()) {
     appearance,
     assProfile,
     assStyle,
+    assExtensionStyle,
   };
 }
 
@@ -2476,6 +2487,17 @@ const assStyleDuplicateButton = document.getElementById('ass-style-duplicate');
 const assProfileNewButton = document.getElementById('ass-profile-new');
 const assSrtDefaultStyleSelect = document.getElementById('ass-srt-default-style');
 const assDefaultProfileSelect = document.getElementById('ass-ass-default-profile');
+const assExtensionStyleSelect = document.getElementById('ass-extension-default-style');
+const assExtensionStyleRow = document.getElementById('ass-extension-style-row');
+const assExtensionStyleHint = document.getElementById('ass-extension-style-hint');
+const subtitleStyleAssModeHint = document.getElementById('subtitle-style-ass-mode-hint');
+const subtitleStyleAssModeLink = document.getElementById('subtitle-style-ass-mode-link');
+const mainSubtitleCssFields = document.getElementById('main-subtitle-css-fields');
+const mainAssStyleFields = document.getElementById('main-ass-style-fields');
+const mainAssStyleSelect = document.getElementById('main-ass-style-select');
+const extensionSubtitleCssFields = document.getElementById('extension-subtitle-css-fields');
+const extensionAssStyleFields = document.getElementById('extension-ass-style-fields');
+const extensionAssStyleSelect = document.getElementById('extension-ass-style-select');
 const assStyleForm = document.getElementById('ass-style-form');
 const assProfileForm = document.getElementById('ass-profile-form');
 const assProfileStyleSelect = document.getElementById('ass-profile-style-id');
@@ -2993,6 +3015,16 @@ function syncAssStyleManager({ force = false } = {}) {
     profiles.forEach((profile) => appendAssStyleOption(assDefaultProfileSelect, profile.id, profile.name));
     assDefaultProfileSelect.value = active;
   }
+  if (assExtensionStyleSelect) {
+    const activeExtension = ASS_STYLE_LIBRARY.assignments?.assExtensionStyleId || 'ass-extension';
+    assExtensionStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(assExtensionStyleSelect, style.id, style.name));
+    assExtensionStyleSelect.value = activeExtension;
+  }
+  // 副字幕槽位只在多重字幕模式下有意义，随轨道开合显隐。
+  const extensionSlotVisible = multiSubtitleVisible();
+  if (assExtensionStyleRow) assExtensionStyleRow.hidden = !extensionSlotVisible;
+  if (assExtensionStyleHint) assExtensionStyleHint.hidden = !extensionSlotVisible;
   if (assProfileStyleSelect) {
     const selectedProfile = selectedAssProfile();
     assProfileStyleSelect.replaceChildren();
@@ -3015,6 +3047,8 @@ function syncAssStyleManager({ force = false } = {}) {
   if (isStyle) syncAssStyleForm(selectedAssStyle());
   else syncAssProfileForm(selectedAssProfile());
   updateAssStyleLibraryStatus();
+  // 样式库变化后，设置页「字幕样式」里的 ASS 样式选择器同步刷新。
+  syncSubtitleStyleAssControls();
   if (force) assStyleWindow.querySelector('.ass-style-editor')?.scrollTo({ top: 0 });
 }
 
@@ -3148,6 +3182,24 @@ assStyleSaveButton?.addEventListener('click', () => {
 });
 assSrtDefaultStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('srtBurnStyleId', assSrtDefaultStyleSelect.value));
 assDefaultProfileSelect?.addEventListener('change', () => updateAssStyleAssignment('assExportProfileId', assDefaultProfileSelect.value));
+assExtensionStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('assExtensionStyleId', assExtensionStyleSelect.value));
+// 设置页「字幕样式」的 ASS 选择器：主字幕改的是当前 ASS 输出方案关联的
+// 样式（与样式库窗口中方案表单的样式下拉同步）；副字幕改库中的副字幕槽位。
+mainAssStyleSelect?.addEventListener('change', () => {
+  updateAssStyleManagerLibrary((library) => {
+    const profileId = library.assignments?.assExportProfileId || 'ass';
+    const profile = (library.assProfiles || []).find((item) => item.id === profileId);
+    if (profile) profile.styleId = mainAssStyleSelect.value;
+  });
+});
+extensionAssStyleSelect?.addEventListener('change', () => {
+  updateAssStyleAssignment('assExtensionStyleId', extensionAssStyleSelect.value);
+});
+// 设置页 hint 中的「ASS 字幕模式」是链接：模式开关就在本页上方，聚焦提示。
+subtitleStyleAssModeLink?.addEventListener('click', () => {
+  assModeToggle?.scrollIntoView?.({ block: 'center' });
+  assModeToggle?.focus?.();
+});
 // 「使用预览字体」：把「设置 → 字幕样式」当前预览字体映射成具体字体族，
 // 应用到正在编辑的 ASS 样式；内置键映射为 ASS 最常用的对应字体名。
 const PREVIEW_FONT_KEY_TO_ASS_NAME = Object.freeze({
@@ -3228,11 +3280,39 @@ assProfileForm?.addEventListener('change', (event) => {
   if (field) updateAssProfileField(field.dataset.assProfileField || field.dataset.assAnimation, assStyleFormValue(field));
 });
 
+function syncSubtitleStyleAssControls() {
+  // ASS 字幕模式接管预览样式后，「字幕样式」页的主/副字幕 CSS 控件换成
+  // 样式库选择器；主字幕选择即当前 ASS 输出方案关联的样式，与样式库窗口
+  // 中的选择同步，副字幕选择对应库中的「副字幕样式」槽位。
+  const assMode = EDITOR_SETTINGS.assMode === true;
+  if (subtitleStyleAssModeHint) subtitleStyleAssModeHint.hidden = !assMode;
+  if (mainSubtitleCssFields) mainSubtitleCssFields.hidden = assMode;
+  if (mainAssStyleFields) mainAssStyleFields.hidden = !assMode;
+  if (extensionSubtitleCssFields) extensionSubtitleCssFields.hidden = assMode;
+  if (extensionAssStyleFields) extensionAssStyleFields.hidden = !assMode;
+  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const styles = library.styles || [];
+  if (mainAssStyleSelect) {
+    mainAssStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(mainAssStyleSelect, style.id, style.name));
+    const profile = window.AsrEditorUtils.assProfileForId(
+      library, library.assignments?.assExportProfileId || 'ass',
+    );
+    mainAssStyleSelect.value = profile.styleId;
+  }
+  if (extensionAssStyleSelect) {
+    extensionAssStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(extensionAssStyleSelect, style.id, style.name));
+    extensionAssStyleSelect.value = library.assignments?.assExtensionStyleId || 'ass-extension';
+  }
+}
+
 function syncAssModeDependentControls() {
   // ASS 字幕模式接管预览样式后，「预览字幕颜色」不再参与预览，禁用并提示跳转。
   const assMode = EDITOR_SETTINGS.assMode === true;
   if (subtitleColorUnderlineInput) subtitleColorUnderlineInput.disabled = assMode;
   if (subtitleColorAssModeHint) subtitleColorAssModeHint.hidden = !assMode;
+  syncSubtitleStyleAssControls();
 }
 
 function syncAssModeControl() {
@@ -3589,6 +3669,10 @@ function updateMultiSubtitleUi() {
   }
   container.classList.toggle('multi-subtitle-enabled', enabled);
   container.dataset.multiDisplayMode = enabled ? (getMultiSubtitleState().display_mode || 'both') : 'main';
+  // 多重字幕开合影响副字幕相关的 ASS 样式入口（设置页副字幕组、样式库
+  // 副字幕槽位），同步刷新它们的可见性与选项。
+  syncAssModeDependentControls();
+  syncAssStyleManager();
 }
 
 overlayTrackToggle?.addEventListener('change', () => {
@@ -13931,7 +14015,7 @@ function assPreviewFontSize(style, metrics) {
     * metrics.stageHeight / ASS_PREVIEW_REFERENCE_HEIGHT;
 }
 
-function applyAssPreviewElement(element, style, animationState, metrics, alignment, margins) {
+function applyAssPreviewElement(element, style, animationState, metrics, alignment, margins, anchorTranslate = '') {
   if (!element) return;
   const scaleX = metrics.scaleX;
   const scaleY = metrics.scaleY;
@@ -13944,6 +14028,9 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
   const spacing = (Number(style.spacing) || 0) * scaleY;
   const borderBox = Number(style.borderStyle) === 3;
   const transform = [];
+  // 锚定元素（叠加轨/副字幕）的居中平移作为前缀并入，替代 CSS 类里的
+  // translateX(-50%)（此处写 transform 会整体覆盖类内变换）。
+  if (anchorTranslate) transform.push(anchorTranslate);
   const move = style.__assMove;
   if (move) {
     element.style.position = 'absolute';
@@ -14023,7 +14110,7 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
     'text-decoration-color', 'text-underline-offset', 'color', ' -webkit-text-stroke',
     '-webkit-text-stroke', 'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
     'max-width', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
-    'left', 'top', 'transform-origin', 'transform',
+    'left', 'right', 'top', 'bottom', 'white-space', 'text-align', 'transform-origin', 'transform',
   ].forEach((property) => element.style.removeProperty(property.trim()));
   element.style.setProperty(
     '--subtitle-preview-font-size',
@@ -14078,15 +14165,20 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
     vertical: Math.max(0, Number(baseStyle.marginV) || 0) * metrics.scaleY,
   };
   const appearance = getSubtitleAppearance();
-  const extensionSegments = getActiveExtensionTrack()?.segments || [];
+  const extensionSegments = activeExtensionSegments();
   const mainStyle = assPreviewStyleVariant(baseStyle, segment, DATA.segments, appearance);
-  const extensionStyle = assPreviewStyleVariant(
-    baseStyle,
-    extension,
-    extensionSegments,
-    appearance,
+  // 副字幕使用样式库「副字幕样式」槽位的独立样式（副字幕不支持颜色分组，
+  // 不做调色板变体），对齐与边距完全由该样式决定。
+  const extensionStyleBase = window.AsrEditorUtils.assStyleForId(
+    library, library.assignments?.assExtensionStyleId || 'ass-extension',
   );
-  // 叠加轨导出引用颜色样式名（无颜色时回落 Default）；预览按同一映射
+  const extensionAlignment = assPreviewAlignment(extensionStyleBase.alignment);
+  const extensionMargins = {
+    left: Math.max(0, Number(extensionStyleBase.marginL) || 0) * metrics.scaleX,
+    right: Math.max(0, Number(extensionStyleBase.marginR) || 0) * metrics.scaleX,
+    vertical: Math.max(0, Number(extensionStyleBase.marginV) || 0) * metrics.scaleY,
+  };
+  // 叠加轨导出引用颜色样式名（无颜色时回落）；预览按同一映射
   // 应用 ass_color_style 的调色板变体，保持与导出一致。
   const overlayTrackStyle = assPreviewStyleVariant(
     baseStyle,
@@ -14118,13 +14210,41 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
       stageHeight: metrics.stageHeight,
     },
   );
+  // 叠加轨不跟随 \move（绝对 PlayRes 坐标只属于主字幕）；fad/fade/t 与
+  // 位置无关，预览与导出保持一致。
+  const overlayDuration = Math.max(1, Number(overlay?.end) - Number(overlay?.start) || 1);
+  const overlayAnimation = window.AsrEditorUtils.assPreviewAnimationState(
+    profile,
+    Math.max(0, Number(tMs) - Number(overlay?.start || 0)),
+    overlayDuration,
+    {
+      playResX: metrics.resolution.width,
+      playResY: metrics.resolution.height,
+      stageWidth: metrics.stageWidth,
+      stageHeight: metrics.stageHeight,
+    },
+  );
   const animationGroup = profile.animations || {};
   const withMove = (style, state) => ({
     ...assPreviewAnimatedStyle(style, profile, state),
     __assMove: animationGroup.move?.enabled ? { x: state.moveX, y: state.moveY } : null,
   });
   const animatedMainStyle = withMove(mainStyle, mainAnimation);
-  const animatedExtensionStyle = withMove(extensionStyle, extensionAnimation);
+  // 副字幕与叠加轨不跟随 \move（绝对 PlayRes 坐标只属于主字幕）；
+  // fad/fade/t 与位置无关，预览与导出保持一致。
+  const animatedExtensionStyle = assPreviewAnimatedStyle(extensionStyleBase, profile, extensionAnimation);
+  const animatedOverlayTrackStyle = assPreviewAnimatedStyle(overlayTrackStyle, profile, overlayAnimation);
+  // 叠加轨锚定 = 下方最近一层的边距 + 1.2 × 该层字号（与导出的固化
+  // 公式一致）：有副字幕时叠在副字幕上方，否则叠在主字幕上方。偏移按
+  // 动画前的基础字号计算——导出侧 MarginV 固化在样式里，\t(\fs) 只改
+  // 变字形大小，不改变锚定边距。
+  const extensionTrackActive = extensionSegments
+    .some((cue) => cue && cue.disabled !== true);
+  const mainPreviewFontSize = assPreviewFontSize(baseStyle, metrics);
+  const extensionPreviewFontSize = assPreviewFontSize(extensionStyleBase, metrics);
+  const overlayOffsetPx = extensionTrackActive
+    ? extensionMargins.vertical + 1.2 * extensionPreviewFontSize
+    : margins.vertical + 1.2 * mainPreviewFontSize;
 
   overlayEl.dataset.assMode = 'true';
   overlayEl.classList.add('ass-preview-active');
@@ -14142,7 +14262,10 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   overlayEl.style.boxSizing = 'border-box';
   overlayEl.style.padding = `${margins.vertical}px ${margins.right}px ${margins.vertical}px ${margins.left}px`;
   applyAssPreviewElement(overlayTextEl, animatedMainStyle, mainAnimation, metrics, alignment, margins);
-  applyAssPreviewElement(overlayExtensionTextEl, animatedExtensionStyle, extensionAnimation, metrics, alignment, margins);
+  applyAssAnchoredPreviewElement(
+    overlayExtensionTextEl, animatedExtensionStyle, extensionAnimation, metrics,
+    extensionAlignment, extensionMargins, extensionMargins.vertical,
+  );
 
   if (speakerLabelVisible) {
     applyAssPreviewSpeakerLabel(overlayMainSpeakerLabelEl, animatedMainStyle, metrics);
@@ -14160,33 +14283,68 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   } else {
     clearAssPreviewSpeakerLabelStyle(overlayMainSpeakerLabelEl);
   }
-  applyAssOverlayTrackPreview(overlayTrackStyle, metrics, margins, alignment);
+  // 链在副字幕上方时，叠加元素沿用副字幕样式的对齐与边距（与导出侧
+  // Overlay 样式继承锚定层坐标系保持一致）。
+  applyAssAnchoredPreviewElement(
+    overlayTrackTextEl, animatedOverlayTrackStyle, overlayAnimation, metrics,
+    extensionTrackActive ? extensionAlignment : alignment,
+    extensionTrackActive ? extensionMargins : margins,
+    overlayOffsetPx,
+  );
 }
 
-// ASS 模式下的叠加轨预览：CSS 模式把叠加文字悬浮在预览框上沿之外
-// （bottom: calc(100% + 6px)），而 ASS 模式 overlayEl 已铺满整个舞台，
-// 那套定位会把文字推出画面。这里按导出契约（叠加 MarginV = 主样式垂直
-// 边距 + 字号）贴着主字幕排布，并沿用 ASS 样式外观（含 ass_color_style
-// 的调色板映射）：底部对齐排在主字幕上方，顶部对齐排在下方（MarginV 从
-// 顶边算），中间行 libass 忽略垂直边距，维持底部锚定近似。
-function applyAssOverlayTrackPreview(style, metrics, margins, alignment) {
-  if (!overlayTrackTextEl) return;
-  const fontSize = assPreviewFontSize(style, metrics);
-  const offset = `${Math.ceil(margins.vertical + fontSize)}px`;
-  overlayTrackTextEl.style.bottom = alignment.y === 0 ? 'auto' : offset;
-  overlayTrackTextEl.style.top = alignment.y === 0 ? offset : 'auto';
-  overlayTrackTextEl.style.maxWidth = `calc(100% - ${Math.max(0, margins.left + margins.right)}px)`;
-  overlayTrackTextEl.style.whiteSpace = 'normal';
-  overlayTrackTextEl.style.textAlign = 'center';
-  applyAssPreviewSpeakerLabel(overlayTrackTextEl, style, metrics);
+// 锚定渲染：副字幕/叠加轨不参与容器的 flex 布局（CSS 模式下叠加文字
+// 悬浮在预览框上沿之外，而 ASS 模式 overlayEl 已铺满整个舞台，那套
+// 定位会把文字推出画面），改为按各自样式的对齐与边距绝对定位。垂直
+// 偏移由调用方给出，替代样式的 marginV：副字幕直接用自己的边距，叠加
+// 轨用链式锚定结果。中列/中行以 50% + 锚定平移居中，锚定平移作为前缀
+// 并入 applyAssPreviewElement 的 scale/rotate 变换。
+function applyAssAnchoredPreviewElement(element, style, animationState, metrics, alignment, margins, verticalOffsetPx) {
+  if (!element) return;
+  const anchorTranslate = `translate(${alignment.x === 0.5 ? '-50%' : '0%'}, ${alignment.y === 0.5 ? '-50%' : '0%'})`;
+  applyAssPreviewElement(element, style, animationState, metrics, alignment, margins, anchorTranslate);
+  // 定位须在 applyAssPreviewElement 之后写入：其无 \move 分支会清空
+  // position/left/top，先写会被抹掉。
+  element.style.position = 'absolute';
+  if (alignment.x === 0.5) {
+    element.style.left = '50%';
+    element.style.right = 'auto';
+  } else if (alignment.x === 1) {
+    element.style.left = 'auto';
+    element.style.right = `${Math.max(0, Math.round(margins.right))}px`;
+  } else {
+    element.style.left = `${Math.max(0, Math.round(margins.left))}px`;
+    element.style.right = 'auto';
+  }
+  if (alignment.y === 0.5) {
+    element.style.top = '50%';
+    element.style.bottom = 'auto';
+  } else if (alignment.y === 0) {
+    // ASS 7-9 顶行：锚定边距从画面顶部算起。
+    element.style.top = `${Math.max(0, Math.ceil(verticalOffsetPx))}px`;
+    element.style.bottom = 'auto';
+  } else {
+    // ASS 1-3 底行：锚定边距从画面底部算起。
+    element.style.top = 'auto';
+    element.style.bottom = `${Math.max(0, Math.ceil(verticalOffsetPx))}px`;
+  }
+  element.style.whiteSpace = 'normal';
+  element.style.textAlign = alignment.textAlign;
 }
 
 function restoreAssOverlayTrackPreview() {
   if (!overlayTrackTextEl) return;
-  ['bottom', 'top', 'max-width', 'white-space', 'text-align'].forEach((property) => {
-    overlayTrackTextEl.style.removeProperty(property);
-  });
-  clearAssPreviewSpeakerLabelStyle(overlayTrackTextEl);
+  [
+    'position', 'left', 'right', 'top', 'bottom', 'white-space', 'text-align',
+    'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
+    'text-decoration-color', 'text-underline-offset', 'color', '-webkit-text-stroke',
+    'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
+    'max-width', 'padding', 'background-color', 'border-radius', 'opacity',
+    'transform-origin', 'transform',
+  ].forEach((property) => overlayTrackTextEl.style.removeProperty(property));
+  delete overlayTrackTextEl.dataset.colorUnderline;
+  delete overlayTrackTextEl.dataset.colorText;
+  delete overlayTrackTextEl.dataset.colorStroke;
 }
 
 function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActive(tMs)) {
@@ -14623,6 +14781,8 @@ function buildSrt() {
 
 function buildAss() {
   const { overlaySegments } = mergedExportSegments();
+  // 副字幕轨随 ASS 导出（多重字幕开启时才存在）；叠加轨与副字幕分层输出。
+  const extensionSegments = activeExtensionSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
@@ -14633,6 +14793,7 @@ function buildAss() {
     firstEnabledIndex,
     appearance: getSubtitleAppearance(),
     overlaySegments,
+    extensionSegments,
     ...speakerLabelExportOptions(),
   });
 }
@@ -14676,10 +14837,16 @@ function buildGapRemovedAss() {
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
+  // 去空隙 ASS 与常规 ASS 同一三轨契约：叠加轨与副字幕也随导出，
+  // 时间统一经 mapGapRemovedTime 压缩。
+  const { overlaySegments } = mergedExportSegments();
+  const extensionSegments = activeExtensionSegments();
   return window.AsrEditorUtils.buildAssPayload(DATA.segments, {
     ...assExportOptions(),
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
+    overlaySegments,
+    extensionSegments,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
     ...speakerLabelExportOptions(),
   });
