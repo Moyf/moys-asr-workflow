@@ -5782,9 +5782,9 @@ MaweDom.timedTextEditApply?.addEventListener('click', () => {
   const targetSegments = MaweTimedTextEdit.timedTextEditSegments(draft.kind);
   const snapshotSegments = Array.isArray(draft.allSourceSegments)
     ? draft.allSourceSegments : draft.sourceSegments;
-  const currentMatchesSnapshot = targetSegments.length === MaweHistory.snapshotSegments.length
+  const currentMatchesSnapshot = targetSegments.length === snapshotSegments.length
     && targetSegments.every((segment, index) => {
-      const source = MaweHistory.snapshotSegments[index];
+      const source = snapshotSegments[index];
       return segment?.id === source?.id
         && Number(segment?.start) === Number(source?.start)
         && Number(segment?.end) === Number(source?.end)
@@ -6066,16 +6066,16 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
   requestedEnd = MaweTimeline.timelineFrameAlignedMilliseconds(requestedEnd);
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
-  if (!Number.isFinite(MAWE_I18N.start) || !Number.isFinite(end)) return;
-  if (overlay.segments.some((segment) => MAWE_I18N.start < Number(segment?.end) && end > Number(segment?.start))) {
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+  if (overlay.segments.some((segment) => start < Number(segment?.end) && end > Number(segment?.start))) {
     MaweHint.flashHint('拖动范围包含已有叠加字幕，无法新增叠加字幕', 'warning');
     return;
   }
-  const insertAt = overlay.segments.findIndex((segment) => Number(segment.start) > MAWE_I18N.start);
+  const insertAt = overlay.segments.findIndex((segment) => Number(segment.start) > start);
   const index = insertAt < 0 ? overlay.segments.length : insertAt;
   const previousEnd = index > 0 ? Number(overlay.segments[index - 1].end) : 0;
   const nextStart = index < overlay.segments.length ? Number(overlay.segments[index].start) : duration;
-  const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(MAWE_I18N.start / 10) * 10));
+  const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(start / 10) * 10));
   const safeEnd = Math.min(nextStart, Math.max(safeStart, Math.round(end / 10) * 10));
   if (safeEnd - safeStart < 100) {
     MaweHint.flashHint('该空白区域不足 100ms，无法新增叠加字幕', 'warning');
@@ -6126,8 +6126,8 @@ function addOverlayAtWaveformTime(timeMs, clickX, clickY) {
     return;
   }
   const start = Math.max(previousEnd, Math.min(Math.round(timeMs / 10) * 10, nextStart - 100));
-  const end = Math.min(nextStart, MAWE_I18N.start + 1000);
-  const adjustedStart = end - MAWE_I18N.start >= 100 ? MAWE_I18N.start : Math.max(previousEnd, nextStart - 1000);
+  const end = Math.min(nextStart, start + 1000);
+  const adjustedStart = end - start >= 100 ? start : Math.max(previousEnd, nextStart - 1000);
   if (end - adjustedStart < 100) {
     MaweHint.flashHint('这里没有足够的空白区域', 'warning');
     return;
