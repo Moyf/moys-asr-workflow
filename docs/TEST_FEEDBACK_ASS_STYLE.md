@@ -6,6 +6,8 @@
 
 | 状态 | 反馈 | 处理决定 / 涉及文件 | 验证 |
 | --- | --- | --- | --- |
+| 已修复 | ASS 模式小窗/全屏字号不一致，且说话人标签没有始终继承正文的 ASS 字号 | `web/editor.css` 收窄旧版全屏放大规则并让 ASS 标签脱离 CSS 模式；`web/editor.js` 在全屏切换和 `ResizeObserver` 尺寸变化后按舞台尺寸重算 ASS 预览，并同步说话人标签的字体、字号、字重、装饰、描边与阴影；`tests/e2e/speaker-labels.spec.mjs` 增加回归 | Node 301/301、Python 1567/1567（跳过 12）、Chromium 2/2、`git diff --check` 通过 |
+| 已修复 | ASS 样式编辑器删除操作、SRT 默认槽位说明、样式标题状态提示和「字幕样式」跳转入口布局 | 删除按钮随当前样式/方案表单标题移动；SRT 默认标题旁补充工具箱烧录说明；ASS 样式标题和列表显示红/绿启用状态；「字幕样式」改为可点击文字并跳转全局设置 | `tests/test_waveform.py`、Chromium `ass-export.spec.mjs` 5/5 通过 |
 | 已修复 | 共享用户级样式存储、默认槽位、Editor 样式管理窗口 | `maw/ass_styles.py`、`server-editor/serve.py`、`web/editor.js`、Launcher 读写链路；写入接口要求页面请求令牌 | `tests.test_ass_styles`、`tests.test_local_editor_server`（round-trip + 403/200 令牌链路）通过 |
 | 已修复 | ASS 导出使用 ASS 方案；SRT 压制使用 SRT 默认样式 | `web/editor-utils.js`（`buildAssPayload` 读取 `ass_color_style`）、`maw/postprocess_ffmpeg.py`（`_subtitle_filter` 共享默认样式 + filter 层转义）、`maw/gui_web.py` | `tests.test_editor_utils.mjs`、`tests/test_ass_styles.py`（含真实 ffmpeg 压制回归）、`tests/test_gui_web.py` 通过 |
 | 已修复 | `\fad`、`\fade`、`\move`、`\t` 逐句附加与 ASS 预览 | 序列化、预览动画插值、大字号布局 | `tests.test_editor_utils.mjs` 动画用例通过；e2e `ass-export.spec.mjs` 通过 |

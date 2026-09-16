@@ -1382,10 +1382,14 @@ __WAVEFORM_CSS__
       </div>
       <div class="ass-style-assignment-card">
         <div class="ass-style-section-heading"><span>默认槽位</span></div>
-        <label class="ass-style-assignment-row" for="ass-srt-default-style">SRT 压制
-          <select id="ass-srt-default-style" aria-label="SRT 压制默认样式"></select>
+        <div class="ass-style-assignment-title-row">
+          <span>SRT 默认</span>
+          <small>这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。</small>
+        </div>
+        <label class="ass-style-assignment-row" for="ass-srt-default-style">
+          <span>使用样式</span>
+          <select id="ass-srt-default-style" aria-label="SRT 默认烧录样式"></select>
         </label>
-        <small>Launcher 压制 SRT 时使用此样式。</small>
         <label class="ass-style-assignment-row" for="ass-ass-default-profile">ASS 导出
           <select id="ass-ass-default-profile" aria-label="ASS 导出默认方案"></select>
         </label>
@@ -1393,14 +1397,22 @@ __WAVEFORM_CSS__
       </div>
     </aside>
     <main class="ass-style-editor" aria-live="polite">
-      <div class="ass-style-editor-toolbar">
-        <button type="button" id="ass-style-delete" title="删除当前样式或方案">删除当前</button>
-      </div>
       <div class="ass-style-editor-empty" id="ass-style-editor-empty" hidden>从左侧选择一个样式或 ASS 方案。</div>
       <section class="ass-style-form" id="ass-style-form" aria-labelledby="ass-style-form-title">
         <div class="ass-style-form-header">
-          <div><span class="ass-style-form-kicker">STYLE</span><h3 id="ass-style-form-title">样式</h3></div>
-          <span class="ass-style-builtin-badge" id="ass-style-builtin-badge" hidden>内置</span>
+          <div class="ass-style-form-heading">
+            <span class="ass-style-form-kicker">STYLE</span>
+            <div class="ass-style-form-title-row">
+              <h3 id="ass-style-form-title">样式</h3>
+              <span class="ass-style-preview-mode-hint" id="ass-style-preview-mode-hint" data-ass-style-preview-hint></span>
+            </div>
+          </div>
+          <div class="ass-style-form-header-side">
+            <span class="ass-style-builtin-badge" id="ass-style-builtin-badge" hidden>内置</span>
+            <span class="ass-style-delete-slot" id="ass-style-delete-slot">
+              <button type="button" class="ass-style-delete" id="ass-style-delete" title="删除当前样式或方案">删除当前</button>
+            </span>
+          </div>
         </div>
         <div class="ass-style-fields ass-style-fields-main">
           <label class="ass-style-field ass-style-field-wide">名称<input type="text" id="ass-style-name" data-ass-style-field="name" maxlength="80" autocomplete="off"></label>
@@ -1413,7 +1425,7 @@ __WAVEFORM_CSS__
             <label class="ass-style-field">描边宽度<input type="number" id="ass-style-outline" data-ass-style-field="outline" min="0" max="100" step="1"></label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-bold" data-ass-style-field="bold"> 加粗</label>
           </div>
-          <small class="editor-settings-hint">有颜色的字幕会使用对应颜色覆盖主色/描边，取决于「字幕样式」中的设置。</small>
+          <small class="editor-settings-hint">有颜色的字幕会使用对应颜色覆盖主色/描边，取决于 <button type="button" class="ass-style-settings-link" id="ass-style-settings-link" title="打开全局设置中的字幕样式">字幕样式</button> 中的设置。</small>
         </section>
         <section class="ass-style-form-section ass-style-extended-section" aria-labelledby="ass-style-extended-heading">
           <div class="ass-style-subheading" id="ass-style-extended-heading">拓展样式</div>
@@ -1474,7 +1486,10 @@ __WAVEFORM_CSS__
       <section class="ass-style-form" id="ass-profile-form" aria-labelledby="ass-profile-form-title" hidden>
         <div class="ass-style-form-header">
           <div><span class="ass-style-form-kicker">PROFILE</span><h3 id="ass-profile-form-title">ASS 输出方案</h3></div>
-          <span class="ass-style-builtin-badge" id="ass-profile-builtin-badge" hidden>内置</span>
+          <div class="ass-style-form-header-side">
+            <span class="ass-style-builtin-badge" id="ass-profile-builtin-badge" hidden>内置</span>
+            <span class="ass-style-delete-slot" id="ass-profile-delete-slot"></span>
+          </div>
         </div>
         <div class="ass-style-fields ass-style-fields-main">
           <label class="ass-style-field ass-style-field-wide">名称<input type="text" id="ass-profile-name" data-ass-profile-field="name" maxlength="80" autocomplete="off"></label>

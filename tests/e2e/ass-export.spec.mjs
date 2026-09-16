@@ -222,3 +222,40 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
     'Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,after gap',
   );
 });
+
+test('keeps ASS style actions and preview-mode hints attached to the active form', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await page.locator('#ass-style-manager-open').click();
+  await expect(page.locator('#ass-style-window')).toBeVisible();
+  await expect(page.locator('.ass-style-editor-toolbar')).toHaveCount(0);
+  await expect(page.locator('#ass-style-form #ass-style-delete')).toBeAttached();
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toHaveText('需要启用 ASS 字幕模式来预览效果。当前未启用。');
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toHaveAttribute('data-ass-preview-mode', 'disabled');
+  await expect(page.locator('#ass-style-list .ass-style-list-preview-hint').first())
+    .toHaveText('未启用');
+  await expect(page.locator('.ass-style-assignment-title-row small'))
+    .toHaveText('这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。');
+
+  await page.locator('#ass-style-settings-link').click();
+  await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
+  await page.evaluate(() => {
+    assModeToggle.checked = true;
+    assModeToggle.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toHaveText('需要启用 ASS 字幕模式来预览效果。当前已启用。');
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toHaveAttribute('data-ass-preview-mode', 'enabled');
+  await expect(page.locator('#ass-style-list .ass-style-list-preview-hint').first())
+    .toHaveText('已启用');
+
+  await page.locator('#ass-profile-list [role="option"]').first().click();
+  const deleteButtonParent = await page.locator('#ass-style-delete').evaluate((element) => element.parentElement?.id);
+  expect(deleteButtonParent).toBe('ass-profile-delete-slot');
+});
