@@ -2480,6 +2480,17 @@ const assStyleDuplicateButton = document.getElementById('ass-style-duplicate');
 const assProfileNewButton = document.getElementById('ass-profile-new');
 const assSrtDefaultStyleSelect = document.getElementById('ass-srt-default-style');
 const assDefaultProfileSelect = document.getElementById('ass-ass-default-profile');
+const assExtensionStyleSelect = document.getElementById('ass-extension-default-style');
+const assExtensionStyleRow = document.getElementById('ass-extension-style-row');
+const assExtensionStyleHint = document.getElementById('ass-extension-style-hint');
+const subtitleStyleAssModeHint = document.getElementById('subtitle-style-ass-mode-hint');
+const subtitleStyleAssModeLink = document.getElementById('subtitle-style-ass-mode-link');
+const mainSubtitleCssFields = document.getElementById('main-subtitle-css-fields');
+const mainAssStyleFields = document.getElementById('main-ass-style-fields');
+const mainAssStyleSelect = document.getElementById('main-ass-style-select');
+const extensionSubtitleCssFields = document.getElementById('extension-subtitle-css-fields');
+const extensionAssStyleFields = document.getElementById('extension-ass-style-fields');
+const extensionAssStyleSelect = document.getElementById('extension-ass-style-select');
 const assStyleForm = document.getElementById('ass-style-form');
 const assProfileForm = document.getElementById('ass-profile-form');
 const assProfileStyleSelect = document.getElementById('ass-profile-style-id');
@@ -2997,6 +3008,16 @@ function syncAssStyleManager({ force = false } = {}) {
     profiles.forEach((profile) => appendAssStyleOption(assDefaultProfileSelect, profile.id, profile.name));
     assDefaultProfileSelect.value = active;
   }
+  if (assExtensionStyleSelect) {
+    const activeExtension = ASS_STYLE_LIBRARY.assignments?.assExtensionStyleId || 'ass-extension';
+    assExtensionStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(assExtensionStyleSelect, style.id, style.name));
+    assExtensionStyleSelect.value = activeExtension;
+  }
+  // 副字幕槽位只在多重字幕模式下有意义，随轨道开合显隐。
+  const extensionSlotVisible = multiSubtitleVisible();
+  if (assExtensionStyleRow) assExtensionStyleRow.hidden = !extensionSlotVisible;
+  if (assExtensionStyleHint) assExtensionStyleHint.hidden = !extensionSlotVisible;
   if (assProfileStyleSelect) {
     const selectedProfile = selectedAssProfile();
     assProfileStyleSelect.replaceChildren();
@@ -3019,6 +3040,8 @@ function syncAssStyleManager({ force = false } = {}) {
   if (isStyle) syncAssStyleForm(selectedAssStyle());
   else syncAssProfileForm(selectedAssProfile());
   updateAssStyleLibraryStatus();
+  // 样式库变化后，设置页「字幕样式」里的 ASS 样式选择器同步刷新。
+  syncSubtitleStyleAssControls();
   if (force) assStyleWindow.querySelector('.ass-style-editor')?.scrollTo({ top: 0 });
 }
 
@@ -3152,6 +3175,24 @@ assStyleSaveButton?.addEventListener('click', () => {
 });
 assSrtDefaultStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('srtBurnStyleId', assSrtDefaultStyleSelect.value));
 assDefaultProfileSelect?.addEventListener('change', () => updateAssStyleAssignment('assExportProfileId', assDefaultProfileSelect.value));
+assExtensionStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('assExtensionStyleId', assExtensionStyleSelect.value));
+// 设置页「字幕样式」的 ASS 选择器：主字幕改的是当前 ASS 输出方案关联的
+// 样式（与样式库窗口中方案表单的样式下拉同步）；副字幕改库中的副字幕槽位。
+mainAssStyleSelect?.addEventListener('change', () => {
+  updateAssStyleManagerLibrary((library) => {
+    const profileId = library.assignments?.assExportProfileId || 'ass';
+    const profile = (library.assProfiles || []).find((item) => item.id === profileId);
+    if (profile) profile.styleId = mainAssStyleSelect.value;
+  });
+});
+extensionAssStyleSelect?.addEventListener('change', () => {
+  updateAssStyleAssignment('assExtensionStyleId', extensionAssStyleSelect.value);
+});
+// 设置页 hint 中的「ASS 字幕模式」是链接：模式开关就在本页上方，聚焦提示。
+subtitleStyleAssModeLink?.addEventListener('click', () => {
+  assModeToggle?.scrollIntoView?.({ block: 'center' });
+  assModeToggle?.focus?.();
+});
 // 「使用预览字体」：把「设置 → 字幕样式」当前预览字体映射成具体字体族，
 // 应用到正在编辑的 ASS 样式；内置键映射为 ASS 最常用的对应字体名。
 const PREVIEW_FONT_KEY_TO_ASS_NAME = Object.freeze({
@@ -3232,11 +3273,39 @@ assProfileForm?.addEventListener('change', (event) => {
   if (field) updateAssProfileField(field.dataset.assProfileField || field.dataset.assAnimation, assStyleFormValue(field));
 });
 
+function syncSubtitleStyleAssControls() {
+  // ASS 字幕模式接管预览样式后，「字幕样式」页的主/副字幕 CSS 控件换成
+  // 样式库选择器；主字幕选择即当前 ASS 输出方案关联的样式，与样式库窗口
+  // 中的选择同步，副字幕选择对应库中的「副字幕样式」槽位。
+  const assMode = EDITOR_SETTINGS.assMode === true;
+  if (subtitleStyleAssModeHint) subtitleStyleAssModeHint.hidden = !assMode;
+  if (mainSubtitleCssFields) mainSubtitleCssFields.hidden = assMode;
+  if (mainAssStyleFields) mainAssStyleFields.hidden = !assMode;
+  if (extensionSubtitleCssFields) extensionSubtitleCssFields.hidden = assMode;
+  if (extensionAssStyleFields) extensionAssStyleFields.hidden = !assMode;
+  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const styles = library.styles || [];
+  if (mainAssStyleSelect) {
+    mainAssStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(mainAssStyleSelect, style.id, style.name));
+    const profile = window.AsrEditorUtils.assProfileForId(
+      library, library.assignments?.assExportProfileId || 'ass',
+    );
+    mainAssStyleSelect.value = profile.styleId;
+  }
+  if (extensionAssStyleSelect) {
+    extensionAssStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(extensionAssStyleSelect, style.id, style.name));
+    extensionAssStyleSelect.value = library.assignments?.assExtensionStyleId || 'ass-extension';
+  }
+}
+
 function syncAssModeDependentControls() {
   // ASS 字幕模式接管预览样式后，「预览字幕颜色」不再参与预览，禁用并提示跳转。
   const assMode = EDITOR_SETTINGS.assMode === true;
   if (subtitleColorUnderlineInput) subtitleColorUnderlineInput.disabled = assMode;
   if (subtitleColorAssModeHint) subtitleColorAssModeHint.hidden = !assMode;
+  syncSubtitleStyleAssControls();
 }
 
 function syncAssModeControl() {
@@ -3593,6 +3662,10 @@ function updateMultiSubtitleUi() {
   }
   container.classList.toggle('multi-subtitle-enabled', enabled);
   container.dataset.multiDisplayMode = enabled ? (getMultiSubtitleState().display_mode || 'both') : 'main';
+  // 多重字幕开合影响副字幕相关的 ASS 样式入口（设置页副字幕组、样式库
+  // 副字幕槽位），同步刷新它们的可见性与选项。
+  syncAssModeDependentControls();
+  syncAssStyleManager();
 }
 
 overlayTrackToggle?.addEventListener('change', () => {
