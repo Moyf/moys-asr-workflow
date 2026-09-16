@@ -2461,10 +2461,12 @@ test('refreshes local font options for both main and extension subtitles', async
   const scanButton = page.locator('#subtitle-font-family-scan');
   await expect(scanButton).toBeEnabled();
   await scanButton.click();
-  await expect(page.locator('#subtitle-font-family option[value="MAW Test Sans"]')).toHaveCount(1);
-  await expect(page.locator('#extension-subtitle-font-family option[value="MAW Test Sans"]')).toHaveCount(1);
-
-  await page.locator('#subtitle-font-family').selectOption('MAW Test Sans');
+  // 主字幕字体输入是 combobox：点开下拉后点击选项即写入并映射存储值。
+  const fontInput = page.locator('#subtitle-font-family');
+  await fontInput.click();
+  const scannedOption = page.locator('#subtitle-font-family-options .font-combobox-option', { hasText: 'MAW Test Sans' });
+  await expect(scannedOption).toHaveCount(1);
+  await scannedOption.click();
   await page.locator('#extension-subtitle-font-family').selectOption('MAW Test Serif');
   const fontFamilies = await page.evaluate(() => ({
     main: document.getElementById('overlay-main-text').style.fontFamily,
@@ -2489,24 +2491,28 @@ test('localizes approved scanned font labels in both selectors', async ({ page }
   await page.locator('#editor-settings-toggle').click();
   await page.locator('#editor-settings-tab-subtitle-style').click();
   await page.locator('#subtitle-font-family-scan').click();
-  const options = await page.evaluate(() => ['subtitle-font-family', 'extension-subtitle-font-family']
-    .map((id) => Array.from(document.getElementById(id).options, (option) => ({
-      label: option.textContent,
-      value: option.value,
-    }))));
-  expect(options[0]).toEqual(options[1]);
-  expect(options[0]).toEqual(expect.arrayContaining([
-    { label: '微软雅黑', value: 'Microsoft YaHei' },
-    { label: '宋体', value: 'SimSun' },
-    { label: '思源黑体', value: 'Source Han Sans SC' },
-    { label: 'MAW Test Sans', value: 'MAW Test Sans' },
+  // 主字体 combobox 展示本地化显示名，副字体 select 用真实族名做 value。
+  await page.locator('#subtitle-font-family').click();
+  const mainLabels = await page.evaluate(() => Array.from(
+    document.querySelectorAll('#subtitle-font-family-options .font-combobox-option'),
+    (option) => option.textContent,
+  ));
+  const extensionValues = await page.evaluate(() => Array.from(
+    document.getElementById('extension-subtitle-font-family').options,
+    (option) => option.value,
+  ));
+  expect(mainLabels).toEqual(expect.arrayContaining([
+    '微软雅黑', '宋体', '思源黑体', 'MAW Test Sans',
   ]));
-  await page.locator('#subtitle-font-family').selectOption('Source Han Sans SC');
+  expect(extensionValues).toEqual(expect.arrayContaining([
+    'Microsoft YaHei', 'SimSun', 'Source Han Sans SC', 'MAW Test Sans',
+  ]));
+  await page.locator('#subtitle-font-family-options .font-combobox-option', { hasText: '思源黑体' }).click();
   await page.locator('#extension-subtitle-font-family').selectOption('SimSun');
   await page.locator('#editor-settings-tab-interface').click();
   await page.locator('#language-toggle').click();
   await page.locator('#editor-settings-tab-subtitle-style').click();
-  await expect(page.locator('#subtitle-font-family option:checked')).toHaveText('Source Han Sans SC');
+  await expect(page.locator('#subtitle-font-family')).toHaveValue('Source Han Sans SC');
   await expect(page.locator('#extension-subtitle-font-family option:checked')).toHaveText('SimSun');
   expect(await page.evaluate(() => ({
     main: document.getElementById('subtitle-font-family').value,

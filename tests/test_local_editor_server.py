@@ -658,7 +658,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
-        self.assertIn('"name": "clip.json"}], "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
+        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
         self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""};', page)
         completed_page = server_editor.build_server_page(
@@ -1759,6 +1759,68 @@ class LocalEditorServerTests(unittest.TestCase):
         settings = server_editor.remember_project(server_editor.ServerSettings(), missing_project_path)
         page = server_editor.build_server_page(project, settings).decode("utf-8")
         self.assertIn('"name": "missing.json", "exists": false', page)
+
+    def test_ass_style_endpoint_round_trips_the_shared_user_library(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        style_path = self.root / "MAW" / "ass-styles.json"
+        with mock.patch("maw.ass_styles.default_ass_styles_path", return_value=style_path):
+            with server_editor.EditorServer(
+                ("127.0.0.1", 0), project, no_waveform=True, peaks_per_second=100,
+            ) as server:
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                    def request(endpoint: str, payload: dict | None = None) -> tuple[int, dict]:
+                        data = None if payload is None else json.dumps(payload).encode("utf-8")
+                        request = urllib.request.Request(
+                            f"{base_url}{endpoint}", data=data,
+                            headers={"Content-Type": "application/json"} if data is not None else {},
+                            method="POST" if data is not None else "GET",
+                        )
+                        try:
+                            with urllib.request.urlopen(request) as response:
+                                return response.status, json.loads(response.read())
+                        except urllib.error.HTTPError as error:
+                            return error.code, json.loads(error.read())
+
+                    status, initial = request("/api/ass-styles")
+                    self.assertEqual(status, 200)
+                    self.assertEqual(initial["assignments"]["srtBurnStyleId"], "default")
+
+                    custom = {
+                        "styles": [{"id": "studio", "name": "Studio", "fontName": "SimHei", "fontSize": 28}],
+                        "assProfiles": [{"id": "studio-profile", "name": "Studio", "styleId": "studio"}],
+                        "assignments": {"srtBurnStyleId": "studio", "assExportProfileId": "studio-profile"},
+                    }
+
+                    # 共享样式库是用户级配置：缺失或错误的请求令牌都不能改写。
+                    status, forbidden = request("/api/ass-styles", custom)
+                    self.assertEqual(status, 403)
+                    self.assertFalse(forbidden["ok"])
+
+                    wrong_token = {**custom, "requestToken": "wrong"}
+                    status, forbidden = request("/api/ass-styles", wrong_token)
+                    self.assertEqual(status, 403)
+                    self.assertFalse(forbidden["ok"])
+                    self.assertFalse(style_path.is_file())
+
+                    status, saved = request("/api/ass-styles", {**custom, "requestToken": server.request_token})
+                    self.assertEqual(status, 200)
+                    self.assertEqual(saved["assignments"]["srtBurnStyleId"], "studio")
+                    self.assertTrue(style_path.is_file())
+                    self.assertNotIn("requestToken", saved)
+
+                    status, loaded = request("/api/ass-styles")
+                    self.assertEqual(status, 200)
+                    self.assertEqual(loaded["styles"][-1]["fontName"], "SimHei")
+                    self.assertEqual(loaded["assProfiles"][-1]["styleId"], "studio")
+                finally:
+                    server.shutdown()
+                    thread.join(timeout=2)
 
     def test_saved_workspaces_are_persisted_and_reused_by_new_projects(self) -> None:
         project = server_editor.load_project(

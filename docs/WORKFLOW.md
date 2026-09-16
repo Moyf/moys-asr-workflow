@@ -373,7 +373,7 @@ Launcher 右下角的圆形按钮会打开工具箱。工具箱的标题、一�
 
 ### 压制字幕
 
-「压制字幕」需要视频媒体和 `.srt`、`.ass` 或 `.ssa` 字幕文件。字幕文件默认跟随 Launcher 当前的 SRT 输出，也可以手动选择或拖入 ASS / SSA。运行后调用 FFmpeg 的 libass 字幕滤镜重新编码为新的 H.264 MP4，默认样式与 MAW 的标准 ASS 导出一致；源视频不会被覆盖，已有同名结果会自动加后缀。压制过程可以在工具箱中停止。
+「压制字幕」需要视频媒体和 `.srt`、`.ass` 或 `.ssa` 字幕文件。字幕文件默认跟随 Launcher 当前的 SRT 输出，也可以手动选择或拖入 ASS / SSA。压制 SRT 时使用 Editor「管理 ASS 样式」中选定的 SRT 默认样式；压制 ASS / SSA 时保留字幕文件内嵌的 ASS 样式。运行后调用 FFmpeg 的 libass 字幕滤镜重新编码为新的 H.264 MP4，源视频不会被覆盖，已有同名结果会自动加后缀。压制过程可以在工具箱中停止。
 
 ### 提取音频
 
@@ -427,7 +427,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 - 可拖动波形中的字幕块或边缘微调时间；相邻字幕共享边界时会保持连续。
 - 播放器内的字幕预览可直接拖动；悬停或聚焦后拖动八个手柄可缩放。方向键移动，`Shift` 加速移动，`Alt + 方向键` 调整尺寸。几何保存在工程 `preview.subtitle`，不会改变字幕时间。
 - “移除静音空隙”只建立可逆的压缩时间线，不修改原媒体和原字幕时间。
-- 常规 SRT 或 ASS 通过工具栏导出；ASS 会把主字幕预览当前选中的字体、字号和文字颜色写入样式，并按工程记录的源视频宽高写入 `PlayResX` / `PlayResY`，五种字幕颜色写入对应样式，启用说话人导出时写入 ASS `Name` 字段。若启用了空隙移除，可选择去空隙 SRT、带样式 ASS、OTIO、FFconcat 或保留区域 JSON。
+- 常规 SRT 或 ASS 通过工具栏导出；ASS 读取「管理 ASS 样式」中选定的默认输出方案及关联样式，并按工程记录的源视频宽高写入 `PlayResX` / `PlayResY`；方案配置的 `\fad`、`\fade`、`\move`、`\t` 会逐句写入每条启用字幕，能由 ASS 表达的颜色样式也会随之导出。启用说话人导出时写入 ASS `Name` 字段，并用局部标签保留说话人颜色。若启用了空隙移除，可选择去空隙 SRT、带样式 ASS、OTIO、FFconcat 或保留区域 JSON。播放器的「ASS 字幕模式」默认关闭，开启后尽量复刻该 ASS 方案；它不改变原有 CSS 预览设置。
 - 去空隙 OTIO 会把启用字幕作为保留媒体 clip 上的 marker，名称为字幕内容；字幕颜色映射为 Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE`，跨越被移除空隙的字幕按保留区间拆分，无颜色时使用白色默认标记。marker 的 `marked_range` 使用媒体源坐标，与 clip 的 `source_range` 和外部引用的 `available_range` 保持一致；带 BWF `bext.time_reference` 的 WAV 会保留非零媒体起点，避免 Resolve 导入后片段内容错位。Resolve 的可用颜色参考还包括 Blue、Cyan、Green、Yellow、Red、Pink、Purple、Fuchsia、Rose、Lavender、Sky、Mint、Lemon、Sand、Cocoa、Cream；当前 MAW 使用其中五色。
 
 完整 JSON 约束在 [JSON_SCHEMA.md](../JSON_SCHEMA.md)。若你打算用其他 ASR 或 LLM 生成工程，至少保证顶层有 `segments`，时间全部是整数毫秒。

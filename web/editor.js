@@ -998,6 +998,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   overlayEnabled: true,
   // 多重字幕开启时，副字幕预览默认自动显示。
   extensionOverlayEnabled: true,
+  // ASS 字幕模式只改变播放器预览，默认关闭以保持原有 CSS 预览。
+  assMode: false,
   // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
   multiSubtitleRowHeight: 168,
   exportStartAtZero: false,
@@ -1108,8 +1110,19 @@ const SUBTITLE_DEFAULT_FONT_SIZE = 18;
 const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
+// CSS 预览的颜色样式（工程 color_style）；ASS 的颜色映射是独立字段
+// ass_color_style（text / stroke / none），两者语义不同。
 const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
 const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
+const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
+const DEFAULT_ASS_COLOR_STYLE = 'text';
+// 字体输入框用 combobox 下拉提供筛选（映射逻辑在 editor-utils 的
+// subtitleFontFamilyStoredToInput / subtitleFontFamilyInputToStored）；
+// 扫描到的本机字体会由下拉列表动态合并，无需预设常量参与启动期渲染。
+const ASS_BUILTIN_FONT_SUGGESTIONS = Object.freeze([
+  'Arial', 'Microsoft YaHei', 'SimHei', 'SimSun', 'Segoe UI', 'Verdana', 'Times New Roman',
+]);
+let subtitleLocalFontFamilies = [];
 const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
   default: '',
   yahei: '"Microsoft YaHei", "PingFang SC", sans-serif',
@@ -1147,6 +1160,7 @@ const normalizeKeyboardOperationReferenceMode = EDITOR_SETTINGS_UTILS.normalizeK
 const normalizeJklPlaybackMode = EDITOR_SETTINGS_UTILS.normalizeJklPlaybackMode;
 const normalizeEditorAccentColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentColor;
 const normalizeEditorAccentCustomColor = EDITOR_SETTINGS_UTILS.normalizeEditorAccentCustomColor;
+const normalizeSubtitleColorPalette = EDITOR_SETTINGS_UTILS.normalizeSubtitleColorPalette;
 const clampAutoSaveInterval = EDITOR_SETTINGS_UTILS.clampAutoSaveInterval;
 const clampCharcountThreshold = EDITOR_SETTINGS_UTILS.clampCharcountThreshold;
 const clampNinjaSlashLength = EDITOR_SETTINGS_UTILS.clampNinjaSlashLength;
@@ -1167,6 +1181,208 @@ function saveEditorSettings(settings) {
 }
 
 const EDITOR_SETTINGS = readEditorSettings();
+const ASS_STYLE_LIBRARY_STORAGE_KEY = 'moy.asr.ass.styles.v1';
+let ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
+let ASS_STYLE_LIBRARY_READY = false;
+let assStyleLibrarySaveTimer = 0;
+let assStyleLibraryLoadPromise = null;
+let assStyleLibraryDirty = false;
+let assStyleLibraryRevision = 0;
+let assStyleLibrarySaveInFlight = false;
+let assStyleLibraryInFlightRevision = 0;
+
+function readLocalAssStyleLibrary() {
+  try {
+    return window.AsrEditorUtils.normalizeAssStyleLibrary(
+      JSON.parse(localStorage.getItem(ASS_STYLE_LIBRARY_STORAGE_KEY) || 'null'),
+    );
+  } catch (_) {
+    return window.AsrEditorUtils.defaultAssStyleLibrary();
+  }
+}
+
+function writeLocalAssStyleLibrary(library) {
+  try {
+    localStorage.setItem(
+      ASS_STYLE_LIBRARY_STORAGE_KEY,
+      JSON.stringify(window.AsrEditorUtils.normalizeAssStyleLibrary(library)),
+    );
+  } catch (_) {
+    // file:// 隐私模式可能拒绝 localStorage；当前页面仍可继续使用样式。
+  }
+}
+
+function setAssStyleLibrary(value, { persistLocal = false } = {}) {
+  ASS_STYLE_LIBRARY = window.AsrEditorUtils.normalizeAssStyleLibrary(value);
+  if (persistLocal) writeLocalAssStyleLibrary(ASS_STYLE_LIBRARY);
+  return ASS_STYLE_LIBRARY;
+}
+
+function assStyleLibrarySummary() {
+  return `${ASS_STYLE_LIBRARY.styles.length} 个样式 · ${ASS_STYLE_LIBRARY.assProfiles.length} 个 ASS 方案`;
+}
+
+function updateAssStyleLibrarySummary() {
+  if (assStyleSummary) {
+    const summary = assStyleLibrarySummary();
+    assStyleSummary.textContent = window.MAWE_I18N?.translateText?.(summary) || summary;
+  }
+}
+
+function scheduleAssStyleLibrarySave() {
+  assStyleLibraryDirty = true;
+  clearTimeout(assStyleLibrarySaveTimer);
+  assStyleLibrarySaveTimer = setTimeout(() => {
+    void persistAssStyleLibrary();
+  }, 220);
+}
+
+function assStyleLibraryRequestBody(normalized) {
+  // 与其他本机写入接口一致：服务器会校验页面请求令牌，缺失时返回 403。
+  return { ...normalized, requestToken: SERVER_CONFIG?.requestToken || '' };
+}
+
+function assStyleLibraryPostOptions(body, { keepalive = false } = {}) {
+  return {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(assStyleLibraryRequestBody(body)),
+    ...(keepalive ? { keepalive: true } : {}),
+  };
+}
+
+// 离开页面（刷新/关闭/跳转、切后台）时 debounce 定时器可能还没触发；
+// dirty 的最后改动要用 keepalive 请求立刻发出，否则重新打开时会
+// 被服务器上的旧样式覆盖。已有请求在途且携带同一修订时无需重复发送；
+// 在途请求携带更旧修订时仍要 flush，但不清除 dirty，页面回来后再补一次
+// 常规保存，避免两个在途写入在服务器端乱序覆盖。
+function flushAssStyleLibraryOnUnload() {
+  clearTimeout(assStyleLibrarySaveTimer);
+  assStyleLibrarySaveTimer = 0;
+  if (!assStyleLibraryDirty || !assStyleLibraryUsesServerStorage()) return;
+  if (assStyleLibrarySaveInFlight && assStyleLibraryInFlightRevision === assStyleLibraryRevision) return;
+  const normalized = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  try {
+    void fetch(new URL(SERVER_CONFIG.assStylesUrl, window.location.href),
+      assStyleLibraryPostOptions(normalized, { keepalive: true }))
+      .catch(() => { /* 页面正在卸载，失败时保留本地副本即可 */ });
+    if (!assStyleLibrarySaveInFlight) assStyleLibraryDirty = false;
+  } catch (_) {
+    // URL 或请求构造失败时保留 dirty 标记；页面已在卸载流程中，无法再重试。
+  }
+}
+window.addEventListener('pagehide', flushAssStyleLibraryOnUnload);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    flushAssStyleLibraryOnUnload();
+  } else if (assStyleLibraryDirty && !assStyleLibrarySaveTimer && assStyleLibraryUsesServerStorage()) {
+    // 切后台时的 flush 可能保留了 dirty（存在在途旧修订写入）；回到前台后补一次常规保存。
+    scheduleAssStyleLibrarySave();
+  }
+});
+
+async function persistAssStyleLibrary() {
+  clearTimeout(assStyleLibrarySaveTimer);
+  assStyleLibrarySaveTimer = 0;
+  const revision = assStyleLibraryRevision;
+  const normalized = setAssStyleLibrary(ASS_STYLE_LIBRARY, { persistLocal: true });
+  if (!assStyleLibraryUsesServerStorage()) {
+    if (revision === assStyleLibraryRevision) {
+      assStyleLibraryDirty = false;
+      ASS_STYLE_LIBRARY_READY = true;
+    }
+    setAssStyleLibraryStatus('', 'success');
+    syncAssStyleManager?.();
+    return normalized;
+  }
+  assStyleLibrarySaveInFlight = true;
+  assStyleLibraryInFlightRevision = revision;
+  try {
+    const response = await fetch(new URL(SERVER_CONFIG.assStylesUrl, window.location.href),
+      assStyleLibraryPostOptions(normalized));
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (revision === assStyleLibraryRevision) {
+      setAssStyleLibrary(payload, { persistLocal: true });
+      assStyleLibraryDirty = false;
+      ASS_STYLE_LIBRARY_READY = true;
+      setAssStyleLibraryStatus('', 'success');
+    } else {
+      // A newer edit was made while this request was in flight.  Keep the
+      // current local state and let its debounced save publish the newer
+      // revision instead of rolling the form back to an older response.
+      ASS_STYLE_LIBRARY_READY = false;
+      setAssStyleLibraryStatus('本地有更新改动，等待再次同步', 'warning');
+    }
+    syncAssStyleManager?.();
+    return ASS_STYLE_LIBRARY;
+  } catch (error) {
+    // 本地副本仍然可用；状态会在管理窗中明确显示为未同步。
+    ASS_STYLE_LIBRARY_READY = false;
+    setAssStyleLibraryStatus(`本地已保存，服务器同步失败：${error?.message || '未知错误'}`, 'warning');
+    return normalized;
+  } finally {
+    assStyleLibrarySaveInFlight = false;
+    assStyleLibraryInFlightRevision = 0;
+  }
+}
+
+async function loadAssStyleLibrary({ force = false } = {}) {
+  if (assStyleLibraryLoadPromise) return assStyleLibraryLoadPromise;
+  if (force && assStyleLibraryDirty) {
+    // The manager may be reopened while a debounced save is pending.  A
+    // forced read must never replace those unsaved edits with the old file.
+    syncAssStyleManager?.();
+    refreshSubtitlePreview?.();
+    return ASS_STYLE_LIBRARY;
+  }
+  setAssStyleLibrary(readLocalAssStyleLibrary());
+  setAssStyleLibraryStatus('正在加载…', 'pending');
+  assStyleLibraryLoadPromise = (async () => {
+    // 让出一轮微任务再继续：便携（无服务器）分支没有任何真正的 await，
+    // 会同步执行到底；启动早期调用时脚本后部的预览声明（如
+    // renderedStickerOverlayEnabled）仍在暂时性死区，同步刷新预览会抛
+    // ReferenceError。先等待一轮，保证回调都在脚本求值完成后运行。
+    await Promise.resolve();
+    if (!assStyleLibraryUsesServerStorage()) {
+      ASS_STYLE_LIBRARY_READY = true;
+      setAssStyleLibraryStatus('', 'success');
+      syncAssStyleManager?.();
+      refreshSubtitlePreview?.();
+      assStyleLibraryLoadPromise = null;
+      return ASS_STYLE_LIBRARY;
+    }
+    try {
+      const response = await fetch(new URL(SERVER_CONFIG.assStylesUrl, window.location.href), {
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      if (!assStyleLibraryDirty) {
+        setAssStyleLibrary(payload, { persistLocal: true });
+        ASS_STYLE_LIBRARY_READY = true;
+        setAssStyleLibraryStatus('', 'success');
+      } else {
+        // A form edit happened while GET was in flight.  The local edit is
+        // authoritative until its own POST succeeds.
+        ASS_STYLE_LIBRARY_READY = false;
+        setAssStyleLibraryStatus('本地有更新改动，等待再次同步', 'warning');
+      }
+    } catch (_) {
+      // localhost 服务暂不可用时沿用本地副本；下次打开编辑器会再次尝试读取。
+      ASS_STYLE_LIBRARY_READY = false;
+      setAssStyleLibraryStatus('使用本地副本，服务器同步失败', 'warning');
+    }
+    syncAssStyleManager?.();
+    refreshSubtitlePreview?.();
+    // Do not cache either a successful or failed request: each subsequent
+    // manager open can observe changes made by another Editor or Launcher.
+    assStyleLibraryLoadPromise = null;
+    return ASS_STYLE_LIBRARY;
+  })();
+  return assStyleLibraryLoadPromise;
+}
+
 const normalizeTimelineTimebase = EDITOR_SETTINGS_UTILS.normalizeTimelineTimebase;
 const normalizeTimelineFps = EDITOR_SETTINGS_UTILS.normalizeTimelineFps;
 const normalizeTimelineTimecodeSeparator = EDITOR_SETTINGS_UTILS.normalizeTimelineTimecodeSeparator;
@@ -1435,12 +1651,30 @@ const COLOR_LABELS = { yellow: '黄', green: '绿', red: '红', purple: '紫', b
 if (!Array.isArray(window.ASR_EDITOR_PALETTE) || !window.ASR_EDITOR_PALETTE.length) {
   throw new Error('调色板未注入：缺少 window.ASR_EDITOR_PALETTE（检查 edit.py / serve.py 渲染管线）');
 }
-const COLOR_PALETTE = window.ASR_EDITOR_PALETTE.map((c) => ({
-  name: c.name,
-  label: COLOR_LABELS[c.name] || c.name,
-  value: c.value,
-}));
-const COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
+const COLOR_PALETTE_DEFAULTS = Object.fromEntries(
+  window.ASR_EDITOR_PALETTE.map((color) => [color.name, color.value]),
+);
+function buildEditorColorPalette() {
+  // 自定义五色关闭时（subtitleColorPaletteEnabled ≠ true）一律使用内置色值。
+  const configured = currentSubtitleColorPalette();
+  return window.ASR_EDITOR_PALETTE.map((c) => ({
+    name: c.name,
+    label: COLOR_LABELS[c.name] || c.name,
+    value: configured[c.name] || c.value,
+  }));
+}
+let COLOR_PALETTE = buildEditorColorPalette();
+let COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
+function rebuildEditorColorPalette() {
+  EDITOR_SETTINGS.subtitleColorPalette = normalizeSubtitleColorPalette(
+    EDITOR_SETTINGS.subtitleColorPalette,
+    COLOR_PALETTE_DEFAULTS,
+  );
+  COLOR_PALETTE = buildEditorColorPalette();
+  COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
+  window.AsrWaveform?.setColorPalette?.(COLOR_PALETTE);
+}
+window.AsrWaveform?.setColorPalette?.(COLOR_PALETTE);
 function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
 
 function currentAssVideoResolution() {
@@ -1458,8 +1692,14 @@ function currentAssVideoResolution() {
   return null;
 }
 
+const ASS_PREVIEW_REFERENCE_HEIGHT = Number(window.AsrEditorUtils.ASS_REFERENCE_PLAY_RES_Y) || 1080;
+
 function assExportOptions(appearance = getSubtitleAppearance()) {
   const resolution = currentAssVideoResolution();
+  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const profileId = library.assignments?.assExportProfileId || 'ass';
+  const assProfile = window.AsrEditorUtils.assProfileForId(library, profileId);
+  const assStyle = window.AsrEditorUtils.assStyleForId(library, assProfile.styleId);
   return {
     title: PROJECT_NAME || FILENAME_BASE || 'MAW',
     mediaMetadata: normalizeMediaMetadata(DATA.media_metadata),
@@ -1467,6 +1707,8 @@ function assExportOptions(appearance = getSubtitleAppearance()) {
     playResY: resolution?.height,
     colorStyles: COLOR_PALETTE,
     appearance,
+    assProfile,
+    assStyle,
   };
 }
 
@@ -1838,6 +2080,7 @@ function historyGuarded() {
       || stickerModal.classList.contains('show')
       || stickerPreviewModal.classList.contains('show')
       || projectMediaModal.classList.contains('show')
+      || assStyleWindow?.classList.contains('show')
       || document.getElementById('sticker-root-modal').classList.contains('show');
 }
 const undoBtn = document.getElementById('undo-btn');
@@ -1871,7 +2114,13 @@ const extensionOverlayToggleWrap = document.getElementById('extension-overlay-to
 const extensionOverlayToggle = document.getElementById('extension-overlay-toggle');
 const stickerOverlayToggle = document.getElementById('sticker-overlay-toggle');
 const subtitleFontSizeSelect = document.getElementById('subtitle-font-size');
-const subtitleFontFamilySelect = document.getElementById('subtitle-font-family');
+const subtitleFontFamilyInput = document.getElementById('subtitle-font-family');
+const subtitleFontFamilyToggle = document.getElementById('subtitle-font-family-toggle');
+const subtitleFontFamilyOptions = document.getElementById('subtitle-font-family-options');
+// combobox 实例容器必须声明在启动早期的 relabelSubtitleFontFamilyOptions()
+// 调用（模块求值 ~12000 行）之前，否则惰性创建赋值会踩暂时性死区。
+let subtitleFontFamilyCombobox = null;
+let assFontNameCombobox = null;
 const subtitleFontFamilyScanButton = document.getElementById('subtitle-font-family-scan');
 const subtitleFontFamilyStatus = document.getElementById('subtitle-font-family-status');
 const subtitleBackgroundColorInput = document.getElementById('subtitle-background-color');
@@ -1879,8 +2128,35 @@ const subtitleBackgroundAlphaInput = document.getElementById('subtitle-backgroun
 const subtitleBackgroundAlphaValue = document.getElementById('subtitle-background-alpha-value');
 const subtitleColorInput = document.getElementById('subtitle-color');
 const subtitleColorUnderlineInput = document.getElementById('subtitle-color-underline');
+const subtitleColorAssModeHint = document.getElementById('subtitle-color-ass-mode-hint');
+const subtitleColorAssModeHintLink = document.getElementById('ass-mode-hint-link');
 const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
 const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
+const assColorStyleSelect = document.getElementById('ass-color-style');
+const subtitleColorPaletteEnabledInput = document.getElementById('subtitle-color-palette-enabled');
+const subtitleColorPaletteGrid = document.getElementById('subtitle-color-palette-grid');
+const subtitleColorPaletteNames = window.AsrEditorUtils.EDITOR_SUBTITLE_COLOR_NAMES || [
+  'yellow', 'green', 'red', 'purple', 'blue',
+];
+const subtitleColorPaletteColorInputs = Object.fromEntries(
+  subtitleColorPaletteNames.map((name) => [
+    name, document.getElementById(`subtitle-color-palette-${name}`),
+  ]),
+);
+const subtitleColorPaletteHexInputs = Object.fromEntries(
+  subtitleColorPaletteNames.map((name) => [
+    name, document.getElementById(`subtitle-color-palette-${name}-hex`),
+  ]),
+);
+const subtitleColorPaletteSwatches = Object.fromEntries(
+  subtitleColorPaletteNames.map((name) => [
+    name, document.querySelector(`[data-subtitle-palette-swatch="${name}"]`),
+  ]),
+);
+const subtitleColorPaletteResetButton = document.getElementById('subtitle-color-palette-reset');
+const assModeToggle = document.getElementById('ass-mode-toggle');
+const assStyleManagerOpenButton = document.getElementById('ass-style-manager-open');
+const assStyleSummary = document.getElementById('ass-style-summary');
 const subtitleSpeakerMappingEnabledInput = document.getElementById('subtitle-speaker-mapping-enabled');
 const subtitleSpeakerLabelsToggle = document.getElementById('subtitle-speaker-labels-enabled-wrap');
 const subtitleSpeakerLabelsEnabledInput = document.getElementById('subtitle-speaker-labels-enabled');
@@ -2183,6 +2459,41 @@ const EDITOR_SETTINGS_WINDOW_SIZE_KEY = 'moy.asr.editor.settings.window_size.v1'
 const EDITOR_SETTINGS_WINDOW_TAB_KEY = 'moy.asr.editor.settings.window_tab.v1';
 const editorSettingsClose = document.getElementById('editor-settings-close');
 const editorSettingsDragHandle = document.getElementById('editor-settings-drag-handle');
+const assStyleWindow = document.getElementById('ass-style-window');
+const assStyleDragHandle = document.getElementById('ass-style-drag-handle');
+const assStyleWindowClose = document.getElementById('ass-style-window-close');
+const assStyleWindowCloseFooter = document.getElementById('ass-style-window-close-footer');
+const assStyleLibraryStatus = document.getElementById('ass-style-library-status');
+const assStyleUsePreviewFontButton = document.getElementById('ass-style-use-preview-font');
+const assStyleFontToggle = document.getElementById('ass-style-font-toggle');
+const assStyleFontOptions = document.getElementById('ass-font-name-options');
+const assStyleCount = document.getElementById('ass-style-count');
+const assProfileCount = document.getElementById('ass-profile-count');
+const assStyleList = document.getElementById('ass-style-list');
+const assProfileList = document.getElementById('ass-profile-list');
+const assStyleNewButton = document.getElementById('ass-style-new');
+const assStyleDuplicateButton = document.getElementById('ass-style-duplicate');
+const assProfileNewButton = document.getElementById('ass-profile-new');
+const assSrtDefaultStyleSelect = document.getElementById('ass-srt-default-style');
+const assDefaultProfileSelect = document.getElementById('ass-ass-default-profile');
+const assStyleForm = document.getElementById('ass-style-form');
+const assProfileForm = document.getElementById('ass-profile-form');
+const assProfileStyleSelect = document.getElementById('ass-profile-style-id');
+const assStyleEditorEmpty = document.getElementById('ass-style-editor-empty');
+const assStyleFormTitle = document.getElementById('ass-style-form-title');
+const assProfileFormTitle = document.getElementById('ass-profile-form-title');
+const assStyleSrtHint = document.getElementById('ass-style-srt-hint');
+const assStylePreviewModeHint = document.getElementById('ass-style-preview-mode-hint');
+const assStyleSettingsLink = document.getElementById('ass-style-settings-link');
+const assStyleBuiltinBadge = document.getElementById('ass-style-builtin-badge');
+const assProfileBuiltinBadge = document.getElementById('ass-profile-builtin-badge');
+const assStyleDeleteSlot = document.getElementById('ass-style-delete-slot');
+const assProfileDeleteSlot = document.getElementById('ass-profile-delete-slot');
+const assStylePreviewSample = document.getElementById('ass-style-preview-sample');
+const assProfilePreviewSummary = document.getElementById('ass-profile-preview-summary');
+const assStyleSaveButton = document.getElementById('ass-style-save');
+const assStyleDeleteButton = document.getElementById('ass-style-delete');
+const assStyleLibraryPathHint = document.getElementById('ass-style-library-path-hint');
 
 const AUTO_MERGE_PANEL_POSITION_KEY = 'moy.asr.auto_merge.panel.v2';
 const autoMergePanel = document.getElementById('auto-merge-panel');
@@ -2210,6 +2521,7 @@ const subtitleExtendBackwardInput = document.getElementById('subtitle-extend-bac
 //（CSS 的 335 只是 JS 初始化前的静态兜底）。
 [
   editorSettingsPanel,
+  assStyleWindow,
   helpPanel,
   gapRemovePanel,
   autoMergePanel,
@@ -2418,6 +2730,525 @@ const editorSettingsFloatingPanel = createFloatingPanel({
     restoreEditorSettingsPanelSize();
     restoreEditorSettingsActiveTab();
   },
+});
+
+const ASS_STYLE_WINDOW_POSITION_KEY = 'moy.asr.ass_style.window.v1';
+let assStyleManagerSelection = { kind: 'style', id: 'ass' };
+let assStyleLibraryStatusText = '';
+let assStyleLibraryStatusState = 'idle';
+
+function assStyleLibraryUsesServerStorage() {
+  return Boolean(SERVER_CONFIG?.assStylesUrl);
+}
+
+function setAssStyleLibraryStatus(text, state = 'idle') {
+  assStyleLibraryStatusText = String(text || '');
+  assStyleLibraryStatusState = state;
+  updateAssStyleLibraryStatus();
+}
+
+function updateAssStyleLibraryStatus() {
+  if (!assStyleLibraryStatus) return;
+  const usesServerStorage = assStyleLibraryUsesServerStorage();
+  const fallback = usesServerStorage
+    ? (ASS_STYLE_LIBRARY_READY ? '已与用户级配置同步' : '使用本地副本，尚未同步')
+    : '仅保存在当前浏览器（便携模式）';
+  const status = assStyleLibraryStatusText || fallback;
+  assStyleLibraryStatus.textContent = window.MAWE_I18N?.translateText?.(status) || status;
+  assStyleLibraryStatus.dataset.state = !usesServerStorage && assStyleLibraryStatusState === 'success'
+    ? 'local' : assStyleLibraryStatusState;
+  if (assStyleLibraryPathHint) {
+    const pathHint = !usesServerStorage
+      ? '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。'
+      : ASS_STYLE_LIBRARY_READY
+        ? '已保存到本机用户级配置；Launcher 与 Editor 共享。'
+        : '当前使用本地副本；服务器恢复后可再次点击保存同步。';
+    assStyleLibraryPathHint.textContent = window.MAWE_I18N?.translateText?.(pathHint) || pathHint;
+  }
+}
+
+function assStyleManagerClone(value) {
+  try { return JSON.parse(JSON.stringify(value)); } catch (_) { return null; }
+}
+
+function assStyleManagerId(prefix, items) {
+  const existing = new Set((Array.isArray(items) ? items : []).map((item) => String(item?.id || '')));
+  let id = '';
+  do {
+    id = `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  } while (existing.has(id));
+  return id.slice(0, 64);
+}
+
+function selectedAssStyle() {
+  const id = assStyleManagerSelection.kind === 'style' ? assStyleManagerSelection.id : '';
+  return window.AsrEditorUtils.assStyleForId(ASS_STYLE_LIBRARY, id || 'ass');
+}
+
+function selectedAssProfile() {
+  const id = assStyleManagerSelection.kind === 'profile' ? assStyleManagerSelection.id : '';
+  return window.AsrEditorUtils.assProfileForId(ASS_STYLE_LIBRARY, id || 'ass');
+}
+
+function assStyleManagerSetSelection(kind, id) {
+  const collection = kind === 'profile' ? ASS_STYLE_LIBRARY.assProfiles : ASS_STYLE_LIBRARY.styles;
+  const item = (Array.isArray(collection) ? collection : []).find((candidate) => candidate?.id === id);
+  if (!item) return;
+  assStyleManagerSelection = { kind, id };
+  syncAssStyleManager({ force: true });
+}
+
+function appendAssStyleOption(select, value, label) {
+  if (!select) return;
+  select.append(new Option(label, value));
+}
+
+function assStylePreviewModeHintText() {
+  return `需要启用 ASS 字幕模式来预览效果。${EDITOR_SETTINGS.assMode === true ? '当前已启用。' : '当前未启用。'}`;
+}
+
+function updateAssStylePreviewModeHints() {
+  const enabled = EDITOR_SETTINGS.assMode === true;
+  const prefix = '需要启用 ASS 字幕模式来预览效果。';
+  const status = enabled ? '当前已启用。' : '当前未启用。';
+  const text = assStylePreviewModeHintText();
+  const translated = window.MAWE_I18N?.translateText?.(text) || text;
+  document.querySelectorAll('[data-ass-style-preview-hint]').forEach((element) => {
+    const prefixElement = element.querySelector('.ass-style-preview-mode-hint-prefix');
+    const statusElement = element.querySelector('.ass-style-preview-mode-hint-status');
+    if (prefixElement && statusElement) {
+      prefixElement.textContent = window.MAWE_I18N?.translateText?.(prefix) || prefix;
+      statusElement.textContent = window.MAWE_I18N?.translateText?.(status) || status;
+      statusElement.dataset.assPreviewMode = enabled ? 'enabled' : 'disabled';
+    } else {
+      element.textContent = translated;
+    }
+    element.dataset.assPreviewMode = enabled ? 'enabled' : 'disabled';
+    element.title = translated;
+    element.setAttribute('aria-label', translated);
+  });
+}
+
+function renderAssStyleList(list, items, kind, selectedId) {
+  if (!list) return;
+  list.replaceChildren();
+  list.setAttribute('aria-busy', 'false');
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'option');
+    button.dataset.assSelectionKind = kind;
+    button.dataset.assSelectionId = String(item.id || '');
+    button.setAttribute('aria-selected', String(item.id || '') === selectedId ? 'true' : 'false');
+    const label = document.createElement('span');
+    label.className = 'ass-style-list-label';
+    label.textContent = String(item.name || item.id || '未命名');
+    button.append(label);
+    if (item.builtin) {
+      const badge = document.createElement('span');
+      badge.className = 'ass-style-list-badge';
+      badge.textContent = '内置';
+      button.append(badge);
+    }
+    button.addEventListener('click', () => assStyleManagerSetSelection(kind, item.id));
+    list.append(button);
+  });
+}
+
+function assStyleFormValue(field) {
+  if (!field) return null;
+  if (field.type === 'checkbox') return field.checked;
+  if (field.type === 'radio') return field.checked ? field.value : null;
+  if (field.type === 'number') return field.value === '' ? null : Number(field.value);
+  return field.value;
+}
+
+function updateAssStyleManagerLibrary(mutator, { persist = true } = {}) {
+  const next = assStyleManagerClone(ASS_STYLE_LIBRARY);
+  if (!next) return;
+  mutator(next);
+  assStyleLibraryRevision += 1;
+  setAssStyleLibrary(next, { persistLocal: true });
+  if (persist) scheduleAssStyleLibrarySave();
+  syncAssStyleManager();
+  refreshSubtitlePreview?.();
+}
+
+function setNestedAssProfileValue(profile, path, value) {
+  const [group, field] = String(path || '').split('.', 2);
+  if (!group || !field || !profile.animations?.[group]) return;
+  profile.animations[group] = { ...profile.animations[group], [field]: value };
+}
+
+function updateAssStyleField(field, value) {
+  const styleId = assStyleManagerSelection.kind === 'style' ? assStyleManagerSelection.id : '';
+  if (!styleId) return;
+  updateAssStyleManagerLibrary((library) => {
+    library.styles = library.styles.map((style) => style.id === styleId
+      ? { ...style, [field]: value } : style);
+  });
+}
+
+function updateAssProfileField(path, value) {
+  const profileId = assStyleManagerSelection.kind === 'profile' ? assStyleManagerSelection.id : '';
+  if (!profileId) return;
+  updateAssStyleManagerLibrary((library) => {
+    library.assProfiles = library.assProfiles.map((profile) => {
+      if (profile.id !== profileId) return profile;
+      const next = { ...profile, animations: assStyleManagerClone(profile.animations) };
+      if (path === 'name' || path === 'styleId') next[path] = value;
+      else setNestedAssProfileValue(next, path, value);
+      return next;
+    });
+  });
+}
+
+function syncAssStyleForm(style) {
+  if (!assStyleForm) return;
+  const safeStyle = window.AsrEditorUtils.normalizeAssStyle(style);
+  if (assStyleFormTitle) assStyleFormTitle.textContent = safeStyle.name;
+  if (assStyleBuiltinBadge) assStyleBuiltinBadge.hidden = !safeStyle.builtin;
+  const isSrtDefault = safeStyle.id === 'default';
+  if (assStyleSrtHint) assStyleSrtHint.hidden = !isSrtDefault;
+  if (assStylePreviewModeHint) assStylePreviewModeHint.hidden = isSrtDefault;
+  assStyleForm.querySelectorAll('[data-ass-style-field]').forEach((field) => {
+    if (document.activeElement === field) return;
+    const value = safeStyle[field.dataset.assStyleField];
+    if (field.type === 'checkbox') field.checked = value === true;
+    else if (field.type === 'radio') field.checked = String(value) === field.value;
+    else if (value !== undefined && value !== null) field.value = String(value);
+  });
+  if (assStylePreviewSample) {
+    const preview = safeStyle;
+    assStylePreviewSample.textContent = 'Aa 字幕预览 / 字幕样例';
+    assStylePreviewSample.style.fontFamily = subtitleFontFamilyCss(preview.fontName);
+    assStylePreviewSample.style.fontSize = `${Math.max(14, Number(preview.fontSize) || 24)}px`;
+    assStylePreviewSample.style.fontWeight = preview.bold ? '700' : '400';
+    assStylePreviewSample.style.fontStyle = preview.italic ? 'italic' : 'normal';
+    assStylePreviewSample.style.textDecorationLine = [preview.underline ? 'underline' : '', preview.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
+    assStylePreviewSample.style.color = preview.primaryColor;
+    assStylePreviewSample.style.webkitTextStroke = preview.outline > 0 ? `${Math.min(8, preview.outline)}px ${preview.outlineColor}` : '';
+    assStylePreviewSample.style.paintOrder = preview.outline > 0 ? 'stroke fill' : '';
+    assStylePreviewSample.style.textShadow = preview.shadow > 0 ? `${preview.shadow}px ${preview.shadow}px 0 ${preview.backColor}` : 'none';
+    assStylePreviewSample.style.letterSpacing = `${preview.spacing}px`;
+    assStylePreviewSample.style.transform = `scale(${Number(preview.scaleX) / 100 || 1}, ${Number(preview.scaleY) / 100 || 1}) rotate(${Number(preview.angle) || 0}deg)`;
+    assStylePreviewSample.style.background = Number(preview.borderStyle) === 3 ? preview.backColor : 'transparent';
+  }
+  updateAssStylePreviewModeHints();
+}
+
+function syncAssProfileForm(profile) {
+  if (!assProfileForm) return;
+  const safeProfile = window.AsrEditorUtils.normalizeAssProfile(profile);
+  if (assProfileFormTitle) assProfileFormTitle.textContent = safeProfile.name;
+  if (assProfileBuiltinBadge) assProfileBuiltinBadge.hidden = !safeProfile.builtin;
+  assProfileForm.querySelectorAll('[data-ass-profile-field]').forEach((field) => {
+    if (document.activeElement === field) return;
+    const value = safeProfile[field.dataset.assProfileField];
+    if (value !== undefined && value !== null) field.value = String(value);
+  });
+  assProfileForm.querySelectorAll('[data-ass-animation]').forEach((field) => {
+    const path = field.dataset.assAnimation;
+    const [group, key] = path.split('.', 2);
+    const value = safeProfile.animations?.[group]?.[key];
+    if (document.activeElement !== field && value !== undefined) {
+      if (field.type === 'checkbox') field.checked = value === true;
+      else field.value = String(value);
+    }
+    field.disabled = key !== 'enabled' && safeProfile.animations?.[group]?.enabled !== true;
+  });
+  if (assProfilePreviewSummary) {
+    const tags = window.AsrEditorUtils.assAnimationOverrideTags(safeProfile);
+    const style = window.AsrEditorUtils.assStyleForId(ASS_STYLE_LIBRARY, safeProfile.styleId);
+    const summary = `${style.name} · ${tags || '无逐句动画'}`;
+    assProfilePreviewSummary.textContent = window.MAWE_I18N?.translateText?.(summary) || summary;
+  }
+}
+
+function syncAssStyleManager({ force = false } = {}) {
+  if (!assStyleWindow) return;
+  ASS_STYLE_LIBRARY = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const styles = ASS_STYLE_LIBRARY.styles || [];
+  const profiles = ASS_STYLE_LIBRARY.assProfiles || [];
+  const selectedCollection = assStyleManagerSelection.kind === 'profile' ? profiles : styles;
+  if (!selectedCollection.some((item) => item.id === assStyleManagerSelection.id)) {
+    assStyleManagerSelection = assStyleManagerSelection.kind === 'profile'
+      ? { kind: 'profile', id: profiles[0]?.id || 'ass' }
+      : { kind: 'style', id: styles[0]?.id || 'ass' };
+  }
+  if (assStyleCount) assStyleCount.textContent = String(styles.length);
+  if (assProfileCount) assProfileCount.textContent = String(profiles.length);
+  updateAssStyleLibrarySummary();
+  renderAssStyleList(assStyleList, styles, 'style', assStyleManagerSelection.kind === 'style' ? assStyleManagerSelection.id : '');
+  renderAssStyleList(assProfileList, profiles, 'profile', assStyleManagerSelection.kind === 'profile' ? assStyleManagerSelection.id : '');
+  if (assSrtDefaultStyleSelect) {
+    const active = ASS_STYLE_LIBRARY.assignments?.srtBurnStyleId || 'default';
+    assSrtDefaultStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(assSrtDefaultStyleSelect, style.id, style.name));
+    assSrtDefaultStyleSelect.value = active;
+  }
+  if (assDefaultProfileSelect) {
+    const active = ASS_STYLE_LIBRARY.assignments?.assExportProfileId || 'ass';
+    assDefaultProfileSelect.replaceChildren();
+    profiles.forEach((profile) => appendAssStyleOption(assDefaultProfileSelect, profile.id, profile.name));
+    assDefaultProfileSelect.value = active;
+  }
+  if (assProfileStyleSelect) {
+    const selectedProfile = selectedAssProfile();
+    assProfileStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(assProfileStyleSelect, style.id, style.name));
+    assProfileStyleSelect.value = selectedProfile.styleId;
+  }
+  const isStyle = assStyleManagerSelection.kind === 'style';
+  if (assStyleEditorEmpty) assStyleEditorEmpty.hidden = selectedCollection.length > 0;
+  if (assStyleForm) assStyleForm.hidden = !isStyle;
+  if (assProfileForm) assProfileForm.hidden = isStyle;
+  const deleteSlot = isStyle ? assStyleDeleteSlot : assProfileDeleteSlot;
+  if (deleteSlot && assStyleDeleteButton && assStyleDeleteButton.parentElement !== deleteSlot) {
+    deleteSlot.append(assStyleDeleteButton);
+  }
+  if (assStyleDeleteButton) {
+    const selected = selectedCollection.find((item) => item.id === assStyleManagerSelection.id);
+    assStyleDeleteButton.disabled = !selected || selected.builtin === true;
+    assStyleDeleteButton.title = selected?.builtin ? '内置条目不能删除' : '删除当前条目';
+  }
+  if (isStyle) syncAssStyleForm(selectedAssStyle());
+  else syncAssProfileForm(selectedAssProfile());
+  updateAssStyleLibraryStatus();
+  if (force) assStyleWindow.querySelector('.ass-style-editor')?.scrollTo({ top: 0 });
+}
+
+function createAssStyle() {
+  if ((ASS_STYLE_LIBRARY.styles || []).length >= 64) {
+    flashHint('样式数量已达到上限（64 个）', 'warning');
+    return;
+  }
+  const id = assStyleManagerId('style', ASS_STYLE_LIBRARY.styles);
+  updateAssStyleManagerLibrary((library) => {
+    library.styles.push({
+      ...assStyleManagerClone(window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE),
+      id, name: '新样式', builtin: false,
+    });
+  }, { persist: false });
+  assStyleManagerSelection = { kind: 'style', id };
+  scheduleAssStyleLibrarySave();
+  syncAssStyleManager({ force: true });
+}
+
+function duplicateAssStyle() {
+  const source = selectedAssStyle();
+  if (!source || (ASS_STYLE_LIBRARY.styles || []).length >= 64) {
+    flashHint('无法复制样式：已达到数量上限', 'warning');
+    return;
+  }
+  const id = assStyleManagerId('style', ASS_STYLE_LIBRARY.styles);
+  updateAssStyleManagerLibrary((library) => {
+    library.styles.push({ ...assStyleManagerClone(source), id, name: `${source.name} 副本`, builtin: false });
+  }, { persist: false });
+  assStyleManagerSelection = { kind: 'style', id };
+  scheduleAssStyleLibrarySave();
+  syncAssStyleManager({ force: true });
+}
+
+function duplicateAssProfile() {
+  const source = selectedAssProfile();
+  if (!source || (ASS_STYLE_LIBRARY.assProfiles || []).length >= 64) {
+    flashHint('无法复制方案：已达到数量上限', 'warning');
+    return;
+  }
+  const id = assStyleManagerId('profile', ASS_STYLE_LIBRARY.assProfiles);
+  updateAssStyleManagerLibrary((library) => {
+    library.assProfiles.push({
+      ...assStyleManagerClone(source),
+      id, name: `${source.name} 副本`, builtin: false,
+    });
+  }, { persist: false });
+  assStyleManagerSelection = { kind: 'profile', id };
+  scheduleAssStyleLibrarySave();
+  syncAssStyleManager({ force: true });
+}
+
+function createAssProfile() {
+  if ((ASS_STYLE_LIBRARY.assProfiles || []).length >= 64) {
+    flashHint('ASS 方案数量已达到上限（64 个）', 'warning');
+    return;
+  }
+  const id = assStyleManagerId('profile', ASS_STYLE_LIBRARY.assProfiles);
+  updateAssStyleManagerLibrary((library) => {
+    library.assProfiles.push({
+      ...assStyleManagerClone(window.AsrEditorUtils.ASS_DEFAULT_PROFILE),
+      id, name: '新 ASS 方案', builtin: false,
+      animations: assStyleManagerClone(window.AsrEditorUtils.ASS_DEFAULT_ANIMATIONS),
+    });
+  }, { persist: false });
+  assStyleManagerSelection = { kind: 'profile', id };
+  scheduleAssStyleLibrarySave();
+  syncAssStyleManager({ force: true });
+}
+
+function deleteSelectedAssEntry() {
+  const { kind, id } = assStyleManagerSelection;
+  const collection = kind === 'profile' ? ASS_STYLE_LIBRARY.assProfiles : ASS_STYLE_LIBRARY.styles;
+  const item = collection?.find((candidate) => candidate.id === id);
+  if (!item || item.builtin) {
+    flashHint('内置条目不能删除；可以直接修改其参数', 'warning');
+    return;
+  }
+  if (!confirm(`确定删除“${item.name}”吗？`)) return;
+  updateAssStyleManagerLibrary((library) => {
+    if (kind === 'profile') {
+      library.assProfiles = library.assProfiles.filter((profile) => profile.id !== id);
+      if (library.assignments.assExportProfileId === id) library.assignments.assExportProfileId = 'ass';
+    } else {
+      library.styles = library.styles.filter((style) => style.id !== id);
+      library.assProfiles = library.assProfiles.map((profile) => ({
+        ...profile, styleId: profile.styleId === id ? 'ass' : profile.styleId,
+      }));
+      if (library.assignments.srtBurnStyleId === id) library.assignments.srtBurnStyleId = 'default';
+    }
+  });
+  assStyleManagerSelection = kind === 'profile' ? { kind: 'profile', id: 'ass' } : { kind: 'style', id: 'ass' };
+  syncAssStyleManager({ force: true });
+}
+
+function updateAssStyleAssignment(slot, value) {
+  updateAssStyleManagerLibrary((library) => {
+    library.assignments = { ...(library.assignments || {}), [slot]: value };
+  });
+  refreshSubtitlePreview?.();
+}
+
+const assStyleFloatingPanel = createFloatingPanel({
+  panel: assStyleWindow,
+  dragHandle: assStyleDragHandle,
+  manageButton: assStyleManagerOpenButton,
+  anchorButton: assStyleManagerOpenButton,
+  positionKey: ASS_STYLE_WINDOW_POSITION_KEY,
+  onOpen: () => {
+    syncAssStyleManager({ force: true });
+    void loadAssStyleLibrary({ force: true });
+  },
+});
+assStyleWindowClose?.addEventListener('click', () => assStyleFloatingPanel.close());
+assStyleWindowCloseFooter?.addEventListener('click', () => assStyleFloatingPanel.close());
+assStyleNewButton?.addEventListener('click', createAssStyle);
+assStyleDuplicateButton?.addEventListener('click', duplicateAssStyle);
+assProfileNewButton?.addEventListener('click', createAssProfile);
+assStyleDeleteButton?.addEventListener('click', deleteSelectedAssEntry);
+assStyleSettingsLink?.addEventListener('click', (event) => {
+  event.preventDefault();
+  openEditorSettingsAtTab('editor-settings-tab-subtitle-style');
+});
+assStyleSaveButton?.addEventListener('click', () => {
+  setAssStyleLibraryStatus(
+    assStyleLibraryUsesServerStorage() ? '正在保存用户级样式库…' : '正在保存到当前浏览器…',
+    'pending',
+  );
+  void persistAssStyleLibrary();
+});
+assSrtDefaultStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('srtBurnStyleId', assSrtDefaultStyleSelect.value));
+assDefaultProfileSelect?.addEventListener('change', () => updateAssStyleAssignment('assExportProfileId', assDefaultProfileSelect.value));
+// 「使用预览字体」：把「设置 → 字幕样式」当前预览字体映射成具体字体族，
+// 应用到正在编辑的 ASS 样式；内置键映射为 ASS 最常用的对应字体名。
+const PREVIEW_FONT_KEY_TO_ASS_NAME = Object.freeze({
+  default: 'Microsoft YaHei',
+  yahei: 'Microsoft YaHei',
+  hei: 'SimHei',
+  song: 'SimSun',
+  sans: 'Arial',
+});
+assStyleUsePreviewFontButton?.addEventListener('click', () => {
+  const family = getSubtitleAppearance().font_family || 'default';
+  const fontName = PREVIEW_FONT_KEY_TO_ASS_NAME[family] || family;
+  const input = document.getElementById('ass-style-font-name');
+  if (input) input.value = fontName;
+  updateAssStyleField('fontName', fontName);
+  flashHint(`已将 ASS 字体设为「${fontName}」`, 'success');
+});
+// 样式/方案列表右键菜单：创建副本 / 重命名 / 删除（内置条目的删除不可选）。
+function showAssListContextMenu(event, kind) {
+  const button = event.target.closest(`[data-ass-selection-kind="${kind}"]`);
+  if (!button) return;
+  event.preventDefault();
+  assStyleManagerSetSelection(kind, button.dataset.assSelectionId);
+  const collection = kind === 'profile' ? ASS_STYLE_LIBRARY.assProfiles : ASS_STYLE_LIBRARY.styles;
+  const item = collection?.find((candidate) => candidate.id === button.dataset.assSelectionId);
+  if (!item) return;
+  ctxmenu.innerHTML = '';
+  const addItem = (label, fn, { danger = false, disabled = false } = {}) => {
+    const element = document.createElement('div');
+    element.className = `item${danger ? ' danger' : ''}${disabled ? ' disabled' : ''}`;
+    const text = document.createElement('span');
+    text.textContent = label;
+    element.appendChild(text);
+    if (!disabled) element.addEventListener('click', () => {
+      ctxmenu.classList.remove('show');
+      fn();
+    });
+    ctxmenu.appendChild(element);
+  };
+  addItem('创建副本', () => (kind === 'profile' ? duplicateAssProfile() : duplicateAssStyle()));
+  addItem('重命名', () => {
+    const input = document.getElementById(kind === 'profile' ? 'ass-profile-name' : 'ass-style-name');
+    if (!input) return;
+    input.focus();
+    input.select();
+    input.scrollIntoView({ block: 'center', inline: 'nearest' });
+  });
+  addItem('删除', () => deleteSelectedAssEntry(), { danger: true, disabled: item.builtin === true });
+  ctxmenu.classList.add('show');
+  const rect = ctxmenu.getBoundingClientRect();
+  const nx = Math.max(4, Math.min(event.clientX, window.innerWidth - rect.width - 4));
+  const ny = Math.max(4, Math.min(event.clientY, window.innerHeight - rect.height - 4));
+  ctxmenu.style.left = `${nx}px`;
+  ctxmenu.style.top = `${ny}px`;
+}
+assStyleList?.addEventListener('contextmenu', (event) => showAssListContextMenu(event, 'style'));
+assProfileList?.addEventListener('contextmenu', (event) => showAssListContextMenu(event, 'profile'));
+assStyleForm?.addEventListener('input', (event) => {
+  const field = event.target.closest('[data-ass-style-field]');
+  if (!field) return;
+  if (field.type === 'radio' && !field.checked) return;
+  updateAssStyleField(field.dataset.assStyleField, assStyleFormValue(field));
+});
+assStyleForm?.addEventListener('change', (event) => {
+  const field = event.target.closest('[data-ass-style-field]');
+  if (field && (field.type !== 'radio' || field.checked)) {
+    updateAssStyleField(field.dataset.assStyleField, assStyleFormValue(field));
+  }
+});
+assProfileForm?.addEventListener('input', (event) => {
+  const field = event.target.closest('[data-ass-profile-field], [data-ass-animation]');
+  if (!field) return;
+  const path = field.dataset.assProfileField || field.dataset.assAnimation;
+  updateAssProfileField(path, assStyleFormValue(field));
+});
+assProfileForm?.addEventListener('change', (event) => {
+  const field = event.target.closest('[data-ass-profile-field], [data-ass-animation]');
+  if (field) updateAssProfileField(field.dataset.assProfileField || field.dataset.assAnimation, assStyleFormValue(field));
+});
+
+function syncAssModeDependentControls() {
+  // ASS 字幕模式接管预览样式后，「预览字幕颜色」不再参与预览，禁用并提示跳转。
+  const assMode = EDITOR_SETTINGS.assMode === true;
+  if (subtitleColorUnderlineInput) subtitleColorUnderlineInput.disabled = assMode;
+  if (subtitleColorAssModeHint) subtitleColorAssModeHint.hidden = !assMode;
+}
+
+function syncAssModeControl() {
+  syncAssModeDependentControls();
+  updateAssStylePreviewModeHints();
+  if (!assModeToggle) return;
+  assModeToggle.checked = EDITOR_SETTINGS.assMode === true;
+  assModeToggle.setAttribute('aria-checked', String(assModeToggle.checked));
+}
+
+assModeToggle?.addEventListener('change', () => {
+  updateEditorSettings({ assMode: assModeToggle.checked });
+  syncAssModeControl();
+  refreshPreviewGeometryEditable();
+  refreshSubtitlePreview();
+  flashHint(assModeToggle.checked ? '已开启 ASS 字幕模式预览' : '已恢复原有字幕预览', 'success');
 });
 
 function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
@@ -2853,6 +3684,9 @@ document.addEventListener('mawe:languagechange', () => {
   refreshTimelineSettingsUi();
   refreshMediaSeekStepHelp();
   refreshMediaSeekControlLabels();
+  updateAssStyleLibrarySummary();
+  updateAssStyleLibraryStatus();
+  updateAssStylePreviewModeHints();
 });
 
 splitKeySel.value = EDITOR_SETTINGS.splitKey;
@@ -3042,6 +3876,9 @@ multiSubtitleAlignButton?.addEventListener('click', () => {
 });
 applySubtitleAppearance();
 applyExtensionSubtitleAppearance();
+syncAssModeControl();
+syncAssStyleManager();
+void loadAssStyleLibrary();
 // 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
 editorSettingsTabs.forEach((tab) => {
   tab.addEventListener('click', () => setEditorSettingsActiveTab(tab));
@@ -3947,9 +4784,21 @@ subtitleFontSizeSelect?.addEventListener('change', () => {
   pushPreviewUndo('调整字幕字号', snapshotPreviewState());
   setSubtitleAppearance({ font_size: value === 'auto' ? null : Number(value) });
 });
-subtitleFontFamilySelect?.addEventListener('change', () => {
+subtitleFontFamilyInput?.addEventListener('change', () => {
   pushPreviewUndo('调整字幕字体', snapshotPreviewState());
-  setSubtitleAppearance({ font_family: subtitleFontFamilySelect.value });
+  setSubtitleAppearance({ font_family: subtitleFontFamilyInputToStored(subtitleFontFamilyInput.value) });
+  syncSubtitleAppearanceControls();
+});
+assColorStyleSelect?.addEventListener('change', () => {
+  pushPreviewUndo('调整 ASS 颜色字幕样式', snapshotPreviewState());
+  setSubtitleAppearance({ ass_color_style: assColorStyleSelect.value });
+  update();
+});
+subtitleColorPaletteEnabledInput?.addEventListener('change', () => {
+  updateEditorSettings({ subtitleColorPaletteEnabled: subtitleColorPaletteEnabledInput.checked });
+  syncSubtitleColorPaletteControls();
+  refreshSubtitleColorPalettePresentation();
+  if (!subtitleColorPaletteEnabledInput.checked) flashHint('已恢复内置字幕颜色', 'success');
 });
 let subtitleBackgroundColorUndoPushed = false;
 function applySubtitleBackgroundColorInput({ finalize = false } = {}) {
@@ -3995,6 +4844,10 @@ subtitleColorUnderlineInput?.addEventListener('change', () => {
   pushPreviewUndo('切换预览字幕颜色下划线', snapshotPreviewState());
   setSubtitleAppearance({ color_underline: subtitleColorUnderlineInput.checked });
   update();
+});
+// 提示中的「ASS 字幕模式」是链接：跳到设置窗口的「字幕样式」tab。
+subtitleColorAssModeHintLink?.addEventListener('click', () => {
+  openEditorSettingsAtTab('editor-settings-tab-subtitle-style');
 });
 subtitleColorStyleSelect?.addEventListener('change', () => {
   pushPreviewUndo('调整预览字幕颜色样式', snapshotPreviewState());
@@ -6284,7 +7137,7 @@ function updateCueColorPresentation(el, colorBar, seg) {
   el.style.removeProperty('--color-bar');
 
   if (seg.color) {
-    const value = seg.color.value || colorValue(seg.color.name);
+    const value = colorValue(seg.color.name);
     colorBar.classList.add('has-color');
     colorBar.style.setProperty('--color-bar', value);
     el.classList.add('has-color');
@@ -10693,8 +11546,26 @@ function syncPlaybackRateOption(rate) {
   mediaPlaybackRate.value = value;
 }
 
+let assPreviewRefreshFrame = 0;
+function scheduleAssSubtitlePreviewRefresh() {
+  if (EDITOR_SETTINGS.assMode !== true || assPreviewRefreshFrame) return;
+  const refresh = () => {
+    assPreviewRefreshFrame = 0;
+    if (EDITOR_SETTINGS.assMode !== true) return;
+    refreshSubtitlePreview();
+  };
+  if (typeof requestAnimationFrame === 'function') {
+    assPreviewRefreshFrame = requestAnimationFrame(refresh);
+  } else {
+    assPreviewRefreshFrame = window.setTimeout(refresh, 0);
+  }
+}
+
 function syncMediaControls() {
-  playerWrap?.classList.toggle('fullscreen-preview', document.fullscreenElement === playerWrap);
+  const fullscreenPreview = Boolean(playerWrap && document.fullscreenElement === playerWrap);
+  const wasFullscreenPreview = playerWrap?.classList.contains('fullscreen-preview') === true;
+  playerWrap?.classList.toggle('fullscreen-preview', fullscreenPreview);
+  if (fullscreenPreview !== wasFullscreenPreview) scheduleAssSubtitlePreviewRefresh();
   refreshMediaSeekControlLabels();
   if (!mediaPlayToggle || !player) return;
   const hasMedia = hasLoadedMedia();
@@ -12107,12 +12978,148 @@ function subtitleFontFamilyDisplayName(family) {
   // 不可用时先用原始字体名占位，别名就绪后由 relabelSubtitleFontFamilyOptions 统一本地化。
   return window.AsrEditorUtils?.subtitleFontFamilyDisplayName(family, language) ?? family;
 }
+function subtitleFontFamilyPresetLabel(preset) {
+  return window.MAWE_I18N?.translateText?.(preset.label) || preset.label;
+}
+function subtitleFontFamilyMappingOptions() {
+  return {
+    presetLabel: subtitleFontFamilyPresetLabel,
+    familyDisplay: subtitleFontFamilyDisplayName,
+  };
+}
+function subtitleFontFamilyStoredToInput(family) {
+  return window.AsrEditorUtils.subtitleFontFamilyStoredToInput(family, subtitleFontFamilyMappingOptions());
+}
+function subtitleFontFamilyInputToStored(text) {
+  // 本地化显示名（如「微软雅黑」）要还原成真实字体族名，浏览器才能解析。
+  return window.AsrEditorUtils.subtitleFontFamilyInputToStored(text, {
+    ...subtitleFontFamilyMappingOptions(),
+    localFamilies: subtitleLocalFontFamilies,
+  });
+}
+// 字体 combobox：文本输入 + 可筛选下拉列表，交互对齐 Launcher「模型」输入框。
+// getEntries() 返回 [{ value, label }]；选项点击写入 label 并派发 change，
+// 由既有映射（subtitleFontFamilyInputToStored / assStyleForm change 委托）落库。
+// 实例惰性创建：启动早期（relabelSubtitleFontFamilyOptions 于模块求值时被调用）
+// 也可能触发重建，惰性创建避免引用后置声明造成暂时性死区。
+function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
+  if (!input || !options) return { refresh() {}, setOpen() {} };
+  let open = false;
+  function render(query = '') {
+    const entries = window.AsrEditorUtils.filterFontFamilyOptions(
+      window.AsrEditorUtils.mergeFontFamilyOptions(getEntries()),
+      query,
+    );
+    options.replaceChildren();
+    if (!entries.length) {
+      const empty = document.createElement('span');
+      empty.className = 'font-combobox-empty';
+      empty.textContent = '无匹配字体';
+      options.append(empty);
+    }
+    entries.forEach((entry) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'font-combobox-option';
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', String(entry.label === input.value.trim()));
+      option.textContent = entry.label;
+      option.addEventListener('mousedown', (event) => event.preventDefault());
+      option.addEventListener('click', () => {
+        input.value = entry.label;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        setOpen(false);
+        input.focus();
+      });
+      options.append(option);
+    });
+  }
+  function setOpen(next, query = '') {
+    open = Boolean(next);
+    input.setAttribute('aria-expanded', String(open));
+    if (open) render(query);
+    options.hidden = !open;
+  }
+  input.addEventListener('focus', () => setOpen(true));
+  input.addEventListener('input', () => setOpen(true, input.value));
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') setOpen(false);
+  });
+  if (toggle) {
+    toggle.addEventListener('mousedown', (event) => event.preventDefault());
+    toggle.addEventListener('click', () => setOpen(!open));
+  }
+  document.addEventListener('click', (event) => {
+    if (open && !event.target?.closest?.('.font-combobox')) setOpen(false);
+  });
+  return {
+    refresh() {
+      if (open) render(input.value);
+    },
+    setOpen,
+  };
+}
+function subtitleFontFamilyComboboxEntries() {
+  const entries = window.AsrEditorUtils.SUBTITLE_FONT_FAMILY_PRESETS.map((preset) => {
+    const label = subtitleFontFamilyPresetLabel(preset);
+    return { value: label, label };
+  });
+  subtitleLocalFontFamilies.forEach((family) => {
+    const label = subtitleFontFamilyDisplayName(family);
+    entries.push({ value: label, label });
+  });
+  return entries;
+}
+function assFontNameComboboxEntries() {
+  const entries = ASS_BUILTIN_FONT_SUGGESTIONS.map((name) => ({ value: name, label: name }));
+  subtitleLocalFontFamilies.forEach((family) => {
+    entries.push({ value: family, label: family });
+  });
+  return entries;
+}
+function getSubtitleFontFamilyCombobox() {
+  if (!subtitleFontFamilyCombobox) {
+    subtitleFontFamilyCombobox = createFontFamilyCombobox({
+      input: subtitleFontFamilyInput,
+      toggle: subtitleFontFamilyToggle,
+      options: subtitleFontFamilyOptions,
+      getEntries: subtitleFontFamilyComboboxEntries,
+    });
+  }
+  return subtitleFontFamilyCombobox;
+}
+function getAssFontNameCombobox() {
+  if (!assFontNameCombobox) {
+    const assStyleFontNameInput = document.getElementById('ass-style-font-name');
+    // 占位符跟随按操作系统选择的 ASS 默认字体，不再固定 Arial。
+    if (assStyleFontNameInput) {
+      const assDefaultFontName = window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE?.fontName;
+      if (assDefaultFontName) assStyleFontNameInput.placeholder = assDefaultFontName;
+    }
+    assFontNameCombobox = createFontFamilyCombobox({
+      input: assStyleFontNameInput,
+      toggle: assStyleFontToggle,
+      options: assStyleFontOptions,
+      getEntries: assFontNameComboboxEntries,
+    });
+  }
+  return assFontNameCombobox;
+}
+function rebuildSubtitleFontFamilyOptions() {
+  getSubtitleFontFamilyCombobox().refresh();
+}
+function rebuildAssFontNameOptions() {
+  getAssFontNameCombobox().refresh();
+}
 function relabelSubtitleFontFamilyOptions() {
-  [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
+  [extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
     Array.from(select.querySelectorAll('option[data-local-font="true"], option[data-generated="true"]')).forEach((option) => {
       option.textContent = subtitleFontFamilyDisplayName(option.value);
     });
   });
+  rebuildSubtitleFontFamilyOptions();
+  rebuildAssFontNameOptions();
+  syncSubtitleAppearanceControls();
 }
 function normalizeSubtitleColor(value) {
   if (typeof value !== 'string') return null;
@@ -12121,6 +13128,10 @@ function normalizeSubtitleColor(value) {
 }
 function normalizeSubtitleColorStyle(value) {
   return typeof value === 'string' && SUBTITLE_COLOR_STYLE_VALUES.includes(value)
+    ? value : null;
+}
+function normalizeAssColorStyleValue(value) {
+  return typeof value === 'string' && ASS_COLOR_STYLE_VALUES.includes(value)
     ? value : null;
 }
 function normalizeSubtitleAppearance(value) {
@@ -12140,6 +13151,8 @@ function normalizeSubtitleAppearance(value) {
   if (color) result.color = color;
   const colorStyle = normalizeSubtitleColorStyle(value?.color_style);
   if (colorStyle) result.color_style = colorStyle;
+  const assColorStyle = normalizeAssColorStyleValue(value?.ass_color_style);
+  if (assColorStyle) result.ass_color_style = assColorStyle;
   if (value?.color_underline === false) result.color_underline = false;
   return result;
 }
@@ -12150,6 +13163,7 @@ function getSubtitleAppearance(value = DATA.preview?.subtitle) {
     color: result.color || DEFAULT_SUBTITLE_COLOR,
     color_underline: result.color_underline !== false,
     color_style: result.color_style || DEFAULT_SUBTITLE_COLOR_STYLE,
+    ass_color_style: result.ass_color_style || DEFAULT_ASS_COLOR_STYLE,
   };
 }
 function getSpeakerLabelSettings(value = DATA.preview?.subtitle?.speaker_labels) {
@@ -12215,6 +13229,7 @@ function syncSubtitleFontSizeSelect(select, sizeValue) {
 }
 function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   syncSubtitleFontSizeSelect(subtitleFontSizeSelect, appearance.font_size);
+  syncAssModeDependentControls();
   if (subtitleColorUnderlineInput) {
     subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
@@ -12224,19 +13239,11 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   if (subtitleColorStyleControl) {
     subtitleColorStyleControl.hidden = appearance.color_underline === false;
   }
-  if (subtitleFontFamilySelect) {
-    subtitleFontFamilySelect.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
-    const family = appearance.font_family || 'default';
-    if (family !== 'default' && !isBuiltInSubtitleFontFamily(family)
-        && !subtitleFontFamilyOptionExists(subtitleFontFamilySelect, family)) {
-      const option = document.createElement('option');
-      option.value = family;
-      option.textContent = subtitleFontFamilyDisplayName(family);
-      option.dataset.generated = 'true';
-      subtitleFontFamilySelect.append(option);
-    }
-    subtitleFontFamilySelect.value = family;
-    if (subtitleFontFamilySelect.value !== family) subtitleFontFamilySelect.value = 'default';
+  if (assColorStyleSelect) {
+    assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
+  }
+  if (subtitleFontFamilyInput && document.activeElement !== subtitleFontFamilyInput) {
+    subtitleFontFamilyInput.value = subtitleFontFamilyStoredToInput(appearance.font_family || 'default');
   }
   if (subtitleBackgroundColorInput) {
     subtitleBackgroundColorInput.value = appearance.background_color
@@ -12251,7 +13258,83 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   }
   if (subtitleColorInput) subtitleColorInput.value = appearance.color || DEFAULT_SUBTITLE_COLOR;
   syncSpeakerLabelControls();
+  syncSubtitleColorPaletteControls();
 }
+
+function currentSubtitleColorPalette() {
+  // 开关关闭时不读取自定义值，统一回落到内置五色。
+  if (EDITOR_SETTINGS.subtitleColorPaletteEnabled !== true) {
+    return normalizeSubtitleColorPalette(null, COLOR_PALETTE_DEFAULTS);
+  }
+  return normalizeSubtitleColorPalette(
+    EDITOR_SETTINGS.subtitleColorPalette,
+    COLOR_PALETTE_DEFAULTS,
+  );
+}
+
+function syncSubtitleColorPaletteControls() {
+  const palette = currentSubtitleColorPalette();
+  const customEnabled = EDITOR_SETTINGS.subtitleColorPaletteEnabled === true;
+  if (subtitleColorPaletteEnabledInput) subtitleColorPaletteEnabledInput.checked = customEnabled;
+  if (subtitleColorPaletteGrid) subtitleColorPaletteGrid.hidden = !customEnabled;
+  subtitleColorPaletteNames.forEach((name) => {
+    const value = palette[name];
+    const colorInput = subtitleColorPaletteColorInputs[name];
+    const hexInput = subtitleColorPaletteHexInputs[name];
+    const swatch = subtitleColorPaletteSwatches[name];
+    if (colorInput && document.activeElement !== colorInput) colorInput.value = value;
+    if (hexInput && document.activeElement !== hexInput) hexInput.value = value;
+    // 色块是用户感知自定义五色的主要位置，保存/重绘后要和色值控件一起刷新。
+    if (swatch) swatch.style.backgroundColor = value;
+  });
+}
+
+function refreshSubtitleColorPalettePresentation() {
+  rebuildEditorColorPalette();
+  renderAll({ waveform: 'none' });
+  waveformEditor?.renderSegments?.();
+  refreshSubtitlePreview();
+}
+
+function setSubtitleColorPaletteValue(name, value) {
+  if (!subtitleColorPaletteNames.includes(name)) return;
+  const current = currentSubtitleColorPalette();
+  const next = normalizeSubtitleColorPalette(
+    { ...current, [name]: value },
+    COLOR_PALETTE_DEFAULTS,
+  );
+  if (next[name] === current[name]) {
+    syncSubtitleColorPaletteControls();
+    return;
+  }
+  updateEditorSettings({ subtitleColorPalette: next });
+  syncSubtitleColorPaletteControls();
+  refreshSubtitleColorPalettePresentation();
+}
+
+subtitleColorPaletteNames.forEach((name) => {
+  const colorInput = subtitleColorPaletteColorInputs[name];
+  const hexInput = subtitleColorPaletteHexInputs[name];
+  colorInput?.addEventListener('change', () => {
+    setSubtitleColorPaletteValue(name, colorInput.value);
+  });
+  hexInput?.addEventListener('input', () => {
+    if (/^#[0-9a-f]{6}$/iu.test(hexInput.value.trim())) {
+      setSubtitleColorPaletteValue(name, hexInput.value);
+    }
+  });
+  hexInput?.addEventListener('change', () => {
+    setSubtitleColorPaletteValue(name, hexInput.value);
+  });
+});
+
+subtitleColorPaletteResetButton?.addEventListener('click', () => {
+  updateEditorSettings({ subtitleColorPalette: { ...COLOR_PALETTE_DEFAULTS } });
+  syncSubtitleColorPaletteControls();
+  refreshSubtitleColorPalettePresentation();
+  flashHint('已恢复内置字幕颜色', 'success');
+});
+
 function syncExtensionSubtitleAppearanceControls() {
   const stored = getStoredExtensionSubtitleAppearance();
   const appearance = getExtensionSubtitleAppearance();
@@ -12356,6 +13439,10 @@ function setSubtitleAppearance(patch, { markDirty = true } = {}) {
     const colorStyle = normalizeSubtitleColorStyle(patch.color_style);
     if (colorStyle) next.color_style = colorStyle;
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'ass_color_style')) {
+    const assColorStyle = normalizeAssColorStyleValue(patch.ass_color_style);
+    if (assColorStyle) next.ass_color_style = assColorStyle;
+  }
   if (!DATA.preview || typeof DATA.preview !== 'object') DATA.preview = {};
   DATA.preview.subtitle = {
     ...getPreviewGeometry(),
@@ -12392,9 +13479,9 @@ function collectSubtitleLocalFontFamilies(fontData) {
   }));
 }
 function replaceSubtitleLocalFontOptions(families) {
-  const selects = [subtitleFontFamilySelect, extensionSubtitleFontFamilySelect].filter(Boolean);
-  if (!selects.length) return;
-  selects.forEach((select) => {
+  subtitleLocalFontFamilies = Array.isArray(families) ? families : [];
+  const select = extensionSubtitleFontFamilySelect;
+  if (select) {
     select.querySelectorAll(
       'option[data-local-font="true"], option[data-generated="true"]',
     ).forEach((option) => option.remove());
@@ -12410,10 +13497,11 @@ function replaceSubtitleLocalFontOptions(families) {
       existing.add(family);
     });
     select.append(fragment);
-  });
+  }
+  rebuildSubtitleFontFamilyOptions();
+  rebuildAssFontNameOptions();
   syncSubtitleAppearanceControls();
   syncExtensionSubtitleAppearanceControls();
-  relabelSubtitleFontFamilyOptions();
 }
 function initializeSubtitleFontFamilyScanner() {
   if (!subtitleFontFamilyScanButton) return;
@@ -12556,7 +13644,11 @@ function applyStickerGeometryToDom(geo) {
 }
 // 只有当对应预览开关开启时才允许几何编辑（关闭时字幕盒完全隐藏、表情包盒不拦截指针）。
 function refreshPreviewGeometryEditable() {
-  overlayEl.classList.toggle('geometry-enabled', !!overlayToggle.checked || !!extensionOverlayToggle?.checked);
+  const assMode = EDITOR_SETTINGS.assMode === true;
+  overlayEl.classList.toggle(
+    'geometry-enabled',
+    !assMode && (!!overlayToggle.checked || !!extensionOverlayToggle?.checked),
+  );
   stickerOverlayLayer.classList.toggle('geometry-enabled', !!stickerOverlayToggle?.checked);
 }
 
@@ -12669,6 +13761,7 @@ document.addEventListener('pointerdown', (event) => {
 if (typeof ResizeObserver === 'function') {
   const previewResizeObserver = new ResizeObserver(() => {
     applyPreviewGeometryToDom(getPreviewGeometry());
+    scheduleAssSubtitlePreviewRefresh();
   });
   previewResizeObserver.observe(playerStage);
 }
@@ -12783,6 +13876,319 @@ function updatePlaybackFrame() {
   waveformEditor?.updatePlayback();
 }
 
+function assPreviewAlignment(value) {
+  const alignment = Math.min(9, Math.max(1, Math.round(Number(value) || 2)));
+  const column = (alignment - 1) % 3;
+  const row = Math.floor((alignment - 1) / 3);
+  return {
+    x: column / 2,
+    y: row === 0 ? 1 : row === 1 ? 0.5 : 0,
+    alignItems: column === 0 ? 'flex-start' : column === 1 ? 'center' : 'flex-end',
+    justifyContent: row === 0 ? 'flex-end' : row === 1 ? 'center' : 'flex-start',
+    textAlign: column === 0 ? 'left' : column === 1 ? 'center' : 'right',
+  };
+}
+
+function assPreviewMetrics() {
+  const resolution = currentAssVideoResolution()
+    || { width: 1920, height: 1080 };
+  const rect = playerStage?.getBoundingClientRect?.();
+  const stageWidth = Math.max(1, Number(rect?.width) || Number(playerStage?.clientWidth) || resolution.width);
+  const stageHeight = Math.max(1, Number(rect?.height) || Number(playerStage?.clientHeight) || resolution.height);
+  return {
+    resolution,
+    stageWidth,
+    stageHeight,
+    scaleX: stageWidth / resolution.width,
+    scaleY: stageHeight / resolution.height,
+  };
+}
+
+function assPreviewStyleVariant(style, segment, segments, appearance) {
+  // ASS 预览的颜色映射只跟随 ass_color_style；color_underline 只控制 CSS 预览。
+  const colorName = segment
+    ? MULTI_SUBTITLE_UTILS.effectiveColorName(segment, segments) : null;
+  const paletteValue = COLOR_BY_NAME[colorName]?.value || '';
+  if (!paletteValue || typeof window.AsrEditorUtils.assStyleVariant !== 'function') return style;
+  return window.AsrEditorUtils.assStyleVariant(
+    style,
+    paletteValue,
+    appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE,
+  );
+}
+
+function assPreviewAnimatedStyle(style, profile, animationState) {
+  if (animationState.transformProgress === null) return style;
+  const tags = profile?.animations?.t?.tags || '';
+  return window.AsrEditorUtils.assPreviewStyleAt(style, tags, animationState.transformProgress);
+}
+
+function assPreviewFontSize(style, metrics) {
+  // Style-library font sizes use the same 1080p reference as ASS export.
+  // Export scales the value to PlayResY; applying the inverse stage scale here
+  // keeps a 4K source visually consistent with its exported ASS rendering.
+  return Math.max(1, Number(style.fontSize) || 18)
+    * metrics.stageHeight / ASS_PREVIEW_REFERENCE_HEIGHT;
+}
+
+function applyAssPreviewElement(element, style, animationState, metrics, alignment, margins) {
+  if (!element) return;
+  const scaleX = metrics.scaleX;
+  const scaleY = metrics.scaleY;
+  const fontSize = assPreviewFontSize(style, metrics);
+  const opacity = Math.max(0, Math.min(1,
+    Number(animationState.opacity) * (1 - Math.max(0, Math.min(255, Number(style.alpha) || 0)) / 255),
+  ));
+  const outline = Math.max(0, Number(style.outline) || 0) * scaleY;
+  const shadow = Math.max(0, Number(style.shadow) || 0) * scaleY;
+  const spacing = (Number(style.spacing) || 0) * scaleY;
+  const borderBox = Number(style.borderStyle) === 3;
+  const transform = [];
+  const move = style.__assMove;
+  if (move) {
+    element.style.position = 'absolute';
+    element.style.left = `${move.x * metrics.scaleX}px`;
+    element.style.top = `${move.y * metrics.scaleY}px`;
+    transform.push(`translate(${-alignment.x * 100}%, ${-alignment.y * 100}%)`);
+  } else {
+    element.style.position = '';
+    element.style.left = '';
+    element.style.top = '';
+  }
+  transform.push(`scale(${Math.max(0, Number(style.scaleX) || 100) / 100}, ${Math.max(0, Number(style.scaleY) || 100) / 100})`);
+  if (Number(style.rotationX) || Number(style.rotationY)) transform.push('perspective(600px)');
+  if (Number(style.rotationX)) transform.push(`rotateX(${Number(style.rotationX)}deg)`);
+  if (Number(style.rotationY)) transform.push(`rotateY(${Number(style.rotationY)}deg)`);
+  if (Number(style.angle)) transform.push(`rotateZ(${Number(style.angle)}deg)`);
+  element.style.fontFamily = subtitleFontFamilyCss(style.fontName);
+  element.style.fontSize = `${fontSize}px`;
+  element.style.fontWeight = style.bold ? '700' : '400';
+  element.style.fontStyle = style.italic ? 'italic' : 'normal';
+  element.style.textDecorationLine = [style.underline ? 'underline' : '', style.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
+  element.style.textDecorationColor = style.primaryColor;
+  element.style.textUnderlineOffset = style.underline ? '0.16em' : '';
+  element.style.color = style.primaryColor;
+  element.style.webkitTextStroke = outline > 0 ? `${outline}px ${style.outlineColor}` : '';
+  element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
+  element.style.textShadow = !borderBox && shadow > 0
+    ? `${shadow}px ${shadow}px 0 ${style.backColor}` : 'none';
+  element.style.letterSpacing = `${spacing}px`;
+  element.style.lineHeight = 'normal';
+  element.style.maxWidth = `calc(100% - ${Math.max(0, margins.left + margins.right)}px)`;
+  element.style.padding = borderBox
+    ? `${Math.max(1, 4 * scaleY)}px ${Math.max(1, 8 * scaleX)}px`
+    : `${Math.max(1, scaleY)}px ${Math.max(1, 2 * scaleX)}px`;
+  element.style.backgroundColor = borderBox ? style.backColor : 'transparent';
+  element.style.borderRadius = '0';
+  element.style.opacity = String(opacity);
+  element.style.transformOrigin = `${alignment.x * 100}% ${alignment.y * 100}%`;
+  element.style.transform = transform.join(' ') || 'none';
+}
+
+function applyAssPreviewSpeakerLabel(element, style, metrics) {
+  if (!element) return;
+  const scaleY = metrics.scaleY;
+  const fontSize = assPreviewFontSize(style, metrics);
+  const outline = Math.max(0, Number(style.outline) || 0) * scaleY;
+  const shadow = Math.max(0, Number(style.shadow) || 0) * scaleY;
+  const spacing = (Number(style.spacing) || 0) * scaleY;
+  element.style.fontFamily = subtitleFontFamilyCss(style.fontName);
+  element.style.fontSize = `${fontSize}px`;
+  element.style.fontWeight = style.bold ? '700' : '400';
+  element.style.fontStyle = style.italic ? 'italic' : 'normal';
+  element.style.textDecorationLine = [style.underline ? 'underline' : '', style.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
+  element.style.textDecorationColor = style.primaryColor;
+  element.style.textUnderlineOffset = style.underline ? '0.16em' : '';
+  element.style.webkitTextStroke = outline > 0 ? `${outline}px ${style.outlineColor}` : '';
+  element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
+  element.style.textShadow = shadow > 0
+    ? `${shadow}px ${shadow}px 0 ${style.backColor}` : 'none';
+  element.style.letterSpacing = `${spacing}px`;
+  element.style.lineHeight = 'normal';
+}
+
+function clearAssPreviewSpeakerLabelStyle(element) {
+  if (!element) return;
+  [
+    'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
+    'text-decoration-color', 'text-underline-offset', 'color', '-webkit-text-stroke',
+    'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
+  ].forEach((property) => element.style.removeProperty(property));
+}
+
+function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fallbackColor) {
+  if (!element) return;
+  [
+    'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
+    'text-decoration-color', 'text-underline-offset', 'color', ' -webkit-text-stroke',
+    '-webkit-text-stroke', 'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
+    'max-width', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
+    'left', 'top', 'transform-origin', 'transform',
+  ].forEach((property) => element.style.removeProperty(property.trim()));
+  element.style.setProperty(
+    '--subtitle-preview-font-size',
+    `${appearance.font_size || fallbackSize}px`,
+  );
+  element.style.fontFamily = subtitleFontFamilyCss(appearance.font_family);
+  const hasCustomBackground = Object.prototype.hasOwnProperty.call(appearance, 'background_color')
+    || Object.prototype.hasOwnProperty.call(appearance, 'background_alpha');
+  element.style.backgroundColor = hasCustomBackground ? subtitleBackgroundCss(appearance) : '';
+  element.style.color = appearance.color || fallbackColor;
+}
+
+function restoreCssSubtitlePreview() {
+  overlayEl.removeAttribute('data-ass-mode');
+  overlayEl.classList.remove('ass-preview-active');
+  delete overlayTextEl.dataset.colorUnderline;
+  delete overlayTextEl.dataset.colorText;
+  delete overlayTextEl.dataset.colorStroke;
+  delete overlayMainSpeakerLabelEl.dataset.color;
+  ['align-items', 'justify-content', 'text-align', 'padding', 'box-sizing'].forEach((property) => {
+    overlayEl.style.removeProperty(property);
+  });
+  applyPreviewGeometryToDom(getPreviewGeometry());
+  restoreCssSubtitlePreviewElement(
+    overlayTextEl,
+    getSubtitleAppearance(),
+    SUBTITLE_DEFAULT_FONT_SIZE,
+    DEFAULT_SUBTITLE_COLOR,
+  );
+  restoreCssSubtitlePreviewElement(
+    overlayExtensionTextEl,
+    getExtensionSubtitleAppearance(),
+    EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE,
+    DEFAULT_EXTENSION_SUBTITLE_COLOR,
+  );
+  clearAssPreviewSpeakerLabelStyle(overlayMainSpeakerLabelEl);
+  restoreAssOverlayTrackPreview();
+}
+
+function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegments, mainColorName, speakerLabelVisible }) {
+  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const profile = window.AsrEditorUtils.assProfileForId(
+    library,
+    library.assignments?.assExportProfileId || 'ass',
+  );
+  const baseStyle = window.AsrEditorUtils.assStyleForId(library, profile.styleId);
+  const metrics = assPreviewMetrics();
+  const alignment = assPreviewAlignment(baseStyle.alignment);
+  const margins = {
+    left: Math.max(0, Number(baseStyle.marginL) || 0) * metrics.scaleX,
+    right: Math.max(0, Number(baseStyle.marginR) || 0) * metrics.scaleX,
+    vertical: Math.max(0, Number(baseStyle.marginV) || 0) * metrics.scaleY,
+  };
+  const appearance = getSubtitleAppearance();
+  const extensionSegments = getActiveExtensionTrack()?.segments || [];
+  const mainStyle = assPreviewStyleVariant(baseStyle, segment, DATA.segments, appearance);
+  const extensionStyle = assPreviewStyleVariant(
+    baseStyle,
+    extension,
+    extensionSegments,
+    appearance,
+  );
+  // 叠加轨导出引用颜色样式名（无颜色时回落 Default）；预览按同一映射
+  // 应用 ass_color_style 的调色板变体，保持与导出一致。
+  const overlayTrackStyle = assPreviewStyleVariant(
+    baseStyle,
+    overlay,
+    overlaySegments || [],
+    appearance,
+  );
+  const mainDuration = Math.max(1, Number(segment?.end) - Number(segment?.start) || 1);
+  const extensionDuration = Math.max(1, Number(extension?.end) - Number(extension?.start) || 1);
+  const mainAnimation = window.AsrEditorUtils.assPreviewAnimationState(
+    profile,
+    Math.max(0, Number(tMs) - Number(segment?.start || 0)),
+    mainDuration,
+    {
+      playResX: metrics.resolution.width,
+      playResY: metrics.resolution.height,
+      stageWidth: metrics.stageWidth,
+      stageHeight: metrics.stageHeight,
+    },
+  );
+  const extensionAnimation = window.AsrEditorUtils.assPreviewAnimationState(
+    profile,
+    Math.max(0, Number(tMs) - Number(extension?.start || 0)),
+    extensionDuration,
+    {
+      playResX: metrics.resolution.width,
+      playResY: metrics.resolution.height,
+      stageWidth: metrics.stageWidth,
+      stageHeight: metrics.stageHeight,
+    },
+  );
+  const animationGroup = profile.animations || {};
+  const withMove = (style, state) => ({
+    ...assPreviewAnimatedStyle(style, profile, state),
+    __assMove: animationGroup.move?.enabled ? { x: state.moveX, y: state.moveY } : null,
+  });
+  const animatedMainStyle = withMove(mainStyle, mainAnimation);
+  const animatedExtensionStyle = withMove(extensionStyle, extensionAnimation);
+
+  overlayEl.dataset.assMode = 'true';
+  overlayEl.classList.add('ass-preview-active');
+  // ASS 的坐标系覆盖整个 PlayRes 画布；旧版 CSS 预览保存的自定义字幕盒
+  // 只在 CSS 模式下生效，否则会把 Alignment / Margin 的语义再次套一层。
+  overlayEl.style.left = '0';
+  overlayEl.style.top = '0';
+  overlayEl.style.right = 'auto';
+  overlayEl.style.bottom = 'auto';
+  overlayEl.style.width = '100%';
+  overlayEl.style.height = '100%';
+  overlayEl.style.alignItems = alignment.alignItems;
+  overlayEl.style.justifyContent = alignment.justifyContent;
+  overlayEl.style.textAlign = alignment.textAlign;
+  overlayEl.style.boxSizing = 'border-box';
+  overlayEl.style.padding = `${margins.vertical}px ${margins.right}px ${margins.vertical}px ${margins.left}px`;
+  applyAssPreviewElement(overlayTextEl, animatedMainStyle, mainAnimation, metrics, alignment, margins);
+  applyAssPreviewElement(overlayExtensionTextEl, animatedExtensionStyle, extensionAnimation, metrics, alignment, margins);
+
+  if (speakerLabelVisible) {
+    applyAssPreviewSpeakerLabel(overlayMainSpeakerLabelEl, animatedMainStyle, metrics);
+    // 与导出 assEventText 一致：text 模式标签跟随调色板颜色，其余保持基础色。
+    const paletteColor = COLOR_BY_NAME[mainColorName]?.value;
+    const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
+    const labelColor = assColorStyle === 'text'
+      ? paletteColor || animatedMainStyle.primaryColor
+      : animatedMainStyle.primaryColor;
+    overlayMainSpeakerLabelEl.style.color = labelColor;
+    overlayMainSpeakerLabelEl.style.webkitTextStroke = animatedMainStyle.outline > 0
+      ? `${animatedMainStyle.outline * metrics.scaleY}px ${animatedMainStyle.outlineColor}` : '';
+    overlayMainSpeakerLabelEl.style.paintOrder = animatedMainStyle.outline > 0 ? 'stroke fill' : '';
+    overlayMainSpeakerLabelEl.style.textDecorationColor = labelColor;
+  } else {
+    clearAssPreviewSpeakerLabelStyle(overlayMainSpeakerLabelEl);
+  }
+  applyAssOverlayTrackPreview(overlayTrackStyle, metrics, margins, alignment);
+}
+
+// ASS 模式下的叠加轨预览：CSS 模式把叠加文字悬浮在预览框上沿之外
+// （bottom: calc(100% + 6px)），而 ASS 模式 overlayEl 已铺满整个舞台，
+// 那套定位会把文字推出画面。这里按导出契约（叠加 MarginV = 主样式垂直
+// 边距 + 字号）贴着主字幕排布，并沿用 ASS 样式外观（含 ass_color_style
+// 的调色板映射）：底部对齐排在主字幕上方，顶部对齐排在下方（MarginV 从
+// 顶边算），中间行 libass 忽略垂直边距，维持底部锚定近似。
+function applyAssOverlayTrackPreview(style, metrics, margins, alignment) {
+  if (!overlayTrackTextEl) return;
+  const fontSize = assPreviewFontSize(style, metrics);
+  const offset = `${Math.ceil(margins.vertical + fontSize)}px`;
+  overlayTrackTextEl.style.bottom = alignment.y === 0 ? 'auto' : offset;
+  overlayTrackTextEl.style.top = alignment.y === 0 ? offset : 'auto';
+  overlayTrackTextEl.style.maxWidth = `calc(100% - ${Math.max(0, margins.left + margins.right)}px)`;
+  overlayTrackTextEl.style.whiteSpace = 'normal';
+  overlayTrackTextEl.style.textAlign = 'center';
+  applyAssPreviewSpeakerLabel(overlayTrackTextEl, style, metrics);
+}
+
+function restoreAssOverlayTrackPreview() {
+  if (!overlayTrackTextEl) return;
+  ['bottom', 'top', 'max-width', 'white-space', 'text-align'].forEach((property) => {
+    overlayTrackTextEl.style.removeProperty(property);
+  });
+  clearAssPreviewSpeakerLabelStyle(overlayTrackTextEl);
+}
+
 function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActive(tMs)) {
   // 编辑字幕文本时只刷新播放器预览，避免每输入一个字都触发字幕列表的自动滚动。
   const seg = idx >= 0 ? DATA.segments[idx] : null;
@@ -12843,6 +14249,20 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   if (extensionVisible && overlayExtensionTextEl.textContent !== extensionText) {
     overlayExtensionTextEl.textContent = extensionText;
   }
+  const assMode = EDITOR_SETTINGS.assMode === true;
+  if (assMode) {
+    applyAssSubtitlePreview({
+      tMs,
+      segment: mainVisible ? seg : null,
+      extension: extensionVisible ? extension : null,
+      overlay: overlayCueVisible ? overlayCue : null,
+      overlaySegments: getOverlayTrack()?.segments || [],
+      mainColorName,
+      speakerLabelVisible,
+    });
+  } else if (overlayEl.dataset.assMode === 'true') {
+    restoreCssSubtitlePreview();
+  }
   const overlayCueText = overlayCueVisible ? String(overlayCue.text || '') : '';
   // 叠加轨说话人标签：颜色→说话人映射按叠加轨自身数组解析，与主字幕同源。
   const overlayColorContext = getOverlayTrack()?.segments || [];
@@ -12900,25 +14320,27 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     && previewSegmentColor
     ? `.125em ${previewSegmentColor}`
     : '';
-  if (overlayTextEl.dataset.colorUnderline !== colorUnderline) {
+  if (!assMode && overlayTextEl.dataset.colorUnderline !== colorUnderline) {
     overlayTextEl.dataset.colorUnderline = colorUnderline;
     overlayTextEl.style.textDecorationLine = colorUnderline ? 'underline' : '';
     overlayTextEl.style.textDecorationColor = colorUnderline;
     overlayTextEl.style.textUnderlineOffset = colorUnderline ? '0.25em' : '';
   }
-  if (overlayTextEl.dataset.colorText !== textColor) {
+  if (!assMode && overlayTextEl.dataset.colorText !== textColor) {
     overlayTextEl.dataset.colorText = textColor;
     overlayTextEl.style.color = textColor;
   }
-  if (overlayTextEl.dataset.colorStroke !== textStroke) {
+  if (!assMode && overlayTextEl.dataset.colorStroke !== textStroke) {
     overlayTextEl.dataset.colorStroke = textStroke;
     overlayTextEl.style.webkitTextStroke = textStroke;
     overlayTextEl.style.paintOrder = textStroke ? 'stroke fill' : '';
   }
   // 叠加轨预览颜色：与主字幕同一套颜色快照样式（下划线/文字色/描边），
   // 颜色引用按叠加轨自身段解析（effectiveColorName 传入叠加轨数组）。
+  // ASS 模式下叠加轨外观由 applyAssOverlayTrackPreview 按 ass_color_style
+  // 接管，这里不再写 CSS 颜色，避免两套语义互相覆盖。
   let overlayTrackSegmentColor = '';
-  if (overlayCueVisible && colorPreviewEnabled) {
+  if (!assMode && overlayCueVisible && colorPreviewEnabled) {
     const overlayColorName = MULTI_SUBTITLE_UTILS.effectiveColorName(
       overlayCue, getOverlayTrack()?.segments || [],
     );
@@ -12929,17 +14351,17 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
     ? overlayTrackSegmentColor : '';
   const overlayTrackStroke = colorStyle === 'stroke' && overlayTrackSegmentColor
     ? `.125em ${overlayTrackSegmentColor}` : '';
-  if (overlayTrackTextEl.dataset.colorUnderline !== overlayTrackUnderline) {
+  if (!assMode && overlayTrackTextEl.dataset.colorUnderline !== overlayTrackUnderline) {
     overlayTrackTextEl.dataset.colorUnderline = overlayTrackUnderline;
     overlayTrackTextEl.style.textDecorationLine = overlayTrackUnderline ? 'underline' : '';
     overlayTrackTextEl.style.textDecorationColor = overlayTrackUnderline;
     overlayTrackTextEl.style.textUnderlineOffset = overlayTrackUnderline ? '0.25em' : '';
   }
-  if (overlayTrackTextEl.dataset.colorText !== overlayTrackTextColor) {
+  if (!assMode && overlayTrackTextEl.dataset.colorText !== overlayTrackTextColor) {
     overlayTrackTextEl.dataset.colorText = overlayTrackTextColor;
     overlayTrackTextEl.style.color = overlayTrackTextColor;
   }
-  if (overlayTrackTextEl.dataset.colorStroke !== overlayTrackStroke) {
+  if (!assMode && overlayTrackTextEl.dataset.colorStroke !== overlayTrackStroke) {
     overlayTrackTextEl.dataset.colorStroke = overlayTrackStroke;
     overlayTrackTextEl.style.webkitTextStroke = overlayTrackStroke;
     overlayTrackTextEl.style.paintOrder = overlayTrackStroke ? 'stroke fill' : '';
@@ -19166,49 +20588,6 @@ function expandStickerTime(idxs) {
 // === 标记颜色 ===
 // 数据结构与表情包同构：head 持完整 color，后续条持 color_ref（仅 name + headIdx）
 // 单选 → 设为 head；多选 → 第一条为 head，时间跨整个范围，后续为 ref
-function colorGroupHeadIndex(idx) {
-  const segment = DATA.segments[idx];
-  if (!segment) return -1;
-
-  const refHeadIdx = Number(segment.color_ref?.headIdx);
-  if (segment.color_ref
-      && Number.isInteger(refHeadIdx)
-      && refHeadIdx >= 0
-      && refHeadIdx < DATA.segments.length
-      && refHeadIdx !== idx
-      && DATA.segments[refHeadIdx]?.color) {
-    return refHeadIdx;
-  }
-
-  if (!segment.color) return -1;
-  return DATA.segments.some((candidate, candidateIdx) => (
-    candidateIdx !== idx
-    && candidate?.color_ref
-    && Number(candidate.color_ref.headIdx) === idx
-  )) ? idx : -1;
-}
-
-function detachColorFromGroup(idx) {
-  const segment = DATA.segments[idx];
-  const headIdx = colorGroupHeadIndex(idx);
-  const groupColor = headIdx >= 0 ? DATA.segments[headIdx]?.color : null;
-  if (!segment || !groupColor) return false;
-
-  // 先复制颜色；拆分组时原 head 的时间范围可能会被收缩。
-  const detachedColor = {
-    ...groupColor,
-    start: segment.start,
-    end: segment.end,
-  };
-  pushUndo('从颜色组中脱离');
-  splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
-  segment.color = detachedColor;
-  segment.color_ref = null;
-  refreshColorAssignmentUi();
-  flashHint('已从颜色组中脱离', 'success');
-  return true;
-}
-
 function assignColor(idxs, colorName) {
   if (!idxs.length) return;
   const def = COLOR_BY_NAME[colorName];
@@ -20078,9 +21457,6 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
-    if (colorGroupHeadIndex(idx) >= 0) {
-      addItem('从颜色组中脱离', '', () => detachColorFromGroup(idx));
-    }
     addSep();
     // 组 3：状态与删除
     addItem(

@@ -1851,15 +1851,36 @@ class GuiWebBridgeTests(unittest.TestCase):
         _ = ffmpeg.write_bytes(b"exe")
         output = self.root / "clip.subtitled.mp4"
 
-        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
-            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
-                burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve())
-                result = self.api.run_burn_subtitles({"mediaPath": str(media), "subtitlePath": str(subtitle)})
+        library = {
+            "styles": [{"id": "default", "name": "SRT 默认", "fontName": "Microsoft YaHei", "fontSize": 24}],
+            "assignments": {"srtBurnStyleId": "default"},
+        }
+        with mock.patch("maw.gui_web.load_ass_style_library", return_value=library):
+            with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+                with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                    burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve())
+                    result = self.api.run_burn_subtitles({"mediaPath": str(media), "subtitlePath": str(subtitle)})
 
         self.assertTrue(result["ok"])
         self.assertEqual(burn.call_args.kwargs["ffmpeg_path"], ffmpeg)
+        self.assertEqual(burn.call_args.args[0].srt_style["fontName"], "Microsoft YaHei")
+        self.assertEqual(result["srtStyleName"], "SRT 默认")
         self.assertIsInstance(burn.call_args.kwargs["cancel_event"], threading.Event)
         self.assertEqual(result["mediaPath"], str(output.resolve()))
+
+    def test_launcher_exposes_shared_ass_style_library(self) -> None:
+        library = {
+            "schema": "moy.asr.ass_styles.v1",
+            "styles": [{"id": "default", "name": "SRT 默认"}],
+            "assProfiles": [{"id": "ass", "name": "ASS"}],
+            "assignments": {"srtBurnStyleId": "default", "assExportProfileId": "ass"},
+        }
+        with mock.patch("maw.gui_web.load_ass_style_library", return_value=library):
+            result = self.api.get_ass_style_library()
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["assignments"]["srtBurnStyleId"], "default")
+        self.assertEqual(result["styles"][0]["name"], "SRT 默认")
 
     def test_probe_audio_tracks_bridge_returns_normalized_track_payload(self) -> None:
         media = self.root / "clip.mkv"
