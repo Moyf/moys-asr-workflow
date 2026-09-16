@@ -190,6 +190,64 @@
     '调整播放器画面内副字幕预览的背景色': 'Adjust the background color used by the secondary subtitle preview in the player',
     '调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the secondary subtitle preview background opacity in the player; set it to 0 to hide the background',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
+    'ASS 样式库': 'ASS style library',
+    '样式库正在加载…': 'Loading the style library…', 'SRT 默认': 'SRT default', '无逐句动画': 'No per-cue animations',
+    'ASS 字幕模式': 'ASS subtitle mode',
+    '当前由': 'Preview styling is controlled by', '控制预览样式': 'for preview styling',
+    '展开字体列表': 'Toggle the font list', '可选字体': 'Available fonts', '无匹配字体': 'No matching fonts',
+    '选择播放器画面内字幕预览使用的字体族；输入可筛选可用字体': 'Choose the font family used by the subtitle preview in the player; type to filter available fonts',
+    '开启后，播放器预览尽量按当前 ASS 默认方案渲染；关闭时保持原有预览效果': 'When enabled, the player approximates the current ASS default profile; when disabled, the original preview is kept',
+    '关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览。': 'When disabled, the original CSS preview is kept; when enabled, the player previews ASS font, color, bold, italic, underline, outline, shadow, alignment, and animations.',
+    '管理 ASS 样式': 'Manage ASS styles', '打开 ASS 样式库': 'Open the ASS style library',
+    '正在加载…': 'Loading…', '关闭（Esc）': 'Close (Esc)', '关闭 ASS 样式库': 'Close ASS style library',
+    '样式与方案列表': 'Styles and profiles', '样式': 'Styles', '内置': 'Built-in',
+    '＋ 新建样式': '+ New style', '复制当前': 'Duplicate current', 'ASS 输出方案': 'ASS profiles',
+    '＋ 新建方案': '+ New profile', '默认槽位': 'Default slots', 'SRT 压制': 'SRT burn-in', 'SRT 默认烧录样式': 'Default SRT burn-in style',
+    '工具箱的「烧录字幕」功能会使用这里选中的样式。': 'The Toolbox “Burn subtitles” feature uses the style selected here.',
+    'SRT 压制默认样式': 'Default style for SRT burn-in', 'Launcher 压制 SRT 时使用此样式。': 'Launcher uses this style when burning SRT.',
+    '这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。': 'Configure the default SRT burn-in style here for the Toolbox “Burn subtitles” feature.',
+    'ASS 导出': 'ASS export', 'ASS 导出默认方案': 'Default profile for ASS export', 'ASS 导出使用此方案及其动画。': 'ASS export uses this profile and its animations.',
+    '从左侧选择一个样式或 ASS 方案。': 'Choose a style or ASS profile on the left.', 'STYLE / PROFILE': 'STYLE / PROFILE',
+    '名称': 'Name', '字号': 'Font size', '字距': 'Letter spacing', '颜色': 'Colors', '主色': 'Primary', '次色': 'Secondary',
+    '阴影/背景': 'Shadow / background', '加粗': 'Bold', '斜体': 'Italic', '删除线': 'Strikeout', '高级排版': 'Advanced typography',
+    '横向缩放': 'Horizontal scale', '纵向缩放': 'Vertical scale', '旋转': 'Rotation', '描边宽度': 'Outline width',
+    '阴影宽度': 'Shadow width', '边框样式': 'Border style', '不透明底框': 'Opaque box', '左下': 'Bottom left', '中下': 'Bottom center',
+    '右下': 'Bottom right', '左中': 'Middle left', '中中': 'Middle center', '右中': 'Middle right', '左上': 'Top left',
+    '中上': 'Top center', '右上': 'Top right', '左边距': 'Left margin', '右边距': 'Right margin', '垂直边距': 'Vertical margin',
+    'ASS 预览': 'ASS preview', 'Aa 字幕预览 / 字幕样例': 'Aa subtitle preview / sample', 'ASS 输出方案': 'ASS export profile',
+    '需要启用 ASS 字幕模式来预览效果。': 'Enable ASS subtitle mode to preview this style.',
+    '当前已启用。': 'Currently enabled.', '当前未启用。': 'Currently disabled.',
+    '需要启用 ASS 字幕模式来预览效果。当前未启用。': 'Enable ASS subtitle mode to preview this style. Currently disabled.',
+    '需要启用 ASS 字幕模式来预览效果。当前已启用。': 'Enable ASS subtitle mode to preview this style. Currently enabled.',
+    '已启用': 'Enabled', '未启用': 'Disabled',
+    '打开全局设置中的字幕样式': 'Open Subtitle style in Global settings',
+    '使用样式': 'Style', '逐句动画（导出时自动添加到每一句）': 'Per-cue animations (added to every cue on export)',
+    '\\fad': '\\fad', '淡入淡出': 'Fade in/out', '淡入': 'Fade in', '淡出': 'Fade out', '最常用的整句淡入淡出，预览和导出均支持。': 'The common whole-cue fade; supported in preview and export.',
+    '\\fade': '\\fade', '复杂淡入淡出': 'Complex fade', '启用': 'Enable', '\\move': '\\move', '位移': 'Movement', '\\t': '\\t', '变换': 'Transform',
+    '开始': 'Start', '结束': 'End', '加速度': 'Acceleration', 'ASS 标签（不含大括号）': 'ASS tags (without braces)',
+    '例如 \\fs36\\bord4；不要填写大括号': 'Example: \\fs36\\bord4; do not include braces',
+    '支持任意 ASS 标签导出；浏览器预览会尽量模拟常见的字号、缩放、旋转、颜色和描边变换。': 'Any ASS tags can be exported; browser preview approximates common size, scale, rotation, color, and outline transforms.',
+    '当前方案': 'Current profile', '未选择': 'Not selected', '删除当前': 'Delete current', '删除当前样式或方案': 'Delete current style or profile',
+    '保存到本机用户级配置；Launcher 与 Editor 共享。': 'Saved to local user-level config; shared by Launcher and Editor.', '保存样式库': 'Save style library',
+    '完成': 'Done', '内置条目不能删除': 'Built-in entries cannot be deleted', '删除当前条目': 'Delete current entry', '新样式': 'New style', '新 ASS 方案': 'New ASS profile',
+    '样式数量已达到上限（64 个）': 'The style limit (64) has been reached', 'ASS 方案数量已达到上限（64 个）': 'The ASS profile limit (64) has been reached',
+    '内置条目不能删除；可以直接修改其参数': 'Built-in entries cannot be deleted; edit their parameters directly',
+    '正在保存用户级样式库…': 'Saving the user-level style library…', '正在保存到当前浏览器…': 'Saving to this browser…',
+    '已与用户级配置同步': 'Synced with user-level config', '仅保存在当前浏览器（便携模式）': 'Saved only in this browser (portable mode)',
+    '使用本地副本，尚未同步': 'Using a local copy; not synced yet', '本地已保存，服务器同步失败：未知错误': 'Saved locally; server sync failed: unknown error',
+    '当前使用本地副本；服务器恢复后可再次点击保存同步。': 'Using a local copy; click Save again after the server is available.',
+    '使用本地副本，服务器同步失败': 'Using a local copy; server sync failed',
+    '已开启 ASS 字幕模式预览': 'ASS subtitle preview enabled', '已恢复原有字幕预览': 'Original subtitle preview restored',
+    '已保存到本机用户级配置；Launcher 与 Editor 共享。': 'Saved to local user-level config; shared by Launcher and Editor.',
+    '样式库将根据打开方式保存。': 'The style library is saved according to how the Editor was opened.',
+    '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。': 'Portable Editor saves only to this browser; open it in server-editor to share it with Launcher.',
+    '颜色字幕样式': 'Color caption style', '作为字幕颜色': 'As text color', '作为描边颜色': 'As outline color', '无影响': 'No effect',
+    'ASS 默认样式': 'ASS default style', '创建副本': 'Duplicate', '重命名': 'Rename',
+    '有颜色的字幕会使用对应颜色覆盖主色/描边，取决于「字幕样式」中的设置。': 'Colored captions override the primary/outline color with their own color, depending on the settings in Subtitle style.',
+    '自定义颜色色值': 'Custom color values', '恢复默认': 'Restore defaults', '使用预览字体': 'Use preview font',
+    '自定义颜色会同步用于字幕列表、波形、预览和 ASS 导出；恢复默认即可使用内置色值。': 'Custom colors apply to the subtitle list, waveform, preview, and ASS export; restore defaults to use the built-in values.',
+    '已恢复内置字幕颜色': 'Built-in subtitle colors restored',
+    '基础样式': 'Basic style', '拓展样式': 'Extended style', '边框与阴影': 'Border and shadow', '对齐': 'Alignment',
     '媒体': 'Media', '外观': 'Appearance', '语言': 'Language', '主题': 'Theme', '明亮模式': 'Light mode', '暗色模式': 'Dark mode', '跟随系统': 'Follow System', '预览字幕': 'Subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
     '视频预览': 'Video preview', '播放控制': 'Playback controls', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
     '在播放器画面内预览主字幕': 'Preview the main subtitle in the player', '在波形区悬停鼠标时，播放器自动预览指针位置的画面': 'While hovering the waveform, the player automatically previews the frame at the pointer',
@@ -813,6 +871,12 @@
     '单词型：英语等西文语言，按空格分隔多个单词': 'Word-based: Latin-script languages such as English, where words are separated by spaces',
     '适用于英文、俄文等语言': 'for English, Russian, and similar languages', '适用于中文、日文等语言': 'for Chinese, Japanese, and similar languages',
     '字符型：中文、日文等按字符拆分的语言': 'Character-based: languages such as Chinese and Japanese, split per character',
+    'ASS 样式': 'ASS styles', '样式与方案列表': 'Styles and profiles', 'ASS 对齐位置': 'ASS alignment position',
+    '黄字幕颜色': 'Yellow subtitle color', '绿字幕颜色': 'Green subtitle color', '红字幕颜色': 'Red subtitle color',
+    '紫字幕颜色': 'Purple subtitle color', '蓝字幕颜色': 'Blue subtitle color',
+    '黄字幕颜色十六进制值': 'Yellow subtitle color hex value', '绿字幕颜色十六进制值': 'Green subtitle color hex value',
+    '红字幕颜色十六进制值': 'Red subtitle color hex value', '紫字幕颜色十六进制值': 'Purple subtitle color hex value',
+    '蓝字幕颜色十六进制值': 'Blue subtitle color hex value',
   };
 
   const textOriginals = new WeakMap();
@@ -898,6 +962,10 @@
     }
     match = /^(\d+)\s*条（未修改\s*(\d+)\s*条）$/.exec(text);
     if (match) return `${match[1]} changed (${match[2]} unchanged)`;
+    match = /^(\d+)\s*个样式\s*·\s*(\d+)\s*个 ASS 方案$/.exec(text);
+    if (match) return `${match[1]} styles · ${match[2]} ASS profiles`;
+    match = /^(.+?)\s+·\s*无逐句动画$/.exec(text);
+    if (match) return `${match[1]} · No per-cue animations`;
     match = /^第\s*(\d+)\s*条\s*字幕文本$/.exec(text);
     if (match) return `Subtitle ${match[1]} text`;
     match = /^第\s*(\d+)\s*条\s*·\s*(.+)$/.exec(text);
@@ -990,6 +1058,10 @@
     if (match) return `Go to subtitle ${match[1]}`;
     match = /^保存失败：(.+)$/.exec(text);
     if (match) return `Save failed: ${match[1]}`;
+    match = /^本地已保存，服务器同步失败：(.+)$/.exec(text);
+    if (match) return `Saved locally; server sync failed: ${translateText(match[1], EN)}`;
+    match = /^已将 ASS 字体设为「(.+)」$/.exec(text);
+    if (match) return `ASS font set to "${match[1]}"`;
     match = /^打开工程失败：(.+)$/.exec(text);
     if (match) return `Could not open project: ${match[1]}`;
     match = /^服务器返回\s+(.+)$/.exec(text);

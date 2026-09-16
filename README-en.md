@@ -41,7 +41,7 @@ For installation, provider setup, editing, and troubleshooting, start with the [
 ## Data and limitations
 
 - When a cloud provider is selected, media is uploaded directly to that provider. MAW has no hosted transcription service and does not manage your API keys.
-- The `.mosp` project is the source of truth. SRT is useful for ordinary delivery, while ASS preserves the selected main-subtitle preview font, size, and text color and uses the recorded source-video resolution for its script coordinates; neither format preserves all word-level timing, waveform, or project metadata.
+- The `.mosp` project is the source of truth. SRT is useful for ordinary delivery, while ASS uses the default output profile and linked style from Editor’s “ASS style library” and the recorded source-video resolution for its script coordinates. Launcher uses a separate SRT default style for SRT burn-in. The localhost Editor and Launcher share the user-level style library; the portable `file://` Editor keeps a browser-local copy. Neither subtitle format preserves all word-level timing, waveform, or project metadata.
 - Pricing, retention, and availability depend on each provider; see [ASR providers and configuration](docs/PROVIDERS.md).
 - [Three-minute video overview](https://www.bilibili.com/video/BV1hXum6yELT)
 
