@@ -710,7 +710,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', page)
         self.assertIn(
             'function buildJson() {\n'
-            '    MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
+            '  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
             edit.read_web_asset("editor-json-repair.js"),
         )
         self.assertIn('id="help-media-seek-step"', page)

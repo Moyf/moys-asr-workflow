@@ -96,15 +96,15 @@ test('detaches a cue from a color group while keeping its color and limiting the
   await waitEditorReady(page);
 
   const setColorGroup = async () => page.evaluate(() => {
-    DATA.segments.splice(
+    MaweBoot.DATA.segments.splice(
       0,
-      DATA.segments.length,
+      MaweBoot.DATA.segments.length,
       { start: 0, end: 1000, text: '黄色1', items: [] },
       { start: 1000, end: 2000, text: '黄色2', items: [] },
       { start: 2000, end: 3000, text: '黄色3', items: [] },
     );
-    assignColor([0, 1, 2], 'yellow');
-    return DATA.segments.map(({ color, color_ref }) => ({
+    MaweStickerPicker.assignColor([0, 1, 2], 'yellow');
+    return MaweBoot.DATA.segments.map(({ color, color_ref }) => ({
       color: color ? { ...color } : null,
       color_ref: color_ref ? { ...color_ref } : null,
     }));
@@ -117,7 +117,7 @@ test('detaches a cue from a color group while keeping its color and limiting the
   await page.locator('.cue[data-idx="1"]').click({ button: 'right' });
   await expect(detachItem).toBeVisible();
   await detachItem.click();
-  expect(await page.evaluate(() => DATA.segments.map(({ color, color_ref }) => ({
+  expect(await page.evaluate(() => MaweBoot.DATA.segments.map(({ color, color_ref }) => ({
     color: color ? { name: color.name, start: color.start, end: color.end } : null,
     color_ref: color_ref ? { ...color_ref } : null,
   })))).toEqual([
@@ -134,7 +134,7 @@ test('detaches a cue from a color group while keeping its color and limiting the
   await page.locator('.cue[data-idx="0"]').click({ button: 'right' });
   await expect(detachItem).toBeVisible();
   await detachItem.click();
-  expect(await page.evaluate(() => DATA.segments.map(({ color, color_ref }) => ({
+  expect(await page.evaluate(() => MaweBoot.DATA.segments.map(({ color, color_ref }) => ({
     color: color ? { name: color.name, start: color.start, end: color.end } : null,
     color_ref: color_ref ? { ...color_ref } : null,
   })))).toEqual([

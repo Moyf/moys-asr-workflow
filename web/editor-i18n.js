@@ -469,11 +469,20 @@
     '双击波形': 'Double-click waveform', '右键波形背景': 'Right-click waveform background',
     '在鼠标位置创建字幕（仅波形）': 'Create a subtitle at the pointer (waveform only)',
     'Ctrl+拖拽空白处': 'Ctrl+drag blank area', '拖动创建指定时长字幕': 'Drag to create a subtitle with a specified duration',
+    'Ctrl+拖拽已有字幕': 'Ctrl+drag an existing subtitle', '启用「叠加字幕」后在叠加轨创建': 'Create on the overlay track when “Overlay subtitles” is enabled',
     '创建字幕': 'Create subtitle', '新增字幕': 'Create subtitle',
+    '创建叠加字幕': 'Create overlay subtitle', '新增叠加字幕': 'Create overlay subtitle',
     '该空白区域不足 100ms，无法新增字幕': 'The blank range is shorter than 100 ms; cannot create a subtitle',
+    '该空白区域不足 100ms，无法新增叠加字幕': 'The blank range is shorter than 100 ms; cannot create an overlay subtitle',
     '这里没有足够的空白区域': 'There is not enough blank space here',
     '该位置已有字幕，无法新增字幕': 'A subtitle already exists at this position; cannot create another one',
     '拖动范围包含已有字幕，无法新增字幕': 'The dragged range contains an existing subtitle; cannot create a new one',
+    '拖动范围包含已有叠加字幕，无法新增叠加字幕': 'The dragged range contains an existing overlay subtitle; cannot create a new one',
+    '当前位置已有叠加字幕': 'An overlay subtitle already exists at this position',
+    '当前没有可用的叠加字幕轨': 'No overlay subtitle track is available',
+    '转为主字幕': 'Convert to main subtitle',
+    '已转为主字幕': 'Converted to main subtitle',
+    '叠加字幕转为主字幕': 'Convert overlay subtitle to main',
     '已取消新增字幕': 'Subtitle creation canceled',
     '选择工具': 'Select tool', '分割工具': 'Razor tool',
     '增加静音区段': 'Add silent region',
@@ -574,6 +583,7 @@
     '按文字位置拆分': 'Split at text position', '跳转到字幕并播放': 'Seek to subtitle and play',
     '分配表情包…': 'Assign sticker…', '删除表情包': 'Remove sticker',
     '标记颜色': 'Mark color', '清除颜色': 'Clear color',
+    '从颜色组中脱离': 'Detach from color group', '已从颜色组中脱离': 'Detached from color group',
     '切换主字幕语言类型': 'Change main subtitle language type',
     '启用此条': 'Enable this subtitle', '禁用此条': 'Disable this subtitle',
     '删除字幕': 'Delete subtitle', '拓展表情包时长': 'Extend sticker duration',
@@ -1070,6 +1080,8 @@
     if (match) return `Auto-repaired ${match[1]} zero-length timings (100 ms minimum)`;
     match = /^已新增第\s*(\d+)\s*条字幕$/.exec(text);
     if (match) return `Created subtitle ${match[1]}`;
+    match = /^已新增第\s*(\d+)\s*条叠加字幕$/.exec(text);
+    if (match) return `Created overlay subtitle ${match[1]}`;
     match = /^删除\s+(\d+)\s+条字幕$/.exec(text);
     if (match) return `Delete ${match[1]} subtitles`;
     match = /^已将关联字幕统一设为「(.+)」$/.exec(text);
