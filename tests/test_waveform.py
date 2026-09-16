@@ -934,6 +934,8 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="ass-style-delete-slot"', page)
         self.assertIn('id="ass-profile-delete-slot"', page)
         self.assertIn('id="ass-style-preview-mode-hint"', page)
+        self.assertIn('id="ass-style-srt-hint"', page)
+        self.assertIn('class="ass-style-preview-mode-hint-status"', page)
         self.assertIn('id="ass-style-settings-link"', page)
         self.assertIn('SRT 默认', page)
         self.assertIn('这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。', page)

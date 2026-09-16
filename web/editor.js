@@ -2134,6 +2134,8 @@ const assProfileStyleSelect = document.getElementById('ass-profile-style-id');
 const assStyleEditorEmpty = document.getElementById('ass-style-editor-empty');
 const assStyleFormTitle = document.getElementById('ass-style-form-title');
 const assProfileFormTitle = document.getElementById('ass-profile-form-title');
+const assStyleSrtHint = document.getElementById('ass-style-srt-hint');
+const assStylePreviewModeHint = document.getElementById('ass-style-preview-mode-hint');
 const assStyleSettingsLink = document.getElementById('ass-style-settings-link');
 const assStyleBuiltinBadge = document.getElementById('ass-style-builtin-badge');
 const assProfileBuiltinBadge = document.getElementById('ass-profile-builtin-badge');
@@ -2454,20 +2456,25 @@ function appendAssStyleOption(select, value, label) {
 }
 
 function assStylePreviewModeHintText() {
-  return EDITOR_SETTINGS.assMode === true
-    ? '需要启用 ASS 字幕模式来预览效果。当前已启用。'
-    : '需要启用 ASS 字幕模式来预览效果。当前未启用。';
+  return `需要启用 ASS 字幕模式来预览效果。${EDITOR_SETTINGS.assMode === true ? '当前已启用。' : '当前未启用。'}`;
 }
 
 function updateAssStylePreviewModeHints() {
   const enabled = EDITOR_SETTINGS.assMode === true;
+  const prefix = '需要启用 ASS 字幕模式来预览效果。';
+  const status = enabled ? '当前已启用。' : '当前未启用。';
   const text = assStylePreviewModeHintText();
   const translated = window.MAWE_I18N?.translateText?.(text) || text;
   document.querySelectorAll('[data-ass-style-preview-hint]').forEach((element) => {
-    const isListHint = element.classList.contains('ass-style-list-preview-hint');
-    element.textContent = isListHint
-      ? (window.MAWE_I18N?.translateText?.(enabled ? '已启用' : '未启用') || (enabled ? '已启用' : '未启用'))
-      : translated;
+    const prefixElement = element.querySelector('.ass-style-preview-mode-hint-prefix');
+    const statusElement = element.querySelector('.ass-style-preview-mode-hint-status');
+    if (prefixElement && statusElement) {
+      prefixElement.textContent = window.MAWE_I18N?.translateText?.(prefix) || prefix;
+      statusElement.textContent = window.MAWE_I18N?.translateText?.(status) || status;
+      statusElement.dataset.assPreviewMode = enabled ? 'enabled' : 'disabled';
+    } else {
+      element.textContent = translated;
+    }
     element.dataset.assPreviewMode = enabled ? 'enabled' : 'disabled';
     element.title = translated;
     element.setAttribute('aria-label', translated);
@@ -2495,16 +2502,9 @@ function renderAssStyleList(list, items, kind, selectedId) {
       badge.textContent = '内置';
       button.append(badge);
     }
-    if (kind === 'style') {
-      const hint = document.createElement('span');
-      hint.className = 'ass-style-list-preview-hint';
-      hint.dataset.assStylePreviewHint = '';
-      button.append(hint);
-    }
     button.addEventListener('click', () => assStyleManagerSetSelection(kind, item.id));
     list.append(button);
   });
-  updateAssStylePreviewModeHints();
 }
 
 function assStyleFormValue(field) {
@@ -2560,6 +2560,9 @@ function syncAssStyleForm(style) {
   const safeStyle = window.AsrEditorUtils.normalizeAssStyle(style);
   if (assStyleFormTitle) assStyleFormTitle.textContent = safeStyle.name;
   if (assStyleBuiltinBadge) assStyleBuiltinBadge.hidden = !safeStyle.builtin;
+  const isSrtDefault = safeStyle.id === 'default';
+  if (assStyleSrtHint) assStyleSrtHint.hidden = !isSrtDefault;
+  if (assStylePreviewModeHint) assStylePreviewModeHint.hidden = isSrtDefault;
   assStyleForm.querySelectorAll('[data-ass-style-field]').forEach((field) => {
     if (document.activeElement === field) return;
     const value = safeStyle[field.dataset.assStyleField];
@@ -2583,6 +2586,7 @@ function syncAssStyleForm(style) {
     assStylePreviewSample.style.transform = `scale(${Number(preview.scaleX) / 100 || 1}, ${Number(preview.scaleY) / 100 || 1}) rotate(${Number(preview.angle) || 0}deg)`;
     assStylePreviewSample.style.background = Number(preview.borderStyle) === 3 ? preview.backColor : 'transparent';
   }
+  updateAssStylePreviewModeHints();
 }
 
 function syncAssProfileForm(profile) {

@@ -120,6 +120,10 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('\\t', 'en'), '\\t');
   assert.equal(i18n.translateText('2 个样式 · 3 个 ASS 方案', 'en'), '2 styles · 3 ASS profiles');
   assert.equal(i18n.translateText('SRT 默认', 'en'), 'SRT default');
+  assert.equal(i18n.translateText('工具箱的「烧录字幕」功能会使用这里选中的样式。', 'en'), 'The Toolbox “Burn subtitles” feature uses the style selected here.');
+  assert.equal(i18n.translateText('需要启用 ASS 字幕模式来预览效果。', 'en'), 'Enable ASS subtitle mode to preview this style.');
+  assert.equal(i18n.translateText('当前已启用。', 'en'), 'Currently enabled.');
+  assert.equal(i18n.translateText('当前未启用。', 'en'), 'Currently disabled.');
   assert.equal(i18n.translateText('Studio · 无逐句动画', 'en'), 'Studio · No per-cue animations');
   assert.equal(i18n.translateText('颜色字幕样式', 'en'), 'Color caption style');
   assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');

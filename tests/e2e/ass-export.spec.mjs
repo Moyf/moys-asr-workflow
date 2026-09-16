@@ -233,14 +233,30 @@ test('keeps ASS style actions and preview-mode hints attached to the active form
   await expect(page.locator('#ass-style-window')).toBeVisible();
   await expect(page.locator('.ass-style-editor-toolbar')).toHaveCount(0);
   await expect(page.locator('#ass-style-form #ass-style-delete')).toBeAttached();
+  await expect(page.locator('#ass-style-list .ass-style-list-preview-hint')).toHaveCount(0);
   await expect(page.locator('#ass-style-preview-mode-hint'))
-    .toHaveText('需要启用 ASS 字幕模式来预览效果。当前未启用。');
+    .toBeVisible();
+  await expect(page.locator('.ass-style-preview-mode-hint-prefix'))
+    .toHaveText('需要启用 ASS 字幕模式来预览效果。');
+  await expect(page.locator('.ass-style-preview-mode-hint-status'))
+    .toHaveText('当前未启用。');
   await expect(page.locator('#ass-style-preview-mode-hint'))
     .toHaveAttribute('data-ass-preview-mode', 'disabled');
-  await expect(page.locator('#ass-style-list .ass-style-list-preview-hint').first())
-    .toHaveText('未启用');
-  await expect(page.locator('.ass-style-assignment-title-row small'))
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toHaveCSS('font-size', '12px');
+
+  await page.locator('#ass-style-list [data-ass-selection-id="default"]').click();
+  await expect(page.locator('#ass-style-form-title')).toHaveText('SRT 默认');
+  await expect(page.locator('#ass-style-srt-hint'))
     .toHaveText('这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。');
+  await expect(page.locator('#ass-style-srt-hint')).toBeVisible();
+  await expect(page.locator('#ass-style-preview-mode-hint')).toBeHidden();
+  await expect(page.locator('.ass-style-assignment-title-row')).toHaveCount(0);
+  await expect(page.locator('.ass-style-assignment-card small').first())
+    .toHaveText('工具箱的「烧录字幕」功能会使用这里选中的样式。');
+
+  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+  await expect(page.locator('#ass-style-preview-mode-hint')).toBeVisible();
 
   await page.locator('#ass-style-settings-link').click();
   await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
@@ -248,12 +264,12 @@ test('keeps ASS style actions and preview-mode hints attached to the active form
     assModeToggle.checked = true;
     assModeToggle.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  await expect(page.locator('#ass-style-preview-mode-hint'))
-    .toHaveText('需要启用 ASS 字幕模式来预览效果。当前已启用。');
+  await expect(page.locator('.ass-style-preview-mode-hint-prefix'))
+    .toHaveText('需要启用 ASS 字幕模式来预览效果。');
+  await expect(page.locator('.ass-style-preview-mode-hint-status'))
+    .toHaveText('当前已启用。');
   await expect(page.locator('#ass-style-preview-mode-hint'))
     .toHaveAttribute('data-ass-preview-mode', 'enabled');
-  await expect(page.locator('#ass-style-list .ass-style-list-preview-hint').first())
-    .toHaveText('已启用');
 
   await page.locator('#ass-profile-list [role="option"]').first().click();
   const deleteButtonParent = await page.locator('#ass-style-delete').evaluate((element) => element.parentElement?.id);

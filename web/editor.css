@@ -1570,11 +1570,6 @@
     border: 1px solid var(--border-strong);
     border-radius: 3px; font-size: 9px; letter-spacing: .04em;
   }
-  .ass-style-list-preview-hint {
-    flex: 0 0 auto; max-width: 52px; overflow: hidden; color: var(--red-hover);
-    font-size: 9px; line-height: 1.2; text-align: right; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .ass-style-list-preview-hint[data-ass-preview-mode="enabled"] { color: var(--green-hover); }
   .ass-style-list-actions { display: flex; gap: 5px; }
   .ass-style-list-actions button {
     flex: 1 1 auto; min-width: 0; padding: 5px 6px; color: var(--text-muted); background: var(--bg-input);
@@ -1589,12 +1584,6 @@
     border-radius: var(--radius-md);
   }
   .ass-style-assignment-card small { color: var(--text-faint); font-size: 10px; line-height: 1.4; }
-  .ass-style-assignment-title-row {
-    display: flex; align-items: baseline; gap: 7px; min-width: 0;
-    color: var(--text-primary); font-size: 11px; font-weight: 600;
-  }
-  .ass-style-assignment-title-row > span { flex: 0 0 auto; }
-  .ass-style-assignment-title-row small { min-width: 0; font-weight: 400; }
   .ass-style-assignment-row {
     display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-secondary); font-size: 11px;
   }
@@ -1621,10 +1610,13 @@
   .ass-style-form-heading { min-width: 0; }
   .ass-style-form-title-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
   .ass-style-form-header h3 { margin: 3px 0 0; color: var(--text-primary); font-size: 18px; font-weight: 600; }
+  .ass-style-srt-hint,
   .ass-style-preview-mode-hint {
-    color: var(--red-hover); font-size: 10px; font-weight: 500; line-height: 1.35;
+    color: var(--text-muted); font-size: 12px; font-weight: 400; line-height: 1.35;
   }
-  .ass-style-preview-mode-hint[data-ass-preview-mode="enabled"] { color: var(--green-hover); }
+  .ass-style-preview-mode-hint-prefix { color: inherit; }
+  .ass-style-preview-mode-hint-status { color: var(--red-hover); font-weight: 500; }
+  .ass-style-preview-mode-hint-status[data-ass-preview-mode="enabled"] { color: var(--green-hover); }
   .ass-style-settings-link {
     min-width: 0; padding: 0 2px; color: var(--accent); background: transparent; border: 0;
     border-radius: var(--radius-sm); font: inherit; line-height: inherit; text-decoration: underline;

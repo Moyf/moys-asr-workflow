@@ -1382,14 +1382,11 @@ __WAVEFORM_CSS__
       </div>
       <div class="ass-style-assignment-card">
         <div class="ass-style-section-heading"><span>默认槽位</span></div>
-        <div class="ass-style-assignment-title-row">
-          <span>SRT 默认</span>
-          <small>这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。</small>
-        </div>
         <label class="ass-style-assignment-row" for="ass-srt-default-style">
           <span>使用样式</span>
           <select id="ass-srt-default-style" aria-label="SRT 默认烧录样式"></select>
         </label>
+        <small>工具箱的「烧录字幕」功能会使用这里选中的样式。</small>
         <label class="ass-style-assignment-row" for="ass-ass-default-profile">ASS 导出
           <select id="ass-ass-default-profile" aria-label="ASS 导出默认方案"></select>
         </label>
@@ -1404,7 +1401,10 @@ __WAVEFORM_CSS__
             <span class="ass-style-form-kicker">STYLE</span>
             <div class="ass-style-form-title-row">
               <h3 id="ass-style-form-title">样式</h3>
-              <span class="ass-style-preview-mode-hint" id="ass-style-preview-mode-hint" data-ass-style-preview-hint></span>
+              <span class="ass-style-srt-hint" id="ass-style-srt-hint" hidden>这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。</span>
+              <span class="ass-style-preview-mode-hint" id="ass-style-preview-mode-hint" data-ass-style-preview-hint>
+                <span class="ass-style-preview-mode-hint-prefix"></span><span class="ass-style-preview-mode-hint-status"></span>
+              </span>
             </div>
           </div>
           <div class="ass-style-form-header-side">
