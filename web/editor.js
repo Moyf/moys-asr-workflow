@@ -432,6 +432,13 @@ function multiSubtitleVisible() {
   return getMultiSubtitleState().enabled === true && Boolean(getActiveExtensionTrack());
 }
 
+// 多重字幕关闭时轨道数据仍保留在工程里，但副字幕不参与 ASS 预览与导出；
+// 与 multiSubtitleVisible() 的开合语义保持一致。
+function activeExtensionSegments() {
+  if (getMultiSubtitleState().enabled !== true) return [];
+  return getActiveExtensionTrack()?.segments || [];
+}
+
 function isConfiguredSubtitleSplitMode(value) {
   return MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(value);
 }
@@ -14158,7 +14165,7 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
     vertical: Math.max(0, Number(baseStyle.marginV) || 0) * metrics.scaleY,
   };
   const appearance = getSubtitleAppearance();
-  const extensionSegments = getActiveExtensionTrack()?.segments || [];
+  const extensionSegments = activeExtensionSegments();
   const mainStyle = assPreviewStyleVariant(baseStyle, segment, DATA.segments, appearance);
   // 副字幕使用样式库「副字幕样式」槽位的独立样式（副字幕不支持颜色分组，
   // 不做调色板变体），对齐与边距完全由该样式决定。
@@ -14276,9 +14283,13 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   } else {
     clearAssPreviewSpeakerLabelStyle(overlayMainSpeakerLabelEl);
   }
+  // 链在副字幕上方时，叠加元素沿用副字幕样式的对齐与边距（与导出侧
+  // Overlay 样式继承锚定层坐标系保持一致）。
   applyAssAnchoredPreviewElement(
     overlayTrackTextEl, animatedOverlayTrackStyle, overlayAnimation, metrics,
-    alignment, margins, overlayOffsetPx,
+    extensionTrackActive ? extensionAlignment : alignment,
+    extensionTrackActive ? extensionMargins : margins,
+    overlayOffsetPx,
   );
 }
 
@@ -14771,7 +14782,7 @@ function buildSrt() {
 function buildAss() {
   const { overlaySegments } = mergedExportSegments();
   // 副字幕轨随 ASS 导出（多重字幕开启时才存在）；叠加轨与副字幕分层输出。
-  const extensionSegments = getActiveExtensionTrack()?.segments || [];
+  const extensionSegments = activeExtensionSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
@@ -14826,10 +14837,16 @@ function buildGapRemovedAss() {
     DATA.segments,
     EDITOR_SETTINGS.exportStartAtZero,
   );
+  // 去空隙 ASS 与常规 ASS 同一三轨契约：叠加轨与副字幕也随导出，
+  // 时间统一经 mapGapRemovedTime 压缩。
+  const { overlaySegments } = mergedExportSegments();
+  const extensionSegments = activeExtensionSegments();
   return window.AsrEditorUtils.buildAssPayload(DATA.segments, {
     ...assExportOptions(),
     alignFirstStart: EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
+    overlaySegments,
+    extensionSegments,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
     ...speakerLabelExportOptions(),
   });

@@ -4638,6 +4638,49 @@ test('buildAssPayload chains the overlay anchor above the extension track', () =
   assert.ok(overlayStyleChained.endsWith(',10,10,231,1'));
 });
 
+test('buildAssPayload overlay style inherits the anchor layer alignment and side margins', () => {
+  const options = {
+    videoWidth: 1920,
+    videoHeight: 1080,
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 72, marginV: 80, primaryColor: '#ffffff', outlineColor: '#000000', outline: 2 },
+    overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+    appearance: {},
+  };
+  // 副字幕样式为顶部居中（Alignment 8，MarginV 100、左右边距 40/50）：
+  // 叠加轨链在其上方时继承该对齐与水平边距，固化边距按同一基准边解释
+  // （100 + round(1.2 × 54) = 165），而不是落回主样式的底部居中。
+  const topExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      ...options,
+      assExtensionStyle: {
+        id: 'ass-extension', fontSize: 54, marginV: 100, marginL: 40, marginR: 50, alignment: 8,
+      },
+      extensionSegments: [{ start: 120, end: 880, text: 'extension line' }],
+    },
+  );
+  const overlayStyleChained = topExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleChained);
+  assert.match(overlayStyleChained, /,8,40,50,165,1$/);
+  // 副字幕全部禁用：不链式，叠加样式回到主样式的底部居中（80 + 86.4 → 166）。
+  const disabledExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      ...options,
+      assExtensionStyle: {
+        id: 'ass-extension', fontSize: 54, marginV: 100, marginL: 40, marginR: 50, alignment: 8,
+      },
+      extensionSegments: [{ start: 120, end: 880, text: 'extension line', disabled: true }],
+    },
+  );
+  const overlayStyleFallback = disabledExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleFallback);
+  assert.match(overlayStyleFallback, /,2,10,10,166,1$/);
+});
+
 test('reports malformed intervals, missing sticker paths, and stale serializer warnings', () => {
   const plan = helpers.buildProjectExportPlan({
     media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },

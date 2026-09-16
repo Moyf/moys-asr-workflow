@@ -68,6 +68,22 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertEqual(default_extension["fontSize"], 54)
         self.assertEqual(default_extension["marginV"], 166)
 
+    def test_legacy_full_library_keeps_every_custom_style(self) -> None:
+        # 旧版满员库（2 内置 + 62 自定义 = 64）：归一化补入第三个内置
+        # 副字幕样式后总数 65，不得截断丢弃任何自定义样式。
+        custom_styles = [
+            {"id": f"custom-{index:02d}", "name": f"自定义 {index}"}
+            for index in range(62)
+        ]
+        legacy = {"styles": [{"id": "default"}, {"id": "ass"}, *custom_styles]}
+        normalized = normalize_ass_style_library(legacy)
+        style_ids = [style["id"] for style in normalized["styles"]]
+        self.assertEqual(len(style_ids), 65)
+        self.assertEqual(
+            style_ids,
+            ["default", "ass", "ass-extension", *(f"custom-{index:02d}" for index in range(62))],
+        )
+
     def test_normalization_repairs_entries_and_preserves_ass_tag_commas(self) -> None:
         normalized = normalize_ass_style_library({
             "styles": [

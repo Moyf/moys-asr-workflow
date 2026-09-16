@@ -24,7 +24,10 @@ from maw.app_paths import default_app_data_root
 
 ASS_STYLE_LIBRARY_SCHEMA: Final = "moy.asr.ass_styles.v1"
 ASS_STYLE_LIBRARY_FILE_NAME: Final = "ass-styles.json"
-MAX_STYLE_COUNT: Final = 64
+# 三个内置样式 + 62 个自定义样式。新增第三个内置副字幕样式后，上限必须
+# 覆盖旧版满员库（2 内置 + 62 自定义）归一化后的总数，否则截断会静默
+# 丢弃用户的自定义样式。
+MAX_STYLE_COUNT: Final = 65
 MAX_PROFILE_COUNT: Final = 64
 MAX_NAME_LENGTH: Final = 80
 MAX_FONT_NAME_LENGTH: Final = 128

@@ -4157,3 +4157,79 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await expect(page.locator('#ass-profile-style-id')).toHaveValue('ass');
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
+
+test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap-removed ASS three-track', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: false,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [{ id: 'extension-001', start: 3200, end: 3700, text: 'extension cue' }],
+      }],
+      bindings: [],
+    },
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 3300, end: 3800, text: 'overlay cue' }],
+    },
+    gap_remove: {
+      schema: 'moy.asr.gap_remove.v1',
+      detector: 'audio_gate',
+      minimum_ms: 500,
+      threshold_db: -24,
+      hysteresis_db: 2,
+      lead_in_ms: 40,
+      lead_out_ms: 80,
+      skip_playback: true,
+      operation_mode: 'boundary_drag',
+      manual_corrections: false,
+      gaps: [{ start: 2000, end: 3000, removed: true }],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'ass-extension-gate.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+  await expect(page.locator('.cue[data-idx="0"]')).toBeVisible();
+
+  // 多重字幕关闭（轨道数据保留）：常规 ASS 与去空隙 ASS 都不输出副字幕；
+  // 叠加轨照常导出，去空隙时间统一压缩。
+  const disabled = await page.evaluate(() => ({
+    ass: buildAss(),
+    gapRemoved: buildGapRemovedAss(),
+  }));
+  const disabledLines = disabled.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  expect(disabledLines).toHaveLength(2);
+  expect(disabledLines.every((line) => !line.startsWith('Dialogue: 1,'))).toBe(true);
+  expect(disabled.ass).not.toContain('Style: Extension,');
+  expect(disabledLines[1]).toContain(',Overlay,,0,0,0,,overlay cue');
+  const gapRemovedLines = disabled.gapRemoved.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  expect(gapRemovedLines).toHaveLength(2);
+  expect(gapRemovedLines.every((line) => !line.includes(',Extension,'))).toBe(true);
+  expect(gapRemovedLines[1]).toContain('0:00:02.30,0:00:02.80');
+  expect(gapRemovedLines[1]).toContain(',Overlay,,0,0,0,,overlay cue');
+
+  // 开启多重字幕（不重载工程，直接翻转状态）：副字幕恢复导出，
+  // 去空隙 ASS 与常规 ASS 同一三轨契约（3200-3700 → 2200-2700）。
+  const enabled = await page.evaluate(() => {
+    getMultiSubtitleState().enabled = true;
+    return { ass: buildAss(), gapRemoved: buildGapRemovedAss() };
+  });
+  const enabledLines = enabled.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  expect(enabledLines).toHaveLength(3);
+  expect(enabledLines[1]).toContain(',Extension,,0,0,0,,extension cue');
+  const enabledGapRemovedLines = enabled.gapRemoved.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  expect(enabledGapRemovedLines).toHaveLength(3);
+  expect(enabledGapRemovedLines[1]).toContain(',Extension,,0,0,0,,extension cue');
+  expect(enabledGapRemovedLines[1]).toContain('0:00:02.20,0:00:02.70');
+  expect(enabledGapRemovedLines[2]).toContain(',Overlay,,0,0,0,,overlay cue');
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});

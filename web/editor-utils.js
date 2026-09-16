@@ -4851,18 +4851,30 @@
         ? Math.max(0, Number(extensionStyle.marginV) || 0) + Math.round(1.2 * extensionScaledFontSize)
         : Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize))
       : 80 + Math.round(1.2 * fontSize);
-    const overlayBaseStyle = assMode ? baseStyle : {
-      ...ASS_DEFAULT_ASS_STYLE,
-      fontName: fontFamily,
-      fontSize,
-      primaryColor: appearance.color ?? options.color,
-      outlineColor: '#000000',
-      outline: 2,
-      shadow: 0,
-      alignment: 2,
-      marginL: 10,
-      marginR: 10,
-    };
+    // 链式锚定发生在哪一层的坐标系里，叠加样式就继承哪一层的对齐与水平
+    // 边距：否则副字幕样式改成顶部/侧边对齐时，固化边距会按主样式的基准
+    // 边解释，叠加轨落到画面另一侧。字体与颜色仍跟随主字幕样式。
+    const overlayBaseStyle = assMode
+      ? (extensionStyle && hasExtensionCues
+        ? {
+          ...baseStyle,
+          alignment: extensionStyle.alignment,
+          marginL: extensionStyle.marginL,
+          marginR: extensionStyle.marginR,
+        }
+        : baseStyle)
+      : {
+        ...ASS_DEFAULT_ASS_STYLE,
+        fontName: fontFamily,
+        fontSize,
+        primaryColor: appearance.color ?? options.color,
+        outlineColor: '#000000',
+        outline: 2,
+        shadow: 0,
+        alignment: 2,
+        marginL: 10,
+        marginR: 10,
+      };
     const overlayStyleFor = (colorName) => {
       const variant = assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
         ? assStyleVariant(overlayBaseStyle,
