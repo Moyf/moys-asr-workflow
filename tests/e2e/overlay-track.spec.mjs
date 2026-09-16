@@ -500,14 +500,14 @@ test('batch merge via C key inherits color groups and rejects skipped middle cue
   // 跳过中间段（选 0 和 2）按 C：必须按下标连续拒绝；三段原样保留且保持
   // 有序（否则保存后会违反相邻段 end <= next.start 的契约，工程无法再打开）。
   await page.evaluate(() => {
-    setCuePanelTarget('overlay', 0);
+    MaweCuePanel.setCuePanelTarget('overlay', 0);
     selectedOverlayIdxs.clear();
     selectedOverlayIdxs.add(0);
     selectedOverlayIdxs.add(2);
   });
   await page.keyboard.press('c');
   await expect(page.locator('.hint-card').last()).toContainText('选中的叠加字幕必须连续');
-  const unchanged = await page.evaluate(() => JSON.parse(buildJson()).overlay_track.segments);
+  const unchanged = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).overlay_track.segments);
   expect(unchanged.map((segment) => segment.text)).toEqual(['甲', '乙', '丙']);
   for (let i = 1; i < unchanged.length; i++) {
     expect(unchanged[i].start).toBeGreaterThanOrEqual(unchanged[i - 1].end);
@@ -516,14 +516,14 @@ test('batch merge via C key inherits color groups and rejects skipped middle cue
   // 全选三段（全员指向乙段红组）按 C：与 Ctrl/Cmd+Shift+A / D 同语义，
   // 合并结果继承红色 head，不再像旧实现那样把组标记整个丢掉。
   await page.evaluate(() => {
-    setCuePanelTarget('overlay', 0);
+    MaweCuePanel.setCuePanelTarget('overlay', 0);
     selectedOverlayIdxs.clear();
     selectedOverlayIdxs.add(0);
     selectedOverlayIdxs.add(1);
     selectedOverlayIdxs.add(2);
   });
   await page.keyboard.press('c');
-  const merged = await page.evaluate(() => JSON.parse(buildJson()).overlay_track.segments);
+  const merged = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).overlay_track.segments);
   expect(merged).toHaveLength(1);
   expect(merged[0].start).toBe(0);
   expect(merged[0].end).toBe(2400);

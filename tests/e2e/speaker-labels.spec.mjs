@@ -296,9 +296,9 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
   await revealSpeakerCue(page);
 
   const smallWindow = await page.evaluate(() => {
-    DATA.media_metadata = { video_width: 1920, video_height: 1080 };
-    DATA.preview.subtitle = {
-      ...DATA.preview.subtitle,
+    MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
       speaker_labels: {
         mapping_enabled: true,
         enabled: true,
@@ -321,22 +321,22 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
       }
       : style);
     ASS_STYLE_LIBRARY = library;
-    EDITOR_SETTINGS.assMode = true;
-    overlayToggle.checked = true;
-    playerWrap.style.height = '540px';
-    playerWrap.style.minHeight = '540px';
-    playerWrap.style.flex = '0 0 540px';
-    playerStage.style.width = '960px';
-    playerStage.style.height = '540px';
-    playerStage.style.minHeight = '540px';
-    playerStage.style.flex = '0 0 540px';
-    refreshSubtitlePreview(1000, 0);
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MaweDom.playerWrap.style.height = '540px';
+    MaweDom.playerWrap.style.minHeight = '540px';
+    MaweDom.playerWrap.style.flex = '0 0 540px';
+    MaweDom.playerStage.style.width = '960px';
+    MaweDom.playerStage.style.height = '540px';
+    MaweDom.playerStage.style.minHeight = '540px';
+    MaweDom.playerStage.style.flex = '0 0 540px';
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const text = document.getElementById('overlay-main-text');
     const label = document.getElementById('overlay-main-speaker-label');
     const textStyle = getComputedStyle(text);
     const labelStyle = getComputedStyle(label);
     return {
-      stageHeight: playerStage.getBoundingClientRect().height,
+      stageHeight: MaweDom.playerStage.getBoundingClientRect().height,
       textFontSize: textStyle.fontSize,
       labelFontSize: labelStyle.fontSize,
       textFontFamily: textStyle.fontFamily,
@@ -360,14 +360,14 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
   await page.evaluate(() => {
     Object.defineProperty(document, 'fullscreenElement', {
       configurable: true,
-      get: () => playerWrap,
+      get: () => MaweDom.playerWrap,
     });
-    playerStage.style.height = '1080px';
-    playerStage.style.minHeight = '1080px';
-    playerStage.style.flexBasis = '1080px';
-    playerWrap.style.height = '1080px';
-    playerWrap.style.minHeight = '1080px';
-    playerWrap.style.flexBasis = '1080px';
+    MaweDom.playerStage.style.height = '1080px';
+    MaweDom.playerStage.style.minHeight = '1080px';
+    MaweDom.playerStage.style.flexBasis = '1080px';
+    MaweDom.playerWrap.style.height = '1080px';
+    MaweDom.playerWrap.style.minHeight = '1080px';
+    MaweDom.playerWrap.style.flexBasis = '1080px';
     document.dispatchEvent(new Event('fullscreenchange'));
   });
   await page.evaluate(() => new Promise((resolve) => {
@@ -377,8 +377,8 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
     const text = document.getElementById('overlay-main-text');
     const label = document.getElementById('overlay-main-speaker-label');
     return {
-      stageHeight: playerStage.getBoundingClientRect().height,
-      fullscreen: playerWrap.classList.contains('fullscreen-preview'),
+      stageHeight: MaweDom.playerStage.getBoundingClientRect().height,
+      fullscreen: MaweDom.playerWrap.classList.contains('fullscreen-preview'),
       textFontSize: getComputedStyle(text).fontSize,
       labelFontSize: getComputedStyle(label).fontSize,
       labelFontFamily: getComputedStyle(label).fontFamily,
@@ -401,19 +401,19 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
       configurable: true,
       get: () => null,
     });
-    playerStage.style.height = '540px';
-    playerStage.style.minHeight = '540px';
-    playerStage.style.flexBasis = '540px';
-    playerWrap.style.height = '540px';
-    playerWrap.style.minHeight = '540px';
-    playerWrap.style.flexBasis = '540px';
+    MaweDom.playerStage.style.height = '540px';
+    MaweDom.playerStage.style.minHeight = '540px';
+    MaweDom.playerStage.style.flexBasis = '540px';
+    MaweDom.playerWrap.style.height = '540px';
+    MaweDom.playerWrap.style.minHeight = '540px';
+    MaweDom.playerWrap.style.flexBasis = '540px';
     document.dispatchEvent(new Event('fullscreenchange'));
   });
   await page.evaluate(() => new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   }));
   const windowedAgain = await page.evaluate(() => ({
-    fullscreen: playerWrap.classList.contains('fullscreen-preview'),
+    fullscreen: MaweDom.playerWrap.classList.contains('fullscreen-preview'),
     textFontSize: getComputedStyle(document.getElementById('overlay-main-text')).fontSize,
     labelFontSize: getComputedStyle(document.getElementById('overlay-main-speaker-label')).fontSize,
   }));
