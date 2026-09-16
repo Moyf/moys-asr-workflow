@@ -1431,6 +1431,8 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('自定义颜色', 'en'), 'Custom color');
   assert.equal(i18n.translateText('视频预览', 'en'), 'Video preview');
   assert.equal(i18n.translateText('播放控制', 'en'), 'Playback controls');
+  assert.equal(i18n.translateText('控制', 'en'), 'controls');
+  assert.equal(i18n.translateText('ASS 副字幕样式', 'en'), 'ASS extension subtitle style');
   assert.equal(i18n.translateText('颜色样式', 'en'), 'Color style');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
   assert.equal(i18n.translateText('空隙检测与调整', 'en'), 'Gap detection and adjustment');
