@@ -2142,11 +2142,10 @@
       if (this.settings.waveformScaleAuto !== false && this.loudnessStats) {
         this.setLoudnessStats(this.loudnessStats, { render: false });
       }
-      if (this.isMultiMode() && this.payload) {
-        this.updateMultiRowLayout();
-      } else {
-        this.render();
-      }
+      // 与「每行长度」一样走完整重渲染：字幕块的 lane 布局和「行高不足时
+      // 覆盖主字幕」的 cover-mode 回退都在 createRow 按当时行高定死，若只调
+      // 行几何并复用旧行，叠加块不会随新行高刷新布局。
+      this.render();
       return true;
     }
 
@@ -3085,37 +3084,6 @@
       this.updatePlayback(false);
     }
 
-    updateMultiRowLayout() {
-      if (!this.isMultiMode() || !this.payload) {
-        this.render();
-        return;
-      }
-      this.multiFollowCheckPending = true;
-      const rowDurationMs = this.settings.secondsPerRow * 1000;
-      const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
-      const stride = this.settings.rowHeight + ROW_GAP;
-      this.content.style.height = `${rowCount * stride - ROW_GAP}px`;
-
-      // 先改已有行的几何，再根据新的 stride 增量补齐视口；已有行保留其
-      // Canvas、字幕块和事件监听器，只在后面重画受到高度影响的 Canvas。
-      const retainedRows = new Set(this.renderedRows);
-      this.renderedRows.forEach((row) => {
-        const index = Number(row.dataset.rowIndex);
-        if (!Number.isInteger(index) || index < 0) return;
-        const startMs = index * rowDurationMs;
-        const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
-        row.style.top = `${index * stride}px`;
-        row.style.height = `${this.settings.rowHeight}px`;
-        row.style.width = `${Math.max(0.01, Math.min(1, (endMs - startMs) / rowDurationMs) * 100)}%`;
-      });
-      this.multiRange = [-1, -1];
-      this.renderMultiVisible(false);
-      retainedRows.forEach((row) => {
-        if (row.isConnected) this.drawRow(row);
-      });
-      this.positionPlayheads();
-    }
-
     renderSegments() {
       if (!this.payload) {
         this.render();
@@ -3555,7 +3523,12 @@
           ? computeGroupBadges(overlaySegments) : null;
         // 行高不足（50% 线放不下 35px 叠加块 + 7px 底边距）时叠加块直接盖在
         // 主字幕块上方，此时不渲染叠加徽章，避免与下半区徽章混叠。
-        const rowHeightPx = Number.parseFloat(row.style.height) || 0;
+        // 多行模式的行高真源是 settings.rowHeight：createMultiRow 在
+        // createRow 返回后才写 row.style.height，这里读内联样式恒为空，
+        // cover-mode 会永远不生效。
+        const rowHeightPx = this.settings.mode === 'multi'
+          ? Number(this.settings.rowHeight) || 0
+          : Number.parseFloat(row.style.height) || 0;
         const overlayCoverMode = rowHeightPx > 0 && rowHeightPx < 84;
         const activeOverlayIndex = findActiveCueIndex(overlaySegments, now);
         const firstOverlayIndex = firstCueIndexOverlapping(overlaySegments, startMs);
