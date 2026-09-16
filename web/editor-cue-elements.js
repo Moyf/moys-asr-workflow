@@ -61,115 +61,121 @@
 
 
 
-  function updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack = null } = {}) {
-    if (!el || !slotEl || !seg) return;
-    const isExtension = Boolean(extensionTrack);
-    slotEl.classList.remove('ref');
-    slotEl.replaceChildren();
-    if (seg.sticker) {
-      const img = document.createElement('img');
-      img.src = MaweSelection.stickerUrl(seg.sticker);
-      img.alt = seg.sticker.name || '表情包';
-      img.title = seg.sticker.name || '表情包';
-      img.addEventListener('click', (event) => {
-        event.stopPropagation();
-        if (!isExtension) MaweStickerPicker.openStickerPreview(idx);
-      });
-      const nameEl = document.createElement('div');
-      nameEl.className = 'sname';
-      nameEl.textContent = seg.sticker.name || '表情包';
-      slotEl.append(img, nameEl);
-    } else if (seg.sticker_ref) {
-      // 跨多句的引用，只显示名称（带↑标识属于上方）
-      slotEl.classList.add('ref');
-      const refEl = document.createElement('div');
-      const headIndex = Number(seg.sticker_ref.headIdx);
-      const name = seg.sticker_ref.name || '表情包';
-      refEl.className = 'sref';
-      refEl.textContent = `↑ ${name}`;
-      refEl.title = `属于上方第 ${Number.isInteger(headIndex) ? headIndex + 1 : '?'} 条的表情包`;
-      refEl.addEventListener('click', (event) => {
-        event.stopPropagation();
-        if (!Number.isInteger(headIndex) || headIndex < 0) return;
-        const head = MaweCoreState.container.querySelector(
-          isExtension ? `.cue[data-ext-idx="${headIndex}"]` : `.cue[data-idx="${headIndex}"]`,
-        );
-        if (!head) return;
-        MaweCueListAnchor.scrollCueToCenter(head);
-        if (isExtension) MaweSelection.selectOnlyExtension(headIndex, extensionTrack);
-        else MaweSelection.selectOnly(headIndex);
-      });
-      slotEl.appendChild(refEl);
-    }
+  function updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack = null, overlayTrack = false } = {}) {
+  if (!el || !slotEl || !seg) return;
+  const isExtension = Boolean(extensionTrack);
+  slotEl.classList.remove('ref');
+  slotEl.replaceChildren();
+  if (seg.sticker) {
+    const img = document.createElement('img');
+    img.src = MaweSelection.stickerUrl(seg.sticker);
+    img.alt = seg.sticker.name || '表情包';
+    img.title = seg.sticker.name || '表情包';
+    img.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (!isExtension) MaweStickerPicker.openStickerPreview(idx, { overlay: overlayTrack });
+    });
+    const nameEl = document.createElement('div');
+    nameEl.className = 'sname';
+    nameEl.textContent = seg.sticker.name || '表情包';
+    slotEl.append(img, nameEl);
+  } else if (seg.sticker_ref) {
+    // 跨多句的引用，只显示名称（带↑标识属于上方）
+    slotEl.classList.add('ref');
+    const refEl = document.createElement('div');
+    const headIndex = Number(seg.sticker_ref.headIdx);
+    const name = seg.sticker_ref.name || '表情包';
+    refEl.className = 'sref';
+    refEl.textContent = `↑ ${name}`;
+    refEl.title = `属于上方第 ${Number.isInteger(headIndex) ? headIndex + 1 : '?'} 条的表情包`;
+    refEl.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (!Number.isInteger(headIndex) || headIndex < 0) return;
+      const head = MaweCoreState.container.querySelector(
+        isExtension ? `.cue[data-ext-idx="${headIndex}"]`
+          : overlayTrack ? `.overlay-track-cue[data-overlay-idx="${headIndex}"]`
+            : `.cue[data-idx="${headIndex}"]`,
+      );
+      if (!head) return;
+      MaweCueListAnchor.scrollCueToCenter(head);
+      if (isExtension) MaweSelection.selectOnlyExtension(headIndex, extensionTrack);
+      else if (overlayTrack) selectOverlayCueRow(headIndex);
+      else MaweSelection.selectOnly(headIndex);
+    });
+    slotEl.appendChild(refEl);
   }
+}
 
 
 
-  function buildCueEl(seg, idx, { extensionTrack = null } = {}) {
-    const isExtension = Boolean(extensionTrack);
-    const el = document.createElement('div');
-    el.className = MaweMultiSubtitleCore.multiSubtitleVisible() ? 'cue multi-cue' : 'cue';
-    MaweCueListAnchor.setCueListIdentity(el, seg, extensionTrack);
-    if (isExtension) {
-      el.classList.add('multi-extension-cue');
-      el.dataset.extIdx = String(idx);
-    } else {
-      el.dataset.idx = idx;
-      if (MaweMultiSubtitleCore.multiSubtitleVisible()) el.dataset.mainIdx = String(idx);
-    }
-    if (seg._dirty) el.classList.add('dirty');
-    if (seg.disabled) el.classList.add('disabled');
-
-    // 颜色条（最左）
-    const colorBar = document.createElement('span');
-    colorBar.className = 'color-bar';
-    updateCueColorPresentation(el, colorBar, seg);
-
-    const indexEl = document.createElement('span');
-    indexEl.className = 'index';
-    indexEl.textContent = String(idx + 1);
-
-    const timeEl = document.createElement('span');
-    timeEl.className = 'time';
-    const timeStartEl = document.createElement('span');
-    timeStartEl.className = 'time-start';
-    timeStartEl.textContent = fmtShort(seg.start);
-    const timeArrowEl = document.createElement('span');
-    timeArrowEl.className = 'time-arrow';
-    timeArrowEl.textContent = '→';
-    const timeEndEl = document.createElement('span');
-    timeEndEl.className = 'time-end';
-    timeEndEl.textContent = fmtShort(seg.end);
-    timeEl.append(timeStartEl, timeArrowEl, timeEndEl);
-
-    // 表情包槽位
-    const slotEl = document.createElement('span');
-    slotEl.className = 'sticker-slot';
-    updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack });
-
-    const textEl = document.createElement('span');
-    textEl.className = 'text';
-    setTextHtml(textEl, seg.text, MaweDom.searchEl.value);
-
-    const cntEl = document.createElement('span');
-    cntEl.className = 'charcount';
-    applyCharCount(
-      cntEl,
-      seg.text,
-      isExtension ? MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(extensionTrack, seg) : MaweMultiSubtitleCore.getMainSubtitleSplitMode(seg),
-    );
-
-    el.appendChild(colorBar);
-    el.appendChild(indexEl);
-    el.appendChild(timeEl);
-    el.appendChild(slotEl);
-    el.appendChild(textEl);
-    el.appendChild(cntEl);
-
-    if (isExtension) MaweInlineEdit.bindExtensionCueEvents(el, idx, extensionTrack);
-    else MaweCueEvents.bindCueEvents(el, idx);
-    return el;
+  function buildCueEl(seg, idx, { extensionTrack = null, overlayTrack = false } = {}) {
+  const isExtension = Boolean(extensionTrack);
+  const isOverlay = Boolean(overlayTrack);
+  const el = document.createElement('div');
+  // 叠加行不参与多重字幕的双列结构：不携带 multi-cue / data-mainIdx，
+  // 否则会被列表的选中、搜索、hover 等主轨逻辑误当成一条主字幕行。
+  el.className = MaweMultiSubtitleCore.multiSubtitleVisible() && !isOverlay ? 'cue multi-cue' : 'cue';
+  MaweCueListAnchor.setCueListIdentity(el, seg, extensionTrack);
+  if (isExtension) {
+    el.classList.add('multi-extension-cue');
+    el.dataset.extIdx = String(idx);
+  } else if (!isOverlay) {
+    el.dataset.idx = idx;
+    if (MaweMultiSubtitleCore.multiSubtitleVisible()) el.dataset.mainIdx = String(idx);
   }
+  if (seg._dirty) el.classList.add('dirty');
+  if (seg.disabled) el.classList.add('disabled');
+
+  // 颜色条（最左）
+  const colorBar = document.createElement('span');
+  colorBar.className = 'color-bar';
+  updateCueColorPresentation(el, colorBar, seg);
+
+  const indexEl = document.createElement('span');
+  indexEl.className = 'index';
+  indexEl.textContent = isOverlay ? `叠加字幕 ${idx + 1}` : String(idx + 1);
+
+  const timeEl = document.createElement('span');
+  timeEl.className = 'time';
+  const timeStartEl = document.createElement('span');
+  timeStartEl.className = 'time-start';
+  timeStartEl.textContent = fmtShort(seg.start);
+  const timeArrowEl = document.createElement('span');
+  timeArrowEl.className = 'time-arrow';
+  timeArrowEl.textContent = '→';
+  const timeEndEl = document.createElement('span');
+  timeEndEl.className = 'time-end';
+  timeEndEl.textContent = fmtShort(seg.end);
+  timeEl.append(timeStartEl, timeArrowEl, timeEndEl);
+
+  // 表情包槽位
+  const slotEl = document.createElement('span');
+  slotEl.className = 'sticker-slot';
+  updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack, overlayTrack });
+
+  const textEl = document.createElement('span');
+  textEl.className = 'text';
+  setTextHtml(textEl, seg.text, MaweDom.searchEl.value);
+
+  const cntEl = document.createElement('span');
+  cntEl.className = 'charcount';
+  applyCharCount(
+    cntEl,
+    seg.text,
+    isExtension ? MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(extensionTrack, seg) : MaweMultiSubtitleCore.getMainSubtitleSplitMode(seg),
+  );
+
+  el.appendChild(colorBar);
+  el.appendChild(indexEl);
+  el.appendChild(timeEl);
+  el.appendChild(slotEl);
+  el.appendChild(textEl);
+  el.appendChild(cntEl);
+
+  if (isExtension) MaweInlineEdit.bindExtensionCueEvents(el, idx, extensionTrack);
+  else if (!overlayTrack) MaweCueEvents.bindCueEvents(el, idx);
+  return el;
+}
 
 
 

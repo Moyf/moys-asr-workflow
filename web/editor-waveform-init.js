@@ -8,173 +8,226 @@
 
 
   function initWaveformEditor() {
-    if (!window.AsrWaveform) {
-      MaweHint.flashHint('波形模块加载失败，字幕编辑仍可使用', 'warning');
-      return;
-    }
-    MaweCoreState.waveformEditor = window.AsrWaveform.create({
-      getSegments: (track = 'main') => track === 'extension'
-        ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []) : MaweBoot.DATA.segments,
-      getExtensionSegments: (trackId = null) => MaweMultiSubtitleCore.getExtensionTrack(trackId)?.segments || [],
-      getCrossTrackSnapTargets: (track = 'main') => {
-        if (!MaweMultiSubtitleCore.multiSubtitleVisible() || !MaweSettings.EDITOR_SETTINGS.crossTrackSnap) return [];
-        const otherSegments = track === 'extension'
-          ? MaweBoot.DATA.segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
-        return otherSegments.flatMap((segment) => [segment?.start, segment?.end])
-          .filter((timeMs) => Number.isFinite(Number(timeMs)))
-          .map((timeMs) => Number(timeMs));
-      },
-      getSelection: (track = 'main') => track === 'extension' ? MaweSelection.selectedExtensionIdxs : MaweSelection.selectedIdxs,
-      getExtensionSelection: () => MaweSelection.selectedExtensionIdxs,
-      getBindingMarkerTargets: MaweMultiSubtitleCore.getBindingMarkerTargets,
-      multiSubtitleVisible: () => MaweMultiSubtitleCore.multiSubtitleVisible(),
-      // 波形上已经选中的块不会再次调用 selectCue；单独提供激活回调，
-      // 避免联动选中主副字幕后点击另一条字幕时编辑区不切换。
-      activateCue: (idx) => MaweCuePanel.setCurrentCuePanelIndex(idx),
-      enterCueEditor: (idx) => {
-        MaweCuePanel.setCurrentCuePanelIndex(idx);
-        MaweCuePanel.focusCuePanelText(idx, 'main');
-      },
-      activateExtensionCue: (idx) => {
-        MaweCuePanel.setCurrentCuePanelExtensionIndex(idx, MaweMultiSubtitleCore.getActiveExtensionTrack());
-      },
-      enterExtensionCueEditor: (idx) => {
-        MaweCuePanel.setCurrentCuePanelExtensionIndex(idx, MaweMultiSubtitleCore.getActiveExtensionTrack());
-        MaweCuePanel.focusCuePanelText(idx, 'extension');
-      },
-      selectCue: (idx) => {
-        MaweBindingAlign.selectCueByClick(idx);
-        MaweSelection.lastClickedIdx = idx;
-        const cue = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
-        if (cue) MaweCueListAnchor.scrollCueIntoViewIfNeeded(cue);
-      },
-      clearSelection: () => MaweSelection.clearSelection(),
-      toggleCueSelection: (idx) => {
-        MaweSelection.toggleSel(idx);
-        MaweSelection.lastClickedIdx = idx;
-      },
-      selectExtensionCue: (idx) => {
-        MaweSelection.selectOnlyExtension(idx);
-        MaweSelection.lastClickedExtensionIdx = idx;
-      },
-      toggleExtensionSelection: (idx) => {
-        MaweSelection.toggleExtensionSelection(idx, MaweMultiSubtitleCore.getActiveExtensionTrack());
-        MaweSelection.lastClickedExtensionIdx = idx;
-      },
-      selectExtensionRange: (idx) => {
-        if (MaweSelection.lastClickedExtensionIdx >= 0) MaweSelection.selectExtensionRange(MaweSelection.lastClickedExtensionIdx, idx);
-        else MaweSelection.selectOnlyExtension(idx);
-        MaweSelection.lastClickedExtensionIdx = idx;
-      },
-      selectCueRange: (idx) => {
-        if (MaweSelection.lastClickedIdx >= 0) MaweSelection.selectRange(MaweSelection.lastClickedIdx, idx);
-        else MaweSelection.selectOnly(idx);
-        MaweSelection.lastClickedIdx = idx;
-      },
-      // 波形 Shift+框选：把命中的一批下标追加进当前多选（追加语义，不改 Shift 锚点）
-      addCueSelection: (idxs) => {
-        idxs.forEach((idx) => MaweSelection.addToSelection(idx));
-      },
-      addExtensionSelection: (idxs) => {
-        const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-        idxs.forEach((idx) => MaweSelection.addExtensionToSelection(idx, track));
-      },
-      seek: (timeSec, options = {}) => {
-        MaweTextCleanup.seekFromWaveform(timeSec, options);
-        if (!options.dragPreview) MaweCueListAnchor.resumeCueListFollowing();
-      },
-      onPlayheadDragStateChange: (active) => {
-        MawePlaybackLoop.waveformPlayheadDragging = active === true;
-        if (!active) MaweCueListAnchor.resumeCueListFollowing();
-      },
-      togglePlayback: MaweMediaPlayback.togglePlayback,
-      toggleDisabled: (idxs, track = 'main') => MaweStickerPicker.toggleDisabled(idxs, track),
-      getHideDisabled: () => MaweDom.hideDisabled,
-      getGapRemoveGaps: MaweGapRemoveData.getGapRemoveGaps,
-      getGapOperationMode: MaweGapRemoveUi.getGapRemoveOperationMode,
-      toggleGapRemoved: MaweGapRemoveUi.toggleGapRemoved,
-      applyGapRange: MaweGapRemoveUi.applyManualGapRange,
-      resizeGapBoundary: MaweGapRemoveUi.resizeManualGapBoundary,
-      moveGap: (index, deltaMs) => MaweGapRemoveUi.translateManualGap(index, deltaMs, 'move'),
-      copyGap: (index, deltaMs) => MaweGapRemoveUi.translateManualGap(index, deltaMs, 'copy'),
-      previewGapAt: MawePlaybackLoop.previewGapAt,
-      showGapContextMenu: (x, y, index) => MaweContextMenus.showGapContextMenu(x, y, index),
-      showContextMenu: (x, y, idx, timeMs) => MaweContextMenus.showContextMenu(x, y, idx, timeMs),
-      showExtensionContextMenu: (x, y, idx, timeMs) => MaweContextMenus.showExtensionContextMenu(x, y, idx, timeMs),
-      showBlankWaveformMenu: (timeMs, x, y, track) => MaweContextMenus.showWaveformBlankMenu(timeMs, x, y, track),
-      addCueRange: (startMs, endMs, x, y, track = 'main') => (
-        MaweAddCue.addCueRangeFromWaveform(startMs, endMs, x, y, track)
-      ),
-      onCueCreateRejected: (reason) => {
-        if (reason === 'too-short') MaweHint.flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
-        if (reason === 'occupied') MaweHint.flashHint('该位置已有字幕，无法新增字幕', 'warning');
-      },
-      // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径；
-      // 有可靠主轨字词时间码时沿用字词锚点，否则在弹窗中保留指针的绝对切点。
-      splitCueAtTime: (idx, timeMs) => MaweSplitContext.splitFromContextMenu(idx, 0, 0, timeMs),
-      getClickBehavior: () => MaweSettings.EDITOR_SETTINGS.clickBehavior,
-      getClickTarget: () => MaweSettings.EDITOR_SETTINGS.clickTarget,
-      getAutoSnapAdjacentCues: () => MaweSettings.EDITOR_SETTINGS.autoSnapAdjacentCues,
-      getAdjacentBoundaryMode: () => MaweSettings.EDITOR_SETTINGS.adjacentBoundaryMode,
-      getCueTiming: () => MaweTimeline.timelineTimingAdapter(),
-      getSnapToFrame: () => MaweTimeline.timelineIsFrameMode() && MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame,
-      getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource,
-      // JKL 倒放靠逐帧回退实现，媒体元素本身处于暂停态；倒放期间同样视为播放中。
-      getHoverSeekPreview: () => MaweSettings.EDITOR_SETTINGS.hoverSeekPreview && !MaweJklPlayback.jklReversePlaying,
-      showTrackBadges: () => MaweSettings.EDITOR_SETTINGS.multiSubtitleShowTrackBadges,
-      onBeginEdit: (label) => MaweHistory.pushUndo(label),
-      syncBoundCueDrag: MaweBoundDrag.syncBoundCueDrag,
-      onLayoutUndo: (label, snapshot) => MaweHistory.pushLayoutUndo(label, snapshot),
-      onCommitEdit: (idxs, kind, track = 'main', independent = false, details = null) => {
-        let linkedChanged = false;
-        if (kind === 'resize-boundary-pointer' && track === 'main' && !independent) {
-          const targetIndex = Number.isInteger(details?.targetIndex) ? details.targetIndex : idxs[0];
-          const main = MaweBoot.DATA.segments[targetIndex];
-          const original = details?.original;
-          if (main && original) {
-            linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(main, {
-              oldStart: original.start,
-              oldEnd: original.end,
-              edge: details.edge,
-              mode: 'range',
-            });
-          }
-        }
-        MaweTextCleanup.syncTimelineGroupRanges();
-        // 拖动预览期间保持下标稳定；提交时再整理副轨数组，避免冲突裁剪后
-        // 原本位于目标前面的字幕保留右侧区间而落到目标之后，保存时违反顺序契约。
-        if (MaweMultiSubtitleCore.multiSubtitleVisible()) MaweMultiSubtitleCore.sortExtensionTrackSegments(MaweMultiSubtitleCore.getActiveExtensionTrack());
-        MaweMultiSubtitleCore.syncBindingOffsets();
-        MaweMultiSubtitleCore.markMainSegmentsDirty(track === 'main' ? idxs.map((idx) => MaweBoot.DATA.segments[idx]).filter(Boolean) : []);
-        if (linkedChanged || MaweMultiSubtitleCore.multiSubtitleVisible() || track === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
-        MaweCuePanel.renderAll();
-        MawePlaybackLoop.updateWithoutCueListAutoScroll();
-        MaweHint.flashHint(kind === 'move'
-          ? track === 'extension'
-            ? `已移动 ${idxs.length} 条副字幕`
-            : `已${independent ? '独立' : '联动'}移动 ${idxs.length} 条字幕`
-          : kind === 'resize-boundary-pointer'
-            ? `已将${track === 'extension' ? '副字幕' : '字幕'}${details?.edge === 'start' ? '起点' : '终点'}定位到鼠标位置`
-          : kind === 'resize-boundary'
-            ? `已${independent ? '独立' : '联动'}调整第 ${idxs[0] + 1} / ${idxs[1] + 1} 条边界`
-            : kind === 'resize-boundary-independent'
-              ? `已独立调整第 ${idxs[0] + 1} 条字幕边界`
-              : `已调整第 ${idxs[0] + 1} 条字幕时间`);
-      },
-      onPayload: (payload) => {
-        MaweBoot.DATA.waveform = payload;
-        MaweCoreState.waveformLoadedFromProject = false;
-      },
-    });
-    MaweCoreState.waveformEditor.attachPlayer(MaweCoreState.player);
-    MaweCoreState.waveformEditor.setLayoutData(MaweBoot.DATA.workspace || null, { render: false });
-    MaweDisplaySettings.applyEditorDisplaySettings(MaweBoot.DATA.workspace?.editorDisplay);
-    MaweCoreState.waveformEditor.setSpectralPayload(MaweBoot.DATA.spectral || null, { render: false });
-    MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks || null, { render: false });
-    MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform || null, { render: false });
-    // 振幅拟合要在 setLayoutData 之后：得先知道本工程是否已有手调决定。
-    MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness || null, { render: false });
+  if (!window.AsrWaveform) {
+    MaweHint.flashHint('波形模块加载失败，字幕编辑仍可使用', 'warning');
+    return;
   }
+  MaweCoreState.waveformEditor = window.AsrWaveform.create({
+    getSegments: (track = 'main') => track === 'extension'
+      ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
+      : track === 'overlay'
+        ? (overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [])
+        : MaweBoot.DATA.segments,
+    getExtensionSegments: (trackId = null) => MaweMultiSubtitleCore.getExtensionTrack(trackId)?.segments || [],
+    getCrossTrackSnapTargets: (track = 'main') => {
+      if (!MaweSettings.EDITOR_SETTINGS.crossTrackSnap) return [];
+      const collectEdges = (segments) => (segments || [])
+        .flatMap((segment) => [segment?.start, segment?.end])
+        .filter((timeMs) => Number.isFinite(Number(timeMs)))
+        .map((timeMs) => Number(timeMs));
+      // 叠加轨与主轨互为吸附参照；多重字幕开启时副轨边界同样参与。
+      if (track === 'overlay') {
+        const targets = collectEdges(MaweBoot.DATA.segments);
+        if (MaweMultiSubtitleCore.multiSubtitleVisible()) targets.push(...collectEdges(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments));
+        return targets;
+      }
+      if (!MaweMultiSubtitleCore.multiSubtitleVisible()) {
+        return track === 'main' && overlayTrackVisible()
+          ? collectEdges(getOverlayTrack()?.segments)
+          : [];
+      }
+      const otherSegments = track === 'extension'
+        ? MaweBoot.DATA.segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
+      const targets = collectEdges(otherSegments);
+      if (track === 'main' && overlayTrackVisible()) targets.push(...collectEdges(getOverlayTrack()?.segments));
+      return targets;
+    },
+    getSelection: (track = 'main') => track === 'extension' ? MaweSelection.selectedExtensionIdxs
+      : track === 'overlay' ? selectedOverlayIdxs : MaweSelection.selectedIdxs,
+    getExtensionSelection: () => MaweSelection.selectedExtensionIdxs,
+    getOverlaySelection: () => selectedOverlayIdxs,
+    getBindingMarkerTargets: MaweMultiSubtitleCore.getBindingMarkerTargets,
+    multiSubtitleVisible: () => MaweMultiSubtitleCore.multiSubtitleVisible(),
+    // 波形上已经选中的块不会再次调用 selectCue；单独提供激活回调，
+    // 避免联动选中主副字幕后点击另一条字幕时编辑区不切换。
+    activateCue: (idx) => MaweCuePanel.setCurrentCuePanelIndex(idx),
+    enterCueEditor: (idx) => {
+      MaweCuePanel.setCurrentCuePanelIndex(idx);
+      MaweCuePanel.focusCuePanelText(idx, 'main');
+    },
+    activateExtensionCue: (idx) => {
+      MaweCuePanel.setCurrentCuePanelExtensionIndex(idx, MaweMultiSubtitleCore.getActiveExtensionTrack());
+    },
+    enterExtensionCueEditor: (idx) => {
+      MaweCuePanel.setCurrentCuePanelExtensionIndex(idx, MaweMultiSubtitleCore.getActiveExtensionTrack());
+      MaweCuePanel.focusCuePanelText(idx, 'extension');
+    },
+    selectOverlayCue: (idx) => {
+      selectOverlayCueRow(idx);
+      lastClickedOverlayIdx = idx;
+    },
+    toggleOverlaySelection: (idx) => toggleOverlaySelection(idx),
+    activateOverlayCue: (idx) => {
+      selectedOverlayIdxs.clear();
+      selectedOverlayIdxs.add(idx);
+      MaweCuePanel.setCuePanelTarget('overlay', idx);
+    },
+    enterOverlayCueEditor: (idx) => {
+      selectOverlayCueRow(idx, { focusEditor: true });
+    },
+    // Shift+拖动逃逸：主轨邻居挡路时把被拖字幕迁入叠加轨，返回新下标。
+    convertCueToOverlay: (idx) => convertMainCueToOverlayForDrag(idx),
+    // Shift+拖动往返：叠加轨字幕拖回主轨空隙时移回主轨，返回新下标。
+    convertOverlayCueToMainDrag: (idx) => convertOverlayCueToMainForDrag(idx),
+    showOverlayContextMenu: (x, y, idx) => showOverlayContextMenu(x, y, idx),
+    selectCue: (idx) => {
+      MaweBindingAlign.selectCueByClick(idx);
+      MaweSelection.lastClickedIdx = idx;
+      const cue = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
+      if (cue) MaweCueListAnchor.scrollCueIntoViewIfNeeded(cue);
+    },
+    clearSelection: () => MaweSelection.clearSelection(),
+    toggleCueSelection: (idx) => {
+      MaweSelection.toggleSel(idx);
+      MaweSelection.lastClickedIdx = idx;
+    },
+    selectExtensionCue: (idx) => {
+      MaweSelection.selectOnlyExtension(idx);
+      MaweSelection.lastClickedExtensionIdx = idx;
+    },
+    toggleExtensionSelection: (idx) => {
+      MaweSelection.toggleExtensionSelection(idx, MaweMultiSubtitleCore.getActiveExtensionTrack());
+      MaweSelection.lastClickedExtensionIdx = idx;
+    },
+    selectExtensionRange: (idx) => {
+      if (MaweSelection.lastClickedExtensionIdx >= 0) MaweSelection.selectExtensionRange(MaweSelection.lastClickedExtensionIdx, idx);
+      else MaweSelection.selectOnlyExtension(idx);
+      MaweSelection.lastClickedExtensionIdx = idx;
+    },
+    selectCueRange: (idx) => {
+      if (MaweSelection.lastClickedIdx >= 0) MaweSelection.selectRange(MaweSelection.lastClickedIdx, idx);
+      else MaweSelection.selectOnly(idx);
+      MaweSelection.lastClickedIdx = idx;
+    },
+    // 波形 Shift+框选：把命中的一批下标追加进当前多选（追加语义，不改 Shift 锚点）
+    addCueSelection: (idxs) => {
+      idxs.forEach((idx) => MaweSelection.addToSelection(idx));
+    },
+    addExtensionSelection: (idxs) => {
+      const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+      idxs.forEach((idx) => MaweSelection.addExtensionToSelection(idx, track));
+    },
+    seek: (timeSec, options = {}) => {
+      MaweTextCleanup.seekFromWaveform(timeSec, options);
+      if (!options.dragPreview) MaweCueListAnchor.resumeCueListFollowing();
+    },
+    onPlayheadDragStateChange: (active) => {
+      MawePlaybackLoop.waveformPlayheadDragging = active === true;
+      if (!active) MaweCueListAnchor.resumeCueListFollowing();
+    },
+    togglePlayback: MaweMediaPlayback.togglePlayback,
+    toggleDisabled: (idxs, track = 'main') => MaweStickerPicker.toggleDisabled(idxs, track),
+    getHideDisabled: () => MaweDom.hideDisabled,
+    getGapRemoveGaps: MaweGapRemoveData.getGapRemoveGaps,
+    getGapOperationMode: MaweGapRemoveUi.getGapRemoveOperationMode,
+    toggleGapRemoved: MaweGapRemoveUi.toggleGapRemoved,
+    applyGapRange: MaweGapRemoveUi.applyManualGapRange,
+    resizeGapBoundary: MaweGapRemoveUi.resizeManualGapBoundary,
+    moveGap: (index, deltaMs) => MaweGapRemoveUi.translateManualGap(index, deltaMs, 'move'),
+    copyGap: (index, deltaMs) => MaweGapRemoveUi.translateManualGap(index, deltaMs, 'copy'),
+    previewGapAt: MawePlaybackLoop.previewGapAt,
+    showGapContextMenu: (x, y, index) => MaweContextMenus.showGapContextMenu(x, y, index),
+    showContextMenu: (x, y, idx, timeMs) => MaweContextMenus.showContextMenu(x, y, idx, timeMs),
+    showExtensionContextMenu: (x, y, idx, timeMs) => MaweContextMenus.showExtensionContextMenu(x, y, idx, timeMs),
+    showBlankWaveformMenu: (timeMs, x, y, track) => MaweContextMenus.showWaveformBlankMenu(timeMs, x, y, track),
+    addCueRange: (startMs, endMs, x, y, track = 'main') => (
+      MaweAddCue.addCueRangeFromWaveform(startMs, endMs, x, y, track)
+    ),
+    // 叠加轨启用（勾选「叠加字幕」）时，主轨占用位置按 Ctrl(Cmd)+拖动可
+    // 直接创建叠加字幕；由波形侧改道创建轨道，这里只提供开关状态。
+    getOverlayCreateEnabled: () => getOverlayTrack()?.enabled === true,
+    onCueCreateRejected: (reason) => {
+      if (reason === 'too-short') MaweHint.flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
+      if (reason === 'occupied') MaweHint.flashHint('该位置已有字幕，无法新增字幕', 'warning');
+    },
+    // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径；
+    // 有可靠主轨字词时间码时沿用字词锚点，否则在弹窗中保留指针的绝对切点。
+    splitCueAtTime: (idx, timeMs) => MaweSplitContext.splitFromContextMenu(idx, 0, 0, timeMs),
+    splitOverlayCueAtTime: (idx, timeMs) => openOverlaySplitModal(
+      idx, Number.isFinite(timeMs) ? MaweTimeline.timelineFrameAlignedMilliseconds(timeMs) : timeMs,
+    ),
+    getClickBehavior: () => MaweSettings.EDITOR_SETTINGS.clickBehavior,
+    getClickTarget: () => MaweSettings.EDITOR_SETTINGS.clickTarget,
+    getAutoSnapAdjacentCues: () => MaweSettings.EDITOR_SETTINGS.autoSnapAdjacentCues,
+    getAdjacentBoundaryMode: () => MaweSettings.EDITOR_SETTINGS.adjacentBoundaryMode,
+    getCueTiming: () => MaweTimeline.timelineTimingAdapter(),
+    getSnapToFrame: () => MaweTimeline.timelineIsFrameMode() && MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame,
+    getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource,
+    // JKL 倒放靠逐帧回退实现，媒体元素本身处于暂停态；倒放期间同样视为播放中。
+    getHoverSeekPreview: () => MaweSettings.EDITOR_SETTINGS.hoverSeekPreview && !MaweJklPlayback.jklReversePlaying,
+    showTrackBadges: () => MaweSettings.EDITOR_SETTINGS.multiSubtitleShowTrackBadges,
+    onBeginEdit: (label) => MaweHistory.pushUndo(label),
+    syncBoundCueDrag: MaweBoundDrag.syncBoundCueDrag,
+    onLayoutUndo: (label, snapshot) => MaweHistory.pushLayoutUndo(label, snapshot),
+    onCommitEdit: (idxs, kind, track = 'main', independent = false, details = null) => {
+      let linkedChanged = false;
+      if (kind === 'resize-boundary-pointer' && track === 'main' && !independent) {
+        const targetIndex = Number.isInteger(details?.targetIndex) ? details.targetIndex : idxs[0];
+        const main = MaweBoot.DATA.segments[targetIndex];
+        const original = details?.original;
+        if (main && original) {
+          linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(main, {
+            oldStart: original.start,
+            oldEnd: original.end,
+            edge: details.edge,
+            mode: 'range',
+          });
+        }
+      }
+      MaweTextCleanup.syncTimelineGroupRanges();
+      // 拖动预览期间保持下标稳定；提交时再整理副轨数组，避免冲突裁剪后
+      // 原本位于目标前面的字幕保留右侧区间而落到目标之后，保存时违反顺序契约。
+      if (MaweMultiSubtitleCore.multiSubtitleVisible() && track !== 'overlay') MaweMultiSubtitleCore.sortExtensionTrackSegments(MaweMultiSubtitleCore.getActiveExtensionTrack());
+      MaweMultiSubtitleCore.syncBindingOffsets();
+      MaweMultiSubtitleCore.markMainSegmentsDirty(track === 'main' ? idxs.map((idx) => MaweBoot.DATA.segments[idx]).filter(Boolean) : []);
+      if (track === 'overlay') {
+        const overlay = getOverlayTrack();
+        if (overlay) {
+          overlay._dirty = true;
+          idxs.forEach((idx) => { if (overlay.segments[idx]) overlay.segments[idx]._dirty = true; });
+        }
+      }
+      if (linkedChanged || MaweMultiSubtitleCore.multiSubtitleVisible() || track === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      MaweCuePanel.renderAll();
+      MawePlaybackLoop.updateWithoutCueListAutoScroll();
+      MaweHint.flashHint(kind === 'move'
+        ? track === 'extension'
+          ? `已移动 ${idxs.length} 条副字幕`
+          : track === 'overlay'
+            ? `已移动 ${idxs.length} 条叠加字幕`
+            : `已${independent ? '独立' : '联动'}移动 ${idxs.length} 条字幕`
+        : kind === 'resize-boundary-pointer'
+          ? `已将${track === 'extension' ? '副字幕' : track === 'overlay' ? '叠加字幕' : '字幕'}${details?.edge === 'start' ? '起点' : '终点'}定位到鼠标位置`
+        : kind === 'resize-boundary'
+          ? `已${independent ? '独立' : '联动'}调整第 ${idxs[0] + 1} / ${idxs[1] + 1} 条边界`
+          : kind === 'resize-boundary-independent'
+            ? `已独立调整第 ${idxs[0] + 1} 条字幕边界`
+            : `已调整${track === 'overlay' ? '叠加字幕' : '字幕'}时间`);
+    },
+    onPayload: (payload) => {
+      MaweBoot.DATA.waveform = payload;
+      MaweCoreState.waveformLoadedFromProject = false;
+    },
+  });
+  MaweCoreState.waveformEditor.attachPlayer(MaweCoreState.player);
+  MaweCoreState.waveformEditor.setLayoutData(MaweBoot.DATA.workspace || null, { render: false });
+  MaweDisplaySettings.applyEditorDisplaySettings(MaweBoot.DATA.workspace?.editorDisplay);
+  MaweCoreState.waveformEditor.setSpectralPayload(MaweBoot.DATA.spectral || null, { render: false });
+  MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks || null, { render: false });
+  MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform || null, { render: false });
+  // 振幅拟合要在 setLayoutData 之后：得先知道本工程是否已有手调决定。
+  MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness || null, { render: false });
+}
 
 
 

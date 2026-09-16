@@ -10,18 +10,20 @@
   let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
   function buildSrt() {
-    const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-      MaweBoot.DATA.segments,
-      MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-    );
-    return window.AsrEditorUtils.buildSrtPayload(MaweBoot.DATA.segments, {
-      alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-      firstEnabledIndex,
-      keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
-      ...MaweSpeakerLabels.speakerLabelExportOptions(),
-      formatTime: MaweCueElements.fmtSrtTime,
-    });
-  }
+  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    segments,
+    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+  );
+  return window.AsrEditorUtils.buildSrtPayload(segments, {
+    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
+    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+    ...MaweSpeakerLabels.speakerLabelExportOptions(),
+    formatTime: MaweCueElements.fmtSrtTime,
+  });
+}
 
 
 
@@ -32,72 +34,74 @@
 
 
   async function downloadColorSrts(gapRemoved = false) {
-    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-    const colors = usedSubtitleColors();
-    const removed = gapRemoved ? MaweGapRemoveData.getRemovedGapRanges() : [];
-    if (!colors.length) {
-      MaweHint.flashHint('没有可导出的彩色字幕', 'invalid');
-      return;
-    }
-    if (gapRemoved && !removed.length) {
-      MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
-      return;
-    }
-    const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-      MaweBoot.DATA.segments,
-      MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-    );
-    const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
-    const speakerSettings = MaweSpeakerLabels.getSpeakerLabelSettings();
-    const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(MaweBoot.DATA.segments, {
-      colorName: color.name,
-      timeOffset: 0,
-      alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-      firstEnabledIndex,
-      mapTime: gapRemoved
-        ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
-        : undefined,
-      ensurePositiveDuration: gapRemoved,
-      ...MaweSpeakerLabels.speakerLabelExportOptions(),
-      formatTime: MaweCueElements.fmtSrtTime,
-    });
-    let filenameBase = `${MaweBoot.FILENAME_BASE}${gapSuffix}`;
-    // 浏览器不允许从一个文件句柄取得其父目录，因此不再请求文件夹权限。
-    // 先让用户选择一个 SRT 文件名，并把该名称（不含 .srt）作为所有颜色文件的前缀。
-    if (MaweSettings.EDITOR_SETTINGS.exportColorUnified && window.showSaveFilePicker) {
-      try {
-        const handle = await window.showSaveFilePicker({
-          id: 'maw-color-srt-export-prefix',
-          suggestedName: `${filenameBase}.srt`,
-          types: [{ description: 'SRT 字幕文件（作为导出前缀）', accept: { 'text/plain': ['.srt'] } }],
-        });
-        filenameBase = handle.name.replace(/\.srt$/i, '') || filenameBase;
-      } catch (e) {
-        // 用户取消文件名选择 — 静默退出，不回退
-        if (e && e.name === 'AbortError') return;
-        // 其他错误（如安全限制）：回退到默认文件名前缀。
-      }
-    }
-    for (const color of colors) {
-      const filename = `${filenameBase}_${colorExportFilenameSuffix(color, speakerSettings)}.srt`;
-      if (MaweSettings.EDITOR_SETTINGS.exportColorUnified) {
-        const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = filename;
-        document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      } else {
-        const saved = await MaweExportTimeline.downloadFile(
-          buildPayload(color), filename, 'text/plain',
-          { desc: `${color.label}色字幕 SRT`, types: { 'text/plain': ['.srt'] } },
-        );
-        if (!saved) return;
-      }
-    }
-    MaweHint.flashHint(`已按颜色导出 ${colors.length} 份字幕`, 'success');
+  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+  const colors = usedSubtitleColors();
+  const removed = gapRemoved ? MaweGapRemoveData.getRemovedGapRanges() : [];
+  if (!colors.length) {
+    MaweHint.flashHint('没有可导出的彩色字幕', 'invalid');
+    return;
   }
+  if (gapRemoved && !removed.length) {
+    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    return;
+  }
+  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    segments,
+    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+  );
+  const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
+  const speakerSettings = MaweSpeakerLabels.getSpeakerLabelSettings();
+  const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(segments, {
+    colorName: color.name,
+    timeOffset: 0,
+    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+    mapTime: gapRemoved
+      ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
+      : undefined,
+    ensurePositiveDuration: gapRemoved,
+    ...MaweSpeakerLabels.speakerLabelExportOptions(),
+    formatTime: MaweCueElements.fmtSrtTime,
+  });
+  let filenameBase = `${MaweBoot.FILENAME_BASE}${gapSuffix}`;
+  // 浏览器不允许从一个文件句柄取得其父目录，因此不再请求文件夹权限。
+  // 先让用户选择一个 SRT 文件名，并把该名称（不含 .srt）作为所有颜色文件的前缀。
+  if (MaweSettings.EDITOR_SETTINGS.exportColorUnified && window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        id: 'maw-color-srt-export-prefix',
+        suggestedName: `${filenameBase}.srt`,
+        types: [{ description: 'SRT 字幕文件（作为导出前缀）', accept: { 'text/plain': ['.srt'] } }],
+      });
+      filenameBase = handle.name.replace(/\.srt$/i, '') || filenameBase;
+    } catch (e) {
+      // 用户取消文件名选择 — 静默退出，不回退
+      if (e && e.name === 'AbortError') return;
+      // 其他错误（如安全限制）：回退到默认文件名前缀。
+    }
+  }
+  for (const color of colors) {
+    const filename = `${filenameBase}_${colorExportFilenameSuffix(color, speakerSettings)}.srt`;
+    if (MaweSettings.EDITOR_SETTINGS.exportColorUnified) {
+      const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } else {
+      const saved = await MaweExportTimeline.downloadFile(
+        buildPayload(color), filename, 'text/plain',
+        { desc: `${color.label}色字幕 SRT`, types: { 'text/plain': ['.srt'] } },
+      );
+      if (!saved) return;
+    }
+  }
+  MaweHint.flashHint(`已按颜色导出 ${colors.length} 份字幕`, 'success');
+}
 
   function gapRemovedExportContext() {
     const removed = MaweGapRemoveData.getRemovedGapRanges();
@@ -210,17 +214,20 @@
 
 
   function buildAss() {
-    const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-      MaweBoot.DATA.segments,
-      MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-    );
-    return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
-      ...assExportOptions(),
-      alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-      firstEnabledIndex,
-      ...MaweSpeakerLabels.speakerLabelExportOptions(),
-    });
-  }
+  const { overlaySegments } = mergedExportSegments();
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    MaweBoot.DATA.segments,
+    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+  );
+  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+    ...assExportOptions(),
+    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    appearance: MaweAppearance.getSubtitleAppearance(),
+    overlaySegments,
+    ...MaweSpeakerLabels.speakerLabelExportOptions(),
+  });
+}
 
 
 
@@ -234,24 +241,26 @@
 
 
   function buildGapRemovedSrt() {
-    const removed = MaweGapRemoveData.getRemovedGapRanges();
-    if (!removed.length) {
-      MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
-      return null;
-    }
-    const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-      MaweBoot.DATA.segments,
-      MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-    );
-    return window.AsrEditorUtils.buildSrtPayload(MaweBoot.DATA.segments, {
-      alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-      firstEnabledIndex,
-      mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
-      ensurePositiveDuration: true,
-      ...MaweSpeakerLabels.speakerLabelExportOptions(),
-      formatTime: MaweCueElements.fmtSrtTime,
-    });
+  const removed = MaweGapRemoveData.getRemovedGapRanges();
+  if (!removed.length) {
+    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    return null;
   }
+  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    segments,
+    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+  );
+  return window.AsrEditorUtils.buildSrtPayload(segments, {
+    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+    ensurePositiveDuration: true,
+    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+    ...MaweSpeakerLabels.speakerLabelExportOptions(),
+    formatTime: MaweCueElements.fmtSrtTime,
+  });
+}
 
 
 
@@ -277,14 +286,16 @@
 
 
   function usedSubtitleColors() {
-    const names = new Set(MaweBoot.DATA.segments.filter((segment) => !segment.disabled).map((segment) => (
-      window.AsrEditorUtils.effectiveColorName(segment, MaweBoot.DATA.segments) || 'default'
-    )).filter((name) => name === 'default' || MaweColors.COLOR_BY_NAME[name]));
-    return [
-      ...MaweColors.COLOR_PALETTE.filter((color) => names.has(color.name)),
-      ...(names.has('default') ? [{ name: 'default', label: '默认' }] : []),
-    ];
-  }
+  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+  const resolveColor = exportColorContextResolver(overlaySet, overlaySegments);
+  const names = new Set(segments.filter((segment) => !segment.disabled).map((segment) => (
+    window.AsrEditorUtils.effectiveColorName(segment, resolveColor(segment)) || 'default'
+  )).filter((name) => name === 'default' || MaweColors.COLOR_BY_NAME[name]));
+  return [
+    ...MaweColors.COLOR_PALETTE.filter((color) => names.has(color.name)),
+    ...(names.has('default') ? [{ name: 'default', label: '默认' }] : []),
+  ];
+}
 
 
 

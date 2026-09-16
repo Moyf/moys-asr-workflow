@@ -369,12 +369,14 @@
 
 
   function hasUnsavedProjectChanges() {
-    const multiDirty = Boolean(MaweBoot.DATA.multi_subtitle?._dirty)
-      || (MaweBoot.DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
-    return MaweProjectSave.inlineEditHasUncommittedText() || projectImportDirty || MaweHistory.gapRemoveDirty || MaweAppearance.previewGeometryDirty
-      || MaweBoot.DATA.segments.some((segment) => segment._dirty)
-      || multiDirty;
-  }
+  const multiDirty = Boolean(MaweBoot.DATA.multi_subtitle?._dirty)
+    || (MaweBoot.DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
+  const overlayDirty = Boolean(MaweBoot.DATA.overlay_track?._dirty)
+    || MaweBoot.DATA.overlay_track?.segments?.some((segment) => segment._dirty);
+  return MaweProjectSave.inlineEditHasUncommittedText() || projectImportDirty || MaweHistory.gapRemoveDirty || MaweAppearance.previewGeometryDirty
+    || MaweBoot.DATA.segments.some((segment) => segment._dirty)
+    || multiDirty || overlayDirty;
+}
 
 
 

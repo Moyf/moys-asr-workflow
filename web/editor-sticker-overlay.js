@@ -53,88 +53,110 @@
 
 
   function rebuildStickerIntervals() {
-    if (stickerIntervalCacheVersion === stickerOverlayDataVersion) return;
-    const intervals = [];
-    const boundaries = new Set();
-    MaweBoot.DATA.segments.forEach((seg) => {
+  if (stickerIntervalCacheVersion === stickerOverlayDataVersion) return;
+  const intervals = [];
+  const boundaries = new Set();
+  // 收集一条轨的表情包区间：ref 在所在轨数组内解析 head。
+  // track 标记归属（主轨/叠加轨），供叠加表情包显示时的预览层加高判断使用。
+  const collect = (segments, track) => {
+    segments.forEach((seg) => {
       if (seg.disabled) return;
-      const source = seg.sticker || MaweBoot.DATA.segments[seg.sticker_ref?.headIdx]?.sticker;
+      const head = segments[seg.sticker_ref?.headIdx] || seg;
+      // ref 成员的 head 被禁用时同样不收集，保持 enabled=false 的显示契约。
+      if (head !== seg && head.disabled) return;
+      const source = seg.sticker || head.sticker;
       if (!source) return;
-      const head = MaweBoot.DATA.segments[seg.sticker_ref?.headIdx] || seg;
       const start = Number(source.start ?? head.start);
       const end = Number(source.end ?? head.end);
       if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return;
-      intervals.push({ start, end, source, key: source.filename || source.name });
+      intervals.push({ start, end, source, key: source.filename || source.name, track });
       boundaries.add(start);
       boundaries.add(end);
     });
-    stickerIntervals = intervals;
-    stickerIntervalBoundaries = [...boundaries].sort((a, b) => a - b);
-    stickerIntervalCacheVersion = stickerOverlayDataVersion;
-    activeStickerCacheVersion = -1;
-    activeStickerCacheTime = -Infinity;
-    activeStickerCacheUntil = -Infinity;
-    activeStickerCache = [];
-  }
+  };
+  collect(MaweBoot.DATA.segments, 'main');
+  collect(getOverlayTrack()?.segments || [], 'overlay');
+  stickerIntervals = intervals;
+  stickerIntervalBoundaries = [...boundaries].sort((a, b) => a - b);
+  stickerIntervalCacheVersion = stickerOverlayDataVersion;
+  activeStickerCacheVersion = -1;
+  activeStickerCacheTime = -Infinity;
+  activeStickerCacheUntil = -Infinity;
+  activeStickerCache = [];
+  activeStickerHasOverlay = false;
+}
 
 
 
   function activeStickersAt(tMs) {
-    rebuildStickerIntervals();
-    const time = Number(tMs);
-    if (
-      activeStickerCacheVersion === stickerOverlayDataVersion
-      && time >= activeStickerCacheTime
-      && time < activeStickerCacheUntil
-    ) return activeStickerCache;
+  rebuildStickerIntervals();
+  const time = Number(tMs);
+  if (
+    activeStickerCacheVersion === stickerOverlayDataVersion
+    && time >= activeStickerCacheTime
+    && time < activeStickerCacheUntil
+  ) return activeStickerCache;
 
-    const found = new Map();  // 同组 head/ref 去重，按文件名键
-    stickerIntervals.forEach((interval) => {
-      if (time >= interval.start && time <= interval.end) found.set(interval.key, interval.source);
-    });
-    // 播放时间单调前进时，缓存只需保留到下一个边界；二分定位避免每次
-    // 表情包切换都再次扫描全部边界。边界采用半开缓存区间，确保切换帧
-    // 立刻显示新表情包，而不是多停留一帧旧内容。
-    let low = 0;
-    let high = stickerIntervalBoundaries.length;
-    while (low < high) {
-      const middle = (low + high) >> 1;
-      if (stickerIntervalBoundaries[middle] <= time) low = middle + 1;
-      else high = middle;
-    }
-    const nextChange = stickerIntervalBoundaries[low] ?? Infinity;
-    activeStickerCacheVersion = stickerOverlayDataVersion;
-    activeStickerCacheTime = time;
-    activeStickerCacheUntil = nextChange;
-    activeStickerCache = [...found.values()];
-    return activeStickerCache;
+  const found = new Map();  // 同组 head/ref 去重，按文件名键
+  stickerIntervals.forEach((interval) => {
+    if (time >= interval.start && time <= interval.end) found.set(interval.key, interval.source);
+  });
+  // 当前时刻是否有叠加轨表情包在显示（同名素材在主轨同时显示时也算——
+  // 预览层展示的就是这张图，叠加归属用于决定预览内容区是否加高）。
+  activeStickerHasOverlay = stickerIntervals.some((interval) => (
+    interval.track === 'overlay'
+    && time >= interval.start && time <= interval.end
+    && found.has(interval.key)
+  ));
+  // 播放时间单调前进时，缓存只需保留到下一个边界；二分定位避免每次
+  // 表情包切换都再次扫描全部边界。边界采用半开缓存区间，确保切换帧
+  // 立刻显示新表情包，而不是多停留一帧旧内容。
+  let low = 0;
+  let high = stickerIntervalBoundaries.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (stickerIntervalBoundaries[middle] <= time) low = middle + 1;
+    else high = middle;
   }
+  const nextChange = stickerIntervalBoundaries[low] ?? Infinity;
+  activeStickerCacheVersion = stickerOverlayDataVersion;
+  activeStickerCacheTime = time;
+  activeStickerCacheUntil = nextChange;
+  activeStickerCache = [...found.values()];
+  return activeStickerCache;
+}
 
 
 
   function renderStickerOverlay(tMs) {
-    const enabled = Boolean(MaweDom.stickerOverlayToggle?.checked);
-    if (!enabled) {
-      if (renderedStickerOverlayEnabled || stickerOverlayContent.childElementCount) {
-        stickerOverlayContent.replaceChildren();
-      }
-      renderedStickerOverlayEnabled = false;
-      renderedStickerSignature = null;
-      return;
+  const enabled = Boolean(MaweDom.stickerOverlayToggle?.checked);
+  if (!enabled) {
+    if (renderedStickerOverlayEnabled || stickerOverlayContent.childElementCount
+      || stickerOverlayContent.classList.contains('has-overlay-sticker')) {
+      stickerOverlayContent.replaceChildren();
+      stickerOverlayContent.classList.remove('has-overlay-sticker');
     }
-    const stickers = activeStickersAt(tMs);
-    const signature = stickers.map((sticker) => sticker.filename || sticker.name).join('\u0001');
-    if (renderedStickerOverlayEnabled && renderedStickerSignature === signature) return;
-    stickerOverlayContent.replaceChildren(...stickers.map((sticker) => {
-      const img = document.createElement('img');
-      img.src = MaweSelection.stickerUrl(sticker);
-      img.alt = sticker.name;
-      img.title = sticker.name;
-      return img;
-    }));
-    renderedStickerOverlayEnabled = true;
-    renderedStickerSignature = signature;
+    renderedStickerOverlayEnabled = false;
+    renderedStickerSignature = null;
+    return;
   }
+  const stickers = activeStickersAt(tMs);
+  // 签名带上叠加归属：同名素材的显示集合不变但叠加状态翻转时也要切换 class。
+  const signature = `${activeStickerHasOverlay ? 'O' : ''}\u0001${
+    stickers.map((sticker) => sticker.filename || sticker.name).join('\u0001')
+  }`;
+  if (renderedStickerOverlayEnabled && renderedStickerSignature === signature) return;
+  stickerOverlayContent.classList.toggle('has-overlay-sticker', activeStickerHasOverlay);
+  stickerOverlayContent.replaceChildren(...stickers.map((sticker) => {
+    const img = document.createElement('img');
+    img.src = MaweSelection.stickerUrl(sticker);
+    img.alt = sticker.name;
+    img.title = sticker.name;
+    return img;
+  }));
+  renderedStickerOverlayEnabled = true;
+  renderedStickerSignature = signature;
+}
 
   global.MaweStickerOverlay = Object.freeze({
     get stickerAssetRevision() { return stickerAssetRevision; },

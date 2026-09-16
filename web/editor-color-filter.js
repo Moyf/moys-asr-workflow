@@ -121,26 +121,26 @@
 
 
   function selectAllFilteredCues() {
-    // 颜色过滤只作用于主轨字幕列表，这里同样只选中主轨里过滤命中的字幕，
-    // 便于配合「批量替换（仅选中）」等按选区工作的工具，例如给不同说话人加前缀。
-    if (!colorFilterSelection || colorFilterSuspended()) {
-      MaweHint.flashHint('当前没有生效的颜色过滤', 'invalid');
-      return;
-    }
-    MaweCuePanel.commitCuePanelEdit();
-    MaweSelection.clearSelection({ silent: true });
-    MaweBoot.DATA.segments.forEach((seg, idx) => {
-      if (MaweSelection.isHiddenDisabled(idx)) return;
-      if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
-      MaweSelection.selectedIdxs.add(idx);
-      const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
-      if (el) el.classList.add('selected');
-    });
-    MaweSelection.updateMultiSelectionClasses();
-    if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-    MaweDom.selCountEl.textContent = String(MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size);
-    MaweHint.flashHint(`已选中 ${MaweSelection.selectedIdxs.size} 条过滤字幕`, MaweSelection.selectedIdxs.size ? 'success' : 'invalid');
+  // 颜色过滤只作用于主轨字幕列表，这里同样只选中主轨里过滤命中的字幕，
+  // 便于配合「批量替换（仅选中）」等按选区工作的工具，例如给不同说话人加前缀。
+  if (!colorFilterSelection || colorFilterSuspended()) {
+    MaweHint.flashHint('当前没有生效的颜色过滤', 'invalid');
+    return;
   }
+  MaweCuePanel.commitCuePanelEdit();
+  MaweSelection.clearSelection({ silent: true });
+  MaweBoot.DATA.segments.forEach((seg, idx) => {
+    if (MaweSelection.isHiddenDisabled(idx)) return;
+    if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
+    MaweSelection.selectedIdxs.add(idx);
+    const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
+    if (el) el.classList.add('selected');
+  });
+  MaweSelection.updateMultiSelectionClasses();
+  if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
+  updateSelectionCountText();
+  MaweHint.flashHint(`已选中 ${MaweSelection.selectedIdxs.size} 条过滤字幕`, MaweSelection.selectedIdxs.size ? 'success' : 'invalid');
+}
 
 
 
@@ -190,62 +190,83 @@
 
 
   function refreshCueColorRows() {
-    const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    MaweCoreState.container.querySelectorAll(':scope > .cue').forEach((el) => {
-      const colorBar = el.querySelector(':scope > .color-bar');
-      if (!colorBar) return;
-      if (el.dataset.extIdx != null && el.dataset.idx == null) {
-        const extensionIndex = Number(el.dataset.extIdx);
-        const segment = Number.isInteger(extensionIndex)
-          ? extensionTrack?.segments?.[extensionIndex]
-          : null;
-        if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
-        return;
-      }
-      const mainIndex = el.dataset.idx != null
-        ? Number(el.dataset.idx)
-        : (el.dataset.mainIdx != null ? Number(el.dataset.mainIdx) : -1);
-      const segment = Number.isInteger(mainIndex) && mainIndex >= 0
-        ? MaweBoot.DATA.segments[mainIndex]
+  const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
+  MaweCoreState.container.querySelectorAll(':scope > .cue').forEach((el) => {
+    const colorBar = el.querySelector(':scope > .color-bar');
+    if (!colorBar) return;
+    if (el.dataset.overlayIdx != null) {
+      const overlayIndex = Number(el.dataset.overlayIdx);
+      const segment = Number.isInteger(overlayIndex)
+        ? getOverlayTrack()?.segments?.[overlayIndex]
         : null;
       if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
-    });
-  }
+      return;
+    }
+    if (el.dataset.extIdx != null && el.dataset.idx == null) {
+      const extensionIndex = Number(el.dataset.extIdx);
+      const segment = Number.isInteger(extensionIndex)
+        ? extensionTrack?.segments?.[extensionIndex]
+        : null;
+      if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
+      return;
+    }
+    const mainIndex = el.dataset.idx != null
+      ? Number(el.dataset.idx)
+      : (el.dataset.mainIdx != null ? Number(el.dataset.mainIdx) : -1);
+    const segment = Number.isInteger(mainIndex) && mainIndex >= 0
+      ? MaweBoot.DATA.segments[mainIndex]
+      : null;
+    if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
+  });
+}
 
 
 
   function refreshCueStickerRows() {
-    const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    MaweCoreState.container.querySelectorAll(':scope > .cue').forEach((el) => {
-      const slotEl = el.querySelector(':scope > .sticker-slot');
-      if (!slotEl) return;
-      const isExtension = el.dataset.extIdx != null && el.dataset.idx == null;
-      const index = Number(isExtension ? el.dataset.extIdx : (el.dataset.idx ?? el.dataset.mainIdx));
-      const segment = isExtension
-        ? (Number.isInteger(index) ? extensionTrack?.segments?.[index] : null)
-        : (Number.isInteger(index) && index >= 0 ? MaweBoot.DATA.segments[index] : null);
-      if (segment) {
-        MaweCueElements.updateCueStickerPresentation(el, slotEl, segment, index, {
-          extensionTrack: isExtension ? extensionTrack : null,
-        });
-      }
-    });
-  }
+  const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
+  MaweCoreState.container.querySelectorAll(':scope > .cue').forEach((el) => {
+    const slotEl = el.querySelector(':scope > .sticker-slot');
+    if (!slotEl) return;
+    if (el.dataset.overlayIdx != null) {
+      const overlayIndex = Number(el.dataset.overlayIdx);
+      const segment = Number.isInteger(overlayIndex)
+        ? getOverlayTrack()?.segments?.[overlayIndex]
+        : null;
+      if (segment) MaweCueElements.updateCueStickerPresentation(el, slotEl, segment, overlayIndex, { overlayTrack: true });
+      return;
+    }
+    const isExtension = el.dataset.extIdx != null && el.dataset.idx == null;
+    const index = Number(isExtension ? el.dataset.extIdx : (el.dataset.idx ?? el.dataset.mainIdx));
+    const segment = isExtension
+      ? (Number.isInteger(index) ? extensionTrack?.segments?.[index] : null)
+      : (Number.isInteger(index) && index >= 0 ? MaweBoot.DATA.segments[index] : null);
+    if (segment) {
+      MaweCueElements.updateCueStickerPresentation(el, slotEl, segment, index, {
+        extensionTrack: isExtension ? extensionTrack : null,
+      });
+    }
+  });
+}
 
 
 
   function refreshStickerAssignmentUi() {
-    // 表情包分配只改变行内槽位和预览素材，不改变字幕行的数量、顺序或时间；
-    // 原地更新可以避免 renderAll() 替换列表节点后产生滚动闪烁。
-    refreshCueStickerRows();
-    const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref);
-    MaweCoreState.container.classList.toggle('hide-cue-sticker',
-      !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
-    );
-    MaweStickerOverlay.stickerOverlayDataVersion += 1;
-    MaweCuePanel.renderCurrentCuePanel();
-    MawePlaybackLoop.refreshSubtitlePreview();
-  }
+  // 表情包分配只改变行内槽位和预览素材，不改变字幕行的数量、顺序或时间；
+  // 原地更新可以避免 renderAll() 替换列表节点后产生滚动闪烁。
+  refreshCueStickerRows();
+  const overlaySegments = getOverlayTrack()?.segments || [];
+  const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)
+    || overlaySegments.some((segment) => segment.sticker || segment.sticker_ref);
+  MaweCoreState.container.classList.toggle('hide-cue-sticker',
+    !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
+  );
+  MaweStickerOverlay.stickerOverlayDataVersion += 1;
+  // 表情包变化影响波形块上的 🦊 徽章分组；颜色走 updateCueColorPresentation
+  // 自行刷新，徽章需要整层重建才会重新计数。
+  MaweCoreState.waveformEditor?.refreshCueOverlay?.();
+  MaweCuePanel.renderCurrentCuePanel();
+  MawePlaybackLoop.refreshSubtitlePreview();
+}
 
 
 

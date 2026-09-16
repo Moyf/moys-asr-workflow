@@ -66,84 +66,85 @@
 
 
 function applyCanonicalProject(data, filename) {
-// 原地换工程：在途/已排期的延迟波形载荷（含响度标尺）全部作废，见
-// MaweWaveformInit.deferredReapeaksEpoch 的说明。
-MaweWaveformInit.deferredReapeaksEpoch += 1;
-MaweCuePanelState.currentCuePanelIdx = -1;
-    MaweCuePanelState.currentCuePanelKind = 'main';
-    MaweCuePanelState.currentCuePanelTrackId = null;
-    MaweCuePanelState.resetCuePanelEditState();
-    resetLoadedMedia();
-    projectExtensionFields = Object.fromEntries(
-      Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
-    );
-    MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
-    MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
-    MaweBoot.DATA.language = data.language || '';
-    MaweBoot.DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
-    MaweBoot.DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
-    MaweBoot.DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
-      ? data.timestamp_granularity : undefined;
-    MaweBoot.DATA.model = data.model || '';
-    MaweBoot.DATA.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
-    MaweTimeline.timelineFpsManuallySet = MaweTimeline.hasExplicitTimelineFps(data.timebase);
-    MaweBoot.DATA.media_metadata = MaweTimeline.normalizeMediaMetadata(data.media_metadata);
-    MaweBoot.DATA.media_time_reference = data.media_time_reference || null;
-    MaweBoot.DATA.waveform = data.waveform || null;
-    MaweBoot.DATA.spectral = data.spectral || null;
-MaweBoot.DATA.waveform_reapeaks = data.waveform_reapeaks || null;
-// 响度统计不写进工程文件，所以这里恒为 null：切工程必须先清掉上一个素材的
-// 标尺，等新媒体的 /api/waveform 回来再拟合。
-MaweBoot.DATA.loudness = data.loudness || null;
-MaweBoot.DATA.workspace = data.workspace || null;
-    MaweBoot.DATA.gap_remove = data.gap_remove || null;
-    MaweBoot.DATA.script_alignment = data.script_alignment || null;
-    MaweBoot.DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
-    MaweHistory.gapRemoveDirty = false;
-    MaweAppearance.previewGeometryDirty = false;
-    MaweServerSave.projectImportDirty = false;
-    // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。
-    MaweServerSave.projectFileHandle = null;
-    MawePreviewGeometry.setPreviewGeometry(MaweAppearance.getPreviewGeometry(), { markDirty: false });
-    MaweAppearance.applyExtensionSubtitleAppearance(MaweBoot.DATA.preview?.extension_subtitle);
-    MawePreviewGeometry.setStickerGeometry(MawePreviewGeometry.getStickerGeometry(), { markDirty: false });
-    MawePreviewGeometry.refreshPreviewGeometryEditable();
-    if (data.sticker_root) MaweBoot.STICKER_ROOT = data.sticker_root;
-    MaweBoot.DATA.segments.length = 0;
-    data.segments.forEach((segment) => MaweBoot.DATA.segments.push(segment));
-    MaweBoot.DATA.multi_subtitle = window.AsrEditorUtils.normalizeMultiSubtitle(data.multi_subtitle, MaweBoot.DATA.segments);
-    MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
-    MaweHistory.editorHistory.clear();
-    MaweHistory.updateUndoRedoButtons();
-    MaweSelection.clearSelection();
-    MawePlaybackLoop.lastActive = -1;
-    if (MaweCoreState.waveformEditor) {
-      MaweCoreState.waveformEditor.setLayoutData(MaweBoot.DATA.workspace, { render: false });
-      MaweDisplaySettings.applyEditorDisplaySettings(MaweBoot.DATA.workspace?.editorDisplay);
-      MaweWorkspaces.restoreWorkspaceSelection();
-      MaweWorkspaces.syncWorkspaceControls();
-      MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform, { render: false });
-      MaweCoreState.waveformEditor.setSpectralPayload(MaweBoot.DATA.spectral, { render: false });
-MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks, { render: false });
-MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: false });
-}
-    MaweGapRemoveUi.updateGapRemoveUi();
-    MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
-    MawePlaybackLoop.refreshSubtitlePreview(0, -1);
-    updateUnloadedMediaLabel(MaweBoot.DATA.media);
-    MaweBoot.PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
-    MaweBoot.FILENAME_BASE = MaweBoot.PROJECT_NAME;
-    const jsonEl = document.getElementById('json-name');
-    if (jsonEl) {
-      jsonEl.textContent = filename;
-      jsonEl.title = `点击复制工程文件名：${filename}`;
-      jsonEl.classList.remove('empty');
-      jsonEl.onclick = () => MaweExportTimeline.copyText(filename, `已复制：${filename}`);
-    }
-    MaweServerSave.projectCheckpointed = true;
-    MaweServerSave.configureServerSaveControls();
-    MaweServerSave.scheduleAutoSave();
+  // 原地换工程：在途/已排期的延迟波形载荷（含响度标尺）全部作废，见
+  // deferredReapeaksEpoch 的说明。
+  MaweWaveformInit.deferredReapeaksEpoch += 1;
+  MaweCuePanelState.currentCuePanelIdx = -1;
+  MaweCuePanelState.currentCuePanelKind = 'main';
+  MaweCuePanelState.currentCuePanelTrackId = null;
+  MaweCuePanelState.resetCuePanelEditState();
+  resetLoadedMedia();
+  projectExtensionFields = Object.fromEntries(
+    Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+  );
+  MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
+  MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
+  MaweBoot.DATA.language = data.language || '';
+  MaweBoot.DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
+  MaweBoot.DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
+  MaweBoot.DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
+    ? data.timestamp_granularity : undefined;
+  MaweBoot.DATA.model = data.model || '';
+  MaweBoot.DATA.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
+  MaweTimeline.timelineFpsManuallySet = MaweTimeline.hasExplicitTimelineFps(data.timebase);
+  MaweBoot.DATA.media_metadata = MaweTimeline.normalizeMediaMetadata(data.media_metadata);
+  MaweBoot.DATA.media_time_reference = data.media_time_reference || null;
+  MaweBoot.DATA.waveform = data.waveform || null;
+  MaweBoot.DATA.spectral = data.spectral || null;
+  MaweBoot.DATA.waveform_reapeaks = data.waveform_reapeaks || null;
+  // 响度统计不写进工程文件，所以这里恒为 null：切工程必须先清掉上一个素材的
+  // 标尺，等新媒体的 /api/waveform 回来再拟合。
+  MaweBoot.DATA.loudness = data.loudness || null;
+  MaweBoot.DATA.workspace = data.workspace || null;
+  MaweBoot.DATA.gap_remove = data.gap_remove || null;
+  MaweBoot.DATA.script_alignment = data.script_alignment || null;
+  MaweBoot.DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
+  MaweHistory.gapRemoveDirty = false;
+  MaweAppearance.previewGeometryDirty = false;
+  MaweServerSave.projectImportDirty = false;
+  // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。
+  MaweServerSave.projectFileHandle = null;
+  MawePreviewGeometry.setPreviewGeometry(MaweAppearance.getPreviewGeometry(), { markDirty: false });
+  MaweAppearance.applyExtensionSubtitleAppearance(MaweBoot.DATA.preview?.extension_subtitle);
+  MawePreviewGeometry.setStickerGeometry(MawePreviewGeometry.getStickerGeometry(), { markDirty: false });
+  MawePreviewGeometry.refreshPreviewGeometryEditable();
+  if (data.sticker_root) MaweBoot.STICKER_ROOT = data.sticker_root;
+  MaweBoot.DATA.segments.length = 0;
+  data.segments.forEach((segment) => MaweBoot.DATA.segments.push(segment));
+  MaweBoot.DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, MaweBoot.DATA.segments);
+  MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(data.overlay_track);
+  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
+  MaweHistory.editorHistory.clear();
+  MaweHistory.updateUndoRedoButtons();
+  MaweSelection.clearSelection();
+  MawePlaybackLoop.lastActive = -1;
+  if (MaweCoreState.waveformEditor) {
+    MaweCoreState.waveformEditor.setLayoutData(MaweBoot.DATA.workspace, { render: false });
+    MaweDisplaySettings.applyEditorDisplaySettings(MaweBoot.DATA.workspace?.editorDisplay);
+    MaweWorkspaces.restoreWorkspaceSelection();
+    MaweWorkspaces.syncWorkspaceControls();
+    MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform, { render: false });
+    MaweCoreState.waveformEditor.setSpectralPayload(MaweBoot.DATA.spectral, { render: false });
+    MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks, { render: false });
+    MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: false });
   }
+  MaweGapRemoveUi.updateGapRemoveUi();
+  MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
+  MawePlaybackLoop.refreshSubtitlePreview(0, -1);
+  updateUnloadedMediaLabel(MaweBoot.DATA.media);
+  MaweBoot.PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
+  MaweBoot.FILENAME_BASE = MaweBoot.PROJECT_NAME;
+  const jsonEl = document.getElementById('json-name');
+  if (jsonEl) {
+    jsonEl.textContent = filename;
+    jsonEl.title = `点击复制工程文件名：${filename}`;
+    jsonEl.classList.remove('empty');
+    jsonEl.onclick = () => MaweExportTimeline.copyText(filename, `已复制：${filename}`);
+  }
+  MaweServerSave.projectCheckpointed = true;
+  MaweServerSave.configureServerSaveControls();
+  MaweServerSave.scheduleAutoSave();
+}
 
 
 
@@ -289,68 +290,90 @@ MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: 
 
 
   function parseSrtSegments(text) {
-    const blocks = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim().split(/\n{2,}/);
-    const segments = [];
-    for (const block of blocks) {
-      const lines = block.split('\n');
-      if (/^\d+$/.test(lines[0]?.trim() || '')) lines.shift();
-      const timing = /^\s*(.+?)\s*-->\s*(.+?)(?:\s+.*)?$/.exec(lines.shift() || '');
-      if (!timing) throw new Error('缺少有效时间码');
-      const start = parseSrtTimestamp(timing[1]);
-      const end = parseSrtTimestamp(timing[2]);
-      const cueText = lines.join('\n').trim();
-      if (start === null || end === null || end <= start || !cueText) throw new Error('包含无效字幕段');
-      const previous = segments[segments.length - 1];
-      if (previous && start < previous.end) throw new Error('字幕时间重叠');
-      segments.push({ start, end, text: cueText });
+  // 与后端 maw/postprocess_io.read_srt 同一套分层规则：cue 依次尝试主轨、
+  // 叠加轨，两轨都放不下（第三层并发）才报错；返回的主层数组附带
+  // overlaySegments（非枚举属性），供导入路径把第二层落到叠加轨。
+  const blocks = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim().split(/\n{2,}/);
+  const segments = [];
+  const overlaySegments = [];
+  let previousStart = 0;
+  for (const block of blocks) {
+    const lines = block.split('\n');
+    if (/^\d+$/.test(lines[0]?.trim() || '')) lines.shift();
+    const timing = /^\s*(.+?)\s*-->\s*(.+?)(?:\s+.*)?$/.exec(lines.shift() || '');
+    if (!timing) throw new Error('缺少有效时间码');
+    const start = parseSrtTimestamp(timing[1]);
+    const end = parseSrtTimestamp(timing[2]);
+    const cueText = lines.join('\n').trim();
+    if (start === null || end === null || end <= start || !cueText) throw new Error('包含无效字幕段');
+    if (start < previousStart) throw new Error('字幕时间码未按时间顺序排列');
+    previousStart = start;
+    const fitsTrack = (list) => list.every((segment) => end <= segment.start || start >= segment.end);
+    const cue = { start, end, text: cueText };
+    if (fitsTrack(segments)) {
+      segments.push(cue);
+    } else if (fitsTrack(overlaySegments)) {
+      overlaySegments.push(cue);
+    } else {
+      throw new Error('同一时间已存在主轨与叠加轨字幕，第三层重叠无法导入');
     }
-    if (!segments.length) throw new Error('没有可导入的字幕');
-    return segments;
   }
+  if (!segments.length) throw new Error('没有可导入的字幕');
+  Object.defineProperty(segments, 'overlaySegments', { value: overlaySegments });
+  return segments;
+}
 
 
 
-  function replaceMainTrack(segments, displayName = '字幕') {
-    // 导入/替换主轨是字幕编辑操作，保留替换前的主轨和多字幕状态，
-    // 这样用户可以用 Ctrl(Cmd)+Z 回到替换前，而不影响后续重做。
-    // 先提交当前编辑区，再替换 DATA；否则 clearSelection() 在替换后提交旧面板
-    // 文本时，会把旧字幕写回新导入的同一下标，表现为“导入后又变回旧值”。
-    MaweCuePanel.commitCuePanelEdit();
-    MaweCuePanelState.currentCuePanelIdx = -1;
-    MaweCuePanelState.currentCuePanelKind = 'main';
-    MaweCuePanelState.currentCuePanelTrackId = null;
-    MaweCuePanelState.resetCuePanelEditState();
-    MaweHistory.pushUndo('替换字幕');
-    MaweBoot.DATA.segments.length = 0;
-    (segments || []).forEach((segment) => MaweBoot.DATA.segments.push({ ...segment }));
-    MaweBoot.DATA.multi_subtitle = {
-      schema: window.AsrEditorUtils.MULTI_SUBTITLE_SCHEMA,
-      enabled: false,
-      display_mode: 'both',
-      tracks: [],
-      bindings: [],
-    };
-    window.AsrEditorUtils.normalizeMultiSubtitleProject(MaweBoot.DATA);
-    MaweBoot.DATA.gap_remove = null;
-    MaweHistory.gapRemoveDirty = false;
-    MaweServerSave.projectImportDirty = true;
-    MaweHistory.updateUndoRedoButtons();
-    MaweSelection.clearSelection({ commitCuePanel: false });
-    MawePlaybackLoop.lastActive = -1;
-    MaweGapRemoveUi.updateGapRemoveUi();
-    MaweCuePanel.renderAll({ preserveCueListScroll: false });
-    MaweBoot.FILENAME_BASE = displayName.replace(/\.[^.]+$/i, '');
-    const jsonEl = document.getElementById('json-name');
-    if (jsonEl) {
-      jsonEl.textContent = `导入字幕：${displayName}`;
-      jsonEl.title = 'SRT 字幕只能通过导出下载保存为工程文件';
-      jsonEl.classList.add('empty');
-    }
-    MaweServerSave.configureServerSaveControls();
-    MaweServerSave.scheduleAutoSave();
-    MaweHint.flashHint(`已加载字幕：${displayName}（${MaweBoot.DATA.segments.length} 条）`, 'success');
-    return true;
+  function replaceMainTrack(segments, displayName = '字幕', { overlaySegments = null } = {}) {
+  // 导入/替换主轨是字幕编辑操作，保留替换前的主轨和多字幕状态，
+  // 这样用户可以用 Ctrl(Cmd)+Z 回到替换前，而不影响后续重做。
+  // 先提交当前编辑区，再替换 DATA；否则 clearSelection() 在替换后提交旧面板
+  // 文本时，会把旧字幕写回新导入的同一下标，表现为“导入后又变回旧值”。
+  MaweCuePanel.commitCuePanelEdit();
+  MaweCuePanelState.currentCuePanelIdx = -1;
+  MaweCuePanelState.currentCuePanelKind = 'main';
+  MaweCuePanelState.currentCuePanelTrackId = null;
+  MaweCuePanelState.resetCuePanelEditState();
+  MaweHistory.pushUndo('替换字幕');
+  MaweBoot.DATA.segments.length = 0;
+  (segments || []).forEach((segment) => MaweBoot.DATA.segments.push({ ...segment }));
+  // 替换语义同时接管叠加轨：导入双层 SRT 时第二层落到叠加轨；
+  // 导入普通 SRT（未提供 overlaySegments）时清空旧叠加轨，避免残留混入新工程。
+  const overlayLayer = Array.isArray(overlaySegments) ? overlaySegments : [];
+  MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack({
+    enabled: overlayLayer.length > 0,
+    segments: overlayLayer,
+  });
+  MaweBoot.DATA.overlay_track._dirty = true;
+  MaweBoot.DATA.multi_subtitle = {
+    schema: MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
+    enabled: false,
+    display_mode: 'both',
+    tracks: [],
+    bindings: [],
+  };
+  MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(MaweBoot.DATA);
+  MaweBoot.DATA.gap_remove = null;
+  MaweHistory.gapRemoveDirty = false;
+  MaweServerSave.projectImportDirty = true;
+  MaweHistory.updateUndoRedoButtons();
+  MaweSelection.clearSelection({ commitCuePanel: false });
+  MawePlaybackLoop.lastActive = -1;
+  MaweGapRemoveUi.updateGapRemoveUi();
+  MaweCuePanel.renderAll({ preserveCueListScroll: false });
+  MaweBoot.FILENAME_BASE = displayName.replace(/\.[^.]+$/i, '');
+  const jsonEl = document.getElementById('json-name');
+  if (jsonEl) {
+    jsonEl.textContent = `导入字幕：${displayName}`;
+    jsonEl.title = 'SRT 字幕只能通过导出下载保存为工程文件';
+    jsonEl.classList.add('empty');
   }
+  MaweServerSave.configureServerSaveControls();
+  MaweServerSave.scheduleAutoSave();
+  MaweHint.flashHint(`已加载字幕：${displayName}（${MaweBoot.DATA.segments.length} 条）`, 'success');
+  return true;
+}
 
   // 注：boot 修复语句（repairGroupReferenceIndices / normalizeProjectTimings 两条
   // 顶层 const）原本位于 editor.js 两次 syncProjectTimebaseAndBindingOffsets 之间，

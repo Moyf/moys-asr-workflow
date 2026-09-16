@@ -384,78 +384,78 @@
   //         首条升级为新 head，后续 ref 指向它。
   //   - 删除场景：cutSet = 被物理删除的 idx；切完后由调用方负责 splice
   //   - 清除场景：cutSet = 被清除 group 字段的 idx；调用方不删除字幕本身
-  function splitGroupsAtCutPoints(cutSet, headField, refField) {
-    function groupHeadOf(seg, idx) {
-      if (seg[headField]) return idx;
-      if (seg[refField]) return seg[refField].headIdx;
-      return -1;
-    }
-    // 1) 收集所有原始 group：headIdx → [members 升序]
-    const groups = new Map();
-    MaweBoot.DATA.segments.forEach((s, i) => {
-      const g = groupHeadOf(s, i);
-      if (g < 0) return;
-      if (!groups.has(g)) groups.set(g, []);
-      groups.get(g).push(i);
-    });
+  function splitGroupsAtCutPoints(cutSet, headField, refField, segments = MaweBoot.DATA.segments) {
+  function groupHeadOf(seg, idx) {
+    if (seg[headField]) return idx;
+    if (seg[refField]) return seg[refField].headIdx;
+    return -1;
+  }
+  // 1) 收集所有原始 group：headIdx → [members 升序]
+  const groups = new Map();
+  segments.forEach((s, i) => {
+    const g = groupHeadOf(s, i);
+    if (g < 0) return;
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(i);
+  });
 
-    for (const [oldHeadIdx, members] of groups.entries()) {
-      // 把成员按"切点"切成多个连续段
-      const sub = [];
-      let cur = [];
-      for (const m of members) {
-        if (cutSet.has(m)) {
-          if (cur.length) { sub.push(cur); cur = []; }
-        } else {
-          cur.push(m);
+  for (const [oldHeadIdx, members] of groups.entries()) {
+    // 把成员按"切点"切成多个连续段
+    const sub = [];
+    let cur = [];
+    for (const m of members) {
+      if (cutSet.has(m)) {
+        if (cur.length) { sub.push(cur); cur = []; }
+      } else {
+        cur.push(m);
+      }
+    }
+    if (cur.length) sub.push(cur);
+
+    // 拿原 head 数据作为新 head 的模板（深拷贝）
+    const oldHead = segments[oldHeadIdx];
+    const template = oldHead ? oldHead[headField] : null;
+    if (!template) continue;
+
+    sub.forEach((segIdxs, segNo) => {
+      if (!segIdxs.length) return;
+      const segHeadIdx = segIdxs[0];
+      const segLastIdx = segIdxs[segIdxs.length - 1];
+      const newStart = segments[segHeadIdx].start;
+      const newEnd = segments[segLastIdx].end;
+
+      if (segNo === 0 && segHeadIdx === oldHeadIdx) {
+        // 原 head 还活着且未被切除 → 仅修正其时间范围
+        if (oldHead[headField].end !== newEnd || oldHead[headField].start !== newStart) {
+          oldHead[headField].end = newEnd;
+          oldHead[headField].start = newStart;
+        }
+      } else {
+        // 新段段首升级为 head
+        const promoted = JSON.parse(JSON.stringify(template));
+        promoted.start = newStart;
+        promoted.end = newEnd;
+        segments[segHeadIdx][headField] = promoted;
+        segments[segHeadIdx][refField] = null;
+        // 段内其余 ref 改指向新 head
+        for (let k = 1; k < segIdxs.length; k++) {
+          const refSeg = segments[segIdxs[k]];
+          if (refSeg[refField]) {
+            refSeg[refField].headIdx = segHeadIdx;
+          }
         }
       }
-      if (cur.length) sub.push(cur);
-
-      // 拿原 head 数据作为新 head 的模板（深拷贝）
-      const oldHead = MaweBoot.DATA.segments[oldHeadIdx];
-      const template = oldHead ? oldHead[headField] : null;
-      if (!template) continue;
-
-      sub.forEach((segIdxs, segNo) => {
-        if (!segIdxs.length) return;
-        const segHeadIdx = segIdxs[0];
-        const segLastIdx = segIdxs[segIdxs.length - 1];
-        const newStart = MaweBoot.DATA.segments[segHeadIdx].start;
-        const newEnd = MaweBoot.DATA.segments[segLastIdx].end;
-
-        if (segNo === 0 && segHeadIdx === oldHeadIdx) {
-          // 原 head 还活着且未被切除 → 仅修正其时间范围
-          if (oldHead[headField].end !== newEnd || oldHead[headField].start !== newStart) {
-            oldHead[headField].end = newEnd;
-            oldHead[headField].start = newStart;
-          }
-        } else {
-          // 新段段首升级为 head
-          const promoted = JSON.parse(JSON.stringify(template));
-          promoted.start = newStart;
-          promoted.end = newEnd;
-          MaweBoot.DATA.segments[segHeadIdx][headField] = promoted;
-          MaweBoot.DATA.segments[segHeadIdx][refField] = null;
-          // 段内其余 ref 改指向新 head
-          for (let k = 1; k < segIdxs.length; k++) {
-            const refSeg = MaweBoot.DATA.segments[segIdxs[k]];
-            if (refSeg[refField]) {
-              refSeg[refField].headIdx = segHeadIdx;
-            }
-          }
-        }
-      });
-    }
-
-    // 把切点位置的 head/ref 字段全部清空（调用方期望的副作用）
-    cutSet.forEach(i => {
-      const s = MaweBoot.DATA.segments[i];
-      if (!s) return;
-      if (s[headField]) s[headField] = null;
-      if (s[refField])  s[refField]  = null;
     });
   }
+
+  // 把切点位置的 head/ref 字段全部清空（调用方期望的副作用）
+  cutSet.forEach(i => {
+    const s = segments[i];
+    if (!s) return;
+    if (s[headField]) s[headField] = null;
+    if (s[refField])  s[refField]  = null;
+  });
+}
 
 
 

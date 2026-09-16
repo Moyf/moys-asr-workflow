@@ -121,7 +121,7 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.6.0-beta.3"
+BUNDLED_APP_VERSION = "1.6.0-beta.4"
 MOSE_VERSION = "0.1.0"
 
 
@@ -1465,7 +1465,7 @@ class LauncherApi:
             return {"ok": False, "preview": "", "errorCode": "missing_source"}
         try:
             try:
-                project = read_project(project_path) if project_path is not None else read_srt(srt_path)
+                project = read_project(project_path) if project_path is not None else read_srt(srt_path, strict=True)
             except (PostprocessFileError, ProjectValidationFailed) as error:
                 return {"ok": False, "preview": "", "errorCode": "subtitle_invalid", "code": "subtitle_invalid", "detail": str(error)}
             try:

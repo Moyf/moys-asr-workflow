@@ -354,24 +354,24 @@
 
 
   function restoreExtensionTrackSelection(track, snapshot) {
-    if (!track || !snapshot?.active) return;
-    MaweSelection.selectedExtensionIdxs.clear();
-    snapshot.selectedIds.forEach((id) => {
-      const index = track.segments.findIndex((segment) => segment?.id === id);
-      if (index >= 0) MaweSelection.selectedExtensionIdxs.add(index);
-    });
-    if (snapshot.currentId && MaweCuePanelState.currentCuePanelKind === 'extension'
-        && MaweCuePanelState.currentCuePanelTrackId === track.id) {
-      MaweCuePanelState.currentCuePanelIdx = track.segments.findIndex((segment) => segment?.id === snapshot.currentId);
-      if (MaweCuePanelState.currentCuePanelIdx < 0) {
-        MaweCuePanelState.currentCuePanelKind = 'main';
-        MaweCuePanelState.currentCuePanelTrackId = null;
-      }
+  if (!track || !snapshot?.active) return;
+  MaweSelection.selectedExtensionIdxs.clear();
+  snapshot.selectedIds.forEach((id) => {
+    const index = track.segments.findIndex((segment) => segment?.id === id);
+    if (index >= 0) MaweSelection.selectedExtensionIdxs.add(index);
+  });
+  if (snapshot.currentId && MaweCuePanelState.currentCuePanelKind === 'extension'
+      && MaweCuePanelState.currentCuePanelTrackId === track.id) {
+    MaweCuePanelState.currentCuePanelIdx = track.segments.findIndex((segment) => segment?.id === snapshot.currentId);
+    if (MaweCuePanelState.currentCuePanelIdx < 0) {
+      MaweCuePanelState.currentCuePanelKind = 'main';
+      MaweCuePanelState.currentCuePanelTrackId = null;
     }
-    MaweSelection.lastClickedExtensionIdx = snapshot.lastClickedId
-      ? track.segments.findIndex((segment) => segment?.id === snapshot.lastClickedId) : -1;
-    MaweDom.selCountEl.textContent = String(MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size);
   }
+  MaweSelection.lastClickedExtensionIdx = snapshot.lastClickedId
+    ? track.segments.findIndex((segment) => segment?.id === snapshot.lastClickedId) : -1;
+  updateSelectionCountText();
+}
 
 
 

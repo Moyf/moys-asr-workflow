@@ -8,28 +8,30 @@
 
 
   function applyCueListDisplaySettings({ preserveCueListScroll = true } = {}) {
-    const cueListAnchor = preserveCueListScroll ? MaweCueListAnchor.captureCueListRenderAnchor() : null;
-    MaweDom.cueListShowIndexToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowIndex;
-    MaweDom.cueListShowTimeToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowTime;
-    MaweDom.cueListShowStickerToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowSticker;
-    MaweDom.cueListShowCharcountToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowCharcount;
-    MaweDom.cueListAutoScrollOnClickToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick;
-    MaweDom.cueListKeepSplitVisibleToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListKeepSplitVisible;
-    MaweCueElements.syncCharCountThresholdInputs(MaweSettings.EDITOR_SETTINGS.cueListCharcountThreshold);
-    MaweDom.hideDisabled = MaweSettings.EDITOR_SETTINGS.cueListHideDisabled;
-    MaweDom.hideDisabledToggle.checked = MaweDom.hideDisabled;
-    MaweCoreState.container.classList.toggle('hide-disabled', MaweDom.hideDisabled);
-    MaweCoreState.container.classList.toggle('hide-cue-index', !MaweSettings.EDITOR_SETTINGS.cueListShowIndex);
-    MaweCoreState.container.classList.toggle('hide-cue-time', !MaweSettings.EDITOR_SETTINGS.cueListShowTime);
-    // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
-    // 分配首个表情包时由本函数根据最新数据直接恢复。
-    const projectHasStickers = MaweBoot.DATA.segments.some(segment => segment.sticker || segment.sticker_ref);
-    MaweCoreState.container.classList.toggle('hide-cue-sticker',
-      !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
-    );
-    MaweCoreState.container.classList.toggle('hide-cue-charcount', !MaweSettings.EDITOR_SETTINGS.cueListShowCharcount);
-    MaweCueListAnchor.restoreCueListRenderAnchor(cueListAnchor);
-  }
+  const cueListAnchor = preserveCueListScroll ? MaweCueListAnchor.captureCueListRenderAnchor() : null;
+  MaweDom.cueListShowIndexToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowIndex;
+  MaweDom.cueListShowTimeToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowTime;
+  MaweDom.cueListShowStickerToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowSticker;
+  MaweDom.cueListShowCharcountToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowCharcount;
+  MaweDom.cueListAutoScrollOnClickToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick;
+  MaweDom.cueListKeepSplitVisibleToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListKeepSplitVisible;
+  MaweCueElements.syncCharCountThresholdInputs(MaweSettings.EDITOR_SETTINGS.cueListCharcountThreshold);
+  MaweDom.hideDisabled = MaweSettings.EDITOR_SETTINGS.cueListHideDisabled;
+  MaweDom.hideDisabledToggle.checked = MaweDom.hideDisabled;
+  MaweCoreState.container.classList.toggle('hide-disabled', MaweDom.hideDisabled);
+  MaweCoreState.container.classList.toggle('hide-cue-index', !MaweSettings.EDITOR_SETTINGS.cueListShowIndex);
+  MaweCoreState.container.classList.toggle('hide-cue-time', !MaweSettings.EDITOR_SETTINGS.cueListShowTime);
+  // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
+  // 分配首个表情包时由本函数根据最新数据直接恢复。
+  const overlaySegments = getOverlayTrack()?.segments || [];
+  const projectHasStickers = MaweBoot.DATA.segments.some(segment => segment.sticker || segment.sticker_ref)
+    || overlaySegments.some(segment => segment.sticker || segment.sticker_ref);
+  MaweCoreState.container.classList.toggle('hide-cue-sticker',
+    !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
+  );
+  MaweCoreState.container.classList.toggle('hide-cue-charcount', !MaweSettings.EDITOR_SETTINGS.cueListShowCharcount);
+  MaweCueListAnchor.restoreCueListRenderAnchor(cueListAnchor);
+}
 
 
 
@@ -57,111 +59,115 @@
 
 
   function updateMultiSubtitleUi() {
-    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    const hasTrack = Boolean(track && Array.isArray(track.segments));
-    const enabled = hasTrack && MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
-    const hasMainSubtitle = MaweBoot.DATA.segments.length > 0;
-    const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
-    const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
-    syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
-    MaweSplitMode.refreshMergeJoinModeHint();
-    if (MaweDom.multiSubtitleControls) MaweDom.multiSubtitleControls.hidden = !hasMainSubtitle;
-    if (MaweDom.multiSubtitleSettingsDropdown) {
-      // 齿轮仅在已导入副轨（真正进入多重字幕编辑）时显示；
-      // 已开启但还没有第二条字幕时改在开关右侧显示拖入提示。
-      MaweDom.multiSubtitleSettingsDropdown.hidden = !enabled;
-      if (MaweDom.multiSubtitleSettingsDropdown.hidden) {
-        MaweDom.multiSubtitleSettingsDropdown.classList.remove('open');
-        MaweDom.multiSubtitleSettingsDropdown.querySelector('button[aria-expanded]')
-          ?.setAttribute('aria-expanded', 'false');
-      }
+  const overlayVisible = overlayTrackVisible();
+  if (overlayTrackControls) overlayTrackControls.hidden = !getOverlayTrack()?.segments?.length;
+  if (overlayTrackSeparator) overlayTrackSeparator.hidden = overlayTrackControls?.hidden !== false;
+  if (overlayTrackToggle) overlayTrackToggle.checked = overlayVisible;
+  const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+  const hasTrack = Boolean(track && Array.isArray(track.segments));
+  const enabled = hasTrack && MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+  const hasMainSubtitle = MaweBoot.DATA.segments.length > 0;
+  const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
+  const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
+  syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
+  MaweSplitMode.refreshMergeJoinModeHint();
+  if (MaweDom.multiSubtitleControls) MaweDom.multiSubtitleControls.hidden = !hasMainSubtitle;
+  if (MaweDom.multiSubtitleSettingsDropdown) {
+    // 齿轮仅在已导入副轨（真正进入多重字幕编辑）时显示；
+    // 已开启但还没有第二条字幕时改在开关右侧显示拖入提示。
+    MaweDom.multiSubtitleSettingsDropdown.hidden = !enabled;
+    if (MaweDom.multiSubtitleSettingsDropdown.hidden) {
+      MaweDom.multiSubtitleSettingsDropdown.classList.remove('open');
+      MaweDom.multiSubtitleSettingsDropdown.querySelector('button[aria-expanded]')
+        ?.setAttribute('aria-expanded', 'false');
     }
-    if (MaweDom.multiSubtitleEmptyHint) {
-      // 提示与齿轮互斥：开启但无副轨 → 显示；其余隐藏。
-      MaweDom.multiSubtitleEmptyHint.hidden = !(MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true && !enabled);
-    }
-    if (MaweDom.splitMultiSubtitleSettingsEnabledHint) MaweDom.splitMultiSubtitleSettingsEnabledHint.hidden = !enabled;
-    if (MaweDom.splitMultiSubtitleSettingsDisabledHint) MaweDom.splitMultiSubtitleSettingsDisabledHint.hidden = enabled;
-    if (MaweDom.multiSubtitleToggle) {
-      // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
-      MaweDom.multiSubtitleToggle.checked = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
-      // 没有副轨时仍允许点击，由 change 处理器询问是否现在导入第二条字幕。
-      MaweDom.multiSubtitleToggle.disabled = false;
-    }
-    if (MaweDom.multiSubtitleToggleLabel) {
-      MaweDom.multiSubtitleToggleLabel.classList.remove('disabled');
-      MaweDom.multiSubtitleToggleLabel.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
-    }
-    if (MaweDom.multiSubtitleToggle) MaweDom.multiSubtitleToggle.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
-    if (MaweDom.multiSubtitleDisplayMode) {
-      MaweDom.multiSubtitleDisplayMode.value = MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both';
-      MaweDom.multiSubtitleDisplayMode.hidden = !enabled;
-    }
-    if (MaweDom.multiSubtitleMainLanguageMode) {
-      MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]);
-      MaweDom.multiSubtitleMainLanguageMode.hidden = !enabled;
-    }
-    if (MaweDom.multiSubtitleExtensionLanguageMode) {
-      MaweDom.multiSubtitleExtensionLanguageMode.value = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, track?.segments?.[0]);
-      MaweDom.multiSubtitleExtensionLanguageMode.hidden = !enabled;
-    }
-    if (MaweDom.multiSubtitleExtensionRowHeight) {
-      MaweDom.multiSubtitleExtensionRowHeight.value = String(MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);
-      MaweDom.multiSubtitleExtensionRowHeight.disabled = !enabled;
-    }
-    if (MaweDom.multiSubtitleExtensionRowHeightSetting) {
-      MaweDom.multiSubtitleExtensionRowHeightSetting.hidden = !enabled;
-    }
-    if (MaweDom.multiSubtitleCrossTrackSnapToggle) {
-      MaweDom.multiSubtitleCrossTrackSnapToggle.checked = MaweSettings.EDITOR_SETTINGS.crossTrackSnap;
-      MaweDom.multiSubtitleCrossTrackSnapToggle.disabled = !enabled;
-    }
-    if (MaweDom.multiSubtitleSelectBoundPairToggle) {
-      MaweDom.multiSubtitleSelectBoundPairToggle.checked = MaweSettings.EDITOR_SETTINGS.selectBoundSubtitlePair;
-      MaweDom.multiSubtitleSelectBoundPairToggle.disabled = !enabled;
-    }
-    if (MaweDom.multiSubtitleAutoSyncDurationToggle) {
-      MaweDom.multiSubtitleAutoSyncDurationToggle.checked = MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration;
-      MaweDom.multiSubtitleAutoSyncDurationToggle.disabled = !enabled;
-    }
-    if (MaweDom.multiSubtitleShowTrackBadgesToggle) {
-      MaweDom.multiSubtitleShowTrackBadgesToggle.checked = MaweSettings.EDITOR_SETTINGS.multiSubtitleShowTrackBadges;
-      MaweDom.multiSubtitleShowTrackBadgesToggle.disabled = !enabled;
-    }
-    if (MaweDom.multiSubtitleSwapButton) {
-      const canSwap = enabled && (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).length === 1
-        && MaweBoot.DATA.segments.length > 0 && (track?.segments || []).length > 0;
-      MaweDom.multiSubtitleSwapButton.classList.toggle('disabled', !canSwap);
-      MaweDom.multiSubtitleSwapButton.setAttribute('aria-disabled', canSwap ? 'false' : 'true');
-    }
-    if (MaweDom.multiSubtitleWaveformControls) MaweDom.multiSubtitleWaveformControls.hidden = !enabled;
-    if (MaweDom.multiSubtitleAlignButton) MaweDom.multiSubtitleAlignButton.hidden = !enabled;
-    if (MaweDom.extensionOverlayToggleWrap) MaweDom.extensionOverlayToggleWrap.hidden = !enabled;
-    if (MaweDom.extensionSubtitlePreviewTitle) MaweDom.extensionSubtitlePreviewTitle.hidden = !enabled;
-    if (MaweDom.extensionSubtitlePreviewSettings) MaweDom.extensionSubtitlePreviewSettings.hidden = !enabled;
-    if (MaweDom.extensionOverlayToggle) {
-      if (enteringEnabled) MaweSettings.updateEditorSettings({ extensionOverlayEnabled: true });
-      MaweDom.extensionOverlayToggle.checked = enabled
-        ? (enteringEnabled || MaweSettings.EDITOR_SETTINGS.extensionOverlayEnabled)
-        : false;
-    }
-    previousMultiSubtitlePreviewEnabled = enabled;
-    // 「仅看超长」按单轨文本字数筛选；多重字幕开启后主/副两栏合并计数失去筛选意义，
-    // 隐藏入口（含前面的分隔线）。若筛选已激活则一并复位，避免残留不可见的过滤状态。
-    const filterOverButton = document.getElementById('filter-over');
-    if (filterOverButton) {
-      filterOverButton.hidden = enabled;
-      const filterOverSep = document.getElementById('filter-over-sep');
-      if (filterOverSep) filterOverSep.hidden = enabled;
-      if (enabled && filterOverButton.classList.contains('active')) {
-        filterOverButton.classList.remove('active');
-        MaweCueElements.clearTemporaryVisibleSplitCues();
-        MaweSearch.applySearch(MaweDom.searchEl.value);
-      }
-    }
-    MaweCoreState.container.classList.toggle('multi-subtitle-enabled', enabled);
-    MaweCoreState.container.dataset.multiDisplayMode = enabled ? (MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both') : 'main';
   }
+  if (MaweDom.multiSubtitleEmptyHint) {
+    // 提示与齿轮互斥：开启但无副轨 → 显示；其余隐藏。
+    MaweDom.multiSubtitleEmptyHint.hidden = !(MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true && !enabled);
+  }
+  if (MaweDom.splitMultiSubtitleSettingsEnabledHint) MaweDom.splitMultiSubtitleSettingsEnabledHint.hidden = !enabled;
+  if (MaweDom.splitMultiSubtitleSettingsDisabledHint) MaweDom.splitMultiSubtitleSettingsDisabledHint.hidden = enabled;
+  if (MaweDom.multiSubtitleToggle) {
+    // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
+    MaweDom.multiSubtitleToggle.checked = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+    // 没有副轨时仍允许点击，由 change 处理器询问是否现在导入第二条字幕。
+    MaweDom.multiSubtitleToggle.disabled = false;
+  }
+  if (MaweDom.multiSubtitleToggleLabel) {
+    MaweDom.multiSubtitleToggleLabel.classList.remove('disabled');
+    MaweDom.multiSubtitleToggleLabel.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
+  }
+  if (MaweDom.multiSubtitleToggle) MaweDom.multiSubtitleToggle.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
+  if (MaweDom.multiSubtitleDisplayMode) {
+    MaweDom.multiSubtitleDisplayMode.value = MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both';
+    MaweDom.multiSubtitleDisplayMode.hidden = !enabled;
+  }
+  if (MaweDom.multiSubtitleMainLanguageMode) {
+    MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]);
+    MaweDom.multiSubtitleMainLanguageMode.hidden = !enabled;
+  }
+  if (MaweDom.multiSubtitleExtensionLanguageMode) {
+    MaweDom.multiSubtitleExtensionLanguageMode.value = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, track?.segments?.[0]);
+    MaweDom.multiSubtitleExtensionLanguageMode.hidden = !enabled;
+  }
+  if (MaweDom.multiSubtitleExtensionRowHeight) {
+    MaweDom.multiSubtitleExtensionRowHeight.value = String(MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);
+    MaweDom.multiSubtitleExtensionRowHeight.disabled = !enabled;
+  }
+  if (MaweDom.multiSubtitleExtensionRowHeightSetting) {
+    MaweDom.multiSubtitleExtensionRowHeightSetting.hidden = !enabled;
+  }
+  if (MaweDom.multiSubtitleCrossTrackSnapToggle) {
+    MaweDom.multiSubtitleCrossTrackSnapToggle.checked = MaweSettings.EDITOR_SETTINGS.crossTrackSnap;
+    MaweDom.multiSubtitleCrossTrackSnapToggle.disabled = !enabled;
+  }
+  if (MaweDom.multiSubtitleSelectBoundPairToggle) {
+    MaweDom.multiSubtitleSelectBoundPairToggle.checked = MaweSettings.EDITOR_SETTINGS.selectBoundSubtitlePair;
+    MaweDom.multiSubtitleSelectBoundPairToggle.disabled = !enabled;
+  }
+  if (MaweDom.multiSubtitleAutoSyncDurationToggle) {
+    MaweDom.multiSubtitleAutoSyncDurationToggle.checked = MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration;
+    MaweDom.multiSubtitleAutoSyncDurationToggle.disabled = !enabled;
+  }
+  if (MaweDom.multiSubtitleShowTrackBadgesToggle) {
+    MaweDom.multiSubtitleShowTrackBadgesToggle.checked = MaweSettings.EDITOR_SETTINGS.multiSubtitleShowTrackBadges;
+    MaweDom.multiSubtitleShowTrackBadgesToggle.disabled = !enabled;
+  }
+  if (MaweDom.multiSubtitleSwapButton) {
+    const canSwap = enabled && (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).length === 1
+      && MaweBoot.DATA.segments.length > 0 && (track?.segments || []).length > 0;
+    MaweDom.multiSubtitleSwapButton.classList.toggle('disabled', !canSwap);
+    MaweDom.multiSubtitleSwapButton.setAttribute('aria-disabled', canSwap ? 'false' : 'true');
+  }
+  if (MaweDom.multiSubtitleWaveformControls) MaweDom.multiSubtitleWaveformControls.hidden = !enabled;
+  if (MaweDom.multiSubtitleAlignButton) MaweDom.multiSubtitleAlignButton.hidden = !enabled;
+  if (MaweDom.extensionOverlayToggleWrap) MaweDom.extensionOverlayToggleWrap.hidden = !enabled;
+  if (MaweDom.extensionSubtitlePreviewTitle) MaweDom.extensionSubtitlePreviewTitle.hidden = !enabled;
+  if (MaweDom.extensionSubtitlePreviewSettings) MaweDom.extensionSubtitlePreviewSettings.hidden = !enabled;
+  if (MaweDom.extensionOverlayToggle) {
+    if (enteringEnabled) MaweSettings.updateEditorSettings({ extensionOverlayEnabled: true });
+    MaweDom.extensionOverlayToggle.checked = enabled
+      ? (enteringEnabled || MaweSettings.EDITOR_SETTINGS.extensionOverlayEnabled)
+      : false;
+  }
+  previousMultiSubtitlePreviewEnabled = enabled;
+  // 「仅看超长」按单轨文本字数筛选；多重字幕开启后主/副两栏合并计数失去筛选意义，
+  // 隐藏入口（含前面的分隔线）。若筛选已激活则一并复位，避免残留不可见的过滤状态。
+  const filterOverButton = document.getElementById('filter-over');
+  if (filterOverButton) {
+    filterOverButton.hidden = enabled;
+    const filterOverSep = document.getElementById('filter-over-sep');
+    if (filterOverSep) filterOverSep.hidden = enabled;
+    if (enabled && filterOverButton.classList.contains('active')) {
+      filterOverButton.classList.remove('active');
+      MaweCueElements.clearTemporaryVisibleSplitCues();
+      MaweSearch.applySearch(MaweDom.searchEl.value);
+    }
+  }
+  MaweCoreState.container.classList.toggle('multi-subtitle-enabled', enabled);
+  MaweCoreState.container.dataset.multiDisplayMode = enabled ? (MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both') : 'main';
+}
 
 
 

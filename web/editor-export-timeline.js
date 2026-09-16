@@ -123,45 +123,45 @@
 
 
 
-  function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0) {
-    const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
-    const intervalEndMs = Math.max(
-      intervalStartMs,
-      Math.round(Number(interval?.end) || 0),
-    );
-    const clipStartFrame = msToOtioFrames(intervalStartMs);
-    const clipEndFrame = msToOtioFrames(intervalEndMs);
-    if (clipEndFrame <= clipStartFrame) return [];
+  function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0, segments = MaweBoot.DATA.segments, colorContext = segments) {
+  const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
+  const intervalEndMs = Math.max(
+    intervalStartMs,
+    Math.round(Number(interval?.end) || 0),
+  );
+  const clipStartFrame = msToOtioFrames(intervalStartMs);
+  const clipEndFrame = msToOtioFrames(intervalEndMs);
+  if (clipEndFrame <= clipStartFrame) return [];
 
-    return MaweBoot.DATA.segments.flatMap((segment) => {
-      if (!segment || segment.disabled) return [];
-      const segmentStartMs = Number(segment.start);
-      const segmentEndMs = Number(segment.end);
-      if (!Number.isFinite(segmentStartMs) || !Number.isFinite(segmentEndMs)
-          || segmentEndMs <= segmentStartMs) {
-        return [];
-      }
-      const startMs = Math.max(intervalStartMs, segmentStartMs);
-      const endMs = Math.min(intervalEndMs, segmentEndMs);
-      if (endMs <= startMs) return [];
+  return segments.flatMap((segment) => {
+    if (!segment || segment.disabled) return [];
+    const segmentStartMs = Number(segment.start);
+    const segmentEndMs = Number(segment.end);
+    if (!Number.isFinite(segmentStartMs) || !Number.isFinite(segmentEndMs)
+        || segmentEndMs <= segmentStartMs) {
+      return [];
+    }
+    const startMs = Math.max(intervalStartMs, segmentStartMs);
+    const endMs = Math.min(intervalEndMs, segmentEndMs);
+    if (endMs <= startMs) return [];
 
-      const markerStartFrame = sourceStartFrame + msToOtioFrames(startMs);
-      const markerEndFrame = sourceStartFrame + msToOtioFrames(endMs);
-      if (markerEndFrame <= markerStartFrame) return [];
+    const markerStartFrame = sourceStartFrame + msToOtioFrames(startMs);
+    const markerEndFrame = sourceStartFrame + msToOtioFrames(endMs);
+    if (markerEndFrame <= markerStartFrame) return [];
 
-      const colorName = window.AsrEditorUtils.effectiveColorName(segment, MaweBoot.DATA.segments);
-      return [{
-        OTIO_SCHEMA: 'Marker.2',
-        metadata: {},
-        name: String(segment.text || ''),
-        color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
-        marked_range: otioTimeRange(
-          markerStartFrame,
-          markerEndFrame - markerStartFrame,
-        ),
-      }];
-    });
-  }
+    const colorName = window.AsrEditorUtils.effectiveColorName(segment, colorContext);
+    return [{
+      OTIO_SCHEMA: 'Marker.2',
+      metadata: {},
+      name: String(segment.text || ''),
+      color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
+      marked_range: otioTimeRange(
+        markerStartFrame,
+        markerEndFrame - markerStartFrame,
+      ),
+    }];
+  });
+}
 
 
 
@@ -245,97 +245,121 @@
 
 
   function buildTimelineOtio({
-    gapRemoved = false,
-    includeStickers = false,
-    includeSubtitleMarkers = true,
-  } = {}) {
-    const removed = gapRemoved ? MaweGapRemoveData.getRemovedGapRanges() : [];
-    if (gapRemoved && !removed.length) {
-      MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
-      return null;
-    }
-    const durationMs = MaweCoreState.waveformEditor?.durationMs || Math.round(Number(MaweCoreState.player?.duration) * 1000) || 0;
-    if (!durationMs) {
-      MaweHint.flashHint('媒体时长尚不可用；请先加载媒体后再导出 OTIO', 'invalid');
-      return null;
-    }
-    const targetUrl = mediaTargetUrl();
-    if (!targetUrl) {
-      MaweHint.flashHint('无法获得媒体绝对路径；请用 edit.py / server-editor 打开工程后再导出 OTIO', 'invalid');
-      return null;
-    }
-    const intervals = gapRemoved
-      ? window.AsrEditorUtils.buildGapRemovedIntervals(durationMs, removed)
-      : [{ start: 0, end: durationMs }];
-    if (!intervals.length) {
-      MaweHint.flashHint(
-        gapRemoved ? '移除静音空隙后没有剩余媒体，无法导出 OTIO' : '媒体时长不可用，无法导出 OTIO',
-        'warning',
-      );
-      return null;
-    }
-    const sourceDurationFrames = Math.max(1, msToOtioFrames(durationMs));
-    const sourceStartFrame = mediaStartOtioFrames();
-    const mediaMetadata = MaweTimeline.normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
-    const audioMetadata = Array.isArray(mediaMetadata?.audio_tracks)
-      ? mediaMetadata.audio_tracks : null;
-    const clipName = otioMediaName(targetUrl);
-    const audioEntries = audioMetadata === null
-      ? [{ audioTrack: null, index: 0 }]
-      : audioMetadata.map((audioTrack, index) => ({ audioTrack, index }));
-    const audioSpecs = audioEntries.length || MaweCoreState.player?.tagName !== 'AUDIO'
-      ? audioEntries.map(({ audioTrack, index }) => ({
-        name: otioAudioTrackName(audioTrack, index, audioEntries.length),
-        kind: 'Audio',
-        audioTrack,
-        audioTrackIndex: index,
-      }))
-      : [{ name: '音频', kind: 'Audio', audioTrack: null, audioTrackIndex: 0 }];
-    const trackSpecs = MaweCoreState.player?.tagName === 'AUDIO'
-      ? audioSpecs
-      : [{ name: '视频', kind: 'Video', audioTrack: null, audioTrackIndex: 0 }, ...audioSpecs];
-    const tracks = trackSpecs.map((track, trackIndex) => ({
-      OTIO_SCHEMA: 'Track.1',
-      metadata: {
-        ...otioAudioTrackMetadata(track.audioTrack, track.audioTrackIndex),
-        ...resolveOtioTrackMetadata(track.kind, track.audioTrack),
+  gapRemoved = false,
+  includeStickers = false,
+  includeSubtitleMarkers = true,
+} = {}) {
+  const removed = gapRemoved ? MaweGapRemoveData.getRemovedGapRanges() : [];
+  if (gapRemoved && !removed.length) {
+    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    return null;
+  }
+  const durationMs = MaweCoreState.waveformEditor?.durationMs || Math.round(Number(MaweCoreState.player?.duration) * 1000) || 0;
+  if (!durationMs) {
+    MaweHint.flashHint('媒体时长尚不可用；请先加载媒体后再导出 OTIO', 'invalid');
+    return null;
+  }
+  const targetUrl = mediaTargetUrl();
+  if (!targetUrl) {
+    MaweHint.flashHint('无法获得媒体绝对路径；请用 edit.py / server-editor 打开工程后再导出 OTIO', 'invalid');
+    return null;
+  }
+  const intervals = gapRemoved
+    ? window.AsrEditorUtils.buildGapRemovedIntervals(durationMs, removed)
+    : [{ start: 0, end: durationMs }];
+  if (!intervals.length) {
+    MaweHint.flashHint(
+      gapRemoved ? '移除静音空隙后没有剩余媒体，无法导出 OTIO' : '媒体时长不可用，无法导出 OTIO',
+      'warning',
+    );
+    return null;
+  }
+  const sourceDurationFrames = Math.max(1, msToOtioFrames(durationMs));
+  const sourceStartFrame = mediaStartOtioFrames();
+  const mediaMetadata = MaweTimeline.normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
+  const audioMetadata = Array.isArray(mediaMetadata?.audio_tracks)
+    ? mediaMetadata.audio_tracks : null;
+  const clipName = otioMediaName(targetUrl);
+  const audioEntries = audioMetadata === null
+    ? [{ audioTrack: null, index: 0 }]
+    : audioMetadata.map((audioTrack, index) => ({ audioTrack, index }));
+  const audioSpecs = audioEntries.length || MaweCoreState.player?.tagName !== 'AUDIO'
+    ? audioEntries.map(({ audioTrack, index }) => ({
+      name: otioAudioTrackName(audioTrack, index, audioEntries.length),
+      kind: 'Audio',
+      audioTrack,
+      audioTrackIndex: index,
+    }))
+    : [{ name: '音频', kind: 'Audio', audioTrack: null, audioTrackIndex: 0 }];
+  const trackSpecs = MaweCoreState.player?.tagName === 'AUDIO'
+    ? audioSpecs
+    : [{ name: '视频', kind: 'Video', audioTrack: null, audioTrackIndex: 0 }, ...audioSpecs];
+  const tracks = trackSpecs.map((track, trackIndex) => ({
+    OTIO_SCHEMA: 'Track.1',
+    metadata: {
+      ...otioAudioTrackMetadata(track.audioTrack, track.audioTrackIndex),
+      ...resolveOtioTrackMetadata(track.kind, track.audioTrack),
+    },
+    name: track.name,
+    source_range: null,
+    effects: [],
+    markers: [],
+    enabled: true,
+    color: null,
+    children: intervals.map((interval, index) => buildTimelineMediaClip(
+      interval,
+      index,
+      track.kind,
+      targetUrl,
+      sourceStartFrame,
+      sourceDurationFrames,
+      {
+        includeSubtitleMarkers: includeSubtitleMarkers && (
+          track.kind === 'Video'
+          || (track.kind === 'Audio' && MaweCoreState.player?.tagName === 'AUDIO' && trackIndex === 0)
+        ),
+        gapRemoved,
+        audioTrack: track.audioTrack,
+        audioTrackIndex: track.audioTrackIndex,
+        clipName,
       },
-      name: track.name,
-      source_range: null,
-      effects: [],
-      markers: [],
-      enabled: true,
-      color: null,
-      children: intervals.map((interval, index) => buildTimelineMediaClip(
-        interval,
-        index,
-        track.kind,
-        targetUrl,
-        sourceStartFrame,
-        sourceDurationFrames,
-        {
-          includeSubtitleMarkers: includeSubtitleMarkers && (
-            track.kind === 'Video'
-            || (track.kind === 'Audio' && MaweCoreState.player?.tagName === 'AUDIO' && trackIndex === 0)
-          ),
-          gapRemoved,
-          audioTrack: track.audioTrack,
-          audioTrackIndex: track.audioTrackIndex,
-          clipName,
-        },
-      )),
-      kind: track.kind,
-    }));
-    // 勾选「时间线包含表情包」时，把表情包作为叠加视频轨合并进同一个 OTIO 时间线；
-    // 没有表情包时静默跳过，仅保留时间线本体。
+    )),
+    kind: track.kind,
+  }));
+  // 勾选「时间线包含表情包」时，把表情包作为叠加视频轨合并进同一个 OTIO 时间线；
+  // 没有表情包时静默跳过，仅保留时间线本体。
+  if (includeStickers) {
+    const collected = collectStickerOtioEntries(removed);
+    if (collected.error) {
+      MaweHint.flashHint(collected.error, 'warning');
+      return null;
+    }
+    if (collected.entries.length) {
+      const stickerTrack = buildStickerOtioTrack(collected.entries);
+      if (stickerTrack.error) {
+        MaweHint.flashHint(stickerTrack.error, 'warning');
+        return null;
+      }
+      tracks.push(stickerTrack.track);
+    }
+  }
+  // 叠加轨独立导出：字幕以「叠加字幕」标记轨写入（与主轨 clip 标记分开），
+  // 表情包在「叠加表情」视频轨（与主轨表情包轨分开）；轨道为空时静默跳过。
+  const overlaySegments = MaweBoot.DATA.overlay_track?.enabled === true
+    ? (MaweBoot.DATA.overlay_track?.segments || []) : [];
+  if (overlaySegments.length) {
+    if (includeSubtitleMarkers) {
+      const overlayMarkerTrack = buildOverlaySubtitleOtioTrack(overlaySegments, intervals, sourceStartFrame);
+      if (overlayMarkerTrack.children.length) tracks.push(overlayMarkerTrack);
+    }
     if (includeStickers) {
-      const collected = collectStickerOtioEntries(removed);
+      const collected = collectStickerOtioEntries(removed, overlaySegments);
       if (collected.error) {
         MaweHint.flashHint(collected.error, 'warning');
         return null;
       }
       if (collected.entries.length) {
-        const stickerTrack = buildStickerOtioTrack(collected.entries);
+        const stickerTrack = buildStickerOtioTrack(collected.entries, '叠加表情');
         if (stickerTrack.error) {
           MaweHint.flashHint(stickerTrack.error, 'warning');
           return null;
@@ -343,41 +367,42 @@
         tracks.push(stickerTrack.track);
       }
     }
-    const metadata = {
-      moy: {
-        source_media: targetUrl,
-        ...(audioMetadata !== null ? {
-          audio_tracks: audioMetadata.map((audioTrack, index) => ({
-            ...otioAudioTrackMetadata(audioTrack, index).moy,
-          })),
-        } : {}),
-        ...(gapRemoved ? {
-          gap_remove_schema: MaweSettings.GAP_REMOVE_SCHEMA,
-          removed_gaps_ms: removed,
-        } : {}),
-      },
-      Resolve_OTIO: {
-        'Resolve OTIO Meta Version': '1.0',
-      },
-    };
-    return JSON.stringify({
-      OTIO_SCHEMA: 'Timeline.1',
-      metadata,
-      name: gapRemoved ? `${MaweBoot.FILENAME_BASE}_去空隙` : MaweBoot.FILENAME_BASE,
-      global_start_time: otioTime(0),
-      tracks: {
-        OTIO_SCHEMA: 'Stack.1',
-        metadata: {},
-        name: 'tracks',
-        source_range: null,
-        effects: [],
-        markers: [],
-        enabled: true,
-        color: null,
-        children: tracks,
-      },
-    }, null, 4);
   }
+  const metadata = {
+    moy: {
+      source_media: targetUrl,
+      ...(audioMetadata !== null ? {
+        audio_tracks: audioMetadata.map((audioTrack, index) => ({
+          ...otioAudioTrackMetadata(audioTrack, index).moy,
+        })),
+      } : {}),
+      ...(gapRemoved ? {
+        gap_remove_schema: MaweSettings.GAP_REMOVE_SCHEMA,
+        removed_gaps_ms: removed,
+      } : {}),
+    },
+    Resolve_OTIO: {
+      'Resolve OTIO Meta Version': '1.0',
+    },
+  };
+  return JSON.stringify({
+    OTIO_SCHEMA: 'Timeline.1',
+    metadata,
+    name: gapRemoved ? `${MaweBoot.FILENAME_BASE}_去空隙` : MaweBoot.FILENAME_BASE,
+    global_start_time: otioTime(0),
+    tracks: {
+      OTIO_SCHEMA: 'Stack.1',
+      metadata: {},
+      name: 'tracks',
+      source_range: null,
+      effects: [],
+      markers: [],
+      enabled: true,
+      color: null,
+      children: tracks,
+    },
+  }, null, 4);
+}
 
 
 
@@ -434,42 +459,42 @@
   // 收集表情包条目；当传入 removed gaps 时，把每条表情包的时间映射到去空隙后的时间线，
   // 并跳过完全落在空隙内、映射后时长归零的条目。removed 为空数组时退化为原始时间线。
   // 表情包必须有真实磁盘路径（服务器 OTIO/OTIOZ 均按 sticker_rel 读盘）。
-  function collectStickerOtioEntries(removed) {
-    const entries = [];
-    for (let idx = 0; idx < MaweBoot.DATA.segments.length; idx++) {
-      const seg = MaweBoot.DATA.segments[idx];
-      if (seg.disabled) continue;
-      const headIdx = seg.sticker_ref?.headIdx;
-      const head = Number.isInteger(headIdx) ? MaweBoot.DATA.segments[headIdx] : null;
-      if (seg.sticker_ref && (!head || head.disabled || headIdx >= idx)) continue;
-      const sticker = seg.sticker || head?.sticker;
-      if (!sticker) continue;
-      const absPath = MaweSelection.stickerAbsPath(sticker);
-      if (!absPath) {
-        return { error: '表情包缺少真实磁盘路径；请先设置实际表情包根目录后再导出 OTIO' };
-      }
-      const origStart = seg.sticker?.start != null ? seg.sticker.start : seg.start;
-      const origEnd = seg.sticker?.end != null ? seg.sticker.end : seg.end;
-      if (origEnd <= origStart) continue;
-      const startMs = removed.length
-        ? window.AsrEditorUtils.mapGapRemovedTime(origStart, removed)
-        : origStart;
-      const endMs = removed.length
-        ? window.AsrEditorUtils.mapGapRemovedTime(origEnd, removed)
-        : origEnd;
-      // 映射后归零说明整张表情包都在被移除的空隙内，丢弃
-      if (endMs <= startMs) continue;
-      entries.push({
-        idx,
-        startMs,
-        endMs,
-        absPath,
-        sticker_rel: sticker.rel || '',
-        name: stickerOtioName(sticker, absPath),
-      });
+  function collectStickerOtioEntries(removed, segments = MaweBoot.DATA.segments) {
+  const entries = [];
+  for (let idx = 0; idx < segments.length; idx++) {
+    const seg = segments[idx];
+    if (seg.disabled) continue;
+    const headIdx = seg.sticker_ref?.headIdx;
+    const head = Number.isInteger(headIdx) ? segments[headIdx] : null;
+    if (seg.sticker_ref && (!head || head.disabled || headIdx >= idx)) continue;
+    const sticker = seg.sticker || head?.sticker;
+    if (!sticker) continue;
+    const absPath = MaweSelection.stickerAbsPath(sticker);
+    if (!absPath) {
+      return { error: '表情包缺少真实磁盘路径；请先设置实际表情包根目录后再导出 OTIO' };
     }
-    return { entries };
+    const origStart = seg.sticker?.start != null ? seg.sticker.start : seg.start;
+    const origEnd = seg.sticker?.end != null ? seg.sticker.end : seg.end;
+    if (origEnd <= origStart) continue;
+    const startMs = removed.length
+      ? window.AsrEditorUtils.mapGapRemovedTime(origStart, removed)
+      : origStart;
+    const endMs = removed.length
+      ? window.AsrEditorUtils.mapGapRemovedTime(origEnd, removed)
+      : origEnd;
+    // 映射后归零说明整张表情包都在被移除的空隙内，丢弃
+    if (endMs <= startMs) continue;
+    entries.push({
+      idx,
+      startMs,
+      endMs,
+      absPath,
+      sticker_rel: sticker.rel || '',
+      name: stickerOtioName(sticker, absPath),
+    });
   }
+  return { entries };
+}
 
 
 
@@ -805,74 +830,74 @@
 
   // 把表情包条目构建为一条可放进任意时间线 Stack 的单层视频轨（Gap 填充 + 图片 Clip）。
   // stickers 会被就地排序；时间重叠时返回 { error }，由调用方决定中止还是跳过。
-  function buildStickerOtioTrack(stickers) {
-    stickers.sort((a, b) => (a.startMs - b.startMs) || (a.endMs - b.endMs) || (a.idx - b.idx));
-    const children = [];
-    let cursor = 0;
-    for (const sticker of stickers) {
-      const startFrame = MaweExportTimeline.msToOtioFrames(sticker.startMs);
-      const endFrame = MaweExportTimeline.msToOtioFrames(sticker.endMs);
-      const durationFrames = Math.max(1, endFrame - startFrame);
-      if (startFrame < cursor) {
-        return { error: `表情包时间重叠，无法导出单轨 OTIO：${sticker.name}` };
-      }
-      if (startFrame > cursor) {
-        children.push({
-          OTIO_SCHEMA: 'Gap.1',
+  function buildStickerOtioTrack(stickers, trackName = '表情包') {
+  stickers.sort((a, b) => (a.startMs - b.startMs) || (a.endMs - b.endMs) || (a.idx - b.idx));
+  const children = [];
+  let cursor = 0;
+  for (const sticker of stickers) {
+    const startFrame = msToOtioFrames(sticker.startMs);
+    const endFrame = msToOtioFrames(sticker.endMs);
+    const durationFrames = Math.max(1, endFrame - startFrame);
+    if (startFrame < cursor) {
+      return { error: `表情包时间重叠，无法导出单轨 OTIO：${sticker.name}` };
+    }
+    if (startFrame > cursor) {
+      children.push({
+        OTIO_SCHEMA: 'Gap.1',
+        metadata: {},
+        name: '',
+        source_range: otioTimeRange(0, startFrame - cursor),
+        effects: [],
+        markers: [],
+        enabled: true,
+        color: null,
+      });
+    }
+    children.push({
+      OTIO_SCHEMA: 'Clip.2',
+      metadata: {
+        moy: {
+          asr_segment_index: sticker.idx,
+          start_ms: Math.round(sticker.startMs),
+          end_ms: Math.round(sticker.endMs),
+          sticker_rel: sticker.sticker_rel,
+        },
+      },
+      name: sticker.name,
+      source_range: otioTimeRange(0, durationFrames),
+      effects: [],
+      markers: [],
+      enabled: true,
+      color: null,
+      media_references: {
+        DEFAULT_MEDIA: {
+          OTIO_SCHEMA: 'ExternalReference.1',
           metadata: {},
           name: '',
-          source_range: MaweExportTimeline.otioTimeRange(0, startFrame - cursor),
-          effects: [],
-          markers: [],
-          enabled: true,
-          color: null,
-        });
-      }
-      children.push({
-        OTIO_SCHEMA: 'Clip.2',
-        metadata: {
-          moy: {
-            asr_segment_index: sticker.idx,
-            start_ms: Math.round(sticker.startMs),
-            end_ms: Math.round(sticker.endMs),
-            sticker_rel: sticker.sticker_rel,
-          },
+          available_range: null,
+          available_image_bounds: null,
+          target_url: sticker.targetUrl || stickerTargetUrl(sticker.absPath),
         },
-        name: sticker.name,
-        source_range: MaweExportTimeline.otioTimeRange(0, durationFrames),
-        effects: [],
-        markers: [],
-        enabled: true,
-        color: null,
-        media_references: {
-          DEFAULT_MEDIA: {
-            OTIO_SCHEMA: 'ExternalReference.1',
-            metadata: {},
-            name: '',
-            available_range: null,
-            available_image_bounds: null,
-            target_url: sticker.targetUrl || MaweExportTimeline.stickerTargetUrl(sticker.absPath),
-          },
-        },
-        active_media_reference_key: 'DEFAULT_MEDIA',
-      });
-      cursor = startFrame + durationFrames;
-    }
-    return {
-      track: {
-        OTIO_SCHEMA: 'Track.1',
-        metadata: {},
-        name: '表情包',
-        source_range: null,
-        effects: [],
-        markers: [],
-        enabled: true,
-        color: null,
-        children,
-        kind: 'Video',
       },
-    };
+      active_media_reference_key: 'DEFAULT_MEDIA',
+    });
+    cursor = startFrame + durationFrames;
   }
+  return {
+    track: {
+      OTIO_SCHEMA: 'Track.1',
+      metadata: {},
+      name: trackName,
+      source_range: null,
+      effects: [],
+      markers: [],
+      enabled: true,
+      color: null,
+      children,
+      kind: 'Video',
+    },
+  };
+}
 
 
 

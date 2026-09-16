@@ -45,6 +45,7 @@
   "script_alignment": { ... },
   "workspace": { ... },
   "preview": { ... },
+  "overlay_track": { ... },
   "segments": [ ... ]
 }
 ```
@@ -57,7 +58,7 @@
 | `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。仅用于显示与选择切句计量方式 |
 | `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知） |
 | `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
-| `timestamp_granularity` | `string` | 否 | 时间码粒度：`char`、`word`、`segment` 或 `unknown`。只有整段 start/end 的模型使用 `segment`；这类工程的字幕段可以没有 `items` |
+| `timestamp_granularity` | `string` | 否 | 时间码粒度：`char`、`word`、`segment` 或 `unknown`。只有整段 start/end 的模型使用 `segment`；这类工程的字幕段可以没有 `items`，超长段可能已按标点（连续语言）或单词数（单词型）二次拆分，段内时间是插值近似值（不携带 `items` 冒充词级精度） |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
 | `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、成对的正整数 `video_width` / `video_height`、非负整数 `selected_audio_track` 和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
 | `timebase` | `object` | 否 | 字幕编辑时间基准：`unit` 为 `milliseconds` 或 `frames`，`fps` 范围为 1–240。缺失时按毫秒模式兼容读取 |
@@ -67,6 +68,7 @@
 | `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
 | `workspace` | `object` | 否 | 编辑器工作区：四个功能区的窗口布局与显示状态；不影响字幕和波形缓存。服务器版也可使用独立的本机命名工作区库跨工程复用 |
 | `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（副字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
+| `overlay_track` | `object` | 否 | 独立的叠加字幕轨。它的段可以与主轨重叠，但轨内保持时间顺序；用于保存导入 SRT 时出现的双层字幕 |
 
 `media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在全局设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
 
@@ -424,7 +426,37 @@
 - `preview.sticker` 缺失时同样按旧工程处理，使用默认几何 `{ x: 0.73, y: 0.04, width: 0.24, height: 0.3 }`（右上角）。两个几何共用同一套归一化与钳制规则。
 - 该几何只移动/缩放预览框容器；内部文字 `<span>` 仍保持居中与药丸样式，`segments[*].start/end/items[*].start/end` 永不被此几何改动。
 
-### 1.5 multi_subtitle 多重字幕
+### 1.5 overlay_track 叠加字幕轨
+
+`overlay_track` 是可选的单条独立字幕轨，用于保存同一份 SRT 中与主轨重叠的字幕。顶层 `segments` 始终是主轨真源；叠加轨只含自身的 `segments`，不建立主副绑定关系，也不替代 §1.6 的双语 `multi_subtitle`。
+
+```json
+{
+  "overlay_track": {
+    "enabled": true,
+    "segments": [{
+      "id": "overlay-001",
+      "start": 500,
+      "end": 1500,
+      "text": "叠加字幕"
+    }]
+  }
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `overlay_track.enabled` | boolean | 否 | 默认 `false`；关闭时保留轨道数据但编辑器不显示或导出它 |
+| `overlay_track.segments` | array | 否 | 叠加字幕段；字段与顶层 `segments[i]` 相同，缺失时按空数组处理 |
+
+约束：
+
+- `overlay_track.segments` 内部必须按时间升序排列，且相邻段满足 `end <= next.start`；它们可以与顶层主轨任意重叠。
+- 缺失稳定 ID 的段按 `overlay-001`、`overlay-002` 等确定性规则补齐；`sticker_ref` 和 `color_ref` 的 `headIdx` 仅引用叠加轨自身的段。
+- 后处理与 Server 导出的单个 SRT 会合并启用的主轨和叠加轨：先按 `start` 升序，开始时间相同则主轨在前；禁用或空文本段不导出。
+- 从 SRT 导入时优先放入主轨；与主轨冲突的 cue 放入叠加轨；若同一时刻需要第三层则导入失败，不会静默丢失字幕。
+
+### 1.6 multi_subtitle 多重字幕
 
 `multi_subtitle` 是可选的双语字幕结构。旧工程缺失该字段时，编辑器按关闭状态加载；保存时会补写关闭的空结构。顶层 `segments` 始终是主轨真源，副字幕只放在 `tracks[*].segments` 中。
 
@@ -798,6 +830,7 @@ uv run python edit.py your_generated.mosp
 | `sticker_root` | string | ❌ | 表情包根目录 |
 | `waveform` | object | ❌ | 可丢弃的 `moy.asr.waveform.v1` 峰值缓存 |
 | `gap_remove` | object | ❌ | 可逆的 `moy.asr.gap_remove.v1` 空隙移除决定 |
+| `overlay_track` | object | ❌ | 独立叠加字幕轨 `{enabled, segments}` |
 | `multi_subtitle` | object | ❌ | 可选的 `moy.asr.multi_subtitle.v1` 主轨/扩展轨与绑定 |
 | `preview` | object | ❌ | 预览呈现设置容器 |
 | `preview.subtitle.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |

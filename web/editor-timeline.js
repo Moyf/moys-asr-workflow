@@ -207,16 +207,17 @@
 
 
   function syncProjectTimebase(project = MaweBoot.DATA, { preferFrames = false } = {}) {
-    if (!project || typeof project !== 'object') return normalizeTimelineTimebase();
-    const timebase = projectTimebase(project);
-    project.timebase = { ...timebase };
-    syncTrackTimebase(project.segments, timebase, { preferFrames });
-    const tracks = project.multi_subtitle?.tracks;
-    if (Array.isArray(tracks)) {
-      tracks.forEach((track) => syncTrackTimebase(track?.segments, timebase, { preferFrames }));
-    }
-    return timebase;
+  if (!project || typeof project !== 'object') return normalizeTimelineTimebase();
+  const timebase = projectTimebase(project);
+  project.timebase = { ...timebase };
+  syncTrackTimebase(project.segments, timebase, { preferFrames });
+  const tracks = project.multi_subtitle?.tracks;
+  if (Array.isArray(tracks)) {
+    tracks.forEach((track) => syncTrackTimebase(track?.segments, timebase, { preferFrames }));
   }
+  syncTrackTimebase(project.overlay_track?.segments, timebase, { preferFrames });
+  return timebase;
+}
 
 
 

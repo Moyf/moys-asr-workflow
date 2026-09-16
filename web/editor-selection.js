@@ -85,37 +85,43 @@
 
 
   function clearSelection({ silent = false, commitCuePanel = true } = {}) {
-    MaweNavPreview.hideCueSplitPreview();
-    cancelPendingExtensionBinding();
-    selectedIdxs.forEach(i => {
-      const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
-      if (el) el.classList.remove('selected');
-    });
-    selectedIdxs.clear();
-    selectedExtensionIdxs.forEach((index) => {
-      MaweCoreState.container.querySelectorAll(`.multi-cue[data-ext-idx="${index}"], .multi-dual-cue[data-ext-idx="${index}"]`)
-        .forEach((el) => el.classList.remove('selected'));
-    });
-    selectedExtensionIdxs.clear();
-    MaweDom.selCountEl.textContent = '0';
-    if (silent) {
-      // 结构编辑会马上 renderAll() 并重新选中目标；此时不必先刷新旧波形
-      // 覆盖层和空面板，避免同一次操作产生两轮视觉更新。
-      MaweCuePanelState.currentCuePanelIdx = -1;
-      MaweCuePanelState.resetCuePanelEditState();
-      return;
-    }
-    if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-    if (commitCuePanel) {
-      MaweCuePanel.setCurrentCuePanelIndex(-1);
-    } else {
-      MaweCuePanelState.currentCuePanelKind = 'main';
-      MaweCuePanelState.currentCuePanelIdx = -1;
-      MaweCuePanelState.currentCuePanelTrackId = null;
-      MaweCuePanelState.resetCuePanelEditState();
-      MaweCuePanel.renderCurrentCuePanel();
-    }
+  MaweNavPreview.hideCueSplitPreview();
+  cancelPendingExtensionBinding();
+  selectedIdxs.forEach(i => {
+    const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
+    if (el) el.classList.remove('selected');
+  });
+  selectedIdxs.clear();
+  selectedExtensionIdxs.forEach((index) => {
+    MaweCoreState.container.querySelectorAll(`.multi-cue[data-ext-idx="${index}"], .multi-dual-cue[data-ext-idx="${index}"]`)
+      .forEach((el) => el.classList.remove('selected'));
+  });
+  selectedExtensionIdxs.clear();
+  selectedOverlayIdxs.forEach((index) => {
+    MaweCoreState.container.querySelectorAll(`.cue[data-overlay-idx="${index}"]`)
+      .forEach((el) => el.classList.remove('selected'));
+  });
+  selectedOverlayIdxs.clear();
+  lastClickedOverlayIdx = -1;
+  MaweDom.selCountEl.textContent = '0';
+  if (silent) {
+    // 结构编辑会马上 renderAll() 并重新选中目标；此时不必先刷新旧波形
+    // 覆盖层和空面板，避免同一次操作产生两轮视觉更新。
+    MaweCuePanelState.currentCuePanelIdx = -1;
+    MaweCuePanelState.resetCuePanelEditState();
+    return;
   }
+  if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
+  if (commitCuePanel) {
+    MaweCuePanel.setCurrentCuePanelIndex(-1);
+  } else {
+    MaweCuePanelState.currentCuePanelKind = 'main';
+    MaweCuePanelState.currentCuePanelIdx = -1;
+    MaweCuePanelState.currentCuePanelTrackId = null;
+    MaweCuePanelState.resetCuePanelEditState();
+    MaweCuePanel.renderCurrentCuePanel();
+  }
+}
 
 
 
@@ -172,208 +178,212 @@
 
 
   function selectOnlyExtension(
-    index,
-    track = MaweMultiSubtitleCore.getActiveExtensionTrack(),
-    syncPair = true,
-    preserveMainSelection = false,
+  index,
+  track = MaweMultiSubtitleCore.getActiveExtensionTrack(),
+  syncPair = true,
+  preserveMainSelection = false,
+) {
+  if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
+  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
+  if (
+    pendingExtensionBinding
+    && track?.id === pendingExtensionBinding.trackId
+    && track.segments?.[index]?.id !== pendingExtensionBinding.extensionId
   ) {
-    if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
-    MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
-    if (
-      pendingExtensionBinding
-      && track?.id === pendingExtensionBinding.trackId
-      && track.segments?.[index]?.id !== pendingExtensionBinding.extensionId
-    ) {
-      cancelPendingExtensionBinding();
-    }
-    if (!preserveMainSelection) {
-      // 普通点击副字幕后，最后点击的轨道成为当前绑定/编辑对象；
-      // 不保留旧主字幕选区，避免 G 被误解为“替换旧主字幕的绑定”。
-      MaweCuePanel.commitCuePanelEdit();
-      selectedIdxs.clear();
-      lastClickedIdx = -1;
-    }
-    selectedExtensionIdxs.clear();
-    selectedExtensionIdxs.add(index);
-    if (syncPair) syncBoundSelection('extension', index, track);
-    updateMultiSelectionClasses();
-    MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
-    lastClickedExtensionIdx = index;
-    MaweCoreState.waveformEditor?.updateSelection();
-    MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
+    cancelPendingExtensionBinding();
   }
+  if (!preserveMainSelection) {
+    // 普通点击副字幕后，最后点击的轨道成为当前绑定/编辑对象；
+    // 不保留旧主字幕选区，避免 G 被误解为“替换旧主字幕的绑定”。
+    MaweCuePanel.commitCuePanelEdit();
+    selectedIdxs.clear();
+    lastClickedIdx = -1;
+  }
+  selectedExtensionIdxs.clear();
+  selectedExtensionIdxs.add(index);
+  if (syncPair) syncBoundSelection('extension', index, track);
+  updateMultiSelectionClasses();
+  updateSelectionCountText();
+  lastClickedExtensionIdx = index;
+  MaweCoreState.waveformEditor?.updateSelection();
+  MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
+}
 
 
 
   function toggleExtensionSelection(index, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
-    if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
-    MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
-    if (selectedExtensionIdxs.has(index)) selectedExtensionIdxs.delete(index);
-    else {
-      selectedExtensionIdxs.add(index);
-      syncBoundSelection('extension', index, track);
-    }
-    updateMultiSelectionClasses();
-    MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
-    lastClickedExtensionIdx = index;
-    MaweCoreState.waveformEditor?.updateSelection();
-    MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
+  if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
+  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
+  if (selectedExtensionIdxs.has(index)) selectedExtensionIdxs.delete(index);
+  else {
+    selectedExtensionIdxs.add(index);
+    syncBoundSelection('extension', index, track);
   }
+  updateMultiSelectionClasses();
+  updateSelectionCountText();
+  lastClickedExtensionIdx = index;
+  MaweCoreState.waveformEditor?.updateSelection();
+  MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
+}
 
 
 
   function selectExtensionRange(a, b) {
-    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    if (!track) return;
-    MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', b, track);
-    const lo = Math.min(a, b);
-    const hi = Math.max(a, b);
-    selectedExtensionIdxs.clear();
-    let lastSelected = -1;
-    for (let index = lo; index <= hi; index++) {
-      if (!track.segments[index] || isHiddenDisabled(index, track)) continue;
-      selectedExtensionIdxs.add(index);
-      syncBoundSelection('extension', index, track);
-      lastSelected = index;
-    }
-    updateMultiSelectionClasses();
-    MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
-    if (lastSelected < 0) return;
-    lastClickedExtensionIdx = lastSelected;
-    MaweCoreState.waveformEditor?.updateSelection();
-    MaweCuePanel.setCurrentCuePanelExtensionIndex(lastSelected, track);
+  const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+  if (!track) return;
+  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', b, track);
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  selectedExtensionIdxs.clear();
+  let lastSelected = -1;
+  for (let index = lo; index <= hi; index++) {
+    if (!track.segments[index] || isHiddenDisabled(index, track)) continue;
+    selectedExtensionIdxs.add(index);
+    syncBoundSelection('extension', index, track);
+    lastSelected = index;
   }
+  updateMultiSelectionClasses();
+  updateSelectionCountText();
+  if (lastSelected < 0) return;
+  lastClickedExtensionIdx = lastSelected;
+  MaweCoreState.waveformEditor?.updateSelection();
+  MaweCuePanel.setCurrentCuePanelExtensionIndex(lastSelected, track);
+}
 
 
   function toggleSel(idx) {
-    if (isHiddenDisabled(idx)) return;  // 隐藏禁用项不参与选择
-    MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', idx);
-    MaweNavPreview.hideCueSplitPreview();
-    const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
-    if (selectedIdxs.has(idx)) {
-      selectedIdxs.delete(idx);
-      if (el) el.classList.remove('selected');
-    } else {
-      selectedIdxs.add(idx);
-      if (el) el.classList.add('selected');
-      syncBoundSelection('main', idx);
-    }
-    MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
-    if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-    updateMultiSelectionClasses();
-    MaweCuePanel.setCurrentCuePanelIndex(selectedIdxs.has(idx) ? idx : (selectedIdxs.values().next().value ?? -1));
+  if (isHiddenDisabled(idx)) return;  // 隐藏禁用项不参与选择
+  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', idx);
+  MaweNavPreview.hideCueSplitPreview();
+  const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
+  if (selectedIdxs.has(idx)) {
+    selectedIdxs.delete(idx);
+    if (el) el.classList.remove('selected');
+  } else {
+    selectedIdxs.add(idx);
+    if (el) el.classList.add('selected');
+    syncBoundSelection('main', idx);
   }
+  updateSelectionCountText();
+  if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
+  updateMultiSelectionClasses();
+  MaweCuePanel.setCurrentCuePanelIndex(selectedIdxs.has(idx) ? idx : (selectedIdxs.values().next().value ?? -1));
+}
 
 
   function selectRange(a, b) {
-    MaweNavPreview.hideCueSplitPreview();
-    MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', b);
-    const lo = Math.min(a, b), hi = Math.max(a, b);
-    for (let i = lo; i <= hi; i++) {
-      if (isHiddenDisabled(i)) continue;  // 跳过隐藏禁用项
-      if (!selectedIdxs.has(i)) {
-        selectedIdxs.add(i);
-        const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
-        if (el) el.classList.add('selected');
-      }
-      syncBoundSelection('main', i);
+  MaweNavPreview.hideCueSplitPreview();
+  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', b);
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  for (let i = lo; i <= hi; i++) {
+    if (isHiddenDisabled(i)) continue;  // 跳过隐藏禁用项
+    if (!selectedIdxs.has(i)) {
+      selectedIdxs.add(i);
+      const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
+      if (el) el.classList.add('selected');
     }
-    MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
-    if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-    updateMultiSelectionClasses();
-    MaweCuePanel.setCurrentCuePanelIndex(selectedIdxs.has(b) ? b : (selectedIdxs.values().next().value ?? -1));
+    syncBoundSelection('main', i);
   }
+  updateSelectionCountText();
+  if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
+  updateMultiSelectionClasses();
+  MaweCuePanel.setCurrentCuePanelIndex(selectedIdxs.has(b) ? b : (selectedIdxs.values().next().value ?? -1));
+}
 
 
   function selectOnly(idx, syncPair = true) {
-    MaweNavPreview.hideCueSplitPreview();
-    MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', idx);
-    // 这是键盘导航的热路径：clearSelection() 会先把面板切到空状态，
-    // 再由下面的 setCurrentCuePanelIndex() 切回目标，导致一次按键触发
-    // 两次面板刷新和两次波形选区刷新。先提交一次待编辑内容，再批量
-    // 更新选区与面板，保持行为不变但只做一次视觉刷新。
-    MaweCuePanel.commitCuePanelEdit();
-    clearSelection({ silent: true });
-    lastClickedExtensionIdx = -1;
-    selectedIdxs.add(idx);
-    if (syncPair) syncBoundSelection('main', idx);
-    const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
-    if (el) el.classList.add('selected');
-    MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
-    if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-    updateMultiSelectionClasses();
-    MaweCuePanel.setCurrentCuePanelIndex(idx);
-  }
+  MaweNavPreview.hideCueSplitPreview();
+  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', idx);
+  // 这是键盘导航的热路径：clearSelection() 会先把面板切到空状态，
+  // 再由下面的 setCurrentCuePanelIndex() 切回目标，导致一次按键触发
+  // 两次面板刷新和两次波形选区刷新。先提交一次待编辑内容，再批量
+  // 更新选区与面板，保持行为不变但只做一次视觉刷新。
+  MaweCuePanel.commitCuePanelEdit();
+  clearSelection({ silent: true });
+  lastClickedExtensionIdx = -1;
+  selectedIdxs.add(idx);
+  if (syncPair) syncBoundSelection('main', idx);
+  const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
+  if (el) el.classList.add('selected');
+  updateSelectionCountText();
+  if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
+  updateMultiSelectionClasses();
+  MaweCuePanel.setCurrentCuePanelIndex(idx);
+}
 
 
   function addToSelection(idx) {
-    if (isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
-    MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', idx);
-    MaweNavPreview.hideCueSplitPreview();
-    selectedIdxs.add(idx);
-    syncBoundSelection('main', idx);
-    const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
-    if (el) el.classList.add('selected');
-    MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
-    if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-    MaweCuePanel.setCurrentCuePanelIndex(idx);
-  }
+  if (isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
+  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', idx);
+  MaweNavPreview.hideCueSplitPreview();
+  selectedIdxs.add(idx);
+  syncBoundSelection('main', idx);
+  const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
+  if (el) el.classList.add('selected');
+  updateSelectionCountText();
+  if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
+  MaweCuePanel.setCurrentCuePanelIndex(idx);
+}
 
 
   function addExtensionToSelection(index, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
-    if (!track?.segments?.[index] || isHiddenDisabled(index, track) || selectedExtensionIdxs.has(index)) return;
-    MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
-    selectedExtensionIdxs.add(index);
-    syncBoundSelection('extension', index, track);
-    updateMultiSelectionClasses();
-    MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
-    MaweCoreState.waveformEditor?.updateSelection();
-    MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
-  }
+  if (!track?.segments?.[index] || isHiddenDisabled(index, track) || selectedExtensionIdxs.has(index)) return;
+  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
+  selectedExtensionIdxs.add(index);
+  syncBoundSelection('extension', index, track);
+  updateMultiSelectionClasses();
+  updateSelectionCountText();
+  MaweCoreState.waveformEditor?.updateSelection();
+  MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
+}
 
 
   // 选中全部字幕（跳过「隐藏禁用项」开启时的禁用条目，与其它选择逻辑一致）。
   function selectAll() {
-    MaweCuePanel.commitCuePanelEdit();
-    clearSelection({ silent: true });
-    MaweBoot.DATA.segments.forEach((_, idx) => {
-      if (isHiddenDisabled(idx)) return;
-      selectedIdxs.add(idx);
-      syncBoundSelection('main', idx);
-      const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
-      if (el) el.classList.add('selected');
-    });
-    const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    extensionTrack?.segments.forEach((_, idx) => {
-      if (isHiddenDisabled(idx, extensionTrack)) return;
-      selectedExtensionIdxs.add(idx);
-      syncBoundSelection('extension', idx, extensionTrack);
-    });
-    updateMultiSelectionClasses();
-    MaweDom.selCountEl.textContent = String(selectedIdxs.size + selectedExtensionIdxs.size);
-    if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-    const last = MaweBoot.DATA.segments.length - 1;
-    if (last >= 0 && selectedIdxs.has(last)) {
-      MaweCuePanel.setCurrentCuePanelIndex(last);
-      return;
-    }
-    const firstMain = selectedIdxs.values().next().value;
-    if (firstMain !== undefined) {
-      MaweCuePanel.setCurrentCuePanelIndex(firstMain);
-      return;
-    }
-    if (!extensionTrack) {
-      MaweCuePanel.setCurrentCuePanelIndex(-1);
-      return;
-    }
-    const lastExtension = extensionTrack.segments.length - 1;
-    if (lastExtension >= 0 && selectedExtensionIdxs.has(lastExtension)) {
-      MaweCuePanel.setCurrentCuePanelExtensionIndex(lastExtension, extensionTrack);
-      return;
-    }
-    const firstExtension = selectedExtensionIdxs.values().next().value;
-    MaweCuePanel.setCurrentCuePanelExtensionIndex(firstExtension ?? -1, extensionTrack);
+  MaweCuePanel.commitCuePanelEdit();
+  clearSelection({ silent: true });
+  MaweBoot.DATA.segments.forEach((_, idx) => {
+    if (isHiddenDisabled(idx)) return;
+    selectedIdxs.add(idx);
+    syncBoundSelection('main', idx);
+    const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
+    if (el) el.classList.add('selected');
+  });
+  const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
+  extensionTrack?.segments.forEach((_, idx) => {
+    if (isHiddenDisabled(idx, extensionTrack)) return;
+    selectedExtensionIdxs.add(idx);
+    syncBoundSelection('extension', idx, extensionTrack);
+  });
+  (getOverlayTrack()?.segments || []).forEach((_, idx) => {
+    if (isHiddenDisabled(idx, getOverlayTrack())) return;
+    selectedOverlayIdxs.add(idx);
+  });
+  updateMultiSelectionClasses();
+  updateSelectionCountText();
+  if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
+  const last = MaweBoot.DATA.segments.length - 1;
+  if (last >= 0 && selectedIdxs.has(last)) {
+    MaweCuePanel.setCurrentCuePanelIndex(last);
+    return;
   }
+  const firstMain = selectedIdxs.values().next().value;
+  if (firstMain !== undefined) {
+    MaweCuePanel.setCurrentCuePanelIndex(firstMain);
+    return;
+  }
+  if (!extensionTrack) {
+    MaweCuePanel.setCurrentCuePanelIndex(-1);
+    return;
+  }
+  const lastExtension = extensionTrack.segments.length - 1;
+  if (lastExtension >= 0 && selectedExtensionIdxs.has(lastExtension)) {
+    MaweCuePanel.setCurrentCuePanelExtensionIndex(lastExtension, extensionTrack);
+    return;
+  }
+  const firstExtension = selectedExtensionIdxs.values().next().value;
+  MaweCuePanel.setCurrentCuePanelExtensionIndex(firstExtension ?? -1, extensionTrack);
+}
 
   global.MaweSelection = Object.freeze({
     stickerUrl,

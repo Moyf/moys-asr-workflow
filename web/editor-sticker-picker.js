@@ -15,20 +15,21 @@
 
        // 要分配的 segment indexes
 
-  function openStickerPicker(idxs, isMulti) {
-    if (!MaweBoot.STICKERS.length) {
-      MaweHint.flashHint('没有可用的表情包，请先用🦊按钮配置表情包文件夹', 'invalid');
-      return;
-    }
-    stickerTargetMode = isMulti ? 'multi' : 'single';
-    stickerTargetIdxs = idxs;
-    document.getElementById('sticker-modal-title').textContent =
-      isMulti ? `分配表情包到 ${idxs.length} 条字幕（跨时间）` : `分配表情包到第 ${idxs[0] + 1} 条`;
-    renderStickerGrid('');
-    document.getElementById('sticker-filter').value = '';
-    MaweDom.stickerModal.classList.add('show');
-    setTimeout(() => document.getElementById('sticker-filter').focus(), 50);
+  function openStickerPicker(idxs, isMulti, { overlay = false } = {}) {
+  if (!MaweBoot.STICKERS.length) {
+    MaweHint.flashHint('没有可用的表情包，请先用🦊按钮配置表情包文件夹', 'invalid');
+    return;
   }
+  stickerTargetMode = isMulti ? 'multi' : 'single';
+  stickerTargetIdxs = idxs;
+  stickerTargetTrack = overlay ? 'overlay' : 'main';
+  document.getElementById('sticker-modal-title').textContent =
+    isMulti ? `分配表情包到 ${idxs.length} 条字幕（跨时间）` : `分配表情包到${overlay ? '叠加字幕' : '第'} ${idxs[0] + 1}${overlay ? '' : ' 条'}`;
+  renderStickerGrid('');
+  document.getElementById('sticker-filter').value = '';
+  MaweDom.stickerModal.classList.add('show');
+  setTimeout(() => document.getElementById('sticker-filter').focus(), 50);
+}
 
 
 
@@ -55,43 +56,59 @@
 
 
   function assignSticker(sticker) {
-    const hadStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref);
-    MaweHistory.pushUndo('分配表情包');
-    if (stickerTargetMode === 'multi' && stickerTargetIdxs.length > 1) {
-      const sorted = [...stickerTargetIdxs].sort((a, b) => a - b);
-      const headIdx = sorted[0];
-      // 每条字幕都是一个独立的时间实例；head 只负责保存素材，不能把多条字幕
-      // 的时间范围合并成一条，否则 XML/OTIO 会把中间的引用压成连续长片段。
-      MaweBoot.DATA.segments[headIdx].sticker = {
-        ...sticker, start: MaweBoot.DATA.segments[headIdx].start, end: MaweBoot.DATA.segments[headIdx].end,
-      };
-      MaweBoot.DATA.segments[headIdx].sticker_ref = null;
-      // 后续条：sticker_ref 标记，便于显示和导航
-      for (let i = 1; i < sorted.length; i++) {
-        MaweBoot.DATA.segments[sorted[i]].sticker = null;
-        MaweBoot.DATA.segments[sorted[i]].sticker_ref = { name: sticker.name, headIdx };
+  const segments = stickerTargetTrack === 'overlay'
+    ? (getOverlayTrack()?.segments || null) : MaweBoot.DATA.segments;
+  if (!segments) return;
+  const hadStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)
+    || (getOverlayTrack()?.segments || []).some((segment) => segment.sticker || segment.sticker_ref);
+  MaweHistory.pushUndo('分配表情包');
+  if (stickerTargetMode === 'multi' && stickerTargetIdxs.length > 1) {
+    const sorted = [...stickerTargetIdxs].sort((a, b) => a - b);
+    const headIdx = sorted[0];
+    // 每条字幕都是一个独立的时间实例；head 只负责保存素材，不能把多条字幕
+    // 的时间范围合并成一条，否则 XML/OTIO 会把中间的引用压成连续长片段。
+    segments[headIdx].sticker = {
+      ...sticker, start: segments[headIdx].start, end: segments[headIdx].end,
+    };
+    segments[headIdx].sticker_ref = null;
+    // 后续条：sticker_ref 标记，便于显示和导航
+    for (let i = 1; i < sorted.length; i++) {
+      segments[sorted[i]].sticker = null;
+      segments[sorted[i]].sticker_ref = { name: sticker.name, headIdx };
+    }
+  } else {
+    const idx = stickerTargetIdxs[0];
+    // 如果当前条已经是 head（被其他 ref 引用），同步更新所有引用 idx 的 ref.name
+    segments.forEach(s => {
+      if (s.sticker_ref && s.sticker_ref.headIdx === idx) {
+        s.sticker_ref.name = sticker.name;
       }
-    } else {
-      const idx = stickerTargetIdxs[0];
-      // 如果当前条已经是 head（被其他 ref 引用），同步更新所有引用 idx 的 ref.name
-      MaweBoot.DATA.segments.forEach(s => {
-        if (s.sticker_ref && s.sticker_ref.headIdx === idx) {
-          s.sticker_ref.name = sticker.name;
-        }
-      });
-      MaweBoot.DATA.segments[idx].sticker = { ...sticker };
-      MaweBoot.DATA.segments[idx].sticker_ref = null;
-    }
-    MaweDom.stickerModal.classList.remove('show');
-    if (!hadStickers && !MaweSettings.EDITOR_SETTINGS.cueListShowSticker && !MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker
-        && confirm('Oi！检测到你添加了表情包，是否需要帮你打开「设置」中的字幕列表/编辑区的表情包显示开关？   ヾ(´･ω･｀)ﾉ')) {
-      MaweSettings.updateEditorSettings({ cueListShowSticker: true, cueEditorShowSticker: true });
-      MaweDisplaySettings.applyCueListDisplaySettings();
-      MaweDisplaySettings.applyCueEditorDisplaySettings();
-    }
-    MaweColorFilter.refreshStickerAssignmentUi();
-    MaweHint.flashHint(`已分配「${sticker.name}」`, 'success');
+    });
+    segments[idx].sticker = { ...sticker };
+    segments[idx].sticker_ref = null;
   }
+  MaweDom.stickerModal.classList.remove('show');
+  // 叠加轨目标：同步脏标记与保存调度，否则分配只改内存、不落盘。
+  if (stickerTargetTrack === 'overlay') {
+    const overlay = getOverlayTrack();
+    if (overlay) {
+      overlay._dirty = true;
+      stickerTargetIdxs.forEach((idx) => {
+        const segment = overlay.segments?.[idx];
+        if (segment) segment._dirty = true;
+      });
+      MaweServerSave.scheduleAutoSaveFlush();
+    }
+  }
+  if (!hadStickers && !MaweSettings.EDITOR_SETTINGS.cueListShowSticker && !MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker
+      && confirm('Oi！检测到你添加了表情包，是否需要帮你打开「设置」中的字幕列表/编辑区的表情包显示开关？   ヾ(´･ω･｀)ﾉ')) {
+    MaweSettings.updateEditorSettings({ cueListShowSticker: true, cueEditorShowSticker: true });
+    MaweDisplaySettings.applyCueListDisplaySettings();
+    MaweDisplaySettings.applyCueEditorDisplaySettings();
+  }
+  MaweColorFilter.refreshStickerAssignmentUi();
+  MaweHint.flashHint(`已分配「${sticker.name}」`, 'success');
+}
 
 
 
@@ -110,25 +127,30 @@
   let previewIdx = -1;
 
 
-  function openStickerPreview(idx) {
-    const seg = MaweBoot.DATA.segments[idx];
-    if (!seg.sticker) return;
-    previewIdx = idx;
-    document.getElementById('sticker-preview-img').src = MaweSelection.stickerUrl(seg.sticker);
-    document.getElementById('sticker-preview-name').textContent = seg.sticker.name;
-    MaweDom.stickerPreviewModal.classList.add('show');
-  }
+  function openStickerPreview(idx, { overlay = false } = {}) {
+  const segments = stickerSegmentsForTrack(overlay ? 'overlay' : 'main');
+  const seg = segments[idx];
+  if (!seg?.sticker) return;
+  previewIdx = idx;
+  previewTrack = overlay ? 'overlay' : 'main';
+  document.getElementById('sticker-preview-img').src = MaweSelection.stickerUrl(seg.sticker);
+  document.getElementById('sticker-preview-name').textContent = seg.sticker.name;
+  MaweDom.stickerPreviewModal.classList.add('show');
+}
 
 
 
   // 删除表情包时级联清理引用：
   // - 如果 idx 是 head，清掉所有 headIdx===idx 的 sticker_ref
   // - 如果 idx 是 ref，仅清自己（不影响 head）
-  function removeStickerCascade(idx) {
-    MaweHistory.pushUndo('删除表情包');
-    // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
-    MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'sticker', 'sticker_ref');
-  }
+  function removeStickerCascade(idx, { overlay = false } = {}) {
+  MaweHistory.pushUndo('删除表情包');
+  // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
+  MaweSegmentOps.splitGroupsAtCutPoints(
+    new Set([idx]), 'sticker', 'sticker_ref',
+    overlay ? (getOverlayTrack()?.segments || []) : MaweBoot.DATA.segments,
+  );
+}
 
 
 
@@ -250,45 +272,56 @@
   // 统一切换语义：目标全部禁用 → 全部启用；否则全部禁用
   // 单条时即"切换这一条的状态"（Alt+点击 / 右键菜单均走这里）
   function toggleDisabled(idxs, track = 'main', { successDetail = null } = {}) {
-    const extensionTrack = track === 'extension'
-      ? MaweMultiSubtitleCore.getActiveExtensionTrack()
-      : (track?.segments ? track : null);
-    const isExtension = Boolean(extensionTrack);
-    const segments = isExtension ? extensionTrack.segments : MaweBoot.DATA.segments;
-    const validIdxs = [...new Set(idxs.filter((index) => Number.isInteger(index) && segments[index]))];
-    if (!validIdxs.length) return;
-    MaweHistory.pushUndo('切换禁用');
-    const allDisabled = validIdxs.every((index) => segments[index].disabled);
-    const nextDisabled = !allDisabled;
-    const boundExtensionTargets = new Map();
+  const overlayTrackObj = track === 'overlay' ? getOverlayTrack() : null;
+  const extensionTrack = track === 'extension'
+    ? MaweMultiSubtitleCore.getActiveExtensionTrack()
+    : (track?.segments ? track : null);
+  const isOverlay = Boolean(overlayTrackObj);
+  const isExtension = Boolean(extensionTrack);
+  const segments = isOverlay ? overlayTrackObj.segments
+    : isExtension ? extensionTrack.segments
+    : MaweBoot.DATA.segments;
+  const validIdxs = [...new Set(idxs.filter((index) => Number.isInteger(index) && segments[index]))];
+  if (!validIdxs.length) return;
+  MaweHistory.pushUndo('切换禁用');
+  const allDisabled = validIdxs.every((index) => segments[index].disabled);
+  const nextDisabled = !allDisabled;
+  const boundExtensionTargets = new Map();
+  validIdxs.forEach((index) => {
+    segments[index].disabled = nextDisabled;
+    segments[index]._dirty = true;
+  });
+  if (!isExtension) {
+    // 主字幕是绑定关系的控制端：禁用/启用时同步同一绑定的副字幕；
+    // 副字幕自身的操作不反向修改主字幕，保持它可以单独禁用。
     validIdxs.forEach((index) => {
-      segments[index].disabled = nextDisabled;
-      segments[index]._dirty = true;
-    });
-    if (!isExtension) {
-      // 主字幕是绑定关系的控制端：禁用/启用时同步同一绑定的副字幕；
-      // 副字幕自身的操作不反向修改主字幕，保持它可以单独禁用。
-      validIdxs.forEach((index) => {
-        const binding = MaweMultiSubtitleCore.bindingForMainIndex(index);
-        const boundTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.track_id) : null;
-        if (!boundTrack) return;
-        const targets = boundExtensionTargets.get(boundTrack) || new Set();
-        (binding.extension_segment_ids || []).forEach((id) => {
-          const extensionIndex = boundTrack.segments.findIndex((segment) => segment?.id === id);
-          if (extensionIndex < 0) return;
-          const extension = boundTrack.segments[extensionIndex];
-          extension.disabled = nextDisabled;
-          extension._dirty = true;
-          targets.add(extensionIndex);
-        });
-        if (targets.size) boundExtensionTargets.set(boundTrack, targets);
+      const binding = MaweMultiSubtitleCore.bindingForMainIndex(index);
+      const boundTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.track_id) : null;
+      if (!boundTrack) return;
+      const targets = boundExtensionTargets.get(boundTrack) || new Set();
+      (binding.extension_segment_ids || []).forEach((id) => {
+        const extensionIndex = boundTrack.segments.findIndex((segment) => segment?.id === id);
+        if (extensionIndex < 0) return;
+        const extension = boundTrack.segments[extensionIndex];
+        extension.disabled = nextDisabled;
+        extension._dirty = true;
+        targets.add(extensionIndex);
       });
-    }
-    if (isExtension || boundExtensionTargets.size) MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweCuePanel.renderAll();
-    // 隐藏开关开启时，刚禁用的项需从选中集移除（保持状态一致）
-    if (MaweDom.hideDisabled && !allDisabled) {
-      const mainDisabled = isExtension ? new Set() : new Set(validIdxs);
+      if (targets.size) boundExtensionTargets.set(boundTrack, targets);
+    });
+  }
+  if (isExtension || boundExtensionTargets.size) MaweMultiSubtitleCore.markMultiSubtitleDirty();
+  MaweCuePanel.renderAll();
+  // 隐藏开关开启时，刚禁用的项需从选中集移除（保持状态一致）
+  if (MaweDom.hideDisabled && !allDisabled) {
+    if (isOverlay) {
+      validIdxs.forEach((index) => {
+        selectedOverlayIdxs.delete(index);
+        MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.remove('selected');
+      });
+    } else {
+      const mainDisabled = new Set();
+      if (!isExtension) validIdxs.forEach((index) => mainDisabled.add(index));
       const extensionDisabled = isExtension
         ? new Map([[extensionTrack, new Set(validIdxs)]])
         : boundExtensionTargets;
@@ -303,20 +336,21 @@
         ).forEach((el) => el.classList.remove('selected'));
       }));
       MaweSelection.updateMultiSelectionClasses();
-      MaweDom.selCountEl.textContent = String(MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size);
+      updateSelectionCountText();
     }
-    const action = allDisabled ? '启用' : '禁用';
-    const extensionCount = [...boundExtensionTargets.values()]
-      .reduce((total, indexes) => total + indexes.size, 0);
-    const detail = successDetail && !allDisabled
-      ? `${validIdxs.length} 条${successDetail}${!isExtension && extensionCount ? `，以及副字幕 ${extensionCount} 条` : ''}`
-      : !isExtension && extensionCount
-      ? `主字幕 ${validIdxs.length} 条及副字幕 ${extensionCount} 条`
-      : `${validIdxs.length} 条`;
-    MaweHint.flashHint(`已${action} ${detail}`, 'success');
-    // 禁用状态同时决定当前时间的预览可见性；列表重绘不会自动触发播放头刷新。
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
   }
+  const action = allDisabled ? '启用' : '禁用';
+  const extensionCount = [...boundExtensionTargets.values()]
+    .reduce((total, indexes) => total + indexes.size, 0);
+  const detail = successDetail && !allDisabled
+    ? `${validIdxs.length} 条${successDetail}${!isExtension && extensionCount ? `，以及副字幕 ${extensionCount} 条` : ''}`
+    : !isExtension && extensionCount
+    ? `主字幕 ${validIdxs.length} 条及副字幕 ${extensionCount} 条`
+    : `${validIdxs.length} 条`;
+  MaweHint.flashHint(`已${action} ${detail}`, 'success');
+  // 禁用状态同时决定当前时间的预览可见性；列表重绘不会自动触发播放头刷新。
+  MawePlaybackLoop.updateWithoutCueListAutoScroll();
+}
 
   global.MaweStickerPicker = Object.freeze({
     get stickerTargetMode() { return stickerTargetMode; },

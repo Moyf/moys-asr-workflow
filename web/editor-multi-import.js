@@ -228,21 +228,21 @@
 
 
   async function openSrtFile(file) {
-    const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在读取字幕 ${file.name}…`, 5);
-    try {
-      const segments = MaweProjectLoad.parseSrtSegments(await MaweLoadingProgress.readFileTextWithProgress(file));
-      MaweLoadingProgress.updateEditorLoading(75, `正在载入字幕 ${file.name}…`);
-      if (!await MaweProjectLoad.ensureProjectCheckpointForImport(file)) return false;
-      const imported = MaweProjectLoad.replaceMainTrack(segments, file.name);
-      if (imported && MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
-      return imported;
-    } catch (error) {
-      MaweHint.flashHint(`加载字幕失败：${error.message || error}`, 'warning');
-      return false;
-    } finally {
-      finishLoading();
-    }
+  const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在读取字幕 ${file.name}…`, 5);
+  try {
+    const segments = MaweProjectLoad.parseSrtSegments(await MaweLoadingProgress.readFileTextWithProgress(file));
+    MaweLoadingProgress.updateEditorLoading(75, `正在载入字幕 ${file.name}…`);
+    if (!await MaweProjectLoad.ensureProjectCheckpointForImport(file)) return false;
+    const imported = MaweProjectLoad.replaceMainTrack(segments, file.name, { overlaySegments: segments.overlaySegments || [] });
+    if (imported && MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
+    return imported;
+  } catch (error) {
+    MaweHint.flashHint(`加载字幕失败：${error.message || error}`, 'warning');
+    return false;
+  } finally {
+    finishLoading();
   }
+}
 
 
 

@@ -8,26 +8,32 @@
 
 
   function mergeAdjacentSubtitle(direction) {
-    const target = MaweCuePanel.getCurrentCuePanelTarget();
-    const extension = target?.kind === 'extension';
-    const track = extension ? target.track : null;
-    const segments = extension ? track?.segments || [] : MaweBoot.DATA.segments;
-    let index = Number.isInteger(target?.index) ? target.index : -1;
-    if (index < 0) {
-      const selected = extension ? MaweSelection.selectedExtensionIdxs : MaweSelection.selectedIdxs;
-      if (selected.size === 1) index = [...selected][0];
-      else index = extension ? MaweSelection.lastClickedExtensionIdx : MaweSelection.lastClickedIdx;
-    }
-    const neighbor = index + direction;
-    if (!segments[index] || !segments[neighbor]) {
-      MaweHint.flashHint(direction < 0 ? '前面没有可粘合的字幕' : '后面没有可粘合的字幕', 'warning');
-      return false;
-    }
-    const indices = direction < 0 ? [neighbor, index] : [index, neighbor];
-    if (extension) return MaweSegmentOps.mergeExtensionSegments(indices, track);
-    MaweSegmentOps.mergeSegments(indices);
-    return true;
+  const target = MaweCuePanel.getCurrentCuePanelTarget();
+  const extension = target?.kind === 'extension';
+  const overlay = target?.kind === 'overlay';
+  const track = extension ? target.track : null;
+  const segments = extension
+    ? track?.segments || []
+    : overlay ? (getOverlayTrack()?.segments || []) : MaweBoot.DATA.segments;
+  let index = Number.isInteger(target?.index) ? target.index : -1;
+  if (index < 0) {
+    const selected = extension ? MaweSelection.selectedExtensionIdxs
+      : overlay ? selectedOverlayIdxs : MaweSelection.selectedIdxs;
+    if (selected.size === 1) index = [...selected][0];
+    else index = extension ? MaweSelection.lastClickedExtensionIdx
+      : overlay ? lastClickedOverlayIdx : MaweSelection.lastClickedIdx;
   }
+  const neighbor = index + direction;
+  if (!segments[index] || !segments[neighbor]) {
+    MaweHint.flashHint(direction < 0 ? '前面没有可粘合的字幕' : '后面没有可粘合的字幕', 'warning');
+    return false;
+  }
+  const indices = direction < 0 ? [neighbor, index] : [index, neighbor];
+  if (extension) return MaweSegmentOps.mergeExtensionSegments(indices, track);
+  if (overlay) return mergeOverlaySegments(indices);
+  MaweSegmentOps.mergeSegments(indices);
+  return true;
+}
 
   global.MaweMergeAdjacent = Object.freeze({
     mergeAdjacentSubtitle

@@ -67,53 +67,57 @@
 
 
   function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, track = 'main') {
-    if (track === 'extension') {
-      addExtensionRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY);
-      return;
-    }
-    const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
-    if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
-    requestedStart = MaweTimeline.timelineFrameAlignedMilliseconds(requestedStart);
-    requestedEnd = MaweTimeline.timelineFrameAlignedMilliseconds(requestedEnd);
-    const start = Math.min(requestedStart, requestedEnd);
-    const end = Math.max(requestedStart, requestedEnd);
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-    if (MaweBoot.DATA.segments.some((segment) => start < segment.end && end > segment.start)) {
-      MaweHint.flashHint('拖动范围包含已有字幕，无法新增字幕', 'warning');
-      return;
-    }
-    const insertAt = MaweBoot.DATA.segments.findIndex((segment) => segment.start > start);
-    const index = insertAt < 0 ? MaweBoot.DATA.segments.length : insertAt;
-    const previousEnd = index > 0 ? MaweBoot.DATA.segments[index - 1].end : 0;
-    const nextStart = index < MaweBoot.DATA.segments.length ? MaweBoot.DATA.segments[index].start : duration;
-    const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(start / 10) * 10));
-    const safeEnd = Math.min(nextStart, Math.max(safeStart, Math.round(end / 10) * 10));
-    if (safeEnd - safeStart < 100) {
-      MaweHint.flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
-      return;
-    }
-    MaweCuePanel.commitCuePanelEdit();
-    MaweHistory.pushUndo('新增字幕');
-    MaweBoot.DATA.segments.splice(index, 0, {
-      id: window.AsrEditorUtils.uniqueStableSegmentId(MaweBoot.DATA.segments, `main-${index + 1}`, 'main'),
-      start: safeStart,
-      end: safeEnd,
-      text: '',
-      items: [],
-      _dirty: true,
-    });
-    window.AsrEditorUtils.shiftGroupReferenceIndices(MaweBoot.DATA.segments, index, 1);
-    MaweSelection.clearSelection({ silent: true });
-    MaweCuePanel.renderAll({ preserveCueListScroll: false });
-    MaweSelection.selectOnly(index);
-    const cue = MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`);
-    if (cue) {
-      MaweCueListAnchor.scrollCueToCenter(cue);
-    }
-    setTimeout(() => MaweCuePanel.focusCuePanelText(index), 0);
-    MaweCoreState.waveformEditor?.revealTime(safeStart, true);
-    MaweHint.flashHint(`已新增第 ${index + 1} 条字幕`, 'success');
+  if (track === 'extension') {
+    addExtensionRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY);
+    return;
   }
+  if (track === 'overlay') {
+    addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY);
+    return;
+  }
+  const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
+  if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
+  requestedStart = MaweTimeline.timelineFrameAlignedMilliseconds(requestedStart);
+  requestedEnd = MaweTimeline.timelineFrameAlignedMilliseconds(requestedEnd);
+  const start = Math.min(requestedStart, requestedEnd);
+  const end = Math.max(requestedStart, requestedEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+  if (MaweBoot.DATA.segments.some((segment) => start < segment.end && end > segment.start)) {
+    MaweHint.flashHint('拖动范围包含已有字幕，无法新增字幕', 'warning');
+    return;
+  }
+  const insertAt = MaweBoot.DATA.segments.findIndex((segment) => segment.start > start);
+  const index = insertAt < 0 ? MaweBoot.DATA.segments.length : insertAt;
+  const previousEnd = index > 0 ? MaweBoot.DATA.segments[index - 1].end : 0;
+  const nextStart = index < MaweBoot.DATA.segments.length ? MaweBoot.DATA.segments[index].start : duration;
+  const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(start / 10) * 10));
+  const safeEnd = Math.min(nextStart, Math.max(safeStart, Math.round(end / 10) * 10));
+  if (safeEnd - safeStart < 100) {
+    MaweHint.flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
+    return;
+  }
+  MaweCuePanel.commitCuePanelEdit();
+  MaweHistory.pushUndo('新增字幕');
+  MaweBoot.DATA.segments.splice(index, 0, {
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(MaweBoot.DATA.segments, `main-${index + 1}`, 'main'),
+    start: safeStart,
+    end: safeEnd,
+    text: '',
+    items: [],
+    _dirty: true,
+  });
+  window.AsrEditorUtils.shiftGroupReferenceIndices(MaweBoot.DATA.segments, index, 1);
+  MaweSelection.clearSelection({ silent: true });
+  MaweCuePanel.renderAll({ preserveCueListScroll: false });
+  MaweSelection.selectOnly(index);
+  const cue = MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`);
+  if (cue) {
+    MaweCueListAnchor.scrollCueToCenter(cue);
+  }
+  setTimeout(() => MaweCuePanel.focusCuePanelText(index), 0);
+  MaweCoreState.waveformEditor?.revealTime(safeStart, true);
+  MaweHint.flashHint(`已新增第 ${index + 1} 条字幕`, 'success');
+}
 
 
 

@@ -739,6 +739,8 @@ class EditorAssetTests(unittest.TestCase):
             '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd data-mod-key>Ctrl+拖拽已有字幕</kbd> 启用「叠加字幕」后在叠加轨创建</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span class="help-important"><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>',
             page,
         )
@@ -929,9 +931,11 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('播放时跳过空隙', page)
         self.assertIn('const DEFAULT_LAYOUT_ROWS = [42, 16, 42];', page)
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", page)
-        self.assertIn('const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref);', page)
+        self.assertIn('const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)', page)
+        self.assertIn('overlaySegments.some((segment) => segment.sticker || segment.sticker_ref)', page)
         self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', page)
-        self.assertIn("MaweBoot.DATA.segments.forEach((seg, i) => cueFragment.appendChild(MaweCueElements.buildCueEl(seg, i)));", page)
+        self.assertIn('rows.sort((a, b) => a.start - b.start || a.order - b.order);', page)
+        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));', page)
         self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", page)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", page)

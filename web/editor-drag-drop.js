@@ -23,74 +23,74 @@
 
 
   async function handleDroppedFiles(files) {
-    if (!files.length) return;
-    const finishLoading = MaweLoadingProgress.beginEditorLoading('正在处理拖入文件…', 2);
-    try {
-    const mediaFile = files.find(MaweCoreState.isMediaFile);
-    const reapeaksFile = files.find(MaweCoreState.isReapeaksFile);
-    const jsonFile = files.find(isJsonFile);
-    const srtFile = files.find(isSrtFile);
-    let stagedSrtSegments = null;
-    if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
-      MaweHint.flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / reapeaks）', 'warning');
-      return;
-    }
-    if (jsonFile) {
-      if (MaweBoot.DATA.segments.length > 0) {
-        if (MaweServerSave.hasUnsavedProjectChanges()
-            && !confirm('当前有未保存的改动，是否继续处理此工程文件？选择“打开工程”仍会替换当前工程。')) return;
-        try {
-          const segments = await MaweLoadingProgress.parseSubtitleImportFile(jsonFile);
-          await MaweMultiImport.showMultiSubtitleImportChoice(jsonFile, segments, {
-            projectFile: jsonFile,
-            projectMediaFile: mediaFile,
-          });
-        } catch (error) {
-          MaweHint.flashHint(`导入工程字幕失败：${error.message || error}`, 'warning');
-        }
-        return;
-      }
-      // 工程与媒体一起拖入时，媒体随工程自动加载，不再弹窗要求重选。
-      const opened = await MaweMultiImport.openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
-      if (opened && mediaFile) await MaweMediaLoad.loadMediaFile(mediaFile);
-      return;
-    }
-    if (reapeaksFile && !mediaFile && !srtFile) {
-      await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
-      return;
-    }
-    if (srtFile && MaweBoot.DATA.segments.length === 0) {
+  if (!files.length) return;
+  const finishLoading = MaweLoadingProgress.beginEditorLoading('正在处理拖入文件…', 2);
+  try {
+  const mediaFile = files.find(MaweCoreState.isMediaFile);
+  const reapeaksFile = files.find(MaweCoreState.isReapeaksFile);
+  const jsonFile = files.find(isJsonFile);
+  const srtFile = files.find(isSrtFile);
+  let stagedSrtSegments = null;
+  if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
+    MaweHint.flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / reapeaks）', 'warning');
+    return;
+  }
+  if (jsonFile) {
+    if (MaweBoot.DATA.segments.length > 0) {
+      if (MaweServerSave.hasUnsavedProjectChanges()
+          && !confirm('当前有未保存的改动，是否继续处理此工程文件？选择“打开工程”仍会替换当前工程。')) return;
       try {
-        stagedSrtSegments = MaweProjectLoad.parseSrtSegments(await MaweLoadingProgress.readFileTextWithProgress(srtFile));
+        const segments = await MaweLoadingProgress.parseSubtitleImportFile(jsonFile);
+        await MaweMultiImport.showMultiSubtitleImportChoice(jsonFile, segments, {
+          projectFile: jsonFile,
+          projectMediaFile: mediaFile,
+        });
       } catch (error) {
-        MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
-        return;
+        MaweHint.flashHint(`导入工程字幕失败：${error.message || error}`, 'warning');
       }
+      return;
     }
-    if ((mediaFile || srtFile) && !await MaweProjectLoad.ensureProjectCheckpointForImport(mediaFile || srtFile, { usePicker: false })) return;
-    if (mediaFile) {
-      const imported = await MaweMediaLoad.loadMediaFile(mediaFile);
-      if (imported) MaweServerSave.projectImportDirty = true;
-    }
-    if (reapeaksFile) await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
-    if (srtFile) {
-      if (MaweBoot.DATA.segments.length > 0) {
-        try {
-          const segments = await MaweLoadingProgress.parseSubtitleImportFile(srtFile);
-          await MaweMultiImport.showMultiSubtitleImportChoice(srtFile, segments);
-        } catch (error) {
-          MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
-        }
-      } else {
-        MaweProjectLoad.replaceMainTrack(stagedSrtSegments, srtFile.name);
-      }
-    }
-    if ((mediaFile || srtFile) && MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
-    MaweLoadingProgress.updateEditorLoading(100, '文件加载完成');
-    } finally {
-      finishLoading();
+    // 工程与媒体一起拖入时，媒体随工程自动加载，不再弹窗要求重选。
+    const opened = await MaweMultiImport.openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
+    if (opened && mediaFile) await MaweMediaLoad.loadMediaFile(mediaFile);
+    return;
+  }
+  if (reapeaksFile && !mediaFile && !srtFile) {
+    await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
+    return;
+  }
+  if (srtFile && MaweBoot.DATA.segments.length === 0) {
+    try {
+      stagedSrtSegments = MaweProjectLoad.parseSrtSegments(await MaweLoadingProgress.readFileTextWithProgress(srtFile));
+    } catch (error) {
+      MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
+      return;
     }
   }
+  if ((mediaFile || srtFile) && !await MaweProjectLoad.ensureProjectCheckpointForImport(mediaFile || srtFile, { usePicker: false })) return;
+  if (mediaFile) {
+    const imported = await MaweMediaLoad.loadMediaFile(mediaFile);
+    if (imported) MaweServerSave.projectImportDirty = true;
+  }
+  if (reapeaksFile) await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
+  if (srtFile) {
+    if (MaweBoot.DATA.segments.length > 0) {
+      try {
+        const segments = await MaweLoadingProgress.parseSubtitleImportFile(srtFile);
+        await MaweMultiImport.showMultiSubtitleImportChoice(srtFile, segments);
+      } catch (error) {
+        MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
+      }
+    } else {
+      MaweProjectLoad.replaceMainTrack(stagedSrtSegments, srtFile.name, { overlaySegments: stagedSrtSegments.overlaySegments || [] });
+    }
+  }
+  if ((mediaFile || srtFile) && MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
+  MaweLoadingProgress.updateEditorLoading(100, '文件加载完成');
+  } finally {
+    finishLoading();
+  }
+}
 
 
   let dragCounter = 0;

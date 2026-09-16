@@ -14,17 +14,27 @@
 
 
   function openFcp7ExportModal() {
-    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-    if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
-    MaweCuePanel.commitCuePanelEdit();
-    const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
-    const extensionOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="main_and_extension"]');
-    extensionOption.disabled = !extensionAvailable;
-    if (!extensionAvailable) MaweDom.fcp7ExportSubtitleTracks.value = 'main';
-    MaweDom.fcp7ExportNativeText.checked = false;
-    MaweDom.fcp7ExportModal.classList.add('show');
-    MaweDom.fcp7ExportTimelineMode.focus();
+  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+  if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
+  MaweCuePanel.commitCuePanelEdit();
+  const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
+  const overlayAvailable = overlayTrackVisible();
+  const extensionOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="main_and_extension"]');
+  extensionOption.disabled = !extensionAvailable;
+  const overlayOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="overlay"]');
+  overlayOption.disabled = !overlayAvailable;
+  const allOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="all"]');
+  allOption.disabled = !extensionAvailable && !overlayAvailable;
+  if (!extensionAvailable && MaweDom.fcp7ExportSubtitleTracks.value === 'main_and_extension') {
+    MaweDom.fcp7ExportSubtitleTracks.value = 'main';
   }
+  if (!overlayAvailable && ['overlay', 'all'].includes(MaweDom.fcp7ExportSubtitleTracks.value)) {
+    MaweDom.fcp7ExportSubtitleTracks.value = 'main';
+  }
+  MaweDom.fcp7ExportNativeText.checked = false;
+  MaweDom.fcp7ExportModal.classList.add('show');
+  MaweDom.fcp7ExportTimelineMode.focus();
+}
 
 
 

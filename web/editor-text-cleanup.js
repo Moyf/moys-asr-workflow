@@ -33,21 +33,28 @@
 
 
   function syncTimelineGroupRanges() {
-    function sync(headField, refField) {
-      MaweBoot.DATA.segments.forEach((segment, headIdx) => {
-        const head = segment[headField];
-        if (!head) return;
-        let end = segment.end;
-        MaweBoot.DATA.segments.forEach((candidate) => {
-          if (candidate[refField]?.headIdx === headIdx) end = Math.max(end, candidate.end);
-        });
-        head.start = segment.start;
-        head.end = end;
+  function sync(segments, headField, refField) {
+    segments.forEach((segment, headIdx) => {
+      const head = segment[headField];
+      if (!head) return;
+      let end = segment.end;
+      segments.forEach((candidate) => {
+        if (candidate[refField]?.headIdx === headIdx) end = Math.max(end, candidate.end);
       });
-    }
-    sync('sticker', 'sticker_ref');
-    sync('color', 'color_ref');
+      head.start = segment.start;
+      head.end = end;
+    });
   }
+  sync(MaweBoot.DATA.segments, 'sticker', 'sticker_ref');
+  sync(MaweBoot.DATA.segments, 'color', 'color_ref');
+  // 叠加轨自持 head 的范围随段拖动自动归位：换轨瞬间物化的颜色快照
+  // 记录的是当时的位置，以 onCommitEdit 的这次同步为准。
+  const overlay = getOverlayTrack();
+  if (overlay?.segments?.length) {
+    sync(overlay.segments, 'sticker', 'sticker_ref');
+    sync(overlay.segments, 'color', 'color_ref');
+  }
+}
 
 
 
