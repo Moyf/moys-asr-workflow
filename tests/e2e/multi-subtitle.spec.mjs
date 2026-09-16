@@ -2440,7 +2440,11 @@ test('shows independent extension preview controls with yellow defaults', async 
     element.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await expect(page.locator('#overlay-extension-text')).toHaveCSS('background-color', 'rgba(18, 52, 86, 0.65)');
-  await page.locator('#extension-overlay-toggle').uncheck();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await expect(page.locator('#extension-overlay-toggle-wrap')).toBeVisible();
+  // The custom toggle hides the native input; click its visible label so the
+  // browser exercises the same interaction a user can perform.
+  await page.locator('#extension-overlay-toggle-wrap').click();
   await expect(page.locator('#extension-overlay-toggle')).not.toBeChecked();
   await page.locator('#editor-settings-close').click();
 });

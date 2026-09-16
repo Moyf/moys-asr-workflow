@@ -7097,6 +7097,7 @@ function splitCuePanelAtCursor() {
     return;
   }
   const idx = target.index;
+  const cursorOffset = cuePanelText.selectionStart;
   commitCuePanelEdit();
   selectOnly(idx);
   const cue = container.querySelector(`.cue[data-idx="${idx}"]`);
@@ -7105,7 +7106,10 @@ function splitCuePanelAtCursor() {
   const textEl = editingState?.textEl;
   if (!textEl || !textEl.firstChild) return;
   const range = document.createRange();
-  const offset = Math.max(0, Math.min(cursorOffset, textEl.firstChild.textContent.length));
+  const offset = Math.max(
+    0,
+    Math.min(Number.isFinite(cursorOffset) ? cursorOffset : 0, textEl.firstChild.textContent.length),
+  );
   range.setStart(textEl.firstChild, offset);
   range.setEnd(textEl.firstChild, offset);
   const selection = window.getSelection();
@@ -16965,7 +16969,13 @@ function inlineEditHasUncommittedText() {
 function flushInlineEditsForSave() {
   const state = editingState || extensionEditingState;
   if (!state) {
-    if (!cuePanel?.contains(document.activeElement)) commitCuePanelEdit();
+    // Start/duration changes are committed by their own input handlers.  Only
+    // flush the panel here when text input has actually opened a pending undo
+    // edit; otherwise stale display values can rewrite externally changed
+    // timing and schedule a second save.
+    if (!cuePanel?.contains(document.activeElement) && cuePanelUndoPushed) {
+      commitCuePanelEdit();
+    }
     return;
   }
   const extension = Boolean(extensionEditingState);
