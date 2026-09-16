@@ -105,6 +105,26 @@ main 合并的实际代价，确认四条进合并后流程的原则：
    物理拆分，语义整理（状态所有者、单向依赖）留给后续独立 PR，降低 review
    面积。
 
+## 评审修复轮（2026-09-16，PR #136 → 提交 a9ee20ab…72192bd1）
+
+维护者审查确认 4 项行为回归 + 2 项工具问题，全部修复；另用 drunkenQCat 的
+`tools/merge-flow.mjs` 完成 overlay_track(#130) 合并（REPLAY 72/CONFLICT 0）。
+
+- 六项修复：SRT 生成器、媒体尺寸采集（bindPlayerEvents×2 + loadMediaFile）、
+  指纹补 media_metadata、PROJECT_NAME 归 MaweBoot 单一所有者、恢复
+  waveform-deletion.spec.mjs、ruff/行尾空白清零。
+- **新发现工具缺陷与修复**：`ns-rewrite-editor.mjs` 曾把局部绑定名误合规化
+  （7 处局部 `start` → `MAWE_I18N.start`、2 处 `snapshotSegments`），导致
+  overlay 拖动创建与定时编辑比对失效。新增绑定感知审计器
+  `audit-replayed-fns.mjs` 对全部 72 个重放函数做 main 局部绑定 vs 本仓 NS
+  形态比对；参数默认值表达式的 NS 化（8 处）为必要合规化，逐条核实。
+- **merge-flow 使用陷阱**：工具从 HEAD 读取并回写全部 `editor-*.js`，会把
+  git 自动合并带入的共享文件（editor-utils/i18n）覆盖回旧版——跑完必须对
+  「main 改过、本仓没改过」的共享文件 `git checkout origin/main --` 恢复。
+- 终局验证：Ruff 全过；Node 304/0；Python 1559 OK；E2E 406 用例，
+  PR 43 失败 vs 纯 main(3de81a86) 44 失败，**逐 test ID 比对仅我们失败=0**，
+  main 独有 1 条（OTIO metadata missing）在本树上通过。
+
 本台账记录在最新 `main` 上把 `web/editor.js` 平铺单体拆为特征模块的执行过程。
 方法论与工具借鉴外部分支 `drunkenQCat/moys-asr-workflow:refactor/explode-js`
 （其完整方法沉淀见该分支的 `docs/dev/编辑器模块化拆分指南.md`，工具在
