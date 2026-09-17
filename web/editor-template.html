@@ -82,25 +82,25 @@ __WAVEFORM_CSS__
     <button type="button" id="redo-btn" title="重做 (Ctrl(Cmd)+Shift+Z)" disabled>↷ 重做</button>
   </span>
   <span class="sep"></span>
-  <label class="overlay-track-toggle" id="overlay-track-controls" hidden
-         title="显示独立叠加字幕轨；它不会与多重字幕建立绑定关系">
+  <label class="overlay-track-toggle" id="overlay-track-controls"
+         title="开启后可在叠加轨创建与主字幕时间重叠的叠加字幕；叠加轨不会与双语字幕建立绑定关系">
     <input type="checkbox" id="overlay-track-toggle">
-    叠加字幕
+    允许字幕重叠
   </label>
   <span class="sep overlay-track-separator" id="overlay-track-separator" hidden></span>
   <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
     <label class="multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
-           title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
-      <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
-      多重字幕
+           title="当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。">
+      <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。">
+      双语字幕
     </label>
-    <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden>请拖入第二条字幕以开启多重字幕编辑</small>
+    <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden>请拖入第二条字幕以开启双语字幕编辑</small>
     <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown" hidden>
-      <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
+      <button type="button" id="multi-subtitle-settings-toggle" title="双语字幕设置" aria-label="双语字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
       <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
         <div class="multi-subtitle-setting-row">
           <span>显示方式</span>
-          <select id="multi-subtitle-display-mode" title="多重字幕列表显示方式">
+          <select id="multi-subtitle-display-mode" title="双语字幕列表显示方式">
             <option value="main">主轨</option>
             <option value="extension">副轨</option>
             <option value="both" selected>双列</option>
@@ -126,7 +126,7 @@ __WAVEFORM_CSS__
         </div>
         <div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
           <span>副字幕时波形高度</span>
-          <select id="multi-subtitle-extension-row-height" title="启用多重字幕时使用的波形行高度">
+          <select id="multi-subtitle-extension-row-height" title="启用双语字幕时使用的波形行高度">
             <option value="64">64 px</option>
             <option value="80">80 px</option>
             <option value="96">96 px</option>
@@ -135,7 +135,7 @@ __WAVEFORM_CSS__
             <option value="168" selected>168 px</option>
           </select>
         </div>
-        <label class="multi-subtitle-setting-toggle" title="拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点">
+        <label class="multi-subtitle-setting-toggle" title="拖动副字幕时，允许吸附到主字幕轨道的起点和终点">
           <input type="checkbox" id="multi-subtitle-cross-track-snap" checked> 跨轨道吸附
         </label>
         <label class="multi-subtitle-setting-toggle" title="普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕">
@@ -144,7 +144,7 @@ __WAVEFORM_CSS__
         <label class="multi-subtitle-setting-toggle" title="绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H">
           <input type="checkbox" id="multi-subtitle-auto-sync-duration" checked> 绑定时自动同步时长
         </label>
-        <label class="multi-subtitle-setting-toggle" title="在多重字幕波形中显示主字幕和副字幕的轨道编号徽标">
+        <label class="multi-subtitle-setting-toggle" title="在双语字幕波形中显示主字幕和副字幕的轨道编号徽标">
           <input type="checkbox" id="multi-subtitle-show-track-badges"> 显示轨道徽标
         </label>
         <div class="dropdown-separator"></div>
@@ -632,7 +632,7 @@ __WAVEFORM_CSS__
           <span class="help-important"><kbd id="help-waveform-split-key">B</kbd> 按当前时间基准拆分字幕</span>
         </div>
       </section>
-      <h4 class="help-title">多重字幕</h4>
+      <h4 class="help-title">双语字幕</h4>
       <section class="help-subgroup">
         <div class="help-category">
           <span class="help-important"><kbd>G</kbd> 绑定到主副字幕（自动匹配）</span>
@@ -1065,7 +1065,7 @@ __WAVEFORM_CSS__
         </label>
     </div>
     <div class="subtitle-preview-settings-fields" id="extension-ass-style-fields" hidden>
-        <label class="subtitle-preview-setting-row" title="ASS 字幕模式下副字幕使用的样式；多重字幕的副字幕共用一个样式，与样式库「副字幕样式」槽位同步">
+        <label class="subtitle-preview-setting-row" title="ASS 字幕模式下副字幕使用的样式；双语字幕的副字幕共用一个样式，与样式库「副字幕样式」槽位同步">
           <span>使用 ASS 样式</span>
           <select id="extension-ass-style-select" aria-label="副字幕 ASS 样式"></select>
         </label>
@@ -1267,8 +1267,8 @@ __WAVEFORM_CSS__
     </div>
     <small class="editor-settings-hint split-language-type-hint">语言类型会影响拆分面板的分隔判断（英文会按单词拆）、计数的规则，以及合并时是否插入空格等。</small>
     <small class="editor-settings-hint split-multi-subtitle-settings-hint">
-      <span id="split-multi-subtitle-settings-enabled" hidden><span>对于双语字幕，可以在</span><button type="button" class="editor-settings-inline-action" id="split-multi-subtitle-settings-link" title="打开多重字幕设置" aria-label="打开多重字幕设置">多重字幕的设置</button><span>中单独配置两种字幕的语言类型。</span></span>
-      <span id="split-multi-subtitle-settings-disabled">对于双语字幕，可以在多重字幕的设置（需要先启用多重字幕）中单独配置两种字幕的语言类型。</span>
+      <span id="split-multi-subtitle-settings-enabled" hidden><span>对于双语字幕，可以在</span><button type="button" class="editor-settings-inline-action" id="split-multi-subtitle-settings-link" title="打开双语字幕设置" aria-label="打开双语字幕设置">双语字幕的设置</button><span>中单独配置两种字幕的语言类型。</span></span>
+      <span id="split-multi-subtitle-settings-disabled">对于双语字幕，可以在双语字幕的设置（需要先开启双语字幕）中单独配置两种字幕的语言类型。</span>
     </small>
   </div>
   </div>
@@ -1416,7 +1416,7 @@ __WAVEFORM_CSS__
           <span>副字幕样式</span>
           <select id="ass-extension-default-style" aria-label="ASS 副字幕默认样式"></select>
         </label>
-        <small id="ass-extension-style-hint" hidden>多重字幕的副字幕在 ASS 导出与「ASS 字幕模式」预览中共用此样式。</small>
+        <small id="ass-extension-style-hint" hidden>双语字幕的副字幕在 ASS 导出与「ASS 字幕模式」预览中共用此样式。</small>
       </div>
     </aside>
     <main class="ass-style-editor" aria-live="polite">
@@ -1478,7 +1478,7 @@ __WAVEFORM_CSS__
           <div class="ass-style-fields ass-style-fields-border-shadow" aria-labelledby="ass-style-border-shadow-heading">
             <label class="ass-style-field">边框样式<select id="ass-style-border-style" data-ass-style-field="borderStyle"><option value="1">描边</option><option value="3">不透明底框</option></select></label>
             <label class="ass-style-color-field">阴影/背景<input type="color" id="ass-style-back-color" data-ass-style-field="backColor"></label>
-            <label class="ass-style-field">阴影宽度<input type="number" id="ass-style-shadow" data-ass-style-field="shadow" min="0" max="100" step="1"></label>
+            <label class="ass-style-field">阴影距离<input type="number" id="ass-style-shadow" data-ass-style-field="shadow" min="0" max="100" step="1"></label>
           </div>
           <div class="ass-style-layout-row">
             <fieldset class="ass-style-alignment-field" id="ass-style-alignment">
@@ -2191,7 +2191,7 @@ __WAVEFORM_CSS__
     <div id="multi-subtitle-import-preview" class="multi-subtitle-import-preview"></div>
     <div class="actions multi-subtitle-import-choice-actions" id="multi-subtitle-import-choice-actions">
       <button type="button" id="multi-subtitle-import-replace">替换当前字幕</button>
-      <button type="button" id="multi-subtitle-import-extension">作为多重字幕</button>
+      <button type="button" id="multi-subtitle-import-extension">作为双语字幕</button>
     </div>
     <div class="actions multi-subtitle-import-result-actions" id="multi-subtitle-import-result-actions">
       <button type="button" id="multi-subtitle-import-result-cancel">取消</button>
@@ -2207,7 +2207,7 @@ __WAVEFORM_CSS__
     <p class="modal-desc">移动鼠标点击，或用键盘选择拆分断点。</p>
     <div class="multi-subtitle-split-language-hint" role="note" aria-label="语言类型提示">
       <div>字符型语言（中文等）按字符拆分。</div>
-      <div>单词型语言（英语等）只在空格处切分，确保不会拆碎单词；可在多重字幕 ⚙️ 设置中切换语言类型。</div>
+      <div>单词型语言（英语等）只在空格处切分，确保不会拆碎单词；可在双语字幕 ⚙️ 设置中切换语言类型。</div>
     </div>
     <div class="multi-subtitle-split-timestamp-hint" id="multi-subtitle-split-timestamp-hint" role="note" hidden>
       启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。

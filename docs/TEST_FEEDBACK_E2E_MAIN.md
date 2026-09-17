@@ -46,7 +46,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-e2e.ps1 tests/e2
 | 已修复 | fcp7-export:102 | `#fcp7-export-subtitle-tracks` 现为静态 4 选项（#130 新增 overlay/all，editor.js:16986 动态禁用）；测试期望更新为 4 项 + 无轨时逐项禁用断言 |
 | 已修复 | timed-text-edit:69 | 帧时间基准下 items 携带成对 `start_frame/end_frame`（JSON_SCHEMA §1.4 允许）；测试期望按 30fps 补帧字段 |
 | 已修复 | onboarding:97 | 引导状态已改服务端持久化（SERVER_CONFIG.onboardingStatus，serve.py `/api/settings`），第一个用例完成后不再自动弹出；测试改为按用例本意从 Help（`#help-onboarding`）强制重播再验证跳过持久化。其中 `#help-open-media-settings` 文案断言同步更新为「全局设置」（097cec56 有意变更） |
-| 已修复 | editor-i18n-save:33 | 英文模式未翻译串扫描。补齐叠加轨、ASS 样式库和右键菜单「转为叠加字幕」等精确词条（web/editor-i18n.js EN_TEXT），并补 unit 断言；聚焦 spec 11/11 通过（2026-09-16） |
+| 已修复 | editor-i18n-save:33 | 英文模式未翻译串扫描。补齐叠加轨、ASS 样式库、样式列表主/副徽标和右键菜单「转为叠加字幕」等精确词条（web/editor-i18n.js EN_TEXT），并补 unit 断言；合并远端 UI 更新后完整 spec 再次 11/11 通过（2026-09-17） |
 | 已修复 | editor-i18n-save:242/286 | 根因是保存前 `flushInlineEditsForSave` 在没有待提交面板编辑时仍提交旧的 cue-panel 时间值，既抹掉毫秒重叠又触发 debounce 二次 POST；仅在 `cuePanelUndoPushed` 表示确有待提交文本编辑时 flush，并让 E2E helper 同步关闭 Server 模式的内存引导状态。1ms/2000ms hint、修复方向、重试保存均通过；聚焦 spec 11/11 通过（2026-09-16） |
 | 已修复 | click-behavior:57/872/388 | 根因：通用 E2E helper 只写 localStorage，未同步 Server 模式的内存引导状态，首个 RAF 仍会弹引导层并吞掉键盘 seek；另有 cue-panel 拆分前提交会把光标位置重置到文本末尾。helper 同步关闭服务端引导状态，`splitCuePanelAtCursor` 在提交前保存 selectionStart；完整 spec 31/31 通过（2026-09-16） |
 | 已修复 | cue-scroll-stability:223 ×2 | 根因：测试固定读取 `_maw/backups`，但中文服务端按受支持的界面语言把备份写入 `_maw/备份`；测试改为在两个受支持目录中定位实际生成的备份文件。server backup 聚焦用例 2/2 通过（2026-09-16） |
