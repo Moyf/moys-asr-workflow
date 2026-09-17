@@ -132,7 +132,7 @@ test('offers importing a second SRT when enabling multiple subtitles without an 
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
   await expect(page.locator('#multi-subtitle-settings-toggle')).toBeHidden();
   await expect(page.locator('#multi-subtitle-toggle-label'))
-    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。');
+    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。');
   expect(await page.locator('#multi-subtitle-toggle-label').evaluate((element) => (
     element.nextElementSibling?.id
   ))).toBe('multi-subtitle-empty-hint');
@@ -3661,7 +3661,7 @@ test('confirms main replacement and makes both replacement paths undoable', asyn
   await expect(page.locator('#multi-subtitle-controls')).toBeVisible();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
   await expect(page.locator('#multi-subtitle-toggle-label'))
-    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。');
+    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。');
   await expect(page.locator('#cues-container .multi-dual-cue')).toHaveCount(0);
   await expect(page.locator('#cues-container .cue .text').first()).toHaveText('Hello world.');
 });
@@ -4174,17 +4174,19 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   });
   expect(profileStyleId).toBe('default');
 
-  // 副字幕选择同步到库的副字幕槽位；样式库窗口的槽位行（多重字幕模式下
+  // 副字幕选择同步到库的副字幕槽位；样式库窗口的方案表单（多重字幕模式下
   // 可见）同步显示同一值。
   await page.locator('#extension-ass-style-select').selectOption('default');
   await expect(page.locator('#ass-style-manager-open')).toBeVisible();
   await page.locator('#ass-style-manager-open').click();
-  await expect(page.locator('#ass-extension-style-row')).toBeVisible();
-  await expect(page.locator('#ass-extension-default-style')).toHaveValue('default');
+  await page.locator('#ass-profile-list [data-ass-selection-kind="profile"]').first().click();
+  await expect(page.locator('#ass-profile-form')).toBeVisible();
+  await expect(page.locator('#ass-profile-extension-style-field')).toBeVisible();
+  await expect(page.locator('#ass-profile-extension-style')).toHaveValue('default');
 
   // 从样式库窗口改回内置副字幕样式：设置页下拉同步；恢复默认，避免
   // localStorage 里的选择影响后续测试。
-  await page.locator('#ass-extension-default-style').selectOption('ass-extension');
+  await page.locator('#ass-profile-extension-style').selectOption('ass-extension');
   await expect(page.locator('#extension-ass-style-select')).toHaveValue('ass-extension');
   await page.locator('#main-ass-style-select').selectOption('ass');
   await expect(page.locator('#ass-profile-style-id')).toHaveValue('ass');

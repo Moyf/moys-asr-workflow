@@ -97,19 +97,32 @@ test('merges and filters font combobox dropdown options without duplicates', () 
   ];
   assert.equal(helpers.filterFontFamilyOptions(entries, ''), entries);
   assert.equal(helpers.filterFontFamilyOptions(entries, '   '), entries);
+  // 过滤结果数组在 vm 沙箱里创建，同样先摊开成宿主数组再断言。
   assert.deepEqual(
-    helpers.filterFontFamilyOptions(entries, '雅黑'),
+    Array.from(helpers.filterFontFamilyOptions(entries, '雅黑'), (entry) => ({ ...entry })),
     [{ value: 'Microsoft YaHei', label: '微软雅黑' }],
   );
   assert.deepEqual(
-    helpers.filterFontFamilyOptions(entries, 'fira'),
+    Array.from(helpers.filterFontFamilyOptions(entries, 'fira'), (entry) => ({ ...entry })),
     [{ value: 'Fira Code', label: 'Fira Code' }],
   );
   assert.deepEqual(
-    helpers.filterFontFamilyOptions(entries, '不存在的字体'),
+    Array.from(helpers.filterFontFamilyOptions(entries, '不存在的字体'), (entry) => ({ ...entry })),
     [],
   );
   assert.equal(helpers.filterFontFamilyOptions(undefined, 'arial').length, 0);
+
+  // 前缀优先：开头匹配排在前、包含匹配在后，同组内保持原有相对顺序。
+  assert.deepEqual(
+    Array.from(
+      helpers.filterFontFamilyOptions([entries[2], entries[0], entries[1]], 'a'),
+      (entry) => ({ ...entry }),
+    ),
+    [
+      { value: 'Arial', label: 'Arial' },
+      { value: 'Fira Code', label: 'Fira Code' },
+    ],
+  );
 });
 
 test('translates the ASS style manager labels and dynamic summaries', () => {
@@ -140,6 +153,11 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('自定义颜色色值', 'en'), 'Custom color values');
   assert.equal(i18n.translateText('恢复默认', 'en'), 'Restore defaults');
   assert.equal(i18n.translateText('读取本机字体', 'en'), 'Read local fonts');
+  assert.equal(i18n.translateText('已读取 3 种本机字体', 'en'), 'Read 3 local font families');
+  assert.equal(i18n.translateText('未读取到可用的本机字体', 'en'), 'No usable local fonts were returned');
+  assert.equal(i18n.translateText('当前环境不支持自动读取本机字体', 'en'), 'This environment cannot list local fonts automatically');
+  assert.equal(i18n.translateText('未获准读取本机字体', 'en'), 'Permission to read local fonts was not granted');
+  assert.equal(i18n.translateText('读取本机字体失败，请重试', 'en'), 'Could not read local fonts; try again');
   assert.equal(i18n.translateText('基础样式', 'en'), 'Basic style');
   assert.equal(i18n.translateText('拓展样式', 'en'), 'Extended style');
   assert.equal(i18n.translateText('边框与阴影', 'en'), 'Border and shadow');

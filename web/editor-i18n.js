@@ -185,6 +185,10 @@
     '主字幕颜色': 'Main subtitle color', '副字幕颜色': 'Secondary subtitle color',
     '微软雅黑 / 苹方': 'Microsoft YaHei / PingFang', '黑体': 'SimHei', '宋体': 'SimSun', 'Arial / Segoe UI': 'Arial / Segoe UI',
     '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)',
+    '未读取到可用的本机字体': 'No usable local fonts were returned',
+    '当前环境不支持自动读取本机字体': 'This environment cannot list local fonts automatically',
+    '未获准读取本机字体': 'Permission to read local fonts was not granted',
+    '读取本机字体失败，请重试': 'Could not read local fonts; try again',
     '文字颜色': 'Text color', '背景颜色': 'Background color', '背景不透明度': 'Background opacity',
     '预览颜色样式': 'Preview color style',
     '选择按字幕颜色快照应用到预览字幕的样式': 'Choose how the subtitle color snapshot is applied to the preview',
@@ -673,7 +677,7 @@
     '统一分配表情包…': 'Assign sticker to selection…',
     '批量替换选中字幕…': 'Batch replace selected subtitles…',
     '启用选中': 'Enable selection', '禁用选中': 'Disable selection',
-    '清除所有选中': 'Clear selection', '取消选中': 'Deselect', '取消选择': 'Deselect', '请选择至少两个字幕块！': 'Select at least two subtitle blocks!',
+    '清除所有选中': 'Clear selection', '取消选中': 'Deselect', '取消选择': 'Deselect', '请选择至少两个同轨道字幕块！': 'Select at least two subtitle blocks on the same track!',
     '红': 'Red', '黄': 'Yellow',
     '蓝': 'Blue', '绿': 'Green', '紫': 'Purple',
     '红色': 'Red', '黄色': 'Yellow', '蓝色': 'Blue', '绿色': 'Green', '紫色': 'Purple'
@@ -989,6 +993,11 @@
     if (EN_ATTR[text]) return EN_ATTR[text];
     let match = /^(主字幕|副字幕)\s+(\d+)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;
+    match = /^已读取\s+(\d+)\s+种本机字体$/.exec(text);
+    if (match) return `Read ${match[1]} local font families`;
+    // 叠加轨字幕行的紧凑序号徽标（叠N），英文用 OVL（overlay 缩写）
+    match = /^叠\s*(\d+)$/.exec(text);
+    if (match) return `OVL${match[1]}`;
     match = /^(主字幕|副字幕)(?:（(.+)）)?\s*·\s*(\d+)\s*条$/.exec(text);
     if (match) {
       const label = translateText(match[1], EN);

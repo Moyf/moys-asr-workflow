@@ -1685,7 +1685,7 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
 
   const multiSubtitleHelp = helpPanel.locator('.help-subgroup').filter({ hasText: '绑定到主副字幕（自动匹配）' });
   await expect(multiSubtitleHelp).toHaveCount(1);
-  await expect(helpPanel.locator('#help-tab-panel-waveform .help-title').filter({ hasText: '多重字幕' })).toHaveCount(1);
+  await expect(helpPanel.locator('#help-tab-panel-waveform .help-title').filter({ hasText: '双语字幕' })).toHaveCount(1);
 
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');
@@ -1885,7 +1885,7 @@ test('C merges a common group and Shift+A/D extends the subtitle selection', asy
   await expect(cues.nth(0)).toHaveClass(/selected/);
   await page.keyboard.press('c');
   await expect(cues).toHaveCount(6);
-  await expect(page.locator('.hint-card', { hasText: '请选择至少两个字幕块！' })).toHaveCount(1);
+  await expect(page.locator('.hint-card', { hasText: '请选择至少两个同轨道字幕块！' })).toHaveCount(1);
 
   await cues.nth(2).click();
   await expect(cues.nth(2)).toHaveClass(/selected/);

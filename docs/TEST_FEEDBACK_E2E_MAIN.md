@@ -70,6 +70,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-e2e.ps1 tests/e2
   Launcher HTML 基线、运行时根目录环境变量和缓存落盘位置/测试夹具目录问题，未涉及本轮修改；
   因此以定向 134/134 和上述 E2E 结果作为本轮变更验收依据。
 
+## 全量 Python 既有失败排查（2026-09-17，已收口）
+
+上述 6F+7E 已全部定位并修复，根因统一是**测试依赖开发者本机的用户级状态**：
+
+| 状态 | 模块 | 根因 / 处理 |
+| --- | --- | --- |
+| 已修复 | test_mopeaks（6E） | 夹具直接往 `mopeaks_path()` 写字节，但本机 `.env` 勾了「输出进子文件夹」→ 路径带 `_maw` 且目录不存在 → ENOENT。复用文件内既有 `_subfolder_config` 隔离（`enterContext`） |
+| 已修复 | test_reapeaks（1E+2F） | 同一配置泄漏：缓存写进 `_maw` 而断言期望媒体旁 |
+| 已修复 | test_media_cache（2F） | 同上 |
+| 已修复 | test_quapeaks_generation（1F） | 同上 |
+| 已修复 | test_gui_web（2F） | ① 系统环境变量 `MAW_LOCAL_RUNTIME_ROOT`（本机真实值 g:\ai\maw-runtime）优先于测试 env 文件 → setUp 内 pop 掉再验证；② 813246e4 给横向 tab 条补的 `aria-orientation="vertical"` 与本文件的 assertNotIn 契约矛盾（横向条不应声明 vertical）——撤回模板改动，e2e 断言翻转为 not.toHaveAttribute |
+
+验证：五个模块 403/403 通过；全量 `unittest discover` **1578 项 OK（跳过 12）**；
+launcher-interactions e2e 45/45（断言翻转后）。
+
+> 经验：凡经 `output_naming.subfolder_prefs()` / `gui_config.effective_config()`
+> / `MAW_LOCAL_RUNTIME_ROOT` 读取用户级状态的测试，都必须显式钉住默认值，
+> 否则只在装过 MAW 的机器上挂。
+
 ## 恢复顺序（新会话接手时）
 
 1. `git status --short` 确认工作区；

@@ -6348,6 +6348,7 @@ function selectAll() {
     if (isHiddenDisabled(idx, getOverlayTrack())) return;
     selectedOverlayIdxs.add(idx);
   });
+  syncOverlaySelectionClasses();
   updateMultiSelectionClasses();
   updateSelectionCountText();
   if (waveformEditor) waveformEditor.updateSelection();
@@ -7461,12 +7462,28 @@ function buildExtensionCueEl(seg, idx, track) {
   return buildCueEl(seg, idx, { extensionTrack: track });
 }
 
+// 叠加字幕行选中高亮与选中计数统一同步：叠加轨没有 multi-cue 类，
+// 不能走 updateMultiSelectionClasses，这里按 data-overlay-idx 直接同步。
+function syncOverlaySelectionClasses() {
+  container.querySelectorAll('.cue[data-overlay-idx].selected').forEach((el) => {
+    if (!selectedOverlayIdxs.has(Number(el.dataset.overlayIdx))) el.classList.remove('selected');
+  });
+  selectedOverlayIdxs.forEach((index) => {
+    container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.add('selected');
+  });
+  updateSelectionCountText();
+}
+
 function selectOverlayCueRow(index, { focusEditor = false } = {}) {
-  selectedOverlayIdxs.clear();
+  // 与副字幕 selectOnlyExtension 同一逻辑：点击叠加字幕先清空主轨/副轨
+  // 已有选区（clearSelection 同时取消待绑定状态），再单独选中本轨字幕。
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
   selectedOverlayIdxs.add(index);
   lastClickedOverlayIdx = index;
   setCuePanelTarget('overlay', index);
   if (focusEditor) focusCuePanelText(index, 'overlay');
+  syncOverlaySelectionClasses();
   waveformEditor?.updateSelection();
   const row = container.querySelector(`.cue[data-overlay-idx="${index}"]`);
   if (row) scrollCueIntoViewIfNeeded(row);
@@ -7482,15 +7499,26 @@ function selectOverlayRange(fromIndex, toIndex) {
     selectedOverlayIdxs.add(index);
   }
   setCuePanelTarget('overlay', toIndex);
+  syncOverlaySelectionClasses();
   waveformEditor?.updateSelection();
   const row = container.querySelector(`.cue[data-overlay-idx="${toIndex}"]`);
   if (row) scrollCueIntoViewIfNeeded(row);
 }
 
 function toggleOverlaySelection(index) {
-  if (selectedOverlayIdxs.has(index)) selectedOverlayIdxs.delete(index);
-  else selectedOverlayIdxs.add(index);
+  if (isHiddenDisabled(index, getOverlayTrack())) return;  // 隐藏禁用项不参与选择
+  const row = container.querySelector(`.cue[data-overlay-idx="${index}"]`);
+  if (selectedOverlayIdxs.has(index)) {
+    selectedOverlayIdxs.delete(index);
+    row?.classList.remove('selected');
+  } else {
+    selectedOverlayIdxs.add(index);
+    row?.classList.add('selected');
+  }
   lastClickedOverlayIdx = index;
+  // 与副字幕 Ctrl 多选一致：面板跟随被切换的字幕，便于继续编辑。
+  setCuePanelTarget('overlay', index);
+  updateSelectionCountText();
   waveformEditor?.updateSelection();
 }
 
@@ -7502,7 +7530,7 @@ function buildOverlayCueEl(seg, index) {
   el.classList.toggle('selected', selectedOverlayIdxs.has(index));
   el.addEventListener('click', (event) => {
     event.stopPropagation();
-    if (event.shiftKey && lastClickedOverlayIdx >= 0 && lastClickedOverlayIdx !== index) {
+    if (event.shiftKey && lastClickedOverlayIdx >= 0) {
       selectOverlayRange(lastClickedOverlayIdx, index);
       return;
     }
@@ -7511,6 +7539,23 @@ function buildOverlayCueEl(seg, index) {
       return;
     }
     selectOverlayCueRow(index);
+    const segment = getOverlayTrack()?.segments?.[index];
+    if (!segment) return;
+    const previousSuppress = suppressCueListAutoScroll;
+    // 与副字幕一致：点击后的 seek 会同步刷新主字幕 active 状态；这次刷新不能把
+    // 列表从刚点击的叠加字幕行再次滚到对应的主字幕行。
+    suppressCueListAutoScroll = true;
+    try {
+      waveformEditor?.revealTime(segment.start, true);
+      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
+    } finally {
+      suppressCueListAutoScroll = previousSuppress;
+    }
+    if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused) togglePlayback();
+    if (EDITOR_SETTINGS.cueListAutoScrollOnClick) {
+      const row = container.querySelector(`.cue[data-overlay-idx="${index}"]`);
+      if (row) scrollCueToCenter(row);
+    }
   });
   el.addEventListener('dblclick', (event) => {
     event.preventDefault();
@@ -10326,9 +10371,9 @@ function mergeContiguousIndices(sorted) {
 }
 
 function mergeSegments(idxs) {
-  if (idxs.length < 2) { flashHint('请选择至少两个字幕块！', 'invalid'); return; }
+  if (idxs.length < 2) { flashHint('请选择至少两个同轨道字幕块！', 'invalid'); return; }
   const sorted = [...new Set(idxs)].sort((a, b) => a - b);
-  if (sorted.length < 2) { flashHint('请选择至少两个字幕块！', 'invalid'); return; }
+  if (sorted.length < 2) { flashHint('请选择至少两个同轨道字幕块！', 'invalid'); return; }
   // 确保连续
   for (let i = 1; i < sorted.length; i++) {
     if (sorted[i] !== sorted[i - 1] + 1) {
@@ -13146,15 +13191,74 @@ function subtitleFontFamilyInputToStored(text) {
   });
 }
 // 字体 combobox：文本输入 + 可筛选下拉列表，交互对齐 Launcher「模型」输入框。
-// getEntries() 返回 [{ value, label }]；选项点击写入 label 并派发 change，
+// getEntries() 返回 [{ value, label }]；选项点击或 Enter 写入 label 并派发 change，
 // 由既有映射（subtitleFontFamilyInputToStored / assStyleForm change 委托）落库。
+// 上下方向键在高亮项间移动（含首尾回绕前的边界钳制），输入仍可保留自定义值。
+// 下拉面板打开时 portal 到 body 并按输入框矩形 fixed 定位：不参与设置面板的
+// 滚动区（不撑高容器、不被面板边缘裁剪），宽度锁定与输入框同宽，贴底时上翻。
 // 实例惰性创建：启动早期（relabelSubtitleFontFamilyOptions 于模块求值时被调用）
 // 也可能触发重建，惰性创建避免引用后置声明造成暂时性死区。
 function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
   if (!input || !options) return { refresh() {}, setOpen() {} };
   let open = false;
+  let entries = [];
+  let activeIndex = -1;
+  let blurTimer = 0;
+  let reposition = null;
+  const picker = options.parentElement;
+  function optionId(index) {
+    return options.id ? `${options.id}-option-${index}` : `font-combobox-option-${index}`;
+  }
+  function positionPanel() {
+    const rect = input.getBoundingClientRect();
+    const margin = 8;
+    const viewportHeight = window.innerHeight;
+    const cap = Math.max(120, Math.min(280, Math.round(viewportHeight * 0.4)));
+    const spaceBelow = viewportHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+    const openUp = spaceBelow < Math.min(cap, 140) && spaceAbove > spaceBelow;
+    options.style.left = `${Math.round(rect.left)}px`;
+    options.style.width = `${Math.round(rect.width)}px`;
+    if (openUp) {
+      options.style.top = 'auto';
+      options.style.bottom = `${Math.round(viewportHeight - rect.top + 2)}px`;
+      options.style.maxHeight = `${Math.max(120, Math.min(cap, spaceAbove))}px`;
+    } else {
+      options.style.bottom = 'auto';
+      options.style.top = `${Math.round(rect.bottom + 2)}px`;
+      options.style.maxHeight = `${Math.max(120, Math.min(cap, spaceBelow))}px`;
+    }
+  }
+  function attachReposition() {
+    reposition = () => positionPanel();
+    window.addEventListener('resize', reposition);
+    // capture 捕获任意祖先（设置面板体、模态框等）的滚动，浮层跟随输入框。
+    document.addEventListener('scroll', reposition, true);
+  }
+  function detachReposition() {
+    if (!reposition) return;
+    window.removeEventListener('resize', reposition);
+    document.removeEventListener('scroll', reposition, true);
+    reposition = null;
+  }
+  function setActive(index, { scroll = false } = {}) {
+    activeIndex = entries.length ? Math.max(0, Math.min(index, entries.length - 1)) : -1;
+    Array.from(options.children).forEach((child, childIndex) => {
+      child.classList?.toggle('active', childIndex === activeIndex);
+    });
+    if (activeIndex >= 0) {
+      input.setAttribute('aria-activedescendant', optionId(activeIndex));
+      if (scroll) options.children[activeIndex]?.scrollIntoView({ block: 'nearest' });
+    } else {
+      input.removeAttribute('aria-activedescendant');
+    }
+  }
+  function activeIndexOfValue() {
+    const current = input.value.trim().toLocaleLowerCase();
+    return entries.findIndex((entry) => entry.label.toLocaleLowerCase() === current);
+  }
   function render(query = '') {
-    const entries = window.AsrEditorUtils.filterFontFamilyOptions(
+    entries = window.AsrEditorUtils.filterFontFamilyOptions(
       window.AsrEditorUtils.mergeFontFamilyOptions(getEntries()),
       query,
     );
@@ -13165,41 +13269,98 @@ function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
       empty.textContent = '无匹配字体';
       options.append(empty);
     }
-    entries.forEach((entry) => {
+    entries.forEach((entry, index) => {
       const option = document.createElement('button');
       option.type = 'button';
+      option.id = optionId(index);
       option.className = 'font-combobox-option';
       option.setAttribute('role', 'option');
       option.setAttribute('aria-selected', String(entry.label === input.value.trim()));
       option.textContent = entry.label;
-      option.addEventListener('mousedown', (event) => event.preventDefault());
-      option.addEventListener('click', () => {
-        input.value = entry.label;
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        setOpen(false);
-        input.focus();
-      });
+      option.addEventListener('click', () => selectEntry(index));
       options.append(option);
     });
+    setActive(activeIndexOfValue());
+  }
+  function selectEntry(index) {
+    const entry = entries[index];
+    if (!entry) return;
+    input.value = entry.label;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    setOpen(false);
+    input.focus();
   }
   function setOpen(next, query = '') {
     open = Boolean(next);
     input.setAttribute('aria-expanded', String(open));
-    if (open) render(query);
-    options.hidden = !open;
+    if (open) {
+      render(query);
+      // portal 到 body 脱离设置面板的滚动/裁剪上下文，先定位再显示避免闪跳。
+      if (options.parentElement !== document.body) document.body.appendChild(options);
+      positionPanel();
+      attachReposition();
+      options.hidden = false;
+    } else {
+      entries = [];
+      setActive(-1);
+      detachReposition();
+      options.hidden = true;
+      // 关闭后归还到 picker 内，保持模板 DOM 结构整洁。
+      if (picker && options.parentElement !== picker) picker.appendChild(options);
+      input.removeAttribute('aria-activedescendant');
+    }
   }
-  input.addEventListener('focus', () => setOpen(true));
+  function moveActive(step) {
+    if (!open) setOpen(true, input.value);
+    if (!entries.length) return;
+    setActive(activeIndex < 0 ? (step > 0 ? 0 : entries.length - 1) : activeIndex + step, { scroll: true });
+  }
+  function cancelPendingClose() {
+    if (blurTimer) {
+      window.clearTimeout(blurTimer);
+      blurTimer = 0;
+    }
+  }
+  // 失焦延迟关闭：选项与箭头 mousedown preventDefault 不夺焦点，.blur 只在真正
+  // 离开组件（点击外部 / Tab）时触发；延迟窗口内重获焦点则取消关闭。
+  input.addEventListener('focus', () => {
+    cancelPendingClose();
+    setOpen(true);
+  });
+  input.addEventListener('blur', () => {
+    cancelPendingClose();
+    blurTimer = window.setTimeout(() => {
+      blurTimer = 0;
+      if (open) setOpen(false);
+    }, 120);
+  });
+  // 容器整体拦截 mousedown，点击面板空白处也不夺走输入框焦点。
+  options.addEventListener('mousedown', (event) => event.preventDefault());
   input.addEventListener('input', () => setOpen(true, input.value));
   input.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') setOpen(false);
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      moveActive(1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveActive(-1);
+    } else if (event.key === 'Enter') {
+      if (!open) return;
+      event.preventDefault();
+      if (activeIndex >= 0) selectEntry(activeIndex);
+      else setOpen(false);
+    } else if (event.key === 'Escape') {
+      setOpen(false);
+    }
   });
   if (toggle) {
     toggle.addEventListener('mousedown', (event) => event.preventDefault());
-    toggle.addEventListener('click', () => setOpen(!open));
+    toggle.addEventListener('click', () => {
+      cancelPendingClose();
+      setOpen(!open, input.value);
+    });
   }
-  document.addEventListener('click', (event) => {
-    if (open && !event.target?.closest?.('.font-combobox')) setOpen(false);
-  });
   return {
     refresh() {
       if (open) render(input.value);
@@ -22139,10 +22300,15 @@ function initWaveformEditor() {
       lastClickedOverlayIdx = idx;
     },
     toggleOverlaySelection: (idx) => toggleOverlaySelection(idx),
+    selectOverlayRange: (idx) => {
+      if (lastClickedOverlayIdx >= 0) selectOverlayRange(lastClickedOverlayIdx, idx);
+      else selectOverlayCueRow(idx);
+      lastClickedOverlayIdx = idx;
+    },
     activateOverlayCue: (idx) => {
-      selectedOverlayIdxs.clear();
-      selectedOverlayIdxs.add(idx);
-      setCuePanelTarget('overlay', idx);
+      // 与 selectOverlayCue 同一入口：再次点击已选中的叠加字幕也要
+      // 清空主轨/副轨选区并保持本轨单选语义。
+      selectOverlayCueRow(idx);
     },
     enterOverlayCueEditor: (idx) => {
       selectOverlayCueRow(idx, { focusEditor: true });
