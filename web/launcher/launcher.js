@@ -968,11 +968,14 @@
     local_model_settings_open: "本地 AI 模型配置",
     local_model_settings_hint_suffix: " 中管理。",
     settings_local_asr_models: "本地 ASR 模型",
-    settings_alignment_models: "对齐模型",
-    alignment_model_settings_hint: "当前 ASR 模型没有字/词级时间码时，可在此准备补齐模型；Qwen Local 模型缓存可以复用。",
-    local_alignment_model: "对齐模型",
+    settings_alignment_models: "本地对齐模型",
+    alignment_model_settings_hint: "查看和准备本地对齐模型；Qwen Local 模型缓存可以复用。",
+    local_alignment_model: "本地对齐模型",
+    recognition_alignment_model: "对齐模型",
     alignment_model_none: "不调用",
     local_alignment_model_hint: "Qwen3-ForcedAligner 和 FireRedASR2-CTC 可单独下载。",
+    recognition_alignment_model_hint: "当前模型没有字/词级时间码时，可调用已准备好的对齐模型补齐。",
+    local_alignment_model_list_label: "本地对齐模型列表",
     alignment_model_download: "下载对齐模型",
     alignment_model_downloading: "正在下载对齐模型……",
     alignment_model_ready: "对齐模型已就绪",
@@ -1005,11 +1008,14 @@
     local_model_settings_open: "Local AI model configuration",
     local_model_settings_hint_suffix: ".",
     settings_local_asr_models: "Local ASR models",
-    settings_alignment_models: "Alignment models",
-    alignment_model_settings_hint: "When the current ASR model has no word/character timestamps, prepare an aligner here; Qwen Local caches can be reused.",
-    local_alignment_model: "Alignment model",
+    settings_alignment_models: "Local alignment models",
+    alignment_model_settings_hint: "View and prepare local alignment models; Qwen Local caches can be reused.",
+    local_alignment_model: "Local alignment model",
+    recognition_alignment_model: "Alignment model",
     alignment_model_none: "Do not align",
     local_alignment_model_hint: "Qwen3-ForcedAligner and FireRedASR2-CTC can be downloaded separately.",
+    recognition_alignment_model_hint: "When the current model has no word/character timestamps, use a prepared aligner to fill them in.",
+    local_alignment_model_list_label: "Local alignment model list",
     alignment_model_download: "Download aligner",
     alignment_model_downloading: "Downloading aligner…",
     alignment_model_ready: "Aligner is ready",
@@ -1301,7 +1307,7 @@
   const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-transcribe", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize", "whisper-large-v3-turbo", "whisper-large-v3"]);
   const SERVER_STATUS_MONITOR_INTERVAL_MS = 2000;
   const SERVER_STATUS_MONITOR_FAILURE_THRESHOLD = 2;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, alignmentPreparing: "", alignmentProgressMessage: "", localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, alignmentPreparing: "", alignmentProgressMessage: "", alignmentModelSelection: "", alignmentModelManagementId: "", localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
@@ -2149,8 +2155,8 @@
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
-  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "localAlignmentModel", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
-  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), alignmentModel: isLocalProvider() ? $("localAlignmentModel").value : "", alignmentModelPath: "", device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
+  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "recognitionAlignmentModel", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
+  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), alignmentModel: isLocalProvider() ? $("recognitionAlignmentModel").value : "", alignmentModelPath: "", device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
     const button = $("openMawe");
@@ -2487,25 +2493,7 @@
     return ["qwen3-asr-local", "firered-asr2-ctc-local", "whisper-large-v3-local"].includes(model?.id);
   }
 
-  function renderLocalAlignmentModel() {
-    const select = $("localAlignmentModel");
-    const button = $("prepareAlignmentModel");
-    const statusTarget = $("localAlignmentModelStatus");
-    if (!select || !button || !statusTarget) return;
-    const section = $("alignmentModelSettingsSection");
-    const needsAlignmentModel = isLocalProvider() && !modelProvidesWordTimestamps();
-    section?.classList.toggle("hidden", !needsAlignmentModel);
-    if (!needsAlignmentModel) {
-      select.textContent = "";
-      select.add(new Option(t("alignment_model_none"), ""));
-      select.disabled = true;
-      button.disabled = true;
-      button.classList.add("hidden");
-      statusTarget.textContent = "";
-      return;
-    }
-    const models = Array.isArray(state.config?.alignmentModels) ? state.config.alignmentModels : [];
-    const selected = models.some((model) => model.id === select.value) ? select.value : "";
+  function renderAlignmentModelOptions(select, models, selected) {
     select.textContent = "";
     select.add(new Option(t("alignment_model_none"), ""));
     models.forEach((model) => {
@@ -2513,15 +2501,9 @@
       select.add(new Option(`${alignmentModelLabel(model)}${suffix}`, model.id));
     });
     select.value = selected;
-    select.disabled = Boolean(state.localPreparing || state.alignmentPreparing);
-    const model = models.find((item) => item.id === selected);
-    if (!model) {
-      statusTarget.textContent = "";
-      button.disabled = true;
-      button.classList.add("hidden");
-      return;
-    }
-    button.classList.remove("hidden");
+  }
+
+  function alignmentModelStatus(model) {
     const preparing = state.alignmentPreparing === model.id;
     const runtimeReady = model.runtimeAvailable === undefined
       ? Boolean(state.config.localRuntime?.ready)
@@ -2529,12 +2511,134 @@
     const statusKey = preparing
       ? "alignment_model_downloading"
       : (model.status === "checking" ? "alignment_model_checking" : (!runtimeReady ? "alignment_model_runtime_missing" : (model.installed ? "alignment_model_ready" : "alignment_model_missing")));
+    return { preparing, runtimeReady, statusKey };
+  }
+
+  function renderRecognitionAlignmentModel(models) {
+    const field = $("recognitionAlignmentModelField");
+    const select = $("recognitionAlignmentModel");
+    const statusTarget = $("recognitionAlignmentModelStatus");
+    if (!field || !select || !statusTarget) return;
+    const needsAlignmentModel = isLocalProvider() && !modelProvidesWordTimestamps();
+    field.classList.toggle("hidden", !needsAlignmentModel);
+    if (!needsAlignmentModel) {
+      renderAlignmentModelOptions(select, models, "");
+      select.disabled = true;
+      statusTarget.textContent = "";
+      statusTarget.className = "hint";
+      return;
+    }
+    const selected = models.some((model) => model.id === state.alignmentModelSelection) ? state.alignmentModelSelection : "";
+    state.alignmentModelSelection = selected;
+    renderAlignmentModelOptions(select, models, selected);
+    select.disabled = Boolean(state.localPreparing || state.alignmentPreparing);
+    const model = models.find((item) => item.id === selected);
+    if (!model) {
+      statusTarget.textContent = "";
+      statusTarget.className = "hint";
+      return;
+    }
+    const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
     statusTarget.textContent = preparing && state.alignmentProgressMessage
       ? `${t(statusKey)} ${state.alignmentProgressMessage}`
       : t(statusKey);
     statusTarget.className = `hint ${model.installed && runtimeReady && !preparing ? "success" : ""}`;
+  }
+
+  function renderLocalAlignmentModelList(models) {
+    const container = $("localAlignmentModelList");
+    if (!container) return;
+    container.replaceChildren();
+    if (!isLocalProvider()) {
+      container.classList.add("hidden");
+      return;
+    }
+    container.classList.toggle("hidden", !models.length);
+    const selectedId = state.alignmentModelManagementId;
+    models.forEach((model) => {
+      const item = document.createElement("div");
+      item.setAttribute("role", "listitem");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "local-model-list-item";
+      button.classList.toggle("active", model.id === selectedId);
+      const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
+      const ready = Boolean(model.installed && runtimeReady && !preparing);
+      button.classList.toggle("ready", ready);
+      button.disabled = Boolean(state.alignmentPreparing);
+      button.setAttribute("aria-pressed", String(model.id === selectedId));
+      button.dataset.modelId = model.id;
+
+      const main = document.createElement("span");
+      main.className = "local-model-list-main";
+      const label = document.createElement("span");
+      label.className = "local-model-list-label";
+      label.textContent = alignmentModelLabel(model);
+      main.append(label);
+      const note = model.note || model.modelRef || "";
+      if (note) {
+        button.title = note;
+        const noteElement = document.createElement("span");
+        noteElement.className = "local-model-list-note";
+        noteElement.title = note;
+        noteElement.textContent = note;
+        main.append(noteElement);
+      }
+      const status = document.createElement("span");
+      status.className = `local-model-list-status ${ready ? "ready" : ""}`.trim();
+      status.textContent = ready ? "✓" : t(statusKey);
+      status.setAttribute("aria-label", t(statusKey));
+      status.title = t(statusKey);
+      button.append(main, status);
+      item.append(button);
+      container.append(item);
+      button.addEventListener("click", () => {
+        if (button.disabled || state.alignmentModelManagementId === model.id) return;
+        state.alignmentModelManagementId = model.id;
+        renderLocalAlignmentModel();
+      });
+    });
+  }
+
+  function renderLocalAlignmentModel() {
+    const button = $("prepareAlignmentModel");
+    const statusTarget = $("localAlignmentModelStatus");
+    if (!button || !statusTarget) return;
+    const section = $("alignmentModelSettingsSection");
+    const local = isLocalProvider();
+    const models = Array.isArray(state.config?.alignmentModels) ? state.config.alignmentModels : [];
+    section?.classList.toggle("hidden", !local);
+    const selected = local && models.some((model) => model.id === state.alignmentModelManagementId)
+      ? state.alignmentModelManagementId
+      : (local ? models[0]?.id || "" : "");
+    state.alignmentModelManagementId = selected;
+    renderLocalAlignmentModelList(models);
+    if (!local) {
+      button.disabled = true;
+      button.classList.add("hidden");
+      statusTarget.textContent = "";
+      statusTarget.className = "local-status";
+      renderRecognitionAlignmentModel(models);
+      return;
+    }
+    const model = models.find((item) => item.id === selected);
+    if (!model) {
+      statusTarget.textContent = "";
+      statusTarget.className = "local-status warn";
+      button.disabled = true;
+      button.classList.add("hidden");
+      renderRecognitionAlignmentModel(models);
+      return;
+    }
+    button.classList.remove("hidden");
+    const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
+    statusTarget.textContent = preparing && state.alignmentProgressMessage
+      ? `${t(statusKey)} ${state.alignmentProgressMessage}`
+      : t(statusKey);
+    statusTarget.className = `local-status ${model.installed && runtimeReady && !preparing ? "ready" : "warn"}`;
     button.disabled = preparing ? false : (!runtimeReady || model.status === "checking");
     button.textContent = preparing ? t("alignment_model_cancel") : (model.installed ? t("alignment_model_download_again") : t("alignment_model_download"));
+    renderRecognitionAlignmentModel(models);
   }
   async function refreshLocalRuntime() {
     if (!isLocalProvider()) return;
@@ -2758,7 +2862,7 @@
     showErrorNotice(message, result.code || "", detail, diagnostics);
   }
   function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["maxWords", 1], ["minWords", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); if (data.maxWords && data.minWords && Number(data.maxWords) < Number(data.minWords)) return fail("maxWords", errText("segmentation_invalid", "")); return true; }
-  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); if (data.alignmentModel) { const alignment = (state.config.alignmentModels || []).find((item) => item.id === data.alignmentModel); if (!alignment || alignment.status === "checking") return fail("localAlignmentModel", t("alignment_model_checking")); if (alignment.status === "runtime_missing" || alignment.runtimeAvailable === false) return fail("localAlignmentModel", t("alignment_model_runtime_missing")); if (!alignment.installed) return fail("localAlignmentModel", errText("alignment_model_missing", "")); } return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (isCustomOpenAiModel() && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().id === "openai" && selectedModel().supportsKeywords && /[<>]/u.test(data.openaiKeywords)) return fail("openaiKeywords", errText("openai_keywords_invalid", "")); if (provider().id === "openai" && selectedModel().supportsDiarization && isOpenRouterBaseUrl(data.openaiBaseUrl)) return fail("model", errText("openai_diarize_openrouter_unsupported", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
+  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); if (data.alignmentModel) { const alignment = (state.config.alignmentModels || []).find((item) => item.id === data.alignmentModel); if (!alignment || alignment.status === "checking") return fail("recognitionAlignmentModel", t("alignment_model_checking")); if (alignment.status === "runtime_missing" || alignment.runtimeAvailable === false) return fail("recognitionAlignmentModel", t("alignment_model_runtime_missing")); if (!alignment.installed) return fail("recognitionAlignmentModel", errText("alignment_model_missing", "")); } return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (isCustomOpenAiModel() && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().id === "openai" && selectedModel().supportsKeywords && /[<>]/u.test(data.openaiKeywords)) return fail("openaiKeywords", errText("openai_keywords_invalid", "")); if (provider().id === "openai" && selectedModel().supportsDiarization && isOpenRouterBaseUrl(data.openaiBaseUrl)) return fail("model", errText("openai_diarize_openrouter_unsupported", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
   function fail(field, message) {
     setError(field, message);
     setStatus(message);
@@ -3391,10 +3495,10 @@
   $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; const runtime = state.config?.localRuntime || {}; if (state.localRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
    $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
    $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
-  $("localAlignmentModel").addEventListener("change", () => { setError("localAlignmentModel", ""); renderLocalAlignmentModel(); });
+  $("recognitionAlignmentModel").addEventListener("change", () => { state.alignmentModelSelection = $("recognitionAlignmentModel").value; setError("recognitionAlignmentModel", ""); renderLocalAlignmentModel(); });
   $("prepareAlignmentModel").addEventListener("click", async () => {
     if (!isLocalProvider()) return;
-    const modelId = $("localAlignmentModel").value;
+    const modelId = state.alignmentModelManagementId;
     if (!modelId) return;
     if (state.alignmentPreparing) {
       if (state.alignmentPreparing !== modelId) return;
@@ -3410,7 +3514,6 @@
     }
     state.alignmentPreparing = modelId;
     state.alignmentProgressMessage = t("alignment_model_downloading");
-    setError("localAlignmentModel", "");
     renderLocalAlignmentModel();
     appendLog(t("alignment_model_downloading"));
     const result = await bridge("prepare_alignment_model", { modelId });

@@ -1274,6 +1274,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('id="toolboxUtilitiesTabList"', html)
         self.assertIn('<div class="toolbox-tab-list toolbox-tab-list-5">', postprocess_html)
         self.assertIn('data-i18n="toolbox_group_timestamp_media">媒体来源</h3>', html)
+        timestamp_panel = html[html.index('id="toolboxTimestampsPanel"'):]
+        self.assertLess(timestamp_panel.index('data-i18n="toolbox_group_timestamp_media"'), timestamp_panel.index('data-i18n="toolbox_group_alignment_model"'))
+        self.assertIn('<p class="hint toolbox-settings-hint" data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
+        self.assertNotIn('<p class="hint" data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
         self.assertNotIn('工程有可用视频时自动使用；独立 SRT 会回退到当前 Launcher 视频；如果当前媒体是音频或无视频，必须选择视频。', html)
         self.assertNotIn('SRT 没有媒体路径；工程若已记录媒体可留空，否则请选择原始音频/视频。', html)
         self.assertIn('id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" tabindex="0"', html)
@@ -5112,6 +5116,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         llm_section = page.index('id="llmSettingsSection"')
         local_model_section = page.index('id="localAsrModelSettingsSection"')
         alignment_section = page.index('id="alignmentModelSettingsSection"')
+        alignment_section_end = page.index('id="dashscopeRegionPanel"', alignment_section)
+        alignment_section_html = page[alignment_section:alignment_section_end]
         # 本地模型运行时仍在 Runtime；AI 模型配置先放 LLM，再放本地 ASR 与对齐模型。
         self.assertLess(runtime_tab_panel, runtime_panel)
         self.assertLess(runtime_panel, ocr_section)
@@ -5122,6 +5128,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="localRuntimeCheckField"', page)
         self.assertIn('data-i18n="settings_local_asr_models"', page)
         self.assertIn('data-i18n="settings_alignment_models"', page)
+        self.assertIn('settings_alignment_models: "本地对齐模型"', script)
+        self.assertIn('settings_alignment_models: "Local alignment models"', script)
         self.assertIn('id="localModelSettingsEntry"', page)
         self.assertIn('id="openLocalModelSettings"', page)
         self.assertIn('data-i18n="local_model_settings_hint_prefix"', page)
@@ -5157,6 +5165,22 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('dispatchEvent(new Event("change", { bubbles: true }))', script)
         self.assertIn('local_model_list_label: "本地模型列表"', script)
         self.assertIn('local_model_list_label: "Local model list"', script)
+        self.assertIn('id="recognitionAlignmentModelField"', page)
+        self.assertIn('id="recognitionAlignmentModel"', page)
+        self.assertIn('data-i18n="recognition_alignment_model_hint"', page)
+        self.assertIn('data-i18n="recognition_alignment_model"', page)
+        self.assertIn('id="localAlignmentModelList"', page)
+        self.assertIn('id="localAlignmentModelDetails"', page)
+        self.assertIn('class="local-model-list"', alignment_section_html)
+        self.assertNotIn('alignment_model_none', alignment_section_html)
+        self.assertNotIn('id="localAlignmentModel"', page)
+        self.assertIn('alignmentModel: isLocalProvider() ? $("recognitionAlignmentModel").value : ""', script)
+        self.assertIn('state.alignmentModelSelection', script)
+        self.assertIn('state.alignmentModelManagementId', script)
+        self.assertIn('function renderLocalAlignmentModelList(models)', script)
+        self.assertIn('section?.classList.toggle("hidden", !local);', script)
+        self.assertIn('const needsAlignmentModel = isLocalProvider() && !modelProvidesWordTimestamps();', script)
+        self.assertNotIn('section?.classList.toggle("hidden", !needsAlignmentModel);', script)
 
     def test_launcher_deep_link_scrolls_only_the_settings_container(self) -> None:
         """Given a settings deep link, When opening a section, Then only .settings-scroll moves."""
