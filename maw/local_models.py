@@ -75,6 +75,7 @@ class LocalModelStatus:
     required_model_refs: tuple[str, ...] = ()
     runtime_source: str = "current"
     runtime_python: str = ""
+    installed_size: str = ""
 
 
 def inspect_local_model(
@@ -184,6 +185,7 @@ def inspect_local_model(
             model.required_model_refs,
             runtime_source,
             runtime_python,
+            _installed_model_size(explicit),
         )
 
     paths = _find_model_paths(model, model_cache_root)
@@ -215,6 +217,7 @@ def inspect_local_model(
             model.required_model_refs,
             runtime_source,
             runtime_python,
+            _installed_model_size(main_path),
         )
     return LocalModelStatus(
         model.id,
@@ -228,6 +231,7 @@ def inspect_local_model(
         model.required_model_refs,
         runtime_source,
         runtime_python,
+        _installed_model_size(main_path),
     )
 
 
@@ -250,6 +254,7 @@ def local_model_payload(
         "installed": status.installed,
         "path": status.path,
         "detail": status.detail,
+        "installedSize": status.installed_size,
         "runtimeSource": status.runtime_source,
         "runtimePython": status.runtime_python,
         "engine": model.engine,
@@ -578,6 +583,14 @@ def _format_bytes(value: int) -> str:
     if value >= 1024:
         return f"{value / 1024:.1f} KB"
     return f"{value} B"
+
+
+def _installed_model_size(path: str | Path) -> str:
+    value = str(path or "").strip()
+    if not value:
+        return ""
+    _file_count, total_size = _cache_snapshot([Path(value)])
+    return _format_bytes(total_size) if total_size else ""
 
 
 def _format_percent(value: float) -> str:

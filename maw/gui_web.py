@@ -758,12 +758,16 @@ class LauncherApi:
                 "label": model.label,
                 "note": model.note,
                 "estimatedSize": model.estimated_size,
+                "deviceSupport": model.device_support,
+                "resourceLevel": model.resource_level,
+                "supportsWordTimestamps": model.supports_word_timestamps,
                 "languages": list(model.languages),
                 "status": "checking",
                 "runtimeAvailable": False,
                 "installed": False,
                 "path": "",
                 "detail": "",
+                "installedSize": "",
             }
             for model in ALIGNMENT_MODELS
         ]
@@ -4360,6 +4364,7 @@ def _model_payload(
                 "installed": False,
                 "path": "",
                 "detail": "",
+                "installedSize": "",
                 "runtimeSource": "checking",
                 "runtimePython": "",
                 "engine": model.engine,

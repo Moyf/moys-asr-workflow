@@ -80,6 +80,9 @@ class AlignmentModelConfig:
     note: str
     estimated_size: str
     languages: tuple[str, ...]
+    device_support: str = ""
+    resource_level: str = ""
+    supports_word_timestamps: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +97,7 @@ class AlignmentModelStatus:
     detail: str = ""
     runtime_source: str = "current"
     runtime_python: str = ""
+    installed_size: str = ""
 
     def to_payload(self) -> dict[str, object]:
         return {
@@ -106,6 +110,7 @@ class AlignmentModelStatus:
             "installed": self.installed,
             "path": self.path,
             "detail": self.detail,
+            "installedSize": self.installed_size,
             "runtimeSource": self.runtime_source,
             "runtimePython": self.runtime_python,
         }
@@ -118,9 +123,11 @@ ALIGNMENT_MODELS: tuple[AlignmentModelConfig, ...] = (
         engine="qwen",
         model_ref=QWEN_FORCED_ALIGNER_REF,
         runtime_packages=("qwen_asr", "torch"),
-        note="文本 + 音频输入，输出字/词级时间码；与 Qwen Local 共用 Hugging Face 缓存。",
+        note="文本 + 音频输入，输出字词级时间码；与 Qwen Local 共用 Hugging Face 缓存。",
         estimated_size="约 1.7 GB",
         languages=("zh", "yue", "en", "ja", "ko", "fr", "de", "es"),
+        device_support="gpu_preferred",
+        resource_level="medium",
     ),
     AlignmentModelConfig(
         id=FIRERED_ASR2_CTC_MODEL_ID,
@@ -131,6 +138,8 @@ ALIGNMENT_MODELS: tuple[AlignmentModelConfig, ...] = (
         note="sherpa-onnx int8 CTC；可独立运行，也可将识别 token 与已有稿件对齐。",
         estimated_size="约 767 MB",
         languages=("zh", "en"),
+        device_support="cpu",
+        resource_level="low",
     ),
 )
 
@@ -178,6 +187,9 @@ def alignment_models_payload(
             "label": model.label,
             "note": model.note,
             "estimatedSize": model.estimated_size,
+            "deviceSupport": model.device_support,
+            "resourceLevel": model.resource_level,
+            "supportsWordTimestamps": model.supports_word_timestamps,
             "languages": list(model.languages),
             "runtimePackages": list(model.runtime_packages),
         }
@@ -314,6 +326,7 @@ def _status(
         detail,
         runtime_source,
         runtime_python,
+        _installed_model_size(path) if installed else "",
     )
 
 
@@ -553,6 +566,13 @@ def _format_bytes(value: int) -> str:
     if value >= 1024:
         return f"{value / 1024:.1f} KB"
     return f"{value} B"
+
+
+def _installed_model_size(path: Path | None) -> str:
+    if path is None:
+        return ""
+    _file_count, total_size = _cache_snapshot([path])
+    return _format_bytes(total_size) if total_size else ""
 
 
 __all__ = [

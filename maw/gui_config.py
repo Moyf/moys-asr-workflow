@@ -50,7 +50,7 @@ class ModelConfig:
     supports_context: bool = False
     supports_hotwords: bool = False
     supports_vocabulary: bool = False
-    # 模型是否原生返回可用于字幕编辑的字/词级时间码；为 False 时，
+    # 模型是否原生返回可用于字幕编辑的字词级时间码；为 False 时，
     # Launcher 可在本地模型设置中提供额外的对齐模型。
     supports_word_timestamps: bool = False
     # 本地模型列表中的用户向资源提示；不参与运行时判定。
@@ -478,7 +478,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         id="qwen3-asr-local",
         label="Qwen3-ASR 0.6B（推荐）",
         env_key="",
-        note="轻量多语种识别；原生字/词级时间码；可复用 Qwen3-ForcedAligner",
+        note="轻量多语种识别；原生字词级时间码；可复用 Qwen3-ForcedAligner",
         languages=LANGUAGES,
         kind="local",
         engine="qwen-asr",
@@ -494,7 +494,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         id="qwen3-asr-1.7b-local",
         label="Qwen3-ASR 1.7B",
         env_key="",
-        note="更高识别质量；原生字/词级时间码；可复用 Qwen3-ForcedAligner；资源占用更高",
+        note="更高识别质量；原生字词级时间码；可复用 Qwen3-ForcedAligner；资源占用更高",
         languages=LANGUAGES,
         kind="local",
         engine="qwen-asr",
@@ -543,7 +543,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         id="sensevoice-small-local",
         label="SenseVoice Small",
         env_key="",
-        note="多语种识别；默认配合 FSMN-VAD；CPU/GPU 均可运行；可用对齐模型补齐字/词时间码",
+        note="多语种识别；默认配合 FSMN-VAD；CPU/GPU 均可运行；可用对齐模型补齐字词时间码",
         languages=SENSEVOICE_LANGUAGES,
         kind="local",
         engine="funasr",
@@ -559,7 +559,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         env_key="",
         # 无字词级时间码是 MOSS 输出契约的硬限制；MAW 不伪造 items，也不对
         # 模型段做字数硬切，必须在模型说明里提前告知。
-        note="多人转写与说话人分离；仅段级时间码，可用对齐模型补齐字/词时间码；建议 GPU",
+        note="多人转写与说话人分离；仅段级时间码，可用对齐模型补齐字词时间码；建议 GPU",
         supports_speaker=True,
         languages=LANGUAGES,
         kind="local",

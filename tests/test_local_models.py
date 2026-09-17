@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from maw.gui_config import provider_by_id  # noqa: E402
-from maw.local_models import LocalModelStatus, _prepare_progress_payload, inspect_local_model, prepare_local_model  # noqa: E402
+from maw.local_models import LocalModelStatus, _prepare_progress_payload, inspect_local_model, local_model_payload, prepare_local_model  # noqa: E402
 
 
 def local_model(model_id: str):
@@ -70,6 +70,23 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(missing.status, "missing")
         self.assertEqual(installed.status, "installed")
         self.assertEqual(Path(installed.path).resolve(), main.resolve())
+
+    def test_installed_model_size_is_reported_from_detected_directory(self) -> None:
+        model = local_model("whisper-large-v3-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache = Path(temp_dir)
+            main = cache / "models--Systran--faster-whisper-large-v3" / "snapshots" / "main"
+            main.mkdir(parents=True)
+            (main / "model.bin").write_bytes(b"weights")
+            (main / "config.json").write_bytes(b"{}")
+
+            with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                status = inspect_local_model(model, model_cache_root=cache)
+                payload = local_model_payload(model, model_cache_root=cache)
+
+        self.assertEqual(status.status, "installed")
+        self.assertEqual(status.installed_size, "9 B")
+        self.assertEqual(payload["installedSize"], "9 B")
 
     def test_whisper_flat_managed_cache_layout_is_detected(self) -> None:
         """download_root 曾被指向缓存根本体，models--* 仓库直接落在其下；

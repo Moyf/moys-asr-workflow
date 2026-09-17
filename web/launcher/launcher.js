@@ -466,13 +466,13 @@
     local_model_badge_cpu: "CPU",
     local_model_badge_cpu_gpu: "CPU/GPU",
     local_model_badge_gpu_preferred: "GPU 优先",
-    local_model_badge_resource_low: "资源低",
-    local_model_badge_resource_medium: "资源中",
-    local_model_badge_resource_high: "资源高",
+    local_model_badge_resource_low: "轻",
+    local_model_badge_resource_medium: "中",
+    local_model_badge_resource_high: "重",
     local_model_badge_speaker: "说话人",
-    local_model_badge_word_timestamps: "字/词时间码",
-    local_model_badge_segment_timestamps: "段级时间码",
+    local_model_badge_word_timestamps: "字词时间码",
     local_model_badge_size: "约 {size}",
+    local_model_badge_installed_size: "已占用 {size}",
     local_model_cache_path_label: "模型保存目录",
     local_model_cache_path_hint: "默认使用本地环境的模型缓存目录；需要时可改到其他磁盘。",
     local_refresh: "重新扫描",
@@ -576,13 +576,13 @@
     local_model_badge_cpu: "CPU",
     local_model_badge_cpu_gpu: "CPU/GPU",
     local_model_badge_gpu_preferred: "GPU preferred",
-    local_model_badge_resource_low: "Low resource",
-    local_model_badge_resource_medium: "Medium resource",
-    local_model_badge_resource_high: "High resource",
+    local_model_badge_resource_low: "Light",
+    local_model_badge_resource_medium: "Medium",
+    local_model_badge_resource_high: "Heavy",
     local_model_badge_speaker: "Speaker",
     local_model_badge_word_timestamps: "Word timestamps",
-    local_model_badge_segment_timestamps: "Segment timestamps",
     local_model_badge_size: "Approx. {size}",
+    local_model_badge_installed_size: "Installed {size}",
     local_model_cache_path_label: "Model storage directory",
     local_model_cache_path_hint: "The local environment cache is used by default; you can move it to another drive if needed.",
     local_refresh: "Rescan",
@@ -994,7 +994,7 @@
     recognition_alignment_model: "对齐模型",
     alignment_model_none: "不调用",
     local_alignment_model_hint: "Qwen3-ForcedAligner 和 FireRedASR2-CTC 可单独下载。",
-    recognition_alignment_model_hint: "当前模型没有字/词级时间码时，可调用已准备好的对齐模型补齐。",
+    recognition_alignment_model_hint: "当前模型没有字词级时间码时，可调用已准备好的对齐模型补齐。",
     local_alignment_model_list_label: "本地对齐模型列表",
     alignment_model_download: "下载对齐模型",
     alignment_model_downloading: "正在下载对齐模型……",
@@ -1007,7 +1007,7 @@
     alignment_model_failed: "对齐模型准备失败",
     alignment_model_download_again: "重新下载",
     toolbox_timestamps: "生成时间码",
-    toolbox_timestamps_hint: "给 .srt 或 .mosp/.json 工程的字幕段生成或补充字/词级时间码；需要原始媒体。",
+    toolbox_timestamps_hint: "给 .srt 或 .mosp/.json 工程的字幕段生成或补充字词级时间码；需要原始媒体。",
     toolbox_group_alignment_model: "对齐模型",
     toolbox_timestamp_model: "对齐模型",
     toolbox_timestamp_model_hint: "Qwen3-ForcedAligner 与 FireRedASR2-CTC 都可独立下载；Qwen 复用 Qwen Local 的 Hugging Face 缓存。",
@@ -1357,8 +1357,8 @@
     let modelPrepareTimer = 0;
     let alignmentPrepareTimer = 0;
     let alignmentModels = [
-      { id: "qwen3-forced-aligner-0.6b", modelId: "qwen3-forced-aligner-0.6b", engine: "qwen", modelRef: "Qwen/Qwen3-ForcedAligner-0.6B", label: "Qwen3-ForcedAligner 0.6B", note: "字/词级时间码；复用 Qwen Local Hugging Face 缓存", estimatedSize: "约 1.7 GB", installed: false, status: "missing", runtimeAvailable: false, detail: "" },
-      { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC（CPU）", note: "中英 CTC token 时间码；轻量 int8 CPU 路线", estimatedSize: "约 767 MB", installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+      { id: "qwen3-forced-aligner-0.6b", modelId: "qwen3-forced-aligner-0.6b", engine: "qwen", modelRef: "Qwen/Qwen3-ForcedAligner-0.6B", label: "Qwen3-ForcedAligner 0.6B", note: "文本 + 音频输入，输出字词级时间码；复用 Qwen Local Hugging Face 缓存", estimatedSize: "约 1.7 GB", deviceSupport: "gpu_preferred", resourceLevel: "medium", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+      { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC（CPU）", note: "中英 CTC token 时间码；轻量 int8 CPU 路线", estimatedSize: "约 767 MB", deviceSupport: "cpu", resourceLevel: "low", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
     ];
     return {
       get_config: async () => ({
@@ -1466,12 +1466,12 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "en", "ja", "ko", "fr", "de", "es", "ru"],
             models: [
-              { id: "qwen3-asr-local", label: "Qwen3-ASR 0.6B（推荐）", envKey: "", note: "轻量多语种识别；原生字/词级时间码；可复用 Qwen3-ForcedAligner", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "medium", estimatedSize: "2.5–4.5 GB", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-0.6B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "qwen3-asr-1.7b-local", label: "Qwen3-ASR 1.7B", envKey: "", note: "更高识别质量；原生字/词级时间码；可复用 Qwen3-ForcedAligner；资源占用更高", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "5–9 GB", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-1.7B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "qwen3-asr-local", label: "Qwen3-ASR 0.6B（推荐）", envKey: "", note: "轻量多语种识别；原生字词级时间码；可复用 Qwen3-ForcedAligner", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "medium", estimatedSize: "2.5–4.5 GB", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-0.6B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "qwen3-asr-1.7b-local", label: "Qwen3-ASR 1.7B", envKey: "", note: "更高识别质量；原生字词级时间码；可复用 Qwen3-ForcedAligner；资源占用更高", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "5–9 GB", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-1.7B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "fun-asr-nano-local", label: "Fun-ASR-Nano 2512（GPU）", envKey: "", note: "LLM-ASR 路线；中英日及中文方言，建议使用 CUDA", supportsSpeaker: false, hidden: true, kind: "local", engine: "funasr", modelRef: "FunAudioLLM/Fun-ASR-Nano-2512", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "funasr-local", label: "FunASR paraformer-zh", envKey: "", note: "中文向 FunASR 路线；保留作为兼容选项", supportsSpeaker: false, hidden: true, kind: "local", engine: "funasr", modelRef: "paraformer-zh", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "sensevoice-small-local", label: "SenseVoice Small", envKey: "", note: "多语种识别；默认配合 FSMN-VAD；CPU/GPU 均可运行；可用对齐模型补齐字/词时间码", supportsSpeaker: false, supportsWordTimestamps: false, deviceSupport: "cpu_gpu", resourceLevel: "low", estimatedSize: "1–2 GB", kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "moss-transcribe-diarize-local", label: "MOSS Transcribe-Diarize 0.9B", envKey: "", note: "多人转写与说话人分离；仅段级时间码，可用对齐模型补齐字/词时间码；建议 GPU", supportsSpeaker: true, supportsWordTimestamps: false, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "3–6 GB", kind: "local", engine: "moss", modelRef: "OpenMOSS-Team/MOSS-Transcribe-Diarize", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "sensevoice-small-local", label: "SenseVoice Small", envKey: "", note: "多语种识别；默认配合 FSMN-VAD；CPU/GPU 均可运行；可用对齐模型补齐字词时间码", supportsSpeaker: false, supportsWordTimestamps: false, deviceSupport: "cpu_gpu", resourceLevel: "low", estimatedSize: "1–2 GB", kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "moss-transcribe-diarize-local", label: "MOSS Transcribe-Diarize 0.9B", envKey: "", note: "多人转写与说话人分离；仅段级时间码，可用对齐模型补齐字词时间码；建议 GPU", supportsSpeaker: true, supportsWordTimestamps: false, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "3–6 GB", kind: "local", engine: "moss", modelRef: "OpenMOSS-Team/MOSS-Transcribe-Diarize", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "firered-asr2-ctc-local", label: "FireRedASR2-CTC", envKey: "", note: "中英轻量 int8 CTC 识别；原生 token/字词时间码；CPU 运行；也可作为字幕对齐模型", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu", resourceLevel: "low", estimatedSize: "0.7–1.0 GB", kind: "local", engine: "firered", modelRef: "firered-asr2-ctc", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "whisper-large-v3-local", label: "Faster-Whisper large-v3（实验）", envKey: "", note: "多语种识别；原生词级时间码；CPU/GPU 均可运行；GPU 速度更佳；无说话人分离", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "high", estimatedSize: "2.5–4.0 GB", kind: "local", engine: "whisper", modelRef: "Systran/faster-whisper-large-v3", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
             ],
@@ -2260,21 +2260,22 @@
       high: "local_model_badge_resource_high",
     }[model?.resourceLevel];
     const badges = [];
-    if (deviceKey) badges.push({ key: deviceKey, kind: "hardware" });
     if (resourceKey) badges.push({ key: resourceKey, kind: "resource" });
+    if (deviceKey) badges.push({ key: deviceKey, kind: "hardware" });
     if (model?.supportsSpeaker || model?.supportsDiarization) {
       badges.push({ key: "local_model_badge_speaker", kind: "feature" });
     }
-    badges.push({
-      key: model?.supportsWordTimestamps
-        ? "local_model_badge_word_timestamps"
-        : "local_model_badge_segment_timestamps",
+    if (model?.supportsWordTimestamps) badges.push({
+      key: "local_model_badge_word_timestamps",
       kind: "feature",
     });
-    if (model?.estimatedSize) badges.push({
-      key: "local_model_badge_size",
+    const installedSize = String(model?.localStatus?.installedSize || model?.installedSize || "").replace(/^约\s*/u, "");
+    const estimatedSize = String(model?.estimatedSize || "").replace(/^约\s*/u, "");
+    const size = installedSize || estimatedSize;
+    if (size) badges.push({
+      key: installedSize ? "local_model_badge_installed_size" : "local_model_badge_size",
       kind: "size",
-      size: model.estimatedSize,
+      size,
     });
     return badges;
   }
@@ -2647,6 +2648,7 @@
         noteElement.textContent = note;
         main.append(noteElement);
       }
+      appendLocalModelBadges(main, model);
       const status = document.createElement("span");
       status.className = `local-model-list-status ${ready ? "ready" : ""}`.trim();
       status.textContent = ready ? "✓" : t(statusKey);

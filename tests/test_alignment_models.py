@@ -62,6 +62,8 @@ class AlignmentModelRegistryTests(unittest.TestCase):
             complete = inspect_alignment_model("firered-asr2-ctc", model_cache_root=root, runtime_available=True)
             self.assertEqual(complete.status, "installed")
             self.assertEqual(Path(complete.path), model_dir.resolve())
+            self.assertEqual(complete.installed_size, "9 B")
+            self.assertEqual(complete.to_payload()["installedSize"], "9 B")
 
 
 if __name__ == "__main__":
