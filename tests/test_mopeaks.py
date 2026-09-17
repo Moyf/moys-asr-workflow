@@ -130,6 +130,9 @@ class MopeaksRoundTripTests(unittest.TestCase):
 
 class MopeaksRejectsGarbageTests(unittest.TestCase):
     def setUp(self) -> None:
+        # 本机用户配置可能勾了「输出进子文件夹」，mopeaks_path 会返回 _maw
+        # 子目录；测试钉住默认布局，避免写夹具时 ENOENT。
+        self.enterContext(_subfolder_config(output_subfolder=False))
         self.temp_dir = tempfile.TemporaryDirectory()
         self.media_path = Path(self.temp_dir.name) / "tone.wav"
         self.media_path.write_bytes(b"RIFF" + b"\x00" * 40)
@@ -276,6 +279,8 @@ class UnsupportedVersionAndBoundaryTests(unittest.TestCase):
     """review 第 5 项：只比前缀会把未知版本/损坏文件当合法缓存读。"""
 
     def setUp(self) -> None:
+        # 同上：钉住默认布局，用户配置的子文件夹偏好不得影响夹具路径。
+        self.enterContext(_subfolder_config(output_subfolder=False))
         self.temp_dir = tempfile.TemporaryDirectory()
         self.media_path = Path(self.temp_dir.name) / "tone.wav"
         self.media_path.write_bytes(b"RIFF" + b"\x00" * 40)
