@@ -10340,9 +10340,9 @@ function mergeContiguousIndices(sorted) {
 }
 
 function mergeSegments(idxs) {
-  if (idxs.length < 2) { flashHint('请选择至少两个字幕块！', 'invalid'); return; }
+  if (idxs.length < 2) { flashHint('请选择至少两个同轨道字幕块！', 'invalid'); return; }
   const sorted = [...new Set(idxs)].sort((a, b) => a - b);
-  if (sorted.length < 2) { flashHint('请选择至少两个字幕块！', 'invalid'); return; }
+  if (sorted.length < 2) { flashHint('请选择至少两个同轨道字幕块！', 'invalid'); return; }
   // 确保连续
   for (let i = 1; i < sorted.length; i++) {
     if (sorted[i] !== sorted[i - 1] + 1) {
