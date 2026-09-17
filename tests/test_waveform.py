@@ -512,9 +512,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('split-language-type-field', page)
         self.assertNotIn('editor-settings-item split-language-type-title', page)
         self.assertIn('id="split-multi-subtitle-settings-link"', page)
-        self.assertIn('>多重字幕的设置</button>', page)
+        self.assertIn('>双语字幕的设置</button>', page)
         self.assertIn('id="split-multi-subtitle-settings-disabled"', page)
-        self.assertIn('多重字幕的设置（需要先启用多重字幕）', page)
+        self.assertIn('双语字幕的设置（需要先开启双语字幕）', page)
         self.assertEqual(
             page.count('class="editor-settings-group"')
             + page.count('class="editor-settings-group playback-controls-group"')
