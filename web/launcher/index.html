@@ -158,8 +158,7 @@
       </div>
       <div id="localRuntimeCheckField" class="field hidden"><div class="local-status-row"><p id="localRuntimeCheckStatus" class="local-status" aria-live="polite"></p><button id="openLocalRuntimeSettings" class="inline-link" type="button" data-i18n="local_runtime_view_settings">在 ⚙️ 设置中查看</button></div></div>
       <div id="localModelSettingsEntry" class="field hidden">
-        <p class="hint" data-i18n="local_model_settings_hint">本地 ASR 模型、缓存和对齐模型请在设置 → AI 模型配置中管理。</p>
-        <button id="openLocalModelSettings" class="inline-link" type="button" data-i18n="local_model_settings_open">打开 AI 模型配置</button>
+        <p class="hint local-model-settings-hint"><span data-i18n="local_model_settings_hint_prefix">本地模型的下载和缓存可以在 </span><button id="openLocalModelSettings" class="inline-link" type="button" data-i18n="local_model_settings_open">本地 AI 模型配置</button><span data-i18n="local_model_settings_hint_suffix"> 中管理。</span></p>
       </div>
       <div id="advancedCard" class="sub-accordion collapsed">
         <button id="advancedToggle" class="accordion-header" type="button"><span class="chevron">▸</span><span data-i18n="advanced">高级选项</span></button>
@@ -1115,10 +1114,6 @@
       <div id="localAsrModelSettingsSection" class="settings-section hidden">
         <h3 data-i18n="settings_local_asr_models">本地 ASR 模型</h3>
         <div id="localModelPanel" class="local-model-panel">
-          <div class="local-status-row">
-            <p id="localModelStatus" class="local-status" aria-live="polite"></p>
-            <button id="refreshLocalModels" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
-          </div>
           <div class="field">
             <label for="localModelCachePath" data-i18n="local_model_cache_path_label">模型保存目录</label>
             <div class="path-row">
@@ -1132,8 +1127,12 @@
         </div>
         <div id="localModelList" class="local-model-list" role="list" data-i18n-aria-label="local_model_list_label" aria-label="本地模型列表"></div>
         <div id="localModelDetails" class="local-model-panel">
+          <div class="local-status-row">
+            <p id="localModelStatus" class="local-status" aria-live="polite"></p>
+            <button id="refreshLocalModels" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
+          </div>
           <div class="field">
-            <label for="localModelPath" data-i18n="local_model_path">复用已有模型目录（可选）</label>
+            <label for="localModelPath" data-i18n="local_model_path">已有模型目录（可选）</label>
             <div class="path-row">
               <input id="localModelPath" type="text" autocomplete="off">
               <button id="pickLocalModelPath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>

@@ -461,7 +461,7 @@
     server_start_failed_hint: "编辑器服务器启动失败，请查看下方状态和日志。",
     open_editor: "🚀 打开字幕编辑器",
     server_refresh: "刷新",
-    local_model_path: "复用已有模型目录（可选）",
+    local_model_path: "已有模型目录（可选）",
     local_model_list_label: "本地模型列表",
     local_model_cache_path_label: "模型保存目录",
     local_model_cache_path_hint: "默认使用本地环境的模型缓存目录；需要时可改到其他磁盘。",
@@ -561,7 +561,7 @@
     server_start_failed_hint: "The editor server failed to start. Check the status and logs below.",
     open_editor: "🚀 Open Subtitle Editor",
     server_refresh: "Refresh",
-    local_model_path: "Reuse existing model folder (optional)",
+    local_model_path: "Existing model folder (optional)",
     local_model_list_label: "Local model list",
     local_model_cache_path_label: "Model storage directory",
     local_model_cache_path_hint: "The local environment cache is used by default; you can move it to another drive if needed.",
@@ -964,8 +964,9 @@
     toolbox_ocr_model_missing: "Not installed; open Settings to download it",
   });
   Object.assign(STRINGS.zh, {
-    local_model_settings_hint: "本地 ASR 模型、缓存和对齐模型请在设置 → AI 模型配置中管理。",
-    local_model_settings_open: "打开 AI 模型配置",
+    local_model_settings_hint_prefix: "本地模型的下载和缓存可以在 ",
+    local_model_settings_open: "本地 AI 模型配置",
+    local_model_settings_hint_suffix: " 中管理。",
     settings_local_asr_models: "本地 ASR 模型",
     settings_alignment_models: "对齐模型",
     alignment_model_settings_hint: "当前 ASR 模型没有字/词级时间码时，可在此准备补齐模型；Qwen Local 模型缓存可以复用。",
@@ -1000,8 +1001,9 @@
     toolbox_timestamp_model_not_ready: "对齐模型尚未就绪，请先下载。",
   });
   Object.assign(STRINGS.en, {
-    local_model_settings_hint: "Manage local ASR models, caches, and aligners in Settings → AI model configuration.",
-    local_model_settings_open: "Open AI model configuration",
+    local_model_settings_hint_prefix: "Manage local model downloads and caches in ",
+    local_model_settings_open: "Local AI model configuration",
+    local_model_settings_hint_suffix: ".",
     settings_local_asr_models: "Local ASR models",
     settings_alignment_models: "Alignment models",
     alignment_model_settings_hint: "When the current ASR model has no word/character timestamps, prepare an aligner here; Qwen Local caches can be reused.",
