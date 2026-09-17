@@ -90,11 +90,19 @@
     return result;
   }
 
+  // 过滤字体下拉选项：开头匹配（前缀）排在包含匹配之前，两组各自保持原有相对顺序。
   function filterFontFamilyOptions(entries, query) {
     const normalized = String(query || '').trim().toLocaleLowerCase();
     const source = Array.isArray(entries) ? entries : [];
     if (!normalized) return source;
-    return source.filter((entry) => entry.label.toLocaleLowerCase().includes(normalized));
+    const startsWith = [];
+    const contains = [];
+    source.forEach((entry) => {
+      const label = String(entry?.label || '').toLocaleLowerCase();
+      if (label.startsWith(normalized)) startsWith.push(entry);
+      else if (label.includes(normalized)) contains.push(entry);
+    });
+    return startsWith.concat(contains);
   }
 
   const SPEAKER_LABEL_COLORS = Object.freeze([

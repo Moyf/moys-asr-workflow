@@ -97,19 +97,32 @@ test('merges and filters font combobox dropdown options without duplicates', () 
   ];
   assert.equal(helpers.filterFontFamilyOptions(entries, ''), entries);
   assert.equal(helpers.filterFontFamilyOptions(entries, '   '), entries);
+  // 过滤结果数组在 vm 沙箱里创建，同样先摊开成宿主数组再断言。
   assert.deepEqual(
-    helpers.filterFontFamilyOptions(entries, '雅黑'),
+    Array.from(helpers.filterFontFamilyOptions(entries, '雅黑'), (entry) => ({ ...entry })),
     [{ value: 'Microsoft YaHei', label: '微软雅黑' }],
   );
   assert.deepEqual(
-    helpers.filterFontFamilyOptions(entries, 'fira'),
+    Array.from(helpers.filterFontFamilyOptions(entries, 'fira'), (entry) => ({ ...entry })),
     [{ value: 'Fira Code', label: 'Fira Code' }],
   );
   assert.deepEqual(
-    helpers.filterFontFamilyOptions(entries, '不存在的字体'),
+    Array.from(helpers.filterFontFamilyOptions(entries, '不存在的字体'), (entry) => ({ ...entry })),
     [],
   );
   assert.equal(helpers.filterFontFamilyOptions(undefined, 'arial').length, 0);
+
+  // 前缀优先：开头匹配排在前、包含匹配在后，同组内保持原有相对顺序。
+  assert.deepEqual(
+    Array.from(
+      helpers.filterFontFamilyOptions([entries[2], entries[0], entries[1]], 'a'),
+      (entry) => ({ ...entry }),
+    ),
+    [
+      { value: 'Arial', label: 'Arial' },
+      { value: 'Fira Code', label: 'Fira Code' },
+    ],
+  );
 });
 
 test('translates the ASS style manager labels and dynamic summaries', () => {
