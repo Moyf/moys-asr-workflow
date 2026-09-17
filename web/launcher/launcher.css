@@ -557,9 +557,10 @@ label {
 
 .local-model-list {
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
   max-height: 240px;
-  margin: 0 0 10px;
+  margin: 12px 0 10px;
   padding: 2px;
   overflow-y: auto;
 }
@@ -582,6 +583,15 @@ label {
 
 .local-model-list-item:hover {
   border-color: var(--accent);
+}
+
+.local-model-list-item.ready {
+  border-color: color-mix(in srgb, #8ecf9b 55%, var(--border-subtle));
+  background: color-mix(in srgb, #8ecf9b 8%, var(--bg-input));
+}
+
+.local-model-list-item.ready:hover {
+  border-color: #8ecf9b;
 }
 
 .local-model-list-item.active {
@@ -623,7 +633,15 @@ label {
 }
 
 .local-model-list-status.ready {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #8ecf9b 18%, var(--bg-input));
   color: #8ecf9b;
+  font-weight: 700;
 }
 
 .local-runtime-panel {

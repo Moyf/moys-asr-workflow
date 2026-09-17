@@ -2238,6 +2238,8 @@
       button.type = "button";
       button.className = "local-model-list-item";
       button.classList.toggle("active", model.id === selectedId);
+      const ready = Boolean(model?.localStatus?.installed);
+      button.classList.toggle("ready", ready);
       button.disabled = Boolean(state.localPreparing);
       button.setAttribute("aria-pressed", String(model.id === selectedId));
       button.dataset.modelId = model.id;
@@ -2250,14 +2252,19 @@
       main.append(label);
       const note = modelNoteText(model);
       if (note) {
+        button.title = note;
         const noteElement = document.createElement("span");
         noteElement.className = "local-model-list-note";
+        noteElement.title = note;
         noteElement.textContent = note;
         main.append(noteElement);
       }
       const status = document.createElement("span");
-      status.className = `local-model-list-status ${model?.localStatus?.installed ? "ready" : ""}`.trim();
-      status.textContent = t(localModelListStatusKey(model));
+      const statusKey = localModelListStatusKey(model);
+      status.className = `local-model-list-status ${ready ? "ready" : ""}`.trim();
+      status.textContent = ready ? "✓" : t(statusKey);
+      status.setAttribute("aria-label", t(statusKey));
+      status.title = t(statusKey);
       button.append(main, status);
       item.append(button);
       container.append(item);
