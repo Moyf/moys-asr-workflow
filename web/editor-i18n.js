@@ -983,6 +983,9 @@
     if (EN_ATTR[text]) return EN_ATTR[text];
     let match = /^(主字幕|副字幕)\s+(\d+)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;
+    // 叠加轨字幕行的紧凑序号徽标（叠N），英文用 OVL（overlay 缩写）
+    match = /^叠\s*(\d+)$/.exec(text);
+    if (match) return `OVL${match[1]}`;
     match = /^(主字幕|副字幕)(?:（(.+)）)?\s*·\s*(\d+)\s*条$/.exec(text);
     if (match) {
       const label = translateText(match[1], EN);
