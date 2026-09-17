@@ -448,11 +448,16 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
   expect(llmScroll).toBe(initialScroll.clientWidth);
 
   await page.locator('#settingsLlmTab').press('ArrowRight');
+  await expect(page.locator('#settingsGeneralTab')).toBeFocused();
+  await expect(page.locator('#settingsGeneralPanel')).toBeVisible();
+  await page.locator('#settingsGeneralTab').press('ArrowRight');
   await expect(page.locator('#settingsProcessingTab')).toBeFocused();
   await expect(page.locator('#settingsProcessingPanel')).toBeVisible();
-  await page.locator('#settingsProcessingTab').press('End');
+  await page.locator('#settingsProcessingTab').press('ArrowRight');
   await expect(page.locator('#settingsRuntimeTab')).toBeFocused();
   await expect(page.locator('#settingsRuntimePanel')).toBeVisible();
+  await page.locator('#settingsRuntimeTab').press('End');
+  await expect(page.locator('#settingsLlmTab')).toBeFocused();
 
   await page.evaluate(() => window.MAWLauncher.openSettings('ffmpegSettingsSection'));
   await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'true');

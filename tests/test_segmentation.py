@@ -45,6 +45,19 @@ class WesternSplitTests(unittest.TestCase):
         self.assertEqual([s["text"] for s in segments],
                          [" I said so. Yes.", " And then we went home. Ok."])
 
+    def test_western_does_not_merge_short_sentence_past_word_limit(self) -> None:
+        items = _words([
+            (" One", 0, 100),
+            (" step.", 100, 200),
+            (" Again.", 400, 500),
+        ])
+
+        segments = split_words_to_segments_western(
+            items, max_words=2, min_words=2, gap_split_ms=800,
+        )
+
+        self.assertEqual([s["text"] for s in segments], [" One step.", " Again."])
+
     def test_western_overflow_prefers_weak_punct_cut(self) -> None:
         words = [f" w{i}" for i in range(16)]
         words[7] = " w7,"
@@ -123,6 +136,22 @@ class AutoTrackTests(unittest.TestCase):
 
         texts = [s["text"] for s in segments]
         self.assertEqual(texts, ["今天天气很好。", "明天我们再见。"])
+
+    def test_cjk_does_not_merge_short_sentences_past_character_limit(self) -> None:
+        items = _words([
+            ("哎", 0, 100), ("呀", 100, 200), ("！", 200, 300),
+            ("这", 900, 1000), ("咋", 1000, 1100), ("办", 1100, 1200), ("？", 1200, 1300),
+        ])
+
+        segments = split_segments_auto(
+            items,
+            max_len=6,
+            min_len=5,
+            gap_split_ms=800,
+            split_mode="continuous",
+        )
+
+        self.assertEqual([s["text"] for s in segments], ["哎呀！", "这咋办？"])
 
     def test_auto_classifies_per_silence_group_for_mixed_content(self) -> None:
         # 中文静音组 + 英文静音组：各自走自己的切句逻辑
