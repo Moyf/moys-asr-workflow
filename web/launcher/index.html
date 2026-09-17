@@ -1114,13 +1114,11 @@
       </div>
       <div id="localAsrModelSettingsSection" class="settings-section hidden">
         <h3 data-i18n="settings_local_asr_models">本地 ASR 模型</h3>
-        <div id="localModelList" class="local-model-list" role="list" data-i18n-aria-label="local_model_list_label" aria-label="本地模型列表"></div>
         <div id="localModelPanel" class="local-model-panel">
           <div class="local-status-row">
             <p id="localModelStatus" class="local-status" aria-live="polite"></p>
             <button id="refreshLocalModels" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
           </div>
-          <p id="localModelHint" class="hint"></p>
           <div class="field">
             <label for="localModelCachePath" data-i18n="local_model_cache_path_label">模型保存目录</label>
             <div class="path-row">
@@ -1131,8 +1129,11 @@
             <p class="hint" data-i18n="local_model_cache_path_hint">默认使用本地环境的模型缓存目录；需要时可改到其他磁盘。</p>
             <p id="localModelCachePathLine" class="runtime-path-line hidden"></p>
           </div>
+        </div>
+        <div id="localModelList" class="local-model-list" role="list" data-i18n-aria-label="local_model_list_label" aria-label="本地模型列表"></div>
+        <div id="localModelDetails" class="local-model-panel">
           <div class="field">
-            <label for="localModelPath" data-i18n="local_model_path">已有模型目录（可选）</label>
+            <label for="localModelPath" data-i18n="local_model_path">复用已有模型目录（可选）</label>
             <div class="path-row">
               <input id="localModelPath" type="text" autocomplete="off">
               <button id="pickLocalModelPath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>

@@ -549,7 +549,7 @@ label {
 .local-model-panel {
   display: grid;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 0;
   padding: 10px;
   border: 1px solid var(--accent-soft);
   border-radius: var(--radius-md);

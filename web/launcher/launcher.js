@@ -461,7 +461,7 @@
     server_start_failed_hint: "编辑器服务器启动失败，请查看下方状态和日志。",
     open_editor: "🚀 打开字幕编辑器",
     server_refresh: "刷新",
-    local_model_path: "已有模型目录（可选）",
+    local_model_path: "复用已有模型目录（可选）",
     local_model_list_label: "本地模型列表",
     local_model_cache_path_label: "模型保存目录",
     local_model_cache_path_hint: "默认使用本地环境的模型缓存目录；需要时可改到其他磁盘。",
@@ -479,7 +479,6 @@
     local_path_selected: "已使用指定的模型目录",
     local_model_path_invalid: "指定模型目录无效",
     local_model_path_mismatch: "指定目录与当前模型不匹配",
-    local_prepare_hint: "下载/准备会使用 QwenASR 或 FunASR 的上游缓存；模型文件不写入 MAW 工程。",
     local_prepare_running: "正在准备模型……",
     local_prepare_cancelling: "正在取消模型准备……",
     local_prepare_cancel: "取消准备",
@@ -562,7 +561,7 @@
     server_start_failed_hint: "The editor server failed to start. Check the status and logs below.",
     open_editor: "🚀 Open Subtitle Editor",
     server_refresh: "Refresh",
-    local_model_path: "Existing model folder (optional)",
+    local_model_path: "Reuse existing model folder (optional)",
     local_model_list_label: "Local model list",
     local_model_cache_path_label: "Model storage directory",
     local_model_cache_path_hint: "The local environment cache is used by default; you can move it to another drive if needed.",
@@ -580,7 +579,6 @@
     local_path_selected: "Using the selected model folder",
     local_model_path_invalid: "The selected model folder is invalid",
     local_model_path_mismatch: "The selected folder does not match this model",
-    local_prepare_hint: "Download/preparation uses the QwenASR or FunASR upstream cache; model files are not written into the MAW project.",
     local_prepare_running: "Preparing model…",
     local_prepare_cancelling: "Cancelling model preparation…",
     local_prepare_cancel: "Cancel preparation",
@@ -1607,9 +1605,6 @@
     const fallbackKey = runtime.ready || runtime.status === "ready" ? readyKey : otherKey;
     return runtime.detail || t(fallbackKey);
   }
-  function localModelHintText(status) {
-    return ["installed", "missing", "checking", "runtime_missing"].includes(status.status) ? t("local_prepare_hint") : (status.detail || t("local_prepare_hint"));
-  }
   // 供应商 / 模型配置的 label 与 note 由后端（maw/gui_config.py）以中文下发；
   // 英文界面按稳定 id 映射为英文，id 未收录时回退后端原文。
   const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (QwenASR / FunASR)", soniox: "Soniox STT", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI (and compatible)", local: "Local models (Beta)", bcut: "Bcut ASR (unofficial · free · experimental)" };
@@ -2450,7 +2445,6 @@
     // 与 runtime 面板一致：preparing 状态行固定"正在准备"文案，实时流水只在进度条下方。
     target.textContent = t(preparing ? "local_prepare_running" : key);
     target.className = `local-status ${preparing ? "warn" : (status.status === "installed" ? "ready" : "warn")}`;
-    $("localModelHint").textContent = localModelHintText(status);
     $("localModelPath").value = status.path || $("localModelPath").value || "";
     const canPrepare = Boolean(status.canPrepare) && !preparing;
     const button = $("prepareLocalModel");
