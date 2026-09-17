@@ -10,7 +10,8 @@ const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
 // 所有非模态浮层共用一个前置栈：最后点击、打开或获得焦点的浮层排在最上面。
-// 起始值高于普通设置弹窗（420），但低于拖拽遮罩和加载层（500/510）。
+// 起始值高于普通设置弹窗（420），但低于右键菜单（480）、hint（490）、
+// 拖拽遮罩和加载层（500/510）。
 const FLOATING_SURFACE_Z_INDEX_BASE = 430;
 const floatingSurfaceStack = [];
 const floatingSurfaceRoots = new WeakSet();

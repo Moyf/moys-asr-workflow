@@ -3416,7 +3416,10 @@
   .ctxmenu {
     position: fixed; background: var(--bg-overlay); border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md); padding: 4px 0; min-width: 180px; font-size: 13px;
-    box-shadow: var(--shadow-3); z-index: 200;
+    box-shadow: var(--shadow-3);
+    /* 高于浮层前置栈（430+），低于 hint（490）、拖拽遮罩（500）和加载层（510），
+       否则在 ASS 样式库等浮层窗口内右键时菜单会被窗口盖住。 */
+    z-index: 480;
     display: block; opacity: 0; visibility: hidden; pointer-events: none;
     /* 关闭时微弱淡出：可见性在淡出结束后才移除，淡出期间不再拦截点击 */
     transition: opacity 140ms ease-out, visibility 0s linear 140ms;
