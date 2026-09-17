@@ -1148,6 +1148,31 @@ test('server timeout diagnostics are visible and copied with the error report', 
   expect(report).toContain('Connection refused');
 });
 
+test('launcher reports a server disconnect without manual refresh', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#settingsButton').click();
+  await page.locator('#langZh').click();
+  await page.locator('#settingsClose').click();
+  await page.evaluate(() => {
+    const original = window.MAWLauncher.callBackend;
+    window.__serverStatusCalls = 0;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'get_server_status') {
+        window.__serverStatusCalls += 1;
+        return { ok: true, running: false, url: 'http://127.0.0.1:8250/' };
+      }
+      return original(method, payload);
+    };
+  });
+
+  await page.locator('#openMawe').click();
+  await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('启动字幕编辑器');
+  await expect(page.locator('#stopServer')).toBeHidden();
+  expect(await page.evaluate(() => window.__serverStatusCalls)).toBeGreaterThanOrEqual(2);
+});
+
 test('unknown errors stay generic and do not expose FFmpeg actions', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);

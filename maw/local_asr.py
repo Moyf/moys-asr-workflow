@@ -29,6 +29,7 @@ from generate_subtitle_qwen_api import (
     is_cjk_char,
     parse_duration,
     repair_nonpositive_duration_segments,
+    split_coarse_segments,
     split_segments_auto,
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
@@ -1838,12 +1839,26 @@ def build_local_segments(
     """Turn adapter output into MAW's integer-millisecond subtitle segments."""
     if transcription.segments:
         segments: list[dict[str, Any]] = []
-        for source in transcription.segments:
-            if transcription.timestamp_granularity == "segment":
-                # A segment-only engine has no trustworthy boundary to split
-                # on. Preserve its original cue instead of fabricating items.
-                segments.append(dict(source))
-            else:
+        if transcription.timestamp_granularity == "segment":
+            # Segment-only engines (MOSS, FunASR / Qwen fallbacks) still obey
+            # the cue-length settings: re-split overlong cues at punctuation
+            # for continuous languages and at word boundaries for Latin text,
+            # with interpolated in-segment times, mirroring the cloud
+            # coarse-segment path. Pieces carry no items because interpolated
+            # times must not pose as word-level precision.
+            segments.extend(
+                split_coarse_segments(
+                    [dict(source) for source in transcription.segments],
+                    max_len=max_len,
+                    min_len=min_len,
+                    gap_split_ms=gap_split_ms,
+                    max_words=max_words,
+                    min_words=min_words,
+                    split_mode=transcription.split_mode or None,
+                )
+            )
+        else:
+            for source in transcription.segments:
                 segments.extend(
                     _resplit_engine_segment(
                         source,

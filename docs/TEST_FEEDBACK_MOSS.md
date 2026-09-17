@@ -94,3 +94,47 @@
 - MOSS 固定运行包提供输入准备和 token 回调；`MossDiarizeEngine` 已接入这两个回调，Launcher 日志会显示“音频特征已准备，开始生成转写”“已生成 N tokens”和“生成完成：共 N tokens”。
 - 由于 MOSS 没有可预知的最终输出长度，进度条继续表示进行中状态，文本显示真实 token 计数，不把 `max_new_tokens` 上限误当成百分比总量。
 - 状态：已修复；新增适配器回调测试通过，真实 GPU 推理仍需在用户环境中复核显示频率和首 token 等待体验。
+
+## 2026-09-14 追问：中文长段完全不断句
+
+用户用 MOSS 转写中文赛事直播（`仙术杯开场.mp4`）后反馈：断句切分完全没生效，14 秒、约 90 字的整段留在同一条字幕里（`.mosp` 顶层 `split_mode: "continuous"`、`timestamp_granularity: "segment"`，SRT 与工程一致）。
+
+本节决定部分推翻上文「2026-09 追问」的第 4 项：当时为修复英文被按字符硬切（13 字符一条、切在单词中间），把 `build_local_segments` 对 `timestamp_granularity == "segment"` 的所有输出一律原样直通——这同时消灭了中文场景的断句，属于过度回调。
+
+### 根因
+
+- `build_local_segments`（maw/local_asr.py）在 `timestamp_granularity == "segment"` 时无条件直通所有引擎段，与 `split_mode` 无关；MOSS（始终段级）、FunASR / SenseVoice / Qwen3-ASR 无词级时间戳的整段兜底全部命中，Launcher 的「最大字数 / 短句合并阈值 / 停顿切句」对这些输出从未生效。
+- 9 月英文事故的真正前提是"伪字符 items 流入按词计数的西文切句器"，而不是"段级输出不能重切"；中文按标点 + 插值重切并不会复现该问题。
+
+### 处理决定
+
+| 编号 | 范围 | 处理决定 | 类型 | 状态 |
+| --- | --- | --- | --- | --- |
+| 8 | maw/local_asr.py | `build_local_segments` 对 `timestamp_granularity == "segment"` 且 `split_mode == "continuous"` 的段，改走云端同款 `split_coarse_segments`：超长段在标点处断句、段内时间按字数占比插值，结果不携带 `items`（插值不得冒充词级精度），段首尾保持模型真实时间，speaker 保留；不超长的段原样直通 | 修改 | 已修复 |
+| 9 | maw/local_asr.py | `split_mode != "continuous"`（单词型 / 未知）的段级输出维持直通，英文不做插值切分，避免再次出现切在单词中间 | 仅说明 | 已修复 |
+| 10 | docs/LOCAL_ASR.md、JSON_SCHEMA.md 及 website 镜像 | 更新 MOSS 段级输出与 `timestamp_granularity: segment` 的语义说明 | 文档 | 已修复 |
+
+### 验证记录
+
+- `uv run --no-sync python -m unittest tests.test_local_asr -v`：68 项全部通过；新增两项——中文段级超长段按标点重切（≤max_len、无 items、speaker 保留、段首尾真实时间、去标点后不丢字、毫秒单调不重叠）、中文段级短句原样直通（仅剥尾标点）。
+- 用用户上传的真实 `仙术杯开场.moss-local.mosp` 回放 `build_local_segments`：10 条 → 22 条（max_len=15）/ 22 条（max_len=18），全部按标点/字数上限断句，说话人标签与段边界保持，无 items。
+- 存量测试无需改动即通过：英文段级直通测试（word 模式）、FunASR 混合精度、Whisper 无词时间戳、Qwen 对齐兜底等夹具均为短句或 word 模式，语义不变。
+- 其余引擎核对：Qwen3-ASR（Forced Aligner 词级 items）与 faster-whisper（固定 `word_timestamps=True`）走词级路径，不受影响且本来正常；FunASR / SenseVoice / Qwen 无时间戳兜底与 MOSS 同路径，一并修复；云端管线（qwen_api / bcut / doubao / openai / soniox / tencent）本就有 `split_coarse_segments` 或等价处理，不在本次范围。
+
+### 未验证边界 / 待办
+
+- 未做真实 MOSS GPU 推理复跑（开发机无该运行环境）；验证基于用户真实 `.mosp` 段落回放共享层逻辑，建议维护者用同一段媒体在 Launcher 重跑一次比对。
+- 插值时间假设段内匀速，语速剧烈起伏时有秒内偏差；精确时间码仍需接入 Qwen3-ForcedAligner（未实现）。
+- 英文（单词型）段级输出仍保留模型段边界，长句不再细分；若需要英文也断句，须先解决"无词时间码时的西文安全切点"，另行立项。
+
+### 同日追问：英文段级长句也按词数插值切分
+
+用户追问英文长句能否按英文词数拆分并同样插值。核对后发现云端 `split_coarse_segment` 的单词型分支原本就走词数超限判断，但其无 items 路径复用了 `build_interpolated_items` 的「按字符切块」——字符块流进按词计数的西文切句器，正是上次英文事故的同款前提。本节决定覆盖上文第 9 项「单词型维持直通」。
+
+| 编号 | 范围 | 处理决定 | 类型 | 状态 |
+| --- | --- | --- | --- | --- |
+| 11 | generate_subtitle_qwen_api.py | 新增 `build_interpolated_word_items`：单词型文本按空白分词（前导空格挂后词，拼接无损）、按字符占比插值时间；`split_coarse_segment` 无 items 分支按 split_mode 选用词级/标点级插值 | 修改 | 已修复 |
+| 12 | maw/local_asr.py | `build_local_segments` 对 `timestamp_granularity == "segment"` 的输出不再按 split_mode 分流：统一走 `split_coarse_segments`，英文按「最大单词数 / 短句合并阈值」重切，切点保证落在单词边界，结果仍不携带 items | 修改 | 已修复 |
+| 13 | docs/LOCAL_ASR.md、JSON_SCHEMA.md 及 website 镜像 | 更新英文重切语义说明 | 文档 | 已修复 |
+
+验证：`tests.test_local_asr` + `tests.test_qwen` 共 97 项通过；新增云端 `build_interpolated_word_items` 单元测试与 word 模式粗段拆分测试（词数上限、拼接无损、无 items、边界单调），本地英文段级超长句重写为按词数重切断言（原「英文直通」测试语义已被本决定取代）。真实英文样例回放：4 词组句子按句号成组、13 词上限硬切落在词间、短句合并生效、文本无损。英文插值时间同为匀速近似；段内真实停顿无法感知，仍需强制对齐才能精确。

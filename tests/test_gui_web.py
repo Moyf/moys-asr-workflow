@@ -2524,7 +2524,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         named_values = {(path, name): value for path, name, value in fake_winreg.values if name is not None}
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "InstallPath")], str(self.root))
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "ExecutablePath")], str(executable))
-        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.6.0-beta.3")
+        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.6.0-beta.4")
 
     def test_register_mosp_association_preserves_existing_user_choice(self) -> None:
         launcher = self.root / "MAW.exe"
@@ -4869,6 +4869,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("stop_server", serverPayload())', script)
         self.assertIn('void checkExistingServer(t("done"));', script)
         self.assertIn('id="refreshServerStatus"', page)
+        self.assertIn("SERVER_STATUS_MONITOR_INTERVAL_MS", script)
+        self.assertIn("SERVER_STATUS_MONITOR_FAILURE_THRESHOLD", script)
+        self.assertIn("async function monitorServerStatus()", script)
+        self.assertIn('server_disconnected', script)
         self.assertNotIn('state.serverRunning ? t("server_stop")', script)
 
     def test_launcher_hero_links_include_project_home_and_tutorial_video(self) -> None:
