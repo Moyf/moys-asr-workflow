@@ -126,16 +126,20 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('当前未启用。', 'en'), 'Currently disabled.');
   assert.equal(i18n.translateText('Studio · 无逐句动画', 'en'), 'Studio · No per-cue animations');
   assert.equal(i18n.translateText('颜色字幕样式', 'en'), 'Color caption style');
+  assert.equal(i18n.translateText('设为主字幕样式', 'en'), 'Set as main subtitle style');
+  assert.equal(i18n.translateText('设为副字幕样式', 'en'), 'Set as secondary subtitle style');
+  assert.equal(i18n.translateText('设为 SRT 烧录样式', 'en'), 'Set as SRT burn-in style');
+  assert.equal(i18n.translateText('设为 ASS 导出方案', 'en'), 'Set as ASS export profile');
+  assert.equal(
+    i18n.translateText('⬆️ 当前预览样式由 ASS 字幕模式控制', 'en'),
+    '⬆️ Current preview styling is controlled by ASS subtitle mode',
+  );
   assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');
   assert.equal(i18n.translateText('作为描边颜色', 'en'), 'As outline color');
   assert.equal(i18n.translateText('无影响', 'en'), 'No effect');
   assert.equal(i18n.translateText('自定义颜色色值', 'en'), 'Custom color values');
   assert.equal(i18n.translateText('恢复默认', 'en'), 'Restore defaults');
-  assert.equal(i18n.translateText('使用预览字体', 'en'), 'Use preview font');
-  assert.equal(
-    i18n.translateText('已将 ASS 字体设为「SimHei」', 'en'),
-    'ASS font set to "SimHei"',
-  );
+  assert.equal(i18n.translateText('读取本机字体', 'en'), 'Read local fonts');
   assert.equal(i18n.translateText('基础样式', 'en'), 'Basic style');
   assert.equal(i18n.translateText('拓展样式', 'en'), 'Extended style');
   assert.equal(i18n.translateText('边框与阴影', 'en'), 'Border and shadow');
@@ -303,6 +307,8 @@ test('normalizes editor settings without preserving invalid persisted values', (
     autoMergeShortCount: 99,
   });
   assert.equal(settings.multiSubtitleRowHeight, 168);
+  // 192 档位与主波形行高预设一致，属于合法副字幕行高
+  assert.equal(helpers.normalizeEditorSettings({ multiSubtitleRowHeight: 192 }).multiSubtitleRowHeight, 192);
   assert.equal(settings.mediaSeekStepMs, 2000);
   assert.equal(settings.cueMoveStepMs, 10);
   assert.equal(settings.theme, 'light');
@@ -1431,11 +1437,10 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('自定义颜色', 'en'), 'Custom color');
   assert.equal(i18n.translateText('视频预览', 'en'), 'Video preview');
   assert.equal(i18n.translateText('播放控制', 'en'), 'Playback controls');
-  assert.equal(i18n.translateText('控制', 'en'), 'controls');
   assert.equal(i18n.translateText('ASS 副字幕样式', 'en'), 'ASS extension subtitle style');
   assert.equal(i18n.translateText('主', 'en'), 'Main');
   assert.equal(i18n.translateText('副', 'en'), 'Secondary');
-  assert.equal(i18n.translateText('颜色样式', 'en'), 'Color style');
+  assert.equal(i18n.translateText('预览颜色样式', 'en'), 'Preview color style');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
   assert.equal(i18n.translateText('空隙检测与调整', 'en'), 'Gap detection and adjustment');
   assert.equal(i18n.translateText('进一步收缩空隙', 'en'), 'Shrink gaps further');
@@ -1455,16 +1460,16 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('将选中的副字幕的时长对齐到绑定主字幕', 'en'), 'Align the selected secondary subtitle durations to their bound main subtitles');
   assert.equal(i18n.translateText('无选中时前后跳转（时长：', 'en'), 'Seek back/forward with no selection (duration:');
   assert.equal(i18n.translateText('⚙️设置按钮', 'en'), '⚙️ Settings button');
-  assert.equal(i18n.translateText('⚙️设置', 'en'), '⚙️ settings');
+  assert.equal(i18n.translateText('⚙️全局设置', 'en'), '⚙️ Global settings');
   assert.equal(i18n.translateText('仅在拖动边界模式生效', 'en'), 'Only active in Boundary drag mode');
   assert.equal(i18n.translateText('仅在中键拖动模式生效', 'en'), 'Only active in Middle-button drag mode');
   assert.equal(
-    i18n.translateText('具体操作取决于波形区的', 'en'),
-    'The exact behavior depends on the waveform area’s',
+    i18n.translateText('具体操作取决于', 'en'),
+    'The exact behavior depends on',
   );
   assert.equal(
-    i18n.translateText('中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
-    '“Gap region operation” in the settings; “Boundary and middle” enables both operation sets.',
+    i18n.translateText('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
+    '“Gap region operation” under “General” in Global settings; “Boundary and middle” enables both operation sets.',
   );
   assert.equal(i18n.translateText('操作支持撤销/重做。', 'en'), 'Operations support undo/redo.');
   assert.equal(i18n.translateText('处理范围', 'en'), 'Scope');
@@ -1477,8 +1482,9 @@ test('translates editor project controls and dynamic save messages to English', 
     i18n.translateText('批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围', 'en'),
     'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
   );
-  assert.equal(i18n.translateText('注：微调幅度可在波形区的', 'en'), 'Note: Adjust the fine-tuning amount in the waveform area’s');
-  assert.equal(i18n.translateText('中调节，默认 50ms', 'en'), 'to adjust it; the default is 50 ms');
+  assert.equal(i18n.translateText('注：微调幅度可在', 'en'), 'Note: Adjust the fine-tuning amount in');
+  assert.equal(i18n.translateText('「通用操作」中调节，默认 50ms', 'en'), 'under “General” in Global settings; the default is 50 ms');
+  assert.equal(i18n.translateText('波形区操作', 'en'), 'Waveform actions');
   assert.equal(i18n.translateText('切换空隙的启用/禁用状态', 'en'), 'Toggle whether the gap is enabled');
   assert.equal(i18n.translateText('添加新的移除空隙', 'en'), 'Add a new removed gap');
   assert.equal(

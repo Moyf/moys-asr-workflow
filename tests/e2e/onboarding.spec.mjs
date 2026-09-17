@@ -154,7 +154,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(fineTuningPanel.locator('.help-title')).toHaveText(['微调字幕']);
   await expect(fineTuningPanel.locator('.help-subtitle')).toHaveText(['选中字幕', '按住字幕']);
   await expect(fineTuningPanel).toContainText('无选中时作用于鼠标所在字幕');
-  await expect(fineTuningPanel.locator('#help-open-waveform-keyboard-settings')).toHaveText('⚙️设置');
+  await expect(fineTuningPanel.locator('#help-open-keyboard-settings')).toHaveText('⚙️全局设置');
   await helpPanel.getByRole('tab', { name: '空隙操作', exact: true }).click();
   const gapPanel = helpPanel.locator('#help-tab-panel-gap');
   await expect(gapPanel).toBeVisible();
@@ -177,9 +177,9 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(helpPanel).toContainText('中点击「全部清理」');
   await expect(gapPanel).toContainText('仅在拖动边界模式生效');
   await expect(gapPanel).toContainText('仅在中键拖动模式生效');
-  await expect(gapPanel).toContainText('具体操作取决于波形区的');
-  await expect(gapPanel.locator('#help-open-gap-settings')).toHaveText('⚙️设置');
-  await expect(gapPanel).toContainText('中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。');
+  await expect(gapPanel).toContainText('具体操作取决于');
+  await expect(gapPanel.locator('#help-open-gap-settings')).toHaveText('⚙️全局设置');
+  await expect(gapPanel).toContainText('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。');
   await expect(gapPanel.locator('.help-important').filter({ hasText: 'Alt+左键拖动' })).toHaveCount(1);
   await helpPanel.getByRole('tab', { name: '批量操作', exact: true }).click();
   const batchPanel = helpPanel.locator('#help-tab-panel-batch');

@@ -4123,6 +4123,12 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await expect(page.locator('#main-ass-style-fields')).toBeHidden();
   await expect(page.locator('#subtitle-style-ass-mode-hint')).toBeHidden();
 
+  // 「颜色字幕样式」常驻「字幕颜色」页：ASS 关闭时隐藏，显示 CSS「预览颜色样式」。
+  await page.locator('#editor-settings-tab-subtitle-color').click();
+  await expect(page.locator('#ass-color-style-row')).toBeHidden();
+  await expect(page.locator('#subtitle-color-style-control')).toBeVisible();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+
   // 开启 ASS 模式：hint 出现，CSS 控件换成样式库选择器（主/副都换）。
   await page.locator('#ass-mode-toggle').check();
   await expect(page.locator('#subtitle-style-ass-mode-hint')).toBeVisible();
@@ -4133,6 +4139,29 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await expect(page.locator('#extension-ass-style-fields')).toBeVisible();
   await expect(page.locator('#main-ass-style-select')).toHaveValue('ass');
   await expect(page.locator('#extension-ass-style-select')).toHaveValue('ass-extension');
+
+  // 「编辑样式」按钮：打开样式库窗口并定位到下拉当前选中的样式。
+  await page.locator('#main-ass-style-edit').click();
+  await expect(page.locator('#ass-style-window')).toHaveClass(/show/);
+  const mainSelectedId = await page
+    .locator('#ass-style-list [data-ass-selection-id][aria-selected="true"]')
+    .getAttribute('data-ass-selection-id');
+  await expect(page.locator('#main-ass-style-select')).toHaveValue(mainSelectedId);
+  await page.locator('#ass-style-window-close').click();
+  await page.locator('#extension-ass-style-edit').click();
+  const extensionSelectedId = await page
+    .locator('#ass-style-list [data-ass-selection-id][aria-selected="true"]')
+    .getAttribute('data-ass-selection-id');
+  await expect(page.locator('#extension-ass-style-select')).toHaveValue(extensionSelectedId);
+  await page.locator('#ass-style-window-close').click();
+
+  // ASS 模式下「颜色字幕样式」在「字幕颜色」页替代「预览颜色样式」显示。
+  await page.locator('#editor-settings-tab-subtitle-color').click();
+  await expect(page.locator('#ass-color-style-row')).toBeVisible();
+  await expect(page.locator('#subtitle-color-style-control')).toBeHidden();
+  await page.locator('#ass-color-style').selectOption('stroke');
+  await expect(page.locator('#ass-color-style')).toHaveValue('stroke');
+  await page.locator('#editor-settings-tab-subtitle-style').click();
 
   // 主字幕选择同步到当前 ASS 输出方案关联的样式。
   await page.locator('#main-ass-style-select').selectOption('default');
