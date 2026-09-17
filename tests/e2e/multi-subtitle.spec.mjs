@@ -132,7 +132,7 @@ test('offers importing a second SRT when enabling multiple subtitles without an 
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
   await expect(page.locator('#multi-subtitle-settings-toggle')).toBeHidden();
   await expect(page.locator('#multi-subtitle-toggle-label'))
-    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。');
+    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。');
   expect(await page.locator('#multi-subtitle-toggle-label').evaluate((element) => (
     element.nextElementSibling?.id
   ))).toBe('multi-subtitle-empty-hint');
@@ -3661,7 +3661,7 @@ test('confirms main replacement and makes both replacement paths undoable', asyn
   await expect(page.locator('#multi-subtitle-controls')).toBeVisible();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
   await expect(page.locator('#multi-subtitle-toggle-label'))
-    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。');
+    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。');
   await expect(page.locator('#cues-container .multi-dual-cue')).toHaveCount(0);
   await expect(page.locator('#cues-container .cue .text').first()).toHaveText('Hello world.');
 });
@@ -4123,6 +4123,12 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await expect(page.locator('#main-ass-style-fields')).toBeHidden();
   await expect(page.locator('#subtitle-style-ass-mode-hint')).toBeHidden();
 
+  // 「颜色字幕样式」常驻「字幕颜色」页：ASS 关闭时隐藏，显示 CSS「预览颜色样式」。
+  await page.locator('#editor-settings-tab-subtitle-color').click();
+  await expect(page.locator('#ass-color-style-row')).toBeHidden();
+  await expect(page.locator('#subtitle-color-style-control')).toBeVisible();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+
   // 开启 ASS 模式：hint 出现，CSS 控件换成样式库选择器（主/副都换）。
   await page.locator('#ass-mode-toggle').check();
   await expect(page.locator('#subtitle-style-ass-mode-hint')).toBeVisible();
@@ -4133,6 +4139,29 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await expect(page.locator('#extension-ass-style-fields')).toBeVisible();
   await expect(page.locator('#main-ass-style-select')).toHaveValue('ass');
   await expect(page.locator('#extension-ass-style-select')).toHaveValue('ass-extension');
+
+  // 「编辑样式」按钮：打开样式库窗口并定位到下拉当前选中的样式。
+  await page.locator('#main-ass-style-edit').click();
+  await expect(page.locator('#ass-style-window')).toHaveClass(/show/);
+  const mainSelectedId = await page
+    .locator('#ass-style-list [data-ass-selection-id][aria-selected="true"]')
+    .getAttribute('data-ass-selection-id');
+  await expect(page.locator('#main-ass-style-select')).toHaveValue(mainSelectedId);
+  await page.locator('#ass-style-window-close').click();
+  await page.locator('#extension-ass-style-edit').click();
+  const extensionSelectedId = await page
+    .locator('#ass-style-list [data-ass-selection-id][aria-selected="true"]')
+    .getAttribute('data-ass-selection-id');
+  await expect(page.locator('#extension-ass-style-select')).toHaveValue(extensionSelectedId);
+  await page.locator('#ass-style-window-close').click();
+
+  // ASS 模式下「颜色字幕样式」在「字幕颜色」页替代「预览颜色样式」显示。
+  await page.locator('#editor-settings-tab-subtitle-color').click();
+  await expect(page.locator('#ass-color-style-row')).toBeVisible();
+  await expect(page.locator('#subtitle-color-style-control')).toBeHidden();
+  await page.locator('#ass-color-style').selectOption('stroke');
+  await expect(page.locator('#ass-color-style')).toHaveValue('stroke');
+  await page.locator('#editor-settings-tab-subtitle-style').click();
 
   // 主字幕选择同步到当前 ASS 输出方案关联的样式。
   await page.locator('#main-ass-style-select').selectOption('default');
@@ -4145,17 +4174,19 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   });
   expect(profileStyleId).toBe('default');
 
-  // 副字幕选择同步到库的副字幕槽位；样式库窗口的槽位行（多重字幕模式下
+  // 副字幕选择同步到库的副字幕槽位；样式库窗口的方案表单（多重字幕模式下
   // 可见）同步显示同一值。
   await page.locator('#extension-ass-style-select').selectOption('default');
   await expect(page.locator('#ass-style-manager-open')).toBeVisible();
   await page.locator('#ass-style-manager-open').click();
-  await expect(page.locator('#ass-extension-style-row')).toBeVisible();
-  await expect(page.locator('#ass-extension-default-style')).toHaveValue('default');
+  await page.locator('#ass-profile-list [data-ass-selection-kind="profile"]').first().click();
+  await expect(page.locator('#ass-profile-form')).toBeVisible();
+  await expect(page.locator('#ass-profile-extension-style-field')).toBeVisible();
+  await expect(page.locator('#ass-profile-extension-style')).toHaveValue('default');
 
   // 从样式库窗口改回内置副字幕样式：设置页下拉同步；恢复默认，避免
   // localStorage 里的选择影响后续测试。
-  await page.locator('#ass-extension-default-style').selectOption('ass-extension');
+  await page.locator('#ass-profile-extension-style').selectOption('ass-extension');
   await expect(page.locator('#extension-ass-style-select')).toHaveValue('ass-extension');
   await page.locator('#main-ass-style-select').selectOption('ass');
   await expect(page.locator('#ass-profile-style-id')).toHaveValue('ass');

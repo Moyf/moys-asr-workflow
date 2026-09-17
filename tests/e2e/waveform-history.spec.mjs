@@ -1685,7 +1685,7 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
 
   const multiSubtitleHelp = helpPanel.locator('.help-subgroup').filter({ hasText: '绑定到主副字幕（自动匹配）' });
   await expect(multiSubtitleHelp).toHaveCount(1);
-  await expect(helpPanel.locator('#help-tab-panel-waveform .help-title').filter({ hasText: '多重字幕' })).toHaveCount(1);
+  await expect(helpPanel.locator('#help-tab-panel-waveform .help-title').filter({ hasText: '双语字幕' })).toHaveCount(1);
 
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');
@@ -1715,8 +1715,6 @@ test('contextual help links open their matching Help tabs', async ({ page }) => 
 
   for (const { button, tab } of [
     { button: '#waveform-settings-help', tab: '#help-tab-waveform' },
-    { button: '#keyboard-settings-help', tab: '#help-tab-fine-tuning' },
-    { button: '#gap-settings-help', tab: '#help-tab-gap' },
   ]) {
     await page.locator('#waveform-settings-toggle').click();
     await expect(page.locator('#waveform-settings-panel')).toBeVisible();
@@ -1724,6 +1722,19 @@ test('contextual help links open their matching Help tabs', async ({ page }) => 
     await expect(helpPanel).toHaveClass(/show/);
     await expect(page.locator(tab)).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#waveform-settings-panel')).toBeHidden();
+    await page.locator('#help-close').click();
+  }
+  // 波形操作/按键微调/空隙操作方式设置已移入全局设置「通用操作」，其帮助入口随之迁移
+  for (const { button, tab } of [
+    { button: '#keyboard-settings-help', tab: '#help-tab-fine-tuning' },
+    { button: '#gap-settings-help', tab: '#help-tab-gap' },
+  ]) {
+    await page.locator('#editor-settings-toggle').click();
+    await page.locator('#editor-settings-tab-general').click();
+    await page.locator(button).click();
+    await expect(helpPanel).toHaveClass(/show/);
+    await expect(page.locator(tab)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#editor-settings-panel')).toBeHidden();
     await page.locator('#help-close').click();
   }
 });
@@ -1762,19 +1773,21 @@ test('Help settings actions open the related waveform and media settings', async
 
   await page.locator('#help-toggle').click();
   await helpPanel.getByRole('tab', { name: '微调字幕', exact: true }).click();
-  await helpPanel.locator('#help-open-waveform-keyboard-settings').click();
+  await helpPanel.locator('#help-open-keyboard-settings').click();
   await expect(helpPanel).toHaveClass(/show/);
-  await expect(page.locator('#waveform-settings-panel')).toBeVisible();
+  await expect(page.locator('#editor-settings-panel')).toBeVisible();
+  await expect(page.locator('#editor-settings-tab-general')).toHaveClass(/active/);
   await helpPanel.locator('#help-close').click();
-  await page.locator('#waveform-settings-toggle').click();
+  await page.locator('#editor-settings-close').click();
 
   await page.locator('#help-toggle').click();
   await helpPanel.getByRole('tab', { name: '空隙操作', exact: true }).click();
   await helpPanel.locator('#help-open-gap-settings').click();
   await expect(helpPanel).toHaveClass(/show/);
-  await expect(page.locator('#waveform-settings-panel')).toBeVisible();
+  await expect(page.locator('#editor-settings-panel')).toBeVisible();
+  await expect(page.locator('#editor-settings-tab-general')).toHaveClass(/active/);
   await helpPanel.locator('#help-close').click();
-  await page.locator('#waveform-settings-toggle').click();
+  await page.locator('#editor-settings-close').click();
 
   await page.locator('#help-toggle').click();
   await helpPanel.getByRole('tab', { name: '播放与导航', exact: true }).click();
