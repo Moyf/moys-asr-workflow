@@ -185,7 +185,8 @@ test('I/O seeks the current cue boundaries and stays paused', async ({ page }) =
 
 test('selected arrow keys move cues, adjust boundaries, and honor the configured step', async ({ page }) => {
   await loadAttachedCues(page, true);
-  await page.locator('#waveform-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-general').click();
   const step = page.locator('#cue-move-step');
   await expect(step).toHaveValue('50');
   await step.fill('250');
@@ -487,7 +488,8 @@ test('Shift+arrow keys snap selected subtitle boundaries to neighbors', async ({
 
 test('A/D adjusts a held subtitle block and a held shared boundary', async ({ page }) => {
   await loadAttachedCues(page, true);
-  await page.locator('#waveform-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-general').click();
   const step = page.locator('#cue-move-step');
   await step.fill('100');
   await step.press('Tab');
@@ -526,7 +528,8 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
 
 test('A also compresses an attached preceding cue', async ({ page }) => {
   await loadAttachedCues(page, true);
-  await page.locator('#waveform-settings-toggle').click();
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-general').click();
   const step = page.locator('#cue-move-step');
   await step.fill('100');
   await step.press('Tab');
