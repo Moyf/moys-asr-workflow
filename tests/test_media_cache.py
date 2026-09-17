@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import shutil
 import struct
 import tempfile
@@ -39,6 +40,11 @@ def _make_tone(
 
 class MediaCacheTests(unittest.TestCase):
     def setUp(self) -> None:
+        # 隔离用户级 MAW 配置（.env 勾过「输出进子文件夹」会让缓存写进 _maw）。
+        self.env_patcher = mock.patch.dict(
+            os.environ, {"MAW_GUI_OUTPUT_SUBFOLDER": "0", "MAW_GUI_PER_VIDEO_SUBFOLDER": "0"},
+        )
+        self.env_patcher.start()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
         self.wav = self.root / "tone.wav"
@@ -46,6 +52,7 @@ class MediaCacheTests(unittest.TestCase):
         self.project: dict = {"media": str(self.wav), "segments": []}
 
     def tearDown(self) -> None:
+        self.env_patcher.stop()
         self.temp_dir.cleanup()
 
     def test_selected_audio_track_survives_cache_merge_without_inline_payloads(self) -> None:

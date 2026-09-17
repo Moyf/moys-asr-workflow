@@ -387,7 +387,9 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
   await page.locator('#toolboxUtilitiesPrimaryTab').click();
 
   await expect(page.locator('#toolboxUtilitiesContent')).toBeVisible();
-  await expect(page.locator('#toolboxUtilitiesTabList')).toHaveAttribute('aria-orientation', 'vertical');
+  // 横向 tab 条：ARIA 方向保持默认 horizontal，不得声明 vertical（契约见
+  // test_gui_web.test_launcher_toolbox_uses_primary_tabs…）。
+  await expect(page.locator('#toolboxUtilitiesTabList')).not.toHaveAttribute('aria-orientation', 'vertical');
   const layout = await page.evaluate(() => {
     const style = getComputedStyle(document.getElementById('toolboxUtilitiesContent'));
     // beta.4 重构后 tablist 导航是 content 的兄弟节点；tab 条横向一行五列。
