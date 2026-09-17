@@ -64,6 +64,8 @@ __all__ = [
     "prepare_model_in_runtime",
     "prepare_alignment_model_in_process",
     "prepare_alignment_model_in_runtime",
+    "prepare_punctuation_model_in_process",
+    "prepare_punctuation_model_in_runtime",
     "run_timestamp_alignment_in_runtime",
     "recover_local_runtime_install",
     "runtime_python_path",
@@ -320,6 +322,73 @@ def prepare_alignment_model_in_process(
         runtime_root=None,
         on_event=on_event,
         cancel_event=cancel_event,
+    )
+
+
+def prepare_punctuation_model_in_runtime(
+    *,
+    model_path: str = "",
+    model_cache_root: str | Path | None = None,
+    on_event: Callable[[str], None] | None = None,
+    cancel_event: Event | None = None,
+) -> int:
+    """Download/reuse the shared FunASR ct-punc model in local-runtime."""
+    status = managed_runtime_status(model_cache_root)
+    if not status.ready:
+        raise LocalRuntimeError(f"本地模型运行时未就绪：{status.detail}")
+    return _run_punctuation_model_worker(
+        str(status.python_path),
+        model_path=model_path,
+        model_cache_root=model_cache_root,
+        runtime_root=default_runtime_root(),
+        on_event=on_event,
+        cancel_event=cancel_event,
+    )
+
+
+def prepare_punctuation_model_in_process(
+    *,
+    model_path: str = "",
+    model_cache_root: str | Path | None = None,
+    on_event: Callable[[str], None] | None = None,
+    cancel_event: Event | None = None,
+) -> int:
+    """Prepare ct-punc in the current source-mode local Python environment."""
+    return _run_punctuation_model_worker(
+        sys.executable,
+        model_path=model_path,
+        model_cache_root=model_cache_root,
+        runtime_root=None,
+        on_event=on_event,
+        cancel_event=cancel_event,
+    )
+
+
+def _run_punctuation_model_worker(
+    python_executable: str,
+    *,
+    model_path: str,
+    model_cache_root: str | Path | None,
+    runtime_root: Path | None,
+    on_event: Callable[[str], None] | None,
+    cancel_event: Event | None,
+) -> int:
+    helper = LOCAL.bundle_path("maw/local_runtime_worker.py")
+    if not helper.exists():
+        raise LocalRuntimeError(f"本地运行时助手缺失：{helper}")
+    command = [python_executable, str(helper), "prepare-punc"]
+    if model_path:
+        command.extend(["--model-path", model_path])
+    return _run_process(
+        command,
+        env=_runtime_env(model_cache_root, runtime_root),
+        cancel=cancel_event or Event(),
+        on_line=on_event or (lambda _line: None),
+        cwd=str(helper.parent),
+        error_class=LocalRuntimeError,
+        cancelled_class=LocalRuntimeCancelled,
+        cancelled_message="标点模型准备已取消。",
+        message_prefix="本地标点模型",
     )
 
 

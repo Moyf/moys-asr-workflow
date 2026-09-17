@@ -396,7 +396,7 @@ class GuiConfigTests(unittest.TestCase):
                 "FunASR paraformer-zh",
                 "SenseVoice Small",
                 "MOSS Transcribe-Diarize 0.9B",
-                "FireRedASR2-CTC",
+                "FireRedASR2",
                 "Faster-Whisper large-v3（实验）",
             ],
         )
@@ -423,9 +423,10 @@ class GuiConfigTests(unittest.TestCase):
         firered = provider.models[-2]
         self.assertEqual(firered.engine, "firered")
         self.assertEqual(firered.model_ref, "firered-asr2-ctc")
+        self.assertIn("funasr", firered.requires_runtime)
         self.assertIn("sherpa_onnx", firered.requires_runtime)
         self.assertIn("soundfile", firered.requires_runtime)
-        self.assertIn("对齐模型", firered.note)
+        self.assertIn("ct-punc", firered.note)
         self.assertEqual(qwen06.device_support, "cpu_gpu")
         self.assertEqual(qwen06.resource_level, "medium")
         self.assertEqual(qwen06.estimated_size, "1.7G+")

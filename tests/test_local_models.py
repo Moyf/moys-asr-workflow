@@ -21,6 +21,36 @@ def local_model(model_id: str):
 
 
 class LocalModelDiscoveryTests(unittest.TestCase):
+    def test_firered_asr_is_incomplete_until_ctc_and_punc_are_both_present(self) -> None:
+        model = local_model("firered-asr2-ctc-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            ctc = root / "aligners" / "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25"
+            ctc.mkdir(parents=True)
+            (ctc / "model.int8.onnx").write_bytes(b"onnx")
+            (ctc / "tokens.txt").write_text("a 1\n", encoding="utf-8")
+
+            with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                with mock.patch("maw.local_models._modelscope_cache_roots", return_value=[root / "modelscope"]):
+                    partial = inspect_local_model(model, model_cache_root=root)
+                    punc = (
+                        root
+                        / "modelscope"
+                        / "models"
+                        / "iic--punc_ct-transformer_cn-en-common-vocab471067-large"
+                        / "snapshots"
+                        / "main"
+                    )
+                    punc.mkdir(parents=True)
+                    (punc / "model.pt").write_bytes(b"weights")
+                    ready = inspect_local_model(model, model_cache_root=root)
+
+        self.assertEqual(partial.status, "partial")
+        self.assertIn("缺少 FunASR ct-punc", partial.detail)
+        self.assertFalse(partial.installed)
+        self.assertEqual(ready.status, "installed")
+        self.assertTrue(ready.installed)
+
     def test_missing_runtime_is_reported_without_scanning_model_imports(self) -> None:
         model = local_model("qwen3-asr-local")
         not_ready = mock.Mock(ready=False, python_path="", model_cache_path="")

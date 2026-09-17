@@ -34,6 +34,7 @@ from generate_subtitle_qwen_api import (
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.alignment_models import FIRERED_ASR2_CTC_MODEL_ID
+from maw.punctuation import PunctuationError, punctuate_timed_tokens
 from maw.language import (
     DEFAULT_MAX_WORDS,
     DEFAULT_MIN_WORDS,
@@ -98,6 +99,7 @@ class LocalTranscription:
     language_source: str = "unknown"
     split_mode: str = ""
     timestamp_granularity: str = "unknown"
+    preserve_punctuation: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -922,6 +924,7 @@ class QwenAsrEngine:
             transcription.language_source,
             transcription.split_mode,
             transcription.timestamp_granularity,
+            transcription.preserve_punctuation,
         )
 
     def transcribe(
@@ -1400,10 +1403,12 @@ class FireRedAsrEngine:
         *,
         model_path: str | Path | None = None,
         device: str = "auto",
+        model_cache_root: str | Path | None = None,
     ) -> None:
         self.model = model
         self.model_path = str(model_path) if model_path else ""
         self.device = device
+        self.model_cache_root = str(model_cache_root) if model_cache_root else None
         self._backend: Any = None
 
     def _load(self, on_event: ProgressCallback | None = None) -> Any:
@@ -1417,7 +1422,10 @@ class FireRedAsrEngine:
             raise _missing_dependency("sherpa-onnx") from error
         if on_event:
             on_event(f"[local] loading FireRedASR2-CTC: {self.model}")
-        self._backend = FireRedCtcBackend(model_path=self.model_path)
+        self._backend = FireRedCtcBackend(
+            model_path=self.model_path,
+            model_cache_root=self.model_cache_root,
+        )
         # Trigger the lazy recognizer load now so Launcher model preparation
         # and a real inference fail at the same boundary.
         self._backend._load()
@@ -1438,35 +1446,66 @@ class FireRedAsrEngine:
         decoded = backend.decode(audio_path)
         from maw.timestamp_alignment import firered_tokens_to_items
 
-        text = decoded.text.strip()
+        decoded_text = decoded.text.strip()
         items = firered_tokens_to_items(
-            text,
+            decoded_text,
             decoded.tokens,
             decoded.timestamps,
             decoded.duration_ms,
             decoded_text=decoded.text,
         )
+        if not decoded_text or not items:
+            language_value, language_source = resolve_language(None, language, "")
+            return LocalTranscription(
+                "",
+                language_value,
+                [],
+                [],
+                self.model,
+                language_source,
+                split_mode_for_text("", language_value),
+                "unknown",
+                True,
+            )
+        timed_items = [_item(item.text, item.start, item.end) for item in items]
+        if on_event:
+            on_event("[local] FunASR ct-punc 正在按字词时间码生成标点和分句")
+        try:
+            punctuated_segments = punctuate_timed_tokens(
+                timed_items,
+                model_cache_root=self.model_cache_root,
+                device=self.device,
+                on_event=on_event,
+            )
+        except (PunctuationError, RuntimeError, OSError, ValueError) as error:
+            raise LocalAsrError(
+                f"FunASR ct-punc 自动标点失败，未生成 FireRedASR2 结果：{error}"
+            ) from error
+        punctuated_items = [
+            item
+            for segment in punctuated_segments
+            for item in segment.get("items") or []
+        ]
+        text = "".join(str(item.get("text") or "") for item in punctuated_items).strip()
+        if not text or not punctuated_segments:
+            raise LocalAsrError("FunASR ct-punc 未生成可用的带标点分句，未生成 FireRedASR2 结果。")
         language_value, language_source = resolve_language(None, language, text)
         split_mode = split_mode_for_text(text, language_value)
-        segments = []
-        if text:
-            segments = [_segment(text, 0, decoded.duration_ms, [
-                _item(item.text, item.start, item.end) for item in items
-            ])]
         return LocalTranscription(
             text,
             language_value,
-            [_item(item.text, item.start, item.end) for item in items],
-            segments,
+            punctuated_items,
+            punctuated_segments,
             self.model,
             language_source,
             split_mode,
             timestamp_granularity_for_items(
-                items,
+                punctuated_items,
                 split_mode,
-                explicit_items=bool(items),
-                has_segments=bool(segments),
+                explicit_items=bool(punctuated_items),
+                has_segments=bool(punctuated_segments),
             ),
+            True,
         )
 
     def transcribe(
@@ -1545,6 +1584,7 @@ class FireRedAsrEngine:
                 explicit_items=bool(merged_items) and all(result.items for result in results),
                 has_segments=bool(merged_segments),
             ),
+            True,
         )
 
 
@@ -1810,6 +1850,7 @@ def create_local_engine(
     model: str | None = None,
     model_path: str | Path | None = None,
     device: str = "auto",
+    model_cache_root: str | Path | None = None,
     forced_aligner: str | Path | None = None,
     vad_model: str | None = None,
     punc_model: str | None = None,
@@ -1847,6 +1888,7 @@ def create_local_engine(
             model or FIRERED_DEFAULT_MODEL,
             model_path=model_path,
             device=device,
+            model_cache_root=model_cache_root,
         )
     if normalized == "whisper":
         return WhisperEngine(
@@ -2056,7 +2098,10 @@ def build_local_segments(
         segments = [{"start": 0, "end": max(duration_ms, 1), "text": transcription.text, "items": []}]
     else:
         return []
-    _strip_trailing_punct(segments, strip_tail_punct)
+    _strip_trailing_punct(
+        segments,
+        "" if transcription.preserve_punctuation else strip_tail_punct,
+    )
     return repair_nonpositive_duration_segments(segments)
 
 

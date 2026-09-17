@@ -572,9 +572,9 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
     ),
     ModelConfig(
         id="firered-asr2-ctc-local",
-        label="FireRedASR2-CTC",
+        label="FireRedASR2",
         env_key="",
-        note="中英轻量 int8 CTC 识别；原生 token/字词时间码；CPU 运行；也可作为字幕对齐模型",
+        note="中英及多方言；CPU 可运行；字词时间码；自动标点（需 ct-punc）",
         languages=(
             ("", "自动识别"),
             ("zh", "中文 / Chinese"),
@@ -583,11 +583,11 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         kind="local",
         engine="firered",
         model_ref="firered-asr2-ctc",
-        requires_runtime=("sherpa_onnx", "soundfile"),
+        requires_runtime=("funasr", "sherpa_onnx", "soundfile"),
         supports_word_timestamps=True,
         device_support="cpu",
         resource_level="low",
-        estimated_size="0.9G",
+        estimated_size="2G+",
     ),
     ModelConfig(
         id="whisper-large-v3-local",

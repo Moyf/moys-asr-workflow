@@ -76,7 +76,10 @@ def _ocr_runtime_import_graph() -> set[str]:
 def _local_runtime_spec_entry(relative_path: str) -> str:
     parts = Path(relative_path).parts
     expression = " / ".join(["ROOT", *(f'"{part}"' for part in parts)])
-    target = "local-runtime/maw" if parts[0] == "maw" else "local-runtime"
+    if parts[0] == "maw":
+        target = "local-runtime/" + "/".join(parts[:-1])
+    else:
+        target = "local-runtime"
     return f"(str({expression}), \"{target}\")"
 
 

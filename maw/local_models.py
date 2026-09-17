@@ -29,8 +29,11 @@ from maw.local_runtime import (
     prepare_alignment_model_in_runtime,
     prepare_model_in_process,
     prepare_model_in_runtime,
+    prepare_punctuation_model_in_process,
+    prepare_punctuation_model_in_runtime,
     resolve_model_cache_root,
 )
+from maw.punctuation import CT_PUNC_MODEL_REF
 
 
 LocalModelEvent = Callable[[str], None]
@@ -48,7 +51,7 @@ _ESTIMATED_CACHE_GIB: dict[str, tuple[float, float]] = {
     "funasr-local": (2.0, 4.0),
     "moss-transcribe-diarize-local": (3.0, 6.0),
     "whisper-large-v3-local": (2.5, 4.0),
-    "firered-asr2-ctc-local": (0.7, 1.0),
+    "firered-asr2-ctc-local": (1.8, 2.4),
 }
 
 
@@ -153,10 +156,40 @@ def inspect_local_model(
                 runtime_python,
             )
         if model.engine == "firered":
-            valid = all(
+            ctc_valid = all(
                 (explicit / name).is_file() and (explicit / name).stat().st_size > 0
                 for name in (FIRERED_ASR2_CTC_MODEL_FILE, FIRERED_ASR2_CTC_TOKENS_FILE)
             )
+            if not ctc_valid:
+                return LocalModelStatus(
+                    model.id,
+                    model.engine,
+                    model.model_ref,
+                    "path_invalid",
+                    True,
+                    False,
+                    str(explicit),
+                    "所选目录缺少有效的 FireRedASR2-CTC 模型文件。",
+                    model.required_model_refs,
+                    runtime_source,
+                    runtime_python,
+                )
+            if _find_ct_punc_model(model_cache_root) is None:
+                return LocalModelStatus(
+                    model.id,
+                    model.engine,
+                    model.model_ref,
+                    "partial",
+                    True,
+                    False,
+                    str(explicit),
+                    "已检测到 CTC，缺少 FunASR ct-punc 自动标点模型。",
+                    model.required_model_refs,
+                    runtime_source,
+                    runtime_python,
+                    _installed_model_size(explicit),
+                )
+            valid = True
         else:
             valid = _model_directory_has_file(explicit, require_weight=True)
         if not valid:
@@ -205,6 +238,11 @@ def inspect_local_model(
         )
     main_path, missing_refs = paths
     if missing_refs:
+        detail = "缺少模型组件：" + "、".join(missing_refs)
+        if model.engine == "firered" and missing_refs == ["FunASR ct-punc（自动标点）"]:
+            detail = "已检测到 CTC，缺少 FunASR ct-punc 自动标点模型。"
+        elif model.engine == "firered" and missing_refs == ["FireRedASR2-CTC"]:
+            detail = "已检测到 FunASR ct-punc，缺少 CTC 模型。"
         return LocalModelStatus(
             model.id,
             model.engine,
@@ -213,7 +251,7 @@ def inspect_local_model(
             True,
             False,
             str(main_path),
-            "缺少模型组件：" + "、".join(missing_refs),
+            detail,
             model.required_model_refs,
             runtime_source,
             runtime_python,
@@ -334,6 +372,12 @@ def prepare_local_model(
                 on_event=emit,
                 cancel_event=cancel_event,
             )
+            prepare_punctuation_model_in_process(
+                model_path=str(_find_ct_punc_model(model_cache_root) or ""),
+                model_cache_root=model_cache_root,
+                on_event=emit,
+                cancel_event=cancel_event,
+            )
         else:
             prepare_model_in_process(
                 engine=model.engine,
@@ -422,6 +466,12 @@ def _prepare_alignment_in_managed_runtime(
         prepare_alignment_model_in_runtime(
             model_id=FIRERED_ASR2_CTC_MODEL_ID,
             model_path=model_path,
+            model_cache_root=model_cache_root,
+            on_event=emit,
+            cancel_event=cancel_event,
+        )
+        prepare_punctuation_model_in_runtime(
+            model_path=str(_find_ct_punc_model(model_cache_root) or ""),
             model_cache_root=model_cache_root,
             on_event=emit,
             cancel_event=cancel_event,
@@ -541,6 +591,16 @@ def _model_watch_paths(
         else:
             cache_root = resolve_model_cache_root(model_cache_root)
             paths.extend((cache_root / "aligners", cache_root / "aligners" / "downloads"))
+        punc = _find_ct_punc_model(model_cache_root)
+        if punc is not None:
+            paths.append(punc)
+        else:
+            modelscope_root = resolve_model_cache_root(model_cache_root) / "modelscope"
+            paths.extend((
+                modelscope_root / "models" / "iic--punc_ct-transformer_cn-en-common-vocab471067-large",
+                modelscope_root / "models" / "iic" / "punc_ct-transformer_cn-en-common-vocab471067-large",
+                modelscope_root / "iic--punc_ct-transformer_cn-en-common-vocab471067-large",
+            ))
     return _unique_paths(paths)
 
 
@@ -652,8 +712,16 @@ def _find_model_paths(
     model_cache_root: str | Path | None = None,
 ) -> tuple[Path, list[str]] | None:
     if model.engine == "firered":
-        found = find_alignment_model_path(FIRERED_ASR2_CTC_MODEL_ID, model_cache_root=model_cache_root)
-        return (found, []) if found is not None else None
+        ctc_path = find_alignment_model_path(FIRERED_ASR2_CTC_MODEL_ID, model_cache_root=model_cache_root)
+        punc_path = _find_ct_punc_model(model_cache_root)
+        if ctc_path is None and punc_path is None:
+            return None
+        missing: list[str] = []
+        if ctc_path is None:
+            missing.append("FireRedASR2-CTC")
+        if punc_path is None:
+            missing.append("FunASR ct-punc（自动标点）")
+        return (ctc_path or punc_path, missing)
     if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss", "whisper"}:
         main = _find_huggingface_model(model.model_ref, model_cache_root)
         if main is None:
@@ -670,6 +738,10 @@ def _find_model_paths(
                 return main, []
         return None
     return None
+
+
+def _find_ct_punc_model(model_cache_root: str | Path | None) -> Path | None:
+    return _find_modelscope_model(CT_PUNC_MODEL_REF, model_cache_root)
 
 
 def _find_huggingface_model(

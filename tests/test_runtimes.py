@@ -17,7 +17,7 @@ from unittest import mock
 
 import maw.runtimes as runtimes  # noqa: F401  (intentionally imported for registry coverage)
 import maw.runtimes.base as base_mod
-from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest
+from maw.runtime_manifest import STATUS_INSTALLING, STATUS_READY, write_runtime_manifest
 from maw.runtimes import LOCAL, MOSS, OCR, get_runtime
 from maw.runtimes.base import ManagedRuntime, ManagedRuntimeError, RuntimeSpec
 from maw.runtimes.local_spec import LOCAL_SPEC, PYTORCH_INDEX, LocalRuntimeError
@@ -412,6 +412,52 @@ class RuntimeStatusTransitionTests(unittest.TestCase):
             # 所有负载字段必须可 JSON 序列化（WindowsPath 会击穿 pywebview bridge）
             json.dumps(status.to_payload())
             self.assertIsInstance(status.model_cache_path, str)
+
+    def test_ready_status_accepts_top_level_module_file(self) -> None:
+        """soundfile 安装为 soundfile.py 时不能被误判为缺少依赖。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "local-runtime"
+            site = root / "site-packages"
+            site.mkdir(parents=True)
+            for name in LOCAL_SPEC.package_dirs:
+                if name == "soundfile":
+                    (site / "soundfile.py").write_text("", encoding="utf-8")
+                else:
+                    (site / name).mkdir()
+            write_runtime_manifest(
+                root,
+                status=STATUS_READY,
+                runtime_version=LOCAL_SPEC.runtime_version,
+                python_version=LOCAL_SPEC.python_version,
+            )
+
+            status = LOCAL.status(runtime_root=root)
+
+            self.assertTrue(status.ready)
+            self.assertEqual(status.status, STATUS_READY)
+
+    def test_dist_info_alone_does_not_satisfy_missing_target_dependency(self) -> None:
+        """状态检查必须以目标 site-packages 的可导入条目为准。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "local-runtime"
+            site = root / "site-packages"
+            site.mkdir(parents=True)
+            for name in LOCAL_SPEC.package_dirs:
+                if name != "soundfile":
+                    (site / name).mkdir()
+            (site / "soundfile-0.14.0.dist-info").mkdir()
+            write_runtime_manifest(
+                root,
+                status=STATUS_READY,
+                runtime_version=LOCAL_SPEC.runtime_version,
+                python_version=LOCAL_SPEC.python_version,
+            )
+
+            status = LOCAL.status(runtime_root=root)
+
+            self.assertFalse(status.ready)
+            self.assertEqual(status.status, "broken")
+            self.assertEqual(LOCAL.missing_package_dirs(root), ("soundfile",))
 
 
 @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)

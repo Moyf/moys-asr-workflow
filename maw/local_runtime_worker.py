@@ -17,7 +17,6 @@ if str(_BUNDLE_ROOT) not in sys.path:
     sys.path.insert(0, str(_BUNDLE_ROOT))
 
 from maw.console import configure_utf8_stdio  # noqa: E402
-from maw.local_asr import create_local_engine  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,6 +35,12 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_aligner = subparsers.add_parser("prepare-aligner")
     prepare_aligner.add_argument("--model-id", required=True)
     prepare_aligner.add_argument("--model-path", default="")
+    prepare_punc = subparsers.add_parser("prepare-punc")
+    prepare_punc.add_argument("--model-path", default="")
+    punctuate = subparsers.add_parser("punctuate")
+    punctuate.add_argument("--model-path", default="")
+    punctuate.add_argument("--input", required=True)
+    punctuate.add_argument("--device", default="auto")
     timestamp_align = subparsers.add_parser("timestamp-align")
     timestamp_align.add_argument("--project-path", default="")
     timestamp_align.add_argument("--srt-path", default="")
@@ -62,6 +67,57 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         print("[local] 对齐模型组件准备完成。")
         return 0
+    if args.command == "prepare-punc":
+        try:
+            import torch  # type: ignore[import-not-found]
+            from funasr import AutoModel  # type: ignore[import-not-found]
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            model_source = args.model_path or "ct-punc"
+            AutoModel(model=model_source, device=device, disable_update=True)
+            print("[local] FunASR ct-punc 模型组件准备完成。")
+            return 0
+        except Exception as error:  # noqa: BLE001 - worker boundary
+            print(json.dumps({
+                "type": "error",
+                "detail": f"FunASR ct-punc 模型准备失败：{error}",
+            }, ensure_ascii=False))
+            return 1
+    if args.command == "punctuate":
+        try:
+            import torch  # type: ignore[import-not-found]
+            from funasr import AutoModel  # type: ignore[import-not-found]
+
+            device = str(args.device or "auto").strip().casefold()
+            if device not in {"", "auto", "cpu", "cuda"}:
+                raise RuntimeError("ct-punc 设备必须是 auto、cpu 或 cuda。")
+            use_gpu = device == "cuda" or (device in {"", "auto"} and bool(torch.cuda.is_available()))
+            if use_gpu and not torch.cuda.is_available():
+                if device == "cuda":
+                    raise RuntimeError("当前 Torch 没有可用的 CUDA，ct-punc 请改用 CPU。")
+                use_gpu = False
+            payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
+            text = payload.get("text") if isinstance(payload, dict) else payload
+            text = str(text or "")
+            if not text.strip():
+                print(json.dumps({"type": "result", "text": ""}, ensure_ascii=False))
+                return 0
+            model_source = args.model_path or "ct-punc"
+            punc = AutoModel(
+                model=model_source,
+                device="cuda" if use_gpu else "cpu",
+                disable_update=True,
+            )
+            result = punc.generate(input=text)
+            first = result[0] if isinstance(result, list) and result else result
+            punctuated = first.get("text") if isinstance(first, dict) else None
+            if not isinstance(punctuated, str):
+                raise RuntimeError("ct-punc 没有返回 text 字段。")
+            print(json.dumps({"type": "result", "text": punctuated}, ensure_ascii=False))
+            return 0
+        except Exception as error:  # noqa: BLE001 - worker boundary must return a readable error
+            print(json.dumps({"type": "error", "detail": f"FunASR ct-punc 加载或推理失败：{error}"}, ensure_ascii=False))
+            return 1
     if args.command == "timestamp-align":
         from maw.alignment_models import resolve_model_cache_root
         from maw.timestamp_alignment import TimestampAlignmentRequest, run_timestamp_alignment
@@ -95,6 +151,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command != "prepare":
         return 2
+    from maw.local_asr import create_local_engine
+
     engine = create_local_engine(
         args.engine,
         model=args.model,

@@ -65,6 +65,5 @@ class AlignmentModelRegistryTests(unittest.TestCase):
             self.assertEqual(complete.installed_size, "9 B")
             self.assertEqual(complete.to_payload()["installedSize"], "9 B")
 
-
 if __name__ == "__main__":
     unittest.main()
