@@ -104,7 +104,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 calls.append(command)
                 if "install" in command:
                     site = root / "site-packages"
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (site / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -179,7 +179,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 calls.append(command)
                 if "install" in command:
                     site = root / "site-packages"
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (site / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -258,7 +258,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 calls.append(command)
                 if "install" in command:
                     site = root / "site-packages"
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (site / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -453,7 +453,7 @@ class VenvRuntimeInstallTests(unittest.TestCase):
                     python.parent.mkdir(parents=True, exist_ok=True)
                     python.write_bytes(b"python")
                 elif "install" in command:
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (self._venv_site_packages(canonical_root) / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -518,7 +518,7 @@ class VenvRuntimeInstallTests(unittest.TestCase):
                     python.parent.mkdir(parents=True, exist_ok=True)
                     python.write_bytes(b"python")
                 elif "install" in command:
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (self._venv_site_packages(root) / name).mkdir(parents=True, exist_ok=True)
                 return 0
 

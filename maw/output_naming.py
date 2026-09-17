@@ -44,6 +44,7 @@ OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
     "proofread": {"zh": "校对文本", "en": "proofread"},
     "resegment": {"zh": "重新断句", "en": "resegment"},
     "custom": {"zh": "自定义", "en": "custom"},
+    "timestamps": {"zh": "生成时间码", "en": "timestamps"},
 }
 
 # 媒体工具产物后缀（压制字幕/提取音频/媒体重组）；未列出的后缀原样使用。

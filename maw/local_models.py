@@ -16,7 +16,21 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from maw.gui_config import ModelConfig
-from maw.local_runtime import LocalRuntimeStatus, managed_runtime_status, prepare_model_in_process, prepare_model_in_runtime, resolve_model_cache_root
+from maw.alignment_models import (
+    FIRERED_ASR2_CTC_MODEL_FILE,
+    FIRERED_ASR2_CTC_MODEL_ID,
+    FIRERED_ASR2_CTC_TOKENS_FILE,
+    find_alignment_model_path,
+)
+from maw.local_runtime import (
+    LocalRuntimeStatus,
+    managed_runtime_status,
+    prepare_alignment_model_in_process,
+    prepare_alignment_model_in_runtime,
+    prepare_model_in_process,
+    prepare_model_in_runtime,
+    resolve_model_cache_root,
+)
 
 
 LocalModelEvent = Callable[[str], None]
@@ -34,6 +48,7 @@ _ESTIMATED_CACHE_GIB: dict[str, tuple[float, float]] = {
     "funasr-local": (2.0, 4.0),
     "moss-transcribe-diarize-local": (3.0, 6.0),
     "whisper-large-v3-local": (2.5, 4.0),
+    "firered-asr2-ctc-local": (0.7, 1.0),
 }
 
 
@@ -136,7 +151,14 @@ def inspect_local_model(
                 runtime_source,
                 runtime_python,
             )
-        if not _model_directory_has_file(explicit, require_weight=True):
+        if model.engine == "firered":
+            valid = all(
+                (explicit / name).is_file() and (explicit / name).stat().st_size > 0
+                for name in (FIRERED_ASR2_CTC_MODEL_FILE, FIRERED_ASR2_CTC_TOKENS_FILE)
+            )
+        else:
+            valid = _model_directory_has_file(explicit, require_weight=True)
+        if not valid:
             return LocalModelStatus(
                 model.id,
                 model.engine,
@@ -264,6 +286,15 @@ def prepare_local_model(
         raise ValueError("only local models can be prepared")
 
     if status.runtime_source == "managed":
+        if model.engine == "firered":
+            return _prepare_alignment_in_managed_runtime(
+                model,
+                model_path=str(model_path).strip(),
+                model_cache_root=model_cache_root,
+                on_event=on_event,
+                on_progress=on_progress,
+                cancel_event=cancel_event,
+            )
         return _prepare_in_managed_runtime(
             model,
             model_path=str(model_path).strip(),
@@ -290,18 +321,27 @@ def prepare_local_model(
     started = time.monotonic()
     heartbeat.start()
     try:
-        prepare_model_in_process(
-            engine=model.engine,
-            model=model.model_ref,
-            model_path=str(model_path).strip(),
-            device=device,
-            forced_aligner=aligner,
-            vad_model="fsmn-vad" if _funasr_model_uses_vad(model.model_ref) else "",
-            trust_remote_code=model.engine == "moss" or "fun-asr-nano" in model.model_ref.casefold(),
-            model_cache_root=model_cache_root,
-            on_event=emit,
-            cancel_event=cancel_event,
-        )
+        if model.engine == "firered":
+            prepare_alignment_model_in_process(
+                model_id=FIRERED_ASR2_CTC_MODEL_ID,
+                model_path=str(model_path).strip(),
+                model_cache_root=model_cache_root,
+                on_event=emit,
+                cancel_event=cancel_event,
+            )
+        else:
+            prepare_model_in_process(
+                engine=model.engine,
+                model=model.model_ref,
+                model_path=str(model_path).strip(),
+                device=device,
+                forced_aligner=aligner,
+                vad_model="fsmn-vad" if _funasr_model_uses_vad(model.model_ref) else "",
+                trust_remote_code=model.engine == "moss" or "fun-asr-nano" in model.model_ref.casefold(),
+                model_cache_root=model_cache_root,
+                on_event=emit,
+                cancel_event=cancel_event,
+            )
     finally:
         stop_heartbeat.set()
         heartbeat.join(timeout=1.0)
@@ -350,6 +390,41 @@ def _prepare_in_managed_runtime(
         stop_heartbeat.set()
         heartbeat.join(timeout=1.0)
     emit(f"[local] 模型准备调用已返回，用时 {_format_elapsed(time.monotonic() - started)}。正在重新扫描缓存。")
+    return inspect_local_model(model, model_path, model_cache_root=model_cache_root)
+
+
+def _prepare_alignment_in_managed_runtime(
+    model: ModelConfig,
+    *,
+    model_path: str,
+    model_cache_root: str | Path | None,
+    on_event: LocalModelEvent | None,
+    on_progress: LocalModelProgress | None,
+    cancel_event: threading.Event | None,
+) -> LocalModelStatus:
+    emit = on_event or (lambda _message: None)
+    emit(f"[local] 正在准备 {model.label}；使用 MAW 独立运行环境。")
+    stop_heartbeat = threading.Event()
+    heartbeat = threading.Thread(
+        target=_report_prepare_progress,
+        args=(model, model_path, model_cache_root, stop_heartbeat, emit, on_progress),
+        name="maw-local-model-progress",
+        daemon=True,
+    )
+    started = time.monotonic()
+    heartbeat.start()
+    try:
+        prepare_alignment_model_in_runtime(
+            model_id=FIRERED_ASR2_CTC_MODEL_ID,
+            model_path=model_path,
+            model_cache_root=model_cache_root,
+            on_event=emit,
+            cancel_event=cancel_event,
+        )
+    finally:
+        stop_heartbeat.set()
+        heartbeat.join(timeout=1.0)
+    emit(f"[local] 对齐模型准备调用已返回，用时 {_format_elapsed(time.monotonic() - started)}。正在重新扫描缓存。")
     return inspect_local_model(model, model_path, model_cache_root=model_cache_root)
 
 
@@ -454,6 +529,13 @@ def _model_watch_paths(
                 continue
             for root in _modelscope_cache_roots(model_cache_root):
                 paths.extend(_modelscope_repo_candidates(root, parts))
+    elif model.engine == "firered":
+        found = find_alignment_model_path(FIRERED_ASR2_CTC_MODEL_ID, model_cache_root=model_cache_root)
+        if found is not None:
+            paths.append(found)
+        else:
+            cache_root = resolve_model_cache_root(model_cache_root)
+            paths.extend((cache_root / "aligners", cache_root / "aligners" / "downloads"))
     return _unique_paths(paths)
 
 
@@ -556,6 +638,9 @@ def _find_model_paths(
     model: ModelConfig,
     model_cache_root: str | Path | None = None,
 ) -> tuple[Path, list[str]] | None:
+    if model.engine == "firered":
+        found = find_alignment_model_path(FIRERED_ASR2_CTC_MODEL_ID, model_cache_root=model_cache_root)
+        return (found, []) if found is not None else None
     if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss", "whisper"}:
         main = _find_huggingface_model(model.model_ref, model_cache_root)
         if main is None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -32,12 +33,66 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--punc-model", default="")
     prepare.add_argument("--speaker-model", default="")
     prepare.add_argument("--trust-remote-code", action="store_true")
+    prepare_aligner = subparsers.add_parser("prepare-aligner")
+    prepare_aligner.add_argument("--model-id", required=True)
+    prepare_aligner.add_argument("--model-path", default="")
+    timestamp_align = subparsers.add_parser("timestamp-align")
+    timestamp_align.add_argument("--project-path", default="")
+    timestamp_align.add_argument("--srt-path", default="")
+    timestamp_align.add_argument("--media-path", default="")
+    timestamp_align.add_argument("--model-id", required=True)
+    timestamp_align.add_argument("--output-mode", default="both")
+    timestamp_align.add_argument("--alignment-mode", default="fill")
+    timestamp_align.add_argument("--model-path", default="")
+    timestamp_align.add_argument("--output-directory", default="")
+    timestamp_align.add_argument("--device", default="auto")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     configure_utf8_stdio()
     args = build_parser().parse_args(argv)
+    if args.command == "prepare-aligner":
+        from maw.alignment_models import prepare_alignment_model
+
+        prepare_alignment_model(
+            args.model_id,
+            model_path=args.model_path,
+            on_event=print,
+        )
+        print("[local] 对齐模型组件准备完成。")
+        return 0
+    if args.command == "timestamp-align":
+        from maw.alignment_models import resolve_model_cache_root
+        from maw.timestamp_alignment import TimestampAlignmentRequest, run_timestamp_alignment
+
+        artifact, report = run_timestamp_alignment(
+            TimestampAlignmentRequest(
+                project_path=Path(args.project_path) if args.project_path else None,
+                srt_path=Path(args.srt_path) if args.srt_path else None,
+                media_path=Path(args.media_path) if args.media_path else None,
+                model_id=args.model_id,
+                output_mode=args.output_mode,
+                mode=args.alignment_mode,
+                model_path=Path(args.model_path) if args.model_path else None,
+                model_cache_root=resolve_model_cache_root(),
+                device=args.device,
+                output_directory=Path(args.output_directory) if args.output_directory else None,
+            )
+        )
+        print(json.dumps({
+            "type": "result",
+            "artifact": {
+                "sourceProjectPath": str(artifact.source_project_path or ""),
+                "sourceSrtPath": str(artifact.source_srt_path or ""),
+                "projectPath": str(artifact.project_path or ""),
+                "srtPath": str(artifact.srt_path or ""),
+                "translatedSrtPath": str(artifact.translated_srt_path or ""),
+                "warnings": list(artifact.warnings),
+            },
+            "report": report.to_payload(),
+        }, ensure_ascii=False))
+        return 0
     if args.command != "prepare":
         return 2
     engine = create_local_engine(

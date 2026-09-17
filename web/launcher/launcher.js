@@ -959,6 +959,78 @@
     toolbox_ocr_model_ready: "Installed and ready",
     toolbox_ocr_model_missing: "Not installed; open Settings to download it",
   });
+  Object.assign(STRINGS.zh, {
+    local_model_settings_hint: "本地 ASR 模型、缓存和对齐模型请在设置 → AI 模型配置中管理。",
+    local_model_settings_open: "打开 AI 模型配置",
+    settings_local_asr_models: "本地 ASR 模型",
+    settings_alignment_models: "对齐模型",
+    alignment_model_settings_hint: "当前 ASR 模型没有字/词级时间码时，可在此准备补齐模型；Qwen Local 模型缓存可以复用。",
+    local_alignment_model: "对齐模型",
+    alignment_model_none: "不调用",
+    local_alignment_model_hint: "Qwen3-ForcedAligner 和 FireRedASR2-CTC 可单独下载。",
+    alignment_model_download: "下载对齐模型",
+    alignment_model_downloading: "正在下载对齐模型……",
+    alignment_model_ready: "对齐模型已就绪",
+    alignment_model_missing: "对齐模型未下载",
+    alignment_model_checking: "正在检查对齐模型……",
+    alignment_model_runtime_missing: "请先安装本地模型支持",
+    alignment_model_cancel: "取消下载",
+    alignment_model_cancelled: "对齐模型下载已取消",
+    alignment_model_failed: "对齐模型准备失败",
+    alignment_model_download_again: "重新下载",
+    toolbox_timestamps: "生成时间码",
+    toolbox_timestamps_hint: "给 .srt 或 .mosp/.json 工程的字幕段生成或补充字/词级时间码；需要原始媒体。",
+    toolbox_group_alignment_model: "对齐模型",
+    toolbox_timestamp_model: "对齐模型",
+    toolbox_timestamp_model_hint: "Qwen3-ForcedAligner 与 FireRedASR2-CTC 都可独立下载；Qwen 复用 Qwen Local 的 Hugging Face 缓存。",
+    toolbox_group_timestamp_media: "媒体来源",
+    toolbox_timestamp_mode: "处理方式",
+    toolbox_timestamp_mode_fill: "只补充缺失时间码",
+    toolbox_timestamp_mode_generate: "重新生成全部时间码",
+    toolbox_timestamp_media: "媒体来源",
+    toolbox_timestamp_media_placeholder: "选择或拖入媒体文件",
+    toolbox_timestamp_media_reject: "请选择支持的媒体文件。",
+    toolbox_run_timestamps: "生成时间码",
+    toolbox_status_aligning: "正在生成字词时间码……",
+    toolbox_chain_timestamps: "[生成时间码]",
+    toolbox_timestamp_model_not_ready: "对齐模型尚未就绪，请先下载。",
+  });
+  Object.assign(STRINGS.en, {
+    local_model_settings_hint: "Manage local ASR models, caches, and aligners in Settings → AI model configuration.",
+    local_model_settings_open: "Open AI model configuration",
+    settings_local_asr_models: "Local ASR models",
+    settings_alignment_models: "Alignment models",
+    alignment_model_settings_hint: "When the current ASR model has no word/character timestamps, prepare an aligner here; Qwen Local caches can be reused.",
+    local_alignment_model: "Alignment model",
+    alignment_model_none: "Do not align",
+    local_alignment_model_hint: "Qwen3-ForcedAligner and FireRedASR2-CTC can be downloaded separately.",
+    alignment_model_download: "Download aligner",
+    alignment_model_downloading: "Downloading aligner…",
+    alignment_model_ready: "Aligner is ready",
+    alignment_model_missing: "Aligner is not downloaded",
+    alignment_model_checking: "Checking aligner…",
+    alignment_model_runtime_missing: "Install local model support first",
+    alignment_model_cancel: "Cancel download",
+    alignment_model_cancelled: "Aligner download cancelled",
+    alignment_model_failed: "Aligner preparation failed",
+    alignment_model_download_again: "Download again",
+    toolbox_timestamps: "Generate timestamps",
+    toolbox_timestamps_hint: "Generate or fill word/character timestamps for an .srt or .mosp/.json project. Original media is required.",
+    toolbox_group_alignment_model: "Alignment model",
+    toolbox_timestamp_model: "Alignment model",
+    toolbox_timestamp_model_hint: "Qwen3-ForcedAligner and FireRedASR2-CTC can be downloaded separately. Qwen reuses the Qwen Local Hugging Face cache.",
+    toolbox_group_timestamp_media: "Media source",
+    toolbox_timestamp_mode: "Mode",
+    toolbox_timestamp_mode_fill: "Fill missing timestamps only",
+    toolbox_timestamp_mode_generate: "Regenerate all timestamps",
+    toolbox_timestamp_media: "Media source",
+    toolbox_timestamp_media_placeholder: "Choose or drop a media file",
+    toolbox_timestamp_media_reject: "Choose a supported media file.",
+    toolbox_run_timestamps: "Generate timestamps",
+    toolbox_status_aligning: "Generating word/character timestamps…",
+    toolbox_chain_timestamps: "[Generate timestamps]",
+    toolbox_timestamp_model_not_ready: "The aligner is not ready. Download it first.",
+  });
   const SERVER_STARTING_TEXT = { zh: "启动中……", en: "Starting…" };
   // 界面暂不开放时长上限，底层参数保留。
   const SHOW_LENGTH_LIMIT_FIELD = false;
@@ -1120,6 +1192,22 @@
       invalid_reasoning_mode: (detail) => `Invalid reasoning mode: ${detail || "check the post-processing settings."}`,
     }
   };
+  Object.assign(ERROR_TEXT.zh, {
+    alignment_model_missing: "对齐模型尚未下载，请先下载对齐模型。",
+    alignment_model_incomplete: "对齐模型文件不完整，请重新下载或选择正确的模型目录。",
+    alignment_model_path_invalid: "对齐模型目录不存在，或缺少有效模型文件。",
+    alignment_prepare_running: "对齐模型正在准备中，请等待完成。",
+    alignment_prepare_failed: (detail) => `对齐模型准备失败：${detail || "请查看日志后重试。"}`,
+    alignment_failed: (detail) => `字词时间码生成失败：${detail || "请检查媒体、字幕文本和对齐模型。"}`,
+  });
+  Object.assign(ERROR_TEXT.en, {
+    alignment_model_missing: "The aligner is not downloaded. Download it first.",
+    alignment_model_incomplete: "The aligner files are incomplete. Download it again or choose the correct model folder.",
+    alignment_model_path_invalid: "The aligner folder does not exist or has no valid model files.",
+    alignment_prepare_running: "The aligner is being prepared. Please wait.",
+    alignment_prepare_failed: (detail) => `Aligner preparation failed: ${detail || "check the log and retry."}`,
+    alignment_failed: (detail) => `Word/character timestamp generation failed: ${detail || "check the media, subtitle text, and aligner."}`,
+  });
   Object.assign(STRINGS.zh, {
     start_server_editor: "🚀 启动字幕编辑器",
     toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入；选择工具后运行。",
@@ -1207,7 +1295,7 @@
   const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-transcribe", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize", "whisper-large-v3-turbo", "whisper-large-v3"]);
   const SERVER_STATUS_MONITOR_INTERVAL_MS = 2000;
   const SERVER_STATUS_MONITOR_FAILURE_THRESHOLD = 2;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, alignmentPreparing: "", alignmentProgressMessage: "", localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
@@ -1222,6 +1310,7 @@
   let ocrRuntimeRequest = 0;
   let localRuntimeRequest = 0;
   let localModelsRequest = 0;
+  let alignmentModelsRequest = 0;
   // Runtime and model checks both update localRuntime.  A single revision
   // prevents an older request of either kind from putting stale status back
   // after a newer check has already completed.
@@ -1234,6 +1323,11 @@
       ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
       : fallback;
     let modelPrepareTimer = 0;
+    let alignmentPrepareTimer = 0;
+    let alignmentModels = [
+      { id: "qwen3-forced-aligner-0.6b", modelId: "qwen3-forced-aligner-0.6b", engine: "qwen", modelRef: "Qwen/Qwen3-ForcedAligner-0.6B", label: "Qwen3-ForcedAligner 0.6B", note: "字/词级时间码；复用 Qwen Local Hugging Face 缓存", estimatedSize: "约 1.7 GB", installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+      { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC（CPU）", note: "中英 CTC token 时间码；轻量 int8 CPU 路线", estimatedSize: "约 767 MB", installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+    ];
     return {
       get_config: async () => ({
         apiKey: saved.apiKey,
@@ -1271,7 +1365,8 @@
           { id: "pp-ocrv6-tiny", label: "PP-OCRv6 tiny（CPU）", installed: false, status: "missing", detail: "" },
           { id: "pp-ocrv6-small", label: "PP-OCRv6 small（CPU）", installed: false, status: "missing", detail: "" }
         ],
-        ocrModelId: "pp-ocrv6-tiny",
+         ocrModelId: "pp-ocrv6-tiny",
+         alignmentModels: alignmentModels.map((model) => ({ ...model, runtimeAvailable: Boolean(state.config?.localRuntime?.ready) })),
         providers: [
           {
             id: "qwen",
@@ -1339,11 +1434,14 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "en", "ja", "ko", "fr", "de", "es", "ru"],
             models: [
-              { id: "qwen3-asr-local", label: "Qwen3-ASR 0.6B（推荐）", envKey: "", note: "本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner", supportsSpeaker: false, kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-0.6B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "qwen3-asr-1.7b-local", label: "Qwen3-ASR 1.7B", envKey: "", note: "更高识别质量；与 0.6B 共用 Qwen3 Forced Aligner", supportsSpeaker: false, kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-1.7B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "qwen3-asr-local", label: "Qwen3-ASR 0.6B（推荐）", envKey: "", note: "本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner", supportsSpeaker: false, supportsWordTimestamps: true, kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-0.6B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "qwen3-asr-1.7b-local", label: "Qwen3-ASR 1.7B", envKey: "", note: "更高识别质量；与 0.6B 共用 Qwen3 Forced Aligner", supportsSpeaker: false, supportsWordTimestamps: true, kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-1.7B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "fun-asr-nano-local", label: "Fun-ASR-Nano 2512（GPU）", envKey: "", note: "LLM-ASR 路线；中英日及中文方言，建议使用 CUDA", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "FunAudioLLM/Fun-ASR-Nano-2512", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "funasr-local", label: "FunASR paraformer-zh", envKey: "", note: "中文向 FunASR 路线；保留作为兼容选项", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "paraformer-zh", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "sensevoice-small-local", label: "SenseVoice Small", envKey: "", note: "多语种本地识别；默认配合 FSMN-VAD，CPU/GPU 都可运行", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
+              { id: "sensevoice-small-local", label: "SenseVoice Small", envKey: "", note: "多语种本地识别；默认配合 FSMN-VAD，CPU/GPU 都可运行", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "moss-transcribe-diarize-local", label: "MOSS Transcribe-Diarize 0.9B（无字词时间码）", envKey: "", note: "多人转写与说话人分离；只有段级时间码，可选共享对齐模型补齐字/词级时间码", supportsSpeaker: true, kind: "local", engine: "moss", modelRef: "OpenMOSS-Team/MOSS-Transcribe-Diarize", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "firered-asr2-ctc-local", label: "FireRedASR2-CTC（CPU）", envKey: "", note: "轻量中英 int8 CTC 本地识别；输出 token 时间码，也可作为 SRT/MOSP 对齐模型", supportsSpeaker: false, supportsWordTimestamps: true, kind: "local", engine: "firered", modelRef: "firered-asr2-ctc", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "whisper-large-v3-local", label: "Faster-Whisper large-v3（实验）", envKey: "", note: "多语种本地识别；带词级时间码，无说话人分离", supportsSpeaker: false, kind: "local", engine: "whisper", modelRef: "Systran/faster-whisper-large-v3", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
             ],
             regions: [],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }]
@@ -1373,7 +1471,7 @@
           const dirIndex = Math.max(mediaPath.lastIndexOf("/"), mediaPath.lastIndexOf("\\"));
           const dir = dirIndex >= 0 ? mediaPath.slice(0, dirIndex + 1) : "";
           const stem = mediaPath.slice(dirIndex + 1).replace(/\.[^.\\/]+$/, "");
-          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))));
+          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : (modelId.includes("firered") ? ".firered-local" : (modelId.includes("moss") ? ".moss-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))));
           let outputDir = dir;
           if (saved.outputSubfolder) {
             const root = saved.perVideoSubfolder ? `${stem}_maw` : "_maw";
@@ -1405,7 +1503,10 @@
       save_settings: async (payload) => { saved = { ...saved, ...payload }; if (Object.prototype.hasOwnProperty.call(payload, "modelCacheRoot")) { state.config.modelCacheRoot = payload.modelCacheRoot || ""; state.config.localRuntime = { ...(state.config.localRuntime || {}), modelCachePath: payload.modelCacheRoot || "D:\\Models\\MAW" }; } return { ok: true, maskedApiKey: payload.apiKey ? "sk-…mock" : "", modelCacheRoot: Object.prototype.hasOwnProperty.call(payload, "modelCacheRoot") ? (payload.modelCacheRoot || "") : (state.config?.modelCacheRoot || ""), message: "mock saved" }; },
       get_local_runtime: async () => ({ ok: true, ...(state.config?.localRuntime || { status: "missing", ready: false }) }),
       install_local_runtime: async () => { state.config.localRuntime = { status: "ready", ready: true, path: "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime", detail: "本地运行环境已就绪。" }; setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localRuntimeReady", runtime: state.config.localRuntime }), 400); return { ok: true, installing: true }; },
-      cancel_local_runtime: async () => ({ ok: true }),
+       cancel_local_runtime: async () => ({ ok: true }),
+       get_alignment_models: async () => ({ ok: true, runtime: state.config?.localRuntime || {}, modelCacheRoot: state.config?.modelCacheRoot || "D:\\Models\\MAW", models: alignmentModels.map((model) => ({ ...model, runtimeAvailable: Boolean(state.config?.localRuntime?.ready) })) }),
+       prepare_alignment_model: async ({ modelId }) => { clearTimeout(alignmentPrepareTimer); alignmentPrepareTimer = setTimeout(() => { const model = alignmentModels.find((item) => item.id === modelId); if (model) { model.status = "installed"; model.installed = true; model.runtimeAvailable = true; model.detail = "已检测到对齐模型。"; } window.MAWLauncher.onBackendEvent({ type: "alignmentModelPrepared", modelId, status: "installed" }); }, 400); return { ok: true, preparing: true, modelId }; },
+       cancel_alignment_model: async () => { clearTimeout(alignmentPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "alignmentPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
       get_ocr_runtime: async () => ({ ok: true, ...(state.config?.ocrRuntime || { status: "missing", ready: false }), models: state.config?.ocrModels || [] }),
       save_ocr_settings: async ({ runtimePath }) => { state.config.ocrRuntime = { ...(state.config.ocrRuntime || {}), path: runtimePath || "D:\\Users\\Demo\\AppData\\Local\\MAW\\ocr-runtime" }; return { ok: true, runtimePath: state.config.ocrRuntime.path, runtime: state.config.ocrRuntime }; },
   save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { ...(state.config.localRuntime || {}), path: runtimePath || "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime" }; return { ok: true, runtimePath: state.config.localRuntime.path, runtime: state.config.localRuntime }; },
@@ -1433,7 +1534,8 @@
       open_containing_folder: async ({ path }) => ({ ok: Boolean(path) }),
       retry_postprocess: async () => ({ ok: false, error: "No failed automatic post-processing run." }),
       run_script_match: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "match", "D:\\Demo\\clip.match.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "match", "D:\\Demo\\clip.match.srt"), warnings: [] }),
-      run_ocr_dedup: async ({ projectPath, srtPath, outputMode, report }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.srt"), reportPath: report ? "D:\\Demo\\clip.ocr-dedup.csv" : "", warnings: ["OCR 字幕去重完成：新增禁用 1 条，已有禁用 0 条，实际 OCR 1 条，跳过 0 条。"] }),
+       run_ocr_dedup: async ({ projectPath, srtPath, outputMode, report }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.srt"), reportPath: report ? "D:\\Demo\\clip.ocr-dedup.csv" : "", warnings: ["OCR 字幕去重完成：新增禁用 1 条，已有禁用 0 条，实际 OCR 1 条，跳过 0 条。"] }),
+       run_timestamp_alignment: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "timestamps", "D:\\Demo\\clip.timestamps.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "timestamps", "D:\\Demo\\clip.timestamps.srt"), warnings: [] }),
       run_llm_postprocess: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "llm", "D:\\Demo\\clip.llm.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "llm", "D:\\Demo\\clip.llm.srt"), warnings: [] }),
       run_fixed_process: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "fixed", "D:\\Demo\\clip.fixed.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "fixed", "D:\\Demo\\clip.fixed.srt"), warnings: [] }),
       send_notification: async ({ title, message } = {}) => { window.__mockNotifications = [...(window.__mockNotifications || []), { title: String(title || ""), message: String(message || "") }]; return { ok: true, sent: false }; },
@@ -1526,6 +1628,7 @@
     "qwen3-asr-1.7b-local": "Qwen3-ASR 1.7B",
     "fun-asr-nano-local": "Fun-ASR-Nano 2512 (GPU)",
     "sensevoice-small-local": "SenseVoice Small",
+    "firered-asr2-ctc-local": "FireRedASR2-CTC (CPU)",
     "moss-transcribe-diarize-local": "MOSS Transcribe-Diarize 0.9B (segment timestamps only)",
     "whisper-large-v3-local": "Faster-Whisper large-v3 (experimental)",
     "bcut-asr": "Bcut ASR (no key / Chinese only)",
@@ -1546,6 +1649,7 @@
     "fun-asr-nano-local": "LLM-ASR approach with FSMN-VAD by default; Chinese, English, Japanese, and Chinese dialects; CUDA recommended.",
     "funasr-local": "Runs locally; uses the FunASR upstream model cache.",
     "sensevoice-small-local": "Multilingual local recognition with FSMN-VAD by default; runs on CPU or GPU.",
+    "firered-asr2-ctc-local": "Lightweight Chinese/English CTC recognition on CPU; outputs token timestamps and can also align SRT/MOSP subtitles.",
     "moss-transcribe-diarize-local": "End-to-end transcription with speaker diarization; segment timestamps only, no word-level timecodes; requires a separate Transformers 5.x runtime; CUDA recommended.",
     "whisper-large-v3-local": "OpenAI Whisper multilingual local recognition; the CTranslate2 runtime bundles VAD and has no speaker diarization. GPU use requires installing CUDA 12 and cuDNN 9 yourself; otherwise it falls back to CPU.",
     "bcut-asr": "Millisecond per-character timestamps; no API key required.",
@@ -2040,8 +2144,8 @@
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
-  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
-  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
+  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "localAlignmentModel", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
+  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), alignmentModel: isLocalProvider() ? $("localAlignmentModel").value : "", alignmentModelPath: "", device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
     const button = $("openMawe");
@@ -2094,7 +2198,7 @@
   function renderHotwordWarnings(value = $("qwenAudioHotwords").value, weight = Number($("qwenAudioHotwordWeight").value), ignoreComments = false) { const warning = $("qwenAudioHotwordsWarning"); const issues = collectHotwordWarnings(value, weight, ignoreComments); if (!issues.length) { warning.textContent = ""; warning.classList.remove("visible"); return; } const details = issues.slice(0, 5).map((issue) => t("qwen_audio_hotword_warning_item").replace("{label}", hotwordWarningLabel(issue)).replace("{reason}", t(`qwen_audio_hotword_issue_${issue.code}`))); if (issues.length > details.length) details.push(t("qwen_audio_hotword_warning_more")); warning.textContent = `${t("qwen_audio_hotwords_warning").replace("{count}", String(issues.length))}\n${details.join("\n")}`; warning.classList.add("visible"); }
   function syncQwenAudioHotwordsMode() { const fileMode = $("qwenAudioHotwordsMode").value === "file"; $("qwenAudioHotwordsTextField").classList.toggle("hidden", fileMode); $("qwenAudioHotwordsFileField").classList.toggle("hidden", !fileMode); renderHotwordWarnings(fileMode ? "" : $("qwenAudioHotwords").value, Number($("qwenAudioHotwordWeight").value)); }
   function setHotwordsMode(mode) { $("qwenAudioHotwordsMode").value = mode; $("qwenAudioHotwordsModeText").classList.toggle("active", mode === "text"); $("qwenAudioHotwordsModeFile").classList.toggle("active", mode === "file"); syncQwenAudioHotwordsMode(); }
-  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["mediaPath", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "localModelCachePath", "localModelPath", "localRuntimePath", "ocrRuntimePath", "ffmpegPath", "stickerDir", "toolboxInputDropZone", "toolboxUtilityMediaDropZone", "toolboxBurnSubtitleDropZone", "toolboxFfconcatDropZone", "toolboxAlignmentProjectDropZone", "toolboxAlignmentScriptDropZone", "ocrVideoPathField", "postprocessScriptPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
+  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["mediaPath", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "localModelCachePath", "localModelPath", "localRuntimePath", "ocrRuntimePath", "ffmpegPath", "stickerDir", "toolboxInputDropZone", "toolboxUtilityMediaDropZone", "toolboxTimestampMediaDropZone", "toolboxBurnSubtitleDropZone", "toolboxFfconcatDropZone", "toolboxAlignmentProjectDropZone", "toolboxAlignmentScriptDropZone", "ocrVideoPathField", "postprocessScriptPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
   function setQwenAudioHotwordsFile(path) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return false; } $("qwenAudioHotwordsFile").value = path; setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); return true; }
   async function loadHotwordFile(path, appendToText = false) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); clearDropState(); return; } const result = await bridge("read_hotword_file", { path }); if (!result.ok) { applyErrorResult(result, false); clearDropState(); return; } if (appendToText) { const incoming = String(result.text || "").trim(); if (incoming) { const current = $("qwenAudioHotwords").value.trimEnd(); $("qwenAudioHotwords").value = current ? `${current}\n${incoming}` : incoming; } setHotwordsMode("text"); renderHotwordWarnings($("qwenAudioHotwords").value); setStatus(t("qwen_audio_hotwords_loaded")); } else { setQwenAudioHotwordsFile(result.path || path); renderHotwordWarnings(String(result.text || ""), Number($("qwenAudioHotwordWeight").value), true); } clearDropState(); }
   function isLocalProvider() { return provider()?.kind === "local" || provider()?.id === "local"; }
@@ -2250,13 +2354,23 @@
     if (!result.ok) { applyErrorResult(result); return result; }
     state.config.localRuntime = result.runtime || state.config.localRuntime || {};
     renderLocalRuntime();
-    if (isLocalProvider()) void refreshLocalModels();
+    if (isLocalProvider()) { void refreshLocalModels(); void refreshAlignmentModels(); }
     setError("localRuntimePath", "");
     setStatus(t("saved"));
     return result;
   }
   function renderLocalModelStatus() {
-    if (!isLocalProvider()) { $("model").disabled = false; return; }
+    const entry = $("localModelSettingsEntry");
+    const settingsSection = $("localAsrModelSettingsSection");
+    if (!isLocalProvider()) {
+      $("model").disabled = false;
+      entry?.classList.add("hidden");
+      settingsSection?.classList.add("hidden");
+      renderLocalAlignmentModel();
+      return;
+    }
+    entry?.classList.remove("hidden");
+    settingsSection?.classList.remove("hidden");
     const status = localStatus();
     const preparing = state.localPreparing;
     const target = $("localModelStatus");
@@ -2281,6 +2395,71 @@
     track.classList.toggle("indeterminate", !determinate);
     bar.style.width = determinate ? `${Math.max(0, Math.min(99, percent))}%` : "";
     $("localModelProgressMessage").textContent = state.localProgressMessage || "";
+    renderLocalAlignmentModel();
+  }
+
+  function alignmentModelLabel(model) {
+    const id = String(model?.id || model?.modelId || "");
+    if (state.lang === "en") {
+      if (id === "qwen3-forced-aligner-0.6b") return "Qwen3-ForcedAligner 0.6B";
+      if (id === "firered-asr2-ctc") return "FireRedASR2-CTC (CPU)";
+    }
+    return model?.label || model?.modelRef || id;
+  }
+
+  function modelProvidesWordTimestamps(model = selectedModel()) {
+    if (model?.supportsWordTimestamps !== undefined) return Boolean(model.supportsWordTimestamps);
+    return ["qwen3-asr-local", "firered-asr2-ctc-local", "whisper-large-v3-local"].includes(model?.id);
+  }
+
+  function renderLocalAlignmentModel() {
+    const select = $("localAlignmentModel");
+    const button = $("prepareAlignmentModel");
+    const statusTarget = $("localAlignmentModelStatus");
+    if (!select || !button || !statusTarget) return;
+    const section = $("alignmentModelSettingsSection");
+    const needsAlignmentModel = isLocalProvider() && !modelProvidesWordTimestamps();
+    section?.classList.toggle("hidden", !needsAlignmentModel);
+    if (!needsAlignmentModel) {
+      select.textContent = "";
+      select.add(new Option(t("alignment_model_none"), ""));
+      select.disabled = true;
+      button.disabled = true;
+      button.classList.add("hidden");
+      statusTarget.textContent = "";
+      return;
+    }
+    const models = Array.isArray(state.config?.alignmentModels) ? state.config.alignmentModels : [];
+    const selected = models.some((model) => model.id === select.value) ? select.value : "";
+    select.textContent = "";
+    select.add(new Option(t("alignment_model_none"), ""));
+    models.forEach((model) => {
+      const suffix = model.estimatedSize ? ` · ${model.estimatedSize}` : "";
+      select.add(new Option(`${alignmentModelLabel(model)}${suffix}`, model.id));
+    });
+    select.value = selected;
+    select.disabled = Boolean(state.localPreparing || state.alignmentPreparing);
+    const model = models.find((item) => item.id === selected);
+    if (!model) {
+      statusTarget.textContent = "";
+      button.disabled = true;
+      button.classList.add("hidden");
+      return;
+    }
+    button.classList.remove("hidden");
+    const preparing = state.alignmentPreparing === model.id;
+    const runtimeReady = model.runtimeAvailable === undefined
+      ? Boolean(state.config.localRuntime?.ready)
+      : Boolean(model.runtimeAvailable);
+    const statusKey = preparing
+      ? "alignment_model_downloading"
+      : (model.status === "checking" ? "alignment_model_checking" : (!runtimeReady ? "alignment_model_runtime_missing" : (model.installed ? "alignment_model_ready" : "alignment_model_missing")));
+    statusTarget.textContent = preparing && state.alignmentProgressMessage
+      ? `${t(statusKey)} ${state.alignmentProgressMessage}`
+      : t(statusKey);
+    statusTarget.className = `hint ${model.installed && runtimeReady && !preparing ? "success" : ""}`;
+    button.disabled = preparing ? false : (!runtimeReady || model.status === "checking");
+    button.textContent = preparing ? t("alignment_model_cancel") : (model.installed ? t("alignment_model_download_again") : t("alignment_model_download"));
   }
   async function refreshLocalRuntime() {
     if (!isLocalProvider()) return;
@@ -2314,6 +2493,21 @@
     renderLocalRuntime();
     return result;
   }
+  async function refreshAlignmentModels() {
+    const requestId = ++alignmentModelsRequest;
+    const result = await bridge("get_alignment_models");
+    if (requestId !== alignmentModelsRequest) return result;
+    if (!result.ok) {
+      appendLog(`[alignment models] ${result.detail || result.error || "failed to inspect models"}`);
+      return result;
+    }
+    if (Array.isArray(result.models)) state.config.alignmentModels = result.models;
+    if (result.modelCacheRoot) state.config.modelCacheRoot = result.modelCacheRoot;
+    if (result.runtime && typeof result.runtime === "object") state.config.localRuntime = result.runtime;
+    renderLocalAlignmentModel();
+    window.MAWLauncher?.onAlignmentModelsChanged?.();
+    return result;
+  }
   function syncLocalModelPath(model) {
     if (!isLocalProvider()) return;
     if (state.localModelId && state.localModelId !== model.id) state.localModelPaths[state.localModelId] = $("localModelPath").value.trim();
@@ -2331,6 +2525,7 @@
     }
     state.config.modelCacheRoot = result.modelCacheRoot || value;
     await refreshLocalModels();
+    await refreshAlignmentModels();
     setError("localModelCachePath", "");
     setStatus(t("saved"));
     return result;
@@ -2338,7 +2533,7 @@
   function systemLanguage() { return String(navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en"; }
   function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langZh").classList.toggle("active", state.lang === "zh"); $("langEn").classList.toggle("active", state.lang === "en"); $("demoBadge").textContent = t("demo_mode"); renderAudioTracks(); if (state.audioTracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint"); renderKeyHint(); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); refillSelectLabels(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); window.MAWLauncher?.onLanguageChanged?.(); }
   async function setLanguage(language) { if (language !== "zh" && language !== "en") return; state.lang = language; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (result.ok) state.config.guiLang = language; else applyErrorResult(result); }
-  function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen"); $("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen"); $("localModelPanel").classList.toggle("hidden", !local); $("localRuntimeCheckField").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); $("providerNote").textContent = providerNoteText(current); $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); renderKeyStatus(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) void refreshLocalModels(); } }
+  function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen"); $("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen"); $("localModelPanel").classList.toggle("hidden", !local); $("localRuntimeCheckField").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); $("providerNote").textContent = providerNoteText(current); $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); renderKeyStatus(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) { void refreshLocalModels(); void refreshAlignmentModels(); } } }
   function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); $("modelNote").textContent = modelNoteText(model); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
   function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
   function languageValue() { const el = $("language"); if (el.multiple) return Array.from(el.selectedOptions).map((o) => o.value).filter(Boolean).join(","); return el.value; }
@@ -2488,7 +2683,7 @@
     showErrorNotice(message, result.code || "", detail, diagnostics);
   }
   function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["maxWords", 1], ["minWords", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); if (data.maxWords && data.minWords && Number(data.maxWords) < Number(data.minWords)) return fail("maxWords", errText("segmentation_invalid", "")); return true; }
-  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (isCustomOpenAiModel() && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().id === "openai" && selectedModel().supportsKeywords && /[<>]/u.test(data.openaiKeywords)) return fail("openaiKeywords", errText("openai_keywords_invalid", "")); if (provider().id === "openai" && selectedModel().supportsDiarization && isOpenRouterBaseUrl(data.openaiBaseUrl)) return fail("model", errText("openai_diarize_openrouter_unsupported", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
+  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); if (data.alignmentModel) { const alignment = (state.config.alignmentModels || []).find((item) => item.id === data.alignmentModel); if (!alignment || alignment.status === "checking") return fail("localAlignmentModel", t("alignment_model_checking")); if (alignment.status === "runtime_missing" || alignment.runtimeAvailable === false) return fail("localAlignmentModel", t("alignment_model_runtime_missing")); if (!alignment.installed) return fail("localAlignmentModel", errText("alignment_model_missing", "")); } return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (isCustomOpenAiModel() && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().id === "openai" && selectedModel().supportsKeywords && /[<>]/u.test(data.openaiKeywords)) return fail("openaiKeywords", errText("openai_keywords_invalid", "")); if (provider().id === "openai" && selectedModel().supportsDiarization && isOpenRouterBaseUrl(data.openaiBaseUrl)) return fail("model", errText("openai_diarize_openrouter_unsupported", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
   function fail(field, message) {
     setError(field, message);
     setStatus(message);
@@ -2552,6 +2747,11 @@
     if (target === "toolboxUtilityMedia") {
       if (MEDIA_EXTS.has(suffix)) setDroppedPath("toolboxUtilityMediaPath", value);
       else setError("toolboxUtilityMediaPath", t("toolbox_utility_media_reject"));
+      return;
+    }
+    if (target === "toolboxTimestampMedia") {
+      if (MEDIA_EXTS.has(suffix)) setDroppedPath("toolboxTimestampMediaPath", value);
+      else setError("toolboxTimestampMediaPath", t("toolbox_timestamp_media_reject"));
       return;
     }
     if (target === "toolboxBurnSubtitle") {
@@ -2720,6 +2920,7 @@
       ["FFmpeg", refreshFfmpeg()],
       ["server", checkExistingServer()],
       ["OCR", refreshOcrRuntime()],
+      ["alignment models", refreshAlignmentModels()],
     ];
     if (isLocalProvider()) {
       tasks.push(["local models", refreshLocalModels()]);
@@ -2867,7 +3068,7 @@
     if (event.type === "error") notifySingleFailure(event);
     if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) window.MAWLauncher?.onBatchEvent?.(event);
     if (event.type === "emojiFontReady" && event.path) injectEmojiFont(event.path);
-    if (event.type === "log") appendLog(event.message, { quietLatest: Boolean(state.localRuntimeInstalling || state.ocrRuntimeInstalling) });
+    if (event.type === "log") appendLog(event.message, { quietLatest: Boolean(state.localRuntimeInstalling || state.ocrRuntimeInstalling || state.alignmentPreparing) });
     if (event.type === "postprocess_status") window.MAWLauncher?.onPostprocessStatus?.(event);
     if (event.type === "postprocess_stream") window.MAWLauncher?.onPostprocessStream?.(event);
     if (event.type === "postprocess_pipeline") window.MAWLauncher?.onPostprocessPipeline?.(event);
@@ -2895,6 +3096,31 @@
       setStatus(t("local_prepare_cancelled"));
       appendLog(t("local_prepare_cancelled"));
     }
+    if (event.type === "alignmentModelProgress") {
+      state.alignmentProgressMessage = event.message || "";
+      renderLocalAlignmentModel();
+    }
+    if (event.type === "alignmentModelPrepared") {
+      state.alignmentPreparing = "";
+      state.alignmentProgressMessage = "";
+      const model = (state.config?.alignmentModels || []).find((item) => item.id === event.modelId);
+      if (model) {
+        model.status = event.status || "installed";
+        model.installed = true;
+        model.runtimeAvailable = true;
+      }
+      renderLocalAlignmentModel();
+      void refreshAlignmentModels();
+      setStatus(t("alignment_model_ready"));
+      appendLog(t("alignment_model_ready"));
+    }
+    if (event.type === "alignmentPrepareCancelled") {
+      state.alignmentPreparing = "";
+      state.alignmentProgressMessage = "";
+      renderLocalAlignmentModel();
+      void refreshAlignmentModels();
+      setStatus(t("alignment_model_cancelled"));
+    }
     if (event.type === "localRuntimeProgress") {
       const runtime = state.config?.localRuntime || {};
       if (state.localRuntimeInstalling || runtime.status === "installing") {
@@ -2912,6 +3138,7 @@
       renderLocalRuntime();
       if (wasInstalling) {
         void refreshLocalModels();
+        void refreshAlignmentModels();
         setStatus(t("local_runtime_install_done"));
         appendLog(t("local_runtime_install_done"));
       }
@@ -2924,6 +3151,7 @@
       renderLocalRuntime();
       if (wasInstalling) {
         void refreshLocalModels();
+        void refreshAlignmentModels();
         setStatus(t("local_runtime_cancelled"));
         appendLog(t("local_runtime_cancelled"));
       }
@@ -2967,6 +3195,12 @@
       state.localProgress = null;
       // 与本地运行环境安装失败保持一致：失败时自动滚到日志区看 [detail]。
       $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    if (event.type === "error" && event.code === "alignment_prepare_failed") {
+      state.alignmentPreparing = "";
+      state.alignmentProgressMessage = "";
+      renderLocalAlignmentModel();
+      void refreshAlignmentModels();
     }
     if (event.type === "error" && ["local_runtime_install_failed", "local_runtime_cancelled"].includes(event.code)) {
       const runtime = state.config?.localRuntime || {};
@@ -3025,7 +3259,7 @@
     if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onMediaPathChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
 
   $("langZh").addEventListener("click", () => setLanguage("zh"));
   $("langEn").addEventListener("click", () => setLanguage("en"));
@@ -3075,12 +3309,48 @@
   $("localModelPath").addEventListener("input", () => { setError("localModelPath", ""); if (isLocalProvider()) { state.localModelPaths[selectedModel().id] = $("localModelPath").value.trim(); void refreshLocalModels(); } });
   $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocalRuntime").disabled = true; try { await refreshLocalRuntime(); await refreshLocalModels(); } finally { $("refreshLocalRuntime").disabled = false; } });
   $("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });
+  $("openLocalModelSettings").addEventListener("click", () => { openSettings("localAsrModelSettingsSection"); void refreshLocalModels(); void refreshAlignmentModels(); });
   $("openDashscopeRegionSettings").addEventListener("click", () => openSettings("dashscopeRegionPanel"));
   $("openLanguageSettings").addEventListener("click", () => openSettings("settingsLanguageSection"));
   $("saveDashscopeRegionSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload); if (!result.ok) { applyErrorResult(result); return; } state.config.region = payload.region; state.config.workspaceId = payload.workspaceId; setStatus(t("saved")); });
   $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; const runtime = state.config?.localRuntime || {}; if (state.localRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
-  $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
-  $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
+   $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
+   $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
+  $("localAlignmentModel").addEventListener("change", () => { setError("localAlignmentModel", ""); renderLocalAlignmentModel(); });
+  $("prepareAlignmentModel").addEventListener("click", async () => {
+    if (!isLocalProvider()) return;
+    const modelId = $("localAlignmentModel").value;
+    if (!modelId) return;
+    if (state.alignmentPreparing) {
+      if (state.alignmentPreparing !== modelId) return;
+      state.alignmentProgressMessage = t("alignment_model_downloading");
+      renderLocalAlignmentModel();
+      const result = await bridge("cancel_alignment_model");
+      if (!result.ok) {
+        state.alignmentProgressMessage = "";
+        applyErrorResult(result);
+        renderLocalAlignmentModel();
+      }
+      return;
+    }
+    state.alignmentPreparing = modelId;
+    state.alignmentProgressMessage = t("alignment_model_downloading");
+    setError("localAlignmentModel", "");
+    renderLocalAlignmentModel();
+    appendLog(t("alignment_model_downloading"));
+    const result = await bridge("prepare_alignment_model", { modelId });
+    if (!result.ok) {
+      state.alignmentPreparing = "";
+      state.alignmentProgressMessage = "";
+      applyErrorResult(result);
+      renderLocalAlignmentModel();
+    } else if (result.alreadyInstalled) {
+      state.alignmentPreparing = "";
+      state.alignmentProgressMessage = "";
+      await refreshAlignmentModels();
+      setStatus(t("alignment_model_ready"));
+    }
+  });
   $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));
   $("settingsButton").addEventListener("click", openSettings); $("settingsClose").addEventListener("click", closeSettings); $("settingsBackdrop").addEventListener("click", closeSettings); document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSettings(); });
   $("batchConfirmYes").addEventListener("click", () => finishConfirm(true)); $("batchConfirmNo").addEventListener("click", () => finishConfirm(false));
@@ -3117,6 +3387,7 @@
   bindDropField("stickerDir", "stickerDir");
   bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone");
   bindDropField("toolboxUtilityMediaDropZone", "toolboxUtilityMedia", "toolboxUtilityMediaDropZone");
+  bindDropField("toolboxTimestampMediaDropZone", "toolboxTimestampMedia", "toolboxTimestampMediaDropZone");
   bindDropField("toolboxBurnSubtitleDropZone", "toolboxBurnSubtitle", "toolboxBurnSubtitleDropZone");
   bindDropField("toolboxFfconcatDropZone", "toolboxFfconcat", "toolboxFfconcatDropZone");
   bindDropField("toolboxAlignmentProjectDropZone", "toolboxAlignmentProject", "toolboxAlignmentProjectDropZone");

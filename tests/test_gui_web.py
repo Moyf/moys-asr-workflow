@@ -308,8 +308,14 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertNotIn("funasr-local", visible_ids)
         self.assertEqual(local["models"][2]["modelRef"], "iic/SenseVoiceSmall")
         self.assertEqual(local["models"][3]["id"], "moss-transcribe-diarize-local")
+        self.assertEqual(local["models"][4]["id"], "firered-asr2-ctc-local")
+        self.assertEqual(local["models"][4]["engine"], "firered")
+        self.assertTrue(local["models"][0]["supportsWordTimestamps"])
+        self.assertFalse(local["models"][3]["supportsWordTimestamps"])
+        self.assertTrue(local["models"][4]["supportsWordTimestamps"])
         whisper = local["models"][-1]
         self.assertEqual(whisper["id"], "whisper-large-v3-local")
+        self.assertTrue(whisper["supportsWordTimestamps"])
         self.assertIn("用户自行安装 CUDA 12 和 cuDNN 9", whisper["note"])
         self.assertIn("自动回退到 CPU", whisper["note"])
         self.assertEqual(local["models"][0]["localStatus"]["status"], "checking")
@@ -345,7 +351,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         ):
             result = self.api.get_local_models({"modelId": "qwen3-asr-local"})
 
-        self.assertEqual(calls, ["qwen-asr", "funasr", "moss", "whisper"])
+        self.assertEqual(calls, ["qwen-asr", "funasr", "moss", "firered", "whisper"])
         self.assertEqual(
             [model["id"] for model in result["models"]],
             [
@@ -353,6 +359,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                 "qwen3-asr-1.7b-local",
                 "sensevoice-small-local",
                 "moss-transcribe-diarize-local",
+                "firered-asr2-ctc-local",
                 "whisper-large-v3-local",
             ],
         )
@@ -1230,7 +1237,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertNotIn('aria-orientation="vertical"', utilities_html)
         self.assertLess(utility_panels, alignment_panel)
         self.assertLess(alignment_close, ffconcat_panel)
-        for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab"):
+        for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab", "toolboxTimestampsTab"):
             self.assertIn(f'id="{tab_id}"', postprocess_html)
         for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
             self.assertIn(f'id="{tab_id}"', utilities_html)
@@ -1257,9 +1264,15 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('toolbox_utility_media: "Media file"', strings)
         self.assertIn('toolbox_burn_subtitle: "压制字幕"', strings)
         self.assertIn('toolbox_extract_audio: "Extract audio"', strings)
+        self.assertIn('toolbox_timestamps: "生成时间码"', strings)
+        self.assertIn('toolbox_timestamps: "Generate timestamps"', strings)
         self.assertEqual(html.count('role="tablist"'), 4)
         self.assertIn('id="toolboxPostprocessTabList"', html)
         self.assertIn('id="toolboxUtilitiesTabList"', html)
+        self.assertIn('<div class="toolbox-tab-list toolbox-tab-list-5">', postprocess_html)
+        self.assertIn('data-i18n="toolbox_group_timestamp_media">媒体来源</h3>', html)
+        self.assertNotIn('工程有可用视频时自动使用；独立 SRT 会回退到当前 Launcher 视频；如果当前媒体是音频或无视频，必须选择视频。', html)
+        self.assertNotIn('SRT 没有媒体路径；工程若已记录媒体可留空，否则请选择原始音频/视频。', html)
         self.assertIn('id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" tabindex="0"', html)
         self.assertIn('id="toolboxWaveformTab" class="toolbox-tab" type="button" role="tab" tabindex="-1"', html)
         self.assertIn('id="toolboxUtilityMediaPath"', utilities_html)
@@ -1270,6 +1283,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('let utilityMediaManual = false;', script)
         self.assertIn('$("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();', script)
         self.assertIn('bridge("choose_file", { kind: "media" })', script)
+        self.assertIn('bridge("run_timestamp_alignment"', script)
 
     def test_launcher_exposes_separate_speech_alignment_toolbox_contract(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -4168,6 +4182,7 @@ class LauncherAssetContractTests(unittest.TestCase):
             "toolboxChain",
             "toolboxChainList",
             "toolboxMatchPanel",
+            "toolboxTimestampsPanel",
             "toolboxOcrPanel",
             "toolboxLlmPanel",
             "toolboxReplacePanel",
@@ -4453,7 +4468,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".field-spacer {\n  visibility: hidden;", stylesheet)
         self.assertIn(".toolbox-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 10px;\n  align-items: start;\n}", stylesheet)
         # 文稿匹配保持单字段；固定处理按批量替换和简繁转换分组。
-        match_panel = page[page.index('id="toolboxMatchPanel"'):page.index('id="toolboxOcrPanel"')]
+        match_panel = page[page.index('id="toolboxMatchPanel"'):page.index('id="toolboxTimestampsPanel"')]
         replace_panel = page[page.index('id="toolboxReplacePanel"'):page.index('class="toolbox-footer"')]
         self.assertNotIn("adv-group", match_panel)
         self.assertIn('data-i18n="toolbox_group_fixed_replacements"', replace_panel)
@@ -5090,19 +5105,27 @@ class LauncherAssetContractTests(unittest.TestCase):
         runtime_tab_panel = page.index('data-settings-panel="runtime"')
         runtime_panel = page.index('id="localRuntimePanel"')
         ocr_section = page.index('id="ocrSettingsSection"')
-        # 本地模型运行时区块位于设置 Runtime 面板内、OCR 支持之前。
+        model_tab_panel = page.index('data-settings-panel="llm"')
+        local_model_section = page.index('id="localAsrModelSettingsSection"')
+        alignment_section = page.index('id="alignmentModelSettingsSection"')
+        # 本地模型运行时仍在 Runtime；ASR 与对齐模型配置则位于 AI 模型配置并分组。
         self.assertLess(runtime_tab_panel, runtime_panel)
         self.assertLess(runtime_panel, ocr_section)
+        self.assertLess(model_tab_panel, local_model_section)
+        self.assertLess(local_model_section, alignment_section)
         self.assertIn('data-i18n="settings_local_runtime"', page)
         self.assertIn('id="localRuntimeCheckField"', page)
-        # 检测行位于本地模型面板上方（面板外兄弟节点）。
-        self.assertLess(page.index('id="localRuntimeCheckField"'), page.index('id="localModelPanel"'))
+        self.assertIn('data-i18n="settings_local_asr_models"', page)
+        self.assertIn('data-i18n="settings_alignment_models"', page)
+        self.assertIn('id="localModelSettingsEntry"', page)
+        self.assertIn('id="openLocalModelSettings"', page)
         self.assertIn('id="openLocalRuntimeSettings"', page)
         self.assertIn('settings_local_runtime: "本地模型运行时"', script)
         self.assertIn('settings_local_runtime: "Local model runtime"', script)
         self.assertIn('local_runtime_view_settings: "在 ⚙️ 设置中查看"', script)
         self.assertIn('local_runtime_view_settings: "View in ⚙️ Settings"', script)
         self.assertIn('$("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });', script)
+        self.assertIn('$("openLocalModelSettings").addEventListener("click", () => { openSettings("localAsrModelSettingsSection"); void refreshLocalModels(); void refreshAlignmentModels(); });', script)
         self.assertIn('runtimeHintText(runtime, "local_runtime_ready_hint", "local_runtime_hint")', script)
         self.assertIn('runtimeHintText(runtime, "ocr_runtime_ready", "settings_ocr_hint")', script)
         self.assertIn('localModelHintText(status)', script)

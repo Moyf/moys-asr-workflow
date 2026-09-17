@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import os
+import json
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -61,6 +62,9 @@ __all__ = [
     "resolve_model_cache_root",
     "prepare_model_in_process",
     "prepare_model_in_runtime",
+    "prepare_alignment_model_in_process",
+    "prepare_alignment_model_in_runtime",
+    "run_timestamp_alignment_in_runtime",
     "recover_local_runtime_install",
     "runtime_python_path",
 ]
@@ -274,6 +278,161 @@ def prepare_model_in_process(
         cancelled_message="本地模型准备已取消。",
         message_prefix="本地运行环境",
     )
+
+
+def prepare_alignment_model_in_runtime(
+    *,
+    model_id: str,
+    model_path: str = "",
+    model_cache_root: str | Path | None = None,
+    on_event: Callable[[str], None] | None = None,
+    cancel_event: Event | None = None,
+) -> int:
+    """Download/load a shared alignment model inside the managed runtime."""
+    status = managed_runtime_status(model_cache_root)
+    if not status.ready:
+        raise LocalRuntimeError("本地模型运行时尚未安装，请先安装本地模型支持。")
+    return _run_alignment_model_worker(
+        str(status.python_path),
+        model_id=model_id,
+        model_path=model_path,
+        model_cache_root=model_cache_root,
+        runtime_root=default_runtime_root(),
+        on_event=on_event,
+        cancel_event=cancel_event,
+    )
+
+
+def prepare_alignment_model_in_process(
+    *,
+    model_id: str,
+    model_path: str = "",
+    model_cache_root: str | Path | None = None,
+    on_event: Callable[[str], None] | None = None,
+    cancel_event: Event | None = None,
+) -> int:
+    """Download/load a shared alignment model in a cancellable child process."""
+    return _run_alignment_model_worker(
+        sys.executable,
+        model_id=model_id,
+        model_path=model_path,
+        model_cache_root=model_cache_root,
+        runtime_root=None,
+        on_event=on_event,
+        cancel_event=cancel_event,
+    )
+
+
+def _run_alignment_model_worker(
+    python_executable: str,
+    *,
+    model_id: str,
+    model_path: str,
+    model_cache_root: str | Path | None,
+    runtime_root: Path | None,
+    on_event: Callable[[str], None] | None,
+    cancel_event: Event | None,
+) -> int:
+    helper = LOCAL.bundle_path("maw/local_runtime_worker.py")
+    if not helper.exists():
+        raise LocalRuntimeError(f"本地运行时助手缺失：{helper}")
+    command = [
+        python_executable,
+        str(helper),
+        "prepare-aligner",
+        "--model-id",
+        model_id,
+    ]
+    if model_path:
+        command.extend(["--model-path", model_path])
+    return _run_process(
+        command,
+        env=_runtime_env(model_cache_root, runtime_root),
+        cancel=cancel_event or Event(),
+        on_line=on_event or (lambda _line: None),
+        cwd=str(helper.parent),
+        error_class=LocalRuntimeError,
+        cancelled_class=LocalRuntimeCancelled,
+        cancelled_message="对齐模型准备已取消。",
+        message_prefix="本地对齐模型",
+    )
+
+
+def run_timestamp_alignment_in_runtime(
+    *,
+    project_path: str | Path | None = None,
+    srt_path: str | Path | None = None,
+    media_path: str | Path | None = None,
+    model_id: str,
+    output_mode: str = "both",
+    alignment_mode: str = "fill",
+    model_path: str | Path | None = None,
+    output_directory: str | Path | None = None,
+    device: str = "auto",
+    model_cache_root: str | Path | None = None,
+    on_event: Callable[[str], None] | None = None,
+    cancel_event: Event | None = None,
+) -> dict[str, object]:
+    """Run the post-processing aligner in the managed local runtime."""
+    status = managed_runtime_status(model_cache_root)
+    if not status.ready:
+        raise LocalRuntimeError("本地模型运行时尚未安装，请先安装本地模型支持。")
+    helper = LOCAL.bundle_path("maw/local_runtime_worker.py")
+    if not helper.exists():
+        raise LocalRuntimeError(f"本地运行时助手缺失：{helper}")
+    command = [
+        str(status.python_path),
+        str(helper),
+        "timestamp-align",
+        "--model-id",
+        model_id,
+        "--output-mode",
+        output_mode,
+        "--alignment-mode",
+        alignment_mode,
+        "--device",
+        device,
+    ]
+    for flag, value in (
+        ("--project-path", project_path),
+        ("--srt-path", srt_path),
+        ("--media-path", media_path),
+        ("--model-path", model_path),
+        ("--output-directory", output_directory),
+    ):
+        if value:
+            command.extend([flag, str(value)])
+    lines: list[str] = []
+    result: dict[str, object] | None = None
+
+    def on_line(line: str) -> None:
+        nonlocal result
+        lines.append(line)
+        try:
+            payload = json.loads(line)
+        except ValueError:
+            payload = None
+        if isinstance(payload, dict) and payload.get("type") == "result":
+            result = payload
+            return
+        if on_event is not None:
+            on_event(line)
+
+    _run_process(
+        command,
+        env=_runtime_env(model_cache_root, default_runtime_root()),
+        cancel=cancel_event or Event(),
+        on_line=on_line,
+        cwd=str(helper.parent),
+        error_class=LocalRuntimeError,
+        cancelled_class=LocalRuntimeCancelled,
+        cancelled_message="字词时间码生成已取消。",
+        message_prefix="本地字词时间码",
+    )
+    if result is None:
+        detail = "\n".join(lines[-8:])
+        raise LocalRuntimeError(f"本地字词时间码命令未返回结果。{detail}")
+    return result
 
 
 def _runtime_env(

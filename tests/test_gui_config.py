@@ -383,6 +383,7 @@ class GuiConfigTests(unittest.TestCase):
                 "funasr-local",
                 "sensevoice-small-local",
                 "moss-transcribe-diarize-local",
+                "firered-asr2-ctc-local",
                 "whisper-large-v3-local",
             ],
         )
@@ -395,6 +396,7 @@ class GuiConfigTests(unittest.TestCase):
                 "FunASR paraformer-zh",
                 "SenseVoice Small",
                 "MOSS Transcribe-Diarize 0.9B（无字词时间码）",
+                "FireRedASR2-CTC（CPU）",
                 "Faster-Whisper large-v3（实验）",
             ],
         )
@@ -412,12 +414,18 @@ class GuiConfigTests(unittest.TestCase):
         sensevoice = provider.models[4]
         self.assertEqual(sensevoice.model_ref, "iic/SenseVoiceSmall")
         self.assertIn("funasr", sensevoice.requires_runtime)
-        moss = provider.models[-2]
+        moss = provider.models[-3]
         self.assertEqual(moss.engine, "moss")
         self.assertTrue(moss.supports_speaker)
         self.assertIn("transformers", moss.requires_runtime)
         # MOSS 输出契约只有段级时间戳（docs/LOCAL_ASR.md），说明里必须提前提醒。
         self.assertIn("无字词级时间码", moss.note)
+        firered = provider.models[-2]
+        self.assertEqual(firered.engine, "firered")
+        self.assertEqual(firered.model_ref, "firered-asr2-ctc")
+        self.assertIn("sherpa_onnx", firered.requires_runtime)
+        self.assertIn("soundfile", firered.requires_runtime)
+        self.assertIn("对齐模型", firered.note)
         whisper = provider.models[-1]
         self.assertEqual(whisper.engine, "whisper")
         self.assertEqual(whisper.model_ref, "Systran/faster-whisper-large-v3")

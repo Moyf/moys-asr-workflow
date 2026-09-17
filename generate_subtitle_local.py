@@ -30,6 +30,7 @@ from maw.language import (  # noqa: E402
     DEFAULT_MIN_WORDS,
 )
 from maw.local_asr import (  # noqa: E402
+    FIRERED_DEFAULT_MODEL,
     FUNASR_DEFAULT_MODEL,
     QWEN_DEFAULT_CHUNK_SECONDS,
     QWEN_DEFAULT_FORCED_ALIGNER,
@@ -43,15 +44,18 @@ from maw.local_asr import (  # noqa: E402
 )
 from maw.media import resolve_default_audio_track  # noqa: E402
 
+ALIGNMENT_MODE_FILL = "fill"
+ALIGNMENT_MODE_GENERATE = "generate"
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="使用本地 QwenASR、FunASR、MOSS 或 faster-whisper 生成 MAW 字幕工程",
+        description="使用本地 QwenASR、FunASR、MOSS、FireRedASR2-CTC 或 faster-whisper 生成 MAW 字幕工程",
     )
     parser.add_argument("input", help="输入视频或音频文件路径")
     parser.add_argument(
-        "--engine", choices=("qwen-asr", "funasr", "moss", "whisper"), default="qwen-asr",
-        help="本地推理引擎（默认: qwen-asr；whisper 走 faster-whisper/CTranslate2 运行时）",
+        "--engine", choices=("qwen-asr", "funasr", "moss", "firered", "whisper"), default="qwen-asr",
+        help="本地推理引擎（默认: qwen-asr；firered 走 sherpa-onnx CPU 运行时）",
     )
     parser.add_argument(
         "--model", help=(
@@ -68,6 +72,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--forced-aligner", default=QWEN_DEFAULT_FORCED_ALIGNER,
         help=f"QwenASR Forced Aligner 模型 ID 或本地路径（默认: {QWEN_DEFAULT_FORCED_ALIGNER}）",
+    )
+    parser.add_argument(
+        "--alignment-model", default="",
+        help="为没有字词时间码的转写补齐时间码：qwen3-forced-aligner-0.6b 或 firered-asr2-ctc",
+    )
+    parser.add_argument(
+        "--alignment-model-path", default="",
+        help="对齐模型的显式本地目录；不填时使用 MAW 模型缓存",
+    )
+    parser.add_argument(
+        "--alignment-mode", choices=(ALIGNMENT_MODE_FILL, ALIGNMENT_MODE_GENERATE), default=ALIGNMENT_MODE_FILL,
+        help="对齐模式：fill 只补缺失项，generate 重新生成全部项（默认: fill）",
     )
     parser.add_argument("--vad-model", help="FunASR 可选 VAD 模型")
     parser.add_argument("--punc-model", help="FunASR 可选标点模型")
@@ -128,6 +144,7 @@ def default_output_path(
         "funasr": "funasr-local",
         "moss": "moss-local",
         "whisper": "whisper-local",
+        "firered": "firered-local",
     }.get(engine, "local")
     name_parts: list[str] = []
     if not no_model_tag:
@@ -230,6 +247,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ffmpeg_path=ffmpeg_path,
                 ffprobe_path=ffprobe_path,
             )
+            if args.alignment_model:
+                from maw.timestamp_alignment import align_local_transcription
+
+                print(f"字词时间码对齐开始：{args.alignment_model}（{args.alignment_mode}）")
+                result = align_local_transcription(
+                    result,
+                    audio_path=audio_path,
+                    model_id=args.alignment_model,
+                    mode=args.alignment_mode,
+                    model_path=args.alignment_model_path,
+                    device=args.device,
+                    ffmpeg_path=ffmpeg_path,
+                    on_event=print,
+                )
             elapsed = time.perf_counter() - t0
             print(f"转写结束: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             rtf = (elapsed / duration_sec) if duration_sec > 0 else 0.0

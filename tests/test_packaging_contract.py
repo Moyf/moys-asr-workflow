@@ -213,7 +213,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("maw.runtimes.freezer", release)
         self.assertNotIn("uv export --frozen", release)
 
-        self.assertIn('RUNTIME_VERSION = "6"', local_spec)
+        self.assertIn('RUNTIME_VERSION = "7"', local_spec)
         self.assertIn('OCR_RUNTIME_VERSION = "3"', ocr_spec)
 
         self.assertIn("_has_cuda", runtimes_base)
@@ -315,6 +315,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("jieba>=0.42", local_dependencies)
         self.assertIn("requests>=2.28", local_dependencies)
         self.assertIn("quapeaks>=2026.0.0", local_dependencies)
+        self.assertIn("sherpa-onnx>=1.12.27", local_dependencies)
+        self.assertIn("soundfile>=0.12", local_dependencies)
         self.assertFalse(any(value.startswith("pywebview") for value in local_dependencies))
         self.assertFalse(any(value.startswith("opencc-") for value in local_dependencies))
         self.assertFalse(any(value.startswith("fonttools") for value in local_dependencies))

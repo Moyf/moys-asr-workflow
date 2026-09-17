@@ -884,6 +884,37 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--device") + 1], "cpu")
         self.assertNotIn("--region", command)
 
+    def test_build_transcribe_command_passes_optional_alignment_model_for_local_cli(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="local",
+            model="Qwen/Qwen3-ASR-0.6B",
+            engine="qwen-asr",
+            alignment_model="qwen3-forced-aligner-0.6b",
+            alignment_model_path="D:\\Models\\aligners",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--alignment-model") + 1], "qwen3-forced-aligner-0.6b")
+        self.assertEqual(command[command.index("--alignment-model-path") + 1], "D:\\Models\\aligners")
+
+    def test_build_transcribe_command_defers_moss_alignment_to_shared_runtime(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="local",
+            model="OpenMOSS-Team/MOSS-Transcribe-Diarize",
+            engine="moss",
+            alignment_model="qwen3-forced-aligner-0.6b",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertNotIn("--alignment-model", command)
+        self.assertNotIn("--alignment-model-path", command)
+
     def test_build_transcribe_command_frozen_local_dispatches_local_flag(self) -> None:
         request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path, provider="local")
 
@@ -990,6 +1021,7 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="sensevoice-small-local", attach_model_name=True).name, "clip.sensevoice-local.srt")
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="fun-asr-nano-local", attach_model_name=True).name, "clip.funasr-local.srt")
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="funasr-local", attach_model_name=True).name, "clip.funasr-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="firered-asr2-ctc-local", attach_model_name=True).name, "clip.firered-local.srt")
 
     def test_default_srt_path_attach_model_name_off_drops_all_tags(self) -> None:
         from maw.gui_workflow import default_srt_path

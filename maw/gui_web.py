@@ -52,14 +52,18 @@ from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessEr
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
+from maw.alignment_models import ALIGNMENT_MODELS, alignment_model_by_id, alignment_models_payload, inspect_alignment_model, normalize_alignment_model_id
 from maw.local_runtime import (
     LocalRuntimeCancelled,
     LocalRuntimeError,
     LocalRuntimeStatus,
     install_local_runtime,
     managed_runtime_status,
+    prepare_alignment_model_in_process,
+    prepare_alignment_model_in_runtime,
     recover_local_runtime_install,
     resolve_model_cache_root,
+    run_timestamp_alignment_in_runtime,
 )
 from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
 from maw.media import resolve_default_audio_track, resolve_project_media
@@ -96,6 +100,11 @@ from maw.postprocess_pipeline import (
     validate_plan,
 )
 from maw.postprocess_pipeline import PostprocessPipelineError
+from maw.timestamp_alignment import (
+    TimestampAlignmentError,
+    TimestampAlignmentRequest,
+    run_timestamp_alignment as process_timestamp_alignment,
+)
 from maw.script_alignment import normalize_gap_remove_settings
 from maw.text_conversion import TextConversionUnavailable, normalize_text_conversion_mode
 from maw.ocr_runtime import OCR_MODEL_ID, OCR_MODEL_IDS, OCR_MODEL_LABELS, OCR_MODEL_TYPES, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, recover_ocr_runtime_install, run_ocr_in_runtime
@@ -143,6 +152,12 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "model_cache_path_invalid": "模型缓存目录不能是一个文件。",
     "local_prepare_running": "本地模型正在准备中。",
     "local_prepare_failed": "本地模型准备失败。",
+    "alignment_model_missing": "对齐模型尚未安装，请先下载对齐模型。",
+    "alignment_model_incomplete": "对齐模型不完整，请重新下载或选择正确目录。",
+    "alignment_model_path_invalid": "对齐模型目录不存在，或所选路径不是有效目录。",
+    "alignment_prepare_running": "对齐模型正在准备中。",
+    "alignment_prepare_failed": "对齐模型准备失败。",
+    "alignment_failed": "字词时间码生成失败。",
     "ocr_runtime_missing": "OCR 支持尚未安装，请打开设置下载安装。",
     "ocr_runtime_install_failed": "OCR 运行环境安装失败。",
     "ocr_runtime_cancelled": "OCR 运行环境安装已取消。",
@@ -593,6 +608,8 @@ class LauncherApi:
         self.batch_cancel_event: Event | None = None
         self.local_prepare_cancel_event: Event | None = None
         self.local_prepare_worker: threading.Thread | None = None
+        self.alignment_prepare_cancel_event: Event | None = None
+        self.alignment_prepare_worker: threading.Thread | None = None
         self.local_runtime_cancel_event: Event | None = None
         self.local_runtime_worker: threading.Thread | None = None
         self.local_runtime_worker_engine = ""
@@ -732,6 +749,24 @@ class LauncherApi:
             }
             for model_id in OCR_MODEL_IDS
         ]
+        alignment_models = [
+            {
+                "id": model.id,
+                "modelId": model.id,
+                "engine": model.engine,
+                "modelRef": model.model_ref,
+                "label": model.label,
+                "note": model.note,
+                "estimatedSize": model.estimated_size,
+                "languages": list(model.languages),
+                "status": "checking",
+                "runtimeAvailable": False,
+                "installed": False,
+                "path": "",
+                "detail": "",
+            }
+            for model in ALIGNMENT_MODELS
+        ]
         return {
             "providerId": provider.id,
             "modelId": selected_model.id,
@@ -757,6 +792,7 @@ class LauncherApi:
             "ocrRuntime": ocr_runtime,
             "ocrModels": ocr_models,
             "ocrModelId": OCR_MODEL_ID,
+            "alignmentModels": alignment_models,
             "modelCacheRoot": config.model_cache_root,
             "models": [
                 _model_payload(
@@ -1087,6 +1123,75 @@ class LauncherApi:
         except (OSError, UnicodeError, ValueError, TextConversionUnavailable) as error:
             return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
+
+    def run_timestamp_alignment(self, payload: Mapping[str, object]) -> dict[str, object]:
+        model_id = normalize_alignment_model_id(str(payload.get("modelId") or ""))
+        try:
+            model = alignment_model_by_id(model_id)
+        except ValueError as error:
+            return _error_result("alignmentModel", "alignment_model_missing", str(error))
+        project_path = _optional_path(payload.get("projectPath"))
+        srt_path = _optional_path(payload.get("srtPath"))
+        media_path = _optional_path(payload.get("mediaPath"))
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        runtime = self._local_runtime_status(model_cache_root)
+        status = inspect_alignment_model(
+            model.id,
+            str(payload.get("modelPath") or "").strip(),
+            model_cache_root=model_cache_root,
+            runtime_available=True if runtime.ready else None,
+            runtime_source="managed" if runtime.ready else "current",
+            runtime_python=runtime.python_path if runtime.ready else "",
+        )
+        if status.status == "path_invalid":
+            return _error_result("alignmentModelPath", "alignment_model_path_invalid", status.detail)
+        if not status.installed:
+            code = "local_runtime_missing" if not status.runtime_available else "alignment_model_missing"
+            return _error_result("alignmentModel", code, status.detail)
+        self._emit_postprocess_status("toolbox_status_reading")
+        try:
+            self._emit_postprocess_status("toolbox_status_aligning")
+            alignment_mode = str(payload.get("alignmentMode") or "fill")
+            output_mode = _output_mode(payload.get("outputMode")).value
+            requested_model_path = _optional_path(payload.get("modelPath"))
+            if runtime.ready:
+                worker_result = run_timestamp_alignment_in_runtime(
+                    project_path=project_path,
+                    srt_path=srt_path,
+                    media_path=media_path,
+                    model_id=model.id,
+                    output_mode=output_mode,
+                    alignment_mode=alignment_mode,
+                    model_path=requested_model_path,
+                    output_directory=_optional_path(payload.get("outputDirectory")),
+                    device=str(payload.get("device") or "auto"),
+                    model_cache_root=model_cache_root,
+                    on_event=lambda line: self._emit({"type": "log", "message": line}),
+                )
+                artifact_result = worker_result.get("artifact")
+                report_result = worker_result.get("report")
+                if not isinstance(artifact_result, Mapping) or not isinstance(report_result, Mapping):
+                    raise LocalRuntimeError("本地字词时间码命令返回了无效结果。")
+                self._emit_postprocess_status("toolbox_status_writing")
+                return {"ok": True, **dict(artifact_result), "report": dict(report_result)}
+            artifact, report = process_timestamp_alignment(
+                TimestampAlignmentRequest(
+                    project_path=project_path,
+                    srt_path=srt_path,
+                    media_path=media_path,
+                    model_id=model.id,
+                    output_mode=output_mode,
+                    mode=alignment_mode,
+                    model_path=requested_model_path,
+                    model_cache_root=Path(model_cache_root) if model_cache_root else None,
+                    device=str(payload.get("device") or "auto"),
+                    output_directory=_optional_path(payload.get("outputDirectory")),
+                )
+            )
+            self._emit_postprocess_status("toolbox_status_writing")
+        except (OSError, UnicodeError, ValueError, RuntimeError, TimestampAlignmentError) as error:
+            return _error_result("postprocessInput", "alignment_failed", str(error))
+        return {**_subtitle_artifact_result(artifact), "report": report.to_payload()}
 
     def run_fixed_replacement(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Compatibility bridge for callers using the old toolbox method name."""
@@ -2251,6 +2356,78 @@ class LauncherApi:
             ],
         }
 
+    def get_alignment_models(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        runtime = self._local_runtime_status(model_cache_root)
+        # When the host process does not contain optional packages, the managed
+        # runtime is still a valid preparation/inference source.
+        use_managed = bool(runtime.ready)
+        return {
+            "ok": True,
+            "runtime": runtime.to_payload(),
+            "modelCacheRoot": model_cache_root,
+            "models": alignment_models_payload(
+                model_cache_root,
+                runtime_available=True if use_managed else None,
+                runtime_source="managed" if use_managed else "current",
+                runtime_python=runtime.python_path if use_managed else "",
+            ),
+        }
+
+    def cancel_alignment_model(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        event = self.alignment_prepare_cancel_event
+        worker = self.alignment_prepare_worker
+        active = bool(event and worker and worker.is_alive())
+        if active:
+            event.set()
+        return {"ok": True, "cancelling": active}
+
+    def prepare_alignment_model(self, payload: Mapping[str, object]) -> dict[str, object]:
+        if self.worker and self.worker.is_alive():
+            return {"ok": False, "error": "Transcription is already running."}
+        if self.local_prepare_worker and self.local_prepare_worker.is_alive():
+            return _error_result("alignmentModel", "alignment_prepare_running")
+        if self.alignment_prepare_worker and self.alignment_prepare_worker.is_alive():
+            return _error_result("alignmentModel", "alignment_prepare_running")
+        requested = str(payload.get("modelId") or "").strip()
+        try:
+            model_id = normalize_alignment_model_id(requested)
+            model = alignment_model_by_id(model_id)
+        except ValueError as error:
+            return _error_result("alignmentModel", "alignment_model_missing", str(error))
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        runtime = self._local_runtime_status(model_cache_root)
+        status = inspect_alignment_model(
+            model.id,
+            str(payload.get("modelPath") or "").strip(),
+            model_cache_root=model_cache_root,
+            runtime_available=True if runtime.ready else None,
+            runtime_source="managed" if runtime.ready else "current",
+            runtime_python=runtime.python_path if runtime.ready else "",
+        )
+        if status.status == "installed":
+            return {"ok": True, "alreadyInstalled": True, "modelId": model.id, "status": status.to_payload()}
+        if not status.runtime_available:
+            return _error_result("alignmentModel", "local_runtime_missing", status.detail)
+        if status.status == "path_invalid":
+            return _error_result("alignmentModelPath", "alignment_model_path_invalid", status.detail)
+        self.alignment_prepare_cancel_event = Event()
+        self.pump.start()
+        self.alignment_prepare_worker = threading.Thread(
+            target=self._alignment_prepare_main,
+            args=(
+                model.id,
+                str(payload.get("modelPath") or "").strip(),
+                model_cache_root,
+                runtime.ready,
+                self.alignment_prepare_cancel_event,
+            ),
+            daemon=True,
+            name="maw-alignment-model-prepare",
+        )
+        self.alignment_prepare_worker.start()
+        return {"ok": True, "preparing": True, "modelId": model.id}
+
     def get_local_runtime(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         requested_model = str((_payload or {}).get("modelId") or "")
@@ -2527,6 +2704,8 @@ class LauncherApi:
         self.cancel_media_tool()
         if self.local_prepare_cancel_event:
             self.local_prepare_cancel_event.set()
+        if self.alignment_prepare_cancel_event:
+            self.alignment_prepare_cancel_event.set()
         if self.local_runtime_cancel_event:
             self.local_runtime_cancel_event.set()
         if self.ocr_runtime_cancel_event:
@@ -2593,6 +2772,30 @@ class LauncherApi:
                 self.worker = None
             self.pump.flush()
             return
+        if request.alignment_model and str(request.engine or "").strip().casefold() == "moss":
+            try:
+                result = self._align_transcription_result(request, result, cancel_event)
+            except (LocalRuntimeCancelled, TimestampAlignmentError, LocalRuntimeError, OSError, ValueError) as error:
+                if isinstance(error, LocalRuntimeCancelled) or cancel_event.is_set():
+                    self._emit({
+                        "type": "error",
+                        "code": "transcription_cancelled",
+                        "detail": str(error),
+                        "originalProjectPath": str(result.json_path),
+                        "originalSrtPath": str(result.srt_path),
+                    })
+                else:
+                    self._emit({
+                        "type": "error",
+                        "code": "alignment_failed",
+                        "detail": str(error),
+                        "originalProjectPath": str(result.json_path),
+                        "originalSrtPath": str(result.srt_path),
+                    })
+                if self.worker is threading.current_thread():
+                    self.worker = None
+                self.pump.flush()
+                return
         self.result = result
         transcription_elapsed = time.perf_counter() - flow_t0
         self.postprocess_retry_context = None
@@ -2688,6 +2891,74 @@ class LauncherApi:
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
+
+    def _align_transcription_result(
+        self,
+        request: TranscriptionRequest,
+        result: TranscriptionResult,
+        cancel_event: Event,
+    ) -> TranscriptionResult:
+        """Run a shared aligner after a segment-only local engine completes."""
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        runtime = self._local_runtime_status(model_cache_root)
+        self._emit_postprocess_status("toolbox_status_aligning")
+        self._emit({
+            "type": "log",
+            "message": f"[aligner] MOSS 已完成段级转写，开始使用 {request.alignment_model} 补齐字词时间码。",
+        })
+        if runtime.ready:
+            worker_result = run_timestamp_alignment_in_runtime(
+                project_path=result.json_path,
+                srt_path=result.srt_path,
+                media_path=request.media_path,
+                model_id=request.alignment_model,
+                output_mode="both",
+                alignment_mode="fill",
+                model_path=request.alignment_model_path or None,
+                device=request.device,
+                model_cache_root=model_cache_root,
+                cancel_event=cancel_event,
+                on_event=lambda line: self._emit({"type": "log", "message": line}),
+            )
+            artifact = worker_result.get("artifact")
+            report = worker_result.get("report")
+            if not isinstance(artifact, Mapping):
+                raise LocalRuntimeError("本地字词时间码命令返回了无效产物。")
+            if isinstance(report, Mapping):
+                self._emit({
+                    "type": "log",
+                    "message": (
+                        f"[aligner] 已对齐 {report.get('alignedSegments', 0)} 段，"
+                        f"跳过 {report.get('skippedSegments', 0)} 段。"
+                    ),
+                })
+        else:
+            artifact_obj, report_obj = process_timestamp_alignment(
+                TimestampAlignmentRequest(
+                    project_path=result.json_path,
+                    srt_path=result.srt_path,
+                    media_path=request.media_path,
+                    model_id=request.alignment_model,
+                    output_mode="both",
+                    mode="fill",
+                    model_path=Path(request.alignment_model_path) if request.alignment_model_path else None,
+                    model_cache_root=Path(model_cache_root) if model_cache_root else None,
+                    device=request.device,
+                )
+            )
+            artifact = {
+                "projectPath": str(artifact_obj.project_path or ""),
+                "srtPath": str(artifact_obj.srt_path or ""),
+            }
+            report = report_obj.to_payload()
+        project_path = Path(str(artifact.get("projectPath") or ""))
+        srt_path = Path(str(artifact.get("srtPath") or ""))
+        if not project_path.is_file() or not srt_path.is_file():
+            raise LocalRuntimeError("字词时间码产物未生成完整的 SRT / MOSP 文件。")
+        warnings = artifact.get("warnings")
+        for warning in warnings if isinstance(warnings, list) else ():
+            self._emit({"type": "log", "message": f"[aligner] [warning] {warning}"})
+        return replace(result, srt_path=srt_path, json_path=project_path)
 
     def _retry_postprocess_main(self, context: Mapping[str, object], cancel_event: Event) -> None:
         result = self.result
@@ -2964,6 +3235,66 @@ class LauncherApi:
         finally:
             self.pump.flush()
 
+    def _alignment_prepare_main(
+        self,
+        model_id: str,
+        model_path: str,
+        model_cache_root: str,
+        use_managed_runtime: bool,
+        cancel_event: Event,
+    ) -> None:
+        def on_event(message: str) -> None:
+            if not cancel_event.is_set():
+                self._emit({"type": "log", "message": message})
+                self._emit({"type": "alignmentModelProgress", "message": message})
+
+        try:
+            if use_managed_runtime:
+                prepare_alignment_model_in_runtime(
+                    model_id=model_id,
+                    model_path=model_path,
+                    model_cache_root=model_cache_root,
+                    on_event=on_event,
+                    cancel_event=cancel_event,
+                )
+            else:
+                prepare_alignment_model_in_process(
+                    model_id=model_id,
+                    model_path=model_path,
+                    model_cache_root=model_cache_root,
+                    on_event=on_event,
+                    cancel_event=cancel_event,
+                )
+            if cancel_event.is_set():
+                self._emit({"type": "alignmentPrepareCancelled", "modelId": model_id})
+                return
+            runtime = self._local_runtime_status(model_cache_root)
+            status = inspect_alignment_model(
+                model_id,
+                model_path,
+                model_cache_root=model_cache_root,
+                runtime_available=True if use_managed_runtime else None,
+                runtime_source="managed" if use_managed_runtime else "current",
+                runtime_python=runtime.python_path if use_managed_runtime else "",
+            )
+            self._emit({
+                "type": "alignmentModelPrepared",
+                "modelId": model_id,
+                "status": status.to_payload(),
+            })
+        except Exception as error:  # noqa: BLE001 - optional runtime boundary
+            if cancel_event.is_set():
+                self._emit({"type": "alignmentPrepareCancelled", "modelId": model_id})
+            else:
+                self._emit({
+                    "type": "error",
+                    "code": "alignment_prepare_failed",
+                    "field": "alignmentModel",
+                    "detail": str(error),
+                })
+        finally:
+            self.pump.flush()
+
     def _emit(self, event: Mapping[str, object]) -> None:
         if self._log_sink is not None:
             self._log_sink.append(event)
@@ -3232,6 +3563,32 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         runtime_python = local_status.runtime_python
         if device not in {"auto", "cpu", "cuda"}:
             raise PreflightError("device", "local_model_path_invalid", "设备必须是 auto、cpu 或 cuda。")
+    alignment_model = ""
+    alignment_model_path = str(payload.get("alignmentModelPath") or "").strip()
+    if provider.kind == "local":
+        alignment_model = normalize_alignment_model_id(str(payload.get("alignmentModel") or ""))
+        if alignment_model:
+            # MOSS has a deliberately isolated runtime.  Alignment status must
+            # be checked against the shared local runtime (or this process),
+            # never against MOSS's Transformers 5.x environment.
+            alignment_runtime = managed_runtime_status(model_cache_root)
+            try:
+                alignment_status = inspect_alignment_model(
+                    alignment_model,
+                    alignment_model_path,
+                    model_cache_root=model_cache_root,
+                    runtime_available=True if alignment_runtime.ready else None,
+                    runtime_source="managed" if alignment_runtime.ready else "current",
+                    runtime_python=alignment_runtime.python_path if alignment_runtime.ready else "",
+                )
+            except ValueError as error:
+                raise PreflightError("alignmentModel", "alignment_model_missing", str(error)) from error
+            if alignment_status.status == "path_invalid":
+                raise PreflightError("alignmentModelPath", "alignment_model_path_invalid", alignment_status.detail)
+            if not alignment_status.runtime_available:
+                raise PreflightError("alignmentModel", "local_runtime_missing", alignment_status.detail)
+            if not alignment_status.installed:
+                raise PreflightError("alignmentModel", "alignment_model_missing", alignment_status.detail)
     if provider.requires_api_key and not api_key:
         raise PreflightError("apiKey", "api_key_missing", "API key is required.")
     if provider.id == "qwen" and region == "singapore" and not workspace_id:
@@ -3337,6 +3694,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         model_cache_root=model_cache_root,
         device=device,
         forced_aligner=str(payload.get("forcedAligner") or "").strip(),
+        alignment_model=alignment_model,
+        alignment_model_path=alignment_model_path,
         base_url=custom_base_url,
         openai_prompt=openai_prompt,
         openai_keywords=openai_keywords,
@@ -3973,6 +4332,7 @@ def _model_payload(
         "supportsContext": model.supports_context,
         "supportsHotwords": model.supports_hotwords,
         "supportsVocabulary": model.supports_vocabulary,
+        "supportsWordTimestamps": model.supports_word_timestamps,
         "kind": model.kind,
         "engine": model.engine,
         "modelRef": model.model_ref,

@@ -50,6 +50,9 @@ class ModelConfig:
     supports_context: bool = False
     supports_hotwords: bool = False
     supports_vocabulary: bool = False
+    # 模型是否原生返回可用于字幕编辑的字/词级时间码；为 False 时，
+    # Launcher 可在本地模型设置中提供额外的对齐模型。
+    supports_word_timestamps: bool = False
     languages: tuple[tuple[str, str], ...] = ()
     kind: str = "cloud"
     engine: str = ""
@@ -478,6 +481,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         model_ref="Qwen/Qwen3-ASR-0.6B",
         required_model_refs=("Qwen/Qwen3-ForcedAligner-0.6B",),
         requires_runtime=("qwen_asr", "torch"),
+        supports_word_timestamps=True,
     ),
     ModelConfig(
         id="qwen3-asr-1.7b-local",
@@ -490,6 +494,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         model_ref="Qwen/Qwen3-ASR-1.7B",
         required_model_refs=("Qwen/Qwen3-ForcedAligner-0.6B",),
         requires_runtime=("qwen_asr", "torch"),
+        supports_word_timestamps=True,
     ),
     ModelConfig(
         id="fun-asr-nano-local",
@@ -544,6 +549,22 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         requires_runtime=("moss_transcribe_diarize", "transformers", "torch"),
     ),
     ModelConfig(
+        id="firered-asr2-ctc-local",
+        label="FireRedASR2-CTC（CPU）",
+        env_key="",
+        note="轻量 int8 CTC 本地识别；支持中英，输出 token 时间码，也可作为 SRT/MOSP 的对齐模型",
+        languages=(
+            ("", "自动识别"),
+            ("zh", "中文 / Chinese"),
+            ("en", "英语 / English"),
+        ),
+        kind="local",
+        engine="firered",
+        model_ref="firered-asr2-ctc",
+        requires_runtime=("sherpa_onnx", "soundfile"),
+        supports_word_timestamps=True,
+    ),
+    ModelConfig(
         id="whisper-large-v3-local",
         label="Faster-Whisper large-v3（实验）",
         env_key="",
@@ -554,6 +575,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         # Hugging Face Hub 上的官方 CTranslate2 转换版；词级时间戳由上游内部处理
         model_ref="Systran/faster-whisper-large-v3",
         requires_runtime=("faster_whisper",),
+        supports_word_timestamps=True,
     ),
 )
 

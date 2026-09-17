@@ -68,6 +68,8 @@ class TranscriptionRequest:
     model_cache_root: str = ""
     device: str = "auto"
     forced_aligner: str = ""
+    alignment_model: str = ""
+    alignment_model_path: str = ""
     openai_prompt: str = ""
     openai_keywords: tuple[str, ...] = ()
     openai_diarize: bool = False
@@ -232,6 +234,8 @@ def _srt_model_tag(provider: str, model: str) -> str:
             return ".qwen3-asr-1.7b-local"
         if "moss" in local_model:
             return ".moss-local"
+        if "firered" in local_model or "fire-red" in local_model:
+            return ".firered-local"
         if "whisper" in local_model:
             return ".whisper-local"
         return ".qwen-asr-local"
@@ -328,7 +332,16 @@ def build_transcribe_command(
         _append_option(command, "--model-path", request.model_path)
         _append_option(command, "--device", request.device)
         _append_option(command, "--forced-aligner", request.forced_aligner)
-        if request.speaker_colors and request.engine == "moss":
+        # MOSS runs in its own Transformers 5.x environment.  The shared
+        # Qwen/FireRed aligner belongs to the normal local runtime, so MOSS is
+        # aligned by the Launcher after its coarse project has been written.
+        # Keeping the flags out of the MOSS child prevents it from importing a
+        # conflicting qwen-asr installation before the hand-off.
+        local_engine = str(request.engine or "").strip().casefold()
+        if local_engine != "moss":
+            _append_option(command, "--alignment-model", request.alignment_model)
+            _append_option(command, "--alignment-model-path", request.alignment_model_path)
+        if request.speaker_colors and local_engine == "moss":
             command.append("--speaker-colors")
     elif is_soniox:
         _append_option(command, "--model", request.model if request.model != DEFAULT_MODEL_ID else "")

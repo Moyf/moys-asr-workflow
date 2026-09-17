@@ -33,6 +33,7 @@ from generate_subtitle_qwen_api import (
     split_segments_auto,
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.alignment_models import FIRERED_ASR2_CTC_MODEL_ID
 from maw.language import (
     DEFAULT_MAX_WORDS,
     DEFAULT_MIN_WORDS,
@@ -65,6 +66,7 @@ MOSS_MAX_AUDIO_SECONDS = 90 * 60
 MOSS_PROGRESS_INTERVAL_S = 5.0
 WHISPER_DEFAULT_MODEL = "large-v3"
 WHISPER_DEFAULT_VAD_MIN_SILENCE_MS = 500
+FIRERED_DEFAULT_MODEL = FIRERED_ASR2_CTC_MODEL_ID
 
 
 def _missing_moss_dependency(cause: ImportError) -> MissingLocalDependency:
@@ -1382,6 +1384,170 @@ class MossDiarizeEngine:
         )
 
 
+class FireRedAsrEngine:
+    """sherpa-onnx FireRedASR2-CTC adapter.
+
+    FireRed is intentionally kept separate from the Qwen/FunASR Torch path:
+    the int8 CTC model runs on CPU, returns token timestamps, and can therefore
+    also serve as a light-weight known-text aligner. Long input is split into
+    at most 75-second WAV spans before decoding, then shifted back to the
+    original timeline.
+    """
+
+    def __init__(
+        self,
+        model: str = FIRERED_DEFAULT_MODEL,
+        *,
+        model_path: str | Path | None = None,
+        device: str = "auto",
+    ) -> None:
+        self.model = model
+        self.model_path = str(model_path) if model_path else ""
+        self.device = device
+        self._backend: Any = None
+
+    def _load(self, on_event: ProgressCallback | None = None) -> Any:
+        if self._backend is not None:
+            return self._backend
+        if self.device.strip().casefold() not in {"", "auto", "cpu"}:
+            raise LocalAsrError("FireRedASR2-CTC 仅支持 CPU 推理。")
+        try:
+            from maw.timestamp_alignment import FireRedCtcBackend
+        except ImportError as error:
+            raise _missing_dependency("sherpa-onnx") from error
+        if on_event:
+            on_event(f"[local] loading FireRedASR2-CTC: {self.model}")
+        self._backend = FireRedCtcBackend(model_path=self.model_path)
+        # Trigger the lazy recognizer load now so Launcher model preparation
+        # and a real inference fail at the same boundary.
+        self._backend._load()
+        if on_event:
+            on_event("[local] FireRedASR2-CTC loaded")
+        return self._backend
+
+    def _decode_one(
+        self,
+        backend: Any,
+        audio_path: Path,
+        *,
+        language: str | None,
+        on_event: ProgressCallback | None,
+    ) -> LocalTranscription:
+        if on_event:
+            on_event(f"[local] FireRedASR2-CTC 正在识别：{audio_path.name}")
+        decoded = backend.decode(audio_path)
+        from maw.timestamp_alignment import firered_tokens_to_items
+
+        text = decoded.text.strip()
+        items = firered_tokens_to_items(
+            text,
+            decoded.tokens,
+            decoded.timestamps,
+            decoded.duration_ms,
+            decoded_text=decoded.text,
+        )
+        language_value, language_source = resolve_language(None, language, text)
+        split_mode = split_mode_for_text(text, language_value)
+        segments = []
+        if text:
+            segments = [_segment(text, 0, decoded.duration_ms, [
+                _item(item.text, item.start, item.end) for item in items
+            ])]
+        return LocalTranscription(
+            text,
+            language_value,
+            [_item(item.text, item.start, item.end) for item in items],
+            segments,
+            self.model,
+            language_source,
+            split_mode,
+            timestamp_granularity_for_items(
+                items,
+                split_mode,
+                explicit_items=bool(items),
+                has_segments=bool(segments),
+            ),
+        )
+
+    def transcribe(
+        self,
+        audio_path: Path,
+        *,
+        language: str | None = None,
+        batch_size_s: int = 300,
+        hotwords: Sequence[str] = (),
+        on_event: ProgressCallback | None = None,
+        ffmpeg_path: str | Path | None = None,
+        ffprobe_path: str | Path | None = None,
+    ) -> LocalTranscription:
+        if hotwords and on_event:
+            on_event("[local] FireRedASR2-CTC 不接受热词参数，已忽略热词")
+        if batch_size_s <= 0:
+            raise ValueError("batch_size_s must be greater than 0")
+        backend = self._load(on_event)
+        duration_s = _media_duration_seconds(str(audio_path), ffprobe_path)
+        chunk_seconds = min(max(int(batch_size_s), 1), 75)
+        if not math.isfinite(duration_s) or duration_s <= chunk_seconds:
+            result = self._decode_one(backend, audio_path, language=language, on_event=on_event)
+            return result
+
+        chunk_count = math.ceil(duration_s / chunk_seconds)
+        if on_event:
+            on_event(
+                f"[local] FireRed 长音频 {duration_s:.1f}s，将分为 {chunk_count} 段识别"
+                f"（每段不超过 {chunk_seconds}s）"
+            )
+        results: list[LocalTranscription] = []
+        with tempfile.TemporaryDirectory(prefix="maw-firered-chunks-") as temp_dir:
+            for index in range(chunk_count):
+                start_s = index * chunk_seconds
+                current_duration = min(chunk_seconds, duration_s - start_s)
+                if current_duration <= 0:
+                    break
+                chunk_path = Path(temp_dir) / f"chunk-{index:04d}.wav"
+                QwenAsrEngine._extract_chunk(
+                    audio_path,
+                    chunk_path,
+                    start_s=start_s,
+                    duration_s=current_duration,
+                    ffmpeg_path=ffmpeg_path,
+                )
+                current = self._decode_one(backend, chunk_path, language=language, on_event=on_event)
+                results.append(
+                    QwenAsrEngine._shift_chunk_result(
+                        current,
+                        int(round(start_s * 1000)),
+                        add_leading_space=bool(index and split_mode_for_text(current.text, language) == "word"),
+                    )
+                )
+        texts = [result.text.strip() for result in results if result.text.strip()]
+        sample = texts[0] if texts else ""
+        uses_spaces = split_mode_for_text(sample, language) == "word"
+        text = (" ".join(texts) if uses_spaces else "".join(texts)).strip()
+        merged_items = [item for result in results for item in result.items]
+        merged_segments = [segment for result in results for segment in result.segments]
+        language_value = normalize_language_code(language) or next(
+            (result.language for result in results if result.language),
+            "",
+        )
+        split_mode = split_mode_for_text(text, language_value)
+        return LocalTranscription(
+            text,
+            language_value,
+            merged_items,
+            merged_segments,
+            self.model,
+            "hint" if language else "detected",
+            split_mode,
+            timestamp_granularity_for_items(
+                merged_items,
+                split_mode,
+                explicit_items=bool(merged_items) and all(result.items for result in results),
+                has_segments=bool(merged_segments),
+            ),
+        )
+
+
 class WhisperEngine:
     """Lazy faster-whisper (CTranslate2) adapter.
 
@@ -1676,13 +1842,19 @@ def create_local_engine(
             model_path=model_path,
             device=device,
         )
+    if normalized in {"firered", "fire-red", "firered-asr2-ctc"}:
+        return FireRedAsrEngine(
+            model or FIRERED_DEFAULT_MODEL,
+            model_path=model_path,
+            device=device,
+        )
     if normalized == "whisper":
         return WhisperEngine(
             model or WHISPER_DEFAULT_MODEL,
             model_path=model_path,
             device=device,
         )
-    raise ValueError("engine must be one of: qwen-asr, funasr, moss, whisper")
+    raise ValueError("engine must be one of: qwen-asr, funasr, moss, firered, whisper")
 
 
 _LOCAL_TAIL_PUNCT = "，。"
@@ -2025,6 +2197,7 @@ def write_local_outputs(
 
 
 __all__ = [
+    "FIRERED_DEFAULT_MODEL",
     "FUNASR_DEFAULT_MODEL",
     "MOSS_DEFAULT_MODEL",
     "MOSS_DEFAULT_REVISION",
@@ -2042,6 +2215,7 @@ __all__ = [
     "QWEN_DEFAULT_CHUNK_SECONDS",
     "QWEN_MAX_NEW_TOKENS",
     "FunAsrEngine",
+    "FireRedAsrEngine",
     "MossDiarizeEngine",
     "QwenAsrEngine",
     "WhisperEngine",
