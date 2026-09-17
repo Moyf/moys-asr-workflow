@@ -6317,6 +6317,7 @@ function selectAll() {
     if (isHiddenDisabled(idx, getOverlayTrack())) return;
     selectedOverlayIdxs.add(idx);
   });
+  syncOverlaySelectionClasses();
   updateMultiSelectionClasses();
   updateSelectionCountText();
   if (waveformEditor) waveformEditor.updateSelection();
@@ -7430,12 +7431,28 @@ function buildExtensionCueEl(seg, idx, track) {
   return buildCueEl(seg, idx, { extensionTrack: track });
 }
 
+// 叠加字幕行选中高亮与选中计数统一同步：叠加轨没有 multi-cue 类，
+// 不能走 updateMultiSelectionClasses，这里按 data-overlay-idx 直接同步。
+function syncOverlaySelectionClasses() {
+  container.querySelectorAll('.cue[data-overlay-idx].selected').forEach((el) => {
+    if (!selectedOverlayIdxs.has(Number(el.dataset.overlayIdx))) el.classList.remove('selected');
+  });
+  selectedOverlayIdxs.forEach((index) => {
+    container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.add('selected');
+  });
+  updateSelectionCountText();
+}
+
 function selectOverlayCueRow(index, { focusEditor = false } = {}) {
-  selectedOverlayIdxs.clear();
+  // 与副字幕 selectOnlyExtension 同一逻辑：点击叠加字幕先清空主轨/副轨
+  // 已有选区（clearSelection 同时取消待绑定状态），再单独选中本轨字幕。
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
   selectedOverlayIdxs.add(index);
   lastClickedOverlayIdx = index;
   setCuePanelTarget('overlay', index);
   if (focusEditor) focusCuePanelText(index, 'overlay');
+  syncOverlaySelectionClasses();
   waveformEditor?.updateSelection();
   const row = container.querySelector(`.cue[data-overlay-idx="${index}"]`);
   if (row) scrollCueIntoViewIfNeeded(row);
@@ -7451,15 +7468,26 @@ function selectOverlayRange(fromIndex, toIndex) {
     selectedOverlayIdxs.add(index);
   }
   setCuePanelTarget('overlay', toIndex);
+  syncOverlaySelectionClasses();
   waveformEditor?.updateSelection();
   const row = container.querySelector(`.cue[data-overlay-idx="${toIndex}"]`);
   if (row) scrollCueIntoViewIfNeeded(row);
 }
 
 function toggleOverlaySelection(index) {
-  if (selectedOverlayIdxs.has(index)) selectedOverlayIdxs.delete(index);
-  else selectedOverlayIdxs.add(index);
+  if (isHiddenDisabled(index, getOverlayTrack())) return;  // 隐藏禁用项不参与选择
+  const row = container.querySelector(`.cue[data-overlay-idx="${index}"]`);
+  if (selectedOverlayIdxs.has(index)) {
+    selectedOverlayIdxs.delete(index);
+    row?.classList.remove('selected');
+  } else {
+    selectedOverlayIdxs.add(index);
+    row?.classList.add('selected');
+  }
   lastClickedOverlayIdx = index;
+  // 与副字幕 Ctrl 多选一致：面板跟随被切换的字幕，便于继续编辑。
+  setCuePanelTarget('overlay', index);
+  updateSelectionCountText();
   waveformEditor?.updateSelection();
 }
 
@@ -7471,7 +7499,7 @@ function buildOverlayCueEl(seg, index) {
   el.classList.toggle('selected', selectedOverlayIdxs.has(index));
   el.addEventListener('click', (event) => {
     event.stopPropagation();
-    if (event.shiftKey && lastClickedOverlayIdx >= 0 && lastClickedOverlayIdx !== index) {
+    if (event.shiftKey && lastClickedOverlayIdx >= 0) {
       selectOverlayRange(lastClickedOverlayIdx, index);
       return;
     }
@@ -7480,6 +7508,23 @@ function buildOverlayCueEl(seg, index) {
       return;
     }
     selectOverlayCueRow(index);
+    const segment = getOverlayTrack()?.segments?.[index];
+    if (!segment) return;
+    const previousSuppress = suppressCueListAutoScroll;
+    // 与副字幕一致：点击后的 seek 会同步刷新主字幕 active 状态；这次刷新不能把
+    // 列表从刚点击的叠加字幕行再次滚到对应的主字幕行。
+    suppressCueListAutoScroll = true;
+    try {
+      waveformEditor?.revealTime(segment.start, true);
+      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
+    } finally {
+      suppressCueListAutoScroll = previousSuppress;
+    }
+    if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused) togglePlayback();
+    if (EDITOR_SETTINGS.cueListAutoScrollOnClick) {
+      const row = container.querySelector(`.cue[data-overlay-idx="${index}"]`);
+      if (row) scrollCueToCenter(row);
+    }
   });
   el.addEventListener('dblclick', (event) => {
     event.preventDefault();
@@ -22110,10 +22155,15 @@ function initWaveformEditor() {
       lastClickedOverlayIdx = idx;
     },
     toggleOverlaySelection: (idx) => toggleOverlaySelection(idx),
+    selectOverlayRange: (idx) => {
+      if (lastClickedOverlayIdx >= 0) selectOverlayRange(lastClickedOverlayIdx, idx);
+      else selectOverlayCueRow(idx);
+      lastClickedOverlayIdx = idx;
+    },
     activateOverlayCue: (idx) => {
-      selectedOverlayIdxs.clear();
-      selectedOverlayIdxs.add(idx);
-      setCuePanelTarget('overlay', idx);
+      // 与 selectOverlayCue 同一入口：再次点击已选中的叠加字幕也要
+      // 清空主轨/副轨选区并保持本轨单选语义。
+      selectOverlayCueRow(idx);
     },
     enterOverlayCueEditor: (idx) => {
       selectOverlayCueRow(idx, { focusEditor: true });
