@@ -106,7 +106,7 @@ const MULTI_SUBTITLE_MERGE_OVERLAP_TOLERANCE_MS = 500;
 const SUBTITLE_MIN_DURATION_MS = 100;
 const PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS = 2;
 const MULTI_SUBTITLE_IMPORT_PROMPT = '是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）';
-const MULTI_SUBTITLE_TOGGLE_TITLE = '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。';
+const MULTI_SUBTITLE_TOGGLE_TITLE = '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。';
 maweDomContractCheck();
 let normalizedMultiSubtitleReference = null;
 let pendingSrtImportAsExtension = false;
@@ -2366,7 +2366,6 @@ const subtitleExportSeparator = document.getElementById('subtitle-export-separat
 const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-removed-color-srt');
 const gapRemovedSubtitleExportSeparator = document.getElementById('gap-removed-subtitle-export-separator');
 const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
-const overlayTrackControls = document.getElementById('overlay-track-controls');
 const overlayTrackToggle = document.getElementById('overlay-track-toggle');
 const overlayTrackSeparator = document.getElementById('overlay-track-separator');
 const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
@@ -2855,6 +2854,14 @@ function renderAssStyleList(list, items, kind, selectedId) {
   if (!list) return;
   list.replaceChildren();
   list.setAttribute('aria-busy', 'false');
+  // 主样式 = 当前 ASS 导出方案关联的样式；副样式 = 双语字幕启用时的副字幕槽位。
+  const mainStyleId = kind === 'style'
+    ? String(ASS_STYLE_LIBRARY.assProfiles?.find((profile) => profile.id === (ASS_STYLE_LIBRARY.assignments?.assExportProfileId || 'ass'))?.styleId || 'ass')
+    : '';
+  const extensionStyleId = kind === 'style'
+    ? String(ASS_STYLE_LIBRARY.assignments?.assExtensionStyleId || 'ass-extension')
+    : '';
+  const extensionActive = kind === 'style' && multiSubtitleVisible();
   (Array.isArray(items) ? items : []).forEach((item) => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -2866,12 +2873,15 @@ function renderAssStyleList(list, items, kind, selectedId) {
     label.className = 'ass-style-list-label';
     label.textContent = String(item.name || item.id || '未命名');
     button.append(label);
-    if (item.builtin) {
+    const appendBadge = (text, modifier = '') => {
       const badge = document.createElement('span');
-      badge.className = 'ass-style-list-badge';
-      badge.textContent = '内置';
+      badge.className = `ass-style-list-badge${modifier ? ` ${modifier}` : ''}`;
+      badge.textContent = text;
       button.append(badge);
-    }
+    };
+    if (item.id === mainStyleId) appendBadge('主', 'ass-style-list-badge-primary');
+    if (extensionActive && item.id === extensionStyleId) appendBadge('副', 'ass-style-list-badge-extension');
+    if (item.builtin) appendBadge('内置');
     button.addEventListener('click', () => assStyleManagerSetSelection(kind, item.id));
     list.append(button);
   });
@@ -2951,7 +2961,7 @@ function syncAssStyleForm(style) {
     assStylePreviewSample.style.color = preview.primaryColor;
     assStylePreviewSample.style.webkitTextStroke = preview.outline > 0 ? `${Math.min(8, preview.outline)}px ${preview.outlineColor}` : '';
     assStylePreviewSample.style.paintOrder = preview.outline > 0 ? 'stroke fill' : '';
-    assStylePreviewSample.style.textShadow = preview.shadow > 0 ? `${preview.shadow}px ${preview.shadow}px 0 ${preview.backColor}` : 'none';
+    assStylePreviewSample.style.filter = preview.shadow > 0 ? `drop-shadow(${preview.shadow}px ${preview.shadow}px 0 ${preview.backColor})` : '';
     assStylePreviewSample.style.letterSpacing = `${preview.spacing}px`;
     assStylePreviewSample.style.transform = `scale(${Number(preview.scaleX) / 100 || 1}, ${Number(preview.scaleY) / 100 || 1}) rotate(${Number(preview.angle) || 0}deg)`;
     assStylePreviewSample.style.background = Number(preview.borderStyle) === 3 ? preview.backColor : 'transparent';
@@ -3217,11 +3227,14 @@ assStyleUsePreviewFontButton?.addEventListener('click', () => {
   updateAssStyleField('fontName', fontName);
   flashHint(`已将 ASS 字体设为「${fontName}」`, 'success');
 });
-// 样式/方案列表右键菜单：创建副本 / 重命名 / 删除（内置条目的删除不可选）。
+// 样式/方案列表右键菜单：设为主/副字幕样式 / 创建副本 / 重命名 / 删除。
 function showAssListContextMenu(event, kind) {
   const button = event.target.closest(`[data-ass-selection-kind="${kind}"]`);
   if (!button) return;
+  // 阻止冒泡：document 级 contextmenu 监听会关闭非 cue 上的菜单，
+  // 不拦截的话刚显示的菜单会立即被吞掉。
   event.preventDefault();
+  event.stopPropagation();
   assStyleManagerSetSelection(kind, button.dataset.assSelectionId);
   const collection = kind === 'profile' ? ASS_STYLE_LIBRARY.assProfiles : ASS_STYLE_LIBRARY.styles;
   const item = collection?.find((candidate) => candidate.id === button.dataset.assSelectionId);
@@ -3239,6 +3252,18 @@ function showAssListContextMenu(event, kind) {
     });
     ctxmenu.appendChild(element);
   };
+  if (kind === 'style') {
+    addItem('设为主字幕样式', () => {
+      updateAssStyleManagerLibrary((library) => {
+        const profileId = library.assignments?.assExportProfileId || 'ass';
+        const profile = (library.assProfiles || []).find((entry) => entry.id === profileId);
+        if (profile) profile.styleId = item.id;
+      });
+    });
+    if (multiSubtitleVisible()) {
+      addItem('设为副字幕样式', () => updateAssStyleAssignment('assExtensionStyleId', item.id));
+    }
+  }
   addItem('创建副本', () => (kind === 'profile' ? duplicateAssProfile() : duplicateAssStyle()));
   addItem('重命名', () => {
     const input = document.getElementById(kind === 'profile' ? 'ass-profile-name' : 'ass-style-name');
@@ -3289,7 +3314,8 @@ function syncSubtitleStyleAssControls() {
   if (mainSubtitleCssFields) mainSubtitleCssFields.hidden = assMode;
   if (mainAssStyleFields) mainAssStyleFields.hidden = !assMode;
   if (extensionSubtitleCssFields) extensionSubtitleCssFields.hidden = assMode;
-  if (extensionAssStyleFields) extensionAssStyleFields.hidden = !assMode;
+  // 副字幕 ASS 样式只在 ASS 模式 + 双语字幕（多重字幕）启用时才有意义。
+  if (extensionAssStyleFields) extensionAssStyleFields.hidden = !assMode || !multiSubtitleVisible();
   const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
   const styles = library.styles || [];
   if (mainAssStyleSelect) {
@@ -3561,10 +3587,10 @@ function syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEna
 }
 
 function updateMultiSubtitleUi() {
-  const overlayVisible = overlayTrackVisible();
-  if (overlayTrackControls) overlayTrackControls.hidden = !getOverlayTrack()?.segments?.length;
-  if (overlayTrackSeparator) overlayTrackSeparator.hidden = overlayTrackControls?.hidden !== false;
-  if (overlayTrackToggle) overlayTrackToggle.checked = overlayVisible;
+  // 「允许字幕重叠」开关常驻工具栏；勾选状态跟随用户意图（overlay.enabled），
+  // 不要求叠加轨已有字幕，否则空轨道时勾选会被立即弹回。
+  if (overlayTrackSeparator) overlayTrackSeparator.hidden = DATA.segments.length === 0;
+  if (overlayTrackToggle) overlayTrackToggle.checked = getOverlayTrack()?.enabled === true;
   const track = getActiveExtensionTrack();
   const hasTrack = Boolean(track && Array.isArray(track.segments));
   const enabled = hasTrack && getMultiSubtitleState().enabled === true;
@@ -3682,6 +3708,9 @@ overlayTrackToggle?.addEventListener('change', () => {
   overlay._dirty = true;
   scheduleAutoSaveFlush();
   renderAll({ waveform: 'full' });
+  if (overlayTrackToggle.checked) {
+    flashHint('已允许字幕重叠；Ctrl+拖拽波形空白或用右键菜单可创建叠加字幕', 'success');
+  }
 });
 
 function bindCueListDisplayToggle(toggle, key) {
@@ -3887,7 +3916,7 @@ multiSubtitleToggle?.addEventListener('change', () => {
   const next = multiSubtitleToggle.checked;
   const promptImportSecondSrt = next && !getActiveExtensionTrack();
   multi.enabled = !next;
-  pushUndo(next ? '开启多重字幕' : '关闭多重字幕');
+  pushUndo(next ? '开启双语字幕' : '关闭双语字幕');
   multi.enabled = next;
   multi._dirty = true;
   // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
@@ -3905,7 +3934,7 @@ multiSubtitleDisplayMode?.addEventListener('change', () => {
   const next = multiSubtitleDisplayMode.value;
   const previous = multi.display_mode;
   multi.display_mode = previous;
-  pushUndo('切换多重字幕列表');
+  pushUndo('切换双语字幕列表');
   multi.display_mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
   multi._dirty = true;
   renderAll({ waveform: 'none' });
@@ -6424,7 +6453,7 @@ function bindSelectedSubtitlePair({ successMessage = null } = {}) {
   const extension = track?.segments?.[extensionIndex];
   if (!main || !extension) return;
   const replacedBinding = bindingForMainIndex(mainIndex);
-  pushUndo('绑定多重字幕');
+  pushUndo('绑定双语字幕');
   addSubtitleBinding(main, extension, track);
   const autoSynced = EDITOR_SETTINGS.multiSubtitleAutoSyncDuration
     && alignExtensionToMainTimeRange(extensionIndex, track, { pushHistory: false, showHint: false });
@@ -6459,7 +6488,7 @@ function unbindSelectedSubtitlePair() {
   // removeSubtitleBindings 已经返回具体关系；快照必须在真正修改前建立。
   // 这里把预览关系恢复后再记录，避免解绑动作无法撤销。
   multi.bindings.push(...removed);
-  pushUndo('解绑多重字幕');
+  pushUndo('解绑双语字幕');
   MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
   markMultiSubtitleDirty();
   syncBindingOffsets();
@@ -14057,8 +14086,8 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
   element.style.color = style.primaryColor;
   element.style.webkitTextStroke = outline > 0 ? `${outline}px ${style.outlineColor}` : '';
   element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
-  element.style.textShadow = !borderBox && shadow > 0
-    ? `${shadow}px ${shadow}px 0 ${style.backColor}` : 'none';
+  element.style.filter = !borderBox && shadow > 0
+    ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
   element.style.maxWidth = `calc(100% - ${Math.max(0, margins.left + margins.right)}px)`;
@@ -14088,8 +14117,8 @@ function applyAssPreviewSpeakerLabel(element, style, metrics) {
   element.style.textUnderlineOffset = style.underline ? '0.16em' : '';
   element.style.webkitTextStroke = outline > 0 ? `${outline}px ${style.outlineColor}` : '';
   element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
-  element.style.textShadow = shadow > 0
-    ? `${shadow}px ${shadow}px 0 ${style.backColor}` : 'none';
+  element.style.filter = shadow > 0
+    ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
 }
@@ -14099,7 +14128,7 @@ function clearAssPreviewSpeakerLabelStyle(element) {
   [
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', '-webkit-text-stroke',
-    'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
+    'paint-order', 'filter', 'letter-spacing', 'line-height',
   ].forEach((property) => element.style.removeProperty(property));
 }
 
@@ -14108,7 +14137,7 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
   [
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', ' -webkit-text-stroke',
-    '-webkit-text-stroke', 'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
+    '-webkit-text-stroke', 'paint-order', 'filter', 'letter-spacing', 'line-height',
     'max-width', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
     'left', 'right', 'top', 'bottom', 'white-space', 'text-align', 'transform-origin', 'transform',
   ].forEach((property) => element.style.removeProperty(property.trim()));
@@ -18557,7 +18586,7 @@ async function showMultiSubtitleImportChoice(file, segments, options = {}) {
   if (multiSubtitleImportExtension) {
     multiSubtitleImportExtension.hidden = projectImport ? false : Boolean(existingTrack);
     multiSubtitleImportExtension.textContent = projectImport
-      ? '使用工程字幕作为副字幕' : '作为多重字幕';
+      ? '使用工程字幕作为副字幕' : '作为双语字幕';
   }
   if (multiSubtitleImportChoiceActions) multiSubtitleImportChoiceActions.hidden = false;
   if (multiSubtitleImportResultActions) multiSubtitleImportResultActions.hidden = false;
@@ -18624,7 +18653,7 @@ function commitMultiSubtitleImport() {
     ),
     segments: extensionSegments,
   };
-  pushUndo(replacing ? '替换副字幕' : '导入多重字幕');
+  pushUndo(replacing ? '替换副字幕' : '导入双语字幕');
   if (replacing) {
     const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
     multi.bindings = (multi.bindings || []).filter((binding) => (
@@ -18660,7 +18689,7 @@ function swapMainAndExtensionSubtitles() {
   const multi = getMultiSubtitleState();
   const track = getActiveExtensionTrack();
   if (!multi.enabled) {
-    flashHint('请先开启多重字幕', 'invalid');
+    flashHint('请先开启双语字幕', 'invalid');
     return false;
   }
   if ((multi.tracks || []).length !== 1) {
