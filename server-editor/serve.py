@@ -684,6 +684,37 @@ def build_server_page(
     return page.encode("utf-8")
 
 
+def _attach_segments_match(server_project: dict, browser_project: dict) -> bool:
+    """Compare stable subtitle content while tolerating legacy frame projections.
+
+    The browser normalizes legacy millisecond projects on load and adds optional
+    ``start_frame``/``end_frame`` projections.  Those projections are derived
+    from the millisecond ranges and are not present in older files, so they
+    must not make an otherwise identical on-disk project fail takeover.
+    Frame-mode projects keep their frame fields significant and are compared as
+    supplied.
+    """
+    server_segments = copy.deepcopy(server_project.get("segments"))
+    browser_segments = copy.deepcopy(browser_project.get("segments"))
+    if not isinstance(server_segments, list) or not isinstance(browser_segments, list):
+        return server_segments == browser_segments
+
+    timebase = browser_project.get("timebase")
+    frame_mode = isinstance(timebase, dict) and timebase.get("unit") == "frames"
+    if not frame_mode:
+        for segments in (server_segments, browser_segments):
+            for segment in segments:
+                if not isinstance(segment, dict):
+                    continue
+                segment.pop("start_frame", None)
+                segment.pop("end_frame", None)
+                for item in segment.get("items") or []:
+                    if isinstance(item, dict):
+                        item.pop("start_frame", None)
+                        item.pop("end_frame", None)
+    return server_segments == browser_segments
+
+
 class EditorServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
@@ -1099,7 +1130,7 @@ class EditorServer(ThreadingHTTPServer):
         )
         if self.defer_reapeaks:
             project = without_deferred_reapeaks(project)
-        if project.data.get("segments") != normalized_browser.get("segments"):
+        if not _attach_segments_match(project.data, normalized_browser):
             raise AttachProjectError("媒体同目录的同名工程与打开的副本内容不一致，未接管")
         with self.settings_lock:
             self.project = project

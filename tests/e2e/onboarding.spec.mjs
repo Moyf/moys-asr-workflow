@@ -96,12 +96,18 @@ test('quick start teaches WASD, real merge with undo, then real split', async ({
 
 test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await page.goto(server.url);
-  await expect(page.locator('#onboarding-skip')).toHaveText('跳过 (ESC)');
+  // 第一个用例完成后，引导状态已在服务端持久化，不会自动弹出；
+  // 按用例本意从 Help 强制重播引导，再验证跳过持久化。
+  await page.locator('#help-toggle').click();
+  await expect(page.locator('#help-panel')).toHaveClass(/show/);
+  await page.locator('#help-onboarding').click();
+  await expect(page.locator('#onboarding-layer')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('#onboarding-layer')).toBeHidden();
   expect(await page.evaluate(() => localStorage.getItem('moy.asr.editor.onboarding.v1'))).toBe('skipped');
 
   await page.locator('#help-toggle').click();
+  await expect(page.locator('#help-panel')).toHaveClass(/show/);
   expect(await page.evaluate(() => document.activeElement?.id)).not.toBe('help-toggle');
   const helpPanel = page.locator('#help-panel');
   await expect(helpPanel).toHaveClass(/show/);
@@ -189,7 +195,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(playbackPanel.locator('.help-subtitle')).toHaveText(['播放', '字幕导航']);
   await expect(playbackPanel).toContainText('播放与导航');
   await expect(playbackPanel).toContainText('无选中时前后跳转（时长：1000ms）');
-  await expect(playbackPanel.locator('#help-open-media-settings')).toHaveText('⚙️设置');
+  await expect(playbackPanel.locator('#help-open-media-settings')).toHaveText('全局设置');
   await expect(playbackPanel).toContainText('可在媒体区的');
   await page.locator('#help-onboarding').click();
   await expect(page.locator('#onboarding-layer')).toBeVisible();

@@ -983,6 +983,7 @@
   .subtitle-preview-settings-fields {
     display: grid; gap: 8px; width: 100%; min-width: 0;
   }
+  .subtitle-preview-settings-fields[hidden] { display: none; }
   .subtitle-preview-setting-pair {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0;
   }
@@ -1050,7 +1051,13 @@
   .subtitle-color-style-control select { width: min(180px, 100%); justify-self: start; }
   /* 字体 combobox：文本输入 + 内嵌下拉按钮 + 可筛选下拉列表（对齐 Launcher「模型」输入框交互）。 */
   .font-combobox { position: relative; width: 100%; min-width: 0; }
-  .font-combobox > input { width: 100%; min-width: 0; padding-right: 30px; }
+  /* 宽度约束收归 .font-combobox 容器整体（随 grid/flex 单元格拉伸），输入框只负责
+     填满容器、给内嵌箭头留位；同类叠加选择器压过 .editor-settings-panel
+     input[type=text] 的固定 140px 与 .ass-style-field input 的 padding 覆盖，
+     避免输入框与下拉面板宽窄不一、箭头压字。 */
+  .font-combobox.font-combobox > input[type="text"] {
+    box-sizing: border-box; width: 100%; min-width: 0; padding-right: 30px;
+  }
   .font-combobox-toggle {
     position: absolute; top: 1px; right: 1px; bottom: 1px;
     display: grid; place-items: center; width: 26px; padding: 0;
@@ -1064,9 +1071,12 @@
   }
   .font-combobox-toggle:hover { color: var(--accent-hover); background: var(--accent-tint); }
   .font-combobox-toggle:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+  /* 下拉面板是 body 下的 fixed 浮层（打开时由 JS portal 并定位）：
+     不参与设置面板的滚动区（不会撑高容器、不会被面板边缘裁剪遮挡），
+     显式 overflow-x: hidden 防止长字体名把面板撑出横向滚动条。 */
   .font-combobox-options {
-    position: absolute; z-index: 30; inset-inline: 0; top: calc(100% + 4px);
-    max-height: min(280px, 40vh); overflow-y: auto; padding: 4px;
+    position: fixed; z-index: 1000;
+    overflow: hidden auto; max-height: min(280px, 40vh); padding: 4px;
     border: 1px solid var(--border-strong); border-radius: var(--radius-md);
     background: var(--bg-panel); box-shadow: var(--shadow-3);
   }
@@ -1075,9 +1085,9 @@
     display: block; width: 100%; min-height: 28px; padding: 5px 8px;
     border: 0; border-radius: var(--radius-sm); color: var(--text-primary);
     background: transparent; text-align: left; font-size: 12px; cursor: pointer;
-    overflow-wrap: anywhere;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .font-combobox-option:hover, .font-combobox-option:focus-visible {
+  .font-combobox-option:hover, .font-combobox-option:focus-visible, .font-combobox-option.active {
     color: var(--accent-hover); background: var(--accent-tint-strong);
   }
   .font-combobox-option[aria-selected="true"] { color: var(--accent-hover); }
@@ -1592,6 +1602,13 @@
     border: 1px solid var(--border-strong);
     border-radius: 3px; font-size: 9px; letter-spacing: .04em;
   }
+  /* 主/副字幕槽位徽标：与「内置」同形，用颜色区分主（强调色）与副（字幕黄）。 */
+  .ass-style-list-badge-primary {
+    color: var(--accent-hover); background: var(--accent-tint); border-color: var(--accent-line);
+  }
+  .ass-style-list-badge-extension {
+    color: var(--amber-hover); background: color-mix(in srgb, var(--amber) 14%, transparent); border-color: color-mix(in srgb, var(--amber) 45%, transparent);
+  }
   .ass-style-list-actions { display: flex; gap: 5px; }
   .ass-style-list-actions button {
     flex: 1 1 auto; min-width: 0; padding: 5px 6px; color: var(--text-muted); background: var(--bg-input);
@@ -1609,6 +1626,8 @@
   .ass-style-assignment-row {
     display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-secondary); font-size: 11px;
   }
+  /* flex 会覆盖 hidden 的 UA 样式，显隐必须显式声明。 */
+  .ass-style-assignment-row[hidden] { display: none; }
   .ass-style-assignment-row select { min-width: 0; width: 128px; }
   .ass-style-editor { flex: 1 1 auto; min-width: 0; min-height: 0; overflow-y: auto; padding: 14px 19px 20px; }
   .ass-style-form-header-side {

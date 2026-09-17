@@ -4333,6 +4333,7 @@
         cleanup();
         if (!moved) {
           if (track === 'extension') this.options.toggleExtensionSelection?.(index);
+          else if (track === 'overlay') this.options.toggleOverlaySelection?.(index);
           else this.options.toggleCueSelection?.(index);
         }
       };
@@ -4710,6 +4711,7 @@
         }
         if (kind !== 'move') {
           if (track === 'main') this.options.selectCueRange?.(index);
+          else if (track === 'overlay') this.options.selectOverlayRange?.(index);
           return;
         }
         // 主轨/叠加轨的 Shift+拖动：拖动期间不改动选择状态（避免把后面的
@@ -4784,7 +4786,7 @@
         squeezeOriginals: allOriginals,
         // Shift+拖动：只拖被抓住的一条；邻居挡路时转入叠加轨继续移动。
         shiftOverlay: shiftOverlayMove,
-        shiftRangeSelect: track === 'main' && Boolean(event.shiftKey),
+        shiftRangeSelect: (track === 'main' || track === 'overlay') && Boolean(event.shiftKey),
         convertedToOverlay: false,
         altToggleDisabledOnClick: Boolean(
           event.altKey && !targetHandle
@@ -6047,7 +6049,8 @@
         // Shift+点击（无拖动位移）：按下时未做范围选择，这里补上，
         // 保持既有 Shift+click 范围选语义；不进入跳转/启停逻辑。
         if (drag.shiftRangeSelect) {
-          this.options.selectCueRange?.(drag.index);
+          if (drag.track === 'overlay') this.options.selectOverlayRange?.(drag.index);
+          else this.options.selectCueRange?.(drag.index);
           return;
         }
         if (drag.altToggleDisabledOnClick) {

@@ -449,7 +449,10 @@ class GuiWebBridgeTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+        # 本机系统环境可能真设了 MAW_LOCAL_RUNTIME_ROOT（系统环境优先于 env
+        # 文件）；移除后才能验证 env 文件这一路。
         with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
             api = LauncherApi(paths=LauncherPaths(root=self.root, env_path=self.env_path, launcher_html=self.root / "launcher.html"), window_getter=lambda: None)
             self.assertEqual(_canonical_test_path(os.environ["MAW_LOCAL_RUNTIME_ROOT"]), _canonical_test_path(runtime_root))
             self.assertEqual(_canonical_test_path(api.get_local_runtime()["path"]), _canonical_test_path(runtime_root))

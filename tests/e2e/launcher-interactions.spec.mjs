@@ -382,27 +382,32 @@ test('cancelling a transcription stays quiet', async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([]);
 });
 
-test('Utilities use a vertical tab rail with arrow-key navigation', async ({ page }) => {
+test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxUtilitiesPrimaryTab').click();
 
   await expect(page.locator('#toolboxUtilitiesContent')).toBeVisible();
-  await expect(page.locator('#toolboxUtilitiesTabList')).toHaveAttribute('aria-orientation', 'vertical');
-  const layout = await page.locator('#toolboxUtilitiesContent').evaluate((element) => {
-    const style = getComputedStyle(element);
-    const tabListStyle = getComputedStyle(element.querySelector('.toolbox-utility-tab-list'));
+  // 横向 tab 条：ARIA 方向保持默认 horizontal，不得声明 vertical（契约见
+  // test_gui_web.test_launcher_toolbox_uses_primary_tabs…）。
+  await expect(page.locator('#toolboxUtilitiesTabList')).not.toHaveAttribute('aria-orientation', 'vertical');
+  const layout = await page.evaluate(() => {
+    const style = getComputedStyle(document.getElementById('toolboxUtilitiesContent'));
+    // beta.4 重构后 tablist 导航是 content 的兄弟节点；tab 条横向一行五列。
+    const tabList = document.querySelector('#toolboxUtilitiesTabList .toolbox-tab-list');
+    const tabListStyle = getComputedStyle(tabList);
     return {
       columns: style.gridTemplateColumns.split(' ').length,
       tabColumnCount: tabListStyle.gridTemplateColumns.split(' ').length,
     };
   });
-  expect(layout.columns).toBe(2);
-  expect(layout.tabColumnCount).toBe(1);
+  expect(layout.columns).toBe(1);
+  expect(layout.tabColumnCount).toBe(5);
 
+  // beta.4 重构后工具顺序：压制字幕、媒体重组、口播对齐、提取音频、生成波形。
   await page.locator('#toolboxAlignmentTab').focus();
   await page.keyboard.press('ArrowDown');
-  await expect(page.locator('#toolboxWaveformTab')).toBeFocused();
-  await expect(page.locator('#toolboxWaveformPanel')).toBeVisible();
+  await expect(page.locator('#toolboxExtractAudioTab')).toBeFocused();
+  await expect(page.locator('#toolboxExtractAudioPanel')).toBeVisible();
   await expect(page.locator('#toolboxAlignmentPanel')).toBeHidden();
 
   await page.keyboard.press('ArrowUp');
@@ -591,7 +596,7 @@ test('local runtime check sits above the model panel and deep-links to the Runti
 test('English mode localizes provider, model, and language labels from the backend config', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
-  await page.locator('#langToggle').click();
+  await page.evaluate(() => document.getElementById('langEn').click());
   await page.locator('#provider').selectOption('local');
 
   await expect(page.locator('#provider option[value="local"]')).toHaveText('Local models (Beta)');
@@ -664,7 +669,7 @@ test('Custom provider labels and missing-key errors follow the selected language
   await expect(customOption).toHaveText('自定义（兼容 OpenAI）');
   await expect(settingsCustomOption).toHaveText('自定义（兼容 OpenAI）');
 
-  await page.locator('#langToggle').click();
+  await page.evaluate(() => document.getElementById('langEn').click());
   await expect(customOption).toHaveText('Custom (OpenAI-compatible)');
   await expect(settingsCustomOption).toHaveText('Custom (OpenAI-compatible)');
   await page.locator('#toolboxLlmTab').click();
@@ -1139,7 +1144,7 @@ test('artifact rows localize type labels while preserving MOSP-first and SRT-onl
   await expect(artifacts.nth(0)).toHaveAttribute('title', 'source.fixed.mosp\nD:\\Demo\\source.fixed.mosp');
   await expect(artifacts.nth(0)).toHaveAttribute('aria-label', /MOSP 工程.*source\.fixed\.mosp.*D:\\Demo\\source\.fixed\.mosp/);
 
-  await page.locator('#langToggle').click();
+  await page.evaluate(() => document.getElementById('langEn').click());
   await expect(artifacts.nth(0)).toHaveText('MOSP project');
   await expect(artifacts.nth(1)).toHaveText('SRT subtitles');
 
@@ -1181,7 +1186,7 @@ test('server media accepts a dropped file even when batch mode is selected', asy
 test('artifact context menu exposes exactly three actions and closes on every required path', async ({ page }) => {
   await openLauncher(page);
   await runReplacement(page);
-  await page.locator('#langToggle').click();
+  await page.evaluate(() => document.getElementById('langEn').click());
   await page.evaluate(() => {
     window.__artifactCalls = [];
     const callBackend = window.MAWLauncher.callBackend;
@@ -1239,7 +1244,7 @@ test('artifact context menu exposes exactly three actions and closes on every re
 test('artifact context menu remains inside the viewport and reports failed bridge actions', async ({ page }) => {
   await openLauncher(page);
   await runReplacement(page);
-  await page.locator('#langToggle').click();
+  await page.evaluate(() => document.getElementById('langEn').click());
   await page.evaluate(() => {
     window.MAWLauncher.callBackend = async (method) => (
       method === 'open_file' ? { ok: false, error: 'File does not exist' } : { ok: true }
