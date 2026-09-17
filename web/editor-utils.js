@@ -2639,7 +2639,7 @@
     return value == null ? null : JSON.parse(JSON.stringify(value));
   }
 
-  const EDITOR_SETTING_ROW_HEIGHTS = [64, 80, 96, 120, 144, 168];
+  const EDITOR_SETTING_ROW_HEIGHTS = [64, 80, 96, 120, 144, 168, 192];
   // 拆分边界符号修剪配置：勾选/填写的符号会在拆分后从两侧文本边缘移除。
   // 空格与换行永远修剪，不参与配置。
   // 仅前 5 个高频符号提供勾选 chip；其余符号由设置面板的自由文本框维护

@@ -992,9 +992,9 @@
       </header>
       <nav id="settingsTabList" class="settings-tabs" role="tablist" aria-labelledby="launcherSettingsTitle" data-i18n-aria-label="settings_tablist_label">
         <button id="settingsGeneralTab" class="settings-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="settingsGeneralPanel" data-settings-tab="general" data-i18n="settings_tab_general">通用</button>
-        <button id="settingsLlmTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsLlmPanel" data-settings-tab="llm" data-i18n="settings_tab_llm">AI 模型配置</button>
         <button id="settingsProcessingTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsProcessingPanel" data-settings-tab="processing" data-i18n="settings_tab_processing">断句与标点</button>
         <button id="settingsRuntimeTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsRuntimePanel" data-settings-tab="runtime" data-i18n="settings_tab_runtime">运行环境</button>
+        <button id="settingsLlmTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsLlmPanel" data-settings-tab="llm" data-i18n="settings_tab_llm">AI 模型配置</button>
       </nav>
       <div class="settings-scroll">
       <section id="settingsGeneralPanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsGeneralTab" data-settings-panel="general" aria-hidden="false">
@@ -1190,33 +1190,33 @@
           <h3 data-i18n="segmentation">字幕切句</h3>
           <div class="segmentation-row segmentation-character-row">
             <div class="segmentation-control">
-              <label for="maxLen" data-i18n="max_len">最大字数</label>
-              <input id="maxLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="max_len_placeholder" placeholder="18" autocomplete="off">
-              <p id="maxLenError" class="field-error"></p>
-            </div>
-            <div class="segmentation-control">
-              <label for="minLen" data-i18n="min_len">短句合并阈值</label>
-              <input id="minLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="min_len_placeholder" placeholder="5" autocomplete="off">
-              <p id="minLenError" class="field-error"></p>
-            </div>
-            <div class="segmentation-control">
               <label for="gapSplit" data-i18n="gap_split">停顿切句（毫秒）</label>
               <input id="gapSplit" type="number" min="0" step="1" inputmode="numeric" data-i18n-placeholder="gap_split_placeholder" placeholder="800" autocomplete="off">
               <p id="gapSplitError" class="field-error"></p>
             </div>
+            <div class="segmentation-control">
+              <label for="minLen" data-i18n="min_len">短句合并阈值（字）</label>
+              <input id="minLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="min_len_placeholder" placeholder="5" autocomplete="off">
+              <p id="minLenError" class="field-error"></p>
+            </div>
+            <div class="segmentation-control">
+              <label for="maxLen" data-i18n="max_len">单句最大字数（字）</label>
+              <input id="maxLen" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="max_len_placeholder" placeholder="18" autocomplete="off">
+              <p id="maxLenError" class="field-error"></p>
+            </div>
           </div>
-          <p class="hint" data-i18n="segmentation_hint">字符型设置和停顿设置留空使用默认值（最大字数：18、短句合并阈值：5、停顿切句：800ms）；系统会按语言/文本自动选择字符型或单词型规则。</p>
+          <p class="hint" data-i18n="segmentation_hint">配置停顿多久时算作两句字幕、少于多少字时自动合并，以及允许的最大字数（超过会强行断句）；系统会按语言自动选择对应规则。</p>
           <div class="segmentation-word-options">
             <div class="segmentation-row segmentation-word-row">
-              <div class="segmentation-control">
-                <label for="maxWords" data-i18n="max_words">英文最大单词数</label>
-                <input id="maxWords" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="max_words_placeholder" placeholder="13" autocomplete="off">
-                <p id="maxWordsError" class="field-error"></p>
-              </div>
               <div class="segmentation-control">
                 <label for="minWords" data-i18n="min_words">英文短句合并阈值（单词）</label>
                 <input id="minWords" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="min_words_placeholder" placeholder="3" autocomplete="off">
                 <p id="minWordsError" class="field-error"></p>
+              </div>
+              <div class="segmentation-control">
+                <label for="maxWords" data-i18n="max_words">英文单句最大字数（单词）</label>
+                <input id="maxWords" type="number" min="1" step="1" inputmode="numeric" data-i18n-placeholder="max_words_placeholder" placeholder="13" autocomplete="off">
+                <p id="maxWordsError" class="field-error"></p>
               </div>
             </div>
             <p class="hint" data-i18n="english_segmentation_hint">在生成英文字幕时，会启用该配置。</p>
@@ -1226,16 +1226,18 @@
       <div class="settings-section" id="punctuationSettingsSection">
         <h3 data-i18n="settings_punctuation_title">断句与标点</h3>
         <p class="hint" data-i18n="settings_punctuation_hint">文稿匹配与转写共用这里的断句与保留符号；额外断句符号在云端转写切句时同样作为强断句符号生效。</p>
-        <div class="field">
-          <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">额外断句符号</label>
-          <textarea id="postprocessExtraSplitPunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="？\n！\n——\n~"></textarea>
-          <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。</p>
-        </div>
-        <div class="field">
-          <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句后保留符号</label>
-          <textarea id="postprocessPreservePunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_preserve_punctuation_placeholder" placeholder="？\n！\n~"></textarea>
-          <p id="postprocessPreservePunctuationError" class="field-error"></p>
-          <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍将符号保留在字幕末尾；转写输出的这些尾部符号同样保留，其余默认剥除逗号和句号。</p>
+        <div class="punctuation-settings-fields">
+          <div class="field">
+            <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">额外断句符号</label>
+            <textarea id="postprocessExtraSplitPunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="？\n！\n——\n~"></textarea>
+            <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。</p>
+          </div>
+          <div class="field">
+            <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句后保留符号</label>
+            <textarea id="postprocessPreservePunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_preserve_punctuation_placeholder" placeholder="？\n！\n~"></textarea>
+            <p id="postprocessPreservePunctuationError" class="field-error"></p>
+            <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍将符号保留在字幕末尾；转写输出的这些尾部符号同样保留，其余默认剥除逗号和句号。</p>
+          </div>
         </div>
       </div>
       </section>

@@ -1084,6 +1084,17 @@ label {
   gap: 10px;
 }
 
+.punctuation-settings-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+#punctuationSettingsSection .punctuation-settings-fields > .field {
+  min-width: 0;
+  margin-top: 0;
+}
+
 .modal-card .segmentation-settings-fields > h3 {
   margin: 0;
 }
@@ -2774,6 +2785,7 @@ code {
    .soniox-context-options-grid,
    .language-layout,
    .segmentation-row,
+   .punctuation-settings-fields,
    .path-row {
      grid-template-columns: 1fr;
    }
