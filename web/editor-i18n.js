@@ -667,7 +667,7 @@
     '统一分配表情包…': 'Assign sticker to selection…',
     '批量替换选中字幕…': 'Batch replace selected subtitles…',
     '启用选中': 'Enable selection', '禁用选中': 'Disable selection',
-    '清除所有选中': 'Clear selection', '取消选中': 'Deselect', '取消选择': 'Deselect', '请选择至少两个字幕块！': 'Select at least two subtitle blocks!',
+    '清除所有选中': 'Clear selection', '取消选中': 'Deselect', '取消选择': 'Deselect', '请选择至少两个同轨道字幕块！': 'Select at least two subtitle blocks on the same track!',
     '红': 'Red', '黄': 'Yellow',
     '蓝': 'Blue', '绿': 'Green', '紫': 'Purple',
     '红色': 'Red', '黄色': 'Yellow', '蓝色': 'Blue', '绿色': 'Green', '紫色': 'Purple'

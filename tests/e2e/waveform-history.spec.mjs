@@ -1872,7 +1872,7 @@ test('C merges a common group and Shift+A/D extends the subtitle selection', asy
   await expect(cues.nth(0)).toHaveClass(/selected/);
   await page.keyboard.press('c');
   await expect(cues).toHaveCount(6);
-  await expect(page.locator('.hint-card', { hasText: '请选择至少两个字幕块！' })).toHaveCount(1);
+  await expect(page.locator('.hint-card', { hasText: '请选择至少两个同轨道字幕块！' })).toHaveCount(1);
 
   await cues.nth(2).click();
   await expect(cues.nth(2)).toHaveClass(/selected/);
