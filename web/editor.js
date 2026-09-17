@@ -13160,15 +13160,38 @@ function subtitleFontFamilyInputToStored(text) {
   });
 }
 // 字体 combobox：文本输入 + 可筛选下拉列表，交互对齐 Launcher「模型」输入框。
-// getEntries() 返回 [{ value, label }]；选项点击写入 label 并派发 change，
+// getEntries() 返回 [{ value, label }]；选项点击或 Enter 写入 label 并派发 change，
 // 由既有映射（subtitleFontFamilyInputToStored / assStyleForm change 委托）落库。
+// 上下方向键在高亮项间移动（含首尾回绕前的边界钳制），输入仍可保留自定义值。
 // 实例惰性创建：启动早期（relabelSubtitleFontFamilyOptions 于模块求值时被调用）
 // 也可能触发重建，惰性创建避免引用后置声明造成暂时性死区。
 function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
   if (!input || !options) return { refresh() {}, setOpen() {} };
   let open = false;
+  let entries = [];
+  let activeIndex = -1;
+  let blurTimer = 0;
+  function optionId(index) {
+    return options.id ? `${options.id}-option-${index}` : `font-combobox-option-${index}`;
+  }
+  function setActive(index, { scroll = false } = {}) {
+    activeIndex = entries.length ? Math.max(0, Math.min(index, entries.length - 1)) : -1;
+    Array.from(options.children).forEach((child, childIndex) => {
+      child.classList?.toggle('active', childIndex === activeIndex);
+    });
+    if (activeIndex >= 0) {
+      input.setAttribute('aria-activedescendant', optionId(activeIndex));
+      if (scroll) options.children[activeIndex]?.scrollIntoView({ block: 'nearest' });
+    } else {
+      input.removeAttribute('aria-activedescendant');
+    }
+  }
+  function activeIndexOfValue() {
+    const current = input.value.trim().toLocaleLowerCase();
+    return entries.findIndex((entry) => entry.label.toLocaleLowerCase() === current);
+  }
   function render(query = '') {
-    const entries = window.AsrEditorUtils.filterFontFamilyOptions(
+    entries = window.AsrEditorUtils.filterFontFamilyOptions(
       window.AsrEditorUtils.mergeFontFamilyOptions(getEntries()),
       query,
     );
@@ -13179,41 +13202,89 @@ function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
       empty.textContent = '无匹配字体';
       options.append(empty);
     }
-    entries.forEach((entry) => {
+    entries.forEach((entry, index) => {
       const option = document.createElement('button');
       option.type = 'button';
+      option.id = optionId(index);
       option.className = 'font-combobox-option';
       option.setAttribute('role', 'option');
       option.setAttribute('aria-selected', String(entry.label === input.value.trim()));
       option.textContent = entry.label;
-      option.addEventListener('mousedown', (event) => event.preventDefault());
-      option.addEventListener('click', () => {
-        input.value = entry.label;
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        setOpen(false);
-        input.focus();
-      });
+      option.addEventListener('click', () => selectEntry(index));
       options.append(option);
     });
+    setActive(activeIndexOfValue());
+  }
+  function selectEntry(index) {
+    const entry = entries[index];
+    if (!entry) return;
+    input.value = entry.label;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    setOpen(false);
+    input.focus();
   }
   function setOpen(next, query = '') {
     open = Boolean(next);
     input.setAttribute('aria-expanded', String(open));
-    if (open) render(query);
+    if (open) {
+      render(query);
+    } else {
+      entries = [];
+      setActive(-1);
+    }
     options.hidden = !open;
   }
-  input.addEventListener('focus', () => setOpen(true));
+  function moveActive(step) {
+    if (!open) setOpen(true, input.value);
+    if (!entries.length) return;
+    setActive(activeIndex < 0 ? (step > 0 ? 0 : entries.length - 1) : activeIndex + step, { scroll: true });
+  }
+  function cancelPendingClose() {
+    if (blurTimer) {
+      window.clearTimeout(blurTimer);
+      blurTimer = 0;
+    }
+  }
+  // 失焦延迟关闭：选项与箭头 mousedown preventDefault 不夺焦点，.blur 只在真正
+  // 离开组件（点击外部 / Tab）时触发；延迟窗口内重获焦点则取消关闭。
+  input.addEventListener('focus', () => {
+    cancelPendingClose();
+    setOpen(true);
+  });
+  input.addEventListener('blur', () => {
+    cancelPendingClose();
+    blurTimer = window.setTimeout(() => {
+      blurTimer = 0;
+      if (open) setOpen(false);
+    }, 120);
+  });
+  // 容器整体拦截 mousedown，点击面板空白处也不夺走输入框焦点。
+  options.addEventListener('mousedown', (event) => event.preventDefault());
   input.addEventListener('input', () => setOpen(true, input.value));
   input.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') setOpen(false);
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      moveActive(1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveActive(-1);
+    } else if (event.key === 'Enter') {
+      if (!open) return;
+      event.preventDefault();
+      if (activeIndex >= 0) selectEntry(activeIndex);
+      else setOpen(false);
+    } else if (event.key === 'Escape') {
+      setOpen(false);
+    }
   });
   if (toggle) {
     toggle.addEventListener('mousedown', (event) => event.preventDefault());
-    toggle.addEventListener('click', () => setOpen(!open));
+    toggle.addEventListener('click', () => {
+      cancelPendingClose();
+      setOpen(!open, input.value);
+    });
   }
-  document.addEventListener('click', (event) => {
-    if (open && !event.target?.closest?.('.font-combobox')) setOpen(false);
-  });
   return {
     refresh() {
       if (open) render(input.value);
