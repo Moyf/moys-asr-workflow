@@ -152,9 +152,10 @@ main 并入 ASS 样式库（#135：自定义五色调色板、ASS 预览模式�
   latest.txt + summarize-e2e-report），add/add 冲突取 main 版。
 - **归因（双跑）**：本树 49 vs main@5837aa61 43，交集 43；独有 6 个回归
   （overlay 拖动×2、C 合并、双击光标、ASS 说话人、禁用显示）**全部修复**
-  （ns-rewrite 9 处 + e2e 迁移 34 处）；修复后单测全绿。**待办：修复后
-  未重跑全量 e2e（下一 agent 先跑一轮 `run-e2e-bg.ps1` + 与
-  `%TEMP%\maincheck5-fails.txt`(43 项基线) 比对，确认仅我们失败=0）。**
+  （ns-rewrite 9 处 + e2e 迁移 34 处）；修复后单测全绿。
+- **修复后全量 e2e 复跑（2026-09-16）**：409 用例 / 43 失败，与
+  main@5837aa61 基线**逐项完全一致（零差异）**——我方回归清零得到最终确认。
+  验证闭环完成。
 - 验证状态：Ruff 全过；Node 315/0；Python 1576 OK；顺序断言过；探针零
   pageerror（连续抓到并修复三处：settings 变量关键字、appearance 跨模块
   裸调用——探针是这类加载期错误的第一道防线）。
