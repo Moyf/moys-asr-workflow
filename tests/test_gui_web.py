@@ -5109,12 +5109,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         runtime_panel = page.index('id="localRuntimePanel"')
         ocr_section = page.index('id="ocrSettingsSection"')
         model_tab_panel = page.index('data-settings-panel="llm"')
+        llm_section = page.index('id="llmSettingsSection"')
         local_model_section = page.index('id="localAsrModelSettingsSection"')
         alignment_section = page.index('id="alignmentModelSettingsSection"')
-        # 本地模型运行时仍在 Runtime；ASR 与对齐模型配置则位于 AI 模型配置并分组。
+        # 本地模型运行时仍在 Runtime；AI 模型配置先放 LLM，再放本地 ASR 与对齐模型。
         self.assertLess(runtime_tab_panel, runtime_panel)
         self.assertLess(runtime_panel, ocr_section)
-        self.assertLess(model_tab_panel, local_model_section)
+        self.assertLess(model_tab_panel, llm_section)
+        self.assertLess(llm_section, local_model_section)
         self.assertLess(local_model_section, alignment_section)
         self.assertIn('data-i18n="settings_local_runtime"', page)
         self.assertIn('id="localRuntimeCheckField"', page)
@@ -5122,6 +5124,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('data-i18n="settings_alignment_models"', page)
         self.assertIn('id="localModelSettingsEntry"', page)
         self.assertIn('id="openLocalModelSettings"', page)
+        self.assertIn('id="localModelList"', page)
+        self.assertLess(page.index('id="localModelList"'), page.index('id="localModelPanel"'))
         self.assertIn('id="openLocalRuntimeSettings"', page)
         self.assertIn('settings_local_runtime: "本地模型运行时"', script)
         self.assertIn('settings_local_runtime: "Local model runtime"', script)
@@ -5132,6 +5136,11 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('runtimeHintText(runtime, "local_runtime_ready_hint", "local_runtime_hint")', script)
         self.assertIn('runtimeHintText(runtime, "ocr_runtime_ready", "settings_ocr_hint")', script)
         self.assertIn('localModelHintText(status)', script)
+        self.assertIn('function renderLocalModelList()', script)
+        self.assertIn('const models = (provider()?.models || []).filter((model) => !model.hidden);', script)
+        self.assertIn('dispatchEvent(new Event("change", { bubbles: true }))', script)
+        self.assertIn('local_model_list_label: "本地模型列表"', script)
+        self.assertIn('local_model_list_label: "Local model list"', script)
 
     def test_launcher_deep_link_scrolls_only_the_settings_container(self) -> None:
         """Given a settings deep link, When opening a section, Then only .settings-scroll moves."""
@@ -5146,6 +5155,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('class="hint warn hint-callout" data-i18n="local_beta_note"', page)
         self.assertIn('id="providerNote" class="hint warn hint-callout hidden"', page)
         self.assertIn('background: color-mix(in srgb, var(--amber) 10%, transparent);', stylesheet)
+        self.assertIn('.settings-panel {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;', stylesheet)
+        self.assertNotIn('.modal-card .settings-section.hidden + .settings-section', stylesheet)
 
     def test_launcher_modal_and_scroll_fade_visual_updates(self) -> None:
         """Given the beta7 visual feedback, When styling modals, Then cards widen and settings scroll fades at edges."""

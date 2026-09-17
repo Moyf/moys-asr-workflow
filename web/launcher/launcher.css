@@ -555,6 +555,77 @@ label {
   border-radius: var(--radius-md);
 }
 
+.local-model-list {
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  margin: 0 0 10px;
+  padding: 2px;
+  overflow-y: auto;
+}
+
+.local-model-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  text-align: start;
+  cursor: pointer;
+}
+
+.local-model-list-item:hover {
+  border-color: var(--accent);
+}
+
+.local-model-list-item.active {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.local-model-list-item:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+
+.local-model-list-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.local-model-list-label,
+.local-model-list-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.local-model-list-label {
+  font-weight: 600;
+}
+
+.local-model-list-note,
+.local-model-list-status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.local-model-list-status {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.local-model-list-status.ready {
+  color: #8ecf9b;
+}
+
 .local-runtime-panel {
   display: grid;
   gap: 8px;
@@ -2510,6 +2581,9 @@ textarea::placeholder {
 }
 
 .settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   animation: settings-panel-enter 160ms ease-out;
 }
 
@@ -2936,15 +3010,10 @@ select[multiple] option {
   border-radius: var(--radius-md);
   background: var(--bg-panel);
   padding: 12px 14px 14px;
-  margin-top: 12px;
-}
-
-.modal-card .settings-section:first-of-type {
   margin-top: 0;
 }
 
-/* Runtime 面板：本地运行时区块对非本地供应商隐藏时，OCR 区块顶格显示。 */
-.modal-card .settings-section.hidden + .settings-section {
+.modal-card .settings-section:first-of-type {
   margin-top: 0;
 }
 

@@ -166,6 +166,12 @@ column. Long paths use `overflow-wrap: anywhere` and never force horizontal scro
   scoped optional spectral-cache checkbox; only the latter changes the Launcher project
   and starts the existing MAWE Server flow. FFconcat accepts a picked or dropped script
   that references the scoped Utilities media input.
+- Settings tabs use `.settings-section` as distinct visual groups. The settings panel
+  provides a 12px vertical gap between visible groups; hidden groups collapse naturally
+  without removing the gap between the remaining visible groups. Controls inside a group
+  keep the existing 8–10px field spacing. New settings must not place adjacent items or
+  groups flush against each other, and must not use a hidden-sibling margin override to
+  collapse the spacing.
 
 ## 6. Layering contract: popovers inside the sticky cue-list toolbar
 

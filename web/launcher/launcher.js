@@ -462,6 +462,7 @@
     open_editor: "🚀 打开字幕编辑器",
     server_refresh: "刷新",
     local_model_path: "已有模型目录（可选）",
+    local_model_list_label: "本地模型列表",
     local_model_cache_path_label: "模型保存目录",
     local_model_cache_path_hint: "默认使用本地环境的模型缓存目录；需要时可改到其他磁盘。",
     local_refresh: "重新扫描",
@@ -476,6 +477,8 @@
     local_partial: "已检测到主模型，但仍缺少组件",
     local_installed: "已检测到本地模型",
     local_path_selected: "已使用指定的模型目录",
+    local_model_path_invalid: "指定模型目录无效",
+    local_model_path_mismatch: "指定目录与当前模型不匹配",
     local_prepare_hint: "下载/准备会使用 QwenASR 或 FunASR 的上游缓存；模型文件不写入 MAW 工程。",
     local_prepare_running: "正在准备模型……",
     local_prepare_cancelling: "正在取消模型准备……",
@@ -560,6 +563,7 @@
     open_editor: "🚀 Open Subtitle Editor",
     server_refresh: "Refresh",
     local_model_path: "Existing model folder (optional)",
+    local_model_list_label: "Local model list",
     local_model_cache_path_label: "Model storage directory",
     local_model_cache_path_hint: "The local environment cache is used by default; you can move it to another drive if needed.",
     local_refresh: "Rescan",
@@ -574,6 +578,8 @@
     local_partial: "Main model found, but components are missing",
     local_installed: "Local model detected",
     local_path_selected: "Using the selected model folder",
+    local_model_path_invalid: "The selected model folder is invalid",
+    local_model_path_mismatch: "The selected folder does not match this model",
     local_prepare_hint: "Download/preparation uses the QwenASR or FunASR upstream cache; model files are not written into the MAW project.",
     local_prepare_running: "Preparing model…",
     local_prepare_cancelling: "Cancelling model preparation…",
@@ -2205,6 +2211,68 @@
   async function loadHotwordFile(path, appendToText = false) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); clearDropState(); return; } const result = await bridge("read_hotword_file", { path }); if (!result.ok) { applyErrorResult(result, false); clearDropState(); return; } if (appendToText) { const incoming = String(result.text || "").trim(); if (incoming) { const current = $("qwenAudioHotwords").value.trimEnd(); $("qwenAudioHotwords").value = current ? `${current}\n${incoming}` : incoming; } setHotwordsMode("text"); renderHotwordWarnings($("qwenAudioHotwords").value); setStatus(t("qwen_audio_hotwords_loaded")); } else { setQwenAudioHotwordsFile(result.path || path); renderHotwordWarnings(String(result.text || ""), Number($("qwenAudioHotwordWeight").value), true); } clearDropState(); }
   function isLocalProvider() { return provider()?.kind === "local" || provider()?.id === "local"; }
   function localStatus() { return selectedModel()?.localStatus || {}; }
+  function localModelListStatusKey(model) {
+    if (state.localPreparing && model?.id === $("model")?.value) return "local_prepare_running";
+    if (!model?.localStatus) return "local_checking";
+    const status = model?.localStatus || {};
+    return ({
+      installed: "local_installed",
+      partial: "local_partial",
+      runtime_missing: "local_runtime_missing",
+      path_invalid: "local_model_path_invalid",
+      path_mismatch: "local_model_path_mismatch",
+      missing: "local_missing",
+      checking: "local_checking",
+    }[status.status] || "local_missing");
+  }
+  function renderLocalModelList() {
+    const container = $("localModelList");
+    if (!container) return;
+    container.replaceChildren();
+    if (!isLocalProvider()) {
+      container.classList.add("hidden");
+      return;
+    }
+    const models = (provider()?.models || []).filter((model) => !model.hidden);
+    container.classList.toggle("hidden", !models.length);
+    const selectedId = $("model")?.value || "";
+    models.forEach((model) => {
+      const item = document.createElement("div");
+      item.setAttribute("role", "listitem");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "local-model-list-item";
+      button.classList.toggle("active", model.id === selectedId);
+      button.disabled = Boolean(state.localPreparing);
+      button.setAttribute("aria-pressed", String(model.id === selectedId));
+      button.dataset.modelId = model.id;
+
+      const main = document.createElement("span");
+      main.className = "local-model-list-main";
+      const label = document.createElement("span");
+      label.className = "local-model-list-label";
+      label.textContent = localizedSelectLabel("model", model);
+      main.append(label);
+      const note = modelNoteText(model);
+      if (note) {
+        const noteElement = document.createElement("span");
+        noteElement.className = "local-model-list-note";
+        noteElement.textContent = note;
+        main.append(noteElement);
+      }
+      const status = document.createElement("span");
+      status.className = `local-model-list-status ${model?.localStatus?.installed ? "ready" : ""}`.trim();
+      status.textContent = t(localModelListStatusKey(model));
+      button.append(main, status);
+      item.append(button);
+      container.append(item);
+      button.addEventListener("click", () => {
+        if (button.disabled || $("model").value === model.id) return;
+        $("model").value = model.id;
+        $("model").dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    });
+  }
   function renderLocalRuntimePaths(runtime) {
     const container = $("localRuntimePaths");
     container.textContent = "";
@@ -2368,11 +2436,13 @@
       $("model").disabled = false;
       entry?.classList.add("hidden");
       settingsSection?.classList.add("hidden");
+      renderLocalModelList();
       renderLocalAlignmentModel();
       return;
     }
     entry?.classList.remove("hidden");
     settingsSection?.classList.remove("hidden");
+    renderLocalModelList();
     const status = localStatus();
     const preparing = state.localPreparing;
     const target = $("localModelStatus");
