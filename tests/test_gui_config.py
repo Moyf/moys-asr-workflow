@@ -428,7 +428,7 @@ class GuiConfigTests(unittest.TestCase):
         self.assertIn("对齐模型", firered.note)
         self.assertEqual(qwen06.device_support, "cpu_gpu")
         self.assertEqual(qwen06.resource_level, "medium")
-        self.assertEqual(qwen06.estimated_size, "2.5–4.5 GB")
+        self.assertEqual(qwen06.estimated_size, "1.7G+")
         self.assertEqual(moss.device_support, "gpu_preferred")
         self.assertEqual(firered.device_support, "cpu")
         whisper = provider.models[-1]

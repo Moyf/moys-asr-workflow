@@ -471,8 +471,6 @@
     local_model_badge_resource_high: "重",
     local_model_badge_speaker: "说话人",
     local_model_badge_word_timestamps: "字词时间码",
-    local_model_badge_size: "约 {size}",
-    local_model_badge_installed_size: "已占用 {size}",
     local_model_cache_path_label: "模型保存目录",
     local_model_cache_path_hint: "默认使用本地环境的模型缓存目录；需要时可改到其他磁盘。",
     local_refresh: "重新扫描",
@@ -581,8 +579,6 @@
     local_model_badge_resource_high: "Heavy",
     local_model_badge_speaker: "Speaker",
     local_model_badge_word_timestamps: "Word timestamps",
-    local_model_badge_size: "Approx. {size}",
-    local_model_badge_installed_size: "Installed {size}",
     local_model_cache_path_label: "Model storage directory",
     local_model_cache_path_hint: "The local environment cache is used by default; you can move it to another drive if needed.",
     local_refresh: "Rescan",
@@ -1357,8 +1353,8 @@
     let modelPrepareTimer = 0;
     let alignmentPrepareTimer = 0;
     let alignmentModels = [
-      { id: "qwen3-forced-aligner-0.6b", modelId: "qwen3-forced-aligner-0.6b", engine: "qwen", modelRef: "Qwen/Qwen3-ForcedAligner-0.6B", label: "Qwen3-ForcedAligner 0.6B", note: "文本 + 音频输入，输出字词级时间码；复用 Qwen Local Hugging Face 缓存", estimatedSize: "约 1.7 GB", deviceSupport: "gpu_preferred", resourceLevel: "medium", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
-      { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC（CPU）", note: "中英 CTC token 时间码；轻量 int8 CPU 路线", estimatedSize: "约 767 MB", deviceSupport: "cpu", resourceLevel: "low", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+      { id: "qwen3-forced-aligner-0.6b", modelId: "qwen3-forced-aligner-0.6b", engine: "qwen", modelRef: "Qwen/Qwen3-ForcedAligner-0.6B", label: "Qwen3-ForcedAligner 0.6B", note: "文本 + 音频输入，输出字词级时间码；复用 Qwen Local Hugging Face 缓存", estimatedSize: "1.7G+", deviceSupport: "gpu_preferred", resourceLevel: "medium", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+      { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC（CPU）", note: "中英 CTC token 时间码；轻量 int8 CPU 路线", estimatedSize: "0.9G", deviceSupport: "cpu", resourceLevel: "low", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
     ];
     return {
       get_config: async () => ({
@@ -1466,14 +1462,14 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "en", "ja", "ko", "fr", "de", "es", "ru"],
             models: [
-              { id: "qwen3-asr-local", label: "Qwen3-ASR 0.6B（推荐）", envKey: "", note: "轻量多语种识别；原生字词级时间码；可复用 Qwen3-ForcedAligner", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "medium", estimatedSize: "2.5–4.5 GB", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-0.6B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "qwen3-asr-1.7b-local", label: "Qwen3-ASR 1.7B", envKey: "", note: "更高识别质量；原生字词级时间码；可复用 Qwen3-ForcedAligner；资源占用更高", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "5–9 GB", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-1.7B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "qwen3-asr-local", label: "Qwen3-ASR 0.6B（推荐）", envKey: "", note: "轻量多语种识别；原生字词级时间码；可复用 Qwen3-ForcedAligner", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "medium", estimatedSize: "1.7G+", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-0.6B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "qwen3-asr-1.7b-local", label: "Qwen3-ASR 1.7B", envKey: "", note: "更高识别质量；原生字词级时间码；可复用 Qwen3-ForcedAligner；资源占用更高", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "4G+", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-1.7B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "fun-asr-nano-local", label: "Fun-ASR-Nano 2512（GPU）", envKey: "", note: "LLM-ASR 路线；中英日及中文方言，建议使用 CUDA", supportsSpeaker: false, hidden: true, kind: "local", engine: "funasr", modelRef: "FunAudioLLM/Fun-ASR-Nano-2512", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "funasr-local", label: "FunASR paraformer-zh", envKey: "", note: "中文向 FunASR 路线；保留作为兼容选项", supportsSpeaker: false, hidden: true, kind: "local", engine: "funasr", modelRef: "paraformer-zh", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "sensevoice-small-local", label: "SenseVoice Small", envKey: "", note: "多语种识别；默认配合 FSMN-VAD；CPU/GPU 均可运行；可用对齐模型补齐字词时间码", supportsSpeaker: false, supportsWordTimestamps: false, deviceSupport: "cpu_gpu", resourceLevel: "low", estimatedSize: "1–2 GB", kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "moss-transcribe-diarize-local", label: "MOSS Transcribe-Diarize 0.9B", envKey: "", note: "多人转写与说话人分离；仅段级时间码，可用对齐模型补齐字词时间码；建议 GPU", supportsSpeaker: true, supportsWordTimestamps: false, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "3–6 GB", kind: "local", engine: "moss", modelRef: "OpenMOSS-Team/MOSS-Transcribe-Diarize", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "firered-asr2-ctc-local", label: "FireRedASR2-CTC", envKey: "", note: "中英轻量 int8 CTC 识别；原生 token/字词时间码；CPU 运行；也可作为字幕对齐模型", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu", resourceLevel: "low", estimatedSize: "0.7–1.0 GB", kind: "local", engine: "firered", modelRef: "firered-asr2-ctc", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "whisper-large-v3-local", label: "Faster-Whisper large-v3（实验）", envKey: "", note: "多语种识别；原生词级时间码；CPU/GPU 均可运行；GPU 速度更佳；无说话人分离", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "high", estimatedSize: "2.5–4.0 GB", kind: "local", engine: "whisper", modelRef: "Systran/faster-whisper-large-v3", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
+              { id: "sensevoice-small-local", label: "SenseVoice Small", envKey: "", note: "多语种识别；默认配合 FSMN-VAD；CPU/GPU 均可运行；可用对齐模型补齐字词时间码", supportsSpeaker: false, supportsWordTimestamps: false, deviceSupport: "cpu_gpu", resourceLevel: "low", estimatedSize: "1G+", kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "moss-transcribe-diarize-local", label: "MOSS Transcribe-Diarize 0.9B", envKey: "", note: "多人转写与说话人分离；仅段级时间码，可用对齐模型补齐字词时间码；建议 GPU", supportsSpeaker: true, supportsWordTimestamps: false, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "1.7G+", kind: "local", engine: "moss", modelRef: "OpenMOSS-Team/MOSS-Transcribe-Diarize", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "firered-asr2-ctc-local", label: "FireRedASR2-CTC", envKey: "", note: "中英轻量 int8 CTC 识别；原生 token/字词时间码；CPU 运行；也可作为字幕对齐模型", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu", resourceLevel: "low", estimatedSize: "0.9G", kind: "local", engine: "firered", modelRef: "firered-asr2-ctc", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "whisper-large-v3-local", label: "Faster-Whisper large-v3（实验）", envKey: "", note: "多语种识别；原生词级时间码；CPU/GPU 均可运行；GPU 速度更佳；无说话人分离", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "high", estimatedSize: "3G+", kind: "local", engine: "whisper", modelRef: "Systran/faster-whisper-large-v3", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
             ],
             regions: [],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }]
@@ -2248,6 +2244,29 @@
       checking: "local_checking",
     }[status.status] || "local_missing");
   }
+  function compactModelSize(value) {
+    const text = String(value || "").trim().replace(/^[~约]\s*/u, "");
+    if (!text) return "";
+    const range = text.match(/^([\d.]+)\s*[–-]/u);
+    const normalized = range ? `${range[1]} GB` : text;
+    const gigabytes = normalized.match(/^(\d+(?:\.\d+)?)\s*G(?:B)?\+?$/iu);
+    if (gigabytes) {
+      const amount = Number(gigabytes[1]);
+      if (!Number.isFinite(amount)) return "";
+      if (amount < 1) return `${Math.round(amount * 10) / 10}G`;
+      if (amount < 2) return `${Math.floor(amount * 10) / 10}G+`;
+      return `${Math.floor(amount)}G+`;
+    }
+    const megabytes = normalized.match(/^(\d+(?:\.\d+)?)\s*M(?:B)?$/iu);
+    if (megabytes) {
+      const amount = Number(megabytes[1]) / 1024;
+      return Number.isFinite(amount) ? `${Math.round(amount * 10) / 10}G` : "";
+    }
+    return normalized.replace(/\s+/gu, "");
+  }
+  function localModelSize(model) {
+    return compactModelSize(model?.localStatus?.installedSize || model?.installedSize || model?.estimatedSize);
+  }
   function localModelBadgeDescriptors(model) {
     const deviceKey = {
       cpu: "local_model_badge_cpu",
@@ -2269,17 +2288,17 @@
       key: "local_model_badge_word_timestamps",
       kind: "feature",
     });
-    const installedSize = String(model?.localStatus?.installedSize || model?.installedSize || "").replace(/^约\s*/u, "");
-    const estimatedSize = String(model?.estimatedSize || "").replace(/^约\s*/u, "");
-    const size = installedSize || estimatedSize;
-    if (size) badges.push({
-      key: installedSize ? "local_model_badge_installed_size" : "local_model_badge_size",
-      kind: "size",
-      size,
-    });
     return badges;
   }
   function appendLocalModelBadges(main, model) {
+    const size = localModelSize(model);
+    if (size) {
+      const sizeElement = document.createElement("span");
+      sizeElement.className = "local-model-list-size";
+      sizeElement.textContent = size;
+      sizeElement.title = size;
+      main.append(sizeElement);
+    }
     const container = document.createElement("span");
     container.className = "local-model-list-badges";
     localModelBadgeDescriptors(model).forEach((descriptor) => {
@@ -2321,6 +2340,7 @@
       label.className = "local-model-list-label";
       label.textContent = localizedSelectLabel("model", model);
       main.append(label);
+      appendLocalModelBadges(main, model);
       const note = modelNoteText(model);
       if (note) {
         button.title = note;
@@ -2330,7 +2350,6 @@
         noteElement.textContent = note;
         main.append(noteElement);
       }
-      appendLocalModelBadges(main, model);
       const status = document.createElement("span");
       const statusKey = localModelListStatusKey(model);
       status.className = `local-model-list-status ${ready ? "ready" : ""}`.trim();
@@ -2639,6 +2658,7 @@
       label.className = "local-model-list-label";
       label.textContent = alignmentModelLabel(model);
       main.append(label);
+      appendLocalModelBadges(main, model);
       const note = model.note || model.modelRef || "";
       if (note) {
         button.title = note;
@@ -2648,7 +2668,6 @@
         noteElement.textContent = note;
         main.append(noteElement);
       }
-      appendLocalModelBadges(main, model);
       const status = document.createElement("span");
       status.className = `local-model-list-status ${ready ? "ready" : ""}`.trim();
       status.textContent = ready ? "✓" : t(statusKey);

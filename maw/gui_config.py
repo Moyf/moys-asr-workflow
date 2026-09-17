@@ -488,7 +488,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         supports_word_timestamps=True,
         device_support="cpu_gpu",
         resource_level="medium",
-        estimated_size="2.5–4.5 GB",
+        estimated_size="1.7G+",
     ),
     ModelConfig(
         id="qwen3-asr-1.7b-local",
@@ -504,7 +504,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         supports_word_timestamps=True,
         device_support="gpu_preferred",
         resource_level="high",
-        estimated_size="5–9 GB",
+        estimated_size="4G+",
     ),
     ModelConfig(
         id="fun-asr-nano-local",
@@ -518,7 +518,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         requires_runtime=("funasr", "torchaudio"),
         device_support="gpu_preferred",
         resource_level="high",
-        estimated_size="5–10 GB",
+        estimated_size="5G+",
         hidden=True,
     ),
     ModelConfig(
@@ -537,7 +537,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         hidden=True,
         device_support="cpu_gpu",
         resource_level="medium",
-        estimated_size="2–4 GB",
+        estimated_size="2G+",
     ),
     ModelConfig(
         id="sensevoice-small-local",
@@ -551,7 +551,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         requires_runtime=("funasr", "torchaudio"),
         device_support="cpu_gpu",
         resource_level="low",
-        estimated_size="1–2 GB",
+        estimated_size="1G+",
     ),
     ModelConfig(
         id="moss-transcribe-diarize-local",
@@ -568,7 +568,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         requires_runtime=("moss_transcribe_diarize", "transformers", "torch"),
         device_support="gpu_preferred",
         resource_level="high",
-        estimated_size="3–6 GB",
+        estimated_size="1.7G+",
     ),
     ModelConfig(
         id="firered-asr2-ctc-local",
@@ -587,7 +587,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         supports_word_timestamps=True,
         device_support="cpu",
         resource_level="low",
-        estimated_size="0.7–1.0 GB",
+        estimated_size="0.9G",
     ),
     ModelConfig(
         id="whisper-large-v3-local",
@@ -603,7 +603,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         supports_word_timestamps=True,
         device_support="cpu_gpu",
         resource_level="high",
-        estimated_size="2.5–4.0 GB",
+        estimated_size="3G+",
     ),
 )
 

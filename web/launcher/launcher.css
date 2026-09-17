@@ -622,9 +622,15 @@ label {
 }
 
 .local-model-list-note,
+.local-model-list-size,
 .local-model-list-status {
   color: var(--text-muted);
   font-size: 12px;
+}
+
+.local-model-list-size {
+  line-height: 16px;
+  white-space: nowrap;
 }
 
 .local-model-list-badges {
@@ -659,10 +665,6 @@ label {
 
 .local-model-badge.feature {
   color: var(--text-primary);
-}
-
-.local-model-badge.size {
-  color: var(--text-muted);
 }
 
 .local-model-list-status {
