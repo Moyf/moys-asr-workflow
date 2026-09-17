@@ -125,6 +125,7 @@
           <span data-i18n="test_run">快速测试</span>
         </label>
       </div>
+      <div id="localRuntimeCheckField" class="field hidden"><div class="local-status-row"><p id="localRuntimeCheckStatus" class="local-status" aria-live="polite"></p><button id="openLocalRuntimeSettings" class="inline-link" type="button" data-i18n="local_runtime_view_settings">在 ⚙️ 设置中查看</button></div></div>
       <p id="providerNote" class="hint warn hint-callout hidden" aria-live="polite"></p>
       <p id="testRunHint" class="hint hidden" data-i18n="test_run_override">快速测试已限定前 2 分钟</p>
       <div id="modelField" class="field">
@@ -1135,10 +1136,6 @@
         </div>
         <div id="localModelList" class="local-model-list" role="list" data-i18n-aria-label="local_model_list_label" aria-label="本地模型列表"></div>
         <div id="localModelDetails" class="local-model-panel">
-          <div class="local-status-row">
-            <p id="localModelStatus" class="local-status" aria-live="polite"></p>
-            <button id="refreshLocalModels" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
-          </div>
           <div class="field">
             <label for="localModelPath" data-i18n="local_model_path">已有模型目录（可选）</label>
             <div class="path-row">
@@ -1146,6 +1143,10 @@
               <button id="pickLocalModelPath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
             </div>
             <p id="localModelPathError" class="field-error"></p>
+          </div>
+          <div class="local-status-row">
+            <p id="localModelStatus" class="local-status" aria-live="polite"></p>
+            <button id="refreshLocalModels" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
           </div>
           <div id="localModelProgress" class="task-progress hidden" aria-live="polite">
             <div id="localModelProgressTrack" class="task-progress-track indeterminate"><span id="localModelProgressBar"></span></div>

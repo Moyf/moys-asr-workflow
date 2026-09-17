@@ -463,6 +463,16 @@
     server_refresh: "刷新",
     local_model_path: "已有模型目录（可选）",
     local_model_list_label: "本地模型列表",
+    local_model_badge_cpu: "CPU",
+    local_model_badge_cpu_gpu: "CPU/GPU",
+    local_model_badge_gpu_preferred: "GPU 优先",
+    local_model_badge_resource_low: "资源低",
+    local_model_badge_resource_medium: "资源中",
+    local_model_badge_resource_high: "资源高",
+    local_model_badge_speaker: "说话人",
+    local_model_badge_word_timestamps: "字/词时间码",
+    local_model_badge_segment_timestamps: "段级时间码",
+    local_model_badge_size: "约 {size}",
     local_model_cache_path_label: "模型保存目录",
     local_model_cache_path_hint: "默认使用本地环境的模型缓存目录；需要时可改到其他磁盘。",
     local_refresh: "重新扫描",
@@ -563,6 +573,16 @@
     server_refresh: "Refresh",
     local_model_path: "Existing model folder (optional)",
     local_model_list_label: "Local model list",
+    local_model_badge_cpu: "CPU",
+    local_model_badge_cpu_gpu: "CPU/GPU",
+    local_model_badge_gpu_preferred: "GPU preferred",
+    local_model_badge_resource_low: "Low resource",
+    local_model_badge_resource_medium: "Medium resource",
+    local_model_badge_resource_high: "High resource",
+    local_model_badge_speaker: "Speaker",
+    local_model_badge_word_timestamps: "Word timestamps",
+    local_model_badge_segment_timestamps: "Segment timestamps",
+    local_model_badge_size: "Approx. {size}",
     local_model_cache_path_label: "Model storage directory",
     local_model_cache_path_hint: "The local environment cache is used by default; you can move it to another drive if needed.",
     local_refresh: "Rescan",
@@ -1446,14 +1466,14 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "en", "ja", "ko", "fr", "de", "es", "ru"],
             models: [
-              { id: "qwen3-asr-local", label: "Qwen3-ASR 0.6B（推荐）", envKey: "", note: "本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner", supportsSpeaker: false, supportsWordTimestamps: true, kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-0.6B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "qwen3-asr-1.7b-local", label: "Qwen3-ASR 1.7B", envKey: "", note: "更高识别质量；与 0.6B 共用 Qwen3 Forced Aligner", supportsSpeaker: false, supportsWordTimestamps: true, kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-1.7B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "fun-asr-nano-local", label: "Fun-ASR-Nano 2512（GPU）", envKey: "", note: "LLM-ASR 路线；中英日及中文方言，建议使用 CUDA", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "FunAudioLLM/Fun-ASR-Nano-2512", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "funasr-local", label: "FunASR paraformer-zh", envKey: "", note: "中文向 FunASR 路线；保留作为兼容选项", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "paraformer-zh", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "sensevoice-small-local", label: "SenseVoice Small", envKey: "", note: "多语种本地识别；默认配合 FSMN-VAD，CPU/GPU 都可运行", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "moss-transcribe-diarize-local", label: "MOSS Transcribe-Diarize 0.9B（无字词时间码）", envKey: "", note: "多人转写与说话人分离；只有段级时间码，可选共享对齐模型补齐字/词级时间码", supportsSpeaker: true, kind: "local", engine: "moss", modelRef: "OpenMOSS-Team/MOSS-Transcribe-Diarize", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "firered-asr2-ctc-local", label: "FireRedASR2-CTC（CPU）", envKey: "", note: "轻量中英 int8 CTC 本地识别；输出 token 时间码，也可作为 SRT/MOSP 对齐模型", supportsSpeaker: false, supportsWordTimestamps: true, kind: "local", engine: "firered", modelRef: "firered-asr2-ctc", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "whisper-large-v3-local", label: "Faster-Whisper large-v3（实验）", envKey: "", note: "多语种本地识别；带词级时间码，无说话人分离", supportsSpeaker: false, kind: "local", engine: "whisper", modelRef: "Systran/faster-whisper-large-v3", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
+              { id: "qwen3-asr-local", label: "Qwen3-ASR 0.6B（推荐）", envKey: "", note: "轻量多语种识别；原生字/词级时间码；可复用 Qwen3-ForcedAligner", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "medium", estimatedSize: "2.5–4.5 GB", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-0.6B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "qwen3-asr-1.7b-local", label: "Qwen3-ASR 1.7B", envKey: "", note: "更高识别质量；原生字/词级时间码；可复用 Qwen3-ForcedAligner；资源占用更高", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "5–9 GB", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-1.7B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "fun-asr-nano-local", label: "Fun-ASR-Nano 2512（GPU）", envKey: "", note: "LLM-ASR 路线；中英日及中文方言，建议使用 CUDA", supportsSpeaker: false, hidden: true, kind: "local", engine: "funasr", modelRef: "FunAudioLLM/Fun-ASR-Nano-2512", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "funasr-local", label: "FunASR paraformer-zh", envKey: "", note: "中文向 FunASR 路线；保留作为兼容选项", supportsSpeaker: false, hidden: true, kind: "local", engine: "funasr", modelRef: "paraformer-zh", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "sensevoice-small-local", label: "SenseVoice Small", envKey: "", note: "多语种识别；默认配合 FSMN-VAD；CPU/GPU 均可运行；可用对齐模型补齐字/词时间码", supportsSpeaker: false, supportsWordTimestamps: false, deviceSupport: "cpu_gpu", resourceLevel: "low", estimatedSize: "1–2 GB", kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "moss-transcribe-diarize-local", label: "MOSS Transcribe-Diarize 0.9B", envKey: "", note: "多人转写与说话人分离；仅段级时间码，可用对齐模型补齐字/词时间码；建议 GPU", supportsSpeaker: true, supportsWordTimestamps: false, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "3–6 GB", kind: "local", engine: "moss", modelRef: "OpenMOSS-Team/MOSS-Transcribe-Diarize", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "firered-asr2-ctc-local", label: "FireRedASR2-CTC", envKey: "", note: "中英轻量 int8 CTC 识别；原生 token/字词时间码；CPU 运行；也可作为字幕对齐模型", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu", resourceLevel: "low", estimatedSize: "0.7–1.0 GB", kind: "local", engine: "firered", modelRef: "firered-asr2-ctc", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "whisper-large-v3-local", label: "Faster-Whisper large-v3（实验）", envKey: "", note: "多语种识别；原生词级时间码；CPU/GPU 均可运行；GPU 速度更佳；无说话人分离", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "high", estimatedSize: "2.5–4.0 GB", kind: "local", engine: "whisper", modelRef: "Systran/faster-whisper-large-v3", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
             ],
             regions: [],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }]
@@ -1639,8 +1659,8 @@
     "qwen3-asr-1.7b-local": "Qwen3-ASR 1.7B",
     "fun-asr-nano-local": "Fun-ASR-Nano 2512 (GPU)",
     "sensevoice-small-local": "SenseVoice Small",
-    "firered-asr2-ctc-local": "FireRedASR2-CTC (CPU)",
-    "moss-transcribe-diarize-local": "MOSS Transcribe-Diarize 0.9B (segment timestamps only)",
+    "firered-asr2-ctc-local": "FireRedASR2-CTC",
+    "moss-transcribe-diarize-local": "MOSS Transcribe-Diarize 0.9B",
     "whisper-large-v3-local": "Faster-Whisper large-v3 (experimental)",
     "bcut-asr": "Bcut ASR (no key / Chinese only)",
   };
@@ -1655,14 +1675,14 @@
     "custom-asr": "Fill in your custom ASR model name after selecting this.",
     "stt-async-v5": "Supports general, text, terms, and translation_terms context.",
     "16k_zh_en_2.0": "Enter the SecretId here; configure SecretKey in the local .env.",
-    "qwen3-asr-local": "Runs locally; the first preparation downloads Qwen3-ASR and the Forced Aligner.",
-    "qwen3-asr-1.7b-local": "Higher recognition quality; shares the Qwen3 Forced Aligner with 0.6B.",
+    "qwen3-asr-local": "Lightweight multilingual recognition with native word/character timestamps; shares the Qwen3-ForcedAligner cache.",
+    "qwen3-asr-1.7b-local": "Higher recognition quality with native word/character timestamps; shares the Qwen3-ForcedAligner; higher resource use.",
     "fun-asr-nano-local": "LLM-ASR approach with FSMN-VAD by default; Chinese, English, Japanese, and Chinese dialects; CUDA recommended.",
     "funasr-local": "Runs locally; uses the FunASR upstream model cache.",
-    "sensevoice-small-local": "Multilingual local recognition with FSMN-VAD by default; runs on CPU or GPU.",
-    "firered-asr2-ctc-local": "Lightweight Chinese/English CTC recognition on CPU; outputs token timestamps and can also align SRT/MOSP subtitles.",
-    "moss-transcribe-diarize-local": "End-to-end transcription with speaker diarization; segment timestamps only, no word-level timecodes; requires a separate Transformers 5.x runtime; CUDA recommended.",
-    "whisper-large-v3-local": "OpenAI Whisper multilingual local recognition; the CTranslate2 runtime bundles VAD and has no speaker diarization. GPU use requires installing CUDA 12 and cuDNN 9 yourself; otherwise it falls back to CPU.",
+    "sensevoice-small-local": "Multilingual recognition with FSMN-VAD by default; runs on CPU or GPU; an aligner can add word/character timestamps.",
+    "firered-asr2-ctc-local": "Lightweight Chinese/English int8 CTC recognition with native token/word timestamps; CPU-based and also usable as a subtitle aligner.",
+    "moss-transcribe-diarize-local": "Speaker diarization with segment timestamps only; an aligner can add word/character timestamps; GPU recommended.",
+    "whisper-large-v3-local": "Multilingual recognition with native word timestamps; runs on CPU or GPU, with better speed on GPU; no speaker diarization.",
     "bcut-asr": "Millisecond per-character timestamps; no API key required.",
   };
   const MODEL_PRICING_NOTES_EN = {
@@ -2228,6 +2248,48 @@
       checking: "local_checking",
     }[status.status] || "local_missing");
   }
+  function localModelBadgeDescriptors(model) {
+    const deviceKey = {
+      cpu: "local_model_badge_cpu",
+      cpu_gpu: "local_model_badge_cpu_gpu",
+      gpu_preferred: "local_model_badge_gpu_preferred",
+    }[model?.deviceSupport];
+    const resourceKey = {
+      low: "local_model_badge_resource_low",
+      medium: "local_model_badge_resource_medium",
+      high: "local_model_badge_resource_high",
+    }[model?.resourceLevel];
+    const badges = [];
+    if (deviceKey) badges.push({ key: deviceKey, kind: "hardware" });
+    if (resourceKey) badges.push({ key: resourceKey, kind: "resource" });
+    if (model?.supportsSpeaker || model?.supportsDiarization) {
+      badges.push({ key: "local_model_badge_speaker", kind: "feature" });
+    }
+    badges.push({
+      key: model?.supportsWordTimestamps
+        ? "local_model_badge_word_timestamps"
+        : "local_model_badge_segment_timestamps",
+      kind: "feature",
+    });
+    if (model?.estimatedSize) badges.push({
+      key: "local_model_badge_size",
+      kind: "size",
+      size: model.estimatedSize,
+    });
+    return badges;
+  }
+  function appendLocalModelBadges(main, model) {
+    const container = document.createElement("span");
+    container.className = "local-model-list-badges";
+    localModelBadgeDescriptors(model).forEach((descriptor) => {
+      const badge = document.createElement("span");
+      badge.className = `local-model-badge ${descriptor.kind}`;
+      badge.textContent = t(descriptor.key).replace("{size}", descriptor.size || "");
+      badge.title = badge.textContent;
+      container.append(badge);
+    });
+    if (container.childElementCount) main.append(container);
+  }
   function renderLocalModelList() {
     const container = $("localModelList");
     if (!container) return;
@@ -2267,6 +2329,7 @@
         noteElement.textContent = note;
         main.append(noteElement);
       }
+      appendLocalModelBadges(main, model);
       const status = document.createElement("span");
       const statusKey = localModelListStatusKey(model);
       status.className = `local-model-list-status ${ready ? "ready" : ""}`.trim();

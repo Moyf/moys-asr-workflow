@@ -627,6 +627,44 @@ label {
   font-size: 12px;
 }
 
+.local-model-list-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  max-height: 38px;
+  overflow: hidden;
+}
+
+.local-model-badge {
+  display: inline-block;
+  max-width: 100%;
+  padding: 1px 5px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.local-model-badge.hardware {
+  color: var(--accent-hover);
+}
+
+.local-model-badge.resource {
+  color: var(--amber-hover);
+}
+
+.local-model-badge.feature {
+  color: var(--text-primary);
+}
+
+.local-model-badge.size {
+  color: var(--text-muted);
+}
+
 .local-model-list-status {
   flex: 0 0 auto;
   white-space: nowrap;

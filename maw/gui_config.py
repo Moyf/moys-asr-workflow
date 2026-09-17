@@ -53,6 +53,10 @@ class ModelConfig:
     # 模型是否原生返回可用于字幕编辑的字/词级时间码；为 False 时，
     # Launcher 可在本地模型设置中提供额外的对齐模型。
     supports_word_timestamps: bool = False
+    # 本地模型列表中的用户向资源提示；不参与运行时判定。
+    device_support: str = ""
+    resource_level: str = ""
+    estimated_size: str = ""
     languages: tuple[tuple[str, str], ...] = ()
     kind: str = "cloud"
     engine: str = ""
@@ -474,7 +478,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         id="qwen3-asr-local",
         label="Qwen3-ASR 0.6B（推荐）",
         env_key="",
-        note="本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner",
+        note="轻量多语种识别；原生字/词级时间码；可复用 Qwen3-ForcedAligner",
         languages=LANGUAGES,
         kind="local",
         engine="qwen-asr",
@@ -482,12 +486,15 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         required_model_refs=("Qwen/Qwen3-ForcedAligner-0.6B",),
         requires_runtime=("qwen_asr", "torch"),
         supports_word_timestamps=True,
+        device_support="cpu_gpu",
+        resource_level="medium",
+        estimated_size="2.5–4.5 GB",
     ),
     ModelConfig(
         id="qwen3-asr-1.7b-local",
         label="Qwen3-ASR 1.7B",
         env_key="",
-        note="更高识别质量；与 0.6B 共用 Qwen3 Forced Aligner",
+        note="更高识别质量；原生字/词级时间码；可复用 Qwen3-ForcedAligner；资源占用更高",
         languages=LANGUAGES,
         kind="local",
         engine="qwen-asr",
@@ -495,6 +502,9 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         required_model_refs=("Qwen/Qwen3-ForcedAligner-0.6B",),
         requires_runtime=("qwen_asr", "torch"),
         supports_word_timestamps=True,
+        device_support="gpu_preferred",
+        resource_level="high",
+        estimated_size="5–9 GB",
     ),
     ModelConfig(
         id="fun-asr-nano-local",
@@ -506,13 +516,16 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         engine="funasr",
         model_ref="FunAudioLLM/Fun-ASR-Nano-2512",
         requires_runtime=("funasr", "torchaudio"),
+        device_support="gpu_preferred",
+        resource_level="high",
+        estimated_size="5–10 GB",
         hidden=True,
     ),
     ModelConfig(
         id="funasr-local",
         label="FunASR paraformer-zh",
         env_key="",
-        note="本地运行；使用 FunASR 上游模型缓存",
+        note="中文识别兼容路线；使用 FunASR 上游模型缓存",
         languages=FUNASR_LANGUAGES,
         kind="local",
         engine="funasr",
@@ -522,37 +535,46 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         # GUI 不能导入 FunASR，扫描缓存时需要显式的映射。
         cache_refs=("iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",),
         hidden=True,
+        device_support="cpu_gpu",
+        resource_level="medium",
+        estimated_size="2–4 GB",
     ),
     ModelConfig(
         id="sensevoice-small-local",
         label="SenseVoice Small",
         env_key="",
-        note="多语种本地识别；默认配合 FSMN-VAD，CPU/GPU 都可运行",
+        note="多语种识别；默认配合 FSMN-VAD；CPU/GPU 均可运行；可用对齐模型补齐字/词时间码",
         languages=SENSEVOICE_LANGUAGES,
         kind="local",
         engine="funasr",
         model_ref="iic/SenseVoiceSmall",
         requires_runtime=("funasr", "torchaudio"),
+        device_support="cpu_gpu",
+        resource_level="low",
+        estimated_size="1–2 GB",
     ),
     ModelConfig(
         id="moss-transcribe-diarize-local",
-        label="MOSS Transcribe-Diarize 0.9B（无字词时间码）",
+        label="MOSS Transcribe-Diarize 0.9B",
         env_key="",
         # 无字词级时间码是 MOSS 输出契约的硬限制；MAW 不伪造 items，也不对
         # 模型段做字数硬切，必须在模型说明里提前告知。
-        note="端到端转写与说话人分离；仅段级时间戳，无字词级时间码；需要独立的 Transformers 5.x 运行环境，建议 CUDA",
+        note="多人转写与说话人分离；仅段级时间码，可用对齐模型补齐字/词时间码；建议 GPU",
         supports_speaker=True,
         languages=LANGUAGES,
         kind="local",
         engine="moss",
         model_ref="OpenMOSS-Team/MOSS-Transcribe-Diarize",
         requires_runtime=("moss_transcribe_diarize", "transformers", "torch"),
+        device_support="gpu_preferred",
+        resource_level="high",
+        estimated_size="3–6 GB",
     ),
     ModelConfig(
         id="firered-asr2-ctc-local",
-        label="FireRedASR2-CTC（CPU）",
+        label="FireRedASR2-CTC",
         env_key="",
-        note="轻量 int8 CTC 本地识别；支持中英，输出 token 时间码，也可作为 SRT/MOSP 的对齐模型",
+        note="中英轻量 int8 CTC 识别；原生 token/字词时间码；CPU 运行；也可作为字幕对齐模型",
         languages=(
             ("", "自动识别"),
             ("zh", "中文 / Chinese"),
@@ -563,12 +585,15 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         model_ref="firered-asr2-ctc",
         requires_runtime=("sherpa_onnx", "soundfile"),
         supports_word_timestamps=True,
+        device_support="cpu",
+        resource_level="low",
+        estimated_size="0.7–1.0 GB",
     ),
     ModelConfig(
         id="whisper-large-v3-local",
         label="Faster-Whisper large-v3（实验）",
         env_key="",
-        note="OpenAI Whisper 多语种本地识别；CTranslate2 运行时自带 VAD，无说话人分离；GPU 运行需要用户自行安装 CUDA 12 和 cuDNN 9，否则自动回退到 CPU",
+        note="多语种识别；原生词级时间码；CPU/GPU 均可运行；GPU 速度更佳；无说话人分离",
         languages=LANGUAGES,
         kind="local",
         engine="whisper",
@@ -576,6 +601,9 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         model_ref="Systran/faster-whisper-large-v3",
         requires_runtime=("faster_whisper",),
         supports_word_timestamps=True,
+        device_support="cpu_gpu",
+        resource_level="high",
+        estimated_size="2.5–4.0 GB",
     ),
 )
 
