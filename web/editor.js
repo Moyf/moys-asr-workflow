@@ -13163,6 +13163,8 @@ function subtitleFontFamilyInputToStored(text) {
 // getEntries() 返回 [{ value, label }]；选项点击或 Enter 写入 label 并派发 change，
 // 由既有映射（subtitleFontFamilyInputToStored / assStyleForm change 委托）落库。
 // 上下方向键在高亮项间移动（含首尾回绕前的边界钳制），输入仍可保留自定义值。
+// 下拉面板打开时 portal 到 body 并按输入框矩形 fixed 定位：不参与设置面板的
+// 滚动区（不撑高容器、不被面板边缘裁剪），宽度锁定与输入框同宽，贴底时上翻。
 // 实例惰性创建：启动早期（relabelSubtitleFontFamilyOptions 于模块求值时被调用）
 // 也可能触发重建，惰性创建避免引用后置声明造成暂时性死区。
 function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
@@ -13171,8 +13173,42 @@ function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
   let entries = [];
   let activeIndex = -1;
   let blurTimer = 0;
+  let reposition = null;
+  const picker = options.parentElement;
   function optionId(index) {
     return options.id ? `${options.id}-option-${index}` : `font-combobox-option-${index}`;
+  }
+  function positionPanel() {
+    const rect = input.getBoundingClientRect();
+    const margin = 8;
+    const viewportHeight = window.innerHeight;
+    const cap = Math.max(120, Math.min(280, Math.round(viewportHeight * 0.4)));
+    const spaceBelow = viewportHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+    const openUp = spaceBelow < Math.min(cap, 140) && spaceAbove > spaceBelow;
+    options.style.left = `${Math.round(rect.left)}px`;
+    options.style.width = `${Math.round(rect.width)}px`;
+    if (openUp) {
+      options.style.top = 'auto';
+      options.style.bottom = `${Math.round(viewportHeight - rect.top + 2)}px`;
+      options.style.maxHeight = `${Math.max(120, Math.min(cap, spaceAbove))}px`;
+    } else {
+      options.style.bottom = 'auto';
+      options.style.top = `${Math.round(rect.bottom + 2)}px`;
+      options.style.maxHeight = `${Math.max(120, Math.min(cap, spaceBelow))}px`;
+    }
+  }
+  function attachReposition() {
+    reposition = () => positionPanel();
+    window.addEventListener('resize', reposition);
+    // capture 捕获任意祖先（设置面板体、模态框等）的滚动，浮层跟随输入框。
+    document.addEventListener('scroll', reposition, true);
+  }
+  function detachReposition() {
+    if (!reposition) return;
+    window.removeEventListener('resize', reposition);
+    document.removeEventListener('scroll', reposition, true);
+    reposition = null;
   }
   function setActive(index, { scroll = false } = {}) {
     activeIndex = entries.length ? Math.max(0, Math.min(index, entries.length - 1)) : -1;
@@ -13228,11 +13264,20 @@ function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
     input.setAttribute('aria-expanded', String(open));
     if (open) {
       render(query);
+      // portal 到 body 脱离设置面板的滚动/裁剪上下文，先定位再显示避免闪跳。
+      if (options.parentElement !== document.body) document.body.appendChild(options);
+      positionPanel();
+      attachReposition();
+      options.hidden = false;
     } else {
       entries = [];
       setActive(-1);
+      detachReposition();
+      options.hidden = true;
+      // 关闭后归还到 picker 内，保持模板 DOM 结构整洁。
+      if (picker && options.parentElement !== picker) picker.appendChild(options);
+      input.removeAttribute('aria-activedescendant');
     }
-    options.hidden = !open;
   }
   function moveActive(step) {
     if (!open) setOpen(true, input.value);
