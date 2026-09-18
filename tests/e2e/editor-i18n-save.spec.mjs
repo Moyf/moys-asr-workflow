@@ -303,17 +303,11 @@ test('larger subtitle-segment overlap requires an explicit repair direction', as
     });
   });
   await page.evaluate(() => {
-<<<<<<< HEAD
+    // 同上：钉住毫秒时间基准，避免帧吸附改写时间边界。
+    MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
     MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 2000;
     MaweBoot.DATA.segments[0]._dirty = true;
     MaweCuePanel.renderAll({ waveform: 'overlay' });
-=======
-    // 同上：钉住毫秒时间基准，避免帧吸附改写时间边界。
-    DATA.timebase = { unit: 'milliseconds', fps: 30 };
-    DATA.segments[0].end = DATA.segments[1].start + 2000;
-    DATA.segments[0]._dirty = true;
-    renderAll({ waveform: 'overlay' });
->>>>>>> origin/main
   });
 
   await page.keyboard.press('Control+s');
