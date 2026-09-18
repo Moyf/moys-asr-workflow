@@ -5195,6 +5195,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('local_runtime_configure_suffix: " to configure"', script)
         self.assertIn('id="toggleLocalRuntimeInventory"', page)
         self.assertIn('id="localRuntimeInventory"', page)
+        self.assertLess(page.index('id="toggleLocalRuntimeInventory"'), page.index('id="refreshLocalRuntime"'))
         self.assertIn('local_runtime_inventory: "查看运行时清单"', script)
         self.assertIn('local_runtime_inventory: "View runtime inventory"', script)
         self.assertIn('bridge("get_local_runtime_inventory")', script)

@@ -823,12 +823,6 @@ label {
   white-space: nowrap;
 }
 
-.runtime-inventory-toggle-row {
-  display: flex;
-  justify-content: flex-start;
-  margin-top: 2px;
-}
-
 .runtime-inventory {
   display: grid;
   gap: 10px;
