@@ -26,6 +26,9 @@ DASHSCOPE_PRICE_PER_SECOND: Final[float] = 0.00022
 
 POSTPROCESS_DIR_NAMES: Final[dict[str, str]] = {"zh": "后处理", "en": "postprocess"}
 
+# 调试产物目录。写入时跟随当前界面语言；旧目录不自动迁移。
+DEBUG_DIR_NAMES: Final[dict[str, str]] = {"zh": "调试", "en": "debug"}
+
 # 工程备份目录（project_backups）。读取端同时兼容两种语言命名。
 BACKUP_DIR_NAMES: Final[dict[str, str]] = {"zh": "备份", "en": "backups"}
 
@@ -44,6 +47,7 @@ OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
     "proofread": {"zh": "校对文本", "en": "proofread"},
     "resegment": {"zh": "重新断句", "en": "resegment"},
     "custom": {"zh": "自定义", "en": "custom"},
+    "timestamps": {"zh": "生成时间码", "en": "timestamps"},
 }
 
 # 媒体工具产物后缀（压制字幕/提取音频/媒体重组）；未列出的后缀原样使用。
@@ -132,6 +136,48 @@ def maw_root(media_path: Path | str, *, per_video: bool | None = None) -> Path:
     if per_video:
         return media.parent / f"{sanitize_component(media.stem, '视频')}{MAW_DIR_NAME}"
     return media.parent / MAW_DIR_NAME
+
+
+def debug_artifact_dir(
+    media_path: Path | str,
+    output_path: Path | str | None = None,
+    *,
+    explicit_output: bool = False,
+    lang: str | None = None,
+) -> Path:
+    """返回调试产物目录，并遵循 Launcher 的输出子文件夹设置。
+
+    开启「将所有输出文件放入子文件夹」时，调试文件统一进入媒体对应的
+    ``_maw/调试``（英文界面为 ``_maw/debug``）。关闭时保留历史行为：显式
+    指定输出路径的调试文件与输出同目录；未指定输出路径的在线调试响应仍写入
+    媒体对应的 ``_maw``。
+    """
+    media = Path(media_path).expanduser().resolve(strict=False)
+    output_subfolder, _ = subfolder_prefs()
+    if output_subfolder:
+        return maw_root(media) / DEBUG_DIR_NAMES[resolve_lang(lang)]
+    if explicit_output and output_path is not None:
+        return Path(output_path).expanduser().resolve(strict=False).parent
+    return maw_root(media)
+
+
+def debug_artifact_path(
+    media_path: Path | str,
+    output_path: Path | str,
+    suffix: str,
+    *,
+    explicit_output: bool = False,
+    lang: str | None = None,
+) -> Path:
+    """返回一个按输出布局放置的调试产物路径。"""
+    output = Path(output_path).expanduser().resolve(strict=False)
+    directory = debug_artifact_dir(
+        media_path,
+        output,
+        explicit_output=explicit_output,
+        lang=lang,
+    )
+    return directory / f"{output.stem}{suffix}"
 
 
 def waveform_dirs(media_path: Path | str) -> list[Path]:
@@ -356,6 +402,7 @@ __all__ = [
     "BACKUP_DIR_NAMES",
     "DASHSCOPE_PRICE_PER_SECOND",
     "DEFAULT_LANG",
+    "DEBUG_DIR_NAMES",
     "MAW_DIR_NAME",
     "MAW_STAT_PREFIX",
     "MEDIA_SUFFIX_NAMES",
@@ -364,6 +411,8 @@ __all__ = [
     "TRANSLATION_MARKER_NAMES",
     "TRANSLATION_TARGET_NAMES",
     "backup_directory_name",
+    "debug_artifact_dir",
+    "debug_artifact_path",
     "estimate_dashscope_cost",
     "format_elapsed",
     "format_maw_stat",

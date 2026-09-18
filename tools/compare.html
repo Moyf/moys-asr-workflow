@@ -804,7 +804,9 @@ async function addFiles(fileList) {
   }
   if (added) {
     assignColors();
-    if (state.files.length === 1 && files.length > 1) toast('提示：多个文件已加载，可再选一个「基准」查看相似度');
+    // 原条件 state.files.length === 1 && files.length > 1 只在「多选里只有
+    // 一个文件解析成功」时触发，真正加载出多个文件时反而不提示，与本意相反。
+    if (state.files.length > 1 && !state.refId) toast('提示：多个文件已加载，可再选一个「基准」查看相似度');
   }
   render();
 }

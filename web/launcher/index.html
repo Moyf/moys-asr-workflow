@@ -125,6 +125,7 @@
           <span data-i18n="test_run">快速测试</span>
         </label>
       </div>
+      <div id="localRuntimeCheckField" class="field hidden"><div class="local-status-row"><p id="localRuntimeCheckStatus" class="local-status" aria-live="polite"></p><button id="openLocalRuntimeSettings" class="inline-link" type="button" data-i18n="local_runtime_view_settings">在 ⚙️ 设置中查看</button></div></div>
       <p id="providerNote" class="hint warn hint-callout hidden" aria-live="polite"></p>
       <p id="testRunHint" class="hint hidden" data-i18n="test_run_override">快速测试已限定前 2 分钟</p>
       <div id="modelField" class="field">
@@ -156,36 +157,8 @@
         <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">阿里云百炼</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取或查看 API Key ↗</span></p>
         <p id="apiKeyError" class="field-error"></p>
       </div>
-      <div id="localRuntimeCheckField" class="field hidden"><div class="local-status-row"><p id="localRuntimeCheckStatus" class="local-status" aria-live="polite"></p><button id="openLocalRuntimeSettings" class="inline-link" type="button" data-i18n="local_runtime_view_settings">在 ⚙️ 设置中查看</button></div></div>
-      <div id="localModelPanel" class="local-model-panel hidden">
-        <div class="local-status-row">
-          <p id="localModelStatus" class="local-status" aria-live="polite"></p>
-          <button id="refreshLocalModels" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
-        </div>
-        <p id="localModelHint" class="hint"></p>
-        <div class="field">
-          <label for="localModelCachePath" data-i18n="local_model_cache_path_label">模型保存目录</label>
-          <div class="path-row">
-            <input id="localModelCachePath" type="text" autocomplete="off">
-            <button id="pickLocalModelCachePath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
-          </div>
-          <p id="localModelCachePathError" class="field-error"></p>
-          <p class="hint" data-i18n="local_model_cache_path_hint">默认使用本地环境的模型缓存目录；需要时可改到其他磁盘。</p>
-          <p id="localModelCachePathLine" class="runtime-path-line hidden"></p>
-        </div>
-        <div class="field">
-          <label for="localModelPath" data-i18n="local_model_path">已有模型目录（可选）</label>
-          <div class="path-row">
-            <input id="localModelPath" type="text" autocomplete="off">
-            <button id="pickLocalModelPath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
-          </div>
-          <p id="localModelPathError" class="field-error"></p>
-        </div>
-        <div id="localModelProgress" class="task-progress hidden" aria-live="polite">
-          <div id="localModelProgressTrack" class="task-progress-track indeterminate"><span id="localModelProgressBar"></span></div>
-          <p id="localModelProgressMessage" class="hint"></p>
-        </div>
-        <button id="prepareLocalModel" class="ghost" type="button" data-i18n="local_prepare">下载模型</button>
+      <div id="localModelSettingsEntry" class="field hidden">
+        <p class="hint local-model-settings-hint"><span data-i18n="local_model_settings_hint_prefix">本地模型的下载和缓存可以在 </span><button id="openLocalModelSettings" class="inline-link" type="button" data-i18n="local_model_settings_open">本地 AI 模型配置</button><span data-i18n="local_model_settings_hint_suffix"> 中管理。</span></p>
       </div>
       <div id="advancedCard" class="sub-accordion collapsed">
         <button id="advancedToggle" class="accordion-header" type="button"><span class="chevron">▸</span><span data-i18n="advanced">高级选项</span></button>
@@ -195,6 +168,16 @@
               <h3 data-i18n="advanced_params">识别参数</h3>
               <div class="advanced-col">
                 <div id="localDeviceField" class="field hidden"><label for="localDevice" data-i18n="local_device">设备</label><select id="localDevice"><option value="auto" data-i18n="device_auto">自动</option><option value="cpu" data-i18n="device_cpu">CPU</option><option value="cuda" data-i18n="device_cuda">CUDA</option></select></div>
+                <div id="fireRedPuncField" class="field hidden"><label for="fireRedPunc" data-i18n="firered_punc">生成标点提升断句</label><select id="fireRedPunc"><option value="none" data-i18n="firered_punc_none">不使用</option><option value="ct-punc" data-i18n="firered_punc_ct_punc" selected>使用 ct-punc</option></select></div>
+                <div id="recognitionAlignmentModelField" class="field hidden">
+                  <label for="recognitionAlignmentModel" data-i18n="recognition_alignment_model">对齐模型</label>
+                  <select id="recognitionAlignmentModel">
+                    <option value="" data-i18n="alignment_model_none">不调用</option>
+                  </select>
+                  <p id="recognitionAlignmentModelStatus" class="hint" aria-live="polite"></p>
+                  <p class="hint" data-i18n="recognition_alignment_model_hint">当前模型没有字词级时间码时，可调用已准备好的对齐模型补齐。</p>
+                  <p id="recognitionAlignmentModelError" class="field-error"></p>
+                </div>
                 <p id="dashscopeRegionHint" class="hint hidden"><span data-i18n="dashscope_region_hint_prefix">如果你不是中国大陆地区的用户，请前往 </span><button id="openDashscopeRegionSettings" class="inline-link" type="button" data-i18n="dashscope_region_hint_link">⚙️ 设置 → 运行环境</button><span data-i18n="dashscope_region_hint_suffix"> 配置阿里云百炼地域与业务空间。</span></p>
               </div>
             </div>
@@ -334,7 +317,7 @@
               <div id="debugRawField" class="field">
                 <label class="check-field" for="debugRaw" data-i18n-title="debug_raw_title">
                   <input id="debugRaw" type="checkbox">
-                  <span data-i18n="debug_raw">调试运行（保存完整返回数据）</span>
+                  <span data-i18n="debug_raw">调试运行（保存原始/中间数据）</span>
                 </label>
               </div>
             </div>
@@ -529,11 +512,12 @@
           <div id="toolboxChainList" class="toolbox-chain-list"></div>
         </div>
         <nav id="toolboxPostprocessTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxPostprocessPrimaryTab">
-          <div class="toolbox-tab-list">
+          <div class="toolbox-tab-list toolbox-tab-list-5">
             <button id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="toolboxMatchPanel" data-tool="match" data-i18n="toolbox_match">文稿匹配</button>
+            <button id="toolboxTimestampsTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxTimestampsPanel" data-tool="timestamps" data-i18n="toolbox_timestamps">生成时间码</button>
             <button id="toolboxOcrTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxOcrPanel" data-tool="ocr" data-i18n="toolbox_ocr_dedup">OCR 字幕去重</button>
             <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
-             <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定处理</button>
+            <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定处理</button>
           </div>
         </nav>
       </section>
@@ -691,8 +675,8 @@
         </div>
       </div>
 
-    <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
-      <p class="hint toolbox-panel-hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</p>
+      <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
+        <p class="hint toolbox-panel-hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</p>
         <div class="field">
         <label for="postprocessScriptPath" data-i18n="toolbox_script">文稿文件</label>
         <div class="path-row">
@@ -728,11 +712,44 @@
           </label>
           <p class="hint" data-i18n="toolbox_clean_markdown_symbols_hint">匹配前移除粗体、斜体、删除线、行内代码和 ==高亮== 标记，只保留可见文字。</p>
         </div>
-        <p class="hint"><button id="openPunctSettings" class="inline-link" type="button" data-i18n="toolbox_punct_open_settings">在 ⚙️ 设置中配置断句与保留符号</button></p>
+       <p class="hint"><button id="openPunctSettings" class="inline-link" type="button" data-i18n="toolbox_punct_open_settings">在 ⚙️ 设置中配置断句与保留符号</button></p>
+     </section>
+
+    <section id="toolboxTimestampsPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxTimestampsTab">
+      <p class="hint toolbox-panel-hint" data-i18n="toolbox_timestamps_hint">给 .srt 或 .mosp/.json 工程的字幕段生成或补充字词级时间码；需要原始媒体。</p>
+      <div class="adv-group">
+        <h3 data-i18n="toolbox_group_timestamp_media">媒体来源</h3>
+        <div id="toolboxTimestampMediaDropZone" class="field toolbox-input">
+          <label for="toolboxTimestampMediaPath" data-i18n="toolbox_timestamp_media">媒体来源</label>
+          <div class="path-row">
+            <input id="toolboxTimestampMediaPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_timestamp_media_placeholder" placeholder="选择或拖入媒体文件">
+            <button id="pickToolboxTimestampMedia" class="ghost" type="button" data-i18n="choose">选择</button>
+          </div>
+          <p id="toolboxTimestampMediaPathError" class="field-error"></p>
+        </div>
+      </div>
+      <div class="adv-group">
+        <h3 data-i18n="toolbox_group_alignment_model">对齐模型</h3>
+        <div class="toolbox-grid">
+          <div class="field">
+            <label for="toolboxTimestampModel" data-i18n="toolbox_timestamp_model">对齐模型</label>
+            <select id="toolboxTimestampModel"></select>
+            <p id="toolboxTimestampModelStatus" class="hint" aria-live="polite"></p>
+          </div>
+          <div class="field">
+            <label for="toolboxTimestampMode" data-i18n="toolbox_timestamp_mode">处理方式</label>
+            <select id="toolboxTimestampMode">
+              <option value="fill" data-i18n="toolbox_timestamp_mode_fill">只补充缺失时间码</option>
+              <option value="generate" data-i18n="toolbox_timestamp_mode_generate">重新生成全部时间码</option>
+            </select>
+          </div>
+        </div>
+        <p class="hint toolbox-settings-hint" data-i18n="toolbox_timestamp_model_hint">Qwen3-ForcedAligner 与 FireRedASR2-CTC 都可独立下载；Qwen 复用 Qwen Local 的 Hugging Face 缓存。</p>
+      </div>
     </section>
 
-    <section id="toolboxOcrPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxOcrTab">
-      <p class="hint toolbox-panel-hint" data-i18n="toolbox_ocr_hint">画面文字与字幕高度相似的段会被禁用或从 SRT 移除。</p>
+      <section id="toolboxOcrPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxOcrTab">
+        <p class="hint toolbox-panel-hint" data-i18n="toolbox_ocr_hint">画面文字与字幕高度相似的段会被禁用或从 SRT 移除。</p>
       <div class="adv-group">
         <h3 data-i18n="toolbox_group_ocr_video">视频来源</h3>
         <div id="ocrVideoPathField" class="field toolbox-input">
@@ -741,7 +758,6 @@
             <input id="ocrVideoPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_ocr_video_placeholder" placeholder="优先使用工程视频，也可选择视频文件">
             <button id="pickOcrVideo" class="ghost" type="button" data-i18n="choose">选择</button>
           </div>
-          <p class="hint" data-i18n="toolbox_ocr_video_hint">工程有可用视频时可自动使用；独立 SRT 或当前媒体为音频时必须选择视频。</p>
           <p id="ocrVideoPathError" class="field-error"></p>
         </div>
       </div>
@@ -931,6 +947,9 @@
           <button id="runToolboxAlignment" class="primary" type="button" data-i18n="toolbox_run_alignment">启动并打开口播对齐</button>
           <button id="stopToolboxAlignment" class="ghost hidden" type="button" data-i18n="toolbox_stop_alignment">停止服务</button>
         </div>
+        <div class="toolbox-action-slot hidden" data-tool-action="timestamps">
+          <button id="runTimestampAlignment" class="primary" type="button" data-i18n="toolbox_run_timestamps">生成时间码</button>
+        </div>
         <div class="toolbox-action-slot" data-tool-action="match">
           <button id="runScriptMatch" class="primary" type="button" data-i18n="toolbox_run_match">匹配文稿</button>
         </div>
@@ -1005,7 +1024,7 @@
       <div class="settings-section">
         <h3 data-i18n="settings_file_output">文件输出</h3>
         <label class="check-field" for="outputSubfolder">
-          <input id="outputSubfolder" type="checkbox" data-i18n-title="output_subfolder_title" title="将所有输出文件放入子文件夹（默认关闭）：SRT、工程与编辑器页面写入媒体旁的 _maw 子目录">
+          <input id="outputSubfolder" type="checkbox" data-i18n-title="output_subfolder_title" title="将所有输出文件放入子文件夹（默认关闭）：SRT、工程、编辑器页面和调试文件写入媒体旁的 _maw 子目录">
           <span data-i18n="output_subfolder">将所有输出文件放入子文件夹</span>
         </label>
         <label class="check-field" for="perVideoSubfolder">
@@ -1102,6 +1121,55 @@
           <p class="hint" data-i18n="llm_base_url_hint">远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。</p>
         </div>
       </div>
+      <div id="localAsrModelSettingsSection" class="settings-section hidden">
+        <h3 data-i18n="settings_local_asr_models">本地 ASR 模型</h3>
+        <div id="localModelPanel" class="local-model-panel">
+          <div class="field">
+            <label for="localModelCachePath" data-i18n="local_model_cache_path_label">模型保存目录</label>
+            <div class="path-row">
+              <input id="localModelCachePath" type="text" autocomplete="off">
+              <button id="pickLocalModelCachePath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
+            </div>
+            <p id="localModelCachePathError" class="field-error"></p>
+            <p class="hint" data-i18n="local_model_cache_path_hint">默认使用本地环境的模型缓存目录；需要时可改到其他磁盘。</p>
+            <p id="localModelCachePathLine" class="runtime-path-line hidden"></p>
+          </div>
+        </div>
+        <div id="localModelList" class="local-model-list" role="list" data-i18n-aria-label="local_model_list_label" aria-label="本地模型列表"></div>
+        <div id="localModelDetails" class="local-model-panel">
+          <div class="field">
+            <label for="localModelPath" data-i18n="local_model_path">已有模型目录（可选）</label>
+            <div class="path-row">
+              <input id="localModelPath" type="text" autocomplete="off">
+              <button id="pickLocalModelPath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
+            </div>
+            <p id="localModelPathError" class="field-error"></p>
+          </div>
+          <div class="local-status-row">
+            <p id="localModelStatus" class="local-status" aria-live="polite"></p>
+            <button id="refreshLocalModels" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
+          </div>
+          <div id="localModelProgress" class="task-progress hidden" aria-live="polite">
+            <div id="localModelProgressTrack" class="task-progress-track indeterminate"><span id="localModelProgressBar"></span></div>
+            <p id="localModelProgressMessage" class="hint"></p>
+          </div>
+          <button id="prepareLocalModel" class="ghost" type="button" data-i18n="local_prepare">下载模型</button>
+        </div>
+      </div>
+      <div id="alignmentModelSettingsSection" class="settings-section hidden">
+        <h3 data-i18n="settings_alignment_models">本地对齐模型</h3>
+        <p class="hint" data-i18n="alignment_model_settings_hint">查看和准备本地对齐模型；Qwen Local 模型缓存可以复用。</p>
+        <div id="localAlignmentModelField" class="field">
+          <div id="localAlignmentModelList" class="local-model-list" role="list" data-i18n-aria-label="local_alignment_model_list_label" aria-label="本地对齐模型列表"></div>
+          <div id="localAlignmentModelDetails" class="local-model-panel">
+            <div class="local-status-row">
+              <p id="localAlignmentModelStatus" class="local-status" aria-live="polite"></p>
+            </div>
+            <p class="hint" data-i18n="local_alignment_model_hint">Qwen3-ForcedAligner 和 FireRedASR2-CTC 可单独下载。</p>
+            <button id="prepareAlignmentModel" class="ghost" type="button" data-i18n="alignment_model_download">下载对齐模型</button>
+          </div>
+        </div>
+      </div>
       <div id="dashscopeRegionPanel" class="settings-section hidden">
         <h3 data-i18n="settings_dashscope_region">阿里云百炼地域与业务空间</h3>
         <div id="regionField" class="field">
@@ -1158,18 +1226,18 @@
       </div>
       <div class="settings-section" id="punctuationSettingsSection">
         <h3 data-i18n="settings_punctuation_title">断句与标点</h3>
-        <p class="hint" data-i18n="settings_punctuation_hint">文稿匹配与转写共用这里的断句与保留符号；额外断句符号在云端转写切句时同样作为强断句符号生效。</p>
+        <p class="hint settings-punctuation-hint" data-i18n="settings_punctuation_hint">决定哪些标点符号需要换行，以及换行后是否保留标点（文稿匹配与转写共用）</p>
         <div class="punctuation-settings-fields">
           <div class="field">
-            <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">额外断句符号</label>
+            <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">需要断句的符号</label>
             <textarea id="postprocessExtraSplitPunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="？\n！\n——\n~"></textarea>
-            <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。</p>
+            <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；逗号、句号默认生效。</p>
           </div>
           <div class="field">
-            <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句后保留符号</label>
+            <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句后保留的符号</label>
             <textarea id="postprocessPreservePunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_preserve_punctuation_placeholder" placeholder="？\n！\n~"></textarea>
             <p id="postprocessPreservePunctuationError" class="field-error"></p>
-            <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍将符号保留在字幕末尾；转写输出的这些尾部符号同样保留，其余默认剥除逗号和句号。</p>
+            <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍然需要保留的符号，默认留在前一句结尾。</p>
           </div>
         </div>
       </div>
@@ -1190,8 +1258,10 @@
         <div id="localRuntimePaths" class="runtime-paths hidden"></div>
         <div class="local-status-row">
           <p id="localRuntimeStatus" class="local-status" aria-live="polite"></p>
+          <button id="toggleLocalRuntimeInventory" class="ghost small" type="button" aria-expanded="false" aria-controls="localRuntimeInventory" data-i18n="local_runtime_inventory">查看运行时清单</button>
           <button id="refreshLocalRuntime" class="ghost small" type="button" data-i18n="local_refresh">重新扫描</button>
         </div>
+        <div id="localRuntimeInventory" class="runtime-inventory hidden" aria-live="polite"></div>
         <div id="localRuntimeProgress" class="task-progress hidden" aria-live="polite">
           <div class="task-progress-track"><span id="localRuntimeProgressBar"></span></div>
           <p id="localRuntimeProgressMessage" class="hint"></p>
