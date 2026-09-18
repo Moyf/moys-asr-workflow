@@ -5753,3 +5753,25 @@ test('placeUnalignedSplitItems honors explicit side and strips the helper field'
     assert.equal(item.side, undefined);
   }
 });
+
+test('alignItemsToText handles pathological repeated tokens with bounded work', () => {
+  // 重复单字 × 高频出现曾是近似立方的最坏情况；单调 + 二分后应瞬时完成
+  // 且保持完整的左most对齐。
+  const length = 400;
+  const text = '甲'.repeat(length);
+  const items = Array.from({ length }, () => ({ text: '甲' }));
+  const aligned = helpers.alignItemsToText(text, items).map((record) => record?.textStart);
+  assert.deepEqual(JSON.parse(JSON.stringify(aligned)), Array.from({ length }, (_, index) => index));
+});
+
+test('alignItemsToText bails out to no alignment on absurd inputs', () => {
+  // 2600 词 × 2602 坐标超过 2_000_000 守卫：放弃对齐返回全 null（等长），
+  // 拆分随后走失配词的时间/词序回退，而不是冻结编辑器。
+  const length = 2600;
+  const text = '甲'.repeat(length);
+  const items = Array.from({ length }, () => ({ text: '甲' }));
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.alignItemsToText(text, items))),
+    JSON.parse(JSON.stringify(new Array(length).fill(null))),
+  );
+});

@@ -250,3 +250,38 @@ test('fully unaligned items still split at the mapped word boundary', async ({ p
   expect(left.items).toEqual([{ text: '甲', start: 1000, end: 2000 }]);
   expect(right.items).toEqual([{ text: '乙', start: 2000, end: 3000 }]);
 });
+
+// 漂移提示场景：失配词「傲」（500–1500ms）强制归左后，左段边界前移到
+// 1500ms，与下刀 250ms 相距 1250ms（>500ms 阈值）——走主字幕波形拆分
+// 弹窗入口（openMainWaveformSplitModal → commitMainWaveformSplit）时必须
+// 出现「文本与词时间戳不一致」提示；拆分本身仍按词边界完成。
+const DRIFT_WARNING_SEGMENT = {
+  id: 'desync-drift-warning',
+  start: 0,
+  end: 2700,
+  text: '甲X 乙丙丁',
+  items: [
+    { text: '甲', start: 0, end: 500 },
+    { text: '傲', start: 500, end: 1500 },
+    { text: '乙', start: 1500, end: 1900 },
+    { text: '丙', start: 1900, end: 2300 },
+    { text: '丁', start: 2300, end: 2700 },
+  ],
+};
+
+test('waveform split modal warns when desynced replacement drifts from the cut', async ({ page }) => {
+  await injectSegment(page, DRIFT_WARNING_SEGMENT);
+  const opened = await page.evaluate(() => openMainWaveformSplitModal(0, 250));
+  expect(opened).toBe(true);
+  await expect(page.locator('#multi-subtitle-split-modal.show')).toBeVisible();
+  await page.evaluate(() => confirmLinkedSplit());
+
+  await expect(page.locator('#hint-stack .hint-card').filter({ hasText: '字幕文本与词时间戳' })).toHaveCount(1);
+  const [left, right] = await readSplitState(page);
+  expect(left.text).toBe('甲X');
+  expect(right.text).toBe('乙丙丁');
+  expect(left.end).toBe(1500);
+  expect(right.start).toBe(1500);
+  expect(left.items.at(-1)).toEqual({ text: '傲', start: 500, end: 1500 });
+  expect(right.items[0]).toEqual({ text: '乙', start: 1500, end: 1900 });
+});

@@ -2592,6 +2592,14 @@
       }
       return found;
     });
+    // 对齐在拆分时同步执行：超大输入（超长粘贴段 × 高频重复短词）直接放弃
+    // 对齐、返回全失配，让拆分走时间/词序落边回退，而不是冻结编辑器。
+    // （常规字幕行远低于该阈值；失配回退本身已有词序映射与漂移提示兜底。）
+    if (list.length === 0
+        || list.length * (value.length + 2) > 2_000_000
+        || occurrences.reduce((sum, occ) => sum + occ.length, 0) > 2_000_000) {
+      return new Array(list.length).fill(null);
+    }
     const memo = new Map();
     const bestFrom = (index, minStart) => {
       if (index >= list.length) return 0;
@@ -2600,9 +2608,24 @@
       if (cached !== undefined) return cached;
       let best = bestFrom(index + 1, minStart);
       const itemText = String(list[index]?.text || '');
-      for (const pos of occurrences[index]) {
-        if (pos < minStart) continue;
-        best = Math.max(best, 1 + bestFrom(index + 1, pos + itemText.length));
+      const occ = occurrences[index];
+      // bestFrom(i+1, ·) 随 minStart 单调不增，所以最优转移必然是首个
+      // >= minStart 的出现位置，二分即可；逐个扫描会让重复短词的 DP
+      // 退化为近似立方复杂度。
+      let lo = 0;
+      let hi = occ.length - 1;
+      let pick = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (occ[mid] >= minStart) {
+          pick = mid;
+          hi = mid - 1;
+        } else {
+          lo = mid + 1;
+        }
+      }
+      if (pick >= 0) {
+        best = Math.max(best, 1 + bestFrom(index + 1, occ[pick] + itemText.length));
       }
       memo.set(key, best);
       return best;
