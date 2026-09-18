@@ -30,7 +30,6 @@ from maw.language import (  # noqa: E402
     DEFAULT_MIN_WORDS,
 )
 from maw.local_asr import (  # noqa: E402
-    FIRERED_DEFAULT_MODEL,
     FUNASR_DEFAULT_MODEL,
     QWEN_DEFAULT_CHUNK_SECONDS,
     QWEN_DEFAULT_FORCED_ALIGNER,
