@@ -1158,18 +1158,18 @@
       </div>
       <div class="settings-section" id="punctuationSettingsSection">
         <h3 data-i18n="settings_punctuation_title">断句与标点</h3>
-        <p class="hint" data-i18n="settings_punctuation_hint">文稿匹配与转写共用这里的断句与保留符号；额外断句符号在云端转写切句时同样作为强断句符号生效。</p>
+        <p class="hint settings-punctuation-hint" data-i18n="settings_punctuation_hint">决定哪些标点符号需要换行，以及换行后是否保留标点（文稿匹配与转写共用）</p>
         <div class="punctuation-settings-fields">
           <div class="field">
-            <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">额外断句符号</label>
+            <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">需要断句的符号</label>
             <textarea id="postprocessExtraSplitPunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="？\n！\n——\n~"></textarea>
-            <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。</p>
+            <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；逗号、句号默认生效。</p>
           </div>
           <div class="field">
-            <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句后保留符号</label>
+            <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句后保留的符号</label>
             <textarea id="postprocessPreservePunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_preserve_punctuation_placeholder" placeholder="？\n！\n~"></textarea>
             <p id="postprocessPreservePunctuationError" class="field-error"></p>
-            <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍将符号保留在字幕末尾；转写输出的这些尾部符号同样保留，其余默认剥除逗号和句号。</p>
+            <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍然需要保留的符号，默认留在前一句结尾。</p>
           </div>
         </div>
       </div>
