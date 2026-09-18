@@ -97,19 +97,32 @@ test('merges and filters font combobox dropdown options without duplicates', () 
   ];
   assert.equal(helpers.filterFontFamilyOptions(entries, ''), entries);
   assert.equal(helpers.filterFontFamilyOptions(entries, '   '), entries);
+  // 过滤结果数组在 vm 沙箱里创建，同样先摊开成宿主数组再断言。
   assert.deepEqual(
-    helpers.filterFontFamilyOptions(entries, '雅黑'),
+    Array.from(helpers.filterFontFamilyOptions(entries, '雅黑'), (entry) => ({ ...entry })),
     [{ value: 'Microsoft YaHei', label: '微软雅黑' }],
   );
   assert.deepEqual(
-    helpers.filterFontFamilyOptions(entries, 'fira'),
+    Array.from(helpers.filterFontFamilyOptions(entries, 'fira'), (entry) => ({ ...entry })),
     [{ value: 'Fira Code', label: 'Fira Code' }],
   );
   assert.deepEqual(
-    helpers.filterFontFamilyOptions(entries, '不存在的字体'),
+    Array.from(helpers.filterFontFamilyOptions(entries, '不存在的字体'), (entry) => ({ ...entry })),
     [],
   );
   assert.equal(helpers.filterFontFamilyOptions(undefined, 'arial').length, 0);
+
+  // 前缀优先：开头匹配排在前、包含匹配在后，同组内保持原有相对顺序。
+  assert.deepEqual(
+    Array.from(
+      helpers.filterFontFamilyOptions([entries[2], entries[0], entries[1]], 'a'),
+      (entry) => ({ ...entry }),
+    ),
+    [
+      { value: 'Arial', label: 'Arial' },
+      { value: 'Fira Code', label: 'Fira Code' },
+    ],
+  );
 });
 
 test('translates the ASS style manager labels and dynamic summaries', () => {
@@ -126,16 +139,25 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('当前未启用。', 'en'), 'Currently disabled.');
   assert.equal(i18n.translateText('Studio · 无逐句动画', 'en'), 'Studio · No per-cue animations');
   assert.equal(i18n.translateText('颜色字幕样式', 'en'), 'Color caption style');
+  assert.equal(i18n.translateText('设为主字幕样式', 'en'), 'Set as main subtitle style');
+  assert.equal(i18n.translateText('设为副字幕样式', 'en'), 'Set as secondary subtitle style');
+  assert.equal(i18n.translateText('设为 SRT 烧录样式', 'en'), 'Set as SRT burn-in style');
+  assert.equal(i18n.translateText('设为 ASS 导出方案', 'en'), 'Set as ASS export profile');
+  assert.equal(
+    i18n.translateText('⬆️ 当前预览样式由 ASS 字幕模式控制', 'en'),
+    '⬆️ Current preview styling is controlled by ASS subtitle mode',
+  );
   assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');
   assert.equal(i18n.translateText('作为描边颜色', 'en'), 'As outline color');
   assert.equal(i18n.translateText('无影响', 'en'), 'No effect');
   assert.equal(i18n.translateText('自定义颜色色值', 'en'), 'Custom color values');
   assert.equal(i18n.translateText('恢复默认', 'en'), 'Restore defaults');
-  assert.equal(i18n.translateText('使用预览字体', 'en'), 'Use preview font');
-  assert.equal(
-    i18n.translateText('已将 ASS 字体设为「SimHei」', 'en'),
-    'ASS font set to "SimHei"',
-  );
+  assert.equal(i18n.translateText('读取本机字体', 'en'), 'Read local fonts');
+  assert.equal(i18n.translateText('已读取 3 种本机字体', 'en'), 'Read 3 local font families');
+  assert.equal(i18n.translateText('未读取到可用的本机字体', 'en'), 'No usable local fonts were returned');
+  assert.equal(i18n.translateText('当前环境不支持自动读取本机字体', 'en'), 'This environment cannot list local fonts automatically');
+  assert.equal(i18n.translateText('未获准读取本机字体', 'en'), 'Permission to read local fonts was not granted');
+  assert.equal(i18n.translateText('读取本机字体失败，请重试', 'en'), 'Could not read local fonts; try again');
   assert.equal(i18n.translateText('基础样式', 'en'), 'Basic style');
   assert.equal(i18n.translateText('拓展样式', 'en'), 'Extended style');
   assert.equal(i18n.translateText('边框与阴影', 'en'), 'Border and shadow');
@@ -303,6 +325,8 @@ test('normalizes editor settings without preserving invalid persisted values', (
     autoMergeShortCount: 99,
   });
   assert.equal(settings.multiSubtitleRowHeight, 168);
+  // 192 档位与主波形行高预设一致，属于合法副字幕行高
+  assert.equal(helpers.normalizeEditorSettings({ multiSubtitleRowHeight: 192 }).multiSubtitleRowHeight, 192);
   assert.equal(settings.mediaSeekStepMs, 2000);
   assert.equal(settings.cueMoveStepMs, 10);
   assert.equal(settings.theme, 'light');
@@ -1431,7 +1455,10 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('自定义颜色', 'en'), 'Custom color');
   assert.equal(i18n.translateText('视频预览', 'en'), 'Video preview');
   assert.equal(i18n.translateText('播放控制', 'en'), 'Playback controls');
-  assert.equal(i18n.translateText('颜色样式', 'en'), 'Color style');
+  assert.equal(i18n.translateText('ASS 副字幕样式', 'en'), 'ASS extension subtitle style');
+  assert.equal(i18n.translateText('主', 'en'), 'Main');
+  assert.equal(i18n.translateText('副', 'en'), 'Secondary');
+  assert.equal(i18n.translateText('预览颜色样式', 'en'), 'Preview color style');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
   assert.equal(i18n.translateText('空隙检测与调整', 'en'), 'Gap detection and adjustment');
   assert.equal(i18n.translateText('进一步收缩空隙', 'en'), 'Shrink gaps further');
@@ -1451,16 +1478,16 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('将选中的副字幕的时长对齐到绑定主字幕', 'en'), 'Align the selected secondary subtitle durations to their bound main subtitles');
   assert.equal(i18n.translateText('无选中时前后跳转（时长：', 'en'), 'Seek back/forward with no selection (duration:');
   assert.equal(i18n.translateText('⚙️设置按钮', 'en'), '⚙️ Settings button');
-  assert.equal(i18n.translateText('⚙️设置', 'en'), '⚙️ settings');
+  assert.equal(i18n.translateText('⚙️全局设置', 'en'), '⚙️ Global settings');
   assert.equal(i18n.translateText('仅在拖动边界模式生效', 'en'), 'Only active in Boundary drag mode');
   assert.equal(i18n.translateText('仅在中键拖动模式生效', 'en'), 'Only active in Middle-button drag mode');
   assert.equal(
-    i18n.translateText('具体操作取决于波形区的', 'en'),
-    'The exact behavior depends on the waveform area’s',
+    i18n.translateText('具体操作取决于', 'en'),
+    'The exact behavior depends on',
   );
   assert.equal(
-    i18n.translateText('中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
-    '“Gap region operation” in the settings; “Boundary and middle” enables both operation sets.',
+    i18n.translateText('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
+    '“Gap region operation” under “General” in Global settings; “Boundary and middle” enables both operation sets.',
   );
   assert.equal(i18n.translateText('操作支持撤销/重做。', 'en'), 'Operations support undo/redo.');
   assert.equal(i18n.translateText('处理范围', 'en'), 'Scope');
@@ -1473,8 +1500,9 @@ test('translates editor project controls and dynamic save messages to English', 
     i18n.translateText('批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围', 'en'),
     'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
   );
-  assert.equal(i18n.translateText('注：微调幅度可在波形区的', 'en'), 'Note: Adjust the fine-tuning amount in the waveform area’s');
-  assert.equal(i18n.translateText('中调节，默认 50ms', 'en'), 'to adjust it; the default is 50 ms');
+  assert.equal(i18n.translateText('注：微调幅度可在', 'en'), 'Note: Adjust the fine-tuning amount in');
+  assert.equal(i18n.translateText('「通用操作」中调节，默认 50ms', 'en'), 'under “General” in Global settings; the default is 50 ms');
+  assert.equal(i18n.translateText('波形区操作', 'en'), 'Waveform actions');
   assert.equal(i18n.translateText('切换空隙的启用/禁用状态', 'en'), 'Toggle whether the gap is enabled');
   assert.equal(i18n.translateText('添加新的移除空隙', 'en'), 'Add a new removed gap');
   assert.equal(
@@ -4473,7 +4501,7 @@ test('exports the overlay track as its own cues, text track, and sticker tracks'
   assert.equal(disabledPlan.overlayStickers.length, 0);
 });
 
-test('buildAssPayload writes overlay cues on layer 1 anchored to the top', () => {
+test('buildAssPayload writes overlay cues on layer 2 with a baked Overlay style', () => {
   const ass = helpers.buildAssPayload(
     [{ start: 100, end: 300, text: 'main' }],
     { overlaySegments: [
@@ -4485,23 +4513,18 @@ test('buildAssPayload writes overlay cues on layer 1 anchored to the top', () =>
   const dialogueLines = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   assert.equal(dialogueLines.length, 2);
   assert.match(dialogueLines[0], /^Dialogue: 0,/);
-  assert.ok(!dialogueLines[0].includes('\\an8'));
-  assert.match(dialogueLines[1], /^Dialogue: 1,/);
-  assert.ok(!dialogueLines[1].includes('\\an8'));
+  assert.match(dialogueLines[1], /^Dialogue: 2,/);
+  assert.ok(dialogueLines[1].includes(',Overlay,,0,0,0,'));
+  // 叠加轨引用独立样式，MarginV 固化进样式行（legacy：80 + 1.2×72 = 166），
+  // 事件行不再携带边距覆盖。
+  const overlayStyle = ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyle);
+  assert.ok(overlayStyle.endsWith(',10,10,166,1'));
 });
 
 test('buildAssPayload anchors overlay cues to the active main style margin', () => {
-  // legacy 导出（无样式库方案）：主字幕底边距固定 80，
-  // 叠加轨 MarginV = 80 + 默认字号 72（1080p）。
-  const legacy = helpers.buildAssPayload(
-    [{ start: 100, end: 300, text: 'main' }],
-    { overlaySegments: [{ start: 150, end: 350, text: 'overlay' }] },
-  );
-  const legacyOverlay = legacy.split('\n').find((line) => line.startsWith('Dialogue: 1,'));
-  assert.ok(legacyOverlay.includes(',0,0,152,,'));
-
-  // ASS 模式：主字幕垂直边距来自样式库（用户可改），叠加轨跟随，
-  // 不再固定 80；默认样式行同步携带该边距。
+  // ASS 模式：主字幕垂直边距来自样式库（用户可改），叠加轨按
+  // 「主样式边距 + 1.2 × 字号」固化（120 + round(86.4) = 206）。
   const styled = helpers.buildAssPayload(
     [{ start: 100, end: 300, text: 'main' }],
     {
@@ -4511,10 +4534,179 @@ test('buildAssPayload anchors overlay cues to the active main style margin', () 
       appearance: {},
     },
   );
-  const styledOverlay = styled.split('\n').find((line) => line.startsWith('Dialogue: 1,'));
-  assert.ok(styledOverlay.includes(',0,0,192,,'));
+  const styledOverlay = styled.split('\n').find((line) => line.startsWith('Dialogue: 2,'));
+  assert.ok(styledOverlay.includes(',Overlay,,0,0,0,'));
+  const overlayStyleLine = styled.split('\n').find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleLine.endsWith(',10,10,206,1'));
   const defaultStyleLine = styled.split('\n').find((line) => line.startsWith('Style: Default,'));
   assert.ok(defaultStyleLine.endsWith(',10,10,120,1'));
+});
+
+test('buildAssPayload styles overlay cues exactly like main cues in every ass_color_style mode', () => {
+  const overlaySegments = [
+    { start: 150, end: 350, text: 'overlay blue', color: { name: 'blue' } },
+    { start: 400, end: 600, text: 'overlay plain' },
+  ];
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    overlaySegments,
+    appearance: {},
+  };
+  // text（默认）：叠加轨带颜色标记的句子与主字幕一样引用调色板变体，
+  // 但挂在独立的 Overlay 前缀样式上。
+  const textMode = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main red', color: { name: 'red' } }],
+    { ...options, appearance: { ass_color_style: 'text' } },
+  );
+  const textOverlay = textMode.split('\n').filter((line) => line.startsWith('Dialogue: 2,'));
+  assert.equal(textOverlay.length, 2);
+  assert.ok(textOverlay[0].includes(',Overlay BLUE,'));
+  assert.ok(textOverlay[1].includes(',Overlay,'));
+  assert.ok(textMode.includes('Style: Overlay,'));
+  assert.ok(textMode.includes('Style: Overlay BLUE,'));
+  // none：调色板样式不导出，主轨与叠加轨一起回落，不再悬挂未定义引用。
+  const noneMode = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main red', color: { name: 'red' } }],
+    { ...options, appearance: { ass_color_style: 'none' } },
+  );
+  const noneOverlay = noneMode.split('\n').filter((line) => line.startsWith('Dialogue: 2,'));
+  assert.equal(noneOverlay.length, 2);
+  assert.ok(noneOverlay.every((line) => line.includes(',Overlay,')));
+  assert.ok(!noneMode.split('\n').some((line) => line.startsWith('Style: Overlay BLUE,')));
+});
+
+test('buildAssPayload applies fad and transform tags to overlay cues but never move', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: {
+          fad: { enabled: true, inMs: 200, outMs: 300 },
+          move: { enabled: true, x1: 0, y1: 960, x2: 100, y2: 500, t1: 0, t2: 1000 },
+          t: { enabled: true, startMs: 0, endMs: 500, accel: 1, tags: String.raw`\fs40` },
+        },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+      appearance: {},
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 2);
+  // 主轨：fad + move + t 全量应用。
+  assert.ok(dialogue[0].includes('{\\fad(200,300)\\move(0,960,100,500,0,1000)\\t(0,500,1,\\fs40)}main'));
+  // 叠加轨：与位置无关的 fad/t 逐句应用；\move 的绝对坐标只属于主字幕。
+  assert.ok(dialogue[1].includes('{\\fad(200,300)\\t(0,500,1,\\fs40)}overlay'));
+  assert.ok(!dialogue[1].includes('\\move('));
+});
+
+test('buildAssPayload writes extension cues on layer 1 with a single Extension style', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: {
+          fad: { enabled: true, inMs: 150, outMs: 250 },
+          move: { enabled: true, x1: 0, y1: 900, x2: 0, y2: 400, t1: 0, t2: 800 },
+        },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      assExtensionStyle: { id: 'ass-extension', fontSize: 54, marginV: 166, primaryColor: '#ffd34d' },
+      extensionSegments: [
+        { start: 120, end: 880, text: 'extension line' },
+        { start: 900, end: 950, text: 'disabled', disabled: true },
+      ],
+      overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+      appearance: {},
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 3);
+  assert.match(dialogue[1], /^Dialogue: 1,/);
+  assert.ok(dialogue[1].includes(',Extension,,0,0,0,'));
+  // 副字幕与叠加轨同样只应用与位置无关的动画标签。
+  assert.ok(dialogue[1].includes('{\\fad(150,250)}extension line'));
+  assert.ok(!dialogue[1].includes('\\move('));
+  assert.match(dialogue[2], /^Dialogue: 2,/);
+  // 副字幕样式：独立样式行，字号按 1080p 参考换算，边距完全来自样式。
+  const extensionStyle = ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
+  assert.ok(extensionStyle);
+  assert.ok(extensionStyle.includes(',54,'));
+  assert.ok(extensionStyle.endsWith(',10,10,166,1'));
+});
+
+test('buildAssPayload chains the overlay anchor above the extension track', () => {
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 72, marginV: 80, primaryColor: '#ffffff', outlineColor: '#000000', outline: 2 },
+    overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+    appearance: {},
+  };
+  // 无副字幕：叠加锚定 = 主样式边距 80 + 1.2 × 72 = 166。
+  const withoutExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }], options,
+  );
+  const overlayStyleOnly = withoutExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleOnly.endsWith(',10,10,166,1'));
+  // 有副字幕（边距 166、字号 54）：叠加锚定链式上叠 = 166 + round(64.8) = 231。
+  const withExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      ...options,
+      assExtensionStyle: { id: 'ass-extension', fontSize: 54, marginV: 166 },
+      extensionSegments: [{ start: 120, end: 880, text: 'extension line' }],
+    },
+  );
+  const overlayStyleChained = withExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleChained.endsWith(',10,10,231,1'));
+});
+
+test('buildAssPayload overlay style inherits the anchor layer alignment and side margins', () => {
+  const options = {
+    videoWidth: 1920,
+    videoHeight: 1080,
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 72, marginV: 80, primaryColor: '#ffffff', outlineColor: '#000000', outline: 2 },
+    overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+    appearance: {},
+  };
+  // 副字幕样式为顶部居中（Alignment 8，MarginV 100、左右边距 40/50）：
+  // 叠加轨链在其上方时继承该对齐与水平边距，固化边距按同一基准边解释
+  // （100 + round(1.2 × 54) = 165），而不是落回主样式的底部居中。
+  const topExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      ...options,
+      assExtensionStyle: {
+        id: 'ass-extension', fontSize: 54, marginV: 100, marginL: 40, marginR: 50, alignment: 8,
+      },
+      extensionSegments: [{ start: 120, end: 880, text: 'extension line' }],
+    },
+  );
+  const overlayStyleChained = topExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleChained);
+  assert.match(overlayStyleChained, /,8,40,50,165,1$/);
+  // 副字幕全部禁用：不链式，叠加样式回到主样式的底部居中（80 + 86.4 → 166）。
+  const disabledExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      ...options,
+      assExtensionStyle: {
+        id: 'ass-extension', fontSize: 54, marginV: 100, marginL: 40, marginR: 50, alignment: 8,
+      },
+      extensionSegments: [{ start: 120, end: 880, text: 'extension line', disabled: true }],
+    },
+  );
+  const overlayStyleFallback = disabledExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleFallback);
+  assert.match(overlayStyleFallback, /,2,10,10,166,1$/);
 });
 
 test('reports malformed intervals, missing sticker paths, and stale serializer warnings', () => {

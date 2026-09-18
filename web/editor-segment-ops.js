@@ -144,28 +144,28 @@
 
 
   function mergeSegments(idxs) {
-    if (idxs.length < 2) { MaweHint.flashHint('请选择至少两个字幕块！', 'invalid'); return; }
-    const sorted = [...new Set(idxs)].sort((a, b) => a - b);
-    if (sorted.length < 2) { MaweHint.flashHint('请选择至少两个字幕块！', 'invalid'); return; }
-    // 确保连续
-    for (let i = 1; i < sorted.length; i++) {
-      if (sorted[i] !== sorted[i - 1] + 1) {
-        MaweHint.flashHint('选中的字幕必须连续', 'invalid');
-        return;
-      }
+  if (idxs.length < 2) { MaweHint.flashHint('请选择至少两个同轨道字幕块！', 'invalid'); return; }
+  const sorted = [...new Set(idxs)].sort((a, b) => a - b);
+  if (sorted.length < 2) { MaweHint.flashHint('请选择至少两个同轨道字幕块！', 'invalid'); return; }
+  // 确保连续
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] !== sorted[i - 1] + 1) {
+      MaweHint.flashHint('选中的字幕必须连续', 'invalid');
+      return;
     }
-    const sourceEl = MaweCoreState.container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
-    const cueListAnchor = MaweCueListAnchor.captureVisibleCueListVisualAnchor(sourceEl);
-    MaweCuePanel.commitCuePanelEdit();
-    MaweHistory.pushUndo('合并字幕', { captureView: true });
-    MaweSelection.clearSelection({ silent: true });
-    mergeContiguousIndices(sorted);
-    MaweCuePanel.renderAll({ cueListAnchor });
-    // 合并完成后选中合并结果，方便继续对这句新字幕操作
-    MaweSelection.selectOnly(sorted[0]);
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
-    MaweHint.flashHint(`已合并 ${sorted.length} 条`, 'success');
   }
+  const sourceEl = MaweCoreState.container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
+  const cueListAnchor = MaweCueListAnchor.captureVisibleCueListVisualAnchor(sourceEl);
+  MaweCuePanel.commitCuePanelEdit();
+  MaweHistory.pushUndo('合并字幕', { captureView: true });
+  MaweSelection.clearSelection({ silent: true });
+  mergeContiguousIndices(sorted);
+  MaweCuePanel.renderAll({ cueListAnchor });
+  // 合并完成后选中合并结果，方便继续对这句新字幕操作
+  MaweSelection.selectOnly(sorted[0]);
+  MawePlaybackLoop.updateWithoutCueListAutoScroll();
+  MaweHint.flashHint(`已合并 ${sorted.length} 条`, 'success');
+}
 
 
 

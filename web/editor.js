@@ -10,7 +10,8 @@
 
 
 // 所有非模态浮层共用一个前置栈：最后点击、打开或获得焦点的浮层排在最上面。
-// 起始值高于普通设置弹窗（420），但低于拖拽遮罩和加载层（500/510）。
+// 起始值高于普通设置弹窗（420），但低于右键菜单（480）、hint（490）、
+// 拖拽遮罩和加载层（500/510）。
 
 
 
@@ -369,6 +370,13 @@ function deleteOverlayCues(indices) {
 
 
 
+// 多重字幕关闭时轨道数据仍保留在工程里，但副字幕不参与 ASS 预览与导出；
+// 与 multiSubtitleVisible() 的开合语义保持一致。
+function activeExtensionSegments() {
+  if (MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return [];
+  return MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [];
+}
+
 
 
 
@@ -501,7 +509,7 @@ let subtitleLocalFontFamilies = [];
 
 
 
-const normalizeSubtitleColorPalette = EDITOR_SETTINGS_UTILS.normalizeSubtitleColorPalette;
+
 
 
 
@@ -777,7 +785,17 @@ MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames:
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
 // 调色板数值唯一来源于 maw/colors.py（渲染时注入 window.ASR_EDITOR_PALETTE）；
 // 这里只补充编辑器 UI 用的中文标签。
-// （调色板家族整体由 MaweColors 模块承载，含注入守卫与内置/自定义五色重建。）
+
+if (!Array.isArray(window.ASR_EDITOR_PALETTE) || !window.ASR_EDITOR_PALETTE.length) {
+  throw new Error('调色板未注入：缺少 window.ASR_EDITOR_PALETTE（检查 edit.py / serve.py 渲染管线）');
+}
+
+
+
+
+
+window.AsrWaveform?.setColorPalette?.(MaweColors.COLOR_PALETTE);
+
 
 
 
@@ -903,7 +921,15 @@ const subtitleColorAssModeHint = document.getElementById('subtitle-color-ass-mod
 const subtitleColorAssModeHintLink = document.getElementById('ass-mode-hint-link');
 
 
+const assColorStyleRow = document.getElementById('ass-color-style-row');
 const assColorStyleSelect = document.getElementById('ass-color-style');
+
+
+
+
+
+
+
 const assModeToggle = document.getElementById('ass-mode-toggle');
 const assStyleManagerOpenButton = document.getElementById('ass-style-manager-open');
 const assStyleSummary = document.getElementById('ass-style-summary');
@@ -990,6 +1016,7 @@ const assStyleSummary = document.getElementById('ass-style-summary');
 
 
 
+const helpOpenEditorSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-editor-settings]'));
 
 
 
@@ -1100,7 +1127,6 @@ const assStyleSummary = document.getElementById('ass-style-summary');
 
 
 
-const overlayTrackControls = document.getElementById('overlay-track-controls');
 const overlayTrackToggle = document.getElementById('overlay-track-toggle');
 const overlayTrackSeparator = document.getElementById('overlay-track-separator');
 
@@ -1209,7 +1235,7 @@ const assStyleDragHandle = document.getElementById('ass-style-drag-handle');
 const assStyleWindowClose = document.getElementById('ass-style-window-close');
 const assStyleWindowCloseFooter = document.getElementById('ass-style-window-close-footer');
 const assStyleLibraryStatus = document.getElementById('ass-style-library-status');
-const assStyleUsePreviewFontButton = document.getElementById('ass-style-use-preview-font');
+const assStyleLocalFontScanButton = document.getElementById('ass-style-local-font-scan');
 const assStyleFontToggle = document.getElementById('ass-style-font-toggle');
 const assStyleFontOptions = document.getElementById('ass-font-name-options');
 const assStyleCount = document.getElementById('ass-style-count');
@@ -1221,9 +1247,20 @@ const assStyleDuplicateButton = document.getElementById('ass-style-duplicate');
 const assProfileNewButton = document.getElementById('ass-profile-new');
 const assSrtDefaultStyleSelect = document.getElementById('ass-srt-default-style');
 const assDefaultProfileSelect = document.getElementById('ass-ass-default-profile');
+const subtitleStyleAssModeHint = document.getElementById('subtitle-style-ass-mode-hint');
+const mainSubtitleCssFields = document.getElementById('main-subtitle-css-fields');
+const mainAssStyleFields = document.getElementById('main-ass-style-fields');
+const mainAssStyleSelect = document.getElementById('main-ass-style-select');
+const mainAssStyleEditButton = document.getElementById('main-ass-style-edit');
+const extensionSubtitleCssFields = document.getElementById('extension-subtitle-css-fields');
+const extensionAssStyleFields = document.getElementById('extension-ass-style-fields');
+const extensionAssStyleSelect = document.getElementById('extension-ass-style-select');
+const extensionAssStyleEditButton = document.getElementById('extension-ass-style-edit');
 const assStyleForm = document.getElementById('ass-style-form');
 const assProfileForm = document.getElementById('ass-profile-form');
 const assProfileStyleSelect = document.getElementById('ass-profile-style-id');
+const assProfileExtensionStyleField = document.getElementById('ass-profile-extension-style-field');
+const assProfileExtensionStyleSelect = document.getElementById('ass-profile-extension-style');
 const assStyleEditorEmpty = document.getElementById('ass-style-editor-empty');
 const assStyleFormTitle = document.getElementById('ass-style-form-title');
 const assProfileFormTitle = document.getElementById('ass-profile-form-title');
@@ -1424,6 +1461,14 @@ function renderAssStyleList(list, items, kind, selectedId) {
   if (!list) return;
   list.replaceChildren();
   list.setAttribute('aria-busy', 'false');
+  // 主样式 = 当前 ASS 导出方案关联的样式；副样式 = 双语字幕启用时的副字幕槽位。
+  const mainStyleId = kind === 'style'
+    ? String(ASS_STYLE_LIBRARY.assProfiles?.find((profile) => profile.id === (ASS_STYLE_LIBRARY.assignments?.assExportProfileId || 'ass'))?.styleId || 'ass')
+    : '';
+  const extensionStyleId = kind === 'style'
+    ? String(ASS_STYLE_LIBRARY.assignments?.assExtensionStyleId || 'ass-extension')
+    : '';
+  const extensionActive = kind === 'style' && MaweMultiSubtitleCore.multiSubtitleVisible();
   (Array.isArray(items) ? items : []).forEach((item) => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -1435,12 +1480,15 @@ function renderAssStyleList(list, items, kind, selectedId) {
     label.className = 'ass-style-list-label';
     label.textContent = String(item.name || item.id || '未命名');
     button.append(label);
-    if (item.builtin) {
+    const appendBadge = (text, modifier = '') => {
       const badge = document.createElement('span');
-      badge.className = 'ass-style-list-badge';
-      badge.textContent = '内置';
+      badge.className = `ass-style-list-badge${modifier ? ` ${modifier}` : ''}`;
+      badge.textContent = text;
       button.append(badge);
-    }
+    };
+    if (item.id === mainStyleId) appendBadge('主', 'ass-style-list-badge-primary');
+    if (extensionActive && item.id === extensionStyleId) appendBadge('副', 'ass-style-list-badge-extension');
+    if (item.builtin) appendBadge('内置');
     button.addEventListener('click', () => assStyleManagerSetSelection(kind, item.id));
     list.append(button);
   });
@@ -1520,7 +1568,7 @@ function syncAssStyleForm(style) {
     assStylePreviewSample.style.color = preview.primaryColor;
     assStylePreviewSample.style.webkitTextStroke = preview.outline > 0 ? `${Math.min(8, preview.outline)}px ${preview.outlineColor}` : '';
     assStylePreviewSample.style.paintOrder = preview.outline > 0 ? 'stroke fill' : '';
-    assStylePreviewSample.style.textShadow = preview.shadow > 0 ? `${preview.shadow}px ${preview.shadow}px 0 ${preview.backColor}` : 'none';
+    assStylePreviewSample.style.filter = preview.shadow > 0 ? `drop-shadow(${preview.shadow}px ${preview.shadow}px 0 ${preview.backColor})` : '';
     assStylePreviewSample.style.letterSpacing = `${preview.spacing}px`;
     assStylePreviewSample.style.transform = `scale(${Number(preview.scaleX) / 100 || 1}, ${Number(preview.scaleY) / 100 || 1}) rotate(${Number(preview.angle) || 0}deg)`;
     assStylePreviewSample.style.background = Number(preview.borderStyle) === 3 ? preview.backColor : 'transparent';
@@ -1584,6 +1632,14 @@ function syncAssStyleManager({ force = false } = {}) {
     profiles.forEach((profile) => appendAssStyleOption(assDefaultProfileSelect, profile.id, profile.name));
     assDefaultProfileSelect.value = active;
   }
+  // 副字幕样式入口随多重字幕开合显隐：现在挂在方案表单里，与主字幕样式并排。
+  const extensionSlotVisible = MaweMultiSubtitleCore.multiSubtitleVisible();
+  if (assProfileExtensionStyleField) assProfileExtensionStyleField.hidden = !extensionSlotVisible;
+  if (assProfileExtensionStyleSelect) {
+    assProfileExtensionStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(assProfileExtensionStyleSelect, style.id, style.name));
+    assProfileExtensionStyleSelect.value = ASS_STYLE_LIBRARY.assignments?.assExtensionStyleId || 'ass-extension';
+  }
   if (assProfileStyleSelect) {
     const selectedProfile = selectedAssProfile();
     assProfileStyleSelect.replaceChildren();
@@ -1606,6 +1662,8 @@ function syncAssStyleManager({ force = false } = {}) {
   if (isStyle) syncAssStyleForm(selectedAssStyle());
   else syncAssProfileForm(selectedAssProfile());
   updateAssStyleLibraryStatus();
+  // 样式库变化后，设置页「字幕样式」里的 ASS 样式选择器同步刷新。
+  syncSubtitleStyleAssControls();
   if (force) assStyleWindow.querySelector('.ass-style-editor')?.scrollTo({ top: 0 });
 }
 
@@ -1739,28 +1797,55 @@ assStyleSaveButton?.addEventListener('click', () => {
 });
 assSrtDefaultStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('srtBurnStyleId', assSrtDefaultStyleSelect.value));
 assDefaultProfileSelect?.addEventListener('change', () => updateAssStyleAssignment('assExportProfileId', assDefaultProfileSelect.value));
-// 「使用预览字体」：把「设置 → 字幕样式」当前预览字体映射成具体字体族，
-// 应用到正在编辑的 ASS 样式；内置键映射为 ASS 最常用的对应字体名。
-const PREVIEW_FONT_KEY_TO_ASS_NAME = Object.freeze({
-  default: 'Microsoft YaHei',
-  yahei: 'Microsoft YaHei',
-  hei: 'SimHei',
-  song: 'SimSun',
-  sans: 'Arial',
+assProfileExtensionStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('assExtensionStyleId', assProfileExtensionStyleSelect.value));
+// 设置页「字幕样式」的 ASS 选择器：主字幕改的是当前 ASS 输出方案关联的
+// 样式（与样式库窗口中方案表单的样式下拉同步）；副字幕改库中的副字幕槽位。
+mainAssStyleSelect?.addEventListener('change', () => {
+  updateAssStyleManagerLibrary((library) => {
+    const profileId = library.assignments?.assExportProfileId || 'ass';
+    const profile = (library.assProfiles || []).find((item) => item.id === profileId);
+    if (profile) profile.styleId = mainAssStyleSelect.value;
+  });
 });
-assStyleUsePreviewFontButton?.addEventListener('click', () => {
-  const family = MaweAppearance.getSubtitleAppearance().font_family || 'default';
-  const fontName = PREVIEW_FONT_KEY_TO_ASS_NAME[family] || family;
-  const input = document.getElementById('ass-style-font-name');
-  if (input) input.value = fontName;
-  updateAssStyleField('fontName', fontName);
-  MaweHint.flashHint(`已将 ASS 字体设为「${fontName}」`, 'success');
+extensionAssStyleSelect?.addEventListener('change', () => {
+  updateAssStyleAssignment('assExtensionStyleId', extensionAssStyleSelect.value);
 });
-// 样式/方案列表右键菜单：创建副本 / 重命名 / 删除（内置条目的删除不可选）。
+// 「使用 ASS 样式」旁的「编辑样式」：打开样式库窗口并定位到下拉当前选中的样式。
+function openAssStyleManagerForStyle(select) {
+  if (!select?.value) return;
+  assStyleManagerSetSelection('style', select.value);
+  assStyleFloatingPanel.open();
+}
+mainAssStyleEditButton?.addEventListener('click', () => openAssStyleManagerForStyle(mainAssStyleSelect));
+extensionAssStyleEditButton?.addEventListener('click', () => openAssStyleManagerForStyle(extensionAssStyleSelect));
+// 「读取本机字体」：与设置页共用同一个本机字体扫描；扫描结果进入共享的
+// subtitleLocalFontFamilies，ASS 字体下拉在下次展开时即包含这些字体。
+assStyleLocalFontScanButton?.addEventListener('click', async () => {
+  if (assStyleLocalFontScanButton.disabled) return;
+  assStyleLocalFontScanButton.disabled = true;
+  try {
+    await MaweAppearance.scanSubtitleLocalFonts();
+  } finally {
+    assStyleLocalFontScanButton.disabled = false;
+  }
+  rebuildAssFontNameOptions();
+  const hintByState = {
+    success: () => MaweHint.flashHint(`已读取 ${MaweAppearance.subtitleFontFamilyScanCount} 种本机字体`, 'success'),
+    empty: () => MaweHint.flashHint('未读取到可用的本机字体', 'warning'),
+    unsupported: () => MaweHint.flashHint('当前环境不支持自动读取本机字体', 'warning'),
+    denied: () => MaweHint.flashHint('未获准读取本机字体', 'warning'),
+    failed: () => MaweHint.flashHint('读取本机字体失败，请重试', 'warning'),
+  };
+  hintByState[MaweAppearance.subtitleFontFamilyScanState]?.();
+});
+// 样式/方案列表右键菜单：设为主/副字幕样式 / 创建副本 / 重命名 / 删除。
 function showAssListContextMenu(event, kind) {
   const button = event.target.closest(`[data-ass-selection-kind="${kind}"]`);
   if (!button) return;
+  // 阻止冒泡：document 级 contextmenu 监听会关闭非 cue 上的菜单，
+  // 不拦截的话刚显示的菜单会立即被吞掉。
   event.preventDefault();
+  event.stopPropagation();
   assStyleManagerSetSelection(kind, button.dataset.assSelectionId);
   const collection = kind === 'profile' ? ASS_STYLE_LIBRARY.assProfiles : ASS_STYLE_LIBRARY.styles;
   const item = collection?.find((candidate) => candidate.id === button.dataset.assSelectionId);
@@ -1778,6 +1863,28 @@ function showAssListContextMenu(event, kind) {
     });
     MaweDom.ctxmenu.appendChild(element);
   };
+  // 「设为XX」归为第一组；分隔线隔开后的第二组是对条目本身的操作。
+  const addSeparator = () => {
+    const separator = document.createElement('div');
+    separator.className = 'sep';
+    MaweDom.ctxmenu.appendChild(separator);
+  };
+  if (kind === 'style') {
+    addItem('设为主字幕样式', () => {
+      updateAssStyleManagerLibrary((library) => {
+        const profileId = library.assignments?.assExportProfileId || 'ass';
+        const profile = (library.assProfiles || []).find((entry) => entry.id === profileId);
+        if (profile) profile.styleId = item.id;
+      });
+    });
+    if (MaweMultiSubtitleCore.multiSubtitleVisible()) {
+      addItem('设为副字幕样式', () => updateAssStyleAssignment('assExtensionStyleId', item.id));
+    }
+    addItem('设为 SRT 烧录样式', () => updateAssStyleAssignment('srtBurnStyleId', item.id));
+  } else {
+    addItem('设为 ASS 导出方案', () => updateAssStyleAssignment('assExportProfileId', item.id));
+  }
+  addSeparator();
   addItem('创建副本', () => (kind === 'profile' ? duplicateAssProfile() : duplicateAssStyle()));
   addItem('重命名', () => {
     const input = document.getElementById(kind === 'profile' ? 'ass-profile-name' : 'ass-style-name');
@@ -1819,11 +1926,46 @@ assProfileForm?.addEventListener('change', (event) => {
   if (field) updateAssProfileField(field.dataset.assProfileField || field.dataset.assAnimation, assStyleFormValue(field));
 });
 
+function syncSubtitleStyleAssControls() {
+  // ASS 字幕模式接管预览样式后，「字幕样式」页的主/副字幕 CSS 控件换成
+  // 样式库选择器；主字幕选择即当前 ASS 输出方案关联的样式，与样式库窗口
+  // 中的选择同步，副字幕选择对应库中的「副字幕样式」槽位。
+  const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
+  if (subtitleStyleAssModeHint) subtitleStyleAssModeHint.hidden = !assMode;
+  if (mainSubtitleCssFields) mainSubtitleCssFields.hidden = assMode;
+  if (mainAssStyleFields) mainAssStyleFields.hidden = !assMode;
+  if (extensionSubtitleCssFields) extensionSubtitleCssFields.hidden = assMode;
+  // 副字幕 ASS 样式只在 ASS 模式 + 双语字幕（多重字幕）启用时才有意义。
+  if (extensionAssStyleFields) extensionAssStyleFields.hidden = !assMode || !MaweMultiSubtitleCore.multiSubtitleVisible();
+  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const styles = library.styles || [];
+  if (mainAssStyleSelect) {
+    mainAssStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(mainAssStyleSelect, style.id, style.name));
+    const profile = window.AsrEditorUtils.assProfileForId(
+      library, library.assignments?.assExportProfileId || 'ass',
+    );
+    mainAssStyleSelect.value = profile.styleId;
+  }
+  if (extensionAssStyleSelect) {
+    extensionAssStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(extensionAssStyleSelect, style.id, style.name));
+    extensionAssStyleSelect.value = library.assignments?.assExtensionStyleId || 'ass-extension';
+  }
+}
+
 function syncAssModeDependentControls() {
-  // ASS 字幕模式接管预览样式后，「预览字幕颜色」不再参与预览，禁用并提示跳转。
+  // ASS 字幕模式接管预览样式后，「预览字幕颜色」不再参与预览，禁用并提示跳转；
+  // 「颜色字幕样式」在「字幕颜色」页替代「预览颜色样式」，只在 ASS 模式下显示。
   const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
   if (MaweDom.subtitleColorUnderlineInput) MaweDom.subtitleColorUnderlineInput.disabled = assMode;
   if (subtitleColorAssModeHint) subtitleColorAssModeHint.hidden = !assMode;
+  if (assColorStyleRow) assColorStyleRow.hidden = !assMode;
+  if (MaweDom.subtitleColorStyleControl) {
+    MaweDom.subtitleColorStyleControl.hidden = assMode
+      || !(MaweDom.subtitleColorUnderlineInput?.checked ?? true);
+  }
+  syncSubtitleStyleAssControls();
 }
 
 function syncAssModeControl() {
@@ -1910,6 +2052,9 @@ overlayTrackToggle?.addEventListener('change', () => {
   overlay._dirty = true;
   MaweServerSave.scheduleAutoSaveFlush();
   MaweCuePanel.renderAll({ waveform: 'full' });
+  if (overlayTrackToggle.checked) {
+    MaweHint.flashHint('已允许字幕重叠；Ctrl+拖拽波形空白或用右键菜单可创建叠加字幕', 'success');
+  }
 });
 
 
@@ -2027,7 +2172,7 @@ MaweDom.multiSubtitleToggle?.addEventListener('change', () => {
   const next = MaweDom.multiSubtitleToggle.checked;
   const promptImportSecondSrt = next && !MaweMultiSubtitleCore.getActiveExtensionTrack();
   multi.enabled = !next;
-  MaweHistory.pushUndo(next ? '开启多重字幕' : '关闭多重字幕');
+  MaweHistory.pushUndo(next ? '开启双语字幕' : '关闭双语字幕');
   multi.enabled = next;
   multi._dirty = true;
   // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
@@ -2045,7 +2190,7 @@ MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   const next = MaweDom.multiSubtitleDisplayMode.value;
   const previous = multi.display_mode;
   multi.display_mode = previous;
-  MaweHistory.pushUndo('切换多重字幕列表');
+  MaweHistory.pushUndo('切换双语字幕列表');
   multi.display_mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
   multi._dirty = true;
   MaweCuePanel.renderAll({ waveform: 'none' });
@@ -2242,6 +2387,13 @@ MaweDom.helpOpenMediaSettingsButtons.forEach((button) => {
     MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-preview');
   });
 });
+// 帮助中的「⚙️全局设置」入口：定位到「通用操作」分区（波形操作/按键/空隙设置所在）。
+helpOpenEditorSettingsButtons.forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-general');
+  });
+});
 MaweDom.helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {
   event.preventDefault();
   MaweGapRemoveUi.openGapRemovePanel();
@@ -2282,6 +2434,7 @@ MaweDom.contextualHelpButtons.forEach((button) => {
   button.addEventListener('click', () => {
     if (button.closest('#gap-remove-panel')) MaweGapRemoveUi.closeGapRemovePanel();
     if (button.closest('#waveform-settings-panel')) MaweSettingsPanels.setWaveformSettingsPanelOpen(false);
+    if (button.closest('#editor-settings-panel')) MaweSettingsPanels.setEditorSettingsPanelOpen(false);
     MaweHelpPanel.openHelpAtTab(button.dataset.helpTabTarget);
   });
 });
@@ -2647,7 +2800,7 @@ MaweDom.subtitleFontSizeSelect?.addEventListener('change', () => {
 });
 subtitleFontFamilyInput?.addEventListener('change', () => {
   MaweHistory.pushPreviewUndo('调整字幕字体', MaweHistory.snapshotPreviewState());
-  MaweAppearance.setSubtitleAppearance({ font_family: subtitleFontFamilyInputToStored(subtitleFontFamilyInput.value) });
+  MaweAppearance.setSubtitleAppearance({ font_family: AsrEditorUtils.subtitleFontFamilyInputToStored(subtitleFontFamilyInput.value) });
   MaweAppearance.syncSubtitleAppearanceControls();
 });
 assColorStyleSelect?.addEventListener('change', () => {
@@ -2656,10 +2809,10 @@ assColorStyleSelect?.addEventListener('change', () => {
   MawePlaybackLoop.update();
 });
 MaweColors.subtitleColorPaletteEnabledInput?.addEventListener('change', () => {
-MaweSettings.updateEditorSettings({ subtitleColorPaletteEnabled: MaweColors.subtitleColorPaletteEnabledInput.checked });
-MaweColors.syncSubtitleColorPaletteControls();
-MaweColors.refreshSubtitleColorPalettePresentation();
-if (!MaweColors.subtitleColorPaletteEnabledInput.checked) MaweHint.flashHint('已恢复内置字幕颜色', 'success');
+  MaweSettings.updateEditorSettings({ subtitleColorPaletteEnabled: MaweColors.subtitleColorPaletteEnabledInput.checked });
+  MaweColors.syncSubtitleColorPaletteControls();
+  MaweColors.refreshSubtitleColorPalettePresentation();
+  if (!MaweColors.subtitleColorPaletteEnabledInput.checked) MaweHint.flashHint('已恢复内置字幕颜色', 'success');
 });
 
 
@@ -3150,12 +3303,28 @@ MaweDom.cuePanelSplit?.addEventListener('click', MaweCuePanel.splitCuePanelAtCur
 
 
 
+// 叠加字幕行选中高亮与选中计数统一同步：叠加轨没有 multi-cue 类，
+// 不能走 updateMultiSelectionClasses，这里按 data-overlay-idx 直接同步。
+function syncOverlaySelectionClasses() {
+  MaweCoreState.container.querySelectorAll('.cue[data-overlay-idx].selected').forEach((el) => {
+    if (!selectedOverlayIdxs.has(Number(el.dataset.overlayIdx))) el.classList.remove('selected');
+  });
+  selectedOverlayIdxs.forEach((index) => {
+    MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.add('selected');
+  });
+  updateSelectionCountText();
+}
+
 function selectOverlayCueRow(index, { focusEditor = false } = {}) {
-  selectedOverlayIdxs.clear();
+  // 与副字幕 selectOnlyExtension 同一逻辑：点击叠加字幕先清空主轨/副轨
+  // 已有选区（clearSelection 同时取消待绑定状态），再单独选中本轨字幕。
+  MaweCuePanel.commitCuePanelEdit();
+  MaweSelection.clearSelection({ silent: true });
   selectedOverlayIdxs.add(index);
   lastClickedOverlayIdx = index;
   MaweCuePanel.setCuePanelTarget('overlay', index);
   if (focusEditor) MaweCuePanel.focusCuePanelText(index, 'overlay');
+  syncOverlaySelectionClasses();
   MaweCoreState.waveformEditor?.updateSelection();
   const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
   if (row) MaweCueListAnchor.scrollCueIntoViewIfNeeded(row);
@@ -3171,15 +3340,26 @@ function selectOverlayRange(fromIndex, toIndex) {
     selectedOverlayIdxs.add(index);
   }
   MaweCuePanel.setCuePanelTarget('overlay', toIndex);
+  syncOverlaySelectionClasses();
   MaweCoreState.waveformEditor?.updateSelection();
   const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${toIndex}"]`);
   if (row) MaweCueListAnchor.scrollCueIntoViewIfNeeded(row);
 }
 
 function toggleOverlaySelection(index) {
-  if (selectedOverlayIdxs.has(index)) selectedOverlayIdxs.delete(index);
-  else selectedOverlayIdxs.add(index);
+  if (MaweSelection.isHiddenDisabled(index, getOverlayTrack())) return;  // 隐藏禁用项不参与选择
+  const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
+  if (selectedOverlayIdxs.has(index)) {
+    selectedOverlayIdxs.delete(index);
+    row?.classList.remove('selected');
+  } else {
+    selectedOverlayIdxs.add(index);
+    row?.classList.add('selected');
+  }
   lastClickedOverlayIdx = index;
+  // 与副字幕 Ctrl 多选一致：面板跟随被切换的字幕，便于继续编辑。
+  MaweCuePanel.setCuePanelTarget('overlay', index);
+  updateSelectionCountText();
   MaweCoreState.waveformEditor?.updateSelection();
 }
 
@@ -3191,7 +3371,7 @@ function buildOverlayCueEl(seg, index) {
   el.classList.toggle('selected', selectedOverlayIdxs.has(index));
   el.addEventListener('click', (event) => {
     event.stopPropagation();
-    if (event.shiftKey && lastClickedOverlayIdx >= 0 && lastClickedOverlayIdx !== index) {
+    if (event.shiftKey && lastClickedOverlayIdx >= 0) {
       selectOverlayRange(lastClickedOverlayIdx, index);
       return;
     }
@@ -3200,6 +3380,23 @@ function buildOverlayCueEl(seg, index) {
       return;
     }
     selectOverlayCueRow(index);
+    const segment = getOverlayTrack()?.segments?.[index];
+    if (!segment) return;
+    const previousSuppress = MawePlaybackLoop.suppressCueListAutoScroll;
+    // 与副字幕一致：点击后的 seek 会同步刷新主字幕 active 状态；这次刷新不能把
+    // 列表从刚点击的叠加字幕行再次滚到对应的主字幕行。
+    MawePlaybackLoop.suppressCueListAutoScroll = true;
+    try {
+      MaweCoreState.waveformEditor?.revealTime(segment.start, true);
+      if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') MaweTextCleanup.seekFromWaveform(segment.start / 1000);
+    } finally {
+      MawePlaybackLoop.suppressCueListAutoScroll = previousSuppress;
+    }
+    if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-and-play' && MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
+    if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick) {
+      const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
+      if (row) MaweCueListAnchor.scrollCueToCenter(row);
+    }
   });
   el.addEventListener('dblclick', (event) => {
     event.preventDefault();
@@ -4955,26 +5152,77 @@ function subtitleFontFamilyMappingOptions() {
     familyDisplay: MaweAppearance.subtitleFontFamilyDisplayName,
   };
 }
-function subtitleFontFamilyStoredToInput(family) {
-  return window.AsrEditorUtils.subtitleFontFamilyStoredToInput(family, subtitleFontFamilyMappingOptions());
-}
-function subtitleFontFamilyInputToStored(text) {
-  // 本地化显示名（如「微软雅黑」）要还原成真实字体族名，浏览器才能解析。
-  return window.AsrEditorUtils.subtitleFontFamilyInputToStored(text, {
-    ...subtitleFontFamilyMappingOptions(),
-    localFamilies: subtitleLocalFontFamilies,
-  });
-}
+
+
 // 字体 combobox：文本输入 + 可筛选下拉列表，交互对齐 Launcher「模型」输入框。
-// getEntries() 返回 [{ value, label }]；选项点击写入 label 并派发 change，
+// getEntries() 返回 [{ value, label }]；选项点击或 Enter 写入 label 并派发 change，
 // 由既有映射（subtitleFontFamilyInputToStored / assStyleForm change 委托）落库。
+// 上下方向键在高亮项间移动（含首尾回绕前的边界钳制），输入仍可保留自定义值。
+// 下拉面板打开时 portal 到 body 并按输入框矩形 fixed 定位：不参与设置面板的
+// 滚动区（不撑高容器、不被面板边缘裁剪），宽度锁定与输入框同宽，贴底时上翻。
 // 实例惰性创建：启动早期（relabelSubtitleFontFamilyOptions 于模块求值时被调用）
 // 也可能触发重建，惰性创建避免引用后置声明造成暂时性死区。
 function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
   if (!input || !options) return { refresh() {}, setOpen() {} };
   let open = false;
+  let entries = [];
+  let activeIndex = -1;
+  let blurTimer = 0;
+  let reposition = null;
+  const picker = options.parentElement;
+  function optionId(index) {
+    return options.id ? `${options.id}-option-${index}` : `font-combobox-option-${index}`;
+  }
+  function positionPanel() {
+    const rect = input.getBoundingClientRect();
+    const margin = 8;
+    const viewportHeight = window.innerHeight;
+    const cap = Math.max(120, Math.min(280, Math.round(viewportHeight * 0.4)));
+    const spaceBelow = viewportHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+    const openUp = spaceBelow < Math.min(cap, 140) && spaceAbove > spaceBelow;
+    options.style.left = `${Math.round(rect.left)}px`;
+    options.style.width = `${Math.round(rect.width)}px`;
+    if (openUp) {
+      options.style.top = 'auto';
+      options.style.bottom = `${Math.round(viewportHeight - rect.top + 2)}px`;
+      options.style.maxHeight = `${Math.max(120, Math.min(cap, spaceAbove))}px`;
+    } else {
+      options.style.bottom = 'auto';
+      options.style.top = `${Math.round(rect.bottom + 2)}px`;
+      options.style.maxHeight = `${Math.max(120, Math.min(cap, spaceBelow))}px`;
+    }
+  }
+  function attachReposition() {
+    reposition = () => positionPanel();
+    window.addEventListener('resize', reposition);
+    // capture 捕获任意祖先（设置面板体、模态框等）的滚动，浮层跟随输入框。
+    document.addEventListener('scroll', reposition, true);
+  }
+  function detachReposition() {
+    if (!reposition) return;
+    window.removeEventListener('resize', reposition);
+    document.removeEventListener('scroll', reposition, true);
+    reposition = null;
+  }
+  function setActive(index, { scroll = false } = {}) {
+    activeIndex = entries.length ? Math.max(0, Math.min(index, entries.length - 1)) : -1;
+    Array.from(options.children).forEach((child, childIndex) => {
+      child.classList?.toggle('active', childIndex === activeIndex);
+    });
+    if (activeIndex >= 0) {
+      input.setAttribute('aria-activedescendant', optionId(activeIndex));
+      if (scroll) options.children[activeIndex]?.scrollIntoView({ block: 'nearest' });
+    } else {
+      input.removeAttribute('aria-activedescendant');
+    }
+  }
+  function activeIndexOfValue() {
+    const current = input.value.trim().toLocaleLowerCase();
+    return entries.findIndex((entry) => entry.label.toLocaleLowerCase() === current);
+  }
   function render(query = '') {
-    const entries = window.AsrEditorUtils.filterFontFamilyOptions(
+    entries = window.AsrEditorUtils.filterFontFamilyOptions(
       window.AsrEditorUtils.mergeFontFamilyOptions(getEntries()),
       query,
     );
@@ -4985,41 +5233,98 @@ function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
       empty.textContent = '无匹配字体';
       options.append(empty);
     }
-    entries.forEach((entry) => {
+    entries.forEach((entry, index) => {
       const option = document.createElement('button');
       option.type = 'button';
+      option.id = optionId(index);
       option.className = 'font-combobox-option';
       option.setAttribute('role', 'option');
       option.setAttribute('aria-selected', String(entry.label === input.value.trim()));
       option.textContent = entry.label;
-      option.addEventListener('mousedown', (event) => event.preventDefault());
-      option.addEventListener('click', () => {
-        input.value = entry.label;
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        setOpen(false);
-        input.focus();
-      });
+      option.addEventListener('click', () => selectEntry(index));
       options.append(option);
     });
+    setActive(activeIndexOfValue());
+  }
+  function selectEntry(index) {
+    const entry = entries[index];
+    if (!entry) return;
+    input.value = entry.label;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    setOpen(false);
+    input.focus();
   }
   function setOpen(next, query = '') {
     open = Boolean(next);
     input.setAttribute('aria-expanded', String(open));
-    if (open) render(query);
-    options.hidden = !open;
+    if (open) {
+      render(query);
+      // portal 到 body 脱离设置面板的滚动/裁剪上下文，先定位再显示避免闪跳。
+      if (options.parentElement !== document.body) document.body.appendChild(options);
+      positionPanel();
+      attachReposition();
+      options.hidden = false;
+    } else {
+      entries = [];
+      setActive(-1);
+      detachReposition();
+      options.hidden = true;
+      // 关闭后归还到 picker 内，保持模板 DOM 结构整洁。
+      if (picker && options.parentElement !== picker) picker.appendChild(options);
+      input.removeAttribute('aria-activedescendant');
+    }
   }
-  input.addEventListener('focus', () => setOpen(true));
+  function moveActive(step) {
+    if (!open) setOpen(true, input.value);
+    if (!entries.length) return;
+    setActive(activeIndex < 0 ? (step > 0 ? 0 : entries.length - 1) : activeIndex + step, { scroll: true });
+  }
+  function cancelPendingClose() {
+    if (blurTimer) {
+      window.clearTimeout(blurTimer);
+      blurTimer = 0;
+    }
+  }
+  // 失焦延迟关闭：选项与箭头 mousedown preventDefault 不夺焦点，.blur 只在真正
+  // 离开组件（点击外部 / Tab）时触发；延迟窗口内重获焦点则取消关闭。
+  input.addEventListener('focus', () => {
+    cancelPendingClose();
+    setOpen(true);
+  });
+  input.addEventListener('blur', () => {
+    cancelPendingClose();
+    blurTimer = window.setTimeout(() => {
+      blurTimer = 0;
+      if (open) setOpen(false);
+    }, 120);
+  });
+  // 容器整体拦截 mousedown，点击面板空白处也不夺走输入框焦点。
+  options.addEventListener('mousedown', (event) => event.preventDefault());
   input.addEventListener('input', () => setOpen(true, input.value));
   input.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') setOpen(false);
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      moveActive(1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveActive(-1);
+    } else if (event.key === 'Enter') {
+      if (!open) return;
+      event.preventDefault();
+      if (activeIndex >= 0) selectEntry(activeIndex);
+      else setOpen(false);
+    } else if (event.key === 'Escape') {
+      setOpen(false);
+    }
   });
   if (toggle) {
     toggle.addEventListener('mousedown', (event) => event.preventDefault());
-    toggle.addEventListener('click', () => setOpen(!open));
+    toggle.addEventListener('click', () => {
+      cancelPendingClose();
+      setOpen(!open, input.value);
+    });
   }
-  document.addEventListener('click', (event) => {
-    if (open && !event.target?.closest?.('.font-combobox')) setOpen(false);
-  });
   return {
     refresh() {
       if (open) render(input.value);
@@ -5096,7 +5401,14 @@ function normalizeAssColorStyleValue(value) {
 
 
 
-// 自定义五色监听器（boot 接线；实现由 MaweColors 模块承载）。
+
+
+
+
+
+
+
+
 MaweColors.subtitleColorPaletteNames.forEach((name) => {
   const colorInput = MaweColors.subtitleColorPaletteColorInputs[name];
   const hexInput = MaweColors.subtitleColorPaletteHexInputs[name];
@@ -5259,7 +5571,7 @@ function assPreviewFontSize(style, metrics) {
     * metrics.stageHeight / ASS_PREVIEW_REFERENCE_HEIGHT;
 }
 
-function applyAssPreviewElement(element, style, animationState, metrics, alignment, margins) {
+function applyAssPreviewElement(element, style, animationState, metrics, alignment, margins, anchorTranslate = '') {
   if (!element) return;
   const scaleX = metrics.scaleX;
   const scaleY = metrics.scaleY;
@@ -5272,6 +5584,9 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
   const spacing = (Number(style.spacing) || 0) * scaleY;
   const borderBox = Number(style.borderStyle) === 3;
   const transform = [];
+  // 锚定元素（叠加轨/副字幕）的居中平移作为前缀并入，替代 CSS 类里的
+  // translateX(-50%)（此处写 transform 会整体覆盖类内变换）。
+  if (anchorTranslate) transform.push(anchorTranslate);
   const move = style.__assMove;
   if (move) {
     element.style.position = 'absolute';
@@ -5298,8 +5613,8 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
   element.style.color = style.primaryColor;
   element.style.webkitTextStroke = outline > 0 ? `${outline}px ${style.outlineColor}` : '';
   element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
-  element.style.textShadow = !borderBox && shadow > 0
-    ? `${shadow}px ${shadow}px 0 ${style.backColor}` : 'none';
+  element.style.filter = !borderBox && shadow > 0
+    ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
   element.style.maxWidth = `calc(100% - ${Math.max(0, margins.left + margins.right)}px)`;
@@ -5329,8 +5644,8 @@ function applyAssPreviewSpeakerLabel(element, style, metrics) {
   element.style.textUnderlineOffset = style.underline ? '0.16em' : '';
   element.style.webkitTextStroke = outline > 0 ? `${outline}px ${style.outlineColor}` : '';
   element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
-  element.style.textShadow = shadow > 0
-    ? `${shadow}px ${shadow}px 0 ${style.backColor}` : 'none';
+  element.style.filter = shadow > 0
+    ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
 }
@@ -5340,7 +5655,7 @@ function clearAssPreviewSpeakerLabelStyle(element) {
   [
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', '-webkit-text-stroke',
-    'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
+    'paint-order', 'filter', 'letter-spacing', 'line-height',
   ].forEach((property) => element.style.removeProperty(property));
 }
 
@@ -5349,9 +5664,9 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
   [
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', ' -webkit-text-stroke',
-    '-webkit-text-stroke', 'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
+    '-webkit-text-stroke', 'paint-order', 'filter', 'letter-spacing', 'line-height',
     'max-width', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
-    'left', 'top', 'transform-origin', 'transform',
+    'left', 'right', 'top', 'bottom', 'white-space', 'text-align', 'transform-origin', 'transform',
   ].forEach((property) => element.style.removeProperty(property.trim()));
   element.style.setProperty(
     '--subtitle-preview-font-size',
@@ -5406,15 +5721,20 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
     vertical: Math.max(0, Number(baseStyle.marginV) || 0) * metrics.scaleY,
   };
   const appearance = MaweAppearance.getSubtitleAppearance();
-  const extensionSegments = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [];
+  const extensionSegments = activeExtensionSegments();
   const mainStyle = assPreviewStyleVariant(baseStyle, segment, MaweBoot.DATA.segments, appearance);
-  const extensionStyle = assPreviewStyleVariant(
-    baseStyle,
-    extension,
-    extensionSegments,
-    appearance,
+  // 副字幕使用样式库「副字幕样式」槽位的独立样式（副字幕不支持颜色分组，
+  // 不做调色板变体），对齐与边距完全由该样式决定。
+  const extensionStyleBase = window.AsrEditorUtils.assStyleForId(
+    library, library.assignments?.assExtensionStyleId || 'ass-extension',
   );
-  // 叠加轨导出引用颜色样式名（无颜色时回落 Default）；预览按同一映射
+  const extensionAlignment = assPreviewAlignment(extensionStyleBase.alignment);
+  const extensionMargins = {
+    left: Math.max(0, Number(extensionStyleBase.marginL) || 0) * metrics.scaleX,
+    right: Math.max(0, Number(extensionStyleBase.marginR) || 0) * metrics.scaleX,
+    vertical: Math.max(0, Number(extensionStyleBase.marginV) || 0) * metrics.scaleY,
+  };
+  // 叠加轨导出引用颜色样式名（无颜色时回落）；预览按同一映射
   // 应用 ass_color_style 的调色板变体，保持与导出一致。
   const overlayTrackStyle = assPreviewStyleVariant(
     baseStyle,
@@ -5446,13 +5766,41 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
       stageHeight: metrics.stageHeight,
     },
   );
+  // 叠加轨不跟随 \move（绝对 PlayRes 坐标只属于主字幕）；fad/fade/t 与
+  // 位置无关，预览与导出保持一致。
+  const overlayDuration = Math.max(1, Number(overlay?.end) - Number(overlay?.start) || 1);
+  const overlayAnimation = window.AsrEditorUtils.assPreviewAnimationState(
+    profile,
+    Math.max(0, Number(tMs) - Number(overlay?.start || 0)),
+    overlayDuration,
+    {
+      playResX: metrics.resolution.width,
+      playResY: metrics.resolution.height,
+      stageWidth: metrics.stageWidth,
+      stageHeight: metrics.stageHeight,
+    },
+  );
   const animationGroup = profile.animations || {};
   const withMove = (style, state) => ({
     ...assPreviewAnimatedStyle(style, profile, state),
     __assMove: animationGroup.move?.enabled ? { x: state.moveX, y: state.moveY } : null,
   });
   const animatedMainStyle = withMove(mainStyle, mainAnimation);
-  const animatedExtensionStyle = withMove(extensionStyle, extensionAnimation);
+  // 副字幕与叠加轨不跟随 \move（绝对 PlayRes 坐标只属于主字幕）；
+  // fad/fade/t 与位置无关，预览与导出保持一致。
+  const animatedExtensionStyle = assPreviewAnimatedStyle(extensionStyleBase, profile, extensionAnimation);
+  const animatedOverlayTrackStyle = assPreviewAnimatedStyle(overlayTrackStyle, profile, overlayAnimation);
+  // 叠加轨锚定 = 下方最近一层的边距 + 1.2 × 该层字号（与导出的固化
+  // 公式一致）：有副字幕时叠在副字幕上方，否则叠在主字幕上方。偏移按
+  // 动画前的基础字号计算——导出侧 MarginV 固化在样式里，\t(\fs) 只改
+  // 变字形大小，不改变锚定边距。
+  const extensionTrackActive = extensionSegments
+    .some((cue) => cue && cue.disabled !== true);
+  const mainPreviewFontSize = assPreviewFontSize(baseStyle, metrics);
+  const extensionPreviewFontSize = assPreviewFontSize(extensionStyleBase, metrics);
+  const overlayOffsetPx = extensionTrackActive
+    ? extensionMargins.vertical + 1.2 * extensionPreviewFontSize
+    : margins.vertical + 1.2 * mainPreviewFontSize;
 
   MaweDom.overlayEl.dataset.assMode = 'true';
   MaweDom.overlayEl.classList.add('ass-preview-active');
@@ -5470,7 +5818,10 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   MaweDom.overlayEl.style.boxSizing = 'border-box';
   MaweDom.overlayEl.style.padding = `${margins.vertical}px ${margins.right}px ${margins.vertical}px ${margins.left}px`;
   applyAssPreviewElement(MaweDom.overlayTextEl, animatedMainStyle, mainAnimation, metrics, alignment, margins);
-  applyAssPreviewElement(MaweDom.overlayExtensionTextEl, animatedExtensionStyle, extensionAnimation, metrics, alignment, margins);
+  applyAssAnchoredPreviewElement(
+    MaweDom.overlayExtensionTextEl, animatedExtensionStyle, extensionAnimation, metrics,
+    extensionAlignment, extensionMargins, extensionMargins.vertical,
+  );
 
   if (speakerLabelVisible) {
     applyAssPreviewSpeakerLabel(MaweDom.overlayMainSpeakerLabelEl, animatedMainStyle, metrics);
@@ -5488,33 +5839,68 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   } else {
     clearAssPreviewSpeakerLabelStyle(MaweDom.overlayMainSpeakerLabelEl);
   }
-  applyAssOverlayTrackPreview(overlayTrackStyle, metrics, margins, alignment);
+  // 链在副字幕上方时，叠加元素沿用副字幕样式的对齐与边距（与导出侧
+  // Overlay 样式继承锚定层坐标系保持一致）。
+  applyAssAnchoredPreviewElement(
+    overlayTrackTextEl, animatedOverlayTrackStyle, overlayAnimation, metrics,
+    extensionTrackActive ? extensionAlignment : alignment,
+    extensionTrackActive ? extensionMargins : margins,
+    overlayOffsetPx,
+  );
 }
 
-// ASS 模式下的叠加轨预览：CSS 模式把叠加文字悬浮在预览框上沿之外
-// （bottom: calc(100% + 6px)），而 ASS 模式 overlayEl 已铺满整个舞台，
-// 那套定位会把文字推出画面。这里按导出契约（叠加 MarginV = 主样式垂直
-// 边距 + 字号）贴着主字幕排布，并沿用 ASS 样式外观（含 ass_color_style
-// 的调色板映射）：底部对齐排在主字幕上方，顶部对齐排在下方（MarginV 从
-// 顶边算），中间行 libass 忽略垂直边距，维持底部锚定近似。
-function applyAssOverlayTrackPreview(style, metrics, margins, alignment) {
-  if (!overlayTrackTextEl) return;
-  const fontSize = assPreviewFontSize(style, metrics);
-  const offset = `${Math.ceil(margins.vertical + fontSize)}px`;
-  overlayTrackTextEl.style.bottom = alignment.y === 0 ? 'auto' : offset;
-  overlayTrackTextEl.style.top = alignment.y === 0 ? offset : 'auto';
-  overlayTrackTextEl.style.maxWidth = `calc(100% - ${Math.max(0, margins.left + margins.right)}px)`;
-  overlayTrackTextEl.style.whiteSpace = 'normal';
-  overlayTrackTextEl.style.textAlign = 'center';
-  applyAssPreviewSpeakerLabel(overlayTrackTextEl, style, metrics);
+// 锚定渲染：副字幕/叠加轨不参与容器的 flex 布局（CSS 模式下叠加文字
+// 悬浮在预览框上沿之外，而 ASS 模式 overlayEl 已铺满整个舞台，那套
+// 定位会把文字推出画面），改为按各自样式的对齐与边距绝对定位。垂直
+// 偏移由调用方给出，替代样式的 marginV：副字幕直接用自己的边距，叠加
+// 轨用链式锚定结果。中列/中行以 50% + 锚定平移居中，锚定平移作为前缀
+// 并入 applyAssPreviewElement 的 scale/rotate 变换。
+function applyAssAnchoredPreviewElement(element, style, animationState, metrics, alignment, margins, verticalOffsetPx) {
+  if (!element) return;
+  const anchorTranslate = `translate(${alignment.x === 0.5 ? '-50%' : '0%'}, ${alignment.y === 0.5 ? '-50%' : '0%'})`;
+  applyAssPreviewElement(element, style, animationState, metrics, alignment, margins, anchorTranslate);
+  // 定位须在 applyAssPreviewElement 之后写入：其无 \move 分支会清空
+  // position/left/top，先写会被抹掉。
+  element.style.position = 'absolute';
+  if (alignment.x === 0.5) {
+    element.style.left = '50%';
+    element.style.right = 'auto';
+  } else if (alignment.x === 1) {
+    element.style.left = 'auto';
+    element.style.right = `${Math.max(0, Math.round(margins.right))}px`;
+  } else {
+    element.style.left = `${Math.max(0, Math.round(margins.left))}px`;
+    element.style.right = 'auto';
+  }
+  if (alignment.y === 0.5) {
+    element.style.top = '50%';
+    element.style.bottom = 'auto';
+  } else if (alignment.y === 0) {
+    // ASS 7-9 顶行：锚定边距从画面顶部算起。
+    element.style.top = `${Math.max(0, Math.ceil(verticalOffsetPx))}px`;
+    element.style.bottom = 'auto';
+  } else {
+    // ASS 1-3 底行：锚定边距从画面底部算起。
+    element.style.top = 'auto';
+    element.style.bottom = `${Math.max(0, Math.ceil(verticalOffsetPx))}px`;
+  }
+  element.style.whiteSpace = 'normal';
+  element.style.textAlign = alignment.textAlign;
 }
 
 function restoreAssOverlayTrackPreview() {
   if (!overlayTrackTextEl) return;
-  ['bottom', 'top', 'max-width', 'white-space', 'text-align'].forEach((property) => {
-    overlayTrackTextEl.style.removeProperty(property);
-  });
-  clearAssPreviewSpeakerLabelStyle(overlayTrackTextEl);
+  [
+    'position', 'left', 'right', 'top', 'bottom', 'white-space', 'text-align',
+    'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
+    'text-decoration-color', 'text-underline-offset', 'color', '-webkit-text-stroke',
+    'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
+    'max-width', 'padding', 'background-color', 'border-radius', 'opacity',
+    'transform-origin', 'transform',
+  ].forEach((property) => overlayTrackTextEl.style.removeProperty(property));
+  delete overlayTrackTextEl.dataset.colorUnderline;
+  delete overlayTrackTextEl.dataset.colorText;
+  delete overlayTrackTextEl.dataset.colorStroke;
 }
 
 
@@ -5946,7 +6332,13 @@ function projectSaveFingerprint() {
 function flushInlineEditsForSave() {
   const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
   if (!state) {
-    if (!MaweDom.cuePanel?.contains(document.activeElement)) MaweCuePanel.commitCuePanelEdit();
+    // Start/duration changes are committed by their own input handlers.  Only
+    // flush the panel here when text input has actually opened a pending undo
+    // edit; otherwise stale display values can rewrite externally changed
+    // timing and schedule a second save.
+    if (!MaweDom.cuePanel?.contains(document.activeElement) && MaweCuePanelState.cuePanelUndoPushed) {
+      MaweCuePanel.commitCuePanelEdit();
+    }
     return;
   }
   const extension = Boolean(MaweInlineEdit.extensionEditingState);
@@ -7072,9 +7464,9 @@ MaweDom.timedTextEditApply?.addEventListener('click', () => {
   const targetSegments = MaweTimedTextEdit.timedTextEditSegments(draft.kind);
   const snapshotSegments = Array.isArray(draft.allSourceSegments)
     ? draft.allSourceSegments : draft.sourceSegments;
-  const currentMatchesSnapshot = targetSegments.length === snapshotSegments.length
+  const currentMatchesSnapshot = targetSegments.length === MaweHistory.snapshotSegments.length
     && targetSegments.every((segment, index) => {
-      const source = snapshotSegments[index];
+      const source = MaweHistory.snapshotSegments[index];
       return segment?.id === source?.id
         && Number(segment?.start) === Number(source?.start)
         && Number(segment?.end) === Number(source?.end)
@@ -7284,16 +7676,16 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
   requestedEnd = MaweTimeline.timelineFrameAlignedMilliseconds(requestedEnd);
   const start = Math.min(requestedStart, requestedEnd);
   const end = Math.max(requestedStart, requestedEnd);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-  if (overlay.segments.some((segment) => start < Number(segment?.end) && end > Number(segment?.start))) {
+  if (!Number.isFinite(MAWE_I18N.start) || !Number.isFinite(end)) return;
+  if (overlay.segments.some((segment) => MAWE_I18N.start < Number(segment?.end) && end > Number(segment?.start))) {
     MaweHint.flashHint('拖动范围包含已有叠加字幕，无法新增叠加字幕', 'warning');
     return;
   }
-  const insertAt = overlay.segments.findIndex((segment) => Number(segment.start) > start);
+  const insertAt = overlay.segments.findIndex((segment) => Number(segment.start) > MAWE_I18N.start);
   const index = insertAt < 0 ? overlay.segments.length : insertAt;
   const previousEnd = index > 0 ? Number(overlay.segments[index - 1].end) : 0;
   const nextStart = index < overlay.segments.length ? Number(overlay.segments[index].start) : duration;
-  const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(start / 10) * 10));
+  const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(MAWE_I18N.start / 10) * 10));
   const safeEnd = Math.min(nextStart, Math.max(safeStart, Math.round(end / 10) * 10));
   if (safeEnd - safeStart < 100) {
     MaweHint.flashHint('该空白区域不足 100ms，无法新增叠加字幕', 'warning');
@@ -7344,8 +7736,8 @@ function addOverlayAtWaveformTime(timeMs, clickX, clickY) {
     return;
   }
   const start = Math.max(previousEnd, Math.min(Math.round(timeMs / 10) * 10, nextStart - 100));
-  const end = Math.min(nextStart, start + 1000);
-  const adjustedStart = end - start >= 100 ? start : Math.max(previousEnd, nextStart - 1000);
+  const end = Math.min(nextStart, MAWE_I18N.start + 1000);
+  const adjustedStart = end - MAWE_I18N.start >= 100 ? MAWE_I18N.start : Math.max(previousEnd, nextStart - 1000);
   if (end - adjustedStart < 100) {
     MaweHint.flashHint('这里没有足够的空白区域', 'warning');
     return;

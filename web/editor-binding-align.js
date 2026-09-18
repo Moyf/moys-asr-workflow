@@ -113,64 +113,64 @@
 
 
   function bindSelectedSubtitlePair({ successMessage = null } = {}) {
-    if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return;
-    if (MaweSelection.selectedIdxs.size !== 1 || MaweSelection.selectedExtensionIdxs.size !== 1) {
-      MaweHint.flashHint('请分别选中一条主字幕和一条副字幕后再绑定', 'invalid');
-      return;
-    }
-    const mainIndex = [...MaweSelection.selectedIdxs][0];
-    const extensionIndex = [...MaweSelection.selectedExtensionIdxs][0];
-    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    const main = MaweBoot.DATA.segments[mainIndex];
-    const extension = track?.segments?.[extensionIndex];
-    if (!main || !extension) return;
-    const replacedBinding = MaweMultiSubtitleCore.bindingForMainIndex(mainIndex);
-    MaweHistory.pushUndo('绑定多重字幕');
-    MaweMultiSubtitleCore.addSubtitleBinding(main, extension, track);
-    const autoSynced = MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration
-      && alignExtensionToMainTimeRange(extensionIndex, track, { pushHistory: false, showHint: false });
-    MaweMultiSubtitleCore.markMainSegmentsDirty([main]);
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    // 绑定会更新波形上的绑定标记；自动同步时也会改变副字幕范围，
-    // 因此列表与波形都需要同步刷新。
-    MaweCuePanel.renderAll({ waveform: 'overlay' });
-    MaweCoreState.waveformEditor?.updateSelection();
-    const bindingMessage = successMessage
-      || (replacedBinding
-        ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为副字幕 ${extensionIndex + 1}`
-        : `已绑定主字幕 ${mainIndex + 1} 与副字幕 ${extensionIndex + 1}`);
-    MaweHint.flashHint(`${bindingMessage}${autoSynced ? '，并同步时长' : ''}`, 'success');
+  if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return;
+  if (MaweSelection.selectedIdxs.size !== 1 || MaweSelection.selectedExtensionIdxs.size !== 1) {
+    MaweHint.flashHint('请分别选中一条主字幕和一条副字幕后再绑定', 'invalid');
+    return;
   }
+  const mainIndex = [...MaweSelection.selectedIdxs][0];
+  const extensionIndex = [...MaweSelection.selectedExtensionIdxs][0];
+  const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+  const main = MaweBoot.DATA.segments[mainIndex];
+  const extension = track?.segments?.[extensionIndex];
+  if (!main || !extension) return;
+  const replacedBinding = MaweMultiSubtitleCore.bindingForMainIndex(mainIndex);
+  MaweHistory.pushUndo('绑定双语字幕');
+  MaweMultiSubtitleCore.addSubtitleBinding(main, extension, track);
+  const autoSynced = MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration
+    && alignExtensionToMainTimeRange(extensionIndex, track, { pushHistory: false, showHint: false });
+  MaweMultiSubtitleCore.markMainSegmentsDirty([main]);
+  MaweMultiSubtitleCore.markMultiSubtitleDirty();
+  // 绑定会更新波形上的绑定标记；自动同步时也会改变副字幕范围，
+  // 因此列表与波形都需要同步刷新。
+  MaweCuePanel.renderAll({ waveform: 'overlay' });
+  MaweCoreState.waveformEditor?.updateSelection();
+  const bindingMessage = successMessage
+    || (replacedBinding
+      ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为副字幕 ${extensionIndex + 1}`
+      : `已绑定主字幕 ${mainIndex + 1} 与副字幕 ${extensionIndex + 1}`);
+  MaweHint.flashHint(`${bindingMessage}${autoSynced ? '，并同步时长' : ''}`, 'success');
+}
 
 
 
   function unbindSelectedSubtitlePair() {
-    const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
-    const ids = new Set();
-    MaweSelection.selectedIdxs.forEach((index) => { if (MaweBoot.DATA.segments[index]?.id) ids.add(MaweBoot.DATA.segments[index].id); });
-    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    MaweSelection.selectedExtensionIdxs.forEach((index) => { if (track?.segments[index]?.id) ids.add(track.segments[index].id); });
-    if (!ids.size) return;
-    const removed = window.AsrEditorUtils.removeSubtitleBindings(multi, (binding) => (
-      binding.main_segment_ids?.some((id) => ids.has(id))
-        || binding.extension_segment_ids?.some((id) => ids.has(id))
-    ));
-    if (!removed.length) {
-      MaweHint.flashHint('当前选中字幕没有绑定关系', 'invalid');
-      return;
-    }
-    // removeSubtitleBindings 已经返回具体关系；快照必须在真正修改前建立。
-    // 这里把预览关系恢复后再记录，避免解绑动作无法撤销。
-    multi.bindings.push(...removed);
-    MaweHistory.pushUndo('解绑多重字幕');
-    window.AsrEditorUtils.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweMultiSubtitleCore.syncBindingOffsets();
-    // 解绑会移除波形上的绑定标记，也需要刷新字幕块覆盖层。
-    MaweCuePanel.renderAll({ waveform: 'overlay' });
-    MaweCoreState.waveformEditor?.updateSelection();
-    MaweHint.flashHint(`已解绑 ${removed.length} 对字幕`, 'success');
+  const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+  const ids = new Set();
+  MaweSelection.selectedIdxs.forEach((index) => { if (MaweBoot.DATA.segments[index]?.id) ids.add(MaweBoot.DATA.segments[index].id); });
+  const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+  MaweSelection.selectedExtensionIdxs.forEach((index) => { if (track?.segments[index]?.id) ids.add(track.segments[index].id); });
+  if (!ids.size) return;
+  const removed = MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => (
+    binding.main_segment_ids?.some((id) => ids.has(id))
+      || binding.extension_segment_ids?.some((id) => ids.has(id))
+  ));
+  if (!removed.length) {
+    MaweHint.flashHint('当前选中字幕没有绑定关系', 'invalid');
+    return;
   }
+  // removeSubtitleBindings 已经返回具体关系；快照必须在真正修改前建立。
+  // 这里把预览关系恢复后再记录，避免解绑动作无法撤销。
+  multi.bindings.push(...removed);
+  MaweHistory.pushUndo('解绑双语字幕');
+  MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
+  MaweMultiSubtitleCore.markMultiSubtitleDirty();
+  MaweMultiSubtitleCore.syncBindingOffsets();
+  // 解绑会移除波形上的绑定标记，也需要刷新字幕块覆盖层。
+  MaweCuePanel.renderAll({ waveform: 'overlay' });
+  MaweCoreState.waveformEditor?.updateSelection();
+  MaweHint.flashHint(`已解绑 ${removed.length} 对字幕`, 'success');
+}
 
 
 

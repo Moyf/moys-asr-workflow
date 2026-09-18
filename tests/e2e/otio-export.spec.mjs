@@ -55,7 +55,11 @@ test('exports source OTIO when media metadata is missing', async ({ page }) => {
     });
   });
   await page.goto(server.url);
-  await page.evaluate(() => { MaweBoot.DATA.media_metadata = null; });
+await page.evaluate(() => {
+  MaweBoot.DATA.media_metadata = null;
+  // OTIO 导出默认附带完整 SRT（otioExportIncludeSrt）；本用例只关心 OTIO 内容。
+  MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt = false;
+});
 
   await page.locator('#extra-export-btn').click();
   await page.locator('[aria-controls="extra-otio-menu"]').hover();

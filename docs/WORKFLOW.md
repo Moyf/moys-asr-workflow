@@ -82,7 +82,7 @@ CLI 未指定 `--model` 时默认使用 `qwen-audio-3.0-asr-flash-filetrans`；�
 --with-waveform      在媒体旁生成 .quapeaks 波形缓存（不再写进工程文件）
 --with-spectral      在 peaks 容器中额外生成频谱数据（需要 --with-waveform）
 --debug              输出部分 API 原始结果，便于反馈问题
---debug-raw          单独保存完整 ASR 原始 JSON；不写 -o 时存到媒体旁 _maw/
+--debug-raw          在线保存完整原始 JSON；本地保存原始/中间调试产物与清单
 ```
 
 CLI 默认不生成波形缓存；需要交给编辑器直接打开时，加 `--with-waveform`。该选项会额外用 FFmpeg 完整扫一遍媒体，在媒体旁生成 `.quapeaks` 的 wave 层（跳过耗时较高的频谱计算；只有同时加 `--with-spectral` 才生成频谱层）。**波形数据不再写进工程文件**：工程只保存字幕与设置，体积不随素材时长暴涨。不加 `--with-waveform` 时，编辑器首次打开会按需建立缓存，读取顺序为工程内联（旧工程）→ `.quapeaks` 自研层 → `.mopeaks` → FFmpeg 重抽，重抽结果落为 `.mopeaks` sidecar；旧版直接写在媒体旁的 `视频.waveform.json` sidecar 已不再读取，也不会被迁移。`.mopeaks` 与 `.quapeaks` 的落点跟随「将所有输出放入子文件夹」设置：默认在媒体旁，勾选后进入对应 `_maw`，读取端各位置都会查找；REAPER 原生 `.ReaPeaks` 始终在媒体旁。只有同时加 `--with-spectral` 才生成频谱层。Launcher 中对应的“生成 reapeaks 频谱数据”默认不勾选。波形提取失败时只给警告，不影响字幕与工程文件输出。输入视频会先由 FFmpeg 提取单声道 16kHz WAV；音频输入也会通过 FFprobe 获取时长。没有 FFmpeg/FFprobe 时，这一步无法完成。
@@ -300,11 +300,12 @@ Launcher 的「批量」模式用于把多个本地媒体按顺序转写。切�
 ├── 视频.srt / .mosp        （最终产物，默认在外层）
 └── _maw/
     ├── 后处理/              （自动后处理中间产物，英文界面为 postprocess/）
+    ├── 调试/                （调试清单与阶段文件，英文界面为 debug/）
     ├── （波形缓存不在这里：见下方说明）
     └── （转换缓存、asr-response、edit.html、批量清单等辅助文件）
 ```
 
-波形缓存的落点跟随「将所有输出放入子文件夹」设置：默认写在媒体旁（`ICE.mkv.mopeaks` / `ICE.mkv.quapeaks`），勾选后进入对应的 `_maw` 目录。读取端两种位置都会找（写入点 → 媒体旁 → 共享 `_maw` → 每视频 `_maw`），所以改一次设置不会把已有缓存全部判过期。**唯一例外是 `.ReaPeaks`** —— 那是 REAPER 写死的位置，永远只在媒体旁，否则读不到真机产物。 进入 `_maw` 的其余辅助文件包括：FLV 等媒体为浏览器播放生成的转换缓存（如 `clip.mp4`）、`--debug-raw` 未指定 `-o` 时保存的 `asr-response.json`、Launcher 生成的便携 `.edit.html`，以及批量转写的 `maw-batch-manifest.json`。`.ReaPeaks` 波形缓存仍按 REAPER 惯例写在媒体旁。旧版直接写在媒体旁的波形 sidecar 与转换缓存仍会被识别读取，不会被迁移或破坏。
+波形缓存的落点跟随「将所有输出放入子文件夹」设置：默认写在媒体旁（`ICE.mkv.mopeaks` / `ICE.mkv.quapeaks`），勾选后进入对应的 `_maw` 目录。读取端两种位置都会找（写入点 → 媒体旁 → 共享 `_maw` → 每视频 `_maw`），所以改一次设置不会把全部已有缓存判成过期。**唯一例外是 `.ReaPeaks`** —— 那是 REAPER 写死的位置，永远只在媒体旁，否则读不到真机产物。开启输出子文件夹时，在线 `--debug-raw` 的原始响应和本地 `--debug-raw` 的清单/阶段文件统一进入 `_maw/调试`（英文界面为 `_maw/debug`）；关闭时保留旧的 `_maw` 或输出同目录规则。其他 `_maw` 辅助文件还包括 FLV 等媒体为浏览器播放生成的转换缓存（如 `clip.mp4`）、Launcher 生成的便携 `.edit.html` 以及批量转写的 `maw-batch-manifest.json`。`.ReaPeaks` 波形缓存仍按 REAPER 惯例写在媒体旁。旧版直接写在媒体旁的波形 sidecar 与转换缓存仍会被识别读取，不会被迁移或破坏。
 
 Launcher「配置 → 通用 → 文件输出」可以调整最终产物的位置和命名：
 
@@ -427,7 +428,7 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 - 可拖动波形中的字幕块或边缘微调时间；相邻字幕共享边界时会保持连续。
 - 播放器内的字幕预览可直接拖动；悬停或聚焦后拖动八个手柄可缩放。方向键移动，`Shift` 加速移动，`Alt + 方向键` 调整尺寸。几何保存在工程 `preview.subtitle`，不会改变字幕时间。
 - “移除静音空隙”只建立可逆的压缩时间线，不修改原媒体和原字幕时间。
-- 常规 SRT 或 ASS 通过工具栏导出；ASS 读取「管理 ASS 样式」中选定的默认输出方案及关联样式，并按工程记录的源视频宽高写入 `PlayResX` / `PlayResY`；方案配置的 `\fad`、`\fade`、`\move`、`\t` 会逐句写入每条启用字幕，能由 ASS 表达的颜色样式也会随之导出。启用说话人导出时写入 ASS `Name` 字段，并用局部标签保留说话人颜色。若启用了空隙移除，可选择去空隙 SRT、带样式 ASS、OTIO、FFconcat 或保留区域 JSON。播放器的「ASS 字幕模式」默认关闭，开启后尽量复刻该 ASS 方案；它不改变原有 CSS 预览设置。
+- 常规 SRT 或 ASS 通过工具栏导出；ASS 读取「管理 ASS 样式」中选定的默认输出方案及关联样式，并按工程记录的源视频宽高写入 `PlayResX` / `PlayResY`；方案配置的 `\fad`、`\fade`、`\move`、`\t` 会逐句写入每条启用字幕（副字幕与叠加字幕不包含 `\move`，分别由副字幕样式的边距和链式锚定边距定位），能由 ASS 表达的颜色样式也会随之导出；多重字幕的副字幕以独立样式随 ASS 导出。启用说话人导出时写入 ASS `Name` 字段，并用局部标签保留说话人颜色。若启用了空隙移除，可选择去空隙 SRT、带样式 ASS、OTIO、FFconcat 或保留区域 JSON。播放器的「ASS 字幕模式」默认关闭，开启后尽量复刻该 ASS 方案；它不改变原有 CSS 预览设置。
 - 去空隙 OTIO 会把启用字幕作为保留媒体 clip 上的 marker，名称为字幕内容；字幕颜色映射为 Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE`，跨越被移除空隙的字幕按保留区间拆分，无颜色时使用白色默认标记。marker 的 `marked_range` 使用媒体源坐标，与 clip 的 `source_range` 和外部引用的 `available_range` 保持一致；带 BWF `bext.time_reference` 的 WAV 会保留非零媒体起点，避免 Resolve 导入后片段内容错位。Resolve 的可用颜色参考还包括 Blue、Cyan、Green、Yellow、Red、Pink、Purple、Fuchsia、Rose、Lavender、Sky、Mint、Lemon、Sand、Cocoa、Cream；当前 MAW 使用其中五色。
 
 完整 JSON 约束在 [JSON_SCHEMA.md](../JSON_SCHEMA.md)。若你打算用其他 ASR 或 LLM 生成工程，至少保证顶层有 `segments`，时间全部是整数毫秒。

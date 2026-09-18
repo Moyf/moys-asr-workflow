@@ -123,6 +123,10 @@ uv run python edit.py --blank
 
 ## 开发检查
 
+### 编辑器 UI 规范
+
+- 任何界面文字的 `font-size` 不得小于等于 10px：过小的文字（如 9px 徽标、10px 注脚）在低分屏上难以辨认。新增样式时辅助说明文字用 11–12px，正文与说明类一律不低于 12px。
+
 ```powershell
 uv run --frozen ruff check
 node --check web\editor.js

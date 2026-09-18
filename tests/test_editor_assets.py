@@ -349,7 +349,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("function setStickerRootModalOpen(open)", sticker_root)
         self.assertIn("event.key === 'Escape'", script)
         self.assertIn("event.key !== 'Tab'", script)
-        self.assertIn("#sticker-root-modal { z-index: 335; }", styles)
+        self.assertIn("#sticker-root-modal { z-index: 465; }", styles)
         self.assertIn("width: min(540px, calc(100vw - 32px))", styles)
         for removed in (
             "showDirectoryPicker",

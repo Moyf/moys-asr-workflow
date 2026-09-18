@@ -205,6 +205,9 @@
   const profileId = library.assignments?.assExportProfileId || 'ass';
   const assProfile = window.AsrEditorUtils.assProfileForId(library, profileId);
   const assStyle = window.AsrEditorUtils.assStyleForId(library, assProfile.styleId);
+  const assExtensionStyle = window.AsrEditorUtils.assStyleForId(
+    library, library.assignments?.assExtensionStyleId || 'ass-extension',
+  );
   return {
     title: MaweBoot.PROJECT_NAME || MaweBoot.FILENAME_BASE || 'MAW',
     mediaMetadata: MaweTimeline.normalizeMediaMetadata(MaweBoot.DATA.media_metadata),
@@ -214,6 +217,7 @@
     appearance,
     assProfile,
     assStyle,
+    assExtensionStyle,
   };
 }
 
@@ -221,6 +225,8 @@
 
   function buildAss() {
   const { overlaySegments } = mergedExportSegments();
+  // 副字幕轨随 ASS 导出（多重字幕开启时才存在）；叠加轨与副字幕分层输出。
+  const extensionSegments = activeExtensionSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     MaweBoot.DATA.segments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
@@ -231,6 +237,7 @@
     firstEnabledIndex,
     appearance: MaweAppearance.getSubtitleAppearance(),
     overlaySegments,
+    extensionSegments,
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
   });
 }
@@ -271,23 +278,29 @@
 
 
   function buildGapRemovedAss() {
-    const removed = MaweGapRemoveData.getRemovedGapRanges();
-    if (!removed.length) {
-      MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
-      return null;
-    }
-    const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-      MaweBoot.DATA.segments,
-      MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-    );
-    return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
-      ...assExportOptions(),
-      alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-      firstEnabledIndex,
-      mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
-      ...MaweSpeakerLabels.speakerLabelExportOptions(),
-    });
+  const removed = MaweGapRemoveData.getRemovedGapRanges();
+  if (!removed.length) {
+    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    return null;
   }
+  const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
+    MaweBoot.DATA.segments,
+    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+  );
+  // 去空隙 ASS 与常规 ASS 同一三轨契约：叠加轨与副字幕也随导出，
+  // 时间统一经 mapGapRemovedTime 压缩。
+  const { overlaySegments } = mergedExportSegments();
+  const extensionSegments = activeExtensionSegments();
+  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+    ...assExportOptions(),
+    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    firstEnabledIndex,
+    overlaySegments,
+    extensionSegments,
+    mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+    ...MaweSpeakerLabels.speakerLabelExportOptions(),
+  });
+}
 
 
 

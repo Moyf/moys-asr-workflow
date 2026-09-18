@@ -414,16 +414,18 @@ test('exports overlay cues through the ASS and per-color SRT paths', async ({ pa
   await dropProject(page, project);
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
 
-  // ASS：叠加轨以 Layer 1 写入，底部对齐 + MarginV = 80 + fontSize 使其渲染在主字幕上方。
-  const ass = await page.evaluate(() => MaweExportSrt.buildAss());
+// ASS：叠加轨以 Layer 2 写入，引用独立的 Overlay 样式（MarginV 固化在
+// 样式行里，事件行不带边距覆盖）。
+const ass = await page.evaluate(() => MaweExportSrt.buildAss());
   const dialogueLines = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(dialogueLines).toHaveLength(2);
   expect(dialogueLines[0]).toMatch(/^Dialogue: 0,/);
   expect(dialogueLines[0]).toContain('main red');
-  expect(dialogueLines[1]).toMatch(/^Dialogue: 1,/);
+  expect(dialogueLines[1]).toMatch(/^Dialogue: 2,/);
   expect(dialogueLines[1]).toContain('overlay blue');
   expect(dialogueLines[1]).not.toContain('\\an8');
-  expect(dialogueLines[1]).toMatch(/,0,0,\d+,,/);
+  expect(dialogueLines[1]).toContain(',Overlay BLUE,,0,0,0,');
+  expect(ass).toContain('Style: Overlay,');
 
   // 按颜色拆分导出：颜色池包含叠加轨颜色；合并 SRT 含两条轨的文本。
   const colors = await page.evaluate(() => MaweExportSrt.usedSubtitleColors().map((color) => color.name));
@@ -431,6 +433,67 @@ test('exports overlay cues through the ASS and per-color SRT paths', async ({ pa
   const srt = await page.evaluate(() => MaweExportSrt.buildSrt());
   expect(srt).toContain('main red');
   expect(srt).toContain('overlay blue');
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
+test('ASS mode previews overlay cues in the main style with fad and exports tags per track', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 0, end: 2000, text: 'overlay cue' }],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
+
+  const result = await page.evaluate(() => {
+    DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    const library = window.AsrEditorUtils.defaultAssStyleLibrary();
+    const profile = library.assProfiles[0];
+    profile.animations.fad = { enabled: true, inMs: 1000, outMs: 1000 };
+    profile.animations.move = { enabled: true, x1: 0, y1: 960, x2: 0, y2: 500, t1: 0, t2: 1000 };
+    ASS_STYLE_LIBRARY = library;
+    EDITOR_SETTINGS.assMode = true;
+    overlayToggle.checked = true;
+    refreshSubtitlePreview(600, 0);
+    const overlayTrackText = document.getElementById('overlay-track-text');
+    const mainText = document.getElementById('overlay-main-text');
+    const stageHeight = playerStage.getBoundingClientRect().height;
+    return {
+      stageHeight,
+      mainFontSize: getComputedStyle(mainText).fontSize,
+      overlayFontSize: getComputedStyle(overlayTrackText).fontSize,
+      overlayBottom: overlayTrackText.style.bottom,
+      overlayOpacity: Number(getComputedStyle(overlayTrackText).opacity),
+      overlayFontFamily: overlayTrackText.style.fontFamily,
+      ass: buildAss(),
+    };
+  });
+  // 叠加轨与主字幕使用完全相同的 ASS 样式（字号/字体一致），锚定在主
+  // 字幕上方：MarginV = 样式垂直边距 80 + 1.2 × 字号 72（按 PlayRes 1080
+  // 等比换算）。
+  expect(result.overlayFontSize).toBe(result.mainFontSize);
+  expect(result.overlayFontFamily.length).toBeGreaterThan(0);
+  const scale = result.stageHeight / 1080;
+  const expectedOffset = Math.ceil(80 * scale + 1.2 * ((72 * result.stageHeight) / 1080));
+  expect(result.overlayBottom).toBe(`${expectedOffset}px`);
+  // t=600ms、fad(in=1000ms)：淡入进行到 60%。
+  expect(result.overlayOpacity).toBeCloseTo(0.6, 5);
+  // 导出侧：主轨携带 fad + move；叠加轨只带与位置无关的 fad，不带 move，
+  // 引用固化了锚定边距（80 + round(86.4) = 166）的 Overlay 样式。
+  const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  expect(dialogueLines).toHaveLength(2);
+  expect(dialogueLines[0]).toContain('{\\fad(1000,1000)\\move(0,960,0,500,0,1000)}main cue');
+  expect(dialogueLines[1]).toContain('{\\fad(1000,1000)}overlay cue');
+  expect(dialogueLines[1]).not.toContain('\\move(');
+  const overlayStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
+  expect(overlayStyleLine).toBeTruthy();
+  expect(overlayStyleLine.endsWith(',10,10,166,1')).toBe(true);
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 

@@ -288,6 +288,11 @@ class GenerateReapeaksTests(unittest.TestCase):
     """生成 → 解析 往返：验证 MAW 能自建 .ReaPeaks 并被只读路径读取。"""
 
     def setUp(self) -> None:
+        # 隔离用户级 MAW 配置（.env 勾过「输出进子文件夹」会让缓存写进 _maw）。
+        self.env_patcher = mock.patch.dict(
+            os.environ, {"MAW_GUI_OUTPUT_SUBFOLDER": "0", "MAW_GUI_PER_VIDEO_SUBFOLDER": "0"},
+        )
+        self.env_patcher.start()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
         self.tone_path = self.root / "tone.wav"
@@ -305,6 +310,7 @@ class GenerateReapeaksTests(unittest.TestCase):
         os.utime(self.tone_path, (FIXED_MTIME, FIXED_MTIME))
 
     def tearDown(self) -> None:
+        self.env_patcher.stop()
         self.temp_dir.cleanup()
 
     def test_generate_reapeaks_bytes_roundtrip(self) -> None:

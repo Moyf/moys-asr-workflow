@@ -82,25 +82,25 @@ __WAVEFORM_CSS__
     <button type="button" id="redo-btn" title="重做 (Ctrl(Cmd)+Shift+Z)" disabled>↷ 重做</button>
   </span>
   <span class="sep"></span>
-  <label class="overlay-track-toggle" id="overlay-track-controls" hidden
-         title="显示独立叠加字幕轨；它不会与多重字幕建立绑定关系">
+  <label class="overlay-track-toggle" id="overlay-track-controls"
+         title="开启后可在叠加轨创建与主字幕时间重叠的叠加字幕；叠加轨不会与双语字幕建立绑定关系">
     <input type="checkbox" id="overlay-track-toggle">
-    叠加字幕
+    允许字幕重叠
   </label>
   <span class="sep overlay-track-separator" id="overlay-track-separator" hidden></span>
   <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
     <label class="multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
-           title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
-      <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。">
-      多重字幕
+           title="当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。">
+      <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。">
+      双语字幕
     </label>
-    <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden>请拖入第二条字幕以开启多重字幕编辑</small>
+    <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden>请拖入第二条字幕以开启双语字幕编辑</small>
     <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown" hidden>
-      <button type="button" id="multi-subtitle-settings-toggle" title="多重字幕设置" aria-label="多重字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
+      <button type="button" id="multi-subtitle-settings-toggle" title="双语字幕设置" aria-label="双语字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
       <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
         <div class="multi-subtitle-setting-row">
           <span>显示方式</span>
-          <select id="multi-subtitle-display-mode" title="多重字幕列表显示方式">
+          <select id="multi-subtitle-display-mode" title="双语字幕列表显示方式">
             <option value="main">主轨</option>
             <option value="extension">副轨</option>
             <option value="both" selected>双列</option>
@@ -126,16 +126,17 @@ __WAVEFORM_CSS__
         </div>
         <div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
           <span>副字幕时波形高度</span>
-          <select id="multi-subtitle-extension-row-height" title="启用多重字幕时使用的波形行高度">
+          <select id="multi-subtitle-extension-row-height" title="启用双语字幕时使用的波形行高度">
             <option value="64">64 px</option>
             <option value="80">80 px</option>
             <option value="96">96 px</option>
             <option value="120">120 px</option>
             <option value="144">144 px</option>
             <option value="168" selected>168 px</option>
+            <option value="192">192 px</option>
           </select>
         </div>
-        <label class="multi-subtitle-setting-toggle" title="拖动多重字幕时，允许吸附到另一条字幕轨道的起点和终点">
+        <label class="multi-subtitle-setting-toggle" title="拖动副字幕时，允许吸附到主字幕轨道的起点和终点">
           <input type="checkbox" id="multi-subtitle-cross-track-snap" checked> 跨轨道吸附
         </label>
         <label class="multi-subtitle-setting-toggle" title="普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕">
@@ -144,7 +145,7 @@ __WAVEFORM_CSS__
         <label class="multi-subtitle-setting-toggle" title="绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H">
           <input type="checkbox" id="multi-subtitle-auto-sync-duration" checked> 绑定时自动同步时长
         </label>
-        <label class="multi-subtitle-setting-toggle" title="在多重字幕波形中显示主字幕和副字幕的轨道编号徽标">
+        <label class="multi-subtitle-setting-toggle" title="在双语字幕波形中显示主字幕和副字幕的轨道编号徽标">
           <input type="checkbox" id="multi-subtitle-show-track-badges"> 显示轨道徽标
         </label>
         <div class="dropdown-separator"></div>
@@ -632,7 +633,7 @@ __WAVEFORM_CSS__
           <span class="help-important"><kbd id="help-waveform-split-key">B</kbd> 按当前时间基准拆分字幕</span>
         </div>
       </section>
-      <h4 class="help-title">多重字幕</h4>
+      <h4 class="help-title">双语字幕</h4>
       <section class="help-subgroup">
         <div class="help-category">
           <span class="help-important"><kbd>G</kbd> 绑定到主副字幕（自动匹配）</span>
@@ -679,9 +680,9 @@ __WAVEFORM_CSS__
           <span><kbd>Shift+A</kbd> 将字幕起点贴到前一条结尾</span>
           <span><kbd>Shift+D</kbd> 将字幕终点贴到后一条开头</span>
         </div>
-        <span class="help-note">注：微调幅度可在波形区的
-          <button type="button" class="help-inline-action" id="help-open-waveform-keyboard-settings" data-help-open-waveform-settings aria-controls="waveform-settings-panel">⚙️设置</button>
-          中调节，默认 50ms</span>
+        <span class="help-note">注：微调幅度可在
+          <button type="button" class="help-inline-action" id="help-open-keyboard-settings" data-help-open-editor-settings aria-controls="editor-settings-panel">⚙️全局设置</button>
+          「通用操作」中调节，默认 50ms</span>
       </section>
     </section>
     <section class="help-group help-tab-panel" id="help-tab-panel-gap" role="tabpanel" aria-labelledby="help-tab-gap" data-help-tab-panel="gap" tabindex="0" hidden>
@@ -704,9 +705,9 @@ __WAVEFORM_CSS__
           <span class="help-note">仅在拖动边界模式生效</span>
           <span><kbd>中键拖动</kbd> 添加静音区段；<kbd>Alt+中键拖动</kbd> 添加恢复区段</span>
           <span class="help-note">仅在中键拖动模式生效</span>
-          <span class="help-note">具体操作取决于波形区的
-            <button type="button" class="help-inline-action" id="help-open-gap-settings" data-help-open-waveform-settings aria-controls="waveform-settings-panel">⚙️设置</button>
-            中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。</span>
+          <span class="help-note">具体操作取决于
+            <button type="button" class="help-inline-action" id="help-open-gap-settings" data-help-open-editor-settings aria-controls="editor-settings-panel">⚙️全局设置</button>
+            「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。</span>
         </div>
       </section>
       <section class="help-subgroup">
@@ -896,6 +897,71 @@ __WAVEFORM_CSS__
     </div>
     </div>
   </div>
+  <span class="editor-settings-group-heading" id="waveform-operation-settings-title">波形区操作</span>
+  <div class="editor-settings-group" role="group" aria-labelledby="waveform-operation-settings-title">
+    <div class="editor-settings-sub-group">
+    <label class="toggle editor-settings-item" title="启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置">
+      <input type="checkbox" id="waveform-drag-playhead" checked> 允许拖动指针
+    </label>
+    <div class="editor-settings-field">
+    <label class="editor-settings-item" title="设置相接字幕边界的拖动方式：新模式拖动贴合中缝时两侧联动，传统模式沿用自动吸附开关">贴合字幕边界
+      <select id="adjacent-boundary-mode">
+        <option value="dual" selected>中缝联动（新）</option>
+        <option value="classic">传统模式</option>
+      </select>
+    </label>
+    <small class="editor-settings-hint" id="adjacent-boundary-mode-hint-dual">拖动贴合字幕中间的中缝：两侧边界一起联动；单独拖动左右手柄只调整当前字幕（类似达芬奇）。</small>
+    </div>
+    <div class="editor-settings-field">
+    <label class="toggle editor-settings-item" id="auto-snap-adjacent-cues-row" title="开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动">
+      <input type="checkbox" id="auto-snap-adjacent-cues" checked> 自动吸附调整相邻字幕
+    </label>
+    <small class="editor-settings-hint" id="auto-snap-adjacent-cues-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
+    </div>
+    <div class="editor-settings-field">
+    <label class="editor-settings-item" title="B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准">快捷键时间基准
+      <select id="keyboard-operation-reference">
+        <option value="pointer" selected>鼠标位置</option>
+        <option value="playhead">播放头</option>
+      </select>
+    </label>
+    <small class="editor-settings-hint" id="keyboard-operation-reference-hint">B/Z/X/N 使用鼠标所在波形位置；波形外不执行时间操作。</small>
+    </div>
+    </div>
+  </div>
+  <span class="editor-settings-group-heading" id="keyboard-adjust-settings-title">按键调整字幕</span>
+  <div class="editor-settings-group" role="group" aria-labelledby="keyboard-adjust-settings-title">
+    <div class="editor-settings-sub-group">
+    <div class="editor-settings-field">
+    <label class="editor-settings-item" title="选中字幕时，方向键和按住字幕块/边界时的每次调整幅度">
+      字幕按键微调幅度
+      <span class="gap-remove-number-control">
+        <input type="number" id="cue-move-step" min="10" max="2000" step="10" value="50" inputmode="numeric">
+        <span class="gap-remove-unit" id="cue-move-step-unit">ms</span>
+      </span>
+    </label>
+    <small class="editor-settings-hint" id="cue-move-step-hint">具体用法详见帮助的「微调字幕」区。</small>
+    <button type="button" class="editor-settings-help-link" id="keyboard-settings-help" data-help-tab-target="fine-tuning" title="打开帮助中的微调字幕说明" aria-label="打开帮助中的微调字幕说明">帮助</button>
+    </div>
+    </div>
+  </div>
+  <span class="editor-settings-group-heading" id="gap-operation-mode-settings-title">静音空隙</span>
+  <div class="editor-settings-group" role="group" aria-labelledby="gap-operation-mode-settings-title">
+    <div class="editor-settings-sub-group">
+    <div class="editor-settings-field">
+    <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键点击切换整段，空白处 Alt+左键拖动增加空隙；空隙块左键或 Alt+左键拖动整体偏移，Ctrl/Cmd+拖动复制；中键拖动默认增加静音，按住 Alt 才恢复声音；“边界与中键”可同时启用两种方式">
+      空隙区段操作方式
+      <select id="gap-remove-operation-mode">
+        <option value="none">无</option>
+        <option value="boundary_drag" selected>拖动边界</option>
+        <option value="middle_drag">中键拖动</option>
+        <option value="boundary_and_middle">边界与中键</option>
+      </select>
+    </label>
+    <button type="button" class="editor-settings-help-link" id="gap-settings-help" data-help-tab-target="gap" title="打开帮助中的空隙操作说明" aria-label="打开帮助中的空隙操作说明">帮助</button>
+    </div>
+    </div>
+  </div>
   </div>
   <div class="editor-settings-page" id="editor-settings-page-subtitle-preview" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-preview" hidden>
   <div class="editor-settings-group">
@@ -943,20 +1009,13 @@ __WAVEFORM_CSS__
       <div class="ass-manager-open-row">
         <button type="button" id="ass-style-manager-open" class="editor-settings-inline-action ass-style-manager-open" title="打开 ASS 样式库">🎨 管理 ASS 样式</button>
       </div>
-      <label class="subtitle-preview-setting-row ass-color-style-row" title="选择 ASS 导出和预览中，颜色字幕的应用方式；「无影响」时所有颜色字幕使用统一样式">
-        <span>颜色字幕样式</span>
-        <select id="ass-color-style" aria-label="ASS 颜色字幕样式">
-          <option value="text" selected>作为字幕颜色</option>
-          <option value="stroke">作为描边颜色</option>
-          <option value="none">无影响</option>
-        </select>
-      </label>
       <small class="editor-settings-hint" id="ass-style-summary">样式库正在加载…</small>
     </div>
   </div>
+  <small class="editor-settings-hint" id="subtitle-style-ass-mode-hint" hidden>⬆️ 当前预览样式由 ASS 字幕模式控制</small>
   <span class="editor-settings-group-heading" id="subtitle-preview-style-title">主字幕</span>
   <div class="editor-settings-group subtitle-preview-style-group" id="main-subtitle-preview-settings" role="group" aria-labelledby="subtitle-preview-style-title">
-    <div class="subtitle-preview-settings-fields">
+    <div class="subtitle-preview-settings-fields" id="main-subtitle-css-fields">
         <label class="subtitle-preview-setting-row" title="只影响播放器画面内的字幕预览，不改变字幕文本或时间">
           <span>文字大小</span>
           <select id="subtitle-font-size">
@@ -1006,10 +1065,17 @@ __WAVEFORM_CSS__
           </div>
         </label>
     </div>
+    <div class="subtitle-preview-settings-fields" id="main-ass-style-fields" hidden>
+        <div class="subtitle-preview-setting-row ass-style-select-row" title="ASS 字幕模式下主字幕使用的样式；即当前 ASS 输出方案关联的样式，与样式库中的选择同步">
+          <span>使用 ASS 样式</span>
+          <select id="main-ass-style-select" aria-label="主字幕 ASS 样式"></select>
+          <button type="button" class="editor-settings-inline-action ass-style-edit-open" id="main-ass-style-edit" title="打开样式库并定位到当前选中的样式">编辑样式</button>
+        </div>
+    </div>
   </div>
   <span class="editor-settings-group-heading" id="extension-subtitle-preview-title" hidden>副字幕</span>
   <div class="editor-settings-group subtitle-preview-style-group" id="extension-subtitle-preview-settings" role="group" aria-labelledby="extension-subtitle-preview-title" hidden>
-    <div class="subtitle-preview-settings-fields">
+    <div class="subtitle-preview-settings-fields" id="extension-subtitle-css-fields">
         <label class="subtitle-preview-setting-row" title="只影响播放器画面内的副字幕预览">
           <span>文字大小</span>
           <select id="extension-subtitle-font-size">
@@ -1057,6 +1123,13 @@ __WAVEFORM_CSS__
           </div>
         </label>
     </div>
+    <div class="subtitle-preview-settings-fields" id="extension-ass-style-fields" hidden>
+        <div class="subtitle-preview-setting-row ass-style-select-row" title="ASS 字幕模式下副字幕使用的样式；双语字幕的副字幕共用一个样式，与样式库「副字幕样式」槽位同步">
+          <span>使用 ASS 样式</span>
+          <select id="extension-ass-style-select" aria-label="副字幕 ASS 样式"></select>
+          <button type="button" class="editor-settings-inline-action ass-style-edit-open" id="extension-ass-style-edit" title="打开样式库并定位到当前选中的样式">编辑样式</button>
+        </div>
+    </div>
   </div>
   </div>
   <div class="editor-settings-page" id="editor-settings-page-subtitle-color" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-color" hidden>
@@ -1067,43 +1140,54 @@ __WAVEFORM_CSS__
           预览字幕颜色
         </label>
         <small class="editor-settings-hint" id="subtitle-color-ass-mode-hint" hidden>当前由 <button type="button" class="ass-mode-hint-link" id="ass-mode-hint-link">ASS 字幕模式</button> 控制预览样式</small>
+        <label class="subtitle-preview-setting-row ass-color-style-row" id="ass-color-style-row" title="选择 ASS 导出和预览中，颜色字幕的应用方式；「无影响」时所有颜色字幕使用统一样式" hidden>
+          <span>颜色字幕样式</span>
+          <select id="ass-color-style" aria-label="ASS 颜色字幕样式">
+            <option value="text" selected>作为字幕颜色</option>
+            <option value="stroke">作为描边颜色</option>
+            <option value="none">无影响</option>
+          </select>
+        </label>
         <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
-          <span>颜色样式</span>
-          <select id="subtitle-color-style" aria-label="预览字幕颜色样式">
+          <span>预览颜色样式</span>
+          <select id="subtitle-color-style" aria-label="预览颜色样式">
             <option value="underline" selected>下划线</option>
             <option value="text">文字颜色</option>
             <option value="stroke">描边</option>
           </select>
         </label>
-        <div class="subtitle-color-palette-section" role="group" aria-label="自定义颜色色值">
-          <label class="toggle editor-settings-item" title="开启后可自定义五种字幕颜色；关闭时使用内置色值">
-            <input type="checkbox" id="subtitle-color-palette-enabled" aria-label="自定义颜色色值">
-            自定义颜色色值
+    </div>
+  </div>
+  <span class="editor-settings-group-heading" id="subtitle-color-palette-title">自定义颜色</span>
+  <div class="editor-settings-group subtitle-color-palette-group" id="subtitle-color-palette-settings" role="group" aria-labelledby="subtitle-color-palette-title">
+    <div class="subtitle-preview-settings-fields">
+        <label class="toggle editor-settings-item" title="开启后可自定义五种字幕颜色；关闭时使用内置色值">
+          <input type="checkbox" id="subtitle-color-palette-enabled" aria-label="自定义颜色色值">
+          自定义颜色色值
+        </label>
+        <small class="editor-settings-hint">自定义颜色会同步用于字幕列表、波形、预览和 ASS 导出；恢复默认即可使用内置色值。</small>
+        <div class="subtitle-color-palette-grid" id="subtitle-color-palette-grid" hidden>
+          <label class="subtitle-color-palette-field" data-subtitle-palette-name="yellow">
+            <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="yellow"></span>黄</span>
+            <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-yellow" data-subtitle-palette-color="yellow" value="#c4a019" aria-label="黄字幕颜色"><input type="text" id="subtitle-color-palette-yellow-hex" data-subtitle-palette-hex="yellow" value="#c4a019" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="黄字幕颜色十六进制值"></span>
           </label>
-          <small class="editor-settings-hint">自定义颜色会同步用于字幕列表、波形、预览和 ASS 导出；恢复默认即可使用内置色值。</small>
-          <div class="subtitle-color-palette-grid" id="subtitle-color-palette-grid" hidden>
-            <label class="subtitle-color-palette-field" data-subtitle-palette-name="yellow">
-              <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="yellow"></span>黄</span>
-              <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-yellow" data-subtitle-palette-color="yellow" value="#c4a019" aria-label="黄字幕颜色"><input type="text" id="subtitle-color-palette-yellow-hex" data-subtitle-palette-hex="yellow" value="#c4a019" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="黄字幕颜色十六进制值"></span>
-            </label>
-            <label class="subtitle-color-palette-field" data-subtitle-palette-name="green">
-              <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="green"></span>绿</span>
-              <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-green" data-subtitle-palette-color="green" value="#66bb6a" aria-label="绿字幕颜色"><input type="text" id="subtitle-color-palette-green-hex" data-subtitle-palette-hex="green" value="#66bb6a" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="绿字幕颜色十六进制值"></span>
-            </label>
-            <label class="subtitle-color-palette-field" data-subtitle-palette-name="red">
-              <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="red"></span>红</span>
-              <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-red" data-subtitle-palette-color="red" value="#f07f6f" aria-label="红字幕颜色"><input type="text" id="subtitle-color-palette-red-hex" data-subtitle-palette-hex="red" value="#f07f6f" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="红字幕颜色十六进制值"></span>
-            </label>
-            <label class="subtitle-color-palette-field" data-subtitle-palette-name="purple">
-              <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="purple"></span>紫</span>
-              <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-purple" data-subtitle-palette-color="purple" value="#bf89e6" aria-label="紫字幕颜色"><input type="text" id="subtitle-color-palette-purple-hex" data-subtitle-palette-hex="purple" value="#bf89e6" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="紫字幕颜色十六进制值"></span>
-            </label>
-            <label class="subtitle-color-palette-field" data-subtitle-palette-name="blue">
-              <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="blue"></span>蓝</span>
-              <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-blue" data-subtitle-palette-color="blue" value="#61a7fa" aria-label="蓝字幕颜色"><input type="text" id="subtitle-color-palette-blue-hex" data-subtitle-palette-hex="blue" value="#61a7fa" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="蓝字幕颜色十六进制值"></span>
-            </label>
-            <button type="button" class="subtitle-color-palette-reset" id="subtitle-color-palette-reset">恢复默认</button>
-          </div>
+          <label class="subtitle-color-palette-field" data-subtitle-palette-name="green">
+            <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="green"></span>绿</span>
+            <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-green" data-subtitle-palette-color="green" value="#66bb6a" aria-label="绿字幕颜色"><input type="text" id="subtitle-color-palette-green-hex" data-subtitle-palette-hex="green" value="#66bb6a" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="绿字幕颜色十六进制值"></span>
+          </label>
+          <label class="subtitle-color-palette-field" data-subtitle-palette-name="red">
+            <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="red"></span>红</span>
+            <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-red" data-subtitle-palette-color="red" value="#f07f6f" aria-label="红字幕颜色"><input type="text" id="subtitle-color-palette-red-hex" data-subtitle-palette-hex="red" value="#f07f6f" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="红字幕颜色十六进制值"></span>
+          </label>
+          <label class="subtitle-color-palette-field" data-subtitle-palette-name="purple">
+            <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="purple"></span>紫</span>
+            <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-purple" data-subtitle-palette-color="purple" value="#bf89e6" aria-label="紫字幕颜色"><input type="text" id="subtitle-color-palette-purple-hex" data-subtitle-palette-hex="purple" value="#bf89e6" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="紫字幕颜色十六进制值"></span>
+          </label>
+          <label class="subtitle-color-palette-field" data-subtitle-palette-name="blue">
+            <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="blue"></span>蓝</span>
+            <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-blue" data-subtitle-palette-color="blue" value="#61a7fa" aria-label="蓝字幕颜色"><input type="text" id="subtitle-color-palette-blue-hex" data-subtitle-palette-hex="blue" value="#61a7fa" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="蓝字幕颜色十六进制值"></span>
+          </label>
+          <button type="button" class="subtitle-color-palette-reset" id="subtitle-color-palette-reset">恢复默认</button>
         </div>
     </div>
   </div>
@@ -1254,8 +1338,8 @@ __WAVEFORM_CSS__
     </div>
     <small class="editor-settings-hint split-language-type-hint">语言类型会影响拆分面板的分隔判断（英文会按单词拆）、计数的规则，以及合并时是否插入空格等。</small>
     <small class="editor-settings-hint split-multi-subtitle-settings-hint">
-      <span id="split-multi-subtitle-settings-enabled" hidden><span>对于双语字幕，可以在</span><button type="button" class="editor-settings-inline-action" id="split-multi-subtitle-settings-link" title="打开多重字幕设置" aria-label="打开多重字幕设置">多重字幕的设置</button><span>中单独配置两种字幕的语言类型。</span></span>
-      <span id="split-multi-subtitle-settings-disabled">对于双语字幕，可以在多重字幕的设置（需要先启用多重字幕）中单独配置两种字幕的语言类型。</span>
+      <span id="split-multi-subtitle-settings-enabled" hidden><span>对于双语字幕，可以在</span><button type="button" class="editor-settings-inline-action" id="split-multi-subtitle-settings-link" title="打开双语字幕设置" aria-label="打开双语字幕设置">双语字幕的设置</button><span>中单独配置两种字幕的语言类型。</span></span>
+      <span id="split-multi-subtitle-settings-disabled">对于双语字幕，可以在双语字幕的设置（需要先开启双语字幕）中单独配置两种字幕的语言类型。</span>
     </small>
   </div>
   </div>
@@ -1390,15 +1474,15 @@ __WAVEFORM_CSS__
       </div>
       <div class="ass-style-assignment-card">
         <div class="ass-style-section-heading"><span>默认槽位</span></div>
-        <label class="ass-style-assignment-row" for="ass-srt-default-style">
-          <span>使用样式</span>
-          <select id="ass-srt-default-style" aria-label="SRT 默认烧录样式"></select>
-        </label>
-        <small>工具箱的「烧录字幕」功能会使用这里选中的样式。</small>
         <label class="ass-style-assignment-row" for="ass-ass-default-profile">ASS 导出
           <select id="ass-ass-default-profile" aria-label="ASS 导出默认方案"></select>
         </label>
-        <small>ASS 导出使用此方案及其动画。</small>
+        <small>ASS 导出使用此方案及其动画；双语字幕的副字幕样式在该方案的表单中配置。</small>
+        <label class="ass-style-assignment-row" for="ass-srt-default-style">
+          <span>SRT 烧录</span>
+          <select id="ass-srt-default-style" aria-label="SRT 默认烧录样式"></select>
+        </label>
+        <small>工具箱的「烧录字幕」功能会使用这里选中的样式。</small>
       </div>
     </aside>
     <main class="ass-style-editor" aria-live="polite">
@@ -1431,7 +1515,6 @@ __WAVEFORM_CSS__
             <label class="ass-style-color-field">主色<input type="color" id="ass-style-primary-color" data-ass-style-field="primaryColor"></label>
             <label class="ass-style-color-field">描边<input type="color" id="ass-style-outline-color" data-ass-style-field="outlineColor"></label>
             <label class="ass-style-field">描边宽度<input type="number" id="ass-style-outline" data-ass-style-field="outline" min="0" max="100" step="1"></label>
-            <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-bold" data-ass-style-field="bold"> 加粗</label>
           </div>
           <small class="editor-settings-hint">有颜色的字幕会使用对应颜色覆盖主色/描边，取决于 <button type="button" class="ass-style-settings-link" id="ass-style-settings-link" title="打开全局设置中的字幕样式">字幕样式</button> 中的设置。</small>
         </section>
@@ -1446,12 +1529,13 @@ __WAVEFORM_CSS__
                   <button type="button" class="font-combobox-toggle" id="ass-style-font-toggle" tabindex="-1" aria-label="展开字体列表"></button>
                   <div class="font-combobox-options" id="ass-font-name-options" role="listbox" aria-label="可选字体" hidden></div>
                 </div>
-                <button type="button" id="ass-style-use-preview-font" title="将「字幕样式」中的预览字体应用到 ASS 字体">使用预览字体</button>
+                <button type="button" id="ass-style-local-font-scan" title="读取本机字体，填充字体下拉列表">读取本机字体</button>
               </div>
             </div>
             <label class="ass-style-field">字号<input type="number" id="ass-style-font-size" data-ass-style-field="fontSize" min="1" max="512" step="1"></label>
             <label class="ass-style-field">字距<input type="number" id="ass-style-spacing" data-ass-style-field="spacing" min="-100" max="100" step="1"><span class="ass-style-unit">px</span></label>
-            <label class="ass-style-color-field">次色<input type="color" id="ass-style-secondary-color" data-ass-style-field="secondaryColor"></label>
+            <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-bold" data-ass-style-field="bold"> 加粗</label>
+            <label class="ass-style-color-field" id="ass-style-secondary-color-field" hidden title="次色仅在 \\k 卡拉 OK 标签中使用，当前未支持">次色<input type="color" id="ass-style-secondary-color" data-ass-style-field="secondaryColor"></label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-italic" data-ass-style-field="italic"> 斜体</label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-underline" data-ass-style-field="underline"> 下划线</label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-strike-out" data-ass-style-field="strikeOut"> 删除线</label>
@@ -1460,7 +1544,7 @@ __WAVEFORM_CSS__
           <div class="ass-style-fields ass-style-fields-border-shadow" aria-labelledby="ass-style-border-shadow-heading">
             <label class="ass-style-field">边框样式<select id="ass-style-border-style" data-ass-style-field="borderStyle"><option value="1">描边</option><option value="3">不透明底框</option></select></label>
             <label class="ass-style-color-field">阴影/背景<input type="color" id="ass-style-back-color" data-ass-style-field="backColor"></label>
-            <label class="ass-style-field">阴影宽度<input type="number" id="ass-style-shadow" data-ass-style-field="shadow" min="0" max="100" step="1"></label>
+            <label class="ass-style-field">阴影距离<input type="number" id="ass-style-shadow" data-ass-style-field="shadow" min="0" max="100" step="1"></label>
           </div>
           <div class="ass-style-layout-row">
             <fieldset class="ass-style-alignment-field" id="ass-style-alignment">
@@ -1499,9 +1583,11 @@ __WAVEFORM_CSS__
             <span class="ass-style-delete-slot" id="ass-profile-delete-slot"></span>
           </div>
         </div>
+        <small class="ass-profile-effects-hint" id="ass-profile-effects-hint">在这里配置的覆盖标签会应用到每一句字幕上，例如批量淡入淡出。</small>
         <div class="ass-style-fields ass-style-fields-main">
           <label class="ass-style-field ass-style-field-wide">名称<input type="text" id="ass-profile-name" data-ass-profile-field="name" maxlength="80" autocomplete="off"></label>
-          <label class="ass-style-field ass-style-field-wide">使用样式<select id="ass-profile-style-id" data-ass-profile-field="styleId"></select></label>
+          <label class="ass-style-field ass-style-field-wide">主字幕样式<select id="ass-profile-style-id" data-ass-profile-field="styleId"></select></label>
+          <label class="ass-style-field ass-style-field-wide" id="ass-profile-extension-style-field" hidden>副字幕默认样式<select id="ass-profile-extension-style" aria-label="副字幕默认样式"></select></label>
         </div>
         <div class="ass-style-subheading">逐句动画（导出时自动添加到每一句）</div>
         <div class="ass-animation-card">
@@ -1509,24 +1595,28 @@ __WAVEFORM_CSS__
           <div class="ass-animation-fields"><label>淡入<input type="number" id="ass-animation-fad-in" data-ass-animation="fad.inMs" min="0" max="60000" step="10"><span>ms</span></label><label>淡出<input type="number" id="ass-animation-fad-out" data-ass-animation="fad.outMs" min="0" max="60000" step="10"><span>ms</span></label></div>
           <small>最常用的整句淡入淡出，预览和导出均支持。</small>
         </div>
-        <details class="ass-animation-card ass-animation-advanced">
-          <summary><code>\fade</code> 复杂淡入淡出</summary>
-          <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-fade-enabled" data-ass-animation="fade.enabled"> 启用</label>
-          <div class="ass-animation-fields ass-animation-grid"><label>α1<input type="number" data-ass-animation="fade.alpha1" min="0" max="255" step="1"></label><label>α2<input type="number" data-ass-animation="fade.alpha2" min="0" max="255" step="1"></label><label>α3<input type="number" data-ass-animation="fade.alpha3" min="0" max="255" step="1"></label><label>t1<input type="number" data-ass-animation="fade.t1" min="0" max="60000" step="10"><span>ms</span></label><label>t2<input type="number" data-ass-animation="fade.t2" min="0" max="60000" step="10"><span>ms</span></label><label>t3<input type="number" data-ass-animation="fade.t3" min="0" max="60000" step="10"><span>ms</span></label><label>t4<input type="number" data-ass-animation="fade.t4" min="0" max="60000" step="10"><span>ms</span></label></div>
+        <details class="ass-animation-advanced-group" id="ass-animation-advanced-group">
+          <summary>进阶动画</summary>
+          <div>
+            <div class="ass-animation-card">
+              <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-fade-enabled" data-ass-animation="fade.enabled"> <code>\fade</code> 复杂淡入淡出</label>
+              <div class="ass-animation-fields ass-animation-fields-alpha"><label>α1<input type="number" data-ass-animation="fade.alpha1" min="0" max="255" step="1"></label><label>α2<input type="number" data-ass-animation="fade.alpha2" min="0" max="255" step="1"></label><label>α3<input type="number" data-ass-animation="fade.alpha3" min="0" max="255" step="1"></label></div>
+              <div class="ass-animation-fields ass-animation-fields-times"><label>t1<input type="number" data-ass-animation="fade.t1" min="0" max="60000" step="10"><span>ms</span></label><label>t2<input type="number" data-ass-animation="fade.t2" min="0" max="60000" step="10"><span>ms</span></label><label>t3<input type="number" data-ass-animation="fade.t3" min="0" max="60000" step="10"><span>ms</span></label><label>t4<input type="number" data-ass-animation="fade.t4" min="0" max="60000" step="10"><span>ms</span></label></div>
+            </div>
+            <div class="ass-animation-card">
+              <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-move-enabled" data-ass-animation="move.enabled"> <code>\move</code> 位移</label>
+              <div class="ass-animation-fields ass-animation-fields-times"><label>x1<input type="number" data-ass-animation="move.x1" min="-65535" max="65535" step="1"></label><label>y1<input type="number" data-ass-animation="move.y1" min="-65535" max="65535" step="1"></label><label>x2<input type="number" data-ass-animation="move.x2" min="-65535" max="65535" step="1"></label><label>y2<input type="number" data-ass-animation="move.y2" min="-65535" max="65535" step="1"></label></div>
+              <div class="ass-animation-fields ass-animation-fields-pair"><label>t1<input type="number" data-ass-animation="move.t1" min="0" max="60000" step="10"><span>ms</span></label><label>t2<input type="number" data-ass-animation="move.t2" min="0" max="60000" step="10"><span>ms</span></label></div>
+            </div>
+            <div class="ass-animation-card">
+              <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-t-enabled" data-ass-animation="t.enabled"> <code>\t</code> 变换</label>
+              <div class="ass-animation-fields ass-animation-fields-alpha"><label>开始<input type="number" data-ass-animation="t.startMs" min="0" max="60000" step="10"><span>ms</span></label><label>结束<input type="number" data-ass-animation="t.endMs" min="0" max="60000" step="10"><span>ms</span></label><label>加速度<input type="number" data-ass-animation="t.accel" min="0.01" max="100" step="0.1"></label></div>
+              <label class="ass-style-field ass-style-transform-tags">自定义 ASS 标签（不含大括号）<input type="text" data-ass-animation="t.tags" maxlength="512" placeholder="例如 \fs36\bord4；不要填写大括号" autocomplete="off" spellcheck="false"></label>
+              <small>支持任意 ASS 标签导出；浏览器预览会尽量模拟常见的字号、缩放、旋转、颜色和描边变换。</small>
+            </div>
+          </div>
         </details>
-        <details class="ass-animation-card ass-animation-advanced">
-          <summary><code>\move</code> 位移</summary>
-          <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-move-enabled" data-ass-animation="move.enabled"> 启用</label>
-          <div class="ass-animation-fields ass-animation-grid"><label>x1<input type="number" data-ass-animation="move.x1" min="-65535" max="65535" step="1"></label><label>y1<input type="number" data-ass-animation="move.y1" min="-65535" max="65535" step="1"></label><label>x2<input type="number" data-ass-animation="move.x2" min="-65535" max="65535" step="1"></label><label>y2<input type="number" data-ass-animation="move.y2" min="-65535" max="65535" step="1"></label><label>t1<input type="number" data-ass-animation="move.t1" min="0" max="60000" step="10"><span>ms</span></label><label>t2<input type="number" data-ass-animation="move.t2" min="0" max="60000" step="10"><span>ms</span></label></div>
-        </details>
-        <details class="ass-animation-card ass-animation-advanced">
-          <summary><code>\t</code> 变换</summary>
-          <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-t-enabled" data-ass-animation="t.enabled"> 启用</label>
-          <div class="ass-animation-fields ass-animation-grid"><label>开始<input type="number" data-ass-animation="t.startMs" min="0" max="60000" step="10"><span>ms</span></label><label>结束<input type="number" data-ass-animation="t.endMs" min="0" max="60000" step="10"><span>ms</span></label><label>加速度<input type="number" data-ass-animation="t.accel" min="0.01" max="100" step="0.1"></label></div>
-          <label class="ass-style-field ass-style-transform-tags">ASS 标签（不含大括号）<input type="text" data-ass-animation="t.tags" maxlength="512" placeholder="例如 \fs36\bord4；不要填写大括号" autocomplete="off" spellcheck="false"></label>
-          <small>支持任意 ASS 标签导出；浏览器预览会尽量模拟常见的字号、缩放、旋转、颜色和描边变换。</small>
-        </details>
-        <div class="ass-style-preview-card"><span class="ass-style-preview-label">当前方案</span><span id="ass-profile-preview-summary">未选择</span></div>
+        <div class="ass-style-preview-card ass-profile-preview-card"><span class="ass-style-preview-label">当前方案</span><span id="ass-profile-preview-summary">未选择</span></div>
       </section>
     </main>
   </div>
@@ -1689,65 +1779,10 @@ __WAVEFORM_CSS__
             <label class="toggle editor-settings-item" title="在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号">
               <input type="checkbox" id="waveform-show-group-badges" checked> 显示分组标记
             </label>
-          </div>
-          <div class="settings-panel-section waveform-settings-section">
-            <span class="settings-panel-title waveform-settings-title">操作</span>
-            <label class="toggle editor-settings-item" title="启用后，在波形空白区域按住左键拖动时，播放指针会实时跟随鼠标位置">
-              <input type="checkbox" id="waveform-drag-playhead" checked> 允许拖动指针
-            </label>
-            <label class="editor-settings-item">禁用波形
+            <label class="editor-settings-item" title="被禁用字幕的波形显示方式">禁用波形显示
               <select id="waveform-disabled-display">
                 <option value="dim" selected>淡化</option>
                 <option value="hidden">完全隐藏</option>
-              </select>
-            </label>
-            <label class="editor-settings-item" title="设置相接字幕边界的拖动方式：新模式拖动贴合中缝时两侧联动，传统模式沿用自动吸附开关">
-              贴合字幕边界
-              <select id="adjacent-boundary-mode">
-                <option value="dual" selected>中缝联动（新）</option>
-                <option value="classic">传统模式</option>
-              </select>
-            </label>
-            <small class="settings-panel-hint" id="adjacent-boundary-mode-hint-dual">拖动贴合字幕中间的中缝：两侧边界一起联动；单独拖动左右手柄只调整当前字幕（类似达芬奇）。</small>
-            <label class="toggle editor-settings-item" id="auto-snap-adjacent-cues-row" title="开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动">
-              <input type="checkbox" id="auto-snap-adjacent-cues" checked> 自动吸附调整相邻字幕
-            </label>
-            <small class="settings-panel-hint" id="auto-snap-adjacent-cues-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
-            <label class="editor-settings-item" title="B/Z/X/N 快捷键使用鼠标位置或当前播放头作为时间基准">
-              快捷键时间基准
-              <select id="keyboard-operation-reference">
-                <option value="pointer" selected>鼠标位置</option>
-                <option value="playhead">播放头</option>
-              </select>
-            </label>
-            <small class="settings-panel-hint" id="keyboard-operation-reference-hint">B/Z/X/N 使用鼠标所在波形位置；波形外不执行时间操作。</small>
-          </div>
-          <div class="settings-panel-section waveform-settings-section">
-            <div class="settings-panel-title-row">
-              <span class="settings-panel-title waveform-settings-title">按键调整字幕</span>
-              <button type="button" class="settings-panel-help-link" id="keyboard-settings-help" data-help-tab-target="fine-tuning" title="打开帮助中的微调字幕说明" aria-label="打开帮助中的微调字幕说明">帮助</button>
-            </div>
-            <label class="editor-settings-item" title="选中字幕时，方向键和按住字幕块/边界时的每次调整幅度">
-              字幕按键微调幅度
-              <span class="gap-remove-number-control">
-                <input type="number" id="cue-move-step" min="10" max="2000" step="10" value="50" inputmode="numeric">
-                <span class="gap-remove-unit" id="cue-move-step-unit">ms</span>
-              </span>
-            </label>
-            <small class="settings-panel-hint" id="cue-move-step-hint">具体用法详见帮助的「微调字幕」区。</small>
-          </div>
-          <div class="settings-panel-section waveform-settings-section">
-            <div class="settings-panel-title-row">
-              <span class="settings-panel-title waveform-settings-title">静音空隙</span>
-              <button type="button" class="settings-panel-help-link" id="gap-settings-help" data-help-tab-target="gap" title="打开帮助中的空隙操作说明" aria-label="打开帮助中的空隙操作说明">帮助</button>
-            </div>
-            <label class="editor-settings-item" title="移除静音空隙的人工修正方式；Alt+左键点击切换整段，空白处 Alt+左键拖动增加空隙；空隙块左键或 Alt+左键拖动整体偏移，Ctrl/Cmd+拖动复制；中键拖动默认增加静音，按住 Alt 才恢复声音；“边界与中键”可同时启用两种方式">
-              空隙区段操作方式
-              <select id="gap-remove-operation-mode">
-                <option value="none">无</option>
-                <option value="boundary_drag" selected>拖动边界</option>
-                <option value="middle_drag">中键拖动</option>
-                <option value="boundary_and_middle">边界与中键</option>
               </select>
             </label>
           </div>
@@ -2170,11 +2205,11 @@ __WAVEFORM_CSS__
   <div class="modal multi-subtitle-import-modal" role="dialog" aria-modal="true" aria-labelledby="multi-subtitle-import-title">
     <h3 id="multi-subtitle-import-title">导入字幕</h3>
     <p class="modal-desc" id="multi-subtitle-import-description">请选择你要执行的行为：</p>
-    <div id="multi-subtitle-import-preview" class="multi-subtitle-import-preview"></div>
     <div class="actions multi-subtitle-import-choice-actions" id="multi-subtitle-import-choice-actions">
       <button type="button" id="multi-subtitle-import-replace">替换当前字幕</button>
-      <button type="button" id="multi-subtitle-import-extension">作为多重字幕</button>
+      <button type="button" id="multi-subtitle-import-extension">作为副字幕</button>
     </div>
+    <div id="multi-subtitle-import-preview" class="multi-subtitle-import-preview"></div>
     <div class="actions multi-subtitle-import-result-actions" id="multi-subtitle-import-result-actions">
       <button type="button" id="multi-subtitle-import-result-cancel">取消</button>
       <button type="button" id="multi-subtitle-import-result-confirm" class="primary" disabled>导入</button>
@@ -2189,7 +2224,7 @@ __WAVEFORM_CSS__
     <p class="modal-desc">移动鼠标点击，或用键盘选择拆分断点。</p>
     <div class="multi-subtitle-split-language-hint" role="note" aria-label="语言类型提示">
       <div>字符型语言（中文等）按字符拆分。</div>
-      <div>单词型语言（英语等）只在空格处切分，确保不会拆碎单词；可在多重字幕 ⚙️ 设置中切换语言类型。</div>
+      <div>单词型语言（英语等）只在空格处切分，确保不会拆碎单词；可在双语字幕 ⚙️ 设置中切换语言类型。</div>
     </div>
     <div class="multi-subtitle-split-timestamp-hint" id="multi-subtitle-split-timestamp-hint" role="note" hidden>
       启用后，可在右上角「🔧 设置 → 拆分与合并」中配置是否使用时间码拆分。

@@ -582,6 +582,7 @@
     return;
   }
   const idx = target.index;
+  const cursorOffset = MaweDom.cuePanelText.selectionStart;
   commitCuePanelEdit();
   MaweSelection.selectOnly(idx);
   const cue = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
@@ -590,7 +591,10 @@
   const textEl = MaweInlineEdit.editingState?.textEl;
   if (!textEl || !textEl.firstChild) return;
   const range = document.createRange();
-  const offset = Math.max(0, Math.min(cursorOffset, textEl.firstChild.textContent.length));
+  const offset = Math.max(
+    0,
+    Math.min(Number.isFinite(cursorOffset) ? cursorOffset : 0, textEl.firstChild.textContent.length),
+  );
   range.setStart(textEl.firstChild, offset);
   range.setEnd(textEl.firstChild, offset);
   const selection = window.getSelection();

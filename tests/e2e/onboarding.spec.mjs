@@ -34,6 +34,31 @@ test.beforeEach(async ({ page }) => {
     saved.autoSaveProject = false;
     localStorage.setItem(settingsKey, JSON.stringify(saved));
     localStorage.removeItem('moy.asr.editor.onboarding.v1');
+
+    // server-editor persists onboarding outside localStorage. Reset the
+    // injected config before its first animation frame so each test starts
+    // with the same first-open state without weakening production behavior.
+    const resetServerOnboarding = () => {
+      try {
+        if (typeof MaweBoot.SERVER_CONFIG !== 'undefined' && MaweBoot.SERVER_CONFIG) {
+          MaweBoot.SERVER_CONFIG.onboardingStatus = '';
+        }
+      } catch (_) {
+        // SERVER_CONFIG is declared by editor.js after this init script.
+      }
+    };
+    const nativeRequestAnimationFrame = window.requestAnimationFrame;
+    if (typeof nativeRequestAnimationFrame === 'function') {
+      window.requestAnimationFrame = (callback) => nativeRequestAnimationFrame.call(
+        window,
+        (timestamp) => {
+          resetServerOnboarding();
+          callback(timestamp);
+        },
+      );
+    }
+    window.addEventListener('DOMContentLoaded', resetServerOnboarding, { once: true });
+    window.setTimeout(resetServerOnboarding, 0);
   });
 });
 
@@ -96,12 +121,16 @@ test('quick start teaches WASD, real merge with undo, then real split', async ({
 
 test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await page.goto(server.url);
-  await expect(page.locator('#onboarding-skip')).toHaveText('跳过 (ESC)');
+  await page.locator('#help-toggle').click();
+  await expect(page.locator('#help-panel')).toHaveClass(/show/);
+  await page.locator('#help-onboarding').click();
+  await expect(page.locator('#onboarding-layer')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('#onboarding-layer')).toBeHidden();
   expect(await page.evaluate(() => localStorage.getItem('moy.asr.editor.onboarding.v1'))).toBe('skipped');
 
   await page.locator('#help-toggle').click();
+  await expect(page.locator('#help-panel')).toHaveClass(/show/);
   expect(await page.evaluate(() => document.activeElement?.id)).not.toBe('help-toggle');
   const helpPanel = page.locator('#help-panel');
   await expect(helpPanel).toHaveClass(/show/);
@@ -148,14 +177,14 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(fineTuningPanel.locator('.help-title')).toHaveText(['微调字幕']);
   await expect(fineTuningPanel.locator('.help-subtitle')).toHaveText(['选中字幕', '按住字幕']);
   await expect(fineTuningPanel).toContainText('无选中时作用于鼠标所在字幕');
-  await expect(fineTuningPanel.locator('#help-open-waveform-keyboard-settings')).toHaveText('⚙️设置');
+  await expect(fineTuningPanel.locator('#help-open-keyboard-settings')).toHaveText('⚙️全局设置');
   await helpPanel.getByRole('tab', { name: '空隙操作', exact: true }).click();
   const gapPanel = helpPanel.locator('#help-tab-panel-gap');
   await expect(gapPanel).toBeVisible();
   await expect(gapPanel.locator('.help-title')).toHaveText(['空隙操作']);
   await expect(gapPanel.locator('.help-subgroup')).toHaveCount(4);
   await expect(gapPanel.locator('.help-subtitle')).toHaveText(['空隙状态', '移动与调整', '清理空隙', '批量操作']);
-  await expect(helpPanel.locator('.help-title')).toHaveText(['基础操作', '快捷操作', '波形区操作', '多重字幕', '波形外观调整', '微调字幕', '空隙操作', '批量操作', '播放与导航']);
+  await expect(helpPanel.locator('.help-title')).toHaveText(['基础操作', '快捷操作', '波形区操作', '双语字幕', '波形外观调整', '微调字幕', '空隙操作', '批量操作', '播放与导航']);
   await expect(helpPanel).toContainText('波形区字幕操作');
   await expect(helpPanel).toContainText('波形外观调整');
   await expect(helpPanel).toContainText('空隙操作');
@@ -171,9 +200,9 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(helpPanel).toContainText('中点击「全部清理」');
   await expect(gapPanel).toContainText('仅在拖动边界模式生效');
   await expect(gapPanel).toContainText('仅在中键拖动模式生效');
-  await expect(gapPanel).toContainText('具体操作取决于波形区的');
-  await expect(gapPanel.locator('#help-open-gap-settings')).toHaveText('⚙️设置');
-  await expect(gapPanel).toContainText('中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。');
+  await expect(gapPanel).toContainText('具体操作取决于');
+  await expect(gapPanel.locator('#help-open-gap-settings')).toHaveText('⚙️全局设置');
+  await expect(gapPanel).toContainText('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。');
   await expect(gapPanel.locator('.help-important').filter({ hasText: 'Alt+左键拖动' })).toHaveCount(1);
   await helpPanel.getByRole('tab', { name: '批量操作', exact: true }).click();
   const batchPanel = helpPanel.locator('#help-tab-panel-batch');
@@ -189,8 +218,8 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(playbackPanel.locator('.help-subtitle')).toHaveText(['播放', '字幕导航']);
   await expect(playbackPanel).toContainText('播放与导航');
   await expect(playbackPanel).toContainText('无选中时前后跳转（时长：1000ms）');
-  await expect(playbackPanel.locator('#help-open-media-settings')).toHaveText('⚙️设置');
-  await expect(playbackPanel).toContainText('可在媒体区的');
+  await expect(playbackPanel.locator('#help-open-media-settings')).toHaveText('全局设置');
+  await expect(playbackPanel).toContainText('的「视频预览」中调整。');
   await page.locator('#help-onboarding').click();
   await expect(page.locator('#onboarding-layer')).toBeVisible();
   await expect(page.locator('#onboarding-title')).toHaveText('使用 WASD 选择前后字幕——就像游戏一样！');

@@ -359,6 +359,7 @@
     if (isHiddenDisabled(idx, getOverlayTrack())) return;
     selectedOverlayIdxs.add(idx);
   });
+  syncOverlaySelectionClasses();
   updateMultiSelectionClasses();
   updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();

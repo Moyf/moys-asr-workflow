@@ -132,7 +132,7 @@ test('offers importing a second SRT when enabling multiple subtitles without an 
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
   await expect(page.locator('#multi-subtitle-settings-toggle')).toBeHidden();
   await expect(page.locator('#multi-subtitle-toggle-label'))
-    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。');
+    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。');
   expect(await page.locator('#multi-subtitle-toggle-label').evaluate((element) => (
     element.nextElementSibling?.id
   ))).toBe('multi-subtitle-empty-hint');
@@ -2440,7 +2440,11 @@ test('shows independent extension preview controls with yellow defaults', async 
     element.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await expect(page.locator('#overlay-extension-text')).toHaveCSS('background-color', 'rgba(18, 52, 86, 0.65)');
-  await page.locator('#extension-overlay-toggle').uncheck();
+  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await expect(page.locator('#extension-overlay-toggle-wrap')).toBeVisible();
+  // The custom toggle hides the native input; click its visible label so the
+  // browser exercises the same interaction a user can perform.
+  await page.locator('#extension-overlay-toggle-wrap').click();
   await expect(page.locator('#extension-overlay-toggle')).not.toBeChecked();
   await page.locator('#editor-settings-close').click();
 });
@@ -3657,7 +3661,7 @@ test('confirms main replacement and makes both replacement paths undoable', asyn
   await expect(page.locator('#multi-subtitle-controls')).toBeVisible();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
   await expect(page.locator('#multi-subtitle-toggle-label'))
-    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启多重字幕模式，用于双语字幕编辑等。');
+    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。');
   await expect(page.locator('#cues-container .multi-dual-cue')).toHaveCount(0);
   await expect(page.locator('#cues-container .cue .text').first()).toHaveText('Hello world.');
 });
@@ -4006,4 +4010,261 @@ test('Z/X adjust one main or extension cue at the pointer and ignore multi-selec
     main: [[2000, 3500], [5000, 7000]],
     extension: [[2500, 3000]],
   });
+});
+
+test('ASS mode previews and exports extension cues with the shared extension style', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [{ id: 'extension-001', start: 0, end: 2000, text: 'extension cue' }],
+      }],
+      bindings: [],
+    },
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 0, end: 2000, text: 'overlay cue' }],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'ass-extension-preview.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+  await expect(page.locator('.cue[data-idx="0"]')).toBeVisible();
+
+  const result = await page.evaluate(() => {
+    MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const mainText = document.getElementById('overlay-main-text');
+    const extensionText = document.getElementById('overlay-extension-text');
+    const overlayText = document.getElementById('overlay-track-text');
+    const stageHeight = MaweDom.playerStage.getBoundingClientRect().height;
+    return {
+      stageHeight,
+      mainFontSize: Number.parseFloat(getComputedStyle(mainText).fontSize),
+      extensionFontSize: Number.parseFloat(getComputedStyle(extensionText).fontSize),
+      extensionColor: getComputedStyle(extensionText).color,
+      extensionBottom: extensionText.style.bottom,
+      extensionPosition: getComputedStyle(extensionText).position,
+      overlayBottom: overlayText.style.bottom,
+      ass: MaweExportSrt.buildAss(),
+    };
+  });
+  const scale = result.stageHeight / 1080;
+  // 副字幕共用样式库的「ASS 副字幕样式」：字号 54（主样式 72 的 75%）、
+  // 默认黄色，按自身边距 166 绝对锚定在主字幕上方。（computed 字号只有
+  // 4 位小数，用比例断言避开截断误差。）
+  expect(result.mainFontSize).toBeCloseTo(72 * scale, 3);
+  expect(result.extensionFontSize).toBeCloseTo(54 * scale, 3);
+  expect(result.extensionFontSize / result.mainFontSize).toBeCloseTo(0.75, 3);
+  expect(result.extensionColor).toBe('rgb(255, 211, 77)');
+  expect(result.extensionPosition).toBe('absolute');
+  expect(result.extensionBottom).toBe(`${Math.ceil(166 * scale)}px`);
+  // 叠加轨链式上叠：副字幕边距 166 + 1.2 × 副字幕字号 54。
+  expect(result.overlayBottom).toBe(`${Math.ceil(166 * scale + 1.2 * (54 * result.stageHeight) / 1080)}px`);
+  // 导出：副字幕 Layer 1 + 独立 Extension 样式；叠加轨 Layer 2 + 固化
+  // 链式边距（166 + round(64.8) = 231）的 Overlay 样式。
+  const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  expect(dialogueLines).toHaveLength(3);
+  expect(dialogueLines[1]).toMatch(/^Dialogue: 1,/);
+  expect(dialogueLines[1]).toContain(',Extension,,0,0,0,,extension cue');
+  expect(dialogueLines[2]).toMatch(/^Dialogue: 2,/);
+  expect(dialogueLines[2]).toContain(',Overlay,,0,0,0,,overlay cue');
+  const extensionStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
+  expect(extensionStyleLine).toBeTruthy();
+  expect(extensionStyleLine.endsWith(',10,10,166,1')).toBe(true);
+  const overlayStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
+  expect(overlayStyleLine).toBeTruthy();
+  expect(overlayStyleLine.endsWith(',10,10,231,1')).toBe(true);
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
+test('ASS mode swaps subtitle style controls for library selectors and syncs assignments', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [{ id: 'extension-001', start: 0, end: 2000, text: 'extension cue' }],
+      }],
+      bindings: [],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'ass-style-settings.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+  await expect(page.locator('.cue[data-idx="0"]')).toBeVisible();
+
+  // 打开设置 → 字幕样式；ASS 模式关闭时保持 CSS 控件。
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await expect(page.locator('#main-subtitle-css-fields')).toBeVisible();
+  await expect(page.locator('#main-ass-style-fields')).toBeHidden();
+  await expect(page.locator('#subtitle-style-ass-mode-hint')).toBeHidden();
+
+  // 「颜色字幕样式」常驻「字幕颜色」页：ASS 关闭时隐藏，显示 CSS「预览颜色样式」。
+  await page.locator('#editor-settings-tab-subtitle-color').click();
+  await expect(page.locator('#ass-color-style-row')).toBeHidden();
+  await expect(page.locator('#subtitle-color-style-control')).toBeVisible();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+
+  // 开启 ASS 模式：hint 出现，CSS 控件换成样式库选择器（主/副都换）。
+  await page.locator('#ass-mode-toggle').check();
+  await expect(page.locator('#subtitle-style-ass-mode-hint')).toBeVisible();
+  await expect(page.locator('#main-subtitle-css-fields')).toBeHidden();
+  await expect(page.locator('#main-ass-style-fields')).toBeVisible();
+  await expect(page.locator('#extension-subtitle-preview-settings')).toBeVisible();
+  await expect(page.locator('#extension-subtitle-css-fields')).toBeHidden();
+  await expect(page.locator('#extension-ass-style-fields')).toBeVisible();
+  await expect(page.locator('#main-ass-style-select')).toHaveValue('ass');
+  await expect(page.locator('#extension-ass-style-select')).toHaveValue('ass-extension');
+
+  // 「编辑样式」按钮：打开样式库窗口并定位到下拉当前选中的样式。
+  await page.locator('#main-ass-style-edit').click();
+  await expect(page.locator('#ass-style-window')).toHaveClass(/show/);
+  const mainSelectedId = await page
+    .locator('#ass-style-list [data-ass-selection-id][aria-selected="true"]')
+    .getAttribute('data-ass-selection-id');
+  await expect(page.locator('#main-ass-style-select')).toHaveValue(mainSelectedId);
+  await page.locator('#ass-style-window-close').click();
+  await page.locator('#extension-ass-style-edit').click();
+  const extensionSelectedId = await page
+    .locator('#ass-style-list [data-ass-selection-id][aria-selected="true"]')
+    .getAttribute('data-ass-selection-id');
+  await expect(page.locator('#extension-ass-style-select')).toHaveValue(extensionSelectedId);
+  await page.locator('#ass-style-window-close').click();
+
+  // ASS 模式下「颜色字幕样式」在「字幕颜色」页替代「预览颜色样式」显示。
+  await page.locator('#editor-settings-tab-subtitle-color').click();
+  await expect(page.locator('#ass-color-style-row')).toBeVisible();
+  await expect(page.locator('#subtitle-color-style-control')).toBeHidden();
+  await page.locator('#ass-color-style').selectOption('stroke');
+  await expect(page.locator('#ass-color-style')).toHaveValue('stroke');
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+
+  // 主字幕选择同步到当前 ASS 输出方案关联的样式。
+  await page.locator('#main-ass-style-select').selectOption('default');
+  const profileStyleId = await page.evaluate(() => {
+    const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+    const profile = window.AsrEditorUtils.assProfileForId(
+      library, library.assignments.assExportProfileId,
+    );
+    return profile.styleId;
+  });
+  expect(profileStyleId).toBe('default');
+
+  // 副字幕选择同步到库的副字幕槽位；样式库窗口的方案表单（多重字幕模式下
+  // 可见）同步显示同一值。
+  await page.locator('#extension-ass-style-select').selectOption('default');
+  await expect(page.locator('#ass-style-manager-open')).toBeVisible();
+  await page.locator('#ass-style-manager-open').click();
+  await page.locator('#ass-profile-list [data-ass-selection-kind="profile"]').first().click();
+  await expect(page.locator('#ass-profile-form')).toBeVisible();
+  await expect(page.locator('#ass-profile-extension-style-field')).toBeVisible();
+  await expect(page.locator('#ass-profile-extension-style')).toHaveValue('default');
+
+  // 从样式库窗口改回内置副字幕样式：设置页下拉同步；恢复默认，避免
+  // localStorage 里的选择影响后续测试。
+  await page.locator('#ass-profile-extension-style').selectOption('ass-extension');
+  await expect(page.locator('#extension-ass-style-select')).toHaveValue('ass-extension');
+  await page.locator('#main-ass-style-select').selectOption('ass');
+  await expect(page.locator('#ass-profile-style-id')).toHaveValue('ass');
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
+test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap-removed ASS three-track', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: false,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [{ id: 'extension-001', start: 3200, end: 3700, text: 'extension cue' }],
+      }],
+      bindings: [],
+    },
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 3300, end: 3800, text: 'overlay cue' }],
+    },
+    gap_remove: {
+      schema: 'moy.asr.gap_remove.v1',
+      detector: 'audio_gate',
+      minimum_ms: 500,
+      threshold_db: -24,
+      hysteresis_db: 2,
+      lead_in_ms: 40,
+      lead_out_ms: 80,
+      skip_playback: true,
+      operation_mode: 'boundary_drag',
+      manual_corrections: false,
+      gaps: [{ start: 2000, end: 3000, removed: true }],
+    },
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'ass-extension-gate.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+  await expect(page.locator('.cue[data-idx="0"]')).toBeVisible();
+
+  // 多重字幕关闭（轨道数据保留）：常规 ASS 与去空隙 ASS 都不输出副字幕；
+  // 叠加轨照常导出，去空隙时间统一压缩。
+  const disabled = await page.evaluate(() => ({
+    ass: MaweExportSrt.buildAss(),
+    gapRemoved: MaweExportSrt.buildGapRemovedAss(),
+  }));
+  const disabledLines = disabled.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  expect(disabledLines).toHaveLength(2);
+  expect(disabledLines.every((line) => !line.startsWith('Dialogue: 1,'))).toBe(true);
+  expect(disabled.ass).not.toContain('Style: Extension,');
+  expect(disabledLines[1]).toContain(',Overlay,,0,0,0,,overlay cue');
+  const gapRemovedLines = disabled.gapRemoved.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  expect(gapRemovedLines).toHaveLength(2);
+  expect(gapRemovedLines.every((line) => !line.includes(',Extension,'))).toBe(true);
+  expect(gapRemovedLines[1]).toContain('0:00:02.30,0:00:02.80');
+  expect(gapRemovedLines[1]).toContain(',Overlay,,0,0,0,,overlay cue');
+
+  // 开启多重字幕（不重载工程，直接翻转状态）：副字幕恢复导出，
+  // 去空隙 ASS 与常规 ASS 同一三轨契约（3200-3700 → 2200-2700）。
+  const enabled = await page.evaluate(() => {
+    MaweMultiSubtitleCore.getMultiSubtitleState().enabled = true;
+    return { ass: MaweExportSrt.buildAss(), gapRemoved: MaweExportSrt.buildGapRemovedAss() };
+  });
+  const enabledLines = enabled.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  expect(enabledLines).toHaveLength(3);
+  expect(enabledLines[1]).toContain(',Extension,,0,0,0,,extension cue');
+  const enabledGapRemovedLines = enabled.gapRemoved.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  expect(enabledGapRemovedLines).toHaveLength(3);
+  expect(enabledGapRemovedLines[1]).toContain(',Extension,,0,0,0,,extension cue');
+  expect(enabledGapRemovedLines[1]).toContain('0:00:02.20,0:00:02.70');
+  expect(enabledGapRemovedLines[2]).toContain(',Overlay,,0,0,0,,overlay cue');
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });

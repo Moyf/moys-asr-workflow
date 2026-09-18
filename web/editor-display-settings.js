@@ -59,10 +59,10 @@
 
 
   function updateMultiSubtitleUi() {
-  const overlayVisible = overlayTrackVisible();
-  if (overlayTrackControls) overlayTrackControls.hidden = !getOverlayTrack()?.segments?.length;
-  if (overlayTrackSeparator) overlayTrackSeparator.hidden = overlayTrackControls?.hidden !== false;
-  if (overlayTrackToggle) overlayTrackToggle.checked = overlayVisible;
+  // 「允许字幕重叠」开关常驻工具栏；勾选状态跟随用户意图（overlay.enabled），
+  // 不要求叠加轨已有字幕，否则空轨道时勾选会被立即弹回。
+  if (overlayTrackSeparator) overlayTrackSeparator.hidden = MaweBoot.DATA.segments.length === 0;
+  if (overlayTrackToggle) overlayTrackToggle.checked = getOverlayTrack()?.enabled === true;
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const hasTrack = Boolean(track && Array.isArray(track.segments));
   const enabled = hasTrack && MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
@@ -167,6 +167,10 @@
   }
   MaweCoreState.container.classList.toggle('multi-subtitle-enabled', enabled);
   MaweCoreState.container.dataset.multiDisplayMode = enabled ? (MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both') : 'main';
+  // 多重字幕开合影响副字幕相关的 ASS 样式入口（设置页副字幕组、样式库
+  // 副字幕槽位），同步刷新它们的可见性与选项。
+  syncAssModeDependentControls();
+  syncAssStyleManager();
 }
 
 

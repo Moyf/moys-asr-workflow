@@ -69,43 +69,43 @@
 
 
   async function showMultiSubtitleImportChoice(file, segments, options = {}) {
-    const existingTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    const projectFile = options.projectFile || null;
-    const projectImport = Boolean(projectFile);
-    pendingMultiImport = {
-      file,
-      segments,
-      existingTrackId: existingTrack?.id || null,
-      match: null,
-      choice: null,
-      projectFile,
-      projectMediaFile: options.projectMediaFile || null,
-      projectImport,
-    };
-    if (MaweDom.multiSubtitleImportDescription) MaweDom.multiSubtitleImportDescription.textContent = '请选择你要执行的行为：';
-    if (MaweDom.multiSubtitleImportReplace) {
-      MaweDom.multiSubtitleImportReplace.textContent = projectImport
-        ? '打开工程' : (existingTrack ? '替换副轨' : '替换当前字幕');
-    }
-    if (MaweDom.multiSubtitleImportExtension) {
-      MaweDom.multiSubtitleImportExtension.hidden = projectImport ? false : Boolean(existingTrack);
-      MaweDom.multiSubtitleImportExtension.textContent = projectImport
-        ? '使用工程字幕作为副字幕' : '作为多重字幕';
-    }
-    if (MaweDom.multiSubtitleImportChoiceActions) MaweDom.multiSubtitleImportChoiceActions.hidden = false;
-    if (MaweDom.multiSubtitleImportResultActions) MaweDom.multiSubtitleImportResultActions.hidden = false;
-    if (MaweDom.multiSubtitleImportResultConfirm) MaweDom.multiSubtitleImportResultConfirm.disabled = true;
-    [MaweDom.multiSubtitleImportReplace, MaweDom.multiSubtitleImportExtension].forEach((button) => {
-      button?.setAttribute('aria-pressed', 'false');
-    });
-    if (projectImport) renderProjectImportPreview(pendingMultiImport);
-    else renderMultiImportPreview(null, segments);
-    MaweDom.multiSubtitleImportModal?.classList.add('show');
-    // 工程文件必须明确选择“打开”或“作为副字幕”；SRT 保持原有默认导入路径。
-    if (!projectImport) prepareMultiSubtitleImport();
-    (projectImport ? MaweDom.multiSubtitleImportReplace
-      : (existingTrack ? MaweDom.multiSubtitleImportReplace : MaweDom.multiSubtitleImportExtension))?.focus();
+  const existingTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
+  const projectFile = options.projectFile || null;
+  const projectImport = Boolean(projectFile);
+  pendingMultiImport = {
+    file,
+    segments,
+    existingTrackId: existingTrack?.id || null,
+    match: null,
+    choice: null,
+    projectFile,
+    projectMediaFile: options.projectMediaFile || null,
+    projectImport,
+  };
+  if (MaweDom.multiSubtitleImportDescription) MaweDom.multiSubtitleImportDescription.textContent = '请选择你要执行的行为：';
+  if (MaweDom.multiSubtitleImportReplace) {
+    MaweDom.multiSubtitleImportReplace.textContent = projectImport
+      ? '打开工程' : (existingTrack ? '替换副轨' : '替换当前字幕');
   }
+  if (MaweDom.multiSubtitleImportExtension) {
+    MaweDom.multiSubtitleImportExtension.hidden = projectImport ? false : Boolean(existingTrack);
+    MaweDom.multiSubtitleImportExtension.textContent = projectImport
+      ? '使用工程字幕作为副字幕' : '作为副字幕';
+  }
+  if (MaweDom.multiSubtitleImportChoiceActions) MaweDom.multiSubtitleImportChoiceActions.hidden = false;
+  if (MaweDom.multiSubtitleImportResultActions) MaweDom.multiSubtitleImportResultActions.hidden = false;
+  if (MaweDom.multiSubtitleImportResultConfirm) MaweDom.multiSubtitleImportResultConfirm.disabled = true;
+  [MaweDom.multiSubtitleImportReplace, MaweDom.multiSubtitleImportExtension].forEach((button) => {
+    button?.setAttribute('aria-pressed', 'false');
+  });
+  if (projectImport) renderProjectImportPreview(pendingMultiImport);
+  else renderMultiImportPreview(null, segments);
+  MaweDom.multiSubtitleImportModal?.classList.add('show');
+  // 工程文件必须明确选择“打开”或“作为副字幕”；SRT 保持原有默认导入路径。
+  if (!projectImport) prepareMultiSubtitleImport();
+  (projectImport ? MaweDom.multiSubtitleImportReplace
+    : (existingTrack ? MaweDom.multiSubtitleImportReplace : MaweDom.multiSubtitleImportExtension))?.focus();
+}
 
 
 
@@ -132,98 +132,98 @@
 
 
   function commitMultiSubtitleImport() {
-    const pending = pendingMultiImport;
-    if (!pending) return false;
-    const match = pending.match || window.AsrEditorUtils.matchSubtitleSegments(
-      MaweBoot.DATA.segments, pending.segments, MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
-    );
-    const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
-    const replacing = Boolean(pending.existingTrackId);
-    const oldTrack = replacing ? MaweMultiSubtitleCore.getExtensionTrack(pending.existingTrackId) : null;
-    const trackId = oldTrack?.id || window.AsrEditorUtils.uniqueStableSegmentId(
-      multi.tracks || [], 'extension-1', 'extension',
-    );
-    const extensionSegments = pending.segments.map((segment, index) => ({
-      ...segment,
-      id: window.AsrEditorUtils.uniqueStableSegmentId(
-        pending.segments.slice(0, index), `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
-      ),
-      _dirty: true,
-    }));
-    const track = {
-      id: trackId,
-      role: 'extension',
-      name: pending.file.name.replace(/\.[^.]+$/i, '') || '副字幕',
-      language: '',
-      source_name: pending.file.name,
-      split_mode: window.AsrEditorUtils.detectSubtitleSplitMode(
-        extensionSegments.map((segment) => segment.text).join('\n'),
-      ),
-      segments: extensionSegments,
-    };
-    MaweHistory.pushUndo(replacing ? '替换副字幕' : '导入多重字幕');
-    if (replacing) {
-      const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
-      multi.bindings = (multi.bindings || []).filter((binding) => (
-        binding.track_id !== trackId && !binding.extension_segment_ids?.some((id) => oldIds.has(id))
-      ));
-      const oldIndex = multi.tracks.findIndex((candidate) => candidate.id === trackId);
-      if (oldIndex >= 0) multi.tracks.splice(oldIndex, 1, track);
-      else multi.tracks.push(track);
-    } else {
-      multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
-    }
-    match.matches.forEach((candidate) => {
-      const main = MaweBoot.DATA.segments[candidate.mainIndex];
-      const extension = extensionSegments[candidate.extensionIndex];
-      if (main && extension) multi.bindings.push(
-        window.AsrEditorUtils.buildSubtitleBinding(main, extension, trackId),
-      );
-    });
-    multi.enabled = true;
-    multi.display_mode = multi.display_mode || 'both';
-    MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    closeMultiSubtitleImportModal();
-    MaweSelection.clearSelection();
-    // 导入可能首次创建副字幕 lane，必须重建波形行结构。
-    MaweCuePanel.renderAll({ waveform: 'full' });
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
-    MaweHint.flashHint(`已导入副字幕：绑定 ${match.matches.length} 条，未绑定 ${match.unmatchedExtension.length} 条`, 'success');
-    return true;
+  const pending = pendingMultiImport;
+  if (!pending) return false;
+  const match = pending.match || MULTI_SUBTITLE_UTILS.matchSubtitleSegments(
+    MaweBoot.DATA.segments, pending.segments, MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
+  );
+  const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+  const replacing = Boolean(pending.existingTrackId);
+  const oldTrack = replacing ? MaweMultiSubtitleCore.getExtensionTrack(pending.existingTrackId) : null;
+  const trackId = oldTrack?.id || MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+    multi.tracks || [], 'extension-1', 'extension',
+  );
+  const extensionSegments = pending.segments.map((segment, index) => ({
+    ...segment,
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+      pending.segments.slice(0, index), `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
+    ),
+    _dirty: true,
+  }));
+  const track = {
+    id: trackId,
+    role: 'extension',
+    name: pending.file.name.replace(/\.[^.]+$/i, '') || '副字幕',
+    language: '',
+    source_name: pending.file.name,
+    split_mode: MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(
+      extensionSegments.map((segment) => segment.text).join('\n'),
+    ),
+    segments: extensionSegments,
+  };
+  MaweHistory.pushUndo(replacing ? '替换副字幕' : '导入双语字幕');
+  if (replacing) {
+    const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
+    multi.bindings = (multi.bindings || []).filter((binding) => (
+      binding.track_id !== trackId && !binding.extension_segment_ids?.some((id) => oldIds.has(id))
+    ));
+    const oldIndex = multi.tracks.findIndex((candidate) => candidate.id === trackId);
+    if (oldIndex >= 0) multi.tracks.splice(oldIndex, 1, track);
+    else multi.tracks.push(track);
+  } else {
+    multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
   }
+  match.matches.forEach((candidate) => {
+    const main = MaweBoot.DATA.segments[candidate.mainIndex];
+    const extension = extensionSegments[candidate.extensionIndex];
+    if (main && extension) multi.bindings.push(
+      MULTI_SUBTITLE_UTILS.buildSubtitleBinding(main, extension, trackId),
+    );
+  });
+  multi.enabled = true;
+  multi.display_mode = multi.display_mode || 'both';
+  MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
+  MaweMultiSubtitleCore.markMultiSubtitleDirty();
+  closeMultiSubtitleImportModal();
+  MaweSelection.clearSelection();
+  // 导入可能首次创建副字幕 lane，必须重建波形行结构。
+  MaweCuePanel.renderAll({ waveform: 'full' });
+  MawePlaybackLoop.updateWithoutCueListAutoScroll();
+  MaweHint.flashHint(`已导入副字幕：绑定 ${match.matches.length} 条，未绑定 ${match.unmatchedExtension.length} 条`, 'success');
+  return true;
+}
 
 
 
   function swapMainAndExtensionSubtitles() {
-    const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
-    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    if (!multi.enabled) {
-      MaweHint.flashHint('请先开启多重字幕', 'invalid');
-      return false;
-    }
-    if ((multi.tracks || []).length !== 1) {
-      MaweHint.flashHint('当前只支持交换唯一的副字幕轨', 'invalid');
-      return false;
-    }
-    if (!track?.segments?.length || !MaweBoot.DATA.segments.length) {
-      MaweHint.flashHint('主字幕和副字幕都不能为空', 'invalid');
-      return false;
-    }
-    MaweHistory.pushUndo('交换主副字幕');
-    const result = window.AsrEditorUtils.swapMainAndExtensionSubtitle(MaweBoot.DATA, track.id);
-    if (!result.swapped) {
-      MaweHint.flashHint('交换主副字幕失败', 'warning');
-      return false;
-    }
-    MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments);
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweSelection.clearSelection();
-    MaweCuePanel.renderAll({ waveform: 'full' });
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
-    MaweHint.flashHint(`已交换主副字幕：主轨 ${result.mainCount} 条，副轨 ${result.extensionCount} 条`, 'success');
-    return true;
+  const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+  const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+  if (!multi.enabled) {
+    MaweHint.flashHint('请先开启双语字幕', 'invalid');
+    return false;
   }
+  if ((multi.tracks || []).length !== 1) {
+    MaweHint.flashHint('当前只支持交换唯一的副字幕轨', 'invalid');
+    return false;
+  }
+  if (!track?.segments?.length || !MaweBoot.DATA.segments.length) {
+    MaweHint.flashHint('主字幕和副字幕都不能为空', 'invalid');
+    return false;
+  }
+  MaweHistory.pushUndo('交换主副字幕');
+  const result = MULTI_SUBTITLE_UTILS.swapMainAndExtensionSubtitle(MaweBoot.DATA, track.id);
+  if (!result.swapped) {
+    MaweHint.flashHint('交换主副字幕失败', 'warning');
+    return false;
+  }
+  MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments);
+  MaweMultiSubtitleCore.markMultiSubtitleDirty();
+  MaweSelection.clearSelection();
+  MaweCuePanel.renderAll({ waveform: 'full' });
+  MawePlaybackLoop.updateWithoutCueListAutoScroll();
+  MaweHint.flashHint(`已交换主副字幕：主轨 ${result.mainCount} 条，副轨 ${result.extensionCount} 条`, 'success');
+  return true;
+}
 
 
 

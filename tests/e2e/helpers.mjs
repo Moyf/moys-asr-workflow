@@ -293,6 +293,32 @@ export async function makeFirstCueWordSplittable(page) {
 export async function disableOnboarding(page) {
   await page.addInitScript(() => {
     localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed');
+
+    // server-editor keeps the authoritative status in SERVER_CONFIG rather
+    // than localStorage.  Mark that in-memory value before the onboarding
+    // module's first animation frame, while retaining the file:// behavior
+    // above for editor pages without server persistence.
+    const markServerOnboardingComplete = () => {
+      try {
+        if (typeof MaweBoot.SERVER_CONFIG !== 'undefined' && MaweBoot.SERVER_CONFIG) {
+          MaweBoot.SERVER_CONFIG.onboardingStatus = 'completed';
+        }
+      } catch (_) {
+        // The standalone editor has no SERVER_CONFIG binding.
+      }
+    };
+    const nativeRequestAnimationFrame = window.requestAnimationFrame;
+    if (typeof nativeRequestAnimationFrame === 'function') {
+      window.requestAnimationFrame = (callback) => nativeRequestAnimationFrame.call(
+        window,
+        (timestamp) => {
+          markServerOnboardingComplete();
+          callback(timestamp);
+        },
+      );
+    }
+    window.addEventListener('DOMContentLoaded', markServerOnboardingComplete, { once: true });
+    window.setTimeout(markServerOnboardingComplete, 0);
   });
 }
 

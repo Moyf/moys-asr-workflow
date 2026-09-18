@@ -67,10 +67,15 @@
       lastClickedOverlayIdx = idx;
     },
     toggleOverlaySelection: (idx) => toggleOverlaySelection(idx),
+    selectOverlayRange: (idx) => {
+      if (lastClickedOverlayIdx >= 0) selectOverlayRange(lastClickedOverlayIdx, idx);
+      else selectOverlayCueRow(idx);
+      lastClickedOverlayIdx = idx;
+    },
     activateOverlayCue: (idx) => {
-      selectedOverlayIdxs.clear();
-      selectedOverlayIdxs.add(idx);
-      MaweCuePanel.setCuePanelTarget('overlay', idx);
+      // 与 selectOverlayCue 同一入口：再次点击已选中的叠加字幕也要
+      // 清空主轨/副轨选区并保持本轨单选语义。
+      selectOverlayCueRow(idx);
     },
     enterOverlayCueEditor: (idx) => {
       selectOverlayCueRow(idx, { focusEditor: true });
