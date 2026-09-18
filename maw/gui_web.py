@@ -58,6 +58,7 @@ from maw.local_runtime import (
     LocalRuntimeError,
     LocalRuntimeStatus,
     install_local_runtime,
+    local_runtime_inventory,
     managed_runtime_status,
     prepare_alignment_model_in_process,
     prepare_alignment_model_in_runtime,
@@ -2438,6 +2439,16 @@ class LauncherApi:
         model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
         engine = model.engine if model else ""
         return {"ok": True, **self._local_runtime_status(model_cache_root, engine=engine).to_payload()}
+
+    def get_local_runtime_inventory(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Return the non-MOSS local runtime inventory for the settings panel."""
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        status = self._local_runtime_status(model_cache_root)
+        return {
+            "ok": True,
+            **status.to_payload(),
+            "inventory": local_runtime_inventory(model_cache_root),
+        }
 
     def get_ocr_runtime(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         status = self._ocr_runtime_status()

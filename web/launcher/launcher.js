@@ -499,6 +499,9 @@
     local_runtime_cancel: "取消安装",
     local_runtime_checking: "正在检查本地运行环境……",
     local_runtime_missing: "本地运行环境未安装",
+    local_runtime_configure_prefix: "打开 ",
+    local_runtime_configure: "本地模型运行时",
+    local_runtime_configure_suffix: " 进行配置",
     local_runtime_installing: "正在安装本地运行环境……",
     local_runtime_ready: "本地运行环境已就绪",
     local_runtime_broken: "本地运行环境需要修复",
@@ -513,7 +516,22 @@
     settings_local_runtime: "本地模型运行时",
     local_runtime_view_settings: "在 ⚙️ 设置中查看",
     local_runtime_path_label: "本地运行环境目录",
-    local_runtime_path_hint: "默认安装到用户目录；可改到空间更充足的磁盘。运行环境与模型缓存分开保存，更改后按新目录重新扫描。"
+    local_runtime_path_hint: "默认安装到用户目录；可改到空间更充足的磁盘。运行环境与模型缓存分开保存，更改后按新目录重新扫描。",
+    local_runtime_inventory: "查看运行时清单",
+    local_runtime_inventory_hide: "隐藏运行时清单",
+    local_runtime_inventory_loading: "正在读取运行时清单……",
+    local_runtime_inventory_empty: "暂未检测到运行时清单。",
+    local_runtime_inventory_status: "运行时状态",
+    local_runtime_inventory_version: "运行时版本",
+    local_runtime_inventory_python: "Python 版本",
+    local_runtime_inventory_manifest: "安装清单",
+    local_runtime_inventory_installed_at: "安装时间",
+    local_runtime_inventory_components: "依赖组件",
+    local_runtime_component_ready: "已安装",
+    local_runtime_component_missing: "缺失",
+    local_runtime_expected: "要求",
+    local_runtime_installed: "已安装",
+    local_runtime_unknown: "未知"
   });
   Object.assign(STRINGS.en, {
     auto_postprocess_title: "3️⃣ Post-transcription processing (Beta)",
@@ -607,6 +625,9 @@
     local_runtime_cancel: "Cancel installation",
     local_runtime_checking: "Checking the local runtime…",
     local_runtime_missing: "Local runtime is not installed",
+    local_runtime_configure_prefix: "open ",
+    local_runtime_configure: "Local model runtime",
+    local_runtime_configure_suffix: " to configure",
     local_runtime_installing: "Installing the local runtime…",
     local_runtime_ready: "Local runtime is ready",
     local_runtime_broken: "Local runtime needs repair",
@@ -621,7 +642,22 @@
     settings_local_runtime: "Local model runtime",
     local_runtime_view_settings: "View in ⚙️ Settings",
     local_runtime_path_label: "Local runtime directory",
-    local_runtime_path_hint: "Installed in your user directory by default; move it to a drive with more space if needed. The runtime and model cache are kept separate; the install status is rescanned for the new directory."
+    local_runtime_path_hint: "Installed in your user directory by default; move it to a drive with more space if needed. The runtime and model cache are kept separate; the install status is rescanned for the new directory.",
+    local_runtime_inventory: "View runtime inventory",
+    local_runtime_inventory_hide: "Hide runtime inventory",
+    local_runtime_inventory_loading: "Reading runtime inventory…",
+    local_runtime_inventory_empty: "No runtime manifest was detected.",
+    local_runtime_inventory_status: "Runtime status",
+    local_runtime_inventory_version: "Runtime version",
+    local_runtime_inventory_python: "Python version",
+    local_runtime_inventory_manifest: "Install manifest",
+    local_runtime_inventory_installed_at: "Installed at",
+    local_runtime_inventory_components: "Dependencies",
+    local_runtime_component_ready: "Installed",
+    local_runtime_component_missing: "Missing",
+    local_runtime_expected: "required",
+    local_runtime_installed: "installed",
+    local_runtime_unknown: "unknown"
   });
   Object.assign(STRINGS.zh, {
     advanced_params: "识别参数",
@@ -997,7 +1033,7 @@
     alignment_model_ready: "对齐模型已就绪",
     alignment_model_missing: "对齐模型未下载",
     alignment_model_checking: "正在检查对齐模型……",
-    alignment_model_runtime_missing: "请先安装本地模型支持",
+    alignment_model_runtime_missing: "本地运行环境未安装",
     alignment_model_cancel: "取消下载",
     alignment_model_cancelled: "对齐模型下载已取消",
     alignment_model_failed: "对齐模型准备失败",
@@ -1037,7 +1073,7 @@
     alignment_model_ready: "Aligner is ready",
     alignment_model_missing: "Aligner is not downloaded",
     alignment_model_checking: "Checking aligner…",
-    alignment_model_runtime_missing: "Install local model support first",
+    alignment_model_runtime_missing: "Local runtime is not installed",
     alignment_model_cancel: "Cancel download",
     alignment_model_cancelled: "Aligner download cancelled",
     alignment_model_failed: "Aligner preparation failed",
@@ -1323,7 +1359,7 @@
   const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-transcribe", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize", "whisper-large-v3-turbo", "whisper-large-v3"]);
   const SERVER_STATUS_MONITOR_INTERVAL_MS = 2000;
   const SERVER_STATUS_MONITOR_FAILURE_THRESHOLD = 2;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, alignmentPreparing: "", alignmentProgressMessage: "", alignmentModelSelection: "", alignmentModelManagementId: "", localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, alignmentPreparing: "", alignmentProgressMessage: "", alignmentModelSelection: "", alignmentModelManagementId: "", localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", localRuntimeInventoryOpen: false, localRuntimeInventory: null, localRuntimeInventoryError: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
@@ -1530,6 +1566,12 @@
       read_hotword_file: async () => ({ ok: true, path: "D:\\Demo\\hotwords.txt", text: "张三\n阿里云百炼\n专业术语\n" }),
       save_settings: async (payload) => { saved = { ...saved, ...payload }; if (Object.prototype.hasOwnProperty.call(payload, "modelCacheRoot")) { state.config.modelCacheRoot = payload.modelCacheRoot || ""; state.config.localRuntime = { ...(state.config.localRuntime || {}), modelCachePath: payload.modelCacheRoot || "D:\\Models\\MAW" }; } return { ok: true, maskedApiKey: payload.apiKey ? "sk-…mock" : "", modelCacheRoot: Object.prototype.hasOwnProperty.call(payload, "modelCacheRoot") ? (payload.modelCacheRoot || "") : (state.config?.modelCacheRoot || ""), message: "mock saved" }; },
       get_local_runtime: async () => ({ ok: true, ...(state.config?.localRuntime || { status: "missing", ready: false }) }),
+      get_local_runtime_inventory: async () => {
+        const runtime = state.config?.localRuntime || { status: "missing", ready: false };
+        const installed = Boolean(runtime.ready);
+        const components = ["faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"].map((name) => ({ name, required: true, installed }));
+        return { ok: true, ...runtime, inventory: { status: runtime.status || "missing", ready: installed, runtimeVersionExpected: "7", runtimeVersionInstalled: installed ? (runtime.runtimeVersion || "7") : "", pythonVersionExpected: "3.11", pythonVersionInstalled: installed ? "3.11" : "", manifestStatus: installed ? "ready" : "", installedAt: installed ? Math.floor(Date.now() / 1000) : 0, components } };
+      },
       install_local_runtime: async () => { state.config.localRuntime = { status: "ready", ready: true, path: "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime", detail: "本地运行环境已就绪。" }; setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localRuntimeReady", runtime: state.config.localRuntime }), 400); return { ok: true, installing: true }; },
        cancel_local_runtime: async () => ({ ok: true }),
        get_alignment_models: async () => ({ ok: true, runtime: state.config?.localRuntime || {}, modelCacheRoot: state.config?.modelCacheRoot || "D:\\Models\\MAW", models: alignmentModels.map((model) => ({ ...model, runtimeAvailable: Boolean(state.config?.localRuntime?.ready) })) }),
@@ -2279,7 +2321,7 @@
       high: "local_model_badge_resource_high",
     }[model?.resourceLevel];
     const badges = [];
-    if (resourceKey) badges.push({ key: resourceKey, kind: "resource" });
+    if (resourceKey) badges.push({ key: resourceKey, kind: "resource", resourceLevel: model?.resourceLevel });
     if (deviceKey) badges.push({ key: deviceKey, kind: "hardware" });
     if (model?.supportsSpeaker || model?.supportsDiarization) {
       badges.push({ key: "local_model_badge_speaker", kind: "feature" });
@@ -2305,7 +2347,12 @@
     container.className = "local-model-list-badges";
     localModelBadgeDescriptors(model).forEach((descriptor) => {
       const badge = document.createElement("span");
-      badge.className = `local-model-badge ${descriptor.kind}`;
+      const resourceClass = {
+        low: "resource-low",
+        medium: "resource-medium",
+        high: "resource-high",
+      }[descriptor.resourceLevel] || "";
+      badge.className = `local-model-badge ${descriptor.kind}${resourceClass ? ` ${resourceClass}` : ""}`;
       badge.textContent = t(descriptor.key).replace("{size}", descriptor.size || "");
       badge.title = badge.textContent;
       container.append(badge);
@@ -2395,6 +2442,107 @@
     }
     container.classList.toggle("hidden", !entries.length);
   }
+  function renderLocalRuntimeInventory() {
+    const button = $("toggleLocalRuntimeInventory");
+    const container = $("localRuntimeInventory");
+    const open = Boolean(state.localRuntimeInventoryOpen);
+    button.setAttribute("aria-expanded", String(open));
+    button.textContent = t(open ? "local_runtime_inventory_hide" : "local_runtime_inventory");
+    container.classList.toggle("hidden", !open);
+    if (!open) return;
+    container.replaceChildren();
+    if (state.localRuntimeInventoryError) {
+      container.textContent = state.localRuntimeInventoryError;
+      return;
+    }
+    const inventory = state.localRuntimeInventory;
+    if (!inventory) {
+      container.textContent = t("local_runtime_inventory_loading");
+      return;
+    }
+    const meta = document.createElement("dl");
+    meta.className = "runtime-inventory-meta";
+    const appendMeta = (labelKey, value) => {
+      const row = document.createElement("div");
+      row.className = "runtime-inventory-meta-row";
+      const label = document.createElement("dt");
+      label.textContent = t(labelKey);
+      const content = document.createElement("dd");
+      content.textContent = value || t("local_runtime_unknown");
+      row.append(label, content);
+      meta.append(row);
+    };
+    const runtimeStatus = inventory.status || state.config?.localRuntime?.status || "";
+    const statusKey = ({
+      ready: "local_runtime_ready",
+      broken: "local_runtime_broken",
+      missing: "local_runtime_missing",
+      checking: "local_runtime_checking",
+      installing: "local_runtime_installing",
+    })[runtimeStatus] || "local_runtime_unknown";
+    const versionValue = `${t("local_runtime_installed")}: ${inventory.runtimeVersionInstalled || t("local_runtime_unknown")} · ${t("local_runtime_expected")}: ${inventory.runtimeVersionExpected || t("local_runtime_unknown")}`;
+    const pythonValue = `${t("local_runtime_installed")}: ${inventory.pythonVersionInstalled || t("local_runtime_unknown")} · ${t("local_runtime_expected")}: ${inventory.pythonVersionExpected || t("local_runtime_unknown")}`;
+    const installedAt = Number(inventory.installedAt || 0);
+    appendMeta("local_runtime_inventory_status", t(statusKey));
+    appendMeta("local_runtime_inventory_version", versionValue);
+    appendMeta("local_runtime_inventory_python", pythonValue);
+    appendMeta("local_runtime_inventory_manifest", inventory.manifestStatus || "");
+    appendMeta("local_runtime_inventory_installed_at", Number.isFinite(installedAt) && installedAt > 0 ? new Date(installedAt * 1000).toLocaleString() : "");
+    container.append(meta);
+
+    const components = Array.isArray(inventory.components) ? inventory.components : [];
+    const componentGroup = document.createElement("section");
+    componentGroup.className = "runtime-inventory-components";
+    const heading = document.createElement("h4");
+    const installedCount = components.filter((item) => item && item.installed).length;
+    heading.textContent = `${t("local_runtime_inventory_components")} (${installedCount}/${components.length})`;
+    componentGroup.append(heading);
+    for (const component of components) {
+      const row = document.createElement("div");
+      row.className = `runtime-inventory-item ${component.installed ? "ready" : "missing"}`;
+      const marker = document.createElement("span");
+      marker.className = "runtime-inventory-item-marker";
+      marker.textContent = component.installed ? "✓" : "×";
+      const name = document.createElement("span");
+      name.className = "runtime-inventory-item-name";
+      name.textContent = String(component.name || t("local_runtime_unknown"));
+      const itemStatus = document.createElement("span");
+      itemStatus.className = "runtime-inventory-item-state";
+      itemStatus.textContent = t(component.installed ? "local_runtime_component_ready" : "local_runtime_component_missing");
+      row.append(marker, name, itemStatus);
+      componentGroup.append(row);
+    }
+    if (!components.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = t("local_runtime_inventory_empty");
+      componentGroup.append(empty);
+    }
+    container.append(componentGroup);
+  }
+
+  async function refreshLocalRuntimeInventory() {
+    const button = $("toggleLocalRuntimeInventory");
+    state.localRuntimeInventory = null;
+    state.localRuntimeInventoryError = "";
+    renderLocalRuntimeInventory();
+    button.disabled = true;
+    const result = await bridge("get_local_runtime_inventory");
+    if (state.localRuntimeInventoryOpen) {
+      if (!result.ok) state.localRuntimeInventoryError = result.detail || result.error || t("failed");
+      else state.localRuntimeInventory = result.inventory || null;
+      renderLocalRuntimeInventory();
+    }
+    button.disabled = false;
+    return result;
+  }
+
+  async function toggleLocalRuntimeInventory() {
+    state.localRuntimeInventoryOpen = !state.localRuntimeInventoryOpen;
+    renderLocalRuntimeInventory();
+    if (state.localRuntimeInventoryOpen) await refreshLocalRuntimeInventory();
+  }
+
   function renderLocalModelCachePathLine(runtime) {
     // 模型缓存链接跟随主页面「模型保存目录」的说明文字，不放在设置运行时区块里。
     const container = $("localModelCachePathLine");
@@ -2464,6 +2612,7 @@
     progress.classList.toggle("hidden", !installing);
     $("localRuntimeProgressBar").style.width = `${Math.max(0, Math.min(100, state.localRuntimeProgress))}%`;
     $("localRuntimeProgressMessage").textContent = state.localRuntimeProgressMessage || "";
+    renderLocalRuntimeInventory();
   }
   function renderOcrRuntime() {
     const runtime = state.config?.ocrRuntime || {};
@@ -2544,7 +2693,12 @@
     const target = $("localModelStatus");
     const key = status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing", checking: "local_checking" }[status.status] || "local_missing");
     // 与 runtime 面板一致：preparing 状态行固定"正在准备"文案，实时流水只在进度条下方。
-    target.textContent = t(preparing ? "local_prepare_running" : key);
+    target.textContent = "";
+    if (!preparing && status.status === "runtime_missing") {
+      renderLocalRuntimeMissingHint(target);
+    } else {
+      target.textContent = t(preparing ? "local_prepare_running" : key);
+    }
     target.className = `local-status ${preparing ? "warn" : (status.status === "installed" ? "ready" : "warn")}`;
     $("localModelPath").value = status.path || $("localModelPath").value || "";
     const canPrepare = Boolean(status.canPrepare) && !preparing;
@@ -2563,6 +2717,23 @@
     bar.style.width = determinate ? `${Math.max(0, Math.min(99, percent))}%` : "";
     $("localModelProgressMessage").textContent = state.localProgressMessage || "";
     renderLocalAlignmentModel();
+  }
+
+  function renderLocalRuntimeMissingHint(target) {
+    target.textContent = "";
+    target.append(document.createTextNode(t("local_runtime_missing")));
+    target.append(document.createTextNode(state.lang === "zh" ? "，" : ", "));
+    target.append(document.createTextNode(t("local_runtime_configure_prefix")));
+    const configure = document.createElement("button");
+    configure.type = "button";
+    configure.className = "inline-link";
+    configure.textContent = t("local_runtime_configure");
+    configure.addEventListener("click", () => {
+      openSettings("localRuntimePanel");
+      void refreshLocalRuntime();
+    });
+    target.append(configure);
+    target.append(document.createTextNode(t("local_runtime_configure_suffix")));
   }
 
   function alignmentModelLabel(model) {
@@ -2625,9 +2796,13 @@
       return;
     }
     const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
-    statusTarget.textContent = preparing && state.alignmentProgressMessage
-      ? `${t(statusKey)} ${state.alignmentProgressMessage}`
-      : t(statusKey);
+    if (!preparing && !runtimeReady && statusKey === "alignment_model_runtime_missing") {
+      renderLocalRuntimeMissingHint(statusTarget);
+    } else {
+      statusTarget.textContent = preparing && state.alignmentProgressMessage
+        ? `${t(statusKey)} ${state.alignmentProgressMessage}`
+        : t(statusKey);
+    }
     statusTarget.className = `hint ${model.installed && runtimeReady && !preparing ? "success" : ""}`;
   }
 
@@ -2719,9 +2894,13 @@
     }
     button.classList.remove("hidden");
     const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
-    statusTarget.textContent = preparing && state.alignmentProgressMessage
-      ? `${t(statusKey)} ${state.alignmentProgressMessage}`
-      : t(statusKey);
+    if (!preparing && !runtimeReady && statusKey === "alignment_model_runtime_missing") {
+      renderLocalRuntimeMissingHint(statusTarget);
+    } else {
+      statusTarget.textContent = preparing && state.alignmentProgressMessage
+        ? `${t(statusKey)} ${state.alignmentProgressMessage}`
+        : t(statusKey);
+    }
     statusTarget.className = `local-status ${model.installed && runtimeReady && !preparing ? "ready" : "warn"}`;
     button.disabled = preparing ? false : (!runtimeReady || model.status === "checking");
     button.textContent = preparing ? t("alignment_model_cancel") : (model.installed ? t("alignment_model_download_again") : t("alignment_model_download"));
@@ -2738,6 +2917,7 @@
     state.config.localRuntime = result;
     state.config.modelCacheRoot = result.modelCachePath || state.config.modelCacheRoot || "";
     renderLocalRuntime();
+    if (state.localRuntimeInventoryOpen) void refreshLocalRuntimeInventory();
     return result;
   }
   async function refreshLocalModels() {
@@ -3574,6 +3754,7 @@
   $("installOcrRuntime").addEventListener("click", async () => { const runtime = state.config?.ocrRuntime || {}; if (state.ocrRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: state.config.ocrRuntime?.status === "broken" }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
   $("localModelPath").addEventListener("input", () => { setError("localModelPath", ""); if (isLocalProvider()) { state.localModelPaths[selectedModel().id] = $("localModelPath").value.trim(); void refreshLocalModels(); } });
   $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocalRuntime").disabled = true; try { await refreshLocalRuntime(); await refreshLocalModels(); } finally { $("refreshLocalRuntime").disabled = false; } });
+  $("toggleLocalRuntimeInventory").addEventListener("click", () => { void toggleLocalRuntimeInventory(); });
   $("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });
   $("openLocalModelSettings").addEventListener("click", () => { openSettings("localAsrModelSettingsSection"); void refreshLocalModels(); void refreshAlignmentModels(); });
   $("openDashscopeRegionSettings").addEventListener("click", () => openSettings("dashscopeRegionPanel"));

@@ -35,6 +35,7 @@ from maw.runtimes.base import (
     model_cache_environment,
     resolve_model_cache_root,
 )
+from maw.runtime_manifest import read_runtime_manifest
 from maw.runtimes.local_spec import (
     EMBED_PYTHON_ZIP,
     PYTORCH_INDEX,
@@ -56,6 +57,7 @@ __all__ = [
     "default_model_cache_root",
     "default_runtime_root",
     "install_local_runtime",
+    "local_runtime_inventory",
     "managed_runtime_python",
     "managed_runtime_status",
     "model_cache_environment",
@@ -92,6 +94,40 @@ class LocalRuntimeStatus:
             "detail": self.detail,
             "runtimeVersion": self.runtime_version,
         }
+
+
+def local_runtime_inventory(model_cache_root: str | Path | None = None) -> dict[str, object]:
+    """Return the local runtime manifest and per-package installation state.
+
+    The inventory intentionally derives its package list from ``LOCAL.spec`` so
+    that the settings UI and the runtime readiness check cannot drift apart.
+    ``runtime.json`` may be missing or stale; those values are returned as-is
+    so the UI can explain why a runtime needs repair.
+    """
+    root = LOCAL.resolve_root()
+    manifest = read_runtime_manifest(root)
+    missing = set(LOCAL.missing_package_dirs(root))
+    status = LOCAL.status(model_cache_root=model_cache_root, runtime_root=root)
+    components = [
+        {
+            "name": name,
+            "required": True,
+            "installed": name not in missing,
+        }
+        for name in LOCAL.spec.package_dirs
+    ]
+    return {
+        "status": status.status,
+        "ready": status.ready,
+        "detail": status.detail,
+        "runtimeVersionExpected": LOCAL.spec.runtime_version,
+        "runtimeVersionInstalled": manifest.runtime_version,
+        "pythonVersionExpected": LOCAL.spec.python_version,
+        "pythonVersionInstalled": manifest.python_version,
+        "manifestStatus": manifest.status,
+        "installedAt": manifest.installed_at,
+        "components": components,
+    }
 
 
 def _is_moss_engine(engine: str) -> bool:

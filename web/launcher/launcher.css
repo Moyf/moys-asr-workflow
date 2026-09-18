@@ -559,7 +559,7 @@ label {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  max-height: 240px;
+  max-height: 260px;
   margin: 12px 0 10px;
   padding: 2px;
   overflow-y: auto;
@@ -671,7 +671,19 @@ label {
 }
 
 .local-model-badge.resource {
-  color: var(--amber-hover);
+  color: #d49a4a;
+}
+
+.local-model-badge.resource-low {
+  color: #8ecf9b;
+}
+
+.local-model-badge.resource-medium {
+  color: #d49a4a;
+}
+
+.local-model-badge.resource-high {
+  color: #e07a7a;
 }
 
 .local-model-badge.feature {
@@ -808,6 +820,94 @@ label {
 .local-status-row > button {
   flex: 0 0 auto;
   min-width: 76px;
+  white-space: nowrap;
+}
+
+.runtime-inventory-toggle-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 2px;
+}
+
+.runtime-inventory {
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-panel) 60%, transparent);
+}
+
+.runtime-inventory-meta {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.runtime-inventory-meta-row {
+  display: grid;
+  grid-template-columns: minmax(90px, auto) minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.runtime-inventory-meta-row dt {
+  color: var(--text-muted);
+}
+
+.runtime-inventory-meta-row dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.runtime-inventory-components {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.runtime-inventory-components h4 {
+  margin: 0 0 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.runtime-inventory-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.runtime-inventory-item-marker {
+  color: var(--amber-hover);
+  font-weight: 700;
+  text-align: center;
+}
+
+.runtime-inventory-item.ready .runtime-inventory-item-marker,
+.runtime-inventory-item.ready .runtime-inventory-item-state {
+  color: #8ecf9b;
+}
+
+.runtime-inventory-item-name {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.runtime-inventory-item-state {
+  color: var(--amber-hover);
   white-space: nowrap;
 }
 

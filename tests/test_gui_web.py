@@ -199,6 +199,31 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "broken")
 
+    def test_get_local_runtime_inventory_reports_versions_and_missing_components(self) -> None:
+        runtime_root = self.root / "local-runtime"
+        site_packages = runtime_root / "site-packages"
+        site_packages.mkdir(parents=True)
+        for name in LOCAL.spec.package_dirs[:-1]:
+            (site_packages / name).mkdir()
+        write_runtime_manifest(
+            runtime_root,
+            status="ready",
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            result = self.api.get_local_runtime_inventory()
+
+        self.assertEqual(result["status"], "broken")
+        inventory = result["inventory"]
+        self.assertEqual(inventory["runtimeVersionExpected"], LOCAL.spec.runtime_version)
+        self.assertEqual(inventory["runtimeVersionInstalled"], LOCAL.spec.runtime_version)
+        self.assertEqual(inventory["pythonVersionInstalled"], LOCAL.spec.python_version)
+        components = {item["name"]: item for item in inventory["components"]}
+        self.assertTrue(components[LOCAL.spec.package_dirs[0]]["installed"])
+        self.assertFalse(components[LOCAL.spec.package_dirs[-1]]["installed"])
+
     def test_local_runtime_recovery_distinguishes_live_other_engine_worker(self) -> None:
         """MOSS 安装存活时，不应阻止恢复另一个运行时的陈旧标记。"""
         runtime_root = self.root / "local-runtime"
@@ -5119,6 +5144,7 @@ class LauncherAssetContractTests(unittest.TestCase):
     def test_local_runtime_lives_in_settings_runtime_tab_with_advanced_check_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         runtime_tab_panel = page.index('data-settings-panel="runtime"')
         runtime_panel = page.index('id="localRuntimePanel"')
@@ -5161,8 +5187,24 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="openLocalRuntimeSettings"', page)
         self.assertIn('settings_local_runtime: "本地模型运行时"', script)
         self.assertIn('settings_local_runtime: "Local model runtime"', script)
+        self.assertIn('local_runtime_configure_prefix: "打开 "', script)
+        self.assertIn('local_runtime_configure: "本地模型运行时"', script)
+        self.assertIn('local_runtime_configure_suffix: " 进行配置"', script)
+        self.assertIn('local_runtime_configure_prefix: "open "', script)
+        self.assertIn('local_runtime_configure: "Local model runtime"', script)
+        self.assertIn('local_runtime_configure_suffix: " to configure"', script)
+        self.assertIn('id="toggleLocalRuntimeInventory"', page)
+        self.assertIn('id="localRuntimeInventory"', page)
+        self.assertIn('local_runtime_inventory: "查看运行时清单"', script)
+        self.assertIn('local_runtime_inventory: "View runtime inventory"', script)
+        self.assertIn('bridge("get_local_runtime_inventory")', script)
+        self.assertIn('runtime-inventory-item', stylesheet)
         self.assertIn('local_runtime_view_settings: "在 ⚙️ 设置中查看"', script)
         self.assertIn('local_runtime_view_settings: "View in ⚙️ Settings"', script)
+        self.assertIn('function renderLocalRuntimeMissingHint(target)', script)
+        self.assertIn('alignment_model_runtime_missing: "本地运行环境未安装"', script)
+        self.assertIn('renderLocalRuntimeMissingHint(statusTarget);', script)
+        self.assertIn('openSettings("localRuntimePanel");', script)
         self.assertIn('$("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });', script)
         self.assertIn('$("openLocalModelSettings").addEventListener("click", () => { openSettings("localAsrModelSettingsSection"); void refreshLocalModels(); void refreshAlignmentModels(); });', script)
         self.assertIn('runtimeHintText(runtime, "local_runtime_ready_hint", "local_runtime_hint")', script)
@@ -5181,7 +5223,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('function localModelBadgeDescriptors(model)', script)
         self.assertIn('function compactModelSize(value)', script)
         self.assertIn('className = "local-model-list-size"', script)
-        self.assertIn('if (resourceKey) badges.push({ key: resourceKey, kind: "resource" });', script)
+        self.assertIn('if (resourceKey) badges.push({ key: resourceKey, kind: "resource", resourceLevel: model?.resourceLevel });', script)
+        self.assertIn('low: "resource-low"', script)
+        self.assertIn('medium: "resource-medium"', script)
+        self.assertIn('high: "resource-high"', script)
         self.assertIn('local_model_badge_word_timestamps', script)
         self.assertNotIn('local_model_badge_size', script)
         self.assertNotIn('local_model_badge_installed_size', script)
@@ -5227,6 +5272,12 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('.local-model-list-badges {', stylesheet)
         self.assertIn('.local-model-list-size {', stylesheet)
         self.assertIn('.local-model-badge.hardware {', stylesheet)
+        self.assertIn('.local-model-badge.resource-low {', stylesheet)
+        self.assertIn('.local-model-badge.resource-medium {', stylesheet)
+        self.assertIn('.local-model-badge.resource-high {', stylesheet)
+        self.assertIn('color: #8ecf9b;', stylesheet)
+        self.assertIn('color: #d49a4a;', stylesheet)
+        self.assertIn('color: #e07a7a;', stylesheet)
         self.assertNotIn('.local-model-badge.size {', stylesheet)
         self.assertIn('.settings-panel {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;', stylesheet)
         self.assertNotIn('.modal-card .settings-section.hidden + .settings-section', stylesheet)
