@@ -21,7 +21,7 @@ from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, bundled_ffmpeg_direct
 from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, effective_config, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.media import read_bwf_time_reference
-from maw.output_naming import maw_root
+from maw.output_naming import debug_artifact_path, maw_root
 from maw.qwen_audio import split_qwen_audio_hotwords
 from maw.local_runtime import default_runtime_root, model_cache_environment
 from maw.local_debug import local_debug_manifest_path
@@ -178,8 +178,16 @@ def build_output_paths(srt_path: Path, media_path: Path | None = None) -> Output
     return OutputPaths(srt=srt, json=srt.with_suffix(".mosp"), html=html)
 
 
-def raw_response_path(srt_path: Path) -> Path:
-    return Path(srt_path).expanduser().resolve().with_suffix(".asr-response.json")
+def raw_response_path(srt_path: Path, media_path: Path | None = None) -> Path:
+    output = Path(srt_path).expanduser().resolve()
+    if media_path is None:
+        return output.with_suffix(".asr-response.json")
+    return debug_artifact_path(
+        media_path,
+        output,
+        ".asr-response.json",
+        explicit_output=True,
+    )
 
 
 def unique_output_path(srt_path: Path, media_path: Path | None = None) -> Path:
@@ -516,9 +524,17 @@ def run_transcription(
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
     raw_path = (
-        local_debug_manifest_path(paths.srt)
+        local_debug_manifest_path(
+            paths.srt,
+            media_path=request.media_path,
+            explicit_output=True,
+        )
         if request.debug_raw and request.provider == "local"
-        else (raw_response_path(paths.srt) if request.debug_raw else None)
+        else (
+            raw_response_path(paths.srt, request.media_path)
+            if request.debug_raw
+            else None
+        )
     )
     if raw_path is not None:
         _require_output(raw_path, "debug response/artifact manifest")

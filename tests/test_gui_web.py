@@ -3319,6 +3319,33 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["rawPath"], str(local_debug_manifest_path(request.srt_path)))
 
+    def test_start_transcription_routes_local_debug_manifest_to_debug_directory(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.mp3",
+            srt_path=self.root / "clip.srt",
+            provider="local",
+            debug_raw=True,
+        )
+        request.media_path.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+
+        with (
+            mock.patch("maw.gui_web._request_from_payload", return_value=request),
+            mock.patch("maw.gui_web._frozen_ffmpeg_preflight", return_value=None),
+            mock.patch("maw.gui_web.threading.Thread", return_value=worker),
+            mock.patch("maw.output_naming.subfolder_prefs", return_value=(True, True)),
+            mock.patch("maw.output_naming.resolve_lang", return_value="zh"),
+            mock.patch.object(self.api.pump, "start"),
+        ):
+            result = self.api.start_transcription({})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(
+            result["rawPath"],
+            str(self.root / "clip_maw" / "调试" / "clip.local-debug.json"),
+        )
+
     def test_local_request_rejects_missing_model_before_subprocess(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")

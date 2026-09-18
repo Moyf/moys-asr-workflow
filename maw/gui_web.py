@@ -2142,9 +2142,19 @@ class LauncherApi:
             "outputPath": str(request.srt_path),
             "outputRenamed": output_renamed,
             "rawPath": (
-                str(local_debug_manifest_path(request.srt_path))
+                str(
+                    local_debug_manifest_path(
+                        request.srt_path,
+                        media_path=request.media_path,
+                        explicit_output=True,
+                    )
+                )
                 if request.debug_raw and request.provider == "local"
-                else (str(raw_response_path(request.srt_path)) if request.debug_raw else "")
+                else (
+                    str(raw_response_path(request.srt_path, request.media_path))
+                    if request.debug_raw
+                    else ""
+                )
             ),
         }
 

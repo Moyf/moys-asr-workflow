@@ -219,7 +219,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         no_model_tag=args.no_model_tag,
     )
     debug_writer = (
-        LocalDebugWriter(output_srt, engine=args.engine, model=args.model or args.engine)
+        LocalDebugWriter(
+            output_srt,
+            engine=args.engine,
+            model=args.model or args.engine,
+            media_path=input_path,
+            explicit_output=output_arg is not None,
+        )
         if args.debug_raw
         else None
     )

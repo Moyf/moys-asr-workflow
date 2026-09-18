@@ -15,13 +15,29 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from maw.output_naming import debug_artifact_dir
+
 DEBUG_SCHEMA = "moy.asr.local_debug.v1"
 
 
-def local_debug_manifest_path(output_srt: str | Path) -> Path:
+def local_debug_manifest_path(
+    output_srt: str | Path,
+    *,
+    media_path: str | Path | None = None,
+    explicit_output: bool = False,
+) -> Path:
     """Return the manifest path associated with one local SRT output."""
     output = Path(output_srt).expanduser().resolve(strict=False)
-    return output.with_name(f"{output.stem}.local-debug.json")
+    directory = (
+        debug_artifact_dir(
+            media_path,
+            output,
+            explicit_output=explicit_output,
+        )
+        if media_path is not None
+        else output.parent
+    )
+    return directory / f"{output.stem}.local-debug.json"
 
 
 def _json_default(value: object) -> object:
@@ -107,17 +123,36 @@ def transcription_payload(transcription: Any) -> dict[str, object]:
 
 
 class LocalDebugWriter:
-    """Write local debug stages beside the selected SRT output."""
+    """Write local debug stages according to the selected output layout."""
 
-    def __init__(self, output_srt: str | Path, *, engine: str, model: str = "") -> None:
+    def __init__(
+        self,
+        output_srt: str | Path,
+        *,
+        engine: str,
+        model: str = "",
+        media_path: str | Path | None = None,
+        explicit_output: bool = False,
+    ) -> None:
         self.output_srt = Path(output_srt).expanduser().resolve(strict=False)
         self.engine = str(engine or "local")
         self.model = str(model or "")
+        self.media_path = media_path
+        self.explicit_output = explicit_output
+        self.artifact_dir = (
+            debug_artifact_dir(
+                media_path,
+                self.output_srt,
+                explicit_output=explicit_output,
+            )
+            if media_path is not None
+            else self.output_srt.parent
+        )
         self.artifacts: dict[str, Path] = {}
 
     def write(self, stage: str, payload: object) -> Path:
         stage_name = str(stage or "stage").strip().replace("/", "-").replace("\\", "-")
-        path = self.output_srt.with_name(f"{self.output_srt.stem}.local-debug.{stage_name}.json")
+        path = self.artifact_dir / f"{self.output_srt.stem}.local-debug.{stage_name}.json"
         envelope = {
             "schema": DEBUG_SCHEMA,
             "stage": stage_name,
@@ -139,7 +174,11 @@ class LocalDebugWriter:
         return self.write(stage, transcription_payload(transcription))
 
     def write_manifest(self, *, outputs: Mapping[str, str | Path] | None = None) -> Path:
-        path = local_debug_manifest_path(self.output_srt)
+        path = local_debug_manifest_path(
+            self.output_srt,
+            media_path=self.media_path,
+            explicit_output=self.explicit_output,
+        )
         payload: dict[str, object] = {
             "schema": DEBUG_SCHEMA,
             "engine": self.engine,

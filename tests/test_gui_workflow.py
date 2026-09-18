@@ -263,6 +263,14 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertIn("--debug-raw", command)
         self.assertEqual(raw_response_path(self.srt_path), self.srt_path.with_suffix(".asr-response.json"))
 
+    def test_raw_response_path_uses_debug_directory_when_output_subfolder_is_on(self) -> None:
+        with mock.patch("maw.output_naming.subfolder_prefs", return_value=(True, False)):
+            with mock.patch("maw.output_naming.resolve_lang", return_value="zh"):
+                self.assertEqual(
+                    raw_response_path(self.srt_path, self.media_path),
+                    self.root / "_maw" / "调试" / "out.asr-response.json",
+                )
+
     def test_build_transcribe_command_local_routes_debug_raw_to_local_artifacts(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,

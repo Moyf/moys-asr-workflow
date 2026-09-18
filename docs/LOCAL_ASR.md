@@ -133,7 +133,7 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" --engine funasr
 
 `--json` 会同时生成 `.mosp` 工程；默认还会生成便携 `.edit.html`，如不需要可加 `--no-html`。`--with-waveform` 只能与 `--json` 一起使用。
 
-调试本地模型时加 `--debug-raw`，会在 SRT 旁生成 `<输出名>.local-debug.json` 清单和阶段 JSON。清单至少包含统一的 `local-transcription`、对齐前后（如启用对齐）和最终 `segments`；Qwen、FunASR、MOSS、Whisper 还会保存各自可用的原始结果，FireRed 额外保存 CTC 字词时间码和 `ct-punc` 标点/分句结果。在线模型的 `--debug-raw` 仍保存原来的 `*.asr-response.json`。
+调试本地模型时加 `--debug-raw`，会生成 `<输出名>.local-debug.json` 清单和阶段 JSON。清单至少包含统一的 `local-transcription`、对齐前后（如启用对齐）和最终 `segments`；Qwen、FunASR、MOSS、Whisper 还会保存各自可用的原始结果，FireRed 额外保存 CTC 字词时间码和 `ct-punc` 标点/分句结果。Launcher 开启「将所有输出文件放入子文件夹」后，本地与在线调试文件统一放入对应 `_maw/调试`（英文界面为 `_maw/debug`），并遵循「每个视频单独创建子文件夹」；关闭时保持原有输出目录。在线模型的 `--debug-raw` 仍保存 `*.asr-response.json`。
 
 不指定 `-o` 时，默认输出名带引擎标识段，如 Qwen3-ASR 为 `example.qwen-asr-local.srt`、FunASR 为 `example.funasr-local.srt`；不需要标识段时可加 `--no-model-tag`，需要把实时率写进文件名时可加 `--rtf-tag`（如 `example.funasr-local.0.12x.srt`，实时率越小越快）。
 

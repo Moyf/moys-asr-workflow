@@ -55,7 +55,7 @@ from maw.output_naming import (
     estimate_dashscope_cost,
     format_elapsed,
     format_maw_stat,
-    maw_root,
+    debug_artifact_path,
 )
 
 
@@ -2528,10 +2528,11 @@ def main():
     if args.debug_raw:
         if raw_response is None:
             raise RuntimeError("调试模式未获得 ASR 原始返回数据")
-        raw_path = (
-            maw_root(input_path) / f"{output_path.stem}.asr-response.json"
-            if not args.output
-            else output_path.with_suffix(".asr-response.json")
+        raw_path = debug_artifact_path(
+            input_path,
+            output_path,
+            ".asr-response.json",
+            explicit_output=bool(args.output),
         )
         raw_path.parent.mkdir(parents=True, exist_ok=True)
         with raw_path.open("w", encoding="utf-8", newline="\n") as raw_file:

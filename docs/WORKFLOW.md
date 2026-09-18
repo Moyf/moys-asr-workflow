@@ -300,11 +300,12 @@ Launcher 的「批量」模式用于把多个本地媒体按顺序转写。切�
 ├── 视频.srt / .mosp        （最终产物，默认在外层）
 └── _maw/
     ├── 后处理/              （自动后处理中间产物，英文界面为 postprocess/）
+    ├── 调试/                （调试清单与阶段文件，英文界面为 debug/）
     ├── （波形缓存不在这里：见下方说明）
     └── （转换缓存、asr-response、edit.html、批量清单等辅助文件）
 ```
 
-波形缓存的落点跟随「将所有输出放入子文件夹」设置：默认写在媒体旁（`ICE.mkv.mopeaks` / `ICE.mkv.quapeaks`），勾选后进入对应的 `_maw` 目录。读取端两种位置都会找（写入点 → 媒体旁 → 共享 `_maw` → 每视频 `_maw`），所以改一次设置不会把已有缓存全部判过期。**唯一例外是 `.ReaPeaks`** —— 那是 REAPER 写死的位置，永远只在媒体旁，否则读不到真机产物。 进入 `_maw` 的其余辅助文件包括：FLV 等媒体为浏览器播放生成的转换缓存（如 `clip.mp4`）、在线 `--debug-raw` 未指定 `-o` 时保存的 `asr-response.json`、Launcher 生成的便携 `.edit.html`，以及批量转写的 `maw-batch-manifest.json`。本地 `--debug-raw` 的 `.local-debug.json` 清单及阶段文件跟随本地 SRT 输出位置。`.ReaPeaks` 波形缓存仍按 REAPER 惯例写在媒体旁。旧版直接写在媒体旁的波形 sidecar 与转换缓存仍会被识别读取，不会被迁移或破坏。
+波形缓存的落点跟随「将所有输出放入子文件夹」设置：默认写在媒体旁（`ICE.mkv.mopeaks` / `ICE.mkv.quapeaks`），勾选后进入对应的 `_maw` 目录。读取端两种位置都会找（写入点 → 媒体旁 → 共享 `_maw` → 每视频 `_maw`），所以改一次设置不会把全部已有缓存判成过期。**唯一例外是 `.ReaPeaks`** —— 那是 REAPER 写死的位置，永远只在媒体旁，否则读不到真机产物。开启输出子文件夹时，在线 `--debug-raw` 的原始响应和本地 `--debug-raw` 的清单/阶段文件统一进入 `_maw/调试`（英文界面为 `_maw/debug`）；关闭时保留旧的 `_maw` 或输出同目录规则。其他 `_maw` 辅助文件还包括 FLV 等媒体为浏览器播放生成的转换缓存（如 `clip.mp4`）、Launcher 生成的便携 `.edit.html` 以及批量转写的 `maw-batch-manifest.json`。`.ReaPeaks` 波形缓存仍按 REAPER 惯例写在媒体旁。旧版直接写在媒体旁的波形 sidecar 与转换缓存仍会被识别读取，不会被迁移或破坏。
 
 Launcher「配置 → 通用 → 文件输出」可以调整最终产物的位置和命名：
 
