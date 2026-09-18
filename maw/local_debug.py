@@ -20,7 +20,7 @@ DEBUG_SCHEMA = "moy.asr.local_debug.v1"
 
 def local_debug_manifest_path(output_srt: str | Path) -> Path:
     """Return the manifest path associated with one local SRT output."""
-    output = Path(output_srt)
+    output = Path(output_srt).expanduser().resolve(strict=False)
     return output.with_name(f"{output.stem}.local-debug.json")
 
 
