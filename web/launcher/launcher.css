@@ -629,21 +629,32 @@ label {
 }
 
 .local-model-list-size {
+  flex: 0 0 auto;
   line-height: 16px;
+  white-space: nowrap;
+}
+
+.local-model-list-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
   white-space: nowrap;
 }
 
 .local-model-list-badges {
   display: flex;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
   gap: 4px;
   min-width: 0;
-  max-height: 38px;
   overflow: hidden;
 }
 
 .local-model-badge {
   display: inline-block;
+  flex: 0 0 auto;
   max-width: 100%;
   padding: 1px 5px;
   border: 1px solid var(--border-subtle);

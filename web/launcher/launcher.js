@@ -2291,13 +2291,15 @@
     return badges;
   }
   function appendLocalModelBadges(main, model) {
+    const meta = document.createElement("span");
+    meta.className = "local-model-list-meta";
     const size = localModelSize(model);
     if (size) {
       const sizeElement = document.createElement("span");
       sizeElement.className = "local-model-list-size";
       sizeElement.textContent = size;
       sizeElement.title = size;
-      main.append(sizeElement);
+      meta.append(sizeElement);
     }
     const container = document.createElement("span");
     container.className = "local-model-list-badges";
@@ -2308,7 +2310,8 @@
       badge.title = badge.textContent;
       container.append(badge);
     });
-    if (container.childElementCount) main.append(container);
+    if (container.childElementCount) meta.append(container);
+    if (meta.childElementCount) main.append(meta);
   }
   function renderLocalModelList() {
     const container = $("localModelList");
@@ -2353,7 +2356,7 @@
       const status = document.createElement("span");
       const statusKey = localModelListStatusKey(model);
       status.className = `local-model-list-status ${ready ? "ready" : ""}`.trim();
-      status.textContent = ready ? "✓" : t(statusKey);
+      status.textContent = ready ? "✓" : "";
       status.setAttribute("aria-label", t(statusKey));
       status.title = t(statusKey);
       button.append(main, status);
@@ -2670,7 +2673,7 @@
       }
       const status = document.createElement("span");
       status.className = `local-model-list-status ${ready ? "ready" : ""}`.trim();
-      status.textContent = ready ? "✓" : t(statusKey);
+      status.textContent = ready ? "✓" : "";
       status.setAttribute("aria-label", t(statusKey));
       status.title = t(statusKey);
       button.append(main, status);
