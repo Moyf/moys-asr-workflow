@@ -811,6 +811,12 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertIsInstance(custom, FireRedAsrEngine)
         self.assertEqual(custom.model_path, "D:/models/firered")
 
+    def test_firered_uses_cpu_when_shared_device_preference_is_cuda(self) -> None:
+        engine = create_local_engine("firered", device="cuda")
+
+        self.assertEqual(engine.requested_device, "cuda")
+        self.assertEqual(engine.device, "cpu")
+
     def test_engine_factory_supports_whisper(self) -> None:
         engine = create_local_engine("whisper")
 

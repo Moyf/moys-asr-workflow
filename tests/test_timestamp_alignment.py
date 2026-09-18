@@ -8,6 +8,7 @@ from unittest import mock
 from maw.timestamp_alignment import (
     ALIGNMENT_MODE_FILL,
     ALIGNMENT_MODE_GENERATE,
+    FireRedCtcBackend,
     TimedToken,
     TimestampAlignmentRequest,
     align_project,
@@ -45,6 +46,39 @@ class TimestampAlignmentTests(unittest.TestCase):
         self.assertEqual(items[0].start, 0)
         self.assertEqual(items[-1].end, 1000)
         self.assertTrue(all(left.end <= right.start for left, right in zip(items, items[1:])))
+
+    def test_firered_decode_skips_silent_audio_before_sherpa_decode(self) -> None:
+        class SilentChannel:
+            size = 16000
+
+            def __len__(self) -> int:
+                return self.size
+
+            def max(self) -> float:
+                return 0.0
+
+            def min(self) -> float:
+                return 0.0
+
+        class SilentAudio:
+            ndim = 2
+
+            def __len__(self) -> int:
+                return 16000
+
+            def __getitem__(self, key: tuple[slice, int]) -> SilentChannel:
+                del key
+                return SilentChannel()
+
+        fake_soundfile = SimpleNamespace(read=lambda *_args, **_kwargs: (SilentAudio(), 16000))
+        backend = FireRedCtcBackend(model_path="D:/models/firered")
+        with mock.patch.dict("sys.modules", {"soundfile": fake_soundfile}):
+            with mock.patch.object(backend, "_load", side_effect=AssertionError("must not decode silence")):
+                result = backend.decode(Path("silent.wav"))
+
+        self.assertEqual(result.text, "")
+        self.assertEqual(result.tokens, ())
+        self.assertEqual(result.duration_ms, 1000)
 
     def test_fill_skips_complete_cues_and_generate_replaces_them(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -142,6 +176,37 @@ class TimestampAlignmentTests(unittest.TestCase):
                 }
             )
         )
+
+    def test_partial_alignment_keeps_segment_granularity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            media = Path(temp_dir) / "clip.wav"
+            media.write_bytes(b"placeholder")
+            project = {
+                "segments": [
+                    {"start": 0, "end": 1000, "text": "你好"},
+                    {"start": 1000, "end": 2000, "text": "世界"},
+                ],
+                "language": "zh",
+            }
+
+            class PartiallyFailingBackend:
+                def align(self, _audio_path: Path, text: str, *, language: str | None = None) -> list[TimedToken]:
+                    del language
+                    if text == "世界":
+                        raise RuntimeError("synthetic alignment failure")
+                    return [TimedToken(text[0], 0, 500), TimedToken(text[1], 500, 1000)]
+
+            with mock.patch("maw.timestamp_alignment.create_alignment_backend", return_value=PartiallyFailingBackend()):
+                with mock.patch("maw.timestamp_alignment._extract_audio_span"):
+                    report = align_project(
+                        project,
+                        media_path=media,
+                        model_id="qwen3-forced-aligner-0.6b",
+                    )
+
+        self.assertEqual(report.aligned_segments, 1)
+        self.assertEqual(report.failed_segments, 1)
+        self.assertEqual(project["timestamp_granularity"], "segment")
 
     def test_long_single_unit_keeps_the_whole_audio_span(self) -> None:
         chunks = _split_text_for_duration("hello", 150_000)

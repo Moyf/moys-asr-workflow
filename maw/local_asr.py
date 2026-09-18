@@ -1407,20 +1407,26 @@ class FireRedAsrEngine:
     ) -> None:
         self.model = model
         self.model_path = str(model_path) if model_path else ""
-        self.device = device
+        self.requested_device = str(device or "auto")
+        # FireRed's sherpa-onnx int8 model is CPU-only.  The Launcher keeps a
+        # shared device preference, so switching from a CUDA model must not
+        # make FireRed fail before inference starts.
+        self.device = "cpu"
         self.model_cache_root = str(model_cache_root) if model_cache_root else None
         self._backend: Any = None
 
     def _load(self, on_event: ProgressCallback | None = None) -> Any:
         if self._backend is not None:
             return self._backend
-        if self.device.strip().casefold() not in {"", "auto", "cpu"}:
-            raise LocalAsrError("FireRedASR2-CTC 仅支持 CPU 推理。")
         try:
             from maw.timestamp_alignment import FireRedCtcBackend
         except ImportError as error:
             raise _missing_dependency("sherpa-onnx") from error
         if on_event:
+            if self.requested_device.strip().casefold() not in {"", "auto", "cpu"}:
+                on_event(
+                    f"[local] FireRedASR2-CTC 不支持 {self.requested_device}，已回退到 CPU"
+                )
             on_event(f"[local] loading FireRedASR2-CTC: {self.model}")
         self._backend = FireRedCtcBackend(
             model_path=self.model_path,
@@ -1447,6 +1453,19 @@ class FireRedAsrEngine:
         from maw.timestamp_alignment import firered_tokens_to_items
 
         decoded_text = decoded.text.strip()
+        if not decoded_text:
+            language_value, language_source = resolve_language(None, language, "")
+            return LocalTranscription(
+                "",
+                language_value,
+                [],
+                [],
+                self.model,
+                language_source,
+                split_mode_for_text("", language_value),
+                "unknown",
+                True,
+            )
         items = firered_tokens_to_items(
             decoded_text,
             decoded.tokens,
@@ -1454,7 +1473,7 @@ class FireRedAsrEngine:
             decoded.duration_ms,
             decoded_text=decoded.text,
         )
-        if not decoded_text or not items:
+        if not items:
             language_value, language_source = resolve_language(None, language, "")
             return LocalTranscription(
                 "",

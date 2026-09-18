@@ -22,7 +22,7 @@ import subprocess
 import tempfile
 import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -233,6 +233,8 @@ class FireRedCtcBackend:
             raise TimestampAlignmentError("FireRed 音频必须是可读取的单声道或多声道 PCM。")
         mono = audio[:, 0]
         duration_ms = max(int(round(len(mono) / float(sample_rate) * 1000)), 1)
+        if _is_silent_waveform(mono):
+            return FireRedDecodeResult("", (), (), duration_ms)
         recognizer = self._load()
         try:
             stream = recognizer.create_stream()
@@ -240,6 +242,11 @@ class FireRedCtcBackend:
             recognizer.decode_stream(stream)
             result = stream.result
         except (OSError, RuntimeError, TypeError, ValueError) as error:
+            # sherpa-onnx may reject an all-silent chunk before it produces an
+            # empty result.  Silent chunks are valid in a long-audio split and
+            # should be skipped by the caller rather than aborting the job.
+            if _is_silent_waveform(mono):
+                return FireRedDecodeResult("", (), (), duration_ms)
             raise TimestampAlignmentError(f"FireRedASR2-CTC 推理失败：{error}") from error
         text = str(_read_field(result, "text", "") or "")
         raw_tokens = _read_field(result, "tokens", ()) or ()
@@ -856,10 +863,21 @@ def _project_granularity(project: Mapping[str, object]) -> str:
     main = project.get("segments")
     if not isinstance(main, list):
         return ""
+    text_segments = [
+        segment
+        for segment in main
+        if isinstance(segment, Mapping) and str(segment.get("text") or "").strip()
+    ]
+    if not text_segments:
+        return "segment"
+    # A partially aligned project must remain conservative: the top-level
+    # marker describes what downstream consumers can trust for every cue, not
+    # just the subset that happened to align successfully.
+    if any(not _segment_has_complete_items(segment) for segment in text_segments):
+        return "segment"
     items = [
         item
-        for segment in main
-        if isinstance(segment, Mapping)
+        for segment in text_segments
         for item in (segment.get("items") or [])
         if isinstance(item, Mapping)
     ]
@@ -867,6 +885,27 @@ def _project_granularity(project: Mapping[str, object]) -> str:
         return "segment"
     text = "".join(str(segment.get("text") or "") for segment in main if isinstance(segment, Mapping))
     return "char" if split_mode_for_text(text) == "continuous" else "word"
+
+
+def _is_silent_waveform(samples: Any, *, peak_threshold: float = 1e-5) -> bool:
+    """Return whether a decoded PCM channel contains only near-zero samples."""
+    try:
+        if int(getattr(samples, "size")) == 0:
+            return True
+    except (AttributeError, TypeError, ValueError):
+        try:
+            if len(samples) == 0:
+                return True
+        except (TypeError, ValueError):
+            return False
+    try:
+        peak = max(abs(float(samples.max())), abs(float(samples.min())))
+    except (AttributeError, TypeError, ValueError):
+        try:
+            peak = max(abs(float(sample)) for sample in samples)
+        except (TypeError, ValueError):
+            return False
+    return math.isfinite(peak) and peak <= peak_threshold
 
 
 def _load_input(project_path: Path | None, srt_path: Path | None) -> tuple[JsonDict, Path | None, Path | None]:
