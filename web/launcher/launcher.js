@@ -11,8 +11,8 @@
       test_run: "测试运行",
       test_run_title: "仅截取前2分钟内容，用于测试功能和 API",
       test_run_override: "测试运行已限定前 2 分钟",
-      debug_raw: "调试运行（保存完整返回数据）",
-      debug_raw_title: "额外保存 ASR 服务端返回的原始 JSON，便于排查断句、标点和时间码问题",
+      debug_raw: "调试运行（保存原始/中间数据）",
+      debug_raw_title: "在线模型保存服务端原始 JSON；本地模型保存可用的原始/中间文件，便于排查断句、标点和时间码问题",
       hero_desc: "本地媒体 ➜ AI 转写 ➜ 可编辑字幕工程",
       project_home: "项目官网",
       tutorial_video: "教程视频",
@@ -42,7 +42,7 @@
       dashscope_region_hint_link: "⚙️ 设置 → 运行环境",
       dashscope_region_hint_suffix: " 配置阿里云百炼地域与业务空间。",
       output_subfolder: "将所有输出文件放入子文件夹",
-      output_subfolder_title: "将所有输出文件放入子文件夹（默认关闭）：SRT、工程与编辑器页面写入媒体旁的 _maw 子目录",
+      output_subfolder_title: "将所有输出文件放入子文件夹（默认关闭）：SRT、工程、编辑器页面和调试文件写入媒体旁的 _maw 子目录",
       per_video_subfolder: "每个视频单独创建子文件夹",
       per_video_subfolder_title: "每个视频单独创建子文件夹（默认关闭）：需要先开启「将所有输出文件放入子文件夹」，每个媒体各自使用「视频名_maw」目录",
       attach_model_name: "在输出文件名中附加模型名称",
@@ -130,8 +130,8 @@
       test_run: "Test run",
       test_run_title: "Trim to the first 2 minutes to test the workflow and API",
       test_run_override: "Test run is limited to the first 2 minutes",
-      debug_raw: "Debug run (save full response)",
-      debug_raw_title: "Also save the raw ASR service response as JSON for investigating segmentation, punctuation, and timestamps.",
+      debug_raw: "Debug run (save raw/intermediate data)",
+      debug_raw_title: "Online models save the raw service JSON; local models save available raw/intermediate files for investigating segmentation, punctuation, and timestamps.",
       hero_desc: "Local media ➜ AI transcription ➜ Editable subtitle projects",
       project_home: "Project",
       tutorial_video: "Tutorial video",
@@ -161,7 +161,7 @@
       dashscope_region_hint_link: "⚙️ Settings → Runtime",
       dashscope_region_hint_suffix: " to configure the Alibaba Cloud DashScope region and workspace.",
       output_subfolder: "Put all outputs in a subfolder",
-      output_subfolder_title: "Put all outputs in a subfolder (off by default): SRT, project, and editor page go to the _maw subfolder next to the media.",
+      output_subfolder_title: "Put all outputs in a subfolder (off by default): SRT, project, editor page, and debug files go to the _maw subfolder next to the media.",
       per_video_subfolder: "Create a separate subfolder per video",
       per_video_subfolder_title: "Create a separate subfolder per video (off by default): requires “Put all outputs in a subfolder”; each media uses its own “video-name_maw” folder.",
       attach_model_name: "Append the model name to output filenames",
@@ -462,6 +462,15 @@
     open_editor: "🚀 打开字幕编辑器",
     server_refresh: "刷新",
     local_model_path: "已有模型目录（可选）",
+    local_model_list_label: "本地模型列表",
+    local_model_badge_cpu: "CPU",
+    local_model_badge_cpu_gpu: "CPU/GPU",
+    local_model_badge_gpu_preferred: "GPU 优先",
+    local_model_badge_resource_low: "轻",
+    local_model_badge_resource_medium: "中",
+    local_model_badge_resource_high: "重",
+    local_model_badge_speaker: "说话人",
+    local_model_badge_word_timestamps: "字词时间码",
     local_model_cache_path_label: "模型保存目录",
     local_model_cache_path_hint: "默认使用本地环境的模型缓存目录；需要时可改到其他磁盘。",
     local_refresh: "重新扫描",
@@ -474,26 +483,35 @@
     local_runtime_missing: "本地运行时未安装",
     local_missing: "未检测到本地模型",
     local_partial: "已检测到主模型，但仍缺少组件",
+    local_firered_punc_optional: "已检测到 FireRed CTC；ct-punc 可选",
     local_installed: "已检测到本地模型",
     local_path_selected: "已使用指定的模型目录",
-    local_prepare_hint: "下载/准备会使用 QwenASR 或 FunASR 的上游缓存；模型文件不写入 MAW 工程。",
+    local_model_path_invalid: "指定模型目录无效",
+    local_model_path_mismatch: "指定目录与当前模型不匹配",
     local_prepare_running: "正在准备模型……",
     local_prepare_cancelling: "正在取消模型准备……",
     local_prepare_cancel: "取消准备",
     local_prepare_cancelled: "模型准备已取消；已完成的缓存会保留，可切换模型或稍后继续。",
     local_prepare_done: "模型已准备完成",
     local_prepare_again: "重新准备模型",
+    local_prepare_optional: "下载 ct-punc",
     local_beta_note: "当前为 beta 版本，未经过充分测试，不保证后续的维护和更新，请谨慎使用。",
     local_runtime_install: "安装本地模型支持",
     local_runtime_repair: "修复运行环境",
     local_runtime_cancel: "取消安装",
     local_runtime_checking: "正在检查本地运行环境……",
     local_runtime_missing: "本地运行环境未安装",
+    local_runtime_configure_prefix: "打开 ",
+    local_runtime_configure: "本地模型运行时",
+    local_runtime_configure_suffix: " 进行配置",
     local_runtime_installing: "正在安装本地运行环境……",
     local_runtime_ready: "本地运行环境已就绪",
     local_runtime_broken: "本地运行环境需要修复",
     local_runtime_hint: "将安装到用户目录；运行环境与模型缓存分开保存。首次安装需要下载约 2–3 GB。",
     local_runtime_ready_hint: "运行环境已就绪。现在可以下载所选模型。",
+    local_runtime_ready_prefix: "本地运行环境已就绪，可前往 ",
+    local_runtime_ready_link: "本地模型配置",
+    local_runtime_ready_suffix: " 查看和安装本地模型。",
     local_runtime_path: "运行环境：",
     local_model_cache_path: "模型缓存：",
     open_folder_hint: "点击打开所在文件夹",
@@ -503,7 +521,22 @@
     settings_local_runtime: "本地模型运行时",
     local_runtime_view_settings: "在 ⚙️ 设置中查看",
     local_runtime_path_label: "本地运行环境目录",
-    local_runtime_path_hint: "默认安装到用户目录；可改到空间更充足的磁盘。运行环境与模型缓存分开保存，更改后按新目录重新扫描。"
+    local_runtime_path_hint: "默认安装到用户目录；可改到空间更充足的磁盘。运行环境与模型缓存分开保存，更改后按新目录重新扫描。",
+    local_runtime_inventory: "查看运行时清单",
+    local_runtime_inventory_hide: "隐藏运行时清单",
+    local_runtime_inventory_loading: "正在读取运行时清单……",
+    local_runtime_inventory_empty: "暂未检测到运行时清单。",
+    local_runtime_inventory_status: "运行时状态",
+    local_runtime_inventory_version: "运行时版本",
+    local_runtime_inventory_python: "Python 版本",
+    local_runtime_inventory_manifest: "安装清单",
+    local_runtime_inventory_installed_at: "安装时间",
+    local_runtime_inventory_components: "依赖组件",
+    local_runtime_component_ready: "已安装",
+    local_runtime_component_missing: "缺失",
+    local_runtime_expected: "要求",
+    local_runtime_installed: "已安装",
+    local_runtime_unknown: "未知"
   });
   Object.assign(STRINGS.en, {
     auto_postprocess_title: "3️⃣ Post-transcription processing (Beta)",
@@ -560,6 +593,15 @@
     open_editor: "🚀 Open Subtitle Editor",
     server_refresh: "Refresh",
     local_model_path: "Existing model folder (optional)",
+    local_model_list_label: "Local model list",
+    local_model_badge_cpu: "CPU",
+    local_model_badge_cpu_gpu: "CPU/GPU",
+    local_model_badge_gpu_preferred: "GPU preferred",
+    local_model_badge_resource_low: "Light",
+    local_model_badge_resource_medium: "Medium",
+    local_model_badge_resource_high: "Heavy",
+    local_model_badge_speaker: "Speaker",
+    local_model_badge_word_timestamps: "Word timestamps",
     local_model_cache_path_label: "Model storage directory",
     local_model_cache_path_hint: "The local environment cache is used by default; you can move it to another drive if needed.",
     local_refresh: "Rescan",
@@ -572,26 +614,35 @@
     local_runtime_missing: "Local runtime is not installed",
     local_missing: "No local model detected",
     local_partial: "Main model found, but components are missing",
+    local_firered_punc_optional: "FireRed CTC detected; ct-punc is optional",
     local_installed: "Local model detected",
     local_path_selected: "Using the selected model folder",
-    local_prepare_hint: "Download/preparation uses the QwenASR or FunASR upstream cache; model files are not written into the MAW project.",
+    local_model_path_invalid: "The selected model folder is invalid",
+    local_model_path_mismatch: "The selected folder does not match this model",
     local_prepare_running: "Preparing model…",
     local_prepare_cancelling: "Cancelling model preparation…",
     local_prepare_cancel: "Cancel preparation",
     local_prepare_cancelled: "Model preparation was cancelled. Completed cache files are kept; you can switch models or continue later.",
     local_prepare_done: "Model is ready",
     local_prepare_again: "Prepare model again",
+    local_prepare_optional: "Download ct-punc",
     local_beta_note: "Currently in beta: not fully tested, and ongoing maintenance or updates are not guaranteed. Please use with caution.",
     local_runtime_install: "Install local model support",
     local_runtime_repair: "Repair runtime",
     local_runtime_cancel: "Cancel installation",
     local_runtime_checking: "Checking the local runtime…",
     local_runtime_missing: "Local runtime is not installed",
+    local_runtime_configure_prefix: "open ",
+    local_runtime_configure: "Local model runtime",
+    local_runtime_configure_suffix: " to configure",
     local_runtime_installing: "Installing the local runtime…",
     local_runtime_ready: "Local runtime is ready",
     local_runtime_broken: "Local runtime needs repair",
     local_runtime_hint: "Installed in your user directory; runtime and model cache are kept separate. The first install downloads about 2–3 GB.",
     local_runtime_ready_hint: "The runtime is ready. You can now download the selected model.",
+    local_runtime_ready_prefix: "The local runtime is ready. Go to ",
+    local_runtime_ready_link: "Local model configuration",
+    local_runtime_ready_suffix: " to view and install local models.",
     local_runtime_path: "Runtime: ",
     local_model_cache_path: "Model cache: ",
     open_folder_hint: "Click to open this folder",
@@ -601,11 +652,29 @@
     settings_local_runtime: "Local model runtime",
     local_runtime_view_settings: "View in ⚙️ Settings",
     local_runtime_path_label: "Local runtime directory",
-    local_runtime_path_hint: "Installed in your user directory by default; move it to a drive with more space if needed. The runtime and model cache are kept separate; the install status is rescanned for the new directory."
+    local_runtime_path_hint: "Installed in your user directory by default; move it to a drive with more space if needed. The runtime and model cache are kept separate; the install status is rescanned for the new directory.",
+    local_runtime_inventory: "View runtime inventory",
+    local_runtime_inventory_hide: "Hide runtime inventory",
+    local_runtime_inventory_loading: "Reading runtime inventory…",
+    local_runtime_inventory_empty: "No runtime manifest was detected.",
+    local_runtime_inventory_status: "Runtime status",
+    local_runtime_inventory_version: "Runtime version",
+    local_runtime_inventory_python: "Python version",
+    local_runtime_inventory_manifest: "Install manifest",
+    local_runtime_inventory_installed_at: "Installed at",
+    local_runtime_inventory_components: "Dependencies",
+    local_runtime_component_ready: "Installed",
+    local_runtime_component_missing: "Missing",
+    local_runtime_expected: "required",
+    local_runtime_installed: "installed",
+    local_runtime_unknown: "unknown"
   });
   Object.assign(STRINGS.zh, {
     advanced_params: "识别参数",
     advanced_misc: "其他",
+    firered_punc: "生成标点提升断句",
+    firered_punc_none: "不使用",
+    firered_punc_ct_punc: "使用 ct-punc",
     generate_spectral: "生成 reapeaks 频谱数据",
     generate_spectral_hint: "默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。",
     generate_spectral_title: "为媒体旁的 .ReaPeaks 缓存额外生成频谱层；不影响原生波形。",
@@ -690,6 +759,9 @@
   Object.assign(STRINGS.en, {
     advanced_params: "Parameters",
     advanced_misc: "Other",
+    firered_punc: "Punctuation for better segmentation",
+    firered_punc_none: "Do not use",
+    firered_punc_ct_punc: "Use ct-punc",
     generate_spectral: "Generate reapeaks spectral data",
     generate_spectral_hint: "By default only the reapeaks wave layer is generated. Spectral data adds processing time and file size.",
     generate_spectral_title: "Add a spectral layer to the .ReaPeaks cache beside the media; this does not change the native waveform.",
@@ -959,6 +1031,86 @@
     toolbox_ocr_model_ready: "Installed and ready",
     toolbox_ocr_model_missing: "Not installed; open Settings to download it",
   });
+  Object.assign(STRINGS.zh, {
+    local_model_settings_hint_prefix: "本地模型的下载和缓存可以在 ",
+    local_model_settings_open: "本地 AI 模型配置",
+    local_model_settings_hint_suffix: " 中管理。",
+    settings_local_asr_models: "本地 ASR 模型",
+    settings_alignment_models: "本地对齐模型",
+    alignment_model_settings_hint: "查看和准备本地对齐模型；Qwen Local 模型缓存可以复用。",
+    local_alignment_model: "本地对齐模型",
+    recognition_alignment_model: "对齐模型",
+    alignment_model_none: "不调用",
+    local_alignment_model_hint: "Qwen3-ForcedAligner 和 FireRedASR2-CTC 可单独下载。",
+    recognition_alignment_model_hint: "当前模型没有字词级时间码时，可调用已准备好的对齐模型补齐。",
+    local_alignment_model_list_label: "本地对齐模型列表",
+    alignment_model_download: "下载对齐模型",
+    alignment_model_downloading: "正在下载对齐模型……",
+    alignment_model_ready: "对齐模型已就绪",
+    alignment_model_missing: "对齐模型未下载",
+    alignment_model_checking: "正在检查对齐模型……",
+    alignment_model_runtime_missing: "本地运行环境未安装",
+    alignment_model_cancel: "取消下载",
+    alignment_model_cancelled: "对齐模型下载已取消",
+    alignment_model_failed: "对齐模型准备失败",
+    alignment_model_download_again: "重新下载",
+    toolbox_timestamps: "生成时间码",
+    toolbox_timestamps_hint: "给 .srt 或 .mosp/.json 工程的字幕段生成或补充字词级时间码；需要原始媒体。",
+    toolbox_group_alignment_model: "对齐模型",
+    toolbox_timestamp_model: "对齐模型",
+    toolbox_timestamp_model_hint: "Qwen3-ForcedAligner 与 FireRedASR2-CTC 都可独立下载；Qwen 复用 Qwen Local 的 Hugging Face 缓存。",
+    toolbox_group_timestamp_media: "媒体来源",
+    toolbox_timestamp_mode: "处理方式",
+    toolbox_timestamp_mode_fill: "只补充缺失时间码",
+    toolbox_timestamp_mode_generate: "重新生成全部时间码",
+    toolbox_timestamp_media: "媒体来源",
+    toolbox_timestamp_media_placeholder: "选择或拖入媒体文件",
+    toolbox_timestamp_media_reject: "请选择支持的媒体文件。",
+    toolbox_run_timestamps: "生成时间码",
+    toolbox_status_aligning: "正在生成字词时间码……",
+    toolbox_chain_timestamps: "[生成时间码]",
+    toolbox_timestamp_model_not_ready: "对齐模型尚未就绪，请先下载。",
+  });
+  Object.assign(STRINGS.en, {
+    local_model_settings_hint_prefix: "Manage local model downloads and caches in ",
+    local_model_settings_open: "Local AI model configuration",
+    local_model_settings_hint_suffix: ".",
+    settings_local_asr_models: "Local ASR models",
+    settings_alignment_models: "Local alignment models",
+    alignment_model_settings_hint: "View and prepare local alignment models; Qwen Local caches can be reused.",
+    local_alignment_model: "Local alignment model",
+    recognition_alignment_model: "Alignment model",
+    alignment_model_none: "Do not align",
+    local_alignment_model_hint: "Qwen3-ForcedAligner and FireRedASR2-CTC can be downloaded separately.",
+    recognition_alignment_model_hint: "When the current model has no word/character timestamps, use a prepared aligner to fill them in.",
+    local_alignment_model_list_label: "Local alignment model list",
+    alignment_model_download: "Download aligner",
+    alignment_model_downloading: "Downloading aligner…",
+    alignment_model_ready: "Aligner is ready",
+    alignment_model_missing: "Aligner is not downloaded",
+    alignment_model_checking: "Checking aligner…",
+    alignment_model_runtime_missing: "Local runtime is not installed",
+    alignment_model_cancel: "Cancel download",
+    alignment_model_cancelled: "Aligner download cancelled",
+    alignment_model_failed: "Aligner preparation failed",
+    alignment_model_download_again: "Download again",
+    toolbox_timestamps: "Generate timestamps",
+    toolbox_timestamps_hint: "Generate or fill word/character timestamps for an .srt or .mosp/.json project. Original media is required.",
+    toolbox_group_alignment_model: "Alignment model",
+    toolbox_timestamp_model: "Alignment model",
+    toolbox_timestamp_model_hint: "Qwen3-ForcedAligner and FireRedASR2-CTC can be downloaded separately. Qwen reuses the Qwen Local Hugging Face cache.",
+    toolbox_group_timestamp_media: "Media source",
+    toolbox_timestamp_mode: "Mode",
+    toolbox_timestamp_mode_fill: "Fill missing timestamps only",
+    toolbox_timestamp_mode_generate: "Regenerate all timestamps",
+    toolbox_timestamp_media: "Media source",
+    toolbox_timestamp_media_placeholder: "Choose or drop a media file",
+    toolbox_timestamp_media_reject: "Choose a supported media file.",
+    toolbox_run_timestamps: "Generate timestamps",
+    toolbox_status_aligning: "Generating word/character timestamps…",
+    toolbox_chain_timestamps: "[Generate timestamps]",
+    toolbox_timestamp_model_not_ready: "The aligner is not ready. Download it first.",
+  });
   const SERVER_STARTING_TEXT = { zh: "启动中……", en: "Starting…" };
   // 界面暂不开放时长上限，底层参数保留。
   const SHOW_LENGTH_LIMIT_FIELD = false;
@@ -985,6 +1137,7 @@
       local_runtime_cancelled: "本地运行环境安装已取消。",
       local_model_missing: "尚未检测到本地模型，请先点击“下载模型”或选择已有模型目录。",
       local_model_incomplete: "本地模型不完整，请先准备缺少的模型组件。",
+      firered_punc_missing: "FireRed 的 ct-punc 尚未准备，请选择“不使用”或先下载 ct-punc。",
       local_model_path_invalid: "本地模型目录不存在，或所选路径不是文件夹。",
     local_model_path_mismatch: "当前模型目录看起来属于另一种本地模型，请清空后重新选择。",
     model_cache_path_invalid: "模型缓存目录不能是一个文件。",
@@ -1060,6 +1213,7 @@
       local_runtime_cancelled: "Local runtime installation was cancelled.",
       local_model_missing: "No local model was detected. Download it or choose an existing model folder.",
       local_model_incomplete: "The local model is incomplete. Prepare the missing components first.",
+      firered_punc_missing: "FireRed ct-punc is not ready. Choose \"Do not use\" or download ct-punc first.",
       local_model_path_invalid: "The local model folder does not exist or is not a folder.",
     local_model_path_mismatch: "This model folder appears to belong to a different local model. Clear it and choose the correct folder.",
     model_cache_path_invalid: "The model storage path cannot point to a file.",
@@ -1120,6 +1274,22 @@
       invalid_reasoning_mode: (detail) => `Invalid reasoning mode: ${detail || "check the post-processing settings."}`,
     }
   };
+  Object.assign(ERROR_TEXT.zh, {
+    alignment_model_missing: "对齐模型尚未下载，请先下载对齐模型。",
+    alignment_model_incomplete: "对齐模型文件不完整，请重新下载或选择正确的模型目录。",
+    alignment_model_path_invalid: "对齐模型目录不存在，或缺少有效模型文件。",
+    alignment_prepare_running: "对齐模型正在准备中，请等待完成。",
+    alignment_prepare_failed: (detail) => `对齐模型准备失败：${detail || "请查看日志后重试。"}`,
+    alignment_failed: (detail) => `字词时间码生成失败：${detail || "请检查媒体、字幕文本和对齐模型。"}`,
+  });
+  Object.assign(ERROR_TEXT.en, {
+    alignment_model_missing: "The aligner is not downloaded. Download it first.",
+    alignment_model_incomplete: "The aligner files are incomplete. Download it again or choose the correct model folder.",
+    alignment_model_path_invalid: "The aligner folder does not exist or has no valid model files.",
+    alignment_prepare_running: "The aligner is being prepared. Please wait.",
+    alignment_prepare_failed: (detail) => `Aligner preparation failed: ${detail || "check the log and retry."}`,
+    alignment_failed: (detail) => `Word/character timestamp generation failed: ${detail || "check the media, subtitle text, and aligner."}`,
+  });
   Object.assign(STRINGS.zh, {
     start_server_editor: "🚀 启动字幕编辑器",
     toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入；选择工具后运行。",
@@ -1207,7 +1377,7 @@
   const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-transcribe", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize", "whisper-large-v3-turbo", "whisper-large-v3"]);
   const SERVER_STATUS_MONITOR_INTERVAL_MS = 2000;
   const SERVER_STATUS_MONITOR_FAILURE_THRESHOLD = 2;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, alignmentPreparing: "", alignmentProgressMessage: "", alignmentModelSelection: "", alignmentModelManagementId: "", localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", localRuntimeInventoryOpen: false, localRuntimeInventory: null, localRuntimeInventoryError: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;
@@ -1222,6 +1392,7 @@
   let ocrRuntimeRequest = 0;
   let localRuntimeRequest = 0;
   let localModelsRequest = 0;
+  let alignmentModelsRequest = 0;
   // Runtime and model checks both update localRuntime.  A single revision
   // prevents an older request of either kind from putting stale status back
   // after a newer check has already completed.
@@ -1234,6 +1405,11 @@
       ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
       : fallback;
     let modelPrepareTimer = 0;
+    let alignmentPrepareTimer = 0;
+    let alignmentModels = [
+      { id: "qwen3-forced-aligner-0.6b", modelId: "qwen3-forced-aligner-0.6b", engine: "qwen", modelRef: "Qwen/Qwen3-ForcedAligner-0.6B", label: "Qwen3-ForcedAligner 0.6B", note: "文本 + 音频输入，输出字词级时间码；复用 Qwen Local Hugging Face 缓存", estimatedSize: "1.7G+", deviceSupport: "gpu_preferred", resourceLevel: "medium", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+      { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC", note: "已知稿对齐；中英及多方言；CPU 可运行；字词时间码", estimatedSize: "0.9G", deviceSupport: "cpu", resourceLevel: "low", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+    ];
     return {
       get_config: async () => ({
         apiKey: saved.apiKey,
@@ -1271,7 +1447,8 @@
           { id: "pp-ocrv6-tiny", label: "PP-OCRv6 tiny（CPU）", installed: false, status: "missing", detail: "" },
           { id: "pp-ocrv6-small", label: "PP-OCRv6 small（CPU）", installed: false, status: "missing", detail: "" }
         ],
-        ocrModelId: "pp-ocrv6-tiny",
+         ocrModelId: "pp-ocrv6-tiny",
+         alignmentModels: alignmentModels.map((model) => ({ ...model, runtimeAvailable: Boolean(state.config?.localRuntime?.ready) })),
         providers: [
           {
             id: "qwen",
@@ -1339,11 +1516,14 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "en", "ja", "ko", "fr", "de", "es", "ru"],
             models: [
-              { id: "qwen3-asr-local", label: "Qwen3-ASR 0.6B（推荐）", envKey: "", note: "本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner", supportsSpeaker: false, kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-0.6B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "qwen3-asr-1.7b-local", label: "Qwen3-ASR 1.7B", envKey: "", note: "更高识别质量；与 0.6B 共用 Qwen3 Forced Aligner", supportsSpeaker: false, kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-1.7B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "fun-asr-nano-local", label: "Fun-ASR-Nano 2512（GPU）", envKey: "", note: "LLM-ASR 路线；中英日及中文方言，建议使用 CUDA", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "FunAudioLLM/Fun-ASR-Nano-2512", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "funasr-local", label: "FunASR paraformer-zh", envKey: "", note: "中文向 FunASR 路线；保留作为兼容选项", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "paraformer-zh", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-              { id: "sensevoice-small-local", label: "SenseVoice Small", envKey: "", note: "多语种本地识别；默认配合 FSMN-VAD，CPU/GPU 都可运行", supportsSpeaker: false, kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
+              { id: "qwen3-asr-local", label: "Qwen3-ASR 0.6B（推荐）", envKey: "", note: "轻量多语种识别；原生字词级时间码；可复用 Qwen3-ForcedAligner", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "medium", estimatedSize: "1.7G+", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-0.6B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "qwen3-asr-1.7b-local", label: "Qwen3-ASR 1.7B", envKey: "", note: "更高识别质量；原生字词级时间码；可复用 Qwen3-ForcedAligner；资源占用更高", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "4G+", kind: "local", engine: "qwen-asr", modelRef: "Qwen/Qwen3-ASR-1.7B", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "fun-asr-nano-local", label: "Fun-ASR-Nano 2512（GPU）", envKey: "", note: "LLM-ASR 路线；中英日及中文方言，建议使用 CUDA", supportsSpeaker: false, hidden: true, kind: "local", engine: "funasr", modelRef: "FunAudioLLM/Fun-ASR-Nano-2512", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "funasr-local", label: "FunASR paraformer-zh", envKey: "", note: "中文向 FunASR 路线；保留作为兼容选项", supportsSpeaker: false, hidden: true, kind: "local", engine: "funasr", modelRef: "paraformer-zh", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "sensevoice-small-local", label: "SenseVoice Small", envKey: "", note: "多语种识别；默认配合 FSMN-VAD；CPU/GPU 均可运行；可用对齐模型补齐字词时间码", supportsSpeaker: false, supportsWordTimestamps: false, deviceSupport: "cpu_gpu", resourceLevel: "low", estimatedSize: "1G+", kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "moss-transcribe-diarize-local", label: "MOSS Transcribe-Diarize 0.9B", envKey: "", note: "多人转写与说话人分离；仅段级时间码，可用对齐模型补齐字词时间码；建议 GPU", supportsSpeaker: true, supportsWordTimestamps: false, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "1.7G+", kind: "local", engine: "moss", modelRef: "OpenMOSS-Team/MOSS-Transcribe-Diarize", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+      { id: "firered-asr2-ctc-local", label: "FireRedASR2", envKey: "", note: "中英及多方言；CPU 可运行；字词时间码；可用 ct-punc 改善标点和断句", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu", resourceLevel: "low", estimatedSize: "2G+", kind: "local", engine: "firered", modelRef: "firered-asr2-ctc", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+              { id: "whisper-large-v3-local", label: "Faster-Whisper large-v3（实验）", envKey: "", note: "多语种识别；原生词级时间码；CPU/GPU 均可运行；GPU 速度更佳；无说话人分离", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "high", estimatedSize: "3G+", kind: "local", engine: "whisper", modelRef: "Systran/faster-whisper-large-v3", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
             ],
             regions: [],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }]
@@ -1373,7 +1553,7 @@
           const dirIndex = Math.max(mediaPath.lastIndexOf("/"), mediaPath.lastIndexOf("\\"));
           const dir = dirIndex >= 0 ? mediaPath.slice(0, dirIndex + 1) : "";
           const stem = mediaPath.slice(dirIndex + 1).replace(/\.[^.\\/]+$/, "");
-          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))));
+          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : (modelId.includes("firered") ? ".firered-local" : (modelId.includes("moss") ? ".moss-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))));
           let outputDir = dir;
           if (saved.outputSubfolder) {
             const root = saved.perVideoSubfolder ? `${stem}_maw` : "_maw";
@@ -1404,8 +1584,17 @@
       read_hotword_file: async () => ({ ok: true, path: "D:\\Demo\\hotwords.txt", text: "张三\n阿里云百炼\n专业术语\n" }),
       save_settings: async (payload) => { saved = { ...saved, ...payload }; if (Object.prototype.hasOwnProperty.call(payload, "modelCacheRoot")) { state.config.modelCacheRoot = payload.modelCacheRoot || ""; state.config.localRuntime = { ...(state.config.localRuntime || {}), modelCachePath: payload.modelCacheRoot || "D:\\Models\\MAW" }; } return { ok: true, maskedApiKey: payload.apiKey ? "sk-…mock" : "", modelCacheRoot: Object.prototype.hasOwnProperty.call(payload, "modelCacheRoot") ? (payload.modelCacheRoot || "") : (state.config?.modelCacheRoot || ""), message: "mock saved" }; },
       get_local_runtime: async () => ({ ok: true, ...(state.config?.localRuntime || { status: "missing", ready: false }) }),
+      get_local_runtime_inventory: async () => {
+        const runtime = state.config?.localRuntime || { status: "missing", ready: false };
+        const installed = Boolean(runtime.ready);
+        const components = ["faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"].map((name) => ({ name, required: true, installed }));
+        return { ok: true, ...runtime, inventory: { status: runtime.status || "missing", ready: installed, runtimeVersionExpected: "7", runtimeVersionInstalled: installed ? (runtime.runtimeVersion || "7") : "", pythonVersionExpected: "3.11", pythonVersionInstalled: installed ? "3.11" : "", manifestStatus: installed ? "ready" : "", installedAt: installed ? Math.floor(Date.now() / 1000) : 0, components } };
+      },
       install_local_runtime: async () => { state.config.localRuntime = { status: "ready", ready: true, path: "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime", detail: "本地运行环境已就绪。" }; setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localRuntimeReady", runtime: state.config.localRuntime }), 400); return { ok: true, installing: true }; },
-      cancel_local_runtime: async () => ({ ok: true }),
+       cancel_local_runtime: async () => ({ ok: true }),
+       get_alignment_models: async () => ({ ok: true, runtime: state.config?.localRuntime || {}, modelCacheRoot: state.config?.modelCacheRoot || "D:\\Models\\MAW", models: alignmentModels.map((model) => ({ ...model, runtimeAvailable: Boolean(state.config?.localRuntime?.ready) })) }),
+       prepare_alignment_model: async ({ modelId }) => { clearTimeout(alignmentPrepareTimer); alignmentPrepareTimer = setTimeout(() => { const model = alignmentModels.find((item) => item.id === modelId); if (model) { model.status = "installed"; model.installed = true; model.runtimeAvailable = true; model.detail = "已检测到对齐模型。"; } window.MAWLauncher.onBackendEvent({ type: "alignmentModelPrepared", modelId, status: "installed" }); }, 400); return { ok: true, preparing: true, modelId }; },
+       cancel_alignment_model: async () => { clearTimeout(alignmentPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "alignmentPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
       get_ocr_runtime: async () => ({ ok: true, ...(state.config?.ocrRuntime || { status: "missing", ready: false }), models: state.config?.ocrModels || [] }),
       save_ocr_settings: async ({ runtimePath }) => { state.config.ocrRuntime = { ...(state.config.ocrRuntime || {}), path: runtimePath || "D:\\Users\\Demo\\AppData\\Local\\MAW\\ocr-runtime" }; return { ok: true, runtimePath: state.config.ocrRuntime.path, runtime: state.config.ocrRuntime }; },
   save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { ...(state.config.localRuntime || {}), path: runtimePath || "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime" }; return { ok: true, runtimePath: state.config.localRuntime.path, runtime: state.config.localRuntime }; },
@@ -1433,7 +1622,8 @@
       open_containing_folder: async ({ path }) => ({ ok: Boolean(path) }),
       retry_postprocess: async () => ({ ok: false, error: "No failed automatic post-processing run." }),
       run_script_match: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "match", "D:\\Demo\\clip.match.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "match", "D:\\Demo\\clip.match.srt"), warnings: [] }),
-      run_ocr_dedup: async ({ projectPath, srtPath, outputMode, report }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.srt"), reportPath: report ? "D:\\Demo\\clip.ocr-dedup.csv" : "", warnings: ["OCR 字幕去重完成：新增禁用 1 条，已有禁用 0 条，实际 OCR 1 条，跳过 0 条。"] }),
+       run_ocr_dedup: async ({ projectPath, srtPath, outputMode, report }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "ocr-dedup", "D:\\Demo\\clip.ocr-dedup.srt"), reportPath: report ? "D:\\Demo\\clip.ocr-dedup.csv" : "", warnings: ["OCR 字幕去重完成：新增禁用 1 条，已有禁用 0 条，实际 OCR 1 条，跳过 0 条。"] }),
+       run_timestamp_alignment: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "timestamps", "D:\\Demo\\clip.timestamps.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "timestamps", "D:\\Demo\\clip.timestamps.srt"), warnings: [] }),
       run_llm_postprocess: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "llm", "D:\\Demo\\clip.llm.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "llm", "D:\\Demo\\clip.llm.srt"), warnings: [] }),
       run_fixed_process: async ({ projectPath, srtPath, outputMode }) => ({ ok: true, projectPath: outputMode === "srt" ? "" : chainedPath(projectPath, "fixed", "D:\\Demo\\clip.fixed.mosp"), srtPath: outputMode === "json" ? "" : chainedPath(srtPath, "fixed", "D:\\Demo\\clip.fixed.srt"), warnings: [] }),
       send_notification: async ({ title, message } = {}) => { window.__mockNotifications = [...(window.__mockNotifications || []), { title: String(title || ""), message: String(message || "") }]; return { ok: true, sent: false }; },
@@ -1499,9 +1689,6 @@
     const fallbackKey = runtime.ready || runtime.status === "ready" ? readyKey : otherKey;
     return runtime.detail || t(fallbackKey);
   }
-  function localModelHintText(status) {
-    return ["installed", "missing", "checking", "runtime_missing"].includes(status.status) ? t("local_prepare_hint") : (status.detail || t("local_prepare_hint"));
-  }
   // 供应商 / 模型配置的 label 与 note 由后端（maw/gui_config.py）以中文下发；
   // 英文界面按稳定 id 映射为英文，id 未收录时回退后端原文。
   const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (QwenASR / FunASR)", soniox: "Soniox STT", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI (and compatible)", local: "Local models (Beta)", bcut: "Bcut ASR (unofficial · free · experimental)" };
@@ -1528,7 +1715,8 @@
     "qwen3-asr-1.7b-local": "Qwen3-ASR 1.7B",
     "fun-asr-nano-local": "Fun-ASR-Nano 2512 (GPU)",
     "sensevoice-small-local": "SenseVoice Small",
-    "moss-transcribe-diarize-local": "MOSS Transcribe-Diarize 0.9B (segment timestamps only)",
+    "firered-asr2-ctc-local": "FireRedASR2",
+    "moss-transcribe-diarize-local": "MOSS Transcribe-Diarize 0.9B",
     "whisper-large-v3-local": "Faster-Whisper large-v3 (experimental)",
     "bcut-asr": "Bcut ASR (no key / Chinese only)",
   };
@@ -1543,13 +1731,14 @@
     "custom-asr": "Fill in your custom ASR model name after selecting this.",
     "stt-async-v5": "Supports general, text, terms, and translation_terms context.",
     "16k_zh_en_2.0": "Enter the SecretId here; configure SecretKey in the local .env.",
-    "qwen3-asr-local": "Runs locally; the first preparation downloads Qwen3-ASR and the Forced Aligner.",
-    "qwen3-asr-1.7b-local": "Higher recognition quality; shares the Qwen3 Forced Aligner with 0.6B.",
+    "qwen3-asr-local": "Lightweight multilingual recognition with native word/character timestamps; shares the Qwen3-ForcedAligner cache.",
+    "qwen3-asr-1.7b-local": "Higher recognition quality with native word/character timestamps; shares the Qwen3-ForcedAligner; higher resource use.",
     "fun-asr-nano-local": "LLM-ASR approach with FSMN-VAD by default; Chinese, English, Japanese, and Chinese dialects; CUDA recommended.",
     "funasr-local": "Runs locally; uses the FunASR upstream model cache.",
-    "sensevoice-small-local": "Multilingual local recognition with FSMN-VAD by default; runs on CPU or GPU.",
-    "moss-transcribe-diarize-local": "End-to-end transcription with speaker diarization; segment timestamps only, no word-level timecodes; requires a separate Transformers 5.x runtime; CUDA recommended.",
-    "whisper-large-v3-local": "OpenAI Whisper multilingual local recognition; the CTranslate2 runtime bundles VAD and has no speaker diarization. GPU use requires installing CUDA 12 and cuDNN 9 yourself; otherwise it falls back to CPU.",
+    "sensevoice-small-local": "Multilingual recognition with FSMN-VAD by default; runs on CPU or GPU; an aligner can add word/character timestamps.",
+    "firered-asr2-ctc-local": "Chinese, English, and dialect recognition; CPU-capable with word/character timestamps; ct-punc is optional for punctuation and segmentation.",
+    "moss-transcribe-diarize-local": "Speaker diarization with segment timestamps only; an aligner can add word/character timestamps; GPU recommended.",
+    "whisper-large-v3-local": "Multilingual recognition with native word timestamps; runs on CPU or GPU, with better speed on GPU; no speaker diarization.",
     "bcut-asr": "Millisecond per-character timestamps; no API key required.",
   };
   const MODEL_PRICING_NOTES_EN = {
@@ -2042,8 +2231,8 @@
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
-  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
-  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
+  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "recognitionAlignmentModel", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
+  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), alignmentModel: isLocalProvider() ? $("recognitionAlignmentModel").value : "", alignmentModelPath: "", device: $("localDevice").value, fireredPunc: isFireRedModel() ? $("fireRedPunc").value : "ct-punc", language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
     const button = $("openMawe");
@@ -2087,6 +2276,14 @@
     $("openaiDiarizationField").classList.toggle("hidden", !diarize);
     $("openaiDiarizationUnsupported").classList.toggle("visible", diarize && isOpenRouterBaseUrl(baseUrl));
   }
+  function syncFireRedPunc(model = selectedModel()) {
+    const field = $("fireRedPuncField");
+    const select = $("fireRedPunc");
+    if (!field || !select) return;
+    const visible = isFireRedModel(model);
+    field.classList.toggle("hidden", !visible);
+    if (visible && !["none", "ct-punc"].includes(select.value)) select.value = "ct-punc";
+  }
   function renderPromptCharacterCount() { const count = Array.from($("qwenAudioContext").value).length; const counter = $("qwenAudioContextCount"); counter.textContent = t("qwen_audio_context_count").replace("{count}", String(count)); counter.classList.toggle("over-limit", count > 400); }
   function renderSonioxContextCharacterCount() { const value = [$("sonioxContextGeneral").value, $("sonioxContextText").value, $("sonioxContextTerms").value, $("sonioxContextTranslationTerms").value].join("\n"); const count = Array.from(value).length; const counter = $("sonioxContextCount"); counter.textContent = t("soniox_context_count").replace("{count}", String(count)); counter.classList.toggle("over-limit", count > 10000); }
   function splitHotwordEntries(value, ignoreComments = false) { return String(value || "").split(/[\n,，;；]+/u).map((word) => word.trim()).filter((word) => word && (!ignoreComments || !word.startsWith("#"))); }
@@ -2096,11 +2293,167 @@
   function renderHotwordWarnings(value = $("qwenAudioHotwords").value, weight = Number($("qwenAudioHotwordWeight").value), ignoreComments = false) { const warning = $("qwenAudioHotwordsWarning"); const issues = collectHotwordWarnings(value, weight, ignoreComments); if (!issues.length) { warning.textContent = ""; warning.classList.remove("visible"); return; } const details = issues.slice(0, 5).map((issue) => t("qwen_audio_hotword_warning_item").replace("{label}", hotwordWarningLabel(issue)).replace("{reason}", t(`qwen_audio_hotword_issue_${issue.code}`))); if (issues.length > details.length) details.push(t("qwen_audio_hotword_warning_more")); warning.textContent = `${t("qwen_audio_hotwords_warning").replace("{count}", String(issues.length))}\n${details.join("\n")}`; warning.classList.add("visible"); }
   function syncQwenAudioHotwordsMode() { const fileMode = $("qwenAudioHotwordsMode").value === "file"; $("qwenAudioHotwordsTextField").classList.toggle("hidden", fileMode); $("qwenAudioHotwordsFileField").classList.toggle("hidden", !fileMode); renderHotwordWarnings(fileMode ? "" : $("qwenAudioHotwords").value, Number($("qwenAudioHotwordWeight").value)); }
   function setHotwordsMode(mode) { $("qwenAudioHotwordsMode").value = mode; $("qwenAudioHotwordsModeText").classList.toggle("active", mode === "text"); $("qwenAudioHotwordsModeFile").classList.toggle("active", mode === "file"); syncQwenAudioHotwordsMode(); }
-  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["mediaPath", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "localModelCachePath", "localModelPath", "localRuntimePath", "ocrRuntimePath", "ffmpegPath", "stickerDir", "toolboxInputDropZone", "toolboxUtilityMediaDropZone", "toolboxBurnSubtitleDropZone", "toolboxFfconcatDropZone", "toolboxAlignmentProjectDropZone", "toolboxAlignmentScriptDropZone", "ocrVideoPathField", "postprocessScriptPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
+  function clearDropState() { dragState.depth = 0; state.dropTarget = ""; setDropHighlight(false); ["mediaPath", "qwenAudioHotwords", "qwenAudioHotwordsFile", "jsonPath", "serverMediaPath", "localModelCachePath", "localModelPath", "localRuntimePath", "ocrRuntimePath", "ffmpegPath", "stickerDir", "toolboxInputDropZone", "toolboxUtilityMediaDropZone", "toolboxTimestampMediaDropZone", "toolboxBurnSubtitleDropZone", "toolboxFfconcatDropZone", "toolboxAlignmentProjectDropZone", "toolboxAlignmentScriptDropZone", "ocrVideoPathField", "postprocessScriptPath"].forEach((id) => $(id)?.classList.remove("drag-over")); }
   function setQwenAudioHotwordsFile(path) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return false; } $("qwenAudioHotwordsFile").value = path; setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); return true; }
   async function loadHotwordFile(path, appendToText = false) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); clearDropState(); return; } const result = await bridge("read_hotword_file", { path }); if (!result.ok) { applyErrorResult(result, false); clearDropState(); return; } if (appendToText) { const incoming = String(result.text || "").trim(); if (incoming) { const current = $("qwenAudioHotwords").value.trimEnd(); $("qwenAudioHotwords").value = current ? `${current}\n${incoming}` : incoming; } setHotwordsMode("text"); renderHotwordWarnings($("qwenAudioHotwords").value); setStatus(t("qwen_audio_hotwords_loaded")); } else { setQwenAudioHotwordsFile(result.path || path); renderHotwordWarnings(String(result.text || ""), Number($("qwenAudioHotwordWeight").value), true); } clearDropState(); }
   function isLocalProvider() { return provider()?.kind === "local" || provider()?.id === "local"; }
+  function isFireRedModel(model = selectedModel()) { return isLocalProvider() && String(model?.engine || "").toLowerCase() === "firered"; }
   function localStatus() { return selectedModel()?.localStatus || {}; }
+  function localModelListStatusKey(model) {
+    if (state.localPreparing && model?.id === $("model")?.value) return "local_prepare_running";
+    if (!model?.localStatus) return "local_checking";
+    const status = model?.localStatus || {};
+    if (String(model?.engine || "").toLowerCase() === "firered" && status.ctcReady && !status.puncReady) {
+      return "local_firered_punc_optional";
+    }
+    return ({
+      installed: "local_installed",
+      partial: "local_partial",
+      runtime_missing: "local_runtime_missing",
+      path_invalid: "local_model_path_invalid",
+      path_mismatch: "local_model_path_mismatch",
+      missing: "local_missing",
+      checking: "local_checking",
+    }[status.status] || "local_missing");
+  }
+  function compactModelSize(value) {
+    const text = String(value || "").trim().replace(/^[~约]\s*/u, "");
+    if (!text) return "";
+    const range = text.match(/^([\d.]+)\s*[–-]/u);
+    const normalized = range ? `${range[1]} GB` : text;
+    const gigabytes = normalized.match(/^(\d+(?:\.\d+)?)\s*G(?:B)?\+?$/iu);
+    if (gigabytes) {
+      const amount = Number(gigabytes[1]);
+      if (!Number.isFinite(amount)) return "";
+      if (amount < 1) return `${Math.round(amount * 10) / 10}G`;
+      if (amount < 2) return `${Math.floor(amount * 10) / 10}G+`;
+      return `${Math.floor(amount)}G+`;
+    }
+    const megabytes = normalized.match(/^(\d+(?:\.\d+)?)\s*M(?:B)?$/iu);
+    if (megabytes) {
+      const amount = Number(megabytes[1]) / 1024;
+      return Number.isFinite(amount) ? `${Math.round(amount * 10) / 10}G` : "";
+    }
+    return normalized.replace(/\s+/gu, "");
+  }
+  function localModelSize(model) {
+    return compactModelSize(model?.localStatus?.installedSize || model?.installedSize || model?.estimatedSize);
+  }
+  function localModelBadgeDescriptors(model) {
+    const deviceKey = {
+      cpu: "local_model_badge_cpu",
+      cpu_gpu: "local_model_badge_cpu_gpu",
+      gpu_preferred: "local_model_badge_gpu_preferred",
+    }[model?.deviceSupport];
+    const resourceKey = {
+      low: "local_model_badge_resource_low",
+      medium: "local_model_badge_resource_medium",
+      high: "local_model_badge_resource_high",
+    }[model?.resourceLevel];
+    const badges = [];
+    if (resourceKey) badges.push({ key: resourceKey, kind: "resource", resourceLevel: model?.resourceLevel });
+    if (deviceKey) badges.push({ key: deviceKey, kind: "hardware" });
+    if (model?.supportsSpeaker || model?.supportsDiarization) {
+      badges.push({ key: "local_model_badge_speaker", kind: "feature" });
+    }
+    if (model?.supportsWordTimestamps) badges.push({
+      key: "local_model_badge_word_timestamps",
+      kind: "feature",
+    });
+    return badges;
+  }
+  function appendLocalModelBadges(main, model) {
+    const meta = document.createElement("span");
+    meta.className = "local-model-list-meta";
+    const size = localModelSize(model);
+    if (size) {
+      const sizeElement = document.createElement("span");
+      sizeElement.className = "local-model-list-size";
+      sizeElement.textContent = size;
+      sizeElement.title = size;
+      const label = main.querySelector(".local-model-list-label");
+      if (label) {
+        const title = document.createElement("span");
+        title.className = "local-model-list-title";
+        label.replaceWith(title);
+        title.append(label, sizeElement);
+      } else {
+        meta.append(sizeElement);
+      }
+    }
+    const container = document.createElement("span");
+    container.className = "local-model-list-badges";
+    localModelBadgeDescriptors(model).forEach((descriptor) => {
+      const badge = document.createElement("span");
+      const resourceClass = {
+        low: "resource-low",
+        medium: "resource-medium",
+        high: "resource-high",
+      }[descriptor.resourceLevel] || "";
+      badge.className = `local-model-badge ${descriptor.kind}${resourceClass ? ` ${resourceClass}` : ""}`;
+      badge.textContent = t(descriptor.key).replace("{size}", descriptor.size || "");
+      badge.title = badge.textContent;
+      container.append(badge);
+    });
+    if (container.childElementCount) meta.append(container);
+    if (meta.childElementCount) main.append(meta);
+  }
+  function renderLocalModelList() {
+    const container = $("localModelList");
+    if (!container) return;
+    container.replaceChildren();
+    if (!isLocalProvider()) {
+      container.classList.add("hidden");
+      return;
+    }
+    const models = (provider()?.models || []).filter((model) => !model.hidden);
+    container.classList.toggle("hidden", !models.length);
+    const selectedId = $("model")?.value || "";
+    models.forEach((model) => {
+      const item = document.createElement("div");
+      item.setAttribute("role", "listitem");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "local-model-list-item";
+      button.classList.toggle("active", model.id === selectedId);
+      const ready = Boolean(model?.localStatus?.installed);
+      button.classList.toggle("ready", ready);
+      button.disabled = Boolean(state.localPreparing);
+      button.setAttribute("aria-pressed", String(model.id === selectedId));
+      button.dataset.modelId = model.id;
+
+      const main = document.createElement("span");
+      main.className = "local-model-list-main";
+      const label = document.createElement("span");
+      label.className = "local-model-list-label";
+      label.textContent = localizedSelectLabel("model", model);
+      main.append(label);
+      appendLocalModelBadges(main, model);
+      const note = modelNoteText(model);
+      if (note) {
+        button.title = note;
+        const noteElement = document.createElement("span");
+        noteElement.className = "local-model-list-note";
+        noteElement.title = note;
+        noteElement.textContent = note;
+        main.append(noteElement);
+      }
+      const status = document.createElement("span");
+      const statusKey = localModelListStatusKey(model);
+      status.className = `local-model-list-status ${ready ? "ready" : ""}`.trim();
+      status.textContent = ready ? "✓" : "";
+      status.setAttribute("aria-label", t(statusKey));
+      status.title = t(statusKey);
+      button.append(main, status);
+      item.append(button);
+      container.append(item);
+      button.addEventListener("click", () => {
+        if (button.disabled || $("model").value === model.id) return;
+        $("model").value = model.id;
+        $("model").dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    });
+  }
   function renderLocalRuntimePaths(runtime) {
     const container = $("localRuntimePaths");
     container.textContent = "";
@@ -2127,6 +2480,107 @@
     }
     container.classList.toggle("hidden", !entries.length);
   }
+  function renderLocalRuntimeInventory() {
+    const button = $("toggleLocalRuntimeInventory");
+    const container = $("localRuntimeInventory");
+    const open = Boolean(state.localRuntimeInventoryOpen);
+    button.setAttribute("aria-expanded", String(open));
+    button.textContent = t(open ? "local_runtime_inventory_hide" : "local_runtime_inventory");
+    container.classList.toggle("hidden", !open);
+    if (!open) return;
+    container.replaceChildren();
+    if (state.localRuntimeInventoryError) {
+      container.textContent = state.localRuntimeInventoryError;
+      return;
+    }
+    const inventory = state.localRuntimeInventory;
+    if (!inventory) {
+      container.textContent = t("local_runtime_inventory_loading");
+      return;
+    }
+    const meta = document.createElement("dl");
+    meta.className = "runtime-inventory-meta";
+    const appendMeta = (labelKey, value) => {
+      const row = document.createElement("div");
+      row.className = "runtime-inventory-meta-row";
+      const label = document.createElement("dt");
+      label.textContent = t(labelKey);
+      const content = document.createElement("dd");
+      content.textContent = value || t("local_runtime_unknown");
+      row.append(label, content);
+      meta.append(row);
+    };
+    const runtimeStatus = inventory.status || state.config?.localRuntime?.status || "";
+    const statusKey = ({
+      ready: "local_runtime_ready",
+      broken: "local_runtime_broken",
+      missing: "local_runtime_missing",
+      checking: "local_runtime_checking",
+      installing: "local_runtime_installing",
+    })[runtimeStatus] || "local_runtime_unknown";
+    const versionValue = `${t("local_runtime_installed")}: ${inventory.runtimeVersionInstalled || t("local_runtime_unknown")} · ${t("local_runtime_expected")}: ${inventory.runtimeVersionExpected || t("local_runtime_unknown")}`;
+    const pythonValue = `${t("local_runtime_installed")}: ${inventory.pythonVersionInstalled || t("local_runtime_unknown")} · ${t("local_runtime_expected")}: ${inventory.pythonVersionExpected || t("local_runtime_unknown")}`;
+    const installedAt = Number(inventory.installedAt || 0);
+    appendMeta("local_runtime_inventory_status", t(statusKey));
+    appendMeta("local_runtime_inventory_version", versionValue);
+    appendMeta("local_runtime_inventory_python", pythonValue);
+    appendMeta("local_runtime_inventory_manifest", inventory.manifestStatus || "");
+    appendMeta("local_runtime_inventory_installed_at", Number.isFinite(installedAt) && installedAt > 0 ? new Date(installedAt * 1000).toLocaleString() : "");
+    container.append(meta);
+
+    const components = Array.isArray(inventory.components) ? inventory.components : [];
+    const componentGroup = document.createElement("section");
+    componentGroup.className = "runtime-inventory-components";
+    const heading = document.createElement("h4");
+    const installedCount = components.filter((item) => item && item.installed).length;
+    heading.textContent = `${t("local_runtime_inventory_components")} (${installedCount}/${components.length})`;
+    componentGroup.append(heading);
+    for (const component of components) {
+      const row = document.createElement("div");
+      row.className = `runtime-inventory-item ${component.installed ? "ready" : "missing"}`;
+      const marker = document.createElement("span");
+      marker.className = "runtime-inventory-item-marker";
+      marker.textContent = component.installed ? "✓" : "×";
+      const name = document.createElement("span");
+      name.className = "runtime-inventory-item-name";
+      name.textContent = String(component.name || t("local_runtime_unknown"));
+      const itemStatus = document.createElement("span");
+      itemStatus.className = "runtime-inventory-item-state";
+      itemStatus.textContent = t(component.installed ? "local_runtime_component_ready" : "local_runtime_component_missing");
+      row.append(marker, name, itemStatus);
+      componentGroup.append(row);
+    }
+    if (!components.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = t("local_runtime_inventory_empty");
+      componentGroup.append(empty);
+    }
+    container.append(componentGroup);
+  }
+
+  async function refreshLocalRuntimeInventory() {
+    const button = $("toggleLocalRuntimeInventory");
+    state.localRuntimeInventory = null;
+    state.localRuntimeInventoryError = "";
+    renderLocalRuntimeInventory();
+    button.disabled = true;
+    const result = await bridge("get_local_runtime_inventory");
+    if (state.localRuntimeInventoryOpen) {
+      if (!result.ok) state.localRuntimeInventoryError = result.detail || result.error || t("failed");
+      else state.localRuntimeInventory = result.inventory || null;
+      renderLocalRuntimeInventory();
+    }
+    button.disabled = false;
+    return result;
+  }
+
+  async function toggleLocalRuntimeInventory() {
+    state.localRuntimeInventoryOpen = !state.localRuntimeInventoryOpen;
+    renderLocalRuntimeInventory();
+    if (state.localRuntimeInventoryOpen) await refreshLocalRuntimeInventory();
+  }
+
   function renderLocalModelCachePathLine(runtime) {
     // 模型缓存链接跟随主页面「模型保存目录」的说明文字，不放在设置运行时区块里。
     const container = $("localModelCachePathLine");
@@ -2169,6 +2623,26 @@
     });
     container.append(link);
   }
+  function renderLocalRuntimeHint(runtime) {
+    const container = $("localRuntimeHint");
+    container.replaceChildren();
+    if (runtime.ready || runtime.status === "ready") {
+      container.append(document.createTextNode(t("local_runtime_ready_prefix")));
+      const link = document.createElement("button");
+      link.type = "button";
+      link.className = "inline-link";
+      link.textContent = t("local_runtime_ready_link");
+      link.addEventListener("click", () => {
+        openSettings("localAsrModelSettingsSection");
+        void refreshLocalModels();
+        void refreshAlignmentModels();
+      });
+      container.append(link, document.createTextNode(t("local_runtime_ready_suffix")));
+      return;
+    }
+    const detail = runtimeHintText(runtime, "local_runtime_ready_hint", "local_runtime_hint");
+    if (detail) appendMessageText(container, detail);
+  }
   function renderLocalRuntime() {
     if (!isLocalProvider()) return;
     const runtime = state.config.localRuntime || {};
@@ -2184,7 +2658,7 @@
     const checkStatus = $("localRuntimeCheckStatus");
     checkStatus.textContent = target.textContent;
     checkStatus.className = target.className;
-    $("localRuntimeHint").textContent = runtimeHintText(runtime, "local_runtime_ready_hint", "local_runtime_hint");
+    renderLocalRuntimeHint(runtime);
     $("localRuntimePath").value = runtime.path || $("localRuntimePath").value || "";
     $("localModelCachePath").value = state.config.modelCacheRoot || runtime.modelCachePath || $("localModelCachePath").value || "";
     const button = $("installLocalRuntime");
@@ -2196,6 +2670,7 @@
     progress.classList.toggle("hidden", !installing);
     $("localRuntimeProgressBar").style.width = `${Math.max(0, Math.min(100, state.localRuntimeProgress))}%`;
     $("localRuntimeProgressMessage").textContent = state.localRuntimeProgressMessage || "";
+    renderLocalRuntimeInventory();
   }
   function renderOcrRuntime() {
     const runtime = state.config?.ocrRuntime || {};
@@ -2252,27 +2727,44 @@
     if (!result.ok) { applyErrorResult(result); return result; }
     state.config.localRuntime = result.runtime || state.config.localRuntime || {};
     renderLocalRuntime();
-    if (isLocalProvider()) void refreshLocalModels();
+    if (isLocalProvider()) { void refreshLocalModels(); void refreshAlignmentModels(); }
     setError("localRuntimePath", "");
     setStatus(t("saved"));
     return result;
   }
   function renderLocalModelStatus() {
-    if (!isLocalProvider()) { $("model").disabled = false; return; }
+    const entry = $("localModelSettingsEntry");
+    const settingsSection = $("localAsrModelSettingsSection");
+    if (!isLocalProvider()) {
+      $("model").disabled = false;
+      entry?.classList.add("hidden");
+      settingsSection?.classList.add("hidden");
+      renderLocalModelList();
+      renderLocalAlignmentModel();
+      return;
+    }
+    entry?.classList.remove("hidden");
+    settingsSection?.classList.remove("hidden");
+    renderLocalModelList();
     const status = localStatus();
     const preparing = state.localPreparing;
     const target = $("localModelStatus");
-    const key = status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing", checking: "local_checking" }[status.status] || "local_missing");
+    const optionalFireRedPunc = isFireRedModel() && status.ctcReady && !status.puncReady;
+    const key = optionalFireRedPunc ? "local_firered_punc_optional" : (status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing", checking: "local_checking" }[status.status] || "local_missing"));
     // 与 runtime 面板一致：preparing 状态行固定"正在准备"文案，实时流水只在进度条下方。
-    target.textContent = t(preparing ? "local_prepare_running" : key);
+    target.textContent = "";
+    if (!preparing && status.status === "runtime_missing") {
+      renderLocalRuntimeMissingHint(target);
+    } else {
+      target.textContent = t(preparing ? "local_prepare_running" : key);
+    }
     target.className = `local-status ${preparing ? "warn" : (status.status === "installed" ? "ready" : "warn")}`;
-    $("localModelHint").textContent = localModelHintText(status);
     $("localModelPath").value = status.path || $("localModelPath").value || "";
     const canPrepare = Boolean(status.canPrepare) && !preparing;
     const button = $("prepareLocalModel");
     button.disabled = preparing ? false : !canPrepare;
-    button.classList.toggle("hidden", !preparing && status.status === "installed");
-    button.textContent = preparing ? t("local_prepare_cancel") : (status.status === "installed" ? t("local_prepare_again") : t("local_prepare"));
+    button.classList.toggle("hidden", !preparing && !canPrepare);
+    button.textContent = preparing ? t("local_prepare_cancel") : (optionalFireRedPunc ? t("local_prepare_optional") : (status.status === "installed" ? t("local_prepare_again") : t("local_prepare")));
     $("model").disabled = preparing;
     $("localModelProgress").classList.toggle("hidden", !preparing);
     const progress = state.localProgress || {};
@@ -2283,6 +2775,195 @@
     track.classList.toggle("indeterminate", !determinate);
     bar.style.width = determinate ? `${Math.max(0, Math.min(99, percent))}%` : "";
     $("localModelProgressMessage").textContent = state.localProgressMessage || "";
+    renderLocalAlignmentModel();
+  }
+
+  function renderLocalRuntimeMissingHint(target) {
+    target.textContent = "";
+    target.append(document.createTextNode(t("local_runtime_missing")));
+    target.append(document.createTextNode(state.lang === "zh" ? "，" : ", "));
+    target.append(document.createTextNode(t("local_runtime_configure_prefix")));
+    const configure = document.createElement("button");
+    configure.type = "button";
+    configure.className = "inline-link";
+    configure.textContent = t("local_runtime_configure");
+    configure.addEventListener("click", () => {
+      openSettings("localRuntimePanel");
+      void refreshLocalRuntime();
+    });
+    target.append(configure);
+    target.append(document.createTextNode(t("local_runtime_configure_suffix")));
+  }
+
+  function alignmentModelLabel(model) {
+    const id = String(model?.id || model?.modelId || "");
+    if (state.lang === "en") {
+      if (id === "qwen3-forced-aligner-0.6b") return "Qwen3-ForcedAligner 0.6B";
+      if (id === "firered-asr2-ctc") return "FireRedASR2";
+    }
+    return model?.label || model?.modelRef || id;
+  }
+
+  function modelProvidesWordTimestamps(model = selectedModel()) {
+    if (model?.supportsWordTimestamps !== undefined) return Boolean(model.supportsWordTimestamps);
+    return ["qwen3-asr-local", "firered-asr2-ctc-local", "whisper-large-v3-local"].includes(model?.id);
+  }
+
+  function renderAlignmentModelOptions(select, models, selected) {
+    select.textContent = "";
+    select.add(new Option(t("alignment_model_none"), ""));
+    models.forEach((model) => {
+      const suffix = model.estimatedSize ? ` · ${model.estimatedSize}` : "";
+      select.add(new Option(`${alignmentModelLabel(model)}${suffix}`, model.id));
+    });
+    select.value = selected;
+  }
+
+  function alignmentModelStatus(model) {
+    const preparing = state.alignmentPreparing === model.id;
+    const runtimeReady = model.runtimeAvailable === undefined
+      ? Boolean(state.config.localRuntime?.ready)
+      : Boolean(model.runtimeAvailable);
+    const statusKey = preparing
+      ? "alignment_model_downloading"
+      : (model.status === "checking" ? "alignment_model_checking" : (!runtimeReady ? "alignment_model_runtime_missing" : (model.installed ? "alignment_model_ready" : "alignment_model_missing")));
+    return { preparing, runtimeReady, statusKey };
+  }
+
+  function renderRecognitionAlignmentModel(models) {
+    const field = $("recognitionAlignmentModelField");
+    const select = $("recognitionAlignmentModel");
+    const statusTarget = $("recognitionAlignmentModelStatus");
+    if (!field || !select || !statusTarget) return;
+    const needsAlignmentModel = isLocalProvider() && !modelProvidesWordTimestamps();
+    field.classList.toggle("hidden", !needsAlignmentModel);
+    if (!needsAlignmentModel) {
+      renderAlignmentModelOptions(select, models, "");
+      select.disabled = true;
+      statusTarget.textContent = "";
+      statusTarget.className = "hint";
+      return;
+    }
+    const selected = models.some((model) => model.id === state.alignmentModelSelection) ? state.alignmentModelSelection : "";
+    state.alignmentModelSelection = selected;
+    renderAlignmentModelOptions(select, models, selected);
+    select.disabled = Boolean(state.localPreparing || state.alignmentPreparing);
+    const model = models.find((item) => item.id === selected);
+    if (!model) {
+      statusTarget.textContent = "";
+      statusTarget.className = "hint";
+      return;
+    }
+    const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
+    if (!preparing && !runtimeReady && statusKey === "alignment_model_runtime_missing") {
+      renderLocalRuntimeMissingHint(statusTarget);
+    } else {
+      statusTarget.textContent = preparing && state.alignmentProgressMessage
+        ? `${t(statusKey)} ${state.alignmentProgressMessage}`
+        : t(statusKey);
+    }
+    statusTarget.className = `hint ${model.installed && runtimeReady && !preparing ? "success" : ""}`;
+  }
+
+  function renderLocalAlignmentModelList(models) {
+    const container = $("localAlignmentModelList");
+    if (!container) return;
+    container.replaceChildren();
+    if (!isLocalProvider()) {
+      container.classList.add("hidden");
+      return;
+    }
+    container.classList.toggle("hidden", !models.length);
+    const selectedId = state.alignmentModelManagementId;
+    models.forEach((model) => {
+      const item = document.createElement("div");
+      item.setAttribute("role", "listitem");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "local-model-list-item";
+      button.classList.toggle("active", model.id === selectedId);
+      const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
+      const ready = Boolean(model.installed && runtimeReady && !preparing);
+      button.classList.toggle("ready", ready);
+      button.disabled = Boolean(state.alignmentPreparing);
+      button.setAttribute("aria-pressed", String(model.id === selectedId));
+      button.dataset.modelId = model.id;
+
+      const main = document.createElement("span");
+      main.className = "local-model-list-main";
+      const label = document.createElement("span");
+      label.className = "local-model-list-label";
+      label.textContent = alignmentModelLabel(model);
+      main.append(label);
+      appendLocalModelBadges(main, model);
+      const note = model.note || model.modelRef || "";
+      if (note) {
+        button.title = note;
+        const noteElement = document.createElement("span");
+        noteElement.className = "local-model-list-note";
+        noteElement.title = note;
+        noteElement.textContent = note;
+        main.append(noteElement);
+      }
+      const status = document.createElement("span");
+      status.className = `local-model-list-status ${ready ? "ready" : ""}`.trim();
+      status.textContent = ready ? "✓" : "";
+      status.setAttribute("aria-label", t(statusKey));
+      status.title = t(statusKey);
+      button.append(main, status);
+      item.append(button);
+      container.append(item);
+      button.addEventListener("click", () => {
+        if (button.disabled || state.alignmentModelManagementId === model.id) return;
+        state.alignmentModelManagementId = model.id;
+        renderLocalAlignmentModel();
+      });
+    });
+  }
+
+  function renderLocalAlignmentModel() {
+    const button = $("prepareAlignmentModel");
+    const statusTarget = $("localAlignmentModelStatus");
+    if (!button || !statusTarget) return;
+    const section = $("alignmentModelSettingsSection");
+    const local = isLocalProvider();
+    const models = Array.isArray(state.config?.alignmentModels) ? state.config.alignmentModels : [];
+    section?.classList.toggle("hidden", !local);
+    const selected = local && models.some((model) => model.id === state.alignmentModelManagementId)
+      ? state.alignmentModelManagementId
+      : (local ? models[0]?.id || "" : "");
+    state.alignmentModelManagementId = selected;
+    renderLocalAlignmentModelList(models);
+    if (!local) {
+      button.disabled = true;
+      button.classList.add("hidden");
+      statusTarget.textContent = "";
+      statusTarget.className = "local-status";
+      renderRecognitionAlignmentModel(models);
+      return;
+    }
+    const model = models.find((item) => item.id === selected);
+    if (!model) {
+      statusTarget.textContent = "";
+      statusTarget.className = "local-status warn";
+      button.disabled = true;
+      button.classList.add("hidden");
+      renderRecognitionAlignmentModel(models);
+      return;
+    }
+    button.classList.remove("hidden");
+    const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
+    if (!preparing && !runtimeReady && statusKey === "alignment_model_runtime_missing") {
+      renderLocalRuntimeMissingHint(statusTarget);
+    } else {
+      statusTarget.textContent = preparing && state.alignmentProgressMessage
+        ? `${t(statusKey)} ${state.alignmentProgressMessage}`
+        : t(statusKey);
+    }
+    statusTarget.className = `local-status ${model.installed && runtimeReady && !preparing ? "ready" : "warn"}`;
+    button.disabled = preparing ? false : (!runtimeReady || model.status === "checking");
+    button.textContent = preparing ? t("alignment_model_cancel") : (model.installed ? t("alignment_model_download_again") : t("alignment_model_download"));
+    renderRecognitionAlignmentModel(models);
   }
   async function refreshLocalRuntime() {
     if (!isLocalProvider()) return;
@@ -2295,6 +2976,7 @@
     state.config.localRuntime = result;
     state.config.modelCacheRoot = result.modelCachePath || state.config.modelCacheRoot || "";
     renderLocalRuntime();
+    if (state.localRuntimeInventoryOpen) void refreshLocalRuntimeInventory();
     return result;
   }
   async function refreshLocalModels() {
@@ -2316,6 +2998,21 @@
     renderLocalRuntime();
     return result;
   }
+  async function refreshAlignmentModels() {
+    const requestId = ++alignmentModelsRequest;
+    const result = await bridge("get_alignment_models");
+    if (requestId !== alignmentModelsRequest) return result;
+    if (!result.ok) {
+      appendLog(`[alignment models] ${result.detail || result.error || "failed to inspect models"}`);
+      return result;
+    }
+    if (Array.isArray(result.models)) state.config.alignmentModels = result.models;
+    if (result.modelCacheRoot) state.config.modelCacheRoot = result.modelCacheRoot;
+    if (result.runtime && typeof result.runtime === "object") state.config.localRuntime = result.runtime;
+    renderLocalAlignmentModel();
+    window.MAWLauncher?.onAlignmentModelsChanged?.();
+    return result;
+  }
   function syncLocalModelPath(model) {
     if (!isLocalProvider()) return;
     if (state.localModelId && state.localModelId !== model.id) state.localModelPaths[state.localModelId] = $("localModelPath").value.trim();
@@ -2333,6 +3030,7 @@
     }
     state.config.modelCacheRoot = result.modelCacheRoot || value;
     await refreshLocalModels();
+    await refreshAlignmentModels();
     setError("localModelCachePath", "");
     setStatus(t("saved"));
     return result;
@@ -2340,8 +3038,8 @@
   function systemLanguage() { return String(navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en"; }
   function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langZh").classList.toggle("active", state.lang === "zh"); $("langEn").classList.toggle("active", state.lang === "en"); $("demoBadge").textContent = t("demo_mode"); renderAudioTracks(); if (state.audioTracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint"); renderKeyHint(); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); refillSelectLabels(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); window.MAWLauncher?.onLanguageChanged?.(); }
   async function setLanguage(language) { if (language !== "zh" && language !== "en") return; state.lang = language; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (result.ok) state.config.guiLang = language; else applyErrorResult(result); }
-  function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen"); $("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen"); $("localModelPanel").classList.toggle("hidden", !local); $("localRuntimeCheckField").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); $("providerNote").textContent = providerNoteText(current); $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); renderKeyStatus(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) void refreshLocalModels(); } }
-  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); $("modelNote").textContent = modelNoteText(model); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
+  function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen"); $("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen"); $("localModelPanel").classList.toggle("hidden", !local); $("localRuntimeCheckField").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); $("providerNote").textContent = providerNoteText(current); $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); renderKeyStatus(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) { void refreshLocalModels(); void refreshAlignmentModels(); } } }
+  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); $("modelNote").textContent = modelNoteText(model); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); syncFireRedPunc(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
   function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
   function languageValue() { const el = $("language"); if (el.multiple) return Array.from(el.selectedOptions).map((o) => o.value).filter(Boolean).join(","); return el.value; }
   function syncAdvancedParamsGroup() { const group = $("advancedParamsGroup"); const hasVisibleField = Array.from(group.querySelectorAll(".field")).some((field) => !field.classList.contains("hidden")); group.classList.toggle("hidden", !hasVisibleField && $("dashscopeRegionHint").classList.contains("hidden")); }
@@ -2490,7 +3188,7 @@
     showErrorNotice(message, result.code || "", detail, diagnostics);
   }
   function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["maxWords", 1], ["minWords", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); if (data.maxWords && data.minWords && Number(data.maxWords) < Number(data.minWords)) return fail("maxWords", errText("segmentation_invalid", "")); return true; }
-  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (isCustomOpenAiModel() && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().id === "openai" && selectedModel().supportsKeywords && /[<>]/u.test(data.openaiKeywords)) return fail("openaiKeywords", errText("openai_keywords_invalid", "")); if (provider().id === "openai" && selectedModel().supportsDiarization && isOpenRouterBaseUrl(data.openaiBaseUrl)) return fail("model", errText("openai_diarize_openrouter_unsupported", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
+  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); if (isFireRedModel() && data.fireredPunc === "ct-punc" && !status.puncReady) return fail("model", errText("firered_punc_missing", "")); if (data.alignmentModel) { const alignment = (state.config.alignmentModels || []).find((item) => item.id === data.alignmentModel); if (!alignment || alignment.status === "checking") return fail("recognitionAlignmentModel", t("alignment_model_checking")); if (alignment.status === "runtime_missing" || alignment.runtimeAvailable === false) return fail("recognitionAlignmentModel", t("alignment_model_runtime_missing")); if (!alignment.installed) return fail("recognitionAlignmentModel", errText("alignment_model_missing", "")); } return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (isCustomOpenAiModel() && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().id === "openai" && selectedModel().supportsKeywords && /[<>]/u.test(data.openaiKeywords)) return fail("openaiKeywords", errText("openai_keywords_invalid", "")); if (provider().id === "openai" && selectedModel().supportsDiarization && isOpenRouterBaseUrl(data.openaiBaseUrl)) return fail("model", errText("openai_diarize_openrouter_unsupported", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
   function fail(field, message) {
     setError(field, message);
     setStatus(message);
@@ -2554,6 +3252,11 @@
     if (target === "toolboxUtilityMedia") {
       if (MEDIA_EXTS.has(suffix)) setDroppedPath("toolboxUtilityMediaPath", value);
       else setError("toolboxUtilityMediaPath", t("toolbox_utility_media_reject"));
+      return;
+    }
+    if (target === "toolboxTimestampMedia") {
+      if (MEDIA_EXTS.has(suffix)) setDroppedPath("toolboxTimestampMediaPath", value);
+      else setError("toolboxTimestampMediaPath", t("toolbox_timestamp_media_reject"));
       return;
     }
     if (target === "toolboxBurnSubtitle") {
@@ -2722,6 +3425,7 @@
       ["FFmpeg", refreshFfmpeg()],
       ["server", checkExistingServer()],
       ["OCR", refreshOcrRuntime()],
+      ["alignment models", refreshAlignmentModels()],
     ];
     if (isLocalProvider()) {
       tasks.push(["local models", refreshLocalModels()]);
@@ -2869,7 +3573,7 @@
     if (event.type === "error") notifySingleFailure(event);
     if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) window.MAWLauncher?.onBatchEvent?.(event);
     if (event.type === "emojiFontReady" && event.path) injectEmojiFont(event.path);
-    if (event.type === "log") appendLog(event.message, { quietLatest: Boolean(state.localRuntimeInstalling || state.ocrRuntimeInstalling) });
+    if (event.type === "log") appendLog(event.message, { quietLatest: Boolean(state.localRuntimeInstalling || state.ocrRuntimeInstalling || state.alignmentPreparing) });
     if (event.type === "postprocess_status") window.MAWLauncher?.onPostprocessStatus?.(event);
     if (event.type === "postprocess_stream") window.MAWLauncher?.onPostprocessStream?.(event);
     if (event.type === "postprocess_pipeline") window.MAWLauncher?.onPostprocessPipeline?.(event);
@@ -2897,6 +3601,31 @@
       setStatus(t("local_prepare_cancelled"));
       appendLog(t("local_prepare_cancelled"));
     }
+    if (event.type === "alignmentModelProgress") {
+      state.alignmentProgressMessage = event.message || "";
+      renderLocalAlignmentModel();
+    }
+    if (event.type === "alignmentModelPrepared") {
+      state.alignmentPreparing = "";
+      state.alignmentProgressMessage = "";
+      const model = (state.config?.alignmentModels || []).find((item) => item.id === event.modelId);
+      if (model) {
+        model.status = event.status || "installed";
+        model.installed = true;
+        model.runtimeAvailable = true;
+      }
+      renderLocalAlignmentModel();
+      void refreshAlignmentModels();
+      setStatus(t("alignment_model_ready"));
+      appendLog(t("alignment_model_ready"));
+    }
+    if (event.type === "alignmentPrepareCancelled") {
+      state.alignmentPreparing = "";
+      state.alignmentProgressMessage = "";
+      renderLocalAlignmentModel();
+      void refreshAlignmentModels();
+      setStatus(t("alignment_model_cancelled"));
+    }
     if (event.type === "localRuntimeProgress") {
       const runtime = state.config?.localRuntime || {};
       if (state.localRuntimeInstalling || runtime.status === "installing") {
@@ -2914,6 +3643,7 @@
       renderLocalRuntime();
       if (wasInstalling) {
         void refreshLocalModels();
+        void refreshAlignmentModels();
         setStatus(t("local_runtime_install_done"));
         appendLog(t("local_runtime_install_done"));
       }
@@ -2926,6 +3656,7 @@
       renderLocalRuntime();
       if (wasInstalling) {
         void refreshLocalModels();
+        void refreshAlignmentModels();
         setStatus(t("local_runtime_cancelled"));
         appendLog(t("local_runtime_cancelled"));
       }
@@ -2969,6 +3700,12 @@
       state.localProgress = null;
       // 与本地运行环境安装失败保持一致：失败时自动滚到日志区看 [detail]。
       $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    if (event.type === "error" && event.code === "alignment_prepare_failed") {
+      state.alignmentPreparing = "";
+      state.alignmentProgressMessage = "";
+      renderLocalAlignmentModel();
+      void refreshAlignmentModels();
     }
     if (event.type === "error" && ["local_runtime_install_failed", "local_runtime_cancelled"].includes(event.code)) {
       const runtime = state.config?.localRuntime || {};
@@ -3027,7 +3764,7 @@
     if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
     if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
   }
-  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onMediaPathChanged() {} };
+  window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
 
   $("langZh").addEventListener("click", () => setLanguage("zh"));
   $("langEn").addEventListener("click", () => setLanguage("en"));
@@ -3049,7 +3786,7 @@
     const action = $("errorNotice").dataset.action;
     if (action === "ffmpeg-settings") openSettings("ffmpegSettingsSection", "ffmpegPath");
   });
-  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("audioTrack").addEventListener("change", () => { const value = Number($("audioTrack").value); if (Number.isInteger(value) && value >= 0) state.audioTrack = value; }); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
+  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("fireRedPunc").addEventListener("change", () => setError("fireRedPunc", "")); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("audioTrack").addEventListener("change", () => { const value = Number($("audioTrack").value); if (Number.isInteger(value) && value >= 0) state.audioTrack = value; }); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
   $("testRun").addEventListener("change", syncTestRun);
   $("openaiModel").addEventListener("input", () => { if (isCustomOpenAiModel()) state.config.openaiCustomModel = $("openaiModel").value.trim(); });
   $("generateHtml").addEventListener("change", syncHtmlMenu);
@@ -3076,13 +3813,49 @@
   $("installOcrRuntime").addEventListener("click", async () => { const runtime = state.config?.ocrRuntime || {}; if (state.ocrRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: state.config.ocrRuntime?.status === "broken" }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
   $("localModelPath").addEventListener("input", () => { setError("localModelPath", ""); if (isLocalProvider()) { state.localModelPaths[selectedModel().id] = $("localModelPath").value.trim(); void refreshLocalModels(); } });
   $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocalRuntime").disabled = true; try { await refreshLocalRuntime(); await refreshLocalModels(); } finally { $("refreshLocalRuntime").disabled = false; } });
+  $("toggleLocalRuntimeInventory").addEventListener("click", () => { void toggleLocalRuntimeInventory(); });
   $("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });
+  $("openLocalModelSettings").addEventListener("click", () => { openSettings("localAsrModelSettingsSection"); void refreshLocalModels(); void refreshAlignmentModels(); });
   $("openDashscopeRegionSettings").addEventListener("click", () => openSettings("dashscopeRegionPanel"));
   $("openLanguageSettings").addEventListener("click", () => openSettings("settingsLanguageSection"));
   $("saveDashscopeRegionSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload); if (!result.ok) { applyErrorResult(result); return; } state.config.region = payload.region; state.config.workspaceId = payload.workspaceId; setStatus(t("saved")); });
   $("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; const runtime = state.config?.localRuntime || {}; if (state.localRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
-  $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
-  $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
+   $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
+   $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
+  $("recognitionAlignmentModel").addEventListener("change", () => { state.alignmentModelSelection = $("recognitionAlignmentModel").value; setError("recognitionAlignmentModel", ""); renderLocalAlignmentModel(); });
+  $("prepareAlignmentModel").addEventListener("click", async () => {
+    if (!isLocalProvider()) return;
+    const modelId = state.alignmentModelManagementId;
+    if (!modelId) return;
+    if (state.alignmentPreparing) {
+      if (state.alignmentPreparing !== modelId) return;
+      state.alignmentProgressMessage = t("alignment_model_downloading");
+      renderLocalAlignmentModel();
+      const result = await bridge("cancel_alignment_model");
+      if (!result.ok) {
+        state.alignmentProgressMessage = "";
+        applyErrorResult(result);
+        renderLocalAlignmentModel();
+      }
+      return;
+    }
+    state.alignmentPreparing = modelId;
+    state.alignmentProgressMessage = t("alignment_model_downloading");
+    renderLocalAlignmentModel();
+    appendLog(t("alignment_model_downloading"));
+    const result = await bridge("prepare_alignment_model", { modelId });
+    if (!result.ok) {
+      state.alignmentPreparing = "";
+      state.alignmentProgressMessage = "";
+      applyErrorResult(result);
+      renderLocalAlignmentModel();
+    } else if (result.alreadyInstalled) {
+      state.alignmentPreparing = "";
+      state.alignmentProgressMessage = "";
+      await refreshAlignmentModels();
+      setStatus(t("alignment_model_ready"));
+    }
+  });
   $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));
   $("settingsButton").addEventListener("click", openSettings); $("settingsClose").addEventListener("click", closeSettings); $("settingsBackdrop").addEventListener("click", closeSettings); document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSettings(); });
   $("batchConfirmYes").addEventListener("click", () => finishConfirm(true)); $("batchConfirmNo").addEventListener("click", () => finishConfirm(false));
@@ -3119,6 +3892,7 @@
   bindDropField("stickerDir", "stickerDir");
   bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone");
   bindDropField("toolboxUtilityMediaDropZone", "toolboxUtilityMedia", "toolboxUtilityMediaDropZone");
+  bindDropField("toolboxTimestampMediaDropZone", "toolboxTimestampMedia", "toolboxTimestampMediaDropZone");
   bindDropField("toolboxBurnSubtitleDropZone", "toolboxBurnSubtitle", "toolboxBurnSubtitleDropZone");
   bindDropField("toolboxFfconcatDropZone", "toolboxFfconcat", "toolboxFfconcatDropZone");
   bindDropField("toolboxAlignmentProjectDropZone", "toolboxAlignmentProject", "toolboxAlignmentProjectDropZone");

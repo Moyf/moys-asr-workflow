@@ -122,6 +122,52 @@ class MawRootTests(unittest.TestCase):
         self.assertEqual(candidates[0], self.root / "_maw")
 
 
+class DebugArtifactPathTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name).resolve()
+        self.media = self.root / "clip.mp4"
+        self.output = self.root / "exports" / "clip.srt"
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_debug_artifacts_keep_explicit_output_directory_when_subfolder_is_off(self) -> None:
+        with _patch_config(_config()):
+            self.assertEqual(
+                output_naming.debug_artifact_path(
+                    self.media,
+                    self.output,
+                    ".local-debug.json",
+                    explicit_output=True,
+                ),
+                self.output.parent / "clip.local-debug.json",
+            )
+
+    def test_debug_artifacts_use_shared_debug_directory_when_subfolder_is_on(self) -> None:
+        with _patch_config(_config(all_subfolder=True, gui_lang="zh")):
+            self.assertEqual(
+                output_naming.debug_artifact_path(
+                    self.media,
+                    self.output,
+                    ".asr-response.json",
+                    explicit_output=True,
+                ),
+                self.root / "_maw" / "调试" / "clip.asr-response.json",
+            )
+
+    def test_debug_artifacts_use_per_video_debug_directory_and_language_name(self) -> None:
+        with _patch_config(_config(all_subfolder=True, per_video=True, gui_lang="en")):
+            self.assertEqual(
+                output_naming.debug_artifact_dir(
+                    self.media,
+                    self.output,
+                    explicit_output=True,
+                ),
+                self.root / "clip_maw" / "debug",
+            )
+
+
 class PostprocessWorkspaceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()

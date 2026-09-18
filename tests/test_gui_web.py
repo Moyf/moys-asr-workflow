@@ -30,6 +30,7 @@ from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, E
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
+from maw.local_debug import local_debug_manifest_path  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError  # noqa: E402
 from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
@@ -199,6 +200,31 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "broken")
 
+    def test_get_local_runtime_inventory_reports_versions_and_missing_components(self) -> None:
+        runtime_root = self.root / "local-runtime"
+        site_packages = runtime_root / "site-packages"
+        site_packages.mkdir(parents=True)
+        for name in LOCAL.spec.package_dirs[:-1]:
+            (site_packages / name).mkdir()
+        write_runtime_manifest(
+            runtime_root,
+            status="ready",
+            runtime_version=LOCAL.spec.runtime_version,
+            python_version=LOCAL.spec.python_version,
+        )
+
+        with mock.patch.dict(os.environ, {"MAW_LOCAL_RUNTIME_ROOT": str(runtime_root)}):
+            result = self.api.get_local_runtime_inventory()
+
+        self.assertEqual(result["status"], "broken")
+        inventory = result["inventory"]
+        self.assertEqual(inventory["runtimeVersionExpected"], LOCAL.spec.runtime_version)
+        self.assertEqual(inventory["runtimeVersionInstalled"], LOCAL.spec.runtime_version)
+        self.assertEqual(inventory["pythonVersionInstalled"], LOCAL.spec.python_version)
+        components = {item["name"]: item for item in inventory["components"]}
+        self.assertTrue(components[LOCAL.spec.package_dirs[0]]["installed"])
+        self.assertFalse(components[LOCAL.spec.package_dirs[-1]]["installed"])
+
     def test_local_runtime_recovery_distinguishes_live_other_engine_worker(self) -> None:
         """MOSS 安装存活时，不应阻止恢复另一个运行时的陈旧标记。"""
         runtime_root = self.root / "local-runtime"
@@ -308,10 +334,21 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertNotIn("funasr-local", visible_ids)
         self.assertEqual(local["models"][2]["modelRef"], "iic/SenseVoiceSmall")
         self.assertEqual(local["models"][3]["id"], "moss-transcribe-diarize-local")
+        self.assertEqual(local["models"][4]["id"], "firered-asr2-ctc-local")
+        self.assertEqual(local["models"][4]["engine"], "firered")
+        self.assertTrue(local["models"][0]["supportsWordTimestamps"])
+        self.assertFalse(local["models"][3]["supportsWordTimestamps"])
+        self.assertTrue(local["models"][4]["supportsWordTimestamps"])
+        self.assertEqual(local["models"][0]["deviceSupport"], "cpu_gpu")
+        self.assertEqual(local["models"][0]["resourceLevel"], "medium")
+        self.assertEqual(local["models"][0]["estimatedSize"], "1.7G+")
+        self.assertEqual(local["models"][3]["deviceSupport"], "gpu_preferred")
+        self.assertEqual(local["models"][4]["deviceSupport"], "cpu")
         whisper = local["models"][-1]
         self.assertEqual(whisper["id"], "whisper-large-v3-local")
-        self.assertIn("用户自行安装 CUDA 12 和 cuDNN 9", whisper["note"])
-        self.assertIn("自动回退到 CPU", whisper["note"])
+        self.assertTrue(whisper["supportsWordTimestamps"])
+        self.assertIn("原生词级时间码", whisper["note"])
+        self.assertIn("GPU 速度更佳", whisper["note"])
         self.assertEqual(local["models"][0]["localStatus"]["status"], "checking")
         self.assertEqual(config["modelCacheRoot"], "")
 
@@ -345,7 +382,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         ):
             result = self.api.get_local_models({"modelId": "qwen3-asr-local"})
 
-        self.assertEqual(calls, ["qwen-asr", "funasr", "moss", "whisper"])
+        self.assertEqual(calls, ["qwen-asr", "funasr", "moss", "firered", "whisper"])
         self.assertEqual(
             [model["id"] for model in result["models"]],
             [
@@ -353,6 +390,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                 "qwen3-asr-1.7b-local",
                 "sensevoice-small-local",
                 "moss-transcribe-diarize-local",
+                "firered-asr2-ctc-local",
                 "whisper-large-v3-local",
             ],
         )
@@ -1233,7 +1271,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertNotIn('aria-orientation="vertical"', utilities_html)
         self.assertLess(utility_panels, alignment_panel)
         self.assertLess(alignment_close, ffconcat_panel)
-        for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab"):
+        for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab", "toolboxTimestampsTab"):
             self.assertIn(f'id="{tab_id}"', postprocess_html)
         for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
             self.assertIn(f'id="{tab_id}"', utilities_html)
@@ -1260,9 +1298,19 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('toolbox_utility_media: "Media file"', strings)
         self.assertIn('toolbox_burn_subtitle: "压制字幕"', strings)
         self.assertIn('toolbox_extract_audio: "Extract audio"', strings)
+        self.assertIn('toolbox_timestamps: "生成时间码"', strings)
+        self.assertIn('toolbox_timestamps: "Generate timestamps"', strings)
         self.assertEqual(html.count('role="tablist"'), 4)
         self.assertIn('id="toolboxPostprocessTabList"', html)
         self.assertIn('id="toolboxUtilitiesTabList"', html)
+        self.assertIn('<div class="toolbox-tab-list toolbox-tab-list-5">', postprocess_html)
+        self.assertIn('data-i18n="toolbox_group_timestamp_media">媒体来源</h3>', html)
+        timestamp_panel = html[html.index('id="toolboxTimestampsPanel"'):]
+        self.assertLess(timestamp_panel.index('data-i18n="toolbox_group_timestamp_media"'), timestamp_panel.index('data-i18n="toolbox_group_alignment_model"'))
+        self.assertIn('<p class="hint toolbox-settings-hint" data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
+        self.assertNotIn('<p class="hint" data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
+        self.assertNotIn('工程有可用视频时自动使用；独立 SRT 会回退到当前 Launcher 视频；如果当前媒体是音频或无视频，必须选择视频。', html)
+        self.assertNotIn('SRT 没有媒体路径；工程若已记录媒体可留空，否则请选择原始音频/视频。', html)
         self.assertIn('id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" tabindex="0"', html)
         self.assertIn('id="toolboxWaveformTab" class="toolbox-tab" type="button" role="tab" tabindex="-1"', html)
         self.assertIn('id="toolboxUtilityMediaPath"', utilities_html)
@@ -1273,6 +1321,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('let utilityMediaManual = false;', script)
         self.assertIn('$("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();', script)
         self.assertIn('bridge("choose_file", { kind: "media" })', script)
+        self.assertIn('bridge("run_timestamp_alignment"', script)
 
     def test_launcher_exposes_separate_speech_alignment_toolbox_contract(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -3186,6 +3235,117 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(request.api_key, "")
         self.assertEqual(request.runtime_python, str(self.root / "runtime" / "Scripts" / "python.exe"))
 
+    def test_firered_request_can_skip_optional_ct_punc(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        status = LocalModelStatus(
+            model_id="firered-asr2-ctc-local",
+            engine="firered",
+            model_ref="sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25",
+            status="installed",
+            runtime_available=True,
+            installed=True,
+            path=str(self.root / "firered"),
+            detail="CTC ready",
+            runtime_source="managed",
+            runtime_python=str(self.root / "runtime" / "Scripts" / "python.exe"),
+        )
+
+        with (
+            mock.patch("maw.gui_web.inspect_local_model", return_value=status),
+            mock.patch("maw.gui_web.firered_components_ready", return_value=(True, False)),
+        ):
+            request = _request_from_payload({
+                "providerId": "local",
+                "modelId": "firered-asr2-ctc-local",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "fireredPunc": "none",
+            }, self.env_path)
+
+        self.assertEqual(request.engine, "firered")
+        self.assertEqual(request.firered_punc, "none")
+
+    def test_firered_request_requires_ct_punc_when_selected(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        status = LocalModelStatus(
+            model_id="firered-asr2-ctc-local",
+            engine="firered",
+            model_ref="sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25",
+            status="installed",
+            runtime_available=True,
+            installed=True,
+            path=str(self.root / "firered"),
+            detail="CTC ready",
+            runtime_source="managed",
+            runtime_python=str(self.root / "runtime" / "Scripts" / "python.exe"),
+        )
+
+        with (
+            mock.patch("maw.gui_web.inspect_local_model", return_value=status),
+            mock.patch("maw.gui_web.firered_components_ready", return_value=(True, False)),
+        ):
+            with self.assertRaises(PreflightError) as raised:
+                _request_from_payload({
+                    "providerId": "local",
+                    "modelId": "firered-asr2-ctc-local",
+                    "mediaPath": str(media),
+                    "srtPath": str(self.root / "out.srt"),
+                    "fireredPunc": "ct-punc",
+                }, self.env_path)
+
+        self.assertEqual(raised.exception.code, "local_model_incomplete")
+
+    def test_start_transcription_returns_local_debug_manifest_path(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.mp3",
+            srt_path=self.root / "clip.srt",
+            provider="local",
+            debug_raw=True,
+        )
+        request.media_path.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+
+        with (
+            mock.patch("maw.gui_web._request_from_payload", return_value=request),
+            mock.patch("maw.gui_web._frozen_ffmpeg_preflight", return_value=None),
+            mock.patch("maw.gui_web.threading.Thread", return_value=worker),
+            mock.patch.object(self.api.pump, "start"),
+        ):
+            result = self.api.start_transcription({})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["rawPath"], str(local_debug_manifest_path(request.srt_path)))
+
+    def test_start_transcription_routes_local_debug_manifest_to_debug_directory(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.mp3",
+            srt_path=self.root / "clip.srt",
+            provider="local",
+            debug_raw=True,
+        )
+        request.media_path.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+
+        with (
+            mock.patch("maw.gui_web._request_from_payload", return_value=request),
+            mock.patch("maw.gui_web._frozen_ffmpeg_preflight", return_value=None),
+            mock.patch("maw.gui_web.threading.Thread", return_value=worker),
+            mock.patch("maw.output_naming.subfolder_prefs", return_value=(True, True)),
+            mock.patch("maw.output_naming.resolve_lang", return_value="zh"),
+            mock.patch.object(self.api.pump, "start"),
+        ):
+            result = self.api.start_transcription({})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(
+            _canonical_test_path(result["rawPath"]),
+            _canonical_test_path(self.root / "clip_maw" / "调试" / "clip.local-debug.json"),
+        )
+
     def test_local_request_rejects_missing_model_before_subprocess(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -4171,6 +4331,7 @@ class LauncherAssetContractTests(unittest.TestCase):
             "toolboxChain",
             "toolboxChainList",
             "toolboxMatchPanel",
+            "toolboxTimestampsPanel",
             "toolboxOcrPanel",
             "toolboxLlmPanel",
             "toolboxReplacePanel",
@@ -4456,7 +4617,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".field-spacer {\n  visibility: hidden;", stylesheet)
         self.assertIn(".toolbox-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 10px;\n  align-items: start;\n}", stylesheet)
         # 文稿匹配保持单字段；固定处理按批量替换和简繁转换分组。
-        match_panel = page[page.index('id="toolboxMatchPanel"'):page.index('id="toolboxOcrPanel"')]
+        match_panel = page[page.index('id="toolboxMatchPanel"'):page.index('id="toolboxTimestampsPanel"')]
         replace_panel = page[page.index('id="toolboxReplacePanel"'):page.index('class="toolbox-footer"')]
         self.assertNotIn("adv-group", match_panel)
         self.assertIn('data-i18n="toolbox_group_fixed_replacements"', replace_panel)
@@ -5095,26 +5256,120 @@ class LauncherAssetContractTests(unittest.TestCase):
     def test_local_runtime_lives_in_settings_runtime_tab_with_advanced_check_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         runtime_tab_panel = page.index('data-settings-panel="runtime"')
         runtime_panel = page.index('id="localRuntimePanel"')
         ocr_section = page.index('id="ocrSettingsSection"')
-        # 本地模型运行时区块位于设置 Runtime 面板内、OCR 支持之前。
+        model_tab_panel = page.index('data-settings-panel="llm"')
+        llm_section = page.index('id="llmSettingsSection"')
+        local_model_section = page.index('id="localAsrModelSettingsSection"')
+        alignment_section = page.index('id="alignmentModelSettingsSection"')
+        alignment_section_end = page.index('id="dashscopeRegionPanel"', alignment_section)
+        alignment_section_html = page[alignment_section:alignment_section_end]
+        # 本地模型运行时仍在 Runtime；AI 模型配置先放 LLM，再放本地 ASR 与对齐模型。
         self.assertLess(runtime_tab_panel, runtime_panel)
         self.assertLess(runtime_panel, ocr_section)
+        self.assertLess(model_tab_panel, llm_section)
+        self.assertLess(llm_section, local_model_section)
+        self.assertLess(local_model_section, alignment_section)
         self.assertIn('data-i18n="settings_local_runtime"', page)
         self.assertIn('id="localRuntimeCheckField"', page)
-        # 检测行位于本地模型面板上方（面板外兄弟节点）。
-        self.assertLess(page.index('id="localRuntimeCheckField"'), page.index('id="localModelPanel"'))
+        self.assertLess(page.index('class="provider-row"'), page.index('id="localRuntimeCheckField"'))
+        self.assertLess(page.index('id="localRuntimeCheckField"'), page.index('id="modelField"'))
+        self.assertIn('data-i18n="settings_local_asr_models"', page)
+        self.assertIn('data-i18n="settings_alignment_models"', page)
+        self.assertIn('settings_alignment_models: "本地对齐模型"', script)
+        self.assertIn('settings_alignment_models: "Local alignment models"', script)
+        self.assertIn('id="localModelSettingsEntry"', page)
+        self.assertIn('id="openLocalModelSettings"', page)
+        self.assertIn('data-i18n="local_model_settings_hint_prefix"', page)
+        self.assertIn('data-i18n="local_model_settings_hint_suffix"', page)
+        self.assertIn('local_model_settings_hint_prefix: "本地模型的下载和缓存可以在 "', script)
+        self.assertIn('local_model_settings_open: "本地 AI 模型配置"', script)
+        self.assertIn('local_model_settings_hint_suffix: " 中管理。"', script)
+        self.assertIn('id="localModelList"', page)
+        self.assertLess(page.index('id="localModelPanel"'), page.index('id="localModelList"'))
+        self.assertLess(page.index('id="localModelCachePath"'), page.index('id="localModelList"'))
+        self.assertLess(page.index('id="localModelList"'), page.index('id="localModelDetails"'))
+        self.assertLess(page.index('id="localModelList"'), page.index('id="localModelStatus"'))
+        self.assertLess(page.index('id="localModelPath"'), page.index('id="localModelStatus"'))
+        self.assertIn('data-i18n="local_model_path">已有模型目录（可选）</label>', page)
+        self.assertNotIn('id="localModelHint"', page)
         self.assertIn('id="openLocalRuntimeSettings"', page)
         self.assertIn('settings_local_runtime: "本地模型运行时"', script)
         self.assertIn('settings_local_runtime: "Local model runtime"', script)
+        self.assertIn('local_runtime_configure_prefix: "打开 "', script)
+        self.assertIn('local_runtime_configure: "本地模型运行时"', script)
+        self.assertIn('local_runtime_configure_suffix: " 进行配置"', script)
+        self.assertIn('local_runtime_configure_prefix: "open "', script)
+        self.assertIn('local_runtime_configure: "Local model runtime"', script)
+        self.assertIn('local_runtime_configure_suffix: " to configure"', script)
+        self.assertIn('id="toggleLocalRuntimeInventory"', page)
+        self.assertIn('id="localRuntimeInventory"', page)
+        self.assertLess(page.index('id="toggleLocalRuntimeInventory"'), page.index('id="refreshLocalRuntime"'))
+        self.assertIn('local_runtime_inventory: "查看运行时清单"', script)
+        self.assertIn('local_runtime_inventory: "View runtime inventory"', script)
+        self.assertIn('bridge("get_local_runtime_inventory")', script)
+        self.assertIn('runtime-inventory-item', stylesheet)
         self.assertIn('local_runtime_view_settings: "在 ⚙️ 设置中查看"', script)
         self.assertIn('local_runtime_view_settings: "View in ⚙️ Settings"', script)
+        self.assertIn('function renderLocalRuntimeMissingHint(target)', script)
+        self.assertIn('alignment_model_runtime_missing: "本地运行环境未安装"', script)
+        self.assertIn('renderLocalRuntimeMissingHint(statusTarget);', script)
+        self.assertIn('openSettings("localRuntimePanel");', script)
         self.assertIn('$("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });', script)
+        self.assertIn('$("openLocalModelSettings").addEventListener("click", () => { openSettings("localAsrModelSettingsSection"); void refreshLocalModels(); void refreshAlignmentModels(); });', script)
+        self.assertIn('local_runtime_ready_prefix: "本地运行环境已就绪，可前往 "', script)
+        self.assertIn('local_runtime_ready_link: "本地模型配置"', script)
+        self.assertIn('local_runtime_ready_suffix: " 查看和安装本地模型。"', script)
+        self.assertIn('function renderLocalRuntimeHint(runtime)', script)
+        self.assertIn('renderLocalRuntimeHint(runtime);', script)
         self.assertIn('runtimeHintText(runtime, "local_runtime_ready_hint", "local_runtime_hint")', script)
         self.assertIn('runtimeHintText(runtime, "ocr_runtime_ready", "settings_ocr_hint")', script)
-        self.assertIn('localModelHintText(status)', script)
+        self.assertNotIn('localModelHintText(status)', script)
+        self.assertNotIn('local_prepare_hint', script)
+        self.assertIn('function renderLocalModelList()', script)
+        self.assertIn('const models = (provider()?.models || []).filter((model) => !model.hidden);', script)
+        self.assertIn('button.title = note;', script)
+        self.assertIn('noteElement.title = note;', script)
+        self.assertIn('button.classList.toggle("ready", ready);', script)
+        self.assertIn('status.textContent = ready ? "✓" : "";', script)
+        self.assertIn('dispatchEvent(new Event("change", { bubbles: true }))', script)
+        self.assertIn('local_model_list_label: "本地模型列表"', script)
+        self.assertIn('local_model_list_label: "Local model list"', script)
+        self.assertIn('function localModelBadgeDescriptors(model)', script)
+        self.assertIn('function compactModelSize(value)', script)
+        self.assertIn('className = "local-model-list-size"', script)
+        self.assertIn('className = "local-model-list-title"', script)
+        self.assertIn('if (resourceKey) badges.push({ key: resourceKey, kind: "resource", resourceLevel: model?.resourceLevel });', script)
+        self.assertIn('low: "resource-low"', script)
+        self.assertIn('medium: "resource-medium"', script)
+        self.assertIn('high: "resource-high"', script)
+        self.assertIn('local_model_badge_word_timestamps', script)
+        self.assertNotIn('local_model_badge_size', script)
+        self.assertNotIn('local_model_badge_installed_size', script)
+        self.assertNotIn('local_model_badge_segment_timestamps', script)
+        self.assertIn('appendLocalModelBadges(main, model);', script)
+        self.assertIn('className = "local-model-list-meta"', script)
+        self.assertIn('status.textContent = ready ? "✓" : "";', script)
+        self.assertIn('id="recognitionAlignmentModelField"', page)
+        self.assertIn('id="recognitionAlignmentModel"', page)
+        self.assertIn('data-i18n="recognition_alignment_model_hint"', page)
+        self.assertIn('data-i18n="recognition_alignment_model"', page)
+        self.assertLess(page.index('id="advancedCard"'), page.index('id="recognitionAlignmentModelField"'))
+        self.assertIn('id="localAlignmentModelList"', page)
+        self.assertIn('id="localAlignmentModelDetails"', page)
+        self.assertIn('class="local-model-list"', alignment_section_html)
+        self.assertNotIn('alignment_model_none', alignment_section_html)
+        self.assertNotIn('id="localAlignmentModel"', page)
+        self.assertIn('alignmentModel: isLocalProvider() ? $("recognitionAlignmentModel").value : ""', script)
+        self.assertIn('state.alignmentModelSelection', script)
+        self.assertIn('state.alignmentModelManagementId', script)
+        self.assertIn('function renderLocalAlignmentModelList(models)', script)
+        self.assertIn('section?.classList.toggle("hidden", !local);', script)
+        self.assertIn('const needsAlignmentModel = isLocalProvider() && !modelProvidesWordTimestamps();', script)
+        self.assertNotIn('section?.classList.toggle("hidden", !needsAlignmentModel);', script)
 
     def test_launcher_deep_link_scrolls_only_the_settings_container(self) -> None:
         """Given a settings deep link, When opening a section, Then only .settings-scroll moves."""
@@ -5129,6 +5384,24 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('class="hint warn hint-callout" data-i18n="local_beta_note"', page)
         self.assertIn('id="providerNote" class="hint warn hint-callout hidden"', page)
         self.assertIn('background: color-mix(in srgb, var(--amber) 10%, transparent);', stylesheet)
+        self.assertIn('grid-template-columns: repeat(2, minmax(0, 1fr));', stylesheet)
+        self.assertIn('margin: 12px 0 10px;', stylesheet)
+        self.assertIn('.local-model-list-item.ready {', stylesheet)
+        self.assertIn('.local-model-list-status.ready {', stylesheet)
+        self.assertIn('.local-model-list-meta {', stylesheet)
+        self.assertIn('.local-model-list-badges {', stylesheet)
+        self.assertIn('.local-model-list-size {', stylesheet)
+        self.assertIn('.local-model-list-title {', stylesheet)
+        self.assertIn('.local-model-badge.hardware {', stylesheet)
+        self.assertIn('.local-model-badge.resource-low {', stylesheet)
+        self.assertIn('.local-model-badge.resource-medium {', stylesheet)
+        self.assertIn('.local-model-badge.resource-high {', stylesheet)
+        self.assertIn('color: #8ecf9b;', stylesheet)
+        self.assertIn('color: #d49a4a;', stylesheet)
+        self.assertIn('color: #e07a7a;', stylesheet)
+        self.assertNotIn('.local-model-badge.size {', stylesheet)
+        self.assertIn('.settings-panel {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;', stylesheet)
+        self.assertNotIn('.modal-card .settings-section.hidden + .settings-section', stylesheet)
 
     def test_launcher_modal_and_scroll_fade_visual_updates(self) -> None:
         """Given the beta7 visual feedback, When styling modals, Then cards widen and settings scroll fades at edges."""
@@ -5150,9 +5423,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
         backend = (ROOT / "maw" / "gui_config.py").read_text(encoding="utf-8")
 
-        self.assertIn('note="本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner"', backend)
+        self.assertIn('note="轻量多语种识别；原生字词级时间码；可复用 Qwen3-ForcedAligner"', backend)
         self.assertIn('"qwen3-asr-local": "Qwen3-ASR 0.6B (recommended)"', script)
-        self.assertIn('"qwen3-asr-local": "Runs locally; the first preparation downloads Qwen3-ASR and the Forced Aligner."', script)
+        self.assertIn('"qwen3-asr-local": "Lightweight multilingual recognition with native word/character timestamps; shares the Qwen3-ForcedAligner cache."', script)
         self.assertIn('local: "Local models (Beta)"', script)
         self.assertIn('openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models.', script)
         self.assertIn('secondaryKeyUrl', script)

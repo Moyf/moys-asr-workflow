@@ -21,9 +21,10 @@ from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, bundled_ffmpeg_direct
 from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, effective_config, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.media import read_bwf_time_reference
-from maw.output_naming import maw_root
+from maw.output_naming import debug_artifact_path, maw_root
 from maw.qwen_audio import split_qwen_audio_hotwords
 from maw.local_runtime import default_runtime_root, model_cache_environment
+from maw.local_debug import local_debug_manifest_path
 from maw.runtimes import LOCAL
 
 
@@ -64,10 +65,13 @@ class TranscriptionRequest:
     srt_only: bool = False
     debug_raw: bool = False
     engine: str = ""
+    firered_punc: str = "ct-punc"
     model_path: str = ""
     model_cache_root: str = ""
     device: str = "auto"
     forced_aligner: str = ""
+    alignment_model: str = ""
+    alignment_model_path: str = ""
     openai_prompt: str = ""
     openai_keywords: tuple[str, ...] = ()
     openai_diarize: bool = False
@@ -174,8 +178,16 @@ def build_output_paths(srt_path: Path, media_path: Path | None = None) -> Output
     return OutputPaths(srt=srt, json=srt.with_suffix(".mosp"), html=html)
 
 
-def raw_response_path(srt_path: Path) -> Path:
-    return Path(srt_path).expanduser().resolve().with_suffix(".asr-response.json")
+def raw_response_path(srt_path: Path, media_path: Path | None = None) -> Path:
+    output = Path(srt_path).expanduser().resolve()
+    if media_path is None:
+        return output.with_suffix(".asr-response.json")
+    return debug_artifact_path(
+        media_path,
+        output,
+        ".asr-response.json",
+        explicit_output=True,
+    )
 
 
 def unique_output_path(srt_path: Path, media_path: Path | None = None) -> Path:
@@ -232,6 +244,8 @@ def _srt_model_tag(provider: str, model: str) -> str:
             return ".qwen3-asr-1.7b-local"
         if "moss" in local_model:
             return ".moss-local"
+        if "firered" in local_model or "fire-red" in local_model:
+            return ".firered-local"
         if "whisper" in local_model:
             return ".whisper-local"
         return ".qwen-asr-local"
@@ -320,7 +334,7 @@ def build_transcribe_command(
         command.extend(["--default-audio-track", str(request.default_audio_track)])
     if request.generate_spectral:
         command.append("--with-spectral")
-    if request.debug_raw and not is_local:
+    if request.debug_raw:
         command.append("--debug-raw")
     if is_local:
         _append_option(command, "--engine", request.engine or "qwen-asr")
@@ -328,7 +342,18 @@ def build_transcribe_command(
         _append_option(command, "--model-path", request.model_path)
         _append_option(command, "--device", request.device)
         _append_option(command, "--forced-aligner", request.forced_aligner)
-        if request.speaker_colors and request.engine == "moss":
+        # MOSS runs in its own Transformers 5.x environment.  The shared
+        # Qwen/FireRed aligner belongs to the normal local runtime, so MOSS is
+        # aligned by the Launcher after its coarse project has been written.
+        # Keeping the flags out of the MOSS child prevents it from importing a
+        # conflicting qwen-asr installation before the hand-off.
+        local_engine = str(request.engine or "").strip().casefold()
+        if local_engine == "firered":
+            _append_option(command, "--firered-punc", request.firered_punc)
+        if local_engine != "moss":
+            _append_option(command, "--alignment-model", request.alignment_model)
+            _append_option(command, "--alignment-model-path", request.alignment_model_path)
+        if request.speaker_colors and local_engine == "moss":
             command.append("--speaker-colors")
     elif is_soniox:
         _append_option(command, "--model", request.model if request.model != DEFAULT_MODEL_ID else "")
@@ -498,9 +523,21 @@ def run_transcription(
         raise TranscriptionProcessError(process.returncode, output=collected)
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
-    raw_path = raw_response_path(paths.srt) if request.debug_raw and request.provider != "local" else None
+    raw_path = (
+        local_debug_manifest_path(
+            paths.srt,
+            media_path=request.media_path,
+            explicit_output=True,
+        )
+        if request.debug_raw and request.provider == "local"
+        else (
+            raw_response_path(paths.srt, request.media_path)
+            if request.debug_raw
+            else None
+        )
+    )
     if raw_path is not None:
-        _require_output(raw_path, "raw ASR response")
+        _require_output(raw_path, "debug response/artifact manifest")
     html_path = None
     if request.generate_html:
         try:

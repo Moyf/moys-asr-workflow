@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel", alignment: "toolboxAlignmentPanel", burnSubtitle: "toolboxBurnSubtitlePanel", extractAudio: "toolboxExtractAudioPanel" };
+  const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", timestamps: "toolboxTimestampsPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel", alignment: "toolboxAlignmentPanel", burnSubtitle: "toolboxBurnSubtitlePanel", extractAudio: "toolboxExtractAudioPanel" };
   const TASK_PROMPT_KEYS = { proofread: "toolbox_task_proofread", resegment: "toolbox_task_resegment", translate_en: "toolbox_task_translate_en", translate_zh: "toolbox_task_translate_zh" };
   const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
   const SUBTITLE_BURN_EXTS = new Set([".srt", ".ass", ".ssa"]);
@@ -41,6 +41,7 @@
   let busy = false;
   let inputManual = false;
   let utilityMediaManual = false;
+  let timestampMediaManual = false;
   let subtitleBurnManual = false;
   let alignmentProjectManual = false;
   let alignmentRunning = false;
@@ -527,6 +528,16 @@
     name.classList.toggle("empty", !hasPath);
   }
 
+  function syncTimestampMediaName() {
+    const path = $("toolboxTimestampMediaPath").value.trim();
+    const name = $("toolboxTimestampMediaName");
+    if (!name) return;
+    const hasPath = Boolean(path);
+    name.textContent = hasPath ? fileName(path) : t("toolbox_input_empty");
+    name.title = path;
+    name.classList.toggle("empty", !hasPath);
+  }
+
   function syncBurnSubtitleName() {
     const path = $("toolboxBurnSubtitlePath").value.trim();
     const name = $("toolboxBurnSubtitleName");
@@ -554,6 +565,7 @@
   function syncPaths() {
     if (!inputManual) $("toolboxInputPath").value = autoSourcePath();
     if (!utilityMediaManual) $("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();
+    if (!timestampMediaManual) $("toolboxTimestampMediaPath").value = $("mediaPath").value.trim();
     if (!subtitleBurnManual) {
       const source = $("srtPath").value.trim();
       $("toolboxBurnSubtitlePath").value = SUBTITLE_BURN_EXTS.has(extension(source)) ? source : "";
@@ -562,6 +574,7 @@
     syncOcrVideo();
     syncInputName();
     syncUtilityMediaName();
+    syncTimestampMediaName();
     syncBurnSubtitleName();
     syncAlignmentNames();
   }
@@ -607,6 +620,43 @@
     settingsButton.dataset.i18n = ready ? "toolbox_ocr_view_settings" : "toolbox_ocr_open_settings";
     settingsButton.textContent = t(settingsButton.dataset.i18n);
     $("runOcrDedup").disabled = busy || !ready;
+  }
+
+  function alignmentModelLabel(model) {
+    const id = String(model?.id || model?.modelId || "");
+    if (document.documentElement.lang === "en") {
+      if (id === "qwen3-forced-aligner-0.6b") return "Qwen3-ForcedAligner 0.6B";
+      if (id === "firered-asr2-ctc") return "FireRedASR2-CTC (CPU)";
+    }
+    return model?.label || model?.modelRef || id;
+  }
+
+  function renderTimestampModel() {
+    const config = window.MAWLauncher.config || {};
+    const models = Array.isArray(config.alignmentModels) && config.alignmentModels.length
+      ? config.alignmentModels
+      : [
+        { id: "qwen3-forced-aligner-0.6b", label: "Qwen3-ForcedAligner 0.6B", installed: false, runtimeAvailable: false, status: "missing" },
+        { id: "firered-asr2-ctc", label: "FireRedASR2-CTC（CPU）", installed: false, runtimeAvailable: false, status: "missing" },
+      ];
+    const select = $("toolboxTimestampModel");
+    if (!select) return;
+    const selected = select.value || config.alignmentModelId || models.find((model) => model.installed)?.id || models[0].id;
+    select.textContent = "";
+    models.forEach((model) => select.add(new Option(alignmentModelLabel(model), model.id)));
+    select.value = models.some((model) => model.id === selected) ? selected : models[0].id;
+    const model = models.find((item) => item.id === select.value) || models[0];
+    const runtimeReady = model.runtimeAvailable === undefined
+      ? Boolean(config.localRuntime?.ready)
+      : Boolean(model.runtimeAvailable);
+    const ready = Boolean(model.installed && runtimeReady);
+    let statusKey = "alignment_model_missing";
+    if (model.status === "checking") statusKey = "alignment_model_checking";
+    else if (model.status === "runtime_missing" || !runtimeReady) statusKey = "alignment_model_runtime_missing";
+    else if (ready) statusKey = "alignment_model_ready";
+    $("toolboxTimestampModelStatus").textContent = t(statusKey);
+    $("toolboxTimestampModelStatus").classList.toggle("error", !ready);
+    $("runTimestampAlignment").disabled = busy || !ready;
   }
 
   function renderProvider(providerId = $("postprocessProvider").value) {
@@ -877,10 +927,11 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
     renderOcrModel();
+    renderTimestampModel();
     applyBatchModeLocks();
     renderAlignmentAction();
     renderMediaToolAction();
@@ -1126,6 +1177,7 @@
 
   function chainLabel(kind, operation = "") {
     if (kind === "match") return t("toolbox_chain_match");
+    if (kind === "timestamps") return t("toolbox_chain_timestamps");
     if (kind === "ocr") return t("toolbox_chain_ocr");
     if (kind === "fixed" || kind === "replace") return t("toolbox_chain_replace");
     const operationKeys = {
@@ -1649,6 +1701,48 @@
     }
   }
 
+  async function runTimestampAlignment() {
+    if (busy) return;
+    const paths = resolveInputPaths();
+    if (!paths) return;
+    const mediaPath = $("toolboxTimestampMediaPath").value.trim();
+    if (mediaPath && !MEDIA_EXTS.has(extension(mediaPath))) {
+      const message = t("toolbox_timestamp_media_reject");
+      setFieldError("toolboxTimestampMediaPath", message);
+      setResult(message, "error");
+      return;
+    }
+    const modelId = $("toolboxTimestampModel").value;
+    const model = (window.MAWLauncher.config?.alignmentModels || []).find((item) => item.id === modelId);
+    const runtimeReady = model?.runtimeAvailable === undefined
+      ? Boolean(window.MAWLauncher.config?.localRuntime?.ready)
+      : Boolean(model?.runtimeAvailable);
+    if (!model?.installed || !runtimeReady) {
+      const message = t("toolbox_timestamp_model_not_ready");
+      setResult(message, "error");
+      return;
+    }
+    setFieldError("toolboxTimestampMediaPath", "");
+    setBusy(true, "toolbox_status_aligning");
+    try {
+      const result = await bridge("run_timestamp_alignment", {
+        ...paths,
+        mediaPath,
+        modelId,
+        alignmentMode: $("toolboxTimestampMode").value,
+        device: $("localDevice")?.value || "auto",
+      });
+      if (result.ok) applySubtitleResult(result, { kind: "timestamps" });
+      else {
+        const message = postprocessErrorText(result);
+        if (result.field) setFieldError(result.field, message);
+        setResult(message, "error");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function ocrRegionPayload() {
     return {
       regionMode: $("ocrRegionMode").value === "custom_region" ? "custom" : $("ocrRegionMode").value,
@@ -2053,6 +2147,7 @@
     renderTaskPrompt();
     renderOcrRegion();
     renderOcrModel();
+    renderTimestampModel();
     selectToolboxSection("postprocess");
     syncPaths();
     renderAudioTracks();
@@ -2104,6 +2199,7 @@
   $("runWaveform").addEventListener("click", () => { void generateWaveformProject(true); });
   $("runToolboxAlignment").addEventListener("click", () => { void runToolboxAlignment(); });
   $("stopToolboxAlignment").addEventListener("click", () => { void stopToolboxAlignment(); });
+  $("runTimestampAlignment").addEventListener("click", () => { void runTimestampAlignment(); });
   $("runScriptMatch").addEventListener("click", runScriptMatch);
   $("postprocessScriptPath").addEventListener("input", () => { void refreshScriptPreview(); });
   $("postprocessCleanMarkdownSymbols").addEventListener("input", () => { void refreshScriptPreview(); persistAutoPlanSoon(); });
@@ -2154,6 +2250,15 @@
       void refreshAudioTracks();
     }
   });
+  $("pickToolboxTimestampMedia").addEventListener("click", async () => {
+    const result = await bridge("choose_file", { kind: "media" });
+    if (result.ok) {
+      timestampMediaManual = true;
+      $("toolboxTimestampMediaPath").value = result.path;
+      setFieldError("toolboxTimestampMediaPath", "");
+      syncTimestampMediaName();
+    }
+  });
   $("pickToolboxBurnSubtitle").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "subtitle-burn" });
     if (result.ok) {
@@ -2195,10 +2300,10 @@
     clearChainSelection();
     inputManual = Boolean($("toolboxInputPath").value.trim());
     setFieldError("toolboxInputPath", "");
-      syncOcrVideo();
-      syncInputName();
-      void refreshScriptPreview();
-    });
+    syncOcrVideo();
+    syncInputName();
+    void refreshScriptPreview();
+  });
   $("toolboxUtilityMediaPath").addEventListener("input", () => {
     utilityMediaManual = Boolean($("toolboxUtilityMediaPath").value.trim());
     setFieldError("toolboxUtilityMediaPath", "");
@@ -2317,6 +2422,12 @@
     });
     $(`configureAuto${stepId[0].toUpperCase()}${stepId.slice(1)}`).addEventListener("click", () => openAutoStep(stepId, "", { highlightConnection: true }));
   });
+  $("toolboxTimestampModel").addEventListener("change", renderTimestampModel);
+  $("toolboxTimestampMediaPath").addEventListener("input", () => {
+    timestampMediaManual = true;
+    setFieldError("toolboxTimestampMediaPath", "");
+    syncTimestampMediaName();
+  });
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", () => {
     syncPaths();
     if (id === "mediaPath") void refreshAudioTracks();
@@ -2348,8 +2459,10 @@
     syncProviderOptionLabels();
     if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
     renderOcrModel();
+    renderTimestampModel();
     document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
     syncBurnSubtitleName();
+    syncTimestampMediaName();
     renderAudioTracks();
     syncAlignmentNames();
     renderAlignmentAction();
@@ -2361,6 +2474,9 @@
   window.MAWLauncher.onProjectPathChanged = () => {
     if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();
     syncAlignmentNames();
+  };
+  window.MAWLauncher.onAlignmentModelsChanged = () => {
+    renderTimestampModel();
   };
   window.MAWLauncher.onMediaPathChanged = ({ refreshOcrVideo = false } = {}) => {
     if (refreshOcrVideo) {

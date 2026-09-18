@@ -67,6 +67,9 @@ local = [
     "funasr>=1.3.29",
     "hf-xet>=1.5",
     "qwen-asr>=0.0.6",
+    # FireRedASR2-CTC 的 sherpa-onnx CPU 解码与 WAV 读取；也供共享对齐工具使用。
+    "sherpa-onnx>=1.12.27",
+    "soundfile>=0.12",
     "torch==2.13.0+cu130; sys_platform != 'darwin'",
     "torch>=2.13.0; sys_platform == 'darwin'",
     "torchaudio==2.11.0+cu130; sys_platform != 'darwin'",
