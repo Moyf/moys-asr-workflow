@@ -34,6 +34,7 @@
     --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.34);
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; }
   body {
     margin: 0;
@@ -111,6 +112,12 @@
     flex-direction: column;
     padding: 12px 16px 0;
     gap: 10px;
+  }
+  .compare-heading {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
   }
   .cards {
     display: flex;
@@ -292,6 +299,148 @@
     white-space: nowrap;
   }
   .cell.empty-cell { color: var(--text-faint); }
+  .wave-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 4px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    height: 260px;
+    min-height: 140px;
+  }
+  .wave-resizer {
+    flex: none;
+    height: 10px;
+    cursor: row-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+  }
+  .wave-resizer::after {
+    content: '';
+    width: 40px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border-strong);
+  }
+  .wave-resizer:hover::after, body.wave-resizing .wave-resizer::after { background: var(--accent); }
+  body.wave-resizing { cursor: row-resize; user-select: none; }
+  .wave-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    flex-wrap: wrap;
+  }
+  .wave-head .hint { font-weight: 400; font-size: 12px; color: var(--text-muted); }
+  .wave-tools {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+  .wave-tools .btn { font-size: 11px; padding: 1px 8px; }
+  .wave-scroll { flex: 1; min-height: 0; overflow: auto; }
+  .wave-row { display: flex; align-items: stretch; }
+  .wave-corner {
+    flex: none;
+    width: 130px;
+    height: 20px;
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--bg-panel);
+  }
+  .wave-label {
+    flex: none;
+    width: 130px;
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--bg-panel);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 8px;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .wave-label .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .wave-label .lname {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .wave-label .lcount { color: var(--text-faint); font-size: 11px; flex: none; }
+  .wave-ruler {
+    position: relative;
+    flex: none;
+    height: 20px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .wave-ruler .tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid var(--border);
+    padding-left: 4px;
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--text-muted);
+    font-family: Consolas, "Courier New", monospace;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .wave-lane {
+    position: relative;
+    flex: none;
+    margin-bottom: 4px;
+    background: #1d252d;
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    overflow: hidden;
+    background-image: repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(var(--tick-frac) * 100% - 1px),
+      rgba(255, 255, 255, 0.045) calc(var(--tick-frac) * 100% - 1px),
+      rgba(255, 255, 255, 0.045) calc(var(--tick-frac) * 100%)
+    );
+  }
+  .wave-lane::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    border-top: 1px dashed rgba(255, 255, 255, 0.07);
+    pointer-events: none;
+  }
+  .wave-cue {
+    position: absolute;
+    min-width: 3px;
+    z-index: 2;
+    border-radius: 4px;
+    outline: 1px solid color-mix(in srgb, var(--cue-color) 80%, white);
+    background: color-mix(in srgb, var(--cue-color) 42%, rgba(15, 22, 28, 0.82));
+    color: #eef6ff;
+    font-size: 10px;
+    padding: 0 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  }
+  .wave-cue:hover { filter: brightness(1.16); z-index: 3; }
   .cell.ref-col { background: var(--bg-raised); }
   .cell.row-diff.ref-col { box-shadow: inset 3px 0 0 var(--amber-soft); }
   mark {
@@ -367,9 +516,26 @@
   </div>
 </header>
 <main>
+  <h1 id="compareHeading" class="compare-heading" hidden></h1>
   <section id="cards" class="cards"></section>
   <section id="warnBox" class="warnbox" hidden></section>
   <section id="tableWrap" class="table-scroll" hidden></section>
+  <section id="wavePanel" class="wave-panel" hidden>
+    <div id="waveResizer" class="wave-resizer" title="拖动调整高度"></div>
+    <div class="wave-head">
+      时间分布<span class="hint">悬停查看文本 · Ctrl+滚轮水平缩放 · Alt+滚轮垂直缩放</span>
+      <div class="wave-tools">
+        <span>水平</span>
+        <button id="zxOut" class="btn" type="button" title="缩小（Ctrl+滚轮）">−</button>
+        <button id="zxIn" class="btn" type="button" title="放大（Ctrl+滚轮）">＋</button>
+        <span>垂直</span>
+        <button id="zyOut" class="btn" type="button" title="压低（Alt+滚轮）">−</button>
+        <button id="zyIn" class="btn" type="button" title="拉高（Alt+滚轮）">＋</button>
+        <button id="waveReset" class="btn" type="button" title="恢复适应宽度与默认行高">重置</button>
+      </div>
+    </div>
+    <div id="waveScroll" class="wave-scroll"><div id="waveBody" class="wave-body"></div></div>
+  </section>
   <section id="empty" class="empty">
     <div class="dropzone" id="dropzone">
       <div class="dz-icon">📄</div>
@@ -394,8 +560,45 @@ const state = { files: [], refId: null, diffOnly: false, search: '' };
 let uidCounter = 0;
 
 const els = {};
-for (const id of ['addBtn', 'addBtn2', 'fileInput', 'clearBtn', 'diffOnly', 'search', 'cards', 'warnBox', 'tableWrap', 'empty', 'status', 'dropOverlay', 'toast']) {
+for (const id of ['addBtn', 'addBtn2', 'fileInput', 'clearBtn', 'diffOnly', 'search', 'cards', 'warnBox', 'tableWrap', 'wavePanel', 'waveBody', 'waveScroll', 'waveResizer', 'zxIn', 'zxOut', 'zyIn', 'zyOut', 'waveReset', 'compareHeading', 'empty', 'status', 'dropOverlay', 'toast']) {
   els[id] = document.getElementById(id);
+}
+
+const WAVE_LAYOUT_KEY = 'moy.compare.waveLayout.v1';
+const WAVE_ZX_LIMITS = [1, 40];
+const WAVE_ZY_LIMITS = [0.5, 5];
+const WAVE_HEIGHT_LIMITS = [140, 2000];
+const WAVE_LABEL_PX = 130;
+
+function clampNumber(value, low, high, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(high, Math.max(low, numeric));
+}
+
+function loadWaveLayout() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(WAVE_LAYOUT_KEY));
+    if (!raw || typeof raw !== 'object') return { height: 0, zx: 1, zy: 1 };
+    return {
+      height: clampNumber(raw.height, ...WAVE_HEIGHT_LIMITS, 0),
+      zx: clampNumber(raw.zx, ...WAVE_ZX_LIMITS, 1),
+      zy: clampNumber(raw.zy, ...WAVE_ZY_LIMITS, 1),
+    };
+  } catch {
+    return { height: 0, zx: 1, zy: 1 };
+  }
+}
+
+const waveLayout = loadWaveLayout();
+if (waveLayout.height) els.wavePanel.style.height = `${waveLayout.height}px`;
+
+function saveWaveLayout() {
+  try {
+    localStorage.setItem(WAVE_LAYOUT_KEY, JSON.stringify(waveLayout));
+  } catch {
+    localStorage.removeItem(WAVE_LAYOUT_KEY);
+  }
 }
 
 function escapeHtml(value) {
@@ -416,6 +619,23 @@ function formatMs(ms) {
   const mm = String(m).padStart(2, '0');
   const ss = String(s).padStart(2, '0');
   return h > 0 ? `${h}:${mm}:${ss}.${tenth}` : `${m}:${ss}.${tenth}`;
+}
+
+function formatTick(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+const RULER_STEPS_MS = [500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 120000, 300000, 600000, 1800000, 3600000];
+
+function rulerStepMs(spanMs, widthPx) {
+  const target = Math.max(3, Math.floor(widthPx / 96));
+  const raw = spanMs / target;
+  return RULER_STEPS_MS.find((step) => step >= raw) || RULER_STEPS_MS[RULER_STEPS_MS.length - 1];
 }
 
 function toast(message, kind = 'info') {
@@ -610,6 +830,54 @@ function getRef() {
   return state.files.find((entry) => entry.id === state.refId) || null;
 }
 
+const LEADING_SEPARATOR_RE = /^[\s\-_.·・－—~～+（）()\[\]「」]+/u;
+const TRAILING_SEPARATOR_RE = /[\s\-_.·・－—~～+（）()\[\]「」]+$/u;
+
+function computeNameView() {
+  const names = state.files.map((entry) => entry.displayName);
+  let prefix = '';
+  if (names.length >= 2) {
+    prefix = names[0];
+    for (const name of names.slice(1)) {
+      let i = 0;
+      const max = Math.min(prefix.length, name.length);
+      while (i < max && prefix[i] === name[i]) i += 1;
+      prefix = prefix.slice(0, i);
+      if (!prefix) break;
+    }
+  }
+  let shorts = names;
+  let videoName = '';
+  if (prefix) {
+    const stripped = names.map((name) => name.slice(prefix.length).replace(LEADING_SEPARATOR_RE, ''));
+    if (stripped.every((short) => short.length > 0)) {
+      shorts = stripped;
+      videoName = prefix.replace(TRAILING_SEPARATOR_RE, '');
+    }
+  }
+  return { shorts, videoName };
+}
+
+let currentNameView = { shorts: [], videoName: '' };
+
+function renderHeading() {
+  if (!state.files.length) {
+    els.compareHeading.hidden = true;
+    els.compareHeading.textContent = '';
+    document.title = 'MAW 转写对比';
+    return;
+  }
+  const count = state.files.length;
+  els.compareHeading.hidden = false;
+  if (currentNameView.videoName) {
+    els.compareHeading.textContent = `「${currentNameView.videoName}」的字幕对比（${count} 个模型）`;
+    document.title = `${currentNameView.videoName} 的字幕对比`;
+  } else {
+    els.compareHeading.textContent = `字幕对比（${count} 个文件）`;
+    document.title = 'MAW 转写对比';
+  }
+}
+
 function normTokens(raw) {
   const chars = Array.from(String(raw ?? ''));
   const tokens = [];
@@ -759,7 +1027,7 @@ function formatSim(sim) {
 
 function renderCards(overallByFile) {
   els.cards.textContent = '';
-  state.files.forEach((entry) => {
+  state.files.forEach((entry, index) => {
     const card = document.createElement('div');
     card.className = 'card';
     card.style.setProperty('--c', entry.color);
@@ -770,7 +1038,7 @@ function renderCards(overallByFile) {
     const name = document.createElement('span');
     name.className = 'name';
     name.title = entry.name;
-    name.textContent = entry.displayName;
+    name.textContent = currentNameView.shorts[index] || entry.displayName;
     head.appendChild(dot);
     head.appendChild(name);
     if (entry.warnings.length) {
@@ -882,7 +1150,7 @@ function renderTable(rows, overallByFile, sumsByFile) {
     const name = document.createElement('span');
     name.className = 'name';
     name.title = entry.name;
-    name.textContent = entry.displayName;
+    name.textContent = currentNameView.shorts[index] || entry.displayName;
     hname.appendChild(dot);
     hname.appendChild(name);
     if (entry.id === state.refId) {
@@ -969,6 +1237,173 @@ function renderTable(rows, overallByFile, sumsByFile) {
   return shownRows;
 }
 
+let waveRenderInfo = null;
+
+function renderWavePanel() {
+  const body = els.waveBody;
+  const scroll = els.waveScroll;
+  const spanMs = state.files.length
+    ? Math.max(...state.files.map((entry) => entry.stats.spanEnd))
+    : 0;
+  if (!spanMs) {
+    els.wavePanel.hidden = true;
+    body.textContent = '';
+    waveRenderInfo = null;
+    return;
+  }
+  const prevScrollLeft = scroll.scrollLeft;
+  const prevScrollTop = scroll.scrollTop;
+  els.wavePanel.hidden = false;
+  body.textContent = '';
+  const baseWidth = Math.max(320, scroll.clientWidth - WAVE_LABEL_PX);
+  const laneWidth = Math.round(baseWidth * waveLayout.zx);
+  const step = rulerStepMs(spanMs, laneWidth);
+  const tickFrac = (step / spanMs).toFixed(6);
+  const laneHeight = Math.round(40 * waveLayout.zy);
+  const blockHeight = Math.round(24 * waveLayout.zy);
+  const blockBottom = Math.round(5 * waveLayout.zy);
+
+  const headRow = document.createElement('div');
+  headRow.className = 'wave-row';
+  const corner = document.createElement('div');
+  corner.className = 'wave-corner';
+  headRow.appendChild(corner);
+  const ruler = document.createElement('div');
+  ruler.className = 'wave-ruler';
+  ruler.style.width = `${laneWidth}px`;
+  for (let t = 0; t <= spanMs; t += step) {
+    const tick = document.createElement('span');
+    tick.className = 'tick';
+    tick.style.left = `${(t / spanMs) * 100}%`;
+    tick.textContent = formatTick(t);
+    ruler.appendChild(tick);
+  }
+  headRow.appendChild(ruler);
+  body.appendChild(headRow);
+
+  state.files.forEach((entry, index) => {
+    const row = document.createElement('div');
+    row.className = 'wave-row';
+    const label = document.createElement('div');
+    label.className = 'wave-label';
+    label.style.height = `${laneHeight}px`;
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = entry.color;
+    const name = document.createElement('span');
+    name.className = 'lname';
+    name.title = entry.name;
+    name.textContent = currentNameView.shorts[index] || entry.displayName;
+    const count = document.createElement('span');
+    count.className = 'lcount';
+    count.textContent = `${entry.stats.count}`;
+    label.appendChild(dot);
+    label.appendChild(name);
+    label.appendChild(count);
+    row.appendChild(label);
+    const lane = document.createElement('div');
+    lane.className = 'wave-lane';
+    lane.style.width = `${laneWidth}px`;
+    lane.style.height = `${laneHeight}px`;
+    lane.style.setProperty('--tick-frac', tickFrac);
+    for (const segment of entry.segments) {
+      const block = document.createElement('div');
+      block.className = 'wave-cue';
+      block.style.setProperty('--cue-color', entry.color);
+      block.style.left = `${(segment.start / spanMs) * 100}%`;
+      block.style.width = `${Math.max(0.25, ((segment.end - segment.start) / spanMs) * 100)}%`;
+      block.style.bottom = `${blockBottom}px`;
+      block.style.height = `${blockHeight}px`;
+      block.style.lineHeight = `${blockHeight}px`;
+      const text = String(segment.text || '').replace(/\s+/g, ' ');
+      block.textContent = text;
+      block.title = `${formatMs(segment.start)} – ${formatMs(segment.end)}\n${text}`;
+      lane.appendChild(block);
+    }
+    row.appendChild(lane);
+    body.appendChild(row);
+  });
+
+  waveRenderInfo = { spanMs, baseWidth, laneWidth, labelWidth: WAVE_LABEL_PX };
+  scroll.scrollLeft = Math.min(prevScrollLeft, Math.max(0, scroll.scrollWidth - scroll.clientWidth));
+  scroll.scrollTop = Math.min(prevScrollTop, Math.max(0, scroll.scrollHeight - scroll.clientHeight));
+}
+
+function setWaveZoom(zx, zy, anchorClientX = null) {
+  const nextZx = clampNumber(zx ?? waveLayout.zx, ...WAVE_ZX_LIMITS, waveLayout.zx);
+  const nextZy = clampNumber(zy ?? waveLayout.zy, ...WAVE_ZY_LIMITS, waveLayout.zy);
+  if (nextZx === waveLayout.zx && nextZy === waveLayout.zy) return;
+  const scroll = els.waveScroll;
+  const info = waveRenderInfo;
+  let anchorTimeMs = null;
+  let localX = null;
+  if (info && anchorClientX != null) {
+    localX = anchorClientX - scroll.getBoundingClientRect().left;
+    if (localX > info.labelWidth) {
+      anchorTimeMs = ((scroll.scrollLeft + localX - info.labelWidth) / info.laneWidth) * info.spanMs;
+    }
+  }
+  const prevZy = waveLayout.zy;
+  waveLayout.zx = nextZx;
+  waveLayout.zy = nextZy;
+  saveWaveLayout();
+  renderWavePanel();
+  if (anchorTimeMs != null && waveRenderInfo) {
+    scroll.scrollLeft = Math.max(0,
+      (anchorTimeMs / waveRenderInfo.spanMs) * waveRenderInfo.laneWidth - (localX - waveRenderInfo.labelWidth));
+  }
+  if (nextZy !== prevZy && info) {
+    scroll.scrollTop *= nextZy / prevZy;
+  }
+}
+
+els.zxIn.addEventListener('click', () => setWaveZoom(waveLayout.zx * 1.25, null));
+els.zxOut.addEventListener('click', () => setWaveZoom(waveLayout.zx / 1.25, null));
+els.zyIn.addEventListener('click', () => setWaveZoom(null, waveLayout.zy * 1.25));
+els.zyOut.addEventListener('click', () => setWaveZoom(null, waveLayout.zy / 1.25));
+els.waveReset.addEventListener('click', () => setWaveZoom(1, 1));
+
+els.waveScroll.addEventListener('wheel', (event) => {
+  if (!state.files.length) return;
+  if (!(event.ctrlKey || event.metaKey || event.altKey)) return;
+  event.preventDefault();
+  const factor = event.deltaY < 0 ? 1.25 : 0.8;
+  if (event.altKey) setWaveZoom(null, waveLayout.zy * factor);
+  else setWaveZoom(waveLayout.zx * factor, null, event.clientX);
+}, { passive: false });
+
+els.waveResizer.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  const startY = event.clientY;
+  const startHeight = els.wavePanel.getBoundingClientRect().height;
+  try {
+    els.waveResizer.setPointerCapture(event.pointerId);
+  } catch {
+    // 指针捕获不可用时（如自动化注入的合成事件）继续走普通事件流
+  }
+  document.body.classList.add('wave-resizing');
+  const onMove = (moveEvent) => {
+    const height = Math.round(clampNumber(
+      startHeight + (startY - moveEvent.clientY),
+      ...WAVE_HEIGHT_LIMITS,
+      startHeight,
+    ));
+    els.wavePanel.style.height = `${Math.min(height, Math.round(window.innerHeight * 0.7))}px`;
+    waveLayout.height = parseInt(els.wavePanel.style.height, 10);
+  };
+  const onUp = () => {
+    els.waveResizer.removeEventListener('pointermove', onMove);
+    els.waveResizer.removeEventListener('pointerup', onUp);
+    els.waveResizer.removeEventListener('pointercancel', onUp);
+    document.body.classList.remove('wave-resizing');
+    saveWaveLayout();
+  };
+  els.waveResizer.addEventListener('pointermove', onMove);
+  els.waveResizer.addEventListener('pointerup', onUp);
+  els.waveResizer.addEventListener('pointercancel', onUp);
+});
+
 function computeSims(rows) {
   const refIndex = state.files.findIndex((entry) => entry.id === state.refId);
   if (refIndex < 0) return { overallByFile: new Map(), sumsByFile: new Map() };
@@ -999,17 +1434,22 @@ function computeSims(rows) {
 
 function render() {
   const hasFiles = state.files.length > 0;
+  currentNameView = computeNameView();
   els.empty.hidden = hasFiles;
   els.addBtn2.hidden = hasFiles;
   els.clearBtn.disabled = !hasFiles;
   els.search.disabled = !hasFiles;
   els.diffOnly.disabled = !state.refId;
+  renderHeading();
 
   if (!hasFiles) {
     els.cards.textContent = '';
     els.warnBox.hidden = true;
     els.tableWrap.hidden = true;
     els.tableWrap.textContent = '';
+    els.wavePanel.hidden = true;
+    els.waveBody.textContent = '';
+    waveRenderInfo = null;
     els.status.textContent = '';
     return;
   }
@@ -1019,6 +1459,7 @@ function render() {
   renderCards(overallByFile);
   renderWarnBox();
   const shownRows = renderTable(rows, overallByFile, sumsByFile);
+  renderWavePanel();
 
   els.status.textContent = '';
   const total = document.createElement('span');
@@ -1078,6 +1519,14 @@ window.addEventListener('drop', (event) => {
   clearTimeout(dragHideTimer);
   els.dropOverlay.hidden = true;
   if (event.dataTransfer?.files?.length) addFiles(event.dataTransfer.files);
+});
+
+let resizeTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (state.files.length) renderWavePanel();
+  }, 200);
 });
 
 window.MAWCompare = {
