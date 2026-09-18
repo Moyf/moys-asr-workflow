@@ -3342,8 +3342,8 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(
-            result["rawPath"],
-            str(self.root / "clip_maw" / "调试" / "clip.local-debug.json"),
+            _canonical_test_path(result["rawPath"]),
+            _canonical_test_path(self.root / "clip_maw" / "调试" / "clip.local-debug.json"),
         )
 
     def test_local_request_rejects_missing_model_before_subprocess(self) -> None:
