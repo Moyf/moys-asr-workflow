@@ -452,18 +452,18 @@ test('ASS mode previews overlay cues in the main style with fad and exports tags
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
 
   const result = await page.evaluate(() => {
-    DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
     const library = window.AsrEditorUtils.defaultAssStyleLibrary();
     const profile = library.assProfiles[0];
     profile.animations.fad = { enabled: true, inMs: 1000, outMs: 1000 };
     profile.animations.move = { enabled: true, x1: 0, y1: 960, x2: 0, y2: 500, t1: 0, t2: 1000 };
     ASS_STYLE_LIBRARY = library;
-    EDITOR_SETTINGS.assMode = true;
-    overlayToggle.checked = true;
-    refreshSubtitlePreview(600, 0);
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(600, 0);
     const overlayTrackText = document.getElementById('overlay-track-text');
     const mainText = document.getElementById('overlay-main-text');
-    const stageHeight = playerStage.getBoundingClientRect().height;
+    const stageHeight = MaweDom.playerStage.getBoundingClientRect().height;
     return {
       stageHeight,
       mainFontSize: getComputedStyle(mainText).fontSize,
@@ -471,7 +471,7 @@ test('ASS mode previews overlay cues in the main style with fad and exports tags
       overlayBottom: overlayTrackText.style.bottom,
       overlayOpacity: Number(getComputedStyle(overlayTrackText).opacity),
       overlayFontFamily: overlayTrackText.style.fontFamily,
-      ass: buildAss(),
+      ass: MaweExportSrt.buildAss(),
     };
   });
   // 叠加轨与主字幕使用完全相同的 ASS 样式（字号/字体一致），锚定在主

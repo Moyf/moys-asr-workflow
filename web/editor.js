@@ -523,6 +523,7 @@ const ASS_BUILTIN_FONT_SUGGESTIONS = Object.freeze([
 
 
 
+
 const ASS_STYLE_LIBRARY_STORAGE_KEY = 'moy.asr.ass.styles.v1';
 let ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
 let ASS_STYLE_LIBRARY_READY = false;
@@ -2799,7 +2800,7 @@ MaweDom.subtitleFontSizeSelect?.addEventListener('change', () => {
 });
 subtitleFontFamilyInput?.addEventListener('change', () => {
   MaweHistory.pushPreviewUndo('调整字幕字体', MaweHistory.snapshotPreviewState());
-  MaweAppearance.setSubtitleAppearance({ font_family: AsrEditorUtils.subtitleFontFamilyInputToStored(subtitleFontFamilyInput.value) });
+  MaweAppearance.setSubtitleAppearance({ font_family: MaweAppearance.subtitleFontFamilyInputToStored(subtitleFontFamilyInput.value) });
   MaweAppearance.syncSubtitleAppearanceControls();
 });
 assColorStyleSelect?.addEventListener('change', () => {
@@ -5142,6 +5143,10 @@ MaweAppearance.relabelSubtitleFontFamilyOptions();
 
 
 
+
+
+
+
 // 字体 combobox：文本输入 + 可筛选下拉列表，交互对齐 Launcher「模型」输入框。
 // getEntries() 返回 [{ value, label }]；选项点击或 Enter 写入 label 并派发 change，
 // 由既有映射（subtitleFontFamilyInputToStored / assStyleForm change 委托）落库。
@@ -5321,22 +5326,22 @@ function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
   };
 }
 function subtitleFontFamilyComboboxEntries() {
-const entries = window.AsrEditorUtils.SUBTITLE_FONT_FAMILY_PRESETS.map((preset) => {
-const label = MaweAppearance.subtitleFontFamilyPresetLabel(preset);
-return { value: label, label };
-});
-MaweAppearance.subtitleLocalFontFamilies.forEach((family) => {
-const label = MaweAppearance.subtitleFontFamilyDisplayName(family);
-entries.push({ value: label, label });
-});
-return entries;
+  const entries = window.AsrEditorUtils.SUBTITLE_FONT_FAMILY_PRESETS.map((preset) => {
+    const label = MaweAppearance.subtitleFontFamilyPresetLabel(preset);
+    return { value: label, label };
+  });
+  MaweAppearance.subtitleLocalFontFamilies.forEach((family) => {
+    const label = MaweAppearance.subtitleFontFamilyDisplayName(family);
+    entries.push({ value: label, label });
+  });
+  return entries;
 }
 function assFontNameComboboxEntries() {
-const entries = ASS_BUILTIN_FONT_SUGGESTIONS.map((name) => ({ value: name, label: name }));
-MaweAppearance.subtitleLocalFontFamilies.forEach((family) => {
-entries.push({ value: family, label: family });
-});
-return entries;
+  const entries = ASS_BUILTIN_FONT_SUGGESTIONS.map((name) => ({ value: name, label: name }));
+  MaweAppearance.subtitleLocalFontFamilies.forEach((family) => {
+    entries.push({ value: family, label: family });
+  });
+  return entries;
 }
 function getSubtitleFontFamilyCombobox() {
   if (!subtitleFontFamilyCombobox) {
