@@ -127,6 +127,29 @@
     return window.AsrEditorUtils?.subtitleFontFamilyDisplayName(family, language) ?? family;
   }
 
+  // 本机扫描到的字体族（延迟填充；由 initializeSubtitleFontFamilyScanner 写入）。
+  let subtitleLocalFontFamilies = [];
+
+  function subtitleFontFamilyPresetLabel(preset) {
+    return window.MAWE_I18N?.translateText?.(preset.label) || preset.label;
+  }
+  function subtitleFontFamilyMappingOptions() {
+    return {
+      presetLabel: subtitleFontFamilyPresetLabel,
+      familyDisplay: subtitleFontFamilyDisplayName,
+    };
+  }
+  function subtitleFontFamilyStoredToInput(family) {
+    return window.AsrEditorUtils.subtitleFontFamilyStoredToInput(family, subtitleFontFamilyMappingOptions());
+  }
+  function subtitleFontFamilyInputToStored(text) {
+    // 本地化显示名（如「微软雅黑」）要还原成真实字体族名，浏览器才能解析。
+    return window.AsrEditorUtils.subtitleFontFamilyInputToStored(text, {
+      ...subtitleFontFamilyMappingOptions(),
+      localFamilies: subtitleLocalFontFamilies,
+    });
+  }
+
 
   function relabelSubtitleFontFamilyOptions() {
   [MaweDom.extensionSubtitleFontFamilySelect].filter(Boolean).forEach((select) => {
@@ -233,7 +256,7 @@
     assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
   }
   if (subtitleFontFamilyInput && document.activeElement !== subtitleFontFamilyInput) {
-    subtitleFontFamilyInput.value = AsrEditorUtils.subtitleFontFamilyStoredToInput(appearance.font_family || 'default');
+    subtitleFontFamilyInput.value = subtitleFontFamilyStoredToInput(appearance.font_family || 'default');
   }
   if (MaweDom.subtitleBackgroundColorInput) {
     MaweDom.subtitleBackgroundColorInput.value = appearance.background_color
@@ -562,6 +585,12 @@
     restoreGrantedSubtitleLocalFonts,
     scanSubtitleLocalFonts,
     setExtensionSubtitleAppearance,
-    restoreExtensionSubtitleAppearance
-  });
+    restoreExtensionSubtitleAppearance,
+    get subtitleLocalFontFamilies() { return subtitleLocalFontFamilies; },
+    set subtitleLocalFontFamilies(v) { subtitleLocalFontFamilies = v; },
+    subtitleFontFamilyMappingOptions,
+    subtitleFontFamilyStoredToInput,
+    subtitleFontFamilyInputToStored,
+    subtitleFontFamilyPresetLabel
+});
 })(typeof window !== 'undefined' ? window : globalThis);

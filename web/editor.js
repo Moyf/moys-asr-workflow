@@ -497,7 +497,6 @@ const DEFAULT_ASS_COLOR_STYLE = 'text';
 const ASS_BUILTIN_FONT_SUGGESTIONS = Object.freeze([
   'Arial', 'Microsoft YaHei', 'SimHei', 'SimSun', 'Segoe UI', 'Verdana', 'Times New Roman',
 ]);
-let subtitleLocalFontFamilies = [];
 
 
 
@@ -5143,17 +5142,6 @@ MaweAppearance.relabelSubtitleFontFamilyOptions();
 
 
 
-function subtitleFontFamilyPresetLabel(preset) {
-  return window.MAWE_I18N?.translateText?.(preset.label) || preset.label;
-}
-function subtitleFontFamilyMappingOptions() {
-  return {
-    presetLabel: subtitleFontFamilyPresetLabel,
-    familyDisplay: MaweAppearance.subtitleFontFamilyDisplayName,
-  };
-}
-
-
 // 字体 combobox：文本输入 + 可筛选下拉列表，交互对齐 Launcher「模型」输入框。
 // getEntries() 返回 [{ value, label }]；选项点击或 Enter 写入 label 并派发 change，
 // 由既有映射（subtitleFontFamilyInputToStored / assStyleForm change 委托）落库。
@@ -5333,22 +5321,22 @@ function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
   };
 }
 function subtitleFontFamilyComboboxEntries() {
-  const entries = window.AsrEditorUtils.SUBTITLE_FONT_FAMILY_PRESETS.map((preset) => {
-    const label = subtitleFontFamilyPresetLabel(preset);
-    return { value: label, label };
-  });
-  subtitleLocalFontFamilies.forEach((family) => {
-    const label = MaweAppearance.subtitleFontFamilyDisplayName(family);
-    entries.push({ value: label, label });
-  });
-  return entries;
+const entries = window.AsrEditorUtils.SUBTITLE_FONT_FAMILY_PRESETS.map((preset) => {
+const label = MaweAppearance.subtitleFontFamilyPresetLabel(preset);
+return { value: label, label };
+});
+MaweAppearance.subtitleLocalFontFamilies.forEach((family) => {
+const label = MaweAppearance.subtitleFontFamilyDisplayName(family);
+entries.push({ value: label, label });
+});
+return entries;
 }
 function assFontNameComboboxEntries() {
-  const entries = ASS_BUILTIN_FONT_SUGGESTIONS.map((name) => ({ value: name, label: name }));
-  subtitleLocalFontFamilies.forEach((family) => {
-    entries.push({ value: family, label: family });
-  });
-  return entries;
+const entries = ASS_BUILTIN_FONT_SUGGESTIONS.map((name) => ({ value: name, label: name }));
+MaweAppearance.subtitleLocalFontFamilies.forEach((family) => {
+entries.push({ value: family, label: family });
+});
+return entries;
 }
 function getSubtitleFontFamilyCombobox() {
   if (!subtitleFontFamilyCombobox) {
