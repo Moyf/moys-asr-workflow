@@ -10,7 +10,8 @@ const SERVER_CONFIG = __SERVER_CONFIG_JSON__;
 const NINJA_SFX_BASE_URL = __NINJA_SFX_BASE_URL_JSON__;
 
 // 所有非模态浮层共用一个前置栈：最后点击、打开或获得焦点的浮层排在最上面。
-// 起始值高于普通设置弹窗（420），但低于拖拽遮罩和加载层（500/510）。
+// 起始值高于普通设置弹窗（420），但低于右键菜单（480）、hint（490）、
+// 拖拽遮罩和加载层（500/510）。
 const FLOATING_SURFACE_Z_INDEX_BASE = 430;
 const floatingSurfaceStack = [];
 const floatingSurfaceRoots = new WeakSet();
@@ -2146,6 +2147,7 @@ const subtitleColorAssModeHint = document.getElementById('subtitle-color-ass-mod
 const subtitleColorAssModeHintLink = document.getElementById('ass-mode-hint-link');
 const subtitleColorStyleControl = document.getElementById('subtitle-color-style-control');
 const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
+const assColorStyleRow = document.getElementById('ass-color-style-row');
 const assColorStyleSelect = document.getElementById('ass-color-style');
 const subtitleColorPaletteEnabledInput = document.getElementById('subtitle-color-palette-enabled');
 const subtitleColorPaletteGrid = document.getElementById('subtitle-color-palette-grid');
@@ -2259,6 +2261,7 @@ const cueEditorConfirmKey = document.getElementById('cue-editor-confirm-key');
 const helpTabButtons = Array.from(document.querySelectorAll('[data-help-tab]'));
 const helpTabPanels = Array.from(document.querySelectorAll('[data-help-tab-panel]'));
 const helpOpenWaveformSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-waveform-settings]'));
+const helpOpenEditorSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-editor-settings]'));
 const helpOpenMediaSettingsButtons = Array.from(document.querySelectorAll('[data-help-open-media-settings]'));
 const helpOpenGapRemovePanelButton = document.getElementById('help-open-gap-remove-panel');
 const contextualHelpButtons = Array.from(document.querySelectorAll('[data-help-tab-target]'));
@@ -2477,7 +2480,7 @@ const assStyleDragHandle = document.getElementById('ass-style-drag-handle');
 const assStyleWindowClose = document.getElementById('ass-style-window-close');
 const assStyleWindowCloseFooter = document.getElementById('ass-style-window-close-footer');
 const assStyleLibraryStatus = document.getElementById('ass-style-library-status');
-const assStyleUsePreviewFontButton = document.getElementById('ass-style-use-preview-font');
+const assStyleLocalFontScanButton = document.getElementById('ass-style-local-font-scan');
 const assStyleFontToggle = document.getElementById('ass-style-font-toggle');
 const assStyleFontOptions = document.getElementById('ass-font-name-options');
 const assStyleCount = document.getElementById('ass-style-count');
@@ -2489,20 +2492,20 @@ const assStyleDuplicateButton = document.getElementById('ass-style-duplicate');
 const assProfileNewButton = document.getElementById('ass-profile-new');
 const assSrtDefaultStyleSelect = document.getElementById('ass-srt-default-style');
 const assDefaultProfileSelect = document.getElementById('ass-ass-default-profile');
-const assExtensionStyleSelect = document.getElementById('ass-extension-default-style');
-const assExtensionStyleRow = document.getElementById('ass-extension-style-row');
-const assExtensionStyleHint = document.getElementById('ass-extension-style-hint');
 const subtitleStyleAssModeHint = document.getElementById('subtitle-style-ass-mode-hint');
-const subtitleStyleAssModeLink = document.getElementById('subtitle-style-ass-mode-link');
 const mainSubtitleCssFields = document.getElementById('main-subtitle-css-fields');
 const mainAssStyleFields = document.getElementById('main-ass-style-fields');
 const mainAssStyleSelect = document.getElementById('main-ass-style-select');
+const mainAssStyleEditButton = document.getElementById('main-ass-style-edit');
 const extensionSubtitleCssFields = document.getElementById('extension-subtitle-css-fields');
 const extensionAssStyleFields = document.getElementById('extension-ass-style-fields');
 const extensionAssStyleSelect = document.getElementById('extension-ass-style-select');
+const extensionAssStyleEditButton = document.getElementById('extension-ass-style-edit');
 const assStyleForm = document.getElementById('ass-style-form');
 const assProfileForm = document.getElementById('ass-profile-form');
 const assProfileStyleSelect = document.getElementById('ass-profile-style-id');
+const assProfileExtensionStyleField = document.getElementById('ass-profile-extension-style-field');
+const assProfileExtensionStyleSelect = document.getElementById('ass-profile-extension-style');
 const assStyleEditorEmpty = document.getElementById('ass-style-editor-empty');
 const assStyleFormTitle = document.getElementById('ass-style-form-title');
 const assProfileFormTitle = document.getElementById('ass-profile-form-title');
@@ -3028,16 +3031,14 @@ function syncAssStyleManager({ force = false } = {}) {
     profiles.forEach((profile) => appendAssStyleOption(assDefaultProfileSelect, profile.id, profile.name));
     assDefaultProfileSelect.value = active;
   }
-  if (assExtensionStyleSelect) {
-    const activeExtension = ASS_STYLE_LIBRARY.assignments?.assExtensionStyleId || 'ass-extension';
-    assExtensionStyleSelect.replaceChildren();
-    styles.forEach((style) => appendAssStyleOption(assExtensionStyleSelect, style.id, style.name));
-    assExtensionStyleSelect.value = activeExtension;
-  }
-  // 副字幕槽位只在多重字幕模式下有意义，随轨道开合显隐。
+  // 副字幕样式入口随多重字幕开合显隐：现在挂在方案表单里，与主字幕样式并排。
   const extensionSlotVisible = multiSubtitleVisible();
-  if (assExtensionStyleRow) assExtensionStyleRow.hidden = !extensionSlotVisible;
-  if (assExtensionStyleHint) assExtensionStyleHint.hidden = !extensionSlotVisible;
+  if (assProfileExtensionStyleField) assProfileExtensionStyleField.hidden = !extensionSlotVisible;
+  if (assProfileExtensionStyleSelect) {
+    assProfileExtensionStyleSelect.replaceChildren();
+    styles.forEach((style) => appendAssStyleOption(assProfileExtensionStyleSelect, style.id, style.name));
+    assProfileExtensionStyleSelect.value = ASS_STYLE_LIBRARY.assignments?.assExtensionStyleId || 'ass-extension';
+  }
   if (assProfileStyleSelect) {
     const selectedProfile = selectedAssProfile();
     assProfileStyleSelect.replaceChildren();
@@ -3195,7 +3196,7 @@ assStyleSaveButton?.addEventListener('click', () => {
 });
 assSrtDefaultStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('srtBurnStyleId', assSrtDefaultStyleSelect.value));
 assDefaultProfileSelect?.addEventListener('change', () => updateAssStyleAssignment('assExportProfileId', assDefaultProfileSelect.value));
-assExtensionStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('assExtensionStyleId', assExtensionStyleSelect.value));
+assProfileExtensionStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('assExtensionStyleId', assProfileExtensionStyleSelect.value));
 // 设置页「字幕样式」的 ASS 选择器：主字幕改的是当前 ASS 输出方案关联的
 // 样式（与样式库窗口中方案表单的样式下拉同步）；副字幕改库中的副字幕槽位。
 mainAssStyleSelect?.addEventListener('change', () => {
@@ -3208,27 +3209,33 @@ mainAssStyleSelect?.addEventListener('change', () => {
 extensionAssStyleSelect?.addEventListener('change', () => {
   updateAssStyleAssignment('assExtensionStyleId', extensionAssStyleSelect.value);
 });
-// 设置页 hint 中的「ASS 字幕模式」是链接：模式开关就在本页上方，聚焦提示。
-subtitleStyleAssModeLink?.addEventListener('click', () => {
-  assModeToggle?.scrollIntoView?.({ block: 'center' });
-  assModeToggle?.focus?.();
-});
-// 「使用预览字体」：把「设置 → 字幕样式」当前预览字体映射成具体字体族，
-// 应用到正在编辑的 ASS 样式；内置键映射为 ASS 最常用的对应字体名。
-const PREVIEW_FONT_KEY_TO_ASS_NAME = Object.freeze({
-  default: 'Microsoft YaHei',
-  yahei: 'Microsoft YaHei',
-  hei: 'SimHei',
-  song: 'SimSun',
-  sans: 'Arial',
-});
-assStyleUsePreviewFontButton?.addEventListener('click', () => {
-  const family = getSubtitleAppearance().font_family || 'default';
-  const fontName = PREVIEW_FONT_KEY_TO_ASS_NAME[family] || family;
-  const input = document.getElementById('ass-style-font-name');
-  if (input) input.value = fontName;
-  updateAssStyleField('fontName', fontName);
-  flashHint(`已将 ASS 字体设为「${fontName}」`, 'success');
+// 「使用 ASS 样式」旁的「编辑样式」：打开样式库窗口并定位到下拉当前选中的样式。
+function openAssStyleManagerForStyle(select) {
+  if (!select?.value) return;
+  assStyleManagerSetSelection('style', select.value);
+  assStyleFloatingPanel.open();
+}
+mainAssStyleEditButton?.addEventListener('click', () => openAssStyleManagerForStyle(mainAssStyleSelect));
+extensionAssStyleEditButton?.addEventListener('click', () => openAssStyleManagerForStyle(extensionAssStyleSelect));
+// 「读取本机字体」：与设置页共用同一个本机字体扫描；扫描结果进入共享的
+// subtitleLocalFontFamilies，ASS 字体下拉在下次展开时即包含这些字体。
+assStyleLocalFontScanButton?.addEventListener('click', async () => {
+  if (assStyleLocalFontScanButton.disabled) return;
+  assStyleLocalFontScanButton.disabled = true;
+  try {
+    await scanSubtitleLocalFonts();
+  } finally {
+    assStyleLocalFontScanButton.disabled = false;
+  }
+  rebuildAssFontNameOptions();
+  const hintByState = {
+    success: () => flashHint(`已读取 ${subtitleFontFamilyScanCount} 种本机字体`, 'success'),
+    empty: () => flashHint('未读取到可用的本机字体', 'warning'),
+    unsupported: () => flashHint('当前环境不支持自动读取本机字体', 'warning'),
+    denied: () => flashHint('未获准读取本机字体', 'warning'),
+    failed: () => flashHint('读取本机字体失败，请重试', 'warning'),
+  };
+  hintByState[subtitleFontFamilyScanState]?.();
 });
 // 样式/方案列表右键菜单：设为主/副字幕样式 / 创建副本 / 重命名 / 删除。
 function showAssListContextMenu(event, kind) {
@@ -3255,6 +3262,12 @@ function showAssListContextMenu(event, kind) {
     });
     ctxmenu.appendChild(element);
   };
+  // 「设为XX」归为第一组；分隔线隔开后的第二组是对条目本身的操作。
+  const addSeparator = () => {
+    const separator = document.createElement('div');
+    separator.className = 'sep';
+    ctxmenu.appendChild(separator);
+  };
   if (kind === 'style') {
     addItem('设为主字幕样式', () => {
       updateAssStyleManagerLibrary((library) => {
@@ -3266,7 +3279,11 @@ function showAssListContextMenu(event, kind) {
     if (multiSubtitleVisible()) {
       addItem('设为副字幕样式', () => updateAssStyleAssignment('assExtensionStyleId', item.id));
     }
+    addItem('设为 SRT 烧录样式', () => updateAssStyleAssignment('srtBurnStyleId', item.id));
+  } else {
+    addItem('设为 ASS 导出方案', () => updateAssStyleAssignment('assExportProfileId', item.id));
   }
+  addSeparator();
   addItem('创建副本', () => (kind === 'profile' ? duplicateAssProfile() : duplicateAssStyle()));
   addItem('重命名', () => {
     const input = document.getElementById(kind === 'profile' ? 'ass-profile-name' : 'ass-style-name');
@@ -3337,10 +3354,16 @@ function syncSubtitleStyleAssControls() {
 }
 
 function syncAssModeDependentControls() {
-  // ASS 字幕模式接管预览样式后，「预览字幕颜色」不再参与预览，禁用并提示跳转。
+  // ASS 字幕模式接管预览样式后，「预览字幕颜色」不再参与预览，禁用并提示跳转；
+  // 「颜色字幕样式」在「字幕颜色」页替代「预览颜色样式」，只在 ASS 模式下显示。
   const assMode = EDITOR_SETTINGS.assMode === true;
   if (subtitleColorUnderlineInput) subtitleColorUnderlineInput.disabled = assMode;
   if (subtitleColorAssModeHint) subtitleColorAssModeHint.hidden = !assMode;
+  if (assColorStyleRow) assColorStyleRow.hidden = !assMode;
+  if (subtitleColorStyleControl) {
+    subtitleColorStyleControl.hidden = assMode
+      || !(subtitleColorUnderlineInput?.checked ?? true);
+  }
   syncSubtitleStyleAssControls();
 }
 
@@ -4144,6 +4167,13 @@ helpOpenMediaSettingsButtons.forEach((button) => {
     openEditorSettingsAtTab('editor-settings-tab-subtitle-preview');
   });
 });
+// 帮助中的「⚙️全局设置」入口：定位到「通用操作」分区（波形操作/按键/空隙设置所在）。
+helpOpenEditorSettingsButtons.forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    openEditorSettingsAtTab('editor-settings-tab-general');
+  });
+});
 helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {
   event.preventDefault();
   openGapRemovePanel();
@@ -4205,6 +4235,7 @@ contextualHelpButtons.forEach((button) => {
   button.addEventListener('click', () => {
     if (button.closest('#gap-remove-panel')) closeGapRemovePanel();
     if (button.closest('#waveform-settings-panel')) setWaveformSettingsPanelOpen(false);
+    if (button.closest('#editor-settings-panel')) setEditorSettingsPanelOpen(false);
     openHelpAtTab(button.dataset.helpTabTarget);
   });
 });
@@ -13638,15 +13669,13 @@ function syncSubtitleFontSizeSelect(select, sizeValue) {
 }
 function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   syncSubtitleFontSizeSelect(subtitleFontSizeSelect, appearance.font_size);
-  syncAssModeDependentControls();
   if (subtitleColorUnderlineInput) {
     subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
+  // 「预览颜色样式」的显隐由 syncAssModeDependentControls 统一处理（含 ASS 开关切换）。
+  syncAssModeDependentControls();
   if (subtitleColorStyleSelect) {
     subtitleColorStyleSelect.value = appearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
-  }
-  if (subtitleColorStyleControl) {
-    subtitleColorStyleControl.hidden = appearance.color_underline === false;
   }
   if (assColorStyleSelect) {
     assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
@@ -18888,7 +18917,7 @@ async function showMultiSubtitleImportChoice(file, segments, options = {}) {
   if (multiSubtitleImportExtension) {
     multiSubtitleImportExtension.hidden = projectImport ? false : Boolean(existingTrack);
     multiSubtitleImportExtension.textContent = projectImport
-      ? '使用工程字幕作为副字幕' : '作为双语字幕';
+      ? '使用工程字幕作为副字幕' : '作为副字幕';
   }
   if (multiSubtitleImportChoiceActions) multiSubtitleImportChoiceActions.hidden = false;
   if (multiSubtitleImportResultActions) multiSubtitleImportResultActions.hidden = false;

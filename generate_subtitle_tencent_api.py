@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 from maw.stickers import get_default_sticker_dir
-from maw.output_naming import format_elapsed, format_maw_stat, maw_root
+from maw.output_naming import debug_artifact_path, format_elapsed, format_maw_stat
 from generate_subtitle_qwen_api import (
     build_segments_from_api_sentences,
     configure_console_output,
@@ -209,10 +209,11 @@ def main() -> int:
     output_path.write_text(generate_srt(segments), encoding="utf-8", newline="\n")
     print(f"字幕已保存到: {output_path}")
     if args.debug_raw:
-        raw_path = (
-            maw_root(input_path) / f"{output_path.stem}.asr-response.json"
-            if not args.output
-            else output_path.with_suffix(".asr-response.json")
+        raw_path = debug_artifact_path(
+            input_path,
+            output_path,
+            ".asr-response.json",
+            explicit_output=bool(args.output),
         )
         raw_path.parent.mkdir(parents=True, exist_ok=True)
         raw_path.write_text(json.dumps(raw_response, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
