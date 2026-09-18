@@ -621,6 +621,18 @@ label {
   font-weight: 600;
 }
 
+.local-model-list-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.local-model-list-title .local-model-list-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .local-model-list-note,
 .local-model-list-size,
 .local-model-list-status {

@@ -11,6 +11,7 @@ from threading import Event
 from typing import Any
 
 from maw.punctuation import CT_PUNC_MODEL_REF, PunctuationError
+from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError
 
 
 def prepare_model_in_runtime(
@@ -28,6 +29,10 @@ def prepare_model_in_runtime(
         cancel=cancel_event or Event(),
         on_line=on_event or (lambda _line: None),
         cwd=cwd,
+        error_class=LocalRuntimeError,
+        cancelled_class=LocalRuntimeCancelled,
+        cancelled_message="标点模型准备已取消。",
+        message_prefix="本地标点模型",
     )
 
 
@@ -84,6 +89,10 @@ def punctuate_text_in_runtime(
             cancel=cancel_event or Event(),
             on_line=on_line,
             cwd=cwd,
+            error_class=LocalRuntimeError,
+            cancelled_class=LocalRuntimeCancelled,
+            cancelled_message="标点推理已取消。",
+            message_prefix="本地标点模型",
         )
         if result is None:
             detail = "\n".join(lines[-8:])

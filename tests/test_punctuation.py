@@ -15,6 +15,7 @@ from maw.local_asr import FireRedAsrEngine, build_local_segments
 from maw.local_runtime_worker import main as worker_main
 from maw.local_models import _find_modelscope_model
 from maw.punctuation import PunctuationError, punctuate_text, punctuate_timed_tokens
+from maw.punctuation_runtime import punctuate_text_in_runtime
 
 
 class PunctuationMappingTests(unittest.TestCase):
@@ -193,6 +194,30 @@ class CtPuncWorkerTests(unittest.TestCase):
 
 
 class CtPuncModelDiscoveryTests(unittest.TestCase):
+    def test_runtime_runner_receives_process_error_mapping(self) -> None:
+        captured: dict[str, object] = {}
+
+        def run(_command: list[str], **kwargs: object) -> int:
+            captured.update(kwargs)
+            callback = kwargs.get("on_line")
+            assert callable(callback)
+            callback(json.dumps({"type": "result", "text": "你好。"}, ensure_ascii=False))
+            return 0
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = Path(temp_dir)
+            with mock.patch("maw.local_models._find_modelscope_model", return_value=model_path):
+                with mock.patch(
+                    "maw.punctuation_runtime._resolve_worker",
+                    return_value=("python", model_path / "worker.py", {}, str(model_path), run),
+                ):
+                    result = punctuate_text_in_runtime("你好", model_cache_root=model_path)
+
+        self.assertEqual(result, "你好。")
+        self.assertEqual(captured["error_class"].__name__, "LocalRuntimeError")
+        self.assertEqual(captured["cancelled_class"].__name__, "LocalRuntimeCancelled")
+        self.assertEqual(captured["message_prefix"], "本地标点模型")
+
     def test_modelscope_ct_punc_cache_is_detected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

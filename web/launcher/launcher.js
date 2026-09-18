@@ -507,6 +507,9 @@
     local_runtime_broken: "本地运行环境需要修复",
     local_runtime_hint: "将安装到用户目录；运行环境与模型缓存分开保存。首次安装需要下载约 2–3 GB。",
     local_runtime_ready_hint: "运行环境已就绪。现在可以下载所选模型。",
+    local_runtime_ready_prefix: "本地运行环境已就绪，可前往 ",
+    local_runtime_ready_link: "本地模型配置",
+    local_runtime_ready_suffix: " 查看和安装本地模型。",
     local_runtime_path: "运行环境：",
     local_model_cache_path: "模型缓存：",
     open_folder_hint: "点击打开所在文件夹",
@@ -633,6 +636,9 @@
     local_runtime_broken: "Local runtime needs repair",
     local_runtime_hint: "Installed in your user directory; runtime and model cache are kept separate. The first install downloads about 2–3 GB.",
     local_runtime_ready_hint: "The runtime is ready. You can now download the selected model.",
+    local_runtime_ready_prefix: "The local runtime is ready. Go to ",
+    local_runtime_ready_link: "Local model configuration",
+    local_runtime_ready_suffix: " to view and install local models.",
     local_runtime_path: "Runtime: ",
     local_model_cache_path: "Model cache: ",
     open_folder_hint: "Click to open this folder",
@@ -2341,7 +2347,15 @@
       sizeElement.className = "local-model-list-size";
       sizeElement.textContent = size;
       sizeElement.title = size;
-      meta.append(sizeElement);
+      const label = main.querySelector(".local-model-list-label");
+      if (label) {
+        const title = document.createElement("span");
+        title.className = "local-model-list-title";
+        label.replaceWith(title);
+        title.append(label, sizeElement);
+      } else {
+        meta.append(sizeElement);
+      }
     }
     const container = document.createElement("span");
     container.className = "local-model-list-badges";
@@ -2585,6 +2599,26 @@
     });
     container.append(link);
   }
+  function renderLocalRuntimeHint(runtime) {
+    const container = $("localRuntimeHint");
+    container.replaceChildren();
+    if (runtime.ready || runtime.status === "ready") {
+      container.append(document.createTextNode(t("local_runtime_ready_prefix")));
+      const link = document.createElement("button");
+      link.type = "button";
+      link.className = "inline-link";
+      link.textContent = t("local_runtime_ready_link");
+      link.addEventListener("click", () => {
+        openSettings("localAsrModelSettingsSection");
+        void refreshLocalModels();
+        void refreshAlignmentModels();
+      });
+      container.append(link, document.createTextNode(t("local_runtime_ready_suffix")));
+      return;
+    }
+    const detail = runtimeHintText(runtime, "local_runtime_ready_hint", "local_runtime_hint");
+    if (detail) appendMessageText(container, detail);
+  }
   function renderLocalRuntime() {
     if (!isLocalProvider()) return;
     const runtime = state.config.localRuntime || {};
@@ -2600,7 +2634,7 @@
     const checkStatus = $("localRuntimeCheckStatus");
     checkStatus.textContent = target.textContent;
     checkStatus.className = target.className;
-    $("localRuntimeHint").textContent = runtimeHintText(runtime, "local_runtime_ready_hint", "local_runtime_hint");
+    renderLocalRuntimeHint(runtime);
     $("localRuntimePath").value = runtime.path || $("localRuntimePath").value || "";
     $("localModelCachePath").value = state.config.modelCacheRoot || runtime.modelCachePath || $("localModelCachePath").value || "";
     const button = $("installLocalRuntime");
