@@ -1005,14 +1005,6 @@ def _is_sequence(value: object) -> bool:
     return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
 
 
-def _looks_like_pair(value: Sequence[object]) -> bool:
-    return len(value) >= 2 and all(
-        not isinstance(item, (Mapping, list, tuple))
-        and not any(hasattr(item, name) for name in ("start_time", "end_time", "start", "end"))
-        for item in value[:2]
-    )
-
-
 @contextlib.contextmanager
 def _model_cache_environment(model_cache_root: str | Path | None):
     if model_cache_root is None:
