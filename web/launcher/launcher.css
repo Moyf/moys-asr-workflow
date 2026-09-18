@@ -515,6 +515,10 @@ label {
   font-size: 13px;
 }
 
+.settings-punctuation-hint {
+  margin-bottom: 10px;
+}
+
 .hint-top-spaced {
   padding-top: 6px;
 }

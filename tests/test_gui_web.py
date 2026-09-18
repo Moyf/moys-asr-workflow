@@ -4525,8 +4525,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(expected, script)
 
     def test_launcher_punctuation_defaults_match_the_shared_settings_copy(self) -> None:
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
         launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
             '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
@@ -4537,13 +4539,19 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('else setResult(postprocessErrorText(result), "error");', script)
         self.assertIn('void refreshScriptPreview();', script)
         self.assertIn(
-            'toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号和换行默认生效，云端转写切句时也会作为强断句符号，同时对转写后处理的句尾剥除生效。"',
+            'settings_punctuation_hint: "决定哪些标点符号需要换行，以及换行后是否保留标点（文稿匹配与转写共用）"',
             launcher_script,
         )
         self.assertIn(
-            'toolbox_extra_split_punctuation_hint: "One symbol per line; comma, period, and newline apply by default, cloud transcription treats them as strong break symbols too, and they also drive tail-punctuation stripping in transcription post-processing."',
+            'settings_punctuation_hint: "Choose which punctuation marks start a new line and whether to keep them after splitting (shared by script matching and transcription)."',
             launcher_script,
         )
+        self.assertIn('class="hint settings-punctuation-hint" data-i18n="settings_punctuation_hint">决定哪些标点符号需要换行，以及换行后是否保留标点（文稿匹配与转写共用）</p>', page)
+        self.assertIn('data-i18n="toolbox_extra_split_punctuation">需要断句的符号</label>', page)
+        self.assertIn('data-i18n="toolbox_preserve_punctuation">断句后保留的符号</label>', page)
+        self.assertIn('toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号默认生效。"', launcher_script)
+        self.assertIn('toolbox_preserve_punctuation_hint: "断句后仍然需要保留的符号，默认留在前一句结尾。"', launcher_script)
+        self.assertIn('.settings-punctuation-hint {\n  margin-bottom: 10px;\n}', stylesheet)
 
     def test_launcher_match_markdown_cleanup_is_shared_by_previews_and_runs(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
