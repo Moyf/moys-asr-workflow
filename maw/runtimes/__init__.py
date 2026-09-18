@@ -25,7 +25,7 @@ _RUNTIMES: dict[str, ManagedRuntime] = {
 
 
 def get_runtime(key: str) -> ManagedRuntime:
-    """按 spec.key（"local"/"ocr"/"moss"）取托管 Runtime 实例。"""
+    """按 spec.key（如 ``local`` / ``moss``）取实例。"""
     try:
         return _RUNTIMES[key]
     except KeyError as error:
