@@ -160,6 +160,50 @@ main 并入 ASS 样式库（#135：自定义五色调色板、ASS 预览模式�
   pageerror（连续抓到并修复三处：settings 变量关键字、appearance 跨模块
   裸调用——探针是这类加载期错误的第一道防线）。
 
+## 第五次 main 同步（2026-09-18，origin/main @ af4fa7c1，18 提交）
+
+main 并入：ASS 样式编辑体验打磨（074d0b5b）、字体 combobox 改版（695b422f、
+39b2c105）、叠加字幕行点击设置遵循（2db86d3b）、OVL 徽标 i18n（6b32b076）、
+E2E 收口（2e375f9b、813246e4）、副字幕 ASS 样式锚定（95c6f1f0）、FireRed
+标点流程（dcb1f9f8）等。用户指令：**变化部分以 main 为准**。
+
+- merge-flow：REPLAY 15 / CONFLICT 0 / KEEP 204（ASS 样式库新声明全留入口，
+  待 append 扫尾归位）。入口从 main 干净重建至 9,104 行（临时态，append 后
+  回落）。共享文件恢复 origin/main（editor-i18n +84、editor-utils +171、
+  waveform ±7——本轮工具覆盖后按惯例 checkout 恢复）。
+- e2e 全量双跑：本树 14 失败 vs main@af4fa7c1 基线 0 差异后逐个修复，最终
+  本树 11 vs main@5837aa61 基线 43→**仅我们失败持续收敛至 3**。
+- 已修复回归：overlay Ctrl+drag ×2、disabled subtitles、双击光标、C 合并
+  （全部为 ns-rewrite 误替换复发——`MAWE_I18N.start` ×7 与
+  `snapshotSegments` ×2，同第四轮根因）、e2e 裸全局 34 处、ASS requestToken
+  断言 NS 化。
+- **遗留 3 项（ASS 样式库交互域深层差异，待下一轮定位）**：
+  1. merge join hint：spec 期望「多重字幕的设置」新文案，页面显示「双语字幕
+     的设置」旧文案——origin/main 的 template:1342 也是旧文案，疑似 main 侧
+     spec 先行/实现未跟上，需对照 main@af4fa7c1 的实际失败状态。
+  2. keeps ASS style actions（assignment-card small 的 first() 顺序）：纯
+     main 上通过、本树失败——卡片在 JS 运行时被重排或生成，attached-to-
+     active-form 的实现函数需对照 af4fa7c1 排查（editor.js/editor-*.js 均
+     无 ass-style-assignment-card 引用，疑在 editor-utils.js 或动态生成）。
+  3. localizes approved scanned font labels：`#subtitle-font-family` 显示
+     label「思源黑体」而非存储值「Source Han Sans SC」——字体映射闭包
+     （subtitleFontFamilyStoredToInput/MappingOptions）已归位 appearance 模块
+     并修复直调缺映射选项的问题，单测通过但 e2e 仍失败，需再查 combobox
+     选项构建路径（subtitleFontFamilyComboboxEntries 已 NS 限定）。
+- 验证：Node 320/0；Python 1627 OK；ruff 全过；顺序断言过；探针零
+  pageerror。提交：fc51a9d6（字体域）→ bfc065be（overlay 修复）→
+  c9b83d29（e2e 补齐）→ 2fd739f2（合并提交）。
+
+### 下一 agent 待办（按优先级）
+
+1. 遗留 3 项 ASS 域 e2e 回归定位（纯 main 对照法已证非 main 侧问题）。
+2. merge-flow 的 `qualifyDeclaration` 存在与 ns-rewrite 同类的局部名误判
+   隐患（参数默认值场景已验证合法，但局部绑定场景的 scope 传播需加
+   acorn 级单测防护）。
+3. ns-rewrite 对「函数体内 const 后在嵌套箭头函数中引用」场景的 scope
+   继承需根治（数据修复已做 3 轮，工具级修复待做）。
+4. 阶段一收尾（boot 切段）与阶段二/三照常推进。
+
 本台账记录在最新 `main` 上把 `web/editor.js` 平铺单体拆为特征模块的执行过程。
 方法论与工具借鉴外部分支 `drunkenQCat/moys-asr-workflow:refactor/explode-js`
 （其完整方法沉淀见该分支的 `docs/dev/编辑器模块化拆分指南.md`，工具在
