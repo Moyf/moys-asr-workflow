@@ -42,6 +42,7 @@ from maw.local_asr import (  # noqa: E402
     write_local_outputs,
 )
 from maw.media import resolve_default_audio_track  # noqa: E402
+from maw.local_debug import LocalDebugWriter, transcription_payload  # noqa: E402
 
 ALIGNMENT_MODE_FILL = "fill"
 ALIGNMENT_MODE_GENERATE = "generate"
@@ -86,6 +87,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--vad-model", help="FunASR 可选 VAD 模型")
     parser.add_argument("--punc-model", help="FunASR 可选标点模型")
+    parser.add_argument(
+        "--firered-punc",
+        choices=("none", "ct-punc"),
+        default="ct-punc",
+        help="FireRed 是否使用 ct-punc 自动标点（默认: ct-punc）",
+    )
     parser.add_argument("--speaker-model", help="FunASR 可选说话人模型")
     parser.add_argument("--speaker-colors", action="store_true", help="为说话人段落生成颜色快照")
     parser.add_argument("--language", help="语言提示，例如 zh 或 en")
@@ -123,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-html", action="store_true", help="不生成便携 HTML 编辑器")
     parser.add_argument(
         "--debug-raw", action="store_true",
-        help="兼容 Launcher 的调试选项；本地引擎暂不保存额外的原始响应文件",
+        help="保存本地引擎可用的原始/中间调试产物及清单",
     )
     parser.add_argument(
         "--no-model-tag", action="store_true",
@@ -206,6 +213,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         batch_size_s = QWEN_DEFAULT_CHUNK_SECONDS if args.engine == "qwen-asr" else 300
 
     output_arg = Path(args.output).expanduser().resolve() if args.output else None
+    output_srt = output_arg or default_output_path(
+        input_path,
+        args.engine,
+        no_model_tag=args.no_model_tag,
+    )
+    debug_writer = (
+        LocalDebugWriter(output_srt, engine=args.engine, model=args.model or args.engine)
+        if args.debug_raw
+        else None
+    )
     ffmpeg_tools = resolve_ffmpeg_tools()
     ffmpeg_path = ffmpeg_tools.ffmpeg
     ffprobe_path = ffmpeg_tools.ffprobe
@@ -223,7 +240,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         vad_model=args.vad_model,
         punc_model=args.punc_model,
         speaker_model=args.speaker_model,
+        use_punc=args.firered_punc == "ct-punc",
+        debug_writer=debug_writer.write if debug_writer else None,
     )
+    if debug_writer:
+        debug_writer.model = str(getattr(engine, "model", "") or args.model or args.engine)
 
     try:
         with prepared_audio(
@@ -246,9 +267,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ffmpeg_path=ffmpeg_path,
                 ffprobe_path=ffprobe_path,
             )
+            if debug_writer:
+                debug_writer.write_transcription("local-transcription", result)
             if args.alignment_model:
                 from maw.timestamp_alignment import align_local_transcription
 
+                if debug_writer:
+                    debug_writer.write_transcription("alignment-before", result)
                 print(f"字词时间码对齐开始：{args.alignment_model}（{args.alignment_mode}）")
                 result = align_local_transcription(
                     result,
@@ -260,6 +285,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     ffmpeg_path=ffmpeg_path,
                     on_event=print,
                 )
+                if debug_writer:
+                    debug_writer.write_transcription("alignment-after", result)
             elapsed = time.perf_counter() - t0
             print(f"转写结束: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             rtf = (elapsed / duration_sec) if duration_sec > 0 else 0.0
@@ -280,13 +307,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             if not segments:
                 print("错误: 本地模型没有返回可用的转写文本")
                 return 1
-            if output_arg is not None:
-                output_srt = output_arg
-            else:
-                output_srt = default_output_path(
-                    input_path,
-                    args.engine,
-                    no_model_tag=args.no_model_tag,
+            if debug_writer:
+                debug_writer.write(
+                    "segments",
+                    {
+                        "transcription": transcription_payload(result),
+                        "segments": segments,
+                    },
                 )
             outputs = write_local_outputs(
                 input_path=input_path,
@@ -303,6 +330,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 audio_track=args.audio_track,
                 default_audio_track=default_audio_track,
             )
+            if debug_writer:
+                debug_manifest = debug_writer.write_manifest(
+                    outputs={
+                        "srt": outputs.srt,
+                        "mosp": outputs.json or "",
+                        "html": outputs.html or "",
+                    }
+                )
+                print(f"本地调试清单已保存: {debug_manifest}")
+                for stage, artifact in debug_writer.artifacts.items():
+                    print(f"本地调试产物 [{stage}] 已保存: {artifact}")
     except Exception as error:  # noqa: BLE001 - CLI boundary prints actionable error.
         print(f"错误: {error}")
         return 1

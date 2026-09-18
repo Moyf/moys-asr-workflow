@@ -24,6 +24,7 @@ from maw.media import read_bwf_time_reference
 from maw.output_naming import maw_root
 from maw.qwen_audio import split_qwen_audio_hotwords
 from maw.local_runtime import default_runtime_root, model_cache_environment
+from maw.local_debug import local_debug_manifest_path
 from maw.runtimes import LOCAL
 
 
@@ -64,6 +65,7 @@ class TranscriptionRequest:
     srt_only: bool = False
     debug_raw: bool = False
     engine: str = ""
+    firered_punc: str = "ct-punc"
     model_path: str = ""
     model_cache_root: str = ""
     device: str = "auto"
@@ -324,7 +326,7 @@ def build_transcribe_command(
         command.extend(["--default-audio-track", str(request.default_audio_track)])
     if request.generate_spectral:
         command.append("--with-spectral")
-    if request.debug_raw and not is_local:
+    if request.debug_raw:
         command.append("--debug-raw")
     if is_local:
         _append_option(command, "--engine", request.engine or "qwen-asr")
@@ -338,6 +340,8 @@ def build_transcribe_command(
         # Keeping the flags out of the MOSS child prevents it from importing a
         # conflicting qwen-asr installation before the hand-off.
         local_engine = str(request.engine or "").strip().casefold()
+        if local_engine == "firered":
+            _append_option(command, "--firered-punc", request.firered_punc)
         if local_engine != "moss":
             _append_option(command, "--alignment-model", request.alignment_model)
             _append_option(command, "--alignment-model-path", request.alignment_model_path)
@@ -511,9 +515,13 @@ def run_transcription(
         raise TranscriptionProcessError(process.returncode, output=collected)
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
-    raw_path = raw_response_path(paths.srt) if request.debug_raw and request.provider != "local" else None
+    raw_path = (
+        local_debug_manifest_path(paths.srt)
+        if request.debug_raw and request.provider == "local"
+        else (raw_response_path(paths.srt) if request.debug_raw else None)
+    )
     if raw_path is not None:
-        _require_output(raw_path, "raw ASR response")
+        _require_output(raw_path, "debug response/artifact manifest")
     html_path = None
     if request.generate_html:
         try:

@@ -21,7 +21,7 @@ def local_model(model_id: str):
 
 
 class LocalModelDiscoveryTests(unittest.TestCase):
-    def test_firered_asr_is_incomplete_until_ctc_and_punc_are_both_present(self) -> None:
+    def test_firered_asr_ctc_is_ready_without_optional_punc(self) -> None:
         model = local_model("firered-asr2-ctc-local")
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -45,9 +45,9 @@ class LocalModelDiscoveryTests(unittest.TestCase):
                     (punc / "model.pt").write_bytes(b"weights")
                     ready = inspect_local_model(model, model_cache_root=root)
 
-        self.assertEqual(partial.status, "partial")
-        self.assertIn("缺少 FunASR ct-punc", partial.detail)
-        self.assertFalse(partial.installed)
+        self.assertEqual(partial.status, "installed")
+        self.assertIn("可选 FunASR ct-punc", partial.detail)
+        self.assertTrue(partial.installed)
         self.assertEqual(ready.status, "installed")
         self.assertTrue(ready.installed)
 

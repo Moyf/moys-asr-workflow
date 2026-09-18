@@ -174,21 +174,6 @@ def inspect_local_model(
                     runtime_source,
                     runtime_python,
                 )
-            if _find_ct_punc_model(model_cache_root) is None:
-                return LocalModelStatus(
-                    model.id,
-                    model.engine,
-                    model.model_ref,
-                    "partial",
-                    True,
-                    False,
-                    str(explicit),
-                    "已检测到 CTC，缺少 FunASR ct-punc 自动标点模型。",
-                    model.required_model_refs,
-                    runtime_source,
-                    runtime_python,
-                    _installed_model_size(explicit),
-                )
             valid = True
         else:
             valid = _model_directory_has_file(explicit, require_weight=True)
@@ -206,6 +191,9 @@ def inspect_local_model(
                 runtime_source,
                 runtime_python,
             )
+        detail = "已使用指定的模型目录。"
+        if model.engine == "firered" and _find_ct_punc_model(model_cache_root) is None:
+            detail = "已检测到 FireRed CTC；可选 FunASR ct-punc 尚未准备，选择“不使用”仍可运行。"
         return LocalModelStatus(
             model.id,
             model.engine,
@@ -214,7 +202,7 @@ def inspect_local_model(
             True,
             True,
             str(explicit),
-            "已使用指定的模型目录。",
+            detail,
             model.required_model_refs,
             runtime_source,
             runtime_python,
@@ -240,7 +228,20 @@ def inspect_local_model(
     if missing_refs:
         detail = "缺少模型组件：" + "、".join(missing_refs)
         if model.engine == "firered" and missing_refs == ["FunASR ct-punc（自动标点）"]:
-            detail = "已检测到 CTC，缺少 FunASR ct-punc 自动标点模型。"
+            return LocalModelStatus(
+                model.id,
+                model.engine,
+                model.model_ref,
+                "installed",
+                True,
+                True,
+                str(main_path),
+                "已检测到 FireRed CTC；可选 FunASR ct-punc 尚未准备，选择“不使用”仍可运行。",
+                model.required_model_refs,
+                runtime_source,
+                runtime_python,
+                _installed_model_size(main_path),
+            )
         elif model.engine == "firered" and missing_refs == ["FireRedASR2-CTC"]:
             detail = "已检测到 FunASR ct-punc，缺少 CTC 模型。"
         return LocalModelStatus(
@@ -286,6 +287,16 @@ def local_model_payload(
         model_cache_root=model_cache_root,
         runtime_status=runtime_status,
     )
+    ctc_ready, punc_ready = firered_components_ready(
+        model,
+        model_path,
+        model_cache_root=model_cache_root,
+    )
+    can_prepare = status.runtime_available and status.status not in {"path_invalid", "path_mismatch"}
+    if model.engine == "firered":
+        can_prepare = can_prepare and (not ctc_ready or not punc_ready)
+    else:
+        can_prepare = can_prepare and status.status != "installed"
     return {
         "status": status.status,
         "runtimeAvailable": status.runtime_available,
@@ -298,7 +309,9 @@ def local_model_payload(
         "engine": model.engine,
         "modelRef": model.model_ref,
         "requiredModelRefs": list(status.required_model_refs),
-        "canPrepare": status.runtime_available and status.status not in {"path_invalid", "path_mismatch", "installed"},
+        "canPrepare": can_prepare,
+        "ctcReady": ctc_ready,
+        "puncReady": punc_ready,
     }
 
 
@@ -682,6 +695,29 @@ def _normalise_directory(value: str | Path) -> Path | None:
     if not text:
         return None
     return Path(text).expanduser().resolve(strict=False)
+
+
+def firered_components_ready(
+    model: ModelConfig,
+    model_path: str | Path = "",
+    *,
+    model_cache_root: str | Path | None = None,
+) -> tuple[bool, bool]:
+    """Return whether FireRed CTC and the optional ct-punc cache are ready."""
+    if model.engine != "firered":
+        return False, False
+    explicit = _normalise_directory(model_path)
+    if explicit is not None:
+        ctc_ready = all(
+            (explicit / name).is_file() and (explicit / name).stat().st_size > 0
+            for name in (FIRERED_ASR2_CTC_MODEL_FILE, FIRERED_ASR2_CTC_TOKENS_FILE)
+        )
+    else:
+        ctc_ready = find_alignment_model_path(
+            FIRERED_ASR2_CTC_MODEL_ID,
+            model_cache_root=model_cache_root,
+        ) is not None
+    return ctc_ready, _find_ct_punc_model(model_cache_root) is not None
 
 
 def _explicit_path_mismatch(model: ModelConfig, path: Path) -> str:

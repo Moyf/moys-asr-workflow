@@ -53,6 +53,10 @@ class LocalRuntimeTests(unittest.TestCase):
                 Path(__file__).resolve().parents[1] / "maw" / "media.py",
                 package_root / "media.py",
             )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "local_debug.py",
+                package_root / "local_debug.py",
+            )
             (package_root / "console.py").write_text(
                 "def configure_utf8_stdio():\n"
                 "    pass\n",

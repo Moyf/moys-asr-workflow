@@ -817,6 +817,11 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertEqual(engine.requested_device, "cuda")
         self.assertEqual(engine.device, "cpu")
 
+    def test_firered_can_disable_ct_punc(self) -> None:
+        engine = create_local_engine("firered", use_punc=False)
+
+        self.assertFalse(engine.use_punc)
+
     def test_engine_factory_supports_whisper(self) -> None:
         engine = create_local_engine("whisper")
 
@@ -1471,6 +1476,11 @@ class LocalCliParserTests(unittest.TestCase):
         self.assertEqual(args.hotword, ["MAW"])
         self.assertEqual(args.max_words, 13)
         self.assertEqual(args.min_words, 3)
+
+    def test_parser_accepts_firered_punc_mode(self) -> None:
+        args = build_parser().parse_args(["sample.mp4", "--engine", "firered", "--firered-punc", "none"])
+
+        self.assertEqual(args.firered_punc, "none")
 
     def test_parser_accepts_whisper_engine(self) -> None:
         args = build_parser().parse_args(["sample.mp4", "--engine", "whisper"])

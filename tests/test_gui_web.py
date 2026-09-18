@@ -30,6 +30,7 @@ from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, E
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
+from maw.local_debug import local_debug_manifest_path  # noqa: E402
 from maw.local_models import LocalModelStatus  # noqa: E402
 from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError  # noqa: E402
 from maw.ocr_runtime import OcrRuntimeCancelled  # noqa: E402
@@ -3234,6 +3235,90 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(request.api_key, "")
         self.assertEqual(request.runtime_python, str(self.root / "runtime" / "Scripts" / "python.exe"))
 
+    def test_firered_request_can_skip_optional_ct_punc(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        status = LocalModelStatus(
+            model_id="firered-asr2-ctc-local",
+            engine="firered",
+            model_ref="sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25",
+            status="installed",
+            runtime_available=True,
+            installed=True,
+            path=str(self.root / "firered"),
+            detail="CTC ready",
+            runtime_source="managed",
+            runtime_python=str(self.root / "runtime" / "Scripts" / "python.exe"),
+        )
+
+        with (
+            mock.patch("maw.gui_web.inspect_local_model", return_value=status),
+            mock.patch("maw.gui_web.firered_components_ready", return_value=(True, False)),
+        ):
+            request = _request_from_payload({
+                "providerId": "local",
+                "modelId": "firered-asr2-ctc-local",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "fireredPunc": "none",
+            }, self.env_path)
+
+        self.assertEqual(request.engine, "firered")
+        self.assertEqual(request.firered_punc, "none")
+
+    def test_firered_request_requires_ct_punc_when_selected(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        status = LocalModelStatus(
+            model_id="firered-asr2-ctc-local",
+            engine="firered",
+            model_ref="sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25",
+            status="installed",
+            runtime_available=True,
+            installed=True,
+            path=str(self.root / "firered"),
+            detail="CTC ready",
+            runtime_source="managed",
+            runtime_python=str(self.root / "runtime" / "Scripts" / "python.exe"),
+        )
+
+        with (
+            mock.patch("maw.gui_web.inspect_local_model", return_value=status),
+            mock.patch("maw.gui_web.firered_components_ready", return_value=(True, False)),
+        ):
+            with self.assertRaises(PreflightError) as raised:
+                _request_from_payload({
+                    "providerId": "local",
+                    "modelId": "firered-asr2-ctc-local",
+                    "mediaPath": str(media),
+                    "srtPath": str(self.root / "out.srt"),
+                    "fireredPunc": "ct-punc",
+                }, self.env_path)
+
+        self.assertEqual(raised.exception.code, "local_model_incomplete")
+
+    def test_start_transcription_returns_local_debug_manifest_path(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.mp3",
+            srt_path=self.root / "clip.srt",
+            provider="local",
+            debug_raw=True,
+        )
+        request.media_path.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+
+        with (
+            mock.patch("maw.gui_web._request_from_payload", return_value=request),
+            mock.patch("maw.gui_web._frozen_ffmpeg_preflight", return_value=None),
+            mock.patch("maw.gui_web.threading.Thread", return_value=worker),
+            mock.patch.object(self.api.pump, "start"),
+        ):
+            result = self.api.start_transcription({})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["rawPath"], str(local_debug_manifest_path(request.srt_path)))
+
     def test_local_request_rejects_missing_model_before_subprocess(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -5245,6 +5330,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="recognitionAlignmentModel"', page)
         self.assertIn('data-i18n="recognition_alignment_model_hint"', page)
         self.assertIn('data-i18n="recognition_alignment_model"', page)
+        self.assertLess(page.index('id="advancedCard"'), page.index('id="recognitionAlignmentModelField"'))
         self.assertIn('id="localAlignmentModelList"', page)
         self.assertIn('id="localAlignmentModelDetails"', page)
         self.assertIn('class="local-model-list"', alignment_section_html)

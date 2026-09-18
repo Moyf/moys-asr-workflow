@@ -34,6 +34,7 @@ from generate_subtitle_qwen_api import (
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.alignment_models import FIRERED_ASR2_CTC_MODEL_ID
+from maw.local_debug import debug_json_value
 from maw.punctuation import PunctuationError, punctuate_timed_tokens
 from maw.language import (
     DEFAULT_MAX_WORDS,
@@ -629,11 +630,13 @@ class QwenAsrEngine:
         model_path: str | Path | None = None,
         device: str = "auto",
         forced_aligner: str | Path | None = QWEN_DEFAULT_FORCED_ALIGNER,
+        debug_writer: Callable[[str, object], object] | None = None,
     ) -> None:
         self.model = model
         self.model_path = str(model_path) if model_path else model
         self.device = device
         self.forced_aligner = str(forced_aligner) if forced_aligner else None
+        self.debug_writer = debug_writer
         self._runtime: Any = None
 
     def _load(self, on_event: ProgressCallback | None = None) -> Any:
@@ -698,6 +701,9 @@ class QwenAsrEngine:
         language: str | None,
         hotwords: Sequence[str],
         on_event: ProgressCallback | None,
+        debug_records: list[dict[str, object]] | None = None,
+        chunk_index: int = 0,
+        offset_ms: int = 0,
     ) -> LocalTranscription:
         if on_event:
             on_event(f"[local] transcribing: {audio_path.name}")
@@ -728,6 +734,12 @@ class QwenAsrEngine:
             elif on_event:
                 on_event("[local] 当前 QwenASR 运行时不支持 context，已跳过热词")
         result = runtime.transcribe(**kwargs)
+        if debug_records is not None:
+            debug_records.append({
+                "chunkIndex": chunk_index,
+                "offsetMs": offset_ms,
+                "raw": debug_json_value(result),
+            })
         first = result[0] if isinstance(result, Sequence) and not isinstance(result, (str, bytes)) else result
         text = _as_text(_read_field(first, "text"))
         alignment_items: list[dict[str, Any]] = []
@@ -941,24 +953,33 @@ class QwenAsrEngine:
         if batch_size_s <= 0:
             raise ValueError("batch_size_s must be greater than 0")
         runtime = self._load(on_event)
+        debug_records: list[dict[str, object]] | None = [] if self.debug_writer else None
         if not audio_path.exists():
-            return self._transcribe_one(
+            result = self._transcribe_one(
                 runtime,
                 audio_path,
                 language=language,
                 hotwords=hotwords,
                 on_event=on_event,
+                debug_records=debug_records,
             )
+            if self.debug_writer and debug_records is not None:
+                self.debug_writer("qwen-raw", {"chunks": debug_records})
+            return result
 
         duration_s = _media_duration_seconds(str(audio_path), ffprobe_path)
         if not math.isfinite(duration_s) or duration_s <= batch_size_s:
-            return self._transcribe_one(
+            result = self._transcribe_one(
                 runtime,
                 audio_path,
                 language=language,
                 hotwords=hotwords,
                 on_event=on_event,
+                debug_records=debug_records,
             )
+            if self.debug_writer and debug_records is not None:
+                self.debug_writer("qwen-raw", {"chunks": debug_records})
+            return result
 
         chunk_count = math.ceil(duration_s / batch_size_s)
         if on_event:
@@ -993,6 +1014,9 @@ class QwenAsrEngine:
                     language=language,
                     hotwords=hotwords,
                     on_event=on_event,
+                    debug_records=debug_records,
+                    chunk_index=chunk_index,
+                    offset_ms=int(round(start_s * 1000)),
                 )
                 if (
                     chunk_result.text
@@ -1084,7 +1108,7 @@ class QwenAsrEngine:
             ),
             has_segments=bool(merged_segments) or bool(text),
         )
-        return LocalTranscription(
+        result = LocalTranscription(
             text,
             normalize_language_code(language_value),
             merged_items,
@@ -1094,6 +1118,9 @@ class QwenAsrEngine:
             split_mode,
             timestamp_granularity,
         )
+        if self.debug_writer and debug_records is not None:
+            self.debug_writer("qwen-raw", {"chunks": debug_records})
+        return result
 
 
 class FunAsrEngine:
@@ -1110,6 +1137,7 @@ class FunAsrEngine:
         speaker_model: str | None = None,
         trust_remote_code: bool = False,
         rich_postprocess: bool = False,
+        debug_writer: Callable[[str, object], object] | None = None,
     ) -> None:
         self.model = model
         self.model_path = str(model_path) if model_path else model
@@ -1124,6 +1152,7 @@ class FunAsrEngine:
         self.vad_max_single_segment_time = 30000 if self.uses_vad else 0
         self.trust_remote_code = trust_remote_code or self.is_fun_asr_nano
         self.rich_postprocess = rich_postprocess or self.is_sensevoice
+        self.debug_writer = debug_writer
         self._runtime: Any = None
 
     def _load(self, on_event: ProgressCallback | None = None) -> Any:
@@ -1200,6 +1229,8 @@ class FunAsrEngine:
         if hotwords:
             kwargs["hotword"] = " ".join(hotwords)
         raw = runtime.generate(**kwargs)
+        if self.debug_writer:
+            self.debug_writer("funasr-raw", {"result": debug_json_value(raw)})
         return funasr_output_to_transcription(
             raw,
             self.model,
@@ -1211,10 +1242,18 @@ class FunAsrEngine:
 class MossDiarizeEngine:
     """Lazy MOSS-Transcribe-Diarize adapter with speaker-aware segments."""
 
-    def __init__(self, model: str = MOSS_DEFAULT_MODEL, *, model_path: str | Path | None = None, device: str = "auto") -> None:
+    def __init__(
+        self,
+        model: str = MOSS_DEFAULT_MODEL,
+        *,
+        model_path: str | Path | None = None,
+        device: str = "auto",
+        debug_writer: Callable[[str, object], object] | None = None,
+    ) -> None:
         self.model = model
         self.model_path = str(model_path) if model_path else model
         self.device = device
+        self.debug_writer = debug_writer
         self._runtime: tuple[Any, Any, Any] | None = None
 
     def _load(self, on_event: ProgressCallback | None = None) -> tuple[Any, Any, Any]:
@@ -1333,12 +1372,16 @@ class MossDiarizeEngine:
         elif on_event:
             on_event("[local] 当前 MOSS 运行包不支持 token 进度回调，将仅显示阶段状态")
         result = generate_transcription(model, processor, messages, **generation_kwargs)
+        raw_result = debug_json_value(result)
+        if self.debug_writer:
+            self.debug_writer("moss-raw", {"result": raw_result})
         generated_tokens = int(result.get("generated_tokens") or last_progress_tokens or 0)
         if on_event and generated_tokens:
             on_event(f"[local] MOSS 生成完成：共 {generated_tokens:,} tokens")
         if generated_tokens >= MOSS_MAX_NEW_TOKENS and on_event:
             on_event("[local] 警告：MOSS 输出达到最大 token 数，字幕可能在音频结尾处被截断")
         parsed = parse_transcript(str(result.get("text") or ""))
+        parsed_debug: list[dict[str, object]] = []
         segments: list[dict[str, Any]] = []
         items: list[dict[str, Any]] = []
         has_unranged_text = False
@@ -1354,6 +1397,12 @@ class MossDiarizeEngine:
                 has_unranged_text = True
                 continue
             start, end = timestamp
+            parsed_debug.append({
+                "start": start,
+                "end": end,
+                "text": entry_text,
+                "speaker": getattr(entry, "speaker", None),
+            })
             # MOSS exposes one start/end pair per diarized segment.  It does
             # not expose word/character boundaries, so an item here would be
             # misleading and would make the shared splitter count characters
@@ -1375,6 +1424,11 @@ class MossDiarizeEngine:
             text,
         )
         split_mode = split_mode_for_text(text, language_value)
+        if self.debug_writer:
+            self.debug_writer(
+                "moss-raw",
+                {"result": raw_result, "parsedSegments": parsed_debug},
+            )
         return LocalTranscription(
             text,
             language_value,
@@ -1404,6 +1458,8 @@ class FireRedAsrEngine:
         model_path: str | Path | None = None,
         device: str = "auto",
         model_cache_root: str | Path | None = None,
+        use_punc: bool = True,
+        debug_writer: Callable[[str, object], object] | None = None,
     ) -> None:
         self.model = model
         self.model_path = str(model_path) if model_path else ""
@@ -1413,6 +1469,8 @@ class FireRedAsrEngine:
         # make FireRed fail before inference starts.
         self.device = "cpu"
         self.model_cache_root = str(model_cache_root) if model_cache_root else None
+        self.use_punc = bool(use_punc)
+        self.debug_writer = debug_writer
         self._backend: Any = None
 
     def _load(self, on_event: ProgressCallback | None = None) -> Any:
@@ -1446,6 +1504,9 @@ class FireRedAsrEngine:
         *,
         language: str | None,
         on_event: ProgressCallback | None,
+        debug_records: list[dict[str, object]] | None = None,
+        chunk_index: int = 0,
+        offset_ms: int = 0,
     ) -> LocalTranscription:
         if on_event:
             on_event(f"[local] FireRedASR2-CTC 正在识别：{audio_path.name}")
@@ -1453,6 +1514,18 @@ class FireRedAsrEngine:
         from maw.timestamp_alignment import firered_tokens_to_items
 
         decoded_text = decoded.text.strip()
+        debug_record: dict[str, object] = {
+            "chunkIndex": chunk_index,
+            "offsetMs": offset_ms,
+            "durationMs": int(decoded.duration_ms),
+            "rawText": str(decoded.text or ""),
+            "tokens": list(decoded.tokens),
+            "timestamps": list(decoded.timestamps),
+        }
+        if debug_records is not None:
+            debug_records.append(debug_record)
+            if self.debug_writer:
+                self.debug_writer("firered-ctc", {"chunks": debug_records})
         if not decoded_text:
             language_value, language_source = resolve_language(None, language, "")
             return LocalTranscription(
@@ -1487,6 +1560,31 @@ class FireRedAsrEngine:
                 True,
             )
         timed_items = [_item(item.text, item.start, item.end) for item in items]
+        debug_record["items"] = timed_items
+        if self.debug_writer and debug_records is not None:
+            self.debug_writer("firered-ctc", {"chunks": debug_records})
+        if not self.use_punc:
+            if on_event:
+                on_event("[local] FireRedASR2-CTC 未使用 ct-punc，保留原始字词时间码")
+            text = "".join(str(item.get("text") or "") for item in timed_items).strip()
+            language_value, language_source = resolve_language(None, language, text)
+            split_mode = split_mode_for_text(text, language_value)
+            return LocalTranscription(
+                text,
+                language_value,
+                timed_items,
+                [],
+                self.model,
+                language_source,
+                split_mode,
+                timestamp_granularity_for_items(
+                    timed_items,
+                    split_mode,
+                    explicit_items=bool(timed_items),
+                    has_segments=False,
+                ),
+                False,
+            )
         if on_event:
             on_event("[local] FunASR ct-punc 正在按字词时间码生成标点和分句")
         try:
@@ -1505,6 +1603,11 @@ class FireRedAsrEngine:
             for segment in punctuated_segments
             for item in segment.get("items") or []
         ]
+        debug_record["punctuated"] = {
+            "text": "".join(str(item.get("text") or "") for item in punctuated_items).strip(),
+            "items": punctuated_items,
+            "segments": punctuated_segments,
+        }
         text = "".join(str(item.get("text") or "") for item in punctuated_items).strip()
         if not text or not punctuated_segments:
             raise LocalAsrError("FunASR ct-punc 未生成可用的带标点分句，未生成 FireRedASR2 结果。")
@@ -1524,7 +1627,7 @@ class FireRedAsrEngine:
                 explicit_items=bool(punctuated_items),
                 has_segments=bool(punctuated_segments),
             ),
-            True,
+            self.use_punc,
         )
 
     def transcribe(
@@ -1544,9 +1647,21 @@ class FireRedAsrEngine:
             raise ValueError("batch_size_s must be greater than 0")
         backend = self._load(on_event)
         duration_s = _media_duration_seconds(str(audio_path), ffprobe_path)
+        debug_records: list[dict[str, object]] | None = [] if self.debug_writer else None
         chunk_seconds = min(max(int(batch_size_s), 1), 75)
         if not math.isfinite(duration_s) or duration_s <= chunk_seconds:
-            result = self._decode_one(backend, audio_path, language=language, on_event=on_event)
+            result = self._decode_one(
+                backend,
+                audio_path,
+                language=language,
+                on_event=on_event,
+                debug_records=debug_records,
+            )
+            if self.debug_writer and debug_records is not None:
+                self.debug_writer("firered-ctc", {"chunks": debug_records})
+                punctuated = [record for record in debug_records if "punctuated" in record]
+                if punctuated:
+                    self.debug_writer("firered-punctuated", {"chunks": punctuated})
             return result
 
         chunk_count = math.ceil(duration_s / chunk_seconds)
@@ -1570,7 +1685,15 @@ class FireRedAsrEngine:
                     duration_s=current_duration,
                     ffmpeg_path=ffmpeg_path,
                 )
-                current = self._decode_one(backend, chunk_path, language=language, on_event=on_event)
+                current = self._decode_one(
+                    backend,
+                    chunk_path,
+                    language=language,
+                    on_event=on_event,
+                    debug_records=debug_records,
+                    chunk_index=index,
+                    offset_ms=int(round(start_s * 1000)),
+                )
                 results.append(
                     QwenAsrEngine._shift_chunk_result(
                         current,
@@ -1589,7 +1712,7 @@ class FireRedAsrEngine:
             "",
         )
         split_mode = split_mode_for_text(text, language_value)
-        return LocalTranscription(
+        result = LocalTranscription(
             text,
             language_value,
             merged_items,
@@ -1603,8 +1726,14 @@ class FireRedAsrEngine:
                 explicit_items=bool(merged_items) and all(result.items for result in results),
                 has_segments=bool(merged_segments),
             ),
-            True,
+            self.use_punc,
         )
+        if self.debug_writer and debug_records is not None:
+            self.debug_writer("firered-ctc", {"chunks": debug_records})
+            punctuated = [record for record in debug_records if "punctuated" in record]
+            if punctuated:
+                self.debug_writer("firered-punctuated", {"chunks": punctuated})
+        return result
 
 
 class WhisperEngine:
@@ -1622,10 +1751,12 @@ class WhisperEngine:
         *,
         model_path: str | Path | None = None,
         device: str = "auto",
+        debug_writer: Callable[[str, object], object] | None = None,
     ) -> None:
         self.model = model
         self.model_path = str(model_path) if model_path else model
         self.device = device
+        self.debug_writer = debug_writer
         self._runtime: Any = None
 
     def _load(self, on_event: ProgressCallback | None = None) -> Any:
@@ -1736,6 +1867,7 @@ class WhisperEngine:
         items: list[dict[str, Any]] = []
         texts: list[str] = []
         engine_segments: list[dict[str, Any]] = []
+        debug_segments: list[dict[str, object]] = []
         has_fallback_segment = False
         has_unranged_fallback = False
         # ``transcribe`` 返回生成器，迭代到 segment 时才真正执行推理。
@@ -1748,6 +1880,13 @@ class WhisperEngine:
                 and not isinstance(words, (str, bytes, Mapping))
                 else []
             )
+            debug_segments.append({
+                "text": _read_field(segment, "text"),
+                "start": _read_field(segment, "start"),
+                "end": _read_field(segment, "end"),
+                "words": words,
+                "speaker": _read_field(segment, "speaker"),
+            })
             if not text_value:
                 # faster-whisper normally repeats the segment text, but some
                 # compatible wrappers expose only the word entries. Preserve
@@ -1846,6 +1985,14 @@ class WhisperEngine:
         segments = [] if has_unranged_fallback else engine_segments if has_fallback_segment else []
         if has_unranged_fallback:
             items = []
+        if self.debug_writer:
+            self.debug_writer(
+                "whisper-raw",
+                {
+                    "info": debug_json_value(info),
+                    "segments": debug_json_value(debug_segments),
+                },
+            )
         return LocalTranscription(
             text,
             language_value,
@@ -1876,6 +2023,8 @@ def create_local_engine(
     speaker_model: str | None = None,
     trust_remote_code: bool = False,
     rich_postprocess: bool = False,
+    use_punc: bool = True,
+    debug_writer: Callable[[str, object], object] | None = None,
 ) -> LocalAsrEngine:
     normalized = engine.strip().lower()
     if normalized in {"qwen", "qwen-asr", "qwen3-asr"}:
@@ -1884,6 +2033,7 @@ def create_local_engine(
             model_path=model_path,
             device=device,
             forced_aligner=forced_aligner or QWEN_DEFAULT_FORCED_ALIGNER,
+            debug_writer=debug_writer,
         )
     if normalized in {"funasr", "fun-asr"}:
         return FunAsrEngine(
@@ -1895,12 +2045,14 @@ def create_local_engine(
             speaker_model=speaker_model,
             trust_remote_code=trust_remote_code,
             rich_postprocess=rich_postprocess,
+            debug_writer=debug_writer,
         )
     if normalized == "moss":
         return MossDiarizeEngine(
             model or MOSS_DEFAULT_MODEL,
             model_path=model_path,
             device=device,
+            debug_writer=debug_writer,
         )
     if normalized in {"firered", "fire-red", "firered-asr2-ctc"}:
         return FireRedAsrEngine(
@@ -1908,12 +2060,15 @@ def create_local_engine(
             model_path=model_path,
             device=device,
             model_cache_root=model_cache_root,
+            use_punc=use_punc,
+            debug_writer=debug_writer,
         )
     if normalized == "whisper":
         return WhisperEngine(
             model or WHISPER_DEFAULT_MODEL,
             model_path=model_path,
             device=device,
+            debug_writer=debug_writer,
         )
     raise ValueError("engine must be one of: qwen-asr, funasr, moss, firered, whisper")
 

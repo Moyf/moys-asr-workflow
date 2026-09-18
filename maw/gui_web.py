@@ -52,6 +52,7 @@ from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessEr
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
+from maw.local_debug import local_debug_manifest_path
 from maw.alignment_models import ALIGNMENT_MODELS, alignment_model_by_id, alignment_models_payload, inspect_alignment_model, normalize_alignment_model_id
 from maw.local_runtime import (
     LocalRuntimeCancelled,
@@ -66,7 +67,12 @@ from maw.local_runtime import (
     resolve_model_cache_root,
     run_timestamp_alignment_in_runtime,
 )
-from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
+from maw.local_models import (
+    firered_components_ready,
+    inspect_local_model,
+    local_model_payload,
+    prepare_local_model as prepare_model,
+)
 from maw.media import resolve_default_audio_track, resolve_project_media
 from maw.notify import send_system_notification
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
@@ -2135,7 +2141,11 @@ class LauncherApi:
             "ok": True,
             "outputPath": str(request.srt_path),
             "outputRenamed": output_renamed,
-            "rawPath": str(raw_response_path(request.srt_path)) if request.debug_raw and request.provider != "local" else "",
+            "rawPath": (
+                str(local_debug_manifest_path(request.srt_path))
+                if request.debug_raw and request.provider == "local"
+                else (str(raw_response_path(request.srt_path)) if request.debug_raw else "")
+            ),
         }
 
     def start_batch_transcription(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -2593,7 +2603,12 @@ class LauncherApi:
             return _error_result("localModelPath", "local_model_path_invalid", status.detail)
         if status.status == "path_mismatch":
             return _error_result("localModelPath", "local_model_path_mismatch", status.detail)
-        if status.status == "installed":
+        ctc_ready, punc_ready = firered_components_ready(
+            model,
+            model_path,
+            model_cache_root=model_cache_root,
+        )
+        if status.status == "installed" and not (model.engine == "firered" and ctc_ready and not punc_ready):
             return {"ok": True, "alreadyInstalled": True, "modelId": model.id}
         self.local_prepare_cancel_event = Event()
         self.pump.start()
@@ -3558,6 +3573,13 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     local_model_path = str(payload.get("localModelPath") or "").strip()
     device = str(payload.get("device") or "auto").strip().lower()
     model_cache_root = ""
+    firered_punc = "ct-punc"
+    if provider.kind == "local" and model.engine == "firered":
+        firered_punc = (
+            "none"
+            if str(payload.get("fireredPunc") or "ct-punc").strip().casefold() == "none"
+            else "ct-punc"
+        )
     if provider.kind == "local":
         model_cache_root = effective_config(env_path).model_cache_root
         local_status = inspect_local_model(
@@ -3575,6 +3597,18 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             raise PreflightError("model", "local_model_missing", local_status.detail)
         if local_status.status == "partial":
             raise PreflightError("model", "local_model_incomplete", local_status.detail)
+        if model.engine == "firered" and firered_punc == "ct-punc":
+            _ctc_ready, punc_ready = firered_components_ready(
+                model,
+                local_model_path,
+                model_cache_root=model_cache_root,
+            )
+            if not punc_ready:
+                raise PreflightError(
+                    "model",
+                    "local_model_incomplete",
+                    "FireRedASR2 的 FunASR ct-punc 尚未准备，请选择“不使用”或先下载 ct-punc。",
+                )
         runtime_python = local_status.runtime_python
         if device not in {"auto", "cpu", "cuda"}:
             raise PreflightError("device", "local_model_path_invalid", "设备必须是 auto、cpu 或 cuda。")
@@ -3705,6 +3739,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         srt_only=bool(payload.get("batchSrtOnly")),
         debug_raw=bool(payload.get("debugRaw")),
         engine=model.engine if provider.kind == "local" else "",
+        firered_punc=firered_punc,
         model_path=local_model_path if provider.kind == "local" else "",
         model_cache_root=model_cache_root,
         device=device,
@@ -4382,5 +4417,7 @@ def _model_payload(
                 "modelRef": model.model_ref,
                 "requiredModelRefs": list(model.required_model_refs),
                 "canPrepare": False,
+                "ctcReady": False,
+                "puncReady": False,
             }
     return payload

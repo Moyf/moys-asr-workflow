@@ -11,8 +11,8 @@
       test_run: "测试运行",
       test_run_title: "仅截取前2分钟内容，用于测试功能和 API",
       test_run_override: "测试运行已限定前 2 分钟",
-      debug_raw: "调试运行（保存完整返回数据）",
-      debug_raw_title: "额外保存 ASR 服务端返回的原始 JSON，便于排查断句、标点和时间码问题",
+      debug_raw: "调试运行（保存原始/中间数据）",
+      debug_raw_title: "在线模型保存服务端原始 JSON；本地模型保存可用的原始/中间文件，便于排查断句、标点和时间码问题",
       hero_desc: "本地媒体 ➜ AI 转写 ➜ 可编辑字幕工程",
       project_home: "项目官网",
       tutorial_video: "教程视频",
@@ -130,8 +130,8 @@
       test_run: "Test run",
       test_run_title: "Trim to the first 2 minutes to test the workflow and API",
       test_run_override: "Test run is limited to the first 2 minutes",
-      debug_raw: "Debug run (save full response)",
-      debug_raw_title: "Also save the raw ASR service response as JSON for investigating segmentation, punctuation, and timestamps.",
+      debug_raw: "Debug run (save raw/intermediate data)",
+      debug_raw_title: "Online models save the raw service JSON; local models save available raw/intermediate files for investigating segmentation, punctuation, and timestamps.",
       hero_desc: "Local media ➜ AI transcription ➜ Editable subtitle projects",
       project_home: "Project",
       tutorial_video: "Tutorial video",
@@ -483,6 +483,7 @@
     local_runtime_missing: "本地运行时未安装",
     local_missing: "未检测到本地模型",
     local_partial: "已检测到主模型，但仍缺少组件",
+    local_firered_punc_optional: "已检测到 FireRed CTC；ct-punc 可选",
     local_installed: "已检测到本地模型",
     local_path_selected: "已使用指定的模型目录",
     local_model_path_invalid: "指定模型目录无效",
@@ -493,6 +494,7 @@
     local_prepare_cancelled: "模型准备已取消；已完成的缓存会保留，可切换模型或稍后继续。",
     local_prepare_done: "模型已准备完成",
     local_prepare_again: "重新准备模型",
+    local_prepare_optional: "下载 ct-punc",
     local_beta_note: "当前为 beta 版本，未经过充分测试，不保证后续的维护和更新，请谨慎使用。",
     local_runtime_install: "安装本地模型支持",
     local_runtime_repair: "修复运行环境",
@@ -612,6 +614,7 @@
     local_runtime_missing: "Local runtime is not installed",
     local_missing: "No local model detected",
     local_partial: "Main model found, but components are missing",
+    local_firered_punc_optional: "FireRed CTC detected; ct-punc is optional",
     local_installed: "Local model detected",
     local_path_selected: "Using the selected model folder",
     local_model_path_invalid: "The selected model folder is invalid",
@@ -622,6 +625,7 @@
     local_prepare_cancelled: "Model preparation was cancelled. Completed cache files are kept; you can switch models or continue later.",
     local_prepare_done: "Model is ready",
     local_prepare_again: "Prepare model again",
+    local_prepare_optional: "Download ct-punc",
     local_beta_note: "Currently in beta: not fully tested, and ongoing maintenance or updates are not guaranteed. Please use with caution.",
     local_runtime_install: "Install local model support",
     local_runtime_repair: "Repair runtime",
@@ -668,6 +672,9 @@
   Object.assign(STRINGS.zh, {
     advanced_params: "识别参数",
     advanced_misc: "其他",
+    firered_punc: "生成标点提升断句",
+    firered_punc_none: "不使用",
+    firered_punc_ct_punc: "使用 ct-punc",
     generate_spectral: "生成 reapeaks 频谱数据",
     generate_spectral_hint: "默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。",
     generate_spectral_title: "为媒体旁的 .ReaPeaks 缓存额外生成频谱层；不影响原生波形。",
@@ -752,6 +759,9 @@
   Object.assign(STRINGS.en, {
     advanced_params: "Parameters",
     advanced_misc: "Other",
+    firered_punc: "Punctuation for better segmentation",
+    firered_punc_none: "Do not use",
+    firered_punc_ct_punc: "Use ct-punc",
     generate_spectral: "Generate reapeaks spectral data",
     generate_spectral_hint: "By default only the reapeaks wave layer is generated. Spectral data adds processing time and file size.",
     generate_spectral_title: "Add a spectral layer to the .ReaPeaks cache beside the media; this does not change the native waveform.",
@@ -1127,6 +1137,7 @@
       local_runtime_cancelled: "本地运行环境安装已取消。",
       local_model_missing: "尚未检测到本地模型，请先点击“下载模型”或选择已有模型目录。",
       local_model_incomplete: "本地模型不完整，请先准备缺少的模型组件。",
+      firered_punc_missing: "FireRed 的 ct-punc 尚未准备，请选择“不使用”或先下载 ct-punc。",
       local_model_path_invalid: "本地模型目录不存在，或所选路径不是文件夹。",
     local_model_path_mismatch: "当前模型目录看起来属于另一种本地模型，请清空后重新选择。",
     model_cache_path_invalid: "模型缓存目录不能是一个文件。",
@@ -1202,6 +1213,7 @@
       local_runtime_cancelled: "Local runtime installation was cancelled.",
       local_model_missing: "No local model was detected. Download it or choose an existing model folder.",
       local_model_incomplete: "The local model is incomplete. Prepare the missing components first.",
+      firered_punc_missing: "FireRed ct-punc is not ready. Choose \"Do not use\" or download ct-punc first.",
       local_model_path_invalid: "The local model folder does not exist or is not a folder.",
     local_model_path_mismatch: "This model folder appears to belong to a different local model. Clear it and choose the correct folder.",
     model_cache_path_invalid: "The model storage path cannot point to a file.",
@@ -1510,7 +1522,7 @@
               { id: "funasr-local", label: "FunASR paraformer-zh", envKey: "", note: "中文向 FunASR 路线；保留作为兼容选项", supportsSpeaker: false, hidden: true, kind: "local", engine: "funasr", modelRef: "paraformer-zh", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "sensevoice-small-local", label: "SenseVoice Small", envKey: "", note: "多语种识别；默认配合 FSMN-VAD；CPU/GPU 均可运行；可用对齐模型补齐字词时间码", supportsSpeaker: false, supportsWordTimestamps: false, deviceSupport: "cpu_gpu", resourceLevel: "low", estimatedSize: "1G+", kind: "local", engine: "funasr", modelRef: "iic/SenseVoiceSmall", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "moss-transcribe-diarize-local", label: "MOSS Transcribe-Diarize 0.9B", envKey: "", note: "多人转写与说话人分离；仅段级时间码，可用对齐模型补齐字词时间码；建议 GPU", supportsSpeaker: true, supportsWordTimestamps: false, deviceSupport: "gpu_preferred", resourceLevel: "high", estimatedSize: "1.7G+", kind: "local", engine: "moss", modelRef: "OpenMOSS-Team/MOSS-Transcribe-Diarize", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
-      { id: "firered-asr2-ctc-local", label: "FireRedASR2", envKey: "", note: "中英及多方言；CPU 可运行；字词时间码；自动标点（需 ct-punc）", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu", resourceLevel: "low", estimatedSize: "2G+", kind: "local", engine: "firered", modelRef: "firered-asr2-ctc", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
+      { id: "firered-asr2-ctc-local", label: "FireRedASR2", envKey: "", note: "中英及多方言；CPU 可运行；字词时间码；可用 ct-punc 改善标点和断句", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu", resourceLevel: "low", estimatedSize: "2G+", kind: "local", engine: "firered", modelRef: "firered-asr2-ctc", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } },
               { id: "whisper-large-v3-local", label: "Faster-Whisper large-v3（实验）", envKey: "", note: "多语种识别；原生词级时间码；CPU/GPU 均可运行；GPU 速度更佳；无说话人分离", supportsSpeaker: false, supportsWordTimestamps: true, deviceSupport: "cpu_gpu", resourceLevel: "high", estimatedSize: "3G+", kind: "local", engine: "whisper", modelRef: "Systran/faster-whisper-large-v3", languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "en", label: "英语 / English" }], localStatus: { status: "missing", runtimeAvailable: true, installed: false, path: "", detail: "", canPrepare: true } }
             ],
             regions: [],
@@ -1724,7 +1736,7 @@
     "fun-asr-nano-local": "LLM-ASR approach with FSMN-VAD by default; Chinese, English, Japanese, and Chinese dialects; CUDA recommended.",
     "funasr-local": "Runs locally; uses the FunASR upstream model cache.",
     "sensevoice-small-local": "Multilingual recognition with FSMN-VAD by default; runs on CPU or GPU; an aligner can add word/character timestamps.",
-    "firered-asr2-ctc-local": "Chinese, English, and dialect recognition; CPU-capable with word/character timestamps and automatic punctuation via ct-punc.",
+    "firered-asr2-ctc-local": "Chinese, English, and dialect recognition; CPU-capable with word/character timestamps; ct-punc is optional for punctuation and segmentation.",
     "moss-transcribe-diarize-local": "Speaker diarization with segment timestamps only; an aligner can add word/character timestamps; GPU recommended.",
     "whisper-large-v3-local": "Multilingual recognition with native word timestamps; runs on CPU or GPU, with better speed on GPU; no speaker diarization.",
     "bcut-asr": "Millisecond per-character timestamps; no API key required.",
@@ -2220,7 +2232,7 @@
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
   function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "recognitionAlignmentModel", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
-  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), alignmentModel: isLocalProvider() ? $("recognitionAlignmentModel").value : "", alignmentModelPath: "", device: $("localDevice").value, language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
+  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), alignmentModel: isLocalProvider() ? $("recognitionAlignmentModel").value : "", alignmentModelPath: "", device: $("localDevice").value, fireredPunc: isFireRedModel() ? $("fireRedPunc").value : "ct-punc", language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
     const button = $("openMawe");
@@ -2264,6 +2276,14 @@
     $("openaiDiarizationField").classList.toggle("hidden", !diarize);
     $("openaiDiarizationUnsupported").classList.toggle("visible", diarize && isOpenRouterBaseUrl(baseUrl));
   }
+  function syncFireRedPunc(model = selectedModel()) {
+    const field = $("fireRedPuncField");
+    const select = $("fireRedPunc");
+    if (!field || !select) return;
+    const visible = isFireRedModel(model);
+    field.classList.toggle("hidden", !visible);
+    if (visible && !["none", "ct-punc"].includes(select.value)) select.value = "ct-punc";
+  }
   function renderPromptCharacterCount() { const count = Array.from($("qwenAudioContext").value).length; const counter = $("qwenAudioContextCount"); counter.textContent = t("qwen_audio_context_count").replace("{count}", String(count)); counter.classList.toggle("over-limit", count > 400); }
   function renderSonioxContextCharacterCount() { const value = [$("sonioxContextGeneral").value, $("sonioxContextText").value, $("sonioxContextTerms").value, $("sonioxContextTranslationTerms").value].join("\n"); const count = Array.from(value).length; const counter = $("sonioxContextCount"); counter.textContent = t("soniox_context_count").replace("{count}", String(count)); counter.classList.toggle("over-limit", count > 10000); }
   function splitHotwordEntries(value, ignoreComments = false) { return String(value || "").split(/[\n,，;；]+/u).map((word) => word.trim()).filter((word) => word && (!ignoreComments || !word.startsWith("#"))); }
@@ -2277,11 +2297,15 @@
   function setQwenAudioHotwordsFile(path) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return false; } $("qwenAudioHotwordsFile").value = path; setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); return true; }
   async function loadHotwordFile(path, appendToText = false) { if (ext(path) !== ".txt") { setError("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); clearDropState(); return; } const result = await bridge("read_hotword_file", { path }); if (!result.ok) { applyErrorResult(result, false); clearDropState(); return; } if (appendToText) { const incoming = String(result.text || "").trim(); if (incoming) { const current = $("qwenAudioHotwords").value.trimEnd(); $("qwenAudioHotwords").value = current ? `${current}\n${incoming}` : incoming; } setHotwordsMode("text"); renderHotwordWarnings($("qwenAudioHotwords").value); setStatus(t("qwen_audio_hotwords_loaded")); } else { setQwenAudioHotwordsFile(result.path || path); renderHotwordWarnings(String(result.text || ""), Number($("qwenAudioHotwordWeight").value), true); } clearDropState(); }
   function isLocalProvider() { return provider()?.kind === "local" || provider()?.id === "local"; }
+  function isFireRedModel(model = selectedModel()) { return isLocalProvider() && String(model?.engine || "").toLowerCase() === "firered"; }
   function localStatus() { return selectedModel()?.localStatus || {}; }
   function localModelListStatusKey(model) {
     if (state.localPreparing && model?.id === $("model")?.value) return "local_prepare_running";
     if (!model?.localStatus) return "local_checking";
     const status = model?.localStatus || {};
+    if (String(model?.engine || "").toLowerCase() === "firered" && status.ctcReady && !status.puncReady) {
+      return "local_firered_punc_optional";
+    }
     return ({
       installed: "local_installed",
       partial: "local_partial",
@@ -2725,7 +2749,8 @@
     const status = localStatus();
     const preparing = state.localPreparing;
     const target = $("localModelStatus");
-    const key = status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing", checking: "local_checking" }[status.status] || "local_missing");
+    const optionalFireRedPunc = isFireRedModel() && status.ctcReady && !status.puncReady;
+    const key = optionalFireRedPunc ? "local_firered_punc_optional" : (status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing", checking: "local_checking" }[status.status] || "local_missing"));
     // 与 runtime 面板一致：preparing 状态行固定"正在准备"文案，实时流水只在进度条下方。
     target.textContent = "";
     if (!preparing && status.status === "runtime_missing") {
@@ -2738,8 +2763,8 @@
     const canPrepare = Boolean(status.canPrepare) && !preparing;
     const button = $("prepareLocalModel");
     button.disabled = preparing ? false : !canPrepare;
-    button.classList.toggle("hidden", !preparing && status.status === "installed");
-    button.textContent = preparing ? t("local_prepare_cancel") : (status.status === "installed" ? t("local_prepare_again") : t("local_prepare"));
+    button.classList.toggle("hidden", !preparing && !canPrepare);
+    button.textContent = preparing ? t("local_prepare_cancel") : (optionalFireRedPunc ? t("local_prepare_optional") : (status.status === "installed" ? t("local_prepare_again") : t("local_prepare")));
     $("model").disabled = preparing;
     $("localModelProgress").classList.toggle("hidden", !preparing);
     const progress = state.localProgress || {};
@@ -3014,7 +3039,7 @@
   function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langZh").classList.toggle("active", state.lang === "zh"); $("langEn").classList.toggle("active", state.lang === "en"); $("demoBadge").textContent = t("demo_mode"); renderAudioTracks(); if (state.audioTracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint"); renderKeyHint(); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); refillSelectLabels(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); window.MAWLauncher?.onLanguageChanged?.(); }
   async function setLanguage(language) { if (language !== "zh" && language !== "en") return; state.lang = language; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (result.ok) state.config.guiLang = language; else applyErrorResult(result); }
   function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen"); $("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen"); $("localModelPanel").classList.toggle("hidden", !local); $("localRuntimeCheckField").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); $("providerNote").textContent = providerNoteText(current); $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); renderKeyStatus(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) { void refreshLocalModels(); void refreshAlignmentModels(); } } }
-  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); $("modelNote").textContent = modelNoteText(model); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
+  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); $("modelNote").textContent = modelNoteText(model); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); syncFireRedPunc(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
   function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
   function languageValue() { const el = $("language"); if (el.multiple) return Array.from(el.selectedOptions).map((o) => o.value).filter(Boolean).join(","); return el.value; }
   function syncAdvancedParamsGroup() { const group = $("advancedParamsGroup"); const hasVisibleField = Array.from(group.querySelectorAll(".field")).some((field) => !field.classList.contains("hidden")); group.classList.toggle("hidden", !hasVisibleField && $("dashscopeRegionHint").classList.contains("hidden")); }
@@ -3163,7 +3188,7 @@
     showErrorNotice(message, result.code || "", detail, diagnostics);
   }
   function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["maxWords", 1], ["minWords", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); if (data.maxWords && data.minWords && Number(data.maxWords) < Number(data.minWords)) return fail("maxWords", errText("segmentation_invalid", "")); return true; }
-  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); if (data.alignmentModel) { const alignment = (state.config.alignmentModels || []).find((item) => item.id === data.alignmentModel); if (!alignment || alignment.status === "checking") return fail("recognitionAlignmentModel", t("alignment_model_checking")); if (alignment.status === "runtime_missing" || alignment.runtimeAvailable === false) return fail("recognitionAlignmentModel", t("alignment_model_runtime_missing")); if (!alignment.installed) return fail("recognitionAlignmentModel", errText("alignment_model_missing", "")); } return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (isCustomOpenAiModel() && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().id === "openai" && selectedModel().supportsKeywords && /[<>]/u.test(data.openaiKeywords)) return fail("openaiKeywords", errText("openai_keywords_invalid", "")); if (provider().id === "openai" && selectedModel().supportsDiarization && isOpenRouterBaseUrl(data.openaiBaseUrl)) return fail("model", errText("openai_diarize_openrouter_unsupported", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
+  function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); if (isFireRedModel() && data.fireredPunc === "ct-punc" && !status.puncReady) return fail("model", errText("firered_punc_missing", "")); if (data.alignmentModel) { const alignment = (state.config.alignmentModels || []).find((item) => item.id === data.alignmentModel); if (!alignment || alignment.status === "checking") return fail("recognitionAlignmentModel", t("alignment_model_checking")); if (alignment.status === "runtime_missing" || alignment.runtimeAvailable === false) return fail("recognitionAlignmentModel", t("alignment_model_runtime_missing")); if (!alignment.installed) return fail("recognitionAlignmentModel", errText("alignment_model_missing", "")); } return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (isCustomOpenAiModel() && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().id === "openai" && selectedModel().supportsKeywords && /[<>]/u.test(data.openaiKeywords)) return fail("openaiKeywords", errText("openai_keywords_invalid", "")); if (provider().id === "openai" && selectedModel().supportsDiarization && isOpenRouterBaseUrl(data.openaiBaseUrl)) return fail("model", errText("openai_diarize_openrouter_unsupported", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
   function fail(field, message) {
     setError(field, message);
     setStatus(message);
@@ -3761,7 +3786,7 @@
     const action = $("errorNotice").dataset.action;
     if (action === "ffmpeg-settings") openSettings("ffmpegSettingsSection", "ffmpegPath");
   });
-  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("audioTrack").addEventListener("change", () => { const value = Number($("audioTrack").value); if (Number.isInteger(value) && value >= 0) state.audioTrack = value; }); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
+  $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("fireRedPunc").addEventListener("change", () => setError("fireRedPunc", "")); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("audioTrack").addEventListener("change", () => { const value = Number($("audioTrack").value); if (Number.isInteger(value) && value >= 0) state.audioTrack = value; }); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
   $("testRun").addEventListener("change", syncTestRun);
   $("openaiModel").addEventListener("input", () => { if (isCustomOpenAiModel()) state.config.openaiCustomModel = $("openaiModel").value.trim(); });
   $("generateHtml").addEventListener("change", syncHtmlMenu);

@@ -74,6 +74,42 @@ class PunctuationMappingTests(unittest.TestCase):
 
 
 class FireRedAsrPipelineTests(unittest.TestCase):
+    def test_debug_writer_receives_ctc_and_punctuation_stages(self) -> None:
+        captured: list[tuple[str, object]] = []
+        engine = FireRedAsrEngine(debug_writer=lambda stage, payload: captured.append((stage, payload)))
+        decoded = SimpleNamespace(
+            text="你好世界",
+            tokens=("你", "好", "世", "界"),
+            timestamps=((0, 100), (100, 200), (200, 300), (300, 400)),
+            duration_ms=400,
+        )
+        punc_segments = [{
+            "start": 0,
+            "end": 400,
+            "text": "你好世界。",
+            "items": [
+                {"text": "你", "start": 0, "end": 100},
+                {"text": "好", "start": 100, "end": 200},
+                {"text": "世", "start": 200, "end": 300},
+                {"text": "界。", "start": 300, "end": 400},
+            ],
+        }]
+
+        with mock.patch.object(engine, "_load", return_value=SimpleNamespace(decode=lambda _path: decoded)):
+            with mock.patch("maw.local_asr._media_duration_seconds", return_value=0.4):
+                with mock.patch("maw.timestamp_alignment.firered_tokens_to_items") as to_items:
+                    to_items.return_value = [
+                        SimpleNamespace(text=char, start=index * 100, end=(index + 1) * 100)
+                        for index, char in enumerate("你好世界")
+                    ]
+                    with mock.patch("maw.local_asr.punctuate_timed_tokens", return_value=punc_segments):
+                        engine.transcribe(Path("sample.wav"), batch_size_s=1)
+
+        stages = {stage: payload for stage, payload in captured}
+        self.assertEqual(set(stages), {"firered-ctc", "firered-punctuated"})
+        self.assertEqual(stages["firered-ctc"]["chunks"][0]["rawText"], "你好世界")
+        self.assertEqual(stages["firered-punctuated"]["chunks"][0]["punctuated"]["text"], "你好世界。")
+
     def test_asr_calls_ct_punc_before_segmentation_and_preserves_punctuation(self) -> None:
         engine = FireRedAsrEngine()
         decoded = SimpleNamespace(
@@ -147,6 +183,34 @@ class FireRedAsrPipelineTests(unittest.TestCase):
         self.assertEqual(result.text, "")
         self.assertEqual(result.items, [])
         self.assertTrue(result.preserve_punctuation)
+
+    def test_can_skip_ct_punc_and_keep_raw_ctc_items(self) -> None:
+        engine = FireRedAsrEngine(use_punc=False)
+        decoded = SimpleNamespace(
+            text="你好世界",
+            tokens=("你", "好", "世", "界"),
+            timestamps=((0, 100), (100, 200), (200, 300), (300, 400)),
+            duration_ms=400,
+        )
+
+        with mock.patch("maw.timestamp_alignment.firered_tokens_to_items") as to_items:
+            to_items.return_value = [
+                SimpleNamespace(text=char, start=index * 100, end=(index + 1) * 100)
+                for index, char in enumerate("你好世界")
+            ]
+            with mock.patch("maw.local_asr.punctuate_timed_tokens") as punc:
+                result = engine._decode_one(
+                    SimpleNamespace(decode=lambda _path: decoded),
+                    Path("sample.wav"),
+                    language="zh",
+                    on_event=None,
+                )
+
+        punc.assert_not_called()
+        self.assertEqual(result.text, "你好世界")
+        self.assertEqual(result.segments, [])
+        self.assertEqual([item["text"] for item in result.items], list("你好世界"))
+        self.assertFalse(result.preserve_punctuation)
 
 
 class CtPuncWorkerTests(unittest.TestCase):

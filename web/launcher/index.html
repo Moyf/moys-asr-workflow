@@ -160,15 +160,6 @@
       <div id="localModelSettingsEntry" class="field hidden">
         <p class="hint local-model-settings-hint"><span data-i18n="local_model_settings_hint_prefix">本地模型的下载和缓存可以在 </span><button id="openLocalModelSettings" class="inline-link" type="button" data-i18n="local_model_settings_open">本地 AI 模型配置</button><span data-i18n="local_model_settings_hint_suffix"> 中管理。</span></p>
       </div>
-      <div id="recognitionAlignmentModelField" class="field hidden">
-        <label for="recognitionAlignmentModel" data-i18n="recognition_alignment_model">对齐模型</label>
-        <select id="recognitionAlignmentModel">
-          <option value="" data-i18n="alignment_model_none">不调用</option>
-        </select>
-        <p id="recognitionAlignmentModelStatus" class="hint" aria-live="polite"></p>
-        <p class="hint" data-i18n="recognition_alignment_model_hint">当前模型没有字词级时间码时，可调用已准备好的对齐模型补齐。</p>
-        <p id="recognitionAlignmentModelError" class="field-error"></p>
-      </div>
       <div id="advancedCard" class="sub-accordion collapsed">
         <button id="advancedToggle" class="accordion-header" type="button"><span class="chevron">▸</span><span data-i18n="advanced">高级选项</span></button>
         <div class="collapse-body">
@@ -177,6 +168,16 @@
               <h3 data-i18n="advanced_params">识别参数</h3>
               <div class="advanced-col">
                 <div id="localDeviceField" class="field hidden"><label for="localDevice" data-i18n="local_device">设备</label><select id="localDevice"><option value="auto" data-i18n="device_auto">自动</option><option value="cpu" data-i18n="device_cpu">CPU</option><option value="cuda" data-i18n="device_cuda">CUDA</option></select></div>
+                <div id="fireRedPuncField" class="field hidden"><label for="fireRedPunc" data-i18n="firered_punc">生成标点提升断句</label><select id="fireRedPunc"><option value="none" data-i18n="firered_punc_none">不使用</option><option value="ct-punc" data-i18n="firered_punc_ct_punc" selected>使用 ct-punc</option></select></div>
+                <div id="recognitionAlignmentModelField" class="field hidden">
+                  <label for="recognitionAlignmentModel" data-i18n="recognition_alignment_model">对齐模型</label>
+                  <select id="recognitionAlignmentModel">
+                    <option value="" data-i18n="alignment_model_none">不调用</option>
+                  </select>
+                  <p id="recognitionAlignmentModelStatus" class="hint" aria-live="polite"></p>
+                  <p class="hint" data-i18n="recognition_alignment_model_hint">当前模型没有字词级时间码时，可调用已准备好的对齐模型补齐。</p>
+                  <p id="recognitionAlignmentModelError" class="field-error"></p>
+                </div>
                 <p id="dashscopeRegionHint" class="hint hidden"><span data-i18n="dashscope_region_hint_prefix">如果你不是中国大陆地区的用户，请前往 </span><button id="openDashscopeRegionSettings" class="inline-link" type="button" data-i18n="dashscope_region_hint_link">⚙️ 设置 → 运行环境</button><span data-i18n="dashscope_region_hint_suffix"> 配置阿里云百炼地域与业务空间。</span></p>
               </div>
             </div>
@@ -316,7 +317,7 @@
               <div id="debugRawField" class="field">
                 <label class="check-field" for="debugRaw" data-i18n-title="debug_raw_title">
                   <input id="debugRaw" type="checkbox">
-                  <span data-i18n="debug_raw">调试运行（保存完整返回数据）</span>
+                  <span data-i18n="debug_raw">调试运行（保存原始/中间数据）</span>
                 </label>
               </div>
             </div>

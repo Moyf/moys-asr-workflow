@@ -574,7 +574,7 @@ LOCAL_MODELS: Final[tuple[ModelConfig, ...]] = (
         id="firered-asr2-ctc-local",
         label="FireRedASR2",
         env_key="",
-        note="中英及多方言；CPU 可运行；字词时间码；自动标点（需 ct-punc）",
+        note="中英及多方言；CPU 可运行；字词时间码；可用 ct-punc 改善标点和断句",
         languages=(
             ("", "自动识别"),
             ("zh", "中文 / Chinese"),
