@@ -104,6 +104,9 @@ const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
 const MULTI_SUBTITLE_TOLERANCE_MS = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_TOLERANCE_MS || 300;
 const MULTI_SUBTITLE_MERGE_OVERLAP_TOLERANCE_MS = 500;
 const SUBTITLE_MIN_DURATION_MS = 100;
+// 拆分时「下刀时间 vs 实际切分边界」允许的最大偏差：超过说明字幕文本与
+// 词时间戳已脱钩、切点落在了错误的词边界附近，此时提示而不是静默出错。
+const SPLIT_ALIGNMENT_DRIFT_WARN_MS = 500;
 const PROJECT_SEGMENT_OVERLAP_AUTO_FIX_MAX_MS = 2;
 const MULTI_SUBTITLE_IMPORT_PROMPT = '是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）';
 const MULTI_SUBTITLE_TOGGLE_TITLE = '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。';
@@ -8480,33 +8483,27 @@ function splitItemsAtChar(
   const items = Array.isArray(segment?.items) ? segment.items : [];
   const hasItems = items.some((item) => String(item?.text || ''));
 
-  // 用原文查找 item 文本，处理 item 不包含词间空格的常见工程格式。
-  // 如果上游 item 文本无法和字幕原文对齐，则退回旧的顺序长度映射，
-  // 但后面的时间钳制和副本分组仍然保持一致。
-  let searchFrom = 0;
-  let aligned = true;
-  const records = [];
-  for (const item of items) {
-    const itemText = String(item?.text || '');
-    if (!itemText) continue;
-    const textStart = text.indexOf(itemText, searchFrom);
-    if (textStart < 0) {
-      aligned = false;
-      break;
-    }
-    records.push({ item, textStart, textEnd: textStart + itemText.length, itemText });
-    searchFrom = textStart + itemText.length;
-  }
-  if (!aligned) {
-    records.length = 0;
-    let textStart = 0;
-    for (const item of items) {
-      const itemText = String(item?.text || '');
-      if (!itemText) continue;
-      records.push({ item, textStart, textEnd: textStart + itemText.length, itemText });
-      textStart += itemText.length;
-    }
-  }
+  // 用原文对齐 item 文本：顺序保持的最优匹配，处理 item 不包含词间空格的
+  // 常见工程格式。个别词被人工改写（如「傲」→「Alt(noir)」）时只跳过该词、
+  // 其余词仍落回真实位置。旧实现一处失配就把全部对齐作废、退回顺序长度
+  // 映射，会让切点随插入文本的长度漂移到错误的词边界（字拆对、时拆错的
+  // 根因）。
+  const alignmentRecords = MULTI_SUBTITLE_UTILS.alignItemsToText(text, items);
+  const records = alignmentRecords.filter(Boolean);
+  // 失配词（人工替换/删改遗留）没有可靠的文本位置，但顺序保持对齐给出了
+  // 它在词序上最近的两个对齐锚点：两锚点之间的文字空位就是它的替换区。
+  // 归属侧结合空位与刀点的相对位置决定（见下方落边处），不能只比较时间——
+  // 否则刀点左侧替换词的语音可能整体落在「甲词尾切点」之后而被错分到右段。
+  const unalignedPlacements = [];
+  alignmentRecords.forEach((record, index) => {
+    if (record || !String(items[index]?.text || '')) return;
+    let prevAligned = null;
+    let nextAligned = null;
+    for (let k = index - 1; k >= 0 && !prevAligned; k--) prevAligned = alignmentRecords[k];
+    for (let k = index + 1; k < alignmentRecords.length && !nextAligned; k++) nextAligned = alignmentRecords[k];
+    unalignedPlacements.push({ item: items[index], prevAligned, nextAligned });
+  });
+  const nonEmptyItemCount = items.filter((item) => String(item?.text || '')).length;
 
   const timeRangeFor = (item) => {
     const rawStart = Number(item?.start);
@@ -8532,7 +8529,9 @@ function splitItemsAtChar(
   const inside = records.find((record) => (
     safeOffset > record.textStart && safeOffset < record.textEnd
   ));
-  const requested = Number(requestedCutMs);
+  // requestedCutMs 缺省（null/undefined）表示「没有显式刀点」，
+  // 不能让 Number(null) === 0 被当成有效时间 0。
+  const requested = requestedCutMs == null ? NaN : Number(requestedCutMs);
   let splitMs = Number.isFinite(requested) ? Math.round(requested) : null;
   // 切点两侧相邻 item 的实际时间区间；else 分支填充，供下方非对称边界使用。
   let previousRange = null;
@@ -8561,6 +8560,19 @@ function splitItemsAtChar(
     }
   }
 
+  if (!Number.isFinite(splitMs) && !records.length) {
+    // 全部词都与文本失配：没有对齐锚点可吸附。按文字偏移占比映射到词序，
+    // 取对应词的起点作切点——比按段时长线性插值更贴近词边界，也避免
+    // 切点退到段首导致光标入口拒拆。
+    const timedRanges = items.map((item) => timeRangeFor(item)).filter((range) => range.end > range.start);
+    if (timedRanges.length >= 2) {
+      const position = Math.min(
+        timedRanges.length - 1,
+        Math.max(1, Math.round((safeOffset / Math.max(1, text.length)) * timedRanges.length)),
+      );
+      splitMs = timedRanges[position].start;
+    }
+  }
   if (!Number.isFinite(splitMs)) {
     const ratio = safeOffset / Math.max(1, text.length);
     splitMs = Math.round(safeSegmentStart + (safeSegmentEnd - safeSegmentStart) * ratio);
@@ -8582,8 +8594,8 @@ function splitItemsAtChar(
     rightStartMs = nextEdgeMs;
   }
 
-  const leftItems = [];
-  const rightItems = [];
+  let leftItems = [];
+  let rightItems = [];
   for (const record of records) {
     const range = timeRangeFor(record.item);
     if (range.end <= range.start) continue;
@@ -8623,9 +8635,51 @@ function splitItemsAtChar(
       const start = Math.max(range.start, rightStartMs);
       if (range.end > start) rightItems.push({ ...record.item, start, end: range.end });
     } else if (splitMs >= range.start && splitMs <= range.end) {
-      // 退回顺序映射或异常 item 文本对齐时，仍不得让 item 穿过字幕边界。
+      // 跨切点却未命中 inside 的 record 理论上不存在，防御性保留：
+      // 异常对齐时也不得让 item 穿过字幕边界。
       const end = Math.min(range.end, leftEndMs);
       if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
+    }
+  }
+  // 失配词落边：优先按替换区（相邻对齐锚点之间的文字空位）与刀点的相对
+  // 位置定侧——空位整体在刀点左侧归左、右侧归右；刀点落在空位内部时，按
+  // 空位文字占比在两锚点时间区间内插值出局部切点，再按时间就近落边（此
+  // 即「替换词在刀点右侧」的 A2 场景）。单侧没有锚点（头部/尾部遗留词）
+  // 时 side 为空，退回全局 splitMs 的时间比较。定侧后两侧边界扩到包住
+  // 本侧失配词（否则先于 nextEdge 的失配词会先于段起点，保存时被时间码
+  // 兜底二次改写），再钳进最终边界；之后统一做相邻重叠压缩。
+  if (unalignedPlacements.length) {
+    const unalignedRanges = unalignedPlacements.map(({ item, prevAligned, nextAligned }) => {
+      const range = timeRangeFor(item);
+      let side = null;
+      if (nextAligned && safeOffset >= nextAligned.textStart) side = 'left';
+      else if (prevAligned && safeOffset <= prevAligned.textEnd) side = 'right';
+      else if (prevAligned && nextAligned) {
+        const from = timeRangeFor(prevAligned.item).end;
+        const to = timeRangeFor(nextAligned.item).start;
+        if (to > from) {
+          const fraction = Math.min(1, Math.max(0, (safeOffset - prevAligned.textEnd)
+            / Math.max(1, nextAligned.textStart - prevAligned.textEnd)));
+          const holeCutMs = from + (to - from) * fraction;
+          side = range.end <= holeCutMs ? 'left'
+            : range.start >= holeCutMs ? 'right'
+            : holeCutMs - range.start < range.end - holeCutMs ? 'left' : 'right';
+        }
+      }
+      return { ...item, start: range.start, end: range.end, side };
+    });
+    const placed = MULTI_SUBTITLE_UTILS.placeUnalignedSplitItems(
+      leftItems,
+      rightItems,
+      unalignedRanges,
+      splitMs,
+      { leftEndMs, rightStartMs },
+    );
+    leftItems = placed.leftItems;
+    rightItems = placed.rightItems;
+    if (placed.bounds) {
+      leftEndMs = placed.bounds.leftEndMs;
+      rightStartMs = placed.bounds.rightStartMs;
     }
   }
   // 病态时间码被钳制到段尾/段头时，可能与相邻 item 挤占同一毫秒槽。
@@ -8638,7 +8692,19 @@ function splitItemsAtChar(
       }
     }
   }
-  return { leftItems, rightItems, splitMs, leftEndMs, rightStartMs, hasItems };
+  return {
+    leftItems,
+    rightItems,
+    splitMs,
+    leftEndMs,
+    rightStartMs,
+    hasItems,
+    alignment: {
+      total: nonEmptyItemCount,
+      aligned: records.length,
+      broken: records.length < nonEmptyItemCount,
+    },
+  };
 }
 
 function buildSplitPair(
@@ -8702,7 +8768,38 @@ function buildSplitPair(
     right.color = null;
     right.color_ref = { name: segment.color.name, headIdx: 0 };
   }
-  return { left, right, parts, splitMs };
+  return {
+    left,
+    right,
+    parts,
+    splitMs,
+    alignment: {
+      ...(itemParts.alignment || { total: 0, aligned: 0, broken: false }),
+      driftMs: MULTI_SUBTITLE_UTILS.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
+    },
+  };
+}
+
+// 拆分对齐的兜底提示（修复③）：文本与词时间戳脱钩、且切分边界明显偏离
+// 下刀位置时给出警告，杜绝「字拆对、时拆错」的静默错拆与静默失败。强制
+// 拆分（force）会刻意把切点移出词边界，不适用本提示。
+function flashSplitAlignmentHint(alignment, { committed = true } = {}) {
+  if (!alignment?.broken) return;
+  const drift = Number(alignment.driftMs);
+  if (!Number.isFinite(drift) || drift <= SPLIT_ALIGNMENT_DRIFT_WARN_MS) return;
+  const message = committed
+    ? `已拆分，但字幕文本与词时间戳不完全一致，切点与下刀位置相差约 ${Math.round(drift)} ms；如需贴合语音，可先校正文本或检查词时间戳`
+    : `未完成拆分：字幕文本与词时间戳不完全一致，切点与下刀位置相差约 ${Math.round(drift)} ms；请调整切点或校正文本后重试`;
+  flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+}
+
+// 拆分失败路径上拿不到 pair，用相同入参重新评估一次对齐质量（纯计算）。
+function assessSplitAlignment(segment, offset, cutMs, options = {}) {
+  const itemParts = splitItemsAtChar(segment, offset, cutMs, options);
+  return {
+    ...(itemParts.alignment || { total: 0, aligned: 0, broken: false }),
+    driftMs: MULTI_SUBTITLE_UTILS.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
+  };
 }
 
  function linkedSplitState(mainIndex, initial = {}) {
@@ -9532,6 +9629,10 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
     flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
     return false;
   }
+  const splitAlignmentOptions = {
+    preserveCutMs: force || Number.isFinite(state.fixedCutMs),
+    forceCut: force,
+  };
   const pair = buildSplitPair(
     main,
     state.mainOffset,
@@ -9539,12 +9640,18 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
     main.id || `main-${mainIndex}`,
     true,
     state.mainMode,
-    {
-      preserveCutMs: force || Number.isFinite(state.fixedCutMs),
-      forceCut: force,
-    },
+    splitAlignmentOptions,
   );
-  if (!pair) return false;
+  if (!pair) {
+    if (!force) {
+      flashSplitAlignmentHint(
+        assessSplitAlignment(main, state.mainOffset, splitMs, splitAlignmentOptions),
+        { committed: false },
+      );
+    }
+    return false;
+  }
+  if (!force) flashSplitAlignmentHint(pair.alignment, { committed: true });
   const oldMainId = main.id;
   pushUndo('拆分字幕', { captureView: true });
   clearSelection({ commitCuePanel: false });
@@ -9617,6 +9724,10 @@ function commitExtensionSplit(state, { force = false } = {}) {
     flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
     return false;
   }
+  const splitAlignmentOptions = {
+    preserveCutMs: force || Number.isFinite(state.fixedCutMs),
+    forceCut: force,
+  };
   const pair = buildSplitPair(
     extension,
     state.offset,
@@ -9624,12 +9735,18 @@ function commitExtensionSplit(state, { force = false } = {}) {
     extension.id || `${track.id}-segment-${extensionIndex}`,
     true,
     state.extensionMode,
-    {
-      preserveCutMs: force || Number.isFinite(state.fixedCutMs),
-      forceCut: force,
-    },
+    splitAlignmentOptions,
   );
-  if (!pair) return false;
+  if (!pair) {
+    if (!force) {
+      flashSplitAlignmentHint(
+        assessSplitAlignment(extension, state.offset, splitMs, splitAlignmentOptions),
+        { committed: false },
+      );
+    }
+    return false;
+  }
+  if (!force) flashSplitAlignmentHint(pair.alignment, { committed: true });
 
   const oldExtensionId = extension.id;
   const wasBound = Boolean(bindingForExtensionIndex(extensionIndex, track));
@@ -9703,6 +9820,10 @@ function commitOverlaySplit(state, { force = false, successMessage = '已按选�
     flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
     return false;
   }
+  const splitAlignmentOptions = {
+    preserveCutMs: force || Number.isFinite(state.fixedCutMs),
+    forceCut: force,
+  };
   const pair = buildSplitPair(
     segment,
     state.offset,
@@ -9710,12 +9831,18 @@ function commitOverlaySplit(state, { force = false, successMessage = '已按选�
     segment.id || `overlay-${overlayIndex}`,
     true,
     state.extensionMode,
-    {
-      preserveCutMs: force || Number.isFinite(state.fixedCutMs),
-      forceCut: force,
-    },
+    splitAlignmentOptions,
   );
-  if (!pair) return false;
+  if (!pair) {
+    if (!force) {
+      flashSplitAlignmentHint(
+        assessSplitAlignment(segment, state.offset, splitMs, splitAlignmentOptions),
+        { committed: false },
+      );
+    }
+    return false;
+  }
+  if (!force) flashSplitAlignmentHint(pair.alignment, { committed: true });
   pushUndo('拆分叠加字幕', { captureView: true });
   clearSelection({ commitCuePanel: false });
   track.segments.splice(overlayIndex, 1, pair.left, pair.right);
@@ -9825,6 +9952,10 @@ function confirmLinkedSplit() {
     // 前置时长检查已拦截常见不可拆场景；这里兜底提示，避免弹窗内按键完全无反应。
     flashHint('当前切点无法同时拆分主副字幕，请调整断点位置', 'warning');
     return;
+  }
+  if (!force) {
+    flashSplitAlignmentHint(mainPair.alignment, { committed: true });
+    flashSplitAlignmentHint(extensionPair.alignment, { committed: true });
   }
   const oldMainId = main.id;
   const oldExtensionId = extension.id;

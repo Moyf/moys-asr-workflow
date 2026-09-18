@@ -2571,6 +2571,142 @@
     return offsets[index] ?? null;
   }
 
+  // 字幕文本与 items 的顺序保持对齐：每个词在原文的所有出现位置中，选
+  // 「位置递增且对齐词数最多」的组合（小规模 DP）。不能用贪心 indexOf：
+  // 一处失配就整体作废会让拆分切点随人工插入文本的长度漂移（如把 ASR 词
+  // 「傲」改写成「Alt(noir)」后，剩下的同字词必须让位、各自落到真实位置）。
+  // 返回与 items 等长的数组，对齐成功的元素为
+  // { item, itemText, textStart, textEnd }，空文本或找不到的词为 null。
+  function alignItemsToText(text, items) {
+    const value = String(text || '');
+    const list = Array.isArray(items) ? items : [];
+    const occurrences = list.map((item) => {
+      const itemText = String(item?.text || '');
+      const found = [];
+      if (itemText) {
+        let pos = value.indexOf(itemText);
+        while (pos >= 0) {
+          found.push(pos);
+          pos = value.indexOf(itemText, pos + 1);
+        }
+      }
+      return found;
+    });
+    const memo = new Map();
+    const bestFrom = (index, minStart) => {
+      if (index >= list.length) return 0;
+      const key = `${index}:${minStart}`;
+      const cached = memo.get(key);
+      if (cached !== undefined) return cached;
+      let best = bestFrom(index + 1, minStart);
+      const itemText = String(list[index]?.text || '');
+      for (const pos of occurrences[index]) {
+        if (pos < minStart) continue;
+        best = Math.max(best, 1 + bestFrom(index + 1, pos + itemText.length));
+      }
+      memo.set(key, best);
+      return best;
+    };
+    const result = new Array(list.length).fill(null);
+    let minStart = 0;
+    for (let index = 0; index < list.length; index++) {
+      const itemText = String(list[index]?.text || '');
+      if (!itemText) continue;
+      const optimum = bestFrom(index, minStart);
+      let chosen = -1;
+      for (const pos of occurrences[index]) {
+        if (pos >= minStart && 1 + bestFrom(index + 1, pos + itemText.length) >= optimum) {
+          chosen = pos;
+          break;
+        }
+      }
+      if (chosen >= 0) {
+        result[index] = { item: list[index], itemText, textStart: chosen, textEnd: chosen + itemText.length };
+        minStart = chosen + itemText.length;
+      }
+    }
+    return result;
+  }
+
+  // 拆分时在原文里找不到的 item（人工改写过的词）没有可靠的文本位置：
+  // 调用方可通过 item.side 显式定侧（结合相邻对齐锚点的文字空位与刀点
+  // 相对位置算出），否则按自身时间与切点比较——完全在切点左侧归左、
+  // 右侧归右、跨切点归更近的一侧。bounds 给出两侧当前边界时，边界先扩
+  // 到包住本侧失配词（如「傲」的语音正是右段文本 Alt(noir) 的发音：右
+  // 段起点必须前移到它的 start，否则词会先于段起点、保存时被时间码兜底
+  // 二次改写），失配词再钳进最终边界，钳后为空的丢弃（与对齐词的处理
+  // 一致）。返回值带调整后的 bounds；未传 bounds 时保持旧行为（只落边
+  // 不钳制）。
+  function placeUnalignedSplitItems(leftItems, rightItems, items, splitMs, bounds = null) {
+    const left = [...(Array.isArray(leftItems) ? leftItems : [])];
+    const right = [...(Array.isArray(rightItems) ? rightItems : [])];
+    const cut = Number(splitMs);
+    if (!Number.isFinite(cut)) {
+      return { leftItems: left, rightItems: right, bounds: null };
+    }
+    const originalLeftEnd = Number(bounds?.leftEndMs);
+    const originalRightStart = Number(bounds?.rightStartMs);
+    const hasBounds = Number.isFinite(originalLeftEnd) && Number.isFinite(originalRightStart);
+    const pending = [];
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      if (item?.start == null || item?.end == null) return;
+      const start = Number(item.start);
+      const end = Number(item.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+      const toLeft = item.side === 'left' ? true
+        : item.side === 'right' ? false
+        : end <= cut ? true
+        : start >= cut ? false
+        : cut - start < end - cut;
+      // side 只参与落边决策，不能带进工程 JSON。
+      const { side: _side, ...itemData } = item;
+      pending.push({ item: { ...itemData, start, end }, toLeft });
+    });
+    let leftEnd = originalLeftEnd;
+    let rightStart = originalRightStart;
+    if (hasBounds && pending.length) {
+      for (const entry of pending) {
+        if (entry.toLeft) leftEnd = Math.max(leftEnd, entry.item.end);
+        else rightStart = Math.min(rightStart, entry.item.start);
+      }
+      // 病态时间码可能让扩展后的两侧交叉：放弃扩展，保持原边界。
+      if (rightStart < leftEnd) {
+        leftEnd = originalLeftEnd;
+        rightStart = originalRightStart;
+      }
+    }
+    pending.forEach(({ item, toLeft }) => {
+      let { start, end } = item;
+      if (hasBounds) {
+        if (toLeft) end = Math.min(end, leftEnd);
+        else start = Math.max(start, rightStart);
+        if (end <= start) return;
+      }
+      const target = toLeft ? left : right;
+      let at = target.length;
+      while (at > 0 && Number(target[at - 1].start) > start) at -= 1;
+      target.splice(at, 0, { ...item, start, end });
+    });
+    return {
+      leftItems: left,
+      rightItems: right,
+      bounds: hasBounds ? { leftEndMs: leftEnd, rightStartMs: rightStart } : null,
+    };
+  }
+
+  // 用户下刀时间与拆分边界的偏差：边界包住下刀（落在两侧词的真实静音
+  // 空隙内）记 0，空隙再宽也不算漂移；否则取到最近边界的距离。
+  // 注意 Number(null) === 0，缺参必须先按 null 拦下，不能只靠 isFinite。
+  function splitAlignmentDriftMs(leftEndMs, rightStartMs, requestedCutMs) {
+    if (requestedCutMs == null || leftEndMs == null || rightStartMs == null) return null;
+    const requested = Number(requestedCutMs);
+    const leftEnd = Number(leftEndMs);
+    const rightStart = Number(rightStartMs);
+    if (!Number.isFinite(requested) || !Number.isFinite(leftEnd) || !Number.isFinite(rightStart)) return null;
+    if (requested >= leftEnd && requested <= rightStart) return 0;
+    return Math.round(Math.min(Math.abs(requested - leftEnd), Math.abs(requested - rightStart)));
+  }
+
   function findAdjacentCueIndex(segments, currentIndex, direction, skipDisabled = false) {
     for (let index = currentIndex + direction; index >= 0 && index < segments.length; index += direction) {
       if (!skipDisabled || !segments[index]?.disabled) return index;
@@ -6530,6 +6666,9 @@ export default MawDynamicCaptions;
     formatHumanDuration,
     formatGapRemoveDuration,
     splitCharOffsetAtTime,
+    alignItemsToText,
+    placeUnalignedSplitItems,
+    splitAlignmentDriftMs,
     findAdjacentCueIndex,
     findCueNavigationTarget,
     findCueSelectionExtensionTarget,
