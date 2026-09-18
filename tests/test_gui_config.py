@@ -383,6 +383,7 @@ class GuiConfigTests(unittest.TestCase):
                 "funasr-local",
                 "sensevoice-small-local",
                 "moss-transcribe-diarize-local",
+                "firered-asr2-ctc-local",
                 "whisper-large-v3-local",
             ],
         )
@@ -394,7 +395,8 @@ class GuiConfigTests(unittest.TestCase):
                 "Fun-ASR-Nano 2512（GPU）",
                 "FunASR paraformer-zh",
                 "SenseVoice Small",
-                "MOSS Transcribe-Diarize 0.9B（无字词时间码）",
+                "MOSS Transcribe-Diarize 0.9B",
+                "FireRedASR2",
                 "Faster-Whisper large-v3（实验）",
             ],
         )
@@ -412,12 +414,24 @@ class GuiConfigTests(unittest.TestCase):
         sensevoice = provider.models[4]
         self.assertEqual(sensevoice.model_ref, "iic/SenseVoiceSmall")
         self.assertIn("funasr", sensevoice.requires_runtime)
-        moss = provider.models[-2]
+        moss = provider.models[-3]
         self.assertEqual(moss.engine, "moss")
         self.assertTrue(moss.supports_speaker)
         self.assertIn("transformers", moss.requires_runtime)
         # MOSS 输出契约只有段级时间戳（docs/LOCAL_ASR.md），说明里必须提前提醒。
-        self.assertIn("无字词级时间码", moss.note)
+        self.assertIn("仅段级时间码", moss.note)
+        firered = provider.models[-2]
+        self.assertEqual(firered.engine, "firered")
+        self.assertEqual(firered.model_ref, "firered-asr2-ctc")
+        self.assertIn("funasr", firered.requires_runtime)
+        self.assertIn("sherpa_onnx", firered.requires_runtime)
+        self.assertIn("soundfile", firered.requires_runtime)
+        self.assertIn("ct-punc", firered.note)
+        self.assertEqual(qwen06.device_support, "cpu_gpu")
+        self.assertEqual(qwen06.resource_level, "medium")
+        self.assertEqual(qwen06.estimated_size, "1.7G+")
+        self.assertEqual(moss.device_support, "gpu_preferred")
+        self.assertEqual(firered.device_support, "cpu")
         whisper = provider.models[-1]
         self.assertEqual(whisper.engine, "whisper")
         self.assertEqual(whisper.model_ref, "Systran/faster-whisper-large-v3")
@@ -425,8 +439,7 @@ class GuiConfigTests(unittest.TestCase):
         self.assertFalse(whisper.supports_speaker)
         self.assertEqual(
             whisper.note,
-            "OpenAI Whisper 多语种本地识别；CTranslate2 运行时自带 VAD，无说话人分离；"
-            "GPU 运行需要用户自行安装 CUDA 12 和 cuDNN 9，否则自动回退到 CPU",
+            "多语种识别；原生词级时间码；CPU/GPU 均可运行；GPU 速度更佳；无说话人分离",
         )
         self.assertEqual(gui_config.api_key_for_provider("local"), "")
 

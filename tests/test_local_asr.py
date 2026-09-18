@@ -13,6 +13,7 @@ from unittest import mock
 from generate_subtitle_qwen_api import extract_audio
 from generate_subtitle_local import build_parser, default_output_path, load_hotword_files
 from maw.local_asr import (
+    FIRERED_DEFAULT_MODEL,
     FUNASR_DEFAULT_MODEL,
     MOSS_DEFAULT_MODEL,
     MOSS_DEFAULT_REVISION,
@@ -23,6 +24,7 @@ from maw.local_asr import (
     WHISPER_DEFAULT_MODEL,
     WHISPER_DEFAULT_VAD_MIN_SILENCE_MS,
     FunAsrEngine,
+    FireRedAsrEngine,
     LocalAsrError,
     LocalTranscription,
     QwenAsrEngine,
@@ -798,6 +800,28 @@ class LocalAsrFlowTests(unittest.TestCase):
 
         self.assertEqual(moss.model, MOSS_DEFAULT_MODEL)
 
+    def test_engine_factory_supports_firered_without_importing_sherpa(self) -> None:
+        engine = create_local_engine("firered")
+
+        self.assertIsInstance(engine, FireRedAsrEngine)
+        self.assertEqual(engine.model, FIRERED_DEFAULT_MODEL)
+        self.assertEqual(engine.model_path, "")
+
+        custom = create_local_engine("fire-red", model_path="D:/models/firered")
+        self.assertIsInstance(custom, FireRedAsrEngine)
+        self.assertEqual(custom.model_path, "D:/models/firered")
+
+    def test_firered_uses_cpu_when_shared_device_preference_is_cuda(self) -> None:
+        engine = create_local_engine("firered", device="cuda")
+
+        self.assertEqual(engine.requested_device, "cuda")
+        self.assertEqual(engine.device, "cpu")
+
+    def test_firered_can_disable_ct_punc(self) -> None:
+        engine = create_local_engine("firered", use_punc=False)
+
+        self.assertFalse(engine.use_punc)
+
     def test_engine_factory_supports_whisper(self) -> None:
         engine = create_local_engine("whisper")
 
@@ -1390,6 +1414,7 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertEqual(path.name, "sample.funasr-local.srt")
 
         self.assertEqual(default_output_path(Path("D:/media/sample.mp4"), "moss").name, "sample.moss-local.srt")
+        self.assertEqual(default_output_path(Path("D:/media/sample.mp4"), "firered").name, "sample.firered-local.srt")
         self.assertEqual(default_output_path(Path("D:/media/sample.mp4"), "whisper").name, "sample.whisper-local.srt")
 
     def test_write_local_outputs_writes_mosp_without_editing_media(self) -> None:
@@ -1452,10 +1477,25 @@ class LocalCliParserTests(unittest.TestCase):
         self.assertEqual(args.max_words, 13)
         self.assertEqual(args.min_words, 3)
 
+    def test_parser_accepts_firered_punc_mode(self) -> None:
+        args = build_parser().parse_args(["sample.mp4", "--engine", "firered", "--firered-punc", "none"])
+
+        self.assertEqual(args.firered_punc, "none")
+
     def test_parser_accepts_whisper_engine(self) -> None:
         args = build_parser().parse_args(["sample.mp4", "--engine", "whisper"])
 
         self.assertEqual(args.engine, "whisper")
+
+    def test_parser_accepts_alignment_model_and_mode(self) -> None:
+        args = build_parser().parse_args([
+            "sample.mp4",
+            "--alignment-model", "qwen3-forced-aligner-0.6b",
+            "--alignment-mode", "generate",
+        ])
+
+        self.assertEqual(args.alignment_model, "qwen3-forced-aligner-0.6b")
+        self.assertEqual(args.alignment_mode, "generate")
 
     def test_hotword_files_support_comments_and_deduplication(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
