@@ -75,7 +75,7 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
-test('exports ASS with the current font, size, color and enabled subtitle text', async ({ page }) => {
+test('exports ASS from the default profile style and keeps enabled subtitle text', async ({ page }) => {
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
@@ -83,7 +83,10 @@ test('exports ASS with the current font, size, color and enabled subtitle text',
   await page.locator('#editor-settings-toggle').click();
   await page.locator('#editor-settings-tab-subtitle-style').click();
   await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
-  await page.locator('#subtitle-font-family').selectOption('hei');
+  // 预览字体是带 datalist 搜索的输入框；预览设置只影响播放器画面，
+  // 不应写进按样式库导出的 ASS。
+  await page.locator('#subtitle-font-family').fill('黑体');
+  await page.locator('#subtitle-font-family').blur();
   await page.locator('#subtitle-font-size').selectOption('40');
   await page.locator('#subtitle-color').evaluate((input) => {
     input.value = '#12abef';
@@ -98,9 +101,15 @@ test('exports ASS with the current font, size, color and enabled subtitle text',
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
   const save = await page.evaluate(() => window.__exportSaves[0]);
   expect(save.suggestedName).toMatch(/\.ass$/);
+  // 工程没有视频分辨率元数据，PlayRes 回退 1920×1080；
+  // 默认方案关联的库样式（默认字体 72 @1080p 参考）按 1:1 输出。
+  // 默认 ASS 字体按操作系统选择，从页面读取期望值保持测试平台无关。
+  const assDefaultFont = await page.evaluate(() => window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName);
   expect(save.content).toContain(
-    'Style: Default,SimHei,160,&H00EFAB12,&H00EFAB12,',
+    `Style: Default,${assDefaultFont},72,&H00FFFFFF,&H00FFFFFF,`,
   );
+  expect(save.content).not.toContain('SimHei');
+  expect(save.content).not.toContain('#12abef');
   expect(save.content).toContain(
     'Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,第一行\\NSecond, \\{literal\\}\\\\path',
   );
@@ -141,13 +150,17 @@ test('writes the project title, source resolution, palette styles and speaker na
   expect(save.content).toContain('Title: project');
   expect(save.content).toContain('PlayResX: 3840');
   expect(save.content).toContain('PlayResY: 2160');
-  expect(save.content).toContain('Style: Default,Arial,256,');
-  expect(save.content).toContain('Style: YELLOW,Arial,256,&H0019A0C4,&H0019A0C4,');
-  expect(save.content).toContain('Style: GREEN,Arial,256,&H006ABB66,&H006ABB66,');
-  expect(save.content).toContain('Style: RED,Arial,256,&H006F7FF0,&H006F7FF0,');
-  expect(save.content).toContain('Style: PURPLE,Arial,256,&H00E689BF,&H00E689BF,');
-  expect(save.content).toContain('Style: BLUE,Arial,256,&H00FAA761,&H00FAA761,');
-  expect(save.content).toContain('Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,旁白：red line');
+  // 库样式字号按 1080p 参考存储，导出时换算到 PlayResY：72 × 2160/1080 = 144。
+  const assDefaultFont = await page.evaluate(() => window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName);
+  expect(save.content).toContain(`Style: Default,${assDefaultFont},144,`);
+  expect(save.content).toContain(`Style: YELLOW,${assDefaultFont},144,&H0019A0C4,&H0019A0C4,`);
+  expect(save.content).toContain(`Style: GREEN,${assDefaultFont},144,&H006ABB66,&H006ABB66,`);
+  expect(save.content).toContain(`Style: RED,${assDefaultFont},144,&H006F7FF0,&H006F7FF0,`);
+  expect(save.content).toContain(`Style: PURPLE,${assDefaultFont},144,&H00E689BF,&H00E689BF,`);
+  expect(save.content).toContain(`Style: BLUE,${assDefaultFont},144,&H00FAA761,&H00FAA761,`);
+  expect(save.content).toContain(
+    'Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,{\\c&H006F7FF0&}旁白：{\\c&H006F7FF0&}red line',
+  );
 });
 
 test('groups SRT, color-split SRT and styled ASS exports in order', async ({ page }) => {
@@ -208,4 +221,57 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   expect(save.content).toContain(
     'Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,after gap',
   );
+});
+
+test('keeps ASS style actions and preview-mode hints attached to the active form', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await page.locator('#ass-style-manager-open').click();
+  await expect(page.locator('#ass-style-window')).toBeVisible();
+  await expect(page.locator('.ass-style-editor-toolbar')).toHaveCount(0);
+  await expect(page.locator('#ass-style-form #ass-style-delete')).toBeAttached();
+  await expect(page.locator('#ass-style-list .ass-style-list-preview-hint')).toHaveCount(0);
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toBeVisible();
+  await expect(page.locator('.ass-style-preview-mode-hint-prefix'))
+    .toHaveText('需要启用 ASS 字幕模式来预览效果。');
+  await expect(page.locator('.ass-style-preview-mode-hint-status'))
+    .toHaveText('当前未启用。');
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toHaveAttribute('data-ass-preview-mode', 'disabled');
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toHaveCSS('font-size', '12px');
+
+  await page.locator('#ass-style-list [data-ass-selection-id="default"]').click();
+  await expect(page.locator('#ass-style-form-title')).toHaveText('SRT 默认');
+  await expect(page.locator('#ass-style-srt-hint'))
+    .toHaveText('这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。');
+  await expect(page.locator('#ass-style-srt-hint')).toBeVisible();
+  await expect(page.locator('#ass-style-preview-mode-hint')).toBeHidden();
+  await expect(page.locator('.ass-style-assignment-title-row')).toHaveCount(0);
+  await expect(page.locator('.ass-style-assignment-card small').first())
+    .toHaveText('工具箱的「烧录字幕」功能会使用这里选中的样式。');
+
+  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+  await expect(page.locator('#ass-style-preview-mode-hint')).toBeVisible();
+
+  await page.locator('#ass-style-settings-link').click();
+  await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
+  await page.evaluate(() => {
+    assModeToggle.checked = true;
+    assModeToggle.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect(page.locator('.ass-style-preview-mode-hint-prefix'))
+    .toHaveText('需要启用 ASS 字幕模式来预览效果。');
+  await expect(page.locator('.ass-style-preview-mode-hint-status'))
+    .toHaveText('当前已启用。');
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toHaveAttribute('data-ass-preview-mode', 'enabled');
+
+  await page.locator('#ass-profile-list [role="option"]').first().click();
+  const deleteButtonParent = await page.locator('#ass-style-delete').evaluate((element) => element.parentElement?.id);
+  expect(deleteButtonParent).toBe('ass-profile-delete-slot');
 });

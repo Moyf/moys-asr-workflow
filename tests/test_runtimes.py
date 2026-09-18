@@ -70,6 +70,14 @@ class RuntimeRegistryTests(unittest.TestCase):
         self.assertEqual(MOSS.spec.requirements_key, "moss")
         self.assertEqual(MOSS.spec.requirements_bundle_name, "requirements-moss.txt")
 
+    def test_verify_command_imports_every_package_dir(self) -> None:
+        # 安装自检必须 import 齐 package_dirs 的全部关键包：依赖清单与 spec
+        # 脱节（如 reapeaks→quapeaks 改名后仍按陈旧清单装旧包）时，安装要在
+        # verify 阶段当场报错，而不是静默成功后陷入「需要修复」循环。
+        for runtime in (LOCAL, OCR, MOSS):
+            for package in runtime.spec.package_dirs:
+                self.assertIn(package, runtime.spec.verify_command, f"{runtime.spec.key}: {package}")
+
 
 class RuntimePathTests(unittest.TestCase):
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)

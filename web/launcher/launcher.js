@@ -270,6 +270,18 @@
     toolbox_burn_subtitle: "Burn subtitles", toolbox_burn_subtitle_hint: "Render SRT / ASS subtitles into a new video file. Video is re-encoded and the source is kept unchanged.", toolbox_burn_subtitle_input: "Subtitle file", toolbox_burn_subtitle_placeholder: "Choose or drop an .srt / .ass / .ssa subtitle", toolbox_burn_subtitle_input_hint: "Follows the current SRT output by default; ASS / SSA can be chosen manually.", toolbox_burn_subtitle_invalid: "Choose an .srt, .ass, or .ssa subtitle file.", toolbox_burn_done: "Subtitles burned; switched to the new media:", toolbox_extract_audio: "Extract audio", toolbox_extract_audio_hint: "Extract one audio track from video or audio into a new AAC/M4A file; the source is kept unchanged.", toolbox_audio_track: "Audio track", toolbox_audio_track_choose: "Choose media first; MAW will read its available tracks.", toolbox_audio_tracks_reading: "Reading audio tracks…", toolbox_audio_tracks_found: "Found {count} audio track(s).", toolbox_audio_tracks_none: "No usable audio tracks were found.", toolbox_audio_track_item: "Track", toolbox_audio_track_default: "default", toolbox_audio_track_invalid: "The selected audio track is invalid. Choose it again.", toolbox_extract_audio_done: "Audio extracted; switched to the new media:", toolbox_utility_video_required: "Burning subtitles requires media with a video stream.", toolbox_status_burning: "Burning subtitles and re-encoding the video…", toolbox_status_extracting: "Extracting audio…", toolbox_status_cancelling: "Stopping media operation…"
   });
   Object.assign(STRINGS.zh, {
+    toolbox_burn_subtitle_style: "当前 SRT 默认样式：{name}",
+    toolbox_burn_subtitle_style_loading: "正在读取共享样式库…",
+    toolbox_burn_subtitle_style_unavailable: "暂时无法读取 SRT 默认样式；实际压制时仍会读取用户级配置。",
+    toolbox_burn_subtitle_ass_style: "ASS / SSA 使用字幕文件中的样式。",
+  });
+  Object.assign(STRINGS.en, {
+    toolbox_burn_subtitle_style: "Current SRT default style: {name}",
+    toolbox_burn_subtitle_style_loading: "Reading the shared style library…",
+    toolbox_burn_subtitle_style_unavailable: "The SRT default style is unavailable here; burning still reads the user-level configuration.",
+    toolbox_burn_subtitle_ass_style: "ASS / SSA use the styles embedded in the subtitle file.",
+  });
+  Object.assign(STRINGS.zh, {
     test_run: "快速测试",
     test_run_title: "仅截取前2分钟内容，用于快速测试功能和 API",
     test_run_override: "快速测试已限定前 2 分钟",
@@ -598,9 +610,9 @@
     generate_spectral_hint: "默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。",
     generate_spectral_title: "为媒体旁的 .ReaPeaks 缓存额外生成频谱层；不影响原生波形。",
     segmentation: "字幕切句",
-    max_len: "最大字数",
-    min_len: "短句合并阈值",
-    max_words: "英文最大单词数",
+    max_len: "单句最大字数（字）",
+    min_len: "短句合并阈值（字）",
+    max_words: "英文单句最大字数（单词）",
     min_words: "英文短句合并阈值（单词）",
     gap_split: "停顿切句（毫秒）",
     max_len_placeholder: "默认 18",
@@ -608,7 +620,7 @@
     max_words_placeholder: "默认 13",
     min_words_placeholder: "默认 3",
     gap_split_placeholder: "默认 800",
-    segmentation_hint: "字符型设置和停顿设置留空使用默认值（最大字数：18、短句合并阈值：5、停顿切句：800ms）；系统会按语言/文本自动选择字符型或单词型规则。",
+    segmentation_hint: "配置停顿多久时算作两句字幕、少于多少字时自动合并，以及允许的最大字数（超过会强行断句）；系统会按语言自动选择对应规则。",
     english_segmentation_hint: "在生成英文字幕时，会启用该配置。",
     qwen_audio_options_title: "Qwen 上下文与热词",
     toolbox_group_ocr_video: "视频来源",
@@ -682,9 +694,9 @@
     generate_spectral_hint: "By default only the reapeaks wave layer is generated. Spectral data adds processing time and file size.",
     generate_spectral_title: "Add a spectral layer to the .ReaPeaks cache beside the media; this does not change the native waveform.",
     segmentation: "Subtitle segmentation",
-    max_len: "Max characters",
-    min_len: "Short-phrase merge threshold",
-    max_words: "English max words",
+    max_len: "Max characters per subtitle",
+    min_len: "Short-cue merge threshold (characters)",
+    max_words: "Max words per English subtitle",
     min_words: "English short-cue merge threshold (words)",
     gap_split: "Pause split (ms)",
     max_len_placeholder: "Default: 18",
@@ -692,7 +704,7 @@
     max_words_placeholder: "Default: 13",
     min_words_placeholder: "Default: 3",
     gap_split_placeholder: "Default: 800",
-    segmentation_hint: "Leave blank to use the defaults for character-mode and pause splitting (max characters: 18, short-cue threshold: 5, pause split: 800 ms); MAW chooses character or word rules from language/text metadata.",
+    segmentation_hint: "Set how long a pause counts as a new subtitle, how few characters trigger automatic merging, and the maximum allowed characters per subtitle (longer text is forcibly split); the matching rule is selected automatically by language.",
     english_segmentation_hint: "This configuration is used when generating English subtitles.",
     qwen_audio_options_title: "Qwen context & hotwords",
     toolbox_group_ocr_video: "Video source",
@@ -1493,6 +1505,17 @@
         }
         return { ok: true, path };
       },
+      get_ass_style_library: async () => ({
+        ok: true,
+        schema: "moy.asr.ass_styles.v1",
+        version: 1,
+        styles: [
+          { id: "default", name: "SRT 默认", builtin: true, fontName: "Arial", fontSize: 18, primaryColor: "#ffffff", outlineColor: "#000000", backColor: "#000000", bold: false, italic: false, underline: false, strikeOut: false, scaleX: 100, scaleY: 100, spacing: 0, angle: 0, borderStyle: 1, outline: 2, shadow: 0, alignment: 2, marginL: 10, marginR: 10, marginV: 40, encoding: 1 },
+          { id: "ass", name: "ASS", builtin: true, fontName: "Arial", fontSize: 18, primaryColor: "#ffffff", outlineColor: "#000000", backColor: "#000000", bold: false, italic: false, underline: false, strikeOut: false, scaleX: 100, scaleY: 100, spacing: 0, angle: 0, borderStyle: 1, outline: 2, shadow: 0, alignment: 2, marginL: 10, marginR: 10, marginV: 40, encoding: 1 },
+        ],
+        assProfiles: [{ id: "ass", name: "ASS", builtin: true, styleId: "ass", animations: { fad: { enabled: false, inMs: 250, outMs: 250 }, fade: { enabled: false, alpha1: 0, alpha2: 255, alpha3: 0, t1: 0, t2: 250, t3: 750, t4: 1000 }, move: { enabled: false, x1: 0, y1: 0, x2: 0, y2: 0, t1: 0, t2: 1000 }, t: { enabled: false, startMs: 0, endMs: 1000, accel: 1, tags: "" } } }],
+        assignments: { srtBurnStyleId: "default", assExportProfileId: "ass" },
+      }),
       get_audio_tracks: async ({ mediaPath = "" } = {}) => VIDEO_EXTS.has(ext(mediaPath)) ? ({ ok: true, tracks: [
         { audioIndex: 0, streamIndex: 1, title: "Mix", channels: 2, sampleRate: 48000, default: true },
         { audioIndex: 1, streamIndex: 2, title: "Voice", channels: 2, sampleRate: 48000, default: false },
@@ -1599,8 +1622,10 @@
   // 后端 status detail 是中文固定文案（就绪/未安装/需修复等），界面语言下应改用本地化文案；
   // 只有非标准状态的动态信息（如安装失败原因）才原样透传。
   function runtimeHintText(runtime, readyKey, otherKey) {
+    // 后端 detail 是运行环境的具体说明（如「OCR 模型已安装，可以在工具箱中
+    // 使用。」），优先展示；缺失时才回退到界面 i18n 文案。
     const fallbackKey = runtime.ready || runtime.status === "ready" ? readyKey : otherKey;
-    return ["ready", "missing", "broken", "installing", "checking"].includes(runtime.status) ? t(fallbackKey) : (runtime.detail || t(fallbackKey));
+    return runtime.detail || t(fallbackKey);
   }
   function localModelHintText(status) {
     return ["installed", "missing", "checking", "runtime_missing"].includes(status.status) ? t("local_prepare_hint") : (status.detail || t("local_prepare_hint"));

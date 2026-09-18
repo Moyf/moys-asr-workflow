@@ -1046,3 +1046,23 @@
   .editor-workspace.layout-custom .free-layout-root { flex-direction: column; }
   .editor-workspace.layout-custom .layout-module-slot { min-height: 170px; }
 }
+
+/* === 独立叠加字幕轨的波形块 ===
+   bottom 固定取波形行高的一半：主字幕（与其徽章）占下半区，叠加字幕占上半区，
+   互不遮挡，也直观表达「最多上下两层」。多重字幕行主字幕在上一格、副字幕
+   贴底，叠加块位于 50% 线、仍在主字幕格之上。高度与主字幕块一致（35px）。
+   行高不足 84px（50% 线放不下 35px 块）时由 JS 加 overlay-cover-mode：
+   叠加块直接盖在主字幕块上方（同位覆盖、z-index 置顶），此时不渲染叠加徽章。 */
+.waveform-cue-block.waveform-overlay-block {
+  bottom: 50%;
+  height: 35px;
+  line-height: 35px;
+  z-index: 7;
+}
+.waveform-cue-block.waveform-overlay-block.overlay-cover-mode {
+  bottom: 7px;
+}
+/* 叠加块的徽章：挂在叠加块（bottom 50% + 高 35px）上方，避免与下半区徽章混叠。 */
+.waveform-cue-badge.waveform-overlay-cue-badge {
+  bottom: calc(50% + 37px + var(--badge-stack-index, 0) * 16px);
+}

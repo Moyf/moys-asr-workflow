@@ -35,6 +35,23 @@ from maw.gui_platform import _terminate_registered_job, terminate_process_tree  
 from maw_gui import _is_ffmpeg_missing_error, _startup_error_log_path, _write_startup_error_log  # noqa: E402
 
 
+class TranscriptionProcessErrorMessageTests(unittest.TestCase):
+    def test_access_violation_exit_code_appends_driver_hint(self) -> None:
+        for code in (3221225477, -1073741819):
+            with self.subTest(code=code):
+                error = TranscriptionProcessError(code, output=["[local] 正在准备加载模型……"])
+                self.assertEqual(error.exit_code, code)
+                self.assertIn("0xC0000005", str(error))
+                self.assertIn("重启电脑", str(error))
+                self.assertIn("正在准备加载模型", str(error))
+
+    def test_ordinary_exit_code_keeps_plain_message(self) -> None:
+        error = TranscriptionProcessError(1, output=["错误: 未识别到任何内容"])
+        self.assertNotIn("0xC0000005", str(error))
+        self.assertIn("exit code 1", str(error))
+        self.assertIn("未识别到任何内容", str(error))
+
+
 def _write_bwf_wav(path: Path, sample_rate: int, time_reference_samples: int) -> None:
     fmt = struct.pack('<HHIIHH', 1, 1, sample_rate, sample_rate * 2, 2, 16)
     bext = bytearray(346)

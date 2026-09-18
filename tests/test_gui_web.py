@@ -490,7 +490,10 @@ class GuiWebBridgeTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+        # 本机系统环境可能真设了 MAW_LOCAL_RUNTIME_ROOT（系统环境优先于 env
+        # 文件）；移除后才能验证 env 文件这一路。
         with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
             api = LauncherApi(paths=LauncherPaths(root=self.root, env_path=self.env_path, launcher_html=self.root / "launcher.html"), window_getter=lambda: None)
             self.assertEqual(_canonical_test_path(os.environ["MAW_LOCAL_RUNTIME_ROOT"]), _canonical_test_path(runtime_root))
             self.assertEqual(_canonical_test_path(api.get_local_runtime()["path"]), _canonical_test_path(runtime_root))
@@ -1899,15 +1902,36 @@ class GuiWebBridgeTests(unittest.TestCase):
         _ = ffmpeg.write_bytes(b"exe")
         output = self.root / "clip.subtitled.mp4"
 
-        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
-            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
-                burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve())
-                result = self.api.run_burn_subtitles({"mediaPath": str(media), "subtitlePath": str(subtitle)})
+        library = {
+            "styles": [{"id": "default", "name": "SRT 默认", "fontName": "Microsoft YaHei", "fontSize": 24}],
+            "assignments": {"srtBurnStyleId": "default"},
+        }
+        with mock.patch("maw.gui_web.load_ass_style_library", return_value=library):
+            with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+                with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                    burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve())
+                    result = self.api.run_burn_subtitles({"mediaPath": str(media), "subtitlePath": str(subtitle)})
 
         self.assertTrue(result["ok"])
         self.assertEqual(burn.call_args.kwargs["ffmpeg_path"], ffmpeg)
+        self.assertEqual(burn.call_args.args[0].srt_style["fontName"], "Microsoft YaHei")
+        self.assertEqual(result["srtStyleName"], "SRT 默认")
         self.assertIsInstance(burn.call_args.kwargs["cancel_event"], threading.Event)
         self.assertEqual(result["mediaPath"], str(output.resolve()))
+
+    def test_launcher_exposes_shared_ass_style_library(self) -> None:
+        library = {
+            "schema": "moy.asr.ass_styles.v1",
+            "styles": [{"id": "default", "name": "SRT 默认"}],
+            "assProfiles": [{"id": "ass", "name": "ASS"}],
+            "assignments": {"srtBurnStyleId": "default", "assExportProfileId": "ass"},
+        }
+        with mock.patch("maw.gui_web.load_ass_style_library", return_value=library):
+            result = self.api.get_ass_style_library()
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["assignments"]["srtBurnStyleId"], "default")
+        self.assertEqual(result["styles"][0]["name"], "SRT 默认")
 
     def test_probe_audio_tracks_bridge_returns_normalized_track_payload(self) -> None:
         media = self.root / "clip.mkv"
@@ -4770,7 +4794,13 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('class="segmentation-row segmentation-character-row"', page)
         self.assertIn('class="segmentation-row segmentation-word-row"', page)
         self.assertIn('data-i18n="english_segmentation_hint"', page)
+        self.assertIn('data-i18n="min_len">短句合并阈值（字）</label>', page)
+        self.assertIn('data-i18n="max_len">单句最大字数（字）</label>', page)
+        self.assertIn('data-i18n="max_words">英文单句最大字数（单词）</label>', page)
         self.assertLess(page.index('class="segmentation-row segmentation-character-row"'), page.index('class="segmentation-row segmentation-word-row"'))
+        self.assertLess(page.index('id="gapSplit"'), page.index('id="minLen"'))
+        self.assertLess(page.index('id="minLen"'), page.index('id="maxLen"'))
+        self.assertLess(page.index('id="minWords"'), page.index('id="maxWords"'))
         self.assertLess(page.index('id="settingsProcessingPanel"'), page.index('id="segmentationSettingsSection"'))
         self.assertLess(page.index('id="segmentationSettingsSection"'), page.index('id="punctuationSettingsSection"'))
         self.assertNotIn('id="segmentationField"', page[page.index('id="advancedCard"'):page.index('id="settingsModal"')])
@@ -5087,8 +5117,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('min_words_placeholder: "Default: 3"', script)
         self.assertIn('gap_split_placeholder: "默认 800"', script)
         self.assertIn('gap_split_placeholder: "Default: 800"', script)
-        self.assertIn("字符型设置和停顿设置留空使用默认值（最大字数：18、短句合并阈值：5、停顿切句：800ms）", script)
-        self.assertIn("Leave blank to use the defaults for character-mode and pause splitting (max characters: 18, short-cue threshold: 5, pause split: 800 ms)", script)
+        self.assertIn("配置停顿多久时算作两句字幕、少于多少字时自动合并，以及允许的最大字数（超过会强行断句）；系统会按语言自动选择对应规则。", script)
+        self.assertIn("Set how long a pause counts as a new subtitle, how few characters trigger automatic merging, and the maximum allowed characters per subtitle (longer text is forcibly split); the matching rule is selected automatically by language.", script)
         self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
         self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
         self.assertIn('$("languageGroup").classList.toggle("hidden", current.supportsLanguage === false)', script)

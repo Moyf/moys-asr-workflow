@@ -50,6 +50,7 @@ from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import quapeaks  # noqa: E402
 from maw.project_backups import backup_directory_candidates, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
+from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.project import (  # noqa: E402
@@ -80,6 +81,7 @@ from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # no
 
 
 MAX_RECENT_PROJECTS = 10
+MAX_ASS_STYLE_LIBRARY_BYTES = 512 * 1024
 BUILTIN_WORKSPACE_IDS = frozenset({"classic", "wave-right", "three-fold", "cinema"})
 ONBOARDING_STATUSES = frozenset({"completed", "skipped"})
 PRPROJ_CAPABILITY = {
@@ -659,6 +661,7 @@ def build_server_page(
         "attachUrl": "/api/project/attach",
         "settingsUrl": "/api/settings",
         "recentProjects": [item.to_json() for item in settings.recent_projects],
+        "assStylesUrl": "/api/ass-styles",
         "autoOpenLastProject": settings.auto_open_last_project,
         "savedWorkspaces": settings.saved_workspaces,
         "presetWorkspaces": settings.preset_workspaces,
@@ -690,6 +693,37 @@ def build_server_page(
         media_name_class=media_class,
     )
     return page.encode("utf-8")
+
+
+def _attach_segments_match(server_project: dict, browser_project: dict) -> bool:
+    """Compare stable subtitle content while tolerating legacy frame projections.
+
+    The browser normalizes legacy millisecond projects on load and adds optional
+    ``start_frame``/``end_frame`` projections.  Those projections are derived
+    from the millisecond ranges and are not present in older files, so they
+    must not make an otherwise identical on-disk project fail takeover.
+    Frame-mode projects keep their frame fields significant and are compared as
+    supplied.
+    """
+    server_segments = copy.deepcopy(server_project.get("segments"))
+    browser_segments = copy.deepcopy(browser_project.get("segments"))
+    if not isinstance(server_segments, list) or not isinstance(browser_segments, list):
+        return server_segments == browser_segments
+
+    timebase = browser_project.get("timebase")
+    frame_mode = isinstance(timebase, dict) and timebase.get("unit") == "frames"
+    if not frame_mode:
+        for segments in (server_segments, browser_segments):
+            for segment in segments:
+                if not isinstance(segment, dict):
+                    continue
+                segment.pop("start_frame", None)
+                segment.pop("end_frame", None)
+                for item in segment.get("items") or []:
+                    if isinstance(item, dict):
+                        item.pop("start_frame", None)
+                        item.pop("end_frame", None)
+    return server_segments == browser_segments
 
 
 class EditorServer(ThreadingHTTPServer):
@@ -1201,7 +1235,7 @@ class EditorServer(ThreadingHTTPServer):
             )
             if self.defer_reapeaks:
                 project = without_deferred_reapeaks(project)
-            if project.data.get("segments") != normalized_browser.get("segments"):
+            if not _attach_segments_match(project.data, normalized_browser):
                 raise AttachProjectError("媒体同目录的同名工程与打开的副本内容不一致，未接管")
         except Exception as error:  # noqa: BLE001 - settle startup state before returning the HTTP error
             if startup_loading:
@@ -1825,6 +1859,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.open_recent_project()
         elif path == "/api/settings":
             self.update_settings()
+        elif path == "/api/ass-styles":
+            self.update_ass_styles()
         elif path == "/api/prproj":
             self.send_json(HTTPStatus.NOT_IMPLEMENTED, PRPROJ_CAPABILITY)
         elif path == "/api/stickers/root":
@@ -2139,10 +2175,14 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(ograf_bytes)
 
-    def read_json_request(self) -> dict:
+    def read_json_request(self, *, max_bytes: int = 64 * 1024 * 1024) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
-        if length <= 0 or length > 64 * 1024 * 1024:
-            raise ValueError("请求内容为空或超过 64 MB")
+        if length <= 0 or length > max_bytes:
+            if max_bytes % (1024 * 1024) == 0:
+                limit = f"{max_bytes // (1024 * 1024)} MB"
+            else:
+                limit = f"{max_bytes // 1024} KB"
+            raise ValueError(f"请求内容为空或超过 {limit}")
         request = json.loads(self.rfile.read(length).decode("utf-8"))
         if not isinstance(request, dict):
             raise ValueError("请求内容必须是对象")
@@ -2243,6 +2283,22 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "onboardingStatus": settings.onboarding_status,
         })
 
+    def update_ass_styles(self) -> None:
+        """Persist the shared user-level style library used by Editor and Launcher."""
+        try:
+            request = self.read_json_request(max_bytes=MAX_ASS_STYLE_LIBRARY_BYTES)
+            # 共享样式库会覆盖用户级配置；与其它状态变更接口一样要求页面请求令牌，
+            # 防止任意网页用 CORS-safelisted POST 直接改写本机 ass-styles.json。
+            self._check_request_token(request)
+            library = save_ass_style_library(request)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, library)
+
     def _apply_settings_request(self, request: dict[str, object]) -> bool:
         """Apply at most one settings action; returns False when nothing was requested."""
         enabled = request.get("autoOpenLastProject")
@@ -2342,6 +2398,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/waveform":
             self.send_json(HTTPStatus.OK, self.editor_server.reapeaks_status_payload())
+            return
+        if path == "/api/ass-styles":
+            self.send_json(HTTPStatus.OK, load_ass_style_library())
             return
         if path == "/":
             page = build_server_page(

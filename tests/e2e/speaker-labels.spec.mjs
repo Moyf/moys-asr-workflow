@@ -66,6 +66,9 @@ test('configures preview-only speaker labels and independently controls SRT expo
   expect(colorStyleWidth).toBeLessThan(220);
   await expect(page.locator('#subtitle-color-style option[value="both"]')).toHaveCount(0);
   await expect(page.locator('#subtitle-color-style option[value="shadow"]')).toHaveCount(0);
+  await expect(page.locator('#subtitle-color-style option[value="none"]')).toHaveCount(0);
+  await expect(page.locator('#subtitle-color-style option[value="underline"]')).toHaveCount(1);
+  await expect(page.locator('#subtitle-color-style option[value="text"]')).toHaveCount(1);
   await expect(page.locator('#subtitle-color-style option[value="stroke"]')).toHaveCount(1);
   await expect(page.locator('#subtitle-speaker-mapping-enabled')).not.toBeChecked();
   await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeHidden();
@@ -172,7 +175,9 @@ test('configures preview-only speaker labels and independently controls SRT expo
     };
   });
   expect(strokeLabelColors.label).toBe(strokeLabelColors.mainText);
+  // 下划线模式：说话人标签沿用颜色快照，不回退到字幕默认颜色。
   await page.locator('#subtitle-color-style').selectOption('underline');
+  await expect(page.locator('#subtitle-color-style')).toHaveValue('underline');
   await expect(page.locator('#overlay-main-speaker-label')).toHaveCSS('color', 'rgb(196, 160, 25)');
   await page.locator('#subtitle-color-style').selectOption('stroke');
   await page.locator('#subtitle-color-underline').uncheck();
@@ -284,4 +289,135 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#subtitle-speaker-label-yellow')).toHaveValue('Host');
   await expect(page.locator('#subtitle-speaker-label-separator')).toHaveValue('"');
   await expect(page.locator('#subtitle-color-style')).toHaveValue('stroke');
+});
+
+test('keeps ASS speaker labels in the same style across preview resizing and fullscreen', async ({ page }) => {
+  await page.goto(server.url);
+  await revealSpeakerCue(page);
+
+  const smallWindow = await page.evaluate(() => {
+    DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    DATA.preview.subtitle = {
+      ...DATA.preview.subtitle,
+      speaker_labels: {
+        mapping_enabled: true,
+        enabled: true,
+        separator: '：',
+        names: { yellow: 'Host', green: 'Guest', red: 'Narrator', purple: 'Stage', blue: 'Caption' },
+      },
+    };
+    const library = window.AsrEditorUtils.defaultAssStyleLibrary();
+    const sourceStyle = window.AsrEditorUtils.assStyleForId(library, 'ass');
+    library.styles = library.styles.map((style) => style.id === 'ass'
+      ? {
+        ...sourceStyle,
+        fontName: 'Arial',
+        fontSize: 72,
+        bold: true,
+        italic: true,
+        underline: true,
+        outline: 4,
+        outlineColor: '#112233',
+      }
+      : style);
+    ASS_STYLE_LIBRARY = library;
+    EDITOR_SETTINGS.assMode = true;
+    overlayToggle.checked = true;
+    playerWrap.style.height = '540px';
+    playerWrap.style.minHeight = '540px';
+    playerWrap.style.flex = '0 0 540px';
+    playerStage.style.width = '960px';
+    playerStage.style.height = '540px';
+    playerStage.style.minHeight = '540px';
+    playerStage.style.flex = '0 0 540px';
+    refreshSubtitlePreview(1000, 0);
+    const text = document.getElementById('overlay-main-text');
+    const label = document.getElementById('overlay-main-speaker-label');
+    const textStyle = getComputedStyle(text);
+    const labelStyle = getComputedStyle(label);
+    return {
+      stageHeight: playerStage.getBoundingClientRect().height,
+      textFontSize: textStyle.fontSize,
+      labelFontSize: labelStyle.fontSize,
+      textFontFamily: textStyle.fontFamily,
+      labelFontFamily: labelStyle.fontFamily,
+      textFontWeight: textStyle.fontWeight,
+      labelFontWeight: labelStyle.fontWeight,
+      textFontStyle: textStyle.fontStyle,
+      labelFontStyle: labelStyle.fontStyle,
+      textDecoration: textStyle.textDecorationLine,
+      labelDecoration: labelStyle.textDecorationLine,
+    };
+  });
+  expect(smallWindow.stageHeight).toBeCloseTo(540, 0);
+  expect(Number.parseFloat(smallWindow.textFontSize)).toBeCloseTo(36, 0);
+  expect(smallWindow.labelFontSize).toBe(smallWindow.textFontSize);
+  expect(smallWindow.labelFontFamily).toBe(smallWindow.textFontFamily);
+  expect(smallWindow.labelFontWeight).toBe(smallWindow.textFontWeight);
+  expect(smallWindow.labelFontStyle).toBe(smallWindow.textFontStyle);
+  expect(smallWindow.labelDecoration).toBe(smallWindow.textDecoration);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => playerWrap,
+    });
+    playerStage.style.height = '1080px';
+    playerStage.style.minHeight = '1080px';
+    playerStage.style.flexBasis = '1080px';
+    playerWrap.style.height = '1080px';
+    playerWrap.style.minHeight = '1080px';
+    playerWrap.style.flexBasis = '1080px';
+    document.dispatchEvent(new Event('fullscreenchange'));
+  });
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+  const fullscreen = await page.evaluate(() => {
+    const text = document.getElementById('overlay-main-text');
+    const label = document.getElementById('overlay-main-speaker-label');
+    return {
+      stageHeight: playerStage.getBoundingClientRect().height,
+      fullscreen: playerWrap.classList.contains('fullscreen-preview'),
+      textFontSize: getComputedStyle(text).fontSize,
+      labelFontSize: getComputedStyle(label).fontSize,
+      labelFontFamily: getComputedStyle(label).fontFamily,
+      labelFontWeight: getComputedStyle(label).fontWeight,
+      labelFontStyle: getComputedStyle(label).fontStyle,
+      labelDecoration: getComputedStyle(label).textDecorationLine,
+    };
+  });
+  expect(fullscreen.fullscreen).toBe(true);
+  expect(fullscreen.stageHeight).toBeCloseTo(1080, 0);
+  expect(Number.parseFloat(fullscreen.textFontSize)).toBeCloseTo(72, 0);
+  expect(fullscreen.labelFontSize).toBe(fullscreen.textFontSize);
+  expect(fullscreen.labelFontFamily).toBe(smallWindow.textFontFamily);
+  expect(fullscreen.labelFontWeight).toBe(smallWindow.textFontWeight);
+  expect(fullscreen.labelFontStyle).toBe(smallWindow.textFontStyle);
+  expect(fullscreen.labelDecoration).toBe(smallWindow.textDecoration);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => null,
+    });
+    playerStage.style.height = '540px';
+    playerStage.style.minHeight = '540px';
+    playerStage.style.flexBasis = '540px';
+    playerWrap.style.height = '540px';
+    playerWrap.style.minHeight = '540px';
+    playerWrap.style.flexBasis = '540px';
+    document.dispatchEvent(new Event('fullscreenchange'));
+  });
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+  const windowedAgain = await page.evaluate(() => ({
+    fullscreen: playerWrap.classList.contains('fullscreen-preview'),
+    textFontSize: getComputedStyle(document.getElementById('overlay-main-text')).fontSize,
+    labelFontSize: getComputedStyle(document.getElementById('overlay-main-speaker-label')).fontSize,
+  }));
+  expect(windowedAgain.fullscreen).toBe(false);
+  expect(Number.parseFloat(windowedAgain.textFontSize)).toBeCloseTo(36, 0);
+  expect(windowedAgain.labelFontSize).toBe(windowedAgain.textFontSize);
 });

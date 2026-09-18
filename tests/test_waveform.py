@@ -483,11 +483,17 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('具体用法详见帮助的「微调字幕」区', page)
         waveform_pane_start = page.index('<section class="waveform-pane"')
         editor_settings = page[page.index('id="editor-settings-panel"'):waveform_pane_start]
-        editor_settings_panel_end = page.index('</section>\n\n<input type="file" id="open-project-file"', page.index('id="editor-settings-panel"'))
+        editor_settings_panel_end = page.index(
+            '</section>\n\n<aside class="editor-settings-window ass-style-window"',
+            page.index('id="editor-settings-panel"'),
+        )
         editor_settings_panel = page[page.index('id="editor-settings-panel"'):editor_settings_panel_end]
         self.assertNotIn('音频波形区', editor_settings)
-        self.assertNotIn('静音空隙', editor_settings)
-        self.assertNotIn('id="cue-move-step"', editor_settings_panel)
+        # 波形区操作类设置（拖动指针、按键微调、空隙操作方式等）已并入全局设置「通用操作」页，
+        # 波形 ⚙️ 面板只保留波形样式外观。
+        self.assertIn('id="cue-move-step"', editor_settings_panel)
+        self.assertIn('id="gap-remove-operation-mode"', editor_settings_panel)
+        self.assertIn('id="waveform-drag-playhead"', editor_settings_panel)
         # 分区标题由左侧标签页承担，设置窗口内不再重复书写页面标题
         for section_title in ('通用操作', '视频预览', '字幕样式', '字幕颜色', '时间基准', '拆分与合并', '导出', '保存', '表情包', '彩蛋'):
             self.assertNotIn(f'<span class="editor-settings-title">{section_title}</span>', page)
@@ -509,21 +515,32 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('split-language-type-field', page)
         self.assertNotIn('editor-settings-item split-language-type-title', page)
         self.assertIn('id="split-multi-subtitle-settings-link"', page)
-        self.assertIn('>多重字幕的设置</button>', page)
+        self.assertIn('>双语字幕的设置</button>', page)
         self.assertIn('id="split-multi-subtitle-settings-disabled"', page)
-        self.assertIn('多重字幕的设置（需要先启用多重字幕）', page)
+        self.assertIn('双语字幕的设置（需要先开启双语字幕）', page)
         self.assertEqual(
             page.count('class="editor-settings-group"')
             + page.count('class="editor-settings-group playback-controls-group"')
             + page.count('class="editor-settings-group subtitle-preview-style-group"')
             + page.count('class="editor-settings-group subtitle-color-settings-group"')
             + page.count('class="editor-settings-group subtitle-speaker-settings-group"'),
-            16,
+            19,
         )
         self.assertEqual(page.count('class="editor-settings-group split-language-type-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-color-settings-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-speaker-settings-group"'), 1)
-        self.assertLess(page.index('id="cue-move-step"'), page.index('<span class="settings-panel-title waveform-settings-title">静音空隙</span>'))
+        self.assertLess(page.index('id="cue-move-step"'), page.index('id="gap-remove-operation-mode"'))
+        # 波形 ⚙️ 面板不再包含操作类设置，但保留样式外观项与「禁用波形显示」
+        waveform_panel_slice = page[page.index('id="waveform-settings-panel"'):page.index('<span class="waveform-mode-switch"')]
+        self.assertNotIn('id="cue-move-step"', waveform_panel_slice)
+        self.assertNotIn('id="gap-remove-operation-mode"', waveform_panel_slice)
+        self.assertNotIn('id="waveform-drag-playhead"', waveform_panel_slice)
+        self.assertNotIn('id="adjacent-boundary-mode"', waveform_panel_slice)
+        self.assertNotIn('静音空隙', waveform_panel_slice)
+        self.assertIn('id="waveform-show-group-badges"', waveform_panel_slice)
+        self.assertIn('禁用波形显示', waveform_panel_slice)
+        self.assertIn('id="waveform-disabled-display"', waveform_panel_slice)
+        self.assertIn('id="waveform-operation-settings-title">波形区操作</span>', page)
         self.assertIn('字幕（编辑状态下）拆分按键', page)
         self.assertNotIn('波形区拆分按键', page)
         self.assertEqual(page.count('class="editor-settings-item editor-settings-list-fields editor-settings-display-row"'), 0)
@@ -552,9 +569,27 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('在预览字幕中显示说话人', page)
         self.assertIn('id="subtitle-color-style-control"', page)
         self.assertIn('id="subtitle-color-style"', page)
-        self.assertIn('value="underline"', page)
+        # 字幕颜色页：CSS 预览颜色样式（下划线默认）。
+        self.assertIn('value="underline" selected>下划线', page)
+        self.assertIn('value="text">文字颜色', page)
+        self.assertIn('value="stroke">描边', page)
         self.assertNotIn('value="shadow"', page)
-        self.assertIn('>颜色样式</span>', page)
+        self.assertIn('>预览颜色样式</span>', page)
+        # 字幕颜色页：ASS 颜色映射（text / stroke / none），勾选 ASS 字幕模式时替代预览颜色样式。
+        self.assertIn('id="ass-color-style-row"', page)
+        self.assertIn('id="ass-color-style"', page)
+        self.assertIn('value="text" selected>作为字幕颜色', page)
+        self.assertIn('value="stroke">作为描边颜色', page)
+        self.assertIn('value="none">无影响', page)
+        self.assertIn('>颜色字幕样式</span>', page)
+        # 自定义颜色独立分组（位于「说话人」上方）；checkbox 控制显隐，恢复默认作为第 6 个网格项。
+        self.assertIn('id="subtitle-color-palette-title">自定义颜色</span>', page)
+        self.assertIn('id="subtitle-color-palette-enabled"', page)
+        self.assertIn('id="subtitle-color-palette-grid" hidden', page)
+        self.assertIn('自定义颜色色值', page)
+        self.assertNotIn('subtitle-color-palette-section', page)
+        self.assertNotIn('>恢复内置色值</button>', page)
+        self.assertIn('>恢复默认</button>', page)
         self.assertIn('>文字大小</span>', page)
         self.assertNotIn('>字幕大小</span>', page)
         self.assertIn('文字颜色', page)
@@ -612,7 +647,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertLess(page.index('id="main-subtitle-preview-settings"'), page.index('id="extension-subtitle-preview-title"'))
         self.assertLess(page.index('id="extension-subtitle-preview-title"'), page.index('id="extension-subtitle-preview-settings"'))
         self.assertNotIn('<span class="editor-settings-title">播放控制</span>', video_preview_page)
-        self.assertEqual(general_page.count('class="editor-settings-group"'), 1)
+        self.assertEqual(general_page.count('class="editor-settings-group"'), 4)
         self.assertIn('id="language-toggle"', interface_page)
         self.assertIn('data-editor-theme="light"', interface_page)
         self.assertIn('data-editor-theme="dark"', interface_page)
@@ -733,6 +768,8 @@ class EditorAssetTests(unittest.TestCase):
             '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd data-mod-key>Ctrl+拖拽已有字幕</kbd> 启用「叠加字幕」后在叠加轨创建</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span class="help-important"><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>',
             page,
         )
@@ -749,10 +786,12 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('⚙️设置按钮', page)
         self.assertIn('在波形区的', page)
         self.assertIn('中，可调整音频波形外观的具体参数。', page)
-        self.assertIn('id="help-open-waveform-keyboard-settings"', page)
+        self.assertIn('id="help-open-keyboard-settings"', page)
+        self.assertIn('data-help-open-editor-settings', page)
+        self.assertIn('id="help-open-gap-settings"', page)
         self.assertIn('<button type="button" class="help-inline-action" id="help-open-media-settings"', page)
         self.assertIn('data-help-open-media-settings', page)
-        self.assertIn('⚙️设置', page)
+        self.assertIn('⚙️全局设置', page)
         self.assertNotIn('红色播放指针', page)
         self.assertEqual(page.count('data-help-tab='), 7)
         self.assertIn('id="help-tab-panel-basic"', page)
@@ -823,9 +862,9 @@ class EditorAssetTests(unittest.TestCase):
             '          <span><kbd>拖动边界</kbd> 调整空隙范围</span>',
             page,
         )
-        self.assertIn('具体操作取决于波形区的', page)
+        self.assertIn('具体操作取决于', page)
         self.assertIn('id="help-open-gap-settings"', page)
-        self.assertIn('中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', page)
+        self.assertIn('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', page)
         self.assertIn(
             '<span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
@@ -907,8 +946,19 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('id="player" controls', page)
         self.assertIn('id="overlay-toggle" checked> 预览字幕', page)
         self.assertIn('id="sticker-overlay-toggle"> 预览表情包', page)
-        self.assertIn('.player-wrap.fullscreen-preview .subtitle-overlay span', page)
-        self.assertIn("playerWrap?.classList.toggle('fullscreen-preview', document.fullscreenElement === playerWrap);", page)
+        self.assertIn('.player-wrap.fullscreen-preview .subtitle-overlay:not([data-ass-mode="true"]) > #overlay-main-text', page)
+        self.assertIn('.subtitle-overlay[data-ass-mode="true"] .subtitle-speaker-label { font: inherit; }', page)
+        self.assertIn("playerWrap?.classList.toggle('fullscreen-preview', fullscreenPreview);", page)
+        self.assertIn('function scheduleAssSubtitlePreviewRefresh()', page)
+        self.assertNotIn('class="ass-style-editor-toolbar"', page)
+        self.assertIn('id="ass-style-delete-slot"', page)
+        self.assertIn('id="ass-profile-delete-slot"', page)
+        self.assertIn('id="ass-style-preview-mode-hint"', page)
+        self.assertIn('id="ass-style-srt-hint"', page)
+        self.assertIn('class="ass-style-preview-mode-hint-status"', page)
+        self.assertIn('id="ass-style-settings-link"', page)
+        self.assertIn('SRT 默认', page)
+        self.assertIn('这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。', page)
         self.assertIn("overlayTextEl.style.setProperty(", page)
         self.assertIn('appearance.font_size || SUBTITLE_DEFAULT_FONT_SIZE', page)
         self.assertIn('appearance.font_size || EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE', page)
@@ -922,9 +972,11 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('播放时跳过空隙', page)
         self.assertIn('const DEFAULT_LAYOUT_ROWS = [42, 16, 42];', page)
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", page)
-        self.assertIn('const projectHasStickers = DATA.segments.some(segment => segment.sticker || segment.sticker_ref);', page)
+        self.assertIn('const projectHasStickers = DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)', page)
+        self.assertIn('overlaySegments.some((segment) => segment.sticker || segment.sticker_ref)', page)
         self.assertIn('!EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', page)
-        self.assertIn("DATA.segments.forEach((seg, i) => cueFragment.appendChild(buildCueEl(seg, i)));", page)
+        self.assertIn('rows.sort((a, b) => a.start - b.start || a.order - b.order);', page)
+        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));', page)
         self.assertIn("const multiVisible = multiSubtitleVisible();", page)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", page)
@@ -1069,6 +1121,12 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="subtitle-font-size"', page)
         self.assertIn('id="subtitle-font-family"', page)
         self.assertIn('id="subtitle-font-family-scan"', page)
+        # 字体输入框是 combobox（文本输入 + 可筛选下拉列表）；ASS 样式库可一键应用预览字体。
+        self.assertIn('id="subtitle-font-family-options"', page)
+        self.assertIn('role="combobox"', page)
+        self.assertIn('class="font-combobox-toggle"', page)
+        self.assertIn('id="ass-font-name-options"', page)
+        self.assertIn('id="ass-style-local-font-scan"', page)
         self.assertIn('id="subtitle-background-color"', page)
         self.assertIn('id="subtitle-background-alpha"', page)
         self.assertIn('id="subtitle-speaker-label-separator"', page)

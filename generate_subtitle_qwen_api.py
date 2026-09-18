@@ -679,8 +679,8 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
     切分策略（与本地版一致）：
     0. 按静音间隔（>= gap_split_ms）预切
     1. 每个静音组内按强标点（。！？；\\n）继续切句
-    2. 合并过短片段（< min_len 字符）
-    3. 对超长片段，按弱标点（，、：,;）拆分
+    2. 合并过短片段（< min_len 字符），但合并后不得超过 max_len
+    3. 对本身超长的片段，按弱标点（，、：,;）拆分
     4. 没有弱标点时，用 jieba 分词找最佳断点
     """
     STRONG_PUNCT = _strong_punct_set("。！？；\n")
@@ -713,12 +713,17 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
         for grp in raw_groups:
             seg_text = "".join(it["text"] for it in grp)
             if merged and len(seg_text) < min_len:
-                merged[-1].extend(grp)
+                previous_length = sum(len(item.get("text", "")) for item in merged[-1])
+                if previous_length + len(seg_text) <= max_len:
+                    merged[-1].extend(grp)
+                else:
+                    merged.append(list(grp))
             else:
                 merged.append(list(grp))
         if len(merged) >= 2:
             last_text = "".join(it["text"] for it in merged[-1])
-            if len(last_text) < min_len:
+            previous_text = "".join(it["text"] for it in merged[-2])
+            if len(last_text) < min_len and len(previous_text) + len(last_text) <= max_len:
                 merged[-2].extend(merged.pop())
 
         for grp in merged:
@@ -804,8 +809,8 @@ def split_words_to_segments_western(items: list[dict], max_words: int = WESTERN_
 
     0. 按静音间隔（>= gap_split_ms）预切
     1. 按句末强标点（. ! ? 及全角）切出完整句子
-    2. 合并过短句子（< min_words 词），避免单词成条
-    3. 超长句子（> max_words 词）优先按弱标点断，兜底硬切
+    2. 合并过短句子（< min_words 词），但合并后不得超过 max_words
+    3. 本身超长的句子（> max_words 词）优先按弱标点断，兜底硬切
     """
     def to_seg(group: list[dict]) -> dict:
         return {
@@ -830,10 +835,17 @@ def split_words_to_segments_western(items: list[dict], max_words: int = WESTERN_
         merged: list[list[dict]] = []
         for grp in raw_groups:
             if merged and len(grp) < min_words:
-                merged[-1].extend(grp)
+                if len(merged[-1]) + len(grp) <= max_words:
+                    merged[-1].extend(grp)
+                else:
+                    merged.append(list(grp))
             else:
                 merged.append(list(grp))
-        if len(merged) >= 2 and len(merged[-1]) < min_words:
+        if (
+            len(merged) >= 2
+            and len(merged[-1]) < min_words
+            and len(merged[-2]) + len(merged[-1]) <= max_words
+        ):
             merged[-2].extend(merged.pop())
 
         for grp in merged:

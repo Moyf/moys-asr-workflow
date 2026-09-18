@@ -27,6 +27,156 @@ test('accepts legacy and current project schemas but rejects unknown versions', 
   assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v2', segments: [] }), false);
 });
 
+test('maps searchable font input text back to stored family keys', () => {
+  const presets = helpers.SUBTITLE_FONT_FAMILY_PRESETS;
+  const presetLabel = (preset) => preset.label;
+  const familyDisplay = (family) => helpers.subtitleFontFamilyDisplayName(family, 'zh');
+  const localFamilies = ['Microsoft YaHei', 'Microsoft YaHei UI', 'PingFang SC', 'Fira Code'];
+
+  assert.equal(helpers.subtitleFontFamilyInputToStored('黑体', { presets, presetLabel }), 'hei');
+  assert.equal(helpers.subtitleFontFamilyInputToStored('默认无衬线', { presets, presetLabel }), 'default');
+  // datalist 展示的本地化别名必须还原成真实字体族名，浏览器才能解析选中字体。
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('微软雅黑', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Microsoft YaHei',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('Fira Code', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Fira Code',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('Some Unknown Font', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Some Unknown Font',
+  );
+  assert.equal(helpers.subtitleFontFamilyInputToStored('   ', { presets, presetLabel }), 'default');
+  assert.equal(helpers.subtitleFontFamilyInputToStored('yahei', { presets, presetLabel }), 'yahei');
+
+  // 存储值 → 输入框展示：预设显示本地化标签，本机字体显示别名。
+  assert.equal(helpers.subtitleFontFamilyStoredToInput('hei', { presetLabel }), '黑体');
+  assert.equal(helpers.subtitleFontFamilyStoredToInput('default', { presetLabel }), '默认无衬线');
+  assert.equal(
+    helpers.subtitleFontFamilyStoredToInput('Microsoft YaHei', { presetLabel, familyDisplay }),
+    '微软雅黑',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyStoredToInput('Fira Code', { presetLabel, familyDisplay }),
+    'Fira Code',
+  );
+});
+
+test('merges and filters font combobox dropdown options without duplicates', () => {
+  const merged = helpers.mergeFontFamilyOptions([
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Microsoft YaHei', label: '微软雅黑' },
+    { value: 'SimSun', label: '宋体' },
+    // 本机扫描与内置建议同名重复（如 Arial / 宋体）：按显示名去重，保留先出现项。
+    { value: 'Arial', label: 'Arial' },
+    { value: 'SimSun', label: '宋体' },
+    { value: 'arial black', label: 'ARIAL' },
+    { value: '  ' },
+    null,
+  ]);
+  // merge 结果（及其数组）在 vm 沙箱里创建，先摊开成宿主数组再断言，避免跨 realm 原型差异。
+  assert.deepEqual(Array.from(merged, (entry) => ({ ...entry })), [
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Microsoft YaHei', label: '微软雅黑' },
+    { value: 'SimSun', label: '宋体' },
+  ]);
+
+  // 空输入与非法项安全返回。
+  assert.equal(helpers.mergeFontFamilyOptions().length, 0);
+  assert.deepEqual(
+    Array.from(helpers.mergeFontFamilyOptions([null, { value: 'Fira' }]), (entry) => ({ ...entry })),
+    [{ value: 'Fira', label: 'Fira' }],
+  );
+
+  const entries = [
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Microsoft YaHei', label: '微软雅黑' },
+    { value: 'Fira Code', label: 'Fira Code' },
+  ];
+  assert.equal(helpers.filterFontFamilyOptions(entries, ''), entries);
+  assert.equal(helpers.filterFontFamilyOptions(entries, '   '), entries);
+  // 过滤结果数组在 vm 沙箱里创建，同样先摊开成宿主数组再断言。
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(entries, '雅黑'), (entry) => ({ ...entry })),
+    [{ value: 'Microsoft YaHei', label: '微软雅黑' }],
+  );
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(entries, 'fira'), (entry) => ({ ...entry })),
+    [{ value: 'Fira Code', label: 'Fira Code' }],
+  );
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(entries, '不存在的字体'), (entry) => ({ ...entry })),
+    [],
+  );
+  assert.equal(helpers.filterFontFamilyOptions(undefined, 'arial').length, 0);
+
+  // 前缀优先：开头匹配排在前、包含匹配在后，同组内保持原有相对顺序。
+  assert.deepEqual(
+    Array.from(
+      helpers.filterFontFamilyOptions([entries[2], entries[0], entries[1]], 'a'),
+      (entry) => ({ ...entry }),
+    ),
+    [
+      { value: 'Arial', label: 'Arial' },
+      { value: 'Fira Code', label: 'Fira Code' },
+    ],
+  );
+});
+
+test('translates the ASS style manager labels and dynamic summaries', () => {
+  assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
+  assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');
+  assert.equal(i18n.translateText('\\fade', 'en'), '\\fade');
+  assert.equal(i18n.translateText('\\move', 'en'), '\\move');
+  assert.equal(i18n.translateText('\\t', 'en'), '\\t');
+  assert.equal(i18n.translateText('2 个样式 · 3 个 ASS 方案', 'en'), '2 styles · 3 ASS profiles');
+  assert.equal(i18n.translateText('SRT 默认', 'en'), 'SRT default');
+  assert.equal(i18n.translateText('工具箱的「烧录字幕」功能会使用这里选中的样式。', 'en'), 'The Toolbox “Burn subtitles” feature uses the style selected here.');
+  assert.equal(i18n.translateText('需要启用 ASS 字幕模式来预览效果。', 'en'), 'Enable ASS subtitle mode to preview this style.');
+  assert.equal(i18n.translateText('当前已启用。', 'en'), 'Currently enabled.');
+  assert.equal(i18n.translateText('当前未启用。', 'en'), 'Currently disabled.');
+  assert.equal(i18n.translateText('Studio · 无逐句动画', 'en'), 'Studio · No per-cue animations');
+  assert.equal(i18n.translateText('颜色字幕样式', 'en'), 'Color caption style');
+  assert.equal(i18n.translateText('设为主字幕样式', 'en'), 'Set as main subtitle style');
+  assert.equal(i18n.translateText('设为副字幕样式', 'en'), 'Set as secondary subtitle style');
+  assert.equal(i18n.translateText('设为 SRT 烧录样式', 'en'), 'Set as SRT burn-in style');
+  assert.equal(i18n.translateText('设为 ASS 导出方案', 'en'), 'Set as ASS export profile');
+  assert.equal(
+    i18n.translateText('⬆️ 当前预览样式由 ASS 字幕模式控制', 'en'),
+    '⬆️ Current preview styling is controlled by ASS subtitle mode',
+  );
+  assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');
+  assert.equal(i18n.translateText('作为描边颜色', 'en'), 'As outline color');
+  assert.equal(i18n.translateText('无影响', 'en'), 'No effect');
+  assert.equal(i18n.translateText('自定义颜色色值', 'en'), 'Custom color values');
+  assert.equal(i18n.translateText('恢复默认', 'en'), 'Restore defaults');
+  assert.equal(i18n.translateText('读取本机字体', 'en'), 'Read local fonts');
+  assert.equal(i18n.translateText('已读取 3 种本机字体', 'en'), 'Read 3 local font families');
+  assert.equal(i18n.translateText('未读取到可用的本机字体', 'en'), 'No usable local fonts were returned');
+  assert.equal(i18n.translateText('当前环境不支持自动读取本机字体', 'en'), 'This environment cannot list local fonts automatically');
+  assert.equal(i18n.translateText('未获准读取本机字体', 'en'), 'Permission to read local fonts was not granted');
+  assert.equal(i18n.translateText('读取本机字体失败，请重试', 'en'), 'Could not read local fonts; try again');
+  assert.equal(i18n.translateText('基础样式', 'en'), 'Basic style');
+  assert.equal(i18n.translateText('拓展样式', 'en'), 'Extended style');
+  assert.equal(i18n.translateText('边框与阴影', 'en'), 'Border and shadow');
+  assert.equal(i18n.translateText('对齐', 'en'), 'Alignment');
+  assert.equal(i18n.translateText('黄字幕颜色十六进制值', 'en'), 'Yellow subtitle color hex value');
+  assert.equal(
+    i18n.translateText('本地已保存，服务器同步失败：HTTP 503', 'en'),
+    'Saved locally; server sync failed: HTTP 503',
+  );
+  assert.equal(
+    i18n.translateText('仅保存在当前浏览器（便携模式）', 'en'),
+    'Saved only in this browser (portable mode)',
+  );
+  assert.equal(
+    i18n.translateText('便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。', 'en'),
+    'Portable Editor saves only to this browser; open it in server-editor to share it with Launcher.',
+  );
+});
+
 // XML assertions are part of the Node unit suite, but still need a Python
 // subprocess. Keep it on the same locked project environment as E2E instead
 // of silently selecting whichever python.exe happens to be on PATH.
@@ -175,6 +325,8 @@ test('normalizes editor settings without preserving invalid persisted values', (
     autoMergeShortCount: 99,
   });
   assert.equal(settings.multiSubtitleRowHeight, 168);
+  // 192 档位与主波形行高预设一致，属于合法副字幕行高
+  assert.equal(helpers.normalizeEditorSettings({ multiSubtitleRowHeight: 192 }).multiSubtitleRowHeight, 192);
   assert.equal(settings.mediaSeekStepMs, 2000);
   assert.equal(settings.cueMoveStepMs, 10);
   assert.equal(settings.theme, 'light');
@@ -192,6 +344,18 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(helpers.normalizeEditorSettings({ accentColorCustom: 'invalid' }).accentColorCustom, '#6ca5e8');
   assert.equal(settings.stickerOtioExportMode, 'portable');
   assert.equal(settings.autoMergeShortCount, 20);
+  assert.equal(settings.assMode, false);
+  assert.equal(helpers.normalizeEditorSettings({ assMode: true }).assMode, true);
+  assert.equal(helpers.normalizeEditorSettings({ assMode: 1 }).assMode, false);
+  assert.equal(settings.subtitleColorPaletteEnabled, false);
+  assert.equal(
+    helpers.normalizeEditorSettings({ subtitleColorPaletteEnabled: true }).subtitleColorPaletteEnabled,
+    true,
+  );
+  assert.equal(
+    helpers.normalizeEditorSettings({ subtitleColorPaletteEnabled: 1 }).subtitleColorPaletteEnabled,
+    false,
+  );
   assert.equal(settings.autoSaveProject, true);
   assert.equal(settings.projectBackupEnabled, true);
   assert.equal(
@@ -1291,7 +1455,10 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('自定义颜色', 'en'), 'Custom color');
   assert.equal(i18n.translateText('视频预览', 'en'), 'Video preview');
   assert.equal(i18n.translateText('播放控制', 'en'), 'Playback controls');
-  assert.equal(i18n.translateText('颜色样式', 'en'), 'Color style');
+  assert.equal(i18n.translateText('ASS 副字幕样式', 'en'), 'ASS extension subtitle style');
+  assert.equal(i18n.translateText('主', 'en'), 'Main');
+  assert.equal(i18n.translateText('副', 'en'), 'Secondary');
+  assert.equal(i18n.translateText('预览颜色样式', 'en'), 'Preview color style');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
   assert.equal(i18n.translateText('空隙检测与调整', 'en'), 'Gap detection and adjustment');
   assert.equal(i18n.translateText('进一步收缩空隙', 'en'), 'Shrink gaps further');
@@ -1311,16 +1478,16 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('将选中的副字幕的时长对齐到绑定主字幕', 'en'), 'Align the selected secondary subtitle durations to their bound main subtitles');
   assert.equal(i18n.translateText('无选中时前后跳转（时长：', 'en'), 'Seek back/forward with no selection (duration:');
   assert.equal(i18n.translateText('⚙️设置按钮', 'en'), '⚙️ Settings button');
-  assert.equal(i18n.translateText('⚙️设置', 'en'), '⚙️ settings');
+  assert.equal(i18n.translateText('⚙️全局设置', 'en'), '⚙️ Global settings');
   assert.equal(i18n.translateText('仅在拖动边界模式生效', 'en'), 'Only active in Boundary drag mode');
   assert.equal(i18n.translateText('仅在中键拖动模式生效', 'en'), 'Only active in Middle-button drag mode');
   assert.equal(
-    i18n.translateText('具体操作取决于波形区的', 'en'),
-    'The exact behavior depends on the waveform area’s',
+    i18n.translateText('具体操作取决于', 'en'),
+    'The exact behavior depends on',
   );
   assert.equal(
-    i18n.translateText('中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
-    '“Gap region operation” in the settings; “Boundary and middle” enables both operation sets.',
+    i18n.translateText('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
+    '“Gap region operation” under “General” in Global settings; “Boundary and middle” enables both operation sets.',
   );
   assert.equal(i18n.translateText('操作支持撤销/重做。', 'en'), 'Operations support undo/redo.');
   assert.equal(i18n.translateText('处理范围', 'en'), 'Scope');
@@ -1333,8 +1500,9 @@ test('translates editor project controls and dynamic save messages to English', 
     i18n.translateText('批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围', 'en'),
     'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
   );
-  assert.equal(i18n.translateText('注：微调幅度可在波形区的', 'en'), 'Note: Adjust the fine-tuning amount in the waveform area’s');
-  assert.equal(i18n.translateText('中调节，默认 50ms', 'en'), 'to adjust it; the default is 50 ms');
+  assert.equal(i18n.translateText('注：微调幅度可在', 'en'), 'Note: Adjust the fine-tuning amount in');
+  assert.equal(i18n.translateText('「通用操作」中调节，默认 50ms', 'en'), 'under “General” in Global settings; the default is 50 ms');
+  assert.equal(i18n.translateText('波形区操作', 'en'), 'Waveform actions');
   assert.equal(i18n.translateText('切换空隙的启用/禁用状态', 'en'), 'Toggle whether the gap is enabled');
   assert.equal(i18n.translateText('添加新的移除空隙', 'en'), 'Add a new removed gap');
   assert.equal(
@@ -3068,6 +3236,7 @@ test('builds ASS metadata and five palette styles at the source video resolution
 
   assert.match(ass, /Title: project-name/);
   assert.match(ass, /PlayResX: 3840[\s\S]*PlayResY: 2160/);
+  // 无 assProfile 时走 legacy 外观导出：预览字体键 'sans' 固定映射 Arial。
   assert.match(ass, /Style: Default,Arial,256,/);
   assert.match(ass, /Style: YELLOW,Arial,256,&H0019A0C4,&H0019A0C4,/);
   assert.match(ass, /Style: GREEN,Arial,256,&H006ABB66,&H006ABB66,/);
@@ -3076,6 +3245,177 @@ test('builds ASS metadata and five palette styles at the source video resolution
   assert.match(ass, /Style: BLUE,Arial,256,&H00FAA761,&H00FAA761,/);
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
   assert.match(ass, /Dialogue: 0,0:00:01\.20,0:00:02\.20,Default,,0,0,0,,plain line/);
+});
+
+test('migrates legacy builtin names while preserving custom names', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [
+      { id: 'ass', name: 'ASS' },
+      { id: 'default', name: 'SRT 默认' },
+    ],
+    assProfiles: [{ id: 'ass', name: 'ASS' }],
+  });
+  assert.equal(helpers.assStyleForId(library, 'ass').name, 'ASS 默认样式');
+  assert.equal(helpers.assProfileForId(library, 'ass').name, 'ASS 输出方案');
+  assert.equal(helpers.assStyleForId(library, 'default').name, 'SRT 默认');
+
+  // 用户自定义过的名字不被迁移覆盖。
+  const renamed = helpers.normalizeAssStyleLibrary({
+    styles: [{ id: 'ass', name: '我的字幕样式' }],
+    assProfiles: [{ id: 'ass', name: '我的方案' }],
+  });
+  assert.equal(helpers.assStyleForId(renamed, 'ass').name, '我的字幕样式');
+  assert.equal(helpers.assProfileForId(renamed, 'ass').name, '我的方案');
+});
+
+test('normalizes ASS libraries without corrupting comma-delimited animation tags', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [{ id: 'motion', name: 'Motion' }],
+    assProfiles: [{
+      id: 'motion-profile', styleId: 'motion',
+      animations: { t: { enabled: true, tags: String.raw`{\pos(10,20)\clip(0,0,100,100)}` } },
+    }],
+  });
+  const profile = helpers.assProfileForId(library, 'motion-profile');
+
+  assert.equal(
+    profile.animations.t.tags,
+    String.raw`\pos(10,20)\clip(0,0,100,100)`,
+  );
+  assert.equal(
+    helpers.assAnimationOverrideTags(profile),
+    String.raw`\t(0,1000,1,\pos(10,20)\clip(0,0,100,100))`,
+  );
+});
+
+test('keeps complex ASS animation time ranges monotonic and within bounds', () => {
+  const animations = helpers.normalizeAssAnimations({
+    fade: { t1: 900, t2: -10, t3: 70000, t4: 2 },
+    move: { t1: 800, t2: 20 },
+    t: { startMs: 700, endMs: -5, accel: 0, tags: '' },
+  });
+
+  assert.deepEqual(JSON.parse(JSON.stringify({
+    fade: [animations.fade.t1, animations.fade.t2, animations.fade.t3, animations.fade.t4],
+    move: [animations.move.t1, animations.move.t2],
+    transform: [animations.t.startMs, animations.t.endMs, animations.t.accel],
+  })), {
+    fade: [900, 900, 60000, 60000],
+    move: [800, 800],
+    transform: [700, 700, 0.01],
+  });
+});
+
+test('uses the selected ASS profile style and adds every configured animation to each cue', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [{
+      id: 'caption', name: 'Caption', fontName: 'Microsoft YaHei', fontSize: 30,
+      primaryColor: '#123456', outlineColor: '#654321', outline: 4,
+      bold: true, underline: true,
+    }],
+    assProfiles: [{
+      id: 'animated', name: 'Animated', styleId: 'caption',
+      animations: {
+        fad: { enabled: true, inMs: 120, outMs: 240 },
+        move: { enabled: true, x1: 100, y1: 200, x2: 300, y2: 400, t1: 50, t2: 900 },
+        t: { enabled: true, startMs: 10, endMs: 800, accel: 1.5, tags: String.raw`\fs42\pos(10,20)` },
+      },
+    }],
+  });
+  const profile = helpers.assProfileForId(library, 'animated');
+  const style = helpers.assStyleForId(library, profile.styleId);
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+    { start: 1200, end: 2200, text: '第二句' },
+  ], {
+    assProfile: profile,
+    assStyle: style,
+    appearance: { color_underline: false },
+    mediaMetadata: { video_width: 1920, video_height: 1080 },
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host' },
+    speakerLabelSeparator: '：',
+  });
+
+  assert.match(ass, /Style: Default,Microsoft YaHei,30,\&H00563412,[^\n]*,-1,0,-1,0,100,100,0,0,1,4,0,2,10,10,80,1/);
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 2);
+  // color_underline 只控制 CSS 预览；ASS 导出的颜色映射不受它影响。
+  assert.match(dialogue[0], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}\{\\c&H0019A0C4&\}Host：\{\\c&H0019A0C4&\}你好/);
+  assert.match(dialogue[1], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}第二句/);
+});
+
+test('keeps ASS palette colours applied when the CSS colour preview toggle is off', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: false, ass_color_style: 'text' },
+  });
+
+  assert.match(ass, new RegExp(`Style: RED,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},72,&H006F7FF0,&H006F7FF0,[^\\n]*`));
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
+
+  const noneAss = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: false, ass_color_style: 'none' },
+  });
+  assert.doesNotMatch(noneAss, /Style: RED,/);
+  assert.match(noneAss, /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,,0,0,0,,red line/);
+});
+
+test('keeps speaker labels in the base colour when ASS palette colours are strokes', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: true, ass_color_style: 'stroke' },
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host' },
+    speakerLabelSeparator: '：',
+  });
+
+  assert.match(ass, new RegExp(`Style: YELLOW,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},72,[^\\n]*,&H0019A0C4`));
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,YELLOW,Host,0,0,0,,\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
+});
+
+test('previews ASS fade, movement, and transform timing at the cue playhead', () => {
+  const profile = {
+    animations: {
+      fad: { enabled: true, inMs: 200, outMs: 200 },
+      move: { enabled: true, x1: 10, y1: 20, x2: 110, y2: 220, t1: 100, t2: 900 },
+      t: { enabled: true, startMs: 200, endMs: 800, accel: 2, tags: String.raw`\fs40\bord6` },
+    },
+  };
+  const state = helpers.assPreviewAnimationState(profile, 500, 1000, {
+    playResX: 1920, playResY: 1080, stageWidth: 960, stageHeight: 540,
+  });
+  assert.equal(state.opacity, 1);
+  assert.equal(state.moveX, 60);
+  assert.equal(state.moveY, 120);
+  assert.equal(state.moveOffsetX, 25);
+  assert.equal(state.moveOffsetY, 50);
+  assert.equal(state.transformProgress, 0.25);
+  const animatedStyle = helpers.assPreviewStyleAt(
+    { fontSize: 20, outline: 2 },
+    profile.animations.t.tags,
+    state.transformProgress,
+  );
+  assert.deepEqual(
+    {
+      fontSize: animatedStyle.fontSize,
+      outline: animatedStyle.outline,
+      rotationX: animatedStyle.rotationX,
+      rotationY: animatedStyle.rotationY,
+      alpha: animatedStyle.alpha,
+    },
+    { fontSize: 25, outline: 3, rotationX: 0, rotationY: 0, alpha: 0 },
+  );
 });
 
 test('converts the responsive default ASS font size at the source video resolution', () => {
@@ -3092,8 +3432,8 @@ test('converts the responsive default ASS font size at the source video resoluti
 
   assert.equal(helpers.resolveAssFontSize(null, 1080), 72);
   assert.equal(helpers.resolveAssFontSize(32, 1080), 128);
-  assert.match(withoutStoredSize, /Style: Default,Arial,144,/);
-  assert.match(explicitAuto, /Style: Default,Arial,144,/);
+  assert.match(withoutStoredSize, new RegExp(`Style: Default,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},144,`));
+  assert.match(explicitAuto, new RegExp(`Style: Default,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},144,`));
 });
 
 test('optionally prefixes configured speaker names in ASS output', () => {
@@ -3259,6 +3599,34 @@ test('builds a color SRT on the shared full-export timeline and excludes disable
     'member',
     '',
   ].join('\n'));
+});
+
+test('resolves overlay color references through per-track contexts in merged exports', () => {
+  // 合并数组里叠加段的 color_ref.headIdx 指向叠加轨自身下标；
+  // 没有按轨上下文时会错解析到主轨 head，导致按色过滤丢失叠加字幕。
+  const main = [{ start: 0, end: 1000, text: 'main red', color: { name: 'red' } }];
+  const overlay = [
+    { start: 200, end: 400, text: 'overlay blue head', color: { name: 'blue' } },
+    { start: 500, end: 700, text: 'overlay blue ref', color_ref: { name: 'blue', headIdx: 0 } },
+  ];
+  const merged = helpers.mergeMainAndOverlaySegments(main, overlay);
+  const overlaySet = new Set(overlay);
+  const resolver = (segment) => (overlaySet.has(segment) ? overlay : main);
+  const blueSrt = helpers.buildSrtPayload(merged, {
+    colorName: 'blue',
+    colorContextResolver: resolver,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  });
+  assert.ok(blueSrt.includes('overlay blue head'));
+  assert.ok(blueSrt.includes('overlay blue ref'));
+  assert.ok(!blueSrt.includes('main red'));
+  const redSrt = helpers.buildSrtPayload(merged, {
+    colorName: 'red',
+    colorContextResolver: resolver,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  });
+  assert.ok(redSrt.includes('main red'));
+  assert.ok(!redSrt.includes('overlay blue'));
 });
 
 test('optionally prefixes configured speaker names in SRT output', () => {
@@ -3847,9 +4215,11 @@ test('normalizes closed FPS and track choices without guessing unsupported value
     assert.equal(helpers.normalizeExportOptions({ fps }).fps, String(fps));
   }
   assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'main_and_extension' }).subtitleTracks, 'main_and_extension');
+  assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'overlay' }).subtitleTracks, 'overlay');
+  assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'all' }).subtitleTracks, 'all');
   assert.throws(() => helpers.normalizeExportOptions({ fps: 29.97 }), /unsupported export FPS/);
   assert.throws(() => helpers.normalizeExportOptions({ dropFrame: true }), /drop-frame/);
-  assert.throws(() => helpers.normalizeExportOptions({ subtitleTracks: 'all' }), /unsupported subtitle tracks/);
+  assert.throws(() => helpers.normalizeExportOptions({ subtitleTracks: 'bogus' }), /unsupported subtitle tracks/);
   assert.throws(() => helpers.normalizeExportOptions([]), /export options must be an object/);
   assert.throws(() => helpers.normalizeExportOptions({ unknownOption: true }), /unknown export option: unknownOption/);
 });
@@ -4088,6 +4458,257 @@ test('selects main, extension, and both subtitle tracks in XML and SRT', () => {
   }
 });
 
+test('exports the overlay track as its own cues, text track, and sticker tracks', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 5000 },
+    sticker_root: 'C:/stickers',
+    segments: [{ start: 100, end: 300, text: 'main' }],
+    overlay_track: {
+      enabled: true,
+      segments: [
+        { start: 400, end: 700, text: 'overlay one', sticker: { name: 'cat', rel: 'cat.png', width: 320, height: 240 } },
+        { start: 800, end: 1100, text: 'overlay two', sticker_ref: { name: 'cat', headIdx: 0 } },
+      ],
+    },
+  }, { mode: 'source' });
+  assert.equal(plan.cues.overlay.length, 2);
+  assert.equal(plan.cues.overlay[0].text, 'overlay one');
+  assert.equal(plan.overlayStickers.length, 2);
+  assert.equal(plan.overlayStickers[0].track, 'overlay');
+  assert.equal(plan.overlayStickers[0].path, 'C:/stickers/cat.png');
+  assert.equal(plan.overlayStickers[1].path, 'C:/stickers/cat.png');
+
+  // 叠加轨字幕独立成轨；主轨 stickers 与叠加轨 stickers 各用各的轨道。
+  const xml = helpers.serializeFcp7Xml(plan, { subtitleTracks: 'all', nativeTextObjects: true });
+  assert.equal((xml.match(/<clipitem id="text-main-/g) || []).length, 1);
+  assert.equal((xml.match(/<clipitem id="text-overlay-/g) || []).length, 2);
+  assert.ok(xml.includes('<name>MAW native text - overlay</name>'));
+  assert.ok(xml.includes('clipitem id="overlay-sticker-clip-1"'));
+  assert.ok(xml.includes('<name>MAW sticker - cat</name>'));
+  assert.equal((xml.match(/<track>/g) || []).length >= 4, true);
+  // 仅叠加轨 / 映射 SRT 选择。
+  const overlayOnlyXml = helpers.serializeFcp7Xml(plan, { subtitleTracks: 'overlay', nativeTextObjects: true });
+  assert.equal((overlayOnlyXml.match(/<clipitem id="text-/g) || []).length, 2);
+  const overlaySrt = helpers.serializeMappedSrt(plan, { subtitleTracks: 'overlay' });
+  assert.equal(parseSrt(overlaySrt).length, 2);
+  // 关闭叠加轨（schema：enabled=false 不导出）→ 没有叠加 cue，也没有表情包。
+  const disabledPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 5000 },
+    segments: [{ start: 100, end: 300, text: 'main' }],
+    overlay_track: { enabled: false, segments: [{ start: 400, end: 700, text: 'hidden' }] },
+  }, { mode: 'source' });
+  assert.equal(disabledPlan.cues.overlay.length, 0);
+  assert.equal(disabledPlan.overlayStickers.length, 0);
+});
+
+test('buildAssPayload writes overlay cues on layer 2 with a baked Overlay style', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main' }],
+    { overlaySegments: [
+      { start: 150, end: 350, text: 'overlay' },
+      { start: 400, end: 200, text: 'invalid' },
+      { start: 500, end: 600, text: 'skip me', disabled: true },
+    ] },
+  );
+  const dialogueLines = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogueLines.length, 2);
+  assert.match(dialogueLines[0], /^Dialogue: 0,/);
+  assert.match(dialogueLines[1], /^Dialogue: 2,/);
+  assert.ok(dialogueLines[1].includes(',Overlay,,0,0,0,'));
+  // 叠加轨引用独立样式，MarginV 固化进样式行（legacy：80 + 1.2×72 = 166），
+  // 事件行不再携带边距覆盖。
+  const overlayStyle = ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyle);
+  assert.ok(overlayStyle.endsWith(',10,10,166,1'));
+});
+
+test('buildAssPayload anchors overlay cues to the active main style margin', () => {
+  // ASS 模式：主字幕垂直边距来自样式库（用户可改），叠加轨按
+  // 「主样式边距 + 1.2 × 字号」固化（120 + round(86.4) = 206）。
+  const styled = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main' }],
+    {
+      assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+      assStyle: { id: 'ass', fontSize: 72, marginV: 120, primaryColor: '#ffffff', outlineColor: '#000000', outline: 2 },
+      overlaySegments: [{ start: 150, end: 350, text: 'overlay' }],
+      appearance: {},
+    },
+  );
+  const styledOverlay = styled.split('\n').find((line) => line.startsWith('Dialogue: 2,'));
+  assert.ok(styledOverlay.includes(',Overlay,,0,0,0,'));
+  const overlayStyleLine = styled.split('\n').find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleLine.endsWith(',10,10,206,1'));
+  const defaultStyleLine = styled.split('\n').find((line) => line.startsWith('Style: Default,'));
+  assert.ok(defaultStyleLine.endsWith(',10,10,120,1'));
+});
+
+test('buildAssPayload styles overlay cues exactly like main cues in every ass_color_style mode', () => {
+  const overlaySegments = [
+    { start: 150, end: 350, text: 'overlay blue', color: { name: 'blue' } },
+    { start: 400, end: 600, text: 'overlay plain' },
+  ];
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    overlaySegments,
+    appearance: {},
+  };
+  // text（默认）：叠加轨带颜色标记的句子与主字幕一样引用调色板变体，
+  // 但挂在独立的 Overlay 前缀样式上。
+  const textMode = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main red', color: { name: 'red' } }],
+    { ...options, appearance: { ass_color_style: 'text' } },
+  );
+  const textOverlay = textMode.split('\n').filter((line) => line.startsWith('Dialogue: 2,'));
+  assert.equal(textOverlay.length, 2);
+  assert.ok(textOverlay[0].includes(',Overlay BLUE,'));
+  assert.ok(textOverlay[1].includes(',Overlay,'));
+  assert.ok(textMode.includes('Style: Overlay,'));
+  assert.ok(textMode.includes('Style: Overlay BLUE,'));
+  // none：调色板样式不导出，主轨与叠加轨一起回落，不再悬挂未定义引用。
+  const noneMode = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main red', color: { name: 'red' } }],
+    { ...options, appearance: { ass_color_style: 'none' } },
+  );
+  const noneOverlay = noneMode.split('\n').filter((line) => line.startsWith('Dialogue: 2,'));
+  assert.equal(noneOverlay.length, 2);
+  assert.ok(noneOverlay.every((line) => line.includes(',Overlay,')));
+  assert.ok(!noneMode.split('\n').some((line) => line.startsWith('Style: Overlay BLUE,')));
+});
+
+test('buildAssPayload applies fad and transform tags to overlay cues but never move', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: {
+          fad: { enabled: true, inMs: 200, outMs: 300 },
+          move: { enabled: true, x1: 0, y1: 960, x2: 100, y2: 500, t1: 0, t2: 1000 },
+          t: { enabled: true, startMs: 0, endMs: 500, accel: 1, tags: String.raw`\fs40` },
+        },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+      appearance: {},
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 2);
+  // 主轨：fad + move + t 全量应用。
+  assert.ok(dialogue[0].includes('{\\fad(200,300)\\move(0,960,100,500,0,1000)\\t(0,500,1,\\fs40)}main'));
+  // 叠加轨：与位置无关的 fad/t 逐句应用；\move 的绝对坐标只属于主字幕。
+  assert.ok(dialogue[1].includes('{\\fad(200,300)\\t(0,500,1,\\fs40)}overlay'));
+  assert.ok(!dialogue[1].includes('\\move('));
+});
+
+test('buildAssPayload writes extension cues on layer 1 with a single Extension style', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: {
+          fad: { enabled: true, inMs: 150, outMs: 250 },
+          move: { enabled: true, x1: 0, y1: 900, x2: 0, y2: 400, t1: 0, t2: 800 },
+        },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      assExtensionStyle: { id: 'ass-extension', fontSize: 54, marginV: 166, primaryColor: '#ffd34d' },
+      extensionSegments: [
+        { start: 120, end: 880, text: 'extension line' },
+        { start: 900, end: 950, text: 'disabled', disabled: true },
+      ],
+      overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+      appearance: {},
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 3);
+  assert.match(dialogue[1], /^Dialogue: 1,/);
+  assert.ok(dialogue[1].includes(',Extension,,0,0,0,'));
+  // 副字幕与叠加轨同样只应用与位置无关的动画标签。
+  assert.ok(dialogue[1].includes('{\\fad(150,250)}extension line'));
+  assert.ok(!dialogue[1].includes('\\move('));
+  assert.match(dialogue[2], /^Dialogue: 2,/);
+  // 副字幕样式：独立样式行，字号按 1080p 参考换算，边距完全来自样式。
+  const extensionStyle = ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
+  assert.ok(extensionStyle);
+  assert.ok(extensionStyle.includes(',54,'));
+  assert.ok(extensionStyle.endsWith(',10,10,166,1'));
+});
+
+test('buildAssPayload chains the overlay anchor above the extension track', () => {
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 72, marginV: 80, primaryColor: '#ffffff', outlineColor: '#000000', outline: 2 },
+    overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+    appearance: {},
+  };
+  // 无副字幕：叠加锚定 = 主样式边距 80 + 1.2 × 72 = 166。
+  const withoutExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }], options,
+  );
+  const overlayStyleOnly = withoutExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleOnly.endsWith(',10,10,166,1'));
+  // 有副字幕（边距 166、字号 54）：叠加锚定链式上叠 = 166 + round(64.8) = 231。
+  const withExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      ...options,
+      assExtensionStyle: { id: 'ass-extension', fontSize: 54, marginV: 166 },
+      extensionSegments: [{ start: 120, end: 880, text: 'extension line' }],
+    },
+  );
+  const overlayStyleChained = withExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleChained.endsWith(',10,10,231,1'));
+});
+
+test('buildAssPayload overlay style inherits the anchor layer alignment and side margins', () => {
+  const options = {
+    videoWidth: 1920,
+    videoHeight: 1080,
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 72, marginV: 80, primaryColor: '#ffffff', outlineColor: '#000000', outline: 2 },
+    overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+    appearance: {},
+  };
+  // 副字幕样式为顶部居中（Alignment 8，MarginV 100、左右边距 40/50）：
+  // 叠加轨链在其上方时继承该对齐与水平边距，固化边距按同一基准边解释
+  // （100 + round(1.2 × 54) = 165），而不是落回主样式的底部居中。
+  const topExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      ...options,
+      assExtensionStyle: {
+        id: 'ass-extension', fontSize: 54, marginV: 100, marginL: 40, marginR: 50, alignment: 8,
+      },
+      extensionSegments: [{ start: 120, end: 880, text: 'extension line' }],
+    },
+  );
+  const overlayStyleChained = topExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleChained);
+  assert.match(overlayStyleChained, /,8,40,50,165,1$/);
+  // 副字幕全部禁用：不链式，叠加样式回到主样式的底部居中（80 + 86.4 → 166）。
+  const disabledExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      ...options,
+      assExtensionStyle: {
+        id: 'ass-extension', fontSize: 54, marginV: 100, marginL: 40, marginR: 50, alignment: 8,
+      },
+      extensionSegments: [{ start: 120, end: 880, text: 'extension line', disabled: true }],
+    },
+  );
+  const overlayStyleFallback = disabledExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleFallback);
+  assert.match(overlayStyleFallback, /,2,10,10,166,1$/);
+});
+
 test('reports malformed intervals, missing sticker paths, and stale serializer warnings', () => {
   const plan = helpers.buildProjectExportPlan({
     media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
@@ -4168,6 +4789,19 @@ test('rejects serializer input that lacks media path, duration, or frame profile
     media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 }, segments: [],
   }, { mode: 'source' });
   assert.throws(() => helpers.serializeFcp7Xml({ ...plan, frameProfile: null }), /frame profile/);
+});
+
+test('rejects export plans whose overlay stickers fall outside the output duration', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 }, segments: [],
+  }, { mode: 'source' });
+  assert.throws(
+    () => helpers.serializeMappedSrt({ ...plan, overlayStickers: [{ startMs: 0, endMs: 1200 }] }),
+    /export sticker outside output duration/,
+  );
+  assert.doesNotThrow(() => helpers.serializeMappedSrt({
+    ...plan, overlayStickers: [{ startMs: 0, endMs: 800 }],
+  }, { subtitleTracks: 'main' }));
 });
 
 test('translates every project-export option, outcome, and warning key in both locales', () => {
@@ -4697,6 +5331,122 @@ test('normalizes legacy multi-subtitle data with stable IDs and preserves option
   ]);
   assert.equal(project.multi_subtitle.display_mode, 'both');
   assert.equal(project.multi_subtitle.main_split_mode, 'continuous');
+});
+
+
+test('normalizes an enabled overlay track with stable IDs without creating a bilingual track', () => {
+  const project = {
+    segments: [{ start: 0, end: 1000, text: '主字幕' }],
+    overlay_track: {
+      enabled: true,
+      segments: [{ start: 400, end: 800, text: '叠加字幕' }],
+    },
+  };
+
+  helpers.normalizeMultiSubtitleProject(project);
+
+  assert.equal(project.overlay_track.enabled, true);
+  assert.equal(project.overlay_track.segments[0].id, 'overlay-001');
+  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks)), []);
+});
+
+
+test('merges main and overlay cues by start time with main track tie priority', () => {
+  const merged = helpers.mergeMainAndOverlaySegments(
+    [
+      { start: 0, end: 1000, text: '主一' },
+      { start: 2000, end: 3000, text: '主二' },
+    ],
+    [
+      { start: 500, end: 1500, text: '叠一' },
+      { start: 2000, end: 2500, text: '叠二' },
+    ],
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(merged.map((segment) => segment.text))), [
+    '主一', '叠一', '主二', '叠二',
+  ]);
+});
+
+
+test('includes overlay track data in a segment history snapshot', () => {
+  const snapshot = helpers.buildSegmentsHistorySnapshot(
+    [{ text: '主字幕' }],
+    { enabled: false },
+    { enabled: true, segments: [{ text: '叠加字幕' }] },
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.overlay_track)), {
+    enabled: true, segments: [{ text: '叠加字幕' }],
+  });
+});
+
+
+test('moves a segment between main and overlay tracks keeping target start order', () => {
+  const main = [
+    { id: 'a', start: 0, end: 1000 },
+    { id: 'b', start: 2000, end: 3000 },
+  ];
+  const overlay = [{ id: 'o1', start: 500, end: 1200 }];
+
+  // 主轨 index 0（start 0）应插到 overlay 的 start 500 之前。
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, 0), 0);
+  assert.equal(main.length, 1);
+  assert.equal(main[0].id, 'b');
+  assert.deepEqual(overlay.map((segment) => segment.id), ['a', 'o1']);
+
+  // 越界与无效下标安全返回 -1，不改动两侧数组。
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, 5), -1);
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, -1), -1);
+  assert.equal(main.length, 1);
+  assert.equal(overlay.length, 2);
+
+  // 反向：把 overlay 的 'a' 移回主轨，应按 start 升序插到 'b' 之前。
+  assert.equal(helpers.moveSegmentBetweenTracks(overlay, main, 0), 0);
+  assert.deepEqual(main.map((segment) => segment.id), ['a', 'b']);
+  assert.deepEqual(overlay.map((segment) => segment.id), ['o1']);
+
+  // 同 start 时插到既有段之后，保持目标轨稳定排序。
+  const target = [{ id: 't1', start: 1000, end: 1500 }];
+  assert.equal(helpers.moveSegmentBetweenTracks([main[1]], target, 0), 1);
+  assert.deepEqual(target.map((segment) => segment.id), ['t1', 'b']);
+});
+
+
+test('shifts selection sets and the range anchor after a cue is removed', () => {
+  // 被移除的下标本身被选中：移出选中集，其后选中项前移一位（5 前移为 4），
+  // 锚点在被移除下标之后时同样前移（5 前移为 4）。
+  const selection = new Set([1, 3, 5]);
+  const result = helpers.shiftSelectionAfterRemoval(selection, 5, 3);
+  assert.equal(result.wasSelected, true);
+  assert.deepEqual([...selection].sort(), [1, 4]);
+  assert.equal(result.nextAnchor, 4);
+
+  // 锚点正好是被移除的下标：锚点清空为 -1，避免 Shift 范围选悬空。
+  const anchorSelection = new Set([2, 7]);
+  const anchorReset = helpers.shiftSelectionAfterRemoval(anchorSelection, 2, 2);
+  assert.equal(anchorReset.wasSelected, true);
+  assert.deepEqual([...anchorSelection].sort(), [6]);
+  assert.equal(anchorReset.nextAnchor, -1);
+
+  // 被移除的下标未被选中：选中集仅做前移（4 前移为 3），锚点不变。
+  const untouched = new Set([0, 4]);
+  const notSelected = helpers.shiftSelectionAfterRemoval(untouched, 1, 2);
+  assert.equal(notSelected.wasSelected, false);
+  assert.deepEqual([...untouched].sort(), [0, 3]);
+  assert.equal(notSelected.nextAnchor, 1);
+
+  // 锚点与选中项都在被移除下标之前：完全不受影响。
+  const before = new Set([0, 1]);
+  const unchanged = helpers.shiftSelectionAfterRemoval(before, 1, 4);
+  assert.equal(unchanged.wasSelected, false);
+  assert.deepEqual([...before].sort(), [0, 1]);
+  assert.equal(unchanged.nextAnchor, 1);
+
+  // 非法输入不抛错：返回未选中与原锚点。
+  const invalid = helpers.shiftSelectionAfterRemoval(null, 3, Number.NaN);
+  assert.equal(invalid.wasSelected, false);
+  assert.equal(invalid.nextAnchor, 3);
 });
 
 

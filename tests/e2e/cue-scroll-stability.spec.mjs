@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { startScrollFixture } from './cue-scroll-fixture.mjs';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 let server;
@@ -238,7 +238,11 @@ for (const mode of ['main', 'extension']) {
     const result = await saved.json();
     expect(result.backup).toMatch(/\.mosp-bak$/);
     expect(readFileSync(server.projectPath, 'utf8')).toBe(originalFile);
-    const backup = JSON.parse(readFileSync(join(server.directory, '_maw', 'backups', result.backup), 'utf8'));
+    const backupPath = ['backups', '备份']
+      .map(name => join(server.directory, '_maw', name, result.backup))
+      .find(existsSync);
+    expect(backupPath).toBeDefined();
+    const backup = JSON.parse(readFileSync(backupPath, 'utf8'));
     const segments = mode === 'main' ? backup.segments : backup.multi_subtitle.tracks[0].segments;
     expect(segments[75].text).toContain('仅备份合成文字');
     expect(await page.evaluate(() => hasUnsavedProjectChanges())).toBe(true);

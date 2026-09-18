@@ -45,6 +45,7 @@
   "script_alignment": { ... },
   "workspace": { ... },
   "preview": { ... },
+  "overlay_track": { ... },
   "segments": [ ... ]
 }
 ```
@@ -67,6 +68,7 @@
 | `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
 | `workspace` | `object` | 否 | 编辑器工作区：四个功能区的窗口布局与显示状态；不影响字幕和波形缓存。服务器版也可使用独立的本机命名工作区库跨工程复用 |
 | `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（副字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
+| `overlay_track` | `object` | 否 | 独立的叠加字幕轨。它的段可以与主轨重叠，但轨内保持时间顺序；用于保存导入 SRT 时出现的双层字幕 |
 
 `media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在全局设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
 
@@ -407,7 +409,8 @@
 | `background_alpha` | `number` | 否 | 字幕预览背景不透明度，范围 `[0, 1]`；缺失时使用 `0.65`，设为 `0` 时隐藏背景 |
 | `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#ffd34d` |
 | `color_underline` | `boolean` | 否 | 播放预览是否按字幕颜色快照应用颜色样式；缺失时视为 `true`（默认开启），设为 `false` 时关闭颜色预览。保留该字段以兼容旧工程 |
-| `color_style` | `string` | 否 | 颜色预览样式：`underline`（下划线，默认）、`text`（文字颜色）、`shadow`（阴影）或 `stroke`（描边） |
+| `color_style` | `string` | 否 | CSS 预览的颜色样式：`underline`（下划线，默认）、`text`（文字颜色）或 `stroke`（描边）；历史值 `shadow` 保留读取兼容 |
+| `ass_color_style` | `string` | 否 | ASS 导出与 ASS 预览中颜色字幕的应用方式：`text`（作为字幕颜色，默认）、`stroke`（作为描边颜色）或 `none`（无影响，颜色字幕使用统一样式） |
 | `speaker_labels` | `object` | 否 | 颜色到说话人的映射与标签预览设置；颜色默认对应 `SP1`～`SP5`，只显示在预览中，不修改 `segments[*].text` |
 | `preview.extension_subtitle` | `object` | 否 | 副字幕样式；同样支持 `font_size`、`font_family`、`color`，没有字号时默认比主字幕小 2px |
 
@@ -416,7 +419,7 @@
 - `x`、`y`、`width`、`height` 四个字段都必须是数字（不接受字符串、布尔），且落在 `[0, 1]`。
 - 若存在 `font_size`，必须是 `[12, 96]` 内的数字；若存在 `font_family`，必须是内置字体键或非空本机字体族名称，最长 128 个字符，不能包含控制字符；若存在 `background_color`，必须是 `#RRGGBB` 格式；若存在 `background_alpha`，必须是 `[0, 1]` 内的数字。
 - 若存在 `color`，必须是 `#RRGGBB` 六位十六进制颜色；副字幕样式不包含独立几何，沿用 `preview.subtitle` 的预览框。
-- 若存在 `color_underline`，必须是布尔值；其他取值视为缺失并按默认 `true` 处理；若存在 `color_style`，必须是 `underline`、`text`、`shadow` 或 `stroke`，其他取值视为缺失并按默认 `underline` 处理。
+- 若存在 `color_underline`，必须是布尔值；其他取值视为缺失并按默认 `true` 处理。若存在 `color_style`，必须是 `underline`、`text` 或 `stroke`（兼容读取历史值 `shadow`），其他取值视为缺失并按默认 `underline` 处理。若存在 `ass_color_style`，必须是 `text`、`stroke` 或 `none`，其他取值视为缺失并按默认 `text` 处理。
 - 若存在 `speaker_labels`，必须是对象；其中 `mapping_enabled`、`enabled`（如存在）必须是布尔值，`separator`（如存在）必须是长度不超过 16 且不含控制字符的字符串（允许为空或空格），`names`（如存在）必须是对象，五种颜色的名称必须是长度不超过 64 且不含控制字符的字符串；名称允许为空以隐藏该颜色的标签。编辑器的“将颜色映射为说话人”开启后，预览和“导出时附加说话人名称”可以使用这些映射。
 - 盒子必须留在播放器内：`x + width <= 1` 且 `y + height <= 1`。
 - 编辑器额外强制最小可读尺寸 `width >= 0.20`、`height >= 0.08`（这是编辑器 UX 钳制，非数据契约的硬校验；导入时会被编辑器再钳制）。
@@ -424,7 +427,37 @@
 - `preview.sticker` 缺失时同样按旧工程处理，使用默认几何 `{ x: 0.73, y: 0.04, width: 0.24, height: 0.3 }`（右上角）。两个几何共用同一套归一化与钳制规则。
 - 该几何只移动/缩放预览框容器；内部文字 `<span>` 仍保持居中与药丸样式，`segments[*].start/end/items[*].start/end` 永不被此几何改动。
 
-### 1.5 multi_subtitle 多重字幕
+### 1.5 overlay_track 叠加字幕轨
+
+`overlay_track` 是可选的单条独立字幕轨，用于保存同一份 SRT 中与主轨重叠的字幕。顶层 `segments` 始终是主轨真源；叠加轨只含自身的 `segments`，不建立主副绑定关系，也不替代 §1.6 的双语 `multi_subtitle`。
+
+```json
+{
+  "overlay_track": {
+    "enabled": true,
+    "segments": [{
+      "id": "overlay-001",
+      "start": 500,
+      "end": 1500,
+      "text": "叠加字幕"
+    }]
+  }
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `overlay_track.enabled` | boolean | 否 | 默认 `false`；关闭时保留轨道数据但编辑器不显示或导出它 |
+| `overlay_track.segments` | array | 否 | 叠加字幕段；字段与顶层 `segments[i]` 相同，缺失时按空数组处理 |
+
+约束：
+
+- `overlay_track.segments` 内部必须按时间升序排列，且相邻段满足 `end <= next.start`；它们可以与顶层主轨任意重叠。
+- 缺失稳定 ID 的段按 `overlay-001`、`overlay-002` 等确定性规则补齐；`sticker_ref` 和 `color_ref` 的 `headIdx` 仅引用叠加轨自身的段。
+- 后处理与 Server 导出的单个 SRT 会合并启用的主轨和叠加轨：先按 `start` 升序，开始时间相同则主轨在前；禁用或空文本段不导出。
+- 从 SRT 导入时优先放入主轨；与主轨冲突的 cue 放入叠加轨；若同一时刻需要第三层则导入失败，不会静默丢失字幕。
+
+### 1.6 multi_subtitle 多重字幕
 
 `multi_subtitle` 是可选的双语字幕结构。旧工程缺失该字段时，编辑器按关闭状态加载；保存时会补写关闭的空结构。顶层 `segments` 始终是主轨真源，副字幕只放在 `tracks[*].segments` 中。
 
@@ -798,6 +831,7 @@ uv run python edit.py your_generated.mosp
 | `sticker_root` | string | ❌ | 表情包根目录 |
 | `waveform` | object | ❌ | 可丢弃的 `moy.asr.waveform.v1` 峰值缓存 |
 | `gap_remove` | object | ❌ | 可逆的 `moy.asr.gap_remove.v1` 空隙移除决定 |
+| `overlay_track` | object | ❌ | 独立叠加字幕轨 `{enabled, segments}` |
 | `multi_subtitle` | object | ❌ | 可选的 `moy.asr.multi_subtitle.v1` 主轨/扩展轨与绑定 |
 | `preview` | object | ❌ | 预览呈现设置容器 |
 | `preview.subtitle.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |

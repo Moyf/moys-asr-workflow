@@ -112,9 +112,31 @@ class TranscriptionProcessError(Exception):
         self.output = tuple(output)
         detail = _tail_output(self.output)
         message = f"Transcription failed with exit code {exit_code}"
+        hint = _native_crash_hint(exit_code)
+        if hint:
+            message += f" {hint}"
         if detail:
             message += f": {detail}"
         super().__init__(message)
+
+
+_WINDOWS_ACCESS_VIOLATION = 0xC0000005
+
+
+def _native_crash_hint(exit_code: int) -> str:
+    """识别 Windows 原生崩溃退出码，给出可操作的排查提示。
+
+    子进程被 OS 直接终止（而非 Python 异常退出）时，returncode 是
+    NTSTATUS 码；0xC0000005（访问冲突）最常见于本地 GPU 引擎在显卡驱动
+    CUDA 初始化阶段原生崩溃。机器无恙时表现为偶发，驱动状态损坏时逐次
+    复现，重启或更新驱动后恢复。
+    """
+    if (exit_code & 0xFFFFFFFF) != _WINDOWS_ACCESS_VIOLATION:
+        return ""
+    return (
+        "（0xC0000005：子进程原生访问冲突，常见于显卡驱动 CUDA 初始化失败。"
+        "请重启电脑后重试；仍崩溃时更新 NVIDIA 驱动，或把设备改为 CPU 再试一次。）"
+    )
 
 
 def _tail_output(output: Sequence[str], limit: int = 1) -> str:

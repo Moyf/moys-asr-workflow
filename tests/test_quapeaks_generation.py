@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import math
+import os
 import shutil
 import struct
 import sys
@@ -231,6 +232,11 @@ class MopeaksFallbackTests(unittest.TestCase):
     """四条成因（未选内核 / import 失败 / 内核抛错 / 产物自检不过）都落到 mopeaks。"""
 
     def setUp(self) -> None:
+        # 隔离用户级 MAW 配置（.env 勾过「输出进子文件夹」会让缓存写进 _maw）。
+        self.env_patcher = mock.patch.dict(
+            os.environ, {"MAW_GUI_OUTPUT_SUBFOLDER": "0", "MAW_GUI_PER_VIDEO_SUBFOLDER": "0"},
+        )
+        self.env_patcher.start()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
         self.tone = self.root / "tone.wav"
@@ -238,6 +244,7 @@ class MopeaksFallbackTests(unittest.TestCase):
         self.project: dict = {"media": str(self.tone), "segments": []}
 
     def tearDown(self) -> None:
+        self.env_patcher.stop()
         self.temp_dir.cleanup()
 
     def _assert_fell_back(self, result, *, container_absent: bool = True) -> None:

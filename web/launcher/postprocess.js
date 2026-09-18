@@ -61,6 +61,9 @@
   let audioProbeRequest = 0;
   let scriptPreviewRequest = 0;
   let splitPreviewRequest = 0;
+  let srtBurnStyleName = "";
+  let srtBurnStyleResolved = false;
+  let assStyleLibraryRequest = 0;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -1896,6 +1899,36 @@
     return postprocessErrorText(result);
   }
 
+  function renderBurnSubtitleStyle() {
+    const element = $("toolboxBurnSubtitleStyle");
+    if (!element) return;
+    // 首次读取完成前保持占位，避免闪现「无法读取」造成误解。
+    if (!srtBurnStyleResolved) return;
+    const styleText = srtBurnStyleName
+      ? t("toolbox_burn_subtitle_style").replace("{name}", srtBurnStyleName)
+      : t("toolbox_burn_subtitle_style_unavailable");
+    element.textContent = `${styleText} ${t("toolbox_burn_subtitle_ass_style")}`;
+  }
+
+  async function refreshBurnSubtitleStyle() {
+    const requestId = ++assStyleLibraryRequest;
+    const element = $("toolboxBurnSubtitleStyle");
+    if (element) element.textContent = t("toolbox_burn_subtitle_style_loading");
+    let result = null;
+    try {
+      result = await bridge("get_ass_style_library");
+    } catch (_) {
+      result = null;
+    }
+    if (requestId !== assStyleLibraryRequest) return;
+    const styles = Array.isArray(result?.styles) ? result.styles : [];
+    const styleId = result?.assignments?.srtBurnStyleId || "default";
+    const style = styles.find((candidate) => candidate?.id === styleId);
+    srtBurnStyleName = style?.name ? String(style.name) : "";
+    srtBurnStyleResolved = true;
+    renderBurnSubtitleStyle();
+  }
+
   async function runBurnSubtitle() {
     if (busy) return;
     const mediaPath = $("toolboxUtilityMediaPath").value.trim();
@@ -1924,6 +1957,10 @@
     try {
       const result = await bridge("run_burn_subtitles", { mediaPath, subtitlePath });
       if (result.ok) {
+        if (result.srtStyleName) {
+          srtBurnStyleName = String(result.srtStyleName);
+          renderBurnSubtitleStyle();
+        }
         utilityMediaManual = true;
         $("toolboxUtilityMediaPath").value = result.mediaPath;
         syncPaths();
@@ -2023,6 +2060,7 @@
     renderAlignmentAction();
     renderMediaToolAction();
     initializeAutoPostprocess();
+    void refreshBurnSubtitleStyle();
   }
 
   $("toolboxFab").addEventListener("click", () => {
@@ -2318,6 +2356,7 @@
     renderMediaToolAction();
     renderAutoPostprocessState();
     updateBackfillLabels();
+    renderBurnSubtitleStyle();
   };
   window.MAWLauncher.onProjectPathChanged = () => {
     if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();

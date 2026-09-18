@@ -11,10 +11,13 @@ EMBED_PYTHON_ZIP = "python-3.11.9-embed-amd64.zip"
 
 # 版本 6：local dependency group 新增 faster-whisper（CTranslate2 运行时），老安装需
 # 重装一次本地运行环境以补齐依赖。
+# 自检 import 覆盖 package_dirs 全部关键包（tests/test_runtimes.py 有对应断言）：
+# 依赖清单陈旧（如 reapeaks→quapeaks 改名后仍装旧包）时安装要当场报错，
+# 而不是静默成功后陷入「需要修复」循环。
 _VERIFY_COMMAND = (
     "from funasr import AutoModel; from qwen_asr import Qwen3ASRModel; "
     "from faster_whisper import WhisperModel; "
-    "import jieba, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')"
+    "import jieba, quapeaks, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')"
 )
 
 

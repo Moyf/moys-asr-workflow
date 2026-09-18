@@ -32,6 +32,79 @@
     return SUBTITLE_FONT_FAMILY_DISPLAY_NAMES_ZH[family] || family;
   }
 
+  // 字体输入框（datalist 搜索）与存储值之间的双向映射。
+  // 预设内置字体以 key 存储；本机字体以真实字体族名存储——datalist 展示的
+  // 本地化别名（如「微软雅黑」）提交时必须还原，否则浏览器无法解析该名称。
+  const SUBTITLE_FONT_FAMILY_PRESETS = Object.freeze([
+    { key: 'default', label: '默认无衬线' },
+    { key: 'yahei', label: '微软雅黑 / 苹方' },
+    { key: 'hei', label: '黑体' },
+    { key: 'song', label: '宋体' },
+    { key: 'sans', label: 'Arial / Segoe UI' },
+  ]);
+
+  function subtitleFontFamilyStoredToInput(family, {
+    presets = SUBTITLE_FONT_FAMILY_PRESETS,
+    presetLabel = (preset) => preset.label,
+    familyDisplay = (candidate) => candidate,
+  } = {}) {
+    const key = family || 'default';
+    const preset = presets.find((item) => item.key === key);
+    if (preset) return presetLabel(preset);
+    return familyDisplay(key);
+  }
+
+  function subtitleFontFamilyInputToStored(text, {
+    presets = SUBTITLE_FONT_FAMILY_PRESETS,
+    presetLabel = (preset) => preset.label,
+    localFamilies = [],
+    familyDisplay = (candidate) => candidate,
+  } = {}) {
+    const value = String(text || '').trim();
+    if (!value) return 'default';
+    const preset = presets.find((item) => (
+      item.label === value || item.key === value || presetLabel(item) === value
+    ));
+    if (preset) return preset.key;
+    const family = (Array.isArray(localFamilies) ? localFamilies : []).find((candidate) => (
+      candidate === value || familyDisplay(candidate) === value
+    ));
+    return family || value;
+  }
+
+  // combobox 下拉选项：按显示名合并预设与本机字体并去重。
+  // 预设与扫描结果经常重叠（如 Arial / Microsoft YaHei），去重时保留先出现的项。
+  function mergeFontFamilyOptions(entries) {
+    const seen = new Set();
+    const result = [];
+    (Array.isArray(entries) ? entries : []).forEach((entry) => {
+      const value = typeof entry?.value === 'string' ? entry.value.trim() : '';
+      if (!value) return;
+      const label = typeof entry?.label === 'string' && entry.label.trim()
+        ? entry.label.trim() : value;
+      const key = label.toLocaleLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      result.push({ value, label });
+    });
+    return result;
+  }
+
+  // 过滤字体下拉选项：开头匹配（前缀）排在包含匹配之前，两组各自保持原有相对顺序。
+  function filterFontFamilyOptions(entries, query) {
+    const normalized = String(query || '').trim().toLocaleLowerCase();
+    const source = Array.isArray(entries) ? entries : [];
+    if (!normalized) return source;
+    const startsWith = [];
+    const contains = [];
+    source.forEach((entry) => {
+      const label = String(entry?.label || '').toLocaleLowerCase();
+      if (label.startsWith(normalized)) startsWith.push(entry);
+      else if (label.includes(normalized)) contains.push(entry);
+    });
+    return startsWith.concat(contains);
+  }
+
   const SPEAKER_LABEL_COLORS = Object.freeze([
     'yellow', 'green', 'red', 'purple', 'blue',
   ]);
@@ -2566,7 +2639,7 @@
     return value == null ? null : JSON.parse(JSON.stringify(value));
   }
 
-  const EDITOR_SETTING_ROW_HEIGHTS = [64, 80, 96, 120, 144, 168];
+  const EDITOR_SETTING_ROW_HEIGHTS = [64, 80, 96, 120, 144, 168, 192];
   // 拆分边界符号修剪配置：勾选/填写的符号会在拆分后从两侧文本边缘移除。
   // 空格与换行永远修剪，不参与配置。
   // 仅前 5 个高频符号提供勾选 chip；其余符号由设置面板的自由文本框维护
@@ -2806,6 +2879,34 @@
   const EDITOR_ACCENT_COLOR_VALUES = Object.freeze(['blue', 'red', 'orange', 'custom']);
   const DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR = '#6ca5e8';
 
+  const EDITOR_SUBTITLE_COLOR_NAMES = Object.freeze([
+    'yellow', 'green', 'red', 'purple', 'blue',
+  ]);
+  const DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE = Object.freeze({
+    yellow: '#c4a019',
+    green: '#66bb6a',
+    red: '#f07f6f',
+    purple: '#bf89e6',
+    blue: '#61a7fa',
+  });
+
+  function normalizeSubtitleColorPalette(value, fallback = DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE) {
+    const source = Array.isArray(value)
+      ? Object.fromEntries(value
+        .filter((entry) => entry && typeof entry.name === 'string')
+        .map((entry) => [entry.name, entry.value]))
+      : value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const defaults = fallback && typeof fallback === 'object' && !Array.isArray(fallback)
+      ? fallback : DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE;
+    return Object.fromEntries(EDITOR_SUBTITLE_COLOR_NAMES.map((name) => {
+      const candidate = String(source[name] ?? '').trim().toLowerCase();
+      const defaultValue = String(defaults[name] || DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE[name]);
+      const normalizedDefault = /^#[0-9a-f]{6}$/iu.test(defaultValue)
+        ? defaultValue.toLowerCase() : DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE[name];
+      return [name, /^#[0-9a-f]{6}$/iu.test(candidate) ? candidate : normalizedDefault];
+    }));
+  }
+
   function normalizeEditorAccentColor(value) {
     return EDITOR_ACCENT_COLOR_VALUES.includes(value) ? value : 'blue';
   }
@@ -2820,7 +2921,8 @@
     splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true,
     mainSplitModeOverride: null,
     splitTrimSymbols: [...DEFAULT_SPLIT_TRIM_SYMBOLS],
-    overlayEnabled: true, extensionOverlayEnabled: true, multiSubtitleRowHeight: 168,
+    overlayEnabled: true, extensionOverlayEnabled: true, assMode: false, multiSubtitleRowHeight: 168,
+    subtitleColorPaletteEnabled: false,
     exportStartAtZero: false, cueListShowIndex: true, cueListShowTime: true,
     cueListShowSticker: true, cueListShowCharcount: true, cueListAutoScrollOnClick: true,
     cueListKeepSplitVisible: true, cueListHideDisabled: false, cueListCharcountThreshold: 16,
@@ -2842,6 +2944,7 @@
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
     accentColor: 'blue', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    subtitleColorPalette: { ...DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE },
     waveShapeSource: 'reapeaks',
   });
 
@@ -2870,6 +2973,10 @@
         : [...DEFAULT_SPLIT_TRIM_SYMBOLS],
       overlayEnabled: savedSettings.overlayEnabled !== false,
       extensionOverlayEnabled: savedSettings.extensionOverlayEnabled !== false,
+      // ASS 字幕模式是预览偏好，默认关闭以保持旧版 CSS 预览行为。
+      assMode: savedSettings.assMode === true,
+      // 自定义五色开关：关闭时一律使用内置色值（自定义值保留以便再次开启）。
+      subtitleColorPaletteEnabled: savedSettings.subtitleColorPaletteEnabled === true,
       multiSubtitleRowHeight: EDITOR_SETTING_ROW_HEIGHTS.includes(Number(savedSettings.multiSubtitleRowHeight))
         ? Number(savedSettings.multiSubtitleRowHeight) : 168,
       exportStartAtZero: savedSettings.exportStartAtZero === true,
@@ -2942,6 +3049,7 @@
         ? savedSettings.theme : 'dark',
       accentColor: normalizeEditorAccentColor(savedSettings.accentColor),
       accentColorCustom: normalizeEditorAccentCustomColor(savedSettings.accentColorCustom),
+      subtitleColorPalette: normalizeSubtitleColorPalette(savedSettings.subtitleColorPalette),
       waveShapeSource: savedSettings.waveShapeSource === 'self' ? 'self' : 'reapeaks',
     };
   }
@@ -3059,8 +3167,12 @@
   const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
     segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览',
   });
-  function buildSegmentsHistorySnapshot(segments, multiSubtitle) {
-    return { segments: cloneJsonValue(segments), multi_subtitle: cloneJsonValue(multiSubtitle) };
+  function buildSegmentsHistorySnapshot(segments, multiSubtitle, overlayTrack = null) {
+    return {
+      segments: cloneJsonValue(segments),
+      multi_subtitle: cloneJsonValue(multiSubtitle),
+      overlay_track: cloneJsonValue(overlayTrack),
+    };
   }
   function buildHistoryRecord(kind, label, payload, view = null) {
     const recordKind = Object.prototype.hasOwnProperty.call(HISTORY_RECORD_DEFAULT_LABELS, kind)
@@ -3137,6 +3249,62 @@
     let candidate = `${base}-${suffix}`;
     while (used.has(candidate)) candidate = `${base}-${suffix++}`;
     return candidate;
+  }
+
+  function normalizeOverlayTrack(value) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const rawSegments = Array.isArray(source.segments) ? source.segments : [];
+    const segments = rawSegments
+      .filter((segment) => segment && typeof segment === 'object')
+      .map((segment) => {
+        const copy = { ...segment };
+        if (Array.isArray(copy.items)) copy.items = copy.items.map((item) => ({ ...item }));
+        else delete copy.items;
+        return copy;
+      });
+    ensureStableSegmentIds(segments, 'overlay');
+    return { enabled: source.enabled === true, segments };
+  }
+
+  function mergeMainAndOverlaySegments(mainSegments, overlaySegments) {
+    const main = Array.isArray(mainSegments) ? mainSegments : [];
+    const overlay = Array.isArray(overlaySegments) ? overlaySegments : [];
+    return [
+      ...main.map((segment, index) => ({ segment, trackOrder: 0, index })),
+      ...overlay.map((segment, index) => ({ segment, trackOrder: 1, index })),
+    ].sort((left, right) => (
+      Number(left.segment?.start) - Number(right.segment?.start)
+      || left.trackOrder - right.trackOrder
+      || left.index - right.index
+    )).map(({ segment }) => segment);
+  }
+
+  // === 叠加字幕轨的段落迁移 ===
+  // 主轨与叠加轨是两条互不绑定的时间轴；把段落从一条轨移到另一条轨时保持
+  // 目标轨按 start 升序（同 start 时插到既有段之后），返回段在新轨中的下标。
+  // 原地修改传入数组——编辑器以 DATA.segments / DATA.overlay_track 为真源。
+  function insertSegmentByStart(trackSegments, segment) {
+    const list = Array.isArray(trackSegments) ? trackSegments : [];
+    const start = Number(segment?.start);
+    let insertAt = list.length;
+    for (let index = 0; index < list.length; index += 1) {
+      if (Number(list[index]?.start) > start) {
+        insertAt = index;
+        break;
+      }
+    }
+    list.splice(insertAt, 0, segment);
+    return insertAt;
+  }
+
+  function moveSegmentBetweenTracks(sourceSegments, targetSegments, index) {
+    const source = Array.isArray(sourceSegments) ? sourceSegments : [];
+    const target = Array.isArray(targetSegments) ? targetSegments : [];
+    if (!Number.isInteger(index) || index < 0 || index >= source.length) return -1;
+    const segment = source[index];
+    if (!segment || typeof segment !== 'object') return -1;
+    source.splice(index, 1);
+    return insertSegmentByStart(target, segment);
   }
 
   function normalizeMultiSubtitle(value, mainSegments = []) {
@@ -3231,6 +3399,7 @@
   function normalizeMultiSubtitleProject(project) {
     if (!project || typeof project !== 'object') return project;
     ensureStableSegmentIds(project.segments, 'main');
+    project.overlay_track = normalizeOverlayTrack(project.overlay_track);
     project.multi_subtitle = normalizeMultiSubtitle(project.multi_subtitle, project.segments);
     return project;
   }
@@ -3756,6 +3925,28 @@
     return repaired;
   }
 
+  // 从字幕数组移除/迁出下标 index 的段后同步选择状态：该下标移出选中集，
+  // 其后的选中项与 Shift 范围锚点前移一位，避免选中状态落到后面的字幕上。
+  // selection 是会被原地修改的 Set；返回 { wasSelected, nextAnchor }。
+  function shiftSelectionAfterRemoval(selection, anchorIndex, removedIndex) {
+    // 用 Object.prototype.toString 判断 Set，兼容 vm 等跨 realm 环境。
+    if (Object.prototype.toString.call(selection) !== '[object Set]' || !Number.isInteger(removedIndex)) {
+      return { wasSelected: false, nextAnchor: Number.isInteger(anchorIndex) ? anchorIndex : -1 };
+    }
+    const wasSelected = selection.has(removedIndex);
+    selection.delete(removedIndex);
+    [...selection].forEach((idx) => {
+      if (idx > removedIndex) {
+        selection.delete(idx);
+        selection.add(idx - 1);
+      }
+    });
+    const anchor = Number.isInteger(anchorIndex) ? anchorIndex : -1;
+    const nextAnchor = anchor === removedIndex ? -1
+      : anchor > removedIndex ? anchor - 1 : anchor;
+    return { wasSelected, nextAnchor };
+  }
+
   function buildSrtPayload(segments, options = {}) {
     const source = Array.isArray(segments) ? segments : [];
     const colorName = typeof options.colorName === 'string' ? options.colorName : null;
@@ -3779,12 +3970,17 @@
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const parts = [];
     let outputIndex = 0;
+    // 颜色/说话人解析上下文：合并导出（主轨 + 叠加轨）时，叠加段的
+    // color_ref 指向叠加轨自身数组，不能在合并后的大数组里按下标解析。
+    const colorContextResolver = typeof options.colorContextResolver === 'function'
+      ? options.colorContextResolver : () => source;
     source.forEach((segment, sourceIndex) => {
       if (!segment) return;
       const disabled = segment.disabled === true;
       if (disabled && !keepDisabledPlaceholder) return;
+      const colorContext = colorContextResolver(segment) || source;
       if (!disabled && colorName) {
-        const effectiveName = effectiveColorName(segment, source);
+        const effectiveName = effectiveColorName(segment, colorContext);
         const matches = colorName === 'default' ? !effectiveName : effectiveName === colorName;
         if (!matches) return;
       }
@@ -3797,7 +3993,7 @@
       parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
       parts.push(disabled ? '' : speakerLabels
         ? formatSpeakerLabelledText(
-          segment.text, segment, source, speakerLabels, speakerLabelSeparator,
+          segment.text, segment, colorContext, speakerLabels, speakerLabelSeparator,
         )
         : String(segment.text || ''));
       parts.push('');
@@ -3805,7 +4001,16 @@
     return parts.join('\n');
   }
 
-  const ASS_DEFAULT_FONT_FAMILY = 'Arial';
+  // ASS 默认字体按操作系统选择：Arial 对中文没有合适的字形回退，
+  // 中文系统下默认字体应直接落到系统自带的 CJK 无衬线字体。
+  function assDefaultFontFamily() {
+    const nav = globalThis.navigator;
+    const source = `${nav?.platform || ''} ${nav?.userAgent || ''}`.toLowerCase();
+    if (/win/.test(source)) return 'Microsoft YaHei';
+    if (/\bmac|iphone|ipad/.test(source)) return 'PingFang SC';
+    return 'Noto Sans CJK SC';
+  }
+  const ASS_DEFAULT_FONT_FAMILY = assDefaultFontFamily();
   const ASS_DEFAULT_PREVIEW_FONT_SIZE = 18;
   const ASS_AUTO_FONT_SIZE_1080P = 72;
   // Fullscreen preview doubles the CSS size; Subtitle Edit calibration maps
@@ -3829,6 +4034,521 @@
   const ASS_STYLE_FORMAT = 'Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding';
   const ASS_EVENT_FORMAT = 'Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text';
 
+  const ASS_STYLE_LIBRARY_SCHEMA = 'moy.asr.ass_styles.v1';
+  const ASS_STYLE_ID_RE = /^[a-z][a-z0-9_-]{0,63}$/u;
+  const ASS_STYLE_LIBRARY_MAX_NAME_LENGTH = 80;
+  const ASS_STYLE_LIBRARY_MAX_FONT_LENGTH = 128;
+  const ASS_STYLE_LIBRARY_MAX_TRANSFORM_LENGTH = 512;
+  const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
+
+  function normalizeAssColorStyle(value) {
+    if (value === 'underline') return 'text';
+    return typeof value === 'string' && ASS_COLOR_STYLE_VALUES.includes(value) ? value : null;
+  }
+
+  const ASS_DEFAULT_STYLE = Object.freeze({
+    id: 'default',
+    name: 'SRT 默认',
+    builtin: true,
+    fontName: 'Arial',
+    fontSize: 18,
+    primaryColor: '#ffffff',
+    secondaryColor: '#ffffff',
+    outlineColor: '#000000',
+    backColor: '#000000',
+    bold: false,
+    italic: false,
+    underline: false,
+    strikeOut: false,
+    scaleX: 100,
+    scaleY: 100,
+    spacing: 0,
+    angle: 0,
+    borderStyle: 1,
+    outline: 2,
+    shadow: 0,
+    alignment: 2,
+    marginL: 10,
+    marginR: 10,
+    marginV: 40,
+    encoding: 1,
+  });
+  // ASS 默认样式：字体按操作系统选择、默认加粗，字号按 1080p 参考基准 72，
+  // 垂直边距放宽到 80；SRT 压制默认样式保持 Arial 18/40 不加粗。
+  const ASS_DEFAULT_ASS_STYLE = Object.freeze({
+    ...ASS_DEFAULT_STYLE,
+    id: 'ass', name: 'ASS 默认样式',
+    fontName: ASS_DEFAULT_FONT_FAMILY,
+    bold: true,
+    fontSize: 72, marginV: 80,
+  });
+  // ASS 副字幕默认样式：多重字幕的副语言轨在 ASS 导出与预览中共用一个
+  // 样式（副字幕不支持颜色分组）；默认沿用 CSS 预览的副字幕黄色，字号约
+  // 主样式的 75%，垂直边距按「主边距 80 + 1.2 × 主字号 72」固化在主字幕
+  // 上方，与叠加字幕的默认锚定公式一致。
+  const ASS_DEFAULT_EXTENSION_STYLE = Object.freeze({
+    ...ASS_DEFAULT_STYLE,
+    id: 'ass-extension', name: 'ASS 副字幕样式',
+    fontName: ASS_DEFAULT_FONT_FAMILY,
+    bold: true,
+    primaryColor: '#ffd34d',
+    fontSize: 54, marginV: 166,
+  });
+  const ASS_DEFAULT_ANIMATIONS = Object.freeze({
+    fad: Object.freeze({ enabled: false, inMs: 250, outMs: 250 }),
+    fade: Object.freeze({
+      enabled: false, alpha1: 0, alpha2: 255, alpha3: 0,
+      t1: 0, t2: 250, t3: 750, t4: 1000,
+    }),
+    move: Object.freeze({
+      enabled: false, x1: 0, y1: 0, x2: 0, y2: 0, t1: 0, t2: 1000,
+    }),
+    t: Object.freeze({ enabled: false, startMs: 0, endMs: 1000, accel: 1, tags: '' }),
+  });
+  const ASS_DEFAULT_PROFILE = Object.freeze({
+    id: 'ass', name: 'ASS 输出方案', builtin: true, styleId: 'ass',
+    animations: ASS_DEFAULT_ANIMATIONS,
+  });
+
+  function cloneJsonValue(value) {
+    if (value === undefined) return undefined;
+    try { return JSON.parse(JSON.stringify(value)); } catch (_) { return null; }
+  }
+
+  function normalizeAssStyleId(value, fallback = '') {
+    const candidate = String(value ?? '').trim().toLowerCase();
+    return ASS_STYLE_ID_RE.test(candidate) ? candidate : fallback;
+  }
+
+  function normalizeAssLibraryText(value, fallback = '', limit = ASS_STYLE_LIBRARY_MAX_NAME_LENGTH) {
+    const normalized = String(value ?? '')
+      .replace(/[\u0000-\u001f\u007f]/gu, ' ')
+      .replace(/\s+/gu, ' ')
+      .replace(/,/gu, ' ')
+      .replace(/\s+/gu, ' ')
+      .trim()
+      .slice(0, limit);
+    return normalized || fallback;
+  }
+
+  function normalizeAssAnimationText(value, fallback = '', limit = ASS_STYLE_LIBRARY_MAX_TRANSFORM_LENGTH) {
+    const normalized = String(value ?? '')
+      .replace(/[\u0000-\u001f\u007f]/gu, ' ')
+      .replace(/[{}]/gu, '')
+      .replace(/\s+/gu, ' ')
+      .trim()
+      .slice(0, limit);
+    return normalized || fallback;
+  }
+
+  function normalizeAssLibraryColor(value, fallback = '#ffffff') {
+    const candidate = String(value ?? '').trim().toLowerCase();
+    return /^#[0-9a-f]{6}$/iu.test(candidate) ? candidate : fallback;
+  }
+
+  function normalizeAssLibraryNumber(value, fallback, min, max, integer = true) {
+    const numeric = Number(value);
+    const safe = Number.isFinite(numeric) ? numeric : Number(fallback);
+    const clamped = Math.min(max, Math.max(min, safe));
+    return integer ? Math.round(clamped) : clamped;
+  }
+
+  function normalizeAssLibraryBoolean(value, fallback = false) {
+    return typeof value === 'boolean' ? value : fallback;
+  }
+
+  function normalizeAssStyle(value, fallback = ASS_DEFAULT_ASS_STYLE, styleId = '') {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const base = { ...fallback };
+    const resolvedId = normalizeAssStyleId(styleId || source.id || fallback.id, fallback.id || 'ass');
+    return {
+      ...base,
+      id: resolvedId,
+      name: normalizeAssLibraryText(source.name, fallback.name || '样式'),
+      builtin: Boolean(fallback.builtin),
+      fontName: normalizeAssLibraryText(source.fontName, fallback.fontName || ASS_DEFAULT_FONT_FAMILY, ASS_STYLE_LIBRARY_MAX_FONT_LENGTH),
+      fontSize: normalizeAssLibraryNumber(source.fontSize, fallback.fontSize || 18, 1, 512),
+      primaryColor: normalizeAssLibraryColor(source.primaryColor, fallback.primaryColor || '#ffffff'),
+      secondaryColor: normalizeAssLibraryColor(source.secondaryColor, fallback.secondaryColor || '#ffffff'),
+      outlineColor: normalizeAssLibraryColor(source.outlineColor, fallback.outlineColor || '#000000'),
+      backColor: normalizeAssLibraryColor(source.backColor, fallback.backColor || '#000000'),
+      bold: normalizeAssLibraryBoolean(source.bold, Boolean(fallback.bold)),
+      italic: normalizeAssLibraryBoolean(source.italic, Boolean(fallback.italic)),
+      underline: normalizeAssLibraryBoolean(source.underline, Boolean(fallback.underline)),
+      strikeOut: normalizeAssLibraryBoolean(source.strikeOut, Boolean(fallback.strikeOut)),
+      scaleX: normalizeAssLibraryNumber(source.scaleX, fallback.scaleX ?? 100, 0, 1000),
+      scaleY: normalizeAssLibraryNumber(source.scaleY, fallback.scaleY ?? 100, 0, 1000),
+      spacing: normalizeAssLibraryNumber(source.spacing, fallback.spacing ?? 0, -100, 100),
+      angle: normalizeAssLibraryNumber(source.angle, fallback.angle ?? 0, -360, 360),
+      borderStyle: normalizeAssLibraryNumber(source.borderStyle, fallback.borderStyle ?? 1, 1, 4),
+      outline: normalizeAssLibraryNumber(source.outline, fallback.outline ?? 2, 0, 100),
+      shadow: normalizeAssLibraryNumber(source.shadow, fallback.shadow ?? 0, 0, 100),
+      alignment: normalizeAssLibraryNumber(source.alignment, fallback.alignment ?? 2, 1, 9),
+      marginL: normalizeAssLibraryNumber(source.marginL, fallback.marginL ?? 10, 0, 9999),
+      marginR: normalizeAssLibraryNumber(source.marginR, fallback.marginR ?? 10, 0, 9999),
+      marginV: normalizeAssLibraryNumber(source.marginV, fallback.marginV ?? 40, 0, 9999),
+      encoding: normalizeAssLibraryNumber(source.encoding, fallback.encoding ?? 1, 0, 255),
+    };
+  }
+
+  function normalizeAssAnimations(value) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const fad = source.fad && typeof source.fad === 'object' ? source.fad : {};
+    const fade = source.fade && typeof source.fade === 'object' ? source.fade : {};
+    const move = source.move && typeof source.move === 'object' ? source.move : {};
+    const transform = source.t && typeof source.t === 'object' ? source.t : {};
+    return {
+      fad: {
+        enabled: normalizeAssLibraryBoolean(fad.enabled),
+        inMs: normalizeAssLibraryNumber(fad.inMs, 250, 0, 60000),
+        outMs: normalizeAssLibraryNumber(fad.outMs, 250, 0, 60000),
+      },
+      fade: (() => {
+        const t1 = normalizeAssLibraryNumber(fade.t1, 0, 0, 60000);
+        const t2 = Math.max(t1, normalizeAssLibraryNumber(fade.t2, 250, 0, 60000));
+        const t3 = Math.max(t2, normalizeAssLibraryNumber(fade.t3, 750, 0, 60000));
+        const t4 = Math.max(t3, normalizeAssLibraryNumber(fade.t4, 1000, 0, 60000));
+        return {
+          enabled: normalizeAssLibraryBoolean(fade.enabled),
+          alpha1: normalizeAssLibraryNumber(fade.alpha1, 0, 0, 255),
+          alpha2: normalizeAssLibraryNumber(fade.alpha2, 255, 0, 255),
+          alpha3: normalizeAssLibraryNumber(fade.alpha3, 0, 0, 255),
+          t1, t2, t3, t4,
+        };
+      })(),
+      move: {
+        enabled: normalizeAssLibraryBoolean(move.enabled),
+        x1: normalizeAssLibraryNumber(move.x1, 0, -65535, 65535),
+        y1: normalizeAssLibraryNumber(move.y1, 0, -65535, 65535),
+        x2: normalizeAssLibraryNumber(move.x2, 0, -65535, 65535),
+        y2: normalizeAssLibraryNumber(move.y2, 0, -65535, 65535),
+        t1: normalizeAssLibraryNumber(move.t1, 0, 0, 60000),
+        t2: Math.max(
+          normalizeAssLibraryNumber(move.t1, 0, 0, 60000),
+          normalizeAssLibraryNumber(move.t2, 1000, 0, 60000),
+        ),
+      },
+      t: {
+        enabled: normalizeAssLibraryBoolean(transform.enabled),
+        startMs: normalizeAssLibraryNumber(transform.startMs, 0, 0, 60000),
+        endMs: Math.max(
+          normalizeAssLibraryNumber(transform.startMs, 0, 0, 60000),
+          normalizeAssLibraryNumber(transform.endMs, 1000, 0, 60000),
+        ),
+        accel: normalizeAssLibraryNumber(transform.accel, 1, 0.01, 100, false),
+        tags: normalizeAssAnimationText(transform.tags, '', ASS_STYLE_LIBRARY_MAX_TRANSFORM_LENGTH),
+      },
+    };
+  }
+
+  function normalizeAssProfile(value, fallback = ASS_DEFAULT_PROFILE, profileId = '') {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const resolvedId = normalizeAssStyleId(profileId || source.id || fallback.id, fallback.id || 'ass');
+    return {
+      ...fallback,
+      id: resolvedId,
+      name: normalizeAssLibraryText(source.name, fallback.name || 'ASS'),
+      builtin: Boolean(fallback.builtin),
+      styleId: normalizeAssStyleId(source.styleId, fallback.styleId || 'ass') || 'ass',
+      animations: normalizeAssAnimations(source.animations),
+    };
+  }
+
+  function defaultAssStyleLibrary() {
+    return {
+      schema: ASS_STYLE_LIBRARY_SCHEMA,
+      version: 1,
+      styles: [
+        cloneJsonValue(ASS_DEFAULT_STYLE),
+        cloneJsonValue(ASS_DEFAULT_ASS_STYLE),
+        cloneJsonValue(ASS_DEFAULT_EXTENSION_STYLE),
+      ],
+      assProfiles: [cloneJsonValue(ASS_DEFAULT_PROFILE)],
+      assignments: { srtBurnStyleId: 'default', assExportProfileId: 'ass', assExtensionStyleId: 'ass-extension' },
+    };
+  }
+
+  function normalizeAssStyleLibrary(value) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const styleMap = new Map([
+      ['default', normalizeAssStyle(ASS_DEFAULT_STYLE, ASS_DEFAULT_STYLE, 'default')],
+      ['ass', normalizeAssStyle(ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_ASS_STYLE, 'ass')],
+      ['ass-extension', normalizeAssStyle(ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_EXTENSION_STYLE, 'ass-extension')],
+    ]);
+    if (Array.isArray(source.styles)) {
+      source.styles.forEach((raw) => {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+        const id = normalizeAssStyleId(raw.id);
+        if (!id) return;
+        const fallback = styleMap.get(id) || { ...ASS_DEFAULT_ASS_STYLE, id, name: '自定义样式', builtin: false };
+        const normalized = normalizeAssStyle(raw, fallback, id);
+        if (id !== 'default' && id !== 'ass' && id !== 'ass-extension') normalized.builtin = false;
+        styleMap.set(id, normalized);
+      });
+    }
+    const styles = [...styleMap.values()].slice(0, 64);
+    // 内置条目若仍使用旧默认名，迁移到当前默认名；用户自定义过的名字不动。
+    const legacyBuiltinStyleNames = { ass: 'ASS' };
+    styles.forEach((style) => {
+      const legacy = legacyBuiltinStyleNames[style.id];
+      if (legacy && style.name === legacy) {
+        style.name = (style.id === 'ass' ? ASS_DEFAULT_ASS_STYLE : ASS_DEFAULT_STYLE).name;
+      }
+    });
+    const profileMap = new Map([
+      ['ass', normalizeAssProfile(ASS_DEFAULT_PROFILE, ASS_DEFAULT_PROFILE, 'ass')],
+    ]);
+    if (Array.isArray(source.assProfiles)) {
+      source.assProfiles.forEach((raw) => {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+        const id = normalizeAssStyleId(raw.id);
+        if (!id) return;
+        const fallback = profileMap.get(id) || { ...ASS_DEFAULT_PROFILE, id, name: '自定义 ASS', builtin: false };
+        const normalized = normalizeAssProfile(raw, fallback, id);
+        if (id !== 'ass') normalized.builtin = false;
+        profileMap.set(id, normalized);
+      });
+    }
+    const styleIds = new Set(styles.map((style) => style.id));
+    const profiles = [...profileMap.values()].slice(0, 64).map((profile) => ({
+      ...profile,
+      styleId: styleIds.has(profile.styleId) ? profile.styleId : 'ass',
+    }));
+    // 内置方案旧默认名迁移（同上，用户自定义过的名字不动）。
+    profiles.forEach((profile) => {
+      if (profile.id === 'ass' && profile.name === 'ASS') {
+        profile.name = ASS_DEFAULT_PROFILE.name;
+      }
+    });
+    const assignments = source.assignments && typeof source.assignments === 'object'
+      ? source.assignments : {};
+    const srtBurnStyleId = styleIds.has(normalizeAssStyleId(assignments.srtBurnStyleId))
+      ? normalizeAssStyleId(assignments.srtBurnStyleId) : 'default';
+    const profileIds = new Set(profiles.map((profile) => profile.id));
+    const assExportProfileId = profileIds.has(normalizeAssStyleId(assignments.assExportProfileId))
+      ? normalizeAssStyleId(assignments.assExportProfileId) : 'ass';
+    const assExtensionStyleId = styleIds.has(normalizeAssStyleId(assignments.assExtensionStyleId))
+      ? normalizeAssStyleId(assignments.assExtensionStyleId) : 'ass-extension';
+    return {
+      schema: ASS_STYLE_LIBRARY_SCHEMA,
+      version: 1,
+      styles,
+      assProfiles: profiles.length ? profiles : [normalizeAssProfile(ASS_DEFAULT_PROFILE)],
+      assignments: { srtBurnStyleId, assExportProfileId, assExtensionStyleId },
+    };
+  }
+
+  function assStyleForId(library, styleId) {
+    const normalized = normalizeAssStyleLibrary(library);
+    return normalized.styles.find((style) => style.id === normalizeAssStyleId(styleId, 'default'))
+      || normalized.styles[0];
+  }
+
+  function assProfileForId(library, profileId) {
+    const normalized = normalizeAssStyleLibrary(library);
+    return normalized.assProfiles.find((profile) => profile.id === normalizeAssStyleId(profileId, 'ass'))
+      || normalized.assProfiles[0];
+  }
+
+  function assStyleLine(style, name = 'Default', fontSizeOverride = null) {
+    const normalized = normalizeAssStyle(style);
+    const boolValue = (key) => normalized[key] ? -1 : 0;
+    const values = [
+      name,
+      normalized.fontName,
+      fontSizeOverride || normalized.fontSize,
+      assColorFromHex(normalized.primaryColor),
+      assColorFromHex(normalized.secondaryColor),
+      assColorFromHex(normalized.outlineColor),
+      assColorFromHex(normalized.backColor),
+      boolValue('bold'),
+      boolValue('italic'),
+      boolValue('underline'),
+      boolValue('strikeOut'),
+      normalized.scaleX,
+      normalized.scaleY,
+      normalized.spacing,
+      normalized.angle,
+      normalized.borderStyle,
+      normalized.outline,
+      normalized.shadow,
+      normalized.alignment,
+      normalized.marginL,
+      normalized.marginR,
+      normalized.marginV,
+      normalized.encoding,
+    ];
+    return `Style: ${values.join(',')}`;
+  }
+
+  function assAnimationOverrideTags(profile, { includeMove = true } = {}) {
+    const animations = normalizeAssAnimations(profile?.animations);
+    const tags = [];
+    // libass/playback behaviour is undefined when both fade forms are present.
+    // The more expressive form wins, while the simple fad remains the normal
+    // one-click path in the style manager.
+    if (animations.fade.enabled) {
+      const { alpha1, alpha2, alpha3, t1, t2, t3, t4 } = animations.fade;
+      tags.push(`\\fade(${alpha1},${alpha2},${alpha3},${t1},${t2},${t3},${t4})`);
+    } else if (animations.fad.enabled) {
+      tags.push(`\\fad(${animations.fad.inMs},${animations.fad.outMs})`);
+    }
+    // \move 的坐标是主字幕画布上的绝对 PlayRes 坐标；叠加轨的锚定由
+    // MarginV 堆叠负责，不跟随 move（includeMove: false 时省略）。
+    if (includeMove && animations.move.enabled) {
+      const { x1, y1, x2, y2, t1, t2 } = animations.move;
+      tags.push(`\\move(${x1},${y1},${x2},${y2},${t1},${t2})`);
+    }
+    if (animations.t.enabled && animations.t.tags) {
+      const { startMs, endMs, accel, tags: transformTags } = animations.t;
+      tags.push(`\\t(${startMs},${endMs},${accel},${transformTags})`);
+    }
+    return tags.join('');
+  }
+
+  function assColorFromTag(value) {
+    const raw = String(value ?? '').trim().replace(/^&H/iu, '').replace(/&$/u, '');
+    if (!/^[0-9a-f]{6,8}$/iu.test(raw)) return null;
+    const hex = raw.slice(-6);
+    return `#${hex.slice(4, 6)}${hex.slice(2, 4)}${hex.slice(0, 2)}`.toLowerCase();
+  }
+
+  function assTransformStyleTargets(value) {
+    const source = String(value ?? '').replace(/[{}]/gu, '');
+    const target = {};
+    const number = (pattern, key, min = -Infinity, max = Infinity) => {
+      const match = pattern.exec(source);
+      if (!match) return;
+      const numeric = Number(match[1]);
+      if (Number.isFinite(numeric)) target[key] = Math.min(max, Math.max(min, numeric));
+    };
+    number(/\\fs(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'fontSize', 1, 512);
+    number(/\\fscx(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'scaleX', 0, 1000);
+    number(/\\fscy(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'scaleY', 0, 1000);
+    number(/\\fsp(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'spacing', -100, 100);
+    number(/\\(?:frz|fr)(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'angle', -360, 360);
+    number(/\\frx(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'rotationX', -360, 360);
+    number(/\\fry(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'rotationY', -360, 360);
+    number(/\\bord(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'outline', 0, 100);
+    number(/\\(?:xbord|ybord)(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'outline', 0, 100);
+    number(/\\shad(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'shadow', 0, 100);
+    number(/\\(?:b)(-?[0-9]+)/iu, 'bold', 0, 1);
+    number(/\\(?:i)(-?[0-9]+)/iu, 'italic', 0, 1);
+    number(/\\(?:u)(-?[0-9]+)/iu, 'underline', 0, 1);
+    number(/\\(?:s)(-?[0-9]+)/iu, 'strikeOut', 0, 1);
+    const primaryColor = /\\(?:1c|c)(&H[0-9a-f]{6,8}&?)/iu.exec(source);
+    if (primaryColor) target.primaryColor = assColorFromTag(primaryColor[1]);
+    const outlineColor = /\\3c(&H[0-9a-f]{6,8}&?)/iu.exec(source);
+    if (outlineColor) target.outlineColor = assColorFromTag(outlineColor[1]);
+    const alpha = /\\alpha(&H[0-9a-f]{2}&?)/iu.exec(source)
+      || /\\1a(&H[0-9a-f]{2}&?)/iu.exec(source);
+    if (alpha) {
+      const valueText = alpha[1].replace(/^&H|&$/giu, '');
+      const numeric = Number.parseInt(valueText, 16);
+      if (Number.isFinite(numeric)) target.alpha = Math.min(255, Math.max(0, numeric));
+    }
+    return target;
+  }
+
+  function interpolateAssColor(start, end, progress) {
+    const from = normalizeAssLibraryColor(start, '#ffffff');
+    const to = normalizeAssLibraryColor(end, from);
+    const channels = [1, 3, 5].map((offset) => {
+      const a = Number.parseInt(from.slice(offset, offset + 2), 16);
+      const b = Number.parseInt(to.slice(offset, offset + 2), 16);
+      return Math.round(a + (b - a) * progress).toString(16).padStart(2, '0');
+    });
+    return `#${channels.join('')}`;
+  }
+
+  function assPreviewStyleAt(style, transformTags, progress = 1) {
+    const base = normalizeAssStyle(style);
+    const target = assTransformStyleTargets(transformTags);
+    const amount = Math.min(1, Math.max(0, Number(progress) || 0));
+    const result = { ...base, alpha: 0, rotationX: 0, rotationY: 0 };
+    const numericKeys = [
+      'fontSize', 'scaleX', 'scaleY', 'spacing', 'angle', 'outline', 'shadow',
+      'rotationX', 'rotationY', 'alpha',
+    ];
+    numericKeys.forEach((key) => {
+      if (target[key] === undefined) return;
+      const start = Number(result[key]) || 0;
+      result[key] = start + (Number(target[key]) - start) * amount;
+    });
+    ['primaryColor', 'outlineColor'].forEach((key) => {
+      if (target[key]) result[key] = interpolateAssColor(result[key], target[key], amount);
+    });
+    ['bold', 'italic', 'underline', 'strikeOut'].forEach((key) => {
+      if (target[key] !== undefined) result[key] = amount >= 0.5 ? Boolean(target[key]) : Boolean(base[key]);
+    });
+    return result;
+  }
+
+  function assPreviewAnimationState(profile, elapsedMs, durationMs, {
+    playResX = ASS_DEFAULT_PLAY_RES_X,
+    playResY = ASS_DEFAULT_PLAY_RES_Y,
+    stageWidth = 0,
+    stageHeight = 0,
+  } = {}) {
+    const animations = normalizeAssAnimations(profile?.animations);
+    const elapsed = Math.max(0, Number(elapsedMs) || 0);
+    const duration = Math.max(1, Number(durationMs) || 1);
+    let opacity = 1;
+    const interpolate = (start, end, from, to) => {
+      if (to <= from) return elapsed >= to ? end : start;
+      const amount = Math.min(1, Math.max(0, (elapsed - from) / (to - from)));
+      return start + (end - start) * amount;
+    };
+    if (animations.fade.enabled) {
+      const fade = animations.fade;
+      let alpha = fade.alpha1;
+      if (elapsed < fade.t1) alpha = fade.alpha1;
+      else if (elapsed < fade.t2) alpha = interpolate(fade.alpha1, fade.alpha2, fade.t1, fade.t2);
+      else if (elapsed < fade.t3) alpha = fade.alpha2;
+      else if (elapsed < fade.t4) alpha = interpolate(fade.alpha2, fade.alpha3, fade.t3, fade.t4);
+      else alpha = fade.alpha3;
+      opacity = 1 - Math.min(255, Math.max(0, alpha)) / 255;
+    } else if (animations.fad.enabled) {
+      const fadeIn = animations.fad.inMs > 0 && elapsed < animations.fad.inMs
+        ? elapsed / animations.fad.inMs : 1;
+      const fadeOutStart = Math.max(0, duration - animations.fad.outMs);
+      const fadeOut = animations.fad.outMs > 0 && elapsed > fadeOutStart
+        ? Math.max(0, (duration - elapsed) / animations.fad.outMs) : 1;
+      opacity = Math.min(1, fadeIn, fadeOut);
+    }
+    let moveX = 0;
+    let moveY = 0;
+    if (animations.move.enabled) {
+      const move = animations.move;
+      const amount = move.t2 <= move.t1
+        ? (elapsed >= move.t2 ? 1 : 0)
+        : Math.min(1, Math.max(0, (elapsed - move.t1) / (move.t2 - move.t1)));
+      moveX = move.x1 + (move.x2 - move.x1) * amount;
+      moveY = move.y1 + (move.y2 - move.y1) * amount;
+    }
+    let transformProgress = null;
+    if (animations.t.enabled && animations.t.tags) {
+      const start = animations.t.startMs;
+      const end = animations.t.endMs;
+      const linear = end <= start
+        ? (elapsed >= end ? 1 : 0)
+        : Math.min(1, Math.max(0, (elapsed - start) / (end - start)));
+      transformProgress = Math.pow(linear, Math.max(0.01, animations.t.accel));
+    }
+    const safePlayResX = Math.max(1, Number(playResX) || ASS_DEFAULT_PLAY_RES_X);
+    const safePlayResY = Math.max(1, Number(playResY) || ASS_DEFAULT_PLAY_RES_Y);
+    return {
+      opacity,
+      moveX,
+      moveY,
+      moveOffsetX: animations.move.enabled
+        ? (moveX - animations.move.x1) * (Number(stageWidth) || 0) / safePlayResX : 0,
+      moveOffsetY: animations.move.enabled
+        ? (moveY - animations.move.y1) * (Number(stageHeight) || 0) / safePlayResY : 0,
+      transformProgress,
+    };
+  }
+
   function normalizeAssFontFamily(value) {
     const key = String(value ?? '').trim();
     const family = ({
@@ -3851,6 +4571,12 @@
       : (/^#[0-9a-f]{6}$/i.test(fallbackColor) ? fallbackColor : ASS_DEFAULT_COLOR);
     // ASS stores colours as &HAABBGGRR; AA=00 is fully opaque.
     return `&H00${hex.slice(5, 7)}${hex.slice(3, 5)}${hex.slice(1, 3)}`.toUpperCase();
+  }
+
+  function assOverrideColorFromHex(value, fallback = ASS_DEFAULT_COLOR) {
+    // Override tags use the trailing ampersand as their colour terminator;
+    // style fields intentionally keep the legacy value without it.
+    return `${assColorFromHex(value, fallback)}&`;
   }
 
   function normalizeAssTimeMs(value) {
@@ -3935,10 +4661,55 @@
     const byName = new Map(source
       .filter((entry) => entry && typeof entry.name === 'string')
       .map((entry) => [entry.name, entry.value]));
-    return ASS_COLOR_STYLE_NAMES.map((name) => ({
-      name,
-      value: assColorFromHex(byName.get(name)),
-    }));
+    return ASS_COLOR_STYLE_NAMES.map((name) => {
+      const fallback = ASS_FALLBACK_COLOR_PALETTE.find((item) => item.name === name)?.value
+        || ASS_DEFAULT_COLOR;
+      const value = normalizeAssLibraryColor(byName.get(name), fallback);
+      return { name, value, assValue: assColorFromHex(value) };
+    });
+  }
+
+  function assStyleFromAppearance(appearance, resolution) {
+    return {
+      ...ASS_DEFAULT_ASS_STYLE,
+      fontName: normalizeAssFontFamily(appearance?.font_family),
+      fontSize: resolveAssFontSize(appearance?.font_size, resolution?.height),
+      primaryColor: /^#[0-9a-f]{6}$/iu.test(String(appearance?.color || ''))
+        ? String(appearance.color).toLowerCase() : ASS_DEFAULT_COLOR,
+    };
+  }
+
+  function assStyleVariant(style, paletteValue, colorStyle) {
+    const variant = { ...style };
+    if (colorStyle === 'stroke') {
+      variant.outlineColor = paletteValue;
+    } else if (colorStyle === 'text') {
+      variant.primaryColor = paletteValue;
+      variant.secondaryColor = paletteValue;
+    }
+    return variant;
+  }
+
+  function assEventText({ segment, text, speakerName, speakerLabelSeparator, colorName,
+    colorStyles, style, colorStyle, speakerLabels, assMode }) {
+    const content = String(text ?? '');
+    if (!speakerLabels || !speakerName) return escapeAssText(content);
+    const paletteSpeakerColor = colorStyles.find((item) => item.name === colorName)?.value
+      || style.primaryColor;
+    // ASS can reproduce the existing text-colour mapping and stroke-colour
+    // mapping, but a coloured underline is not representable without also
+    // changing the glyph colour.  In stroke mode keep the speaker label in
+    // the effective base colour so only the outline follows the palette.
+    const speakerColor = colorStyle === 'text'
+      ? paletteSpeakerColor : style.primaryColor;
+    // The event style already carries the effective ASS text colour.  Reusing
+    // the speaker palette here would also colour the whole cue when the old
+    // CSS colour preview is disabled, instead of limiting the override to the
+    // speaker label.
+    const eventTextColor = style.primaryColor;
+    const label = `${speakerName}${speakerLabelSeparator}`;
+    if (!assMode) return escapeAssText(`${label}${content}`);
+    return `{\\c${assOverrideColorFromHex(speakerColor)}}${escapeAssText(label)}{\\c${assOverrideColorFromHex(eventTextColor)}}${escapeAssText(content)}`;
   }
 
   function buildAssPayload(segments, options = {}) {
@@ -3954,11 +4725,31 @@
       options.playResX ?? options.videoWidth ?? mediaMetadata.video_width,
       options.playResY ?? options.videoHeight ?? mediaMetadata.video_height,
     );
-    const previewFontSize = appearance.font_size ?? options.fontSize;
-    const fontSize = resolveAssFontSize(previewFontSize, resolution.height);
-    const primaryColor = assColorFromHex(appearance.color ?? options.color);
+    const profile = options.assProfile && typeof options.assProfile === 'object'
+      ? normalizeAssProfile(options.assProfile) : null;
+    const baseStyle = profile
+      ? normalizeAssStyle(options.assStyle, ASS_DEFAULT_ASS_STYLE, options.assStyle?.id || 'ass')
+      : assStyleFromAppearance({
+        ...appearance,
+        font_family: appearance.font_family ?? options.fontFamily,
+        font_size: appearance.font_size ?? options.fontSize,
+        color: appearance.color ?? options.color,
+      }, resolution);
+    // A library style stores its font size against the shared 1080p reference
+    // (the ASS preview scales by the same reference).  Export must rescale it
+    // to the target PlayResY, or a 4K project renders subtitles half size.
+    // The legacy appearance-based style below is already calibrated by
+    // resolveAssFontSize and must not be scaled again.
+    const fontSize = profile
+      ? normalizeAssFontSize(baseStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
+      : normalizeAssFontSize(baseStyle.fontSize);
     const title = normalizeAssHeaderValue(options.title ?? options.projectName);
     const colorStyles = normalizeAssColorStyles(options.colorStyles);
+    // ASS 的颜色映射只由 ass_color_style 驱动（text / stroke / none），与 CSS
+    // 预览的 color_style（underline / text / stroke）和 color_underline 开关
+    // 是两套语义；color_underline 只控制 CSS 预览，不参与 ASS 导出。
+    const colorStyle = normalizeAssColorStyle(appearance.ass_color_style) || 'text';
+    const assMode = Boolean(profile);
     const numericTimeOffset = Number(options.timeOffset);
     const timeOffset = Number.isFinite(numericTimeOffset)
       ? Math.max(0, Math.round(numericTimeOffset)) : 0;
@@ -3976,7 +4767,11 @@
       ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
+    // 颜色样式只有在 ASS 能表达（text / stroke）时才生成调色板样式；
+    // none 模式下主轨与叠加轨一起回落 Default。
+    const assColorGroupsSupported = colorStyle === 'text' || colorStyle === 'stroke';
 
+    // 主轨事件：Layer 0，底部居中（Default 样式自带对齐）。
     source.forEach((segment, sourceIndex) => {
       if (!segment || segment.disabled === true) return;
       const rawStart = normalizeAssTimeMs(mapTime(segment.start));
@@ -3994,10 +4789,123 @@
         )
         : String(segment.text ?? '');
       const colorName = effectiveColorName(segment, source);
-      const styleName = ASS_COLOR_STYLE_NAMES.includes(colorName)
+      const styleName = assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
         ? colorName.toUpperCase() : 'Default';
+      const styleForEvent = assMode && styleName !== 'Default'
+        ? assStyleVariant(baseStyle, colorStyles.find((item) => item.name === colorName)?.value || '#ffffff', colorStyle)
+        : baseStyle;
+      const eventText = assEventText({
+        segment,
+        text: speakerLabels ? String(segment.text ?? '') : text,
+        speakerName,
+        speakerLabelSeparator,
+        colorName,
+        colorStyles,
+        style: styleForEvent,
+        colorStyle,
+        speakerLabels,
+        assMode,
+      });
+      const animationTags = assMode ? assAnimationOverrideTags(profile) : '';
+      const decoratedText = animationTags ? `{${animationTags}}${eventText}` : eventText;
       events.push(
-        `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${styleName},${normalizeAssEventField(speakerName)},0,0,0,,${escapeAssText(text)}`,
+        `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${styleName},${normalizeAssEventField(speakerName)},0,0,0,,${decoratedText}`,
+      );
+    });
+
+    // 副字幕轨（多重字幕）：所有副字幕共用一个样式（不支持颜色分组），
+    // 事件引用独立 Extension 样式，边距/对齐完全由该样式决定。
+    // \fad/\fade/\t 逐句应用；\move 的绝对坐标只属于主字幕。
+    const extensionSource = Array.isArray(options.extensionSegments)
+      ? options.extensionSegments : [];
+    const hasExtensionCues = extensionSource.some((segment) => segment && segment.disabled !== true);
+    const extensionStyle = assMode && options.assExtensionStyle && typeof options.assExtensionStyle === 'object'
+      ? normalizeAssStyle(options.assExtensionStyle, ASS_DEFAULT_EXTENSION_STYLE, options.assExtensionStyle.id || 'ass-extension')
+      : null;
+    const extensionScaledFontSize = extensionStyle
+      ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
+      : 0;
+    const extensionAnimationTags = assMode && extensionStyle
+      ? assAnimationOverrideTags(profile, { includeMove: false }) : '';
+    if (assMode && extensionStyle) {
+      extensionSource.forEach((segment) => {
+        if (!segment || segment.disabled === true) return;
+        const rawStart = normalizeAssTimeMs(mapTime(segment.start));
+        const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
+        if (rawEnd <= rawStart) return;
+        const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
+        const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+        const extensionText = extensionAnimationTags
+          ? `{${extensionAnimationTags}}${escapeAssText(segment.text)}` : escapeAssText(segment.text);
+        events.push(
+          `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Extension,,0,0,0,,${extensionText}`,
+        );
+      });
+    }
+
+    // 叠加轨事件：引用独立的 Overlay 样式（字段与主字幕样式完全一致，
+    // 仅把 MarginV 固化为算好的锚定结果），事件行不再携带边距覆盖。颜色
+    // 映射与主字幕一致（none 模式一起回落）；\fad/\fade/\t 逐句应用，
+    // \move 的绝对坐标只属于主字幕。锚定公式固定为「下方最近一层字幕的
+    // 垂直边距 + 1.2 × 该层字号」：有副字幕时叠在副字幕上方，否则叠在主
+    // 字幕上方（1.2 倍在两层文字之间留出空档）。ASS 模式下各层边距来自
+    // 样式库（用户可改），legacy 模式主字幕固定 80。
+    const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
+    const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true);
+    const overlayAnimationTags = assMode
+      ? assAnimationOverrideTags(profile, { includeMove: false }) : '';
+    const overlayMarginV = assMode
+      ? (extensionStyle && hasExtensionCues
+        ? Math.max(0, Number(extensionStyle.marginV) || 0) + Math.round(1.2 * extensionScaledFontSize)
+        : Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize))
+      : 80 + Math.round(1.2 * fontSize);
+    // 链式锚定发生在哪一层的坐标系里，叠加样式就继承哪一层的对齐与水平
+    // 边距：否则副字幕样式改成顶部/侧边对齐时，固化边距会按主样式的基准
+    // 边解释，叠加轨落到画面另一侧。字体与颜色仍跟随主字幕样式。
+    const overlayBaseStyle = assMode
+      ? (extensionStyle && hasExtensionCues
+        ? {
+          ...baseStyle,
+          alignment: extensionStyle.alignment,
+          marginL: extensionStyle.marginL,
+          marginR: extensionStyle.marginR,
+        }
+        : baseStyle)
+      : {
+        ...ASS_DEFAULT_ASS_STYLE,
+        fontName: fontFamily,
+        fontSize,
+        primaryColor: appearance.color ?? options.color,
+        outlineColor: '#000000',
+        outline: 2,
+        shadow: 0,
+        alignment: 2,
+        marginL: 10,
+        marginR: 10,
+      };
+    const overlayStyleFor = (colorName) => {
+      const variant = assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
+        ? assStyleVariant(overlayBaseStyle,
+          colorStyles.find((item) => item.name === colorName)?.value || '#ffffff', colorStyle)
+        : overlayBaseStyle;
+      return { ...variant, marginV: overlayMarginV };
+    };
+    const overlayStyleNameFor = (colorName) => (
+      assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
+        ? `Overlay ${colorName.toUpperCase()}` : 'Overlay'
+    );
+    overlaySource.forEach((segment) => {
+      if (!segment || segment.disabled === true) return;
+      const rawStart = normalizeAssTimeMs(mapTime(segment.start));
+      const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
+      if (rawEnd <= rawStart) return;
+      const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
+      const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+      const overlayColorName = effectiveColorName(segment, overlaySource);
+      const overlayText = overlayAnimationTags
+        ? `{${overlayAnimationTags}}${escapeAssText(segment.text)}` : escapeAssText(segment.text);
+      events.push(
+        `Dialogue: 2,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${overlayStyleNameFor(overlayColorName)},,0,0,0,,${overlayText}`,
       );
     });
 
@@ -4014,10 +4922,73 @@
       '',
       '[V4+ Styles]',
       `Format: ${ASS_STYLE_FORMAT}`,
-      `Style: Default,${fontFamily},${fontSize},${primaryColor},${primaryColor},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`,
-      ...colorStyles.map((style) => (
-        `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.value},${style.value},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,40,1`
-      )),
+      ...(assMode
+        ? [
+          assStyleLine(baseStyle, 'Default', fontSize),
+          ...(colorStyle === 'text' || colorStyle === 'stroke'
+            ? colorStyles.map((color) => assStyleLine(
+              assStyleVariant(baseStyle, color.value, colorStyle),
+              color.name.toUpperCase(),
+              fontSize,
+            ))
+            : []),
+          // 副字幕：独立样式，边距/对齐/字号完全由该样式决定。
+          ...(extensionStyle && hasExtensionCues
+            ? [assStyleLine(extensionStyle, 'Extension', extensionScaledFontSize)]
+            : []),
+          // 叠加字幕：字段复用主字幕样式，MarginV 固化为链式锚定结果。
+          ...(hasOverlayCues
+            ? [
+              assStyleLine(overlayStyleFor(null), 'Overlay', fontSize),
+              ...(colorStyle === 'text' || colorStyle === 'stroke'
+                ? colorStyles.map((color) => assStyleLine(
+                  overlayStyleFor(color.name),
+                  `Overlay ${color.name.toUpperCase()}`,
+                  fontSize,
+                ))
+                : []),
+            ]
+            : []),
+        ]
+        : [
+          `Style: Default,${fontFamily},${fontSize},${assColorFromHex(appearance.color ?? options.color)},${assColorFromHex(appearance.color ?? options.color)},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1`,
+          ...(colorStyle === 'text'
+            ? colorStyles.map((style) => (
+              `Style: ${style.name.toUpperCase()},${fontFamily},${fontSize},${style.assValue},${style.assValue},&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1`
+            ))
+            : colorStyle === 'stroke'
+              ? colorStyles.map((style) => assStyleLine(
+                assStyleVariant({
+                  ...ASS_DEFAULT_ASS_STYLE,
+                  fontName: fontFamily,
+                  fontSize,
+                  primaryColor: appearance.color ?? options.color,
+                  outlineColor: '#000000',
+                  outline: 2,
+                  shadow: 0,
+                  alignment: 2,
+                  marginL: 10,
+                  marginR: 10,
+                  marginV: 80,
+                }, style.value, colorStyle),
+                style.name.toUpperCase(),
+                fontSize,
+              ))
+              : []),
+          // legacy 叠加样式：同样固化为算好的锚定边距（80 + 1.2 × 字号）。
+          ...(hasOverlayCues
+            ? [
+              assStyleLine(overlayStyleFor(null), 'Overlay', fontSize),
+              ...(colorStyle === 'text' || colorStyle === 'stroke'
+                ? colorStyles.map((color) => assStyleLine(
+                  overlayStyleFor(color.name),
+                  `Overlay ${color.name.toUpperCase()}`,
+                  fontSize,
+                ))
+                : []),
+            ]
+            : []),
+        ]),
       '',
       '[Events]',
       `Format: ${ASS_EVENT_FORMAT}`,
@@ -4076,7 +5047,7 @@
     return exportMsToFrames(ms, policy.profile, rounding);
   }
 
-  const EXPORT_SUBTITLE_TRACKS = Object.freeze(['main', 'extension', 'both', 'main_and_extension']);
+  const EXPORT_SUBTITLE_TRACKS = Object.freeze(['main', 'extension', 'overlay', 'both', 'main_and_extension', 'all']);
   const EXPORT_INVALID_NAME_CHARS = /[\\/<>:"|?*\u0000-\u001f]/g;
   const EXPORT_NAME_EXTENSIONS = new Set([
     '.mosp', '.json', '.srt', '.txt', '.ass', '.vtt', '.xml', '.ffconcat', '.otio', '.otioz',
@@ -4262,6 +5233,10 @@
     const warnings = [];
     if (mode === 'gap_removed' && !gaps.some((gap) => gap.removed)) warnings.push({ code: 'no_removed_gaps' });
     const projectSegments = Array.isArray(project.segments) ? project.segments : [];
+    // schema §1.5：叠加轨 enabled=false 时保留数据但不显示也不导出。
+    const projectOverlaySegments = project.overlay_track?.enabled === true
+      && Array.isArray(project.overlay_track.segments)
+      ? project.overlay_track.segments : [];
     const schemaExtension = Array.isArray(project.multi_subtitle?.tracks)
       ? project.multi_subtitle.tracks.flatMap((track) => Array.isArray(track?.segments) ? track.segments : [])
       : [];
@@ -4293,7 +5268,11 @@
         startMs: mappedStart, endMs: mappedEnd,
       };
     }).filter(Boolean);
-    const cues = { main: projectCues(projectSegments, 'main'), extension: projectCues(projectExtension, 'extension') };
+    const cues = {
+      main: projectCues(projectSegments, 'main'),
+      extension: projectCues(projectExtension, 'extension'),
+      overlay: projectCues(projectOverlaySegments, 'overlay'),
+    };
     const stickers = [];
     const stickerHeads = new Set();
     const stickerRoot = String(project.sticker_root || project.stickerRoot || '').trim().replace(/[\\/]$/, '');
@@ -4303,56 +5282,66 @@
         || rawPath.startsWith('/') || rawPath.startsWith('file://')) return rawPath;
       return `${stickerRoot}/${rawPath.replace(/^[\\/]+/, '')}`;
     };
-    projectSegments.forEach((segment, index) => {
-      const reference = segment?.sticker_ref;
-      const source = segment?.sticker || (reference && projectSegments[reference.headIdx]?.sticker);
-      if (reference && Number.isInteger(reference.headIdx)) {
-        const head = projectSegments[reference.headIdx];
-        if (!head?.sticker || head.disabled || reference.headIdx === index) {
-          warnings.push({ code: 'dangling_sticker_reference', index, headIdx: reference.headIdx });
-          return;
-        } else {
-          const headName = String(head.sticker.name || head.sticker.filename || '').replace(/\.[^.]+$/, '');
-          if (reference.name && headName && reference.name !== headName) {
-            warnings.push({ code: 'stale_sticker_reference', index, headIdx: reference.headIdx });
+    // 收集一条轨的表情包：ref 在所在轨数组内解析 head（叠加轨的 ref 只引用
+    // 叠加轨自身段）。track 用于区分主轨 stickers 与叠加轨 overlayStickers。
+    const collectStickers = (segments, track, output) => {
+      const heads = new Set();
+      segments.forEach((segment, index) => {
+        const reference = segment?.sticker_ref;
+        const source = segment?.sticker || (reference && segments[reference.headIdx]?.sticker);
+        if (reference && Number.isInteger(reference.headIdx)) {
+          const head = segments[reference.headIdx];
+          if (!head?.sticker || head.disabled || reference.headIdx === index) {
+            warnings.push({ code: 'dangling_sticker_reference', track, index, headIdx: reference.headIdx });
+            return;
+          } else {
+            const headName = String(head.sticker.name || head.sticker.filename || '').replace(/\.[^.]+$/, '');
+            if (reference.name && headName && reference.name !== headName) {
+              warnings.push({ code: 'stale_sticker_reference', track, index, headIdx: reference.headIdx });
+            }
           }
         }
-      }
-      if (!source || segment.disabled || (segment.sticker && stickerHeads.has(index))) return;
-      if (segment.sticker) stickerHeads.add(index);
-      const timing = segment.sticker || segment;
-      const stickerStart = Number(timing.start);
-      const stickerEnd = Number(timing.end);
-      const rawStart = Math.round(Number.isFinite(stickerStart) ? stickerStart : Number(segment.start) || 0);
-      const rawEnd = Math.round(Number.isFinite(stickerEnd) ? stickerEnd : Number(segment.end) || 0);
-      const start = Math.min(durationMs, Math.max(0, rawStart));
-      const end = Math.min(durationMs, Math.max(start, rawEnd));
-      if (end <= start || mapSourceToOutput(end) <= mapSourceToOutput(start)) {
-        warnings.push({ code: 'fully_removed_sticker', index });
-        return;
-      }
-      const resolvedStickerPath = resolveStickerPath(source);
-      if (!resolvedStickerPath) {
-        warnings.push({ code: 'missing_sticker_path', index });
-        return;
-      }
-      if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_sticker_to_duration', index });
-      stickers.push({
-        headIndex: index, name: String(source.name || ''),
-        path: resolvedStickerPath, width: Number.isInteger(source.width) ? source.width : 720,
-        height: Number.isInteger(source.height) ? source.height : 480,
-        sourceStartMs: start, sourceEndMs: end,
-        startMs: mapSourceToOutput(start), endMs: mapSourceToOutput(end),
+        if (!source || segment.disabled || (segment.sticker && heads.has(index))) return;
+        if (segment.sticker) heads.add(index);
+        const timing = segment.sticker || segment;
+        const stickerStart = Number(timing.start);
+        const stickerEnd = Number(timing.end);
+        const rawStart = Math.round(Number.isFinite(stickerStart) ? stickerStart : Number(segment.start) || 0);
+        const rawEnd = Math.round(Number.isFinite(stickerEnd) ? stickerEnd : Number(segment.end) || 0);
+        const start = Math.min(durationMs, Math.max(0, rawStart));
+        const end = Math.min(durationMs, Math.max(start, rawEnd));
+        if (end <= start || mapSourceToOutput(end) <= mapSourceToOutput(start)) {
+          warnings.push({ code: 'fully_removed_sticker', track, index });
+          return;
+        }
+        const resolvedStickerPath = resolveStickerPath(source);
+        if (!resolvedStickerPath) {
+          warnings.push({ code: 'missing_sticker_path', track, index });
+          return;
+        }
+        if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_sticker_to_duration', track, index });
+        output.push({
+          headIndex: index, track, name: String(source.name || ''),
+          path: resolvedStickerPath, width: Number.isInteger(source.width) ? source.width : 720,
+          height: Number.isInteger(source.height) ? source.height : 480,
+          sourceStartMs: start, sourceEndMs: end,
+          startMs: mapSourceToOutput(start), endMs: mapSourceToOutput(end),
+        });
       });
-    });
-    if (cues.main.length === 0 && cues.extension.length === 0) warnings.push({ code: 'no_enabled_cues' });
+    };
+    collectStickers(projectSegments, 'main', stickers);
+    const overlayStickers = [];
+    collectStickers(projectOverlaySegments, 'overlay', overlayStickers);
+    if (cues.main.length === 0 && cues.extension.length === 0 && cues.overlay.length === 0) {
+      warnings.push({ code: 'no_enabled_cues' });
+    }
     warnings.sort((left, right) => left.code.localeCompare(right.code) || (left.index ?? 0) - (right.index ?? 0));
     const plan = {
       media: { path: mediaPath, type: String(media?.type || 'video'), durationMs },
       mode, sourceDurationMs: durationMs, keptIntervals, outputDurationMs,
       mapping: { mode, sourceDurationMs: durationMs, outputDurationMs, gaps },
       framePolicy: { profile: frameProfile, rounding: ['floor', 'ceil'], dropFrame: false },
-      cues, stickers, warnings, frameProfile,
+      cues, stickers, overlayStickers, warnings, frameProfile,
       subtitleFontFamily: premiereFontFamily(project.preview?.subtitle?.font_family),
     };
     Object.defineProperties(plan, {
@@ -4381,11 +5370,13 @@
       throw new Error('empty export interval');
     }
     const outputDuration = plan.outputDurationMs;
-    const cueLists = [plan.cues?.main, plan.cues?.extension].filter(Array.isArray);
+    const cueLists = [plan.cues?.main, plan.cues?.extension, plan.cues?.overlay].filter(Array.isArray);
     if (cueLists.flat().some((cue) => cue.startMs < 0 || cue.endMs > outputDuration || cue.endMs <= cue.startMs)) {
       throw new Error('export cue outside output duration');
     }
-    if ((Array.isArray(plan.stickers) ? plan.stickers : []).some((sticker) => (
+    // 主轨与叠加轨的表情包导出计划共用同一条时间校验，非法计划不允许过校验关。
+    const stickerLists = [plan.stickers, plan.overlayStickers].filter(Array.isArray);
+    if (stickerLists.flat().some((sticker) => (
       sticker.startMs < 0 || sticker.endMs > outputDuration || sticker.endMs <= sticker.startMs
     ))) throw new Error('export sticker outside output duration');
     return plan;
@@ -4406,7 +5397,12 @@
 
   function selectedSubtitleTracks(plan, subtitleTracks) {
     const selected = subtitleTracks === 'main_and_extension' || subtitleTracks === 'both'
-      ? ['main', 'extension'] : subtitleTracks === 'extension' ? ['extension'] : ['main'];
+      ? ['main', 'extension']
+      : subtitleTracks === 'all'
+        ? ['main', 'extension', 'overlay']
+        : subtitleTracks === 'overlay'
+          ? ['overlay']
+          : subtitleTracks === 'extension' ? ['extension'] : ['main'];
     return selected.flatMap((track) => Array.isArray(plan.cues?.[track]) ? plan.cues[track] : []);
   }
 
@@ -4590,23 +5586,31 @@
     }) : [];
     const videoTracks = hasVideo ? [`<track>${sourceTracks.join('')}</track>`] : [];
     const stickerFileIds = new Map();
-    const stickerTracks = hasVideo ? (Array.isArray(exportPlan.stickers) ? exportPlan.stickers : []).map((sticker, index) => {
-      if (!String(sticker.path || '').trim()) return '';
-      const stickerKey = String(sticker.path);
-      const fileId = stickerFileIds.get(stickerKey) || `file-sticker-${stickerFileIds.size + 1}`;
-      const defineFile = !stickerFileIds.has(stickerKey);
-      stickerFileIds.set(stickerKey, fileId);
-      const clip = fcpClipItem({
-        id: `sticker-clip-${index + 1}`, fileId, name: `MAW sticker - ${sticker.name || index + 1}`,
-        path: sticker.path, width: sticker.width, height: sticker.height, sourceStartMs: 0,
-        sourceEndMs: Math.max(1, sticker.endMs - sticker.startMs),
-        startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'sticker', track: `sticker-${index + 1}`,
-        defineFile, encodeDriveColon: true,
-      });
-      return `<track>${clip}</track>`;
-    }).filter(Boolean) : [];
+    const buildStickerTracks = (list, trackPrefix, clipPrefix) => (Array.isArray(list) ? list : [])
+      .map((sticker, index) => {
+        if (!String(sticker.path || '').trim()) return '';
+        const stickerKey = `${trackPrefix}:${String(sticker.path)}`;
+        const fileId = stickerFileIds.get(stickerKey) || `file-${trackPrefix}-${stickerFileIds.size + 1}`;
+        const defineFile = !stickerFileIds.has(stickerKey);
+        stickerFileIds.set(stickerKey, fileId);
+        const clip = fcpClipItem({
+          id: `${clipPrefix}-clip-${index + 1}`, fileId, name: `MAW sticker - ${sticker.name || index + 1}`,
+          path: sticker.path, width: sticker.width, height: sticker.height, sourceStartMs: 0,
+          sourceEndMs: Math.max(1, sticker.endMs - sticker.startMs),
+          startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'sticker', track: `${trackPrefix}-${index + 1}`,
+          defineFile, encodeDriveColon: true,
+        });
+        return `<track>${clip}</track>`;
+      }).filter(Boolean);
+    const stickerTracks = hasVideo
+      ? buildStickerTracks(exportPlan.stickers, 'sticker', 'sticker')
+        .concat(buildStickerTracks(exportPlan.overlayStickers, 'overlay-sticker', 'overlay-sticker'))
+      : [];
     const textTracks = nativeTextObjects && hasVideo ? (subtitleTracks === 'main_and_extension' || subtitleTracks === 'both'
-      ? ['main', 'extension'] : subtitleTracks === 'extension' ? ['extension'] : ['main']).map((track) => {
+      ? ['main', 'extension']
+      : subtitleTracks === 'all'
+        ? ['main', 'extension', 'overlay']
+        : subtitleTracks === 'overlay' ? ['overlay'] : subtitleTracks === 'extension' ? ['extension'] : ['main']).map((track) => {
       const cues = selectedSubtitleTracks(exportPlan, track);
       const generators = cues.map((cue, index) => {
         const range = fcpTimeRange(cue.startMs, cue.endMs, exportPlan);
@@ -5477,6 +6481,11 @@ export default MawDynamicCaptions;
     PROJECT_SCHEMA,
     supportsProjectSchema,
     subtitleFontFamilyDisplayName,
+  SUBTITLE_FONT_FAMILY_PRESETS,
+  subtitleFontFamilyStoredToInput,
+  subtitleFontFamilyInputToStored,
+  mergeFontFamilyOptions,
+  filterFontFamilyOptions,
     SPEAKER_LABEL_COLORS,
     DEFAULT_SPEAKER_LABELS,
     SPEAKER_LABEL_MAX_LENGTH,
@@ -5533,6 +6542,9 @@ export default MawDynamicCaptions;
     uniqueStableSegmentId,
     normalizeMultiSubtitle,
     normalizeMultiSubtitleProject,
+    normalizeOverlayTrack,
+    mergeMainAndOverlaySegments,
+    moveSegmentBetweenTracks,
     detectSubtitleSplitMode,
     isWordSplitConnector,
     SPLIT_TRIM_PRIMARY_SYMBOLS,
@@ -5558,6 +6570,9 @@ export default MawDynamicCaptions;
     getSrtExportOffset,
     EDITOR_ACCENT_COLOR_VALUES,
     DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    EDITOR_SUBTITLE_COLOR_NAMES,
+    DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE,
+    normalizeSubtitleColorPalette,
     normalizeEditorAccentColor,
     normalizeEditorAccentCustomColor,
     normalizeEditorSettings,
@@ -5609,16 +6624,37 @@ export default MawDynamicCaptions;
     effectiveColorName,
     shiftGroupReferenceIndices,
     repairGroupReferenceIndices,
+    shiftSelectionAfterRemoval,
     buildSrtPayload,
     normalizeAssFontFamily,
     normalizeAssFontSize,
     resolveAssFontSize,
+    ASS_REFERENCE_PLAY_RES_Y,
     normalizeAssPlayResolution,
     normalizeAssHeaderValue,
     ASS_COLOR_STYLE_NAMES,
     assColorFromHex,
     formatAssTime,
     escapeAssText,
+    ASS_STYLE_LIBRARY_SCHEMA,
+    ASS_DEFAULT_STYLE,
+    ASS_DEFAULT_ASS_STYLE,
+    ASS_DEFAULT_EXTENSION_STYLE,
+    ASS_DEFAULT_ANIMATIONS,
+    ASS_DEFAULT_PROFILE,
+    normalizeAssStyle,
+    normalizeAssAnimations,
+    normalizeAssProfile,
+    defaultAssStyleLibrary,
+    normalizeAssStyleLibrary,
+    assStyleForId,
+    assProfileForId,
+    assStyleVariant,
+    assStyleLine,
+    assAnimationOverrideTags,
+    assTransformStyleTargets,
+    assPreviewStyleAt,
+    assPreviewAnimationState,
     buildAssPayload,
     buildPlainTextPayload,
     fileBasename,

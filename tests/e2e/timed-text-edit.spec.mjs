@@ -144,14 +144,15 @@ test('previews text changes and applies the reported item-timing mapping', async
   expect(state.texts).toEqual(['就是那颗', 'abXc', 'disabled']);
   expect(state.ranges).toEqual([[0, 1000], [1200, 2200], [2300, 2800]]);
   expect(state.dirty).toEqual([true, true, false]);
+  // 帧时间基准下 items 额外携带成对帧字段（JSON_SCHEMA §1.4，30fps）。
   expect(state.items[0]).toEqual([
-    { start: 0, end: 400, text: '就是' },
-    { start: 400, end: 1000, text: '那颗' },
+    { start: 0, end: 400, text: '就是', start_frame: 0, end_frame: 12 },
+    { start: 400, end: 1000, text: '那颗', start_frame: 12, end_frame: 30 },
   ]);
   expect(state.items[1]).toEqual([
-    { start: 1200, end: 1500, text: 'a' },
-    { start: 1500, end: 1800, text: 'bX' },
-    { start: 1800, end: 2200, text: 'c' },
+    { start: 1200, end: 1500, text: 'a', start_frame: 36, end_frame: 45 },
+    { start: 1500, end: 1800, text: 'bX', start_frame: 45, end_frame: 54 },
+    { start: 1800, end: 2200, text: 'c', start_frame: 54, end_frame: 66 },
   ]);
 });
 
