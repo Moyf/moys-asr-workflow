@@ -419,3 +419,12 @@
 - 修复：文字 clip 的 `<file><media><video>` 补 `<samplecharacteristics>`（按序列尺寸/帧率，与 sticker file 同格式）；在 GraphicAndType filter 前按 PR 导出结构补 `Vector Motion`（GraphicGroup）默认组（Position 0:0、Scale 100、Scale Width 100、Rotation 0、Anchor 0:0），并给 GraphicAndType effect 头补 `<pproBypass>false</pproBypass>`。payload `mAlignment` 保持 0（PR 粘贴重写时也是 0，不动）。
 - 回归：`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（331/331，新增画布尺寸 + Vector Motion 断言；payload 提取正则改为先截取 GraphicAndType effect 段）；Playwright `fcp7-export.spec.mjs`（8/8）；样例 XML 复核通过；`git diff --check` 通过。
 - 未验证边界：Premiere 实机重新导入（直接导入即可见、位置居中偏下、无需复制粘贴）需用户确认。
+
+## 增量记录（任务 49 补充三：时间线 clip 名与段落居中）
+
+状态：已修复（待实机复验）。
+
+- 用户实机确认：直接导入后文字正常显示、位置居中偏下生效。
+- 本轮处理：时间线 clip 标签与 effect 名从 `MAW native text - main` 改为字幕内容（与 PR 原生 Graphic 命名一致，Properties 面板/时间线直接可读）；payload `mAlignment` 由 0（左对齐）改为 1（居中），与 PR 文本对齐枚举 0=左/1=中/2=右对应。
+- 回归：`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（331/331，新增 mAlignment=1 与 clip 名断言更新）；`node --check web\editor-utils.js`；Playwright `fcp7-export.spec.mjs`（8/8）；`git diff --check` 通过。
+- 未验证边界：mAlignment=1 在 Premiere 中的实际段落对齐效果需用户确认；若枚举与预期不符（显示为右对齐）则反馈后调整为 2/1 之外的正确值。

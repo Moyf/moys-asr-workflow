@@ -4429,6 +4429,7 @@ test('encodes native GraphicAndType text as Premiere UTF-16LE payload', () => {
   assert.deepEqual([...bytes.subarray(1, 8)], [10, 0, 0, 0, 0, 0, 0]);
   const payload = JSON.parse(bytes.subarray(8).toString('utf16le'));
   assert.equal(payload.mTextParam.mStyleSheet.mText, 'TETe 改名');
+  assert.equal(payload.mTextParam.mAlignment, 1);
   assert.equal(payload.mVersion, 1);
 });
 
@@ -4566,7 +4567,7 @@ test('exports the overlay track as its own cues, text track, and sticker tracks'
   const xml = helpers.serializeFcp7Xml(plan, { subtitleTracks: 'all', nativeTextObjects: true });
   assert.equal((xml.match(/<clipitem id="text-main-/g) || []).length, 1);
   assert.equal((xml.match(/<clipitem id="text-overlay-/g) || []).length, 2);
-  assert.ok(xml.includes('<name>MAW native text - overlay</name>'));
+  assert.ok(xml.includes('<name>overlay one</name>'));
   assert.ok(xml.includes('clipitem id="overlay-sticker-clip-1"'));
   assert.ok(xml.includes('<name>MAW sticker - cat</name>'));
   assert.equal((xml.match(/<track>/g) || []).length >= 4, true);

@@ -5613,7 +5613,8 @@
   function encodeGraphicAndTypeText(text, fontFamily = 'FangSong') {
     const payload = {
       mTextParam: {
-        mAlignment: 0,
+        // 段落对齐：0=左对齐、1=居中、2=右对齐；字幕默认居中。
+        mAlignment: 1,
         mBackFillColor: 0,
         mBackFillOpacity: 100,
         mBackFillSize: 0,
@@ -5864,13 +5865,14 @@
         const range = fcpTimeRange(cue.startMs, cue.endMs, exportPlan);
         const text = encodeGraphicAndTypeText(cue.text, exportPlan.subtitleFontFamily);
         const clipId = `text-${track}-${index + 1}`;
+        // clip / effect 名与 PR 原生 Graphic 一致使用字幕内容，时间线标签直接可读。
         // Transform(2)–Parent Rotation(21) 等变换参数按 Premiere 导出格式整套书写；
         // 只写 Position 时 Premiere 会初始化出不可见的文字。
         const motionParams = fcp7TextMotionParameters();
         // Graphic 画布尺寸必须与序列一致：缺失时 Premiere 按 DV NTSC 720x480
         // 分配画布，与序列不匹配导致文字不显示（粘贴重置后才能显示）。
         const textFileMedia = `<media><video><duration>${range.duration}</duration><samplecharacteristics>${fcpRate(exportPlan.frameProfile)}<width>${sequenceWidth}</width><height>${sequenceHeight}</height><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio><fielddominance>none</fielddominance></samplecharacteristics></video></media>`;
-        return `<clipitem id="${clipId}"><name>MAW native text - ${escapeExportXml(track)}</name><enabled>TRUE</enabled><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}<start>${range.start}</start><end>${range.end}</end><in>0</in><out>${range.duration}</out><file id="file-${clipId}"><name>MAW GraphicAndType</name><mediaSource>GraphicAndType</mediaSource><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}${textFileMedia}</file>${fcp7TextGraphicGroupFilter()}<filter><effect><name>GraphicAndType</name><effectid>GraphicAndType</effectid><effectcategory>graphic</effectcategory><effecttype>filter</effecttype><mediatype>video</mediatype><pproBypass>false</pproBypass><parameter authoringApp="MAW"><parameterid>1</parameterid><name>Source Text</name><value>${text}</value></parameter>${motionParams}</effect></filter></clipitem>`;
+        return `<clipitem id="${clipId}"><name>${escapeExportXml(cue.text)}</name><enabled>TRUE</enabled><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}<start>${range.start}</start><end>${range.end}</end><in>0</in><out>${range.duration}</out><file id="file-${clipId}"><name>MAW GraphicAndType</name><mediaSource>GraphicAndType</mediaSource><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}${textFileMedia}</file>${fcp7TextGraphicGroupFilter()}<filter><effect><name>${escapeExportXml(cue.text)}</name><effectid>GraphicAndType</effectid><effectcategory>graphic</effectcategory><effecttype>filter</effecttype><mediatype>video</mediatype><pproBypass>false</pproBypass><parameter authoringApp="MAW"><parameterid>1</parameterid><name>Source Text</name><value>${text}</value></parameter>${motionParams}</effect></filter></clipitem>`;
       }).join('');
       return generators ? `<track>${generators}</track>` : '';
     }).filter(Boolean) : [];
