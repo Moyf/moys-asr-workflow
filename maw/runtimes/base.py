@@ -94,7 +94,7 @@ class RuntimeSpec:
     - 布局：dir_name（app-data 下目录名）/ root_env（覆盖环境变量）/
       bundle_dir（打包版资产目录）
     - 验证与运行：verify_command（python -c 自检）/ package_dirs（site-
-      packages 关键包目录）/ worker_module
+      packages 关键包条目）/ worker_module
     - 扩展：model_id / model_id_label（OCR 用）/ has_model_cache（local 用）
     - 异常：error_class / cancelled_class / cancelled_message
     - 迁移标记：install_uv（moss 尚未迁 embedded，占用后删除）
@@ -263,9 +263,20 @@ class ManagedRuntime:
         return target / "site-packages"
 
     def package_dirs_ok(self, root: str | Path | None = None) -> bool:
-        """site-packages 里关键包目录是否齐全（spec.package_dirs）。"""
+        """site-packages 里关键包条目是否齐全（spec.package_dirs）。"""
+        return not self.missing_package_dirs(root)
+
+    def missing_package_dirs(self, root: str | Path | None = None) -> tuple[str, ...]:
+        """返回托管 ``site-packages`` 中缺失的关键包条目。
+
+        ``package_dirs`` 是历史字段名，但 Python 依赖不一定安装成目录：
+        ``soundfile`` 就是顶层的 ``soundfile.py``，原先只检查同名目录会
+        把已经安装好的运行时误判为 broken。
+        """
         site = self.site_packages(root)
-        return all((site / name).exists() for name in self.spec.package_dirs)
+        return tuple(
+            name for name in self.spec.package_dirs if not _site_package_entry_exists(site, name)
+        )
 
     def bundle_root(self) -> Path:
         """打包版 = bundle 内 runtime 目录；源码模式 = 仓库根。"""
@@ -587,6 +598,14 @@ class ManagedRuntime:
         )
         _may_cancel(cancel, spec)
 
+        missing = self.missing_package_dirs(root)
+        if missing:
+            missing_names = "、".join(missing)
+            raise self._error(
+                f"{spec.message_prefix}安装后仍缺少关键依赖：{missing_names}。"
+                f"请点击“{spec.fix_action_label}”重试。"
+            )
+
         extra = {"modelId": spec.model_id} if spec.model_id else None
         write_runtime_manifest(
             root,
@@ -758,6 +777,21 @@ class ManagedRuntime:
 # ---------------------------------------------------------------------------
 # 共享内部工具
 # ---------------------------------------------------------------------------
+
+
+def _site_package_entry_exists(site: Path, name: str) -> bool:
+    """Return whether an importable top-level package/module exists in ``site``."""
+    if (site / name).exists() or (site / f"{name}.py").is_file():
+        return True
+    # Native-only modules carry an ABI suffix on Windows/Linux (for example
+    # ``module.cp311-win_amd64.pyd``), so they cannot be checked by one exact
+    # filename.  The glob is restricted to import-name prefixes and does not
+    # match the usual ``name-version.dist-info`` metadata directory.
+    return any(
+        path.is_file()
+        for pattern in (f"{name}*.pyd", f"{name}*.so", f"{name}*.dylib")
+        for path in site.glob(pattern)
+    )
 
 
 def _uses_host_venv() -> bool:

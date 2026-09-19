@@ -5636,3 +5636,153 @@ test('builds bindings with offsets and aligns bound/unbound dual display rows', 
     { mainIndex: null, extensionIndex: 1 },
   ]);
 });
+
+test('alignItemsToText keeps order-preserving optimal alignment for rewritten words', () => {
+  // 真实案例 A（main-182-b-b）：「傲」被人工改写成「Alt(noir)」后，
+  // 贪心 indexOf 会让重复词互相抢位；最优对齐应让傲(1)让位、其余归位。
+  const text = '这Alt(noir)骨燕的傲骨要被践踏到什么程度';
+  const items = ['这', '傲', '骨', '燕', '的', '傲', '骨', '要被', '践踏', '到什么', '程', '度']
+    .map((t) => ({ text: t }));
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText(text, items).map((record) => (record ? record.textStart : null)),
+  )), [0, null, 10, 11, 12, 13, 14, 15, 17, 19, 22, 23]);
+});
+
+test('alignItemsToText aligns fully matchable items leftmost like the old greedy path', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('模型训练完成', [{ text: '模型' }, { text: '训练' }, { text: '完成' }])
+      .map((record) => record.textStart),
+  )), [0, 2, 4]);
+  // item 不含词间空格、原文带空格的常见工程格式
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('模型 训练 完成', [{ text: '模型' }, { text: '训练' }, { text: '完成' }])
+      .map((record) => record.textStart),
+  )), [0, 3, 6]);
+});
+
+test('alignItemsToText drops the extra item when occurrences run out', () => {
+  // 只有 2 处「A」：前两个对齐 1、3，最后一个为 null（丢尾不丢首）。
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('xAyA', [{ text: 'A' }, { text: 'A' }, { text: 'A' }])
+      .map((record) => (record ? record.textStart : null)),
+  )), [1, 3, null]);
+});
+
+test('alignItemsToText skips empty-text items without consuming positions', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('甲乙', [{ text: '甲' }, { text: '' }, { text: '乙' }])
+      .map((record) => (record ? record.textStart : null)),
+  )), [0, null, 1]);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.alignItemsToText('', []))), []);
+});
+
+test('placeUnalignedSplitItems assigns by time and keeps items in start order', () => {
+  const left = [{ text: '甲', start: 100, end: 200 }];
+  const right = [{ text: '戊', start: 800, end: 900 }];
+  const unaligned = [
+    { text: '丁', start: 700, end: 800 }, // 完全在切点右侧，且要插到「戊」之前
+    { text: '乙', start: 200, end: 300 }, // 完全在切点左侧
+    { text: '丙', start: 450, end: 550 }, // 跨切点：两侧等距，归右
+    { text: '坏', start: 900, end: 900 }, // 零长区间：忽略
+  ];
+  const placed = helpers.placeUnalignedSplitItems(left, right, unaligned, 500);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.leftItems.map((item) => item.text))), ['甲', '乙']);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.rightItems.map((item) => item.text))), ['丙', '丁', '戊']);
+});
+
+test('splitAlignmentDriftMs treats bracketed cuts as zero and measures nearest edge', () => {
+  // 下刀落在左右词边界的静音空隙内：空隙再宽也算贴合
+  assert.equal(helpers.splitAlignmentDriftMs(100, 900, 500), 0);
+  assert.equal(helpers.splitAlignmentDriftMs(100, 200, 100), 0);
+  // 切分边界整体偏离下刀：取到最近边界的距离
+  assert.equal(helpers.splitAlignmentDriftMs(300, 300, 100), 200);
+  assert.equal(helpers.splitAlignmentDriftMs(100, 100, 400), 300);
+  // 缺下刀时间或缺边界时无从衡量
+  assert.equal(helpers.splitAlignmentDriftMs(100, 200, null), null);
+  assert.equal(helpers.splitAlignmentDriftMs(null, null, 400), null);
+});
+
+test('placeUnalignedSplitItems extends side bounds to wrap unaligned words', () => {
+  // A2 复现：右段文本 Alt(noir) 的发音是失配词「傲」（846000–846200），
+  // 右段起点必须前移到它的 start，而不是让词先于段起点、保存时被时间码
+  // 兜底二次改写。
+  const left = [{ text: '你了', start: 845360, end: 845720 }];
+  const right = [
+    { text: '骨', start: 846200, end: 846400 },
+    { text: '燕', start: 846400, end: 846720 },
+  ];
+  const placed = helpers.placeUnalignedSplitItems(
+    left,
+    right,
+    [{ text: '傲', start: 846000, end: 846200 }],
+    845720,
+    { leftEndMs: 845720, rightStartMs: 846200 },
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.bounds)), { leftEndMs: 845720, rightStartMs: 846000 });
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.leftItems.map((item) => item.text))), ['你了']);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.rightItems.map((item) => [item.text, item.start, item.end]))), [
+    ['傲', 846000, 846200],
+    ['骨', 846200, 846400],
+    ['燕', 846400, 846720],
+  ]);
+});
+
+test('placeUnalignedSplitItems resets bounds and clips pathological unaligned words', () => {
+  // 病态失配词把扩展后的两侧拉爆时：回退原边界，词按原边界钳制。
+  const pathological = helpers.placeUnalignedSplitItems(
+    [{ text: '甲', start: 100, end: 400 }],
+    [{ text: '乙', start: 500, end: 600 }],
+    [{ text: '坏', start: 50, end: 600 }],
+    450,
+    { leftEndMs: 400, rightStartMs: 500 },
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(pathological.bounds)), { leftEndMs: 400, rightStartMs: 500 });
+  assert.deepEqual(JSON.parse(JSON.stringify(pathological.leftItems.map((item) => item.text))), ['甲']);
+  assert.deepEqual(JSON.parse(JSON.stringify(pathological.rightItems.map((item) => item.text))), ['乙', '坏']);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    pathological.rightItems.find((item) => item.text === '坏'),
+  )), { text: '坏', start: 500, end: 600 });
+});
+
+test('placeUnalignedSplitItems honors explicit side and strips the helper field', () => {
+  // 刀点左侧替换词（问题1）：显式 side 压过时间比较（否则傲会被分到右段）。
+  const placed = helpers.placeUnalignedSplitItems(
+    [{ text: '甲', start: 0, end: 1000 }],
+    [{ text: '乙', start: 2200, end: 3000 }],
+    [{ text: '傲', start: 1000, end: 2000, side: 'left' }],
+    1000,
+    { leftEndMs: 1000, rightStartMs: 2200 },
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.bounds)), { leftEndMs: 2000, rightStartMs: 2200 });
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.leftItems.map((item) => [item.text, item.start, item.end]))), [
+    ['甲', 0, 1000],
+    ['傲', 1000, 2000],
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.rightItems.map((item) => item.text))), ['乙']);
+  // side 只参与决策，不残留在结果 item 上。
+  for (const item of [...placed.leftItems, ...placed.rightItems]) {
+    assert.equal(item.side, undefined);
+  }
+});
+
+test('alignItemsToText handles pathological repeated tokens with bounded work', () => {
+  // 重复单字 × 高频出现曾是近似立方的最坏情况；单调 + 二分后应瞬时完成
+  // 且保持完整的左most对齐。
+  const length = 400;
+  const text = '甲'.repeat(length);
+  const items = Array.from({ length }, () => ({ text: '甲' }));
+  const aligned = helpers.alignItemsToText(text, items).map((record) => record?.textStart);
+  assert.deepEqual(JSON.parse(JSON.stringify(aligned)), Array.from({ length }, (_, index) => index));
+});
+
+test('alignItemsToText bails out to no alignment on absurd inputs', () => {
+  // 2600 词 × 2602 坐标超过 2_000_000 守卫：放弃对齐返回全 null（等长），
+  // 拆分随后走失配词的时间/词序回退，而不是冻结编辑器。
+  const length = 2600;
+  const text = '甲'.repeat(length);
+  const items = Array.from({ length }, () => ({ text: '甲' }));
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.alignItemsToText(text, items))),
+    JSON.parse(JSON.stringify(new Array(length).fill(null))),
+  );
+});

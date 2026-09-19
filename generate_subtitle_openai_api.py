@@ -53,7 +53,7 @@ from maw.language import (
 )
 from maw.project import repair_segment_durations
 from maw.project_io import write_mosp
-from maw.output_naming import format_elapsed, format_maw_stat, maw_root
+from maw.output_naming import debug_artifact_path, format_elapsed, format_maw_stat
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -796,10 +796,11 @@ def main() -> None:
 
     raw_response = result.get("_raw_response")
     if args.debug_raw and raw_response is not None:
-        raw_path = (
-            maw_root(input_path) / f"{output_path.stem}.asr-response.json"
-            if not args.output
-            else output_path.with_suffix(".asr-response.json")
+        raw_path = debug_artifact_path(
+            input_path,
+            output_path,
+            ".asr-response.json",
+            explicit_output=bool(args.output),
         )
         raw_path.parent.mkdir(parents=True, exist_ok=True)
         raw_path.write_text(json.dumps(raw_response, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

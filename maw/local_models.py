@@ -16,7 +16,24 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from maw.gui_config import ModelConfig
-from maw.local_runtime import LocalRuntimeStatus, managed_runtime_status, prepare_model_in_process, prepare_model_in_runtime, resolve_model_cache_root
+from maw.alignment_models import (
+    FIRERED_ASR2_CTC_MODEL_FILE,
+    FIRERED_ASR2_CTC_MODEL_ID,
+    FIRERED_ASR2_CTC_TOKENS_FILE,
+    find_alignment_model_path,
+)
+from maw.local_runtime import (
+    LocalRuntimeStatus,
+    managed_runtime_status,
+    prepare_alignment_model_in_process,
+    prepare_alignment_model_in_runtime,
+    prepare_model_in_process,
+    prepare_model_in_runtime,
+    prepare_punctuation_model_in_process,
+    prepare_punctuation_model_in_runtime,
+    resolve_model_cache_root,
+)
+from maw.punctuation import CT_PUNC_MODEL_REF
 
 
 LocalModelEvent = Callable[[str], None]
@@ -34,6 +51,7 @@ _ESTIMATED_CACHE_GIB: dict[str, tuple[float, float]] = {
     "funasr-local": (2.0, 4.0),
     "moss-transcribe-diarize-local": (3.0, 6.0),
     "whisper-large-v3-local": (2.5, 4.0),
+    "firered-asr2-ctc-local": (1.8, 2.4),
 }
 
 
@@ -60,6 +78,7 @@ class LocalModelStatus:
     required_model_refs: tuple[str, ...] = ()
     runtime_source: str = "current"
     runtime_python: str = ""
+    installed_size: str = ""
 
 
 def inspect_local_model(
@@ -136,7 +155,29 @@ def inspect_local_model(
                 runtime_source,
                 runtime_python,
             )
-        if not _model_directory_has_file(explicit, require_weight=True):
+        if model.engine == "firered":
+            ctc_valid = all(
+                (explicit / name).is_file() and (explicit / name).stat().st_size > 0
+                for name in (FIRERED_ASR2_CTC_MODEL_FILE, FIRERED_ASR2_CTC_TOKENS_FILE)
+            )
+            if not ctc_valid:
+                return LocalModelStatus(
+                    model.id,
+                    model.engine,
+                    model.model_ref,
+                    "path_invalid",
+                    True,
+                    False,
+                    str(explicit),
+                    "所选目录缺少有效的 FireRedASR2-CTC 模型文件。",
+                    model.required_model_refs,
+                    runtime_source,
+                    runtime_python,
+                )
+            valid = True
+        else:
+            valid = _model_directory_has_file(explicit, require_weight=True)
+        if not valid:
             return LocalModelStatus(
                 model.id,
                 model.engine,
@@ -150,6 +191,9 @@ def inspect_local_model(
                 runtime_source,
                 runtime_python,
             )
+        detail = "已使用指定的模型目录。"
+        if model.engine == "firered" and _find_ct_punc_model(model_cache_root) is None:
+            detail = "已检测到 FireRed CTC；可选 FunASR ct-punc 尚未准备，选择“不使用”仍可运行。"
         return LocalModelStatus(
             model.id,
             model.engine,
@@ -158,10 +202,11 @@ def inspect_local_model(
             True,
             True,
             str(explicit),
-            "已使用指定的模型目录。",
+            detail,
             model.required_model_refs,
             runtime_source,
             runtime_python,
+            _installed_model_size(explicit),
         )
 
     paths = _find_model_paths(model, model_cache_root)
@@ -181,6 +226,24 @@ def inspect_local_model(
         )
     main_path, missing_refs = paths
     if missing_refs:
+        detail = "缺少模型组件：" + "、".join(missing_refs)
+        if model.engine == "firered" and missing_refs == ["FunASR ct-punc（自动标点）"]:
+            return LocalModelStatus(
+                model.id,
+                model.engine,
+                model.model_ref,
+                "installed",
+                True,
+                True,
+                str(main_path),
+                "已检测到 FireRed CTC；可选 FunASR ct-punc 尚未准备，选择“不使用”仍可运行。",
+                model.required_model_refs,
+                runtime_source,
+                runtime_python,
+                _installed_model_size(main_path),
+            )
+        elif model.engine == "firered" and missing_refs == ["FireRedASR2-CTC"]:
+            detail = "已检测到 FunASR ct-punc，缺少 CTC 模型。"
         return LocalModelStatus(
             model.id,
             model.engine,
@@ -189,10 +252,11 @@ def inspect_local_model(
             True,
             False,
             str(main_path),
-            "缺少模型组件：" + "、".join(missing_refs),
+            detail,
             model.required_model_refs,
             runtime_source,
             runtime_python,
+            _installed_model_size(main_path),
         )
     return LocalModelStatus(
         model.id,
@@ -206,6 +270,7 @@ def inspect_local_model(
         model.required_model_refs,
         runtime_source,
         runtime_python,
+        _installed_model_size(main_path),
     )
 
 
@@ -222,18 +287,31 @@ def local_model_payload(
         model_cache_root=model_cache_root,
         runtime_status=runtime_status,
     )
+    ctc_ready, punc_ready = firered_components_ready(
+        model,
+        model_path,
+        model_cache_root=model_cache_root,
+    )
+    can_prepare = status.runtime_available and status.status not in {"path_invalid", "path_mismatch"}
+    if model.engine == "firered":
+        can_prepare = can_prepare and (not ctc_ready or not punc_ready)
+    else:
+        can_prepare = can_prepare and status.status != "installed"
     return {
         "status": status.status,
         "runtimeAvailable": status.runtime_available,
         "installed": status.installed,
         "path": status.path,
         "detail": status.detail,
+        "installedSize": status.installed_size,
         "runtimeSource": status.runtime_source,
         "runtimePython": status.runtime_python,
         "engine": model.engine,
         "modelRef": model.model_ref,
         "requiredModelRefs": list(status.required_model_refs),
-        "canPrepare": status.runtime_available and status.status not in {"path_invalid", "path_mismatch", "installed"},
+        "canPrepare": can_prepare,
+        "ctcReady": ctc_ready,
+        "puncReady": punc_ready,
     }
 
 
@@ -264,6 +342,15 @@ def prepare_local_model(
         raise ValueError("only local models can be prepared")
 
     if status.runtime_source == "managed":
+        if model.engine == "firered":
+            return _prepare_alignment_in_managed_runtime(
+                model,
+                model_path=str(model_path).strip(),
+                model_cache_root=model_cache_root,
+                on_event=on_event,
+                on_progress=on_progress,
+                cancel_event=cancel_event,
+            )
         return _prepare_in_managed_runtime(
             model,
             model_path=str(model_path).strip(),
@@ -290,18 +377,33 @@ def prepare_local_model(
     started = time.monotonic()
     heartbeat.start()
     try:
-        prepare_model_in_process(
-            engine=model.engine,
-            model=model.model_ref,
-            model_path=str(model_path).strip(),
-            device=device,
-            forced_aligner=aligner,
-            vad_model="fsmn-vad" if _funasr_model_uses_vad(model.model_ref) else "",
-            trust_remote_code=model.engine == "moss" or "fun-asr-nano" in model.model_ref.casefold(),
-            model_cache_root=model_cache_root,
-            on_event=emit,
-            cancel_event=cancel_event,
-        )
+        if model.engine == "firered":
+            prepare_alignment_model_in_process(
+                model_id=FIRERED_ASR2_CTC_MODEL_ID,
+                model_path=str(model_path).strip(),
+                model_cache_root=model_cache_root,
+                on_event=emit,
+                cancel_event=cancel_event,
+            )
+            prepare_punctuation_model_in_process(
+                model_path=str(_find_ct_punc_model(model_cache_root) or ""),
+                model_cache_root=model_cache_root,
+                on_event=emit,
+                cancel_event=cancel_event,
+            )
+        else:
+            prepare_model_in_process(
+                engine=model.engine,
+                model=model.model_ref,
+                model_path=str(model_path).strip(),
+                device=device,
+                forced_aligner=aligner,
+                vad_model="fsmn-vad" if _funasr_model_uses_vad(model.model_ref) else "",
+                trust_remote_code=model.engine == "moss" or "fun-asr-nano" in model.model_ref.casefold(),
+                model_cache_root=model_cache_root,
+                on_event=emit,
+                cancel_event=cancel_event,
+            )
     finally:
         stop_heartbeat.set()
         heartbeat.join(timeout=1.0)
@@ -350,6 +452,47 @@ def _prepare_in_managed_runtime(
         stop_heartbeat.set()
         heartbeat.join(timeout=1.0)
     emit(f"[local] 模型准备调用已返回，用时 {_format_elapsed(time.monotonic() - started)}。正在重新扫描缓存。")
+    return inspect_local_model(model, model_path, model_cache_root=model_cache_root)
+
+
+def _prepare_alignment_in_managed_runtime(
+    model: ModelConfig,
+    *,
+    model_path: str,
+    model_cache_root: str | Path | None,
+    on_event: LocalModelEvent | None,
+    on_progress: LocalModelProgress | None,
+    cancel_event: threading.Event | None,
+) -> LocalModelStatus:
+    emit = on_event or (lambda _message: None)
+    emit(f"[local] 正在准备 {model.label}；使用 MAW 独立运行环境。")
+    stop_heartbeat = threading.Event()
+    heartbeat = threading.Thread(
+        target=_report_prepare_progress,
+        args=(model, model_path, model_cache_root, stop_heartbeat, emit, on_progress),
+        name="maw-local-model-progress",
+        daemon=True,
+    )
+    started = time.monotonic()
+    heartbeat.start()
+    try:
+        prepare_alignment_model_in_runtime(
+            model_id=FIRERED_ASR2_CTC_MODEL_ID,
+            model_path=model_path,
+            model_cache_root=model_cache_root,
+            on_event=emit,
+            cancel_event=cancel_event,
+        )
+        prepare_punctuation_model_in_runtime(
+            model_path=str(_find_ct_punc_model(model_cache_root) or ""),
+            model_cache_root=model_cache_root,
+            on_event=emit,
+            cancel_event=cancel_event,
+        )
+    finally:
+        stop_heartbeat.set()
+        heartbeat.join(timeout=1.0)
+    emit(f"[local] 对齐模型准备调用已返回，用时 {_format_elapsed(time.monotonic() - started)}。正在重新扫描缓存。")
     return inspect_local_model(model, model_path, model_cache_root=model_cache_root)
 
 
@@ -454,6 +597,23 @@ def _model_watch_paths(
                 continue
             for root in _modelscope_cache_roots(model_cache_root):
                 paths.extend(_modelscope_repo_candidates(root, parts))
+    elif model.engine == "firered":
+        found = find_alignment_model_path(FIRERED_ASR2_CTC_MODEL_ID, model_cache_root=model_cache_root)
+        if found is not None:
+            paths.append(found)
+        else:
+            cache_root = resolve_model_cache_root(model_cache_root)
+            paths.extend((cache_root / "aligners", cache_root / "aligners" / "downloads"))
+        punc = _find_ct_punc_model(model_cache_root)
+        if punc is not None:
+            paths.append(punc)
+        else:
+            modelscope_root = resolve_model_cache_root(model_cache_root) / "modelscope"
+            paths.extend((
+                modelscope_root / "models" / "iic--punc_ct-transformer_cn-en-common-vocab471067-large",
+                modelscope_root / "models" / "iic" / "punc_ct-transformer_cn-en-common-vocab471067-large",
+                modelscope_root / "iic--punc_ct-transformer_cn-en-common-vocab471067-large",
+            ))
     return _unique_paths(paths)
 
 
@@ -498,6 +658,14 @@ def _format_bytes(value: int) -> str:
     return f"{value} B"
 
 
+def _installed_model_size(path: str | Path) -> str:
+    value = str(path or "").strip()
+    if not value:
+        return ""
+    _file_count, total_size = _cache_snapshot([Path(value)])
+    return _format_bytes(total_size) if total_size else ""
+
+
 def _format_percent(value: float) -> str:
     return f"{value:.0f}%"
 
@@ -529,6 +697,29 @@ def _normalise_directory(value: str | Path) -> Path | None:
     return Path(text).expanduser().resolve(strict=False)
 
 
+def firered_components_ready(
+    model: ModelConfig,
+    model_path: str | Path = "",
+    *,
+    model_cache_root: str | Path | None = None,
+) -> tuple[bool, bool]:
+    """Return whether FireRed CTC and the optional ct-punc cache are ready."""
+    if model.engine != "firered":
+        return False, False
+    explicit = _normalise_directory(model_path)
+    if explicit is not None:
+        ctc_ready = all(
+            (explicit / name).is_file() and (explicit / name).stat().st_size > 0
+            for name in (FIRERED_ASR2_CTC_MODEL_FILE, FIRERED_ASR2_CTC_TOKENS_FILE)
+        )
+    else:
+        ctc_ready = find_alignment_model_path(
+            FIRERED_ASR2_CTC_MODEL_ID,
+            model_cache_root=model_cache_root,
+        ) is not None
+    return ctc_ready, _find_ct_punc_model(model_cache_root) is not None
+
+
 def _explicit_path_mismatch(model: ModelConfig, path: Path) -> str:
     """Reject an obvious model-family mix-up without blocking custom folders."""
     value = str(path).casefold().replace("_", "-")
@@ -556,6 +747,17 @@ def _find_model_paths(
     model: ModelConfig,
     model_cache_root: str | Path | None = None,
 ) -> tuple[Path, list[str]] | None:
+    if model.engine == "firered":
+        ctc_path = find_alignment_model_path(FIRERED_ASR2_CTC_MODEL_ID, model_cache_root=model_cache_root)
+        punc_path = _find_ct_punc_model(model_cache_root)
+        if ctc_path is None and punc_path is None:
+            return None
+        missing: list[str] = []
+        if ctc_path is None:
+            missing.append("FireRedASR2-CTC")
+        if punc_path is None:
+            missing.append("FunASR ct-punc（自动标点）")
+        return (ctc_path or punc_path, missing)
     if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss", "whisper"}:
         main = _find_huggingface_model(model.model_ref, model_cache_root)
         if main is None:
@@ -572,6 +774,10 @@ def _find_model_paths(
                 return main, []
         return None
     return None
+
+
+def _find_ct_punc_model(model_cache_root: str | Path | None) -> Path | None:
+    return _find_modelscope_model(CT_PUNC_MODEL_REF, model_cache_root)
 
 
 def _find_huggingface_model(
