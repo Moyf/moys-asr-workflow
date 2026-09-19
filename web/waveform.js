@@ -3428,6 +3428,13 @@
     }
 
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
+      // 传统模式沿用旧版系统光标（ew-resize）；原创边界光标只在
+      // dual（中缝联动）模式生效。渲染路径必经这里，模式切换后
+      // refreshCueOverlay 也会同步该类。
+      this.pane?.classList.toggle(
+        'boundary-mode-classic',
+        this.options.getAdjacentBoundaryMode?.() !== 'dual',
+      );
       const multiLane = this.options.multiSubtitleVisible?.() === true;
       const segments = this.options.getSegments('main');
       const selected = this.options.getSelection('main');
