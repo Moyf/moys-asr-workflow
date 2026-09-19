@@ -686,14 +686,6 @@ class ManagedRuntime:
             # 理论上不可达：install() 门槛已保证 uv 存在；防御时给出同款警告。
             emit(f"[警告] {UV_MISSING_WARNING}", 22, "bootstrap")
             raise self._error(UV_MISSING_WARNING)
-        # 清单已可用（打包版随包分发 / 此前已生成）则直接跳过：requirements_path
-        # 才是权威判定，避免对 build/ 目录的偶然状态敏感（干净 checkout 的
-        # build/ 为空，但在线用户无需任何冻结步骤）。
-        try:
-            self.requirements_path(cpu=cpu)
-            return
-        except self.spec.error_class:
-            pass
 
         def run(command: list[str]) -> int:
             return self.run(
@@ -706,6 +698,49 @@ class ManagedRuntime:
 
         def notify(message: str) -> None:
             emit(message, 22, "bootstrap")
+
+        # 清单已可用（打包版随包分发 / 此前已生成）则通常直接跳过：
+        # requirements_path 才是权威判定，避免对 build/ 目录的偶然状态敏感
+        # （干净 checkout 的 build/ 为空，但在线用户无需任何冻结步骤）。
+        try:
+            self.requirements_path(cpu=cpu)
+        except self.spec.error_class:
+            pass
+        else:
+            # 但清单内容可能早于当前依赖声明（例如 runtime 版本升级新增
+            # 依赖后复用旧产物，runtime 7 的 quapeaks / sherpa-onnx 案例）。
+            # 覆盖度不满足时按当前声明强制重新冻结，而不是装出缺包的运行时
+            # 后让 verify 阶段才失败。
+            main_stale = freezer.requirements_stale(self.spec, _build_dir(), cpu=False)
+            cpu_stale = cpu and freezer.requirements_stale(self.spec, _build_dir(), cpu=True)
+            if not main_stale and not cpu_stale:
+                return
+            emit("依赖清单与当前依赖声明不一致，正在重新冻结……", 22, "bootstrap")
+            try:
+                if main_stale:
+                    freezer.ensure_frozen(
+                        uv_executable,
+                        self.spec,
+                        cpu=False,
+                        build_dir=_build_dir(),
+                        run=run,
+                        emit=notify,
+                        force=True,
+                    )
+                if cpu_stale:
+                    # 主清单刚按当前声明重冻结，CPU 变体从它提取直接依赖。
+                    freezer.ensure_frozen(
+                        uv_executable,
+                        self.spec,
+                        cpu=True,
+                        build_dir=_build_dir(),
+                        run=run,
+                        emit=notify,
+                        force=True,
+                    )
+            except self.spec.error_class as error:
+                raise self._error(f"自动生成依赖清单失败：{error}") from error
+            return
 
         try:
             freezer.ensure_frozen(

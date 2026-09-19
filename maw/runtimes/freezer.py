@@ -89,6 +89,25 @@ def _canonical_package_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).casefold()
 
 
+def _line_name(line: str) -> str | None:
+    """单行依赖声明（in 文件行 / requirements.txt 行）的 canonical 包名。"""
+    stripped = line.strip()
+    if not stripped or stripped.startswith(("#", "-")):
+        return None
+    match = re.match(r"^([A-Za-z0-9][A-Za-z0-9_.-]*)", stripped)
+    return _canonical_package_name(match.group(1)) if match else None
+
+
+def _text_names(text: str) -> set[str]:
+    """requirements 文本中出现的 canonical 包名集合（哈希 / 续行 / markers 均安全）。"""
+    names: set[str] = set()
+    for line in text.splitlines():
+        name = _line_name(line)
+        if name:
+            names.add(name)
+    return names
+
+
 def _dependency_group_package_names(project_path: Path, group: str) -> set[str]:
     """Read direct package names from a PEP 735 dependency group.
 
@@ -222,6 +241,54 @@ def cpu_freeze_command(uv: Path, spec: "RuntimeSpec", build_dir: Path) -> list[s
         "--index-strategy", "unsafe-best-match",
         "-o", str(cpu_output_path(spec, build_dir)),
     ]
+
+
+def declared_direct_names(spec: "RuntimeSpec", build_dir: Path) -> set[str]:
+    """spec 声明源的直接依赖 canonical 名集合（:func:`requirements_stale` 的基准）。
+
+    - ``requirements_in``：读 in 文件行首包名；
+    - ``requirements_group``：读 pyproject dependency group 条目；
+    - 旧 extra 回退（两者皆空）：无法判定，返回空集合。
+    """
+    if spec.requirements_in is not None:
+        source = Path(spec.requirements_in)
+        if not source.is_absolute():
+            source = build_dir.parent / source
+        try:
+            text = source.read_text(encoding="utf-8")
+        except OSError:
+            return set()
+        names: set[str] = set()
+        for line in text.splitlines():
+            name = _line_name(line)
+            if name:
+                names.add(name)
+        return names
+    if spec.requirements_group is not None:
+        return _dependency_group_package_names(build_dir.parent / "pyproject.toml", spec.requirements_group)
+    return set()
+
+
+def requirements_stale(spec: "RuntimeSpec", build_dir: Path, *, cpu: bool) -> bool:
+    """build/ 下的 frozen 清单是否已落后于当前依赖声明（源码模式自动补齐用）。
+
+    只判定"声明的直接依赖是否全部被清单覆盖"：runtime 依赖变更（新增
+    依赖、reapeaks→quapeaks 改名）后，旧的 build/ 产物会被判为过期并
+    触发强制重新冻结，避免按旧清单装出缺包的运行时后在 verify 阶段才
+    失败（runtime 7 的 sherpa-onnx / quapeaks 案例）。声明源无法判定时
+    返回 False，维持"缺失才生成"的旧幂等行为。
+    """
+    declared = declared_direct_names(spec, build_dir)
+    if not declared:
+        return False
+    main_txt = build_dir / spec.requirements_bundle_name
+    if not main_txt.is_file() or not declared <= _text_names(main_txt.read_text(encoding="utf-8")):
+        return True
+    if cpu and spec.cuda_fallback_packages:
+        cpu_txt = cpu_output_path(spec, build_dir)
+        if cpu_txt.is_file() and not declared <= _text_names(cpu_txt.read_text(encoding="utf-8")):
+            return True
+    return False
 
 
 def ensure_frozen(

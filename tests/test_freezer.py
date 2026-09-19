@@ -299,6 +299,77 @@ class EnsureFrozenTests(unittest.TestCase):
         self.assertNotEqual((build / "requirements-moss-cpu.txt").read_text(encoding="utf-8"), "old-cpu\n")
 
 
+class RequirementsStaleTests(unittest.TestCase):
+    """清单覆盖度判定：build/ 产物落后于当前声明时必须强制重新冻结。"""
+
+    def _temp_build_dir(self) -> Path:
+        build = Path(tempfile.mkdtemp()) / "build"
+        build.mkdir(parents=True)
+        self.addCleanup(lambda: shutil.rmtree(build.parent, ignore_errors=True))
+        return build
+
+    def _write_group(self, build: Path, entries: str) -> None:
+        (build.parent / "pyproject.toml").write_text(
+            "[dependency-groups]\nlocal = [" + entries + "]\n", encoding="utf-8"
+        )
+
+    def test_declared_names_from_group_and_in_file(self) -> None:
+        build = self._temp_build_dir()
+        self._write_group(build, '"funasr==1.4.2", "Quapeaks>=2026.0.0"')
+        self.assertEqual(
+            freezer_mod.declared_direct_names(LOCAL_SPEC, build),
+            {"funasr", "quapeaks"},
+        )
+        (build.parent / "moss-requirements.in").write_text(
+            "# comment\n-r base.in\ntorch==2.13.0+cu130; sys_platform != 'darwin'\nav>=14.0\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(
+            freezer_mod.declared_direct_names(MOSS_SPEC, build),
+            {"torch", "av"},
+        )
+
+    def test_stale_when_main_missing_or_incomplete(self) -> None:
+        build = self._temp_build_dir()
+        self._write_group(build, '"funasr==1.4.2", "quapeaks>=2026.0.0"')
+        # 主清单缺失
+        self.assertTrue(freezer_mod.requirements_stale(LOCAL_SPEC, build, cpu=False))
+        # 主清单缺新声明的依赖（runtime 7 案例）
+        (build / "requirements-local.txt").write_text("funasr==1.4.2\n", encoding="utf-8")
+        self.assertTrue(freezer_mod.requirements_stale(LOCAL_SPEC, build, cpu=False))
+        # 覆盖完整（名字做 PEP 503 归一化对比，哈希续行不干扰）
+        (build / "requirements-local.txt").write_text(
+            "funasr==1.4.2 \\\n    --hash=sha256:abc\nQuapeaks==2026.6.0\n",
+            encoding="utf-8",
+        )
+        self.assertFalse(freezer_mod.requirements_stale(LOCAL_SPEC, build, cpu=False))
+
+    def test_stale_cpu_variant_only_counts_when_requested(self) -> None:
+        build = self._temp_build_dir()
+        self._write_group(build, '"funasr==1.4.2"')
+        (build / "requirements-local.txt").write_text("funasr==1.4.2\n", encoding="utf-8")
+        (build / "requirements-local-cpu.txt").write_text("funasr==1.4.2\n", encoding="utf-8")
+        self.assertFalse(freezer_mod.requirements_stale(LOCAL_SPEC, build, cpu=False))
+        # CPU 清单缺依赖：只在请求 CPU 变体时判过期
+        (build / "requirements-local-cpu.txt").write_text("old-cpu==1.0\n", encoding="utf-8")
+        self.assertFalse(freezer_mod.requirements_stale(LOCAL_SPEC, build, cpu=False))
+        self.assertTrue(freezer_mod.requirements_stale(LOCAL_SPEC, build, cpu=True))
+
+    def test_unverifiable_declaration_keeps_idempotent_skip(self) -> None:
+        # 旧 extra 回退（无 in / 无 group）：无法判定时不强制，维持旧行为。
+        build = self._temp_build_dir()
+        spec = RuntimeSpec(
+            key="x", runtime_version="1", python_version="3.11",
+            embed_python_zip="", requirements_emit="", requirements_key="x",
+            requirements_bundle_name="requirements-x.txt", verify_command="",
+            package_dirs=(), worker_module="", message_prefix="", feature_label="",
+            missing_detail="", ready_detail="", fix_action_label="",
+            ready_emit_done="", dir_name="x", root_env="MAW_X_ROOT", bundle_dir="x",
+        )
+        self.assertEqual(freezer_mod.declared_direct_names(spec, build), set())
+        self.assertFalse(freezer_mod.requirements_stale(spec, build, cpu=False))
+
+
 class RuntimeSpecDefaultsTests(unittest.TestCase):
     def test_new_fields_default_to_export_recipe(self) -> None:
         spec = RuntimeSpec(
