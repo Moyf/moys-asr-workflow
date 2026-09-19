@@ -1060,6 +1060,46 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
   expect(await page.evaluate(() => window.__serverStatusCalls)).toBeGreaterThanOrEqual(2);
 });
 
+test('restarting after a server disconnect does not reopen the editor page', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#settingsButton').click();
+  await page.locator('#langZh').click();
+  await page.locator('#settingsClose').click();
+  await page.evaluate(() => {
+    const original = window.MAWLauncher.callBackend;
+    window.__openUrlCalls = [];
+    // openServerEditor 走内部 bridge → mockApi.open_url → window.open，直接拦截 window.open。
+    window.open = (url) => { window.__openUrlCalls.push(String(url)); return null; };
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'get_server_status') {
+        // 服务器先在线、后断开，让监控进入 disconnected 状态。
+        return { ok: true, running: window.__serverHealthy !== false, url: 'http://127.0.0.1:8250/' };
+      }
+      return original(method, payload);
+    };
+  });
+
+  // 先让服务器上线，使监控启动并处于 connected 状态。
+  await page.locator('#openMawe').click();
+  await expect(page.locator('#openMawe')).toContainText('打开字幕编辑器', { timeout: 10_000 });
+  await page.waitForFunction(() => window.__openUrlCalls.length === 1);
+
+  // 模拟断开。
+  await page.evaluate(() => { window.__serverHealthy = false; });
+  await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('启动字幕编辑器');
+
+  // 模拟重启成功：只更新提示，不再调用 open_url 打开新页面。
+  await page.evaluate(() => { window.__serverHealthy = true; });
+  await page.locator('#openMawe').click();
+  await expect(page.locator('#status')).toContainText('回到原编辑器页面', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('打开字幕编辑器');
+  await expect(page.locator('#stopServer')).toBeVisible();
+  await page.waitForFunction(() => window.__openUrlCalls.length === 1, undefined, { timeout: 5_000 });
+  expect(await page.evaluate(() => window.__openUrlCalls[0])).toBe('http://127.0.0.1:8250/');
+});
+
 test('unknown errors stay generic and do not expose FFmpeg actions', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
