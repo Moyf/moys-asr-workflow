@@ -134,6 +134,10 @@
 | 47 补 | 已修复 | 「设置 → 运行环境」本地模型运行时区块新增「本地运行环境目录」输入 + 选择文件夹 + 拖入文件夹（与 OCR 同布局）。后端新增 `save_local_settings`：校验路径（指向文件时报 `local_runtime_path_invalid`）→ 写 `.env` 的 `MAW_LOCAL_RUNTIME_ROOT` → 同步进程环境变量即时生效；启动时 `_sync_local_runtime_root` 把 `.env` 值回填进程环境（外部显式设置优先），`resolve_root` 的「显式配置 → 进程环境变量 → 默认 app-data」优先级不变，安装 / 状态 / 打开目录 / 模型准备等所有消费方无需改动即跟随新目录；清空输入则回退默认目录。MOSS 走独立根目录不受此设置影响。按用户后续要求，「模型缓存：…」链接行从设置运行时区块移到主页面本地模型面板「模型保存目录」说明文字下方（`renderLocalModelCachePathLine`，随刷新联动）。已验证：`uv run python -m unittest tests.test_gui_web`（256/256，含保存持久化、拒绝文件路径、清空回退、启动回填 4 个新用例）；`npx playwright test tests/e2e/launcher-interactions.spec.mjs --grep "local runtime|English mode"`（4/4，含自定义目录改动后路径块联动与缓存链接行断言）；全量 Python 1269 通过；Chromium 截图核对；`git diff --check` 通过。 |
 | 44 | Launcher / 英文本地化 | 排查其余英文界面缺失：模型下拉说明「本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner」等后端配置中文文案未本地化 | 修改 | 已修复 |
 | 44 补 | 已修复 | 后端 `maw/gui_config.py` 以中文下发供应商 / 模型 label 与 note、语言与地域 label；英文界面在 `launcher.js` 按稳定 ID 映射为英文（`PROVIDER_LABELS_EN` / `MODEL_LABELS_EN` / `MODEL_NOTES_EN` / `PROVIDER_NOTES_EN` / `LANGUAGE_LABELS_EN` / `REGION_LABELS_EN`），未收录 ID 回退后端原文；语言切换时经 `refillSelectLabels()` 重建相关下拉并保留当前选择；`postprocess.js` / `batch.js` 中的中文经排查均为注释，无用户可见缺失。已验证：`uv run python -m unittest tests.test_gui_web`（249/249）；`npx playwright test tests/e2e/launcher-interactions.spec.mjs --grep "English mode localizes"`（1/1，覆盖供应商 / 模型选项、模型说明与语言选项英文文案）；Chromium 截图核对英文本地模型面板；`git diff --check` 通过。 |
+| 48 | Premiere 交接 | FCP 7 XML 导入 Premiere 时序列默认落 DV NTSC 720×480 29.97（Sequence Settings 截图），希望序列宽高、帧率与视频一致 | 修改 | 已修复 |
+| 49 | Premiere 交接 | GraphicAndType 文字导入后位置不对（出现在 1920 位置附近），需在 Premiere 手动挪；希望默认水平居中并偏下一点儿 | 修改 | 已修复 |
+| 50 | Premiere 交接 | 原生文字 payload 字体固定为 Arial；希望复用「预览字幕」选择的字体，未选择时用对应系统字体而不是 Arial | 修改 | 已修复 |
+| 51 | Premiere 交接 | 对比 MAW 导出 XML 与 Premiere 导出 XML 的 `xmeml version`（5 与 4）差异原因 | 仅说明 | 已修复 |
 
 ## 询问项结论
 
@@ -383,3 +387,35 @@
 - 新增 OCR runtime、Launcher bridge、目录打开和页面回归覆盖。
 
 已验证：`uv run python -m unittest tests.test_runtimes tests.test_ocr_runtime tests.test_gui_web`（240 个测试通过，1 个既有跳过项）；`node --check web\\launcher\\launcher.js`、`node --check tests\\e2e\\layout-feedback.spec.mjs`；`npx playwright test tests/e2e/layout-feedback.spec.mjs --grep "installed OCR" --reporter=line`（1/1）；`git diff --check` 通过。
+
+## 增量记录（任务 48–51：Premiere 交接 FCP 7 XML 序列设置、文字位置与字体）
+
+状态：48/49/50 已修复，51 仅说明。
+
+- 证据基线：解析用户提供的 Premiere 导出 XML（`PR-exported.xml`，序列 3840×2160 30fps，GraphicAndType 共 422 条）。未修改句子的 payload 仍是 MAW 写入的 Arial/120；用户改过的例句「我可以跟他玩走位吗？」payload 已被 Premiere 重写为带 `<hash>` 的私有二进制格式（不再是 JSON），但位置保留在明文 `Position` 参数 `0.5108:0.8876`（归一化坐标，y≈0.888 为用户实机确认的「偏下」位置），所有文字被用户统一设为 Scale 450。
+- 任务 48 根因有两个：其一，`fcpRate` 把 `<timebase>` 写成 `30/1` 分数形式，而 FCP 7 XML 约定 timebase 必须是整数（29.97 → `30` + `ntsc TRUE`），Premiere 解析失败；其二，序列 `<media>` 下完全没有 `<format><samplecharacteristics>`（宽高/PAR），Premiere 找不到序列格式信息就回退默认 DV NTSC 720×480。修复：timebase 改为整数（1001 系帧率按 numerator/1000），序列按工程 `media_metadata.video_width/height`（schema §1.1，成对正整数）声明 `<format>`，旧工程缺失时回退 1920×1080；`<audio>` 补 `<format>`（16bit/48000Hz）。
+- 任务 49：GraphicAndType effect 在 Source Text（参数 1）后按 Premiere 导出格式补参数 2 `Transform` 与参数 3 `Position`，值为静态关键帧哨兵时间戳 + 归一化坐标 `0.5:0.8876`（水平居中、偏下）。Scale 沿用 Premiere 导入默认（100），不模仿用户手调的 450。
+- 任务 50：`premiereFontFamily` 的 `default` 不再映射 Arial，改用与 ASS 导出一致的平台 CJK 默认字体（Windows 微软雅黑 / macOS 苹方 / 其他 Noto Sans CJK SC）；`sans` 预设保留 Arial（其预览字体栈本身以 Arial 开头）；用户通过「读取本机字体」选择的 family 仍原样传递（如例句中的 `AlimamaFangYuanTiVF-SemiBoldRound`）。
+- 任务 51（仅说明）：MAW 写 `xmeml version="5"`，Premiere 原生导出写 `version="4"`。两者 Premiere 都能读（本次实机导入已验证），差异不构成问题，暂不改动；若后续实机发现 version 相关解析差异，再考虑对齐为 4。
+- 回归：`node --test tests\test_editor_utils.mjs`（272/272，新增默认字体映射、序列 format/整数 timebase、Position 参数 3 个用例）；`node --test tests\test_waveform_js.mjs`（62/62）；`node --check web\editor.js`、`web\editor-utils.js`；`uv run --no-sync python -m unittest discover -s tests -p "test_*.py"`（1627 通过、6 既有跳过）；Playwright `fcp7-export.spec.mjs`（8/8）；`git diff --check` 通过。另用 Node 直接生成样例 XML 并以 Python 解析核对：序列 format 为 `timebase 30 + 3840×2160 square`、audio format 48000、payload 字体 Microsoft YaHei、Position `0.5:0.8876`。
+- 未验证边界：Premiere 实机重新导入（序列按 3840×2160/所选帧率创建、文字直接落在居中偏下位置、默认字体显示）需用户在目标环境确认；本版本按约定未重新生成 `blank-editor.html`（发布前统一重生成）。
+
+## 增量记录（任务 49 补充：GraphicAndType 变换参数必须整套书写）
+
+状态：已修复（待实机复验）。
+
+- 用户实机反馈：按上一轮改动导出的 XML，Premiere 导入后 "MAW native text - main" 轨的文字对象在节目监视器和轨道缩略图里都看不到文字（可进入编辑），而此前只写参数 1 的版本文字可见。
+- 根因：上一轮只补了参数 2 `Transform` 与参数 3 `Position` 的“半套”变换参数。对照 PR 导出 XML：只有参数 1 时 PR 自动补全默认变换（可见）；PR 原生导出为参数 1–22 完整列表（可见）；半套参数会让 PR 按“变换组已定义”路径初始化，但缺少配套 Scale/Opacity/Anchor Point 等，文字被初始化为不可见。
+- 修复：`fcp7TextMotionParameters()` 逐字段复刻 PR 导出的参数 2–22（Transform、Position、Scale、Horizontal Scale、Rotation、Opacity、Anchor Point、Parent Width/Height/Rotation 及内部占位参数），Scale/Opacity 默认 100，Position 仍为 `0.5:0.8876`（居中偏下），全部 `authoringApp="PremierePro"`；参数 1 Source Text 保持 `authoringApp="MAW"`（旧版已实机验证）。
+- 回归：`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（330/330，变换参数断言扩展为 2–22 完整集并校验 Scale/Opacity 默认值）；`node --check web\editor-utils.js`；Playwright `fcp7-export.spec.mjs`（8/8）；样例 XML 经 Python 解析核对参数 2–22 与 PR 导出结构逐字段一致；`git diff --check` 通过。
+- 未验证边界：Premiere 实机重新导入（文字可见 + 位置居中偏下）需用户确认。
+
+## 增量记录（任务 49 补充二：Graphic 画布尺寸与 Vector Motion 组，依据用户三对照样例）
+
+状态：已修复（待实机复验）。
+
+- 用户提供 PR 导出的三对象对照：① 原时间线中「显示不出来」的文字；② 复制粘贴到新时间线后能显示但位置/居中不对的文字；③ 用户手动调整后的基准。
+- 对照结论：① 的 `<file>` samplecharacteristics 为 720×480（我们导出的文字 file 没写画布尺寸，Premiere 按 DV NTSC 默认分配 Graphic 画布，与 3840×2160 序列不匹配导致不可见），且其 Vector Motion（GraphicGroup）锚点为异常值 `1:1.0417`；② 粘贴后画布被重置为 3840×2160 才能显示，但粘贴丢失 Vector Motion，锚点行为异常（文字从 Position 点向右下排、不居中）；③ 结构完整：画布正确 + Vector Motion 默认组 + GraphicAndType Position `0.5:0.8876`（与我们写的一致，Position 本身生效）。
+- 修复：文字 clip 的 `<file><media><video>` 补 `<samplecharacteristics>`（按序列尺寸/帧率，与 sticker file 同格式）；在 GraphicAndType filter 前按 PR 导出结构补 `Vector Motion`（GraphicGroup）默认组（Position 0:0、Scale 100、Scale Width 100、Rotation 0、Anchor 0:0），并给 GraphicAndType effect 头补 `<pproBypass>false</pproBypass>`。payload `mAlignment` 保持 0（PR 粘贴重写时也是 0，不动）。
+- 回归：`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（331/331，新增画布尺寸 + Vector Motion 断言；payload 提取正则改为先截取 GraphicAndType effect 段）；Playwright `fcp7-export.spec.mjs`（8/8）；样例 XML 复核通过；`git diff --check` 通过。
+- 未验证边界：Premiere 实机重新导入（直接导入即可见、位置居中偏下、无需复制粘贴）需用户确认。

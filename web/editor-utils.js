@@ -5344,6 +5344,14 @@
     return Object.freeze(value);
   }
 
+  // schema §1.1：media_metadata.video_width / video_height 必须成对出现且为正整数。
+  function exportVideoSize(project) {
+    const width = Number(project?.media_metadata?.video_width);
+    const height = Number(project?.media_metadata?.video_height);
+    if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) return null;
+    return { width, height };
+  }
+
   function buildProjectExportPlan(project, options = {}) {
     if (!project || typeof project !== 'object') throw new Error('invalid export project');
     const media = project.media && typeof project.media === 'object' ? project.media : null;
@@ -5496,7 +5504,15 @@
     }
     warnings.sort((left, right) => left.code.localeCompare(right.code) || (left.index ?? 0) - (right.index ?? 0));
     const plan = {
-      media: { path: mediaPath, type: String(media?.type || 'video'), durationMs },
+      media: {
+        path: mediaPath,
+        type: String(media?.type || 'video'),
+        durationMs,
+        // 源视频尺寸（schema §1.1 media_metadata），供 FCP7 序列 format 声明；
+        // 旧工程缺失时为 null，序列 format 回退 1920x1080 而不是 DV NTSC 默认。
+        width: exportVideoSize(project)?.width ?? null,
+        height: exportVideoSize(project)?.height ?? null,
+      },
       mode, sourceDurationMs: durationMs, keptIntervals, outputDurationMs,
       mapping: { mode, sourceDurationMs: durationMs, outputDurationMs, gaps },
       framePolicy: { profile: frameProfile, rounding: ['floor', 'ceil'], dropFrame: false },
@@ -5578,8 +5594,14 @@
     }).join('\n')}`;
   }
 
+  // FCP 7 XML 的 timebase 必须是整数帧率（29.97 → timebase 30 + ntsc TRUE）；
+  // 写成 "30/1" 分数形式会被 Premiere 解析失败并回退到默认序列设置（DV NTSC）。
+  function fcpTimebase(profile) {
+    return profile.denominator === 1001 ? profile.numerator / 1000 : profile.numerator;
+  }
+
   function fcpRate(profile) {
-    return `<rate><timebase>${profile.numerator}/${profile.denominator}</timebase><ntsc>${profile.denominator === 1001 ? 'TRUE' : 'FALSE'}</ntsc></rate>`;
+    return `<rate><timebase>${fcpTimebase(profile)}</timebase><ntsc>${profile.denominator === 1001 ? 'TRUE' : 'FALSE'}</ntsc></rate>`;
   }
 
   function fcpTimeRange(startMs, endMs, plan) {
@@ -5673,13 +5695,72 @@
 
   function premiereFontFamily(value) {
     const key = String(value ?? '').trim();
+    // 未选择字体（default）时不能给中文字幕配 Arial——按平台落到系统 CJK 字体，
+    // 与 ASS 导出的默认字体策略一致；sans 预设的预览栈本身以 Arial 开头。
     return ({
-      default: 'Arial',
+      default: assDefaultFontFamily(),
       yahei: 'Microsoft YaHei',
       hei: 'SimHei',
       song: 'FangSong',
       sans: 'Arial',
-    })[key] || key || 'Arial';
+    })[key] || key || assDefaultFontFamily();
+  }
+
+  // 原生文字默认位置：水平居中、偏下（相对帧宽高的归一化坐标，
+  // 与 Premiere 导出 XML 的 Position 参数格式一致；y≈0.888 来自用户在
+  // Premiere 中实机调整并导出的样例）。
+  const FCP7_TEXT_POSITION_X = 0.5;
+  const FCP7_TEXT_POSITION_Y = 0.8876;
+  // Premiere 关键帧时间戳的“无限早”哨兵值，表示静态属性而非动画关键帧。
+  const FCP7_TEXT_STATIC_KEYFRAME_TIME = '-91445760000000000';
+
+  // GraphicAndType 的变换参数必须整套（2–22）书写：实测只写 Transform +
+  // Position 的“半套”会让 Premiere 初始化出不可见的文字；完整结构逐字段
+  // 对齐 Premiere 自己导出的 XML（Scale/Opacity 默认 100）。
+  function fcp7TextMotionParameters() {
+    const ts = FCP7_TEXT_STATIC_KEYFRAME_TIME;
+    const parameter = (id, name, bounds, value) => `<parameter authoringApp="PremierePro"><parameterid>${id}</parameterid><name>${name}</name>${bounds}<value>${value}</value></parameter>`;
+    const staticValue = (data) => `${ts},${data},0,0,0,0,0,0`;
+    const pointValue = (x, y) => `${ts},${x}:${y},0,0,0,0,0,0,5,4,0,0,0,0`;
+    const rangeBounds = (lower, upper) => `<LowerBound>${lower}</LowerBound><UpperBound>${upper}</UpperBound>`;
+    const rotationBounds = '<ParameterControlType>3</ParameterControlType><LowerBound>-32768</LowerBound><UpperBound>32767</UpperBound>';
+    return [
+      parameter(2, 'Transform', '<ParameterControlType>11</ParameterControlType><UpperBound>false</UpperBound>', staticValue('false')),
+      parameter(3, 'Position', '', pointValue(FCP7_TEXT_POSITION_X, FCP7_TEXT_POSITION_Y)),
+      parameter(4, 'Scale', rangeBounds(0, 4000), staticValue('100.')),
+      parameter(5, 'Horizontal Scale', rangeBounds(0, 4000), staticValue('100.')),
+      parameter(6, ' ', '', staticValue('true')),
+      parameter(7, 'Rotation', rotationBounds, staticValue('0.')),
+      parameter(8, 'Opacity', rangeBounds(0, 100), staticValue('100.')),
+      parameter(9, 'Anchor Point', '', pointValue(0, 0)),
+      parameter(10, '', '<ParameterControlType>12</ParameterControlType><UpperBound>false</UpperBound>', staticValue('false')),
+      parameter(11, ' ', rangeBounds(0, 32768), staticValue('0.')),
+      parameter(12, ' ', rangeBounds(0, 32768), staticValue('0.')),
+      parameter(13, 'start', rangeBounds(-100, 1000000000), staticValue('-1.')),
+      parameter(14, 'end', rangeBounds(-100, 1000000000), staticValue('-1.')),
+      parameter(15, ' ', '', staticValue('false')),
+      parameter(16, ' ', '', staticValue('false')),
+      parameter(17, ' ', '', staticValue('false')),
+      parameter(18, ' ', '', staticValue('false')),
+      parameter(19, 'Parent Width', rangeBounds(0, 20000), staticValue('0.')),
+      parameter(20, 'Parent Height', rangeBounds(0, 20000), staticValue('0.')),
+      parameter(21, 'Parent Rotation', rotationBounds, staticValue('0.')),
+      parameter(22, ' ', '', staticValue('false')),
+    ].join('');
+  }
+
+  // Graphic（含 GraphicAndType）剪辑必须带 Vector Motion（GraphicGroup）组：
+  // 实测缺失时 Premiere 用异常锚点初始化（导入后不显示，或粘贴后文字从
+  // Position 点向右下排布而不居中）；结构逐字段对齐 PR 导出的默认组。
+  function fcp7TextGraphicGroupFilter() {
+    const ts = FCP7_TEXT_STATIC_KEYFRAME_TIME;
+    const parameter = (id, name, bounds, value) => `<parameter authoringApp="PremierePro"><parameterid>${id}</parameterid><name>${name}</name>${bounds}<value>${value}</value></parameter>`;
+    const staticValue = (data) => `${ts},${data},0,0,0,0,0,0`;
+    const pointValue = (x, y) => `${ts},${x}:${y},0,0,0,0,0,0,5,4,0,0,0,0`;
+    const scaleBounds = '<LowerBound>0</LowerBound><UpperBound>10000</UpperBound><UpperUIBound>200</UpperUIBound>';
+    const rotationBounds = '<ParameterControlType>3</ParameterControlType><LowerBound>-32768</LowerBound><UpperBound>32767</UpperBound>';
+    const effect = `<effect><name>Vector Motion</name><effectid>GraphicGroup</effectid><effectcategory>graphic</effectcategory><effecttype>filter</effecttype><mediatype>video</mediatype><pproBypass>false</pproBypass>${parameter(1, 'Position', '', pointValue(0, 0))}${parameter(2, 'Scale', scaleBounds, staticValue('100.'))}${parameter(3, 'Scale Width', scaleBounds, staticValue('100.'))}${parameter(4, ' ', '', staticValue('true'))}${parameter(5, 'Rotation', rotationBounds, staticValue('0.'))}${parameter(6, 'Anchor Point', '', pointValue(0, 0))}</effect>`;
+    return `<filter>${effect}</filter>`;
   }
 
   function fcpClipItem({ id, fileId, name, path, width, height, sourceStartMs, sourceEndMs, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
@@ -5719,6 +5800,14 @@
     }
     const mediaType = String(exportPlan.media.type || 'video').toLowerCase();
     const hasVideo = mediaType !== 'audio';
+    // 序列级 format 告诉 Premiere 按媒体实际尺寸/帧率建序列；
+    // 缺失时 Premiere 会回退到默认的 DV NTSC 720x480 序列设置。
+    const sequenceWidth = Number.isInteger(exportPlan.media.width) && exportPlan.media.width > 0
+      ? exportPlan.media.width : 1920;
+    const sequenceHeight = Number.isInteger(exportPlan.media.height) && exportPlan.media.height > 0
+      ? exportPlan.media.height : 1080;
+    const videoFormat = `<format><samplecharacteristics>${fcpRate(exportPlan.frameProfile)}<width>${sequenceWidth}</width><height>${sequenceHeight}</height><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio><fielddominance>none</fielddominance><colordepth>24</colordepth></samplecharacteristics></format>`;
+    const audioFormat = '<format><samplecharacteristics><depth>16</depth><samplerate>48000</samplerate></samplecharacteristics></format>';
     let cursor = 0;
     const sourceTracks = [];
     const intervals = Array.isArray(exportPlan.keptIntervals) ? exportPlan.keptIntervals : [];
@@ -5775,12 +5864,18 @@
         const range = fcpTimeRange(cue.startMs, cue.endMs, exportPlan);
         const text = encodeGraphicAndTypeText(cue.text, exportPlan.subtitleFontFamily);
         const clipId = `text-${track}-${index + 1}`;
-        return `<clipitem id="${clipId}"><name>MAW native text - ${escapeExportXml(track)}</name><enabled>TRUE</enabled><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}<start>${range.start}</start><end>${range.end}</end><in>0</in><out>${range.duration}</out><file id="file-${clipId}"><name>MAW GraphicAndType</name><mediaSource>GraphicAndType</mediaSource><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}<media><video><duration>${range.duration}</duration></video></media></file><filter><effect><name>GraphicAndType</name><effectid>GraphicAndType</effectid><effectcategory>graphic</effectcategory><effecttype>filter</effecttype><mediatype>video</mediatype><parameter authoringApp="MAW"><parameterid>1</parameterid><name>Source Text</name><value>${text}</value></parameter></effect></filter></clipitem>`;
+        // Transform(2)–Parent Rotation(21) 等变换参数按 Premiere 导出格式整套书写；
+        // 只写 Position 时 Premiere 会初始化出不可见的文字。
+        const motionParams = fcp7TextMotionParameters();
+        // Graphic 画布尺寸必须与序列一致：缺失时 Premiere 按 DV NTSC 720x480
+        // 分配画布，与序列不匹配导致文字不显示（粘贴重置后才能显示）。
+        const textFileMedia = `<media><video><duration>${range.duration}</duration><samplecharacteristics>${fcpRate(exportPlan.frameProfile)}<width>${sequenceWidth}</width><height>${sequenceHeight}</height><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio><fielddominance>none</fielddominance></samplecharacteristics></video></media>`;
+        return `<clipitem id="${clipId}"><name>MAW native text - ${escapeExportXml(track)}</name><enabled>TRUE</enabled><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}<start>${range.start}</start><end>${range.end}</end><in>0</in><out>${range.duration}</out><file id="file-${clipId}"><name>MAW GraphicAndType</name><mediaSource>GraphicAndType</mediaSource><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}${textFileMedia}</file>${fcp7TextGraphicGroupFilter()}<filter><effect><name>GraphicAndType</name><effectid>GraphicAndType</effectid><effectcategory>graphic</effectcategory><effecttype>filter</effecttype><mediatype>video</mediatype><pproBypass>false</pproBypass><parameter authoringApp="MAW"><parameterid>1</parameterid><name>Source Text</name><value>${text}</value></parameter>${motionParams}</effect></filter></clipitem>`;
       }).join('');
       return generators ? `<track>${generators}</track>` : '';
     }).filter(Boolean) : [];
-    const video = hasVideo ? `<video>${videoTracks.concat(stickerTracks, textTracks).join('')}</video>` : '';
-    const audio = mediaType === 'audio' ? `<audio><track>${sourceTracks.join('')}</track></audio>` : `<audio><track>${audioTracks.join('')}</track></audio>`;
+    const video = hasVideo ? `<video>${videoFormat}${videoTracks.concat(stickerTracks, textTracks).join('')}</video>` : '';
+    const audio = mediaType === 'audio' ? `<audio>${audioFormat}<track>${sourceTracks.join('')}</track></audio>` : `<audio>${audioFormat}<track>${audioTracks.join('')}</track></audio>`;
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="5"><sequence id="MAW-sequence"><name>MAW FCP 7 Premiere handoff</name><duration>${duration}</duration>${fcpRate(exportPlan.frameProfile)}<media>${video}${audio}</media></sequence></xmeml>`;
     return xml;
   }
