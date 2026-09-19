@@ -237,6 +237,7 @@ class QwenCliOutputNamingTests(unittest.TestCase):
             ), mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=1000.0), \
                  mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result), \
                  mock.patch("generate_subtitle_qwen_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
                 main()
 
