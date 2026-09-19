@@ -462,6 +462,88 @@ class QwenMixedDemotionTests(unittest.TestCase):
         self.assertTrue(any("items" not in segment for segment in segments))
 
 
+class QwenPartialSentenceLossTests(unittest.TestCase):
+    """坏句子只丢自己：零时长句保留为段、缺范围句跳过，其余时间码不受牵连。
+
+    回归（qwen3-asr-flash-filetrans 实测）：29 分钟转写里 2 个零时长语气词
+    句（begin == end）曾触发"句子缺范围"保险，把 331 句时间码整份废弃成
+    一条 29 分钟的单条字幕。
+    """
+
+    def _sentence(self, text: str, start: int) -> dict:
+        words = []
+        for index, char in enumerate(text):
+            if char in "，。？！":
+                words.append(_word("", punctuation=char, start=start + index * 400))
+            else:
+                words.append(_word(char, start=start + index * 400))
+        return {
+            "begin_time": start,
+            "end_time": start + len(text) * 400,
+            "text": text,
+            "words": words,
+        }
+
+    def test_zero_duration_sentence_kept_as_segment(self) -> None:
+        response = {
+            "language": "zh",
+            "transcripts": [{
+                "text": "你好。啊。",
+                "sentences": [
+                    self._sentence("你好。", 0),
+                    {
+                        "begin_time": 600640,
+                        "end_time": 600640,
+                        "text": "啊。",
+                        "words": [{"begin_time": 600640, "end_time": 600640, "text": "啊", "punctuation": "。"}],
+                    },
+                ],
+            }],
+        }
+        parsed = parse_transcription_result(response)
+        # 零时长句的词保留为词级零宽 item，整份保持 word 粒度而不是降级
+        self.assertEqual(parsed["timestamp_granularity"], "word")
+        zero_items = [item for item in parsed["items"] if item["start"] == item["end"]]
+        self.assertEqual(
+            [(item["text"], item["start"], item["end"]) for item in zero_items],
+            [("啊。", 600640, 600640)],
+        )
+
+    def test_unranged_sentence_skipped_and_warned(self) -> None:
+        response = {
+            "language": "zh",
+            "transcripts": [{
+                "text": "你好。嗯？",
+                "sentences": [
+                    self._sentence("你好。", 0),
+                    {"text": "嗯？", "words": []},
+                ],
+            }],
+        }
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            parsed = parse_transcription_result(response)
+        # 好句子的词级 items 保留，坏句子只跳过自己
+        self.assertEqual(len(parsed["segments"]), 1)
+        self.assertEqual(parsed["segments"][0]["text"], "你好。")
+        self.assertGreater(len(parsed["items"]), 0)
+        self.assertIn("缺少有效时间范围", buffer.getvalue())
+
+    def test_text_mismatch_warns_without_dropping_timestamps(self) -> None:
+        response = {
+            "language": "zh",
+            "transcripts": [{
+                "text": "你好。再见",  # "再见"没有对应句子
+                "sentences": [self._sentence("你好。", 0)],
+            }],
+        }
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            parsed = parse_transcription_result(response)
+        self.assertGreater(len(parsed["items"]), 0)
+        self.assertIn("不一致", buffer.getvalue())
+
+
 class QwenApiSentenceFallbackSplitTests(unittest.TestCase):
     def test_itemless_overlong_api_sentence_splits_within_boundary(self) -> None:
         long_text = "这一段我感觉我的大脑被嗯嗯，基本圆满了，现在只差你的嘴了"
