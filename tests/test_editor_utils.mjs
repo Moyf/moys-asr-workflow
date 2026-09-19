@@ -4337,7 +4337,7 @@ test('resolves sticker media from sticker_root and emits one clip per subtitle o
   assert.equal((xml.match(/<file id="file-sticker-[^"]+">/g) || []).length, 1);
   assert.match(xml, /<pathurl>file:\/\/localhost\/E(?:%3A|:)\/%E7%B4%A0%E6%9D%90\/%E8%A1%A8%E6%83%85%E5%8C%85\/%E6%8F%8F%E8%BE%B9gif\/.+<\/pathurl>/);
   assert.match(xml, /<clipitem id="sticker-clip-1"><masterclipid>master-sticker-1<\/masterclipid><name>[^<]+<\/name><enabled>TRUE<\/enabled><alphatype>straight<\/alphatype><pixelaspectratio>square<\/pixelaspectratio>/);
-  assert.match(xml, /<file id="file-sticker-[^"]+">[\s\S]*?<timecode><rate><timebase>30\/1<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode>[\s\S]*?<media><video><samplecharacteristics>[\s\S]*?<width>720<\/width><height>480<\/height>/);
+  assert.match(xml, /<file id="file-sticker-[^"]+">[\s\S]*?<timecode><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode>[\s\S]*?<media><video><samplecharacteristics>[\s\S]*?<width>720<\/width><height>480<\/height>/);
   assert.match(xml, /<clipitem id="sticker-clip-1">[\s\S]*?<start>30<\/start><end>60<\/end>/);
   assert.match(xml, /<clipitem id="sticker-clip-2">[\s\S]*?<start>90<\/start><end>120<\/end>/);
 });
@@ -4421,13 +4421,16 @@ test('encodes native GraphicAndType text as Premiere UTF-16LE payload', () => {
     segments: [{ id: 'cue', start: 100, end: 400, text: 'TETe 改名' }],
   }, { mode: 'source', fps: 30 });
   const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
-  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(xml)?.[1];
+  const effect = /<effectid>GraphicAndType<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(effect)?.[1];
   assert.ok(encoded);
   const bytes = Buffer.from(encoded, 'base64');
   assert.equal(bytes[0], 0xf6);
   assert.deepEqual([...bytes.subarray(1, 8)], [10, 0, 0, 0, 0, 0, 0]);
   const payload = JSON.parse(bytes.subarray(8).toString('utf16le'));
   assert.equal(payload.mTextParam.mStyleSheet.mText, 'TETe 改名');
+  assert.equal(payload.mTextParam.mAlignment, 2);
+  assert.equal(payload.mTextParam.mStyleSheet.mFontSize.mParamValues[0][1], 60);
   assert.equal(payload.mVersion, 1);
 });
 
@@ -4438,10 +4441,96 @@ test('writes the preview subtitle font into the GraphicAndType payload', () => {
     segments: [{ id: 'cue', start: 100, end: 400, text: '字体' }],
   }, { mode: 'source', fps: 30 });
   const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
-  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(xml)?.[1];
+  const effect = /<effectid>GraphicAndType<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(effect)?.[1];
   const bytes = Buffer.from(encoded, 'base64');
   const payload = JSON.parse(bytes.subarray(8).toString('utf16le'));
   assert.equal(payload.mTextParam.mStyleSheet.mFontName.mParamValues[0][1], 'FangSong');
+});
+
+test('maps the default preview font to a platform CJK family instead of Arial', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '默认字体' }],
+  }, { mode: 'source', fps: 30 });
+  assert.equal(plan.subtitleFontFamily, 'Noto Sans CJK SC');
+  const yaheiPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    preview: { subtitle: { font_family: 'yahei' } },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '字体' }],
+  }, { mode: 'source', fps: 30 });
+  assert.equal(yaheiPlan.subtitleFontFamily, 'Microsoft YaHei');
+  const localPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    preview: { subtitle: { font_family: 'AlimamaFangYuanTiVF-SemiBoldRound' } },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '字体' }],
+  }, { mode: 'source', fps: 30 });
+  assert.equal(localPlan.subtitleFontFamily, 'AlimamaFangYuanTiVF-SemiBoldRound');
+});
+
+test('declares the sequence frame size and integer timebase for Premiere import', () => {
+  const sizedPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    media_metadata: { video_width: 3840, video_height: 2160 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '尺寸' }],
+  }, { mode: 'source', fps: '30000/1001' });
+  const sizedXml = helpers.serializeFcp7Xml(sizedPlan);
+  const videoFormat = /<video><format><samplecharacteristics>[\s\S]*?<\/samplecharacteristics><\/format>/.exec(sizedXml)?.[0];
+  assert.ok(videoFormat, 'sequence video format should be declared');
+  assert.match(videoFormat, /<timebase>30<\/timebase><ntsc>TRUE<\/ntsc>/);
+  assert.match(videoFormat, /<width>3840<\/width><height>2160<\/height><anamorphic>FALSE<\/anamorphic><pixelaspectratio>square<\/pixelaspectratio>/);
+  assert.match(sizedXml, /<audio><format><samplecharacteristics><depth>16<\/depth><samplerate>48000<\/samplerate><\/samplecharacteristics><\/format>/);
+  assert.doesNotMatch(sizedXml, /<timebase>\d+\/\d+<\/timebase>/);
+  const legacyPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '旧工程' }],
+  }, { mode: 'source', fps: 60 });
+  const legacyXml = helpers.serializeFcp7Xml(legacyPlan);
+  const legacyFormat = /<video><format><samplecharacteristics>[\s\S]*?<\/samplecharacteristics><\/format>/.exec(legacyXml)?.[0];
+  assert.match(legacyFormat, /<timebase>60<\/timebase><ntsc>FALSE<\/ntsc>/);
+  assert.match(legacyFormat, /<width>1920<\/width><height>1080<\/height>/);
+});
+
+test('writes the full transform parameter set with a centered lower-third Position into GraphicAndType clips', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    media_metadata: { video_width: 3840, video_height: 2160 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '位置' }],
+  }, { mode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  const effect = /<effectid>GraphicAndType<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  assert.ok(effect, 'GraphicAndType effect should be serialized');
+  for (const parameterid of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]) {
+    assert.match(effect, new RegExp(`<parameterid>${parameterid}</parameterid>`), `transform parameter ${parameterid} should exist`);
+  }
+  assert.match(effect, /<parameterid>2<\/parameterid><name>Transform<\/name><ParameterControlType>11<\/ParameterControlType><UpperBound>false<\/UpperBound><value>-91445760000000000,false,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>3<\/parameterid><name>Position<\/name><value>-91445760000000000,0\.5:0\.85,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>4<\/parameterid><name>Scale<\/name><LowerBound>0<\/LowerBound><UpperBound>4000<\/UpperBound><value>-91445760000000000,100\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>8<\/parameterid><name>Opacity<\/name><LowerBound>0<\/LowerBound><UpperBound>100<\/UpperBound><value>-91445760000000000,100\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>9<\/parameterid><name>Anchor Point<\/name><value>-91445760000000000,0:0,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>21<\/parameterid><name>Parent Rotation<\/name><ParameterControlType>3<\/ParameterControlType><LowerBound>-32768<\/LowerBound><UpperBound>32767<\/UpperBound><value>-91445760000000000,0\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(effect)?.[1];
+  const payload = JSON.parse(Buffer.from(encoded, 'base64').subarray(8).toString('utf16le'));
+  assert.equal(payload.mTextParam.mStyleSheet.mFontSize.mParamValues[0][1], 120);
+});
+
+test('declares sequence-sized Graphic canvas and Vector Motion for native text clips', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    media_metadata: { video_width: 3840, video_height: 2160 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '画布' }],
+  }, { mode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  const textFile = /<file id="file-text-main-1">[\s\S]*?<\/file>/.exec(xml)?.[0];
+  assert.ok(textFile, 'text file should be serialized');
+  assert.match(textFile, /<samplecharacteristics><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><width>3840<\/width><height>2160<\/height><anamorphic>FALSE<\/anamorphic><pixelaspectratio>square<\/pixelaspectratio><fielddominance>none<\/fielddominance><\/samplecharacteristics>/);
+  const vectorMotion = /<effectid>GraphicGroup<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  assert.ok(vectorMotion, 'Vector Motion (GraphicGroup) effect should be serialized before GraphicAndType');
+  assert.match(xml, /<name>Vector Motion<\/name><effectid>GraphicGroup<\/effectid>/);
+  assert.match(vectorMotion, /<parameterid>1<\/parameterid><name>Position<\/name><value>-91445760000000000,0:0,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.match(vectorMotion, /<parameterid>2<\/parameterid><name>Scale<\/name><LowerBound>0<\/LowerBound><UpperBound>10000<\/UpperBound><UpperUIBound>200<\/UpperUIBound><value>-91445760000000000,100\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(vectorMotion, /<parameterid>6<\/parameterid><name>Anchor Point<\/name><value>-91445760000000000,0:0,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.ok(xml.indexOf('<effectid>GraphicGroup</effectid>') < xml.indexOf('<effectid>GraphicAndType</effectid>'), 'Vector Motion should precede GraphicAndType');
 });
 
 test('selects main, extension, and both subtitle tracks in XML and SRT', () => {
@@ -4482,7 +4571,7 @@ test('exports the overlay track as its own cues, text track, and sticker tracks'
   const xml = helpers.serializeFcp7Xml(plan, { subtitleTracks: 'all', nativeTextObjects: true });
   assert.equal((xml.match(/<clipitem id="text-main-/g) || []).length, 1);
   assert.equal((xml.match(/<clipitem id="text-overlay-/g) || []).length, 2);
-  assert.ok(xml.includes('<name>MAW native text - overlay</name>'));
+  assert.ok(xml.includes('<name>overlay one</name>'));
   assert.ok(xml.includes('clipitem id="overlay-sticker-clip-1"'));
   assert.ok(xml.includes('<name>MAW sticker - cat</name>'));
   assert.equal((xml.match(/<track>/g) || []).length >= 4, true);
