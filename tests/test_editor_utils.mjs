@@ -4430,6 +4430,7 @@ test('encodes native GraphicAndType text as Premiere UTF-16LE payload', () => {
   const payload = JSON.parse(bytes.subarray(8).toString('utf16le'));
   assert.equal(payload.mTextParam.mStyleSheet.mText, 'TETe 改名');
   assert.equal(payload.mTextParam.mAlignment, 2);
+  assert.equal(payload.mTextParam.mStyleSheet.mFontSize.mParamValues[0][1], 60);
   assert.equal(payload.mVersion, 1);
 });
 
@@ -4503,11 +4504,14 @@ test('writes the full transform parameter set with a centered lower-third Positi
     assert.match(effect, new RegExp(`<parameterid>${parameterid}</parameterid>`), `transform parameter ${parameterid} should exist`);
   }
   assert.match(effect, /<parameterid>2<\/parameterid><name>Transform<\/name><ParameterControlType>11<\/ParameterControlType><UpperBound>false<\/UpperBound><value>-91445760000000000,false,0,0,0,0,0,0<\/value><\/parameter>/);
-  assert.match(effect, /<parameterid>3<\/parameterid><name>Position<\/name><value>-91445760000000000,0\.5:0\.8876,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>3<\/parameterid><name>Position<\/name><value>-91445760000000000,0\.5:0\.85,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
   assert.match(effect, /<parameterid>4<\/parameterid><name>Scale<\/name><LowerBound>0<\/LowerBound><UpperBound>4000<\/UpperBound><value>-91445760000000000,100\.,0,0,0,0,0,0<\/value><\/parameter>/);
   assert.match(effect, /<parameterid>8<\/parameterid><name>Opacity<\/name><LowerBound>0<\/LowerBound><UpperBound>100<\/UpperBound><value>-91445760000000000,100\.,0,0,0,0,0,0<\/value><\/parameter>/);
   assert.match(effect, /<parameterid>9<\/parameterid><name>Anchor Point<\/name><value>-91445760000000000,0:0,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
   assert.match(effect, /<parameterid>21<\/parameterid><name>Parent Rotation<\/name><ParameterControlType>3<\/ParameterControlType><LowerBound>-32768<\/LowerBound><UpperBound>32767<\/UpperBound><value>-91445760000000000,0\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(effect)?.[1];
+  const payload = JSON.parse(Buffer.from(encoded, 'base64').subarray(8).toString('utf16le'));
+  assert.equal(payload.mTextParam.mStyleSheet.mFontSize.mParamValues[0][1], 120);
 });
 
 test('declares sequence-sized Graphic canvas and Vector Motion for native text clips', () => {

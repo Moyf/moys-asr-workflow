@@ -435,3 +435,11 @@
 
 - 用户实机反馈 mAlignment=1 渲染为右对齐，结合此前 0=左对齐，枚举校准为 0=左、1=右、2=居中；payload 改为 `mAlignment: 2`。
 - 回归：`node --test tests\test_editor_utils.mjs`（269/269）；`git diff --check` 通过。段落居中实际效果待用户再次确认。
+
+## 增量记录（任务 49 补充五：Position 0.85 与字号等比缩放）
+
+状态：已修复（待实机复验）。
+
+- 用户确认段落居中（mAlignment=2）与整体效果后提出两点收尾：Position y 由 0.8876 改为更规整的 0.85；字号按序列分辨率等比缩放。
+- 字号基准锚定用户实机确认的 4K + 120：`fontSize = round(120 × 序列高度 / 2160)`，4K 工程导出与当前观感一致（120），1080p 自动为 60，跨分辨率视觉比例不变。
+- 回归：`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（331/331，Position 0.85 与 4K/1080p 字号断言）；`node --check web\editor-utils.js`；Playwright `fcp7-export.spec.mjs`（8/8）；`git diff --check` 通过。

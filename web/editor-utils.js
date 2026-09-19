@@ -5610,7 +5610,7 @@
     return { start, end, duration: end - start };
   }
 
-  function encodeGraphicAndTypeText(text, fontFamily = 'FangSong') {
+  function encodeGraphicAndTypeText(text, fontFamily = 'FangSong', fontSize = FCP7_TEXT_FONT_SIZE_2160P) {
     const payload = {
       mTextParam: {
         // 段落对齐：实测 0=左对齐、1=右对齐、2=居中（PR 实机反馈校准）。
@@ -5653,7 +5653,7 @@
           mFillOverStroke: { mParamValues: [[0, true]] },
           mFillVisible: { mParamValues: [[0, true]] },
           mFontName: { mParamValues: [[0, fontFamily]] },
-          mFontSize: { mParamValues: [[0, 120]] },
+          mFontSize: { mParamValues: [[0, fontSize]] },
           mKerning: { mParamValues: [[0, 0]] },
           mStrokeColor: { mParamValues: [[0, 16777215]] },
           mStrokeVisible: { mParamValues: [[0, false]] },
@@ -5707,11 +5707,13 @@
     })[key] || key || assDefaultFontFamily();
   }
 
-  // 原生文字默认位置：水平居中、偏下（相对帧宽高的归一化坐标，
-  // 与 Premiere 导出 XML 的 Position 参数格式一致；y≈0.888 来自用户在
-  // Premiere 中实机调整并导出的样例）。
+  // 原生文字默认位置：水平居中、偏下（相对帧宽高的归一化坐标，与 Premiere
+  // 导出 XML 的 Position 参数格式一致；任何序列分辨率下表现一致）。
   const FCP7_TEXT_POSITION_X = 0.5;
-  const FCP7_TEXT_POSITION_Y = 0.8876;
+  const FCP7_TEXT_POSITION_Y = 0.85;
+  // 字号锚定 4K（2160p）序列的 120（用户实机确认的合适大小），按序列高度
+  // 等比缩放以保持跨分辨率的视觉比例（1080p → 60）。
+  const FCP7_TEXT_FONT_SIZE_2160P = 120;
   // Premiere 关键帧时间戳的“无限早”哨兵值，表示静态属性而非动画关键帧。
   const FCP7_TEXT_STATIC_KEYFRAME_TIME = '-91445760000000000';
 
@@ -5863,7 +5865,8 @@
       const cues = selectedSubtitleTracks(exportPlan, track);
       const generators = cues.map((cue, index) => {
         const range = fcpTimeRange(cue.startMs, cue.endMs, exportPlan);
-        const text = encodeGraphicAndTypeText(cue.text, exportPlan.subtitleFontFamily);
+        const text = encodeGraphicAndTypeText(cue.text, exportPlan.subtitleFontFamily,
+          Math.round(FCP7_TEXT_FONT_SIZE_2160P * sequenceHeight / 2160));
         const clipId = `text-${track}-${index + 1}`;
         // clip / effect 名与 PR 原生 Graphic 一致使用字幕内容，时间线标签直接可读。
         // Transform(2)–Parent Rotation(21) 等变换参数按 Premiere 导出格式整套书写；
