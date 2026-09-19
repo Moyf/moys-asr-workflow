@@ -1163,7 +1163,9 @@ class LauncherApi:
         try:
             self._emit_postprocess_status("toolbox_status_aligning")
             alignment_mode = str(payload.get("alignmentMode") or "fill")
-            output_mode = _output_mode(payload.get("outputMode")).value
+            # 字词时间码只存在于工程 items；SRT 没有字词字段，产出内容与
+            # 输入完全相同。时间码工具固定只更新工程，忽略共享输出选择。
+            output_mode = OutputMode.JSON.value
             requested_model_path = _optional_path(payload.get("modelPath"))
             if runtime.ready:
                 worker_result = run_timestamp_alignment_in_runtime(
