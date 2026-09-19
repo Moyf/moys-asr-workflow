@@ -707,6 +707,16 @@ def _timed_entries(value: object) -> list[object]:
         hasattr(value, name) for name in ("start_time", "end_time", "start", "end")
     ):
         return [value]
+    # qwen_asr >= 0.0.6 wraps the token list in a ForcedAlignResult dataclass:
+    # it carries no timing fields itself but holds an ``items`` sequence of
+    # ForcedAlignItem objects (text + start_time/end_time).  Recurse into it;
+    # otherwise every span fails with "未返回可用的时间码".
+    if value is not None:
+        nested = getattr(value, "items", None)
+        if nested is not None and not callable(nested):
+            found = _timed_entries(nested)
+            if found:
+                return found
     return []
 
 
