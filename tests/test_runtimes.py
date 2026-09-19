@@ -661,13 +661,50 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
 
     def test_existing_txt_skips_generation(self) -> None:
         build = self._temp_build_dir()
-        (build / "requirements-local.txt").write_text("funasr==1.4.2\n", encoding="utf-8")
+        self._write_fake_pyproject(build, 'local = ["funasr==1.4.2", "quapeaks>=2026.0.0"]\n')
+        (build / "requirements-local.txt").write_text(
+            "funasr==1.4.2\nquapeaks==2026.6.0\n", encoding="utf-8"
+        )
         with mock.patch.object(base_mod, "_build_dir", return_value=build):
             with mock.patch("maw.runtimes.base._run_process", side_effect=AssertionError("must not run")):
                 LOCAL._ensure_frozen_requirements(
                     Path("C:/tools/uv.exe"), cpu=False,
                     emit=lambda *event: None, cancel=Event(),
                 )
+
+    def test_stale_txt_missing_new_dependencies_regenerates(self) -> None:
+        # runtime 7 案例：build/ 里留着旧清单（reapeaks 时代，缺 sherpa-onnx /
+        # quapeaks），升级声明后修复运行环境不得按旧清单安装，应强制重新冻结。
+        build = self._temp_build_dir()
+        self._write_fake_pyproject(build, 'local = ["funasr==1.4.2", "quapeaks>=2026.0.0"]\n')
+        (build / "requirements-local.txt").write_text("funasr==1.4.2\n", encoding="utf-8")
+        calls: list[list[str]] = []
+        emitted: list[str] = []
+
+        def fake_run(command: list[str], **_kwargs: object) -> int:
+            calls.append(command)
+            index = command.index("-o")
+            Path(command[index + 1]).write_text(
+                "funasr==1.4.2\nquapeaks==2026.6.0\n", encoding="utf-8"
+            )
+            return 0
+
+        with mock.patch.object(base_mod, "_build_dir", return_value=build):
+            with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
+                LOCAL._ensure_frozen_requirements(
+                    Path("C:/tools/uv.exe"), cpu=False,
+                    emit=lambda message, _percent, _stage: emitted.append(message),
+                    cancel=Event(),
+                )
+
+        self.assertEqual(calls[0][1:3], ["export", "--frozen"])
+        self.assertIn("重新冻结", "".join(emitted))
+        self.assertIn("quapeaks", (build / "requirements-local.txt").read_text(encoding="utf-8"))
+
+    def _write_fake_pyproject(self, build: Path, local_group: str) -> None:
+        (build.parent / "pyproject.toml").write_text(
+            "[dependency-groups]\n" + local_group, encoding="utf-8"
+        )
 
     def test_missing_moss_cpu_txt_is_generated_for_no_nvidia_machines(self) -> None:
         # MOSS 无 GPU 首装走 moss-cpu 清单（from moss-requirements.in 剥离生成，
