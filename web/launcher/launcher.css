@@ -2411,6 +2411,19 @@ textarea::placeholder {
   margin-top: 0;
 }
 
+/* adv-group 的组标题已表达语义：组内输入区不再套第二层框（与 FFconcat
+   等面板直级输入的单层视觉一致）；drag-over 高亮单独保留。 */
+.toolbox-panel .adv-group .toolbox-input {
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.toolbox-panel .adv-group .toolbox-input.drag-over {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, var(--accent-tint), transparent), var(--bg-panel);
+}
+
 /* 输出与执行固定在抽屉底部，不随面板滚动。 */
 .toolbox-footer {
   display: flex;
