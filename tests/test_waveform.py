@@ -1296,5 +1296,18 @@ class EditorAssetTests(unittest.TestCase):
             styles,
         )
 
+    def test_classic_boundary_mode_restores_system_cursor(self) -> None:
+        # 传统模式下没有中缝区，边界手柄沿用旧版系统光标；
+        # 原创光标素材只服务 dual（中缝联动）模式。
+        styles = (ROOT / "web" / "waveform.css").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
+        self.assertIn(
+            ".waveform-pane.boundary-mode-classic .waveform-cue-handle.left,\n"
+            ".waveform-pane.boundary-mode-classic .waveform-cue-handle.right { cursor: ew-resize; }",
+            styles,
+        )
+        self.assertIn("'boundary-mode-classic'", script)
+        self.assertIn("this.options.getAdjacentBoundaryMode?.() !== 'dual'", script)
+
 if __name__ == "__main__":
     unittest.main()

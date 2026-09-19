@@ -906,6 +906,10 @@
 }
 /* 手柄悬停反馈：加亮提示「这里是单侧调整手柄」，与中缝区的 hover 亮度区分。 */
 .waveform-cue-handle:hover { background: var(--wave-cue-handle-hover); }
+/* 传统模式：没有中缝区，边界拖动沿用旧版系统左右箭头光标；
+   原创光标素材只服务中缝联动（dual）模式。 */
+.waveform-pane.boundary-mode-classic .waveform-cue-handle.left,
+.waveform-pane.boundary-mode-classic .waveform-cue-handle.right { cursor: ew-resize; }
 /* 中缝联动模式：相接侧手柄加宽，让「手柄（单侧调整）— 中缝（联动拖动）
    — 手柄」三个命中区域都有约 7px 的稳定宽度。 */
 .waveform-cue-block.has-shared-boundary-right .waveform-cue-handle.right { width: 11px; }
