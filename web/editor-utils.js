@@ -5613,8 +5613,8 @@
   function encodeGraphicAndTypeText(text, fontFamily = 'FangSong') {
     const payload = {
       mTextParam: {
-        // 段落对齐：0=左对齐、1=居中、2=右对齐；字幕默认居中。
-        mAlignment: 1,
+        // 段落对齐：实测 0=左对齐、1=右对齐、2=居中（PR 实机反馈校准）。
+        mAlignment: 2,
         mBackFillColor: 0,
         mBackFillOpacity: 100,
         mBackFillSize: 0,

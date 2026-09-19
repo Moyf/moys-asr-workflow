@@ -428,3 +428,10 @@
 - 本轮处理：时间线 clip 标签与 effect 名从 `MAW native text - main` 改为字幕内容（与 PR 原生 Graphic 命名一致，Properties 面板/时间线直接可读）；payload `mAlignment` 由 0（左对齐）改为 1（居中），与 PR 文本对齐枚举 0=左/1=中/2=右对应。
 - 回归：`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（331/331，新增 mAlignment=1 与 clip 名断言更新）；`node --check web\editor-utils.js`；Playwright `fcp7-export.spec.mjs`（8/8）；`git diff --check` 通过。
 - 未验证边界：mAlignment=1 在 Premiere 中的实际段落对齐效果需用户确认；若枚举与预期不符（显示为右对齐）则反馈后调整为 2/1 之外的正确值。
+
+## 增量记录（任务 49 补充四：mAlignment 枚举实机校准）
+
+状态：已修复（待实机复验）。
+
+- 用户实机反馈 mAlignment=1 渲染为右对齐，结合此前 0=左对齐，枚举校准为 0=左、1=右、2=居中；payload 改为 `mAlignment: 2`。
+- 回归：`node --test tests\test_editor_utils.mjs`（269/269）；`git diff --check` 通过。段落居中实际效果待用户再次确认。

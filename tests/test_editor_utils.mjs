@@ -4429,7 +4429,7 @@ test('encodes native GraphicAndType text as Premiere UTF-16LE payload', () => {
   assert.deepEqual([...bytes.subarray(1, 8)], [10, 0, 0, 0, 0, 0, 0]);
   const payload = JSON.parse(bytes.subarray(8).toString('utf16le'));
   assert.equal(payload.mTextParam.mStyleSheet.mText, 'TETe 改名');
-  assert.equal(payload.mTextParam.mAlignment, 1);
+  assert.equal(payload.mTextParam.mAlignment, 2);
   assert.equal(payload.mVersion, 1);
 });
 
