@@ -567,6 +567,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="subtitle-speaker-mapping-enabled"', page)
         self.assertIn('id="subtitle-speaker-labels-enabled-wrap"', page)
         self.assertIn('在预览字幕中显示说话人', page)
+        self.assertIn('id="subtitle-speaker-labels-enabled" checked', page)
         self.assertIn('id="subtitle-color-style-control"', page)
         self.assertIn('id="subtitle-color-style"', page)
         # 字幕颜色页：CSS 预览颜色样式（下划线默认）。
@@ -578,6 +579,8 @@ class EditorAssetTests(unittest.TestCase):
         # 字幕颜色页：ASS 颜色映射（text / speaker / stroke / none），勾选 ASS 字幕模式时替代预览颜色样式。
         self.assertIn('id="ass-color-style-row"', page)
         self.assertIn('id="ass-color-style"', page)
+        self.assertIn('id="ass-color-speaker-hint"', page)
+        self.assertIn('id="ass-color-speaker-export-link"', page)
         self.assertIn('value="text" selected>作为字幕颜色', page)
         self.assertIn('value="speaker">作为说话人名称颜色', page)
         self.assertIn('value="stroke">作为描边颜色', page)

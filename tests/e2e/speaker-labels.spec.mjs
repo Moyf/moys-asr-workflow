@@ -72,7 +72,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#subtitle-color-style option[value="stroke"]')).toHaveCount(1);
   await expect(page.locator('#subtitle-speaker-mapping-enabled')).not.toBeChecked();
   await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeHidden();
-  await expect(page.locator('#subtitle-speaker-labels-enabled')).not.toBeChecked();
+  await expect(page.locator('#subtitle-speaker-labels-enabled')).toBeChecked();
   await expect(page.locator('#subtitle-speaker-labels-settings')).toBeHidden();
   await expect(page.locator('#subtitle-speaker-label-separator')).toBeHidden();
   await expect(page.locator('#subtitle-speaker-label-yellow')).toHaveValue('SP1');
@@ -80,7 +80,8 @@ test('configures preview-only speaker labels and independently controls SRT expo
 
   await page.locator('#subtitle-speaker-mapping-enabled').check();
   await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeVisible();
-  await expect(page.locator('#subtitle-speaker-labels-enabled')).not.toBeChecked();
+  await expect(page.locator('#subtitle-speaker-labels-enabled')).toBeChecked();
+  await expect(page.locator('#export-speaker-labels')).toBeChecked();
   await expect(page.locator('#subtitle-speaker-labels-settings')).toBeVisible();
   await page.locator('#subtitle-speaker-labels-enabled').check();
   await expect(page.locator('#subtitle-speaker-labels-settings')).toBeVisible();

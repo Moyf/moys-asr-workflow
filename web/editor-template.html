@@ -1149,6 +1149,9 @@ __WAVEFORM_CSS__
             <option value="none">无影响</option>
           </select>
         </label>
+        <small class="editor-settings-hint" id="ass-color-speaker-hint" hidden>
+          <span>需要启用「将颜色映射为说话人」；勾选「</span><button type="button" class="editor-settings-inline-action" id="ass-color-speaker-export-link" title="打开导出设置并定位到说话人名称选项" aria-label="打开导出设置并定位到说话人名称选项">导出时附加说话人名称</button><span>」。</span>
+        </small>
         <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
           <span>预览颜色样式</span>
           <select id="subtitle-color-style" aria-label="预览颜色样式">
@@ -1200,7 +1203,7 @@ __WAVEFORM_CSS__
           将颜色映射为说话人
         </label>
         <label class="toggle editor-settings-item subtitle-speaker-label-toggle" id="subtitle-speaker-labels-enabled-wrap" title="在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本" hidden>
-          <input type="checkbox" id="subtitle-speaker-labels-enabled" aria-label="在预览字幕中显示说话人">
+          <input type="checkbox" id="subtitle-speaker-labels-enabled" checked aria-label="在预览字幕中显示说话人">
           在预览字幕中显示说话人
         </label>
         <div class="subtitle-speaker-labels-settings" id="subtitle-speaker-labels-settings" hidden>
