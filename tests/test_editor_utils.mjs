@@ -4210,6 +4210,19 @@ test('defines a portable export-options contract from synthetic fixture data', (
   assert.equal(Object.isFrozen(options), true);
 });
 
+test('reads paired positive-integer video size metadata for export canvas defaults', () => {
+  assert.equal(helpers.exportVideoSize(null), null);
+  assert.equal(helpers.exportVideoSize({}), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: null }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_width: 1920 } }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_height: 1080 } }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_width: 0, video_height: 1080 } }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_width: 1.5, video_height: 1080 } }), null);
+  assert.equal(JSON.stringify(
+    helpers.exportVideoSize({ media_metadata: { video_width: 3840, video_height: 2160 } }),
+  ), JSON.stringify({ width: 3840, height: 2160 }));
+});
+
 test('normalizes closed FPS and track choices without guessing unsupported values', () => {
   for (const fps of [24, 25, 30, 50, 60, '30000/1001', '60000/1001']) {
     assert.equal(helpers.normalizeExportOptions({ fps }).fps, String(fps));
@@ -4896,12 +4909,13 @@ test('rejects export plans whose overlay stickers fall outside the output durati
 test('translates every project-export option, outcome, and warning key in both locales', () => {
   const keys = [
     '导出时间线模式', '去空隙时间线', '原始时间线', '导出帧率', '写入原生字幕文本对象',
+    '自定义…', '宽度', '高度', '自定义合成尺寸需要 16–7680 之间的整数宽高',
     '导出副字幕轨', '主轨字幕', '主轨与副轨字幕', '导出文件名', '导出媒体路径缺失',
     '导出媒体时长缺失', '导出文件名无效', '导出警告',
     'Premiere FCP 7 XML（实验性）',
     '实验性 Premiere 交接：导出 FCP 7 XML',
     '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。',
-    '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。',
+    '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。',
     '导出 XML', 'FCP 7 XML 已保存', 'FCP 7 XML 下载已发起',
     'FCP 7 XML 保存已取消', 'FCP 7 XML 保存失败', 'FCP 7 XML 导出失败',
   ];

@@ -2335,6 +2335,9 @@ const lottieExportModal = document.getElementById('lottie-export-modal');
 const lottieExportTrack = document.getElementById('lottie-export-track');
 const lottieExportGapRemoved = document.getElementById('lottie-export-gap-removed');
 const lottieExportResolution = document.getElementById('lottie-export-resolution');
+const lottieExportCustomSize = document.getElementById('lottie-export-custom-size');
+const lottieExportCustomWidth = document.getElementById('lottie-export-custom-width');
+const lottieExportCustomHeight = document.getElementById('lottie-export-custom-height');
 const lottieExportFps = document.getElementById('lottie-export-fps');
 const lottieExportRenderMode = document.getElementById('lottie-export-render-mode');
 const lottieExportCancel = document.getElementById('lottie-export-cancel');
@@ -2343,6 +2346,9 @@ const ografExportModal = document.getElementById('ograf-export-modal');
 const ografExportTrack = document.getElementById('ograf-export-track');
 const ografExportGapRemoved = document.getElementById('ograf-export-gap-removed');
 const ografExportResolution = document.getElementById('ograf-export-resolution');
+const ografExportCustomSize = document.getElementById('ograf-export-custom-size');
+const ografExportCustomWidth = document.getElementById('ograf-export-custom-width');
+const ografExportCustomHeight = document.getElementById('ograf-export-custom-height');
 const ografExportFps = document.getElementById('ograf-export-fps');
 const ografExportCancel = document.getElementById('ograf-export-cancel');
 const ografExportConfirm = document.getElementById('ograf-export-confirm');
@@ -17522,7 +17528,8 @@ function openFcp7ExportModal() {
   if (!overlayAvailable && ['overlay', 'all'].includes(fcp7ExportSubtitleTracks.value)) {
     fcp7ExportSubtitleTracks.value = 'main';
   }
-  fcp7ExportNativeText.checked = false;
+  fcp7ExportNativeText.checked = true;
+  fcp7ExportSubtitleTracks.disabled = !fcp7ExportNativeText.checked;
   fcp7ExportModal.classList.add('show');
   fcp7ExportTimelineMode.focus();
 }
@@ -17570,6 +17577,10 @@ async function exportFcp7Xml() {
 }
 
 document.getElementById('download-fcp7-export')?.addEventListener('click', openFcp7ExportModal);
+fcp7ExportNativeText?.addEventListener('change', () => {
+  // 「导出字幕轨」只在写入原生文本时参与计划构建，未勾选时禁用以免造成可用的假象。
+  fcp7ExportSubtitleTracks.disabled = !fcp7ExportNativeText.checked;
+});
 fcp7ExportCancel?.addEventListener('click', closeFcp7ExportModal);
 fcp7ExportConfirm?.addEventListener('click', () => { void exportFcp7Xml(); });
 fcp7ExportModal?.addEventListener('click', (event) => {
@@ -17609,6 +17620,50 @@ function closeLottieExportModal() {
   lottieExportModal?.classList.remove('show');
 }
 
+const DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS = { min: 16, max: 7680 };
+
+// 打开弹窗时让「合成尺寸」自动匹配工程媒体元数据（schema §1.1 的成对宽高）；
+// 命中预设选项就选中，否则落到自定义并预填媒体尺寸；没有元数据时保持现状。
+function applyMediaSizeToResolutionModal(select, customRow, widthInput, heightInput) {
+  if (!select) return;
+  const size = window.AsrEditorUtils?.exportVideoSize?.(DATA) || null;
+  if (size && widthInput && heightInput) {
+    widthInput.value = size.width;
+    heightInput.value = size.height;
+  }
+  const preset = size ? `${size.width}x${size.height}` : '';
+  if (preset && select.querySelector(`option[value="${preset}"]`)) {
+    select.value = preset;
+  } else if (size) {
+    select.value = 'custom';
+  }
+  if (customRow) customRow.hidden = select.value !== 'custom';
+}
+
+function dynamicExportCanvasSize(select, widthInput, heightInput) {
+  if (select?.value !== 'custom') {
+    const match = /^(\d+)x(\d+)$/u.exec(select?.value || '');
+    if (!match) return { width: 1920, height: 1080 };
+    return { width: Number(match[1]), height: Number(match[2]) };
+  }
+  const limits = DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS;
+  const width = Number(widthInput?.value);
+  const height = Number(heightInput?.value);
+  if (!Number.isInteger(width) || width < limits.min || width > limits.max
+    || !Number.isInteger(height) || height < limits.min || height > limits.max) {
+    throw new Error(translatedEditorText(
+      '自定义合成尺寸需要 16–7680 之间的整数宽高',
+    ));
+  }
+  return { width, height };
+}
+
+function bindResolutionCustomSizeToggle(select, customRow) {
+  select?.addEventListener('change', () => {
+    if (customRow) customRow.hidden = select.value !== 'custom';
+  });
+}
+
 function openLottieExportModal() {
   if (lottieExportBlocked()) return;
   if (editingState) finishEdit(true);
@@ -17618,14 +17673,15 @@ function openLottieExportModal() {
   const extensionAvailable = Boolean(getActiveExtensionTrack());
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
   if (!extensionAvailable && lottieExportTrack) lottieExportTrack.value = 'main';
+  applyMediaSizeToResolutionModal(
+    lottieExportResolution, lottieExportCustomSize, lottieExportCustomWidth, lottieExportCustomHeight,
+  );
   lottieExportModal?.classList.add('show');
   lottieExportTrack?.focus();
 }
 
 function lottieExportCanvasSize() {
-  const match = /^(\d+)x(\d+)$/u.exec(lottieExportResolution?.value || '');
-  if (!match) return { width: 1920, height: 1080 };
-  return { width: Number(match[1]), height: Number(match[2]) };
+  return dynamicExportCanvasSize(lottieExportResolution, lottieExportCustomWidth, lottieExportCustomHeight);
 }
 
 async function exportLottieDynamicCaptions() {
@@ -17690,6 +17746,7 @@ async function exportLottieDynamicCaptions() {
 }
 
 document.getElementById('download-lottie')?.addEventListener('click', openLottieExportModal);
+bindResolutionCustomSizeToggle(lottieExportResolution, lottieExportCustomSize);
 lottieExportCancel?.addEventListener('click', closeLottieExportModal);
 lottieExportConfirm?.addEventListener('click', () => { void exportLottieDynamicCaptions(); });
 lottieExportModal?.addEventListener('click', (event) => {
@@ -17738,14 +17795,15 @@ function openOgrafExportModal() {
   const extensionAvailable = Boolean(getActiveExtensionTrack());
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
   if (!extensionAvailable && ografExportTrack) ografExportTrack.value = 'main';
+  applyMediaSizeToResolutionModal(
+    ografExportResolution, ografExportCustomSize, ografExportCustomWidth, ografExportCustomHeight,
+  );
   ografExportModal?.classList.add('show');
   ografExportTrack?.focus();
 }
 
 function ografExportCanvasSize() {
-  const match = /^(\d+)x(\d+)$/u.exec(ografExportResolution?.value || '');
-  if (!match) return { width: 1920, height: 1080 };
-  return { width: Number(match[1]), height: Number(match[2]) };
+  return dynamicExportCanvasSize(ografExportResolution, ografExportCustomWidth, ografExportCustomHeight);
 }
 
 async function exportOgrafDynamicCaptions() {
@@ -17809,6 +17867,7 @@ async function exportOgrafDynamicCaptions() {
 }
 
 document.getElementById('download-ograf')?.addEventListener('click', openOgrafExportModal);
+bindResolutionCustomSizeToggle(ografExportResolution, ografExportCustomSize);
 ografExportCancel?.addEventListener('click', closeOgrafExportModal);
 ografExportConfirm?.addEventListener('click', () => { void exportOgrafDynamicCaptions(); });
 ografExportModal?.addEventListener('click', (event) => {

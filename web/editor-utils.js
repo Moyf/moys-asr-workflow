@@ -6945,6 +6945,7 @@ export default MawDynamicCaptions;
     escapeExportXml,
     exportPathToFileUrl,
     buildProjectExportPlan,
+    exportVideoSize,
     serializeMappedSrt,
     serializeFcp7Xml,
     buildFcp7ExportArtifacts,
