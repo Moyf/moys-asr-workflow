@@ -23,7 +23,16 @@ from typing import Iterable, Sequence
 PRESERVED_END_PUNCTUATION = frozenset("！？：!?:")
 REMOVED_END_PUNCTUATION = frozenset("，。；、,.;")
 SPLIT_PUNCTUATION = PRESERVED_END_PUNCTUATION | REMOVED_END_PUNCTUATION | frozenset("\n")
-CLOSING_PUNCTUATION = frozenset("”’」』】〕〉》）)]}」』】〕〉》")
+# Common unambiguous right-side marks.  Symmetric ASCII quotes are omitted:
+# ``\"`` and ``'`` can also open a quote or act as an apostrophe, so treating
+# them as closing marks would attach text after a colon/comma to the previous
+# cue incorrectly.
+CLOSING_PUNCTUATION = frozenset(
+    "”’»›"
+    "」』】〕〉》）］｝"
+    ")]}"
+    "〞〟〙〗〛｠｣"
+)
 MARKDOWN_EXTENSIONS = frozenset({".md", ".markdown"})
 PROJECT_SCHEMA = "moy.asr.project.v1"
 _MARKDOWN_HEADING_PREFIX = re.compile(r"^[ \t]{0,3}#{1,6}(?:[ \t]+|$)", re.MULTILINE)

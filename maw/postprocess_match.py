@@ -18,6 +18,7 @@ from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
 from scripts.mosp_match_text import (
     AlignmentError,
+    CLOSING_PUNCTUATION,
     MARKDOWN_EXTENSIONS,
     clean_markdown_text,
     clean_markdown_inline_symbols,
@@ -708,11 +709,16 @@ def _split_script_segments(
             index += len(symbol)
             while index < len(text):
                 following = next((candidate for candidate in symbols if text.startswith(candidate, index)), "")
-                if not following:
-                    break
-                if following in preserve_punctuation:
-                    current.append(following)
-                index += len(following)
+                if following:
+                    if following in preserve_punctuation or following in CLOSING_PUNCTUATION:
+                        current.append(following)
+                    index += len(following)
+                    continue
+                if text[index] in CLOSING_PUNCTUATION:
+                    current.append(text[index])
+                    index += 1
+                    continue
+                break
             value = "".join(current).strip()
             if _normalize_text(value).value:
                 segments.append(value)
