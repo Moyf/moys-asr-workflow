@@ -1067,7 +1067,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="fcp7-export-fps"', page)
         self.assertIn('id="fcp7-export-subtitle-tracks"', page)
         self.assertIn('id="fcp7-export-native-text"', page)
-        self.assertNotIn('id="fcp7-export-native-text" checked', page)
+        self.assertIn('id="fcp7-export-native-text" checked', page)
         self.assertIn('id="fcp7-export-confirm"', page)
         self.assertIn('exportFcp7Xml(', page)
         self.assertNotIn('gap-remove-subtitle-warning', page)
