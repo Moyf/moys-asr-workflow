@@ -3095,6 +3095,7 @@
     autoSaveProject: true, autoSaveIntervalSeconds: 30, projectBackupEnabled: true,
     stickerOverlayEnabled: false,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
+    pauseOnMouseClick: false,
     otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
     mediaSeekStepFrames: 1, cueMoveStepMs: 50, cueMoveStepFrames: 1,
@@ -3183,6 +3184,7 @@
       clickBehavior: ['select-only', 'select-and-seek', 'select-and-play'].includes(savedSettings.clickBehavior)
         ? savedSettings.clickBehavior : 'select-and-seek',
       clickTarget: ['cue-start', 'pointer'].includes(savedSettings.clickTarget) ? savedSettings.clickTarget : 'pointer',
+      pauseOnMouseClick: savedSettings.pauseOnMouseClick === true,
       keyboardOperationReference: savedSettings.keyboardOperationReference === 'playhead' ? 'playhead' : 'pointer',
       jklPlaybackMode: ['speed', 'direction'].includes(savedSettings.jklPlaybackMode)
         ? savedSettings.jklPlaybackMode : 'direction',

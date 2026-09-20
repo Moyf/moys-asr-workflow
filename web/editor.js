@@ -1068,6 +1068,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
   clickTarget: 'pointer',
+  // 播放中通过鼠标点击跳转后是否暂停；默认保持原来的继续播放行为。
+  pauseOnMouseClick: false,
   keyboardOperationReference: 'pointer',
   // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
   jklPlaybackMode: 'direction',
@@ -2272,6 +2274,7 @@ const helpMediaSeekStep = document.getElementById('help-media-seek-step');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
 const clickTargetSelect = document.getElementById('click-target');
+const pauseOnMouseClickToggle = document.getElementById('pause-on-mouse-click');
 const keyboardOperationReferenceSelect = document.getElementById('keyboard-operation-reference');
 const keyboardOperationReferenceHint = document.getElementById('keyboard-operation-reference-hint');
 const jklPlaybackModeSelect = document.getElementById('jkl-playback-mode');
@@ -3910,6 +3913,7 @@ if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
+if (pauseOnMouseClickToggle) pauseOnMouseClickToggle.checked = EDITOR_SETTINGS.pauseOnMouseClick;
 if (keyboardOperationReferenceSelect) {
   keyboardOperationReferenceSelect.value = EDITOR_SETTINGS.keyboardOperationReference;
 }
@@ -4607,6 +4611,9 @@ clickBehaviorSelect?.addEventListener('change', () => {
 });
 clickTargetSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickTarget: normalizeClickTarget(clickTargetSelect.value) });
+});
+pauseOnMouseClickToggle?.addEventListener('change', () => {
+  updateEditorSettings({ pauseOnMouseClick: pauseOnMouseClickToggle.checked });
 });
 keyboardOperationReferenceSelect?.addEventListener('change', () => {
   const mode = normalizeKeyboardOperationReferenceMode(keyboardOperationReferenceSelect.value);
@@ -7569,14 +7576,17 @@ function buildOverlayCueEl(seg, index) {
     const previousSuppress = suppressCueListAutoScroll;
     // 与副字幕一致：点击后的 seek 会同步刷新主字幕 active 状态；这次刷新不能把
     // 列表从刚点击的叠加字幕行再次滚到对应的主字幕行。
+    const wasPlaying = isPlaybackActive();
     suppressCueListAutoScroll = true;
     try {
       waveformEditor?.revealTime(segment.start, true);
-      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
+      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') {
+        seekFromWaveform(segment.start / 1000, { mouseClick: true });
+      }
     } finally {
       suppressCueListAutoScroll = previousSuppress;
     }
-    if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused) togglePlayback();
+    if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused && !wasPlaying) togglePlayback();
     if (EDITOR_SETTINGS.cueListAutoScrollOnClick) {
       const row = container.querySelector(`.cue[data-overlay-idx="${index}"]`);
       if (row) scrollCueToCenter(row);
@@ -8264,7 +8274,9 @@ function bindExtensionCueEvents(el, index, track = getActiveExtensionTrack(), du
     suppressCueListAutoScroll = true;
     try {
       waveformEditor?.revealTime(segment.start, true);
-      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
+      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') {
+        seekFromWaveform(segment.start / 1000, { mouseClick: true });
+      }
     } finally {
       suppressCueListAutoScroll = previousSuppress;
     }
@@ -11723,13 +11735,14 @@ function bindCueEvents(el, idx) {
       scrollCueToCenter(el);
     }
     waveformEditor?.revealTime(DATA.segments[idx].start, true);
+    const wasPlaying = isPlaybackActive();
     if (EDITOR_SETTINGS.clickBehavior !== 'select-only') {
       // 默认只跳转不改动播放状态；“选中并跳转（自动播放）”会在暂停时启动播放。
       const previousSuppress = suppressCueListAutoScroll;
       suppressCueListAutoScroll = state?.preserveListScroll
         ? true : !EDITOR_SETTINGS.cueListAutoScrollOnClick;
       try {
-        seekFromWaveform(DATA.segments[idx].start / 1000);
+        seekFromWaveform(DATA.segments[idx].start / 1000, { mouseClick: true });
       } finally {
         suppressCueListAutoScroll = state?.preserveListScroll
           ? true : previousSuppress;
@@ -11737,7 +11750,7 @@ function bindCueEvents(el, idx) {
       if (state?.preserveListScroll) {
         restoreCueListVisualAnchor(null, { scrollTop: state.listScrollBeforeClick }, 'navigate');
       }
-      if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused) togglePlayback();
+      if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused && !wasPlaying) togglePlayback();
     }
   });
   el.addEventListener('dblclick', (e) => {
@@ -11914,6 +11927,17 @@ function playJklForward() {
   if (promise && promise.catch) promise.catch(() => {});
   syncMediaControls();
   return true;
+}
+
+function isPlaybackActive() {
+  return jklReversePlaying || !player.paused;
+}
+
+function pausePlaybackAfterMouseClick() {
+  if (!EDITOR_SETTINGS.pauseOnMouseClick || !isPlaybackActive()) return;
+  if (jklReversePlaying) stopJklReversePlayback({ render: false });
+  player.pause();
+  syncMediaControls();
 }
 
 function togglePlayback() {
@@ -22526,7 +22550,7 @@ function syncTimelineGroupRanges() {
   }
 }
 
-function seekFromWaveform(timeSec, { dragPreview = false } = {}) {
+function seekFromWaveform(timeSec, { dragPreview = false, mouseClick = false } = {}) {
   const seekableEnd = player.seekable.length ? player.seekable.end(player.seekable.length - 1) : 0;
   if (seekableEnd <= 0 && !seekWarned) {
     if (player.readyState < 1 || player.networkState === HTMLMediaElement.NETWORK_LOADING) {
@@ -22538,6 +22562,7 @@ function seekFromWaveform(timeSec, { dragPreview = false } = {}) {
   }
   try {
     player.currentTime = Math.max(0, timeSec);
+    if (mouseClick) pausePlaybackAfterMouseClick();
     if (!dragPreview) {
       update();
       // currentTime 的 seeked/timeupdate 事件是异步触发的；先同步刷新波形，
@@ -22681,6 +22706,7 @@ function initWaveformEditor() {
       seekFromWaveform(timeSec, options);
       if (!options.dragPreview) resumeCueListFollowing();
     },
+    isPlaybackActive: () => isPlaybackActive(),
     onPlayheadDragStateChange: (active) => {
       waveformPlayheadDragging = active === true;
       if (!active) resumeCueListFollowing();
