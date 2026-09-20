@@ -1810,6 +1810,11 @@
   .subtitle-overlay[data-ass-mode="true"] > .subtitle-extension-text {
     background: transparent; border-radius: 0; text-shadow: none;
   }
+  .subtitle-overlay[data-ass-mode="true"] > #overlay-main-text,
+  .subtitle-overlay[data-ass-mode="true"] > .subtitle-extension-text,
+  .subtitle-overlay[data-ass-mode="true"] > .subtitle-overlay-track-text {
+    max-width: none; white-space: pre; word-break: normal;
+  }
   .subtitle-overlay[data-ass-mode="true"] > #overlay-main-text { padding: 2px 4px; }
   .subtitle-overlay[data-ass-mode="true"] > .subtitle-extension-text { padding: 2px 4px; }
   .subtitle-overlay[data-ass-mode="true"] .subtitle-speaker-label { font: inherit; }

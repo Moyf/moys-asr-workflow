@@ -14421,7 +14421,11 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
     ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
-  element.style.maxWidth = `calc(100% - ${Math.max(0, margins.left + margins.right)}px)`;
+  // ASS 预览采用 no-wrap 策略：只保留字幕文本中的显式换行，
+  // 不因为播放器容器边界重新插入自动换行。
+  element.style.whiteSpace = 'pre';
+  element.style.wordBreak = 'normal';
+  element.style.maxWidth = 'none';
   element.style.padding = borderBox
     ? `${Math.max(1, 4 * scaleY)}px ${Math.max(1, 8 * scaleX)}px`
     : `${Math.max(1, scaleY)}px ${Math.max(1, 2 * scaleX)}px`;
@@ -14469,7 +14473,7 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', ' -webkit-text-stroke',
     '-webkit-text-stroke', 'paint-order', 'filter', 'letter-spacing', 'line-height',
-    'max-width', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
+    'max-width', 'word-break', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
     'left', 'right', 'top', 'bottom', 'white-space', 'text-align', 'transform-origin', 'transform',
   ].forEach((property) => element.style.removeProperty(property.trim()));
   element.style.setProperty(
@@ -14688,14 +14692,15 @@ function applyAssAnchoredPreviewElement(element, style, animationState, metrics,
     element.style.top = 'auto';
     element.style.bottom = `${Math.max(0, Math.ceil(verticalOffsetPx))}px`;
   }
-  element.style.whiteSpace = 'normal';
+  element.style.whiteSpace = 'pre';
+  element.style.wordBreak = 'normal';
   element.style.textAlign = alignment.textAlign;
 }
 
 function restoreAssOverlayTrackPreview() {
   if (!overlayTrackTextEl) return;
   [
-    'position', 'left', 'right', 'top', 'bottom', 'white-space', 'text-align',
+    'position', 'left', 'right', 'top', 'bottom', 'white-space', 'word-break', 'text-align',
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', '-webkit-text-stroke',
     'paint-order', 'text-shadow', 'letter-spacing', 'line-height',

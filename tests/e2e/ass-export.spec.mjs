@@ -114,6 +114,46 @@ test('exports ASS from the default profile style and keeps enabled subtitle text
     'Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,第一行\\NSecond, \\{literal\\}\\\\path',
   );
   expect(save.content).not.toContain('不应导出');
+  // 本次换行策略只调整播放器预览；ASS 导出仍保持原来的 WrapStyle。
+  expect(save.content).toContain('WrapStyle: 0');
+});
+
+test('ASS preview preserves explicit line breaks without container wrapping', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+
+  const preview = await page.evaluate(() => {
+    DATA.segments = [{
+      start: 0,
+      end: 4000,
+      text: '第一行\nAnd Jev can solve these two problems',
+    }];
+    EDITOR_SETTINGS.assMode = true;
+    overlayToggle.checked = true;
+    refreshSubtitlePreview(1000, 0);
+    const element = document.getElementById('overlay-main-text');
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const lineTops = Array.from(range.getClientRects()).map((rect) => Math.round(rect.top));
+    const style = getComputedStyle(element);
+    return {
+      lineCount: new Set(lineTops).size,
+      maxWidth: style.maxWidth,
+      whiteSpace: style.whiteSpace,
+      wordBreak: style.wordBreak,
+    };
+  });
+  expect(preview.lineCount).toBe(2);
+  expect(preview.maxWidth).toBe('none');
+  expect(preview.whiteSpace).toBe('pre');
+  expect(preview.wordBreak).toBe('normal');
+
+  await page.evaluate(() => {
+    EDITOR_SETTINGS.assMode = false;
+    refreshSubtitlePreview(1000, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('white-space', 'pre-wrap');
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('word-break', 'break-word');
 });
 
 test('writes the project title, source resolution, palette styles and speaker names to ASS', async ({ page }) => {
