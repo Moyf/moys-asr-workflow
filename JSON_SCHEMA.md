@@ -845,7 +845,7 @@ uv run python edit.py your_generated.mosp
 | `preview.subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#ffffff` |
 | `preview.subtitle.speaker_labels` | object | ❌ | 颜色到说话人的映射与标签预览设置；默认关闭，名称默认为黄/绿/红/紫/蓝对应 `SP1`～`SP5` |
 | `preview.subtitle.speaker_labels.mapping_enabled` | boolean | ❌ | 是否启用颜色到说话人的映射；关闭时不显示映射配置，也不在预览和导出中使用说话人名称 |
-| `preview.subtitle.speaker_labels.enabled` | boolean | ❌ | 开启后在播放器预览字幕前显示对应颜色的说话人名称；不修改字幕文本 |
+| `preview.subtitle.speaker_labels.enabled` | boolean | ❌ | 开启后在播放器预览字幕前显示对应颜色的说话人名称；未显式配置时默认开启；不修改字幕文本 |
 | `preview.subtitle.speaker_labels.separator` | string | ❌ | 说话人名称与字幕内容之间的分隔符，默认 `：`；最长 16 个字符，允许为空、空格或英文引号，不含控制字符 |
 | `preview.subtitle.speaker_labels.names.<color>` | string | ❌ | 颜色对应名称，最长 64 个字符；允许为空；`<color>` 为 `yellow` / `green` / `red` / `purple` / `blue` |
 | `preview.extension_subtitle` | object | ❌ | 副字幕样式；沿用主字幕预览框 |

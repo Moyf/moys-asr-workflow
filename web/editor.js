@@ -2149,6 +2149,8 @@ const subtitleColorStyleControl = document.getElementById('subtitle-color-style-
 const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
 const assColorStyleRow = document.getElementById('ass-color-style-row');
 const assColorStyleSelect = document.getElementById('ass-color-style');
+const assColorSpeakerHint = document.getElementById('ass-color-speaker-hint');
+const assColorSpeakerExportLink = document.getElementById('ass-color-speaker-export-link');
 const subtitleColorPaletteEnabledInput = document.getElementById('subtitle-color-palette-enabled');
 const subtitleColorPaletteGrid = document.getElementById('subtitle-color-palette-grid');
 const subtitleColorPaletteNames = window.AsrEditorUtils.EDITOR_SUBTITLE_COLOR_NAMES || [
@@ -3366,6 +3368,9 @@ function syncAssModeDependentControls() {
   if (subtitleColorUnderlineInput) subtitleColorUnderlineInput.disabled = assMode;
   if (subtitleColorAssModeHint) subtitleColorAssModeHint.hidden = !assMode;
   if (assColorStyleRow) assColorStyleRow.hidden = !assMode;
+  if (assColorSpeakerHint) {
+    assColorSpeakerHint.hidden = !assMode || assColorStyleSelect?.value !== 'speaker';
+  }
   if (subtitleColorStyleControl) {
     subtitleColorStyleControl.hidden = assMode
       || !(subtitleColorUnderlineInput?.checked ?? true);
@@ -5002,6 +5007,11 @@ subtitleColorUnderlineInput?.addEventListener('change', () => {
 subtitleColorAssModeHintLink?.addEventListener('click', () => {
   openEditorSettingsAtTab('editor-settings-tab-subtitle-style');
 });
+assColorSpeakerExportLink?.addEventListener('click', (event) => {
+  event.preventDefault();
+  openEditorSettingsAtTab('editor-settings-tab-export');
+  exportSpeakerLabelsToggle?.focus();
+});
 subtitleColorStyleSelect?.addEventListener('change', () => {
   pushPreviewUndo('调整预览字幕颜色样式', snapshotPreviewState());
   setSubtitleAppearance({ color_style: subtitleColorStyleSelect.value });
@@ -5055,10 +5065,15 @@ subtitleSpeakerMappingEnabledInput?.addEventListener('change', () => {
   const previous = snapshotPreviewState();
   previous.speakerLabels.mapping_enabled = !subtitleSpeakerMappingEnabledInput.checked;
   pushPreviewUndo('切换颜色说话人映射', previous);
+  const mappingEnabled = subtitleSpeakerMappingEnabledInput.checked;
   setSpeakerLabelSettings({
     ...getSpeakerLabelSettings(),
-    mapping_enabled: subtitleSpeakerMappingEnabledInput.checked,
+    mapping_enabled: mappingEnabled,
   });
+  if (mappingEnabled) {
+    updateEditorSettings({ exportSpeakerLabels: true });
+    if (exportSpeakerLabelsToggle) exportSpeakerLabelsToggle.checked = true;
+  }
   update();
 });
 subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
@@ -13678,13 +13693,13 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   if (subtitleColorUnderlineInput) {
     subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
+  if (assColorStyleSelect) {
+    assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
+  }
   // 「预览颜色样式」的显隐由 syncAssModeDependentControls 统一处理（含 ASS 开关切换）。
   syncAssModeDependentControls();
   if (subtitleColorStyleSelect) {
     subtitleColorStyleSelect.value = appearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
-  }
-  if (assColorStyleSelect) {
-    assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
   }
   if (subtitleFontFamilyInput && document.activeElement !== subtitleFontFamilyInput) {
     subtitleFontFamilyInput.value = subtitleFontFamilyStoredToInput(appearance.font_family || 'default');
