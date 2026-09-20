@@ -1894,6 +1894,9 @@ __WAVEFORM_CSS__
       <option value="60">60 fps</option>
       <option value="60000/1001">60000/1001 fps</option>
     </select>
+    <label class="row" for="fcp7-export-native-text">
+      <input type="checkbox" id="fcp7-export-native-text" checked> 写入原生字幕文本对象
+    </label>
     <label for="fcp7-export-subtitle-tracks">导出字幕轨</label>
     <select id="fcp7-export-subtitle-tracks">
       <option value="main" selected>主轨字幕</option>
@@ -1901,10 +1904,7 @@ __WAVEFORM_CSS__
       <option value="overlay">叠加轨字幕</option>
       <option value="all">全部字幕轨（各占一轨）</option>
     </select>
-    <label class="row" for="fcp7-export-native-text">
-      <input type="checkbox" id="fcp7-export-native-text"> 写入原生字幕文本对象
-    </label>
-    <p class="modal-hint">原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。</p>
+    <p class="modal-hint">原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。</p>
     <div class="actions">
       <button type="button" id="fcp7-export-cancel">取消</button>
       <button type="button" id="fcp7-export-confirm" class="primary">导出 XML</button>
@@ -1931,7 +1931,13 @@ __WAVEFORM_CSS__
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>
       <option value="1080x1920">1080 × 1920（竖屏）</option>
       <option value="3840x2160">3840 × 2160（4K 横屏）</option>
+      <option value="custom">自定义…</option>
     </select>
+    <div class="row" id="lottie-export-custom-size" hidden>
+      <input type="number" id="lottie-export-custom-width" min="16" max="7680" step="1" value="1920" aria-label="宽度">
+      <span aria-hidden="true">×</span>
+      <input type="number" id="lottie-export-custom-height" min="16" max="7680" step="1" value="1080" aria-label="高度">
+    </div>
     <label for="lottie-export-fps">导出帧率</label>
     <select id="lottie-export-fps">
       <option value="24">24 fps</option>
@@ -1974,7 +1980,13 @@ __WAVEFORM_CSS__
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>
       <option value="1080x1920">1080 × 1920（竖屏）</option>
       <option value="3840x2160">3840 × 2160（4K 横屏）</option>
+      <option value="custom">自定义…</option>
     </select>
+    <div class="row" id="ograf-export-custom-size" hidden>
+      <input type="number" id="ograf-export-custom-width" min="16" max="7680" step="1" value="1920" aria-label="宽度">
+      <span aria-hidden="true">×</span>
+      <input type="number" id="ograf-export-custom-height" min="16" max="7680" step="1" value="1080" aria-label="高度">
+    </div>
     <label for="ograf-export-fps">导出帧率</label>
     <select id="ograf-export-fps">
       <option value="24">24 fps</option>
