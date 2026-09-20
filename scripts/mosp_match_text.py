@@ -396,9 +396,12 @@ def align_character_timings(
         raise AlignmentError("内部错误：部分文稿字符未能获得时间")
 
     low_confidence: list[dict[str, object]] = []
+    unmatched_source_char_indexes: set[int] = set()
     for tag, i1, i2, j1, j2 in opcodes:
         if tag == "equal":
             continue
+        if tag == "delete":
+            unmatched_source_char_indexes.update(range(i1, i2))
         region: dict[str, object] = {
             "operation": tag,
             "asr_range": [i1, i2],
@@ -411,6 +414,20 @@ def align_character_timings(
             region["estimated_end_ms"] = round(resolved[j2 - 1][1])
         low_confidence.append(region)
 
+    source_character_counts: dict[int, int] = {}
+    unmatched_source_character_counts: dict[int, int] = {}
+    for index, source in enumerate(asr_chars):
+        source_character_counts[source.cue_index] = source_character_counts.get(source.cue_index, 0) + 1
+        if index in unmatched_source_char_indexes:
+            unmatched_source_character_counts[source.cue_index] = (
+                unmatched_source_character_counts.get(source.cue_index, 0) + 1
+            )
+    unmatched_source_segment_indexes = sorted(
+        cue_index
+        for cue_index, count in source_character_counts.items()
+        if unmatched_source_character_counts.get(cue_index, 0) == count
+    )
+
     denominator = max(len(asr_text), len(manuscript_text), 1)
     report: dict[str, object] = {
         "policy": policy,
@@ -421,6 +438,7 @@ def align_character_timings(
         "asr_unmatched_characters": asr_unmatched,
         "manuscript_unmatched_characters": manuscript_unmatched,
         "low_confidence_regions": low_confidence,
+        "unmatched_source_segment_indexes": unmatched_source_segment_indexes,
     }
     return resolved, report
 
