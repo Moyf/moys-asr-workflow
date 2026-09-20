@@ -42,7 +42,7 @@
       dashscope_region_hint_link: "⚙️ 设置 → 运行环境",
       dashscope_region_hint_suffix: " 配置阿里云百炼地域与业务空间。",
       output_subfolder: "将所有输出文件放入子文件夹",
-      output_subfolder_title: "将所有输出文件放入子文件夹（默认关闭）：SRT、工程、编辑器页面和调试文件写入媒体旁的 _maw 子目录",
+      output_subfolder_title: "将所有输出文件放入子文件夹（默认开启）：SRT、工程、编辑器页面和调试文件写入媒体旁的 _maw 子目录",
       per_video_subfolder: "每个视频单独创建子文件夹",
       per_video_subfolder_title: "每个视频单独创建子文件夹（默认关闭）：需要先开启「将所有输出文件放入子文件夹」，每个媒体各自使用「视频名_maw」目录",
       attach_model_name: "在输出文件名中附加模型名称",
@@ -161,7 +161,7 @@
       dashscope_region_hint_link: "⚙️ Settings → Runtime",
       dashscope_region_hint_suffix: " to configure the Alibaba Cloud DashScope region and workspace.",
       output_subfolder: "Put all outputs in a subfolder",
-      output_subfolder_title: "Put all outputs in a subfolder (off by default): SRT, project, editor page, and debug files go to the _maw subfolder next to the media.",
+      output_subfolder_title: "Put all outputs in a subfolder (on by default): SRT, project, editor page, and debug files go to the _maw subfolder next to the media.",
       per_video_subfolder: "Create a separate subfolder per video",
       per_video_subfolder_title: "Create a separate subfolder per video (off by default): requires “Put all outputs in a subfolder”; each media uses its own “video-name_maw” folder.",
       attach_model_name: "Append the model name to output filenames",
@@ -438,7 +438,7 @@
     merge_bilingual_hint: "将双语字幕合并成一个字幕文件，上下换行显示。",
     backfill_subtitles_hint: "适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。",
     auto_retain_intermediate: "保留中间产物",
-    auto_retain_hint: "勾选后将保留处理过程中每一个步骤的产物；否则只留最终产物。任务失败时会自动保留以排查问题。",
+    auto_retain_hint: "默认保留处理过程中每一个步骤的产物；关闭后只留最终产物。任务失败时会自动保留以排查问题。",
     auto_summary_disabled: "自动处理未启用。",
     auto_summary_empty: "请在下方「后处理步骤」中勾选需要的工序。",
     auto_summary_steps: "已选择 {count} 步：{steps}",
@@ -572,7 +572,7 @@
     merge_bilingual_hint: "Merge both languages into one subtitle file, stacked as two lines.",
     backfill_subtitles_hint: "Useful when only a few cues need translation: the translated text replaces the original cues in place. For example, 7 Chinese and 3 English cues translated into Chinese with backfill produce 10 Chinese cues.",
     auto_retain_intermediate: "Keep intermediate artifacts",
-    auto_retain_hint: "When enabled, keep each step's artifact during processing; otherwise keep only the final artifact. Failed tasks always keep them for diagnosis.",
+    auto_retain_hint: "Keep each step's artifact during processing by default; when disabled, keep only the final artifact. Failed tasks always keep them for diagnosis.",
     auto_summary_disabled: "Automatic processing is disabled.",
     auto_summary_empty: "Select the processing steps you need in the “Post-processing steps” section below.",
     auto_summary_steps: "{count} selected step(s): {steps}",
@@ -1410,7 +1410,7 @@
   let activeSettingsTab = "general";
 
   function mockApi() {
-    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null, outputSubfolder: false, perVideoSubfolder: false, attachModelName: false, notifyOnComplete: false };
+    let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null, outputSubfolder: true, perVideoSubfolder: false, attachModelName: false, notifyOnComplete: false };
     const chainedPath = (path, operation, fallback) => path
       ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
       : fallback;
@@ -1449,7 +1449,7 @@
           { id: "qwen", label: "阿里云 Qwen", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
           { id: "custom", label: saved.customDisplayName || "Custom (OpenAI-compatible)", defaultLabel: "Custom (OpenAI-compatible)", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false }
         ],
-        postprocessAutoPlan: saved.postprocessAutoPlan || { version: 1, enabled: false, retainIntermediate: false, steps: [] },
+        postprocessAutoPlan: saved.postprocessAutoPlan || { version: 1, enabled: false, retainIntermediate: true, steps: [] },
         modelCacheRoot: saved.modelCacheRoot || "D:\\Models\\MAW",
         localRuntime: { status: "missing", ready: false, path: "", pythonPath: "", modelCachePath: saved.modelCacheRoot || "D:\\Models\\MAW", detail: "" },
         ocrRuntime: { status: "missing", ready: false, path: "D:\\Users\\Demo\\AppData\\Local\\MAW\\ocr-runtime", pythonPath: "", modelId: "pp-ocrv6-tiny", modelLabel: "PP-OCRv6 tiny（CPU）", detail: "" },

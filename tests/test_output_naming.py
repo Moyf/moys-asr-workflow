@@ -225,6 +225,8 @@ class OperationSuffixTests(unittest.TestCase):
     def test_operation_suffix_localizes_per_language(self) -> None:
         self.assertEqual(output_naming.operation_suffix("postprocess", "zh"), ".后处理")
         self.assertEqual(output_naming.operation_suffix("postprocess", "en"), ".postprocess")
+        self.assertEqual(output_naming.operation_suffix("original", "zh"), ".原始")
+        self.assertEqual(output_naming.operation_suffix("original", "en"), ".original")
         self.assertEqual(output_naming.operation_suffix("ocr-dedup", "zh"), ".OCR去重")
         self.assertEqual(output_naming.operation_suffix("ocr-dedup", "en"), ".ocr-dedup")
         self.assertEqual(output_naming.operation_suffix("match", "zh"), ".文稿匹配")
