@@ -14,7 +14,7 @@
 | 已修复 | ASS 字幕模式开关位于「设置 → 字幕样式」，在「主字幕」上方 | `web/editor-template.html` | `tests.test_waveform.py` 结构断言通过 |
 | 已修复 | 管理按钮改为「🎨 管理 ASS 样式」 | `web/editor-template.html` | 页面截图确认 |
 | 已修复 | 解释“样式”和“ASS 方案”的区别 | 第二轮反馈：说明块不需要，已从 UI 移除（模板、CSS、i18n 一并清理） | 页面截图确认 |
-| 已修复 | 颜色字幕样式：作为字幕颜色 / 作为描边颜色 / 无影响 | 第二轮反馈修正归属：移入「ASS 字幕模式」组，由新工程字段 `preview.subtitle.ass_color_style` 驱动导出与预览；【字幕颜色】页恢复 下划线/文字颜色/描边；契约校验与 `JSON_SCHEMA.md` 同步 | `tests.test_project_contract.py`、`tests.test_waveform.py`、e2e `speaker-labels.spec.mjs` 通过 |
+| 已修复 | 颜色字幕样式：作为字幕颜色 / 作为说话人名称颜色 / 作为描边颜色 / 无影响 | 第二轮反馈修正归属：移入「ASS 字幕模式」组，由工程字段 `preview.subtitle.ass_color_style` 驱动导出与预览；新增 speaker 模式仅给 `XX：` 前缀应用颜色；【字幕颜色】页恢复下划线/文字颜色/描边；契约校验与 `JSON_SCHEMA.md` 同步 | `tests.test_project_contract.py`、`tests.test_waveform.py`、e2e `speaker-labels.spec.mjs` 通过 |
 | 已修复 | 五种字幕颜色支持用户自定义，无自定义时使用内置色值 | 第二轮反馈：改为「自定义颜色色值」开关，勾选后才显示五色配置；「恢复默认」作为网格第三行第二项；关闭时全编辑器回落内置五色 | `tests.test_editor_utils.mjs`（`subtitleColorPaletteEnabled`）、`tests.test_waveform.py` 结构断言、页面截图确认 |
 | 已修复 | ASS 预览字号超过 42px 仍能看到差异 | `web/editor.js`、`web/editor.css` | 页面截图确认 |
 | 已修复 | 样式窗口分为基础样式、拓展样式、边框与阴影 | `web/editor-template.html`、`web/editor.css`；第二轮统一 label 上置等宽布局，对齐九宫格缩小并与边距并排 | 页面截图确认 |
@@ -28,7 +28,7 @@
 ## 仅说明
 
 - “样式”描述字幕的绘制属性；“ASS 方案”选择样式并组合导出时逐句附加的动画。第二轮反馈后窗口内不再保留说明卡片。
-- 字幕颜色页的「颜色样式」（underline / text / stroke）只影响 CSS 预览；ASS 的颜色映射由独立的 `ass_color_style`（text / stroke / none）控制，两者语义不同。历史值 `shadow` 仅保留读取兼容。
+- 字幕颜色页的「颜色样式」（underline / text / stroke）只影响 CSS 预览；ASS 的颜色映射由独立的 `ass_color_style`（text / speaker / stroke / none）控制，两者语义不同。历史值 `shadow` 仅保留读取兼容。
 - ASS 导出读取默认方案样式，主字幕预览的字体/字号/颜色不再写入导出文件（`docs/EDITOR_GUIDE.md` 已按此更新）。
 
 ## 未验证项

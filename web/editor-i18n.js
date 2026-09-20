@@ -270,7 +270,7 @@
     '已保存到本机用户级配置；Launcher 与 Editor 共享。': 'Saved to local user-level config; shared by Launcher and Editor.',
     '样式库将根据打开方式保存。': 'The style library is saved according to how the Editor was opened.',
     '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。': 'Portable Editor saves only to this browser; open it in server-editor to share it with Launcher.',
-    '颜色字幕样式': 'Color caption style', '作为字幕颜色': 'As text color', '作为描边颜色': 'As outline color', '无影响': 'No effect',
+    '颜色字幕样式': 'Color caption style', '作为字幕颜色': 'As text color', '作为说话人名称颜色': 'As speaker name color', '作为描边颜色': 'As outline color', '无影响': 'No effect',
     'ASS 默认样式': 'ASS default style', '创建副本': 'Duplicate', '重命名': 'Rename',
     '设为主字幕样式': 'Set as main subtitle style', '设为副字幕样式': 'Set as secondary subtitle style',
     '设为 SRT 烧录样式': 'Set as SRT burn-in style', '设为 ASS 导出方案': 'Set as ASS export profile',

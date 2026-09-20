@@ -148,6 +148,7 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
     '⬆️ Current preview styling is controlled by ASS subtitle mode',
   );
   assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');
+  assert.equal(i18n.translateText('作为说话人名称颜色', 'en'), 'As speaker name color');
   assert.equal(i18n.translateText('作为描边颜色', 'en'), 'As outline color');
   assert.equal(i18n.translateText('无影响', 'en'), 'No effect');
   assert.equal(i18n.translateText('自定义颜色色值', 'en'), 'Custom color values');
@@ -3382,6 +3383,41 @@ test('keeps speaker labels in the base colour when ASS palette colours are strok
 
   assert.match(ass, new RegExp(`Style: YELLOW,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},72,[^\\n]*,&H0019A0C4`));
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,YELLOW,Host,0,0,0,,\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
+});
+
+test('applies ASS speaker-only colour to the label without a palette style variant', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+  ], {
+    assProfile: {
+      id: 'speaker-label', styleId: 'ass',
+      animations: { fad: { enabled: true, inMs: 120, outMs: 240 } },
+    },
+    assStyle: {
+      id: 'ass', fontName: 'Arial', fontSize: 72,
+      primaryColor: '#123456', outlineColor: '#112233', outline: 4, shadow: 2,
+    },
+    appearance: { ass_color_style: 'speaker' },
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host' },
+    speakerLabelSeparator: '：',
+  });
+
+  assert.match(ass, /Style: Default,Arial,72,&H00563412,&H00FFFFFF,&H00332211,/);
+  assert.doesNotMatch(ass, /Style: YELLOW,/);
+  assert.match(
+    ass,
+    /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,Host,0,0,0,,\{\\fad\(120,240\)\}\{\\c&H0019A0C4&\}Host：\{\\c&H00563412&\}你好/,
+  );
+
+  const withoutLabels = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+  ], {
+    assProfile: { id: 'speaker-label', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#112233', outline: 4 },
+    appearance: { ass_color_style: 'speaker' },
+  });
+  assert.match(withoutLabels, /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,,0,0,0,,你好/);
 });
 
 test('previews ASS fade, movement, and transform timing at the cue playhead', () => {

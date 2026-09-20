@@ -4198,7 +4198,7 @@
   const ASS_STYLE_LIBRARY_MAX_NAME_LENGTH = 80;
   const ASS_STYLE_LIBRARY_MAX_FONT_LENGTH = 128;
   const ASS_STYLE_LIBRARY_MAX_TRANSFORM_LENGTH = 512;
-  const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
+  const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
 
   function normalizeAssColorStyle(value) {
     if (value === 'underline') return 'text';
@@ -4859,7 +4859,7 @@
     // mapping, but a coloured underline is not representable without also
     // changing the glyph colour.  In stroke mode keep the speaker label in
     // the effective base colour so only the outline follows the palette.
-    const speakerColor = colorStyle === 'text'
+    const speakerColor = colorStyle === 'text' || colorStyle === 'speaker'
       ? paletteSpeakerColor : style.primaryColor;
     // The event style already carries the effective ASS text colour.  Reusing
     // the speaker palette here would also colour the whole cue when the old
@@ -4904,7 +4904,7 @@
       : normalizeAssFontSize(baseStyle.fontSize);
     const title = normalizeAssHeaderValue(options.title ?? options.projectName);
     const colorStyles = normalizeAssColorStyles(options.colorStyles);
-    // ASS 的颜色映射只由 ass_color_style 驱动（text / stroke / none），与 CSS
+    // ASS 的颜色映射只由 ass_color_style 驱动（text / speaker / stroke / none），与 CSS
     // 预览的 color_style（underline / text / stroke）和 color_underline 开关
     // 是两套语义；color_underline 只控制 CSS 预览，不参与 ASS 导出。
     const colorStyle = normalizeAssColorStyle(appearance.ass_color_style) || 'text';
@@ -4926,8 +4926,8 @@
       ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
-    // 颜色样式只有在 ASS 能表达（text / stroke）时才生成调色板样式；
-    // none 模式下主轨与叠加轨一起回落 Default。
+    // 颜色样式只有在 ASS 能表达为整句样式（text / stroke）时才生成
+    // 调色板样式；speaker 只给说话人前缀加局部颜色，none 回落 Default。
     const assColorGroupsSupported = colorStyle === 'text' || colorStyle === 'stroke';
 
     // 主轨事件：Layer 0，底部居中（Default 样式自带对齐）。
