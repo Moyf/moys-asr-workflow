@@ -348,6 +348,9 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(settings.assMode, false);
   assert.equal(helpers.normalizeEditorSettings({ assMode: true }).assMode, true);
   assert.equal(helpers.normalizeEditorSettings({ assMode: 1 }).assMode, false);
+  assert.equal(settings.pauseOnMouseClick, false);
+  assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: true }).pauseOnMouseClick, true);
+  assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: 1 }).pauseOnMouseClick, false);
   assert.equal(settings.subtitleColorPaletteEnabled, false);
   assert.equal(
     helpers.normalizeEditorSettings({ subtitleColorPaletteEnabled: true }).subtitleColorPaletteEnabled,
