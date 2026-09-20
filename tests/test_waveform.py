@@ -387,6 +387,8 @@ class EditorAssetTests(unittest.TestCase):
             'value="pointer" selected>鼠标所在位置' in page,
             '点击字幕块的默认跳转目标应为鼠标所在位置',
         )
+        self.assertIn('id="pause-on-mouse-click"> 播放过程中点击鼠标自动暂停', page)
+        self.assertIn('pauseOnMouseClick: false', page)
         self.assertIn('id="cues-empty"', page)
         self.assertIn('加载工程后显示字幕列表', page)
         self.assertIn('id="workspace-preset"', page)
@@ -914,6 +916,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('cueListShowTime: saved.cueListShowTime !== false', page)
         self.assertIn('cueListShowSticker: saved.cueListShowSticker !== false', page)
         self.assertIn('cueListShowCharcount: saved.cueListShowCharcount !== false', page)
+        self.assertIn('pauseOnMouseClick: savedSettings.pauseOnMouseClick === true', page)
         self.assertNotIn('id="cue-editor-show-navigation" checked', page)
         self.assertNotIn('id="cue-editor-show-time-actions" checked', page)
         self.assertIn('cueEditorShowTimeActions: saved.cueEditorShowTimeActions === true', page)
