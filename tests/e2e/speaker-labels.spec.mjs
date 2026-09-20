@@ -421,3 +421,65 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
   expect(Number.parseFloat(windowedAgain.textFontSize)).toBeCloseTo(36, 0);
   expect(windowedAgain.labelFontSize).toBe(windowedAgain.textFontSize);
 });
+
+test('uses ASS speaker-only colour for the label while preserving the base text style', async ({ page }) => {
+  await page.goto(server.url);
+  await revealSpeakerCue(page);
+
+  const preview = await page.evaluate(() => {
+    DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    DATA.preview.subtitle = {
+      ...DATA.preview.subtitle,
+      ass_color_style: 'speaker',
+      speaker_labels: {
+        mapping_enabled: true,
+        enabled: true,
+        separator: '：',
+        names: { yellow: 'Host', green: 'Guest', red: 'Narrator', purple: 'Stage', blue: 'Caption' },
+      },
+    };
+    const library = window.AsrEditorUtils.defaultAssStyleLibrary();
+    const sourceStyle = window.AsrEditorUtils.assStyleForId(library, 'ass');
+    library.styles = library.styles.map((style) => style.id === 'ass'
+      ? {
+        ...sourceStyle,
+        fontName: 'Arial',
+        fontSize: 72,
+        primaryColor: '#123456',
+        outlineColor: '#112233',
+        outline: 4,
+        bold: true,
+        italic: true,
+      }
+      : style);
+    ASS_STYLE_LIBRARY = library;
+    EDITOR_SETTINGS.assMode = true;
+    overlayToggle.checked = true;
+    refreshSubtitlePreview(1000, 0);
+    const text = document.getElementById('overlay-main-text');
+    const label = document.getElementById('overlay-main-speaker-label');
+    return {
+      text: text.textContent,
+      label: label.textContent,
+      textColor: getComputedStyle(text).color,
+      labelColor: getComputedStyle(label).color,
+      textFontFamily: getComputedStyle(text).fontFamily,
+      labelFontFamily: getComputedStyle(label).fontFamily,
+      textFontWeight: getComputedStyle(text).fontWeight,
+      labelFontWeight: getComputedStyle(label).fontWeight,
+      textFontStyle: getComputedStyle(text).fontStyle,
+      labelFontStyle: getComputedStyle(label).fontStyle,
+      textStroke: text.style.getPropertyValue('-webkit-text-stroke'),
+      labelStroke: label.style.getPropertyValue('-webkit-text-stroke'),
+    };
+  });
+
+  expect(preview.text).toBe('Host：Alpha');
+  expect(preview.label).toBe('Host：');
+  expect(preview.textColor).toBe('rgb(18, 52, 86)');
+  expect(preview.labelColor).toBe('rgb(196, 160, 25)');
+  expect(preview.labelFontFamily).toBe(preview.textFontFamily);
+  expect(preview.labelFontWeight).toBe(preview.textFontWeight);
+  expect(preview.labelFontStyle).toBe(preview.textFontStyle);
+  expect(preview.labelStroke).toBe(preview.textStroke);
+});

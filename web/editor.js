@@ -1122,10 +1122,10 @@ const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
 // CSS 预览的颜色样式（工程 color_style）；ASS 的颜色映射是独立字段
-// ass_color_style（text / stroke / none），两者语义不同。
+// ass_color_style（text / speaker / stroke / none），两者语义不同。
 const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
 const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
-const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
+const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
 const DEFAULT_ASS_COLOR_STYLE = 'text';
 // 字体输入框用 combobox 下拉提供筛选（映射逻辑在 editor-utils 的
 // subtitleFontFamilyStoredToInput / subtitleFontFamilyInputToStored）；
@@ -14629,10 +14629,10 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
 
   if (speakerLabelVisible) {
     applyAssPreviewSpeakerLabel(overlayMainSpeakerLabelEl, animatedMainStyle, metrics);
-    // 与导出 assEventText 一致：text 模式标签跟随调色板颜色，其余保持基础色。
+    // 与导出 assEventText 一致：text / speaker 模式标签跟随调色板颜色，其余保持基础色。
     const paletteColor = COLOR_BY_NAME[mainColorName]?.value;
     const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
-    const labelColor = assColorStyle === 'text'
+    const labelColor = assColorStyle === 'text' || assColorStyle === 'speaker'
       ? paletteColor || animatedMainStyle.primaryColor
       : animatedMainStyle.primaryColor;
     overlayMainSpeakerLabelEl.style.color = labelColor;
@@ -14796,10 +14796,15 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   const overlaySpeakerLabelVisible = Boolean(
     overlaySpeakerLabel && overlaySpeakerColorName && COLOR_BY_NAME[overlaySpeakerColorName],
   );
+  const assColorStyle = subtitleAppearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
   const overlaySpeakerLabelColor = overlaySpeakerLabelVisible
-    ? colorPreviewEnabled && colorStyle === 'stroke'
-      ? mainSubtitleColor
-      : COLOR_BY_NAME[overlaySpeakerColorName].value
+    ? assMode
+      ? assColorStyle === 'text' || assColorStyle === 'speaker'
+        ? COLOR_BY_NAME[overlaySpeakerColorName].value
+        : ''
+      : colorPreviewEnabled && colorStyle === 'stroke'
+        ? mainSubtitleColor
+        : COLOR_BY_NAME[overlaySpeakerColorName].value
     : '';
   const overlaySpeakerLabelText = overlaySpeakerLabelVisible
     ? `${overlaySpeakerLabel}${speakerLabels.separator}`

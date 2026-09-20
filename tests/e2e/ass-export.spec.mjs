@@ -163,6 +163,45 @@ test('writes the project title, source resolution, palette styles and speaker na
   );
 });
 
+test('exports speaker-only ASS label colour without a palette style variant', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    DATA.segments = [
+      { start: 0, end: 1000, text: 'red line', items: [], color: { name: 'red', value: '#f07f6f' } },
+    ];
+    DATA.preview.subtitle = {
+      ...DATA.preview.subtitle,
+      ass_color_style: 'speaker',
+      speaker_labels: {
+        mapping_enabled: true,
+        enabled: true,
+        separator: '：',
+        names: { yellow: '主持', green: '嘉宾', red: '旁白', purple: '现场', blue: '字幕' },
+      },
+    };
+    EDITOR_SETTINGS.exportSpeakerLabels = true;
+    renderAll();
+  });
+
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-ass').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const save = await page.evaluate(() => window.__exportSaves[0]);
+  const baseColor = await page.evaluate(() => (
+    window.AsrEditorUtils.assColorFromHex(window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.primaryColor)
+  ));
+  const baseFont = await page.evaluate(() => window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName);
+
+  expect(save.content).toContain(`Style: Default,${baseFont},72,`);
+  expect(save.content).not.toContain('Style: RED,');
+  expect(save.content).toContain(
+    `Dialogue: 0,0:00:00.00,0:00:01.00,Default,旁白,0,0,0,,{\\c&H006F7FF0&}旁白：{\\c${baseColor}&}red line`,
+  );
+});
+
 test('groups SRT, color-split SRT and styled ASS exports in order', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);

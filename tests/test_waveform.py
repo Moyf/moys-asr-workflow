@@ -575,10 +575,11 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('value="stroke">描边', page)
         self.assertNotIn('value="shadow"', page)
         self.assertIn('>预览颜色样式</span>', page)
-        # 字幕颜色页：ASS 颜色映射（text / stroke / none），勾选 ASS 字幕模式时替代预览颜色样式。
+        # 字幕颜色页：ASS 颜色映射（text / speaker / stroke / none），勾选 ASS 字幕模式时替代预览颜色样式。
         self.assertIn('id="ass-color-style-row"', page)
         self.assertIn('id="ass-color-style"', page)
         self.assertIn('value="text" selected>作为字幕颜色', page)
+        self.assertIn('value="speaker">作为说话人名称颜色', page)
         self.assertIn('value="stroke">作为描边颜色', page)
         self.assertIn('value="none">无影响', page)
         self.assertIn('>颜色字幕样式</span>', page)
