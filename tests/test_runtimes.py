@@ -352,8 +352,9 @@ class SourceModeInstallTests(unittest.TestCase):
                     with mock.patch.object(MOSS, "requirements_path", return_value=requirements_txt):
                         with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
                             with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
-                                with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
-                                    status = MOSS.install(runtime_root=root)
+                                with mock.patch.object(MOSS, "_ensure_frozen_requirements"):
+                                    with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
+                                        status = MOSS.install(runtime_root=root)
 
             self.assertTrue(status.ready)
             # 源码模式没有解压/get-pip 步骤：只有 install + verify 两段。
