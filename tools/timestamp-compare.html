@@ -1,0 +1,2033 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAW 时间码对比</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117;
+    --surface: #141a22;
+    --surface-raised: #1b232e;
+    --surface-high: #232d39;
+    --surface-soft: #10161d;
+    --ink: #e7edf5;
+    --ink-soft: #b5c0ce;
+    --muted: #8290a2;
+    --faint: #5b6879;
+    --line: #293644;
+    --line-strong: #3a4b5e;
+    --cyan: #6bd6dc;
+    --cyan-soft: rgba(107, 214, 220, 0.13);
+    --blue: #8aaeff;
+    --amber: #f1bb6e;
+    --amber-soft: rgba(241, 187, 110, 0.14);
+    --coral: #f1838e;
+    --coral-soft: rgba(241, 131, 142, 0.14);
+    --green: #7ad7a0;
+    --green-soft: rgba(122, 215, 160, 0.13);
+    --violet: #bf9cf4;
+    --shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+    --radius: 10px;
+    --radius-sm: 6px;
+    --mono: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0;
+    min-width: 320px;
+    background:
+      radial-gradient(circle at 84% -10%, rgba(73, 130, 153, 0.16), transparent 36rem),
+      radial-gradient(circle at 5% 35%, rgba(41, 72, 112, 0.12), transparent 30rem),
+      var(--bg);
+    color: var(--ink);
+    font: 14px/1.55 "Bahnschrift", "Aptos", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  }
+
+  button, input { font: inherit; }
+  button { color: inherit; }
+  button:focus-visible, input:focus-visible, [tabindex="0"]:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    min-height: 64px;
+    padding: 10px 22px;
+    border-bottom: 1px solid rgba(107, 214, 220, 0.16);
+    background: rgba(13, 17, 23, 0.93);
+    backdrop-filter: blur(18px);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-width: 220px;
+  }
+
+  .brand-mark {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--cyan);
+    border-radius: 7px;
+    transform: rotate(45deg);
+    box-shadow: 0 0 22px rgba(107, 214, 220, 0.2);
+  }
+
+  .brand-mark::after {
+    content: "";
+    position: absolute;
+    inset: 5px;
+    border: 1px solid var(--amber);
+    border-radius: 3px;
+  }
+
+  .brand-copy { min-width: 0; }
+  .brand-name {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .brand-kicker {
+    color: var(--muted);
+    font: 10px/1.1 var(--mono);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    flex: 1;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 5px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface-raised);
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 120ms ease;
+    white-space: nowrap;
+  }
+  .btn:hover:not(:disabled) {
+    border-color: var(--cyan);
+    background: var(--surface-high);
+    color: var(--ink);
+    transform: translateY(-1px);
+  }
+  .btn.primary {
+    border-color: rgba(107, 214, 220, 0.65);
+    background: var(--cyan-soft);
+    color: var(--cyan);
+  }
+  .btn.danger:hover:not(:disabled) { border-color: var(--coral); color: var(--coral); }
+  .btn:disabled { cursor: not-allowed; opacity: 0.42; }
+
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 32px;
+    padding: 0 6px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .toggle input { accent-color: var(--cyan); }
+  .toggle-switch {
+    position: relative;
+    gap: 8px;
+  }
+  .toggle-switch input {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+    opacity: 0;
+    clip: auto;
+    clip-path: none;
+  }
+  .switch-ui {
+    position: relative;
+    width: 30px;
+    height: 17px;
+    flex: none;
+    border: 1px solid var(--line-strong);
+    border-radius: 99px;
+    background: var(--surface-soft);
+    pointer-events: none;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .switch-ui::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 120ms ease, transform 120ms ease;
+  }
+  .toggle-switch input:checked + .switch-ui {
+    border-color: var(--cyan);
+    background: var(--cyan-soft);
+  }
+  .toggle-switch input:checked + .switch-ui::after {
+    background: var(--cyan);
+    transform: translateX(13px);
+  }
+  .toggle-switch input:focus-visible + .switch-ui {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+  }
+
+  .search {
+    width: min(260px, 30vw);
+    min-height: 32px;
+    padding: 5px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    outline: none;
+    background: var(--surface-soft);
+    color: var(--ink);
+  }
+  .search::placeholder { color: var(--faint); }
+  .search:focus { border-color: var(--cyan); }
+  .search:disabled { opacity: 0.42; }
+
+  .filter-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 32px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .filter-control > span {
+    font: 10px/1 var(--mono);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .filter-control select {
+    min-height: 30px;
+    padding: 4px 24px 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    outline: none;
+    background: var(--surface-soft);
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+  .filter-control select:focus { border-color: var(--cyan); }
+  .filter-control select:disabled { cursor: not-allowed; opacity: 0.42; }
+
+  main {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: calc(100vh - 64px);
+    padding: 26px 22px 18px;
+  }
+
+  .hero {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+    min-height: 74px;
+  }
+  .eyebrow {
+    margin: 0 0 5px;
+    color: var(--cyan);
+    font: 10px/1 var(--mono);
+    letter-spacing: 0.2em;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(22px, 3vw, 31px);
+    line-height: 1.18;
+    letter-spacing: -0.02em;
+  }
+  .hero-subtitle {
+    margin: 7px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .hero-note {
+    max-width: 310px;
+    padding: 9px 12px;
+    border-left: 2px solid var(--amber);
+    color: var(--ink-soft);
+    background: linear-gradient(90deg, var(--amber-soft), transparent);
+    font-size: 12px;
+  }
+  .hero-note b { color: var(--amber); font-weight: 650; }
+
+  .file-cards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(260px, 1fr));
+    gap: 12px;
+  }
+  .file-card {
+    --file-color: var(--cyan);
+    position: relative;
+    overflow: hidden;
+    min-width: 0;
+    padding: 14px 15px 13px;
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--file-color);
+    border-radius: var(--radius);
+    background:
+      linear-gradient(120deg, color-mix(in srgb, var(--file-color) 10%, transparent), transparent 48%),
+      var(--surface);
+    box-shadow: var(--shadow);
+  }
+  .file-card::after {
+    content: attr(data-label);
+    position: absolute;
+    top: 10px;
+    right: 13px;
+    color: color-mix(in srgb, var(--file-color) 80%, white);
+    font: 11px/1 var(--mono);
+    letter-spacing: 0.12em;
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding-right: 27px;
+  }
+  .card-dot {
+    width: 9px;
+    height: 9px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--file-color);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--file-color) 62%, transparent);
+  }
+  .card-name {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-remove {
+    margin-left: auto;
+    padding: 1px 5px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--faint);
+    cursor: pointer;
+  }
+  .card-remove:hover { background: var(--coral-soft); color: var(--coral); }
+  .card-source {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .stat-label {
+    display: block;
+    color: var(--faint);
+    font: 10px/1.2 var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .stat-value {
+    display: block;
+    overflow: hidden;
+    margin-top: 3px;
+    color: var(--ink-soft);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .coverage {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 13px;
+  }
+  .coverage-track {
+    height: 5px;
+    overflow: hidden;
+    flex: 1;
+    border-radius: 99px;
+    background: var(--surface-high);
+  }
+  .coverage-fill {
+    height: 100%;
+    min-width: 2px;
+    border-radius: inherit;
+    background: var(--file-color);
+  }
+  .coverage-label {
+    color: var(--ink-soft);
+    font: 11px/1 var(--mono);
+    white-space: nowrap;
+  }
+  .card-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 8px;
+    color: var(--faint);
+    font-size: 11px;
+  }
+  .card-foot span:last-child { text-align: right; }
+
+  .summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--line);
+    box-shadow: var(--shadow);
+  }
+  .summary-intro, .summary-metric {
+    min-width: 125px;
+    padding: 11px 13px;
+    background: var(--surface);
+  }
+  .summary-intro { min-width: 180px; flex: 1.25; }
+  .summary-intro strong { display: block; font-size: 13px; }
+  .summary-intro span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+  .summary-metric { flex: 1; }
+  .summary-metric .metric-label { color: var(--muted); font-size: 11px; }
+  .summary-metric .metric-value {
+    display: block;
+    margin-top: 2px;
+    color: var(--ink);
+    font: 700 18px/1.05 var(--mono);
+  }
+  .summary-metric.good .metric-value { color: var(--green); }
+  .summary-metric.warn .metric-value { color: var(--amber); }
+  .summary-metric.bad .metric-value { color: var(--coral); }
+
+  .warning {
+    padding: 8px 12px;
+    border: 1px solid rgba(241, 187, 110, 0.45);
+    border-left: 3px solid var(--amber);
+    border-radius: var(--radius-sm);
+    background: var(--amber-soft);
+    color: var(--ink-soft);
+    font-size: 12px;
+  }
+  .warning strong { color: var(--amber); font-weight: 650; }
+  .warning ul { margin: 3px 0 0 18px; padding: 0; }
+
+  .empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-height: 420px;
+  }
+  .dropzone {
+    position: relative;
+    width: min(650px, 100%);
+    padding: 48px 34px;
+    overflow: hidden;
+    border: 1px dashed var(--line-strong);
+    border-radius: 18px;
+    background:
+      linear-gradient(135deg, rgba(107, 214, 220, 0.07), transparent 45%),
+      repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 12px),
+      var(--surface);
+    text-align: center;
+  }
+  .dropzone::before {
+    content: "A / B";
+    position: absolute;
+    top: 17px;
+    left: 20px;
+    color: var(--faint);
+    font: 11px/1 var(--mono);
+    letter-spacing: 0.15em;
+  }
+  .dropzone.drag {
+    border-color: var(--cyan);
+    background-color: var(--cyan-soft);
+  }
+  .drop-icon {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 17px;
+    border: 1px solid var(--cyan);
+    border-radius: 13px;
+    color: var(--cyan);
+    font-size: 28px;
+    line-height: 49px;
+    box-shadow: 0 0 32px rgba(107, 214, 220, 0.15);
+  }
+  .dropzone h2 { margin: 0; font-size: 19px; }
+  .dropzone p { margin: 7px 0; color: var(--muted); }
+  .dropzone .btn { margin-top: 16px; }
+  .dropzone .hint { color: var(--faint); font-size: 12px; }
+
+  .table-wrap {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 300px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface-soft);
+    box-shadow: var(--shadow);
+  }
+  .table-empty {
+    display: grid;
+    min-height: 180px;
+    place-items: center;
+    color: var(--muted);
+  }
+  .compare-table {
+    min-width: 760px;
+  }
+  .table-head, .row-grid {
+    display: grid;
+    grid-template-columns: var(--columns);
+  }
+  .table-head {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    border-bottom: 1px solid var(--line-strong);
+    background: rgba(27, 35, 46, 0.97);
+    backdrop-filter: blur(12px);
+  }
+  .head-cell {
+    min-width: 0;
+    padding: 11px 13px 10px;
+    border-right: 1px solid var(--line);
+  }
+  .head-cell:last-child { border-right: 0; }
+  .head-cell.index-head { color: var(--muted); font: 10px/1.2 var(--mono); letter-spacing: 0.1em; }
+  .head-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .head-file .dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--file-color);
+  }
+  .head-file .name {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .head-meta { margin-top: 3px; color: var(--muted); font-size: 11px; }
+
+  .table-row { border-bottom: 1px solid var(--line); }
+  .table-row {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 158px;
+  }
+  .table-row:last-child { border-bottom: 0; }
+  .row-grid { min-height: 118px; }
+  .row-grid:hover .row-cell { background: rgba(107, 214, 220, 0.035); }
+  .row-grid.row-diff { background: linear-gradient(90deg, rgba(241, 187, 110, 0.045), transparent 48%); }
+  .row-cell {
+    min-width: 0;
+    padding: 11px 13px;
+    border-right: 1px solid var(--line);
+    transition: background 120ms ease;
+  }
+  .row-cell:last-child { border-right: 0; }
+  .row-cell.cell-empty-items {
+    background:
+      repeating-linear-gradient(135deg, rgba(241, 187, 110, 0.055) 0 5px, transparent 5px 10px),
+      rgba(241, 187, 110, 0.035);
+    box-shadow: inset 2px 0 0 rgba(241, 187, 110, 0.48);
+  }
+  .row-cell.cell-range-overflow {
+    background:
+      linear-gradient(135deg, rgba(241, 131, 142, 0.10), transparent 55%),
+      rgba(241, 131, 142, 0.04);
+    box-shadow: inset 2px 0 0 rgba(241, 131, 142, 0.78);
+  }
+  .index-cell {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    cursor: pointer;
+    background: var(--surface-raised);
+  }
+  .row-no { color: var(--ink); font: 700 14px/1 var(--mono); }
+  .row-range { margin-top: 6px; color: var(--faint); font: 10px/1.4 var(--mono); white-space: nowrap; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 19px;
+    padding: 1px 6px;
+    border: 1px solid currentColor;
+    border-radius: 99px;
+    font-size: 10px;
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+  .chip.time, .chip.word-time { color: var(--amber); background: var(--amber-soft); }
+  .chip.items, .chip.count { color: var(--violet); background: rgba(191, 156, 244, 0.12); }
+  .chip.text { color: var(--coral); background: var(--coral-soft); }
+  .chip.missing { color: var(--coral); background: var(--coral-soft); }
+  .chip.overflow { color: var(--coral); background: var(--coral-soft); }
+
+  .subtitle-text {
+    min-height: 24px;
+    color: var(--ink);
+    font-size: 14px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .subtitle-text mark {
+    padding: 0 2px;
+    border-radius: 3px;
+    background: var(--amber-soft);
+    color: var(--amber);
+  }
+  .time-line {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    color: var(--ink-soft);
+    font: 11px/1.35 var(--mono);
+  }
+  .time-line code { color: var(--ink-soft); font: inherit; }
+  .subtitle-duration { color: var(--cyan); font-size: 10px; }
+  .delta-line { color: var(--amber); font-size: 10px; }
+  .ref-line { color: var(--faint); font-size: 10px; }
+  .cell-missing {
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+    color: var(--coral);
+    font-size: 12px;
+  }
+  .item-meta {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .item-badge {
+    padding: 1px 6px;
+    border-radius: 99px;
+    background: var(--surface-high);
+    color: var(--ink-soft);
+    font: 10px/1.4 var(--mono);
+  }
+  .item-badge.has-items { color: var(--cyan); background: var(--cyan-soft); }
+  .item-badge.no-items {
+    border: 1px dashed rgba(241, 187, 110, 0.6);
+    background: var(--amber-soft);
+    color: var(--amber);
+  }
+  .item-badge.warn { color: var(--amber); background: var(--amber-soft); }
+  .item-badge.out-of-range {
+    border: 1px solid rgba(241, 131, 142, 0.65);
+    background: var(--coral-soft);
+    color: var(--coral);
+  }
+  .item-strip {
+    position: relative;
+    height: 13px;
+    margin-top: 10px;
+    overflow: hidden;
+    contain: layout;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background:
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 20px),
+      var(--surface-soft);
+  }
+  .item-strip.has-overflow {
+    border-color: rgba(241, 131, 142, 0.7);
+    background:
+      repeating-linear-gradient(90deg, rgba(241, 131, 142, 0.10) 0 1px, transparent 1px 20px),
+      var(--surface-soft);
+  }
+  .item-strip.no-items {
+    border-style: dashed;
+    border-color: rgba(241, 187, 110, 0.65);
+    background:
+      repeating-linear-gradient(135deg, rgba(241, 187, 110, 0.08) 0 5px, transparent 5px 10px),
+      var(--surface-soft);
+  }
+  .item-strip.missing-items {
+    border-style: dotted;
+    border-color: var(--line-strong);
+    background: var(--surface-soft);
+  }
+  .item-strip.show-labels {
+    height: 52px;
+    overflow: visible;
+    margin-top: 12px;
+    margin-bottom: 2px;
+  }
+  .item-label-row {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 4;
+    height: 32px;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .item-block {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    min-width: 2px;
+    border-radius: 2px;
+    background: var(--file-color);
+    opacity: 0.86;
+  }
+  .item-block.odd { background: color-mix(in srgb, var(--file-color) 88%, white); }
+  .item-block.even { background: color-mix(in srgb, var(--file-color) 78%, #10202a); }
+  .item-block.out-of-range {
+    background: var(--coral);
+    box-shadow: 0 0 8px rgba(241, 131, 142, 0.58);
+    opacity: 1;
+  }
+  .item-strip.show-labels .item-block { top: 35px; bottom: 2px; }
+  .item-block:hover { opacity: 1; filter: brightness(1.2); }
+  .item-label {
+    position: absolute;
+    top: 1px;
+    width: max-content;
+    max-width: 220px;
+    overflow: hidden;
+    padding: 0;
+    transform: translateX(-50%);
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font: 12px/1.35 "Microsoft YaHei UI", "PingFang SC", sans-serif;
+    font-weight: 600;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.98), 0 0 6px var(--surface-soft);
+  }
+  .item-label.out-of-range {
+    border-color: transparent;
+    background: transparent;
+    color: var(--coral);
+  }
+  .item-label-duration {
+    display: block;
+    color: var(--muted);
+    font: 10px/1.1 var(--mono);
+    font-weight: 500;
+  }
+  .item-label-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .item-label.out-of-range .item-label-duration { color: var(--coral); }
+  body.is-resizing .item-label-row { display: none; }
+  .item-strip.no-items::after {
+    content: "EMPTY ITEMS";
+    position: absolute;
+    inset: 0;
+    color: var(--faint);
+    font: 8px/11px var(--mono);
+    letter-spacing: 0.08em;
+    text-align: center;
+  }
+  .item-strip.missing-items::after {
+    content: "MISSING SEGMENT";
+    position: absolute;
+    inset: 0;
+    color: var(--faint);
+    font: 8px/11px var(--mono);
+    letter-spacing: 0.08em;
+    text-align: center;
+  }
+
+  .details {
+    padding: 0 14px 14px 88px;
+    background: rgba(8, 12, 17, 0.28);
+  }
+  .details-head {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    padding: 12px 0 8px;
+  }
+  .details-head strong { color: var(--ink-soft); font-size: 12px; }
+  .details-head span { color: var(--faint); font-size: 11px; }
+  .details-empty { padding: 10px 0 4px; color: var(--faint); font-size: 12px; }
+  .items-table {
+    display: grid;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+  }
+  .items-head, .item-row {
+    display: grid;
+    grid-template-columns: 42px minmax(170px, 1.4fr) repeat(var(--file-count), minmax(155px, 1fr)) minmax(155px, 1fr);
+  }
+  .items-head { background: var(--surface-raised); color: var(--muted); font-size: 10px; }
+  .items-head > div, .item-row > div {
+    min-width: 0;
+    padding: 7px 9px;
+    border-right: 1px solid var(--line);
+  }
+  .items-head > div:last-child, .item-row > div:last-child { border-right: 0; }
+  .item-row { border-top: 1px solid var(--line); background: var(--surface); font-size: 11px; }
+  .item-row > div { color: var(--ink-soft); }
+  .item-seq { color: var(--faint) !important; font: 10px var(--mono); }
+  .item-text { white-space: pre-wrap; word-break: break-word; }
+  .item-text .side { display: block; }
+  .item-text .side + .side { margin-top: 3px; color: var(--amber); }
+  .item-time { font: 10px/1.45 var(--mono); white-space: nowrap; }
+  .item-time.missing, .item-delta.missing { color: var(--faint) !important; }
+  .item-time.out-of-range { color: var(--coral) !important; }
+  .item-range { display: block; }
+  .item-duration {
+    display: block;
+    margin-top: 2px;
+    color: var(--cyan);
+    font-size: 9px;
+  }
+  .item-time.out-of-range .item-duration { color: var(--coral); }
+  .item-delta { color: var(--amber) !important; font: 10px/1.45 var(--mono); }
+
+  .statusbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    min-height: 25px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .statusbar .legend { margin-left: auto; color: var(--faint); }
+  .statusbar .filter-status { color: var(--amber); }
+  .legend .swatch { display: inline-block; width: 7px; height: 7px; margin: 0 3px 1px 8px; border-radius: 50%; }
+  .legend .swatch:first-child { margin-left: 0; }
+  .legend .amber { background: var(--amber); }
+  .legend .violet { background: var(--violet); }
+  .legend .coral { background: var(--coral); }
+
+  #dropOverlay {
+    position: fixed;
+    inset: 12px;
+    z-index: 50;
+    display: grid;
+    place-items: center;
+    border: 2px dashed var(--cyan);
+    border-radius: 18px;
+    background: rgba(13, 17, 23, 0.84);
+    color: var(--cyan);
+    font-size: 22px;
+    font-weight: 700;
+    pointer-events: none;
+  }
+  #toast {
+    position: fixed;
+    right: 20px;
+    top: 76px;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .toast {
+    max-width: min(430px, calc(100vw - 40px));
+    padding: 9px 13px;
+    border: 1px solid var(--line-strong);
+    border-left: 3px solid var(--cyan);
+    border-radius: var(--radius-sm);
+    background: var(--surface-high);
+    box-shadow: var(--shadow);
+    color: var(--ink);
+    font-size: 12px;
+  }
+  .toast.warn { border-left-color: var(--amber); }
+  .toast.error { border-left-color: var(--coral); }
+
+  @media (max-width: 780px) {
+    .topbar { align-items: flex-start; flex-direction: column; gap: 10px; padding: 12px 15px; }
+    .brand { min-width: 0; }
+    .toolbar { width: 100%; }
+    .search { width: min(100%, 260px); flex: 1; }
+    main { min-height: calc(100vh - 115px); padding: 18px 12px 14px; }
+    .hero { align-items: flex-start; flex-direction: column; min-height: 0; }
+    .hero-note { max-width: none; width: 100%; }
+    .file-cards { grid-template-columns: 1fr; }
+    .summary-intro { flex-basis: 100%; }
+    .details { padding-left: 14px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand" aria-label="MAW 时间码对比">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div class="brand-copy">
+      <div class="brand-name">MAW 时间码对比</div>
+      <div class="brand-kicker">precision review</div>
+    </div>
+  </div>
+  <div class="toolbar">
+    <button id="addBtn" class="btn primary" type="button">＋ 添加文件</button>
+    <input id="fileInput" type="file" accept=".srt,.mosp,.json" multiple hidden>
+    <button id="clearBtn" class="btn danger" type="button" disabled>清空</button>
+    <label class="toggle"><input id="diffOnly" type="checkbox" disabled>只看差异</label>
+    <label class="toggle toggle-switch" title="在时间条上显示 items 文本">
+      <input id="showItemText" type="checkbox">
+      <span class="switch-ui" aria-hidden="true"></span>
+      <span>显示 items 文本</span>
+    </label>
+    <label class="filter-control">
+      <span>items 筛选</span>
+      <select id="itemFilter" disabled>
+        <option value="all">全部</option>
+        <option value="empty">仅空 items</option>
+        <option value="overflow">仅越界 items</option>
+      </select>
+    </label>
+    <input id="search" class="search" type="search" placeholder="搜索字幕文本…" disabled>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div>
+      <p class="eyebrow">TIMEBASE INSPECTOR / MS</p>
+      <h1 id="heading">把时间码差异摊开看</h1>
+      <p id="heroSubtitle" class="hero-subtitle">拖入一个工程查看字词时间码，或再加入一个工程按段序号对照。</p>
+    </div>
+    <div class="hero-note"><b>比较真源</b><br>段与字词均按整数毫秒比较；帧字段不会替代毫秒投影。</div>
+  </section>
+
+  <section id="cards" class="file-cards" hidden></section>
+  <section id="summary" class="summary" hidden></section>
+  <section id="warning" class="warning" hidden></section>
+  <section id="tableWrap" class="table-wrap" hidden></section>
+
+  <section id="empty" class="empty">
+    <div id="dropzone" class="dropzone">
+      <div class="drop-icon" aria-hidden="true">⌁</div>
+      <h2>拖入 SRT 或 .mosp 工程</h2>
+      <p>一次最多两个文件：A / B 按段序号对齐，点击行可展开字词明细。</p>
+      <button id="emptyAddBtn" class="btn primary" type="button">选择文件</button>
+      <p class="hint">SRT 没有字词时间码，只会参与段级起止时间和文本比较。</p>
+    </div>
+  </section>
+
+  <footer id="status" class="statusbar" hidden></footer>
+</main>
+
+<div id="dropOverlay" hidden>松开以添加文件</div>
+<div id="toast" aria-live="polite"></div>
+
+<script>
+'use strict';
+
+const PALETTE = ['#72d5db', '#8aaeff'];
+const ACCEPT_EXTENSIONS = new Set(['.srt', '.mosp', '.json']);
+const GRANULARITY_LABELS = {
+  char: '字级',
+  word: '词级',
+  segment: '段级',
+  unknown: '未知',
+};
+const ITEM_STATUS_LABELS = {
+  none: '双侧无',
+  onlyA: '仅 A 有',
+  onlyB: '仅 B 有',
+  count: '词数不同',
+  text: '文本不同',
+  time: '词时不同',
+  same: '完全一致',
+};
+
+const state = {
+  files: [],
+  diffOnly: false,
+  search: '',
+  showItemText: false,
+  itemFilter: 'all',
+  expanded: new Set(),
+};
+let uidCounter = 0;
+
+const els = {};
+for (const id of ['addBtn', 'emptyAddBtn', 'fileInput', 'clearBtn', 'diffOnly', 'showItemText', 'itemFilter', 'search', 'heading', 'heroSubtitle', 'cards', 'summary', 'warning', 'tableWrap', 'empty', 'dropzone', 'status', 'dropOverlay', 'toast']) {
+  els[id] = document.getElementById(id);
+}
+
+function makeElement(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (text !== undefined) element.textContent = text;
+  return element;
+}
+
+function escapeHtml(value) {
+  return String(value === undefined || value === null ? '' : value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function highlightHtml(value, query) {
+  const text = String(value === undefined || value === null ? '' : value);
+  const needle = String(query || '').trim();
+  if (!needle) return escapeHtml(text);
+  const lowerText = text.toLocaleLowerCase();
+  const lowerNeedle = needle.toLocaleLowerCase();
+  let cursor = 0;
+  let html = '';
+  while (cursor < text.length) {
+    const index = lowerText.indexOf(lowerNeedle, cursor);
+    if (index < 0) {
+      html += escapeHtml(text.slice(cursor));
+      break;
+    }
+    html += escapeHtml(text.slice(cursor, index));
+    html += '<mark>' + escapeHtml(text.slice(index, index + needle.length)) + '</mark>';
+    cursor = index + needle.length;
+  }
+  return html;
+}
+
+function toast(message, kind) {
+  const item = makeElement('div', 'toast' + (kind ? ' ' + kind : ''), message);
+  els.toast.appendChild(item);
+  setTimeout(function removeToast() { item.remove(); }, kind === 'error' ? 6800 : 4200);
+}
+
+function extensionOf(name) {
+  const match = /\.([^.]+)$/.exec(String(name || ''));
+  return match ? '.' + match[1].toLowerCase() : '';
+}
+
+function decodeSubtitleBytes(bytes) {
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return new TextDecoder('utf-8').decode(bytes.subarray(3));
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder('gb18030').decode(bytes);
+  }
+}
+
+function parseSrtTimestamp(value) {
+  const match = /^(\d+):(\d{2}):(\d{2})[,.](\d{1,3})$/.exec(String(value || '').trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3]);
+  const milliseconds = Number(match[4].padEnd(3, '0'));
+  if (minutes >= 60 || seconds >= 60) return null;
+  return (((hours * 60 + minutes) * 60) + seconds) * 1000 + milliseconds;
+}
+
+function parseSrt(text) {
+  const warnings = [];
+  const content = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
+  const blocks = content ? content.split(/\n{2,}/) : [];
+  const segments = [];
+  let skipped = 0;
+  for (const block of blocks) {
+    const lines = block.split('\n');
+    if (/^\d+$/.test(String(lines[0] || '').trim())) lines.shift();
+    const timing = /^\s*(.+?)\s*-->\s*(.+?)(?:\s+.*)?$/.exec(lines.shift() || '');
+    if (!timing) {
+      skipped += 1;
+      continue;
+    }
+    const start = parseSrtTimestamp(timing[1]);
+    const end = parseSrtTimestamp(timing[2]);
+    const cueText = lines.join('\n').trim();
+    if (start === null || end === null || end <= start || !cueText) {
+      skipped += 1;
+      continue;
+    }
+    segments.push({
+      originalIndex: segments.length,
+      start,
+      end,
+      text: cueText,
+      items: [],
+    });
+  }
+  if (skipped) warnings.push('跳过 ' + skipped + ' 个无法解析的 SRT cue 块');
+  if (!segments.length) throw new Error(warnings[0] || '没有可解析的 SRT 字幕');
+  return {
+    segments: segments,
+    warnings: warnings,
+    granularity: 'unknown',
+    model: null,
+    timebase: null,
+  };
+}
+
+function pushWarning(warnings, message) {
+  if (!warnings.includes(message)) warnings.push(message);
+}
+
+function readMilliseconds(value, warnings, label) {
+  const number = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(number)) return null;
+  if (!Number.isInteger(number)) {
+    warnings.nonInteger = (warnings.nonInteger || 0) + 1;
+  }
+  return Math.round(number);
+}
+
+function parseItems(rawItems, segmentText, warnings, segmentNumber, segmentStart, segmentEnd) {
+  if (rawItems === undefined || rawItems === null) return [];
+  if (!Array.isArray(rawItems)) {
+    warnings.invalidItems = (warnings.invalidItems || 0) + 1;
+    return [];
+  }
+  const items = [];
+  let skipped = 0;
+  for (const raw of rawItems) {
+    if (!raw || typeof raw !== 'object') {
+      skipped += 1;
+      continue;
+    }
+    const text = typeof raw.text === 'string' ? raw.text : '';
+    const start = readMilliseconds(raw.start, warnings, 'item');
+    const end = readMilliseconds(raw.end, warnings, 'item');
+    if (!text || start === null || end === null || start < 0 || end < start) {
+      skipped += 1;
+      continue;
+    }
+    items.push({
+      text: text,
+      start: start,
+      end: end,
+      outOfRange: start < segmentStart || end > segmentEnd,
+    });
+  }
+  if (skipped) warnings.invalidItemCount = (warnings.invalidItemCount || 0) + skipped;
+  if (items.length && items.map(function itemText(item) { return item.text; }).join('') !== segmentText) {
+    warnings.textMismatch = (warnings.textMismatch || 0) + 1;
+  }
+  return items;
+}
+
+function normaliseProjectObject(object) {
+  if (!object || typeof object !== 'object' || Array.isArray(object) || !Array.isArray(object.segments)) {
+    throw new Error('缺少 segments 字段');
+  }
+  const warnings = [];
+  const segments = [];
+  let skipped = 0;
+  let disabled = 0;
+  for (let index = 0; index < object.segments.length; index += 1) {
+    const raw = object.segments[index];
+    if (!raw || typeof raw !== 'object') {
+      skipped += 1;
+      continue;
+    }
+    if (raw.disabled === true) {
+      disabled += 1;
+      continue;
+    }
+    const start = readMilliseconds(raw.start, warnings, 'segment');
+    const end = readMilliseconds(raw.end, warnings, 'segment');
+    const text = typeof raw.text === 'string' ? raw.text.trim() : '';
+    if (start === null || end === null || start < 0 || end <= start || !text) {
+      skipped += 1;
+      continue;
+    }
+    segments.push({
+      originalIndex: index,
+      start: start,
+      end: end,
+      text: text,
+      items: parseItems(raw.items, text, warnings, index + 1, start, end),
+    });
+  }
+  if (skipped) warnings.push('跳过 ' + skipped + ' 个无效字幕段');
+  if (disabled) warnings.push('忽略 ' + disabled + ' 个已禁用的字幕段');
+  if (warnings.nonInteger) warnings.push(warnings.nonInteger + ' 个时间字段不是整数，已四舍五入');
+  if (warnings.invalidItems) warnings.push(warnings.invalidItems + ' 个 items 字段不是数组，按无字词码处理');
+  if (warnings.invalidItemCount) warnings.push('跳过 ' + warnings.invalidItemCount + ' 个无效 item');
+  if (warnings.textMismatch) warnings.push(warnings.textMismatch + ' 段的 item 文本拼接与段文本不同');
+  if (!segments.length) throw new Error(warnings[0] || '工程里没有可用的字幕段');
+  const granularity = GRANULARITY_LABELS[object.timestamp_granularity]
+    ? object.timestamp_granularity
+    : 'unknown';
+  return {
+    segments: segments,
+    warnings: warnings.filter(function onlyMessages(value) { return typeof value === 'string'; }),
+    granularity: granularity,
+    model: typeof object.model === 'string' && object.model.trim() ? object.model.trim() : '',
+    timebase: object.timebase && typeof object.timebase === 'object' ? object.timebase : null,
+  };
+}
+
+function buildStats(segments) {
+  const withItems = segments.filter(function hasItems(segment) { return segment.items.length > 0; }).length;
+  const overflowItems = segments.reduce(function countOverflow(total, segment) {
+    return total + segment.items.filter(function isOverflow(item) { return item.outOfRange; }).length;
+  }, 0);
+  const overflowSegments = segments.filter(hasOutOfRangeItems).length;
+  const spanStart = Math.min.apply(null, segments.map(function getStart(segment) { return segment.start; }));
+  const spanEnd = Math.max.apply(null, segments.map(function getEnd(segment) { return segment.end; }));
+  let outOfOrder = 0;
+  for (let index = 1; index < segments.length; index += 1) {
+    if (segments[index].start < segments[index - 1].start) outOfOrder += 1;
+  }
+  return {
+    count: segments.length,
+    withItems: withItems,
+    itemCoverage: segments.length ? withItems / segments.length : 0,
+    overflowItems: overflowItems,
+    overflowSegments: overflowSegments,
+    spanStart: spanStart,
+    spanEnd: spanEnd,
+    outOfOrder: outOfOrder,
+  };
+}
+
+function createEntry(name, sourceType, parsed) {
+  return {
+    id: 'file-' + (++uidCounter),
+    name: String(name || '未命名文件'),
+    sourceType: sourceType,
+    color: PALETTE[state.files.length % PALETTE.length],
+    segments: parsed.segments,
+    warnings: parsed.warnings || [],
+    granularity: parsed.granularity || 'unknown',
+    model: parsed.model || '',
+    timebase: parsed.timebase || null,
+    stats: buildStats(parsed.segments),
+  };
+}
+
+async function buildFileEntry(file) {
+  const name = String(file.name || '未命名文件');
+  const extension = extensionOf(name);
+  if (!ACCEPT_EXTENSIONS.has(extension)) throw new Error('不支持的文件类型：' + name);
+  const text = decodeSubtitleBytes(new Uint8Array(await file.arrayBuffer()));
+  if (extension === '.srt') return createEntry(name, 'srt', parseSrt(text));
+  let object;
+  try {
+    object = JSON.parse(text);
+  } catch (error) {
+    throw new Error(name + ' 不是有效的 JSON 工程');
+  }
+  return createEntry(name, 'project', normaliseProjectObject(object));
+}
+
+function entryFromEmbedded(value, index) {
+  const source = value && typeof value === 'object' && value.project !== undefined ? value.project : value;
+  const object = typeof source === 'string' ? JSON.parse(source) : source;
+  const name = value && typeof value === 'object' && value.name
+    ? value.name
+    : (object && object.source_name) || ('嵌入工程 ' + String.fromCharCode(65 + index));
+  return createEntry(name, 'project', normaliseProjectObject(object));
+}
+
+function assignColors() {
+  state.files.forEach(function assignColor(entry, index) {
+    entry.color = PALETTE[index % PALETTE.length];
+  });
+}
+
+function loadProjectObjects(source) {
+  const payload = source === undefined ? window.__MAW_TS_EMBED__ : source;
+  const values = Array.isArray(payload) ? payload : payload && Array.isArray(payload.files) ? payload.files : null;
+  if (!values) throw new Error('嵌入数据必须包含 files 数组');
+  const entries = values.slice(0, 2).map(entryFromEmbedded);
+  if (values.length > 2) toast('嵌入数据超过两个文件，已只加载前两个。', 'warn');
+  state.files = entries;
+  state.diffOnly = false;
+  state.search = '';
+  state.itemFilter = 'all';
+  els.diffOnly.checked = false;
+  els.itemFilter.value = 'all';
+  els.search.value = '';
+  state.expanded.clear();
+  assignColors();
+  render();
+  return entries;
+}
+
+function formatTime(ms) {
+  const total = Math.max(0, Math.round(Number(ms) || 0));
+  const hours = Math.floor(total / 3600000);
+  const minutes = Math.floor((total % 3600000) / 60000);
+  const seconds = Math.floor((total % 60000) / 1000);
+  const millis = total % 1000;
+  return String(hours).padStart(2, '0') + ':' +
+    String(minutes).padStart(2, '0') + ':' +
+    String(seconds).padStart(2, '0') + '.' +
+    String(millis).padStart(3, '0');
+}
+
+function formatDuration(ms) {
+  const total = Math.max(0, Math.round(Number(ms) || 0));
+  return (total / 1000).toFixed(2);
+}
+
+function formatDelta(value) {
+  const number = Math.round(Number(value) || 0);
+  return (number >= 0 ? '+' : '') + number + ' ms';
+}
+
+function formatTimebase(timebase) {
+  if (!timebase || typeof timebase !== 'object') return '';
+  if (timebase.unit === 'frames' && Number.isFinite(Number(timebase.fps))) {
+    return '帧基准 · ' + String(timebase.fps) + ' fps';
+  }
+  if (timebase.unit === 'milliseconds') return '毫秒基准';
+  return '';
+}
+
+function sourceLabel(entry) {
+  if (entry.sourceType === 'srt') return 'SRT · 无字词时间码';
+  const parts = ['工程 · ' + (GRANULARITY_LABELS[entry.granularity] || '未知')];
+  if (entry.model) parts.push(entry.model);
+  return parts.join(' · ');
+}
+
+function hasOutOfRangeItems(segment) {
+  return Boolean(segment && segment.items.some(function isOverflow(item) { return item.outOfRange; }));
+}
+
+function hasEmptyItems(segment) {
+  return Boolean(segment && segment.items.length === 0);
+}
+
+function sameItemTexts(left, right) {
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every(function itemMatches(item, index) { return item.text === right[index].text; });
+}
+
+function sameItemTimes(left, right) {
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every(function itemTimeMatches(item, index) {
+    return item.start === right[index].start && item.end === right[index].end;
+  });
+}
+
+function itemStatus(left, right) {
+  const leftHas = Boolean(left && left.items.length);
+  const rightHas = Boolean(right && right.items.length);
+  if (!leftHas && !rightHas) return 'none';
+  if (leftHas && !rightHas) return 'onlyA';
+  if (!leftHas && rightHas) return 'onlyB';
+  if (left.items.length !== right.items.length) return 'count';
+  if (!sameItemTexts(left.items, right.items)) return 'text';
+  if (!sameItemTimes(left.items, right.items)) return 'time';
+  return 'same';
+}
+
+function comparePair(left, right) {
+  if (!left || !right) {
+    return { changes: ['missing'], itemStatus: 'missing', exact: false };
+  }
+  const changes = [];
+  if (left.start !== right.start || left.end !== right.end) changes.push('time');
+  const leftHas = Boolean(left.items.length);
+  const rightHas = Boolean(right.items.length);
+  if (leftHas !== rightHas) changes.push('items');
+  if (leftHas && rightHas && left.items.length !== right.items.length) changes.push('count');
+  if (left.text !== right.text || (left.items.length && right.items.length && !sameItemTexts(left.items, right.items))) {
+    changes.push('text');
+  }
+  if (leftHas && rightHas && left.items.length === right.items.length &&
+      sameItemTexts(left.items, right.items) && !sameItemTimes(left.items, right.items)) {
+    changes.push('wordTime');
+  }
+  if (hasOutOfRangeItems(left) || hasOutOfRangeItems(right)) changes.push('overflow');
+  return {
+    changes: changes,
+    itemStatus: itemStatus(left, right),
+    exact: changes.length === 0,
+  };
+}
+
+function buildRows() {
+  const count = state.files.reduce(function maxCount(maximum, entry) {
+    return Math.max(maximum, entry.segments.length);
+  }, 0);
+  const rows = [];
+  for (let index = 0; index < count; index += 1) {
+    const cells = state.files.map(function getCell(entry) { return entry.segments[index] || null; });
+    const comparison = state.files.length === 2 ? comparePair(cells[0], cells[1]) : { changes: [], itemStatus: 'single', exact: true };
+    rows.push({
+      index: index,
+      cells: cells,
+      comparison: comparison,
+      searchText: cells.filter(Boolean).map(function getText(cell) {
+        return [cell.text, cell.items.map(function getItem(item) { return item.text; }).join('')].join('\n');
+      }).join('\n'),
+    });
+  }
+  return rows;
+}
+
+function rowMatchesSearch(row) {
+  const query = state.search.trim().toLocaleLowerCase();
+  return !query || row.searchText.toLocaleLowerCase().includes(query);
+}
+
+function rowMatchesItemFilter(row) {
+  if (state.itemFilter === 'empty') {
+    return row.cells.some(hasEmptyItems);
+  }
+  if (state.itemFilter === 'overflow') {
+    return row.cells.some(hasOutOfRangeItems);
+  }
+  return true;
+}
+
+function shownRows(rows) {
+  return rows.filter(function shouldShow(row) {
+    return (!state.diffOnly || row.comparison.changes.length > 0) &&
+      rowMatchesItemFilter(row) && rowMatchesSearch(row);
+  });
+}
+
+function chipLabel(type, row) {
+  if (type === 'time') return '时间';
+  if (type === 'items') return '字词码';
+  if (type === 'count') {
+    const left = row.cells[0] ? row.cells[0].items.length : 0;
+    const right = row.cells[1] ? row.cells[1].items.length : 0;
+    return '词数 ' + left + '→' + right;
+  }
+  if (type === 'text') return '文本';
+  if (type === 'wordTime') return '词时';
+  if (type === 'overflow') return 'items 越界';
+  if (type === 'missing') return '缺段';
+  return type;
+}
+
+function chipClass(type) {
+  if (type === 'time' || type === 'wordTime') return 'time';
+  if (type === 'items') return 'items';
+  if (type === 'count') return 'count';
+  if (type === 'missing') return 'missing';
+  if (type === 'overflow') return 'overflow';
+  return 'text';
+}
+
+function renderChips(row) {
+  const wrapper = makeElement('div', 'chips');
+  row.comparison.changes.forEach(function addChip(type) {
+    wrapper.appendChild(makeElement('span', 'chip ' + chipClass(type), chipLabel(type, row)));
+  });
+  return wrapper;
+}
+
+function renderCards() {
+  els.cards.textContent = '';
+  els.cards.hidden = !state.files.length;
+  state.files.forEach(function renderCard(entry, index) {
+    const card = makeElement('article', 'file-card');
+    card.dataset.label = index === 0 ? 'A' : 'B';
+    card.style.setProperty('--file-color', entry.color);
+
+    const head = makeElement('div', 'card-head');
+    head.appendChild(makeElement('span', 'card-dot'));
+    head.appendChild(makeElement('span', 'card-name', entry.name));
+    const remove = makeElement('button', 'card-remove', '×');
+    remove.type = 'button';
+    remove.title = '移除 ' + entry.name;
+    remove.setAttribute('aria-label', '移除 ' + entry.name);
+    remove.addEventListener('click', function removeEntry() { removeFile(entry.id); });
+    head.appendChild(remove);
+    card.appendChild(head);
+    card.appendChild(makeElement('div', 'card-source', sourceLabel(entry)));
+
+    const grid = makeElement('div', 'card-grid');
+    const stats = [
+      ['段数', String(entry.stats.count)],
+      ['有 items', entry.stats.withItems + '/' + entry.stats.count],
+      ['粒度', GRANULARITY_LABELS[entry.granularity] || '未知'],
+    ];
+    stats.forEach(function addStat(pair) {
+      const block = makeElement('div');
+      block.appendChild(makeElement('span', 'stat-label', pair[0]));
+      block.appendChild(makeElement('span', 'stat-value', pair[1]));
+      grid.appendChild(block);
+    });
+    card.appendChild(grid);
+
+    const coverage = makeElement('div', 'coverage');
+    const track = makeElement('div', 'coverage-track');
+    const fill = makeElement('div', 'coverage-fill');
+    fill.style.width = String(Math.max(entry.stats.itemCoverage * 100, entry.stats.withItems ? 2 : 0)) + '%';
+    track.appendChild(fill);
+    coverage.appendChild(track);
+    coverage.appendChild(makeElement('span', 'coverage-label', Math.round(entry.stats.itemCoverage * 100) + '%'));
+    card.appendChild(coverage);
+
+    const foot = makeElement('div', 'card-foot');
+    foot.appendChild(makeElement('span', 'card-span', formatTime(entry.stats.spanStart) + ' — ' + formatTime(entry.stats.spanEnd)));
+    foot.appendChild(makeElement('span', 'card-timebase', formatTimebase(entry.timebase)));
+    card.appendChild(foot);
+    els.cards.appendChild(card);
+  });
+}
+
+function renderSummary(rows) {
+  els.summary.textContent = '';
+  els.summary.hidden = state.files.length !== 2;
+  if (state.files.length !== 2) return;
+  const pairCount = Math.min(state.files[0].segments.length, state.files[1].segments.length);
+  const segmentEqual = rows.slice(0, pairCount).filter(function isSegmentEqual(row) {
+    return row.cells[0] && row.cells[1] && row.cells[0].start === row.cells[1].start &&
+      row.cells[0].end === row.cells[1].end;
+  }).length;
+  const exact = rows.slice(0, pairCount).filter(function isExact(row) { return row.comparison.exact; }).length;
+  const counts = { none: 0, onlyA: 0, onlyB: 0, count: 0, text: 0, time: 0, same: 0 };
+  rows.slice(0, pairCount).forEach(function countStatus(row) { counts[row.comparison.itemStatus] += 1; });
+
+  const intro = makeElement('div', 'summary-intro');
+  intro.appendChild(makeElement('strong', '', 'A / B 段序号对照'));
+  intro.appendChild(makeElement('span', '', pairCount + ' 对 · 末尾缺段会在表格中标记'));
+  els.summary.appendChild(intro);
+  const metrics = [
+    ['配对段', pairCount + ' / ' + rows.length, ''],
+    ['段级时间一致', String(segmentEqual), segmentEqual === pairCount ? 'good' : 'warn'],
+    ['双侧无 items', String(counts.none), ''],
+    ['仅 A 有', String(counts.onlyA), counts.onlyA ? 'warn' : ''],
+    ['仅 B 有', String(counts.onlyB), counts.onlyB ? 'warn' : ''],
+    ['词数不同', String(counts.count), counts.count ? 'warn' : ''],
+    ['文本不同', String(counts.text), counts.text ? 'bad' : ''],
+    ['词时不同', String(counts.time), counts.time ? 'warn' : ''],
+    ['完全一致', String(counts.same), counts.same === pairCount ? 'good' : ''],
+  ];
+  metrics.forEach(function addMetric(metric) {
+    const element = makeElement('div', 'summary-metric ' + metric[2]);
+    element.appendChild(makeElement('span', 'metric-label', metric[0]));
+    element.appendChild(makeElement('span', 'metric-value', metric[1]));
+    els.summary.appendChild(element);
+  });
+  const allExact = makeElement('div', 'summary-metric ' + (exact === pairCount ? 'good' : ''));
+  allExact.appendChild(makeElement('span', 'metric-label', '行完全一致'));
+  allExact.appendChild(makeElement('span', 'metric-value', exact + '/' + pairCount));
+  els.summary.appendChild(allExact);
+}
+
+function renderWarnings() {
+  const messages = [];
+  state.files.forEach(function collectWarnings(entry, index) {
+    entry.warnings.forEach(function addEntryWarning(message) {
+      messages.push((state.files.length === 2 ? (index === 0 ? 'A' : 'B') + '：' : '') + message);
+    });
+    if (entry.stats.outOfOrder) {
+      messages.push((state.files.length === 2 ? (index === 0 ? 'A' : 'B') + '：' : '') +
+        '有 ' + entry.stats.outOfOrder + ' 处段起点逆序，仍按原数组序号对齐。');
+    }
+    if (entry.stats.overflowItems) {
+      messages.push((state.files.length === 2 ? (index === 0 ? 'A' : 'B') + '：' : '') +
+        '有 ' + entry.stats.overflowItems + ' 个 item 超出所属 subtitle 范围。');
+    }
+  });
+  if (state.files.length === 2 && state.files[0].segments.length !== state.files[1].segments.length) {
+    messages.push('A / B 段数不同；比较按原数组序号进行，超出的一侧显示为缺段。');
+  }
+  els.warning.textContent = '';
+  els.warning.hidden = !messages.length;
+  if (!messages.length) return;
+  els.warning.appendChild(makeElement('strong', '', '解析提示'));
+  const list = makeElement('ul');
+  messages.slice(0, 10).forEach(function addMessage(message) { list.appendChild(makeElement('li', '', message)); });
+  if (messages.length > 10) list.appendChild(makeElement('li', '', '还有 ' + (messages.length - 10) + ' 条提示未展开。'));
+  els.warning.appendChild(list);
+}
+
+function renderItemStrip(segment, color) {
+  const showLabels = state.showItemText && segment.items.length;
+  const hasOverflow = hasOutOfRangeItems(segment);
+  const stripClasses = ['item-strip'];
+  if (segment.missing) stripClasses.push('missing-items');
+  else if (segment.items.length === 0) stripClasses.push('no-items');
+  else if (hasOverflow) stripClasses.push('has-overflow');
+  if (showLabels) stripClasses.push('show-labels');
+  const strip = makeElement('div', stripClasses.join(' '));
+  strip.style.setProperty('--file-color', color);
+  if (!segment.items.length) return strip;
+  const labelRow = showLabels ? makeElement('div', 'item-label-row') : null;
+  if (labelRow) strip.appendChild(labelRow);
+  const duration = Math.max(segment.end - segment.start, 1);
+  segment.items.forEach(function addItem(item, index) {
+    const left = Math.max(0, Math.min(100, ((item.start - segment.start) / duration) * 100));
+    const right = Math.max(left + 0.5, Math.min(100, ((item.end - segment.start) / duration) * 100));
+    if (showLabels) {
+      const caption = makeElement('span', 'item-label' + (item.outOfRange ? ' out-of-range' : ''));
+      caption.style.setProperty('--file-color', color);
+      caption.style.left = (left + (right - left) / 2) + '%';
+      caption.appendChild(makeElement('span', 'item-label-text', item.text));
+      caption.appendChild(makeElement('span', 'item-label-duration', formatDuration(item.end - item.start)));
+      caption.title = item.text + ' · ' + formatTime(item.start) + ' — ' + formatTime(item.end) + ' · ' + formatDuration(item.end - item.start);
+      labelRow.appendChild(caption);
+    }
+    const block = makeElement('span', 'item-block ' + (index % 2 ? 'even' : 'odd') + (item.outOfRange ? ' out-of-range' : ''));
+    block.style.left = left + '%';
+    block.style.width = Math.max(0.7, right - left) + '%';
+    block.title = '#' + (index + 1) + ' ' + item.text + ' · ' + formatTime(item.start) + ' — ' + formatTime(item.end) + ' · 时长 ' + formatDuration(item.end - item.start);
+    strip.appendChild(block);
+  });
+  return strip;
+}
+
+function renderCell(segment, fileIndex, row) {
+  const cellClasses = ['row-cell'];
+  if (segment && hasEmptyItems(segment)) cellClasses.push('cell-empty-items');
+  if (segment && hasOutOfRangeItems(segment)) cellClasses.push('cell-range-overflow');
+  const cell = makeElement('div', cellClasses.join(' '));
+  cell.style.setProperty('--file-color', state.files[fileIndex].color);
+  if (!segment) {
+    cell.appendChild(makeElement('div', 'cell-missing', '本文件缺少第 ' + (row.index + 1) + ' 段'));
+    cell.appendChild(renderItemStrip({ start: 0, end: 1, items: [], missing: true }, state.files[fileIndex].color));
+    return cell;
+  }
+  const text = makeElement('div', 'subtitle-text');
+  text.innerHTML = highlightHtml(segment.text, state.search);
+  cell.appendChild(text);
+
+  const timeLine = makeElement('div', 'time-line');
+  timeLine.appendChild(makeElement('code', '', formatTime(segment.start) + ' — ' + formatTime(segment.end)));
+  timeLine.appendChild(makeElement('span', 'subtitle-duration', '时长 ' + formatDuration(segment.end - segment.start)));
+  if (state.files.length === 2 && row.cells[0] && row.cells[1]) {
+    if (fileIndex === 0) {
+      timeLine.appendChild(makeElement('span', 'ref-line', '基准 A'));
+    } else {
+      timeLine.appendChild(makeElement('span', 'delta-line',
+        'Δ 起 ' + formatDelta(segment.start - row.cells[0].start) +
+        ' · 止 ' + formatDelta(segment.end - row.cells[0].end)));
+    }
+  }
+  cell.appendChild(timeLine);
+
+  const meta = makeElement('div', 'item-meta');
+  const badgeClass = segment.items.length ? 'item-badge has-items' : 'item-badge no-items';
+  meta.appendChild(makeElement('span', badgeClass, segment.items.length ? 'items ' + segment.items.length : '无 items'));
+  const overflowCount = segment.items.filter(function isOverflow(item) { return item.outOfRange; }).length;
+  if (overflowCount) {
+    meta.appendChild(makeElement('span', 'item-badge out-of-range', '越界 ' + overflowCount));
+  }
+  if (segment.items.length && segment.items.map(function getText(item) { return item.text; }).join('') !== segment.text) {
+    meta.appendChild(makeElement('span', 'item-badge warn', '文本未闭合'));
+  }
+  cell.appendChild(meta);
+  cell.appendChild(renderItemStrip(segment, state.files[fileIndex].color));
+  return cell;
+}
+
+function itemTimeText(item) {
+  return item ? formatTime(item.start) + ' — ' + formatTime(item.end) : '—';
+}
+
+function renderItemTime(item) {
+  const className = 'item-time' + (item ? (item.outOfRange ? ' out-of-range' : '') : ' missing');
+  const element = makeElement('div', className);
+  if (!item) {
+    element.textContent = '—';
+    return element;
+  }
+  element.appendChild(makeElement('span', 'item-range', itemTimeText(item)));
+  element.appendChild(makeElement('span', 'item-duration', '时长 ' + formatDuration(item.end - item.start)));
+  return element;
+}
+
+function renderDetails(row) {
+  const details = makeElement('div', 'details');
+  details.style.setProperty('--file-count', String(state.files.length));
+  const head = makeElement('div', 'details-head');
+  head.appendChild(makeElement('strong', '', '第 ' + (row.index + 1) + ' 段 · 字词明细'));
+  head.appendChild(makeElement('span', '', state.files.length === 2 ? '同序号逐项配对；数量不同处不计算 Δ' : '原始 item 顺序'));
+  details.appendChild(head);
+
+  const count = Math.max.apply(null, state.files.map(function getCount(entry, index) {
+    return row.cells[index] ? row.cells[index].items.length : 0;
+  }));
+  if (!count) {
+    details.appendChild(makeElement('div', 'details-empty', '当前行没有可展开的字词时间码。'));
+    return details;
+  }
+
+  const table = makeElement('div', 'items-table');
+  const header = makeElement('div', 'items-head');
+  header.style.setProperty('--file-count', String(state.files.length));
+  header.appendChild(makeElement('div', '', '#'));
+  header.appendChild(makeElement('div', '', '文本'));
+  state.files.forEach(function addFileHead(entry, index) {
+    header.appendChild(makeElement('div', '', (index === 0 ? 'A' : 'B') + ' 起止'));
+  });
+  if (state.files.length === 2) header.appendChild(makeElement('div', '', 'Δ 起 / 止'));
+  else header.appendChild(makeElement('div', '', '说明'));
+  table.appendChild(header);
+
+  for (let index = 0; index < count; index += 1) {
+    const itemRow = makeElement('div', 'item-row');
+    itemRow.style.setProperty('--file-count', String(state.files.length));
+    const items = state.files.map(function getItem(entry, fileIndex) {
+      return row.cells[fileIndex] ? row.cells[fileIndex].items[index] || null : null;
+    });
+    itemRow.appendChild(makeElement('div', 'item-seq', String(index + 1).padStart(2, '0')));
+    const textCell = makeElement('div', 'item-text');
+    if (state.files.length === 2 && items[0] && items[1] && items[0].text !== items[1].text) {
+      const left = makeElement('span', 'side');
+      left.innerHTML = '<b>A</b> ' + highlightHtml(items[0].text, state.search);
+      const right = makeElement('span', 'side');
+      right.innerHTML = '<b>B</b> ' + highlightHtml(items[1].text, state.search);
+      textCell.appendChild(left);
+      textCell.appendChild(right);
+    } else {
+      const item = items.find(Boolean);
+      textCell.innerHTML = highlightHtml(item ? item.text : '—', state.search);
+    }
+    itemRow.appendChild(textCell);
+    items.forEach(function addItemTime(item) {
+      itemRow.appendChild(renderItemTime(item));
+    });
+    const delta = makeElement('div', 'item-delta' + (items[0] && items[1] ? '' : ' missing'));
+    if (items[0] && items[1]) {
+      delta.textContent = formatDelta(items[1].start - items[0].start) + ' / ' +
+        formatDelta(items[1].end - items[0].end);
+    } else {
+      delta.textContent = '—';
+    }
+    itemRow.appendChild(delta);
+    table.appendChild(itemRow);
+  }
+  details.appendChild(table);
+  return details;
+}
+
+function renderTable(rows) {
+  els.tableWrap.textContent = '';
+  els.tableWrap.hidden = !state.files.length;
+  if (!state.files.length) return;
+  const visible = shownRows(rows);
+  if (!visible.length) {
+    let emptyMessage = '没有匹配当前筛选条件的段。';
+    if (state.diffOnly) emptyMessage = '没有时间码差异。';
+    else if (state.itemFilter === 'empty') emptyMessage = '没有 items 为空的字幕段。';
+    else if (state.itemFilter === 'overflow') emptyMessage = '没有 items 越过 subtitle 范围的段。';
+    els.tableWrap.appendChild(makeElement('div', 'table-empty', emptyMessage));
+    return;
+  }
+  const table = makeElement('div', 'compare-table');
+  const columns = '78px ' + state.files.map(function column() { return 'minmax(320px, 1fr)'; }).join(' ');
+  table.style.setProperty('--columns', columns);
+  const header = makeElement('div', 'table-head');
+  header.style.setProperty('--columns', columns);
+  const indexHead = makeElement('div', 'head-cell index-head', '序号 / 段级时间');
+  header.appendChild(indexHead);
+  state.files.forEach(function addHead(entry, index) {
+    const head = makeElement('div', 'head-cell');
+    const fileLine = makeElement('div', 'head-file');
+    const dot = makeElement('span', 'dot');
+    dot.style.setProperty('--file-color', entry.color);
+    fileLine.appendChild(dot);
+    fileLine.appendChild(makeElement('span', 'name', (index === 0 ? 'A · ' : 'B · ') + entry.name));
+    head.appendChild(fileLine);
+    head.appendChild(makeElement('div', 'head-meta', sourceLabel(entry) + ' · ' + entry.stats.count + ' 段'));
+    header.appendChild(head);
+  });
+  table.appendChild(header);
+
+  visible.forEach(function addRow(row) {
+    const wrapper = makeElement('div', 'table-row');
+    const rowGrid = makeElement('div', 'row-grid' + (row.comparison.changes.length ? ' row-diff' : ''));
+    rowGrid.style.setProperty('--columns', columns);
+    rowGrid.tabIndex = 0;
+    rowGrid.setAttribute('role', 'button');
+    rowGrid.setAttribute('aria-expanded', String(state.expanded.has(row.index)));
+    const indexCell = makeElement('div', 'row-cell index-cell');
+    indexCell.appendChild(makeElement('div', 'row-no', String(row.index + 1).padStart(3, '0')));
+    const first = row.cells.find(Boolean);
+    indexCell.appendChild(makeElement('div', 'row-range', first ? formatTime(first.start) : '—'));
+    indexCell.appendChild(renderChips(row));
+    rowGrid.appendChild(indexCell);
+    state.files.forEach(function addCell(entry, index) {
+      rowGrid.appendChild(renderCell(row.cells[index], index, row));
+    });
+    const toggleRow = function toggleRow() {
+      if (state.expanded.has(row.index)) state.expanded.delete(row.index);
+      else state.expanded.add(row.index);
+      renderTable(rows);
+    };
+    rowGrid.addEventListener('click', toggleRow);
+    rowGrid.addEventListener('keydown', function onRowKeydown(event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggleRow();
+      }
+    });
+    wrapper.appendChild(rowGrid);
+    if (state.expanded.has(row.index)) wrapper.appendChild(renderDetails(row));
+    table.appendChild(wrapper);
+  });
+  els.tableWrap.appendChild(table);
+}
+
+function renderStatus(rows) {
+  els.status.textContent = '';
+  els.status.hidden = !state.files.length;
+  if (!state.files.length) return;
+  const visible = shownRows(rows);
+  els.status.appendChild(makeElement('span', '', state.files.length + ' 个文件 · 显示 ' + visible.length + '/' + rows.length + ' 段'));
+  if (state.files.length === 2) {
+    els.status.appendChild(makeElement('span', '', '点击行展开字词明细'));
+  }
+  if (state.itemFilter !== 'all') {
+    els.status.appendChild(makeElement('span', 'filter-status', state.itemFilter === 'empty' ? '筛选：空 items' : '筛选：越界 items'));
+  }
+  const legend = makeElement('span', 'legend');
+  legend.innerHTML = '<span class="swatch amber"></span>时间 / 词时 / 空 items' +
+    '<span class="swatch violet"></span>字词码 / 词数' +
+    '<span class="swatch coral"></span>文本 / 越界 / 缺段';
+  els.status.appendChild(legend);
+}
+
+function render() {
+  const hasFiles = state.files.length > 0;
+  els.empty.hidden = hasFiles;
+  els.clearBtn.disabled = !hasFiles;
+  els.search.disabled = !hasFiles;
+  els.itemFilter.disabled = !hasFiles;
+  els.diffOnly.disabled = state.files.length !== 2;
+  if (state.files.length !== 2) {
+    state.diffOnly = false;
+    els.diffOnly.checked = false;
+  }
+
+  if (!hasFiles) {
+    state.itemFilter = 'all';
+    els.itemFilter.value = 'all';
+    els.heading.textContent = '把时间码差异摊开看';
+    els.heroSubtitle.textContent = '拖入一个工程查看字词时间码，或再加入一个工程按段序号对照。';
+    els.cards.hidden = true;
+    els.summary.hidden = true;
+    els.warning.hidden = true;
+    els.tableWrap.hidden = true;
+    els.status.hidden = true;
+    document.title = 'MAW 时间码对比';
+    return;
+  }
+  const rows = buildRows();
+  els.heading.textContent = state.files.length === 1
+    ? '时间码查看 · ' + state.files[0].name
+    : '时间码对比 · A / B';
+  els.heroSubtitle.textContent = state.files.length === 1
+    ? '按原工程顺序浏览段级范围与字词分布；点击一行展开明细。'
+    : '按段序号对齐；黄色看时间，紫色看字词码，红色看文本或缺段。';
+  document.title = state.files.length === 1 ? '时间码查看 · ' + state.files[0].name : 'MAW 时间码对比';
+  renderCards();
+  renderSummary(rows);
+  renderWarnings();
+  renderTable(rows);
+  renderStatus(rows);
+}
+
+function removeFile(id) {
+  state.files = state.files.filter(function keep(entry) { return entry.id !== id; });
+  if (!state.files.length) {
+    state.diffOnly = false;
+    state.search = '';
+    state.itemFilter = 'all';
+    els.diffOnly.checked = false;
+    els.itemFilter.value = 'all';
+    els.search.value = '';
+  }
+  state.expanded.clear();
+  assignColors();
+  render();
+}
+
+function clearAll() {
+  if (state.files.length && !window.confirm('清空全部已加载的文件？')) return;
+  state.files = [];
+  state.diffOnly = false;
+  state.search = '';
+  state.itemFilter = 'all';
+  els.diffOnly.checked = false;
+  els.itemFilter.value = 'all';
+  els.search.value = '';
+  state.expanded.clear();
+  els.fileInput.value = '';
+  render();
+}
+
+async function addFiles(fileList) {
+  const files = Array.from(fileList || []);
+  const accepted = files.filter(function isAccepted(file) { return ACCEPT_EXTENSIONS.has(extensionOf(file.name)); });
+  if (files.length && !accepted.length) {
+    toast('只接受 .srt、.mosp 或 .json 文件。', 'error');
+    return;
+  }
+  const room = Math.max(0, 2 - state.files.length);
+  if (!room) {
+    toast('最多同时查看两个文件，请先移除 A 或 B。', 'warn');
+    return;
+  }
+  if (accepted.length > room) toast('最多两个文件，超出的文件不会加载。', 'warn');
+  for (const file of accepted.slice(0, room)) {
+    try {
+      state.files.push(await buildFileEntry(file));
+    } catch (error) {
+      toast((error && error.message) || String(error), 'error');
+    }
+  }
+  assignColors();
+  render();
+}
+
+function dragHasFiles(event) {
+  const types = event.dataTransfer && event.dataTransfer.types;
+  return Boolean(types && Array.from(types).includes('Files'));
+}
+
+els.addBtn.addEventListener('click', function openFilePicker() { els.fileInput.click(); });
+els.emptyAddBtn.addEventListener('click', function openEmptyFilePicker() { els.fileInput.click(); });
+els.fileInput.addEventListener('change', function onFileChange() {
+  void addFiles(els.fileInput.files);
+  els.fileInput.value = '';
+});
+els.clearBtn.addEventListener('click', clearAll);
+els.diffOnly.addEventListener('change', function onDiffOnlyChange() {
+  state.diffOnly = els.diffOnly.checked;
+  render();
+});
+els.showItemText.addEventListener('change', function onShowItemTextChange() {
+  state.showItemText = els.showItemText.checked;
+  render();
+});
+els.itemFilter.addEventListener('change', function onItemFilterChange() {
+  state.itemFilter = els.itemFilter.value;
+  render();
+});
+els.search.addEventListener('input', function onSearchInput() {
+  state.search = els.search.value;
+  render();
+});
+
+let dragHideTimer = 0;
+let resizeEndTimer = 0;
+window.addEventListener('resize', function onWindowResize() {
+  document.body.classList.add('is-resizing');
+  clearTimeout(resizeEndTimer);
+  resizeEndTimer = setTimeout(function finishWindowResize() {
+    document.body.classList.remove('is-resizing');
+  }, 140);
+});
+window.addEventListener('dragover', function onDragover(event) {
+  if (!dragHasFiles(event)) return;
+  event.preventDefault();
+  els.dropOverlay.hidden = false;
+  els.dropzone.classList.add('drag');
+  clearTimeout(dragHideTimer);
+});
+window.addEventListener('dragleave', function onDragleave(event) {
+  if (event.relatedTarget) return;
+  clearTimeout(dragHideTimer);
+  dragHideTimer = setTimeout(function hideDrag() {
+    els.dropOverlay.hidden = true;
+    els.dropzone.classList.remove('drag');
+  }, 80);
+});
+window.addEventListener('drop', function onDrop(event) {
+  event.preventDefault();
+  clearTimeout(dragHideTimer);
+  els.dropOverlay.hidden = true;
+  els.dropzone.classList.remove('drag');
+  if (event.dataTransfer && event.dataTransfer.files) void addFiles(event.dataTransfer.files);
+});
+
+window.MAWTsCompare = {
+  state: state,
+  loadProjectObjects: loadProjectObjects,
+  parseSrt: parseSrt,
+  parseProjectObject: normaliseProjectObject,
+  buildRows: buildRows,
+  comparePair: comparePair,
+};
+
+render();
+if (window.__MAW_TS_EMBED__) {
+  try {
+    loadProjectObjects(window.__MAW_TS_EMBED__);
+  } catch (error) {
+    toast((error && error.message) || String(error), 'error');
+  }
+}
+</script>
+</body>
+</html>
