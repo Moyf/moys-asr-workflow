@@ -3544,6 +3544,8 @@ test('normalizes speaker label settings with defaults and safe names', () => {
     },
   });
   assert.equal(helpers.normalizeSpeakerLabelSettings({}).mapping_enabled, false);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({}).enabled, true);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: false }).enabled, false);
   assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: true }).mapping_enabled, true);
   assert.equal(
     helpers.normalizeSpeakerLabelSettings({ enabled: true, mapping_enabled: false }).mapping_enabled,
