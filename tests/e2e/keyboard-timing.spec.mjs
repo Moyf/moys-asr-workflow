@@ -388,9 +388,26 @@ test('dual-mode extension seam replaces the existing selection with both adjacen
     renderAll({ waveform: 'full' });
   });
 
+  const mainZone = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
+  const extensionZone = page.locator('.waveform-cue-boundary[data-track="extension"][data-left-idx="0"]');
+  await expect(mainZone).toBeVisible();
+  await expect(extensionZone).toBeVisible();
+  const mainZoneBox = await mainZone.boundingBox();
+  const extensionZoneBox = await extensionZone.boundingBox();
+  if (!mainZoneBox || !extensionZoneBox) throw new Error('双语字幕中缝没有有效布局');
+  expect(mainZoneBox.y).toBeLessThan(extensionZoneBox.y);
+
+  await mainZone.click();
+  await expect.poll(() => page.evaluate(() => ({
+    main: [...document.querySelectorAll('.waveform-cue-block.selected[data-track="main"]')]
+      .map((block) => block.dataset.idx).sort(),
+    extension: [...document.querySelectorAll('.waveform-cue-block.selected[data-track="extension"]')]
+      .map((block) => block.dataset.extIdx).sort(),
+  }))).toEqual({ main: ['0', '1'], extension: [] });
+
   await page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="2"]').first()
     .click({ modifiers: ['Control'] });
-  const zone = page.locator('.waveform-cue-boundary[data-track="extension"][data-left-idx="0"]');
+  const zone = extensionZone;
   await expect(zone).toBeVisible();
   await zone.click();
   await expect.poll(() => page.evaluate(() => [
