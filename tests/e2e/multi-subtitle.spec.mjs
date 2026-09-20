@@ -4164,6 +4164,7 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   // 「颜色字幕样式」常驻「字幕颜色」页：ASS 关闭时隐藏，显示 CSS「预览颜色样式」。
   await page.locator('#editor-settings-tab-subtitle-color').click();
   await expect(page.locator('#ass-color-style-row')).toBeHidden();
+  await expect(page.locator('#ass-color-speaker-hint')).toBeHidden();
   await expect(page.locator('#subtitle-color-style-control')).toBeVisible();
   await page.locator('#editor-settings-tab-subtitle-style').click();
 
@@ -4197,6 +4198,13 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await page.locator('#editor-settings-tab-subtitle-color').click();
   await expect(page.locator('#ass-color-style-row')).toBeVisible();
   await expect(page.locator('#subtitle-color-style-control')).toBeHidden();
+  await page.locator('#ass-color-style').selectOption('speaker');
+  await expect(page.locator('#ass-color-speaker-hint')).toBeVisible();
+  await expect(page.locator('#ass-color-speaker-hint')).toContainText('需要启用「将颜色映射为说话人」');
+  await expect(page.locator('#ass-color-speaker-export-link')).toHaveText('导出时附加说话人名称');
+  await page.locator('#ass-color-speaker-export-link').click();
+  await expect(page.locator('#editor-settings-page-export')).toBeVisible();
+  await page.locator('#editor-settings-tab-subtitle-color').click();
   await page.locator('#ass-color-style').selectOption('stroke');
   await expect(page.locator('#ass-color-style')).toHaveValue('stroke');
   await page.locator('#editor-settings-tab-subtitle-style').click();
