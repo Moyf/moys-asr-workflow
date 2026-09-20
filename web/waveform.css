@@ -945,6 +945,14 @@
 .waveform-row.multi-subtitle-row .waveform-cue-boundary {
   height: var(--multi-subtitle-lane-height);
 }
+/* 双语波形的主/副字幕共用一行容器，但中缝必须落在对应轨道上；
+   默认 bottom: 7px 只适用于底部的副字幕，会让主轨中缝被副轨覆盖。 */
+.waveform-row.multi-subtitle-row .waveform-cue-boundary[data-track="main"] {
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + var(--multi-subtitle-lane-gap));
+}
+.waveform-row.multi-subtitle-row .waveform-cue-boundary[data-track="extension"] {
+  bottom: var(--multi-subtitle-bottom-inset);
+}
 .waveform-cue-label { pointer-events: none; }
 .waveform-binding-marker {
   position: absolute;
