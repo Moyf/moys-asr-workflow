@@ -2868,7 +2868,7 @@
     cursor: pointer; user-select: none; white-space: nowrap;
   }
   .multi-subtitle-split-auto-submit input { margin: 0; accent-color: var(--accent); }
-  .multi-subtitle-split-footer .actions { margin-top: 0; }
+  .multi-subtitle-split-footer .actions { margin-top: 0; flex-wrap: wrap; }
   .multi-subtitle-split-key-hints {
     display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px;
     margin-top: 12px; color: var(--text-muted); font-size: 11px;
@@ -4770,6 +4770,14 @@
 .waveform-row.multi-subtitle-row .waveform-cue-boundary {
   height: var(--multi-subtitle-lane-height);
 }
+/* 双语波形的主/副字幕共用一行容器，但中缝必须落在对应轨道上；
+   默认 bottom: 7px 只适用于底部的副字幕，会让主轨中缝被副轨覆盖。 */
+.waveform-row.multi-subtitle-row .waveform-cue-boundary[data-track="main"] {
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + var(--multi-subtitle-lane-gap));
+}
+.waveform-row.multi-subtitle-row .waveform-cue-boundary[data-track="extension"] {
+  bottom: var(--multi-subtitle-bottom-inset);
+}
 .waveform-cue-label { pointer-events: none; }
 .waveform-binding-marker {
   position: absolute;
@@ -4901,7 +4909,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.6.0-beta.5</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.6.0-beta.6</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="server-connection-banner" id="server-connection-banner" hidden role="alert" aria-live="assertive">
@@ -5753,6 +5761,12 @@
       </select>
     </label>
     <div class="editor-settings-field">
+    <label class="toggle editor-settings-item" title="开启后，播放过程中通过鼠标点击字幕或波形跳转时会暂停；暂停时不受影响">
+      <input type="checkbox" id="pause-on-mouse-click"> 播放过程中点击鼠标自动暂停
+    </label>
+    <small class="editor-settings-hint">播放时点击字幕、波形或空隙跳转后暂停；暂停时的点击行为不变。</small>
+    </div>
+    <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
@@ -6007,10 +6021,14 @@
           <span>颜色字幕样式</span>
           <select id="ass-color-style" aria-label="ASS 颜色字幕样式">
             <option value="text" selected>作为字幕颜色</option>
+            <option value="speaker">作为说话人名称颜色</option>
             <option value="stroke">作为描边颜色</option>
             <option value="none">无影响</option>
           </select>
         </label>
+        <small class="editor-settings-hint" id="ass-color-speaker-hint" hidden>
+          <span>需要启用「将颜色映射为说话人」；勾选「</span><button type="button" class="editor-settings-inline-action" id="ass-color-speaker-export-link" title="打开导出设置并定位到说话人名称选项" aria-label="打开导出设置并定位到说话人名称选项">导出时附加说话人名称</button><span>」。</span>
+        </small>
         <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
           <span>预览颜色样式</span>
           <select id="subtitle-color-style" aria-label="预览颜色样式">
@@ -6062,7 +6080,7 @@
           将颜色映射为说话人
         </label>
         <label class="toggle editor-settings-item subtitle-speaker-label-toggle" id="subtitle-speaker-labels-enabled-wrap" title="在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本" hidden>
-          <input type="checkbox" id="subtitle-speaker-labels-enabled" aria-label="在预览字幕中显示说话人">
+          <input type="checkbox" id="subtitle-speaker-labels-enabled" checked aria-label="在预览字幕中显示说话人">
           在预览字幕中显示说话人
         </label>
         <div class="subtitle-speaker-labels-settings" id="subtitle-speaker-labels-settings" hidden>
@@ -7126,6 +7144,7 @@
         全部拆分后自动提交
       </label>
       <div class="actions">
+        <button type="button" id="multi-subtitle-split-duplicate" title="拆分后两边保留相同的字幕文本">拆分并保留原文</button>
         <button type="button" id="multi-subtitle-split-cancel">取消（Esc）</button>
         <button type="button" id="multi-subtitle-split-confirm" class="primary">拆分（Enter / B）</button>
       </div>
@@ -8783,11 +8802,12 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
   function normalizeSpeakerLabelSettings(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const hasMappingEnabled = Object.prototype.hasOwnProperty.call(source, 'mapping_enabled');
+    const hasEnabled = Object.prototype.hasOwnProperty.call(source, 'enabled');
     return {
       // 旧工程没有独立的映射开关时，沿用原来的 enabled 语义，避免升级后
-      // 已配置的说话人名称突然失效；新工程则默认关闭颜色到说话人的映射。
+      // 已配置的说话人名称突然失效；新工程的预览名称默认开启，显式 false 仍保留。
       mapping_enabled: hasMappingEnabled ? source.mapping_enabled === true : source.enabled === true,
-      enabled: source.enabled === true,
+      enabled: hasEnabled ? source.enabled === true : true,
       separator: normalizeSpeakerLabelSeparator(source.separator),
       names: normalizeSpeakerLabels(source.names),
     };
@@ -11728,6 +11748,7 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     autoSaveProject: true, autoSaveIntervalSeconds: 30, projectBackupEnabled: true,
     stickerOverlayEnabled: false,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
+    pauseOnMouseClick: false,
     otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
     mediaSeekStepFrames: 1, cueMoveStepMs: 50, cueMoveStepFrames: 1,
@@ -11816,6 +11837,7 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       clickBehavior: ['select-only', 'select-and-seek', 'select-and-play'].includes(savedSettings.clickBehavior)
         ? savedSettings.clickBehavior : 'select-and-seek',
       clickTarget: ['cue-start', 'pointer'].includes(savedSettings.clickTarget) ? savedSettings.clickTarget : 'pointer',
+      pauseOnMouseClick: savedSettings.pauseOnMouseClick === true,
       keyboardOperationReference: savedSettings.keyboardOperationReference === 'playhead' ? 'playhead' : 'pointer',
       jklPlaybackMode: ['speed', 'direction'].includes(savedSettings.jklPlaybackMode)
         ? savedSettings.jklPlaybackMode : 'direction',
@@ -12832,7 +12854,7 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
   const ASS_STYLE_LIBRARY_MAX_NAME_LENGTH = 80;
   const ASS_STYLE_LIBRARY_MAX_FONT_LENGTH = 128;
   const ASS_STYLE_LIBRARY_MAX_TRANSFORM_LENGTH = 512;
-  const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
+  const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
 
   function normalizeAssColorStyle(value) {
     if (value === 'underline') return 'text';
@@ -13493,7 +13515,7 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     // mapping, but a coloured underline is not representable without also
     // changing the glyph colour.  In stroke mode keep the speaker label in
     // the effective base colour so only the outline follows the palette.
-    const speakerColor = colorStyle === 'text'
+    const speakerColor = colorStyle === 'text' || colorStyle === 'speaker'
       ? paletteSpeakerColor : style.primaryColor;
     // The event style already carries the effective ASS text colour.  Reusing
     // the speaker palette here would also colour the whole cue when the old
@@ -13538,7 +13560,7 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       : normalizeAssFontSize(baseStyle.fontSize);
     const title = normalizeAssHeaderValue(options.title ?? options.projectName);
     const colorStyles = normalizeAssColorStyles(options.colorStyles);
-    // ASS 的颜色映射只由 ass_color_style 驱动（text / stroke / none），与 CSS
+    // ASS 的颜色映射只由 ass_color_style 驱动（text / speaker / stroke / none），与 CSS
     // 预览的 color_style（underline / text / stroke）和 color_underline 开关
     // 是两套语义；color_underline 只控制 CSS 预览，不参与 ASS 导出。
     const colorStyle = normalizeAssColorStyle(appearance.ass_color_style) || 'text';
@@ -13560,8 +13582,8 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
-    // 颜色样式只有在 ASS 能表达（text / stroke）时才生成调色板样式；
-    // none 模式下主轨与叠加轨一起回落 Default。
+    // 颜色样式只有在 ASS 能表达为整句样式（text / stroke）时才生成
+    // 调色板样式；speaker 只给说话人前缀加局部颜色，none 回落 Default。
     const assColorGroupsSupported = colorStyle === 'text' || colorStyle === 'stroke';
 
     // 主轨事件：Layer 0，底部居中（Default 样式自带对齐）。
@@ -15643,6 +15665,8 @@ export default MawDynamicCaptions;
     '将颜色映射为说话人': 'Map colors to speakers',
     '分隔符': 'Separator',
     '导出时附加说话人名称': 'Include speaker names when exporting',
+    '需要启用「将颜色映射为说话人」；勾选「': 'Enable “Map colors to speakers”; check “',
+    '」。': '”.',
     '字幕预览中的说话人名称开启后会自动勾选；导出 SRT 时会附加对应名称及分隔符，只影响导出的 SRT，不会改动工程里的字幕文本。': 'This is checked automatically when speaker names are enabled in the subtitle preview; exported SRT includes the matching name and separator, while the project subtitle text remains unchanged.',
     '导出字幕': 'Export subtitles', '导出字幕 ▾': 'Export subtitles ▾',
     '导出 SRT/ASS 字幕或按颜色拆分导出 SRT 字幕': 'Export SRT/ASS subtitles or split SRT subtitles by color',
@@ -15876,7 +15900,7 @@ export default MawDynamicCaptions;
     '已保存到本机用户级配置；Launcher 与 Editor 共享。': 'Saved to local user-level config; shared by Launcher and Editor.',
     '样式库将根据打开方式保存。': 'The style library is saved according to how the Editor was opened.',
     '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。': 'Portable Editor saves only to this browser; open it in server-editor to share it with Launcher.',
-    '颜色字幕样式': 'Color caption style', '作为字幕颜色': 'As text color', '作为描边颜色': 'As outline color', '无影响': 'No effect',
+    '颜色字幕样式': 'Color caption style', '作为字幕颜色': 'As text color', '作为说话人名称颜色': 'As speaker name color', '作为描边颜色': 'As outline color', '无影响': 'No effect',
     'ASS 默认样式': 'ASS default style', '创建副本': 'Duplicate', '重命名': 'Rename',
     '设为主字幕样式': 'Set as main subtitle style', '设为副字幕样式': 'Set as secondary subtitle style',
     '设为 SRT 烧录样式': 'Set as SRT burn-in style', '设为 ASS 导出方案': 'Set as ASS export profile',
@@ -16001,6 +16025,9 @@ export default MawDynamicCaptions;
     '字幕忍者': 'Subtitle Ninja', '开启后，分割工具改用 🔪 图标，并可启用拆分音效与刀光特效': 'When enabled, the Razor tool uses a 🔪 icon, and split sounds and slash effects become available', '播放音效': 'Play sound', '开启后，成功拆分时播放随机刀光音效': 'When enabled, successful splits play a random slash sound', '显示刀光特效': 'Show slash effect', '开启后，成功拆分时在屏幕上显示一道白色刀光': 'Show a white slash across the screen after a successful split', '刀光长度': 'Slash length', '刀光长度，按视口高度的百分比计算': 'Slash length as a percentage of the viewport height', '随机旋转幅度': 'Random rotation', '0 度为完全垂直；30 度表示在左右各 30 度范围内随机倾斜': '0° is fully vertical; 30° tilts randomly within ±30°', '打开字幕忍者模式，让拆分字幕变得更加有趣': 'Open Subtitle Ninja mode to make splitting subtitles more fun',
     '副字幕总时长不足 200ms，无法联动拆分': 'The secondary subtitle is shorter than 200ms, so a linked split is impossible', '主字幕总时长不足 200ms，无法联动拆分': 'The main subtitle is shorter than 200ms, so a linked split is impossible', '主副字幕时间重叠不足，无法找到共同切点': 'The main and secondary subtitles overlap too little to share a split point', '副字幕总时长不足 200ms，无法拆分': 'The secondary subtitle is shorter than 200ms, so it cannot be split', '当前切点无法同时拆分主副字幕，请调整断点位置': 'This cut point cannot split both subtitles; adjust the break position', '当前断点无法把主副字幕文本各拆成两段': 'This break position cannot split both subtitle texts into two parts',
     '选中并跳转': 'Select and seek', '跳转目标': 'Seek target', '字幕开头': 'Subtitle start', '鼠标所在位置': 'Pointer position',
+    '播放过程中点击鼠标自动暂停': 'Pause automatically when clicking the mouse during playback',
+    '开启后，播放过程中通过鼠标点击字幕或波形跳转时会暂停；暂停时不受影响': 'When enabled, mouse clicks that seek from subtitles or the waveform pause playback; clicks while paused are unchanged',
+    '播放时点击字幕、波形或空隙跳转后暂停；暂停时的点击行为不变。': 'While playing, clicking a subtitle, the waveform, or a gap seeks and then pauses; click behavior while paused is unchanged.',
     '主字幕自动使用时间码拆分': 'Automatically split the main subtitle using timecodes',
     '已勾选“主字幕自动使用时间码拆分”，但当前主字幕没有可用的字词时间码，本次设置不生效，已改用拆分面板。': '“Automatically split the main subtitle using timecodes” is enabled, but this subtitle has no usable word timestamps, so the setting does not apply here. The split dialog is used instead.',
     '开启时，有可用字词时间码的主字幕会自动按时间码拆分；联动拆分时主字幕显示为不可交互的时间码锚点。关闭后主字幕也打开拆分弹窗，并默认定位到时间码对应位置': 'When enabled, main subtitles with usable word timestamps split automatically by timecode; in linked splits, the main subtitle appears as a non-interactive timecode anchor. When disabled, main subtitles also open the split dialog, initially positioned at the timecode location',
@@ -16047,6 +16074,7 @@ export default MawDynamicCaptions;
     '移动鼠标并点击选择的拆分断点；字符型语言（中文等）按字符拆分，单词型语言（英语等）只在空格处切分，确保不会拆碎单词。你可以在双语字幕设置中切换语言类型。': 'Move the mouse and click to choose a split boundary. Character-based languages such as Chinese split by character; word-based languages such as English split only at spaces so words stay intact. Change the language type in the bilingual-subtitle settings.',
     '选择副字幕拆分点': 'Choose a secondary subtitle split point', '选择副字幕断点': 'Choose a secondary subtitle split point', '选择主字幕拆分点': 'Choose a main subtitle split point', '主字幕按时间码定位，选择副字幕拆分点': 'Main subtitle positioned by timecode; choose the secondary subtitle split point', '⌚️ 主字幕按时间码会拆在这里': '⌚️ The main subtitle will split here by timecode', '主字幕按时间码拆分位置，不可交互': 'Main subtitle timecode split position; not interactive', '主字幕按时间码拆分于此处，不可交互': 'The main subtitle splits here by timecode; not interactive',
     '在鼠标位置拆分': 'Split at pointer position', '拆分副字幕': 'Split secondary subtitle',
+    '拆分并保留原文': 'Split and keep the original text', '拆分后两边保留相同的字幕文本': 'Keep the same subtitle text on both sides after splitting',
     '取消（Esc）': 'Cancel (Esc)', '拆分（Enter / B）': 'Split (Enter / B)', '全部拆分后自动提交': 'Auto-submit after all split points are selected',
     '分割工具（R）：点击字幕块在指针位置安全拆分（默认按字词时间码对齐；没有可用字词时间码或关闭设置后打开拆分点弹窗，拒绝 100ms 以内的边缘拆分）；Esc 切回选择': 'Razor tool (R): click a subtitle block to safely split at the pointer (by default aligned to word timestamps; when no usable word timestamps exist or the setting is disabled, open the split-point dialog; reject splits within 100 ms of an edge); Esc returns to Select',
     '菜单': 'Menu', '显示菜单': 'Show menu', '单击': 'Click',
@@ -16317,6 +16345,7 @@ export default MawDynamicCaptions;
     '选择播放器画面内主字幕预览的颜色': 'Choose the color of the main subtitle preview in the player',
     '调整播放器画面内副字幕预览的背景色': 'Adjust the secondary subtitle preview background color in the player',
     '选择播放器画面内副字幕预览的颜色': 'Choose the color of the secondary subtitle preview in the player',
+    '打开导出设置并定位到说话人名称选项': 'Open Export settings and locate the speaker-name option',
     '开启字幕预览中的说话人名称后默认勾选；导出 SRT 时在字幕前附加对应名称及分隔符，可手动关闭': 'Checked by default when speaker names are enabled in the subtitle preview; add the matching name and separator before each subtitle in exported SRT, and turn it off manually when needed',
     '在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本': 'Show the speaker name for each color before the subtitle in the player preview; preview only, subtitle text is unchanged',
     '配置颜色对应的说话人名称；留空可隐藏该颜色的名称。分隔符默认「：」，支持空格和英文引号。仅影响预览，不改变字幕文本。': 'Configure the speaker name for each color; leave a name empty to hide it. The separator defaults to “：” and supports spaces or English quotation marks. Preview only, subtitle text is unchanged.',
@@ -20353,7 +20382,7 @@ export default MawDynamicCaptions;
           }
           const timeMs = this.timeFromPointer(event, row);
           this.options.previewGapAt?.(index, timeMs);
-          this.options.seek(timeMs / 1000);
+          this.options.seek(timeMs / 1000, { mouseClick: true });
           this.updatePlayback();
         });
         block.addEventListener('dblclick', (event) => {
@@ -21029,7 +21058,7 @@ export default MawDynamicCaptions;
       const timeMs = allowCrossRow
         ? clamp(requestedMs, 0, Math.max(0, this.durationMs))
         : requestedMs;
-      this.options.seek(timeMs / 1000, { dragPreview });
+      this.options.seek(timeMs / 1000, { dragPreview, mouseClick: !dragPreview });
       this.updatePlayback();
       if (playAfterSeek && this.player?.paused) this.options.togglePlayback?.();
     }
@@ -21040,9 +21069,10 @@ export default MawDynamicCaptions;
         ? this.pointerTimeMs(event, row, geometry)
         : Number(segment?.start);
       if (!Number.isFinite(timeMs)) return;
-      this.options.seek(timeMs / 1000);
+      const wasPlaying = this.options.isPlaybackActive?.() ?? !this.player?.paused;
+      this.options.seek(timeMs / 1000, { mouseClick: true });
       this.updatePlayback();
-      if (playAfterSeek && this.player?.paused) this.options.togglePlayback?.();
+      if (playAfterSeek && this.player?.paused && !wasPlaying) this.options.togglePlayback?.();
     }
 
     // Ctrl(Cmd)+左键拖动空白波形：显示字幕块虚影，松开后交给编辑器
@@ -24319,6 +24349,8 @@ const DEFAULT_EDITOR_SETTINGS = {
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
   clickTarget: 'pointer',
+  // 播放中通过鼠标点击跳转后是否暂停；默认保持原来的继续播放行为。
+  pauseOnMouseClick: false,
   keyboardOperationReference: 'pointer',
   // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
   jklPlaybackMode: 'direction',
@@ -24373,10 +24405,10 @@ const EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE = 16;
 const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#ffd34d';
 // CSS 预览的颜色样式（工程 color_style）；ASS 的颜色映射是独立字段
-// ass_color_style（text / stroke / none），两者语义不同。
+// ass_color_style（text / speaker / stroke / none），两者语义不同。
 const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
 const DEFAULT_SUBTITLE_COLOR_STYLE = 'underline';
-const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
+const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
 const DEFAULT_ASS_COLOR_STYLE = 'text';
 // 字体输入框用 combobox 下拉提供筛选（映射逻辑在 editor-utils 的
 // subtitleFontFamilyStoredToInput / subtitleFontFamilyInputToStored）；
@@ -25400,6 +25432,8 @@ const subtitleColorStyleControl = document.getElementById('subtitle-color-style-
 const subtitleColorStyleSelect = document.getElementById('subtitle-color-style');
 const assColorStyleRow = document.getElementById('ass-color-style-row');
 const assColorStyleSelect = document.getElementById('ass-color-style');
+const assColorSpeakerHint = document.getElementById('ass-color-speaker-hint');
+const assColorSpeakerExportLink = document.getElementById('ass-color-speaker-export-link');
 const subtitleColorPaletteEnabledInput = document.getElementById('subtitle-color-palette-enabled');
 const subtitleColorPaletteGrid = document.getElementById('subtitle-color-palette-grid');
 const subtitleColorPaletteNames = window.AsrEditorUtils.EDITOR_SUBTITLE_COLOR_NAMES || [
@@ -25521,6 +25555,7 @@ const helpMediaSeekStep = document.getElementById('help-media-seek-step');
 const clickBehaviorSelect = document.getElementById('click-behavior');
 const clickTargetField = document.getElementById('click-target-field');
 const clickTargetSelect = document.getElementById('click-target');
+const pauseOnMouseClickToggle = document.getElementById('pause-on-mouse-click');
 const keyboardOperationReferenceSelect = document.getElementById('keyboard-operation-reference');
 const keyboardOperationReferenceHint = document.getElementById('keyboard-operation-reference-hint');
 const jklPlaybackModeSelect = document.getElementById('jkl-playback-mode');
@@ -25672,6 +25707,7 @@ const multiSubtitleSplitTimestampHint = document.getElementById('multi-subtitle-
 const multiSubtitleSplitPreview = document.getElementById('multi-subtitle-split-preview');
 const multiSubtitleSplitError = document.getElementById('multi-subtitle-split-error');
 const multiSubtitleSplitCancel = document.getElementById('multi-subtitle-split-cancel');
+const multiSubtitleSplitDuplicate = document.getElementById('multi-subtitle-split-duplicate');
 const multiSubtitleSplitConfirm = document.getElementById('multi-subtitle-split-confirm');
 const multiSubtitleSplitAutoSubmit = document.getElementById('multi-subtitle-split-auto-submit');
 const editorSettingsToggle = document.getElementById('editor-settings-toggle');
@@ -26617,6 +26653,9 @@ function syncAssModeDependentControls() {
   if (subtitleColorUnderlineInput) subtitleColorUnderlineInput.disabled = assMode;
   if (subtitleColorAssModeHint) subtitleColorAssModeHint.hidden = !assMode;
   if (assColorStyleRow) assColorStyleRow.hidden = !assMode;
+  if (assColorSpeakerHint) {
+    assColorSpeakerHint.hidden = !assMode || assColorStyleSelect?.value !== 'speaker';
+  }
   if (subtitleColorStyleControl) {
     subtitleColorStyleControl.hidden = assMode
       || !(subtitleColorUnderlineInput?.checked ?? true);
@@ -27155,6 +27194,7 @@ if (autoSaveIntervalInput) autoSaveIntervalInput.value = String(EDITOR_SETTINGS.
 if (stickerOverlayToggle) stickerOverlayToggle.checked = EDITOR_SETTINGS.stickerOverlayEnabled;
 if (clickBehaviorSelect) clickBehaviorSelect.value = EDITOR_SETTINGS.clickBehavior;
 if (clickTargetSelect) clickTargetSelect.value = EDITOR_SETTINGS.clickTarget;
+if (pauseOnMouseClickToggle) pauseOnMouseClickToggle.checked = EDITOR_SETTINGS.pauseOnMouseClick;
 if (keyboardOperationReferenceSelect) {
   keyboardOperationReferenceSelect.value = EDITOR_SETTINGS.keyboardOperationReference;
 }
@@ -27853,6 +27893,9 @@ clickBehaviorSelect?.addEventListener('change', () => {
 clickTargetSelect?.addEventListener('change', () => {
   updateEditorSettings({ clickTarget: normalizeClickTarget(clickTargetSelect.value) });
 });
+pauseOnMouseClickToggle?.addEventListener('change', () => {
+  updateEditorSettings({ pauseOnMouseClick: pauseOnMouseClickToggle.checked });
+});
 keyboardOperationReferenceSelect?.addEventListener('change', () => {
   const mode = normalizeKeyboardOperationReferenceMode(keyboardOperationReferenceSelect.value);
   updateEditorSettings({ keyboardOperationReference: mode });
@@ -28253,6 +28296,11 @@ subtitleColorUnderlineInput?.addEventListener('change', () => {
 subtitleColorAssModeHintLink?.addEventListener('click', () => {
   openEditorSettingsAtTab('editor-settings-tab-subtitle-style');
 });
+assColorSpeakerExportLink?.addEventListener('click', (event) => {
+  event.preventDefault();
+  openEditorSettingsAtTab('editor-settings-tab-export');
+  exportSpeakerLabelsToggle?.focus();
+});
 subtitleColorStyleSelect?.addEventListener('change', () => {
   pushPreviewUndo('调整预览字幕颜色样式', snapshotPreviewState());
   setSubtitleAppearance({ color_style: subtitleColorStyleSelect.value });
@@ -28306,10 +28354,15 @@ subtitleSpeakerMappingEnabledInput?.addEventListener('change', () => {
   const previous = snapshotPreviewState();
   previous.speakerLabels.mapping_enabled = !subtitleSpeakerMappingEnabledInput.checked;
   pushPreviewUndo('切换颜色说话人映射', previous);
+  const mappingEnabled = subtitleSpeakerMappingEnabledInput.checked;
   setSpeakerLabelSettings({
     ...getSpeakerLabelSettings(),
-    mapping_enabled: subtitleSpeakerMappingEnabledInput.checked,
+    mapping_enabled: mappingEnabled,
   });
+  if (mappingEnabled) {
+    updateEditorSettings({ exportSpeakerLabels: true });
+    if (exportSpeakerLabelsToggle) exportSpeakerLabelsToggle.checked = true;
+  }
   update();
 });
 subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
@@ -30804,14 +30857,17 @@ function buildOverlayCueEl(seg, index) {
     const previousSuppress = suppressCueListAutoScroll;
     // 与副字幕一致：点击后的 seek 会同步刷新主字幕 active 状态；这次刷新不能把
     // 列表从刚点击的叠加字幕行再次滚到对应的主字幕行。
+    const wasPlaying = isPlaybackActive();
     suppressCueListAutoScroll = true;
     try {
       waveformEditor?.revealTime(segment.start, true);
-      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
+      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') {
+        seekFromWaveform(segment.start / 1000, { mouseClick: true });
+      }
     } finally {
       suppressCueListAutoScroll = previousSuppress;
     }
-    if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused) togglePlayback();
+    if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused && !wasPlaying) togglePlayback();
     if (EDITOR_SETTINGS.cueListAutoScrollOnClick) {
       const row = container.querySelector(`.cue[data-overlay-idx="${index}"]`);
       if (row) scrollCueToCenter(row);
@@ -31499,7 +31555,9 @@ function bindExtensionCueEvents(el, index, track = getActiveExtensionTrack(), du
     suppressCueListAutoScroll = true;
     try {
       waveformEditor?.revealTime(segment.start, true);
-      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') seekFromWaveform(segment.start / 1000);
+      if (EDITOR_SETTINGS.clickBehavior !== 'select-only') {
+        seekFromWaveform(segment.start / 1000, { mouseClick: true });
+      }
     } finally {
       suppressCueListAutoScroll = previousSuppress;
     }
@@ -31678,6 +31736,37 @@ function notifyMainSplitTimestampFallback(segment) {
       || MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(segment)) return;
   const message = '已勾选“主字幕自动使用时间码拆分”，但当前主字幕没有可用的字词时间码，本次设置不生效，已改用拆分面板。';
   flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+}
+
+function fallbackSplitOffset(text, requestedOffset = null) {
+  const length = String(text || '').length;
+  if (!length) return null;
+  if (length <= 1) return 0;
+  const requested = Number.isFinite(Number(requestedOffset))
+    ? Math.round(Number(requestedOffset)) : Math.floor(length / 2);
+  return Math.max(1, Math.min(length - 1, requested));
+}
+
+function splitOffsetNearTimeForModal(segment, timeMs, splitMode) {
+  const offset = splitOffsetNearTime(segment, timeMs, splitMode);
+  if (Number.isInteger(offset)) return offset;
+  const start = Number(segment?.start);
+  const end = Number(segment?.end);
+  const time = Number(timeMs);
+  const ratio = Number.isFinite(start) && Number.isFinite(end) && end > start && Number.isFinite(time)
+    ? (time - start) / (end - start) : 0.5;
+  return fallbackSplitOffset(segment?.text, ratio * String(segment?.text || '').length);
+}
+
+function splitOffsetNearTextPositionForModal(text, offset, splitMode) {
+  const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(text || '', splitMode);
+  const requested = Math.max(0, Math.min(String(text || '').length, Math.round(Number(offset) || 0)));
+  if (legalOffsets.length) {
+    return legalOffsets.reduce((best, candidate) => (
+      Math.abs(candidate - requested) < Math.abs(best - requested) ? candidate : best
+    ), legalOffsets[0]);
+  }
+  return fallbackSplitOffset(text, requested);
 }
 
 function splitOffsetNearTime(segment, timeMs, splitMode) {
@@ -32002,12 +32091,15 @@ function buildSplitPair(
   idBase,
   includeItems = true,
   splitMode = null,
-  { preserveCutMs = false, forceCut = false } = {},
+  { preserveCutMs = false, forceCut = false, duplicateText = false } = {},
 ) {
   const text = String(segment?.text || '');
   const mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
     ? splitMode : MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
-  const parts = MULTI_SUBTITLE_UTILS.splitSubtitleText(text, offset, mode);
+  const safeOffset = Math.max(0, Math.min(text.length, Math.round(Number(offset) || 0)));
+  const parts = duplicateText
+    ? (text ? { left: text, right: text, offset: safeOffset } : null)
+    : MULTI_SUBTITLE_UTILS.splitSubtitleText(text, safeOffset, mode);
   if (!parts) return null;
   const itemParts = splitItemsAtChar(
     includeItems ? segment : { ...segment, items: [] },
@@ -32015,8 +32107,10 @@ function buildSplitPair(
     cutMs,
     { preserveCutMs, forceCut },
   );
-  const leftItems = cleanSplitItems(itemParts.leftItems, 'left');
-  const rightItems = cleanSplitItems(itemParts.rightItems, 'right');
+  // 复制原文后，原有逐词时间码无法再与两侧文本一一对应；清空 items，
+  // 避免把只属于一半文本的时间码带到重复文本上。
+  const leftItems = duplicateText ? [] : cleanSplitItems(itemParts.leftItems, 'left');
+  const rightItems = duplicateText ? [] : cleanSplitItems(itemParts.rightItems, 'right');
   const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
   // 左右两段可各自贴合自家词边界（词间有静音空隙时非对称）。
   const leftEnd = Number.isFinite(itemParts.leftEndMs) ? itemParts.leftEndMs : splitMs;
@@ -32121,14 +32215,14 @@ function assessSplitAlignment(segment, offset, cutMs, options = {}) {
   // 没有列表文字位置时（例如波形/播放头入口）才按时间寻找最近合法断点。
   const hasInitialTextPosition = Number.isFinite(initial.mainOffset);
   const initialMainOffset = hasInitialTextPosition
-    ? splitOffsetNearTextPosition(main.text, initial.mainOffset, mainMode)
-    : splitOffsetNearTime(main, initialTime, mainMode);
+    ? splitOffsetNearTextPositionForModal(main.text, initial.mainOffset, mainMode)
+    : splitOffsetNearTimeForModal(main, initialTime, mainMode);
   const initialMainCutMs = fixedCutMs ?? (hasMainWordTimestamps
     ? splitTimeForTextOffset(main, initialMainOffset)
     : splitCutTime(main, initialMainOffset, false));
   const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
     extension.text, initialMainCutMs, extension.start, extension.end, extensionMode,
-  );
+  ) ?? splitOffsetNearTimeForModal(extension, initialMainCutMs, extensionMode);
   return {
     kind: 'linked',
     mainIndex,
@@ -32168,7 +32262,7 @@ function mainWaveformSplitState(mainIndex, initial = {}) {
     ? initial.timeMs
     : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
   const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
-  const initialOffset = splitOffsetNearTime(main, initialTime, mainMode);
+  const initialOffset = splitOffsetNearTimeForModal(main, initialTime, mainMode);
   if (initialOffset == null) return null;
   return {
     kind: 'main',
@@ -32205,10 +32299,10 @@ function extensionOnlySplitState(extensionIndex, track, initial = {}) {
     : splitTimeForTextOffset(extension, initial.extensionOffset ?? Math.floor(String(extension.text || '').length / 2));
   const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
   const initialOffset = hasInitialTextPosition
-    ? splitOffsetNearTextPosition(extension.text, initial.extensionOffset, extensionMode)
+    ? splitOffsetNearTextPositionForModal(extension.text, initial.extensionOffset, extensionMode)
     : MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
       extension.text, initialTime, extension.start, extension.end, extensionMode,
-    );
+    ) ?? splitOffsetNearTimeForModal(extension, initialTime, extensionMode);
   if (!Number.isInteger(initialOffset)) return null;
   return {
     kind: 'extension',
@@ -32742,6 +32836,34 @@ function splitStateTrack(state) {
   return getExtensionTrack(state?.trackId);
 }
 
+function splitTimingIsValid(segment, cutMs) {
+  const start = Number(segment?.start);
+  const end = Number(segment?.end);
+  const cut = Number(cutMs);
+  return Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(cut)
+    && end - start >= SUBTITLE_MIN_DURATION_MS * 2
+    && cut - start >= SUBTITLE_MIN_DURATION_MS
+    && end - cut >= SUBTITLE_MIN_DURATION_MS;
+}
+
+function duplicateSplitTimingIsValid(state) {
+  if (!state) return false;
+  if (state.kind === 'main') {
+    return splitTimingIsValid(DATA.segments[state.mainIndex], state.mainCutMs);
+  }
+  const track = splitStateTrack(state);
+  if (state.kind === 'extension' || state.kind === 'overlay') {
+    return splitTimingIsValid(
+      extensionSegmentById(state.extensionId, track),
+      state.extensionCutMs,
+    );
+  }
+  const main = DATA.segments[state.mainIndex];
+  const extension = extensionSegmentById(state.extensionId, track);
+  return splitTimingIsValid(main, state.mainCutMs)
+    && splitTimingIsValid(extension, state.extensionCutMs);
+}
+
 function updateLinkedSplitPreview(offset, lane = 'extension') {
   const state = pendingLinkedSplit;
   if (!state) return false;
@@ -32755,10 +32877,12 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
   if (lane === 'main' && main) {
     const requestedOffset = Math.max(0, Math.min(String(main.text || '').length, Math.round(Number(offset) || 0)));
     const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(main.text, state.mainMode);
-    if (!legalOffsets.length) return false;
-    state.mainOffset = legalOffsets.reduce((best, candidate) => (
-      Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
-    ), legalOffsets[0]);
+    state.mainOffset = legalOffsets.length
+      ? legalOffsets.reduce((best, candidate) => (
+        Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
+      ), legalOffsets[0])
+      : fallbackSplitOffset(main.text, requestedOffset);
+    if (!Number.isInteger(state.mainOffset)) return false;
     const mainHasWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
     state.mainCutMs = Number.isFinite(state.fixedCutMs)
       ? state.fixedCutMs
@@ -32771,10 +32895,12 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
       Math.min(String(extension.text || '').length, Math.round(Number(offset) || 0)),
     );
     const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(extension.text, state.extensionMode);
-    if (!legalOffsets.length) return false;
-    state.offset = legalOffsets.reduce((best, candidate) => (
-      Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
-    ), legalOffsets[0]);
+    state.offset = legalOffsets.length
+      ? legalOffsets.reduce((best, candidate) => (
+        Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
+      ), legalOffsets[0])
+      : fallbackSplitOffset(extension.text, requestedOffset);
+    if (!Number.isInteger(state.offset)) return false;
     state.extensionCutMs = Number.isFinite(state.fixedCutMs)
       ? state.fixedCutMs : splitCutTime(extension, state.offset, false);
   }
@@ -32805,6 +32931,7 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
   state.textValid = textValid;
   state.timingValid = mainTimingValid && extensionTimingValid;
   state.mainTimingValid = Boolean(mainTimingValid);
+  state.duplicateTimingValid = duplicateSplitTimingIsValid(state);
   state.forceCutMs = textValid
     ? forceSplitCutForSegments(forceSegments, state.cutMs)
     : null;
@@ -32857,6 +32984,9 @@ function updateLinkedSplitPreview(offset, lane = 'extension') {
   if (multiSubtitleSplitConfirm) {
     multiSubtitleSplitConfirm.disabled = !valid && !state.mainOnlyFallbackEligible;
   }
+  if (multiSubtitleSplitDuplicate) {
+    multiSubtitleSplitDuplicate.disabled = !state.duplicateTimingValid;
+  }
   updateLinkedSplitLockVisual();
   return valid;
 }
@@ -32903,7 +33033,14 @@ function openExtensionSplitModal(
   return true;
 }
 
-function commitMainWaveformSplit(state, { force = false, successMessage = '已按选择的断点拆分主字幕' } = {}) {
+function commitMainWaveformSplit(
+  state,
+  {
+    force = false,
+    duplicateText = false,
+    successMessage = '已按选择的断点拆分主字幕',
+  } = {},
+) {
   // 波形入口可能是在当前字幕面板仍有未提交编辑时触发；先完成面板编辑，
   // 再为“拆分”建立快照，确保一次撤销能回到拆分前的完整字幕状态。
   commitCuePanelEdit();
@@ -32928,10 +33065,10 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
     main.id || `main-${mainIndex}`,
     true,
     state.mainMode,
-    splitAlignmentOptions,
+    { ...splitAlignmentOptions, duplicateText },
   );
   if (!pair) {
-    if (!force) {
+    if (!force && !duplicateText) {
       flashSplitAlignmentHint(
         assessSplitAlignment(main, state.mainOffset, splitMs, splitAlignmentOptions),
         { committed: false },
@@ -32939,9 +33076,9 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
     }
     return false;
   }
-  if (!force) flashSplitAlignmentHint(pair.alignment, { committed: true });
+  if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
   const oldMainId = main.id;
-  pushUndo('拆分字幕', { captureView: true });
+  pushUndo(duplicateText ? '拆分字幕并保留原文' : '拆分字幕', { captureView: true });
   clearSelection({ commitCuePanel: false });
   removeBindingsForSegmentIds([oldMainId], []);
   DATA.segments.splice(mainIndex, 1, pair.left, pair.right);
@@ -32974,7 +33111,7 @@ function commitMainWaveformSplit(state, { force = false, successMessage = '已�
 }
 
 // 降级路径：副轨无法形成合法拆分时，只拆主轨并解除与副字幕的绑定。
-function commitLinkedSplitMainOnly(state) {
+function commitLinkedSplitMainOnly(state, { duplicateText = false } = {}) {
   const main = DATA.segments[state.mainIndex];
   if (!main) return false;
   let force = false;
@@ -32993,14 +33130,17 @@ function commitLinkedSplitMainOnly(state) {
     state.cutMs = mainForceCutMs;
     state.mainCutMs = mainForceCutMs;
   }
-  const committed = commitMainWaveformSplit(state, { force, successMessage: null });
+  const committed = commitMainWaveformSplit(state, { force, duplicateText, successMessage: null });
   if (!committed) return false;
   markMultiSubtitleDirty();
   flashHint('由于副字幕无法在当前切点形成合法拆分，为了拆分主字幕，已解除绑定', 'warning');
   return true;
 }
 
-function commitExtensionSplit(state, { force = false } = {}) {
+function commitExtensionSplit(
+  state,
+  { force = false, duplicateText = false, successMessage = null } = {},
+) {
   const track = getExtensionTrack(state.trackId);
   const extensionIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
   const extension = track?.segments?.[extensionIndex];
@@ -33023,10 +33163,10 @@ function commitExtensionSplit(state, { force = false } = {}) {
     extension.id || `${track.id}-segment-${extensionIndex}`,
     true,
     state.extensionMode,
-    splitAlignmentOptions,
+    { ...splitAlignmentOptions, duplicateText },
   );
   if (!pair) {
-    if (!force) {
+    if (!force && !duplicateText) {
       flashSplitAlignmentHint(
         assessSplitAlignment(extension, state.offset, splitMs, splitAlignmentOptions),
         { committed: false },
@@ -33034,7 +33174,7 @@ function commitExtensionSplit(state, { force = false } = {}) {
     }
     return false;
   }
-  if (!force) flashSplitAlignmentHint(pair.alignment, { committed: true });
+  if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
 
   const oldExtensionId = extension.id;
   const wasBound = Boolean(bindingForExtensionIndex(extensionIndex, track));
@@ -33064,9 +33204,9 @@ function commitExtensionSplit(state, { force = false } = {}) {
   // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
   triggerNinjaSplitFeedback(ninjaModalSplitPoint(state, splitMs, 'extension'));
   flashHint(
-    wasBound
+    successMessage || (wasBound
       ? '已独立拆分副字幕并解除原绑定'
-      : '已按选择的断点拆分副字幕',
+      : '已按选择的断点拆分副字幕'),
     'success',
   );
   return true;
@@ -33096,7 +33236,14 @@ function openOverlaySplitModal(index, timeMs, initial = {}) {
   return true;
 }
 
-function commitOverlaySplit(state, { force = false, successMessage = '已按选择的断点拆分叠加字幕' } = {}) {
+function commitOverlaySplit(
+  state,
+  {
+    force = false,
+    duplicateText = false,
+    successMessage = '已按选择的断点拆分叠加字幕',
+  } = {},
+) {
   const track = getOverlayTrack();
   const overlayIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
   const segment = track?.segments?.[overlayIndex];
@@ -33119,10 +33266,10 @@ function commitOverlaySplit(state, { force = false, successMessage = '已按选�
     segment.id || `overlay-${overlayIndex}`,
     true,
     state.extensionMode,
-    splitAlignmentOptions,
+    { ...splitAlignmentOptions, duplicateText },
   );
   if (!pair) {
-    if (!force) {
+    if (!force && !duplicateText) {
       flashSplitAlignmentHint(
         assessSplitAlignment(segment, state.offset, splitMs, splitAlignmentOptions),
         { committed: false },
@@ -33130,8 +33277,8 @@ function commitOverlaySplit(state, { force = false, successMessage = '已按选�
     }
     return false;
   }
-  if (!force) flashSplitAlignmentHint(pair.alignment, { committed: true });
-  pushUndo('拆分叠加字幕', { captureView: true });
+  if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
+  pushUndo(duplicateText ? '拆分叠加字幕并保留原文' : '拆分叠加字幕', { captureView: true });
   clearSelection({ commitCuePanel: false });
   track.segments.splice(overlayIndex, 1, pair.left, pair.right);
   // 组引用维护与主轨拆分一致：替换下标之后的引用右移一格，
@@ -33164,14 +33311,18 @@ function commitOverlaySplit(state, { force = false, successMessage = '已按选�
   return true;
 }
 
-function confirmLinkedSplit() {
+function confirmLinkedSplit({ duplicateText = false } = {}) {
   const state = pendingLinkedSplit;
   if (!state) return;
   const previewLane = state.kind === 'main' ? 'main' : 'extension';
   const previewOffset = state.kind === 'main' ? state.mainOffset : state.offset;
   const previewValid = updateLinkedSplitPreview(previewOffset, previewLane);
   let force = false;
-  if (!previewValid) {
+  if (duplicateText && !state.duplicateTimingValid) {
+    flashHint('当前切点会产生不足 100ms 的一侧，无法拆分', 'warning');
+    return;
+  }
+  if (!previewValid && !duplicateText) {
     // 副轨救不回来而主轨可拆：降级为只拆主轨并解除绑定，主轨不被副轨阻塞。
     if (state.kind === 'linked' && state.mainOnlyFallbackEligible) {
       commitLinkedSplitMainOnly(state);
@@ -33195,15 +33346,27 @@ function confirmLinkedSplit() {
     state.extensionCutMs = state.forceCutMs;
   }
   if (state.kind === 'main') {
-    commitMainWaveformSplit(state, { force });
+    commitMainWaveformSplit(state, {
+      force,
+      duplicateText,
+      successMessage: duplicateText ? '已拆分主字幕并保留两侧原文' : undefined,
+    });
     return;
   }
   if (state.kind === 'extension') {
-    commitExtensionSplit(state, { force });
+    commitExtensionSplit(state, {
+      force,
+      duplicateText,
+      successMessage: duplicateText ? '已拆分副字幕并保留两侧原文' : undefined,
+    });
     return;
   }
   if (state.kind === 'overlay') {
-    commitOverlaySplit(state, { force });
+    commitOverlaySplit(state, {
+      force,
+      duplicateText,
+      successMessage: duplicateText ? '已拆分叠加字幕并保留两侧原文' : undefined,
+    });
     return;
   }
   const track = getExtensionTrack(state.trackId);
@@ -33225,7 +33388,7 @@ function confirmLinkedSplit() {
     main.id || `main-${mainIndex}`,
     true,
     state.mainMode,
-    { preserveCutMs: true, forceCut: force },
+    { preserveCutMs: true, forceCut: force, duplicateText },
   );
   const extensionPair = buildSplitPair(
     extension,
@@ -33234,20 +33397,20 @@ function confirmLinkedSplit() {
     extension.id || `extension-${extensionIndex}`,
     true,
     state.extensionMode,
-    { preserveCutMs: true, forceCut: force },
+    { preserveCutMs: true, forceCut: force, duplicateText },
   );
   if (!mainPair || !extensionPair || extensionIndex < 0) {
     // 前置时长检查已拦截常见不可拆场景；这里兜底提示，避免弹窗内按键完全无反应。
     flashHint('当前切点无法同时拆分主副字幕，请调整断点位置', 'warning');
     return;
   }
-  if (!force) {
+  if (!force && !duplicateText) {
     flashSplitAlignmentHint(mainPair.alignment, { committed: true });
     flashSplitAlignmentHint(extensionPair.alignment, { committed: true });
   }
   const oldMainId = main.id;
   const oldExtensionId = extension.id;
-  pushUndo('联动拆分字幕', { captureView: true });
+  pushUndo(duplicateText ? '联动拆分并保留原文' : '联动拆分字幕', { captureView: true });
   removeBindingsForSegmentIds([oldMainId], [oldExtensionId]);
   DATA.segments.splice(mainIndex, 1, mainPair.left, mainPair.right);
   if (track) track.segments.splice(extensionIndex, 1, extensionPair.left, extensionPair.right);
@@ -33294,7 +33457,12 @@ function confirmLinkedSplit() {
   });
   // 联动拆分刀光位置由唤起来源决定：列表唤起留在列表，其余落在主轨波形切点。
   triggerNinjaSplitFeedback(ninjaModalSplitPoint(state, sharedCutMs, 'main'));
-  flashHint('已按同一绝对时间切点联动拆分', 'success');
+  flashHint(
+    duplicateText
+      ? '已按同一绝对时间切点联动拆分，并保留两侧原文'
+      : '已按同一绝对时间切点联动拆分',
+    'success',
+  );
 }
 
 function splitAtCursor(
@@ -34848,13 +35016,14 @@ function bindCueEvents(el, idx) {
       scrollCueToCenter(el);
     }
     waveformEditor?.revealTime(DATA.segments[idx].start, true);
+    const wasPlaying = isPlaybackActive();
     if (EDITOR_SETTINGS.clickBehavior !== 'select-only') {
       // 默认只跳转不改动播放状态；“选中并跳转（自动播放）”会在暂停时启动播放。
       const previousSuppress = suppressCueListAutoScroll;
       suppressCueListAutoScroll = state?.preserveListScroll
         ? true : !EDITOR_SETTINGS.cueListAutoScrollOnClick;
       try {
-        seekFromWaveform(DATA.segments[idx].start / 1000);
+        seekFromWaveform(DATA.segments[idx].start / 1000, { mouseClick: true });
       } finally {
         suppressCueListAutoScroll = state?.preserveListScroll
           ? true : previousSuppress;
@@ -34862,7 +35031,7 @@ function bindCueEvents(el, idx) {
       if (state?.preserveListScroll) {
         restoreCueListVisualAnchor(null, { scrollTop: state.listScrollBeforeClick }, 'navigate');
       }
-      if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused) togglePlayback();
+      if (EDITOR_SETTINGS.clickBehavior === 'select-and-play' && player.paused && !wasPlaying) togglePlayback();
     }
   });
   el.addEventListener('dblclick', (e) => {
@@ -35039,6 +35208,17 @@ function playJklForward() {
   if (promise && promise.catch) promise.catch(() => {});
   syncMediaControls();
   return true;
+}
+
+function isPlaybackActive() {
+  return jklReversePlaying || !player.paused;
+}
+
+function pausePlaybackAfterMouseClick() {
+  if (!EDITOR_SETTINGS.pauseOnMouseClick || !isPlaybackActive()) return;
+  if (jklReversePlaying) stopJklReversePlayback({ render: false });
+  player.pause();
+  syncMediaControls();
 }
 
 function togglePlayback() {
@@ -36929,13 +37109,13 @@ function syncSubtitleAppearanceControls(appearance = getSubtitleAppearance()) {
   if (subtitleColorUnderlineInput) {
     subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
+  if (assColorStyleSelect) {
+    assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
+  }
   // 「预览颜色样式」的显隐由 syncAssModeDependentControls 统一处理（含 ASS 开关切换）。
   syncAssModeDependentControls();
   if (subtitleColorStyleSelect) {
     subtitleColorStyleSelect.value = appearance.color_style || DEFAULT_SUBTITLE_COLOR_STYLE;
-  }
-  if (assColorStyleSelect) {
-    assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
   }
   if (subtitleFontFamilyInput && document.activeElement !== subtitleFontFamilyInput) {
     subtitleFontFamilyInput.value = subtitleFontFamilyStoredToInput(appearance.font_family || 'default');
@@ -37880,10 +38060,10 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
 
   if (speakerLabelVisible) {
     applyAssPreviewSpeakerLabel(overlayMainSpeakerLabelEl, animatedMainStyle, metrics);
-    // 与导出 assEventText 一致：text 模式标签跟随调色板颜色，其余保持基础色。
+    // 与导出 assEventText 一致：text / speaker 模式标签跟随调色板颜色，其余保持基础色。
     const paletteColor = COLOR_BY_NAME[mainColorName]?.value;
     const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
-    const labelColor = assColorStyle === 'text'
+    const labelColor = assColorStyle === 'text' || assColorStyle === 'speaker'
       ? paletteColor || animatedMainStyle.primaryColor
       : animatedMainStyle.primaryColor;
     overlayMainSpeakerLabelEl.style.color = labelColor;
@@ -38047,10 +38227,15 @@ function refreshSubtitlePreview(tMs = player.currentTime * 1000, idx = findActiv
   const overlaySpeakerLabelVisible = Boolean(
     overlaySpeakerLabel && overlaySpeakerColorName && COLOR_BY_NAME[overlaySpeakerColorName],
   );
+  const assColorStyle = subtitleAppearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
   const overlaySpeakerLabelColor = overlaySpeakerLabelVisible
-    ? colorPreviewEnabled && colorStyle === 'stroke'
-      ? mainSubtitleColor
-      : COLOR_BY_NAME[overlaySpeakerColorName].value
+    ? assMode
+      ? assColorStyle === 'text' || assColorStyle === 'speaker'
+        ? COLOR_BY_NAME[overlaySpeakerColorName].value
+        : ''
+      : colorPreviewEnabled && colorStyle === 'stroke'
+        ? mainSubtitleColor
+        : COLOR_BY_NAME[overlaySpeakerColorName].value
     : '';
   const overlaySpeakerLabelText = overlaySpeakerLabelVisible
     ? `${overlaySpeakerLabel}${speakerLabels.separator}`
@@ -42538,6 +42723,7 @@ multiSubtitleImportModal?.addEventListener('click', (event) => {
   if (event.target === multiSubtitleImportModal) closeMultiSubtitleImportModal();
 });
 multiSubtitleSplitCancel?.addEventListener('click', closeLinkedSplitModal);
+multiSubtitleSplitDuplicate?.addEventListener('click', () => confirmLinkedSplit({ duplicateText: true }));
 multiSubtitleSplitConfirm?.addEventListener('click', confirmLinkedSplit);
 multiSubtitleSplitModal?.addEventListener('click', (event) => {
   if (event.target === multiSubtitleSplitModal) closeLinkedSplitModal();
@@ -45645,7 +45831,7 @@ function syncTimelineGroupRanges() {
   }
 }
 
-function seekFromWaveform(timeSec, { dragPreview = false } = {}) {
+function seekFromWaveform(timeSec, { dragPreview = false, mouseClick = false } = {}) {
   const seekableEnd = player.seekable.length ? player.seekable.end(player.seekable.length - 1) : 0;
   if (seekableEnd <= 0 && !seekWarned) {
     if (player.readyState < 1 || player.networkState === HTMLMediaElement.NETWORK_LOADING) {
@@ -45657,6 +45843,7 @@ function seekFromWaveform(timeSec, { dragPreview = false } = {}) {
   }
   try {
     player.currentTime = Math.max(0, timeSec);
+    if (mouseClick) pausePlaybackAfterMouseClick();
     if (!dragPreview) {
       update();
       // currentTime 的 seeked/timeupdate 事件是异步触发的；先同步刷新波形，
@@ -45800,6 +45987,7 @@ function initWaveformEditor() {
       seekFromWaveform(timeSec, options);
       if (!options.dragPreview) resumeCueListFollowing();
     },
+    isPlaybackActive: () => isPlaybackActive(),
     onPlayheadDragStateChange: (active) => {
       waveformPlayheadDragging = active === true;
       if (!active) resumeCueListFollowing();
