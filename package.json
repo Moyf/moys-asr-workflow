@@ -9,6 +9,10 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
-    "acorn": "^8.18.0"
+    "acorn": "^8.18.0",
+    "acorn-walk": "^8.3.5",
+    "diff": "^9.0.0",
+    "eslint-scope": "^9.1.2",
+    "magic-string": "^1.4.1"
   }
 }
