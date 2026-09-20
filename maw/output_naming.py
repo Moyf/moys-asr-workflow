@@ -39,6 +39,7 @@ BACKUP_DIR_NAMES: Final[dict[str, str]] = {"zh": "备份", "en": "backups"}
 # 两者同时启用时以点连接（"replace.traditional"）。
 OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
     "postprocess": {"zh": "后处理", "en": "postprocess"},
+    "original": {"zh": "原始", "en": "original"},
     "ocr-dedup": {"zh": "OCR去重", "en": "ocr-dedup"},
     "match": {"zh": "文稿匹配", "en": "match"},
     "replace": {"zh": "批量替换", "en": "replace"},

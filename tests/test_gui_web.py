@@ -737,7 +737,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         config = self.api.get_config()
 
-        self.assertFalse(config["outputSubfolder"])
+        self.assertTrue(config["outputSubfolder"])
         self.assertFalse(config["perVideoSubfolder"])
         self.assertFalse(config["attachModelName"])
 
@@ -4678,6 +4678,15 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertNotIn("font-size: 11px", stylesheet)
         self.assertNotIn("font: 11px", stylesheet)
         self.assertIn(".local-status-row > button", stylesheet)
+
+    def test_legacy_auto_postprocess_plan_defaults_to_retaining_intermediate(self) -> None:
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn("retainIntermediate: true,", script)
+        self.assertIn(
+            "plan.retainIntermediate === undefined ? true : Boolean(plan.retainIntermediate)",
+            script,
+        )
 
     def test_launcher_message_url_stops_before_closing_punctuation(self) -> None:
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")

@@ -346,7 +346,7 @@
     return {
       version: 1,
       enabled: false,
-      retainIntermediate: false,
+      retainIntermediate: true,
       steps: [
         { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
@@ -1603,7 +1603,7 @@
   function applyAutoPostprocessPlan(rawPlan) {
     const plan = rawPlan && typeof rawPlan === "object" ? rawPlan : defaultAutoPlan();
     $("autoPostprocessEnabled").checked = Boolean(plan.enabled);
-    $("autoPostprocessRetain").checked = Boolean(plan.retainIntermediate);
+    $("autoPostprocessRetain").checked = plan.retainIntermediate === undefined ? true : Boolean(plan.retainIntermediate);
     const byId = new Map(Array.isArray(plan.steps) ? plan.steps.map((step) => [step.id, step]) : []);
     AUTO_STEP_ORDER.forEach((stepId) => { $(AUTO_STEP_CHECKBOXES[stepId]).checked = Boolean(byId.get(stepId)?.enabled); });
     const match = byId.get("match") || {};
