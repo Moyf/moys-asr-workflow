@@ -3790,6 +3790,44 @@ test('uses the split dialog for SRT-style main subtitles without word timestamps
   await expect(page.locator('#cues-container > .cue')).toHaveCount(1);
 });
 
+test('can split a hand-created subtitle while keeping the original text on both sides', async ({ page }) => {
+  const project = {
+    segments: [{
+      id: 'duplicate-text-main-001',
+      start: 1000,
+      end: 5000,
+      text: 'AABBCC',
+    }],
+    waveform: generateWaveformPayload(8000),
+  };
+
+  await page.goto(server.url);
+  await dropFiles(page, [{
+    name: 'duplicate-text-project.json',
+    type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
+  }]);
+  expect(await page.evaluate(() => openMainWaveformSplitModal(0, 3000))).toBe(true);
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect(page.locator('#multi-subtitle-split-duplicate'))
+    .toHaveText('拆分并保留原文');
+  await expect(page.locator('#multi-subtitle-split-duplicate')).toBeEnabled();
+  await page.locator('#multi-subtitle-split-duplicate').click();
+
+  await expect.poll(() => page.evaluate(() => DATA.segments.map((segment) => ({
+    start: segment.start,
+    end: segment.end,
+    text: segment.text,
+    items: segment.items,
+  })))).toEqual([
+    { start: 1000, end: 3000, text: 'AABBCC', items: null },
+    { start: 3000, end: 5000, text: 'AABBCC', items: null },
+  ]);
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => page.evaluate(() => DATA.segments.map((segment) => segment.text)))
+    .toEqual(['AABBCC']);
+});
+
 test('keeps the waveform pointer as the absolute cut in a linked split dialog', async ({ page }) => {
   const project = {
     segments: [{ id: 'main-linked-001', start: 1000, end: 5000, text: 'main subtitle' }],
