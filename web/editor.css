@@ -2713,12 +2713,12 @@
   }
   .modal h3 { margin: 0 0 12px 0; font-size: 14px; color: var(--text-primary); font-weight: 600; }
   .modal label { display: block; font-size: 12px; color: var(--text-secondary); margin: 8px 0 4px 0; }
-  .modal input[type=text] {
+  .modal input[type=text], .modal input[type=number] {
     width: 100%; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 6px 8px; font-size: 14px;
     transition: border-color var(--t-fast), box-shadow var(--t-fast);
   }
-  .modal input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  .modal input[type=text]:focus, .modal input[type=number]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
   .modal select {
     width: 100%; min-width: 0; min-height: var(--control-h); box-sizing: border-box;
     padding: 5px 34px 5px 9px; color: var(--text-primary); background-color: var(--bg-input);
