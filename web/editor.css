@@ -2836,7 +2836,7 @@
     cursor: pointer; user-select: none; white-space: nowrap;
   }
   .multi-subtitle-split-auto-submit input { margin: 0; accent-color: var(--accent); }
-  .multi-subtitle-split-footer .actions { margin-top: 0; }
+  .multi-subtitle-split-footer .actions { margin-top: 0; flex-wrap: wrap; }
   .multi-subtitle-split-key-hints {
     display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px;
     margin-top: 12px; color: var(--text-muted); font-size: 11px;
