@@ -536,7 +536,7 @@ test('does not start local transcription while model status is still checking', 
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#provider').selectOption('local');
-  await expect(page.locator('#localModelPanel')).toBeVisible();
+  await expect(page.locator('#localModelSettingsEntry')).toBeVisible();
   await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
   await page.locator('#srtPath').fill('D:\\Demo\\clip.local.srt');
 
@@ -579,14 +579,14 @@ test('keeps local runtime events working after the page learns that installation
   await expect(page.locator('#status')).toHaveText('本地模型支持已安装完成');
 });
 
-test('local runtime check sits above the model panel and deep-links to the Runtime tab top', async ({ page }) => {
+test('local runtime check sits above the local model settings entry and deep-links to the Runtime tab top', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#provider').selectOption('local');
   await expect(page.locator('#localRuntimeCheckField')).toBeVisible();
   const checkRow = await page.locator('#localRuntimeCheckField').boundingBox();
-  const modelPanel = await page.locator('#localModelPanel').boundingBox();
-  expect(checkRow.y + checkRow.height).toBeLessThan(modelPanel.y);
+  const modelEntry = await page.locator('#localModelSettingsEntry').boundingBox();
+  expect(checkRow.y + checkRow.height).toBeLessThan(modelEntry.y);
   await expect(page.locator('#localModelCachePathLine')).toContainText('模型缓存：D:\\Models\\MAW');
   await expect(page.locator('#localRuntimeCheckStatus')).toHaveText('本地运行环境未安装');
   await page.locator('#openLocalRuntimeSettings').click();
@@ -606,7 +606,7 @@ test('English mode localizes provider, model, and language labels from the backe
 
   await expect(page.locator('#provider option[value="local"]')).toHaveText('Local models (Beta)');
   await expect(page.locator('#model option[value="qwen3-asr-local"]')).toHaveText('Qwen3-ASR 0.6B (recommended)');
-  await expect(page.locator('#modelNote')).toHaveText('Runs locally; the first preparation downloads Qwen3-ASR and the Forced Aligner.');
+  await expect(page.locator('#modelNote')).toHaveText('Lightweight multilingual recognition with native word/character timestamps; shares the Qwen3-ForcedAligner cache.');
   await expect(page.locator('#language option').first()).toHaveText('Auto detect');
 });
 
