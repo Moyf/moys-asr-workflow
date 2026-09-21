@@ -531,6 +531,7 @@ class DoubaoCliOutputTests(unittest.TestCase):
                  mock.patch("generate_subtitle_doubao_api.extract_audio_ogg"), \
                  mock.patch("generate_subtitle_doubao_api.transcribe", return_value=result), \
                  mock.patch("generate_subtitle_doubao_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
                 from generate_subtitle_doubao_api import main
 

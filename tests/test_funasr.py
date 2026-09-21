@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import unittest
+from contextlib import redirect_stdout
 from unittest import mock
 
 import requests
@@ -263,6 +265,61 @@ class FunAsrAdapterTests(unittest.TestCase):
         self.assertEqual([segment["speaker"] for segment in segments], ["0", "1"])
         self.assertEqual(segments[1]["text"], "嗯。继续。")
         self.assertTrue(all(segment["end"] > segment["start"] for segment in segments))
+
+
+class FunAsrPartialSentenceLossTests(unittest.TestCase):
+    """与 parse_transcription_result 同策略：坏句子只丢自己，好句子保留。"""
+
+    def _sentence(self, text: str, start: int, speaker: int = 0) -> dict:
+        words = []
+        for index, char in enumerate(text):
+            if char in "，。？！":
+                words.append({"begin_time": start + index * 400, "end_time": start + (index + 1) * 400, "text": "", "punctuation": char})
+            else:
+                words.append({"begin_time": start + index * 400, "end_time": start + (index + 1) * 400, "text": char, "punctuation": ""})
+        return {"begin_time": start, "end_time": start + len(text) * 400, "text": text, "speaker_id": speaker, "words": words}
+
+    def test_zero_duration_sentence_kept_as_segment(self) -> None:
+        result = parse_funasr_transcription_result({
+            "transcripts": [{
+                "text": "你好。嗯？",
+                "sentences": [
+                    self._sentence("你好。", 0),
+                    {"begin_time": 600640, "end_time": 600640, "text": "嗯？", "speaker_id": 0, "words": []},
+                ],
+            }],
+        })
+        self.assertEqual(len(result["sentences"]), 2)
+        zero = result["sentences"][1]
+        self.assertEqual((zero["start"], zero["end"]), (600640, 600640))
+
+    def test_unranged_sentence_skipped_and_warned(self) -> None:
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            result = parse_funasr_transcription_result({
+                "transcripts": [{
+                    "text": "你好。嗯？",
+                    "sentences": [
+                        self._sentence("你好。", 0),
+                        {"text": "嗯？", "words": []},
+                    ],
+                }],
+            })
+        self.assertEqual(len(result["sentences"]), 1)
+        self.assertEqual(result["sentences"][0]["text"], "你好。")
+        self.assertIn("缺少有效时间范围", buffer.getvalue())
+
+    def test_text_mismatch_warns_without_dropping_timestamps(self) -> None:
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            result = parse_funasr_transcription_result({
+                "transcripts": [{
+                    "text": "你好。再见",  # "再见"没有对应句子
+                    "sentences": [self._sentence("你好。", 0)],
+                }],
+            })
+        self.assertGreater(len(result["sentences"]), 0)
+        self.assertIn("不一致", buffer.getvalue())
 
 
 if __name__ == "__main__":

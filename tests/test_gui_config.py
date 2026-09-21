@@ -510,7 +510,7 @@ class GuiConfigTests(unittest.TestCase):
             env_path = Path(temp_dir) / ".env"
             with mock.patch.dict(os.environ, {}, clear=True):
                 config = gui_config.effective_config(env_path)
-            self.assertFalse(config.output_subfolder)
+            self.assertTrue(config.output_subfolder)
             self.assertFalse(config.per_video_subfolder)
             self.assertFalse(config.attach_model_name)
 
@@ -571,7 +571,7 @@ class GuiConfigTests(unittest.TestCase):
 
             with mock.patch.dict(os.environ, {}, clear=True):
                 config = gui_config.effective_config(env_path)
-            self.assertFalse(config.output_subfolder)
+            self.assertTrue(config.output_subfolder)
             self.assertFalse(config.attach_model_name)
 
     def test_model_by_label_searches_all_providers(self) -> None:

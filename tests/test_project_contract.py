@@ -798,7 +798,7 @@ class ProjectContractTests(unittest.TestCase):
 
     def test_validate_project_accepts_current_and_legacy_color_styles(self) -> None:
         # CSS 预览 color_style：underline / text / stroke（shadow 兼容读取）；
-        # ASS 的 ass_color_style：text / stroke / none。
+        # ASS 的 ass_color_style：text / speaker / stroke / none。
         for color_style in ("underline", "text", "stroke", "shadow"):
             project = {
                 "segments": [{"start": 0, "end": 1000, "text": "hi"}],
@@ -812,7 +812,7 @@ class ProjectContractTests(unittest.TestCase):
 
             self.assertTrue(result.ok, color_style)
             self.assertEqual(result.project["preview"]["subtitle"]["color_style"], color_style)
-        for ass_color_style in ("text", "stroke", "none"):
+        for ass_color_style in ("text", "speaker", "stroke", "none"):
             project = {
                 "segments": [{"start": 0, "end": 1000, "text": "hi"}],
                 "preview": {"subtitle": {
@@ -829,7 +829,7 @@ class ProjectContractTests(unittest.TestCase):
             )
 
     def test_validate_project_rejects_invalid_ass_color_style(self) -> None:
-        # ass_color_style 只接受 text / stroke / none；CSS 预览的历史值 underline
+        # ass_color_style 只接受 text / speaker / stroke / none；CSS 预览的历史值 underline
         # 不属于 ASS 语义，必须拒绝。
         project = {
             "segments": [{"start": 0, "end": 1000, "text": "hi"}],

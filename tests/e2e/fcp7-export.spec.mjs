@@ -99,13 +99,14 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
-test('opens the export modal with native text unchecked and closed choices only', async ({ page }) => {
+test('opens the export modal with native text checked by default and closed choices only', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
   await expect(page.locator('#download-fcp7-export')).toBeAttached();
 
   await openFcp7Modal(page);
-  await expect(page.locator('#fcp7-export-native-text')).not.toBeChecked();
+  await expect(page.locator('#fcp7-export-native-text')).toBeChecked();
+  await expect(page.locator('#fcp7-export-subtitle-tracks')).toBeEnabled();
   await expect(page.locator('#fcp7-export-timeline-mode')).toHaveValue('gap_removed');
   await expect(page.locator('#fcp7-export-fps')).toHaveValue('30');
 
@@ -124,6 +125,12 @@ test('opens the export modal with native text unchecked and closed choices only'
   await expect(page.locator('#fcp7-export-subtitle-tracks option[value="all"]'))
     .toBeDisabled();
   await expect(page.locator('#fcp7-export-subtitle-tracks')).toHaveValue('main');
+
+  // 取消勾选原生文本后，「导出字幕轨」禁用；重新勾选即恢复。
+  await page.locator('#fcp7-export-native-text').uncheck();
+  await expect(page.locator('#fcp7-export-subtitle-tracks')).toBeDisabled();
+  await page.locator('#fcp7-export-native-text').check();
+  await expect(page.locator('#fcp7-export-subtitle-tracks')).toBeEnabled();
 
   await page.locator('#fcp7-export-cancel').click();
   await expect(page.locator('#fcp7-export-modal')).not.toHaveClass(/show/);
@@ -150,7 +157,10 @@ test('commits the active panel edit, then saves XML without exporting SRT', asyn
   await page.locator('.cue[data-idx="3"]').click();
   await page.locator('#cue-panel-text').fill('Crossing edited');
   await openFcp7Modal(page);
-  await expect(page.locator('#fcp7-export-native-text')).not.toBeChecked();
+  await expect(page.locator('#fcp7-export-native-text')).toBeChecked();
+  // 该用例验证不含文本对象的 XML：默认已勾选，这里显式关闭。
+  await page.locator('#fcp7-export-native-text').uncheck();
+  await expect(page.locator('#fcp7-export-subtitle-tracks')).toBeDisabled();
   await page.locator('#fcp7-export-confirm').click();
 
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
@@ -170,13 +180,13 @@ test('commits the active panel edit, then saves XML without exporting SRT', asyn
     .toContainText('FCP 7 XML 已保存');
 });
 
-test('emits GraphicAndType text clips only after explicit opt-in', async ({ page }) => {
+test('emits GraphicAndType text clips with the default opt-in', async ({ page }) => {
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
 
   await openFcp7Modal(page);
-  await page.locator('#fcp7-export-native-text').check();
+  await expect(page.locator('#fcp7-export-native-text')).toBeChecked();
   await page.locator('#fcp7-export-confirm').click();
 
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
@@ -250,7 +260,7 @@ test('missing media duration fails the export with no save attempt and no false 
   await expect(page.locator('#fcp7-export-confirm')).toBeEnabled();
 });
 
-test('translates the export modal into English and keeps native text unchecked', async ({ page }) => {
+test('translates the export modal into English and keeps native text checked', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
   await disableOnboarding(page);
   await page.goto(server.url);
@@ -260,5 +270,5 @@ test('translates the export modal into English and keeps native text unchecked',
     .toHaveText('Premiere FCP 7 XML (experimental)');
   await expect(page.locator('#fcp7-export-confirm')).toHaveText('Export XML');
   await expect(page.locator('#fcp7-export-modal')).toContainText('Write native subtitle text objects');
-  await expect(page.locator('#fcp7-export-native-text')).not.toBeChecked();
+  await expect(page.locator('#fcp7-export-native-text')).toBeChecked();
 });

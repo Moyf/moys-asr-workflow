@@ -938,6 +938,11 @@ def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
                     break
                 timestamp = normalize_timestamp_range(item.get("start"), item.get("end"))
                 if timestamp is None:
+                    # 零宽词（begin == end）是确定时间点而非损坏数据，保留
+                    # 给 repair_segment_durations 拉宽；否则合并段会整段
+                    # 丢弃词级时间码。
+                    timestamp = _zero_duration_range(item.get("start"), item.get("end"))
+                if timestamp is None:
                     items_complete = False
                     break
                 normalized = dict(item)
@@ -987,6 +992,10 @@ def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
                         normalized_items = []
                         break
                     timestamp = normalize_timestamp_range(item.get("start"), item.get("end"))
+                    if timestamp is None:
+                        # 零宽词保留（确定时间点），交给 repair_segment_durations
+                        # 拉宽；否则含零宽词的段会整段丢失词级时间码。
+                        timestamp = _zero_duration_range(item.get("start"), item.get("end"))
                     if timestamp is None:
                         normalized_items = []
                         break
@@ -1480,6 +1489,44 @@ def download_transcription(transcription_url: str) -> dict:
 
 # ===== filetrans 结果 → 本地版 transcribe() 输出格式 =====
 
+def _zero_duration_range(begin_time: object, end_time: object) -> tuple[int, int] | None:
+    """把云端偶发的零时长句子/词（begin == end）保留为一个确定时间点。
+
+    qwen3-asr-flash-filetrans 会为语气词等占位句返回 begin_time == end_time
+    （实测"啊。"600640→600640），也会对部分正常词给出零宽时间码（实测
+    "玩"2000→2000，紧贴前词结束点）。范围虽然零宽但时间点真实：句子保留
+    为零长段、词保留为零宽 item，交给下游修复/插值；1.6.x 曾因这类数据
+    触发保险把整份时间码废弃成整段单条字幕，2 句废掉全片。
+    """
+    if (
+        isinstance(begin_time, int)
+        and isinstance(end_time, int)
+        and begin_time == end_time
+        and begin_time >= 0
+    ):
+        return (begin_time, end_time)
+    return None
+
+
+def _emit_sentence_diagnostics(
+    missing_range_sentences: int,
+    text_mismatch: tuple[int, int] | None,
+) -> None:
+    """句子级数据不完整时把可读原因写进日志（没有 raw 也能从日志定位）。"""
+    if missing_range_sentences:
+        print(
+            f"[警告] {missing_range_sentences} 个云端句子缺少有效时间范围，"
+            "已跳过这些句子，其余句子不受影响。"
+        )
+    if text_mismatch:
+        print(
+            "[警告] 云端整段文本与句子拼接不一致"
+            f"（text {text_mismatch[0]} 字符 vs 句子拼接 {text_mismatch[1]} 字符），"
+            "句子数组可能不完整；已按句子时间码输出，缺失的内容不会有字幕，"
+            "可勾选「调试运行」保存原始返回以便排查。"
+        )
+
+
 def parse_transcription_result(result: dict) -> dict:
     """把 filetrans JSON 转成本地版 transcribe() 的输出格式。
 
@@ -1509,7 +1556,8 @@ def parse_transcription_result(result: dict) -> dict:
     detected_language = normalize_language_code(result.get("language") or result.get("lang"))
     has_word_timestamps = False
     has_fallback_segment = False
-    has_unranged_text = False
+    missing_range_sentences = 0
+    text_mismatch: tuple[int, int] | None = None
 
     raw_sentences = t.get("sentences", [])
     raw_sentences = raw_sentences if isinstance(raw_sentences, list) else []
@@ -1537,6 +1585,10 @@ def parse_transcription_result(result: dict) -> dict:
             timestamp = normalize_timestamp_range(
                 word.get("begin_time"), word.get("end_time")
             )
+            if timestamp is None:
+                timestamp = _zero_duration_range(
+                    word.get("begin_time"), word.get("end_time")
+                )
             if timestamp is None:
                 invalid_word_timestamp = True
                 continue
@@ -1576,6 +1628,10 @@ def parse_transcription_result(result: dict) -> dict:
         sentence_range = normalize_timestamp_range(
             sent.get("begin_time"), sent.get("end_time")
         )
+        if sentence_range is None:
+            sentence_range = _zero_duration_range(
+                sent.get("begin_time"), sent.get("end_time")
+            )
         if sentence_range is None and valid_item_range is not None:
             # Even when one word is malformed, the valid word envelope is a
             # useful conservative sentence range.  Never expose those words
@@ -1591,7 +1647,7 @@ def parse_transcription_result(result: dict) -> dict:
             )
         if sentence_range is None or not segment_text.strip():
             if segment_text.strip():
-                has_unranged_text = True
+                missing_range_sentences += 1
             continue
         segment = {
             "start": sentence_range[0],
@@ -1608,24 +1664,21 @@ def parse_transcription_result(result: dict) -> dict:
         # while keeping sentence text.  Do not reject an otherwise usable
         # timestamped response just because this redundant field is absent.
         text = "".join(sentence_texts)
-    if (
-        text
-        and sentence_texts
-        and _re.sub(r"\s+", "", text) != _re.sub(r"\s+", "", "".join(sentence_texts))
-    ):
-        # Do not let a partial sentence array silently discard text present in
-        # the transcript-level field.  The caller will use a whole-media cue.
-        has_unranged_text = True
-    if has_unranged_text:
-        all_items = []
-        segments = []
+    plain_text = _re.sub(r"\s+", "", text)
+    plain_joined = _re.sub(r"\s+", "", "".join(sentence_texts))
+    if text and sentence_texts and plain_text != plain_joined:
+        # 云端整段文本与句子拼接不一致说明句子数组可能不完整（漏句）。保留
+        # 有效句子的时间码并提示缺漏，比把整份时间码废弃成整段单条字幕
+        # （1.6.x 之前的行为）诚实得多：坏句子不该废掉全部好句子。
+        text_mismatch = (len(plain_text), len(plain_joined))
+    _emit_sentence_diagnostics(missing_range_sentences, text_mismatch)
     return {
         "text": text,
         "language": detected_language,
         "items": all_items,
         "segments": segments if has_fallback_segment else [],
         "timestamp_granularity": (
-            "word" if has_word_timestamps and not has_fallback_segment and not has_unranged_text
+            "word" if has_word_timestamps and not has_fallback_segment
             else "segment" if segments
             else "unknown"
         ),
@@ -1651,7 +1704,8 @@ def parse_funasr_transcription_result(result: dict) -> dict:
     detected_language = normalize_language_code(result.get("language") or result.get("lang"))
     has_word_timestamps = False
     has_fallback_sentence = False
-    has_unranged_text = False
+    missing_range_sentences = 0
+    text_mismatch: tuple[int, int] | None = None
     raw_sentences = transcript.get("sentences", [])
     raw_sentences = raw_sentences if isinstance(raw_sentences, list) else []
     for sentence in raw_sentences:
@@ -1677,6 +1731,10 @@ def parse_funasr_transcription_result(result: dict) -> dict:
             timestamp = normalize_timestamp_range(
                 word.get("begin_time"), word.get("end_time")
             )
+            if timestamp is None:
+                timestamp = _zero_duration_range(
+                    word.get("begin_time"), word.get("end_time")
+                )
             if timestamp is None:
                 invalid_word_timestamp = True
                 continue
@@ -1718,6 +1776,10 @@ def parse_funasr_transcription_result(result: dict) -> dict:
         sentence_range = normalize_timestamp_range(
             sentence.get("begin_time"), sentence.get("end_time")
         )
+        if sentence_range is None:
+            sentence_range = _zero_duration_range(
+                sentence.get("begin_time"), sentence.get("end_time")
+            )
         if sentence_range is None and valid_item_range is not None:
             # A malformed word list still has usable outer bounds in some
             # responses.  Keep the sentence as coarse, never partial words.
@@ -1731,7 +1793,7 @@ def parse_funasr_transcription_result(result: dict) -> dict:
             )
         if sentence_range is None or not sentence_text.strip():
             if sentence_text.strip():
-                has_unranged_text = True
+                missing_range_sentences += 1
             continue
         parsed_sentence: dict[str, object] = {
             "text": sentence_text.strip(),
@@ -1748,22 +1810,20 @@ def parse_funasr_transcription_result(result: dict) -> dict:
     if not text:
         # Fun-ASR variants may only expose text on sentence entries.
         text = "".join(sentence_texts)
-    if (
-        text
-        and sentence_texts
-        and _re.sub(r"\s+", "", text) != _re.sub(r"\s+", "", "".join(sentence_texts))
-    ):
-        has_unranged_text = True
-    if has_unranged_text:
-        all_items = []
-        parsed_sentences = []
+    plain_text = _re.sub(r"\s+", "", text)
+    plain_joined = _re.sub(r"\s+", "", "".join(sentence_texts))
+    if text and sentence_texts and plain_text != plain_joined:
+        # 与 parse_transcription_result 同策略：坏句子不该废掉全部好句子，
+        # 保留有效句子的时间码并把缺漏写进日志。
+        text_mismatch = (len(plain_text), len(plain_joined))
+    _emit_sentence_diagnostics(missing_range_sentences, text_mismatch)
     return {
         "text": text,
         "language": detected_language,
         "items": all_items,
         "sentences": parsed_sentences,
         "timestamp_granularity": (
-            "word" if has_word_timestamps and not has_fallback_sentence and not has_unranged_text
+            "word" if has_word_timestamps and not has_fallback_sentence
             else "segment" if parsed_sentences
             else "unknown"
         ),
@@ -1841,6 +1901,10 @@ def build_segments_from_api_sentences(
             timestamp = normalize_timestamp_range(
                 raw_item.get("start"), raw_item.get("end")
             )
+            if timestamp is None:
+                timestamp = _zero_duration_range(
+                    raw_item.get("start"), raw_item.get("end")
+                )
             if timestamp is None:
                 invalid_item = True
                 continue

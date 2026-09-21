@@ -225,6 +225,82 @@ class ScriptMatchTests(unittest.TestCase):
             "第一句\n第二句？\n第三句",
         )
 
+    def test_processed_script_text_keeps_closing_quotes_after_split_punctuation(self) -> None:
+        text = "但是也有地平论者在发力\n「你有没有自主意识？」\n「AI 会不会统治地球？」"
+
+        self.assertEqual(
+            processed_script_text(
+                text,
+                extra_split_punctuation=("？", "！", ","),
+                preserve_punctuation=("？", "！"),
+            ),
+            text,
+        )
+
+    def test_processed_script_text_keeps_common_closing_marks(self) -> None:
+        text = "\n".join((
+            "「甲？」",
+            "“乙？”",
+            "《丙？》",
+            "〈丁？〉",
+            "（戊？）",
+            "【己？】",
+            "〔庚？〕",
+            "«辛？»",
+            "［壬？］",
+            "｛癸？｝",
+            "〘子？〙",
+            "〖丑？〗",
+            "〚寅？〛",
+        ))
+
+        self.assertEqual(
+            processed_script_text(
+                text,
+                extra_split_punctuation=("？",),
+                preserve_punctuation=("？",),
+            ),
+            text,
+        )
+
+    def test_script_match_without_item_timings_keeps_closing_quotes(self) -> None:
+        self.project_path.write_text(
+            json.dumps(
+                {
+                    "segments": [
+                        {"start": 0, "end": 1000, "text": "旧一"},
+                        {"start": 1000, "end": 2000, "text": "旧二"},
+                        {"start": 2000, "end": 3000, "text": "旧三"},
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        text = "但是也有地平论者在发力\n「你有没有自主意识？」\n「AI 会不会统治地球？」"
+        self.script_path.write_text(text, encoding="utf-8")
+
+        result = run_script_match(
+            ScriptMatchRequest(
+                self.project_path,
+                None,
+                self.script_path,
+                OutputMode.JSON,
+                extra_split_punctuation=("？", "！", ","),
+                preserve_punctuation=("？", "！"),
+            )
+        )
+
+        assert result.project_path is not None
+        self.assertEqual(
+            [segment["text"] for segment in read_project(result.project_path)["segments"]],
+            [
+                "但是也有地平论者在发力",
+                "「你有没有自主意识？」",
+                "「AI 会不会统治地球？」",
+            ],
+        )
+
     def test_script_match_can_disable_or_enable_markdown_cleanup(self) -> None:
         self.project_path.write_text(
             json.dumps({"segments": [{"start": 0, "end": 1000, "text": "这样"}]}, ensure_ascii=False),
@@ -348,6 +424,71 @@ class ScriptMatchTests(unittest.TestCase):
         project = read_project(result.project_path)
         self.assertEqual([segment["text"] for segment in project["segments"]], ["甲乙", "丙丁", "戊己庚"])
         self.assertEqual([(segment["start"], segment["end"]) for segment in project["segments"]], [(0, 1500), (1500, 3000), (3000, 6000)])
+
+    def test_resegmenting_keeps_unmatched_source_cues_between_script_lines(self) -> None:
+        self.project_path.write_text(
+            json.dumps({"segments": [
+                {"start": 0, "end": 1000, "text": "第一句文稿", "speaker": "script-1"},
+                {"start": 1000, "end": 2000, "text": "录音时多说了第一句话", "speaker": "extra-1"},
+                {"start": 2000, "end": 3000, "text": "录音时多说了第二句话", "speaker": "extra-2"},
+                {"start": 3000, "end": 4000, "text": "第二句文稿", "speaker": "script-2"},
+            ]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        self.script_path.write_text("第一句文稿。\n第二句文稿。", encoding="utf-8")
+
+        result = run_script_match(ScriptMatchRequest(
+            self.project_path, None, self.script_path, OutputMode.JSON,
+        ))
+
+        assert result.project_path is not None
+        segments = read_project(result.project_path)["segments"]
+        self.assertEqual(
+            [(segment["start"], segment["end"], segment["text"]) for segment in segments],
+            [
+                (0, 1000, "第一句文稿"),
+                (1000, 2000, "录音时多说了第一句话"),
+                (2000, 3000, "录音时多说了第二句话"),
+                (3000, 4000, "第二句文稿"),
+            ],
+        )
+        self.assertEqual([segment["speaker"] for segment in segments], ["script-1", "extra-1", "extra-2", "script-2"])
+
+    def test_timed_matching_keeps_unmatched_source_cues_between_script_lines(self) -> None:
+        def timed_segment(start: int, end: int, text: str) -> dict[str, object]:
+            return {
+                "start": start,
+                "end": end,
+                "text": text,
+                "items": [{"start": start, "end": end, "text": text}],
+            }
+
+        self.project_path.write_text(
+            json.dumps({"segments": [
+                timed_segment(0, 1000, "第一句文稿"),
+                timed_segment(1000, 2000, "录音时多说了第一句话"),
+                timed_segment(2000, 3000, "录音时多说了第二句话"),
+                timed_segment(3000, 4000, "第二句文稿"),
+            ]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        self.script_path.write_text("第一句文稿。\n第二句文稿。", encoding="utf-8")
+
+        result = run_script_match(ScriptMatchRequest(
+            self.project_path, None, self.script_path, OutputMode.JSON,
+        ))
+
+        assert result.project_path is not None
+        segments = read_project(result.project_path)["segments"]
+        self.assertEqual(
+            [(segment["start"], segment["end"], segment["text"]) for segment in segments],
+            [
+                (0, 1000, "第一句文稿"),
+                (1000, 2000, "录音时多说了第一句话"),
+                (2000, 3000, "录音时多说了第二句话"),
+                (3000, 4000, "第二句文稿"),
+            ],
+        )
 
     def test_mosp_items_drive_character_timed_script_matching(self) -> None:
         self.project_path.write_text(
