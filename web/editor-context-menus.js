@@ -203,6 +203,9 @@
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
+    if (colorGroupHeadIndex(idx) >= 0) {
+      addItem('从颜色组中脱离', '', () => detachColorFromGroup(idx));
+    }
     addSep();
     // 组 3：状态与删除
     addItem(
