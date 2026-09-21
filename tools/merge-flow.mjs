@@ -11,7 +11,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import * as acorn from 'acorn';
+import { unresolvedRefs } from '../scripts/refactor-tools/scope-core.mjs';
 
 const WEB = path.resolve('web');
 const AST_OPTIONS = { ecmaVersion: 'latest', sourceType: 'script' };
@@ -140,57 +142,34 @@ function replaceDeclaration(info, name, replacement) {
   info.source = applyEdits(info.source, [{ start: record.statementStart, end: record.statementEnd, text: replacement }]);
   Object.assign(info, moduleInfoFromSource(info.file, info.source));
 }
-function identifierIsReference(node, parent) {
-  if (!parent) return false;
-  if (['FunctionDeclaration', 'FunctionExpression', 'ClassDeclaration'].includes(parent.type) && parent.id === node) return false;
-  if (parent.type === 'VariableDeclarator' && parent.id === node) return false;
-  if ((parent.type === 'FunctionDeclaration' || parent.type === 'FunctionExpression' || parent.type === 'ArrowFunctionExpression')
-      && parent.params.includes(node)) return false;
-  if ((parent.type === 'MemberExpression' || parent.type === 'OptionalMemberExpression') && parent.property === node && !parent.computed) return false;
-  if ((parent.type === 'Property' || parent.type === 'MethodDefinition') && parent.key === node && !parent.computed && !parent.shorthand) return false;
-  return !['LabeledStatement', 'BreakStatement', 'ContinueStatement'].includes(parent.type);
-}
-function localNames(ast) {
-  const names = new Set();
-  walk(ast, (node) => {
-    if (node.type === 'VariableDeclarator') patternNames(node.id, names);
-    else if ((node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') && node.id) names.add(node.id.name);
-    if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
-      for (const parameter of node.params) patternNames(parameter, names);
-    }
-    else if (node.type === 'CatchClause' && node.param) patternNames(node.param, names);
-  });
-  return names;
-}
-function qualifyDeclaration(raw, ownerOf, currentNamespace) {
-  const ast = parse(raw, 'replayed declaration');
-  const locals = localNames(ast);
+// 限定重放声明体与重建入口中的自由引用（作用域内核：scope-core.mjs）。
+// 旧实现用「全子树平面绑定名集合」做豁免：声明内任意位置的同名局部会压制
+// 真正需要限定的引用（漏限定），而声明体之外的模块级同名绑定它看不到
+// （误限定）；qualifyEntry 甚至没有局部作用域处理，嵌套参数/局部遮蔽
+// 导出名时会重蹈 ns-rewrite 旧版 MAWE_I18N.start ×7 的覆辙。
+// 现以 eslint-scope 的未解析引用为准：只有在该文本内确实无词法绑定的
+// 标识符才是限定候选；模块内已有同名绑定的引用显式跳过。
+export function qualifyDeclaration(raw, ownerOf, currentNamespace, moduleLocalNames = new Set()) {
   const edits = [];
-  walk(ast, (node, parent) => {
-    if (node.type !== 'Identifier' || !identifierIsReference(node, parent) || locals.has(node.name)) return;
-    const owner = ownerOf.get(node.name);
-    if (owner && owner.ns !== currentNamespace) {
-      const text = parent?.type === 'Property' && parent.shorthand
-        ? `${node.name}: ${owner.ns}.${node.name}` : `${owner.ns}.${node.name}`;
-      edits.push({ start: node.start, end: node.end, text });
-    }
-  });
+  for (const ref of unresolvedRefs(raw)) {
+    const owner = ownerOf.get(ref.name);
+    if (!owner || owner.ns === currentNamespace) continue;
+    if (moduleLocalNames.has(ref.name)) continue;
+    const text = ref.shorthand
+      ? `${ref.name}: ${owner.ns}.${ref.name}` : `${owner.ns}.${ref.name}`;
+    edits.push({ start: ref.start, end: ref.end, text });
+  }
   return applyEdits(raw, edits);
 }
-function qualifyEntry(source, ownerOf) {
-  const ast = parse(source, 'rebuilt web/editor.js');
-  const globalNames = declarationRecords(source, ast);
+export function qualifyEntry(source, ownerOf) {
   const edits = [];
-  walk(ast, (node, parent, ancestors) => {
-    if (node.type !== 'Identifier' || !identifierIsReference(node, parent) || globalNames.has(node.name)) return;
-    if (parent?.type === 'Property' && ancestors.at(-1)?.type === 'ObjectPattern') return;
-    const owner = ownerOf.get(node.name);
-    if (owner) {
-      const text = parent?.type === 'Property' && parent.shorthand
-        ? `${node.name}: ${owner.ns}.${node.name}` : `${owner.ns}.${node.name}`;
-      edits.push({ start: node.start, end: node.end, text });
-    }
-  });
+  for (const ref of unresolvedRefs(source)) {
+    const owner = ownerOf.get(ref.name);
+    if (!owner) continue;
+    const text = ref.shorthand
+      ? `${ref.name}: ${owner.ns}.${ref.name}` : `${owner.ns}.${ref.name}`;
+    edits.push({ start: ref.start, end: ref.end, text });
+  }
   return applyEdits(source, edits);
 }
 function entryWithoutModuleDeclarations(source, ast, ownerOf) {
@@ -256,7 +235,10 @@ function main() {
   if (process.argv.includes('--dry-run')) return;
   for (const item of replay) {
     const info = modules.get(item.owner.file);
-    replaceDeclaration(info, item.name, qualifyDeclaration(item.raw, ownerOf, info.ns));
+    // 模块 IIFE 顶层已有绑定的名字（含导出面引用的符号）：重放体内的自由
+    // 引用应解析到模块自身绑定，不做跨模块限定。
+    const moduleLocals = new Set([...info.declarations.keys(), ...info.exports]);
+    replaceDeclaration(info, item.name, qualifyDeclaration(item.raw, ownerOf, info.ns, moduleLocals));
   }
   const entry = qualifyEntry(entryWithoutModuleDeclarations(
     theirsEditor, parse(theirsEditor, `${theirs}:editor.js`), ownerOf,
@@ -269,4 +251,8 @@ function main() {
   }
   console.log(`Applied ${replay.length} replays and rebuilt web/editor.js.`);
 }
-try { main(); } catch (error) { console.error(`merge-flow: ${error.message}`); process.exitCode = 1; }
+const invokedDirectly = process.argv[1]
+  && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (invokedDirectly) {
+  try { main(); } catch (error) { console.error(`merge-flow: ${error.message}`); process.exitCode = 1; }
+}
