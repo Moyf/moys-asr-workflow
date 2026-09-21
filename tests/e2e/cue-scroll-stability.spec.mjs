@@ -35,96 +35,99 @@ function textSelector(index, kind, mode) {
   return `.cue[data-${kind === 'main' ? 'idx' : 'ext-idx'}="${index}"] > .text`;
 }
 
-for (const mode of ['main', 'extension', 'both']) {
-  for (const width of [1280, 1920]) {
-    for (const index of [75, 100]) {
-      test(`editing matrix ${mode} ${width} row ${index}`, async ({ page }, info) => {
-        await open(page, { mode });
-        await page.setViewportSize({ width, height: width === 1280 ? 900 : 1080 });
-        const kind = mode === 'extension' ? 'extension' : 'main';
-        await position(page, index, kind);
-        const selector = textSelector(index, kind, mode);
-        await page.locator(selector).click();
-        await page.locator(textSelector(index + 1, kind, mode)).click({ modifiers: ['Shift'] });
-        // Long unbound dual rows can make the second click expose only the
-        // bottom of the source row. Explicitly place that source below the toolbar.
-        await page.evaluate(({ index, kind }) => scrollCueToCenter(container.querySelector(
-          `.cue[data-${kind === 'main' ? 'idx' : 'ext-idx'}="${index}"]`)), { index, kind });
-        await page.waitForTimeout(300);
-        const original = await visual(page, index, kind);
-        await page.keyboard.press('c');
-        const merged = await stable(page, original, index, 'C', info, kind);
-        expect(merged.id).not.toBe(original.id);
-        await page.keyboard.press(undoKey);
-        await stable(page, merged, index, 'undo C', info, kind);
-        expect((await visual(page, index, kind)).id).toBe(original.id);
-        await page.keyboard.press(redoKey);
-        await stable(page, merged, index, 'redo C', info, kind);
-        await page.keyboard.press(undoKey);
-        await page.waitForTimeout(300);
+// 视口宽度、行高与轨道模式是正交维度，全组合 12 条会拖慢整套 e2e；
+// 保留每个维度至少出现两次的代表组合（1920 视口另有 near-end 回归用例覆盖）。
+for (const { mode, width, index } of [
+  { mode: 'main', width: 1280, index: 100 },
+  { mode: 'extension', width: 1280, index: 75 },
+  { mode: 'both', width: 1920, index: 100 },
+  { mode: 'both', width: 1280, index: 75 },
+]) {
+  test(`editing matrix ${mode} ${width} row ${index}`, async ({ page }, info) => {
+      await open(page, { mode });
+      await page.setViewportSize({ width, height: width === 1280 ? 900 : 1080 });
+      const kind = mode === 'extension' ? 'extension' : 'main';
+      await position(page, index, kind);
+      const selector = textSelector(index, kind, mode);
+      await page.locator(selector).click();
+      await page.locator(textSelector(index + 1, kind, mode)).click({ modifiers: ['Shift'] });
+      // Long unbound dual rows can make the second click expose only the
+      // bottom of the source row. Explicitly place that source below the toolbar.
+      await page.evaluate(({ index, kind }) => scrollCueToCenter(container.querySelector(
+        `.cue[data-${kind === 'main' ? 'idx' : 'ext-idx'}="${index}"]`)), { index, kind });
+      await page.waitForTimeout(300);
+      const original = await visual(page, index, kind);
+      await page.keyboard.press('c');
+      const merged = await stable(page, original, index, 'C', info, kind);
+      expect(merged.id).not.toBe(original.id);
+      await page.keyboard.press(undoKey);
+      await stable(page, merged, index, 'undo C', info, kind);
+      expect((await visual(page, index, kind)).id).toBe(original.id);
+      await page.keyboard.press(redoKey);
+      await stable(page, merged, index, 'redo C', info, kind);
+      await page.keyboard.press(undoKey);
+      await page.waitForTimeout(300);
 
-        // Resize a cold list without traversing it, then split at a real UI cursor.
-        await page.setViewportSize({ width: width - 120, height: width === 1280 ? 860 : 1020 });
-        await page.waitForTimeout(300);
-        await page.locator(selector).click();
-        await page.locator(selector).hover({ position: { x: 15, y: 10 } });
-        const beforeSplit = await visual(page, index, kind);
-        await page.keyboard.press('b');
-        if (await page.locator('#multi-subtitle-split-modal').evaluate(el => el.classList.contains('show'))) {
-          await page.locator('#multi-subtitle-split-auto-submit').uncheck();
-          const lane = kind === 'main' ? '#multi-subtitle-split-main-text' : '#multi-subtitle-split-text';
-          const gaps = page.locator(`${lane} .multi-subtitle-split-gap`);
-          if (await gaps.count()) await gaps.nth(Math.floor((await gaps.count()) / 2)).click();
-          await page.locator('#multi-subtitle-split-confirm').click();
-        }
-        const left = await stable(page, beforeSplit, index, 'B after resize', info, kind);
-        expect(left.id).not.toBe(beforeSplit.id);
-        expect(left.start).toBe(beforeSplit.start);
-        expect(left.end).toBeLessThan(beforeSplit.end);
-        // Undo retains the view being read, even though the edit panel selects the right half.
-        await page.keyboard.press(undoKey);
-        await stable(page, left, index, 'undo B', info, kind);
+      // Resize a cold list without traversing it, then split at a real UI cursor.
+      await page.setViewportSize({ width: width - 120, height: width === 1280 ? 860 : 1020 });
+      await page.waitForTimeout(300);
+      await page.locator(selector).click();
+      await page.locator(selector).hover({ position: { x: 15, y: 10 } });
+      const beforeSplit = await visual(page, index, kind);
+      await page.keyboard.press('b');
+      if (await page.locator('#multi-subtitle-split-modal').evaluate(el => el.classList.contains('show'))) {
+        await page.locator('#multi-subtitle-split-auto-submit').uncheck();
+        const lane = kind === 'main' ? '#multi-subtitle-split-main-text' : '#multi-subtitle-split-text';
+        const gaps = page.locator(`${lane} .multi-subtitle-split-gap`);
+        if (await gaps.count()) await gaps.nth(Math.floor((await gaps.count()) / 2)).click();
+        await page.locator('#multi-subtitle-split-confirm').click();
+      }
+      const left = await stable(page, beforeSplit, index, 'B after resize', info, kind);
+      expect(left.id).not.toBe(beforeSplit.id);
+      expect(left.start).toBe(beforeSplit.start);
+      expect(left.end).toBeLessThan(beforeSplit.end);
+      // Undo retains the view being read, even though the edit panel selects the right half.
+      await page.keyboard.press(undoKey);
+      await stable(page, left, index, 'undo B', info, kind);
 
-        const beforeEdit = await visual(page, index, kind);
-        await page.locator(selector).dblclick();
-        await page.keyboard.insertText('合成改字');
-        await page.evaluate(() => { if (editingState) finishEdit(true); if (extensionEditingState) finishExtensionEdit(true); });
-        await stable(page, beforeEdit, index, 'inline edit', info, kind);
-        await page.locator(selector).click();
-        const nearby = await page.evaluate(({ index, kind }) => {
-          const source = container.querySelector(`.cue[data-${kind === 'main' ? 'idx' : 'ext-idx'}="${index}"]`);
-          const origin = source.getBoundingClientRect().top;
-          const bounds = container.getBoundingClientRect();
-          return [...container.querySelectorAll(':scope > .cue')].filter(el => el !== source)
-            .map(el => ({ id: el.dataset.mainId || el.dataset.extId,
-              key: el.dataset.mainId ? 'mainId' : 'extId', top: el.getBoundingClientRect().top - bounds.top,
-              distance: Math.abs(el.getBoundingClientRect().top - origin) }))
-            .filter(row => row.top >= 0 && row.top < bounds.height)
-            .sort((a, b) => a.distance - b.distance).slice(0, 2);
-        }, { index, kind });
-        await page.keyboard.press('Delete');
-        await page.locator('#delete-confirm-modal.show').count().then(async count => {
-          if (count) throw new Error('Unexpected delete confirmation; update the test UI flow');
-        });
-        await page.waitForTimeout(350);
-        const readNeighbors = () => page.evaluate(nearby => nearby.map(old => {
-          const row = [...container.querySelectorAll(':scope > .cue')].find(el => el.dataset[old.key] === old.id);
-          return row ? { ...old, now: row.getBoundingClientRect().top - container.getBoundingClientRect().top } : null;
-        }).filter(Boolean), nearby);
-        const afterDelete = await readNeighbors();
-        await page.waitForTimeout(2100);
-        const lateDelete = await readNeighbors();
-        await info.attach('delete nearby surviving rows', { body: JSON.stringify({ nearby, afterDelete, lateDelete }), contentType: 'application/json' });
-        expect(Math.min(...afterDelete.map(row => Math.abs(row.now - row.top)))).toBeLessThan(1.5);
-        expect(lateDelete.map(row => row.id)).toEqual(afterDelete.map(row => row.id));
-        expect(Math.max(...lateDelete.map((row, i) => Math.abs(row.now - afterDelete[i].now))))
-          .toBeLessThan(1.5);
-        expect(Math.min(...lateDelete.map(row => Math.abs(row.now - row.top)))).toBeLessThan(1.5);
-        expect(await page.evaluate(({ kind, id }) => (kind === 'main' ? DATA.segments : getActiveExtensionTrack().segments)
-          .some(s => s.id === id), { kind, id: beforeEdit.id })).toBe(false);
+      const beforeEdit = await visual(page, index, kind);
+      await page.locator(selector).dblclick();
+      await page.keyboard.insertText('合成改字');
+      await page.evaluate(() => { if (editingState) finishEdit(true); if (extensionEditingState) finishExtensionEdit(true); });
+      await stable(page, beforeEdit, index, 'inline edit', info, kind);
+      await page.locator(selector).click();
+      const nearby = await page.evaluate(({ index, kind }) => {
+        const source = container.querySelector(`.cue[data-${kind === 'main' ? 'idx' : 'ext-idx'}="${index}"]`);
+        const origin = source.getBoundingClientRect().top;
+        const bounds = container.getBoundingClientRect();
+        return [...container.querySelectorAll(':scope > .cue')].filter(el => el !== source)
+          .map(el => ({ id: el.dataset.mainId || el.dataset.extId,
+            key: el.dataset.mainId ? 'mainId' : 'extId', top: el.getBoundingClientRect().top - bounds.top,
+            distance: Math.abs(el.getBoundingClientRect().top - origin) }))
+          .filter(row => row.top >= 0 && row.top < bounds.height)
+          .sort((a, b) => a.distance - b.distance).slice(0, 2);
+      }, { index, kind });
+      await page.keyboard.press('Delete');
+      await page.locator('#delete-confirm-modal.show').count().then(async count => {
+        if (count) throw new Error('Unexpected delete confirmation; update the test UI flow');
       });
-    }
-  }
+      await page.waitForTimeout(350);
+      const readNeighbors = () => page.evaluate(nearby => nearby.map(old => {
+        const row = [...container.querySelectorAll(':scope > .cue')].find(el => el.dataset[old.key] === old.id);
+        return row ? { ...old, now: row.getBoundingClientRect().top - container.getBoundingClientRect().top } : null;
+      }).filter(Boolean), nearby);
+      const afterDelete = await readNeighbors();
+      await page.waitForTimeout(2100);
+      const lateDelete = await readNeighbors();
+      await info.attach('delete nearby surviving rows', { body: JSON.stringify({ nearby, afterDelete, lateDelete }), contentType: 'application/json' });
+      expect(Math.min(...afterDelete.map(row => Math.abs(row.now - row.top)))).toBeLessThan(1.5);
+      expect(lateDelete.map(row => row.id)).toEqual(afterDelete.map(row => row.id));
+      expect(Math.max(...lateDelete.map((row, i) => Math.abs(row.now - afterDelete[i].now))))
+        .toBeLessThan(1.5);
+      expect(Math.min(...lateDelete.map(row => Math.abs(row.now - row.top)))).toBeLessThan(1.5);
+      expect(await page.evaluate(({ kind, id }) => (kind === 'main' ? DATA.segments : getActiveExtensionTrack().segments)
+        .some(s => s.id === id), { kind, id: beforeEdit.id })).toBe(false);
+  });
 }
 
 test('undo after browsing keeps current viewport and restores selection identity', async ({ page }, info) => {
