@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "es2022",
+    "strict": false
+  },
+  "include": [
+    "web/editor-globals.d.ts",
+    "web/editor-boot.js",
+    "web/editor-export-srt.js"
+  ]
+}

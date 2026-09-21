@@ -2,21 +2,26 @@
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweBoot 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+  /** @param {Window & typeof globalThis} global */
 (function initMaweBoot(global) {
   'use strict';
 
+  /** @type {ProjectData} */
   const DATA = __DATA_JSON__;
 
 
+  /** @type {string} */
   let FILENAME_BASE = __FILENAME_BASE_JSON__;
 
 
   const STICKERS = __STICKERS_JSON__;
 
 
+  /** @type {string} */
   let STICKER_ROOT = __STICKER_ROOT_JSON__;
 
     // 表情包根目录的绝对路径（无尾斜杠）
+  /** @type {string} */
   let STICKER_URL_PREFIX = __STICKER_URL_PREFIX_JSON__;
 
 
@@ -52,6 +57,7 @@
 
   // 导出标题用的工程名：初始取工程名，保存/切工程时随文件名更新（PR #136 评审：
   // 归到 boot 单一所有者，避免 editor.js 全局可变绑定被多模块读写）。
+  /** @type {string} */
   let PROJECT_NAME = FILENAME_BASE;
 
   global.MaweBoot = Object.freeze({
