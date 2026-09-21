@@ -14571,7 +14571,11 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
     ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
-  element.style.maxWidth = `calc(100% - ${Math.max(0, margins.left + margins.right)}px)`;
+  // ASS 预览采用 no-wrap 策略：只保留字幕文本中的显式换行，
+  // 不因为播放器容器边界重新插入自动换行。
+  element.style.whiteSpace = 'pre';
+  element.style.wordBreak = 'normal';
+  element.style.maxWidth = 'none';
   element.style.padding = borderBox
     ? `${Math.max(1, 4 * scaleY)}px ${Math.max(1, 8 * scaleX)}px`
     : `${Math.max(1, scaleY)}px ${Math.max(1, 2 * scaleX)}px`;
@@ -14619,7 +14623,7 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', ' -webkit-text-stroke',
     '-webkit-text-stroke', 'paint-order', 'filter', 'letter-spacing', 'line-height',
-    'max-width', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
+    'max-width', 'word-break', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
     'left', 'right', 'top', 'bottom', 'white-space', 'text-align', 'transform-origin', 'transform',
   ].forEach((property) => element.style.removeProperty(property.trim()));
   element.style.setProperty(
@@ -14838,14 +14842,15 @@ function applyAssAnchoredPreviewElement(element, style, animationState, metrics,
     element.style.top = 'auto';
     element.style.bottom = `${Math.max(0, Math.ceil(verticalOffsetPx))}px`;
   }
-  element.style.whiteSpace = 'normal';
+  element.style.whiteSpace = 'pre';
+  element.style.wordBreak = 'normal';
   element.style.textAlign = alignment.textAlign;
 }
 
 function restoreAssOverlayTrackPreview() {
   if (!overlayTrackTextEl) return;
   [
-    'position', 'left', 'right', 'top', 'bottom', 'white-space', 'text-align',
+    'position', 'left', 'right', 'top', 'bottom', 'white-space', 'word-break', 'text-align',
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', '-webkit-text-stroke',
     'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
@@ -21358,6 +21363,49 @@ function expandStickerTime(idxs) {
 // === 标记颜色 ===
 // 数据结构与表情包同构：head 持完整 color，后续条持 color_ref（仅 name + headIdx）
 // 单选 → 设为 head；多选 → 第一条为 head，时间跨整个范围，后续为 ref
+function colorGroupHeadIndex(idx) {
+  const segment = DATA.segments[idx];
+  if (!segment) return -1;
+
+  const refHeadIdx = Number(segment.color_ref?.headIdx);
+  if (segment.color_ref
+      && Number.isInteger(refHeadIdx)
+      && refHeadIdx >= 0
+      && refHeadIdx < DATA.segments.length
+      && refHeadIdx !== idx
+      && DATA.segments[refHeadIdx]?.color) {
+    return refHeadIdx;
+  }
+
+  if (!segment.color) return -1;
+  return DATA.segments.some((candidate, candidateIdx) => (
+    candidateIdx !== idx
+    && candidate?.color_ref
+    && Number(candidate.color_ref.headIdx) === idx
+  )) ? idx : -1;
+}
+
+function detachColorFromGroup(idx) {
+  const segment = DATA.segments[idx];
+  const headIdx = colorGroupHeadIndex(idx);
+  const groupColor = headIdx >= 0 ? DATA.segments[headIdx]?.color : null;
+  if (!segment || !groupColor) return false;
+
+  // 先复制颜色；拆分组时原 head 的时间范围可能会被收缩。
+  const detachedColor = {
+    ...groupColor,
+    start: segment.start,
+    end: segment.end,
+  };
+  pushUndo('从颜色组中脱离');
+  splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
+  segment.color = detachedColor;
+  segment.color_ref = null;
+  refreshColorAssignmentUi();
+  flashHint('已从颜色组中脱离', 'success');
+  return true;
+}
+
 function assignColor(idxs, colorName) {
   if (!idxs.length) return;
   const def = COLOR_BY_NAME[colorName];
@@ -22198,6 +22246,9 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
+    if (colorGroupHeadIndex(idx) >= 0) {
+      addItem('从颜色组中脱离', '', () => detachColorFromGroup(idx));
+    }
     addSep();
     // 组 3：状态与删除
     addItem(
