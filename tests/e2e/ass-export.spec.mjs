@@ -331,7 +331,7 @@ test('keeps ASS style actions and preview-mode hints attached to the active form
   await expect(page.locator('#ass-style-srt-hint')).toBeVisible();
   await expect(page.locator('#ass-style-preview-mode-hint')).toBeHidden();
   await expect(page.locator('.ass-style-assignment-title-row')).toHaveCount(0);
-  await expect(page.locator('.ass-style-assignment-card small').first())
+  await expect(page.locator('label[for="ass-srt-default-style"] + small'))
     .toHaveText('工具箱的「烧录字幕」功能会使用这里选中的样式。');
 
   await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
