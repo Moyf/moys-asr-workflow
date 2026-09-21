@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAW 转写对比</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg-base: #16181d;
+    --bg-panel: #1c1f26;
+    --bg-raised: #22262e;
+    --bg-overlay: #282c35;
+    --bg-input: #1a1d24;
+    --text-primary: #e6e9ef;
+    --text-secondary: #a8b1c0;
+    --text-muted: #6e7686;
+    --text-faint: #4f5666;
+    --border-subtle: #2a2e36;
+    --border: #353a44;
+    --border-strong: #3d4350;
+    --accent: #6ca5e8;
+    --accent-hover: #84b7f0;
+    --accent-tint: rgba(108, 165, 232, 0.12);
+    --amber: #d49a4a;
+    --amber-soft: rgba(212, 154, 74, 0.16);
+    --red: #e07a7a;
+    --red-soft: rgba(224, 122, 122, 0.16);
+    --green: #6fbf8e;
+    --green-soft: rgba(111, 191, 142, 0.14);
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
+    --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.34);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font: 14px/1.55 "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  button { font: inherit; }
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border-subtle);
+    flex-wrap: wrap;
+  }
+  .brand {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .brand .logo { color: var(--accent); margin-right: 6px; }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .btn {
+    background: #292e37;
+    color: #cdd4e0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: #323843; border-color: var(--border-strong); }
+  .btn.primary { background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+  .btn.primary:hover { background: rgba(108, 165, 232, 0.22); color: var(--accent-hover); }
+  .btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .toggle input { accent-color: var(--accent); }
+  input[type="search"] {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    padding: 5px 10px;
+    width: 200px;
+    outline: none;
+  }
+  input[type="search"]:focus { border-color: var(--accent); }
+  input[type="search"]:disabled { opacity: 0.45; }
+  main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px 0;
+    gap: 10px;
+  }
+  .compare-heading {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .cards {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-left: 3px solid var(--c, var(--accent));
+    border-radius: var(--radius-lg);
+    padding: 8px 12px;
+    min-width: 230px;
+    max-width: 300px;
+    box-shadow: var(--shadow-2);
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .card .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--c, var(--accent));
+    flex: none;
+  }
+  .card .name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .ref-badge {
+    font-size: 11px;
+    background: var(--accent);
+    color: var(--bg-base);
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-weight: 600;
+    flex: none;
+  }
+  .warn-badge { color: var(--amber); font-size: 12px; flex: none; cursor: help; }
+  .card .x {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 2px;
+    border-radius: var(--radius-sm);
+    flex: none;
+  }
+  .card .x:hover { color: var(--red); background: var(--red-soft); }
+  .card-model { color: var(--text-muted); font-size: 12px; margin-top: 1px; }
+  .card-stats { color: var(--text-secondary); font-size: 12px; margin-top: 3px; }
+  .card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 7px;
+    gap: 8px;
+  }
+  .card-actions .btn { font-size: 12px; padding: 3px 9px; }
+  .card-actions .btn.active { border-color: var(--accent); color: var(--accent); }
+  .card-sim { font-size: 13px; font-weight: 600; }
+  .sim-good { color: var(--green); }
+  .sim-mid { color: var(--amber); }
+  .sim-bad { color: var(--red); }
+  .warnbox {
+    background: var(--amber-soft);
+    border: 1px solid var(--amber);
+    border-radius: var(--radius-md);
+    padding: 6px 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+  .warnbox b { color: var(--amber); font-weight: 600; }
+  .empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 40px;
+  }
+  .dropzone {
+    border: 2px dashed var(--border-strong);
+    border-radius: 16px;
+    padding: 48px 64px;
+    text-align: center;
+    color: var(--text-secondary);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .dropzone.drag { border-color: var(--accent); background: var(--accent-tint); }
+  .dz-icon { font-size: 40px; margin-bottom: 8px; }
+  .dropzone h2 { margin: 0 0 6px; font-size: 17px; color: var(--text-primary); }
+  .dropzone p { margin: 4px 0; font-size: 13px; }
+  .dropzone .btn { margin: 14px 0 6px; }
+  .dropzone .hint { color: var(--text-muted); font-size: 12px; }
+  .table-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--bg-panel);
+    margin-bottom: 12px;
+  }
+  .grid { display: grid; min-width: 100%; }
+  .hcell, .cell {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    border-right: 1px solid var(--border-subtle);
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
+  .hcell {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--bg-overlay);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .hcell .hname {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+  }
+  .hcell .hname .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .hcell .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .hcell .hmeta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 2px;
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .hcell .sim { font-weight: 600; font-size: 12px; }
+  .time-cell {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--bg-raised);
+    color: var(--text-secondary);
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px;
+    white-space: nowrap;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+  }
+  .time-cell .diff-chip {
+    align-self: flex-end;
+    font-size: 10px;
+    font-family: inherit;
+    color: var(--amber);
+    border: 1px solid var(--amber);
+    border-radius: 999px;
+    padding: 0 5px;
+    line-height: 1.4;
+  }
+  .cell { background: var(--bg-panel); }
+  .cell .text { white-space: pre-wrap; }
+  .cell .ctime {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-faint);
+    font-family: Consolas, "Courier New", monospace;
+    white-space: nowrap;
+  }
+  .cell.empty-cell { color: var(--text-faint); }
+  .wave-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 4px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    height: 260px;
+    min-height: 140px;
+  }
+  .wave-resizer {
+    flex: none;
+    height: 10px;
+    cursor: row-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+  }
+  .wave-resizer::after {
+    content: '';
+    width: 40px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border-strong);
+  }
+  .wave-resizer:hover::after, body.wave-resizing .wave-resizer::after { background: var(--accent); }
+  body.wave-resizing { cursor: row-resize; user-select: none; }
+  .wave-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    flex-wrap: wrap;
+  }
+  .wave-head .hint { font-weight: 400; font-size: 12px; color: var(--text-muted); }
+  .wave-tools {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+  .wave-tools .btn { font-size: 11px; padding: 1px 8px; }
+  .wave-scroll { flex: 1; min-height: 0; overflow: auto; }
+  .wave-row { display: flex; align-items: stretch; }
+  .wave-corner {
+    flex: none;
+    width: 130px;
+    height: 20px;
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--bg-panel);
+  }
+  .wave-label {
+    flex: none;
+    width: 130px;
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--bg-panel);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 8px;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .wave-label .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .wave-label .lname {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .wave-label .lcount { color: var(--text-faint); font-size: 11px; flex: none; }
+  .wave-ruler {
+    position: relative;
+    flex: none;
+    height: 20px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .wave-ruler .tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid var(--border);
+    padding-left: 4px;
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--text-muted);
+    font-family: Consolas, "Courier New", monospace;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .wave-lane {
+    position: relative;
+    flex: none;
+    margin-bottom: 4px;
+    background: #1d252d;
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    overflow: hidden;
+    background-image: repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(var(--tick-frac) * 100% - 1px),
+      rgba(255, 255, 255, 0.045) calc(var(--tick-frac) * 100% - 1px),
+      rgba(255, 255, 255, 0.045) calc(var(--tick-frac) * 100%)
+    );
+  }
+  .wave-lane::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    border-top: 1px dashed rgba(255, 255, 255, 0.07);
+    pointer-events: none;
+  }
+  .wave-cue {
+    position: absolute;
+    min-width: 3px;
+    z-index: 2;
+    border-radius: 4px;
+    outline: 1px solid color-mix(in srgb, var(--cue-color) 80%, white);
+    background: color-mix(in srgb, var(--cue-color) 42%, rgba(15, 22, 28, 0.82));
+    color: #eef6ff;
+    font-size: 10px;
+    padding: 0 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  }
+  .wave-cue:hover { filter: brightness(1.16); z-index: 3; }
+  .cell.ref-col { background: var(--bg-raised); }
+  .cell.row-diff.ref-col { box-shadow: inset 3px 0 0 var(--amber-soft); }
+  mark {
+    background: var(--red-soft);
+    color: #f0a8a8;
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+  .missing-mark {
+    background: var(--amber-soft);
+    color: var(--amber);
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+  .statusbar {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    padding: 6px 2px 10px;
+    color: var(--text-muted);
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .statusbar .legend { margin-left: auto; }
+  #dropOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(22, 24, 29, 0.82);
+    border: 3px dashed var(--accent);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--accent);
+    pointer-events: none;
+  }
+  #toast {
+    position: fixed;
+    right: 16px;
+    top: 60px;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .toast-item {
+    background: var(--bg-overlay);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-md);
+    padding: 8px 14px;
+    box-shadow: var(--shadow-2);
+    max-width: 380px;
+    font-size: 13px;
+  }
+  .toast-item.error { border-left-color: var(--red); }
+  .toast-item.warn { border-left-color: var(--amber); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">◑</span>MAW 转写对比</div>
+  <div class="toolbar">
+    <button id="addBtn" class="btn primary" type="button">＋ 添加文件</button>
+    <input id="fileInput" type="file" multiple accept=".srt,.mosp,.json" hidden>
+    <button id="clearBtn" class="btn danger" type="button">清空</button>
+    <label class="toggle"><input id="diffOnly" type="checkbox" disabled>只看差异</label>
+    <input id="search" type="search" placeholder="搜索字幕文本…" disabled>
+  </div>
+</header>
+<main>
+  <h1 id="compareHeading" class="compare-heading" hidden></h1>
+  <section id="cards" class="cards"></section>
+  <section id="warnBox" class="warnbox" hidden></section>
+  <section id="tableWrap" class="table-scroll" hidden></section>
+  <section id="wavePanel" class="wave-panel" hidden>
+    <div id="waveResizer" class="wave-resizer" title="拖动调整高度"></div>
+    <div class="wave-head">
+      时间分布<span class="hint">悬停查看文本 · Ctrl+滚轮水平缩放 · Alt+滚轮垂直缩放</span>
+      <div class="wave-tools">
+        <span>水平</span>
+        <button id="zxOut" class="btn" type="button" title="缩小（Ctrl+滚轮）">−</button>
+        <button id="zxIn" class="btn" type="button" title="放大（Ctrl+滚轮）">＋</button>
+        <span>垂直</span>
+        <button id="zyOut" class="btn" type="button" title="压低（Alt+滚轮）">−</button>
+        <button id="zyIn" class="btn" type="button" title="拉高（Alt+滚轮）">＋</button>
+        <button id="waveReset" class="btn" type="button" title="恢复适应宽度与默认行高">重置</button>
+      </div>
+    </div>
+    <div id="waveScroll" class="wave-scroll"><div id="waveBody" class="wave-body"></div></div>
+  </section>
+  <section id="empty" class="empty">
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">📄</div>
+      <h2>拖入 SRT 或 .mosp 工程开始对比</h2>
+      <p>支持同时拖入多个文件，每个文件一列并按时间对齐</p>
+      <button id="addBtn2" class="btn primary" type="button">选择文件</button>
+      <p class="hint">把某个文件「设为基准」后，可查看逐句字符相似度与差异高亮</p>
+    </div>
+  </section>
+  <div id="status" class="statusbar"></div>
+</main>
+<div id="dropOverlay" hidden>松开以添加文件</div>
+<div id="toast"></div>
+<script>
+'use strict';
+
+const PALETTE = ['#6ca5e8', '#6fbf8e', '#d49a4a', '#c586c0', '#56b6c2', '#e0a85a', '#e07a7a', '#a3d65c'];
+const LCS_CELL_LIMIT = 4_000_000;
+const ACCEPT_EXTENSIONS = new Set(['.srt', '.mosp', '.json']);
+
+const state = { files: [], refId: null, diffOnly: false, search: '' };
+let uidCounter = 0;
+
+const els = {};
+for (const id of ['addBtn', 'addBtn2', 'fileInput', 'clearBtn', 'diffOnly', 'search', 'cards', 'warnBox', 'tableWrap', 'wavePanel', 'waveBody', 'waveScroll', 'waveResizer', 'zxIn', 'zxOut', 'zyIn', 'zyOut', 'waveReset', 'compareHeading', 'empty', 'status', 'dropOverlay', 'toast']) {
+  els[id] = document.getElementById(id);
+}
+
+const WAVE_LAYOUT_KEY = 'moy.compare.waveLayout.v1';
+const WAVE_ZX_LIMITS = [1, 40];
+const WAVE_ZY_LIMITS = [0.5, 5];
+const WAVE_HEIGHT_LIMITS = [140, 2000];
+const WAVE_LABEL_PX = 130;
+
+function clampNumber(value, low, high, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(high, Math.max(low, numeric));
+}
+
+function loadWaveLayout() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(WAVE_LAYOUT_KEY));
+    if (!raw || typeof raw !== 'object') return { height: 0, zx: 1, zy: 1 };
+    return {
+      height: clampNumber(raw.height, ...WAVE_HEIGHT_LIMITS, 0),
+      zx: clampNumber(raw.zx, ...WAVE_ZX_LIMITS, 1),
+      zy: clampNumber(raw.zy, ...WAVE_ZY_LIMITS, 1),
+    };
+  } catch {
+    return { height: 0, zx: 1, zy: 1 };
+  }
+}
+
+const waveLayout = loadWaveLayout();
+if (waveLayout.height) els.wavePanel.style.height = `${waveLayout.height}px`;
+
+function saveWaveLayout() {
+  try {
+    localStorage.setItem(WAVE_LAYOUT_KEY, JSON.stringify(waveLayout));
+  } catch {
+    localStorage.removeItem(WAVE_LAYOUT_KEY);
+  }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function formatMs(ms) {
+  const total = Math.max(0, Math.round(ms));
+  const h = Math.floor(total / 3_600_000);
+  const m = Math.floor((total % 3_600_000) / 60_000);
+  const s = Math.floor((total % 60_000) / 1000);
+  const tenth = Math.floor((total % 1000) / 100);
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}.${tenth}` : `${m}:${ss}.${tenth}`;
+}
+
+function formatTick(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+const RULER_STEPS_MS = [500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 120000, 300000, 600000, 1800000, 3600000];
+
+function rulerStepMs(spanMs, widthPx) {
+  const target = Math.max(3, Math.floor(widthPx / 96));
+  const raw = spanMs / target;
+  return RULER_STEPS_MS.find((step) => step >= raw) || RULER_STEPS_MS[RULER_STEPS_MS.length - 1];
+}
+
+function toast(message, kind = 'info') {
+  const item = document.createElement('div');
+  item.className = `toast-item${kind === 'error' ? ' error' : kind === 'warn' ? ' warn' : ''}`;
+  item.textContent = message;
+  els.toast.appendChild(item);
+  setTimeout(() => item.remove(), kind === 'error' ? 6500 : 3800);
+}
+
+function decodeSubtitleBytes(bytes) {
+  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+    return new TextDecoder('utf-8').decode(bytes.subarray(3));
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+    return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+    return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder('gb18030').decode(bytes);
+  }
+}
+
+function parseSrtTimestamp(value) {
+  const match = /^(\d+):(\d{2}):(\d{2})[,.](\d{1,3})$/.exec(value.trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3]);
+  const milliseconds = Number(match[4].padEnd(3, '0'));
+  if (minutes >= 60 || seconds >= 60) return null;
+  return (((hours * 60 + minutes) * 60) + seconds) * 1000 + milliseconds;
+}
+
+function parseSrt(text) {
+  const warnings = [];
+  const blocks = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim().split(/\n{2,}/);
+  const segments = [];
+  let blockIndex = 0;
+  let skipped = 0;
+  for (const block of blocks) {
+    blockIndex += 1;
+    const lines = block.split('\n');
+    if (/^\d+$/.test(lines[0]?.trim() || '')) lines.shift();
+    const timing = /^\s*(.+?)\s*-->\s*(.+?)(?:\s+.*)?$/.exec(lines.shift() || '');
+    if (!timing) { skipped += 1; continue; }
+    const start = parseSrtTimestamp(timing[1]);
+    const end = parseSrtTimestamp(timing[2]);
+    const cueText = lines.join('\n').trim();
+    if (start === null || end === null || end <= start || !cueText) { skipped += 1; continue; }
+    segments.push({ start, end, text: cueText });
+  }
+  segments.sort((a, b) => a.start - b.start || a.end - b.end);
+  if (skipped) warnings.push(`跳过 ${skipped} 个无法解析的 cue 块`);
+  if (segments.length < 1) throw new Error(warnings[0] || '没有可解析的字幕');
+  return { segments, warnings };
+}
+
+function parseProjectObject(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj) || !Array.isArray(obj.segments)) {
+    throw new Error('缺少 segments 字段');
+  }
+  const warnings = [];
+  const segments = [];
+  let skipped = 0;
+  let disabledCount = 0;
+  for (const raw of obj.segments) {
+    if (!raw || typeof raw !== 'object') { skipped += 1; continue; }
+    if (raw.disabled === true) { disabledCount += 1; continue; }
+    const start = Math.round(Number(raw.start));
+    const end = Math.round(Number(raw.end));
+    const text = typeof raw.text === 'string' ? raw.text.trim() : '';
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || start < 0 || !text) {
+      skipped += 1;
+      continue;
+    }
+    segments.push({ start, end, text });
+  }
+  segments.sort((a, b) => a.start - b.start || a.end - b.end);
+  if (skipped) warnings.push(`跳过 ${skipped} 个无效字幕段`);
+  if (disabledCount) warnings.push(`忽略 ${disabledCount} 个已禁用的字幕段`);
+  if (!segments.length) throw new Error(warnings[0] || '工程里没有可用的字幕段');
+  return {
+    segments,
+    warnings,
+    model: typeof obj.model === 'string' && obj.model.trim() ? obj.model.trim() : null,
+  };
+}
+
+async function buildFileEntry(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const text = decodeSubtitleBytes(bytes);
+  const lowerName = file.name.toLowerCase();
+  const wantsProject = lowerName.endsWith('.mosp') || lowerName.endsWith('.json');
+  let parsed;
+  let warnings = [];
+  let model = null;
+  let kind;
+  if (wantsProject) {
+    try {
+      parsed = parseProjectObject(JSON.parse(text));
+      model = parsed.model;
+      warnings = parsed.warnings;
+      kind = 'project';
+    } catch (error) {
+      try {
+        parsed = parseSrt(text);
+        warnings = ['内容不是 MAW 工程 JSON，已按 SRT 解析', ...parsed.warnings];
+        kind = 'srt';
+      } catch {
+        throw error instanceof Error ? error : new Error(String(error));
+      }
+    }
+  } else {
+    parsed = parseSrt(text);
+    warnings = parsed.warnings;
+    kind = 'srt';
+  }
+  const segments = parsed.segments;
+  const speechMs = segments.reduce((sum, s) => sum + (s.end - s.start), 0);
+  const chars = segments.reduce((sum, s) => sum + Array.from(s.text.replace(/\s+/g, '')).length, 0);
+  return {
+    id: `f${++uidCounter}`,
+    name: file.name,
+    displayName: file.name.replace(/\.(srt|mosp|json)$/i, ''),
+    kind,
+    model,
+    color: PALETTE[state.files.length % PALETTE.length],
+    segments,
+    warnings,
+    stats: {
+      count: segments.length,
+      speechMs,
+      spanStart: segments[0].start,
+      spanEnd: segments[segments.length - 1].end,
+      chars,
+      charsPerMin: speechMs > 0 ? chars / (speechMs / 60_000) : 0,
+    },
+  };
+}
+
+function assignColors() {
+  state.files.forEach((entry, index) => { entry.color = PALETTE[index % PALETTE.length]; });
+}
+
+async function addFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  let added = 0;
+  for (const file of files) {
+    const lowerName = file.name.toLowerCase();
+    if (!ACCEPT_EXTENSIONS.has(lowerName.slice(lowerName.lastIndexOf('.')))) {
+      toast(`跳过不支持的文件：${file.name}`, 'warn');
+      continue;
+    }
+    try {
+      state.files.push(await buildFileEntry(file));
+      added += 1;
+    } catch (error) {
+      toast(`无法解析 ${file.name}：${error.message || error}`, 'error');
+    }
+  }
+  if (added) {
+    assignColors();
+    // 原条件 state.files.length === 1 && files.length > 1 只在「多选里只有
+    // 一个文件解析成功」时触发，真正加载出多个文件时反而不提示，与本意相反。
+    if (state.files.length > 1 && !state.refId) toast('提示：多个文件已加载，可再选一个「基准」查看相似度');
+  }
+  render();
+}
+
+function removeFile(id) {
+  state.files = state.files.filter((entry) => entry.id !== id);
+  if (state.refId === id) state.refId = null;
+  assignColors();
+  render();
+}
+
+function clearAll() {
+  if (!state.files.length) return;
+  if (!window.confirm('清空全部已加载的文件？')) return;
+  state.files = [];
+  state.refId = null;
+  state.diffOnly = false;
+  els.diffOnly.checked = false;
+  render();
+}
+
+function getRef() {
+  return state.files.find((entry) => entry.id === state.refId) || null;
+}
+
+const LEADING_SEPARATOR_RE = /^[\s\-_.·・－—~～+（）()\[\]「」]+/u;
+const TRAILING_SEPARATOR_RE = /[\s\-_.·・－—~～+（）()\[\]「」]+$/u;
+
+function computeNameView() {
+  const names = state.files.map((entry) => entry.displayName);
+  let prefix = '';
+  if (names.length >= 2) {
+    prefix = names[0];
+    for (const name of names.slice(1)) {
+      let i = 0;
+      const max = Math.min(prefix.length, name.length);
+      while (i < max && prefix[i] === name[i]) i += 1;
+      prefix = prefix.slice(0, i);
+      if (!prefix) break;
+    }
+  }
+  let shorts = names;
+  let videoName = '';
+  if (prefix) {
+    const stripped = names.map((name) => name.slice(prefix.length).replace(LEADING_SEPARATOR_RE, ''));
+    if (stripped.every((short) => short.length > 0)) {
+      shorts = stripped;
+      videoName = prefix.replace(TRAILING_SEPARATOR_RE, '');
+    }
+  }
+  return { shorts, videoName };
+}
+
+let currentNameView = { shorts: [], videoName: '' };
+
+function renderHeading() {
+  if (!state.files.length) {
+    els.compareHeading.hidden = true;
+    els.compareHeading.textContent = '';
+    document.title = 'MAW 转写对比';
+    return;
+  }
+  const count = state.files.length;
+  els.compareHeading.hidden = false;
+  if (currentNameView.videoName) {
+    els.compareHeading.textContent = `「${currentNameView.videoName}」的字幕对比（${count} 个模型）`;
+    document.title = `${currentNameView.videoName} 的字幕对比`;
+  } else {
+    els.compareHeading.textContent = `字幕对比（${count} 个文件）`;
+    document.title = 'MAW 转写对比';
+  }
+}
+
+function normTokens(raw) {
+  const chars = Array.from(String(raw ?? ''));
+  const tokens = [];
+  chars.forEach((ch, rawIndex) => {
+    for (const normalized of ch.normalize('NFKC').toLowerCase()) {
+      if (/[\p{L}\p{N}]/u.test(normalized)) tokens.push({ raw: rawIndex, ch: normalized });
+    }
+  });
+  return tokens;
+}
+
+function lcsCompare(aTokens, bTokens) {
+  const n = aTokens.length;
+  const m = bTokens.length;
+  if (!n && !m) return { lcs: 0, lenA: 0, lenB: 0, matchedA: null, matchedB: null };
+  if (!n || !m) return { lcs: 0, lenA: n, lenB: m, matchedA: null, matchedB: null };
+  if (n * m > LCS_CELL_LIMIT) {
+    const counts = new Map();
+    for (const token of aTokens) counts.set(token.ch, (counts.get(token.ch) || 0) + 1);
+    let common = 0;
+    for (const token of bTokens) {
+      const left = counts.get(token.ch);
+      if (left > 0) { counts.set(token.ch, left - 1); common += 1; }
+    }
+    return { lcs: common, lenA: n, lenB: m, matchedA: null, matchedB: null };
+  }
+  const width = m + 1;
+  const dp = new Uint32Array((n + 1) * width);
+  for (let i = 1; i <= n; i++) {
+    const rowOff = i * width;
+    const prevOff = rowOff - width;
+    const ch = aTokens[i - 1].ch;
+    for (let j = 1; j <= m; j++) {
+      dp[rowOff + j] = ch === bTokens[j - 1].ch
+        ? dp[prevOff + j - 1] + 1
+        : Math.max(dp[prevOff + j], dp[rowOff + j - 1]);
+    }
+  }
+  const matchedA = new Uint8Array(n);
+  const matchedB = new Uint8Array(m);
+  let i = n;
+  let j = m;
+  while (i > 0 && j > 0) {
+    if (aTokens[i - 1].ch === bTokens[j - 1].ch && dp[i * width + j] === dp[(i - 1) * width + j - 1] + 1) {
+      matchedA[i - 1] = 1;
+      matchedB[j - 1] = 1;
+      i -= 1;
+      j -= 1;
+    } else if (dp[(i - 1) * width + j] >= dp[i * width + j - 1]) {
+      i -= 1;
+    } else {
+      j -= 1;
+    }
+  }
+  return { lcs: dp[n * width + m], lenA: n, lenB: m, matchedA, matchedB };
+}
+
+function buildRows() {
+  const all = [];
+  state.files.forEach((entry, fileIndex) => {
+    entry.segments.forEach((segment) => {
+      all.push({ fileIndex, start: segment.start, end: segment.end, text: segment.text });
+    });
+  });
+  all.sort((a, b) => a.start - b.start || a.end - b.end);
+  const rows = [];
+  let cursor = 0;
+  while (cursor < all.length) {
+    let rowStart = all[cursor].start;
+    let rowEnd = all[cursor].end;
+    const members = [all[cursor]];
+    const taken = new Set([cursor]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let i = cursor + 1; i < all.length; i++) {
+        if (taken.has(i)) continue;
+        const candidate = all[i];
+        if (candidate.start < rowEnd) {
+          taken.add(i);
+          members.push(candidate);
+          rowStart = Math.min(rowStart, candidate.start);
+          rowEnd = Math.max(rowEnd, candidate.end);
+          changed = true;
+        }
+      }
+    }
+    cursor += 1;
+    while (cursor < all.length && taken.has(cursor)) cursor += 1;
+    const cells = state.files.map(() => ({ start: null, end: null, parts: [] }));
+    for (const member of members.sort((a, b) => a.start - b.start)) {
+      const cell = cells[member.fileIndex];
+      if (cell.start === null || member.start < cell.start) cell.start = member.start;
+      if (cell.end === null || member.end > cell.end) cell.end = member.end;
+      cell.parts.push(member.text);
+    }
+    cells.forEach((cell) => { cell.text = cell.parts.join('\n'); });
+    rows.push({ start: rowStart, end: rowEnd, cells });
+  }
+  return rows;
+}
+
+function renderDiffCellHtml(cellText, refTokens) {
+  if (!refTokens) return escapeHtml(cellText);
+  const cellTokens = normTokens(cellText);
+  if (!refTokens.length && !cellTokens.length) return escapeHtml(cellText);
+  if (!refTokens.length || !cellTokens.length) {
+    return cellText ? `<mark>${escapeHtml(cellText)}</mark>` : '<span class="missing-mark">（此句基准有内容）</span>';
+  }
+  const { matchedB } = lcsCompare(refTokens, cellTokens);
+  if (!matchedB) return escapeHtml(cellText);
+  const charChars = Array.from(cellText);
+  const produced = new Uint8Array(charChars.length);
+  const matched = new Uint8Array(charChars.length);
+  cellTokens.forEach((token, index) => {
+    produced[token.raw] += 1;
+    if (matchedB[index]) matched[token.raw] += 1;
+  });
+  let html = '';
+  let buffer = '';
+  let state2 = null;
+  const flush = () => {
+    if (!buffer) return;
+    html += state2 === 'extra' ? `<mark>${escapeHtml(buffer)}</mark>` : escapeHtml(buffer);
+    buffer = '';
+  };
+  charChars.forEach((ch, index) => {
+    const isExtra = produced[index] > 0 && matched[index] < produced[index];
+    const kind = isExtra ? 'extra' : 'same';
+    if (kind !== state2) {
+      flush();
+      state2 = kind;
+    }
+    buffer += ch;
+  });
+  flush();
+  return html;
+}
+
+function simClass(sim) {
+  return sim >= 0.95 ? 'sim-good' : sim >= 0.85 ? 'sim-mid' : 'sim-bad';
+}
+
+function formatSim(sim) {
+  return `${(sim * 100).toFixed(1)}%`;
+}
+
+function renderCards(overallByFile) {
+  els.cards.textContent = '';
+  state.files.forEach((entry, index) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.setProperty('--c', entry.color);
+    const head = document.createElement('div');
+    head.className = 'card-head';
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.title = entry.name;
+    name.textContent = currentNameView.shorts[index] || entry.displayName;
+    head.appendChild(dot);
+    head.appendChild(name);
+    if (entry.warnings.length) {
+      const warn = document.createElement('span');
+      warn.className = 'warn-badge';
+      warn.title = entry.warnings.join('\n');
+      warn.textContent = '⚠';
+      head.appendChild(warn);
+    }
+    if (entry.id === state.refId) {
+      const badge = document.createElement('span');
+      badge.className = 'ref-badge';
+      badge.textContent = '基准';
+      head.appendChild(badge);
+    }
+    const close = document.createElement('button');
+    close.className = 'x';
+    close.type = 'button';
+    close.title = '移除';
+    close.textContent = '✕';
+    close.addEventListener('click', () => removeFile(entry.id));
+    head.appendChild(close);
+    card.appendChild(head);
+
+    const modelLine = document.createElement('div');
+    modelLine.className = 'card-model';
+    modelLine.textContent = entry.model
+      ? entry.model
+      : entry.kind === 'project' ? 'MAW 工程' : 'SRT';
+    card.appendChild(modelLine);
+
+    const stats = entry.stats;
+    const statsLine = document.createElement('div');
+    statsLine.className = 'card-stats';
+    const span = stats.spanEnd - stats.spanStart;
+    statsLine.textContent = `${stats.count} 段 · 语音 ${formatMs(stats.speechMs)} · ${stats.chars} 字 · ${stats.charsPerMin.toFixed(1)} 字/分`;
+    statsLine.title = `时间跨度 ${formatMs(stats.spanStart)} – ${formatMs(stats.spanEnd)}（共 ${formatMs(span)}）`;
+    card.appendChild(statsLine);
+
+    const actions = document.createElement('div');
+    actions.className = 'card-actions';
+    const refBtn = document.createElement('button');
+    refBtn.type = 'button';
+    refBtn.className = `btn${entry.id === state.refId ? ' active' : ''}`;
+    refBtn.textContent = entry.id === state.refId ? '取消基准' : '设为基准';
+    refBtn.addEventListener('click', () => {
+      state.refId = state.refId === entry.id ? null : entry.id;
+      if (!state.refId) {
+        state.diffOnly = false;
+        els.diffOnly.checked = false;
+      }
+      render();
+    });
+    actions.appendChild(refBtn);
+    if (state.refId && entry.id !== state.refId && overallByFile.has(entry.id)) {
+      const sim = overallByFile.get(entry.id);
+      const simSpan = document.createElement('span');
+      simSpan.className = `card-sim ${simClass(sim)}`;
+      simSpan.title = '与基准的整篇字符相似度（忽略大小写、空白与标点）';
+      simSpan.textContent = formatSim(sim);
+      actions.appendChild(simSpan);
+    }
+    card.appendChild(actions);
+    els.cards.appendChild(card);
+  });
+}
+
+function renderWarnBox() {
+  const lines = [];
+  state.files.forEach((entry) => {
+    entry.warnings.forEach((warning) => lines.push(`${entry.name}：${warning}`));
+  });
+  els.warnBox.hidden = lines.length === 0;
+  if (lines.length) {
+    els.warnBox.textContent = '';
+    const label = document.createElement('b');
+    label.textContent = '解析提示 ';
+    els.warnBox.appendChild(label);
+    els.warnBox.appendChild(document.createTextNode(lines.join('；')));
+  }
+}
+
+function renderTable(rows, overallByFile, sumsByFile) {
+  els.tableWrap.textContent = '';
+  els.tableWrap.hidden = false;
+  const count = state.files.length;
+  const refIndex = state.files.findIndex((entry) => entry.id === state.refId);
+  const hasRef = refIndex >= 0;
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  grid.style.gridTemplateColumns = `110px repeat(${count}, minmax(240px, 1fr))`;
+
+  const corner = document.createElement('div');
+  corner.className = 'hcell';
+  corner.style.position = 'sticky';
+  corner.style.left = '0';
+  corner.style.zIndex = '4';
+  corner.textContent = '时间';
+  grid.appendChild(corner);
+
+  state.files.forEach((entry, index) => {
+    const head = document.createElement('div');
+    head.className = 'hcell';
+    const hname = document.createElement('div');
+    hname.className = 'hname';
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = entry.color;
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.title = entry.name;
+    name.textContent = currentNameView.shorts[index] || entry.displayName;
+    hname.appendChild(dot);
+    hname.appendChild(name);
+    if (entry.id === state.refId) {
+      const badge = document.createElement('span');
+      badge.className = 'ref-badge';
+      badge.textContent = '基准';
+      hname.appendChild(badge);
+    }
+    head.appendChild(hname);
+    const meta = document.createElement('div');
+    meta.className = 'hmeta';
+    const metaText = document.createElement('span');
+    metaText.textContent = entry.model || (entry.kind === 'project' ? 'MAW 工程' : 'SRT');
+    meta.appendChild(metaText);
+    if (hasRef && index !== refIndex && sumsByFile.has(entry.id)) {
+      const sim = overallByFile.get(entry.id) ?? 0;
+      const simSpan = document.createElement('span');
+      simSpan.className = `sim ${simClass(sim)}`;
+      simSpan.textContent = formatSim(sim);
+      simSpan.title = '整篇字符相似度';
+      meta.appendChild(simSpan);
+    }
+    head.appendChild(meta);
+    grid.appendChild(head);
+  });
+
+  const search = state.search.trim().toLowerCase();
+  let shownRows = 0;
+  for (const row of rows) {
+    const rowTokens = hasRef ? normTokens(row.cells[refIndex].text) : null;
+    const rowNorm = rowTokens ? rowTokens.map((token) => token.ch).join('') : null;
+    const rowDiffers = hasRef && state.files.some((entry, index) => {
+      if (index === refIndex) return false;
+      const cellNorm = normTokens(row.cells[index].text).map((token) => token.ch).join('');
+      return cellNorm !== rowNorm;
+    });
+    if (state.diffOnly && !rowDiffers) continue;
+    if (search) {
+      const haystack = row.cells.map((cell) => cell.text).join('\n').toLowerCase();
+      if (!haystack.includes(search)) continue;
+    }
+    shownRows += 1;
+    const rowClass = rowDiffers ? ' row-diff' : '';
+    const timeCell = document.createElement('div');
+    timeCell.className = `cell time-cell${rowClass}`;
+    timeCell.title = `${row.start} ms – ${row.end} ms`;
+    const timeText = document.createElement('span');
+    timeText.textContent = formatMs(row.start);
+    timeCell.appendChild(timeText);
+    if (rowDiffers) {
+      const chip = document.createElement('span');
+      chip.className = 'diff-chip';
+      chip.textContent = '≠ 基准';
+      timeCell.appendChild(chip);
+    }
+    grid.appendChild(timeCell);
+
+    state.files.forEach((entry, index) => {
+      const cell = row.cells[index];
+      const cellEl = document.createElement('div');
+      cellEl.className = `cell${index === refIndex ? ' ref-col' : ''}${rowClass}`;
+      if (!cell.parts.length) {
+        cellEl.classList.add('empty-cell');
+        cellEl.textContent = '—';
+        grid.appendChild(cellEl);
+        return;
+      }
+      const text = document.createElement('div');
+      text.className = 'text';
+      if (index === refIndex) {
+        text.textContent = cell.text;
+      } else {
+        text.innerHTML = renderDiffCellHtml(cell.text, rowTokens);
+      }
+      cellEl.appendChild(text);
+      const ctime = document.createElement('div');
+      ctime.className = 'ctime';
+      ctime.textContent = `${formatMs(cell.start)} – ${formatMs(cell.end)}${cell.parts.length > 1 ? `（${cell.parts.length} 段）` : ''}`;
+      cellEl.appendChild(ctime);
+      grid.appendChild(cellEl);
+    });
+  }
+  els.tableWrap.appendChild(grid);
+  return shownRows;
+}
+
+let waveRenderInfo = null;
+
+function renderWavePanel() {
+  const body = els.waveBody;
+  const scroll = els.waveScroll;
+  const spanMs = state.files.length
+    ? Math.max(...state.files.map((entry) => entry.stats.spanEnd))
+    : 0;
+  if (!spanMs) {
+    els.wavePanel.hidden = true;
+    body.textContent = '';
+    waveRenderInfo = null;
+    return;
+  }
+  const prevScrollLeft = scroll.scrollLeft;
+  const prevScrollTop = scroll.scrollTop;
+  els.wavePanel.hidden = false;
+  body.textContent = '';
+  const baseWidth = Math.max(320, scroll.clientWidth - WAVE_LABEL_PX);
+  const laneWidth = Math.round(baseWidth * waveLayout.zx);
+  const step = rulerStepMs(spanMs, laneWidth);
+  const tickFrac = (step / spanMs).toFixed(6);
+  const laneHeight = Math.round(40 * waveLayout.zy);
+  const blockHeight = Math.round(24 * waveLayout.zy);
+  const blockBottom = Math.round(5 * waveLayout.zy);
+
+  const headRow = document.createElement('div');
+  headRow.className = 'wave-row';
+  const corner = document.createElement('div');
+  corner.className = 'wave-corner';
+  headRow.appendChild(corner);
+  const ruler = document.createElement('div');
+  ruler.className = 'wave-ruler';
+  ruler.style.width = `${laneWidth}px`;
+  for (let t = 0; t <= spanMs; t += step) {
+    const tick = document.createElement('span');
+    tick.className = 'tick';
+    tick.style.left = `${(t / spanMs) * 100}%`;
+    tick.textContent = formatTick(t);
+    ruler.appendChild(tick);
+  }
+  headRow.appendChild(ruler);
+  body.appendChild(headRow);
+
+  state.files.forEach((entry, index) => {
+    const row = document.createElement('div');
+    row.className = 'wave-row';
+    const label = document.createElement('div');
+    label.className = 'wave-label';
+    label.style.height = `${laneHeight}px`;
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = entry.color;
+    const name = document.createElement('span');
+    name.className = 'lname';
+    name.title = entry.name;
+    name.textContent = currentNameView.shorts[index] || entry.displayName;
+    const count = document.createElement('span');
+    count.className = 'lcount';
+    count.textContent = `${entry.stats.count}`;
+    label.appendChild(dot);
+    label.appendChild(name);
+    label.appendChild(count);
+    row.appendChild(label);
+    const lane = document.createElement('div');
+    lane.className = 'wave-lane';
+    lane.style.width = `${laneWidth}px`;
+    lane.style.height = `${laneHeight}px`;
+    lane.style.setProperty('--tick-frac', tickFrac);
+    for (const segment of entry.segments) {
+      const block = document.createElement('div');
+      block.className = 'wave-cue';
+      block.style.setProperty('--cue-color', entry.color);
+      block.style.left = `${(segment.start / spanMs) * 100}%`;
+      block.style.width = `${Math.max(0.25, ((segment.end - segment.start) / spanMs) * 100)}%`;
+      block.style.bottom = `${blockBottom}px`;
+      block.style.height = `${blockHeight}px`;
+      block.style.lineHeight = `${blockHeight}px`;
+      const text = String(segment.text || '').replace(/\s+/g, ' ');
+      block.textContent = text;
+      block.title = `${formatMs(segment.start)} – ${formatMs(segment.end)}\n${text}`;
+      lane.appendChild(block);
+    }
+    row.appendChild(lane);
+    body.appendChild(row);
+  });
+
+  waveRenderInfo = { spanMs, baseWidth, laneWidth, labelWidth: WAVE_LABEL_PX };
+  scroll.scrollLeft = Math.min(prevScrollLeft, Math.max(0, scroll.scrollWidth - scroll.clientWidth));
+  scroll.scrollTop = Math.min(prevScrollTop, Math.max(0, scroll.scrollHeight - scroll.clientHeight));
+}
+
+function setWaveZoom(zx, zy, anchorClientX = null) {
+  const nextZx = clampNumber(zx ?? waveLayout.zx, ...WAVE_ZX_LIMITS, waveLayout.zx);
+  const nextZy = clampNumber(zy ?? waveLayout.zy, ...WAVE_ZY_LIMITS, waveLayout.zy);
+  if (nextZx === waveLayout.zx && nextZy === waveLayout.zy) return;
+  const scroll = els.waveScroll;
+  const info = waveRenderInfo;
+  let anchorTimeMs = null;
+  let localX = null;
+  if (info && anchorClientX != null) {
+    localX = anchorClientX - scroll.getBoundingClientRect().left;
+    if (localX > info.labelWidth) {
+      anchorTimeMs = ((scroll.scrollLeft + localX - info.labelWidth) / info.laneWidth) * info.spanMs;
+    }
+  }
+  const prevZy = waveLayout.zy;
+  waveLayout.zx = nextZx;
+  waveLayout.zy = nextZy;
+  saveWaveLayout();
+  renderWavePanel();
+  if (anchorTimeMs != null && waveRenderInfo) {
+    scroll.scrollLeft = Math.max(0,
+      (anchorTimeMs / waveRenderInfo.spanMs) * waveRenderInfo.laneWidth - (localX - waveRenderInfo.labelWidth));
+  }
+  if (nextZy !== prevZy && info) {
+    scroll.scrollTop *= nextZy / prevZy;
+  }
+}
+
+els.zxIn.addEventListener('click', () => setWaveZoom(waveLayout.zx * 1.25, null));
+els.zxOut.addEventListener('click', () => setWaveZoom(waveLayout.zx / 1.25, null));
+els.zyIn.addEventListener('click', () => setWaveZoom(null, waveLayout.zy * 1.25));
+els.zyOut.addEventListener('click', () => setWaveZoom(null, waveLayout.zy / 1.25));
+els.waveReset.addEventListener('click', () => setWaveZoom(1, 1));
+
+els.waveScroll.addEventListener('wheel', (event) => {
+  if (!state.files.length) return;
+  if (!(event.ctrlKey || event.metaKey || event.altKey)) return;
+  event.preventDefault();
+  const factor = event.deltaY < 0 ? 1.25 : 0.8;
+  if (event.altKey) setWaveZoom(null, waveLayout.zy * factor);
+  else setWaveZoom(waveLayout.zx * factor, null, event.clientX);
+}, { passive: false });
+
+els.waveResizer.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  const startY = event.clientY;
+  const startHeight = els.wavePanel.getBoundingClientRect().height;
+  try {
+    els.waveResizer.setPointerCapture(event.pointerId);
+  } catch {
+    // 指针捕获不可用时（如自动化注入的合成事件）继续走普通事件流
+  }
+  document.body.classList.add('wave-resizing');
+  const onMove = (moveEvent) => {
+    const height = Math.round(clampNumber(
+      startHeight + (startY - moveEvent.clientY),
+      ...WAVE_HEIGHT_LIMITS,
+      startHeight,
+    ));
+    els.wavePanel.style.height = `${Math.min(height, Math.round(window.innerHeight * 0.7))}px`;
+    waveLayout.height = parseInt(els.wavePanel.style.height, 10);
+  };
+  const onUp = () => {
+    els.waveResizer.removeEventListener('pointermove', onMove);
+    els.waveResizer.removeEventListener('pointerup', onUp);
+    els.waveResizer.removeEventListener('pointercancel', onUp);
+    document.body.classList.remove('wave-resizing');
+    saveWaveLayout();
+  };
+  els.waveResizer.addEventListener('pointermove', onMove);
+  els.waveResizer.addEventListener('pointerup', onUp);
+  els.waveResizer.addEventListener('pointercancel', onUp);
+});
+
+function computeSims(rows) {
+  const refIndex = state.files.findIndex((entry) => entry.id === state.refId);
+  if (refIndex < 0) return { overallByFile: new Map(), sumsByFile: new Map() };
+  const sums = new Map();
+  for (const row of rows) {
+    const refTokens = normTokens(row.cells[refIndex].text);
+    if (!refTokens.length) continue;
+    state.files.forEach((entry, index) => {
+      if (index === refIndex) return;
+      const cellTokens = normTokens(row.cells[index].text);
+      if (!cellTokens.length) return;
+      const cur = sums.get(entry.id) || { lcs: 0, lenA: 0, lenB: 0 };
+      const result = lcsCompare(refTokens, cellTokens);
+      cur.lcs += result.lcs;
+      cur.lenA += result.lenA;
+      cur.lenB += result.lenB;
+      sums.set(entry.id, cur);
+    });
+  }
+  const overallByFile = new Map();
+  const sumsByFile = new Map();
+  for (const [id, sum] of sums) {
+    sumsByFile.set(id, sum);
+    overallByFile.set(id, sum.lenA + sum.lenB > 0 ? (2 * sum.lcs) / (sum.lenA + sum.lenB) : 1);
+  }
+  return { overallByFile, sumsByFile };
+}
+
+function render() {
+  const hasFiles = state.files.length > 0;
+  currentNameView = computeNameView();
+  els.empty.hidden = hasFiles;
+  els.addBtn2.hidden = hasFiles;
+  els.clearBtn.disabled = !hasFiles;
+  els.search.disabled = !hasFiles;
+  els.diffOnly.disabled = !state.refId;
+  renderHeading();
+
+  if (!hasFiles) {
+    els.cards.textContent = '';
+    els.warnBox.hidden = true;
+    els.tableWrap.hidden = true;
+    els.tableWrap.textContent = '';
+    els.wavePanel.hidden = true;
+    els.waveBody.textContent = '';
+    waveRenderInfo = null;
+    els.status.textContent = '';
+    return;
+  }
+
+  const rows = buildRows();
+  const { overallByFile, sumsByFile } = computeSims(rows);
+  renderCards(overallByFile);
+  renderWarnBox();
+  const shownRows = renderTable(rows, overallByFile, sumsByFile);
+  renderWavePanel();
+
+  els.status.textContent = '';
+  const total = document.createElement('span');
+  total.textContent = `${state.files.length} 个文件 · ${shownRows}/${rows.length} 个对齐组`;
+  els.status.appendChild(total);
+  if (!state.refId) {
+    const hint = document.createElement('span');
+    hint.textContent = '提示：在文件卡片上「设为基准」后可查看逐句相似度与差异高亮';
+    els.status.appendChild(hint);
+  }
+  const legend = document.createElement('span');
+  legend.className = 'legend';
+  legend.textContent = '相似度 = 忽略大小写、空白与标点后的字符重合率；红底为相对基准多出的字';
+  els.status.appendChild(legend);
+}
+
+let searchTimer = 0;
+els.search.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    state.search = els.search.value;
+    render();
+  }, 160);
+});
+els.diffOnly.addEventListener('change', () => {
+  state.diffOnly = els.diffOnly.checked;
+  render();
+});
+els.clearBtn.addEventListener('click', clearAll);
+els.addBtn.addEventListener('click', () => els.fileInput.click());
+els.addBtn2.addEventListener('click', () => els.fileInput.click());
+els.fileInput.addEventListener('change', () => {
+  addFiles(els.fileInput.files);
+  els.fileInput.value = '';
+});
+
+let dragHideTimer = 0;
+function dragHasFiles(event) {
+  const types = event.dataTransfer?.types;
+  return !!types && Array.from(types).includes('Files');
+}
+window.addEventListener('dragover', (event) => {
+  if (!dragHasFiles(event)) return;
+  event.preventDefault();
+  els.dropOverlay.hidden = false;
+  clearTimeout(dragHideTimer);
+  dragHideTimer = setTimeout(() => { els.dropOverlay.hidden = true; }, 600);
+});
+window.addEventListener('dragleave', (event) => {
+  if (!event.relatedTarget) {
+    clearTimeout(dragHideTimer);
+    els.dropOverlay.hidden = true;
+  }
+});
+window.addEventListener('drop', (event) => {
+  event.preventDefault();
+  clearTimeout(dragHideTimer);
+  els.dropOverlay.hidden = true;
+  if (event.dataTransfer?.files?.length) addFiles(event.dataTransfer.files);
+});
+
+let resizeTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (state.files.length) renderWavePanel();
+  }, 200);
+});
+
+window.MAWCompare = {
+  parseSrt,
+  parseProjectObject,
+  decodeSubtitleBytes,
+  buildFileEntry,
+  buildRows,
+  normTokens,
+  lcsCompare,
+  addFiles,
+  removeFile,
+  clearAll,
+  state,
+};
+
+render();
+</script>
+</body>
+</html>

@@ -34,6 +34,22 @@ class TimestampAlignmentTests(unittest.TestCase):
             [("你", 0, 200), ("好", 200, 500)],
         )
 
+    def test_qwen_forced_aligner_result_wrapper_is_unwrapped(self) -> None:
+        # qwen_asr >= 0.0.6 返回 ForcedAlignResult(items=[ForcedAlignItem...])：
+        # 外层 dataclass 不带时间字段，只持有 items 序列；解析必须递归展开，
+        # 否则所有段都会以“未返回可用的时间码”失败。
+        raw = [SimpleNamespace(items=[
+            SimpleNamespace(text="你", start_time=0.0, end_time=0.2),
+            SimpleNamespace(text="好", start_time=0.2, end_time=0.5),
+        ])]
+
+        items = _timed_tokens_from_raw(raw)
+
+        self.assertEqual(
+            [(item.text, item.start, item.end) for item in items],
+            [("你", 0, 200), ("好", 200, 500)],
+        )
+
     def test_firered_ctc_tokens_map_back_to_known_text(self) -> None:
         items = firered_tokens_to_items(
             "你好 world",

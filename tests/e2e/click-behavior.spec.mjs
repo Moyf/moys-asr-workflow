@@ -251,6 +251,47 @@ test('default list click selects and seeks to cue start while keeping playback',
   await page.waitForFunction(() => !document.getElementById('player').paused);
 });
 
+test('mouse-click pause setting seeks and pauses active playback', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-general').click();
+  const pauseOnMouseClick = page.locator('#pause-on-mouse-click');
+  await expect(pauseOnMouseClick).not.toBeChecked();
+  await pauseOnMouseClick.check();
+  await expect.poll(() => page.evaluate(() => JSON.parse(
+    localStorage.getItem('moy.asr.editor.settings.v1') || '{}',
+  ).pauseOnMouseClick)).toBe(true);
+  await page.locator('#editor-settings-close').click();
+
+  await page.waitForFunction(() => {
+    const player = document.getElementById('player');
+    return player.readyState >= 1 && Number.isFinite(player.duration) && player.duration > 0;
+  });
+  await page.evaluate(() => { document.getElementById('player').currentTime = 1; });
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => !document.getElementById('player').paused);
+
+  await page.locator('.cue[data-idx="4"]').click();
+
+  await page.waitForFunction(() => {
+    const player = document.getElementById('player');
+    const seg = MaweBoot.DATA.segments[4];
+    return Math.abs(player.currentTime - seg.start / 1000) < 0.25 && player.paused;
+  }, undefined, { timeout: 5000 });
+
+  // 波形字幕块也是鼠标跳转入口；开启后同样应在定位后暂停。
+  await page.evaluate(() => {
+    document.getElementById('player').currentTime = 1;
+    document.getElementById('waveform-scroll').scrollTop = 0;
+  });
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => !document.getElementById('player').paused);
+  const waveformCue = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
+  await expect(waveformCue).toBeVisible();
+  await waveformCue.click();
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').paused)).toBe(true);
+});
+
 test('list cue selects on pointerdown and double-click still enters edit', async ({ page }) => {
   await page.goto(server.url);
   const cue = page.locator('.cue[data-idx="4"]');

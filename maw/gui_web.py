@@ -138,7 +138,7 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.6.0-beta.4"
+BUNDLED_APP_VERSION = "1.6.0-beta.6"
 MOSE_VERSION = "0.1.0"
 
 
@@ -1163,7 +1163,9 @@ class LauncherApi:
         try:
             self._emit_postprocess_status("toolbox_status_aligning")
             alignment_mode = str(payload.get("alignmentMode") or "fill")
-            output_mode = _output_mode(payload.get("outputMode")).value
+            # 字词时间码只存在于工程 items；SRT 没有字词字段，产出内容与
+            # 输入完全相同。时间码工具固定只更新工程，忽略共享输出选择。
+            output_mode = OutputMode.JSON.value
             requested_model_path = _optional_path(payload.get("modelPath"))
             if runtime.ready:
                 worker_result = run_timestamp_alignment_in_runtime(

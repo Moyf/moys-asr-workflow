@@ -126,6 +126,7 @@
       MaweTextCleanup.seekFromWaveform(timeSec, options);
       if (!options.dragPreview) MaweCueListAnchor.resumeCueListFollowing();
     },
+    isPlaybackActive: () => isPlaybackActive(),
     onPlayheadDragStateChange: (active) => {
       MawePlaybackLoop.waveformPlayheadDragging = active === true;
       if (!active) MaweCueListAnchor.resumeCueListFollowing();

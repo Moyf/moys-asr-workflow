@@ -76,7 +76,7 @@ class PostprocessPipelineTests(unittest.TestCase):
         plan = default_postprocess_plan()
 
         self.assertFalse(plan["enabled"])
-        self.assertFalse(plan["retainIntermediate"])
+        self.assertTrue(plan["retainIntermediate"])
         self.assertEqual([step["id"] for step in plan["steps"]], ["match", "replace", "proofread", "resegment", "ocr", "translate"])
         self.assertEqual(plan["steps"][1]["conversion"], "off")
         self.assertFalse(plan["steps"][-1]["mergeBilingual"])
@@ -92,6 +92,15 @@ class PostprocessPipelineTests(unittest.TestCase):
         normalized = normalize_plan(plan)
 
         self.assertEqual(normalized["steps"][0]["extraSplitPunctuation"], ["？", "！"])
+
+    def test_normalize_plan_defaults_retain_intermediate_for_legacy_plan(self) -> None:
+        normalized = normalize_plan({"enabled": True, "steps": []})
+
+        self.assertTrue(normalized["retainIntermediate"])
+
+        normalized = normalize_plan({"enabled": True, "retainIntermediate": False, "steps": []})
+
+        self.assertFalse(normalized["retainIntermediate"])
 
     def test_normalize_plan_preserves_ocr_video_path_mode(self) -> None:
         plan = default_postprocess_plan()
@@ -461,16 +470,30 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual(zh_srt.name, "clip.后处理.双语合一.srt")
         self.assertIsNone(zh_translated)
         self.assertTrue(result.run_directory.is_dir())
-        self.assertTrue((result.run_directory / translated_project.name).is_file())
-        self.assertTrue((result.run_directory / translated_srt.name).is_file())
-        self.assertIn("Translation one", (result.run_directory / translated_srt.name).read_text(encoding="utf-8"))
+        initial_project = result.run_directory / "clip.postprocess.0.original.mosp"
+        initial_srt = result.run_directory / "clip.postprocess.0.original.srt"
+        intermediate_project = result.run_directory / "clip.postprocess.1.translate-en.mosp"
+        intermediate_srt = result.run_directory / "clip.postprocess.1.translate-en.srt"
+        merged_project = result.run_directory / "clip.postprocess.2.bilingual.mosp"
+        merged_srt = result.run_directory / "clip.postprocess.2.bilingual.srt"
+        for path in (initial_project, initial_srt, intermediate_project, intermediate_srt, merged_project, merged_srt):
+            self.assertTrue(path.is_file(), path)
+        self.assertEqual(initial_project.read_text(encoding="utf-8"), self.project.read_text(encoding="utf-8"))
+        self.assertEqual(initial_srt.read_text(encoding="utf-8"), self.srt.read_text(encoding="utf-8"))
+        self.assertIn("Translation one", intermediate_srt.read_text(encoding="utf-8"))
+        self.assertFalse((result.run_directory / translated_project.name).exists())
+        self.assertFalse((result.run_directory / translated_srt.name).exists())
         self.assertNotIn("multi_subtitle", json.loads(result.project_path.read_text(encoding="utf-8")))
         self.assertFalse((self.root / "clip.postprocess.translate-en.srt").exists())
         manifest = json.loads((result.run_directory / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["initialProjectPath"], str(initial_project.resolve()))
+        self.assertEqual(manifest["initialSrtPath"], str(initial_srt.resolve()))
         self.assertNotIn("finalTranslatedSrtPath", manifest)
         step_manifest = manifest["steps"][0]
-        self.assertEqual(step_manifest["translationIntermediateProjectPath"], str((result.run_directory / translated_project.name).resolve()))
-        self.assertEqual(step_manifest["translationIntermediateSrtPath"], str((result.run_directory / translated_srt.name).resolve()))
+        self.assertEqual(step_manifest["translationIntermediateProjectPath"], str(intermediate_project.resolve()))
+        self.assertEqual(step_manifest["translationIntermediateSrtPath"], str(intermediate_srt.resolve()))
+        self.assertEqual(step_manifest["projectPath"], str(merged_project.resolve()))
+        self.assertEqual(step_manifest["srtPath"], str(merged_srt.resolve()))
 
     def test_translation_embed_publishes_single_track_and_keeps_translation_intermediate(self) -> None:
         # 回填单语：译文替换对应原文（与主字幕相同的句子逐字节保留），最终只
@@ -543,12 +566,18 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual(zh_project.name, "clip.后处理.回填.mosp")
         self.assertEqual(zh_srt.name, "clip.后处理.回填.srt")
         self.assertIsNone(zh_translated)
-        self.assertTrue((result.run_directory / translated_srt.name).is_file())
+        intermediate_srt = result.run_directory / "clip.postprocess.1.translate-en.srt"
+        backfill_srt = result.run_directory / "clip.postprocess.2.backfill.srt"
+        self.assertTrue(intermediate_srt.is_file())
+        self.assertTrue(backfill_srt.is_file())
+        self.assertFalse((result.run_directory / translated_srt.name).exists())
         manifest = json.loads((result.run_directory / "manifest.json").read_text(encoding="utf-8"))
         self.assertNotIn("finalTranslatedSrtPath", manifest)
         step_manifest = manifest["steps"][0]
-        self.assertEqual(step_manifest["translationIntermediateProjectPath"], str((result.run_directory / translated_project.name).resolve()))
-        self.assertEqual(step_manifest["translationIntermediateSrtPath"], str((result.run_directory / translated_srt.name).resolve()))
+        self.assertEqual(step_manifest["translationIntermediateProjectPath"], str((result.run_directory / "clip.postprocess.1.translate-en.mosp").resolve()))
+        self.assertEqual(step_manifest["translationIntermediateSrtPath"], str(intermediate_srt.resolve()))
+        self.assertEqual(step_manifest["projectPath"], str((result.run_directory / "clip.postprocess.2.backfill.mosp").resolve()))
+        self.assertEqual(step_manifest["srtPath"], str(backfill_srt.resolve()))
 
     def test_attach_translation_track_skips_extension_segments_identical_to_main(self) -> None:
         # 副轨去重：译文与主字幕相同的句子不再重复进入副轨与绑定。

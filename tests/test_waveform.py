@@ -393,6 +393,8 @@ class EditorAssetTests(unittest.TestCase):
             'value="pointer" selected>鼠标所在位置' in page,
             '点击字幕块的默认跳转目标应为鼠标所在位置',
         )
+        self.assertIn('id="pause-on-mouse-click"> 播放过程中点击鼠标自动暂停', page)
+        self.assertIn('pauseOnMouseClick: false', page)
         self.assertIn('id="cues-empty"', page)
         self.assertIn('加载工程后显示字幕列表', page)
         self.assertIn('id="workspace-preset"', page)
@@ -573,6 +575,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="subtitle-speaker-mapping-enabled"', page)
         self.assertIn('id="subtitle-speaker-labels-enabled-wrap"', page)
         self.assertIn('在预览字幕中显示说话人', page)
+        self.assertIn('id="subtitle-speaker-labels-enabled" checked', page)
         self.assertIn('id="subtitle-color-style-control"', page)
         self.assertIn('id="subtitle-color-style"', page)
         # 字幕颜色页：CSS 预览颜色样式（下划线默认）。
@@ -581,10 +584,13 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('value="stroke">描边', page)
         self.assertNotIn('value="shadow"', page)
         self.assertIn('>预览颜色样式</span>', page)
-        # 字幕颜色页：ASS 颜色映射（text / stroke / none），勾选 ASS 字幕模式时替代预览颜色样式。
+        # 字幕颜色页：ASS 颜色映射（text / speaker / stroke / none），勾选 ASS 字幕模式时替代预览颜色样式。
         self.assertIn('id="ass-color-style-row"', page)
         self.assertIn('id="ass-color-style"', page)
+        self.assertIn('id="ass-color-speaker-hint"', page)
+        self.assertIn('id="ass-color-speaker-export-link"', page)
         self.assertIn('value="text" selected>作为字幕颜色', page)
+        self.assertIn('value="speaker">作为说话人名称颜色', page)
         self.assertIn('value="stroke">作为描边颜色', page)
         self.assertIn('value="none">无影响', page)
         self.assertIn('>颜色字幕样式</span>', page)
@@ -920,6 +926,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('cueListShowTime: saved.cueListShowTime !== false', page)
         self.assertIn('cueListShowSticker: saved.cueListShowSticker !== false', page)
         self.assertIn('cueListShowCharcount: saved.cueListShowCharcount !== false', page)
+        self.assertIn('pauseOnMouseClick: savedSettings.pauseOnMouseClick === true', page)
         self.assertNotIn('id="cue-editor-show-navigation" checked', page)
         self.assertNotIn('id="cue-editor-show-time-actions" checked', page)
         self.assertIn('cueEditorShowTimeActions: saved.cueEditorShowTimeActions === true', page)
@@ -1074,7 +1081,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="fcp7-export-fps"', page)
         self.assertIn('id="fcp7-export-subtitle-tracks"', page)
         self.assertIn('id="fcp7-export-native-text"', page)
-        self.assertNotIn('id="fcp7-export-native-text" checked', page)
+        self.assertIn('id="fcp7-export-native-text" checked', page)
         self.assertIn('id="fcp7-export-confirm"', page)
         self.assertIn('exportFcp7Xml(', page)
         self.assertNotIn('gap-remove-subtitle-warning', page)
@@ -1302,6 +1309,19 @@ class EditorAssetTests(unittest.TestCase):
             ".layout-resizer-h1::after, .layout-resizer-h2::after { left: 0; right: 0; top: 2px; height: 2px; }",
             styles,
         )
+
+    def test_classic_boundary_mode_restores_system_cursor(self) -> None:
+        # 传统模式下没有中缝区，边界手柄沿用旧版系统光标；
+        # 原创光标素材只服务 dual（中缝联动）模式。
+        styles = (ROOT / "web" / "waveform.css").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
+        self.assertIn(
+            ".waveform-pane.boundary-mode-classic .waveform-cue-handle.left,\n"
+            ".waveform-pane.boundary-mode-classic .waveform-cue-handle.right { cursor: ew-resize; }",
+            styles,
+        )
+        self.assertIn("'boundary-mode-classic'", script)
+        self.assertIn("this.options.getAdjacentBoundaryMode?.() !== 'dual'", script)
 
 if __name__ == "__main__":
     unittest.main()

@@ -172,6 +172,8 @@
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
   clickTarget: 'pointer',
+  // 播放中通过鼠标点击跳转后是否暂停；默认保持原来的继续播放行为。
+  pauseOnMouseClick: false,
   keyboardOperationReference: 'pointer',
   // J/K/L 播放控制：direction 为倒放/停止/正放，speed 保留旧的慢速/重置/倍速行为。
   jklPlaybackMode: 'direction',
@@ -213,7 +215,7 @@
   accentColorCustom: '#6ca5e8',
   // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
   waveShapeSource: 'reapeaks',
-}
+};
 
 
   const SUBTITLE_FONT_SIZE_MIN = 12;

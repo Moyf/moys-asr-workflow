@@ -890,6 +890,12 @@ __WAVEFORM_CSS__
       </select>
     </label>
     <div class="editor-settings-field">
+    <label class="toggle editor-settings-item" title="开启后，播放过程中通过鼠标点击字幕或波形跳转时会暂停；暂停时不受影响">
+      <input type="checkbox" id="pause-on-mouse-click"> 播放过程中点击鼠标自动暂停
+    </label>
+    <small class="editor-settings-hint">播放时点击字幕、波形或空隙跳转后暂停；暂停时的点击行为不变。</small>
+    </div>
+    <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="开启后，普通点击属于表情包或颜色分组的字幕时，会同时选中该分组的全部成员；关闭时只选中点击的那一条">
       <input type="checkbox" id="select-group-members"> 同时选中分组内项目
     </label>
@@ -1002,10 +1008,10 @@ __WAVEFORM_CSS__
   <span class="editor-settings-group-heading" id="ass-preview-mode-title">ASS 字幕模式</span>
   <div class="editor-settings-group ass-preview-mode-group" role="group" aria-labelledby="ass-preview-mode-title">
     <div class="editor-settings-sub-group">
-      <label class="toggle editor-settings-item" title="开启后，播放器预览尽量按当前 ASS 默认方案渲染；关闭时保持原有预览效果">
+      <label class="toggle editor-settings-item" title="开启后，播放器预览尽量按当前 ASS 默认方案渲染，只保留字幕文本中的显式换行；关闭时保持原有预览效果">
         <input type="checkbox" id="ass-mode-toggle"> ASS 字幕模式
       </label>
-      <small class="editor-settings-hint">关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览。</small>
+      <small class="editor-settings-hint">关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览，并只保留字幕文本中的显式换行，不自动折行。</small>
       <div class="ass-manager-open-row">
         <button type="button" id="ass-style-manager-open" class="editor-settings-inline-action ass-style-manager-open" title="打开 ASS 样式库">🎨 管理 ASS 样式</button>
       </div>
@@ -1144,10 +1150,14 @@ __WAVEFORM_CSS__
           <span>颜色字幕样式</span>
           <select id="ass-color-style" aria-label="ASS 颜色字幕样式">
             <option value="text" selected>作为字幕颜色</option>
+            <option value="speaker">作为说话人名称颜色</option>
             <option value="stroke">作为描边颜色</option>
             <option value="none">无影响</option>
           </select>
         </label>
+        <small class="editor-settings-hint" id="ass-color-speaker-hint" hidden>
+          <span>需要启用「将颜色映射为说话人」；勾选「</span><button type="button" class="editor-settings-inline-action" id="ass-color-speaker-export-link" title="打开导出设置并定位到说话人名称选项" aria-label="打开导出设置并定位到说话人名称选项">导出时附加说话人名称</button><span>」。</span>
+        </small>
         <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
           <span>预览颜色样式</span>
           <select id="subtitle-color-style" aria-label="预览颜色样式">
@@ -1199,7 +1209,7 @@ __WAVEFORM_CSS__
           将颜色映射为说话人
         </label>
         <label class="toggle editor-settings-item subtitle-speaker-label-toggle" id="subtitle-speaker-labels-enabled-wrap" title="在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本" hidden>
-          <input type="checkbox" id="subtitle-speaker-labels-enabled" aria-label="在预览字幕中显示说话人">
+          <input type="checkbox" id="subtitle-speaker-labels-enabled" checked aria-label="在预览字幕中显示说话人">
           在预览字幕中显示说话人
         </label>
         <div class="subtitle-speaker-labels-settings" id="subtitle-speaker-labels-settings" hidden>
@@ -1894,6 +1904,9 @@ __WAVEFORM_CSS__
       <option value="60">60 fps</option>
       <option value="60000/1001">60000/1001 fps</option>
     </select>
+    <label class="row" for="fcp7-export-native-text">
+      <input type="checkbox" id="fcp7-export-native-text" checked> 写入原生字幕文本对象
+    </label>
     <label for="fcp7-export-subtitle-tracks">导出字幕轨</label>
     <select id="fcp7-export-subtitle-tracks">
       <option value="main" selected>主轨字幕</option>
@@ -1901,10 +1914,7 @@ __WAVEFORM_CSS__
       <option value="overlay">叠加轨字幕</option>
       <option value="all">全部字幕轨（各占一轨）</option>
     </select>
-    <label class="row" for="fcp7-export-native-text">
-      <input type="checkbox" id="fcp7-export-native-text"> 写入原生字幕文本对象
-    </label>
-    <p class="modal-hint">原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。</p>
+    <p class="modal-hint">原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。</p>
     <div class="actions">
       <button type="button" id="fcp7-export-cancel">取消</button>
       <button type="button" id="fcp7-export-confirm" class="primary">导出 XML</button>
@@ -1931,7 +1941,13 @@ __WAVEFORM_CSS__
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>
       <option value="1080x1920">1080 × 1920（竖屏）</option>
       <option value="3840x2160">3840 × 2160（4K 横屏）</option>
+      <option value="custom">自定义…</option>
     </select>
+    <div class="row" id="lottie-export-custom-size" hidden>
+      <input type="number" id="lottie-export-custom-width" min="16" max="7680" step="1" value="1920" aria-label="宽度">
+      <span aria-hidden="true">×</span>
+      <input type="number" id="lottie-export-custom-height" min="16" max="7680" step="1" value="1080" aria-label="高度">
+    </div>
     <label for="lottie-export-fps">导出帧率</label>
     <select id="lottie-export-fps">
       <option value="24">24 fps</option>
@@ -1974,7 +1990,13 @@ __WAVEFORM_CSS__
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>
       <option value="1080x1920">1080 × 1920（竖屏）</option>
       <option value="3840x2160">3840 × 2160（4K 横屏）</option>
+      <option value="custom">自定义…</option>
     </select>
+    <div class="row" id="ograf-export-custom-size" hidden>
+      <input type="number" id="ograf-export-custom-width" min="16" max="7680" step="1" value="1920" aria-label="宽度">
+      <span aria-hidden="true">×</span>
+      <input type="number" id="ograf-export-custom-height" min="16" max="7680" step="1" value="1080" aria-label="高度">
+    </div>
     <label for="ograf-export-fps">导出帧率</label>
     <select id="ograf-export-fps">
       <option value="24">24 fps</option>
@@ -2251,6 +2273,7 @@ __WAVEFORM_CSS__
         全部拆分后自动提交
       </label>
       <div class="actions">
+        <button type="button" id="multi-subtitle-split-duplicate" title="拆分后两边保留相同的字幕文本">拆分并保留原文</button>
         <button type="button" id="multi-subtitle-split-cancel">取消（Esc）</button>
         <button type="button" id="multi-subtitle-split-confirm" class="primary">拆分（Enter / B）</button>
       </div>

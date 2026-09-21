@@ -56,6 +56,9 @@ const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
 
 
 
+// 拆分时「下刀时间 vs 实际切分边界」允许的最大偏差：超过说明字幕文本与
+// 词时间戳已脱钩、切点落在了错误的词边界附近，此时提示而不是静默出错。
+const SPLIT_ALIGNMENT_DRIFT_WARN_MS = 500;
 
 
 
@@ -486,10 +489,10 @@ MaweMultiSubtitleCore.normalizeMultiSubtitleState();
 
 
 // CSS 预览的颜色样式（工程 color_style）；ASS 的颜色映射是独立字段
-// ass_color_style（text / stroke / none），两者语义不同。
+// ass_color_style（text / speaker / stroke / none），两者语义不同。
 
 
-const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'stroke', 'none']);
+const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
 const DEFAULT_ASS_COLOR_STYLE = 'text';
 // 字体输入框用 combobox 下拉提供筛选（映射逻辑在 editor-utils 的
 // subtitleFontFamilyStoredToInput / subtitleFontFamilyInputToStored）；
@@ -923,6 +926,8 @@ const subtitleColorAssModeHintLink = document.getElementById('ass-mode-hint-link
 
 const assColorStyleRow = document.getElementById('ass-color-style-row');
 const assColorStyleSelect = document.getElementById('ass-color-style');
+const assColorSpeakerHint = document.getElementById('ass-color-speaker-hint');
+const assColorSpeakerExportLink = document.getElementById('ass-color-speaker-export-link');
 
 
 
@@ -1025,6 +1030,7 @@ const helpOpenEditorSettingsButtons = Array.from(document.querySelectorAll('[dat
 
 
 
+const pauseOnMouseClickToggle = document.getElementById('pause-on-mouse-click');
 
 
 
@@ -1090,6 +1096,9 @@ const helpOpenEditorSettingsButtons = Array.from(document.querySelectorAll('[dat
 
 
 
+const lottieExportCustomSize = document.getElementById('lottie-export-custom-size');
+const lottieExportCustomWidth = document.getElementById('lottie-export-custom-width');
+const lottieExportCustomHeight = document.getElementById('lottie-export-custom-height');
 
 
 
@@ -1098,6 +1107,9 @@ const helpOpenEditorSettingsButtons = Array.from(document.querySelectorAll('[dat
 
 
 
+const ografExportCustomSize = document.getElementById('ograf-export-custom-size');
+const ografExportCustomWidth = document.getElementById('ograf-export-custom-width');
+const ografExportCustomHeight = document.getElementById('ograf-export-custom-height');
 
 
 
@@ -1170,6 +1182,7 @@ const overlayTrackSeparator = document.getElementById('overlay-track-separator')
 
 
 
+const multiSubtitleSplitDuplicate = document.getElementById('multi-subtitle-split-duplicate');
 
 
 
@@ -1961,6 +1974,9 @@ function syncAssModeDependentControls() {
   if (MaweDom.subtitleColorUnderlineInput) MaweDom.subtitleColorUnderlineInput.disabled = assMode;
   if (subtitleColorAssModeHint) subtitleColorAssModeHint.hidden = !assMode;
   if (assColorStyleRow) assColorStyleRow.hidden = !assMode;
+  if (assColorSpeakerHint) {
+    assColorSpeakerHint.hidden = !assMode || assColorStyleSelect?.value !== 'speaker';
+  }
   if (MaweDom.subtitleColorStyleControl) {
     MaweDom.subtitleColorStyleControl.hidden = assMode
       || !(MaweDom.subtitleColorUnderlineInput?.checked ?? true);
@@ -2128,6 +2144,7 @@ if (MaweDom.autoSaveIntervalInput) MaweDom.autoSaveIntervalInput.value = String(
 if (MaweDom.stickerOverlayToggle) MaweDom.stickerOverlayToggle.checked = MaweSettings.EDITOR_SETTINGS.stickerOverlayEnabled;
 if (MaweDom.clickBehaviorSelect) MaweDom.clickBehaviorSelect.value = MaweSettings.EDITOR_SETTINGS.clickBehavior;
 if (MaweDom.clickTargetSelect) MaweDom.clickTargetSelect.value = MaweSettings.EDITOR_SETTINGS.clickTarget;
+if (pauseOnMouseClickToggle) pauseOnMouseClickToggle.checked = MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick;
 if (MaweDom.keyboardOperationReferenceSelect) {
   MaweDom.keyboardOperationReferenceSelect.value = MaweSettings.EDITOR_SETTINGS.keyboardOperationReference;
 }
@@ -2658,6 +2675,9 @@ MaweDom.clickBehaviorSelect?.addEventListener('change', () => {
 MaweDom.clickTargetSelect?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ clickTarget: MaweSettings.normalizeClickTarget(MaweDom.clickTargetSelect.value) });
 });
+pauseOnMouseClickToggle?.addEventListener('change', () => {
+  MaweSettings.updateEditorSettings({ pauseOnMouseClick: pauseOnMouseClickToggle.checked });
+});
 MaweDom.keyboardOperationReferenceSelect?.addEventListener('change', () => {
   const mode = MaweSettings.normalizeKeyboardOperationReferenceMode(MaweDom.keyboardOperationReferenceSelect.value);
   MaweSettings.updateEditorSettings({ keyboardOperationReference: mode });
@@ -2843,6 +2863,11 @@ MaweDom.subtitleColorUnderlineInput?.addEventListener('change', () => {
 subtitleColorAssModeHintLink?.addEventListener('click', () => {
   MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-style');
 });
+assColorSpeakerExportLink?.addEventListener('click', (event) => {
+  event.preventDefault();
+  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-export');
+  MaweDom.exportSpeakerLabelsToggle?.focus();
+});
 MaweDom.subtitleColorStyleSelect?.addEventListener('change', () => {
   MaweHistory.pushPreviewUndo('调整预览字幕颜色样式', MaweHistory.snapshotPreviewState());
   MaweAppearance.setSubtitleAppearance({ color_style: MaweDom.subtitleColorStyleSelect.value });
@@ -2865,10 +2890,15 @@ MaweDom.subtitleSpeakerMappingEnabledInput?.addEventListener('change', () => {
   const previous = MaweHistory.snapshotPreviewState();
   previous.speakerLabels.mapping_enabled = !MaweDom.subtitleSpeakerMappingEnabledInput.checked;
   MaweHistory.pushPreviewUndo('切换颜色说话人映射', previous);
+  const mappingEnabled = MaweDom.subtitleSpeakerMappingEnabledInput.checked;
   MaweSpeakerLabels.setSpeakerLabelSettings({
     ...MaweSpeakerLabels.getSpeakerLabelSettings(),
-    mapping_enabled: MaweDom.subtitleSpeakerMappingEnabledInput.checked,
+    mapping_enabled: mappingEnabled,
   });
+  if (mappingEnabled) {
+    MaweSettings.updateEditorSettings({ exportSpeakerLabels: true });
+    if (MaweDom.exportSpeakerLabelsToggle) MaweDom.exportSpeakerLabelsToggle.checked = true;
+  }
   MawePlaybackLoop.update();
 });
 MaweDom.subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
@@ -3385,14 +3415,17 @@ function buildOverlayCueEl(seg, index) {
     const previousSuppress = MawePlaybackLoop.suppressCueListAutoScroll;
     // 与副字幕一致：点击后的 seek 会同步刷新主字幕 active 状态；这次刷新不能把
     // 列表从刚点击的叠加字幕行再次滚到对应的主字幕行。
+    const wasPlaying = isPlaybackActive();
     MawePlaybackLoop.suppressCueListAutoScroll = true;
     try {
       MaweCoreState.waveformEditor?.revealTime(segment.start, true);
-      if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') MaweTextCleanup.seekFromWaveform(segment.start / 1000);
+      if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') {
+        MaweTextCleanup.seekFromWaveform(segment.start / 1000, { mouseClick: true });
+      }
     } finally {
       MawePlaybackLoop.suppressCueListAutoScroll = previousSuppress;
     }
-    if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-and-play' && MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
+    if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-and-play' && MaweCoreState.player.paused && !wasPlaying) MaweMediaPlayback.togglePlayback();
     if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick) {
       const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
       if (row) MaweCueListAnchor.scrollCueToCenter(row);
@@ -3544,6 +3577,36 @@ document.getElementById('search-clear')?.addEventListener('click', () => {
 
 
 
+function fallbackSplitOffset(text, requestedOffset = null) {
+  const length = String(text || '').length;
+  if (!length) return null;
+  if (length <= 1) return 0;
+  const requested = Number.isFinite(Number(requestedOffset))
+    ? Math.round(Number(requestedOffset)) : Math.floor(length / 2);
+  return Math.max(1, Math.min(length - 1, requested));
+}
+
+function splitOffsetNearTimeForModal(segment, timeMs, splitMode) {
+  const offset = MaweSplitCore.splitOffsetNearTime(segment, timeMs, splitMode);
+  if (Number.isInteger(offset)) return offset;
+  const start = Number(segment?.start);
+  const end = Number(segment?.end);
+  const time = Number(timeMs);
+  const ratio = Number.isFinite(start) && Number.isFinite(end) && end > start && Number.isFinite(time)
+    ? (time - start) / (end - start) : 0.5;
+  return fallbackSplitOffset(segment?.text, ratio * String(segment?.text || '').length);
+}
+
+function splitOffsetNearTextPositionForModal(text, offset, splitMode) {
+  const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(text || '', splitMode);
+  const requested = Math.max(0, Math.min(String(text || '').length, Math.round(Number(offset) || 0)));
+  if (legalOffsets.length) {
+    return legalOffsets.reduce((best, candidate) => (
+      Math.abs(candidate - requested) < Math.abs(best - requested) ? candidate : best
+    ), legalOffsets[0]);
+  }
+  return fallbackSplitOffset(text, requested);
+}
 
 
 
@@ -3559,6 +3622,29 @@ document.getElementById('search-clear')?.addEventListener('click', () => {
 
 
 
+
+
+// 拆分对齐的兜底提示（修复③）：文本与词时间戳脱钩、且切分边界明显偏离
+// 下刀位置时给出警告，杜绝「字拆对、时拆错」的静默错拆与静默失败。强制
+// 拆分（force）会刻意把切点移出词边界，不适用本提示。
+function flashSplitAlignmentHint(alignment, { committed = true } = {}) {
+  if (!alignment?.broken) return;
+  const drift = Number(alignment.driftMs);
+  if (!Number.isFinite(drift) || drift <= SPLIT_ALIGNMENT_DRIFT_WARN_MS) return;
+  const message = committed
+    ? `已拆分，但字幕文本与词时间戳不完全一致，切点与下刀位置相差约 ${Math.round(drift)} ms；如需贴合语音，可先校正文本或检查词时间戳`
+    : `未完成拆分：字幕文本与词时间戳不完全一致，切点与下刀位置相差约 ${Math.round(drift)} ms；请调整切点或校正文本后重试`;
+  MaweHint.flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+}
+
+// 拆分失败路径上拿不到 pair，用相同入参重新评估一次对齐质量（纯计算）。
+function assessSplitAlignment(segment, offset, cutMs, options = {}) {
+  const itemParts = MaweSplitCore.splitItemsAtChar(segment, offset, cutMs, options);
+  return {
+    ...(itemParts.alignment || { total: 0, aligned: 0, broken: false }),
+    driftMs: MULTI_SUBTITLE_UTILS.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
+  };
+}
 
  
 
@@ -3635,6 +3721,34 @@ function splitStateTrack(state) {
   return MaweMultiSubtitleCore.getExtensionTrack(state?.trackId);
 }
 
+function splitTimingIsValid(segment, cutMs) {
+  const start = Number(segment?.start);
+  const end = Number(segment?.end);
+  const cut = Number(cutMs);
+  return Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(cut)
+    && end - start >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2
+    && cut - start >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
+    && end - cut >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
+}
+
+function duplicateSplitTimingIsValid(state) {
+  if (!state) return false;
+  if (state.kind === 'main') {
+    return splitTimingIsValid(MaweBoot.DATA.segments[state.mainIndex], state.mainCutMs);
+  }
+  const track = splitStateTrack(state);
+  if (state.kind === 'extension' || state.kind === 'overlay') {
+    return splitTimingIsValid(
+      MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track),
+      state.extensionCutMs,
+    );
+  }
+  const main = MaweBoot.DATA.segments[state.mainIndex];
+  const extension = MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track);
+  return splitTimingIsValid(main, state.mainCutMs)
+    && splitTimingIsValid(extension, state.extensionCutMs);
+}
+
 
 
 
@@ -3674,7 +3788,14 @@ function openOverlaySplitModal(index, timeMs, initial = {}) {
   return true;
 }
 
-function commitOverlaySplit(state, { force = false, successMessage = '已按选择的断点拆分叠加字幕' } = {}) {
+function commitOverlaySplit(
+  state,
+  {
+    force = false,
+    duplicateText = false,
+    successMessage = '已按选择的断点拆分叠加字幕',
+  } = {},
+) {
   const track = getOverlayTrack();
   const overlayIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
   const segment = track?.segments?.[overlayIndex];
@@ -3686,6 +3807,10 @@ function commitOverlaySplit(state, { force = false, successMessage = '已按选�
     MaweHint.flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
     return false;
   }
+  const splitAlignmentOptions = {
+    preserveCutMs: force || Number.isFinite(state.fixedCutMs),
+    forceCut: force,
+  };
   const pair = MaweSplitCore.buildSplitPair(
     segment,
     state.offset,
@@ -3693,13 +3818,19 @@ function commitOverlaySplit(state, { force = false, successMessage = '已按选�
     segment.id || `overlay-${overlayIndex}`,
     true,
     state.extensionMode,
-    {
-      preserveCutMs: force || Number.isFinite(state.fixedCutMs),
-      forceCut: force,
-    },
+    { ...splitAlignmentOptions, duplicateText },
   );
-  if (!pair) return false;
-  MaweHistory.pushUndo('拆分叠加字幕', { captureView: true });
+  if (!pair) {
+    if (!force && !duplicateText) {
+      flashSplitAlignmentHint(
+        assessSplitAlignment(segment, state.offset, splitMs, splitAlignmentOptions),
+        { committed: false },
+      );
+    }
+    return false;
+  }
+  if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
+  MaweHistory.pushUndo(duplicateText ? '拆分叠加字幕并保留原文' : '拆分叠加字幕', { captureView: true });
   MaweSelection.clearSelection({ commitCuePanel: false });
   track.segments.splice(overlayIndex, 1, pair.left, pair.right);
   // 组引用维护与主轨拆分一致：替换下标之后的引用右移一格，
@@ -4087,6 +4218,17 @@ document.addEventListener('keydown', (e) => {
 
 
 
+
+function isPlaybackActive() {
+  return MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused;
+}
+
+function pausePlaybackAfterMouseClick() {
+  if (!MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick || !isPlaybackActive()) return;
+  if (MaweJklPlayback.jklReversePlaying) MaweJklPlayback.stopJklReversePlayback({ render: false });
+  MaweCoreState.player.pause();
+  MaweMediaPlayback.syncMediaControls();
+}
 
 
 
@@ -5610,7 +5752,11 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
     ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
-  element.style.maxWidth = `calc(100% - ${Math.max(0, margins.left + margins.right)}px)`;
+  // ASS 预览采用 no-wrap 策略：只保留字幕文本中的显式换行，
+  // 不因为播放器容器边界重新插入自动换行。
+  element.style.whiteSpace = 'pre';
+  element.style.wordBreak = 'normal';
+  element.style.maxWidth = 'none';
   element.style.padding = borderBox
     ? `${Math.max(1, 4 * scaleY)}px ${Math.max(1, 8 * scaleX)}px`
     : `${Math.max(1, scaleY)}px ${Math.max(1, 2 * scaleX)}px`;
@@ -5658,7 +5804,7 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', ' -webkit-text-stroke',
     '-webkit-text-stroke', 'paint-order', 'filter', 'letter-spacing', 'line-height',
-    'max-width', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
+    'max-width', 'word-break', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
     'left', 'right', 'top', 'bottom', 'white-space', 'text-align', 'transform-origin', 'transform',
   ].forEach((property) => element.style.removeProperty(property.trim()));
   element.style.setProperty(
@@ -5818,10 +5964,10 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
 
   if (speakerLabelVisible) {
     applyAssPreviewSpeakerLabel(MaweDom.overlayMainSpeakerLabelEl, animatedMainStyle, metrics);
-    // 与导出 assEventText 一致：text 模式标签跟随调色板颜色，其余保持基础色。
+    // 与导出 assEventText 一致：text / speaker 模式标签跟随调色板颜色，其余保持基础色。
     const paletteColor = MaweColors.COLOR_BY_NAME[mainColorName]?.value;
     const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
-    const labelColor = assColorStyle === 'text'
+    const labelColor = assColorStyle === 'text' || assColorStyle === 'speaker'
       ? paletteColor || animatedMainStyle.primaryColor
       : animatedMainStyle.primaryColor;
     MaweDom.overlayMainSpeakerLabelEl.style.color = labelColor;
@@ -5877,14 +6023,15 @@ function applyAssAnchoredPreviewElement(element, style, animationState, metrics,
     element.style.top = 'auto';
     element.style.bottom = `${Math.max(0, Math.ceil(verticalOffsetPx))}px`;
   }
-  element.style.whiteSpace = 'normal';
+  element.style.whiteSpace = 'pre';
+  element.style.wordBreak = 'normal';
   element.style.textAlign = alignment.textAlign;
 }
 
 function restoreAssOverlayTrackPreview() {
   if (!overlayTrackTextEl) return;
   [
-    'position', 'left', 'right', 'top', 'bottom', 'white-space', 'text-align',
+    'position', 'left', 'right', 'top', 'bottom', 'white-space', 'word-break', 'text-align',
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', '-webkit-text-stroke',
     'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
@@ -6392,6 +6539,10 @@ if (MaweProjectSave.jsonNameEl && !MaweProjectSave.jsonNameEl.classList.contains
 
 
 document.getElementById('download-fcp7-export')?.addEventListener('click', MaweDynamicExports.openFcp7ExportModal);
+MaweDom.fcp7ExportNativeText?.addEventListener('change', () => {
+  // 「导出字幕轨」只在写入原生文本时参与计划构建，未勾选时禁用以免造成可用的假象。
+  MaweDom.fcp7ExportSubtitleTracks.disabled = !MaweDom.fcp7ExportNativeText.checked;
+});
 MaweDom.fcp7ExportCancel?.addEventListener('click', MaweDynamicExports.closeFcp7ExportModal);
 MaweDom.fcp7ExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportFcp7Xml(); });
 MaweDom.fcp7ExportModal?.addEventListener('click', (event) => {
@@ -6412,6 +6563,50 @@ document.addEventListener('keydown', (event) => {
 
 
 
+const DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS = { min: 16, max: 7680 };
+
+// 打开弹窗时让「合成尺寸」自动匹配工程媒体元数据（schema §1.1 的成对宽高）；
+// 命中预设选项就选中，否则落到自定义并预填媒体尺寸；没有元数据时保持现状。
+function applyMediaSizeToResolutionModal(select, customRow, widthInput, heightInput) {
+  if (!select) return;
+  const size = window.AsrEditorUtils?.exportVideoSize?.(MaweBoot.DATA) || null;
+  if (size && widthInput && heightInput) {
+    widthInput.value = size.width;
+    heightInput.value = size.height;
+  }
+  const preset = size ? `${size.width}x${size.height}` : '';
+  if (preset && select.querySelector(`option[value="${preset}"]`)) {
+    select.value = preset;
+  } else if (size) {
+    select.value = 'custom';
+  }
+  if (customRow) customRow.hidden = select.value !== 'custom';
+}
+
+function dynamicExportCanvasSize(select, widthInput, heightInput) {
+  if (select?.value !== 'custom') {
+    const match = /^(\d+)x(\d+)$/u.exec(select?.value || '');
+    if (!match) return { width: 1920, height: 1080 };
+    return { width: Number(match[1]), height: Number(match[2]) };
+  }
+  const limits = DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS;
+  const width = Number(widthInput?.value);
+  const height = Number(heightInput?.value);
+  if (!Number.isInteger(width) || width < limits.min || width > limits.max
+    || !Number.isInteger(height) || height < limits.min || height > limits.max) {
+    throw new Error(MaweProjectSave.translatedEditorText(
+      '自定义合成尺寸需要 16–7680 之间的整数宽高',
+    ));
+  }
+  return { width, height };
+}
+
+function bindResolutionCustomSizeToggle(select, customRow) {
+  select?.addEventListener('change', () => {
+    if (customRow) customRow.hidden = select.value !== 'custom';
+  });
+}
+
 
 
 
@@ -6419,6 +6614,7 @@ document.addEventListener('keydown', (event) => {
 
 
 document.getElementById('download-lottie')?.addEventListener('click', MaweDynamicExports.openLottieExportModal);
+bindResolutionCustomSizeToggle(MaweDom.lottieExportResolution, lottieExportCustomSize);
 MaweDom.lottieExportCancel?.addEventListener('click', MaweDynamicExports.closeLottieExportModal);
 MaweDom.lottieExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportLottieDynamicCaptions(); });
 MaweDom.lottieExportModal?.addEventListener('click', (event) => {
@@ -6446,6 +6642,7 @@ document.addEventListener('keydown', (event) => {
 
 
 document.getElementById('download-ograf')?.addEventListener('click', MaweDynamicExports.openOgrafExportModal);
+bindResolutionCustomSizeToggle(MaweDom.ografExportResolution, ografExportCustomSize);
 MaweDom.ografExportCancel?.addEventListener('click', MaweDynamicExports.closeOgrafExportModal);
 MaweDom.ografExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportOgrafDynamicCaptions(); });
 MaweDom.ografExportModal?.addEventListener('click', (event) => {
@@ -6898,6 +7095,7 @@ MaweDom.multiSubtitleImportModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.multiSubtitleImportModal) MaweMultiImport.closeMultiSubtitleImportModal();
 });
 MaweDom.multiSubtitleSplitCancel?.addEventListener('click', MaweSplitCore.closeLinkedSplitModal);
+multiSubtitleSplitDuplicate?.addEventListener('click', () => MaweSplitCore.confirmLinkedSplit({ duplicateText: true }));
 MaweDom.multiSubtitleSplitConfirm?.addEventListener('click', MaweSplitCore.confirmLinkedSplit);
 MaweDom.multiSubtitleSplitModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.multiSubtitleSplitModal) MaweSplitCore.closeLinkedSplitModal();
