@@ -162,12 +162,13 @@ function localNames(ast) {
   });
   return names;
 }
-function qualifyDeclaration(raw, ownerOf, currentNamespace) {
+function qualifyDeclaration(raw, ownerOf, currentNamespace, moduleBoundNames) {
   const ast = parse(raw, 'replayed declaration');
   const locals = localNames(ast);
   const edits = [];
   walk(ast, (node, parent) => {
     if (node.type !== 'Identifier' || !identifierIsReference(node, parent) || locals.has(node.name)) return;
+    if (moduleBoundNames?.has(node.name)) return;
     const owner = ownerOf.get(node.name);
     if (owner && owner.ns !== currentNamespace) {
       const text = parent?.type === 'Property' && parent.shorthand
@@ -177,9 +178,28 @@ function qualifyDeclaration(raw, ownerOf, currentNamespace) {
   });
   return applyEdits(raw, edits);
 }
+// Names bound anywhere in a file (any scope depth).  Qualification must skip
+// these: a function-local `start` in the entry has nothing to do with a module
+// facade that happens to export its own `start`.  Without this guard the
+// rewrite silently rebinds unrelated locals (the ns-rewrite regression class
+// fixed in 72192bd1 / bfc065be).  Skipping is conservative: an under-qualified
+// reference fails loudly at runtime, a wrong qualification silently changes
+// meaning.
+function boundNames(source, ast) {
+  const names = new Set();
+  walk(ast, (node) => {
+    if ((node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration' || node.type === 'FunctionExpression') && node.id) names.add(node.id.name);
+    if (node.type === 'VariableDeclarator') patternNames(node.id, names);
+    if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression' || node.type === 'FunctionDeclaration') {
+      for (const parameter of node.params) patternNames(parameter, names);
+    }
+    if (node.type === 'CatchClause' && node.param) patternNames(node.param, names);
+  });
+  return names;
+}
 function qualifyEntry(source, ownerOf) {
   const ast = parse(source, 'rebuilt web/editor.js');
-  const globalNames = declarationRecords(source, ast);
+  const globalNames = boundNames(source, ast);
   const edits = [];
   walk(ast, (node, parent, ancestors) => {
     if (node.type !== 'Identifier' || !identifierIsReference(node, parent) || globalNames.has(node.name)) return;
@@ -225,10 +245,22 @@ function main() {
   const baseSymbols = declarationRecords(baseEditor, parse(baseEditor, `${base}:editor.js`));
   const theirsSymbols = declarationRecords(theirsEditor, parse(theirsEditor, `${theirs}:editor.js`));
   const files = fs.readdirSync(WEB).filter((file) => /^editor-.*\.js$/.test(file)).sort();
-  // HEAD, rather than the conflicted worktree, is the authoritative "ours".
-  // This makes a second invocation idempotent if an interrupted prior run has
-  // already written a few replayed module bodies to the worktree.
-  const modules = new Map(files.map((file) => [file, moduleInfoFromSource(file, gitShow('HEAD', `web/${file}`))]));
+  // The module base prefers the worktree copy whenever git has already merged
+  // it cleanly (no conflict markers): main may edit module files directly, and
+  // those 3-way-merged edits must survive the replay write-back. Files still
+  // carrying conflict markers fall back to HEAD ("ours") and need manual
+  // resolution. Replaying into a conflict-free worktree copy is idempotent, so
+  // an interrupted prior run does not change the outcome of a second run.
+  function moduleBaseSource(file) {
+    const worktreePath = path.join(WEB, file);
+    if (fs.existsSync(worktreePath)) {
+      const source = fs.readFileSync(worktreePath, 'utf8');
+      if (!/^<{7} /m.test(source)) return source;
+      console.error(`merge-flow: ${file} still has conflict markers; using HEAD as module base`);
+    }
+    return gitShow('HEAD', `web/${file}`);
+  }
+  const modules = new Map(files.map((file) => [file, moduleInfoFromSource(file, moduleBaseSource(file))]));
   const ownerOf = new Map();
   for (const info of modules.values()) for (const name of info.exports) {
     if (!ownerOf.has(name)) ownerOf.set(name, { file: info.file, ns: info.ns });
@@ -256,7 +288,8 @@ function main() {
   if (process.argv.includes('--dry-run')) return;
   for (const item of replay) {
     const info = modules.get(item.owner.file);
-    replaceDeclaration(info, item.name, qualifyDeclaration(item.raw, ownerOf, info.ns));
+    const moduleBound = boundNames(info.source, info.ast);
+    replaceDeclaration(info, item.name, qualifyDeclaration(item.raw, ownerOf, info.ns, moduleBound));
   }
   const entry = qualifyEntry(entryWithoutModuleDeclarations(
     theirsEditor, parse(theirsEditor, `${theirs}:editor.js`), ownerOf,
