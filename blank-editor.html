@@ -1842,6 +1842,11 @@
   .subtitle-overlay[data-ass-mode="true"] > .subtitle-extension-text {
     background: transparent; border-radius: 0; text-shadow: none;
   }
+  .subtitle-overlay[data-ass-mode="true"] > #overlay-main-text,
+  .subtitle-overlay[data-ass-mode="true"] > .subtitle-extension-text,
+  .subtitle-overlay[data-ass-mode="true"] > .subtitle-overlay-track-text {
+    max-width: none; white-space: pre; word-break: normal;
+  }
   .subtitle-overlay[data-ass-mode="true"] > #overlay-main-text { padding: 2px 4px; }
   .subtitle-overlay[data-ass-mode="true"] > .subtitle-extension-text { padding: 2px 4px; }
   .subtitle-overlay[data-ass-mode="true"] .subtitle-speaker-label { font: inherit; }
@@ -4909,7 +4914,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.6.0-beta.6</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.6.0</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="server-connection-banner" id="server-connection-banner" hidden role="alert" aria-live="assertive">
@@ -5879,10 +5884,10 @@
   <span class="editor-settings-group-heading" id="ass-preview-mode-title">ASS 字幕模式</span>
   <div class="editor-settings-group ass-preview-mode-group" role="group" aria-labelledby="ass-preview-mode-title">
     <div class="editor-settings-sub-group">
-      <label class="toggle editor-settings-item" title="开启后，播放器预览尽量按当前 ASS 默认方案渲染；关闭时保持原有预览效果">
+      <label class="toggle editor-settings-item" title="开启后，播放器预览尽量按当前 ASS 默认方案渲染，只保留字幕文本中的显式换行；关闭时保持原有预览效果">
         <input type="checkbox" id="ass-mode-toggle"> ASS 字幕模式
       </label>
-      <small class="editor-settings-hint">关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览。</small>
+      <small class="editor-settings-hint">关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览，并只保留字幕文本中的显式换行，不自动折行。</small>
       <div class="ass-manager-open-row">
         <button type="button" id="ass-style-manager-open" class="editor-settings-inline-action ass-style-manager-open" title="打开 ASS 样式库">🎨 管理 ASS 样式</button>
       </div>
@@ -6416,7 +6421,7 @@
             <label class="ass-style-field">字号<input type="number" id="ass-style-font-size" data-ass-style-field="fontSize" min="1" max="512" step="1"></label>
             <label class="ass-style-field">字距<input type="number" id="ass-style-spacing" data-ass-style-field="spacing" min="-100" max="100" step="1"><span class="ass-style-unit">px</span></label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-bold" data-ass-style-field="bold"> 加粗</label>
-            <label class="ass-style-color-field" id="ass-style-secondary-color-field" hidden title="次色仅在 \\k 卡拉 OK 标签中使用，当前未支持">次色<input type="color" id="ass-style-secondary-color" data-ass-style-field="secondaryColor"></label>
+            <label class="ass-style-color-field" id="ass-style-secondary-color-field" hidden title="次色仅在 \k 卡拉 OK 标签中使用，当前未支持">次色<input type="color" id="ass-style-secondary-color" data-ass-style-field="secondaryColor"></label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-italic" data-ass-style-field="italic"> 斜体</label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-underline" data-ass-style-field="underline"> 下划线</label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-strike-out" data-ass-style-field="strikeOut"> 删除线</label>
@@ -14267,6 +14272,11 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
   }
 
   function encodeGraphicAndTypeText(text, fontFamily = 'FangSong', fontSize = FCP7_TEXT_FONT_SIZE_2160P) {
+    // 结构逐字段对齐真实 Premiere 导出的单一样式 run payload（OpenTimelineIO
+    // 测试样例 empty_name_tags.xml）：顶层只有 mTextParam 与 mVersion，样式表
+    // 中没有 mUnderline 键。实机验证 PR 对超出此结构的写法（如 mUnderline 写
+    // 裸布尔 false）会静默丢弃整个 mStyleSheet——文字仍渲染，但字体/字号全部
+    // 回落默认（Myriad Pro / 100）。
     const payload = {
       mTextParam: {
         // 段落对齐：实测 0=左对齐、1=右对齐、2=居中（PR 实机反馈校准）。
@@ -14317,7 +14327,6 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
           mText: String(text ?? ''),
           mTracking: { mParamValues: [[0, 0]] },
           mTsumi: { mParamValues: [[0, 0]] },
-          mUnderline: { mParamValues: [[0, false]] },
         },
         mTabWidth: 400,
         mWidth: 0,
@@ -15783,7 +15792,7 @@ export default MawDynamicCaptions;
     '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除': 'No silent gaps removed yet; scan with "Remove silent gaps" first',
     '字幕': 'Subtitles', '字幕预览': 'Subtitle preview', '字幕样式': 'Subtitle style', '字幕颜色': 'Subtitle colors', '界面': 'Interface', '表情包预览': 'Sticker preview', '字幕列表和编辑区': 'Subtitle list & editor', '字幕编辑区': 'Subtitle editor',
     '双语字幕': 'Bilingual subtitles', '双语字幕设置': 'Bilingual-subtitle settings', '主轨': 'Main track', '副轨': 'Secondary track', '双列': 'Two columns', '绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H': 'After binding, sync the secondary subtitle start and end to the main subtitle, equivalent to pressing H', '交换主字幕和副字幕的文本、时间与绑定关系': 'Swap the main and secondary subtitle text, timing, and bindings',
-    '拆分与合并': 'Split and merge', '拆分与合并配置': 'Split and merge settings', '波形形状来源': 'Waveform shape source', '原生波形': 'Native waveform', 'REAPER 波形': 'REAPER waveform',
+    '拆分与合并': 'Split and merge', '拆分与合并配置': 'Split and merge settings', '波形形状来源': 'Waveform shape source', '原生波形': 'Native waveform', 'REAPER 波形': 'REAPER waveform', '被禁用字幕的波形显示方式': 'How disabled subtitles appear on the waveform',
     '显示方式': 'Display mode', '语言类型': 'Language type', '字幕语言类型': 'Subtitle language type', '主字幕': 'Main subtitle', '副字幕': 'Secondary subtitle', '主字幕语言类型': 'Main subtitle language type', '副字幕语言类型': 'Secondary subtitle language type', '副字幕时波形高度': 'Waveform height with secondary subtitles', '跨轨道吸附': 'Cross-track snapping', '同时选中主副字幕': 'Select main and secondary subtitles together', '绑定时自动同步时长': 'Automatically sync duration when binding', '显示轨道徽标': 'Show track badges', '在双语字幕波形中显示主字幕和副字幕的轨道编号徽标': 'Show main and secondary track number badges in the bilingual waveform', '交换主副字幕': 'Swap main and secondary subtitles', '普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕': 'Normal clicks follow the last clicked track; clicking a bound subtitle only adds the other subtitle actually bound to it',
     '开启后显示副轨、双列列表和绑定操作；关闭只隐藏副字幕数据，不删除': 'Show the secondary track, two-column list, and binding actions; turning it off only hides secondary data',
     '启用双语字幕时使用的波形行高度': 'Waveform row height used when bilingual subtitles are enabled', '请拖入第二个 srt 字幕以开启双语字幕功能': 'Drop a second SRT subtitle to enable bilingual subtitles', '请拖入第二条字幕以开启双语字幕编辑': 'Drop a second subtitle to enable bilingual subtitle editing', '是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）': 'Import the second subtitle? (You can also drop a subtitle or project file into the editor later)', '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。': 'When the current project has more than one subtitle, you can enable bilingual-subtitle mode for bilingual subtitle editing and similar workflows.',
@@ -15816,7 +15825,7 @@ export default MawDynamicCaptions;
     '主字幕字体': 'Main subtitle font', '副字幕字体': 'Secondary subtitle font', '默认无衬线': 'Default sans-serif',
     '主字幕颜色': 'Main subtitle color', '副字幕颜色': 'Secondary subtitle color',
     '微软雅黑 / 苹方': 'Microsoft YaHei / PingFang', '黑体': 'SimHei', '宋体': 'SimSun', 'Arial / Segoe UI': 'Arial / Segoe UI',
-    '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)',
+    '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)', '读取本机字体，填充字体下拉列表': 'Read local fonts to fill the font dropdown list',
     '未读取到可用的本机字体': 'No usable local fonts were returned',
     '当前环境不支持自动读取本机字体': 'This environment cannot list local fonts automatically',
     '未获准读取本机字体': 'Permission to read local fonts was not granted',
@@ -15850,19 +15859,20 @@ export default MawDynamicCaptions;
     'ASS 字幕模式下副字幕使用的样式；双语字幕的副字幕共用一个样式，与样式库「副字幕样式」槽位同步': 'The style used by extension subtitles in ASS subtitle mode; bilingual-subtitle extension cues share one style, in sync with the "Extension-subtitle style" slot in the style library',
     '展开字体列表': 'Toggle the font list', '可选字体': 'Available fonts', '无匹配字体': 'No matching fonts',
     '选择播放器画面内字幕预览使用的字体族；输入可筛选可用字体': 'Choose the font family used by the subtitle preview in the player; type to filter available fonts',
-    '开启后，播放器预览尽量按当前 ASS 默认方案渲染；关闭时保持原有预览效果': 'When enabled, the player approximates the current ASS default profile; when disabled, the original preview is kept',
-    '关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览。': 'When disabled, the original CSS preview is kept; when enabled, the player previews ASS font, color, bold, italic, underline, outline, shadow, alignment, and animations.',
+    '开启后，播放器预览尽量按当前 ASS 默认方案渲染，只保留字幕文本中的显式换行；关闭时保持原有预览效果': 'When enabled, the player approximates the current ASS default profile and keeps only explicit subtitle line breaks; when disabled, the original preview is kept',
+    '关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览，并只保留字幕文本中的显式换行，不自动折行。': 'When disabled, the original CSS preview is kept; when enabled, the player previews ASS font, color, bold, italic, underline, outline, shadow, alignment, and animations while keeping only explicit subtitle line breaks.',
     '管理 ASS 样式': 'Manage ASS styles', '打开 ASS 样式库': 'Open the ASS style library',
     '编辑样式': 'Edit style', '打开样式库并定位到当前选中的样式': 'Open the style library at the selected style',
     '正在加载…': 'Loading…', '关闭（Esc）': 'Close (Esc)', '关闭 ASS 样式库': 'Close ASS style library',
     '样式与方案列表': 'Styles and profiles', '样式': 'Styles', '内置': 'Built-in',
     '＋ 新建样式': '+ New style', '复制当前': 'Duplicate current', 'ASS 输出方案': 'ASS profiles',
-    '＋ 新建方案': '+ New profile', '默认槽位': 'Default slots', 'SRT 压制': 'SRT burn-in', 'SRT 默认烧录样式': 'Default SRT burn-in style',
+    '＋ 新建方案': '+ New profile', '默认槽位': 'Default slots', 'SRT 压制': 'SRT burn-in', 'SRT 默认烧录样式': 'Default SRT burn-in style', 'SRT 烧录': 'SRT burn-in',
     '工具箱的「烧录字幕」功能会使用这里选中的样式。': 'The Toolbox “Burn subtitles” feature uses the style selected here.',
     'SRT 压制默认样式': 'Default style for SRT burn-in', 'Launcher 压制 SRT 时使用此样式。': 'Launcher uses this style when burning SRT.',
     '这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。': 'Configure the default SRT burn-in style here for the Toolbox “Burn subtitles” feature.',
     'ASS 导出': 'ASS export', 'ASS 导出默认方案': 'Default profile for ASS export', 'ASS 导出使用此方案及其动画。': 'ASS export uses this profile and its animations.',
     'ASS 导出使用此方案及其动画；双语字幕的副字幕样式在该方案的表单中配置。': 'ASS export uses this profile and its animations; for bilingual subtitles, the extension-subtitle style is configured in the profile form.',
+    '次色仅在 \\k 卡拉 OK 标签中使用，当前未支持': 'Secondary color is only used by \\k karaoke tags; not supported yet',
     '主字幕样式': 'Main subtitle style', '副字幕默认样式': 'Default extension-subtitle style',
     '从左侧选择一个样式或 ASS 方案。': 'Choose a style or ASS profile on the left.', 'STYLE / PROFILE': 'STYLE / PROFILE',
     '名称': 'Name', '字号': 'Font size', '字距': 'Letter spacing', '颜色': 'Colors', '主': 'Main', '副': 'Secondary', '主色': 'Primary', '次色': 'Secondary',
@@ -37852,7 +37862,11 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
     ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
-  element.style.maxWidth = `calc(100% - ${Math.max(0, margins.left + margins.right)}px)`;
+  // ASS 预览采用 no-wrap 策略：只保留字幕文本中的显式换行，
+  // 不因为播放器容器边界重新插入自动换行。
+  element.style.whiteSpace = 'pre';
+  element.style.wordBreak = 'normal';
+  element.style.maxWidth = 'none';
   element.style.padding = borderBox
     ? `${Math.max(1, 4 * scaleY)}px ${Math.max(1, 8 * scaleX)}px`
     : `${Math.max(1, scaleY)}px ${Math.max(1, 2 * scaleX)}px`;
@@ -37900,7 +37914,7 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', ' -webkit-text-stroke',
     '-webkit-text-stroke', 'paint-order', 'filter', 'letter-spacing', 'line-height',
-    'max-width', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
+    'max-width', 'word-break', 'padding', 'background-color', 'border-radius', 'opacity', 'position',
     'left', 'right', 'top', 'bottom', 'white-space', 'text-align', 'transform-origin', 'transform',
   ].forEach((property) => element.style.removeProperty(property.trim()));
   element.style.setProperty(
@@ -38119,14 +38133,15 @@ function applyAssAnchoredPreviewElement(element, style, animationState, metrics,
     element.style.top = 'auto';
     element.style.bottom = `${Math.max(0, Math.ceil(verticalOffsetPx))}px`;
   }
-  element.style.whiteSpace = 'normal';
+  element.style.whiteSpace = 'pre';
+  element.style.wordBreak = 'normal';
   element.style.textAlign = alignment.textAlign;
 }
 
 function restoreAssOverlayTrackPreview() {
   if (!overlayTrackTextEl) return;
   [
-    'position', 'left', 'right', 'top', 'bottom', 'white-space', 'text-align',
+    'position', 'left', 'right', 'top', 'bottom', 'white-space', 'word-break', 'text-align',
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
     'text-decoration-color', 'text-underline-offset', 'color', '-webkit-text-stroke',
     'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
@@ -44611,6 +44626,49 @@ function expandStickerTime(idxs) {
 // === 标记颜色 ===
 // 数据结构与表情包同构：head 持完整 color，后续条持 color_ref（仅 name + headIdx）
 // 单选 → 设为 head；多选 → 第一条为 head，时间跨整个范围，后续为 ref
+function colorGroupHeadIndex(idx) {
+  const segment = DATA.segments[idx];
+  if (!segment) return -1;
+
+  const refHeadIdx = Number(segment.color_ref?.headIdx);
+  if (segment.color_ref
+      && Number.isInteger(refHeadIdx)
+      && refHeadIdx >= 0
+      && refHeadIdx < DATA.segments.length
+      && refHeadIdx !== idx
+      && DATA.segments[refHeadIdx]?.color) {
+    return refHeadIdx;
+  }
+
+  if (!segment.color) return -1;
+  return DATA.segments.some((candidate, candidateIdx) => (
+    candidateIdx !== idx
+    && candidate?.color_ref
+    && Number(candidate.color_ref.headIdx) === idx
+  )) ? idx : -1;
+}
+
+function detachColorFromGroup(idx) {
+  const segment = DATA.segments[idx];
+  const headIdx = colorGroupHeadIndex(idx);
+  const groupColor = headIdx >= 0 ? DATA.segments[headIdx]?.color : null;
+  if (!segment || !groupColor) return false;
+
+  // 先复制颜色；拆分组时原 head 的时间范围可能会被收缩。
+  const detachedColor = {
+    ...groupColor,
+    start: segment.start,
+    end: segment.end,
+  };
+  pushUndo('从颜色组中脱离');
+  splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
+  segment.color = detachedColor;
+  segment.color_ref = null;
+  refreshColorAssignmentUi();
+  flashHint('已从颜色组中脱离', 'success');
+  return true;
+}
+
 function assignColor(idxs, colorName) {
   if (!idxs.length) return;
   const def = COLOR_BY_NAME[colorName];
@@ -45451,6 +45509,9 @@ function showContextMenu(x, y, idx, waveformTimeMs = null) {
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
+    if (colorGroupHeadIndex(idx) >= 0) {
+      addItem('从颜色组中脱离', '', () => detachColorFromGroup(idx));
+    }
     addSep();
     // 组 3：状态与删除
     addItem(
