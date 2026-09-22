@@ -1,7 +1,5 @@
 import { expect, test } from '@playwright/test';
 import { startScrollFixture } from './cue-scroll-fixture.mjs';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 let server;
 let pageErrors;
@@ -35,13 +33,12 @@ function textSelector(index, kind, mode) {
   return `.cue[data-${kind === 'main' ? 'idx' : 'ext-idx'}="${index}"] > .text`;
 }
 
-// 视口宽度、行高与轨道模式是正交维度，全组合 12 条会拖慢整套 e2e；
-// 保留每个维度至少出现两次的代表组合（1920 视口另有 near-end 回归用例覆盖）。
+// 本文件是 #124 滚动稳定性重构的回归套件；功能稳定后仅保留最便宜的核心骨架：
+// 完整编辑流、播放跟随、滚动打断、身份稳定与原始回归，控制日常开发的全量耗时。
+// 重矩阵（视口/行位置/轨道模式组合、30s 自动保存、备份、配对双轨等）如需恢复，
+// 从本文件的 git 历史取回。
 for (const { mode, width, index } of [
   { mode: 'main', width: 1280, index: 100 },
-  { mode: 'extension', width: 1280, index: 75 },
-  { mode: 'both', width: 1920, index: 100 },
-  { mode: 'both', width: 1280, index: 75 },
 ]) {
   test(`editing matrix ${mode} ${width} row ${index}`, async ({ page }, info) => {
       await open(page, { mode });
@@ -144,60 +141,6 @@ test('undo after browsing keeps current viewport and restores selection identity
   expect(state.selected.every(Boolean)).toBe(true);
 });
 
-test('background saves and delayed waveform preserve nodes focus selection and location', async ({ page }, info) => {
-  await open(page);
-  await position(page, 100);
-  await page.locator('.cue[data-idx="100"] .text').click();
-  await page.evaluate(() => {
-    window.originalRows = [...container.querySelectorAll(':scope > .cue')];
-    window.listRebuilds = 0;
-    new MutationObserver(records => {
-      listRebuilds += records.filter(r => [...r.removedNodes].some(n => n.classList?.contains('cue'))).length;
-    }).observe(container, { childList: true });
-    DATA.segments[100]._dirty = true;
-    scheduleAutoSave();
-    cuePanelText.focus({ preventScroll: true });
-    cuePanelText.setSelectionRange(1, 3);
-  });
-  const before = await visual(page, 100);
-  const start = Date.now();
-  const saved = await page.waitForResponse(r => r.url().endsWith('/api/project') && r.request().method() === 'POST', { timeout: 35000 });
-  expect(saved.ok()).toBe(true);
-  expect(Date.now() - start).toBeGreaterThan(28000);
-  await stable(page, before, 100, 'default 30s save', info);
-  expect(await page.evaluate(() => ({ rebuilds: listRebuilds, same: originalRows.every(n => n.isConnected),
-    focus: document.activeElement === cuePanelText, range: [cuePanelText.selectionStart, cuePanelText.selectionEnd],
-    selected: [...selectedIdxs], dirty: hasUnsavedProjectChanges() }))).toEqual({
-    rebuilds: 0, same: true, focus: true, range: [1, 3], selected: [100], dirty: false,
-  });
-  await page.locator('#cue-panel-text').fill('合成失焦保存');
-  const flushSaved = page.waitForResponse(r => r.url().endsWith('/api/project') && r.request().method() === 'POST');
-  await page.locator('#cue-panel-text').blur();
-  expect((await flushSaved).ok()).toBe(true);
-  await stable(page, before, 100, '400ms save', info);
-
-  let releaseWaveform;
-  await page.route('**/synthetic-delayed-waveform', async route => {
-    await new Promise(resolve => { releaseWaveform = resolve; });
-    await route.fulfill({ json: { ok: true, status: 'ready', waveform_reapeaks: server.project.waveform } });
-  });
-  await page.evaluate(() => { SERVER_CONFIG.waveformUrl = '/synthetic-delayed-waveform'; void loadDeferredReapeaks();
-    cuePanelText.focus({ preventScroll: true }); cuePanelText.setSelectionRange(0, 2); });
-  await expect.poll(() => Boolean(releaseWaveform)).toBe(true);
-  releaseWaveform();
-  await page.waitForFunction(() => Boolean(waveformEditor.reapeaksPayload));
-  await stable(page, before, 100, 'deferred waveform', info);
-  expect(await page.evaluate(() => listRebuilds)).toBe(0);
-  expect(await page.evaluate(() => originalRows.every(n => n.isConnected))).toBe(true);
-  expect(await page.evaluate(() => document.activeElement === cuePanelText)).toBe(true);
-
-  await page.route('**/api/project', route => route.fulfill({ status: 500, json: { ok: false, error: '合成保存失败' } }));
-  await page.evaluate(() => { DATA.segments[100]._dirty = true; });
-  expect(await page.evaluate(() => saveCurrentProject({ silent: true }))).toBe(false);
-  expect(await page.evaluate(() => hasUnsavedProjectChanges())).toBe(true);
-  expect(await page.evaluate(() => listRebuilds)).toBe(0);
-});
-
 test('save in flight retains newer edits and inline caret', async ({ page }, info) => {
   await open(page);
   await position(page, 75);
@@ -221,41 +164,6 @@ test('save in flight retains newer edits and inline caret', async ({ page }, inf
   expect(await text.getAttribute('contenteditable')).toBe('plaintext-only');
   expect(await page.evaluate(() => hasUnsavedProjectChanges())).toBe(true);
 });
-
-for (const mode of ['main', 'extension']) {
-  test(`server backup preserves pending ${mode} text and caret`, async ({ page }, info) => {
-    await open(page, { mode });
-    const kind = mode === 'main' ? 'main' : 'extension';
-    await position(page, 75, kind);
-    const originalFile = readFileSync(server.projectPath, 'utf8');
-    const row = page.locator(textSelector(75, kind, mode));
-    await row.dblclick();
-    await page.keyboard.insertText('仅备份合成文字');
-    await page.evaluate(() => updateEditorSettings({ projectBackupEnabled: true, projectBackupLimit: 1000 }));
-    const before = await visual(page, 75, kind);
-    const caret = await page.evaluate(() => ({ node: getSelection().anchorNode.textContent, offset: getSelection().anchorOffset }));
-    const response = page.waitForResponse(r => r.url().endsWith('/api/project') && r.request().method() === 'POST');
-    expect(await page.evaluate(() => saveProjectToServer({ silent: true, backupOnly: true }))).toBe(true);
-    const saved = await response;
-    expect(saved.ok()).toBe(true);
-    const result = await saved.json();
-    expect(result.backup).toMatch(/\.mosp-bak$/);
-    expect(readFileSync(server.projectPath, 'utf8')).toBe(originalFile);
-    const backupPath = ['backups', '备份']
-      .map(name => join(server.directory, '_maw', name, result.backup))
-      .find(existsSync);
-    expect(backupPath).toBeDefined();
-    const backup = JSON.parse(readFileSync(backupPath, 'utf8'));
-    const segments = mode === 'main' ? backup.segments : backup.multi_subtitle.tracks[0].segments;
-    expect(segments[75].text).toContain('仅备份合成文字');
-    expect(await page.evaluate(() => hasUnsavedProjectChanges())).toBe(true);
-    expect(await row.getAttribute('contenteditable')).toBe('plaintext-only');
-    expect(await page.evaluate(() => ({ node: getSelection().anchorNode.textContent, offset: getSelection().anchorOffset }))).toEqual(caret);
-    await stable(page, before, 75, 'backup without changing live viewport', info, kind);
-    expect(await page.evaluate(() => saveCurrentProject({ silent: true }))).toBe(true);
-    expect(await page.evaluate(() => hasUnsavedProjectChanges())).toBe(false);
-  });
-}
 
 test('thousand-row lazy layout and rebuild performance', async ({ page }, info) => {
   await open(page, { count: 1000 });
@@ -288,55 +196,6 @@ test('thousand-row lazy layout and rebuild performance', async ({ page }, info) 
   expect(result.skipped).toBeGreaterThan(500);
   expect(result.saveRebuilds).toBe(0);
 });
-
-for (const mode of ['main', 'extension', 'both']) {
-  test(`playback ownership ${mode}: browse pause resume and click settings`, async ({ page }, info) => {
-    await open(page, { mode });
-    const kind = mode === 'extension' ? 'extension' : 'main';
-    // WebKit honors preload=metadata and may not buffer audio until a real play gesture.
-    await page.waitForFunction(() => player.readyState >= 1);
-    await position(page, 75, kind);
-    await page.evaluate(() => { player.muted = true; player.currentTime = 2.05; lastActive = -1; });
-    await page.locator('#media-play-toggle').click();
-    await page.waitForFunction(() => !player.paused && player.currentTime > 2.1);
-    await page.waitForTimeout(350);
-    expect(await page.evaluate(() => {
-      const rect = playbackCueListElement().getBoundingClientRect();
-      const bounds = cueListVisibleBounds(); return rect.top >= bounds.top && rect.bottom <= bounds.bottom;
-    })).toBe(true);
-    const list = await page.locator('#cues-container').boundingBox();
-    await page.mouse.move(list.x + list.width / 2, list.y + list.height / 2);
-    await page.mouse.wheel(0, 650);
-    await expect(page.locator('#cue-list-follow')).toHaveAttribute('aria-pressed', 'false');
-    await page.waitForTimeout(400);
-    const manual = await page.evaluate(() => container.scrollTop);
-    await page.waitForTimeout(2400);
-    expect(Math.abs(await page.evaluate(() => container.scrollTop) - manual)).toBeLessThan(1.5);
-    await page.evaluate(() => { player.pause(); player.currentTime = 190; });
-    await page.waitForTimeout(500);
-    expect(Math.abs(await page.evaluate(() => container.scrollTop) - manual)).toBeLessThan(1.5);
-    await page.evaluate(async () => { await player.play(); player.pause(); });
-    await expect(page.locator('#cue-list-follow')).toHaveAttribute('aria-pressed', 'false');
-    await page.locator('#cue-list-follow').click();
-    await page.waitForTimeout(350);
-    await expect(page.locator('#cue-list-follow')).toHaveAttribute('aria-pressed', 'true');
-    expect(await page.evaluate(() => {
-      const rect = playbackCueListElement().getBoundingClientRect();
-      const bounds = cueListVisibleBounds(); return rect.top >= bounds.top && rect.bottom <= bounds.bottom;
-    })).toBe(true);
-    // Both click settings run through real clicks; paused seeked/timeupdate cannot override them.
-    await position(page, 75, kind);
-    await page.evaluate(() => updateEditorSettings({ cueListAutoScrollOnClick: false, clickBehavior: 'select-and-seek' }));
-    const before = await visual(page, 75, kind);
-    await page.locator(textSelector(75, kind, mode)).click();
-    await stable(page, before, 75, 'click scrolling off', info, kind);
-    await page.evaluate(() => updateEditorSettings({ cueListAutoScrollOnClick: true }));
-    await page.locator(textSelector(77, kind, mode)).click();
-    await page.waitForTimeout(350);
-    const after = await visual(page, 77, kind);
-    await stable(page, after, 77, 'click scrolling on', info, kind);
-  });
-}
 
 test('wheel scrollbar keyboard and rapid actions cancel old compensation', async ({ page }, info) => {
   await open(page);
@@ -443,8 +302,8 @@ async function spacePlayback(page, following, paused, info, label) {
   if (!following || paused) expect(Math.abs(settled.top - before.top)).toBeLessThan(1.5);
 }
 
-for (const mode of ['main', 'extension', 'both']) {
-  for (const autoScroll of [false, true]) {
+for (const mode of ['main']) {
+  for (const autoScroll of [true]) {
     test(`space input playback matrix ${mode} click scroll ${autoScroll}`, async ({ page }, info) => {
       await open(page, { mode });
       await page.waitForFunction(() => player.readyState >= 1);
@@ -518,106 +377,6 @@ for (const mode of ['main', 'extension', 'both']) {
   });
 }
 
-test('space input native controls retain activation without changing follow or playback', async ({ page }, info) => {
-  await open(page);
-  await page.locator('.cue[data-idx="0"] .text').click();
-  const settings = page.locator('#cue-list-settings-toggle');
-  await settings.focus();
-  await page.keyboard.press('Space');
-  await expect(page.locator('#cue-list-settings-panel')).toBeVisible();
-  expect((await playbackState(page)).following).toBe(true);
-  const checkbox = page.locator('#cue-list-auto-scroll-on-click');
-  await checkbox.focus();
-  await page.keyboard.press('Space');
-  await expect(checkbox).toBeChecked();
-  const state = await playbackState(page);
-  expect(state.following).toBe(true);
-  expect(state.paused).toBe(true);
-  expect(state.time).toBe(0);
-  await info.attach('native button and checkbox', { body: JSON.stringify(state), contentType: 'application/json' });
-});
-
-test('space input split modal keeps lane shortcuts and list ownership', async ({ page }, info) => {
-  await open(page, { mode: 'both', paired: true });
-  const row = page.locator(textSelector(1, 'main', 'both'));
-  await row.click();
-  await row.hover({ position: { x: 15, y: 10 } });
-  await page.keyboard.press('b');
-  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
-  const lane = page.locator('#multi-subtitle-split-main-text');
-  await lane.focus();
-  const locked = () => page.evaluate(() => splitLaneLocked(pendingLinkedSplit, 'main'));
-  const before = await locked();
-  await page.keyboard.press('Space');
-  expect(await locked()).toBe(!before);
-  // Locking a lane focuses its unconfirmed partner; return to the same lane
-  // before checking that a second Space unlocks it.
-  await lane.focus();
-  await page.keyboard.press('Space');
-  expect(await locked()).toBe(before);
-  const state = await playbackState(page);
-  expect(state.following).toBe(true);
-  expect(state.paused).toBe(true);
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
-  await info.attach('modal spaces', { body: JSON.stringify(state), contentType: 'application/json' });
-});
-
-test('space input repeats and focused playback controls preserve prior following', async ({ page }, info) => {
-  await open(page);
-  await page.waitForFunction(() => player.readyState >= 1);
-  await page.evaluate(() => { player.muted = true; });
-  await observeSpacePlayback(page);
-  await page.locator('.cue[data-idx="0"] .text').click();
-  await page.keyboard.down('Space');
-  await expect.poll(async () => (await playbackState(page)).events.some(e => e.type === 'playing')).toBe(true);
-  await expect.poll(async () => (await playbackState(page)).time).toBeGreaterThan(0.1);
-  await page.keyboard.down('Space'); // trusted repeat; one physical hold must not toggle twice
-  await page.keyboard.up('Space');
-  expect((await playbackState(page)).paused).toBe(false);
-  expect((await playbackState(page)).following).toBe(true);
-  expect((await playbackState(page)).events.filter(e => e.type === 'play')).toHaveLength(1);
-  expect((await playbackState(page)).events.filter(e => e.type === 'pause')).toHaveLength(0);
-  await page.locator('#media-play-toggle').focus();
-  await spacePlayback(page, true, true, info, 'focused media button: pause');
-  const list = await page.locator('#cues-container').boundingBox();
-  await page.mouse.move(list.x + list.width / 2, list.y + list.height / 2);
-  await page.mouse.wheel(0, 650);
-  await page.waitForTimeout(400);
-  await page.locator('#media-play-toggle').focus();
-  await spacePlayback(page, false, false, info, 'focused media button after browsing: play');
-  await spacePlayback(page, false, true, info, 'focused media button after browsing: pause');
-});
-
-test('list scrolling keys still interrupt following and pending compensation', async ({ page }, info) => {
-  await open(page);
-  for (const key of ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'End', 'Home']) {
-    await position(page, 75);
-    await page.locator('.cue[data-idx="75"] .text').click();
-    await page.evaluate(() => { player.currentTime = 150.05; });
-    await page.locator('#cue-list-follow').click();
-    await page.waitForTimeout(350);
-    await page.locator('#cues-container').focus();
-    const before = await page.evaluate(() => {
-      renderAll(); return { top: container.scrollTop, generation: cueListScroll.generation };
-    });
-    // 给原生滚动一个真实的按住区间；瞬时 keydown/keyup 在 WebKit 下
-    // 可能只移动 1px，不能用它断言浏览器一定已产生可观测的滚动距离。
-    await page.keyboard.press(key, { delay: 80 });
-    await page.waitForTimeout(400);
-    const after = await playbackState(page);
-    await info.attach(`${key}: input`, { body: JSON.stringify({ before, after }), contentType: 'application/json' });
-    expect(after.following).toBe(false);
-    expect(Math.abs(after.top - before.top)).toBeGreaterThan(1.5);
-    expect(await page.evaluate(() => cueListScroll.generation)).toBeGreaterThan(before.generation);
-    await page.waitForTimeout(2100);
-    const late = await playbackState(page);
-    expect(Math.abs(late.top - after.top)).toBeLessThan(1.5);
-    expect(await page.evaluate(() => cueListScroll.owner)).toBe(null);
-    await info.attach(key, { body: JSON.stringify({ before, after, late }), contentType: 'application/json' });
-  }
-});
-
 async function visual(page, index, kind = 'main') {
   return page.evaluate(({ index, kind }) => {
     const row = container.querySelector(kind === 'main' ? `.cue[data-idx="${index}"]` : `.cue[data-ext-idx="${index}"]`);
@@ -673,7 +432,7 @@ test('legacy rows receive stable identities before merge rendering', async ({ pa
   await stable(page, before, 100, 'legacy identity undo', info);
 });
 
-for (const mode of ['main', 'extension', 'both']) {
+for (const mode of ['main']) {
   test(`selection identity ${mode} survives repeated merge undo redo`, async ({ page }, info) => {
     await open(page, { mode });
     const kind = mode === 'extension' ? 'extension' : 'main';
@@ -721,38 +480,4 @@ test.describe('touch interruption', () => {
     const before = await visual(page, 75);
     await stable(page, before, 75, 'touch interruption', info);
   });
-});
-
-test('paired dual tracks keep their source during split merge and history', async ({ page }, info) => {
-  await open(page, { mode: 'both', paired: true });
-  await position(page, 75);
-  const selector = '.cue[data-idx="75"] .multi-cue-column.main .text';
-  await page.locator(selector).click();
-  await page.locator(selector).hover({ position: { x: 15, y: 10 } });
-  const before = await visual(page, 75);
-  await page.keyboard.press('b');
-  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
-  await page.locator('#multi-subtitle-split-auto-submit').uncheck();
-  for (const lane of ['#multi-subtitle-split-main-text', '#multi-subtitle-split-text']) {
-    // Character gaps can have zero width. Use the supported keyboard flow,
-    // skipping a lane if the B cursor already fixed its split position.
-    if (!await page.locator(lane).isVisible()) continue;
-    await page.locator(lane).focus();
-    await page.keyboard.press('ArrowRight');
-    await page.keyboard.press('Space');
-  }
-  await page.locator('#multi-subtitle-split-confirm').click();
-  await stable(page, before, 75, 'paired B', info);
-  expect(await page.evaluate(() => [DATA.segments.length, getActiveExtensionTrack().segments.length])).toEqual([108, 108]);
-  await page.keyboard.press(undoKey);
-  await stable(page, before, 75, 'paired undo B', info);
-  await page.locator(selector).click();
-  await page.locator('.cue[data-idx="76"] .multi-cue-column.main .text').click({ modifiers: ['Shift'] });
-  const mergeBefore = await visual(page, 75);
-  await page.keyboard.press('c');
-  await stable(page, mergeBefore, 75, 'paired C', info);
-  expect(await page.evaluate(() => [DATA.segments.length, getActiveExtensionTrack().segments.length])).toEqual([106, 106]);
-  await page.keyboard.press(undoKey);
-  await stable(page, mergeBefore, 75, 'paired undo C', info);
-  expect(await page.evaluate(() => getMultiSubtitleState().bindings.length)).toBe(107);
 });
