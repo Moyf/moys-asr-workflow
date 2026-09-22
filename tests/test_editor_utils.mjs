@@ -4486,6 +4486,11 @@ test('encodes native GraphicAndType text as Premiere UTF-16LE payload', () => {
   assert.equal(payload.mTextParam.mAlignment, 2);
   assert.equal(payload.mTextParam.mStyleSheet.mFontSize.mParamValues[0][1], 60);
   assert.equal(payload.mVersion, 1);
+  // 顶层与样式表结构必须逐字段对齐真实 Premiere 导出的单一样式 run payload：
+  // 实机验证多余或异形字段（mUnderline / mShadowFontMapHash 等）会让 PR 静默
+  // 丢弃整个样式表——文字渲染但字体、字号回落默认。
+  assert.deepEqual(Object.keys(payload), ['mTextParam', 'mVersion']);
+  assert.equal(payload.mTextParam.mStyleSheet.mUnderline, undefined);
 });
 
 test('writes the preview subtitle font into the GraphicAndType payload', () => {

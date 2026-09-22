@@ -5614,6 +5614,11 @@
   }
 
   function encodeGraphicAndTypeText(text, fontFamily = 'FangSong', fontSize = FCP7_TEXT_FONT_SIZE_2160P) {
+    // 结构逐字段对齐真实 Premiere 导出的单一样式 run payload（OpenTimelineIO
+    // 测试样例 empty_name_tags.xml）：顶层只有 mTextParam 与 mVersion，样式表
+    // 中没有 mUnderline 键。实机验证 PR 对超出此结构的写法（如 mUnderline 写
+    // 裸布尔 false）会静默丢弃整个 mStyleSheet——文字仍渲染，但字体/字号全部
+    // 回落默认（Myriad Pro / 100）。
     const payload = {
       mTextParam: {
         // 段落对齐：实测 0=左对齐、1=右对齐、2=居中（PR 实机反馈校准）。
@@ -5664,7 +5669,6 @@
           mText: String(text ?? ''),
           mTracking: { mParamValues: [[0, 0]] },
           mTsumi: { mParamValues: [[0, 0]] },
-          mUnderline: { mParamValues: [[0, false]] },
         },
         mTabWidth: 400,
         mWidth: 0,
