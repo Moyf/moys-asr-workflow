@@ -143,12 +143,13 @@ function replaceDeclaration(info, name, replacement) {
   Object.assign(info, moduleInfoFromSource(info.file, info.source));
 }
 // 限定重放声明体与重建入口中的自由引用（作用域内核：scope-core.mjs）。
-// 旧实现用「全子树平面绑定名集合」做豁免：声明内任意位置的同名局部会压制
-// 真正需要限定的引用（漏限定），而声明体之外的模块级同名绑定它看不到
-// （误限定）；qualifyEntry 甚至没有局部作用域处理，嵌套参数/局部遮蔽
-// 导出名时会重蹈 ns-rewrite 旧版 MAWE_I18N.start ×7 的覆辙。
-// 现以 eslint-scope 的未解析引用为准：只有在该文本内确实无词法绑定的
-// 标识符才是限定候选；模块内已有同名绑定的引用显式跳过。
+// 历史上有两版实现：平面绑定名集合（2026-09-21 前）与「全文件任意层级
+// 绑定名豁免」（238fb6a7）。两者方向都是宁漏勿错——漏限定在运行时响错误，
+// 误限定静默改义——但平面集合在同一文件里存在同名绑定时会压制全文件所有
+// 真正需要限定的引用，且 shorthand key===value 误判仍在。现以 eslint-scope
+// 的未解析引用为准：只有在该文本内确实无词法绑定的标识符才是限定候选，
+// 语义保证不变而限定覆盖不再被无关同名绑定稀释；模块内已有同名绑定的
+// 引用显式跳过。
 export function qualifyDeclaration(raw, ownerOf, currentNamespace, moduleLocalNames = new Set()) {
   const edits = [];
   for (const ref of unresolvedRefs(raw)) {
@@ -204,10 +205,22 @@ function main() {
   const baseSymbols = declarationRecords(baseEditor, parse(baseEditor, `${base}:editor.js`));
   const theirsSymbols = declarationRecords(theirsEditor, parse(theirsEditor, `${theirs}:editor.js`));
   const files = fs.readdirSync(WEB).filter((file) => /^editor-.*\.js$/.test(file)).sort();
-  // HEAD, rather than the conflicted worktree, is the authoritative "ours".
-  // This makes a second invocation idempotent if an interrupted prior run has
-  // already written a few replayed module bodies to the worktree.
-  const modules = new Map(files.map((file) => [file, moduleInfoFromSource(file, gitShow('HEAD', `web/${file}`))]));
+  // The module base prefers the worktree copy whenever git has already merged
+  // it cleanly (no conflict markers): main may edit module files directly, and
+  // those 3-way-merged edits must survive the replay write-back. Files still
+  // carrying conflict markers fall back to HEAD ("ours") and need manual
+  // resolution. Replaying into a conflict-free worktree copy is idempotent, so
+  // an interrupted prior run does not change the outcome of a second run.
+  function moduleBaseSource(file) {
+    const worktreePath = path.join(WEB, file);
+    if (fs.existsSync(worktreePath)) {
+      const source = fs.readFileSync(worktreePath, 'utf8');
+      if (!/^<{7} /m.test(source)) return source;
+      console.error(`merge-flow: ${file} still has conflict markers; using HEAD as module base`);
+    }
+    return gitShow('HEAD', `web/${file}`);
+  }
+  const modules = new Map(files.map((file) => [file, moduleInfoFromSource(file, moduleBaseSource(file))]));
   const ownerOf = new Map();
   for (const info of modules.values()) for (const name of info.exports) {
     if (!ownerOf.has(name)) ownerOf.set(name, { file: info.file, ns: info.ns });

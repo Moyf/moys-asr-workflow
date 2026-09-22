@@ -114,6 +114,46 @@ test('exports ASS from the default profile style and keeps enabled subtitle text
     'Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,第一行\\NSecond, \\{literal\\}\\\\path',
   );
   expect(save.content).not.toContain('不应导出');
+  // 本次换行策略只调整播放器预览；ASS 导出仍保持原来的 WrapStyle。
+  expect(save.content).toContain('WrapStyle: 0');
+});
+
+test('ASS preview preserves explicit line breaks without container wrapping', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+
+  const preview = await page.evaluate(() => {
+    MaweBoot.DATA.segments = [{
+      start: 0,
+      end: 4000,
+      text: '第一行\nAnd Jev can solve these two problems',
+    }];
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const element = document.getElementById('overlay-main-text');
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const lineTops = Array.from(range.getClientRects()).map((rect) => Math.round(rect.top));
+    const style = getComputedStyle(element);
+    return {
+      lineCount: new Set(lineTops).size,
+      maxWidth: style.maxWidth,
+      whiteSpace: style.whiteSpace,
+      wordBreak: style.wordBreak,
+    };
+  });
+  expect(preview.lineCount).toBe(2);
+  expect(preview.maxWidth).toBe('none');
+  expect(preview.whiteSpace).toBe('pre');
+  expect(preview.wordBreak).toBe('normal');
+
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('white-space', 'pre-wrap');
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('word-break', 'break-word');
 });
 
 test('writes the project title, source resolution, palette styles and speaker names to ASS', async ({ page }) => {
@@ -160,6 +200,45 @@ test('writes the project title, source resolution, palette styles and speaker na
   expect(save.content).toContain(`Style: BLUE,${assDefaultFont},144,&H00FAA761,&H00FAA761,`);
   expect(save.content).toContain(
     'Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,{\\c&H006F7FF0&}旁白：{\\c&H006F7FF0&}red line',
+  );
+});
+
+test('exports speaker-only ASS label colour without a palette style variant', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    MaweBoot.DATA.segments = [
+      { start: 0, end: 1000, text: 'red line', items: [], color: { name: 'red', value: '#f07f6f' } },
+    ];
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
+      ass_color_style: 'speaker',
+      speaker_labels: {
+        mapping_enabled: true,
+        enabled: true,
+        separator: '：',
+        names: { yellow: '主持', green: '嘉宾', red: '旁白', purple: '现场', blue: '字幕' },
+      },
+    };
+    MaweSettings.EDITOR_SETTINGS.exportSpeakerLabels = true;
+    MaweCuePanel.renderAll();
+  });
+
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-ass').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const save = await page.evaluate(() => window.__exportSaves[0]);
+  const baseColor = await page.evaluate(() => (
+    window.AsrEditorUtils.assColorFromHex(window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.primaryColor)
+  ));
+  const baseFont = await page.evaluate(() => window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName);
+
+  expect(save.content).toContain(`Style: Default,${baseFont},72,`);
+  expect(save.content).not.toContain('Style: RED,');
+  expect(save.content).toContain(
+    `Dialogue: 0,0:00:00.00,0:00:01.00,Default,旁白,0,0,0,,{\\c&H006F7FF0&}旁白：{\\c${baseColor}&}red line`,
   );
 });
 
@@ -252,7 +331,7 @@ test('keeps ASS style actions and preview-mode hints attached to the active form
   await expect(page.locator('#ass-style-srt-hint')).toBeVisible();
   await expect(page.locator('#ass-style-preview-mode-hint')).toBeHidden();
   await expect(page.locator('.ass-style-assignment-title-row')).toHaveCount(0);
-  await expect(page.locator('.ass-style-assignment-card small').first())
+  await expect(page.locator('label[for="ass-srt-default-style"] + small'))
     .toHaveText('工具箱的「烧录字幕」功能会使用这里选中的样式。');
 
   await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();

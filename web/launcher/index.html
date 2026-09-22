@@ -40,7 +40,7 @@
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.6.0-beta.4</span></div>
+          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.6.0-beta.6</span></div>
           <p data-i18n="hero_desc">📺 本地媒体 ➜  🤖 AI 转写 ➜ ✨ 可编辑字幕工程</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
@@ -720,7 +720,6 @@
       <div class="adv-group">
         <h3 data-i18n="toolbox_group_timestamp_media">媒体来源</h3>
         <div id="toolboxTimestampMediaDropZone" class="field toolbox-input">
-          <label for="toolboxTimestampMediaPath" data-i18n="toolbox_timestamp_media">媒体来源</label>
           <div class="path-row">
             <input id="toolboxTimestampMediaPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_timestamp_media_placeholder" placeholder="选择或拖入媒体文件">
             <button id="pickToolboxTimestampMedia" class="ghost" type="button" data-i18n="choose">选择</button>
@@ -1024,7 +1023,7 @@
       <div class="settings-section">
         <h3 data-i18n="settings_file_output">文件输出</h3>
         <label class="check-field" for="outputSubfolder">
-          <input id="outputSubfolder" type="checkbox" data-i18n-title="output_subfolder_title" title="将所有输出文件放入子文件夹（默认关闭）：SRT、工程、编辑器页面和调试文件写入媒体旁的 _maw 子目录">
+          <input id="outputSubfolder" type="checkbox" data-i18n-title="output_subfolder_title" title="将所有输出文件放入子文件夹（默认开启）：SRT、工程、编辑器页面和调试文件写入媒体旁的 _maw 子目录">
           <span data-i18n="output_subfolder">将所有输出文件放入子文件夹</span>
         </label>
         <label class="check-field" for="perVideoSubfolder">
@@ -1243,6 +1242,10 @@
       </div>
       </section>
       <section id="settingsRuntimePanel" class="settings-panel hidden" role="tabpanel" aria-labelledby="settingsRuntimeTab" data-settings-panel="runtime" aria-hidden="true">
+      <div id="localModelRuntimeHintSection" class="settings-section hidden">
+        <h3 data-i18n="local_model_runtime_hint_title">本地模型</h3>
+        <p class="hint" data-i18n="local_model_runtime_hint_body">如果要查看本地模型相关配置，请先将「识别设置」中的识别方式选为「本地模型」。</p>
+      </div>
       <div id="localRuntimePanel" class="local-runtime-panel settings-section hidden">
         <h3 data-i18n="settings_local_runtime">本地模型运行时</h3>
         <p class="hint warn hint-callout" data-i18n="local_beta_note">当前为 beta 版本，未经过充分测试，不保证后续的维护和更新，请谨慎使用。</p>

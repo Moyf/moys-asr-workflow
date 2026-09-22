@@ -109,79 +109,81 @@
 
 
   function bindExtensionCueEvents(el, index, track = MaweMultiSubtitleCore.getActiveExtensionTrack(), dualRow = null) {
-    if (!el || !track?.segments?.[index]) return;
-    let pointerDown = null;
-    el.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0 || (extensionEditingState?.el === el)) return;
-      event.stopPropagation();
-      if (event.altKey) {
-        event.preventDefault();
-        MaweStickerPicker.toggleDisabled([index], track);
-        pointerDown = null;
-        return;
-      }
-      pointerDown = { x: event.clientX, y: event.clientY };
-      if (event.shiftKey && MaweSelection.lastClickedExtensionIdx >= 0) MaweSelection.selectExtensionRange(MaweSelection.lastClickedExtensionIdx, index);
-      else if (event.ctrlKey || event.metaKey) MaweSelection.toggleExtensionSelection(index);
-      else MaweSelection.selectOnlyExtension(index);
-      MaweSelection.lastClickedExtensionIdx = index;
-    });
-    el.addEventListener('click', (event) => {
-      event.stopPropagation();
-      if (!pointerDown) return;
+  if (!el || !track?.segments?.[index]) return;
+  let pointerDown = null;
+  el.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || (extensionEditingState?.el === el)) return;
+    event.stopPropagation();
+    if (event.altKey) {
+      event.preventDefault();
+      MaweStickerPicker.toggleDisabled([index], track);
       pointerDown = null;
-      const segment = track.segments[index];
-      const previousSuppress = MawePlaybackLoop.suppressCueListAutoScroll;
-      // 副字幕点击后 seek 会同步刷新主字幕 active 状态；这次刷新不能把
-      // 列表从刚点击的副字幕行再次滚到对应的主字幕行。
-      MawePlaybackLoop.suppressCueListAutoScroll = true;
-      try {
-        MaweCoreState.waveformEditor?.revealTime(segment.start, true);
-        if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') MaweTextCleanup.seekFromWaveform(segment.start / 1000);
-      } finally {
-        MawePlaybackLoop.suppressCueListAutoScroll = previousSuppress;
+      return;
+    }
+    pointerDown = { x: event.clientX, y: event.clientY };
+    if (event.shiftKey && MaweSelection.lastClickedExtensionIdx >= 0) MaweSelection.selectExtensionRange(MaweSelection.lastClickedExtensionIdx, index);
+    else if (event.ctrlKey || event.metaKey) MaweSelection.toggleExtensionSelection(index);
+    else MaweSelection.selectOnlyExtension(index);
+    MaweSelection.lastClickedExtensionIdx = index;
+  });
+  el.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (!pointerDown) return;
+    pointerDown = null;
+    const segment = track.segments[index];
+    const previousSuppress = MawePlaybackLoop.suppressCueListAutoScroll;
+    // 副字幕点击后 seek 会同步刷新主字幕 active 状态；这次刷新不能把
+    // 列表从刚点击的副字幕行再次滚到对应的主字幕行。
+    MawePlaybackLoop.suppressCueListAutoScroll = true;
+    try {
+      MaweCoreState.waveformEditor?.revealTime(segment.start, true);
+      if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') {
+        MaweTextCleanup.seekFromWaveform(segment.start / 1000, { mouseClick: true });
       }
-      if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick) {
-        const currentRow = MaweCoreState.container.querySelector(
-          `.multi-dual-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
-        );
-        MaweCueListAnchor.scrollCueToCenter(currentRow || dualRow || el);
-      }
-    });
-    el.addEventListener('pointermove', (event) => {
-      event.stopPropagation();
-      if (extensionEditingState?.el === el) {
-        MaweNavPreview.hideCueSplitPreview();
-        return;
-      }
-      MaweNavPreview.cueListPointer = {
-        kind: 'extension',
-        idx: index,
-        trackId: track.id,
-        x: event.clientX,
-        y: event.clientY,
-      };
-      MaweNavPreview.scheduleCueSplitPreview(index, event.clientX, event.clientY, 'extension', track.id);
-    });
-    el.addEventListener('pointerleave', () => {
-      if (MaweNavPreview.cueListPointer?.kind === 'extension'
-          && MaweNavPreview.cueListPointer.idx === index
-          && MaweNavPreview.cueListPointer.trackId === track.id) {
-        MaweNavPreview.cueListPointer = null;
-        MaweNavPreview.hideCueSplitPreview();
-      }
-    });
-    el.addEventListener('dblclick', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      startExtensionEdit(el, index, track, event.clientX, event.clientY, { deferCaret: true });
-    });
-    el.addEventListener('contextmenu', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      MaweContextMenus.showExtensionContextMenu(event.clientX, event.clientY, index, null, track);
-    });
-  }
+    } finally {
+      MawePlaybackLoop.suppressCueListAutoScroll = previousSuppress;
+    }
+    if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick) {
+      const currentRow = MaweCoreState.container.querySelector(
+        `.multi-dual-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
+      );
+      MaweCueListAnchor.scrollCueToCenter(currentRow || dualRow || el);
+    }
+  });
+  el.addEventListener('pointermove', (event) => {
+    event.stopPropagation();
+    if (extensionEditingState?.el === el) {
+      MaweNavPreview.hideCueSplitPreview();
+      return;
+    }
+    MaweNavPreview.cueListPointer = {
+      kind: 'extension',
+      idx: index,
+      trackId: track.id,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    MaweNavPreview.scheduleCueSplitPreview(index, event.clientX, event.clientY, 'extension', track.id);
+  });
+  el.addEventListener('pointerleave', () => {
+    if (MaweNavPreview.cueListPointer?.kind === 'extension'
+        && MaweNavPreview.cueListPointer.idx === index
+        && MaweNavPreview.cueListPointer.trackId === track.id) {
+      MaweNavPreview.cueListPointer = null;
+      MaweNavPreview.hideCueSplitPreview();
+    }
+  });
+  el.addEventListener('dblclick', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    startExtensionEdit(el, index, track, event.clientX, event.clientY, { deferCaret: true });
+  });
+  el.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    MaweContextMenus.showExtensionContextMenu(event.clientX, event.clientY, index, null, track);
+  });
+}
 
 
 

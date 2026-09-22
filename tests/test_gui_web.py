@@ -737,7 +737,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         config = self.api.get_config()
 
-        self.assertFalse(config["outputSubfolder"])
+        self.assertTrue(config["outputSubfolder"])
         self.assertFalse(config["perVideoSubfolder"])
         self.assertFalse(config["attachModelName"])
 
@@ -4679,6 +4679,15 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertNotIn("font: 11px", stylesheet)
         self.assertIn(".local-status-row > button", stylesheet)
 
+    def test_legacy_auto_postprocess_plan_defaults_to_retaining_intermediate(self) -> None:
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn("retainIntermediate: true,", script)
+        self.assertIn(
+            "plan.retainIntermediate === undefined ? true : Boolean(plan.retainIntermediate)",
+            script,
+        )
+
     def test_launcher_message_url_stops_before_closing_punctuation(self) -> None:
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
@@ -5278,6 +5287,17 @@ class LauncherAssetContractTests(unittest.TestCase):
         # 本地模型运行时仍在 Runtime；AI 模型配置先放 LLM，再放本地 ASR 与对齐模型。
         self.assertLess(runtime_tab_panel, runtime_panel)
         self.assertLess(runtime_panel, ocr_section)
+        # 未选择本地模型时，Runtime 顶部显示「本地模型」跳转提示。
+        hint_section = page.index('id="localModelRuntimeHintSection"')
+        self.assertLess(runtime_tab_panel, hint_section)
+        self.assertLess(hint_section, runtime_panel)
+        self.assertIn('data-i18n="local_model_runtime_hint_title"', page)
+        self.assertIn('data-i18n="local_model_runtime_hint_body"', page)
+        self.assertIn('local_model_runtime_hint_title: "本地模型"', script)
+        self.assertIn('local_model_runtime_hint_body: "如果要查看本地模型相关配置，请先将「识别设置」中的识别方式选为「本地模型」。"', script)
+        self.assertIn('local_model_runtime_hint_title: "Local models"', script)
+        self.assertIn('local_model_runtime_hint_body: "To view local model settings, first select \\"Local models\\" as the recognition method in recognition settings."', script)
+        self.assertIn('$("localModelRuntimeHintSection").classList.toggle("hidden", local);', script)
         self.assertLess(model_tab_panel, llm_section)
         self.assertLess(llm_section, local_model_section)
         self.assertLess(local_model_section, alignment_section)

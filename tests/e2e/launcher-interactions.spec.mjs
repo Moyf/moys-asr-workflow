@@ -536,7 +536,7 @@ test('does not start local transcription while model status is still checking', 
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#provider').selectOption('local');
-  await expect(page.locator('#localModelPanel')).toBeVisible();
+  await expect(page.locator('#localModelSettingsEntry')).toBeVisible();
   await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
   await page.locator('#srtPath').fill('D:\\Demo\\clip.local.srt');
 
@@ -579,14 +579,14 @@ test('keeps local runtime events working after the page learns that installation
   await expect(page.locator('#status')).toHaveText('本地模型支持已安装完成');
 });
 
-test('local runtime check sits above the model panel and deep-links to the Runtime tab top', async ({ page }) => {
+test('local runtime check sits above the local model settings entry and deep-links to the Runtime tab top', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#provider').selectOption('local');
   await expect(page.locator('#localRuntimeCheckField')).toBeVisible();
   const checkRow = await page.locator('#localRuntimeCheckField').boundingBox();
-  const modelPanel = await page.locator('#localModelPanel').boundingBox();
-  expect(checkRow.y + checkRow.height).toBeLessThan(modelPanel.y);
+  const modelEntry = await page.locator('#localModelSettingsEntry').boundingBox();
+  expect(checkRow.y + checkRow.height).toBeLessThan(modelEntry.y);
   await expect(page.locator('#localModelCachePathLine')).toContainText('模型缓存：D:\\Models\\MAW');
   await expect(page.locator('#localRuntimeCheckStatus')).toHaveText('本地运行环境未安装');
   await page.locator('#openLocalRuntimeSettings').click();
@@ -606,7 +606,7 @@ test('English mode localizes provider, model, and language labels from the backe
 
   await expect(page.locator('#provider option[value="local"]')).toHaveText('Local models (Beta)');
   await expect(page.locator('#model option[value="qwen3-asr-local"]')).toHaveText('Qwen3-ASR 0.6B (recommended)');
-  await expect(page.locator('#modelNote')).toHaveText('Runs locally; the first preparation downloads Qwen3-ASR and the Forced Aligner.');
+  await expect(page.locator('#modelNote')).toHaveText('Lightweight multilingual recognition with native word/character timestamps; shares the Qwen3-ForcedAligner cache.');
   await expect(page.locator('#language option').first()).toHaveText('Auto detect');
 });
 
@@ -1058,6 +1058,46 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
   await expect(page.locator('#openMawe')).toContainText('启动字幕编辑器');
   await expect(page.locator('#stopServer')).toBeHidden();
   expect(await page.evaluate(() => window.__serverStatusCalls)).toBeGreaterThanOrEqual(2);
+});
+
+test('restarting after a server disconnect does not reopen the editor page', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#settingsButton').click();
+  await page.locator('#langZh').click();
+  await page.locator('#settingsClose').click();
+  await page.evaluate(() => {
+    const original = window.MAWLauncher.callBackend;
+    window.__openUrlCalls = [];
+    // openServerEditor 走内部 bridge → mockApi.open_url → window.open，直接拦截 window.open。
+    window.open = (url) => { window.__openUrlCalls.push(String(url)); return null; };
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'get_server_status') {
+        // 服务器先在线、后断开，让监控进入 disconnected 状态。
+        return { ok: true, running: window.__serverHealthy !== false, url: 'http://127.0.0.1:8250/' };
+      }
+      return original(method, payload);
+    };
+  });
+
+  // 先让服务器上线，使监控启动并处于 connected 状态。
+  await page.locator('#openMawe').click();
+  await expect(page.locator('#openMawe')).toContainText('打开字幕编辑器', { timeout: 10_000 });
+  await page.waitForFunction(() => window.__openUrlCalls.length === 1);
+
+  // 模拟断开。
+  await page.evaluate(() => { window.__serverHealthy = false; });
+  await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('启动字幕编辑器');
+
+  // 模拟重启成功：只更新提示，不再调用 open_url 打开新页面。
+  await page.evaluate(() => { window.__serverHealthy = true; });
+  await page.locator('#openMawe').click();
+  await expect(page.locator('#status')).toContainText('回到原编辑器页面', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('打开字幕编辑器');
+  await expect(page.locator('#stopServer')).toBeVisible();
+  await page.waitForFunction(() => window.__openUrlCalls.length === 1, undefined, { timeout: 5_000 });
+  expect(await page.evaluate(() => window.__openUrlCalls[0])).toBe('http://127.0.0.1:8250/');
 });
 
 test('unknown errors stay generic and do not expose FFmpeg actions', async ({ page }) => {

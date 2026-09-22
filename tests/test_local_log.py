@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-import time
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -149,7 +148,7 @@ class LocalLogSinkTests(unittest.TestCase):
         old = _log_path_for(self.directory, _now(day=1))
         old.parent.mkdir(parents=True, exist_ok=True)
         old.write_text("old", encoding="utf-8")
-        old_mtime = time.time() - 30 * 24 * 3600
+        old_mtime = _now(day=1).timestamp()
         os.utime(old, (old_mtime, old_mtime))
 
         sink = LocalLogSink(directory=self.directory, now=lambda: _now())

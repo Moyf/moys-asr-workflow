@@ -226,10 +226,15 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   const overlaySpeakerLabelVisible = Boolean(
     overlaySpeakerLabel && overlaySpeakerColorName && MaweColors.COLOR_BY_NAME[overlaySpeakerColorName],
   );
+  const assColorStyle = subtitleAppearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
   const overlaySpeakerLabelColor = overlaySpeakerLabelVisible
-    ? colorPreviewEnabled && colorStyle === 'stroke'
-      ? mainSubtitleColor
-      : MaweColors.COLOR_BY_NAME[overlaySpeakerColorName].value
+    ? assMode
+      ? assColorStyle === 'text' || assColorStyle === 'speaker'
+        ? MaweColors.COLOR_BY_NAME[overlaySpeakerColorName].value
+        : ''
+      : colorPreviewEnabled && colorStyle === 'stroke'
+        ? mainSubtitleColor
+        : MaweColors.COLOR_BY_NAME[overlaySpeakerColorName].value
     : '';
   const overlaySpeakerLabelText = overlaySpeakerLabelVisible
     ? `${overlaySpeakerLabel}${speakerLabels.separator}`

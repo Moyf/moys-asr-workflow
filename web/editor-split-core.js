@@ -127,391 +127,468 @@
 
 
   function splitItemsAtChar(
-    segment,
-    cursorChar,
-    requestedCutMs = null,
-    { preserveCutMs = false, forceCut = false } = {},
-  ) {
-    const text = String(segment?.text || '');
-    const safeOffset = Math.max(0, Math.min(text.length, Math.round(Number(cursorChar) || 0)));
-    const segmentStart = Number(segment?.start);
-    const segmentEnd = Number(segment?.end);
-    const safeSegmentStart = Number.isFinite(segmentStart) ? segmentStart : 0;
-    const safeSegmentEnd = Number.isFinite(segmentEnd) && segmentEnd >= safeSegmentStart
-      ? segmentEnd : safeSegmentStart;
-    const items = Array.isArray(segment?.items) ? segment.items : [];
-    const hasItems = items.some((item) => String(item?.text || ''));
+  segment,
+  cursorChar,
+  requestedCutMs = null,
+  { preserveCutMs = false, forceCut = false } = {},
+) {
+  const text = String(segment?.text || '');
+  const safeOffset = Math.max(0, Math.min(text.length, Math.round(Number(cursorChar) || 0)));
+  const segmentStart = Number(segment?.start);
+  const segmentEnd = Number(segment?.end);
+  const safeSegmentStart = Number.isFinite(segmentStart) ? segmentStart : 0;
+  const safeSegmentEnd = Number.isFinite(segmentEnd) && segmentEnd >= safeSegmentStart
+    ? segmentEnd : safeSegmentStart;
+  const items = Array.isArray(segment?.items) ? segment.items : [];
+  const hasItems = items.some((item) => String(item?.text || ''));
 
-    // 用原文查找 item 文本，处理 item 不包含词间空格的常见工程格式。
-    // 如果上游 item 文本无法和字幕原文对齐，则退回旧的顺序长度映射，
-    // 但后面的时间钳制和副本分组仍然保持一致。
-    let searchFrom = 0;
-    let aligned = true;
-    const records = [];
-    for (const item of items) {
-      const itemText = String(item?.text || '');
-      if (!itemText) continue;
-      const textStart = text.indexOf(itemText, searchFrom);
-      if (textStart < 0) {
-        aligned = false;
-        break;
-      }
-      records.push({ item, textStart, textEnd: textStart + itemText.length, itemText });
-      searchFrom = textStart + itemText.length;
-    }
-    if (!aligned) {
-      records.length = 0;
-      let textStart = 0;
-      for (const item of items) {
-        const itemText = String(item?.text || '');
-        if (!itemText) continue;
-        records.push({ item, textStart, textEnd: textStart + itemText.length, itemText });
-        textStart += itemText.length;
-      }
-    }
+  // 用原文对齐 item 文本：顺序保持的最优匹配，处理 item 不包含词间空格的
+  // 常见工程格式。个别词被人工改写（如「傲」→「Alt(noir)」）时只跳过该词、
+  // 其余词仍落回真实位置。旧实现一处失配就把全部对齐作废、退回顺序长度
+  // 映射，会让切点随插入文本的长度漂移到错误的词边界（字拆对、时拆错的
+  // 根因）。
+  const alignmentRecords = MULTI_SUBTITLE_UTILS.alignItemsToText(text, items);
+  const records = alignmentRecords.filter(Boolean);
+  // 失配词（人工替换/删改遗留）没有可靠的文本位置，但顺序保持对齐给出了
+  // 它在词序上最近的两个对齐锚点：两锚点之间的文字空位就是它的替换区。
+  // 归属侧结合空位与刀点的相对位置决定（见下方落边处），不能只比较时间——
+  // 否则刀点左侧替换词的语音可能整体落在「甲词尾切点」之后而被错分到右段。
+  const unalignedPlacements = [];
+  alignmentRecords.forEach((record, index) => {
+    if (record || !String(items[index]?.text || '')) return;
+    let prevAligned = null;
+    let nextAligned = null;
+    for (let k = index - 1; k >= 0 && !prevAligned; k--) prevAligned = alignmentRecords[k];
+    for (let k = index + 1; k < alignmentRecords.length && !nextAligned; k++) nextAligned = alignmentRecords[k];
+    unalignedPlacements.push({ item: items[index], prevAligned, nextAligned });
+  });
+  const nonEmptyItemCount = items.filter((item) => String(item?.text || '')).length;
 
-    const timeRangeFor = (item) => {
-      const rawStart = Number(item?.start);
-      const rawEnd = Number(item?.end);
-      const start = Math.max(
-        safeSegmentStart,
-        Number.isFinite(rawStart) ? rawStart : safeSegmentStart,
-      );
-      const end = Math.min(
-        safeSegmentEnd,
-        Number.isFinite(rawEnd) ? rawEnd : safeSegmentEnd,
-      );
-      if (end > start) return { start, end };
-      // item 时间完全落在段范围之外（上游工程的病态时间码）：钳制后区间
-      // 倒置。丢弃会让词文本从 items 里消失，这里压到越界最近一侧的
-      // 最小可表达区间，保留词数据；分配循环仍按文本对齐决定归属侧。
-      return Number.isFinite(rawStart) && rawStart >= safeSegmentEnd
-        ? { start: Math.max(safeSegmentStart, safeSegmentEnd - 1), end: safeSegmentEnd }
-        : { start: safeSegmentStart, end: Math.min(safeSegmentEnd, safeSegmentStart + 1) };
-    };
-    const previous = [...records].reverse().find((record) => record.textEnd <= safeOffset);
-    const next = records.find((record) => record.textStart >= safeOffset);
-    const inside = records.find((record) => (
-      safeOffset > record.textStart && safeOffset < record.textEnd
-    ));
-    const requested = Number(requestedCutMs);
-    let splitMs = Number.isFinite(requested) ? Math.round(requested) : null;
-    // 切点两侧相邻 item 的实际时间区间；else 分支填充，供下方非对称边界使用。
-    let previousRange = null;
-    let nextRange = null;
+  const timeRangeFor = (item) => {
+    const rawStart = Number(item?.start);
+    const rawEnd = Number(item?.end);
+    const start = Math.max(
+      safeSegmentStart,
+      Number.isFinite(rawStart) ? rawStart : safeSegmentStart,
+    );
+    const end = Math.min(
+      safeSegmentEnd,
+      Number.isFinite(rawEnd) ? rawEnd : safeSegmentEnd,
+    );
+    if (end > start) return { start, end };
+    // item 时间完全落在段范围之外（上游工程的病态时间码）：钳制后区间
+    // 倒置。丢弃会让词文本从 items 里消失，这里压到越界最近一侧的
+    // 最小可表达区间，保留词数据；分配循环仍按文本对齐决定归属侧。
+    return Number.isFinite(rawStart) && rawStart >= safeSegmentEnd
+      ? { start: Math.max(safeSegmentStart, safeSegmentEnd - 1), end: safeSegmentEnd }
+      : { start: safeSegmentStart, end: Math.min(safeSegmentEnd, safeSegmentStart + 1) };
+  };
+  const previous = [...records].reverse().find((record) => record.textEnd <= safeOffset);
+  const next = records.find((record) => record.textStart >= safeOffset);
+  const inside = records.find((record) => (
+    safeOffset > record.textStart && safeOffset < record.textEnd
+  ));
+  // requestedCutMs 缺省（null/undefined）表示「没有显式刀点」，
+  // 不能让 Number(null) === 0 被当成有效时间 0。
+  const requested = requestedCutMs == null ? NaN : Number(requestedCutMs);
+  let splitMs = Number.isFinite(requested) ? Math.round(requested) : null;
+  // 切点两侧相邻 item 的实际时间区间；else 分支填充，供下方非对称边界使用。
+  let previousRange = null;
+  let nextRange = null;
 
-    if (inside) {
-      const range = timeRangeFor(inside.item);
-      const fraction = (safeOffset - inside.textStart) / Math.max(1, inside.textEnd - inside.textStart);
-      const interpolated = Math.round(range.start + (range.end - range.start) * fraction);
-      if (!preserveCutMs || !Number.isFinite(splitMs)
-          || (!forceCut && (splitMs < range.start || splitMs > range.end))) {
-        splitMs = interpolated;
-      }
-    } else {
-      if (!records.length && Number.isFinite(splitMs)) {
-        splitMs = Math.round(splitMs);
-      }
-      // 文字切点在 item 边界或词间空白时，吸附到相邻 item 的真实边界：
-      // 优先跟随左侧词尾，这会把“模型”后的手工切点从 26526 吸附到
-      // “模型”的 end 26680，避免左字幕范围先于完整 item 结束。
-      // （连续 item 上两侧相等；有静音空隙时由下方非对称边界接管。）
-      previousRange = previous ? timeRangeFor(previous.item) : null;
-      nextRange = next ? timeRangeFor(next.item) : null;
-      if (records.length && (!preserveCutMs || !Number.isFinite(splitMs))) {
-        splitMs = previousRange?.end ?? nextRange?.start ?? null;
-      }
+  if (inside) {
+    const range = timeRangeFor(inside.item);
+    const fraction = (safeOffset - inside.textStart) / Math.max(1, inside.textEnd - inside.textStart);
+    const interpolated = Math.round(range.start + (range.end - range.start) * fraction);
+    if (!preserveCutMs || !Number.isFinite(splitMs)
+        || (!forceCut && (splitMs < range.start || splitMs > range.end))) {
+      splitMs = interpolated;
     }
-
-    if (!Number.isFinite(splitMs)) {
-      const ratio = safeOffset / Math.max(1, text.length);
-      splitMs = Math.round(safeSegmentStart + (safeSegmentEnd - safeSegmentStart) * ratio);
+  } else {
+    if (!records.length && Number.isFinite(splitMs)) {
+      splitMs = Math.round(splitMs);
     }
-    splitMs = Math.max(safeSegmentStart, Math.min(safeSegmentEnd, Math.round(splitMs)));
-
-    // 非对称拆分边界：切点两词之间存在真实静音空隙（如本地 ASR 的
-    // “型、”6160-6480 与下一词 6720 起）时，左段停在自家最后一个词的
-    // end，右段从自家第一个词的 start 开始，保留真实空隙，而不是把一侧
-    // 硬拉过静音。仅在两侧候选都有效且严格正序（timeRangeFor 对病态时间
-    // 的钳制可能倒挂）时启用；缺词或缺时间码时落回单一共享切点。
-    let leftEndMs = splitMs;
-    let rightStartMs = splitMs;
-    const prevEdgeMs = previousRange?.end ?? null;
-    const nextEdgeMs = nextRange?.start ?? null;
-    if (Number.isFinite(prevEdgeMs) && Number.isFinite(nextEdgeMs)
-        && nextEdgeMs - prevEdgeMs > 0) {
-      leftEndMs = prevEdgeMs;
-      rightStartMs = nextEdgeMs;
+    // 文字切点在 item 边界或词间空白时，吸附到相邻 item 的真实边界：
+    // 优先跟随左侧词尾，这会把“模型”后的手工切点从 26526 吸附到
+    // “模型”的 end 26680，避免左字幕范围先于完整 item 结束。
+    // （连续 item 上两侧相等；有静音空隙时由下方非对称边界接管。）
+    previousRange = previous ? timeRangeFor(previous.item) : null;
+    nextRange = next ? timeRangeFor(next.item) : null;
+    if (records.length && (!preserveCutMs || !Number.isFinite(splitMs))) {
+      splitMs = previousRange?.end ?? nextRange?.start ?? null;
     }
-
-    const leftItems = [];
-    const rightItems = [];
-    for (const record of records) {
-      const range = timeRangeFor(record.item);
-      if (range.end <= range.start) continue;
-      const { itemText, textStart, textEnd } = record;
-      if (inside === record) {
-        const localOffset = Math.max(0, Math.min(itemText.length, safeOffset - textStart));
-        const leftText = itemText.slice(0, localOffset);
-        const rightText = itemText.slice(localOffset);
-        const itemSplitMs = preserveCutMs
-          && (forceCut || (splitMs >= range.start && splitMs <= range.end))
-          ? splitMs
-          : Math.round(range.start + (range.end - range.start)
-            * localOffset / Math.max(1, itemText.length));
-        if (leftText && rightText && itemSplitMs > range.start && itemSplitMs < range.end) {
-          leftItems.push({ ...record.item, text: leftText, start: range.start, end: itemSplitMs });
-          rightItems.push({ ...record.item, text: rightText, start: itemSplitMs, end: range.end });
-        } else if (leftText && rightText) {
-          // 取整后不足以给两侧各留出一个毫秒时，保留完整 item 到更接近
-          // 光标的一侧，避免为了制造 0 长 item 而丢失词文本。
-          const keepLeft = splitMs >= range.end || localOffset >= itemText.length / 2;
-          if (keepLeft) {
-            leftItems.push({ ...record.item, text: itemText, start: range.start, end: range.end });
-          } else {
-            rightItems.push({ ...record.item, text: itemText, start: range.start, end: range.end });
-          }
-        } else if (leftText && itemSplitMs > range.start) {
-          leftItems.push({ ...record.item, text: leftText, start: range.start, end: itemSplitMs });
-        } else if (rightText && range.end > itemSplitMs) {
-          rightItems.push({ ...record.item, text: rightText, start: itemSplitMs, end: range.end });
-        }
-        continue;
-      }
-      if (textEnd <= safeOffset) {
-        const end = Math.min(range.end, leftEndMs);
-        if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
-      } else if (textStart >= safeOffset) {
-        const start = Math.max(range.start, rightStartMs);
-        if (range.end > start) rightItems.push({ ...record.item, start, end: range.end });
-      } else if (splitMs >= range.start && splitMs <= range.end) {
-        // 退回顺序映射或异常 item 文本对齐时，仍不得让 item 穿过字幕边界。
-        const end = Math.min(range.end, leftEndMs);
-        if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
-      }
-    }
-    // 病态时间码被钳制到段尾/段头时，可能与相邻 item 挤占同一毫秒槽。
-    // 从后往前把前一项的 end 压到后一项的 start，保证 items 递增不重叠；
-    // 压到 0 长度的极端病态保留原样，交由保存前的校验暴露问题。
-    for (const items of [leftItems, rightItems]) {
-      for (let i = items.length - 1; i > 0; i--) {
-        if (items[i - 1].end > items[i].start && items[i - 1].start < items[i].start) {
-          items[i - 1].end = items[i].start;
-        }
-      }
-    }
-    return { leftItems, rightItems, splitMs, leftEndMs, rightStartMs, hasItems };
   }
+
+  if (!Number.isFinite(splitMs) && !records.length) {
+    // 全部词都与文本失配：没有对齐锚点可吸附。按文字偏移占比映射到词序，
+    // 取对应词的起点作切点——比按段时长线性插值更贴近词边界，也避免
+    // 切点退到段首导致光标入口拒拆。
+    const timedRanges = items.map((item) => timeRangeFor(item)).filter((range) => range.end > range.start);
+    if (timedRanges.length >= 2) {
+      const position = Math.min(
+        timedRanges.length - 1,
+        Math.max(1, Math.round((safeOffset / Math.max(1, text.length)) * timedRanges.length)),
+      );
+      splitMs = timedRanges[position].start;
+    }
+  }
+  if (!Number.isFinite(splitMs)) {
+    const ratio = safeOffset / Math.max(1, text.length);
+    splitMs = Math.round(safeSegmentStart + (safeSegmentEnd - safeSegmentStart) * ratio);
+  }
+  splitMs = Math.max(safeSegmentStart, Math.min(safeSegmentEnd, Math.round(splitMs)));
+
+  // 非对称拆分边界：切点两词之间存在真实静音空隙（如本地 ASR 的
+  // “型、”6160-6480 与下一词 6720 起）时，左段停在自家最后一个词的
+  // end，右段从自家第一个词的 start 开始，保留真实空隙，而不是把一侧
+  // 硬拉过静音。仅在两侧候选都有效且严格正序（timeRangeFor 对病态时间
+  // 的钳制可能倒挂）时启用；缺词或缺时间码时落回单一共享切点。
+  let leftEndMs = splitMs;
+  let rightStartMs = splitMs;
+  const prevEdgeMs = previousRange?.end ?? null;
+  const nextEdgeMs = nextRange?.start ?? null;
+  if (Number.isFinite(prevEdgeMs) && Number.isFinite(nextEdgeMs)
+      && nextEdgeMs - prevEdgeMs > 0) {
+    leftEndMs = prevEdgeMs;
+    rightStartMs = nextEdgeMs;
+  }
+
+  let leftItems = [];
+  let rightItems = [];
+  for (const record of records) {
+    const range = timeRangeFor(record.item);
+    if (range.end <= range.start) continue;
+    const { itemText, textStart, textEnd } = record;
+    if (inside === record) {
+      const localOffset = Math.max(0, Math.min(itemText.length, safeOffset - textStart));
+      const leftText = itemText.slice(0, localOffset);
+      const rightText = itemText.slice(localOffset);
+      const itemSplitMs = preserveCutMs
+        && (forceCut || (splitMs >= range.start && splitMs <= range.end))
+        ? splitMs
+        : Math.round(range.start + (range.end - range.start)
+          * localOffset / Math.max(1, itemText.length));
+      if (leftText && rightText && itemSplitMs > range.start && itemSplitMs < range.end) {
+        leftItems.push({ ...record.item, text: leftText, start: range.start, end: itemSplitMs });
+        rightItems.push({ ...record.item, text: rightText, start: itemSplitMs, end: range.end });
+      } else if (leftText && rightText) {
+        // 取整后不足以给两侧各留出一个毫秒时，保留完整 item 到更接近
+        // 光标的一侧，避免为了制造 0 长 item 而丢失词文本。
+        const keepLeft = splitMs >= range.end || localOffset >= itemText.length / 2;
+        if (keepLeft) {
+          leftItems.push({ ...record.item, text: itemText, start: range.start, end: range.end });
+        } else {
+          rightItems.push({ ...record.item, text: itemText, start: range.start, end: range.end });
+        }
+      } else if (leftText && itemSplitMs > range.start) {
+        leftItems.push({ ...record.item, text: leftText, start: range.start, end: itemSplitMs });
+      } else if (rightText && range.end > itemSplitMs) {
+        rightItems.push({ ...record.item, text: rightText, start: itemSplitMs, end: range.end });
+      }
+      continue;
+    }
+    if (textEnd <= safeOffset) {
+      const end = Math.min(range.end, leftEndMs);
+      if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
+    } else if (textStart >= safeOffset) {
+      const start = Math.max(range.start, rightStartMs);
+      if (range.end > start) rightItems.push({ ...record.item, start, end: range.end });
+    } else if (splitMs >= range.start && splitMs <= range.end) {
+      // 跨切点却未命中 inside 的 record 理论上不存在，防御性保留：
+      // 异常对齐时也不得让 item 穿过字幕边界。
+      const end = Math.min(range.end, leftEndMs);
+      if (end > range.start) leftItems.push({ ...record.item, start: range.start, end });
+    }
+  }
+  // 失配词落边：优先按替换区（相邻对齐锚点之间的文字空位）与刀点的相对
+  // 位置定侧——空位整体在刀点左侧归左、右侧归右；刀点落在空位内部时，按
+  // 空位文字占比在两锚点时间区间内插值出局部切点，再按时间就近落边（此
+  // 即「替换词在刀点右侧」的 A2 场景）。单侧没有锚点（头部/尾部遗留词）
+  // 时 side 为空，退回全局 splitMs 的时间比较。定侧后两侧边界扩到包住
+  // 本侧失配词（否则先于 nextEdge 的失配词会先于段起点，保存时被时间码
+  // 兜底二次改写），再钳进最终边界；之后统一做相邻重叠压缩。
+  if (unalignedPlacements.length) {
+    const unalignedRanges = unalignedPlacements.map(({ item, prevAligned, nextAligned }) => {
+      const range = timeRangeFor(item);
+      let side = null;
+      if (nextAligned && safeOffset >= nextAligned.textStart) side = 'left';
+      else if (prevAligned && safeOffset <= prevAligned.textEnd) side = 'right';
+      else if (prevAligned && nextAligned) {
+        const from = timeRangeFor(prevAligned.item).end;
+        const to = timeRangeFor(nextAligned.item).start;
+        if (to > from) {
+          const fraction = Math.min(1, Math.max(0, (safeOffset - prevAligned.textEnd)
+            / Math.max(1, nextAligned.textStart - prevAligned.textEnd)));
+          const holeCutMs = from + (to - from) * fraction;
+          side = range.end <= holeCutMs ? 'left'
+            : range.start >= holeCutMs ? 'right'
+            : holeCutMs - range.start < range.end - holeCutMs ? 'left' : 'right';
+        }
+      }
+      return { ...item, start: range.start, end: range.end, side };
+    });
+    const placed = MULTI_SUBTITLE_UTILS.placeUnalignedSplitItems(
+      leftItems,
+      rightItems,
+      unalignedRanges,
+      splitMs,
+      { leftEndMs, rightStartMs },
+    );
+    leftItems = placed.leftItems;
+    rightItems = placed.rightItems;
+    if (placed.bounds) {
+      leftEndMs = placed.bounds.leftEndMs;
+      rightStartMs = placed.bounds.rightStartMs;
+    }
+  }
+  // 病态时间码被钳制到段尾/段头时，可能与相邻 item 挤占同一毫秒槽。
+  // 从后往前把前一项的 end 压到后一项的 start，保证 items 递增不重叠；
+  // 压到 0 长度的极端病态保留原样，交由保存前的校验暴露问题。
+  for (const items of [leftItems, rightItems]) {
+    for (let i = items.length - 1; i > 0; i--) {
+      if (items[i - 1].end > items[i].start && items[i - 1].start < items[i].start) {
+        items[i - 1].end = items[i].start;
+      }
+    }
+  }
+  return {
+    leftItems,
+    rightItems,
+    splitMs,
+    leftEndMs,
+    rightStartMs,
+    hasItems,
+    alignment: {
+      total: nonEmptyItemCount,
+      aligned: records.length,
+      broken: records.length < nonEmptyItemCount,
+    },
+  };
+}
 
 
 
   function buildSplitPair(
-    segment,
-    offset,
+  segment,
+  offset,
+  cutMs,
+  idBase,
+  includeItems = true,
+  splitMode = null,
+  { preserveCutMs = false, forceCut = false, duplicateText = false } = {},
+) {
+  const text = String(segment?.text || '');
+  const mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
+    ? splitMode : MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
+  const safeOffset = Math.max(0, Math.min(text.length, Math.round(Number(offset) || 0)));
+  const parts = duplicateText
+    ? (text ? { left: text, right: text, offset: safeOffset } : null)
+    : MULTI_SUBTITLE_UTILS.splitSubtitleText(text, safeOffset, mode);
+  if (!parts) return null;
+  const itemParts = splitItemsAtChar(
+    includeItems ? segment : { ...segment, items: [] },
+    parts.offset,
     cutMs,
-    idBase,
-    includeItems = true,
-    splitMode = null,
-    { preserveCutMs = false, forceCut = false } = {},
-  ) {
-    const text = String(segment?.text || '');
-    const mode = window.AsrEditorUtils.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
-      ? splitMode : window.AsrEditorUtils.detectSubtitleSplitMode(text);
-    const parts = window.AsrEditorUtils.splitSubtitleText(text, offset, mode);
-    if (!parts) return null;
-    const itemParts = splitItemsAtChar(
-      includeItems ? segment : { ...segment, items: [] },
-      parts.offset,
-      cutMs,
-      { preserveCutMs, forceCut },
-    );
-    const leftItems = cleanSplitItems(itemParts.leftItems, 'left');
-    const rightItems = cleanSplitItems(itemParts.rightItems, 'right');
-    const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
-    // 左右两段可各自贴合自家词边界（词间有静音空隙时非对称）。
-    const leftEnd = Number.isFinite(itemParts.leftEndMs) ? itemParts.leftEndMs : splitMs;
-    const rightStart = Number.isFinite(itemParts.rightStartMs) ? itemParts.rightStartMs : splitMs;
-    const segmentStart = Number(segment?.start);
-    const segmentEnd = Number(segment?.end);
-    if (!Number.isFinite(splitMs)
-        || !Number.isFinite(segmentStart)
-        || !Number.isFinite(segmentEnd)
-        || segmentEnd - segmentStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2
-        || leftEnd - segmentStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
-        || segmentEnd - rightStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
-        || rightStart < leftEnd) return null;
-    const left = {
-      ...segment,
-      id: window.AsrEditorUtils.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
-      start: segment.start,
-      end: leftEnd,
-      text: parts.left,
-      items: leftItems.length ? leftItems : null,
-      _dirty: true,
-    };
-    const right = {
-      ...segment,
-      id: window.AsrEditorUtils.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
-      start: rightStart,
-      end: segment.end,
-      text: parts.right,
-      items: rightItems.length ? rightItems : null,
-      _dirty: true,
-    };
-    if (segment.sticker) {
-      right.sticker = null;
-      right.sticker_ref = { name: segment.sticker.name, headIdx: 0 };
-    }
-    if (segment.color) {
-      right.color = null;
-      right.color_ref = { name: segment.color.name, headIdx: 0 };
-    }
-    return { left, right, parts, splitMs };
+    { preserveCutMs, forceCut },
+  );
+  // 复制原文后，原有逐词时间码无法再与两侧文本一一对应；清空 items，
+  // 避免把只属于一半文本的时间码带到重复文本上。
+  const leftItems = duplicateText ? [] : cleanSplitItems(itemParts.leftItems, 'left');
+  const rightItems = duplicateText ? [] : cleanSplitItems(itemParts.rightItems, 'right');
+  const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
+  // 左右两段可各自贴合自家词边界（词间有静音空隙时非对称）。
+  const leftEnd = Number.isFinite(itemParts.leftEndMs) ? itemParts.leftEndMs : splitMs;
+  const rightStart = Number.isFinite(itemParts.rightStartMs) ? itemParts.rightStartMs : splitMs;
+  const segmentStart = Number(segment?.start);
+  const segmentEnd = Number(segment?.end);
+  if (!Number.isFinite(splitMs)
+      || !Number.isFinite(segmentStart)
+      || !Number.isFinite(segmentEnd)
+      || segmentEnd - segmentStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2
+      || leftEnd - segmentStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
+      || segmentEnd - rightStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
+      || rightStart < leftEnd) return null;
+  const left = {
+    ...segment,
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
+    start: segment.start,
+    end: leftEnd,
+    text: parts.left,
+    items: leftItems.length ? leftItems : null,
+    _dirty: true,
+  };
+  const right = {
+    ...segment,
+    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
+    start: rightStart,
+    end: segment.end,
+    text: parts.right,
+    items: rightItems.length ? rightItems : null,
+    _dirty: true,
+  };
+  if (segment.sticker) {
+    right.sticker = null;
+    right.sticker_ref = { name: segment.sticker.name, headIdx: 0 };
   }
+  if (segment.color) {
+    right.color = null;
+    right.color_ref = { name: segment.color.name, headIdx: 0 };
+  }
+  return {
+    left,
+    right,
+    parts,
+    splitMs,
+    alignment: {
+      ...(itemParts.alignment || { total: 0, aligned: 0, broken: false }),
+      driftMs: MULTI_SUBTITLE_UTILS.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
+    },
+  };
+}
 
 
 
    function linkedSplitState(mainIndex, initial = {}) {
-    const main = MaweBoot.DATA.segments[mainIndex];
-    const binding = MaweMultiSubtitleCore.bindingForMainIndex(mainIndex);
-    const track = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.track_id) : null;
-    const extension = binding ? MaweMultiSubtitleCore.extensionSegmentById(binding.extension_segment_ids?.[0], track) : null;
-    if (!main || !binding || !track || !extension) return null;
-    // 联动拆分要求主副两侧在共同切点的两边各保留最小时长。副字幕总时长不足、
-    // 或两段重叠区间放不下合法切点时，不再直接拒绝：弹窗内会走「只拆主字幕并
-    // 解除绑定」的降级路径（仅在主字幕自身可拆时启用）；只有主字幕总时长不足
-    // （降级也无从谈起）才提前给出原因。
-    const linkedMinSpanMs = MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2;
-    if (main.end - main.start < linkedMinSpanMs) {
-      MaweHint.flashHint('主字幕总时长不足 200ms，无法联动拆分', 'warning');
-      return null;
-    }
-    const mainMode = MaweMultiSubtitleCore.getMainSubtitleSplitMode(main);
-    const extensionMode = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, extension);
-    const hasMainWordTimestamps = window.AsrEditorUtils.hasUsableSplitTimestamps(main);
-    const initialTime = Number.isFinite(initial.timeMs)
-      ? initial.timeMs
-      : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
-    const useMainWordTimestamps = shouldUseMainSplitTimestamps(main);
-    // 关闭自动时间码拆分后，波形入口传入的时间仍是绝对切点；没有波形指针时，
-    // 有可用时间码就把初始断点定位到最近的字词边界，但之后仍允许用户自由调整。
-    const fixedCutMs = !useMainWordTimestamps && Number.isFinite(initial.timeMs)
-      ? Math.round(initial.timeMs) : null;
-    // 字幕列表传入的是用户实际指向的文字位置；即使工程有字词时间码，
-    // 也不能再用时间反推一次文字位置，否则「就是｜这颗」可能漂移成「就是这｜颗」。
-    // 没有列表文字位置时（例如波形/播放头入口）才按时间寻找最近合法断点。
-    const hasInitialTextPosition = Number.isFinite(initial.mainOffset);
-    const initialMainOffset = hasInitialTextPosition
-      ? splitOffsetNearTextPosition(main.text, initial.mainOffset, mainMode)
-      : splitOffsetNearTime(main, initialTime, mainMode);
-    const initialMainCutMs = fixedCutMs ?? (hasMainWordTimestamps
-      ? splitTimeForTextOffset(main, initialMainOffset)
-      : splitCutTime(main, initialMainOffset, false));
-    const initialOffset = window.AsrEditorUtils.nearestSubtitleSplitOffset(
-      extension.text, initialMainCutMs, extension.start, extension.end, extensionMode,
-    );
-    return {
-      kind: 'linked',
-      mainIndex,
-      mainId: main.id,
-      extensionId: extension.id,
-      trackId: track.id,
-      mainMode,
-      mainInteractive: !useMainWordTimestamps,
-      mainTimestampLocked: useMainWordTimestamps,
-      mainOffset: initialMainOffset,
-      mainCutMs: initialMainCutMs,
-      offset: initialOffset,
-      // 联动拆分只有一个绝对切点；副轨的 offset 只负责选择文字边界。
-      cutMs: initialMainCutMs,
-      extensionCutMs: initialMainCutMs,
-      extensionMode,
-      fixedCutMs,
-      feedbackPoint: initial.feedbackPoint || null,
-      // 列表/编辑区唤起的弹窗提交后，刀光保留在列表原位置而不是波形切点。
-      ninjaFromList: initial.ninjaFromList === true,
-      cutSource: fixedCutMs != null
-        ? 'pointer'
-        : useMainWordTimestamps
-          ? 'word-timestamps'
-          : hasMainWordTimestamps ? 'word-timestamps-default' : 'text-estimate',
-      initialLane: hasInitialTextPosition ? 'main' : null,
-      locked: false,
-    };
+  const main = MaweBoot.DATA.segments[mainIndex];
+  const binding = MaweMultiSubtitleCore.bindingForMainIndex(mainIndex);
+  const track = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.track_id) : null;
+  const extension = binding ? MaweMultiSubtitleCore.extensionSegmentById(binding.extension_segment_ids?.[0], track) : null;
+  if (!main || !binding || !track || !extension) return null;
+  // 联动拆分要求主副两侧在共同切点的两边各保留最小时长。副字幕总时长不足、
+  // 或两段重叠区间放不下合法切点时，不再直接拒绝：弹窗内会走「只拆主字幕并
+  // 解除绑定」的降级路径（仅在主字幕自身可拆时启用）；只有主字幕总时长不足
+  // （降级也无从谈起）才提前给出原因。
+  const linkedMinSpanMs = MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2;
+  if (main.end - main.start < linkedMinSpanMs) {
+    MaweHint.flashHint('主字幕总时长不足 200ms，无法联动拆分', 'warning');
+    return null;
   }
+  const mainMode = MaweMultiSubtitleCore.getMainSubtitleSplitMode(main);
+  const extensionMode = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, extension);
+  const hasMainWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
+  const initialTime = Number.isFinite(initial.timeMs)
+    ? initial.timeMs
+    : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
+  const useMainWordTimestamps = shouldUseMainSplitTimestamps(main);
+  // 关闭自动时间码拆分后，波形入口传入的时间仍是绝对切点；没有波形指针时，
+  // 有可用时间码就把初始断点定位到最近的字词边界，但之后仍允许用户自由调整。
+  const fixedCutMs = !useMainWordTimestamps && Number.isFinite(initial.timeMs)
+    ? Math.round(initial.timeMs) : null;
+  // 字幕列表传入的是用户实际指向的文字位置；即使工程有字词时间码，
+  // 也不能再用时间反推一次文字位置，否则「就是｜这颗」可能漂移成「就是这｜颗」。
+  // 没有列表文字位置时（例如波形/播放头入口）才按时间寻找最近合法断点。
+  const hasInitialTextPosition = Number.isFinite(initial.mainOffset);
+  const initialMainOffset = hasInitialTextPosition
+    ? splitOffsetNearTextPositionForModal(main.text, initial.mainOffset, mainMode)
+    : splitOffsetNearTimeForModal(main, initialTime, mainMode);
+  const initialMainCutMs = fixedCutMs ?? (hasMainWordTimestamps
+    ? splitTimeForTextOffset(main, initialMainOffset)
+    : splitCutTime(main, initialMainOffset, false));
+  const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+    extension.text, initialMainCutMs, extension.start, extension.end, extensionMode,
+  ) ?? splitOffsetNearTimeForModal(extension, initialMainCutMs, extensionMode);
+  return {
+    kind: 'linked',
+    mainIndex,
+    mainId: main.id,
+    extensionId: extension.id,
+    trackId: track.id,
+    mainMode,
+    mainInteractive: !useMainWordTimestamps,
+    mainTimestampLocked: useMainWordTimestamps,
+    mainOffset: initialMainOffset,
+    mainCutMs: initialMainCutMs,
+    offset: initialOffset,
+    // 联动拆分只有一个绝对切点；副轨的 offset 只负责选择文字边界。
+    cutMs: initialMainCutMs,
+    extensionCutMs: initialMainCutMs,
+    extensionMode,
+    fixedCutMs,
+    feedbackPoint: initial.feedbackPoint || null,
+    // 列表/编辑区唤起的弹窗提交后，刀光保留在列表原位置而不是波形切点。
+    ninjaFromList: initial.ninjaFromList === true,
+    cutSource: fixedCutMs != null
+      ? 'pointer'
+      : useMainWordTimestamps
+        ? 'word-timestamps'
+        : hasMainWordTimestamps ? 'word-timestamps-default' : 'text-estimate',
+    initialLane: hasInitialTextPosition ? 'main' : null,
+    locked: false,
+  };
+}
 
 
 
   function mainWaveformSplitState(mainIndex, initial = {}) {
-    const main = MaweBoot.DATA.segments[mainIndex];
-    if (!main) return null;
-    const mainMode = MaweMultiSubtitleCore.getMainSubtitleSplitMode(main);
-    const hasMainWordTimestamps = window.AsrEditorUtils.hasUsableSplitTimestamps(main);
-    const initialTime = Number.isFinite(initial.timeMs)
-      ? initial.timeMs
-      : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
-    const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
-    const initialOffset = splitOffsetNearTime(main, initialTime, mainMode);
-    if (initialOffset == null) return null;
-    return {
-      kind: 'main',
-      mainIndex,
-      mainId: main.id,
-      offset: initialOffset,
-      mainOffset: initialOffset,
-      mainCutMs: fixedCutMs ?? (hasMainWordTimestamps
-        ? splitTimeForTextOffset(main, initialOffset)
-        : splitCutTime(main, initialOffset, false)),
-      feedbackPoint: initial.feedbackPoint || null,
-      mainMode,
-      fixedCutMs,
-      cutSource: fixedCutMs != null
-        ? 'pointer'
-        : hasMainWordTimestamps ? 'word-timestamps-default' : 'text-estimate',
-      locked: false,
-    };
-  }
+  const main = MaweBoot.DATA.segments[mainIndex];
+  if (!main) return null;
+  const mainMode = MaweMultiSubtitleCore.getMainSubtitleSplitMode(main);
+  const hasMainWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
+  const initialTime = Number.isFinite(initial.timeMs)
+    ? initial.timeMs
+    : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
+  const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
+  const initialOffset = splitOffsetNearTimeForModal(main, initialTime, mainMode);
+  if (initialOffset == null) return null;
+  return {
+    kind: 'main',
+    mainIndex,
+    mainId: main.id,
+    offset: initialOffset,
+    mainOffset: initialOffset,
+    mainCutMs: fixedCutMs ?? (hasMainWordTimestamps
+      ? splitTimeForTextOffset(main, initialOffset)
+      : splitCutTime(main, initialOffset, false)),
+    feedbackPoint: initial.feedbackPoint || null,
+    mainMode,
+    fixedCutMs,
+    cutSource: fixedCutMs != null
+      ? 'pointer'
+      : hasMainWordTimestamps ? 'word-timestamps-default' : 'text-estimate',
+    locked: false,
+  };
+}
 
 
 
   function extensionOnlySplitState(extensionIndex, track, initial = {}) {
-    const extension = track?.segments?.[extensionIndex];
-    if (!extension || !track) return null;
-    // 副字幕独立拆分同样要求总时长能容纳两侧各 100ms；不足时提交必然失败，
-    // 直接提示原因，不再打开只会静默失败的弹窗。
-    if (extension.end - extension.start < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2) {
-      MaweHint.flashHint('副字幕总时长不足 200ms，无法拆分', 'warning');
-      return null;
-    }
-    const extensionMode = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, extension);
-    const hasInitialTextPosition = Number.isFinite(initial.extensionOffset);
-    const initialTime = Number.isFinite(initial.timeMs)
-      ? initial.timeMs
-      : splitTimeForTextOffset(extension, initial.extensionOffset ?? Math.floor(String(extension.text || '').length / 2));
-    const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
-    const initialOffset = hasInitialTextPosition
-      ? splitOffsetNearTextPosition(extension.text, initial.extensionOffset, extensionMode)
-      : window.AsrEditorUtils.nearestSubtitleSplitOffset(
-        extension.text, initialTime, extension.start, extension.end, extensionMode,
-      );
-    if (!Number.isInteger(initialOffset)) return null;
-    return {
-      kind: 'extension',
-      mainIndex: -1,
-      extensionIndex,
-      extensionId: extension.id,
-      trackId: track.id,
-      offset: initialOffset,
-      extensionCutMs: fixedCutMs ?? splitTimeForTextOffset(extension, initialOffset),
-      feedbackPoint: initial.feedbackPoint || null,
-      // 列表/编辑区唤起的弹窗提交后，刀光保留在列表原位置而不是波形切点。
-      ninjaFromList: initial.ninjaFromList === true,
-      extensionMode,
-      fixedCutMs,
-      cutSource: fixedCutMs != null ? 'pointer' : 'text-estimate',
-      locked: false,
-    };
+  const extension = track?.segments?.[extensionIndex];
+  if (!extension || !track) return null;
+  // 副字幕独立拆分同样要求总时长能容纳两侧各 100ms；不足时提交必然失败，
+  // 直接提示原因，不再打开只会静默失败的弹窗。
+  if (extension.end - extension.start < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2) {
+    MaweHint.flashHint('副字幕总时长不足 200ms，无法拆分', 'warning');
+    return null;
   }
+  const extensionMode = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, extension);
+  const hasInitialTextPosition = Number.isFinite(initial.extensionOffset);
+  const initialTime = Number.isFinite(initial.timeMs)
+    ? initial.timeMs
+    : splitTimeForTextOffset(extension, initial.extensionOffset ?? Math.floor(String(extension.text || '').length / 2));
+  const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
+  const initialOffset = hasInitialTextPosition
+    ? splitOffsetNearTextPositionForModal(extension.text, initial.extensionOffset, extensionMode)
+    : MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+      extension.text, initialTime, extension.start, extension.end, extensionMode,
+    ) ?? splitOffsetNearTimeForModal(extension, initialTime, extensionMode);
+  if (!Number.isInteger(initialOffset)) return null;
+  return {
+    kind: 'extension',
+    mainIndex: -1,
+    extensionIndex,
+    extensionId: extension.id,
+    trackId: track.id,
+    offset: initialOffset,
+    extensionCutMs: fixedCutMs ?? splitTimeForTextOffset(extension, initialOffset),
+    feedbackPoint: initial.feedbackPoint || null,
+    // 列表/编辑区唤起的弹窗提交后，刀光保留在列表原位置而不是波形切点。
+    ninjaFromList: initial.ninjaFromList === true,
+    extensionMode,
+    fixedCutMs,
+    cutSource: fixedCutMs != null ? 'pointer' : 'text-estimate',
+    locked: false,
+  };
+}
 
 
 
@@ -1090,10 +1167,12 @@
   if (lane === 'main' && main) {
     const requestedOffset = Math.max(0, Math.min(String(main.text || '').length, Math.round(Number(offset) || 0)));
     const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(main.text, state.mainMode);
-    if (!legalOffsets.length) return false;
-    state.mainOffset = legalOffsets.reduce((best, candidate) => (
-      Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
-    ), legalOffsets[0]);
+    state.mainOffset = legalOffsets.length
+      ? legalOffsets.reduce((best, candidate) => (
+        Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
+      ), legalOffsets[0])
+      : fallbackSplitOffset(main.text, requestedOffset);
+    if (!Number.isInteger(state.mainOffset)) return false;
     const mainHasWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
     state.mainCutMs = Number.isFinite(state.fixedCutMs)
       ? state.fixedCutMs
@@ -1106,10 +1185,12 @@
       Math.min(String(extension.text || '').length, Math.round(Number(offset) || 0)),
     );
     const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(extension.text, state.extensionMode);
-    if (!legalOffsets.length) return false;
-    state.offset = legalOffsets.reduce((best, candidate) => (
-      Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
-    ), legalOffsets[0]);
+    state.offset = legalOffsets.length
+      ? legalOffsets.reduce((best, candidate) => (
+        Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
+      ), legalOffsets[0])
+      : fallbackSplitOffset(extension.text, requestedOffset);
+    if (!Number.isInteger(state.offset)) return false;
     state.extensionCutMs = Number.isFinite(state.fixedCutMs)
       ? state.fixedCutMs : splitCutTime(extension, state.offset, false);
   }
@@ -1140,6 +1221,7 @@
   state.textValid = textValid;
   state.timingValid = mainTimingValid && extensionTimingValid;
   state.mainTimingValid = Boolean(mainTimingValid);
+  state.duplicateTimingValid = duplicateSplitTimingIsValid(state);
   state.forceCutMs = textValid
     ? forceSplitCutForSegments(forceSegments, state.cutMs)
     : null;
@@ -1191,6 +1273,9 @@
   }
   if (MaweDom.multiSubtitleSplitConfirm) {
     MaweDom.multiSubtitleSplitConfirm.disabled = !valid && !state.mainOnlyFallbackEligible;
+  }
+  if (multiSubtitleSplitDuplicate) {
+    multiSubtitleSplitDuplicate.disabled = !state.duplicateTimingValid;
   }
   updateLinkedSplitLockVisual();
   return valid;
@@ -1246,169 +1331,203 @@
 
 
 
-  function commitMainWaveformSplit(state, { force = false, successMessage = '已按选择的断点拆分主字幕' } = {}) {
-    // 波形入口可能是在当前字幕面板仍有未提交编辑时触发；先完成面板编辑，
-    // 再为“拆分”建立快照，确保一次撤销能回到拆分前的完整字幕状态。
-    MaweCuePanel.commitCuePanelEdit();
-    const mainIndex = state.mainIndex;
-    const main = MaweBoot.DATA.segments[mainIndex];
-    if (!main) return false;
-    const splitMs = force
-      ? forceSplitCutForSegments([main], state.cutMs)
-      : state.cutMs;
-    if (!Number.isFinite(splitMs)) {
-      MaweHint.flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
-      return false;
-    }
-    const pair = buildSplitPair(
-      main,
-      state.mainOffset,
-      splitMs,
-      main.id || `main-${mainIndex}`,
-      true,
-      state.mainMode,
-      {
-        preserveCutMs: force || Number.isFinite(state.fixedCutMs),
-        forceCut: force,
-      },
-    );
-    if (!pair) return false;
-    const oldMainId = main.id;
-    MaweHistory.pushUndo('拆分字幕', { captureView: true });
-    MaweSelection.clearSelection({ commitCuePanel: false });
-    MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], []);
-    MaweBoot.DATA.segments.splice(mainIndex, 1, pair.left, pair.right);
-    for (let index = mainIndex + 2; index < MaweBoot.DATA.segments.length; index++) {
-      const segment = MaweBoot.DATA.segments[index];
-      if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
-      if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
-    }
-    if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: mainIndex };
-    if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: mainIndex };
-    MaweMultiSubtitleCore.markMainSegmentsDirty([pair.left, pair.right]);
-    MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
-    closeLinkedSplitModal();
-    MaweCuePanel.renderAll();
-    MaweSelection.selectOnly(mainIndex + 1);
-    MaweSelection.lastClickedIdx = mainIndex + 1;
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
-    flashSplitFeedback({
-      index: mainIndex,
-      track: 'main',
-      splitMs,
-      feedbackPoint: null,
-      listFeedback: false,
-    });
-
-    // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
-    MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'main'));
-    if (successMessage) MaweHint.flashHint(successMessage, 'success');
-    return true;
+  function commitMainWaveformSplit(
+  state,
+  {
+    force = false,
+    duplicateText = false,
+    successMessage = '已按选择的断点拆分主字幕',
+  } = {},
+) {
+  // 波形入口可能是在当前字幕面板仍有未提交编辑时触发；先完成面板编辑，
+  // 再为“拆分”建立快照，确保一次撤销能回到拆分前的完整字幕状态。
+  MaweCuePanel.commitCuePanelEdit();
+  const mainIndex = state.mainIndex;
+  const main = MaweBoot.DATA.segments[mainIndex];
+  if (!main) return false;
+  const splitMs = force
+    ? forceSplitCutForSegments([main], state.cutMs)
+    : state.cutMs;
+  if (!Number.isFinite(splitMs)) {
+    MaweHint.flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
+    return false;
   }
+  const splitAlignmentOptions = {
+    preserveCutMs: force || Number.isFinite(state.fixedCutMs),
+    forceCut: force,
+  };
+  const pair = buildSplitPair(
+    main,
+    state.mainOffset,
+    splitMs,
+    main.id || `main-${mainIndex}`,
+    true,
+    state.mainMode,
+    { ...splitAlignmentOptions, duplicateText },
+  );
+  if (!pair) {
+    if (!force && !duplicateText) {
+      flashSplitAlignmentHint(
+        assessSplitAlignment(main, state.mainOffset, splitMs, splitAlignmentOptions),
+        { committed: false },
+      );
+    }
+    return false;
+  }
+  if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
+  const oldMainId = main.id;
+  MaweHistory.pushUndo(duplicateText ? '拆分字幕并保留原文' : '拆分字幕', { captureView: true });
+  MaweSelection.clearSelection({ commitCuePanel: false });
+  MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], []);
+  MaweBoot.DATA.segments.splice(mainIndex, 1, pair.left, pair.right);
+  for (let index = mainIndex + 2; index < MaweBoot.DATA.segments.length; index++) {
+    const segment = MaweBoot.DATA.segments[index];
+    if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
+    if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
+  }
+  if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: mainIndex };
+  if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: mainIndex };
+  MaweMultiSubtitleCore.markMainSegmentsDirty([pair.left, pair.right]);
+  MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
+  closeLinkedSplitModal();
+  MaweCuePanel.renderAll();
+  MaweSelection.selectOnly(mainIndex + 1);
+  MaweSelection.lastClickedIdx = mainIndex + 1;
+  MawePlaybackLoop.updateWithoutCueListAutoScroll();
+  flashSplitFeedback({
+    index: mainIndex,
+    track: 'main',
+    splitMs,
+    feedbackPoint: null,
+    listFeedback: false,
+  });
+
+  // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
+  MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'main'));
+  if (successMessage) MaweHint.flashHint(successMessage, 'success');
+  return true;
+}
 
 
 
   // 降级路径：副轨无法形成合法拆分时，只拆主轨并解除与副字幕的绑定。
-  function commitLinkedSplitMainOnly(state) {
-    const main = MaweBoot.DATA.segments[state.mainIndex];
-    if (!main) return false;
-    let force = false;
-    if (!state.mainTimingValid) {
-      const mainForceCutMs = forceSplitCutForSegments([main], state.mainCutMs);
-      if (!Number.isFinite(mainForceCutMs)) {
-        MaweHint.flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
-        return false;
-      }
-      if (!state.forceSplitArmed) {
-        state.forceSplitArmed = true;
-        MaweHint.flashHint(forcedSplitRetryHint(), 'warning');
-        return false;
-      }
-      force = true;
-      state.cutMs = mainForceCutMs;
-      state.mainCutMs = mainForceCutMs;
-    }
-    const committed = commitMainWaveformSplit(state, { force, successMessage: null });
-    if (!committed) return false;
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweHint.flashHint('由于副字幕无法在当前切点形成合法拆分，为了拆分主字幕，已解除绑定', 'warning');
-    return true;
-  }
-
-
-
-  function commitExtensionSplit(state, { force = false } = {}) {
-    const track = MaweMultiSubtitleCore.getExtensionTrack(state.trackId);
-    const extensionIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
-    const extension = track?.segments?.[extensionIndex];
-    if (!track || extensionIndex < 0 || !extension) return false;
-    const splitMs = force
-      ? forceSplitCutForSegments([extension], state.extensionCutMs)
-      : state.extensionCutMs;
-    if (!Number.isFinite(splitMs)) {
+  function commitLinkedSplitMainOnly(state, { duplicateText = false } = {}) {
+  const main = MaweBoot.DATA.segments[state.mainIndex];
+  if (!main) return false;
+  let force = false;
+  if (!state.mainTimingValid) {
+    const mainForceCutMs = forceSplitCutForSegments([main], state.mainCutMs);
+    if (!Number.isFinite(mainForceCutMs)) {
       MaweHint.flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
       return false;
     }
-    const pair = buildSplitPair(
-      extension,
-      state.offset,
-      splitMs,
-      extension.id || `${track.id}-segment-${extensionIndex}`,
-      true,
-      state.extensionMode,
-      {
-        preserveCutMs: force || Number.isFinite(state.fixedCutMs),
-        forceCut: force,
-      },
-    );
-    if (!pair) return false;
-
-    const oldExtensionId = extension.id;
-    const wasBound = Boolean(MaweMultiSubtitleCore.bindingForExtensionIndex(extensionIndex, track));
-    MaweHistory.pushUndo('拆分副字幕', { captureView: true });
-    // 一对一绑定无法让一个主段同时指向拆出的两条副轨段；独立拆分后
-    // 保留两条副字幕，但解除旧关系，等待用户按需要重新绑定。
-    MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [oldExtensionId]);
-    track.segments.splice(extensionIndex, 1, pair.left, pair.right);
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweCueElements.rememberTemporaryVisibleSplitCues({
-      extensionSegments: [pair.left, pair.right],
-      extensionTrackId: track.id,
-    });
-    closeLinkedSplitModal();
-    MaweSelection.clearSelection({ commitCuePanel: false });
-    MaweCuePanel.renderAll();
-    MaweSelection.selectOnlyExtension(extensionIndex + 1);
-    MaweSelection.lastClickedExtensionIdx = extensionIndex + 1;
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
-    flashSplitFeedback({
-      index: extensionIndex,
-      track: 'extension',
-      splitMs,
-      feedbackPoint: null,
-      listFeedback: false,
-    });
-    // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
-    MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'extension'));
-    MaweHint.flashHint(
-      wasBound
-        ? '已独立拆分副字幕并解除原绑定'
-        : '已按选择的断点拆分副字幕',
-      'success',
-    );
-    return true;
+    if (!state.forceSplitArmed) {
+      state.forceSplitArmed = true;
+      MaweHint.flashHint(forcedSplitRetryHint(), 'warning');
+      return false;
+    }
+    force = true;
+    state.cutMs = mainForceCutMs;
+    state.mainCutMs = mainForceCutMs;
   }
+  const committed = commitMainWaveformSplit(state, { force, duplicateText, successMessage: null });
+  if (!committed) return false;
+  MaweMultiSubtitleCore.markMultiSubtitleDirty();
+  MaweHint.flashHint('由于副字幕无法在当前切点形成合法拆分，为了拆分主字幕，已解除绑定', 'warning');
+  return true;
+}
 
 
 
-  function confirmLinkedSplit() {
+  function commitExtensionSplit(
+  state,
+  { force = false, duplicateText = false, successMessage = null } = {},
+) {
+  const track = MaweMultiSubtitleCore.getExtensionTrack(state.trackId);
+  const extensionIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
+  const extension = track?.segments?.[extensionIndex];
+  if (!track || extensionIndex < 0 || !extension) return false;
+  const splitMs = force
+    ? forceSplitCutForSegments([extension], state.extensionCutMs)
+    : state.extensionCutMs;
+  if (!Number.isFinite(splitMs)) {
+    MaweHint.flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
+    return false;
+  }
+  const splitAlignmentOptions = {
+    preserveCutMs: force || Number.isFinite(state.fixedCutMs),
+    forceCut: force,
+  };
+  const pair = buildSplitPair(
+    extension,
+    state.offset,
+    splitMs,
+    extension.id || `${track.id}-segment-${extensionIndex}`,
+    true,
+    state.extensionMode,
+    { ...splitAlignmentOptions, duplicateText },
+  );
+  if (!pair) {
+    if (!force && !duplicateText) {
+      flashSplitAlignmentHint(
+        assessSplitAlignment(extension, state.offset, splitMs, splitAlignmentOptions),
+        { committed: false },
+      );
+    }
+    return false;
+  }
+  if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
+
+  const oldExtensionId = extension.id;
+  const wasBound = Boolean(MaweMultiSubtitleCore.bindingForExtensionIndex(extensionIndex, track));
+  MaweHistory.pushUndo('拆分副字幕', { captureView: true });
+  // 一对一绑定无法让一个主段同时指向拆出的两条副轨段；独立拆分后
+  // 保留两条副字幕，但解除旧关系，等待用户按需要重新绑定。
+  MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [oldExtensionId]);
+  track.segments.splice(extensionIndex, 1, pair.left, pair.right);
+  MaweMultiSubtitleCore.markMultiSubtitleDirty();
+  MaweCueElements.rememberTemporaryVisibleSplitCues({
+    extensionSegments: [pair.left, pair.right],
+    extensionTrackId: track.id,
+  });
+  closeLinkedSplitModal();
+  MaweSelection.clearSelection({ commitCuePanel: false });
+  MaweCuePanel.renderAll();
+  MaweSelection.selectOnlyExtension(extensionIndex + 1);
+  MaweSelection.lastClickedExtensionIdx = extensionIndex + 1;
+  MawePlaybackLoop.updateWithoutCueListAutoScroll();
+  flashSplitFeedback({
+    index: extensionIndex,
+    track: 'extension',
+    splitMs,
+    feedbackPoint: null,
+    listFeedback: false,
+  });
+  // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
+  MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'extension'));
+  MaweHint.flashHint(
+    successMessage || (wasBound
+      ? '已独立拆分副字幕并解除原绑定'
+      : '已按选择的断点拆分副字幕'),
+    'success',
+  );
+  return true;
+}
+
+
+
+  function confirmLinkedSplit({ duplicateText = false } = {}) {
   const state = pendingLinkedSplit;
   if (!state) return;
   const previewLane = state.kind === 'main' ? 'main' : 'extension';
   const previewOffset = state.kind === 'main' ? state.mainOffset : state.offset;
   const previewValid = updateLinkedSplitPreview(previewOffset, previewLane);
   let force = false;
-  if (!previewValid) {
+  if (duplicateText && !state.duplicateTimingValid) {
+    MaweHint.flashHint('当前切点会产生不足 100ms 的一侧，无法拆分', 'warning');
+    return;
+  }
+  if (!previewValid && !duplicateText) {
     // 副轨救不回来而主轨可拆：降级为只拆主轨并解除绑定，主轨不被副轨阻塞。
     if (state.kind === 'linked' && state.mainOnlyFallbackEligible) {
       commitLinkedSplitMainOnly(state);
@@ -1432,15 +1551,27 @@
     state.extensionCutMs = state.forceCutMs;
   }
   if (state.kind === 'main') {
-    commitMainWaveformSplit(state, { force });
+    commitMainWaveformSplit(state, {
+      force,
+      duplicateText,
+      successMessage: duplicateText ? '已拆分主字幕并保留两侧原文' : undefined,
+    });
     return;
   }
   if (state.kind === 'extension') {
-    commitExtensionSplit(state, { force });
+    commitExtensionSplit(state, {
+      force,
+      duplicateText,
+      successMessage: duplicateText ? '已拆分副字幕并保留两侧原文' : undefined,
+    });
     return;
   }
   if (state.kind === 'overlay') {
-    commitOverlaySplit(state, { force });
+    commitOverlaySplit(state, {
+      force,
+      duplicateText,
+      successMessage: duplicateText ? '已拆分叠加字幕并保留两侧原文' : undefined,
+    });
     return;
   }
   const track = MaweMultiSubtitleCore.getExtensionTrack(state.trackId);
@@ -1462,7 +1593,7 @@
     main.id || `main-${mainIndex}`,
     true,
     state.mainMode,
-    { preserveCutMs: true, forceCut: force },
+    { preserveCutMs: true, forceCut: force, duplicateText },
   );
   const extensionPair = buildSplitPair(
     extension,
@@ -1471,16 +1602,20 @@
     extension.id || `extension-${extensionIndex}`,
     true,
     state.extensionMode,
-    { preserveCutMs: true, forceCut: force },
+    { preserveCutMs: true, forceCut: force, duplicateText },
   );
   if (!mainPair || !extensionPair || extensionIndex < 0) {
     // 前置时长检查已拦截常见不可拆场景；这里兜底提示，避免弹窗内按键完全无反应。
     MaweHint.flashHint('当前切点无法同时拆分主副字幕，请调整断点位置', 'warning');
     return;
   }
+  if (!force && !duplicateText) {
+    flashSplitAlignmentHint(mainPair.alignment, { committed: true });
+    flashSplitAlignmentHint(extensionPair.alignment, { committed: true });
+  }
   const oldMainId = main.id;
   const oldExtensionId = extension.id;
-  MaweHistory.pushUndo('联动拆分字幕', { captureView: true });
+  MaweHistory.pushUndo(duplicateText ? '联动拆分并保留原文' : '联动拆分字幕', { captureView: true });
   MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], [oldExtensionId]);
   MaweBoot.DATA.segments.splice(mainIndex, 1, mainPair.left, mainPair.right);
   if (track) track.segments.splice(extensionIndex, 1, extensionPair.left, extensionPair.right);
@@ -1527,7 +1662,12 @@
   });
   // 联动拆分刀光位置由唤起来源决定：列表唤起留在列表，其余落在主轨波形切点。
   MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, sharedCutMs, 'main'));
-  MaweHint.flashHint('已按同一绝对时间切点联动拆分', 'success');
+  MaweHint.flashHint(
+    duplicateText
+      ? '已按同一绝对时间切点联动拆分，并保留两侧原文'
+      : '已按同一绝对时间切点联动拆分',
+    'success',
+  );
 }
 
 

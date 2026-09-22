@@ -3411,7 +3411,7 @@
           }
           const timeMs = this.timeFromPointer(event, row);
           this.options.previewGapAt?.(index, timeMs);
-          this.options.seek(timeMs / 1000);
+          this.options.seek(timeMs / 1000, { mouseClick: true });
           this.updatePlayback();
         });
         block.addEventListener('dblclick', (event) => {
@@ -3428,6 +3428,13 @@
     }
 
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
+      // 传统模式沿用旧版系统光标（ew-resize）；原创边界光标只在
+      // dual（中缝联动）模式生效。渲染路径必经这里，模式切换后
+      // refreshCueOverlay 也会同步该类。
+      this.pane?.classList.toggle(
+        'boundary-mode-classic',
+        this.options.getAdjacentBoundaryMode?.() !== 'dual',
+      );
       const multiLane = this.options.multiSubtitleVisible?.() === true;
       const segments = this.options.getSegments('main');
       const selected = this.options.getSelection('main');
@@ -4080,7 +4087,7 @@
       const timeMs = allowCrossRow
         ? clamp(requestedMs, 0, Math.max(0, this.durationMs))
         : requestedMs;
-      this.options.seek(timeMs / 1000, { dragPreview });
+      this.options.seek(timeMs / 1000, { dragPreview, mouseClick: !dragPreview });
       this.updatePlayback();
       if (playAfterSeek && this.player?.paused) this.options.togglePlayback?.();
     }
@@ -4091,9 +4098,10 @@
         ? this.pointerTimeMs(event, row, geometry)
         : Number(segment?.start);
       if (!Number.isFinite(timeMs)) return;
-      this.options.seek(timeMs / 1000);
+      const wasPlaying = this.options.isPlaybackActive?.() ?? !this.player?.paused;
+      this.options.seek(timeMs / 1000, { mouseClick: true });
       this.updatePlayback();
-      if (playAfterSeek && this.player?.paused) this.options.togglePlayback?.();
+      if (playAfterSeek && this.player?.paused && !wasPlaying) this.options.togglePlayback?.();
     }
 
     // Ctrl(Cmd)+左键拖动空白波形：显示字幕块虚影，松开后交给编辑器

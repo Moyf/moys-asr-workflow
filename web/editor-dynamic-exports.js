@@ -31,7 +31,8 @@
   if (!overlayAvailable && ['overlay', 'all'].includes(MaweDom.fcp7ExportSubtitleTracks.value)) {
     MaweDom.fcp7ExportSubtitleTracks.value = 'main';
   }
-  MaweDom.fcp7ExportNativeText.checked = false;
+  MaweDom.fcp7ExportNativeText.checked = true;
+  MaweDom.fcp7ExportSubtitleTracks.disabled = !MaweDom.fcp7ExportNativeText.checked;
   MaweDom.fcp7ExportModal.classList.add('show');
   MaweDom.fcp7ExportTimelineMode.focus();
 }
@@ -118,25 +119,26 @@
 
 
   function openLottieExportModal() {
-    if (lottieExportBlocked()) return;
-    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-    if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
-    MaweCuePanel.commitCuePanelEdit();
-    const extensionOption = MaweDom.lottieExportTrack?.querySelector('option[value="extension"]');
-    const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
-    if (extensionOption) extensionOption.disabled = !extensionAvailable;
-    if (!extensionAvailable && MaweDom.lottieExportTrack) MaweDom.lottieExportTrack.value = 'main';
-    MaweDom.lottieExportModal?.classList.add('show');
-    MaweDom.lottieExportTrack?.focus();
-  }
+  if (lottieExportBlocked()) return;
+  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+  if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
+  MaweCuePanel.commitCuePanelEdit();
+  const extensionOption = MaweDom.lottieExportTrack?.querySelector('option[value="extension"]');
+  const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
+  if (extensionOption) extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable && MaweDom.lottieExportTrack) MaweDom.lottieExportTrack.value = 'main';
+  applyMediaSizeToResolutionModal(
+    MaweDom.lottieExportResolution, lottieExportCustomSize, lottieExportCustomWidth, lottieExportCustomHeight,
+  );
+  MaweDom.lottieExportModal?.classList.add('show');
+  MaweDom.lottieExportTrack?.focus();
+}
 
 
 
   function lottieExportCanvasSize() {
-    const match = /^(\d+)x(\d+)$/u.exec(MaweDom.lottieExportResolution?.value || '');
-    if (!match) return { width: 1920, height: 1080 };
-    return { width: Number(match[1]), height: Number(match[2]) };
-  }
+  return dynamicExportCanvasSize(MaweDom.lottieExportResolution, lottieExportCustomWidth, lottieExportCustomHeight);
+}
 
 
 
@@ -239,25 +241,26 @@
 
 
   function openOgrafExportModal() {
-    if (ografExportBlocked()) return;
-    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-    if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
-    MaweCuePanel.commitCuePanelEdit();
-    const extensionOption = MaweDom.ografExportTrack?.querySelector('option[value="extension"]');
-    const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
-    if (extensionOption) extensionOption.disabled = !extensionAvailable;
-    if (!extensionAvailable && MaweDom.ografExportTrack) MaweDom.ografExportTrack.value = 'main';
-    MaweDom.ografExportModal?.classList.add('show');
-    MaweDom.ografExportTrack?.focus();
-  }
+  if (ografExportBlocked()) return;
+  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+  if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
+  MaweCuePanel.commitCuePanelEdit();
+  const extensionOption = MaweDom.ografExportTrack?.querySelector('option[value="extension"]');
+  const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
+  if (extensionOption) extensionOption.disabled = !extensionAvailable;
+  if (!extensionAvailable && MaweDom.ografExportTrack) MaweDom.ografExportTrack.value = 'main';
+  applyMediaSizeToResolutionModal(
+    MaweDom.ografExportResolution, ografExportCustomSize, ografExportCustomWidth, ografExportCustomHeight,
+  );
+  MaweDom.ografExportModal?.classList.add('show');
+  MaweDom.ografExportTrack?.focus();
+}
 
 
 
   function ografExportCanvasSize() {
-    const match = /^(\d+)x(\d+)$/u.exec(MaweDom.ografExportResolution?.value || '');
-    if (!match) return { width: 1920, height: 1080 };
-    return { width: Number(match[1]), height: Number(match[2]) };
-  }
+  return dynamicExportCanvasSize(MaweDom.ografExportResolution, ografExportCustomWidth, ografExportCustomHeight);
+}
 
 
 

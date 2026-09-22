@@ -148,6 +148,7 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
     '⬆️ Current preview styling is controlled by ASS subtitle mode',
   );
   assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');
+  assert.equal(i18n.translateText('作为说话人名称颜色', 'en'), 'As speaker name color');
   assert.equal(i18n.translateText('作为描边颜色', 'en'), 'As outline color');
   assert.equal(i18n.translateText('无影响', 'en'), 'No effect');
   assert.equal(i18n.translateText('自定义颜色色值', 'en'), 'Custom color values');
@@ -347,6 +348,9 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(settings.assMode, false);
   assert.equal(helpers.normalizeEditorSettings({ assMode: true }).assMode, true);
   assert.equal(helpers.normalizeEditorSettings({ assMode: 1 }).assMode, false);
+  assert.equal(settings.pauseOnMouseClick, false);
+  assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: true }).pauseOnMouseClick, true);
+  assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: 1 }).pauseOnMouseClick, false);
   assert.equal(settings.subtitleColorPaletteEnabled, false);
   assert.equal(
     helpers.normalizeEditorSettings({ subtitleColorPaletteEnabled: true }).subtitleColorPaletteEnabled,
@@ -3384,6 +3388,41 @@ test('keeps speaker labels in the base colour when ASS palette colours are strok
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,YELLOW,Host,0,0,0,,\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
 });
 
+test('applies ASS speaker-only colour to the label without a palette style variant', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+  ], {
+    assProfile: {
+      id: 'speaker-label', styleId: 'ass',
+      animations: { fad: { enabled: true, inMs: 120, outMs: 240 } },
+    },
+    assStyle: {
+      id: 'ass', fontName: 'Arial', fontSize: 72,
+      primaryColor: '#123456', outlineColor: '#112233', outline: 4, shadow: 2,
+    },
+    appearance: { ass_color_style: 'speaker' },
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host' },
+    speakerLabelSeparator: '：',
+  });
+
+  assert.match(ass, /Style: Default,Arial,72,&H00563412,&H00FFFFFF,&H00332211,/);
+  assert.doesNotMatch(ass, /Style: YELLOW,/);
+  assert.match(
+    ass,
+    /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,Host,0,0,0,,\{\\fad\(120,240\)\}\{\\c&H0019A0C4&\}Host：\{\\c&H00563412&\}你好/,
+  );
+
+  const withoutLabels = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+  ], {
+    assProfile: { id: 'speaker-label', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#112233', outline: 4 },
+    appearance: { ass_color_style: 'speaker' },
+  });
+  assert.match(withoutLabels, /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,,0,0,0,,你好/);
+});
+
 test('previews ASS fade, movement, and transform timing at the cue playhead', () => {
   const profile = {
     animations: {
@@ -3508,6 +3547,8 @@ test('normalizes speaker label settings with defaults and safe names', () => {
     },
   });
   assert.equal(helpers.normalizeSpeakerLabelSettings({}).mapping_enabled, false);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({}).enabled, true);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: false }).enabled, false);
   assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: true }).mapping_enabled, true);
   assert.equal(
     helpers.normalizeSpeakerLabelSettings({ enabled: true, mapping_enabled: false }).mapping_enabled,
@@ -4210,6 +4251,19 @@ test('defines a portable export-options contract from synthetic fixture data', (
   assert.equal(Object.isFrozen(options), true);
 });
 
+test('reads paired positive-integer video size metadata for export canvas defaults', () => {
+  assert.equal(helpers.exportVideoSize(null), null);
+  assert.equal(helpers.exportVideoSize({}), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: null }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_width: 1920 } }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_height: 1080 } }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_width: 0, video_height: 1080 } }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_width: 1.5, video_height: 1080 } }), null);
+  assert.equal(JSON.stringify(
+    helpers.exportVideoSize({ media_metadata: { video_width: 3840, video_height: 2160 } }),
+  ), JSON.stringify({ width: 3840, height: 2160 }));
+});
+
 test('normalizes closed FPS and track choices without guessing unsupported values', () => {
   for (const fps of [24, 25, 30, 50, 60, '30000/1001', '60000/1001']) {
     assert.equal(helpers.normalizeExportOptions({ fps }).fps, String(fps));
@@ -4337,7 +4391,7 @@ test('resolves sticker media from sticker_root and emits one clip per subtitle o
   assert.equal((xml.match(/<file id="file-sticker-[^"]+">/g) || []).length, 1);
   assert.match(xml, /<pathurl>file:\/\/localhost\/E(?:%3A|:)\/%E7%B4%A0%E6%9D%90\/%E8%A1%A8%E6%83%85%E5%8C%85\/%E6%8F%8F%E8%BE%B9gif\/.+<\/pathurl>/);
   assert.match(xml, /<clipitem id="sticker-clip-1"><masterclipid>master-sticker-1<\/masterclipid><name>[^<]+<\/name><enabled>TRUE<\/enabled><alphatype>straight<\/alphatype><pixelaspectratio>square<\/pixelaspectratio>/);
-  assert.match(xml, /<file id="file-sticker-[^"]+">[\s\S]*?<timecode><rate><timebase>30\/1<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode>[\s\S]*?<media><video><samplecharacteristics>[\s\S]*?<width>720<\/width><height>480<\/height>/);
+  assert.match(xml, /<file id="file-sticker-[^"]+">[\s\S]*?<timecode><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode>[\s\S]*?<media><video><samplecharacteristics>[\s\S]*?<width>720<\/width><height>480<\/height>/);
   assert.match(xml, /<clipitem id="sticker-clip-1">[\s\S]*?<start>30<\/start><end>60<\/end>/);
   assert.match(xml, /<clipitem id="sticker-clip-2">[\s\S]*?<start>90<\/start><end>120<\/end>/);
 });
@@ -4421,13 +4475,16 @@ test('encodes native GraphicAndType text as Premiere UTF-16LE payload', () => {
     segments: [{ id: 'cue', start: 100, end: 400, text: 'TETe 改名' }],
   }, { mode: 'source', fps: 30 });
   const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
-  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(xml)?.[1];
+  const effect = /<effectid>GraphicAndType<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(effect)?.[1];
   assert.ok(encoded);
   const bytes = Buffer.from(encoded, 'base64');
   assert.equal(bytes[0], 0xf6);
   assert.deepEqual([...bytes.subarray(1, 8)], [10, 0, 0, 0, 0, 0, 0]);
   const payload = JSON.parse(bytes.subarray(8).toString('utf16le'));
   assert.equal(payload.mTextParam.mStyleSheet.mText, 'TETe 改名');
+  assert.equal(payload.mTextParam.mAlignment, 2);
+  assert.equal(payload.mTextParam.mStyleSheet.mFontSize.mParamValues[0][1], 60);
   assert.equal(payload.mVersion, 1);
 });
 
@@ -4438,10 +4495,96 @@ test('writes the preview subtitle font into the GraphicAndType payload', () => {
     segments: [{ id: 'cue', start: 100, end: 400, text: '字体' }],
   }, { mode: 'source', fps: 30 });
   const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
-  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(xml)?.[1];
+  const effect = /<effectid>GraphicAndType<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(effect)?.[1];
   const bytes = Buffer.from(encoded, 'base64');
   const payload = JSON.parse(bytes.subarray(8).toString('utf16le'));
   assert.equal(payload.mTextParam.mStyleSheet.mFontName.mParamValues[0][1], 'FangSong');
+});
+
+test('maps the default preview font to a platform CJK family instead of Arial', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '默认字体' }],
+  }, { mode: 'source', fps: 30 });
+  assert.equal(plan.subtitleFontFamily, 'Noto Sans CJK SC');
+  const yaheiPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    preview: { subtitle: { font_family: 'yahei' } },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '字体' }],
+  }, { mode: 'source', fps: 30 });
+  assert.equal(yaheiPlan.subtitleFontFamily, 'Microsoft YaHei');
+  const localPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    preview: { subtitle: { font_family: 'AlimamaFangYuanTiVF-SemiBoldRound' } },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '字体' }],
+  }, { mode: 'source', fps: 30 });
+  assert.equal(localPlan.subtitleFontFamily, 'AlimamaFangYuanTiVF-SemiBoldRound');
+});
+
+test('declares the sequence frame size and integer timebase for Premiere import', () => {
+  const sizedPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    media_metadata: { video_width: 3840, video_height: 2160 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '尺寸' }],
+  }, { mode: 'source', fps: '30000/1001' });
+  const sizedXml = helpers.serializeFcp7Xml(sizedPlan);
+  const videoFormat = /<video><format><samplecharacteristics>[\s\S]*?<\/samplecharacteristics><\/format>/.exec(sizedXml)?.[0];
+  assert.ok(videoFormat, 'sequence video format should be declared');
+  assert.match(videoFormat, /<timebase>30<\/timebase><ntsc>TRUE<\/ntsc>/);
+  assert.match(videoFormat, /<width>3840<\/width><height>2160<\/height><anamorphic>FALSE<\/anamorphic><pixelaspectratio>square<\/pixelaspectratio>/);
+  assert.match(sizedXml, /<audio><format><samplecharacteristics><depth>16<\/depth><samplerate>48000<\/samplerate><\/samplecharacteristics><\/format>/);
+  assert.doesNotMatch(sizedXml, /<timebase>\d+\/\d+<\/timebase>/);
+  const legacyPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '旧工程' }],
+  }, { mode: 'source', fps: 60 });
+  const legacyXml = helpers.serializeFcp7Xml(legacyPlan);
+  const legacyFormat = /<video><format><samplecharacteristics>[\s\S]*?<\/samplecharacteristics><\/format>/.exec(legacyXml)?.[0];
+  assert.match(legacyFormat, /<timebase>60<\/timebase><ntsc>FALSE<\/ntsc>/);
+  assert.match(legacyFormat, /<width>1920<\/width><height>1080<\/height>/);
+});
+
+test('writes the full transform parameter set with a centered lower-third Position into GraphicAndType clips', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    media_metadata: { video_width: 3840, video_height: 2160 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '位置' }],
+  }, { mode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  const effect = /<effectid>GraphicAndType<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  assert.ok(effect, 'GraphicAndType effect should be serialized');
+  for (const parameterid of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]) {
+    assert.match(effect, new RegExp(`<parameterid>${parameterid}</parameterid>`), `transform parameter ${parameterid} should exist`);
+  }
+  assert.match(effect, /<parameterid>2<\/parameterid><name>Transform<\/name><ParameterControlType>11<\/ParameterControlType><UpperBound>false<\/UpperBound><value>-91445760000000000,false,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>3<\/parameterid><name>Position<\/name><value>-91445760000000000,0\.5:0\.85,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>4<\/parameterid><name>Scale<\/name><LowerBound>0<\/LowerBound><UpperBound>4000<\/UpperBound><value>-91445760000000000,100\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>8<\/parameterid><name>Opacity<\/name><LowerBound>0<\/LowerBound><UpperBound>100<\/UpperBound><value>-91445760000000000,100\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>9<\/parameterid><name>Anchor Point<\/name><value>-91445760000000000,0:0,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>21<\/parameterid><name>Parent Rotation<\/name><ParameterControlType>3<\/ParameterControlType><LowerBound>-32768<\/LowerBound><UpperBound>32767<\/UpperBound><value>-91445760000000000,0\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(effect)?.[1];
+  const payload = JSON.parse(Buffer.from(encoded, 'base64').subarray(8).toString('utf16le'));
+  assert.equal(payload.mTextParam.mStyleSheet.mFontSize.mParamValues[0][1], 120);
+});
+
+test('declares sequence-sized Graphic canvas and Vector Motion for native text clips', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    media_metadata: { video_width: 3840, video_height: 2160 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '画布' }],
+  }, { mode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  const textFile = /<file id="file-text-main-1">[\s\S]*?<\/file>/.exec(xml)?.[0];
+  assert.ok(textFile, 'text file should be serialized');
+  assert.match(textFile, /<samplecharacteristics><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><width>3840<\/width><height>2160<\/height><anamorphic>FALSE<\/anamorphic><pixelaspectratio>square<\/pixelaspectratio><fielddominance>none<\/fielddominance><\/samplecharacteristics>/);
+  const vectorMotion = /<effectid>GraphicGroup<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  assert.ok(vectorMotion, 'Vector Motion (GraphicGroup) effect should be serialized before GraphicAndType');
+  assert.match(xml, /<name>Vector Motion<\/name><effectid>GraphicGroup<\/effectid>/);
+  assert.match(vectorMotion, /<parameterid>1<\/parameterid><name>Position<\/name><value>-91445760000000000,0:0,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.match(vectorMotion, /<parameterid>2<\/parameterid><name>Scale<\/name><LowerBound>0<\/LowerBound><UpperBound>10000<\/UpperBound><UpperUIBound>200<\/UpperUIBound><value>-91445760000000000,100\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(vectorMotion, /<parameterid>6<\/parameterid><name>Anchor Point<\/name><value>-91445760000000000,0:0,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.ok(xml.indexOf('<effectid>GraphicGroup</effectid>') < xml.indexOf('<effectid>GraphicAndType</effectid>'), 'Vector Motion should precede GraphicAndType');
 });
 
 test('selects main, extension, and both subtitle tracks in XML and SRT', () => {
@@ -4482,7 +4625,7 @@ test('exports the overlay track as its own cues, text track, and sticker tracks'
   const xml = helpers.serializeFcp7Xml(plan, { subtitleTracks: 'all', nativeTextObjects: true });
   assert.equal((xml.match(/<clipitem id="text-main-/g) || []).length, 1);
   assert.equal((xml.match(/<clipitem id="text-overlay-/g) || []).length, 2);
-  assert.ok(xml.includes('<name>MAW native text - overlay</name>'));
+  assert.ok(xml.includes('<name>overlay one</name>'));
   assert.ok(xml.includes('clipitem id="overlay-sticker-clip-1"'));
   assert.ok(xml.includes('<name>MAW sticker - cat</name>'));
   assert.equal((xml.match(/<track>/g) || []).length >= 4, true);
@@ -4807,12 +4950,13 @@ test('rejects export plans whose overlay stickers fall outside the output durati
 test('translates every project-export option, outcome, and warning key in both locales', () => {
   const keys = [
     '导出时间线模式', '去空隙时间线', '原始时间线', '导出帧率', '写入原生字幕文本对象',
+    '自定义…', '宽度', '高度', '自定义合成尺寸需要 16–7680 之间的整数宽高',
     '导出副字幕轨', '主轨字幕', '主轨与副轨字幕', '导出文件名', '导出媒体路径缺失',
     '导出媒体时长缺失', '导出文件名无效', '导出警告',
     'Premiere FCP 7 XML（实验性）',
     '实验性 Premiere 交接：导出 FCP 7 XML',
     '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。',
-    '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。',
+    '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。',
     '导出 XML', 'FCP 7 XML 已保存', 'FCP 7 XML 下载已发起',
     'FCP 7 XML 保存已取消', 'FCP 7 XML 保存失败', 'FCP 7 XML 导出失败',
   ];
@@ -5635,4 +5779,154 @@ test('builds bindings with offsets and aligns bound/unbound dual display rows', 
     { mainIndex: 1, extensionIndex: null },
     { mainIndex: null, extensionIndex: 1 },
   ]);
+});
+
+test('alignItemsToText keeps order-preserving optimal alignment for rewritten words', () => {
+  // 真实案例 A（main-182-b-b）：「傲」被人工改写成「Alt(noir)」后，
+  // 贪心 indexOf 会让重复词互相抢位；最优对齐应让傲(1)让位、其余归位。
+  const text = '这Alt(noir)骨燕的傲骨要被践踏到什么程度';
+  const items = ['这', '傲', '骨', '燕', '的', '傲', '骨', '要被', '践踏', '到什么', '程', '度']
+    .map((t) => ({ text: t }));
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText(text, items).map((record) => (record ? record.textStart : null)),
+  )), [0, null, 10, 11, 12, 13, 14, 15, 17, 19, 22, 23]);
+});
+
+test('alignItemsToText aligns fully matchable items leftmost like the old greedy path', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('模型训练完成', [{ text: '模型' }, { text: '训练' }, { text: '完成' }])
+      .map((record) => record.textStart),
+  )), [0, 2, 4]);
+  // item 不含词间空格、原文带空格的常见工程格式
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('模型 训练 完成', [{ text: '模型' }, { text: '训练' }, { text: '完成' }])
+      .map((record) => record.textStart),
+  )), [0, 3, 6]);
+});
+
+test('alignItemsToText drops the extra item when occurrences run out', () => {
+  // 只有 2 处「A」：前两个对齐 1、3，最后一个为 null（丢尾不丢首）。
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('xAyA', [{ text: 'A' }, { text: 'A' }, { text: 'A' }])
+      .map((record) => (record ? record.textStart : null)),
+  )), [1, 3, null]);
+});
+
+test('alignItemsToText skips empty-text items without consuming positions', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('甲乙', [{ text: '甲' }, { text: '' }, { text: '乙' }])
+      .map((record) => (record ? record.textStart : null)),
+  )), [0, null, 1]);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.alignItemsToText('', []))), []);
+});
+
+test('placeUnalignedSplitItems assigns by time and keeps items in start order', () => {
+  const left = [{ text: '甲', start: 100, end: 200 }];
+  const right = [{ text: '戊', start: 800, end: 900 }];
+  const unaligned = [
+    { text: '丁', start: 700, end: 800 }, // 完全在切点右侧，且要插到「戊」之前
+    { text: '乙', start: 200, end: 300 }, // 完全在切点左侧
+    { text: '丙', start: 450, end: 550 }, // 跨切点：两侧等距，归右
+    { text: '坏', start: 900, end: 900 }, // 零长区间：忽略
+  ];
+  const placed = helpers.placeUnalignedSplitItems(left, right, unaligned, 500);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.leftItems.map((item) => item.text))), ['甲', '乙']);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.rightItems.map((item) => item.text))), ['丙', '丁', '戊']);
+});
+
+test('splitAlignmentDriftMs treats bracketed cuts as zero and measures nearest edge', () => {
+  // 下刀落在左右词边界的静音空隙内：空隙再宽也算贴合
+  assert.equal(helpers.splitAlignmentDriftMs(100, 900, 500), 0);
+  assert.equal(helpers.splitAlignmentDriftMs(100, 200, 100), 0);
+  // 切分边界整体偏离下刀：取到最近边界的距离
+  assert.equal(helpers.splitAlignmentDriftMs(300, 300, 100), 200);
+  assert.equal(helpers.splitAlignmentDriftMs(100, 100, 400), 300);
+  // 缺下刀时间或缺边界时无从衡量
+  assert.equal(helpers.splitAlignmentDriftMs(100, 200, null), null);
+  assert.equal(helpers.splitAlignmentDriftMs(null, null, 400), null);
+});
+
+test('placeUnalignedSplitItems extends side bounds to wrap unaligned words', () => {
+  // A2 复现：右段文本 Alt(noir) 的发音是失配词「傲」（846000–846200），
+  // 右段起点必须前移到它的 start，而不是让词先于段起点、保存时被时间码
+  // 兜底二次改写。
+  const left = [{ text: '你了', start: 845360, end: 845720 }];
+  const right = [
+    { text: '骨', start: 846200, end: 846400 },
+    { text: '燕', start: 846400, end: 846720 },
+  ];
+  const placed = helpers.placeUnalignedSplitItems(
+    left,
+    right,
+    [{ text: '傲', start: 846000, end: 846200 }],
+    845720,
+    { leftEndMs: 845720, rightStartMs: 846200 },
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.bounds)), { leftEndMs: 845720, rightStartMs: 846000 });
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.leftItems.map((item) => item.text))), ['你了']);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.rightItems.map((item) => [item.text, item.start, item.end]))), [
+    ['傲', 846000, 846200],
+    ['骨', 846200, 846400],
+    ['燕', 846400, 846720],
+  ]);
+});
+
+test('placeUnalignedSplitItems resets bounds and clips pathological unaligned words', () => {
+  // 病态失配词把扩展后的两侧拉爆时：回退原边界，词按原边界钳制。
+  const pathological = helpers.placeUnalignedSplitItems(
+    [{ text: '甲', start: 100, end: 400 }],
+    [{ text: '乙', start: 500, end: 600 }],
+    [{ text: '坏', start: 50, end: 600 }],
+    450,
+    { leftEndMs: 400, rightStartMs: 500 },
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(pathological.bounds)), { leftEndMs: 400, rightStartMs: 500 });
+  assert.deepEqual(JSON.parse(JSON.stringify(pathological.leftItems.map((item) => item.text))), ['甲']);
+  assert.deepEqual(JSON.parse(JSON.stringify(pathological.rightItems.map((item) => item.text))), ['乙', '坏']);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    pathological.rightItems.find((item) => item.text === '坏'),
+  )), { text: '坏', start: 500, end: 600 });
+});
+
+test('placeUnalignedSplitItems honors explicit side and strips the helper field', () => {
+  // 刀点左侧替换词（问题1）：显式 side 压过时间比较（否则傲会被分到右段）。
+  const placed = helpers.placeUnalignedSplitItems(
+    [{ text: '甲', start: 0, end: 1000 }],
+    [{ text: '乙', start: 2200, end: 3000 }],
+    [{ text: '傲', start: 1000, end: 2000, side: 'left' }],
+    1000,
+    { leftEndMs: 1000, rightStartMs: 2200 },
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.bounds)), { leftEndMs: 2000, rightStartMs: 2200 });
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.leftItems.map((item) => [item.text, item.start, item.end]))), [
+    ['甲', 0, 1000],
+    ['傲', 1000, 2000],
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.rightItems.map((item) => item.text))), ['乙']);
+  // side 只参与决策，不残留在结果 item 上。
+  for (const item of [...placed.leftItems, ...placed.rightItems]) {
+    assert.equal(item.side, undefined);
+  }
+});
+
+test('alignItemsToText handles pathological repeated tokens with bounded work', () => {
+  // 重复单字 × 高频出现曾是近似立方的最坏情况；单调 + 二分后应瞬时完成
+  // 且保持完整的左most对齐。
+  const length = 400;
+  const text = '甲'.repeat(length);
+  const items = Array.from({ length }, () => ({ text: '甲' }));
+  const aligned = helpers.alignItemsToText(text, items).map((record) => record?.textStart);
+  assert.deepEqual(JSON.parse(JSON.stringify(aligned)), Array.from({ length }, (_, index) => index));
+});
+
+test('alignItemsToText bails out to no alignment on absurd inputs', () => {
+  // 2600 词 × 2602 坐标超过 2_000_000 守卫：放弃对齐返回全 null（等长），
+  // 拆分随后走失配词的时间/词序回退，而不是冻结编辑器。
+  const length = 2600;
+  const text = '甲'.repeat(length);
+  const items = Array.from({ length }, () => ({ text: '甲' }));
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.alignItemsToText(text, items))),
+    JSON.parse(JSON.stringify(new Array(length).fill(null))),
+  );
 });

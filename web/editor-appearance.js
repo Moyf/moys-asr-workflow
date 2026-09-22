@@ -247,13 +247,13 @@
   if (MaweDom.subtitleColorUnderlineInput) {
     MaweDom.subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
+  if (assColorStyleSelect) {
+    assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
+  }
   // 「预览颜色样式」的显隐由 syncAssModeDependentControls 统一处理（含 ASS 开关切换）。
   syncAssModeDependentControls();
   if (MaweDom.subtitleColorStyleSelect) {
     MaweDom.subtitleColorStyleSelect.value = appearance.color_style || MaweSettings.DEFAULT_SUBTITLE_COLOR_STYLE;
-  }
-  if (assColorStyleSelect) {
-    assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
   }
   if (subtitleFontFamilyInput && document.activeElement !== subtitleFontFamilyInput) {
     subtitleFontFamilyInput.value = subtitleFontFamilyStoredToInput(appearance.font_family || 'default');
