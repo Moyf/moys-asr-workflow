@@ -22,6 +22,8 @@ from threading import Event, Lock
 from typing import BinaryIO, Final, final
 
 from maw.app_paths import default_emoji_font_path
+from maw.app_paths import application_directory, default_app_data_root
+from maw.asr_presets import read_preset, validate_options, write_preset
 from maw.ass_styles import find_ass_style, load_ass_style_library
 from maw.ffmpeg import FfmpegTools, media_duration_seconds, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
@@ -1526,6 +1528,50 @@ class LauncherApi:
         if now - self._last_postprocess_progress_at >= 0.8:
             self._last_postprocess_progress_at = now
             self._emit_postprocess_status(key)
+
+    def recognition_preset(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Only a native dialog may select a preset read/write target."""
+        saving = payload.get("action") == "save"
+        fallback = False
+        try:
+            if payload.get("action") not in ("save", "load"):
+                raise ValueError("Invalid preset action")
+            options = validate_options(payload.get("options")) if saving else None
+            remembered = load_env(self.paths.env_path).get("MAW_ASR_PRESET_DIRECTORY", "")
+            directory = Path(remembered) if remembered and Path(remembered).is_dir() else application_directory() / "asr-presets"
+            if not directory.is_dir() and not saving:
+                directory = application_directory()
+            if saving:
+                try:
+                    directory.mkdir(parents=True, exist_ok=True)
+                    with tempfile.TemporaryFile(dir=directory):
+                        pass
+                except OSError:
+                    directory = default_app_data_root() / "asr-presets"
+                    directory.mkdir(parents=True, exist_ok=True)
+                    fallback = True
+            selected = _file_dialog(
+                open_dialog=not saving, directory=str(directory),
+                file_types=("ASR presets (*.json)",),
+                save_filename="Untitled.json" if saving else "",
+            )
+            if not selected:
+                return {"ok": True, "cancelled": True}
+            path = Path(selected[0])
+            if saving:
+                write_preset(path, options)
+            else:
+                options = read_preset(path)
+            warning = ""
+            try:
+                save_env(self.paths.env_path, {"MAW_ASR_PRESET_DIRECTORY": str(path.parent)})
+            except (OSError, UnicodeError, ValueError) as error:
+                warning = str(error)
+            hotwords = str(options.get("qwenAudioHotwordsFile", ""))
+            return {"ok": True, "options": options, "path": str(path), "fallback": fallback,
+                    "directoryWarning": warning, "missingHotwords": bool(hotwords and not Path(hotwords).is_file())}
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
 
     def choose_file(self, payload: Mapping[str, object]) -> dict[str, object]:
         kind = str(payload.get("kind") or "media")
@@ -3768,13 +3814,14 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     )
 
 
-def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filename: str = "", multiple: bool = False) -> tuple[str, ...] | None:
+def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filename: str = "", multiple: bool = False, directory: str = "") -> tuple[str, ...] | None:
     import webview
 
     if not webview.windows:
         return None
     dialog_type = OPEN_DIALOG if open_dialog else SAVE_DIALOG
-    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple)
+    extra = {"directory": directory} if directory else {}
+    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple, **extra)
     return tuple(selected) if selected else None
 
 

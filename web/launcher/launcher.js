@@ -76,6 +76,11 @@
       flv_media_hint: "flv 无法预览，将会自动转换成 mp4 格式",
       port: "端口",
       advanced: "高级选项",
+      preset_load: "载入预设", preset_save: "保存预设",
+      preset_saved: "预设已保存", preset_loaded: "预设已载入",
+      preset_failed: "预设操作失败", preset_missing: "热词文件不存在，请重新选择。",
+      preset_fallback: "程序目录无法写入，已使用用户数据目录。",
+      preset_directory_warning: "无法记住本次文件夹位置。",
       open_mawe: "🎬 启动字幕编辑器",
       server_stop: "⏹️ 停止服务器",
       start: "✨ 生成字幕和工程",
@@ -195,6 +200,11 @@
       flv_media_hint: "flv cannot be previewed and will be converted to mp4 automatically",
       port: "Port",
       advanced: "Advanced options",
+      preset_load: "Load preset", preset_save: "Save preset",
+      preset_saved: "Preset saved", preset_loaded: "Preset loaded",
+      preset_failed: "Preset operation failed", preset_missing: "Hotword file is missing. Please select it again.",
+      preset_fallback: "The application directory is not writable; using the user data directory.",
+      preset_directory_warning: "Could not remember this folder.",
       open_mawe: "🎬 Launch Subtitle Editor",
       server_stop: "⏹️ Stop server",
       start: "✨ Generate subtitles & project",
@@ -2859,7 +2869,6 @@
       return;
     }
     const selected = models.some((model) => model.id === state.alignmentModelSelection) ? state.alignmentModelSelection : "";
-    state.alignmentModelSelection = selected;
     renderAlignmentModelOptions(select, models, selected);
     select.disabled = Boolean(state.localPreparing || state.alignmentPreparing);
     const model = models.find((item) => item.id === selected);
@@ -3054,12 +3063,65 @@
   async function setLanguage(language) { if (language !== "zh" && language !== "en") return; state.lang = language; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (result.ok) state.config.guiLang = language; else applyErrorResult(result); }
   function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelRuntimeHintSection").classList.toggle("hidden", local); $("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen"); $("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen"); $("localModelPanel").classList.toggle("hidden", !local); $("localRuntimeCheckField").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); $("providerNote").textContent = providerNoteText(current); $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); renderKeyStatus(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) { void refreshLocalModels(); void refreshAlignmentModels(); } } }
   function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); $("modelNote").textContent = modelNoteText(model); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); syncFireRedPunc(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
-  function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
+  function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = presetLanguage !== null ? presetLanguage.split(",") : previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
   function languageValue() { const el = $("language"); if (el.multiple) return Array.from(el.selectedOptions).map((o) => o.value).filter(Boolean).join(","); return el.value; }
   function syncAdvancedParamsGroup() { const group = $("advancedParamsGroup"); const hasVisibleField = Array.from(group.querySelectorAll(".field")).some((field) => !field.classList.contains("hidden")); group.classList.toggle("hidden", !hasVisibleField && $("dashscopeRegionHint").classList.contains("hidden")); }
   function appendTestSuffix(path) { const value = String(path || "").trim(); if (!value || /-test(?=\.[^./\\]+$)/iu.test(value)) return value; const separator = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")); const dot = value.lastIndexOf("."); if (dot <= separator) return `${value}-test`; return `${value.slice(0, dot)}-test${value.slice(dot)}`; }
   function removeTestSuffix(path) { return String(path || "").replace(/-test(?=\.[^./\\]+$)/iu, ""); }
   function syncTestRun() { const on = $("testRun").checked; $("testRunHint").classList.toggle("hidden", !on); const lengthLimit = $("lengthLimit"); if (lengthLimit) lengthLimit.disabled = on; if (state.srtAuto) { if (!state.initializing) void syncDefaultOutput(); return; } const current = $("srtPath").value.trim(); if (on) { const next = appendTestSuffix(current); state.testSuffixAdded = Boolean(current && next !== current); $("srtPath").value = next; } else if (state.testSuffixAdded) { $("srtPath").value = removeTestSuffix(current); state.testSuffixAdded = false; } }
+  const ASR_PRESET_TEXT_FIELDS = [
+    "localDevice", "fireRedPunc", "recognitionAlignmentModel", "language",
+    "qwenAudioContext", "qwenAudioHotwordsMode", "qwenAudioHotwords", "qwenAudioHotwordsFile",
+    "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms",
+    "sonioxContextTranslationTerms", "openaiPrompt", "openaiKeywords",
+    "maxLen", "minLen", "maxWords", "minWords", "gapSplit",
+  ];
+  const ASR_PRESET_BOOL_FIELDS = ["speakerColors", "generateSpectral", "debugRaw", "testRun"];
+  let presetLanguage = null;
+  function collectAsrPreset() {
+    const options = Object.fromEntries(ASR_PRESET_TEXT_FIELDS.map((id) => [id, $(id).value]));
+    options.language = presetLanguage ?? languageValue();
+    options.recognitionAlignmentModel = state.alignmentModelSelection || "";
+    ASR_PRESET_BOOL_FIELDS.forEach((id) => { options[id] = $(id).checked; });
+    return options;
+  }
+  function applyAsrPreset(options) {
+    if (!options || ASR_PRESET_TEXT_FIELDS.some((id) => typeof options[id] !== "string") ||
+        ASR_PRESET_BOOL_FIELDS.some((id) => typeof options[id] !== "boolean")) throw new Error(t("preset_failed"));
+    ASR_PRESET_TEXT_FIELDS.forEach((id) => { if (id !== "language" && id !== "recognitionAlignmentModel") $(id).value = options[id]; });
+    ASR_PRESET_BOOL_FIELDS.forEach((id) => { $(id).checked = options[id]; });
+    presetLanguage = options.language;
+    state.alignmentModelSelection = options.recognitionAlignmentModel;
+    applyProviderLanguages(provider(), selectedModel());
+    renderLocalAlignmentModel();
+    setHotwordsMode(options.qwenAudioHotwordsMode);
+    renderPromptCharacterCount(); renderSonioxContextCharacterCount(); syncTestRun();
+  }
+  async function runAsrPreset(action) {
+    const buttons = [$("loadAsrPreset"), $("saveAsrPreset")];
+    buttons.forEach((button) => { button.disabled = true; });
+    const status = $("asrPresetStatus");
+    try {
+      const result = await bridge("recognition_preset", { action, ...(action === "save" ? { options: collectAsrPreset() } : {}) });
+      if (result.cancelled) return;
+      if (!result.ok) throw new Error(result.detail || result.error || t("preset_failed"));
+      if (action === "load") applyAsrPreset(result.options);
+      const messages = [`${t(action === "save" ? "preset_saved" : "preset_loaded")}: ${result.path}`];
+      if (result.fallback) messages.push(t("preset_fallback"));
+      if (result.directoryWarning) messages.push(t("preset_directory_warning"));
+      if (action === "load" && result.missingHotwords) messages.push(t("preset_missing"));
+      status.textContent = messages.join(" · ");
+      status.classList.remove("hidden");
+    } catch (error) {
+      status.textContent = `${t("preset_failed")}: ${error.message}`;
+      status.classList.remove("hidden");
+    } finally { buttons.forEach((button) => { button.disabled = false; }); }
+  }
+  $("loadAsrPreset").addEventListener("click", () => runAsrPreset("load"));
+  $("saveAsrPreset").addEventListener("click", () => runAsrPreset("save"));
+  $("language").addEventListener("change", () => { presetLanguage = null; });
+  $("languageReset").addEventListener("click", () => { presetLanguage = null; });
+
   function savePrefsDebounced(payload) { clearTimeout(prefsTimer); prefsTimer = setTimeout(() => bridge("save_prefs", payload), 300); }
   function normalizeZoomPercent(value) { const parsed = Number(value); if (!Number.isFinite(parsed)) return ZOOM_DEFAULT; return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(parsed / ZOOM_STEP) * ZOOM_STEP)); }
   function applyZoomPercent(value) { const zoomPercent = normalizeZoomPercent(value); document.documentElement.style.zoom = `${zoomPercent}%`; document.documentElement.style.setProperty("--launcher-shell-height", `${100 / (zoomPercent / 100)}dvh`); state.config.zoomPercent = zoomPercent; return zoomPercent; }

@@ -3284,3 +3284,9 @@ select[multiple] option {
 .modal-card .settings-section .field > label {
   line-height: 1.4;
 }
+
+/* Keep preset actions accessible when advanced options are collapsed. */
+.advanced-header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.advanced-header .accordion-header { width: auto; flex: 1; min-width: max-content; }
+.advanced-preset-actions { display: flex; gap: 8px; margin-left: auto; }
+#asrPresetStatus { overflow-wrap: anywhere; }

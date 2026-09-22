@@ -161,7 +161,14 @@
         <p class="hint local-model-settings-hint"><span data-i18n="local_model_settings_hint_prefix">本地模型的下载和缓存可以在 </span><button id="openLocalModelSettings" class="inline-link" type="button" data-i18n="local_model_settings_open">本地 AI 模型配置</button><span data-i18n="local_model_settings_hint_suffix"> 中管理。</span></p>
       </div>
       <div id="advancedCard" class="sub-accordion collapsed">
+        <div class="advanced-header">
         <button id="advancedToggle" class="accordion-header" type="button"><span class="chevron">▸</span><span data-i18n="advanced">高级选项</span></button>
+          <div class="advanced-preset-actions">
+            <button id="loadAsrPreset" class="ghost small" type="button" data-i18n="preset_load">载入预设</button>
+            <button id="saveAsrPreset" class="ghost small" type="button" data-i18n="preset_save">保存预设</button>
+          </div>
+        </div>
+        <p id="asrPresetStatus" class="hint hidden" role="status" aria-live="polite"></p>
         <div class="collapse-body">
           <div id="advancedOptionsGrid" class="grid-two">
             <div id="advancedParamsGroup" class="adv-group">
