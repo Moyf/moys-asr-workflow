@@ -463,3 +463,21 @@ Batch 2 执行备注：
   的隐患本体），qualifyEntry 换核后嵌套参数/局部遮蔽不再误限定；merge-flow
   加 import 守卫并导出限定器。新增 22 个作用域回归用例，全量 node 342 pass。
   冒烟：resolve --dry-run --theirs origin/main → REPLAY 22 / CONFLICT 0。
+
+### 工具链汇合（2026-09-22，合并上游 57ad2403 后）
+
+上游 238fb6a7 与协作分支 7f720846 是同一病灶（MAWE_I18N.start 误限定）
+的独立修复，解冲突取长补短后（2721ecc9）：
+
+- 限定器保留 eslint-scope 精确实现：平面/全文件豁免在同一文件存在同名
+  绑定时会压制所有真限定（23k 行入口里 `start` 这类名字几乎必现局部），
+  scope-core 按词法解析后该限定的照常限定、该保持的保持；shorthand
+  key===value 误判随文本特判一并移除（该形态会触发 applyEdits 的
+  overlapping edits 报错，工具中断）。
+- 吸收上游 moduleBaseSource（模块底稿优先取干净合并的工作区版本），
+  该修复协作分支此前没有。
+- 汇合后验证：node 全量 360 pass / 0 fail；npm run typecheck 通过；
+  ns-rewrite v2 在第六次同步后的入口上改写 0 处、自检通过；此前跟踪的
+  3 项 e2e（join hint / ASS style actions / 字体 label）复跑全部通过
+  ——其中前两项经纯 main 对照法证实为 main 侧基线失败，已由 main
+  feaf10e4 修复并随同步进入本分支，定责闭环。
