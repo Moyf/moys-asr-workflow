@@ -68,7 +68,14 @@ local = [
     "hf-xet>=1.5",
     "qwen-asr>=0.0.6",
     # FireRedASR2-CTC 的 sherpa-onnx CPU 解码与 WAV 读取；也供共享对齐工具使用。
-    "sherpa-onnx>=1.12.27",
+    # sherpa-onnx 的原生内核拆在 sherpa-onnx-core 里；其 sdist 元数据未声明这条
+    # 依赖，uv 通用解析会丢弃传递边（uv pip 单环境解析则正常），导致
+    # uv export 出的运行时清单缺包，故必须显式声明为直接依赖。
+    # core 会解包进 sherpa_onnx/lib，两者必须同版本；上游出现过打包漂移
+    # （1.13.8 的 sdist 漏声明依赖），因此用 == 成对精确锁定：升级时手动
+    # 一起改版本并重跑 uv lock，避免自动升级再踩同类坑。
+    "sherpa-onnx==1.13.8",
+    "sherpa-onnx-core==1.13.8",
     "soundfile>=0.12",
     "torch==2.13.0+cu130; sys_platform != 'darwin'",
     "torch>=2.13.0; sys_platform == 'darwin'",
