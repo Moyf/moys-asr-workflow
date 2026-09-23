@@ -84,8 +84,11 @@ async function moveWaveformPointerToTime(page, blockLocator, timeMs) {
   expect(rowBox).not.toBeNull();
   expect(rowEnd).toBeGreaterThan(rowStart);
   const ratio = (timeMs - rowStart) / (rowEnd - rowStart);
+  // 波形行有 1px 边框；指针→时间映射与覆盖层一致使用 content-box，
+  // 这里同样按 clientLeft/clientWidth 定位，保证与实际渲染边界对齐。
+  const content = await row.evaluate((element) => ({ clientLeft: element.clientLeft, clientWidth: element.clientWidth }));
   await page.mouse.move(
-    rowBox.x + rowBox.width * Math.max(0, Math.min(1, ratio)),
+    rowBox.x + content.clientLeft + content.clientWidth * Math.max(0, Math.min(1, ratio)),
     blockBox.y + blockBox.height / 2,
   );
 }
