@@ -4442,6 +4442,7 @@
   pointer-events: none;
   transform: translateX(-0.5px);
 }
+.waveform-pointer-line.boundary-snapped { background: var(--accent); }
 .waveform-pointer-line[hidden] { display: none; }
 .waveform-split-flash {
   position: absolute;
@@ -4681,14 +4682,12 @@
 .waveform-cue-block.selected {
   z-index: 6;
   outline: 2px solid var(--selection-yellow);
-  outline-offset: 1px;
   box-shadow: 0 0 0 1px rgba(89, 62, 0, .72), 0 0 8px var(--selection-yellow-glow);
 }
 /* 框选拖动中的命中预览：比正式选中的实线弱一档的虚线；
    松开后由选中契约替换为 .selected。 */
 .waveform-cue-block.marquee-preview {
   outline: 2px dashed var(--selection-yellow-line);
-  outline-offset: 1px;
 }
 .waveform-cue-block.active {
   color: var(--active-cue-fg);
@@ -4722,30 +4721,21 @@
   background: var(--wave-cue-handle);
   cursor: ew-resize;
 }
-/* assets/cursors/left-boundary.svg 内嵌副本；热点位于竖线中央。 */
 .waveform-cue-handle.left {
   left: 0;
   border-radius: 3px 0 0 3px;
-  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M3%2016l5-4v3h7v2H8v3z%20M15%2010h2v12h-2z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
 }
-/* assets/cursors/right-boundary.svg 内嵌副本；热点位于竖线中央。 */
 .waveform-cue-handle.right {
   right: 0;
   border-radius: 0 3px 3px 0;
-  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M15%2010h2v12h-2z%20M17%2015h7v-3l5%204-5%204v-3h-7z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
 }
 /* 手柄悬停反馈：加亮提示「这里是单侧调整手柄」，与中缝区的 hover 亮度区分。 */
 .waveform-cue-handle:hover { background: var(--wave-cue-handle-hover); }
-/* 传统模式：没有中缝区，边界拖动沿用旧版系统左右箭头光标；
-   原创光标素材只服务中缝联动（dual）模式。 */
-.waveform-pane.boundary-mode-classic .waveform-cue-handle.left,
-.waveform-pane.boundary-mode-classic .waveform-cue-handle.right { cursor: ew-resize; }
 /* 中缝联动模式：相接侧手柄加宽，让「手柄（单侧调整）— 中缝（联动拖动）
    — 手柄」三个命中区域都有约 7px 的稳定宽度。 */
 .waveform-cue-block.has-shared-boundary-right .waveform-cue-handle.right { width: 11px; }
 .waveform-cue-block.has-shared-boundary-left .waveform-cue-handle.left { width: 11px; }
-/* 中缝拖动区：仅 dual 模式渲染，骑在贴合边界上；拖动 = 两侧边界联动。
-   默认半透明保持低调，悬停/拖动时恢复到完全不透明以突出反馈。 */
+/* 中缝拖动区：8px 命中区覆盖精确接缝，可见线由伪元素单独绘制。 */
 .waveform-cue-boundary {
   position: absolute;
   bottom: 7px;
@@ -4754,17 +4744,36 @@
   z-index: 7;
   transform: translateX(-50%);
   border-radius: 2px;
-  background: var(--wave-cue-boundary);
+  background: transparent;
   opacity: 0.5;
   transition: opacity 0.12s ease;
-  /* assets/cursors/shared-boundary.svg 内嵌副本，兼容便携 HTML；热点位于中央。 */
-  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M2%2016l5-4v3h4v2H7v3z%20M13%2010h2v12h-2z%20M17%2010h2v12h-2z%20M21%2015h4v-3l5%204-5%204v-3h-4z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
+  cursor: var(--wave-shared-boundary-cursor);
   touch-action: none;
 }
-.waveform-cue-boundary:hover,
-.waveform-cue-boundary.dragging { opacity: 1; }
+.waveform-pane {
+  /* assets/cursors/shared-boundary.svg 内嵌副本，兼容便携 HTML；热点位于中央。 */
+  --wave-shared-boundary-cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M2%2016l5-4v3h4v2H7v3z%20M13%2010h2v12h-2z%20M17%2010h2v12h-2z%20M21%2015h4v-3l5%204-5%204v-3h-4z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
+}
+.waveform-pane.shared-boundary-drag-active { cursor: var(--wave-shared-boundary-cursor); }
+.waveform-cue-boundary::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: var(--wave-cue-boundary);
+  pointer-events: none;
+}
+.waveform-cue-boundary:hover { opacity: 0.78; }
+.waveform-cue-boundary:hover::before,
+.waveform-cue-boundary.dragging::before { background: var(--accent); }
+.waveform-cue-boundary.dragging { opacity: 0.85; }
 /* 行末中缝完整收进所属行，避免被行容器裁掉一半。 */
 .waveform-cue-boundary.at-row-end { transform: translateX(-100%); }
+.waveform-cue-boundary.at-row-end::before { left: auto; right: 0; transform: none; }
 /* 行末中缝占用最后 8px，左侧字幕的独立右手柄向行内退让，两个操作区不重叠。 */
 .waveform-cue-block.shared-boundary-at-row-end-right .waveform-cue-handle.right { right: 8px; }
 .waveform-basic .waveform-cue-boundary {
@@ -4914,7 +4923,7 @@
 
 <h1>
   <span class="media-name empty" id="media-name" title="">未加载媒体</span>
-  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.6.0</span>
+  <span class="app-version" id="app-version" data-label="版本号">版本号 v1.6.1</span>
   <span class="json-name empty" id="json-name" title="点击复制工程文件名">未加载工程</span>
 </h1>
 <div class="server-connection-banner" id="server-connection-banner" hidden role="alert" aria-live="assertive">
@@ -12894,7 +12903,7 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     encoding: 1,
   });
   // ASS 默认样式：字体按操作系统选择、默认加粗，字号按 1080p 参考基准 72，
-  // 垂直边距放宽到 80；SRT 压制默认样式保持 Arial 18/40 不加粗。
+  // 垂直边距放宽到 80；SRT 烧录默认样式保持 Arial 18/40 不加粗。
   const ASS_DEFAULT_ASS_STYLE = Object.freeze({
     ...ASS_DEFAULT_STYLE,
     id: 'ass', name: 'ASS 默认样式',
@@ -14431,8 +14440,8 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
     return `<filter>${effect}</filter>`;
   }
 
-  function fcpClipItem({ id, fileId, name, path, width, height, sourceStartMs, sourceEndMs, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
-    const source = fcpTimeRange(sourceStartMs, sourceEndMs, plan);
+  function fcpClipItem({ id, fileId, name, path, width, height, sourceStartMs, sourceEndMs, sourceStartFrame = null, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
+    const sourceRange = fcpTimeRange(sourceStartMs, sourceEndMs, plan);
     const timeline = fcpTimeRange(startMs, endMs, plan);
     const url = escapeExportXml(exportPathToFileUrl(path, { encodeDriveColon }));
     const isSticker = mediaKind === 'sticker';
@@ -14448,7 +14457,12 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       ? `<file id="${escapeExportXml(fileId)}"><name>${escapeExportXml(fileBasename(path))}</name><pathurl>${url}</pathurl><duration>${sourceDuration}</duration>${fcpRate(plan.frameProfile)}${isSticker ? `<timecode><rate>${fcpRate(plan.frameProfile).replace('<rate>', '').replace('</rate>', '')}</rate><string>00:00:00:00</string><frame>0</frame><displayformat>NDF</displayformat></timecode>` : ''}${fileMedia}</file>`
       : `<file id="${escapeExportXml(fileId)}"/>`;
     const frameStart = startFrame ?? timeline.start;
-    const frameEnd = Math.max(frameStart + 1, endFrame ?? frameStart + source.duration);
+    const frameEnd = Math.max(frameStart + 1, endFrame ?? frameStart + sourceRange.duration);
+    // 显式传入 sourceStartFrame 时（媒体片段），in/out 按时间线区间长度对齐，
+    // 保证源区间与时间线区间等长（1:1 播放速率），两端不再各自向外取整。
+    const source = sourceStartFrame != null
+      ? { start: sourceStartFrame, end: sourceStartFrame + (frameEnd - frameStart) }
+      : sourceRange;
     const stickerClipMetadata = isSticker
       ? `<enabled>TRUE</enabled><alphatype>${/\.(?:gif|png|webp)$/iu.test(path) ? 'straight' : 'none'}</alphatype><pixelaspectratio>square</pixelaspectratio><anamorphic>FALSE</anamorphic>`
       : '';
@@ -14476,30 +14490,35 @@ window.ASR_EDITOR_PALETTE = [{"name": "yellow", "value": "#c4a019"}, {"name": "g
       ? exportPlan.media.height : 1080;
     const videoFormat = `<format><samplecharacteristics>${fcpRate(exportPlan.frameProfile)}<width>${sequenceWidth}</width><height>${sequenceHeight}</height><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio><fielddominance>none</fielddominance><colordepth>24</colordepth></samplecharacteristics></format>`;
     const audioFormat = '<format><samplecharacteristics><depth>16</depth><samplerate>48000</samplerate></samplecharacteristics></format>';
-    let cursor = 0;
     const sourceTracks = [];
     const intervals = Array.isArray(exportPlan.keptIntervals) ? exportPlan.keptIntervals : [];
-    const boundaries = [0];
-    intervals.forEach((interval) => boundaries.push(boundaries[boundaries.length - 1]
-      + fcpTimeRange(interval.start, interval.end, exportPlan).duration));
+    // 时间线边界在 ms 域按保留区间长度精确累加，再对每个边界单次取整（floor，
+    // 末边界 ceil 保总长）；媒体、音频、字幕、贴纸由此共享同一帧网格。此前对每段
+    // 保留区间「start floor + end ceil」向外取整再逐段累加帧长，每段最多膨胀 2 帧
+    // 且随空隙数量线性累积，去空隙导出后字幕会越往后越提前。
+    const msBoundaries = [0];
+    intervals.forEach((interval) => msBoundaries.push(
+      msBoundaries[msBoundaries.length - 1] + interval.end - interval.start,
+    ));
+    const boundaries = msBoundaries.map((ms, index) => exportPlanFrame(exportPlan, ms,
+      index === msBoundaries.length - 1 ? 'ceil' : 'floor'));
     const duration = boundaries[boundaries.length - 1];
     intervals.forEach((interval, index) => {
-      const range = fcpTimeRange(interval.start, interval.end, exportPlan);
-      const startMs = cursor * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
-      const endMs = (cursor + range.duration) * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
       sourceTracks.push(fcpClipItem({
         id: `video-clip-${index + 1}`, fileId: 'file-source-video-1', name: `${fileBasename(exportPlan.media.path)} [${index + 1}]`,
         path: exportPlan.media.path, sourceStartMs: interval.start, sourceEndMs: interval.end,
-        startMs, endMs, startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: mediaType, track: 'source', defineFile: index === 0,
+        sourceStartFrame: exportPlanFrame(exportPlan, interval.start, 'floor'),
+        startMs: msBoundaries[index], endMs: msBoundaries[index + 1],
+        startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: mediaType, track: 'source', defineFile: index === 0,
       }));
-      cursor += range.duration;
     });
-    const audioTracks = hasVideo ? intervals.map((interval, index) => {
-      const range = fcpTimeRange(interval.start, interval.end, exportPlan);
-      const startMs = (intervals.slice(0, index).reduce((sum, prior) => sum + fcpTimeRange(prior.start, prior.end, exportPlan).duration, 0)) * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
-      const endMs = startMs + range.duration * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
-      return fcpClipItem({ id: `audio-clip-${index + 1}`, fileId: 'file-source-audio', name: `${fileBasename(exportPlan.media.path)} audio [${index + 1}]`, path: exportPlan.media.path, sourceStartMs: interval.start, sourceEndMs: interval.end, startMs, endMs, startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: 'audio', track: 'source-audio', link: `video-clip-${index + 1}`, defineFile: index === 0 });
-    }) : [];
+    const audioTracks = hasVideo ? intervals.map((interval, index) => fcpClipItem({
+      id: `audio-clip-${index + 1}`, fileId: 'file-source-audio', name: `${fileBasename(exportPlan.media.path)} audio [${index + 1}]`,
+      path: exportPlan.media.path, sourceStartMs: interval.start, sourceEndMs: interval.end,
+      sourceStartFrame: exportPlanFrame(exportPlan, interval.start, 'floor'),
+      startMs: msBoundaries[index], endMs: msBoundaries[index + 1],
+      startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: 'audio', track: 'source-audio', link: `video-clip-${index + 1}`, defineFile: index === 0,
+    })) : [];
     const videoTracks = hasVideo ? [`<track>${sourceTracks.join('')}</track>`] : [];
     const stickerFileIds = new Map();
     const buildStickerTracks = (list, trackPrefix, clipPrefix) => (Array.isArray(list) ? list : [])
@@ -15866,9 +15885,8 @@ export default MawDynamicCaptions;
     '正在加载…': 'Loading…', '关闭（Esc）': 'Close (Esc)', '关闭 ASS 样式库': 'Close ASS style library',
     '样式与方案列表': 'Styles and profiles', '样式': 'Styles', '内置': 'Built-in',
     '＋ 新建样式': '+ New style', '复制当前': 'Duplicate current', 'ASS 输出方案': 'ASS profiles',
-    '＋ 新建方案': '+ New profile', '默认槽位': 'Default slots', 'SRT 压制': 'SRT burn-in', 'SRT 默认烧录样式': 'Default SRT burn-in style', 'SRT 烧录': 'SRT burn-in',
+    '＋ 新建方案': '+ New profile', '默认槽位': 'Default slots', 'SRT 默认烧录样式': 'Default SRT burn-in style', 'SRT 烧录': 'SRT burn-in',
     '工具箱的「烧录字幕」功能会使用这里选中的样式。': 'The Toolbox “Burn subtitles” feature uses the style selected here.',
-    'SRT 压制默认样式': 'Default style for SRT burn-in', 'Launcher 压制 SRT 时使用此样式。': 'Launcher uses this style when burning SRT.',
     '这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。': 'Configure the default SRT burn-in style here for the Toolbox “Burn subtitles” feature.',
     'ASS 导出': 'ASS export', 'ASS 导出默认方案': 'Default profile for ASS export', 'ASS 导出使用此方案及其动画。': 'ASS export uses this profile and its animations.',
     'ASS 导出使用此方案及其动画；双语字幕的副字幕样式在该方案的表单中配置。': 'ASS export uses this profile and its animations; for bilingual subtitles, the extension-subtitle style is configured in the profile form.',
@@ -18619,6 +18637,7 @@ export default MawDynamicCaptions;
       this.pointerLineEvent = null;
       this.pointerLineRow = null;
       this.pointerLineMarker = null;
+      this.pointerLineOverrideActive = false;
       this.playheadDragActive = false;
       // Shift+滚轮调振幅的 debounce：滚动期间只累计净步数，停止后一次性重绘
       this.pendingScaleDirection = 0;
@@ -18807,6 +18826,10 @@ export default MawDynamicCaptions;
     }
 
     refreshPointerLine() {
+      if (this.pointerLineOverrideActive) {
+        this.refreshBoundaryDragPointerLine();
+        return;
+      }
       if (!this.pointerLineEvent || !this.pointerLineRow || !this.pointerLineMarker) return;
       if (!this.pointerLineRow.isConnected) return;
       this.showPointerLine(this.pointerLineEvent, this.pointerLineRow, this.pointerLineMarker);
@@ -18815,14 +18838,17 @@ export default MawDynamicCaptions;
     showPointerLine(event, row, marker) {
       if (!row || !marker) return;
       const rect = row.getBoundingClientRect();
-      const rawLeft = clamp(event.clientX - rect.left, 0, rect.width);
+      const contentLeft = rect.left + row.clientLeft;
+      const contentWidth = Math.max(1, row.clientWidth);
+      const rawLeft = clamp(event.clientX - contentLeft, 0, contentWidth);
       const startMs = Number(row.dataset.startMs);
       const endMs = Number(row.dataset.endMs);
       const timeMs = this.pointerTimeMs(event, row);
       const left = Number.isFinite(timeMs) && Number.isFinite(startMs) && Number.isFinite(endMs)
-        ? clamp(((timeMs - startMs) / Math.max(1, endMs - startMs)) * rect.width, 0, rect.width)
+        ? clamp(((timeMs - startMs) / Math.max(1, endMs - startMs)) * contentWidth, 0, contentWidth)
         : rawLeft;
       marker.style.left = `${left}px`;
+      marker.classList.remove('boundary-snapped');
       marker.hidden = false;
     }
 
@@ -18830,11 +18856,118 @@ export default MawDynamicCaptions;
       if (marker) marker.hidden = true;
     }
 
+    isCueBoundaryDrag(drag = this.drag) {
+      return Boolean(drag && [
+        'resize-left', 'resize-right', 'resize-boundary', 'resize-boundary-independent',
+      ].includes(drag.kind));
+    }
+
+    findVisibleWaveformRowAtPoint(clientX, clientY) {
+      const viewport = this.scroll.getBoundingClientRect();
+      const viewportLeft = viewport.left + this.scroll.clientLeft;
+      const viewportTop = viewport.top + this.scroll.clientTop;
+      const viewportRight = viewportLeft + this.scroll.clientWidth;
+      const viewportBottom = viewportTop + this.scroll.clientHeight;
+      if (clientX < viewportLeft || clientX > viewportRight
+          || clientY < viewportTop || clientY > viewportBottom) return null;
+      return this.findVisibleWaveformRowAtY(clientY);
+    }
+
+    findVisibleWaveformRowAtY(clientY) {
+      const viewport = this.scroll.getBoundingClientRect();
+      const viewportTop = viewport.top + this.scroll.clientTop;
+      const viewportBottom = viewportTop + this.scroll.clientHeight;
+      if (clientY < viewportTop || clientY > viewportBottom) return null;
+      return [...this.content.querySelectorAll('.waveform-row')].find((row) => {
+        const rect = row.getBoundingClientRect();
+        return clientY >= rect.top && clientY <= rect.bottom;
+      }) || null;
+    }
+
+    findVisibleWaveformRowForTime(timeMs) {
+      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      // 行末时间由前一行持有，和中缝覆盖层的归属规则一致。
+      const endingRow = rows.find((row) => Math.abs(Number(row.dataset.endMs) - timeMs) < 1);
+      if (endingRow) return endingRow;
+      return rows.find((row) => timeMs >= Number(row.dataset.startMs)
+        && timeMs < Number(row.dataset.endMs))
+        || rows.find((row) => timeMs >= Number(row.dataset.startMs)
+          && timeMs <= Number(row.dataset.endMs))
+        || null;
+    }
+
+    cueBoundaryDragTimeMs(drag = this.drag) {
+      if (!this.isCueBoundaryDrag(drag)) return NaN;
+      const segment = this.options.getSegments(drag.track || 'main')[drag.index];
+      if (!segment) return NaN;
+      const timing = resolveTiming(drag.timing || this.cueTiming());
+      const edge = drag.kind === 'resize-left'
+        ? 'start'
+        : drag.kind === 'resize-boundary-independent'
+          ? drag.edge
+          : 'end';
+      return timing.toMs(edge === 'start' ? timing.getStart(segment) : timing.getEnd(segment));
+    }
+
+    refreshBoundaryDragPointerLine(force = false) {
+      const drag = this.drag;
+      if (!this.isCueBoundaryDrag(drag) || (!drag.started && !force)) return;
+      this.pointerLineOverrideActive = true;
+      const timeMs = this.cueBoundaryDragTimeMs(drag);
+      const row = Number.isFinite(timeMs) ? this.findVisibleWaveformRowForTime(timeMs) : null;
+      this.content.querySelectorAll('.waveform-pointer-line').forEach((marker) => {
+        marker.classList.remove('boundary-snapped');
+        marker.hidden = true;
+      });
+      if (!row) return;
+      const marker = row.querySelector('.waveform-pointer-line');
+      if (!marker) return;
+      const contentWidth = Math.max(1, row.clientWidth);
+      const startMs = Number(row.dataset.startMs);
+      const endMs = Number(row.dataset.endMs);
+      const left = clamp(
+        ((timeMs - startMs) / Math.max(1, endMs - startMs)) * contentWidth,
+        0,
+        contentWidth,
+      );
+      marker.style.left = `${left}px`;
+      marker.classList.add('boundary-snapped');
+      marker.hidden = false;
+    }
+
+    restorePointerLineAfterBoundaryDrag(position = null) {
+      this.pointerLineOverrideActive = false;
+      this.content.querySelectorAll('.waveform-pointer-line').forEach((marker) => {
+        marker.classList.remove('boundary-snapped');
+        marker.hidden = true;
+      });
+      if (!position || !Number.isFinite(position.clientX) || !Number.isFinite(position.clientY)) {
+        this.pointerLineEvent = null;
+        this.pointerLineRow = null;
+        this.pointerLineMarker = null;
+        return;
+      }
+      const row = this.findVisibleWaveformRowAtPoint(position.clientX, position.clientY);
+      const marker = row?.querySelector('.waveform-pointer-line');
+      if (!row || !marker) {
+        this.pointerLineEvent = null;
+        this.pointerLineRow = null;
+        this.pointerLineMarker = null;
+        return;
+      }
+      const pointerEvent = { clientX: position.clientX };
+      this.pointerLineEvent = pointerEvent;
+      this.pointerLineRow = row;
+      this.pointerLineMarker = marker;
+      this.showPointerLine(pointerEvent, row, marker);
+    }
+
     // 暂停时指针在波形上移动即把画面预览到指针时间。与拖动播放头一样按
     // 最新事件合并到每帧最多一次；真正 seek 前重新检查开关与播放状态，
     // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
     scheduleHoverSeekPreview(event, row) {
-      if (this.playheadDragActive || this.options.getHoverSeekPreview?.() !== true) return;
+      if (this.playheadDragActive || this.isCueBoundaryDrag()
+          || this.options.getHoverSeekPreview?.() !== true) return;
       this.hoverSeekPreviewLastEvent = event;
       this.hoverSeekPreviewRow = row;
       if (this.hoverSeekPreviewFrame) return;
@@ -20277,12 +20410,14 @@ export default MawDynamicCaptions;
         this.seekFromPointer(event, row, false, geometry);
       });
       row.addEventListener('pointerenter', (event) => {
+        if (this.pointerLineOverrideActive) return;
         this.pointerLineEvent = { clientX: event.clientX };
         this.pointerLineRow = row;
         this.pointerLineMarker = pointerLine;
         this.showPointerLine(event, row, pointerLine);
       });
       row.addEventListener('pointermove', (event) => {
+        if (this.pointerLineOverrideActive) return;
         this.pointerLineEvent = { clientX: event.clientX };
         this.pointerLineRow = row;
         this.pointerLineMarker = pointerLine;
@@ -20290,6 +20425,7 @@ export default MawDynamicCaptions;
         this.scheduleHoverSeekPreview(event, row);
       });
       row.addEventListener('pointerleave', () => {
+        if (this.pointerLineOverrideActive) return;
         this.hidePointerLine(pointerLine);
         if (this.pointerLineMarker === pointerLine) {
           this.pointerLineEvent = null;
@@ -20410,12 +20546,6 @@ export default MawDynamicCaptions;
 
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
       // 传统模式沿用旧版系统光标（ew-resize）；原创边界光标只在
-      // dual（中缝联动）模式生效。渲染路径必经这里，模式切换后
-      // refreshCueOverlay 也会同步该类。
-      this.pane?.classList.toggle(
-        'boundary-mode-classic',
-        this.options.getAdjacentBoundaryMode?.() !== 'dual',
-      );
       const multiLane = this.options.multiSubtitleVisible?.() === true;
       const segments = this.options.getSegments('main');
       const selected = this.options.getSelection('main');
@@ -20675,9 +20805,9 @@ export default MawDynamicCaptions;
         const leftEndMs = clock.toMs(leftEnd);
         const rightStartMs = clock.toMs(rightStart);
         if (leftEndMs > endMs && rightStartMs > endMs) break;
-        if (Math.abs(leftEnd - rightStart) > clock.snapThreshold) continue;
+        if (leftEnd !== rightStart) continue;
         // 帧模式下 getEnd/getStart 返回帧数，行边界是毫秒；定位前统一换算。
-        const seamMs = (leftEndMs + rightStartMs) / 2;
+        const seamMs = leftEndMs;
         // 每条中缝只由其左侧所在行持有。行末中缝仍要渲染，否则整齐落在
         // 行边界的相接字幕会失去双侧联动拖动区。
         if (seamMs <= startMs || seamMs > endMs) continue;
@@ -20784,6 +20914,17 @@ export default MawDynamicCaptions;
     }
 
     refreshCueBlocks() {
+      const activeSeamDrag = this.drag?.sharedBoundaryZone && this.drag.started ? this.drag : null;
+      if (activeSeamDrag) {
+        const boundaryMs = this.cueBoundaryDragTimeMs(activeSeamDrag);
+        const ownerRow = this.findVisibleWaveformRowForTime(boundaryMs);
+        const ownerRowIndex = ownerRow ? Number(ownerRow.dataset.rowIndex) : NaN;
+        if (Number.isFinite(ownerRowIndex) && ownerRowIndex !== activeSeamDrag.previewRowIndex) {
+          // 中缝换行时只重建字幕覆盖层，保留已绘制的波形 Canvas 与指针捕获。
+          activeSeamDrag.previewRowIndex = ownerRowIndex;
+          this.refreshCueOverlay();
+        }
+      }
       const segments = this.options.getSegments('main');
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const overlaySegments = this.options.getSegments('overlay') || [];
@@ -20834,7 +20975,13 @@ export default MawDynamicCaptions;
           : bindingMarkerTargets.main?.has?.(index) === true);
       });
       this.refreshBoundaryZones();
+      if (activeSeamDrag) {
+        this.content.querySelector(
+          `.waveform-cue-boundary[data-track="${activeSeamDrag.track}"][data-left-idx="${activeSeamDrag.index}"]`,
+        )?.classList.add('dragging');
+      }
       this.positionPlayheads();
+      this.refreshBoundaryDragPointerLine();
     }
 
     // 轻量刷新（拖动中）只重建字幕块，不重建中缝区；这里按当前时间
@@ -20850,14 +20997,14 @@ export default MawDynamicCaptions;
         const clock = this.cueTiming();
         // 独立拖动让两侧脱离贴合后，中缝区立即移除；重新贴合会在下一次
         // 完整重建（refreshCueOverlay）时恢复。
-        if (!left || !right || Math.abs(clock.getEnd(left) - clock.getStart(right)) > clock.snapThreshold) {
+        if (!left || !right || clock.getEnd(left) !== clock.getStart(right)) {
           zone.remove();
           return;
         }
         const startMs = Number(row.dataset.startMs);
         const endMs = Number(row.dataset.endMs);
         const duration = Math.max(1, endMs - startMs);
-        const seamMs = (clock.toMs(clock.getEnd(left)) + clock.toMs(clock.getStart(right))) / 2;
+        const seamMs = clock.toMs(clock.getEnd(left));
         zone.style.left = `${((seamMs - startMs) / duration) * 100}%`;
         zone.classList.toggle('at-row-end', seamMs === endMs);
       });
@@ -21341,8 +21488,8 @@ export default MawDynamicCaptions;
       return startMs + ratio * (endMs - startMs);
     }
 
-    // 边界/整体 Gap 拖动需要允许指针越过当前行的左右边缘；否则多行模式
-    // 会把时间永远钳在本行，无法从一行延伸到前后行。
+    // Gap、字幕块和字幕边界拖动都按起始行的横向位移计算；指针越过行边缘时
+    // 继续延伸时间，避免拖动在本行末尾饱和或进入另一行时发生跳变。
     timeFromPointerUnbounded(event, row, geometry = null) {
       const rect = geometry || row.getBoundingClientRect();
       const ratio = (event.clientX - rect.left) / Math.max(1, rect.width);
@@ -21753,6 +21900,7 @@ export default MawDynamicCaptions;
         pointerId: event.pointerId,
         startClientX: event.clientX,
         currentClientX: event.clientX,
+        lastPointerPosition: { clientX: event.clientX, clientY: event.clientY },
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -21764,7 +21912,7 @@ export default MawDynamicCaptions;
         originals,
         cancelOriginals,
         timing,
-        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
+        startPointerTime: timing.fromMs(this.timeFromPointerUnbounded(event, row, geometry)),
         commitIndices: new Set(dragIndices),
         started: false,
         changed: false,
@@ -21782,7 +21930,12 @@ export default MawDynamicCaptions;
             && !event.shiftKey && !event.ctrlKey && !event.metaKey,
         ),
         seekedOnPointerDown: false,
+        captureTarget: event.currentTarget,
       };
+      if (this.isCueBoundaryDrag()) {
+        this.cancelHoverSeekPreview();
+        this.refreshBoundaryDragPointerLine(true);
+      }
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
       try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
@@ -21830,6 +21983,7 @@ export default MawDynamicCaptions;
         pointerId: event.pointerId,
         startClientX: event.clientX,
         currentClientX: event.clientX,
+        lastPointerPosition: { clientX: event.clientX, clientY: event.clientY },
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -21843,12 +21997,15 @@ export default MawDynamicCaptions;
         originals,
         cancelOriginals: new Map([[movedIndex, snapshotTiming(segments[movedIndex], timing)]]),
         timing,
-        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
+        startPointerTime: timing.fromMs(this.timeFromPointerUnbounded(event, row, geometry)),
         commitIndices: new Set([movedIndex]),
         started: false,
         changed: false,
         independent: true,
+        captureTarget: event.currentTarget,
       };
+      this.cancelHoverSeekPreview();
+      this.refreshBoundaryDragPointerLine(true);
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
       try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
@@ -21900,6 +22057,7 @@ export default MawDynamicCaptions;
         pointerId: event.pointerId,
         startClientX: event.clientX,
         currentClientX: event.clientX,
+        lastPointerPosition: { clientX: event.clientX, clientY: event.clientY },
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -21911,7 +22069,7 @@ export default MawDynamicCaptions;
         originals,
         cancelOriginals: new Map(originals),
         timing,
-        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
+        startPointerTime: timing.fromMs(this.timeFromPointerUnbounded(event, row, geometry)),
         commitIndices: new Set([leftIndex, rightIndex]),
         started: false,
         changed: false,
@@ -21920,10 +22078,16 @@ export default MawDynamicCaptions;
         squeezeOriginals: null,
         altToggleDisabledOnClick: false,
         seekedOnPointerDown: false,
+        sharedBoundaryZone: true,
+        previewRowIndex: Number(row.dataset.rowIndex),
+        captureTarget: this.pane,
       };
+      this.cancelHoverSeekPreview();
+      this.refreshBoundaryDragPointerLine(true);
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
-      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
+      this.pane.classList.add('shared-boundary-drag-active');
+      try { this.pane.setPointerCapture?.(event.pointerId); } catch (_) {}
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
@@ -22176,8 +22340,9 @@ export default MawDynamicCaptions;
         plan = planMoveStep(segments, drag.indices, deltaMs, durationMs, options);
         apply = () => applyMoveStep(segments, drag.indices, deltaMs, durationMs, options);
       } else {
-        const edge = drag.kind === 'resize-left' || drag.kind === 'resize-boundary-independent'
-          ? 'start' : 'end';
+        const edge = drag.kind === 'resize-boundary-independent'
+          ? drag.edge
+          : drag.kind === 'resize-left' ? 'start' : 'end';
         const options = {
           sticky: drag.kind !== 'resize-boundary-independent'
             && !this.isAdjacentCueAdjustmentIndependent(altKey),
@@ -22202,9 +22367,12 @@ export default MawDynamicCaptions;
       drag.changed = true;
       this.captureCueDragOriginals(drag);
       drag.startClientX = drag.currentClientX;
-      drag.startPointerTime = timing.fromMs(
-        this.timeFromPointer({ clientX: drag.currentClientX }, drag.row, drag.geometry),
-      );
+      drag.startPointerTime = timing.fromMs(this.timeFromPointerUnbounded(
+        { clientX: drag.currentClientX },
+        drag.row,
+        drag.geometry,
+      ));
+      if (this.isCueBoundaryDrag(drag)) this.refreshBoundaryDragPointerLine();
       this.scheduleRefreshCueBlocks();
       return true;
     }
@@ -22268,7 +22436,7 @@ export default MawDynamicCaptions;
       this.captureCueDragOriginals(drag);
       drag.startClientX = drag.currentClientX;
       drag.startPointerTime = timing.fromMs(
-        this.timeFromPointer({ clientX: drag.currentClientX }, drag.row, drag.geometry),
+        this.timeFromPointerUnbounded({ clientX: drag.currentClientX }, drag.row, drag.geometry),
       );
       this.scheduleRefreshCueBlocks();
       return true;
@@ -22282,20 +22450,24 @@ export default MawDynamicCaptions;
       }
       const drag = this.drag;
       if (!drag) return false;
+      const pointerPosition = drag.lastPointerPosition;
       window.removeEventListener('pointermove', this._dragMove);
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
+      try { drag.captureTarget?.releasePointerCapture?.(drag.pointerId); } catch (_) {}
       const segments = this.options.getSegments(drag.track || 'main');
       drag.cancelOriginals.forEach((original, idx) => {
         const segment = segments[idx];
         if (!segment) return;
         restoreTiming(segment, original, drag.timing || this.cueTiming());
       });
-      this.content.querySelectorAll('.waveform-cue-block.dragging')
+      this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')
         .forEach((block) => block.classList.remove('dragging'));
       this.pane.classList.remove('cue-drag-active');
+      this.pane.classList.remove('shared-boundary-drag-active');
       this.drag = null;
       this.refreshCueOverlay();
+      if (this.isCueBoundaryDrag(drag)) this.restorePointerLineAfterBoundaryDrag(pointerPosition);
       this.setStatus('已取消字幕调整');
       return true;
     }
@@ -22706,8 +22878,17 @@ export default MawDynamicCaptions;
       if (!drag || event.pointerId !== drag.pointerId) return;
       event.preventDefault();
       drag.currentClientX = event.clientX;
+      drag.lastPointerPosition = { clientX: event.clientX, clientY: event.clientY };
       const timing = drag.timing || this.cueTiming();
-      const pointerMs = this.timeFromPointer(event, drag.row, drag.geometry);
+      if (drag.sharedBoundaryZone) {
+        const pointerRow = this.findVisibleWaveformRowAtY(event.clientY);
+        // 只有指针落在当前可见波形行内才更新；行间空白和可视区外沿用最后
+        // 一个有效位置，不让捕获到 pane 的指针事件把中缝带出时间轴范围。
+        if (!pointerRow) return;
+        // 纵向进入另一行只改变可操作区域，不改变时间；时间始终按起始行
+        // 的横向位移计算；横向越过波形视口边缘也继续移动，不发生整行吸附。
+      }
+      const pointerMs = this.timeFromPointerUnbounded(event, drag.row, drag.geometry);
       const currentPointerTime = timing.fromMs(pointerMs);
       const deltaTime = currentPointerTime - drag.startPointerTime;
       const hasMeaningfulMovement = timing.unit === 'frames'
@@ -22736,6 +22917,7 @@ export default MawDynamicCaptions;
       else this.applyResizeDrag(drag, deltaTime, drag.independent);
       this.options.syncBoundCueDrag?.(drag);
       drag.changed = true;
+      if (this.isCueBoundaryDrag(drag)) this.refreshBoundaryDragPointerLine();
       this.scheduleRefreshCueBlocks();
     }
 
@@ -23018,12 +23200,19 @@ export default MawDynamicCaptions;
     endCueDrag(event) {
       const drag = this.drag;
       if (!drag || event.pointerId !== drag.pointerId) return;
+      const restorePointerLine = () => {
+        if (this.isCueBoundaryDrag(drag)) {
+          this.restorePointerLineAfterBoundaryDrag({ clientX: event.clientX, clientY: event.clientY });
+        }
+      };
       window.removeEventListener('pointermove', this._dragMove);
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
+      try { drag.captureTarget?.releasePointerCapture?.(drag.pointerId); } catch (_) {}
       this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')
         .forEach((block) => block.classList.remove('dragging'));
       this.pane.classList.remove('cue-drag-active');
+      this.pane.classList.remove('shared-boundary-drag-active');
       this.drag = null;
       if (event.type === 'pointercancel') {
         drag.cancelOriginals.forEach((original, idx) => {
@@ -23032,6 +23221,7 @@ export default MawDynamicCaptions;
           restoreTiming(segment, original, drag.timing || this.cueTiming());
         });
         this.refreshCueOverlay();
+        restorePointerLine();
         return;
       }
       if (!drag.changed) {
@@ -23040,10 +23230,12 @@ export default MawDynamicCaptions;
         if (drag.shiftRangeSelect) {
           if (drag.track === 'overlay') this.options.selectOverlayRange?.(drag.index);
           else this.options.selectCueRange?.(drag.index);
+          restorePointerLine();
           return;
         }
         if (drag.altToggleDisabledOnClick) {
           this.options.toggleDisabled?.([drag.index], drag.track || 'main');
+          restorePointerLine();
           return;
         }
         // select-only 只选中；两个跳转模式按设置跳到字幕开头或鼠标位置。
@@ -23051,6 +23243,7 @@ export default MawDynamicCaptions;
         if (clickBehavior !== 'select-only' && !drag.seekedOnPointerDown) {
           this.seekFromCue(event, drag.row, drag.index, clickBehavior === 'select-and-play', drag.geometry, drag.track);
         }
+        restorePointerLine();
         return;
       }
       const commitIndices = [...(drag.commitIndices || drag.indices)];
@@ -23058,6 +23251,7 @@ export default MawDynamicCaptions;
       commitIndices.forEach((idx) => { if (segments[idx]) segments[idx]._dirty = true; });
       this.options.onCommitEdit(commitIndices, drag.kind, drag.track || 'main', drag.independent === true);
       this.refreshCueOverlay();
+      restorePointerLine();
     }
 
     updatePlayback(allowFollow = true) {
@@ -36277,6 +36471,11 @@ document.addEventListener('keydown', (e) => {
     if (stickerPreviewModal.classList.contains('show')) return;
     if (projectMediaModal.classList.contains('show')) return;
     if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+    if (waveformEditor.cancelCueDrag()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (waveformEditor.getTool() !== 'razor') return;
     e.preventDefault();
     waveformEditor.setTool('select');

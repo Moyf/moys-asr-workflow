@@ -237,26 +237,26 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(len(gui_config.MODELS), 4)
         model = gui_config.MODELS[0]
 
-        self.assertEqual(model.id, "qwen-audio-3.1-asr-flash-filetrans")
+        self.assertEqual(model.id, "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(model.env_key, "DASHSCOPE_API_KEY")
         self.assertTrue(model.label)
         self.assertTrue(model.supports_speaker)
         self.assertTrue(model.supports_context)
         self.assertTrue(model.supports_hotwords)
         self.assertTrue(model.supports_vocabulary)
-        self.assertTrue(model.supports_keep_dialect)
+        self.assertFalse(model.supports_keep_dialect)
         self.assertIn("热词", model.note)
         self.assertIn(("yue", "粤语 / Cantonese"), model.languages)
-        model_30 = gui_config.MODELS[1]
-        self.assertEqual(model_30.id, "qwen-audio-3.0-asr-flash-filetrans")
-        self.assertEqual(model_30.env_key, "DASHSCOPE_API_KEY")
-        self.assertTrue(model_30.supports_speaker)
-        self.assertTrue(model_30.supports_context)
-        self.assertTrue(model_30.supports_hotwords)
-        self.assertTrue(model_30.supports_vocabulary)
-        self.assertFalse(model_30.supports_keep_dialect)
-        self.assertEqual(model_30.label, "qwen-audio-3.0-asr（热词 / 上下文）")
-        self.assertIn(("yue", "粤语 / Cantonese"), model_30.languages)
+        model_31 = gui_config.MODELS[1]
+        self.assertEqual(model_31.id, "qwen-audio-3.1-asr-flash-filetrans")
+        self.assertEqual(model_31.env_key, "DASHSCOPE_API_KEY")
+        self.assertTrue(model_31.supports_speaker)
+        self.assertTrue(model_31.supports_context)
+        self.assertTrue(model_31.supports_hotwords)
+        self.assertTrue(model_31.supports_vocabulary)
+        self.assertTrue(model_31.supports_keep_dialect)
+        self.assertEqual(model_31.label, "qwen-audio-3.1-asr（方言 / 热词 / 上下文）")
+        self.assertIn(("yue", "粤语 / Cantonese"), model_31.languages)
         funasr = gui_config.MODELS[2]
         self.assertEqual(funasr.id, "fun-asr")
         self.assertEqual(funasr.env_key, "DASHSCOPE_API_KEY")
@@ -277,14 +277,16 @@ class GuiConfigTests(unittest.TestCase):
         provider = gui_config.PROVIDERS[0]
 
         self.assertEqual(provider.id, "qwen")
+        self.assertEqual(provider.label, "阿里云百炼（千问）")
         self.assertEqual(provider.key_url, "https://platform.qianwenai.com/home/")
-        self.assertEqual(provider.models[0].id, "qwen-audio-3.1-asr-flash-filetrans")
+        self.assertEqual(provider.key_label, "千问AI平台")
+        self.assertEqual(provider.models[0].id, "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(provider.regions[0][0], "beijing")
         self.assertEqual(provider.languages[0][0], "")
         self.assertTrue(provider.supports_speaker)
         self.assertEqual([model.id for model in provider.models], [
-            "qwen-audio-3.1-asr-flash-filetrans",
             "qwen-audio-3.0-asr-flash-filetrans",
+            "qwen-audio-3.1-asr-flash-filetrans",
             "fun-asr",
             "qwen3-asr-flash-filetrans",
         ])
@@ -292,7 +294,7 @@ class GuiConfigTests(unittest.TestCase):
         self.assertTrue(provider.models[1].supports_speaker)
         self.assertTrue(provider.models[2].supports_speaker)
         self.assertFalse(provider.models[3].supports_speaker)
-        self.assertIn("0.00022", provider.models[1].price_note)
+        self.assertIn("0.00022", provider.models[0].price_note)
 
     def test_provider_registry_contains_soniox_with_speaker_support(self) -> None:
         """Given the provider registry, When inspected, Then Soniox is registered with speaker support and no regions."""
@@ -601,7 +603,7 @@ class GuiConfigTests(unittest.TestCase):
         model = gui_config.model_by_label("stt-async-v5")
 
         self.assertEqual(model.env_key, "SONIOX_API_KEY")
-        self.assertEqual(gui_config.model_by_label("no-such-model").id, "qwen-audio-3.1-asr-flash-filetrans")
+        self.assertEqual(gui_config.model_by_label("no-such-model").id, "qwen-audio-3.0-asr-flash-filetrans")
 
     def test_provider_for_model_maps_soniox_model(self) -> None:
         """Given a Soniox model id, When provider resolved, Then it maps to the soniox provider."""

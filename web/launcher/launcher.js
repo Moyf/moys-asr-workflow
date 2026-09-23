@@ -272,6 +272,7 @@
     audio_track_sample_rate: "{rate} kHz",
     audio_track_id: "ID {id}"
   });
+  Object.assign(STRINGS.zh, { toolbox_ffmpeg_log: "FFmpeg 日志", toolbox_ffmpeg_waiting: "FFmpeg 已启动，等待最新进度……" });
   Object.assign(STRINGS.en, {
     audio_track: "Audio track",
     audio_track_hint: "Multiple audio tracks were found. Choose the track for transcription and waveform generation.",
@@ -283,11 +284,12 @@
     audio_track_sample_rate: "{rate} kHz",
     audio_track_id: "ID {id}"
   });
+  Object.assign(STRINGS.en, { toolbox_ffmpeg_log: "FFmpeg log", toolbox_ffmpeg_waiting: "FFmpeg started; waiting for the latest progress…" });
   Object.assign(STRINGS.zh, {
-    toolbox_burn_subtitle: "压制字幕", toolbox_burn_subtitle_hint: "将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。", toolbox_burn_subtitle_input: "字幕文件", toolbox_burn_subtitle_placeholder: "选择或拖入 .srt / .ass / .ssa 字幕", toolbox_burn_subtitle_invalid: "请选择 .srt、.ass 或 .ssa 字幕文件。", toolbox_burn_done: "字幕压制完成，已切换到新媒体：", toolbox_extract_audio: "提取音频", toolbox_extract_audio_hint: "从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。", toolbox_audio_track: "音轨", toolbox_audio_track_choose: "先选择媒体，MAW 会读取可用音轨。", toolbox_audio_tracks_reading: "正在读取音轨……", toolbox_audio_tracks_found: "已找到 {count} 条音轨。", toolbox_audio_tracks_none: "没有检测到可用音轨。", toolbox_audio_track_item: "音轨", toolbox_audio_track_default: "默认", toolbox_audio_track_invalid: "所选音轨无效，请重新选择。", toolbox_extract_audio_done: "音频提取完成，已切换到新媒体：", toolbox_utility_video_required: "压制字幕需要包含视频画面的媒体文件。", toolbox_status_burning: "正在压制字幕并重新编码视频……", toolbox_status_extracting: "正在提取音频……", toolbox_status_cancelling: "正在停止媒体处理……"
+    toolbox_burn_subtitle: "烧录字幕", toolbox_burn_subtitle_hint: "将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。", toolbox_burn_subtitle_input: "字幕文件", toolbox_burn_subtitle_placeholder: "选择或拖入 .srt / .ass / .ssa 字幕", toolbox_burn_subtitle_input_hint: "默认跟随当前的 SRT 输出，也支持手动选择 ASS / SSA。", toolbox_burn_subtitle_invalid: "请选择 .srt、.ass 或 .ssa 字幕文件。", toolbox_burn_done: "字幕烧录完成，已切换到新媒体：", toolbox_extract_audio: "提取音频", toolbox_extract_audio_hint: "从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。", toolbox_audio_track: "音轨", toolbox_audio_track_choose: "先选择媒体，MAW 会读取可用音轨。", toolbox_audio_tracks_reading: "正在读取音轨……", toolbox_audio_tracks_found: "已找到 {count} 条音轨。", toolbox_audio_tracks_none: "没有检测到可用音轨。", toolbox_audio_track_item: "音轨", toolbox_audio_track_default: "默认", toolbox_audio_track_invalid: "所选音轨无效，请重新选择。", toolbox_extract_audio_done: "音频提取完成，已切换到新媒体：", toolbox_utility_video_required: "烧录字幕需要包含视频画面的媒体文件。", toolbox_burn_notice: "SRT 字幕会使用默认 SRT 烧录样式（可在编辑器中配置）。更推荐在编辑器中预览并编辑 ASS 字幕样式后，导出 ASS 字幕格式再进行烧录。", toolbox_status_burning: "正在烧录字幕并重新编码视频……", toolbox_status_extracting: "正在提取音频……", toolbox_stop_media: "停止媒体处理", toolbox_status_cancelling: "正在停止媒体处理……"
   });
   Object.assign(STRINGS.en, {
-    toolbox_burn_subtitle: "Burn subtitles", toolbox_burn_subtitle_hint: "Render SRT / ASS subtitles into a new video file. Video is re-encoded and the source is kept unchanged.", toolbox_burn_subtitle_input: "Subtitle file", toolbox_burn_subtitle_placeholder: "Choose or drop an .srt / .ass / .ssa subtitle", toolbox_burn_subtitle_invalid: "Choose an .srt, .ass, or .ssa subtitle file.", toolbox_burn_done: "Subtitles burned; switched to the new media:", toolbox_extract_audio: "Extract audio", toolbox_extract_audio_hint: "Extract one audio track from video or audio into a new AAC/M4A file; the source is kept unchanged.", toolbox_audio_track: "Audio track", toolbox_audio_track_choose: "Choose media first; MAW will read its available tracks.", toolbox_audio_tracks_reading: "Reading audio tracks…", toolbox_audio_tracks_found: "Found {count} audio track(s).", toolbox_audio_tracks_none: "No usable audio tracks were found.", toolbox_audio_track_item: "Track", toolbox_audio_track_default: "default", toolbox_audio_track_invalid: "The selected audio track is invalid. Choose it again.", toolbox_extract_audio_done: "Audio extracted; switched to the new media:", toolbox_utility_video_required: "Burning subtitles requires media with a video stream.", toolbox_status_burning: "Burning subtitles and re-encoding the video…", toolbox_status_extracting: "Extracting audio…", toolbox_status_cancelling: "Stopping media operation…"
+    toolbox_burn_subtitle: "Burn subtitles", toolbox_burn_subtitle_hint: "Render SRT / ASS subtitles into a new video file. Video is re-encoded and the source is kept unchanged.", toolbox_burn_subtitle_input: "Subtitle file", toolbox_burn_subtitle_placeholder: "Choose or drop an .srt / .ass / .ssa subtitle", toolbox_burn_subtitle_input_hint: "Follows the current SRT output by default; ASS / SSA can be chosen manually.", toolbox_burn_subtitle_invalid: "Choose an .srt, .ass, or .ssa subtitle file.", toolbox_burn_done: "Subtitles burned; switched to the new media:", toolbox_extract_audio: "Extract audio", toolbox_extract_audio_hint: "Extract one audio track from video or audio into a new AAC/M4A file; the source is kept unchanged.", toolbox_audio_track: "Audio track", toolbox_audio_track_choose: "Choose media first; MAW will read its available tracks.", toolbox_audio_tracks_reading: "Reading audio tracks…", toolbox_audio_tracks_found: "Found {count} audio track(s).", toolbox_audio_tracks_none: "No usable audio tracks were found.", toolbox_audio_track_item: "Track", toolbox_audio_track_default: "default", toolbox_audio_track_invalid: "The selected audio track is invalid. Choose it again.", toolbox_extract_audio_done: "Audio extracted; switched to the new media:", toolbox_utility_video_required: "Burning subtitles requires media with a video stream.", toolbox_burn_notice: "SRT subtitles use the default SRT burn style (configurable in the editor). For best results, preview and edit the ASS subtitle style in the editor, export ASS subtitles, then burn them into the video.", toolbox_status_burning: "Burning subtitles and re-encoding the video…", toolbox_status_extracting: "Extracting audio…", toolbox_stop_media: "Stop media operation", toolbox_status_cancelling: "Stopping media operation…"
   });
   Object.assign(STRINGS.zh, {
     toolbox_burn_subtitle_style_hint: "选择 SRT 字幕时，会使用 ASS 样式库中的「SRT 烧录样式」对应的样式；选择 ASS 字幕时，使用 ASS 字幕自身的样式。",
@@ -296,10 +298,28 @@
     toolbox_burn_subtitle_style_hint: "SRT subtitles are burned with the style assigned as the SRT burn style in the ASS style library; ASS / SSA subtitles keep their own embedded styles.",
   });
   Object.assign(STRINGS.zh, {
-    toolbox_burn_crf: "画质 CRF", toolbox_burn_crf_hint: "数值越小画质越高、文件越大；常用 16–23，默认 18。", toolbox_burn_crf_invalid: "CRF 需要是 0–51 之间的整数。", toolbox_burn_preset: "编码预设", toolbox_burn_preset_hint: "预设越慢压缩率越高、耗时越长；一般保持 medium。", toolbox_burn_audio_bitrate: "音频码率", toolbox_burn_audio_bitrate_hint: "码率越高音质越好、文件越大；默认 192k。", toolbox_burn_save_defaults: "保存为默认参数", toolbox_burn_settings_saved: "已保存为默认参数，之后压制会自动预填。"
+    toolbox_burn_crf: "画质 CRF", toolbox_burn_crf_hint: "数值越小画质越高、文件越大；常用 16–23，默认 18。", toolbox_burn_crf_invalid: "CRF 需要是 0–51 之间的整数。", toolbox_burn_preset: "编码预设", toolbox_burn_preset_hint: "仅 CPU 编码使用：越慢压缩率越高、耗时越长；一般保持 medium。", toolbox_burn_audio_bitrate: "音频码率", toolbox_burn_audio_bitrate_hint: "码率越高音质越好、文件越大；默认 192k。", toolbox_burn_save_defaults: "保存为默认参数", toolbox_burn_settings_saved: "已保存为默认参数，之后烧录会自动预填。"
   });
   Object.assign(STRINGS.en, {
-    toolbox_burn_crf: "Quality CRF", toolbox_burn_crf_hint: "Lower CRF means higher quality and larger files; 16–23 is common, default 18.", toolbox_burn_crf_invalid: "CRF must be an integer between 0 and 51.", toolbox_burn_preset: "Encoder preset", toolbox_burn_preset_hint: "Slower presets compress better but take longer; keep medium in most cases.", toolbox_burn_audio_bitrate: "Audio bitrate", toolbox_burn_audio_bitrate_hint: "Higher bitrate sounds better and grows the file; default 192k.", toolbox_burn_save_defaults: "Save as defaults", toolbox_burn_settings_saved: "Saved as defaults; future runs will prefill these."
+    toolbox_burn_crf: "Quality CRF", toolbox_burn_crf_hint: "Lower CRF means higher quality and larger files; 16–23 is common, default 18.", toolbox_burn_crf_invalid: "CRF must be an integer between 0 and 51.", toolbox_burn_preset: "Encoder preset", toolbox_burn_preset_hint: "Applies to CPU encoding only: slower presets compress better but take longer; keep medium in most cases.", toolbox_burn_audio_bitrate: "Audio bitrate", toolbox_burn_audio_bitrate_hint: "Higher bitrate sounds better and grows the file; default 192k.", toolbox_burn_save_defaults: "Save as defaults", toolbox_burn_settings_saved: "Saved as defaults; future runs will prefill these."
+  });
+  Object.assign(STRINGS.zh, {
+    toolbox_burn_video_encoder: "视频编码器",
+    toolbox_burn_video_encoder_hint: "自动模式会按可用的硬件编码器尝试；硬件不可用时回退 CPU。画质 CRF 对所有编码器生效。",
+    toolbox_video_encoder_auto: "自动（优先硬件）",
+    toolbox_video_encoder_cpu: "CPU（libx264）",
+    toolbox_video_encoder_nvenc: "NVIDIA NVENC",
+    toolbox_video_encoder_amf: "AMD AMF",
+    toolbox_video_encoder_qsv: "Intel QSV",
+  });
+  Object.assign(STRINGS.en, {
+    toolbox_burn_video_encoder: "Video encoder",
+    toolbox_burn_video_encoder_hint: "Automatic mode tries available hardware encoders first, then falls back to the CPU. The quality CRF applies to all encoders.",
+    toolbox_video_encoder_auto: "Automatic (prefer hardware)",
+    toolbox_video_encoder_cpu: "CPU (libx264)",
+    toolbox_video_encoder_nvenc: "NVIDIA NVENC",
+    toolbox_video_encoder_amf: "AMD AMF",
+    toolbox_video_encoder_qsv: "Intel QSV",
   });
   Object.assign(STRINGS.zh, {
     test_run: "快速测试",
@@ -378,6 +398,7 @@
     batch_error_details: "查看错误",
     batch_open_project: "打开工程",
     batch_open_folder: "打开文件夹",
+    batch_open_video: "打开烧录视频",
     batch_remove: "移除",
   });
   Object.assign(STRINGS.en, {
@@ -425,6 +446,7 @@
     batch_error_details: "View error",
     batch_open_project: "Open project",
     batch_open_folder: "Open folder",
+    batch_open_video: "Open burned video",
     batch_remove: "Remove",
   });
   Object.assign(STRINGS.zh, {
@@ -444,6 +466,7 @@
     auto_step_resegment_title: "对于长字幕谨慎开启，会很慢而且可能中断。",
     auto_step_ocr: "OCR 字幕去重",
     auto_step_translate: "翻译",
+    auto_step_burn: "烧录字幕",
     auto_translate_target: "翻译目标",
     auto_translate_zh: "中文",
     auto_translate_en: "英文",
@@ -578,6 +601,7 @@
     auto_step_resegment_title: "Use with caution on long subtitles: it is slow and may be interrupted.",
     auto_step_ocr: "OCR subtitle dedup",
     auto_step_translate: "Translate",
+    auto_step_burn: "Burn subtitles",
     auto_translate_target: "Translation target",
     auto_translate_zh: "Chinese",
     auto_translate_en: "English",
@@ -1471,7 +1495,7 @@
         perVideoSubfolder: saved.perVideoSubfolder,
         attachModelName: saved.attachModelName,
         notifyOnComplete: saved.notifyOnComplete === true,
-        appVersion: "1.6.0",
+        appVersion: "1.6.1",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
@@ -1492,7 +1516,8 @@
         providers: [
           {
             id: "qwen",
-            label: "阿里云百炼（QwenASR / FunASR）【推荐】",
+            label: "阿里云百炼（千问）",
+            keyButtonLabel: "千问AI平台",
             keyUrl: "https://platform.qianwenai.com/home/",
             apiKey: saved.apiKey,
             maskedApiKey: saved.apiKey ? "sk-…demo" : "",
@@ -1500,8 +1525,8 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "yue", "en"],
             models: [
-              { id: "qwen-audio-3.1-asr-flash-filetrans", label: "qwen-audio-3.1-asr（方言 / 热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离；可选保留方言表达。", priceNote: "阿里云百炼参考价：按 Token 计费，输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, supportsKeepDialect: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
               { id: "qwen-audio-3.0-asr-flash-filetrans", label: "qwen-audio-3.0-asr（热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离。", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
+              { id: "qwen-audio-3.1-asr-flash-filetrans", label: "qwen-audio-3.1-asr（方言 / 热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离；可选保留方言表达。", priceNote: "阿里云百炼参考价：按 Token 计费，输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, supportsKeepDialect: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
               { id: "fun-asr", label: "fun-asr（支持说话人）", envKey: "DASHSCOPE_API_KEY", note: "支持说话人分离与词级时间戳。", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
               { id: "qwen3-asr-flash-filetrans", label: "qwen3-asr（准确率更高）", envKey: "DASHSCOPE_API_KEY", note: "", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
             ],
@@ -1596,7 +1621,7 @@
             supportsLanguage: false,
             note: "非官方免费接口：无需 API Key，仅支持中文，单文件上限 2 小时；接口可能随时变更、失效或触发限流，请勿高频调用。重要或批量任务建议使用上方正式供应商。",
             commonLanguages: [],
-            models: [{ id: "bcut-asr", label: "必剪 ASR（免 Key / 仅中文）", envKey: "", note: "逐字毫秒时间戳；无需 API Key。", supportsSpeaker: false, languages: [{ id: "", label: "中文（自动识别）" }] }],
+            models: [{ id: "bcut-asr", label: "必剪（免 Key / 仅中文）", envKey: "", note: "逐字毫秒时间戳；无需 API Key。", supportsSpeaker: false, languages: [{ id: "", label: "中文（自动识别）" }] }],
             regions: [],
             languages: [{ id: "", label: "中文（自动识别）" }]
           }
@@ -1738,7 +1763,7 @@
   }
   // 供应商 / 模型配置的 label 与 note 由后端（maw/gui_config.py）以中文下发；
   // 英文界面按稳定 id 映射为英文，id 未收录时回退后端原文。
-  const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (QwenASR / FunASR) [Recommended]", soniox: "Soniox STT (overseas / minority languages)", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI-format compatible API", local: "Local models (Beta)", doubao: "Volcano Engine (Doubao)", bcut: "Bcut (unofficial / free / experimental)" };
+  const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (Qwen)", soniox: "Soniox STT (overseas / minority languages)", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI-format compatible API", local: "Local models (Beta)", doubao: "Volcano Engine (Doubao)", bcut: "Bcut (unofficial / free / experimental)" };
   const PROVIDER_NOTES_EN = {
     openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models. For other relays, choose Custom and enter the exact model name they provide. The API must return segments or words timestamps.",
     tencent: "Requires TENCENT_SECRET_ID and TENCENT_SECRET_KEY; use a COS URL for media larger than 5 MB.",
@@ -1766,7 +1791,7 @@
     "firered-asr2-ctc-local": "FireRedASR2",
     "moss-transcribe-diarize-local": "MOSS Transcribe-Diarize 0.9B",
     "whisper-large-v3-local": "Faster-Whisper large-v3 (experimental)",
-    "bcut-asr": "Bcut ASR (no key / Chinese only)",
+    "bcut-asr": "Bcut (no key / Chinese only)",
   };
   const MODEL_NOTES_EN = {
     "qwen-audio-3.1-asr-flash-filetrans": "Supports instant hotwords, context, and speaker diarization; optional dialect preservation.",
@@ -1845,16 +1870,35 @@
     const value = String(text || "");
     return /参考价|reference price/iu.test(value) ? `🪙 ${value}` : value;
   }
-  function modelNoteText(modelItem) {
+  function modelNoteParts(modelItem) {
     const openRouterNote = modelItem.openrouterNote || "";
     const baseUrl = $("openaiBaseUrl")?.value || state.config?.openaiBaseUrl;
     const isOpenai = isOpenAiProvider();
     const isOpenRouter = isOpenai && isOpenRouterBaseUrl(baseUrl);
-    if (isOpenRouter && openRouterNote) return withPricePrefix(state.lang === "en" ? (MODEL_OPENROUTER_NOTES_EN[modelItem.id] || openRouterNote) : openRouterNote);
+    if (isOpenRouter && openRouterNote) return { note: "", price: withPricePrefix(state.lang === "en" ? (MODEL_OPENROUTER_NOTES_EN[modelItem.id] || openRouterNote) : openRouterNote) };
     const note = state.lang === "en" ? (MODEL_NOTES_EN[modelItem.id] || modelItem.note) : modelItem.note;
-    if (isOpenai && !isOpenAiOfficialBaseUrl(baseUrl)) return note;
+    if (isOpenai && !isOpenAiOfficialBaseUrl(baseUrl)) return { note, price: "" };
     const priceNote = state.lang === "en" ? (MODEL_PRICING_NOTES_EN[modelItem.id] || modelItem.priceNote) : modelItem.priceNote;
-    return [note, withPricePrefix(priceNote)].filter(Boolean).join("\n");
+    return { note, price: withPricePrefix(priceNote) };
+  }
+  function modelNoteText(modelItem) { const parts = modelNoteParts(modelItem); return [parts.note, parts.price].filter(Boolean).join("\n"); }
+  function renderModelNote() {
+    const el = $("modelNote");
+    if (!el) return;
+    const parts = modelNoteParts(selectedModel());
+    el.replaceChildren();
+    if (parts.note) {
+      const noteElement = document.createElement("span");
+      noteElement.className = "model-note-text";
+      noteElement.textContent = parts.note;
+      el.append(noteElement);
+    }
+    if (parts.price) {
+      const priceElement = document.createElement("span");
+      priceElement.className = "price-note";
+      priceElement.textContent = parts.price;
+      el.append(priceElement);
+    }
   }
   function llmProviderLabel(providerId) {
     const id = String(providerId || "").trim();
@@ -2285,7 +2329,7 @@
     if (el.multiple) Array.from(el.options).forEach((option) => { option.selected = selected.includes(option.value); });
     else el.value = selected[0] || "";
     $("providerNote").textContent = providerNoteText(current);
-    $("modelNote").textContent = modelNoteText(selectedModel());
+    renderModelNote();
   }
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
@@ -2312,7 +2356,7 @@
   function renderKeyHint() {
     const current = provider();
     const isOpenai = current?.id === "openai";
-    $("openKeyUrl").textContent = isOpenai ? t("openai_official") : (current?.label || "");
+    $("openKeyUrl").textContent = isOpenai ? t("openai_official") : (current?.keyButtonLabel || current?.label || "");
     $("openKeyHintOr")?.classList.toggle("hidden", !isOpenai);
     const openRouterLink = $("openRouterKeyUrl");
     if (openRouterLink) {
@@ -3101,7 +3145,7 @@
   function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langZh").classList.toggle("active", state.lang === "zh"); $("langEn").classList.toggle("active", state.lang === "en"); $("demoBadge").textContent = t("demo_mode"); renderAudioTracks(); if (state.audioTracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint"); renderKeyHint(); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); refillSelectLabels(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); window.MAWLauncher?.onLanguageChanged?.(); }
   async function setLanguage(language) { if (language !== "zh" && language !== "en") return; state.lang = language; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (result.ok) state.config.guiLang = language; else applyErrorResult(result); }
   function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelRuntimeHintSection").classList.toggle("hidden", local); $("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen"); $("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen"); $("localModelPanel").classList.toggle("hidden", !local); $("localRuntimeCheckField").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); $("providerNote").textContent = providerNoteText(current); $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); renderKeyStatus(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) { void refreshLocalModels(); void refreshAlignmentModels(); } } }
-  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); $("modelNote").textContent = modelNoteText(model); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); syncFireRedPunc(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
+  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); renderModelNote(); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); syncFireRedPunc(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
   function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = presetLanguage !== null ? presetLanguage.split(",") : previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
   function languageValue() { const el = $("language"); if (el.multiple) return Array.from(el.selectedOptions).map((o) => o.value).filter(Boolean).join(","); return el.value; }
   function syncAdvancedParamsGroup() { const group = $("advancedParamsGroup"); const hasVisibleField = Array.from(group.querySelectorAll(".field")).some((field) => !field.classList.contains("hidden")); group.classList.toggle("hidden", !hasVisibleField && $("dashscopeRegionHint").classList.contains("hidden")); }
@@ -3701,6 +3745,7 @@
     if (event.type === "postprocess_status") window.MAWLauncher?.onPostprocessStatus?.(event);
     if (event.type === "postprocess_stream") window.MAWLauncher?.onPostprocessStream?.(event);
     if (event.type === "postprocess_pipeline") window.MAWLauncher?.onPostprocessPipeline?.(event);
+    if (event.type === "media_tool_log") window.MAWLauncher?.onMediaToolLog?.(event);
     if (event.type === "modelProgress") {
       state.localProgressMessage = event.message || "";
       state.localProgress = event;
@@ -3883,6 +3928,7 @@
       $("openFolder").classList.remove("hidden");
       syncHtmlMenu();
       appendLog(t("done"));
+      if (event.result?.videoPath) appendLog(`${t("toolbox_burn_done")}\n${event.result.videoPath}`);
       void checkExistingServer(t("done"));
     }
     if (event.type === "dropMedia" && !state.dropTarget && window.MAWLauncher?.onBatchDrop?.(event.path || "")) return;
@@ -3924,7 +3970,7 @@
   $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });
   $("pickJson").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "json" }); if (result.ok) setJsonPath(result.path); });
   $("jsonPath").addEventListener("input", () => setError("jsonPath", "")); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) setServerMedia(result.path || ""); });
-  ["apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") { $("modelNote").textContent = modelNoteText(selectedModel()); syncOpenAiAdvancedOptions(selectedModel()); } if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { stopServerStatusMonitor(); serverRestartProjectPath = null; state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") { $("modelNote").textContent = modelNoteText(selectedModel()); syncOpenAiAdvancedOptions(selectedModel()); } if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
+  ["apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { stopServerStatusMonitor(); serverRestartProjectPath = null; state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
   $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
   $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
   $("openRouterKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().secondaryKeyUrl || "https://openrouter.ai/keys" }));

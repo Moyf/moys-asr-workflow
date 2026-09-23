@@ -1638,6 +1638,7 @@
       this.pointerLineEvent = null;
       this.pointerLineRow = null;
       this.pointerLineMarker = null;
+      this.pointerLineOverrideActive = false;
       this.playheadDragActive = false;
       // Shift+滚轮调振幅的 debounce：滚动期间只累计净步数，停止后一次性重绘
       this.pendingScaleDirection = 0;
@@ -1826,6 +1827,10 @@
     }
 
     refreshPointerLine() {
+      if (this.pointerLineOverrideActive) {
+        this.refreshBoundaryDragPointerLine();
+        return;
+      }
       if (!this.pointerLineEvent || !this.pointerLineRow || !this.pointerLineMarker) return;
       if (!this.pointerLineRow.isConnected) return;
       this.showPointerLine(this.pointerLineEvent, this.pointerLineRow, this.pointerLineMarker);
@@ -1834,14 +1839,17 @@
     showPointerLine(event, row, marker) {
       if (!row || !marker) return;
       const rect = row.getBoundingClientRect();
-      const rawLeft = clamp(event.clientX - rect.left, 0, rect.width);
+      const contentLeft = rect.left + row.clientLeft;
+      const contentWidth = Math.max(1, row.clientWidth);
+      const rawLeft = clamp(event.clientX - contentLeft, 0, contentWidth);
       const startMs = Number(row.dataset.startMs);
       const endMs = Number(row.dataset.endMs);
       const timeMs = this.pointerTimeMs(event, row);
       const left = Number.isFinite(timeMs) && Number.isFinite(startMs) && Number.isFinite(endMs)
-        ? clamp(((timeMs - startMs) / Math.max(1, endMs - startMs)) * rect.width, 0, rect.width)
+        ? clamp(((timeMs - startMs) / Math.max(1, endMs - startMs)) * contentWidth, 0, contentWidth)
         : rawLeft;
       marker.style.left = `${left}px`;
+      marker.classList.remove('boundary-snapped');
       marker.hidden = false;
     }
 
@@ -1849,11 +1857,118 @@
       if (marker) marker.hidden = true;
     }
 
+    isCueBoundaryDrag(drag = this.drag) {
+      return Boolean(drag && [
+        'resize-left', 'resize-right', 'resize-boundary', 'resize-boundary-independent',
+      ].includes(drag.kind));
+    }
+
+    findVisibleWaveformRowAtPoint(clientX, clientY) {
+      const viewport = this.scroll.getBoundingClientRect();
+      const viewportLeft = viewport.left + this.scroll.clientLeft;
+      const viewportTop = viewport.top + this.scroll.clientTop;
+      const viewportRight = viewportLeft + this.scroll.clientWidth;
+      const viewportBottom = viewportTop + this.scroll.clientHeight;
+      if (clientX < viewportLeft || clientX > viewportRight
+          || clientY < viewportTop || clientY > viewportBottom) return null;
+      return this.findVisibleWaveformRowAtY(clientY);
+    }
+
+    findVisibleWaveformRowAtY(clientY) {
+      const viewport = this.scroll.getBoundingClientRect();
+      const viewportTop = viewport.top + this.scroll.clientTop;
+      const viewportBottom = viewportTop + this.scroll.clientHeight;
+      if (clientY < viewportTop || clientY > viewportBottom) return null;
+      return [...this.content.querySelectorAll('.waveform-row')].find((row) => {
+        const rect = row.getBoundingClientRect();
+        return clientY >= rect.top && clientY <= rect.bottom;
+      }) || null;
+    }
+
+    findVisibleWaveformRowForTime(timeMs) {
+      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      // 行末时间由前一行持有，和中缝覆盖层的归属规则一致。
+      const endingRow = rows.find((row) => Math.abs(Number(row.dataset.endMs) - timeMs) < 1);
+      if (endingRow) return endingRow;
+      return rows.find((row) => timeMs >= Number(row.dataset.startMs)
+        && timeMs < Number(row.dataset.endMs))
+        || rows.find((row) => timeMs >= Number(row.dataset.startMs)
+          && timeMs <= Number(row.dataset.endMs))
+        || null;
+    }
+
+    cueBoundaryDragTimeMs(drag = this.drag) {
+      if (!this.isCueBoundaryDrag(drag)) return NaN;
+      const segment = this.options.getSegments(drag.track || 'main')[drag.index];
+      if (!segment) return NaN;
+      const timing = resolveTiming(drag.timing || this.cueTiming());
+      const edge = drag.kind === 'resize-left'
+        ? 'start'
+        : drag.kind === 'resize-boundary-independent'
+          ? drag.edge
+          : 'end';
+      return timing.toMs(edge === 'start' ? timing.getStart(segment) : timing.getEnd(segment));
+    }
+
+    refreshBoundaryDragPointerLine(force = false) {
+      const drag = this.drag;
+      if (!this.isCueBoundaryDrag(drag) || (!drag.started && !force)) return;
+      this.pointerLineOverrideActive = true;
+      const timeMs = this.cueBoundaryDragTimeMs(drag);
+      const row = Number.isFinite(timeMs) ? this.findVisibleWaveformRowForTime(timeMs) : null;
+      this.content.querySelectorAll('.waveform-pointer-line').forEach((marker) => {
+        marker.classList.remove('boundary-snapped');
+        marker.hidden = true;
+      });
+      if (!row) return;
+      const marker = row.querySelector('.waveform-pointer-line');
+      if (!marker) return;
+      const contentWidth = Math.max(1, row.clientWidth);
+      const startMs = Number(row.dataset.startMs);
+      const endMs = Number(row.dataset.endMs);
+      const left = clamp(
+        ((timeMs - startMs) / Math.max(1, endMs - startMs)) * contentWidth,
+        0,
+        contentWidth,
+      );
+      marker.style.left = `${left}px`;
+      marker.classList.add('boundary-snapped');
+      marker.hidden = false;
+    }
+
+    restorePointerLineAfterBoundaryDrag(position = null) {
+      this.pointerLineOverrideActive = false;
+      this.content.querySelectorAll('.waveform-pointer-line').forEach((marker) => {
+        marker.classList.remove('boundary-snapped');
+        marker.hidden = true;
+      });
+      if (!position || !Number.isFinite(position.clientX) || !Number.isFinite(position.clientY)) {
+        this.pointerLineEvent = null;
+        this.pointerLineRow = null;
+        this.pointerLineMarker = null;
+        return;
+      }
+      const row = this.findVisibleWaveformRowAtPoint(position.clientX, position.clientY);
+      const marker = row?.querySelector('.waveform-pointer-line');
+      if (!row || !marker) {
+        this.pointerLineEvent = null;
+        this.pointerLineRow = null;
+        this.pointerLineMarker = null;
+        return;
+      }
+      const pointerEvent = { clientX: position.clientX };
+      this.pointerLineEvent = pointerEvent;
+      this.pointerLineRow = row;
+      this.pointerLineMarker = marker;
+      this.showPointerLine(pointerEvent, row, marker);
+    }
+
     // 暂停时指针在波形上移动即把画面预览到指针时间。与拖动播放头一样按
     // 最新事件合并到每帧最多一次；真正 seek 前重新检查开关与播放状态，
     // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
     scheduleHoverSeekPreview(event, row) {
-      if (this.playheadDragActive || this.options.getHoverSeekPreview?.() !== true) return;
+      if (this.playheadDragActive || this.isCueBoundaryDrag()
+          || this.options.getHoverSeekPreview?.() !== true) return;
       this.hoverSeekPreviewLastEvent = event;
       this.hoverSeekPreviewRow = row;
       if (this.hoverSeekPreviewFrame) return;
@@ -3296,12 +3411,14 @@
         this.seekFromPointer(event, row, false, geometry);
       });
       row.addEventListener('pointerenter', (event) => {
+        if (this.pointerLineOverrideActive) return;
         this.pointerLineEvent = { clientX: event.clientX };
         this.pointerLineRow = row;
         this.pointerLineMarker = pointerLine;
         this.showPointerLine(event, row, pointerLine);
       });
       row.addEventListener('pointermove', (event) => {
+        if (this.pointerLineOverrideActive) return;
         this.pointerLineEvent = { clientX: event.clientX };
         this.pointerLineRow = row;
         this.pointerLineMarker = pointerLine;
@@ -3309,6 +3426,7 @@
         this.scheduleHoverSeekPreview(event, row);
       });
       row.addEventListener('pointerleave', () => {
+        if (this.pointerLineOverrideActive) return;
         this.hidePointerLine(pointerLine);
         if (this.pointerLineMarker === pointerLine) {
           this.pointerLineEvent = null;
@@ -3429,12 +3547,6 @@
 
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
       // 传统模式沿用旧版系统光标（ew-resize）；原创边界光标只在
-      // dual（中缝联动）模式生效。渲染路径必经这里，模式切换后
-      // refreshCueOverlay 也会同步该类。
-      this.pane?.classList.toggle(
-        'boundary-mode-classic',
-        this.options.getAdjacentBoundaryMode?.() !== 'dual',
-      );
       const multiLane = this.options.multiSubtitleVisible?.() === true;
       const segments = this.options.getSegments('main');
       const selected = this.options.getSelection('main');
@@ -3694,9 +3806,9 @@
         const leftEndMs = clock.toMs(leftEnd);
         const rightStartMs = clock.toMs(rightStart);
         if (leftEndMs > endMs && rightStartMs > endMs) break;
-        if (Math.abs(leftEnd - rightStart) > clock.snapThreshold) continue;
+        if (leftEnd !== rightStart) continue;
         // 帧模式下 getEnd/getStart 返回帧数，行边界是毫秒；定位前统一换算。
-        const seamMs = (leftEndMs + rightStartMs) / 2;
+        const seamMs = leftEndMs;
         // 每条中缝只由其左侧所在行持有。行末中缝仍要渲染，否则整齐落在
         // 行边界的相接字幕会失去双侧联动拖动区。
         if (seamMs <= startMs || seamMs > endMs) continue;
@@ -3803,6 +3915,17 @@
     }
 
     refreshCueBlocks() {
+      const activeSeamDrag = this.drag?.sharedBoundaryZone && this.drag.started ? this.drag : null;
+      if (activeSeamDrag) {
+        const boundaryMs = this.cueBoundaryDragTimeMs(activeSeamDrag);
+        const ownerRow = this.findVisibleWaveformRowForTime(boundaryMs);
+        const ownerRowIndex = ownerRow ? Number(ownerRow.dataset.rowIndex) : NaN;
+        if (Number.isFinite(ownerRowIndex) && ownerRowIndex !== activeSeamDrag.previewRowIndex) {
+          // 中缝换行时只重建字幕覆盖层，保留已绘制的波形 Canvas 与指针捕获。
+          activeSeamDrag.previewRowIndex = ownerRowIndex;
+          this.refreshCueOverlay();
+        }
+      }
       const segments = this.options.getSegments('main');
       const extensionSegments = this.options.getExtensionSegments?.() || [];
       const overlaySegments = this.options.getSegments('overlay') || [];
@@ -3853,7 +3976,13 @@
           : bindingMarkerTargets.main?.has?.(index) === true);
       });
       this.refreshBoundaryZones();
+      if (activeSeamDrag) {
+        this.content.querySelector(
+          `.waveform-cue-boundary[data-track="${activeSeamDrag.track}"][data-left-idx="${activeSeamDrag.index}"]`,
+        )?.classList.add('dragging');
+      }
       this.positionPlayheads();
+      this.refreshBoundaryDragPointerLine();
     }
 
     // 轻量刷新（拖动中）只重建字幕块，不重建中缝区；这里按当前时间
@@ -3869,14 +3998,14 @@
         const clock = this.cueTiming();
         // 独立拖动让两侧脱离贴合后，中缝区立即移除；重新贴合会在下一次
         // 完整重建（refreshCueOverlay）时恢复。
-        if (!left || !right || Math.abs(clock.getEnd(left) - clock.getStart(right)) > clock.snapThreshold) {
+        if (!left || !right || clock.getEnd(left) !== clock.getStart(right)) {
           zone.remove();
           return;
         }
         const startMs = Number(row.dataset.startMs);
         const endMs = Number(row.dataset.endMs);
         const duration = Math.max(1, endMs - startMs);
-        const seamMs = (clock.toMs(clock.getEnd(left)) + clock.toMs(clock.getStart(right))) / 2;
+        const seamMs = clock.toMs(clock.getEnd(left));
         zone.style.left = `${((seamMs - startMs) / duration) * 100}%`;
         zone.classList.toggle('at-row-end', seamMs === endMs);
       });
@@ -4226,9 +4355,11 @@
 
     captureRowGeometry(row) {
       const rect = row.getBoundingClientRect();
+      // 时间映射与覆盖层/指示线统一用 content-box：行有 1px 边框，
+      // border-box 会让指针位置与实际生效边界差出边框宽度。
       return {
-        left: rect.left,
-        width: Math.max(1, rect.width),
+        left: rect.left + row.clientLeft,
+        width: Math.max(1, row.clientWidth),
         startMs: Number(row.dataset.startMs),
         endMs: Number(row.dataset.endMs),
       };
@@ -4353,18 +4484,20 @@
     }
 
     timeFromPointer(event, row, geometry = null) {
-      const rect = geometry || row.getBoundingClientRect();
-      const ratio = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+      const contentLeft = geometry ? geometry.left : row.getBoundingClientRect().left + row.clientLeft;
+      const contentWidth = Math.max(1, geometry ? geometry.width : row.clientWidth);
+      const ratio = clamp((event.clientX - contentLeft) / contentWidth, 0, 1);
       const startMs = geometry?.startMs ?? Number(row.dataset.startMs);
       const endMs = geometry?.endMs ?? Number(row.dataset.endMs);
       return startMs + ratio * (endMs - startMs);
     }
 
-    // 边界/整体 Gap 拖动需要允许指针越过当前行的左右边缘；否则多行模式
-    // 会把时间永远钳在本行，无法从一行延伸到前后行。
+    // Gap、字幕块和字幕边界拖动都按起始行的横向位移计算；指针越过行边缘时
+    // 继续延伸时间，避免拖动在本行末尾饱和或进入另一行时发生跳变。
     timeFromPointerUnbounded(event, row, geometry = null) {
-      const rect = geometry || row.getBoundingClientRect();
-      const ratio = (event.clientX - rect.left) / Math.max(1, rect.width);
+      const contentLeft = geometry ? geometry.left : row.getBoundingClientRect().left + row.clientLeft;
+      const contentWidth = Math.max(1, geometry ? geometry.width : row.clientWidth);
+      const ratio = (event.clientX - contentLeft) / contentWidth;
       const startMs = geometry?.startMs ?? Number(row.dataset.startMs);
       const endMs = geometry?.endMs ?? Number(row.dataset.endMs);
       return startMs + ratio * (endMs - startMs);
@@ -4423,7 +4556,7 @@
       });
       const blockRect = block?.getBoundingClientRect?.();
       return {
-        clientX: rowRect.left + rowRect.width * ratio,
+        clientX: rowRect.left + row.clientLeft + row.clientWidth * ratio,
         clientY: blockRect ? blockRect.top + blockRect.height / 2 : rowRect.top + rowRect.height / 2,
       };
     }
@@ -4772,6 +4905,7 @@
         pointerId: event.pointerId,
         startClientX: event.clientX,
         currentClientX: event.clientX,
+        lastPointerPosition: { clientX: event.clientX, clientY: event.clientY },
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -4783,7 +4917,7 @@
         originals,
         cancelOriginals,
         timing,
-        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
+        startPointerTime: timing.fromMs(this.timeFromPointerUnbounded(event, row, geometry)),
         commitIndices: new Set(dragIndices),
         started: false,
         changed: false,
@@ -4801,7 +4935,12 @@
             && !event.shiftKey && !event.ctrlKey && !event.metaKey,
         ),
         seekedOnPointerDown: false,
+        captureTarget: event.currentTarget,
       };
+      if (this.isCueBoundaryDrag()) {
+        this.cancelHoverSeekPreview();
+        this.refreshBoundaryDragPointerLine(true);
+      }
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
       try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
@@ -4849,6 +4988,7 @@
         pointerId: event.pointerId,
         startClientX: event.clientX,
         currentClientX: event.clientX,
+        lastPointerPosition: { clientX: event.clientX, clientY: event.clientY },
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -4862,12 +5002,15 @@
         originals,
         cancelOriginals: new Map([[movedIndex, snapshotTiming(segments[movedIndex], timing)]]),
         timing,
-        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
+        startPointerTime: timing.fromMs(this.timeFromPointerUnbounded(event, row, geometry)),
         commitIndices: new Set([movedIndex]),
         started: false,
         changed: false,
         independent: true,
+        captureTarget: event.currentTarget,
       };
+      this.cancelHoverSeekPreview();
+      this.refreshBoundaryDragPointerLine(true);
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
       try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
@@ -4919,6 +5062,7 @@
         pointerId: event.pointerId,
         startClientX: event.clientX,
         currentClientX: event.clientX,
+        lastPointerPosition: { clientX: event.clientX, clientY: event.clientY },
         rangeMs: geometry.endMs - geometry.startMs,
         rowWidth: geometry.width,
         geometry,
@@ -4930,7 +5074,7 @@
         originals,
         cancelOriginals: new Map(originals),
         timing,
-        startPointerTime: timing.fromMs(this.timeFromPointer(event, row, geometry)),
+        startPointerTime: timing.fromMs(this.timeFromPointerUnbounded(event, row, geometry)),
         commitIndices: new Set([leftIndex, rightIndex]),
         started: false,
         changed: false,
@@ -4939,10 +5083,16 @@
         squeezeOriginals: null,
         altToggleDisabledOnClick: false,
         seekedOnPointerDown: false,
+        sharedBoundaryZone: true,
+        previewRowIndex: Number(row.dataset.rowIndex),
+        captureTarget: this.pane,
       };
+      this.cancelHoverSeekPreview();
+      this.refreshBoundaryDragPointerLine(true);
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
-      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
+      this.pane.classList.add('shared-boundary-drag-active');
+      try { this.pane.setPointerCapture?.(event.pointerId); } catch (_) {}
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
@@ -5195,8 +5345,9 @@
         plan = planMoveStep(segments, drag.indices, deltaMs, durationMs, options);
         apply = () => applyMoveStep(segments, drag.indices, deltaMs, durationMs, options);
       } else {
-        const edge = drag.kind === 'resize-left' || drag.kind === 'resize-boundary-independent'
-          ? 'start' : 'end';
+        const edge = drag.kind === 'resize-boundary-independent'
+          ? drag.edge
+          : drag.kind === 'resize-left' ? 'start' : 'end';
         const options = {
           sticky: drag.kind !== 'resize-boundary-independent'
             && !this.isAdjacentCueAdjustmentIndependent(altKey),
@@ -5221,9 +5372,12 @@
       drag.changed = true;
       this.captureCueDragOriginals(drag);
       drag.startClientX = drag.currentClientX;
-      drag.startPointerTime = timing.fromMs(
-        this.timeFromPointer({ clientX: drag.currentClientX }, drag.row, drag.geometry),
-      );
+      drag.startPointerTime = timing.fromMs(this.timeFromPointerUnbounded(
+        { clientX: drag.currentClientX },
+        drag.row,
+        drag.geometry,
+      ));
+      if (this.isCueBoundaryDrag(drag)) this.refreshBoundaryDragPointerLine();
       this.scheduleRefreshCueBlocks();
       return true;
     }
@@ -5287,7 +5441,7 @@
       this.captureCueDragOriginals(drag);
       drag.startClientX = drag.currentClientX;
       drag.startPointerTime = timing.fromMs(
-        this.timeFromPointer({ clientX: drag.currentClientX }, drag.row, drag.geometry),
+        this.timeFromPointerUnbounded({ clientX: drag.currentClientX }, drag.row, drag.geometry),
       );
       this.scheduleRefreshCueBlocks();
       return true;
@@ -5301,20 +5455,24 @@
       }
       const drag = this.drag;
       if (!drag) return false;
+      const pointerPosition = drag.lastPointerPosition;
       window.removeEventListener('pointermove', this._dragMove);
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
+      try { drag.captureTarget?.releasePointerCapture?.(drag.pointerId); } catch (_) {}
       const segments = this.options.getSegments(drag.track || 'main');
       drag.cancelOriginals.forEach((original, idx) => {
         const segment = segments[idx];
         if (!segment) return;
         restoreTiming(segment, original, drag.timing || this.cueTiming());
       });
-      this.content.querySelectorAll('.waveform-cue-block.dragging')
+      this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')
         .forEach((block) => block.classList.remove('dragging'));
       this.pane.classList.remove('cue-drag-active');
+      this.pane.classList.remove('shared-boundary-drag-active');
       this.drag = null;
       this.refreshCueOverlay();
+      if (this.isCueBoundaryDrag(drag)) this.restorePointerLineAfterBoundaryDrag(pointerPosition);
       this.setStatus('已取消字幕调整');
       return true;
     }
@@ -5725,8 +5883,17 @@
       if (!drag || event.pointerId !== drag.pointerId) return;
       event.preventDefault();
       drag.currentClientX = event.clientX;
+      drag.lastPointerPosition = { clientX: event.clientX, clientY: event.clientY };
       const timing = drag.timing || this.cueTiming();
-      const pointerMs = this.timeFromPointer(event, drag.row, drag.geometry);
+      if (drag.sharedBoundaryZone) {
+        const pointerRow = this.findVisibleWaveformRowAtY(event.clientY);
+        // 只有指针落在当前可见波形行内才更新；行间空白和可视区外沿用最后
+        // 一个有效位置，不让捕获到 pane 的指针事件把中缝带出时间轴范围。
+        if (!pointerRow) return;
+        // 纵向进入另一行只改变可操作区域，不改变时间；时间始终按起始行
+        // 的横向位移计算；横向越过波形视口边缘也继续移动，不发生整行吸附。
+      }
+      const pointerMs = this.timeFromPointerUnbounded(event, drag.row, drag.geometry);
       const currentPointerTime = timing.fromMs(pointerMs);
       const deltaTime = currentPointerTime - drag.startPointerTime;
       const hasMeaningfulMovement = timing.unit === 'frames'
@@ -5755,6 +5922,7 @@
       else this.applyResizeDrag(drag, deltaTime, drag.independent);
       this.options.syncBoundCueDrag?.(drag);
       drag.changed = true;
+      if (this.isCueBoundaryDrag(drag)) this.refreshBoundaryDragPointerLine();
       this.scheduleRefreshCueBlocks();
     }
 
@@ -6037,12 +6205,19 @@
     endCueDrag(event) {
       const drag = this.drag;
       if (!drag || event.pointerId !== drag.pointerId) return;
+      const restorePointerLine = () => {
+        if (this.isCueBoundaryDrag(drag)) {
+          this.restorePointerLineAfterBoundaryDrag({ clientX: event.clientX, clientY: event.clientY });
+        }
+      };
       window.removeEventListener('pointermove', this._dragMove);
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
+      try { drag.captureTarget?.releasePointerCapture?.(drag.pointerId); } catch (_) {}
       this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')
         .forEach((block) => block.classList.remove('dragging'));
       this.pane.classList.remove('cue-drag-active');
+      this.pane.classList.remove('shared-boundary-drag-active');
       this.drag = null;
       if (event.type === 'pointercancel') {
         drag.cancelOriginals.forEach((original, idx) => {
@@ -6051,6 +6226,7 @@
           restoreTiming(segment, original, drag.timing || this.cueTiming());
         });
         this.refreshCueOverlay();
+        restorePointerLine();
         return;
       }
       if (!drag.changed) {
@@ -6059,10 +6235,12 @@
         if (drag.shiftRangeSelect) {
           if (drag.track === 'overlay') this.options.selectOverlayRange?.(drag.index);
           else this.options.selectCueRange?.(drag.index);
+          restorePointerLine();
           return;
         }
         if (drag.altToggleDisabledOnClick) {
           this.options.toggleDisabled?.([drag.index], drag.track || 'main');
+          restorePointerLine();
           return;
         }
         // select-only 只选中；两个跳转模式按设置跳到字幕开头或鼠标位置。
@@ -6070,6 +6248,7 @@
         if (clickBehavior !== 'select-only' && !drag.seekedOnPointerDown) {
           this.seekFromCue(event, drag.row, drag.index, clickBehavior === 'select-and-play', drag.geometry, drag.track);
         }
+        restorePointerLine();
         return;
       }
       const commitIndices = [...(drag.commitIndices || drag.indices)];
@@ -6077,6 +6256,7 @@
       commitIndices.forEach((idx) => { if (segments[idx]) segments[idx]._dirty = true; });
       this.options.onCommitEdit(commitIndices, drag.kind, drag.track || 'main', drag.independent === true);
       this.refreshCueOverlay();
+      restorePointerLine();
     }
 
     updatePlayback(allowFollow = true) {

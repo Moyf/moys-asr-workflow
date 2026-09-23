@@ -612,6 +612,7 @@
   pointer-events: none;
   transform: translateX(-0.5px);
 }
+.waveform-pointer-line.boundary-snapped { background: var(--accent); }
 .waveform-pointer-line[hidden] { display: none; }
 .waveform-split-flash {
   position: absolute;
@@ -851,14 +852,12 @@
 .waveform-cue-block.selected {
   z-index: 6;
   outline: 2px solid var(--selection-yellow);
-  outline-offset: 1px;
   box-shadow: 0 0 0 1px rgba(89, 62, 0, .72), 0 0 8px var(--selection-yellow-glow);
 }
 /* 框选拖动中的命中预览：比正式选中的实线弱一档的虚线；
    松开后由选中契约替换为 .selected。 */
 .waveform-cue-block.marquee-preview {
   outline: 2px dashed var(--selection-yellow-line);
-  outline-offset: 1px;
 }
 .waveform-cue-block.active {
   color: var(--active-cue-fg);
@@ -892,30 +891,21 @@
   background: var(--wave-cue-handle);
   cursor: ew-resize;
 }
-/* assets/cursors/left-boundary.svg 内嵌副本；热点位于竖线中央。 */
 .waveform-cue-handle.left {
   left: 0;
   border-radius: 3px 0 0 3px;
-  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M3%2016l5-4v3h7v2H8v3z%20M15%2010h2v12h-2z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
 }
-/* assets/cursors/right-boundary.svg 内嵌副本；热点位于竖线中央。 */
 .waveform-cue-handle.right {
   right: 0;
   border-radius: 0 3px 3px 0;
-  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M15%2010h2v12h-2z%20M17%2015h7v-3l5%204-5%204v-3h-7z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
 }
 /* 手柄悬停反馈：加亮提示「这里是单侧调整手柄」，与中缝区的 hover 亮度区分。 */
 .waveform-cue-handle:hover { background: var(--wave-cue-handle-hover); }
-/* 传统模式：没有中缝区，边界拖动沿用旧版系统左右箭头光标；
-   原创光标素材只服务中缝联动（dual）模式。 */
-.waveform-pane.boundary-mode-classic .waveform-cue-handle.left,
-.waveform-pane.boundary-mode-classic .waveform-cue-handle.right { cursor: ew-resize; }
 /* 中缝联动模式：相接侧手柄加宽，让「手柄（单侧调整）— 中缝（联动拖动）
    — 手柄」三个命中区域都有约 7px 的稳定宽度。 */
 .waveform-cue-block.has-shared-boundary-right .waveform-cue-handle.right { width: 11px; }
 .waveform-cue-block.has-shared-boundary-left .waveform-cue-handle.left { width: 11px; }
-/* 中缝拖动区：仅 dual 模式渲染，骑在贴合边界上；拖动 = 两侧边界联动。
-   默认半透明保持低调，悬停/拖动时恢复到完全不透明以突出反馈。 */
+/* 中缝拖动区：8px 命中区覆盖精确接缝，可见线由伪元素单独绘制。 */
 .waveform-cue-boundary {
   position: absolute;
   bottom: 7px;
@@ -924,17 +914,36 @@
   z-index: 7;
   transform: translateX(-50%);
   border-radius: 2px;
-  background: var(--wave-cue-boundary);
+  background: transparent;
   opacity: 0.5;
   transition: opacity 0.12s ease;
-  /* assets/cursors/shared-boundary.svg 内嵌副本，兼容便携 HTML；热点位于中央。 */
-  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M2%2016l5-4v3h4v2H7v3z%20M13%2010h2v12h-2z%20M17%2010h2v12h-2z%20M21%2015h4v-3l5%204-5%204v-3h-4z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
+  cursor: var(--wave-shared-boundary-cursor);
   touch-action: none;
 }
-.waveform-cue-boundary:hover,
-.waveform-cue-boundary.dragging { opacity: 1; }
+.waveform-pane {
+  /* assets/cursors/shared-boundary.svg 内嵌副本，兼容便携 HTML；热点位于中央。 */
+  --wave-shared-boundary-cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%20%20%3Cpath%20transform%3D%22scale(1.25)%22%20d%3D%22M2%2016l5-4v3h4v2H7v3z%20M13%2010h2v12h-2z%20M17%2010h2v12h-2z%20M21%2015h4v-3l5%204-5%204v-3h-4z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2318212b%22%20stroke-width%3D%221%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%3C%2Fsvg%3E") 20 20, ew-resize;
+}
+.waveform-pane.shared-boundary-drag-active { cursor: var(--wave-shared-boundary-cursor); }
+.waveform-cue-boundary::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: var(--wave-cue-boundary);
+  pointer-events: none;
+}
+.waveform-cue-boundary:hover { opacity: 0.78; }
+.waveform-cue-boundary:hover::before,
+.waveform-cue-boundary.dragging::before { background: var(--accent); }
+.waveform-cue-boundary.dragging { opacity: 0.85; }
 /* 行末中缝完整收进所属行，避免被行容器裁掉一半。 */
 .waveform-cue-boundary.at-row-end { transform: translateX(-100%); }
+.waveform-cue-boundary.at-row-end::before { left: auto; right: 0; transform: none; }
 /* 行末中缝占用最后 8px，左侧字幕的独立右手柄向行内退让，两个操作区不重叠。 */
 .waveform-cue-block.shared-boundary-at-row-end-right .waveform-cue-handle.right { right: 8px; }
 .waveform-basic .waveform-cue-boundary {

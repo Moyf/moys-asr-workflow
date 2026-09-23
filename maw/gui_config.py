@@ -98,6 +98,8 @@ class ProviderConfig:
     # Launcher 供应商下拉列表中，在该供应商前插入一条禁用的分隔线，
     # 用于把主力入口与次要 / 实验性入口分组展示。
     divider_before: bool = False
+    # Key 提示按钮展示名；为空时回退到 label（供应商列表名与获取 Key 的平台名不一致时使用）。
+    key_label: str = ""
     # 暂时保留底层配置与 CLI 能力，但不在 Launcher 的供应商列表中展示。
     hidden: bool = False
 
@@ -350,6 +352,18 @@ DOUBAO_MODELS: Final[tuple[ModelConfig, ...]] = (
 
 QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
+        id=QWEN_AUDIO_MODEL_ID,
+        label="qwen-audio-3.0-asr（热词 / 上下文）",
+        env_key="DASHSCOPE_API_KEY",
+        note="支持即时热词、上下文与说话人分离。",
+        price_note="阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）",
+        supports_speaker=True,
+        supports_context=True,
+        supports_hotwords=True,
+        supports_vocabulary=True,
+        languages=FUNASR_LANGUAGES,
+    ),
+    ModelConfig(
         id=QWEN_AUDIO_31_MODEL_ID,
         label="qwen-audio-3.1-asr（方言 / 热词 / 上下文）",
         env_key="DASHSCOPE_API_KEY",
@@ -360,18 +374,6 @@ QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
         supports_hotwords=True,
         supports_vocabulary=True,
         supports_keep_dialect=True,
-        languages=FUNASR_LANGUAGES,
-    ),
-    ModelConfig(
-        id=QWEN_AUDIO_MODEL_ID,
-        label="qwen-audio-3.0-asr（热词 / 上下文）",
-        env_key="DASHSCOPE_API_KEY",
-        note="支持即时热词、上下文与说话人分离。",
-        price_note="阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）",
-        supports_speaker=True,
-        supports_context=True,
-        supports_hotwords=True,
-        supports_vocabulary=True,
         languages=FUNASR_LANGUAGES,
     ),
     ModelConfig(
@@ -635,7 +637,7 @@ BCUT_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
 BCUT_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
         id="bcut-asr",
-        label="必剪 ASR（免 Key / 仅中文）",
+        label="必剪（免 Key / 仅中文）",
         env_key="",
         note="逐字毫秒时间戳；无需 API Key。",
         languages=BCUT_LANGUAGES,
@@ -645,8 +647,9 @@ BCUT_MODELS: Final[tuple[ModelConfig, ...]] = (
 PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="qwen",
-        label="阿里云百炼（QwenASR / FunASR）【推荐】",
+        label="阿里云百炼（千问）",
         key_url="https://platform.qianwenai.com/home/",
+        key_label="千问AI平台",
         models=QWEN_MODELS,
         regions=REGIONS,
         languages=LANGUAGES,

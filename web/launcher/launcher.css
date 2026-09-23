@@ -515,9 +515,18 @@ label {
   font-size: 13px;
 }
 
-/* 模型备注：能力一行 + 🪙 价格一行。 */
+/* 模型备注：能力一行 + 🪙 参考价行（引用 callout 样式，与能力说明视觉区隔）。 */
 #modelNote {
   white-space: pre-line;
+}
+
+#modelNote .price-note {
+  display: block;
+  margin-top: 6px;
+  padding: 5px 10px;
+  border-left: 3px solid color-mix(in srgb, var(--amber) 55%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
 }
 
 .settings-punctuation-hint {
@@ -2485,6 +2494,7 @@ textarea::placeholder {
 .toolbox-output-action {
   display: flex;
   flex: 1 1 auto;
+  gap: 8px;
   justify-content: flex-end;
   min-width: 0;
 }
@@ -2596,6 +2606,34 @@ textarea::placeholder {
   background: var(--amber-soft);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.toolbox-media-log {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+}
+
+.toolbox-media-log-heading {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.toolbox-media-log pre {
+  max-height: calc(3 * 1.45em + 14px);
+  margin: 6px 0 0;
+  padding: 7px 8px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .toolbox-result {
@@ -3103,6 +3141,7 @@ html,
 .toolbox-chain-list,
 .toolbox-result,
 .toolbox-stream-text,
+.toolbox-media-log pre,
 select[multiple],
 textarea {
   scrollbar-width: thin;
@@ -3132,6 +3171,7 @@ html.scrolling,
 .toolbox-chain-list.scrolling,
 .toolbox-result.scrolling,
 .toolbox-stream-text.scrolling,
+.toolbox-media-log pre.scrolling,
 select[multiple].scrolling,
 textarea.scrolling {
   scrollbar-color: var(--text-muted) transparent;
