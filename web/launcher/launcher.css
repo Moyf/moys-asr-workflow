@@ -1925,7 +1925,7 @@ textarea::placeholder {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   color: var(--text-primary);
-  background: linear-gradient(160deg, var(--accent-tint), transparent 42%), var(--bg-overlay);
+  background: var(--bg-overlay);
   box-shadow: var(--shadow-3);
 }
 
@@ -2072,30 +2072,34 @@ textarea::placeholder {
   justify-self: end;
 }
 
+/* 关闭按钮与 Editor 弹窗同款：淡底细边框、次级文字色，hover 加深反馈。 */
 #toolboxClose,
 #settingsClose {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   padding: 0;
-  border-color: var(--border-strong);
-  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
   background: var(--bg-raised);
-  box-shadow: var(--shadow-1);
-  font-size: 22px;
-  font-weight: 700;
+  box-shadow: none;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 400;
   line-height: 1;
+  transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
 }
 
 #toolboxClose:hover:not(:disabled),
 #settingsClose:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent-hover);
-  background: var(--accent-tint-strong);
-  box-shadow: var(--focus-ring);
-  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  box-shadow: none;
+  transform: none;
 }
 
 .toolbox-input {
@@ -2398,6 +2402,15 @@ textarea::placeholder {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-items: start;
+}
+
+/* 压制字幕面板：参数区与上方字幕输入保持间隔；保存按钮撑满网格空位。 */
+#toolboxBurnSubtitlePanel .toolbox-grid {
+  margin-top: 12px;
+}
+
+#toolboxBurnSubtitlePanel #saveBurnSubtitleSettings {
+  width: 100%;
 }
 
 /* 工具箱面板内的分组卡片（与高级选项共用 .adv-group 视觉语言）。 */
