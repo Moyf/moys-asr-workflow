@@ -167,7 +167,7 @@ FIXED_CONVERSION_OPERATIONS: Final[dict[TextConversion, str]] = {
 
 
 def fixed_process_operation(replacements: tuple[Replacement, ...], conversion: TextConversion) -> str:
-    """按固定处理实际启用的部分计算产物 operation。
+    """按固定替换实际启用的部分计算产物 operation。
 
     批量替换规则非空计 "replace"，转换方向非 off 计对应方向；两者以点连接。
     都未启用时返回空串，调用方应跳过该步骤，不写出文件也不加后缀。
@@ -190,7 +190,7 @@ def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
             source_srt_path=source_srt,
             project_path=None,
             srt_path=None,
-            warnings=("固定处理未启用批量替换或简繁转换，已跳过该步骤。",),
+            warnings=("固定替换未启用批量替换或简繁转换，已跳过该步骤。",),
         )
     segments = _segments(project)
     for segment in segments:

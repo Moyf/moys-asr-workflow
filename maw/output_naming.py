@@ -34,7 +34,7 @@ BACKUP_DIR_NAMES: Final[dict[str, str]] = {"zh": "备份", "en": "backups"}
 
 # 操作显示名（per-language）。后处理链与工具箱的全部产物 operation 都在此登记，
 # zh 界面输出中文名（与工具箱/自动链的步骤名一致），en 界面保持 ASCII 原名；
-# 未列出的 operation 原样使用，不本地化。固定处理按实际启用的部分细分：
+# 未列出的 operation 原样使用，不本地化。固定替换按实际启用的部分细分：
 # 批量替换用 "replace"，简繁转换按方向用 "simplified" / "traditional"，
 # 两者同时启用时以点连接（"replace.traditional"）。
 OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
@@ -326,7 +326,7 @@ def operation_suffix(operation: str, lang: str | None = None) -> str:
       及 bilingual/combined 变体，连字符 / 下划线 base 都识别）：
       zh 界面产出 ``.后处理`` / ``.文稿匹配`` / ``.校对文本`` /
       ``.翻译为中文`` / ``.翻译为中文.双语合一``；
-    - 点连接的复合 operation（如固定处理的 ``replace.traditional``）逐段本地化，
+    - 点连接的复合 operation（如固定替换的 ``replace.traditional``）逐段本地化，
       zh 界面产出 ``.批量替换.转繁体``；
     - en 界面翻译产物保持 operation 原文（``.translate-zh-bilingual`` 等）；下划线
       变体（工具箱 ``translate_zh`` / ``translate_zh-bilingual``）沿用 legacy ASCII
