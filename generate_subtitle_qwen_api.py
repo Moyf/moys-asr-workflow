@@ -52,7 +52,10 @@ from maw.media_cache import embed_media_caches, merge_media_caches
 from maw.media import resolve_default_audio_track
 from maw.output_naming import (
     DASHSCOPE_PRICE_PER_SECOND,
+    DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS,
+    DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS,
     estimate_dashscope_cost,
+    estimate_qwen_audio_31_cost,
     format_elapsed,
     format_maw_stat,
     debug_artifact_path,
@@ -206,6 +209,15 @@ def is_qwen_audio_31_model(model: str) -> bool:
 
 def is_qwen3_model(model: str) -> bool:
     return model == QWEN3_ASR_FILETRANS_MODEL
+
+
+def _usage_int(usage: dict, key: str) -> int:
+    """从云端 usage 字典里取非负整数；缺失或非法时返回 0。"""
+    try:
+        value = int(usage.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+    return value if value >= 0 else 0
 
 
 def supports_speaker_diarization(model: str) -> bool:
@@ -2168,8 +2180,17 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
     elapsed_poll = time.perf_counter() - t0
     if uses_file_urls(model):
         audio_secs = task_usage.get("duration", 0)
-        billing_note = "（3.1 按 Token 计费）" if is_qwen_audio_31_model(model) else ""
-        print(f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s{billing_note}")
+        if is_qwen_audio_31_model(model):
+            input_tokens = _usage_int(task_usage, "input_tokens")
+            output_tokens = _usage_int(task_usage, "output_tokens")
+            token_cost = estimate_qwen_audio_31_cost(input_tokens, output_tokens)
+            cost_note = f"，约 {token_cost:.4f} 元" if token_cost is not None else ""
+            print(
+                f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s"
+                f"（3.1 按 Token：输入 {input_tokens} tok / 输出 {output_tokens} tok{cost_note}）"
+            )
+        else:
+            print(f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s")
     else:
         audio_secs = task_usage.get("seconds", 0)
         est_tokens = audio_secs * 25  # 文档：每秒音频 = 25 tokens
@@ -2642,7 +2663,22 @@ def main():
         print(f"转写时长为媒体时长的 {rtf:.2f} 倍")
         print(f"实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
         if is_qwen_audio_31_model(args.model):
-            print("预计费用: 按 Token 计费（北京 输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token），以百炼账单为准")
+            usage_stats = result.get("usage") if isinstance(result, dict) else None
+            input_tokens = _usage_int(usage_stats or {}, "input_tokens")
+            output_tokens = _usage_int(usage_stats or {}, "output_tokens")
+            token_cost = (
+                estimate_qwen_audio_31_cost(input_tokens, output_tokens)
+                if input_tokens or output_tokens else None
+            )
+            if token_cost is not None:
+                print(
+                    f"预计费用: 约 {token_cost:.4f} 元（按 Token：输入 {input_tokens} tok × "
+                    f"{DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS} 元/百万 + "
+                    f"输出 {output_tokens} tok × "
+                    f"{DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS} 元/百万）"
+                )
+            else:
+                print("预计费用: 按 Token 计费（北京 输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token），以百炼账单为准")
         else:
             cost = estimate_dashscope_cost(duration)
             if cost is not None:

@@ -23,6 +23,10 @@ DEFAULT_LANG: Final[str] = "zh"
 
 # 阿里云百炼录音文件识别单价（元/秒），fun-asr / qwen-audio / qwen3-asr 均适用。
 DASHSCOPE_PRICE_PER_SECOND: Final[float] = 0.00022
+# Qwen-Audio-3.1-ASR（qwen-audio-3.1-asr-flash-filetrans）北京按 Token 计价，
+# 2026-09 官方模型页参考价；实际以百炼控制台账单为准。
+DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS: Final[float] = 0.8
+DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS: Final[float] = 2.7
 
 POSTPROCESS_DIR_NAMES: Final[dict[str, str]] = {"zh": "后处理", "en": "postprocess"}
 
@@ -391,6 +395,22 @@ def estimate_dashscope_cost(duration_seconds: float | None) -> float | None:
     return duration_seconds * DASHSCOPE_PRICE_PER_SECOND
 
 
+def estimate_qwen_audio_31_cost(
+    input_tokens: float | None,
+    output_tokens: float | None,
+) -> float | None:
+    """按 Qwen-Audio-3.1-ASR 的 Token 单价估算费用；token 数无效返回 None。"""
+    if (
+        input_tokens is None or input_tokens < 0
+        or output_tokens is None or output_tokens < 0
+    ):
+        return None
+    return (
+        input_tokens * DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS / 1_000_000
+        + output_tokens * DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS / 1_000_000
+    )
+
+
 def parse_maw_stat(line: str) -> dict[str, str] | None:
     """解析 'MAW_STAT rtf=0.123' 形式的机器可读行；不匹配返回 None。"""
     match = _MAW_STAT_PATTERN.match(line.strip())
@@ -402,6 +422,8 @@ def parse_maw_stat(line: str) -> dict[str, str] | None:
 __all__ = [
     "BACKUP_DIR_NAMES",
     "DASHSCOPE_PRICE_PER_SECOND",
+    "DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS",
+    "DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS",
     "DEFAULT_LANG",
     "DEBUG_DIR_NAMES",
     "MAW_DIR_NAME",
@@ -415,6 +437,7 @@ __all__ = [
     "debug_artifact_dir",
     "debug_artifact_path",
     "estimate_dashscope_cost",
+    "estimate_qwen_audio_31_cost",
     "format_elapsed",
     "format_maw_stat",
     "is_translation_operation",

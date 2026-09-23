@@ -555,6 +555,11 @@ class QwenAudioAdapterTests(unittest.TestCase):
                     ],
                 }],
                 "timestamp_granularity": "segment",
+                "usage": {
+                    "duration": 109,
+                    "input_tokens": 2006,
+                    "output_tokens": 256,
+                },
             }
             buffer = io.StringIO()
             with (
@@ -574,7 +579,47 @@ class QwenAudioAdapterTests(unittest.TestCase):
                 main()
 
             output = buffer.getvalue()
-            self.assertIn("按 Token 计费", output)
+            self.assertIn("输入 2006 tok", output)
+            self.assertIn("输出 256 tok", output)
+            self.assertIn("约 0.0023 元", output)
+            self.assertNotIn("0.00022 元/秒", output)
+
+    def test_qwen_audio_31_main_falls_back_without_usage_tokens(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            media_path = Path(directory) / "input.wav"
+            output_path = Path(directory) / "output.srt"
+            media_path.write_bytes(b"audio")
+            result = {
+                "text": "精确时间码。",
+                "language": "zh",
+                "items": [{"text": "精确时间码。", "start": 0, "end": 500}],
+                "sentences": [{
+                    "text": "精确时间码。",
+                    "start": 0,
+                    "end": 500,
+                    "items": [{"text": "精确时间码。", "start": 0, "end": 500}],
+                }],
+                "timestamp_granularity": "segment",
+            }
+            buffer = io.StringIO()
+            with (
+                mock.patch("sys.argv", [
+                    "generate_subtitle_qwen_api.py",
+                    str(media_path),
+                    "--model",
+                    QWEN_AUDIO_31_FILETRANS_MODEL,
+                    "-o",
+                    str(output_path),
+                ]),
+                mock.patch("generate_subtitle_qwen_api.resolve_ffmpeg_tools"),
+                mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=2.0),
+                mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result),
+                redirect_stdout(buffer),
+            ):
+                main()
+
+            output = buffer.getvalue()
+            self.assertIn("按 Token 计费（北京 输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token）", output)
             self.assertNotIn("0.00022 元/秒", output)
 
     def test_funasr_main_preserves_sentence_fallback_boundaries(self) -> None:
