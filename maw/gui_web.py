@@ -3103,7 +3103,7 @@ class LauncherApi:
         stage = str(event.get("stage") or "")
         labels = {
             "match": "文稿匹配",
-            "replace": "固定处理",
+            "replace": "固定替换",
             "proofread": "LLM 校对",
             "resegment": "重新断句",
             "ocr": "OCR 字幕去重",

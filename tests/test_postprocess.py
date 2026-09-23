@@ -764,7 +764,7 @@ class PostprocessTests(unittest.TestCase):
                 project_path=self.project_path,
                 srt_path=None,
                 output_mode=OutputMode.SRT,
-                # 空规则现在会跳过固定处理；这里用一条不命中的规则驱动 SRT 输出路径。
+                # 空规则现在会跳过固定替换；这里用一条不命中的规则驱动 SRT 输出路径。
                 replacements=(Replacement(source="不会出现的字", target="x"),),
             )
         )

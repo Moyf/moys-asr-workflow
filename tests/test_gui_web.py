@@ -4616,7 +4616,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".toolbox-static-value {\n  height: 34px;", stylesheet)
         self.assertIn(".field-spacer {\n  visibility: hidden;", stylesheet)
         self.assertIn(".toolbox-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 10px;\n  align-items: start;\n}", stylesheet)
-        # 文稿匹配保持单字段；固定处理按批量替换和简繁转换分组。
+        # 文稿匹配保持单字段；固定替换按批量替换和简繁转换分组。
         match_panel = page[page.index('id="toolboxMatchPanel"'):page.index('id="toolboxTimestampsPanel"')]
         replace_panel = page[page.index('id="toolboxReplacePanel"'):page.index('class="toolbox-footer"')]
         self.assertNotIn("adv-group", match_panel)
@@ -5182,7 +5182,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 转写后自动处理 （Beta）", "4️⃣ 日志", "5️⃣ 字幕编辑器设置"):
+        for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 转写后自动处理", "4️⃣ 日志", "5️⃣ 字幕编辑器设置"):
             self.assertIn(expected, page)
         self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-secondary);\n  font-size: 16px;", stylesheet)
 

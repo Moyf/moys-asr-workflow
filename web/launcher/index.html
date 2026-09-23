@@ -328,7 +328,7 @@
      </section>
 
     <section id="autoPostprocessCard" class="card" aria-labelledby="autoPostprocessTitle">
-      <h2 id="autoPostprocessTitle" data-i18n="auto_postprocess_title">3️⃣ 转写后自动处理 （Beta）</h2>
+      <h2 id="autoPostprocessTitle" data-i18n="auto_postprocess_title">3️⃣ 转写后自动处理</h2>
       <p class="hint" data-i18n="auto_postprocess_hint">转写完成后按固定顺序处理字幕；首次启用某一步前，请先在工具箱中完成配置。</p>
       <p id="batchManuscriptNotice" class="toolbox-notice hidden" role="note" data-i18n="batch_manuscript_disabled">批量模式不支持逐文件文稿映射。本次批量运行会跳过文稿匹配；单文件设置保持不变。</p>
       <label class="check-field auto-postprocess-toggle" for="autoPostprocessEnabled">
@@ -350,7 +350,7 @@
                 <button id="configureAutoMatch" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
               </div>
               <div class="auto-step-row" data-auto-step-row="replace">
-                <label class="check-field" for="autoStepReplace"><input id="autoStepReplace" type="checkbox"><span data-i18n="auto_step_replace">固定处理</span></label>
+                <label class="check-field" for="autoStepReplace"><input id="autoStepReplace" type="checkbox"><span data-i18n="auto_step_replace">固定替换</span></label>
                 <span id="autoStepReplaceStatus" class="auto-step-status hint"></span>
                 <span id="autoStepReplaceHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoReplace" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
@@ -518,7 +518,7 @@
             <button id="toolboxTimestampsTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxTimestampsPanel" data-tool="timestamps" data-i18n="toolbox_timestamps">生成时间码</button>
             <button id="toolboxOcrTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxOcrPanel" data-tool="ocr" data-i18n="toolbox_ocr_dedup">OCR 字幕去重</button>
             <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
-            <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定处理</button>
+            <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
           </div>
         </nav>
       </section>
@@ -960,7 +960,7 @@
           <button id="runLlmPostprocess" class="primary" type="button" data-i18n="toolbox_run">运行处理</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="replace">
-          <button id="runFixedProcess" class="primary" type="button" data-i18n="toolbox_run_replace">执行固定处理</button>
+          <button id="runFixedProcess" class="primary" type="button" data-i18n="toolbox_run_replace">执行固定替换</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="ffconcat">
           <button id="runFfconcatRebuild" class="primary" type="button" data-i18n="toolbox_run_media">生成新媒体</button>
