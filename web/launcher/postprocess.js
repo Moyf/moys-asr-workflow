@@ -23,7 +23,7 @@
   const TOOLBOX_MIN_WIDTH = 360;
   const TOOLBOX_MIN_HEIGHT = 320;
   const TOOLBOX_MAX_HEIGHT = 680;
-  const CUSTOM_DEFAULT_LABEL = "Custom (OpenAI-compatible)";
+  const CUSTOM_DEFAULT_LABEL = "OpenAI-compatible API";
   const AUTO_STEP_ORDER = ["match", "replace", "proofread", "resegment", "ocr", "translate"];
   const AUTO_STEP_CHECKBOXES = {
     match: "autoStepMatch",

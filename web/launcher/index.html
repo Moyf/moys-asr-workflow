@@ -190,7 +190,7 @@
                   <div class="language-side">
                     <div class="lang-actions"><button id="languageReset" class="ghost small hidden" type="button" data-i18n="language_reset">重置（自动识别）</button></div>
                     <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）。</p>
-                    <p id="languageFilterHint" class="hint hint-top-spaced hidden"><span data-i18n="language_filter_hint_prefix">默认仅显示常用语言，其余可在「</span><button id="openLanguageSettings" class="inline-link" type="button" data-i18n="language_filter_hint_link">设置</button><span data-i18n="language_filter_hint_suffix">」中开启。</span></p>
+                    <p id="languageFilterHint" class="hint hint-top-spaced hidden"><span data-i18n="language_filter_hint_prefix">默认仅显示常用语言，其余可在</span><button id="openLanguageSettings" class="inline-link" type="button" data-i18n="language_filter_hint_link">设置</button><span data-i18n="language_filter_hint_suffix">中开启。</span></p>
                   </div>
                 </div>
               </div>
@@ -1097,15 +1097,10 @@
             <p id="llmModelStatus" class="hint llm-model-status hidden" aria-live="polite"></p>
           </div>
         </div>
-        <div id="llmCustomDisplayNameField" class="field hidden">
-          <label for="llmCustomDisplayName" data-i18n="llm_custom_display_name">自定义显示名称</label>
-          <input id="llmCustomDisplayName" type="text" autocomplete="off" data-i18n-placeholder="llm_custom_display_name_placeholder" placeholder="可选">
-          <p id="llmCustomDisplayNameError" class="field-error"></p>
-        </div>
         <div class="field">
           <label for="llmApiKey" data-i18n="llm_api_key">API Key</label>
           <div class="path-row">
-            <input id="llmApiKey" type="password" autocomplete="off">
+            <input id="llmApiKey" type="password" autocomplete="off" data-i18n-placeholder="llm_api_key_placeholder" placeholder="填写你的 API KEY">
             <div class="settings-actions">
               <button id="saveLlmSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
             </div>
@@ -1116,9 +1111,14 @@
         </div>
         <div class="field">
           <label for="llmBaseUrl" data-i18n="llm_base_url">API URL</label>
-          <input id="llmBaseUrl" type="url" autocomplete="off">
+          <input id="llmBaseUrl" type="url" autocomplete="off" data-i18n-placeholder="llm_base_url_placeholder" placeholder="填写你的 Base URL，如 https://api.openai.com/v1">
           <p id="llmBaseUrlError" class="field-error"></p>
           <p class="hint" data-i18n="llm_base_url_hint">远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。</p>
+        </div>
+        <div id="llmCustomDisplayNameField" class="field hidden">
+          <label for="llmCustomDisplayName" data-i18n="llm_custom_display_name">自定义显示名称（可选）</label>
+          <input id="llmCustomDisplayName" type="text" autocomplete="off" data-i18n-placeholder="llm_custom_display_name_placeholder" placeholder="自定义显示名称">
+          <p id="llmCustomDisplayNameError" class="field-error"></p>
         </div>
       </div>
       <div id="localAsrModelSettingsSection" class="settings-section hidden">
@@ -1257,7 +1257,7 @@
             <button id="pickLocalRuntimePath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
           </div>
           <p id="localRuntimePathError" class="field-error"></p>
-          <p class="hint" data-i18n="local_runtime_path_hint">默认安装到用户目录；可改到空间更充足的磁盘。更改后会按新目录重新扫描安装状态。</p>
+          <p class="hint" data-i18n="local_runtime_path_hint">默认安装到用户目录，可改到空间更充足的磁盘。路径请勿包含中文。</p>
         </div>
         <div id="localRuntimePaths" class="runtime-paths hidden"></div>
         <div class="local-status-row">

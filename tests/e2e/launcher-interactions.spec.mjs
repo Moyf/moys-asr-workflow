@@ -24,7 +24,7 @@ test('OpenAI ASR exposes official and OpenRouter models with a conditional Custo
   await openLauncher(page);
   await page.locator('#provider').selectOption('openai');
 
-  await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI（及兼容接口）');
+  await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI 格式通用接口');
   await expect(page.locator('#model')).toHaveValue('whisper-1');
   await expect(page.locator('#model option')).toHaveCount(8);
   expect(await page.locator('#model option').allTextContents()).toEqual([
@@ -276,7 +276,7 @@ test('automatic LLM setup highlights test connection until clicked', async ({ pa
       hasBaseUrl: true,
       hasModel: true,
       baseUrl: 'https://api.deepseek.com',
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-flash',
     });
   });
 
@@ -645,6 +645,13 @@ test('local runtime accepts a custom root directory in Settings', async ({ page 
 
   await expect(page.locator('#localRuntimePaths')).toContainText('D:\\Demo\\custom-runtime');
   await expect(page.locator('#localRuntimePathError')).toHaveText('');
+
+  await page.locator('#localRuntimePath').fill('D:\\演示\\运行环境');
+  await page.locator('#localRuntimePath').dispatchEvent('change');
+
+  await expect(page.locator('#localRuntimePathError')).toContainText('非 ASCII');
+  await expect(page.locator('#localRuntimePath')).toHaveClass(/invalid/);
+  await expect(page.locator('#localRuntimePaths')).not.toContainText('演示');
 });
 
 test('LLM settings refill the saved key and save only after a successful connection test', async ({ page }) => {
@@ -656,7 +663,7 @@ test('LLM settings refill the saved key and save only after a successful connect
       providerId: 'deepseek',
       apiKey: 'sk-saved-for-test',
       baseUrl: 'https://api.deepseek.com',
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-flash',
     });
     const select = document.querySelector('#postprocessProvider');
     select.value = 'zhipu';
@@ -693,12 +700,12 @@ test('Custom provider labels and missing-key errors follow the selected language
 
   const customOption = page.locator('#postprocessProvider option[value="custom"]');
   const settingsCustomOption = page.locator('#llmProvider option[value="custom"]');
-  await expect(customOption).toHaveText('自定义（兼容 OpenAI）');
-  await expect(settingsCustomOption).toHaveText('自定义（兼容 OpenAI）');
+  await expect(customOption).toHaveText('OpenAI 通用接口');
+  await expect(settingsCustomOption).toHaveText('OpenAI 通用接口');
 
   await page.evaluate(() => document.getElementById('langEn').click());
-  await expect(customOption).toHaveText('Custom (OpenAI-compatible)');
-  await expect(settingsCustomOption).toHaveText('Custom (OpenAI-compatible)');
+  await expect(customOption).toHaveText('OpenAI-compatible API');
+  await expect(settingsCustomOption).toHaveText('OpenAI-compatible API');
   await page.locator('#toolboxLlmTab').click();
   await page.locator('#openLlmSettings').click();
   await page.evaluate(() => {
@@ -772,7 +779,7 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：DeepSeek 官网');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('官方控制台');
-  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('自定义（兼容 OpenAI）');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('OpenAI 通用接口');
   await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('正确配置模型名');
   await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('test-only-key');
 
@@ -798,7 +805,7 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
   await page.evaluate(() => { window.__llmFailureStatus = 401; window.__llmFailureProvider = 'custom'; });
   await page.locator('#testLlmConnection').click();
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('认证失败（HTTP 401');
-  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：自定义（兼容 OpenAI）');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：OpenAI 通用接口');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL、API Key 是否来自同一服务商');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('正确配置模型名');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('请勿在错误报告中粘贴你的个人 API Key');

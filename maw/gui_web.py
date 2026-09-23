@@ -4356,6 +4356,7 @@ def _provider_payload(
         "supportsSpeaker": provider.supports_speaker,
         "multiLanguage": provider.multi_language,
         "supportsLanguage": provider.supports_language,
+        "dividerBefore": provider.divider_before,
         "note": provider.note,
         "commonLanguages": list(provider.common_languages),
         "models": [

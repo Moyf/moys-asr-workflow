@@ -31,9 +31,9 @@
       length_limit: "时长上限",
       language_reset: "重置（自动识别）",
       language_multi_hint: "可多选；不选即自动识别（仅偏向，不限制）。",
-      language_filter_hint_prefix: "默认仅显示常用语言，其余可在「",
-      language_filter_hint_link: "设置",
-      language_filter_hint_suffix: "」中开启。",
+  language_filter_hint_prefix: "默认仅显示常用语言，其余可在",
+  language_filter_hint_link: "设置",
+  language_filter_hint_suffix: "中开启。",
       settings_language: "语言",
       settings_interface_language: "界面语言",
       lang_zh: "中文",
@@ -518,7 +518,7 @@
     local_runtime_installing: "正在安装本地运行环境……",
     local_runtime_ready: "本地运行环境已就绪",
     local_runtime_broken: "本地运行环境需要修复",
-    local_runtime_hint: "将安装到用户目录；运行环境与模型缓存分开保存。首次安装需要下载约 2–3 GB。",
+    local_runtime_hint: "需先安装运行时（Runtime），然后才能下载安装模型，两者分开储存。首次安装需要下载约 2–3 GB。",
     local_runtime_ready_hint: "运行环境已就绪。现在可以下载所选模型。",
     local_runtime_ready_prefix: "本地运行环境已就绪，可前往 ",
     local_runtime_ready_link: "本地模型配置",
@@ -534,7 +534,7 @@
     local_model_runtime_hint_body: "如果要查看本地模型相关配置，请先将「识别设置」中的识别方式选为「本地模型」。",
     local_runtime_view_settings: "在 ⚙️ 设置中查看",
     local_runtime_path_label: "本地运行环境目录",
-    local_runtime_path_hint: "默认安装到用户目录；可改到空间更充足的磁盘。运行环境与模型缓存分开保存，更改后按新目录重新扫描。",
+    local_runtime_path_hint: "默认安装到用户目录，可改到空间更充足的磁盘。路径请勿包含中文。",
     local_runtime_inventory: "查看运行时清单",
     local_runtime_inventory_hide: "隐藏运行时清单",
     local_runtime_inventory_loading: "正在读取运行时清单……",
@@ -652,7 +652,7 @@
     local_runtime_installing: "Installing the local runtime…",
     local_runtime_ready: "Local runtime is ready",
     local_runtime_broken: "Local runtime needs repair",
-    local_runtime_hint: "Installed in your user directory; runtime and model cache are kept separate. The first install downloads about 2–3 GB.",
+    local_runtime_hint: "The runtime must be installed before models can be downloaded; the two are stored separately. The first install downloads about 2–3 GB.",
     local_runtime_ready_hint: "The runtime is ready. You can now download the selected model.",
     local_runtime_ready_prefix: "The local runtime is ready. Go to ",
     local_runtime_ready_link: "Local model configuration",
@@ -668,7 +668,7 @@
     local_model_runtime_hint_body: "To view local model settings, first select \"Local models\" as the recognition method in recognition settings.",
     local_runtime_view_settings: "View in ⚙️ Settings",
     local_runtime_path_label: "Local runtime directory",
-    local_runtime_path_hint: "Installed in your user directory by default; move it to a drive with more space if needed. The runtime and model cache are kept separate; the install status is rescanned for the new directory.",
+    local_runtime_path_hint: "Installed in your user directory by default; move it to a drive with more space if needed. Do not use Chinese characters in the path.",
     local_runtime_inventory: "View runtime inventory",
     local_runtime_inventory_hide: "Hide runtime inventory",
     local_runtime_inventory_loading: "Reading runtime inventory…",
@@ -875,9 +875,10 @@
     settings_punctuation_hint: "决定哪些标点符号需要换行，以及换行后是否保留标点（文稿匹配与转写共用）",
     llm_model: "模型",
     llm_api_key: "API Key",
-    llm_custom_provider: "自定义（兼容 OpenAI）",
-    llm_custom_display_name: "自定义显示名称",
-    llm_custom_display_name_placeholder: "可选",
+    llm_api_key_placeholder: "填写你的 API KEY",
+    llm_custom_provider: "OpenAI 通用接口",
+    llm_custom_display_name: "自定义显示名称（可选）",
+    llm_custom_display_name_placeholder: "自定义显示名称",
     llm_test_connection: "测试连接",
     llm_test_connection_title: "使用当前填写的 API Key、URL 和模型发送最小测试请求",
     llm_get_models: "获取模型",
@@ -887,10 +888,10 @@
     llm_models_empty: "供应商没有返回可用模型。",
     llm_model_choices_title: "展开已获取模型列表",
     llm_provider_unknown: "当前选择的供应商",
-    llm_builtin_provider_key_guidance: "{provider} 是内置供应商，请使用其官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义（兼容 OpenAI）”，并按该平台官方文档配置 API URL。",
+    llm_builtin_provider_key_guidance: "{provider} 是内置供应商，请使用其官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“OpenAI 通用接口”，并按该平台官方文档配置 API URL。",
     llm_http_unauthorized: "认证失败（HTTP 401，{operation}）。当前供应商：{provider}。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
-    llm_http_unauthorized_builtin: "认证失败（HTTP 401，{operation}）。当前供应商：{provider} 官网；请使用官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义（兼容 OpenAI）”，并按该平台官方文档配置 API URL。",
-    llm_http_unauthorized_custom: "认证失败（HTTP 401，{operation}）。当前供应商：自定义（兼容 OpenAI）。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
+    llm_http_unauthorized_builtin: "认证失败（HTTP 401，{operation}）。当前供应商：{provider} 官网；请使用官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“OpenAI 通用接口”，并按该平台官方文档配置 API URL。",
+    llm_http_unauthorized_custom: "认证失败（HTTP 401，{operation}）。当前供应商：OpenAI 通用接口。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
     llm_http_forbidden: "供应商拒绝了请求（HTTP 403，{operation}）。当前供应商：{provider}。请核对供应商、API URL 与 API Key 签发方是否一致，并确认账号或模型有权限；不要在错误报告中粘贴 Key。",
     llm_http_not_found: "接口或模型不存在（HTTP 404，{operation}）。请检查 API URL 的兼容路径和模型 ID；获取模型时还要确认该供应商提供 /models 接口。这个状态通常不是 API Key 问题。",
     llm_http_rate_limited: "请求被限流或额度暂时耗尽（HTTP 429，{operation}）。请稍后重试，降低请求频率或批次大小，并检查当前供应商的额度与限流策略。",
@@ -901,6 +902,7 @@
     llm_connection_success: "连接成功。",
     llm_connection_saved: "连接成功（已自动保存到本地环境）",
     llm_base_url: "API URL",
+    llm_base_url_placeholder: "填写你的 Base URL，如 https://api.openai.com/v1",
     llm_base_url_hint: "远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。",
     llm_reasoning_mode: "思考强度",
     llm_reasoning_auto: "自动（跟随模型默认）",
@@ -926,9 +928,10 @@
     settings_punctuation_hint: "Choose which punctuation marks start a new line and whether to keep them after splitting (shared by script matching and transcription).",
     llm_model: "Model",
     llm_api_key: "API Key",
-    llm_custom_provider: "Custom (OpenAI-compatible)",
-    llm_custom_display_name: "Custom display name",
-    llm_custom_display_name_placeholder: "Optional",
+    llm_api_key_placeholder: "Enter your API key",
+    llm_custom_provider: "OpenAI-compatible API",
+    llm_custom_display_name: "Custom display name (optional)",
+    llm_custom_display_name_placeholder: "Custom display name",
     llm_test_connection: "Test connection",
     llm_test_connection_title: "Send a minimal request using the current API key, URL, and model",
     llm_get_models: "Get models",
@@ -938,10 +941,10 @@
     llm_models_empty: "The provider returned no usable models.",
     llm_model_choices_title: "Show fetched model list",
     llm_provider_unknown: "the selected provider",
-    llm_builtin_provider_key_guidance: "{provider} is a built-in provider. Use an API key obtained from its official console. If the API key came from a third-party platform, choose Custom (OpenAI-compatible) and configure the API URL according to that platform's official documentation.",
+    llm_builtin_provider_key_guidance: "{provider} is a built-in provider. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the OpenAI-compatible API and configure the API URL according to that platform's official documentation.",
     llm_http_unauthorized: "Authentication failed (HTTP 401, {operation}). Current provider: {provider}. Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
-    llm_http_unauthorized_builtin: "Authentication failed (HTTP 401, {operation}). Current provider: {provider} official service. Use an API key obtained from its official console. If the API key came from a third-party platform, choose Custom (OpenAI-compatible) and configure the API URL according to that platform's official documentation.",
-    llm_http_unauthorized_custom: "Authentication failed (HTTP 401, {operation}). Current provider: Custom (OpenAI-compatible). Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
+    llm_http_unauthorized_builtin: "Authentication failed (HTTP 401, {operation}). Current provider: {provider} official service. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the OpenAI-compatible API and configure the API URL according to that platform's official documentation.",
+    llm_http_unauthorized_custom: "Authentication failed (HTTP 401, {operation}). Current provider: OpenAI-compatible API. Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
     llm_http_forbidden: "The provider rejected the request (HTTP 403, {operation}). Current provider: {provider}. Compare the provider, API URL, and the issuer of the API key, then confirm that the account or model is allowed; never paste the key into an error report.",
     llm_http_not_found: "The endpoint or model was not found (HTTP 404, {operation}). Check the compatible API URL path and model ID; when fetching models, confirm that the provider exposes /models. This is usually not an API-key problem.",
     llm_http_rate_limited: "The request was rate-limited or the quota is temporarily exhausted (HTTP 429, {operation}). Wait and retry, reduce request frequency or batch size, and check the current provider's quota and rate-limit policy.",
@@ -952,6 +955,7 @@
     llm_connection_success: "Connection successful.",
     llm_connection_saved: "Connection successful (saved to local environment automatically).",
     llm_base_url: "API URL",
+    llm_base_url_placeholder: "Enter your Base URL, e.g. https://api.openai.com/v1",
     llm_base_url_hint: "Use HTTPS for remote services; plain HTTP is limited to loopback addresses.",
     llm_reasoning_mode: "Reasoning effort",
     llm_reasoning_auto: "Auto (follow model default)",
@@ -1165,6 +1169,7 @@
       ocr_model_missing: "OCR 模型尚未安装。请打开设置下载安装。",
       ocr_runtime_path_invalid: "OCR 运行环境路径不能是一个文件。",
     local_runtime_path_invalid: "本地运行环境路径不能是一个文件。",
+      local_runtime_path_non_ascii: "路径包含中文或其他非 ASCII 字符，本地运行时无法在该目录安装；请改用纯英文、数字的路径。",
       workspace_missing: "新加坡地域需要 Workspace ID。",
       context_too_long: "Qwen-Audio 上下文最多 400 个字符。",
       soniox_context_too_long: "Soniox 上下文约限制为 10000 个字符。",
@@ -1241,6 +1246,7 @@
       ocr_model_missing: "The OCR model is not installed. Open Settings to download it.",
       ocr_runtime_path_invalid: "The OCR runtime path cannot point to a file.",
     local_runtime_path_invalid: "The local runtime path cannot point to a file.",
+      local_runtime_path_non_ascii: "The path contains non-ASCII characters (such as Chinese); the local runtime cannot be installed there. Use a path with ASCII characters only.",
       workspace_missing: "Singapore region requires a Workspace ID.",
       context_too_long: "Qwen-Audio context is limited to 400 characters.",
       soniox_context_too_long: "Soniox context is limited to approximately 10,000 characters.",
@@ -1454,10 +1460,10 @@
         appVersion: "1.6.0",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
-          { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
+          { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
           { id: "zhipu", label: "智谱 Coding Plan", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", model: "glm-5.2", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
           { id: "qwen", label: "阿里云 Qwen", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
-          { id: "custom", label: saved.customDisplayName || "Custom (OpenAI-compatible)", defaultLabel: "Custom (OpenAI-compatible)", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false }
+          { id: "custom", label: saved.customDisplayName || "OpenAI-compatible API", defaultLabel: "OpenAI-compatible API", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false }
         ],
         postprocessAutoPlan: saved.postprocessAutoPlan || { version: 1, enabled: false, retainIntermediate: true, steps: [] },
         modelCacheRoot: saved.modelCacheRoot || "D:\\Models\\MAW",
@@ -1472,7 +1478,7 @@
         providers: [
           {
             id: "qwen",
-            label: "阿里云百炼（QwenASR / FunASR）",
+            label: "阿里云百炼（QwenASR / FunASR）【推荐】",
             keyUrl: "https://platform.qianwenai.com/home/",
             apiKey: saved.apiKey,
             maskedApiKey: saved.apiKey ? "sk-…demo" : "",
@@ -1480,29 +1486,16 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "yue", "en"],
             models: [
-              { id: "qwen-audio-3.0-asr-flash-filetrans", label: "qwen-audio-3.0-asr（热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
-              { id: "fun-asr", label: "fun-asr（支持说话人）", envKey: "DASHSCOPE_API_KEY", note: "支持说话人分离与词级时间戳", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "qwen3-asr-flash-filetrans", label: "qwen3-asr（准确率更高）", envKey: "DASHSCOPE_API_KEY", note: "", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
+              { id: "qwen-audio-3.0-asr-flash-filetrans", label: "qwen-audio-3.0-asr（热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离。", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
+              { id: "fun-asr", label: "fun-asr（支持说话人）", envKey: "DASHSCOPE_API_KEY", note: "支持说话人分离与词级时间戳。", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "qwen3-asr-flash-filetrans", label: "qwen3-asr（准确率更高）", envKey: "DASHSCOPE_API_KEY", note: "", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
             ],
             regions: [{ id: "beijing", label: "北京（华北 2，默认）" }, { id: "singapore", label: "新加坡（需要 Workspace ID）" }],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "da", label: "丹麦语 / Danish" }]
           },
           {
-            id: "soniox",
-            label: "Soniox STT",
-            keyUrl: "https://console.soniox.com",
-            apiKey: "",
-            maskedApiKey: "",
-            supportsSpeaker: true,
-            multiLanguage: true,
-            commonLanguages: ["zh", "en", "ja", "ko"],
-            models: [{ id: "stt-async-v5", label: "Soniox Async STT（v5，上下文）", envKey: "SONIOX_API_KEY", note: "支持 general、text、terms 和 translation_terms 上下文", priceNote: "Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本和输出文本各 $3.50 / 1M。", supportsSpeaker: true, supportsContext: true, languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }] }],
-            regions: [],
-            languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }]
-          },
-          {
             id: "openai",
-            label: "OpenAI（及兼容接口）",
+            label: "OpenAI 格式通用接口",
             keyUrl: "https://platform.openai.com/api-keys",
             secondaryKeyUrl: "https://openrouter.ai/keys",
             apiKey: saved.apiKey,
@@ -1512,14 +1505,14 @@
             note: "默认连接 OpenAI 官方服务；OpenRouter 会自动适配预设模型 ID。其他中转站请选择“自定义（Custom）”并填写服务商提供的完整模型名；接口必须返回 segments 或 words 时间戳。",
             commonLanguages: ["", "zh", "en"],
             models: [
-              { id: "whisper-1", label: "whisper-1", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt；Whisper 提示词最多 224 tokens。", openrouterNote: "OpenRouter 参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。价格和可用能力以 OpenRouter 模型页为准。", priceNote: "OpenAI 官方参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "gpt-4o-transcribe", label: "gpt-4o-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt；需由接口返回 segments 或 words 时间戳。", openrouterNote: "OpenRouter 参考价：输入 $2.50 / 1M tokens，输出 $10 / 1M tokens；需由接口返回 segments 或 words 时间戳。", priceNote: "OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "gpt-4o-mini-transcribe", label: "gpt-4o-mini-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt；需由接口返回 segments 或 words 时间戳。", openrouterNote: "OpenRouter 参考价：输入 $1.25 / 1M tokens，输出 $5 / 1M tokens；需由接口返回 segments 或 words 时间戳。", priceNote: "OpenAI 官方参考价：输入 $1.25 / 1M audio tokens，输出 $5 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "gpt-transcribe", label: "gpt-transcribe（支持关键词）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "OpenAI 官方推荐的文件转写模型；支持 Prompt 和 Keywords，需由接口返回时间戳。", openrouterNote: "OpenRouter 参考价：$0.0045 / 分钟；支持 Prompt、Keywords 和 languages[]，需由接口返回时间戳。", priceNote: "OpenAI 官方参考价：$0.0045 / 分钟。", supportsSpeaker: false, supportsPrompt: true, supportsKeywords: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "gpt-4o-transcribe-diarize", label: "gpt-4o-transcribe-diarize（说话人分离）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "OpenAI 官方说话人分离模型；返回段级 speaker 与时间戳，OpenRouter 不支持。", openrouterNote: "OpenRouter 不支持 diarize；请改用 OpenAI 官方 Base URL。", priceNote: "OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens。", supportsSpeaker: true, supportsDiarization: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "whisper-large-v3-turbo", label: "whisper-large-v3-turbo（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.04 / 小时；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "whisper-large-v3", label: "whisper-large-v3（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.0015 / 分钟；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: OPENAI_ASR_CUSTOM_MODEL_ID, label: "自定义（Custom）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "选择后填写自定义 ASR 模型名", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
+              { id: "whisper-1", label: "whisper-1", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt 提示词；Whisper 提示词最多 224 tokens。", openrouterNote: "OpenRouter 参考价：$0.006 / 分钟。", priceNote: "OpenAI 官方参考价：$0.006 / 分钟（约 $0.36 / 小时）", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-transcribe", label: "gpt-4o-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt 提示词。", openrouterNote: "OpenRouter 参考价：输入 $2.50 / 1M tokens，输出 $10 / 1M tokens", priceNote: "OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-mini-transcribe", label: "gpt-4o-mini-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt 提示词。", openrouterNote: "OpenRouter 参考价：输入 $1.25 / 1M tokens，输出 $5 / 1M tokens", priceNote: "OpenAI 官方参考价：输入 $1.25 / 1M audio tokens，输出 $5 / 1M audio tokens", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-transcribe", label: "gpt-transcribe（支持关键词）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "OpenAI 官方推荐的文件转写模型；支持 Prompt 提示词和 Keywords。", openrouterNote: "OpenRouter 参考价：$0.0045 / 分钟；支持 Prompt、Keywords 和 languages[]。", priceNote: "OpenAI 官方参考价：$0.0045 / 分钟（约 $0.27 / 小时）", supportsSpeaker: false, supportsPrompt: true, supportsKeywords: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-transcribe-diarize", label: "gpt-4o-transcribe-diarize（说话人分离）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "OpenAI 官方说话人分离模型；返回段级 speaker 与时间戳。", openrouterNote: "OpenRouter 不支持 diarize；请改用 OpenAI 官方 Base URL。", priceNote: "OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens", supportsSpeaker: true, supportsDiarization: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "whisper-large-v3-turbo", label: "whisper-large-v3-turbo（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.04 / 小时", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "whisper-large-v3", label: "whisper-large-v3（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.0015 / 分钟（约 $0.09 / 小时）", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: OPENAI_ASR_CUSTOM_MODEL_ID, label: "自定义（Custom）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "选择后填写自定义 ASR 模型名。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
             ],
             regions: [],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }]
@@ -1549,8 +1542,36 @@
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }]
           },
           {
+            id: "doubao",
+            label: "火山引擎（豆包）",
+            keyUrl: "https://console.volcengine.com/speech/new/setting/apikeys",
+            apiKey: "",
+            maskedApiKey: "",
+            supportsSpeaker: true,
+            multiLanguage: false,
+            dividerBefore: true,
+            note: "媒体会直接上传到火山引擎；base64 直传单文件 ≤25MB 且 ≤120 分钟，MAW 会先提取为低码率单声道音频再提交。",
+            commonLanguages: ["", "zh", "yue", "en", "ja", "ko"],
+            models: [{ id: "volc.seedasr.auc", label: "豆包录音文件识别 2.0（Seed-ASR）", envKey: "VOLC_API_KEY", note: "支持说话人分离与即时热词；2.0 准确率更高。", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }] }],
+            regions: [],
+            languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }]
+          },
+          {
+            id: "soniox",
+            label: "Soniox STT（海外 / 小语种）",
+            keyUrl: "https://console.soniox.com",
+            apiKey: "",
+            maskedApiKey: "",
+            supportsSpeaker: true,
+            multiLanguage: true,
+            commonLanguages: ["zh", "en", "ja", "ko"],
+            models: [{ id: "stt-async-v5", label: "Soniox Async STT（v5，上下文）", envKey: "SONIOX_API_KEY", note: "支持提示词、说话人与字词时间码。", priceNote: "Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本 $3.50 / 1M。", supportsSpeaker: true, supportsContext: true, languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }] }],
+            regions: [],
+            languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }]
+          },
+          {
             id: "bcut",
-            label: "必剪 ASR（非官方 · 免费 · 实验性）",
+            label: "必剪（非官方 / 免费 / 实验性）",
             keyUrl: "https://github.com/SocialSisterYi/bcut-asr",
             apiKey: "",
             maskedApiKey: "",
@@ -1560,7 +1581,7 @@
             supportsLanguage: false,
             note: "非官方免费接口：无需 API Key，仅支持中文，单文件上限 2 小时；接口可能随时变更、失效或触发限流，请勿高频调用。重要或批量任务建议使用上方正式供应商。",
             commonLanguages: [],
-            models: [{ id: "bcut-asr", label: "必剪 ASR（免 Key / 仅中文）", envKey: "", note: "逐字毫秒时间戳；无需 API Key", supportsSpeaker: false, languages: [{ id: "", label: "中文（自动识别）" }] }],
+            models: [{ id: "bcut-asr", label: "必剪 ASR（免 Key / 仅中文）", envKey: "", note: "逐字毫秒时间戳；无需 API Key。", supportsSpeaker: false, languages: [{ id: "", label: "中文（自动识别）" }] }],
             regions: [],
             languages: [{ id: "", label: "中文（自动识别）" }]
           }
@@ -1633,11 +1654,11 @@
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
       open_sticker_folder: async () => { if (!saved.stickerDir) return { ok: false, code: "sticker_dir_invalid" }; window.__openedStickerFolder = saved.stickerDir; return { ok: true }; },
       get_postprocess_settings: async ({ providerId }) => { const apiKey = saved.postprocessApiKeys[providerId] || ""; return { ok: true, providerId, apiKey, maskedApiKey: apiKey ? "sk-…mock" : "" }; },
-      save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "Custom (OpenAI-compatible)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
+      save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "OpenAI-compatible API") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
       test_postprocess_connection: async ({ providerId, apiKey, save }) => { if (save && apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, verified: true, saved: Boolean(save), maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "" }; },
       save_postprocess_plan: async ({ plan }) => { saved.postprocessAutoPlan = plan; return { ok: true, plan }; },
       validate_postprocess_plan: async ({ plan }) => ({ ok: true, plan, errors: [] }),
-      get_postprocess_models: async ({ providerId }) => ({ ok: true, providerId, models: providerId === "qwen" ? ["qwen-plus", "qwen3-max"] : (providerId === "zhipu" ? ["glm-5.2", "glm-4.5"] : (providerId === "custom" ? ["local-model"] : ["deepseek-v4-flash", "deepseek-chat"])) }),
+      get_postprocess_models: async ({ providerId }) => ({ ok: true, providerId, models: providerId === "qwen" ? ["qwen-plus", "qwen3-max"] : (providerId === "zhipu" ? ["glm-5.2", "glm-4.5"] : (providerId === "custom" ? ["local-model"] : ["deepseek-flash", "deepseek-v4-pro"])) }),
       open_file: async ({ path }) => ({ ok: Boolean(path) }),
       open_containing_folder: async ({ path }) => ({ ok: Boolean(path) }),
       retry_postprocess: async () => ({ ok: false, error: "No failed automatic post-processing run." }),
@@ -1711,7 +1732,7 @@
   }
   // 供应商 / 模型配置的 label 与 note 由后端（maw/gui_config.py）以中文下发；
   // 英文界面按稳定 id 映射为英文，id 未收录时回退后端原文。
-  const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (QwenASR / FunASR)", soniox: "Soniox STT", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI (and compatible)", local: "Local models (Beta)", bcut: "Bcut ASR (unofficial · free · experimental)" };
+  const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (QwenASR / FunASR) [Recommended]", soniox: "Soniox STT (overseas / minority languages)", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI-format compatible API", local: "Local models (Beta)", doubao: "Volcano Engine (Doubao)", bcut: "Bcut (unofficial / free / experimental)" };
   const PROVIDER_NOTES_EN = {
     openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models. For other relays, choose Custom and enter the exact model name they provide. The API must return segments or words timestamps.",
     tencent: "Requires TENCENT_SECRET_ID and TENCENT_SECRET_KEY; use a COS URL for media larger than 5 MB.",
@@ -1744,12 +1765,12 @@
     "qwen-audio-3.0-asr-flash-filetrans": "Supports instant hotwords, context, and speaker diarization.",
     "fun-asr": "Supports speaker diarization and word-level timestamps.",
     "whisper-1": "Supports Prompt; Whisper prompts are limited to 224 tokens.",
-    "gpt-transcribe": "OpenAI's recommended file transcription model; supports Prompt and Keywords and requires timestamped output.",
-    "gpt-4o-transcribe": "Supports Prompt and requires timestamped output.",
-    "gpt-4o-mini-transcribe": "Supports Prompt and requires timestamped output.",
-    "gpt-4o-transcribe-diarize": "OpenAI's speaker-diarization model; returns speaker-labeled segments. OpenRouter does not support it.",
+    "gpt-transcribe": "OpenAI's recommended file transcription model; supports Prompt and Keywords.",
+    "gpt-4o-transcribe": "Supports Prompt.",
+    "gpt-4o-mini-transcribe": "Supports Prompt.",
+    "gpt-4o-transcribe-diarize": "OpenAI's speaker-diarization model; returns speaker-labeled segments.",
     "custom-asr": "Fill in your custom ASR model name after selecting this.",
-    "stt-async-v5": "Supports general, text, terms, and translation_terms context.",
+    "stt-async-v5": "Supports prompts, speaker diarization, and word-level timestamps.",
     "16k_zh_en_2.0": "Enter the SecretId here; configure SecretKey in the local .env.",
     "qwen3-asr-local": "Lightweight multilingual recognition with native word/character timestamps; shares the Qwen3-ForcedAligner cache.",
     "qwen3-asr-1.7b-local": "Higher recognition quality with native word/character timestamps; shares the Qwen3-ForcedAligner; higher resource use.",
@@ -1762,24 +1783,24 @@
     "bcut-asr": "Millisecond per-character timestamps; no API key required.",
   };
   const MODEL_PRICING_NOTES_EN = {
-    "qwen-audio-3.0-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
-    "fun-asr": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
-    "qwen3-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
-    "stt-async-v5": "Soniox reference price: about $0.10/hour for async file transcription; token-based pricing with $1.50 / 1M audio input tokens and $3.50 / 1M input-text and output-text tokens.",
+    "qwen-audio-3.0-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
+    "fun-asr": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
+    "qwen3-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
+    "stt-async-v5": "Soniox reference price: about $0.10/hour for async file transcription; token-based pricing with $1.50 / 1M audio input tokens and $3.50 / 1M input-text tokens.",
     "16k_zh_en_2.0": "Tencent Cloud reference price: CNY 0.8/hour for recorded-file ASR large model 2.0 on pay-as-you-go; a 60-hour prepaid pack is CNY 48.",
-    "whisper-1": "OpenAI official reference price: $0.006/minute; the endpoint must return segments or words timestamps.",
-    "gpt-transcribe": "OpenAI official reference price: $0.0045/minute.",
-    "gpt-4o-transcribe": "OpenAI official reference price: $2.50 / 1M audio input tokens and $10 / 1M audio output tokens; the endpoint must return timestamps.",
-    "gpt-4o-mini-transcribe": "OpenAI official reference price: $1.25 / 1M audio input tokens and $5 / 1M audio output tokens; the endpoint must return timestamps.",
+    "whisper-1": "OpenAI official reference price: $0.006/minute (about $0.36/hour)",
+    "gpt-transcribe": "OpenAI official reference price: $0.0045/minute (about $0.27/hour)",
+    "gpt-4o-transcribe": "OpenAI official reference price: $2.50 / 1M audio input tokens and $10 / 1M audio output tokens",
+    "gpt-4o-mini-transcribe": "OpenAI official reference price: $1.25 / 1M audio input tokens and $5 / 1M audio output tokens",
     "gpt-4o-transcribe-diarize": "OpenAI official reference price: $2.50 / 1M audio input tokens and $10 / 1M audio output tokens.",
   };
   const MODEL_OPENROUTER_NOTES_EN = {
-    "whisper-1": "OpenRouter reference price: $0.006/minute; the endpoint must return segments or words timestamps. Prices and capabilities can change.",
-    "gpt-transcribe": "OpenRouter reference price: $0.0045/minute; supports Prompt, Keywords, and languages[] and requires timestamped output.",
-    "gpt-4o-transcribe": "OpenRouter reference price: $2.50 / 1M input tokens and $10 / 1M output tokens; the endpoint must return timestamps.",
-    "gpt-4o-mini-transcribe": "OpenRouter reference price: $1.25 / 1M input tokens and $5 / 1M output tokens; the endpoint must return timestamps.",
-    "whisper-large-v3-turbo": "OpenRouter reference price: $0.04/hour; the endpoint must return segments or words timestamps.",
-    "whisper-large-v3": "OpenRouter reference price: $0.0015/minute; the endpoint must return segments or words timestamps.",
+    "whisper-1": "OpenRouter reference price: $0.006/minute.",
+    "gpt-transcribe": "OpenRouter reference price: $0.0045/minute; supports Prompt, Keywords, and languages[].",
+    "gpt-4o-transcribe": "OpenRouter reference price: $2.50 / 1M input tokens and $10 / 1M output tokens",
+    "gpt-4o-mini-transcribe": "OpenRouter reference price: $1.25 / 1M input tokens and $5 / 1M output tokens",
+    "whisper-large-v3-turbo": "OpenRouter reference price: $0.04/hour",
+    "whisper-large-v3": "OpenRouter reference price: $0.0015/minute",
     "gpt-4o-transcribe-diarize": "OpenRouter does not support diarize; switch to the official OpenAI Base URL.",
   };
   const REGION_LABELS_EN = { beijing: "Beijing (China North 2, default)", singapore: "Singapore (Workspace ID required)" };
@@ -1810,24 +1831,29 @@
       return false;
     }
   }
+  // 价格文案统一加 🪙 前缀；非价格的备注（如 diarize 的 OpenRouter 提示）不加。
+  function withPricePrefix(text) {
+    const value = String(text || "");
+    return /参考价|reference price/iu.test(value) ? `🪙 ${value}` : value;
+  }
   function modelNoteText(modelItem) {
     const openRouterNote = modelItem.openrouterNote || "";
     const baseUrl = $("openaiBaseUrl")?.value || state.config?.openaiBaseUrl;
     const isOpenai = isOpenAiProvider();
     const isOpenRouter = isOpenai && isOpenRouterBaseUrl(baseUrl);
-    if (isOpenRouter && openRouterNote) return state.lang === "en" ? (MODEL_OPENROUTER_NOTES_EN[modelItem.id] || openRouterNote) : openRouterNote;
+    if (isOpenRouter && openRouterNote) return withPricePrefix(state.lang === "en" ? (MODEL_OPENROUTER_NOTES_EN[modelItem.id] || openRouterNote) : openRouterNote);
     const note = state.lang === "en" ? (MODEL_NOTES_EN[modelItem.id] || modelItem.note) : modelItem.note;
     if (isOpenai && !isOpenAiOfficialBaseUrl(baseUrl)) return note;
     const priceNote = state.lang === "en" ? (MODEL_PRICING_NOTES_EN[modelItem.id] || modelItem.priceNote) : modelItem.priceNote;
-    return [note, priceNote].filter(Boolean).join(state.lang === "en" ? "; " : "；");
+    return [note, withPricePrefix(priceNote)].filter(Boolean).join("\n");
   }
   function llmProviderLabel(providerId) {
     const id = String(providerId || "").trim();
     const item = state.config?.postprocessProviders?.find((candidate) => candidate.id === id);
     if (id === "custom" && item?.displayName) return item.displayName;
     const labels = state.lang === "en"
-      ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen", custom: "Custom (OpenAI-compatible)" }
-      : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen", custom: "自定义（兼容 OpenAI）" };
+      ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen", custom: "OpenAI-compatible API" }
+      : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen", custom: "OpenAI 通用接口" };
     return labels[id] || item?.label || t("llm_provider_unknown");
   }
   function llmBuiltInProviderKeyGuidance(context = {}) {
@@ -2232,7 +2258,7 @@
   }
 
   function setRunning(running) { state.running = running; $("progress").classList.toggle("hidden", !running); $("start").classList.toggle("hidden", running); $("stop").classList.toggle("hidden", !running); $("start").disabled = running; $("stop").disabled = !running; setStatus(running ? t("running") : t("ready")); }
-  function fillSelect(id, items, value) { const el = $(id); el.innerHTML = ""; items.forEach((item) => el.add(new Option(localizedSelectLabel(id, item), item.id))); el.value = value ?? ""; }
+  function fillSelect(id, items, value) { const el = $(id); el.innerHTML = ""; items.forEach((item) => { if (item.dividerBefore) { const divider = new Option("──────", "__divider"); divider.disabled = true; el.add(divider); } el.add(new Option(localizedSelectLabel(id, item), item.id)); }); el.value = value ?? ""; }
   function refillSelectLabels() {
     // 语言切换后，后端下发的下拉选项（供应商/模型/地域/语言）与说明行需要按新语言重建。
     if (!state.config) return;
@@ -2746,6 +2772,10 @@
   async function saveLocalRuntimePath(path) {
     const requestId = ++localRuntimeRequest;
     const value = String(path || "").trim();
+    if (value && /[^\x00-\x7F]/.test(value)) {
+      setError("localRuntimePath", errText("local_runtime_path_non_ascii", ""));
+      return { ok: false, field: "localRuntimePath", code: "local_runtime_path_non_ascii" };
+    }
     const result = await bridge("save_local_settings", { runtimePath: value });
     if (requestId !== localRuntimeRequest) return result;
     if (!result.ok) { applyErrorResult(result); return result; }
