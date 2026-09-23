@@ -2597,7 +2597,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         named_values = {(path, name): value for path, name, value in fake_winreg.values if name is not None}
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "InstallPath")], str(self.root))
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "ExecutablePath")], str(executable))
-        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.6.0-beta.6")
+        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.6.0")
 
     def test_register_mosp_association_preserves_existing_user_choice(self) -> None:
         launcher = self.root / "MAW.exe"
