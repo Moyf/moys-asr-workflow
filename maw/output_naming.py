@@ -51,7 +51,7 @@ OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
     "timestamps": {"zh": "生成时间码", "en": "timestamps"},
 }
 
-# 媒体工具产物后缀（压制字幕/提取音频/媒体重组）；未列出的后缀原样使用。
+# 媒体工具产物后缀（烧录字幕/提取音频/媒体重组）；未列出的后缀原样使用。
 MEDIA_SUFFIX_NAMES: Final[dict[str, dict[str, str]]] = {
     "gap-removed": {"zh": "去空隙", "en": "gap-removed"},
     "subtitled": {"zh": "压字幕", "en": "subtitled"},

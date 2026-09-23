@@ -508,7 +508,7 @@ def _validated_media_path(
     resolved = path.expanduser().resolve()
     name = _MEDIA_LABEL_NAMES.get(label, "媒体文件")
     if not resolved.is_file():
-        # 明确区分是视频还是字幕缺失：手动压制里两个文件都由用户选择，
+        # 明确区分是视频还是字幕缺失：手动烧录里两个文件都由用户选择，
         # 自动后处理里则都来自流水线上一步，提示需要能定位到具体文件。
         raise MediaToolError(f"{name}不存在：{resolved}")
     if resolved.suffix.lower() not in extensions:

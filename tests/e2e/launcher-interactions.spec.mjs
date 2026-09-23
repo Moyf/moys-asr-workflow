@@ -155,7 +155,7 @@ test('automatic subtitle burning follows the selected video', async ({ page }) =
 
   await expect(page.locator('#autoStepBurnStatus')).toHaveClass(/ready/);
   await expect(page.locator('#autoStepBurnHint')).toContainText('clip.mp4');
-  await expect(page.locator('#configureAutoBurn')).toBeHidden();
+  await expect(page.locator('#configureAutoBurn')).toBeVisible();
   await expect.poll(() => page.evaluate(() => (
     window.MAWLauncher.getAutoPostprocessPayload().steps.find((step) => step.id === 'burn')
   ))).toMatchObject({ id: 'burn', enabled: true, videoEncoder: 'auto' });
@@ -420,7 +420,7 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
   expect(layout.columns).toBe(1);
   expect(layout.tabColumnCount).toBe(5);
 
-  // beta.4 重构后工具顺序：压制字幕、媒体重组、口播对齐、提取音频、生成波形。
+  // beta.4 重构后工具顺序：烧录字幕、媒体重组、口播对齐、提取音频、生成波形。
   await page.locator('#toolboxAlignmentTab').focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('#toolboxExtractAudioTab')).toBeFocused();

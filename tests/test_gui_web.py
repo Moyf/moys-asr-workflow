@@ -1279,7 +1279,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxAlignmentTab"'))
         self.assertLess(html.index('id="toolboxAlignmentTab"'), html.index('id="toolboxExtractAudioTab"'))
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
-        # 实用工具记住上次选择的工具；从未选择时回退到第一项（压制字幕）。
+        # 实用工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
         self.assertIn(
             'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");',
             script,
@@ -1296,9 +1296,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('toolbox_group_utilities: "实用工具"', strings)
         self.assertIn('toolbox_utility_media: "媒体文件"', strings)
         self.assertIn('toolbox_utility_media: "Media file"', strings)
-        self.assertIn('toolbox_burn_subtitle: "压制字幕"', strings)
+        self.assertIn('toolbox_burn_subtitle: "烧录字幕"', strings)
         self.assertIn('id="configureAutoBurn"', html)
-        self.assertIn('id="configureAutoBurn" class="inline-link hidden"', html)
+        self.assertIn('id="configureAutoBurn" class="inline-link"', html)
         self.assertIn('id="toolboxBurnVideoEncoder"', html)
         self.assertIn('id="toolboxBurnVideoEncoderField" class="field"', html)
         self.assertIn('data-i18n="toolbox_burn_notice"', html)

@@ -4236,7 +4236,7 @@
     encoding: 1,
   });
   // ASS 默认样式：字体按操作系统选择、默认加粗，字号按 1080p 参考基准 72，
-  // 垂直边距放宽到 80；SRT 压制默认样式保持 Arial 18/40 不加粗。
+  // 垂直边距放宽到 80；SRT 烧录默认样式保持 Arial 18/40 不加粗。
   const ASS_DEFAULT_ASS_STYLE = Object.freeze({
     ...ASS_DEFAULT_STYLE,
     id: 'ass', name: 'ASS 默认样式',
