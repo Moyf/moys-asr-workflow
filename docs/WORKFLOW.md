@@ -70,7 +70,7 @@ DASHSCOPE_API_KEY=sk-你的密钥
 uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" -ll 2m --json
 ```
 
-CLI 未指定 `--model` 时默认使用 `qwen-audio-3.0-asr-flash-filetrans`；需要使用旧 Qwen3 或 Fun-ASR 时再显式指定模型。
+CLI 未指定 `--model` 时默认使用 `qwen-audio-3.0-asr-flash-filetrans`；2026-09 起也可显式指定 `qwen-audio-3.1-asr-flash-filetrans`（能力对齐 3.0 并新增方言 ASR/AST 可控输出），需要使用旧 Qwen3 或 Fun-ASR 时再显式指定模型。
 
 常用可选项：
 
@@ -89,7 +89,6 @@ CLI 默认不生成波形缓存；需要交给编辑器直接打开时，加 `--
 
 在 Launcher 放入包含两条或更多音轨的视频时，媒体路径下方会显示「声音轨道」。它优先选中 FFprobe 标记为默认的轨道（没有默认标记时选第一条）；转写、波形缓存、频谱和 `.ReaPeaks` 都使用同一选择，工程也会保存该选择供编辑器重新打开时恢复。默认轨使用无后缀缓存，其他轨使用 `.track-N`；所选轨的精确缓存缺失时会先尝试重建，只有重建失败才临时显示默认轨缓存。单音轨视频和纯音频不会显示该控件；FFprobe 无法读取时保持与旧版本相同的第一条轨道行为。批量转写会为每个媒体独立探测默认轨，不复用主界面当前文件的选择。
 
-## 用 Qwen-Audio ASR 转写（热词与上下文）
 ## 识别高级选项预设
 
 「高级选项」标题右侧的「保存预设」打开系统另存为窗口，用文件名命名预设；「载入预设」打开文件选择窗口。预设独立于供应商和模型，不切换当前模型，不自动开始转写，也不在启动时自动载入。
@@ -98,9 +97,9 @@ CLI 默认不生成波形缓存；需要交给编辑器直接打开时，加 `--
 
 预设包含全部高级选项：设备、标点、对齐模型、语言、各供应商上下文与热词、保留方言表达、说话人颜色、频谱和调试开关；同时包含快速测试及设置面板中的字幕切句参数。隐藏字段也会保存，模型不支持的语言暂不应用，切换到支持的模型时恢复。预设不包含密钥、媒体、输出位置或后处理流程。热词文件只保存原路径，不复制文件；文件丢失时会提示。无效或不支持的预设文件不会覆盖当前表单。
 
-## 用 Qwen-Audio 3.0 ASR 转写（热词与上下文）
+## 用 Qwen-Audio ASR 转写（热词与上下文）
 
-Launcher 和 CLI 默认都使用 `qwen-audio-3.0-asr-flash-filetrans`；需要切换其他模型时再显式指定：
+Launcher 和 CLI 默认都使用 `qwen-audio-3.0-asr-flash-filetrans`；`qwen-audio-3.1-asr-flash-filetrans` 是 2026-09 新增的可选模型，支持即时热词、上下文与说话人分离，并可选「保留方言表达」。需要切换其他模型时再显式指定：
 
 ```powershell
 uv run python generate_subtitle_qwen_api.py "D:\Videos\example.mp4" --model qwen-audio-3.0-asr-flash-filetrans -ll 2m --json
@@ -119,6 +118,7 @@ Qwen-Audio 的 filetrans API 使用 `input.file_urls` 和 `output.results[]`，�
 --hotword-weight 5       hotwords.txt 即时热词权重，可用 1-5 或 50
 --context "领域词表"     发送最多 400 字符上下文
 --context-file path.txt  从 UTF-8 文件读取上下文
+--keep-dialect           保留方言原文，不转写为普通话（仅 3.1 支持）
 --speaker                 开启说话人分离
 --speaker-colors          开启说话人分离并写入颜色快照
 ```

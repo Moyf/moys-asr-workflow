@@ -2,6 +2,8 @@
 
 from pathlib import Path
 import json
+import os
+import tempfile
 
 SCHEMA = "maw.asr-preset.v1"
 TEXT_FIELDS = (
@@ -54,5 +56,11 @@ def write_preset(path: Path, options: object) -> None:
     text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
     if len(text.encode("utf-8")) > 4_000_000:
         raise ValueError("Preset is too large")
-    with path.open("w", encoding="utf-8", newline="\n") as stream:
-        stream.write(text)
+    # Keep the existing preset intact until the replacement is fully written.
+    with tempfile.TemporaryDirectory(prefix=".asr-preset-", dir=path.parent) as directory:
+        temporary = Path(directory) / "preset.json"
+        with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)

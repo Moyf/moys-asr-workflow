@@ -111,6 +111,46 @@ class RecognitionPresetTests(unittest.TestCase):
         self.assertTrue(result['ok'])
         self.assertTrue(result['missingHotwords'])
 
+    def test_successful_overwrite_replaces_preset(self):
+        path = self.root / 'preset.json'
+        write_preset(path, self.options)
+        updated = self.options | {'qwenAudioContext': '新的背景'}
+        write_preset(path, updated)
+        self.assertEqual(read_preset(path), updated)
+        self.assertNotIn(b'\r\n', path.read_bytes())
+        self.assertEqual(list(self.root.iterdir()), [path])
+
+    def test_failed_save_preserves_previous_preset(self):
+        path = self.root / 'preset.json'
+        write_preset(path, self.options)
+        original = path.read_bytes()
+        original_open = Path.open
+
+        def failing_open(candidate, *args, **kwargs):
+            stream = original_open(candidate, *args, **kwargs)
+            if args and args[0] == 'w':
+                def partial_write(text):
+                    stream.write(text[:10])
+                    raise OSError('Disk full')
+                wrapper = Mock(wraps=stream)
+                wrapper.write.side_effect = partial_write
+                context = Mock()
+                context.__enter__ = Mock(return_value=wrapper)
+                context.__exit__ = Mock(side_effect=lambda *exc: stream.close())
+                return context
+            return stream
+
+        for failure in (
+            patch.object(Path, 'open', failing_open),
+            patch('maw.asr_presets.os.fsync', side_effect=OSError('Flush failed')),
+            patch('maw.asr_presets.os.replace', side_effect=PermissionError('File locked')),
+        ):
+            with failure, self.assertRaises(OSError):
+                write_preset(path, self.options | {'qwenAudioContext': '新的背景'})
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(read_preset(path), self.options)
+            self.assertEqual(list(self.root.iterdir()), [path])
+
     def test_unwritable_default_directory_falls_back(self):
         blocked = self.root / 'blocked'
         blocked.write_text('not a directory', encoding='utf-8')
