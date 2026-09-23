@@ -48,6 +48,7 @@ test('recognition presets restore all fields without changing the model', async 
       window.savedPreset.language = 'zh,en';
       window.savedPreset.debugRaw = true;
       window.savedPreset.testRun = true;
+      window.savedPreset.qwenAudioKeepDialect = true;
       window.savedPreset.sonioxContextText = '跨供应商背景';
       window.expectedPreset = structuredClone(window.savedPreset);
     });
@@ -56,6 +57,7 @@ test('recognition presets restore all fields without changing the model', async 
     assert.equal(await page.locator('#model').inputValue(), originalModel);
     assert.equal(await page.locator('#debugRaw').isChecked(), true);
     assert.equal(await page.locator('#testRun').isChecked(), true);
+    assert.equal(await page.locator('#qwenAudioKeepDialect').isChecked(), true);
     assert.match(await page.locator('#asrPresetStatus').textContent(), /热词文件不存在/);
     await page.locator('#provider').selectOption('soniox');
     await page.locator('#saveAsrPreset').click();

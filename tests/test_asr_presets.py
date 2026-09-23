@@ -57,7 +57,16 @@ class RecognitionPresetTests(unittest.TestCase):
         self.options.update(localDevice='auto', fireRedPunc='ct-punc',
                             qwenAudioHotwordsMode='text', qwenAudioHotwordWeight='50',
                             qwenAudioContext='领域背景\n保留第二行', qwenAudioHotwords='术语: 50\n产品',
-                            debugRaw=True, testRun=True, language='zh,en')
+                            debugRaw=True, testRun=True, qwenAudioKeepDialect=True, language='zh,en')
+
+    def test_older_preset_defaults_to_standard_dialect_behavior(self):
+        from maw.asr_presets import validate_options
+
+        legacy = dict(self.options)
+        del legacy['qwenAudioKeepDialect']
+        restored = validate_options(legacy)
+        self.assertFalse(restored['qwenAudioKeepDialect'])
+        self.assertEqual(restored, legacy | {'qwenAudioKeepDialect': False})
 
     def test_roundtrip_and_shared_directory_after_restart(self):
         other = self.root / 'custom'

@@ -11,10 +11,13 @@ TEXT_FIELDS = (
     "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms",
     "openaiPrompt", "openaiKeywords", "maxLen", "minLen", "maxWords", "minWords", "gapSplit",
 )
-BOOL_FIELDS = ("speakerColors", "generateSpectral", "debugRaw", "testRun")
+BOOL_FIELDS = ("speakerColors", "generateSpectral", "debugRaw", "testRun", "qwenAudioKeepDialect")
 
 
 def validate_options(options: object) -> dict:
+    # Presets saved before Qwen-Audio 3.1 used the default dialect behavior.
+    if isinstance(options, dict):
+        options = {"qwenAudioKeepDialect": False, **options}
     if not isinstance(options, dict) or set(options) != set(TEXT_FIELDS + BOOL_FIELDS):
         raise ValueError("Invalid preset fields")
     for key in TEXT_FIELDS:

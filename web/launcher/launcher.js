@@ -3115,7 +3115,7 @@
     "sonioxContextTranslationTerms", "openaiPrompt", "openaiKeywords",
     "maxLen", "minLen", "maxWords", "minWords", "gapSplit",
   ];
-  const ASR_PRESET_BOOL_FIELDS = ["speakerColors", "generateSpectral", "debugRaw", "testRun"];
+  const ASR_PRESET_BOOL_FIELDS = ["speakerColors", "generateSpectral", "debugRaw", "testRun", "qwenAudioKeepDialect"];
   let presetLanguage = null;
   function collectAsrPreset() {
     const options = Object.fromEntries(ASR_PRESET_TEXT_FIELDS.map((id) => [id, $(id).value]));
