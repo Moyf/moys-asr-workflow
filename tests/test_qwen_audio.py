@@ -11,9 +11,11 @@ from generate_subtitle_qwen_api import (
     FILETRANS_MODEL,
     FUNASR_MODEL,
     QWEN3_ASR_FILETRANS_MODEL,
+    QWEN_AUDIO_31_FILETRANS_MODEL,
     QWEN_AUDIO_FILETRANS_MODEL,
     build_segments_from_api_sentences,
     build_qwen_audio_context,
+    is_qwen_audio_31_model,
     is_qwen_audio_model,
     load_hotwords,
     main,
@@ -41,6 +43,13 @@ class QwenAudioAdapterTests(unittest.TestCase):
         self.assertTrue(is_qwen_audio_model(QWEN_AUDIO_FILETRANS_MODEL))
         self.assertTrue(supports_speaker_diarization(QWEN_AUDIO_FILETRANS_MODEL))
         self.assertFalse(is_qwen_audio_model("qwen3-asr-flash-filetrans"))
+
+    def test_qwen_audio_31_is_recognized_as_qwen_audio_model(self) -> None:
+        self.assertTrue(is_qwen_audio_model(QWEN_AUDIO_31_FILETRANS_MODEL))
+        self.assertTrue(is_qwen_audio_31_model(QWEN_AUDIO_31_FILETRANS_MODEL))
+        self.assertTrue(supports_speaker_diarization(QWEN_AUDIO_31_FILETRANS_MODEL))
+        self.assertFalse(is_qwen_audio_31_model(QWEN_AUDIO_FILETRANS_MODEL))
+        self.assertFalse(is_qwen_audio_31_model(QWEN3_ASR_FILETRANS_MODEL))
 
     def test_qwen_standard_mixed_timestamps_preserve_sentence_fallback(self) -> None:
         result = parse_transcription_result({
@@ -252,6 +261,46 @@ class QwenAudioAdapterTests(unittest.TestCase):
         self.assertNotIn("enable_words", payload["parameters"])
         self.assertNotIn("enable_itn", payload["parameters"])
         response.raise_for_status.assert_called_once_with()
+
+    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    def test_submit_keeps_dialect_only_for_qwen_audio_31(self, post: mock.Mock) -> None:
+        response = mock.Mock()
+        response.json.return_value = {
+            "output": {"task_id": "task-dialect", "task_status": "PENDING"}
+        }
+        post.return_value = response
+
+        submit_filetrans(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "oss://temporary/audio.wav",
+            language=None,
+            enable_words=True,
+            enable_itn=False,
+            model=QWEN_AUDIO_31_FILETRANS_MODEL,
+            keep_dialect=True,
+        )
+
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["model"], QWEN_AUDIO_31_FILETRANS_MODEL)
+        self.assertTrue(payload["parameters"]["keep_dialect"])
+
+        post.reset_mock()
+        post.return_value = response
+
+        submit_filetrans(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "oss://temporary/audio.wav",
+            language=None,
+            enable_words=True,
+            enable_itn=False,
+            model=QWEN_AUDIO_FILETRANS_MODEL,
+            keep_dialect=True,
+        )
+
+        payload = post.call_args.kwargs["json"]
+        self.assertNotIn("keep_dialect", payload["parameters"])
 
     @mock.patch("generate_subtitle_qwen_api.requests.post")
     def test_submit_uses_individual_hotword_weights_and_ignores_invalid_entries(
@@ -466,6 +515,23 @@ class QwenAudioAdapterTests(unittest.TestCase):
             all(sentence["start"] <= item["start"] < item["end"] <= sentence["end"]
                 for item in sentence["items"])
         )
+
+    def test_main_rejects_keep_dialect_for_non_31_models(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            media_path = Path(directory) / "input.wav"
+            media_path.write_bytes(b"audio")
+            with (
+                mock.patch("sys.argv", [
+                    "generate_subtitle_qwen_api.py",
+                    str(media_path),
+                    "--model",
+                    QWEN_AUDIO_FILETRANS_MODEL,
+                    "--keep-dialect",
+                ]),
+                redirect_stdout(io.StringIO()),
+                self.assertRaises(SystemExit),
+            ):
+                main()
 
     def test_funasr_main_preserves_sentence_fallback_boundaries(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

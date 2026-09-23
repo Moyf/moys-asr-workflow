@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### ✨ 提升
+
+- 接入阿里云百炼新模型 `qwen-audio-3.1-asr-flash-filetrans`（Qwen-Audio-3.1-ASR） ： 可在 Launcher 模型列表和 CLI `--model` 中选择，支持即时热词、上下文与说话人分离，并新增「保留方言表达」选项（CLI `--keep-dialect` 或 Launcher 高级选项勾选，仅 3.1 支持，默认把方言转写为普通话文本）。默认模型仍为 `qwen-audio-3.0-asr-flash-filetrans`；注意 3.1 按 Token 计费（北京输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token），与 3.0 的按秒计费不同。
+
 ## [1.6.0] - 2026-09-22
 
 1.6 （又）是一个超级巨大的版本更新！
