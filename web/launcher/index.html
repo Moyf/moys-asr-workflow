@@ -204,6 +204,13 @@
                 <p id="qwenAudioContextCount" class="character-count" aria-live="polite">当前字符数：0/400</p>
                 <p id="qwenAudioContextError" class="field-error"></p>
               </div>
+              <div id="qwenAudioKeepDialectField" class="field hidden">
+                <label class="check-field" for="qwenAudioKeepDialect">
+                  <input id="qwenAudioKeepDialect" type="checkbox">
+                  <span data-i18n="qwen_audio_keep_dialect">保留方言表达</span>
+                </label>
+                <p class="hint" data-i18n="qwen_audio_keep_dialect_hint">仅 qwen-audio-3.1-asr 支持：勾选后保留方言原文；不勾选时方言会被转写为普通话文本。</p>
+              </div>
               <div id="qwenAudioHotwordsSection">
                 <h3 data-i18n="qwen_audio_hotwords">即时热词</h3>
                 <div class="qwen-audio-options-grid">

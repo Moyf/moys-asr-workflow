@@ -6,6 +6,7 @@
 
 ### ✨ 提升
 
+- 接入阿里云百炼新模型 `qwen-audio-3.1-asr-flash-filetrans`（Qwen-Audio-3.1-ASR） ： 可在 Launcher 模型列表和 CLI `--model` 中选择，支持即时热词、上下文与说话人分离，并新增「保留方言表达」选项（CLI `--keep-dialect` 或 Launcher 高级选项勾选，仅 3.1 支持，默认把方言转写为普通话文本）。默认模型仍为 `qwen-audio-3.0-asr-flash-filetrans`；注意 3.1 按 Token 计费（北京输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token），与 3.0 的按秒计费不同。
 - Launcher「AI 模型配置」：供应商「自定义（兼容 OpenAI）」更名为「OpenAI 通用接口」；「自定义显示名称」移到 API URL 下方并标注（可选），API Key 与 API URL 增加填写提示。
 - Launcher 识别方式列表重排并更新文案：阿里云百炼（千问）、OpenAI 格式通用接口与本地模型（Beta）置顶；火山引擎（豆包）、Soniox STT（海外 / 小语种）、必剪（非官方 / 免费 / 实验性）等次要入口通过浅灰分隔线分组展示；Qwen 供应商获取 API Key 的提示改为「在 千问AI平台 获取或查看 API Key」，必剪模型标签简化为「必剪（免 Key / 仅中文）」。
 - 模型备注与参考价文案简化：能力一句话 + 独立一行 🪙 参考价，去掉地域分项与「需由接口返回时间戳」等冗余说明，分钟计价补充小时换算。
