@@ -2168,7 +2168,8 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
     elapsed_poll = time.perf_counter() - t0
     if uses_file_urls(model):
         audio_secs = task_usage.get("duration", 0)
-        print(f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s")
+        billing_note = "（3.1 按 Token 计费）" if is_qwen_audio_31_model(model) else ""
+        print(f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s{billing_note}")
     else:
         audio_secs = task_usage.get("seconds", 0)
         est_tokens = audio_secs * 25  # 文档：每秒音频 = 25 tokens
@@ -2608,6 +2609,7 @@ def main():
         if not args.no_model_tag:
             model_tag = (
                 "fun-asr" if is_funasr_model(args.model)
+                else "qwen-audio-3.1-asr-api" if is_qwen_audio_31_model(args.model)
                 else "qwen-audio-asr-api" if is_qwen_audio_model(args.model)
                 else "qwen3-asr-api"
             )
@@ -2639,12 +2641,15 @@ def main():
         print(f"媒体时长: {format_elapsed(duration)}")
         print(f"转写时长为媒体时长的 {rtf:.2f} 倍")
         print(f"实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
-        cost = estimate_dashscope_cost(duration)
-        if cost is not None:
-            print(
-                f"预计费用: 约 {cost:.2f} 元"
-                f"（{DASHSCOPE_PRICE_PER_SECOND} 元/秒 × {duration:.1f} 秒）"
-            )
+        if is_qwen_audio_31_model(args.model):
+            print("预计费用: 按 Token 计费（北京 输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token），以百炼账单为准")
+        else:
+            cost = estimate_dashscope_cost(duration)
+            if cost is not None:
+                print(
+                    f"预计费用: 约 {cost:.2f} 元"
+                    f"（{DASHSCOPE_PRICE_PER_SECOND} 元/秒 × {duration:.1f} 秒）"
+                )
 
     if args.json_out:
         json_path = output_path.with_suffix(".mosp")
@@ -2665,6 +2670,7 @@ def main():
             ),
             "model": (
                 args.model if is_funasr_model(args.model)
+                else "qwen-audio-3.1-asr-api" if is_qwen_audio_31_model(args.model)
                 else "qwen-audio-asr-api" if is_qwen_audio_model(args.model)
                 else "qwen3-asr-api"
             ),

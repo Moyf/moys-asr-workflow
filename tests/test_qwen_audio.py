@@ -533,6 +533,50 @@ class QwenAudioAdapterTests(unittest.TestCase):
             ):
                 main()
 
+    def test_qwen_audio_31_main_reports_token_billing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            media_path = Path(directory) / "input.wav"
+            output_path = Path(directory) / "output.srt"
+            media_path.write_bytes(b"audio")
+            result = {
+                "text": "精确时间码。",
+                "language": "zh",
+                "items": [
+                    {"text": "精确", "start": 0, "end": 200},
+                    {"text": "时间码。", "start": 200, "end": 500},
+                ],
+                "sentences": [{
+                    "text": "精确时间码。",
+                    "start": 0,
+                    "end": 500,
+                    "items": [
+                        {"text": "精确", "start": 0, "end": 200},
+                        {"text": "时间码。", "start": 200, "end": 500},
+                    ],
+                }],
+                "timestamp_granularity": "segment",
+            }
+            buffer = io.StringIO()
+            with (
+                mock.patch("sys.argv", [
+                    "generate_subtitle_qwen_api.py",
+                    str(media_path),
+                    "--model",
+                    QWEN_AUDIO_31_FILETRANS_MODEL,
+                    "-o",
+                    str(output_path),
+                ]),
+                mock.patch("generate_subtitle_qwen_api.resolve_ffmpeg_tools"),
+                mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=2.0),
+                mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result),
+                redirect_stdout(buffer),
+            ):
+                main()
+
+            output = buffer.getvalue()
+            self.assertIn("按 Token 计费", output)
+            self.assertNotIn("0.00022 元/秒", output)
+
     def test_funasr_main_preserves_sentence_fallback_boundaries(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             media_path = Path(directory) / "input.wav"
