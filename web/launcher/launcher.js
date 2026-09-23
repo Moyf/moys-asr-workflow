@@ -262,6 +262,7 @@
     audio_track_sample_rate: "{rate} kHz",
     audio_track_id: "ID {id}"
   });
+  Object.assign(STRINGS.zh, { toolbox_ffmpeg_log: "FFmpeg 日志", toolbox_ffmpeg_waiting: "FFmpeg 已启动，等待最新进度……" });
   Object.assign(STRINGS.en, {
     audio_track: "Audio track",
     audio_track_hint: "Multiple audio tracks were found. Choose the track for transcription and waveform generation.",
@@ -273,11 +274,12 @@
     audio_track_sample_rate: "{rate} kHz",
     audio_track_id: "ID {id}"
   });
+  Object.assign(STRINGS.en, { toolbox_ffmpeg_log: "FFmpeg log", toolbox_ffmpeg_waiting: "FFmpeg started; waiting for the latest progress…" });
   Object.assign(STRINGS.zh, {
-    toolbox_burn_subtitle: "压制字幕", toolbox_burn_subtitle_hint: "将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。", toolbox_burn_subtitle_input: "字幕文件", toolbox_burn_subtitle_placeholder: "选择或拖入 .srt / .ass / .ssa 字幕", toolbox_burn_subtitle_invalid: "请选择 .srt、.ass 或 .ssa 字幕文件。", toolbox_burn_done: "字幕压制完成，已切换到新媒体：", toolbox_extract_audio: "提取音频", toolbox_extract_audio_hint: "从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。", toolbox_audio_track: "音轨", toolbox_audio_track_choose: "先选择媒体，MAW 会读取可用音轨。", toolbox_audio_tracks_reading: "正在读取音轨……", toolbox_audio_tracks_found: "已找到 {count} 条音轨。", toolbox_audio_tracks_none: "没有检测到可用音轨。", toolbox_audio_track_item: "音轨", toolbox_audio_track_default: "默认", toolbox_audio_track_invalid: "所选音轨无效，请重新选择。", toolbox_extract_audio_done: "音频提取完成，已切换到新媒体：", toolbox_utility_video_required: "压制字幕需要包含视频画面的媒体文件。", toolbox_status_burning: "正在压制字幕并重新编码视频……", toolbox_status_extracting: "正在提取音频……", toolbox_status_cancelling: "正在停止媒体处理……"
+    toolbox_burn_subtitle: "烧录字幕", toolbox_burn_subtitle_hint: "将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。", toolbox_burn_subtitle_input: "字幕文件", toolbox_burn_subtitle_placeholder: "选择或拖入 .srt / .ass / .ssa 字幕", toolbox_burn_subtitle_input_hint: "默认跟随当前的 SRT 输出，也支持手动选择 ASS / SSA。", toolbox_burn_subtitle_invalid: "请选择 .srt、.ass 或 .ssa 字幕文件。", toolbox_burn_done: "字幕烧录完成，已切换到新媒体：", toolbox_extract_audio: "提取音频", toolbox_extract_audio_hint: "从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。", toolbox_audio_track: "音轨", toolbox_audio_track_choose: "先选择媒体，MAW 会读取可用音轨。", toolbox_audio_tracks_reading: "正在读取音轨……", toolbox_audio_tracks_found: "已找到 {count} 条音轨。", toolbox_audio_tracks_none: "没有检测到可用音轨。", toolbox_audio_track_item: "音轨", toolbox_audio_track_default: "默认", toolbox_audio_track_invalid: "所选音轨无效，请重新选择。", toolbox_extract_audio_done: "音频提取完成，已切换到新媒体：", toolbox_utility_video_required: "烧录字幕需要包含视频画面的媒体文件。", toolbox_burn_notice: "SRT 字幕会使用默认 SRT 烧录样式（可在编辑器中配置）。更推荐在编辑器中预览并编辑 ASS 字幕样式后，导出 ASS 字幕格式再进行烧录。", toolbox_status_burning: "正在烧录字幕并重新编码视频……", toolbox_status_extracting: "正在提取音频……", toolbox_stop_media: "停止媒体处理", toolbox_status_cancelling: "正在停止媒体处理……"
   });
   Object.assign(STRINGS.en, {
-    toolbox_burn_subtitle: "Burn subtitles", toolbox_burn_subtitle_hint: "Render SRT / ASS subtitles into a new video file. Video is re-encoded and the source is kept unchanged.", toolbox_burn_subtitle_input: "Subtitle file", toolbox_burn_subtitle_placeholder: "Choose or drop an .srt / .ass / .ssa subtitle", toolbox_burn_subtitle_invalid: "Choose an .srt, .ass, or .ssa subtitle file.", toolbox_burn_done: "Subtitles burned; switched to the new media:", toolbox_extract_audio: "Extract audio", toolbox_extract_audio_hint: "Extract one audio track from video or audio into a new AAC/M4A file; the source is kept unchanged.", toolbox_audio_track: "Audio track", toolbox_audio_track_choose: "Choose media first; MAW will read its available tracks.", toolbox_audio_tracks_reading: "Reading audio tracks…", toolbox_audio_tracks_found: "Found {count} audio track(s).", toolbox_audio_tracks_none: "No usable audio tracks were found.", toolbox_audio_track_item: "Track", toolbox_audio_track_default: "default", toolbox_audio_track_invalid: "The selected audio track is invalid. Choose it again.", toolbox_extract_audio_done: "Audio extracted; switched to the new media:", toolbox_utility_video_required: "Burning subtitles requires media with a video stream.", toolbox_status_burning: "Burning subtitles and re-encoding the video…", toolbox_status_extracting: "Extracting audio…", toolbox_status_cancelling: "Stopping media operation…"
+    toolbox_burn_subtitle: "Burn subtitles", toolbox_burn_subtitle_hint: "Render SRT / ASS subtitles into a new video file. Video is re-encoded and the source is kept unchanged.", toolbox_burn_subtitle_input: "Subtitle file", toolbox_burn_subtitle_placeholder: "Choose or drop an .srt / .ass / .ssa subtitle", toolbox_burn_subtitle_input_hint: "Follows the current SRT output by default; ASS / SSA can be chosen manually.", toolbox_burn_subtitle_invalid: "Choose an .srt, .ass, or .ssa subtitle file.", toolbox_burn_done: "Subtitles burned; switched to the new media:", toolbox_extract_audio: "Extract audio", toolbox_extract_audio_hint: "Extract one audio track from video or audio into a new AAC/M4A file; the source is kept unchanged.", toolbox_audio_track: "Audio track", toolbox_audio_track_choose: "Choose media first; MAW will read its available tracks.", toolbox_audio_tracks_reading: "Reading audio tracks…", toolbox_audio_tracks_found: "Found {count} audio track(s).", toolbox_audio_tracks_none: "No usable audio tracks were found.", toolbox_audio_track_item: "Track", toolbox_audio_track_default: "default", toolbox_audio_track_invalid: "The selected audio track is invalid. Choose it again.", toolbox_extract_audio_done: "Audio extracted; switched to the new media:", toolbox_utility_video_required: "Burning subtitles requires media with a video stream.", toolbox_burn_notice: "SRT subtitles use the default SRT burn style (configurable in the editor). For best results, preview and edit the ASS subtitle style in the editor, export ASS subtitles, then burn them into the video.", toolbox_status_burning: "Burning subtitles and re-encoding the video…", toolbox_status_extracting: "Extracting audio…", toolbox_stop_media: "Stop media operation", toolbox_status_cancelling: "Stopping media operation…"
   });
   Object.assign(STRINGS.zh, {
     toolbox_burn_subtitle_style_hint: "选择 SRT 字幕时，会使用 ASS 样式库中的「SRT 烧录样式」对应的样式；选择 ASS 字幕时，使用 ASS 字幕自身的样式。",
@@ -286,10 +288,28 @@
     toolbox_burn_subtitle_style_hint: "SRT subtitles are burned with the style assigned as the SRT burn style in the ASS style library; ASS / SSA subtitles keep their own embedded styles.",
   });
   Object.assign(STRINGS.zh, {
-    toolbox_burn_crf: "画质 CRF", toolbox_burn_crf_hint: "数值越小画质越高、文件越大；常用 16–23，默认 18。", toolbox_burn_crf_invalid: "CRF 需要是 0–51 之间的整数。", toolbox_burn_preset: "编码预设", toolbox_burn_preset_hint: "预设越慢压缩率越高、耗时越长；一般保持 medium。", toolbox_burn_audio_bitrate: "音频码率", toolbox_burn_audio_bitrate_hint: "码率越高音质越好、文件越大；默认 192k。", toolbox_burn_save_defaults: "保存为默认参数", toolbox_burn_settings_saved: "已保存为默认参数，之后压制会自动预填。"
+    toolbox_burn_crf: "画质 CRF", toolbox_burn_crf_hint: "数值越小画质越高、文件越大；常用 16–23，默认 18。", toolbox_burn_crf_invalid: "CRF 需要是 0–51 之间的整数。", toolbox_burn_preset: "编码预设", toolbox_burn_preset_hint: "仅 CPU 编码使用：越慢压缩率越高、耗时越长；一般保持 medium。", toolbox_burn_audio_bitrate: "音频码率", toolbox_burn_audio_bitrate_hint: "码率越高音质越好、文件越大；默认 192k。", toolbox_burn_save_defaults: "保存为默认参数", toolbox_burn_settings_saved: "已保存为默认参数，之后烧录会自动预填。"
   });
   Object.assign(STRINGS.en, {
-    toolbox_burn_crf: "Quality CRF", toolbox_burn_crf_hint: "Lower CRF means higher quality and larger files; 16–23 is common, default 18.", toolbox_burn_crf_invalid: "CRF must be an integer between 0 and 51.", toolbox_burn_preset: "Encoder preset", toolbox_burn_preset_hint: "Slower presets compress better but take longer; keep medium in most cases.", toolbox_burn_audio_bitrate: "Audio bitrate", toolbox_burn_audio_bitrate_hint: "Higher bitrate sounds better and grows the file; default 192k.", toolbox_burn_save_defaults: "Save as defaults", toolbox_burn_settings_saved: "Saved as defaults; future runs will prefill these."
+    toolbox_burn_crf: "Quality CRF", toolbox_burn_crf_hint: "Lower CRF means higher quality and larger files; 16–23 is common, default 18.", toolbox_burn_crf_invalid: "CRF must be an integer between 0 and 51.", toolbox_burn_preset: "Encoder preset", toolbox_burn_preset_hint: "Applies to CPU encoding only: slower presets compress better but take longer; keep medium in most cases.", toolbox_burn_audio_bitrate: "Audio bitrate", toolbox_burn_audio_bitrate_hint: "Higher bitrate sounds better and grows the file; default 192k.", toolbox_burn_save_defaults: "Save as defaults", toolbox_burn_settings_saved: "Saved as defaults; future runs will prefill these."
+  });
+  Object.assign(STRINGS.zh, {
+    toolbox_burn_video_encoder: "视频编码器",
+    toolbox_burn_video_encoder_hint: "自动模式会按可用的硬件编码器尝试；硬件不可用时回退 CPU。画质 CRF 对所有编码器生效。",
+    toolbox_video_encoder_auto: "自动（优先硬件）",
+    toolbox_video_encoder_cpu: "CPU（libx264）",
+    toolbox_video_encoder_nvenc: "NVIDIA NVENC",
+    toolbox_video_encoder_amf: "AMD AMF",
+    toolbox_video_encoder_qsv: "Intel QSV",
+  });
+  Object.assign(STRINGS.en, {
+    toolbox_burn_video_encoder: "Video encoder",
+    toolbox_burn_video_encoder_hint: "Automatic mode tries available hardware encoders first, then falls back to the CPU. The quality CRF applies to all encoders.",
+    toolbox_video_encoder_auto: "Automatic (prefer hardware)",
+    toolbox_video_encoder_cpu: "CPU (libx264)",
+    toolbox_video_encoder_nvenc: "NVIDIA NVENC",
+    toolbox_video_encoder_amf: "AMD AMF",
+    toolbox_video_encoder_qsv: "Intel QSV",
   });
   Object.assign(STRINGS.zh, {
     test_run: "快速测试",
@@ -368,6 +388,7 @@
     batch_error_details: "查看错误",
     batch_open_project: "打开工程",
     batch_open_folder: "打开文件夹",
+    batch_open_video: "打开烧录视频",
     batch_remove: "移除",
   });
   Object.assign(STRINGS.en, {
@@ -415,6 +436,7 @@
     batch_error_details: "View error",
     batch_open_project: "Open project",
     batch_open_folder: "Open folder",
+    batch_open_video: "Open burned video",
     batch_remove: "Remove",
   });
   Object.assign(STRINGS.zh, {
@@ -434,6 +456,7 @@
     auto_step_resegment_title: "对于长字幕谨慎开启，会很慢而且可能中断。",
     auto_step_ocr: "OCR 字幕去重",
     auto_step_translate: "翻译",
+    auto_step_burn: "烧录字幕",
     auto_translate_target: "翻译目标",
     auto_translate_zh: "中文",
     auto_translate_en: "英文",
@@ -568,6 +591,7 @@
     auto_step_resegment_title: "Use with caution on long subtitles: it is slow and may be interrupted.",
     auto_step_ocr: "OCR subtitle dedup",
     auto_step_translate: "Translate",
+    auto_step_burn: "Burn subtitles",
     auto_translate_target: "Translation target",
     auto_translate_zh: "Chinese",
     auto_translate_en: "English",
@@ -3639,6 +3663,7 @@
     if (event.type === "postprocess_status") window.MAWLauncher?.onPostprocessStatus?.(event);
     if (event.type === "postprocess_stream") window.MAWLauncher?.onPostprocessStream?.(event);
     if (event.type === "postprocess_pipeline") window.MAWLauncher?.onPostprocessPipeline?.(event);
+    if (event.type === "media_tool_log") window.MAWLauncher?.onMediaToolLog?.(event);
     if (event.type === "modelProgress") {
       state.localProgressMessage = event.message || "";
       state.localProgress = event;
@@ -3821,6 +3846,7 @@
       $("openFolder").classList.remove("hidden");
       syncHtmlMenu();
       appendLog(t("done"));
+      if (event.result?.videoPath) appendLog(`${t("toolbox_burn_done")}\n${event.result.videoPath}`);
       void checkExistingServer(t("done"));
     }
     if (event.type === "dropMedia" && !state.dropTarget && window.MAWLauncher?.onBatchDrop?.(event.path || "")) return;

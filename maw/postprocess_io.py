@@ -24,6 +24,7 @@ class SubtitleArtifact:
     srt_path: Path | None
     warnings: tuple[str, ...] = ()
     translated_srt_path: Path | None = None
+    media_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -77,13 +77,15 @@ class PostprocessPipelineTests(unittest.TestCase):
 
         self.assertFalse(plan["enabled"])
         self.assertTrue(plan["retainIntermediate"])
-        self.assertEqual([step["id"] for step in plan["steps"]], ["match", "replace", "proofread", "resegment", "ocr", "translate"])
+        self.assertEqual([step["id"] for step in plan["steps"]], ["match", "replace", "proofread", "resegment", "ocr", "translate", "burn"])
         self.assertEqual(plan["steps"][1]["conversion"], "off")
-        self.assertFalse(plan["steps"][-1]["mergeBilingual"])
+        translate_step = next(step for step in plan["steps"] if step["id"] == "translate")
+        self.assertFalse(translate_step["mergeBilingual"])
         self.assertEqual(plan["steps"][0]["matchMode"], "script")
         self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["？", "！", ","])
         self.assertEqual(plan["steps"][0]["preservePunctuation"], ["？", "！"])
         self.assertTrue(plan["steps"][0]["cleanMarkdownSymbols"])
+        self.assertEqual(plan["steps"][-1]["videoEncoder"], "auto")
 
     def test_normalize_plan_migrates_legacy_preserved_question_marks(self) -> None:
         plan = default_postprocess_plan()
@@ -700,6 +702,19 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertIn("ocrRegionX2", fields)
         self.assertIn("ocrVideoPath", fields)
 
+    def test_validation_checks_burn_video_and_ffmpeg_dependencies(self) -> None:
+        video = self.root / "clip.mp4"
+        video.write_bytes(b"video")
+        ffmpeg = self.root / "ffmpeg.exe"
+        ffmpeg.write_bytes(b"ffmpeg")
+        burn = {"id": "burn", "enabled": True}
+
+        _, errors = validate_plan(self.plan(burn), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
+        self.assertEqual([error["field"] for error in errors], ["mediaPath", "mediaPath"])
+
+        _, errors = validate_plan(self.plan(burn), env_path=self.env_path, media_path=video, ffmpeg_path=ffmpeg)
+        self.assertEqual(errors, ())
+
     def test_llm_verification_is_fingerprinted_without_storing_key(self) -> None:
         self.env_path.write_text(
             "MAW_POSTPROCESS_CUSTOM_API_KEY=sk-private\n"
@@ -856,6 +871,35 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertIsNone(result.translated_srt_path)
         self.assertTrue(result.project_path.is_file())
         self.assertTrue(result.srt_path.is_file())
+
+    def test_pipeline_burns_the_current_srt_and_reports_new_video(self) -> None:
+        video = self.root / "clip.mp4"
+        video.write_bytes(b"video")
+        ffmpeg = self.root / "ffmpeg.exe"
+        ffmpeg.write_bytes(b"ffmpeg")
+        burned = self.root / "clip.压字幕.mp4"
+        plan = self.plan({"id": "burn", "enabled": True, "videoEncoder": "amf"})
+
+        with mock.patch(
+            "maw.postprocess_pipeline.run_burn_subtitles",
+            return_value=SimpleNamespace(media_path=burned),
+        ) as run_burn:
+            result = run_postprocess_pipeline(
+                plan,
+                media_path=video,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=ffmpeg,
+                cancel_event=Event(),
+            )
+
+        request = run_burn.call_args.args[0]
+        self.assertEqual(request.media_path, video)
+        self.assertEqual(request.subtitle_path, self.srt)
+        self.assertEqual(request.video_encoder, "amf")
+        self.assertEqual(result.media_path, burned)
+        self.assertEqual(result.completed_steps, ("burn",))
 
     def test_pipeline_uses_managed_ocr_runtime_when_runtime_root_is_supplied(self) -> None:
         video = self.root / "clip.mp4"

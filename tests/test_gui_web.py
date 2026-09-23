@@ -26,7 +26,7 @@ def _canonical_test_path(value: str | os.PathLike[str]) -> str:
     """Compare paths after resolving platform-specific aliases and symlinks."""
     return os.path.normcase(os.path.realpath(os.fspath(value)))
 
-from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _launcher_icon_path, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _format_media_tool_progress, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _launcher_icon_path, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
@@ -1289,7 +1289,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxAlignmentTab"'))
         self.assertLess(html.index('id="toolboxAlignmentTab"'), html.index('id="toolboxExtractAudioTab"'))
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
-        # 实用工具记住上次选择的工具；从未选择时回退到第一项（压制字幕）。
+        # 实用工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
         self.assertIn(
             'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");',
             script,
@@ -1306,7 +1306,14 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('toolbox_group_utilities: "实用工具"', strings)
         self.assertIn('toolbox_utility_media: "媒体文件"', strings)
         self.assertIn('toolbox_utility_media: "Media file"', strings)
-        self.assertIn('toolbox_burn_subtitle: "压制字幕"', strings)
+        self.assertIn('toolbox_burn_subtitle: "烧录字幕"', strings)
+        self.assertIn('id="configureAutoBurn"', html)
+        self.assertIn('id="configureAutoBurn" class="inline-link"', html)
+        self.assertIn('id="toolboxBurnVideoEncoder"', html)
+        self.assertIn('id="toolboxBurnVideoEncoderField" class="field"', html)
+        self.assertIn('data-i18n="toolbox_burn_notice"', html)
+        self.assertIn('toolbox_burn_notice:', strings)
+        self.assertIn('toolbox_video_encoder_amf: "AMD AMF"', strings)
         self.assertIn('toolbox_extract_audio: "Extract audio"', strings)
         self.assertIn('toolbox_timestamps: "生成时间码"', strings)
         self.assertIn('toolbox_timestamps: "Generate timestamps"', strings)
@@ -1396,6 +1403,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
         self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
         self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  gap: 12px;', styles)
+        self.assertIn('.toolbox-output-action {\n  display: flex;\n  flex: 1 1 auto;\n  gap: 8px;', styles)
         self.assertIn('.toolbox-tab-list-5 {\n  grid-template-columns: repeat(5, minmax(0, 1fr));\n}', styles)
         self.assertIn('$("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
@@ -1920,18 +1928,40 @@ class GuiWebBridgeTests(unittest.TestCase):
         with mock.patch("maw.gui_web.load_ass_style_library", return_value=library):
             with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
                 with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
-                    burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve())
+                    burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve(), video_encoder="auto")
                     result = self.api.run_burn_subtitles({"mediaPath": str(media), "subtitlePath": str(subtitle)})
 
         self.assertTrue(result["ok"])
         self.assertEqual(burn.call_args.kwargs["ffmpeg_path"], ffmpeg)
         self.assertEqual(burn.call_args.args[0].srt_style["fontName"], "Microsoft YaHei")
+        self.assertEqual(burn.call_args.args[0].video_encoder, "auto")
         self.assertIsNone(burn.call_args.args[0].crf)
         self.assertIsNone(burn.call_args.args[0].preset)
         self.assertIsNone(burn.call_args.args[0].audio_bitrate)
         self.assertEqual(result["srtStyleName"], "SRT 默认")
+        self.assertEqual(result["videoEncoder"], "auto")
         self.assertIsInstance(burn.call_args.kwargs["cancel_event"], threading.Event)
         self.assertEqual(result["mediaPath"], str(output.resolve()))
+
+    def test_media_tool_progress_is_compact_and_latest_message_ready(self) -> None:
+        self.assertEqual(
+            _format_media_tool_progress({"frame": "42", "fps": "24.0", "out_time": "00:00:01.75", "speed": "1.2x"}),
+            "frame=42 fps=24.0 time=00:00:01.75 speed=1.2x",
+        )
+
+    def test_media_tool_cancellation_terminates_a_process_registered_after_cancel(self) -> None:
+        cancel_event = self.api._begin_media_tool()
+        self.assertIsNotNone(cancel_event)
+        assert cancel_event is not None
+        cancel_event.set()
+        process = mock.Mock()
+        process.poll.return_value = None
+
+        with mock.patch("maw.gui_web.terminate_process_tree") as terminate:
+            self.api._set_media_tool_process(process)
+
+        terminate.assert_called_once_with(process)
+        self.api._finish_media_tool(cancel_event)
 
     def test_burn_subtitle_bridge_forwards_encoding_overrides(self) -> None:
         media = self.root / "clip.mp4"
@@ -4464,6 +4494,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("test_postprocess_connection"', script)
         self.assertIn('bridge("get_postprocess_settings"', script)
         self.assertIn('bridge("get_postprocess_models"', script)
+        self.assertIn('toolbox_stop_media: "停止媒体处理"', launcher_script)
+        self.assertIn('stop.textContent = t(mediaToolCancelling ? "toolbox_status_cancelling" : "toolbox_stop_media")', script)
         self.assertIn('class="primary"', page)
         self.assertIn('llm_models_loaded: "已获取 {count} 个模型，可在上方快速选择"', launcher_script)
         self.assertIn('role="combobox"', page)
@@ -4647,6 +4679,7 @@ class LauncherAssetContractTests(unittest.TestCase):
             self.assertIn(f'data-tool-action="{tool}"', footer_html)
         for button in ("runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "stopToolboxMedia"):
             self.assertIn(f'id="{button}"', footer_html)
+        self.assertIn('id="stopToolboxMedia" class="ghost hidden" type="button" data-i18n="toolbox_stop_media">', footer_html)
         self.assertIn('id="generateWaveform"', footer_html)
 
         # 自定义顶边 / 左边拖拽把手替代原生 resize。

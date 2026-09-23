@@ -134,12 +134,13 @@ class BatchRunnerTests(unittest.TestCase):
         plan = {"enabled": True, "steps": [{"id": "replace", "enabled": True}]}
         final_srt = self.root / "final.srt"
         final_json = self.root / "final.mosp"
+        final_video = self.root / "final.mp4"
 
         def transcribe(request: TranscriptionRequest, *, cancel_event: threading.Event) -> TranscriptionResult:
             return TranscriptionResult(request.srt_path, request.srt_path.with_suffix(".mosp"), None)
 
         def postprocess(plan: dict[str, object], **_kwargs: object) -> object:
-            return mock.Mock(srt_path=final_srt, project_path=final_json, html_path=None, translated_srt_path=None)
+            return mock.Mock(srt_path=final_srt, project_path=final_json, html_path=None, translated_srt_path=None, media_path=final_video)
 
         item = BatchItem("0", TranscriptionRequest(self.root / "clip.mp3", self.root / "clip.srt", postprocess_plan=plan))
         item.request.media_path.write_bytes(b"media")
@@ -147,6 +148,7 @@ class BatchRunnerTests(unittest.TestCase):
 
         self.assertEqual(result["outcomes"][0]["srtPath"], str(final_srt))
         self.assertEqual(result["outcomes"][0]["jsonPath"], str(final_json))
+        self.assertEqual(result["outcomes"][0]["videoPath"], str(final_video))
 
     def test_postprocess_cancellation_cancels_remaining_items_and_emits_each(self) -> None:
         events: list[dict[str, object]] = []
