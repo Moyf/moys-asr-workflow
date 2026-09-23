@@ -515,6 +515,11 @@ label {
   font-size: 13px;
 }
 
+/* 模型备注：能力一行 + 🪙 价格一行。 */
+#modelNote {
+  white-space: pre-line;
+}
+
 .settings-punctuation-hint {
   margin-bottom: 10px;
 }
@@ -1326,6 +1331,11 @@ select {
   background-size: 5px 5px;
   background-repeat: no-repeat;
   padding-right: 28px;
+}
+
+/* 下拉列表中的分隔线选项（如识别方式的分组线）：窄横线弱化为浅灰。 */
+select option:disabled {
+  color: var(--text-faint);
 }
 
 select:hover, select:focus {

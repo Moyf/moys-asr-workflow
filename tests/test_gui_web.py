@@ -109,9 +109,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(config["providers"][0]["keyUrl"], "https://platform.qianwenai.com/home/")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
-        self.assertEqual(len(config["providers"][1]["commonLanguages"]), 8)
+        soniox = next(provider for provider in config["providers"] if provider["id"] == "soniox")
+        self.assertEqual(len(soniox["commonLanguages"]), 8)
         self.assertIn("0.00022", config["providers"][0]["models"][0]["priceNote"])
-        self.assertIn("0.10", config["providers"][1]["models"][0]["priceNote"])
+        self.assertIn("0.10", soniox["models"][0]["priceNote"])
         openai = next(provider for provider in config["providers"] if provider["id"] == "openai")
         self.assertEqual(openai["secondaryKeyUrl"], "https://openrouter.ai/keys")
         self.assertEqual(
@@ -504,6 +505,12 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('bindDropField("localRuntimePath", "localRuntime")', script)
         self.assertIn('localRuntime: ["localRuntimePath", "change"]', script)
         self.assertIn('local_runtime_path_invalid: "The local runtime path cannot point to a file."', script)
+        self.assertIn('if (value && /[^\\x00-\\x7F]/.test(value)) {', script)
+        self.assertIn('setError("localRuntimePath", errText("local_runtime_path_non_ascii", ""));', script)
+        self.assertIn('local_runtime_path_non_ascii: "路径包含中文或其他非 ASCII 字符，本地运行时无法在该目录安装；请改用纯英文、数字的路径。"', script)
+        self.assertIn('local_runtime_path_non_ascii: "The path contains non-ASCII characters (such as Chinese); the local runtime cannot be installed there. Use a path with ASCII characters only."', script)
+        self.assertIn('local_runtime_path_hint: "默认安装到用户目录，可改到空间更充足的磁盘。路径请勿包含中文。"', script)
+        self.assertIn('需先安装运行时（Runtime），然后才能下载安装模型，两者分开储存。', script)
         self.assertIn("def save_local_settings(", backend)
         self.assertIn('_error_result("localRuntimePath", "local_runtime_path_invalid", str(candidate))', backend)
         self.assertIn('save_env(self.paths.env_path, {"MAW_LOCAL_RUNTIME_ROOT": str(candidate) if candidate else ""})', backend)
@@ -886,7 +893,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             self.fail("postprocessProviders must be a list")
         providers = {provider["id"]: provider for provider in raw_providers if isinstance(provider, dict)}
 
-        self.assertEqual(providers["deepseek"]["model"], "deepseek-v4-flash")
+        self.assertEqual(providers["deepseek"]["model"], "deepseek-flash")
         self.assertEqual(providers["zhipu"]["label"], "智谱 Coding Plan")
         self.assertEqual(providers["zhipu"]["baseUrl"], "https://open.bigmodel.cn/api/coding/paas/v4")
         self.assertEqual(providers["zhipu"]["model"], "glm-5.2")
@@ -919,7 +926,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             "providerId": "deepseek",
             "apiKey": "sk-safe",
             "baseUrl": "https://api.deepseek.com",
-            "model": "deepseek-v4-flash",
+            "model": "deepseek-flash",
             "reasoningMode": "maximum",
         })
 
@@ -4648,10 +4655,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('function llmBuiltInProviderKeyGuidance(context = {})', launcher_script)
         self.assertIn('["deepseek", "zhipu", "qwen"].includes(providerId)', launcher_script)
         self.assertIn('官方控制台获取的 API Key', launcher_script)
-        self.assertIn('第三方平台，请选择“自定义（兼容 OpenAI）”', launcher_script)
-        self.assertIn('当前供应商：自定义（兼容 OpenAI）。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
-        self.assertIn('llm_custom_provider: "自定义（兼容 OpenAI）"', launcher_script)
-        self.assertIn('llm_custom_provider: "Custom (OpenAI-compatible)"', launcher_script)
+        self.assertIn('第三方平台，请选择“OpenAI 通用接口”', launcher_script)
+        self.assertIn('当前供应商：OpenAI 通用接口。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
+        self.assertIn('llm_custom_provider: "OpenAI 通用接口"', launcher_script)
+        self.assertIn('llm_custom_provider: "OpenAI-compatible API"', launcher_script)
         self.assertIn('toolbox_key_loaded: "已从本地环境读取密钥 {key}"', launcher_script)
         self.assertIn('toolbox_key_loaded: "Loaded key from local environment: {key}"', launcher_script)
         self.assertIn('errorText: errText', launcher_script)
@@ -4988,7 +4995,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="openLanguageSettings"', page)
         self.assertIn('language_filter_hint_prefix: "默认仅显示常用语言', script)
         self.assertIn('language_filter_hint_link: "设置"', script)
-        self.assertIn('language_filter_hint_suffix: "」中开启。"', script)
+        self.assertIn('language_filter_hint_suffix: "中开启。"', script)
         self.assertIn('id="settingsLanguageSection"', page)
         self.assertLess(page.index('id="settingsLanguageSection"'), page.index('data-i18n="settings_file_output"'))
         self.assertNotIn('data-i18n="interface_language_hint"', page)
