@@ -35,7 +35,7 @@
 | 30 | 编辑器 / 波形性能 | 连续调节波形振幅、行高时反复重绘导致编辑器卡顿 | 修改 | 已修复 |
 | 29 | 编辑器 / 波形快捷键 | 增加 `Z/X`，将单个字幕的起点/终点定位到鼠标位置；主字幕联动绑定副字幕，副字幕只调整自身，多选不生效；无选中时作用于鼠标命中的字幕 | 修改 | 已修复 |
 | 32 | 编辑器 / 波形性能 | 频谱颜色切换重绘反馈延迟，用户可能误以为没有响应而重复点击 | 修改 | 已修复 |
-| 33 | Premiere 交接 | 原生文字已成功写入；视频可自动识别并播放；图片不会弹出查找媒体但仍需手动重新链接；希望导出预览字幕字体，参考 `序列03-带字体.xml` 中的 FangSong | 修改 | 进行中 |
+| 33 | Premiere 交接 | 原生文字已成功写入；视频可自动识别并播放；图片不会弹出查找媒体但仍需手动重新链接；希望导出预览字幕字体，参考 `序列03-带字体.xml` 中的 FangSong | 修改 | 已修复 |
 
 ## 增量记录（任务 33：Premiere XML 文字、视频、图片与字体反馈）
 
@@ -44,9 +44,16 @@
 - 参考资料：`examples/序列03-带字体.xml` 的 GraphicAndType payload 中，预览字幕字体位于 Base64 + UTF-16LE JSON 的 `mTextParam.mStyleSheet.mFontName.mParamValues[0][1]`，示例值为 `FangSong`。
 - 本轮处理：修正图片文件 URL 的 Windows drive-letter 编码，并让导出 payload 从工程 `preview.subtitle.font_family` 读取字体；内置 `song` 映射为 Premiere 字体名 `FangSong`。
 - 当前能力：编辑器已有“读取本机字体”功能，会通过 `queryLocalFonts()` 将本机字体 family 加入主/副字幕字体下拉框；用户选择后直接保存 family 名称。导出层继续将该 family 原样写入 Premiere payload；浏览器预览和 Premiere 显示都要求目标电脑已安装同名字体。
-- 未验证边界：仍需在 Premiere 实机打开包含 GIF/JPG 表情包的 XML，确认图片免手动重链以及字体在目标机器已安装时的实际显示效果。
+- 新反馈（实机）：导入生成的 XML 后 Premiere 识别不了字幕字体（未渲染为 FangSong）。
+- 调查（对照真实 Premiere 导出样本 `premiere_generators.xml`，OpenTimelineIO 测试样例，Menlo 字体）：真机 payload 顶层含 `mShadowFontMapHash`（GUID 或 null）与 `mUseLegacyTextBox`，`mTextParam` 含 `mVerticalAlignment`，三者 MAW 均缺失；真机 `mStyleSheet.mFontName` 为逐字符 run `[[0,字体名],…,[len-1,字体名],[len,字体GUID]]`，字体名用 PostScript 名（如 `Menlo-Regular`）。已知可用的第三方生成器（AutoCaptions）证明单条 run `[[0,"ArialMT"]]` + 补齐上述三个字段即可被 Premiere 接受，故头号嫌疑为字体名字符串（`FangSong` vs 本地化名 `仿宋`）。
+- 本轮处理（第二轮实机后修订）：矩阵第一轮三变体（`FangSong` / `仿宋` / 逐字符 run）全部回落 Myriad Pro，说明 PR 不是名字匹配失败，而是丢弃了整个 payload 样式表（面板字号显示默认 100 而非 payload 写入的 60）。对照第二份真实导出样本（OpenTimelineIO `empty_name_tags.xml`，单条 `mFontName` run 的 MinionPro/LucidaGrande 文本）：真实导出顶层只有 `mTextParam` 与 `mVersion`，样式表无 `mUnderline` 键，`mShadowFontMapHash` 可整个缺失——已把 payload 回改为该最小真机结构（撤销第一轮补的三个字段并移除 `mUnderline`），单测锁定结构。剩余嫌疑（`authoringApp="MAW"` vs `PremierePro`、缺失的参数 `<hash>`、`mWidth/mHeight=0`、字体名写法）已做成第二轮 5 变体矩阵（每条只改一个变量）待实机确认。
+- 实机结论（表情包）：A/B 两变体的 GIF/JPG 表情包均免手动重链，图片自动重链问题闭环；`C%3A` 与 `C:` 两种编码都能被接受。
+- 实机结论（视频 offline）：矩阵与 A/B 的测试视频全部 Media offline——根因是测试素材 `demo-video.mp4` 由 ffmpeg 生成时没有音轨，而 XML 按代码约定声明 2 声道音频 + 独立音频 clip（PR 对声明声道与实际不符会拒绝，与任务 4/5 记录一致），不是导出代码退化；已用带 440Hz 音轨的素材重新生成。
+- 实机结论（字体，第二轮矩阵全部通过）：`MAW-font-matrix-2.xml` 的 5 个变体（对照组 / `authoringApp="PremierePro"` / 补 `<hash>` / 真实 `mWidth/mHeight` / 本地化名 `仿宋`）全部正确显示字体，包括对照组——根因确认为 payload 结构多余字段（`mUnderline` 键与第一轮补的 `mShadowFontMapHash`/`mUseLegacyTextBox`/`mVerticalAlignment`）会让 PR 丢弃整个样式表；最小真机结构下 PostScript 名 `FangSong` 即可命中仿宋。当前代码即最终形态，无需再改字体映射。
+- 实机结论（视频 offline，用户指示搁置）：更换带音轨素材后测试视频在 PR 中仍显示问号（offline），表情包却能在同目录正常自动链接；早前任务 33 已用真实媒体验证过视频自动识别并播放，故判断为合成测试素材或 file media 结构（缺 `samplecharacteristics`/`timecode`）的边界现象，留待 1.6.1 排查，不阻塞发布。
+- 未验证边界：真实工程导出（非临时合成素材）在 PR 中的字体显示建议发布后由日常使用继续观察；视频 offline 现象如需排查见上条。
 
-已验证：`node --test tests\\test_editor_utils.mjs`（111/111）；`node --check web\\editor-utils.js`、`node --check web\\editor.js`；`uv run python edit.py --blank`；`git diff --check`。Premiere 图片自动重链和真实字体显示仍需用户实机确认。
+已验证：`node --check web\editor-utils.js`、`node --check web\editor.js`；`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（333/333）；`git diff --check`。本轮未重新生成 `blank-editor.html`（按约定留到发布前统一重生成）。任务 33 实机结论：文字（含字体）✅、表情包自动重链 ✅；视频自动链接以真实媒体早前验证为准，合成素材 offline 现象搁置（见增量记录）。
 | 33 | Launcher / 批量拖入 | 不支持格式的提示显示在单文件区域；重复拖入文件没有提示；批量阶段日志只显示在单条记录；跳过确认按钮应显示“是 / 否” | 修改 | 已修复 |
 | 34 | Launcher / 批量进度 | 批量运行时总日志和状态区缺少当前文件、完成/失败和汇总反馈 | 修改 | 已修复 |
 | 35 | 编辑器 / 批量操作 | 字幕列表顶部整合批量操作入口；批量替换和文本处理支持限定选中字幕；增加常用文本处理 | 修改 | 已修复 |

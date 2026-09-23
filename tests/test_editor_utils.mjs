@@ -4352,8 +4352,8 @@ test('serializes the shared plan as deterministic FCP 7 XML and mapped SRT', () 
   assert.equal((xml.match(/<clipitem\b/g) || []).length, 7);
   assert.equal((xml.match(/<generatoritem\b/g) || []).length, 0);
   assert.equal(xmlElements(xml, 'track').length, 3);
-  assert.ok(xml.includes('<duration>149</duration>'));
-  assert.ok(xml.includes('<in>47</in><out>120</out>'));
+  assert.ok(xml.includes('<duration>147</duration>'));
+  assert.ok(xml.includes('<in>47</in><out>119</out>'));
   assert.ok(xml.includes('file://localhost/C:/fixtures/%E6%B5%8B%E8%AF%95%20%26%20take.mp4'));
   assert.ok(xml.includes('file:///icons/%E6%B5%8B%E8%AF%95%20%26%20icon.png'));
   assert.deepEqual(parseSrt(srt).map(({ start, end }) => [start, end]), [
@@ -4363,6 +4363,44 @@ test('serializes the shared plan as deterministic FCP 7 XML and mapped SRT', () 
   ]);
   assert.equal(helpers.serializeFcp7Xml(plan, { nativeTextObjects: false }), xml);
   assert.equal(helpers.serializeMappedSrt(plan), srt);
+});
+
+test('places gap-removed media clips and cues on one ms-mapped frame grid', () => {
+  // 保留区间边界故意取非整帧毫秒：旧实现逐段「向外取整再累加」会让片段位置随
+  // 空隙数量漂移（本例 2 个空隙累计偏 3-4 帧），字幕因此越往后越提前。
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'C:\\fixtures\\drift.mp4', type: 'video', durationMs: 20000 },
+    gaps: [
+      { start: 1001, end: 1633, removed: true },
+      { start: 5007, end: 5999, removed: true },
+    ],
+    segments: [
+      { id: 'a', start: 500, end: 1000, text: 'first' },
+      { id: 'b', start: 1633, end: 2100, text: 'boundary' },
+      { id: 'c', start: 5999, end: 6500, text: 'second boundary' },
+    ],
+  }, { fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  const clipFrames = (id) => {
+    const match = new RegExp(`<clipitem id="${id}">[\\s\\S]*?<start>(\\d+)</start><end>(\\d+)</end>`).exec(xml);
+    return match ? [Number(match[1]), Number(match[2])] : null;
+  };
+  // 输出 ms 边界 0 / 1001 / 4375 在 30fps 帧网格上 floor → 0 / 30 / 131；末边界 ceil(551.28) = 552。
+  assert.deepEqual(clipFrames('video-clip-1'), [0, 30]);
+  assert.deepEqual(clipFrames('video-clip-2'), [30, 131]);
+  assert.deepEqual(clipFrames('video-clip-3'), [131, 552]);
+  assert.deepEqual(clipFrames('audio-clip-2'), [30, 131]);
+  // 恰好落在保留区间开头的字幕必须与片段边界同帧（修复前 video-clip-2 从 31 开始，
+  // 字幕 30 提前 1 帧；空隙越多偏移越大）。
+  assert.deepEqual(clipFrames('text-main-2'), [30, 45]);
+  assert.deepEqual(clipFrames('text-main-3'), [131, 147]);
+  assert.match(xml, /<sequence id="MAW-sequence"><name>MAW FCP 7 Premiere handoff<\/name><duration>552<\/duration>/);
+  // 每个媒体片段的源区间必须与时间线区间等长（1:1 播放速率）。
+  for (const match of xml.matchAll(/<clipitem id="(?:video|audio)-clip-\d+">[\s\S]*?<duration>(\d+)<\/duration>[\s\S]*?<start>(\d+)<\/start><end>(\d+)<\/end>[\s\S]*?<in>(\d+)<\/in><out>(\d+)<\/out>/g)) {
+    const [duration, start, end, inFrame, outFrame] = match.slice(1).map(Number);
+    assert.equal(duration, end - start);
+    assert.equal(outFrame - inFrame, end - start);
+  }
 });
 
 test('resolves sticker media from sticker_root and emits one clip per subtitle occurrence', () => {
@@ -4486,6 +4524,11 @@ test('encodes native GraphicAndType text as Premiere UTF-16LE payload', () => {
   assert.equal(payload.mTextParam.mAlignment, 2);
   assert.equal(payload.mTextParam.mStyleSheet.mFontSize.mParamValues[0][1], 60);
   assert.equal(payload.mVersion, 1);
+  // 顶层与样式表结构必须逐字段对齐真实 Premiere 导出的单一样式 run payload：
+  // 实机验证多余或异形字段（mUnderline / mShadowFontMapHash 等）会让 PR 静默
+  // 丢弃整个样式表——文字渲染但字体、字号回落默认。
+  assert.deepEqual(Object.keys(payload), ['mTextParam', 'mVersion']);
+  assert.equal(payload.mTextParam.mStyleSheet.mUnderline, undefined);
 });
 
 test('writes the preview subtitle font into the GraphicAndType payload', () => {

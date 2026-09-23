@@ -286,7 +286,7 @@ class GuiConfigTests(unittest.TestCase):
         """Given the provider registry, When inspected, Then Soniox is registered with speaker support and no regions."""
         provider = gui_config.provider_by_id("soniox")
 
-        self.assertEqual(provider.label, "Soniox STT")
+        self.assertEqual(provider.label, "Soniox STT（海外 / 小语种）")
         self.assertIn("console.soniox.com", provider.key_url)
         self.assertEqual(provider.models[0].id, "stt-async-v5")
         self.assertEqual(provider.models[0].env_key, "SONIOX_API_KEY")
@@ -310,12 +310,22 @@ class GuiConfigTests(unittest.TestCase):
     def test_provider_registry_contains_doubao_api_key_url(self) -> None:
         provider = gui_config.provider_by_id("doubao")
 
+        self.assertEqual(provider.label, "火山引擎（豆包）")
         self.assertEqual(provider.key_url, "https://console.volcengine.com/speech/new/setting/apikeys")
+        self.assertTrue(provider.divider_before)
+
+    def test_provider_registry_groups_main_providers_before_divider(self) -> None:
+        """Given the provider registry, When read in order, Then main entries precede the divider and niche ones follow."""
+        visible = [item for item in gui_config.PROVIDERS if not item.hidden]
+        divider_index = next(index for index, item in enumerate(visible) if item.divider_before)
+
+        self.assertEqual([item.id for item in visible[:divider_index]], ["qwen", "openai", "local"])
+        self.assertEqual([item.id for item in visible[divider_index:]], ["doubao", "soniox", "bcut"])
 
     def test_provider_registry_contains_custom_openai_compatible_asr(self) -> None:
         provider = gui_config.provider_by_id("openai")
 
-        self.assertEqual(provider.label, "OpenAI（及兼容接口）")
+        self.assertEqual(provider.label, "OpenAI 格式通用接口")
         self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_BASE_URL, "https://api.openai.com/v1")
         self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_MODEL, "whisper-1")
         self.assertEqual(provider.key_url, "https://platform.openai.com/api-keys")
