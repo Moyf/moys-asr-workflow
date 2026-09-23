@@ -492,5 +492,28 @@ class EstimateDashscopeCostTests(unittest.TestCase):
         self.assertIsNone(output_naming.estimate_dashscope_cost(-5))
 
 
+class EstimateQwenAudio31CostTests(unittest.TestCase):
+    def test_cost_uses_input_and_output_token_prices(self) -> None:
+        cost = output_naming.estimate_qwen_audio_31_cost(1_000_000, 1_000_000)
+        self.assertAlmostEqual(
+            cost,
+            output_naming.DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS
+            + output_naming.DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS,
+        )
+        self.assertAlmostEqual(
+            output_naming.estimate_qwen_audio_31_cost(2006, 256),
+            2006 * 0.8 / 1_000_000 + 256 * 2.7 / 1_000_000,
+        )
+
+    def test_zero_tokens_cost_nothing(self) -> None:
+        self.assertAlmostEqual(output_naming.estimate_qwen_audio_31_cost(0, 0), 0.0)
+
+    def test_invalid_token_counts_return_none(self) -> None:
+        self.assertIsNone(output_naming.estimate_qwen_audio_31_cost(None, 10))
+        self.assertIsNone(output_naming.estimate_qwen_audio_31_cost(10, None))
+        self.assertIsNone(output_naming.estimate_qwen_audio_31_cost(-1, 10))
+        self.assertIsNone(output_naming.estimate_qwen_audio_31_cost(10, -1))
+
+
 if __name__ == "__main__":
     unittest.main()

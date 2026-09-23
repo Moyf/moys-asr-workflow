@@ -719,6 +719,8 @@
     qwen_audio_context_placeholder: "额外用来辅助 AI 判断的上下文提示词，例如：这是一段关于医药公司的会议记录，参与人员有阿米娅、凯尔希、M3 等人，他们讨论的主要话题是……",
     qwen_audio_context_hint: "领域词表或前文提示；本次任务最多发送 400 个字符，不是通用系统指令。",
     qwen_audio_context_count: "当前字符数：{count}/400",
+    qwen_audio_keep_dialect: "保留方言表达",
+    qwen_audio_keep_dialect_hint: "仅 qwen-audio-3.1-asr 支持：勾选后保留方言原文；不勾选时方言会被转写为普通话文本。",
     qwen_audio_hotwords: "即时热词",
     qwen_audio_hotwords_mode_text: "直接输入",
     qwen_audio_hotwords_mode_file: "从文件读取",
@@ -806,6 +808,8 @@
     qwen_audio_context_placeholder: "An additional context prompt to help the AI interpret the audio, e.g.: This is a meeting transcript from a pharmaceutical company. Participants include Amiya, Kal'tsit, M3, and others. Their main topic is…",
     qwen_audio_context_hint: "Domain terms or prior context; at most 400 characters per request, not a general system prompt.",
     qwen_audio_context_count: "Characters: {count}/400",
+    qwen_audio_keep_dialect: "Keep dialect wording",
+    qwen_audio_keep_dialect_hint: "qwen-audio-3.1-asr only: keep the original dialect wording; when unchecked, dialect speech is transcribed into Mandarin text.",
     qwen_audio_hotwords: "Instant hotwords",
     qwen_audio_hotwords_mode_text: "Direct input",
     qwen_audio_hotwords_mode_file: "Load from file",
@@ -1486,6 +1490,7 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "yue", "en"],
             models: [
+              { id: "qwen-audio-3.1-asr-flash-filetrans", label: "qwen-audio-3.1-asr（方言 / 热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离；可选保留方言表达。", priceNote: "阿里云百炼参考价：按 Token 计费，输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, supportsKeepDialect: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
               { id: "qwen-audio-3.0-asr-flash-filetrans", label: "qwen-audio-3.0-asr（热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离。", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
               { id: "fun-asr", label: "fun-asr（支持说话人）", envKey: "DASHSCOPE_API_KEY", note: "支持说话人分离与词级时间戳。", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
               { id: "qwen3-asr-flash-filetrans", label: "qwen3-asr（准确率更高）", envKey: "DASHSCOPE_API_KEY", note: "", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
@@ -1594,7 +1599,7 @@
           const dirIndex = Math.max(mediaPath.lastIndexOf("/"), mediaPath.lastIndexOf("\\"));
           const dir = dirIndex >= 0 ? mediaPath.slice(0, dirIndex + 1) : "";
           const stem = mediaPath.slice(dirIndex + 1).replace(/\.[^.\\/]+$/, "");
-          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : (modelId.includes("firered") ? ".firered-local" : (modelId.includes("moss") ? ".moss-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))));
+          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : (modelId.includes("firered") ? ".firered-local" : (modelId.includes("moss") ? ".moss-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))))) : (modelId === "fun-asr" ? ".fun-asr" : ((modelId === "qwen-audio-3.0-asr-flash-filetrans" || modelId === "qwen-audio-3.1-asr-flash-filetrans") ? ".qwen-audio" : ".qwen3-asr-api"))))));
           let outputDir = dir;
           if (saved.outputSubfolder) {
             const root = saved.perVideoSubfolder ? `${stem}_maw` : "_maw";
@@ -1730,6 +1735,7 @@
     bcut: "Unofficial free endpoint: no API key, Chinese only, 2-hour per-file limit. The endpoint may change, break, or rate-limit at any time; avoid high-frequency calls. For important or batch tasks, prefer the official providers above.",
   };
   const MODEL_LABELS_EN = {
+    "qwen-audio-3.1-asr-flash-filetrans": "qwen-audio-3.1-asr (dialect / hotwords / context)",
     "qwen-audio-3.0-asr-flash-filetrans": "qwen-audio-3.0-asr (hotwords / context)",
     "fun-asr": "fun-asr (speaker support)",
     "qwen3-asr-flash-filetrans": "qwen3-asr (higher accuracy)",
@@ -1753,6 +1759,7 @@
     "bcut-asr": "Bcut ASR (no key / Chinese only)",
   };
   const MODEL_NOTES_EN = {
+    "qwen-audio-3.1-asr-flash-filetrans": "Supports instant hotwords, context, and speaker diarization; optional dialect preservation.",
     "qwen-audio-3.0-asr-flash-filetrans": "Supports instant hotwords, context, and speaker diarization.",
     "fun-asr": "Supports speaker diarization and word-level timestamps.",
     "whisper-1": "Supports Prompt; Whisper prompts are limited to 224 tokens.",
@@ -1774,6 +1781,7 @@
     "bcut-asr": "Millisecond per-character timestamps; no API key required.",
   };
   const MODEL_PRICING_NOTES_EN = {
+    "qwen-audio-3.1-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: token-based, CNY 0.8 / 1M input tokens and CNY 2.7 / 1M output tokens",
     "qwen-audio-3.0-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
     "fun-asr": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
     "qwen3-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
@@ -2273,7 +2281,7 @@
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
   function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "recognitionAlignmentModel", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxBurnCrf", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
-  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), alignmentModel: isLocalProvider() ? $("recognitionAlignmentModel").value : "", alignmentModelPath: "", device: $("localDevice").value, fireredPunc: isFireRedModel() ? $("fireRedPunc").value : "ct-punc", language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
+  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), alignmentModel: isLocalProvider() ? $("recognitionAlignmentModel").value : "", alignmentModelPath: "", device: $("localDevice").value, fireredPunc: isFireRedModel() ? $("fireRedPunc").value : "ct-punc", language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, qwenKeepDialect: $("qwenAudioKeepDialect").checked, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
     const button = $("openMawe");
@@ -2305,7 +2313,7 @@
     if (suffix) suffix.textContent = t(isOpenai ? "openai_key_hint_suffix" : "key_hint_suffix");
   }
   function renderKeyStatus() { const masked = state.config && !isLocalProvider() ? provider().maskedApiKey : ""; $("keyStatus").textContent = masked ? t("key_loaded").replace("{key}", masked) : t("key_empty"); }
-  function syncQwenAudioOptions(model) { const enabled = provider().id === "qwen" && Boolean(model?.supportsContext || model?.supportsHotwords); $("qwenAudioOptions").classList.toggle("hidden", !enabled); $("qwenAudioContextField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsContext)); $("qwenAudioHotwordsSection").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsHotwords)); syncQwenAudioHotwordsMode(); }
+  function syncQwenAudioOptions(model) { const enabled = provider().id === "qwen" && Boolean(model?.supportsContext || model?.supportsHotwords); $("qwenAudioOptions").classList.toggle("hidden", !enabled); $("qwenAudioContextField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsContext)); $("qwenAudioKeepDialectField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsKeepDialect)); $("qwenAudioHotwordsSection").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsHotwords)); syncQwenAudioHotwordsMode(); }
   function syncSonioxContextOptions(model) { const enabled = provider().id === "soniox" && Boolean(model?.supportsContext); $("sonioxContextOptions").classList.toggle("hidden", !enabled); }
   function syncOpenAiAdvancedOptions(model) {
     const openai = isOpenAiProvider();

@@ -99,7 +99,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(config["region"], "singapore")
         self.assertEqual(config["guiLang"], "en")
         self.assertEqual(config["providerId"], "qwen")
-        self.assertEqual(config["modelId"], "qwen-audio-3.0-asr-flash-filetrans")
+        self.assertEqual(config["modelId"], "qwen-audio-3.1-asr-flash-filetrans")
         self.assertIsNone(config["lastModel"])
         self.assertIsNone(config["lastLanguage"])
         self.assertEqual(config["stickerDir"], "")
@@ -111,7 +111,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
         soniox = next(provider for provider in config["providers"] if provider["id"] == "soniox")
         self.assertEqual(len(soniox["commonLanguages"]), 8)
-        self.assertIn("0.00022", config["providers"][0]["models"][0]["priceNote"])
+        self.assertIn("Token", config["providers"][0]["models"][0]["priceNote"])
+        self.assertIn("0.00022", config["providers"][0]["models"][1]["priceNote"])
         self.assertIn("0.10", soniox["models"][0]["priceNote"])
         openai = next(provider for provider in config["providers"] if provider["id"] == "openai")
         self.assertEqual(openai["secondaryKeyUrl"], "https://openrouter.ai/keys")
@@ -134,15 +135,17 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(openai["models"][3]["supportsKeywords"])
         self.assertIn("0.0045", openai["models"][3]["openrouterNote"])
         self.assertTrue(openai["models"][4]["supportsDiarization"])
-        self.assertEqual(config["models"][0]["id"], "qwen-audio-3.0-asr-flash-filetrans")
-        self.assertEqual(config["models"][1]["id"], "fun-asr")
-        self.assertEqual(config["models"][2]["id"], "qwen3-asr-flash-filetrans")
+        self.assertEqual(config["models"][0]["id"], "qwen-audio-3.1-asr-flash-filetrans")
+        self.assertEqual(config["models"][1]["id"], "qwen-audio-3.0-asr-flash-filetrans")
+        self.assertEqual(config["models"][2]["id"], "fun-asr")
+        self.assertEqual(config["models"][3]["id"], "qwen3-asr-flash-filetrans")
         self.assertTrue(config["models"][0]["supportsSpeaker"])
         self.assertTrue(config["models"][0]["supportsContext"])
         self.assertTrue(config["models"][0]["supportsHotwords"])
-        self.assertTrue(config["models"][0]["supportsVocabulary"])
+        self.assertTrue(config["models"][0]["supportsKeepDialect"])
+        self.assertFalse(config["models"][1]["supportsKeepDialect"])
         self.assertEqual(config["models"][0]["languages"][0]["id"], "")
-        self.assertFalse(config["models"][2]["supportsSpeaker"])
+        self.assertFalse(config["models"][3]["supportsSpeaker"])
         self.assertEqual(config["languages"][0]["id"], "")
 
     def test_get_ocr_runtime_recovers_a_stale_install_marker(self) -> None:
@@ -319,7 +322,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             config = self.api.get_config()
 
         self.assertEqual(config["providerId"], "qwen")
-        self.assertEqual(config["modelId"], "qwen-audio-3.0-asr-flash-filetrans")
+        self.assertEqual(config["modelId"], "qwen-audio-3.1-asr-flash-filetrans")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
 
     def test_get_config_exposes_local_provider_and_runtime_status(self) -> None:
@@ -3814,6 +3817,30 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(request.qwen_audio_hotwords, "张三\n李四,阿里云")
         self.assertEqual(request.qwen_audio_vocabulary_id, "vocab-qwen-audio")
         self.assertEqual(request.qwen_audio_hotword_weight, "50")
+
+    def test_request_from_payload_passes_keep_dialect_only_for_qwen_audio_31(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        base = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "region": "beijing",
+            "qwenKeepDialect": True,
+        }
+        request_31 = _request_from_payload({
+            **base,
+            "providerId": "qwen",
+            "modelId": "qwen-audio-3.1-asr-flash-filetrans",
+        }, self.env_path)
+        request_30 = _request_from_payload({
+            **base,
+            "providerId": "qwen",
+            "modelId": "qwen-audio-3.0-asr-flash-filetrans",
+        }, self.env_path)
+
+        self.assertTrue(request_31.qwen_keep_dialect)
+        self.assertFalse(request_30.qwen_keep_dialect)
 
     def test_request_from_payload_builds_soniox_context(self) -> None:
         media = self.root / "clip.mp3"

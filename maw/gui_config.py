@@ -18,6 +18,7 @@ ROOT: Final = SOURCE_ROOT
 DEFAULT_ENV_PATH: Final = default_env_path()
 EXAMPLE_ENV_PATH: Final = ROOT / ".env.example"
 QWEN_AUDIO_MODEL_ID: Final = "qwen-audio-3.0-asr-flash-filetrans"
+QWEN_AUDIO_31_MODEL_ID: Final = "qwen-audio-3.1-asr-flash-filetrans"
 QWEN3_ASR_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
 OPENAI_ASR_MODEL_ID: Final = "custom-asr"
 OPENAI_ASR_DEFAULT_BASE_URL: Final = "https://api.openai.com/v1"
@@ -31,7 +32,7 @@ OPENAI_ASR_PRESET_MODEL_IDS: Final[tuple[str, ...]] = (
     "whisper-large-v3-turbo",
     "whisper-large-v3",
 )
-# qwen-audio-3.0 是最新发布的模型，作为各入口默认；旧 qwen3-asr 置底保留（后续可能移除）。
+# qwen-audio-3.0 仍是各入口默认；3.1 为 2026-09 新增可选（默认模型待实测后再切换）。
 DEFAULT_MODEL_ID: Final = QWEN_AUDIO_MODEL_ID
 
 
@@ -50,6 +51,9 @@ class ModelConfig:
     supports_context: bool = False
     supports_hotwords: bool = False
     supports_vocabulary: bool = False
+    # 仅 qwen-audio-3.1-asr-flash-filetrans 支持的 keep_dialect：
+    # 勾选后保留方言原文，否则方言转写为普通话文本。
+    supports_keep_dialect: bool = False
     # 模型是否原生返回可用于字幕编辑的字词级时间码；为 False 时，
     # Launcher 可在本地模型设置中提供额外的对齐模型。
     supports_word_timestamps: bool = False
@@ -345,6 +349,19 @@ DOUBAO_MODELS: Final[tuple[ModelConfig, ...]] = (
 )
 
 QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
+    ModelConfig(
+        id=QWEN_AUDIO_31_MODEL_ID,
+        label="qwen-audio-3.1-asr（方言 / 热词 / 上下文）",
+        env_key="DASHSCOPE_API_KEY",
+        note="支持即时热词、上下文与说话人分离；可选保留方言表达。",
+        price_note="阿里云百炼参考价：按 Token 计费，输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token",
+        supports_speaker=True,
+        supports_context=True,
+        supports_hotwords=True,
+        supports_vocabulary=True,
+        supports_keep_dialect=True,
+        languages=FUNASR_LANGUAGES,
+    ),
     ModelConfig(
         id=QWEN_AUDIO_MODEL_ID,
         label="qwen-audio-3.0-asr（热词 / 上下文）",
