@@ -515,9 +515,18 @@ label {
   font-size: 13px;
 }
 
-/* 模型备注：能力一行 + 🪙 价格一行。 */
+/* 模型备注：能力一行 + 🪙 参考价行（引用 callout 样式，与能力说明视觉区隔）。 */
 #modelNote {
   white-space: pre-line;
+}
+
+#modelNote .price-note {
+  display: block;
+  margin-top: 6px;
+  padding: 5px 10px;
+  border-left: 3px solid color-mix(in srgb, var(--amber) 55%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
 }
 
 .settings-punctuation-hint {
