@@ -4403,6 +4403,7 @@ def _provider_payload(
     return {
         "id": provider.id,
         "label": provider.label,
+        "keyButtonLabel": provider.key_label,
         "kind": provider.kind,
         "keyUrl": provider.key_url,
         "secondaryKeyUrl": provider.secondary_key_url,

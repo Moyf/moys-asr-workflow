@@ -267,7 +267,9 @@ class GuiConfigTests(unittest.TestCase):
         provider = gui_config.PROVIDERS[0]
 
         self.assertEqual(provider.id, "qwen")
+        self.assertEqual(provider.label, "阿里云百炼（千问）")
         self.assertEqual(provider.key_url, "https://platform.qianwenai.com/home/")
+        self.assertEqual(provider.key_label, "千问AI平台")
         self.assertEqual(provider.models[0].id, "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(provider.regions[0][0], "beijing")
         self.assertEqual(provider.languages[0][0], "")
