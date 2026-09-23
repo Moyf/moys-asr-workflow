@@ -14,8 +14,13 @@
       debug_raw: "调试运行（保存原始/中间数据）",
       debug_raw_title: "在线模型保存服务端原始 JSON；本地模型保存可用的原始/中间文件，便于排查断句、标点和时间码问题",
       hero_desc: "本地媒体 ➜ AI 转写 ➜ 可编辑字幕工程",
-      project_home: "项目官网",
+      github_link: "Github",
       tutorial_video: "教程视频",
+      support_link: "支持 ❤️",
+      support_title: "支持 MAW",
+      support_desc: "如果 MAW 对你有帮助，可以前往B站小店赞助！",
+      support_thanks: "软件免费使用，但我为此花了非常多的心血 ❤️",
+      support_better: "你的支持将帮助 Moy 把它做得更好  :)",
       media: "媒体文件",
       srt_output: "SRT 输出",
       choose: "选择",
@@ -133,8 +138,13 @@
       debug_raw: "Debug run (save raw/intermediate data)",
       debug_raw_title: "Online models save the raw service JSON; local models save available raw/intermediate files for investigating segmentation, punctuation, and timestamps.",
       hero_desc: "Local media ➜ AI transcription ➜ Editable subtitle projects",
-      project_home: "Project",
+      github_link: "Github",
       tutorial_video: "Tutorial video",
+      support_link: "Support ❤️",
+      support_title: "Support MAW",
+      support_desc: "If MAW helps you, visit Moy's Bilibili shop to sponsor the project!",
+      support_thanks: "MAW is free to use, but I put a great deal of heart into it ❤️",
+      support_better: "Your support helps Moy make it even better  :)",
       media: "Media file",
       srt_output: "SRT output",
       choose: "Choose",
@@ -3802,6 +3812,10 @@
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
   $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
   $("tutorialVideoLink").addEventListener("click", () => bridge("open_url", { url: TUTORIAL_VIDEO_URL }));
+  $("supportLink").addEventListener("click", () => { $("supportModal").classList.remove("hidden"); $("supportClose").focus(); });
+  $("supportClose").addEventListener("click", () => $("supportModal").classList.add("hidden"));
+  $("supportBackdrop").addEventListener("click", () => $("supportModal").classList.add("hidden"));
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") $("supportModal").classList.add("hidden"); });
   $("errorNoticeClose").addEventListener("click", hideErrorNotice);
   $("errorNoticeCopy").addEventListener("click", () => { void copyErrorReport(); });
   $("errorNoticeFaq").addEventListener("click", () => { void openErrorFaq(); });

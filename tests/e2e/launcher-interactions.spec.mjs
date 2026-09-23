@@ -110,6 +110,28 @@ test('project and tutorial hero links open their configured URLs', async ({ page
   ]);
 });
 
+test('support link opens the sponsor QR modal and closes on Escape or backdrop', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+
+  await page.locator('#supportLink').click();
+  await expect(page.locator('#supportModal')).toBeVisible();
+  await expect(page.locator('#supportModal .support-qr')).toHaveAttribute('src', /support-qr\.png$/);
+  await expect(page.locator('#supportModal .support-desc')).toContainText('前往B站小店赞助');
+  await expect(page.locator('#supportModal .support-note')).toHaveText([
+    '软件免费使用，但我为此花了非常多的心血 ❤️',
+    '你的支持将帮助 Moy 把它做得更好  :)',
+  ]);
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#supportModal')).toBeHidden();
+
+  await page.locator('#supportLink').click();
+  await expect(page.locator('#supportModal')).toBeVisible();
+  await page.locator('#supportBackdrop').click({ position: { x: 5, y: 5 } });
+  await expect(page.locator('#supportModal')).toBeHidden();
+});
+
 test('OCR video source follows a newly dropped video media', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxOcrTab').click();
