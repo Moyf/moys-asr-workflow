@@ -4355,9 +4355,11 @@
 
     captureRowGeometry(row) {
       const rect = row.getBoundingClientRect();
+      // 时间映射与覆盖层/指示线统一用 content-box：行有 1px 边框，
+      // border-box 会让指针位置与实际生效边界差出边框宽度。
       return {
-        left: rect.left,
-        width: Math.max(1, rect.width),
+        left: rect.left + row.clientLeft,
+        width: Math.max(1, row.clientWidth),
         startMs: Number(row.dataset.startMs),
         endMs: Number(row.dataset.endMs),
       };
@@ -4482,8 +4484,9 @@
     }
 
     timeFromPointer(event, row, geometry = null) {
-      const rect = geometry || row.getBoundingClientRect();
-      const ratio = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+      const contentLeft = geometry ? geometry.left : row.getBoundingClientRect().left + row.clientLeft;
+      const contentWidth = Math.max(1, geometry ? geometry.width : row.clientWidth);
+      const ratio = clamp((event.clientX - contentLeft) / contentWidth, 0, 1);
       const startMs = geometry?.startMs ?? Number(row.dataset.startMs);
       const endMs = geometry?.endMs ?? Number(row.dataset.endMs);
       return startMs + ratio * (endMs - startMs);
@@ -4492,8 +4495,9 @@
     // Gap、字幕块和字幕边界拖动都按起始行的横向位移计算；指针越过行边缘时
     // 继续延伸时间，避免拖动在本行末尾饱和或进入另一行时发生跳变。
     timeFromPointerUnbounded(event, row, geometry = null) {
-      const rect = geometry || row.getBoundingClientRect();
-      const ratio = (event.clientX - rect.left) / Math.max(1, rect.width);
+      const contentLeft = geometry ? geometry.left : row.getBoundingClientRect().left + row.clientLeft;
+      const contentWidth = Math.max(1, geometry ? geometry.width : row.clientWidth);
+      const ratio = (event.clientX - contentLeft) / contentWidth;
       const startMs = geometry?.startMs ?? Number(row.dataset.startMs);
       const endMs = geometry?.endMs ?? Number(row.dataset.endMs);
       return startMs + ratio * (endMs - startMs);
@@ -4552,7 +4556,7 @@
       });
       const blockRect = block?.getBoundingClientRect?.();
       return {
-        clientX: rowRect.left + rowRect.width * ratio,
+        clientX: rowRect.left + row.clientLeft + row.clientWidth * ratio,
         clientY: blockRect ? blockRect.top + blockRect.height / 2 : rowRect.top + rowRect.height / 2,
       };
     }
