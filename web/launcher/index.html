@@ -49,8 +49,9 @@
         <button id="settingsButton" class="ghost small" type="button" aria-label="settings" data-i18n-title="settings_title" title="配置">⚙️<span data-i18n="settings_button">设置</span><span id="settingsDot" class="settings-dot hidden"></span></button>
       </nav>
       <div class="hero-home-links">
-        <button id="homeLink" class="text-link" type="button" data-i18n="project_home">项目官网</button>
+        <button id="homeLink" class="text-link" type="button" data-i18n="github_link">Github</button>
         <button id="tutorialVideoLink" class="text-link" type="button" data-i18n="tutorial_video">教程视频</button>
+        <button id="supportLink" class="text-link" type="button" data-i18n="support_link">支持 ❤️</button>
       </div>
     </header>
 
@@ -196,7 +197,7 @@
                   <div class="language-side">
                     <div class="lang-actions"><button id="languageReset" class="ghost small hidden" type="button" data-i18n="language_reset">重置（自动识别）</button></div>
                     <p id="languageHint" class="hint hidden" data-i18n="language_multi_hint">可多选；不选即自动识别（仅偏向，不限制）。</p>
-                    <p id="languageFilterHint" class="hint hint-top-spaced hidden"><span data-i18n="language_filter_hint_prefix">默认仅显示常用语言，其余可在「</span><button id="openLanguageSettings" class="inline-link" type="button" data-i18n="language_filter_hint_link">设置</button><span data-i18n="language_filter_hint_suffix">」中开启。</span></p>
+                    <p id="languageFilterHint" class="hint hint-top-spaced hidden"><span data-i18n="language_filter_hint_prefix">默认仅显示常用语言，其余可在</span><button id="openLanguageSettings" class="inline-link" type="button" data-i18n="language_filter_hint_link">设置</button><span data-i18n="language_filter_hint_suffix">中开启。</span></p>
                   </div>
                 </div>
               </div>
@@ -334,7 +335,7 @@
      </section>
 
     <section id="autoPostprocessCard" class="card" aria-labelledby="autoPostprocessTitle">
-      <h2 id="autoPostprocessTitle" data-i18n="auto_postprocess_title">3️⃣ 转写后自动处理 （Beta）</h2>
+      <h2 id="autoPostprocessTitle" data-i18n="auto_postprocess_title">3️⃣ 转写后自动处理</h2>
       <p class="hint" data-i18n="auto_postprocess_hint">转写完成后按固定顺序处理字幕；首次启用某一步前，请先在工具箱中完成配置。</p>
       <p id="batchManuscriptNotice" class="toolbox-notice hidden" role="note" data-i18n="batch_manuscript_disabled">批量模式不支持逐文件文稿映射。本次批量运行会跳过文稿匹配；单文件设置保持不变。</p>
       <label class="check-field auto-postprocess-toggle" for="autoPostprocessEnabled">
@@ -356,7 +357,7 @@
                 <button id="configureAutoMatch" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
               </div>
               <div class="auto-step-row" data-auto-step-row="replace">
-                <label class="check-field" for="autoStepReplace"><input id="autoStepReplace" type="checkbox"><span data-i18n="auto_step_replace">固定处理</span></label>
+                <label class="check-field" for="autoStepReplace"><input id="autoStepReplace" type="checkbox"><span data-i18n="auto_step_replace">固定替换</span></label>
                 <span id="autoStepReplaceStatus" class="auto-step-status hint"></span>
                 <span id="autoStepReplaceHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoReplace" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
@@ -524,7 +525,7 @@
             <button id="toolboxTimestampsTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxTimestampsPanel" data-tool="timestamps" data-i18n="toolbox_timestamps">生成时间码</button>
             <button id="toolboxOcrTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxOcrPanel" data-tool="ocr" data-i18n="toolbox_ocr_dedup">OCR 字幕去重</button>
             <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
-            <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定处理</button>
+            <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
           </div>
         </nav>
       </section>
@@ -667,11 +668,46 @@
             <input id="toolboxBurnSubtitlePath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_burn_subtitle_placeholder" placeholder="选择或拖入 .srt / .ass / .ssa 字幕">
             <button id="pickToolboxBurnSubtitle" class="ghost" type="button" data-i18n="choose">选择</button>
           </div>
-          <p id="toolboxBurnSubtitleHint" class="hint" data-i18n="toolbox_burn_subtitle_input_hint">默认跟随当前的 SRT 输出，也支持手动选择 ASS / SSA。</p>
-          <p id="toolboxBurnSubtitleStyle" class="hint" aria-live="polite"></p>
+          <p class="hint" data-i18n="toolbox_burn_subtitle_style_hint">选择 SRT 字幕时，会使用 ASS 样式库中的「SRT 烧录样式」对应的样式；选择 ASS 字幕时，使用 ASS 字幕自身的样式。</p>
           <p id="toolboxBurnSubtitlePathError" class="field-error"></p>
         </div>
-        <p class="toolbox-notice" data-i18n="toolbox_ready">选择工具后运行；始终生成新文件，不覆盖源文件。</p>
+        <div class="toolbox-grid">
+          <div class="field">
+            <label for="toolboxBurnCrf" data-i18n="toolbox_burn_crf">画质 CRF</label>
+            <input id="toolboxBurnCrf" type="number" min="0" max="51" step="1" value="18" autocomplete="off">
+            <p class="hint" data-i18n="toolbox_burn_crf_hint">数值越小画质越高、文件越大；常用 16–23，默认 18。</p>
+            <p id="toolboxBurnCrfError" class="field-error"></p>
+          </div>
+          <div class="field">
+            <label for="toolboxBurnPreset" data-i18n="toolbox_burn_preset">编码预设</label>
+            <select id="toolboxBurnPreset">
+              <option value="veryfast">veryfast</option>
+              <option value="fast">fast</option>
+              <option value="medium" selected>medium</option>
+              <option value="slow">slow</option>
+              <option value="veryslow">veryslow</option>
+            </select>
+            <p class="hint" data-i18n="toolbox_burn_preset_hint">预设越慢压缩率越高、耗时越长；一般保持 medium。</p>
+          </div>
+          <div class="field">
+            <label for="toolboxBurnAudioBitrate" data-i18n="toolbox_burn_audio_bitrate">音频码率</label>
+            <select id="toolboxBurnAudioBitrate">
+              <option value="96k">96 kbps</option>
+              <option value="128k">128 kbps</option>
+              <option value="160k">160 kbps</option>
+              <option value="192k" selected>192 kbps</option>
+              <option value="224k">224 kbps</option>
+              <option value="256k">256 kbps</option>
+              <option value="320k">320 kbps</option>
+            </select>
+            <p class="hint" data-i18n="toolbox_burn_audio_bitrate_hint">码率越高音质越好、文件越大；默认 192k。</p>
+          </div>
+          <div class="field">
+            <label class="field-spacer" aria-hidden="true">&nbsp;</label>
+            <button id="saveBurnSubtitleSettings" class="ghost" type="button" data-i18n="toolbox_burn_save_defaults">保存为默认参数</button>
+            <p id="toolboxBurnSettingsStatus" class="hint" aria-live="polite"></p>
+          </div>
+        </div>
       </section>
 
       <section id="toolboxExtractAudioPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxExtractAudioTab">
@@ -966,7 +1002,7 @@
           <button id="runLlmPostprocess" class="primary" type="button" data-i18n="toolbox_run">运行处理</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="replace">
-          <button id="runFixedProcess" class="primary" type="button" data-i18n="toolbox_run_replace">执行固定处理</button>
+          <button id="runFixedProcess" class="primary" type="button" data-i18n="toolbox_run_replace">执行固定替换</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="ffconcat">
           <button id="runFfconcatRebuild" class="primary" type="button" data-i18n="toolbox_run_media">生成新媒体</button>
@@ -1103,15 +1139,10 @@
             <p id="llmModelStatus" class="hint llm-model-status hidden" aria-live="polite"></p>
           </div>
         </div>
-        <div id="llmCustomDisplayNameField" class="field hidden">
-          <label for="llmCustomDisplayName" data-i18n="llm_custom_display_name">自定义显示名称</label>
-          <input id="llmCustomDisplayName" type="text" autocomplete="off" data-i18n-placeholder="llm_custom_display_name_placeholder" placeholder="可选">
-          <p id="llmCustomDisplayNameError" class="field-error"></p>
-        </div>
         <div class="field">
           <label for="llmApiKey" data-i18n="llm_api_key">API Key</label>
           <div class="path-row">
-            <input id="llmApiKey" type="password" autocomplete="off">
+            <input id="llmApiKey" type="password" autocomplete="off" data-i18n-placeholder="llm_api_key_placeholder" placeholder="填写你的 API KEY">
             <div class="settings-actions">
               <button id="saveLlmSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
             </div>
@@ -1122,9 +1153,14 @@
         </div>
         <div class="field">
           <label for="llmBaseUrl" data-i18n="llm_base_url">API URL</label>
-          <input id="llmBaseUrl" type="url" autocomplete="off">
+          <input id="llmBaseUrl" type="url" autocomplete="off" data-i18n-placeholder="llm_base_url_placeholder" placeholder="填写你的 Base URL，如 https://api.openai.com/v1">
           <p id="llmBaseUrlError" class="field-error"></p>
           <p class="hint" data-i18n="llm_base_url_hint">远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。</p>
+        </div>
+        <div id="llmCustomDisplayNameField" class="field hidden">
+          <label for="llmCustomDisplayName" data-i18n="llm_custom_display_name">自定义显示名称（可选）</label>
+          <input id="llmCustomDisplayName" type="text" autocomplete="off" data-i18n-placeholder="llm_custom_display_name_placeholder" placeholder="自定义显示名称">
+          <p id="llmCustomDisplayNameError" class="field-error"></p>
         </div>
       </div>
       <div id="localAsrModelSettingsSection" class="settings-section hidden">
@@ -1263,7 +1299,7 @@
             <button id="pickLocalRuntimePath" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
           </div>
           <p id="localRuntimePathError" class="field-error"></p>
-          <p class="hint" data-i18n="local_runtime_path_hint">默认安装到用户目录；可改到空间更充足的磁盘。更改后会按新目录重新扫描安装状态。</p>
+          <p class="hint" data-i18n="local_runtime_path_hint">默认安装到用户目录，可改到空间更充足的磁盘。路径请勿包含中文。</p>
         </div>
         <div id="localRuntimePaths" class="runtime-paths hidden"></div>
         <div class="local-status-row">
@@ -1335,6 +1371,21 @@
       <div class="modal-actions">
         <button id="batchConfirmYes" class="primary" type="button" data-i18n="batch_confirm_yes">是</button>
         <button id="batchConfirmNo" class="ghost" type="button" data-i18n="batch_confirm_no">否</button>
+      </div>
+    </section>
+  </div>
+  <div id="supportModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="supportTitle">
+    <div id="supportBackdrop" class="modal-backdrop"></div>
+    <section class="modal-card support-card">
+      <header class="modal-header">
+        <h2 id="supportTitle" data-i18n="support_title">支持 MAW</h2>
+        <button id="supportClose" class="ghost small" type="button" aria-label="close">×</button>
+      </header>
+      <div class="support-body">
+        <img class="support-qr" src="../../assets/support-qr.png" alt="MAW 赞助二维码">
+        <p class="support-desc" data-i18n="support_desc">如果 MAW 对你有帮助，可以前往B站小店赞助！</p>
+        <p class="support-note" data-i18n="support_thanks">软件免费使用，但我为此花了非常多的心血 ❤️</p>
+        <p class="support-note" data-i18n="support_better">你的支持将帮助 Moy 把它做得更好  :)</p>
       </div>
     </section>
   </div>
