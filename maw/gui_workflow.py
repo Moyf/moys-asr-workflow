@@ -18,7 +18,7 @@ from typing import BinaryIO, Final, TextIO, final
 
 from maw.console import configure_utf8_environment
 from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, bundled_ffmpeg_directory, ffmpeg_search_path, resolve_ffmpeg_tools
-from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, effective_config, load_env
+from maw.gui_config import QWEN_AUDIO_31_MODEL_ID, QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, effective_config, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.media import read_bwf_time_reference
 from maw.output_naming import debug_artifact_path, maw_root
@@ -53,6 +53,7 @@ class TranscriptionRequest:
     qwen_audio_hotwords_file: str = ""
     qwen_audio_vocabulary_id: str = ""
     qwen_audio_hotword_weight: str = ""
+    qwen_keep_dialect: bool = False
     soniox_context: dict[str, object] | None = None
     region: str = ""
     workspace_id: str = ""
@@ -232,7 +233,7 @@ def _srt_model_tag(provider: str, model: str) -> str:
     """返回带前导点的模型/供应商文件名段（local 细分引擎；qwen 细分音频模型）。"""
     if provider == "qwen" and model.startswith("fun-asr"):
         return ".fun-asr"
-    if provider == "qwen" and model == QWEN_AUDIO_MODEL_ID:
+    if provider == "qwen" and model in (QWEN_AUDIO_MODEL_ID, QWEN_AUDIO_31_MODEL_ID):
         return ".qwen-audio"
     if provider == "local":
         local_model = model.casefold()
@@ -393,7 +394,7 @@ def build_transcribe_command(
         _append_option(command, "--region", request.region)
         if request.speaker_colors and (
             request.model.startswith("fun-asr")
-            or request.model == QWEN_AUDIO_MODEL_ID
+            or request.model in (QWEN_AUDIO_MODEL_ID, QWEN_AUDIO_31_MODEL_ID)
         ):
             command.append("--speaker-colors")
         _append_option(command, "--language", request.language)
@@ -408,10 +409,12 @@ def build_transcribe_command(
     _append_option(command, "--gap-split", request.gap_split)
     # 始终显式下发（含空串）：空串表示共享保留符号配置要求完全不剥尾。
     command.extend(["--strip-tail-punct", request.strip_tail_punct])
-    if request.provider == "qwen" and request.model == QWEN_AUDIO_MODEL_ID:
+    if request.provider == "qwen" and request.model in (QWEN_AUDIO_MODEL_ID, QWEN_AUDIO_31_MODEL_ID):
         _append_option(command, "--vocabulary-id", request.qwen_audio_vocabulary_id)
         _append_option(command, "--hotword-weight", request.qwen_audio_hotword_weight)
         _append_option(command, "--context", request.qwen_audio_context)
+        if request.qwen_keep_dialect and request.model == QWEN_AUDIO_31_MODEL_ID:
+            command.append("--keep-dialect")
         if request.qwen_audio_hotwords_file:
             _append_option(command, "--hotword-file", request.qwen_audio_hotwords_file)
         else:
