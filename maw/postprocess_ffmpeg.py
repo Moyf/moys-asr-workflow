@@ -23,6 +23,13 @@ ALLOWED_DIRECTIVES: Final = frozenset({"ffconcat", "file", "inpoint", "outpoint"
 VIDEO_EXTENSIONS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"})
 MEDIA_EXTENSIONS: Final = frozenset((*VIDEO_EXTENSIONS, ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"))
 SUBTITLE_EXTENSIONS: Final = frozenset({".srt", ".ass", ".ssa"})
+X264_PRESETS: Final = frozenset({"veryfast", "fast", "medium", "slow", "veryslow"})
+AUDIO_BITRATES: Final = frozenset({"96k", "128k", "160k", "192k", "224k", "256k", "320k"})
+MIN_BURN_CRF: Final = 0
+MAX_BURN_CRF: Final = 51
+DEFAULT_BURN_CRF: Final = 18
+DEFAULT_BURN_PRESET: Final = "medium"
+DEFAULT_BURN_AUDIO_BITRATE: Final = "192k"
 VIDEO_ENCODER_MODES: Final[frozenset[str]] = frozenset({"auto", "cpu", "nvenc", "amf", "qsv"})
 VIDEO_ENCODER_CODECS: Final[dict[str, str]] = {
     "nvenc": "h264_nvenc",
@@ -81,6 +88,13 @@ class BurnSubtitleRequest:
     # shared user-level SRT default slot is loaded automatically.
     srt_style: Mapping[str, object] | None = None
     video_encoder: str = "auto"
+    # Optional encoding overrides exposed by the toolbox UI; None keeps the
+    # built-in defaults (CRF 18 / preset medium / audio 192k). CRF 与音频码率
+    # 对所有编码器生效（硬件编码器映射到 cq/qp/global_quality）；preset 仅
+    # libx264 支持，硬件编码器使用各自的固定预设。
+    crf: int | None = None
+    preset: str | None = None
+    audio_bitrate: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,15 +320,17 @@ def _video_encoder_attempts(ffmpeg_path: Path, requested: str) -> tuple[str, ...
     return tuple(candidate for candidate in AUTO_VIDEO_ENCODER_ORDER if candidate == "cpu" or candidate in available)
 
 
-def _video_encoder_options(mode: str) -> list[str]:
+def _video_encoder_options(mode: str, crf: int, preset: str) -> list[str]:
+    # CRF 与 libx264 的 cq/qp/global_quality 同为 0–51、越小画质越高，因此
+    # 用户设置的画质值直接映射到硬件编码器；preset 仅 libx264 支持。
     if mode == "cpu":
-        return ["-c:v", "libx264", "-preset", "medium", "-crf", "18"]
+        return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf)]
     if mode == "nvenc":
-        return ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "18", "-b:v", "0"]
+        return ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", str(crf), "-b:v", "0"]
     if mode == "amf":
-        return ["-c:v", "h264_amf", "-quality", "quality", "-rc", "cqp", "-qp_i", "18", "-qp_p", "18"]
+        return ["-c:v", "h264_amf", "-quality", "quality", "-rc", "cqp", "-qp_i", str(crf), "-qp_p", str(crf)]
     if mode == "qsv":
-        return ["-c:v", "h264_qsv", "-preset", "medium", "-global_quality", "18"]
+        return ["-c:v", "h264_qsv", "-preset", "medium", "-global_quality", str(crf)]
     raise ValueError(f"unsupported video encoder mode: {mode}")
 
 
@@ -329,6 +345,7 @@ def run_burn_subtitles(
     """Render SRT/ASS subtitles into a new H.264 MP4."""
     media = _validated_media_path(request.media_path, extensions=VIDEO_EXTENSIONS, label="video")
     subtitle = _validated_media_path(request.subtitle_path, extensions=SUBTITLE_EXTENSIONS, label="subtitle")
+    crf, preset, audio_bitrate = _burn_encoding_settings(request)
     output = _available_media_output(media, suffix="subtitled", extension=".mp4")
     temporary = output.with_name(f"{output.stem}.part{output.suffix}")
     requested_encoder = normalize_video_encoder(request.video_encoder)
@@ -371,13 +388,13 @@ def run_burn_subtitles(
             temporary.unlink(missing_ok=True)
             command = [
                 *common_command,
-                *_video_encoder_options(encoder),
+                *_video_encoder_options(encoder, crf, preset),
                 "-pix_fmt",
                 "yuv420p",
                 "-c:a",
                 "aac",
                 "-b:a",
-                "192k",
+                audio_bitrate,
                 "-movflags",
                 "+faststart",
                 str(temporary),
@@ -626,6 +643,20 @@ def _convert_srt_to_ass(
         converted.unlink(missing_ok=True)
         raise
     return converted
+
+
+def _burn_encoding_settings(request: BurnSubtitleRequest) -> tuple[int, str, str]:
+    """Return validated (crf, preset, audio_bitrate), falling back to defaults."""
+    crf = DEFAULT_BURN_CRF if request.crf is None else request.crf
+    if not MIN_BURN_CRF <= crf <= MAX_BURN_CRF:
+        raise MediaToolError(f"CRF must be an integer between {MIN_BURN_CRF} and {MAX_BURN_CRF}")
+    preset = DEFAULT_BURN_PRESET if not str(request.preset or "").strip() else str(request.preset).strip()
+    if preset not in X264_PRESETS:
+        raise MediaToolError(f"unsupported x264 preset: {preset}")
+    audio_bitrate = DEFAULT_BURN_AUDIO_BITRATE if not str(request.audio_bitrate or "").strip() else str(request.audio_bitrate).strip()
+    if audio_bitrate not in AUDIO_BITRATES:
+        raise MediaToolError(f"unsupported audio bitrate: {audio_bitrate}")
+    return crf, preset, audio_bitrate
 
 
 def _subtitle_filter(

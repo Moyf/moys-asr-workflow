@@ -677,7 +677,7 @@ def run_postprocess_pipeline(
                     step,
                     project_path=current_project,
                     srt_path=current_srt,
-                    media_path=media_path,
+                    media_path=current_media,
                     env_path=env_path,
                     ffmpeg_path=ffmpeg_path,
                     ocr_runtime_root=ocr_runtime_root,

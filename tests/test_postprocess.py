@@ -764,7 +764,7 @@ class PostprocessTests(unittest.TestCase):
                 project_path=self.project_path,
                 srt_path=None,
                 output_mode=OutputMode.SRT,
-                # 空规则现在会跳过固定处理；这里用一条不命中的规则驱动 SRT 输出路径。
+                # 空规则现在会跳过固定替换；这里用一条不命中的规则驱动 SRT 输出路径。
                 replacements=(Replacement(source="不会出现的字", target="x"),),
             )
         )
@@ -2633,6 +2633,9 @@ class MediaToolTests(unittest.TestCase):
         self.assertIn("ass=filename='.clip.maw-burn-", command[command.index("-vf") + 1])
         self.assertNotIn("clip.srt'", command[command.index("-vf") + 1])
         self.assertIn("libx264", command)
+        self.assertEqual(command[command.index("-preset") + 1], "medium")
+        self.assertEqual(command[command.index("-crf") + 1], "18")
+        self.assertEqual(command[command.index("-b:a") + 1], "192k")
         self.assertEqual(len(popen.call_args_list), 2)
         self.assertFalse(list(self.root.glob(".*.ass")))
         self.assertEqual(result.media_path.name, "clip.subtitled.mp4")
@@ -2699,6 +2702,53 @@ class MediaToolTests(unittest.TestCase):
                     BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="amf"),
                     ffmpeg_path=Path("ffmpeg"),
                 )
+
+    def test_burn_subtitles_maps_crf_override_to_hardware_quality(self) -> None:
+        encoders = mock.Mock(returncode=0, stdout=" V....D h264_amf AMD AMF H.264 Encoder\n", stderr="")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process
+        ) as popen:
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="amf", crf=23),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-qp_i") + 1], "23")
+        self.assertEqual(command[command.index("-qp_p") + 1], "23")
+
+    def test_burn_subtitles_applies_crf_preset_and_audio_bitrate_overrides(self) -> None:
+        # 默认 auto 编码器会先探测硬件编码器；这里让它探测不到、走 CPU 分支。
+        encoders = mock.Mock(returncode=1, stdout="", stderr="")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process
+        ) as popen:
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, crf=23, preset="fast", audio_bitrate="128k"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-preset") + 1], "fast")
+        self.assertEqual(command[command.index("-crf") + 1], "23")
+        self.assertEqual(command[command.index("-b:a") + 1], "128k")
+
+    def test_burn_subtitles_rejects_invalid_encoding_overrides(self) -> None:
+        with self.assertRaises(MediaToolError):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, crf=99),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        with self.assertRaises(MediaToolError):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, preset="nope"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        with self.assertRaises(MediaToolError):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, audio_bitrate="500k"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
 
     def test_extract_audio_probes_selected_stream_and_writes_m4a(self) -> None:
         probe_result = mock.Mock(

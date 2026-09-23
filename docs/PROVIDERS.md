@@ -8,9 +8,9 @@ MAW 本身不托管转写服务。你选择的服务商会直接接收待转写�
 | --- | --- | --- |
 | Qwen-Audio / Qwen3-ASR / Fun-ASR | 默认云端路径、中文和说话人分离 | 使用阿里云百炼 API Key；Launcher 默认优先 Qwen-Audio。 |
 | Soniox | 多语言、小语种和说话人分离 | 使用 Soniox Console API Key。 |
-| 豆包语音识别（火山引擎） | 中文为主的单 Key 云端路径，支持热词和说话人分离 | 使用火山引擎新版控制台的 `VOLC_API_KEY`；base64 直传单文件 ≤25MB 且 ≤120 分钟，MAW 会先提取为低码率单声道音频再提交。 |
+| 火山引擎（豆包） | 中文为主的单 Key 云端路径，支持热词和说话人分离 | 使用火山引擎新版控制台的 `VOLC_API_KEY`；base64 直传单文件 ≤25MB 且 ≤120 分钟，MAW 会先提取为低码率单声道音频再提交。 |
 | 腾讯云录音文件识别 | 中文/英文长音频的异步文件识别 | 使用 `TENCENT_SECRET_ID`、`TENCENT_SECRET_KEY`；大于 5MB 的媒体需使用 COS/公网 URL。 |
-| OpenAI（及兼容接口） | 使用 OpenAI 官方服务、OpenRouter 或自己的兼容服务 | Launcher 可选择 OpenAI 官方的 `whisper-1`、`gpt-transcribe`、`gpt-4o-transcribe`、`gpt-4o-mini-transcribe`、`gpt-4o-transcribe-diarize`，OpenRouter 的 `whisper-large-v3-turbo`、`whisper-large-v3`，或“自定义（Custom）”；接口必须返回 `segments` 或 `words` 时间戳。 |
+| OpenAI 格式通用接口 | 使用 OpenAI 官方服务、OpenRouter 或自己的兼容服务 | Launcher 可选择 OpenAI 官方的 `whisper-1`、`gpt-transcribe`、`gpt-4o-transcribe`、`gpt-4o-mini-transcribe`、`gpt-4o-transcribe-diarize`，OpenRouter 的 `whisper-large-v3-turbo`、`whisper-large-v3`，或“自定义（Custom）”；接口必须返回 `segments` 或 `words` 时间戳。 |
 | 必剪 ASR | 不想申请 Key 的中文快速体验 | 实验性、非官方接口，可能限流或失效。 |
 | 本地 Qwen3-ASR / FunASR | 希望离线转写且有合适硬件 | 实验性，需要单独安装运行环境和模型。 |
 
@@ -18,8 +18,8 @@ MAW 本身不托管转写服务。你选择的服务商会直接接收待转写�
 
 - 图形版：在 Launcher 中填写并保存到本机环境。
 - Release 包：优先读取应用程序同目录的 `.env`；不存在时使用 MAW 用户数据目录中的 `.env`，Windows 路径为 `%LOCALAPPDATA%\MAW\.env`。
-- 源码或 CLI：继续使用仓库根目录的 `.env`；可从 `.env.example` 复制后填写 `DASHSCOPE_API_KEY`、`SONIOX_API_KEY`、豆包的 `VOLC_API_KEY`、腾讯云的 `TENCENT_SECRET_ID` 与 `TENCENT_SECRET_KEY`，或 OpenAI（及兼容接口）的 `MAW_OPENAI_ASR_API_KEY`。
-- OpenAI（及兼容接口）：在 Launcher 选择“OpenAI（及兼容接口）”，从“模型”下拉列表选择模型；选择“自定义（Custom）”后再填写自定义模型名。Base URL 为 OpenRouter 时，内置模型会自动发送完整的 `openai/...` 模型 ID；其他中转站不会自动猜测模型名，请选择“自定义（Custom）”并填写服务商提供的完整模型名。兼容服务需要填写 `MAW_OPENAI_ASR_BASE_URL`，模型与 API Key 分别保存到 `MAW_OPENAI_ASR_MODEL` 和 `MAW_OPENAI_ASR_API_KEY`；程序调用 `POST {Base URL}/audio/transcriptions`。
+- 源码或 CLI：继续使用仓库根目录的 `.env`；可从 `.env.example` 复制后填写 `DASHSCOPE_API_KEY`、`SONIOX_API_KEY`、豆包的 `VOLC_API_KEY`、腾讯云的 `TENCENT_SECRET_ID` 与 `TENCENT_SECRET_KEY`，或 OpenAI 格式通用接口的 `MAW_OPENAI_ASR_API_KEY`。
+- OpenAI 格式通用接口：在 Launcher 选择“OpenAI 格式通用接口”，从“模型”下拉列表选择模型；选择“自定义（Custom）”后再填写自定义模型名。Base URL 为 OpenRouter 时，内置模型会自动发送完整的 `openai/...` 模型 ID；其他中转站不会自动猜测模型名，请选择“自定义（Custom）”并填写服务商提供的完整模型名。兼容服务需要填写 `MAW_OPENAI_ASR_BASE_URL`，模型与 API Key 分别保存到 `MAW_OPENAI_ASR_MODEL` 和 `MAW_OPENAI_ASR_API_KEY`；程序调用 `POST {Base URL}/audio/transcriptions`。
 - API Key 只应保存在环境变量或本机 `.env` 中，不要放进命令行、工程、日志、截图或 AI 对话。
 - Qwen Key 获取或查看见[阿里云百炼](https://platform.qianwenai.com/home/)；Soniox Key 见 [Soniox Console](https://console.soniox.com)；豆包 Key 在[火山引擎 API Key 管理](https://console.volcengine.com/speech/new/setting/apikeys)获取。
 - OpenAI 官方或 OpenRouter API Key 见 [OpenAI Platform](https://platform.openai.com/api-keys) 或 [OpenRouter](https://openrouter.ai/keys)。
