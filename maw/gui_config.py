@@ -352,6 +352,18 @@ DOUBAO_MODELS: Final[tuple[ModelConfig, ...]] = (
 
 QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
+        id=QWEN_AUDIO_MODEL_ID,
+        label="qwen-audio-3.0-asr（热词 / 上下文）",
+        env_key="DASHSCOPE_API_KEY",
+        note="支持即时热词、上下文与说话人分离。",
+        price_note="阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）",
+        supports_speaker=True,
+        supports_context=True,
+        supports_hotwords=True,
+        supports_vocabulary=True,
+        languages=FUNASR_LANGUAGES,
+    ),
+    ModelConfig(
         id=QWEN_AUDIO_31_MODEL_ID,
         label="qwen-audio-3.1-asr（方言 / 热词 / 上下文）",
         env_key="DASHSCOPE_API_KEY",
@@ -362,18 +374,6 @@ QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
         supports_hotwords=True,
         supports_vocabulary=True,
         supports_keep_dialect=True,
-        languages=FUNASR_LANGUAGES,
-    ),
-    ModelConfig(
-        id=QWEN_AUDIO_MODEL_ID,
-        label="qwen-audio-3.0-asr（热词 / 上下文）",
-        env_key="DASHSCOPE_API_KEY",
-        note="支持即时热词、上下文与说话人分离。",
-        price_note="阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）",
-        supports_speaker=True,
-        supports_context=True,
-        supports_hotwords=True,
-        supports_vocabulary=True,
         languages=FUNASR_LANGUAGES,
     ),
     ModelConfig(
