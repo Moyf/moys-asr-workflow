@@ -14,8 +14,13 @@
       debug_raw: "调试运行（保存原始/中间数据）",
       debug_raw_title: "在线模型保存服务端原始 JSON；本地模型保存可用的原始/中间文件，便于排查断句、标点和时间码问题",
       hero_desc: "本地媒体 ➜ AI 转写 ➜ 可编辑字幕工程",
-      project_home: "项目官网",
+      github_link: "Github",
       tutorial_video: "教程视频",
+      support_link: "支持 ❤️",
+      support_title: "支持 MAW",
+      support_desc: "如果 MAW 对你有帮助，可以前往B站小店赞助！",
+      support_thanks: "软件免费使用，但我为此花了非常多的心血 ❤️",
+      support_better: "你的支持将帮助 Moy 把它做得更好  :)",
       media: "媒体文件",
       srt_output: "SRT 输出",
       choose: "选择",
@@ -26,9 +31,9 @@
       length_limit: "时长上限",
       language_reset: "重置（自动识别）",
       language_multi_hint: "可多选；不选即自动识别（仅偏向，不限制）。",
-      language_filter_hint_prefix: "默认仅显示常用语言，其余可在「",
-      language_filter_hint_link: "设置",
-      language_filter_hint_suffix: "」中开启。",
+  language_filter_hint_prefix: "默认仅显示常用语言，其余可在",
+  language_filter_hint_link: "设置",
+  language_filter_hint_suffix: "中开启。",
       settings_language: "语言",
       settings_interface_language: "界面语言",
       lang_zh: "中文",
@@ -133,8 +138,13 @@
       debug_raw: "Debug run (save raw/intermediate data)",
       debug_raw_title: "Online models save the raw service JSON; local models save available raw/intermediate files for investigating segmentation, punctuation, and timestamps.",
       hero_desc: "Local media ➜ AI transcription ➜ Editable subtitle projects",
-      project_home: "Project",
+      github_link: "Github",
       tutorial_video: "Tutorial video",
+      support_link: "Support ❤️",
+      support_title: "Support MAW",
+      support_desc: "If MAW helps you, visit Moy's Bilibili shop to sponsor the project!",
+      support_thanks: "MAW is free to use, but I put a great deal of heart into it ❤️",
+      support_better: "Your support helps Moy make it even better  :)",
       media: "Media file",
       srt_output: "SRT output",
       choose: "Choose",
@@ -264,22 +274,22 @@
     audio_track_id: "ID {id}"
   });
   Object.assign(STRINGS.zh, {
-    toolbox_burn_subtitle: "压制字幕", toolbox_burn_subtitle_hint: "将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。", toolbox_burn_subtitle_input: "字幕文件", toolbox_burn_subtitle_placeholder: "选择或拖入 .srt / .ass / .ssa 字幕", toolbox_burn_subtitle_input_hint: "默认跟随当前的 SRT 输出，也支持手动选择 ASS / SSA。", toolbox_burn_subtitle_invalid: "请选择 .srt、.ass 或 .ssa 字幕文件。", toolbox_burn_done: "字幕压制完成，已切换到新媒体：", toolbox_extract_audio: "提取音频", toolbox_extract_audio_hint: "从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。", toolbox_audio_track: "音轨", toolbox_audio_track_choose: "先选择媒体，MAW 会读取可用音轨。", toolbox_audio_tracks_reading: "正在读取音轨……", toolbox_audio_tracks_found: "已找到 {count} 条音轨。", toolbox_audio_tracks_none: "没有检测到可用音轨。", toolbox_audio_track_item: "音轨", toolbox_audio_track_default: "默认", toolbox_audio_track_invalid: "所选音轨无效，请重新选择。", toolbox_extract_audio_done: "音频提取完成，已切换到新媒体：", toolbox_utility_video_required: "压制字幕需要包含视频画面的媒体文件。", toolbox_status_burning: "正在压制字幕并重新编码视频……", toolbox_status_extracting: "正在提取音频……", toolbox_status_cancelling: "正在停止媒体处理……"
+    toolbox_burn_subtitle: "压制字幕", toolbox_burn_subtitle_hint: "将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。", toolbox_burn_subtitle_input: "字幕文件", toolbox_burn_subtitle_placeholder: "选择或拖入 .srt / .ass / .ssa 字幕", toolbox_burn_subtitle_invalid: "请选择 .srt、.ass 或 .ssa 字幕文件。", toolbox_burn_done: "字幕压制完成，已切换到新媒体：", toolbox_extract_audio: "提取音频", toolbox_extract_audio_hint: "从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。", toolbox_audio_track: "音轨", toolbox_audio_track_choose: "先选择媒体，MAW 会读取可用音轨。", toolbox_audio_tracks_reading: "正在读取音轨……", toolbox_audio_tracks_found: "已找到 {count} 条音轨。", toolbox_audio_tracks_none: "没有检测到可用音轨。", toolbox_audio_track_item: "音轨", toolbox_audio_track_default: "默认", toolbox_audio_track_invalid: "所选音轨无效，请重新选择。", toolbox_extract_audio_done: "音频提取完成，已切换到新媒体：", toolbox_utility_video_required: "压制字幕需要包含视频画面的媒体文件。", toolbox_status_burning: "正在压制字幕并重新编码视频……", toolbox_status_extracting: "正在提取音频……", toolbox_status_cancelling: "正在停止媒体处理……"
   });
   Object.assign(STRINGS.en, {
-    toolbox_burn_subtitle: "Burn subtitles", toolbox_burn_subtitle_hint: "Render SRT / ASS subtitles into a new video file. Video is re-encoded and the source is kept unchanged.", toolbox_burn_subtitle_input: "Subtitle file", toolbox_burn_subtitle_placeholder: "Choose or drop an .srt / .ass / .ssa subtitle", toolbox_burn_subtitle_input_hint: "Follows the current SRT output by default; ASS / SSA can be chosen manually.", toolbox_burn_subtitle_invalid: "Choose an .srt, .ass, or .ssa subtitle file.", toolbox_burn_done: "Subtitles burned; switched to the new media:", toolbox_extract_audio: "Extract audio", toolbox_extract_audio_hint: "Extract one audio track from video or audio into a new AAC/M4A file; the source is kept unchanged.", toolbox_audio_track: "Audio track", toolbox_audio_track_choose: "Choose media first; MAW will read its available tracks.", toolbox_audio_tracks_reading: "Reading audio tracks…", toolbox_audio_tracks_found: "Found {count} audio track(s).", toolbox_audio_tracks_none: "No usable audio tracks were found.", toolbox_audio_track_item: "Track", toolbox_audio_track_default: "default", toolbox_audio_track_invalid: "The selected audio track is invalid. Choose it again.", toolbox_extract_audio_done: "Audio extracted; switched to the new media:", toolbox_utility_video_required: "Burning subtitles requires media with a video stream.", toolbox_status_burning: "Burning subtitles and re-encoding the video…", toolbox_status_extracting: "Extracting audio…", toolbox_status_cancelling: "Stopping media operation…"
+    toolbox_burn_subtitle: "Burn subtitles", toolbox_burn_subtitle_hint: "Render SRT / ASS subtitles into a new video file. Video is re-encoded and the source is kept unchanged.", toolbox_burn_subtitle_input: "Subtitle file", toolbox_burn_subtitle_placeholder: "Choose or drop an .srt / .ass / .ssa subtitle", toolbox_burn_subtitle_invalid: "Choose an .srt, .ass, or .ssa subtitle file.", toolbox_burn_done: "Subtitles burned; switched to the new media:", toolbox_extract_audio: "Extract audio", toolbox_extract_audio_hint: "Extract one audio track from video or audio into a new AAC/M4A file; the source is kept unchanged.", toolbox_audio_track: "Audio track", toolbox_audio_track_choose: "Choose media first; MAW will read its available tracks.", toolbox_audio_tracks_reading: "Reading audio tracks…", toolbox_audio_tracks_found: "Found {count} audio track(s).", toolbox_audio_tracks_none: "No usable audio tracks were found.", toolbox_audio_track_item: "Track", toolbox_audio_track_default: "default", toolbox_audio_track_invalid: "The selected audio track is invalid. Choose it again.", toolbox_extract_audio_done: "Audio extracted; switched to the new media:", toolbox_utility_video_required: "Burning subtitles requires media with a video stream.", toolbox_status_burning: "Burning subtitles and re-encoding the video…", toolbox_status_extracting: "Extracting audio…", toolbox_status_cancelling: "Stopping media operation…"
   });
   Object.assign(STRINGS.zh, {
-    toolbox_burn_subtitle_style: "当前 SRT 默认样式：{name}",
-    toolbox_burn_subtitle_style_loading: "正在读取共享样式库…",
-    toolbox_burn_subtitle_style_unavailable: "暂时无法读取 SRT 默认样式；实际压制时仍会读取用户级配置。",
-    toolbox_burn_subtitle_ass_style: "ASS / SSA 使用字幕文件中的样式。",
+    toolbox_burn_subtitle_style_hint: "选择 SRT 字幕时，会使用 ASS 样式库中的「SRT 烧录样式」对应的样式；选择 ASS 字幕时，使用 ASS 字幕自身的样式。",
   });
   Object.assign(STRINGS.en, {
-    toolbox_burn_subtitle_style: "Current SRT default style: {name}",
-    toolbox_burn_subtitle_style_loading: "Reading the shared style library…",
-    toolbox_burn_subtitle_style_unavailable: "The SRT default style is unavailable here; burning still reads the user-level configuration.",
-    toolbox_burn_subtitle_ass_style: "ASS / SSA use the styles embedded in the subtitle file.",
+    toolbox_burn_subtitle_style_hint: "SRT subtitles are burned with the style assigned as the SRT burn style in the ASS style library; ASS / SSA subtitles keep their own embedded styles.",
+  });
+  Object.assign(STRINGS.zh, {
+    toolbox_burn_crf: "画质 CRF", toolbox_burn_crf_hint: "数值越小画质越高、文件越大；常用 16–23，默认 18。", toolbox_burn_crf_invalid: "CRF 需要是 0–51 之间的整数。", toolbox_burn_preset: "编码预设", toolbox_burn_preset_hint: "预设越慢压缩率越高、耗时越长；一般保持 medium。", toolbox_burn_audio_bitrate: "音频码率", toolbox_burn_audio_bitrate_hint: "码率越高音质越好、文件越大；默认 192k。", toolbox_burn_save_defaults: "保存为默认参数", toolbox_burn_settings_saved: "已保存为默认参数，之后压制会自动预填。"
+  });
+  Object.assign(STRINGS.en, {
+    toolbox_burn_crf: "Quality CRF", toolbox_burn_crf_hint: "Lower CRF means higher quality and larger files; 16–23 is common, default 18.", toolbox_burn_crf_invalid: "CRF must be an integer between 0 and 51.", toolbox_burn_preset: "Encoder preset", toolbox_burn_preset_hint: "Slower presets compress better but take longer; keep medium in most cases.", toolbox_burn_audio_bitrate: "Audio bitrate", toolbox_burn_audio_bitrate_hint: "Higher bitrate sounds better and grows the file; default 192k.", toolbox_burn_save_defaults: "Save as defaults", toolbox_burn_settings_saved: "Saved as defaults; future runs will prefill these."
   });
   Object.assign(STRINGS.zh, {
     test_run: "快速测试",
@@ -408,7 +418,7 @@
     batch_remove: "Remove",
   });
   Object.assign(STRINGS.zh, {
-    auto_postprocess_title: "3️⃣ 转写后自动处理 （Beta）",
+    auto_postprocess_title: "3️⃣ 转写后自动处理",
     auto_postprocess_hint: "转写完成后按固定顺序处理字幕；首次启用某一步前，请先在工具箱中完成配置。",
     auto_postprocess_enable: "启用转写后自动处理",
     auto_postprocess_steps: "后处理步骤",
@@ -417,7 +427,7 @@
     auto_status_config: "需要配置",
     auto_status_ready: "已就绪",
     auto_step_match: "文稿匹配",
-    auto_step_replace: "固定处理",
+    auto_step_replace: "固定替换",
     auto_step_proofread: "LLM 校对",
     auto_step_proofread_title: "通常不需要启用，优先使用 ASR 自带的提示词功能。",
     auto_step_resegment: "重新断句",
@@ -508,7 +518,7 @@
     local_runtime_installing: "正在安装本地运行环境……",
     local_runtime_ready: "本地运行环境已就绪",
     local_runtime_broken: "本地运行环境需要修复",
-    local_runtime_hint: "将安装到用户目录；运行环境与模型缓存分开保存。首次安装需要下载约 2–3 GB。",
+    local_runtime_hint: "需先安装运行时（Runtime），然后才能下载安装模型，两者分开储存。首次安装需要下载约 2–3 GB。",
     local_runtime_ready_hint: "运行环境已就绪。现在可以下载所选模型。",
     local_runtime_ready_prefix: "本地运行环境已就绪，可前往 ",
     local_runtime_ready_link: "本地模型配置",
@@ -524,7 +534,7 @@
     local_model_runtime_hint_body: "如果要查看本地模型相关配置，请先将「识别设置」中的识别方式选为「本地模型」。",
     local_runtime_view_settings: "在 ⚙️ 设置中查看",
     local_runtime_path_label: "本地运行环境目录",
-    local_runtime_path_hint: "默认安装到用户目录；可改到空间更充足的磁盘。运行环境与模型缓存分开保存，更改后按新目录重新扫描。",
+    local_runtime_path_hint: "默认安装到用户目录，可改到空间更充足的磁盘。路径请勿包含中文。",
     local_runtime_inventory: "查看运行时清单",
     local_runtime_inventory_hide: "隐藏运行时清单",
     local_runtime_inventory_loading: "正在读取运行时清单……",
@@ -542,7 +552,7 @@
     local_runtime_unknown: "未知"
   });
   Object.assign(STRINGS.en, {
-    auto_postprocess_title: "3️⃣ Post-transcription processing (Beta)",
+    auto_postprocess_title: "3️⃣ Post-transcription processing",
     auto_postprocess_hint: "Process subtitles in a fixed order after transcription. Configure a step in the toolbox before enabling it.",
     auto_postprocess_enable: "Enable automatic post-processing",
     auto_postprocess_steps: "Post-processing steps",
@@ -551,7 +561,7 @@
     auto_status_config: "Needs configuration",
     auto_status_ready: "Ready",
     auto_step_match: "Script match",
-    auto_step_replace: "Fixed processing",
+    auto_step_replace: "Fixed replacement",
     auto_step_proofread: "LLM proofread",
     auto_step_proofread_title: "Usually unnecessary; prefer the prompt feature built into your ASR provider.",
     auto_step_resegment: "Resegment",
@@ -642,7 +652,7 @@
     local_runtime_installing: "Installing the local runtime…",
     local_runtime_ready: "Local runtime is ready",
     local_runtime_broken: "Local runtime needs repair",
-    local_runtime_hint: "Installed in your user directory; runtime and model cache are kept separate. The first install downloads about 2–3 GB.",
+    local_runtime_hint: "The runtime must be installed before models can be downloaded; the two are stored separately. The first install downloads about 2–3 GB.",
     local_runtime_ready_hint: "The runtime is ready. You can now download the selected model.",
     local_runtime_ready_prefix: "The local runtime is ready. Go to ",
     local_runtime_ready_link: "Local model configuration",
@@ -658,7 +668,7 @@
     local_model_runtime_hint_body: "To view local model settings, first select \"Local models\" as the recognition method in recognition settings.",
     local_runtime_view_settings: "View in ⚙️ Settings",
     local_runtime_path_label: "Local runtime directory",
-    local_runtime_path_hint: "Installed in your user directory by default; move it to a drive with more space if needed. The runtime and model cache are kept separate; the install status is rescanned for the new directory.",
+    local_runtime_path_hint: "Installed in your user directory by default; move it to a drive with more space if needed. Do not use Chinese characters in the path.",
     local_runtime_inventory: "View runtime inventory",
     local_runtime_inventory_hide: "Hide runtime inventory",
     local_runtime_inventory_loading: "Reading runtime inventory…",
@@ -869,9 +879,10 @@
     settings_punctuation_hint: "决定哪些标点符号需要换行，以及换行后是否保留标点（文稿匹配与转写共用）",
     llm_model: "模型",
     llm_api_key: "API Key",
-    llm_custom_provider: "自定义（兼容 OpenAI）",
-    llm_custom_display_name: "自定义显示名称",
-    llm_custom_display_name_placeholder: "可选",
+    llm_api_key_placeholder: "填写你的 API KEY",
+    llm_custom_provider: "OpenAI 通用接口",
+    llm_custom_display_name: "自定义显示名称（可选）",
+    llm_custom_display_name_placeholder: "自定义显示名称",
     llm_test_connection: "测试连接",
     llm_test_connection_title: "使用当前填写的 API Key、URL 和模型发送最小测试请求",
     llm_get_models: "获取模型",
@@ -881,10 +892,10 @@
     llm_models_empty: "供应商没有返回可用模型。",
     llm_model_choices_title: "展开已获取模型列表",
     llm_provider_unknown: "当前选择的供应商",
-    llm_builtin_provider_key_guidance: "{provider} 是内置供应商，请使用其官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义（兼容 OpenAI）”，并按该平台官方文档配置 API URL。",
+    llm_builtin_provider_key_guidance: "{provider} 是内置供应商，请使用其官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“OpenAI 通用接口”，并按该平台官方文档配置 API URL。",
     llm_http_unauthorized: "认证失败（HTTP 401，{operation}）。当前供应商：{provider}。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
-    llm_http_unauthorized_builtin: "认证失败（HTTP 401，{operation}）。当前供应商：{provider} 官网；请使用官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义（兼容 OpenAI）”，并按该平台官方文档配置 API URL。",
-    llm_http_unauthorized_custom: "认证失败（HTTP 401，{operation}）。当前供应商：自定义（兼容 OpenAI）。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
+    llm_http_unauthorized_builtin: "认证失败（HTTP 401，{operation}）。当前供应商：{provider} 官网；请使用官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“OpenAI 通用接口”，并按该平台官方文档配置 API URL。",
+    llm_http_unauthorized_custom: "认证失败（HTTP 401，{operation}）。当前供应商：OpenAI 通用接口。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
     llm_http_forbidden: "供应商拒绝了请求（HTTP 403，{operation}）。当前供应商：{provider}。请核对供应商、API URL 与 API Key 签发方是否一致，并确认账号或模型有权限；不要在错误报告中粘贴 Key。",
     llm_http_not_found: "接口或模型不存在（HTTP 404，{operation}）。请检查 API URL 的兼容路径和模型 ID；获取模型时还要确认该供应商提供 /models 接口。这个状态通常不是 API Key 问题。",
     llm_http_rate_limited: "请求被限流或额度暂时耗尽（HTTP 429，{operation}）。请稍后重试，降低请求频率或批次大小，并检查当前供应商的额度与限流策略。",
@@ -895,6 +906,7 @@
     llm_connection_success: "连接成功。",
     llm_connection_saved: "连接成功（已自动保存到本地环境）",
     llm_base_url: "API URL",
+    llm_base_url_placeholder: "填写你的 Base URL，如 https://api.openai.com/v1",
     llm_base_url_hint: "远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。",
     llm_reasoning_mode: "思考强度",
     llm_reasoning_auto: "自动（跟随模型默认）",
@@ -920,9 +932,10 @@
     settings_punctuation_hint: "Choose which punctuation marks start a new line and whether to keep them after splitting (shared by script matching and transcription).",
     llm_model: "Model",
     llm_api_key: "API Key",
-    llm_custom_provider: "Custom (OpenAI-compatible)",
-    llm_custom_display_name: "Custom display name",
-    llm_custom_display_name_placeholder: "Optional",
+    llm_api_key_placeholder: "Enter your API key",
+    llm_custom_provider: "OpenAI-compatible API",
+    llm_custom_display_name: "Custom display name (optional)",
+    llm_custom_display_name_placeholder: "Custom display name",
     llm_test_connection: "Test connection",
     llm_test_connection_title: "Send a minimal request using the current API key, URL, and model",
     llm_get_models: "Get models",
@@ -932,10 +945,10 @@
     llm_models_empty: "The provider returned no usable models.",
     llm_model_choices_title: "Show fetched model list",
     llm_provider_unknown: "the selected provider",
-    llm_builtin_provider_key_guidance: "{provider} is a built-in provider. Use an API key obtained from its official console. If the API key came from a third-party platform, choose Custom (OpenAI-compatible) and configure the API URL according to that platform's official documentation.",
+    llm_builtin_provider_key_guidance: "{provider} is a built-in provider. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the OpenAI-compatible API and configure the API URL according to that platform's official documentation.",
     llm_http_unauthorized: "Authentication failed (HTTP 401, {operation}). Current provider: {provider}. Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
-    llm_http_unauthorized_builtin: "Authentication failed (HTTP 401, {operation}). Current provider: {provider} official service. Use an API key obtained from its official console. If the API key came from a third-party platform, choose Custom (OpenAI-compatible) and configure the API URL according to that platform's official documentation.",
-    llm_http_unauthorized_custom: "Authentication failed (HTTP 401, {operation}). Current provider: Custom (OpenAI-compatible). Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
+    llm_http_unauthorized_builtin: "Authentication failed (HTTP 401, {operation}). Current provider: {provider} official service. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the OpenAI-compatible API and configure the API URL according to that platform's official documentation.",
+    llm_http_unauthorized_custom: "Authentication failed (HTTP 401, {operation}). Current provider: OpenAI-compatible API. Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
     llm_http_forbidden: "The provider rejected the request (HTTP 403, {operation}). Current provider: {provider}. Compare the provider, API URL, and the issuer of the API key, then confirm that the account or model is allowed; never paste the key into an error report.",
     llm_http_not_found: "The endpoint or model was not found (HTTP 404, {operation}). Check the compatible API URL path and model ID; when fetching models, confirm that the provider exposes /models. This is usually not an API-key problem.",
     llm_http_rate_limited: "The request was rate-limited or the quota is temporarily exhausted (HTTP 429, {operation}). Wait and retry, reduce request frequency or batch size, and check the current provider's quota and rate-limit policy.",
@@ -946,6 +959,7 @@
     llm_connection_success: "Connection successful.",
     llm_connection_saved: "Connection successful (saved to local environment automatically).",
     llm_base_url: "API URL",
+    llm_base_url_placeholder: "Enter your Base URL, e.g. https://api.openai.com/v1",
     llm_base_url_hint: "Use HTTPS for remote services; plain HTTP is limited to loopback addresses.",
     llm_reasoning_mode: "Reasoning effort",
     llm_reasoning_auto: "Auto (follow model default)",
@@ -959,20 +973,20 @@
     toolbox_open: "打开工具箱", toolbox_title: "工具箱", toolbox_group_postprocess: "后处理", toolbox_group_utilities: "实用工具", toolbox_no_media: "未选择媒体", toolbox_input_empty: "未选择文件", toolbox_chain_heading: "处理产物（点击文件名切换输入）", toolbox_resize_width: "调整工具箱宽度", toolbox_resize_height: "调整工具箱高度",
     toolbox_input: "处理文件", toolbox_input_placeholder: "跟随工程文件，也可拖入 .mosp / .json / .srt", toolbox_drop_reject: "这里只接受 .mosp / .json / .srt 字幕或工程文件。", toolbox_utility_media: "媒体文件", toolbox_utility_media_placeholder: "默认跟随 Launcher 媒体，也可选择或拖入媒体文件", toolbox_utility_media_reject: "这里仅接受媒体文件。", toolbox_ffconcat_reject: "这里只接受 .ffconcat 文件。",
      toolbox_waveform: "生成波形", toolbox_waveform_hint: "仅使用上方媒体生成带内嵌波形的媒体工程，不需要字幕或转写；打开编辑器后可扫描静音空隙并导出去空隙 OTIO。", toolbox_generate_waveform: "生成波形文件", toolbox_run_waveform: "生成波形并打开编辑器", toolbox_match: "文稿匹配", toolbox_script: "文稿文件", toolbox_script_placeholder: "UTF-8 .txt / .md 文稿", toolbox_script_hint: "文稿文字会替换字幕文字；原字幕时间保持不变。", toolbox_clean_markdown_symbols: "自动清理 Markdown 符号", toolbox_clean_markdown_symbols_hint: "匹配前移除粗体、斜体、删除线、行内代码和 ==高亮== 标记，只保留可见文字。", toolbox_script_preview: "文稿预览（前 240 字）", toolbox_script_reject: "文稿只支持 .txt / .md / .markdown 文件。", toolbox_split_preview: "拆分预览", toolbox_match_mode: "换行来源", toolbox_match_mode_script: "按文稿换行（默认）", toolbox_match_mode_text: "只更正文本", toolbox_match_mode_hint: "按文稿换行会使用文稿中的换行和断句符号；只更正文本保留现有字幕分段。", toolbox_extra_split_punctuation: "需要断句的符号", toolbox_extra_split_punctuation_placeholder: "？\n！\n——\n~", toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号默认生效。", toolbox_preserve_punctuation: "断句后保留的符号", toolbox_preserve_punctuation_placeholder: "？\n！\n~", toolbox_preserve_punctuation_hint: "断句后仍然需要保留的符号，默认留在前一句结尾。", toolbox_preserve_punctuation_invalid: "保留符号必须存在于额外断句符号中：", toolbox_match_hint: "匹配度过低时会停止，不写出可能错配的结果。", toolbox_run_match: "匹配文稿", toolbox_punct_open_settings: "在 ⚙️ 设置中配置断句与保留符号",
-    toolbox_llm: "LLM 处理", toolbox_replace: "固定处理", toolbox_ffconcat: "媒体重组", toolbox_provider: "供应商", toolbox_operation: "任务", toolbox_proofread: "校对文本", toolbox_resegment: "重新断句", toolbox_translate_en: "翻译成英文", toolbox_translate_zh: "翻译成中文", toolbox_merge_bilingual: "将双语字幕合并为单个字幕", toolbox_backfill_subtitles: "只翻译非中文的字幕", toolbox_backfill_subtitles_en_target: "将译文回填到原字幕", toolbox_custom: "自定义",
+    toolbox_llm: "LLM 处理", toolbox_replace: "固定替换", toolbox_ffconcat: "媒体重组", toolbox_provider: "供应商", toolbox_operation: "任务", toolbox_proofread: "校对文本", toolbox_resegment: "重新断句", toolbox_translate_en: "翻译成英文", toolbox_translate_zh: "翻译成中文", toolbox_merge_bilingual: "将双语字幕合并为单个字幕", toolbox_backfill_subtitles: "只翻译非中文的字幕", toolbox_backfill_subtitles_en_target: "将译文回填到原字幕", toolbox_custom: "自定义",
     toolbox_open_settings: "在 ⚙️ 设置中配置 API Key", toolbox_preset_prompt: "预设提示词", toolbox_preset_prompt_hint: "由当前任务决定，不可编辑。", toolbox_prompt: "自定义提示词", toolbox_prompt_placeholder: "例如：保留专有名词，不要使用书面腔。", toolbox_prompt_hint: "可按需追加要求；留空则只使用预设提示词。", toolbox_task_none: "（无）", toolbox_task_proofread: "校对字幕中的错别字、漏字和明显识别错误，不扩写事实。", toolbox_task_resegment: "重新整理句子的字幕拆分。可以合并或拆分连续字幕，但不得删除内容。", toolbox_task_translate_en: "翻译为自然英文。必须保持原字幕的段数、顺序和每段时间范围，一条输入字幕只能对应一条输出字幕；不得合并、拆分或重排相邻字幕。", toolbox_task_translate_zh: "翻译为自然中文。必须保持原字幕的段数、顺序和每段时间范围，一条输入字幕只能对应一条输出字幕；不得合并、拆分或重排相邻字幕。", toolbox_time_hint: "模型只处理带 ID 的文字；本地时间槽始终是时间真源。", toolbox_output: "输出", toolbox_output_both: "工程 + SRT", toolbox_output_project: "仅工程", toolbox_output_srt: "仅 SRT", toolbox_run: "运行处理",
-     toolbox_group_fixed_replacements: "批量替换", toolbox_group_fixed_conversion: "简繁转换", toolbox_conversion: "转换方向", toolbox_conversion_off: "不转换", toolbox_conversion_to_simplified: "转为简体", toolbox_conversion_to_traditional: "转为繁体（通用）", toolbox_conversion_to_traditional_tw: "转为繁体（台湾）", toolbox_conversion_to_traditional_twp: "转为繁体（台湾增强）", toolbox_conversion_to_traditional_hk: "转为繁体（香港）", toolbox_conversion_hint: "先执行批量替换，再转换文字；不访问网络。", toolbox_replace_rules: "批量替换规则", toolbox_replace_placeholder: "错别字 => 正确文字\n旧名称 => 新名称", toolbox_replace_separator: "替换分隔符号", toolbox_replace_separator_arrow: "=>", toolbox_replace_separator_comma: "中英文逗号", toolbox_replace_separator_tab: "Tab 制表符", toolbox_replace_separator_custom: "自定义", toolbox_replace_custom_separator: "自定义分隔符", toolbox_replace_trim: "自动去除前后空白", toolbox_replace_preview: "规则预览", toolbox_replace_preview_hint: "输入规则后显示解析结果。", toolbox_replace_preview_empty: "没有识别到有效规则。", toolbox_replace_hint: "每行一条替换规则；修改文本后会移除失真的逐词时间。", toolbox_replace_safe: "分段起止时间保持不变。", toolbox_run_replace: "执行固定处理",
-     toolbox_ffconcat_placeholder: "选择或拖入 FFconcat 文件；将通过 FFmpeg 按清单重组当前媒体", toolbox_ffconcat_warning: "先在编辑器中执行「移除静音空隙」，然后可选择导出 FFconcat 文件。只允许引用当前媒体；重组会生成新媒体，但不会改写字幕时间轴。", toolbox_run_media: "生成新媒体", toolbox_ready: "选择工具后运行；始终生成新文件，不覆盖源文件。", toolbox_running: "处理中……", toolbox_status_starting: "正在准备处理……", toolbox_status_reading: "正在读取字幕文件……", toolbox_status_matching: "正在匹配文稿……", toolbox_status_fixed_processing: "正在执行固定处理……", toolbox_status_preparing_llm: "正在准备大模型……", toolbox_status_llm_batch: "正在处理第 {current}/{total} 批字幕……", toolbox_status_llm_batch_done: "已完成第 {current}/{total} 批字幕。", toolbox_status_reorganizing: "正在整理模型结果……", toolbox_status_writing: "正在写出处理结果……", toolbox_status_validating_media: "正在校验媒体清单……", toolbox_status_rebuilding_media: "正在重组媒体……", toolbox_stream_title: "模型实时输出", toolbox_thinking: "思考", toolbox_model_output: "模型输出（JSON）", toolbox_stream_batch: "第 {batch} 批", toolbox_stream_chars: "{count} 个字符", toolbox_saved: "LLM 设置已保存。", toolbox_key_empty: "未保存此供应商的密钥", toolbox_key_loaded: "已从本地环境读取密钥 {key}", toolbox_chain_match: "[文稿匹配]", toolbox_chain_replace: "[固定处理]", toolbox_chain_llm_proofread: "[LLM 处理/校对]", toolbox_chain_llm_resegment: "[LLM 处理/重新断句]", toolbox_chain_llm_translate: "[LLM 处理/翻译]", toolbox_chain_llm_custom: "[LLM 处理/自定义]",
+     toolbox_group_fixed_replacements: "批量替换", toolbox_group_fixed_conversion: "简繁转换", toolbox_conversion: "转换方向", toolbox_conversion_off: "不转换", toolbox_conversion_to_simplified: "转为简体", toolbox_conversion_to_traditional: "转为繁体（通用）", toolbox_conversion_to_traditional_tw: "转为繁体（台湾）", toolbox_conversion_to_traditional_twp: "转为繁体（台湾增强）", toolbox_conversion_to_traditional_hk: "转为繁体（香港）", toolbox_conversion_hint: "先执行批量替换，再转换文字；不访问网络。", toolbox_replace_rules: "批量替换规则", toolbox_replace_placeholder: "错别字 => 正确文字\n旧名称 => 新名称", toolbox_replace_separator: "替换分隔符号", toolbox_replace_separator_arrow: "=>", toolbox_replace_separator_comma: "中英文逗号", toolbox_replace_separator_tab: "Tab 制表符", toolbox_replace_separator_custom: "自定义", toolbox_replace_custom_separator: "自定义分隔符", toolbox_replace_trim: "自动去除前后空白", toolbox_replace_preview: "规则预览", toolbox_replace_preview_hint: "输入规则后显示解析结果。", toolbox_replace_preview_empty: "没有识别到有效规则。", toolbox_replace_hint: "每行一条替换规则；修改文本后会移除失真的逐词时间。", toolbox_replace_safe: "分段起止时间保持不变。", toolbox_run_replace: "执行固定替换",
+     toolbox_ffconcat_placeholder: "选择或拖入 FFconcat 文件；将通过 FFmpeg 按清单重组当前媒体", toolbox_ffconcat_warning: "先在编辑器中执行「移除静音空隙」，然后可选择导出 FFconcat 文件。只允许引用当前媒体；重组会生成新媒体，但不会改写字幕时间轴。", toolbox_run_media: "生成新媒体", toolbox_ready: "选择工具后运行；始终生成新文件，不覆盖源文件。", toolbox_running: "处理中……", toolbox_status_starting: "正在准备处理……", toolbox_status_reading: "正在读取字幕文件……", toolbox_status_matching: "正在匹配文稿……", toolbox_status_fixed_processing: "正在执行固定替换……", toolbox_status_preparing_llm: "正在准备大模型……", toolbox_status_llm_batch: "正在处理第 {current}/{total} 批字幕……", toolbox_status_llm_batch_done: "已完成第 {current}/{total} 批字幕。", toolbox_status_reorganizing: "正在整理模型结果……", toolbox_status_writing: "正在写出处理结果……", toolbox_status_validating_media: "正在校验媒体清单……", toolbox_status_rebuilding_media: "正在重组媒体……", toolbox_stream_title: "模型实时输出", toolbox_thinking: "思考", toolbox_model_output: "模型输出（JSON）", toolbox_stream_batch: "第 {batch} 批", toolbox_stream_chars: "{count} 个字符", toolbox_saved: "LLM 设置已保存。", toolbox_key_empty: "未保存此供应商的密钥", toolbox_key_loaded: "已从本地环境读取密钥 {key}", toolbox_chain_match: "[文稿匹配]", toolbox_chain_replace: "[固定替换]", toolbox_chain_llm_proofread: "[LLM 处理/校对]", toolbox_chain_llm_resegment: "[LLM 处理/重新断句]", toolbox_chain_llm_translate: "[LLM 处理/翻译]", toolbox_chain_llm_custom: "[LLM 处理/自定义]",
       toolbox_need_source: "请先选择工程或 SRT。", toolbox_need_script: "请选择文稿文件。", toolbox_need_rules: "请至少填写一条有效批量替换规则或选择简繁转换。", toolbox_need_ffconcat: "请选择 .ffconcat 文件。", toolbox_need_media: "请先选择当前媒体。", toolbox_custom_prompt_required: "自定义任务需要填写提示词。", toolbox_done: "处理完成，已切换到新产物：", toolbox_media_done: "媒体重组完成，已切换到新媒体：", toolbox_config_only_hint: "这里只配置自动后处理；生成后会自动执行。", toolbox_match_rate: "匹配率", toolbox_match_preview_stats: "根据文稿重新换行后，共有 {from} -> {to} 句字幕（{change}）", toolbox_match_preview_too_low: "偏差过多，无法匹配，请检查文稿。", toolbox_match_preview_failed: "无法生成匹配预览，请检查文稿。", toolbox_alignment: "口播对齐", toolbox_alignment_hint: "适合初版 ASR 中有口吃、重录、重复或顺序混乱的口播；需要 ASR 工程和文稿，人工选择 take 后导出新工程。", toolbox_alignment_input_project: "ASR 工程", toolbox_alignment_project_placeholder: "选择或拖入 .mosp / .json 工程", toolbox_alignment_project_hint: "默认跟随当前 Launcher 工程；口播对齐需要工程中的 ASR 时间码，不能只使用 SRT。", toolbox_alignment_input_script: "文稿", toolbox_alignment_script_placeholder: "选择或拖入 UTF-8 .txt / .md 文稿", toolbox_alignment_script_hint: "每个非空行视为一行文稿。", toolbox_alignment_input_media: "媒体覆盖（可选）", toolbox_alignment_media_placeholder: "留空以使用工程媒体，也可选择或拖入媒体文件", toolbox_alignment_media_hint: "工程没有可用媒体时无法试听，但仍可查看并导出对齐结果。", toolbox_alignment_notice: "不会覆盖输入工程；导出后会生成 source.aligned.mosp。", toolbox_run_alignment: "启动并打开口播对齐", toolbox_reopen_alignment: "重新打开口播对齐", toolbox_stop_alignment: "停止服务", toolbox_alignment_started: "口播对齐 Server 已启动。", toolbox_alignment_stopped: "口播对齐 Server 已停止。", toolbox_alignment_script_missing: "请选择文稿文件。", toolbox_alignment_project_invalid: "口播对齐需要 .mosp 或 .json 工程。", toolbox_alignment_media_invalid: "请选择支持的媒体文件。", toolbox_status_alignment_starting: "正在启动口播对齐 Server……", toolbox_status_alignment_stopping: "正在停止口播对齐 Server……", toolbox_alignment_open_failed: "口播对齐已启动，但未能自动打开浏览器。"
    });
    Object.assign(STRINGS.en, {
      toolbox_open: "Open toolbox", toolbox_title: "Toolbox", toolbox_group_postprocess: "Post-processing", toolbox_group_utilities: "Utilities", toolbox_no_media: "No media selected", toolbox_input_empty: "No file selected", toolbox_chain_heading: "Artifacts (click a filename to use it as input)", toolbox_resize_width: "Resize toolbox width", toolbox_resize_height: "Resize toolbox height",
     toolbox_input: "File to process", toolbox_input_placeholder: "Follows the project file, or drop a .mosp / .json / .srt", toolbox_drop_reject: "Only .mosp / .json / .srt subtitle or project files can be dropped here.", toolbox_utility_media: "Media file", toolbox_utility_media_placeholder: "Uses Launcher media by default, or choose or drop a media file", toolbox_utility_media_reject: "Only media files can be used here.", toolbox_ffconcat_reject: "Only .ffconcat files can be used here.",
      toolbox_waveform: "Generate waveform", toolbox_waveform_hint: "Use the media above to create an embedded-waveform project; no subtitles or transcription are required. In the editor, scan silence gaps and export a gap-removed OTIO.", toolbox_generate_waveform: "Generate waveform project", toolbox_run_waveform: "Generate waveform and open editor", toolbox_match: "Script match", toolbox_script: "Script file", toolbox_script_placeholder: "UTF-8 .txt / .md script", toolbox_script_hint: "Script text replaces subtitle text; original subtitle timing stays unchanged.", toolbox_clean_markdown_symbols: "Clean Markdown formatting automatically", toolbox_clean_markdown_symbols_hint: "Before matching, remove bold, italic, strikethrough, inline-code, and ==highlight== markers while keeping visible text.", toolbox_script_preview: "Script preview (first 240 chars)", toolbox_script_reject: "Scripts must be .txt, .md, or .markdown files.", toolbox_split_preview: "Split preview", toolbox_match_mode: "Line-break source", toolbox_match_mode_script: "Use manuscript line breaks (default)", toolbox_match_mode_text: "Correct text only", toolbox_match_mode_hint: "Manuscript mode uses line breaks and split symbols; text-only mode keeps the existing cue segmentation.", toolbox_extra_split_punctuation: "Symbols that trigger a split", toolbox_extra_split_punctuation_placeholder: "?\n!\n--\n~", toolbox_extra_split_punctuation_hint: "One symbol per line; commas and periods apply by default.", toolbox_preserve_punctuation: "Symbols to keep after splitting", toolbox_preserve_punctuation_placeholder: "?\n!\n~", toolbox_preserve_punctuation_hint: "Symbols to keep after splitting; by default, they remain at the end of the preceding subtitle.", toolbox_preserve_punctuation_invalid: "Preserved symbols must be listed as extra split punctuation:", toolbox_match_hint: "Runs stop when the match is too low to avoid writing a bad alignment.", toolbox_run_match: "Match script", toolbox_punct_open_settings: "Configure split & punctuation marks in ⚙️ Settings",
-     toolbox_llm: "LLM", toolbox_replace: "Fixed processing", toolbox_ffconcat: "Media rebuild", toolbox_provider: "Provider", toolbox_operation: "Task", toolbox_proofread: "Proofread text", toolbox_resegment: "Resegment", toolbox_translate_en: "Translate into English", toolbox_translate_zh: "Translate into Chinese", toolbox_merge_bilingual: "Merge into a single bilingual subtitle", toolbox_backfill_subtitles: "Translate non-Chinese cues only", toolbox_backfill_subtitles_en_target: "Replace source subtitles with translations", toolbox_custom: "Custom",
+     toolbox_llm: "LLM", toolbox_replace: "Fixed replacement", toolbox_ffconcat: "Media rebuild", toolbox_provider: "Provider", toolbox_operation: "Task", toolbox_proofread: "Proofread text", toolbox_resegment: "Resegment", toolbox_translate_en: "Translate into English", toolbox_translate_zh: "Translate into Chinese", toolbox_merge_bilingual: "Merge into a single bilingual subtitle", toolbox_backfill_subtitles: "Translate non-Chinese cues only", toolbox_backfill_subtitles_en_target: "Replace source subtitles with translations", toolbox_custom: "Custom",
     toolbox_open_settings: "Configure the API key in ⚙️ Settings", toolbox_preset_prompt: "Preset prompt", toolbox_preset_prompt_hint: "Determined by the current task and cannot be edited.", toolbox_prompt: "Custom prompt", toolbox_prompt_placeholder: "Example: preserve product names and use conversational language.", toolbox_prompt_hint: "Add extra requirements as needed; leave empty to use only the preset prompt.", toolbox_task_none: "(None)", toolbox_task_proofread: "Proofread subtitle typos, omissions, and obvious recognition errors without expanding facts.", toolbox_task_resegment: "Reorganize subtitle sentence breaks. You may merge or split consecutive subtitles, but do not delete content.", toolbox_task_translate_en: "Translate into natural English. Preserve the original cue count, order, and time ranges; each input cue must produce exactly one output cue. Do not merge, split, or reorder adjacent cues.", toolbox_task_translate_zh: "Translate into natural Chinese. Preserve the original cue count, order, and time ranges; each input cue must produce exactly one output cue. Do not merge, split, or reorder adjacent cues.", toolbox_time_hint: "The model edits ID-tagged text only; local time slots remain authoritative.", toolbox_output: "Output", toolbox_output_both: "Project + SRT", toolbox_output_project: "Project only", toolbox_output_srt: "SRT only", toolbox_run: "Run",
-      toolbox_group_fixed_replacements: "Batch replacement", toolbox_group_fixed_conversion: "Chinese conversion", toolbox_conversion: "Conversion direction", toolbox_conversion_off: "No conversion", toolbox_conversion_to_simplified: "Convert to Simplified", toolbox_conversion_to_traditional: "Convert to Traditional (General)", toolbox_conversion_to_traditional_tw: "Convert to Traditional (Taiwan)", toolbox_conversion_to_traditional_twp: "Convert to Traditional (Taiwan enhanced)", toolbox_conversion_to_traditional_hk: "Convert to Traditional (Hong Kong)", toolbox_conversion_hint: "Apply batch replacements first, then convert text locally.", toolbox_replace_rules: "Batch replacement rules", toolbox_replace_placeholder: "old text => new text", toolbox_replace_separator: "Replacement separator", toolbox_replace_separator_arrow: "=>", toolbox_replace_separator_comma: "English or Chinese comma", toolbox_replace_separator_tab: "Tab", toolbox_replace_separator_custom: "Custom", toolbox_replace_custom_separator: "Custom separator", toolbox_replace_trim: "Trim surrounding whitespace automatically", toolbox_replace_preview: "Rule preview", toolbox_replace_preview_hint: "Parsed rules will appear here.", toolbox_replace_preview_empty: "No valid rules detected.", toolbox_replace_hint: "One replacement rule per line. Stale word timings are removed when text changes.", toolbox_replace_safe: "Segment start and end times stay unchanged.", toolbox_run_replace: "Run fixed processing",
-     toolbox_ffconcat_placeholder: "Choose or drop an FFconcat file; FFmpeg will rebuild the current media from its entries", toolbox_ffconcat_warning: "First use the editor to remove silence gaps, then export an FFconcat file. Only the current media may be referenced; rebuilding creates a new media file without changing subtitle timing.", toolbox_run_media: "Build media", toolbox_ready: "Choose a tool and run it; tools always write new files and never overwrite sources.", toolbox_running: "Processing…", toolbox_status_starting: "Preparing the operation…", toolbox_status_reading: "Reading subtitle files…", toolbox_status_matching: "Matching the script…", toolbox_status_fixed_processing: "Applying fixed processing…", toolbox_status_preparing_llm: "Preparing the LLM…", toolbox_status_llm_batch: "Processing subtitle batch {current}/{total}…", toolbox_status_llm_batch_done: "Completed subtitle batch {current}/{total}.", toolbox_status_reorganizing: "Organizing the model result…", toolbox_status_writing: "Writing the processed files…", toolbox_status_validating_media: "Validating the media list…", toolbox_status_rebuilding_media: "Rebuilding the media…", toolbox_stream_title: "Live model output", toolbox_thinking: "Thinking", toolbox_model_output: "Model output (JSON)", toolbox_stream_batch: "Batch {batch}", toolbox_stream_chars: "{count} chars", toolbox_saved: "LLM settings saved.", toolbox_key_empty: "No saved key for this provider", toolbox_key_loaded: "Loaded key from local environment: {key}", toolbox_chain_match: "[Script match]", toolbox_chain_replace: "[Fixed processing]", toolbox_chain_llm_proofread: "[LLM / Proofread]", toolbox_chain_llm_resegment: "[LLM / Resegment]", toolbox_chain_llm_translate: "[LLM / Translate]", toolbox_chain_llm_custom: "[LLM / Custom]",
+      toolbox_group_fixed_replacements: "Batch replacement", toolbox_group_fixed_conversion: "Chinese conversion", toolbox_conversion: "Conversion direction", toolbox_conversion_off: "No conversion", toolbox_conversion_to_simplified: "Convert to Simplified", toolbox_conversion_to_traditional: "Convert to Traditional (General)", toolbox_conversion_to_traditional_tw: "Convert to Traditional (Taiwan)", toolbox_conversion_to_traditional_twp: "Convert to Traditional (Taiwan enhanced)", toolbox_conversion_to_traditional_hk: "Convert to Traditional (Hong Kong)", toolbox_conversion_hint: "Apply batch replacements first, then convert text locally.", toolbox_replace_rules: "Batch replacement rules", toolbox_replace_placeholder: "old text => new text", toolbox_replace_separator: "Replacement separator", toolbox_replace_separator_arrow: "=>", toolbox_replace_separator_comma: "English or Chinese comma", toolbox_replace_separator_tab: "Tab", toolbox_replace_separator_custom: "Custom", toolbox_replace_custom_separator: "Custom separator", toolbox_replace_trim: "Trim surrounding whitespace automatically", toolbox_replace_preview: "Rule preview", toolbox_replace_preview_hint: "Parsed rules will appear here.", toolbox_replace_preview_empty: "No valid rules detected.", toolbox_replace_hint: "One replacement rule per line. Stale word timings are removed when text changes.", toolbox_replace_safe: "Segment start and end times stay unchanged.", toolbox_run_replace: "Run fixed replacement",
+     toolbox_ffconcat_placeholder: "Choose or drop an FFconcat file; FFmpeg will rebuild the current media from its entries", toolbox_ffconcat_warning: "First use the editor to remove silence gaps, then export an FFconcat file. Only the current media may be referenced; rebuilding creates a new media file without changing subtitle timing.", toolbox_run_media: "Build media", toolbox_ready: "Choose a tool and run it; tools always write new files and never overwrite sources.", toolbox_running: "Processing…", toolbox_status_starting: "Preparing the operation…", toolbox_status_reading: "Reading subtitle files…", toolbox_status_matching: "Matching the script…", toolbox_status_fixed_processing: "Applying fixed replacement…", toolbox_status_preparing_llm: "Preparing the LLM…", toolbox_status_llm_batch: "Processing subtitle batch {current}/{total}…", toolbox_status_llm_batch_done: "Completed subtitle batch {current}/{total}.", toolbox_status_reorganizing: "Organizing the model result…", toolbox_status_writing: "Writing the processed files…", toolbox_status_validating_media: "Validating the media list…", toolbox_status_rebuilding_media: "Rebuilding the media…", toolbox_stream_title: "Live model output", toolbox_thinking: "Thinking", toolbox_model_output: "Model output (JSON)", toolbox_stream_batch: "Batch {batch}", toolbox_stream_chars: "{count} chars", toolbox_saved: "LLM settings saved.", toolbox_key_empty: "No saved key for this provider", toolbox_key_loaded: "Loaded key from local environment: {key}", toolbox_chain_match: "[Script match]", toolbox_chain_replace: "[Fixed replacement]", toolbox_chain_llm_proofread: "[LLM / Proofread]", toolbox_chain_llm_resegment: "[LLM / Resegment]", toolbox_chain_llm_translate: "[LLM / Translate]", toolbox_chain_llm_custom: "[LLM / Custom]",
       toolbox_need_source: "Choose a project or SRT first.", toolbox_need_script: "Choose a script file.", toolbox_need_rules: "Enter at least one valid batch replacement rule or choose a conversion.", toolbox_need_ffconcat: "Choose an .ffconcat file.", toolbox_need_media: "Choose the current media first.", toolbox_custom_prompt_required: "Enter a custom prompt before running the Custom task.", toolbox_done: "Done. Chained to the new artifact:", toolbox_media_done: "Media rebuilt. Chained to the new media:", toolbox_config_only_hint: "Configure automatic post-processing here; it will run after generation.", toolbox_match_rate: "match rate", toolbox_match_preview_stats: "After applying manuscript line breaks, subtitles: {from} -> {to} ({change})", toolbox_match_preview_too_low: "Mismatch is too large; unable to match. Please check the manuscript.", toolbox_match_preview_failed: "Unable to generate the match preview. Please check the manuscript.", toolbox_alignment: "Speech alignment", toolbox_alignment_hint: "For rough first-pass ASR with stutters, retakes, repeats, or reordered speech. Requires an ASR project and a script; choose takes manually, then export a new project.", toolbox_alignment_input_project: "ASR project", toolbox_alignment_project_placeholder: "Choose or drop an .mosp / .json project", toolbox_alignment_project_hint: "Follows the current Launcher project by default; speech alignment needs ASR timestamps and cannot use SRT alone.", toolbox_alignment_input_script: "Script", toolbox_alignment_script_placeholder: "Choose or drop a UTF-8 .txt / .md script", toolbox_alignment_script_hint: "Each non-empty line is treated as one script line.", toolbox_alignment_input_media: "Media override (optional)", toolbox_alignment_media_placeholder: "Leave empty to use project media, or choose or drop a media file", toolbox_alignment_media_hint: "Without usable project media you can still inspect and export the alignment, but cannot audition it.", toolbox_alignment_notice: "The input project is never overwritten; export creates source.aligned.mosp.", toolbox_run_alignment: "Start and open speech alignment", toolbox_reopen_alignment: "Reopen speech alignment", toolbox_stop_alignment: "Stop server", toolbox_alignment_started: "Speech-alignment server started.", toolbox_alignment_stopped: "Speech-alignment server stopped.", toolbox_alignment_script_missing: "Choose a script file.", toolbox_alignment_project_invalid: "Speech alignment requires an .mosp or .json project.", toolbox_alignment_media_invalid: "Choose a supported media file.", toolbox_status_alignment_starting: "Starting speech-alignment server…", toolbox_status_alignment_stopping: "Stopping speech-alignment server…", toolbox_alignment_open_failed: "Speech alignment started, but the browser could not be opened."
   });
   Object.assign(STRINGS.zh, { toolbox_script_preview: "处理后文稿预览（前 240 字）" });
@@ -1159,6 +1173,7 @@
       ocr_model_missing: "OCR 模型尚未安装。请打开设置下载安装。",
       ocr_runtime_path_invalid: "OCR 运行环境路径不能是一个文件。",
     local_runtime_path_invalid: "本地运行环境路径不能是一个文件。",
+      local_runtime_path_non_ascii: "路径包含中文或其他非 ASCII 字符，本地运行时无法在该目录安装；请改用纯英文、数字的路径。",
       workspace_missing: "新加坡地域需要 Workspace ID。",
       context_too_long: "Qwen-Audio 上下文最多 400 个字符。",
       soniox_context_too_long: "Soniox 上下文约限制为 10000 个字符。",
@@ -1235,6 +1250,7 @@
       ocr_model_missing: "The OCR model is not installed. Open Settings to download it.",
       ocr_runtime_path_invalid: "The OCR runtime path cannot point to a file.",
     local_runtime_path_invalid: "The local runtime path cannot point to a file.",
+      local_runtime_path_non_ascii: "The path contains non-ASCII characters (such as Chinese); the local runtime cannot be installed there. Use a path with ASCII characters only.",
       workspace_missing: "Singapore region requires a Workspace ID.",
       context_too_long: "Qwen-Audio context is limited to 400 characters.",
       soniox_context_too_long: "Soniox context is limited to approximately 10,000 characters.",
@@ -1448,10 +1464,10 @@
         appVersion: "1.6.0",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
-          { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
+          { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
           { id: "zhipu", label: "智谱 Coding Plan", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", model: "glm-5.2", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
           { id: "qwen", label: "阿里云 Qwen", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
-          { id: "custom", label: saved.customDisplayName || "Custom (OpenAI-compatible)", defaultLabel: "Custom (OpenAI-compatible)", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false }
+          { id: "custom", label: saved.customDisplayName || "OpenAI-compatible API", defaultLabel: "OpenAI-compatible API", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false }
         ],
         postprocessAutoPlan: saved.postprocessAutoPlan || { version: 1, enabled: false, retainIntermediate: true, steps: [] },
         modelCacheRoot: saved.modelCacheRoot || "D:\\Models\\MAW",
@@ -1466,7 +1482,7 @@
         providers: [
           {
             id: "qwen",
-            label: "阿里云百炼（QwenASR / FunASR）",
+            label: "阿里云百炼（QwenASR / FunASR）【推荐】",
             keyUrl: "https://platform.qianwenai.com/home/",
             apiKey: saved.apiKey,
             maskedApiKey: saved.apiKey ? "sk-…demo" : "",
@@ -1474,29 +1490,17 @@
             multiLanguage: false,
             commonLanguages: ["", "zh", "yue", "en"],
             models: [
-              { id: "qwen-audio-3.0-asr-flash-filetrans", label: "qwen-audio-3.0-asr（热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
-              { id: "fun-asr", label: "fun-asr（支持说话人）", envKey: "DASHSCOPE_API_KEY", note: "支持说话人分离与词级时间戳", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "qwen3-asr-flash-filetrans", label: "qwen3-asr（准确率更高）", envKey: "DASHSCOPE_API_KEY", note: "", priceNote: "阿里云百炼参考价：北京 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡 ¥0.00026 / 秒（约 ¥0.936 / 小时）；音频输入按时长计费，输出免费。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
+              { id: "qwen-audio-3.1-asr-flash-filetrans", label: "qwen-audio-3.1-asr（方言 / 热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离；可选保留方言表达。", priceNote: "阿里云百炼参考价：按 Token 计费，输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, supportsKeepDialect: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
+              { id: "qwen-audio-3.0-asr-flash-filetrans", label: "qwen-audio-3.0-asr（热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离。", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
+              { id: "fun-asr", label: "fun-asr（支持说话人）", envKey: "DASHSCOPE_API_KEY", note: "支持说话人分离与词级时间戳。", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "qwen3-asr-flash-filetrans", label: "qwen3-asr（准确率更高）", envKey: "DASHSCOPE_API_KEY", note: "", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
             ],
             regions: [{ id: "beijing", label: "北京（华北 2，默认）" }, { id: "singapore", label: "新加坡（需要 Workspace ID）" }],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "da", label: "丹麦语 / Danish" }]
           },
           {
-            id: "soniox",
-            label: "Soniox STT",
-            keyUrl: "https://console.soniox.com",
-            apiKey: "",
-            maskedApiKey: "",
-            supportsSpeaker: true,
-            multiLanguage: true,
-            commonLanguages: ["zh", "en", "ja", "ko"],
-            models: [{ id: "stt-async-v5", label: "Soniox Async STT（v5，上下文）", envKey: "SONIOX_API_KEY", note: "支持 general、text、terms 和 translation_terms 上下文", priceNote: "Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本和输出文本各 $3.50 / 1M。", supportsSpeaker: true, supportsContext: true, languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }] }],
-            regions: [],
-            languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }]
-          },
-          {
             id: "openai",
-            label: "OpenAI（及兼容接口）",
+            label: "OpenAI 格式通用接口",
             keyUrl: "https://platform.openai.com/api-keys",
             secondaryKeyUrl: "https://openrouter.ai/keys",
             apiKey: saved.apiKey,
@@ -1506,14 +1510,14 @@
             note: "默认连接 OpenAI 官方服务；OpenRouter 会自动适配预设模型 ID。其他中转站请选择“自定义（Custom）”并填写服务商提供的完整模型名；接口必须返回 segments 或 words 时间戳。",
             commonLanguages: ["", "zh", "en"],
             models: [
-              { id: "whisper-1", label: "whisper-1", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt；Whisper 提示词最多 224 tokens。", openrouterNote: "OpenRouter 参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。价格和可用能力以 OpenRouter 模型页为准。", priceNote: "OpenAI 官方参考价：$0.006 / 分钟；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "gpt-4o-transcribe", label: "gpt-4o-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt；需由接口返回 segments 或 words 时间戳。", openrouterNote: "OpenRouter 参考价：输入 $2.50 / 1M tokens，输出 $10 / 1M tokens；需由接口返回 segments 或 words 时间戳。", priceNote: "OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "gpt-4o-mini-transcribe", label: "gpt-4o-mini-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt；需由接口返回 segments 或 words 时间戳。", openrouterNote: "OpenRouter 参考价：输入 $1.25 / 1M tokens，输出 $5 / 1M tokens；需由接口返回 segments 或 words 时间戳。", priceNote: "OpenAI 官方参考价：输入 $1.25 / 1M audio tokens，输出 $5 / 1M audio tokens；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "gpt-transcribe", label: "gpt-transcribe（支持关键词）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "OpenAI 官方推荐的文件转写模型；支持 Prompt 和 Keywords，需由接口返回时间戳。", openrouterNote: "OpenRouter 参考价：$0.0045 / 分钟；支持 Prompt、Keywords 和 languages[]，需由接口返回时间戳。", priceNote: "OpenAI 官方参考价：$0.0045 / 分钟。", supportsSpeaker: false, supportsPrompt: true, supportsKeywords: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "gpt-4o-transcribe-diarize", label: "gpt-4o-transcribe-diarize（说话人分离）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "OpenAI 官方说话人分离模型；返回段级 speaker 与时间戳，OpenRouter 不支持。", openrouterNote: "OpenRouter 不支持 diarize；请改用 OpenAI 官方 Base URL。", priceNote: "OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens。", supportsSpeaker: true, supportsDiarization: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "whisper-large-v3-turbo", label: "whisper-large-v3-turbo（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.04 / 小时；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: "whisper-large-v3", label: "whisper-large-v3（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.0015 / 分钟；需由接口返回 segments 或 words 时间戳。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
-              { id: OPENAI_ASR_CUSTOM_MODEL_ID, label: "自定义（Custom）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "选择后填写自定义 ASR 模型名", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
+              { id: "whisper-1", label: "whisper-1", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt 提示词；Whisper 提示词最多 224 tokens。", openrouterNote: "OpenRouter 参考价：$0.006 / 分钟。", priceNote: "OpenAI 官方参考价：$0.006 / 分钟（约 $0.36 / 小时）", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-transcribe", label: "gpt-4o-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt 提示词。", openrouterNote: "OpenRouter 参考价：输入 $2.50 / 1M tokens，输出 $10 / 1M tokens", priceNote: "OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-mini-transcribe", label: "gpt-4o-mini-transcribe", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt 提示词。", openrouterNote: "OpenRouter 参考价：输入 $1.25 / 1M tokens，输出 $5 / 1M tokens", priceNote: "OpenAI 官方参考价：输入 $1.25 / 1M audio tokens，输出 $5 / 1M audio tokens", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-transcribe", label: "gpt-transcribe（支持关键词）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "OpenAI 官方推荐的文件转写模型；支持 Prompt 提示词和 Keywords。", openrouterNote: "OpenRouter 参考价：$0.0045 / 分钟；支持 Prompt、Keywords 和 languages[]。", priceNote: "OpenAI 官方参考价：$0.0045 / 分钟（约 $0.27 / 小时）", supportsSpeaker: false, supportsPrompt: true, supportsKeywords: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "gpt-4o-transcribe-diarize", label: "gpt-4o-transcribe-diarize（说话人分离）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "OpenAI 官方说话人分离模型；返回段级 speaker 与时间戳。", openrouterNote: "OpenRouter 不支持 diarize；请改用 OpenAI 官方 Base URL。", priceNote: "OpenAI 官方参考价：输入 $2.50 / 1M audio tokens，输出 $10 / 1M audio tokens", supportsSpeaker: true, supportsDiarization: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "whisper-large-v3-turbo", label: "whisper-large-v3-turbo（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.04 / 小时", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: "whisper-large-v3", label: "whisper-large-v3（OpenRouter）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "", openrouterNote: "OpenRouter 参考价：$0.0015 / 分钟（约 $0.09 / 小时）", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
+              { id: OPENAI_ASR_CUSTOM_MODEL_ID, label: "自定义（Custom）", envKey: "MAW_OPENAI_ASR_API_KEY", note: "选择后填写自定义 ASR 模型名。", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
             ],
             regions: [],
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }]
@@ -1543,8 +1547,36 @@
             languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }]
           },
           {
+            id: "doubao",
+            label: "火山引擎（豆包）",
+            keyUrl: "https://console.volcengine.com/speech/new/setting/apikeys",
+            apiKey: "",
+            maskedApiKey: "",
+            supportsSpeaker: true,
+            multiLanguage: false,
+            dividerBefore: true,
+            note: "媒体会直接上传到火山引擎；base64 直传单文件 ≤25MB 且 ≤120 分钟，MAW 会先提取为低码率单声道音频再提交。",
+            commonLanguages: ["", "zh", "yue", "en", "ja", "ko"],
+            models: [{ id: "volc.seedasr.auc", label: "豆包录音文件识别 2.0（Seed-ASR）", envKey: "VOLC_API_KEY", note: "支持说话人分离与即时热词；2.0 准确率更高。", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }] }],
+            regions: [],
+            languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }]
+          },
+          {
+            id: "soniox",
+            label: "Soniox STT（海外 / 小语种）",
+            keyUrl: "https://console.soniox.com",
+            apiKey: "",
+            maskedApiKey: "",
+            supportsSpeaker: true,
+            multiLanguage: true,
+            commonLanguages: ["zh", "en", "ja", "ko"],
+            models: [{ id: "stt-async-v5", label: "Soniox Async STT（v5，上下文）", envKey: "SONIOX_API_KEY", note: "支持提示词、说话人与字词时间码。", priceNote: "Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本 $3.50 / 1M。", supportsSpeaker: true, supportsContext: true, languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }] }],
+            regions: [],
+            languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }]
+          },
+          {
             id: "bcut",
-            label: "必剪 ASR（非官方 · 免费 · 实验性）",
+            label: "必剪（非官方 / 免费 / 实验性）",
             keyUrl: "https://github.com/SocialSisterYi/bcut-asr",
             apiKey: "",
             maskedApiKey: "",
@@ -1554,7 +1586,7 @@
             supportsLanguage: false,
             note: "非官方免费接口：无需 API Key，仅支持中文，单文件上限 2 小时；接口可能随时变更、失效或触发限流，请勿高频调用。重要或批量任务建议使用上方正式供应商。",
             commonLanguages: [],
-            models: [{ id: "bcut-asr", label: "必剪 ASR（免 Key / 仅中文）", envKey: "", note: "逐字毫秒时间戳；无需 API Key", supportsSpeaker: false, languages: [{ id: "", label: "中文（自动识别）" }] }],
+            models: [{ id: "bcut-asr", label: "必剪 ASR（免 Key / 仅中文）", envKey: "", note: "逐字毫秒时间戳；无需 API Key。", supportsSpeaker: false, languages: [{ id: "", label: "中文（自动识别）" }] }],
             regions: [],
             languages: [{ id: "", label: "中文（自动识别）" }]
           }
@@ -1567,7 +1599,7 @@
           const dirIndex = Math.max(mediaPath.lastIndexOf("/"), mediaPath.lastIndexOf("\\"));
           const dir = dirIndex >= 0 ? mediaPath.slice(0, dirIndex + 1) : "";
           const stem = mediaPath.slice(dirIndex + 1).replace(/\.[^.\\/]+$/, "");
-          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : (modelId.includes("firered") ? ".firered-local" : (modelId.includes("moss") ? ".moss-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))));
+          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : (modelId.includes("firered") ? ".firered-local" : (modelId.includes("moss") ? ".moss-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))))) : (modelId === "fun-asr" ? ".fun-asr" : ((modelId === "qwen-audio-3.0-asr-flash-filetrans" || modelId === "qwen-audio-3.1-asr-flash-filetrans") ? ".qwen-audio" : ".qwen3-asr-api"))))));
           let outputDir = dir;
           if (saved.outputSubfolder) {
             const root = saved.perVideoSubfolder ? `${stem}_maw` : "_maw";
@@ -1577,17 +1609,6 @@
         }
         return { ok: true, path };
       },
-      get_ass_style_library: async () => ({
-        ok: true,
-        schema: "moy.asr.ass_styles.v1",
-        version: 1,
-        styles: [
-          { id: "default", name: "SRT 默认", builtin: true, fontName: "Arial", fontSize: 18, primaryColor: "#ffffff", outlineColor: "#000000", backColor: "#000000", bold: false, italic: false, underline: false, strikeOut: false, scaleX: 100, scaleY: 100, spacing: 0, angle: 0, borderStyle: 1, outline: 2, shadow: 0, alignment: 2, marginL: 10, marginR: 10, marginV: 40, encoding: 1 },
-          { id: "ass", name: "ASS", builtin: true, fontName: "Arial", fontSize: 18, primaryColor: "#ffffff", outlineColor: "#000000", backColor: "#000000", bold: false, italic: false, underline: false, strikeOut: false, scaleX: 100, scaleY: 100, spacing: 0, angle: 0, borderStyle: 1, outline: 2, shadow: 0, alignment: 2, marginL: 10, marginR: 10, marginV: 40, encoding: 1 },
-        ],
-        assProfiles: [{ id: "ass", name: "ASS", builtin: true, styleId: "ass", animations: { fad: { enabled: false, inMs: 250, outMs: 250 }, fade: { enabled: false, alpha1: 0, alpha2: 255, alpha3: 0, t1: 0, t2: 250, t3: 750, t4: 1000 }, move: { enabled: false, x1: 0, y1: 0, x2: 0, y2: 0, t1: 0, t2: 1000 }, t: { enabled: false, startMs: 0, endMs: 1000, accel: 1, tags: "" } } }],
-        assignments: { srtBurnStyleId: "default", assExportProfileId: "ass" },
-      }),
       get_audio_tracks: async ({ mediaPath = "" } = {}) => VIDEO_EXTS.has(ext(mediaPath)) ? ({ ok: true, tracks: [
         { audioIndex: 0, streamIndex: 1, title: "Mix", channels: 2, sampleRate: 48000, default: true },
         { audioIndex: 1, streamIndex: 2, title: "Voice", channels: 2, sampleRate: 48000, default: false },
@@ -1627,11 +1648,11 @@
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
       open_sticker_folder: async () => { if (!saved.stickerDir) return { ok: false, code: "sticker_dir_invalid" }; window.__openedStickerFolder = saved.stickerDir; return { ok: true }; },
       get_postprocess_settings: async ({ providerId }) => { const apiKey = saved.postprocessApiKeys[providerId] || ""; return { ok: true, providerId, apiKey, maskedApiKey: apiKey ? "sk-…mock" : "" }; },
-      save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "Custom (OpenAI-compatible)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
+      save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "OpenAI-compatible API") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
       test_postprocess_connection: async ({ providerId, apiKey, save }) => { if (save && apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, verified: true, saved: Boolean(save), maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "" }; },
       save_postprocess_plan: async ({ plan }) => { saved.postprocessAutoPlan = plan; return { ok: true, plan }; },
       validate_postprocess_plan: async ({ plan }) => ({ ok: true, plan, errors: [] }),
-      get_postprocess_models: async ({ providerId }) => ({ ok: true, providerId, models: providerId === "qwen" ? ["qwen-plus", "qwen3-max"] : (providerId === "zhipu" ? ["glm-5.2", "glm-4.5"] : (providerId === "custom" ? ["local-model"] : ["deepseek-v4-flash", "deepseek-chat"])) }),
+      get_postprocess_models: async ({ providerId }) => ({ ok: true, providerId, models: providerId === "qwen" ? ["qwen-plus", "qwen3-max"] : (providerId === "zhipu" ? ["glm-5.2", "glm-4.5"] : (providerId === "custom" ? ["local-model"] : ["deepseek-flash", "deepseek-v4-pro"])) }),
       open_file: async ({ path }) => ({ ok: Boolean(path) }),
       open_containing_folder: async ({ path }) => ({ ok: Boolean(path) }),
       retry_postprocess: async () => ({ ok: false, error: "No failed automatic post-processing run." }),
@@ -1645,6 +1666,8 @@
        run_ffconcat_rebuild: async () => ({ ok: true, mediaPath: "D:\\Demo\\clip.gap-removed.mp4" }),
        probe_audio_tracks: async () => ({ ok: true, tracks: [{ audioIndex: 0, streamIndex: 1, codec: "aac", channels: 2, sampleRate: 48000, language: "zh", title: "中文", default: true }, { audioIndex: 1, streamIndex: 2, codec: "aac", channels: 2, sampleRate: 48000, language: "en", title: "English", default: false }] }),
        run_burn_subtitles: async () => ({ ok: true, mediaPath: "D:\\Demo\\clip.subtitled.mp4" }),
+       get_burn_subtitle_settings: async () => ({ ok: true, crf: "", preset: "", audioBitrate: "" }),
+       save_burn_subtitle_settings: async () => ({ ok: true, message: "saved" }),
        run_extract_audio: async () => ({ ok: true, mediaPath: "D:\\Demo\\clip.audio.m4a", audioTrack: { audioIndex: 0 } }),
        cancel_media_tool: async () => ({ ok: true, cancelling: true }),
        generate_waveform_project: async ({ mediaPath }) => ({ ok: true, mediaPath, projectPath: "D:\\Demo\\clip.waveform.mosp", warnings: [], reapeaksPath: "" }),
@@ -1705,13 +1728,14 @@
   }
   // 供应商 / 模型配置的 label 与 note 由后端（maw/gui_config.py）以中文下发；
   // 英文界面按稳定 id 映射为英文，id 未收录时回退后端原文。
-  const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (QwenASR / FunASR)", soniox: "Soniox STT", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI (and compatible)", local: "Local models (Beta)", bcut: "Bcut ASR (unofficial · free · experimental)" };
+  const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (QwenASR / FunASR) [Recommended]", soniox: "Soniox STT (overseas / minority languages)", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI-format compatible API", local: "Local models (Beta)", doubao: "Volcano Engine (Doubao)", bcut: "Bcut (unofficial / free / experimental)" };
   const PROVIDER_NOTES_EN = {
     openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models. For other relays, choose Custom and enter the exact model name they provide. The API must return segments or words timestamps.",
     tencent: "Requires TENCENT_SECRET_ID and TENCENT_SECRET_KEY; use a COS URL for media larger than 5 MB.",
     bcut: "Unofficial free endpoint: no API key, Chinese only, 2-hour per-file limit. The endpoint may change, break, or rate-limit at any time; avoid high-frequency calls. For important or batch tasks, prefer the official providers above.",
   };
   const MODEL_LABELS_EN = {
+    "qwen-audio-3.1-asr-flash-filetrans": "qwen-audio-3.1-asr (dialect / hotwords / context)",
     "qwen-audio-3.0-asr-flash-filetrans": "qwen-audio-3.0-asr (hotwords / context)",
     "fun-asr": "fun-asr (speaker support)",
     "qwen3-asr-flash-filetrans": "qwen3-asr (higher accuracy)",
@@ -1735,15 +1759,16 @@
     "bcut-asr": "Bcut ASR (no key / Chinese only)",
   };
   const MODEL_NOTES_EN = {
+    "qwen-audio-3.1-asr-flash-filetrans": "Supports instant hotwords, context, and speaker diarization; optional dialect preservation.",
     "qwen-audio-3.0-asr-flash-filetrans": "Supports instant hotwords, context, and speaker diarization.",
     "fun-asr": "Supports speaker diarization and word-level timestamps.",
     "whisper-1": "Supports Prompt; Whisper prompts are limited to 224 tokens.",
-    "gpt-transcribe": "OpenAI's recommended file transcription model; supports Prompt and Keywords and requires timestamped output.",
-    "gpt-4o-transcribe": "Supports Prompt and requires timestamped output.",
-    "gpt-4o-mini-transcribe": "Supports Prompt and requires timestamped output.",
-    "gpt-4o-transcribe-diarize": "OpenAI's speaker-diarization model; returns speaker-labeled segments. OpenRouter does not support it.",
+    "gpt-transcribe": "OpenAI's recommended file transcription model; supports Prompt and Keywords.",
+    "gpt-4o-transcribe": "Supports Prompt.",
+    "gpt-4o-mini-transcribe": "Supports Prompt.",
+    "gpt-4o-transcribe-diarize": "OpenAI's speaker-diarization model; returns speaker-labeled segments.",
     "custom-asr": "Fill in your custom ASR model name after selecting this.",
-    "stt-async-v5": "Supports general, text, terms, and translation_terms context.",
+    "stt-async-v5": "Supports prompts, speaker diarization, and word-level timestamps.",
     "16k_zh_en_2.0": "Enter the SecretId here; configure SecretKey in the local .env.",
     "qwen3-asr-local": "Lightweight multilingual recognition with native word/character timestamps; shares the Qwen3-ForcedAligner cache.",
     "qwen3-asr-1.7b-local": "Higher recognition quality with native word/character timestamps; shares the Qwen3-ForcedAligner; higher resource use.",
@@ -1756,24 +1781,25 @@
     "bcut-asr": "Millisecond per-character timestamps; no API key required.",
   };
   const MODEL_PRICING_NOTES_EN = {
-    "qwen-audio-3.0-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
-    "fun-asr": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
-    "qwen3-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second in Beijing (about CNY 0.792/hour) or CNY 0.00026/second in Singapore (about CNY 0.936/hour); audio input is billed by duration and output is free.",
-    "stt-async-v5": "Soniox reference price: about $0.10/hour for async file transcription; token-based pricing with $1.50 / 1M audio input tokens and $3.50 / 1M input-text and output-text tokens.",
+    "qwen-audio-3.1-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: token-based, CNY 0.8 / 1M input tokens and CNY 2.7 / 1M output tokens",
+    "qwen-audio-3.0-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
+    "fun-asr": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
+    "qwen3-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
+    "stt-async-v5": "Soniox reference price: about $0.10/hour for async file transcription; token-based pricing with $1.50 / 1M audio input tokens and $3.50 / 1M input-text tokens.",
     "16k_zh_en_2.0": "Tencent Cloud reference price: CNY 0.8/hour for recorded-file ASR large model 2.0 on pay-as-you-go; a 60-hour prepaid pack is CNY 48.",
-    "whisper-1": "OpenAI official reference price: $0.006/minute; the endpoint must return segments or words timestamps.",
-    "gpt-transcribe": "OpenAI official reference price: $0.0045/minute.",
-    "gpt-4o-transcribe": "OpenAI official reference price: $2.50 / 1M audio input tokens and $10 / 1M audio output tokens; the endpoint must return timestamps.",
-    "gpt-4o-mini-transcribe": "OpenAI official reference price: $1.25 / 1M audio input tokens and $5 / 1M audio output tokens; the endpoint must return timestamps.",
+    "whisper-1": "OpenAI official reference price: $0.006/minute (about $0.36/hour)",
+    "gpt-transcribe": "OpenAI official reference price: $0.0045/minute (about $0.27/hour)",
+    "gpt-4o-transcribe": "OpenAI official reference price: $2.50 / 1M audio input tokens and $10 / 1M audio output tokens",
+    "gpt-4o-mini-transcribe": "OpenAI official reference price: $1.25 / 1M audio input tokens and $5 / 1M audio output tokens",
     "gpt-4o-transcribe-diarize": "OpenAI official reference price: $2.50 / 1M audio input tokens and $10 / 1M audio output tokens.",
   };
   const MODEL_OPENROUTER_NOTES_EN = {
-    "whisper-1": "OpenRouter reference price: $0.006/minute; the endpoint must return segments or words timestamps. Prices and capabilities can change.",
-    "gpt-transcribe": "OpenRouter reference price: $0.0045/minute; supports Prompt, Keywords, and languages[] and requires timestamped output.",
-    "gpt-4o-transcribe": "OpenRouter reference price: $2.50 / 1M input tokens and $10 / 1M output tokens; the endpoint must return timestamps.",
-    "gpt-4o-mini-transcribe": "OpenRouter reference price: $1.25 / 1M input tokens and $5 / 1M output tokens; the endpoint must return timestamps.",
-    "whisper-large-v3-turbo": "OpenRouter reference price: $0.04/hour; the endpoint must return segments or words timestamps.",
-    "whisper-large-v3": "OpenRouter reference price: $0.0015/minute; the endpoint must return segments or words timestamps.",
+    "whisper-1": "OpenRouter reference price: $0.006/minute.",
+    "gpt-transcribe": "OpenRouter reference price: $0.0045/minute; supports Prompt, Keywords, and languages[].",
+    "gpt-4o-transcribe": "OpenRouter reference price: $2.50 / 1M input tokens and $10 / 1M output tokens",
+    "gpt-4o-mini-transcribe": "OpenRouter reference price: $1.25 / 1M input tokens and $5 / 1M output tokens",
+    "whisper-large-v3-turbo": "OpenRouter reference price: $0.04/hour",
+    "whisper-large-v3": "OpenRouter reference price: $0.0015/minute",
     "gpt-4o-transcribe-diarize": "OpenRouter does not support diarize; switch to the official OpenAI Base URL.",
   };
   const REGION_LABELS_EN = { beijing: "Beijing (China North 2, default)", singapore: "Singapore (Workspace ID required)" };
@@ -1804,24 +1830,29 @@
       return false;
     }
   }
+  // 价格文案统一加 🪙 前缀；非价格的备注（如 diarize 的 OpenRouter 提示）不加。
+  function withPricePrefix(text) {
+    const value = String(text || "");
+    return /参考价|reference price/iu.test(value) ? `🪙 ${value}` : value;
+  }
   function modelNoteText(modelItem) {
     const openRouterNote = modelItem.openrouterNote || "";
     const baseUrl = $("openaiBaseUrl")?.value || state.config?.openaiBaseUrl;
     const isOpenai = isOpenAiProvider();
     const isOpenRouter = isOpenai && isOpenRouterBaseUrl(baseUrl);
-    if (isOpenRouter && openRouterNote) return state.lang === "en" ? (MODEL_OPENROUTER_NOTES_EN[modelItem.id] || openRouterNote) : openRouterNote;
+    if (isOpenRouter && openRouterNote) return withPricePrefix(state.lang === "en" ? (MODEL_OPENROUTER_NOTES_EN[modelItem.id] || openRouterNote) : openRouterNote);
     const note = state.lang === "en" ? (MODEL_NOTES_EN[modelItem.id] || modelItem.note) : modelItem.note;
     if (isOpenai && !isOpenAiOfficialBaseUrl(baseUrl)) return note;
     const priceNote = state.lang === "en" ? (MODEL_PRICING_NOTES_EN[modelItem.id] || modelItem.priceNote) : modelItem.priceNote;
-    return [note, priceNote].filter(Boolean).join(state.lang === "en" ? "; " : "；");
+    return [note, withPricePrefix(priceNote)].filter(Boolean).join("\n");
   }
   function llmProviderLabel(providerId) {
     const id = String(providerId || "").trim();
     const item = state.config?.postprocessProviders?.find((candidate) => candidate.id === id);
     if (id === "custom" && item?.displayName) return item.displayName;
     const labels = state.lang === "en"
-      ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen", custom: "Custom (OpenAI-compatible)" }
-      : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen", custom: "自定义（兼容 OpenAI）" };
+      ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen", custom: "OpenAI-compatible API" }
+      : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen", custom: "OpenAI 通用接口" };
     return labels[id] || item?.label || t("llm_provider_unknown");
   }
   function llmBuiltInProviderKeyGuidance(context = {}) {
@@ -2226,7 +2257,7 @@
   }
 
   function setRunning(running) { state.running = running; $("progress").classList.toggle("hidden", !running); $("start").classList.toggle("hidden", running); $("stop").classList.toggle("hidden", !running); $("start").disabled = running; $("stop").disabled = !running; setStatus(running ? t("running") : t("ready")); }
-  function fillSelect(id, items, value) { const el = $(id); el.innerHTML = ""; items.forEach((item) => el.add(new Option(localizedSelectLabel(id, item), item.id))); el.value = value ?? ""; }
+  function fillSelect(id, items, value) { const el = $(id); el.innerHTML = ""; items.forEach((item) => { if (item.dividerBefore) { const divider = new Option("──────", "__divider"); divider.disabled = true; el.add(divider); } el.add(new Option(localizedSelectLabel(id, item), item.id)); }); el.value = value ?? ""; }
   function refillSelectLabels() {
     // 语言切换后，后端下发的下拉选项（供应商/模型/地域/语言）与说明行需要按新语言重建。
     if (!state.config) return;
@@ -2249,7 +2280,7 @@
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
-  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "recognitionAlignmentModel", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
+  function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "recognitionAlignmentModel", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxBurnCrf", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
   function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), alignmentModel: isLocalProvider() ? $("recognitionAlignmentModel").value : "", alignmentModelPath: "", device: $("localDevice").value, fireredPunc: isFireRedModel() ? $("fireRedPunc").value : "ct-punc", language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, qwenKeepDialect: $("qwenAudioKeepDialect").checked, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
@@ -2740,6 +2771,10 @@
   async function saveLocalRuntimePath(path) {
     const requestId = ++localRuntimeRequest;
     const value = String(path || "").trim();
+    if (value && /[^\x00-\x7F]/.test(value)) {
+      setError("localRuntimePath", errText("local_runtime_path_non_ascii", ""));
+      return { ok: false, field: "localRuntimePath", code: "local_runtime_path_non_ascii" };
+    }
     const result = await bridge("save_local_settings", { runtimePath: value });
     if (requestId !== localRuntimeRequest) return result;
     if (!result.ok) { applyErrorResult(result); return result; }
@@ -3806,6 +3841,10 @@
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
   $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
   $("tutorialVideoLink").addEventListener("click", () => bridge("open_url", { url: TUTORIAL_VIDEO_URL }));
+  $("supportLink").addEventListener("click", () => { $("supportModal").classList.remove("hidden"); $("supportClose").focus(); });
+  $("supportClose").addEventListener("click", () => $("supportModal").classList.add("hidden"));
+  $("supportBackdrop").addEventListener("click", () => $("supportModal").classList.add("hidden"));
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") $("supportModal").classList.add("hidden"); });
   $("errorNoticeClose").addEventListener("click", hideErrorNotice);
   $("errorNoticeCopy").addEventListener("click", () => { void copyErrorReport(); });
   $("errorNoticeFaq").addEventListener("click", () => { void openErrorFaq(); });

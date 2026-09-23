@@ -80,6 +80,10 @@ from maw.postprocess_io import PostprocessFileError, read_project, read_srt
 from maw.project_io import write_mosp
 from maw.project import ProjectValidationFailed, normalize_project
 from maw.postprocess_ffmpeg import (
+    AUDIO_BITRATES,
+    MAX_BURN_CRF,
+    MIN_BURN_CRF,
+    X264_PRESETS,
     BurnSubtitleRequest,
     ExtractAudioRequest,
     MediaToolCancelled,
@@ -195,6 +199,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "server_stop_failed": "Unable to stop the MAW editor server.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
     "config_save_failed": "Local configuration could not be saved.",
+    "burn_settings_invalid": "压制参数无效：CRF 需为 0–51 整数，预设与音频码率需从列表中选择。",
     "custom_prompt_required": "A custom prompt is required.",
     "postprocess_config_invalid": "自动后处理配置不完整。",
     "postprocess_failed": "转写已完成，但自动后处理失败。",
@@ -1428,6 +1433,9 @@ class LauncherApi:
                     media_path=Path(str(payload.get("mediaPath") or "")),
                     subtitle_path=Path(str(payload.get("subtitlePath") or "")),
                     srt_style=srt_style,
+                    crf=_burn_crf_override(payload.get("crf")),
+                    preset=str(payload.get("preset") or "").strip() or None,
+                    audio_bitrate=str(payload.get("audioBitrate") or "").strip() or None,
                 ),
                 ffmpeg_path=tools.ffmpeg,
                 cancel_event=cancel_event,
@@ -1447,6 +1455,42 @@ class LauncherApi:
             "mediaPath": str(result.media_path),
             "srtStyleName": str(srt_style.get("name") or "SRT 默认"),
         }
+
+    def get_burn_subtitle_settings(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Return the saved toolbox burn-subtitle encoding defaults."""
+
+        return {
+            "ok": True,
+            "crf": effective_config_value(self.paths.env_path, "MAW_GUI_BURN_CRF").strip(),
+            "preset": effective_config_value(self.paths.env_path, "MAW_GUI_BURN_PRESET").strip(),
+            "audioBitrate": effective_config_value(self.paths.env_path, "MAW_GUI_BURN_AUDIO_BITRATE").strip(),
+        }
+
+    def save_burn_subtitle_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Persist the toolbox burn-subtitle encoding defaults to user-level config."""
+
+        crf_text = str(payload.get("crf") or "").strip()
+        preset = str(payload.get("preset") or "").strip()
+        audio_bitrate = str(payload.get("audioBitrate") or "").strip()
+        try:
+            crf = int(crf_text)
+        except ValueError:
+            crf = MIN_BURN_CRF - 1
+        if not MIN_BURN_CRF <= crf <= MAX_BURN_CRF:
+            return _error_result("toolboxBurnCrf", "burn_settings_invalid", f"invalid CRF value: {crf_text}")
+        if preset and preset not in X264_PRESETS:
+            return _error_result("toolboxBurnPreset", "burn_settings_invalid", f"unsupported x264 preset: {preset}")
+        if audio_bitrate and audio_bitrate not in AUDIO_BITRATES:
+            return _error_result("toolboxBurnAudioBitrate", "burn_settings_invalid", f"unsupported audio bitrate: {audio_bitrate}")
+        try:
+            save_env(self.paths.env_path, {
+                "MAW_GUI_BURN_CRF": crf_text,
+                "MAW_GUI_BURN_PRESET": preset,
+                "MAW_GUI_BURN_AUDIO_BITRATE": audio_bitrate,
+            })
+        except (OSError, UnicodeError, ValueError) as error:
+            return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
+        return {"ok": True, "message": "burn subtitle settings saved"}
 
     def get_ass_style_library(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         """Expose the shared style library to Launcher UI integrations."""
@@ -3103,7 +3147,7 @@ class LauncherApi:
         stage = str(event.get("stage") or "")
         labels = {
             "match": "文稿匹配",
-            "replace": "固定处理",
+            "replace": "固定替换",
             "proofread": "LLM 校对",
             "resegment": "重新断句",
             "ocr": "OCR 字幕去重",
@@ -3866,6 +3910,18 @@ def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
     return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code)}
 
 
+def _burn_crf_override(raw: object) -> int | None:
+    """Parse an optional CRF override from a bridge payload, raising ValueError."""
+
+    text = str(raw if raw is not None else "").strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError as error:
+        raise ValueError(f"invalid CRF value: {text}") from error
+
+
 def _script_match_input_error_code(
     error: PostprocessFileError,
     *,
@@ -4357,6 +4413,7 @@ def _provider_payload(
         "supportsSpeaker": provider.supports_speaker,
         "multiLanguage": provider.multi_language,
         "supportsLanguage": provider.supports_language,
+        "dividerBefore": provider.divider_before,
         "note": provider.note,
         "commonLanguages": list(provider.common_languages),
         "models": [

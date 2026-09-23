@@ -31,7 +31,7 @@ from maw.postprocess import (
     run_fixed_replacement,
     run_llm_postprocess,
 )
-from maw.postprocess_ffmpeg import AudioTrack, BurnSubtitleRequest, ExtractAudioRequest, FfconcatRequest, parse_ffconcat, probe_audio_tracks, run_burn_subtitles, run_extract_audio, run_ffconcat_rebuild
+from maw.postprocess_ffmpeg import AudioTrack, BurnSubtitleRequest, ExtractAudioRequest, FfconcatRequest, MediaToolError, parse_ffconcat, probe_audio_tracks, run_burn_subtitles, run_extract_audio, run_ffconcat_rebuild
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
 from maw.postprocess_llm import MAX_PROVIDER_DIAGNOSTIC_CHARS, LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict, JsonValue
@@ -764,7 +764,7 @@ class PostprocessTests(unittest.TestCase):
                 project_path=self.project_path,
                 srt_path=None,
                 output_mode=OutputMode.SRT,
-                # 空规则现在会跳过固定处理；这里用一条不命中的规则驱动 SRT 输出路径。
+                # 空规则现在会跳过固定替换；这里用一条不命中的规则驱动 SRT 输出路径。
                 replacements=(Replacement(source="不会出现的字", target="x"),),
             )
         )
@@ -2613,9 +2613,41 @@ class MediaToolTests(unittest.TestCase):
         self.assertIn("-vf", command)
         self.assertIn("subtitles=filename='clip.srt'", command[command.index("-vf") + 1])
         self.assertIn("libx264", command)
+        self.assertEqual(command[command.index("-preset") + 1], "medium")
+        self.assertEqual(command[command.index("-crf") + 1], "18")
+        self.assertEqual(command[command.index("-b:a") + 1], "192k")
         self.assertEqual(result.media_path.name, "clip.subtitled.mp4")
         self.assertTrue(result.media_path.read_bytes())
         self.assertEqual(self.media.read_bytes(), b"media")
+
+    def test_burn_subtitles_applies_crf_preset_and_audio_bitrate_overrides(self) -> None:
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, crf=23, preset="fast", audio_bitrate="128k"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-preset") + 1], "fast")
+        self.assertEqual(command[command.index("-crf") + 1], "23")
+        self.assertEqual(command[command.index("-b:a") + 1], "128k")
+
+    def test_burn_subtitles_rejects_invalid_encoding_overrides(self) -> None:
+        with self.assertRaises(MediaToolError):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, crf=99),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        with self.assertRaises(MediaToolError):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, preset="nope"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        with self.assertRaises(MediaToolError):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, audio_bitrate="500k"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
 
     def test_extract_audio_probes_selected_stream_and_writes_m4a(self) -> None:
         probe_result = mock.Mock(
