@@ -31,7 +31,7 @@ from maw.postprocess import (
     run_fixed_replacement,
     run_llm_postprocess,
 )
-from maw.postprocess_ffmpeg import AudioTrack, BurnSubtitleRequest, ExtractAudioRequest, FfconcatRequest, parse_ffconcat, probe_audio_tracks, run_burn_subtitles, run_extract_audio, run_ffconcat_rebuild
+from maw.postprocess_ffmpeg import AudioTrack, BurnSubtitleRequest, ExtractAudioRequest, FfconcatRequest, MediaToolError, _rewrite_ass_default_style, parse_ffconcat, probe_audio_tracks, run_burn_subtitles, run_extract_audio, run_ffconcat_rebuild
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
 from maw.postprocess_llm import MAX_PROVIDER_DIAGNOSTIC_CHARS, LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict, JsonValue
@@ -2554,7 +2554,23 @@ class MediaToolTests(unittest.TestCase):
                 return 0
 
         process = FakeProcess()
-        _ = Path(command[-1]).write_bytes(b"encoded")
+        output = Path(command[-1])
+        if output.suffix.lower() == ".ass":
+            _ = output.write_text(
+                "[Script Info]\n"
+                "ScriptType: v4.00+\n"
+                "PlayResX: 384\n"
+                "PlayResY: 288\n\n"
+                "[V4+ Styles]\n"
+                "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+                "Style: Default,Arial,16,&Hffffff,&Hffffff,&H0,&H0,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1\n\n"
+                "[Events]\n"
+                "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+                "Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,你好\n",
+                encoding="utf-8",
+            )
+        else:
+            _ = output.write_bytes(b"encoded")
         return process
 
     def test_probe_audio_tracks_parses_stream_metadata_and_default_flag(self) -> None:
@@ -2605,17 +2621,84 @@ class MediaToolTests(unittest.TestCase):
     def test_burn_subtitles_reencodes_to_new_mp4_and_uses_subtitles_filter(self) -> None:
         with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
             result = run_burn_subtitles(
-                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle),
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        convert_command = popen.call_args_list[0].args[0]
+        command = popen.call_args_list[-1].args[0]
+        self.assertIn("-c:s", convert_command)
+        self.assertIn("ass", convert_command)
+        self.assertIn("-vf", command)
+        self.assertIn("ass=filename='.clip.maw-burn-", command[command.index("-vf") + 1])
+        self.assertNotIn("clip.srt'", command[command.index("-vf") + 1])
+        self.assertIn("libx264", command)
+        self.assertEqual(len(popen.call_args_list), 2)
+        self.assertFalse(list(self.root.glob(".*.ass")))
+        self.assertEqual(result.media_path.name, "clip.subtitled.mp4")
+        self.assertTrue(result.media_path.read_bytes())
+        self.assertEqual(self.media.read_bytes(), b"media")
+
+    def test_burn_subtitles_applies_selected_srt_style_to_converted_ass(self) -> None:
+        generated = self.root / "generated.ass"
+        generated.write_text(
+            "[V4+ Styles]\nStyle: Default,Arial,16,old\n",
+            encoding="utf-8",
+        )
+
+        _rewrite_ass_default_style(generated, {"fontName": "Microsoft YaHei", "fontSize": 24})
+
+        self.assertIn("Style: Default,Microsoft YaHei,24", generated.read_text(encoding="utf-8"))
+
+    def test_burn_subtitles_keeps_existing_ass_input_without_conversion(self) -> None:
+        subtitle = self.root / "clip.ass"
+        _ = subtitle.write_text("[Script Info]\n", encoding="utf-8")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=subtitle, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        self.assertEqual(len(popen.call_args_list), 1)
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-vf") + 1], "ass=filename='clip.ass'")
+
+    def test_burn_subtitles_supports_amd_amf_encoder(self) -> None:
+        encoders = mock.Mock(returncode=0, stdout=" V....D h264_amf AMD AMF H.264 Encoder\n", stderr="")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process
+        ) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="amf"),
                 ffmpeg_path=Path("ffmpeg"),
             )
 
         command = popen.call_args.args[0]
-        self.assertIn("-vf", command)
-        self.assertIn("subtitles=filename='clip.srt'", command[command.index("-vf") + 1])
-        self.assertIn("libx264", command)
-        self.assertEqual(result.media_path.name, "clip.subtitled.mp4")
-        self.assertTrue(result.media_path.read_bytes())
-        self.assertEqual(self.media.read_bytes(), b"media")
+        self.assertIn("h264_amf", command)
+        self.assertIn("cqp", command)
+        self.assertEqual(result.video_encoder, "amf")
+
+    def test_auto_burn_prefers_an_available_hardware_encoder(self) -> None:
+        encoders = mock.Mock(returncode=0, stdout=" V....D h264_amf AMD AMF H.264 Encoder\n", stderr="")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process
+        ) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        self.assertIn("h264_amf", popen.call_args.args[0])
+        self.assertEqual(result.video_encoder, "amf")
+
+    def test_explicit_hardware_encoder_reports_when_ffmpeg_does_not_provide_it(self) -> None:
+        encoders = mock.Mock(returncode=0, stdout=" V....D libx264 H.264\n", stderr="")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders):
+            with self.assertRaisesRegex(MediaToolError, "h264_amf"):
+                run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="amf"),
+                    ffmpeg_path=Path("ffmpeg"),
+                )
 
     def test_extract_audio_probes_selected_stream_and_writes_m4a(self) -> None:
         probe_result = mock.Mock(

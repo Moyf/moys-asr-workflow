@@ -378,6 +378,12 @@
                 <span id="autoStepTranslateHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoTranslate" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
               </div>
+              <div class="auto-step-row" data-auto-step-row="burn">
+                <label class="check-field" for="autoStepBurn"><input id="autoStepBurn" type="checkbox" aria-describedby="autoStepBurnHint"><span data-i18n="auto_step_burn">烧录字幕</span></label>
+                <span id="autoStepBurnStatus" class="auto-step-status hint"></span>
+                <span id="autoStepBurnHint" class="auto-step-hint hint"></span>
+                <button id="configureAutoBurn" class="inline-link hidden" type="button" data-i18n="auto_configure">配置</button>
+              </div>
             </div>
             <div class="auto-translate-options">
               <div id="autoTranslateTargetField" class="field auto-translate-target hidden">
@@ -664,7 +670,24 @@
           <p id="toolboxBurnSubtitleStyle" class="hint" aria-live="polite"></p>
           <p id="toolboxBurnSubtitlePathError" class="field-error"></p>
         </div>
-        <p class="toolbox-notice" data-i18n="toolbox_ready">选择工具后运行；始终生成新文件，不覆盖源文件。</p>
+        <div id="toolboxBurnVideoEncoderField" class="field">
+          <label for="toolboxBurnVideoEncoder" data-i18n="toolbox_burn_video_encoder">视频编码器</label>
+          <select id="toolboxBurnVideoEncoder">
+            <option value="auto" data-i18n="toolbox_video_encoder_auto">自动（优先硬件）</option>
+            <option value="cpu" data-i18n="toolbox_video_encoder_cpu">CPU（libx264）</option>
+            <option value="nvenc" data-i18n="toolbox_video_encoder_nvenc">NVIDIA NVENC</option>
+            <option value="amf" data-i18n="toolbox_video_encoder_amf">AMD AMF</option>
+            <option value="qsv" data-i18n="toolbox_video_encoder_qsv">Intel QSV</option>
+          </select>
+          <p class="hint" data-i18n="toolbox_burn_video_encoder_hint">自动模式会按可用的硬件编码器尝试；硬件不可用时回退 CPU。</p>
+        </div>
+        <div id="toolboxMediaLog" class="toolbox-media-log hidden" role="log" aria-live="polite" aria-label="FFmpeg 日志" data-i18n-aria-label="toolbox_ffmpeg_log">
+          <div class="toolbox-media-log-heading">
+            <span data-i18n="toolbox_ffmpeg_log">FFmpeg 日志</span>
+          </div>
+          <pre id="toolboxMediaLogText"></pre>
+        </div>
+        <p class="toolbox-notice" data-i18n="toolbox_burn_notice">SRT 字幕会使用默认 SRT 烧录样式（可在编辑器中配置）。更推荐在编辑器中预览并编辑 ASS 字幕样式后，导出 ASS 字幕格式再进行烧录。</p>
       </section>
 
       <section id="toolboxExtractAudioPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxExtractAudioTab">
@@ -970,7 +993,7 @@
         <div class="toolbox-action-slot hidden" data-tool-action="extractAudio">
           <button id="runExtractAudio" class="primary" type="button" data-i18n="toolbox_extract_audio">提取音频</button>
         </div>
-        <button id="stopToolboxMedia" class="ghost hidden" type="button" data-i18n="toolbox_status_cancelling">正在停止媒体处理……</button>
+        <button id="stopToolboxMedia" class="ghost hidden" type="button" data-i18n="toolbox_stop_media">停止媒体处理</button>
       </div>
     </div>
     <div id="toolboxResizeY" class="toolbox-resize-y" role="separator" aria-orientation="horizontal" tabindex="0" data-i18n-title="toolbox_resize_height" title="调整工具箱高度"></div>

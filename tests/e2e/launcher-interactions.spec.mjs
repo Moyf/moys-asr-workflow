@@ -144,6 +144,23 @@ test('automatic OCR video source is not persisted as a manual override', async (
   await expect(page.locator('#ocrVideoPath')).toHaveValue('D:\\Demo\\2.mov');
 });
 
+test('automatic subtitle burning follows the selected video', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.locator('#autoPostprocessEnabled').check();
+  await expect(page.locator('[data-auto-step-row="burn"]')).toBeVisible();
+  await expect(page.locator('[data-auto-step-row="burn"]')).toContainText('烧录字幕');
+
+  await page.locator('#autoStepBurn').check();
+
+  await expect(page.locator('#autoStepBurnStatus')).toHaveClass(/ready/);
+  await expect(page.locator('#autoStepBurnHint')).toContainText('clip.mp4');
+  await expect(page.locator('#configureAutoBurn')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => (
+    window.MAWLauncher.getAutoPostprocessPayload().steps.find((step) => step.id === 'burn')
+  ))).toMatchObject({ id: 'burn', enabled: true, videoEncoder: 'auto' });
+});
+
 test('waveform tool sends the selected and container-default audio tracks', async ({ page }) => {
   // Given: the toolbox media has two tracks and track 2 is the container default.
   await openLauncher(page);
@@ -413,6 +430,30 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
   await page.keyboard.press('ArrowUp');
   await expect(page.locator('#toolboxAlignmentTab')).toBeFocused();
   await expect(page.locator('#toolboxAlignmentPanel')).toBeVisible();
+});
+
+test('FFmpeg media log stays above the utility notice and renders the latest progress', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+  await page.locator('#toolboxBurnSubtitleTab').click();
+
+  await page.evaluate(() => {
+    for (let frame = 1; frame <= 5; frame += 1) {
+      window.MAWLauncher.onBackendEvent({
+        type: 'media_tool_log',
+        message: `frame=${frame} fps=24.0 time=00:00:01.75 speed=1.2x`,
+      });
+    }
+  });
+
+  await expect(page.locator('#toolboxMediaLog')).toBeVisible();
+  await expect(page.locator('#toolboxMediaLogText')).toHaveText(
+    'frame=3 fps=24.0 time=00:00:01.75 speed=1.2x\nframe=4 fps=24.0 time=00:00:01.75 speed=1.2x\nframe=5 fps=24.0 time=00:00:01.75 speed=1.2x',
+  );
+  expect(await page.evaluate(() => (
+    document.getElementById('toolboxMediaLog').compareDocumentPosition(document.querySelector('#toolboxBurnSubtitlePanel .toolbox-notice'))
+      & Node.DOCUMENT_POSITION_FOLLOWING
+  ))).toBeTruthy();
 });
 
 test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {

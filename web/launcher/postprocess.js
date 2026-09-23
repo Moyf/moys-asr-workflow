@@ -24,7 +24,7 @@
   const TOOLBOX_MIN_HEIGHT = 320;
   const TOOLBOX_MAX_HEIGHT = 680;
   const CUSTOM_DEFAULT_LABEL = "Custom (OpenAI-compatible)";
-  const AUTO_STEP_ORDER = ["match", "replace", "proofread", "resegment", "ocr", "translate"];
+  const AUTO_STEP_ORDER = ["match", "replace", "proofread", "resegment", "ocr", "translate", "burn"];
   const AUTO_STEP_CHECKBOXES = {
     match: "autoStepMatch",
     replace: "autoStepReplace",
@@ -32,8 +32,9 @@
     resegment: "autoStepResegment",
     ocr: "autoStepOcr",
     translate: "autoStepTranslate",
+    burn: "autoStepBurn",
   };
-  const AUTO_STEP_TOOLS = { match: "match", replace: "replace", proofread: "llm", resegment: "llm", ocr: "ocr", translate: "llm" };
+  const AUTO_STEP_TOOLS = { match: "match", replace: "replace", proofread: "llm", resegment: "llm", ocr: "ocr", translate: "llm", burn: "burnSubtitle" };
   const AUTO_LLM_OPERATIONS = { proofread: "proofread", resegment: "resegment" };
   let autoPlanSaveTimer = 0;
   let pendingAutoStep = "";
@@ -58,6 +59,7 @@
   let alignmentGapRemove = null;
   let mediaToolRunning = false;
   let mediaToolCancelling = false;
+  let mediaToolLogLines = [];
   let audioTracks = [];
   let audioProbeRequest = 0;
   let scriptPreviewRequest = 0;
@@ -354,6 +356,7 @@
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "ocr", enabled: false, videoPath: "", videoPathMode: "", regionMode: "full", regionX1: 0, regionY1: 0, regionX2: 100, regionY2: 100, threshold: 0.5, report: false },
         { id: "translate", enabled: false, providerId: "deepseek", target: "zh", mergeBilingual: false, embedTranslations: false, bilingualLineOrder: "", customPrompt: "" },
+        { id: "burn", enabled: false, videoEncoder: "auto" },
       ],
     };
   }
@@ -859,6 +862,33 @@
     result.classList.toggle("error", kind === "error");
   }
 
+  function resetMediaToolLog() {
+    mediaToolLogLines = [];
+    const box = $("toolboxMediaLog");
+    const text = $("toolboxMediaLogText");
+    if (!box || !text) return;
+    text.textContent = "";
+    box.classList.add("hidden");
+  }
+
+  function beginMediaToolLog() {
+    resetMediaToolLog();
+    const waiting = t("toolbox_ffmpeg_waiting");
+    if (waiting) renderMediaToolLog({ message: waiting });
+  }
+
+  function renderMediaToolLog(event) {
+    const message = String(event?.message || "").trim();
+    const box = $("toolboxMediaLog");
+    const text = $("toolboxMediaLogText");
+    if (!message || !box || !text) return;
+    mediaToolLogLines.push(message);
+    if (mediaToolLogLines.length > 3) mediaToolLogLines = mediaToolLogLines.slice(-3);
+    text.textContent = mediaToolLogLines.join("\n");
+    box.classList.remove("hidden");
+    text.scrollTop = text.scrollHeight;
+  }
+
   function renderPostprocessStatus(event) {
     if (!busy) return;
     let message = t(event.key || "toolbox_running");
@@ -956,6 +986,7 @@
     if (!burn || !extract || !stop) return;
     burn.disabled = busy;
     extract.disabled = busy;
+    stop.textContent = t(mediaToolCancelling ? "toolbox_status_cancelling" : "toolbox_stop_media");
     stop.classList.toggle("hidden", !mediaToolRunning);
     stop.disabled = !mediaToolRunning || mediaToolCancelling;
   }
@@ -1405,6 +1436,11 @@
       const video = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
       return video ? fileName(video) : t("auto_step_hint_no_video");
     }
+    if (stepId === "burn") {
+      const video = $("mediaPath").value.trim();
+      if (!video || !VIDEO_EXTS.has(extension(video))) return t("auto_step_hint_no_video");
+      return fileName(video);
+    }
     return "";
   }
 
@@ -1423,6 +1459,7 @@
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
         { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: ocrVideoManual ? $("ocrVideoPath").value.trim() : "", videoPathMode: ocrVideoManual ? "manual" : "auto", ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
         { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId, target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), embedTranslations: Boolean($("autoTranslateBackfill")?.checked), bilingualLineOrder: $("autoTranslateBilingualOrder")?.value || "", customPrompt: getLlmPrompt(autoLlmOperation("translate")) },
+        { id: "burn", enabled: Boolean($("autoStepBurn")?.checked), videoEncoder: "auto" },
       ],
     };
   }
@@ -1454,11 +1491,15 @@
       }
       return true;
     }
+    if (stepId === "burn") {
+      const mediaPath = $("mediaPath").value.trim();
+      return Boolean(mediaPath && VIDEO_EXTS.has(extension(mediaPath)));
+    }
     return false;
   }
 
   function autoStepLabel(stepId) {
-    return t({ match: "auto_step_match", replace: "auto_step_replace", proofread: "auto_step_proofread", resegment: "auto_step_resegment", ocr: "auto_step_ocr", translate: "auto_step_translate" }[stepId] || stepId);
+    return t({ match: "auto_step_match", replace: "auto_step_replace", proofread: "auto_step_proofread", resegment: "auto_step_resegment", ocr: "auto_step_ocr", translate: "auto_step_translate", burn: "auto_step_burn" }[stepId] || stepId);
   }
 
   function renderAutoPostprocessState() {
@@ -1548,6 +1589,9 @@
     if (stepId === "match") return "postprocessScriptPath";
     if (stepId === "replace") return parseReplacements().length ? "postprocessConversion" : "postprocessReplacements";
     if (["proofread", "resegment", "translate"].includes(stepId)) return "postprocessPrompt";
+    if (stepId === "burn") {
+      return "toolboxUtilityMediaPath";
+    }
     if (stepId !== "ocr") return "";
     const video = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
     if (!video || !VIDEO_EXTS.has(extension(video))) return "ocrVideoPath";
@@ -1651,6 +1695,7 @@
     $("autoTranslateBackfill").checked = Boolean(translate.embedTranslations) && !Boolean(translate.mergeBilingual);
     const translatePrompt = byId.get("translate")?.customPrompt;
     if (typeof translatePrompt === "string") llmPrompts[autoLlmOperation("translate")] = translatePrompt;
+    $("toolboxBurnVideoEncoder").value = "auto";
     saveLlmPrompts();
     loadLlmPrompt(activeLlmOperation || $("postprocessOperation").value);
     renderOcrRegion();
@@ -2045,11 +2090,16 @@
     }
     setFieldError("toolboxUtilityMediaPath", "");
     setFieldError("toolboxBurnSubtitlePath", "");
+    beginMediaToolLog();
     mediaToolRunning = true;
     mediaToolCancelling = false;
     setBusy(true, "toolbox_status_burning");
     try {
-      const result = await bridge("run_burn_subtitles", { mediaPath, subtitlePath });
+      const result = await bridge("run_burn_subtitles", {
+        mediaPath,
+        subtitlePath,
+        videoEncoder: $("toolboxBurnVideoEncoder")?.value || "auto",
+      });
       if (result.ok) {
         if (result.srtStyleName) {
           srtBurnStyleName = String(result.srtStyleName);
@@ -2095,6 +2145,7 @@
     }
     setFieldError("toolboxUtilityMediaPath", "");
     setFieldError("toolboxAudioTrack", "");
+    beginMediaToolLog();
     mediaToolRunning = true;
     mediaToolCancelling = false;
     setBusy(true, "toolbox_status_extracting");
@@ -2420,7 +2471,7 @@
       renderAutoPostprocessState();
       persistAutoPlanSoon();
     });
-    $(`configureAuto${stepId[0].toUpperCase()}${stepId.slice(1)}`).addEventListener("click", () => openAutoStep(stepId, "", { highlightConnection: true }));
+    $(`configureAuto${stepId[0].toUpperCase()}${stepId.slice(1)}`)?.addEventListener("click", () => openAutoStep(stepId, "", { highlightConnection: true }));
   });
   $("toolboxTimestampModel").addEventListener("change", renderTimestampModel);
   $("toolboxTimestampMediaPath").addEventListener("input", () => {
@@ -2430,7 +2481,11 @@
   });
   ["jsonPath", "srtPath", "mediaPath"].forEach((id) => $(id).addEventListener("input", () => {
     syncPaths();
-    if (id === "mediaPath") void refreshAudioTracks();
+    if (id === "mediaPath") {
+      renderAutoPostprocessState();
+      maybeEnablePendingAutoStep();
+      void refreshAudioTracks();
+    }
   }));
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
@@ -2449,6 +2504,7 @@
   setupToolboxResize();
   window.addEventListener("mawlauncherready", initialize, { once: true });
   window.MAWLauncher.onPostprocessStatus = renderPostprocessStatus;
+  window.MAWLauncher.onMediaToolLog = renderMediaToolLog;
   window.MAWLauncher.onPostprocessStream = renderPostprocessStream;
   window.MAWLauncher.onPostprocessPipeline = (event) => {
     if (event.stage === "step_start") setResult(`${autoStepLabel(event.step)}：${t("toolbox_running")}`);
@@ -2484,8 +2540,8 @@
       $("ocrVideoPath").value = autoOcrVideoPath();
     }
     syncPaths();
+    renderAutoPostprocessState();
     if (refreshOcrVideo) {
-      renderAutoPostprocessState();
       persistAutoPlanSoon();
     }
     void refreshAudioTracks();

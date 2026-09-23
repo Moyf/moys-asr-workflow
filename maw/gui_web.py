@@ -639,7 +639,9 @@ class LauncherApi:
         self.postprocess_retry_context: dict[str, object] | None = None
         self.postprocess_workspace_directory: Path | None = None
         self.postprocess_translation_srt_path: Path | None = None
+        self.postprocess_media_path: Path | None = None
         self._last_postprocess_progress_at = 0.0
+        self._last_media_tool_log_at = 0.0
         self.pump = EventPump(window_getter=self.window_getter)
         _sync_local_runtime_root(self.paths.env_path)
 
@@ -1428,6 +1430,7 @@ class LauncherApi:
                     media_path=Path(str(payload.get("mediaPath") or "")),
                     subtitle_path=Path(str(payload.get("subtitlePath") or "")),
                     srt_style=srt_style,
+                    video_encoder=str(payload.get("videoEncoder") or "auto"),
                 ),
                 ffmpeg_path=tools.ffmpeg,
                 cancel_event=cancel_event,
@@ -1445,6 +1448,7 @@ class LauncherApi:
             "sourceMediaPath": str(result.source_media_path),
             "subtitlePath": str(result.subtitle_path),
             "mediaPath": str(result.media_path),
+            "videoEncoder": str(getattr(result, "video_encoder", "auto") or "auto"),
             "srtStyleName": str(srt_style.get("name") or "SRT 默认"),
         }
 
@@ -1498,7 +1502,15 @@ class LauncherApi:
         if cancel_event is not None:
             cancel_event.set()
         if process is not None and process.poll() is None:
-            terminate_process_tree(process)
+            # Do not make the pywebview API call wait for taskkill/process.wait.
+            # The worker also observes the event, while this daemon thread
+            # interrupts a potentially blocked stdout.readline().
+            threading.Thread(
+                target=self._terminate_media_tool_process,
+                args=(process,),
+                name="maw-media-tool-cancel",
+                daemon=True,
+            ).start()
         return {"ok": True, "cancelling": active}
 
     def _begin_media_tool(self) -> Event | None:
@@ -1508,12 +1520,30 @@ class LauncherApi:
             cancel_event = Event()
             self.media_tool_cancel_event = cancel_event
             self.media_tool_process = None
+            self._last_media_tool_log_at = 0.0
             return cancel_event
 
     def _set_media_tool_process(self, process: subprocess.Popen[str]) -> None:
+        cancel_requested = False
         with self._media_tool_lock:
-            if self.media_tool_cancel_event is not None:
+            cancel_event = self.media_tool_cancel_event
+            if cancel_event is not None:
                 self.media_tool_process = process
+                cancel_requested = cancel_event.is_set()
+        if cancel_requested:
+            # Cancellation can arrive between Popen() and this callback. In
+            # that window cancel_media_tool has no process to terminate.
+            self._terminate_media_tool_process(process)
+
+    @staticmethod
+    def _terminate_media_tool_process(process: subprocess.Popen[str]) -> None:
+        if process.poll() is None:
+            try:
+                terminate_process_tree(process)
+            except (OSError, subprocess.TimeoutExpired):
+                # The worker will still observe the cancellation event and
+                # convert the operation into the normal cancelled result.
+                pass
 
     def _finish_media_tool(self, cancel_event: Event) -> None:
         with self._media_tool_lock:
@@ -1526,6 +1556,16 @@ class LauncherApi:
         if now - self._last_postprocess_progress_at >= 0.8:
             self._last_postprocess_progress_at = now
             self._emit_postprocess_status(key)
+        self._emit_media_tool_log(_details)
+
+    def _emit_media_tool_log(self, details: Mapping[str, object]) -> None:
+        now = time.monotonic()
+        if now - self._last_media_tool_log_at < 0.8 and str(details.get("progress") or "") != "end":
+            return
+        self._last_media_tool_log_at = now
+        message = _format_media_tool_progress(details)
+        if message:
+            self._emit({"type": "media_tool_log", "message": message})
 
     def choose_file(self, payload: Mapping[str, object]) -> dict[str, object]:
         kind = str(payload.get("kind") or "media")
@@ -2135,6 +2175,7 @@ class LauncherApi:
         self.cancel_event = Event()
         self.postprocess_workspace_directory = None
         self.postprocess_translation_srt_path = None
+        self.postprocess_media_path = None
         self._last_postprocess_progress_at = 0.0
         self.pump.start()
         self.worker = threading.Thread(target=self._worker_main, args=(request, self.cancel_event), daemon=True)
@@ -2859,6 +2900,7 @@ class LauncherApi:
                 )
                 auto_run_directory = auto_result.run_directory
                 self.postprocess_translation_srt_path = auto_result.translated_srt_path
+                self.postprocess_media_path = auto_result.media_path
                 self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
             except PostprocessCancelled as error:
                 self._emit({
@@ -2929,7 +2971,7 @@ class LauncherApi:
                     "message": f"[计时] 全程耗时为媒体时长的 {total_elapsed / media_duration:.2f} 倍",
                 })
         self.postprocess_workspace_directory = auto_run_directory if auto_run_directory and auto_run_directory.is_dir() else None
-        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
+        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
@@ -3074,9 +3116,10 @@ class LauncherApi:
             return
         self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
         self.postprocess_translation_srt_path = auto_result.translated_srt_path
+        self.postprocess_media_path = auto_result.media_path
         self.postprocess_retry_context = None
         self.postprocess_workspace_directory = auto_result.run_directory if auto_result.run_directory.is_dir() else None
-        self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
+        self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
@@ -3108,16 +3151,19 @@ class LauncherApi:
             "resegment": "重新断句",
             "ocr": "OCR 字幕去重",
             "translate": "翻译",
+            "burn": "烧录字幕",
         }
         step = labels.get(str(event.get("step") or ""), str(event.get("step") or "后处理"))
         if stage == "start":
             self._emit({"type": "log", "message": f"[后处理] 已开始，共 {event.get('total', 0)} 步"})
         elif stage == "step_start":
+            if str(event.get("step") or "") == "burn":
+                self._last_media_tool_log_at = 0.0
             self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：开始"})
         elif stage == "step_done":
             artifacts = " / ".join(
                 name
-                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""))
+                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""), str(event.get("mediaName") or ""))
                 if name
             )
             suffix = f"（{artifacts}）" if artifacts else ""
@@ -3125,7 +3171,7 @@ class LauncherApi:
         elif stage == "done":
             artifacts = " / ".join(
                 name
-                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""))
+                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""), str(event.get("mediaName") or ""))
                 if name
             )
             self._emit({"type": "log", "message": f"[后处理] 全部完成：{artifacts}"})
@@ -3133,13 +3179,17 @@ class LauncherApi:
             self._emit({"type": "log", "message": "[后处理] 已取消；原始转写产物仍然保留。"})
         elif stage == "failed":
             self._emit({"type": "log", "message": "[后处理] 失败；原始转写产物和中间产物已保留。"})
-        elif stage == "detail" and str(event.get("key") or "") in {"toolbox_status_llm_batch", "toolbox_status_ocr_frame"}:
-            now = time.monotonic()
-            current = event.get("current")
-            total = event.get("total")
-            if now - self._last_postprocess_progress_at >= 1.0 or current == total:
-                self._last_postprocess_progress_at = now
-                self._emit({"type": "log", "message": f"[后处理] {step} 进度 {current}/{total}"})
+        elif stage == "detail":
+            key = str(event.get("key") or "")
+            if key == "toolbox_status_burning":
+                self._emit_media_tool_log(event)
+            elif key in {"toolbox_status_llm_batch", "toolbox_status_ocr_frame"}:
+                now = time.monotonic()
+                current = event.get("current")
+                total = event.get("total")
+                if now - self._last_postprocess_progress_at >= 1.0 or current == total:
+                    self._last_postprocess_progress_at = now
+                    self._emit({"type": "log", "message": f"[后处理] {step} 进度 {current}/{total}"})
 
     def _local_runtime_main(
         self,
@@ -4261,6 +4311,27 @@ def _open_existing_path(path: Path) -> dict[str, object]:
 
 def _postprocess_ffmpeg(env_path: Path) -> Path | None:
     return _postprocess_ffmpeg_tools(env_path).ffmpeg
+
+
+def _format_media_tool_progress(details: Mapping[str, object]) -> str:
+    fields = (
+        ("frame", "frame"),
+        ("fps", "fps"),
+        ("out_time", "time"),
+        ("speed", "speed"),
+        ("bitrate", "bitrate"),
+        ("total_size", "size"),
+    )
+    parts: list[str] = []
+    for key, label in fields:
+        value = details.get(key)
+        text = "" if value is None else str(value).strip()
+        if text and text.lower() not in {"n/a", "nan"}:
+            parts.append(f"{label}={text}")
+    if parts:
+        return " ".join(parts)
+    progress = str(details.get("progress") or "").strip()
+    return f"progress={progress}" if progress else ""
 
 
 def _postprocess_ffmpeg_tools(env_path: Path) -> FfmpegTools:

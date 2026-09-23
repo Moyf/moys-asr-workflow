@@ -8,6 +8,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from threading import Event
 from pathlib import Path
@@ -15,13 +16,20 @@ from typing import Callable, Final, Mapping
 
 from maw.gui_platform import creationflags, release_process_tree, startupinfo, terminate_process_tree
 from maw.output_naming import media_suffix
-from maw.ass_styles import ass_style_force_style, find_ass_style, load_ass_style_library
+from maw.ass_styles import DEFAULT_SRT_STYLE, ass_style_force_style, ass_style_line, find_ass_style, load_ass_style_library
 
 
 ALLOWED_DIRECTIVES: Final = frozenset({"ffconcat", "file", "inpoint", "outpoint", "duration"})
 VIDEO_EXTENSIONS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"})
 MEDIA_EXTENSIONS: Final = frozenset((*VIDEO_EXTENSIONS, ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"))
 SUBTITLE_EXTENSIONS: Final = frozenset({".srt", ".ass", ".ssa"})
+VIDEO_ENCODER_MODES: Final[frozenset[str]] = frozenset({"auto", "cpu", "nvenc", "amf", "qsv"})
+VIDEO_ENCODER_CODECS: Final[dict[str, str]] = {
+    "nvenc": "h264_nvenc",
+    "amf": "h264_amf",
+    "qsv": "h264_qsv",
+}
+AUTO_VIDEO_ENCODER_ORDER: Final[tuple[str, ...]] = ("nvenc", "amf", "qsv", "cpu")
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +80,7 @@ class BurnSubtitleRequest:
     # Optional normalized style supplied by a caller; when omitted, the
     # shared user-level SRT default slot is loaded automatically.
     srt_style: Mapping[str, object] | None = None
+    video_encoder: str = "auto"
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +88,7 @@ class BurnSubtitleResult:
     source_media_path: Path
     media_path: Path
     subtitle_path: Path
+    video_encoder: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,6 +262,62 @@ def probe_audio_tracks(media_path: Path, *, ffprobe_path: Path) -> tuple[AudioTr
     return tuple(tracks)
 
 
+def normalize_video_encoder(value: object) -> str:
+    mode = str(value or "").strip().lower()
+    return mode if mode in VIDEO_ENCODER_MODES else "auto"
+
+
+def _available_video_encoder_modes(ffmpeg_path: Path) -> frozenset[str]:
+    """Return hardware encoders advertised by this FFmpeg build."""
+    try:
+        completed = subprocess.run(
+            [str(ffmpeg_path), "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+            check=False,
+            startupinfo=startupinfo(),
+            creationflags=creationflags(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return frozenset()
+    if completed.returncode != 0:
+        return frozenset()
+    output = f"{completed.stdout or ''}\n{completed.stderr or ''}"
+    return frozenset(
+        mode
+        for mode, codec in VIDEO_ENCODER_CODECS.items()
+        if re.search(rf"^\s*V\S*\s+{re.escape(codec)}\b", output, re.MULTILINE)
+    )
+
+
+def _video_encoder_attempts(ffmpeg_path: Path, requested: str) -> tuple[str, ...]:
+    mode = normalize_video_encoder(requested)
+    if mode == "cpu":
+        return ("cpu",)
+    available = _available_video_encoder_modes(ffmpeg_path)
+    if mode != "auto":
+        if mode not in available:
+            codec = VIDEO_ENCODER_CODECS[mode]
+            raise MediaToolError(f"当前 FFmpeg 不支持所选视频编码器：{codec}。请改用自动或 CPU 编码。")
+        return (mode,)
+    return tuple(candidate for candidate in AUTO_VIDEO_ENCODER_ORDER if candidate == "cpu" or candidate in available)
+
+
+def _video_encoder_options(mode: str) -> list[str]:
+    if mode == "cpu":
+        return ["-c:v", "libx264", "-preset", "medium", "-crf", "18"]
+    if mode == "nvenc":
+        return ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "18", "-b:v", "0"]
+    if mode == "amf":
+        return ["-c:v", "h264_amf", "-quality", "quality", "-rc", "cqp", "-qp_i", "18", "-qp_p", "18"]
+    if mode == "qsv":
+        return ["-c:v", "h264_qsv", "-preset", "medium", "-global_quality", "18"]
+    raise ValueError(f"unsupported video encoder mode: {mode}")
+
+
 def run_burn_subtitles(
     request: BurnSubtitleRequest,
     *,
@@ -265,54 +331,88 @@ def run_burn_subtitles(
     subtitle = _validated_media_path(request.subtitle_path, extensions=SUBTITLE_EXTENSIONS, label="subtitle")
     output = _available_media_output(media, suffix="subtitled", extension=".mp4")
     temporary = output.with_name(f"{output.stem}.part{output.suffix}")
-    command = [
-        str(ffmpeg_path),
-        "-y",
-        "-nostdin",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-progress",
-        "pipe:1",
-        "-i",
-        str(media),
-        "-vf",
-        _subtitle_filter(subtitle, request.srt_style),
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a?",
-        "-map_metadata",
-        "0",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        "-crf",
-        "18",
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        "-movflags",
-        "+faststart",
-        str(temporary),
-    ]
+    requested_encoder = normalize_video_encoder(request.video_encoder)
+    attempts = _video_encoder_attempts(ffmpeg_path, requested_encoder)
+    prepared_subtitle = subtitle
+    converted_subtitle: Path | None = None
+    last_error: MediaToolError | None = None
     try:
-        _run_ffmpeg_process(
-            command,
-            cwd=subtitle.parent,
-            cancel_event=cancel_event,
-            on_process=on_process,
-            on_progress=on_progress,
-        )
-        _replace_media_output(temporary, output)
+        if subtitle.suffix.lower() == ".srt":
+            converted_subtitle = _convert_srt_to_ass(
+                subtitle,
+                ffmpeg_path=ffmpeg_path,
+                srt_style=request.srt_style,
+                cancel_event=cancel_event,
+                on_process=on_process,
+                on_progress=on_progress,
+            )
+            prepared_subtitle = converted_subtitle
+        common_command = [
+            str(ffmpeg_path),
+            "-y",
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-progress",
+            "pipe:1",
+            "-i",
+            str(media),
+            "-vf",
+            _subtitle_filter(prepared_subtitle),
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a?",
+            "-map_metadata",
+            "0",
+        ]
+        for encoder in attempts:
+            temporary.unlink(missing_ok=True)
+            command = [
+                *common_command,
+                *_video_encoder_options(encoder),
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-movflags",
+                "+faststart",
+                str(temporary),
+            ]
+            try:
+                _run_ffmpeg_process(
+                    command,
+                    cwd=subtitle.parent,
+                    cancel_event=cancel_event,
+                    on_process=on_process,
+                    on_progress=on_progress,
+                )
+            except MediaToolCancelled:
+                raise
+            except MediaToolError as error:
+                last_error = error
+                if requested_encoder != "auto" or encoder == "cpu":
+                    raise
+                continue
+            _replace_media_output(temporary, output)
+            return BurnSubtitleResult(
+                source_media_path=media,
+                media_path=output,
+                subtitle_path=subtitle,
+                video_encoder=encoder,
+            )
+        if last_error is not None:
+            raise last_error
+        raise MediaToolError("没有可用的视频编码器。")
     except (MediaToolError, OSError):
         temporary.unlink(missing_ok=True)
         raise
-    return BurnSubtitleResult(source_media_path=media, media_path=output, subtitle_path=subtitle)
+    finally:
+        if converted_subtitle is not None:
+            converted_subtitle.unlink(missing_ok=True)
 
 
 def run_extract_audio(
@@ -392,6 +492,13 @@ def _available_media_output(media: Path, *, suffix: str = "gap-removed", extensi
     return candidate.resolve()
 
 
+_MEDIA_LABEL_NAMES: Final[dict[str, str]] = {
+    "video": "视频文件",
+    "subtitle": "字幕文件",
+    "media": "媒体文件",
+}
+
+
 def _validated_media_path(
     path: Path,
     *,
@@ -399,10 +506,13 @@ def _validated_media_path(
     label: str = "media",
 ) -> Path:
     resolved = path.expanduser().resolve()
+    name = _MEDIA_LABEL_NAMES.get(label, "媒体文件")
     if not resolved.is_file():
-        raise MediaToolError(f"{label} must be an existing file")
+        # 明确区分是视频还是字幕缺失：手动压制里两个文件都由用户选择，
+        # 自动后处理里则都来自流水线上一步，提示需要能定位到具体文件。
+        raise MediaToolError(f"{name}不存在：{resolved}")
     if resolved.suffix.lower() not in extensions:
-        raise MediaToolError(f"unsupported {label} extension: {resolved.suffix or '(none)'}")
+        raise MediaToolError(f"{name}格式不支持：{resolved.suffix or '(无后缀)'}")
     return resolved
 
 
@@ -433,6 +543,91 @@ def _escape_filter_value(value: str) -> str:
     return escaped
 
 
+def _srt_burn_style(srt_style: Mapping[str, object] | None) -> Mapping[str, object]:
+    if srt_style is not None:
+        return srt_style
+    library = load_ass_style_library()
+    assignments = library.get("assignments")
+    style_id = assignments.get("srtBurnStyleId") if isinstance(assignments, Mapping) else "default"
+    return find_ass_style(library, style_id)
+
+
+def _rewrite_ass_default_style(ass_path: Path, srt_style: Mapping[str, object] | None) -> None:
+    try:
+        content = ass_path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError) as error:
+        raise MediaToolError(f"无法读取 FFmpeg 生成的临时 ASS 字幕：{error}") from error
+    if not content.strip():
+        raise MediaToolError("FFmpeg 生成了空的 ASS 字幕文件。")
+    style = {**DEFAULT_SRT_STYLE, **dict(_srt_burn_style(srt_style))}
+    replacement = ass_style_line(style, name="Default")
+    lines = content.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("Style: Default,"):
+            lines[index] = replacement
+            break
+    else:
+        raise MediaToolError("FFmpeg 生成的 ASS 字幕缺少 Default 样式。")
+    try:
+        with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write("\n".join(lines) + "\n")
+    except (OSError, UnicodeError) as error:
+        raise MediaToolError(f"无法写入临时 ASS 字幕：{error}") from error
+
+
+def _convert_srt_to_ass(
+    subtitle: Path,
+    *,
+    ffmpeg_path: Path,
+    srt_style: Mapping[str, object] | None,
+    cancel_event: Event | None,
+    on_process: Callable[[subprocess.Popen[str]], None] | None,
+    on_progress: Callable[[Mapping[str, str]], None] | None,
+) -> Path:
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{subtitle.stem}.maw-burn-",
+            suffix=".ass",
+            dir=subtitle.parent,
+        )
+        os.close(descriptor)
+    except OSError as error:
+        raise MediaToolError(f"无法创建临时 ASS 字幕：{error}") from error
+    converted = Path(temporary_name)
+    command = [
+        str(ffmpeg_path),
+        "-y",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-progress",
+        "pipe:1",
+        "-i",
+        str(subtitle),
+        "-map",
+        "0:0",
+        "-c:s",
+        "ass",
+        "-f",
+        "ass",
+        str(converted),
+    ]
+    try:
+        _run_ffmpeg_process(
+            command,
+            cwd=subtitle.parent,
+            cancel_event=cancel_event,
+            on_process=on_process,
+            on_progress=on_progress,
+        )
+        _rewrite_ass_default_style(converted, srt_style)
+    except (MediaToolError, OSError):
+        converted.unlink(missing_ok=True)
+        raise
+    return converted
+
+
 def _subtitle_filter(
     subtitle: Path,
     srt_style: Mapping[str, object] | None = None,
@@ -440,12 +635,7 @@ def _subtitle_filter(
     filename = _escape_filter_value(subtitle.name)
     if subtitle.suffix.lower() in {".ass", ".ssa"}:
         return f"ass=filename='{filename}'"
-    style = srt_style
-    if style is None:
-        library = load_ass_style_library()
-        assignments = library.get("assignments")
-        style_id = assignments.get("srtBurnStyleId") if isinstance(assignments, Mapping) else "default"
-        style = find_ass_style(library, style_id)
+    style = _srt_burn_style(srt_style)
     # force_style 内部的逗号/等号是 ASS 样式语法层；整个表达式还要作为
     # 单引号 filter 参数再转义一层，否则 O'Brien 这类字体会截断引号、
     # 破坏整个 -vf 滤镜链。
