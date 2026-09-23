@@ -5773,8 +5773,8 @@
     return `<filter>${effect}</filter>`;
   }
 
-  function fcpClipItem({ id, fileId, name, path, width, height, sourceStartMs, sourceEndMs, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
-    const source = fcpTimeRange(sourceStartMs, sourceEndMs, plan);
+  function fcpClipItem({ id, fileId, name, path, width, height, sourceStartMs, sourceEndMs, sourceStartFrame = null, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
+    const sourceRange = fcpTimeRange(sourceStartMs, sourceEndMs, plan);
     const timeline = fcpTimeRange(startMs, endMs, plan);
     const url = escapeExportXml(exportPathToFileUrl(path, { encodeDriveColon }));
     const isSticker = mediaKind === 'sticker';
@@ -5790,7 +5790,12 @@
       ? `<file id="${escapeExportXml(fileId)}"><name>${escapeExportXml(fileBasename(path))}</name><pathurl>${url}</pathurl><duration>${sourceDuration}</duration>${fcpRate(plan.frameProfile)}${isSticker ? `<timecode><rate>${fcpRate(plan.frameProfile).replace('<rate>', '').replace('</rate>', '')}</rate><string>00:00:00:00</string><frame>0</frame><displayformat>NDF</displayformat></timecode>` : ''}${fileMedia}</file>`
       : `<file id="${escapeExportXml(fileId)}"/>`;
     const frameStart = startFrame ?? timeline.start;
-    const frameEnd = Math.max(frameStart + 1, endFrame ?? frameStart + source.duration);
+    const frameEnd = Math.max(frameStart + 1, endFrame ?? frameStart + sourceRange.duration);
+    // 显式传入 sourceStartFrame 时（媒体片段），in/out 按时间线区间长度对齐，
+    // 保证源区间与时间线区间等长（1:1 播放速率），两端不再各自向外取整。
+    const source = sourceStartFrame != null
+      ? { start: sourceStartFrame, end: sourceStartFrame + (frameEnd - frameStart) }
+      : sourceRange;
     const stickerClipMetadata = isSticker
       ? `<enabled>TRUE</enabled><alphatype>${/\.(?:gif|png|webp)$/iu.test(path) ? 'straight' : 'none'}</alphatype><pixelaspectratio>square</pixelaspectratio><anamorphic>FALSE</anamorphic>`
       : '';
@@ -5818,30 +5823,35 @@
       ? exportPlan.media.height : 1080;
     const videoFormat = `<format><samplecharacteristics>${fcpRate(exportPlan.frameProfile)}<width>${sequenceWidth}</width><height>${sequenceHeight}</height><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio><fielddominance>none</fielddominance><colordepth>24</colordepth></samplecharacteristics></format>`;
     const audioFormat = '<format><samplecharacteristics><depth>16</depth><samplerate>48000</samplerate></samplecharacteristics></format>';
-    let cursor = 0;
     const sourceTracks = [];
     const intervals = Array.isArray(exportPlan.keptIntervals) ? exportPlan.keptIntervals : [];
-    const boundaries = [0];
-    intervals.forEach((interval) => boundaries.push(boundaries[boundaries.length - 1]
-      + fcpTimeRange(interval.start, interval.end, exportPlan).duration));
+    // 时间线边界在 ms 域按保留区间长度精确累加，再对每个边界单次取整（floor，
+    // 末边界 ceil 保总长）；媒体、音频、字幕、贴纸由此共享同一帧网格。此前对每段
+    // 保留区间「start floor + end ceil」向外取整再逐段累加帧长，每段最多膨胀 2 帧
+    // 且随空隙数量线性累积，去空隙导出后字幕会越往后越提前。
+    const msBoundaries = [0];
+    intervals.forEach((interval) => msBoundaries.push(
+      msBoundaries[msBoundaries.length - 1] + interval.end - interval.start,
+    ));
+    const boundaries = msBoundaries.map((ms, index) => exportPlanFrame(exportPlan, ms,
+      index === msBoundaries.length - 1 ? 'ceil' : 'floor'));
     const duration = boundaries[boundaries.length - 1];
     intervals.forEach((interval, index) => {
-      const range = fcpTimeRange(interval.start, interval.end, exportPlan);
-      const startMs = cursor * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
-      const endMs = (cursor + range.duration) * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
       sourceTracks.push(fcpClipItem({
         id: `video-clip-${index + 1}`, fileId: 'file-source-video-1', name: `${fileBasename(exportPlan.media.path)} [${index + 1}]`,
         path: exportPlan.media.path, sourceStartMs: interval.start, sourceEndMs: interval.end,
-        startMs, endMs, startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: mediaType, track: 'source', defineFile: index === 0,
+        sourceStartFrame: exportPlanFrame(exportPlan, interval.start, 'floor'),
+        startMs: msBoundaries[index], endMs: msBoundaries[index + 1],
+        startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: mediaType, track: 'source', defineFile: index === 0,
       }));
-      cursor += range.duration;
     });
-    const audioTracks = hasVideo ? intervals.map((interval, index) => {
-      const range = fcpTimeRange(interval.start, interval.end, exportPlan);
-      const startMs = (intervals.slice(0, index).reduce((sum, prior) => sum + fcpTimeRange(prior.start, prior.end, exportPlan).duration, 0)) * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
-      const endMs = startMs + range.duration * 1000 * exportPlan.frameProfile.denominator / exportPlan.frameProfile.numerator;
-      return fcpClipItem({ id: `audio-clip-${index + 1}`, fileId: 'file-source-audio', name: `${fileBasename(exportPlan.media.path)} audio [${index + 1}]`, path: exportPlan.media.path, sourceStartMs: interval.start, sourceEndMs: interval.end, startMs, endMs, startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: 'audio', track: 'source-audio', link: `video-clip-${index + 1}`, defineFile: index === 0 });
-    }) : [];
+    const audioTracks = hasVideo ? intervals.map((interval, index) => fcpClipItem({
+      id: `audio-clip-${index + 1}`, fileId: 'file-source-audio', name: `${fileBasename(exportPlan.media.path)} audio [${index + 1}]`,
+      path: exportPlan.media.path, sourceStartMs: interval.start, sourceEndMs: interval.end,
+      sourceStartFrame: exportPlanFrame(exportPlan, interval.start, 'floor'),
+      startMs: msBoundaries[index], endMs: msBoundaries[index + 1],
+      startFrame: boundaries[index], endFrame: boundaries[index + 1], plan: exportPlan, mediaKind: 'audio', track: 'source-audio', link: `video-clip-${index + 1}`, defineFile: index === 0,
+    })) : [];
     const videoTracks = hasVideo ? [`<track>${sourceTracks.join('')}</track>`] : [];
     const stickerFileIds = new Map();
     const buildStickerTracks = (list, trackPrefix, clipPrefix) => (Array.isArray(list) ? list : [])
