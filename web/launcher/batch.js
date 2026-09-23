@@ -148,8 +148,9 @@
       const actions = document.createElement("div");
       actions.className = "batch-row-actions";
       if (item.result?.jsonPath) actions.append(actionButton("batch_open_project", () => window.MAWLauncher.callBackend("open_file", { path: item.result.jsonPath })));
-      if (item.result?.srtPath || item.result?.jsonPath) {
-        const resultPath = item.result.jsonPath || item.result.srtPath;
+      if (item.result?.videoPath) actions.append(actionButton("batch_open_video", () => window.MAWLauncher.callBackend("open_file", { path: item.result.videoPath })));
+      if (item.result?.srtPath || item.result?.jsonPath || item.result?.videoPath) {
+        const resultPath = item.result.videoPath || item.result.jsonPath || item.result.srtPath;
         actions.append(actionButton("batch_open_folder", () => window.MAWLauncher.callBackend("open_containing_folder", { path: resultPath })));
       }
       if (!state.running) {
@@ -321,7 +322,7 @@
       const item = findItem(event);
       if (!item) return;
       const nested = event.item && typeof event.item === "object" ? event.item : {};
-      item.result = event.result || nested.result || ((event.srtPath || event.jsonPath || event.htmlPath) ? { srtPath: event.srtPath || "", jsonPath: event.jsonPath || "", htmlPath: event.htmlPath || "" } : item.result);
+      item.result = event.result || nested.result || ((event.srtPath || event.jsonPath || event.htmlPath || event.videoPath) ? { srtPath: event.srtPath || "", jsonPath: event.jsonPath || "", htmlPath: event.htmlPath || "", videoPath: event.videoPath || "" } : item.result);
       const detail = event.error || event.detail || nested.error || nested.detail || "";
       const code = event.code || nested.code || "";
       const nextStatus = event.status || nested.status || (item.result ? "done" : item.status);
@@ -344,7 +345,8 @@
         const srtPath = outcome.srtPath || outcome.srt_path || result.srtPath || result.srt_path || "";
         const jsonPath = outcome.jsonPath || outcome.json_path || outcome.projectPath || outcome.project_path || result.jsonPath || result.json_path || result.projectPath || result.project_path || "";
         const htmlPath = outcome.htmlPath || outcome.html_path || result.htmlPath || result.html_path || "";
-        if (srtPath || jsonPath || htmlPath) item.result = { srtPath, jsonPath, htmlPath };
+        const videoPath = outcome.videoPath || outcome.video_path || result.videoPath || result.video_path || "";
+        if (srtPath || jsonPath || htmlPath || videoPath) item.result = { srtPath, jsonPath, htmlPath, videoPath };
         item.status = outcome.status || item.status;
         setItemDetail(item, outcome.error || outcome.detail || "", outcome.code || "");
       });
