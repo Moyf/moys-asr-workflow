@@ -3830,6 +3830,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             str(payload.get("qwenAudioHotwordWeight") or "").strip()
             if model.supports_hotwords else ""
         ),
+        qwen_keep_dialect=bool(payload.get("qwenKeepDialect")) and model.supports_keep_dialect,
         soniox_context=soniox_context,
         region=region,
         workspace_id=workspace_id,
@@ -4498,6 +4499,7 @@ def _model_payload(
         "supportsContext": model.supports_context,
         "supportsHotwords": model.supports_hotwords,
         "supportsVocabulary": model.supports_vocabulary,
+        "supportsKeepDialect": model.supports_keep_dialect,
         "supportsWordTimestamps": model.supports_word_timestamps,
         "deviceSupport": model.device_support,
         "resourceLevel": model.resource_level,

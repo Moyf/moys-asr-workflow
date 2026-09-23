@@ -36,6 +36,7 @@ MAW 本身不托管转写服务。你选择的服务商会直接接收待转写�
 
 - Launcher 会在模型说明中显示云端 API 的参考价格；价格、免费额度、区域和套餐会变化，请以服务商页面为准。
 - 阿里云百炼的 `qwen-audio-3.0-asr-flash-filetrans`、`qwen3-asr-flash-filetrans` 和 `fun-asr`：北京为 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡为 ¥0.00026 / 秒（约 ¥0.936 / 小时），音频输出免费；详见[阿里云模型定价](https://help.aliyun.com/zh/model-studio/model-pricing)。
+- 阿里云百炼的 `qwen-audio-3.1-asr-flash-filetrans` 按 Token 计费：北京输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token（与 3.0 的按秒计费不同，实际费用与音频转 Token 的速率有关）；详见[阿里云模型定价](https://help.aliyun.com/zh/model-studio/model-pricing)。
 - Soniox `stt-async-v5`：异步文件转写约 $0.10 / 小时，实际按 token 计费；详见 [Soniox Pricing](https://soniox.com/pricing)。
 - 豆包按音频 token 计量（约 6.25 token/秒），价格以[火山引擎语音控制台](https://console.volcengine.com/speech/new/experience/asr)为准。
 - 腾讯云 `16k_zh_en_2.0`：录音文件识别大模型 2.0 后付费 ¥0.8 / 小时，60 小时预付包 ¥48；详见[腾讯云语音识别计费概述](https://cloud.tencent.com/document/product/1093/35686)。
