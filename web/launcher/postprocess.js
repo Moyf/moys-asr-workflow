@@ -62,9 +62,6 @@
   let audioProbeRequest = 0;
   let scriptPreviewRequest = 0;
   let splitPreviewRequest = 0;
-  let srtBurnStyleName = "";
-  let srtBurnStyleResolved = false;
-  let assStyleLibraryRequest = 0;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -545,7 +542,6 @@
     name.textContent = hasPath ? fileName(path) : t("toolbox_input_empty");
     name.title = path;
     name.classList.toggle("empty", !hasPath);
-    $("toolboxBurnSubtitleHint")?.classList.toggle("hidden", hasPath);
   }
 
   function syncAlignmentName(pathId, nameId) {
@@ -1993,34 +1989,56 @@
     return postprocessErrorText(result);
   }
 
-  function renderBurnSubtitleStyle() {
-    const element = $("toolboxBurnSubtitleStyle");
-    if (!element) return;
-    // 首次读取完成前保持占位，避免闪现「无法读取」造成误解。
-    if (!srtBurnStyleResolved) return;
-    const styleText = srtBurnStyleName
-      ? t("toolbox_burn_subtitle_style").replace("{name}", srtBurnStyleName)
-      : t("toolbox_burn_subtitle_style_unavailable");
-    element.textContent = `${styleText} ${t("toolbox_burn_subtitle_ass_style")}`;
+  function burnCrfValue() {
+    const crf = Number($("toolboxBurnCrf").value.trim());
+    return Number.isInteger(crf) && crf >= 0 && crf <= 51 ? crf : null;
   }
 
-  async function refreshBurnSubtitleStyle() {
-    const requestId = ++assStyleLibraryRequest;
-    const element = $("toolboxBurnSubtitleStyle");
-    if (element) element.textContent = t("toolbox_burn_subtitle_style_loading");
+  function burnEncodingPayload() {
+    return { crf: burnCrfValue(), preset: $("toolboxBurnPreset").value, audioBitrate: $("toolboxBurnAudioBitrate").value };
+  }
+
+  function validateBurnEncoding() {
+    if (burnCrfValue() !== null) {
+      setFieldError("toolboxBurnCrf", "");
+      return true;
+    }
+    const message = t("toolbox_burn_crf_invalid");
+    setFieldError("toolboxBurnCrf", message);
+    setResult(message, "error");
+    return false;
+  }
+
+  async function restoreBurnSubtitleSettings() {
     let result = null;
     try {
-      result = await bridge("get_ass_style_library");
+      result = await bridge("get_burn_subtitle_settings");
     } catch (_) {
       result = null;
     }
-    if (requestId !== assStyleLibraryRequest) return;
-    const styles = Array.isArray(result?.styles) ? result.styles : [];
-    const styleId = result?.assignments?.srtBurnStyleId || "default";
-    const style = styles.find((candidate) => candidate?.id === styleId);
-    srtBurnStyleName = style?.name ? String(style.name) : "";
-    srtBurnStyleResolved = true;
-    renderBurnSubtitleStyle();
+    if (!result?.ok) return;
+    // CRF 为空串时不能 Number("") 成 0，必须跳过、保留界面默认值 18。
+    const crfText = String(result.crf ?? "").trim();
+    if (crfText) {
+      const crf = Number(crfText);
+      if (Number.isInteger(crf) && crf >= 0 && crf <= 51) $("toolboxBurnCrf").value = String(crf);
+    }
+    if (result.preset) $("toolboxBurnPreset").value = String(result.preset);
+    if (result.audioBitrate) $("toolboxBurnAudioBitrate").value = String(result.audioBitrate);
+  }
+
+  async function saveBurnSubtitleSettings() {
+    if (busy) return;
+    if (!validateBurnEncoding()) return;
+    const button = $("saveBurnSubtitleSettings");
+    button.disabled = true;
+    try {
+      const result = await bridge("save_burn_subtitle_settings", burnEncodingPayload());
+      const status = $("toolboxBurnSettingsStatus");
+      if (status) status.textContent = result.ok ? t("toolbox_burn_settings_saved") : postprocessErrorText(result);
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function runBurnSubtitle() {
@@ -2043,18 +2061,15 @@
       setResult(message, "error");
       return;
     }
+    if (!validateBurnEncoding()) return;
     setFieldError("toolboxUtilityMediaPath", "");
     setFieldError("toolboxBurnSubtitlePath", "");
     mediaToolRunning = true;
     mediaToolCancelling = false;
     setBusy(true, "toolbox_status_burning");
     try {
-      const result = await bridge("run_burn_subtitles", { mediaPath, subtitlePath });
+      const result = await bridge("run_burn_subtitles", { mediaPath, subtitlePath, ...burnEncodingPayload() });
       if (result.ok) {
-        if (result.srtStyleName) {
-          srtBurnStyleName = String(result.srtStyleName);
-          renderBurnSubtitleStyle();
-        }
         utilityMediaManual = true;
         $("toolboxUtilityMediaPath").value = result.mediaPath;
         syncPaths();
@@ -2155,7 +2170,7 @@
     renderAlignmentAction();
     renderMediaToolAction();
     initializeAutoPostprocess();
-    void refreshBurnSubtitleStyle();
+    void restoreBurnSubtitleSettings();
   }
 
   $("toolboxFab").addEventListener("click", () => {
@@ -2214,6 +2229,7 @@
   $("runFixedProcess").addEventListener("click", runFixedProcess);
   $("runFfconcatRebuild").addEventListener("click", runFfconcat);
   $("runBurnSubtitle").addEventListener("click", runBurnSubtitle);
+  $("saveBurnSubtitleSettings").addEventListener("click", saveBurnSubtitleSettings);
   $("runExtractAudio").addEventListener("click", runExtractAudio);
   $("stopToolboxMedia").addEventListener("click", () => { void stopMediaTool(); });
   $("pickPostprocessFfconcat").addEventListener("click", async () => {
@@ -2469,7 +2485,6 @@
     renderMediaToolAction();
     renderAutoPostprocessState();
     updateBackfillLabels();
-    renderBurnSubtitleStyle();
   };
   window.MAWLauncher.onProjectPathChanged = () => {
     if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();

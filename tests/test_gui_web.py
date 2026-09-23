@@ -1923,9 +1923,52 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(burn.call_args.kwargs["ffmpeg_path"], ffmpeg)
         self.assertEqual(burn.call_args.args[0].srt_style["fontName"], "Microsoft YaHei")
+        self.assertIsNone(burn.call_args.args[0].crf)
+        self.assertIsNone(burn.call_args.args[0].preset)
+        self.assertIsNone(burn.call_args.args[0].audio_bitrate)
         self.assertEqual(result["srtStyleName"], "SRT 默认")
         self.assertIsInstance(burn.call_args.kwargs["cancel_event"], threading.Event)
         self.assertEqual(result["mediaPath"], str(output.resolve()))
+
+    def test_burn_subtitle_bridge_forwards_encoding_overrides(self) -> None:
+        media = self.root / "clip.mp4"
+        subtitle = self.root / "clip.srt"
+        ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        _ = media.write_bytes(b"media")
+        _ = subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+        _ = ffmpeg.write_bytes(b"exe")
+        output = self.root / "clip.subtitled.mp4"
+
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve())
+                result = self.api.run_burn_subtitles({"mediaPath": str(media), "subtitlePath": str(subtitle), "crf": "23", "preset": "fast", "audioBitrate": "128k"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(burn.call_args.args[0].crf, 23)
+        self.assertEqual(burn.call_args.args[0].preset, "fast")
+        self.assertEqual(burn.call_args.args[0].audio_bitrate, "128k")
+
+    def test_save_and_get_burn_subtitle_settings_round_trip(self) -> None:
+        # 系统环境变量优先于 .env；置空相关键，保证断言的是本次写入的值。
+        with mock.patch.dict(
+            os.environ,
+            {"MAW_GUI_BURN_CRF": "", "MAW_GUI_BURN_PRESET": "", "MAW_GUI_BURN_AUDIO_BITRATE": ""},
+            clear=False,
+        ):
+            result = self.api.save_burn_subtitle_settings({"crf": "20", "preset": "slow", "audioBitrate": "160k"})
+            self.assertTrue(result["ok"])
+            stored = self.api.get_burn_subtitle_settings({})
+            self.assertEqual(stored, {"ok": True, "crf": "20", "preset": "slow", "audioBitrate": "160k"})
+
+            invalid = self.api.save_burn_subtitle_settings({"crf": "99", "preset": "slow", "audioBitrate": "160k"})
+            self.assertFalse(invalid["ok"])
+            self.assertEqual(invalid["code"], "burn_settings_invalid")
+            self.assertEqual(invalid["field"], "toolboxBurnCrf")
+            invalid_preset = self.api.save_burn_subtitle_settings({"crf": "20", "preset": "nope", "audioBitrate": "160k"})
+            self.assertFalse(invalid_preset["ok"])
+            invalid_bitrate = self.api.save_burn_subtitle_settings({"crf": "20", "preset": "slow", "audioBitrate": "500k"})
+            self.assertFalse(invalid_bitrate["ok"])
 
     def test_launcher_exposes_shared_ass_style_library(self) -> None:
         library = {

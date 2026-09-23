@@ -661,11 +661,46 @@
             <input id="toolboxBurnSubtitlePath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_burn_subtitle_placeholder" placeholder="选择或拖入 .srt / .ass / .ssa 字幕">
             <button id="pickToolboxBurnSubtitle" class="ghost" type="button" data-i18n="choose">选择</button>
           </div>
-          <p id="toolboxBurnSubtitleHint" class="hint" data-i18n="toolbox_burn_subtitle_input_hint">默认跟随当前的 SRT 输出，也支持手动选择 ASS / SSA。</p>
-          <p id="toolboxBurnSubtitleStyle" class="hint" aria-live="polite"></p>
+          <p class="hint" data-i18n="toolbox_burn_subtitle_style_hint">选择 SRT 字幕时，会使用 ASS 样式库中的「SRT 烧录样式」对应的样式；选择 ASS 字幕时，使用 ASS 字幕自身的样式。</p>
           <p id="toolboxBurnSubtitlePathError" class="field-error"></p>
         </div>
-        <p class="toolbox-notice" data-i18n="toolbox_ready">选择工具后运行；始终生成新文件，不覆盖源文件。</p>
+        <div class="toolbox-grid">
+          <div class="field">
+            <label for="toolboxBurnCrf" data-i18n="toolbox_burn_crf">画质 CRF</label>
+            <input id="toolboxBurnCrf" type="number" min="0" max="51" step="1" value="18" autocomplete="off">
+            <p class="hint" data-i18n="toolbox_burn_crf_hint">数值越小画质越高、文件越大；常用 16–23，默认 18。</p>
+            <p id="toolboxBurnCrfError" class="field-error"></p>
+          </div>
+          <div class="field">
+            <label for="toolboxBurnPreset" data-i18n="toolbox_burn_preset">编码预设</label>
+            <select id="toolboxBurnPreset">
+              <option value="veryfast">veryfast</option>
+              <option value="fast">fast</option>
+              <option value="medium" selected>medium</option>
+              <option value="slow">slow</option>
+              <option value="veryslow">veryslow</option>
+            </select>
+            <p class="hint" data-i18n="toolbox_burn_preset_hint">预设越慢压缩率越高、耗时越长；一般保持 medium。</p>
+          </div>
+          <div class="field">
+            <label for="toolboxBurnAudioBitrate" data-i18n="toolbox_burn_audio_bitrate">音频码率</label>
+            <select id="toolboxBurnAudioBitrate">
+              <option value="96k">96 kbps</option>
+              <option value="128k">128 kbps</option>
+              <option value="160k">160 kbps</option>
+              <option value="192k" selected>192 kbps</option>
+              <option value="224k">224 kbps</option>
+              <option value="256k">256 kbps</option>
+              <option value="320k">320 kbps</option>
+            </select>
+            <p class="hint" data-i18n="toolbox_burn_audio_bitrate_hint">码率越高音质越好、文件越大；默认 192k。</p>
+          </div>
+          <div class="field">
+            <label class="field-spacer" aria-hidden="true">&nbsp;</label>
+            <button id="saveBurnSubtitleSettings" class="ghost" type="button" data-i18n="toolbox_burn_save_defaults">保存为默认参数</button>
+            <p id="toolboxBurnSettingsStatus" class="hint" aria-live="polite"></p>
+          </div>
+        </div>
       </section>
 
       <section id="toolboxExtractAudioPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxExtractAudioTab">
