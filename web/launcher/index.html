@@ -49,8 +49,9 @@
         <button id="settingsButton" class="ghost small" type="button" aria-label="settings" data-i18n-title="settings_title" title="配置">⚙️<span data-i18n="settings_button">设置</span><span id="settingsDot" class="settings-dot hidden"></span></button>
       </nav>
       <div class="hero-home-links">
-        <button id="homeLink" class="text-link" type="button" data-i18n="project_home">项目官网</button>
+        <button id="homeLink" class="text-link" type="button" data-i18n="github_link">Github</button>
         <button id="tutorialVideoLink" class="text-link" type="button" data-i18n="tutorial_video">教程视频</button>
+        <button id="supportLink" class="text-link" type="button" data-i18n="support_link">支持 ❤️</button>
       </div>
     </header>
 
@@ -1328,6 +1329,21 @@
       <div class="modal-actions">
         <button id="batchConfirmYes" class="primary" type="button" data-i18n="batch_confirm_yes">是</button>
         <button id="batchConfirmNo" class="ghost" type="button" data-i18n="batch_confirm_no">否</button>
+      </div>
+    </section>
+  </div>
+  <div id="supportModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="supportTitle">
+    <div id="supportBackdrop" class="modal-backdrop"></div>
+    <section class="modal-card support-card">
+      <header class="modal-header">
+        <h2 id="supportTitle" data-i18n="support_title">支持 MAW</h2>
+        <button id="supportClose" class="ghost small" type="button" aria-label="close">×</button>
+      </header>
+      <div class="support-body">
+        <img class="support-qr" src="../../assets/support-qr.png" alt="MAW 赞助二维码">
+        <p class="support-desc" data-i18n="support_desc">如果 MAW 对你有帮助，可以前往B站小店赞助！</p>
+        <p class="support-note" data-i18n="support_thanks">软件免费使用，但我为此花了非常多的心血 ❤️</p>
+        <p class="support-note" data-i18n="support_better">你的支持将帮助 Moy 把它做得更好  :)</p>
       </div>
     </section>
   </div>

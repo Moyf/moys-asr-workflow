@@ -2724,6 +2724,38 @@ textarea::placeholder {
   gap: 8px;
 }
 
+.support-card {
+  width: min(360px, calc(100vw - 32px));
+}
+
+.support-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.support-qr {
+  width: 220px;
+  height: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.support-desc {
+  margin: 0;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.support-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .modal-header {
   flex: 0 0 auto;
   display: flex;

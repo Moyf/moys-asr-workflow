@@ -4898,18 +4898,26 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('server_disconnected', script)
         self.assertNotIn('state.serverRunning ? t("server_stop")', script)
 
-    def test_launcher_hero_links_include_project_home_and_tutorial_video(self) -> None:
+    def test_launcher_hero_links_include_github_tutorial_and_support(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
         self.assertIn('<div class="hero-home-links">', page)
-        self.assertIn('id="homeLink" class="text-link" type="button" data-i18n="project_home">项目官网', page)
+        self.assertIn('id="homeLink" class="text-link" type="button" data-i18n="github_link">Github', page)
         self.assertIn('id="tutorialVideoLink" class="text-link" type="button" data-i18n="tutorial_video">教程视频', page)
+        self.assertIn('id="supportLink" class="text-link" type="button" data-i18n="support_link">支持 ❤️', page)
         self.assertLess(page.index('id="homeLink"'), page.index('id="tutorialVideoLink"'))
+        self.assertLess(page.index('id="tutorialVideoLink"'), page.index('id="supportLink"'))
+        self.assertIn('github_link: "Github"', script)
         self.assertIn('tutorial_video: "教程视频"', script)
         self.assertIn('tutorial_video: "Tutorial video"', script)
+        self.assertIn('support_link: "支持 ❤️"', script)
+        self.assertIn('support_link: "Support ❤️"', script)
         self.assertIn('const TUTORIAL_VIDEO_URL = "https://www.bilibili.com/video/BV1S9bZ6pEHg";', script)
         self.assertIn("$(\"tutorialVideoLink\").addEventListener(\"click\", () => bridge(\"open_url\", { url: TUTORIAL_VIDEO_URL }));", script)
+        self.assertIn('id="supportModal" class="modal hidden"', page)
+        self.assertIn('src="../../assets/support-qr.png"', page)
+        self.assertIn('support_desc: "如果 MAW 对你有帮助，可以前往B站小店赞助！"', script)
 
     def test_workspace_requests_sync_server_config_from_response(self) -> None:
         script = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
