@@ -124,15 +124,16 @@ class RecognitionPresetTests(unittest.TestCase):
         path = self.root / 'preset.json'
         write_preset(path, self.options)
         original = path.read_bytes()
-        original_open = Path.open
+        original_open = tempfile.NamedTemporaryFile
 
-        def failing_open(candidate, *args, **kwargs):
-            stream = original_open(candidate, *args, **kwargs)
-            if args and args[0] == 'w':
+        def failing_open(*args, **kwargs):
+            stream = original_open(*args, **kwargs)
+            if kwargs.get('mode') == 'w':
                 def partial_write(text):
                     stream.write(text[:10])
                     raise OSError('Disk full')
                 wrapper = Mock(wraps=stream)
+                wrapper.name = stream.name
                 wrapper.write.side_effect = partial_write
                 context = Mock()
                 context.__enter__ = Mock(return_value=wrapper)
@@ -141,7 +142,7 @@ class RecognitionPresetTests(unittest.TestCase):
             return stream
 
         for failure in (
-            patch.object(Path, 'open', failing_open),
+            patch('maw.asr_presets.tempfile.NamedTemporaryFile', failing_open),
             patch('maw.asr_presets.os.fsync', side_effect=OSError('Flush failed')),
             patch('maw.asr_presets.os.replace', side_effect=PermissionError('File locked')),
         ):

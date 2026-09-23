@@ -56,11 +56,23 @@ def write_preset(path: Path, options: object) -> None:
     text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
     if len(text.encode("utf-8")) > 4_000_000:
         raise ValueError("Preset is too large")
-    # Keep the existing preset intact until the replacement is fully written.
-    with tempfile.TemporaryDirectory(prefix=".asr-preset-", dir=path.parent) as directory:
-        temporary = Path(directory) / "preset.json"
-        with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+    # Close the same-directory temporary file before replacing (Windows).
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="\n",
+            prefix=".asr-preset-", suffix=".tmp", dir=path.parent, delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
+    except BaseException:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                # Preserve the original save error if cleanup also fails.
+                pass
+        raise

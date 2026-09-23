@@ -35,6 +35,8 @@ test('recognition presets restore all fields without changing the model', async 
     await page.reload();
     await page.waitForFunction(() => window.MAWLauncher?.config?.providers?.length);
     const originalModel = await page.locator('#model').inputValue();
+    assert.ok((await page.locator('#modelNote .model-note-text').textContent()).length);
+    assert.match(await page.locator('#modelNote .price-note').textContent(), /阿里云百炼参考价/);
     assert.match(await page.locator('#advancedCard').getAttribute('class'), /collapsed/);
     await page.locator('#saveAsrPreset').click();
     await page.waitForFunction(() => window.savedPreset);
@@ -60,6 +62,9 @@ test('recognition presets restore all fields without changing the model', async 
     assert.equal(await page.locator('#qwenAudioKeepDialect').isChecked(), true);
     assert.match(await page.locator('#asrPresetStatus').textContent(), /热词文件不存在/);
     await page.locator('#provider').selectOption('soniox');
+    assert.deepEqual(await page.locator('#language').evaluate(el =>
+      Array.from(el.selectedOptions, option => option.value).sort()), ['en', 'zh']);
+    assert.match(await page.locator('#modelNote .price-note').textContent(), /Soniox 参考价/);
     await page.locator('#saveAsrPreset').click();
     await page.waitForFunction(() => document.querySelector('#asrPresetStatus').textContent.startsWith('预设已保存'));
     assert.deepEqual(await page.evaluate(() => window.savedPreset), await page.evaluate(() => window.expectedPreset));
