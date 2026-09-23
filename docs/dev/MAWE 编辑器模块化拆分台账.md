@@ -432,3 +432,52 @@ Batch 2 执行备注：
   拼回逐字节不变"处理，段间顺序即注册顺序。
 - e2e spec 经 `page.evaluate` 直访页面全局：模块化后需 `fix-e2e-globals.mjs`
   按导出表 AST 级改写（预计数百处）。
+
+## 台账遗留 3 项处置与限定器工具链加固（2026-09-20，drunkenQCat 协作分支）
+
+第五次同步「下一 agent 待办」逐项处置，全部有实测证据：
+
+### ① 遗留 3 项 ASS 域 e2e 回归 → 1 项已修复，2 项为 main 侧基线失败
+
+纯 main 对照法复跑（MAW_E2E_PYTHON 钉主仓 venv，chromium 1.62.0，workers=1）：
+
+| 用例 | 本树 8797dec7+ | 纯 main 42656d84 | 纯 main af4fa7c1（同步基点） | 结论 |
+| --- | --- | --- | --- | --- |
+| localizes approved scanned font labels（multi-subtitle.spec） | ✅ pass | — | — | fc51a9d6 字体域修复已生效，**关闭** |
+| merge join hint shows detected main type（cue-color-filter.spec:438） | ❌ | ❌ | ❌ | **main 侧 spec 先行**：spec 期望「多重字幕的设置」新文案，main 自己的 template:1341-1342 仍是「双语字幕的设置」旧文案，两树同源同断言失败，**非本 PR 回归，关闭**（修复归属 main） |
+| keeps ASS style actions…（ass-export.spec） | ❌ | ❌ | ❌ | **main 侧 spec/实现不一致**：spec 期望首张 assignment-card 是烧录字幕文案，DOM 首张是「ASS 导出使用此方案及其动画；双语字幕的副字幕样式…」卡片，两树同断言失败，**非本 PR 回归，关闭**（台账原记「纯 main 上通过」不成立，推测当时基线失败清单未随 spec 更新刷新） |
+
+即第五次同步后「仅我们失败 = 3」实际为「= 1」，且该 1 项已随 fc51a9d6 修复。
+
+### ② + ③ 限定器工具链 scope 根治（两提交）
+
+- `70fb9722`：ns-rewrite-editor 换用 eslint-scope 作用域内核（globalScope.through
+  为权威未解析集），根治 for-of 头/catch 参数/嵌套块 var 提升三类局部名误改写；
+  顺带修复 shorthand 双重改写损坏（acorn shorthand key/value 为两个独立节点，
+  旧判定 key===value 恒 false，同 span 叠加编辑产出语法合法但语义损坏的成员链，
+  重放入口实测 8 处）。重放入口 A/B：旧 2459 / 新 2451 处，8 处差异全部为旧版
+  shorthand 损坏。坑：eslint-scope 的 ecmaVersion 必须传数字，"latest" 会静默
+  退回 ES5 语义。
+- `7f720846`：抽出共享核 scope-core.mjs；merge-flow 的 qualifyDeclaration 增加
+  moduleLocalNames 豁免（模块 IIFE 顶层已有绑定的名字不跨模块限定，即遗留 ②
+  的隐患本体），qualifyEntry 换核后嵌套参数/局部遮蔽不再误限定；merge-flow
+  加 import 守卫并导出限定器。新增 22 个作用域回归用例，全量 node 342 pass。
+  冒烟：resolve --dry-run --theirs origin/main → REPLAY 22 / CONFLICT 0。
+
+### 工具链汇合（2026-09-22，合并上游 57ad2403 后）
+
+上游 238fb6a7 与协作分支 7f720846 是同一病灶（MAWE_I18N.start 误限定）
+的独立修复，解冲突取长补短后（2721ecc9）：
+
+- 限定器保留 eslint-scope 精确实现：平面/全文件豁免在同一文件存在同名
+  绑定时会压制所有真限定（23k 行入口里 `start` 这类名字几乎必现局部），
+  scope-core 按词法解析后该限定的照常限定、该保持的保持；shorthand
+  key===value 误判随文本特判一并移除（该形态会触发 applyEdits 的
+  overlapping edits 报错，工具中断）。
+- 吸收上游 moduleBaseSource（模块底稿优先取干净合并的工作区版本），
+  该修复协作分支此前没有。
+- 汇合后验证：node 全量 360 pass / 0 fail；npm run typecheck 通过；
+  ns-rewrite v2 在第六次同步后的入口上改写 0 处、自检通过；此前跟踪的
+  3 项 e2e（join hint / ASS style actions / 字体 label）复跑全部通过
+  ——其中前两项经纯 main 对照法证实为 main 侧基线失败，已由 main
+  feaf10e4 修复并随同步进入本分支，定责闭环。

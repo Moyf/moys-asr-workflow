@@ -1,151 +1,108 @@
-// 作用域感知的 NS 改写：editor.js 中裸引用的已迁移符号 → NS.name。
-// acorn 解析 + 手工作域链（函数/块级 let/const/var/参数/类名）。
-// 用法: node scripts/refactor-tools/ns-rewrite-editor.mjs
+// 作用域感知的 NS 改写 v2：editor.js 中裸引用的已迁移符号 → NS.name。
+//
+// v2 内核：eslint-scope 作用域引擎（共享核见 scripts/refactor-tools/scope-core.mjs）
+// 替代手工作域链。旧版手工遍历只覆盖 Program/Function/Block 三种作用域，
+// for 头部声明、catch 参数、嵌套块内 var 提升等绑定形态漏收，导致局部名
+// 被误 NS 化（第五次 main 同步台账遗留 3 项之根源，数据修复三轮后改为
+// 工具级根治）。未解析引用以 globalScope.through 为权威集合；本工具自身
+// 只保留「导出面匹配 + 改写」两件事。
+//
+// 附带：
+//   - 改写决策报告（--report <path>）：每次改写的名字/位置/形态，供合并期审计；
+//   - 幂等自检：输出重解析后，未解析引用 ∩ 导出面 必须为空；
+//   - --diff 输出统一 diff 预览（jsdiff），便于人工复核。
+//
+// 用法: node scripts/refactor-tools/ns-rewrite-editor.mjs [--report <path>] [--diff]
+
 import fs from "node:fs";
 import path from "node:path";
-import * as acorn from "acorn";
-import * as walk from "acorn-walk";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import MagicString from "magic-string";
+import { createTwoFilesPatch } from "diff";
+import { selfCheck, unresolvedRefs } from "./scope-core.mjs";
 
-const root = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..");
-const webDir = path.join(root, "web");
-
-// ---- 导出表: name -> ns ----
-const nameNs = new Map();
-for (const f of fs.readdirSync(webDir)) {
-  if (!f.startsWith("editor-") || !f.endsWith(".js") || f === "editor.js") continue;
-  const text = fs.readFileSync(path.join(webDir, f), "utf8");
-  const m = text.match(/global\.(\w+) = Object\.freeze\(\{([\s\S]*?)\n  \}\);/);
-  if (!m) continue;
-  const ns = m[1];
-  for (const line of m[2].split("\n")) {
-    let name = line.match(/^\s{4}(\w+),?\s*$/)?.[1];
-    if (!name) name = line.match(/^\s{4}get (\w+)\(/)?.[1];
-    if (!name) name = line.match(/^\s{4}set (\w+)\(/)?.[1];
-    if (name) nameNs.set(name, ns);
-  }
-}
-console.log(`导出符号 ${nameNs.size} 个`);
-
-const editorPath = path.join(webDir, "editor.js");
-const source = fs.readFileSync(editorPath, "utf8");
-const ast = acorn.parse(source, { ecmaVersion: "latest" });
-
-const edits = [];
-
-function patternNames(n, scope) {
-  if (!n) return;
-  if (n.type === "Identifier") { scope.add(n.name); return; }
-  // 只收集绑定位置；默认值表达式是引用而非绑定，必须排除，
-  // 否则 `kind = currentCuePanelKind` 这类参数默认值会被误当绑定而漏改写。
-  if (n.type === "AssignmentPattern") { patternNames(n.left, scope); return; }
-  if (n.type === "RestElement") { patternNames(n.argument, scope); return; }
-  walk.full(n, (child, _state, type) => {
-    if (type === "Identifier") scope.add(child.name);
-  });
-}
-
-function collectScopeBindings(stmts, scope) {
-  for (const n of stmts) {
-    if (n.type === "VariableDeclaration") {
-      for (const d of n.declarations) patternNames(d.id, scope);
-    } else if ((n.type === "FunctionDeclaration" || n.type === "ClassDeclaration") && n.id) {
-      scope.add(n.id.name);
+// ---- 导出表: name -> ns（沿用模块文件 global.NS = Object.freeze({...}) 的格式契约） ----
+export function buildExportTable(moduleTexts) {
+  const nameNs = new Map();
+  for (const text of moduleTexts) {
+    const m = text.match(/global\.(\w+) = Object\.freeze\(\{([\s\S]*?)\n  \}\);/);
+    if (!m) continue;
+    const ns = m[1];
+    for (const line of m[2].split("\n")) {
+      let name = line.match(/^\s{4}(\w+),?\s*$/)?.[1];
+      if (!name) name = line.match(/^\s{4}get (\w+)\(/)?.[1];
+      if (!name) name = line.match(/^\s{4}set (\w+)\(/)?.[1];
+      if (name) nameNs.set(name, ns);
     }
   }
+  return nameNs;
 }
 
-// 双遍历：先给所有节点挂 _parent，再作用域遍历
-(function attachParent(node, parent) {
-  if (!node || typeof node.type !== "string") return;
-  node._parent = parent;
-  for (const key of Object.keys(node)) {
-    if (["loc", "range", "start", "end", "_parent"].includes(key)) continue;
-    const v = node[key];
-    if (Array.isArray(v)) {
-      for (const c of v) { if (c && typeof c.type === "string") attachParent(c, node); }
-    } else if (v && typeof v.type === "string") {
-      attachParent(v, node);
-    }
-  }
-})(ast, null);
+function lineOf(source, pos) {
+  return source.slice(0, pos).split("\n").length;
+}
 
-function visit(node, scope) {
-  if (!node || typeof node.type !== "string") return;
-  switch (node.type) {
-    case "Program": {
-      const s = new Set(scope);
-      collectScopeBindings(node.body, s);
-      for (const stmt of node.body) visit(stmt, s);
-      return;
-    }
-    case "FunctionDeclaration":
-    case "FunctionExpression":
-    case "ArrowFunctionExpression": {
-      const s = new Set(scope);
-      if (node.id) s.add(node.id.name);
-      for (const p of node.params ?? []) {
-        patternNames(p, s);
-        // 默认值表达式是运行时引用，必须继续遍历改写（解构绑定名已在作用域内）。
-        if (p.type !== "Identifier") visit(p, s);
-      }
-      if (node.body) {
-        collectScopeBindings(node.body.type === "BlockStatement" ? node.body.body : [], s);
-        visit(node.body, s);
-      }
-      return;
-    }
-    case "BlockStatement": {
-      const s = new Set(scope);
-      collectScopeBindings(node.body, s);
-      for (const stmt of node.body) visit(stmt, s);
-      return;
-    }
-    case "Identifier": {
-      const parent = node._parent;
-      const isShorthand = parent && parent.type === "Property" && parent.shorthand
-        && parent.key === node && parent.value === node;
-      const isPropKey = parent && ((parent.type === "Property" && parent.key === node && !parent.computed && !parent.shorthand)
-        || (parent.type === "MemberExpression" && parent.property === node && !parent.computed));
-      const isDeclPos = parent && ((parent.type === "VariableDeclarator" && parent.id === node)
-        || (parent.type === "FunctionDeclaration" && parent.id === node)
-        || ((parent.type === "FunctionDeclaration" || parent.type === "FunctionExpression" || parent.type === "ArrowFunctionExpression") && (parent.params ?? []).includes(node))
-        || (parent.type === "CatchClause" && parent.param === node)
-        || (parent.type === "AssignmentPattern" && parent.left === node));
-      if (!isPropKey && !isDeclPos && nameNs.has(node.name) && !scope.has(node.name)) {
-        edits.push({
-          start: node.start, end: node.end, name: node.name, ns: nameNs.get(node.name),
-          shorthand: Boolean(isShorthand),
-        });
-      }
-      return;
-    }
-    default: {
-      for (const key of Object.keys(node)) {
-        if (["loc", "range", "start", "end", "_parent"].includes(key)) continue;
-        const v = node[key];
-        if (Array.isArray(v)) {
-          for (const c of v) { if (c && typeof c.type === "string") visit(c, scope); }
-        } else if (v && typeof v.type === "string") {
-          visit(v, scope);
-        }
-      }
-    }
+// ---- 核心：纯函数，可被测试直接驱动 ----
+// 返回 { output, edits, selfCheck }；不改写任何文件。
+export function rewriteSource(source, nameNs) {
+  const ms = new MagicString(source);
+  const edits = [];
+  for (const ref of unresolvedRefs(source)) {
+    const ns = nameNs.get(ref.name);
+    if (!ns) continue; // 真全局（Date/Math/queue…）或不在导出面：跳过
+    const replacement = ref.shorthand ? `${ref.name}: ${ns}.${ref.name}` : `${ns}.${ref.name}`;
+    ms.overwrite(ref.start, ref.end, replacement);
+    edits.push({
+      name: ref.name,
+      ns,
+      line: lineOf(source, ref.start),
+      form: ref.shorthand ? "shorthand" : "reference",
+    });
+  }
+  const output = ms.toString();
+  return { output, edits, selfCheck: selfCheck(output, nameNs) };
+}
+
+export function main(argv) {
+  const reportIdx = argv.indexOf("--report");
+  const reportPath = reportIdx >= 0 ? argv[reportIdx + 1] : null;
+  const wantDiff = argv.includes("--diff");
+
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const webDir = path.join(root, "web");
+
+  const moduleTexts = fs.readdirSync(webDir)
+    .filter((f) => f.startsWith("editor-") && f.endsWith(".js") && f !== "editor.js")
+    .map((f) => fs.readFileSync(path.join(webDir, f), "utf8"));
+  const nameNs = buildExportTable(moduleTexts);
+  console.log(`导出符号 ${nameNs.size} 个`);
+
+  const editorPath = path.join(webDir, "editor.js");
+  const source = fs.readFileSync(editorPath, "utf8");
+  const { output, edits, selfCheck: check } = rewriteSource(source, nameNs);
+
+  fs.writeFileSync(editorPath, output, "utf8");
+  console.log(`改写 ${edits.length} 处`);
+  const byName = new Map();
+  for (const e of edits) byName.set(e.name, (byName.get(e.name) || 0) + 1);
+  console.log([...byName.entries()].sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n}:${c}`).join("  "));
+
+  if (!check.ok) {
+    console.error(`自检失败：输出仍存在未解析的导出面引用 ${check.leftoverNames.join(", ")}`);
+    process.exitCode = 1;
+  } else {
+    console.log("自检通过：输出重解析后未解析引用 ∩ 导出面 = ∅");
+  }
+
+  if (edits.length && wantDiff) {
+    console.log(createTwoFilesPatch("editor.js", "editor.js (rewritten)", source, output, undefined, undefined, { context: 2 }));
+  }
+  if (reportPath) {
+    fs.writeFileSync(reportPath, JSON.stringify({ generatedAt: new Date().toISOString(), edits, selfCheck: check }, null, 2), "utf8");
+    console.log(`决策报告已写入 ${reportPath}`);
   }
 }
-visit(ast, new Set());
 
-finalSort: {
-  edits.sort((a, b) => b.start - a.start);
-}
-let out = source;
-let count = 0;
-for (const e of edits) {
-  const replacement = e.shorthand ? `${e.name}: ${e.ns}.${e.name}` : `${e.ns}.${e.name}`;
-  out = out.slice(0, e.start) + replacement + out.slice(e.end);
-  count += 1;
-}
-fs.writeFileSync(editorPath, out, "utf8");
-console.log(`改写 ${count} 处`);
-const byName = new Map();
-for (const e of edits) byName.set(e.name, (byName.get(e.name) || 0) + 1);
-console.log([...byName.entries()].sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n}:${c}`).join("  "));
+const invokedDirectly = process.argv[1]
+  && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (invokedDirectly) main(process.argv.slice(2));

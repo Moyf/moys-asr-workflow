@@ -2,6 +2,7 @@
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweExportSrt 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+  /** @param {Window & typeof globalThis} global */
 (function initMaweExportSrt(global) {
   'use strict';
 
