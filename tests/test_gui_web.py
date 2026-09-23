@@ -5585,7 +5585,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('new Option(localizedSelectLabel(id, item), item.id)', script)
         self.assertIn('function providerNoteText(providerItem)', script)
         self.assertIn('function modelNoteText(modelItem)', script)
-        self.assertIn('$("modelNote").textContent = modelNoteText(model);', script)
+        self.assertIn('function renderModelNote()', script)
+        self.assertIn('syncLocalModelPath(model); renderModelNote();', script)
+        self.assertIn('"price-note"', script)
         self.assertIn('$("providerNote").textContent = providerNoteText(current);', script)
         self.assertIn('renderServerButton(); refillSelectLabels();', script)
 
