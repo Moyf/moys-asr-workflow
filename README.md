@@ -47,7 +47,7 @@ MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 W
 ## 重要说明
 
 - 选择云端服务转写时，媒体会直接上传到对应服务商；MAW 没有自己的云端服务器，也不会代管 API Key。
-- `.mosp` 工程是字幕真源；SRT 适合普通交付，ASS 使用 Editor「管理 ASS 样式」中的默认输出方案与关联样式，并按工程记录的源视频分辨率设置脚本坐标；Launcher 压制 SRT 时使用单独的 SRT 默认样式。localhost Editor 与 Launcher 共享用户级样式库，便携 `file://` Editor 使用浏览器本地副本；两种字幕格式都不会保留全部字级时间码、波形和其他工程数据。
+- `.mosp` 工程是字幕真源；SRT 适合普通交付，ASS 使用 Editor「管理 ASS 样式」中的默认输出方案与关联样式，并按工程记录的源视频分辨率设置脚本坐标；Launcher 烧录 SRT 时使用单独的 SRT 默认样式。localhost Editor 与 Launcher 共享用户级样式库，便携 `file://` Editor 使用浏览器本地副本；两种字幕格式都不会保留全部字级时间码、波形和其他工程数据。
 - 费用、数据保留和服务可用性以服务商当前政策为准，详见[ASR 服务与配置](docs/PROVIDERS.md)。
 - [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
 
