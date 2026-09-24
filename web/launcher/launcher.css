@@ -3383,5 +3383,66 @@ select[multiple] option {
 /* Keep preset actions accessible when advanced options are collapsed. */
 .advanced-header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .advanced-header .accordion-header { width: auto; flex: 1; min-width: max-content; }
-.advanced-preset-actions { display: flex; gap: 8px; margin-left: auto; }
+.advanced-preset-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-left: auto; min-width: 0; }
+.asr-preset-current { display: inline-flex; align-items: baseline; gap: 4px; max-width: min(44vw, 440px); color: var(--text-secondary); font-size: 12px; }
+#currentAsrPresetName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#currentAsrPresetName.preset-is-modified { font-style: italic; }
+#currentAsrPresetModified { color: var(--amber); font-style: italic; }
 #asrPresetStatus { overflow-wrap: anywhere; }
+
+#asrPresetModal { overflow: hidden; overscroll-behavior: contain; }
+.asr-preset-modal-card { width: min(760px, calc(100vw - 48px)); height: min(600px, calc(100dvh - 48px)); max-height: calc(100dvh - 48px); }
+.asr-preset-toolbar { display: flex; gap: 8px; flex: 0 0 auto; }
+.asr-preset-toolbar input { min-width: 0; flex: 1 1 auto; }
+#refreshAsrPresets { flex: 0 0 auto; min-width: 72px; white-space: nowrap; }
+#asrPresetManagerStatus { flex: 0 0 auto; min-height: 1.4em; margin: 7px 0; overflow-wrap: anywhere; }
+.asr-preset-manager-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 14px; flex: 1 1 auto; min-height: 0; }
+.asr-preset-list-panel,
+.asr-preset-details { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.asr-preset-details { overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+.asr-preset-list-panel h3 { margin: 0; color: var(--text-secondary); font-size: 13px; }
+.asr-preset-list { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-input); }
+.asr-preset-item { width: 100%; min-height: 68px; display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 9px 11px; border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; background: transparent; color: var(--text-primary); text-align: left; white-space: normal; }
+.asr-preset-item:last-child { border-bottom: 0; }
+.asr-preset-item:hover:not(:disabled),
+.asr-preset-item[aria-selected="true"] { background: var(--bg-raised); }
+.asr-preset-item[aria-selected="true"] { box-shadow: inset 3px 0 var(--accent); }
+.asr-preset-item.active .asr-preset-item-name { color: var(--accent); }
+.asr-preset-item.active[aria-selected="true"] { box-shadow: inset 3px 0 var(--accent); background: var(--bg-raised); }
+.asr-preset-item-badge { margin-left: 6px; padding: 0 6px; border: 1px solid currentColor; border-radius: 999px; color: var(--accent); font-size: 10px; font-weight: 600; line-height: 1.5; }
+.asr-preset-item-name { overflow-wrap: anywhere; font-weight: 600; }
+.asr-preset-item-description,
+.asr-preset-item-modified { color: var(--text-muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.asr-preset-item-description:empty { display: none; }
+.asr-preset-item.unavailable { color: var(--text-muted); cursor: not-allowed; }
+.asr-preset-empty { margin: 0; padding: 14px; }
+.asr-preset-details .field { margin: 0; }
+.asr-preset-details textarea { resize: vertical; }
+#asrPresetModifiedDate { margin: 0; }
+.asr-preset-preview { flex: 1 1 auto; min-height: 150px; overflow-y: auto; overscroll-behavior: contain; padding: 7px 9px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-input); }
+.asr-preset-preview h3 { margin: 0 0 5px; color: var(--text-secondary); font-size: 12px; }
+.asr-preset-preview ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.asr-preset-preview li { display: grid; grid-template-columns: minmax(80px, 105px) minmax(0, 1fr); gap: 6px; font-size: 12px; line-height: 1.4; }
+.asr-preset-preview-label { color: var(--text-secondary); }
+.asr-preset-preview-value { min-width: 0; overflow-wrap: anywhere; }
+.asr-preset-modal-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 0 0 auto; margin-top: 12px; }
+.asr-preset-modal-actions button { min-width: 0; }
+.asr-preset-modal-actions .danger { color: var(--danger, #e57373); }
+.asr-preset-modal-actions #saveAsrPreset { margin-left: auto; }
+.asr-preset-modal-card > .modal-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex: 0 0 auto; margin-top: 12px; }
+.asr-preset-root-hint { flex: 1 1 auto; min-width: 0; margin: 0; line-height: 1.4; overflow-wrap: anywhere; }
+#asrPresetRootInModal { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
+#asrPresetCloseFooter { flex: 0 0 auto; }
+.preset-root-current { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+#asrPresetRootCurrent { min-width: 0; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+
+@media (max-width: 620px) {
+  .asr-preset-current { max-width: calc(100vw - 150px); }
+  .asr-preset-modal-card { width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); padding: 12px; }
+  .asr-preset-manager-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(100px, .8fr) minmax(0, 1.2fr); gap: 10px; }
+  .asr-preset-list-panel { min-height: 0; }
+  .asr-preset-list { min-height: 0; }
+.asr-preset-details { overflow-y: auto; padding-right: 2px; }
+.asr-preset-modal-actions { flex-wrap: wrap; }
+  #asrPresetRootSection .path-row { grid-template-columns: minmax(0, 1fr); }
+}
