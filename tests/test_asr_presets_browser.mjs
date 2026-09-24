@@ -73,6 +73,7 @@ test('recognition presets restore all fields without changing the model', async 
       await page.locator('#loadAsrPreset').click();
       await page.waitForFunction(() => !document.querySelector('#loadAsrPreset').disabled);
       assert.equal(await page.locator('#qwenAudioContext').inputValue(), '技术背景\n第二行');
+      assert.equal(await page.locator('#asrPresetStatus').isVisible(), mode === 'invalid');
     }
     await page.locator('#advancedToggle').click();
     if (process.env.MAW_PRESET_SCREENSHOT) await page.screenshot({ path: process.env.MAW_PRESET_SCREENSHOT, fullPage: true });

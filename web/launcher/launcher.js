@@ -3184,6 +3184,8 @@
     const buttons = [$("loadAsrPreset"), $("saveAsrPreset")];
     buttons.forEach((button) => { button.disabled = true; });
     const status = $("asrPresetStatus");
+    status.textContent = "";
+    status.classList.add("hidden");
     try {
       const result = await bridge("recognition_preset", { action, ...(action === "save" ? { options: collectAsrPreset() } : {}) });
       if (result.cancelled) return;

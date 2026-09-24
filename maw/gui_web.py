@@ -1651,7 +1651,7 @@ class LauncherApi:
                 save_env(self.paths.env_path, {"MAW_ASR_PRESET_DIRECTORY": str(path.parent)})
             except (OSError, UnicodeError, ValueError) as error:
                 warning = str(error)
-            hotwords = str(options.get("qwenAudioHotwordsFile", ""))
+            hotwords = str(options.get("qwenAudioHotwordsFile", "")) if options.get("qwenAudioHotwordsMode") == "file" else ""
             return {"ok": True, "options": options, "path": str(path), "fallback": fallback,
                     "directoryWarning": warning, "missingHotwords": bool(hotwords and not Path(hotwords).is_file())}
         except (OSError, UnicodeError, ValueError) as error:

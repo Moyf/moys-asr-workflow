@@ -105,11 +105,17 @@ class RecognitionPresetTests(unittest.TestCase):
 
     def test_missing_hotword_file_is_warning_not_load_failure(self):
         path = self.root / 'preset.json'
-        write_preset(path, self.options | {'qwenAudioHotwordsFile': str(self.root / 'missing.txt')})
+        write_preset(path, self.options | {'qwenAudioHotwordsFile': str(self.root / 'missing.txt'),
+                                           'qwenAudioHotwordsMode': 'file'})
         with patch('maw.gui_web._file_dialog', return_value=(str(path),)):
             result = self.api.recognition_preset({'action': 'load'})
         self.assertTrue(result['ok'])
         self.assertTrue(result['missingHotwords'])
+        write_preset(path, self.options | {'qwenAudioHotwordsFile': str(self.root / 'missing.txt'),
+                                           'qwenAudioHotwordsMode': 'text'})
+        with patch('maw.gui_web._file_dialog', return_value=(str(path),)):
+            result = self.api.recognition_preset({'action': 'load'})
+        self.assertFalse(result['missingHotwords'])
 
     def test_successful_overwrite_replaces_preset(self):
         path = self.root / 'preset.json'
