@@ -1,0 +1,6 @@
+{
+  "file": "editor-settings-panels.js",
+  "ns": "MaweSettingsPanels",
+  "header": "设置面板群：各设置面板的定位/开关、编辑器设置窗口（main 新增）与面板归属管理。",
+  "ranges": [[520, 584], [602, 710]]
+}

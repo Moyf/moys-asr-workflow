@@ -1,0 +1,17 @@
+{
+  "file": "editor-boot.js",
+  "ns": "MaweBoot",
+  "header": "启动数据块：模板注入的工程/表情包/服务器配置 token 与调试工具。",
+  "symbols": [
+    "DATA",
+    "FILENAME_BASE",
+    "STICKERS",
+    "STICKER_ROOT",
+    "STICKER_URL_PREFIX",
+    "SERVER_CONFIG",
+    "NINJA_SFX_BASE_URL",
+    "MAWE_DEBUG_ENABLED",
+    "maweDebug",
+    "maweDomContractCheck"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "file": "editor-hint.js",
+  "ns": "MaweHint",
+  "header": "提示卡系统（flashHint / dismissHintCard）与波形缩放限位提示状态。",
+  "ranges": [[18760, 18803]]
+}

@@ -1,0 +1,17 @@
+{
+  "file": "editor-cue-list-anchor.js",
+  "ns": "MaweCueListAnchor",
+  "header": "列表滚动锚点：可视区bounds、锚点捕获与恢复补偿。",
+  "symbols": [
+    "cueListVisibleBounds",
+    "invalidateCueListVisualAnchorRestore",
+    "captureCueListVisualAnchor",
+    "captureVisibleCueListVisualAnchor",
+    "captureCueListRenderAnchor",
+    "findCueListRenderAnchor",
+    "restoreCueListRenderAnchor",
+    "restoreCueListVisualAnchor",
+    "scrollCueToCenter",
+    "scrollCueIntoViewIfNeeded"
+  ]
+}

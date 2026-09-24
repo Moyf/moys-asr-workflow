@@ -1,0 +1,31 @@
+{
+  "file": "editor-selection.js",
+  "ns": "MaweSelection",
+  "header": "选择状态：主/副选中集、点击锚点与多选类刷新。",
+  "symbols": [
+    "stickerUrl",
+    "stickerAbsPath",
+    "selectedIdxs",
+    "selectedExtensionIdxs",
+    "lastClickedIdx",
+    "lastClickedExtensionIdx",
+    "temporaryVisibleSplitCueKeys",
+    "pendingExtensionBinding",
+    "isHiddenDisabled",
+    "cancelPendingExtensionBinding",
+    "clearSelection",
+    "updateMultiSelectionClasses",
+    "addMainIndexToSelection",
+    "addExtensionIndexToSelection",
+    "syncBoundSelection",
+    "selectOnlyExtension",
+    "toggleExtensionSelection",
+    "selectExtensionRange",
+    "toggleSel",
+    "selectRange",
+    "selectOnly",
+    "addToSelection",
+    "addExtensionToSelection",
+    "selectAll"
+  ]
+}

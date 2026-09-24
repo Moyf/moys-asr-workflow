@@ -1,0 +1,12 @@
+{
+  "file": "editor-drag-drop.js",
+  "ns": "MaweDragDrop",
+  "header": "拖放：文件拖入分流与拖拽遮罩。",
+  "symbols": [
+    "dragOverlay",
+    "isJsonFile",
+    "isSrtFile",
+    "handleDroppedFiles",
+    "dragCounter"
+  ]
+}

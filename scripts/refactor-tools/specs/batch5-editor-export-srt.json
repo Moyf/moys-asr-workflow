@@ -1,0 +1,19 @@
+{
+  "file": "editor-export-srt.js",
+  "ns": "MaweExportSrt",
+  "header": "SRT 导出：主/副/去空隙 SRT、配色分拆与动态字幕数据。",
+  "symbols": [
+    "EXPORT_KEEP_DISABLED_PLACEHOLDER",
+    "buildSrt",
+    "buildExtensionSrt",
+    "buildGapRemovedSrt",
+    "usedSubtitleColors",
+    "updateSubtitleExportUi",
+    "downloadColorSrts",
+    "gapRemovedExportContext",
+    "buildDynamicCaptionExportData",
+    "gapRemovedMediaReference",
+    "buildGapRemovedFfconcat",
+    "buildGapRemovedRegionsJson"
+  ]
+}

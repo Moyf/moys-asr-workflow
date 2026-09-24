@@ -1,0 +1,15 @@
+{
+  "file": "editor-project-save.js",
+  "ns": "MaweProjectSave",
+  "header": "工程保存：服务器、文件句柄、另存为路径与脏标记清理。",
+  "symbols": [
+    "markProjectSaved",
+    "saveProjectToServer",
+    "saveProjectToHandle",
+    "saveCurrentProject",
+    "saveProjectAsToFile",
+    "mediaNameEl",
+    "jsonNameEl",
+    "translatedEditorText"
+  ]
+}

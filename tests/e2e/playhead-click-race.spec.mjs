@@ -34,11 +34,11 @@ test('blank waveform click keeps its time when the row is rebuilt before pointer
     return player.readyState >= 1 && Number.isFinite(player.duration) && player.duration > 0;
   });
   await page.evaluate(() => {
-    DATA.segments.push(
+    MaweBoot.DATA.segments.push(
       { start: 60000, end: 62000, text: 'Next row first cue', items: [] },
       { start: 67000, end: 68000, text: 'Next row second cue', items: [] },
     );
-    renderAll();
+    MaweCuePanel.renderAll();
   });
 
   await page.evaluate(() => {

@@ -20,10 +20,10 @@ const ONBOARDING_STORAGE_KEY = 'moy.asr.editor.onboarding.v1';
 const ONBOARDING_STEP_COUNT = 3;
 
 function serverOnboardingPersistenceEnabled() {
-  return typeof SERVER_CONFIG !== 'undefined'
+  return typeof MaweBoot.SERVER_CONFIG !== 'undefined'
     && Boolean(
-      SERVER_CONFIG?.settingsUrl
-      && Object.prototype.hasOwnProperty.call(SERVER_CONFIG, 'onboardingStatus'),
+      MaweBoot.SERVER_CONFIG?.settingsUrl
+      && Object.prototype.hasOwnProperty.call(MaweBoot.SERVER_CONFIG, 'onboardingStatus'),
     );
 }
   const editor = window.MAWE_EDITOR_BRIDGE;
@@ -63,7 +63,7 @@ let onboardingAdvanceTimer = 0;
 
 function readOnboardingStatus() {
   if (serverOnboardingPersistenceEnabled()) {
-    const status = SERVER_CONFIG.onboardingStatus;
+    const status = MaweBoot.SERVER_CONFIG.onboardingStatus;
     return typeof status === 'string' ? status : '';
   }
   try {
@@ -82,9 +82,9 @@ function saveOnboardingStatus(status) {
   if (!serverOnboardingPersistenceEnabled()) return;
   // Keep server-mode onboarding state outside origin-scoped browser storage so
   // changing the localhost port does not show the guide again.
-  SERVER_CONFIG.onboardingStatus = status;
+  MaweBoot.SERVER_CONFIG.onboardingStatus = status;
   try {
-    const url = new URL(SERVER_CONFIG.settingsUrl, window.location.href);
+    const url = new URL(MaweBoot.SERVER_CONFIG.settingsUrl, window.location.href);
     void fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

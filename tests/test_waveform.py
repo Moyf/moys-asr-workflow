@@ -314,21 +314,27 @@ class WaveformExtractionTests(unittest.TestCase):
 class EditorAssetTests(unittest.TestCase):
     def test_project_waveform_survives_loading_media(self) -> None:
         editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
+        core_state = (ROOT / "web" / "editor-core-state.js").read_text(encoding="utf-8")
+        media_load = (ROOT / "web" / "editor-media-load.js").read_text(encoding="utf-8")
+        waveform_init = (ROOT / "web" / "editor-waveform-init.js").read_text(encoding="utf-8")
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
-        self.assertIn("let waveformLoadedFromProject = false;", editor)
+        self.assertIn("let waveformLoadedFromProject = false;", core_state)
         self.assertIn(
-            "waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform, { render: false });",
-            editor,
+            "MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform",
+            waveform_init,
         )
-        self.assertIn("const preserveProjectWaveform = waveformLoadedFromProject", editor)
-        self.assertIn("if (waveformEditor && !preserveProjectWaveform)", editor)
+        self.assertIn("const preserveProjectWaveform = MaweCoreState.waveformLoadedFromProject", media_load)
+        self.assertIn("if (MaweCoreState.waveformEditor && !preserveProjectWaveform)", media_load)
         self.assertIn("getPayload()", waveform)
 
     def test_reapeaks_waveform_is_the_default_shape_source(self) -> None:
         editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
+        settings = (ROOT / "web" / "editor-settings.js").read_text(encoding="utf-8")
+        waveform_init = (ROOT / "web" / "editor-waveform-init.js").read_text(encoding="utf-8")
         template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
         waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
-        self.assertIn("waveShapeSource: 'reapeaks'", editor)
+        self.assertIn("waveShapeSource: 'reapeaks'", settings)
+        self.assertIn("getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource", waveform_init)
         self.assertIn("getWaveShapeSource?.() || 'reapeaks'", waveform)
         self.assertIn('<option value="reapeaks" selected>REAPER 波形</option>', template)
         self.assertIn('<option value="self">原生波形</option>', template)
@@ -422,9 +428,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="layout-drop-preview"', page)
         self.assertIn('layout-insert-preview', page)
         self.assertIn('insertLayoutModuleAtEdge', page)
-        self.assertIn('const dockHandle = container.querySelector', page)
-        self.assertIn("const cueElements = container.querySelectorAll(':scope > .cue');", page)
-        self.assertIn('onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot)', page)
+        self.assertIn('const dockHandle = MaweCoreState.container.querySelector', page)
+        self.assertIn("const cueElements = MaweCoreState.container.querySelectorAll(':scope > .cue');", page)
+        self.assertIn('onLayoutUndo: (label, snapshot) => MaweHistory.pushLayoutUndo(label, snapshot)', page)
         self.assertIn('this.cues = document.getElementById(\'cues-container\')', page)
         self.assertIn('flex-direction: column;', page)
         self.assertIn("class WaveformEditor", page)
@@ -701,7 +707,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('const MEDIA_SEEK_STEP_MIN_MS = 10;', page)
         self.assertIn('mediaSeekStepForValue', page)
         self.assertIn('nextMediaSeekStepValue', page)
-        self.assertIn('seekMediaBy(-timelineMediaSeekStepMilliseconds() / 1000)', page)
+        self.assertIn('seekMediaBy(-MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000)', page)
         self.assertIn('id="timeline-timebase"', page)
         self.assertIn('id="timeline-fps"', page)
         self.assertIn('id="timeline-snap-to-frame"', page)
@@ -709,7 +715,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('timelineSnapToFrame: true', page)
         self.assertIn('timelineSnapToFrame: savedSettings.timelineSnapToFrame !== false', page)
         self.assertIn(
-            'getSnapToFrame: () => timelineIsFrameMode() && EDITOR_SETTINGS.timelineSnapToFrame',
+            'getSnapToFrame: () => MaweTimeline.timelineIsFrameMode() && MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame',
             page,
         )
         self.assertEqual(page.count('id="timeline-timebase"'), 1)
@@ -724,29 +730,29 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("rowGrid: get('--wave-row-grid'", page)
         self.assertIn('timeline-settings-field', editor_settings_panel)
         self.assertNotIn('timeline-settings-field', page[waveform_pane_start:])
-        self.assertIn('function confirmTimelineFrameRemap(current, nextUnit, nextFps)', page)
+        self.assertIn('function confirmTimelineFrameRemap(current, nextUnit, nextFps)', edit.read_web_asset("editor-timeline.js"))
         self.assertIn(
             'if (!confirmTimelineFrameRemap(current, nextUnit, nextFps)) {\n'
-            '    refreshTimelineSettingsUi();\n'
-            '    return;\n'
-            '  }',
-            page,
+            '      refreshTimelineSettingsUi();\n'
+            '      return;\n'
+            '    }',
+            edit.read_web_asset("editor-timeline.js"),
         )
         self.assertIn(
-            "updateEditorSettings({ timelineTimecodeSeparator: separator });\n"
-            "  refreshTimelineSettingsUi();\n"
-            "  waveformEditor?.refreshPointerLine?.();\n"
+            "MaweSettings.updateEditorSettings({ timelineTimecodeSeparator: separator });\n"
+            "  MaweTimeline.refreshTimelineSettingsUi();\n"
+            "  MaweCoreState.waveformEditor?.refreshPointerLine?.();\n"
             "  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，\n"
             "  // 不必等到下一次字幕编辑操作才看到新格式。\n"
-            "  renderAll({ waveform: 'none' });",
+            "  MaweCuePanel.renderAll({ waveform: 'none' });",
             page,
         )
         self.assertIn('function syncProjectTimebaseAndBindingOffsets(', page)
         self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', page)
         self.assertIn(
             'function buildJson() {\n'
-            '  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });',
-            page,
+            '  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
+            edit.read_web_asset("editor-json-repair.js"),
         )
         self.assertIn('id="help-media-seek-step"', page)
         self.assertIn('class="help-break"', page)
@@ -906,12 +912,13 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('id="export-open-subtitle-color-settings-arrow"', page)
         for field in ('index', 'time', 'charcount'):
             self.assertIn(f'id="cue-list-show-{field}" checked', page)
-            self.assertIn(f"container.classList.toggle('hide-cue-{field}'", page)
+            self.assertIn(f"MaweCoreState.container.classList.toggle('hide-cue-{field}'", page)
         self.assertIn('id="cue-list-show-sticker" checked> 表情包', page)
-        self.assertIn("container.classList.toggle('hide-cue-sticker'", page)
+        self.assertIn("MaweCoreState.container.classList.toggle('hide-cue-sticker'", page)
         self.assertIn('id="cue-list-auto-scroll-on-click" checked', page)
         self.assertIn('cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false', page)
-        self.assertIn('if (EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll)', page)
+        self.assertIn('if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll)', page)
+        self.assertIn("const inset = Math.min(120, Math.max(48, (bottom - top) * 0.2));", page)
         self.assertIn('id="cue-list-follow" aria-pressed="true"', page)
         self.assertIn('function resumeCueListFollowing()', page)
         self.assertIn('content-visibility: auto;', page)
@@ -934,7 +941,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。', page)
         self.assertNotIn('altSnapReversal', page)
         self.assertNotIn('cancelSubtitleDragOnEscape', page)
-        self.assertIn('if (EDITOR_SETTINGS.cueEditorCancelOnEscape) cancelCuePanelTextEdit();', page)
+        self.assertIn('if (MaweSettings.EDITOR_SETTINGS.cueEditorCancelOnEscape) MaweCuePanel.cancelCuePanelTextEdit();', page)
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-navigation'", page)
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-sticker'", page)
         self.assertIn('class="toolbar main-toolbar"', page)
@@ -955,7 +962,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="sticker-overlay-toggle"> 预览表情包', page)
         self.assertIn('.player-wrap.fullscreen-preview .subtitle-overlay:not([data-ass-mode="true"]) > #overlay-main-text', page)
         self.assertIn('.subtitle-overlay[data-ass-mode="true"] .subtitle-speaker-label { font: inherit; }', page)
-        self.assertIn("playerWrap?.classList.toggle('fullscreen-preview', fullscreenPreview);", page)
+        self.assertIn("MaweDom.playerWrap?.classList.toggle('fullscreen-preview', fullscreenPreview);", page)
         self.assertIn('function scheduleAssSubtitlePreviewRefresh()', page)
         self.assertNotIn('class="ass-style-editor-toolbar"', page)
         self.assertIn('id="ass-style-delete-slot"', page)
@@ -967,8 +974,8 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('SRT 默认', page)
         self.assertIn('这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。', page)
         self.assertIn("overlayTextEl.style.setProperty(", page)
-        self.assertIn('appearance.font_size || SUBTITLE_DEFAULT_FONT_SIZE', page)
-        self.assertIn('appearance.font_size || EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE', page)
+        self.assertIn('appearance.font_size || MaweSettings.SUBTITLE_DEFAULT_FONT_SIZE', page)
+        self.assertIn('appearance.font_size || MaweSettings.EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE', page)
         self.assertIn('id="merge-join-text-continuous"', page)
         self.assertIn('id="merge-join-text-word"', page)
         self.assertIn('id="subtitle-extend-manage"', page)
@@ -979,17 +986,17 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('播放时跳过空隙', page)
         self.assertIn('const DEFAULT_LAYOUT_ROWS = [42, 16, 42];', page)
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", page)
-        self.assertIn('const projectHasStickers = DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)', page)
+        self.assertIn('const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)', page)
         self.assertIn('overlaySegments.some((segment) => segment.sticker || segment.sticker_ref)', page)
-        self.assertIn('!EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', page)
+        self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', page)
         self.assertIn('rows.sort((a, b) => a.start - b.start || a.order - b.order);', page)
         self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));', page)
-        self.assertIn("const multiVisible = multiSubtitleVisible();", page)
+        self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", page)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", page)
-        self.assertIn('const action = getConfiguredEnterAction(event);', page)
-        self.assertIn("if (action === 'split') splitCuePanelAtCursor();", page)
-        self.assertIn('if (e.target === cuePanelText) return;', page)
+        self.assertIn('const action = MaweCueEvents.getConfiguredEnterAction(event);', page)
+        self.assertIn("if (action === 'split') MaweCuePanel.splitCuePanelAtCursor();", page)
+        self.assertIn('if (e.target === MaweDom.cuePanelText) return;', page)
         self.assertIn('.cue .sticker-slot {\n    flex: 0 1 80px; min-width: 40px;', page)
         self.assertIn('.cue .time {\n    font-size: 11px;', page)
         # 时间码列由字幕列表容器统一切换：宽时单行，窄于 700px 时所有行一起变成两行。
@@ -1086,7 +1093,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("schema: 'moy.asr.gap_removed_keep_regions.v1'", page)
         self.assertIn('waveform-gap-block', page)
         self.assertIn('waveform-gap-handle', page)
-        self.assertIn("addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));", page)
+        self.assertIn("addItem('添加空隙', '', () => MaweGapRemoveUi.addGapAtWaveformTime(timeMs));", page)
         self.assertIn('function addGapAtWaveformTime(timeMs)', page)
         self.assertIn('moveGapRemoveRange', page)
         self.assertIn('copyGapRemoveRange', page)
@@ -1119,7 +1126,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertLess(extra_menu.index('id="download-plain-text"'), extra_menu.index('id="download-resolve-json"'))
         self.assertIn('showGapContextMenu?.(event.clientX, event.clientY, index)', page)
         self.assertIn("gap.removed === false ? '移除区段' : '恢复区段'", page)
-        self.assertIn("addItem('清理空隙', () => clearGap(index), { danger: true });", page)
+        self.assertIn("addItem('清理空隙', () => MaweGapRemoveUi.clearGap(index), { danger: true });", page)
         self.assertIn('id="waveform-pane" aria-label="音频波形" tabindex="-1"', page)
         self.assertIn("this.pane.addEventListener('pointerdown', () => {", page)
         self.assertIn("this.autoScrollTarget = null;", page)
@@ -1159,10 +1166,10 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("flashHint('请先加载媒体，然后才能预览', 'invalid');", page)
         self.assertIn("flashHint('保存成功！', 'success');", page)
         self.assertIn("当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件", page)
-        self.assertIn('event.composedPath?.().includes(player)', page)
+        self.assertIn('event.composedPath?.().includes(MaweCoreState.player)', page)
         self.assertIn('function isTextEditingTarget(event)', page)
         self.assertIn('function isPlaybackKeyboardTarget(event)', page)
-        self.assertIn('if (editingState || isTextEditingTarget(e)) return;', page)
+        self.assertIn('if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;', page)
         self.assertIn('let interceptedSpace = false;', page)
         self.assertIn('e.stopImmediatePropagation();', page)
         self.assertIn('width: 74px; aspect-ratio: 1;', page)

@@ -96,7 +96,7 @@ test('opening and serializing a project preserves script alignment metadata', as
   await dropFiles(page, [alignedSpec]);
   await expect(page.locator('#json-name')).toHaveText('aligned.mosp');
 
-  const serialized = await page.evaluate(() => JSON.parse(buildJson()));
+  const serialized = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(serialized.script_alignment).toEqual(scriptAlignment);
 });
 
@@ -120,7 +120,7 @@ test('opening and serializing a legacy project adds v1 and preserves transcripti
   await dropFiles(page, [spec]);
   await expect(page.locator('#json-name')).toHaveText('metadata.mosp');
 
-  const serialized = await page.evaluate(() => JSON.parse(buildJson()));
+  const serialized = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(serialized.schema).toBe('moy.asr.project.v1');
   expect(serialized.language_source).toBe('detected');
   expect(serialized.split_mode).toBe('word');
@@ -141,11 +141,11 @@ test('opening an unknown project schema is rejected without replacing the curren
   };
 
   await page.goto(server.url);
-  const before = await page.evaluate(() => JSON.stringify(DATA));
+  const before = await page.evaluate(() => JSON.stringify(MaweBoot.DATA));
   await dropFiles(page, [spec]);
 
   await expect(page.locator('#hint-stack .hint-warning')).toContainText('不支持的工程格式版本');
-  expect(await page.evaluate(() => JSON.stringify(DATA))).toBe(before);
+  expect(await page.evaluate(() => JSON.stringify(MaweBoot.DATA))).toBe(before);
 });
 
 test('dropping a project over an existing project asks before offering open or extension choices', async ({ page }) => {
@@ -206,7 +206,7 @@ test('can use a dropped project subtitle as an extension and preserve optional i
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
-  const imported = await page.evaluate(() => JSON.parse(buildJson()));
+  const imported = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(stripDerivedFrameFields(imported.multi_subtitle.tracks[0].segments[0].items)).toEqual([
     { text: '带字词时间码的副字幕', start: 100, end: 1900 },
   ]);
@@ -219,7 +219,7 @@ test('can use a dropped project subtitle as an extension and preserve optional i
   await page.locator('#multi-subtitle-settings-menu').waitFor({ state: 'visible' });
   await page.locator('#multi-subtitle-swap').click();
 
-  const roundTripped = await page.evaluate(() => JSON.parse(buildJson()));
+  const roundTripped = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(stripDerivedFrameFields(roundTripped.multi_subtitle.tracks[0].segments[0].items)).toEqual([
     { text: '带字词时间码的副字幕', start: 100, end: 1900 },
   ]);

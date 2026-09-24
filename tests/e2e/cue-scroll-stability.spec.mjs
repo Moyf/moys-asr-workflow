@@ -21,7 +21,7 @@ async function open(page, options = {}) {
     cueListAutoScrollOnClick: false, clickBehavior: 'select-only', splitAutoSubmit: false,
   })));
   await page.goto(server.url);
-  await page.waitForFunction(() => typeof renderAll === 'function' && DATA.segments.length > 0);
+  await page.waitForFunction(() => typeof MaweCuePanel.renderAll === 'function' && MaweBoot.DATA.segments.length > 0);
   await page.locator('#editor-loading').waitFor({ state: 'hidden' }).catch(() => {});
 }
 
@@ -41,7 +41,8 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
   const selector = textSelector(index, kind);
   await page.locator(selector).click();
   await page.locator(textSelector(index + 1, kind)).click({ modifiers: ['Shift'] });
-  await page.evaluate(index => scrollCueToCenter(container.querySelector(`.cue[data-ext-idx="${index}"]`)), index);
+  await page.evaluate(index => MaweCueListAnchor.scrollCueToCenter(
+    MaweCoreState.container.querySelector(`.cue[data-ext-idx="${index}"]`)), index);
   await page.waitForTimeout(300);
 
   const original = await visual(page, index, kind);
@@ -78,14 +79,16 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
   const beforeEdit = await visual(page, index, kind);
   await page.locator(selector).dblclick();
   await page.keyboard.insertText('合成改字');
-  await page.evaluate(() => { if (extensionEditingState) finishExtensionEdit(true); });
+  await page.evaluate(() => {
+    if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
+  });
   await stable(page, beforeEdit, index, 'extension inline edit', info, kind);
   await page.locator(selector).click();
   const nearby = await page.evaluate(index => {
-    const source = container.querySelector(`.cue[data-ext-idx="${index}"]`);
+    const source = MaweCoreState.container.querySelector(`.cue[data-ext-idx="${index}"]`);
     const origin = source.getBoundingClientRect().top;
-    const bounds = container.getBoundingClientRect();
-    return [...container.querySelectorAll(':scope > .cue')].filter(el => el !== source)
+    const bounds = MaweCoreState.container.getBoundingClientRect();
+    return [...MaweCoreState.container.querySelectorAll(':scope > .cue')].filter(el => el !== source)
       .map(el => ({ id: el.dataset.extId, top: el.getBoundingClientRect().top - bounds.top,
         distance: Math.abs(el.getBoundingClientRect().top - origin) }))
       .filter(row => row.id && row.top >= 0 && row.top < bounds.height)
@@ -96,8 +99,10 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
   expect(await page.locator('#delete-confirm-modal.show').count()).toBe(0);
   await page.waitForTimeout(350);
   const readNeighbors = () => page.evaluate(nearby => nearby.map(old => {
-    const row = [...container.querySelectorAll(':scope > .cue')].find(el => el.dataset.extId === old.id);
-    return row ? { ...old, now: row.getBoundingClientRect().top - container.getBoundingClientRect().top } : null;
+    const row = [...MaweCoreState.container.querySelectorAll(':scope > .cue')]
+      .find(el => el.dataset.extId === old.id);
+    return row ? { ...old, now: row.getBoundingClientRect().top
+      - MaweCoreState.container.getBoundingClientRect().top } : null;
   }).filter(Boolean), nearby);
   const afterDelete = await readNeighbors();
   await page.waitForTimeout(2100);
@@ -110,7 +115,8 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
   expect(lateDelete.map(row => row.id)).toEqual(afterDelete.map(row => row.id));
   expect(Math.max(...lateDelete.map((row, i) => Math.abs(row.now - afterDelete[i].now))))
     .toBeLessThan(1.5);
-  expect(await page.evaluate(id => getActiveExtensionTrack().segments.some(s => s.id === id), beforeEdit.id)).toBe(false);
+  expect(await page.evaluate(id => MaweMultiSubtitleCore.getActiveExtensionTrack()
+    .segments.some(s => s.id === id), beforeEdit.id)).toBe(false);
 });
 
 // 本文件是 #124 滚动稳定性重构的回归套件；功能稳定后仅保留最便宜的核心骨架：
@@ -121,14 +127,16 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
 test('undo after browsing keeps current viewport and restores selection identity', async ({ page }, info) => {
   await open(page);
   await position(page, 75);
-  await page.evaluate(() => mergeSegments([75, 76]));
+  await page.evaluate(() => MaweSegmentOps.mergeSegments([75, 76]));
   await page.waitForTimeout(300);
   await position(page, 25);
   const before = await visual(page, 25);
   await page.keyboard.press(undoKey);
   await stable(page, before, 25, 'undo after browsing', info);
-  const state = await page.evaluate(() => ({ selected: [...selectedIdxs].map(i => DATA.segments[i]?.id),
-    panel: getCurrentCuePanelTarget()?.segment?.id || null }));
+  const state = await page.evaluate(() => ({
+    selected: [...MaweSelection.selectedIdxs].map(i => MaweBoot.DATA.segments[i]?.id),
+    panel: MaweCuePanel.getCurrentCuePanelTarget()?.segment?.id || null,
+  }));
   expect(state.selected.every(Boolean)).toBe(true);
 });
 
@@ -143,24 +151,29 @@ test('save in flight retains newer edits and inline caret', async ({ page }, inf
     await new Promise(resolve => { releaseSave = resolve; });
     await route.continue();
   });
-  await page.evaluate(() => { window.pendingSave = saveCurrentProject({ silent: true }); });
+  await page.evaluate(() => { window.pendingSave = MaweProjectSave.saveCurrentProject({ silent: true }); });
   await expect.poll(() => Boolean(releaseSave)).toBe(true);
   await page.keyboard.insertText('在途新改字');
   const before = await visual(page, 75);
-  const caret = await page.evaluate(() => ({ node: getSelection().anchorNode.textContent, offset: getSelection().anchorOffset }));
+  const caret = await page.evaluate(() => ({
+    node: getSelection().anchorNode.textContent, offset: getSelection().anchorOffset,
+  }));
   releaseSave();
   expect(await page.evaluate(() => pendingSave)).toBe(true);
   await stable(page, before, 75, 'in-flight edit', info);
-  expect(await page.evaluate(() => ({ node: getSelection().anchorNode.textContent, offset: getSelection().anchorOffset }))).toEqual(caret);
+  expect(await page.evaluate(() => ({
+    node: getSelection().anchorNode.textContent, offset: getSelection().anchorOffset,
+  }))).toEqual(caret);
   expect(await text.getAttribute('contenteditable')).toBe('plaintext-only');
-  expect(await page.evaluate(() => hasUnsavedProjectChanges())).toBe(true);
+  expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(true);
 });
 
 async function position(page, index = 100, kind = 'main') {
   await page.evaluate(({ index, kind }) => {
-    player.pause();
-    clearSelection({ silent: true });
-    const row = container.querySelector(kind === 'main' ? `.cue[data-idx="${index}"]` : `.cue[data-ext-idx="${index}"]`);
+    MaweCoreState.player.pause();
+    MaweSelection.clearSelection({ silent: true });
+    const row = MaweCoreState.container.querySelector(
+      kind === 'main' ? `.cue[data-idx="${index}"]` : `.cue[data-ext-idx="${index}"]`);
     row.scrollIntoView({ block: 'center' });
   }, { index, kind });
   await page.waitForTimeout(400);
@@ -170,16 +183,19 @@ async function position(page, index = 100, kind = 'main') {
 // synthetic audio advances through native playback timeupdate.
 async function playbackState(page) {
   return page.evaluate(() => {
-    const bounds = cueListVisibleBounds();
-    const active = playbackCueListElement();
+    const bounds = MaweCueListAnchor.cueListVisibleBounds();
+    const active = MaweCueListAnchor.playbackCueListElement();
     const rect = active?.getBoundingClientRect();
-    return { following: cueListScroll.following, paused: player.paused, time: player.currentTime,
-      top: container.scrollTop,
+    return {
+      following: MaweCueListAnchor.cueListScroll.following,
+      paused: MaweCoreState.player.paused,
+      time: MaweCoreState.player.currentTime,
+      top: MaweCoreState.container.scrollTop,
       activeId: active?.dataset.mainId || active?.dataset.extId,
-      activeVisible: Boolean(rect && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1) };
+      activeVisible: Boolean(rect && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1),
+    };
   });
 }
-
 
 test('space input text and inline editing', async ({ page }, info) => {
   await open(page);
@@ -206,10 +222,18 @@ test('space input text and inline editing', async ({ page }, info) => {
 
 async function visual(page, index, kind = 'main') {
   return page.evaluate(({ index, kind }) => {
-    const row = container.querySelector(kind === 'main' ? `.cue[data-idx="${index}"]` : `.cue[data-ext-idx="${index}"]`);
-    const segment = kind === 'main' ? DATA.segments[index] : getActiveExtensionTrack().segments[index];
-    return { id: segment.id, top: row.getBoundingClientRect().top - container.getBoundingClientRect().top,
-      scrollTop: container.scrollTop, text: segment.text, start: segment.start, end: segment.end };
+    const row = MaweCoreState.container.querySelector(
+      kind === 'main' ? `.cue[data-idx="${index}"]` : `.cue[data-ext-idx="${index}"]`);
+    const segment = kind === 'main' ? MaweBoot.DATA.segments[index]
+      : MaweMultiSubtitleCore.getActiveExtensionTrack().segments[index];
+    return {
+      id: segment.id,
+      top: row.getBoundingClientRect().top - MaweCoreState.container.getBoundingClientRect().top,
+      scrollTop: MaweCoreState.container.scrollTop,
+      text: segment.text,
+      start: segment.start,
+      end: segment.end,
+    };
   }, { index, kind });
 }
 
@@ -250,10 +274,13 @@ test.describe('touch interruption', () => {
     await open(page);
     await position(page, 75);
     const list = await page.locator('#cues-container').boundingBox();
-    const generation = await page.evaluate(() => { renderAll(); return cueListScroll.generation; });
+    const generation = await page.evaluate(() => {
+      MaweCuePanel.renderAll();
+      return MaweCueListAnchor.cueListScroll.generation;
+    });
     await page.touchscreen.tap(list.x + list.width / 2, list.y + list.height / 2);
-    expect(await page.evaluate(() => cueListScroll.generation)).toBeGreaterThan(generation);
-    expect(await page.evaluate(() => cueListScroll.following)).toBe(false);
+    expect(await page.evaluate(() => MaweCueListAnchor.cueListScroll.generation)).toBeGreaterThan(generation);
+    expect(await page.evaluate(() => MaweCueListAnchor.cueListScroll.following)).toBe(false);
     await page.waitForTimeout(350);
     const before = await visual(page, 75);
     await stable(page, before, 75, 'touch interruption', info);

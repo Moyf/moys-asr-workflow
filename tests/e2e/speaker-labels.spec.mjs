@@ -35,13 +35,13 @@ test.afterAll(async () => {
 
 async function revealSpeakerCue(page) {
   await page.evaluate(() => {
-    const segment = DATA.segments[0];
+    const segment = MaweBoot.DATA.segments[0];
     segment.color = { name: 'yellow' };
     const media = document.getElementById('player');
     media.currentTime = 1;
     media.dispatchEvent(new Event('seeked'));
     media.dispatchEvent(new Event('timeupdate'));
-    refreshSubtitlePreview(1000, 0);
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   });
   await expect(page.locator('#overlay')).toBeVisible();
 }
@@ -129,7 +129,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#overlay-main-speaker-label')).toHaveText('Host：');
   await expect(page.locator('#overlay-main-speaker-label')).toBeVisible();
   await expect(page.locator('#overlay-main-text')).toHaveText('Host：Alpha');
-  expect(await page.evaluate(() => DATA.segments[0].text)).toBe('Alpha');
+  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('Alpha');
 
   await page.locator('#subtitle-color-style').selectOption('text');
   await expect(page.locator('#subtitle-color-style')).toHaveValue('text');
@@ -223,7 +223,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await page.locator('#editor-settings-tab-export').click();
   const exportToggle = page.locator('#export-speaker-labels');
   await expect(exportToggle).toBeChecked();
-  expect(await page.evaluate(() => buildSrt())).toContain('Host"Alpha');
+  expect(await page.evaluate(() => MaweExportSrt.buildSrt())).toContain('Host"Alpha');
   const suffixToggle = page.locator('#export-speaker-names-as-suffix');
   await expect(suffixToggle).not.toBeChecked();
   await suffixToggle.check();
@@ -231,13 +231,13 @@ test('configures preview-only speaker labels and independently controls SRT expo
   const collectDownload = (download) => downloads.push(download.suggestedFilename());
   page.on('download', collectDownload);
   const { filenameBase } = await page.evaluate(async () => {
-    const previousColor = DATA.segments[1].color;
-    DATA.segments[1].color = { name: 'green' };
+    const previousColor = MaweBoot.DATA.segments[1].color;
+    MaweBoot.DATA.segments[1].color = { name: 'green' };
     window.showSaveFilePicker = undefined;
-    await downloadColorSrts(false);
-    if (previousColor) DATA.segments[1].color = previousColor;
-    else delete DATA.segments[1].color;
-    return { filenameBase: FILENAME_BASE };
+    await MaweExportSrt.downloadColorSrts(false);
+    if (previousColor) MaweBoot.DATA.segments[1].color = previousColor;
+    else delete MaweBoot.DATA.segments[1].color;
+    return { filenameBase: MaweBoot.FILENAME_BASE };
   });
   await expect.poll(() => downloads.length).toBe(3);
   page.off('download', collectDownload);
@@ -258,12 +258,12 @@ test('configures preview-only speaker labels and independently controls SRT expo
 
   await exportToggle.uncheck();
   await expect(exportToggle).not.toBeChecked();
-  expect(await page.evaluate(() => buildSrt())).not.toContain('Host"Alpha');
-  expect(await page.evaluate(() => buildSrt())).toContain('Alpha');
+  expect(await page.evaluate(() => MaweExportSrt.buildSrt())).not.toContain('Host"Alpha');
+  expect(await page.evaluate(() => MaweExportSrt.buildSrt())).toContain('Alpha');
 
   await page.locator('#editor-settings-close').click();
   await page.getByRole('button', { name: '保存工程', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => previewGeometryDirty)).toBe(false);
+  await expect.poll(() => page.evaluate(() => MaweAppearance.previewGeometryDirty)).toBe(false);
 
   const onDisk = JSON.parse(readFileSync(projectPath, 'utf-8'));
   expect(onDisk.preview.subtitle.speaker_labels).toEqual({
@@ -297,9 +297,9 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
   await revealSpeakerCue(page);
 
   const smallWindow = await page.evaluate(() => {
-    DATA.media_metadata = { video_width: 1920, video_height: 1080 };
-    DATA.preview.subtitle = {
-      ...DATA.preview.subtitle,
+    MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
       speaker_labels: {
         mapping_enabled: true,
         enabled: true,
@@ -322,22 +322,22 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
       }
       : style);
     ASS_STYLE_LIBRARY = library;
-    EDITOR_SETTINGS.assMode = true;
-    overlayToggle.checked = true;
-    playerWrap.style.height = '540px';
-    playerWrap.style.minHeight = '540px';
-    playerWrap.style.flex = '0 0 540px';
-    playerStage.style.width = '960px';
-    playerStage.style.height = '540px';
-    playerStage.style.minHeight = '540px';
-    playerStage.style.flex = '0 0 540px';
-    refreshSubtitlePreview(1000, 0);
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MaweDom.playerWrap.style.height = '540px';
+    MaweDom.playerWrap.style.minHeight = '540px';
+    MaweDom.playerWrap.style.flex = '0 0 540px';
+    MaweDom.playerStage.style.width = '960px';
+    MaweDom.playerStage.style.height = '540px';
+    MaweDom.playerStage.style.minHeight = '540px';
+    MaweDom.playerStage.style.flex = '0 0 540px';
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const text = document.getElementById('overlay-main-text');
     const label = document.getElementById('overlay-main-speaker-label');
     const textStyle = getComputedStyle(text);
     const labelStyle = getComputedStyle(label);
     return {
-      stageHeight: playerStage.getBoundingClientRect().height,
+      stageHeight: MaweDom.playerStage.getBoundingClientRect().height,
       textFontSize: textStyle.fontSize,
       labelFontSize: labelStyle.fontSize,
       textFontFamily: textStyle.fontFamily,
@@ -361,14 +361,14 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
   await page.evaluate(() => {
     Object.defineProperty(document, 'fullscreenElement', {
       configurable: true,
-      get: () => playerWrap,
+      get: () => MaweDom.playerWrap,
     });
-    playerStage.style.height = '1080px';
-    playerStage.style.minHeight = '1080px';
-    playerStage.style.flexBasis = '1080px';
-    playerWrap.style.height = '1080px';
-    playerWrap.style.minHeight = '1080px';
-    playerWrap.style.flexBasis = '1080px';
+    MaweDom.playerStage.style.height = '1080px';
+    MaweDom.playerStage.style.minHeight = '1080px';
+    MaweDom.playerStage.style.flexBasis = '1080px';
+    MaweDom.playerWrap.style.height = '1080px';
+    MaweDom.playerWrap.style.minHeight = '1080px';
+    MaweDom.playerWrap.style.flexBasis = '1080px';
     document.dispatchEvent(new Event('fullscreenchange'));
   });
   await page.evaluate(() => new Promise((resolve) => {
@@ -378,8 +378,8 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
     const text = document.getElementById('overlay-main-text');
     const label = document.getElementById('overlay-main-speaker-label');
     return {
-      stageHeight: playerStage.getBoundingClientRect().height,
-      fullscreen: playerWrap.classList.contains('fullscreen-preview'),
+      stageHeight: MaweDom.playerStage.getBoundingClientRect().height,
+      fullscreen: MaweDom.playerWrap.classList.contains('fullscreen-preview'),
       textFontSize: getComputedStyle(text).fontSize,
       labelFontSize: getComputedStyle(label).fontSize,
       labelFontFamily: getComputedStyle(label).fontFamily,
@@ -402,19 +402,19 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
       configurable: true,
       get: () => null,
     });
-    playerStage.style.height = '540px';
-    playerStage.style.minHeight = '540px';
-    playerStage.style.flexBasis = '540px';
-    playerWrap.style.height = '540px';
-    playerWrap.style.minHeight = '540px';
-    playerWrap.style.flexBasis = '540px';
+    MaweDom.playerStage.style.height = '540px';
+    MaweDom.playerStage.style.minHeight = '540px';
+    MaweDom.playerStage.style.flexBasis = '540px';
+    MaweDom.playerWrap.style.height = '540px';
+    MaweDom.playerWrap.style.minHeight = '540px';
+    MaweDom.playerWrap.style.flexBasis = '540px';
     document.dispatchEvent(new Event('fullscreenchange'));
   });
   await page.evaluate(() => new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   }));
   const windowedAgain = await page.evaluate(() => ({
-    fullscreen: playerWrap.classList.contains('fullscreen-preview'),
+    fullscreen: MaweDom.playerWrap.classList.contains('fullscreen-preview'),
     textFontSize: getComputedStyle(document.getElementById('overlay-main-text')).fontSize,
     labelFontSize: getComputedStyle(document.getElementById('overlay-main-speaker-label')).fontSize,
   }));
@@ -428,9 +428,9 @@ test('uses ASS speaker-only colour for the label while preserving the base text 
   await revealSpeakerCue(page);
 
   const preview = await page.evaluate(() => {
-    DATA.media_metadata = { video_width: 1920, video_height: 1080 };
-    DATA.preview.subtitle = {
-      ...DATA.preview.subtitle,
+    MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
       ass_color_style: 'speaker',
       speaker_labels: {
         mapping_enabled: true,
@@ -454,9 +454,9 @@ test('uses ASS speaker-only colour for the label while preserving the base text 
       }
       : style);
     ASS_STYLE_LIBRARY = library;
-    EDITOR_SETTINGS.assMode = true;
-    overlayToggle.checked = true;
-    refreshSubtitlePreview(1000, 0);
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const text = document.getElementById('overlay-main-text');
     const label = document.getElementById('overlay-main-speaker-label');
     return {

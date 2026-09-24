@@ -1,0 +1,19 @@
+{
+  "file": "editor-inline-edit.js",
+  "ns": "MaweInlineEdit",
+  "header": "行内编辑：主/副字幕就地编辑状态机与光标定位。",
+  "symbols": [
+    "editingState",
+    "extensionEditingState",
+    "startExtensionEdit",
+    "syncCuePanelAfterInlineEdit",
+    "finishExtensionEdit",
+    "bindExtensionCueEvents",
+    "startEdit",
+    "setEditingCaretOffset",
+    "caretOffsetInText",
+    "caretInfoFromPoint",
+    "caretCharFromPoint",
+    "finishEdit"
+  ]
+}

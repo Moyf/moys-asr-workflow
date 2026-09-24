@@ -1,0 +1,30 @@
+{
+  "file": "editor-workspaces.js",
+  "ns": "MaweWorkspaces",
+  "header": "工作区：内置与服务器工作区选择、导航持久化与库管理。",
+  "symbols": [
+    "BUILTIN_WORKSPACE_IDS",
+    "currentServerWorkspaceName",
+    "currentBuiltinWorkspaceName",
+    "workspacePresetSelect",
+    "saveWorkspaceButton",
+    "saveWorkspaceAsButton",
+    "deleteWorkspaceButton",
+    "getSavedServerWorkspaces",
+    "getSavedPresetWorkspaces",
+    "presetWorkspaceHasLayout",
+    "currentWorkspaceDisplayName",
+    "refreshWorkspaceSelect",
+    "syncWorkspaceControls",
+    "restoreWorkspaceSelection",
+    "updateServerWorkspaceSettings",
+    "currentWorkspaceNavigation",
+    "saveWorkspaceNavigation",
+    "restoreWorkspaceNavigation",
+    "saveCurrentWorkspace",
+    "deleteCurrentServerWorkspace",
+    "applyWorkspaceSelection",
+    "configureServerWorkspaceLibrary",
+    "configureWorkspaceTransfer"
+  ]
+}

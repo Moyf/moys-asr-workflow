@@ -1,0 +1,10 @@
+{
+  "file": "editor-media-step.js",
+  "ns": "MaweMediaStep",
+  "header": "媒体步进：seek 步长输入的钳制与刷新。",
+  "symbols": [
+    "refreshMediaSeekInputStep",
+    "commitMediaSeekStepInput",
+    "adjustMediaSeekStepInput"
+  ]
+}
