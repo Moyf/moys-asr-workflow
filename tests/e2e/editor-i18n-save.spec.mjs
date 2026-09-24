@@ -265,10 +265,10 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
 
   await page.evaluate(() => {
     // 重叠修复 UX 针对毫秒时间基准；帧模式下 1ms 会被帧吸附抹平。
-    DATA.timebase = { unit: 'milliseconds', fps: 30 };
-    DATA.segments[0].end = DATA.segments[1].start + 1;
-    DATA.segments[0]._dirty = true;
-    renderAll({ waveform: 'overlay' });
+    MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
+    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 1;
+    MaweBoot.DATA.segments[0]._dirty = true;
+    MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
   await page.keyboard.press('Control+s');
   const hint = page.locator('.hint-project-error');
@@ -280,7 +280,7 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
   ));
   await hint.locator('.hint-project-repair-auto').click();
   expect((await retry).ok()).toBe(true);
-  await expect.poll(() => page.evaluate(() => DATA.segments[1].start)).toBe(50001);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[1].start)).toBe(50001);
   await expect(page.locator('.hint-card').last()).toContainText('保存成功！');
   expect(saveAttempts).toBe(2);
 });
@@ -304,10 +304,10 @@ test('larger subtitle-segment overlap requires an explicit repair direction', as
   });
   await page.evaluate(() => {
     // 同上：钉住毫秒时间基准，避免帧吸附改写时间边界。
-    DATA.timebase = { unit: 'milliseconds', fps: 30 };
-    DATA.segments[0].end = DATA.segments[1].start + 2000;
-    DATA.segments[0]._dirty = true;
-    renderAll({ waveform: 'overlay' });
+    MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
+    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 2000;
+    MaweBoot.DATA.segments[0]._dirty = true;
+    MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
 
   await page.keyboard.press('Control+s');

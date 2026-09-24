@@ -1,0 +1,6 @@
+{
+  "file": "editor-colors.js",
+  "ns": "MaweColors",
+  "header": "调色板：颜色标签、窗口注入的 ASR_EDITOR_PALETTE 与按名取值。",
+  "ranges": [[342, 352]]
+}

@@ -1,0 +1,10 @@
+{
+    "symbols":  [
+                    "autoMergeFloatingPanel",
+                    "subtitleExtendFloatingPanel"
+                ],
+    "ns":  "MaweFloatingPanel",
+    "header":  "append ??????????????",
+    "file":  "editor-floating-panel.js",
+    "append":  true
+}

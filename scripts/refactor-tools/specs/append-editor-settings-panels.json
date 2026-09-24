@@ -1,0 +1,9 @@
+{
+    "symbols":  [
+                    "openEditorSettingsAtTab"
+                ],
+    "ns":  "MaweSettingsPanels",
+    "header":  "append ??????????????",
+    "file":  "editor-settings-panels.js",
+    "append":  true
+}

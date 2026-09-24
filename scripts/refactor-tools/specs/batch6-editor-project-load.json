@@ -1,0 +1,19 @@
+{
+  "file": "editor-project-load.js",
+  "ns": "MaweProjectLoad",
+  "header": "工程加载：规范化应用、检查点、SRT 解析与主轨替换。",
+  "symbols": [
+    "updateUnloadedMediaLabel",
+    "resetLoadedMedia",
+    "buildBlankProject",
+    "suggestedProjectName",
+    "applyCanonicalProject",
+    "createProjectCheckpoint",
+    "detachServerProjectSaving",
+    "ensureProjectCheckpointForImport",
+    "isMawProject",
+    "parseSrtTimestamp",
+    "parseSrtSegments",
+    "replaceMainTrack"
+  ]
+}

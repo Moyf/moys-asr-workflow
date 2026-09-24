@@ -1,0 +1,6 @@
+{
+  "file": "editor-multi-subtitle-core.js",
+  "ns": "MaweMultiSubtitleCore",
+  "header": "多重字幕核心：副轨状态、绑定关系、范围钳制与双轨联动计算。",
+  "ranges": [[101, 106], [108, 109], [111, 563], [595, 624]]
+}

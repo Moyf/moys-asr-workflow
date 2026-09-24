@@ -1,0 +1,16 @@
+{
+  "file": "editor-binding-align.js",
+  "ns": "MaweBindingAlign",
+  "header": "绑定对齐：主副字幕绑定、按点击选中与对齐批处理。",
+  "symbols": [
+    "groupMemberIdxs",
+    "selectCueByClick",
+    "overlappingMainIndexesForExtension",
+    "beginPendingExtensionBinding",
+    "bindSelectedSubtitlePair",
+    "unbindSelectedSubtitlePair",
+    "alignExtensionToMainTimeRanges",
+    "alignExtensionToMainTimeRange",
+    "alignSelectedExtensionSubtitleRanges"
+  ]
+}

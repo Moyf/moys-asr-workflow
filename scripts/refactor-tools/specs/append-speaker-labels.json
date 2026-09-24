@@ -1,0 +1,15 @@
+{
+  "file": "editor-speaker-labels.js",
+  "ns": "MaweSpeakerLabels",
+  "header": "说话人标签：设置应用、控件同步与导出选项。",
+  "symbols": [
+    "speakerLabelUndoColors",
+    "speakerLabelSeparatorUndo",
+    "applySpeakerLabelInput",
+    "applySpeakerLabelSeparatorInput",
+    "getSpeakerLabelSettings",
+    "syncSpeakerLabelControls",
+    "setSpeakerLabelSettings",
+    "speakerLabelExportOptions"
+  ]
+}

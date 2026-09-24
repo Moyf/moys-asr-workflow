@@ -1,0 +1,8 @@
+{
+  "file": "editor-merge-adjacent.js",
+  "ns": "MaweMergeAdjacent",
+  "header": "相邻字幕合并。",
+  "symbols": [
+    "mergeAdjacentSubtitle"
+  ]
+}

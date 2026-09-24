@@ -54,11 +54,11 @@ async function revealOverlay(page) {
 }
 
 function readGeometry(page) {
-  return page.evaluate(() => JSON.parse(JSON.stringify(DATA.preview.subtitle)));
+  return page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.preview.subtitle)));
 }
 
 function readSegments(page) {
-  return page.evaluate(() => DATA.segments.map((s) => ({
+  return page.evaluate(() => MaweBoot.DATA.segments.map((s) => ({
     start: s.start,
     end: s.end,
     text: s.text,
@@ -121,7 +121,7 @@ test('resizing via the south-east handle grows the box within player bounds', as
   const overlay = await revealOverlay(page);
   // Give the box some slack first: move it up so it can grow downward.
   await page.evaluate(() => {
-    setPreviewGeometry({ x: 0.3, y: 0.3, width: 0.3, height: 0.2 }, { markDirty: false });
+    MawePreviewGeometry.setPreviewGeometry({ x: 0.3, y: 0.3, width: 0.3, height: 0.2 }, { markDirty: false });
   });
   const before = await readGeometry(page);
   const handle = overlay.locator('.overlay-handle[data-handle="se"]');
@@ -190,12 +190,12 @@ test('geometry persists through a server save and reload, segments untouched', a
   await revealOverlay(page);
   // Set a distinctive geometry and mark it dirty, then save to the server.
   await page.evaluate(() => {
-    setPreviewGeometry({ x: 0.12, y: 0.34, width: 0.5, height: 0.2 }, { markDirty: true });
+    MawePreviewGeometry.setPreviewGeometry({ x: 0.12, y: 0.34, width: 0.5, height: 0.2 }, { markDirty: true });
   });
   const saved = await readGeometry(page);
 
   await page.getByRole('button', { name: '保存工程', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => previewGeometryDirty)).toBe(false);
+  await expect.poll(() => page.evaluate(() => MaweAppearance.previewGeometryDirty)).toBe(false);
 
   // The on-disk project must carry the normalized geometry and unchanged segment timing.
   const onDisk = JSON.parse(readFileSync(projectPath, 'utf-8'));

@@ -1,0 +1,6 @@
+{
+  "file": "editor-split-mode.js",
+  "ns": "MaweSplitMode",
+  "header": "拆分模式：快捷键提示、合并/接续模式 UI 与主字幕拆分类型绑定。",
+  "ranges": [[940, 997]]
+}

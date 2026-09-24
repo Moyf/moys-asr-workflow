@@ -1,0 +1,29 @@
+{
+  "file": "editor-color-filter.js",
+  "ns": "MaweColorFilter",
+  "header": "颜色筛选：配色下拉、用量缓存与行色刷新。",
+  "symbols": [
+    "COLOR_FILTER_DEFAULT_KEY",
+    "colorFilterDropdown",
+    "colorFilterButton",
+    "colorFilterMenu",
+    "colorFilterSelection",
+    "colorFilterUsageCache",
+    "effectiveCueColorKey",
+    "colorFilterSuspended",
+    "collectProjectColorUsage",
+    "colorFilterLabelFor",
+    "colorFilterValueFor",
+    "syncColorFilterControls",
+    "renderColorFilterMenu",
+    "setColorFilterSelection",
+    "selectAllFilteredCues",
+    "buildColorFilterItem",
+    "refreshColorFilterUi",
+    "refreshCueColorRows",
+    "refreshCueStickerRows",
+    "refreshStickerAssignmentUi",
+    "refreshColorAssignmentUi",
+    "positionColorFilterMenu"
+  ]
+}

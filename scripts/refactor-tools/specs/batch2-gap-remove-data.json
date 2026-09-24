@@ -1,0 +1,6 @@
+{
+  "file": "editor-gap-remove-data.js",
+  "ns": "MaweGapRemoveData",
+  "header": "空隙移除数据层：默认参数、规范化缓存与空隙/移除区间派生。",
+  "ranges": [[354, 421]]
+}

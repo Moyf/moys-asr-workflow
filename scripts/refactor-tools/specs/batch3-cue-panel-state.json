@@ -1,0 +1,6 @@
+{
+  "file": "editor-cue-panel-state.js",
+  "ns": "MaweCuePanelState",
+  "header": "当前字幕面板运行态：面板索引/轨道、撤销暂存与编辑状态复位。",
+  "ranges": [[626, 636]]
+}

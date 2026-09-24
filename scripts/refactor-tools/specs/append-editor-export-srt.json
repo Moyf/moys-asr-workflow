@@ -1,0 +1,18 @@
+{
+  "symbols": [
+    "buildAss",
+    "buildExtensionSrt",
+    "buildGapRemovedSrt",
+    "usedSubtitleColors",
+    "updateSubtitleExportUi",
+    "safeColorExportFilenameSuffix",
+    "colorExportFilenameSuffix",
+    "currentAssVideoResolution",
+    "assExportOptions",
+    "buildGapRemovedAss"
+  ],
+  "ns": "MaweExportSrt",
+  "header": "append ??????????????",
+  "file": "editor-export-srt.js",
+  "append": true
+}

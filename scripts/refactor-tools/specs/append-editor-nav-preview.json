@@ -1,0 +1,9 @@
+{
+    "symbols":  [
+                    "seekCurrentCueBoundary"
+                ],
+    "ns":  "MaweNavPreview",
+    "header":  "append ??????????????",
+    "file":  "editor-nav-preview.js",
+    "append":  true
+}

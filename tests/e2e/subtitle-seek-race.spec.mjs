@@ -111,7 +111,7 @@ test('dragging the waveform playhead crosses multi-row boundaries', async ({ pag
   await page.goto(server.url);
   await waitForMedia(page);
   await page.evaluate(() => {
-    const editor = waveformEditor;
+    const editor = MaweCoreState.waveformEditor;
     editor.settings.mode = 'multi';
     editor.settings.secondsPerRow = 10;
     editor.settings.rowHeight = 120;
@@ -192,7 +192,7 @@ test('F seeks directly to the selected subtitle without an intermediate row-end 
   const clickY = box.y + box.height / 2;
   await page.mouse.move(clickX, clickY);
   await page.mouse.down();
-  await page.evaluate(() => renderAll());
+  await page.evaluate(() => MaweCuePanel.renderAll());
   await page.mouse.up();
   await page.keyboard.press('f');
 
@@ -224,7 +224,7 @@ test('waveform subtitle click keeps its time when the row is rebuilt before poin
 
   await page.mouse.move(clickX, clickY);
   await page.mouse.down();
-  await page.evaluate(() => renderAll());
+  await page.evaluate(() => MaweCuePanel.renderAll());
   await page.mouse.up();
 
   await page.waitForFunction((expected) => {

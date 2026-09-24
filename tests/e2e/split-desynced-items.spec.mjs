@@ -120,8 +120,8 @@ async function injectSegment(page, segment) {
   await page.goto(server.url);
   await expect(page.locator('.cue[data-idx="0"] .text')).toBeVisible();
   await page.evaluate((value) => {
-    DATA.segments[0] = value;
-    renderAll({ waveform: 'full' });
+    MaweBoot.DATA.segments[0] = value;
+    MaweCuePanel.renderAll({ waveform: 'full' });
   }, segment);
 }
 
@@ -155,7 +155,7 @@ async function splitAtCaretOffset(page, offset) {
 }
 
 async function readSplitState(page) {
-  return page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
+  return page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => ({
     start: segment.start,
     end: segment.end,
     text: segment.text,
@@ -271,10 +271,10 @@ const DRIFT_WARNING_SEGMENT = {
 
 test('waveform split modal warns when desynced replacement drifts from the cut', async ({ page }) => {
   await injectSegment(page, DRIFT_WARNING_SEGMENT);
-  const opened = await page.evaluate(() => openMainWaveformSplitModal(0, 250));
+  const opened = await page.evaluate(() => MaweSplitCore.openMainWaveformSplitModal(0, 250));
   expect(opened).toBe(true);
   await expect(page.locator('#multi-subtitle-split-modal.show')).toBeVisible();
-  await page.evaluate(() => confirmLinkedSplit());
+  await page.evaluate(() => MaweSplitCore.confirmLinkedSplit());
 
   await expect(page.locator('#hint-stack .hint-card').filter({ hasText: '字幕文本与词时间戳' })).toHaveCount(1);
   const [left, right] = await readSplitState(page);

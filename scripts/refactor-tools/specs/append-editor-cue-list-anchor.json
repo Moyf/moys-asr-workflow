@@ -1,0 +1,20 @@
+{
+    "symbols":  [
+                    "cueListScroll",
+                    "cueListFollowButton",
+                    "setCueListFollowing",
+                    "interruptCueListFollowing",
+                    "setCueListIdentity",
+                    "cueListIdentity",
+                    "rememberCueListMutation",
+                    "playbackCueListElement",
+                    "playbackCueListKey",
+                    "resumeCueListFollowing",
+                    "renderedCueBoundaryTarget",
+                    "navigateCueListBoundary"
+                ],
+    "ns":  "MaweCueListAnchor",
+    "header":  "append ??????????????",
+    "file":  "editor-cue-list-anchor.js",
+    "append":  true
+}

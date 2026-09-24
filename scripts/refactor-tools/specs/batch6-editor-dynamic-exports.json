@@ -1,0 +1,24 @@
+{
+  "file": "editor-dynamic-exports.js",
+  "ns": "MaweDynamicExports",
+  "header": "动态导出：FCP7XML、Lottie、Ograf 模态与导出。",
+  "symbols": [
+    "closeFcp7ExportModal",
+    "openFcp7ExportModal",
+    "exportFcp7Xml",
+    "lottieExportAvailable",
+    "updateLottieExportButton",
+    "lottieExportBlocked",
+    "closeLottieExportModal",
+    "openLottieExportModal",
+    "lottieExportCanvasSize",
+    "exportLottieDynamicCaptions",
+    "ografExportAvailable",
+    "updateOgrafExportButton",
+    "ografExportBlocked",
+    "closeOgrafExportModal",
+    "openOgrafExportModal",
+    "ografExportCanvasSize",
+    "exportOgrafDynamicCaptions"
+  ]
+}

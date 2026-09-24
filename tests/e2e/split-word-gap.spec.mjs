@@ -76,8 +76,8 @@ async function injectSegment(page, segment) {
   await page.goto(server.url);
   await expect(page.locator('.cue[data-idx="0"] .text')).toBeVisible();
   await page.evaluate((value) => {
-    DATA.segments[0] = value;
-    renderAll({ waveform: 'full' });
+    MaweBoot.DATA.segments[0] = value;
+    MaweCuePanel.renderAll({ waveform: 'full' });
   }, segment);
 }
 
@@ -99,7 +99,7 @@ async function splitAtCaretOffset(page, offset) {
 }
 
 async function readSplitState(page) {
-  return page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
+  return page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => ({
     start: segment.start,
     end: segment.end,
     text: segment.text,

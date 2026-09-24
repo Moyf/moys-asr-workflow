@@ -1,0 +1,26 @@
+{
+  "file": "editor-nav-preview.js",
+  "ns": "MaweNavPreview",
+  "header": "导航与预览：导航归属、拆分预览与 seek 状态。",
+  "symbols": [
+    "seekWarned",
+    "pendingMediaSeekTimeSec",
+    "autoLoadedMediaReadyNotified",
+    "cueListPointer",
+    "lastEditRegion",
+    "navigationOwner",
+    "lastPointerPos",
+    "cueSplitPreviewEl",
+    "cueSplitPreviewFrame",
+    "cueSplitPreviewRequest",
+    "navigationOwnerForTarget",
+    "updateNavigationOwner",
+    "hideCueSplitPreview",
+    "scheduleCueSplitPreview",
+    "waveformPointerContext",
+    "keyboardOperationReference",
+    "getPointerBoundaryEditTarget",
+    "handlePointerBoundaryShortcut",
+    "hoveredSelectedCueContext"
+  ]
+}

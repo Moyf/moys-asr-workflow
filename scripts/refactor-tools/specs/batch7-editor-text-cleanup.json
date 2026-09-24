@@ -1,0 +1,12 @@
+{
+  "file": "editor-text-cleanup.js",
+  "ns": "MaweTextCleanup",
+  "header": "文本清理与 seek：标点规整、分组时间同步、媒体 seek 助手。",
+  "symbols": [
+    "cleanPunctuation",
+    "syncTimelineGroupRanges",
+    "seekFromWaveform",
+    "notifyAutoLoadedMediaReady",
+    "flushPendingMediaSeek"
+  ]
+}

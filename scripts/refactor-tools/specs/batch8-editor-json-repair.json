@@ -1,0 +1,12 @@
+{
+  "file": "editor-json-repair.js",
+  "ns": "MaweJsonRepair",
+  "header": "工程 JSON 构建、时间码修复与分组重建。",
+  "symbols": [
+    "buildJson",
+    "normalizeProjectTimings",
+    "timingRepairSignature",
+    "repairTimingGroup",
+    "repairCurrentProjectTimings"
+  ]
+}

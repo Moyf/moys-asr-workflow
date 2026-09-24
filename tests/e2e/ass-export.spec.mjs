@@ -123,14 +123,14 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
   await page.goto(server.url);
 
   const preview = await page.evaluate(() => {
-    DATA.segments = [{
+    MaweBoot.DATA.segments = [{
       start: 0,
       end: 4000,
       text: '第一行\nAnd Jev can solve these two problems',
     }];
-    EDITOR_SETTINGS.assMode = true;
-    overlayToggle.checked = true;
-    refreshSubtitlePreview(1000, 0);
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const element = document.getElementById('overlay-main-text');
     const range = document.createRange();
     range.selectNodeContents(element);
@@ -149,8 +149,8 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
   expect(preview.wordBreak).toBe('normal');
 
   await page.evaluate(() => {
-    EDITOR_SETTINGS.assMode = false;
-    refreshSubtitlePreview(1000, 0);
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   });
   await expect(page.locator('#overlay-main-text')).toHaveCSS('white-space', 'pre-wrap');
   await expect(page.locator('#overlay-main-text')).toHaveCSS('word-break', 'break-word');
@@ -161,13 +161,13 @@ test('writes the project title, source resolution, palette styles and speaker na
   await stubSavePicker(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.media_metadata = { video_width: 3840, video_height: 2160 };
-    DATA.segments = [
+    MaweBoot.DATA.media_metadata = { video_width: 3840, video_height: 2160 };
+    MaweBoot.DATA.segments = [
       { start: 0, end: 1000, text: 'red line', items: [], color: { name: 'red', value: '#f07f6f' } },
       { start: 1200, end: 2200, text: 'plain line', items: [] },
     ];
-    DATA.preview.subtitle = {
-      ...DATA.preview.subtitle,
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
       font_size: 32,
       font_family: 'sans',
       color: '#ffffff',
@@ -178,8 +178,8 @@ test('writes the project title, source resolution, palette styles and speaker na
         names: { yellow: '主持', green: '嘉宾', red: '旁白', purple: '现场', blue: '字幕' },
       },
     };
-    EDITOR_SETTINGS.exportSpeakerLabels = true;
-    renderAll();
+    MaweSettings.EDITOR_SETTINGS.exportSpeakerLabels = true;
+    MaweCuePanel.renderAll();
   });
 
   await page.locator('#subtitle-export-btn').click();
@@ -208,12 +208,12 @@ test('exports speaker-only ASS label colour without a palette style variant', as
   await stubSavePicker(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.media_metadata = { video_width: 1920, video_height: 1080 };
-    DATA.segments = [
+    MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    MaweBoot.DATA.segments = [
       { start: 0, end: 1000, text: 'red line', items: [], color: { name: 'red', value: '#f07f6f' } },
     ];
-    DATA.preview.subtitle = {
-      ...DATA.preview.subtitle,
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
       ass_color_style: 'speaker',
       speaker_labels: {
         mapping_enabled: true,
@@ -222,8 +222,8 @@ test('exports speaker-only ASS label colour without a palette style variant', as
         names: { yellow: '主持', green: '嘉宾', red: '旁白', purple: '现场', blue: '字幕' },
       },
     };
-    EDITOR_SETTINGS.exportSpeakerLabels = true;
-    renderAll();
+    MaweSettings.EDITOR_SETTINGS.exportSpeakerLabels = true;
+    MaweCuePanel.renderAll();
   });
 
   await page.locator('#subtitle-export-btn').click();
@@ -246,8 +246,8 @@ test('groups SRT, color-split SRT and styled ASS exports in order', async ({ pag
   await disableOnboarding(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 1000, end: 2500 };
-    renderAll();
+    MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 1000, end: 2500 };
+    MaweCuePanel.renderAll();
   });
 
   await page.locator('#subtitle-export-btn').click();
@@ -261,12 +261,12 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   await stubSavePicker(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.segments.length = 0;
-    DATA.segments.push(
+    MaweBoot.DATA.segments.length = 0;
+    MaweBoot.DATA.segments.push(
       { id: 'before-gap', start: 1000, end: 2000, text: 'before gap', items: [], color: { name: 'red', value: '#e74c3c', start: 1000, end: 2000 } },
       { id: 'after-gap', start: 4000, end: 5000, text: 'after gap', items: [] },
     );
-    DATA.gap_remove = {
+    MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
       minimum_ms: 500,
@@ -279,8 +279,8 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
       manual_corrections: false,
       gaps: [{ start: 2000, end: 3000, removed: true }],
     };
-    updateGapRemoveUi();
-    renderAll();
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll();
   });
 
   await page.locator('#gap-removed-export-btn').click();

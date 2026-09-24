@@ -1,0 +1,10 @@
+{
+  "file": "editor-cue-events.js",
+  "ns": "MaweCueEvents",
+  "header": "字幕行事件：行级监听绑定与拆分键配置。",
+  "symbols": [
+    "bindCueEvents",
+    "getSplitKey",
+    "getConfiguredEnterAction"
+  ]
+}

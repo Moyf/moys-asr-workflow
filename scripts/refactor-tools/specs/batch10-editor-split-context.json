@@ -1,0 +1,8 @@
+{
+  "file": "editor-split-context.js",
+  "ns": "MaweSplitContext",
+  "header": "右键拆分入口：从右键菜单/波形位置安全拆分。",
+  "symbols": [
+    "splitFromContextMenu"
+  ]
+}

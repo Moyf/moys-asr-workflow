@@ -1,0 +1,13 @@
+{
+  "file": "editor-help-panel.js",
+  "ns": "MaweHelpPanel",
+  "header": "帮助面板：浮窗、标签页切换与尺寸持久化。",
+  "symbols": [
+    "helpFloatingPanel",
+    "visibleHelpTabButtons",
+    "selectHelpTab",
+    "openHelpAtTab",
+    "restoreHelpPanelSize",
+    "helpPanelSizeSaveTimer"
+  ]
+}

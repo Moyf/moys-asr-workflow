@@ -1,0 +1,16 @@
+{
+  "file": "editor-loading-progress.js",
+  "ns": "MaweLoadingProgress",
+  "header": "加载进度：进度条状态机与带进度的文件读取。",
+  "symbols": [
+    "editorLoading",
+    "editorLoadingLabel",
+    "editorLoadingProgress",
+    "editorLoadingProgressValue",
+    "editorLoadingDepth",
+    "updateEditorLoading",
+    "beginEditorLoading",
+    "readFileTextWithProgress",
+    "parseSubtitleImportFile"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "file": "editor-add-cue.js",
+  "ns": "MaweAddCue",
+  "header": "波形空白处新增主/副字幕。",
+  "symbols": [
+    "addExtensionRangeFromWaveform",
+    "addCueRangeFromWaveform",
+    "addCueAtWaveformTime",
+    "addExtensionAtWaveformTime"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "file": "editor-waveform-init.js",
+  "ns": "MaweWaveformInit",
+  "header": "波形初始化：WaveformEditor 装配与 reapeaks 懒加载。",
+  "symbols": [
+    "initWaveformEditor",
+    "loadDeferredReapeaks"
+  ]
+}

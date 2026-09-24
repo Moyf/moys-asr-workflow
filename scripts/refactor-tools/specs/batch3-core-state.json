@@ -1,0 +1,6 @@
+{
+  "file": "editor-core-state.js",
+  "ns": "MaweCoreState",
+  "header": "核心运行态：容器/播放器/波形实例引用、播放帧句柄与媒体文件类型判定。",
+  "ranges": [[338, 350]]
+}

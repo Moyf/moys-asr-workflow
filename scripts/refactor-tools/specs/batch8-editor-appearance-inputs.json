@@ -1,0 +1,13 @@
+{
+  "file": "editor-appearance-inputs.js",
+  "ns": "MaweAppearanceInputs",
+  "header": "外观输入：主/副字幕背景色与不透明度输入应用。",
+  "symbols": [
+    "subtitleBackgroundColorUndoPushed",
+    "applySubtitleBackgroundColorInput",
+    "subtitleBackgroundAlphaUndoPushed",
+    "applySubtitleBackgroundAlphaInput",
+    "extensionSubtitleBackgroundAlphaUndoPushed",
+    "applyExtensionSubtitleBackgroundAlphaInput"
+  ]
+}

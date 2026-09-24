@@ -76,17 +76,17 @@ test('dropping a legacy project lets the blank server take over after ID normali
   expect(playerSrc).toContain('/media');
 
   await page.evaluate(() => {
-    updateEditorSettings({ autoSaveProject: false });
-    scheduleAutoSave();
-    scheduleAutoSaveFlush();
+    MaweSettings.updateEditorSettings({ autoSaveProject: false });
+    MaweServerSave.scheduleAutoSave();
+    MaweServerSave.scheduleAutoSaveFlush();
   });
   await page.locator('.cue').first().click();
   await page.locator('#cue-panel-text').fill('AttachedSave');
   await page.locator('#cue-panel-target').click();
   expect(await page.evaluate(() => ({
-    text: DATA.segments[0].text,
-    dirty: DATA.segments[0]._dirty,
-    canSave: SERVER_CONFIG.canSave,
+    text: MaweBoot.DATA.segments[0].text,
+    dirty: MaweBoot.DATA.segments[0]._dirty,
+    canSave: MaweBoot.SERVER_CONFIG.canSave,
   }))).toEqual({ text: 'AttachedSave', dirty: true, canSave: true });
   const saveRequest = page.waitForRequest((request) => (
     request.url().endsWith('/api/project') && request.method() === 'POST'

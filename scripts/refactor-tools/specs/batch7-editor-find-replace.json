@@ -1,0 +1,25 @@
+{
+  "file": "editor-find-replace.js",
+  "ns": "MaweFindReplace",
+  "header": "查找替换：目标收集、正则构建、预览与范围控制。",
+  "symbols": [
+    "findInput",
+    "replaceInput",
+    "caseSensitiveCb",
+    "useRegexCb",
+    "replacePreview",
+    "replaceScopeInfo",
+    "replaceModalTitle",
+    "replaceSelectedOnlyCb",
+    "replaceSelectedOnlyHint",
+    "replaceScope",
+    "replaceSelectionSnapshot",
+    "normalizeBatchSelection",
+    "getReplaceTargets",
+    "buildReplaceRegex",
+    "updatePreview",
+    "refreshScopeInfo",
+    "refreshReplaceSelectionControl",
+    "openReplaceModal"
+  ]
+}
