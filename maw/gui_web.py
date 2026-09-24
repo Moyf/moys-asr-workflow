@@ -21,9 +21,24 @@ from pathlib import Path
 from threading import Event, Lock
 from typing import BinaryIO, Final, final
 
+from send2trash import send2trash
+
 from maw.app_paths import default_emoji_font_path
+from maw.app_paths import application_directory, default_app_data_root
+from maw.asr_presets import (
+    MAX_NAME_LENGTH,
+    create_preset,
+    inspect_migration,
+    list_presets,
+    migrate_presets,
+    preset_path,
+    read_preset_document,
+    rename_preset,
+    validate_options,
+    write_preset,
+)
 from maw.ass_styles import find_ass_style, load_ass_style_library
-from maw.ffmpeg import FfmpegTools, media_duration_seconds, resolve_ffmpeg_tools
+from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, FfmpegTools, ffmpeg_search_path, media_duration_seconds, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
 from maw.gui_config import (
     DEFAULT_ENV_PATH,
@@ -142,7 +157,7 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.6.0"
+BUNDLED_APP_VERSION = "1.7.0"
 MOSE_VERSION = "0.1.0"
 
 
@@ -502,6 +517,48 @@ class LauncherPaths:
     launcher_html: Path
 
 
+ASR_PRESET_ROOT_ENV = "MAW_ASR_PRESET_ROOT"
+LEGACY_ASR_PRESET_DIRECTORY_ENV = "MAW_ASR_PRESET_DIRECTORY"
+
+
+def _default_asr_preset_directory() -> Path:
+    return default_app_data_root() / "asr-presets"
+
+
+def _asr_preset_directory(env_path: Path) -> tuple[Path, bool]:
+    values = load_env(env_path)
+    configured = os.environ.get(ASR_PRESET_ROOT_ENV, "").strip() or values.get(ASR_PRESET_ROOT_ENV, "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve(strict=False), True
+    if ASR_PRESET_ROOT_ENV in values or ASR_PRESET_ROOT_ENV in os.environ:
+        return _default_asr_preset_directory().resolve(strict=False), True
+    return _default_asr_preset_directory().resolve(strict=False), False
+
+
+def _legacy_asr_preset_directory(env_path: Path) -> Path | None:
+    values = load_env(env_path)
+    for value in (
+        os.environ.get(LEGACY_ASR_PRESET_DIRECTORY_ENV, "") or values.get(LEGACY_ASR_PRESET_DIRECTORY_ENV, ""),
+        str(application_directory() / "asr-presets"),
+    ):
+        if not value.strip():
+            continue
+        candidate = Path(value).expanduser()
+        if candidate.is_dir():
+            return candidate.resolve()
+    return None
+
+
+def _writable_existing_directory(value: object) -> Path:
+    text = str(value or "").strip()
+    path = Path(text).expanduser().resolve(strict=True) if text else _default_asr_preset_directory().resolve(strict=False)
+    if not path.is_dir():
+        raise ValueError("Preset folder is not a directory")
+    with tempfile.TemporaryFile(dir=path):
+        pass
+    return path
+
+
 def default_paths() -> LauncherPaths:
     # 冻结（PyInstaller / AppImage）时资源在 sys._MEIPASS（如 dist/MAW/_internal），
     # 源码运行时在仓库根；与 maw.gui_platform.asset_path 的取法保持一致。
@@ -644,7 +701,9 @@ class LauncherApi:
         self.postprocess_retry_context: dict[str, object] | None = None
         self.postprocess_workspace_directory: Path | None = None
         self.postprocess_translation_srt_path: Path | None = None
+        self.postprocess_media_path: Path | None = None
         self._last_postprocess_progress_at = 0.0
+        self._last_media_tool_log_at = 0.0
         self.pump = EventPump(window_getter=self.window_getter)
         _sync_local_runtime_root(self.paths.env_path)
 
@@ -723,6 +782,7 @@ class LauncherApi:
         )
         selected_api_key = api_key_for_provider(provider.id, self.paths.env_path)
         stored_env = load_env(self.paths.env_path)
+        asr_preset_root, asr_preset_root_configured = _asr_preset_directory(self.paths.env_path)
         ocr_runtime_root = effective_config_value(self.paths.env_path, "MAW_OCR_RUNTIME_ROOT")
         # Do not inspect managed runtimes or model caches on the critical
         # get_config request.  A large Hugging Face/ModelScope cache can make
@@ -795,6 +855,8 @@ class LauncherApi:
             "language": config.language,
             "guiLang": config.gui_lang,
             "appVersion": _app_version(self.paths),
+            "asrPresetRoot": str(asr_preset_root),
+            "asrPresetRootConfigured": asr_preset_root_configured,
             "stickerDir": config.sticker_dir,
             "showRareLangs": config.show_rare_langs,
             "outputSubfolder": config.output_subfolder,
@@ -1433,6 +1495,7 @@ class LauncherApi:
                     media_path=Path(str(payload.get("mediaPath") or "")),
                     subtitle_path=Path(str(payload.get("subtitlePath") or "")),
                     srt_style=srt_style,
+                    video_encoder=str(payload.get("videoEncoder") or "auto"),
                     crf=_burn_crf_override(payload.get("crf")),
                     preset=str(payload.get("preset") or "").strip() or None,
                     audio_bitrate=str(payload.get("audioBitrate") or "").strip() or None,
@@ -1453,6 +1516,7 @@ class LauncherApi:
             "sourceMediaPath": str(result.source_media_path),
             "subtitlePath": str(result.subtitle_path),
             "mediaPath": str(result.media_path),
+            "videoEncoder": str(getattr(result, "video_encoder", "auto") or "auto"),
             "srtStyleName": str(srt_style.get("name") or "SRT 默认"),
         }
 
@@ -1542,7 +1606,15 @@ class LauncherApi:
         if cancel_event is not None:
             cancel_event.set()
         if process is not None and process.poll() is None:
-            terminate_process_tree(process)
+            # Do not make the pywebview API call wait for taskkill/process.wait.
+            # The worker also observes the event, while this daemon thread
+            # interrupts a potentially blocked stdout.readline().
+            threading.Thread(
+                target=self._terminate_media_tool_process,
+                args=(process,),
+                name="maw-media-tool-cancel",
+                daemon=True,
+            ).start()
         return {"ok": True, "cancelling": active}
 
     def _begin_media_tool(self) -> Event | None:
@@ -1552,12 +1624,30 @@ class LauncherApi:
             cancel_event = Event()
             self.media_tool_cancel_event = cancel_event
             self.media_tool_process = None
+            self._last_media_tool_log_at = 0.0
             return cancel_event
 
     def _set_media_tool_process(self, process: subprocess.Popen[str]) -> None:
+        cancel_requested = False
         with self._media_tool_lock:
-            if self.media_tool_cancel_event is not None:
+            cancel_event = self.media_tool_cancel_event
+            if cancel_event is not None:
                 self.media_tool_process = process
+                cancel_requested = cancel_event.is_set()
+        if cancel_requested:
+            # Cancellation can arrive between Popen() and this callback. In
+            # that window cancel_media_tool has no process to terminate.
+            self._terminate_media_tool_process(process)
+
+    @staticmethod
+    def _terminate_media_tool_process(process: subprocess.Popen[str]) -> None:
+        if process.poll() is None:
+            try:
+                terminate_process_tree(process)
+            except (OSError, subprocess.TimeoutExpired):
+                # The worker will still observe the cancellation event and
+                # convert the operation into the normal cancelled result.
+                pass
 
     def _finish_media_tool(self, cancel_event: Event) -> None:
         with self._media_tool_lock:
@@ -1570,6 +1660,182 @@ class LauncherApi:
         if now - self._last_postprocess_progress_at >= 0.8:
             self._last_postprocess_progress_at = now
             self._emit_postprocess_status(key)
+        self._emit_media_tool_log(_details)
+
+    def _emit_media_tool_log(self, details: Mapping[str, object]) -> None:
+        now = time.monotonic()
+        if now - self._last_media_tool_log_at < 0.8 and str(details.get("progress") or "") != "end":
+            return
+        self._last_media_tool_log_at = now
+        message = _format_media_tool_progress(details)
+        if message:
+            self._emit({"type": "media_tool_log", "message": message})
+
+    def _active_asr_preset_root(self, *, create_default: bool = False) -> Path:
+        root, configured = _asr_preset_directory(self.paths.env_path)
+        if not configured and create_default:
+            root.mkdir(parents=True, exist_ok=True)
+        if not root.is_dir():
+            raise ValueError(f"Preset folder does not exist: {root}")
+        return root.resolve(strict=True)
+
+    def _asr_preset_migration_source(self) -> Path | None:
+        root, configured = _asr_preset_directory(self.paths.env_path)
+        if configured:
+            return root if root.is_dir() else None
+        legacy = _legacy_asr_preset_directory(self.paths.env_path)
+        if legacy is not None:
+            return legacy
+        return root if root.is_dir() else None
+
+    def asr_preset_library(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        try:
+            root = self._active_asr_preset_root(create_default=True)
+            return {"ok": True, "root": str(root), "items": list_presets(root)}
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
+
+    def asr_preset_migration_preview(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            path_text = str(payload.get("path") or "").strip()
+            if path_text:
+                target = _writable_existing_directory(path_text)
+            else:
+                target = _default_asr_preset_directory().resolve(strict=False)
+                target.mkdir(parents=True, exist_ok=True)
+                target = _writable_existing_directory(target)
+            source = self._asr_preset_migration_source()
+            if source is None:
+                return {"ok": True, "root": str(target), "source": "", "files": [], "conflicts": []}
+            plan = inspect_migration(source, target)
+            return {"ok": True, "root": str(target), **plan}
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
+
+    def set_asr_preset_root(self, payload: Mapping[str, object]) -> dict[str, object]:
+        path_text = str(payload.get("path") or "").strip()
+        reset_default = not path_text
+        copied: list[str] = []
+        unmigrated: list[str] = []
+        source: Path | None = None
+        target: Path | None = None
+        try:
+            if reset_default:
+                target = _default_asr_preset_directory().resolve(strict=False)
+                target.mkdir(parents=True, exist_ok=True)
+                target = _writable_existing_directory(target)
+            else:
+                target = _writable_existing_directory(path_text)
+            source = self._asr_preset_migration_source()
+            if payload.get("migrate") is True and source is not None:
+                plan = inspect_migration(source, target)
+                if plan["conflicts"]:
+                    raise FileExistsError("Preset name conflicts: " + ", ".join(plan["conflicts"]))
+                result = migrate_presets(source, target, recycle_sources=False)
+                copied = list(result["migrated"])
+                unmigrated = list(result["sourceRemaining"])
+            try:
+                save_env(self.paths.env_path, {ASR_PRESET_ROOT_ENV: "" if reset_default else str(target)})
+            except (OSError, UnicodeError, ValueError):
+                for name in copied:
+                    try:
+                        send2trash(str(target / name))
+                    except OSError:
+                        pass
+                raise
+            source_remaining: list[str] = list(unmigrated)
+            if payload.get("migrate") is True and source is not None and target != source:
+                for name in copied:
+                    try:
+                        send2trash(str(source / name))
+                    except OSError:
+                        source_remaining.append(name)
+            return {
+                "ok": True,
+                "root": str(target),
+                "configured": True,
+                "migrated": copied,
+                "sourceRemaining": source_remaining,
+            }
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
+
+    def open_asr_preset_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        try:
+            root, configured = _asr_preset_directory(self.paths.env_path)
+            if not configured:
+                root.mkdir(parents=True, exist_ok=True)
+            if not root.is_dir():
+                raise ValueError(f"Preset folder does not exist: {root}")
+            return _open_existing_path(root.resolve(strict=True))
+        except (OSError, ValueError) as error:
+            return {"ok": False, "error": str(error)}
+
+    def open_asr_preset_file(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            root = self._active_asr_preset_root()
+            return _open_existing_path(preset_path(root, payload.get("name")))
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "error": str(error)}
+
+    def recognition_presets(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            root = self._active_asr_preset_root(create_default=True)
+            action = str(payload.get("action") or "")
+            name = payload.get("name")
+            if action == "create":
+                safe_name = create_preset(root, name, payload.get("options"), payload.get("description", ""))
+                return {"ok": True, "name": safe_name}
+            if action == "preview":
+                path = preset_path(root, name)
+                document = read_preset_document(path)
+                return {"ok": True, "name": path.stem, "options": document["options"]}
+            if action == "load":
+                path = preset_path(root, name)
+                document = read_preset_document(path)
+                options = document["options"]
+                hotwords = str(options.get("qwenAudioHotwordsFile", "")) if options.get("qwenAudioHotwordsMode") == "file" else ""
+                return {
+                    "ok": True,
+                    "name": path.stem,
+                    "description": document["description"],
+                    "options": options,
+                    "missingHotwords": bool(hotwords and not Path(hotwords).is_file()),
+                }
+            if action in {"save_info", "update", "copy", "delete"}:
+                path = preset_path(root, name)
+                if action == "delete":
+                    send2trash(str(path))
+                    return {"ok": True, "name": path.stem}
+                document = read_preset_document(path)
+                if action == "save_info":
+                    safe_name = rename_preset(root, name, payload.get("newName"), payload.get("description", ""))
+                    return {"ok": True, "name": safe_name}
+                if action == "update":
+                    options = validate_options(payload.get("options"))
+                    write_preset(path, options, document["description"])
+                    return {"ok": True, "name": path.stem}
+                if action == "copy":
+                    requested_name = payload.get("newName")
+                    if requested_name:
+                        safe_name = create_preset(root, requested_name, document["options"], document["description"])
+                    else:
+                        suffix = str(payload.get("suffix") or "copy")
+                        if suffix not in {"copy", "副本"}:
+                            suffix = "copy"
+                        base = f"{path.stem[:MAX_NAME_LENGTH - len(suffix) - 1].rstrip()} {suffix}"
+                        safe_name = ""
+                        counter = 1
+                        while not safe_name:
+                            candidate = base if counter == 1 else f"{base[:MAX_NAME_LENGTH - len(f' ({counter})')].rstrip()} ({counter})"
+                            if not any(item.name.casefold() == f"{candidate}.json".casefold() for item in root.iterdir()):
+                                safe_name = create_preset(root, candidate, document["options"], document["description"])
+                            else:
+                                counter += 1
+                    return {"ok": True, "name": safe_name}
+            raise ValueError("Invalid preset action")
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
 
     def choose_file(self, payload: Mapping[str, object]) -> dict[str, object]:
         kind = str(payload.get("kind") or "media")
@@ -2179,6 +2445,7 @@ class LauncherApi:
         self.cancel_event = Event()
         self.postprocess_workspace_directory = None
         self.postprocess_translation_srt_path = None
+        self.postprocess_media_path = None
         self._last_postprocess_progress_at = 0.0
         self.pump.start()
         self.worker = threading.Thread(target=self._worker_main, args=(request, self.cancel_event), daemon=True)
@@ -2903,6 +3170,7 @@ class LauncherApi:
                 )
                 auto_run_directory = auto_result.run_directory
                 self.postprocess_translation_srt_path = auto_result.translated_srt_path
+                self.postprocess_media_path = auto_result.media_path
                 self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
             except PostprocessCancelled as error:
                 self._emit({
@@ -2973,7 +3241,7 @@ class LauncherApi:
                     "message": f"[计时] 全程耗时为媒体时长的 {total_elapsed / media_duration:.2f} 倍",
                 })
         self.postprocess_workspace_directory = auto_run_directory if auto_run_directory and auto_run_directory.is_dir() else None
-        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
+        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
@@ -3118,9 +3386,10 @@ class LauncherApi:
             return
         self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
         self.postprocess_translation_srt_path = auto_result.translated_srt_path
+        self.postprocess_media_path = auto_result.media_path
         self.postprocess_retry_context = None
         self.postprocess_workspace_directory = auto_result.run_directory if auto_result.run_directory.is_dir() else None
-        self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
+        self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
@@ -3152,16 +3421,19 @@ class LauncherApi:
             "resegment": "重新断句",
             "ocr": "OCR 字幕去重",
             "translate": "翻译",
+            "burn": "烧录字幕",
         }
         step = labels.get(str(event.get("step") or ""), str(event.get("step") or "后处理"))
         if stage == "start":
             self._emit({"type": "log", "message": f"[后处理] 已开始，共 {event.get('total', 0)} 步"})
         elif stage == "step_start":
+            if str(event.get("step") or "") == "burn":
+                self._last_media_tool_log_at = 0.0
             self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：开始"})
         elif stage == "step_done":
             artifacts = " / ".join(
                 name
-                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""))
+                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""), str(event.get("mediaName") or ""))
                 if name
             )
             suffix = f"（{artifacts}）" if artifacts else ""
@@ -3169,7 +3441,7 @@ class LauncherApi:
         elif stage == "done":
             artifacts = " / ".join(
                 name
-                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""))
+                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""), str(event.get("mediaName") or ""))
                 if name
             )
             self._emit({"type": "log", "message": f"[后处理] 全部完成：{artifacts}"})
@@ -3177,13 +3449,17 @@ class LauncherApi:
             self._emit({"type": "log", "message": "[后处理] 已取消；原始转写产物仍然保留。"})
         elif stage == "failed":
             self._emit({"type": "log", "message": "[后处理] 失败；原始转写产物和中间产物已保留。"})
-        elif stage == "detail" and str(event.get("key") or "") in {"toolbox_status_llm_batch", "toolbox_status_ocr_frame"}:
-            now = time.monotonic()
-            current = event.get("current")
-            total = event.get("total")
-            if now - self._last_postprocess_progress_at >= 1.0 or current == total:
-                self._last_postprocess_progress_at = now
-                self._emit({"type": "log", "message": f"[后处理] {step} 进度 {current}/{total}"})
+        elif stage == "detail":
+            key = str(event.get("key") or "")
+            if key == "toolbox_status_burning":
+                self._emit_media_tool_log(event)
+            elif key in {"toolbox_status_llm_batch", "toolbox_status_ocr_frame"}:
+                now = time.monotonic()
+                current = event.get("current")
+                total = event.get("total")
+                if now - self._last_postprocess_progress_at >= 1.0 or current == total:
+                    self._last_postprocess_progress_at = now
+                    self._emit({"type": "log", "message": f"[后处理] {step} 进度 {current}/{total}"})
 
     def _local_runtime_main(
         self,
@@ -3784,6 +4060,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             str(payload.get("qwenAudioHotwordWeight") or "").strip()
             if model.supports_hotwords else ""
         ),
+        qwen_keep_dialect=bool(payload.get("qwenKeepDialect")) and model.supports_keep_dialect,
         soniox_context=soniox_context,
         region=region,
         workspace_id=workspace_id,
@@ -3812,13 +4089,14 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     )
 
 
-def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filename: str = "", multiple: bool = False) -> tuple[str, ...] | None:
+def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filename: str = "", multiple: bool = False, directory: str = "") -> tuple[str, ...] | None:
     import webview
 
     if not webview.windows:
         return None
     dialog_type = OPEN_DIALOG if open_dialog else SAVE_DIALOG
-    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple)
+    extra = {"directory": directory} if directory else {}
+    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple, **extra)
     return tuple(selected) if selected else None
 
 
@@ -4319,6 +4597,27 @@ def _postprocess_ffmpeg(env_path: Path) -> Path | None:
     return _postprocess_ffmpeg_tools(env_path).ffmpeg
 
 
+def _format_media_tool_progress(details: Mapping[str, object]) -> str:
+    fields = (
+        ("frame", "frame"),
+        ("fps", "fps"),
+        ("out_time", "time"),
+        ("speed", "speed"),
+        ("bitrate", "bitrate"),
+        ("total_size", "size"),
+    )
+    parts: list[str] = []
+    for key, label in fields:
+        value = details.get(key)
+        text = "" if value is None else str(value).strip()
+        if text and text.lower() not in {"n/a", "nan"}:
+            parts.append(f"{label}={text}")
+    if parts:
+        return " ".join(parts)
+    progress = str(details.get("progress") or "").strip()
+    return f"progress={progress}" if progress else ""
+
+
 def _postprocess_ffmpeg_tools(env_path: Path) -> FfmpegTools:
     configured = effective_config_value(env_path, "FFMPEG_PATH")
     return resolve_ffmpeg_tools(
@@ -4360,7 +4659,11 @@ def _check_ffmpeg(env_path: Path, override: str = "") -> dict[str, object]:
     tools = resolve_ffmpeg_tools(
         configured_path=configured_value or None,
         platform=sys.platform,
-        search_path=_ffmpeg_search_path() or "",
+        # 候选目录读取当前模块全局而非依赖默认参数（默认参数在函数定义时
+        # 绑定，测试 patch maw.ffmpeg.MACOS_FFMPEG_CANDIDATE_DIRECTORIES
+        # 才能生效），搜索路径由同一份候选列表推导，保证二者一致。
+        macos_directories=MACOS_FFMPEG_CANDIDATE_DIRECTORIES,
+        search_path=ffmpeg_search_path(platform=sys.platform, macos_directories=MACOS_FFMPEG_CANDIDATE_DIRECTORIES) or "",
         strict_config=bool(override.strip()),
     )
     ffmpeg_path = str(tools.ffmpeg) if tools.ffmpeg is not None else ""
@@ -4403,6 +4706,7 @@ def _provider_payload(
     return {
         "id": provider.id,
         "label": provider.label,
+        "keyButtonLabel": provider.key_label,
         "kind": provider.kind,
         "keyUrl": provider.key_url,
         "secondaryKeyUrl": provider.secondary_key_url,
@@ -4451,6 +4755,7 @@ def _model_payload(
         "supportsContext": model.supports_context,
         "supportsHotwords": model.supports_hotwords,
         "supportsVocabulary": model.supports_vocabulary,
+        "supportsKeepDialect": model.supports_keep_dialect,
         "supportsWordTimestamps": model.supports_word_timestamps,
         "deviceSupport": model.device_support,
         "resourceLevel": model.resource_level,

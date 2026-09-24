@@ -335,6 +335,51 @@ class GuiWorkflowTests(unittest.TestCase):
         hotword_positions = [index for index, value in enumerate(command) if value == "--hotword"]
         self.assertEqual([command[index + 1] for index in hotword_positions], ["张三", "李四", "阿里云"])
 
+    def test_build_transcribe_command_qwen_audio_31_passes_keep_dialect(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            model="qwen-audio-3.1-asr-flash-filetrans",
+            qwen_audio_context="产品名和专业术语",
+            qwen_audio_hotwords="张三",
+            qwen_keep_dialect=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertIn("--keep-dialect", command)
+        self.assertIn("--context", command)
+        self.assertIn("--hotword", command)
+
+    def test_build_transcribe_command_qwen_audio_31_without_keep_dialect_omits_flag(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            model="qwen-audio-3.1-asr-flash-filetrans",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertNotIn("--keep-dialect", command)
+
+    def test_build_transcribe_command_qwen_audio_30_ignores_keep_dialect(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            model="qwen-audio-3.0-asr-flash-filetrans",
+            qwen_keep_dialect=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertNotIn("--keep-dialect", command)
+
+    def test_srt_model_tag_groups_both_qwen_audio_versions(self) -> None:
+        from maw.gui_workflow import _srt_model_tag
+
+        self.assertEqual(_srt_model_tag("qwen", "qwen-audio-3.1-asr-flash-filetrans"), ".qwen-audio")
+        self.assertEqual(_srt_model_tag("qwen", "qwen-audio-3.0-asr-flash-filetrans"), ".qwen-audio")
+
     def test_build_transcribe_command_soniox_passes_context_json(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,
@@ -685,6 +730,23 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
 
+    def test_child_environment_moves_configured_ffmpeg_directory_to_front(self) -> None:
+        ffmpeg_dir = self.root / "ffmpeg" / "bin"
+        ffmpeg_dir.mkdir(parents=True)
+        (ffmpeg_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).write_bytes(b"exe")
+        (ffmpeg_dir / ("ffprobe.exe" if os.name == "nt" else "ffprobe")).write_bytes(b"exe")
+        other_dir = self.root / "other"
+        other_dir.mkdir()
+        inherited_path = os.pathsep.join((str(other_dir), str(ffmpeg_dir), str(ffmpeg_dir)))
+
+        with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ()):
+            with mock.patch("maw.gui_workflow.load_env", return_value={}):
+                env = _child_environment(
+                    {"PATH": inherited_path, "FFMPEG_PATH": str(ffmpeg_dir)}, "", ""
+                )
+
+        self.assertEqual(env["PATH"].split(os.pathsep), [str(ffmpeg_dir), str(other_dir)])
+
     def test_child_environment_uses_bundled_ffmpeg_when_no_path_is_configured(self) -> None:
         ffmpeg_dir = self.root / "ffmpeg" / "bin"
         ffmpeg_dir.mkdir(parents=True)
@@ -712,14 +774,20 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
 
     def test_child_environment_appends_macos_candidate_directories(self) -> None:
+        # 本用例验证「继承 PATH + 追加 macOS 候选目录」的顺序语义；候选目录
+        # 必须用不包含真实 ffmpeg 的临时目录。真实 Homebrew 路径在装了
+        # FFmpeg 的机器上会被候选探测命中并前置进 PATH，断言随机器变化。
+        homebrew = self.root / "homebrew" / "bin"
+        local = self.root / "usr" / "local" / "bin"
         with mock.patch.object(sys, "platform", "darwin"):
-                with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ("/opt/homebrew/bin", "/usr/local/bin")):
-                    with mock.patch("maw.gui_workflow.load_env", return_value={}):
-                        env = _child_environment({"PATH": "/usr/bin"}, "", "")
+                with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", (str(homebrew), str(local))):
+                    with mock.patch("maw.ffmpeg.shutil.which", return_value=None):
+                        with mock.patch("maw.gui_workflow.load_env", return_value={}):
+                            env = _child_environment({"PATH": "/usr/bin"}, "", "")
 
         self.assertEqual(
             env["PATH"].split(os.pathsep),
-            ["/usr/bin", "/opt/homebrew/bin", "/usr/local/bin"],
+            ["/usr/bin", str(homebrew), str(local)],
         )
 
     def test_run_transcription_reports_child_pid_after_popen(self) -> None:

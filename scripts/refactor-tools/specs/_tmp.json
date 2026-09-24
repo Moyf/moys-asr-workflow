@@ -1,9 +1,0 @@
-{
-  "file": "editor-theme.js",
-  "ns": "MaweTheme",
-  "header": "x",
-  "symbols": [
-    "refreshThemeToggle",
-    "applyTheme"
-  ]
-}

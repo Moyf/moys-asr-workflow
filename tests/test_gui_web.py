@@ -26,7 +26,7 @@ def _canonical_test_path(value: str | os.PathLike[str]) -> str:
     """Compare paths after resolving platform-specific aliases and symlinks."""
     return os.path.normcase(os.path.realpath(os.fspath(value)))
 
-from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _launcher_icon_path, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _emoji_font_urls, _find_mose_executable, _format_media_tool_progress, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _launcher_icon_path, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
@@ -107,11 +107,14 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(config["ocrRuntime"]["status"], "checking")
         self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
         self.assertEqual(config["providers"][0]["keyUrl"], "https://platform.qianwenai.com/home/")
+        self.assertEqual(config["providers"][0]["label"], "阿里云百炼（千问）")
+        self.assertEqual(config["providers"][0]["keyButtonLabel"], "千问AI平台")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
         soniox = next(provider for provider in config["providers"] if provider["id"] == "soniox")
         self.assertEqual(len(soniox["commonLanguages"]), 8)
         self.assertIn("0.00022", config["providers"][0]["models"][0]["priceNote"])
+        self.assertIn("Token", config["providers"][0]["models"][1]["priceNote"])
         self.assertIn("0.10", soniox["models"][0]["priceNote"])
         openai = next(provider for provider in config["providers"] if provider["id"] == "openai")
         self.assertEqual(openai["secondaryKeyUrl"], "https://openrouter.ai/keys")
@@ -135,14 +138,16 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("0.0045", openai["models"][3]["openrouterNote"])
         self.assertTrue(openai["models"][4]["supportsDiarization"])
         self.assertEqual(config["models"][0]["id"], "qwen-audio-3.0-asr-flash-filetrans")
-        self.assertEqual(config["models"][1]["id"], "fun-asr")
-        self.assertEqual(config["models"][2]["id"], "qwen3-asr-flash-filetrans")
+        self.assertEqual(config["models"][1]["id"], "qwen-audio-3.1-asr-flash-filetrans")
+        self.assertEqual(config["models"][2]["id"], "fun-asr")
+        self.assertEqual(config["models"][3]["id"], "qwen3-asr-flash-filetrans")
         self.assertTrue(config["models"][0]["supportsSpeaker"])
         self.assertTrue(config["models"][0]["supportsContext"])
         self.assertTrue(config["models"][0]["supportsHotwords"])
-        self.assertTrue(config["models"][0]["supportsVocabulary"])
+        self.assertFalse(config["models"][0]["supportsKeepDialect"])
+        self.assertTrue(config["models"][1]["supportsKeepDialect"])
         self.assertEqual(config["models"][0]["languages"][0]["id"], "")
-        self.assertFalse(config["models"][2]["supportsSpeaker"])
+        self.assertFalse(config["models"][3]["supportsSpeaker"])
         self.assertEqual(config["languages"][0]["id"], "")
 
     def test_get_ocr_runtime_recovers_a_stale_install_marker(self) -> None:
@@ -1286,7 +1291,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxAlignmentTab"'))
         self.assertLess(html.index('id="toolboxAlignmentTab"'), html.index('id="toolboxExtractAudioTab"'))
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
-        # 实用工具记住上次选择的工具；从未选择时回退到第一项（压制字幕）。
+        # 实用工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
         self.assertIn(
             'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");',
             script,
@@ -1303,7 +1308,14 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('toolbox_group_utilities: "实用工具"', strings)
         self.assertIn('toolbox_utility_media: "媒体文件"', strings)
         self.assertIn('toolbox_utility_media: "Media file"', strings)
-        self.assertIn('toolbox_burn_subtitle: "压制字幕"', strings)
+        self.assertIn('toolbox_burn_subtitle: "烧录字幕"', strings)
+        self.assertIn('id="configureAutoBurn"', html)
+        self.assertIn('id="configureAutoBurn" class="inline-link"', html)
+        self.assertIn('id="toolboxBurnVideoEncoder"', html)
+        self.assertIn('id="toolboxBurnVideoEncoderField" class="field"', html)
+        self.assertIn('data-i18n="toolbox_burn_notice"', html)
+        self.assertIn('toolbox_burn_notice:', strings)
+        self.assertIn('toolbox_video_encoder_amf: "AMD AMF"', strings)
         self.assertIn('toolbox_extract_audio: "Extract audio"', strings)
         self.assertIn('toolbox_timestamps: "生成时间码"', strings)
         self.assertIn('toolbox_timestamps: "Generate timestamps"', strings)
@@ -1393,6 +1405,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
         self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
         self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  gap: 12px;', styles)
+        self.assertIn('.toolbox-output-action {\n  display: flex;\n  flex: 1 1 auto;\n  gap: 8px;', styles)
         self.assertIn('.toolbox-tab-list-5 {\n  grid-template-columns: repeat(5, minmax(0, 1fr));\n}', styles)
         self.assertIn('$("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
@@ -1917,18 +1930,40 @@ class GuiWebBridgeTests(unittest.TestCase):
         with mock.patch("maw.gui_web.load_ass_style_library", return_value=library):
             with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
                 with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
-                    burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve())
+                    burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve(), video_encoder="auto")
                     result = self.api.run_burn_subtitles({"mediaPath": str(media), "subtitlePath": str(subtitle)})
 
         self.assertTrue(result["ok"])
         self.assertEqual(burn.call_args.kwargs["ffmpeg_path"], ffmpeg)
         self.assertEqual(burn.call_args.args[0].srt_style["fontName"], "Microsoft YaHei")
+        self.assertEqual(burn.call_args.args[0].video_encoder, "auto")
         self.assertIsNone(burn.call_args.args[0].crf)
         self.assertIsNone(burn.call_args.args[0].preset)
         self.assertIsNone(burn.call_args.args[0].audio_bitrate)
         self.assertEqual(result["srtStyleName"], "SRT 默认")
+        self.assertEqual(result["videoEncoder"], "auto")
         self.assertIsInstance(burn.call_args.kwargs["cancel_event"], threading.Event)
         self.assertEqual(result["mediaPath"], str(output.resolve()))
+
+    def test_media_tool_progress_is_compact_and_latest_message_ready(self) -> None:
+        self.assertEqual(
+            _format_media_tool_progress({"frame": "42", "fps": "24.0", "out_time": "00:00:01.75", "speed": "1.2x"}),
+            "frame=42 fps=24.0 time=00:00:01.75 speed=1.2x",
+        )
+
+    def test_media_tool_cancellation_terminates_a_process_registered_after_cancel(self) -> None:
+        cancel_event = self.api._begin_media_tool()
+        self.assertIsNotNone(cancel_event)
+        assert cancel_event is not None
+        cancel_event.set()
+        process = mock.Mock()
+        process.poll.return_value = None
+
+        with mock.patch("maw.gui_web.terminate_process_tree") as terminate:
+            self.api._set_media_tool_process(process)
+
+        terminate.assert_called_once_with(process)
+        self.api._finish_media_tool(cancel_event)
 
     def test_burn_subtitle_bridge_forwards_encoding_overrides(self) -> None:
         media = self.root / "clip.mp4"
@@ -3027,7 +3062,12 @@ class GuiWebBridgeTests(unittest.TestCase):
         def which(name: str, *, path: str | None = None) -> str:
             return str(ffmpeg if name == "ffmpeg" else ffprobe)
 
-        with mock.patch("maw.gui_web._ffmpeg_search_path", return_value=str(ffmpeg.parent)), mock.patch("maw.ffmpeg.shutil.which", side_effect=which):
+        # which 只应在 mock 的搜索路径上找：真实 PATH / macOS Homebrew 候选目录
+        # 在装了 FFmpeg 的机器（如 Homebrew 的 /opt/homebrew）上会泄漏真实路径。
+        # _check_ffmpeg 的搜索路径由 ffmpeg_search_path 从候选列表推导，
+        # 因此只需隔离候选目录列表（空元组）。
+        with mock.patch("maw.gui_web.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ()), \
+                mock.patch("maw.ffmpeg.shutil.which", side_effect=which):
             result = self.api.check_ffmpeg()
 
         self.assertTrue(result["found"])
@@ -3060,8 +3100,10 @@ class GuiWebBridgeTests(unittest.TestCase):
             self.assertIn(str(ffmpeg_dir), path.split(os.pathsep))
             return str(ffmpeg_dir / ("ffmpeg.exe" if name == "ffmpeg" else "ffprobe.exe"))
 
+        # 候选目录会先做真实文件系统探测，必须把真实 Homebrew 路径隔离掉，
+        # 否则在装了 FFmpeg 的 macOS 机器上真实 /opt/homebrew 会抢先命中。
         with mock.patch.object(sys, "platform", "darwin"):
-            with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", (str(ffmpeg_dir),)):
+            with mock.patch("maw.gui_web.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", (str(ffmpeg_dir),)):
                 with mock.patch("maw.ffmpeg.shutil.which", side_effect=which):
                     result = self.api.check_ffmpeg()
 
@@ -3815,6 +3857,30 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(request.qwen_audio_vocabulary_id, "vocab-qwen-audio")
         self.assertEqual(request.qwen_audio_hotword_weight, "50")
 
+    def test_request_from_payload_passes_keep_dialect_only_for_qwen_audio_31(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        base = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "region": "beijing",
+            "qwenKeepDialect": True,
+        }
+        request_31 = _request_from_payload({
+            **base,
+            "providerId": "qwen",
+            "modelId": "qwen-audio-3.1-asr-flash-filetrans",
+        }, self.env_path)
+        request_30 = _request_from_payload({
+            **base,
+            "providerId": "qwen",
+            "modelId": "qwen-audio-3.0-asr-flash-filetrans",
+        }, self.env_path)
+
+        self.assertTrue(request_31.qwen_keep_dialect)
+        self.assertFalse(request_30.qwen_keep_dialect)
+
     def test_request_from_payload_builds_soniox_context(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -4437,6 +4503,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("test_postprocess_connection"', script)
         self.assertIn('bridge("get_postprocess_settings"', script)
         self.assertIn('bridge("get_postprocess_models"', script)
+        self.assertIn('toolbox_stop_media: "停止媒体处理"', launcher_script)
+        self.assertIn('stop.textContent = t(mediaToolCancelling ? "toolbox_status_cancelling" : "toolbox_stop_media")', script)
         self.assertIn('class="primary"', page)
         self.assertIn('llm_models_loaded: "已获取 {count} 个模型，可在上方快速选择"', launcher_script)
         self.assertIn('role="combobox"', page)
@@ -4620,6 +4688,7 @@ class LauncherAssetContractTests(unittest.TestCase):
             self.assertIn(f'data-tool-action="{tool}"', footer_html)
         for button in ("runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "stopToolboxMedia"):
             self.assertIn(f'id="{button}"', footer_html)
+        self.assertIn('id="stopToolboxMedia" class="ghost hidden" type="button" data-i18n="toolbox_stop_media">', footer_html)
         self.assertIn('id="generateWaveform"', footer_html)
 
         # 自定义顶边 / 左边拖拽把手替代原生 resize。
@@ -5145,7 +5214,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="minWords" type="number"', page)
         self.assertIn('placeholder="3"', page)
         self.assertIn('id="gapSplit" type="number"', page)
-        self.assertIn('placeholder="800"', page)
+        self.assertIn('placeholder="500"', page)
         self.assertIn('advanced_params: "识别参数"', script)
         self.assertIn('advanced_misc: "其他"', script)
         self.assertIn('qwen_audio_options_title: "Qwen 上下文与热词"', script)
@@ -5155,8 +5224,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('max_words_placeholder: "Default: 13"', script)
         self.assertIn('min_words_placeholder: "默认 3"', script)
         self.assertIn('min_words_placeholder: "Default: 3"', script)
-        self.assertIn('gap_split_placeholder: "默认 800"', script)
-        self.assertIn('gap_split_placeholder: "Default: 800"', script)
+        self.assertIn('gap_split_placeholder: "默认 500"', script)
+        self.assertIn('gap_split_placeholder: "Default: 500"', script)
         self.assertIn("配置停顿多久时算作两句字幕、少于多少字时自动合并，以及允许的最大字数（超过会强行断句）；系统会按语言自动选择对应规则。", script)
         self.assertIn("Set how long a pause counts as a new subtitle, how few characters trigger automatic merging, and the maximum allowed characters per subtitle (longer text is forcibly split); the matching rule is selected automatically by language.", script)
         self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
@@ -5523,7 +5592,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('new Option(localizedSelectLabel(id, item), item.id)', script)
         self.assertIn('function providerNoteText(providerItem)', script)
         self.assertIn('function modelNoteText(modelItem)', script)
-        self.assertIn('$("modelNote").textContent = modelNoteText(model);', script)
+        self.assertIn('function renderModelNote()', script)
+        self.assertIn('syncLocalModelPath(model); renderModelNote();', script)
+        self.assertIn('"price-note"', script)
         self.assertIn('$("providerNote").textContent = providerNoteText(current);', script)
         self.assertIn('renderServerButton(); refillSelectLabels();', script)
 

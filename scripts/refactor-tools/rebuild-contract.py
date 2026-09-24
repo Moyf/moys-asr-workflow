@@ -1,6 +1,5 @@
 # 从当前 manifest + 模块内容重建 test_editor_assets.py 的
 # 清单元组与 payload markers 两个字面量块（每次拆分批次后运行）。
-import os
 import re
 from pathlib import Path
 
@@ -57,6 +56,5 @@ t = re.sub(
     t, count=1,
 )
 
-os.remove(TEST)
 TEST.write_text(t, encoding="utf-8", newline="\n")
 print(f"契约重建完成：{len(manifest)} 个文件")

@@ -115,9 +115,9 @@ main 合并的实际代价，确认四条进合并后流程的原则：
   waveform-deletion.spec.mjs、ruff/行尾空白清零。
 - **新发现工具缺陷与修复**：`ns-rewrite-editor.mjs` 曾把局部绑定名误合规化
   （7 处局部 `start` → `MAWE_I18N.start`、2 处 `snapshotSegments`），导致
-  overlay 拖动创建与定时编辑比对失效。新增绑定感知审计器
-  `audit-replayed-fns.mjs` 对全部 72 个重放函数做 main 局部绑定 vs 本仓 NS
-  形态比对；参数默认值表达式的 NS 化（8 处）为必要合规化，逐条核实。
+  overlay 拖动创建与定时编辑比对失效。当时用临时绑定感知审计器对全部
+  72 个重放函数做 main 局部绑定 vs 本仓 NS 形态比对；参数默认值表达式的
+  NS 化（8 处）为必要合规化，逐条核实。该次性脚本在合并前已移除。
 - **merge-flow 使用陷阱**：工具从 HEAD 读取并回写全部 `editor-*.js`，会把
   git 自动合并带入的共享文件（editor-utils/i18n）覆盖回旧版——跑完必须对
   「main 改过、本仓没改过」的共享文件 `git checkout origin/main --` 恢复。
@@ -144,9 +144,9 @@ main 并入 ASS 样式库（#135：自定义五色调色板、ASS 预览模式�
 - **ns-rewrite 误替换重现 9 处**（同第三轮 bug：局部 `start` →
   `MAWE_I18N.start`、局部 `snapshotSegments` → `MaweHistory.snapshotSegments`）
   ——merge-flow 重建入口用 main 原文，随后 ns-rewrite 重跑时旧 bug 重现；
-  第三轮的数据修复被覆盖。数据已再次修复；**审计防线**：
-  `audit-replayed-fns.mjs` + e2e 独有失败比对。工具根因尚未定位（当前文件
-  形态下不触发，幂等安全），下一轮合并后必须跑审计器。
+  第三轮的数据修复被覆盖。数据已再次修复；当时以临时绑定感知脚本 + e2e
+  独有失败比对作为审计防线。工具根因尚未定位（当前文件形态下不触发，
+  幂等安全），下一轮合并后必须重做等价审计。
 - main 新合入 e2e 的裸全局 34 处已迁移（fix-e2e-globals 幂等重跑）。
 - 维护者把 run-e2e-bg/poll-e2e 重写为三件套（maw-e2e-bg 运行目录 +
   latest.txt + summarize-e2e-report），add/add 冲突取 main 版。

@@ -678,7 +678,7 @@ def main() -> None:
     parser.add_argument("--min-len", type=int, default=5)
     parser.add_argument("--max-words", type=int, default=WESTERN_MAX_WORDS)
     parser.add_argument("--min-words", type=int, default=WESTERN_MIN_WORDS)
-    parser.add_argument("--gap-split", type=int, default=800)
+    parser.add_argument("--gap-split", type=int, default=500)
     parser.add_argument("-ll", "--length-limit", type=parse_duration, default=None)
     parser.add_argument("--keep-punct", action="store_true")
     parser.add_argument(

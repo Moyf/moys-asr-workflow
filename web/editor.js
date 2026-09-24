@@ -3646,7 +3646,7 @@ function assessSplitAlignment(segment, offset, cutMs, options = {}) {
   };
 }
 
- 
+
 
 
 
@@ -4888,6 +4888,11 @@ document.addEventListener('keydown', (e) => {
     if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
     if (MaweDom.projectMediaModal.classList.contains('show')) return;
     if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+    if (MaweCoreState.waveformEditor.cancelCueDrag()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (MaweCoreState.waveformEditor.getTool() !== 'razor') return;
     e.preventDefault();
     MaweCoreState.waveformEditor.setTool('select');
@@ -6392,7 +6397,7 @@ document.getElementById('project-backup-open')?.addEventListener('click', async 
 
 
 
-  
+
 
 
 

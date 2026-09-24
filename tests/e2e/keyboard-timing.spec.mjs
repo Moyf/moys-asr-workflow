@@ -84,8 +84,11 @@ async function moveWaveformPointerToTime(page, blockLocator, timeMs) {
   expect(rowBox).not.toBeNull();
   expect(rowEnd).toBeGreaterThan(rowStart);
   const ratio = (timeMs - rowStart) / (rowEnd - rowStart);
+  // 波形行有 1px 边框；指针→时间映射与覆盖层一致使用 content-box，
+  // 这里同样按 clientLeft/clientWidth 定位，保证与实际渲染边界对齐。
+  const content = await row.evaluate((element) => ({ clientLeft: element.clientLeft, clientWidth: element.clientWidth }));
   await page.mouse.move(
-    rowBox.x + rowBox.width * Math.max(0, Math.min(1, ratio)),
+    rowBox.x + content.clientLeft + content.clientWidth * Math.max(0, Math.min(1, ratio)),
     blockBox.y + blockBox.height / 2,
   );
 }
@@ -362,6 +365,358 @@ test('dual mode links both edges via the seam zone while side handles trim indep
     { start: 10000, end: 18000 },
     { start: 25000, end: 30000 },
   ]);
+});
+
+test('shared seams align exactly, stay hidden across an 80ms gap, and use accent feedback', async ({ page }) => {
+  await loadAttachedCues(page);
+  const zone = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
+  await expect(zone).toBeVisible();
+  await page.evaluate(() => {
+    MaweBoot.DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+        segments: [
+          { id: 'extension-001', start: 5000, end: 10000, text: 'First' },
+          { id: 'extension-002', start: 10000, end: 18000, text: 'Second' },
+        ],
+      }],
+      bindings: [],
+    };
+    MaweBoot.DATA.overlay_track = {
+      enabled: true,
+      segments: [
+        { id: 'overlay-001', start: 5000, end: 10000, text: 'First overlay' },
+        { id: 'overlay-002', start: 10000, end: 18000, text: 'Second overlay' },
+      ],
+    };
+    MaweCuePanel.renderAll({ waveform: 'full' });
+  });
+  const firstPosition = await zone.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const rowRect = element.closest('.waveform-row').getBoundingClientRect();
+    const row = element.closest('.waveform-row');
+    const start = Number(row.dataset.startMs);
+    const end = Number(row.dataset.endMs);
+    const seam = Number(MaweBoot.DATA.segments[0].end);
+    const boundaryX = rowRect.left + row.clientLeft
+      + ((seam - start) / (end - start)) * row.clientWidth;
+    return {
+      hitWidth: rect.width,
+      atRowEnd: element.classList.contains('at-row-end'),
+      visibleLineEdge: rect.right,
+      boundaryX,
+    };
+  });
+  expect(firstPosition.hitWidth).toBe(8);
+  expect(firstPosition.atRowEnd).toBe(true);
+  expect(Math.abs(firstPosition.visibleLineEdge - firstPosition.boundaryX)).toBeLessThan(1);
+
+  const handleCursors = await page.evaluate(() => Object.fromEntries(
+    ['main', 'extension', 'overlay'].map((track) => [track,
+      [...document.querySelectorAll(`.waveform-cue-block[data-track="${track}"] .waveform-cue-handle`)]
+        .map((handle) => ({ side: handle.classList.contains('left') ? 'left' : 'right', cursor: getComputedStyle(handle).cursor })),
+    ]),
+  ));
+  for (const track of ['main', 'extension', 'overlay']) {
+    expect(handleCursors[track].map(({ side }) => side)).toContain('left');
+    expect(handleCursors[track].map(({ side }) => side)).toContain('right');
+    expect(handleCursors[track].every(({ cursor }) => cursor === 'ew-resize')).toBe(true);
+  }
+  expect(await zone.evaluate((element) => getComputedStyle(element).cursor)).toContain('data:image/svg+xml');
+
+  await zone.hover();
+  await expect.poll(() => zone.evaluate((element) => getComputedStyle(element).opacity)).toBe('0.78');
+  const themeFeedback = await page.evaluate(() => {
+    const root = document.documentElement;
+    const target = document.querySelector('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
+    const probe = document.createElement('span');
+    probe.style.cssText = 'position:fixed;visibility:hidden;background:var(--accent)';
+    document.body.appendChild(probe);
+    const result = [];
+    for (const [theme, accent] of [['dark', 'blue'], ['light', 'orange'], ['dark', 'custom']]) {
+      root.dataset.theme = theme;
+      root.dataset.accent = accent;
+      if (accent === 'custom') root.style.setProperty('--accent-custom', '#48b878');
+      const pseudo = getComputedStyle(target, '::before');
+      result.push({
+        opacity: getComputedStyle(target).opacity,
+        lineColor: pseudo.backgroundColor,
+        accentColor: getComputedStyle(probe).backgroundColor,
+      });
+    }
+    root.dataset.theme = 'dark';
+    root.dataset.accent = 'blue';
+    root.style.removeProperty('--accent-custom');
+    probe.remove();
+    return result;
+  });
+  for (const feedback of themeFeedback) {
+    expect(feedback.opacity).toBe('0.78');
+    expect(feedback.lineColor).toBe(feedback.accentColor);
+  }
+
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].end = 9000;
+    MaweBoot.DATA.segments[1].start = 9000;
+    MaweCuePanel.renderAll();
+  });
+  const inRowZone = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
+  await expect(inRowZone).toBeVisible();
+  const inRowPosition = await inRowZone.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const rowRect = element.closest('.waveform-row').getBoundingClientRect();
+    const row = element.closest('.waveform-row');
+    const expected = rowRect.left + row.clientLeft + ((9000 - Number(row.dataset.startMs))
+      / (Number(row.dataset.endMs) - Number(row.dataset.startMs))) * row.clientWidth;
+    return Math.abs(rect.left + rect.width / 2 - expected);
+  });
+  expect(inRowPosition).toBeLessThan(1);
+
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[1].start = 9080;
+    MaweCuePanel.renderAll();
+  });
+  await expect(page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]'))
+    .toHaveCount(0);
+});
+
+test('crossing visible waveform rows keeps horizontal-only seam movement across row edges', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    const scroll = document.querySelector('.waveform-scroll');
+    scroll.style.right = 'auto';
+    scroll.style.width = '700px';
+  });
+  const seam = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
+  await expect(seam).toBeVisible();
+  const seamBox = await seam.boundingBox();
+  const firstRow = page.locator('.waveform-row[data-row-index="0"]');
+  const secondRow = page.locator('.waveform-row[data-row-index="1"]');
+  const firstBox = await firstRow.boundingBox();
+  const secondBox = await secondRow.boundingBox();
+  const viewportBox = await page.locator('.waveform-scroll').boundingBox();
+  expect(seamBox).not.toBeNull();
+  expect(firstBox).not.toBeNull();
+  expect(secondBox).not.toBeNull();
+  expect(viewportBox).not.toBeNull();
+  await page.mouse.move(seamBox.x + seamBox.width / 2, seamBox.y + seamBox.height / 2);
+  await page.mouse.down();
+  await expect(page.locator('#waveform-pane')).toHaveClass(/shared-boundary-drag-active/);
+  await expect(page.locator('.waveform-pointer-line.boundary-snapped')).toBeVisible();
+
+  const startX = seamBox.x + seamBox.width / 2;
+  await page.mouse.move(startX, secondBox.y + secondBox.height / 2, { steps: 8 });
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(10000);
+  await expect.poll(() => page.locator(
+    '.waveform-row[data-row-index="0"] .waveform-cue-boundary[data-left-idx="0"].dragging',
+  ).count()).toBe(1);
+  const rowOneCursorStyle = await page.locator('#waveform-pane').evaluate((pane) => getComputedStyle(pane).cursor);
+  expect(rowOneCursorStyle).toContain('data:image/svg+xml');
+
+  const targetX = Math.min(
+    viewportBox.x + viewportBox.width + 400,
+    page.viewportSize().width - 10,
+  );
+  expect(targetX).toBeLessThan(page.viewportSize().width);
+  expect(targetX).toBeGreaterThan(firstBox.x + firstBox.width);
+  await page.mouse.move(targetX, secondBox.y + secondBox.height / 2, { steps: 8 });
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBeGreaterThan(12000);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBeLessThan(17900);
+  await expect.poll(() => page.locator(
+    '.waveform-row[data-row-index="1"] .waveform-cue-boundary[data-left-idx="0"].dragging',
+  ).count()).toBe(1);
+  const snappedLineError = await page.locator('.waveform-pointer-line.boundary-snapped').evaluate((marker) => {
+    const row = marker.closest('.waveform-row');
+    const rect = row.getBoundingClientRect();
+    const lineRect = marker.getBoundingClientRect();
+    const rowStart = Number(row.dataset.startMs);
+    const rowEnd = Number(row.dataset.endMs);
+    const seamMs = Number(MaweBoot.DATA.segments[0].end);
+    const expectedX = rect.left + row.clientLeft
+      + ((seamMs - rowStart) / (rowEnd - rowStart)) * row.clientWidth;
+    return Math.abs(lineRect.left + lineRect.width / 2 - expectedX);
+  });
+  expect(snappedLineError).toBeLessThan(1);
+  const dragStyles = await page.locator(
+    '.waveform-row[data-row-index="1"] .waveform-cue-boundary[data-left-idx="0"]',
+  ).evaluate((element) => ({
+    opacity: getComputedStyle(element).opacity,
+    cursor: getComputedStyle(document.getElementById('waveform-pane')).cursor,
+  }));
+  expect(dragStyles.opacity).toBe('0.85');
+  expect(dragStyles.cursor).toContain('data:image/svg+xml');
+
+  const currentBoundary = await page.evaluate(() => MaweBoot.DATA.segments[0].end);
+  const rowGapY = (firstBox.y + firstBox.height + secondBox.y) / 2;
+  if (secondBox.y > firstBox.y + firstBox.height) {
+    await page.mouse.move(targetX, rowGapY);
+    await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(currentBoundary);
+  }
+
+  await page.mouse.move(targetX, firstBox.y + firstBox.height / 2, { steps: 8 });
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(currentBoundary);
+  await page.mouse.move(startX, firstBox.y + firstBox.height / 2, { steps: 8 });
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(10000);
+  await page.mouse.up();
+  await expect(page.locator('.waveform-pointer-line.boundary-snapped')).toHaveCount(0);
+  await expect(page.locator('.waveform-row[data-row-index="0"] .waveform-pointer-line:not([hidden])'))
+    .toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => (
+    MaweBoot.DATA.segments[0].end === MaweBoot.DATA.segments[1].start
+  ))).toBe(true);
+});
+
+test('moving a cue keeps tracking horizontal pointer deltas past its waveform row', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    const scroll = document.querySelector('.waveform-scroll');
+    scroll.style.right = 'auto';
+    scroll.style.width = '700px';
+  });
+
+  const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="2"]').first();
+  const blockBox = await stableVisibleBoundingBox(page, block);
+  const row = block.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
+  const rowBox = await row.boundingBox();
+  const viewportBox = await page.locator('.waveform-scroll').boundingBox();
+  expect(rowBox).not.toBeNull();
+  expect(viewportBox).not.toBeNull();
+
+  const startX = blockBox.x + blockBox.width / 2;
+  const y = blockBox.y + blockBox.height / 2;
+  const targetX = Math.min(
+    viewportBox.x + viewportBox.width + 400,
+    page.viewportSize().width - 10,
+  );
+  expect(targetX).toBeLessThan(page.viewportSize().width);
+  expect(targetX).toBeGreaterThan(rowBox.x + rowBox.width);
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(targetX, y, { steps: 10 });
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[2].start)).toBeGreaterThan(30000);
+  await page.mouse.up();
+});
+
+test('A/D on an independent right handle follows the effective end edge', async ({ page }) => {
+  await loadAttachedCues(page, false, 'classic');
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-general').click();
+  const step = page.locator('#cue-move-step');
+  await step.fill('100');
+  await step.press('Tab');
+  await page.keyboard.press('Escape');
+
+  const handle = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"] .waveform-cue-handle.right').first();
+  const handleBox = await stableVisibleBoundingBox(page, handle);
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await expect(page.locator('.waveform-pointer-line.boundary-snapped')).toBeVisible();
+  await page.keyboard.press('a');
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(9900);
+
+  const line = page.locator('.waveform-row[data-row-index="0"] .waveform-pointer-line.boundary-snapped');
+  await expect(line).toBeVisible();
+  const lineError = await line.evaluate((marker) => {
+    const row = marker.closest('.waveform-row');
+    const rowRect = row.getBoundingClientRect();
+    const markerRect = marker.getBoundingClientRect();
+    const rowStart = Number(row.dataset.startMs);
+    const rowEnd = Number(row.dataset.endMs);
+    const expectedX = rowRect.left + row.clientLeft
+      + ((9900 - rowStart) / (rowEnd - rowStart)) * row.clientWidth;
+    return Math.abs(markerRect.left + markerRect.width / 2 - expectedX);
+  });
+  expect(lineError).toBeLessThan(1);
+  expect(await line.evaluate((marker) => getComputedStyle(marker).backgroundColor))
+    .toBe(await page.locator('#waveform-pane').evaluate((pane) => {
+      const probe = document.createElement('span');
+      probe.style.background = 'var(--accent)';
+      pane.appendChild(probe);
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    }));
+
+  await page.mouse.up();
+  await expect(page.locator('.waveform-pointer-line.boundary-snapped')).toHaveCount(0);
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 9900 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+});
+
+test('Escape and pointer cancellation restore the normal pointer line', async ({ page }) => {
+  await loadAttachedCues(page);
+  const dragSeam = async (targetMs) => {
+    const seam = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
+    const box = await seam.boundingBox();
+    const row = seam.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
+    const rowBox = await row.boundingBox();
+    const start = Number(await row.getAttribute('data-start-ms'));
+    const end = Number(await row.getAttribute('data-end-ms'));
+    const content = await row.evaluate((element) => ({
+      clientLeft: element.clientLeft,
+      clientWidth: element.clientWidth,
+    }));
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      rowBox.x + content.clientLeft + content.clientWidth * ((targetMs - start) / (end - start)),
+      box.y + box.height / 2,
+      { steps: 5 },
+    );
+    await expect(page.locator('.waveform-pointer-line.boundary-snapped')).toBeVisible();
+  };
+
+  await dragSeam(9500);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).not.toBe(10000);
+  await page.keyboard.press('Escape');
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 10000 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+  await expect(page.locator('.waveform-pointer-line.boundary-snapped')).toHaveCount(0);
+  await expect(page.locator('.waveform-row[data-row-index="0"] .waveform-pointer-line:not([hidden])'))
+    .toHaveCount(1);
+  await page.mouse.up();
+
+  await page.evaluate(() => {
+    window.__boundaryPointerId = 0;
+    window.__boundaryPointerPosition = null;
+    window.addEventListener('pointerdown', (event) => {
+      window.__boundaryPointerId = event.pointerId;
+    }, { capture: true, once: true });
+    window.addEventListener('pointermove', (event) => {
+      window.__boundaryPointerPosition = { clientX: event.clientX, clientY: event.clientY };
+    }, { capture: true });
+  });
+  await dragSeam(9500);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).not.toBe(10000);
+  await page.evaluate(() => {
+    const point = window.__boundaryPointerPosition;
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: window.__boundaryPointerId,
+      clientX: point.clientX,
+      clientY: point.clientY,
+    }));
+  });
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 10000 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+  await expect(page.locator('.waveform-pointer-line.boundary-snapped')).toHaveCount(0);
+  await expect(page.locator('.waveform-row[data-row-index="0"] .waveform-pointer-line:not([hidden])'))
+    .toHaveCount(1);
+  await page.mouse.up();
 });
 
 test('dual-mode extension seam replaces the existing selection with both adjacent cues', async ({ page }) => {

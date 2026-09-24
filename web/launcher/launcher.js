@@ -13,7 +13,7 @@
       test_run_override: "测试运行已限定前 2 分钟",
       debug_raw: "调试运行（保存原始/中间数据）",
       debug_raw_title: "在线模型保存服务端原始 JSON；本地模型保存可用的原始/中间文件，便于排查断句、标点和时间码问题",
-      hero_desc: "本地媒体 ➜ AI 转写 ➜ 可编辑字幕工程",
+      hero_desc: "让字幕制作变得超级轻松！",
       github_link: "Github",
       tutorial_video: "教程视频",
       support_link: "支持 ❤️",
@@ -81,6 +81,41 @@
       flv_media_hint: "flv 无法预览，将会自动转换成 mp4 格式",
       port: "端口",
       advanced: "高级选项",
+      preset_current: "当前预设：", preset_unselected: "当前未选择预设", preset_manage: "预设管理",
+      preset_manage_title: "ASR 识别预设", preset_library_title: "ASR 识别预设",
+      preset_library_hint: "管理高级选项预设的保存位置。", preset_library_folder: "预设库文件夹",
+      preset_current_folder: "当前预设文件夹：", preset_folder_reset: "恢复默认",
+      preset_load: "加载预设", preset_save: "将当前配置存为新预设",
+      preset_default_name: "未命名预设", preset_active_badge: "当前",
+      preset_load_title: "把选中预设的设置应用到当前表单", preset_save_title: "把当前识别表单保存为新预设",
+      preset_update: "更新预设", preset_update_selected: "覆盖至预设", preset_update_title: "用当前表单覆盖选中的预设",
+      preset_update_active: "更新该预设", preset_update_active_title: "用当前表单更新该预设",
+      preset_copy: "复制预设", preset_copy_title: "先复制选中预设为「×× 副本」，之后再改名", preset_delete: "删除预设", preset_delete_title: "将选中预设移入系统回收站",
+      preset_copy_suffix: "副本", preset_preview_title: "有效字段",
+      preset_field_prompt_context: "提示词", preset_field_hotwords_keywords: "热词", preset_field_hotword_file: "热词文件",
+      preset_field_soniox_general: "通用上下文", preset_field_translation_terms: "翻译词汇", preset_field_language: "语言",
+      preset_field_punctuation: "标点模型", preset_field_alignment: "对齐模型",
+      preset_field_hotword_weight: "热词权重", preset_field_speaker_colors: "显示说话人", preset_field_spectral: "生成频谱数据", preset_field_enabled: "是",
+      preset_field_max_len: "最大字数", preset_field_min_len: "最少字数", preset_field_max_words: "最多单词", preset_field_min_words: "最少单词", preset_field_gap_split: "间隔分句",
+      preset_field_debug: "调试运行", preset_field_test_run: "快速测试", preset_field_keep_dialect: "保留方言表达",
+      preset_modal_saved_in: "预设文件夹：", preset_modal_settings_lead: "（可在 ", preset_modal_settings_link: "设置", preset_modal_settings_tail: " 中更改）",
+      preset_refresh: "刷新", preset_search_placeholder: "搜索名称或描述", preset_list_title: "预设列表", preset_list_dblclick_hint: "双击可直接加载预设",
+      preset_details: "预设详情", preset_name: "预设名称", preset_name_placeholder: "输入预设名称", preset_description: "描述",
+      preset_description_placeholder: "可选，简单说明适用场景", preset_invalid: "不可用",
+      preset_empty: "没有找到预设。", preset_select_required: "请先选择一个可用预设。",
+      preset_failed: "预设操作失败", preset_missing: "热词文件不存在，请重新选择。",
+      preset_saved: "已另存为预设", preset_info_saved: "预设资料已保存",
+      preset_updated: "已更新预设", preset_copied: "已复制预设", preset_deleted: "已删除预设",
+      preset_modified: "修改时间：{time}", preset_confirm_update: "当前表单将覆盖预设「{name}」，是否继续？",
+      preset_confirm_delete: "确定删除预设「{name}」？删除后会移入回收站。",
+      preset_root_migrate_confirm: "要将旧文件夹中的 {count} 个预设迁移到新位置吗？",
+      preset_root_conflict: "预设名称冲突，无法迁移：{names}", preset_root_saved: "预设库文件夹已更新。",
+      preset_root_switch_no_migrate: "目标文件夹已有同名项（{names}），无法迁移。是否保留两处文件并仅切换目录？",
+      preset_root_migrate_with_invalid: "旧文件夹中有 {count} 个无法迁移的项目（{names}），会保留在旧位置。是否迁移其余 {safeCount} 个预设？",
+      preset_root_migrated: "已迁移 {count} 个预设。", preset_root_source_remaining: "部分旧文件未能移入回收站：{names}",
+      preset_root_failed: "无法更改预设库文件夹", preset_folder_open_failed: "无法打开预设库文件夹",
+      preset_migration_failed: "无法读取旧预设文件夹", preset_root_choose: "预设库文件夹必须存在且可写。",
+      close: "关闭",
       open_mawe: "🎬 启动字幕编辑器",
       server_stop: "⏹️ 停止服务器",
       start: "✨ 生成字幕和工程",
@@ -137,7 +172,7 @@
       test_run_override: "Test run is limited to the first 2 minutes",
       debug_raw: "Debug run (save raw/intermediate data)",
       debug_raw_title: "Online models save the raw service JSON; local models save available raw/intermediate files for investigating segmentation, punctuation, and timestamps.",
-      hero_desc: "Local media ➜ AI transcription ➜ Editable subtitle projects",
+      hero_desc: "Making subtitle creation super easy!",
       github_link: "Github",
       tutorial_video: "Tutorial video",
       support_link: "Support ❤️",
@@ -205,6 +240,42 @@
       flv_media_hint: "flv cannot be previewed and will be converted to mp4 automatically",
       port: "Port",
       advanced: "Advanced options",
+      preset_current: "Current preset: ", preset_unselected: "No preset selected", preset_manage: "Manage presets",
+      preset_manage_title: "ASR Recognition Presets", preset_library_title: "ASR Recognition Presets",
+      preset_library_hint: "Choose where advanced recognition presets are stored.", preset_library_folder: "Preset library folder",
+      preset_current_folder: "Current preset folder: ", preset_folder_reset: "Restore default",
+      preset_load: "Load preset", preset_save: "Save current as new preset",
+      preset_default_name: "Untitled preset", preset_active_badge: "Active",
+      preset_load_title: "Apply the selected preset's settings to the form", preset_save_title: "Save the current recognition form as a new preset",
+      preset_update: "Update preset", preset_update_selected: "Overwrite preset", preset_update_title: "Overwrite the selected preset with the current form",
+      preset_update_active: "Update this preset", preset_update_active_title: "Update this preset with the current form",
+      preset_update_active: "Update this preset", preset_update_active_title: "Update this preset with the current form",
+      preset_copy: "Copy preset", preset_copy_title: "Duplicate the selected preset as a copy, then rename it", preset_delete: "Delete preset", preset_delete_title: "Move the selected preset to the recycle bin",
+      preset_copy_suffix: "copy", preset_preview_title: "Active fields",
+      preset_field_prompt_context: "Prompt", preset_field_hotwords_keywords: "Hotwords", preset_field_hotword_file: "Hotword file",
+      preset_field_soniox_general: "General context", preset_field_translation_terms: "Translation terms", preset_field_language: "Language",
+      preset_field_punctuation: "Punctuation model", preset_field_alignment: "Alignment model",
+      preset_field_hotword_weight: "Hotword weight", preset_field_speaker_colors: "Speaker labels", preset_field_spectral: "Generate spectral data", preset_field_enabled: "Yes",
+      preset_field_max_len: "Max characters", preset_field_min_len: "Min characters", preset_field_max_words: "Max words", preset_field_min_words: "Min words", preset_field_gap_split: "Gap split",
+      preset_field_debug: "Debug run", preset_field_test_run: "Quick test", preset_field_keep_dialect: "Keep dialect",
+      preset_modal_saved_in: "Preset folder: ", preset_modal_settings_lead: " (change in ", preset_modal_settings_link: "Settings", preset_modal_settings_tail: ")",
+      preset_refresh: "Refresh", preset_search_placeholder: "Search names or descriptions", preset_list_title: "Preset list", preset_list_dblclick_hint: "Double-click an item to load it",
+      preset_details: "Preset details", preset_name: "Preset name", preset_name_placeholder: "Enter a preset name", preset_description: "Description",
+      preset_description_placeholder: "Optional; briefly describe when to use it", preset_invalid: "Unavailable",
+      preset_empty: "No presets found.", preset_select_required: "Select an available preset first.",
+      preset_failed: "Preset operation failed", preset_missing: "Hotword file is missing. Please select it again.",
+      preset_saved: "Saved as new preset", preset_info_saved: "Preset info saved",
+      preset_updated: "Updated preset", preset_copied: "Copied preset", preset_deleted: "Deleted preset",
+      preset_modified: "Modified: {time}", preset_confirm_update: "The current form will replace preset “{name}”. Continue?",
+      preset_confirm_delete: "Delete preset “{name}”? It will be moved to the Recycle Bin.",
+      preset_root_migrate_confirm: "Migrate {count} preset(s) from the old folder to the new location?",
+      preset_root_conflict: "Preset name conflicts prevent migration: {names}", preset_root_saved: "Preset library folder updated.",
+      preset_root_switch_no_migrate: "The target folder has name conflicts ({names}), so migration cannot proceed. Switch folders without moving files?",
+      preset_root_migrate_with_invalid: "{count} item(s) in the old folder cannot be migrated ({names}) and will stay there. Migrate the other {safeCount} preset(s)?",
+      preset_root_migrated: "Migrated {count} preset(s).", preset_root_source_remaining: "Some old files could not be moved to the Recycle Bin: {names}",
+      preset_root_failed: "Could not change the preset library folder", preset_folder_open_failed: "Could not open the preset library folder",
+      preset_migration_failed: "Could not read presets in the old folder", preset_root_choose: "Choose an existing writable folder.",
+      close: "Close",
       open_mawe: "🎬 Launch Subtitle Editor",
       server_stop: "⏹️ Stop server",
       start: "✨ Generate subtitles & project",
@@ -262,6 +333,7 @@
     audio_track_sample_rate: "{rate} kHz",
     audio_track_id: "ID {id}"
   });
+  Object.assign(STRINGS.zh, { toolbox_ffmpeg_log: "FFmpeg 日志", toolbox_ffmpeg_waiting: "FFmpeg 已启动，等待最新进度……" });
   Object.assign(STRINGS.en, {
     audio_track: "Audio track",
     audio_track_hint: "Multiple audio tracks were found. Choose the track for transcription and waveform generation.",
@@ -273,11 +345,12 @@
     audio_track_sample_rate: "{rate} kHz",
     audio_track_id: "ID {id}"
   });
+  Object.assign(STRINGS.en, { toolbox_ffmpeg_log: "FFmpeg log", toolbox_ffmpeg_waiting: "FFmpeg started; waiting for the latest progress…" });
   Object.assign(STRINGS.zh, {
-    toolbox_burn_subtitle: "压制字幕", toolbox_burn_subtitle_hint: "将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。", toolbox_burn_subtitle_input: "字幕文件", toolbox_burn_subtitle_placeholder: "选择或拖入 .srt / .ass / .ssa 字幕", toolbox_burn_subtitle_invalid: "请选择 .srt、.ass 或 .ssa 字幕文件。", toolbox_burn_done: "字幕压制完成，已切换到新媒体：", toolbox_extract_audio: "提取音频", toolbox_extract_audio_hint: "从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。", toolbox_audio_track: "音轨", toolbox_audio_track_choose: "先选择媒体，MAW 会读取可用音轨。", toolbox_audio_tracks_reading: "正在读取音轨……", toolbox_audio_tracks_found: "已找到 {count} 条音轨。", toolbox_audio_tracks_none: "没有检测到可用音轨。", toolbox_audio_track_item: "音轨", toolbox_audio_track_default: "默认", toolbox_audio_track_invalid: "所选音轨无效，请重新选择。", toolbox_extract_audio_done: "音频提取完成，已切换到新媒体：", toolbox_utility_video_required: "压制字幕需要包含视频画面的媒体文件。", toolbox_status_burning: "正在压制字幕并重新编码视频……", toolbox_status_extracting: "正在提取音频……", toolbox_status_cancelling: "正在停止媒体处理……"
+    toolbox_burn_subtitle: "烧录字幕", toolbox_burn_subtitle_hint: "将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。", toolbox_burn_subtitle_input: "字幕文件", toolbox_burn_subtitle_placeholder: "选择或拖入 .srt / .ass / .ssa 字幕", toolbox_burn_subtitle_input_hint: "默认跟随当前的 SRT 输出，也支持手动选择 ASS / SSA。", toolbox_burn_subtitle_invalid: "请选择 .srt、.ass 或 .ssa 字幕文件。", toolbox_burn_done: "字幕烧录完成，已切换到新媒体：", toolbox_extract_audio: "提取音频", toolbox_extract_audio_hint: "从视频或音频中提取一个音轨，输出新的 AAC/M4A 文件；不会修改源文件。", toolbox_audio_track: "音轨", toolbox_audio_track_choose: "先选择媒体，MAW 会读取可用音轨。", toolbox_audio_tracks_reading: "正在读取音轨……", toolbox_audio_tracks_found: "已找到 {count} 条音轨。", toolbox_audio_tracks_none: "没有检测到可用音轨。", toolbox_audio_track_item: "音轨", toolbox_audio_track_default: "默认", toolbox_audio_track_invalid: "所选音轨无效，请重新选择。", toolbox_extract_audio_done: "音频提取完成，已切换到新媒体：", toolbox_utility_video_required: "烧录字幕需要包含视频画面的媒体文件。", toolbox_burn_notice: "SRT 字幕会使用默认 SRT 烧录样式（可在编辑器中配置）。更推荐在编辑器中预览并编辑 ASS 字幕样式后，导出 ASS 字幕格式再进行烧录。", toolbox_status_burning: "正在烧录字幕并重新编码视频……", toolbox_status_extracting: "正在提取音频……", toolbox_stop_media: "停止媒体处理", toolbox_status_cancelling: "正在停止媒体处理……"
   });
   Object.assign(STRINGS.en, {
-    toolbox_burn_subtitle: "Burn subtitles", toolbox_burn_subtitle_hint: "Render SRT / ASS subtitles into a new video file. Video is re-encoded and the source is kept unchanged.", toolbox_burn_subtitle_input: "Subtitle file", toolbox_burn_subtitle_placeholder: "Choose or drop an .srt / .ass / .ssa subtitle", toolbox_burn_subtitle_invalid: "Choose an .srt, .ass, or .ssa subtitle file.", toolbox_burn_done: "Subtitles burned; switched to the new media:", toolbox_extract_audio: "Extract audio", toolbox_extract_audio_hint: "Extract one audio track from video or audio into a new AAC/M4A file; the source is kept unchanged.", toolbox_audio_track: "Audio track", toolbox_audio_track_choose: "Choose media first; MAW will read its available tracks.", toolbox_audio_tracks_reading: "Reading audio tracks…", toolbox_audio_tracks_found: "Found {count} audio track(s).", toolbox_audio_tracks_none: "No usable audio tracks were found.", toolbox_audio_track_item: "Track", toolbox_audio_track_default: "default", toolbox_audio_track_invalid: "The selected audio track is invalid. Choose it again.", toolbox_extract_audio_done: "Audio extracted; switched to the new media:", toolbox_utility_video_required: "Burning subtitles requires media with a video stream.", toolbox_status_burning: "Burning subtitles and re-encoding the video…", toolbox_status_extracting: "Extracting audio…", toolbox_status_cancelling: "Stopping media operation…"
+    toolbox_burn_subtitle: "Burn subtitles", toolbox_burn_subtitle_hint: "Render SRT / ASS subtitles into a new video file. Video is re-encoded and the source is kept unchanged.", toolbox_burn_subtitle_input: "Subtitle file", toolbox_burn_subtitle_placeholder: "Choose or drop an .srt / .ass / .ssa subtitle", toolbox_burn_subtitle_input_hint: "Follows the current SRT output by default; ASS / SSA can be chosen manually.", toolbox_burn_subtitle_invalid: "Choose an .srt, .ass, or .ssa subtitle file.", toolbox_burn_done: "Subtitles burned; switched to the new media:", toolbox_extract_audio: "Extract audio", toolbox_extract_audio_hint: "Extract one audio track from video or audio into a new AAC/M4A file; the source is kept unchanged.", toolbox_audio_track: "Audio track", toolbox_audio_track_choose: "Choose media first; MAW will read its available tracks.", toolbox_audio_tracks_reading: "Reading audio tracks…", toolbox_audio_tracks_found: "Found {count} audio track(s).", toolbox_audio_tracks_none: "No usable audio tracks were found.", toolbox_audio_track_item: "Track", toolbox_audio_track_default: "default", toolbox_audio_track_invalid: "The selected audio track is invalid. Choose it again.", toolbox_extract_audio_done: "Audio extracted; switched to the new media:", toolbox_utility_video_required: "Burning subtitles requires media with a video stream.", toolbox_burn_notice: "SRT subtitles use the default SRT burn style (configurable in the editor). For best results, preview and edit the ASS subtitle style in the editor, export ASS subtitles, then burn them into the video.", toolbox_status_burning: "Burning subtitles and re-encoding the video…", toolbox_status_extracting: "Extracting audio…", toolbox_stop_media: "Stop media operation", toolbox_status_cancelling: "Stopping media operation…"
   });
   Object.assign(STRINGS.zh, {
     toolbox_burn_subtitle_style_hint: "选择 SRT 字幕时，会使用 ASS 样式库中的「SRT 烧录样式」对应的样式；选择 ASS 字幕时，使用 ASS 字幕自身的样式。",
@@ -286,10 +359,28 @@
     toolbox_burn_subtitle_style_hint: "SRT subtitles are burned with the style assigned as the SRT burn style in the ASS style library; ASS / SSA subtitles keep their own embedded styles.",
   });
   Object.assign(STRINGS.zh, {
-    toolbox_burn_crf: "画质 CRF", toolbox_burn_crf_hint: "数值越小画质越高、文件越大；常用 16–23，默认 18。", toolbox_burn_crf_invalid: "CRF 需要是 0–51 之间的整数。", toolbox_burn_preset: "编码预设", toolbox_burn_preset_hint: "预设越慢压缩率越高、耗时越长；一般保持 medium。", toolbox_burn_audio_bitrate: "音频码率", toolbox_burn_audio_bitrate_hint: "码率越高音质越好、文件越大；默认 192k。", toolbox_burn_save_defaults: "保存为默认参数", toolbox_burn_settings_saved: "已保存为默认参数，之后压制会自动预填。"
+    toolbox_burn_crf: "画质 CRF", toolbox_burn_crf_hint: "数值越小画质越高、文件越大；常用 16–23，默认 18。", toolbox_burn_crf_invalid: "CRF 需要是 0–51 之间的整数。", toolbox_burn_preset: "编码预设", toolbox_burn_preset_hint: "仅 CPU 编码使用：越慢压缩率越高、耗时越长；一般保持 medium。", toolbox_burn_audio_bitrate: "音频码率", toolbox_burn_audio_bitrate_hint: "码率越高音质越好、文件越大；默认 192k。", toolbox_burn_save_defaults: "保存为默认参数", toolbox_burn_settings_saved: "已保存为默认参数，之后烧录会自动预填。"
   });
   Object.assign(STRINGS.en, {
-    toolbox_burn_crf: "Quality CRF", toolbox_burn_crf_hint: "Lower CRF means higher quality and larger files; 16–23 is common, default 18.", toolbox_burn_crf_invalid: "CRF must be an integer between 0 and 51.", toolbox_burn_preset: "Encoder preset", toolbox_burn_preset_hint: "Slower presets compress better but take longer; keep medium in most cases.", toolbox_burn_audio_bitrate: "Audio bitrate", toolbox_burn_audio_bitrate_hint: "Higher bitrate sounds better and grows the file; default 192k.", toolbox_burn_save_defaults: "Save as defaults", toolbox_burn_settings_saved: "Saved as defaults; future runs will prefill these."
+    toolbox_burn_crf: "Quality CRF", toolbox_burn_crf_hint: "Lower CRF means higher quality and larger files; 16–23 is common, default 18.", toolbox_burn_crf_invalid: "CRF must be an integer between 0 and 51.", toolbox_burn_preset: "Encoder preset", toolbox_burn_preset_hint: "Applies to CPU encoding only: slower presets compress better but take longer; keep medium in most cases.", toolbox_burn_audio_bitrate: "Audio bitrate", toolbox_burn_audio_bitrate_hint: "Higher bitrate sounds better and grows the file; default 192k.", toolbox_burn_save_defaults: "Save as defaults", toolbox_burn_settings_saved: "Saved as defaults; future runs will prefill these."
+  });
+  Object.assign(STRINGS.zh, {
+    toolbox_burn_video_encoder: "视频编码器",
+    toolbox_burn_video_encoder_hint: "自动模式会按可用的硬件编码器尝试；硬件不可用时回退 CPU。画质 CRF 对所有编码器生效。",
+    toolbox_video_encoder_auto: "自动（优先硬件）",
+    toolbox_video_encoder_cpu: "CPU（libx264）",
+    toolbox_video_encoder_nvenc: "NVIDIA NVENC",
+    toolbox_video_encoder_amf: "AMD AMF",
+    toolbox_video_encoder_qsv: "Intel QSV",
+  });
+  Object.assign(STRINGS.en, {
+    toolbox_burn_video_encoder: "Video encoder",
+    toolbox_burn_video_encoder_hint: "Automatic mode tries available hardware encoders first, then falls back to the CPU. The quality CRF applies to all encoders.",
+    toolbox_video_encoder_auto: "Automatic (prefer hardware)",
+    toolbox_video_encoder_cpu: "CPU (libx264)",
+    toolbox_video_encoder_nvenc: "NVIDIA NVENC",
+    toolbox_video_encoder_amf: "AMD AMF",
+    toolbox_video_encoder_qsv: "Intel QSV",
   });
   Object.assign(STRINGS.zh, {
     test_run: "快速测试",
@@ -368,6 +459,7 @@
     batch_error_details: "查看错误",
     batch_open_project: "打开工程",
     batch_open_folder: "打开文件夹",
+    batch_open_video: "打开烧录视频",
     batch_remove: "移除",
   });
   Object.assign(STRINGS.en, {
@@ -415,6 +507,7 @@
     batch_error_details: "View error",
     batch_open_project: "Open project",
     batch_open_folder: "Open folder",
+    batch_open_video: "Open burned video",
     batch_remove: "Remove",
   });
   Object.assign(STRINGS.zh, {
@@ -434,6 +527,7 @@
     auto_step_resegment_title: "对于长字幕谨慎开启，会很慢而且可能中断。",
     auto_step_ocr: "OCR 字幕去重",
     auto_step_translate: "翻译",
+    auto_step_burn: "烧录字幕",
     auto_translate_target: "翻译目标",
     auto_translate_zh: "中文",
     auto_translate_en: "英文",
@@ -568,6 +662,7 @@
     auto_step_resegment_title: "Use with caution on long subtitles: it is slow and may be interrupted.",
     auto_step_ocr: "OCR subtitle dedup",
     auto_step_translate: "Translate",
+    auto_step_burn: "Burn subtitles",
     auto_translate_target: "Translation target",
     auto_translate_zh: "Chinese",
     auto_translate_en: "English",
@@ -704,7 +799,7 @@
     min_len_placeholder: "默认 5",
     max_words_placeholder: "默认 13",
     min_words_placeholder: "默认 3",
-    gap_split_placeholder: "默认 800",
+    gap_split_placeholder: "默认 500",
     segmentation_hint: "配置停顿多久时算作两句字幕、少于多少字时自动合并，以及允许的最大字数（超过会强行断句）；系统会按语言自动选择对应规则。",
     english_segmentation_hint: "在生成英文字幕时，会启用该配置。",
     qwen_audio_options_title: "Qwen 上下文与热词",
@@ -719,6 +814,8 @@
     qwen_audio_context_placeholder: "额外用来辅助 AI 判断的上下文提示词，例如：这是一段关于医药公司的会议记录，参与人员有阿米娅、凯尔希、M3 等人，他们讨论的主要话题是……",
     qwen_audio_context_hint: "领域词表或前文提示；本次任务最多发送 400 个字符，不是通用系统指令。",
     qwen_audio_context_count: "当前字符数：{count}/400",
+    qwen_audio_keep_dialect: "保留方言表达",
+    qwen_audio_keep_dialect_hint: "仅 qwen-audio-3.1-asr 支持：勾选后保留方言原文；不勾选时方言会被转写为普通话文本。",
     qwen_audio_hotwords: "即时热词",
     qwen_audio_hotwords_mode_text: "直接输入",
     qwen_audio_hotwords_mode_file: "从文件读取",
@@ -791,7 +888,7 @@
     min_len_placeholder: "Default: 5",
     max_words_placeholder: "Default: 13",
     min_words_placeholder: "Default: 3",
-    gap_split_placeholder: "Default: 800",
+    gap_split_placeholder: "Default: 500",
     segmentation_hint: "Set how long a pause counts as a new subtitle, how few characters trigger automatic merging, and the maximum allowed characters per subtitle (longer text is forcibly split); the matching rule is selected automatically by language.",
     english_segmentation_hint: "This configuration is used when generating English subtitles.",
     qwen_audio_options_title: "Qwen context & hotwords",
@@ -806,6 +903,8 @@
     qwen_audio_context_placeholder: "An additional context prompt to help the AI interpret the audio, e.g.: This is a meeting transcript from a pharmaceutical company. Participants include Amiya, Kal'tsit, M3, and others. Their main topic is…",
     qwen_audio_context_hint: "Domain terms or prior context; at most 400 characters per request, not a general system prompt.",
     qwen_audio_context_count: "Characters: {count}/400",
+    qwen_audio_keep_dialect: "Keep dialect wording",
+    qwen_audio_keep_dialect_hint: "qwen-audio-3.1-asr only: keep the original dialect wording; when unchecked, dialect speech is transcribed into Mandarin text.",
     qwen_audio_hotwords: "Instant hotwords",
     qwen_audio_hotwords_mode_text: "Direct input",
     qwen_audio_hotwords_mode_file: "Load from file",
@@ -1457,7 +1556,7 @@
         perVideoSubfolder: saved.perVideoSubfolder,
         attachModelName: saved.attachModelName,
         notifyOnComplete: saved.notifyOnComplete === true,
-        appVersion: "1.6.0",
+        appVersion: "1.7.0",
         stickerDir: saved.stickerDir || "",
         postprocessProviders: [
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
@@ -1478,7 +1577,8 @@
         providers: [
           {
             id: "qwen",
-            label: "阿里云百炼（QwenASR / FunASR）【推荐】",
+            label: "阿里云百炼（千问）",
+            keyButtonLabel: "千问AI平台",
             keyUrl: "https://platform.qianwenai.com/home/",
             apiKey: saved.apiKey,
             maskedApiKey: saved.apiKey ? "sk-…demo" : "",
@@ -1487,6 +1587,7 @@
             commonLanguages: ["", "zh", "yue", "en"],
             models: [
               { id: "qwen-audio-3.0-asr-flash-filetrans", label: "qwen-audio-3.0-asr（热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离。", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
+              { id: "qwen-audio-3.1-asr-flash-filetrans", label: "qwen-audio-3.1-asr（方言 / 热词 / 上下文）", envKey: "DASHSCOPE_API_KEY", note: "支持即时热词、上下文与说话人分离；可选保留方言表达。", priceNote: "阿里云百炼参考价：按 Token 计费，输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token", supportsSpeaker: true, supportsContext: true, supportsHotwords: true, supportsVocabulary: true, supportsKeepDialect: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Chinese" }, { id: "yue", label: "粤语 / Cantonese" }, { id: "en", label: "英语 / English" }] },
               { id: "fun-asr", label: "fun-asr（支持说话人）", envKey: "DASHSCOPE_API_KEY", note: "支持说话人分离与词级时间戳。", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
               { id: "qwen3-asr-flash-filetrans", label: "qwen3-asr（准确率更高）", envKey: "DASHSCOPE_API_KEY", note: "", priceNote: "阿里云百炼参考价：¥0.00022 / 秒（约 ¥0.792 / 小时）", supportsSpeaker: false, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] }
             ],
@@ -1581,7 +1682,7 @@
             supportsLanguage: false,
             note: "非官方免费接口：无需 API Key，仅支持中文，单文件上限 2 小时；接口可能随时变更、失效或触发限流，请勿高频调用。重要或批量任务建议使用上方正式供应商。",
             commonLanguages: [],
-            models: [{ id: "bcut-asr", label: "必剪 ASR（免 Key / 仅中文）", envKey: "", note: "逐字毫秒时间戳；无需 API Key。", supportsSpeaker: false, languages: [{ id: "", label: "中文（自动识别）" }] }],
+            models: [{ id: "bcut-asr", label: "必剪（免 Key / 仅中文）", envKey: "", note: "逐字毫秒时间戳；无需 API Key。", supportsSpeaker: false, languages: [{ id: "", label: "中文（自动识别）" }] }],
             regions: [],
             languages: [{ id: "", label: "中文（自动识别）" }]
           }
@@ -1594,7 +1695,7 @@
           const dirIndex = Math.max(mediaPath.lastIndexOf("/"), mediaPath.lastIndexOf("\\"));
           const dir = dirIndex >= 0 ? mediaPath.slice(0, dirIndex + 1) : "";
           const stem = mediaPath.slice(dirIndex + 1).replace(/\.[^.\\/]+$/, "");
-          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : (modelId.includes("firered") ? ".firered-local" : (modelId.includes("moss") ? ".moss-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))))) : (modelId === "fun-asr" ? ".fun-asr" : (modelId === "qwen-audio-3.0-asr-flash-filetrans" ? ".qwen-audio" : ".qwen3-asr-api"))))));
+          const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : (modelId.includes("firered") ? ".firered-local" : (modelId.includes("moss") ? ".moss-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))))) : (modelId === "fun-asr" ? ".fun-asr" : ((modelId === "qwen-audio-3.0-asr-flash-filetrans" || modelId === "qwen-audio-3.1-asr-flash-filetrans") ? ".qwen-audio" : ".qwen3-asr-api"))))));
           let outputDir = dir;
           if (saved.outputSubfolder) {
             const root = saved.perVideoSubfolder ? `${stem}_maw` : "_maw";
@@ -1723,13 +1824,14 @@
   }
   // 供应商 / 模型配置的 label 与 note 由后端（maw/gui_config.py）以中文下发；
   // 英文界面按稳定 id 映射为英文，id 未收录时回退后端原文。
-  const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (QwenASR / FunASR) [Recommended]", soniox: "Soniox STT (overseas / minority languages)", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI-format compatible API", local: "Local models (Beta)", doubao: "Volcano Engine (Doubao)", bcut: "Bcut (unofficial / free / experimental)" };
+  const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (Qwen)", soniox: "Soniox STT (overseas / minority languages)", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI-format compatible API", local: "Local models (Beta)", doubao: "Volcano Engine (Doubao)", bcut: "Bcut (unofficial / free / experimental)" };
   const PROVIDER_NOTES_EN = {
     openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models. For other relays, choose Custom and enter the exact model name they provide. The API must return segments or words timestamps.",
     tencent: "Requires TENCENT_SECRET_ID and TENCENT_SECRET_KEY; use a COS URL for media larger than 5 MB.",
     bcut: "Unofficial free endpoint: no API key, Chinese only, 2-hour per-file limit. The endpoint may change, break, or rate-limit at any time; avoid high-frequency calls. For important or batch tasks, prefer the official providers above.",
   };
   const MODEL_LABELS_EN = {
+    "qwen-audio-3.1-asr-flash-filetrans": "qwen-audio-3.1-asr (dialect / hotwords / context)",
     "qwen-audio-3.0-asr-flash-filetrans": "qwen-audio-3.0-asr (hotwords / context)",
     "fun-asr": "fun-asr (speaker support)",
     "qwen3-asr-flash-filetrans": "qwen3-asr (higher accuracy)",
@@ -1750,9 +1852,10 @@
     "firered-asr2-ctc-local": "FireRedASR2",
     "moss-transcribe-diarize-local": "MOSS Transcribe-Diarize 0.9B",
     "whisper-large-v3-local": "Faster-Whisper large-v3 (experimental)",
-    "bcut-asr": "Bcut ASR (no key / Chinese only)",
+    "bcut-asr": "Bcut (no key / Chinese only)",
   };
   const MODEL_NOTES_EN = {
+    "qwen-audio-3.1-asr-flash-filetrans": "Supports instant hotwords, context, and speaker diarization; optional dialect preservation.",
     "qwen-audio-3.0-asr-flash-filetrans": "Supports instant hotwords, context, and speaker diarization.",
     "fun-asr": "Supports speaker diarization and word-level timestamps.",
     "whisper-1": "Supports Prompt; Whisper prompts are limited to 224 tokens.",
@@ -1774,6 +1877,7 @@
     "bcut-asr": "Millisecond per-character timestamps; no API key required.",
   };
   const MODEL_PRICING_NOTES_EN = {
+    "qwen-audio-3.1-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: token-based, CNY 0.8 / 1M input tokens and CNY 2.7 / 1M output tokens",
     "qwen-audio-3.0-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
     "fun-asr": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
     "qwen3-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: CNY 0.00022/second (about CNY 0.792/hour)",
@@ -1827,16 +1931,35 @@
     const value = String(text || "");
     return /参考价|reference price/iu.test(value) ? `🪙 ${value}` : value;
   }
-  function modelNoteText(modelItem) {
+  function modelNoteParts(modelItem) {
     const openRouterNote = modelItem.openrouterNote || "";
     const baseUrl = $("openaiBaseUrl")?.value || state.config?.openaiBaseUrl;
     const isOpenai = isOpenAiProvider();
     const isOpenRouter = isOpenai && isOpenRouterBaseUrl(baseUrl);
-    if (isOpenRouter && openRouterNote) return withPricePrefix(state.lang === "en" ? (MODEL_OPENROUTER_NOTES_EN[modelItem.id] || openRouterNote) : openRouterNote);
+    if (isOpenRouter && openRouterNote) return { note: "", price: withPricePrefix(state.lang === "en" ? (MODEL_OPENROUTER_NOTES_EN[modelItem.id] || openRouterNote) : openRouterNote) };
     const note = state.lang === "en" ? (MODEL_NOTES_EN[modelItem.id] || modelItem.note) : modelItem.note;
-    if (isOpenai && !isOpenAiOfficialBaseUrl(baseUrl)) return note;
+    if (isOpenai && !isOpenAiOfficialBaseUrl(baseUrl)) return { note, price: "" };
     const priceNote = state.lang === "en" ? (MODEL_PRICING_NOTES_EN[modelItem.id] || modelItem.priceNote) : modelItem.priceNote;
-    return [note, withPricePrefix(priceNote)].filter(Boolean).join("\n");
+    return { note, price: withPricePrefix(priceNote) };
+  }
+  function modelNoteText(modelItem) { const parts = modelNoteParts(modelItem); return [parts.note, parts.price].filter(Boolean).join("\n"); }
+  function renderModelNote() {
+    const el = $("modelNote");
+    if (!el) return;
+    const parts = modelNoteParts(selectedModel());
+    el.replaceChildren();
+    if (parts.note) {
+      const noteElement = document.createElement("span");
+      noteElement.className = "model-note-text";
+      noteElement.textContent = parts.note;
+      el.append(noteElement);
+    }
+    if (parts.price) {
+      const priceElement = document.createElement("span");
+      priceElement.className = "price-note";
+      priceElement.textContent = parts.price;
+      el.append(priceElement);
+    }
   }
   function llmProviderLabel(providerId) {
     const id = String(providerId || "").trim();
@@ -2267,13 +2390,13 @@
     if (el.multiple) Array.from(el.options).forEach((option) => { option.selected = selected.includes(option.value); });
     else el.value = selected[0] || "";
     $("providerNote").textContent = providerNoteText(current);
-    $("modelNote").textContent = modelNoteText(selectedModel());
+    renderModelNote();
   }
   function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }
   function setOutputNotice(message) { const notice = $("srtPathNotice"); if (!notice) return; renderMessage(notice, message); notice.classList.toggle("hidden", !message); }
   function mediaDropError() { const separator = state.lang === "zh" ? "、" : ", "; return t("drop_reject_media").replace("{extensions}", Array.from(MEDIA_EXTS).join(separator)); }
   function clearErrors() { ["mediaPath", "srtPath", "apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "localModelPath", "localModelCachePath", "recognitionAlignmentModel", "maxLen", "minLen", "maxWords", "minWords", "gapSplit", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "jsonPath", "serverMediaPath", "port", "ffmpegPath", "stickerDir", "toolboxUtilityMediaPath", "toolboxBurnSubtitlePath", "toolboxBurnCrf", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "toolboxAlignmentScriptPath"].forEach((field) => setError(field, "")); hideErrorNotice(); }
-  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), alignmentModel: isLocalProvider() ? $("recognitionAlignmentModel").value : "", alignmentModelPath: "", device: $("localDevice").value, fireredPunc: isFireRedModel() ? $("fireRedPunc").value : "ct-punc", language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
+  function formPayload() { const modelId = $("model").value; const openaiModel = isOpenAiProvider() ? (isCustomOpenAiModel() ? $("openaiModel").value.trim() : modelId) : ""; const mediaPath = $("mediaPath").value.trim(); return { providerId: $("provider").value, modelId, mediaPath, audioTrack: getAudioTrackForMedia(mediaPath), defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath), srtPath: $("srtPath").value.trim(), apiKey: $("apiKey").value.trim(), openaiBaseUrl: $("openaiBaseUrl").value.trim(), openaiModel, openaiPrompt: $("openaiPrompt").value.trim(), openaiKeywords: $("openaiKeywords").value.trim(), region: $("region").value, workspaceId: $("workspaceId").value.trim(), localModelPath: $("localModelPath").value.trim(), alignmentModel: isLocalProvider() ? $("recognitionAlignmentModel").value : "", alignmentModelPath: "", device: $("localDevice").value, fireredPunc: isFireRedModel() ? $("fireRedPunc").value : "ct-punc", language: languageValue(), lengthLimit: $("lengthLimit")?.value.trim() || "", maxLen: $("maxLen").value.trim(), minLen: $("minLen").value.trim(), maxWords: $("maxWords").value.trim(), minWords: $("minWords").value.trim(), gapSplit: $("gapSplit").value.trim(), qwenAudioContext: $("qwenAudioContext").value.trim(), qwenAudioHotwordsMode: $("qwenAudioHotwordsMode").value, qwenAudioHotwords: $("qwenAudioHotwords").value.trim(), qwenAudioHotwordsFile: $("qwenAudioHotwordsFile").value.trim(), qwenAudioHotwordWeight: $("qwenAudioHotwordWeight").value, qwenKeepDialect: $("qwenAudioKeepDialect").checked, sonioxContextGeneral: $("sonioxContextGeneral").value.trim(), sonioxContextText: $("sonioxContextText").value.trim(), sonioxContextTerms: $("sonioxContextTerms").value.trim(), sonioxContextTranslationTerms: $("sonioxContextTranslationTerms").value.trim(), testRun: $("testRun").checked, debugRaw: $("debugRaw").checked, speakerColors: $("speakerColors").checked, generateSpectral: $("generateSpectral").checked, generateHtml: $("generateHtml").checked, autoPostprocess: window.MAWLauncher?.getAutoPostprocessPayload?.() || null, guiLang: state.lang }; }
   function serverPayload() { return { jsonPath: $("jsonPath").value.trim(), mediaPath: $("serverMediaPath").value.trim(), port: $("port").value || "8250", guiLang: state.lang }; }
   function renderServerButton() {
     const button = $("openMawe");
@@ -2294,7 +2417,7 @@
   function renderKeyHint() {
     const current = provider();
     const isOpenai = current?.id === "openai";
-    $("openKeyUrl").textContent = isOpenai ? t("openai_official") : (current?.label || "");
+    $("openKeyUrl").textContent = isOpenai ? t("openai_official") : (current?.keyButtonLabel || current?.label || "");
     $("openKeyHintOr")?.classList.toggle("hidden", !isOpenai);
     const openRouterLink = $("openRouterKeyUrl");
     if (openRouterLink) {
@@ -2305,7 +2428,7 @@
     if (suffix) suffix.textContent = t(isOpenai ? "openai_key_hint_suffix" : "key_hint_suffix");
   }
   function renderKeyStatus() { const masked = state.config && !isLocalProvider() ? provider().maskedApiKey : ""; $("keyStatus").textContent = masked ? t("key_loaded").replace("{key}", masked) : t("key_empty"); }
-  function syncQwenAudioOptions(model) { const enabled = provider().id === "qwen" && Boolean(model?.supportsContext || model?.supportsHotwords); $("qwenAudioOptions").classList.toggle("hidden", !enabled); $("qwenAudioContextField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsContext)); $("qwenAudioHotwordsSection").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsHotwords)); syncQwenAudioHotwordsMode(); }
+  function syncQwenAudioOptions(model) { const enabled = provider().id === "qwen" && Boolean(model?.supportsContext || model?.supportsHotwords); $("qwenAudioOptions").classList.toggle("hidden", !enabled); $("qwenAudioContextField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsContext)); $("qwenAudioKeepDialectField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsKeepDialect)); $("qwenAudioHotwordsSection").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsHotwords)); syncQwenAudioHotwordsMode(); }
   function syncSonioxContextOptions(model) { const enabled = provider().id === "soniox" && Boolean(model?.supportsContext); $("sonioxContextOptions").classList.toggle("hidden", !enabled); }
   function syncOpenAiAdvancedOptions(model) {
     const openai = isOpenAiProvider();
@@ -2890,7 +3013,6 @@
       return;
     }
     const selected = models.some((model) => model.id === state.alignmentModelSelection) ? state.alignmentModelSelection : "";
-    state.alignmentModelSelection = selected;
     renderAlignmentModelOptions(select, models, selected);
     select.disabled = Boolean(state.localPreparing || state.alignmentPreparing);
     const model = models.find((item) => item.id === selected);
@@ -3081,16 +3203,547 @@
     return result;
   }
   function systemLanguage() { return String(navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en"; }
-  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langZh").classList.toggle("active", state.lang === "zh"); $("langEn").classList.toggle("active", state.lang === "en"); $("demoBadge").textContent = t("demo_mode"); renderAudioTracks(); if (state.audioTracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint"); renderKeyHint(); renderKeyStatus(); renderStickerCurrent(); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); refillSelectLabels(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); window.MAWLauncher?.onLanguageChanged?.(); }
+  function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langZh").classList.toggle("active", state.lang === "zh"); $("langEn").classList.toggle("active", state.lang === "en"); $("demoBadge").textContent = t("demo_mode"); renderAudioTracks(); if (state.audioTracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint"); renderKeyHint(); renderKeyStatus(); renderStickerCurrent(); renderAsrPresetRootCurrent(); renderCurrentAsrPreset(); updatePresetActionAvailability(); renderPresetOptionsPreview(presetManager.previewOptions); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderServerButton(); refillSelectLabels(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); window.MAWLauncher?.onLanguageChanged?.(); }
   async function setLanguage(language) { if (language !== "zh" && language !== "en") return; state.lang = language; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (result.ok) state.config.guiLang = language; else applyErrorResult(result); }
   function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelRuntimeHintSection").classList.toggle("hidden", local); $("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen"); $("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen"); $("localModelPanel").classList.toggle("hidden", !local); $("localRuntimeCheckField").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); $("providerNote").textContent = providerNoteText(current); $("providerNote").classList.toggle("hidden", !current.note); applySelectedModel(persistReset); renderKeyStatus(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) { void refreshLocalModels(); void refreshAlignmentModels(); } } }
-  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); $("modelNote").textContent = modelNoteText(model); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); syncFireRedPunc(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
-  function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
+  function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); renderModelNote(); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); syncFireRedPunc(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
+  function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = presetLanguage !== null ? presetLanguage.split(",") : previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
   function languageValue() { const el = $("language"); if (el.multiple) return Array.from(el.selectedOptions).map((o) => o.value).filter(Boolean).join(","); return el.value; }
   function syncAdvancedParamsGroup() { const group = $("advancedParamsGroup"); const hasVisibleField = Array.from(group.querySelectorAll(".field")).some((field) => !field.classList.contains("hidden")); group.classList.toggle("hidden", !hasVisibleField && $("dashscopeRegionHint").classList.contains("hidden")); }
   function appendTestSuffix(path) { const value = String(path || "").trim(); if (!value || /-test(?=\.[^./\\]+$)/iu.test(value)) return value; const separator = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")); const dot = value.lastIndexOf("."); if (dot <= separator) return `${value}-test`; return `${value.slice(0, dot)}-test${value.slice(dot)}`; }
   function removeTestSuffix(path) { return String(path || "").replace(/-test(?=\.[^./\\]+$)/iu, ""); }
   function syncTestRun() { const on = $("testRun").checked; $("testRunHint").classList.toggle("hidden", !on); const lengthLimit = $("lengthLimit"); if (lengthLimit) lengthLimit.disabled = on; if (state.srtAuto) { if (!state.initializing) void syncDefaultOutput(); return; } const current = $("srtPath").value.trim(); if (on) { const next = appendTestSuffix(current); state.testSuffixAdded = Boolean(current && next !== current); $("srtPath").value = next; } else if (state.testSuffixAdded) { $("srtPath").value = removeTestSuffix(current); state.testSuffixAdded = false; } }
+  const ASR_PRESET_TEXT_FIELDS = [
+    "localDevice", "fireRedPunc", "recognitionAlignmentModel", "language", "promptContext",
+    "qwenAudioHotwordsMode", "qwenAudioHotwords", "qwenAudioHotwordsFile",
+    "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextTerms",
+    "sonioxContextTranslationTerms", "openaiKeywords",
+    "maxLen", "minLen", "maxWords", "minWords", "gapSplit",
+  ];
+  const ASR_PRESET_BOOL_FIELDS = ["speakerColors", "generateSpectral", "debugRaw", "testRun", "qwenAudioKeepDialect"];
+  const ASR_SHARED_PROMPT_INPUTS = ["openaiPrompt", "qwenAudioContext", "sonioxContextText"];
+  let presetLanguage = null;
+  let currentAsrPreset = { name: "", snapshot: null };
+  const presetManager = { items: [], selectedName: "", previousFocus: null, previewOptions: null, previewRequest: 0 };
+  function presetMessage(key, values = {}) {
+    return Object.entries(values).reduce((message, [name, value]) => message.replaceAll(`{${name}}`, String(value)), t(key));
+  }
+  function localizedPresetError(detail) {
+    const message = String(detail || "");
+    if (state.lang !== "zh") return message;
+    if (/unsupported preset format/iu.test(message)) return "预设格式不受支持。";
+    if (/invalid preset field/iu.test(message)) return "预设内容字段无效。";
+    if (/not a regular file|symbolic links are not supported/iu.test(message)) return "预设不是普通文件，或使用了不支持的符号链接。";
+    if (/too large/iu.test(message)) return "预设文件过大。";
+    if (/preset name.*(empty|long|characters|valid)/iu.test(message)) return "预设名称为空、过长或包含不支持的文件名字符。";
+    if (/preset not found/iu.test(message)) return "找不到所选预设。";
+    if (/already exists|name conflicts/iu.test(message)) return "预设名称已存在，请使用其他名称。";
+    if (/not a directory|folder does not exist|both preset paths must be directories/iu.test(message)) return "预设库文件夹不存在或不是文件夹。";
+    if (/permission|access is denied|read-only/iu.test(message)) return "没有权限访问预设库文件夹。";
+    if (/json|decode|expecting value/iu.test(message)) return "JSON 文件损坏或无法读取。";
+    return message;
+  }
+  function copyPresetOptions(options) { return JSON.parse(JSON.stringify(options)); }
+  function stablePresetString(options) { return JSON.stringify(options, Object.keys(options).sort()); }
+  function renderCurrentAsrPreset() {
+    const hasPreset = Boolean(currentAsrPreset.name);
+    $("currentAsrPresetPrefix").classList.toggle("hidden", !hasPreset);
+    $("currentAsrPresetName").textContent = currentAsrPreset.name || t("preset_unselected");
+    const modified = Boolean(currentAsrPreset.name && currentAsrPreset.snapshot && stablePresetString(collectAsrPreset()) !== stablePresetString(currentAsrPreset.snapshot));
+    $("currentAsrPresetModified").classList.toggle("hidden", !modified);
+    $("currentAsrPresetName").classList.toggle("preset-is-modified", modified);
+    $("updateCurrentAsrPreset").classList.toggle("hidden", !modified);
+  }
+  function setCurrentAsrPreset(name, options) {
+    currentAsrPreset = { name: String(name || ""), snapshot: options ? copyPresetOptions(options) : null };
+    renderCurrentAsrPreset();
+    renderAsrPresetList();
+    updatePresetActionAvailability();
+  }
+  function clearCurrentAsrPreset() { setCurrentAsrPreset("", null); }
+  function showAsrPresetStatus(message = "") {
+    const status = $("asrPresetStatus");
+    status.textContent = message;
+    status.classList.toggle("hidden", !message);
+  }
+  function collectAsrPreset() {
+    const options = Object.fromEntries(ASR_PRESET_TEXT_FIELDS.filter((id) => id !== "promptContext").map((id) => [id, $(id).value]));
+    options.promptContext = activePromptContext();
+    options.language = presetLanguage ?? languageValue();
+    options.recognitionAlignmentModel = state.alignmentModelSelection || "";
+    ASR_PRESET_BOOL_FIELDS.forEach((id) => { options[id] = $(id).checked; });
+    return options;
+  }
+  function applyAsrPreset(options) {
+    if (!options || ASR_PRESET_TEXT_FIELDS.some((id) => typeof options[id] !== "string") ||
+        ASR_PRESET_BOOL_FIELDS.some((id) => typeof options[id] !== "boolean")) throw new Error(t("preset_failed"));
+    ASR_PRESET_TEXT_FIELDS.forEach((id) => { if (id !== "language" && id !== "recognitionAlignmentModel" && id !== "promptContext") $(id).value = options[id]; });
+    setSharedPromptContext(options.promptContext);
+    ASR_PRESET_BOOL_FIELDS.forEach((id) => { $(id).checked = options[id]; });
+    presetLanguage = options.language;
+    state.alignmentModelSelection = options.recognitionAlignmentModel;
+    applyProviderLanguages(provider(), selectedModel());
+    renderLocalAlignmentModel();
+    setHotwordsMode(options.qwenAudioHotwordsMode);
+    renderPromptCharacterCount(); renderSonioxContextCharacterCount(); syncTestRun();
+  }
+  function activePromptContext() {
+    return $("openaiPrompt").value;
+  }
+  function setSharedPromptContext(value) {
+    const prompt = String(value || "");
+    ASR_SHARED_PROMPT_INPUTS.forEach((id) => { $(id).value = prompt; });
+    renderPromptCharacterCount();
+    renderSonioxContextCharacterCount();
+  }
+  function syncSharedPromptContext(sourceId) {
+    const value = $(sourceId).value;
+    ASR_SHARED_PROMPT_INPUTS.forEach((id) => { if (id !== sourceId && $(id).value !== value) $(id).value = value; });
+    renderPromptCharacterCount();
+    renderSonioxContextCharacterCount();
+    renderCurrentAsrPreset();
+  }
+  $("language").addEventListener("change", () => { presetLanguage = null; renderCurrentAsrPreset(); });
+  $("languageReset").addEventListener("click", () => { presetLanguage = null; renderCurrentAsrPreset(); });
+
+  function presetDate(seconds) {
+    if (!seconds) return "";
+    try { return new Intl.DateTimeFormat(state.lang === "zh" ? "zh-CN" : "en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(seconds * 1000)); }
+    catch { return ""; }
+  }
+  const PRESET_PREVIEW_FIELDS = [
+    ["qwenAudioHotwordsFile", "preset_field_hotword_file"], ["sonioxContextGeneral", "preset_field_soniox_general"],
+    ["sonioxContextTranslationTerms", "preset_field_translation_terms"], ["language", "preset_field_language"],
+    ["fireRedPunc", "preset_field_punctuation"],
+    ["recognitionAlignmentModel", "preset_field_alignment"], ["qwenAudioHotwordWeight", "preset_field_hotword_weight"],
+    ["maxLen", "preset_field_max_len"], ["minLen", "preset_field_min_len"], ["maxWords", "preset_field_max_words"],
+    ["minWords", "preset_field_min_words"], ["gapSplit", "preset_field_gap_split"],
+  ];
+  const PRESET_PREVIEW_FLAGS = [
+    ["speakerColors", "preset_field_speaker_colors"], ["generateSpectral", "preset_field_spectral"],
+    ["debugRaw", "preset_field_debug"], ["testRun", "preset_field_test_run"], ["qwenAudioKeepDialect", "preset_field_keep_dialect"],
+  ];
+  function renderPresetOptionsPreview(options) {
+    const section = $("asrPresetOptionsPreview");
+    const list = $("asrPresetPreviewList");
+    list.replaceChildren();
+    if (!options || typeof options !== "object") { section.classList.add("hidden"); return; }
+    const values = [];
+    const prompt = String(options.promptContext || "").trim();
+    if (prompt) values.push(["preset_field_prompt_context", prompt]);
+    const terms = [options.qwenAudioHotwords, options.openaiKeywords, options.sonioxContextTerms]
+      .flatMap((value) => String(value || "").split(/[\n,，;；]+/u).map((part) => part.trim()).filter(Boolean));
+    if (terms.length) values.push(["preset_field_hotwords_keywords", [...new Set(terms)].join("、")]);
+    PRESET_PREVIEW_FIELDS.forEach(([id, label]) => {
+      let raw = String(options[id] || "").trim();
+      if (!raw || (id === "qwenAudioHotwordWeight" && !String(options.qwenAudioHotwords || options.qwenAudioHotwordsFile || "").trim())) return;
+      values.push([label, raw]);
+    });
+    PRESET_PREVIEW_FLAGS.forEach(([id, label]) => { if (options[id] === true) values.push([label, t("preset_field_enabled")]); });
+    values.forEach(([label, raw]) => {
+      const item = document.createElement("li");
+      const title = document.createElement("span");
+      title.className = "asr-preset-preview-label";
+      title.textContent = t(label);
+      const value = document.createElement("span");
+      value.className = "asr-preset-preview-value";
+      const compact = String(raw).replace(/\s+/gu, " ").trim();
+      value.textContent = compact.length > 140 ? `${compact.slice(0, 139)}…` : compact;
+      value.title = String(raw);
+      item.append(title, value);
+      list.append(item);
+    });
+    section.classList.toggle("hidden", values.length === 0);
+  }
+  function clearSelectedAsrPreset() {
+    presetManager.selectedName = "";
+    presetManager.previewOptions = null;
+    presetManager.previewRequest += 1;
+    $("asrPresetName").value = "";
+    $("asrPresetDescription").value = "";
+    $("asrPresetModifiedDate").textContent = "";
+    renderPresetOptionsPreview(null);
+    updatePresetActionAvailability();
+  }
+  async function loadAsrPresetPreview(name) {
+    const request = ++presetManager.previewRequest;
+    const result = await bridge("recognition_presets", { action: "preview", name });
+    if (request !== presetManager.previewRequest || presetManager.selectedName !== name) return;
+    if (!result.ok) {
+      setPresetManagerStatus(`${t("preset_failed")}: ${localizedPresetError(result.detail)}`);
+      return;
+    }
+    presetManager.previewOptions = result.options;
+    renderPresetOptionsPreview(result.options);
+  }
+  function selectedAsrPreset() { return presetManager.items.find((item) => item.name === presetManager.selectedName && item.valid); }
+  function updatePresetActionAvailability() {
+    const item = selectedAsrPreset();
+    const selected = Boolean(item);
+    ["loadAsrPreset", "updateAsrPreset", "copyAsrPreset", "deleteAsrPreset"].forEach((id) => { $(id).disabled = !selected; });
+    if (!selected) return;
+    const active = item.name === currentAsrPreset.name;
+    const updateButton = $("updateAsrPreset");
+    updateButton.textContent = t(active ? "preset_update_active" : "preset_update_selected");
+    updateButton.title = t(active ? "preset_update_active_title" : "preset_update_title");
+  }
+  function focusAsrPresetItem(name) {
+    Array.from($("asrPresetList").querySelectorAll("[data-preset-name]")).find((button) => button.dataset.presetName === name)?.focus();
+  }
+  function selectAsrPreset(name, { focus = false } = {}) {
+    const item = presetManager.items.find((candidate) => candidate.name === name && candidate.valid);
+    if (!item) return;
+    const modifiedText = item.modified ? presetMessage("preset_modified", { time: presetDate(item.modified) }) : "";
+    if (presetManager.selectedName === item.name
+      && $("asrPresetDescription").value === (item.description || "")
+      && $("asrPresetModifiedDate").textContent === modifiedText) {
+      if (focus) focusAsrPresetItem(item.name);
+      return;
+    }
+    presetManager.selectedName = item.name;
+    presetManager.previewOptions = null;
+    $("asrPresetName").value = item.name;
+    $("asrPresetDescription").value = item.description || "";
+    $("asrPresetModifiedDate").textContent = modifiedText;
+    renderPresetOptionsPreview(null);
+    renderAsrPresetList();
+    updatePresetActionAvailability();
+    void loadAsrPresetPreview(item.name);
+    if (focus) focusAsrPresetItem(item.name);
+  }
+  function renderAsrPresetList() {
+    const list = $("asrPresetList");
+    const query = $("asrPresetSearch").value.trim().toLocaleLowerCase();
+    list.replaceChildren();
+    const matches = presetManager.items.filter((item) => `${item.name}\n${item.description}\n${item.detail}`.toLocaleLowerCase().includes(query));
+    if (!matches.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint asr-preset-empty";
+      empty.textContent = t("preset_empty");
+      list.append(empty);
+      return;
+    }
+    matches.forEach((item) => {
+      if (!item.valid) {
+        const unavailable = document.createElement("div");
+        unavailable.className = "asr-preset-item unavailable";
+        unavailable.setAttribute("role", "option");
+        unavailable.setAttribute("aria-disabled", "true");
+        unavailable.title = localizedPresetError(item.detail) || t("preset_invalid");
+        const title = document.createElement("span");
+        title.className = "asr-preset-item-name";
+        title.textContent = item.name;
+        const reason = document.createElement("span");
+        reason.className = "asr-preset-item-description";
+        reason.textContent = `${t("preset_invalid")}：${localizedPresetError(item.detail) || ""}`;
+        unavailable.append(title, reason);
+        list.append(unavailable);
+        return;
+      }
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "asr-preset-item";
+      const active = item.name === currentAsrPreset.name;
+      button.classList.toggle("active", active);
+      button.setAttribute("role", "option");
+      button.setAttribute("aria-selected", String(item.name === presetManager.selectedName));
+      if (active) button.setAttribute("aria-current", "true");
+      button.dataset.presetName = item.name;
+      const title = document.createElement("span");
+      title.className = "asr-preset-item-name";
+      title.textContent = item.name;
+      if (active) {
+        const badge = document.createElement("span");
+        badge.className = "asr-preset-item-badge";
+        badge.textContent = t("preset_active_badge");
+        title.append(badge);
+      }
+      const description = document.createElement("span");
+      description.className = "asr-preset-item-description";
+      description.textContent = item.description || "";
+      const modified = document.createElement("span");
+      modified.className = "asr-preset-item-modified";
+      modified.textContent = presetDate(item.modified);
+      button.append(title, description, modified);
+      list.append(button);
+    });
+  }
+  function setPresetManagerStatus(message = "") { $("asrPresetManagerStatus").textContent = message; }
+  async function refreshAsrPresetLibrary({ keepSelection = true } = {}) {
+    const previousName = keepSelection ? presetManager.selectedName : "";
+    const result = await bridge("asr_preset_library");
+    if (!result.ok) {
+      setPresetManagerStatus(`${t("preset_failed")}: ${localizedPresetError(result.detail || result.error)}`);
+      return false;
+    }
+    presetManager.items = Array.isArray(result.items) ? result.items : [];
+    if (previousName && presetManager.items.some((item) => item.name === previousName && item.valid)) selectAsrPreset(previousName);
+    else {
+      clearSelectedAsrPreset();
+    }
+    renderAsrPresetList();
+    return true;
+  }
+  function renderAsrPresetRootCurrent() {
+    const root = String(state.config?.asrPresetRoot || "");
+    ["asrPresetRootCurrent", "asrPresetRootInModal"].forEach((id) => {
+      $(id).textContent = root;
+      $(id).title = root ? `${t("open_folder_hint")}: ${root}` : t("preset_folder_open_failed");
+    });
+    if (document.activeElement !== $("asrPresetRoot")) $("asrPresetRoot").value = root;
+  }
+  async function bootstrapAsrPresetLibrary() {
+    if (state.config.asrPresetRootConfigured) return;
+    const preview = await bridge("asr_preset_migration_preview", { path: "" });
+    if (!preview.ok) { setPresetManagerStatus(`${t("preset_migration_failed")}: ${localizedPresetError(preview.detail)}`); return; }
+    let migrate = false;
+    if (preview.conflicts?.length) {
+      const proceed = await confirmAction(presetMessage("preset_root_switch_no_migrate", { names: preview.conflicts.join(", ") }));
+      if (!proceed) return;
+    } else if (preview.files?.length || preview.invalid?.length) {
+      const message = preview.invalid?.length
+        ? presetMessage("preset_root_migrate_with_invalid", { count: preview.invalid.length, names: preview.invalid.map((item) => item.name).join(", "), safeCount: preview.files?.length || 0 })
+        : presetMessage("preset_root_migrate_confirm", { count: preview.files.length });
+      migrate = await confirmAction(message);
+    }
+    const result = await bridge("set_asr_preset_root", { path: "", migrate });
+    if (!result.ok) { setPresetManagerStatus(`${t("preset_root_failed")}: ${localizedPresetError(result.detail)}`); return; }
+    state.config.asrPresetRoot = result.root;
+    state.config.asrPresetRootConfigured = true;
+    renderAsrPresetRootCurrent();
+    if (result.sourceRemaining?.length) setPresetManagerStatus(presetMessage("preset_root_source_remaining", { names: result.sourceRemaining.join(", ") }));
+    else if (result.migrated?.length) setPresetManagerStatus(presetMessage("preset_root_migrated", { count: result.migrated.length }));
+  }
+  async function openAsrPresetManager() {
+    presetManager.previousFocus = document.activeElement;
+    $("asrPresetModal").classList.remove("hidden");
+    $("asrPresetSearch").value = "";
+    setPresetManagerStatus("");
+    await bootstrapAsrPresetLibrary();
+    await refreshAsrPresetLibrary({ keepSelection: false });
+    if (currentAsrPreset.name && presetManager.items.some((item) => item.name === currentAsrPreset.name && item.valid)) {
+      selectAsrPreset(currentAsrPreset.name, { focus: true });
+    } else {
+      if (currentAsrPreset.name) clearCurrentAsrPreset();
+      $("asrPresetSearch").focus();
+    }
+  }
+  function closeAsrPresetManager() {
+    $("asrPresetModal").classList.add("hidden");
+    const previous = presetManager.previousFocus;
+    presetManager.previousFocus = null;
+    if (previous?.isConnected) previous.focus();
+  }
+  function nextDefaultPresetName() {
+    const base = t("preset_default_name");
+    for (let index = 1; index <= 50; index++) {
+      const candidate = index === 1 ? base : `${base} ${index}`;
+      if (!presetManager.items.some((item) => item.name.toLocaleLowerCase() === candidate.toLocaleLowerCase())) return candidate;
+    }
+    return `${base} ${Date.now()}`;
+  }
+  async function createPresetFromForm() {
+    const name = $("asrPresetName").value.trim() || nextDefaultPresetName();
+    const options = collectAsrPreset();
+    const result = await bridge("recognition_presets", { action: "create", name, description: $("asrPresetDescription").value, options });
+    if (!result.ok) { setPresetManagerStatus(`${t("preset_failed")}: ${localizedPresetError(result.detail)}`); return; }
+    await refreshAsrPresetLibrary({ keepSelection: false });
+    selectAsrPreset(result.name);
+    setSharedPromptContext(options.promptContext);
+    setCurrentAsrPreset(result.name, options);
+    showAsrPresetStatus(`${t("preset_saved")}：${result.name}`);
+    setPresetManagerStatus(`${t("preset_saved")}：${result.name}`);
+    $("asrPresetName").focus();
+    $("asrPresetName").select();
+  }
+  async function loadSelectedAsrPreset() {
+    const item = selectedAsrPreset();
+    if (!item) { setPresetManagerStatus(t("preset_select_required")); return; }
+    const result = await bridge("recognition_presets", { action: "load", name: item.name });
+    if (!result.ok) { setPresetManagerStatus(`${t("preset_failed")}: ${localizedPresetError(result.detail)}`); return; }
+    try { applyAsrPreset(result.options); }
+    catch (error) { setPresetManagerStatus(`${t("preset_failed")}: ${error.message}`); return; }
+    setCurrentAsrPreset(result.name, result.options);
+    showAsrPresetStatus(result.missingHotwords ? t("preset_missing") : "");
+    closeAsrPresetManager();
+  }
+  let presetInfoSaving = false;
+  async function saveSelectedPresetInfoOnBlur() {
+    if (presetInfoSaving) return;
+    const item = selectedAsrPreset();
+    if (!item) return;
+    const newName = $("asrPresetName").value.trim();
+    const description = $("asrPresetDescription").value;
+    if (!newName) { $("asrPresetName").value = item.name; return; }
+    if (newName === item.name && description === (item.description || "")) return;
+    presetInfoSaving = true;
+    try {
+      const result = await bridge("recognition_presets", { action: "save_info", name: item.name, newName, description });
+      if (!result.ok) {
+        setPresetManagerStatus(`${t("preset_failed")}: ${localizedPresetError(result.detail)}`);
+        await refreshAsrPresetLibrary();
+        return;
+      }
+      await refreshAsrPresetLibrary();
+      if (!presetManager.selectedName || presetManager.selectedName === item.name) selectAsrPreset(result.name);
+      if (currentAsrPreset.name === item.name) currentAsrPreset.name = result.name;
+      renderCurrentAsrPreset();
+      setPresetManagerStatus(`${t("preset_info_saved")}：${result.name}`);
+    } finally { presetInfoSaving = false; }
+  }
+  async function updateSelectedAsrPreset() {
+    const item = selectedAsrPreset();
+    if (!item) { setPresetManagerStatus(t("preset_select_required")); return; }
+    if (item.name !== currentAsrPreset.name && !await confirmAction(presetMessage("preset_confirm_update", { name: item.name }))) return;
+    const options = collectAsrPreset();
+    const result = await bridge("recognition_presets", { action: "update", name: item.name, options });
+    if (!result.ok) { setPresetManagerStatus(`${t("preset_failed")}: ${localizedPresetError(result.detail)}`); return; }
+    await refreshAsrPresetLibrary();
+    setSharedPromptContext(options.promptContext);
+    setCurrentAsrPreset(item.name, options);
+    setPresetManagerStatus(`${t("preset_updated")}：${item.name}`);
+  }
+  async function updateCurrentAsrPresetFromForm() {
+    const name = currentAsrPreset.name;
+    if (!name || !currentAsrPreset.snapshot) return;
+    const options = collectAsrPreset();
+    const result = await bridge("recognition_presets", { action: "update", name, options });
+    if (!result.ok) {
+      if (/preset not found/iu.test(String(result.detail || ""))) clearCurrentAsrPreset();
+      showAsrPresetStatus(`${t("preset_failed")}: ${localizedPresetError(result.detail)}`);
+      return;
+    }
+    setSharedPromptContext(options.promptContext);
+    setCurrentAsrPreset(name, options);
+    showAsrPresetStatus(`${t("preset_updated")}：${name}`);
+  }
+  async function copySelectedAsrPreset() {
+    const item = selectedAsrPreset();
+    if (!item) { setPresetManagerStatus(t("preset_select_required")); return; }
+    const result = await bridge("recognition_presets", { action: "copy", name: item.name, suffix: t("preset_copy_suffix") });
+    if (!result.ok) { setPresetManagerStatus(`${t("preset_failed")}: ${localizedPresetError(result.detail)}`); return; }
+    await refreshAsrPresetLibrary({ keepSelection: false });
+    selectAsrPreset(result.name);
+    $("asrPresetName").focus();
+    $("asrPresetName").select();
+    setPresetManagerStatus(`${t("preset_copied")}：${result.name}`);
+  }
+  async function deleteSelectedAsrPreset() {
+    const item = selectedAsrPreset();
+    if (!item) { setPresetManagerStatus(t("preset_select_required")); return; }
+    if (!await confirmAction(presetMessage("preset_confirm_delete", { name: item.name }))) return;
+    const result = await bridge("recognition_presets", { action: "delete", name: item.name });
+    if (!result.ok) { setPresetManagerStatus(`${t("preset_failed")}: ${localizedPresetError(result.detail)}`); return; }
+    if (currentAsrPreset.name === item.name) clearCurrentAsrPreset();
+    await refreshAsrPresetLibrary({ keepSelection: false });
+    $("asrPresetName").focus();
+    setPresetManagerStatus(`${t("preset_deleted")}：${item.name}`);
+  }
+  async function changeAsrPresetRoot(path) {
+    $("asrPresetRootError").textContent = "";
+    $("asrPresetRootStatus").textContent = "";
+    const preview = await bridge("asr_preset_migration_preview", { path });
+    if (!preview.ok) {
+      const message = `${t("preset_root_choose")} ${localizedPresetError(preview.detail)}`;
+      $("asrPresetRootError").textContent = message;
+      return;
+    }
+    let migrate = false;
+    if (preview.conflicts?.length) {
+      const proceed = await confirmAction(presetMessage("preset_root_switch_no_migrate", { names: preview.conflicts.join(", ") }));
+      if (!proceed) return;
+    } else if (preview.files?.length || preview.invalid?.length) {
+      const message = preview.invalid?.length
+        ? presetMessage("preset_root_migrate_with_invalid", { count: preview.invalid.length, names: preview.invalid.map((item) => item.name).join(", "), safeCount: preview.files?.length || 0 })
+        : presetMessage("preset_root_migrate_confirm", { count: preview.files.length });
+      migrate = await confirmAction(message);
+    }
+    const result = await bridge("set_asr_preset_root", { path, migrate });
+    if (!result.ok) {
+      $("asrPresetRootError").textContent = `${t("preset_root_failed")}: ${localizedPresetError(result.detail)}`;
+      return;
+    }
+    state.config.asrPresetRoot = result.root;
+    state.config.asrPresetRootConfigured = true;
+    $("asrPresetRoot").value = result.root;
+    renderAsrPresetRootCurrent();
+    await refreshAsrPresetLibrary({ keepSelection: false });
+    if (currentAsrPreset.name) {
+      const current = await bridge("recognition_presets", { action: "load", name: currentAsrPreset.name });
+      if (!current.ok || stablePresetString(current.options) !== stablePresetString(currentAsrPreset.snapshot)) clearCurrentAsrPreset();
+    }
+    if (result.sourceRemaining?.length) {
+      $("asrPresetRootStatus").textContent = presetMessage("preset_root_source_remaining", { names: result.sourceRemaining.join(", ") });
+    } else if (result.migrated?.length) {
+      $("asrPresetRootStatus").textContent = presetMessage("preset_root_migrated", { count: result.migrated.length });
+    } else {
+      $("asrPresetRootStatus").textContent = t("preset_root_saved");
+    }
+  }
+  $("manageAsrPresets").addEventListener("click", () => { void openAsrPresetManager(); });
+  $("updateCurrentAsrPreset").addEventListener("click", () => { void updateCurrentAsrPresetFromForm(); });
+  $("asrPresetClose").addEventListener("click", closeAsrPresetManager);
+  $("asrPresetBackdrop").addEventListener("click", closeAsrPresetManager);
+  $("asrPresetRootInModal").addEventListener("click", async () => {
+    const result = await bridge("open_asr_preset_folder");
+    if (!result.ok) setPresetManagerStatus(`${t("preset_folder_open_failed")}: ${localizedPresetError(result.error || result.detail)}`);
+  });
+  $("asrPresetSettingsLink").addEventListener("click", () => {
+    closeAsrPresetManager();
+    openSettings("asrPresetRootSection", "asrPresetRoot");
+  });
+  $("refreshAsrPresets").addEventListener("click", () => { void refreshAsrPresetLibrary(); });
+  $("asrPresetSearch").addEventListener("input", renderAsrPresetList);
+  let lastPresetListClick = { name: "", at: 0 };
+  $("asrPresetList").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-preset-name]");
+    if (!button) return;
+    const name = button.dataset.presetName;
+    const now = Date.now();
+    const isDoubleClick = event.detail > 0 && lastPresetListClick.name === name && now - lastPresetListClick.at <= 500;
+    lastPresetListClick = isDoubleClick ? { name: "", at: 0 } : { name, at: now };
+    if (isDoubleClick) { void loadSelectedAsrPreset(); return; }
+    selectAsrPreset(name);
+  });
+  $("saveAsrPreset").addEventListener("click", () => { void createPresetFromForm(); });
+  $("loadAsrPreset").addEventListener("click", () => { void loadSelectedAsrPreset(); });
+  $("asrPresetName").addEventListener("blur", () => { void saveSelectedPresetInfoOnBlur(); });
+  $("asrPresetDescription").addEventListener("blur", () => { void saveSelectedPresetInfoOnBlur(); });
+  $("updateAsrPreset").addEventListener("click", () => { void updateSelectedAsrPreset(); });
+  $("copyAsrPreset").addEventListener("click", () => { void copySelectedAsrPreset(); });
+  $("deleteAsrPreset").addEventListener("click", () => { void deleteSelectedAsrPreset(); });
+  $("asrPresetModal").addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { event.preventDefault(); closeAsrPresetManager(); return; }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from($("asrPresetModal").querySelectorAll("button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])")).filter((element) => !element.closest(".hidden"));
+    if (!focusable.length) return;
+    const first = focusable[0]; const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
+  $("asrPresetModal").addEventListener("wheel", (event) => {
+    event.stopPropagation();
+    if (!event.target.closest(".asr-preset-list, .asr-preset-details, textarea")) event.preventDefault();
+  }, { passive: false });
+  ["advancedOptionsGrid", "qwenAudioOptions", "sonioxContextOptions", "openaiAdvancedOptions"].forEach((id) => {
+    $(id)?.addEventListener("input", renderCurrentAsrPreset);
+    $(id)?.addEventListener("change", renderCurrentAsrPreset);
+  });
+  ASR_SHARED_PROMPT_INPUTS.forEach((id) => {
+    $(id).addEventListener("input", () => syncSharedPromptContext(id));
+    $(id).addEventListener("change", () => syncSharedPromptContext(id));
+  });
+  $("pickAsrPresetRoot").addEventListener("click", async () => {
+    const result = await bridge("choose_folder");
+    if (result.ok) await changeAsrPresetRoot(result.path);
+  });
+  $("asrPresetRoot").addEventListener("change", () => { void changeAsrPresetRoot($("asrPresetRoot").value.trim()); });
+  $("resetAsrPresetRoot").addEventListener("click", () => { void changeAsrPresetRoot(""); });
+  $("asrPresetRootCurrent").addEventListener("click", async () => {
+    const result = await bridge("open_asr_preset_folder");
+    if (!result.ok) $("asrPresetRootStatus").textContent = `${t("preset_folder_open_failed")}: ${localizedPresetError(result.error || result.detail)}`;
+  });
+
   function savePrefsDebounced(payload) { clearTimeout(prefsTimer); prefsTimer = setTimeout(() => bridge("save_prefs", payload), 300); }
   function normalizeZoomPercent(value) { const parsed = Number(value); if (!Number.isFinite(parsed)) return ZOOM_DEFAULT; return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(parsed / ZOOM_STEP) * ZOOM_STEP)); }
   function applyZoomPercent(value) { const zoomPercent = normalizeZoomPercent(value); document.documentElement.style.zoom = `${zoomPercent}%`; document.documentElement.style.setProperty("--launcher-shell-height", `${100 / (zoomPercent / 100)}dvh`); state.config.zoomPercent = zoomPercent; return zoomPercent; }
@@ -3408,6 +4061,7 @@
     refreshFfmpeg();
     void refreshOcrRuntime();
     renderStickerCurrent();
+    renderAsrPresetRootCurrent();
     $("showRareLangs").checked = Boolean(state.config.showRareLangs);
     $("outputSubfolder").checked = Boolean(state.config.outputSubfolder);
     $("perVideoSubfolder").checked = Boolean(state.config.perVideoSubfolder);
@@ -3631,6 +4285,7 @@
     if (event.type === "postprocess_status") window.MAWLauncher?.onPostprocessStatus?.(event);
     if (event.type === "postprocess_stream") window.MAWLauncher?.onPostprocessStream?.(event);
     if (event.type === "postprocess_pipeline") window.MAWLauncher?.onPostprocessPipeline?.(event);
+    if (event.type === "media_tool_log") window.MAWLauncher?.onMediaToolLog?.(event);
     if (event.type === "modelProgress") {
       state.localProgressMessage = event.message || "";
       state.localProgress = event;
@@ -3813,6 +4468,7 @@
       $("openFolder").classList.remove("hidden");
       syncHtmlMenu();
       appendLog(t("done"));
+      if (event.result?.videoPath) appendLog(`${t("toolbox_burn_done")}\n${event.result.videoPath}`);
       void checkExistingServer(t("done"));
     }
     if (event.type === "dropMedia" && !state.dropTarget && window.MAWLauncher?.onBatchDrop?.(event.path || "")) return;
@@ -3854,7 +4510,7 @@
   $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });
   $("pickJson").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "json" }); if (result.ok) setJsonPath(result.path); });
   $("jsonPath").addEventListener("input", () => setError("jsonPath", "")); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) setServerMedia(result.path || ""); });
-  ["apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") { $("modelNote").textContent = modelNoteText(selectedModel()); syncOpenAiAdvancedOptions(selectedModel()); } if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { stopServerStatusMonitor(); serverRestartProjectPath = null; state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") { $("modelNote").textContent = modelNoteText(selectedModel()); syncOpenAiAdvancedOptions(selectedModel()); } if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
+  ["apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { stopServerStatusMonitor(); serverRestartProjectPath = null; state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
   $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
   $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
   $("openRouterKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().secondaryKeyUrl || "https://openrouter.ai/keys" }));

@@ -234,7 +234,7 @@ class GuiConfigTests(unittest.TestCase):
 
     def test_model_registry_resolves_env_key_and_shape(self) -> None:
         """Given the v1 registry, When inspected, Then model metadata is complete."""
-        self.assertEqual(len(gui_config.MODELS), 3)
+        self.assertEqual(len(gui_config.MODELS), 4)
         model = gui_config.MODELS[0]
 
         self.assertEqual(model.id, "qwen-audio-3.0-asr-flash-filetrans")
@@ -244,16 +244,26 @@ class GuiConfigTests(unittest.TestCase):
         self.assertTrue(model.supports_context)
         self.assertTrue(model.supports_hotwords)
         self.assertTrue(model.supports_vocabulary)
-        self.assertEqual(model.label, "qwen-audio-3.0-asr（热词 / 上下文）")
+        self.assertFalse(model.supports_keep_dialect)
         self.assertIn("热词", model.note)
         self.assertIn(("yue", "粤语 / Cantonese"), model.languages)
-        funasr = gui_config.MODELS[1]
+        model_31 = gui_config.MODELS[1]
+        self.assertEqual(model_31.id, "qwen-audio-3.1-asr-flash-filetrans")
+        self.assertEqual(model_31.env_key, "DASHSCOPE_API_KEY")
+        self.assertTrue(model_31.supports_speaker)
+        self.assertTrue(model_31.supports_context)
+        self.assertTrue(model_31.supports_hotwords)
+        self.assertTrue(model_31.supports_vocabulary)
+        self.assertTrue(model_31.supports_keep_dialect)
+        self.assertEqual(model_31.label, "qwen-audio-3.1-asr（方言 / 热词 / 上下文）")
+        self.assertIn(("yue", "粤语 / Cantonese"), model_31.languages)
+        funasr = gui_config.MODELS[2]
         self.assertEqual(funasr.id, "fun-asr")
         self.assertEqual(funasr.env_key, "DASHSCOPE_API_KEY")
         self.assertTrue(funasr.supports_speaker)
         self.assertIn(("zh", "中文 / Chinese"), funasr.languages)
         self.assertEqual(len(funasr.languages), 32)
-        qwen3 = gui_config.MODELS[2]
+        qwen3 = gui_config.MODELS[3]
         self.assertEqual(qwen3.id, "qwen3-asr-flash-filetrans")
         self.assertEqual(qwen3.env_key, "DASHSCOPE_API_KEY")
         self.assertFalse(qwen3.supports_speaker)
@@ -267,19 +277,23 @@ class GuiConfigTests(unittest.TestCase):
         provider = gui_config.PROVIDERS[0]
 
         self.assertEqual(provider.id, "qwen")
+        self.assertEqual(provider.label, "阿里云百炼（千问）")
         self.assertEqual(provider.key_url, "https://platform.qianwenai.com/home/")
+        self.assertEqual(provider.key_label, "千问AI平台")
         self.assertEqual(provider.models[0].id, "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(provider.regions[0][0], "beijing")
         self.assertEqual(provider.languages[0][0], "")
         self.assertTrue(provider.supports_speaker)
         self.assertEqual([model.id for model in provider.models], [
             "qwen-audio-3.0-asr-flash-filetrans",
+            "qwen-audio-3.1-asr-flash-filetrans",
             "fun-asr",
             "qwen3-asr-flash-filetrans",
         ])
         self.assertTrue(provider.models[0].supports_speaker)
         self.assertTrue(provider.models[1].supports_speaker)
-        self.assertFalse(provider.models[2].supports_speaker)
+        self.assertTrue(provider.models[2].supports_speaker)
+        self.assertFalse(provider.models[3].supports_speaker)
         self.assertIn("0.00022", provider.models[0].price_note)
 
     def test_provider_registry_contains_soniox_with_speaker_support(self) -> None:

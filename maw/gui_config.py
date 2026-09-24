@@ -18,6 +18,7 @@ ROOT: Final = SOURCE_ROOT
 DEFAULT_ENV_PATH: Final = default_env_path()
 EXAMPLE_ENV_PATH: Final = ROOT / ".env.example"
 QWEN_AUDIO_MODEL_ID: Final = "qwen-audio-3.0-asr-flash-filetrans"
+QWEN_AUDIO_31_MODEL_ID: Final = "qwen-audio-3.1-asr-flash-filetrans"
 QWEN3_ASR_MODEL_ID: Final = "qwen3-asr-flash-filetrans"
 OPENAI_ASR_MODEL_ID: Final = "custom-asr"
 OPENAI_ASR_DEFAULT_BASE_URL: Final = "https://api.openai.com/v1"
@@ -31,7 +32,7 @@ OPENAI_ASR_PRESET_MODEL_IDS: Final[tuple[str, ...]] = (
     "whisper-large-v3-turbo",
     "whisper-large-v3",
 )
-# qwen-audio-3.0 是最新发布的模型，作为各入口默认；旧 qwen3-asr 置底保留（后续可能移除）。
+# qwen-audio-3.0 仍是各入口默认；3.1 为 2026-09 新增可选（默认模型待实测后再切换）。
 DEFAULT_MODEL_ID: Final = QWEN_AUDIO_MODEL_ID
 
 
@@ -50,6 +51,9 @@ class ModelConfig:
     supports_context: bool = False
     supports_hotwords: bool = False
     supports_vocabulary: bool = False
+    # 仅 qwen-audio-3.1-asr-flash-filetrans 支持的 keep_dialect：
+    # 勾选后保留方言原文，否则方言转写为普通话文本。
+    supports_keep_dialect: bool = False
     # 模型是否原生返回可用于字幕编辑的字词级时间码；为 False 时，
     # Launcher 可在本地模型设置中提供额外的对齐模型。
     supports_word_timestamps: bool = False
@@ -94,6 +98,8 @@ class ProviderConfig:
     # Launcher 供应商下拉列表中，在该供应商前插入一条禁用的分隔线，
     # 用于把主力入口与次要 / 实验性入口分组展示。
     divider_before: bool = False
+    # Key 提示按钮展示名；为空时回退到 label（供应商列表名与获取 Key 的平台名不一致时使用）。
+    key_label: str = ""
     # 暂时保留底层配置与 CLI 能力，但不在 Launcher 的供应商列表中展示。
     hidden: bool = False
 
@@ -358,6 +364,19 @@ QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
         languages=FUNASR_LANGUAGES,
     ),
     ModelConfig(
+        id=QWEN_AUDIO_31_MODEL_ID,
+        label="qwen-audio-3.1-asr（方言 / 热词 / 上下文）",
+        env_key="DASHSCOPE_API_KEY",
+        note="支持即时热词、上下文与说话人分离；可选保留方言表达。",
+        price_note="阿里云百炼参考价：按 Token 计费，输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token",
+        supports_speaker=True,
+        supports_context=True,
+        supports_hotwords=True,
+        supports_vocabulary=True,
+        supports_keep_dialect=True,
+        languages=FUNASR_LANGUAGES,
+    ),
+    ModelConfig(
         id="fun-asr",
         label="fun-asr（支持说话人）",
         env_key="DASHSCOPE_API_KEY",
@@ -618,7 +637,7 @@ BCUT_LANGUAGES: Final[tuple[tuple[str, str], ...]] = (
 BCUT_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
         id="bcut-asr",
-        label="必剪 ASR（免 Key / 仅中文）",
+        label="必剪（免 Key / 仅中文）",
         env_key="",
         note="逐字毫秒时间戳；无需 API Key。",
         languages=BCUT_LANGUAGES,
@@ -628,8 +647,9 @@ BCUT_MODELS: Final[tuple[ModelConfig, ...]] = (
 PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="qwen",
-        label="阿里云百炼（QwenASR / FunASR）【推荐】",
+        label="阿里云百炼（千问）",
         key_url="https://platform.qianwenai.com/home/",
+        key_label="千问AI平台",
         models=QWEN_MODELS,
         regions=REGIONS,
         languages=LANGUAGES,

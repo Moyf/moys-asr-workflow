@@ -131,6 +131,10 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--context", help="Qwen-Audio context，最多 400 字符")
     parser.add_argument("--context-file", help="从 UTF-8 文件读取 Qwen-Audio context")
     parser.add_argument(
+        "--keep-dialect", action="store_true",
+        help="Qwen 保留方言表达，不转写为普通话（仅 qwen-audio-3.1-asr-flash-filetrans）",
+    )
+    parser.add_argument(
         "--soniox-context-json",
         help="Soniox context JSON（general/text/terms/translation_terms，约 10000 字符以内）",
     )
@@ -221,12 +225,13 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
                 args.vocabulary_id,
                 args.hotword_file,
                 args.hotword_weight,
-                args.context,
-                args.context_file,
-                args.soniox_context_json,
-            )
+            args.context,
+            args.context_file,
+            args.soniox_context_json,
+        )
         )
         or args.hotword
+        or args.keep_dialect
         or args.speaker
         or args.speaker_colors
     ):
@@ -246,6 +251,7 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
             )
         )
         or args.hotword
+        or args.keep_dialect
     ):
         parser.error("--provider soniox 不支持 Qwen 专用的地域、词表、热词、context 或 file-url 参数")
     if args.provider == "doubao" and (
@@ -256,6 +262,7 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
                 args.context_file, args.soniox_context_json,
             )
         )
+        or args.keep_dialect
     ):
         parser.error("--provider doubao 仅支持 --model、--language、--hotword 和通用字幕参数")
     if args.provider == "tencent" and (
@@ -266,6 +273,7 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
             )
         )
         or args.hotword
+        or args.keep_dialect
     ):
         parser.error("--provider tencent 仅支持 --file-url、--model、--language 和通用字幕参数")
     if args.provider == "bcut" and (
@@ -285,6 +293,7 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
             )
         )
         or args.hotword
+        or args.keep_dialect
         or args.speaker
         or args.speaker_colors
         ):
@@ -372,6 +381,8 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
             result.extend([flag, str(value)])
     if args.keep_punct:
         result.append("--keep-punct")
+    if args.keep_dialect:
+        result.append("--keep-dialect")
     if args.speaker:
         result.append("--speaker")
     if args.speaker_colors:
@@ -457,6 +468,7 @@ def _run_server(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
             args.context,
             args.context_file,
             args.soniox_context_json,
+            args.keep_dialect,
         )
     ):
         parser.error("转写参数不能与 --server 混用")

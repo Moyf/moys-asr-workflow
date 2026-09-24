@@ -1310,18 +1310,22 @@ class EditorAssetTests(unittest.TestCase):
             styles,
         )
 
-    def test_classic_boundary_mode_restores_system_cursor(self) -> None:
-        # 传统模式下没有中缝区，边界手柄沿用旧版系统光标；
-        # 原创光标素材只服务 dual（中缝联动）模式。
+    def test_all_boundary_handles_use_system_cursor_and_seam_keeps_svg_cursor(self) -> None:
+        # 左右手柄在两种模式下都使用系统左右箭头；中缝保留专属 SVG 光标。
         styles = (ROOT / "web" / "waveform.css").read_text(encoding="utf-8")
         script = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
-        self.assertIn(
-            ".waveform-pane.boundary-mode-classic .waveform-cue-handle.left,\n"
-            ".waveform-pane.boundary-mode-classic .waveform-cue-handle.right { cursor: ew-resize; }",
-            styles,
-        )
-        self.assertIn("'boundary-mode-classic'", script)
-        self.assertIn("this.options.getAdjacentBoundaryMode?.() !== 'dual'", script)
+        handles_start = styles.index(".waveform-cue-handle {")
+        handles_end = styles.index(".waveform-cue-handle.left {", handles_start)
+        self.assertIn("cursor: ew-resize;", styles[handles_start:handles_end])
+        left_start = styles.index(".waveform-cue-handle.left {")
+        left_end = styles.index(".waveform-cue-handle.right {", left_start)
+        right_start = left_end
+        right_end = styles.index(".waveform-cue-handle:hover", right_start)
+        self.assertNotIn("cursor:", styles[left_start:left_end])
+        self.assertNotIn("cursor:", styles[right_start:right_end])
+        self.assertIn("cursor: var(--wave-shared-boundary-cursor);", styles)
+        self.assertIn("--wave-shared-boundary-cursor: url(\"data:image/svg+xml,", styles)
+        self.assertNotIn("boundary-mode-classic", styles + script)
 
 if __name__ == "__main__":
     unittest.main()

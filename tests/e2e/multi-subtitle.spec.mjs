@@ -98,11 +98,15 @@ async function moveWaveformPointerToTime(page, blockLocator, timeMs) {
   const rowBox = await row.boundingBox();
   const rowStart = Number(await row.getAttribute('data-start-ms'));
   const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  const content = await row.evaluate((element) => ({
+    clientLeft: element.clientLeft,
+    clientWidth: element.clientWidth,
+  }));
   expect(rowBox).not.toBeNull();
   expect(rowEnd).toBeGreaterThan(rowStart);
   const ratio = (timeMs - rowStart) / (rowEnd - rowStart);
   await page.mouse.move(
-    rowBox.x + rowBox.width * Math.max(0, Math.min(1, ratio)),
+    rowBox.x + content.clientLeft + content.clientWidth * Math.max(0, Math.min(1, ratio)),
     blockBox.y + blockBox.height / 2,
   );
 }
@@ -1280,7 +1284,10 @@ test('auto-submits a linked split after both subtitle lanes are confirmed', asyn
 });
 
 async function placeCaret(element, offset) {
-  await element.evaluate((node, caretOffset) => {
+  await element.evaluate(async (node, caretOffset) => {
+    // 双击进入编辑会用 setTimeout(0) 恢复鼠标位置；先让该回调完成，
+    // 再放置测试所需的确定性光标，避免它偶发覆盖这里的 selection。
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const range = document.createRange();
     range.setStart(node.firstChild, caretOffset);
     range.setEnd(node.firstChild, caretOffset);
@@ -3701,12 +3708,18 @@ test('uses the split dialog for waveform main splitting when word timestamps are
   const rowBox = await waitForLayoutBox(row, '主字幕波形行没有布局');
   const rowStart = Number(await row.getAttribute('data-start-ms'));
   const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  const rowContent = await row.evaluate((element) => ({
+    clientLeft: element.clientLeft,
+    clientWidth: element.clientWidth,
+  }));
   if (!rowBox || !Number.isFinite(rowStart) || !Number.isFinite(rowEnd)) {
     throw new Error('主字幕波形行没有有效时间范围');
   }
   const clickX = box.x + box.width * 0.62;
   const clickY = box.y + box.height / 2;
-  const expectedCut = Math.round(rowStart + ((clickX - rowBox.x) / rowBox.width) * (rowEnd - rowStart));
+  const expectedCut = Math.round(rowStart + (
+    (clickX - rowBox.x - rowContent.clientLeft) / rowContent.clientWidth
+  ) * (rowEnd - rowStart));
   await page.mouse.click(clickX, clickY);
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择主字幕拆分点');
@@ -3869,12 +3882,18 @@ test('keeps the waveform pointer as the absolute cut in a linked split dialog', 
   const rowBox = await waitForLayoutBox(row, '联动拆分波形行没有布局');
   const rowStart = Number(await row.getAttribute('data-start-ms'));
   const rowEnd = Number(await row.getAttribute('data-end-ms'));
+  const rowContent = await row.evaluate((element) => ({
+    clientLeft: element.clientLeft,
+    clientWidth: element.clientWidth,
+  }));
   if (!Number.isFinite(rowStart) || !Number.isFinite(rowEnd)) {
     throw new Error('联动拆分测试缺少有效波形布局');
   }
   const clickX = blockBox.x + blockBox.width * 0.62;
   const clickY = blockBox.y + blockBox.height / 2;
-  const expectedCut = Math.round(rowStart + ((clickX - rowBox.x) / rowBox.width) * (rowEnd - rowStart));
+  const expectedCut = Math.round(rowStart + (
+    (clickX - rowBox.x - rowContent.clientLeft) / rowContent.clientWidth
+  ) * (rowEnd - rowStart));
   await page.mouse.click(clickX, clickY);
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   await expect(page.locator('#multi-subtitle-split-main-lane')).toBeVisible();

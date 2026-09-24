@@ -13,7 +13,7 @@
 // - 生成的模块插到清单中 editor.js 之前（模块不得在加载期引用 editor.js 声明，
 //   否则运行 order test / 浏览器时会暴露）。
 
-import { readFileSync, writeFileSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Node, Project, SyntaxKind } from "ts-morph";
@@ -171,16 +171,8 @@ const exportLines = moved.map((m) => {
   return `    ${m.names[0]}`;
 });
 const baseName = (p) => p.replace(/^web\//, "");
-// 外部进程（查看器/杀软）可能以拒写共享方式短暂占用文件；
-// Windows 上删除共享通常放行，失败即删旧 inode 再写。
-const safeWrite = (path, data) => {
-  try {
-    writeFileSync(path, data, "utf8");
-  } catch {
-    rmSync(path, { force: true });
-    writeFileSync(path, data, "utf8");
-  }
-};
+// 被查看器或杀软占用时直接失败，保留原文件供人工解除锁定后重试。
+const safeWrite = (path, data) => writeFileSync(path, data, "utf8");
 const moduleSource = `// ${header}
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.${ns} 冻结门面访问（可变状态为访问器属性，赋值语义不变）。

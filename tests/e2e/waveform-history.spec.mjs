@@ -211,10 +211,20 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   await page.locator('#waveform-settings-toggle').click();
   const middleRow = page.locator('.waveform-row[data-row-index="0"]').first();
   const middleBox = await middleRow.boundingBox();
+  const middleContent = await middleRow.evaluate((element) => ({
+    clientLeft: element.clientLeft,
+    clientWidth: element.clientWidth,
+  }));
   expect(middleBox).not.toBeNull();
-  await page.mouse.move(middleBox.x + middleBox.width * 0.2, middleBox.y + 20);
+  await page.mouse.move(
+    middleBox.x + middleContent.clientLeft + middleContent.clientWidth * 0.2,
+    middleBox.y + 20,
+  );
   await page.mouse.down({ button: 'middle' });
-  await page.mouse.move(middleBox.x + middleBox.width * 0.3, middleBox.y + 20);
+  await page.mouse.move(
+    middleBox.x + middleContent.clientLeft + middleContent.clientWidth * 0.3,
+    middleBox.y + 20,
+  );
   await page.mouse.up({ button: 'middle' });
   const middleResult = await page.evaluate(() => MaweBoot.DATA.gap_remove.gaps);
   expect(middleResult.some((gap) => gap.removed && gap.start <= 2000 && gap.end >= 3000)).toBe(true);
@@ -222,11 +232,17 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   await setGaps([], 'boundary_and_middle');
   const crossMiddleRow = page.locator('.waveform-row[data-row-index="0"]').first();
   const crossMiddleBox = await crossMiddleRow.boundingBox();
+  const crossMiddleContent = await crossMiddleRow.evaluate((element) => ({
+    clientLeft: element.clientLeft,
+    clientWidth: element.clientWidth,
+  }));
   expect(crossMiddleBox).not.toBeNull();
   const crossMiddleY = crossMiddleBox.y + crossMiddleBox.height * 0.8;
-  await page.mouse.move(crossMiddleBox.x + crossMiddleBox.width * 0.98, crossMiddleY);
+  const crossMiddleStartX = crossMiddleBox.x + crossMiddleContent.clientLeft
+    + crossMiddleContent.clientWidth * 0.98;
+  await page.mouse.move(crossMiddleStartX, crossMiddleY);
   await page.mouse.down({ button: 'middle' });
-  await page.mouse.move(crossMiddleBox.x + crossMiddleBox.width * 1.02, crossMiddleY);
+  await page.mouse.move(crossMiddleStartX + crossMiddleContent.clientWidth * 0.04, crossMiddleY);
   await expect.poll(() => page.evaluate(() => {
     const rows = new Set([...document.querySelectorAll('.waveform-gap-range-preview')]
       .map((element) => element.closest('.waveform-row')?.dataset.rowIndex));
@@ -593,15 +609,20 @@ test('Ctrl+dragging from blank space stops at an existing cue boundary', async (
   const row = page.locator('.waveform-row').first();
   await expect(row).toBeVisible();
   const box = await row.boundingBox();
+  const content = await row.evaluate((element) => ({
+    clientLeft: element.clientLeft,
+    clientWidth: element.clientWidth,
+  }));
   expect(box).not.toBeNull();
-  const anchorX = box.x + box.width * 0.9;
-  const crossedX = box.x + box.width * 0.6;
+  const contentX = box.x + content.clientLeft;
+  const anchorX = contentX + content.clientWidth * 0.9;
+  const crossedX = contentX + content.clientWidth * 0.6;
   const y = box.y + 20;
 
   await page.keyboard.down('Control');
   await page.mouse.move(anchorX, y);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.85, y, { steps: 2 });
+  await page.mouse.move(contentX + content.clientWidth * 0.85, y, { steps: 2 });
 
   const preview = page.locator('.waveform-create-preview');
   await expect(preview).toBeVisible();
