@@ -730,6 +730,23 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
 
+    def test_child_environment_moves_configured_ffmpeg_directory_to_front(self) -> None:
+        ffmpeg_dir = self.root / "ffmpeg" / "bin"
+        ffmpeg_dir.mkdir(parents=True)
+        (ffmpeg_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).write_bytes(b"exe")
+        (ffmpeg_dir / ("ffprobe.exe" if os.name == "nt" else "ffprobe")).write_bytes(b"exe")
+        other_dir = self.root / "other"
+        other_dir.mkdir()
+        inherited_path = os.pathsep.join((str(other_dir), str(ffmpeg_dir), str(ffmpeg_dir)))
+
+        with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ()):
+            with mock.patch("maw.gui_workflow.load_env", return_value={}):
+                env = _child_environment(
+                    {"PATH": inherited_path, "FFMPEG_PATH": str(ffmpeg_dir)}, "", ""
+                )
+
+        self.assertEqual(env["PATH"].split(os.pathsep), [str(ffmpeg_dir), str(other_dir)])
+
     def test_child_environment_uses_bundled_ffmpeg_when_no_path_is_configured(self) -> None:
         ffmpeg_dir = self.root / "ffmpeg" / "bin"
         ffmpeg_dir.mkdir(parents=True)
