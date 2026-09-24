@@ -26,13 +26,95 @@ async function open(page, options = {}) {
 }
 
 const undoKey = process.platform === 'darwin' ? 'Meta+z' : 'Control+z';
+const redoKey = process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+Shift+z';
 
 function textSelector(index, kind = 'main') {
   return `.cue[data-${kind === 'main' ? 'idx' : 'ext-idx'}="${index}"] > .text`;
 }
 
+test('near-end extension editing stays anchored at 1920px', async ({ page }, info) => {
+  const index = 100;
+  const kind = 'extension';
+  await open(page, { mode: kind });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await position(page, index, kind);
+  const selector = textSelector(index, kind);
+  await page.locator(selector).click();
+  await page.locator(textSelector(index + 1, kind)).click({ modifiers: ['Shift'] });
+  await page.evaluate(index => scrollCueToCenter(container.querySelector(`.cue[data-ext-idx="${index}"]`)), index);
+  await page.waitForTimeout(300);
+
+  const original = await visual(page, index, kind);
+  await page.keyboard.press('c');
+  const merged = await stable(page, original, index, 'extension merge', info, kind);
+  expect(merged.id).not.toBe(original.id);
+  await page.keyboard.press(undoKey);
+  await stable(page, merged, index, 'extension undo merge', info, kind);
+  expect((await visual(page, index, kind)).id).toBe(original.id);
+  await page.keyboard.press(redoKey);
+  await stable(page, merged, index, 'extension redo merge', info, kind);
+  await page.keyboard.press(undoKey);
+  await page.waitForTimeout(300);
+
+  await page.setViewportSize({ width: 1800, height: 1020 });
+  await page.waitForTimeout(300);
+  await page.locator(selector).click();
+  await page.locator(selector).hover({ position: { x: 15, y: 10 } });
+  const beforeSplit = await visual(page, index, kind);
+  await page.keyboard.press('b');
+  if (await page.locator('#multi-subtitle-split-modal').evaluate(el => el.classList.contains('show'))) {
+    await page.locator('#multi-subtitle-split-auto-submit').uncheck();
+    const gaps = page.locator('#multi-subtitle-split-text .multi-subtitle-split-gap');
+    if (await gaps.count()) await gaps.nth(Math.floor((await gaps.count()) / 2)).click();
+    await page.locator('#multi-subtitle-split-confirm').click();
+  }
+  const left = await stable(page, beforeSplit, index, 'extension split after resize', info, kind);
+  expect(left.id).not.toBe(beforeSplit.id);
+  expect(left.start).toBe(beforeSplit.start);
+  expect(left.end).toBeLessThan(beforeSplit.end);
+  await page.keyboard.press(undoKey);
+  await stable(page, left, index, 'extension undo split', info, kind);
+
+  const beforeEdit = await visual(page, index, kind);
+  await page.locator(selector).dblclick();
+  await page.keyboard.insertText('合成改字');
+  await page.evaluate(() => { if (extensionEditingState) finishExtensionEdit(true); });
+  await stable(page, beforeEdit, index, 'extension inline edit', info, kind);
+  await page.locator(selector).click();
+  const nearby = await page.evaluate(index => {
+    const source = container.querySelector(`.cue[data-ext-idx="${index}"]`);
+    const origin = source.getBoundingClientRect().top;
+    const bounds = container.getBoundingClientRect();
+    return [...container.querySelectorAll(':scope > .cue')].filter(el => el !== source)
+      .map(el => ({ id: el.dataset.extId, top: el.getBoundingClientRect().top - bounds.top,
+        distance: Math.abs(el.getBoundingClientRect().top - origin) }))
+      .filter(row => row.id && row.top >= 0 && row.top < bounds.height)
+      .sort((a, b) => a.distance - b.distance).slice(0, 2);
+  }, index);
+  expect(nearby.length).toBeGreaterThan(0);
+  await page.keyboard.press('Delete');
+  expect(await page.locator('#delete-confirm-modal.show').count()).toBe(0);
+  await page.waitForTimeout(350);
+  const readNeighbors = () => page.evaluate(nearby => nearby.map(old => {
+    const row = [...container.querySelectorAll(':scope > .cue')].find(el => el.dataset.extId === old.id);
+    return row ? { ...old, now: row.getBoundingClientRect().top - container.getBoundingClientRect().top } : null;
+  }).filter(Boolean), nearby);
+  const afterDelete = await readNeighbors();
+  await page.waitForTimeout(2100);
+  const lateDelete = await readNeighbors();
+  await info.attach('extension delete nearby rows', {
+    body: JSON.stringify({ nearby, afterDelete, lateDelete }), contentType: 'application/json',
+  });
+  expect(afterDelete.length).toBeGreaterThan(0);
+  expect(Math.min(...afterDelete.map(row => Math.abs(row.now - row.top)))).toBeLessThan(1.5);
+  expect(lateDelete.map(row => row.id)).toEqual(afterDelete.map(row => row.id));
+  expect(Math.max(...lateDelete.map((row, i) => Math.abs(row.now - afterDelete[i].now))))
+    .toBeLessThan(1.5);
+  expect(await page.evaluate(id => getActiveExtensionTrack().segments.some(s => s.id === id), beforeEdit.id)).toBe(false);
+});
+
 // 本文件是 #124 滚动稳定性重构的回归套件；功能稳定后仅保留最便宜的核心骨架：
-// 完整编辑流、播放跟随、滚动打断、身份稳定与原始回归，控制日常开发的全量耗时。
+// 代表性编辑流、滚动打断、身份稳定与原始回归，控制日常开发的全量耗时。
 // 重矩阵（视口/行位置/轨道模式组合、30s 自动保存、备份、配对双轨等）如需恢复，
 // 从本文件的 git 历史取回。
 
