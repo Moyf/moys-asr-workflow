@@ -38,7 +38,7 @@ from maw.asr_presets import (
     write_preset,
 )
 from maw.ass_styles import find_ass_style, load_ass_style_library
-from maw.ffmpeg import FfmpegTools, media_duration_seconds, resolve_ffmpeg_tools
+from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, FfmpegTools, ffmpeg_search_path, media_duration_seconds, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
 from maw.gui_config import (
     DEFAULT_ENV_PATH,
@@ -4659,7 +4659,11 @@ def _check_ffmpeg(env_path: Path, override: str = "") -> dict[str, object]:
     tools = resolve_ffmpeg_tools(
         configured_path=configured_value or None,
         platform=sys.platform,
-        search_path=_ffmpeg_search_path() or "",
+        # 候选目录读取当前模块全局而非依赖默认参数（默认参数在函数定义时
+        # 绑定，测试 patch maw.ffmpeg.MACOS_FFMPEG_CANDIDATE_DIRECTORIES
+        # 才能生效），搜索路径由同一份候选列表推导，保证二者一致。
+        macos_directories=MACOS_FFMPEG_CANDIDATE_DIRECTORIES,
+        search_path=ffmpeg_search_path(platform=sys.platform, macos_directories=MACOS_FFMPEG_CANDIDATE_DIRECTORIES) or "",
         strict_config=bool(override.strip()),
     )
     ffmpeg_path = str(tools.ffmpeg) if tools.ffmpeg is not None else ""

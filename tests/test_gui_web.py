@@ -3062,7 +3062,12 @@ class GuiWebBridgeTests(unittest.TestCase):
         def which(name: str, *, path: str | None = None) -> str:
             return str(ffmpeg if name == "ffmpeg" else ffprobe)
 
-        with mock.patch("maw.gui_web._ffmpeg_search_path", return_value=str(ffmpeg.parent)), mock.patch("maw.ffmpeg.shutil.which", side_effect=which):
+        # which 只应在 mock 的搜索路径上找：真实 PATH / macOS Homebrew 候选目录
+        # 在装了 FFmpeg 的机器（如 Homebrew 的 /opt/homebrew）上会泄漏真实路径。
+        # _check_ffmpeg 的搜索路径由 ffmpeg_search_path 从候选列表推导，
+        # 因此只需隔离候选目录列表（空元组）。
+        with mock.patch("maw.gui_web.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ()), \
+                mock.patch("maw.ffmpeg.shutil.which", side_effect=which):
             result = self.api.check_ffmpeg()
 
         self.assertTrue(result["found"])
@@ -3095,8 +3100,10 @@ class GuiWebBridgeTests(unittest.TestCase):
             self.assertIn(str(ffmpeg_dir), path.split(os.pathsep))
             return str(ffmpeg_dir / ("ffmpeg.exe" if name == "ffmpeg" else "ffprobe.exe"))
 
+        # 候选目录会先做真实文件系统探测，必须把真实 Homebrew 路径隔离掉，
+        # 否则在装了 FFmpeg 的 macOS 机器上真实 /opt/homebrew 会抢先命中。
         with mock.patch.object(sys, "platform", "darwin"):
-            with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", (str(ffmpeg_dir),)):
+            with mock.patch("maw.gui_web.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", (str(ffmpeg_dir),)):
                 with mock.patch("maw.ffmpeg.shutil.which", side_effect=which):
                     result = self.api.check_ffmpeg()
 

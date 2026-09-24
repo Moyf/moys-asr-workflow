@@ -68,3 +68,6 @@ build-appimage/
 
 # User-owned recognition presets.
 /asr-presets/
+
+# Agent worktrees
+.worktrees/

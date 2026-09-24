@@ -724,7 +724,13 @@ def _prepend_ffmpeg_path(env: dict[str, str], configured_path: str) -> bool:
     if not directory.exists():
         return False
     old_path = env.get("PATH", "")
-    env["PATH"] = str(directory) if not old_path else str(directory) + os.pathsep + old_path
+    entries = old_path.split(os.pathsep) if old_path else []
+    directory_text = str(directory)
+    if entries and entries[0] == directory_text and entries.count(directory_text) == 1:
+        return False
+    # 已在 PATH 后段的目录也必须移到最前，确保子进程使用解析器选中的工具。
+    # ffprobe 和 ffmpeg 同目录时只保留一份。
+    env["PATH"] = os.pathsep.join([directory_text, *(entry for entry in entries if entry != directory_text)])
     return True
 
 
