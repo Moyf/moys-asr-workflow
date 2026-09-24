@@ -4,7 +4,9 @@ const configuredChromiumPath = String(process.env.MAW_E2E_CHROMIUM_PATH || '').t
 
 export default defineConfig({
   testDir: './tests/e2e',
-  workers: 1,
+  // 每个 spec 文件用 helpers 里的 findFreePort 起独立服务器，文件之间天然隔离，
+  // 文件级并行安全；文件内部仍串行。2 个 worker 兼顾吞吐与负载敏感用例的稳定性。
+  workers: 2,
   timeout: 60_000,
   retries: 0,
   trace: 'retain-on-failure',
