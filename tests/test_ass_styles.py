@@ -214,6 +214,14 @@ class AssStyleLibraryTests(unittest.TestCase):
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
             self.skipTest("ffmpeg 不在 PATH 上，跳过真实滤镜解析验证")
+        probe = subprocess.run(
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-filters"],
+            capture_output=True, text=True,
+        )
+        if "subtitles" not in probe.stdout.split():
+            # Homebrew 等发行版构建可能不编译 libass（无 subtitles 滤镜）。
+            # 滤镜参数转义规则已由上方纯解析用例覆盖，此处只补真实解析。
+            self.skipTest("ffmpeg 未编译 subtitles 滤镜，跳过真实滤镜解析验证")
 
         style = {"fontName": "O'Brien", "fontSize": 24}
         with tempfile.TemporaryDirectory() as directory:
