@@ -85,7 +85,7 @@
       preset_manage_title: "ASR 识别预设", preset_library_title: "ASR 识别预设",
       preset_library_hint: "管理高级选项预设的保存位置。", preset_library_folder: "预设库文件夹",
       preset_current_folder: "当前预设文件夹：", preset_folder_reset: "恢复默认",
-      preset_load: "加载预设", preset_create: "新建预设", preset_save: "将当前配置存为新预设",
+      preset_load: "加载预设", preset_save: "将当前配置存为新预设",
       preset_default_name: "未命名预设", preset_active_badge: "当前",
       preset_load_title: "把选中预设的设置应用到当前表单", preset_save_title: "把当前识别表单保存为新预设",
       preset_update: "更新预设", preset_update_selected: "覆盖至预设", preset_update_title: "用当前表单覆盖选中的预设",
@@ -104,7 +104,7 @@
       preset_description_placeholder: "可选，简单说明适用场景", preset_invalid: "不可用",
       preset_empty: "没有找到预设。", preset_select_required: "请先选择一个可用预设。",
       preset_failed: "预设操作失败", preset_missing: "热词文件不存在，请重新选择。",
-      preset_saved: "已另存为预设", preset_loaded: "已加载预设", preset_info_saved: "预设资料已保存",
+      preset_saved: "已另存为预设", preset_info_saved: "预设资料已保存",
       preset_updated: "已更新预设", preset_copied: "已复制预设", preset_deleted: "已删除预设",
       preset_modified: "修改时间：{time}", preset_confirm_update: "当前表单将覆盖预设「{name}」，是否继续？",
       preset_confirm_delete: "确定删除预设「{name}」？删除后会移入回收站。",
@@ -244,7 +244,7 @@
       preset_manage_title: "ASR Recognition Presets", preset_library_title: "ASR Recognition Presets",
       preset_library_hint: "Choose where advanced recognition presets are stored.", preset_library_folder: "Preset library folder",
       preset_current_folder: "Current preset folder: ", preset_folder_reset: "Restore default",
-      preset_load: "Load preset", preset_create: "New preset", preset_save: "Save current as new preset",
+      preset_load: "Load preset", preset_save: "Save current as new preset",
       preset_default_name: "Untitled preset", preset_active_badge: "Active",
       preset_load_title: "Apply the selected preset's settings to the form", preset_save_title: "Save the current recognition form as a new preset",
       preset_update: "Update preset", preset_update_selected: "Overwrite preset", preset_update_title: "Overwrite the selected preset with the current form",
@@ -264,7 +264,7 @@
       preset_description_placeholder: "Optional; briefly describe when to use it", preset_invalid: "Unavailable",
       preset_empty: "No presets found.", preset_select_required: "Select an available preset first.",
       preset_failed: "Preset operation failed", preset_missing: "Hotword file is missing. Please select it again.",
-      preset_saved: "Saved as new preset", preset_loaded: "Loaded preset", preset_info_saved: "Preset info saved",
+      preset_saved: "Saved as new preset", preset_info_saved: "Preset info saved",
       preset_updated: "Updated preset", preset_copied: "Copied preset", preset_deleted: "Deleted preset",
       preset_modified: "Modified: {time}", preset_confirm_update: "The current form will replace preset “{name}”. Continue?",
       preset_confirm_delete: "Delete preset “{name}”? It will be moved to the Recycle Bin.",
@@ -3380,29 +3380,36 @@
   function updatePresetActionAvailability() {
     const item = selectedAsrPreset();
     const selected = Boolean(item);
-    ["updateAsrPreset", "copyAsrPreset", "deleteAsrPreset"].forEach((id) => { $(id).disabled = !selected; });
-    const loadButton = $("loadAsrPreset");
-    loadButton.textContent = t(selected ? "preset_load" : "preset_create");
-    loadButton.title = t(selected ? "preset_load_title" : "preset_save_title");
+    ["loadAsrPreset", "updateAsrPreset", "copyAsrPreset", "deleteAsrPreset"].forEach((id) => { $(id).disabled = !selected; });
     if (!selected) return;
     const active = item.name === currentAsrPreset.name;
     const updateButton = $("updateAsrPreset");
     updateButton.textContent = t(active ? "preset_update_active" : "preset_update_selected");
     updateButton.title = t(active ? "preset_update_active_title" : "preset_update_title");
   }
+  function focusAsrPresetItem(name) {
+    Array.from($("asrPresetList").querySelectorAll("[data-preset-name]")).find((button) => button.dataset.presetName === name)?.focus();
+  }
   function selectAsrPreset(name, { focus = false } = {}) {
     const item = presetManager.items.find((candidate) => candidate.name === name && candidate.valid);
     if (!item) return;
+    const modifiedText = item.modified ? presetMessage("preset_modified", { time: presetDate(item.modified) }) : "";
+    if (presetManager.selectedName === item.name
+      && $("asrPresetDescription").value === (item.description || "")
+      && $("asrPresetModifiedDate").textContent === modifiedText) {
+      if (focus) focusAsrPresetItem(item.name);
+      return;
+    }
     presetManager.selectedName = item.name;
     presetManager.previewOptions = null;
     $("asrPresetName").value = item.name;
     $("asrPresetDescription").value = item.description || "";
-    $("asrPresetModifiedDate").textContent = item.modified ? presetMessage("preset_modified", { time: presetDate(item.modified) }) : "";
+    $("asrPresetModifiedDate").textContent = modifiedText;
     renderPresetOptionsPreview(null);
     renderAsrPresetList();
     updatePresetActionAvailability();
     void loadAsrPresetPreview(item.name);
-    if (focus) Array.from($("asrPresetList").querySelectorAll("[data-preset-name]")).find((button) => button.dataset.presetName === item.name)?.focus();
+    if (focus) focusAsrPresetItem(item.name);
   }
   function renderAsrPresetList() {
     const list = $("asrPresetList");
@@ -3442,7 +3449,6 @@
       button.setAttribute("aria-selected", String(item.name === presetManager.selectedName));
       if (active) button.setAttribute("aria-current", "true");
       button.dataset.presetName = item.name;
-      button.addEventListener("click", () => selectAsrPreset(item.name));
       const title = document.createElement("span");
       title.className = "asr-preset-item-name";
       title.textContent = item.name;
@@ -3558,9 +3564,7 @@
     try { applyAsrPreset(result.options); }
     catch (error) { setPresetManagerStatus(`${t("preset_failed")}: ${error.message}`); return; }
     setCurrentAsrPreset(result.name, result.options);
-    const success = `${t("preset_loaded")}：${result.name}`;
-    showAsrPresetStatus(result.missingHotwords ? `${success} · ${t("preset_missing")}` : success);
-    setPresetManagerStatus(success);
+    showAsrPresetStatus(result.missingHotwords ? t("preset_missing") : "");
     closeAsrPresetManager();
   }
   let presetInfoSaving = false;
@@ -3690,15 +3694,19 @@
   });
   $("refreshAsrPresets").addEventListener("click", () => { void refreshAsrPresetLibrary(); });
   $("asrPresetSearch").addEventListener("input", renderAsrPresetList);
-  $("asrPresetList").addEventListener("dblclick", (event) => {
-    const hit = document.elementFromPoint(event.clientX, event.clientY);
-    const button = event.target.closest("[data-preset-name]") || hit?.closest("[data-preset-name]");
+  let lastPresetListClick = { name: "", at: 0 };
+  $("asrPresetList").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-preset-name]");
     if (!button) return;
-    selectAsrPreset(button.dataset.presetName);
-    void loadSelectedAsrPreset();
+    const name = button.dataset.presetName;
+    const now = Date.now();
+    const isDoubleClick = event.detail > 0 && lastPresetListClick.name === name && now - lastPresetListClick.at <= 500;
+    lastPresetListClick = isDoubleClick ? { name: "", at: 0 } : { name, at: now };
+    if (isDoubleClick) { void loadSelectedAsrPreset(); return; }
+    selectAsrPreset(name);
   });
   $("saveAsrPreset").addEventListener("click", () => { void createPresetFromForm(); });
-  $("loadAsrPreset").addEventListener("click", () => { void (selectedAsrPreset() ? loadSelectedAsrPreset() : createPresetFromForm()); });
+  $("loadAsrPreset").addEventListener("click", () => { void loadSelectedAsrPreset(); });
   $("asrPresetName").addEventListener("blur", () => { void saveSelectedPresetInfoOnBlur(); });
   $("asrPresetDescription").addEventListener("blur", () => { void saveSelectedPresetInfoOnBlur(); });
   $("updateAsrPreset").addEventListener("click", () => { void updateSelectedAsrPreset(); });

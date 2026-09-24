@@ -60,6 +60,14 @@
 | 6 | 「获取 API Key」行加蓝色 Callout，不用强调色 | 已修复 | 新增独立变量 `--info` / `--info-soft` / `--info-tint`（当前复用 accent 色值，后续可独立调整），`.key-hint-callout` 采用与参考价 callout 同款结构。 |
 | 7 | 首页标语更换 | 已修复 | Launcher hero 文案改为「让字幕制作变得超级轻松！」/ "Making subtitle creation super easy!"（zh/en）。 |
 
+## 第五轮用户反馈逐条状态
+
+| # | 反馈 | 状态 | 处理结果 |
+| --- | --- | --- | --- |
+| 1 | 「新建预设」与「将当前配置存为新预设」功能重复，去掉交替逻辑 | 已修复 | 按钮恒为「加载预设」，未选中时禁用；创建入口统一为「将当前配置存为新预设」（输入为空时仍自动取「未命名预设」先建后改名）；移除 `preset_create` 文案。 |
+| 2 | 「双击可直接加载预设」提示居左、挨着「预设列表」（留空隙） | 已修复 | `.asr-preset-list-header` 改为 `justify-content: flex-start`（gap 8px），提示紧邻标题居左；双击加载行为本身已存在，浏览器测试补双击加载流程与提示位置（同行、间距 8–40px）断言。 |
+| 3 | 「已加载预设：××」与「当前预设」重复，去掉 | 已修复 | `loadSelectedAsrPreset()` 不再显示加载成功提示（`preset_loaded` 文案移除）；热词文件丢失警告保留。 |
+
 ## 其他修复（上一轮遗留问题）
 
 | 事项 | 状态 | 说明 |
@@ -76,6 +84,8 @@
 - `node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`：334 项通过。
 - `node --test tests\test_asr_presets_browser.mjs`（`MAW_TEST_PLAYWRIGHT` 指向主检出 Playwright）：通过，含共享提示词（Qwen/OpenAI/Soniox 三框同步）、主表单无确认更新、弹窗更新保留确认、失焦保存、新建预设切换、底部按钮行、预览高度、滚轮阻断、窄屏单列等断言。
 - 第三轮补充断言：创建后自动聚焦名称输入、未命名预设默认名、底部按钮行间距、弹窗底部新文案、恢复默认按钮同行、active+selected 徽标（EN 下文案 Active）。
+- 第五轮补充断言：加载按钮恒为「加载预设」且未选中时禁用、双击列表项直接加载关闭弹窗、「双击可直接加载预设」提示与标题同行且间距 8–40px。
+- 第六轮补充断言：加载成功后主表单状态行保持为空（仅热词丢失时提示）。
 - `python -m unittest tests.test_asr_presets tests.test_gui_web`：318 项通过、1 跳过（使用主检出 `.venv`，`PYTHONUTF8=1`）。
 - 全量 `python -m unittest discover -s tests -p "test_*.py"`：1691 项通过、12 跳过（第二轮改动前基线；其后仅改前端与文档，前端已单独验证）。
 - `python -m ruff check maw tests`：通过。

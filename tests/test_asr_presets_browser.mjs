@@ -108,6 +108,13 @@ test('ASR preset library manages metadata and options independently with keyboar
     assert.ok(await page.locator('#loadAsrPreset').evaluate(el => Boolean(el.closest('.asr-preset-modal-actions'))), 'action buttons live under the modal grid');
     assert.equal(await page.locator('#asrPresetOptionsPreview').evaluate(el => getComputedStyle(el).maxHeight), 'none', 'the preview grows with the freed space');
     assert.equal(await page.locator('#deleteAsrPreset').getAttribute('title'), '将选中预设移入系统回收站', 'action buttons explain themselves on hover');
+    assert.equal(await page.locator('.asr-preset-list-header .hint').textContent(), '双击可直接加载预设');
+    const hintGap = await page.locator('.asr-preset-list-header').evaluate(header => {
+      const title = header.querySelector('h3').getBoundingClientRect();
+      const hint = header.querySelector('.hint').getBoundingClientRect();
+      return { gap: hint.left - title.right, sameRow: Math.abs(title.top - hint.top) < 4 };
+    });
+    assert.ok(hintGap.sameRow && hintGap.gap >= 8 && hintGap.gap <= 40, `the dblclick hint sits beside the list title, got gap ${hintGap.gap}px`);
     assert.equal(await page.locator('#saveAsrPreset').textContent(), '将当前配置存为新预设');
     assert.equal(await page.locator('#updateAsrPreset').textContent(), '更新该预设', 'the active preset shows the update label');
     assert.notEqual(await page.locator('.asr-preset-modal-actions').evaluate(el => getComputedStyle(el).marginTop), '0px', 'the action row keeps distance from the grid above');
@@ -119,9 +126,12 @@ test('ASR preset library manages metadata and options independently with keyboar
     await page.locator('#manageAsrPresets').click();
     await page.waitForFunction(() => !document.querySelector('#asrPresetModal').classList.contains('hidden'));
     assert.equal(await page.evaluate(() => document.activeElement.dataset.presetName), '访谈', 'opening the manager focuses the currently loaded preset');
+    const previewsBeforeReclick = await page.evaluate(() => window.presetCalls.filter(call => call.name === 'recognition_presets' && call.payload.action === 'preview').length);
     await page.getByRole('option', { name: /访谈/ }).click();
+    const previewsAfterReclick = await page.evaluate(() => window.presetCalls.filter(call => call.name === 'recognition_presets' && call.payload.action === 'preview').length);
+    assert.equal(previewsAfterReclick, previewsBeforeReclick, 're-clicking the selected preset must not refetch or flash its preview');
     assert.equal(await page.locator('#qwenAudioContext').inputValue(), '页面当前未保存值', 'selecting a list item must not load it');
-    await page.locator('#loadAsrPreset').click();
+    await page.getByRole('option', { name: /访谈/ }).dblclick();
     await page.waitForFunction(() => document.querySelector('#asrPresetModal').classList.contains('hidden'));
     assert.equal(await page.locator('#qwenAudioContext').inputValue(), '保存时的上下文');
     assert.equal(await page.locator('#openaiPrompt').inputValue(), '保存时的上下文');
@@ -129,8 +139,15 @@ test('ASR preset library manages metadata and options independently with keyboar
     assert.equal(await page.locator('#model').inputValue(), originalModel, 'loading a preset must not switch models');
     assert.equal(await page.locator('#currentAsrPresetName').textContent(), '访谈');
     assert.equal(await page.locator('#currentAsrPresetModified').isVisible(), false);
-    assert.match(await page.locator('#asrPresetStatus').textContent(), /访谈/);
-    assert.doesNotMatch(await page.locator('#asrPresetStatus').textContent(), /[A-Z]:\\|\/Users\//);
+    assert.equal(await page.locator('#asrPresetStatus').textContent(), '', 'loading shows no redundant status next to the current-preset label');
+    assert.equal(await page.locator('#asrPresetStatus').evaluate(el => el.classList.contains('hidden')), true);
+
+    await page.locator('#qwenAudioContext').fill('双击前的临时修改');
+    await page.locator('#manageAsrPresets').click();
+    await page.waitForFunction(() => !document.querySelector('#asrPresetModal').classList.contains('hidden'));
+    await page.getByRole('option', { name: /访谈/ }).dblclick();
+    await page.waitForFunction(() => document.querySelector('#asrPresetModal').classList.contains('hidden'), undefined, { timeout: 5_000 });
+    assert.equal(await page.locator('#qwenAudioContext').inputValue(), '保存时的上下文', 'double-clicking a list item loads the preset');
 
     await page.locator('#qwenAudioContext').fill('当前表单修改');
     assert.equal(await page.locator('#currentAsrPresetModified').isVisible(), true);
@@ -195,12 +212,13 @@ test('ASR preset library manages metadata and options independently with keyboar
     await page.waitForFunction(() => !window.presetStore.has('采访副本'));
     assert.deepEqual(await page.evaluate(() => window.trash), ['采访副本']);
 
-    assert.equal(await page.locator('#loadAsrPreset').textContent(), '新建预设', 'without a selection the load button becomes create');
-    await page.locator('#loadAsrPreset').click();
+    assert.equal(await page.locator('#loadAsrPreset').isDisabled(), true, 'load is disabled without a selection');
+    assert.equal(await page.locator('#loadAsrPreset').textContent(), '加载预设', 'the load button keeps a single label');
+    await page.locator('#saveAsrPreset').click();
     await page.waitForFunction(() => window.presetStore.has('未命名预设'));
     await page.waitForFunction(() => document.activeElement?.id === 'asrPresetName', undefined, { timeout: 5_000 });
     assert.equal(await page.locator('#asrPresetName').inputValue(), '未命名预设');
-    assert.equal(await page.locator('#loadAsrPreset').textContent(), '加载预设', 'with a selection the button loads again');
+    assert.equal(await page.locator('#loadAsrPreset').isDisabled(), false);
     await page.getByRole('option', { name: /采访/ }).click();
     await page.locator('#loadAsrPreset').click();
     await page.waitForFunction(() => document.querySelector('#asrPresetModal').classList.contains('hidden'));
