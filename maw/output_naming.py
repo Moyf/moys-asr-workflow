@@ -23,6 +23,10 @@ DEFAULT_LANG: Final[str] = "zh"
 
 # 阿里云百炼录音文件识别单价（元/秒），fun-asr / qwen-audio / qwen3-asr 均适用。
 DASHSCOPE_PRICE_PER_SECOND: Final[float] = 0.00022
+# Qwen-Audio-3.1-ASR（qwen-audio-3.1-asr-flash-filetrans）北京按 Token 计价，
+# 2026-09 官方模型页参考价；实际以百炼控制台账单为准。
+DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS: Final[float] = 0.8
+DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS: Final[float] = 2.7
 
 POSTPROCESS_DIR_NAMES: Final[dict[str, str]] = {"zh": "后处理", "en": "postprocess"}
 
@@ -34,7 +38,7 @@ BACKUP_DIR_NAMES: Final[dict[str, str]] = {"zh": "备份", "en": "backups"}
 
 # 操作显示名（per-language）。后处理链与工具箱的全部产物 operation 都在此登记，
 # zh 界面输出中文名（与工具箱/自动链的步骤名一致），en 界面保持 ASCII 原名；
-# 未列出的 operation 原样使用，不本地化。固定处理按实际启用的部分细分：
+# 未列出的 operation 原样使用，不本地化。固定替换按实际启用的部分细分：
 # 批量替换用 "replace"，简繁转换按方向用 "simplified" / "traditional"，
 # 两者同时启用时以点连接（"replace.traditional"）。
 OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
@@ -51,7 +55,7 @@ OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
     "timestamps": {"zh": "生成时间码", "en": "timestamps"},
 }
 
-# 媒体工具产物后缀（压制字幕/提取音频/媒体重组）；未列出的后缀原样使用。
+# 媒体工具产物后缀（烧录字幕/提取音频/媒体重组）；未列出的后缀原样使用。
 MEDIA_SUFFIX_NAMES: Final[dict[str, dict[str, str]]] = {
     "gap-removed": {"zh": "去空隙", "en": "gap-removed"},
     "subtitled": {"zh": "压字幕", "en": "subtitled"},
@@ -326,7 +330,7 @@ def operation_suffix(operation: str, lang: str | None = None) -> str:
       及 bilingual/combined 变体，连字符 / 下划线 base 都识别）：
       zh 界面产出 ``.后处理`` / ``.文稿匹配`` / ``.校对文本`` /
       ``.翻译为中文`` / ``.翻译为中文.双语合一``；
-    - 点连接的复合 operation（如固定处理的 ``replace.traditional``）逐段本地化，
+    - 点连接的复合 operation（如固定替换的 ``replace.traditional``）逐段本地化，
       zh 界面产出 ``.批量替换.转繁体``；
     - en 界面翻译产物保持 operation 原文（``.translate-zh-bilingual`` 等）；下划线
       变体（工具箱 ``translate_zh`` / ``translate_zh-bilingual``）沿用 legacy ASCII
@@ -391,6 +395,22 @@ def estimate_dashscope_cost(duration_seconds: float | None) -> float | None:
     return duration_seconds * DASHSCOPE_PRICE_PER_SECOND
 
 
+def estimate_qwen_audio_31_cost(
+    input_tokens: float | None,
+    output_tokens: float | None,
+) -> float | None:
+    """按 Qwen-Audio-3.1-ASR 的 Token 单价估算费用；token 数无效返回 None。"""
+    if (
+        input_tokens is None or input_tokens < 0
+        or output_tokens is None or output_tokens < 0
+    ):
+        return None
+    return (
+        input_tokens * DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS / 1_000_000
+        + output_tokens * DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS / 1_000_000
+    )
+
+
 def parse_maw_stat(line: str) -> dict[str, str] | None:
     """解析 'MAW_STAT rtf=0.123' 形式的机器可读行；不匹配返回 None。"""
     match = _MAW_STAT_PATTERN.match(line.strip())
@@ -402,6 +422,8 @@ def parse_maw_stat(line: str) -> dict[str, str] | None:
 __all__ = [
     "BACKUP_DIR_NAMES",
     "DASHSCOPE_PRICE_PER_SECOND",
+    "DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS",
+    "DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS",
     "DEFAULT_LANG",
     "DEBUG_DIR_NAMES",
     "MAW_DIR_NAME",
@@ -415,6 +437,7 @@ __all__ = [
     "debug_artifact_dir",
     "debug_artifact_path",
     "estimate_dashscope_cost",
+    "estimate_qwen_audio_31_cost",
     "format_elapsed",
     "format_maw_stat",
     "is_translation_operation",

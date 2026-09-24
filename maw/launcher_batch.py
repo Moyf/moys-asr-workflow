@@ -128,6 +128,7 @@ def run_batch(
             final_srt = getattr(pipeline_result, "srt_path", result.srt_path)
             final_json: Path | None = getattr(pipeline_result, "project_path", result.json_path)
             final_html: Path | None = getattr(pipeline_result, "html_path", result.html_path)
+            final_video: Path | None = getattr(pipeline_result, "media_path", None)
             item_total_elapsed = time.perf_counter() - item_t0
             _emit_item_timing(
                 on_event, item, index,
@@ -150,6 +151,7 @@ def run_batch(
                 "srtPath": str(final_srt),
                 "jsonPath": str(final_json or ""),
                 "htmlPath": str(final_html or ""),
+                "videoPath": str(final_video or ""),
             }
         except (TranscriptionCancelledError, PostprocessCancelled):
             outcome = {"id": item.item_id, "status": "cancelled", "index": index}

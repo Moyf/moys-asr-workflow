@@ -11,9 +11,11 @@ from generate_subtitle_qwen_api import (
     FILETRANS_MODEL,
     FUNASR_MODEL,
     QWEN3_ASR_FILETRANS_MODEL,
+    QWEN_AUDIO_31_FILETRANS_MODEL,
     QWEN_AUDIO_FILETRANS_MODEL,
     build_segments_from_api_sentences,
     build_qwen_audio_context,
+    is_qwen_audio_31_model,
     is_qwen_audio_model,
     load_hotwords,
     main,
@@ -41,6 +43,13 @@ class QwenAudioAdapterTests(unittest.TestCase):
         self.assertTrue(is_qwen_audio_model(QWEN_AUDIO_FILETRANS_MODEL))
         self.assertTrue(supports_speaker_diarization(QWEN_AUDIO_FILETRANS_MODEL))
         self.assertFalse(is_qwen_audio_model("qwen3-asr-flash-filetrans"))
+
+    def test_qwen_audio_31_is_recognized_as_qwen_audio_model(self) -> None:
+        self.assertTrue(is_qwen_audio_model(QWEN_AUDIO_31_FILETRANS_MODEL))
+        self.assertTrue(is_qwen_audio_31_model(QWEN_AUDIO_31_FILETRANS_MODEL))
+        self.assertTrue(supports_speaker_diarization(QWEN_AUDIO_31_FILETRANS_MODEL))
+        self.assertFalse(is_qwen_audio_31_model(QWEN_AUDIO_FILETRANS_MODEL))
+        self.assertFalse(is_qwen_audio_31_model(QWEN3_ASR_FILETRANS_MODEL))
 
     def test_qwen_standard_mixed_timestamps_preserve_sentence_fallback(self) -> None:
         result = parse_transcription_result({
@@ -252,6 +261,46 @@ class QwenAudioAdapterTests(unittest.TestCase):
         self.assertNotIn("enable_words", payload["parameters"])
         self.assertNotIn("enable_itn", payload["parameters"])
         response.raise_for_status.assert_called_once_with()
+
+    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    def test_submit_keeps_dialect_only_for_qwen_audio_31(self, post: mock.Mock) -> None:
+        response = mock.Mock()
+        response.json.return_value = {
+            "output": {"task_id": "task-dialect", "task_status": "PENDING"}
+        }
+        post.return_value = response
+
+        submit_filetrans(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "oss://temporary/audio.wav",
+            language=None,
+            enable_words=True,
+            enable_itn=False,
+            model=QWEN_AUDIO_31_FILETRANS_MODEL,
+            keep_dialect=True,
+        )
+
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["model"], QWEN_AUDIO_31_FILETRANS_MODEL)
+        self.assertTrue(payload["parameters"]["keep_dialect"])
+
+        post.reset_mock()
+        post.return_value = response
+
+        submit_filetrans(
+            "https://dashscope.aliyuncs.com",
+            "secret",
+            "oss://temporary/audio.wav",
+            language=None,
+            enable_words=True,
+            enable_itn=False,
+            model=QWEN_AUDIO_FILETRANS_MODEL,
+            keep_dialect=True,
+        )
+
+        payload = post.call_args.kwargs["json"]
+        self.assertNotIn("keep_dialect", payload["parameters"])
 
     @mock.patch("generate_subtitle_qwen_api.requests.post")
     def test_submit_uses_individual_hotword_weights_and_ignores_invalid_entries(
@@ -466,6 +515,112 @@ class QwenAudioAdapterTests(unittest.TestCase):
             all(sentence["start"] <= item["start"] < item["end"] <= sentence["end"]
                 for item in sentence["items"])
         )
+
+    def test_main_rejects_keep_dialect_for_non_31_models(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            media_path = Path(directory) / "input.wav"
+            media_path.write_bytes(b"audio")
+            with (
+                mock.patch("sys.argv", [
+                    "generate_subtitle_qwen_api.py",
+                    str(media_path),
+                    "--model",
+                    QWEN_AUDIO_FILETRANS_MODEL,
+                    "--keep-dialect",
+                ]),
+                redirect_stdout(io.StringIO()),
+                self.assertRaises(SystemExit),
+            ):
+                main()
+
+    def test_qwen_audio_31_main_reports_token_billing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            media_path = Path(directory) / "input.wav"
+            output_path = Path(directory) / "output.srt"
+            media_path.write_bytes(b"audio")
+            result = {
+                "text": "精确时间码。",
+                "language": "zh",
+                "items": [
+                    {"text": "精确", "start": 0, "end": 200},
+                    {"text": "时间码。", "start": 200, "end": 500},
+                ],
+                "sentences": [{
+                    "text": "精确时间码。",
+                    "start": 0,
+                    "end": 500,
+                    "items": [
+                        {"text": "精确", "start": 0, "end": 200},
+                        {"text": "时间码。", "start": 200, "end": 500},
+                    ],
+                }],
+                "timestamp_granularity": "segment",
+                "usage": {
+                    "duration": 109,
+                    "input_tokens": 2006,
+                    "output_tokens": 256,
+                },
+            }
+            buffer = io.StringIO()
+            with (
+                mock.patch("sys.argv", [
+                    "generate_subtitle_qwen_api.py",
+                    str(media_path),
+                    "--model",
+                    QWEN_AUDIO_31_FILETRANS_MODEL,
+                    "-o",
+                    str(output_path),
+                ]),
+                mock.patch("generate_subtitle_qwen_api.resolve_ffmpeg_tools"),
+                mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=2.0),
+                mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result),
+                redirect_stdout(buffer),
+            ):
+                main()
+
+            output = buffer.getvalue()
+            self.assertIn("输入 2006 tok", output)
+            self.assertIn("输出 256 tok", output)
+            self.assertIn("约 0.0023 元", output)
+            self.assertNotIn("0.00022 元/秒", output)
+
+    def test_qwen_audio_31_main_falls_back_without_usage_tokens(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            media_path = Path(directory) / "input.wav"
+            output_path = Path(directory) / "output.srt"
+            media_path.write_bytes(b"audio")
+            result = {
+                "text": "精确时间码。",
+                "language": "zh",
+                "items": [{"text": "精确时间码。", "start": 0, "end": 500}],
+                "sentences": [{
+                    "text": "精确时间码。",
+                    "start": 0,
+                    "end": 500,
+                    "items": [{"text": "精确时间码。", "start": 0, "end": 500}],
+                }],
+                "timestamp_granularity": "segment",
+            }
+            buffer = io.StringIO()
+            with (
+                mock.patch("sys.argv", [
+                    "generate_subtitle_qwen_api.py",
+                    str(media_path),
+                    "--model",
+                    QWEN_AUDIO_31_FILETRANS_MODEL,
+                    "-o",
+                    str(output_path),
+                ]),
+                mock.patch("generate_subtitle_qwen_api.resolve_ffmpeg_tools"),
+                mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=2.0),
+                mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result),
+                redirect_stdout(buffer),
+            ):
+                main()
+
+            output = buffer.getvalue()
+            self.assertIn("按 Token 计费（北京 输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token）", output)
+            self.assertNotIn("0.00022 元/秒", output)
 
     def test_funasr_main_preserves_sentence_fallback_boundaries(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

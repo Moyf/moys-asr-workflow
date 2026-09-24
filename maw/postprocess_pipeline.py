@@ -42,6 +42,7 @@ from maw.postprocess_llm import (
 )
 from maw.postprocess_match import ScriptMatchRequest, run_script_match
 from maw.postprocess_ocr import OcrDedupArtifact, OcrDedupRequest, OcrRegion, run_ocr_dedup
+from maw.postprocess_ffmpeg import BurnSubtitleRequest, MediaToolCancelled, normalize_video_encoder, run_burn_subtitles
 from maw.ocr_runtime import OCR_MODEL_ID, run_ocr_in_runtime
 from maw.project_preview import JsonValue
 from maw.text_conversion import TextConversion, normalize_text_conversion_mode
@@ -56,6 +57,7 @@ STEP_ORDER: Final[tuple[str, ...]] = (
     "resegment",
     "ocr",
     "translate",
+    "burn",
 )
 TRANSLATION_TARGETS: Final[frozenset[str]] = frozenset({"zh", "en"})
 SCRIPT_EXTENSIONS: Final[frozenset[str]] = frozenset({".txt", ".md", ".markdown"})
@@ -85,6 +87,7 @@ def default_postprocess_plan() -> dict[str, object]:
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
             {"id": "ocr", "enabled": False, "videoPath": "", "videoPathMode": "", "regionMode": "full", "regionX1": 0, "regionY1": 0, "regionX2": 100, "regionY2": 100, "threshold": 0.5, "report": False},
             {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "embedTranslations": False, "bilingualLineOrder": "", "customPrompt": ""},
+            {"id": "burn", "enabled": False, "videoEncoder": "auto"},
         ],
     }
 
@@ -146,6 +149,8 @@ def normalize_plan(raw: object) -> dict[str, object]:
             elif key == "videoPathMode":
                 mode = str(value or "").strip()
                 step[key] = mode if mode in {"", "auto", "manual"} else ""
+            elif key == "videoEncoder":
+                step[key] = normalize_video_encoder(value)
             elif key in {"extraSplitPunctuation", "preservePunctuation"}:
                 step[key] = [str(item).strip() for item in value if str(item).strip()] if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else []
             else:
@@ -366,6 +371,11 @@ def validate_plan(
                 errors.append({"step": step_id, "field": "ocrThreshold", "message": "OCR 相似度阈值必须在 0 到 1 之间。"})
             if ffmpeg_path is None or not ffmpeg_path.is_file():
                 errors.append({"step": step_id, "field": "ocrVideoPath", "message": "找不到 FFmpeg，无法执行 OCR 字幕去重。"})
+        elif step_id == "burn":
+            if media_path.suffix.lower() not in VIDEO_EXTENSIONS or not media_path.is_file():
+                errors.append({"step": step_id, "field": "mediaPath", "message": "烧录字幕需要一个存在的视频文件。"})
+            if ffmpeg_path is None or not ffmpeg_path.is_file():
+                errors.append({"step": step_id, "field": "mediaPath", "message": "找不到 FFmpeg，无法烧录字幕。"})
     return plan, tuple(errors)
 
 
@@ -377,6 +387,7 @@ class PipelineResult:
     completed_steps: tuple[str, ...]
     warnings: tuple[str, ...] = ()
     translated_srt_path: Path | None = None
+    media_path: Path | None = None
 
 
 class PostprocessCancelled(RuntimeError):
@@ -621,6 +632,7 @@ def run_postprocess_pipeline(
     _emit(on_event, {"stage": "start", "total": len(steps), "resumed": resume_directory is not None, "runDirectory": str(run_directory)})
     current_project = resume_project_path or project_path
     current_srt = resume_srt_path or srt_path
+    current_media = media_path
     current_translated_srt: Path | None = None
     translation_target: str | None = None
     bilingual_output = False
@@ -628,15 +640,19 @@ def run_postprocess_pipeline(
     resume_count = max(0, resume_from)
     manifest_steps = manifest.get("steps")
     for previous_index, previous_step in enumerate(steps[:resume_count]):
+        previous_manifest_step = (
+            manifest_steps[previous_index]
+            if isinstance(manifest_steps, list) and previous_index < len(manifest_steps)
+            else None
+        )
+        if isinstance(previous_manifest_step, Mapping):
+            previous_media = str(previous_manifest_step.get("mediaPath") or "").strip()
+            if previous_media:
+                current_media = Path(previous_media).expanduser().resolve()
         if str(previous_step.get("id") or "") == "translate":
             translation_target = str(previous_step.get("target") or "zh")
             bilingual_output = bool(previous_step.get("mergeBilingual"))
             embed_output = bool(previous_step.get("embedTranslations")) and not bilingual_output
-            previous_manifest_step = (
-                manifest_steps[previous_index]
-                if isinstance(manifest_steps, list) and previous_index < len(manifest_steps)
-                else None
-            )
             if isinstance(previous_manifest_step, Mapping):
                 previous_path = str(previous_manifest_step.get("translatedSrtPath") or "").strip()
                 if previous_path:
@@ -661,7 +677,7 @@ def run_postprocess_pipeline(
                     step,
                     project_path=current_project,
                     srt_path=current_srt,
-                    media_path=media_path,
+                    media_path=current_media,
                     env_path=env_path,
                     ffmpeg_path=ffmpeg_path,
                     ocr_runtime_root=ocr_runtime_root,
@@ -772,6 +788,9 @@ def run_postprocess_pipeline(
             _check_cancel(cancel_event)
             current_project = artifact.project_path or current_project
             current_srt = artifact.srt_path or current_srt
+            artifact_media_path = getattr(artifact, "media_path", None)
+            if artifact_media_path is not None:
+                current_media = artifact_media_path
             translated_srt_path = getattr(artifact, "translated_srt_path", None)
             if isinstance(translated_srt_path, Path):
                 current_translated_srt = translated_srt_path
@@ -782,6 +801,8 @@ def run_postprocess_pipeline(
             manifest_steps[index - 1]["elapsedSeconds"] = round(step_elapsed, 3)
             manifest_steps[index - 1]["projectPath"] = str(current_project)
             manifest_steps[index - 1]["srtPath"] = str(current_srt)
+            if current_media != media_path:
+                manifest_steps[index - 1]["mediaPath"] = str(current_media)
             if current_translated_srt is not None:
                 manifest_steps[index - 1]["translatedSrtPath"] = str(current_translated_srt)
             if translation_intermediate_project is not None:
@@ -800,6 +821,7 @@ def run_postprocess_pipeline(
                 "projectName": current_project.name,
                 "srtName": current_srt.name,
                 "translatedSrtName": current_translated_srt.name if current_translated_srt is not None else "",
+                "mediaName": current_media.name if current_media != media_path else "",
             })
         final_project, final_srt, final_translated_srt = _publish_final(
             project_path,
@@ -815,6 +837,8 @@ def run_postprocess_pipeline(
         manifest["status"] = "done"
         manifest["finalProjectPath"] = str(final_project)
         manifest["finalSrtPath"] = str(final_srt)
+        if current_media != media_path:
+            manifest["finalMediaPath"] = str(current_media)
         pipeline_elapsed = time.perf_counter() - pipeline_t0
         manifest["elapsedSeconds"] = round(pipeline_elapsed, 3)
         if final_translated_srt is not None:
@@ -828,8 +852,17 @@ def run_postprocess_pipeline(
             "projectName": final_project.name,
             "srtName": final_srt.name,
             "translatedSrtName": final_translated_srt.name if final_translated_srt is not None else "",
+            "mediaName": current_media.name if current_media != media_path else "",
         })
-        result = PipelineResult(final_project, final_srt, run_directory, tuple(completed), tuple(warnings), final_translated_srt)
+        result = PipelineResult(
+            final_project,
+            final_srt,
+            run_directory,
+            tuple(completed),
+            tuple(warnings),
+            final_translated_srt,
+            current_media if current_media != media_path else None,
+        )
         if not bool(normalized.get("retainIntermediate")):
             shutil.rmtree(run_directory, ignore_errors=True)
             # 中间产物清掉后，只为这次运行而建的「后处理」根目录如果是空的也一并移除；
@@ -943,6 +976,36 @@ def _run_step(
                 cancel_event=cancel_event,
             ))
         return run_ocr_dedup(request, ffmpeg_path=ffmpeg_path, on_status=on_status)
+    if step_id == "burn":
+        if ffmpeg_path is None:
+            raise ValueError("找不到 FFmpeg，无法烧录字幕。")
+
+        def on_progress(details: Mapping[str, str]) -> None:
+            _check_cancel(cancel_event)
+            _emit(on_event, {"stage": "detail", "step": step_id, "key": "toolbox_status_burning", **dict(details)})
+
+        try:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(
+                    media_path=media_path,
+                    subtitle_path=srt_path,
+                    video_encoder=normalize_video_encoder(step.get("videoEncoder")),
+                ),
+                ffmpeg_path=ffmpeg_path,
+                cancel_event=cancel_event,
+                on_progress=on_progress,
+            )
+        except MediaToolCancelled as error:
+            raise PostprocessCancelled(str(error)) from error
+        # 烧录不修改字幕产物，project/srt 保持 None 以跳过产物重编号；
+        # 新视频通过 SubtitleArtifact.media_path 进入 manifest 链。
+        return SubtitleArtifact(
+            source_project_path=project_path,
+            source_srt_path=srt_path,
+            project_path=None,
+            srt_path=None,
+            media_path=result.media_path,
+        )
     operation = "translate_zh" if step_id == "translate" and str(step.get("target") or "zh") == "zh" else (
         "translate_en" if step_id == "translate" else step_id
     )

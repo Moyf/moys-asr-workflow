@@ -136,7 +136,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `-o PATH [PATH]`, `--output PATH [PATH]` | 第一个路径为 SRT，第二个可选路径为 `.mosp`；最多两个路径。 |
 | `--mosp PATH` | 单独指定 `.mosp` 输出路径；不能和 `-o` 的第二个路径同时使用。 |
 | `--provider qwen\|soniox\|doubao\|tencent\|openai\|bcut` | 选择供应商，默认 `qwen`。`openai` 使用 OpenAI 官方或兼容的转写接口；`doubao` 使用豆包（火山引擎）录音文件识别；`tencent` 使用腾讯云录音文件识别；`bcut` 为免 Key 的实验性非官方接口。 |
-| `--model MODEL` | 覆盖供应商的模型。Qwen 常用值为 `qwen-audio-3.0-asr-flash-filetrans`、`qwen3-asr-flash-filetrans`、`fun-asr`；Soniox 默认读取 `.env`；豆包为资源 ID（默认 `volc.seedasr.auc`，可选 `volc.bigasr.auc` / `volc.bigasr.auc_idle`）；OpenAI 兼容接口默认使用 `whisper-1`。OpenRouter CLI 请显式使用完整模型 ID，例如 `openai/whisper-1`；其他中转站也请按服务商文档填写完整模型名。 |
+| `--model MODEL` | 覆盖供应商的模型。Qwen 常用值为 `qwen-audio-3.0-asr-flash-filetrans`（默认）、`qwen-audio-3.1-asr-flash-filetrans`、`qwen3-asr-flash-filetrans`、`fun-asr`；Soniox 默认读取 `.env`；豆包为资源 ID（默认 `volc.seedasr.auc`，可选 `volc.bigasr.auc` / `volc.bigasr.auc_idle`）；OpenAI 兼容接口默认使用 `whisper-1`。OpenRouter CLI 请显式使用完整模型 ID，例如 `openai/whisper-1`；其他中转站也请按服务商文档填写完整模型名。 |
 
 ### 4.2 字幕切分、说话人和工程内容
 
@@ -178,8 +178,9 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `--hotword-weight VALUE` | 设置即时热词权重，可用 `1` 到 `5` 或 `50`。 |
 | `--context TEXT` | 提供 Qwen-Audio 的领域背景或前文，最多发送 400 字符。 |
 | `--context-file PATH` | 从 UTF-8 文件读取 context；和 `--context` 二选一。 |
+| `--keep-dialect` | 保留方言表达，不转写为普通话文本；仅 `qwen-audio-3.1-asr-flash-filetrans` 支持，与其他模型混用会报参数错误。 |
 
-热词文件也支持 `热词: 权重` 或 `热词：权重`，可以对单条热词覆盖全局权重。即时热词和 context 主要由 `qwen-audio-3.0-asr-flash-filetrans` 使用；切换到 Qwen3-ASR 或 Fun-ASR 时，具体能力由模型决定，CLI 不会把它们伪装成通用能力。
+热词文件也支持 `热词: 权重` 或 `热词：权重`，可以对单条热词覆盖全局权重。即时热词和 context 主要由 `qwen-audio-3.0-asr-flash-filetrans` / `qwen-audio-3.1-asr-flash-filetrans` 使用；切换到 Qwen3-ASR 或 Fun-ASR 时，具体能力由模型决定，CLI 不会把它们伪装成通用能力。
 
 ### 4.4 Soniox 专用参数
 

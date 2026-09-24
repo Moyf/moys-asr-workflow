@@ -81,6 +81,10 @@ from maw.postprocess_io import PostprocessFileError, read_project, read_srt
 from maw.project_io import write_mosp
 from maw.project import ProjectValidationFailed, normalize_project
 from maw.postprocess_ffmpeg import (
+    AUDIO_BITRATES,
+    MAX_BURN_CRF,
+    MIN_BURN_CRF,
+    X264_PRESETS,
     BurnSubtitleRequest,
     ExtractAudioRequest,
     MediaToolCancelled,
@@ -141,8 +145,7 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-# Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.6.0"
+BUNDLED_APP_VERSION = "1.6.1"
 # MOSE ships inside the same suite as MAW, so its registry marker must follow
 # the public project version rather than retaining the prototype 0.1.x value.
 MOSE_VERSION = BUNDLED_APP_VERSION
@@ -202,6 +205,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "server_stop_failed": "Unable to stop the MAW editor server.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
     "config_save_failed": "Local configuration could not be saved.",
+    "burn_settings_invalid": "压制参数无效：CRF 需为 0–51 整数，预设与音频码率需从列表中选择。",
     "custom_prompt_required": "A custom prompt is required.",
     "postprocess_config_invalid": "自动后处理配置不完整。",
     "postprocess_failed": "转写已完成，但自动后处理失败。",
@@ -748,6 +752,7 @@ class LauncherApi:
         self.postprocess_retry_context: dict[str, object] | None = None
         self.postprocess_workspace_directory: Path | None = None
         self.postprocess_translation_srt_path: Path | None = None
+        self.postprocess_media_path: Path | None = None
         self._last_postprocess_progress_at = 0.0
         update_root = self.paths.data_root or (self.paths.root / ".maw-data")
         self.updater = UpdateClient(data_root=update_root, current_version=_app_version(self.paths))
@@ -760,6 +765,7 @@ class LauncherApi:
         self.update_lock = threading.Lock()
         self._toolbox_busy_count = 0
         self._toolbox_busy_lock = threading.Lock()
+        self._last_media_tool_log_at = 0.0
         self.pump = EventPump(window_getter=self.window_getter)
         _sync_local_runtime_root(self.paths.env_path)
 
@@ -1701,6 +1707,10 @@ class LauncherApi:
                     media_path=Path(str(payload.get("mediaPath") or "")),
                     subtitle_path=Path(str(payload.get("subtitlePath") or "")),
                     srt_style=srt_style,
+                    video_encoder=str(payload.get("videoEncoder") or "auto"),
+                    crf=_burn_crf_override(payload.get("crf")),
+                    preset=str(payload.get("preset") or "").strip() or None,
+                    audio_bitrate=str(payload.get("audioBitrate") or "").strip() or None,
                 ),
                 ffmpeg_path=tools.ffmpeg,
                 cancel_event=cancel_event,
@@ -1718,8 +1728,45 @@ class LauncherApi:
             "sourceMediaPath": str(result.source_media_path),
             "subtitlePath": str(result.subtitle_path),
             "mediaPath": str(result.media_path),
+            "videoEncoder": str(getattr(result, "video_encoder", "auto") or "auto"),
             "srtStyleName": str(srt_style.get("name") or "SRT 默认"),
         }
+
+    def get_burn_subtitle_settings(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Return the saved toolbox burn-subtitle encoding defaults."""
+
+        return {
+            "ok": True,
+            "crf": effective_config_value(self.paths.env_path, "MAW_GUI_BURN_CRF").strip(),
+            "preset": effective_config_value(self.paths.env_path, "MAW_GUI_BURN_PRESET").strip(),
+            "audioBitrate": effective_config_value(self.paths.env_path, "MAW_GUI_BURN_AUDIO_BITRATE").strip(),
+        }
+
+    def save_burn_subtitle_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Persist the toolbox burn-subtitle encoding defaults to user-level config."""
+
+        crf_text = str(payload.get("crf") or "").strip()
+        preset = str(payload.get("preset") or "").strip()
+        audio_bitrate = str(payload.get("audioBitrate") or "").strip()
+        try:
+            crf = int(crf_text)
+        except ValueError:
+            crf = MIN_BURN_CRF - 1
+        if not MIN_BURN_CRF <= crf <= MAX_BURN_CRF:
+            return _error_result("toolboxBurnCrf", "burn_settings_invalid", f"invalid CRF value: {crf_text}")
+        if preset and preset not in X264_PRESETS:
+            return _error_result("toolboxBurnPreset", "burn_settings_invalid", f"unsupported x264 preset: {preset}")
+        if audio_bitrate and audio_bitrate not in AUDIO_BITRATES:
+            return _error_result("toolboxBurnAudioBitrate", "burn_settings_invalid", f"unsupported audio bitrate: {audio_bitrate}")
+        try:
+            save_env(self.paths.env_path, {
+                "MAW_GUI_BURN_CRF": crf_text,
+                "MAW_GUI_BURN_PRESET": preset,
+                "MAW_GUI_BURN_AUDIO_BITRATE": audio_bitrate,
+            })
+        except (OSError, UnicodeError, ValueError) as error:
+            return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
+        return {"ok": True, "message": "burn subtitle settings saved"}
 
     def get_ass_style_library(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         """Expose the shared style library to Launcher UI integrations."""
@@ -1771,7 +1818,15 @@ class LauncherApi:
         if cancel_event is not None:
             cancel_event.set()
         if process is not None and process.poll() is None:
-            terminate_process_tree(process)
+            # Do not make the pywebview API call wait for taskkill/process.wait.
+            # The worker also observes the event, while this daemon thread
+            # interrupts a potentially blocked stdout.readline().
+            threading.Thread(
+                target=self._terminate_media_tool_process,
+                args=(process,),
+                name="maw-media-tool-cancel",
+                daemon=True,
+            ).start()
         return {"ok": True, "cancelling": active}
 
     def _begin_media_tool(self) -> Event | None:
@@ -1781,12 +1836,30 @@ class LauncherApi:
             cancel_event = Event()
             self.media_tool_cancel_event = cancel_event
             self.media_tool_process = None
+            self._last_media_tool_log_at = 0.0
             return cancel_event
 
     def _set_media_tool_process(self, process: subprocess.Popen[str]) -> None:
+        cancel_requested = False
         with self._media_tool_lock:
-            if self.media_tool_cancel_event is not None:
+            cancel_event = self.media_tool_cancel_event
+            if cancel_event is not None:
                 self.media_tool_process = process
+                cancel_requested = cancel_event.is_set()
+        if cancel_requested:
+            # Cancellation can arrive between Popen() and this callback. In
+            # that window cancel_media_tool has no process to terminate.
+            self._terminate_media_tool_process(process)
+
+    @staticmethod
+    def _terminate_media_tool_process(process: subprocess.Popen[str]) -> None:
+        if process.poll() is None:
+            try:
+                terminate_process_tree(process)
+            except (OSError, subprocess.TimeoutExpired):
+                # The worker will still observe the cancellation event and
+                # convert the operation into the normal cancelled result.
+                pass
 
     def _finish_media_tool(self, cancel_event: Event) -> None:
         with self._media_tool_lock:
@@ -1799,6 +1872,16 @@ class LauncherApi:
         if now - self._last_postprocess_progress_at >= 0.8:
             self._last_postprocess_progress_at = now
             self._emit_postprocess_status(key)
+        self._emit_media_tool_log(_details)
+
+    def _emit_media_tool_log(self, details: Mapping[str, object]) -> None:
+        now = time.monotonic()
+        if now - self._last_media_tool_log_at < 0.8 and str(details.get("progress") or "") != "end":
+            return
+        self._last_media_tool_log_at = now
+        message = _format_media_tool_progress(details)
+        if message:
+            self._emit({"type": "media_tool_log", "message": message})
 
     def choose_file(self, payload: Mapping[str, object]) -> dict[str, object]:
         kind = str(payload.get("kind") or "media")
@@ -2422,6 +2505,7 @@ class LauncherApi:
         self.cancel_event = Event()
         self.postprocess_workspace_directory = None
         self.postprocess_translation_srt_path = None
+        self.postprocess_media_path = None
         self._last_postprocess_progress_at = 0.0
         self.pump.start()
         self.worker = threading.Thread(target=self._worker_main, args=(request, self.cancel_event), daemon=True)
@@ -3149,6 +3233,7 @@ class LauncherApi:
                 )
                 auto_run_directory = auto_result.run_directory
                 self.postprocess_translation_srt_path = auto_result.translated_srt_path
+                self.postprocess_media_path = auto_result.media_path
                 self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
             except PostprocessCancelled as error:
                 self._emit({
@@ -3219,7 +3304,7 @@ class LauncherApi:
                     "message": f"[计时] 全程耗时为媒体时长的 {total_elapsed / media_duration:.2f} 倍",
                 })
         self.postprocess_workspace_directory = auto_run_directory if auto_run_directory and auto_run_directory.is_dir() else None
-        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
+        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
@@ -3364,9 +3449,10 @@ class LauncherApi:
             return
         self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
         self.postprocess_translation_srt_path = auto_result.translated_srt_path
+        self.postprocess_media_path = auto_result.media_path
         self.postprocess_retry_context = None
         self.postprocess_workspace_directory = auto_result.run_directory if auto_result.run_directory.is_dir() else None
-        self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
+        self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
@@ -3393,21 +3479,24 @@ class LauncherApi:
         stage = str(event.get("stage") or "")
         labels = {
             "match": "文稿匹配",
-            "replace": "固定处理",
+            "replace": "固定替换",
             "proofread": "LLM 校对",
             "resegment": "重新断句",
             "ocr": "OCR 字幕去重",
             "translate": "翻译",
+            "burn": "烧录字幕",
         }
         step = labels.get(str(event.get("step") or ""), str(event.get("step") or "后处理"))
         if stage == "start":
             self._emit({"type": "log", "message": f"[后处理] 已开始，共 {event.get('total', 0)} 步"})
         elif stage == "step_start":
+            if str(event.get("step") or "") == "burn":
+                self._last_media_tool_log_at = 0.0
             self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：开始"})
         elif stage == "step_done":
             artifacts = " / ".join(
                 name
-                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""))
+                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""), str(event.get("mediaName") or ""))
                 if name
             )
             suffix = f"（{artifacts}）" if artifacts else ""
@@ -3415,7 +3504,7 @@ class LauncherApi:
         elif stage == "done":
             artifacts = " / ".join(
                 name
-                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""))
+                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""), str(event.get("mediaName") or ""))
                 if name
             )
             self._emit({"type": "log", "message": f"[后处理] 全部完成：{artifacts}"})
@@ -3423,13 +3512,17 @@ class LauncherApi:
             self._emit({"type": "log", "message": "[后处理] 已取消；原始转写产物仍然保留。"})
         elif stage == "failed":
             self._emit({"type": "log", "message": "[后处理] 失败；原始转写产物和中间产物已保留。"})
-        elif stage == "detail" and str(event.get("key") or "") in {"toolbox_status_llm_batch", "toolbox_status_ocr_frame"}:
-            now = time.monotonic()
-            current = event.get("current")
-            total = event.get("total")
-            if now - self._last_postprocess_progress_at >= 1.0 or current == total:
-                self._last_postprocess_progress_at = now
-                self._emit({"type": "log", "message": f"[后处理] {step} 进度 {current}/{total}"})
+        elif stage == "detail":
+            key = str(event.get("key") or "")
+            if key == "toolbox_status_burning":
+                self._emit_media_tool_log(event)
+            elif key in {"toolbox_status_llm_batch", "toolbox_status_ocr_frame"}:
+                now = time.monotonic()
+                current = event.get("current")
+                total = event.get("total")
+                if now - self._last_postprocess_progress_at >= 1.0 or current == total:
+                    self._last_postprocess_progress_at = now
+                    self._emit({"type": "log", "message": f"[后处理] {step} 进度 {current}/{total}"})
 
     def _local_runtime_main(
         self,
@@ -4050,6 +4143,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             str(payload.get("qwenAudioHotwordWeight") or "").strip()
             if model.supports_hotwords else ""
         ),
+        qwen_keep_dialect=bool(payload.get("qwenKeepDialect")) and model.supports_keep_dialect,
         soniox_context=soniox_context,
         region=region,
         workspace_id=workspace_id,
@@ -4173,6 +4267,18 @@ def _free_local_port() -> int:
 
 def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
     return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code)}
+
+
+def _burn_crf_override(raw: object) -> int | None:
+    """Parse an optional CRF override from a bridge payload, raising ValueError."""
+
+    text = str(raw if raw is not None else "").strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError as error:
+        raise ValueError(f"invalid CRF value: {text}") from error
 
 
 def _script_match_input_error_code(
@@ -4573,6 +4679,27 @@ def _postprocess_ffmpeg(env_path: Path) -> Path | None:
     return _postprocess_ffmpeg_tools(env_path).ffmpeg
 
 
+def _format_media_tool_progress(details: Mapping[str, object]) -> str:
+    fields = (
+        ("frame", "frame"),
+        ("fps", "fps"),
+        ("out_time", "time"),
+        ("speed", "speed"),
+        ("bitrate", "bitrate"),
+        ("total_size", "size"),
+    )
+    parts: list[str] = []
+    for key, label in fields:
+        value = details.get(key)
+        text = "" if value is None else str(value).strip()
+        if text and text.lower() not in {"n/a", "nan"}:
+            parts.append(f"{label}={text}")
+    if parts:
+        return " ".join(parts)
+    progress = str(details.get("progress") or "").strip()
+    return f"progress={progress}" if progress else ""
+
+
 def _postprocess_ffmpeg_tools(env_path: Path) -> FfmpegTools:
     configured = effective_config_value(env_path, "FFMPEG_PATH")
     return resolve_ffmpeg_tools(
@@ -4657,6 +4784,7 @@ def _provider_payload(
     return {
         "id": provider.id,
         "label": provider.label,
+        "keyButtonLabel": provider.key_label,
         "kind": provider.kind,
         "keyUrl": provider.key_url,
         "secondaryKeyUrl": provider.secondary_key_url,
@@ -4666,6 +4794,7 @@ def _provider_payload(
         "supportsSpeaker": provider.supports_speaker,
         "multiLanguage": provider.multi_language,
         "supportsLanguage": provider.supports_language,
+        "dividerBefore": provider.divider_before,
         "note": provider.note,
         "commonLanguages": list(provider.common_languages),
         "models": [
@@ -4704,6 +4833,7 @@ def _model_payload(
         "supportsContext": model.supports_context,
         "supportsHotwords": model.supports_hotwords,
         "supportsVocabulary": model.supports_vocabulary,
+        "supportsKeepDialect": model.supports_keep_dialect,
         "supportsWordTimestamps": model.supports_word_timestamps,
         "deviceSupport": model.device_support,
         "resourceLevel": model.resource_level,

@@ -102,9 +102,9 @@
 
 ## 5. 文件与链式处理
 
-处理结果使用原输入目录和操作后缀生成，中文界面为 `clip.校对文本.mosp` / `clip.校对文本.srt`（英文界面为 `clip.proofread.*`）。固定处理的后缀按实际启用的部分细分：只有批量替换为 `批量替换`，只有简繁转换为 `转简体` / `转繁体`，两者都有时组合为 `批量替换.转繁体`（英文界面为 `replace` / `simplified` / `traditional` 及点连接组合）；勾选了固定处理但既无替换规则也未选择转换方向时跳过该步骤，不产出文件。重新断句、自定义同理使用 `重新断句` / `自定义`。同名文件已存在时会追加递增编号。自动后处理运行目录另使用 `后处理.<序号>.<阶段名>` / `postprocess.<序号>.<stage>` 命名，并在 `manifest.json` 记录初始快照与各阶段路径。写入采用同目录临时文件加原子替换，且永不覆盖源工程或源 SRT。合并双语时，手动工具箱输出在中文界面为 `clip.翻译为英文.双语合一.mosp` / `clip.翻译为英文.双语合一.srt`（中文目标对应 `.翻译为中文.双语合一`；英文界面为 `clip.translate-en-bilingual.mosp` / `clip.translate-en-bilingual.srt`）；自动后处理最终输出使用 `clip.postprocess.bilingual.mosp` / `clip.postprocess.bilingual.srt`，中文界面下本地化为 `clip.后处理.双语合一.mosp` / `clip.后处理.双语合一.srt`（操作后缀随界面语言本地化，翻译段 `translate-*` 与双语标记同样会本地化）。只有 SRT 输入时也使用相同的双语合一命名标记。回填单语使用对应的 `-backfill` 标记：中文界面为 `clip.翻译为中文.回填.*`（自动管线为 `clip.后处理.回填.*`），英文界面为 `clip.translate-zh-backfill.*` / `clip.postprocess.backfill.*`。
+处理结果使用原输入目录和操作后缀生成，中文界面为 `clip.校对文本.mosp` / `clip.校对文本.srt`（英文界面为 `clip.proofread.*`）。固定替换的后缀按实际启用的部分细分：只有批量替换为 `批量替换`，只有简繁转换为 `转简体` / `转繁体`，两者都有时组合为 `批量替换.转繁体`（英文界面为 `replace` / `simplified` / `traditional` 及点连接组合）；勾选了固定替换但既无替换规则也未选择转换方向时跳过该步骤，不产出文件。重新断句、自定义同理使用 `重新断句` / `自定义`。同名文件已存在时会追加递增编号。自动后处理运行目录另使用 `后处理.<序号>.<阶段名>` / `postprocess.<序号>.<stage>` 命名，并在 `manifest.json` 记录初始快照与各阶段路径。写入采用同目录临时文件加原子替换，且永不覆盖源工程或源 SRT。合并双语时，手动工具箱输出在中文界面为 `clip.翻译为英文.双语合一.mosp` / `clip.翻译为英文.双语合一.srt`（中文目标对应 `.翻译为中文.双语合一`；英文界面为 `clip.translate-en-bilingual.mosp` / `clip.translate-en-bilingual.srt`）；自动后处理最终输出使用 `clip.postprocess.bilingual.mosp` / `clip.postprocess.bilingual.srt`，中文界面下本地化为 `clip.后处理.双语合一.mosp` / `clip.后处理.双语合一.srt`（操作后缀随界面语言本地化，翻译段 `translate-*` 与双语标记同样会本地化）。只有 SRT 输入时也使用相同的双语合一命名标记。回填单语使用对应的 `-backfill` 标记：中文界面为 `clip.翻译为中文.回填.*`（自动管线为 `clip.后处理.回填.*`），英文界面为 `clip.translate-zh-backfill.*` / `clip.postprocess.backfill.*`。
 
-成功后 Launcher 会把生成路径设为下一次工具运行的输入，因此可以按“固定处理 → LLM 校对 → 翻译”等顺序链式处理。固定处理可先批量替换，再做简繁转换；只有 SRT 输入时，如选择工程输出，会创建 `.mosp` 工程。
+成功后 Launcher 会把生成路径设为下一次工具运行的输入，因此可以按“固定替换 → LLM 校对 → 翻译”等顺序链式处理。固定替换可先批量替换，再做简繁转换；只有 SRT 输入时，如选择工程输出，会创建 `.mosp` 工程。
 
 翻译入口会检查工程和 SRT 输入的文件名：「双语合一 / bilingual」「回填 / backfill」会阻止再次翻译，`.translate-en` / `.translate-zh`（含中文界面的 `.翻译为英文` / `.翻译为中文`）会阻止同一目标的明显重复翻译。这是显式产物标记保护，不是对被用户重命名文件的内容或语言进行识别。
 

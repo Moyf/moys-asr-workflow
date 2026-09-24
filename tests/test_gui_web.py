@@ -26,7 +26,7 @@ def _canonical_test_path(value: str | os.PathLike[str]) -> str:
     """Compare paths after resolving platform-specific aliases and symlinks."""
     return os.path.normcase(os.path.realpath(os.fspath(value)))
 
-from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _bundled_mose_executable, _emoji_font_urls, _find_mose_executable, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _launcher_icon_path, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
+from maw.gui_web import EDITOR_HEALTH_PROBE_PATH, EDITOR_HEALTH_PROBE_TIMEOUT, EventPump, LauncherApi, LauncherPaths, PreflightError, SERVER_START_TIMEOUT, _bundled_mose_executable, _emoji_font_urls, _find_mose_executable, _format_media_tool_progress, _is_ffmpeg_missing_failure, _is_ffmpeg_start_failure, _is_ffprobe_start_failure, _launcher_icon_path, _open_existing_path, _open_external, _port, _register_mosp_association, _request_from_payload, _route_dropped_path, _valid_emoji_font, _wait_for_server, default_paths, download_emoji_font, run_app  # noqa: E402
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult  # noqa: E402
 from maw.ffmpeg import FfmpegTools  # noqa: E402
 from maw.local_log import LocalLogSink, TeeWriter  # noqa: E402
@@ -149,11 +149,15 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(config["ocrRuntime"]["status"], "checking")
         self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
         self.assertEqual(config["providers"][0]["keyUrl"], "https://platform.qianwenai.com/home/")
+        self.assertEqual(config["providers"][0]["label"], "阿里云百炼（千问）")
+        self.assertEqual(config["providers"][0]["keyButtonLabel"], "千问AI平台")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
-        self.assertEqual(len(config["providers"][1]["commonLanguages"]), 8)
+        soniox = next(provider for provider in config["providers"] if provider["id"] == "soniox")
+        self.assertEqual(len(soniox["commonLanguages"]), 8)
         self.assertIn("0.00022", config["providers"][0]["models"][0]["priceNote"])
-        self.assertIn("0.10", config["providers"][1]["models"][0]["priceNote"])
+        self.assertIn("Token", config["providers"][0]["models"][1]["priceNote"])
+        self.assertIn("0.10", soniox["models"][0]["priceNote"])
         openai = next(provider for provider in config["providers"] if provider["id"] == "openai")
         self.assertEqual(openai["secondaryKeyUrl"], "https://openrouter.ai/keys")
         self.assertEqual(
@@ -176,14 +180,16 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn("0.0045", openai["models"][3]["openrouterNote"])
         self.assertTrue(openai["models"][4]["supportsDiarization"])
         self.assertEqual(config["models"][0]["id"], "qwen-audio-3.0-asr-flash-filetrans")
-        self.assertEqual(config["models"][1]["id"], "fun-asr")
-        self.assertEqual(config["models"][2]["id"], "qwen3-asr-flash-filetrans")
+        self.assertEqual(config["models"][1]["id"], "qwen-audio-3.1-asr-flash-filetrans")
+        self.assertEqual(config["models"][2]["id"], "fun-asr")
+        self.assertEqual(config["models"][3]["id"], "qwen3-asr-flash-filetrans")
         self.assertTrue(config["models"][0]["supportsSpeaker"])
         self.assertTrue(config["models"][0]["supportsContext"])
         self.assertTrue(config["models"][0]["supportsHotwords"])
-        self.assertTrue(config["models"][0]["supportsVocabulary"])
+        self.assertFalse(config["models"][0]["supportsKeepDialect"])
+        self.assertTrue(config["models"][1]["supportsKeepDialect"])
         self.assertEqual(config["models"][0]["languages"][0]["id"], "")
-        self.assertFalse(config["models"][2]["supportsSpeaker"])
+        self.assertFalse(config["models"][3]["supportsSpeaker"])
         self.assertEqual(config["languages"][0]["id"], "")
 
     def test_get_config_carries_initial_project_path_for_launcher_startup(self) -> None:
@@ -552,6 +558,12 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('bindDropField("localRuntimePath", "localRuntime")', script)
         self.assertIn('localRuntime: ["localRuntimePath", "change"]', script)
         self.assertIn('local_runtime_path_invalid: "The local runtime path cannot point to a file."', script)
+        self.assertIn('if (value && /[^\\x00-\\x7F]/.test(value)) {', script)
+        self.assertIn('setError("localRuntimePath", errText("local_runtime_path_non_ascii", ""));', script)
+        self.assertIn('local_runtime_path_non_ascii: "路径包含中文或其他非 ASCII 字符，本地运行时无法在该目录安装；请改用纯英文、数字的路径。"', script)
+        self.assertIn('local_runtime_path_non_ascii: "The path contains non-ASCII characters (such as Chinese); the local runtime cannot be installed there. Use a path with ASCII characters only."', script)
+        self.assertIn('local_runtime_path_hint: "默认安装到用户目录，可改到空间更充足的磁盘。路径请勿包含中文。"', script)
+        self.assertIn('需先安装运行时（Runtime），然后才能下载安装模型，两者分开储存。', script)
         self.assertIn("def save_local_settings(", backend)
         self.assertIn('_error_result("localRuntimePath", "local_runtime_path_invalid", str(candidate))', backend)
         self.assertIn('save_env(self.paths.env_path, {"MAW_LOCAL_RUNTIME_ROOT": str(candidate) if candidate else ""})', backend)
@@ -934,7 +946,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             self.fail("postprocessProviders must be a list")
         providers = {provider["id"]: provider for provider in raw_providers if isinstance(provider, dict)}
 
-        self.assertEqual(providers["deepseek"]["model"], "deepseek-v4-flash")
+        self.assertEqual(providers["deepseek"]["model"], "deepseek-flash")
         self.assertEqual(providers["zhipu"]["label"], "智谱 Coding Plan")
         self.assertEqual(providers["zhipu"]["baseUrl"], "https://open.bigmodel.cn/api/coding/paas/v4")
         self.assertEqual(providers["zhipu"]["model"], "glm-5.2")
@@ -967,7 +979,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             "providerId": "deepseek",
             "apiKey": "sk-safe",
             "baseUrl": "https://api.deepseek.com",
-            "model": "deepseek-v4-flash",
+            "model": "deepseek-flash",
             "reasoningMode": "maximum",
         })
 
@@ -1327,7 +1339,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxAlignmentTab"'))
         self.assertLess(html.index('id="toolboxAlignmentTab"'), html.index('id="toolboxExtractAudioTab"'))
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
-        # 实用工具记住上次选择的工具；从未选择时回退到第一项（压制字幕）。
+        # 实用工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
         self.assertIn(
             'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");',
             script,
@@ -1344,7 +1356,14 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('toolbox_group_utilities: "实用工具"', strings)
         self.assertIn('toolbox_utility_media: "媒体文件"', strings)
         self.assertIn('toolbox_utility_media: "Media file"', strings)
-        self.assertIn('toolbox_burn_subtitle: "压制字幕"', strings)
+        self.assertIn('toolbox_burn_subtitle: "烧录字幕"', strings)
+        self.assertIn('id="configureAutoBurn"', html)
+        self.assertIn('id="configureAutoBurn" class="inline-link"', html)
+        self.assertIn('id="toolboxBurnVideoEncoder"', html)
+        self.assertIn('id="toolboxBurnVideoEncoderField" class="field"', html)
+        self.assertIn('data-i18n="toolbox_burn_notice"', html)
+        self.assertIn('toolbox_burn_notice:', strings)
+        self.assertIn('toolbox_video_encoder_amf: "AMD AMF"', strings)
         self.assertIn('toolbox_extract_audio: "Extract audio"', strings)
         self.assertIn('toolbox_timestamps: "生成时间码"', strings)
         self.assertIn('toolbox_timestamps: "Generate timestamps"', strings)
@@ -1434,6 +1453,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
         self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
         self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  gap: 12px;', styles)
+        self.assertIn('.toolbox-output-action {\n  display: flex;\n  flex: 1 1 auto;\n  gap: 8px;', styles)
         self.assertIn('.toolbox-tab-list-5 {\n  grid-template-columns: repeat(5, minmax(0, 1fr));\n}', styles)
         self.assertIn('$("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
@@ -1958,15 +1978,80 @@ class GuiWebBridgeTests(unittest.TestCase):
         with mock.patch("maw.gui_web.load_ass_style_library", return_value=library):
             with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
                 with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
-                    burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve())
+                    burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve(), video_encoder="auto")
                     result = self.api.run_burn_subtitles({"mediaPath": str(media), "subtitlePath": str(subtitle)})
 
         self.assertTrue(result["ok"])
         self.assertEqual(burn.call_args.kwargs["ffmpeg_path"], ffmpeg)
         self.assertEqual(burn.call_args.args[0].srt_style["fontName"], "Microsoft YaHei")
+        self.assertEqual(burn.call_args.args[0].video_encoder, "auto")
+        self.assertIsNone(burn.call_args.args[0].crf)
+        self.assertIsNone(burn.call_args.args[0].preset)
+        self.assertIsNone(burn.call_args.args[0].audio_bitrate)
         self.assertEqual(result["srtStyleName"], "SRT 默认")
+        self.assertEqual(result["videoEncoder"], "auto")
         self.assertIsInstance(burn.call_args.kwargs["cancel_event"], threading.Event)
         self.assertEqual(result["mediaPath"], str(output.resolve()))
+
+    def test_media_tool_progress_is_compact_and_latest_message_ready(self) -> None:
+        self.assertEqual(
+            _format_media_tool_progress({"frame": "42", "fps": "24.0", "out_time": "00:00:01.75", "speed": "1.2x"}),
+            "frame=42 fps=24.0 time=00:00:01.75 speed=1.2x",
+        )
+
+    def test_media_tool_cancellation_terminates_a_process_registered_after_cancel(self) -> None:
+        cancel_event = self.api._begin_media_tool()
+        self.assertIsNotNone(cancel_event)
+        assert cancel_event is not None
+        cancel_event.set()
+        process = mock.Mock()
+        process.poll.return_value = None
+
+        with mock.patch("maw.gui_web.terminate_process_tree") as terminate:
+            self.api._set_media_tool_process(process)
+
+        terminate.assert_called_once_with(process)
+        self.api._finish_media_tool(cancel_event)
+
+    def test_burn_subtitle_bridge_forwards_encoding_overrides(self) -> None:
+        media = self.root / "clip.mp4"
+        subtitle = self.root / "clip.srt"
+        ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        _ = media.write_bytes(b"media")
+        _ = subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+        _ = ffmpeg.write_bytes(b"exe")
+        output = self.root / "clip.subtitled.mp4"
+
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                burn.return_value = SimpleNamespace(source_media_path=media.resolve(), subtitle_path=subtitle.resolve(), media_path=output.resolve())
+                result = self.api.run_burn_subtitles({"mediaPath": str(media), "subtitlePath": str(subtitle), "crf": "23", "preset": "fast", "audioBitrate": "128k"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(burn.call_args.args[0].crf, 23)
+        self.assertEqual(burn.call_args.args[0].preset, "fast")
+        self.assertEqual(burn.call_args.args[0].audio_bitrate, "128k")
+
+    def test_save_and_get_burn_subtitle_settings_round_trip(self) -> None:
+        # 系统环境变量优先于 .env；置空相关键，保证断言的是本次写入的值。
+        with mock.patch.dict(
+            os.environ,
+            {"MAW_GUI_BURN_CRF": "", "MAW_GUI_BURN_PRESET": "", "MAW_GUI_BURN_AUDIO_BITRATE": ""},
+            clear=False,
+        ):
+            result = self.api.save_burn_subtitle_settings({"crf": "20", "preset": "slow", "audioBitrate": "160k"})
+            self.assertTrue(result["ok"])
+            stored = self.api.get_burn_subtitle_settings({})
+            self.assertEqual(stored, {"ok": True, "crf": "20", "preset": "slow", "audioBitrate": "160k"})
+
+            invalid = self.api.save_burn_subtitle_settings({"crf": "99", "preset": "slow", "audioBitrate": "160k"})
+            self.assertFalse(invalid["ok"])
+            self.assertEqual(invalid["code"], "burn_settings_invalid")
+            self.assertEqual(invalid["field"], "toolboxBurnCrf")
+            invalid_preset = self.api.save_burn_subtitle_settings({"crf": "20", "preset": "nope", "audioBitrate": "160k"})
+            self.assertFalse(invalid_preset["ok"])
+            invalid_bitrate = self.api.save_burn_subtitle_settings({"crf": "20", "preset": "slow", "audioBitrate": "500k"})
+            self.assertFalse(invalid_bitrate["ok"])
 
     def test_launcher_exposes_shared_ass_style_library(self) -> None:
         library = {
@@ -2597,7 +2682,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         named_values = {(path, name): value for path, name, value in fake_winreg.values if name is not None}
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "InstallPath")], str(self.root))
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "ExecutablePath")], str(executable))
-        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.6.0")
+        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.6.1")
 
     def test_register_mosp_association_preserves_existing_user_choice(self) -> None:
         launcher = self.root / "MAW.exe"
@@ -3927,6 +4012,30 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(request.qwen_audio_vocabulary_id, "vocab-qwen-audio")
         self.assertEqual(request.qwen_audio_hotword_weight, "50")
 
+    def test_request_from_payload_passes_keep_dialect_only_for_qwen_audio_31(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        base = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+            "region": "beijing",
+            "qwenKeepDialect": True,
+        }
+        request_31 = _request_from_payload({
+            **base,
+            "providerId": "qwen",
+            "modelId": "qwen-audio-3.1-asr-flash-filetrans",
+        }, self.env_path)
+        request_30 = _request_from_payload({
+            **base,
+            "providerId": "qwen",
+            "modelId": "qwen-audio-3.0-asr-flash-filetrans",
+        }, self.env_path)
+
+        self.assertTrue(request_31.qwen_keep_dialect)
+        self.assertFalse(request_30.qwen_keep_dialect)
+
     def test_request_from_payload_builds_soniox_context(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -4572,6 +4681,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('bridge("test_postprocess_connection"', script)
         self.assertIn('bridge("get_postprocess_settings"', script)
         self.assertIn('bridge("get_postprocess_models"', script)
+        self.assertIn('toolbox_stop_media: "停止媒体处理"', launcher_script)
+        self.assertIn('stop.textContent = t(mediaToolCancelling ? "toolbox_status_cancelling" : "toolbox_stop_media")', script)
         self.assertIn('class="primary"', page)
         self.assertIn('llm_models_loaded: "已获取 {count} 个模型，可在上方快速选择"', launcher_script)
         self.assertIn('role="combobox"', page)
@@ -4755,6 +4866,7 @@ class LauncherAssetContractTests(unittest.TestCase):
             self.assertIn(f'data-tool-action="{tool}"', footer_html)
         for button in ("runScriptMatch", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "stopToolboxMedia"):
             self.assertIn(f'id="{button}"', footer_html)
+        self.assertIn('id="stopToolboxMedia" class="ghost hidden" type="button" data-i18n="toolbox_stop_media">', footer_html)
         self.assertIn('id="generateWaveform"', footer_html)
 
         # 自定义顶边 / 左边拖拽把手替代原生 resize。
@@ -4801,7 +4913,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn(".toolbox-static-value {\n  height: 34px;", stylesheet)
         self.assertIn(".field-spacer {\n  visibility: hidden;", stylesheet)
         self.assertIn(".toolbox-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 10px;\n  align-items: start;\n}", stylesheet)
-        # 文稿匹配保持单字段；固定处理按批量替换和简繁转换分组。
+        # 文稿匹配保持单字段；固定替换按批量替换和简繁转换分组。
         match_panel = page[page.index('id="toolboxMatchPanel"'):page.index('id="toolboxTimestampsPanel"')]
         replace_panel = page[page.index('id="toolboxReplacePanel"'):page.index('class="toolbox-footer"')]
         self.assertNotIn("adv-group", match_panel)
@@ -4833,10 +4945,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('function llmBuiltInProviderKeyGuidance(context = {})', launcher_script)
         self.assertIn('["deepseek", "zhipu", "qwen"].includes(providerId)', launcher_script)
         self.assertIn('官方控制台获取的 API Key', launcher_script)
-        self.assertIn('第三方平台，请选择“自定义（兼容 OpenAI）”', launcher_script)
-        self.assertIn('当前供应商：自定义（兼容 OpenAI）。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
-        self.assertIn('llm_custom_provider: "自定义（兼容 OpenAI）"', launcher_script)
-        self.assertIn('llm_custom_provider: "Custom (OpenAI-compatible)"', launcher_script)
+        self.assertIn('第三方平台，请选择“OpenAI 通用接口”', launcher_script)
+        self.assertIn('当前供应商：OpenAI 通用接口。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
+        self.assertIn('llm_custom_provider: "OpenAI 通用接口"', launcher_script)
+        self.assertIn('llm_custom_provider: "OpenAI-compatible API"', launcher_script)
         self.assertIn('toolbox_key_loaded: "已从本地环境读取密钥 {key}"', launcher_script)
         self.assertIn('toolbox_key_loaded: "Loaded key from local environment: {key}"', launcher_script)
         self.assertIn('errorText: errText', launcher_script)
@@ -5083,18 +5195,26 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('server_disconnected', script)
         self.assertNotIn('state.serverRunning ? t("server_stop")', script)
 
-    def test_launcher_hero_links_include_project_home_and_tutorial_video(self) -> None:
+    def test_launcher_hero_links_include_github_tutorial_and_support(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
         self.assertIn('<div class="hero-home-links">', page)
-        self.assertIn('id="homeLink" class="text-link" type="button" data-i18n="project_home">项目官网', page)
+        self.assertIn('id="homeLink" class="text-link" type="button" data-i18n="github_link">Github', page)
         self.assertIn('id="tutorialVideoLink" class="text-link" type="button" data-i18n="tutorial_video">教程视频', page)
+        self.assertIn('id="supportLink" class="text-link" type="button" data-i18n="support_link">支持 ❤️', page)
         self.assertLess(page.index('id="homeLink"'), page.index('id="tutorialVideoLink"'))
+        self.assertLess(page.index('id="tutorialVideoLink"'), page.index('id="supportLink"'))
+        self.assertIn('github_link: "Github"', script)
         self.assertIn('tutorial_video: "教程视频"', script)
         self.assertIn('tutorial_video: "Tutorial video"', script)
+        self.assertIn('support_link: "支持 ❤️"', script)
+        self.assertIn('support_link: "Support ❤️"', script)
         self.assertIn('const TUTORIAL_VIDEO_URL = "https://www.bilibili.com/video/BV1S9bZ6pEHg";', script)
         self.assertIn("$(\"tutorialVideoLink\").addEventListener(\"click\", () => bridge(\"open_url\", { url: TUTORIAL_VIDEO_URL }));", script)
+        self.assertIn('id="supportModal" class="modal hidden"', page)
+        self.assertIn('src="../../assets/support-qr.png"', page)
+        self.assertIn('support_desc: "如果 MAW 对你有帮助，可以前往B站小店赞助！"', script)
 
     def test_workspace_requests_sync_server_config_from_response(self) -> None:
         script = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
@@ -5176,7 +5296,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="openLanguageSettings"', page)
         self.assertIn('language_filter_hint_prefix: "默认仅显示常用语言', script)
         self.assertIn('language_filter_hint_link: "设置"', script)
-        self.assertIn('language_filter_hint_suffix: "」中开启。"', script)
+        self.assertIn('language_filter_hint_suffix: "中开启。"', script)
         self.assertIn('id="settingsLanguageSection"', page)
         self.assertLess(page.index('id="settingsLanguageSection"'), page.index('data-i18n="settings_file_output"'))
         self.assertNotIn('data-i18n="interface_language_hint"', page)
@@ -5370,7 +5490,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 转写后自动处理 （Beta）", "4️⃣ 日志", "5️⃣ 字幕编辑器设置"):
+        for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 转写后自动处理", "4️⃣ 日志", "5️⃣ 字幕编辑器设置"):
             self.assertIn(expected, page)
         self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-secondary);\n  font-size: 16px;", stylesheet)
 
@@ -5661,7 +5781,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('new Option(localizedSelectLabel(id, item), item.id)', script)
         self.assertIn('function providerNoteText(providerItem)', script)
         self.assertIn('function modelNoteText(modelItem)', script)
-        self.assertIn('$("modelNote").textContent = modelNoteText(model);', script)
+        self.assertIn('function renderModelNote()', script)
+        self.assertIn('syncLocalModelPath(model); renderModelNote();', script)
+        self.assertIn('"price-note"', script)
         self.assertIn('$("providerNote").textContent = providerNoteText(current);', script)
         self.assertIn('renderServerButton(); refillSelectLabels();', script)
 

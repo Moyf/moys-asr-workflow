@@ -12986,6 +12986,11 @@ document.addEventListener('keydown', (e) => {
     if (stickerPreviewModal.classList.contains('show')) return;
     if (projectMediaModal.classList.contains('show')) return;
     if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
+    if (waveformEditor.cancelCueDrag()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (waveformEditor.getTool() !== 'razor') return;
     e.preventDefault();
     waveformEditor.setTool('select');

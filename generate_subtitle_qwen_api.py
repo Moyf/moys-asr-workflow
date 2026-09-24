@@ -52,7 +52,10 @@ from maw.media_cache import embed_media_caches, merge_media_caches
 from maw.media import resolve_default_audio_track
 from maw.output_naming import (
     DASHSCOPE_PRICE_PER_SECOND,
+    DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS,
+    DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS,
     estimate_dashscope_cost,
+    estimate_qwen_audio_31_cost,
     format_elapsed,
     format_maw_stat,
     debug_artifact_path,
@@ -66,6 +69,7 @@ ENV_FILE = default_env_path()
 
 QWEN3_ASR_FILETRANS_MODEL = "qwen3-asr-flash-filetrans"
 QWEN_AUDIO_FILETRANS_MODEL = "qwen-audio-3.0-asr-flash-filetrans"
+QWEN_AUDIO_31_FILETRANS_MODEL = "qwen-audio-3.1-asr-flash-filetrans"
 FILETRANS_MODEL = QWEN_AUDIO_FILETRANS_MODEL
 FUNASR_MODEL = "fun-asr"
 POLL_HEARTBEAT_SECONDS = 15
@@ -185,16 +189,35 @@ def parse_hotword_weight(value: str) -> int:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+QWEN_AUDIO_FILETRANS_MODELS = frozenset({
+    QWEN_AUDIO_FILETRANS_MODEL,
+    QWEN_AUDIO_31_FILETRANS_MODEL,
+})
+
+
 def is_funasr_model(model: str) -> bool:
     return model == FUNASR_MODEL or model.startswith("fun-asr-") or model.startswith("fun-asr-mtl")
 
 
 def is_qwen_audio_model(model: str) -> bool:
-    return model == QWEN_AUDIO_FILETRANS_MODEL
+    return model in QWEN_AUDIO_FILETRANS_MODELS
+
+
+def is_qwen_audio_31_model(model: str) -> bool:
+    return model == QWEN_AUDIO_31_FILETRANS_MODEL
 
 
 def is_qwen3_model(model: str) -> bool:
     return model == QWEN3_ASR_FILETRANS_MODEL
+
+
+def _usage_int(usage: dict, key: str) -> int:
+    """从云端 usage 字典里取非负整数；缺失或非法时返回 0。"""
+    try:
+        value = int(usage.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+    return value if value >= 0 else 0
 
 
 def supports_speaker_diarization(model: str) -> bool:
@@ -1336,7 +1359,8 @@ def submit_filetrans(base_url: str, api_key: str, file_url: str,
                      vocabulary_id: str | None = None,
                      hotwords: list[str] | None = None,
                      hotword_weight: int = 5,
-                     context: list[dict] | None = None) -> str:
+                     context: list[dict] | None = None,
+                     keep_dialect: bool = False) -> str:
     """提交异步 ASR 任务，返回 task_id。"""
     if is_qwen_audio_model(model):
         params: dict = {
@@ -1353,6 +1377,10 @@ def submit_filetrans(base_url: str, api_key: str, file_url: str,
             params["vocabulary"] = {entry.text: entry.weight for entry in entries}
             if not params["vocabulary"]:
                 params.pop("vocabulary")
+        # keep_dialect 仅 qwen-audio-3.1-asr-flash-filetrans 支持：
+        # false（默认）把方言转写为普通话文本，true 保留方言原文。
+        if keep_dialect and is_qwen_audio_31_model(model):
+            params["keep_dialect"] = True
         input_payload = {"file_urls": [file_url]}
         if context:
             input_payload["messages"] = context
@@ -2039,6 +2067,7 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
                vocabulary_id: str | None = None,
                context_text: str | None = None,
                hotword_weight: int | None = None,
+               keep_dialect: bool = False,
                capture_raw: bool = False) -> dict:
     """调 DashScope filetrans API 做转录。
 
@@ -2094,6 +2123,11 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
             print(f"[上下文] 已启用 Qwen-Audio context（{context_chars} 字符，最多发送 400 字符）。")
         else:
             print("[上下文] 当前模型不支持 Qwen-Audio context，已忽略。")
+    if keep_dialect:
+        if is_qwen_audio_31_model(model):
+            print("[方言] keep_dialect 已启用：保留方言原文，不转写为普通话文本。")
+        else:
+            print("[方言] 当前模型不支持 keep_dialect，已忽略。")
 
     # 1) 准备 file_url
     if file_url_override:
@@ -2131,6 +2165,7 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
         hotwords=hotwords if is_qwen_audio_model(model) else None,
         hotword_weight=resolved_hotword_weight,
         context=context if is_qwen_audio_model(model) else None,
+        keep_dialect=keep_dialect,
     )
     print(f"[filetrans] 任务已提交: task_id={task_id}")
 
@@ -2145,7 +2180,17 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
     elapsed_poll = time.perf_counter() - t0
     if uses_file_urls(model):
         audio_secs = task_usage.get("duration", 0)
-        print(f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s")
+        if is_qwen_audio_31_model(model):
+            input_tokens = _usage_int(task_usage, "input_tokens")
+            output_tokens = _usage_int(task_usage, "output_tokens")
+            token_cost = estimate_qwen_audio_31_cost(input_tokens, output_tokens)
+            cost_note = f"，约 {token_cost:.4f} 元" if token_cost is not None else ""
+            print(
+                f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s"
+                f"（3.1 按 Token：输入 {input_tokens} tok / 输出 {output_tokens} tok{cost_note}）"
+            )
+        else:
+            print(f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s")
     else:
         audio_secs = task_usage.get("seconds", 0)
         est_tokens = audio_secs * 25  # 文档：每秒音频 = 25 tokens
@@ -2272,7 +2317,8 @@ def main():
     )
     parser.add_argument(
         "--model", default=FILETRANS_MODEL,
-        help=f"覆盖 ASR 模型（默认 {FILETRANS_MODEL}；可选 {QWEN_AUDIO_FILETRANS_MODEL} / {FUNASR_MODEL}）",
+        help=f"覆盖 ASR 模型（默认 {FILETRANS_MODEL}；可选 "
+             f"{QWEN_AUDIO_31_FILETRANS_MODEL} / {QWEN_AUDIO_FILETRANS_MODEL} / {FUNASR_MODEL}）",
     )
     parser.add_argument(
         "--vocabulary-id", default=None,
@@ -2297,6 +2343,10 @@ def main():
     parser.add_argument(
         "--context-file", default=None,
         help="从 UTF-8 文件读取 Qwen-Audio context（与 --context 二选一）",
+    )
+    parser.add_argument(
+        "--keep-dialect", action="store_true",
+        help="保留方言表达，不转写为普通话文本（仅 qwen-audio-3.1-asr-flash-filetrans 支持）",
     )
     parser.add_argument(
         "--debug", action="store_true",
@@ -2326,6 +2376,8 @@ def main():
         parser.error("--speaker / --speaker-colors 仅适用于 Qwen-Audio 或 Fun-ASR 模型")
     if args.context is not None and args.context_file:
         parser.error("--context 与 --context-file 只能二选一")
+    if args.keep_dialect and not is_qwen_audio_31_model(args.model):
+        parser.error("--keep-dialect 仅适用于 qwen-audio-3.1-asr-flash-filetrans")
     configure_extra_strong_punct(args.extra_strong_punct)
 
     input_path = Path(args.input)
@@ -2443,6 +2495,7 @@ def main():
             vocabulary_id=args.vocabulary_id,
             context_text=context_text,
             hotword_weight=args.hotword_weight,
+            keep_dialect=args.keep_dialect,
             capture_raw=args.debug_raw,
         )
         elapsed = time.perf_counter() - t0
@@ -2577,6 +2630,7 @@ def main():
         if not args.no_model_tag:
             model_tag = (
                 "fun-asr" if is_funasr_model(args.model)
+                else "qwen-audio-3.1-asr-api" if is_qwen_audio_31_model(args.model)
                 else "qwen-audio-asr-api" if is_qwen_audio_model(args.model)
                 else "qwen3-asr-api"
             )
@@ -2608,12 +2662,30 @@ def main():
         print(f"媒体时长: {format_elapsed(duration)}")
         print(f"转写时长为媒体时长的 {rtf:.2f} 倍")
         print(f"实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
-        cost = estimate_dashscope_cost(duration)
-        if cost is not None:
-            print(
-                f"预计费用: 约 {cost:.2f} 元"
-                f"（{DASHSCOPE_PRICE_PER_SECOND} 元/秒 × {duration:.1f} 秒）"
+        if is_qwen_audio_31_model(args.model):
+            usage_stats = result.get("usage") if isinstance(result, dict) else None
+            input_tokens = _usage_int(usage_stats or {}, "input_tokens")
+            output_tokens = _usage_int(usage_stats or {}, "output_tokens")
+            token_cost = (
+                estimate_qwen_audio_31_cost(input_tokens, output_tokens)
+                if input_tokens or output_tokens else None
             )
+            if token_cost is not None:
+                print(
+                    f"预计费用: 约 {token_cost:.4f} 元（按 Token：输入 {input_tokens} tok × "
+                    f"{DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS} 元/百万 + "
+                    f"输出 {output_tokens} tok × "
+                    f"{DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS} 元/百万）"
+                )
+            else:
+                print("预计费用: 按 Token 计费（北京 输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token），以百炼账单为准")
+        else:
+            cost = estimate_dashscope_cost(duration)
+            if cost is not None:
+                print(
+                    f"预计费用: 约 {cost:.2f} 元"
+                    f"（{DASHSCOPE_PRICE_PER_SECOND} 元/秒 × {duration:.1f} 秒）"
+                )
 
     if args.json_out:
         json_path = output_path.with_suffix(".mosp")
@@ -2634,6 +2706,7 @@ def main():
             ),
             "model": (
                 args.model if is_funasr_model(args.model)
+                else "qwen-audio-3.1-asr-api" if is_qwen_audio_31_model(args.model)
                 else "qwen-audio-asr-api" if is_qwen_audio_model(args.model)
                 else "qwen3-asr-api"
             ),

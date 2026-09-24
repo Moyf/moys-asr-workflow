@@ -24,7 +24,7 @@ test('OpenAI ASR exposes official and OpenRouter models with a conditional Custo
   await openLauncher(page);
   await page.locator('#provider').selectOption('openai');
 
-  await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI（及兼容接口）');
+  await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI 格式通用接口');
   await expect(page.locator('#model')).toHaveValue('whisper-1');
   await expect(page.locator('#model option')).toHaveCount(8);
   expect(await page.locator('#model option').allTextContents()).toEqual([
@@ -110,6 +110,28 @@ test('project and tutorial hero links open their configured URLs', async ({ page
   ]);
 });
 
+test('support link opens the sponsor QR modal and closes on Escape or backdrop', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+
+  await page.locator('#supportLink').click();
+  await expect(page.locator('#supportModal')).toBeVisible();
+  await expect(page.locator('#supportModal .support-qr')).toHaveAttribute('src', /support-qr\.png$/);
+  await expect(page.locator('#supportModal .support-desc')).toContainText('前往B站小店赞助');
+  await expect(page.locator('#supportModal .support-note')).toHaveText([
+    '软件免费使用，但我为此花了非常多的心血 ❤️',
+    '你的支持将帮助 Moy 把它做得更好  :)',
+  ]);
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#supportModal')).toBeHidden();
+
+  await page.locator('#supportLink').click();
+  await expect(page.locator('#supportModal')).toBeVisible();
+  await page.locator('#supportBackdrop').click({ position: { x: 5, y: 5 } });
+  await expect(page.locator('#supportModal')).toBeHidden();
+});
+
 test('OCR video source follows a newly dropped video media', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxOcrTab').click();
@@ -142,6 +164,23 @@ test('automatic OCR video source is not persisted as a manual override', async (
     window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path: 'D:\\Demo\\2.mov' });
   });
   await expect(page.locator('#ocrVideoPath')).toHaveValue('D:\\Demo\\2.mov');
+});
+
+test('automatic subtitle burning follows the selected video', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.locator('#autoPostprocessEnabled').check();
+  await expect(page.locator('[data-auto-step-row="burn"]')).toBeVisible();
+  await expect(page.locator('[data-auto-step-row="burn"]')).toContainText('烧录字幕');
+
+  await page.locator('#autoStepBurn').check();
+
+  await expect(page.locator('#autoStepBurnStatus')).toHaveClass(/ready/);
+  await expect(page.locator('#autoStepBurnHint')).toContainText('clip.mp4');
+  await expect(page.locator('#configureAutoBurn')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (
+    window.MAWLauncher.getAutoPostprocessPayload().steps.find((step) => step.id === 'burn')
+  ))).toMatchObject({ id: 'burn', enabled: true, videoEncoder: 'auto' });
 });
 
 test('waveform tool sends the selected and container-default audio tracks', async ({ page }) => {
@@ -254,7 +293,7 @@ test('automatic LLM setup highlights test connection until clicked', async ({ pa
       hasBaseUrl: true,
       hasModel: true,
       baseUrl: 'https://api.deepseek.com',
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-flash',
     });
   });
 
@@ -403,7 +442,7 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
   expect(layout.columns).toBe(1);
   expect(layout.tabColumnCount).toBe(5);
 
-  // beta.4 重构后工具顺序：压制字幕、媒体重组、口播对齐、提取音频、生成波形。
+  // beta.4 重构后工具顺序：烧录字幕、媒体重组、口播对齐、提取音频、生成波形。
   await page.locator('#toolboxAlignmentTab').focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('#toolboxExtractAudioTab')).toBeFocused();
@@ -413,6 +452,30 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
   await page.keyboard.press('ArrowUp');
   await expect(page.locator('#toolboxAlignmentTab')).toBeFocused();
   await expect(page.locator('#toolboxAlignmentPanel')).toBeVisible();
+});
+
+test('FFmpeg media log stays above the utility notice and renders the latest progress', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+  await page.locator('#toolboxBurnSubtitleTab').click();
+
+  await page.evaluate(() => {
+    for (let frame = 1; frame <= 5; frame += 1) {
+      window.MAWLauncher.onBackendEvent({
+        type: 'media_tool_log',
+        message: `frame=${frame} fps=24.0 time=00:00:01.75 speed=1.2x`,
+      });
+    }
+  });
+
+  await expect(page.locator('#toolboxMediaLog')).toBeVisible();
+  await expect(page.locator('#toolboxMediaLogText')).toHaveText(
+    'frame=3 fps=24.0 time=00:00:01.75 speed=1.2x\nframe=4 fps=24.0 time=00:00:01.75 speed=1.2x\nframe=5 fps=24.0 time=00:00:01.75 speed=1.2x',
+  );
+  expect(await page.evaluate(() => (
+    document.getElementById('toolboxMediaLog').compareDocumentPosition(document.querySelector('#toolboxBurnSubtitlePanel .toolbox-notice'))
+      & Node.DOCUMENT_POSITION_FOLLOWING
+  ))).toBeTruthy();
 });
 
 test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {
@@ -746,6 +809,13 @@ test('local runtime accepts a custom root directory in Settings', async ({ page 
 
   await expect(page.locator('#localRuntimePaths')).toContainText('D:\\Demo\\custom-runtime');
   await expect(page.locator('#localRuntimePathError')).toHaveText('');
+
+  await page.locator('#localRuntimePath').fill('D:\\演示\\运行环境');
+  await page.locator('#localRuntimePath').dispatchEvent('change');
+
+  await expect(page.locator('#localRuntimePathError')).toContainText('非 ASCII');
+  await expect(page.locator('#localRuntimePath')).toHaveClass(/invalid/);
+  await expect(page.locator('#localRuntimePaths')).not.toContainText('演示');
 });
 
 test('LLM settings refill the saved key and save only after a successful connection test', async ({ page }) => {
@@ -757,7 +827,7 @@ test('LLM settings refill the saved key and save only after a successful connect
       providerId: 'deepseek',
       apiKey: 'sk-saved-for-test',
       baseUrl: 'https://api.deepseek.com',
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-flash',
     });
     const select = document.querySelector('#postprocessProvider');
     select.value = 'zhipu';
@@ -794,12 +864,12 @@ test('Custom provider labels and missing-key errors follow the selected language
 
   const customOption = page.locator('#postprocessProvider option[value="custom"]');
   const settingsCustomOption = page.locator('#llmProvider option[value="custom"]');
-  await expect(customOption).toHaveText('自定义（兼容 OpenAI）');
-  await expect(settingsCustomOption).toHaveText('自定义（兼容 OpenAI）');
+  await expect(customOption).toHaveText('OpenAI 通用接口');
+  await expect(settingsCustomOption).toHaveText('OpenAI 通用接口');
 
   await page.evaluate(() => document.getElementById('langEn').click());
-  await expect(customOption).toHaveText('Custom (OpenAI-compatible)');
-  await expect(settingsCustomOption).toHaveText('Custom (OpenAI-compatible)');
+  await expect(customOption).toHaveText('OpenAI-compatible API');
+  await expect(settingsCustomOption).toHaveText('OpenAI-compatible API');
   await page.locator('#toolboxLlmTab').click();
   await page.locator('#openLlmSettings').click();
   await page.evaluate(() => {
@@ -873,7 +943,7 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：DeepSeek 官网');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('官方控制台');
-  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('自定义（兼容 OpenAI）');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('OpenAI 通用接口');
   await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('正确配置模型名');
   await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('test-only-key');
 
@@ -899,7 +969,7 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
   await page.evaluate(() => { window.__llmFailureStatus = 401; window.__llmFailureProvider = 'custom'; });
   await page.locator('#testLlmConnection').click();
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('认证失败（HTTP 401');
-  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：自定义（兼容 OpenAI）');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：OpenAI 通用接口');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL、API Key 是否来自同一服务商');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('正确配置模型名');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('请勿在错误报告中粘贴你的个人 API Key');
