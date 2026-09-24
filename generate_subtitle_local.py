@@ -116,7 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-len", type=int, default=5, help="中文短句合并阈值")
     parser.add_argument("--max-words", type=int, default=DEFAULT_MAX_WORDS, help="英文单条字幕最大单词数")
     parser.add_argument("--min-words", type=int, default=DEFAULT_MIN_WORDS, help="英文短句合并阈值（单词数）")
-    parser.add_argument("--gap-split", type=int, default=800, help="静音超过多少毫秒时切句")
+    parser.add_argument("--gap-split", type=int, default=500, help="静音超过多少毫秒时切句")
     parser.add_argument(
         "--strip-tail-punct", default="，。",
         help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",

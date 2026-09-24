@@ -697,7 +697,7 @@ class LocalAsrFlowTests(unittest.TestCase):
             with mock.patch("maw.local_asr.get_duration_sec", return_value=65.0), \
                     mock.patch("maw.local_asr.subprocess.run"):
                 result = engine.transcribe(audio, language="en", ffmpeg_path="ffmpeg")
-        segments = build_local_segments(result, duration_ms=65000, min_words=1)
+        segments = build_local_segments(result, duration_ms=65000, min_words=1, gap_split_ms=800)
         self.assertEqual(len(segments), 6)
         self.assertEqual([s["start"] for s in segments], [0, 1500, 30000, 31500, 60000, 61500])
         self.assertTrue(all(s["end"] - s["start"] < 3000 for s in segments))

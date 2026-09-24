@@ -77,8 +77,8 @@ def main():
         help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
     )
     parser.add_argument(
-        "--gap-split", type=int, default=800,
-        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 800）",
+        "--gap-split", type=int, default=500,
+        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 500）",
     )
     parser.add_argument(
         "--json", dest="json_out", action="store_true",
