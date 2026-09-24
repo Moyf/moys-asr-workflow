@@ -2219,7 +2219,7 @@ def build_local_segments(
     duration_ms: int,
     max_len: int = 18,
     min_len: int = 5,
-    gap_split_ms: int = 800,
+    gap_split_ms: int = 500,
     max_words: int = DEFAULT_MAX_WORDS,
     min_words: int = DEFAULT_MIN_WORDS,
     strip_tail_punct: str = _LOCAL_TAIL_PUNCT,

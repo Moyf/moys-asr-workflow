@@ -17,6 +17,9 @@
   --accent-tint: rgba(108, 165, 232, .12);
   --accent-tint-strong: rgba(108, 165, 232, .22);
   --accent-soft: rgba(108, 165, 232, .16);
+  --info: #6ca5e8;
+  --info-soft: rgba(108, 165, 232, .16);
+  --info-tint: rgba(108, 165, 232, .08);
   --amber: #d49a4a;
   --amber-hover: #e0a85a;
   --amber-soft: rgba(212, 154, 74, .16);
@@ -72,6 +75,9 @@ h2[data-i18n] {
   --accent-tint: rgba(56, 116, 201, .12);
   --accent-tint-strong: rgba(56, 116, 201, .20);
   --accent-soft: rgba(56, 116, 201, .16);
+  --info: #3874c9;
+  --info-soft: rgba(56, 116, 201, .16);
+  --info-tint: rgba(56, 116, 201, .08);
   --amber: #9a6a1e;
   --amber-hover: #8a5d18;
   --amber-soft: rgba(154, 106, 30, .16);
@@ -527,6 +533,16 @@ label {
   border-left: 3px solid color-mix(in srgb, var(--amber) 55%, transparent);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--amber) 8%, transparent);
+}
+
+/* API Key 获取提示行：与参考价 callout 同款结构，蓝色（--info，独立于强调色）。 */
+.key-hint-callout {
+  display: block;
+  margin-top: 6px;
+  padding: 5px 10px;
+  border-left: 3px solid color-mix(in srgb, var(--info) 55%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--info) 8%, transparent);
 }
 
 .settings-punctuation-hint {
@@ -3401,6 +3417,8 @@ select[multiple] option {
 .asr-preset-details { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
 .asr-preset-details { overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
 .asr-preset-list-panel h3 { margin: 0; color: var(--text-secondary); font-size: 13px; }
+.asr-preset-list-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.asr-preset-list-header .hint { flex: 0 1 auto; }
 .asr-preset-list { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-input); }
 .asr-preset-item { width: 100%; min-height: 68px; display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 9px 11px; border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; background: transparent; color: var(--text-primary); text-align: left; white-space: normal; }
 .asr-preset-item:last-child { border-bottom: 0; }
@@ -3422,9 +3440,10 @@ select[multiple] option {
 .asr-preset-preview { flex: 1 1 auto; min-height: 150px; overflow-y: auto; overscroll-behavior: contain; padding: 7px 9px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-input); }
 .asr-preset-preview h3 { margin: 0 0 5px; color: var(--text-secondary); font-size: 12px; }
 .asr-preset-preview ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
-.asr-preset-preview li { display: grid; grid-template-columns: minmax(80px, 105px) minmax(0, 1fr); gap: 6px; font-size: 12px; line-height: 1.4; }
+.asr-preset-preview li { display: grid; grid-template-columns: minmax(2em, 5em) minmax(0, 1fr); gap: 6px; font-size: 12px; line-height: 1.4; }
+.asr-preset-preview li + li { border-top: 1px solid var(--border-subtle); padding-top: 3px; }
 .asr-preset-preview-label { color: var(--text-secondary); }
-.asr-preset-preview-value { min-width: 0; overflow-wrap: anywhere; }
+.asr-preset-preview-value { min-width: 0; overflow-wrap: anywhere; border-left: 1px solid var(--border-subtle); padding-left: 6px; }
 .asr-preset-modal-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 0 0 auto; margin-top: 12px; }
 .asr-preset-modal-actions button { min-width: 0; }
 .asr-preset-modal-actions .danger { color: var(--danger, #e57373); }
@@ -3432,8 +3451,8 @@ select[multiple] option {
 .asr-preset-modal-card > .modal-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex: 0 0 auto; margin-top: 12px; }
 .asr-preset-root-hint { flex: 1 1 auto; min-width: 0; margin: 0; line-height: 1.4; overflow-wrap: anywhere; }
 #asrPresetRootInModal { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
-#asrPresetCloseFooter { flex: 0 0 auto; }
-.preset-root-current { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.preset-root-current { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 10px; }
+#resetAsrPresetRoot { margin-left: auto; }
 #asrPresetRootCurrent { min-width: 0; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
 
 @media (max-width: 620px) {

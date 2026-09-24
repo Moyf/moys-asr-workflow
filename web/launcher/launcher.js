@@ -13,7 +13,7 @@
       test_run_override: "测试运行已限定前 2 分钟",
       debug_raw: "调试运行（保存原始/中间数据）",
       debug_raw_title: "在线模型保存服务端原始 JSON；本地模型保存可用的原始/中间文件，便于排查断句、标点和时间码问题",
-      hero_desc: "本地媒体 ➜ AI 转写 ➜ 可编辑字幕工程",
+      hero_desc: "让字幕制作变得超级轻松！",
       github_link: "Github",
       tutorial_video: "教程视频",
       support_link: "支持 ❤️",
@@ -88,7 +88,8 @@
       preset_load: "加载预设", preset_create: "新建预设", preset_save: "将当前配置存为新预设",
       preset_default_name: "未命名预设", preset_active_badge: "当前",
       preset_load_title: "把选中预设的设置应用到当前表单", preset_save_title: "把当前识别表单保存为新预设",
-      preset_update: "更新预设", preset_update_selected: "更新到预设", preset_update_title: "用当前表单覆盖选中的预设",
+      preset_update: "更新预设", preset_update_selected: "覆盖至预设", preset_update_title: "用当前表单覆盖选中的预设",
+      preset_update_active: "更新该预设", preset_update_active_title: "用当前表单更新该预设",
       preset_copy: "复制预设", preset_copy_title: "先复制选中预设为「×× 副本」，之后再改名", preset_delete: "删除预设", preset_delete_title: "将选中预设移入系统回收站",
       preset_copy_suffix: "副本", preset_preview_title: "有效字段",
       preset_field_prompt_context: "提示词", preset_field_hotwords_keywords: "热词", preset_field_hotword_file: "热词文件",
@@ -98,7 +99,7 @@
       preset_field_max_len: "最大字数", preset_field_min_len: "最少字数", preset_field_max_words: "最多单词", preset_field_min_words: "最少单词", preset_field_gap_split: "间隔分句",
       preset_field_debug: "调试运行", preset_field_test_run: "快速测试", preset_field_keep_dialect: "保留方言表达",
       preset_modal_saved_in: "预设文件夹：", preset_modal_settings_lead: "（可在 ", preset_modal_settings_link: "设置", preset_modal_settings_tail: " 中更改）",
-      preset_refresh: "刷新", preset_search_placeholder: "搜索名称或描述", preset_list_title: "预设列表",
+      preset_refresh: "刷新", preset_search_placeholder: "搜索名称或描述", preset_list_title: "预设列表", preset_list_dblclick_hint: "双击可直接加载预设",
       preset_details: "预设详情", preset_name: "预设名称", preset_name_placeholder: "输入预设名称", preset_description: "描述",
       preset_description_placeholder: "可选，简单说明适用场景", preset_invalid: "不可用",
       preset_empty: "没有找到预设。", preset_select_required: "请先选择一个可用预设。",
@@ -171,7 +172,7 @@
       test_run_override: "Test run is limited to the first 2 minutes",
       debug_raw: "Debug run (save raw/intermediate data)",
       debug_raw_title: "Online models save the raw service JSON; local models save available raw/intermediate files for investigating segmentation, punctuation, and timestamps.",
-      hero_desc: "Local media ➜ AI transcription ➜ Editable subtitle projects",
+      hero_desc: "Making subtitle creation super easy!",
       github_link: "Github",
       tutorial_video: "Tutorial video",
       support_link: "Support ❤️",
@@ -247,6 +248,8 @@
       preset_default_name: "Untitled preset", preset_active_badge: "Active",
       preset_load_title: "Apply the selected preset's settings to the form", preset_save_title: "Save the current recognition form as a new preset",
       preset_update: "Update preset", preset_update_selected: "Overwrite preset", preset_update_title: "Overwrite the selected preset with the current form",
+      preset_update_active: "Update this preset", preset_update_active_title: "Update this preset with the current form",
+      preset_update_active: "Update this preset", preset_update_active_title: "Update this preset with the current form",
       preset_copy: "Copy preset", preset_copy_title: "Duplicate the selected preset as a copy, then rename it", preset_delete: "Delete preset", preset_delete_title: "Move the selected preset to the recycle bin",
       preset_copy_suffix: "copy", preset_preview_title: "Active fields",
       preset_field_prompt_context: "Prompt", preset_field_hotwords_keywords: "Hotwords", preset_field_hotword_file: "Hotword file",
@@ -256,7 +259,7 @@
       preset_field_max_len: "Max characters", preset_field_min_len: "Min characters", preset_field_max_words: "Max words", preset_field_min_words: "Min words", preset_field_gap_split: "Gap split",
       preset_field_debug: "Debug run", preset_field_test_run: "Quick test", preset_field_keep_dialect: "Keep dialect",
       preset_modal_saved_in: "Preset folder: ", preset_modal_settings_lead: " (change in ", preset_modal_settings_link: "Settings", preset_modal_settings_tail: ")",
-      preset_refresh: "Refresh", preset_search_placeholder: "Search names or descriptions", preset_list_title: "Preset list",
+      preset_refresh: "Refresh", preset_search_placeholder: "Search names or descriptions", preset_list_title: "Preset list", preset_list_dblclick_hint: "Double-click an item to load it",
       preset_details: "Preset details", preset_name: "Preset name", preset_name_placeholder: "Enter a preset name", preset_description: "Description",
       preset_description_placeholder: "Optional; briefly describe when to use it", preset_invalid: "Unavailable",
       preset_empty: "No presets found.", preset_select_required: "Select an available preset first.",
@@ -796,7 +799,7 @@
     min_len_placeholder: "默认 5",
     max_words_placeholder: "默认 13",
     min_words_placeholder: "默认 3",
-    gap_split_placeholder: "默认 800",
+    gap_split_placeholder: "默认 500",
     segmentation_hint: "配置停顿多久时算作两句字幕、少于多少字时自动合并，以及允许的最大字数（超过会强行断句）；系统会按语言自动选择对应规则。",
     english_segmentation_hint: "在生成英文字幕时，会启用该配置。",
     qwen_audio_options_title: "Qwen 上下文与热词",
@@ -885,7 +888,7 @@
     min_len_placeholder: "Default: 5",
     max_words_placeholder: "Default: 13",
     min_words_placeholder: "Default: 3",
-    gap_split_placeholder: "Default: 800",
+    gap_split_placeholder: "Default: 500",
     segmentation_hint: "Set how long a pause counts as a new subtitle, how few characters trigger automatic merging, and the maximum allowed characters per subtitle (longer text is forcibly split); the matching rule is selected automatically by language.",
     english_segmentation_hint: "This configuration is used when generating English subtitles.",
     qwen_audio_options_title: "Qwen context & hotwords",
@@ -3241,11 +3244,12 @@
     return message;
   }
   function copyPresetOptions(options) { return JSON.parse(JSON.stringify(options)); }
+  function stablePresetString(options) { return JSON.stringify(options, Object.keys(options).sort()); }
   function renderCurrentAsrPreset() {
     const hasPreset = Boolean(currentAsrPreset.name);
     $("currentAsrPresetPrefix").classList.toggle("hidden", !hasPreset);
     $("currentAsrPresetName").textContent = currentAsrPreset.name || t("preset_unselected");
-    const modified = Boolean(currentAsrPreset.name && currentAsrPreset.snapshot && JSON.stringify(collectAsrPreset()) !== JSON.stringify(currentAsrPreset.snapshot));
+    const modified = Boolean(currentAsrPreset.name && currentAsrPreset.snapshot && stablePresetString(collectAsrPreset()) !== stablePresetString(currentAsrPreset.snapshot));
     $("currentAsrPresetModified").classList.toggle("hidden", !modified);
     $("currentAsrPresetName").classList.toggle("preset-is-modified", modified);
     $("updateCurrentAsrPreset").classList.toggle("hidden", !modified);
@@ -3254,6 +3258,7 @@
     currentAsrPreset = { name: String(name || ""), snapshot: options ? copyPresetOptions(options) : null };
     renderCurrentAsrPreset();
     renderAsrPresetList();
+    updatePresetActionAvailability();
   }
   function clearCurrentAsrPreset() { setCurrentAsrPreset("", null); }
   function showAsrPresetStatus(message = "") {
@@ -3373,11 +3378,17 @@
   }
   function selectedAsrPreset() { return presetManager.items.find((item) => item.name === presetManager.selectedName && item.valid); }
   function updatePresetActionAvailability() {
-    const selected = Boolean(selectedAsrPreset());
+    const item = selectedAsrPreset();
+    const selected = Boolean(item);
     ["updateAsrPreset", "copyAsrPreset", "deleteAsrPreset"].forEach((id) => { $(id).disabled = !selected; });
     const loadButton = $("loadAsrPreset");
     loadButton.textContent = t(selected ? "preset_load" : "preset_create");
     loadButton.title = t(selected ? "preset_load_title" : "preset_save_title");
+    if (!selected) return;
+    const active = item.name === currentAsrPreset.name;
+    const updateButton = $("updateAsrPreset");
+    updateButton.textContent = t(active ? "preset_update_active" : "preset_update_selected");
+    updateButton.title = t(active ? "preset_update_active_title" : "preset_update_title");
   }
   function selectAsrPreset(name, { focus = false } = {}) {
     const item = presetManager.items.find((candidate) => candidate.name === name && candidate.valid);
@@ -3579,7 +3590,7 @@
   async function updateSelectedAsrPreset() {
     const item = selectedAsrPreset();
     if (!item) { setPresetManagerStatus(t("preset_select_required")); return; }
-    if (!await confirmAction(presetMessage("preset_confirm_update", { name: item.name }))) return;
+    if (item.name !== currentAsrPreset.name && !await confirmAction(presetMessage("preset_confirm_update", { name: item.name }))) return;
     const options = collectAsrPreset();
     const result = await bridge("recognition_presets", { action: "update", name: item.name, options });
     if (!result.ok) { setPresetManagerStatus(`${t("preset_failed")}: ${localizedPresetError(result.detail)}`); return; }
@@ -3655,7 +3666,7 @@
     await refreshAsrPresetLibrary({ keepSelection: false });
     if (currentAsrPreset.name) {
       const current = await bridge("recognition_presets", { action: "load", name: currentAsrPreset.name });
-      if (!current.ok || JSON.stringify(current.options) !== JSON.stringify(currentAsrPreset.snapshot)) clearCurrentAsrPreset();
+      if (!current.ok || stablePresetString(current.options) !== stablePresetString(currentAsrPreset.snapshot)) clearCurrentAsrPreset();
     }
     if (result.sourceRemaining?.length) {
       $("asrPresetRootStatus").textContent = presetMessage("preset_root_source_remaining", { names: result.sourceRemaining.join(", ") });
@@ -3668,7 +3679,6 @@
   $("manageAsrPresets").addEventListener("click", () => { void openAsrPresetManager(); });
   $("updateCurrentAsrPreset").addEventListener("click", () => { void updateCurrentAsrPresetFromForm(); });
   $("asrPresetClose").addEventListener("click", closeAsrPresetManager);
-  $("asrPresetCloseFooter").addEventListener("click", closeAsrPresetManager);
   $("asrPresetBackdrop").addEventListener("click", closeAsrPresetManager);
   $("asrPresetRootInModal").addEventListener("click", async () => {
     const result = await bridge("open_asr_preset_folder");
@@ -3680,6 +3690,13 @@
   });
   $("refreshAsrPresets").addEventListener("click", () => { void refreshAsrPresetLibrary(); });
   $("asrPresetSearch").addEventListener("input", renderAsrPresetList);
+  $("asrPresetList").addEventListener("dblclick", (event) => {
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    const button = event.target.closest("[data-preset-name]") || hit?.closest("[data-preset-name]");
+    if (!button) return;
+    selectAsrPreset(button.dataset.presetName);
+    void loadSelectedAsrPreset();
+  });
   $("saveAsrPreset").addEventListener("click", () => { void createPresetFromForm(); });
   $("loadAsrPreset").addEventListener("click", () => { void (selectedAsrPreset() ? loadSelectedAsrPreset() : createPresetFromForm()); });
   $("asrPresetName").addEventListener("blur", () => { void saveSelectedPresetInfoOnBlur(); });

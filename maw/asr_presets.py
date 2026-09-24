@@ -54,7 +54,10 @@ def validate_description(value: object) -> str:
 def validate_options(options: object) -> dict:
     # Presets saved before Qwen-Audio 3.1 used the default dialect behavior.
     if isinstance(options, dict):
-        options = {"qwenAudioKeepDialect": False, **options}
+        # Keep the caller's key order (the form compares snapshots as strings);
+        # only inject the default when the field is missing.
+        options = dict(options)
+        options.setdefault("qwenAudioKeepDialect", False)
         # Older presets stored per-provider prompt/context fields; they all map
         # to the single shared promptContext value now.
         options["promptContext"] = "\n".join(dict.fromkeys(

@@ -41,7 +41,7 @@
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
           <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.6.1</span></div>
-          <p data-i18n="hero_desc">📺 本地媒体 ➜  🤖 AI 转写 ➜ ✨ 可编辑字幕工程</p>
+          <p data-i18n="hero_desc">让字幕制作变得超级轻松！</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
       </div>
@@ -155,7 +155,7 @@
           <button id="saveSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
         </div>
         <p id="keyStatus" class="hint">未配置密钥</p>
-        <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">千问AI平台</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取或查看 API Key ↗</span></p>
+        <p class="hint key-hint-callout"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">千问AI平台</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取或查看 API Key ↗</span></p>
         <p id="apiKeyError" class="field-error"></p>
       </div>
       <div id="localModelSettingsEntry" class="field hidden">
@@ -1280,7 +1280,7 @@
           <div class="segmentation-row segmentation-character-row">
             <div class="segmentation-control">
               <label for="gapSplit" data-i18n="gap_split">停顿切句（毫秒）</label>
-              <input id="gapSplit" type="number" min="0" step="1" inputmode="numeric" data-i18n-placeholder="gap_split_placeholder" placeholder="800" autocomplete="off">
+              <input id="gapSplit" type="number" min="0" step="1" inputmode="numeric" data-i18n-placeholder="gap_split_placeholder" placeholder="500" autocomplete="off">
               <p id="gapSplitError" class="field-error"></p>
             </div>
             <div class="segmentation-control">
@@ -1421,7 +1421,10 @@
       <p id="asrPresetManagerStatus" class="hint" role="status" aria-live="polite"></p>
       <div class="asr-preset-manager-grid">
         <div class="asr-preset-list-panel">
-          <h3 data-i18n="preset_list_title">预设列表</h3>
+          <div class="asr-preset-list-header">
+            <h3 data-i18n="preset_list_title">预设列表</h3>
+            <span class="hint" data-i18n="preset_list_dblclick_hint">双击可直接加载预设</span>
+          </div>
           <div id="asrPresetList" class="asr-preset-list" role="listbox" data-i18n-aria-label="preset_list_title" aria-label="预设列表"></div>
         </div>
         <section class="asr-preset-details" data-i18n-aria-label="preset_details" aria-label="预设详情">
@@ -1442,14 +1445,13 @@
       </div>
       <div class="asr-preset-modal-actions">
         <button id="loadAsrPreset" class="ghost" type="button" data-i18n="preset_load" data-i18n-title="preset_load_title" title="把选中预设的设置应用到当前表单">加载预设</button>
-        <button id="updateAsrPreset" class="ghost" type="button" data-i18n="preset_update_selected" data-i18n-title="preset_update_title" title="用当前表单覆盖选中的预设">更新到预设</button>
+        <button id="updateAsrPreset" class="ghost" type="button" data-i18n="preset_update_selected" data-i18n-title="preset_update_title" title="用当前表单覆盖选中的预设">覆盖至预设</button>
         <button id="copyAsrPreset" class="ghost" type="button" data-i18n="preset_copy" data-i18n-title="preset_copy_title" title="先复制选中预设为「×× 副本」，之后再改名">复制预设</button>
         <button id="deleteAsrPreset" class="danger ghost" type="button" data-i18n="preset_delete" data-i18n-title="preset_delete_title" title="将选中预设移入系统回收站">删除预设</button>
         <button id="saveAsrPreset" class="primary" type="button" data-i18n="preset_save" data-i18n-title="preset_save_title" title="把当前识别表单保存为新预设">将当前配置存为新预设</button>
       </div>
       <footer class="modal-actions">
         <p class="hint asr-preset-root-hint"><span data-i18n="preset_modal_saved_in">预设文件夹：</span><button id="asrPresetRootInModal" class="inline-link runtime-path-link" type="button" data-i18n-title="open_folder_hint" title="点击打开所在文件夹"></button><span data-i18n="preset_modal_settings_lead">（可在 </span><button id="asrPresetSettingsLink" class="inline-link" type="button" data-i18n="preset_modal_settings_link">设置</button><span data-i18n="preset_modal_settings_tail"> 中更改）</span></p>
-        <button id="asrPresetCloseFooter" class="ghost" type="button" data-i18n="close">关闭</button>
       </footer>
     </section>
   </div>

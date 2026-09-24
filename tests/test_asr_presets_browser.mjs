@@ -49,7 +49,12 @@ test('ASR preset library manages metadata and options independently with keyboar
             return { ok: true, name: payload.name };
           }
           if (action === 'preview') return source ? { ok: true, options: structuredClone(source.options) } : { ok: false, detail: 'Preset not found' };
-          if (action === 'load') return source ? { ok: true, name: source.name, description: source.description, options: structuredClone(source.options), missingHotwords: false } : { ok: false, detail: 'Preset not found' };
+          if (action === 'load') {
+            if (!source) return { ok: false, detail: 'Preset not found' };
+            const reordered = {};
+            for (const key of Object.keys(source.options).reverse()) reordered[key] = source.options[key];
+            return { ok: true, name: source.name, description: source.description, options: reordered, missingHotwords: false };
+          }
           if (action === 'save_info') {
             if (!source) return { ok: false, detail: 'Preset not found' };
             if (newName !== sourceName && Array.from(window.presetStore.keys()).some(key => key.toLocaleLowerCase() === newName.toLocaleLowerCase())) return { ok: false, detail: 'Preset already exists' };
@@ -104,12 +109,12 @@ test('ASR preset library manages metadata and options independently with keyboar
     assert.equal(await page.locator('#asrPresetOptionsPreview').evaluate(el => getComputedStyle(el).maxHeight), 'none', 'the preview grows with the freed space');
     assert.equal(await page.locator('#deleteAsrPreset').getAttribute('title'), '将选中预设移入系统回收站', 'action buttons explain themselves on hover');
     assert.equal(await page.locator('#saveAsrPreset').textContent(), '将当前配置存为新预设');
-    assert.equal(await page.locator('#updateAsrPreset').textContent(), '更新到预设');
+    assert.equal(await page.locator('#updateAsrPreset').textContent(), '更新该预设', 'the active preset shows the update label');
     assert.notEqual(await page.locator('.asr-preset-modal-actions').evaluate(el => getComputedStyle(el).marginTop), '0px', 'the action row keeps distance from the grid above');
     assert.match(await page.locator('.asr-preset-root-hint').textContent(), /预设文件夹：.*（可在.*设置.*中更改）/u);
     assert.equal(await page.locator('#asrPresetRootInModal').textContent(), config.asrPresetRoot);
 
-    await page.locator('#asrPresetCloseFooter').click();
+    await page.locator('#asrPresetClose').click();
     await page.locator('#qwenAudioContext').fill('页面当前未保存值');
     await page.locator('#manageAsrPresets').click();
     await page.waitForFunction(() => !document.querySelector('#asrPresetModal').classList.contains('hidden'));
@@ -141,10 +146,8 @@ test('ASR preset library manages metadata and options independently with keyboar
     await page.locator('#manageAsrPresets').click();
     await page.getByRole('option', { name: /访谈/ }).click();
     await page.locator('#updateAsrPreset').click();
-    await page.waitForFunction(() => !document.querySelector('#batchConfirmModal').classList.contains('hidden'));
-    assert.match(await page.locator('#batchConfirmMessage').textContent(), /访谈/);
-    await page.locator('#batchConfirmYes').click();
     await page.waitForFunction(() => window.presetStore.get('访谈')?.options.promptContext === '当前表单修改');
+    assert.equal(await page.evaluate(() => document.querySelector('#batchConfirmModal').classList.contains('hidden')), true, 'updating the active preset from the modal needs no confirmation');
 
     const savedOptions = await page.evaluate(() => structuredClone(window.presetStore.get('访谈').options));
     await page.locator('#asrPresetName').fill('采访');
@@ -165,6 +168,18 @@ test('ASR preset library manages metadata and options independently with keyboar
     await page.locator('#asrPresetName').fill('采访副本');
     await page.locator('#asrPresetName').blur();
     await page.waitForFunction(() => window.presetStore.has('采访副本') && !window.presetStore.has('采访 副本'));
+
+    await page.locator('#qwenAudioContext').fill('覆盖副本的值');
+    assert.equal(await page.locator('#updateAsrPreset').textContent(), '覆盖至预设', 'a non-active preset shows the overwrite label');
+    await page.locator('#updateAsrPreset').click();
+    await page.waitForFunction(() => !document.querySelector('#batchConfirmModal').classList.contains('hidden'));
+    assert.match(await page.locator('#batchConfirmMessage').textContent(), /采访副本/);
+    await page.locator('#batchConfirmNo').click();
+    await page.waitForFunction(() => window.presetStore.get('采访副本')?.options.promptContext === '当前表单修改', undefined, { timeout: 5_000 });
+    await page.locator('#updateAsrPreset').click();
+    await page.waitForFunction(() => !document.querySelector('#batchConfirmModal').classList.contains('hidden'));
+    await page.locator('#batchConfirmYes').click();
+    await page.waitForFunction(() => window.presetStore.get('采访副本')?.options.promptContext === '覆盖副本的值');
 
     await page.locator('#asrPresetSearch').fill('副本');
     assert.equal(await page.getByRole('option', { name: /采访副本/ }).count(), 1);
@@ -217,6 +232,7 @@ test('ASR preset library manages metadata and options independently with keyboar
     }));
     assert.ok(activeItem.active && activeItem.selected && activeItem.badge === 'Active', 'the loaded preset shows the active state together with the selected state');
     assert.equal(await page.locator('#asrPresetList [data-preset-name="未命名预设"]').evaluate(el => el.classList.contains('active')), false, 'other presets are not marked active');
+    assert.equal(await page.locator('#updateAsrPreset').textContent(), 'Update this preset', 'the active preset shows the update label in English too');
     const modalSize = await page.locator('.asr-preset-modal-card').evaluate(el => ({ width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height }));
     assert.ok(modalSize.width <= 780 && modalSize.width >= 720, `unexpected modal width: ${modalSize.width}`);
     assert.ok(modalSize.height <= 620 && modalSize.height >= 560, `unexpected modal height: ${modalSize.height}`);
@@ -232,7 +248,7 @@ test('ASR preset library manages metadata and options independently with keyboar
     await page.locator('#asrPresetSearch').fill('damaged');
     assert.match(await page.locator('#asrPresetList').textContent(), /Unavailable.*Unsupported preset format/);
     await page.locator('#asrPresetSearch').fill('');
-    await page.locator('#asrPresetCloseFooter').focus();
+    await page.locator('#asrPresetSettingsLink').focus();
     await page.keyboard.press('Tab');
     assert.equal(await page.evaluate(() => document.activeElement.id), 'asrPresetClose');
     await page.keyboard.press('Escape');

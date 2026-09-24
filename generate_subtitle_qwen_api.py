@@ -2267,8 +2267,8 @@ def main():
         help="额外强断句符号集合（来自共享断句配置；每个字符并入强断句符号，默认空）",
     )
     parser.add_argument(
-        "--gap-split", type=int, default=800,
-        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 800）",
+        "--gap-split", type=int, default=500,
+        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 500）",
     )
     parser.add_argument(
         "--speaker", action="store_true",

@@ -48,6 +48,18 @@
 | 6 | 「另存为新预设」→「将当前配置存为新预设」，同样先存再改名 | 已修复 | 按钮文案（zh/en）与创建流程同上。 |
 | 7 | 增加「激活中预设」的 active 样式，并考虑 .active.selected | 已修复 | 列表项按 `currentAsrPreset.name` 加 `active` 类 + 「当前」徽标（i18n `preset_active_badge`）+ accent 名称色，`aria-current="true"`；`.active.selected` 组合样式已定义；`setCurrentAsrPreset` 联动刷新列表徽标。 |
 
+## 第四轮用户反馈逐条状态
+
+| # | 反馈 | 状态 | 处理结果 |
+| --- | --- | --- | --- |
+| 1 | 「恢复默认」按钮与上方紧贴；AGENTS.md 规则没起作用 | 已修复 | 根因：`.field` 只有 `margin-top`、`.hint` 为 `margin: 0`，新行必须自带间距——`.preset-root-current` 增加 `margin-top: 10px`；「恢复默认」居右（`margin-left: auto`）。AGENTS.md 规则强化：明确 `.field`/`.hint` 的间距陷阱，验收必须用 `getComputedStyle` 实测数据，禁止截图目测。 |
+| 2 | 弹窗右下「关闭」与右上 × 重复 | 已修复 | 移除 `asrPresetCloseFooter`（HTML/JS/CSS），关闭入口保留右上 ×、背景点击与 Esc；焦点圈测试改为从「设置」链接 Tab 环绕。 |
+| 3 | 更新 active 预设不应弹确认；按钮文案区分状态 | 已修复 | `updateSelectedAsrPreset()`：选中项为当前激活预设时不再二次确认，覆盖其他预设仍需确认；按钮文案随状态切换——active → 「更新该预设」（`preset_update_active`），否则 → 「覆盖至预设」（`preset_update_selected`），标题同步切换。 |
+| 4 | 刚加载完预设就显示 dirty（预设名 *） | 已修复 | 根因：后端 `validate_options` 会把 `qwenAudioKeepDialect` 重排到键序首位，前端 `JSON.stringify` 快照对比对键序敏感 → 恒不等。修复：前端改用键序无关的 `stablePresetString()`（排序键）比较，后端不再重排键（`setdefault`）。浏览器 mock 的 `load` 改为返回键序反转的 options 以固化回归。 |
+| 5 | 默认停顿切句阈值 800 → 500ms | 已修复 | 7 个 CLI 脚本 `--gap-split` 默认值与帮助文案、`maw/local_asr.py` 引擎默认、`docs/CLI.md`、`docs/LOCAL_ASR.md`、Launcher 占位符与 i18n 同步更新；CHANGELOG 记入【🔄 变更】。 |
+| 6 | 「获取 API Key」行加蓝色 Callout，不用强调色 | 已修复 | 新增独立变量 `--info` / `--info-soft` / `--info-tint`（当前复用 accent 色值，后续可独立调整），`.key-hint-callout` 采用与参考价 callout 同款结构。 |
+| 7 | 首页标语更换 | 已修复 | Launcher hero 文案改为「让字幕制作变得超级轻松！」/ "Making subtitle creation super easy!"（zh/en）。 |
+
 ## 其他修复（上一轮遗留问题）
 
 | 事项 | 状态 | 说明 |

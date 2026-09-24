@@ -42,7 +42,7 @@ def main() -> int:
     parser.add_argument("--min-words", type=int, default=WESTERN_MIN_WORDS, help="英文短句合并阈值（单词数）")
     parser.add_argument("--language", help="保留参数；腾讯云录音文件识别由引擎自动识别")
     parser.add_argument("--keep-punct", action="store_true", help="保留字幕末尾标点")
-    parser.add_argument("--gap-split", type=int, default=800, help="静音切句阈值（毫秒，默认 800）")
+    parser.add_argument("--gap-split", type=int, default=500, help="静音切句阈值（毫秒，默认 500）")
     parser.add_argument("--speaker", action="store_true", help="请求腾讯云说话人分离并保留 speaker 标签")
     parser.add_argument("--speaker-colors", action="store_true", help="请求说话人分离并写入一次性的字幕颜色快照")
     parser.add_argument("--json", dest="json_out", action="store_true", help="同时输出 .mosp 工程")
