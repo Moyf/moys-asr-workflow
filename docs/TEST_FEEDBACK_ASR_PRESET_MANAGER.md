@@ -72,11 +72,19 @@
 
 | 事项 | 状态 | 说明 |
 | --- | --- | --- |
-| docs/WORKFLOW.md 行内代码空格污染 | 已修复 | 还原了上一轮 diff 引入的多处行内代码空格（`beijing `、` filetrans`、`BASE_URL= https` 等）；文件其余位置存在更早遗留的同类污染（约 372、394、398、404、445、446、468 行），不属于本任务改动范围，标记为仅说明。 |
+| docs/WORKFLOW.md 行内代码空格污染 | 已修复 | 还原了上一轮 diff 引入的多处行内代码空格（`beijing`、`filetrans`、`BASE_URL= https` 等）。 |
 | WORKFLOW.md 预设章节与实际 UI 一致 | 已修复 | 按钮名改为「另存为新预设 / 仅保存名称/描述 / 更新到预设 / 复制预设 / 删除预设 / 预设管理」，补充共享提示词说明。 |
 | ruff：gui_web.py 未使用导入 | 已修复 | 移除未使用的 `validate_preset_name` 导入。 |
 | CHANGELOG | 已修复 | 预设库条目更新为包含共享提示词、底部操作按钮与失焦保存、回收站删除。 |
 | 共享提示词加载后 Soniox 字数显示 | 已修复 | `setSharedPromptContext` / `syncSharedPromptContext` 同步刷新 `renderSonioxContextCharacterCount()`。 |
+
+## PR #152 合并前审查（macOS，2026-09-24）
+
+| 事项 | 状态 | 说明 |
+| --- | --- | --- |
+| `test_copy_generates_...` 在 macOS 失败 | 已修复 | `/var` 是 `/private/var` 的符号链接，`preset_path` 的 `resolve(strict=True)` 使 `_open_existing_path` 收到 `/private/var/...` 前缀；断言改为与 `resolve()` 后的路径比较，Windows / macOS 均成立。仓库 CI 仅在 Windows 跑单测，故未暴露。 |
+| WORKFLOW.md 其余 10 处行内代码空格污染 | 已修复 | 此前记录称「更早遗留、不属本任务范围」与事实不符：与 main 逐行对比，该文件在 main 上无任何同类污染，10 处均由本分支引入（上一轮「修复」实际只修了更早一轮引入的部分），已全部还原为 main 原文。 |
+| CHANGELOG 存量行内代码空格污染 | 仅说明 | main 上已存在约 27 行同类污染，非本 PR 引入，未在本次顺手改动。 |
 
 ## 验证
 

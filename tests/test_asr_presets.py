@@ -122,7 +122,10 @@ class RecognitionPresetTests(unittest.TestCase):
 
         with patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as open_path:
             self.assertEqual(self.api.open_asr_preset_file({"name": "共享"}), {"ok": True})
-            open_path.assert_called_once_with(self.library / "共享.json")
+            # open_asr_preset_file 内部会 resolve()；macOS 的 /var 是 /private/var
+            # 的符号链接，因此用解析后的路径比较，两种环境都成立。
+            open_path.assert_called_once()
+            self.assertEqual(Path(open_path.call_args[0][0]), (self.library / "共享.json").resolve())
         rejected = self.api.open_asr_preset_file({"name": "../outside"})
         self.assertFalse(rejected["ok"])
 
