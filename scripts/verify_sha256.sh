@@ -19,17 +19,17 @@ ASSET="$2"
 TARGET="$3"
 
 if [ ! -f "$CHECKSUMS" ]; then
-    echo "错误：checksums 清单不存在（$CHECKSUMS）。" >&2
+    echo "错误：checksums 清单不存在（${CHECKSUMS}）。" >&2
     exit 1
 fi
 if [ ! -f "$TARGET" ]; then
-    echo "错误：待校验文件不存在（$TARGET）。" >&2
+    echo "错误：待校验文件不存在（${TARGET}）。" >&2
     exit 1
 fi
 
 EXPECTED="$(awk -v asset="$ASSET" '$2 == asset { print $1; exit }' "$CHECKSUMS")"
 if [ -z "$EXPECTED" ]; then
-    echo "错误：checksums 清单中没有 $ASSET 的条目（$CHECKSUMS）。" >&2
+    echo "错误：checksums 清单中没有 ${ASSET} 的条目（${CHECKSUMS}）。" >&2
     exit 1
 fi
 
@@ -38,8 +38,8 @@ ACTUAL="$(sha256sum "$TARGET" | cut -d ' ' -f1)"
 ACTUAL="${ACTUAL#\\}"
 EXPECTED="${EXPECTED#\\}"
 if [ "$EXPECTED" != "$ACTUAL" ]; then
-    echo "错误：SHA-256 不匹配（$TARGET）。" >&2
-    echo "  期望 $EXPECTED" >&2
-    echo "  实际 $ACTUAL" >&2
+    echo "错误：SHA-256 不匹配（${TARGET}）。" >&2
+    echo "  期望 ${EXPECTED}" >&2
+    echo "  实际 ${ACTUAL}" >&2
     exit 1
 fi

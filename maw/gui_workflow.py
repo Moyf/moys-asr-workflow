@@ -724,7 +724,11 @@ def _prepend_ffmpeg_path(env: dict[str, str], configured_path: str) -> bool:
     if not directory.exists():
         return False
     old_path = env.get("PATH", "")
-    env["PATH"] = str(directory) if not old_path else str(directory) + os.pathsep + old_path
+    entries = old_path.split(os.pathsep) if old_path else []
+    if str(directory) in entries:
+        # ffprobe 和 ffmpeg 常在同一目录；重复前置会把 PATH 越叠越长。
+        return False
+    env["PATH"] = str(directory) + (os.pathsep + old_path if old_path else "")
     return True
 
 
