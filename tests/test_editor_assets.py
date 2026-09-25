@@ -97,6 +97,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor-timeline.js",
                 "editor-speaker-labels.js",
                 "editor.js",
+                "editor-startup.js",
                 "editor-onboarding.js",
             ),
         )
@@ -184,6 +185,7 @@ class EditorAssetContractTests(unittest.TestCase):
             "editor-text-cleanup.js": "(function initMaweTextCleanup(global) {",
             "editor-waveform-init.js": "(function initMaweWaveformInit(global) {",
             "editor.js": "'[MAWE][boot] AsrEditorUtils is unavailable; editor scripts are incomplete or out of order'",
+            "editor-startup.js": "// === 启动 ===",
             "editor-onboarding.js": "const helpOnboardingButton = document.getElementById('help-onboarding');",
         }
         previous_index = -1

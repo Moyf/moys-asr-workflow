@@ -80,4 +80,5 @@ editor-cue-list-anchor.js
 editor-timeline.js
 editor-speaker-labels.js
 editor.js
+editor-startup.js
 editor-onboarding.js
