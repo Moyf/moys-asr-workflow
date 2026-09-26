@@ -2,6 +2,12 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
+## [Unreleased]
+
+### 🐛 修复
+
+- 修复 macOS 英文编辑器帮助中部分 Cmd 鼠标操作仍显示中文的问题。
+
 ## [1.7.0] - 2026-09-24
 
 ### 🚀 全新特性

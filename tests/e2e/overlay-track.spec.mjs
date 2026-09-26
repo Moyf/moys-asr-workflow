@@ -82,9 +82,9 @@ test('edits an independent overlay track, restores it through history, and expor
   await page.locator('#cue-panel-target').click();
   await expect(overlayCue).toContainText('overlay edited');
 
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(overlayCue).toContainText('overlay cue');
-  await page.keyboard.press('Control+Shift+z');
+  await page.keyboard.press('ControlOrMeta+Shift+z');
   await expect(overlayCue).toContainText('overlay edited');
 
   await page.locator('#download-json').click();
@@ -149,10 +149,10 @@ test('converts a selected main cue to overlay from the context menu with undo', 
   expect(exported.overlay_track.segments[0]).toMatchObject({ id: 'main-001', text: 'first cue' });
 
   // 撤销恢复主轨两条、叠加轨清空；重做再次转换。
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('.cue[data-idx="1"]')).toHaveCount(1);
   await expect(page.locator('.overlay-track-cue')).toHaveCount(0);
-  await page.keyboard.press('Control+Shift+z');
+  await page.keyboard.press('ControlOrMeta+Shift+z');
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toContainText('first cue');
 });
 
@@ -1110,13 +1110,13 @@ test('Ctrl+drag over an occupied main cue creates an overlay subtitle', async ({
       blankEndX: timeToX(4900),
     };
   });
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(rowGeometry.occupiedStartX, rowGeometry.nearTopY);
   await page.mouse.down();
   await page.mouse.move(rowGeometry.occupiedEndX, rowGeometry.nearTopY, { steps: 12 });
   await expect(page.locator('.waveform-cue-block.waveform-create-preview.waveform-overlay-block')).toBeVisible();
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
 
   await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).toHaveCount(2);
   // 新建叠加字幕（空文本）在列表中按搜索规则隐藏，选中态看波形块与面板。
@@ -1127,12 +1127,12 @@ test('Ctrl+drag over an occupied main cue creates an overlay subtitle', async ({
   expect(afterCreate.overlay_track.segments[1]).toMatchObject({ start: 2600, end: 3800 });
 
   // 空白处的 Ctrl+拖动保持原语义：仍创建主字幕。
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(rowGeometry.blankStartX, rowGeometry.nearTopY);
   await page.mouse.down();
   await page.mouse.move(rowGeometry.blankEndX, rowGeometry.nearTopY, { steps: 8 });
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
   await expect.poll(() => page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).segments.length)).toBe(3);
 });
 
@@ -1154,9 +1154,9 @@ test('Ctrl+drag on a main cue block creates an overlay subtitle; Ctrl+click keep
 
   // Ctrl+点击（无位移）仍是多选，不创建字幕。
   const firstBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await firstBlock.click();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
   await expect(firstBlock).toHaveClass(/selected|active/);
   await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).toHaveCount(1);
 
@@ -1172,12 +1172,12 @@ test('Ctrl+drag on a main cue block creates an overlay subtitle; Ctrl+click keep
   const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]');
   const box = await block.boundingBox();
   const centerY = box.y + box.height / 2;
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(box.x + box.width / 2, centerY);
   await page.mouse.down();
   await page.mouse.move(rowGeometry.blockEndX, centerY, { steps: 12 });
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
 
   await expect(page.locator('.waveform-cue-block.waveform-overlay-block')).toHaveCount(2);
   await expect(page.locator('.waveform-cue-block.waveform-overlay-block[data-overlay-idx="1"]')).toHaveClass(/selected/);
