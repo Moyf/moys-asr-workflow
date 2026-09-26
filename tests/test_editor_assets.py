@@ -22,8 +22,61 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/boot/editor-boot.js",
                 "editor/boot/editor-runtime.js",
                 "shared/gap-remove-core.js",
+                "shared/utils/data.js",
+                "shared/utils/fonts.js",
+                "shared/utils/speakers.js",
+                "shared/utils/media-metadata.js",
+                "shared/utils/navigation.js",
+                "shared/utils/text-processing.js",
+                "shared/utils/timed-text-core.js",
+                "shared/utils/timed-text-plans.js",
+                "shared/utils/timed-text-edit.js",
+                "shared/utils/text-metrics.js",
+                "shared/utils/segment-timing.js",
+                "shared/utils/split-alignment.js",
+                "shared/utils/split-trim.js",
+                "shared/utils/timeline.js",
+                "shared/utils/settings.js",
+                "shared/utils/gap-remove.js",
+                "shared/utils/history.js",
+                "shared/utils/multi-subtitle.js",
+                "shared/utils/word-split.js",
+                "shared/utils/srt.js",
+                "shared/utils/ass-style.js",
+                "shared/utils/ass-animation.js",
+                "shared/utils/ass-export.js",
+                "shared/utils/export-plan.js",
+                "shared/utils/fcp7.js",
+                "shared/utils/export-workflow.js",
+                "shared/utils/platform.js",
+                "shared/utils/preview-geometry.js",
+                "shared/utils/lottie.js",
+                "shared/utils/ograf.js",
                 "shared/editor-utils.js",
                 "shared/editor-i18n.js",
+                "editor/media/waveform/constants.js",
+                "editor/media/waveform/labels.js",
+                "editor/media/waveform/scale.js",
+                "editor/media/waveform/layout.js",
+                "editor/media/waveform/settings.js",
+                "editor/media/waveform/payload.js",
+                "editor/media/waveform/colors.js",
+                "editor/media/waveform/timing.js",
+                "editor/media/waveform/visibility.js",
+                "editor/media/waveform/controls.js",
+                "editor/media/waveform/pointer.js",
+                "editor/media/waveform/workspace.js",
+                "editor/media/waveform/scale-controls.js",
+                "editor/media/waveform/media.js",
+                "editor/media/waveform/render.js",
+                "editor/media/waveform/cue-blocks.js",
+                "editor/media/waveform/canvas.js",
+                "editor/media/waveform/input.js",
+                "editor/media/waveform/cue-drag.js",
+                "editor/media/waveform/cue-commands.js",
+                "editor/media/waveform/gap-drag.js",
+                "editor/media/waveform/cue-drag-update.js",
+                "editor/media/waveform/playback.js",
                 "editor/media/waveform.js",
                 "editor/ui/editor-hint.js",
                 "editor/media/editor-jkl.js",
@@ -147,7 +200,7 @@ class EditorAssetContractTests(unittest.TestCase):
             previous_end = current_index + len(source)
 
     def test_waveform_gap_display_type_uses_shared_core_and_subtle_protected_style(self) -> None:
-        waveform = edit.read_web_asset("editor/media/waveform.js")
+        waveform = edit.build_editor_scripts()
         styles = edit.read_web_asset("waveform.css")
         self.assertIn("getGapRemoveDisplayType", waveform)
         self.assertIn("isGapRemoveDisplayProtected", waveform)
@@ -157,7 +210,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("this.options.getGapRemoveGaps?.() || []", waveform)
 
     def test_gap_state_labels_match_in_mawe_and_align(self) -> None:
-        waveform = edit.read_web_asset("editor/media/waveform.js")
+        waveform = edit.build_editor_scripts()
         align_page = (ROOT / "server-align" / "index.html").read_text(encoding="utf-8")
         label = "gap.removed === false ? '空隙（未激活）' : '空隙'"
         self.assertIn(label, waveform)

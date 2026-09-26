@@ -317,7 +317,7 @@ class EditorAssetTests(unittest.TestCase):
         core_state = (ROOT / "web" / "editor/state/editor-core-state.js").read_text(encoding="utf-8")
         media_load = (ROOT / "web" / "editor/media/editor-media-load.js").read_text(encoding="utf-8")
         waveform_init = (ROOT / "web" / "editor/media/editor-waveform-init.js").read_text(encoding="utf-8")
-        waveform = (ROOT / "web" / "editor/media/waveform.js").read_text(encoding="utf-8")
+        waveform = edit.build_editor_scripts()
         self.assertIn("let waveformLoadedFromProject = false;", core_state)
         self.assertIn(
             "MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform",
@@ -332,7 +332,7 @@ class EditorAssetTests(unittest.TestCase):
         settings = (ROOT / "web" / "editor/state/editor-settings.js").read_text(encoding="utf-8")
         waveform_init = (ROOT / "web" / "editor/media/editor-waveform-init.js").read_text(encoding="utf-8")
         template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
-        waveform = (ROOT / "web" / "editor/media/waveform.js").read_text(encoding="utf-8")
+        waveform = edit.build_editor_scripts()
         self.assertIn("waveShapeSource: 'reapeaks'", settings)
         self.assertIn("getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource", waveform_init)
         self.assertIn("getWaveShapeSource?.() || 'reapeaks'", waveform)
@@ -353,7 +353,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn("peaks: this.peaks", detection)
 
     def test_long_media_waveform_hint_points_to_maw_gui(self) -> None:
-        waveform = (ROOT / "web" / "editor/media/waveform.js").read_text(encoding="utf-8")
+        waveform = edit.build_editor_scripts()
         self.assertIn("请使用 MAW GUI 预生成波形", waveform)
         self.assertIn("use the MAW GUI to pre-generate the waveform", waveform)
         self.assertNotIn("请用 edit.py 预生成波形", waveform)
@@ -1313,7 +1313,7 @@ class EditorAssetTests(unittest.TestCase):
     def test_all_boundary_handles_use_system_cursor_and_seam_keeps_svg_cursor(self) -> None:
         # 左右手柄在两种模式下都使用系统左右箭头；中缝保留专属 SVG 光标。
         styles = (ROOT / "web" / "waveform.css").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "editor/media/waveform.js").read_text(encoding="utf-8")
+        script = edit.build_editor_scripts()
         handles_start = styles.index(".waveform-cue-handle {")
         handles_end = styles.index(".waveform-cue-handle.left {", handles_start)
         self.assertIn("cursor: ew-resize;", styles[handles_start:handles_end])

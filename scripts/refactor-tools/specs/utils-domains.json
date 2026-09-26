@@ -1,0 +1,880 @@
+{
+  "base": "28f33e2",
+  "source": "shared/editor-utils.js",
+  "modules": [
+    {
+      "name": "data",
+      "ranges": [
+        [
+          23,
+          28
+        ],
+        [
+          2050,
+          2055
+        ],
+        [
+          2798,
+          2800
+        ],
+        [
+          3112,
+          3115
+        ],
+        [
+          3362,
+          3414
+        ],
+        [
+          3569,
+          3573
+        ],
+        [
+          4031,
+          4040
+        ],
+        [
+          4275,
+          4278
+        ]
+      ],
+      "names": [
+        "PROJECT_SCHEMA",
+        "clampInteger",
+        "cloneJsonValue",
+        "countTextUnits",
+        "detectSubtitleSplitMode",
+        "effectiveColorName",
+        "ensureStableSegmentIds",
+        "stableId",
+        "supportsProjectSchema",
+        "uniqueStableSegmentId"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "fonts",
+      "ranges": [
+        [
+          6,
+          22
+        ],
+        [
+          30,
+          106
+        ]
+      ],
+      "names": [
+        "SUBTITLE_FONT_FAMILY_PRESETS",
+        "filterFontFamilyOptions",
+        "mergeFontFamilyOptions",
+        "subtitleFontFamilyDisplayName",
+        "subtitleFontFamilyInputToStored",
+        "subtitleFontFamilyStoredToInput"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "speakers",
+      "ranges": [
+        [
+          108,
+          179
+        ]
+      ],
+      "names": [
+        "DEFAULT_SPEAKER_LABELS",
+        "DEFAULT_SPEAKER_LABEL_SEPARATOR",
+        "SPEAKER_LABEL_COLORS",
+        "SPEAKER_LABEL_MAX_LENGTH",
+        "SPEAKER_LABEL_SEPARATOR_MAX_LENGTH",
+        "formatSpeakerLabelledText",
+        "normalizeSpeakerLabel",
+        "normalizeSpeakerLabelSeparator",
+        "normalizeSpeakerLabelSettings",
+        "normalizeSpeakerLabels",
+        "speakerLabelForSegment"
+      ],
+      "dependencies": [
+        "effectiveColorName"
+      ]
+    },
+    {
+      "name": "media-metadata",
+      "ranges": [
+        [
+          185,
+          268
+        ]
+      ],
+      "names": [
+        "decodeSubtitleText",
+        "parseBwfTimeReference",
+        "readBwfTimeReferenceFromFile"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "navigation",
+      "ranges": [
+        [
+          270,
+          299
+        ],
+        [
+          2734,
+          2796
+        ],
+        [
+          3229,
+          3231
+        ]
+      ],
+      "names": [
+        "findAdjacentCueIndex",
+        "findCueNavigationTarget",
+        "findCueSelectionExtensionTarget",
+        "normalizeKeyboardOperationReferenceMode",
+        "resolveKeyboardOperationReference"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "text-processing",
+      "ranges": [
+        [
+          301,
+          393
+        ]
+      ],
+      "names": [
+        "applyTextProcessing",
+        "buildReplacementPreview",
+        "buildTextProcessingPreview"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "timed-text-core",
+      "ranges": [
+        [
+          395,
+          777
+        ],
+        [
+          1258,
+          1264
+        ],
+        [
+          1310,
+          1406
+        ]
+      ],
+      "names": [
+        "buildTimedTextDiff",
+        "hasTimedTextContent",
+        "isTimedTextNeutralToken",
+        "normalizeTimedTextNeutralItems",
+        "sameTimedTextTokens",
+        "timedTextDiffOpcodes",
+        "timedTextItemCoverage",
+        "timedTextItemLayout",
+        "timedTextItemReuse",
+        "timedTextItemsOrdered",
+        "timedTextItemsPartition",
+        "timedTextItemsSlice",
+        "timedTextNeutralInsertionItems",
+        "timedTextTokens"
+      ],
+      "dependencies": [
+        "cloneJsonValue"
+      ]
+    },
+    {
+      "name": "timed-text-plans",
+      "ranges": [
+        [
+          779,
+          1256
+        ],
+        [
+          1266,
+          1308
+        ],
+        [
+          1408,
+          1531
+        ]
+      ],
+      "names": [
+        "buildTimedTextBoundaryPlan",
+        "buildTimedTextStructurePlan",
+        "timedTextStructureRequested"
+      ],
+      "dependencies": [
+        "cloneJsonValue",
+        "countTextUnits",
+        "hasTimedTextContent",
+        "isTimedTextNeutralToken",
+        "sameTimedTextTokens",
+        "timedTextItemLayout",
+        "timedTextItemsOrdered",
+        "timedTextItemsPartition",
+        "timedTextItemsSlice",
+        "timedTextNeutralInsertionItems",
+        "timedTextTokens",
+        "uniqueStableSegmentId"
+      ]
+    },
+    {
+      "name": "timed-text-edit",
+      "ranges": [
+        [
+          1533,
+          2048
+        ]
+      ],
+      "names": [
+        "applyTimedTextEdit",
+        "buildTimedTextEditReport",
+        "timedTextEditDirtyFlags"
+      ],
+      "dependencies": [
+        "buildTimedTextBoundaryPlan",
+        "buildTimedTextDiff",
+        "buildTimedTextStructurePlan",
+        "cloneJsonValue",
+        "timedTextDiffOpcodes",
+        "timedTextItemCoverage",
+        "timedTextItemLayout",
+        "timedTextItemReuse",
+        "timedTextItemsSlice",
+        "timedTextNeutralInsertionItems",
+        "timedTextStructureRequested",
+        "timedTextTokens"
+      ]
+    },
+    {
+      "name": "text-metrics",
+      "ranges": [
+        [
+          2057,
+          2092
+        ]
+      ],
+      "names": [
+        "countSubtitleUnits",
+        "cueMetrics",
+        "isShortSubtitleText",
+        "joinSegmentTexts",
+        "subtitleTextLength"
+      ],
+      "dependencies": [
+        "countTextUnits",
+        "detectSubtitleSplitMode"
+      ]
+    },
+    {
+      "name": "segment-timing",
+      "ranges": [
+        [
+          2098,
+          2496
+        ]
+      ],
+      "names": [
+        "applyAutoMergeSnaps",
+        "applySubtitleExtension",
+        "formatGapRemoveDuration",
+        "formatHumanDuration",
+        "normalizeFrameItemTimingRanges",
+        "normalizeItemTimingRanges",
+        "normalizeSegmentTimings",
+        "planAutoMerge",
+        "planSubtitleExtension",
+        "repairSegmentOverlap"
+      ],
+      "dependencies": [
+        "isShortSubtitleText",
+        "normalizeTimedTextNeutralItems"
+      ]
+    },
+    {
+      "name": "split-alignment",
+      "ranges": [
+        [
+          2498,
+          2732
+        ]
+      ],
+      "names": [
+        "alignItemsToText",
+        "hasUsableSplitTimestamps",
+        "placeUnalignedSplitItems",
+        "splitAlignmentDriftMs",
+        "splitCharOffsetAtTime"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "split-trim",
+      "ranges": [
+        [
+          2807,
+          2871
+        ],
+        [
+          3671,
+          3679
+        ]
+      ],
+      "names": [
+        "DEFAULT_EXTRA_SPLIT_TRIM_SYMBOLS",
+        "DEFAULT_SPLIT_TRIM_SYMBOLS",
+        "SPLIT_TRIM_PRIMARY_SYMBOLS",
+        "applySplitEdgeTrim",
+        "cleanSplitTextParts",
+        "escapeSplitTrimPatternSource",
+        "normalizeSplitTrimSymbols",
+        "parseSplitTrimSymbolInput",
+        "setSplitTrimSymbols"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "timeline",
+      "ranges": [
+        [
+          2875,
+          3037
+        ]
+      ],
+      "names": [
+        "DEFAULT_TIMELINE_FPS",
+        "DEFAULT_TIMELINE_TIMECODE_SEPARATOR",
+        "MAX_TIMELINE_FPS",
+        "MIN_TIMELINE_FPS",
+        "TIMELINE_TIMEBASE_UNITS",
+        "clampTimelineFrameStep",
+        "formatFrameTimecode",
+        "formatTimelineTimecode",
+        "frameNumberFromMilliseconds",
+        "millisecondsFromFrameNumber",
+        "normalizeMediaMetadata",
+        "normalizeTimelineFps",
+        "normalizeTimelineTimebase",
+        "normalizeTimelineTimecodeSeparator",
+        "parseFrameTimecode"
+      ],
+      "dependencies": [
+        "clampInteger",
+        "escapeSplitTrimPatternSource"
+      ]
+    },
+    {
+      "name": "settings",
+      "ranges": [
+        [
+          2802,
+          2802
+        ],
+        [
+          3039,
+          3110
+        ],
+        [
+          3117,
+          3228
+        ],
+        [
+          3232,
+          3242
+        ]
+      ],
+      "names": [
+        "DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR",
+        "DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE",
+        "EDITOR_ACCENT_COLOR_VALUES",
+        "EDITOR_SUBTITLE_COLOR_NAMES",
+        "clampAutoMergeGapMs",
+        "clampAutoMergeShortCount",
+        "clampAutoSaveInterval",
+        "clampCharcountThreshold",
+        "clampCueMoveStepMs",
+        "clampMediaSeekStepMs",
+        "clampNinjaSlashLength",
+        "clampNinjaSlashRotateAmplitude",
+        "normalizeClickBehavior",
+        "normalizeClickTarget",
+        "normalizeEditorAccentColor",
+        "normalizeEditorAccentCustomColor",
+        "normalizeEditorSettings",
+        "normalizeJklPlaybackMode",
+        "normalizeMultiSubtitleRowHeight",
+        "normalizeSubtitleColorPalette"
+      ],
+      "dependencies": [
+        "DEFAULT_SPLIT_TRIM_SYMBOLS",
+        "DEFAULT_TIMELINE_TIMECODE_SEPARATOR",
+        "clampInteger",
+        "clampTimelineFrameStep",
+        "normalizeSplitTrimSymbols",
+        "normalizeTimelineTimecodeSeparator"
+      ]
+    },
+    {
+      "name": "gap-remove",
+      "ranges": [
+        [
+          3244,
+          3327
+        ]
+      ],
+      "names": [
+        "GAP_REMOVE_DISABLE_COVERAGE_DEFAULT",
+        "GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS",
+        "GAP_REMOVE_DISABLE_REMAINING_MAX_MS",
+        "appendGapRemoveManualOverrides",
+        "applyGapRemoveRange",
+        "buildGapRemovedDynamicSegments",
+        "buildGapRemovedIntervals",
+        "clampGapRemoveDisableCoverage",
+        "clampGapRemoveDisableRemaining",
+        "copyGapRemoveRange",
+        "decorateGapRemoveGaps",
+        "detectAudioGapRemoveGaps",
+        "findGapRemoveDisableMatches",
+        "gapRangesFromProvenance",
+        "getGapRemoveDisplayGaps",
+        "getGapRemoveDisplayType",
+        "getRemovedGapRanges",
+        "isGapRemoveDisplayProtected",
+        "mapGapRemovedTime",
+        "moveGapRemoveProvenance",
+        "moveGapRemoveRange",
+        "normalizeGapRemoveData",
+        "normalizeGapRemoveGaps",
+        "normalizeGapRemoveProvenance",
+        "removeGapRemoveProvenanceRange",
+        "replaceGapRemoveProvenanceSource",
+        "resizeGapRemoveBoundary",
+        "resolveGapFillRange",
+        "shrinkGapRemoveGaps"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "history",
+      "ranges": [
+        [
+          3329,
+          3352
+        ],
+        [
+          6721,
+          6754
+        ]
+      ],
+      "names": [
+        "buildHistoryRecord",
+        "buildSegmentsHistorySnapshot",
+        "createHistoryStack"
+      ],
+      "dependencies": [
+        "cloneJsonValue"
+      ]
+    },
+    {
+      "name": "multi-subtitle",
+      "ranges": [
+        [
+          3357,
+          3360
+        ],
+        [
+          3416,
+          3567
+        ],
+        [
+          3705,
+          4015
+        ]
+      ],
+      "names": [
+        "MULTI_SUBTITLE_DISPLAY_MODES",
+        "MULTI_SUBTITLE_SCHEMA",
+        "MULTI_SUBTITLE_SPLIT_MODES",
+        "MULTI_SUBTITLE_TOLERANCE_MS",
+        "bindingForSegment",
+        "buildMultiDisplayRows",
+        "buildSubtitleBinding",
+        "matchSubtitleSegments",
+        "mergeMainAndOverlaySegments",
+        "moveSegmentBetweenTracks",
+        "normalizeMultiSubtitle",
+        "normalizeMultiSubtitleProject",
+        "normalizeOverlayTrack",
+        "rebuildBindingOffsets",
+        "removeSubtitleBindings",
+        "resolveMergedGroupInheritance",
+        "swapMainAndExtensionSubtitle"
+      ],
+      "dependencies": [
+        "cloneJsonValue",
+        "detectSubtitleSplitMode",
+        "ensureStableSegmentIds",
+        "stableId"
+      ]
+    },
+    {
+      "name": "word-split",
+      "ranges": [
+        [
+          3577,
+          3669
+        ],
+        [
+          3681,
+          3703
+        ]
+      ],
+      "names": [
+        "isWordSplitConnector",
+        "nearestSubtitleSplitOffset",
+        "splitSubtitleText",
+        "subtitleSplitOffsets"
+      ],
+      "dependencies": [
+        "cleanSplitTextParts"
+      ]
+    },
+    {
+      "name": "srt",
+      "ranges": [
+        [
+          4017,
+          4029
+        ],
+        [
+          4044,
+          4164
+        ],
+        [
+          5162,
+          5171
+        ]
+      ],
+      "names": [
+        "buildPlainTextPayload",
+        "buildSrtPayload",
+        "fileBasename",
+        "getSrtExportFirstIndex",
+        "getSrtExportOffset",
+        "repairGroupReferenceIndices",
+        "shiftGroupReferenceIndices",
+        "shiftSelectionAfterRemoval"
+      ],
+      "dependencies": [
+        "DEFAULT_SPEAKER_LABEL_SEPARATOR",
+        "effectiveColorName",
+        "formatSpeakerLabelledText",
+        "normalizeSpeakerLabelSeparator",
+        "normalizeSpeakerLabels"
+      ]
+    },
+    {
+      "name": "ass-style",
+      "ranges": [
+        [
+          4168,
+          4273
+        ],
+        [
+          4280,
+          4544
+        ],
+        [
+          4571,
+          4647
+        ],
+        [
+          4714,
+          4802
+        ]
+      ],
+      "names": [
+        "ASS_COLOR_STYLE_NAMES",
+        "ASS_DEFAULT_ANIMATIONS",
+        "ASS_DEFAULT_ASS_STYLE",
+        "ASS_DEFAULT_COLOR",
+        "ASS_DEFAULT_EXTENSION_STYLE",
+        "ASS_DEFAULT_PLAY_RES_X",
+        "ASS_DEFAULT_PLAY_RES_Y",
+        "ASS_DEFAULT_PROFILE",
+        "ASS_DEFAULT_STYLE",
+        "ASS_EVENT_FORMAT",
+        "ASS_FALLBACK_COLOR_PALETTE",
+        "ASS_REFERENCE_PLAY_RES_Y",
+        "ASS_STYLE_FORMAT",
+        "ASS_STYLE_LIBRARY_SCHEMA",
+        "assColorFromHex",
+        "assDefaultFontFamily",
+        "assOverrideColorFromHex",
+        "assPreviewStyleAt",
+        "assProfileForId",
+        "assStyleForId",
+        "assStyleLine",
+        "assTransformStyleTargets",
+        "defaultAssStyleLibrary",
+        "escapeAssText",
+        "formatAssTime",
+        "normalizeAssAnimations",
+        "normalizeAssColorStyle",
+        "normalizeAssFontFamily",
+        "normalizeAssFontSize",
+        "normalizeAssLibraryColor",
+        "normalizeAssPlayResolution",
+        "normalizeAssProfile",
+        "normalizeAssStyle",
+        "normalizeAssStyleLibrary",
+        "normalizeAssTimeMs",
+        "resolveAssFontSize"
+      ],
+      "dependencies": [
+        "cloneJsonValue"
+      ]
+    },
+    {
+      "name": "ass-animation",
+      "ranges": [
+        [
+          4546,
+          4569
+        ],
+        [
+          4649,
+          4712
+        ]
+      ],
+      "names": [
+        "assAnimationOverrideTags",
+        "assPreviewAnimationState"
+      ],
+      "dependencies": [
+        "ASS_DEFAULT_PLAY_RES_X",
+        "ASS_DEFAULT_PLAY_RES_Y",
+        "normalizeAssAnimations"
+      ]
+    },
+    {
+      "name": "ass-export",
+      "ranges": [
+        [
+          4804,
+          5160
+        ]
+      ],
+      "names": [
+        "assStyleVariant",
+        "buildAssPayload",
+        "normalizeAssHeaderValue"
+      ],
+      "dependencies": [
+        "ASS_COLOR_STYLE_NAMES",
+        "ASS_DEFAULT_ASS_STYLE",
+        "ASS_DEFAULT_COLOR",
+        "ASS_DEFAULT_EXTENSION_STYLE",
+        "ASS_EVENT_FORMAT",
+        "ASS_FALLBACK_COLOR_PALETTE",
+        "ASS_REFERENCE_PLAY_RES_Y",
+        "ASS_STYLE_FORMAT",
+        "DEFAULT_SPEAKER_LABEL_SEPARATOR",
+        "assAnimationOverrideTags",
+        "assColorFromHex",
+        "assOverrideColorFromHex",
+        "assStyleLine",
+        "effectiveColorName",
+        "escapeAssText",
+        "formatAssTime",
+        "formatSpeakerLabelledText",
+        "getSrtExportFirstIndex",
+        "normalizeAssColorStyle",
+        "normalizeAssFontFamily",
+        "normalizeAssFontSize",
+        "normalizeAssLibraryColor",
+        "normalizeAssPlayResolution",
+        "normalizeAssProfile",
+        "normalizeAssStyle",
+        "normalizeAssTimeMs",
+        "normalizeSpeakerLabelSeparator",
+        "normalizeSpeakerLabels",
+        "resolveAssFontSize",
+        "speakerLabelForSegment"
+      ]
+    },
+    {
+      "name": "export-plan",
+      "ranges": [
+        [
+          5173,
+          5598
+        ],
+        [
+          5704,
+          5715
+        ]
+      ],
+      "names": [
+        "EXPORT_FRAME_PROFILES",
+        "EXPORT_SUBTITLE_TRACKS",
+        "assertExportPlan",
+        "buildExportNames",
+        "buildProjectExportPlan",
+        "escapeExportXml",
+        "exportMsToFrames",
+        "exportPathToFileUrl",
+        "exportPlanFrame",
+        "exportPolicyMsToFrames",
+        "exportVideoSize",
+        "freezeExportValue",
+        "mapExportTime",
+        "normalizeExportOptions",
+        "resolveExportFrameProfile",
+        "sanitizeExportName",
+        "selectedSubtitleTracks",
+        "serializeMappedSrt"
+      ],
+      "dependencies": [
+        "assDefaultFontFamily",
+        "buildGapRemovedIntervals",
+        "mapGapRemovedTime"
+      ]
+    },
+    {
+      "name": "fcp7",
+      "ranges": [
+        [
+          5602,
+          5702
+        ],
+        [
+          5719,
+          5931
+        ]
+      ],
+      "names": [
+        "buildFcp7ExportArtifacts",
+        "serializeFcp7Xml"
+      ],
+      "dependencies": [
+        "EXPORT_SUBTITLE_TRACKS",
+        "assertExportPlan",
+        "buildExportNames",
+        "escapeExportXml",
+        "exportPathToFileUrl",
+        "exportPlanFrame",
+        "fileBasename",
+        "freezeExportValue",
+        "normalizeExportOptions",
+        "selectedSubtitleTracks",
+        "serializeMappedSrt"
+      ]
+    },
+    {
+      "name": "export-workflow",
+      "ranges": [
+        [
+          5933,
+          5971
+        ]
+      ],
+      "names": [
+        "buildFfconcat",
+        "saveSequentialExportArtifacts"
+      ],
+      "dependencies": [
+        "freezeExportValue"
+      ]
+    },
+    {
+      "name": "platform",
+      "ranges": [
+        [
+          5974,
+          5988
+        ]
+      ],
+      "names": [
+        "configuredEnterAction",
+        "isMacPlatform"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "preview-geometry",
+      "ranges": [
+        [
+          5993,
+          6088
+        ]
+      ],
+      "names": [
+        "DEFAULT_PREVIEW_GEOMETRY",
+        "DEFAULT_STICKER_GEOMETRY",
+        "PREVIEW_MIN_HEIGHT",
+        "PREVIEW_MIN_WIDTH",
+        "applyPreviewGeometryDelta",
+        "clampPreviewGeometry",
+        "normalizePreviewGeometry",
+        "previewGeometryToCss"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "lottie",
+      "ranges": [
+        [
+          6094,
+          6343
+        ]
+      ],
+      "names": [
+        "LOTTIE_DEFAULT_HEIGHT",
+        "LOTTIE_DEFAULT_WIDTH",
+        "buildLottieAnimation",
+        "findLottieTextUnits",
+        "lottieTextUnits",
+        "normalizeLottieCanvasDimension",
+        "normalizeLottieFontFamily",
+        "normalizeLottieFps"
+      ],
+      "dependencies": [
+        "DEFAULT_PREVIEW_GEOMETRY",
+        "normalizePreviewGeometry"
+      ]
+    },
+    {
+      "name": "ograf",
+      "ranges": [
+        [
+          6349,
+          6713
+        ]
+      ],
+      "names": [
+        "buildOgrafGraphic"
+      ],
+      "dependencies": [
+        "DEFAULT_PREVIEW_GEOMETRY",
+        "LOTTIE_DEFAULT_HEIGHT",
+        "LOTTIE_DEFAULT_WIDTH",
+        "findLottieTextUnits",
+        "lottieTextUnits",
+        "normalizeLottieCanvasDimension",
+        "normalizeLottieFontFamily",
+        "normalizeLottieFps",
+        "normalizePreviewGeometry"
+      ]
+    }
+  ]
+}
