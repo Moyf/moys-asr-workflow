@@ -1376,36 +1376,37 @@
   }
   if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
   const oldMainId = main.id;
-  MaweHistory.pushUndo(duplicateText ? '拆分字幕并保留原文' : '拆分字幕', { captureView: true });
-  MaweSelection.clearSelection({ commitCuePanel: false });
-  MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], []);
-  MaweBoot.DATA.segments.splice(mainIndex, 1, pair.left, pair.right);
-  for (let index = mainIndex + 2; index < MaweBoot.DATA.segments.length; index++) {
-    const segment = MaweBoot.DATA.segments[index];
-    if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
-    if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
-  }
-  if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: mainIndex };
-  if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: mainIndex };
-  MaweMultiSubtitleCore.markMainSegmentsDirty([pair.left, pair.right]);
-  MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
-  closeLinkedSplitModal();
-  MaweCuePanel.renderAll();
-  MaweSelection.selectOnly(mainIndex + 1);
-  MaweSelection.lastClickedIdx = mainIndex + 1;
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  flashSplitFeedback({
-    index: mainIndex,
-    track: 'main',
-    splitMs,
-    feedbackPoint: null,
-    listFeedback: false,
-  });
+  return MaweCommands.run(duplicateText ? '拆分字幕并保留原文' : '拆分字幕', (command) => {
+    MaweSelection.clearSelection({ commitCuePanel: false });
+    MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], []);
+    MaweBoot.DATA.segments.splice(mainIndex, 1, pair.left, pair.right);
+    for (let index = mainIndex + 2; index < MaweBoot.DATA.segments.length; index++) {
+      const segment = MaweBoot.DATA.segments[index];
+      if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
+      if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
+    }
+    if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: mainIndex };
+    if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: mainIndex };
+    MaweMultiSubtitleCore.markMainSegmentsDirty([pair.left, pair.right]);
+    MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
+    closeLinkedSplitModal();
+    command.commit({ cueList: true });
+    MaweSelection.selectOnly(mainIndex + 1);
+    MaweSelection.lastClickedIdx = mainIndex + 1;
+    MaweViewUpdates.invalidate({ preview: 'update' });
+    flashSplitFeedback({
+      index: mainIndex,
+      track: 'main',
+      splitMs,
+      feedbackPoint: null,
+      listFeedback: false,
+    });
 
-  // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
-  MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'main'));
-  if (successMessage) MaweHint.flashHint(successMessage, 'success');
-  return true;
+    // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
+    MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'main'));
+    if (successMessage) MaweHint.flashHint(successMessage, 'success');
+    return true;
+  }, { captureView: true });
 }
 
 
@@ -1480,38 +1481,39 @@
 
   const oldExtensionId = extension.id;
   const wasBound = Boolean(MaweMultiSubtitleCore.bindingForExtensionIndex(extensionIndex, track));
-  MaweHistory.pushUndo('拆分副字幕', { captureView: true });
-  // 一对一绑定无法让一个主段同时指向拆出的两条副轨段；独立拆分后
-  // 保留两条副字幕，但解除旧关系，等待用户按需要重新绑定。
-  MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [oldExtensionId]);
-  track.segments.splice(extensionIndex, 1, pair.left, pair.right);
-  MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  MaweCueElements.rememberTemporaryVisibleSplitCues({
-    extensionSegments: [pair.left, pair.right],
-    extensionTrackId: track.id,
-  });
-  closeLinkedSplitModal();
-  MaweSelection.clearSelection({ commitCuePanel: false });
-  MaweCuePanel.renderAll();
-  MaweSelection.selectOnlyExtension(extensionIndex + 1);
-  MaweSelection.lastClickedExtensionIdx = extensionIndex + 1;
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  flashSplitFeedback({
-    index: extensionIndex,
-    track: 'extension',
-    splitMs,
-    feedbackPoint: null,
-    listFeedback: false,
-  });
-  // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
-  MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'extension'));
-  MaweHint.flashHint(
-    successMessage || (wasBound
-      ? '已独立拆分副字幕并解除原绑定'
-      : '已按选择的断点拆分副字幕'),
-    'success',
-  );
-  return true;
+  return MaweCommands.run('拆分副字幕', (command) => {
+    // 一对一绑定无法让一个主段同时指向拆出的两条副轨段；独立拆分后
+    // 保留两条副字幕，但解除旧关系，等待用户按需要重新绑定。
+    MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [oldExtensionId]);
+    track.segments.splice(extensionIndex, 1, pair.left, pair.right);
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+    MaweCueElements.rememberTemporaryVisibleSplitCues({
+      extensionSegments: [pair.left, pair.right],
+      extensionTrackId: track.id,
+    });
+    closeLinkedSplitModal();
+    MaweSelection.clearSelection({ commitCuePanel: false });
+    command.commit({ cueList: true });
+    MaweSelection.selectOnlyExtension(extensionIndex + 1);
+    MaweSelection.lastClickedExtensionIdx = extensionIndex + 1;
+    MaweViewUpdates.invalidate({ preview: 'update' });
+    flashSplitFeedback({
+      index: extensionIndex,
+      track: 'extension',
+      splitMs,
+      feedbackPoint: null,
+      listFeedback: false,
+    });
+    // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
+    MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'extension'));
+    MaweHint.flashHint(
+      successMessage || (wasBound
+        ? '已独立拆分副字幕并解除原绑定'
+        : '已按选择的断点拆分副字幕'),
+      'success',
+    );
+    return true;
+  }, { captureView: true });
 }
 
 
@@ -1615,59 +1617,60 @@
   }
   const oldMainId = main.id;
   const oldExtensionId = extension.id;
-  MaweHistory.pushUndo(duplicateText ? '联动拆分并保留原文' : '联动拆分字幕', { captureView: true });
-  MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], [oldExtensionId]);
-  MaweBoot.DATA.segments.splice(mainIndex, 1, mainPair.left, mainPair.right);
-  if (track) track.segments.splice(extensionIndex, 1, extensionPair.left, extensionPair.right);
-  // 主轨数组增加了一项，沿用原有表情包/颜色 headIdx 维护规则。
-  for (let index = mainIndex + 2; index < MaweBoot.DATA.segments.length; index++) {
-    const segment = MaweBoot.DATA.segments[index];
-    if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
-    if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
-  }
-  if (mainPair.left.sticker) mainPair.right.sticker_ref.headIdx = mainIndex;
-  if (mainPair.left.color) mainPair.right.color_ref.headIdx = mainIndex;
-  const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
-  multi.bindings.push(
-    MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.left, extensionPair.left, track.id),
-    MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.right, extensionPair.right, track.id),
-  );
-  multi.enabled = true;
-  MaweMultiSubtitleCore.markMainSegmentsDirty([mainPair.left, mainPair.right]);
-  MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  MaweCueElements.rememberTemporaryVisibleSplitCues({
-    mainSegments: [mainPair.left, mainPair.right],
-    extensionSegments: [extensionPair.left, extensionPair.right],
-    extensionTrackId: track.id,
-  });
-  closeLinkedSplitModal();
-  MaweSelection.clearSelection({ commitCuePanel: false });
-  MaweCuePanel.renderAll();
-  MaweSelection.selectOnly(mainIndex);
-  MaweSelection.lastClickedIdx = mainIndex;
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  flashSplitFeedback({
-    index: mainIndex,
-    track: 'main',
-    splitMs: sharedCutMs,
-    feedbackPoint: null,
-    listFeedback: false,
-  });
-  flashSplitFeedback({
-    index: extensionIndex,
-    track: 'extension',
-    splitMs: sharedCutMs,
-    feedbackPoint: null,
-    listFeedback: false,
-  });
-  // 联动拆分刀光位置由唤起来源决定：列表唤起留在列表，其余落在主轨波形切点。
-  MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, sharedCutMs, 'main'));
-  MaweHint.flashHint(
-    duplicateText
-      ? '已按同一绝对时间切点联动拆分，并保留两侧原文'
-      : '已按同一绝对时间切点联动拆分',
-    'success',
-  );
+  return MaweCommands.run(duplicateText ? '联动拆分并保留原文' : '联动拆分字幕', (command) => {
+    MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], [oldExtensionId]);
+    MaweBoot.DATA.segments.splice(mainIndex, 1, mainPair.left, mainPair.right);
+    if (track) track.segments.splice(extensionIndex, 1, extensionPair.left, extensionPair.right);
+    // 主轨数组增加了一项，沿用原有表情包/颜色 headIdx 维护规则。
+    for (let index = mainIndex + 2; index < MaweBoot.DATA.segments.length; index++) {
+      const segment = MaweBoot.DATA.segments[index];
+      if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
+      if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
+    }
+    if (mainPair.left.sticker) mainPair.right.sticker_ref.headIdx = mainIndex;
+    if (mainPair.left.color) mainPair.right.color_ref.headIdx = mainIndex;
+    const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+    multi.bindings.push(
+      MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.left, extensionPair.left, track.id),
+      MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.right, extensionPair.right, track.id),
+    );
+    multi.enabled = true;
+    MaweMultiSubtitleCore.markMainSegmentsDirty([mainPair.left, mainPair.right]);
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+    MaweCueElements.rememberTemporaryVisibleSplitCues({
+      mainSegments: [mainPair.left, mainPair.right],
+      extensionSegments: [extensionPair.left, extensionPair.right],
+      extensionTrackId: track.id,
+    });
+    closeLinkedSplitModal();
+    MaweSelection.clearSelection({ commitCuePanel: false });
+    command.commit({ cueList: true });
+    MaweSelection.selectOnly(mainIndex);
+    MaweSelection.lastClickedIdx = mainIndex;
+    MaweViewUpdates.invalidate({ preview: 'update' });
+    flashSplitFeedback({
+      index: mainIndex,
+      track: 'main',
+      splitMs: sharedCutMs,
+      feedbackPoint: null,
+      listFeedback: false,
+    });
+    flashSplitFeedback({
+      index: extensionIndex,
+      track: 'extension',
+      splitMs: sharedCutMs,
+      feedbackPoint: null,
+      listFeedback: false,
+    });
+    // 联动拆分刀光位置由唤起来源决定：列表唤起留在列表，其余落在主轨波形切点。
+    MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, sharedCutMs, 'main'));
+    MaweHint.flashHint(
+      duplicateText
+        ? '已按同一绝对时间切点联动拆分，并保留两侧原文'
+        : '已按同一绝对时间切点联动拆分',
+      'success',
+    );
+  }, { captureView: true });
 }
 
 
@@ -1843,43 +1846,44 @@
 
     // 拆分会改变 idx；先在任何写入前保存完整快照，再静默清选中，等列表
     // 和波形块覆盖层一次性更新后再选中后半段。这样撤销会恢复原 item 时间。
-    MaweHistory.pushUndo('拆分字幕', { captureView: true });
-    MaweSelection.clearSelection({ silent: true });
-    // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
-    // 只移除这条关系，保留隐藏的副字幕供用户重新绑定。
-    MaweMultiSubtitleCore.removeBindingsForSegmentIds([seg.id], []);
-    MaweBoot.DATA.segments.splice(idx, 1, leftSeg, rightSeg);
+    return MaweCommands.run('拆分字幕', (command) => {
+      MaweSelection.clearSelection({ silent: true });
+      // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
+      // 只移除这条关系，保留隐藏的副字幕供用户重新绑定。
+      MaweMultiSubtitleCore.removeBindingsForSegmentIds([seg.id], []);
+      MaweBoot.DATA.segments.splice(idx, 1, leftSeg, rightSeg);
 
-    // 修正所有 *_ref.headIdx：在 idx 之后的引用都右移 1
-    // 但 leftSeg 在 idx 位置仍是 head（如果它有 sticker/color），rightSeg 的 ref.headIdx=idx 正好对应 leftSeg
-    for (let i = idx + 2; i < MaweBoot.DATA.segments.length; i++) {
-      const sref = MaweBoot.DATA.segments[i].sticker_ref;
-      if (sref && sref.headIdx > idx) sref.headIdx += 1;
-      const cref = MaweBoot.DATA.segments[i].color_ref;
-      if (cref && cref.headIdx > idx) cref.headIdx += 1;
-    }
+      // 修正所有 *_ref.headIdx：在 idx 之后的引用都右移 1
+      // 但 leftSeg 在 idx 位置仍是 head（如果它有 sticker/color），rightSeg 的 ref.headIdx=idx 正好对应 leftSeg
+      for (let i = idx + 2; i < MaweBoot.DATA.segments.length; i++) {
+        const sref = MaweBoot.DATA.segments[i].sticker_ref;
+        if (sref && sref.headIdx > idx) sref.headIdx += 1;
+        const cref = MaweBoot.DATA.segments[i].color_ref;
+        if (cref && cref.headIdx > idx) cref.headIdx += 1;
+      }
 
-    MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
-    MaweCuePanel.renderAll({ cueListAnchor });
-    MaweSelection.selectOnly(idx + 1);
-    // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
-    MaweSelection.lastClickedIdx = idx + 1;
-    // 列表来源（B 键悬停等）沿用列表光标坐标；编辑区 Ctrl+Enter 等其余来源
-    // 统一回退到波形区实际切点位置，波形上找不到时才用编辑区文字坐标。
-    MaweNinja.triggerNinjaSplitFeedback(
-      (listFeedback ? (feedbackPoint || ninjaFeedbackPoint) : null)
-        || MaweCoreState.waveformEditor?.getSplitPointAtTime?.(splitMs, 'main')
-        || ninjaFeedbackPoint,
-    );
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
-    flashSplitFeedback({
-      index: idx,
-      track: 'main',
-      splitMs,
-      feedbackPoint: listFeedback ? (feedbackPoint || ninjaFeedbackPoint) : null,
-      listFeedback,
-    });
-    return true;
+      MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
+      command.commit({ cueList: true, cueListAnchor });
+      MaweSelection.selectOnly(idx + 1);
+      // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
+      MaweSelection.lastClickedIdx = idx + 1;
+      // 列表来源（B 键悬停等）沿用列表光标坐标；编辑区 Ctrl+Enter 等其余来源
+      // 统一回退到波形区实际切点位置，波形上找不到时才用编辑区文字坐标。
+      MaweNinja.triggerNinjaSplitFeedback(
+        (listFeedback ? (feedbackPoint || ninjaFeedbackPoint) : null)
+          || MaweCoreState.waveformEditor?.getSplitPointAtTime?.(splitMs, 'main')
+          || ninjaFeedbackPoint,
+      );
+      MaweViewUpdates.invalidate({ preview: 'update' });
+      flashSplitFeedback({
+        index: idx,
+        track: 'main',
+        splitMs,
+        feedbackPoint: listFeedback ? (feedbackPoint || ninjaFeedbackPoint) : null,
+        listFeedback,
+      });
+      return true;
+    }, { captureView: true });
   }
 
 

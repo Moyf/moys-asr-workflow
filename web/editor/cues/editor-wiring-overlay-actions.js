@@ -88,13 +88,14 @@ function detachColorFromGroup(idx) {
     start: segment.start,
     end: segment.end,
   };
-  MaweHistory.pushUndo('从颜色组中脱离');
-  MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
-  segment.color = detachedColor;
-  segment.color_ref = null;
-  MaweColorFilter.refreshColorAssignmentUi();
-  MaweHint.flashHint('已从颜色组中脱离', 'success');
-  return true;
+  return MaweCommands.run('从颜色组中脱离', () => {
+    MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
+    segment.color = detachedColor;
+    segment.color_ref = null;
+    MaweColorFilter.refreshColorAssignmentUi();
+    MaweHint.flashHint('已从颜色组中脱离', 'success');
+    return true;
+  });
 }
 
 
@@ -108,19 +109,20 @@ function assignOverlayColor(idxs, colorName) {
   if (!overlay || !def) return;
   const targets = [...new Set(idxs)].filter((index) => Number.isInteger(index) && overlay.segments[index]);
   if (!targets.length) return;
-  MaweHistory.pushUndo('标记颜色');
-  targets.forEach((index) => {
-    const segment = overlay.segments[index];
-    segment.color = { name: colorName, value: def.value, start: segment.start, end: segment.end };
-    segment.color_ref = null;
-    segment._dirty = true;
+  return MaweCommands.run('标记颜色', () => {
+    targets.forEach((index) => {
+      const segment = overlay.segments[index];
+      segment.color = { name: colorName, value: def.value, start: segment.start, end: segment.end };
+      segment.color_ref = null;
+      segment._dirty = true;
+    });
+    overlay._dirty = true;
+    MaweColorFilter.refreshColorAssignmentUi();
+
+    MaweHint.flashHint(targets.length === 1
+      ? `已将字幕设为「${def.label}色」`
+      : `已将 ${targets.length} 条字幕设为「${def.label}色」`, 'success');
   });
-  overlay._dirty = true;
-  MaweColorFilter.refreshColorAssignmentUi();
-  MaweServerSave.scheduleAutoSaveFlush();
-  MaweHint.flashHint(targets.length === 1
-    ? `已将字幕设为「${def.label}色」`
-    : `已将 ${targets.length} 条字幕设为「${def.label}色」`, 'success');
 }
 
 // C 键批量合并：复用 Ctrl/Cmd+Shift+A / D 的 mergeOverlaySegments，共享
@@ -130,7 +132,7 @@ function assignOverlayColor(idxs, colorName) {
 function mergeOverlayCues(idxs) {
   detachCuePanelFromTrackEdits();
   if (!mergeOverlaySegments(idxs)) return;
-  MaweServerSave.scheduleAutoSaveFlush();
+  MaweViewUpdates.invalidate({ save: true });
 }
 
 function clearOverlayColorOnTargets(idxs) {
@@ -138,18 +140,19 @@ function clearOverlayColorOnTargets(idxs) {
   if (!overlay) return;
   const targets = [...new Set(idxs)].filter((index) => Number.isInteger(index) && overlay.segments[index]);
   if (!targets.length) return;
-  MaweHistory.pushUndo('清除颜色');
-  targets.forEach((index) => {
-    const segment = overlay.segments[index];
-    if (!segment) return;
-    segment.color = null;
-    segment.color_ref = null;
-    segment._dirty = true;
+  return MaweCommands.run('清除颜色', () => {
+    targets.forEach((index) => {
+      const segment = overlay.segments[index];
+      if (!segment) return;
+      segment.color = null;
+      segment.color_ref = null;
+      segment._dirty = true;
+    });
+    overlay._dirty = true;
+    MaweColorFilter.refreshColorAssignmentUi();
+
+    MaweHint.flashHint('已清除颜色', 'success');
   });
-  overlay._dirty = true;
-  MaweColorFilter.refreshColorAssignmentUi();
-  MaweServerSave.scheduleAutoSaveFlush();
-  MaweHint.flashHint('已清除颜色', 'success');
 }
 
 function clearOverlaySticker(index) {
@@ -161,7 +164,7 @@ function clearOverlaySticker(index) {
   segment._dirty = true;
   overlay._dirty = true;
   MaweCuePanel.renderAll({ waveform: 'full' });
-  MaweServerSave.scheduleAutoSaveFlush();
+  MaweViewUpdates.invalidate({ save: true });
   MaweHint.flashHint('已删除', 'success');
 }
 
@@ -212,23 +215,24 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
     return;
   }
   MaweCuePanel.commitCuePanelEdit();
-  MaweHistory.pushUndo('新增叠加字幕');
-  overlay.segments.splice(index, 0, {
-    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(overlay.segments, `overlay-${index + 1}`, 'overlay'),
-    start: safeStart,
-    end: safeEnd,
-    text: '',
-    items: [],
-    _dirty: true,
+  return MaweCommands.run('新增叠加字幕', (command) => {
+    overlay.segments.splice(index, 0, {
+      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(overlay.segments, `overlay-${index + 1}`, 'overlay'),
+      start: safeStart,
+      end: safeEnd,
+      text: '',
+      items: [],
+      _dirty: true,
+    });
+    overlay._dirty = true;
+    MaweSelection.clearSelection({ silent: true });
+    command.commit({ cueList: true, preserveCueListScroll: false });
+    selectOverlayCueRow(index);
+    setTimeout(() => MaweCuePanel.focusCuePanelText(index, 'overlay'), 0);
+    MaweCoreState.waveformEditor?.revealTime(safeStart, true);
+
+    MaweHint.flashHint(`已新增第 ${index + 1} 条叠加字幕`, 'success');
   });
-  overlay._dirty = true;
-  MaweSelection.clearSelection({ silent: true });
-  MaweCuePanel.renderAll({ preserveCueListScroll: false });
-  selectOverlayCueRow(index);
-  setTimeout(() => MaweCuePanel.focusCuePanelText(index, 'overlay'), 0);
-  MaweCoreState.waveformEditor?.revealTime(safeStart, true);
-  MaweServerSave.scheduleAutoSaveFlush();
-  MaweHint.flashHint(`已新增第 ${index + 1} 条叠加字幕`, 'success');
 }
 
 // 右键菜单 / 后续菜单入口：在指针时间点创建一条默认时长的叠加字幕，

@@ -13,7 +13,7 @@
   const GEO_UTILS = window.AsrEditorUtils;
 
 
-  let previewGeometryDirty = false;
+
 
 
 
@@ -395,7 +395,7 @@
     ...next,
     speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
   };
-  if (markDirty) previewGeometryDirty = true;
+  if (markDirty) MaweState.changes.previewGeometryDirty = true;
   applySubtitleAppearance(MaweBoot.DATA.preview.subtitle);
   return next;
 }
@@ -523,7 +523,7 @@
     if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
     if (Object.keys(next).length) MaweBoot.DATA.preview.extension_subtitle = next;
     else delete MaweBoot.DATA.preview.extension_subtitle;
-    if (markDirty) previewGeometryDirty = true;
+    if (markDirty) MaweState.changes.previewGeometryDirty = true;
     applyExtensionSubtitleAppearance(MaweBoot.DATA.preview.extension_subtitle);
     return next;
   }
@@ -534,7 +534,7 @@
     if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
     if (Object.keys(next).length) MaweBoot.DATA.preview.extension_subtitle = next;
     else delete MaweBoot.DATA.preview.extension_subtitle;
-    if (markDirty) previewGeometryDirty = true;
+    if (markDirty) MaweState.changes.previewGeometryDirty = true;
     applyExtensionSubtitleAppearance(MaweBoot.DATA.preview.extension_subtitle);
   }
 
@@ -547,8 +547,8 @@
   global.MaweAppearance = Object.freeze({
     normalizeSubtitleColorStyle,
     GEO_UTILS,
-    get previewGeometryDirty() { return previewGeometryDirty; },
-    set previewGeometryDirty(v) { previewGeometryDirty = v; },
+    get previewGeometryDirty() { return MaweState.changes.previewGeometryDirty; },
+    set previewGeometryDirty(v) { MaweState.changes.previewGeometryDirty = v; },
     getPreviewGeometry,
     normalizeSubtitleFontFamilyName,
     normalizeSubtitleBackgroundColor,

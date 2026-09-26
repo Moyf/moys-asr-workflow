@@ -8,6 +8,7 @@
 
 
   function initWaveformEditor() {
+  let timingCommand = null;
   if (!window.AsrWaveform) {
     MaweHint.flashHint('波形模块加载失败，字幕编辑仍可使用', 'warning');
     return;
@@ -43,9 +44,9 @@
       return targets;
     },
     getSelection: (track = 'main') => track === 'extension' ? MaweSelection.selectedExtensionIdxs
-      : track === 'overlay' ? selectedOverlayIdxs : MaweSelection.selectedIdxs,
+      : track === 'overlay' ? MaweState.selection.indices('overlay') : MaweSelection.selectedIdxs,
     getExtensionSelection: () => MaweSelection.selectedExtensionIdxs,
-    getOverlaySelection: () => selectedOverlayIdxs,
+    getOverlaySelection: () => MaweState.selection.indices('overlay'),
     getBindingMarkerTargets: MaweMultiSubtitleCore.getBindingMarkerTargets,
     multiSubtitleVisible: () => MaweMultiSubtitleCore.multiSubtitleVisible(),
     // 波形上已经选中的块不会再次调用 selectCue；单独提供激活回调，
@@ -64,13 +65,13 @@
     },
     selectOverlayCue: (idx) => {
       selectOverlayCueRow(idx);
-      lastClickedOverlayIdx = idx;
+      MaweState.selection.overlayAnchor = idx;
     },
     toggleOverlaySelection: (idx) => toggleOverlaySelection(idx),
     selectOverlayRange: (idx) => {
-      if (lastClickedOverlayIdx >= 0) selectOverlayRange(lastClickedOverlayIdx, idx);
+      if (MaweState.selection.overlayAnchor >= 0) selectOverlayRange(MaweState.selection.overlayAnchor, idx);
       else selectOverlayCueRow(idx);
-      lastClickedOverlayIdx = idx;
+      MaweState.selection.overlayAnchor = idx;
     },
     activateOverlayCue: (idx) => {
       // 与 selectOverlayCue 同一入口：再次点击已选中的叠加字幕也要
@@ -172,7 +173,14 @@
     // JKL 倒放靠逐帧回退实现，媒体元素本身处于暂停态；倒放期间同样视为播放中。
     getHoverSeekPreview: () => MaweSettings.EDITOR_SETTINGS.hoverSeekPreview && !MaweJklPlayback.jklReversePlaying,
     showTrackBadges: () => MaweSettings.EDITOR_SETTINGS.multiSubtitleShowTrackBadges,
-    onBeginEdit: (label) => MaweHistory.pushUndo(label),
+    onBeginEdit: (label) => {
+      timingCommand ||= MaweCommands.begin(label, { captureView: true });
+    },
+    onCancelEdit: () => {
+      const command = timingCommand;
+      timingCommand = null;
+      command?.cancel();
+    },
     syncBoundCueDrag: MaweBoundDrag.syncBoundCueDrag,
     onLayoutUndo: (label, snapshot) => MaweHistory.pushLayoutUndo(label, snapshot),
     onCommitEdit: (idxs, kind, track = 'main', independent = false, details = null) => {
@@ -204,8 +212,11 @@
         }
       }
       if (linkedChanged || MaweMultiSubtitleCore.multiSubtitleVisible() || track === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
-      MaweCuePanel.renderAll();
-      MawePlaybackLoop.updateWithoutCueListAutoScroll();
+      const command = timingCommand;
+      timingCommand = null;
+      if (command && !command.commit({ cueList: true })) return;
+      if (!command) MaweViewUpdates.invalidate({ cueList: true });
+      MaweViewUpdates.invalidate({ preview: 'update' });
       MaweHint.flashHint(kind === 'move'
         ? track === 'extension'
           ? `已移动 ${idxs.length} 条副字幕`

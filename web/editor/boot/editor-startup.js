@@ -41,6 +41,7 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
 });
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 MaweCuePanel.renderAll({ waveform: 'full' });
+MaweState.noteSavedSegments();
 MaweBoot.maweDebug('boot:complete', {
   renderedSegments: MaweCoreState.container?.querySelectorAll?.('.cue-row')?.length || 0,
   recentProjectsVisible: MaweDom.recentProjectsEl ? !MaweDom.recentProjectsEl.hidden : false,
@@ -75,14 +76,14 @@ MaweDom.hideDisabledToggle?.addEventListener('change', () => {
     // 清理选中集中的禁用项（隐藏了但还留在选中集会造成状态不一致）
     [...MaweSelection.selectedIdxs].forEach(i => {
       if (MaweBoot.DATA.segments[i]?.disabled) {
-        MaweSelection.selectedIdxs.delete(i);
+        MaweState.selection.remove('main', i);
         const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
         if (el) el.classList.remove('selected');
       }
     });
     const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
     [...MaweSelection.selectedExtensionIdxs].forEach((index) => {
-      if (extensionTrack?.segments[index]?.disabled) MaweSelection.selectedExtensionIdxs.delete(index);
+      if (extensionTrack?.segments[index]?.disabled) MaweState.selection.remove('extension', index);
     });
     MaweSelection.updateMultiSelectionClasses();
     updateSelectionCountText();

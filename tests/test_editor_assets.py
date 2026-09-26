@@ -21,6 +21,9 @@ class EditorAssetContractTests(unittest.TestCase):
             (
                 "editor/boot/editor-boot.js",
                 "editor/boot/editor-runtime.js",
+                "editor/state/editor-state.js",
+                "editor/state/editor-view-updates.js",
+                "editor/state/editor-commands.js",
                 "shared/host/storage.js",
                 "shared/host/files.js",
                 "shared/host/server-api.js",

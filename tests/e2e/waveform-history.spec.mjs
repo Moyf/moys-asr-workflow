@@ -338,12 +338,12 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   const copyBlock = page.locator('.waveform-gap-block[data-gap-index="0"]').first();
   const copyBox = await copyBlock.boundingBox();
   expect(copyBox).not.toBeNull();
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(copyBox.x + copyBox.width / 2, copyBox.y + copyBox.height / 2);
   await page.mouse.down();
   await page.mouse.move(copyBox.x + copyBox.width / 2 + 250, copyBox.y + copyBox.height / 2);
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
   const copied = await page.evaluate(() => MaweBoot.DATA.gap_remove.gaps);
   expect(copied).toHaveLength(2);
   expect(copied.some((gap) => gap.start === 12000 && gap.end === 12500)).toBe(true);
@@ -524,7 +524,7 @@ test('Ctrl+dragging blank waveform creates the dragged duration and focuses the 
   const endX = box.x + box.width * 0.94;
   const y = box.y + 20;
 
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(startX, y);
   await page.mouse.down();
   await page.mouse.move(endX, y, { steps: 6 });
@@ -545,7 +545,7 @@ test('Ctrl+dragging blank waveform creates the dragged duration and focuses the 
   expect(previewStyle.borderStyle).toBe('dashed');
   expect(previewStyle.bottom).toBe('7px');
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
 
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
   await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
@@ -569,12 +569,12 @@ test('Ctrl+dragging a too-short range shows a warning toast', async ({ page }) =
   const endX = startX + Math.max(2, box.width * (80 / (rowEnd - rowStart)));
   const y = box.y + 20;
 
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(startX, y);
   await page.mouse.down();
   await page.mouse.move(endX, y, { steps: 2 });
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
 
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
   const warning = page.locator('#hint-stack .hint-card.hint-warning', {
@@ -590,13 +590,13 @@ test('Ctrl+dragging an existing cue is rejected without a preview', async ({ pag
   const box = await cue.boundingBox();
   expect(box).not.toBeNull();
 
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + 20, box.y + box.height / 2, { steps: 2 });
   await expect(page.locator('.waveform-create-preview')).toHaveCount(0);
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
 
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
   await expect(page.locator('#hint-stack .hint-card.hint-warning', {
@@ -619,7 +619,7 @@ test('Ctrl+dragging from blank space stops at an existing cue boundary', async (
   const crossedX = contentX + content.clientWidth * 0.6;
   const y = box.y + 20;
 
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(anchorX, y);
   await page.mouse.down();
   await page.mouse.move(contentX + content.clientWidth * 0.85, y, { steps: 2 });
@@ -629,7 +629,7 @@ test('Ctrl+dragging from blank space stops at an existing cue boundary', async (
   await page.mouse.move(crossedX, y, { steps: 6 });
   await expect(preview).toBeVisible();
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
   const created = await page.evaluate(() => MaweBoot.DATA.segments[1]);
   expect(created.start).toBe(8000);
@@ -728,7 +728,7 @@ test('manual text split keeps malformed item timing inside both cues and restore
   const saveResponse = page.waitForResponse((response) => (
     response.url().endsWith('/api/project') && response.request().method() === 'POST'
   ));
-  await page.keyboard.press('Control+s');
+  await page.keyboard.press('ControlOrMeta+s');
   expect((await saveResponse).ok()).toBe(true);
 
   await page.getByRole('button', { name: /撤销/ }).click();
@@ -762,7 +762,7 @@ test('manual text split keeps malformed item timing inside both cues and restore
     MaweBoot.DATA.segments = segments.map((segment) => JSON.parse(JSON.stringify(segment)));
     MaweCuePanel.renderAll();
   }, testSegments());
-  await page.keyboard.press('Control+s');
+  await page.keyboard.press('ControlOrMeta+s');
   expect((await restoreResponse).ok()).toBe(true);
 });
 
@@ -842,7 +842,7 @@ test('C merge refreshes the paused main subtitle preview', async ({ page }) => {
 
   const cues = page.locator('.cue');
   await cues.nth(0).click();
-  await cues.nth(1).click({ modifiers: ['Control'] });
+  await cues.nth(1).click({ modifiers: ['ControlOrMeta'] });
   await page.keyboard.press('c');
 
   await expect(page.locator('.cue .text').first()).toHaveText('Alpha Bravo');
@@ -876,7 +876,7 @@ test('C merge keeps the subtitle list at its current position', async ({ page })
   const first = page.locator('.cue[data-idx="30"]');
   const second = page.locator('.cue[data-idx="31"]');
   await first.click();
-  await second.click({ modifiers: ['Control'] });
+  await second.click({ modifiers: ['ControlOrMeta'] });
   const before = await first.evaluate((element) => ({
     top: element.getBoundingClientRect().top,
   }));
@@ -1458,7 +1458,7 @@ test('B and C refresh cue overlays without redrawing cached waveform canvases', 
   await expect(page.locator('.cue')).toHaveCount(7);
 
   await page.locator('.cue[data-idx="1"]').click();
-  await page.locator('.cue[data-idx="2"]').click({ modifiers: ['Control'] });
+  await page.locator('.cue[data-idx="2"]').click({ modifiers: ['ControlOrMeta'] });
   await page.keyboard.press('c');
   await expect(page.locator('.cue')).toHaveCount(6);
 
@@ -1711,7 +1711,7 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');
   await expect(editorSplitKey).toHaveText('Enter');
-  await expect(editorConfirmKey).toHaveText('Ctrl+Enter');
+  await expect(editorConfirmKey).toHaveText(/^(Ctrl|Cmd)\+Enter$/);
 
   await splitKey.selectOption('ctrl-enter');
   await expect(helpSplitKey).toHaveText(`${modKey}+Enter`);
@@ -1857,9 +1857,9 @@ test('extends selected subtitles without remapping items and undoes the batch in
   await page.goto(server.url);
   const cues = page.locator('.cue');
   await cues.nth(0).click();
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await cues.nth(1).click();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
   await expect(page.locator('.cue.selected')).toHaveCount(2);
 
   const before = await page.evaluate(() => JSON.parse(JSON.stringify({
@@ -1942,9 +1942,9 @@ test('C merges a common group and Shift+A/D extends the subtitle selection', asy
 
   await cues.nth(1).locator('.text').click();
   await expect(cues.nth(1)).toHaveClass(/selected/);
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await cues.nth(2).locator('.text').click();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
   await page.keyboard.press('c');
 
   await expect(cues).toHaveCount(5);

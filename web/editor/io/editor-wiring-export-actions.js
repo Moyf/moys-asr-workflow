@@ -79,16 +79,17 @@ function flushInlineEditsForSave() {
   const segment = extension ? track?.segments[index] : MaweBoot.DATA.segments[index];
   const text = state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
   if (!segment || text === segment.text) return;
-  MaweHistory.pushUndo(extension ? '编辑副字幕' : '编辑文本');
-  segment.text = text;
-  segment._dirty = true;
-  state.original = text;
-  state.el.classList.add('dirty');
-  if (extension) {
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweCoreState.waveformEditor?.refreshExtensionCueLabel(index, state.trackId);
-  } else MaweCoreState.waveformEditor?.refreshCueLabel(index);
-  MaweInlineEdit.syncCuePanelAfterInlineEdit(extension ? 'extension' : 'main', index, state.trackId);
+  return MaweCommands.run(extension ? '编辑副字幕' : '编辑文本', () => {
+    segment.text = text;
+    segment._dirty = true;
+    state.original = text;
+    state.el.classList.add('dirty');
+    if (extension) {
+      MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      MaweCoreState.waveformEditor?.refreshExtensionCueLabel(index, state.trackId);
+    } else MaweCoreState.waveformEditor?.refreshCueLabel(index);
+    MaweInlineEdit.syncCuePanelAfterInlineEdit(extension ? 'extension' : 'main', index, state.trackId);
+  });
 }
 
 

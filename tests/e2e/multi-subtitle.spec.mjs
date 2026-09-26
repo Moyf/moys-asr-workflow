@@ -874,7 +874,7 @@ test('Ctrl-clicking an extension waveform cue keeps the extension as the active 
   await expect(main).toBeVisible();
   await expect(extension).toBeVisible();
   await main.click();
-  await extension.click({ modifiers: ['Control'] });
+  await extension.click({ modifiers: ['ControlOrMeta'] });
   await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
   expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments[1].id))
     .toBe('extension-002');
@@ -916,7 +916,7 @@ test('undoing an auto-synced binding restores the extension timing as well as th
   await expect(waveformExtension).toHaveAttribute('data-start', '1000');
   await expect(waveformExtension).toHaveAttribute('data-end', '3000');
 
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   expect(await page.evaluate(() => ({
     range: [MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start, MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end],
     bindings: MaweBoot.DATA.multi_subtitle.bindings.length,
@@ -1250,7 +1250,7 @@ test('imports an extension SRT with 300ms preview, dual columns, split dialog, a
   await page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension').click();
   await page.keyboard.press('Delete');
   await expect(page.locator('#cues-container > .multi-dual-cue')).toHaveCount(3);
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('#cues-container > .multi-dual-cue')).toHaveCount(4);
 });
 
@@ -1651,7 +1651,7 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
     ],
   });
 
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text'))
     .toHaveText('Hello world.');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension .text'))
@@ -1722,14 +1722,14 @@ test('auto-binds the earliest unbound main cue when an extension overlaps severa
   await openMultiSubtitleSettings(page);
   await page.locator('#multi-subtitle-auto-sync-duration').uncheck();
   await page.locator('#multi-subtitle-settings-toggle').click();
-  await page.keyboard.press('Control+d');
+  await page.keyboard.press('ControlOrMeta+d');
 
   const autoExtension = page.locator('.multi-cue-column.extension').filter({ hasText: 'Auto bind me' });
   await autoExtension.click({ button: 'right' });
   await page.locator('#ctxmenu .item').filter({ hasText: '绑定到主字幕' }).click();
   await expect(autoExtension).not.toHaveClass(/unbound/);
   await page.keyboard.press('Escape');
-  await page.keyboard.press('Control+d');
+  await page.keyboard.press('ControlOrMeta+d');
 
   const multiOverlapExtension = page.locator('.multi-cue-column.extension').filter({ hasText: 'Multi overlap' });
   await multiOverlapExtension.click({ button: 'right' });
@@ -1740,7 +1740,7 @@ test('auto-binds the earliest unbound main cue when an extension overlaps severa
     multiOverlapExtension.locator('xpath=ancestor::div[contains(@class,"multi-dual-cue")]')
       .locator('.multi-cue-column.main .text'),
   ).toHaveText('Main two');
-  await page.keyboard.press('Control+d');
+  await page.keyboard.press('ControlOrMeta+d');
 
   const replaceExtension = page.locator('.multi-cue-column.extension').filter({ hasText: 'Replace me' });
   const mainOne = page.locator('.multi-cue-column.main').filter({ hasText: 'Main one' });
@@ -1845,12 +1845,10 @@ test('uses B on a waveform-selected unbound extension cue instead of an overlapp
   }]);
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
-  const extensionBox = await waitForLayoutBox(extensionBlock, '未绑定副字幕波形块没有布局');
   const mainBefore = await page.evaluate(() => MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end]));
-  await page.mouse.click(
-    extensionBox.x + extensionBox.width / 2,
-    extensionBox.y + extensionBox.height / 2,
-  );
+  // Project import and media loading can rebuild the lanes between a geometry
+  // read and a raw mouse click. Let locator actionability target the live block.
+  await extensionBlock.click();
   await expect(extensionBlock).toHaveClass(/selected/);
   await page.keyboard.press('b');
 
@@ -2063,7 +2061,7 @@ test('uses G to bind a single extension cue and labels extension context shortcu
   await page.locator('#multi-subtitle-select-bound-pair').uncheck();
   await page.locator('#multi-subtitle-settings-toggle').click();
   await mainCue.click();
-  await unboundExtension.click({ modifiers: ['Control'] });
+  await unboundExtension.click({ modifiers: ['ControlOrMeta'] });
   await page.keyboard.press('g');
   await expect(unboundExtension).not.toHaveClass(/unbound/);
 
@@ -2162,7 +2160,7 @@ test('merges selected extension cues from the context menu and C, with undo', as
   const second = page.locator('.multi-cue-column.extension').filter({ hasText: '第二句。' });
   await page.locator('.multi-cue-column.main').filter({ hasText: 'Hello world.' }).click();
   await first.click();
-  await second.click({ modifiers: ['Control'] });
+  await second.click({ modifiers: ['ControlOrMeta'] });
   await expect(page.locator('#sel-count')).toHaveText('4');
   await page.evaluate(() => {
     const player = document.getElementById('player');
@@ -2177,15 +2175,15 @@ test('merges selected extension cues from the context menu and C, with undo', as
   await expect(page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。第二句。' })).toHaveCount(1);
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(2);
 
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(3);
 
   await page.locator('.multi-cue-column.main').filter({ hasText: 'Hello world.' }).click();
   await page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。' }).click();
-  await page.locator('.multi-cue-column.extension').filter({ hasText: '第二句。' }).click({ modifiers: ['Control'] });
+  await page.locator('.multi-cue-column.extension').filter({ hasText: '第二句。' }).click({ modifiers: ['ControlOrMeta'] });
   await page.keyboard.press('c');
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(2);
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(3);
 });
 
@@ -2226,12 +2224,12 @@ test('keeps extension selection, timing, disabled, and hide shortcuts in parity 
   await expect.poll(() => page.evaluate(() => (
     MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start
   ))).toBe(originalStart + 50);
-  await page.keyboard.press('Control+ArrowLeft');
+  await page.keyboard.press('ControlOrMeta+ArrowLeft');
   await expect.poll(() => page.evaluate(() => (
     MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start
   ))).toBe(originalStart);
 
-  await page.keyboard.press('Control+a');
+  await page.keyboard.press('ControlOrMeta+a');
   await expect(page.locator('#sel-count')).toHaveText('5');
   await page.keyboard.press('Escape');
   await expect(page.locator('#sel-count')).toHaveText('0');
@@ -2288,7 +2286,7 @@ test('选中的主字幕与绑定副字幕一起合并并支持撤销', async ({
   const first = page.locator('.multi-cue-column.main').filter({ hasText: 'Hello world.' });
   const second = page.locator('.multi-cue-column.main').filter({ hasText: 'Second line.' });
   await first.click();
-  await second.click({ modifiers: ['Control'] });
+  await second.click({ modifiers: ['ControlOrMeta'] });
   await page.keyboard.press('c');
 
   await expect(page.locator('.multi-dual-cue')).toHaveCount(2);
@@ -2300,7 +2298,7 @@ test('选中的主字幕与绑定副字幕一起合并并支持撤销', async ({
     end: binding.end_offset_ms,
   })))).toEqual([{ start: 0, end: 0 }]);
 
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('.multi-dual-cue')).toHaveCount(3);
   await expect(page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。' })).toHaveCount(1);
   await expect(page.locator('.multi-cue-column.extension').filter({ hasText: '第二句。' })).toHaveCount(1);
@@ -2346,7 +2344,7 @@ test('ignores a tiny unbound extension overlap at the main merge boundary', asyn
   await page.locator('#multi-subtitle-settings-toggle').click();
 
   await page.locator('.multi-cue-column.main').filter({ hasText: '主字幕一' }).click();
-  await page.locator('.multi-cue-column.main').filter({ hasText: '主字幕二' }).click({ modifiers: ['Control'] });
+  await page.locator('.multi-cue-column.main').filter({ hasText: '主字幕二' }).click({ modifiers: ['ControlOrMeta'] });
   await page.keyboard.press('c');
 
   expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => ({
@@ -2409,7 +2407,7 @@ test('拼合主字幕时同步延展绑定副字幕并支持撤销', async ({ pa
   await expect(secondRow.locator('.multi-cue-column.main .time')).toHaveText('00:01.000 → 00:02.000');
   await expect(secondRow.locator('.multi-cue-column.extension .time')).toHaveText('00:01.050 → 00:01.950');
 
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(secondRow.locator('.multi-cue-column.main .time')).toHaveText('00:01.100 → 00:02.000');
   await expect(secondRow.locator('.multi-cue-column.extension .time')).toHaveText('00:01.150 → 00:01.950');
 
@@ -2418,7 +2416,7 @@ test('拼合主字幕时同步延展绑定副字幕并支持撤销', async ({ pa
   const firstRow = page.locator('.multi-dual-cue').filter({ hasText: '第一句' });
   await expect(firstRow.locator('.multi-cue-column.main .time')).toHaveText('00:00.000 → 00:01.100');
   await expect(firstRow.locator('.multi-cue-column.extension .time')).toHaveText('00:00.050 → 00:01.050');
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
 });
 
 test('shows independent extension preview controls with yellow defaults', async ({ page }) => {
@@ -2545,7 +2543,7 @@ test('aligns a bound extension cue to the main subtitle range from its context m
   await page.locator('#ctxmenu .item').filter({ hasText: '对齐主字幕时间范围' }).click();
   await expect(row.locator('.multi-cue-column.extension .time')).toHaveText('00:00.000 → 00:02.000');
 
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(row.locator('.multi-cue-column.extension .time')).toHaveText('00:00.050 → 00:01.950');
 });
 
@@ -2556,7 +2554,7 @@ test('aligns multiple selected extension cues with H and undoes the batch once',
   const first = page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。' });
   const second = page.locator('.multi-cue-column.extension').filter({ hasText: '第二句。' });
   await first.click();
-  await second.click({ modifiers: ['Control'] });
+  await second.click({ modifiers: ['ControlOrMeta'] });
   await expect(page.locator('#sel-count')).toHaveText('4');
 
   await page.keyboard.press('h');
@@ -2564,7 +2562,7 @@ test('aligns multiple selected extension cues with H and undoes the batch once',
   await expect(first.locator('.time')).toHaveText('00:00.000 → 00:02.000');
   await expect(second.locator('.time')).toHaveText('00:03.000 → 00:05.000');
 
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(first.locator('.time')).toHaveText('00:00.050 → 00:01.950');
   await expect(second.locator('.time')).toHaveText('00:03.050 → 00:04.950');
 });
@@ -2832,7 +2830,7 @@ test('opens the extension-only split dialog from the waveform context menu and u
   await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(2);
   await expect(page.locator('.multi-cue-column.extension.unbound')).toHaveCount(2);
 
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(1);
   await expect(page.locator('.multi-cue-column.extension.unbound')).toHaveCount(0);
 });
@@ -3113,7 +3111,7 @@ test('offers extension cue creation on the empty extension lane and makes it und
   await page.locator('#ctxmenu .item').filter({ hasText: '创建副字幕' }).click();
   await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(2);
   await page.keyboard.press('Escape');
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(1);
 });
 
@@ -3234,7 +3232,7 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
 
   const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
-  await page.keyboard.press('Control+d');
+  await page.keyboard.press('ControlOrMeta+d');
   await expect(mainBlock.locator('.waveform-binding-marker')).toHaveCount(0);
   await expect(extensionBlock.locator('.waveform-binding-marker')).toHaveCount(0);
   await page.locator('.multi-cue-column.main .text').first().click();
@@ -3657,14 +3655,14 @@ test('confirms main replacement and makes both replacement paths undoable', asyn
   await expect(page.locator('#multi-subtitle-import-result-confirm')).toBeEnabled();
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await expect(page.locator('#cues-container .cue .text').first()).toHaveText('Replaced subtitle.');
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('#cues-container .cue .text').first()).toHaveText('Hello world.');
 
   await dropFiles(page, [srtSpec('translation.srt', extensionSrt)]);
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('#multi-subtitle-controls')).toBeVisible();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
   await expect(page.locator('#multi-subtitle-toggle-label'))
@@ -3728,7 +3726,7 @@ test('uses the split dialog for waveform main splitting when word timestamps are
   await page.locator('#multi-subtitle-split-confirm').click();
   await expect(page.locator('#cues-container > .cue')).toHaveCount(2);
   expect(await page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(expectedCut);
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('#cues-container > .cue')).toHaveCount(1);
 });
 
@@ -3799,7 +3797,7 @@ test('uses the split dialog for SRT-style main subtitles without word timestamps
   await expect(page.locator('#multi-subtitle-split-preview')).toContainText(' / ');
   await page.locator('#multi-subtitle-split-confirm').click();
   await expect(page.locator('#cues-container > .cue')).toHaveCount(2);
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('#cues-container > .cue')).toHaveCount(1);
 });
 
@@ -3836,7 +3834,7 @@ test('can split a hand-created subtitle while keeping the original text on both 
     { start: 1000, end: 3000, text: 'AABBCC', items: null },
     { start: 3000, end: 5000, text: 'AABBCC', items: null },
   ]);
-  await page.keyboard.press('Control+z');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => segment.text)))
     .toEqual(['AABBCC']);
 });
@@ -4060,7 +4058,7 @@ test('Z/X adjust one main or extension cue at the pointer and ignore multi-selec
 
   // 多选时不执行，即使指针落在其中一条字幕上。
   await mainBlock.click();
-  await secondMainBlock.click({ modifiers: ['Control'] });
+  await secondMainBlock.click({ modifiers: ['ControlOrMeta'] });
   await moveWaveformPointerToTime(page, secondMainBlock, 6000);
   await page.keyboard.press('z');
   await expect.poll(readRanges).toEqual({
