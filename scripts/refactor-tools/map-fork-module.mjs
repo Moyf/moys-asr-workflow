@@ -32,8 +32,11 @@ for (const stmt of sf.getStatements()) {
 
 // 本仓 editor.js 符号表（读工作区当前内容，含未提交改动）
 import { dirname, join } from "node:path";
-const editorPath = join(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..", "web", "editor.js");
-const editorText = readFileSync(editorPath, "utf8");
+import { editorScriptFiles } from "./editor-sources.mjs";
+const webDir = join(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..", "web");
+const editorText = editorScriptFiles(webDir)
+  .filter((file) => /(?:^|\/)editor(?:-wiring-[^/]+|-startup)?\.js$/.test(file))
+  .map((file) => readFileSync(join(webDir, file), "utf8")).join("\n\n");
 const esf = project.createSourceFile("editor.js", editorText, { overwrite: true });
 const hits = []; // {line, name}
 for (const stmt of esf.getStatements()) {

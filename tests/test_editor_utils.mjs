@@ -10,13 +10,13 @@ import vm from 'node:vm';
 
 
 const context = { window: {}, TextDecoder, TextEncoder, Uint8Array };
-const gapCoreSource = fs.readFileSync(new URL('../web/gap-remove-core.js', import.meta.url), 'utf8');
+const gapCoreSource = fs.readFileSync(new URL('../web/shared/gap-remove-core.js', import.meta.url), 'utf8');
 vm.runInNewContext(gapCoreSource, context);
-const source = fs.readFileSync(new URL('../web/editor-utils.js', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL('../web/shared/editor-utils.js', import.meta.url), 'utf8');
 vm.runInNewContext(source, context);
 const gapCore = context.window.AsrGapRemoveCore;
 const helpers = context.window.AsrEditorUtils;
-const i18nSource = fs.readFileSync(new URL('../web/editor-i18n.js', import.meta.url), 'utf8');
+const i18nSource = fs.readFileSync(new URL('../web/shared/editor-i18n.js', import.meta.url), 'utf8');
 const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;

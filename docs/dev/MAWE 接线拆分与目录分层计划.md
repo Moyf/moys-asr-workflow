@@ -100,12 +100,12 @@ web/
 | --- | --- | --- |
 | Python 清单 | `edit.py` 允许 POSIX 相对子路径；拒绝绝对路径、盘符、反斜杠、空路径段、`.` / `..`、非 JS、重复项及解析后越出 web 根目录的路径 | 已修复 |
 | Tauri 清单 | `desktop/src-tauri/build.rs` 使用与 Python 一致的规则与顺序；拒绝符号链接解析后越界 | 已修复 |
-| 共享第二入口 | 实际引用位于 `server-align/serve.py:52` 的 `GAP_REMOVE_CORE_PATH`（旧台账误写为 server-editor）；同步对齐页模板说明和测试 | 待处理 |
-| 所有装配入口 | localhost、便携渲染、Tauri、在线编辑器构建都从清单取文件；检查嵌套目录是否进入打包 / 部署范围 | 待处理 |
-| 自动化测试 | manifest 元组、payload markers、源码读取路径、语法和顺序测试、直接文件引用全部同步；含共享工具加载测试 | 待处理 |
-| 重构工具 | 检查 tools 与 scripts/refactor-tools 中平铺路径 / glob 假设；在历史脚本说明中明确新路径兼容情况 | 待处理 |
-| 资源与文档 | 检查音效相对路径、HTML/CSS 引用、开发说明及源码地图；音效目录保持原位 | 待处理 |
-| 移动证据 | 从“切段完成”的提交对比，文件移动应为 100% rename，脚本装配源码 / AST 不变 | 待处理 |
+| 共享第二入口 | 实际引用位于 `server-align/serve.py:52` 的 `GAP_REMOVE_CORE_PATH`（旧台账误写为 server-editor）；同步对齐页模板说明和测试 | 已修复 |
+| 所有装配入口 | localhost、便携与在线页面启动 / 渲染验证通过；Tauri 装配 AST 及路径校验通过，完整 cargo check 仍待依赖下载 | 进行中 |
+| 自动化测试 | manifest 元组、payload markers、源码读取路径、语法和顺序测试、直接文件引用全部同步；含共享工具加载测试 | 已修复 |
+| 重构工具 | 检查 tools 与 scripts/refactor-tools 中平铺路径 / glob 假设；在历史脚本说明中明确新路径兼容情况 | 已修复 |
+| 资源与文档 | 检查音效相对路径、HTML/CSS 引用、开发说明及源码地图；音效目录保持原位 | 已修复 |
+| 移动证据 | 从“切段完成”的提交对比，文件移动应为 100% rename，脚本装配源码 / AST 不变 | 已修复 |
 
 ## 同一分支内的提交与验证
 
@@ -129,94 +129,114 @@ PR #154 审查中，相关 Chromium 26 项为 22 通过 / 4 失败；同环境 m
 
 基线 main `83771e2`，工作分支 `codex/editor-wiring-layout`。原有未跟踪 `.DS_Store` 保留。所有区段保持 classic script 原始作用域。
 
-- 区段 34：原样迁入 `web/editor-wiring-file-drop.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 34：原样迁入 `web/editor/io/editor-wiring-file-drop.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 33：原样迁入 `web/editor-wiring-server-events.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 33：原样迁入 `web/editor/io/editor-wiring-server-events.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 32：原样迁入 `web/editor-wiring-waveform-hints.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 32：原样迁入 `web/editor/media/editor-wiring-waveform-hints.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
 阶段汇总：已完成文件尾 3 个区段，入口剩余 8135 行，逐字节回拼持续通过。
 
-- 区段 31：原样迁入 `web/editor-wiring-context-menus.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 31：原样迁入 `web/editor/ui/editor-wiring-context-menus.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 30：原样迁入 `web/editor-wiring-overlay-actions.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 30：原样迁入 `web/editor/cues/editor-wiring-overlay-actions.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 29：原样迁入 `web/editor-wiring-text-tools.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 29：原样迁入 `web/editor/cues/editor-wiring-text-tools.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
 阶段汇总：已完成文件尾 6 个区段，入口剩余 7312 行，逐字节回拼持续通过。
 
-- 区段 28：原样迁入 `web/editor-wiring-sticker-root.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 28：原样迁入 `web/editor/io/editor-wiring-sticker-root.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 27：原样迁入 `web/editor-wiring-media-inputs.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 27：原样迁入 `web/editor/media/editor-wiring-media-inputs.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 26：原样迁入 `web/editor-wiring-project-inputs.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 26：原样迁入 `web/editor/io/editor-wiring-project-inputs.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
 阶段汇总：已完成文件尾 9 个区段，入口剩余 6902 行，逐字节回拼持续通过。
 
-- 区段 25：原样迁入 `web/editor-wiring-toolbar-menus.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 25：原样迁入 `web/editor/ui/editor-wiring-toolbar-menus.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 24：原样迁入 `web/editor-wiring-export-actions.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 24：原样迁入 `web/editor/io/editor-wiring-export-actions.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 23：原样迁入 `web/editor-wiring-export-context.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 23：原样迁入 `web/editor/io/editor-wiring-export-context.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
 阶段汇总：已完成文件尾 12 个区段，入口剩余 6123 行，逐字节回拼持续通过。
 
-- 区段 22：原样迁入 `web/editor-wiring-sticker-preview.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 22：原样迁入 `web/editor/media/editor-wiring-sticker-preview.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 21：原样迁入 `web/editor-wiring-ass-preview.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 21：原样迁入 `web/editor/styles/editor-wiring-ass-preview.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 20：原样迁入 `web/editor-wiring-font-geometry.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 20：原样迁入 `web/editor/styles/editor-wiring-font-geometry.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
 阶段汇总：已完成文件尾 15 个区段，入口剩余 5269 行，逐字节回拼持续通过。
 
-- 区段 19：原样迁入 `web/editor-wiring-edit-shortcuts.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 19：原样迁入 `web/editor/cues/editor-wiring-edit-shortcuts.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 18：原样迁入 `web/editor-wiring-media-controls.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 18：原样迁入 `web/editor/media/editor-wiring-media-controls.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 17：原样迁入 `web/editor-wiring-keyboard-guards.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 17：原样迁入 `web/editor/media/editor-wiring-keyboard-guards.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
 阶段汇总：已完成文件尾 18 个区段，入口剩余 4125 行，逐字节回拼持续通过。
 
-- 区段 16：原样迁入 `web/editor-wiring-list-navigation.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 16：原样迁入 `web/editor/cues/editor-wiring-list-navigation.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 15：原样迁入 `web/editor-wiring-overlay-split-merge.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 15：原样迁入 `web/editor/cues/editor-wiring-overlay-split-merge.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 14：原样迁入 `web/editor-wiring-search-filter.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 14：原样迁入 `web/editor/cues/editor-wiring-search-filter.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
 阶段汇总：已完成文件尾 21 个区段，入口剩余 3480 行，逐字节回拼持续通过。
 
-- 区段 13：原样迁入 `web/editor-wiring-cue-panel.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 13：原样迁入 `web/editor/cues/editor-wiring-cue-panel.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 12：原样迁入 `web/editor-wiring-gap-panel.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 12：原样迁入 `web/editor/ui/editor-wiring-gap-panel.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 11：原样迁入 `web/editor-wiring-appearance-settings.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 11：原样迁入 `web/editor/styles/editor-wiring-appearance-settings.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
 阶段汇总：已完成文件尾 24 个区段，入口剩余 2815 行，逐字节回拼持续通过。
 
-- 区段 10：原样迁入 `web/editor-wiring-display-behavior.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 10：原样迁入 `web/editor/ui/editor-wiring-display-behavior.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 09：原样迁入 `web/editor-wiring-theme-split-settings.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 09：原样迁入 `web/editor/ui/editor-wiring-theme-split-settings.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 08：原样迁入 `web/editor-wiring-settings-help.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 08：原样迁入 `web/editor/ui/editor-wiring-settings-help.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
 阶段汇总：已完成文件尾 27 个区段，入口剩余 2268 行，逐字节回拼持续通过。
 
-- 区段 07：原样迁入 `web/editor-wiring-settings-init.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 07：原样迁入 `web/editor/ui/editor-wiring-settings-init.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 06：原样迁入 `web/editor-wiring-ass-manager.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 06：原样迁入 `web/editor/styles/editor-wiring-ass-manager.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 05：原样迁入 `web/editor-wiring-dom-panels.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 05：原样迁入 `web/editor/ui/editor-wiring-dom-panels.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
 阶段汇总：已完成文件尾 30 个区段，入口剩余 895 行，逐字节回拼持续通过。
 
-- 区段 04：原样迁入 `web/editor-wiring-initial-config.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 04：原样迁入 `web/editor/boot/editor-wiring-initial-config.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 03：原样迁入 `web/editor-wiring-ass-storage.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 03：原样迁入 `web/editor/styles/editor-wiring-ass-storage.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
-- 区段 02：原样迁入 `web/editor-wiring-overlay-transfer.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
+- 区段 02：原样迁入 `web/editor/cues/editor-wiring-overlay-transfer.js`。AST 边界、独立语法及顺序拼接逐字节一致通过；浏览器交互待整体验证。
 
 阶段汇总：已完成文件尾 33 个区段，入口剩余 72 行，逐字节回拼持续通过。
 
-- 区段 01：保留在 `web/editor.js`，入口 72 行。33 个后续文件已全部切出；715 条顶层语句无遗漏，源码回拼逐字节一致。
+- 区段 01：保留在 `web/editor/boot/editor.js`，入口当前 65 行（原区段 72 行，边界空行已移至下一段）。33 个后续文件已全部切出；715 条顶层语句无遗漏，源码回拼逐字节一致。
 
 阶段汇总：子路径校验已实现，Python 与 Rust 共用 18 个路径正反例。Python 清单测试 5 项通过；Rust 独立校验测试 4 项通过；装配契约 22 项通过。区段边界处的原有空行移到下一文件开头，保持原序源码逐字节一致并通过 diff 空白检查。
+
+
+阶段汇总：已提交纯目录移动检查点，114 份源码（含全局类型声明）全部 100% rename；最终清单为 113 个 JS 文件，所有源码仍按原序内联为一个 classic script。直接资源、Server 对齐页、类型配置、测试与开发工具已同步路径。历史单体 mutation CLI 增加当前布局拒绝写入保护；只读枚举改用清单，重复声明审计为 0。
+
+### 当前验收账本
+
+| 层级 | 状态 | 实际结果与边界 |
+| --- | --- | --- |
+| 连续区段迁移 | 已修复 | 01 保留入口，02–34 独立迁移；34 区段覆盖 715 条顶层语句；每段语法 / 回拼通过 |
+| 目录移动 | 已修复 | 114 份源码全部 100% rename；装配清单 113 个 JS 文件 |
+| 源码与 AST | 已修复 | `node scripts/check_editor_equivalence.mjs --base 83771e2`：两种装配 819 条语句 AST 相同；原序源码 2,102,192 bytes 逐字节相同 |
+| 路径校验 | 已修复 | Python 5 项、Rust 独立测试 4 项；共用 18 个路径正反例；遍历、重复、缺失、目录和 symlink 越界检查通过 |
+| 单元与契约 | 已修复 | Node 最终全量 364 通过；Python 1,697 项成功（8 skipped）；装配相关 Python 30 项通过；类型检查、Ruff 和 diff 检查通过。新增 2 项工具保护测试已纳入最终 Node 全量 |
+| 浏览器差分 | 仅说明 | 同环境基线 / 本树均为 399 项、381 通过、18 失败；17 项相同，基线独有双击定位，本树独有保存光标偏移。本树与基线的保存用例各串行 repeat 3 均通过；不宣称全量全绿，保留偶发边界 |
+| 实际页面冒烟 | 已修复 | 实际启动空白 / 工程 Server，验证选择、播放与 seek、引导桥接、便携启动；pageerror 为 0；两张截图已自查 |
+| 构建产物 | 进行中 | 临时便携 HTML / 在线编辑器生成成功；Astro 15 页构建通过；Rust 独立路径模块编译通过；完整 Tauri 仍在下载首次依赖索引，待结果 |
+
+浏览器相同的 17 个失败主要涉及 macOS 的 Control 快捷键用例、引导和英文 shell 断言、叠加轨拖动及删除场景。它们在基线已经失败，本轮不改交互行为，也不顺便修复这些既有失败。
+
+阶段汇总：Server 空白 / 工程页面与便携页面冒烟无 pageerror，选择、播放与 seek 通过，截图自查通过。官网构建 15 页通过，并成功生成部署用 editor/index.html；仅完整 cargo check 尚待首次索引解析。最终入口实测 65 行，原区段末尾 7 行空行移至下一文件开头，源码字节不变。

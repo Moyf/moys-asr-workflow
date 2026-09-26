@@ -5039,7 +5039,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('support_desc: "如果 MAW 对你有帮助，可以前往B站小店赞助！"', script)
 
     def test_workspace_requests_sync_server_config_from_response(self) -> None:
-        script = (ROOT / "web" / "editor-workspaces.js").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "editor/ui/editor-workspaces.js").read_text(encoding="utf-8")
 
         self.assertIn('async function updateServerWorkspaceSettings(payload)', script)
         self.assertIn('body: JSON.stringify(payload)', script)
@@ -5048,22 +5048,22 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('MaweBoot.SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject !== false;', script)
 
     def test_saved_workspace_is_kept_in_the_current_select_list(self) -> None:
-        script = (ROOT / "web" / "editor-workspaces.js").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "editor/ui/editor-workspaces.js").read_text(encoding="utf-8")
 
         self.assertIn("MaweBoot.SERVER_CONFIG.savedWorkspaces = { ...getSavedServerWorkspaces(), [name]: workspace };", script)
         self.assertIn("workspacePresetSelect.querySelector('optgroup[data-saved-workspaces]')?.remove();", script)
         self.assertNotIn("当前服务器版本不支持保存布局", script)
 
     def test_workspace_select_is_owned_by_editor_not_waveform(self) -> None:
-        script = (ROOT / "web" / "editor-workspaces.js").read_text(encoding="utf-8")
-        waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "editor/ui/editor-workspaces.js").read_text(encoding="utf-8")
+        waveform = (ROOT / "web" / "editor/media/waveform.js").read_text(encoding="utf-8")
 
         self.assertNotIn('layoutPresetSelect', waveform)
         self.assertIn('const workspacePresetSelect = document.getElementById(\'workspace-preset\');', script)
         self.assertIn("workspacePresetSelect?.addEventListener('change', () => applyWorkspaceSelection(workspacePresetSelect.value));", script)
 
     def test_builtin_workspace_save_uses_its_visible_name(self) -> None:
-        script = (ROOT / "web" / "editor-workspaces.js").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "editor/ui/editor-workspaces.js").read_text(encoding="utf-8")
 
         self.assertIn('function currentWorkspaceDisplayName()', script)
         self.assertIn('const displayName = saveAs ? name : currentWorkspaceDisplayName();', script)

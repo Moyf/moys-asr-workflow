@@ -108,7 +108,7 @@ uv run python edit.py --blank
 - `rows`：左侧“视频 / 当前字幕 / 字幕列表”的相对高度，读取时会规范化。
 - `tree`：`custom` 渲染器的当前真源。二叉树叶子为 `{ "type": "module", "id": ... }`；分支为 `{ "type": "split", "direction": "row" | "column", "ratio": 20..80, "children": [leftOrTop, rightOrBottom] }`。有效树必须恰好包含四个模块各一次。
 
-`web/waveform.js:normalizeLayoutData()` 负责容错、范围限制和工作区格式迁移。新增模块或修改树规则时，必须同步更新该函数、工作区拖放逻辑、`JSON_SCHEMA.md`、相关 JS 测试和此文档。
+`web/editor/media/waveform.js:normalizeLayoutData()` 负责容错、范围限制和工作区格式迁移。新增模块或修改树规则时，必须同步更新该函数、工作区拖放逻辑、`JSON_SCHEMA.md`、相关 JS 测试和此文档。
 
 ### 服务器工作区库行为
 
@@ -121,6 +121,26 @@ uv run python edit.py --blank
 
 单文件 HTML 不使用服务器工作区库，也不承诺不同 `file://` 页面共享浏览器存储。它显示四个内置工作区，并提供“导出工作区配置 / 导入工作区配置”以 `.workspace.json` 文件迁移工作区。
 
+## 编辑器源码地图
+
+`web/editor-scripts.txt` 是所有编辑器入口共用的装配清单。Python 与 Tauri 都按清单顺序把源码内联为一个 classic script；目录只用于导航，不决定执行顺序。清单接受 web 根目录内的 POSIX 相对子路径，拒绝路径穿越和符号链接越界。
+
+| 位置 | 职责 |
+| --- | --- |
+| `web/shared/` | 数据工具、i18n、编辑器与对齐页共用的空隙处理核心 |
+| `web/editor/boot/` | 工程注入、运行时、加载守卫入口、启动、新手引导与全局类型声明 |
+| `web/editor/state/` | 工程核心状态、设置、历史、轨道与字幕面板状态 |
+| `web/editor/cues/` | 字幕编辑、选择、搜索、拆分合并、绑定、文本工具与快捷键 |
+| `web/editor/styles/` | 字体、ASS 样式库与预览、颜色、外观、说话人 |
+| `web/editor/media/` | 波形、播放、媒体加载、步进、几何与表情包预览 |
+| `web/editor/io/` | 工程导入保存、导出、服务连接、文件拖放与媒体设置输入 |
+| `web/editor/ui/` | DOM、浮窗、帮助、菜单、工作区布局、提示与设置面板 |
+| `web/launcher/`、`web/sfx/` | 独立 Launcher 与原位静态音效 |
+
+领域模块主要发布已有命名空间；`editor-wiring-*.js` 保留原接线与剩余声明的全局作用域，不能视为可独立加载的 ES module。非连续的同领域接线仍为独立文件，保持监听器顺序。新业务代码进入所属领域模块，不扩大 `boot/editor.js`。
+
+机械拆分 / 目录迁移可用 `node scripts/check_editor_equivalence.mjs --base <基线提交>` 检查原序源码字节与两种装配 AST。所有重构工具必须使用清单枚举源码；历史单体改写工具会拒绝当前布局，避免覆盖接线文件。
+
 ## 开发检查
 
 ### 编辑器 UI 规范
@@ -128,15 +148,14 @@ uv run python edit.py --blank
 - 任何界面文字的 `font-size` 不得小于等于 10px：过小的文字（如 9px 徽标、10px 注脚）在低分屏上难以辨认。新增样式时辅助说明文字用 11–12px，正文与说明类一律不低于 12px。
 
 ```powershell
-uv run --frozen ruff check
-node --check web\editor.js
-node --check web\waveform.js
+uv run --no-sync ruff check
+node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
-uv run python -m unittest discover -s tests -p "test_*.py"
+uv run --no-sync python -m unittest discover -s tests -p "test_*.py"
 git diff --check
 ```
 
-交互改动还应手动启动 `uv run python server-editor\serve.py --blank`，验证拖放、播放、Seek、工作区拖动及保存。所有文本保持 UTF-8 与 LF。
+交互改动还应手动启动 `uv run --no-sync python server-editor\serve.py --blank`，验证拖放、播放、Seek、工作区拖动及保存。所有文本保持 UTF-8 与 LF。
 
 ### 浏览器回归环境
 

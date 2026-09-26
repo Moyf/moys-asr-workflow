@@ -7,10 +7,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as acorn from "acorn";
+import { requireLegacyEditor } from "./editor-sources.mjs";
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..");
 const WEB = path.join(ROOT, "web");
 const E2E = path.join(ROOT, "tests", "e2e");
+requireLegacyEditor(WEB);
 
 // ---- 1. 模块导出表: name -> ns ----
 const nameNs = new Map();

@@ -4,7 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 
-const source = fs.readFileSync(new URL('../web/editor-runtime.js', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8');
 
 
 test('MAWE runtime exposes a factory-only module registry', () => {

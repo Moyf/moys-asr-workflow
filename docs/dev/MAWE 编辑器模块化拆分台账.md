@@ -9,7 +9,7 @@ audience: 执行本轮拆分的维护者与 agent
 # MAWE 编辑器模块化拆分台账
 
 > **状态（2026-09-26）**：模块提取已由 #136 合入，首段启动接线已由 #154 合入。
-> 当前继续完成剩余接线拆分与目录分层。完整清单和验收标准见
+> 剩余接线拆分与目录分层已落地，正在完成产物检查。完整清单和验收标准见
 > [接线拆分与目录分层计划](MAWE%20接线拆分与目录分层计划.md)。
 
 ## 合并后计划（PR 合入 main 之后的执行顺序）
@@ -41,35 +41,13 @@ audience: 执行本轮拆分的维护者与 agent
   装配前后的顶层 AST 相同。下一批继续从 `editor.js` 尾部向前切分，避免跨越
   未拆区段改变监听器注册顺序。
 
+- 2026-09-26 后续 33 个连续区段已切出，加载守卫入口最终保留 65 行（边界空行移至下一段）；共 715 条顶层语句完整迁移。装配原序源码与 main `83771e2` 逐字节相同，两端装配 AST 819 条语句一致。
+
 ### Step 2 · 目录结构化（阶段二）
 
-- 本轮接线拆分完成后立即推进，与 Step 1 统一进一个 PR。目录采用完整计划中
-  的两层领域结构；以下旧建议树保留为历史参考，不再作为逐文件迁移清单。
-
-- 前置（在拆分之前做，顺序敏感）：
-  1. `edit.py:210` 与 `desktop/src-tauri/build.rs` 的 `path.name != entry` 清单
-     校验放开为：允许 `a/b.js` 相对子路径；拒绝 `..`、反斜杠、绝对路径、非 `.js`。
-  2. `server-align/serve.py:52` 的 `GAP_REMOVE_CORE_PATH` 随新路径同步。
-- 方法：全部模块 `git mv` 入子目录树（100% rename 证据是验收），
-  `editor-scripts.txt` 同步相对路径；目录布局纯粹用于导航，**顺序仍由清单独占**。
-- 建议树（在 fork 布局基础上按本仓模块命名调整）：
-
-  ```text
-  web/
-    editor-scripts.txt / editor-template.html / *.css
-    shared/gap-remove-core.js          # 双端共用（对齐页注入）
-    editor/boot/                       # boot / runtime / utils / i18n / onboarding
-    editor/state/                      # core-state / cue-panel-state / settings / history / workspaces / colors / multi-subtitle-core
-    editor/dom/                        # dom / floating-panel / help-panel / theme / ninja
-    editor/media/                      # media-playback / media-step / media-load / waveform-init
-    editor/cues/                       # cue-panel / cue-elements / cue-events / inline-edit / selection / binding-align / search / color-filter / merge-adjacent / segment-ops
-    editor/split/                      # split-core / split-context / split-trim / split-mode / add-cue / bound-drag
-    editor/export/                     # export-srt / export-timeline / dynamic-exports / export-menus / sticker-otio-export / json-repair / speaker-labels
-    editor/io/                         # project-load / project-save / project-media-inputs / drag-drop / loading-progress / multi-import / server-save / server-connection / workspaces
-    editor/ui/                         # preview-geometry / appearance-inputs / behavior-hints / settings-panels / display-settings / sticker-root / sticker-picker / sticker-overlay / context-menus / text-process / timed-text-edit / find-replace / text-cleanup / nav-preview / timeline / hint / jkl / gap-remove-data / gap-remove-ui
-  ```
-
-- 验收：清单级全量语法测试 + 顺序断言 + Python 全量 + 探针；无行为改动。
+- 2026-09-26 已完成：113 个 JS 清单项及全局类型声明按领域迁入 `web/editor/` 与 `web/shared/`；114 份源码移动全部为 100% rename。清单顺序保持，Python / Tauri 允许安全子路径。
+- 实际共享第二入口为 `server-align/serve.py`，已同步 `shared/gap-remove-core.js`。
+- 当前目录树、接线文件明细、测试与产物边界，以[本轮完整计划](MAWE%20接线拆分与目录分层计划.md)及 `docs/DEVELOPMENT.md` 的源码地图为准。
 
 ### Step 3 · 巨型 IIFE 拆解（阶段三，按模块逐个短分支）
 

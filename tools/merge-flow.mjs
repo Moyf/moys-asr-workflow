@@ -14,6 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import * as acorn from 'acorn';
 import { unresolvedRefs } from '../scripts/refactor-tools/scope-core.mjs';
+import { requireLegacyEditor } from '../scripts/refactor-tools/editor-sources.mjs';
 
 const WEB = path.resolve('web');
 const AST_OPTIONS = { ecmaVersion: 'latest', sourceType: 'script' };
@@ -195,6 +196,7 @@ function option(flag) {
   return index < 0 ? null : process.argv[index + 1];
 }
 function main() {
+  requireLegacyEditor(WEB);
   if (process.argv[2] !== 'resolve') throw new Error('usage: node tools/merge-flow.mjs resolve [--dry-run] [--base <ref>] [--theirs <ref>]');
   const mergeHead = git(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], true)?.trim();
   const theirs = option('--theirs') ?? mergeHead;
