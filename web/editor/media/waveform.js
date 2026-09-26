@@ -2,7 +2,11 @@
 (function () {
   'use strict';
 
-  const helpers = {};
+  const helpers = {
+    storage: window.MaweHost.storage,
+    gapRemoveCore: window.AsrGapRemoveCore,
+    getLanguage: () => window.MAWE_I18N?.language,
+  };
   Object.assign(helpers, window.MAWE.resolve('waveform-constants', helpers));
   Object.assign(helpers, window.MAWE.resolve('waveform-labels', helpers));
   Object.assign(helpers, window.MAWE.resolve('waveform-scale', helpers));

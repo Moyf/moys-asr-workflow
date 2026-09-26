@@ -1,9 +1,10 @@
 // gap-remove: private helpers; dependencies are injected by editor-utils.js.
 window.MAWE.register('utils-gap-remove', function createUtilsModule(dependencies) {
   'use strict';
+  const { gapRemoveCore } = dependencies;
 
 
-  const GAP_REMOVE_CORE = window.AsrGapRemoveCore;
+  const GAP_REMOVE_CORE = gapRemoveCore;
 
   if (!GAP_REMOVE_CORE) throw new Error('AsrGapRemoveCore must load before AsrEditorUtils');
 

@@ -84,8 +84,8 @@ const projectJson = MaweJsonRepair.buildJson();
 const fingerprint = projectSaveFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
-const saveUrl = new URL(MaweBoot.SERVER_CONFIG.saveUrl, window.location.href);
-      const response = await fetch(saveUrl, {
+const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
+      const response = await MaweHost.server.fetch(saveUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -131,9 +131,7 @@ const projectJson = MaweJsonRepair.buildJson();
 const fingerprint = projectSaveFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
-const writable = await MaweServerSave.projectFileHandle.createWritable();
-await writable.write(new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
-await writable.close();
+await MaweHost.files.writeBlob(MaweServerSave.projectFileHandle, () => new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
 markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerprint });
       return true;
     } catch (error) {
@@ -163,20 +161,18 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
     MaweCuePanel.commitCuePanelEdit();
     const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
-    if (!window.showSaveFilePicker) {
+    if (!MaweHost.files.hasSavePicker()) {
       await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson(), suggested, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
       });
       return;
     }
     try {
-      const handle = await window.showSaveFilePicker({
+      const handle = await MaweHost.files.pickSaveFile({
         suggestedName: suggested,
         types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
       });
-      const writable = await handle.createWritable();
-      await writable.write(new Blob([MaweJsonRepair.buildJson()], { type: 'application/json;charset=utf-8' }));
-      await writable.close();
+      await MaweHost.files.writeBlob(handle, () => new Blob([MaweJsonRepair.buildJson()], { type: 'application/json;charset=utf-8' }));
       MaweServerSave.projectFileHandle = handle;
       markProjectSaved(handle.name, null);
       MaweServerSave.configureServerSaveControls();

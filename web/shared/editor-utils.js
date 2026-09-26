@@ -2,7 +2,10 @@
 (function () {
   'use strict';
 
-  const helpers = {};
+  const helpers = {
+    gapRemoveCore: window.AsrGapRemoveCore,
+    getNavigator: window.MaweHost.runtime.getNavigator,
+  };
   Object.assign(helpers, window.MAWE.resolve('utils-data', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-fonts', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-speakers', helpers));

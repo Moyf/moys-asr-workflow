@@ -108,7 +108,7 @@ uv run python edit.py --blank
 - `rows`：左侧“视频 / 当前字幕 / 字幕列表”的相对高度，读取时会规范化。
 - `tree`：`custom` 渲染器的当前真源。二叉树叶子为 `{ "type": "module", "id": ... }`；分支为 `{ "type": "split", "direction": "row" | "column", "ratio": 20..80, "children": [leftOrTop, rightOrBottom] }`。有效树必须恰好包含四个模块各一次。
 
-`web/editor/media/waveform.js:normalizeLayoutData()` 负责容错、范围限制和工作区格式迁移。新增模块或修改树规则时，必须同步更新该函数、工作区拖放逻辑、`JSON_SCHEMA.md`、相关 JS 测试和此文档。
+`web/editor/media/waveform/layout.js:normalizeLayoutData()` 负责容错、范围限制和工作区格式迁移。新增模块或修改树规则时，必须同步更新该函数、工作区拖放逻辑、`JSON_SCHEMA.md`、相关 JS 测试和此文档。
 
 ### 服务器工作区库行为
 
@@ -127,17 +127,28 @@ uv run python edit.py --blank
 
 | 位置 | 职责 |
 | --- | --- |
-| `web/shared/` | 数据工具、i18n、编辑器与对齐页共用的空隙处理核心 |
+| `web/shared/` | utils 兼容门面、i18n、编辑器与对齐页共用的空隙处理核心 |
+| `web/shared/utils/` | 字幕 / 时间 / 设置 / 多轨 / ASS / 导出 / 文本等数据领域工厂；显式注入依赖 |
+| `web/shared/host/` | 可替换的设置存储、文件选择 / 写入 / 下载与 Server 传输服务 |
 | `web/editor/boot/` | 工程注入、运行时、加载守卫入口、启动、新手引导与全局类型声明 |
 | `web/editor/state/` | 工程核心状态、设置、历史、轨道与字幕面板状态 |
 | `web/editor/cues/` | 字幕编辑、选择、搜索、拆分合并、绑定、文本工具与快捷键 |
 | `web/editor/styles/` | 字体、ASS 样式库与预览、颜色、外观、说话人 |
-| `web/editor/media/` | 波形、播放、媒体加载、步进、几何与表情包预览 |
+| `web/editor/media/` | 波形兼容装配、播放、媒体加载、步进、几何与表情包预览 |
+| `web/editor/media/waveform/` | 波形布局 / 解码 / 时间算法 / 绘制 / 指针 / 拖动 / 播放方法 |
 | `web/editor/io/` | 工程导入保存、导出、服务连接、文件拖放与媒体设置输入 |
 | `web/editor/ui/` | DOM、浮窗、帮助、菜单、工作区布局、提示与设置面板 |
 | `web/launcher/`、`web/sfx/` | 独立 Launcher 与原位静态音效 |
 
 领域模块主要发布已有命名空间；`editor-wiring-*.js` 保留原接线与剩余声明的全局作用域，不能视为可独立加载的 ES module。非连续的同领域接线仍为独立文件，保持监听器顺序。新业务代码进入所属领域模块，不扩大 `boot/editor.js`。
+
+`shared/editor-utils.js` 与 `media/waveform.js` 只初始化领域工厂并重建原有 `AsrEditorUtils` / `AsrWaveform` 出口。跨领域依赖由装配门面显式传入，工厂内部不去查其他领域的命名空间。工厂的可变状态只属于该次实例，应用只装配一次；拆分符号与调色板的后续更新通过同一实例的函数共享。
+
+波形类的构造器留在门面，方法按职责放在 `waveform/`。通过 `Object.getOwnPropertyDescriptors` / `Object.defineProperty` 复制方法与 getter，保持原来非枚举、可写和可配置属性；不能使用 `Object.assign` 复制类方法。新方法加入相应工厂并同步装配顺序；有 `super`、私有字段或继承需求时应重新评估这个组合边界。
+
+`boot/editor-host.js` 在业务模块加载前装配 `MaweHost`。宿主工厂接收环境对象或独立的 storage / files / server / runtime 服务；当前用浏览器实现，未来 Electron 入口可传入替代服务。写入服务接收 Blob 构造回调，在取得 writable 后才构造正文，保留原有新建 / 另存为取值时机。文件取消、写入失败、保存指纹与脏状态判断仍由业务模块处理；响应校验也由调用者处理，传输层只负责 URL 解析和 fetch。Canvas 与播放帧仍走原 DOM / rAF 路径，不经通用状态广播。
+
+本轮职责提取使用 `node scripts/check_editor_domains.mjs` 审计原声明 / 方法源码、构造器与兼容出口；允许的宿主引用替换逐项记录在 specs 中。完整拼接 AST 已因工厂包装改变，不能继续把早期机械拆分的 AST 一致结论用于本阶段。
 
 机械拆分 / 目录迁移可用 `node scripts/check_editor_equivalence.mjs --base <基线提交>` 检查原序源码字节与两种装配 AST。所有重构工具必须使用清单枚举源码；历史单体改写工具会拒绝当前布局，避免覆盖接线文件。
 

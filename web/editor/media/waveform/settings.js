@@ -1,12 +1,12 @@
 // settings: waveform helpers with explicit dependencies.
 window.MAWE.register('waveform-settings', function createWaveformModule(dependencies) {
   'use strict';
-  const { DEFAULT_RIGHT_LAYOUT_TREE, DEFAULT_SETTINGS, ROW_HEIGHT_PRESETS, ROW_PRESETS, SETTINGS_KEY, ZOOM_PRESETS, clampWaveformScale, cloneLayoutTree, normalizeLayoutData } = dependencies;
+  const { storage, DEFAULT_RIGHT_LAYOUT_TREE, DEFAULT_SETTINGS, ROW_HEIGHT_PRESETS, ROW_PRESETS, SETTINGS_KEY, ZOOM_PRESETS, clampWaveformScale, cloneLayoutTree, normalizeLayoutData } = dependencies;
 
 
   function readSettings() {
     try {
-      const parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+      const parsed = JSON.parse(storage.getItem(SETTINGS_KEY) || '{}');
       const layoutData = normalizeLayoutData({
         preset: parsed.layout,
         splitPercent: parsed.splitPercent,
@@ -51,7 +51,7 @@ window.MAWE.register('waveform-settings', function createWaveformModule(dependen
 
   function saveSettings(settings) {
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      storage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch (_) {
       // file:// privacy modes may reject localStorage; the editor still works.
     }

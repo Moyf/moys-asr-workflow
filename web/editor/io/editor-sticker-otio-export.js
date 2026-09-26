@@ -44,7 +44,7 @@
     }
     MaweHint.flashHint('正在生成便携表情包 OTIO 文件夹…');
     try {
-      const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.portableStickerExportUrl, window.location.href), {
+      const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.portableStickerExportUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,13 +1,13 @@
 // ass-style: private helpers; dependencies are injected by editor-utils.js.
 window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies) {
   'use strict';
-  const { cloneJsonValue } = dependencies;
+  const { getNavigator, cloneJsonValue } = dependencies;
 
 
   // ASS 默认字体按操作系统选择：Arial 对中文没有合适的字形回退，
   // 中文系统下默认字体应直接落到系统自带的 CJK 无衬线字体。
   function assDefaultFontFamily() {
-    const nav = globalThis.navigator;
+    const nav = getNavigator();
     const source = `${nav?.platform || ''} ${nav?.userAgent || ''}`.toLowerCase();
     if (/win/.test(source)) return 'Microsoft YaHei';
     if (/\bmac|iphone|ipad/.test(source)) return 'PingFang SC';

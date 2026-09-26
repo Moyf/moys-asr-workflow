@@ -112,7 +112,7 @@
 
 
   async function updateServerWorkspaceSettings(payload) {
-    const response = await fetch(MaweBoot.SERVER_CONFIG.settingsUrl, {
+    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.settingsUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
     const result = await response.json();

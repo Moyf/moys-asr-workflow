@@ -461,7 +461,13 @@
         "resolveGapFillRange",
         "shrinkGapRemoveGaps"
       ],
-      "dependencies": []
+      "dependencies": [],
+      "hostSubstitutions": [
+        [
+          "const GAP_REMOVE_CORE = window.AsrGapRemoveCore;",
+          "const GAP_REMOVE_CORE = gapRemoveCore;"
+        ]
+      ]
     },
     {
       "name": "history",
@@ -642,6 +648,12 @@
       ],
       "dependencies": [
         "cloneJsonValue"
+      ],
+      "hostSubstitutions": [
+        [
+          "const nav = globalThis.navigator;",
+          "const nav = getNavigator();"
+        ]
       ]
     },
     {
@@ -808,7 +820,13 @@
         "configuredEnterAction",
         "isMacPlatform"
       ],
-      "dependencies": []
+      "dependencies": [],
+      "hostSubstitutions": [
+        [
+          "const n = nav || globalThis.navigator;",
+          "const n = nav || getNavigator();"
+        ]
+      ]
     },
     {
       "name": "preview-geometry",

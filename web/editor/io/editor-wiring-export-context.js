@@ -260,7 +260,7 @@ for (const [id, key, fallback, max] of [
 document.getElementById('project-backup-open')?.addEventListener('click', async () => {
   if (!MaweServerSave.serverProjectSavingEnabled() || MaweServerSave.projectFileHandle) return;
   try {
-    const response = await fetch(new URL('/api/project/backups/open', window.location.href), {
+    const response = await MaweHost.server.fetch('/api/project/backups/open', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken }),
     });

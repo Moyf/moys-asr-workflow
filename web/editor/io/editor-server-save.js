@@ -339,7 +339,7 @@
     function configureServerAutoSave() {
       if (!MaweDom.serverAutoSaveSettings || !MaweDom.autoSaveProjectToggle || !MaweDom.autoSaveIntervalField || !MaweDom.autoSaveIntervalInput) return;
       // 服务器绑定工程或浏览器保存对话框（句柄模式）任一可用时都可自动保存。
-      const available = Boolean(MaweBoot.SERVER_CONFIG?.saveUrl || window.showSaveFilePicker);
+      const available = Boolean(MaweBoot.SERVER_CONFIG?.saveUrl || MaweHost.files.hasSavePicker());
       MaweDom.serverAutoSaveSettings.hidden = !available;
       // 自动保存不可用时隐藏「保存」标签页，避免设置窗口出现空白分区。
       const saveTab = document.getElementById('editor-settings-tab-save');
@@ -405,7 +405,7 @@
       return;
     }
     try {
-      const response = await fetch(MaweBoot.SERVER_CONFIG.recentProjectsUrl, {
+      const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.recentProjectsUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: project.path }),
@@ -434,7 +434,7 @@
   // 任何失败都静默回退为「手动选择媒体」的便携流程。
   async function attachProjectToServer(fileName, projectData) {
     try {
-      const response = await fetch(MaweBoot.SERVER_CONFIG.attachUrl, {
+      const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.attachUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileName, project: projectData }),
@@ -541,7 +541,7 @@
         const enabled = MaweDom.autoOpenLastProjectToggle.checked;
         MaweDom.autoOpenLastProjectToggle.disabled = true;
         try {
-          const response = await fetch(MaweBoot.SERVER_CONFIG.settingsUrl, {
+          const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.settingsUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ autoOpenLastProject: enabled }),

@@ -28,7 +28,9 @@ for (const kind of ['utils', 'waveform']) {
       : generatedBody.filter(node => !node.directive && node.type !== 'ReturnStatement'
         && !(node.type === 'VariableDeclaration' && node.declarations[0].id.type === 'ObjectPattern'));
     const expected = (module.methods ? oldClass.body.body : oldBody).filter(node => inRanges(node, module.ranges));
-    assert.deepEqual(actual.map(node => slice(source, node)), expected.map(node => slice(before, node)), file);
+    const adaptHost = text => (module.hostSubstitutions || []).reduce(
+      (result, [before, after]) => result.replaceAll(before, after), text);
+    assert.deepEqual(actual.map(node => slice(source, node)), expected.map(node => adaptHost(slice(before, node))), file);
     if (module.methods) methods += actual.length; else statements += actual.length;
   }
   const facade = readFileSync(new URL(spec.source, web), 'utf8');
@@ -47,5 +49,5 @@ for (const kind of ['utils', 'waveform']) {
     .flatMap(module => oldBody.filter(node => inRanges(node, module.ranges)));
   assert.equal(new Set(covered).size, covered.length, 'no duplicate statement migration');
   assert.equal(covered.length, oldBody.length - (oldClass ? 4 : 3), 'all closure statements covered');
-  console.log(`${kind}: ${statements} statements, ${methods} methods, constructor and compatibility API unchanged`);
+  console.log(`${kind}: ${statements} statements, ${methods} methods, constructor/API unchanged; host substitutions explicitly audited`);
 }

@@ -5056,7 +5056,12 @@ class LauncherAssetContractTests(unittest.TestCase):
 
     def test_workspace_select_is_owned_by_editor_not_waveform(self) -> None:
         script = (ROOT / "web" / "editor/ui/editor-workspaces.js").read_text(encoding="utf-8")
-        waveform = edit.build_editor_scripts()
+        import edit
+
+        waveform = "\n".join(
+            edit.read_web_asset(name) for name in edit.read_editor_script_manifest()
+            if name.startswith("editor/media/waveform")
+        )
 
         self.assertNotIn('layoutPresetSelect', waveform)
         self.assertIn('const workspacePresetSelect = document.getElementById(\'workspace-preset\');', script)

@@ -149,3 +149,18 @@ interface Window {
   MAWE_I18N: any;
   showSaveFilePicker?: any;
 }
+
+// Replaceable browser/desktop capabilities used by editor I/O.
+interface MaweHostApi {
+  storage: { getItem(key: string): string | null; setItem(key: string, value: string): void };
+  files: {
+    hasSavePicker(): boolean;
+    pickSaveFile(options: object): Promise<FileSystemFileHandle>;
+    writeBlob(handle: FileSystemFileHandle, buildBlob: () => Blob): Promise<void>;
+    downloadBlob(blob: Blob, filename: string): void;
+  };
+  server: { fetch(url: string | URL, options?: RequestInit): Promise<Response> };
+  runtime: { getNavigator(): Navigator | undefined; hasUserActivation(): boolean };
+}
+declare var MaweHost: MaweHostApi;
+interface Window { MaweHost: MaweHostApi; }

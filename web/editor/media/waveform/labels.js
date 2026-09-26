@@ -1,10 +1,11 @@
 // labels: waveform helpers with explicit dependencies.
 window.MAWE.register('waveform-labels', function createWaveformModule(dependencies) {
   'use strict';
+  const { getLanguage, gapRemoveCore } = dependencies;
 
 
   function localizedWaveformMessage(zh, en) {
-    return window.MAWE_I18N?.language === 'en' ? en : zh;
+    return getLanguage() === 'en' ? en : zh;
   }
 
 
@@ -33,19 +34,19 @@ window.MAWE.register('waveform-labels', function createWaveformModule(dependenci
 
 
   function gapRemoveDisplayLabel(gap) {
-    const type = window.AsrGapRemoveCore?.getGapRemoveDisplayType?.(gap) || 'unknown';
-    const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+    const type = gapRemoveCore?.getGapRemoveDisplayType?.(gap) || 'unknown';
+    const language = getLanguage() === 'en' ? 'en' : 'zh';
     return GAP_REMOVE_DISPLAY_LABELS[language][type] || GAP_REMOVE_DISPLAY_LABELS[language].unknown;
   }
 
 
   function gapOperationAllowsBoundary(mode) {
-    return window.AsrGapRemoveCore.gapOperationAllowsBoundary(mode);
+    return gapRemoveCore.gapOperationAllowsBoundary(mode);
   }
 
 
   function gapOperationAllowsMiddle(mode) {
-    return window.AsrGapRemoveCore.gapOperationAllowsMiddle(mode);
+    return gapRemoveCore.gapOperationAllowsMiddle(mode);
   }
 
   return Object.freeze({ gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, localizedWaveformMessage });

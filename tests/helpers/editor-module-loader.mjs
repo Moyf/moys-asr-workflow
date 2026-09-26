@@ -10,6 +10,7 @@ export function loadEditorModule(context, entry) {
   const directories = entry === 'shared/editor-utils.js'
     ? ['shared/utils/'] : ['editor/media/waveform/'];
   const files = manifest.filter(name => name === 'editor/boot/editor-runtime.js'
+    || name === 'editor/boot/editor-host.js' || name.startsWith('shared/host/')
     || name === 'shared/gap-remove-core.js' || name === entry
     || directories.some(prefix => name.startsWith(prefix)));
   for (const name of files) {

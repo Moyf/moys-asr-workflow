@@ -49,19 +49,13 @@ audience: 执行本轮拆分的维护者与 agent
 - 实际共享第二入口为 `server-align/serve.py`，已同步 `shared/gap-remove-core.js`。
 - 当前目录树、接线文件明细、测试与产物边界，以[本轮完整计划](MAWE%20接线拆分与目录分层计划.md)及 `docs/DEVELOPMENT.md` 的源码地图为准。
 
-### Step 3 · 巨型 IIFE 拆解（阶段三，按模块逐个短分支）
+### Step 3 · 巨型 IIFE 拆解与宿主边界（阶段三）
 
-- 判定标准：单文件单 IIFE 且 ≥800 行才动（行数只是提示）。
-- 首批候选（按 fork 顺序）：editor-utils(5.4k) → waveform(5.5k) → gap-remove-core(1.4k)
-  → split-core → timed-text-edit → i18n → cue-elements。
-- 标准模式：`namespace.js`（唯一所有者，块首）+ 各模块 `Object.assign` 发布 +
-  可变状态 `defineProperty` 访问器 + `compat-surface.js`（块尾，按原文字面量
-  重建历史出口）。**类成员用原型混入（`Reflect.ownKeys` + 描述符复制），
-  禁用 `Object.assign`**。
-- 验证：三层差分（结构/源码/行为）零差异 + dryrun 产物 sha256 与落盘一致；
-  每块完成后差分工具公共部分若有改动需复跑已完成块。
-- 第二注入方：gap-remove-core 在阶段二移动后，serve.py 注入源改为
-  `read_editor_scripts_under(...)` 按清单前缀拼接 + 占位符唯一性校验。
+- 2026-09-26 维护者要求继续同一 PR #155，并明确拆分 waveform；utils 与 waveform 的职责拆分已经落地，进度及本阶段验证见[职责拆分与宿主边界进度](MAWE%20职责拆分与宿主边界进度.md)。
+- utils 按领域工厂拆分，通过显式参数注入依赖，原有 AsrEditorUtils 兼容出口保留。waveform 的布局、解码、时间算法与类方法分开，类方法 / getter 采用描述符复制，禁止 Object.assign。
+- 文件、存储与 Server 能力集中为宿主服务，给未来 Electron 留替换入口；本轮不引入 Electron 壳、不迁移全量 Store / 命令。
+- gap-remove-core、split-core、timed-text-edit、i18n 等历史候选不按行数自动扩入本轮；后续按依赖与维护压力另排优先级。
+- 本阶段新增工厂与依赖注入，不能再要求装配整体 AST 与机械拆分前一致；改用原声明 / 方法源码审计、兼容出口检查、契约与实际浏览器差分。
 
 ### Step 4 · 收尾
 

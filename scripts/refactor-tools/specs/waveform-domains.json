@@ -63,7 +63,17 @@
         "gapRemoveDisplayLabel",
         "localizedWaveformMessage"
       ],
-      "dependencies": []
+      "dependencies": [],
+      "hostSubstitutions": [
+        [
+          "window.MAWE_I18N?.language",
+          "getLanguage()"
+        ],
+        [
+          "window.AsrGapRemoveCore",
+          "gapRemoveCore"
+        ]
+      ]
     },
     {
       "name": "scale",
@@ -160,6 +170,16 @@
         "clampWaveformScale",
         "cloneLayoutTree",
         "normalizeLayoutData"
+      ],
+      "hostSubstitutions": [
+        [
+          "localStorage.getItem(",
+          "storage.getItem("
+        ],
+        [
+          "localStorage.setItem(",
+          "storage.setItem("
+        ]
       ]
     },
     {

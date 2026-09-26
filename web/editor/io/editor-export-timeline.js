@@ -562,7 +562,7 @@
     }
     MaweHint.flashHint(tr('正在生成表情包 OTIOZ 打包工程…'));
     try {
-      const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.otiozStickerExportUrl, window.location.href), {
+      const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.otiozStickerExportUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -598,7 +598,7 @@
     }
     MaweHint.flashHint(tr('正在生成时间线 OTIOZ 打包工程…'));
     try {
-      const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.otiozTimelineExportUrl, window.location.href), {
+      const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.otiozTimelineExportUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -693,15 +693,13 @@
       ? new Uint8Array([0xEF, 0xBB, 0xBF, ...new TextEncoder().encode(String(content))])
       : content;
     // 优先尝试 File System Access API（弹出保存路径选择对话框）
-    if (usePicker && window.showSaveFilePicker) {
+    if (usePicker && MaweHost.files.hasSavePicker()) {
       try {
-        const handle = await window.showSaveFilePicker({
+        const handle = await MaweHost.files.pickSaveFile({
           suggestedName: filename,
           types: accept ? [{ description: accept.desc, accept: accept.types }] : undefined,
         });
-        const w = await handle.createWritable();
-        await w.write(new Blob([fileContent], { type: mime + ';charset=utf-8' }));
-        await w.close();
+        await MaweHost.files.writeBlob(handle, () => new Blob([fileContent], { type: mime + ';charset=utf-8' }));
         return detailed ? { status: 'saved' } : true;
       } catch (e) {
         // 用户取消保存对话框 — 静默退出，不回退
@@ -712,11 +710,7 @@
     }
     // 兜底：传统 anchor 下载（不弹路径选择）
     const blob = new Blob([fileContent], { type: mime + ';charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    MaweHost.files.downloadBlob(blob, filename);
     return detailed ? { status: 'dispatched' } : true;
   }
 

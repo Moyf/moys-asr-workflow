@@ -74,7 +74,7 @@ MaweStickerRoot.stickerRootRead.addEventListener('click', async () => {
   MaweStickerRoot.stickerRootInput.disabled = true;
   MaweStickerRoot.setStickerRootStatus('正在读取并验证表情包目录…');
   try {
-    const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.stickerRootUrl, window.location.href), {
+    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.stickerRootUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, path }),

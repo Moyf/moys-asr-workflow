@@ -21,6 +21,10 @@ class EditorAssetContractTests(unittest.TestCase):
             (
                 "editor/boot/editor-boot.js",
                 "editor/boot/editor-runtime.js",
+                "shared/host/storage.js",
+                "shared/host/files.js",
+                "shared/host/server-api.js",
+                "editor/boot/editor-host.js",
                 "shared/gap-remove-core.js",
                 "shared/utils/data.js",
                 "shared/utils/fonts.js",

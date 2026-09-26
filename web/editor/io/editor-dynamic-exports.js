@@ -176,7 +176,7 @@
         subtitle: { ...MaweAppearance.getPreviewGeometry(), ...appearance },
       });
       MaweHint.flashHint(MaweProjectSave.translatedEditorText('正在生成动态字幕 .lottie…'));
-      const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.lottieExportUrl, window.location.href), {
+      const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.lottieExportUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, animation }),
@@ -297,7 +297,7 @@
         subtitle: { ...MaweAppearance.getPreviewGeometry(), ...appearance },
       });
       MaweHint.flashHint(MaweProjectSave.translatedEditorText('正在生成动态字幕 .ograf.zip…'));
-      const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.ografExportUrl, window.location.href), {
+      const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.ografExportUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, graphic }),

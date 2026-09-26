@@ -157,20 +157,18 @@ function applyCanonicalProject(data, filename) {
     }
     MaweServerSave.projectCheckpointInFlight = true;
     try {
-      if (!window.showSaveFilePicker || !navigator.userActivation?.isActive) {
+      if (!MaweHost.files.hasSavePicker() || !MaweHost.runtime.hasUserActivation()) {
         // 检查点只用于确认后续导入可以继续；无用户手势时不能弹出保存对话框，
         // 直接建立内存工程检查点，后续仍通过显式导出保存。
         applyCanonicalProject(project, suggestedName);
         detachServerProjectSaving();
         return true;
       }
-      const handle = await window.showSaveFilePicker({
+      const handle = await MaweHost.files.pickSaveFile({
         suggestedName,
         types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
       });
-      const writable = await handle.createWritable();
-      await writable.write(new Blob([JSON.stringify(project, null, 2)], { type: 'application/json;charset=utf-8' }));
-      await writable.close();
+      await MaweHost.files.writeBlob(handle, () => new Blob([JSON.stringify(project, null, 2)], { type: 'application/json;charset=utf-8' }));
       applyCanonicalProject(project, handle.name);
       MaweServerSave.projectFileHandle = handle;
       // detachServerProjectSaving 内部会刷新保存控件并重启自动保存。
@@ -225,7 +223,7 @@ function applyCanonicalProject(data, filename) {
 
   async function ensureProjectCheckpointForImport(file, { usePicker = true } = {}) {
     if (MaweServerSave.projectCheckpointed) return true;
-    if (usePicker && window.showSaveFilePicker) {
+    if (usePicker && MaweHost.files.hasSavePicker()) {
       return createProjectCheckpoint(buildBlankProject(), suggestedProjectName(file));
     }
     // Drag/drop imports are asynchronous by the time they reach here; do not

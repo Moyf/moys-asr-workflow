@@ -269,7 +269,7 @@
 
   function readEditorSettings() {
     let saved = {};
-    try { saved = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || '{}'); } catch (_) { /* invalid storage */ }
+    try { saved = JSON.parse(MaweHost.storage.getItem(EDITOR_SETTINGS_KEY) || '{}'); } catch (_) { /* invalid storage */ }
     return window.AsrEditorUtils.normalizeEditorSettings({
       ...saved,
       cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false,
@@ -345,7 +345,7 @@
 
   function saveEditorSettings(settings) {
     try {
-      localStorage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify(settings));
+      MaweHost.storage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify(settings));
     } catch (_) {
       // file:// 隐私模式可能拒绝 localStorage；本次页面仍保持可用。
     }

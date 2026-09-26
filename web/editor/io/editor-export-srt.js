@@ -69,9 +69,9 @@
   let filenameBase = `${MaweBoot.FILENAME_BASE}${gapSuffix}`;
   // 浏览器不允许从一个文件句柄取得其父目录，因此不再请求文件夹权限。
   // 先让用户选择一个 SRT 文件名，并把该名称（不含 .srt）作为所有颜色文件的前缀。
-  if (MaweSettings.EDITOR_SETTINGS.exportColorUnified && window.showSaveFilePicker) {
+  if (MaweSettings.EDITOR_SETTINGS.exportColorUnified && MaweHost.files.hasSavePicker()) {
     try {
-      const handle = await window.showSaveFilePicker({
+      const handle = await MaweHost.files.pickSaveFile({
         id: 'maw-color-srt-export-prefix',
         suggestedName: `${filenameBase}.srt`,
         types: [{ description: 'SRT 字幕文件（作为导出前缀）', accept: { 'text/plain': ['.srt'] } }],
@@ -87,12 +87,7 @@
     const filename = `${filenameBase}_${colorExportFilenameSuffix(color, speakerSettings)}.srt`;
     if (MaweSettings.EDITOR_SETTINGS.exportColorUnified) {
       const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      MaweHost.files.downloadBlob(blob, filename);
     } else {
       const saved = await MaweExportTimeline.downloadFile(
         buildPayload(color), filename, 'text/plain',

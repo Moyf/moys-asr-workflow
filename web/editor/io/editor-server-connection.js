@@ -63,7 +63,7 @@
     const timeout = window.setTimeout(() => controller.abort(), SERVER_CONNECTION_REQUEST_TIMEOUT_MS);
     let healthy = false;
     try {
-      const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+      const response = await MaweHost.server.fetch(url, { cache: 'no-store', signal: controller.signal });
       const result = await response.json().catch(() => null);
       healthy = response.ok && result?.ok === true;
     } catch (_error) {
@@ -159,7 +159,7 @@
     );
     const poll = async () => {
       try {
-        const response = await fetch(url, { cache: 'no-store' });
+        const response = await MaweHost.server.fetch(url, { cache: 'no-store' });
         const result = await response.json().catch(() => ({}));
         if (!response.ok || result.ok !== true) {
           throw new Error(result.error || `服务器返回 ${response.status}`);
