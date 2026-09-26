@@ -9,6 +9,7 @@
   "include": [
     "web/editor/boot/editor-globals.d.ts",
     "web/editor/boot/editor-boot.js",
+    "web/editor/state/editor-state.js",
     "web/editor/io/editor-export-srt.js"
   ]
 }

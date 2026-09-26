@@ -43,9 +43,9 @@
       return targets;
     },
     getSelection: (track = 'main') => track === 'extension' ? MaweSelection.selectedExtensionIdxs
-      : track === 'overlay' ? selectedOverlayIdxs : MaweSelection.selectedIdxs,
+      : track === 'overlay' ? MaweState.selection.indices('overlay') : MaweSelection.selectedIdxs,
     getExtensionSelection: () => MaweSelection.selectedExtensionIdxs,
-    getOverlaySelection: () => selectedOverlayIdxs,
+    getOverlaySelection: () => MaweState.selection.indices('overlay'),
     getBindingMarkerTargets: MaweMultiSubtitleCore.getBindingMarkerTargets,
     multiSubtitleVisible: () => MaweMultiSubtitleCore.multiSubtitleVisible(),
     // 波形上已经选中的块不会再次调用 selectCue；单独提供激活回调，
@@ -64,13 +64,13 @@
     },
     selectOverlayCue: (idx) => {
       selectOverlayCueRow(idx);
-      lastClickedOverlayIdx = idx;
+      MaweState.selection.overlayAnchor = idx;
     },
     toggleOverlaySelection: (idx) => toggleOverlaySelection(idx),
     selectOverlayRange: (idx) => {
-      if (lastClickedOverlayIdx >= 0) selectOverlayRange(lastClickedOverlayIdx, idx);
+      if (MaweState.selection.overlayAnchor >= 0) selectOverlayRange(MaweState.selection.overlayAnchor, idx);
       else selectOverlayCueRow(idx);
-      lastClickedOverlayIdx = idx;
+      MaweState.selection.overlayAnchor = idx;
     },
     activateOverlayCue: (idx) => {
       // 与 selectOverlayCue 同一入口：再次点击已选中的叠加字幕也要

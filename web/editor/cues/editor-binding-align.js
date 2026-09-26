@@ -55,7 +55,7 @@
         MaweCuePanel.commitCuePanelEdit();
         MaweSelection.clearSelection({ silent: true });
         members.forEach((i) => {
-          MaweSelection.selectedIdxs.add(i);
+          MaweState.selection.add('main', i);
           MaweSelection.syncBoundSelection('main', i);
           const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
           if (el) el.classList.add('selected');

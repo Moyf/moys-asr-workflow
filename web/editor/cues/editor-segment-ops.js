@@ -592,7 +592,7 @@
     MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [...unboundIds]);
     remainingIndices.reverse().forEach((index) => track.segments.splice(index, 1));
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweSelection.selectedExtensionIdxs.clear();
+    MaweState.selection.clear('extension');
     MaweCuePanel.renderAll();
     MaweHint.flashHint(`已删除 ${remainingIndices.length} 条副字幕`, 'success');
   }

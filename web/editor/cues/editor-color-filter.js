@@ -132,7 +132,7 @@
   MaweBoot.DATA.segments.forEach((seg, idx) => {
     if (MaweSelection.isHiddenDisabled(idx)) return;
     if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
-    MaweSelection.selectedIdxs.add(idx);
+    MaweState.selection.add('main', idx);
     const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
     if (el) el.classList.add('selected');
   });

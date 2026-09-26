@@ -564,9 +564,9 @@ test('batch merge via C key inherits color groups and rejects skipped middle cue
   // 有序（否则保存后会违反相邻段 end <= next.start 的契约，工程无法再打开）。
   await page.evaluate(() => {
     MaweCuePanel.setCuePanelTarget('overlay', 0);
-    selectedOverlayIdxs.clear();
-    selectedOverlayIdxs.add(0);
-    selectedOverlayIdxs.add(2);
+    MaweState.selection.clear('overlay');
+    MaweState.selection.add('overlay', 0);
+    MaweState.selection.add('overlay', 2);
   });
   await page.keyboard.press('c');
   await expect(page.locator('.hint-card').last()).toContainText('选中的叠加字幕必须连续');
@@ -580,10 +580,10 @@ test('batch merge via C key inherits color groups and rejects skipped middle cue
   // 合并结果继承红色 head，不再像旧实现那样把组标记整个丢掉。
   await page.evaluate(() => {
     MaweCuePanel.setCuePanelTarget('overlay', 0);
-    selectedOverlayIdxs.clear();
-    selectedOverlayIdxs.add(0);
-    selectedOverlayIdxs.add(1);
-    selectedOverlayIdxs.add(2);
+    MaweState.selection.clear('overlay');
+    MaweState.selection.add('overlay', 0);
+    MaweState.selection.add('overlay', 1);
+    MaweState.selection.add('overlay', 2);
   });
   await page.keyboard.press('c');
   const merged = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).overlay_track.segments);

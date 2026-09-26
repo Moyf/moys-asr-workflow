@@ -21,7 +21,7 @@
   const editorHistory = window.AsrEditorUtils.createHistoryStack(UNDO_LIMIT);
 
 
-  let gapRemoveDirty = false;
+
 
 
   function snapshotSegments() {
@@ -47,7 +47,7 @@
     extensionIds: extensionTrack
       ? [...MaweSelection.selectedExtensionIdxs].map((index) => extensionTrack.segments[index]?.id).filter(Boolean)
       : [],
-    overlayIds: [...selectedOverlayIdxs]
+    overlayIds: [...MaweState.selection.indices('overlay')]
       .map((index) => getOverlayTrack()?.segments?.[index]?.id)
       .filter(Boolean),
     panelKind: MaweCuePanelState.currentCuePanelKind,
@@ -59,7 +59,7 @@
       : MaweBoot.DATA.segments[MaweCuePanelState.currentCuePanelIdx]?.id || null,
     lastMainId: MaweBoot.DATA.segments[MaweSelection.lastClickedIdx]?.id || null,
     lastExtensionId: extensionTrack?.segments?.[MaweSelection.lastClickedExtensionIdx]?.id || null,
-    lastOverlayId: getOverlayTrack()?.segments?.[lastClickedOverlayIdx]?.id || null,
+    lastOverlayId: getOverlayTrack()?.segments?.[MaweState.selection.overlayAnchor]?.id || null,
   };
 }
 
@@ -85,7 +85,7 @@
   function pushGapRemoveUndo(label) {
     editorHistory.push(window.AsrEditorUtils.buildHistoryRecord('gap_remove', label, {
       gapRemove: MaweBoot.DATA.gap_remove,
-      gapRemoveDirty,
+      gapRemoveDirty: MaweState.changes.gapRemoveDirty,
     }));
     updateUndoRedoButtons();
   }
@@ -136,7 +136,7 @@
     if (kind === 'gap_remove') {
       return window.AsrEditorUtils.buildHistoryRecord('gap_remove', label, {
         gapRemove: MaweBoot.DATA.gap_remove,
-        gapRemoveDirty,
+        gapRemoveDirty: MaweState.changes.gapRemoveDirty,
       });
     }
     if (kind === 'preview') {
@@ -150,29 +150,29 @@
 
   function restoreEditorSelection(snapshot) {
   if (!snapshot) return;
-  MaweSelection.selectedIdxs.clear();
-  MaweSelection.selectedExtensionIdxs.clear();
-  selectedOverlayIdxs.clear();
+  MaweState.selection.clear('main');
+  MaweState.selection.clear('extension');
+  MaweState.selection.clear('overlay');
   const mainIds = new Set(snapshot.mainIds || []);
   MaweBoot.DATA.segments.forEach((segment, index) => {
-    if (mainIds.has(segment?.id)) MaweSelection.selectedIdxs.add(index);
+    if (mainIds.has(segment?.id)) MaweState.selection.add('main', index);
   });
   const extensionTrack = MaweMultiSubtitleCore.getExtensionTrack(snapshot.extensionTrackId) || MaweMultiSubtitleCore.getActiveExtensionTrack();
   const extensionIds = new Set(snapshot.extensionIds || []);
   if (extensionTrack) {
     extensionTrack.segments.forEach((segment, index) => {
-      if (extensionIds.has(segment?.id)) MaweSelection.selectedExtensionIdxs.add(index);
+      if (extensionIds.has(segment?.id)) MaweState.selection.add('extension', index);
     });
   }
   const overlayIds = new Set(snapshot.overlayIds || []);
   (getOverlayTrack()?.segments || []).forEach((segment, index) => {
-    if (overlayIds.has(segment?.id)) selectedOverlayIdxs.add(index);
+    if (overlayIds.has(segment?.id)) MaweState.selection.add('overlay', index);
   });
   MaweSelection.lastClickedIdx = snapshot.lastMainId
     ? MaweBoot.DATA.segments.findIndex((segment) => segment?.id === snapshot.lastMainId) : -1;
   MaweSelection.lastClickedExtensionIdx = extensionTrack && snapshot.lastExtensionId
     ? extensionTrack.segments.findIndex((segment) => segment?.id === snapshot.lastExtensionId) : -1;
-  lastClickedOverlayIdx = snapshot.lastOverlayId != null
+  MaweState.selection.overlayAnchor = snapshot.lastOverlayId != null
     ? (getOverlayTrack()?.segments || []).findIndex((segment) => segment?.id === snapshot.lastOverlayId) : -1;
   const panelTrack = snapshot.panelTrackId ? MaweMultiSubtitleCore.getExtensionTrack(snapshot.panelTrackId) : null;
   if (snapshot.panelKind === 'extension' && panelTrack && snapshot.panelId) {
@@ -201,12 +201,12 @@
     MaweCuePanelState.currentCuePanelTrackId = null;
   }
   MaweDom.selCountEl.textContent = String(
-    MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size + selectedOverlayIdxs.size,
+    MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size + MaweState.selection.indices('overlay').size,
   );
   MaweSelection.selectedIdxs.forEach((index) => {
     MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`)?.classList.add('selected');
   });
-  selectedOverlayIdxs.forEach((index) => {
+  MaweState.selection.indices('overlay').forEach((index) => {
     MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.add('selected');
   });
   MaweSelection.updateMultiSelectionClasses();
@@ -226,7 +226,7 @@
   }
   if (record.kind === 'gap_remove') {
     MaweBoot.DATA.gap_remove = record.gapRemove;
-    gapRemoveDirty = record.gapRemoveDirty;
+    MaweState.changes.gapRemoveDirty = record.gapRemoveDirty;
     MaweGapRemoveUi.updateGapRemoveUi();
     return true;
   }
@@ -335,8 +335,8 @@
   global.MaweHistory = Object.freeze({
     UNDO_LIMIT,
     editorHistory,
-    get gapRemoveDirty() { return gapRemoveDirty; },
-    set gapRemoveDirty(v) { gapRemoveDirty = v; },
+    get gapRemoveDirty() { return MaweState.changes.gapRemoveDirty; },
+    set gapRemoveDirty(v) { MaweState.changes.gapRemoveDirty = v; },
     snapshotSegments,
     snapshotEditorSelection,
     pushUndo,

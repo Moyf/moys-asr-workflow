@@ -299,9 +299,9 @@ function commitOverlaySplit(
   MaweSplitCore.closeLinkedSplitModal();
   MaweSelection.clearSelection({ commitCuePanel: false });
   MaweCuePanel.renderAll();
-  selectedOverlayIdxs.clear();
-  selectedOverlayIdxs.add(overlayIndex + 1);
-  lastClickedOverlayIdx = overlayIndex + 1;
+  MaweState.selection.clear('overlay');
+  MaweState.selection.add('overlay', overlayIndex + 1);
+  MaweState.selection.overlayAnchor = overlayIndex + 1;
   MaweCuePanel.setCuePanelTarget('overlay', overlayIndex + 1);
   MawePlaybackLoop.updateWithoutCueListAutoScroll();
   MaweSplitCore.flashSplitFeedback({
@@ -392,9 +392,9 @@ function mergeOverlaySegments(idxs) {
   track.segments.splice(sorted[0], sorted.length, merged);
   track._dirty = true;
   MaweCuePanel.renderAll();
-  selectedOverlayIdxs.clear();
-  selectedOverlayIdxs.add(sorted[0]);
-  lastClickedOverlayIdx = sorted[0];
+  MaweState.selection.clear('overlay');
+  MaweState.selection.add('overlay', sorted[0]);
+  MaweState.selection.overlayAnchor = sorted[0];
   MaweCuePanel.setCuePanelTarget('overlay', sorted[0]);
   MawePlaybackLoop.updateWithoutCueListAutoScroll();
   const el = MaweCoreState.container.querySelector(`.overlay-track-cue[data-overlay-idx="${sorted[0]}"]`);

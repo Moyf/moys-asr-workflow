@@ -7,7 +7,7 @@
 
 
 
-  let projectImportDirty = false;
+
 
 
   let projectCheckpointed = Boolean(MaweBoot.SERVER_CONFIG?.canSave)
@@ -369,13 +369,7 @@
 
 
   function hasUnsavedProjectChanges() {
-  const multiDirty = Boolean(MaweBoot.DATA.multi_subtitle?._dirty)
-    || (MaweBoot.DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
-  const overlayDirty = Boolean(MaweBoot.DATA.overlay_track?._dirty)
-    || MaweBoot.DATA.overlay_track?.segments?.some((segment) => segment._dirty);
-  return MaweProjectSave.inlineEditHasUncommittedText() || projectImportDirty || MaweHistory.gapRemoveDirty || MaweAppearance.previewGeometryDirty
-    || MaweBoot.DATA.segments.some((segment) => segment._dirty)
-    || multiDirty || overlayDirty;
+    return MaweState.hasProjectChanges(MaweProjectSave.inlineEditHasUncommittedText());
 }
 
 
@@ -563,8 +557,8 @@
   }
 
   global.MaweServerSave = Object.freeze({
-    get projectImportDirty() { return projectImportDirty; },
-    set projectImportDirty(v) { projectImportDirty = v; },
+    get projectImportDirty() { return MaweState.changes.projectImportDirty; },
+    set projectImportDirty(v) { MaweState.changes.projectImportDirty = v; },
     get projectCheckpointed() { return projectCheckpointed; },
     set projectCheckpointed(v) { projectCheckpointed = v; },
     get projectCheckpointInFlight() { return projectCheckpointInFlight; },

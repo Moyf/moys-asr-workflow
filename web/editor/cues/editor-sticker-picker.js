@@ -316,7 +316,7 @@
   if (MaweDom.hideDisabled && !allDisabled) {
     if (isOverlay) {
       validIdxs.forEach((index) => {
-        selectedOverlayIdxs.delete(index);
+        MaweState.selection.remove('overlay', index);
         MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.remove('selected');
       });
     } else {
@@ -326,11 +326,11 @@
         ? new Map([[extensionTrack, new Set(validIdxs)]])
         : boundExtensionTargets;
       mainDisabled.forEach((index) => {
-        MaweSelection.selectedIdxs.delete(index);
+        MaweState.selection.remove('main', index);
         MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`)?.classList.remove('selected');
       });
       extensionDisabled.forEach((indexes) => indexes.forEach((index) => {
-        MaweSelection.selectedExtensionIdxs.delete(index);
+        MaweState.selection.remove('extension', index);
         MaweCoreState.container.querySelectorAll(
           `.multi-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
         ).forEach((el) => el.classList.remove('selected'));

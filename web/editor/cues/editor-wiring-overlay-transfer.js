@@ -207,15 +207,13 @@ function convertMainCueToOverlayForDrag(index) {
   if (newIndex < 0) return -1;
   applyCueColorSnapshot(segment, colorSnapshot);
   applyCueStickerSnapshot(segment, stickerSnapshot);
-  const { wasSelected, nextAnchor } = window.AsrEditorUtils.shiftSelectionAfterRemoval(
-    MaweSelection.selectedIdxs, MaweSelection.lastClickedIdx, index,
-  );
+  const { wasSelected, nextAnchor } = MaweState.selection.removeAndShift('main', index);
   MaweSelection.lastClickedIdx = nextAnchor;
   updateSelectionCountText();
   if (panelWasHere) MaweCuePanel.setCuePanelTarget('overlay', newIndex);
   if (wasSelected) {
-    selectedOverlayIdxs.add(newIndex);
-    lastClickedOverlayIdx = newIndex;
+    MaweState.selection.add('overlay', newIndex);
+    MaweState.selection.overlayAnchor = newIndex;
   }
   return newIndex;
 }
@@ -243,10 +241,8 @@ function convertOverlayCueToMainForDrag(index) {
   applyCueColorSnapshot(segment, colorSnapshot);
   applyCueStickerSnapshot(segment, stickerSnapshot);
   shiftMainGroupRefsAfterInsert(newIndex);
-  const { wasSelected, nextAnchor } = window.AsrEditorUtils.shiftSelectionAfterRemoval(
-    selectedOverlayIdxs, lastClickedOverlayIdx, index,
-  );
-  lastClickedOverlayIdx = nextAnchor;
+  const { wasSelected, nextAnchor } = MaweState.selection.removeAndShift('overlay', index);
+  MaweState.selection.overlayAnchor = nextAnchor;
   updateSelectionCountText();
   if (panelWasHere) MaweCuePanel.setCuePanelTarget('main', newIndex);
   if (wasSelected && !MaweSelection.isHiddenDisabled(newIndex)) {
@@ -273,9 +269,7 @@ function convertOverlayCueToMain(index) {
   applyCueColorSnapshot(segment, colorSnapshot);
   applyCueStickerSnapshot(segment, stickerSnapshot);
   shiftMainGroupRefsAfterInsert(newIndex);
-  lastClickedOverlayIdx = window.AsrEditorUtils.shiftSelectionAfterRemoval(
-    selectedOverlayIdxs, lastClickedOverlayIdx, index,
-  ).nextAnchor;
+  MaweState.selection.removeAndShift('overlay', index);
   MaweCuePanel.renderAll({ waveform: 'full' });
   MaweServerSave.scheduleAutoSaveFlush();
   MaweHint.flashHint('已转为主字幕', 'success');
@@ -294,8 +288,8 @@ function deleteOverlayCues(indices) {
     resetOverlayGroupRefs(sorted[index]);
     overlay.segments.splice(sorted[index], 1);
   }
-  selectedOverlayIdxs.clear();
-  lastClickedOverlayIdx = -1;
+  MaweState.selection.clear('overlay');
+  MaweState.selection.overlayAnchor = -1;
   overlay._dirty = true;
   MaweCuePanel.renderAll({ waveform: 'full' });
   MaweServerSave.scheduleAutoSaveFlush();
