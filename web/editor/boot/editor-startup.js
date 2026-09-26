@@ -41,6 +41,7 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
 });
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 MaweCuePanel.renderAll({ waveform: 'full' });
+MaweState.noteSavedSegments();
 MaweBoot.maweDebug('boot:complete', {
   renderedSegments: MaweCoreState.container?.querySelectorAll?.('.cue-row')?.length || 0,
   recentProjectsVisible: MaweDom.recentProjectsEl ? !MaweDom.recentProjectsEl.hidden : false,

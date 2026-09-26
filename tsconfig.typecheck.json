@@ -10,6 +10,8 @@
     "web/editor/boot/editor-globals.d.ts",
     "web/editor/boot/editor-boot.js",
     "web/editor/state/editor-state.js",
+    "web/editor/state/editor-view-updates.js",
+    "web/editor/state/editor-commands.js",
     "web/editor/io/editor-export-srt.js"
   ]
 }

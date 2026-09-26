@@ -5,10 +5,13 @@
 (function initMaweCuePanelState(global) {
   'use strict';
 
-  function resetCuePanelEditState() {
+  function resetCuePanelEditState({ discard = false } = {}) {
+    const command = MaweState.panel.cuePanelUndoRecord;
     MaweState.panel.cuePanelUndoPushed = false;
     MaweState.panel.cuePanelUndoRecord = null;
     MaweState.panel.cuePanelTextEditSnapshot = null;
+    if (discard) command?.discard();
+    else command?.commit();
   }
 
   global.MaweCuePanelState = Object.freeze({

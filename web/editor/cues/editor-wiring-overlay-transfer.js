@@ -160,35 +160,37 @@ function convertMainCuesToOverlay(idxs, { label = '转为叠加字幕', pushHist
     .sort((a, b) => a - b);
   if (!targets.length) return 0;
   detachCuePanelFromTrackEdits();
-  if (pushHistory) MaweHistory.pushUndo(label);
-  // 迁移前快照颜色与表情包：splitGroupsAtCutPoints 会把切点的
-  // color/color_ref/sticker/sticker_ref 清空，迁移后按快照物化回段上。
-  const colorSnapshots = new Map(targets.map((index) => [index, {
-    segment: MaweBoot.DATA.segments[index],
-    color: captureCueColorSnapshot(MaweBoot.DATA.segments[index]),
-    sticker: captureCueStickerSnapshot(MaweBoot.DATA.segments, index),
-  }]));
-  shiftMainGroupRefsAfterMove(targets);
-  let converted = 0;
-  // 倒序迁移：主轨下标在移除后仍然稳定。
-  for (let position = targets.length - 1; position >= 0; position -= 1) {
-    const targetIndex = targets[position];
-    const newIndex = moveSegmentToOverlayTrack(targetIndex);
-    if (newIndex < 0) continue;
-    const { segment, color, sticker } = colorSnapshots.get(targetIndex);
-    applyCueColorSnapshot(segment, color);
-    applyCueStickerSnapshot(segment, sticker);
-    converted += 1;
-  }
-  if (!converted) return 0;
-  MaweSelection.clearSelection({ silent: true });
-  MawePlaybackLoop.lastActive = -1;
-  if (!silent) {
-    MaweCuePanel.renderAll({ waveform: 'full' });
-    MaweServerSave.scheduleAutoSaveFlush();
-    MaweHint.flashHint(`已转为叠加字幕 ${converted} 条`, 'success');
-  }
-  return converted;
+  const mutate = (command) => {
+    // 迁移前快照颜色与表情包：splitGroupsAtCutPoints 会把切点的
+    // color/color_ref/sticker/sticker_ref 清空，迁移后按快照物化回段上。
+    const colorSnapshots = new Map(targets.map((index) => [index, {
+      segment: MaweBoot.DATA.segments[index],
+      color: captureCueColorSnapshot(MaweBoot.DATA.segments[index]),
+      sticker: captureCueStickerSnapshot(MaweBoot.DATA.segments, index),
+    }]));
+    shiftMainGroupRefsAfterMove(targets);
+    let converted = 0;
+    // 倒序迁移：主轨下标在移除后仍然稳定。
+    for (let position = targets.length - 1; position >= 0; position -= 1) {
+      const targetIndex = targets[position];
+      const newIndex = moveSegmentToOverlayTrack(targetIndex);
+      if (newIndex < 0) continue;
+      const { segment, color, sticker } = colorSnapshots.get(targetIndex);
+      applyCueColorSnapshot(segment, color);
+      applyCueStickerSnapshot(segment, sticker);
+      converted += 1;
+    }
+    if (!converted) return 0;
+    MaweSelection.clearSelection({ silent: true });
+    MawePlaybackLoop.lastActive = -1;
+    if (!silent) {
+      command.commit({ cueList: true, waveform: 'full' });
+      MaweViewUpdates.invalidate({ save: true });
+      MaweHint.flashHint(`已转为叠加字幕 ${converted} 条`, 'success');
+    }
+    return converted;
+  };
+  return pushHistory ? MaweCommands.run(label, mutate) : mutate({ commit: options => MaweViewUpdates.invalidate(options) });
 }
 
 // 拖动逃逸入口：单条迁移，不推送历史（拖动开始时已推）、不渲染（拖动中由
@@ -256,24 +258,25 @@ function convertOverlayCueToMain(index) {
   const overlay = getOverlayTrack();
   if (!overlay?.segments?.[index]) return false;
   detachCuePanelFromTrackEdits();
-  MaweHistory.pushUndo('叠加字幕转为主字幕');
-  const segment = overlay.segments[index];
-  const colorSnapshot = captureCueColorSnapshot(segment);
-  const stickerSnapshot = captureCueStickerSnapshot(overlay.segments, index);
-  // 与拖动入口一致：剩余组员先提升新 head，迁移段物化自持颜色/表情。
-  MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
-  MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'sticker', 'sticker_ref', overlay.segments);
-  resetOverlayGroupRefs(index);
-  const newIndex = moveOverlaySegmentToMainTrack(index);
-  if (newIndex < 0) return false;
-  applyCueColorSnapshot(segment, colorSnapshot);
-  applyCueStickerSnapshot(segment, stickerSnapshot);
-  shiftMainGroupRefsAfterInsert(newIndex);
-  MaweState.selection.removeAndShift('overlay', index);
-  MaweCuePanel.renderAll({ waveform: 'full' });
-  MaweServerSave.scheduleAutoSaveFlush();
-  MaweHint.flashHint('已转为主字幕', 'success');
-  return true;
+  return MaweCommands.run('叠加字幕转为主字幕', (command) => {
+    const segment = overlay.segments[index];
+    const colorSnapshot = captureCueColorSnapshot(segment);
+    const stickerSnapshot = captureCueStickerSnapshot(overlay.segments, index);
+    // 与拖动入口一致：剩余组员先提升新 head，迁移段物化自持颜色/表情。
+    MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
+    MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'sticker', 'sticker_ref', overlay.segments);
+    resetOverlayGroupRefs(index);
+    const newIndex = moveOverlaySegmentToMainTrack(index);
+    if (newIndex < 0) return false;
+    applyCueColorSnapshot(segment, colorSnapshot);
+    applyCueStickerSnapshot(segment, stickerSnapshot);
+    shiftMainGroupRefsAfterInsert(newIndex);
+    MaweState.selection.removeAndShift('overlay', index);
+    command.commit({ cueList: true, waveform: 'full' });
+
+    MaweHint.flashHint('已转为主字幕', 'success');
+    return true;
+  });
 }
 
 function deleteOverlayCues(indices) {
@@ -283,17 +286,18 @@ function deleteOverlayCues(indices) {
     .sort((a, b) => a - b);
   if (!sorted.length) return;
   detachCuePanelFromTrackEdits();
-  MaweHistory.pushUndo(`删除 ${sorted.length} 条叠加字幕`);
-  for (let index = sorted.length - 1; index >= 0; index -= 1) {
-    resetOverlayGroupRefs(sorted[index]);
-    overlay.segments.splice(sorted[index], 1);
-  }
-  MaweState.selection.clear('overlay');
-  MaweState.selection.overlayAnchor = -1;
-  overlay._dirty = true;
-  MaweCuePanel.renderAll({ waveform: 'full' });
-  MaweServerSave.scheduleAutoSaveFlush();
-  MaweHint.flashHint(`已删除 ${sorted.length} 条叠加字幕`, 'success');
+  return MaweCommands.run(`删除 ${sorted.length} 条叠加字幕`, (command) => {
+    for (let index = sorted.length - 1; index >= 0; index -= 1) {
+      resetOverlayGroupRefs(sorted[index]);
+      overlay.segments.splice(sorted[index], 1);
+    }
+    MaweState.selection.clear('overlay');
+    MaweState.selection.overlayAnchor = -1;
+    overlay._dirty = true;
+    command.commit({ cueList: true, waveform: 'full' });
+
+    MaweHint.flashHint(`已删除 ${sorted.length} 条叠加字幕`, 'success');
+  });
 }
 
 

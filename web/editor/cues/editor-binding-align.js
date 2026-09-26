@@ -125,21 +125,22 @@
   const extension = track?.segments?.[extensionIndex];
   if (!main || !extension) return;
   const replacedBinding = MaweMultiSubtitleCore.bindingForMainIndex(mainIndex);
-  MaweHistory.pushUndo('绑定双语字幕');
-  MaweMultiSubtitleCore.addSubtitleBinding(main, extension, track);
-  const autoSynced = MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration
-    && alignExtensionToMainTimeRange(extensionIndex, track, { pushHistory: false, showHint: false });
-  MaweMultiSubtitleCore.markMainSegmentsDirty([main]);
-  MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  // 绑定会更新波形上的绑定标记；自动同步时也会改变副字幕范围，
-  // 因此列表与波形都需要同步刷新。
-  MaweCuePanel.renderAll({ waveform: 'overlay' });
-  MaweCoreState.waveformEditor?.updateSelection();
-  const bindingMessage = successMessage
-    || (replacedBinding
-      ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为副字幕 ${extensionIndex + 1}`
-      : `已绑定主字幕 ${mainIndex + 1} 与副字幕 ${extensionIndex + 1}`);
-  MaweHint.flashHint(`${bindingMessage}${autoSynced ? '，并同步时长' : ''}`, 'success');
+  return MaweCommands.run('绑定双语字幕', (command) => {
+    MaweMultiSubtitleCore.addSubtitleBinding(main, extension, track);
+    const autoSynced = MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration
+      && alignExtensionToMainTimeRange(extensionIndex, track, { pushHistory: false, showHint: false });
+    MaweMultiSubtitleCore.markMainSegmentsDirty([main]);
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+    // 绑定会更新波形上的绑定标记；自动同步时也会改变副字幕范围，
+    // 因此列表与波形都需要同步刷新。
+    command.commit({ cueList: true, waveform: 'overlay' });
+    MaweCoreState.waveformEditor?.updateSelection();
+    const bindingMessage = successMessage
+      || (replacedBinding
+        ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为副字幕 ${extensionIndex + 1}`
+        : `已绑定主字幕 ${mainIndex + 1} 与副字幕 ${extensionIndex + 1}`);
+    MaweHint.flashHint(`${bindingMessage}${autoSynced ? '，并同步时长' : ''}`, 'success');
+  });
 }
 
 
@@ -162,14 +163,15 @@
   // removeSubtitleBindings 已经返回具体关系；快照必须在真正修改前建立。
   // 这里把预览关系恢复后再记录，避免解绑动作无法撤销。
   multi.bindings.push(...removed);
-  MaweHistory.pushUndo('解绑双语字幕');
-  MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
-  MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  MaweMultiSubtitleCore.syncBindingOffsets();
-  // 解绑会移除波形上的绑定标记，也需要刷新字幕块覆盖层。
-  MaweCuePanel.renderAll({ waveform: 'overlay' });
-  MaweCoreState.waveformEditor?.updateSelection();
-  MaweHint.flashHint(`已解绑 ${removed.length} 对字幕`, 'success');
+  return MaweCommands.run('解绑双语字幕', (command) => {
+    MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+    MaweMultiSubtitleCore.syncBindingOffsets();
+    // 解绑会移除波形上的绑定标记，也需要刷新字幕块覆盖层。
+    command.commit({ cueList: true, waveform: 'overlay' });
+    MaweCoreState.waveformEditor?.updateSelection();
+    MaweHint.flashHint(`已解绑 ${removed.length} 对字幕`, 'success');
+  });
 }
 
 
@@ -219,27 +221,29 @@
       return false;
     }
 
-    if (pushHistory) MaweHistory.pushUndo(batch || targets.length > 1 ? '批量对齐副字幕' : '对齐副字幕时间范围');
-    // 先写入全部目标范围，再统一处理其它副字幕的冲突；主字幕范围不会被改写。
-    targets.forEach(({ extension, start, end }) => MaweMultiSubtitleCore.setExtensionSegmentRange(extension, start, end));
-    const resolved = MaweMultiSubtitleCore.reconcileExtensionTrack(track, targets.map(({ extension }) => extension));
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweMultiSubtitleCore.syncBindingOffsets();
-    MaweCuePanel.renderAll();
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
-    const details = [];
-    if (resolved.squeezedCount) details.push(`挤压 ${resolved.squeezedCount} 条副字幕`);
-    if (resolved.removedCount) details.push(`删除 ${resolved.removedCount} 条副字幕`);
-    if (showHint) {
-      const prefix = batch || targets.length > 1
-        ? `已批量对齐 ${targets.length} 条副字幕`
-        : '已将副字幕对齐到主字幕时间范围';
-      const suffix = details.length
-        ? `，${details.join('，')}${resolved.unboundCount ? '并解除绑定' : ''}`
-        : skippedUnbound ? `，跳过 ${skippedUnbound} 条未绑定副字幕` : '';
-      MaweHint.flashHint(`${prefix}${suffix}`, details.length ? 'warning' : 'success');
-    }
-    return true;
+    const mutate = (command) => {
+      // 先写入全部目标范围，再统一处理其它副字幕的冲突；主字幕范围不会被改写。
+      targets.forEach(({ extension, start, end }) => MaweMultiSubtitleCore.setExtensionSegmentRange(extension, start, end));
+      const resolved = MaweMultiSubtitleCore.reconcileExtensionTrack(track, targets.map(({ extension }) => extension));
+      MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      MaweMultiSubtitleCore.syncBindingOffsets();
+      command.commit({ cueList: true, preview: 'update' });
+
+      const details = [];
+      if (resolved.squeezedCount) details.push(`挤压 ${resolved.squeezedCount} 条副字幕`);
+      if (resolved.removedCount) details.push(`删除 ${resolved.removedCount} 条副字幕`);
+      if (showHint) {
+        const prefix = batch || targets.length > 1
+          ? `已批量对齐 ${targets.length} 条副字幕`
+          : '已将副字幕对齐到主字幕时间范围';
+        const suffix = details.length
+          ? `，${details.join('，')}${resolved.unboundCount ? '并解除绑定' : ''}`
+          : skippedUnbound ? `，跳过 ${skippedUnbound} 条未绑定副字幕` : '';
+        MaweHint.flashHint(`${prefix}${suffix}`, details.length ? 'warning' : 'success');
+      }
+      return true;
+    };
+    return pushHistory ? MaweCommands.run(batch || targets.length > 1 ? '批量对齐副字幕' : '对齐副字幕时间范围', mutate) : mutate({ commit: options => MaweViewUpdates.invalidate(options) });
   }
 
 

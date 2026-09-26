@@ -66,6 +66,7 @@ interface ProjectData {
   workspace?: unknown;
   preview?: Record<string, unknown>;
   overlay_track?: unknown;
+  multi_subtitle?: unknown;
 }
 
 // 冻结门面契约：模块通过 global.MaweXxx = Object.freeze({...}) 挂载，
@@ -197,9 +198,39 @@ interface MaweStateApi {
   readonly editing: { editingState: any; extensionEditingState: any };
   readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean };
   hasProjectChanges(pendingText?: boolean): boolean;
+  segmentsFingerprint(): string;
+  noteSavedSegments(fingerprint?: string): void;
+  markSaved(): void;
+  reconcileSegmentsDirty(): void;
 }
 declare var MaweState: MaweStateApi;
 interface Window {
   MaweState: MaweStateApi;
   MAWE: { register(name: string, factory: (...args: any[]) => unknown): void; resolve(name: string, ...args: any[]): any };
+}
+
+interface ViewInvalidation {
+  cueList?: boolean; waveform?: 'none' | 'overlay' | 'full'; preserveCueListScroll?: boolean; cueListAnchor?: unknown;
+  preview?: false | 'update' | 'refresh'; save?: boolean;
+}
+interface EditorTransaction {
+  commit(invalidation?: ViewInvalidation): boolean;
+  cancel(): boolean;
+  discard(): void;
+}
+interface MaweCommandsApi {
+  begin(label: string, options?: { captureView?: boolean }): EditorTransaction;
+  run<T>(label: string, mutate: (command: EditorTransaction) => T,
+    options?: { captureView?: boolean; invalidate?: ViewInvalidation }): T;
+}
+declare var MaweCommands: MaweCommandsApi;
+declare var MaweViewUpdates: { invalidate(options?: ViewInvalidation): void };
+declare const MaweHistory: any;
+declare const MaweCuePanel: any;
+declare const MaweCueListAnchor: any;
+declare const MawePlaybackLoop: any;
+declare const MaweServerSave: any;
+interface Window {
+  MaweCommands: MaweCommandsApi;
+  MaweViewUpdates: typeof MaweViewUpdates;
 }

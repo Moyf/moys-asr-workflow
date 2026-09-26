@@ -139,7 +139,7 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
   seg.text = MaweDom.cuePanelText.value.replace(/\r\n?/g, '\n');
   seg._dirty = true;
   if (target.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  MaweServerSave.scheduleAutoSaveFlush();
+  MaweViewUpdates.invalidate({ save: true });
   const splitMode = target.kind === 'extension'
     ? MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(target.track, seg)
     : MaweMultiSubtitleCore.getMainSubtitleSplitMode(seg);
@@ -156,7 +156,7 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
   if (target.kind === 'extension') MaweCoreState.waveformEditor?.refreshExtensionCueLabel(target.index, target.trackId);
   else if (target.kind === 'overlay') MaweCoreState.waveformEditor?.refreshCueOverlay();
   else MaweCoreState.waveformEditor?.refreshCueLabel(target.index);
-  MawePlaybackLoop.refreshSubtitlePreview();
+  MaweViewUpdates.invalidate({ preview: 'refresh' });
   MaweCueListAnchor.restoreCueListRenderAnchor(cueListAnchor);
 });
 MaweDom.cuePanelText?.addEventListener('blur', () => {

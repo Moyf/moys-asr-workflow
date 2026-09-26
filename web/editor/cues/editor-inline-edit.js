@@ -85,11 +85,12 @@
     if (segment && save) {
       const nextText = textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
       if (nextText !== original) {
-        MaweHistory.pushUndo('编辑副字幕');
-        segment.text = nextText;
-        segment._dirty = true;
-        MaweMultiSubtitleCore.markMultiSubtitleDirty();
-        MaweServerSave.scheduleAutoSaveFlush();
+        MaweCommands.run('编辑副字幕', () => {
+          segment.text = nextText;
+          segment._dirty = true;
+          MaweMultiSubtitleCore.markMultiSubtitleDirty();
+
+        });
       }
     }
     if (segment) {
@@ -103,7 +104,7 @@
     MaweCoreState.waveformEditor?.refreshExtensionCueLabel(index, trackId);
     syncCuePanelAfterInlineEdit('extension', index, trackId);
     MaweState.editing.extensionEditingState = null;
-    MawePlaybackLoop.refreshSubtitlePreview();
+    MaweViewUpdates.invalidate({ preview: 'refresh' });
   }
 
 
@@ -290,11 +291,12 @@
     if (save) {
       const newText = textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
       if (newText !== original) {
-        MaweHistory.pushUndo('编辑文本');
-        MaweBoot.DATA.segments[idx].text = newText;
-        MaweBoot.DATA.segments[idx]._dirty = true;
-        el.classList.add('dirty');
-        MaweServerSave.scheduleAutoSaveFlush();
+        MaweCommands.run('编辑文本', () => {
+          MaweBoot.DATA.segments[idx].text = newText;
+          MaweBoot.DATA.segments[idx]._dirty = true;
+          el.classList.add('dirty');
+
+        });
       }
     }
     MaweCueElements.setTextHtml(textEl, MaweBoot.DATA.segments[idx].text, MaweDom.searchEl.value);
@@ -305,7 +307,7 @@
     MaweCoreState.waveformEditor?.refreshCueLabel(idx);
     syncCuePanelAfterInlineEdit('main', idx);
     MaweState.editing.editingState = null;
-    MawePlaybackLoop.refreshSubtitlePreview();
+    MaweViewUpdates.invalidate({ preview: 'refresh' });
   }
 
   global.MaweInlineEdit = Object.freeze({

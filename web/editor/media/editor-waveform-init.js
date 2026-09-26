@@ -8,6 +8,7 @@
 
 
   function initWaveformEditor() {
+  let timingCommand = null;
   if (!window.AsrWaveform) {
     MaweHint.flashHint('波形模块加载失败，字幕编辑仍可使用', 'warning');
     return;
@@ -172,7 +173,14 @@
     // JKL 倒放靠逐帧回退实现，媒体元素本身处于暂停态；倒放期间同样视为播放中。
     getHoverSeekPreview: () => MaweSettings.EDITOR_SETTINGS.hoverSeekPreview && !MaweJklPlayback.jklReversePlaying,
     showTrackBadges: () => MaweSettings.EDITOR_SETTINGS.multiSubtitleShowTrackBadges,
-    onBeginEdit: (label) => MaweHistory.pushUndo(label),
+    onBeginEdit: (label) => {
+      timingCommand ||= MaweCommands.begin(label, { captureView: true });
+    },
+    onCancelEdit: () => {
+      const command = timingCommand;
+      timingCommand = null;
+      command?.cancel();
+    },
     syncBoundCueDrag: MaweBoundDrag.syncBoundCueDrag,
     onLayoutUndo: (label, snapshot) => MaweHistory.pushLayoutUndo(label, snapshot),
     onCommitEdit: (idxs, kind, track = 'main', independent = false, details = null) => {
@@ -204,8 +212,11 @@
         }
       }
       if (linkedChanged || MaweMultiSubtitleCore.multiSubtitleVisible() || track === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
-      MaweCuePanel.renderAll();
-      MawePlaybackLoop.updateWithoutCueListAutoScroll();
+      const command = timingCommand;
+      timingCommand = null;
+      if (command && !command.commit({ cueList: true })) return;
+      if (!command) MaweViewUpdates.invalidate({ cueList: true });
+      MaweViewUpdates.invalidate({ preview: 'update' });
       MaweHint.flashHint(kind === 'move'
         ? track === 'extension'
           ? `已移动 ${idxs.length} 条副字幕`

@@ -76,6 +76,31 @@ window.MAWE.register('editor-state', function createEditorState(project) {
   const editing = Object.seal({ editingState: null, extensionEditingState: null });
   const changes = Object.seal({ projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false });
 
+  // Compare only subtitle truth, never DOM, playback or rebuildable waveform caches.
+  function segmentsFingerprint() {
+    return JSON.stringify({ segments: project.segments, multi_subtitle: project.multi_subtitle,
+      overlay_track: project.overlay_track }, (key, value) => key === '_dirty' ? undefined : value);
+  }
+  let savedSegments = null;
+  function noteSavedSegments(fingerprint = segmentsFingerprint()) { savedSegments = fingerprint; }
+  function clearSubtitleDirtyFlags() {
+    (project.segments || []).forEach(segment => { delete segment._dirty; });
+    for (const track of [project.multi_subtitle, project.overlay_track, ...(project.multi_subtitle?.tracks || [])]) {
+      if (!track) continue;
+      delete track._dirty;
+      (track.segments || []).forEach(segment => { delete segment._dirty; });
+    }
+  }
+  function markSaved() {
+    clearSubtitleDirtyFlags();
+    for (const key of Object.keys(changes)) changes[key] = false;
+  }
+  function reconcileSegmentsDirty() {
+    if (savedSegments === null) return;
+    changes.projectImportDirty = segmentsFingerprint() !== savedSegments;
+    if (!changes.projectImportDirty) clearSubtitleDirtyFlags();
+  }
+
   function hasProjectChanges(pendingText = false) {
     const dirty = track => Boolean(track?._dirty) || (track?.segments || []).some(segment => segment._dirty);
     return Boolean(pendingText || changes.projectImportDirty || changes.gapRemoveDirty || changes.previewGeometryDirty
@@ -84,6 +109,7 @@ window.MAWE.register('editor-state', function createEditorState(project) {
       || (project.multi_subtitle?.tracks || []).some(dirty));
   }
 
-  return Object.freeze({ project, selection, preferences, runtime, panel, editing, changes, hasProjectChanges });
+  return Object.freeze({ project, selection, preferences, runtime, panel, editing, changes, hasProjectChanges,
+    segmentsFingerprint, noteSavedSegments, markSaved, reconcileSegmentsDirty });
 });
 window.MaweState = window.MAWE.resolve('editor-state', window.MaweBoot.DATA);

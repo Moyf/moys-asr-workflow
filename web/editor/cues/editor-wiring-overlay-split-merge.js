@@ -283,37 +283,38 @@ function commitOverlaySplit(
     return false;
   }
   if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
-  MaweHistory.pushUndo(duplicateText ? '拆分叠加字幕并保留原文' : '拆分叠加字幕', { captureView: true });
-  MaweSelection.clearSelection({ commitCuePanel: false });
-  track.segments.splice(overlayIndex, 1, pair.left, pair.right);
-  // 组引用维护与主轨拆分一致：替换下标之后的引用右移一格，
-  // 左半继承 head 时右半以 ref 指回它；其余指向旧 head 的引用仍有效。
-  for (let index = overlayIndex + 2; index < track.segments.length; index++) {
-    const item = track.segments[index];
-    if (item.sticker_ref?.headIdx > overlayIndex) item.sticker_ref.headIdx += 1;
-    if (item.color_ref?.headIdx > overlayIndex) item.color_ref.headIdx += 1;
-  }
-  if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: overlayIndex };
-  if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: overlayIndex };
-  track._dirty = true;
-  MaweSplitCore.closeLinkedSplitModal();
-  MaweSelection.clearSelection({ commitCuePanel: false });
-  MaweCuePanel.renderAll();
-  MaweState.selection.clear('overlay');
-  MaweState.selection.add('overlay', overlayIndex + 1);
-  MaweState.selection.overlayAnchor = overlayIndex + 1;
-  MaweCuePanel.setCuePanelTarget('overlay', overlayIndex + 1);
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  MaweSplitCore.flashSplitFeedback({
-    index: overlayIndex,
-    track: 'overlay',
-    splitMs,
-    feedbackPoint: null,
-    listFeedback: false,
-  });
-  MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'overlay'));
-  if (successMessage) MaweHint.flashHint(successMessage, 'success');
-  return true;
+  return MaweCommands.run(duplicateText ? '拆分叠加字幕并保留原文' : '拆分叠加字幕', (command) => {
+    MaweSelection.clearSelection({ commitCuePanel: false });
+    track.segments.splice(overlayIndex, 1, pair.left, pair.right);
+    // 组引用维护与主轨拆分一致：替换下标之后的引用右移一格，
+    // 左半继承 head 时右半以 ref 指回它；其余指向旧 head 的引用仍有效。
+    for (let index = overlayIndex + 2; index < track.segments.length; index++) {
+      const item = track.segments[index];
+      if (item.sticker_ref?.headIdx > overlayIndex) item.sticker_ref.headIdx += 1;
+      if (item.color_ref?.headIdx > overlayIndex) item.color_ref.headIdx += 1;
+    }
+    if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: overlayIndex };
+    if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: overlayIndex };
+    track._dirty = true;
+    MaweSplitCore.closeLinkedSplitModal();
+    MaweSelection.clearSelection({ commitCuePanel: false });
+    command.commit({ cueList: true });
+    MaweState.selection.clear('overlay');
+    MaweState.selection.add('overlay', overlayIndex + 1);
+    MaweState.selection.overlayAnchor = overlayIndex + 1;
+    MaweCuePanel.setCuePanelTarget('overlay', overlayIndex + 1);
+    MaweViewUpdates.invalidate({ preview: 'update' });
+    MaweSplitCore.flashSplitFeedback({
+      index: overlayIndex,
+      track: 'overlay',
+      splitMs,
+      feedbackPoint: null,
+      listFeedback: false,
+    });
+    MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'overlay'));
+    if (successMessage) MaweHint.flashHint(successMessage, 'success');
+    return true;
+  }, { captureView: true });
 }
 
 
@@ -388,19 +389,20 @@ function mergeOverlaySegments(idxs) {
   };
   if (Array.isArray(merged.items) && merged.items.length === 0) merged.items = null;
   MaweSelection.clearSelection();
-  MaweHistory.pushUndo('合并叠加字幕');
-  track.segments.splice(sorted[0], sorted.length, merged);
-  track._dirty = true;
-  MaweCuePanel.renderAll();
-  MaweState.selection.clear('overlay');
-  MaweState.selection.add('overlay', sorted[0]);
-  MaweState.selection.overlayAnchor = sorted[0];
-  MaweCuePanel.setCuePanelTarget('overlay', sorted[0]);
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  const el = MaweCoreState.container.querySelector(`.overlay-track-cue[data-overlay-idx="${sorted[0]}"]`);
-  if (cueListAnchor) MaweCueListAnchor.restoreCueListVisualAnchor(el, cueListAnchor);
-  MaweHint.flashHint(`已合并 ${sorted.length} 条叠加字幕`, 'success');
-  return true;
+  return MaweCommands.run('合并叠加字幕', (command) => {
+    track.segments.splice(sorted[0], sorted.length, merged);
+    track._dirty = true;
+    command.commit({ cueList: true });
+    MaweState.selection.clear('overlay');
+    MaweState.selection.add('overlay', sorted[0]);
+    MaweState.selection.overlayAnchor = sorted[0];
+    MaweCuePanel.setCuePanelTarget('overlay', sorted[0]);
+    MaweViewUpdates.invalidate({ preview: 'update' });
+    const el = MaweCoreState.container.querySelector(`.overlay-track-cue[data-overlay-idx="${sorted[0]}"]`);
+    if (cueListAnchor) MaweCueListAnchor.restoreCueListVisualAnchor(el, cueListAnchor);
+    MaweHint.flashHint(`已合并 ${sorted.length} 条叠加字幕`, 'success');
+    return true;
+  });
 }
 
 

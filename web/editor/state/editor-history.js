@@ -64,16 +64,19 @@
 }
 
 
-  function pushUndo(label, { captureView = false } = {}) {
-    MaweCueListAnchor.rememberCueListMutation();
+  function captureSegmentsRecord(label, { captureView = false } = {}) {
     const record = window.AsrEditorUtils.buildHistoryRecord(
       'segments', label, snapshotSegments(), captureView ? snapshotEditorSelection() : null,
     );
+    record.projectChanges = { projectImportDirty: MaweState.changes.projectImportDirty };
+    return record;
+  }
+
+  function commitRecord(record) {
     editorHistory.push(record);
     updateUndoRedoButtons();
     return record;
   }
-
 
   function pushLayoutUndo(label, snapshot) {
     if (!snapshot) return;
@@ -142,9 +145,7 @@
     if (kind === 'preview') {
       return window.AsrEditorUtils.buildHistoryRecord('preview', label, snapshotPreviewState());
     }
-    return window.AsrEditorUtils.buildHistoryRecord(
-      'segments', label, snapshotSegments(), sourceRecord?.view ? snapshotEditorSelection() : null,
-    );
+    return captureSegmentsRecord(label, { captureView: Boolean(sourceRecord?.view) });
   }
 
 
@@ -250,13 +251,15 @@
     schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
   };
   MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(snapshot.overlay_track);
+  if (record.projectChanges) Object.assign(MaweState.changes, record.projectChanges);
   MaweMultiSubtitleCore.normalizeMultiSubtitleState();
+  MaweState.reconcileSegmentsDirty();
   // 历史恢复会改变下标身份；丢弃旧面板绑定，避免 clearSelection() 把旧面板
   // 内容提交到恢复后占据同一下标的另一条字幕，并因此生成新历史、清空 redo。
   MaweCuePanelState.currentCuePanelIdx = -1;
   MaweCuePanelState.currentCuePanelKind = 'main';
   MaweCuePanelState.currentCuePanelTrackId = null;
-  MaweCuePanelState.resetCuePanelEditState();
+  MaweCuePanelState.resetCuePanelEditState({ discard: true });
   MaweSelection.clearSelection();
   MawePlaybackLoop.lastActive = -1;
   const structureChanged = previousWaveformStructure
@@ -339,7 +342,8 @@
     set gapRemoveDirty(v) { MaweState.changes.gapRemoveDirty = v; },
     snapshotSegments,
     snapshotEditorSelection,
-    pushUndo,
+    captureSegmentsRecord,
+    commitRecord,
     pushLayoutUndo,
     pushGapRemoveUndo,
     pushPreviewUndo,

@@ -161,36 +161,37 @@
     ),
     segments: extensionSegments,
   };
-  MaweHistory.pushUndo(replacing ? '替换副字幕' : '导入双语字幕');
-  if (replacing) {
-    const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
-    multi.bindings = (multi.bindings || []).filter((binding) => (
-      binding.track_id !== trackId && !binding.extension_segment_ids?.some((id) => oldIds.has(id))
-    ));
-    const oldIndex = multi.tracks.findIndex((candidate) => candidate.id === trackId);
-    if (oldIndex >= 0) multi.tracks.splice(oldIndex, 1, track);
-    else multi.tracks.push(track);
-  } else {
-    multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
-  }
-  match.matches.forEach((candidate) => {
-    const main = MaweBoot.DATA.segments[candidate.mainIndex];
-    const extension = extensionSegments[candidate.extensionIndex];
-    if (main && extension) multi.bindings.push(
-      MULTI_SUBTITLE_UTILS.buildSubtitleBinding(main, extension, trackId),
-    );
+  return MaweCommands.run(replacing ? '替换副字幕' : '导入双语字幕', (command) => {
+    if (replacing) {
+      const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
+      multi.bindings = (multi.bindings || []).filter((binding) => (
+        binding.track_id !== trackId && !binding.extension_segment_ids?.some((id) => oldIds.has(id))
+      ));
+      const oldIndex = multi.tracks.findIndex((candidate) => candidate.id === trackId);
+      if (oldIndex >= 0) multi.tracks.splice(oldIndex, 1, track);
+      else multi.tracks.push(track);
+    } else {
+      multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
+    }
+    match.matches.forEach((candidate) => {
+      const main = MaweBoot.DATA.segments[candidate.mainIndex];
+      const extension = extensionSegments[candidate.extensionIndex];
+      if (main && extension) multi.bindings.push(
+        MULTI_SUBTITLE_UTILS.buildSubtitleBinding(main, extension, trackId),
+      );
+    });
+    multi.enabled = true;
+    multi.display_mode = multi.display_mode || 'both';
+    MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+    closeMultiSubtitleImportModal();
+    MaweSelection.clearSelection();
+    // 导入可能首次创建副字幕 lane，必须重建波形行结构。
+    command.commit({ cueList: true, waveform: 'full', preview: 'update' });
+
+    MaweHint.flashHint(`已导入副字幕：绑定 ${match.matches.length} 条，未绑定 ${match.unmatchedExtension.length} 条`, 'success');
+    return true;
   });
-  multi.enabled = true;
-  multi.display_mode = multi.display_mode || 'both';
-  MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
-  MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  closeMultiSubtitleImportModal();
-  MaweSelection.clearSelection();
-  // 导入可能首次创建副字幕 lane，必须重建波形行结构。
-  MaweCuePanel.renderAll({ waveform: 'full' });
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  MaweHint.flashHint(`已导入副字幕：绑定 ${match.matches.length} 条，未绑定 ${match.unmatchedExtension.length} 条`, 'success');
-  return true;
 }
 
 
@@ -210,19 +211,20 @@
     MaweHint.flashHint('主字幕和副字幕都不能为空', 'invalid');
     return false;
   }
-  MaweHistory.pushUndo('交换主副字幕');
-  const result = MULTI_SUBTITLE_UTILS.swapMainAndExtensionSubtitle(MaweBoot.DATA, track.id);
-  if (!result.swapped) {
-    MaweHint.flashHint('交换主副字幕失败', 'warning');
-    return false;
-  }
-  MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments);
-  MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  MaweSelection.clearSelection();
-  MaweCuePanel.renderAll({ waveform: 'full' });
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  MaweHint.flashHint(`已交换主副字幕：主轨 ${result.mainCount} 条，副轨 ${result.extensionCount} 条`, 'success');
-  return true;
+  return MaweCommands.run('交换主副字幕', (command) => {
+    const result = MULTI_SUBTITLE_UTILS.swapMainAndExtensionSubtitle(MaweBoot.DATA, track.id);
+    if (!result.swapped) {
+      MaweHint.flashHint('交换主副字幕失败', 'warning');
+      return false;
+    }
+    MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments);
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+    MaweSelection.clearSelection();
+    command.commit({ cueList: true, waveform: 'full', preview: 'update' });
+
+    MaweHint.flashHint(`已交换主副字幕：主轨 ${result.mainCount} 条，副轨 ${result.extensionCount} 条`, 'success');
+    return true;
+  });
 }
 
 

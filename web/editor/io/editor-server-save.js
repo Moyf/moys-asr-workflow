@@ -116,31 +116,32 @@
       return false;
     }
 
-    MaweHistory.pushUndo('修复字幕时间重叠', { captureView: true });
-    const result = window.AsrEditorUtils.repairSegmentOverlap(segments, currentIndex, mode);
-    if (!result?.changed) {
-      MaweHint.flashHint('当前字幕边界已经发生变化，修复未应用', 'warning');
-      return false;
-    }
-    const changedSegments = (result.changedIndices || [])
-      .map((index) => segments[index])
-      .filter(Boolean);
-    if (target.kind === 'main') MaweMultiSubtitleCore.markMainSegmentsDirty(changedSegments);
-    else changedSegments.forEach((segment) => { segment._dirty = true; });
-    MaweMultiSubtitleCore.syncBindingOffsets();
-    if (target.kind === 'extension' || MaweMultiSubtitleCore.getMultiSubtitleState().tracks?.length) {
-      MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
-    }
-    MaweCuePanel.renderAll({ waveform: 'overlay' });
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
-    MaweHistory.updateUndoRedoButtons();
-    MaweHint.dismissHintCard(card);
-    const suffix = result.itemsCleared
-      ? '，已清除受影响字幕的字词时间码'
-      : '';
-    MaweHint.flashHint(`已修复字幕时间重叠${suffix}，正在重新保存`, result.itemsCleared ? 'warning' : 'success');
-    window.setTimeout(() => { void MaweProjectSave.saveCurrentProject({ silent: false }); }, 0);
-    return true;
+    return MaweCommands.run('修复字幕时间重叠', (command) => {
+      const result = window.AsrEditorUtils.repairSegmentOverlap(segments, currentIndex, mode);
+      if (!result?.changed) {
+        MaweHint.flashHint('当前字幕边界已经发生变化，修复未应用', 'warning');
+        return false;
+      }
+      const changedSegments = (result.changedIndices || [])
+        .map((index) => segments[index])
+        .filter(Boolean);
+      if (target.kind === 'main') MaweMultiSubtitleCore.markMainSegmentsDirty(changedSegments);
+      else changedSegments.forEach((segment) => { segment._dirty = true; });
+      MaweMultiSubtitleCore.syncBindingOffsets();
+      if (target.kind === 'extension' || MaweMultiSubtitleCore.getMultiSubtitleState().tracks?.length) {
+        MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
+      }
+      command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
+
+      MaweHistory.updateUndoRedoButtons();
+      MaweHint.dismissHintCard(card);
+      const suffix = result.itemsCleared
+        ? '，已清除受影响字幕的字词时间码'
+        : '';
+      MaweHint.flashHint(`已修复字幕时间重叠${suffix}，正在重新保存`, result.itemsCleared ? 'warning' : 'success');
+      window.setTimeout(() => { void MaweProjectSave.saveCurrentProject({ silent: false }); }, 0);
+      return true;
+    }, { captureView: true });
   }
 
 

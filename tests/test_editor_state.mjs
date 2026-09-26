@@ -84,3 +84,38 @@ test('dirty detection includes pending native text, all tracks and project-level
   }
   assert.equal(state.hasProjectChanges(), false);
 });
+
+test('saved subtitle truth governs undo dirtiness without involving rebuildable caches or other edit domains', () => {
+  const project = { segments: [{ text: 'saved' }], overlay_track: { segments: [] } };
+  const state = loadState(project);
+  state.noteSavedSegments();
+  project.segments[0]._dirty = true;
+  project.waveform = { cache: 'new' };
+  state.changes.gapRemoveDirty = true;
+  state.reconcileSegmentsDirty();
+  assert.equal(state.changes.projectImportDirty, false);
+  assert.equal(project.segments[0]._dirty, undefined);
+  assert.equal(state.changes.gapRemoveDirty, true);
+  project.segments[0].text = 'undo';
+  state.reconcileSegmentsDirty();
+  assert.equal(state.changes.projectImportDirty, true);
+  project.segments[0].text = 'saved';
+  state.reconcileSegmentsDirty();
+  assert.equal(state.changes.projectImportDirty, false);
+});
+
+test('saving an earlier snapshot keeps subsequent edits dirty and clears every track only when saved', () => {
+  const project = { segments: [{ text: 'written', _dirty: true }],
+    multi_subtitle: { _dirty: true, tracks: [{ _dirty: true, segments: [{ _dirty: true }] }] },
+    overlay_track: { _dirty: true, segments: [{ _dirty: true }] } };
+  const state = loadState(project);
+  const written = state.segmentsFingerprint();
+  project.segments[0].text = 'later';
+  state.noteSavedSegments(written);
+  state.reconcileSegmentsDirty();
+  assert.equal(state.hasProjectChanges(), true);
+  state.noteSavedSegments();
+  state.markSaved();
+  assert.equal(state.hasProjectChanges(), false);
+  assert.equal(JSON.stringify(project).includes('_dirty'), false);
+});

@@ -35,6 +35,14 @@ test.afterAll(async () => {
 
 test.beforeEach(async ({ page }) => {
   await disableOnboarding(page);
+  // These cases assert click/edit semantics against a shared on-disk fixture.
+  // Save behavior has its own suite; do not let a completed edit rewrite the
+  // fixture loaded by the next case or by the Escape reload assertion.
+  await page.addInitScript(() => {
+    const key = 'moy.asr.editor.settings.v1';
+    const settings = JSON.parse(localStorage.getItem(key) || '{}');
+    localStorage.setItem(key, JSON.stringify({ ...settings, autoSaveProject: false }));
+  });
 });
 
 test('jump target is shown for both jump behaviors and hidden for select-only', async ({ page }) => {
@@ -382,8 +390,10 @@ test('Escape keeps cue-panel text edits by default and cancels when the setting 
   const original = await panel.inputValue();
   await panel.focus();
   await panel.fill('This edit is kept');
-  await expect(page.locator('#undo-btn')).toBeEnabled();
+  expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(0);
   await panel.press('Escape');
+
+  await expect(page.locator('#undo-btn')).toBeEnabled();
 
   await expect(panel).not.toBeFocused();
   await expect(panel).toHaveValue('This edit is kept');
