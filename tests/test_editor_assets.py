@@ -97,6 +97,39 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor-timeline.js",
                 "editor-speaker-labels.js",
                 "editor.js",
+                "editor-wiring-overlay-transfer.js",
+                "editor-wiring-ass-storage.js",
+                "editor-wiring-initial-config.js",
+                "editor-wiring-dom-panels.js",
+                "editor-wiring-ass-manager.js",
+                "editor-wiring-settings-init.js",
+                "editor-wiring-settings-help.js",
+                "editor-wiring-theme-split-settings.js",
+                "editor-wiring-display-behavior.js",
+                "editor-wiring-appearance-settings.js",
+                "editor-wiring-gap-panel.js",
+                "editor-wiring-cue-panel.js",
+                "editor-wiring-search-filter.js",
+                "editor-wiring-overlay-split-merge.js",
+                "editor-wiring-list-navigation.js",
+                "editor-wiring-keyboard-guards.js",
+                "editor-wiring-media-controls.js",
+                "editor-wiring-edit-shortcuts.js",
+                "editor-wiring-font-geometry.js",
+                "editor-wiring-ass-preview.js",
+                "editor-wiring-sticker-preview.js",
+                "editor-wiring-export-context.js",
+                "editor-wiring-export-actions.js",
+                "editor-wiring-toolbar-menus.js",
+                "editor-wiring-project-inputs.js",
+                "editor-wiring-media-inputs.js",
+                "editor-wiring-sticker-root.js",
+                "editor-wiring-text-tools.js",
+                "editor-wiring-overlay-actions.js",
+                "editor-wiring-context-menus.js",
+                "editor-wiring-waveform-hints.js",
+                "editor-wiring-server-events.js",
+                "editor-wiring-file-drop.js",
                 "editor-startup.js",
                 "editor-onboarding.js",
             ),
@@ -104,95 +137,14 @@ class EditorAssetContractTests(unittest.TestCase):
 
     def test_editor_script_payload_follows_manifest_order(self) -> None:
         payload = edit.build_editor_scripts()
-        # 按文件名钉每条清单条目的唯一内容标记；模块继续拆细时同步此表即可，
-        # 不因条目增删导致 zip 错位。
-        markers = {
-            "editor-runtime.js": "// Shared frontend runtime registry.",
-            "gap-remove-core.js": "// Shared gap-remove data and playback helpers",
-            "editor-utils.js": "// Pure editor helpers kept separate",
-            "editor-i18n.js": "(function initMaweI18n(global) {",
-            "waveform.js": "// Framework-neutral waveform runtime.",
-            "editor-hint.js": "(function initMaweHint(global) {",
-            "editor-jkl.js": "(function initMaweJklPlayback(global) {",
-            "editor-settings.js": "(function initMaweSettings(global) {",
-            "editor-multi-subtitle-core.js": "(function initMaweMultiSubtitleCore(global) {",
-            "editor-gap-remove-data.js": "(function initMaweGapRemoveData(global) {",
-            "editor-colors.js": "(function initMaweColors(global) {",
-            "editor-core-state.js": "(function initMaweCoreState(global) {",
-            "editor-history.js": "(function initMaweHistory(global) {",
-            "editor-dom.js": "(function initMaweDom(global) {",
-            "editor-cue-panel-state.js": "(function initMaweCuePanelState(global) {",
-            "editor-split-trim.js": "(function initMaweSplitTrim(global) {",
-            "editor-split-mode.js": "(function initMaweSplitMode(global) {",
-            "editor-display-settings.js": "(function initMaweDisplaySettings(global) {",
-            "editor-floating-panel.js": "(function initMaweFloatingPanel(global) {",
-            "editor-settings-panels.js": "(function initMaweSettingsPanels(global) {",
-            "editor-ninja.js": "(function initMaweNinja(global) {",
-            "editor-media-playback.js": "(function initMaweMediaPlayback(global) {",
-            "editor-keyboard-targets.js": "(function initMaweKeyboardTargets(global) {",
-            "editor-shortcuts.js": "(function initMaweShortcuts(global) {",
-            "editor-merge-adjacent.js": "(function initMaweMergeAdjacent(global) {",
-            "editor-appearance.js": "(function initMaweAppearance(global) {",
-            "editor-preview-geometry.js": "(function initMawePreviewGeometry(global) {",
-            "editor-playback-loop.js": "(function initMawePlaybackLoop(global) {",
-            "editor-sticker-overlay.js": "(function initMaweStickerOverlay(global) {",
-            "editor-export-srt.js": "(function initMaweExportSrt(global) {",
-            "editor-export-timeline.js": "(function initMaweExportTimeline(global) {",
-            "editor-boot.js": "(function initMaweBoot(global) {",
-            "editor-server-save.js": "(function initMaweServerSave(global) {",
-            "editor-workspaces.js": "(function initMaweWorkspaces(global) {",
-            "editor-project-save.js": "(function initMaweProjectSave(global) {",
-            "editor-dynamic-exports.js": "(function initMaweDynamicExports(global) {",
-            "editor-export-menus.js": "(function initMaweExportMenus(global) {",
-            "editor-project-media-inputs.js": "(function initMaweProjectMediaInputs(global) {",
-            "editor-project-load.js": "(function initMaweProjectLoad(global) {",
-            "editor-loading-progress.js": "(function initMaweLoadingProgress(global) {",
-            "editor-multi-import.js": "(function initMaweMultiImport(global) {",
-            "editor-media-load.js": "(function initMaweMediaLoad(global) {",
-            "editor-media-step.js": "(function initMaweMediaStep(global) {",
-            "editor-appearance-inputs.js": "(function initMaweAppearanceInputs(global) {",
-            "editor-behavior-hints.js": "(function initMaweBehaviorHints(global) {",
-            "editor-server-connection.js": "(function initMaweServerConnection(global) {",
-            "editor-drag-drop.js": "(function initMaweDragDrop(global) {",
-            "editor-sticker-otio-export.js": "(function initMaweStickerOtioExport(global) {",
-            "editor-json-repair.js": "(function initMaweJsonRepair(global) {",
-            "editor-help-panel.js": "(function initMaweHelpPanel(global) {",
-            "editor-timeline.js": "(function initMaweTimeline(global) {",
-            "editor-speaker-labels.js": "(function initMaweSpeakerLabels(global) {",
-            "editor-theme.js": "(function initMaweTheme(global) {",
-            "editor-gap-remove-ui.js": "(function initMaweGapRemoveUi(global) {",
-            "editor-selection.js": "(function initMaweSelection(global) {",
-            "editor-binding-align.js": "(function initMaweBindingAlign(global) {",
-            "editor-cue-panel.js": "(function initMaweCuePanel(global) {",
-            "editor-cue-elements.js": "(function initMaweCueElements(global) {",
-            "editor-color-filter.js": "(function initMaweColorFilter(global) {",
-            "editor-search.js": "(function initMaweSearch(global) {",
-            "editor-inline-edit.js": "(function initMaweInlineEdit(global) {",
-            "editor-split-core.js": "(function initMaweSplitCore(global) {",
-            "editor-split-context.js": "(function initMaweSplitContext(global) {",
-            "editor-segment-ops.js": "(function initMaweSegmentOps(global) {",
-            "editor-nav-preview.js": "(function initMaweNavPreview(global) {",
-            "editor-cue-events.js": "(function initMaweCueEvents(global) {",
-            "editor-cue-list-anchor.js": "(function initMaweCueListAnchor(global) {",
-            "editor-sticker-root.js": "(function initMaweStickerRoot(global) {",
-            "editor-find-replace.js": "(function initMaweFindReplace(global) {",
-            "editor-text-process.js": "(function initMaweTextProcess(global) {",
-            "editor-timed-text-edit.js": "(function initMaweTimedTextEdit(global) {",
-            "editor-sticker-picker.js": "(function initMaweStickerPicker(global) {",
-            "editor-add-cue.js": "(function initMaweAddCue(global) {",
-            "editor-bound-drag.js": "(function initMaweBoundDrag(global) {",
-            "editor-context-menus.js": "(function initMaweContextMenus(global) {",
-            "editor-text-cleanup.js": "(function initMaweTextCleanup(global) {",
-            "editor-waveform-init.js": "(function initMaweWaveformInit(global) {",
-            "editor.js": "'[MAWE][boot] AsrEditorUtils is unavailable; editor scripts are incomplete or out of order'",
-            "editor-startup.js": "// === 启动 ===",
-            "editor-onboarding.js": "const helpOnboardingButton = document.getElementById('help-onboarding');",
-        }
-        previous_index = -1
+        # 检查整份源码的装配顺序，而不是随物理切段频繁失效的片段 marker。
+        previous_end = 0
         for asset_name in edit.read_editor_script_manifest():
-            current_index = payload.index(markers[asset_name])
-            self.assertGreater(current_index, previous_index, asset_name)
-            previous_index = current_index
+            source = edit.read_web_asset(asset_name).rstrip()
+            self.assertTrue(source, asset_name)
+            current_index = payload.index(source, previous_end)
+            self.assertGreaterEqual(current_index, previous_end, asset_name)
+            previous_end = current_index + len(source)
 
     def test_waveform_gap_display_type_uses_shared_core_and_subtle_protected_style(self) -> None:
         waveform = edit.read_web_asset("waveform.js")
@@ -306,7 +258,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertLess(template.index('id="new-project"'), template.index('id="open-project"'))
 
     def test_editor_sources_expose_checkpointed_import_contract(self) -> None:
-        script = edit.read_web_asset("editor.js")
+        script = edit.build_editor_scripts()
         project_load = edit.read_web_asset("editor-project-load.js")
         project_save = edit.read_web_asset("editor-project-save.js")
         server_save = edit.read_web_asset("editor-server-save.js")
@@ -326,7 +278,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertNotIn("!projectLoadedFromSrt", script + project_load + project_save + server_save)
 
     def test_ass_style_library_saves_require_token_and_flush_before_unload(self) -> None:
-        script = edit.read_web_asset("editor.js")
+        script = edit.build_editor_scripts()
         # 共享样式库写入必须携带页面请求令牌（服务器 403 契约见 test_local_editor_server）。
         self.assertIn("requestToken: MaweBoot.SERVER_CONFIG?.requestToken || ''", script)
         # debounce 定时器在刷新/关闭/切后台时不保证触发；dirty 状态必须用
@@ -338,7 +290,7 @@ class EditorAssetContractTests(unittest.TestCase):
 
     def test_sticker_root_uses_server_validation_without_browser_picker(self) -> None:
         template = edit.read_web_asset("editor-template.html")
-        script = edit.read_web_asset("editor.js")
+        script = edit.build_editor_scripts()
         sticker_root = edit.read_web_asset("editor-sticker-root.js")
         styles = edit.read_web_asset("editor.css")
         self.assertIn('id="sticker-root-input"', template)
@@ -365,7 +317,7 @@ class EditorAssetContractTests(unittest.TestCase):
 
     def test_sticker_otio_exposes_portable_mode_and_relative_metadata(self) -> None:
         template = edit.read_web_asset("editor-template.html")
-        script = edit.read_web_asset("editor.js")
+        script = edit.build_editor_scripts()
         self.assertIn('id="sticker-otio-export-mode"', template)
         self.assertIn('option value="portable"', template)
         otio_script = edit.read_web_asset("editor-export-timeline.js")
@@ -379,7 +331,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("timeline: JSON.parse(payload)", edit.read_web_asset("editor-sticker-otio-export.js"))
 
     def test_portable_sticker_export_capability_syncs_after_project_binding(self) -> None:
-        script = edit.read_web_asset("editor.js")
+        script = edit.build_editor_scripts()
         sticker_otio = edit.read_web_asset("editor-sticker-otio-export.js")
         self.assertIn("function syncStickerOtioExportMode()", sticker_otio)
         self.assertIn("portableStickerExportOption.disabled = !available", sticker_otio)
