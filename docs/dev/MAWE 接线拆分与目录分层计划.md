@@ -101,7 +101,7 @@ web/
 | Python 清单 | `edit.py` 允许 POSIX 相对子路径；拒绝绝对路径、盘符、反斜杠、空路径段、`.` / `..`、非 JS、重复项及解析后越出 web 根目录的路径 | 已修复 |
 | Tauri 清单 | `desktop/src-tauri/build.rs` 使用与 Python 一致的规则与顺序；拒绝符号链接解析后越界 | 已修复 |
 | 共享第二入口 | 实际引用位于 `server-align/serve.py:52` 的 `GAP_REMOVE_CORE_PATH`（旧台账误写为 server-editor）；同步对齐页模板说明和测试 | 已修复 |
-| 所有装配入口 | localhost、便携与在线页面启动 / 渲染通过；Tauri 装配 AST 及路径模块编译测试通过。完整 cargo check 被 crates.io 的 webview2-com-sys 索引 SSL / 超时阻断；网络稳定后重跑 | 阻塞 |
+| 所有装配入口 | localhost、便携与在线页面启动 / 渲染通过；Tauri 装配 AST 及路径模块编译测试通过。2026-09-26 维护者明确后续使用 Electron，完整 Tauri 编译不再列入本轮验收 | 已修复 |
 | 自动化测试 | manifest 元组、payload markers、源码读取路径、语法和顺序测试、直接文件引用全部同步；含共享工具加载测试 | 已修复 |
 | 重构工具 | 检查 tools 与 scripts/refactor-tools 中平铺路径 / glob 假设；在历史脚本说明中明确新路径兼容情况 | 已修复 |
 | 资源与文档 | 检查音效相对路径、HTML/CSS 引用、开发说明及源码地图；音效目录保持原位 | 已修复 |
@@ -119,7 +119,7 @@ web/
 - 源码层：切段拼回原文件逐字节一致；按清单装配顶层 AST 完全一致；目录移动前后装配源码一致。
 - 单元与契约层：Node 全套、Python 全套、类型检查、Ruff、`git diff --check`；子路径正反例同时覆盖 Python / Tauri 校验。
 - 浏览器层：启动 localhost 编辑器，检查控制台、空白启动和加载工程、播放 / seek / 拖动、键盘、筛选、主副轨和叠加轨、ASS、保存 / 导出 / 导入、引导。失败必须与同环境基线逐 test ID 对照。
-- 产物层：Tauri 构建检查、在线编辑器构建检查；便携渲染使用临时目录验证，不重生成仓库 `blank-editor.html`。
+- 产物层：在线编辑器构建检查；便携渲染使用临时目录验证，不重生成仓库 `blank-editor.html`。维护者于 2026-09-26 明确免除完整 Tauri 构建验收，后续桌面方向为 Electron。
 
 PR #154 审查中，相关 Chromium 26 项为 22 通过 / 4 失败；同环境 main 复现全部 4 个失败（英文 shell、引导合并、引导重播、英文引导）。这里只保留为基线线索，实施本轮时重新实测，不以旧失败数替代全量对照。
 
@@ -236,7 +236,8 @@ PR #154 审查中，相关 Chromium 26 项为 22 通过 / 4 失败；同环境 m
 | 浏览器差分 | 仅说明 | 同环境基线 / 本树均为 399 项、381 通过、18 失败；17 项相同，基线独有双击定位，本树独有保存光标偏移。本树与基线的保存用例各串行 repeat 3 均通过；不宣称全量全绿，保留偶发边界 |
 | 远端 CI | 已修复 | 代码提交 `ddbe8e7` 的 Windows x64 MAW-lite preview、Ruff 与 CLA 全部通过；Windows 流水线包含打包契约、Python 测试与 exe 冒烟（[构建记录](https://github.com/Moyf/moys-asr-workflow/actions/runs/36218791827)） |
 | 实际页面冒烟 | 已修复 | 实际启动空白 / 工程 Server，验证选择、播放与 seek、引导桥接、便携启动；pageerror 为 0；两张截图已自查 |
-| 构建产物 | 阻塞 | 便携 HTML / 在线 editor/index.html 生成成功；Astro 15 页构建通过；Rust 校验模块编译测试通过。cargo check 离线缺 base64；普通下载及重试在 base64 / webview2-com-sys 索引超时，最后 locked + 禁用多路复用仍遭 SSL_ERROR_SYSCALL。未进入完整桌面编译，不冒充通过 |
+| 构建产物 | 已修复 | 便携 HTML / 在线 editor/index.html 生成成功；Astro 15 页构建通过；Rust 校验模块编译测试通过。完整 Tauri 编译经维护者明确免除，不计入本轮验收 |
+| 历史 Tauri 编译尝试 | 仅说明 | cargo check 离线缺 base64；普通下载及重试在 base64 / webview2-com-sys 索引超时，最后 locked + 禁用多路复用仍遭 SSL_ERROR_SYSCALL。未进入完整桌面编译，保留事实记录 |
 
 浏览器相同的 17 个失败主要涉及 macOS 的 Control 快捷键用例、引导和英文 shell 断言、叠加轨拖动及删除场景。它们在基线已经失败，本轮不改交互行为，也不顺便修复这些既有失败。
 
@@ -247,4 +248,4 @@ PR #154 审查中，相关 Chromium 26 项为 22 通过 / 4 失败；同环境 m
 
 已统一推送 PR #155（草稿），无用户行为变化，不新增 CHANGELOG 条目，不更新根目录 `blank-editor.html`。本轮源码与契约工作已完成；全部文本检查 UTF-8 / LF，diff 检查通过，未提交媒体、截图、识别结果或 `.DS_Store`。
 
-唯一阻塞项：完整 Tauri `cargo check` 因 crates.io 首次索引下载的超时和 SSL 连接中断未能运行到编译层。独立 Rust 路径模块已编译并通过全部 4 项测试，两种装配的源码 / AST 已对照。下一步在 Rust 依赖源恢复稳定后执行 `cargo check --locked --manifest-path desktop/src-tauri/Cargo.toml`，记录真正的完整构建结果；不将外部网络失败算作代码编译失败，也不省略此未验证边界。
+2026-09-26 维护者明确：Tauri 不用继续验证，后续桌面方向为 Electron。完整 Tauri 编译从本轮阻塞项转为仅说明；此前依赖下载失败的事实保留，不宣称编译通过。独立 Rust 路径模块已编译并通过全部 4 项测试，两种装配的源码 / AST 已对照。本轮不删除 Tauri 代码，也不立即迁移桌面壳。
