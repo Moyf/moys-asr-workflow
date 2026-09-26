@@ -21,6 +21,22 @@ test('split helpers share live trim state while separately created factories rem
   assert.equal(utils.applySplitEdgeTrim('#hello#'), '#hello');
 });
 
+test('utility consumers preserve a custom runtime method receiver and observe its current navigator', () => {
+  const context = { window: {} };
+  const runtime = {
+    navigator: { platform: 'Win32' },
+    getNavigator() { return this.navigator; },
+  };
+  loadEditorModule(context, 'shared/editor-utils.js', browser => {
+    browser.MaweHost = { runtime };
+  });
+  const utils = context.window.AsrEditorUtils;
+  assert.equal(utils.ASS_DEFAULT_ASS_STYLE.fontName, 'Microsoft YaHei');
+  assert.equal(utils.isMacPlatform(), false);
+  runtime.navigator = { platform: 'MacIntel' };
+  assert.equal(utils.isMacPlatform(), true);
+});
+
 test('waveform composition preserves getter and non-enumerable class method descriptors', () => {
   const context = waveformContext();
   const media = context.window.MAWE.resolve('waveform-media', {});
