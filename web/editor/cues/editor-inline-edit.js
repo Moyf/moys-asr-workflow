@@ -5,6 +5,20 @@
 (function initMaweInlineEdit(global) {
   'use strict';
 
+  function deferCaretPlacement(textEl, applyCaret) {
+    // A new user action owns the caret, even if the native double-click repair
+    // timer has not run yet. Observe capture phase before keyboard guards.
+    const root = textEl.ownerDocument;
+    const events = ['beforeinput', 'keydown', 'pointerdown'];
+    let untouched = true;
+    const cancel = () => { untouched = false; };
+    events.forEach(type => root.addEventListener(type, cancel, { once: true, capture: true }));
+    setTimeout(() => {
+      events.forEach(type => root.removeEventListener(type, cancel, true));
+      if (untouched) applyCaret();
+    }, 0);
+  }
+
 
 
   // === 编辑 ===
@@ -34,15 +48,16 @@
     if (typeof clickX === 'number' && typeof clickY === 'number') {
       caretCharOffset = caretCharFromPoint(textEl, clickX, clickY);
     }
-    MaweState.editing.extensionEditingState = {
+    const session = {
       el, index, trackId: track.id, textEl, original: segment.text || '', caretCharOffset,
     };
+    MaweState.editing.extensionEditingState = session;
     el.classList.add('editing');
     textEl.setAttribute('contenteditable', 'plaintext-only');
     textEl.innerText = segment.text || '';
     textEl.focus();
     const applyCaret = () => {
-      if (!MaweState.editing.extensionEditingState || MaweState.editing.extensionEditingState.el !== el) return;
+      if (MaweState.editing.extensionEditingState !== session) return;
       const selection = window.getSelection();
       selection.removeAllRanges();
       if (caretCharOffset !== null && textEl.firstChild) {
@@ -59,7 +74,7 @@
       selection.addRange(range);
     };
     applyCaret();
-    if (deferCaret) setTimeout(applyCaret, 0);
+    if (deferCaret) deferCaretPlacement(textEl, applyCaret);
   }
 
 
@@ -198,13 +213,14 @@
     if (typeof clickX === 'number' && typeof clickY === 'number') {
       caretCharOffset = caretCharFromPoint(textEl, clickX, clickY);
     }
-    MaweState.editing.editingState = { el, idx, textEl, original: seg.text };
+    const session = { el, idx, textEl, original: seg.text };
+    MaweState.editing.editingState = session;
     el.classList.add('editing');
     textEl.setAttribute('contenteditable', 'plaintext-only');
     textEl.innerText = seg.text;
     textEl.focus();
     const applyCaret = () => {
-      if (!MaweState.editing.editingState || MaweState.editing.editingState.el !== el) return;
+      if (MaweState.editing.editingState !== session) return;
       const sel = window.getSelection();
       sel.removeAllRanges();
       if (caretCharOffset !== null && textEl.firstChild) {
@@ -225,7 +241,7 @@
     // 先同步放置一次光标，让编辑状态立即可见；双击原生选词可能在事件返回后
     // 覆盖它，再用下一轮事件循环恢复到鼠标位置。
     applyCaret();
-    if (deferCaret) setTimeout(applyCaret, 0);
+    if (deferCaret) deferCaretPlacement(textEl, applyCaret);
   }
 
 

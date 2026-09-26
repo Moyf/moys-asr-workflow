@@ -1845,12 +1845,10 @@ test('uses B on a waveform-selected unbound extension cue instead of an overlapp
   }]);
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
-  const extensionBox = await waitForLayoutBox(extensionBlock, '未绑定副字幕波形块没有布局');
   const mainBefore = await page.evaluate(() => MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end]));
-  await page.mouse.click(
-    extensionBox.x + extensionBox.width / 2,
-    extensionBox.y + extensionBox.height / 2,
-  );
+  // Project import and media loading can rebuild the lanes between a geometry
+  // read and a raw mouse click. Let locator actionability target the live block.
+  await extensionBlock.click();
   await expect(extensionBlock).toHaveClass(/selected/);
   await page.keyboard.press('b');
 
