@@ -1,3 +1,4 @@
+
 // === 表情包根目录配置 ===
 
 
@@ -98,4 +99,3 @@ MaweStickerRoot.stickerRootRead.addEventListener('click', async () => {
     MaweStickerRoot.stickerRootInput.focus();
   }
 });
-

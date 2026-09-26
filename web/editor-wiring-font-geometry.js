@@ -1,3 +1,4 @@
+
 // === 字幕预览几何（preview.subtitle）===
 // 归一化 {x,y,width,height} 存于 DATA.preview.subtitle。纯钳制/归一化逻辑在
 // AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
@@ -366,4 +367,3 @@ if (typeof ResizeObserver === 'function') {
   });
   previewResizeObserver.observe(MaweDom.playerStage);
 }
-

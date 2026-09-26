@@ -1,3 +1,4 @@
+
 // === 加载媒体 ===
 // 通过浏览器文件选择器选本地媒体（视频/音频），用 blob URL 替换播放器源。
 // 如果媒体类型与当前播放器标签不一致（video<->audio），会原地替换整个 <video>/<audio> 元素。
@@ -186,4 +187,3 @@ MaweProjectMediaInputs.loadMediaFileInput.addEventListener('change', async (e) =
 MaweProjectMediaInputs.loadMediaFileInput.addEventListener('cancel', () => {
   MaweProjectMediaInputs.pendingProjectMediaSelection = null;
 });
-

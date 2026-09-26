@@ -1,3 +1,26 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // === 拆分 ===
 
 
@@ -417,7 +440,3 @@ function mergeOverlaySegments(idxs) {
 //   当被删的是 head：前段为空，整段后段重组（与之前的"head 晋升"语义吻合）
 //   当被删的是 ref：head 仍是 head，但 group 被切成两块——这是用户原话
 //     "删除中间的 3 → 4 变 head，5 改 ref→4"
-
-
-
-

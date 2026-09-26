@@ -1,3 +1,4 @@
+
 // === 批量替换 ===
 
 
@@ -405,4 +406,3 @@ MaweDom.timedTextEditApply?.addEventListener('click', () => {
     'success',
   );
 });
-

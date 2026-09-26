@@ -1,3 +1,5 @@
+
+
 // === 全局键盘 ===
   // 'enter' or 'ctrl-enter'
 
@@ -133,16 +135,3 @@ function scheduleAssSubtitlePreviewRefresh() {
     assPreviewRefreshFrame = window.setTimeout(refresh, 0);
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

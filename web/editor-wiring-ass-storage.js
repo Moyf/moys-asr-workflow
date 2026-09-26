@@ -1,3 +1,18 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // CSS 预览的颜色样式（工程 color_style）；ASS 的颜色映射是独立字段
 // ass_color_style（text / speaker / stroke / none），两者语义不同。
 
@@ -238,16 +253,3 @@ async function loadAssStyleLibrary({ force = false } = {}) {
   })();
   return assStyleLibraryLoadPromise;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

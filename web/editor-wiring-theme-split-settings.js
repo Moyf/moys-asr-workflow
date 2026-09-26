@@ -3,6 +3,13 @@
 
 
 
+
+
+
+
+
+
+
 MaweTheme.applyEditorAccentColor(MaweSettings.EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
 MaweTheme.applyTheme(MaweSettings.EDITOR_SETTINGS.theme, { rerenderWaveform: false });
 MaweDom.editorThemeOptions.forEach((option) => {

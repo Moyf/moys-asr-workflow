@@ -1,3 +1,6 @@
+
+
+
 const selectedOverlayIdxs = new Set();
   // 用于 Shift+click 范围选
 
@@ -318,24 +321,3 @@ function buildOverlayCueEl(seg, index) {
 
 
 // === 字数 ===
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

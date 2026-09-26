@@ -63,10 +63,3 @@ const SPLIT_ALIGNMENT_DRIFT_WARN_MS = 500;
 
 
 MaweBoot.maweDomContractCheck();
-
-
-
-
-
-
-

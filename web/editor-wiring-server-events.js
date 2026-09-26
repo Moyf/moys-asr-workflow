@@ -1,3 +1,4 @@
+
 // === cleanPunctuation ===
 
 
@@ -52,10 +53,3 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) MaweServerConnection.scheduleServerConnectionCheck(0);
 });
 window.addEventListener('online', () => MaweServerConnection.scheduleServerConnectionCheck(0));
-
-
-
-
-
-
-

@@ -1,3 +1,4 @@
+
 // === 表情包 ===
   // 'single' | 'multi'
      // 要分配的 segment indexes
@@ -287,5 +288,3 @@ function addOverlayAtWaveformTime(timeMs, clickX, clickY) {
 
 
 // 右键波形背景：添加空隙、创建字幕，或按右键对应的音频位置拆分命中的字幕。
-
-

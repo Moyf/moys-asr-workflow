@@ -1,3 +1,16 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
 // 把用户配置的拆分移除符号同步给共享工具层；设置面板修改时也会同步。
 MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(MaweSettings.EDITOR_SETTINGS.splitTrimSymbols);
 
@@ -141,12 +154,3 @@ const ASS_PREVIEW_REFERENCE_HEIGHT = Number(window.AsrEditorUtils.ASS_REFERENCE_
 if (MaweHistory.undoBtn) MaweHistory.undoBtn.addEventListener('click', () => MaweHistory.performUndo());
 if (MaweHistory.redoBtn) MaweHistory.redoBtn.addEventListener('click', () => MaweHistory.performRedo());
 MaweHistory.updateUndoRedoButtons();
-
-
-
-
-
-
-
-
-

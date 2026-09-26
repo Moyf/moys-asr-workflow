@@ -836,4 +836,3 @@ document.addEventListener('pointerdown', (e) => {
     !target || !MaweInlineEdit.extensionEditingState.textEl.contains(target)
   )) MaweInlineEdit.finishExtensionEdit(true);
 }, true);
-

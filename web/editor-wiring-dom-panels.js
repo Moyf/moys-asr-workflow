@@ -1,3 +1,12 @@
+
+
+
+
+
+
+
+
+
 MaweDom.overlayTextEl.append(MaweDom.overlayMainTextNode);
 
 const overlayTrackTextEl = document.getElementById('overlay-track-text');
@@ -475,6 +484,3 @@ const assStyleLibraryPathHint = document.getElementById('ass-style-library-path-
 
 // 全局设置窗口：复用 createFloatingPanel 获得拖动、位置持久化、Esc 关闭与按钮 active 态；
 // 窗口内部用左侧垂直标签页切换不同分区，并记忆用户上次停留的分区。
-
-
-

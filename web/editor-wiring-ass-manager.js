@@ -1,3 +1,6 @@
+
+
+
 const ASS_STYLE_WINDOW_POSITION_KEY = 'moy.asr.ass_style.window.v1';
 let assStyleManagerSelection = { kind: 'style', id: 'ass' };
 let assStyleLibraryStatusText = '';
@@ -624,4 +627,3 @@ assModeToggle?.addEventListener('change', () => {
   MawePlaybackLoop.refreshSubtitlePreview();
   MaweHint.flashHint(assModeToggle.checked ? '已开启 ASS 字幕模式预览' : '已恢复原有字幕预览', 'success');
 });
-
