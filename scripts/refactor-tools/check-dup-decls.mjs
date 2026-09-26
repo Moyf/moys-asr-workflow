@@ -2,9 +2,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as acorn from "acorn";
+import { editorScriptFiles } from "./editor-sources.mjs";
 
 const webDir = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..", "web");
-const editorSrc = fs.readFileSync(path.join(webDir, "editor.js"), "utf8");
+const files = editorScriptFiles(webDir);
+const editorSrc = files.filter((file) => path.basename(file) === "editor.js"
+  || path.basename(file) === "editor-startup.js"
+  || path.basename(file).startsWith("editor-wiring-"))
+  .map((file) => fs.readFileSync(path.join(webDir, file), "utf8")).join("\n\n");
 const ast = acorn.parse(editorSrc, { ecmaVersion: "latest" });
 const editorNames = new Set();
 for (const st of ast.body) {
@@ -15,8 +20,7 @@ for (const st of ast.body) {
 }
 
 const dups = [];
-for (const f of fs.readdirSync(webDir)) {
-  if (!f.startsWith("editor-") || f === "editor.js" || !f.endsWith(".js")) continue;
+for (const f of files) {
   const text = fs.readFileSync(path.join(webDir, f), "utf8");
   const m = text.match(/global\.(\w+) = Object\.freeze\(\{([\s\S]*?)\n  \}\);/);
   if (!m) continue;

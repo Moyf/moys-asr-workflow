@@ -1,21 +1,22 @@
 ---
 title: MAWE 编辑器模块化拆分台账
 created_at: 2026-09-10
-updated_at: 2026-09-25
-status: phase1-boot-slicing
+updated_at: 2026-09-26
+status: wiring-domains-host-complete
 audience: 执行本轮拆分的维护者与 agent
 ---
 
 # MAWE 编辑器模块化拆分台账
 
-> **状态（2026-09-14）**：阶段一（模块提取 + append 扫尾）完成，已开 PR 合入
-> main。本台账保留为合并后开发（阶段二/三）的执行手册；恢复开发时先读
-> §剩余工作 与 §合并后计划。
+> **状态（2026-09-26）**：模块提取已由 #136 合入，首段启动接线已由 #154 合入。
+> 剩余接线、目录分层、utils / waveform 职责拆分与宿主接口已落地，本轮验收完成；维护者明确后续使用 Electron，完整 Tauri 编译已免除，历史未验证边界见验收账本。完整清单和验收标准见
+> [接线拆分与目录分层计划](MAWE%20接线拆分与目录分层计划.md)。
 
 ## 合并后计划（PR 合入 main 之后的执行顺序）
 
-> 每一步都是**短分支 + 独立 PR**，从最新 main 切出；合并节奏遵循
-> 《MAWE 前端渐进式重构企划案》的"小批次、短分支、阶段合并"。
+> 维护者于 2026-09-26 调整本轮节奏：先列全量清单，剩余接线拆分与目录分层
+> 在同一分支内按检查点提交，统一提一个 PR，不按接线域逐个提 PR。
+> 每个区段仍单独验证、及时更新进度；巨型模块内部重构另轮处理。
 
 ### Step 1 · boot 接线连续切段（阶段一收官）
 
@@ -27,7 +28,9 @@ audience: 执行本轮拆分的维护者与 agent
 - 自证三判据：① AST 逐条断言顶层语句无一被切断、各段无缝覆盖全文件；
   ② 去掉段头注释按序拼回，与原文件逐字节相同；③ 从清单复刻装配拼接，
   与原文件逐语句 AST 相同。
-- 出口：editor.js ≤ 1,000 行（企划案理想值），顶层裸声明归零。
+- 本轮出口：连续区段完整覆盖，源码拼接与装配 AST 等价，入口职责清楚。
+  本轮机械拆分保留声明及作用域；“顶层裸声明归零”留给后续所有权与门面重构，
+  不以入口行数代替边界验收。
 
 #### 切段进度
 
@@ -38,53 +41,39 @@ audience: 执行本轮拆分的维护者与 agent
   装配前后的顶层 AST 相同。下一批继续从 `editor.js` 尾部向前切分，避免跨越
   未拆区段改变监听器注册顺序。
 
+- 2026-09-26 后续 33 个连续区段已切出，加载守卫入口最终保留 65 行（边界空行移至下一段）；共 715 条顶层语句完整迁移。装配原序源码与 main `83771e2` 逐字节相同，两端装配 AST 819 条语句一致。
+
 ### Step 2 · 目录结构化（阶段二）
 
-- 前置（在拆分之前做，顺序敏感）：
-  1. `edit.py:210` 与 `desktop/src-tauri/build.rs` 的 `path.name != entry` 清单
-     校验放开为：允许 `a/b.js` 相对子路径；拒绝 `..`、反斜杠、绝对路径、非 `.js`。
-  2. `server-editor/serve.py:52` 的 `GAP_REMOVE_CORE_PATH` 随新路径同步。
-- 方法：全部模块 `git mv` 入子目录树（100% rename 证据是验收），
-  `editor-scripts.txt` 同步相对路径；目录布局纯粹用于导航，**顺序仍由清单独占**。
-- 建议树（在 fork 布局基础上按本仓模块命名调整）：
+- 2026-09-26 已完成：113 个 JS 清单项及全局类型声明按领域迁入 `web/editor/` 与 `web/shared/`；114 份源码移动全部为 100% rename。清单顺序保持，Python / Tauri 允许安全子路径。
+- 实际共享第二入口为 `server-align/serve.py`，已同步 `shared/gap-remove-core.js`。
+- 当前目录树、接线文件明细、测试与产物边界，以[本轮完整计划](MAWE%20接线拆分与目录分层计划.md)及 `docs/DEVELOPMENT.md` 的源码地图为准。
 
-  ```text
-  web/
-    editor-scripts.txt / editor-template.html / *.css
-    shared/gap-remove-core.js          # 双端共用（对齐页注入）
-    editor/boot/                       # boot / runtime / utils / i18n / onboarding
-    editor/state/                      # core-state / cue-panel-state / settings / history / workspaces / colors / multi-subtitle-core
-    editor/dom/                        # dom / floating-panel / help-panel / theme / ninja
-    editor/media/                      # media-playback / media-step / media-load / waveform-init
-    editor/cues/                       # cue-panel / cue-elements / cue-events / inline-edit / selection / binding-align / search / color-filter / merge-adjacent / segment-ops
-    editor/split/                      # split-core / split-context / split-trim / split-mode / add-cue / bound-drag
-    editor/export/                     # export-srt / export-timeline / dynamic-exports / export-menus / sticker-otio-export / json-repair / speaker-labels
-    editor/io/                         # project-load / project-save / project-media-inputs / drag-drop / loading-progress / multi-import / server-save / server-connection / workspaces
-    editor/ui/                         # preview-geometry / appearance-inputs / behavior-hints / settings-panels / display-settings / sticker-root / sticker-picker / sticker-overlay / context-menus / text-process / timed-text-edit / find-replace / text-cleanup / nav-preview / timeline / hint / jkl / gap-remove-data / gap-remove-ui
-  ```
+### Step 3 · 巨型 IIFE 拆解与宿主边界（阶段三）
 
-- 验收：清单级全量语法测试 + 顺序断言 + Python 全量 + 探针；无行为改动。
+- 2026-09-26 维护者要求继续同一 PR #155，并明确拆分 waveform；utils 与 waveform 的职责拆分已经落地，进度及本阶段验证见[职责拆分与宿主边界进度](MAWE%20职责拆分与宿主边界进度.md)。
+- utils 按领域工厂拆分，通过显式参数注入依赖，原有 AsrEditorUtils 兼容出口保留。waveform 的布局、解码、时间算法与类方法分开，类方法 / getter 采用描述符复制，禁止 Object.assign。
+- 文件、存储与 Server 能力集中为宿主服务，给未来 Electron 留替换入口；本轮不引入 Electron 壳、不迁移全量 Store / 命令。
+- gap-remove-core、split-core、timed-text-edit、i18n 等历史候选不按行数自动扩入本轮；后续按依赖与维护压力另排优先级。
+- 本阶段新增工厂与依赖注入，不能再要求装配整体 AST 与机械拆分前一致；改用原声明 / 方法源码审计、兼容出口检查、契约与实际浏览器差分。
 
-### Step 3 · 巨型 IIFE 拆解（阶段三，按模块逐个短分支）
+### Step 4 · 本轮收尾
 
-- 判定标准：单文件单 IIFE 且 ≥800 行才动（行数只是提示）。
-- 首批候选（按 fork 顺序）：editor-utils(5.4k) → waveform(5.5k) → gap-remove-core(1.4k)
-  → split-core → timed-text-edit → i18n → cue-elements。
-- 标准模式：`namespace.js`（唯一所有者，块首）+ 各模块 `Object.assign` 发布 +
-  可变状态 `defineProperty` 访问器 + `compat-surface.js`（块尾，按原文字面量
-  重建历史出口）。**类成员用原型混入（`Reflect.ownKeys` + 描述符复制），
-  禁用 `Object.assign`**。
-- 验证：三层差分（结构/源码/行为）零差异 + dryrun 产物 sha256 与落盘一致；
-  每块完成后差分工具公共部分若有改动需复跑已完成块。
-- 第二注入方：gap-remove-core 在阶段二移动后，serve.py 注入源改为
-  `read_editor_scripts_under(...)` 按清单前缀拼接 + 占位符唯一性校验。
-
-### Step 4 · 收尾
-
-- 对照 main 侧 40 个预存 e2e 失败（launcher 错误处理、C 合并锚点 24px、
-  bcut 命名测试等）单独建 issue，与拆分无关，不在拆分分支修。
+- 最新同环境浏览器基线为 18 项失败，本树另有 2 项偶发差分；两项在两边各重复 3 次全部通过。具体以职责拆分验收账本为准，不再沿用旧轮次的 40 项计数。基线失败和稳定性治理在下一轮优先处理，不扩入当前拆分 PR。
 - 发布检查时统一重生成 `blank-editor.html`（本轮全程未重生成）。
 - `docs/DEVELOPMENT.md` 补充 web/ 源码地图与验证命令。
+
+### Step 5 · 下一轮状态与命令重构
+
+按以下顺序在下一条分支整体推进，内部保留可验证检查点，不按每个领域分别提 PR：
+
+1. 收敛浏览器基线失败与偶发测试，先区分产品问题、平台差异和测试断言；保留播放、seek、拖动、保存及撤销的真实交互验收。
+2. 明确状态所有者：工程数据、字幕选择 / 活动行、设置与播放 / 拖动运行态分开；从选择状态开始建立单一写入入口，不复制出第二份字幕真源。
+3. 统一修改事务、dirty 与历史归属，再迁移拆分 / 合并 / 删除 / 时间修改等命令；区分文本原生撤销与工程撤销，拖动预览不入历史，释放时只提交一次。
+4. 命令统一通知受影响视图，逐步取消业务模块间裸引用与兼容桥接；按消费者迁移退役旧出口，不先换框架或再搬目录。
+5. 上述边界稳定后接 Electron 主进程 / preload 与本机文件适配，复用本轮宿主接口；不继续投入 Tauri。
+
+gap-remove-core、split-core、i18n 等候选只在依赖或具体维护问题要求时继续拆分。文件已经变小不代表状态所有权已解决，下一轮验收以写入与历史边界为准。
 
 ### 运维备忘
 

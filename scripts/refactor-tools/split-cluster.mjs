@@ -17,9 +17,11 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Node, Project, SyntaxKind } from "ts-morph";
+import { requireLegacyEditor } from "./editor-sources.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const webDir = join(scriptDir, "..", "..", "web");
+requireLegacyEditor(webDir);
 const spec = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const { file, ns, header, exclude = [] } = spec;
 

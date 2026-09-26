@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import * as acorn from "acorn";
 import * as walk from "acorn-walk";
+import { editorScriptFiles } from "./editor-sources.mjs";
 
 function patternNames(n, out) {
   if (!n) return;
@@ -11,7 +12,7 @@ function patternNames(n, out) {
 }
 const files = process.argv.slice(2).length
   ? process.argv.slice(2)
-  : fs.readdirSync("web").filter((f) => f.endsWith(".js"));
+  : editorScriptFiles("web");
 let issues = 0;
 for (const f of files) {
   const src = fs.readFileSync(path.join("web", f), "utf8");

@@ -1,3 +1,4 @@
+import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
@@ -18,10 +19,7 @@ const context = {
   atob: (value) => Buffer.from(value, 'base64').toString('binary'),
   btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
 };
-const gapCoreSource = fs.readFileSync(new URL('../web/gap-remove-core.js', import.meta.url), 'utf8');
-vm.runInNewContext(gapCoreSource, context);
-const source = fs.readFileSync(new URL('../web/waveform.js', import.meta.url), 'utf8');
-vm.runInNewContext(source, context);
+loadEditorModule(context, 'editor/media/waveform.js');
 // 供 .ReaPeaks 二进制 fixture 使用：必须在沙箱 realm 内创建 ArrayBuffer，
 // 否则 decodeReapeaksFile 的 `instanceof ArrayBuffer` 入参校验会拒掉它。
 vm.runInNewContext('globalThis.newArrayBuffer = (size) => new ArrayBuffer(size);', context);

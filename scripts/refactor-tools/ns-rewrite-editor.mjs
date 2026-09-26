@@ -20,6 +20,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import MagicString from "magic-string";
 import { createTwoFilesPatch } from "diff";
 import { selfCheck, unresolvedRefs } from "./scope-core.mjs";
+import { editorScriptFiles, requireLegacyEditor } from "./editor-sources.mjs";
 
 // ---- 导出表: name -> ns（沿用模块文件 global.NS = Object.freeze({...}) 的格式契约） ----
 export function buildExportTable(moduleTexts) {
@@ -70,9 +71,10 @@ export function main(argv) {
 
   const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
   const webDir = path.join(root, "web");
+  requireLegacyEditor(webDir);
 
-  const moduleTexts = fs.readdirSync(webDir)
-    .filter((f) => f.startsWith("editor-") && f.endsWith(".js") && f !== "editor.js")
+  const moduleTexts = editorScriptFiles(webDir)
+    .filter((f) => path.basename(f).startsWith("editor-") && f !== "editor.js")
     .map((f) => fs.readFileSync(path.join(webDir, f), "utf8"));
   const nameNs = buildExportTable(moduleTexts);
   console.log(`导出符号 ${nameNs.size} 个`);
