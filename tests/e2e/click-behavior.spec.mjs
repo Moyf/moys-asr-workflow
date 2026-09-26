@@ -471,17 +471,16 @@ test('double-click places the inline caret at the pointer text position', async 
 
   await page.mouse.dblclick(point.x, point.y);
   await expect(cue).toHaveClass(/editing/);
-  const caret = await page.evaluate(() => {
+  // Inline editing reapplies the caret in the next event-loop turn after the
+  // browser's native double-click selection. Wait for that observable result.
+  await expect.poll(() => page.evaluate(() => {
     const selection = window.getSelection();
     return {
       collapsed: selection?.isCollapsed ?? false,
       offset: selection?.anchorOffset ?? null,
       text: selection?.anchorNode?.textContent ?? null,
     };
-  });
-  expect(caret.collapsed).toBe(true);
-  expect(caret.text).toBe('Alpha');
-  expect(caret.offset).toBe(expectedOffset);
+  })).toEqual({ collapsed: true, text: 'Alpha', offset: expectedOffset });
 });
 
 test('current cue panel keeps the same height before and after selection', async ({ page }) => {
