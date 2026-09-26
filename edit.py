@@ -206,12 +206,20 @@ def read_editor_script_manifest() -> tuple[str, ...]:
         entry = raw_line.split("#", 1)[0].strip()
         if not entry:
             continue
-        path = Path(entry)
-        if path.name != entry or path.suffix.lower() != ".js":
+        parts = entry.split("/")
+        if (
+            "\\" in entry
+            or ":" in entry
+            or any(part in {"", ".", ".."} for part in parts)
+            or not entry.endswith(".js")
+        ):
             raise ValueError(f"Invalid editor script manifest entry at line {line_number}: {entry!r}")
         if entry in entries:
             raise ValueError(f"Duplicate editor script manifest entry at line {line_number}: {entry!r}")
-        if not (WEB_DIR / path).is_file():
+        path = WEB_DIR.joinpath(*parts)
+        if not path.resolve().is_relative_to(WEB_DIR.resolve()):
+            raise ValueError(f"Editor script manifest entry escapes web directory: {entry!r}")
+        if not path.is_file():
             raise ValueError(f"Editor script manifest entry does not exist: {entry!r}")
         entries.append(entry)
     if not entries:

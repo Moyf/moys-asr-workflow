@@ -18,10 +18,10 @@ import assert from "node:assert/strict";
 import { qualifyDeclaration, qualifyEntry } from "../tools/merge-flow.mjs";
 
 const OWNER_OF = new Map([
-  ["start", { file: "editor-i18n.js", ns: "MAWE_I18N" }],
-  ["snapshotSegments", { file: "editor-i18n.js", ns: "MAWE_I18N" }],
-  ["render", { file: "editor-nav-preview.js", ns: "MaweNavPreview" }],
-  ["pushUndo", { file: "editor-history.js", ns: "MaweHistory" }],
+  ["start", { file: "shared/editor-i18n.js", ns: "MAWE_I18N" }],
+  ["snapshotSegments", { file: "shared/editor-i18n.js", ns: "MAWE_I18N" }],
+  ["render", { file: "editor/cues/editor-nav-preview.js", ns: "MaweNavPreview" }],
+  ["pushUndo", { file: "editor/state/editor-history.js", ns: "MaweHistory" }],
 ]);
 
 test("重放体：for-of 头部局部 start 不限定，自由 render 限定", () => {

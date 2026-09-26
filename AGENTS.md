@@ -19,7 +19,9 @@ JSON_SCHEMA.md                # JSON 工程契约
 generate_subtitle_qwen_api.py # API 转写入口
 edit.py + maw/waveform.py     # 单文件编辑器生成和波形缓存
 server-editor/serve.py        # 推荐的 localhost 编辑器
-web/                          # 所有前端源码
+web/editor-scripts.txt        # 编辑器源码装配顺序
+web/editor/ + web/shared/     # 编辑器领域模块与共享能力
+web/launcher/                # Launcher 前端
 docs/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 ```
 
@@ -40,12 +42,15 @@ uv run python edit.py --blank
 
 ```powershell
 uv sync
-node --check web\editor.js
-node --check web\waveform.js
+node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
 uv run python -m unittest discover -s tests -p "test_*.py"
 git diff --check
 ```
+
+`web/editor/boot/editor.js` 是加载守卫入口；连续接线位于各领域的
+`editor-wiring-*.js` 中，按 `web/editor-scripts.txt` 原序装配为一个 classic script。
+新增业务逻辑写入所属领域模块，避免再扩大入口。目录位置不决定执行顺序。
 
 ### Agent 命令执行：避免 uv 超时卡住
 

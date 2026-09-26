@@ -3,9 +3,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as acorn from "acorn";
+import { editorScriptFiles } from "./editor-sources.mjs";
 
 const WEB = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..", "web");
-const files = fs.readdirSync(WEB).filter((f) => f.startsWith("editor") && f.endsWith(".js"));
+const files = editorScriptFiles(WEB);
 
 // 全局已知名集合：所有模块的导出名（跨模块裸写也算嫌疑，单独标注）
 const exported = new Map(); // name -> ns

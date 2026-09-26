@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as acorn from "acorn";
+import { editorScriptFiles } from "./editor-sources.mjs";
 
 const WEB = path.resolve("web");
 const IGNORE_KEYS = new Set(["start", "end", "loc", "range"]);
@@ -31,7 +32,7 @@ function exportedNames(ast, namespace) {
   });
   return names;
 }
-const files = fs.readdirSync(WEB).filter((f) => /^editor-.*\.js$/.test(f)).sort();
+const files = editorScriptFiles(WEB);
 const ownerOf = new Map();
 for (const f of files) {
   const source = fs.readFileSync(path.join(WEB, f), "utf8");

@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+mod editor_assets;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -31,45 +32,9 @@ fn replace_all(page: &mut String, replacements: &[(&str, &str)]) {
     }
 }
 
-fn editor_script_manifest(web_dir: &Path) -> Vec<String> {
-    let manifest_path = web_dir.join("editor-scripts.txt");
-    let mut entries = Vec::new();
-    let mut seen = HashSet::new();
-    for (line_number, raw_line) in read(&manifest_path).lines().enumerate() {
-        let entry = raw_line.split('#').next().unwrap_or("").trim();
-        if entry.is_empty() {
-            continue;
-        }
-        let path = Path::new(entry);
-        if path.file_name().and_then(|value| value.to_str()) != Some(entry)
-            || path.extension().and_then(|value| value.to_str()) != Some("js")
-        {
-            panic!(
-                "无效的编辑器脚本清单项（第 {} 行）：{}",
-                line_number + 1,
-                entry
-            );
-        }
-        if !seen.insert(entry.to_string()) {
-            panic!(
-                "编辑器脚本清单存在重复项（第 {} 行）：{}",
-                line_number + 1,
-                entry
-            );
-        }
-        if !web_dir.join(entry).is_file() {
-            panic!("编辑器脚本清单项不存在：{}", entry);
-        }
-        entries.push(entry.to_string());
-    }
-    if entries.is_empty() {
-        panic!("编辑器脚本清单为空：{}", manifest_path.display());
-    }
-    entries
-}
-
 fn read_editor_scripts(web_dir: &Path) -> String {
-    editor_script_manifest(web_dir)
+    editor_assets::editor_script_manifest(web_dir)
+        .unwrap_or_else(|error| panic!("{error}"))
         .into_iter()
         .map(|entry| read(&web_dir.join(entry)))
         .collect::<Vec<_>>()

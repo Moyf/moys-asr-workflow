@@ -7,8 +7,8 @@
     "strict": false
   },
   "include": [
-    "web/editor-globals.d.ts",
-    "web/editor-boot.js",
-    "web/editor-export-srt.js"
+    "web/editor/boot/editor-globals.d.ts",
+    "web/editor/boot/editor-boot.js",
+    "web/editor/io/editor-export-srt.js"
   ]
 }
