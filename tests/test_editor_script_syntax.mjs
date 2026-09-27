@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
+import { CONVERTED } from "./helpers/esm-pilot-converted.mjs";
 
 const webDir = join(dirname(fileURLToPath(import.meta.url)), "..", "web");
 
@@ -20,6 +21,8 @@ test("editor-scripts.txt 内每个脚本都是合法的 classic script", () => {
   assert.ok(manifest.length > 1, "清单不应为空");
   const broken = [];
   for (const entry of manifest) {
+    // ESM 试点豁免：转换集的语法与依赖完整性由 esbuild 打包守门。
+    if (CONVERTED.includes(entry)) continue;
     const source = readFileSync(join(webDir, ...entry.split("/")), "utf8");
     try {
       // 只编译，不执行：与 node --check 同等语法覆盖，不要求目标脚本能独立运行。

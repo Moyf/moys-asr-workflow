@@ -1,7 +1,6 @@
 // Browser file capabilities. A future desktop host can replace this whole service.
-window.MAWE.register('host-files', function createFiles(dependencies) {
-  'use strict';
-  const { browser, environment } = dependencies;
+// ESM 试点：window.MAWE.register 注册改为命名导出，依赖解构进参数表。
+export function createHostFiles({ browser, environment }) {
   return Object.freeze({
     hasSavePicker: () => typeof browser.showSaveFilePicker === 'function',
     pickSaveFile: (options) => browser.showSaveFilePicker(options),
@@ -21,4 +20,4 @@ window.MAWE.register('host-files', function createFiles(dependencies) {
       environment.setTimeout(() => environment.URL.revokeObjectURL(url), 1000);
     },
   });
-});
+}

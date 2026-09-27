@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
 import test from 'node:test';
+// ESM 试点：vm 拼接加载器退役，被测模块直接 import——依赖经参数显式注入，
+// 注入式替换能力由调用方构造（正式迁移后所有单测都走这个形态）。
+import { createEditorHost } from '../web/editor/boot/editor-host.js';
 
 function loadHost(environment = {}) {
-  const context = { window: {}, ...environment };
-  for (const file of ['editor/boot/editor-runtime.js', 'shared/host/storage.js',
-    'shared/host/files.js', 'shared/host/server-api.js', 'editor/boot/editor-host.js']) {
-    vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
-  }
-  return context;
+  const env = Object.assign({}, environment);
+  const window = {};
+  window.MaweHost = createEditorHost({ browser: window, environment: env });
+  window.MAWE = { resolve: (name, capabilities) => createEditorHost(capabilities) };
+  env.window = window;
+  return env;
 }
 
 test('host startup needs no DOM, storage, picker or network capability', () => {
