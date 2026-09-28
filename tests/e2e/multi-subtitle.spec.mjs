@@ -1803,12 +1803,8 @@ test('uses B on a waveform-selected extension cue instead of its overlapping mai
   }]);
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
-  const extensionBox = await waitForLayoutBox(extensionBlock, '副字幕波形块没有布局');
   const mainBefore = await page.evaluate(() => MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end]));
-  await page.mouse.click(
-    extensionBox.x + extensionBox.width / 2,
-    extensionBox.y + extensionBox.height / 2,
-  );
+  await extensionBlock.click();
   await expect(extensionBlock).toHaveClass(/selected/);
   await page.keyboard.press('b');
 
@@ -3626,6 +3622,7 @@ test('snaps an extension cue to main-track boundaries when cross-track snapping 
   }]);
   await expect(page.locator('#multi-subtitle-cross-track-snap')).not.toBeChecked();
   const resetBlock = page.locator('.waveform-cue-block[data-track="extension"]').first();
+  await expect(resetBlock).toBeVisible();
   const resetBox = await resetBlock.boundingBox();
   if (!resetBox) throw new Error('重新加载后副字幕波形块没有布局');
   const resetCenterX = resetBox.x + resetBox.width / 2;

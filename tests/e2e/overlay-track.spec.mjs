@@ -679,7 +679,7 @@ test('keeps color group references valid through an overlay round trip', async (
   await expect(page.locator('.cue[data-idx="4"]')).toHaveCount(1);
 
   // 转出组内成员（index 2），组引用必须保持「指向带 color 的 head」。
-  await page.locator('.cue[data-idx="2"]').click({ button: 'right', force: true });
+  await page.locator('.cue[data-idx="2"]').click({ button: 'right' });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
   await page.getByText('转为叠加字幕', { exact: true }).click();
   await expect(page.locator('.overlay-track-cue')).toHaveCount(1);

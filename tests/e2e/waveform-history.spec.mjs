@@ -945,6 +945,10 @@ test('retries an inline split with B or Enter and clamps both halves to 100ms', 
   await cue.click();
   const text = cue.locator('.text');
   await text.dblclick();
+  // A real follow-up key owns the caret before this test places its exact
+  // split point; otherwise the deferred native double-click repair may race
+  // with the programmatic Range below under full-suite load.
+  await page.keyboard.press('ArrowRight');
   await text.evaluate((element) => {
     const node = element.firstChild;
     const range = document.createRange();
