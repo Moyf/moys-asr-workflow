@@ -872,6 +872,7 @@ class LauncherApi:
             "ocrModelId": OCR_MODEL_ID,
             "alignmentModels": alignment_models,
             "modelCacheRoot": config.model_cache_root,
+            "localModelPaths": _local_model_paths_config(self.paths.env_path),
             "models": [
                 _model_payload(
                     item,
@@ -975,6 +976,19 @@ class LauncherApi:
 
     def save_prefs(self, payload: Mapping[str, object]) -> dict[str, object]:
         updates: dict[str, str] = {}
+        if "localModelPaths" in payload:
+            paths = payload["localModelPaths"]
+            valid_ids = {model.id for model in provider_by_id("local").models}
+            if not isinstance(paths, dict) or any(
+                model_id not in valid_ids or not isinstance(path, str) or "\x00" in path or "\n" in path or "\r" in path
+                for model_id, path in paths.items()
+            ):
+                return _error_result("localModelPath", "config_save_failed", "Invalid local model paths")
+            updates["MAW_GUI_LOCAL_MODEL_PATHS"] = json.dumps(
+                {model_id: path.strip() for model_id, path in paths.items() if path.strip()},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
         if "guiLang" in payload:
             updates["MAW_GUI_LANG"] = _gui_lang(payload)
         if "modelId" in payload:
@@ -2674,6 +2688,15 @@ class LauncherApi:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         selected_id = str((payload or {}).get("modelId") or "")
         selected_path = str((payload or {}).get("modelPath") or "").strip()
+        saved_paths = _local_model_paths_config(self.paths.env_path)
+        requested_paths = (payload or {}).get("modelPaths")
+        if isinstance(requested_paths, dict):
+            valid_ids = {model.id for model in provider.models}
+            saved_paths.update({
+                model_id: path.strip()
+                for model_id, path in requested_paths.items()
+                if model_id in valid_ids and isinstance(path, str)
+            })
         visible_models = tuple(item for item in provider.models if not item.hidden)
         selected_model = next((item for item in visible_models if item.id == selected_id), visible_models[0])
         runtime_by_engine: dict[str, LocalRuntimeStatus] = {}
@@ -2686,7 +2709,7 @@ class LauncherApi:
             "models": [
                 _model_payload(
                     model,
-                    model_path=selected_path if model.id == selected_id else "",
+                    model_path=selected_path if model.id == selected_id else saved_paths.get(model.id, ""),
                     model_cache_root=model_cache_root,
                     runtime_status=runtime_by_engine[model.engine],
                 )
@@ -4681,6 +4704,21 @@ def effective_config_value(env_path: Path, key: str) -> str:
     from maw.gui_config import load_env
 
     return os.environ.get(key) or load_env(env_path).get(key, "")
+
+
+def _local_model_paths_config(env_path: Path) -> dict[str, str]:
+    try:
+        saved = json.loads(effective_config_value(env_path, "MAW_GUI_LOCAL_MODEL_PATHS") or "{}")
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(saved, dict):
+        return {}
+    valid_ids = {model.id for model in provider_by_id("local").models}
+    return {
+        model_id: path.strip()
+        for model_id, path in saved.items()
+        if model_id in valid_ids and isinstance(path, str) and path.strip()
+    }
 
 
 def _sync_local_runtime_root(env_path: Path) -> None:

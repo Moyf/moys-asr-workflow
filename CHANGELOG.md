@@ -2,6 +2,12 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
+## [未发布]
+
+### 🐛 修复
+
+- 修复已下载到 ModelScope 缓存的 Qwen3-ASR 可能不显示已安装标记，以及选择“已有模型目录”后重开 Launcher 会丢失目录的问题。
+
 ## [1.7.0] - 2026-09-24
 
 ### 🚀 全新特性

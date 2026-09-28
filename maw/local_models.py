@@ -759,12 +759,16 @@ def _find_model_paths(
             missing.append("FunASR ct-punc（自动标点）")
         return (ctc_path or punc_path, missing)
     if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss", "whisper"}:
-        main = _find_huggingface_model(model.model_ref, model_cache_root)
+        find_cached_model = (
+            _find_hub_model if model.engine in {"qwen-asr", "qwen", "qwen3-asr"}
+            else _find_huggingface_model
+        )
+        main = find_cached_model(model.model_ref, model_cache_root)
         if main is None:
             return None
         missing = [
             ref for ref in model.required_model_refs
-            if _find_huggingface_model(ref, model_cache_root) is None
+            if find_cached_model(ref, model_cache_root) is None
         ]
         return main, missing
     if model.engine in {"funasr", "fun-asr"}:
@@ -798,6 +802,10 @@ def _find_huggingface_model(
         if repo.is_dir() and _model_directory_has_file(repo, require_weight=True):
             return repo
     return None
+
+
+def _find_hub_model(model_ref: str, model_cache_root: str | Path | None = None) -> Path | None:
+    return _find_huggingface_model(model_ref, model_cache_root) or _find_modelscope_model(model_ref, model_cache_root)
 
 
 def _huggingface_repo_paths(
