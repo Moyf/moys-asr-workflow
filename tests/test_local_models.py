@@ -83,6 +83,30 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(installed.status, "installed")
         self.assertEqual(Path(installed.path).resolve(), main.resolve())
 
+    def test_qwen_modelscope_cache_is_detected_with_huggingface_aligner(self) -> None:
+        model = local_model("qwen3-asr-1.7b-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            modelscope = root / "modelscope"
+            main = modelscope / "models" / "Qwen" / "Qwen3-ASR-1.7B"
+            main.mkdir(parents=True)
+            (main / "model.safetensors").write_bytes(b"weights")
+            huggingface = root / "huggingface"
+            aligner = huggingface / "models--Qwen--Qwen3-ForcedAligner-0.6B" / "snapshots" / "main"
+            aligner.mkdir(parents=True)
+            (aligner / "model.safetensors").write_bytes(b"aligner")
+
+            with (
+                mock.patch("maw.local_models._modelscope_cache_roots", return_value=[modelscope]),
+                mock.patch("maw.local_models._huggingface_cache_roots", return_value=[huggingface]),
+                mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()),
+            ):
+                status = inspect_local_model(model)
+
+        self.assertEqual(status.status, "installed")
+        self.assertTrue(status.installed)
+        self.assertEqual(Path(status.path).resolve(), main.resolve())
+
     def test_whisper_huggingface_cache_is_detected(self) -> None:
         model = local_model("whisper-large-v3-local")
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -136,7 +160,7 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(installed.status, "installed")
         self.assertEqual(Path(installed.path).resolve(), main.resolve())
 
-    def test_explicit_folder_is_used_without_persisting_it(self) -> None:
+    def test_explicit_folder_is_used(self) -> None:
         model = local_model("funasr-local")
         with tempfile.TemporaryDirectory() as temp_dir:
             (Path(temp_dir) / "model.pt").write_bytes(b"weights")

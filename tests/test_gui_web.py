@@ -716,6 +716,46 @@ class GuiWebBridgeTests(unittest.TestCase):
             "# keep\nDASHSCOPE_REGION=beijing\nSTICKER_DIR=stickers\nMAW_GUI_LAST_MODEL=stt-async-v5\nMAW_GUI_LAST_LANGUAGE=\n",
         )
 
+    def test_local_model_directories_persist_per_model_and_scan_unselected_models(self) -> None:
+        paths = {
+            "qwen3-asr-local": "/models/qwen-0.6b",
+            "qwen3-asr-1.7b-local": "/models/qwen-1.7b",
+        }
+        self.assertTrue(self.api.save_prefs({"localModelPaths": paths})["ok"])
+        self.assertEqual(self.api.get_config()["localModelPaths"], paths)
+
+        inspected: dict[str, str] = {}
+
+        def model_payload(model: object, *, model_path: str = "", **_kwargs: object) -> dict[str, object]:
+            inspected[model.id] = model_path
+            return {"id": model.id, "localStatus": {"installed": bool(model_path)}}
+
+        with (
+            mock.patch.object(self.api, "_local_runtime_status") as runtime_status,
+            mock.patch("maw.gui_web._model_payload", side_effect=model_payload),
+        ):
+            runtime_status.return_value.to_payload.return_value = {}
+            result = self.api.get_local_models({"modelId": "qwen3-asr-local", "modelPath": paths["qwen3-asr-local"]})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(inspected["qwen3-asr-local"], paths["qwen3-asr-local"])
+        self.assertEqual(inspected["qwen3-asr-1.7b-local"], paths["qwen3-asr-1.7b-local"])
+
+        with (
+            mock.patch.object(self.api, "_local_runtime_status") as runtime_status,
+            mock.patch("maw.gui_web._model_payload", side_effect=model_payload),
+        ):
+            runtime_status.return_value.to_payload.return_value = {}
+            self.api.get_local_models({
+                "modelId": "qwen3-asr-local",
+                "modelPath": paths["qwen3-asr-local"],
+                "modelPaths": {"qwen3-asr-1.7b-local": "/models/new-1.7b"},
+            })
+        self.assertEqual(inspected["qwen3-asr-1.7b-local"], "/models/new-1.7b")
+
+        self.assertTrue(self.api.save_prefs({"localModelPaths": {"qwen3-asr-1.7b-local": paths["qwen3-asr-1.7b-local"]}})["ok"])
+        self.assertEqual(self.api.get_config()["localModelPaths"], {"qwen3-asr-1.7b-local": paths["qwen3-asr-1.7b-local"]})
+
     def test_save_prefs_persists_gui_language(self) -> None:
         result = self.api.save_prefs({"guiLang": "en"})
 
