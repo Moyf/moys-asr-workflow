@@ -19,7 +19,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONVERTED } from "./helpers/esm-pilot-converted.mjs";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const webDir = join(testDir, "..", "web");
@@ -131,9 +130,6 @@ test("editor-scripts.txt 顺序断言", async (t) => {
   const programs = [];
 
   manifest.forEach((name, fileIdx) => {
-    // ESM 试点豁免：已转换文件不再属于 classic 世界（加载顺序由 esbuild
-    // 的静态 import 图保证，循环依赖在打包期报错），经典顺序断言不适用。
-    if (CONVERTED.includes(name)) { programs.push(null); return; }
     const source = readFileSync(join(webDir, name), "utf8");
     let program;
     assert.doesNotThrow(() => {
@@ -282,7 +278,6 @@ test("editor-scripts.txt 顺序断言", async (t) => {
   }
 
   programs.forEach((program, fileIdx) => {
-    if (!program) return;
     for (const stmt of program.body) {
       visit(stmt, program, false, fileIdx, manifest[fileIdx]);
     }

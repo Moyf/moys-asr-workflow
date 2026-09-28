@@ -21,10 +21,10 @@ class EditorAssetContractTests(unittest.TestCase):
             (
                 "editor/boot/editor-boot.js",
                 "editor/boot/editor-runtime.js",
-                "shared/host/storage.js",
-                "shared/host/files.js",
-                "shared/host/server-api.js",
-                "editor/boot/editor-host.js",
+                # ESM 试点转换集以打包产物形态占据其在清单中的原位
+                # （scripts/esm-pilot/build-esm-bundle.mjs 生成，
+                #   tests/test_esm_bundle_fresh.mjs 把关过期）。
+                "editor/boot/esm-bundle.js",
                 "shared/gap-remove-core.js",
                 "shared/utils/data.js",
                 "shared/utils/fonts.js",

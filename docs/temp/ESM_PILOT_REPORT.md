@@ -63,12 +63,37 @@ node 全量测试 374/0 与 main 完全一致。
 4. `npm run typecheck`（我们的类型门）在试点后保持全绿；迁移完成后
    `editor-globals.d.ts` 的 Window 声明合并可由真实 import 类型替代。
 
+## 评审修复（2026-09-28，回应 PR #157 评审）
+
+上游评审确认方向有价值但阻断合并，三条批评全部成立、全部修复：
+
+1. **正式装配未接通（已修复，结构性方案）**：清单中原四条目替换为单个
+   `editor/boot/esm-bundle.js`（转换集的 esbuild IIFE 产物，已提交入库）。
+   edit.py / serve.py / Tauri build.rs 三个消费端**零改动**——它们只是读到
+   清单里多了一个普通 classic 脚本。产物过期由新增的
+   `tests/test_esm_bundle_fresh.mjs` 门禁拦截；此前为适配转换而加的顺序/
+   语法测试豁免全部撤销（清单自洽后守门测试恢复原语义）。复现闭环：本分支
+   上正式 `edit.py build_blank_html()` 产物已无裸 export，file:// 打开正常。
+2. **基线不可复现（已修复）**：verify 改为 `--baseline <ref>` 显式指定改造前
+   提交（默认 origin/main），并对基线源码预检（含 export 即拒绝、exit 2），
+   不再依赖「HEAD 恰好是改造前」的会话期巧合。
+3. **verify 非门禁（已修复）**：八项探针检查任一失败即非零退出（探针失败
+   exit 1，基线 ref 非法 exit 2）；负向验证演示：`--baseline HEAD` 得 exit 2。
+
+三页验证（基线 replica 页 / 正式 edit.py 页 file:// / 正式 serve.py 页 http）
+八项检查全绿：三页零 pageerror、启动契约与基线一致、MaweHost 形状与读写
+一致、host 模块从注册表退役且仅经 bundle 存活。node 全量 375 pass / 0 fail
+（含新增新鲜度门禁），python 契约测试（test_editor_assets 22 项）同步通过，
+typecheck 通过。方法论教训记录在案：豁免守门测试来让套件变绿，等于把集成
+缺口的红灯调暗——守门测试的红灯只能用接通缺口来消灭。
+
 ## 下一步（若维护者批准正式迁移）
 
 1. 决策点只有一个：接受 esbuild 作为**仅产物层**的构建步骤（devDependency，
    blank/Tauri 装配时调用；日常开发与 server 页零变化）。
 2. 迁移顺序：按清单自底向上（`shared/utils` → 各领域模块 → boot），每批一个
-   PR，双轨页与 374 项测试守门。
+   PR，双轨页与 375 项测试守门；edit.py 装配路径已接通，每批的验证即真实
+   页面验证。
 3. `editor-scripts.txt` 的终态是「入口模块 + 静态资源清单」；`window.MAWE`
    注册表随最后一个模块迁移退役，window 桥（MaweHost 等）收编为显式的
    「页面公共 API 清单」，供 e2e 与外部嵌入方使用。

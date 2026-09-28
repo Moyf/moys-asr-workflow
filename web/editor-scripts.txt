@@ -4,10 +4,9 @@
 # must stay first among the editor modules.
 editor/boot/editor-boot.js
 editor/boot/editor-runtime.js
-shared/host/storage.js
-shared/host/files.js
-shared/host/server-api.js
-editor/boot/editor-host.js
+# 下面一行是 ESM 试点转换集的打包产物（由 scripts/esm-pilot/build-esm-bundle.mjs
+# 生成，过期由 tests/test_esm_bundle_fresh.mjs 把关）；classic 消费端按普通脚本装配。
+editor/boot/esm-bundle.js
 shared/gap-remove-core.js
 shared/utils/data.js
 shared/utils/fonts.js
