@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ESM 试点 · 一条目装配方案说明图</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2129; --line: #30363d;
+    --fg: #e6edf3; --dim: #8b949e; --accent: #58a6ff; --green: #3fb950;
+    --red: #f85149; --amber: #d29922; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: "Microsoft YaHei", "PingFang SC", sans-serif; padding: 32px; line-height: 1.6; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h1 .tag { color: var(--accent); font-family: Consolas, monospace; font-size: 16px; }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 28px; }
+  h2 { font-size: 16px; margin: 34px 0 12px; padding-left: 10px; border-left: 3px solid var(--accent); }
+  h2 .why { color: var(--dim); font-size: 13px; font-weight: normal; margin-left: 10px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .row { display: flex; gap: 14px; align-items: stretch; flex-wrap: wrap; }
+  .box { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+  .box b { display: block; font-size: 13px; margin-bottom: 4px; }
+  .box .mono, .mono { font-family: Consolas, "Courier New", monospace; }
+  .dim { color: var(--dim); }
+  .arrow { align-self: center; color: var(--accent); font-size: 20px; font-family: monospace; padding: 0 2px; }
+  .filelist { font-family: Consolas, monospace; font-size: 12.5px; line-height: 1.75; white-space: pre; }
+  .del { color: var(--red); } .add { color: var(--green); } .keep { color: var(--fg); }
+  .cmt { color: var(--dim); }
+  .badge { display: inline-block; font-size: 11px; border-radius: 10px; padding: 1px 8px; margin-left: 6px; vertical-align: 2px; }
+  .b-green { background: #12351c; color: var(--green); border: 1px solid #1f4d2a; }
+  .b-red { background: #3d1418; color: var(--red); border: 1px solid #5c2026; }
+  .b-amber { background: #362a12; color: var(--amber); border: 1px solid #52401d; }
+  .b-blue { background: #12293d; color: var(--accent); border: 1px solid #1f4d6d; }
+  .b-purple { background: #2a1f3d; color: var(--purple); border: 1px solid #44335c; }
+  .flow { display: flex; align-items: center; gap: 0; margin-top: 10px; flex-wrap: wrap; }
+  .flow .box { flex: 0 0 auto; }
+  .scriptblock { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px; font-family: Consolas, monospace; font-size: 12px; }
+  .sb-classic { background: #101822; }
+  .sb-bundle { background: #14201a; border-color: #1f4d2a; }
+  .lane { display: flex; gap: 10px; margin-top: 8px; }
+  .lane .col { flex: 1; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; }
+  .lane .col h3 { font-size: 12.5px; margin-bottom: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-top: 8px; }
+  th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+  th { background: var(--panel2); color: var(--dim); font-weight: normal; }
+  .foot { color: var(--dim); font-size: 12px; margin-top: 30px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .num { display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #000; text-align: center; line-height: 20px; font-size: 12px; font-weight: bold; margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<h1><span class="tag">esm-pilot</span> 一条目装配方案 · 说明图</h1>
+<div class="sub">回应 PR #157 评审：如何让 4 个真 ESM 模块安全嵌回 3 个消费端共用的经典拼接架构 —— 方案核心是「不让消费端学会打包，而是把打包结果伪装成一个普通清单条目」。</div>
+
+<h2>0. 背景：三个消费端只认一件事</h2>
+<div class="panel">
+  <div class="flow">
+    <div class="box"><b class="mono">web/editor-scripts.txt</b>清单 · 174 行有序条目</div>
+    <div class="arrow">──┬─→</div>
+    <div class="box"><b class="mono">edit.py</b>内联 → blank-editor.html<span class="dim">（file:// 双击打开）</span></div>
+  </div>
+  <div class="flow">
+    <div class="box dim" style="visibility:hidden">占位</div>
+    <div class="arrow">├─→</div>
+    <div class="box"><b class="mono">server-editor/serve.py</b>每次请求从 web/ 渲染页面</div>
+  </div>
+  <div class="flow">
+    <div class="box dim" style="visibility:hidden">占位</div>
+    <div class="arrow">└─→</div>
+    <div class="box"><b class="mono">Tauri build.rs</b>构建期内联进桌面页</div>
+  </div>
+  <p style="margin-top:12px" class="dim">三个消费端的装配逻辑一模一样：<b style="color:var(--fg)">读清单 → 把每个条目当 classic 脚本按序拼进 &lt;script&gt;</b>。它们不在乎条目「是什么」——这就是方案的支点。</p>
+</div>
+
+<h2>1. 评审抓到的断裂点 <span class="why">把 4 个 ESM 文件直接放进清单 = 三个消费端全部产出坏页</span></h2>
+<div class="panel">
+  <div class="lane">
+    <div class="col" style="flex:1.2">
+      <h3>清单（试点第一版，错误形态）</h3>
+      <div class="filelist"><span class="keep">editor/boot/editor-runtime.js</span>
+<span class="del">shared/host/storage.js      ← export function …</span>
+<span class="del">shared/host/files.js        ← export function …</span>
+<span class="del">shared/host/server-api.js   ← export function …</span>
+<span class="del">editor/boot/editor-host.js  ← import … / export …</span>
+<span class="keep">shared/gap-remove-core.js</span></div>
+    </div>
+    <div class="arrow">──→</div>
+    <div class="col" style="flex:1.2">
+      <h3>拼进 classic &lt;script&gt; 的结果</h3>
+      <div class="scriptblock" style="background:#2a1215; border-color:#5c2026">
+        &lt;script&gt;<br>
+        &nbsp;&nbsp;(function …)();<br>
+        &nbsp;&nbsp;<span class="del">export function createHostStorage(…) </span><br>
+        &nbsp;&nbsp;<span class="dim">…</span><br>
+        &lt;/script&gt;
+      </div>
+      <p style="margin-top:8px"><span class="badge b-red">💥 SyntaxError: Unexpected token 'export'</span></p>
+      <p class="dim" style="font-size:12px; margin-top:6px">edit.py / serve.py / build.rs 三个消费端全部产出无法启动的页面。第一版试点只验证了自建页面，没接这条正式装配链——被评审拦下。</p>
+    </div>
+  </div>
+</div>
+
+<h2>2. 修复：四个条目 → 一个条目 <span class="why">打包发生在构建期，装配期什么都没变</span></h2>
+<div class="panel">
+  <div class="lane">
+    <div class="col" style="flex:1.15">
+      <h3>① 构建期（一次性，开发者手跑）</h3>
+      <div class="flow">
+        <div class="box"><b class="mono">4 × ESM 源文件</b><span class="dim">真 import 图<br>纯导出，无副作用</span></div>
+        <div class="arrow">→</div>
+        <div class="box" style="border-color:#1f4d2a"><b style="color:var(--green)" class="mono">esbuild</b><span class="dim">32 ms · IIFE</span></div>
+        <div class="arrow">→</div>
+        <div class="box"><b class="mono">web/editor/boot/<br>esm-bundle.js</b><span class="dim">2 KB · 已提交入库</span></div>
+      </div>
+      <p style="margin-top:8px" class="dim">入口里带着一行 <span class="mono">window.MaweHost = createEditorHost(…)</span> ——门面挂载是副作用，归入口，不进模块本体（否则 tree-shaking 把模块整个摇掉，试点时真实发生过）。</p>
+    </div>
+    <div class="col" style="flex:1">
+      <h3>② 清单（四个条目 → 一个条目，位置不变）</h3>
+      <div class="filelist"><span class="keep">editor/boot/editor-runtime.js</span>
+<span class="cmt"># ESM 试点转换集的打包产物（见 builder）</span>
+<span class="add">editor/boot/esm-bundle.js</span>
+<span class="keep">shared/gap-remove-core.js</span>
+<span class="dim">…其余 169 条不变…</span></div>
+    </div>
+    <div class="col" style="flex:1">
+      <h3>③ 三个消费端</h3>
+      <div class="box" style="border-color:#1f4d2a"><b style="color:var(--green)">零改动</b></div>
+      <p class="dim" style="font-size:12px; margin-top:6px">edit.py / serve.py / build.rs 只是读到清单里多了一个<b style="color:var(--fg)">普通 classic 脚本</b>。不引入 Node 装配依赖，不改 2 种语言的 3 处逻辑。</p>
+    </div>
+  </div>
+</div>
+
+<h2>3. 修复后的页面：双轨共存 <span class="why">浏览器视角与今天无差别；file:// 照常双击打开</span></h2>
+<div class="panel">
+  <div class="scriptblock sb-classic" style="margin-bottom:8px">
+    &lt;script&gt; &nbsp;<span class="dim">editor-boot.js + editor-runtime.js（经典拼接 · 左轨）</span> &lt;/script&gt;
+  </div>
+  <div class="scriptblock sb-bundle" style="margin-bottom:8px">
+    &lt;script&gt; &nbsp;<span style="color:var(--green)">esm-bundle.js</span> &nbsp;<span class="dim">← 外壳：classic IIFE；内里：真 import 图 + 门面挂载 window.MaweHost（右轨）</span> &lt;/script&gt;
+  </div>
+  <div class="scriptblock sb-classic">
+    &lt;script&gt; &nbsp;<span class="dim">gap-remove-core.js + … 164 个经典脚本（左轨 · window.MaweHost 照读不误）</span> &lt;/script&gt;
+  </div>
+  <p style="margin-top:10px" class="dim">产物位置 = 原四个文件在清单中的位置（editor-runtime 之后）。加载顺序语义不变；三页探针（基线 / 正式 edit.py 页 file:// / 正式 serve.py 页 http）八项检查全绿、零 pageerror。</p>
+</div>
+
+<h2>3½. bundle 是怎么进清单的？ <span class="why">没有机制，就是一次普通的文本编辑</span></h2>
+<div class="panel">
+  <div class="lane">
+    <div class="col" style="flex:1.4">
+      <h3>web/editor-scripts.txt 的实际 diff（提交 0fc2e6af）</h3>
+      <div class="filelist"><span class="keep"> editor/boot/editor-boot.js</span>
+<span class="keep"> editor/boot/editor-runtime.js</span>
+<span class="del">-shared/host/storage.js</span>
+<span class="del">-shared/host/files.js</span>
+<span class="del">-shared/host/server-api.js</span>
+<span class="del">-editor/boot/editor-host.js</span>
+<span class="cmt">+# 下面一行是 ESM 试点转换集的打包产物（由</span>
+<span class="cmt">+# build-esm-bundle.mjs 生成，新鲜度测试把关）</span>
+<span class="add">+editor/boot/esm-bundle.js</span>
+<span class="keep"> shared/gap-remove-core.js</span></div>
+    </div>
+    <div class="col">
+      <h3>消费端视角</h3>
+      <p style="font-size:12.5px">清单是仓库里的纯文本文件。消费端 <span class="mono">读清单 → 逐条解析为 web/&lt;条目&gt;</span>——bundle 条目和其他 169 条<b>没有任何区别</b>，解析成 <span class="mono">web/editor/boot/esm-bundle.js</span> 这个真实存在的文件读进去。</p>
+      <p style="font-size:12.5px; margin-top:6px" class="dim">没有注入机制、没有动态生成、没有条件分支。「三端零改动」的原因就是这个动作平凡：它只是改了一个文本文件。</p>
+    </div>
+  </div>
+</div>
+
+<h2>3¾. 产物的归宿 <span class="why">已提交的 bundle 是过渡脚手架，不是终点</span></h2>
+<div class="panel">
+  <p style="font-size:13px">构建产物不进 Git 是一般共识；放任 bundle 随迁移长大，会带来三类成本：<span class="badge b-red">大 diff 淹没评审</span> <span class="badge b-amber">历史 blob 膨胀</span> <span class="badge b-amber">源码/产物双份真相</span></p>
+  <table style="margin-top:10px">
+    <tr><th style="width:170px">消费端</th><th>终态</th></tr>
+    <tr><td class="mono">server-editor</td><td>http 下原生 ES modules 直接工作（classic 条目出 classic 标签、转换集出 <span class="mono">&lt;script type="module"&gt;</span>）——<b style="color:var(--green)">零产物零构建</b></td></tr>
+    <tr><td class="mono">Tauri</td><td>待验证 v2 协议能否以正确 MIME 提供模块文件；可行则零产物，不可行退打包</td></tr>
+    <tr><td class="mono">blank-editor.html</td><td>唯一被迫打包的消费端（单文件 + file:// 产品约束）——bundle 与它<b style="color:var(--amber)">同批在发布流程中出生、同批消费</b>，不进开发路径，不进 Git</td></tr>
+  </table>
+  <p style="margin-top:10px; font-size:12.5px" class="dim">因此「接受 esbuild」是两个子决策：① 接受工具；② 产物住在哪（Git = 试点现状，零流水线改动；发布流程 = 终态，要求装配层一次真改动）。试点倾向 ② 为终态，两者一起提请维护者决策。</p>
+</div>
+
+<h2>4. 门禁体系 <span class="why">评审三条阻断各自对应一道闸，全部非零退出语义</span></h2>
+<div class="panel">
+  <table>
+    <tr><th style="width:220px">闸门</th><th>拦什么</th><th style="width:150px">失败退出</th></tr>
+    <tr><td class="mono">build-esm-bundle.mjs</td><td>构建期守门：循环依赖、拼错的导出名（31 ms 拒绝 <span class="mono">createHostStorag</span>）</td><td class="mono">exit ≠ 0</td></tr>
+    <tr><td class="mono">test_esm_bundle_fresh.mjs</td><td>已提交产物与转换集源码逐字节比对——改了源码忘重构建，当场拦下</td><td class="mono">exit 1</td></tr>
+    <tr><td class="mono">verify.mjs --baseline &lt;ref&gt;</td><td>基线显式钉 ref（默认 origin/main），基线源码预检含 <span class="mono">export</span> 即拒绝；三页（基线 replica / 正式 edit.py 页 / 正式 serve.py 页）各八项探针：零 pageerror、启动契约等价、MaweHost 读写一致、注册表恰好瘦身</td><td class="mono">探针失败 exit 1<br>基线非法 exit 2</td></tr>
+    <tr><td class="mono">顺序 / 语法守门测试</td><td><span style="color:var(--green)">恢复原语义、零豁免</span>——bundle 本身可过 classic 全部断言；上轮「豁免调暗红灯」的教训落成机制：转换集的语法由 esbuild 守，不再靠测试让路</td><td class="mono">exit ≠ 0</td></tr>
+  </table>
+</div>
+
+<h2>5. 迁移动力学：双轨如何收敛成单轨</h2>
+<div class="panel">
+  <div class="lane">
+    <div class="col">
+      <h3>现在（4 / 174）</h3>
+      <div class="scriptblock sb-classic" style="border-color:var(--line)">░░░░░░░░░░░░░░░░░░░░<span style="color:var(--green)">▓▓</span></div>
+      <p class="dim" style="font-size:12px">经典块 170 文件 · bundle 4 模块</p>
+    </div>
+    <div class="col">
+      <h3>每批迁移（同一动作循环）</h3>
+      <p style="font-size:12.5px">源码转 ESM → 重跑 builder → 条目并入 bundle → 三页探针 + 375 项测试守门。<span class="dim">edit.py / serve.py / Tauri 永远不再改。</span></p>
+    </div>
+    <div class="col">
+      <h3>终点（174 / 174，单轨）</h3>
+      <div class="scriptblock sb-bundle"><span style="color:var(--green)">▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓</span></div>
+      <p class="dim" style="font-size:12px">经典块归零 · 清单只剩入口 · 整页 = 一个依赖图</p>
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  分支 <span class="mono">esm-pilot</span>（fork: drunkenQCat）· 修复提交 0fc2e6af · 报告 docs/temp/ESM_PILOT_REPORT.md · 复现：node scripts/esm-pilot/build-esm-bundle.mjs && node scripts/esm-pilot/verify.mjs
+</div>
+
+</body>
+</html>
