@@ -131,7 +131,7 @@ uv run python edit.py --blank
 | `web/shared/utils/` | 字幕 / 时间 / 设置 / 多轨 / ASS / 导出 / 文本等数据领域工厂；显式注入依赖 |
 | `web/shared/host/` | 可替换的设置存储、文件选择 / 写入 / 下载与 Server 传输服务 |
 | `web/editor/boot/` | 工程注入、运行时、加载守卫入口、启动、新手引导与全局类型声明 |
-| `web/editor/state/` | 工程核心状态、设置、历史、轨道与字幕面板状态 |
+| `web/editor/state/` | 状态所有者、字幕修改事务、视图更新适配、设置与各编辑域历史 |
 | `web/editor/cues/` | 字幕编辑、选择、搜索、拆分合并、绑定、文本工具与快捷键 |
 | `web/editor/styles/` | 字体、ASS 样式库与预览、颜色、外观、说话人 |
 | `web/editor/media/` | 波形兼容装配、播放、媒体加载、步进、几何与表情包预览 |
@@ -148,7 +148,13 @@ uv run python edit.py --blank
 
 `boot/editor-host.js` 在业务模块加载前装配 `MaweHost`。宿主工厂接收环境对象或独立的 storage / files / server / runtime 服务；当前用浏览器实现，未来 Electron 入口可传入替代服务。写入服务接收 Blob 构造回调，在取得 writable 后才构造正文，保留原有新建 / 另存为取值时机。文件取消、写入失败、保存指纹与脏状态判断仍由业务模块处理；响应校验也由调用者处理，传输层只负责 URL 解析和 fetch。Canvas 与播放帧仍走原 DOM / rAF 路径，不经通用状态广播。
 
-本轮职责提取使用 `node scripts/check_editor_domains.mjs` 审计原声明 / 方法源码、构造器与兼容出口；允许的宿主引用替换逐项记录在 specs 中。完整拼接 AST 已因工厂包装改变，不能继续把早期机械拆分的 AST 一致结论用于本阶段。
+`MaweState` 持有模板注入的原工程对象；偏好、播放器、面板、行内编辑和选择状态均不写入工程。选择集对外提供实时只读视图，增删 / 重排 / 锚点写入只经过 owner。旧 `MaweCoreState` / `MaweSelection` / `MaweCuePanelState` 的状态访问器转发同一个 owner，待现有消费者迁移后再退役。新手引导仍使用现有窄桥接。
+
+字幕写入使用 `MaweCommands.run(label, mutate, options)`；长交互使用 `begin()` 后在确认时 `commit()`，取消时 `cancel()`。暂存不会清空 redo；成功且实际有变化才发布一次历史。同步事务中先完成数据写入，再提交和刷新视图；提交后只处理选中结果、提示与焦点。异常在提交前回滚，提交之后的视图错误不视为数据事务失败。文本输入框保留浏览器原生撤销；面板连续输入 / 波形预览只暂存一个事务，保存可确认输入而不移动光标。
+
+`MaweViewUpdates.invalidate()` 明确列表、波形（`none` / `overlay` / `full`）、滚动锚点、预览与保存范围；命令提交统一调度保存。行内标签和播放帧等高频局部更新仍直接操作原组件，避免每次输入或播放帧重建整个列表。布局、空隙和预览几何保留各自历史快照，未强行并入字幕快照。成功保存记录实际写入的字幕指纹；字幕撤销 / 重做只重新判断本编辑域与最后写入内容的差异，不回滚其它域的脏标记，也不把波形缓存作为字幕真源。
+
+职责提取审计使用 `node scripts/check_editor_domains.mjs --target d20529c`，核对 #155 合入时的原声明 / 方法源码、构造器与兼容出口；允许的宿主引用替换逐项记录在 specs 中。省略 target 会严格审计工作区，自后续拖动事务语义变化后不再与提取前逐字相同，不能用追加替换规则掩盖行为变化。当前状态 / 命令重构使用契约、历史 / 保存边界与真实浏览器回归验证。完整拼接 AST 已因工厂包装改变，不能继续把早期机械拆分的 AST 一致结论用于本阶段。
 
 机械拆分 / 目录迁移可用 `node scripts/check_editor_equivalence.mjs --base <基线提交>` 检查原序源码字节与两种装配 AST。所有重构工具必须使用清单枚举源码；历史单体改写工具会拒绝当前布局，避免覆盖接线文件。
 
@@ -162,6 +168,8 @@ uv run python edit.py --blank
 uv run --no-sync ruff check
 node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
+node --test tests\test_editor_state.mjs tests\test_editor_commands.mjs
+npm run typecheck
 uv run --no-sync python -m unittest discover -s tests -p "test_*.py"
 git diff --check
 ```

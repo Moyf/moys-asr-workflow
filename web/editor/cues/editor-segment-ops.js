@@ -157,14 +157,15 @@
   const sourceEl = MaweCoreState.container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
   const cueListAnchor = MaweCueListAnchor.captureVisibleCueListVisualAnchor(sourceEl);
   MaweCuePanel.commitCuePanelEdit();
-  MaweHistory.pushUndo('合并字幕', { captureView: true });
-  MaweSelection.clearSelection({ silent: true });
-  mergeContiguousIndices(sorted);
-  MaweCuePanel.renderAll({ cueListAnchor });
-  // 合并完成后选中合并结果，方便继续对这句新字幕操作
-  MaweSelection.selectOnly(sorted[0]);
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  MaweHint.flashHint(`已合并 ${sorted.length} 条`, 'success');
+  return MaweCommands.run('合并字幕', (command) => {
+    MaweSelection.clearSelection({ silent: true });
+    mergeContiguousIndices(sorted);
+    command.commit({ cueList: true, cueListAnchor });
+    // 合并完成后选中合并结果，方便继续对这句新字幕操作
+    MaweSelection.selectOnly(sorted[0]);
+    MaweViewUpdates.invalidate({ preview: 'update' });
+    MaweHint.flashHint(`已合并 ${sorted.length} 条`, 'success');
+  }, { captureView: true });
 }
 
 
@@ -211,22 +212,23 @@
       MaweMultiSubtitleCore.getMultiSubtitleState(), id, 'extension', track.id,
     ));
 
-    MaweHistory.pushUndo('合并副字幕', { captureView: true });
-    MaweSelection.clearSelection();
-    MaweMultiSubtitleCore.removeBindingsForSegmentIds([], oldIds);
-    track.segments.splice(sorted[0], sorted.length, merged);
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweCuePanel.renderAll({ cueListAnchor });
-    MaweSelection.selectOnlyExtension(sorted[0]);
-    MaweSelection.lastClickedExtensionIdx = sorted[0];
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
-    MaweHint.flashHint(
-      hadBindings
-        ? `已合并 ${sorted.length} 条副字幕，原绑定已解除`
-        : `已合并 ${sorted.length} 条副字幕`,
-      'success',
-    );
-    return true;
+    return MaweCommands.run('合并副字幕', (command) => {
+      MaweSelection.clearSelection();
+      MaweMultiSubtitleCore.removeBindingsForSegmentIds([], oldIds);
+      track.segments.splice(sorted[0], sorted.length, merged);
+      MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      command.commit({ cueList: true, cueListAnchor });
+      MaweSelection.selectOnlyExtension(sorted[0]);
+      MaweSelection.lastClickedExtensionIdx = sorted[0];
+      MaweViewUpdates.invalidate({ preview: 'update' });
+      MaweHint.flashHint(
+        hadBindings
+          ? `已合并 ${sorted.length} 条副字幕，原绑定已解除`
+          : `已合并 ${sorted.length} 条副字幕`,
+        'success',
+      );
+      return true;
+    }, { captureView: true });
   }
 
 
@@ -262,27 +264,28 @@
       durationMs: MaweMultiSubtitleCore.getSubtitleTimelineDuration(),
     });
     if (plan.changedIndices.length) {
-      MaweHistory.pushUndo('延长字幕');
-      let linkedChanged = false;
-      const changedSegments = [];
-      plan.changes.forEach((change) => {
-        const segment = MaweBoot.DATA.segments[change.index];
-        if (!segment || !change.changed) return;
-        const syncPatch = { oldStart: segment.start, oldEnd: segment.end, mode: 'range' };
-        // 这里的 items 绝对时间码保持原样，延长只改变字幕段的外壳范围。
-        segment.start = change.start;
-        segment.end = change.end;
-        segment._dirty = true;
-        changedSegments.push(segment);
-        linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(segment, syncPatch) || linkedChanged;
+      MaweCommands.run('延长字幕', (command) => {
+        let linkedChanged = false;
+        const changedSegments = [];
+        plan.changes.forEach((change) => {
+          const segment = MaweBoot.DATA.segments[change.index];
+          if (!segment || !change.changed) return;
+          const syncPatch = { oldStart: segment.start, oldEnd: segment.end, mode: 'range' };
+          // 这里的 items 绝对时间码保持原样，延长只改变字幕段的外壳范围。
+          segment.start = change.start;
+          segment.end = change.end;
+          segment._dirty = true;
+          changedSegments.push(segment);
+          linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(segment, syncPatch) || linkedChanged;
+        });
+        MaweMultiSubtitleCore.markMainSegmentsDirty(changedSegments);
+        MaweTextCleanup.syncTimelineGroupRanges();
+        if (linkedChanged || MaweMultiSubtitleCore.multiSubtitleVisible()) MaweMultiSubtitleCore.markMultiSubtitleDirty();
+        MaweMultiSubtitleCore.syncBindingOffsets();
+
+        command.commit({ cueList: true, preview: 'update' });
+
       });
-      MaweMultiSubtitleCore.markMainSegmentsDirty(changedSegments);
-      MaweTextCleanup.syncTimelineGroupRanges();
-      if (linkedChanged || MaweMultiSubtitleCore.multiSubtitleVisible()) MaweMultiSubtitleCore.markMultiSubtitleDirty();
-      MaweMultiSubtitleCore.syncBindingOffsets();
-      MaweServerSave.scheduleAutoSaveFlush();
-      MaweCuePanel.renderAll();
-      MawePlaybackLoop.updateWithoutCueListAutoScroll();
     }
     const scope = hasSelection ? `已处理 ${plan.indices.length} 个选中字幕` : `已处理 ${plan.indices.length} 个字幕`;
     MaweHint.flashHint(
@@ -332,19 +335,20 @@
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(false);
     MaweCuePanel.commitCuePanelEdit();
     MaweSelection.clearSelection({ silent: true });
-    MaweHistory.pushUndo('拼接/合并字幕');
-    const snappedCount = applyAutoMergeSnapsWithBindings(plan.snaps);
-    // 合并从后往前进行，保持靠前组的下标仍然有效
-    for (let i = plan.groups.length - 1; i >= 0; i--) {
-      mergeContiguousIndices(plan.groups[i]);
-    }
-    MaweCuePanel.renderAll();
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
-    const mergedCount = plan.groups.reduce((sum, group) => sum + group.length - 1, 0);
-    const parts = [];
-    if (snappedCount) parts.push(`吸附 ${snappedCount} 处间隔`);
-    if (mergedCount) parts.push(`吸收 ${mergedCount} 条短字幕`);
-    MaweHint.flashHint(`已拼接/合并字幕：${parts.join('，')}`, 'success');
+    return MaweCommands.run('拼接/合并字幕', (command) => {
+      const snappedCount = applyAutoMergeSnapsWithBindings(plan.snaps);
+      // 合并从后往前进行，保持靠前组的下标仍然有效
+      for (let i = plan.groups.length - 1; i >= 0; i--) {
+        mergeContiguousIndices(plan.groups[i]);
+      }
+      command.commit({ cueList: true, preview: 'update' });
+
+      const mergedCount = plan.groups.reduce((sum, group) => sum + group.length - 1, 0);
+      const parts = [];
+      if (snappedCount) parts.push(`吸附 ${snappedCount} 处间隔`);
+      if (mergedCount) parts.push(`吸收 ${mergedCount} 条短字幕`);
+      MaweHint.flashHint(`已拼接/合并字幕：${parts.join('，')}`, 'success');
+    });
   }
 
 
@@ -485,67 +489,68 @@
     MaweCuePanelState.currentCuePanelKind = 'main';
     MaweCuePanelState.currentCuePanelTrackId = null;
     MaweCuePanelState.resetCuePanelEditState();
-    MaweHistory.pushUndo(`删除 ${sorted.length} 条字幕`);
-    const pairedExtensionIndices = new Set();
-    const pairedMainIds = sorted.map((index) => MaweBoot.DATA.segments[index]?.id).filter(Boolean);
-    const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
-    const extensionTrack = MaweMultiSubtitleCore.multiSubtitleVisible() ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
-    (multi.bindings || []).forEach((binding) => {
-      if (!binding.main_segment_ids?.some((id) => pairedMainIds.includes(id))) return;
-      const extensionId = binding.extension_segment_ids?.[0];
-      const extensionIndex = extensionTrack?.segments?.findIndex((segment) => segment.id === extensionId);
-      if (extensionIndex >= 0) pairedExtensionIndices.add(extensionIndex);
-    });
-    // 关闭多字幕时仍清理已失效的主轨绑定，但不删除隐藏的副字幕。
-    MaweMultiSubtitleCore.removeBindingsForSegmentIds(
-      pairedMainIds,
-      MaweMultiSubtitleCore.multiSubtitleVisible()
-        ? [...pairedExtensionIndices].map((index) => extensionTrack?.segments[index]?.id)
-        : [],
-    );
-    const removeSet = new Set(sorted);
+    return MaweCommands.run(`删除 ${sorted.length} 条字幕`, (command) => {
+      const pairedExtensionIndices = new Set();
+      const pairedMainIds = sorted.map((index) => MaweBoot.DATA.segments[index]?.id).filter(Boolean);
+      const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+      const extensionTrack = MaweMultiSubtitleCore.multiSubtitleVisible() ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
+      (multi.bindings || []).forEach((binding) => {
+        if (!binding.main_segment_ids?.some((id) => pairedMainIds.includes(id))) return;
+        const extensionId = binding.extension_segment_ids?.[0];
+        const extensionIndex = extensionTrack?.segments?.findIndex((segment) => segment.id === extensionId);
+        if (extensionIndex >= 0) pairedExtensionIndices.add(extensionIndex);
+      });
+      // 关闭多字幕时仍清理已失效的主轨绑定，但不删除隐藏的副字幕。
+      MaweMultiSubtitleCore.removeBindingsForSegmentIds(
+        pairedMainIds,
+        MaweMultiSubtitleCore.multiSubtitleVisible()
+          ? [...pairedExtensionIndices].map((index) => extensionTrack?.segments[index]?.id)
+          : [],
+      );
+      const removeSet = new Set(sorted);
 
-    // ---- 用通用 helper 做组拆分（同时清掉被删 idx 的 head/ref 字段）----
-    splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
-    splitGroupsAtCutPoints(removeSet, 'color',   'color_ref');
+      // ---- 用通用 helper 做组拆分（同时清掉被删 idx 的 head/ref 字段）----
+      splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
+      splitGroupsAtCutPoints(removeSet, 'color',   'color_ref');
 
-    // ---- 兜底：清"指向被删 idx 但没被规划"的残余 ref（理论上 splitGroups 已处理）----
-    MaweBoot.DATA.segments.forEach((s, i) => {
-      if (removeSet.has(i)) return;
-      if (s.sticker_ref && removeSet.has(s.sticker_ref.headIdx)) {
-        s.sticker_ref = null;
+      // ---- 兜底：清"指向被删 idx 但没被规划"的残余 ref（理论上 splitGroups 已处理）----
+      MaweBoot.DATA.segments.forEach((s, i) => {
+        if (removeSet.has(i)) return;
+        if (s.sticker_ref && removeSet.has(s.sticker_ref.headIdx)) {
+          s.sticker_ref = null;
+        }
+        if (s.color_ref && removeSet.has(s.color_ref.headIdx)) {
+          s.color_ref = null;
+        }
+      });
+
+      // ---- 倒序 splice 实际删除 ----
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        MaweBoot.DATA.segments.splice(sorted[i], 1);
       }
-      if (s.color_ref && removeSet.has(s.color_ref.headIdx)) {
-        s.color_ref = null;
+
+      // ---- 修正剩余 *_ref.headIdx：减去"前面被删的数量"----
+      function shiftHeadIdx(ref) {
+        let shift = 0;
+        for (const r of sorted) { if (r < ref.headIdx) shift++; else break; }
+        if (shift) ref.headIdx -= shift;
       }
+      MaweBoot.DATA.segments.forEach(s => {
+        if (s.sticker_ref) shiftHeadIdx(s.sticker_ref);
+        if (s.color_ref)   shiftHeadIdx(s.color_ref);
+      });
+      if (extensionTrack && pairedExtensionIndices.size) {
+        [...pairedExtensionIndices].sort((a, b) => b - a).forEach((index) => extensionTrack.segments.splice(index, 1));
+      }
+      if (pairedExtensionIndices.size) MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      // 同样修正"刚被晋升为新 head 的段中"指向它的 ref：
+      // splitGroups 写入的 refField.headIdx 是删除前的 idx，需要同样位移
+      // 上面 shiftHeadIdx 已经覆盖（它扫所有 segments 的所有 ref）
+      MaweSelection.clearSelection({ silent: true });
+      MawePlaybackLoop.lastActive = -1;
+      command.commit({ cueList: true });
+      MaweHint.flashHint(`已删除 ${sorted.length} 条`, 'success');
     });
-
-    // ---- 倒序 splice 实际删除 ----
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      MaweBoot.DATA.segments.splice(sorted[i], 1);
-    }
-
-    // ---- 修正剩余 *_ref.headIdx：减去"前面被删的数量"----
-    function shiftHeadIdx(ref) {
-      let shift = 0;
-      for (const r of sorted) { if (r < ref.headIdx) shift++; else break; }
-      if (shift) ref.headIdx -= shift;
-    }
-    MaweBoot.DATA.segments.forEach(s => {
-      if (s.sticker_ref) shiftHeadIdx(s.sticker_ref);
-      if (s.color_ref)   shiftHeadIdx(s.color_ref);
-    });
-    if (extensionTrack && pairedExtensionIndices.size) {
-      [...pairedExtensionIndices].sort((a, b) => b - a).forEach((index) => extensionTrack.segments.splice(index, 1));
-    }
-    if (pairedExtensionIndices.size) MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    // 同样修正"刚被晋升为新 head 的段中"指向它的 ref：
-    // splitGroups 写入的 refField.headIdx 是删除前的 idx，需要同样位移
-    // 上面 shiftHeadIdx 已经覆盖（它扫所有 segments 的所有 ref）
-    MaweSelection.clearSelection({ silent: true });
-    MawePlaybackLoop.lastActive = -1;
-    MaweCuePanel.renderAll();
-    MaweHint.flashHint(`已删除 ${sorted.length} 条`, 'success');
   }
 
 
@@ -588,13 +593,14 @@
       .filter((index) => index >= 0);
     if (!remainingIndices.length) return;
 
-    MaweHistory.pushUndo(`删除 ${sorted.length} 条副字幕`);
-    MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [...unboundIds]);
-    remainingIndices.reverse().forEach((index) => track.segments.splice(index, 1));
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweSelection.selectedExtensionIdxs.clear();
-    MaweCuePanel.renderAll();
-    MaweHint.flashHint(`已删除 ${remainingIndices.length} 条副字幕`, 'success');
+    return MaweCommands.run(`删除 ${sorted.length} 条副字幕`, (command) => {
+      MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [...unboundIds]);
+      remainingIndices.reverse().forEach((index) => track.segments.splice(index, 1));
+      MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      MaweState.selection.clear('extension');
+      command.commit({ cueList: true });
+      MaweHint.flashHint(`已删除 ${remainingIndices.length} 条副字幕`, 'success');
+    });
   }
 
   global.MaweSegmentOps = Object.freeze({

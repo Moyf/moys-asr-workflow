@@ -65,7 +65,7 @@ overlayTrackToggle?.addEventListener('change', () => {
   if (!overlay) return;
   overlay.enabled = overlayTrackToggle.checked;
   overlay._dirty = true;
-  MaweServerSave.scheduleAutoSaveFlush();
+  MaweViewUpdates.invalidate({ save: true });
   MaweCuePanel.renderAll({ waveform: 'full' });
   if (overlayTrackToggle.checked) {
     MaweHint.flashHint('已允许字幕重叠；Ctrl+拖拽波形空白或用右键菜单可创建叠加字幕', 'success');
@@ -188,28 +188,30 @@ MaweDom.multiSubtitleToggle?.addEventListener('change', () => {
   const next = MaweDom.multiSubtitleToggle.checked;
   const promptImportSecondSrt = next && !MaweMultiSubtitleCore.getActiveExtensionTrack();
   multi.enabled = !next;
-  MaweHistory.pushUndo(next ? '开启双语字幕' : '关闭双语字幕');
-  multi.enabled = next;
-  multi._dirty = true;
-  // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
-  MaweCuePanel.renderAll({ waveform: 'full' });
-  if (!promptImportSecondSrt) return;
-  // 多重字幕模式已开启；提示只决定是否现在导入第二条字幕，
-  // 用户取消导入也保持开启，之后仍可拖入 SRT 或重新走导入流程。
-  if (!confirm(MaweMultiSubtitleCore.MULTI_SUBTITLE_IMPORT_PROMPT)) return;
-  MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
-  MaweProjectMediaInputs.loadSrtFileInput.value = '';
-  MaweProjectMediaInputs.loadSrtFileInput.click();
+  return MaweCommands.run(next ? '开启双语字幕' : '关闭双语字幕', (command) => {
+    multi.enabled = next;
+    multi._dirty = true;
+    // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
+    command.commit({ cueList: true, waveform: 'full' });
+    if (!promptImportSecondSrt) return;
+    // 多重字幕模式已开启；提示只决定是否现在导入第二条字幕，
+    // 用户取消导入也保持开启，之后仍可拖入 SRT 或重新走导入流程。
+    if (!confirm(MaweMultiSubtitleCore.MULTI_SUBTITLE_IMPORT_PROMPT)) return;
+    MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
+    MaweProjectMediaInputs.loadSrtFileInput.value = '';
+    MaweProjectMediaInputs.loadSrtFileInput.click();
+  });
 });
 MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const next = MaweDom.multiSubtitleDisplayMode.value;
   const previous = multi.display_mode;
   multi.display_mode = previous;
-  MaweHistory.pushUndo('切换双语字幕列表');
-  multi.display_mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
-  multi._dirty = true;
-  MaweCuePanel.renderAll({ waveform: 'none' });
+  return MaweCommands.run('切换双语字幕列表', (command) => {
+    multi.display_mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
+    multi._dirty = true;
+    command.commit({ cueList: true, waveform: 'none' });
+  });
 });
 MaweDom.multiSubtitleMainLanguageMode?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
@@ -217,12 +219,13 @@ MaweDom.multiSubtitleMainLanguageMode?.addEventListener('change', () => {
     ? MaweDom.multiSubtitleMainLanguageMode.value : 'word';
   if (multi.main_split_mode === next
       && MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride === next) return;
-  MaweHistory.pushUndo('切换主字幕语言类型');
-  multi.main_split_mode = next;
-  // 与设置面板的类型提示共用同一个手动指定偏好，两个入口互为镜像。
-  MaweSettings.updateEditorSettings({ mainSplitModeOverride: next });
-  MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  MaweCuePanel.renderAll({ waveform: 'none' });
+  return MaweCommands.run('切换主字幕语言类型', (command) => {
+    multi.main_split_mode = next;
+    // 与设置面板的类型提示共用同一个手动指定偏好，两个入口互为镜像。
+    MaweSettings.updateEditorSettings({ mainSplitModeOverride: next });
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+    command.commit({ cueList: true, waveform: 'none' });
+  });
 });
 MaweDom.multiSubtitleExtensionLanguageMode?.addEventListener('change', () => {
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
@@ -230,10 +233,11 @@ MaweDom.multiSubtitleExtensionLanguageMode?.addEventListener('change', () => {
   const next = MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(MaweDom.multiSubtitleExtensionLanguageMode.value)
     ? MaweDom.multiSubtitleExtensionLanguageMode.value : 'word';
   if (track.split_mode === next) return;
-  MaweHistory.pushUndo('切换副字幕语言类型');
-  track.split_mode = next;
-  MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  MaweCuePanel.renderAll({ waveform: 'none' });
+  return MaweCommands.run('切换副字幕语言类型', (command) => {
+    track.split_mode = next;
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+    command.commit({ cueList: true, waveform: 'none' });
+  });
 });
 MaweDom.multiSubtitleExtensionRowHeight?.addEventListener('change', () => {
   const next = MaweSettings.normalizeMultiSubtitleRowHeight(MaweDom.multiSubtitleExtensionRowHeight.value);

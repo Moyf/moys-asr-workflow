@@ -66,6 +66,7 @@ interface ProjectData {
   workspace?: unknown;
   preview?: Record<string, unknown>;
   overlay_track?: unknown;
+  multi_subtitle?: unknown;
 }
 
 // 冻结门面契约：模块通过 global.MaweXxx = Object.freeze({...}) 挂载，
@@ -164,3 +165,72 @@ interface MaweHostApi {
 }
 declare var MaweHost: MaweHostApi;
 interface Window { MaweHost: MaweHostApi; }
+
+type SelectionTrack = 'main' | 'extension' | 'overlay';
+interface SelectionIndices extends Iterable<number> {
+  readonly size: number;
+  has(index: number): boolean;
+  values(): IterableIterator<number>;
+  keys(): IterableIterator<number>;
+  entries(): IterableIterator<[number, number]>;
+  forEach(callback: (index: number, key: number, view: SelectionIndices) => void, receiver?: unknown): void;
+}
+interface MaweStateApi {
+  readonly project: ProjectData;
+  readonly selection: {
+    mainAnchor: number; extensionAnchor: number; overlayAnchor: number;
+    indices(kind: SelectionTrack): SelectionIndices;
+    add(kind: SelectionTrack, index: number): void;
+    remove(kind: SelectionTrack, index: number): boolean;
+    clear(kind: SelectionTrack): void;
+    replace(kind: SelectionTrack, indices: Iterable<number>): void;
+    removeAndShift(kind: SelectionTrack, removedIndex: number): { wasSelected: boolean; nextAnchor: number };
+    anchor(kind: SelectionTrack): number;
+    setAnchor(kind: SelectionTrack, index: number): void;
+    reset(): void;
+  };
+  readonly preferences: { editor: Record<string, unknown> };
+  readonly runtime: { player: HTMLMediaElement | null; waveformEditor: any;
+    playbackFrameId: number; playbackFramePlayer: HTMLMediaElement | null; waveformLoadedFromProject: boolean };
+  readonly panel: { gapPreviewRange: any; gapRemovePanelDrag: any;
+    currentCuePanelIdx: number; currentCuePanelKind: SelectionTrack; currentCuePanelTrackId: string | null;
+    cuePanelUndoPushed: boolean; cuePanelUndoRecord: any; cuePanelTextEditSnapshot: any; cuePanelCanceling: boolean };
+  readonly editing: { editingState: any; extensionEditingState: any };
+  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean };
+  hasProjectChanges(pendingText?: boolean): boolean;
+  segmentsFingerprint(): string;
+  noteSavedSegments(fingerprint?: string): void;
+  markSaved(): void;
+  reconcileSegmentsDirty(): void;
+}
+declare var MaweState: MaweStateApi;
+interface Window {
+  MaweState: MaweStateApi;
+  MAWE: { register(name: string, factory: (...args: any[]) => unknown): void; resolve(name: string, ...args: any[]): any };
+}
+
+interface ViewInvalidation {
+  cueList?: boolean; waveform?: 'none' | 'overlay' | 'full'; preserveCueListScroll?: boolean; cueListAnchor?: unknown;
+  preview?: false | 'update' | 'refresh'; save?: boolean;
+}
+interface EditorTransaction {
+  commit(invalidation?: ViewInvalidation): boolean;
+  cancel(): boolean;
+  discard(): void;
+}
+interface MaweCommandsApi {
+  begin(label: string, options?: { captureView?: boolean }): EditorTransaction;
+  run<T>(label: string, mutate: (command: EditorTransaction) => T,
+    options?: { captureView?: boolean; invalidate?: ViewInvalidation }): T;
+}
+declare var MaweCommands: MaweCommandsApi;
+declare var MaweViewUpdates: { invalidate(options?: ViewInvalidation): void };
+declare const MaweHistory: any;
+declare const MaweCuePanel: any;
+declare const MaweCueListAnchor: any;
+declare const MawePlaybackLoop: any;
+declare const MaweServerSave: any;
+interface Window {
+  MaweCommands: MaweCommandsApi;
+  MaweViewUpdates: typeof MaweViewUpdates;
+}

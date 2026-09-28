@@ -7,7 +7,7 @@
 
 
 
-  let projectImportDirty = false;
+
 
 
   let projectCheckpointed = Boolean(MaweBoot.SERVER_CONFIG?.canSave)
@@ -116,31 +116,32 @@
       return false;
     }
 
-    MaweHistory.pushUndo('修复字幕时间重叠', { captureView: true });
-    const result = window.AsrEditorUtils.repairSegmentOverlap(segments, currentIndex, mode);
-    if (!result?.changed) {
-      MaweHint.flashHint('当前字幕边界已经发生变化，修复未应用', 'warning');
-      return false;
-    }
-    const changedSegments = (result.changedIndices || [])
-      .map((index) => segments[index])
-      .filter(Boolean);
-    if (target.kind === 'main') MaweMultiSubtitleCore.markMainSegmentsDirty(changedSegments);
-    else changedSegments.forEach((segment) => { segment._dirty = true; });
-    MaweMultiSubtitleCore.syncBindingOffsets();
-    if (target.kind === 'extension' || MaweMultiSubtitleCore.getMultiSubtitleState().tracks?.length) {
-      MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
-    }
-    MaweCuePanel.renderAll({ waveform: 'overlay' });
-    MawePlaybackLoop.updateWithoutCueListAutoScroll();
-    MaweHistory.updateUndoRedoButtons();
-    MaweHint.dismissHintCard(card);
-    const suffix = result.itemsCleared
-      ? '，已清除受影响字幕的字词时间码'
-      : '';
-    MaweHint.flashHint(`已修复字幕时间重叠${suffix}，正在重新保存`, result.itemsCleared ? 'warning' : 'success');
-    window.setTimeout(() => { void MaweProjectSave.saveCurrentProject({ silent: false }); }, 0);
-    return true;
+    return MaweCommands.run('修复字幕时间重叠', (command) => {
+      const result = window.AsrEditorUtils.repairSegmentOverlap(segments, currentIndex, mode);
+      if (!result?.changed) {
+        MaweHint.flashHint('当前字幕边界已经发生变化，修复未应用', 'warning');
+        return false;
+      }
+      const changedSegments = (result.changedIndices || [])
+        .map((index) => segments[index])
+        .filter(Boolean);
+      if (target.kind === 'main') MaweMultiSubtitleCore.markMainSegmentsDirty(changedSegments);
+      else changedSegments.forEach((segment) => { segment._dirty = true; });
+      MaweMultiSubtitleCore.syncBindingOffsets();
+      if (target.kind === 'extension' || MaweMultiSubtitleCore.getMultiSubtitleState().tracks?.length) {
+        MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
+      }
+      command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
+
+      MaweHistory.updateUndoRedoButtons();
+      MaweHint.dismissHintCard(card);
+      const suffix = result.itemsCleared
+        ? '，已清除受影响字幕的字词时间码'
+        : '';
+      MaweHint.flashHint(`已修复字幕时间重叠${suffix}，正在重新保存`, result.itemsCleared ? 'warning' : 'success');
+      window.setTimeout(() => { void MaweProjectSave.saveCurrentProject({ silent: false }); }, 0);
+      return true;
+    }, { captureView: true });
   }
 
 
@@ -369,13 +370,7 @@
 
 
   function hasUnsavedProjectChanges() {
-  const multiDirty = Boolean(MaweBoot.DATA.multi_subtitle?._dirty)
-    || (MaweBoot.DATA.multi_subtitle?.tracks || []).some((track) => track.segments?.some((segment) => segment._dirty));
-  const overlayDirty = Boolean(MaweBoot.DATA.overlay_track?._dirty)
-    || MaweBoot.DATA.overlay_track?.segments?.some((segment) => segment._dirty);
-  return MaweProjectSave.inlineEditHasUncommittedText() || projectImportDirty || MaweHistory.gapRemoveDirty || MaweAppearance.previewGeometryDirty
-    || MaweBoot.DATA.segments.some((segment) => segment._dirty)
-    || multiDirty || overlayDirty;
+    return MaweState.hasProjectChanges(MaweProjectSave.inlineEditHasUncommittedText());
 }
 
 
@@ -563,8 +558,8 @@
   }
 
   global.MaweServerSave = Object.freeze({
-    get projectImportDirty() { return projectImportDirty; },
-    set projectImportDirty(v) { projectImportDirty = v; },
+    get projectImportDirty() { return MaweState.changes.projectImportDirty; },
+    set projectImportDirty(v) { MaweState.changes.projectImportDirty = v; },
     get projectCheckpointed() { return projectCheckpointed; },
     set projectCheckpointed(v) { projectCheckpointed = v; },
     get projectCheckpointInFlight() { return projectCheckpointInFlight; },

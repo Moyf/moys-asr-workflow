@@ -80,9 +80,9 @@ test('quick start teaches WASD, real merge with undo, then real split', async ({
   await expect(page.locator('#onboarding-title')).toHaveText('按 C 合并字幕');
   await page.keyboard.press('c');
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(5);
-  await expect(page.locator('#onboarding-title')).toHaveText('Ctrl+Z：撤销刚才的合并');
+  await expect(page.locator('#onboarding-title')).toHaveText(/^(Ctrl|Cmd)\+Z：撤销刚才的合并$/);
 
-  await page.keyboard.press('Control+Z');
+  await page.keyboard.press('ControlOrMeta+Z');
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
   await expect(page.locator('#onboarding-title')).toHaveText('合并已撤销');
   await expect(page.locator('#onboarding-primary')).toHaveText('下一步');
@@ -149,10 +149,10 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(basicPanel.locator('.help-tip-callout')).toContainText('其实就是用 WASD 啦，从字幕列表看是上下跳，从波形区看是左右跳 😝');
   await expect(basicPanel.locator('.help-tip-callout')).toHaveCSS('margin-top', '8px');
   await expect(basicPanel.locator('.help-tip-text')).toHaveCSS('font-size', '12px');
-  await expect(basicPanel).toContainText('Ctrl+Z');
-  await expect(basicPanel).toContainText('Ctrl+Shift+Z');
+  await expect(basicPanel).toContainText(/(Ctrl|Cmd)\+Z/);
+  await expect(basicPanel).toContainText(/(Ctrl|Cmd)\+Shift\+Z/);
   await expect(basicPanel).toContainText('WASD');
-  await expect(basicPanel).toContainText('Ctrl+Shift+A/D');
+  await expect(basicPanel).toContainText(/(Ctrl|Cmd)\+Shift\+A\/D/);
   await helpPanel.getByRole('tab', { name: '快捷操作', exact: true }).click();
   const shortcutsPanel = helpPanel.locator('#help-tab-panel-shortcuts');
   await expect(shortcutsPanel).toBeVisible();
@@ -265,10 +265,10 @@ test('quick start translates dynamically rendered steps in English', async ({ pa
   await expect(page.locator('#onboarding-title')).toHaveText('Press C to merge subtitles');
   await page.keyboard.press('c');
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(5);
-  await expect(page.locator('#onboarding-title')).toHaveText('Ctrl+Z: undo the merge you just made');
+  await expect(page.locator('#onboarding-title')).toHaveText(/^(Ctrl|Cmd)\+Z: undo the merge you just made$/);
   await expectEnglish();
 
-  await page.keyboard.press('Control+Z');
+  await page.keyboard.press('ControlOrMeta+Z');
   await expect(page.locator('#onboarding-title')).toHaveText('Merge undone');
   await page.locator('#onboarding-primary').click();
   await expect(page.locator('#onboarding-title')).toHaveText('Finally: split a subtitle at the cursor');

@@ -279,10 +279,10 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  if (MaweSelection.selectedIdxs.size === 0 && selectedOverlayIdxs.size === 0) return;
+  if (MaweSelection.selectedIdxs.size === 0 && MaweState.selection.indices('overlay').size === 0) return;
   e.preventDefault();
-  if (selectedOverlayIdxs.size > 0) {
-    const overlayIdxs = [...selectedOverlayIdxs].sort((x, y) => x - y);
+  if (MaweState.selection.indices('overlay').size > 0) {
+    const overlayIdxs = [...MaweState.selection.indices('overlay')].sort((x, y) => x - y);
     MaweStickerPicker.openStickerPicker(overlayIdxs, overlayIdxs.length > 1, { overlay: true });
     return;
   }
@@ -308,10 +308,10 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  if (MaweSelection.selectedIdxs.size === 0 && selectedOverlayIdxs.size === 0) return;
+  if (MaweSelection.selectedIdxs.size === 0 && MaweState.selection.indices('overlay').size === 0) return;
   e.preventDefault();
-  if (selectedOverlayIdxs.size > 0) {
-    const overlayIdxs = [...selectedOverlayIdxs].sort((x, y) => x - y);
+  if (MaweState.selection.indices('overlay').size > 0) {
+    const overlayIdxs = [...MaweState.selection.indices('overlay')].sort((x, y) => x - y);
     if (e.key === '0') {
       clearOverlayColorOnTargets(overlayIdxs);
       return;
@@ -378,10 +378,10 @@ document.addEventListener('keydown', (e) => {
   e.stopPropagation();
   const currentTarget = MaweCuePanel.getCurrentCuePanelTarget();
   if (
-    selectedOverlayIdxs.size > 1
+    MaweState.selection.indices('overlay').size > 1
     && (currentTarget?.kind === 'overlay' || (MaweSelection.selectedIdxs.size === 0 && MaweSelection.selectedExtensionIdxs.size === 0))
   ) {
-    mergeOverlayCues([...selectedOverlayIdxs]);
+    mergeOverlayCues([...MaweState.selection.indices('overlay')]);
     return;
   }
   if (
@@ -432,10 +432,10 @@ document.addEventListener('keydown', (e) => {
     MaweSegmentOps.deleteExtensionSegments([...MaweSelection.selectedExtensionIdxs]);
     return;
   }
-  if (MaweSelection.selectedIdxs.size === 0 && MaweSelection.selectedExtensionIdxs.size === 0 && selectedOverlayIdxs.size > 0) {
+  if (MaweSelection.selectedIdxs.size === 0 && MaweSelection.selectedExtensionIdxs.size === 0 && MaweState.selection.indices('overlay').size > 0) {
     e.preventDefault();
     e.stopPropagation();
-    deleteOverlayCues([...selectedOverlayIdxs]);
+    deleteOverlayCues([...MaweState.selection.indices('overlay')]);
     return;
   }
   if (MaweSelection.selectedIdxs.size === 0) return;

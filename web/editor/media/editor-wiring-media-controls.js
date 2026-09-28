@@ -67,7 +67,7 @@ document.addEventListener('keydown', (e) => {
   const activeTrack = extensionTarget ? 'extension'
     : overlayTarget ? 'overlay' : 'main';
   const selected = extensionTarget ? MaweSelection.selectedExtensionIdxs
-    : overlayTarget ? selectedOverlayIdxs : MaweSelection.selectedIdxs;
+    : overlayTarget ? MaweState.selection.indices('overlay') : MaweSelection.selectedIdxs;
   if (e.shiftKey && !commandKey) {
     // Shift 是显式的边界贴合命令，不受自动吸附默认值影响；Alt 只反转
     // 普通移动/边界微调的自动联动模式。

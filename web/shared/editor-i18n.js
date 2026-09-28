@@ -1000,6 +1000,11 @@
     if (lang !== EN) return text;
     if (EN_TEXT[text]) return EN_TEXT[text];
     if (EN_ATTR[text]) return EN_ATTR[text];
+    // Platform labels are applied before translation. Reuse the Ctrl wording
+    // on macOS while keeping the key label users actually press.
+    if (text.startsWith('Cmd+')) {
+      return translateText('Ctrl' + text.slice(3), EN).replace(/^Ctrl/, 'Cmd');
+    }
     let match = /^(主字幕|副字幕)\s+(\d+)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;
     match = /^已读取\s+(\d+)\s+种本机字体$/.exec(text);

@@ -315,10 +315,12 @@ class EditorAssetTests(unittest.TestCase):
     def test_project_waveform_survives_loading_media(self) -> None:
         editor = (ROOT / "web" / "editor/boot/editor.js").read_text(encoding="utf-8")
         core_state = (ROOT / "web" / "editor/state/editor-core-state.js").read_text(encoding="utf-8")
+        state = (ROOT / "web" / "editor/state/editor-state.js").read_text(encoding="utf-8")
         media_load = (ROOT / "web" / "editor/media/editor-media-load.js").read_text(encoding="utf-8")
         waveform_init = (ROOT / "web" / "editor/media/editor-waveform-init.js").read_text(encoding="utf-8")
         waveform = edit.build_editor_scripts()
-        self.assertIn("let waveformLoadedFromProject = false;", core_state)
+        self.assertIn("waveformLoadedFromProject: false", state)
+        self.assertIn("get waveformLoadedFromProject() { return MaweState.runtime.waveformLoadedFromProject; }", core_state)
         self.assertIn(
             "MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform",
             waveform_init,
