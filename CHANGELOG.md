@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### ✨ 提升
+
+- 本地模型下载新增 ModelScope 回退：Qwen3-ASR、MOSS、Faster-Whisper 与 Qwen3-ForcedAligner 的「下载模型」在 Hugging Face 连接失败（超时、DNS、代理不可达等）时自动改用 ModelScope 镜像下载，无需手动配置；两类缓存写入同一模型缓存目录并被统一识别，已在 ModelScope 缓存的模型不再重复下载。MOSS 的 ModelScope 镜像组织名为 `OpenMOSS`，其余仓库与 Hugging Face 同名。MOSS 运行环境升级到版本 2（新增 `modelscope` 依赖），已有安装会提示重装或修复一次。
+
 ### 🔄 变更
 
 - macOS 上 Qwen3-ASR 的「自动」设备选择改为 CPU，避免部分 Apple Silicon 设备上 MPS 推理明显变慢；可在 Launcher 或 CLI 中显式选择 MPS。

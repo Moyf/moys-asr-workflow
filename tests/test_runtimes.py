@@ -66,7 +66,7 @@ class RuntimeRegistryTests(unittest.TestCase):
         # 无 install_uv 占位、无手写 requirements 列表。
         self.assertFalse(getattr(MOSS.spec, "install_uv", False))
         self.assertIsNone(MOSS.spec.requirements)
-        self.assertEqual(MOSS.spec.package_dirs, ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"))
+        self.assertEqual(MOSS.spec.package_dirs, ("moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"))
         self.assertEqual(MOSS.spec.requirements_key, "moss")
         self.assertEqual(MOSS.spec.requirements_bundle_name, "requirements-moss.txt")
 
@@ -301,7 +301,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 calls.append(command)
                 if "install" in command:
                     site = root / "site-packages"
-                    for name in ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"):
+                    for name in ("moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"):
                         (site / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -340,7 +340,7 @@ class SourceModeInstallTests(unittest.TestCase):
                 calls.append(command)
                 if "install" in command:
                     site = root / "site-packages"
-                    for name in ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"):
+                    for name in ("moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"):
                         (site / name).mkdir(parents=True, exist_ok=True)
                 return 0
 

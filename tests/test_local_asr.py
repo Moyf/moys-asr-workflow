@@ -12,6 +12,7 @@ from unittest import mock
 
 from generate_subtitle_qwen_api import extract_audio
 from generate_subtitle_local import build_parser, default_output_path, load_hotword_files
+from maw.hub_download import HubSnapshot
 from maw.local_asr import (
     FIRERED_DEFAULT_MODEL,
     FUNASR_DEFAULT_MODEL,
@@ -36,6 +37,7 @@ from maw.local_asr import (
     items_from_timestamps,
     prepared_audio,
     resolve_device,
+    resolve_engine_model_source,
     write_local_outputs,
 )
 
@@ -1095,7 +1097,8 @@ class LocalAsrFlowTests(unittest.TestCase):
     def test_moss_default_revision_is_pinned(self) -> None:
         self.assertRegex(MOSS_DEFAULT_REVISION, r"^[0-9a-f]{40}$")
 
-    def test_moss_default_revision_is_forwarded_to_model_and_processor(self) -> None:
+    def test_moss_default_revision_is_forwarded_to_snapshot_download(self) -> None:
+        """默认模型的 commit pin 在快照下载阶段生效；加载阶段面向本地目录。"""
         engine = create_local_engine("moss")
         model = mock.Mock()
         model.to.return_value = model
@@ -1111,6 +1114,7 @@ class LocalAsrFlowTests(unittest.TestCase):
             device=lambda value: SimpleNamespace(type=value),
         )
         attention = mock.Mock(return_value=(model, {}))
+        snapshot = HubSnapshot(Path("/tmp/moss-snapshot"), "cache")
         with mock.patch.dict("sys.modules", {
             "torch": torch,
             "transformers": SimpleNamespace(
@@ -1122,12 +1126,18 @@ class LocalAsrFlowTests(unittest.TestCase):
             ),
         }):
             with mock.patch("maw.local_asr.resolve_device", return_value="cpu"):
-                engine._load()
+                with mock.patch(
+                    "maw.local_asr.prepare_hub_snapshot",
+                    return_value=snapshot,
+                ) as prepare:
+                    engine._load()
 
-        model_loader = attention.call_args.kwargs["model_loader"]
-        model_loader("model-path")
-        self.assertEqual(auto_model.from_pretrained.call_args.kwargs["revision"], MOSS_DEFAULT_REVISION)
-        self.assertEqual(auto_processor.from_pretrained.call_args.kwargs["revision"], MOSS_DEFAULT_REVISION)
+        self.assertEqual(prepare.call_args.args[0], MOSS_DEFAULT_MODEL)
+        self.assertEqual(prepare.call_args.kwargs["revision"], MOSS_DEFAULT_REVISION)
+        self.assertEqual(attention.call_args.args[0], str(snapshot.path))
+        self.assertNotIn("model_loader", attention.call_args.kwargs)
+        self.assertNotIn("revision", auto_processor.from_pretrained.call_args.kwargs)
+        self.assertEqual(auto_processor.from_pretrained.call_args.args[0], str(snapshot.path))
 
     def test_moss_transcript_is_normalized_to_speaker_segments(self) -> None:
         class FakeModel:
@@ -1423,6 +1433,76 @@ class LocalAsrFlowTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "MPS is not available"):
                 QwenAsrEngine(model="test-model", device="mps")._load()
         fake_qwen.Qwen3ASRModel.from_pretrained.assert_not_called()
+
+    def test_qwen_repo_id_sources_are_resolved_to_local_snapshots(self) -> None:
+        """主模型与 Forced Aligner 的仓库 ID 都先解析为本地快照
+        （HF 失败回退 ModelScope 后同样加载本地目录）。"""
+        calls: list[tuple[object, object]] = []
+
+        class FakeModel:
+            @classmethod
+            def from_pretrained(cls, model: object, **kwargs: object) -> object:
+                calls.append((model, kwargs.get("forced_aligner")))
+                return object()
+
+        fake_torch = SimpleNamespace(
+            cuda=SimpleNamespace(is_available=lambda: False),
+            float16="float16",
+            float32="float32",
+        )
+        fake_qwen = SimpleNamespace(Qwen3ASRModel=FakeModel)
+        snapshots = [
+            HubSnapshot(Path("/tmp/asr-snapshot"), "cache"),
+            HubSnapshot(Path("/tmp/aligner-snapshot"), "modelscope"),
+        ]
+
+        with mock.patch.dict("sys.modules", {"torch": fake_torch, "qwen_asr": fake_qwen}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cpu"):
+                with mock.patch(
+                    "maw.local_asr.prepare_hub_snapshot",
+                    side_effect=snapshots,
+                ) as prepare:
+                    QwenAsrEngine(
+                        model="Qwen/Qwen3-ASR-0.6B",
+                        device="cpu",
+                        forced_aligner="Qwen/Qwen3-ForcedAligner-0.6B",
+                    )._load()
+
+        self.assertEqual(
+            calls,
+            [(str(snapshots[0].path), str(snapshots[1].path))],
+        )
+        self.assertEqual(
+            [call.args[0] for call in prepare.call_args_list],
+            ["Qwen/Qwen3-ASR-0.6B", "Qwen/Qwen3-ForcedAligner-0.6B"],
+        )
+
+    def test_resolve_engine_model_source_passthrough_and_resolution(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self.assertIsNone(resolve_engine_model_source(None))
+            self.assertEqual(resolve_engine_model_source("large-v3"), "large-v3")
+            self.assertEqual(
+                resolve_engine_model_source(temp_dir),
+                temp_dir,
+            )
+            with mock.patch(
+                "maw.local_asr.prepare_hub_snapshot",
+                return_value=HubSnapshot(Path("/tmp/hf-snapshot"), "huggingface"),
+            ) as prepare:
+                resolved = resolve_engine_model_source("Qwen/Qwen3-ASR-0.6B")
+            self.assertEqual(resolved, "/tmp/hf-snapshot")
+            self.assertEqual(prepare.call_args.args[0], "Qwen/Qwen3-ASR-0.6B")
+
+        with mock.patch(
+            "maw.local_asr.prepare_hub_snapshot",
+            return_value=HubSnapshot(Path("/tmp/ms-snapshot"), "modelscope"),
+        ) as prepare:
+            resolved = resolve_engine_model_source(
+                "OpenMOSS-Team/MOSS-Transcribe-Diarize",
+                revision="e8681d68",
+            )
+            self.assertEqual(resolved, "/tmp/ms-snapshot")
+            self.assertEqual(prepare.call_args.kwargs["revision"], "e8681d68")
 
     def test_default_output_uses_engine_tag(self) -> None:
         path = default_output_path(Path("D:/media/sample.mp4"), "funasr")

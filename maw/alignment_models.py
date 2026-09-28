@@ -337,33 +337,26 @@ def _download_qwen(
     on_progress: AlignmentProgress | None,
     cancel_event: threading.Event,
 ) -> None:
+    from maw.hub_download import prepare_hub_snapshot
+
     if cancel_event.is_set():
         raise RuntimeError("对齐模型准备已取消。")
-    try:
-        from huggingface_hub import snapshot_download  # type: ignore[import-not-found]
-    except ImportError as error:
-        raise RuntimeError("缺少 huggingface_hub；请先安装本地模型支持。") from error
-    cache_env = model_cache_environment(model_cache_root)
-    hub_cache = Path(cache_env["HF_HUB_CACHE"])
-    hub_cache.mkdir(parents=True, exist_ok=True)
-    emit(f"[aligner] 正在复用 Hugging Face 缓存下载 {model_ref}……")
-    kwargs: dict[str, object] = {
-        "repo_id": model_ref,
-        "cache_dir": str(hub_cache),
-    }
-    try:
-        path = snapshot_download(**kwargs)
-    except TypeError:
-        # Older huggingface_hub versions accepted resume_download; newer ones
-        # removed it. Keeping no version-specific keyword works for both.
-        kwargs["resume_download"] = True
-        path = snapshot_download(**kwargs)
+    emit(f"[aligner] 正在准备 {model_ref}（Hugging Face 失败时自动回退 ModelScope）……")
+    snapshot = prepare_hub_snapshot(
+        model_ref,
+        model_cache_root=model_cache_root,
+        emit=emit,
+        cancel_event=cancel_event,
+    )
     if cancel_event.is_set():
         raise RuntimeError("对齐模型准备已取消。")
     if on_progress is not None:
-        file_count, total_size = _cache_snapshot([Path(path)])
+        file_count, total_size = _cache_snapshot([snapshot.path])
+        source_label = {"huggingface": "Hugging Face", "modelscope": "ModelScope"}.get(
+            snapshot.source, "本地缓存"
+        )
         on_progress({
-            "message": f"[aligner] Hugging Face 缓存已写入 {file_count} 个文件 / {_format_bytes(total_size)}。",
+            "message": f"[aligner] {source_label}缓存已写入 {file_count} 个文件 / {_format_bytes(total_size)}。",
             "fileCount": file_count,
             "currentBytes": total_size,
             "percent": 100,
@@ -466,6 +459,14 @@ def _find_firered_extracted_root(root: Path) -> Path | None:
 def _find_qwen_model(model_ref: str, model_cache_root: str | Path | None) -> Path | None:
     if "/" not in model_ref:
         return None
+    found = _find_qwen_model_in_huggingface_cache(model_ref, model_cache_root)
+    if found is not None:
+        return found
+    # ModelScope 回退下载写入 <缓存根>/modelscope 的仓库同样有效。
+    return _find_qwen_model_in_modelscope_cache(model_ref, model_cache_root)
+
+
+def _find_qwen_model_in_huggingface_cache(model_ref: str, model_cache_root: str | Path | None) -> Path | None:
     owner, name = model_ref.split("/", 1)
     repo_name = f"models--{owner}--{name}"
     for cache_root in _huggingface_cache_roots(model_cache_root):
@@ -478,6 +479,47 @@ def _find_qwen_model(model_ref: str, model_cache_root: str | Path | None) -> Pat
         if _model_files_present(alignment_model_by_id(QWEN_FORCED_ALIGNER_MODEL_ID), repo):
             return repo.resolve(strict=False)
     return None
+
+
+def _find_qwen_model_in_modelscope_cache(model_ref: str, model_cache_root: str | Path | None) -> Path | None:
+    from maw.hub_download import modelscope_repo_id
+
+    model = alignment_model_by_id(QWEN_FORCED_ALIGNER_MODEL_ID)
+    parts = [part for part in modelscope_repo_id(model_ref).split("/") if part]
+    if not parts:
+        return None
+    joined = "--".join(parts) if len(parts) == 2 else ""
+    for root in _modelscope_cache_roots(model_cache_root):
+        candidates = [
+            root.joinpath(*parts),
+            root / "models" / Path(*parts),
+            root / "hub" / Path(*parts),
+        ]
+        if joined:
+            candidates.extend([root / joined, root / "models" / joined, root / "hub" / joined])
+        for candidate in candidates:
+            snapshots = candidate / "snapshots"
+            if snapshots.is_dir():
+                revisions = [
+                    path for path in snapshots.iterdir()
+                    if path.is_dir() and _model_files_present(model, path)
+                ]
+                if revisions:
+                    return max(revisions, key=lambda path: path.stat().st_mtime).resolve(strict=False)
+            if _model_files_present(model, candidate):
+                return candidate.resolve(strict=False)
+    return None
+
+
+def _modelscope_cache_roots(model_cache_root: str | Path | None) -> list[Path]:
+    roots: list[Path] = []
+    for key in ("MODELSCOPE_CACHE", "MODELSCOPE_HOME"):
+        value = os.environ.get(key, "").strip()
+        if value:
+            roots.append(Path(value).expanduser())
+    roots.append(resolve_model_cache_root(model_cache_root) / "modelscope")
+    roots.append(Path.home() / ".cache" / "modelscope" / "hub")
+    return _unique_paths(roots)
 
 
 def _huggingface_cache_roots(model_cache_root: str | Path | None) -> list[Path]:

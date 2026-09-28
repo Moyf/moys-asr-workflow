@@ -23,7 +23,7 @@ Launcher 已提供实验性的「本地模型」识别方式，入口仍复用�
 
 MOSS Transcribe-Diarize 0.9B 是 Apache-2.0 许可的端到端转写与说话人分离模型。官方在 AISHELL-4、Alimeeting、Podcast 和 Movies 多说话人基准上报告了较低的 CER / cpCER，适合会议、访谈、播客和多人视频；说话人标签是当前音频内的相对编号（如 `S01`），不是跨文件的真实身份。
 
-MAW 通过独立的 MOSS 运行环境加载它：MOSS 需要 Transformers 5.x，而 QwenASR 运行环境固定使用 Transformers 4.x，因此两者不能安装在同一个环境中。Launcher 选择 MOSS 后，安装按钮会使用 Python 3.12 创建 `local-runtime-moss`，模型缓存仍使用统一的 Hugging Face 缓存目录。MOSS 需要 `trust_remote_code` 加载上游模型代码；MAW 对默认模型固定了 Hugging Face 模型仓库提交 `e8681d68...`，对 GitHub 推理包固定了提交 `e607537b...`。首次使用前仍请确认你信任 OpenMOSS 的模型仓库。使用 `--model` 指定其他模型时，MAW 不会替它推断或套用 revision；这类自定义模型会按其自身的远程代码配置加载。
+MAW 通过独立的 MOSS 运行环境加载它：MOSS 需要 Transformers 5.x，而 QwenASR 运行环境固定使用 Transformers 4.x，因此两者不能安装在同一个环境中。Launcher 选择 MOSS 后，安装按钮会使用 Python 3.11 创建 `local-runtime-moss`，模型缓存仍使用统一的 Hugging Face 缓存目录（连接失败时自动回退 ModelScope）。MOSS 需要 `trust_remote_code` 加载上游模型代码；MAW 对默认模型固定了 Hugging Face 模型仓库提交 `e8681d68...`，对 GitHub 推理包固定了提交 `e607537b...`。首次使用前仍请确认你信任 OpenMOSS 的模型仓库。使用 `--model` 指定其他模型时，MAW 不会替它推断或套用 revision；这类自定义模型会按其自身的远程代码配置加载。
 
 MOSS 单次推理最多约 90 分钟，MAW 不对它做分块，以免不同块中的 `S01` / `S02` 失去跨长音频的一致性。它会把秒级浮点时间戳转换为 MAW 要求的整数毫秒，并保留每个字幕段的 `speaker` 字段。CPU 可以运行但预计较慢，建议使用 CUDA；首次验证建议使用 30 秒、包含两位说话人的中文音频。MOSS 的公开评测主要集中在中文多人场景，其他语言应先用自己的音频验收。
 
@@ -44,7 +44,7 @@ Launcher 会把 FireRedASR2 列为一个本地模型条目，并把 CTC 与 FunA
 
 ## 共享对齐模型与时间码后处理
 
-「设置 → AI 模型配置」中的「对齐模型」分组提供两个可独立下载的对齐模型：Qwen3-ForcedAligner-0.6B 和 FireRedASR2-CTC；它与「本地 ASR 模型」分组分开管理。Qwen 对齐器使用与 Qwen Local 相同的 Hugging Face 缓存目录；如果 Qwen3-ASR 已经下载过它，MOSS、SRT 或工程后处理会直接复用，不会再保存一份。FireRed 则保存在同一 MAW 模型缓存根目录的 `aligners` 子目录。
+「设置 → AI 模型配置」中的「对齐模型」分组提供两个可独立下载的对齐模型：Qwen3-ForcedAligner-0.6B 和 FireRedASR2-CTC；它与「本地 ASR 模型」分组分开管理。Qwen 对齐器使用与 Qwen Local 相同的 Hugging Face 缓存目录（连接失败自动回退 ModelScope）；如果 Qwen3-ASR 已经下载过它，MOSS、SRT 或工程后处理会直接复用，不会再保存一份。FireRed 则保存在同一 MAW 模型缓存根目录的 `aligners` 子目录。
 
 选择 MOSS 时，可以在「设置 → AI 模型配置」的「对齐模型」分组中选择 Qwen 或 FireRed。Launcher 会先让 MOSS 在独立的 Transformers 5.x 环境完成段级转写，再在共享本地运行环境中对每个字幕段抽取原始音频、调用对齐器并写回字符/单词级 `items`。这不会把 MOSS 的近似段内插值误标成精确字词时间码。
 
@@ -54,6 +54,8 @@ Launcher 工具箱的「生成时间码」可处理 `.srt`、`.mosp` 或 `.json`
 - `重新生成` 会重新调用选定对齐器，替换已有字词时间码。
 - SRT 或没有内嵌媒体路径的工程必须同时选择原始媒体；工程自带有效媒体时可以直接使用。
 - 输入文件不会被覆盖，输出会生成新的「生成时间码」SRT / MOSP 文件；失败的段保留原有段级时间范围并在结果中报告。
+
+生成后可以直接在浏览器打开仓库内的 [`tools/timestamp-compare.html`](https://github.com/Moyf/moys-asr-workflow/blob/main/tools/timestamp-compare.html)：拖入一个工程查看段级与字词时间码，或再拖入一个工程按段序号对比起止时间、字词数量和逐项时间差。SRT 也可以加入对比，但只参与段级比较；点击表格行可展开字词明细，顶部「显示 items 文本」开关可在时间块上方单独一行显示自适应宽度的 item 文本；段和 item 会显示 duration，越界 item 与空 items 有独立提示，也可以用顶部筛选只看这两类段。
 
 这套后处理入口使用与 ASR 供应商无关的对齐接口，因此未来 GLM ASR 等在线模型只返回文本、不返回字词时间码时，也可以把在线结果接入同一条本地对齐路径。
 
@@ -74,6 +76,12 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
 ```
 
 热词通过 faster-whisper 的 `hotwords` 参数注入 decoder prompt，与 Qwen 路径的 context 提示类似，是提示而非保证命中的硬约束。按模型 ID 加载时同样遵循 `MAW_MODEL_CACHE_ROOT` 统一缓存根目录。该引擎不提供说话人分离（多人场景请用 MOSS）；GPU 推理需要用户自行安装 CUDA 12 与 cuDNN 9 库（CTranslate2 不复用 Torch 自带的 CUDA 依赖），设备选择为“自动”时如果 CUDA 运行库不可用会自动回退到 CPU，显式选择 CUDA 则保留错误。无 GPU 时以 int8 精度运行 CPU。Whisper 的词级时间戳来自交叉注意力对齐，精度低于 Qwen 的 Forced Aligner，静音处偶发幻觉属于上游已知行为；中文等非拉丁语言的验收请先用自己的音频进行。
+
+## Hugging Face 连接失败时自动回退 ModelScope
+
+Qwen3-ASR、MOSS、Faster-Whisper 与 Qwen3-ForcedAligner 的权重发布在 Hugging Face Hub，而对应仓库在 ModelScope 上有官方或等价镜像（已逐仓核对内容；MOSS 的镜像组织名为 `OpenMOSS`，其余仓库同名）。Launcher 的「下载模型」与本地识别在准备这些模型时先尝试 Hugging Face；连接失败（超时、DNS、代理不可达等）时自动改用 ModelScope 下载，无需手动配置镜像。两类下载都写入统一的模型缓存布局（Hugging Face → `model-cache/huggingface/hub`，ModelScope → `model-cache/modelscope`），缓存扫描同时兼容两种来源，重试时优先复用已完成的缓存，已在 ModelScope 缓存的模型也会被识别为已安装。
+
+MOSS 默认模型的 commit pin 仅在 Hugging Face 路径生效；ModelScope 镜像无法对齐 HF 提交，按其主版本下载。SenseVoice / Paraformer / Fun-ASR-Nano 等 FunASR 路线本身就走 ModelScope，FireRedASR2-CTC 从固定官方 URL 下载，均不涉及该回退。享受回退需要运行环境内有 `modelscope`：local 运行环境经 FunASR 自带；MOSS 运行环境从版本 2 起包含它，已有安装会提示重装或修复一次。
 
 ## 安装可选依赖
 
@@ -129,7 +137,7 @@ uv run python generate_subtitle_local.py "D:\Videos\meeting.mp4" `
   --engine moss --length-limit 30s --device cuda --speaker-colors --json
 ```
 
-`--model` 可以指定上游模型 ID，`--model-path` 可以指定已经下载好的本地模型目录。Qwen3-ASR 0.6B 和 1.7B 默认加载 `Qwen/Qwen3-ForcedAligner-0.6B`，以输出可编辑字幕所需的词级时间戳；同一个模型也可以在 MOSS 或时间码后处理时作为独立对齐器使用。FireRed 识别或对齐使用 `--engine firered` / `--alignment-model firered-asr2-ctc`。SenseVoice 默认配合 FSMN-VAD 并保留句级时间戳，Fun-ASR-Nano 默认配合 FSMN-VAD 请求句级时间戳；如果上游返回字符级时间戳，MAW 会再按标点和静音切分，否则至少按 VAD 语音区间生成字幕。默认 `--device auto` 会优先使用 CUDA；Apple Silicon 上的 Qwen3-ASR 会在无 CUDA 时自动使用 MPS，初始化失败则回退 CPU，FireRed 始终使用 CPU，其他本地引擎保持原有 CPU/CUDA 逻辑。如需排查兼容性，可显式传入 `--device cpu`。第一次验证建议加 `--length-limit 30s`。
+`--model` 可以指定上游模型 ID，`--model-path` 可以指定已经下载好的本地模型目录。Qwen3-ASR 0.6B 和 1.7B 默认加载 `Qwen/Qwen3-ForcedAligner-0.6B`，以输出可编辑字幕所需的词级时间戳；同一个模型也可以在 MOSS 或时间码后处理时作为独立对齐器使用。FireRed 识别或对齐使用 `--engine firered` / `--alignment-model firered-asr2-ctc`。SenseVoice 默认配合 FSMN-VAD 并保留句级时间戳，Fun-ASR-Nano 默认配合 FSMN-VAD 请求句级时间戳；如果上游返回字符级时间戳，MAW 会再按标点和静音切分，否则至少按 VAD 语音区间生成字幕。默认 `--device auto` 会优先使用 CUDA，否则使用 CPU；这也适用于 macOS 上的 Qwen3-ASR 和独立 Qwen 对齐器。macOS 上使用 Qwen3-ASR 时，可在 Launcher 的「设备」菜单或 CLI 中显式选 MPS（`--device mps`）；MPS 可能因硬件、模型和 Torch 版本而比 CPU 慢，建议先用同一段音频比较速度。显式 MPS 不可用或加载失败会报错，便于改选 CPU。FireRed 始终使用 CPU，其他本地引擎保持原有 CPU/CUDA 逻辑。第一次验证建议加 `--length-limit 30s`。
 
 不使用 Launcher 时，也可以通过环境变量指定统一的模型缓存根目录：
 
@@ -141,6 +149,8 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" --engine funasr
 长音频会按 `--batch-size-s` 指定的秒数分块识别，再把每块的时间戳平移回原音频。Qwen3-ASR 默认每 30 秒一块，FunASR 默认仍为 300 秒；如果显存或内存不足，可以把 Qwen 的分块调小，例如 `--batch-size-s 20`。
 
 `--json` 会同时生成 `.mosp` 工程；默认还会生成便携 `.edit.html`，如不需要可加 `--no-html`。`--with-waveform` 只能与 `--json` 一起使用。
+
+调试本地模型时加 `--debug-raw`，会生成 `<输出名>.local-debug.json` 清单和阶段 JSON。清单至少包含统一的 `local-transcription`、对齐前后（如启用对齐）和最终 `segments`；Qwen、FunASR、MOSS、Whisper 还会保存各自可用的原始结果，FireRed 额外保存 CTC 字词时间码和 `ct-punc` 标点/分句结果。Launcher 开启「将所有输出文件放入子文件夹」后，本地与在线调试文件统一放入对应 `_maw/调试`（英文界面为 `_maw/debug`），并遵循「每个视频单独创建子文件夹」；关闭时保持原有输出目录。在线模型的 `--debug-raw` 仍保存 `*.asr-response.json`。
 
 不指定 `-o` 时，默认输出名带引擎标识段，如 Qwen3-ASR 为 `example.qwen-asr-local.srt`、FunASR 为 `example.funasr-local.srt`；不需要标识段时可加 `--no-model-tag`，需要把实时率写进文件名时可加 `--rtf-tag`（如 `example.funasr-local.0.12x.srt`，实时率越小越快）。
 
@@ -182,7 +192,7 @@ uv run python generate_subtitle_local.py "D:\Videos\example.mp4" `
 
 ## 分段整理（字数上限 / 停顿切句）
 
-Launcher 与 CLI 的 `--max-len`（字符型每条最大字符数，默认 18）、`--min-len`（字符型短句合并阈值，默认 5）、`--max-words`（单词型每条最大单词数，默认 13）、`--min-words`（单词型短句合并阈值，默认 3）和 `--gap-split`（停顿切句毫秒，默认 800）会传给转写器。已知语言时由统一的 `split_mode` 选择字符型或单词型规则；没有语言元数据时，MAW 优先看文字脚本，能确认 CJK 就用字符型，无法确认的拉丁文本默认用单词型，但不会把它冒充成英语。
+Launcher 与 CLI 的 `--max-len`（字符型每条最大字符数，默认 18）、`--min-len`（字符型短句合并阈值，默认 5）、`--max-words`（单词型每条最大单词数，默认 13）、`--min-words`（单词型短句合并阈值，默认 3）和 `--gap-split`（停顿切句毫秒，默认 500）会传给转写器。已知语言时由统一的 `split_mode` 选择字符型或单词型规则；没有语言元数据时，MAW 优先看文字脚本，能确认 CJK 就用字符型，无法确认的拉丁文本默认用单词型，但不会把它冒充成英语。
 
 MOSS 模型输出契约只有"段级"一对 start/end 时间戳（`[start][Sxx]文本[end]`），没有字词级时序。因此 MOSS 默认不把整段伪造成字符/单词 `items`。超长的模型段会按断句设置二次拆分：中文等连续语言在标点处断句，英文等单词型文本按空白分词、按「最大单词数 / 短句合并阈值」重切且切点保证落在单词边界；段内时间都按字数占比线性插值（近似值，结果不携带 `items`，段首尾保持模型真实时间），不超长的段原样保留。选择对齐模型后，Launcher 会在 MOSS 段级转写结束后使用 Qwen3-ForcedAligner 或 FireRedASR2-CTC 生成真正的字/词级 `items`；FunASR / Qwen3-ASR / faster-whisper 在模型未返回词级时间戳时的整段兜底仍走同样的重切规则。
 
@@ -192,9 +202,9 @@ MOSS 模型输出契约只有"段级"一对 start/end 时间戳（`[start][Sxx]�
 
 ## 当前边界
 
-- Launcher 的「下载模型」按钮调用 QwenASR / FunASR / FireRed 上游加载器准备缓存；当前正式列出 SenseVoice Small、Fun-ASR-Nano、Qwen3-ASR 0.6B、Qwen3-ASR 1.7B、MOSS、FireRedASR2、Paraformer 兼容选项和 Faster-Whisper large-v3。本地运行环境由 GUI 独立安装，不放入 Windows 冻结包，Torch / TorchAudio、sherpa-onnx、FunASR 与模型权重仍按需下载。
-- Launcher 也列出 MOSS Transcribe-Diarize 0.9B；它使用单独的 `local-runtime-moss` 环境和 Hugging Face 缓存，不与 QwenASR / FunASR 运行环境混装。
-- 「设置 → AI 模型配置」中的「对齐模型」分组提供可独立下载的 Qwen3-ForcedAligner-0.6B 与 FireRedASR2-CTC；前者复用 Qwen Local 的 Hugging Face 缓存，后者保存为 `model-cache/aligners` 下的 sherpa-onnx int8 模型目录。FunASR `ct-punc` 作为 FireRedASR2 的可选标点组件管理，不额外显示为对齐模型。对于已经原生提供字/词级时间码的 ASR 模型，不额外显示对齐模型。工具箱可对 SRT 和 MOSP 工程执行「补充缺失」或「重新生成」时间码，输入源不被覆盖。
+- Launcher 的「下载模型」按钮为 Qwen3-ASR / MOSS / Faster-Whisper / Qwen 对齐器统一准备 Hugging Face 缓存，连接失败自动回退 ModelScope（见上文）；FunASR 路线（SenseVoice、Fun-ASR-Nano、Paraformer）仍由上游加载器从 ModelScope 准备缓存；FireRedASR2-CTC 从固定官方 URL 下载。当前正式列出 SenseVoice Small、Fun-ASR-Nano、Qwen3-ASR 0.6B、Qwen3-ASR 1.7B、MOSS、FireRedASR2、Paraformer 兼容选项和 Faster-Whisper large-v3。本地运行环境由 GUI 独立安装，不放入 Windows 冻结包，Torch / TorchAudio、sherpa-onnx、FunASR 与模型权重仍按需下载。
+- Launcher 也列出 MOSS Transcribe-Diarize 0.9B；它使用单独的 `local-runtime-moss` 环境和 Hugging Face 缓存，不与 QwenASR / FunASR 运行环境混装。MOSS 运行环境版本 2 起新增 `modelscope` 依赖（HF → ModelScope 回退需要），已有安装会提示重装或修复一次。
+- 「设置 → AI 模型配置」的「对齐模型」分组提供可独立下载的 Qwen3-ForcedAligner-0.6B 与 FireRedASR2-CTC；前者复用 Qwen Local 的 Hugging Face 缓存，后者保存为 `model-cache/aligners` 下的 sherpa-onnx int8 模型目录。FunASR `ct-punc` 作为 FireRedASR2 的可选标点组件管理，不额外显示为对齐模型。对于已经原生提供字/词级时间码的 ASR 模型，不额外显示对齐模型。工具箱可对 SRT 和 MOSP 工程执行「补充缺失」或「重新生成」时间码，输入源不被覆盖。
 - MOSS 运行环境的依赖清单不含 `quapeaks` 原生生成内核，因此 MOSS 转写不生成 `.quapeaks` 波形/频谱容器：日志会说明跳过原因，`.mosp` 仍带纯 Python 提取的波形，必要时还可写入 `.mopeaks` 回退缓存。需要 `.quapeaks` 时用 QwenASR / FunASR / faster-whisper 处理同一媒体即可；REAPER 原生 `.ReaPeaks` 仍可被所有编辑器入口读取。
 - Launcher 可以把模型缓存切换到自定义目录；它参考了 [Voicebox 的模型目录配置方式](https://github.com/jamiepine/voicebox/blob/main/backend/config.py)，把运行环境和 Hugging Face / ModelScope 模型缓存分开管理。
 - Qwen3-ASR 0.6B 和 1.7B 都使用同一个 Forced Aligner；时间戳按秒读取并归一化为 MAW 要求的整数毫秒。FunASR 的常见句级/字词级时间戳也会归一化为同一格式。
@@ -210,6 +220,6 @@ MOSS 模型输出契约只有"段级"一对 start/end 时间戳（`[start][Sxx]�
 
 ## 模型准备的中断与继续
 
-Launcher 会复用 Hugging Face / ModelScope 已经写入的缓存文件，因此重新准备同一个模型时通常会从已有缓存继续；上游加载器是否能对单个仍在下载的临时文件做到字节级续传，不由 MAW 保证。准备界面会显示已写入的文件数和字节数，并给出按模型类型计算的粗略总量区间，百分比仅用于判断大致进度。
+Launcher 会复用 Hugging Face / ModelScope 已经写入的缓存文件，因此重新准备同一个模型时通常会从已有缓存继续；Hugging Face 不可达时，Qwen3-ASR、MOSS、Faster-Whisper 与 Qwen 对齐器的准备会自动改用 ModelScope 镜像下载。上游加载器是否能对单个仍在下载的临时文件做到字节级续传，不由 MAW 保证。准备界面会显示已写入的文件数和字节数，并给出按模型类型计算的粗略总量区间，百分比仅用于判断大致进度。
 
 准备时间过长时可以点击「取消准备」。MAW 会终止当前模型加载子进程并保留缓存，取消完成后即可切换到其他模型；切换模型不会复用不相关模型的权重，但 Qwen3-ASR 的两个选项、MOSS 和时间码后处理会共用 Forced Aligner 缓存，FireRed 的 ASR 与对齐也共用同一份 int8 模型目录。
