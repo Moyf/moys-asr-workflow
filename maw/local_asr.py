@@ -172,11 +172,20 @@ def _mps_available(torch_module: object) -> bool:
 
 
 def resolve_device(device: str, *, allow_mps: bool = False) -> str:
-    """Resolve ``auto`` without importing Torch for the cloud-only path."""
+    """Prefer CUDA for ``auto`` and use MPS only when explicitly requested."""
     normalized = device.strip().lower()
     if normalized != "auto":
+        if normalized == "mps" and allow_mps:
+            try:
+                import torch  # type: ignore[import-not-found]
+            except ImportError as error:
+                raise ValueError("MPS requires Torch") from error
+            if not _mps_available(torch):
+                raise ValueError("MPS is not available on this device")
+            return "mps"
         if normalized not in {"cpu", "cuda"}:
-            raise ValueError("device must be one of: auto, cpu, cuda")
+            choices = "auto, cpu, cuda, mps" if allow_mps else "auto, cpu, cuda"
+            raise ValueError(f"device must be one of: {choices}")
         return normalized
 
     try:
@@ -185,8 +194,6 @@ def resolve_device(device: str, *, allow_mps: bool = False) -> str:
         return "cpu"
     if torch.cuda.is_available():
         return "cuda"
-    if allow_mps and _mps_available(torch):
-        return "mps"
     return "cpu"
 
 
@@ -643,7 +650,7 @@ class QwenAsrEngine:
         if self._runtime is not None:
             return self._runtime
         requested_device = self.device.strip().lower()
-        if sys.platform == "darwin" and requested_device == "auto":
+        if sys.platform == "darwin" and requested_device == "mps":
             os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
         try:
             from qwen_asr import Qwen3ASRModel  # type: ignore[import-not-found]
@@ -677,18 +684,7 @@ class QwenAsrEngine:
                 on_event(f"[local] loading QwenASR: {self.model_path} ({target_device})")
             return Qwen3ASRModel.from_pretrained(self.model_path, **kwargs)
 
-        try:
-            self._runtime = load_runtime(resolved_device)
-        except Exception as error:
-            if resolved_device != "mps" or requested_device != "auto":
-                raise
-            if on_event:
-                on_event(f"[local] MPS 加载失败，正在回退 CPU：{error}")
-            try:
-                torch.mps.empty_cache()
-            except (AttributeError, RuntimeError):
-                pass
-            self._runtime = load_runtime("cpu")
+        self._runtime = load_runtime(resolved_device)
         if on_event:
             on_event("[local] QwenASR loaded")
         return self._runtime

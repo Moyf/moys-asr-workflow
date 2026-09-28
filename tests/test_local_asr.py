@@ -1337,17 +1337,20 @@ class LocalAsrFlowTests(unittest.TestCase):
         with mock.patch.dict("sys.modules", {"torch": FakeTorch()}):
             self.assertEqual(resolve_device("auto"), "cuda")
 
-    def test_resolve_device_auto_uses_mps_only_when_enabled(self) -> None:
+    def test_resolve_device_auto_uses_cpu_when_mps_is_available(self) -> None:
         fake_torch = SimpleNamespace(
             cuda=SimpleNamespace(is_available=lambda: False),
             backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: True)),
         )
 
         with mock.patch.dict("sys.modules", {"torch": fake_torch}):
-            self.assertEqual(resolve_device("auto", allow_mps=True), "mps")
+            self.assertEqual(resolve_device("auto", allow_mps=True), "cpu")
             self.assertEqual(resolve_device("auto"), "cpu")
+            self.assertEqual(resolve_device("mps", allow_mps=True), "mps")
+            with self.assertRaisesRegex(ValueError, "device must be one of"):
+                resolve_device("mps")
 
-    def test_qwen_auto_load_uses_mps_float16_for_model_and_aligner(self) -> None:
+    def test_qwen_explicit_mps_load_uses_float16_for_model_and_aligner(self) -> None:
         calls: list[dict[str, object]] = []
 
         class FakeModel:
@@ -1370,7 +1373,7 @@ class LocalAsrFlowTests(unittest.TestCase):
             mock.patch.dict(os.environ, {}, clear=True),
             mock.patch.dict("sys.modules", {"torch": fake_torch, "qwen_asr": fake_qwen}),
         ):
-            QwenAsrEngine(model="test-model", device="auto", forced_aligner="test-aligner")._load()
+            QwenAsrEngine(model="test-model", device="mps", forced_aligner="test-aligner")._load()
             self.assertEqual(os.environ["PYTORCH_ENABLE_MPS_FALLBACK"], "1")
 
         self.assertEqual(calls[0]["device_map"], "mps")
@@ -1380,17 +1383,14 @@ class LocalAsrFlowTests(unittest.TestCase):
             "device_map": "mps",
         })
 
-    def test_qwen_auto_load_falls_back_to_cpu_when_mps_load_fails(self) -> None:
+    def test_qwen_auto_load_uses_cpu_even_when_mps_is_available(self) -> None:
         calls: list[str] = []
-        events: list[str] = []
 
         class FakeModel:
             @classmethod
             def from_pretrained(cls, _model: str, **kwargs: object) -> object:
                 device_map = str(kwargs["device_map"])
                 calls.append(device_map)
-                if device_map == "mps":
-                    raise RuntimeError("unsupported MPS op")
                 return object()
 
         fake_torch = SimpleNamespace(
@@ -1402,11 +1402,27 @@ class LocalAsrFlowTests(unittest.TestCase):
         )
         fake_qwen = SimpleNamespace(Qwen3ASRModel=FakeModel)
 
-        with mock.patch.dict("sys.modules", {"torch": fake_torch, "qwen_asr": fake_qwen}):
-            QwenAsrEngine(model="test-model", device="auto")._load(events.append)
+        with (
+            mock.patch("maw.local_asr.sys.platform", "darwin"),
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch.dict("sys.modules", {"torch": fake_torch, "qwen_asr": fake_qwen}),
+        ):
+            QwenAsrEngine(model="test-model", device="auto")._load()
+            self.assertNotIn("PYTORCH_ENABLE_MPS_FALLBACK", os.environ)
 
-        self.assertEqual(calls, ["mps", "cpu"])
-        self.assertTrue(any("回退 CPU" in event for event in events))
+        self.assertEqual(calls, ["cpu"])
+
+    def test_qwen_explicit_mps_requires_available_backend(self) -> None:
+        fake_torch = SimpleNamespace(
+            cuda=SimpleNamespace(is_available=lambda: False),
+            backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: False)),
+            float16="float16", float32="float32",
+        )
+        fake_qwen = SimpleNamespace(Qwen3ASRModel=SimpleNamespace(from_pretrained=mock.Mock()))
+        with mock.patch.dict("sys.modules", {"torch": fake_torch, "qwen_asr": fake_qwen}):
+            with self.assertRaisesRegex(ValueError, "MPS is not available"):
+                QwenAsrEngine(model="test-model", device="mps")._load()
+        fake_qwen.Qwen3ASRModel.from_pretrained.assert_not_called()
 
     def test_default_output_uses_engine_tag(self) -> None:
         path = default_output_path(Path("D:/media/sample.mp4"), "funasr")
@@ -1465,6 +1481,10 @@ class LocalAsrFlowTests(unittest.TestCase):
 
 
 class LocalCliParserTests(unittest.TestCase):
+    def test_parser_accepts_explicit_mps_for_qwen(self) -> None:
+        args = build_parser().parse_args(["sample.mp3", "--engine", "qwen-asr", "--device", "mps"])
+        self.assertEqual(args.device, "mps")
+
     def test_parser_accepts_both_engines_and_local_options(self) -> None:
         args = build_parser().parse_args([
             "sample.mp4", "--engine", "funasr", "--device", "cpu",

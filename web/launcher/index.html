@@ -176,7 +176,7 @@
             <div id="advancedParamsGroup" class="adv-group">
               <h3 data-i18n="advanced_params">识别参数</h3>
               <div class="advanced-col">
-                <div id="localDeviceField" class="field hidden"><label for="localDevice" data-i18n="local_device">设备</label><select id="localDevice"><option value="auto" data-i18n="device_auto">自动</option><option value="cpu" data-i18n="device_cpu">CPU</option><option value="cuda" data-i18n="device_cuda">CUDA</option></select></div>
+                <div id="localDeviceField" class="field hidden"><label for="localDevice" data-i18n="local_device">设备</label><select id="localDevice"><option value="auto" data-i18n="device_auto">自动</option><option value="cpu" data-i18n="device_cpu">CPU</option><option value="cuda" data-i18n="device_cuda">CUDA</option><option value="mps" id="localDeviceMps" hidden disabled>MPS</option></select></div>
                 <div id="fireRedPuncField" class="field hidden"><label for="fireRedPunc" data-i18n="firered_punc">生成标点提升断句</label><select id="fireRedPunc"><option value="none" data-i18n="firered_punc_none">不使用</option><option value="ct-punc" data-i18n="firered_punc_ct_punc" selected>使用 ct-punc</option></select></div>
                 <div id="recognitionAlignmentModelField" class="field hidden">
                   <label for="recognitionAlignmentModel" data-i18n="recognition_alignment_model">对齐模型</label>

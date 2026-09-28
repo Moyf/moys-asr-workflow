@@ -844,6 +844,7 @@ class LauncherApi:
             for model in ALIGNMENT_MODELS
         ]
         return {
+            "platform": sys.platform,
             "providerId": provider.id,
             "modelId": selected_model.id,
             "apiKey": selected_api_key,
@@ -3965,8 +3966,15 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
                     "FireRedASR2 的 FunASR ct-punc 尚未准备，请选择“不使用”或先下载 ct-punc。",
                 )
         runtime_python = local_status.runtime_python
-        if device not in {"auto", "cpu", "cuda"}:
-            raise PreflightError("device", "local_model_path_invalid", "设备必须是 auto、cpu 或 cuda。")
+        allowed_devices = {"auto", "cpu", "cuda"}
+        if sys.platform == "darwin" and model.engine == "qwen-asr":
+            allowed_devices.add("mps")
+        if device not in allowed_devices:
+            raise PreflightError(
+                "device", "local_model_path_invalid",
+                "设备必须是 auto、cpu、cuda 或 mps。" if "mps" in allowed_devices
+                else "设备必须是 auto、cpu 或 cuda。",
+            )
     alignment_model = ""
     alignment_model_path = str(payload.get("alignmentModelPath") or "").strip()
     if provider.kind == "local":

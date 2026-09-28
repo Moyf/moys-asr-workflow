@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 🔄 变更
+
+- macOS 上 Qwen3-ASR 的「自动」设备选择改为 CPU，避免部分 Apple Silicon 设备上 MPS 推理明显变慢；可在 Launcher 或 CLI 中显式选择 MPS。
+
 ### 🐛 修复
 
 - 修复 macOS 英文编辑器帮助中部分 Cmd 鼠标操作仍显示中文的问题。
