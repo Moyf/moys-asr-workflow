@@ -71,3 +71,4 @@ build-appimage/
 
 # Agent worktrees
 .worktrees/
+.DS_Store
