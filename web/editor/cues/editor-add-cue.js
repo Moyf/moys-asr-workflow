@@ -38,30 +38,31 @@
       return;
     }
     MaweCuePanel.commitCuePanelEdit();
-    MaweHistory.pushUndo('新增副字幕');
-    track.segments.splice(index, 0, {
-      id: window.AsrEditorUtils.uniqueStableSegmentId(track.segments, `${track.id}-${index + 1}`, 'extension'),
-      start: safeStart,
-      end: safeEnd,
-      text: '',
-      items: [],
-      _dirty: true,
+    return MaweCommands.run('新增副字幕', (command) => {
+      track.segments.splice(index, 0, {
+        id: window.AsrEditorUtils.uniqueStableSegmentId(track.segments, `${track.id}-${index + 1}`, 'extension'),
+        start: safeStart,
+        end: safeEnd,
+        text: '',
+        items: [],
+        _dirty: true,
+      });
+      MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      MaweSelection.clearSelection({ silent: true });
+      command.commit({ cueList: true, preserveCueListScroll: false });
+      MaweSelection.selectOnlyExtension(index, track);
+      const extensionText = MaweCoreState.container.querySelector(
+        `.multi-extension-cue[data-ext-idx="${index}"] .multi-cue-column.extension, `
+          + `.multi-dual-cue[data-ext-idx="${index}"] .multi-cue-column.extension`,
+      );
+      if (extensionText) {
+        const cue = extensionText.closest('.cue');
+        if (cue) MaweCueListAnchor.scrollCueToCenter(cue);
+        setTimeout(() => MaweInlineEdit.startExtensionEdit(extensionText, index, track), 0);
+      }
+      MaweCoreState.waveformEditor?.revealTime(safeStart, true);
+      MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
     });
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweSelection.clearSelection({ silent: true });
-    MaweCuePanel.renderAll({ preserveCueListScroll: false });
-    MaweSelection.selectOnlyExtension(index, track);
-    const extensionText = MaweCoreState.container.querySelector(
-      `.multi-extension-cue[data-ext-idx="${index}"] .multi-cue-column.extension, `
-        + `.multi-dual-cue[data-ext-idx="${index}"] .multi-cue-column.extension`,
-    );
-    if (extensionText) {
-      const cue = extensionText.closest('.cue');
-      if (cue) MaweCueListAnchor.scrollCueToCenter(cue);
-      setTimeout(() => MaweInlineEdit.startExtensionEdit(extensionText, index, track), 0);
-    }
-    MaweCoreState.waveformEditor?.revealTime(safeStart, true);
-    MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
   }
 
 
@@ -97,26 +98,27 @@
     return;
   }
   MaweCuePanel.commitCuePanelEdit();
-  MaweHistory.pushUndo('新增字幕');
-  MaweBoot.DATA.segments.splice(index, 0, {
-    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(MaweBoot.DATA.segments, `main-${index + 1}`, 'main'),
-    start: safeStart,
-    end: safeEnd,
-    text: '',
-    items: [],
-    _dirty: true,
+  return MaweCommands.run('新增字幕', (command) => {
+    MaweBoot.DATA.segments.splice(index, 0, {
+      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(MaweBoot.DATA.segments, `main-${index + 1}`, 'main'),
+      start: safeStart,
+      end: safeEnd,
+      text: '',
+      items: [],
+      _dirty: true,
+    });
+    window.AsrEditorUtils.shiftGroupReferenceIndices(MaweBoot.DATA.segments, index, 1);
+    MaweSelection.clearSelection({ silent: true });
+    command.commit({ cueList: true, preserveCueListScroll: false });
+    MaweSelection.selectOnly(index);
+    const cue = MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`);
+    if (cue) {
+      MaweCueListAnchor.scrollCueToCenter(cue);
+    }
+    setTimeout(() => MaweCuePanel.focusCuePanelText(index), 0);
+    MaweCoreState.waveformEditor?.revealTime(safeStart, true);
+    MaweHint.flashHint(`已新增第 ${index + 1} 条字幕`, 'success');
   });
-  window.AsrEditorUtils.shiftGroupReferenceIndices(MaweBoot.DATA.segments, index, 1);
-  MaweSelection.clearSelection({ silent: true });
-  MaweCuePanel.renderAll({ preserveCueListScroll: false });
-  MaweSelection.selectOnly(index);
-  const cue = MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`);
-  if (cue) {
-    MaweCueListAnchor.scrollCueToCenter(cue);
-  }
-  setTimeout(() => MaweCuePanel.focusCuePanelText(index), 0);
-  MaweCoreState.waveformEditor?.revealTime(safeStart, true);
-  MaweHint.flashHint(`已新增第 ${index + 1} 条字幕`, 'success');
 }
 
 
@@ -178,34 +180,35 @@
       MaweHint.flashHint('这里没有足够的空白区域', 'warning');
       return;
     }
-    MaweHistory.pushUndo('新增副字幕');
-    const segment = {
-      id: window.AsrEditorUtils.uniqueStableSegmentId(
-        track.segments,
-        `${track.id}-segment-${index + 1}`,
-        'extension',
-      ),
-      start: adjustedStart,
-      end,
-      text: '',
-      _dirty: true,
-    };
-    track.segments.splice(index, 0, segment);
-    MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweSelection.clearSelection();
-    MaweCuePanel.renderAll({ preserveCueListScroll: false });
-    MaweSelection.selectOnlyExtension(index);
-    const extensionText = MaweCoreState.container.querySelector(
-      `.multi-extension-cue[data-ext-idx="${index}"] .multi-cue-column.extension, `
-        + `.multi-dual-cue[data-ext-idx="${index}"] .multi-cue-column.extension`,
-    );
-    if (extensionText) {
-      const cue = extensionText.closest('.cue');
-      if (cue) MaweCueListAnchor.scrollCueToCenter(cue);
-      setTimeout(() => MaweInlineEdit.startExtensionEdit(extensionText, index, track), 0);
-    }
-    MaweCoreState.waveformEditor?.revealTime(adjustedStart, true);
-    MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
+    return MaweCommands.run('新增副字幕', (command) => {
+      const segment = {
+        id: window.AsrEditorUtils.uniqueStableSegmentId(
+          track.segments,
+          `${track.id}-segment-${index + 1}`,
+          'extension',
+        ),
+        start: adjustedStart,
+        end,
+        text: '',
+        _dirty: true,
+      };
+      track.segments.splice(index, 0, segment);
+      MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      MaweSelection.clearSelection();
+      command.commit({ cueList: true, preserveCueListScroll: false });
+      MaweSelection.selectOnlyExtension(index);
+      const extensionText = MaweCoreState.container.querySelector(
+        `.multi-extension-cue[data-ext-idx="${index}"] .multi-cue-column.extension, `
+          + `.multi-dual-cue[data-ext-idx="${index}"] .multi-cue-column.extension`,
+      );
+      if (extensionText) {
+        const cue = extensionText.closest('.cue');
+        if (cue) MaweCueListAnchor.scrollCueToCenter(cue);
+        setTimeout(() => MaweInlineEdit.startExtensionEdit(extensionText, index, track), 0);
+      }
+      MaweCoreState.waveformEditor?.revealTime(adjustedStart, true);
+      MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
+    });
   }
 
   global.MaweAddCue = Object.freeze({

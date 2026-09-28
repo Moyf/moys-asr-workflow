@@ -18,10 +18,10 @@
   let index = Number.isInteger(target?.index) ? target.index : -1;
   if (index < 0) {
     const selected = extension ? MaweSelection.selectedExtensionIdxs
-      : overlay ? selectedOverlayIdxs : MaweSelection.selectedIdxs;
+      : overlay ? MaweState.selection.indices('overlay') : MaweSelection.selectedIdxs;
     if (selected.size === 1) index = [...selected][0];
     else index = extension ? MaweSelection.lastClickedExtensionIdx
-      : overlay ? lastClickedOverlayIdx : MaweSelection.lastClickedIdx;
+      : overlay ? MaweState.selection.overlayAnchor : MaweSelection.lastClickedIdx;
   }
   const neighbor = index + direction;
   if (!segments[index] || !segments[neighbor]) {

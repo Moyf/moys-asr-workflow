@@ -72,7 +72,7 @@ function applyCanonicalProject(data, filename) {
   MaweCuePanelState.currentCuePanelIdx = -1;
   MaweCuePanelState.currentCuePanelKind = 'main';
   MaweCuePanelState.currentCuePanelTrackId = null;
-  MaweCuePanelState.resetCuePanelEditState();
+  MaweCuePanelState.resetCuePanelEditState({ discard: true });
   resetLoadedMedia();
   projectExtensionFields = Object.fromEntries(
     Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
@@ -130,6 +130,7 @@ function applyCanonicalProject(data, filename) {
   }
   MaweGapRemoveUi.updateGapRemoveUi();
   MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
+  MaweState.noteSavedSegments();
   MawePlaybackLoop.refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(MaweBoot.DATA.media);
   MaweBoot.PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
@@ -333,44 +334,45 @@ function applyCanonicalProject(data, filename) {
   MaweCuePanelState.currentCuePanelKind = 'main';
   MaweCuePanelState.currentCuePanelTrackId = null;
   MaweCuePanelState.resetCuePanelEditState();
-  MaweHistory.pushUndo('替换字幕');
-  MaweBoot.DATA.segments.length = 0;
-  (segments || []).forEach((segment) => MaweBoot.DATA.segments.push({ ...segment }));
-  // 替换语义同时接管叠加轨：导入双层 SRT 时第二层落到叠加轨；
-  // 导入普通 SRT（未提供 overlaySegments）时清空旧叠加轨，避免残留混入新工程。
-  const overlayLayer = Array.isArray(overlaySegments) ? overlaySegments : [];
-  MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack({
-    enabled: overlayLayer.length > 0,
-    segments: overlayLayer,
+  return MaweCommands.run('替换字幕', (command) => {
+    MaweBoot.DATA.segments.length = 0;
+    (segments || []).forEach((segment) => MaweBoot.DATA.segments.push({ ...segment }));
+    // 替换语义同时接管叠加轨：导入双层 SRT 时第二层落到叠加轨；
+    // 导入普通 SRT（未提供 overlaySegments）时清空旧叠加轨，避免残留混入新工程。
+    const overlayLayer = Array.isArray(overlaySegments) ? overlaySegments : [];
+    MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack({
+      enabled: overlayLayer.length > 0,
+      segments: overlayLayer,
+    });
+    MaweBoot.DATA.overlay_track._dirty = true;
+    MaweBoot.DATA.multi_subtitle = {
+      schema: MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
+      enabled: false,
+      display_mode: 'both',
+      tracks: [],
+      bindings: [],
+    };
+    MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(MaweBoot.DATA);
+    MaweBoot.DATA.gap_remove = null;
+    MaweHistory.gapRemoveDirty = false;
+    MaweServerSave.projectImportDirty = true;
+    MaweHistory.updateUndoRedoButtons();
+    MaweSelection.clearSelection({ commitCuePanel: false });
+    MawePlaybackLoop.lastActive = -1;
+    MaweGapRemoveUi.updateGapRemoveUi();
+    command.commit({ cueList: true, preserveCueListScroll: false });
+    MaweBoot.FILENAME_BASE = displayName.replace(/\.[^.]+$/i, '');
+    const jsonEl = document.getElementById('json-name');
+    if (jsonEl) {
+      jsonEl.textContent = `导入字幕：${displayName}`;
+      jsonEl.title = 'SRT 字幕只能通过导出下载保存为工程文件';
+      jsonEl.classList.add('empty');
+    }
+    MaweServerSave.configureServerSaveControls();
+    MaweServerSave.scheduleAutoSave();
+    MaweHint.flashHint(`已加载字幕：${displayName}（${MaweBoot.DATA.segments.length} 条）`, 'success');
+    return true;
   });
-  MaweBoot.DATA.overlay_track._dirty = true;
-  MaweBoot.DATA.multi_subtitle = {
-    schema: MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
-    enabled: false,
-    display_mode: 'both',
-    tracks: [],
-    bindings: [],
-  };
-  MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(MaweBoot.DATA);
-  MaweBoot.DATA.gap_remove = null;
-  MaweHistory.gapRemoveDirty = false;
-  MaweServerSave.projectImportDirty = true;
-  MaweHistory.updateUndoRedoButtons();
-  MaweSelection.clearSelection({ commitCuePanel: false });
-  MawePlaybackLoop.lastActive = -1;
-  MaweGapRemoveUi.updateGapRemoveUi();
-  MaweCuePanel.renderAll({ preserveCueListScroll: false });
-  MaweBoot.FILENAME_BASE = displayName.replace(/\.[^.]+$/i, '');
-  const jsonEl = document.getElementById('json-name');
-  if (jsonEl) {
-    jsonEl.textContent = `导入字幕：${displayName}`;
-    jsonEl.title = 'SRT 字幕只能通过导出下载保存为工程文件';
-    jsonEl.classList.add('empty');
-  }
-  MaweServerSave.configureServerSaveControls();
-  MaweServerSave.scheduleAutoSave();
-  MaweHint.flashHint(`已加载字幕：${displayName}（${MaweBoot.DATA.segments.length} 条）`, 'success');
-  return true;
 }
 
   // 注：boot 修复语句（repairGroupReferenceIndices / normalizeProjectTimings 两条

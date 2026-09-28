@@ -233,7 +233,7 @@
   function ensureCuePanelUndo(label = null) {
     if (!MaweCuePanelState.cuePanelUndoPushed) {
       const target = getCurrentCuePanelTarget();
-      MaweCuePanelState.cuePanelUndoRecord = MaweHistory.pushUndo(
+      MaweCuePanelState.cuePanelUndoRecord = MaweCommands.begin(
         label || (target?.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕'),
       );
       MaweCuePanelState.cuePanelUndoPushed = true;
@@ -321,10 +321,9 @@
     MaweMultiSubtitleCore.syncBindingOffsets();
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
   }
-  MaweServerSave.scheduleAutoSaveFlush();
+  MaweViewUpdates.invalidate({ save: true });
   MaweCuePanelState.resetCuePanelEditState();
-  renderAll();
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
+  MaweViewUpdates.invalidate({ cueList: true, preview: 'update' });
   return true;
 }
 
@@ -483,18 +482,7 @@
 
 
   function discardPendingCuePanelUndo() {
-    const record = MaweCuePanelState.cuePanelUndoRecord;
-    if (MaweCuePanelState.cuePanelUndoPushed && record && MaweHistory.editorHistory.peekUndo() === record) {
-      MaweHistory.editorHistory.popUndo({
-        kind: 'segments',
-        label: record.label,
-        segs: MaweHistory.snapshotSegments(),
-      });
-      // 这条记录本来就清空了 redo；popUndo 临时生成的镜像也不能留下。
-      MaweHistory.editorHistory.clearRedo();
-      MaweHistory.updateUndoRedoButtons();
-    }
-    MaweCuePanelState.resetCuePanelEditState();
+    MaweCuePanelState.resetCuePanelEditState({ discard: true });
   }
 
 
@@ -503,8 +491,7 @@
     const restored = restoreCuePanelTextEditSnapshot();
     discardPendingCuePanelUndo();
     if (restored) {
-      renderAll();
-      MawePlaybackLoop.updateWithoutCueListAutoScroll();
+      MaweViewUpdates.invalidate({ cueList: true, preview: 'update' });
     }
     if (document.activeElement === MaweDom.cuePanelText) {
       MaweCuePanelState.cuePanelCanceling = true;

@@ -8,7 +8,7 @@
 
 
   function projectSaveFingerprint() {
-    return JSON.stringify([MaweBoot.DATA.segments, MaweBoot.DATA.multi_subtitle, MaweBoot.DATA.gap_remove,
+    return JSON.stringify([MaweBoot.DATA.segments, MaweBoot.DATA.multi_subtitle, MaweBoot.DATA.overlay_track, MaweBoot.DATA.gap_remove,
       MaweBoot.DATA.preview, MaweBoot.DATA.media_metadata, MaweHistory.gapRemoveDirty, MaweAppearance.previewGeometryDirty, MaweServerSave.projectImportDirty]);
   }
 
@@ -25,6 +25,12 @@ function flushInlineEditsForSave() {
 const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
 if (!state) {
 if (!MaweDom.cuePanel?.contains(document.activeElement)) MaweCuePanel.commitCuePanelEdit();
+else {
+// Live panel text is already in the project. Finalize its transaction without
+// blurring or replacing the textarea; subsequent typing begins a new transaction.
+MaweCuePanelState.resetCuePanelEditState();
+MaweCuePanel.captureCuePanelTextEditSnapshot();
+}
 return;
 }
 const extension = Boolean(MaweInlineEdit.extensionEditingState);
@@ -33,30 +39,26 @@ const track = extension ? MaweMultiSubtitleCore.getExtensionTrack(state.trackId)
 const segment = extension ? track?.segments[index] : MaweBoot.DATA.segments[index];
 const text = state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
 if (!segment || text === segment.text) return;
-MaweHistory.pushUndo(extension ? '编辑副字幕' : '编辑文本');
-segment.text = text;
-segment._dirty = true;
-state.original = text;
-state.el.classList.add('dirty');
-if (extension) {
-MaweMultiSubtitleCore.markMultiSubtitleDirty();
-MaweCoreState.waveformEditor?.refreshExtensionCueLabel(index, state.trackId);
-} else MaweCoreState.waveformEditor?.refreshCueLabel(index);
-MaweInlineEdit.syncCuePanelAfterInlineEdit(extension ? 'extension' : 'main', index, state.trackId);
+return MaweCommands.run(extension ? '编辑副字幕' : '编辑文本', () => {
+  segment.text = text;
+  segment._dirty = true;
+  state.original = text;
+  state.el.classList.add('dirty');
+  if (extension) {
+  MaweMultiSubtitleCore.markMultiSubtitleDirty();
+  MaweCoreState.waveformEditor?.refreshExtensionCueLabel(index, state.trackId);
+  } else MaweCoreState.waveformEditor?.refreshCueLabel(index);
+  MaweInlineEdit.syncCuePanelAfterInlineEdit(extension ? 'extension' : 'main', index, state.trackId);
+});
 }
 
-function markProjectSaved(filename, backupName, { silent = false, fingerprint = null } = {}) {
+function markProjectSaved(filename, backupName, { silent = false, fingerprint = null, contentFingerprint } = {}) {
 // 请求在途时的新编辑继续保持脏状态，失败请求从不进入这里。
 const unchanged = !inlineEditHasUncommittedText()
 && (fingerprint === null || fingerprint === projectSaveFingerprint());
-const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+MaweState.noteSavedSegments(contentFingerprint);
 if (unchanged) {
-MaweBoot.DATA.segments.forEach((segment) => { delete segment._dirty; });
-delete multi._dirty;
-(multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { delete segment._dirty; }));
-MaweHistory.gapRemoveDirty = false;
-MaweAppearance.previewGeometryDirty = false;
-MaweServerSave.projectImportDirty = false;
+MaweState.markSaved();
 MaweCoreState.container.querySelectorAll('.dirty').forEach(element => element.classList.remove('dirty'));
 }
 MaweBoot.PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
@@ -82,6 +84,7 @@ if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlig
 flushInlineEditsForSave();
 const projectJson = MaweJsonRepair.buildJson();
 const fingerprint = projectSaveFingerprint();
+const contentFingerprint = MaweState.segmentsFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
 const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
@@ -99,7 +102,7 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
       if (!response.ok || !result.ok) {
         throw new Error(result.error || `服务器返回 ${response.status}`);
       }
-      if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent, fingerprint });
+      if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent, fingerprint, contentFingerprint });
       return true;
     } catch (error) {
       const detail = error?.message || error;
@@ -129,10 +132,11 @@ if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlig
 flushInlineEditsForSave();
 const projectJson = MaweJsonRepair.buildJson();
 const fingerprint = projectSaveFingerprint();
+const contentFingerprint = MaweState.segmentsFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
 await MaweHost.files.writeBlob(MaweServerSave.projectFileHandle, () => new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
-markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerprint });
+markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerprint, contentFingerprint });
       return true;
     } catch (error) {
       MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
@@ -172,9 +176,16 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
         suggestedName: suggested,
         types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
       });
-      await MaweHost.files.writeBlob(handle, () => new Blob([MaweJsonRepair.buildJson()], { type: 'application/json;charset=utf-8' }));
+      let fingerprint, contentFingerprint;
+      await MaweHost.files.writeBlob(handle, () => {
+        flushInlineEditsForSave();
+        const projectJson = MaweJsonRepair.buildJson();
+        fingerprint = projectSaveFingerprint();
+        contentFingerprint = MaweState.segmentsFingerprint();
+        return new Blob([projectJson], { type: 'application/json;charset=utf-8' });
+      });
       MaweServerSave.projectFileHandle = handle;
-      markProjectSaved(handle.name, null);
+      markProjectSaved(handle.name, null, { fingerprint, contentFingerprint });
       MaweServerSave.configureServerSaveControls();
       MaweServerSave.scheduleAutoSave();
     } catch (error) {

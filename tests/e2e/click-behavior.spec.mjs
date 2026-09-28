@@ -35,6 +35,14 @@ test.afterAll(async () => {
 
 test.beforeEach(async ({ page }) => {
   await disableOnboarding(page);
+  // These cases assert click/edit semantics against a shared on-disk fixture.
+  // Save behavior has its own suite; do not let a completed edit rewrite the
+  // fixture loaded by the next case or by the Escape reload assertion.
+  await page.addInitScript(() => {
+    const key = 'moy.asr.editor.settings.v1';
+    const settings = JSON.parse(localStorage.getItem(key) || '{}');
+    localStorage.setItem(key, JSON.stringify({ ...settings, autoSaveProject: false }));
+  });
 });
 
 test('jump target is shown for both jump behaviors and hidden for select-only', async ({ page }) => {
@@ -382,8 +390,10 @@ test('Escape keeps cue-panel text edits by default and cancels when the setting 
   const original = await panel.inputValue();
   await panel.focus();
   await panel.fill('This edit is kept');
-  await expect(page.locator('#undo-btn')).toBeEnabled();
+  expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(0);
   await panel.press('Escape');
+
+  await expect(page.locator('#undo-btn')).toBeEnabled();
 
   await expect(panel).not.toBeFocused();
   await expect(panel).toHaveValue('This edit is kept');
@@ -461,17 +471,16 @@ test('double-click places the inline caret at the pointer text position', async 
 
   await page.mouse.dblclick(point.x, point.y);
   await expect(cue).toHaveClass(/editing/);
-  const caret = await page.evaluate(() => {
+  // Inline editing reapplies the caret in the next event-loop turn after the
+  // browser's native double-click selection. Wait for that observable result.
+  await expect.poll(() => page.evaluate(() => {
     const selection = window.getSelection();
     return {
       collapsed: selection?.isCollapsed ?? false,
       offset: selection?.anchorOffset ?? null,
       text: selection?.anchorNode?.textContent ?? null,
     };
-  });
-  expect(caret.collapsed).toBe(true);
-  expect(caret.text).toBe('Alpha');
-  expect(caret.offset).toBe(expectedOffset);
+  })).toEqual({ collapsed: true, text: 'Alpha', offset: expectedOffset });
 });
 
 test('current cue panel keeps the same height before and after selection', async ({ page }) => {
@@ -692,7 +701,20 @@ test('B split keeps the source cue visually anchored while lazy rows relayout', 
     bubbles: true, detail: 1,
     clientX: secondSplitPoint.x, clientY: secondSplitPoint.y,
   });
-  await page.mouse.move(secondSplitPoint.x, secondSplitPoint.y);
+  await expect(right).toHaveClass(/selected/);
+  // The click may rebuild lazy rows; use the rendered text's current position
+  // for the hover split instead of the coordinates captured before the click.
+  const liveSecondSplitPoint = await secondText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    const offset = Math.max(1, Math.floor(node.textContent.length / 2));
+    range.setStart(node, offset);
+    range.setEnd(node, offset);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(liveSecondSplitPoint.x, liveSecondSplitPoint.y);
+  await expect(page.locator('.cue-split-preview')).toHaveCount(1);
   const secondBeforeTop = await right.evaluate((element) => element.getBoundingClientRect().top);
   await page.keyboard.press('b');
 

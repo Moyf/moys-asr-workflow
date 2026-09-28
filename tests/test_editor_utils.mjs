@@ -19,6 +19,13 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+test('translates macOS help gestures after platform labels are applied', () => {
+  assert.equal(i18n.translateText('Cmd+点击', 'en'), 'Cmd+click');
+  assert.equal(i18n.translateText('Cmd+拖拽空白处', 'en'), 'Cmd+drag blank area');
+  assert.equal(i18n.translateText('Cmd+Shift+滚轮', 'en'), 'Cmd+Shift+wheel');
+  assert.equal(i18n.translateText('Cmd+点击', 'zh'), 'Cmd+点击');
+});
+
 test('accepts legacy and current project schemas but rejects unknown versions', () => {
   assert.equal(helpers.supportsProjectSchema({ segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema({ schema: helpers.PROJECT_SCHEMA, segments: [] }), true);

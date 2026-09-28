@@ -353,7 +353,8 @@
 
 
 
-  const EDITOR_SETTINGS = readEditorSettings();
+  const EDITOR_SETTINGS = MaweState.preferences.editor;
+  Object.assign(EDITOR_SETTINGS, readEditorSettings());
 
 
 

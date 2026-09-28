@@ -1,15 +1,15 @@
 
 
 
-const selectedOverlayIdxs = new Set();
+
   // 用于 Shift+click 范围选
 
-let lastClickedOverlayIdx = -1;
+
 
 // 已选计数涵盖主轨/副轨/叠加轨三个选区集。
 function updateSelectionCountText() {
   MaweDom.selCountEl.textContent = String(
-    MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size + selectedOverlayIdxs.size,
+    MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size + MaweState.selection.indices('overlay').size,
   );
 }
 // “仅看超长”开启时，刚拆出的字幕临时绕过字数过滤；使用稳定 ID，避免 splice 后下标错位。
@@ -139,7 +139,7 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
   seg.text = MaweDom.cuePanelText.value.replace(/\r\n?/g, '\n');
   seg._dirty = true;
   if (target.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  MaweServerSave.scheduleAutoSaveFlush();
+  MaweViewUpdates.invalidate({ save: true });
   const splitMode = target.kind === 'extension'
     ? MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(target.track, seg)
     : MaweMultiSubtitleCore.getMainSubtitleSplitMode(seg);
@@ -156,7 +156,7 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
   if (target.kind === 'extension') MaweCoreState.waveformEditor?.refreshExtensionCueLabel(target.index, target.trackId);
   else if (target.kind === 'overlay') MaweCoreState.waveformEditor?.refreshCueOverlay();
   else MaweCoreState.waveformEditor?.refreshCueLabel(target.index);
-  MawePlaybackLoop.refreshSubtitlePreview();
+  MaweViewUpdates.invalidate({ preview: 'refresh' });
   MaweCueListAnchor.restoreCueListRenderAnchor(cueListAnchor);
 });
 MaweDom.cuePanelText?.addEventListener('blur', () => {
@@ -201,9 +201,9 @@ MaweDom.cuePanelSplit?.addEventListener('click', MaweCuePanel.splitCuePanelAtCur
 // 不能走 updateMultiSelectionClasses，这里按 data-overlay-idx 直接同步。
 function syncOverlaySelectionClasses() {
   MaweCoreState.container.querySelectorAll('.cue[data-overlay-idx].selected').forEach((el) => {
-    if (!selectedOverlayIdxs.has(Number(el.dataset.overlayIdx))) el.classList.remove('selected');
+    if (!MaweState.selection.indices('overlay').has(Number(el.dataset.overlayIdx))) el.classList.remove('selected');
   });
-  selectedOverlayIdxs.forEach((index) => {
+  MaweState.selection.indices('overlay').forEach((index) => {
     MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.add('selected');
   });
   updateSelectionCountText();
@@ -214,8 +214,8 @@ function selectOverlayCueRow(index, { focusEditor = false } = {}) {
   // 已有选区（clearSelection 同时取消待绑定状态），再单独选中本轨字幕。
   MaweCuePanel.commitCuePanelEdit();
   MaweSelection.clearSelection({ silent: true });
-  selectedOverlayIdxs.add(index);
-  lastClickedOverlayIdx = index;
+  MaweState.selection.add('overlay', index);
+  MaweState.selection.overlayAnchor = index;
   MaweCuePanel.setCuePanelTarget('overlay', index);
   if (focusEditor) MaweCuePanel.focusCuePanelText(index, 'overlay');
   syncOverlaySelectionClasses();
@@ -228,10 +228,10 @@ function selectOverlayRange(fromIndex, toIndex) {
   const segments = getOverlayTrack()?.segments || [];
   const from = Math.max(0, Math.min(fromIndex, toIndex));
   const to = Math.min(segments.length - 1, Math.max(fromIndex, toIndex));
-  selectedOverlayIdxs.clear();
+  MaweState.selection.clear('overlay');
   for (let index = from; index <= to; index += 1) {
     if (MaweSelection.isHiddenDisabled(index, getOverlayTrack())) continue;
-    selectedOverlayIdxs.add(index);
+    MaweState.selection.add('overlay', index);
   }
   MaweCuePanel.setCuePanelTarget('overlay', toIndex);
   syncOverlaySelectionClasses();
@@ -243,14 +243,14 @@ function selectOverlayRange(fromIndex, toIndex) {
 function toggleOverlaySelection(index) {
   if (MaweSelection.isHiddenDisabled(index, getOverlayTrack())) return;  // 隐藏禁用项不参与选择
   const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
-  if (selectedOverlayIdxs.has(index)) {
-    selectedOverlayIdxs.delete(index);
+  if (MaweState.selection.indices('overlay').has(index)) {
+    MaweState.selection.remove('overlay', index);
     row?.classList.remove('selected');
   } else {
-    selectedOverlayIdxs.add(index);
+    MaweState.selection.add('overlay', index);
     row?.classList.add('selected');
   }
-  lastClickedOverlayIdx = index;
+  MaweState.selection.overlayAnchor = index;
   // 与副字幕 Ctrl 多选一致：面板跟随被切换的字幕，便于继续编辑。
   MaweCuePanel.setCuePanelTarget('overlay', index);
   updateSelectionCountText();
@@ -262,11 +262,11 @@ function buildOverlayCueEl(seg, index) {
   el.classList.add('overlay-track-cue');
   el.dataset.overlayIdx = String(index);
   el.removeAttribute('data-idx');
-  el.classList.toggle('selected', selectedOverlayIdxs.has(index));
+  el.classList.toggle('selected', MaweState.selection.indices('overlay').has(index));
   el.addEventListener('click', (event) => {
     event.stopPropagation();
-    if (event.shiftKey && lastClickedOverlayIdx >= 0) {
-      selectOverlayRange(lastClickedOverlayIdx, index);
+    if (event.shiftKey && MaweState.selection.overlayAnchor >= 0) {
+      selectOverlayRange(MaweState.selection.overlayAnchor, index);
       return;
     }
     if (event.ctrlKey || event.metaKey) {

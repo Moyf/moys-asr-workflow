@@ -54,16 +54,17 @@ document.getElementById('replace-confirm')?.addEventListener('click', () => {
     MaweHint.flashHint('没有匹配的内容', 'invalid');
     return;
   }
-  MaweHistory.pushUndo('批量替换');
-  let changedRows = 0;
-  MaweFindReplace.getReplaceTargets().forEach(s => {
-    re.lastIndex = 0;
-    const newText = s.text.replace(re, repl);
-    if (newText !== s.text) { s.text = newText; s._dirty = true; changedRows++; }
+  return MaweCommands.run('批量替换', (command) => {
+    let changedRows = 0;
+    MaweFindReplace.getReplaceTargets().forEach(s => {
+      re.lastIndex = 0;
+      const newText = s.text.replace(re, repl);
+      if (newText !== s.text) { s.text = newText; s._dirty = true; changedRows++; }
+    });
+    MaweDom.replaceModal.classList.remove('show');
+    command.commit({ cueList: true });
+    MaweHint.flashHint(`已修改 ${changedRows} 行`, 'success');
   });
-  MaweDom.replaceModal.classList.remove('show');
-  MaweCuePanel.renderAll();
-  MaweHint.flashHint(`已修改 ${changedRows} 行`, 'success');
 });
 
 // === 文本处理 ===
@@ -175,23 +176,24 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
     MaweHint.flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
     return;
   }
-  MaweHistory.pushUndo('文本处理');
-  if (nextMainSegments) {
-    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...nextMainSegments);
-    MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments);
-  }
-  nextExtensionSegments.forEach(({ track, segments }) => {
-    track.segments.splice(0, track.segments.length, ...segments);
-    track.segments.forEach((segment) => { segment._dirty = true; });
+  return MaweCommands.run('文本处理', (command) => {
+    if (nextMainSegments) {
+      MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...nextMainSegments);
+      MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments);
+    }
+    nextExtensionSegments.forEach(({ track, segments }) => {
+      track.segments.splice(0, track.segments.length, ...segments);
+      track.segments.forEach((segment) => { segment._dirty = true; });
+    });
+    if (nextExtensionSegments.length) MaweMultiSubtitleCore.markMultiSubtitleDirty();
+    MaweMultiSubtitleCore.syncBindingOffsets();
+
+    MaweTextProcess.closeTextProcessModal();
+    command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
+
+    MaweHistory.updateUndoRedoButtons();
+    MaweHint.flashHint(`已应用文本处理：${result.changedCount} 条字幕`, 'success');
   });
-  if (nextExtensionSegments.length) MaweMultiSubtitleCore.markMultiSubtitleDirty();
-  MaweMultiSubtitleCore.syncBindingOffsets();
-  MaweServerSave.scheduleAutoSaveFlush();
-  MaweTextProcess.closeTextProcessModal();
-  MaweCuePanel.renderAll({ waveform: 'overlay' });
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  MaweHistory.updateUndoRedoButtons();
-  MaweHint.flashHint(`已应用文本处理：${result.changedCount} 条字幕`, 'success');
 });
 
 // === 纯文本编辑（支持调整字幕行结构的 MVP） ===
@@ -371,38 +373,39 @@ MaweDom.timedTextEditApply?.addEventListener('click', () => {
     MaweHint.flashHint('无法应用文本修改：字幕行结构发生了变化', 'warning');
     return;
   }
-  MaweHistory.pushUndo('纯文本编辑');
-  const dirtyFlags = window.AsrEditorUtils.timedTextEditDirtyFlags(
-    draft.sourceSegments,
-    nextSegments,
-    draft.report,
-  );
-  nextSegments.forEach((segment, index) => {
-    if (dirtyFlags[index]) segment._dirty = true;
-    else delete segment._dirty;
+  return MaweCommands.run('纯文本编辑', (command) => {
+    const dirtyFlags = window.AsrEditorUtils.timedTextEditDirtyFlags(
+      draft.sourceSegments,
+      nextSegments,
+      draft.report,
+    );
+    nextSegments.forEach((segment, index) => {
+      if (dirtyFlags[index]) segment._dirty = true;
+      else delete segment._dirty;
+    });
+    const removedCount = MaweTimedTextEdit.applyTimedTextEditSegments(
+      draft.kind,
+      draft.sourceSegments,
+      targetSegments,
+      nextSegments,
+      draft.report,
+      draft.texts,
+      draft.sourceSegmentIndexes,
+    );
+    if (draft.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
+    MaweMultiSubtitleCore.syncBindingOffsets();
+    // 纯文本编辑应用后暂不主动触发自动保存，让 dirty 标记短暂保留，
+    // 便于用户确认哪些字幕确实发生了变化；已有的自动保存计时器仍照常执行。
+    const changedCount = draft.report.stats.changedSegments;
+    const lostCount = draft.report.stats.lostMappedCues;
+    const estimatedCount = draft.report.stats.estimatedTimingCues || 0;
+    MaweTimedTextEdit.closeTimedTextEdit();
+    command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
+
+    MaweHistory.updateUndoRedoButtons();
+    MaweHint.flashHint(
+      `已应用纯文本编辑：${changedCount} 条字幕${removedCount ? `，移除 ${removedCount} 条空字幕行` : ''}${lostCount ? `，${lostCount} 条字词时间码已清除` : ''}${estimatedCount ? `，${estimatedCount} 条时间范围为自动估算` : ''}`,
+      'success',
+    );
   });
-  const removedCount = MaweTimedTextEdit.applyTimedTextEditSegments(
-    draft.kind,
-    draft.sourceSegments,
-    targetSegments,
-    nextSegments,
-    draft.report,
-    draft.texts,
-    draft.sourceSegmentIndexes,
-  );
-  if (draft.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
-  MaweMultiSubtitleCore.syncBindingOffsets();
-  // 纯文本编辑应用后暂不主动触发自动保存，让 dirty 标记短暂保留，
-  // 便于用户确认哪些字幕确实发生了变化；已有的自动保存计时器仍照常执行。
-  const changedCount = draft.report.stats.changedSegments;
-  const lostCount = draft.report.stats.lostMappedCues;
-  const estimatedCount = draft.report.stats.estimatedTimingCues || 0;
-  MaweTimedTextEdit.closeTimedTextEdit();
-  MaweCuePanel.renderAll({ waveform: 'overlay' });
-  MawePlaybackLoop.updateWithoutCueListAutoScroll();
-  MaweHistory.updateUndoRedoButtons();
-  MaweHint.flashHint(
-    `已应用纯文本编辑：${changedCount} 条字幕${removedCount ? `，移除 ${removedCount} 条空字幕行` : ''}${lostCount ? `，${lostCount} 条字词时间码已清除` : ''}${estimatedCount ? `，${estimatedCount} 条时间范围为自动估算` : ''}`,
-    'success',
-  );
 });

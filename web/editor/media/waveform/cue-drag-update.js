@@ -357,11 +357,13 @@ window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(d
           if (!segment) return;
           restoreTiming(segment, original, drag.timing || this.cueTiming());
         });
+        this.options.onCancelEdit?.();
         this.refreshCueOverlay();
         restorePointerLine();
         return;
       }
       if (!drag.changed) {
+        if (drag.started) this.options.onCancelEdit?.();
         // Shift+点击（无拖动位移）：按下时未做范围选择，这里补上，
         // 保持既有 Shift+click 范围选语义；不进入跳转/启停逻辑。
         if (drag.shiftRangeSelect) {

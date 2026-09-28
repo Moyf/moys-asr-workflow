@@ -106,7 +106,7 @@ async function clickWaveformCue(page, idx) {
 // Ctrl+click a waveform cue block to toggle it into the selection.
 async function ctrlClickWaveformCue(page, idx) {
   const block = page.locator(`.waveform-cue-block[data-idx="${idx}"]`);
-  await block.first().click({ modifiers: ['Control'] });
+  await block.first().click({ modifiers: ['ControlOrMeta'] });
   // Wait for the selected class to appear on this block in the cue list
   await page.waitForSelector(`.cue[data-idx="${idx}"].selected`, { timeout: 5000 });
 }

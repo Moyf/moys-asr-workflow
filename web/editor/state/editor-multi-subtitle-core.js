@@ -355,10 +355,10 @@
 
   function restoreExtensionTrackSelection(track, snapshot) {
   if (!track || !snapshot?.active) return;
-  MaweSelection.selectedExtensionIdxs.clear();
+  MaweState.selection.clear('extension');
   snapshot.selectedIds.forEach((id) => {
     const index = track.segments.findIndex((segment) => segment?.id === id);
-    if (index >= 0) MaweSelection.selectedExtensionIdxs.add(index);
+    if (index >= 0) MaweState.selection.add('extension', index);
   });
   if (snapshot.currentId && MaweCuePanelState.currentCuePanelKind === 'extension'
       && MaweCuePanelState.currentCuePanelTrackId === track.id) {
