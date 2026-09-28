@@ -131,6 +131,8 @@ class QwenForcedAlignerBackend:
     def _load(self) -> Any:
         if self._runtime is not None:
             return self._runtime
+        if self.device.strip().lower() == "mps":
+            os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
         try:
             import torch  # type: ignore[import-not-found]
             from qwen_asr import Qwen3ForcedAligner  # type: ignore[import-not-found]

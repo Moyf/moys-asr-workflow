@@ -329,6 +329,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
     def test_get_config_exposes_local_provider_and_runtime_status(self) -> None:
         config = self.api.get_config()
+        self.assertEqual(config["platform"], sys.platform)
 
         local = next(provider for provider in config["providers"] if provider["id"] == "local")
         self.assertFalse(local["requiresApiKey"])
@@ -3367,6 +3368,29 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(request.api_key, "")
         self.assertEqual(request.runtime_python, str(self.root / "runtime" / "Scripts" / "python.exe"))
 
+    def test_local_request_allows_mps_only_for_qwen_on_mac(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        payload = {
+            "providerId": "local",
+            "modelId": "qwen3-asr-local",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "device": "mps",
+        }
+        status = LocalModelStatus(
+            model_id="qwen3-asr-local", engine="qwen-asr", model_ref="Qwen/Qwen3-ASR-0.6B",
+            status="installed", runtime_available=True, installed=True,
+            path=str(self.root / "qwen"), detail="ready", runtime_source="managed",
+            runtime_python=str(self.root / "runtime" / "Scripts" / "python.exe"),
+        )
+        with mock.patch("maw.gui_web.inspect_local_model", return_value=status):
+            with mock.patch("maw.gui_web.sys.platform", "darwin"):
+                self.assertEqual(_request_from_payload(payload, self.env_path).device, "mps")
+            with mock.patch("maw.gui_web.sys.platform", "win32"):
+                with self.assertRaises(PreflightError):
+                    _request_from_payload(payload, self.env_path)
+
     def test_firered_request_can_skip_optional_ct_punc(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -5638,7 +5662,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('function providerNoteText(providerItem)', script)
         self.assertIn('function modelNoteText(modelItem)', script)
         self.assertIn('function renderModelNote()', script)
-        self.assertIn('syncLocalModelPath(model); renderModelNote();', script)
+        self.assertIn('syncLocalModelPath(model); syncLocalDeviceOptions(model); renderModelNote();', script)
         self.assertIn('"price-note"', script)
         self.assertIn('$("providerNote").textContent = providerNoteText(current);', script)
         self.assertIn('renderServerButton(); refillSelectLabels();', script)
