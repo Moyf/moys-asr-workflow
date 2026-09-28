@@ -44,18 +44,25 @@ export function buildBundle() {
   return { code: result.outputFiles[0].text, ms: performance.now() - t0 };
 }
 
-const isCheck = process.argv.includes("--check");
-const { code, ms } = buildBundle();
-const existing = fs.existsSync(BUNDLE_ABS) ? fs.readFileSync(BUNDLE_ABS, "utf8") : null;
-
-if (isCheck) {
-  if (existing !== code) {
-    console.error(`esm-bundle 过期：请运行 node scripts/esm-pilot/build-esm-bundle.mjs 更新 ${BUNDLE_REL}`);
-    process.exitCode = 1;
+// ---- CLI 分支：仅直接运行时执行，带副作用（写盘） ----
+// 导入本模块（如 tests/test_esm_bundle_fresh.mjs）只应获得纯函数 buildBundle()；
+// CLI 逻辑必须留在 invokedDirectly 守卫之后，否则测试导入即重写产物，
+// 「过期检测」永远测不出过期（PR #157 评审 P1）。
+const invokedDirectly = process.argv[1]
+  && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (invokedDirectly) {
+  const isCheck = process.argv.includes("--check");
+  const { code, ms } = buildBundle();
+  const existing = fs.existsSync(BUNDLE_ABS) ? fs.readFileSync(BUNDLE_ABS, "utf8") : null;
+  if (isCheck) {
+    if (existing !== code) {
+      console.error(`esm-bundle 过期：请运行 node scripts/esm-pilot/build-esm-bundle.mjs 更新 ${BUNDLE_REL}`);
+      process.exitCode = 1;
+    } else {
+      console.log(`esm-bundle 最新（${code.length} 字节）`);
+    }
   } else {
-    console.log(`esm-bundle 最新（${code.length} 字节）`);
+    fs.writeFileSync(BUNDLE_ABS, code, "utf8");
+    console.log(`esm-bundle 已写入 ${BUNDLE_REL}（${code.length} 字节，${ms.toFixed(1)} ms）`);
   }
-} else {
-  fs.writeFileSync(BUNDLE_ABS, code, "utf8");
-  console.log(`esm-bundle 已写入 ${BUNDLE_REL}（${code.length} 字节，${ms.toFixed(1)} ms）`);
 }
