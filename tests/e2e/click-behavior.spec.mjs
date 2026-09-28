@@ -701,7 +701,20 @@ test('B split keeps the source cue visually anchored while lazy rows relayout', 
     bubbles: true, detail: 1,
     clientX: secondSplitPoint.x, clientY: secondSplitPoint.y,
   });
-  await page.mouse.move(secondSplitPoint.x, secondSplitPoint.y);
+  await expect(right).toHaveClass(/selected/);
+  // The click may rebuild lazy rows; use the rendered text's current position
+  // for the hover split instead of the coordinates captured before the click.
+  const liveSecondSplitPoint = await secondText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    const offset = Math.max(1, Math.floor(node.textContent.length / 2));
+    range.setStart(node, offset);
+    range.setEnd(node, offset);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(liveSecondSplitPoint.x, liveSecondSplitPoint.y);
+  await expect(page.locator('.cue-split-preview')).toHaveCount(1);
   const secondBeforeTop = await right.evaluate((element) => element.getBoundingClientRect().top);
   await page.keyboard.press('b');
 
